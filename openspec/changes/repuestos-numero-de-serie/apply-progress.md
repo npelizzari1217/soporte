@@ -464,3 +464,21 @@ Rama `feat/repuestos-numero-de-serie-wu08a`. Tarea 8a.1 hecha; 8a.2-8a.4 en `wu0
   unidad en SERIE); `execute()` delega y conserva el primero, asi que recepcion/equipos no cambian.
 - Respuesta ampliada (decision): `MovimientosRegistradosResponseDto` = el PRIMER asiento con su forma de siempre mas
   `movimientos: MovimientoInsumoResponseDto[]` con todos. Compatible con el frontend actual, que lee el objeto plano.
+
+## WU-8a — Borde de movimientos (parte 2 de 2: controller y e2e)
+
+Rama `feat/repuestos-numero-de-serie-wu08a-2`. Tareas 8a.2, 8a.3 y 8a.4 hechas.
+
+- `toHttpExceptionMovimiento` (exportada de `movimientos-insumo.controller.ts`): 409 para `SerialDuplicadoError` y
+  `UnidadMedidaCambiadaError`; 404 para `UnidadNoEncontradaError`; 422 explicito para `UnidadNoAdmitida`, `UnidadRequerida`,
+  `UnidadNoDisponible`, `SerialesNoCoinciden`, `SerialRequerido`, `CantidadNoEntera`, `SeguimientoNoModificable`,
+  `UnidadMedidaNoEntera`, `UnidadMedidaEnUsoPorSerie`, `MotivoCorreccionSerialInvalido`, `MotivoRecuperacionRequerido` y
+  `UnidadDelComponenteNoDisponible`; el resto cae en `toHttpException`. Decoradores de permiso sin cambio.
+- Entrada y ajuste llaman `executeTodos()` y responden `MovimientosRegistradosResponseDto`. La entrada rechaza `unidadId` y la
+  salida rechaza `seriales` con 422 (`UnidadNoAdmitidaError`) en el controller: sus casos de uso no tienen esos campos.
+- Ningun spec de insumos enumera las clases de error (no hay `CLASES_DE_ERROR` en este modulo): no hubo conteo que actualizar;
+  el mapeo se prueba con una tabla en `movimientos-insumo.controller.spec.ts`.
+- e2e `movimientos-insumo-serie.e2e.spec.ts` (`usarLockMasterTest()`): prepara el insumo SERIE por SQL (`unidades_medida.entera`
+  y `insumos.seguimiento`); cubre entrada con seriales (todos los movimientos), salida con `unidadId`, ajuste negativo, 403,
+  409, 422 por error, 400 por largo normalizado/maximo/uuid y `NINGUNO` rechazando `seriales` y `unidadId`. Higiene:
+  TRUNCATE de filas -> `app.close()` -> `dropDatabase`.

@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
-import { MovimientosInsumoController } from './movimientos-insumo.controller';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  MovimientosInsumoController,
+  toHttpExceptionMovimiento,
+} from './movimientos-insumo.controller';
+import * as ErroresUnidades from '../../domain/errors/unidades-insumo.errors';
+import * as ErroresUnidadesMedida from '../../domain/errors/unidades-medida.errors';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -55,7 +60,10 @@ function construirMovimiento(tipo: TipoMovimientoInsumo, cantidad = 2): Movimien
   }).getValue();
 }
 
-type UseCaseDoble = { execute: ReturnType<typeof vi.fn> };
+type UseCaseDoble = {
+  execute?: ReturnType<typeof vi.fn>;
+  executeTodos?: ReturnType<typeof vi.fn>;
+};
 
 describe('MovimientosInsumoController', () => {
   function buildController(overrides: Partial<Record<string, UseCaseDoble>> = {}): {
@@ -66,9 +74,9 @@ describe('MovimientosInsumoController', () => {
     stockUseCase: UseCaseDoble;
     listarUseCase: UseCaseDoble;
   } {
-    const entradaUseCase = overrides.entrada ?? { execute: vi.fn() };
+    const entradaUseCase = overrides.entrada ?? { execute: vi.fn(), executeTodos: vi.fn() };
     const salidaUseCase = overrides.salida ?? { execute: vi.fn() };
-    const ajusteUseCase = overrides.ajuste ?? { execute: vi.fn() };
+    const ajusteUseCase = overrides.ajuste ?? { execute: vi.fn(), executeTodos: vi.fn() };
     const stockUseCase = overrides.stock ?? { execute: vi.fn() };
     const listarUseCase = overrides.listar ?? { execute: vi.fn() };
 
@@ -93,7 +101,7 @@ describe('MovimientosInsumoController', () => {
     it('registra la entrada y devuelve el asiento mapeado', async () => {
       const movimiento = construirMovimiento('ENTRADA', 7);
       const { controller, entradaUseCase } = buildController({
-        entrada: { execute: vi.fn().mockResolvedValue(Result.ok(movimiento)) },
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
       });
 
       const respuesta = await controller.registrarEntrada(actor(), INSUMO_ID, {
@@ -106,7 +114,7 @@ describe('MovimientosInsumoController', () => {
       expect(respuesta.tipo).toBe('ENTRADA');
       expect(respuesta.cantidad).toBe(7);
       expect(respuesta.usuarioId).toBe(USUARIO_ID);
-      expect(entradaUseCase.execute).toHaveBeenCalledWith({
+      expect(entradaUseCase.executeTodos).toHaveBeenCalledWith({
         insumoId: INSUMO_ID,
         cantidad: 7,
         usuarioId: USUARIO_ID,
@@ -129,7 +137,7 @@ describe('MovimientosInsumoController', () => {
     it('estampa el usuarioId del JWT e ignora el que venga en el body', async () => {
       const movimiento = construirMovimiento('ENTRADA');
       const { controller, entradaUseCase } = buildController({
-        entrada: { execute: vi.fn().mockResolvedValue(Result.ok(movimiento)) },
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
       });
       const bodySuplantado = {
         cantidad: 2,
@@ -138,10 +146,10 @@ describe('MovimientosInsumoController', () => {
 
       await controller.registrarEntrada(actor(), INSUMO_ID, bodySuplantado);
 
-      expect(entradaUseCase.execute).toHaveBeenCalledWith(
+      expect(entradaUseCase.executeTodos).toHaveBeenCalledWith(
         expect.objectContaining({ usuarioId: USUARIO_ID }),
       );
-      expect(entradaUseCase.execute).not.toHaveBeenCalledWith(
+      expect(entradaUseCase.executeTodos).not.toHaveBeenCalledWith(
         expect.objectContaining({ usuarioId: 'usuario-suplantado' }),
       );
     });
@@ -154,7 +162,7 @@ describe('MovimientosInsumoController', () => {
     it('con el insumo deshabilitado lanza 422 y no 404, con el mensaje del dominio', async () => {
       const error = new InsumoDeshabilitadoError(INSUMO_ID);
       const { controller } = buildController({
-        entrada: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
       });
 
       const lanzado = await controller
@@ -169,7 +177,7 @@ describe('MovimientosInsumoController', () => {
     it('con el insumo inexistente lanza 404: es el recurso de la URL', async () => {
       const error = new InsumoNoEncontradoError(INSUMO_ID);
       const { controller } = buildController({
-        entrada: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
       });
 
       const lanzado = await controller
@@ -183,13 +191,11 @@ describe('MovimientosInsumoController', () => {
 
   describe('condicion — se reenvía a las tres rutas y USADO no admitido es 422', () => {
     it('reenvía la condición de la entrada, la salida y el ajuste', async () => {
-      const ok = () => ({
-        execute: vi.fn().mockResolvedValue(Result.ok(construirMovimiento('ENTRADA'))),
-      });
+      const movimiento = construirMovimiento('ENTRADA');
       const { controller, entradaUseCase, salidaUseCase, ajusteUseCase } = buildController({
-        entrada: ok(),
-        salida: ok(),
-        ajuste: ok(),
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
+        salida: { execute: vi.fn().mockResolvedValue(Result.ok(movimiento)) },
+        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
       });
 
       await controller.registrarEntrada(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' });
@@ -201,26 +207,32 @@ describe('MovimientosInsumoController', () => {
         condicion: 'USADO',
       });
 
-      for (const caso of [entradaUseCase, salidaUseCase, ajusteUseCase]) {
-        expect(caso.execute).toHaveBeenCalledWith(expect.objectContaining({ condicion: 'USADO' }));
+      for (const caso of [
+        entradaUseCase.executeTodos,
+        salidaUseCase.execute,
+        ajusteUseCase.executeTodos,
+      ]) {
+        expect(caso).toHaveBeenCalledWith(expect.objectContaining({ condicion: 'USADO' }));
       }
     });
 
     it('sin condición en el body no inventa un default: lo resuelve el caso de uso', async () => {
       const { controller, entradaUseCase } = buildController({
-        entrada: { execute: vi.fn().mockResolvedValue(Result.ok(construirMovimiento('ENTRADA'))) },
+        entrada: {
+          executeTodos: vi.fn().mockResolvedValue(Result.ok([construirMovimiento('ENTRADA')])),
+        },
       });
 
       await controller.registrarEntrada(actor(), INSUMO_ID, { cantidad: 1 });
 
-      const [args] = entradaUseCase.execute.mock.calls[0] as [{ condicion?: string }];
+      const [args] = entradaUseCase.executeTodos!.mock.calls[0] as [{ condicion?: string }];
       expect(args.condicion).toBeUndefined();
     });
 
     it('CondicionUsadoNoAdmitidaError sale como 422 con el mensaje del dominio', async () => {
       const error = new CondicionUsadoNoAdmitidaError(INSUMO_ID);
       const { controller } = buildController({
-        entrada: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
       });
 
       const lanzado = await controller
@@ -278,7 +290,7 @@ describe('MovimientosInsumoController', () => {
     it('reenvía la dirección del ajuste que viene en el body', async () => {
       const movimiento = construirMovimiento('AJUSTE_NEGATIVO', 3);
       const { controller, ajusteUseCase } = buildController({
-        ajuste: { execute: vi.fn().mockResolvedValue(Result.ok(movimiento)) },
+        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
       });
 
       const respuesta = await controller.registrarAjuste(actor(), INSUMO_ID, {
@@ -288,7 +300,7 @@ describe('MovimientosInsumoController', () => {
       });
 
       expect(respuesta.tipo).toBe('AJUSTE_NEGATIVO');
-      expect(ajusteUseCase.execute).toHaveBeenCalledWith({
+      expect(ajusteUseCase.executeTodos).toHaveBeenCalledWith({
         insumoId: INSUMO_ID,
         tipo: 'AJUSTE_NEGATIVO',
         cantidad: 3,
@@ -308,7 +320,7 @@ describe('MovimientosInsumoController', () => {
     it('con el motivo vacío lanza 422 y no 500, con el tipo exacto en el mensaje', async () => {
       const error = new MotivoAjusteRequeridoError(INSUMO_ID, 'AJUSTE_NEGATIVO');
       const { controller } = buildController({
-        ajuste: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
       });
 
       const lanzado = await controller
@@ -323,7 +335,7 @@ describe('MovimientosInsumoController', () => {
     it('con stock insuficiente en un ajuste negativo lanza 422', async () => {
       const error = new StockInsuficienteError(INSUMO_ID, 10, 1);
       const { controller } = buildController({
-        ajuste: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
       });
 
       await expect(
@@ -531,6 +543,108 @@ describe('MovimientosInsumoController', () => {
       });
 
       expect(sinGate).toEqual([]);
+    });
+  });
+  describe('seriales y unidadId (ADR-8)', () => {
+    it('la entrada reenvía los seriales y responde TODOS los movimientos', async () => {
+      const a = construirMovimiento('ENTRADA', 1);
+      const b = construirMovimiento('ENTRADA', 1);
+      const { controller, entradaUseCase } = buildController({
+        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([a, b])) },
+      });
+
+      const respuesta = await controller.registrarEntrada(actor(), INSUMO_ID, {
+        cantidad: 2,
+        seriales: ['SN-1', 'SN-2'],
+      });
+
+      expect(entradaUseCase.executeTodos).toHaveBeenCalledWith(
+        expect.objectContaining({ seriales: ['SN-1', 'SN-2'] }),
+      );
+      expect(respuesta.id).toBe(a.id);
+      expect(respuesta.movimientos.map((m) => m.id)).toEqual([a.id, b.id]);
+    });
+
+    it('la entrada rechaza un unidadId con 422 sin invocar el caso de uso', async () => {
+      const { controller, entradaUseCase } = buildController();
+
+      const lanzado = await controller
+        .registrarEntrada(actor(), INSUMO_ID, { cantidad: 1, unidadId: EQUIPO_ID })
+        .catch((e: unknown) => e);
+
+      expect(lanzado).toBeInstanceOf(UnprocessableEntityException);
+      expect(entradaUseCase.executeTodos).not.toHaveBeenCalled();
+    });
+
+    it('la salida reenvía el unidadId y rechaza seriales con 422', async () => {
+      const { controller, salidaUseCase } = buildController({
+        salida: {
+          execute: vi.fn().mockResolvedValue(Result.ok(construirMovimiento('SALIDA', 1))),
+        },
+      });
+
+      await controller.registrarSalida(actor(), INSUMO_ID, { cantidad: 1, unidadId: EQUIPO_ID });
+      expect(salidaUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId: EQUIPO_ID }),
+      );
+
+      const lanzado = await controller
+        .registrarSalida(actor(), INSUMO_ID, { cantidad: 1, seriales: ['SN-1'] })
+        .catch((e: unknown) => e);
+      expect(lanzado).toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('el ajuste reenvía seriales y unidadId', async () => {
+      const { controller, ajusteUseCase } = buildController({
+        ajuste: {
+          executeTodos: vi
+            .fn()
+            .mockResolvedValue(Result.ok([construirMovimiento('AJUSTE_NEGATIVO', 1)])),
+        },
+      });
+
+      await controller.registrarAjuste(actor(), INSUMO_ID, {
+        tipo: 'AJUSTE_NEGATIVO',
+        cantidad: 1,
+        motivo: 'Conteo',
+        unidadId: EQUIPO_ID,
+      });
+
+      expect(ajusteUseCase.executeTodos).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId: EQUIPO_ID }),
+      );
+    });
+  });
+
+  describe('toHttpExceptionMovimiento — mapeo explícito de los errores de unidades', () => {
+    const conflictos = [
+      new ErroresUnidades.SerialDuplicadoError('SN-1'),
+      new ErroresUnidadesMedida.UnidadMedidaCambiadaError('uni-1'),
+    ];
+    const inprocesables = [
+      new ErroresUnidades.UnidadNoAdmitidaError(INSUMO_ID),
+      new ErroresUnidades.UnidadRequeridaError(INSUMO_ID),
+      new ErroresUnidades.UnidadNoDisponibleError(EQUIPO_ID, 'instalada'),
+      new ErroresUnidades.SerialesNoCoincidenError(2, 1),
+      new ErroresUnidades.SerialRequeridoError('detalle'),
+      new ErroresUnidades.CantidadNoEnteraError(1.5),
+      new ErroresUnidades.SeguimientoNoModificableError('hay unidades'),
+      new ErroresUnidades.MotivoCorreccionSerialInvalidoError(EQUIPO_ID, 'exige un motivo.'),
+      new ErroresUnidadesMedida.UnidadMedidaNoEnteraError('uni-1'),
+    ];
+
+    it.each(conflictos)('$code es 409', (error) => {
+      expect(toHttpExceptionMovimiento(error)).toBeInstanceOf(ConflictException);
+    });
+
+    it.each(inprocesables)('$code es 422', (error) => {
+      expect(toHttpExceptionMovimiento(error)).toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('UnidadNoEncontradaError es 404', () => {
+      expect(
+        toHttpExceptionMovimiento(new ErroresUnidades.UnidadNoEncontradaError(EQUIPO_ID)),
+      ).toBeInstanceOf(NotFoundException);
     });
   });
 });
