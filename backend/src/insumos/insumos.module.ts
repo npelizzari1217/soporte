@@ -77,6 +77,8 @@ import {
   MOVIMIENTO_INSUMO_REPOSITORY,
 } from './domain/ports/i-movimiento-insumo.repository';
 import { PrismaMovimientoInsumoRepository } from './infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
+import { UNIDAD_INSUMO_REPOSITORY } from './domain/ports/i-unidad-insumo.repository';
+import { PrismaUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-unidad-insumo.repository';
 import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
@@ -151,6 +153,9 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     },
 
     { provide: UNIDAD_MEDIDA_REPOSITORY, useClass: PrismaUnidadMedidaRepository },
+    // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-4). No se
+    // exporta: la única puerta de las unidades será `OperacionesUnidadInsumo`.
+    { provide: UNIDAD_INSUMO_REPOSITORY, useClass: PrismaUnidadInsumoRepository },
     {
       provide: CrearUnidadMedidaUseCase,
       useFactory: (repo: IUnidadMedidaRepository) => new CrearUnidadMedidaUseCase(repo),

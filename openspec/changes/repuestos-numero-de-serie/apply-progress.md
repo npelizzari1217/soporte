@@ -108,3 +108,33 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
 | Focused test command | `pnpm vitest run src/shared/infrastructure src/insumos`: verde (ver el reporte de la parte) |
 | Runtime harness | Base `soporte_tenant_test` real y sesión testigo con `NOWAIT` desde afuera de la transacción |
 | Rollback boundary | Revertir el commit de la parte 1: agrega métodos a tres puertos y un helper; `lockAndSumByTipo` mantiene su comportamiento |
+
+### Parte 2 (wu03a-2): 3a.2, 3a.5 y 3a.6 hechas
+
+- `IUnidadInsumoRepository` (`domain/ports/i-unidad-insumo.repository.ts`, token
+  `UNIDAD_INSUMO_REPOSITORY`, registrado en `insumos.module.ts` sin exportar) y
+  `PrismaUnidadInsumoRepository`: `insertar`, `bloquearPorIds` (`ORDER BY id FOR NO KEY UPDATE`),
+  `guardarConEstadoEsperado` (CAS con `updateMany`; 0 filas lanza `Error`), `contarEnDepositoPorCondicion`,
+  `contarPorEstado` (insumo de `puedeCambiarSeguimiento`), `listarPorInsumo`, `findById`.
+- `FalloOperacionDeUnidad` (exportada) vive en `domain/errors/fallo-operacion-de-unidad.ts`, en archivo
+  propio y no en `unidades-insumo.errors.ts`: no es un `DomainError` y ese archivo lo enumera su spec.
+- Un P2002 se traduce a `SerialDuplicadoError` solo si la unidad tiene serial (el índice es parcial);
+  sin serial el error pasa tal cual, para no disfrazar un choque de PK.
+- Integración en base real con pool instrumentado (máximo observado reiniciado antes del bloque
+  concurrente y afirmado > 1 antes de los asserts de negocio): mismo serial en seis inserciones
+  simultáneas ⇒ una; misma unidad en seis salidas simultáneas ⇒ una entrega y las demás la ven ya
+  entregada, sin ningún CAS de 0 filas.
+
+### Mutación adversarial local de 3a.5 (revertida)
+
+| Mutación | Resultado observado |
+|---|---|
+| Quitar `FOR NO KEY UPDATE` de `bloquearPorIds` | ROJO en 2 tests: el de modos de lock (`{ exclusivo: true, keyShare: true }` en vez de `exclusivo: false`) y la concurrencia sobre la misma unidad (5 de 6 transacciones llegaron a un CAS de 0 filas) |
+
+### Work Unit Evidence (WU-3a parte 2)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/shared/infrastructure src/insumos`: verde (ver el reporte de la parte) |
+| Runtime harness | Base `soporte_tenant_test` real, pool instrumentado y sesión testigo con `NOWAIT` |
+| Rollback boundary | Revertir el commit de la parte 2: archivos nuevos y un provider sin exportar en `insumos.module.ts` |
