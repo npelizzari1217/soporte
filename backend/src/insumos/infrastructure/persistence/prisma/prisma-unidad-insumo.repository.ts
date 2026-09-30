@@ -174,6 +174,32 @@ export class PrismaUnidadInsumoRepository implements IUnidadInsumoRepository {
   }
 
   /**
+   * @param ids Ids de equipos.
+   * @returns Mapa id -> nombre; vacío sin ir a la base si no hay ids.
+   */
+  async nombresDeEquipos(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const filas = await this.client.equipoInformatico.findMany({
+      where: { id: { in: [...ids] } },
+      select: { id: true, nombre: true },
+    });
+    return new Map(filas.map((f) => [f.id, f.nombre]));
+  }
+
+  /**
+   * @param ids Ids de sectores.
+   * @returns Mapa id -> nombre; vacío sin ir a la base si no hay ids.
+   */
+  async nombresDeSectores(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const filas = await this.client.sector.findMany({
+      where: { id: { in: [...ids] } },
+      select: { id: true, nombre: true },
+    });
+    return new Map(filas.map((f) => [f.id, f.nombre]));
+  }
+
+  /**
    * Convierte un P2002 en `FalloOperacionDeUnidad(SerialDuplicadoError)` y deja
    * pasar cualquier otro error tal cual. Con un serial `null` no hay índice que
    * pueda chocar (es parcial sobre `numero_serie_normalizado IS NOT NULL`), así

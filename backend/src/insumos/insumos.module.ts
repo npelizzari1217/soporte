@@ -128,6 +128,9 @@ import { UnidadesMedidaController } from './interface/controllers/unidades-medid
 import { ModelosEquipoController } from './interface/controllers/modelos-equipo.controller';
 import { InsumosController } from './interface/controllers/insumos.controller';
 import { MovimientosInsumoController } from './interface/controllers/movimientos-insumo.controller';
+import { UnidadesInsumoController } from './interface/controllers/unidades-insumo.controller';
+import { ListarUnidadesInsumoUseCase } from './application/use-cases/listar-unidades-insumo.use-case';
+import { ConsultarHistorialUnidadUseCase } from './application/use-cases/consultar-historial-unidad.use-case';
 
 @Module({
   imports: [AuthModule],
@@ -137,6 +140,7 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     ModelosEquipoController,
     InsumosController,
     MovimientosInsumoController,
+    UnidadesInsumoController,
   ],
   providers: [
     { provide: FAMILIA_INSUMO_REPOSITORY, useClass: PrismaFamiliaInsumoRepository },
@@ -287,6 +291,26 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         UNIDAD_MEDIDA_REPOSITORY,
         MODELO_EQUIPO_REPOSITORY,
         TENANT_TX_RUNNER,
+      ],
+    },
+    // Borde de unidades (WU-8b): lecturas sin locks.
+    {
+      provide: ListarUnidadesInsumoUseCase,
+      useFactory: (insumoRepo: IInsumoRepository, unidadRepo: IUnidadInsumoRepository) =>
+        new ListarUnidadesInsumoUseCase(insumoRepo, unidadRepo),
+      inject: [INSUMO_REPOSITORY, UNIDAD_INSUMO_REPOSITORY],
+    },
+    {
+      provide: ConsultarHistorialUnidadUseCase,
+      useFactory: (
+        unidadRepo: IUnidadInsumoRepository,
+        eventoRepo: IEventoUnidadInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+      ) => new ConsultarHistorialUnidadUseCase(unidadRepo, eventoRepo, movimientoRepo),
+      inject: [
+        UNIDAD_INSUMO_REPOSITORY,
+        EVENTO_UNIDAD_INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
       ],
     },
     {

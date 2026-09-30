@@ -216,6 +216,19 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   }
 
   /**
+   * @param ids Ids de movimientos.
+   * @returns Los movimientos encontrados, con el serial de su unidad.
+   */
+  async listarPorIds(ids: readonly string[]): Promise<MovimientoInsumoEntity[]> {
+    if (ids.length === 0) return [];
+    const filas = await this.client.movimientoInsumo.findMany({
+      where: { id: { in: [...ids] } },
+      include: INCLUIR_SERIAL_DE_LA_UNIDAD,
+    });
+    return filas.map(MovimientoInsumoMapper.toDomain);
+  }
+
+  /**
    * `SUM(cantidad) GROUP BY condicion, tipo` de un insumo, completado con los
    * ceros de las dos condiciones y los cuatro tipos que no tienen filas.
    *

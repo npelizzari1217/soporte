@@ -482,3 +482,18 @@ Rama `feat/repuestos-numero-de-serie-wu08a-2`. Tareas 8a.2, 8a.3 y 8a.4 hechas.
   y `insumos.seguimiento`); cubre entrada con seriales (todos los movimientos), salida con `unidadId`, ajuste negativo, 403,
   409, 422 por error, 400 por largo normalizado/maximo/uuid y `NINGUNO` rechazando `seriales` y `unidadId`. Higiene:
   TRUNCATE de filas -> `app.close()` -> `dropDatabase`.
+
+## WU-8b — Borde de unidades (parte 1 de 2: lecturas)
+
+Rama `feat/repuestos-numero-de-serie-wu08b`. Las tareas 8b.1 a 8b.4 se marcan al cerrar la parte 2 (escrituras).
+
+- `ListarUnidadesInsumoUseCase` (`estado`, `disponibles=true` = `EN_DEPOSITO` con serial; con `estado=EN_DEPOSITO` las pendientes
+  se incluyen) y `ConsultarHistorialUnidadUseCase` (cronologico; lee `sector_id`, `equipo_id` y `motivo` del movimiento
+  referenciado por `movimientoId`, sin copiarlos al evento; el motivo propio del evento gana si existe).
+- Puertos: `IMovimientoInsumoRepository.listarPorIds(ids)` (con el serial de la unidad) e
+  `IUnidadInsumoRepository.nombresDeEquipos/nombresDeSectores(ids)` (lecturas de presentacion, sin lock, mapa id -> nombre).
+  Decision: el nombre del equipo y del sector se resuelve en infraestructura (misma base del tenant) para no importar `equipos`.
+- `UnidadesInsumoController` (`insumos/:insumoId/unidades`): `GET` y `GET :unidadId/historial`, ambos `INSUMOS:LECTURA`, errores
+  por `toHttpExceptionMovimiento`. La unidad de otro insumo es 404 (no se distingue de la inexistente).
+- e2e `unidades-insumo.e2e.spec.ts` (`usarLockMasterTest()`): listar y filtrar, historial de vida completa (eventos de
+  instalacion sembrados por SQL hasta WU-10/11), descartada, entregada con sector, sin historia, 404 ajena y 403.

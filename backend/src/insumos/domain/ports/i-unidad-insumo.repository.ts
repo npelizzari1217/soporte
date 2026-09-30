@@ -93,6 +93,24 @@ export interface IUnidadInsumoRepository {
    * @returns La unidad, o `null` si no existe.
    */
   findById(id: string): Promise<UnidadInsumoEntity | null>;
+
+  /**
+   * Resuelve el nombre de los equipos que las unidades y su historial refieren.
+   * Es una lectura de presentación, sin lock: los ids que no existen no aparecen.
+   *
+   * @param ids Ids de equipos; vacío devuelve vacío sin ir a la base.
+   * @returns Mapa id -> nombre del equipo.
+   */
+  nombresDeEquipos(ids: readonly string[]): Promise<Map<string, string>>;
+
+  /**
+   * Resuelve el nombre de los sectores que el historial muestra como destino de
+   * una entrega. Lectura de presentación, sin lock.
+   *
+   * @param ids Ids de sectores; vacío devuelve vacío sin ir a la base.
+   * @returns Mapa id -> nombre del sector.
+   */
+  nombresDeSectores(ids: readonly string[]): Promise<Map<string, string>>;
 }
 
 /** Token de inyección de dependencias para IUnidadInsumoRepository en NestJS. */

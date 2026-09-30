@@ -206,6 +206,16 @@ export interface IMovimientoInsumoRepository {
     insumoId: string,
     paginacion?: PaginacionMovimientosInsumo,
   ): Promise<PaginaDeMovimientosInsumo>;
+
+  /**
+   * Lee movimientos por id, sin lock y sin exigir transacción. Es la lectura del
+   * historial de una unidad: el evento refiere su movimiento y el destino
+   * (`sectorId`, `equipoId`) y el motivo se leen de ahí, sin copiarlos.
+   *
+   * @param ids Ids de movimientos; vacío devuelve vacío sin ir a la base.
+   * @returns Los movimientos encontrados, en cualquier orden.
+   */
+  listarPorIds(ids: readonly string[]): Promise<MovimientoInsumoEntity[]>;
 }
 
 /** Token de inyección de dependencias para IMovimientoInsumoRepository en NestJS. */
