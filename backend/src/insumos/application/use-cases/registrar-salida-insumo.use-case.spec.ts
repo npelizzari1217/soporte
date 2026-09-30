@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { RegistrarSalidaInsumoUseCase } from './registrar-salida-insumo.use-case';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
+import { SeguimientoInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
 import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
 import { EstadoFamiliaFake, familiaRepoFake } from '../../testing/familia-repo-fake';
+import { operacionesEnMemoria } from '../../testing/operaciones-unidad-en-memoria';
 import { sumasCon } from '../../testing/sumas-movimiento';
 
 describe('RegistrarSalidaInsumoUseCase', () => {
@@ -66,6 +68,8 @@ describe('RegistrarSalidaInsumoUseCase', () => {
       insumo?: InsumoEntity | null;
       sumas?: SumasPorCondicionYTipo;
       familia?: EstadoFamiliaFake;
+      seguimiento?: SeguimientoInsumo;
+      unidades?: readonly UnidadInsumoEntity[];
     } = {},
   ) {
     const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
@@ -78,7 +82,19 @@ describe('RegistrarSalidaInsumoUseCase', () => {
       if (!estado.dentroDeTransaccion) llamadasFueraDeTransaccion.push(metodo);
     }
 
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
+    const seguimiento = opciones.seguimiento ?? 'NINGUNO';
+    const insumoRepo = {
+      findById: vi.fn().mockResolvedValue(insumo),
+      leerSeguimientoParaMovimiento: vi.fn(async () => {
+        anotarSiEstaFuera('leerSeguimientoParaMovimiento');
+        return insumo ? seguimiento : null;
+      }),
+    };
+    // Servicio REAL sobre unidades en memoria: las reglas de la transición
+    // (la pendiente no sale, la instalada tampoco) las aplica la entidad.
+    const enMemoria = operacionesEnMemoria(opciones.unidades ?? [], seguimiento);
+    const operaciones = enMemoria.operaciones;
+    const sacarDelDeposito = vi.spyOn(operaciones, 'sacarDelDeposito');
 
     const movimientoRepo = {
       // Resuelve con el MISMO asiento que recibió, a propósito — issue #159:
@@ -119,10 +135,13 @@ describe('RegistrarSalidaInsumoUseCase', () => {
       movimientoRepo,
       txRunner,
       familiaRepo,
+      operaciones,
     );
 
     return {
       useCase,
+      sacarDelDeposito,
+      enMemoria,
       insumoRepo,
       movimientoRepo,
       familiaRepo,
@@ -160,7 +179,10 @@ describe('RegistrarSalidaInsumoUseCase', () => {
    */
   it('devuelve el asiento que resuelve insert(), no el que construyó antes de llamarlo', async () => {
     const asentadoPorLaBase = { esElAsientoQueDevuelveLaBase: true };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumoVigente()) };
+    const insumoRepo = {
+      findById: vi.fn().mockResolvedValue(insumoVigente()),
+      leerSeguimientoParaMovimiento: vi.fn().mockResolvedValue('NINGUNO'),
+    };
     const movimientoRepo = {
       insert: vi.fn().mockResolvedValue(asentadoPorLaBase),
       lockAndSumByTipo: vi.fn().mockResolvedValue(sumas({ ENTRADA: 100 })),
@@ -173,6 +195,7 @@ describe('RegistrarSalidaInsumoUseCase', () => {
       movimientoRepo,
       txRunner,
       familiaRepoFake(),
+      operacionesEnMemoria([]).operaciones,
     );
 
     const result = await useCase.execute(dtoBase);
@@ -517,6 +540,143 @@ describe('RegistrarSalidaInsumoUseCase', () => {
       expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
       expect(c.transacciones.abiertas).toBe(0);
       expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Insumo SERIE (ADR-5) ────────────────────────────────────────────────
+
+  describe('insumo SERIE', () => {
+    function unidad(
+      id: string,
+      numeroSerie: string | null,
+      condicion: 'NUEVO' | 'USADO' = 'NUEVO',
+    ) {
+      return UnidadInsumoEntity.crearEnDeposito(
+        { insumoId: 'ins-1', condicion, numeroSerie },
+        id,
+      ).getValue();
+    }
+
+    function instalada(id: string) {
+      return UnidadInsumoEntity.crearInstalada(
+        { insumoId: 'ins-1', condicion: 'NUEVO', numeroSerie: 'I-1', equipoId: 'eq-1' },
+        id,
+      ).getValue();
+    }
+
+    const dtoSerie = { insumoId: 'ins-1', cantidad: 1, usuarioId: 'usr-7', unidadId: 'u-a1' };
+
+    function armarSerie() {
+      return buildColaboradores({
+        seguimiento: 'SERIE',
+        unidades: [
+          unidad('u-a1', 'A1'),
+          unidad('u-p', null),
+          instalada('u-i'),
+          unidad('u-u', 'U1', 'USADO'),
+        ],
+      });
+    }
+
+    it('lee el seguimiento dentro de la transacción y antes de todo otro lock', async () => {
+      const c = armarSerie();
+
+      await c.useCase.execute(dtoSerie);
+
+      expect(c.insumoRepo.leerSeguimientoParaMovimiento).toHaveBeenCalledTimes(1);
+      expect(c.transacciones.abiertas).toBe(1);
+      expect(c.llamadasFueraDeTransaccion).toEqual([]);
+      // La rama SERIE no compara saldos: nunca toma las sumas.
+      expect(c.movimientoRepo.lockAndSumByTipo).not.toHaveBeenCalled();
+    });
+
+    it('entrega la unidad elegida: movimiento SALIDA de cantidad 1 con el destino y unidad ENTREGADA', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({
+        ...dtoSerie,
+        sectorId: 'sec-1',
+        motivo: 'Para Administración',
+      });
+
+      expect(result.isOk()).toBe(true);
+      const movimiento = result.getValue();
+      expect(movimiento.tipo).toBe('SALIDA');
+      expect(movimiento.cantidad).toBe(1);
+      expect(movimiento.unidadId).toBe('u-a1');
+      expect(movimiento.sectorId).toBe('sec-1');
+      expect(c.enMemoria.unidadRepo.guardarConEstadoEsperado).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u-a1', estado: 'ENTREGADA' }),
+        'EN_DEPOSITO',
+      );
+    });
+
+    it('sin unidad: UnidadRequeridaError y no escribe nada', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, unidadId: undefined });
+
+      expect(result.getError().code).toBe('UNIDAD_REQUERIDA');
+      expect(c.sacarDelDeposito).not.toHaveBeenCalled();
+    });
+
+    it('cantidad distinta de 1: SerialesNoCoincidenError y no escribe nada', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, cantidad: 2 });
+
+      expect(result.getError().code).toBe('SERIALES_NO_COINCIDEN');
+      expect(c.sacarDelDeposito).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['una unidad pendiente (sin serial)', 'u-p'],
+      ['una unidad INSTALADA', 'u-i'],
+    ])(
+      'con %s: UnidadNoDisponibleError, sin StockInsuficienteError y sin escribir',
+      async (_caso, unidadId) => {
+        const c = armarSerie();
+
+        const result = await c.useCase.execute({ ...dtoSerie, unidadId });
+
+        expect(result.getError().code).toBe('UNIDAD_NO_DISPONIBLE');
+        expect(c.enMemoria.movimientos).toHaveLength(0);
+        expect(c.enMemoria.unidadRepo.guardarConEstadoEsperado).not.toHaveBeenCalled();
+      },
+    );
+
+    it('con la condición pedida distinta de la de la unidad: UnidadNoDisponibleError', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, condicion: 'USADO' });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_DISPONIBLE');
+    });
+
+    it('unidad inexistente: UnidadNoEncontradaError', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, unidadId: 'u-x' });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_ENCONTRADA');
+    });
+
+    it('un insumo NINGUNO con unidad: UnidadNoAdmitidaError, sin asentar', async () => {
+      const c = buildColaboradores();
+
+      const result = await c.useCase.execute({ ...dtoBase, unidadId: 'u-a1' });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_ADMITIDA');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('si el insumo desaparece entre la lectura y el lock: InsumoNoEncontradoError', async () => {
+      const c = armarSerie();
+      c.insumoRepo.leerSeguimientoParaMovimiento.mockImplementation(async () => null);
+
+      const result = await c.useCase.execute(dtoSerie);
+
+      expect(result.getError().code).toBe('INSUMO_NO_ENCONTRADO');
     });
   });
 });

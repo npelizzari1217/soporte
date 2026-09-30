@@ -153,12 +153,12 @@ describe('InsumosModule wiring', () => {
    * La asimetría entre los registros es la decisión de diseño: la ENTRADA recibe
    * el `TENANT_TX_RUNNER` solo para leer el seguimiento bajo L1 (ADR-5) y su
    * `Pick` de `movimientoRepo` sigue sin `lockAndSumByTipo`; la SALIDA y el
-   * AJUSTE lo reciben porque pueden dejar el saldo negativo. La ENTRADA y el
-   * AJUSTE reciben además `OperacionesUnidadInsumo` para la rama `SERIE`.
+   * AJUSTE lo reciben porque pueden dejar el saldo negativo. Los tres reciben
+   * además `OperacionesUnidadInsumo` para la rama `SERIE`.
    */
   it.each([
     ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 5],
-    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 4],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 5],
     ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 5],
     ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 3],
     ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase, 2],

@@ -34,6 +34,7 @@ import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructur
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { construirOperacionesReal } from '../../../insumos/testing/operaciones-unidad-real';
 import { RegistrarEntradaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 import { RetirarComponenteUseCase } from './retirar-componente.use-case';
 import { ComponenteDadoDeBajaError } from '../../domain/errors/equipos.errors';
@@ -387,7 +388,13 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
     const instalar = new InstalarComponenteDesdeDepositoUseCase(
       txRunner,
       new AgregarComponenteUseCase(equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo),
-      new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaInsumoRepo),
+      new RegistrarSalidaInsumoUseCase(
+        insumoRepo,
+        movimientoRepo,
+        txRunner,
+        familiaInsumoRepo,
+        construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
+      ),
       componenteRepo,
     );
 

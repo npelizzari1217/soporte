@@ -39,6 +39,7 @@ import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructur
 
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { construirOperacionesReal } from '../../../insumos/testing/operaciones-unidad-real';
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
 
@@ -195,6 +196,7 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
       movimientoRepo,
       txRunner,
       familiaInsumoRepo,
+      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
     );
     return new InstalarComponenteDesdeDepositoUseCase(
       txRunner,

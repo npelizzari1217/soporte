@@ -43,6 +43,7 @@ import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.rep
 import { PrismaInsumoRepository } from './prisma-insumo.repository';
 import { PrismaFamiliaInsumoRepository } from './prisma-familia-insumo.repository';
 import { RegistrarSalidaInsumoUseCase } from '../../../application/use-cases/registrar-salida-insumo.use-case';
+import { construirOperacionesReal } from '../../../testing/operaciones-unidad-real';
 import { MovimientoInsumoEntity } from '../../../domain/entities/movimiento-insumo.entity';
 import { SumasPorCondicionYTipo } from '../../../domain/entities/tipo-movimiento-insumo';
 
@@ -438,11 +439,13 @@ describe('PrismaMovimientoInsumoRepository — Concurrencia real del advisory lo
       ],
     });
 
+    const insumoRepo = new PrismaInsumoRepository(tenantContext);
     const casoDeUso = new RegistrarSalidaInsumoUseCase(
-      new PrismaInsumoRepository(tenantContext),
+      insumoRepo,
       repo,
       txRunner,
       new PrismaFamiliaInsumoRepository(tenantContext),
+      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo: repo }),
     );
 
     const resultados = await conTenant(() =>
