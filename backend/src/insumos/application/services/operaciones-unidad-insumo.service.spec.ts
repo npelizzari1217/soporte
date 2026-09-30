@@ -1,3 +1,4 @@
+import { Result } from '../../../shared/domain/result';
 import { EventoUnidadInsumoEntity } from '../../domain/entities/evento-unidad-insumo.entity';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
 import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
@@ -6,12 +7,18 @@ import {
   SerialDuplicadoError,
   SerialRequeridoError,
   UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
 } from '../../domain/errors/unidades-insumo.errors';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
 import { OperacionesUnidadInsumo } from './operaciones-unidad-insumo.service';
 
 const INSUMO = '11111111-1111-4111-8111-111111111111';
+const OTRO_INSUMO = '22222222-2222-4222-8222-222222222222';
+const U1 = '00000000-0000-4000-8000-000000000001';
+const U2 = '00000000-0000-4000-8000-000000000002';
+const U3 = '00000000-0000-4000-8000-000000000003';
 
 /** Fakes que registran el orden de cada llamada para afirmar "nunca escribir antes de validar". */
 function armar(opciones: {
@@ -66,6 +73,20 @@ function armar(opciones: {
   return { servicio, llamadas, escritas, movimientos, eventos, insertadas, escribio };
 }
 
+function unidad(
+  id: string,
+  over: { serial?: string | null; insumo?: string; condicion?: 'NUEVO' | 'USADO' } = {},
+): UnidadInsumoEntity {
+  return UnidadInsumoEntity.crearEnDeposito(
+    {
+      insumoId: over.insumo ?? INSUMO,
+      condicion: over.condicion ?? 'NUEVO',
+      numeroSerie: over.serial === undefined ? `SN-${id.slice(-1)}` : over.serial,
+    },
+    id,
+  ).getValue();
+}
+
 describe('OperacionesUnidadInsumo', () => {
   describe('contrato común', () => {
     it('rechaza un insumo inexistente y uno que no es SERIE, sin tomar más locks ni escribir', async () => {
@@ -79,24 +100,27 @@ describe('OperacionesUnidadInsumo', () => {
       expect(inexistente.llamadas).toEqual([`L1:${INSUMO}`]);
 
       const ninguno = armar({ seguimiento: 'NINGUNO' });
-      const r2 = await ninguno.servicio.ingresar(INSUMO, [{ numeroSerie: 'A' }], {
+      const r2 = await ninguno.servicio.sacarDelDeposito(INSUMO, [U1], {
         usuarioId: 'u',
-        condicion: 'NUEVO',
-        tipo: 'ENTRADA',
+        tipo: 'SALIDA',
       });
       expect(r2.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
       expect(ninguno.llamadas).toEqual([`L1:${INSUMO}`]);
     });
 
-    it('toma L1 y L2 del insumo antes de la primera escritura', async () => {
-      const t = armar({});
-      await t.servicio.ingresar(INSUMO, [{ numeroSerie: 'A' }], {
+    it('toma los locks en el orden de ADR-12: L1, L2 y L3 (ids ordenados) antes de la primera escritura', async () => {
+      const t = armar({ unidades: [unidad(U1), unidad(U2), unidad(U3)] });
+      const r = await t.servicio.sacarDelDeposito(INSUMO, [U3, U1, U2], {
         usuarioId: 'u',
-        condicion: 'NUEVO',
-        tipo: 'ENTRADA',
+        tipo: 'SALIDA',
       });
-      expect(t.llamadas.slice(0, 2)).toEqual([`L1:${INSUMO}`, `L2:${INSUMO}`]);
-      expect(t.llamadas.findIndex((l) => l.startsWith('W:'))).toBe(2);
+      expect(r.isOk()).toBe(true);
+      expect(t.llamadas.slice(0, 3)).toEqual([
+        `L1:${INSUMO}`,
+        `L2:${INSUMO}`,
+        `L3:${U1},${U2},${U3}`,
+      ]);
+      expect(t.llamadas.findIndex((l) => l.startsWith('W:'))).toBe(3);
     });
   });
 
@@ -169,6 +193,138 @@ describe('OperacionesUnidadInsumo', () => {
         equipoId: 'eq-1',
       });
       expect(t.eventos[0].motivo).toBe('inventario');
+    });
+  });
+
+  describe('sacarDelDeposito', () => {
+    it('SALIDA deja ENTREGADA con CAS desde EN_DEPOSITO, movimiento con destino y evento ENTREGA', async () => {
+      const t = armar({ unidades: [unidad(U1), unidad(U2, { condicion: 'USADO' })] });
+      const r = await t.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+        equipoId: 'eq-1',
+        sectorId: 'sec-1',
+        motivo: 'entrega',
+      });
+      expect(r.getValue().map((x) => x.unidad.estado)).toEqual(['ENTREGADA', 'ENTREGADA']);
+      expect(t.llamadas.filter((l) => l.startsWith('W:cas'))).toEqual([
+        'W:cas:EN_DEPOSITO',
+        'W:cas:EN_DEPOSITO',
+      ]);
+      expect(t.movimientos.map((m) => [m.tipo, m.condicion, m.unidadId])).toEqual([
+        ['SALIDA', 'NUEVO', U1],
+        ['SALIDA', 'USADO', U2],
+      ]);
+      expect(t.movimientos[0]).toMatchObject({
+        equipoId: 'eq-1',
+        sectorId: 'sec-1',
+        motivo: 'entrega',
+      });
+      expect(t.eventos.map((e) => [e.tipo, e.movimientoId])).toEqual([
+        ['ENTREGA', t.movimientos[0].id],
+        ['ENTREGA', t.movimientos[1].id],
+      ]);
+    });
+
+    it('un fallo en la unidad 2 no escribe la 1 (validar todo antes de escribir)', async () => {
+      const t = armar({ unidades: [unidad(U1), unidad(U2, { serial: null })] });
+      const r = await t.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+      });
+      expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('rechaza una unidad de otro insumo y una inexistente sin escribir', async () => {
+      const ajena = armar({ unidades: [unidad(U1), unidad(U2, { insumo: OTRO_INSUMO })] });
+      const r1 = await ajena.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+      });
+      expect(r1.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
+      expect(ajena.escribio()).toBe(false);
+
+      const faltante = armar({ unidades: [unidad(U1)] });
+      const r2 = await faltante.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+      });
+      expect(r2.getError()).toBeInstanceOf(UnidadNoEncontradaError);
+      expect(faltante.escribio()).toBe(false);
+    });
+
+    it('rechaza una pendiente en SALIDA y la admite en AJUSTE_NEGATIVO (F1)', async () => {
+      const salida = armar({ unidades: [unidad(U1, { serial: null })] });
+      const r1 = await salida.servicio.sacarDelDeposito(INSUMO, [U1], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+      });
+      expect(r1.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(salida.escribio()).toBe(false);
+
+      const ajuste = armar({ unidades: [unidad(U1, { serial: null })] });
+      const r2 = await ajuste.servicio.sacarDelDeposito(INSUMO, [U1], {
+        usuarioId: 'u',
+        tipo: 'AJUSTE_NEGATIVO',
+        motivo: 'rota',
+      });
+      expect(r2.getValue()[0].unidad.estado).toBe('DESCARTADA');
+      expect(ajuste.movimientos[0].tipo).toBe('AJUSTE_NEGATIVO');
+      expect(ajuste.eventos[0].tipo).toBe('BAJA_DE_DEPOSITO');
+      expect(ajuste.eventos[0].movimientoId).toBe(ajuste.movimientos[0].id);
+    });
+
+    it('AJUSTE_NEGATIVO sin motivo falla en la segunda unidad sin escribir la primera', async () => {
+      const t = armar({ unidades: [unidad(U1), unidad(U2)] });
+      const r = await t.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        tipo: 'AJUSTE_NEGATIVO',
+      });
+      expect(r.getError()).toBeInstanceOf(MotivoAjusteRequeridoError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('la condición pedida que no coincide da UnidadNoDisponibleError; si coincide, sigue', async () => {
+      const t = armar({ unidades: [unidad(U1, { condicion: 'USADO' })] });
+      const mal = await t.servicio.sacarDelDeposito(INSUMO, [U1], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+        condicion: 'NUEVO',
+      });
+      expect(mal.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(t.escribio()).toBe(false);
+
+      const bien = await t.servicio.sacarDelDeposito(INSUMO, [U1], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+        condicion: 'USADO',
+      });
+      expect(bien.isOk()).toBe(true);
+    });
+
+    it('una unidad que no está EN_DEPOSITO o repetida en el lote se rechaza sin escribir', async () => {
+      const entregada = unidad(U2);
+      entregada.entregar();
+      const t = armar({ unidades: [unidad(U1), entregada] });
+      const r1 = await t.servicio.sacarDelDeposito(INSUMO, [U1, U2], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+      });
+      expect(r1.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      const r2 = await t.servicio.sacarDelDeposito(INSUMO, [U1, U1], {
+        usuarioId: 'u',
+        tipo: 'SALIDA',
+      });
+      expect(r2.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+      expect(t.escribio()).toBe(false);
+    });
+
+    it('un lote vacío no escribe y devuelve una lista vacía', async () => {
+      const t = armar({});
+      const r = await t.servicio.sacarDelDeposito(INSUMO, [], { usuarioId: 'u', tipo: 'SALIDA' });
+      expect(r).toEqual(Result.ok([]));
+      expect(t.escribio()).toBe(false);
     });
   });
 });

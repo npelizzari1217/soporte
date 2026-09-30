@@ -198,3 +198,30 @@ cada código de sus pruebas): parte 1 (`wu03a`) = 3a.1 y 3a.3; parte 2 (`wu03a-2
   revierte las tres.
 - Corte por tamaño (regla de la orquestación): parte 1 = contrato común + `ingresar`; parte 2 (rama `-2`) =
   `sacarDelDeposito`, sus specs, la concurrencia y la mutación adversarial de 4a.5.
+
+## WU-4a parte 2 — `sacarDelDeposito`, concurrencia y mutación adversarial (4a.3 a 4a.6 hechas)
+
+- 4a.3: `sacarDelDeposito()` toma L1, L2 y L3 (`bloquearPorIds` con los ids ordenados), valida por unidad (existe,
+  es del insumo, condición pedida, transición de la entidad: `SALIDA` exige serial, `AJUSTE_NEGATIVO` admite
+  pendiente) y recién después hace CAS + movimiento + evento. Un id repetido en el lote se rechaza con
+  `UnidadNoDisponibleError`. El destino (`equipoId`, `sectorId`, `motivo`) queda en el movimiento.
+- 4a.4: la parte unitaria cubre lote de N, fallo en la unidad 2 sin escribir la 1, unidad de otro insumo o
+  inexistente, pendiente en SALIDA (rechazada) y en AJUSTE_NEGATIVO (admitida), condición que no coincide,
+  motivo faltante del ajuste y orden L1, L2, L3 antes de la primera escritura.
+- 4a.5: integración: un lote con una unidad ya entregada se devuelve como `Result.fail` y, aun confirmando la
+  transacción, no escribe la válida; seis `sacarDelDeposito` simultáneos sobre la misma unidad dan una
+  entrega y cinco `UnidadNoDisponibleError` (paralelismo instrumentado > 1 tras reiniciar el máximo).
+
+### Mutación adversarial local de 4a.5 (revertida)
+
+| Mutación | Resultado observado |
+|---|---|
+| Escribir cada unidad dentro del bucle de validación de `sacarDelDeposito` (antes de validar las siguientes) | ROJO: 6 tests (5 unitarios: "un fallo en la unidad 2 no escribe la 1", unidad de otro insumo o inexistente, pendiente en SALIDA, repetida o no `EN_DEPOSITO`, y el resultado de SALIDA; y la integración `movimientos: 4` en vez de 3) |
+
+### Work Unit Evidence (WU-4a)
+
+| Evidence | Value |
+|---|---|
+| Focused test command | `pnpm vitest run src/insumos`: 77 archivos, 1435 tests verdes |
+| Full suite | `pnpm test`: 502 archivos, 6091 tests verdes |
+| Rollback boundary | Revertir cada commit: archivos nuevos y un provider sin exportar en `insumos.module.ts` |

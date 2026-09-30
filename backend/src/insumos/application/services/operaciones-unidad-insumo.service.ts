@@ -7,6 +7,8 @@ import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import {
   SerialDuplicadoError,
   UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
 } from '../../domain/errors/unidades-insumo.errors';
 import { IEventoUnidadInsumoRepository } from '../../domain/ports/i-evento-unidad-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
@@ -126,6 +128,72 @@ export class OperacionesUnidadInsumo {
   }
 
   /**
+   * Saca piezas del depósito. `SALIDA` deja la unidad `ENTREGADA` (solo con
+   * serial, evento `ENTREGA`); `AJUSTE_NEGATIVO` la deja `DESCARTADA` (con serial
+   * o pendiente, F1, evento `BAJA_DE_DEPOSITO`). El destino (`equipoId`,
+   * `sectorId`, `motivo`) queda en el movimiento; el evento lo referencia por
+   * `movimiento_id`.
+   *
+   * @param insumoId Insumo `SERIE` del que salen las piezas.
+   * @param unidadIds Unidades a sacar, sin repetir.
+   * @param o Usuario, motivo, tipo de movimiento, destino y condición esperada opcional.
+   * @returns Las unidades con su movimiento, en el orden de `unidadIds`; o el primer error de validación, sin haber escrito nada.
+   */
+  async sacarDelDeposito(
+    insumoId: string,
+    unidadIds: readonly string[],
+    o: ContextoUnidad & {
+      tipo: 'SALIDA' | 'AJUSTE_NEGATIVO';
+      condicion?: CondicionStock;
+      equipoId?: string | null;
+      sectorId?: string | null;
+    },
+  ): Promise<Result<UnidadConMovimiento[], DomainError>> {
+    const bloqueo = await this.bloquearInsumo(insumoId);
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    const repetida = unidadIds.find((id, i) => unidadIds.indexOf(id) !== i);
+    if (repetida !== undefined) {
+      return Result.fail(new UnidadNoDisponibleError(repetida, 'está repetida en el lote.'));
+    }
+
+    const leidas = await this.unidadRepo.bloquearPorIds([...unidadIds].sort());
+    const porId = new Map(leidas.map((unidad) => [unidad.id, unidad]));
+
+    const escrituras: EscrituraDeUnidad[] = [];
+    for (const unidadId of unidadIds) {
+      const unidad = porId.get(unidadId);
+      if (unidad === undefined) return Result.fail(new UnidadNoEncontradaError(unidadId));
+      if (unidad.insumoId !== insumoId) return Result.fail(new UnidadNoAdmitidaError(insumoId));
+      if (o.condicion !== undefined && unidad.condicion !== o.condicion) {
+        return Result.fail(
+          new UnidadNoDisponibleError(
+            unidad.id,
+            `está en condición ${unidad.condicion} y se pidió ${o.condicion}.`,
+          ),
+        );
+      }
+
+      const estadoLeido = unidad.estado;
+      const transicion = o.tipo === 'SALIDA' ? unidad.entregar() : unidad.descartarDeDeposito();
+      if (transicion.isFail()) return Result.fail(transicion.getError());
+
+      const armada = this.armarEscritura(unidad, estadoLeido, {
+        insumoId,
+        tipo: o.tipo,
+        tipoEvento: o.tipo === 'SALIDA' ? 'ENTREGA' : 'BAJA_DE_DEPOSITO',
+        o,
+        equipoId: o.equipoId,
+        sectorId: o.sectorId,
+      });
+      if (armada.isFail()) return Result.fail(armada.getError());
+      escrituras.push(armada.getValue());
+    }
+
+    return Result.ok(await this.escribir(escrituras));
+  }
+
+  /**
    * L1 y L2 del insumo, y su validación: existe y se sigue por serie. La lectura
    * `FOR SHARE` es lo primero que toca la base, así que también es el chequeo de
    * transacción activa.
@@ -145,7 +213,7 @@ export class OperacionesUnidadInsumo {
     datos: {
       insumoId: string;
       tipo: 'ENTRADA' | 'AJUSTE_POSITIVO' | 'SALIDA' | 'AJUSTE_NEGATIVO';
-      tipoEvento: 'INGRESO';
+      tipoEvento: 'INGRESO' | 'ENTREGA' | 'BAJA_DE_DEPOSITO';
       o: ContextoUnidad;
       itemCompraId?: string | null;
       equipoId?: string | null;

@@ -1,13 +1,17 @@
 /**
  * [INTEGRATION] `OperacionesUnidadInsumo` (ADR-4 y ADR-12 de
  * sdd/repuestos-numero-de-serie) con los repositorios Prisma reales contra
- * `soporte_tenant_test`: alta por lote y reversión ante P2002.
+ * `soporte_tenant_test`: lote atómico, reversión ante P2002 y concurrencia.
+ *
+ * La concurrencia es genuina: pool propio e instrumentado, con el máximo
+ * observado reiniciado justo antes del bloque concurrente, y afirmado > 1 ANTES
+ * de cualquier assert de negocio (ver `prisma-unidad-insumo.repository.integration.spec.ts`).
  *
  * Fixtures con prefijo por corrida. No toca `soporte_master_test`, así que no
  * necesita `usarLockMasterTest()`.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
@@ -19,12 +23,46 @@ import { PrismaUnidadInsumoRepository } from './prisma-unidad-insumo.repository'
 import { PrismaEventoUnidadInsumoRepository } from './prisma-evento-unidad-insumo.repository';
 import { OperacionesUnidadInsumo } from '../../../application/services/operaciones-unidad-insumo.service';
 import { FalloOperacionDeUnidad } from '../../../domain/errors/fallo-operacion-de-unidad';
-import { SerialDuplicadoError } from '../../../domain/errors/unidades-insumo.errors';
+import {
+  SerialDuplicadoError,
+  UnidadNoDisponibleError,
+} from '../../../domain/errors/unidades-insumo.errors';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
+
+const CONCURRENCIA = 6;
+const POOL_MAX = CONCURRENCIA + 5;
+
+/** Mide conexiones CHECKED-OUT simultáneas; ver el molde en el spec del repositorio de unidades. */
+function instrumentarConcurrenciaDelPool(pool: Pool): { max: () => number; reiniciar: () => void } {
+  let activas = 0;
+  let maxObservado = 0;
+  const connectOriginal = pool.connect.bind(pool);
+  type Cb = (err: Error | undefined, client: PoolClient, release: (r?: unknown) => void) => void;
+  const connectInstrumentado = (callback?: Cb): Promise<PoolClient> | void => {
+    if (callback) return (connectOriginal as unknown as (cb: Cb) => void)(callback);
+    return (connectOriginal as () => Promise<PoolClient>)().then((client) => {
+      activas += 1;
+      maxObservado = Math.max(maxObservado, activas);
+      const releaseOriginal = client.release.bind(client);
+      client.release = ((err?: Error | boolean) => {
+        activas -= 1;
+        return releaseOriginal(err);
+      }) as typeof client.release;
+      return client;
+    });
+  };
+  pool.connect = connectInstrumentado as unknown as typeof pool.connect;
+  return {
+    max: () => maxObservado,
+    reiniciar: () => {
+      maxObservado = activas;
+    },
+  };
+}
 
 describe('OperacionesUnidadInsumo — Integration', () => {
   let prismaServiceParaUrl: PrismaService;
@@ -33,6 +71,7 @@ describe('OperacionesUnidadInsumo — Integration', () => {
   let tenantContext: TenantContext;
   let txRunner: PrismaTenantTransactionRunner;
   let servicio: OperacionesUnidadInsumo;
+  let medidorDelPool: ReturnType<typeof instrumentarConcurrenciaDelPool>;
 
   const PREFIJO = `OPU_${randomBytes(2).toString('hex')}_`;
   const usuarioId = randomUUID();
@@ -41,7 +80,8 @@ describe('OperacionesUnidadInsumo — Integration', () => {
   beforeAll(async () => {
     prismaServiceParaUrl = new PrismaService(MASTER_TEST_URL);
     const tenantUrl = prismaServiceParaUrl.buildTenantUrl(TENANT_TEST_DB_NAME);
-    pool = new Pool({ connectionString: tenantUrl, max: 5 });
+    pool = new Pool({ connectionString: tenantUrl, max: POOL_MAX });
+    medidorDelPool = instrumentarConcurrenciaDelPool(pool);
     tenantClient = new TenantPrismaClient({ adapter: new PrismaPg(pool) });
 
     tenantContext = new TenantContext();
@@ -155,4 +195,68 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     expect((error as FalloOperacionDeUnidad).errorDeDominio).toBeInstanceOf(SerialDuplicadoError);
     expect(await contar()).toEqual(antes);
   });
+
+  it('un lote con una unidad inválida se devuelve como Result.fail y, aun con commit, no escribe la válida', async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'V-1' }, { numeroSerie: 'V-2' }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const [valida, yaEntregada] = alta.getValue().map((x) => x.unidad.id);
+    await conTenant(() =>
+      txRunner.run(() =>
+        servicio.sacarDelDeposito(insumoId, [yaEntregada], { usuarioId, tipo: 'SALIDA' }),
+      ),
+    );
+    const antes = await contar();
+
+    // El llamador NO lanza: la transacción se confirma con lo que el servicio haya escrito.
+    const r = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.sacarDelDeposito(insumoId, [valida, yaEntregada], { usuarioId, tipo: 'SALIDA' }),
+      ),
+    );
+
+    expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+    expect(await contar()).toEqual(antes);
+    const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: valida } });
+    expect(fila.estado).toBe('EN_DEPOSITO');
+  });
+
+  it(`${CONCURRENCIA} sacarDelDeposito simultáneos sobre la MISMA unidad: una sola entrega y las demás la ven entregada`, async () => {
+    const alta = await conTenant(() =>
+      txRunner.run(() =>
+        servicio.ingresar(insumoId, [{ numeroSerie: 'RACE' }], {
+          usuarioId,
+          condicion: 'NUEVO',
+          tipo: 'ENTRADA',
+        }),
+      ),
+    );
+    const unidadId = alta.getValue()[0].unidad.id;
+
+    medidorDelPool.reiniciar();
+    const resultados = await conTenant(() =>
+      Promise.all(
+        Array.from({ length: CONCURRENCIA }, () =>
+          txRunner.run(() =>
+            servicio.sacarDelDeposito(insumoId, [unidadId], { usuarioId, tipo: 'SALIDA' }),
+          ),
+        ),
+      ),
+    );
+
+    expect(medidorDelPool.max()).toBeGreaterThan(1);
+    expect(resultados.filter((r) => r.isOk())).toHaveLength(1);
+    const fallidos = resultados.filter((r) => r.isFail());
+    expect(fallidos).toHaveLength(CONCURRENCIA - 1);
+    expect(fallidos.every((r) => r.getError() instanceof UnidadNoDisponibleError)).toBe(true);
+    const { movimientos, eventos } = await contar();
+    expect(movimientos).toBe(2); // la entrada y una sola salida
+    expect(eventos).toBe(2); // INGRESO y una sola ENTREGA
+  }, 30_000);
 });
