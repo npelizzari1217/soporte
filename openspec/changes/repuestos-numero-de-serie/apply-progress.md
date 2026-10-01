@@ -752,3 +752,16 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - Primer PR desplegable hacia SERIE. Ayuda: `rg -n "seguimiento|serie" backend/ayuda/` no encuentra ningun articulo que describa el modo
   de seguimiento; ninguno queda falso. Deuda: articulo del modo de seguimiento por serie (pausa de Ayuda).
 
+### WU-12a - 12a.3 y 12a.4 (e2e y gates), rama `-wu12a-2`
+
+- `insumos-seguimiento.e2e.spec.ts` (app real con `InsumosModule` y `EquiposModule`, `usarLockMasterTest()`): activar con saldo cero (200,
+  listado con `seguimiento`), con saldo (422), con unidad no entera (422), inexistente 404, valor invalido/id malo 400, NINGUNO sobre
+  NINGUNO 200, 403 sin administrador; volver a NINGUNO con unidad EN_DEPOSITO o INSTALADA (422) y con solo ENTREGADA/DESCARTADA (200);
+  alta con `seguimiento` (201 / 422 no entera / default NINGUNO / 400); concurrencia por HTTP con un testigo de Postgres: un movimiento en
+  vuelo (L1 `FOR SHARE` + ENTRADA) gana y la activacion da 422, y W3 (un `EditarInsumo` con unidad nueva que lee la entidad NINGUNO, espera
+  L1 mientras otra transaccion activa SERIE, y al seguir NO revierte `seguimiento`); y el flujo completo por HTTP en un solo escenario
+  (activar, entrada con 3 seriales, instalar, retirar STOCK_USADO, instalar y DESCARTE, recuperar; historial INGRESO, INSTALACION,
+  DESCARTE, RECUPERACION; no se puede volver a NINGUNO con unidades en deposito). `entera` se prepara por SQL (WU-12b la edita por HTTP).
+- Las unidades sembradas por SQL fuera de EN_DEPOSITO deben llevar serial (CHECK `unidades_insumo_serie_pendiente_check`).
+- Gates: ver el informe de la fase (lint, typecheck, `src/insumos src/equipos src/compras` y suite completa en cero).
+

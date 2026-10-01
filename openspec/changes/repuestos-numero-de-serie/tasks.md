@@ -543,8 +543,8 @@ Commit sugerido: `feat(equipos): retiro y reactivar de componentes con unidad`.
 
 - [x] 12a.1 `PATCH /insumos/:id/seguimiento` (body `{ seguimiento }`, `@IsIn(SEGUIMIENTOS_INSUMO)`) con `AdminClienteGuard` (mismo gate que el ABM del catálogo), delegando en `CambiarSeguimientoInsumoUseCase`; mapeo de `SeguimientoNoModificableError` (422) y `UnidadMedidaCambiadaError` (409).
 - [x] 12a.2 `CreateInsumoHttpDto.seguimiento?` (`@IsIn`) y `seguimiento` en la respuesta del insumo y del listado; `UnidadMedidaNoEnteraError` (422) mapeado en el alta y en el `PATCH` general.
-- [ ] 12a.3 e2e (`usarLockMasterTest()`): activar con saldo cero / distinto de cero / con unidad no entera; volver a `NINGUNO` con unidades vivas y con solo entregadas o descartadas; 403 sin admin de cliente; alta con `seguimiento`; un `EditarInsumo` con entidad vieja no revierte `seguimiento` (W3 por HTTP); **flujo completo por HTTP** (activar, entrada con seriales, instalar, retirar, descartar, recuperar) que cierra la cadena de backend.
-- [ ] 12a.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos && pnpm test`. Con este WU el backend `SERIE` es alcanzable: correr además la suite de `src/equipos` y `src/compras`.
+- [x] 12a.3 e2e (`usarLockMasterTest()`): activar con saldo cero / distinto de cero / con unidad no entera; volver a `NINGUNO` con unidades vivas y con solo entregadas o descartadas; 403 sin admin de cliente; alta con `seguimiento`; un `EditarInsumo` con entidad vieja no revierte `seguimiento` (W3 por HTTP); **flujo completo por HTTP** (activar, entrada con seriales, instalar, retirar, descartar, recuperar) que cierra la cadena de backend.
+- [x] 12a.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/insumos && pnpm test`. Con este WU el backend `SERIE` es alcanzable: correr además la suite de `src/equipos` y `src/compras`.
 
 **Escenarios**: Activar con saldo cero; Activar con saldo distinto de cero; Activar con unidad de
 medida no entera; Volver a NINGUNO con unidades vivas; Volver a NINGUNO con unidades entregadas o
@@ -552,6 +552,7 @@ descartadas; Valor de seguimiento inválido; Insumo NINGUNO sin cambios; Cambio 
 concurrente con un movimiento (por HTTP).
 **PR boundary**: ~400 líneas reales, base wu11. Este PR es el primero desplegable hacia `SERIE`:
 declararlo en el cuerpo.
+**Real**: partido en wu12a (endpoint, DTOs y unit specs, 209) y wu12a-2 (e2e, un solo archivo con su harness, size:exception).
 **Ayuda**: deuda anotada (modo de seguimiento); sin artículo falso.
 Commit sugerido: `feat(insumos): endpoint de seguimiento por serie del insumo`.
 
