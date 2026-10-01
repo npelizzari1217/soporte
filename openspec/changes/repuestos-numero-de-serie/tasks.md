@@ -505,9 +505,9 @@ Commit sugerido: `feat(equipos): instalar un componente eligiendo la unidad por 
 
 **Branch**: `feat/repuestos-numero-de-serie-wu10b` · **Base**: wu10a
 
-- [ ] 10b.1 Alta con `descontarStock: false` de un insumo `SERIE`: `numeroSerie` obligatorio (`SerialRequeridoError`); patrón `preparar()` → `operaciones.altaInstalada({ …, componenteId })` → `save()` (L4); la condición indicada (NUEVO por defecto) se aplica a la unidad: el controller la pasa solo cuando el insumo es `SERIE` y con `NINGUNO` sigue ignorándose. Serial repetido ⇒ `SerialDuplicadoError` (409) y rollback del alta.
-- [ ] 10b.2 Specs unitarios y e2e (`usarLockMasterTest()`): alta sin descuento con serial / sin serial / con serial repetido; el historial muestra `ALTA_INSTALADA`; alta con `NINGUNO` sin cambios; el saldo no cambia.
-- [ ] 10b.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
+- [x] 10b.1 Alta con `descontarStock: false` de un insumo `SERIE`: `numeroSerie` obligatorio (`SerialRequeridoError`); patrón `preparar()` → `operaciones.altaInstalada({ …, componenteId })` → `save()` (L4); la condición indicada (NUEVO por defecto) se aplica a la unidad: el controller la pasa solo cuando el insumo es `SERIE` y con `NINGUNO` sigue ignorándose. Serial repetido ⇒ `SerialDuplicadoError` (409) y rollback del alta.
+- [x] 10b.2 Specs unitarios y e2e (`usarLockMasterTest()`): alta sin descuento con serial / sin serial / con serial repetido; el historial muestra `ALTA_INSTALADA`; alta con `NINGUNO` sin cambios; el saldo no cambia.
+- [x] 10b.3 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos` y `pnpm test`.
 
 **Escenarios**: Alta sin descuento con serial; Alta sin descuento sin serial; Alta sin descuento
 con serial repetido; Alta sin descuento; Insumo NINGUNO sin cambios.

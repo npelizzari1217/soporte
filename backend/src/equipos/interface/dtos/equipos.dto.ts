@@ -25,12 +25,14 @@ import {
   Min,
   MinLength,
   IsUUID,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import {
   CONDICIONES_STOCK,
   CondicionStock,
 } from '../../../insumos/domain/entities/tipo-movimiento-insumo';
+import { EsSerialDeUnidad } from '../../../insumos/interface/validators/es-serial-de-unidad';
 import { transformarMotivo } from '../../../insumos/interface/dtos/movimientos-insumo.dto';
 import { MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
@@ -275,8 +277,9 @@ export class CreateComponenteHttpDto {
   descontarStock?: boolean;
 
   /**
-   * Condición del saldo del que sale la unidad. Omitida = `NUEVO`. Solo rige
-   * con `descontarStock` verdadero: con `false` el controller la ignora (ADR-7).
+   * Condición del saldo del que sale la unidad. Omitida = `NUEVO`. Con
+   * `descontarStock` verdadero es la del saldo; con `false` solo la aplica el caso
+   * de uso a la unidad que nace de un insumo `SERIE` (D3) y con `NINGUNO` se ignora.
    */
   @IsOptional()
   @IsIn(CONDICIONES_STOCK)
@@ -285,7 +288,8 @@ export class CreateComponenteHttpDto {
   /**
    * Unidad `SERIE` que se instala (la elige el usuario por su serial). Obligatoria
    * en la práctica para un insumo `SERIE` con descuento; con ella `condicion` y
-   * `numeroSerie` se ignoran porque son datos de la unidad (ADR-7).
+   * `numeroSerie` se ignoran porque son datos de la unidad (ADR-7). Con
+   * `descontarStock: false` se rechaza (422): sin descuento la unidad nace del serial.
    */
   @IsOptional()
   @IsUUID()
@@ -296,9 +300,18 @@ export class CreateComponenteHttpDto {
   @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)
   descripcion?: string | null;
 
+  /**
+   * Serial. Con un insumo `SERIE` sin descuento es el de la unidad que nace (D3): se
+   * recorta y se mide también normalizado (`ß` pasa a `SS`), porque la entidad lanza
+   * ante el desborde. Vacío o ausente no se valida acá: lo decide el caso de uso
+   * (`SerialRequeridoError` con `SERIE`; con `NINGUNO` el campo es opcional).
+   */
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
+  @ValidateIf((o: CreateComponenteHttpDto) => o.numeroSerie !== '')
+  @EsSerialDeUnidad()
   numeroSerie?: string | null;
 
   @IsOptional()

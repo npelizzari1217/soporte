@@ -648,3 +648,30 @@ Rama `feat/repuestos-numero-de-serie-wu10a-4`. Tareas 10a.5 y 10a.6 hechas (10a.
   final (UNIQUE parcial por unidad sembrado; el filtro global traduce el P2002 a 409) y editar el serial de una unidad (422, sin
   cambios) y de un legado (200).
 
+
+### WU-10b - Alta sin descuento con unidad (D3)
+
+Ramas `feat/repuestos-numero-de-serie-wu10b` (entidad, error, caso de uso + unit, modulo, 359 lineas) y `-wu10b-2` (controller, DTO, mapeo HTTP, e2e, docs). Tareas 10b.1 y 10b.2 hechas; 10b.3 (gates) hecha: lint, typecheck, `src/equipos` (473) y suite completa (6423) verdes.
+
+- Nuevo `AgregarComponenteSinDescuentoUseCase(txRunner, agregar, insumoRepo, operaciones, componenteRepo)`, que reemplaza a
+  `AgregarComponenteUseCase` en el controller para `descontarStock=false`. Insumo `SERIE`: en UNA tx, `preparar()` ->
+  `operaciones.altaInstalada()` (L1 a L3) -> `componente.vincularUnidad()` -> `save()` (L4) -> relectura por el mapper (serial resuelto).
+  `NINGUNO`: `preparar()` + `save()` como siempre; la `condicion` se ignora. `FalloOperacionDeUnidad` (P2002 de serial repetido) se
+  lanza dentro de `run()` (rollback) y se desenvuelve afuera como `Result.fail(SerialDuplicadoError)` => 409.
+- Entidad: `ComponenteEquipoEntity.vincularUnidad(unidadId)` (deja `numeroSerie` en null, el serial es el de la unidad).
+- **Decision `descontarStock=false` + `unidadId`**: se RECHAZA con 422 (`UnidadConAltaSinDescuentoError`, code
+  `UNIDAD_CON_ALTA_SIN_DESCUENTO`, nuevo en equipos.errors.ts; catalogo 17 -> 18). Motivo: sin descuento no se elige una unidad del
+  deposito (la unidad nace del serial); descartarlo en silencio dejaria al usuario creyendo que instalo la unidad que eligio. El
+  controller pasa `unidadId` y el rechazo vive en el caso de uso, antes de abrir la transaccion. Sin escrituras.
+- Borde: el controller ahora pasa `usuarioId` (JWT.sub) y `condicion` tambien sin descuento. `toHttpException` de equipos mapea
+  `SerialDuplicadoError` 409 (`ConflictException`, tipo de retorno ampliado) y `SerialRequeridoError` 422.
+  `CreateComponenteHttpDto.numeroSerie`: trim + `@EsSerialDeUnidad` con `@ValidateIf(valor !== '')` (400 por largo normalizado; vacio
+  o ausente lo decide el caso de uso: 422 con SERIE, opcional con NINGUNO).
+- Lock-order: no se agrego testigo de `pg_locks` (el patron de 10a mide L4 despues de `instalar`); se cubre con un unit de orden
+  (preparar -> altaInstalada -> save; sin `save` si `altaInstalada` falla ni si lanza P2002). `altaInstalada` toma L1/L2/L3 en el servicio,
+  ya cubierto por sus propios specs.
+- e2e (`equipos-instalar-desde-deposito.e2e.spec.ts`): con serial (trim, USADO, unidad INSTALADA, evento ALTA_INSTALADA en el
+  historial HTTP, sin movimientos), sin condicion => NUEVO, sin/blanco serial 422, serial repetido con otra grafia 409 y rollback,
+  `unidadId` 422, serial ß*200 => 400. Los tests existentes de `NINGUNO` (condicion ignorada, sin movimiento) siguen verdes. El test
+  del legado de un insumo SERIE (editar serial) ahora siembra el componente por SQL: ya no se puede crear un legado por la API.
+- Ayuda: sin deuda de backend (UI en WU-19).
