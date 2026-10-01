@@ -607,7 +607,7 @@ Commit sugerido: `feat(insumos): casilla de unidad entera en el ABM de unidades 
 
 **Branch**: `feat/repuestos-numero-de-serie-wu15` · **Base**: wu14
 
-- [ ] 15.1 `hooks/use-unidades-insumo.ts` (TanStack Query, clave `["insumo", id, "unidades"]`) y `unidades-insumo-section.tsx` en `insumo-detail-view.tsx`: unidades con serial (o "serie pendiente"), condición, estado y equipo; filtro por estado; contador de pendientes; la sección solo aparece con `seguimiento = SERIE`.
+- [x] 15.1 `hooks/use-unidades-insumo.ts` (TanStack Query, clave `["insumo", id, "unidades"]`) y `unidades-insumo-section.tsx` en `insumo-detail-view.tsx`: unidades con serial (o "serie pendiente"), condición, estado y equipo; filtro por estado; contador de pendientes; la sección solo aparece con `seguimiento = SERIE`.
 - [ ] 15.2 `unidad-historial-dialog.tsx`: eventos cronológicos, destino de la entrega leído del movimiento, serial anterior y nuevo con motivo en las correcciones.
 - [ ] 15.3 Tests (MSW): insumo `NINGUNO` sin sección; `SERIE` con unidades de todos los estados; historial de una vida completa, de una descartada, de una entregada.
 - [ ] 15.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.

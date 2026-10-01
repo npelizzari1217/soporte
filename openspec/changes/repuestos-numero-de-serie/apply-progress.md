@@ -833,3 +833,11 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - Tests (MSW + `renderWithProviders`, 3 nuevos y 2 ajustados en `unidad-medida-form-dialog.test.tsx`): alta con `entera: true`, edicion con la casilla
   precargada y marcada, desmarcar una unidad usada por un insumo `SERIE` muestra el motivo.
 - Gates (14.3), rama `-wu14`: `pnpm lint` y `pnpm type-check` en cero; `pnpm vitest run src/features/insumos` 21 archivos / 287 tests verdes; `pnpm test` completo verde.
+
+### WU-15 parte 1 - seccion de unidades en la ficha (15.1), rama `-wu15`
+
+- `hooks/use-unidades-insumo.ts` (clave `["insumo", id, "unidades"]`, `staleTime: 0`, trae todas las unidades) y `unidades-insumo-section.tsx`:
+  serial o "Serie pendiente", condicion, estado y equipo; filtro por estado en el cliente; contador de pendientes (EN_DEPOSITO sin serial) sobre
+  el universo completo. La ficha la monta solo con `seguimiento = SERIE`. La mutacion de seguimiento ya invalida `["insumo", id]`, que cubre la clave por prefijo.
+- Tests (MSW, 6 en `unidades-insumo-section.test.tsx` y 2 en `insumo-detail-view.test.tsx`): NINGUNO sin seccion ni consulta, SERIE con unidades de todos los estados, pendientes, filtro, vacio, error.
+- Corte de WU-15 segun tasks.md: esta rama es la seccion; el historial (15.2, parte del 15.3 y 15.4) va en `-wu15-2`.

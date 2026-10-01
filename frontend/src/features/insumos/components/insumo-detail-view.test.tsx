@@ -1178,3 +1178,46 @@ describe("InsumoDetailView — vocabulario según la familia", () => {
     expect(screen.getByRole("link", { name: /Repuestos/ })).toHaveAttribute("href", "/repuestos");
   });
 });
+
+describe("InsumoDetailView — unidades por serie", () => {
+  const INSUMO_SERIE: Insumo = { ...INSUMO, seguimiento: "SERIE" };
+
+  it("un insumo NINGUNO no muestra la sección de unidades ni la consulta", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    let consultado = false;
+    server.use(
+      http.get("/api/insumos/:insumoId/unidades", () => {
+        consultado = true;
+        return HttpResponse.json([]);
+      }),
+    );
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Existencia")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Unidades" })).not.toBeInTheDocument();
+    expect(consultado).toBe(false);
+  });
+
+  it("un insumo SERIE muestra la sección con sus unidades", async () => {
+    mockFicha([INSUMO_SERIE], { ...STOCK_SUFICIENTE, seguimiento: "SERIE" });
+    server.use(
+      http.get("/api/insumos/:insumoId/unidades", () =>
+        HttpResponse.json([
+          {
+            id: "u-1",
+            insumoId: INSUMO.id,
+            numeroSerie: "SN-001",
+            condicion: "NUEVO",
+            estado: "EN_DEPOSITO",
+            equipoId: null,
+            equipoNombre: null,
+          },
+        ]),
+      ),
+    );
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByRole("heading", { name: "Unidades" })).toBeInTheDocument();
+    expect(await screen.findByText("SN-001")).toBeInTheDocument();
+  });
+});
