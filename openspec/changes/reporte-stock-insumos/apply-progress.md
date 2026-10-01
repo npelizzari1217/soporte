@@ -23,7 +23,7 @@ Decisiones de implementación:
 - Los specs usan el patrón del repo: base compartida `soporte_tenant_test`, fixtures con prefijo por
   corrida y `tenantContext.bind`; el de unidades crea su propio equipo (CHECK `INSTALADA` ⇒ `equipo_id`).
 
-## WU-2 — Caso de uso núcleo y comparación con la ficha (parte 1 de 2: 2.1 a 2.4)
+## WU-2 — Caso de uso núcleo y comparación con la ficha (completo, 7/7)
 
 Rama `feat/reporte-stock-insumos-wu02` (base `-wu01-3`). Partido en dos ramas (`-wu02` y `-wu02-2`).
 
@@ -32,5 +32,13 @@ Rama `feat/reporte-stock-insumos-wu02` (base `-wu01-3`). Partido en dos ramas (`
   no hay ids de ese seguimiento; orden por código aplicado también en el caso de uso.
 - `consultar-reporte-stock.use-case.spec.ts`: 17 casos (columnas, filtros, ocultar sin stock con las
   cuatro variantes, reloj antes de leer, SERIE vs. libro, sin N+1 con 50 ids).
-- Parte 1 de 2 (esta rama): tareas 2.1 a 2.4. La integración de comparación y la mutación (2.5, 2.6)
-  van en `feat/reporte-stock-insumos-wu02-2`.
+- `reporte-stock-coincide-con-ficha.integration.spec.ts` (parte 2, rama `-wu02-2`): 6 casos contra
+  `soporte_tenant_test` con fixtures prefijados por corrida (mismo patrón que WU-1), no con una base
+  efímera: ver Desviación.
+- Mutación 2.6 (local, revertida): (a) rama `SERIE` con `calcularSaldos` sobre el libro ⇒ 3 casos
+  rojos; (b) `INSTALADA` contada en el conteo ⇒ 1 caso rojo (el de valores explícitos de SERIE;
+  la comparación con la ficha no lo ve porque la ficha cuenta por otro método). Ambos revertidos.
+
+Desviación: la integración usa la base compartida de pruebas con prefijo y limpieza por prefijo, no una
+base efímera, por coherencia con los tres specs de integración de WU-1; los resultados se filtran por
+el prefijo de la corrida.
