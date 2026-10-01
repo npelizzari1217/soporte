@@ -40,6 +40,12 @@ export interface ItemEnEquipo {
   equipoId: string;
   /** Id que la entidad del componente ya generó, aunque su fila se inserte después (sin FK). */
   componenteId: string;
+  /**
+   * Insumo que el llamador cree estar operando. Si viene y la unidad es de otro,
+   * el lote se rechaza con `UnidadNoDisponibleError` antes de tomar ningún lock
+   * (el `insumoId` de una unidad es inmutable, así que la lectura sin lock alcanza).
+   */
+  insumoId?: string;
 }
 
 /** Una escritura sin movimiento: unidad (CAS o INSERT) y evento. */
@@ -652,9 +658,17 @@ export class OperacionesUnidadInsumo {
     }
 
     const insumoIds = new Set<string>();
-    for (const id of ids) {
-      const foto = await this.unidadRepo.findById(id);
-      if (foto === null) return Result.fail(new UnidadNoEncontradaError(id));
+    for (const item of items) {
+      const foto = await this.unidadRepo.findById(item.unidadId);
+      if (foto === null) return Result.fail(new UnidadNoEncontradaError(item.unidadId));
+      if (item.insumoId !== undefined && foto.insumoId !== item.insumoId) {
+        return Result.fail(
+          new UnidadNoDisponibleError(
+            item.unidadId,
+            `pertenece a otro insumo y no a "${item.insumoId}".`,
+          ),
+        );
+      }
       insumoIds.add(foto.insumoId);
     }
 

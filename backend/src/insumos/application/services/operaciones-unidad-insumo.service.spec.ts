@@ -690,6 +690,29 @@ describe('OperacionesUnidadInsumo', () => {
         expect(t.eventos[0].movimientoId).toBe(t.movimientos[0].id);
       });
 
+      it('con item.insumoId, una unidad de otro insumo o pendiente se rechaza con UnidadNoDisponibleError antes de tomar locks ni escribir', async () => {
+        const ajena = armar({ unidades: [unidad(U1, { insumo: OTRO_INSUMO })] });
+        const r1 = await ajena.servicio.instalar([{ ...item(U1, C1), insumoId: INSUMO }], {
+          usuarioId: 'u',
+        });
+        expect(r1.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+        expect(ajena.llamadas.some((l) => l.startsWith('L'))).toBe(false);
+        expect(ajena.escribio()).toBe(false);
+
+        const pendiente = armar({ unidades: [unidad(U1, { serial: null })] });
+        const r2 = await pendiente.servicio.instalar([{ ...item(U1, C1), insumoId: INSUMO }], {
+          usuarioId: 'u',
+        });
+        expect(r2.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+        expect(pendiente.escribio()).toBe(false);
+
+        const propia = armar({ unidades: [unidad(U1)] });
+        const r3 = await propia.servicio.instalar([{ ...item(U1, C1), insumoId: INSUMO }], {
+          usuarioId: 'u',
+        });
+        expect(r3.isOk()).toBe(true);
+      });
+
       it('toma L1 y L2 de todos los insumos y L3 de todas las unidades, en orden de id, antes de escribir', async () => {
         const t = armar({
           unidades: [unidad(U1, { insumo: OTRO_INSUMO }), unidad(U2), unidad(U3)],

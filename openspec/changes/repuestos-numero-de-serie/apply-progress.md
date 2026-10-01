@@ -607,3 +607,22 @@ Rama `feat/repuestos-numero-de-serie-wu10a`. Parte 1 de 2 (10a.1, 10a.2, 10a.4).
 - Ayuda: sin cambios; `equipos-listado.md` solo habla del serial del equipo (verdadero) y ningun articulo describe el serial del
   componente. Deuda de UI en WU-19.
 
+### WU-10a - parte 2 de 3 (instalar con unidad y borde)
+
+Rama `feat/repuestos-numero-de-serie-wu10a-2`. Tarea 10a.3 hecha; 10a.5 (e2e, testigo y mutacion) en la parte 3.
+
+- `InstalarComponenteDesdeDepositoUseCase(txRunner, agregar, registrarSalida, operaciones, componenteRepo)`: con `unidadId`,
+  `preparar()` -> `operaciones.instalar([{unidadId, equipoId, componenteId, insumoId}], {usuarioId})` -> `vincularInstalacion` ->
+  un unico `save()` (L4) y relectura del componente para devolver el serial resuelto. Sin `unidadId`, el camino de siempre (un
+  insumo `SERIE` termina en `UnidadRequeridaError` y la excepcion revierte el componente). `condicion` y `numeroSerie` del body se
+  ignoran con unidad.
+- `ItemEnEquipo.insumoId?` (servicio de unidades): si viene y la unidad es de otro insumo, `UnidadNoDisponibleError` ANTES de tomar
+  locks (el `insumoId` de una unidad es inmutable, la lectura sin lock alcanza). `OperacionesUnidadInsumo` ahora se exporta de
+  `InsumosModule`.
+- Borde: `CreateComponenteHttpDto.unidadId?` (`@IsUUID`); con `descontarStock=false` el controller NO lo pasa (D3 llega en WU-10b).
+  `toHttpException` de equipos mapea explicito `UnidadNoEncontradaError` 404 y `UnidadNoDisponible`/`UnidadRequerida`/
+  `UnidadNoAdmitida` 422 (no importa el controller de insumos, igual que compras).
+- Tests: unit del caso de uso (orden preparar -> instalar -> save, fallo de instalar no guarda, fallo de preparar no toma locks, camino
+  sin unidad intacto), del servicio (propiedad del insumo antes de locks), del controller (unidadId, mapeo de errores) y del DTO.
+- Ayuda: sin cambios; deuda de UI en WU-19.
+

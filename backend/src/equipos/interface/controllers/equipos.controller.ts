@@ -85,6 +85,12 @@ import {
 } from '../../domain/errors/equipos.errors';
 
 import {
+  UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
+  UnidadRequeridaError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
+import {
   ComponenteResponseDto,
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
@@ -104,7 +110,12 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export function toHttpException(
   error: DomainError,
 ): NotFoundException | UnprocessableEntityException {
-  if (error instanceof EquipoNoEncontradoError || error instanceof ComponenteNoEncontradoError) {
+  if (
+    error instanceof EquipoNoEncontradoError ||
+    error instanceof ComponenteNoEncontradoError ||
+    // `unidadId` del body que no existe: se contesta como las rutas de unidades de insumo.
+    error instanceof UnidadNoEncontradaError
+  ) {
     return new NotFoundException(error.message);
   }
   if (
@@ -122,6 +133,10 @@ export function toHttpException(
     error instanceof MotivoRetiroRequeridoError ||
     // El serial de un componente con unidad se corrige desde la unidad (ADR-7).
     error instanceof SerialDeUnidadNoEditableError ||
+    // Instalar con unidad (ADR-7): la unidad elegida no sirve, o el insumo exige elegir una.
+    error instanceof UnidadNoDisponibleError ||
+    error instanceof UnidadRequeridaError ||
+    error instanceof UnidadNoAdmitidaError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
     // `modeloEquipoId`.
@@ -346,7 +361,10 @@ export class EquiposController {
    * @throws 400 `insumoId` ausente o inválido, `descontarStock` no booleano
    * @throws 404 equipo inexistente
    * @throws 422 insumo inexistente/deshabilitado, familia que no es de
-   *   repuesto o deshabilitada, o stock insuficiente (con descuento)
+   *   repuesto o deshabilitada, o stock insuficiente (con descuento); con
+   *   insumo `SERIE`, falta `unidadId` o la unidad no está disponible (pendiente,
+   *   de otro insumo, ya tomada)
+   * @throws 404 además: `unidadId` inexistente
    */
   @Post(':id/componentes')
   @RequiereAcciones('EQUIPOS:ALTAS')
@@ -372,6 +390,7 @@ export class EquiposController {
             ...datos,
             usuarioId: user.sub,
             condicion: dto.condicion,
+            unidadId: dto.unidadId,
           })
         : await this.agregarComponenteUseCase.execute(datos);
 

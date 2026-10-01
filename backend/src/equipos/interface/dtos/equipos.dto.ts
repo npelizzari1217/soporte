@@ -282,6 +282,15 @@ export class CreateComponenteHttpDto {
   @IsIn(CONDICIONES_STOCK)
   condicion?: CondicionStock;
 
+  /**
+   * Unidad `SERIE` que se instala (la elige el usuario por su serial). Obligatoria
+   * en la práctica para un insumo `SERIE` con descuento; con ella `condicion` y
+   * `numeroSerie` se ignoran porque son datos de la unidad (ADR-7).
+   */
+  @IsOptional()
+  @IsUUID()
+  unidadId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)

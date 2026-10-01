@@ -539,6 +539,8 @@ import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-se
     INSUMO_REPOSITORY,
     RegistrarEntradaInsumoUseCase,
     RegistrarSalidaInsumoUseCase,
+    // WU-10a: la instalación de equipos con unidad de insumo la usa (`instalar`).
+    OperacionesUnidadInsumo,
   ],
 })
 export class InsumosModule {}

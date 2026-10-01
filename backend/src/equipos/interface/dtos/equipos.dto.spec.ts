@@ -296,6 +296,18 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
     expect(dto.descontarStock).toBeUndefined();
   });
 
+  it('unidadId es opcional y acepta un UUID; rechaza un valor que no lo es', async () => {
+    const valido = plainToInstance(CreateComponenteHttpDto, {
+      insumoId,
+      unidadId: '44444444-4444-4444-8444-444444444444',
+    });
+    expect(await validate(valido)).toHaveLength(0);
+
+    const invalido = plainToInstance(CreateComponenteHttpDto, { insumoId, unidadId: 'no-es-uuid' });
+    const errores = await validate(invalido);
+    expect(errores.find((e) => e.property === 'unidadId')?.constraints).toHaveProperty('isUuid');
+  });
+
   it.each([true, false])('acepta descontarStock booleano %s', async (valor) => {
     const dto = plainToInstance(CreateComponenteHttpDto, { insumoId, descontarStock: valor });
     expect(await validate(dto)).toHaveLength(0);

@@ -46,6 +46,7 @@ import {
   IFamiliaInsumoRepository,
 } from '../insumos/domain/ports/i-familia-insumo.repository';
 import { RegistrarSalidaInsumoUseCase } from '../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { OperacionesUnidadInsumo } from '../insumos/application/services/operaciones-unidad-insumo.service';
 import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 
 import {
@@ -231,18 +232,21 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         txRunner: ITenantTransactionRunner,
         agregarComponenteUseCase: AgregarComponenteUseCase,
         registrarSalidaInsumoUseCase: RegistrarSalidaInsumoUseCase,
+        operaciones: OperacionesUnidadInsumo,
         componenteRepo: IComponenteEquipoRepository,
       ) =>
         new InstalarComponenteDesdeDepositoUseCase(
           txRunner,
           agregarComponenteUseCase,
           registrarSalidaInsumoUseCase,
+          operaciones,
           componenteRepo,
         ),
       inject: [
         TENANT_TX_RUNNER,
         AgregarComponenteUseCase,
         RegistrarSalidaInsumoUseCase,
+        OperacionesUnidadInsumo,
         COMPONENTE_EQUIPO_REPOSITORY,
       ],
     },

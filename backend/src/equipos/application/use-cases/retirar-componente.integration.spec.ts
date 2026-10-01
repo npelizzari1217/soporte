@@ -385,6 +385,7 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
       },
     });
     const txRunner = makeTxRunner();
+    const operaciones = construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo });
     const instalar = new InstalarComponenteDesdeDepositoUseCase(
       txRunner,
       new AgregarComponenteUseCase(equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo),
@@ -393,8 +394,9 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
         movimientoRepo,
         txRunner,
         familiaInsumoRepo,
-        construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
+        operaciones,
       ),
+      operaciones,
       componenteRepo,
     );
 

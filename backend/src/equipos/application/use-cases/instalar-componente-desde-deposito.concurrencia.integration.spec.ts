@@ -191,17 +191,19 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
       insumoRepo,
       familiaInsumoRepo,
     );
+    const operaciones = construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo });
     const registrarSalidaInsumoUseCase = new RegistrarSalidaInsumoUseCase(
       insumoRepo,
       movimientoRepo,
       txRunner,
       familiaInsumoRepo,
-      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
+      operaciones,
     );
     return new InstalarComponenteDesdeDepositoUseCase(
       txRunner,
       agregarComponenteUseCase,
       registrarSalidaInsumoUseCase,
+      operaciones,
       componenteRepo,
     );
   }

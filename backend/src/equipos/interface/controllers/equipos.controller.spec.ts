@@ -28,6 +28,12 @@ import {
   ComponenteYaActivoError,
 } from '../../domain/errors/equipos.errors';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
+import {
+  UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
+  UnidadRequeridaError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 function makeEquipo(): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.create(
@@ -264,6 +270,26 @@ describe('EquiposController (T12.6)', () => {
         );
       },
     );
+
+    it('con descuento, unidadId llega al caso de uso; con descontarStock false no se pasa', async () => {
+      const unidadId = '0190aaaa-0000-7000-8000-000000000001';
+      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
+        buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, unidadId } as any);
+      await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        unidadId,
+        descontarStock: false,
+      } as any);
+
+      expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId }),
+      );
+      expect(agregarComponenteUseCase.execute.mock.calls[0][0]).not.toHaveProperty('unidadId');
+    });
 
     it('descontarStock false con condicion → la condición se ignora y no se pasa (ADR-7)', async () => {
       const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
@@ -689,9 +715,9 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       () => new EquiposErrors.ComponenteDevueltoAlStockError('componente-1'),
       422,
     ],
-    // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-8): sin
-    // mapeo explícito todavía (llega con el WU de interfaz de equipos), así que
-    // caen en el default 422, que es también su código definitivo.
+    // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-7/ADR-8):
+    // reglas de negocio sobre un recurso que existe → 422 (la de editar lleva
+    // mapeo explícito; la de reactivar llega con el WU de reactivar).
     [
       'SerialDeUnidadNoEditableError',
       () => new EquiposErrors.SerialDeUnidadNoEditableError('componente-1'),
@@ -768,5 +794,27 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     } else {
       expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
     }
+  });
+});
+
+describe('toHttpException — errores de unidades de insumo al instalar (sdd/repuestos-numero-de-serie, ADR-7)', () => {
+  const TABLA_UNIDADES: Array<[string, () => DomainError, 404 | 422]> = [
+    ['UnidadNoEncontradaError', () => new UnidadNoEncontradaError('unidad-1'), 404],
+    [
+      'UnidadNoDisponibleError',
+      () => new UnidadNoDisponibleError('unidad-1', 'ya fue tomada.'),
+      422,
+    ],
+    ['UnidadRequeridaError', () => new UnidadRequeridaError('insumo-1'), 422],
+    ['UnidadNoAdmitidaError', () => new UnidadNoAdmitidaError('insumo-1'), 422],
+  ];
+
+  it.each(TABLA_UNIDADES)('%s → HTTP %i', (_nombre, factory, httpEsperado) => {
+    const excepcion = toHttpException(factory());
+
+    expect(excepcion.getStatus()).toBe(httpEsperado);
+    expect(excepcion).toBeInstanceOf(
+      httpEsperado === 404 ? NotFoundException : UnprocessableEntityException,
+    );
   });
 });
