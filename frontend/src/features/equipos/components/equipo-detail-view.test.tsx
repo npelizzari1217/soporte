@@ -44,6 +44,14 @@ const EQUIPO_DETALLE = {
   ],
 };
 
+const RESUMEN_VACIO = {
+  equipoId: EQUIPO_ID,
+  nombre: "Notebook Dell",
+  ticketsAbiertos: 0,
+  largoMaximoTexto: { VEJEZ: 450, DONACION: 450, ROTURA: 450, OTRA: 450 },
+  piezas: [],
+};
+
 function mockBackend() {
   server.use(
     http.get(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json(EQUIPO_DETALLE)),
@@ -100,13 +108,34 @@ describe("EquipoDetailView — borrado de un equipo cargado por error (baja-equi
     vi.mocked(toast.error).mockClear();
   });
 
-  it("el botón del borrado dice «Eliminar equipo (cargado por error)» y ningún botón dice «Dar de baja»", async () => {
+  it("el botón del borrado dice «Eliminar equipo (cargado por error)» y «Dar de baja» es único", async () => {
     renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
       user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
     });
 
     expect(await screen.findByRole("button", { name: "Eliminar equipo (cargado por error)" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^dar de baja$/i })).toHaveLength(1);
+  });
+
+  it("sin EQUIPOS:BORRADO no se ofrece «Dar de baja»", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await screen.findByText("Notebook Dell");
     expect(screen.queryByRole("button", { name: /^dar de baja$/i })).not.toBeInTheDocument();
+  });
+
+  it("«Dar de baja» abre el diálogo de baja del equipo completo", async () => {
+    server.use(http.get(`/api/equipos/${EQUIPO_ID}/baja/resumen`, () => HttpResponse.json(RESUMEN_VACIO)));
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /^dar de baja$/i }));
+
+    expect(await screen.findByText("Dar de baja el equipo")).toBeInTheDocument();
   });
 
   it("la confirmación aclara que es solo para equipos cargados por error y sugiere dar de baja", async () => {

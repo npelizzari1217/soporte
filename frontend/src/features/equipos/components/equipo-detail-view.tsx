@@ -5,7 +5,7 @@
  * MODAL (`EquipoEditDialog`) + borrado (equipo cargado por error) detrás de `ConfirmDialog` +
  * componentes. Gates por acción (WU-7.6, `sdd/matriz-permisos-por-usuario`):
  * `EQUIPOS:ALTAS` (agregar componente), `EQUIPOS:MODIFICACION` (editar
- * equipo), `EQUIPOS:BORRADO` (eliminar equipo cargado por error) — separados, ya no un único
+ * equipo), `EQUIPOS:BORRADO` (dar de baja el equipo completo y eliminar uno cargado por error) — separados, ya no un único
  * `equipo:gestionar` para las tres mutaciones. Consistente con
  * `EquiposController`. La asignación a personas se eliminó del dominio Equipos
  * — vive solo en `Ticket`.
@@ -26,6 +26,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { ComponenteCreateDialog } from "./componente-create-dialog";
+import { EquipoBajaDialog } from "./equipo-baja-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 
@@ -66,6 +67,7 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
               <EquipoEditDialog equipo={equipo} />
             </Can>
             <Can permiso="EQUIPOS:BORRADO">
+              <EquipoBajaDialog equipoId={equipo.id} />
               <ConfirmDialog
                 trigger={
                   <Button variant="destructive" size="sm">

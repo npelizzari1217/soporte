@@ -376,3 +376,17 @@ Rama: `feat/baja-equipo-completo-wu15` (base wu14-2).
 - 15.4 Tests en `equipos-list-view.test.tsx` (5 casos nuevos): por defecto solo el vigente y sin parametro; al tildar navega con `?incluirBajas=true`; con el parametro se piden ambos y el dado de baja lleva «Baja»; la exportacion pide lo mismo que la lista (sin y con filtro); invalidar `["equipos"]` refresca la variante activa y marca la inactiva.
 - 15.5 Ayuda `equipos-listado.md` editada a mano (sin prettier): la seccion «Sin filtros» pasa a describir la casilla; la exportacion sigue el filtro; se ajusta el parrafo del aviso de volumen. `rg "no tiene filtros"` sin resultados.
 - Ayuda: corregida en este WU; deuda restante: articulo nuevo sobre el flujo de baja de equipo, el boton renombrado y la ficha de un equipo dado de baja.
+
+
+## WU-16 — Frontend: dialogo de baja
+
+Ramas: `feat/baja-equipo-completo-wu16` (tipos, schemas y mutacion) -> `-wu16-2` (reglas y formulario) -> `-wu16-3` (dialogo, cableado y tests). Base wu15.
+
+- 16.1 `types.ts`: `DestinoBajaEquipo`, `CAUSAS_PIEZA_BAJA`/`CausaPiezaBaja`, `PiezaResumenBaja`, `ResumenBajaEquipo`, `BajaEquipoDto`. `schemas.ts`: `resumenBajaEquipoSchema`, `piezasProblematicasSchema` (cuerpo del 422, se lee de `ApiError.raw` sin tocar `apiFetch`) y `motivoBajaInvalidoSchema` (se reconoce por `code`; `largoMaximo` opcional).
+- 16.2 `useDarDeBajaEquipo(equipoId)` (invalida `["equipos"]`, `["equipo", id]` e `["insumos"]`; sin toast de error: lo muestra el dialogo; con 409/422 invalida `["equipo", id]`, que refresca el detalle y el resumen) y `useResumenBajaEquipo` (`staleTime: 0`, `gcTime: 0`, clave `["equipo", id, "baja-resumen"]`).
+- 16.3 `equipo-baja-form.tsx` (presentational) y `baja-equipo-reglas.ts` (estado inicial, `validarBaja`, `piezasBloqueantes`, `mensajeDeErrorBaja`, textos de causa). Con STOCK_USADO los seriales de piezas `requiereSerial` parten de `serialSugerido`; con DESCARTE aparece la confirmacion por nombre.
+- 16.4 `equipo-baja-dialog.tsx` (container): resumen con piezas y destino de cada una, aviso de tickets abiertos, piezas bloqueantes listadas, confirmar deshabilitado, 422 de piezas listadas con su causa, 422 de motivo con `largoMaximo`, 409 con aviso y refetch del resumen (sin reintento), 422 de equipo ya dado de baja con el mensaje del backend.
+- Decision: una pieza con causa de serial (`SERIAL_*`) deja de bloquear cuando el usuario cambia el serial precargado (la causa del resumen se calculo con `serialSugerido`); `INSUMO_BORRADO` y `FAMILIA_NO_REPUESTO` bloquean siempre con STOCK_USADO. El serial repetido dentro del lote se valida en el cliente con `normalizarSerial`.
+- 16.5 `equipo-detail-view.tsx`: «Dar de baja» (con `EQUIPOS:BORRADO`) abre el dialogo; el borrado conserva «Eliminar equipo (cargado por error)».
+- 16.6 Tests: `equipo-baja-dialog.test.tsx` (10), `baja-equipo-reglas.test.ts`, `equipo-detail-view.test.tsx` (+3), `use-equipo-mutations.test.tsx` (+2), `schemas.test.ts` (+3).
+- Ayuda: pendiente, articulo nuevo sobre el flujo de baja (destinos, categoria y motivo, serial de piezas legadas, confirmacion por nombre) y el boton «Dar de baja» del equipo.
