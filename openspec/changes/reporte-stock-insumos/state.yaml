@@ -1,0 +1,16 @@
+change: reporte-stock-insumos
+phase: proposal
+artifact_store: openspec
+research:
+  selected: false
+product_decisions: confirmed 2026-10-01 (recomendadas P1-P10; docs/roadmap-comercial.md, "Decisiones de producto ya cerradas", viñeta "Reporte de stock")
+artifacts:
+  exploration: true
+  proposal: true
+  specs: false
+  design: false
+  tasks: false
+tasks_progress:
+  completed: []
+  pending: []
+last_updated: 2026-10-01
