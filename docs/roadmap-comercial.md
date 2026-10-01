@@ -257,6 +257,24 @@ Para no re-litigarlas al empezar cada punto.
     SLA hábil lee **solo** el horario del propio cliente, sin unión con master
     (`prisma-calendario-laboral-semanal.repository.ts`), y la tabla master
     `calendario_laboral_dias` se dropeó el mismo día.
+- **Reporte de stock** (pedido fuera de los seis puntos; decisiones del dueño del
+  2026-10-01, ciclo `reporte-stock-insumos`, exploración en
+  `openspec/changes/reporte-stock-insumos/exploration.md`):
+  - Solo la **foto del stock actual**; movimientos por período y detalle por
+    serie quedan para otro pedido.
+  - Una fila por insumo: código, nombre, familia, consumible o repuesto, unidad
+    de medida, stock NUEVO, stock USADO, total, punto de reposición y estado de
+    reposición.
+  - Filtros: familia, consumible o repuesto, solo bajo mínimo. Incluye los
+    deshabilitados con una columna de estado y los de stock cero, con la opción
+    de ocultarlos.
+  - **Sin valorizar**: el insumo no tiene costo.
+  - Lo ve y lo exporta quien tiene `INSUMOS:LECTURA`.
+  - Exportación CSV como el resto de la aplicación ("Exportar a Excel").
+  - Pantalla "Reporte de stock" dentro de la sección Insumos.
+  - Cantidades con coma decimal y sin decimales en unidades enteras; un saldo
+    negativo se exporta como número y se resalta en pantalla, nunca se esconde.
+  **Pendiente**: se declara Cumplida o Desviación al cerrar el ciclo.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 
