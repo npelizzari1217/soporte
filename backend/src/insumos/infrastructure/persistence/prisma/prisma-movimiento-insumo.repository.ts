@@ -229,17 +229,46 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   }
 
   /**
+   * `SUM(cantidad) GROUP BY insumo_id, condicion, tipo` de varios insumos en
+   * UNA consulta. Ver el contrato (ceros completos para cada id pedido, lista
+   * vacía sin ir a la base, sin lock) en `IMovimientoInsumoRepository.sumByTipoDeInsumos`.
+   *
+   * Reparte las filas por insumo y completa cada uno con `completarConCeros()`,
+   * el mismo helper que usa la lectura individual: no hay dos copias del 2x4.
+   *
+   * @param insumoIds Insumos cuya bitácora se suma.
+   * @returns Mapa insumoId -> sumas por condición y tipo, con `0` donde no hay movimientos.
+   */
+  async sumByTipoDeInsumos(
+    insumoIds: readonly string[],
+  ): Promise<Map<string, SumasPorCondicionYTipo>> {
+    const ids = [...new Set(insumoIds)];
+    if (ids.length === 0) return new Map();
+
+    const filas = await this.client.movimientoInsumo.groupBy({
+      by: ['insumoId', 'condicion', 'tipo'],
+      where: { insumoId: { in: ids } },
+      _sum: { cantidad: true },
+    });
+
+    const porInsumo = new Map<string, Map<string, number>>(ids.map((id) => [id, new Map()]));
+    for (const fila of filas) {
+      porInsumo
+        .get(fila.insumoId)
+        ?.set(`${fila.condicion}|${fila.tipo}`, Number(fila._sum.cantidad ?? 0));
+    }
+    return new Map(ids.map((id) => [id, completarConCeros(porInsumo.get(id) ?? new Map())]));
+  }
+
+  /**
    * `SUM(cantidad) GROUP BY condicion, tipo` de un insumo, completado con los
    * ceros de las dos condiciones y los cuatro tipos que no tienen filas.
    *
    * Va en un método compartido y no copiado en los dos lugares porque las dos
    * lecturas prometen EXACTAMENTE el mismo desglose: dos copias discreparían
    * el día que entre un tipo o una condición nueva, y el número que autoriza
-   * una salida dejaría de ser el que la ficha muestra.
-   *
-   * El desglose se arma desde los dos catálogos y no desde las filas que
-   * devuelve el `GROUP BY`: un agregado no emite filas para las combinaciones
-   * sin movimientos, y el contrato promete las ocho siempre presentes.
+   * una salida dejaría de ser el que la ficha muestra. La completación en sí
+   * vive en `completarConCeros()`, que comparte también la lectura de lote.
    *
    * @param client Cliente del tenant ya resuelto —el normal o el transaccional, según quién llame.
    * @param insumoId Insumo cuya bitácora se suma.
@@ -255,23 +284,37 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
       _sum: { cantidad: true },
     });
 
-    const porClave = new Map(
-      filas.map((fila) => [`${fila.condicion}|${fila.tipo}`, Number(fila._sum.cantidad ?? 0)]),
+    return completarConCeros(
+      new Map(
+        filas.map((fila) => [`${fila.condicion}|${fila.tipo}`, Number(fila._sum.cantidad ?? 0)]),
+      ),
     );
-
-    // Único cast del método, y es de construcción: las claves salen de
-    // `CONDICIONES_STOCK` y `TIPOS_MOVIMIENTO_INSUMO`, que SON los catálogos de
-    // los que se derivan los tipos. `Object.fromEntries` no conserva las
-    // claves literales de la tupla, así que TypeScript no puede probarlo solo;
-    // lo prueba el spec de integración, que compara las claves devueltas
-    // contra los catálogos.
-    return Object.fromEntries(
-      CONDICIONES_STOCK.map((condicion) => [
-        condicion,
-        Object.fromEntries(
-          TIPOS_MOVIMIENTO_INSUMO.map((tipo) => [tipo, porClave.get(`${condicion}|${tipo}`) ?? 0]),
-        ),
-      ]),
-    ) as SumasPorCondicionYTipo;
   }
+}
+
+/**
+ * Arma el desglose completo desde las sumas que devolvió un `GROUP BY`
+ * (clave `condicion|tipo`). Compartido por la lectura individual y la de lote.
+ *
+ * El desglose se arma desde los dos catálogos y no desde las filas que
+ * devuelve el `GROUP BY`: un agregado no emite filas para las combinaciones
+ * sin movimientos, y el contrato promete las ocho siempre presentes.
+ *
+ * @param porClave Sumas por clave `condicion|tipo`; las ausentes valen `0`.
+ * @returns Las sumas por condición y tipo, con `0` donde no hay movimientos.
+ */
+function completarConCeros(porClave: ReadonlyMap<string, number>): SumasPorCondicionYTipo {
+  // Único cast, y es de construcción: las claves salen de `CONDICIONES_STOCK`
+  // y `TIPOS_MOVIMIENTO_INSUMO`, que SON los catálogos de los que se derivan
+  // los tipos. `Object.fromEntries` no conserva las claves literales de la
+  // tupla, así que TypeScript no puede probarlo solo; lo prueba el spec de
+  // integración, que compara las claves devueltas contra los catálogos.
+  return Object.fromEntries(
+    CONDICIONES_STOCK.map((condicion) => [
+      condicion,
+      Object.fromEntries(
+        TIPOS_MOVIMIENTO_INSUMO.map((tipo) => [tipo, porClave.get(`${condicion}|${tipo}`) ?? 0]),
+      ),
+    ]),
+  ) as SumasPorCondicionYTipo;
 }

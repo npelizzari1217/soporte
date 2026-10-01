@@ -134,10 +134,11 @@ desplegado el 2026-10-01 en los ocho tenants):
   (`backend/src/insumos/application/use-cases/devolver-entrega.use-case.ts`,
   `recuperar-unidad-descartada.use-case.ts`).
 
-**Pendiente, sin construir** (pedidos del dueño del producto): un reporte y
-exportación del stock, y la baja de un equipo entero con dos opciones (devolver
-todas sus piezas al stock, o descartarlas todas con un motivo común: vejez,
-donación, rotura u otra). Hoy el retiro opera componente por componente.
+**Pendiente, sin construir** (pedido del dueño del producto): la baja de un
+equipo entero con dos opciones (devolver todas sus piezas al stock, o
+descartarlas todas con un motivo común: vejez, donación, rotura u otra). Hoy el
+retiro opera componente por componente. El reporte y exportación del stock ya
+se entregó (ver "Reporte de stock" en "Decisiones de producto ya cerradas").
 
 Se anota acá, y no entre los seis puntos, porque no nació de la comparación
 competitiva: nació de operar el sistema.
@@ -257,6 +258,29 @@ Para no re-litigarlas al empezar cada punto.
     SLA hábil lee **solo** el horario del propio cliente, sin unión con master
     (`prisma-calendario-laboral-semanal.repository.ts`), y la tabla master
     `calendario_laboral_dias` se dropeó el mismo día.
+- **Reporte de stock** (pedido fuera de los seis puntos; decisiones del dueño del
+  2026-10-01, ciclo `reporte-stock-insumos`, exploración en
+  `openspec/changes/reporte-stock-insumos/exploration.md`):
+  - Solo la **foto del stock actual**; movimientos por período y detalle por
+    serie quedan para otro pedido.
+  - Una fila por insumo: código, nombre, familia, consumible o repuesto, unidad
+    de medida, stock NUEVO, stock USADO, total, punto de reposición y estado de
+    reposición.
+  - Filtros: familia, consumible o repuesto, solo bajo mínimo. Incluye los
+    deshabilitados con una columna de estado y los de stock cero, con la opción
+    de ocultarlos.
+  - **Sin valorizar**: el insumo no tiene costo.
+  - Lo ve y lo exporta quien tiene `INSUMOS:LECTURA`.
+  - Exportación CSV como el resto de la aplicación ("Exportar a Excel").
+  - Pantalla "Reporte de stock" dentro de la sección Insumos.
+  - Cantidades con coma decimal y sin decimales en unidades enteras; un saldo
+    negativo se exporta como número y se resalta en pantalla, nunca se esconde.
+  **Cumplida** (2026-10-01, ciclo `reporte-stock-insumos`): `GET /insumos/reporte-stock`
+  y `/export` (`backend/src/insumos/interface/controllers/reporte-stock-insumos.controller.ts`,
+  `INSUMOS:LECTURA`), núcleo `consultar-reporte-stock.use-case.ts` con la misma fórmula que la
+  ficha, CSV con tope de 5000 filas (`exportar-reporte-stock.use-case.ts`) y pantalla
+  `/insumos/reporte-stock` (`frontend/src/features/insumos/components/reporte-stock-view.tsx`),
+  enlazada desde Insumos y Repuestos. Sin desviaciones.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 

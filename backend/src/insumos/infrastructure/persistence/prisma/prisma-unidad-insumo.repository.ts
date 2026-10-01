@@ -133,6 +133,40 @@ export class PrismaUnidadInsumoRepository implements IUnidadInsumoRepository {
   }
 
   /**
+   * Un solo `GROUP BY insumo_id, condicion` sobre las `EN_DEPOSITO` (las
+   * pendientes de serie cuentan). Cada id pedido queda en el mapa con ambas
+   * condiciones, en `0` si no tiene unidades. Lista vacía: mapa vacío sin ir a
+   * la base. Sin lock.
+   *
+   * @param insumoIds Insumos a contar.
+   * @returns Mapa insumoId -> unidades `EN_DEPOSITO` por condición.
+   */
+  async contarEnDepositoPorCondicionDeInsumos(
+    insumoIds: readonly string[],
+  ): Promise<Map<string, ConteoPorCondicion>> {
+    const ids = [...new Set(insumoIds)];
+    if (ids.length === 0) return new Map();
+
+    const grupos = await this.client.unidadInsumo.groupBy({
+      by: ['insumoId', 'condicion'],
+      where: { insumoId: { in: ids }, estado: 'EN_DEPOSITO' },
+      _count: { _all: true },
+    });
+    const porClave = new Map(grupos.map((g) => [`${g.insumoId}|${g.condicion}`, g._count._all]));
+    return new Map(
+      ids.map((id) => [
+        id,
+        Object.fromEntries(
+          CONDICIONES_STOCK.map((condicion) => [
+            condicion,
+            porClave.get(`${id}|${condicion}`) ?? 0,
+          ]),
+        ) as ConteoPorCondicion,
+      ]),
+    );
+  }
+
+  /**
    * @param insumoId Insumo a contar.
    * @returns Las unidades por estado, con los cuatro estados presentes.
    */

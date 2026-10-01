@@ -325,7 +325,7 @@ export class CambiarSeguimientoInsumoHttpDto {
  * el `@IsBoolean()` de cada campo lo rechace con su propio mensaje, en vez
  * de que esta función invente un default.
  */
-function parsearBooleanQuery(value: unknown): unknown {
+export function parsearBooleanQuery(value: unknown): unknown {
   if (value === 'true') {
     return true;
   }

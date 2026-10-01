@@ -42,6 +42,30 @@ export interface FamiliaDeInsumo {
 }
 
 /**
+ * Proyección de solo lectura de una fila del catálogo para el reporte de
+ * stock. NO es `InsumoEntity`: no se puede pasar a `save()`. `stockMinimo`
+ * viaja ya como `number` (la columna es `Decimal`) y `null` si el insumo no
+ * tiene punto de reposición. `activo` viaja crudo: el reporte incluye los
+ * deshabilitados y deja que la presentación los distinga.
+ */
+export interface FilaCatalogoStock {
+  insumoId: string;
+  codigo: string;
+  nombre: string;
+  activo: boolean;
+  seguimiento: SeguimientoInsumo;
+  stockMinimo: number | null;
+  familia: { id: string; nombre: string; esRepuesto: boolean };
+  unidadMedida: { codigo: string; nombre: string; entera: boolean };
+}
+
+/** Filtros de catálogo del reporte de stock; ambos opcionales. */
+export interface FiltrosCatalogoStock {
+  familiaId?: string;
+  esRepuesto?: boolean;
+}
+
+/**
  * IInsumoRepository — puerto de acceso al catálogo de insumos del tenant.
  * `InsumoEntity` es la raíz del agregado: todos estos métodos lo devuelven o
  * lo persisten COMPLETO —con sus códigos alternativos Y con su
@@ -264,6 +288,19 @@ export interface IInsumoRepository {
    * @returns La última secuencia numérica usada en esa serie; `0` si ninguna.
    */
   findLastSecuenciaCodigo(prefijo: PrefijoCodigoInsumo): Promise<number>;
+
+  /**
+   * Lista el catálogo para el reporte de stock en UNA consulta, con la familia
+   * y la unidad de medida, ordenado por `codigo` ascendente.
+   *
+   * Excluye los insumos con baja lógica (`deletedAt` no nulo) e INCLUYE los
+   * deshabilitados y los de una familia deshabilitada. Los filtros se aplican
+   * en la base. Sin lock.
+   *
+   * @param filtros Familia y/o tipo (consumible o repuesto) a filtrar.
+   * @returns Las filas del catálogo, sin saldos.
+   */
+  listarParaReporteStock(filtros: FiltrosCatalogoStock): Promise<FilaCatalogoStock[]>;
 }
 
 /** Token de inyección de dependencias para IInsumoRepository en NestJS. */

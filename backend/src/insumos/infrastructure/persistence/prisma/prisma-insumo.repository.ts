@@ -14,6 +14,8 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import {
   ConflictoCodigoAlternativo,
   FamiliaDeInsumo,
+  FilaCatalogoStock,
+  FiltrosCatalogoStock,
   IInsumoRepository,
   PrefijoCodigoInsumo,
 } from '../../../domain/ports/i-insumo.repository';
@@ -416,5 +418,49 @@ export class PrismaInsumoRepository implements IInsumoRepository {
     return this.client.insumo.count({
       where: { unidadMedidaId, seguimiento: 'SERIE', deletedAt: null },
     });
+  }
+
+  /**
+   * Una sola consulta con `select` y relaciones: la proyección del reporte de
+   * stock, no el agregado. `deletedAt: null` sobre el insumo; los deshabilitados
+   * y los de familia deshabilitada SÍ se incluyen. Los filtros van en SQL y el
+   * orden es `codigo ASC`. `stockMinimo` (`Decimal`) se convierte con `Number`,
+   * como `InsumoMapper`; `null` queda `null`.
+   *
+   * @param filtros Familia y/o tipo a filtrar.
+   * @returns Las filas del catálogo, sin saldos.
+   */
+  async listarParaReporteStock(filtros: FiltrosCatalogoStock): Promise<FilaCatalogoStock[]> {
+    const filas = await this.client.insumo.findMany({
+      where: {
+        deletedAt: null,
+        ...(filtros.familiaId !== undefined ? { familiaId: filtros.familiaId } : {}),
+        ...(filtros.esRepuesto !== undefined
+          ? { familia: { esRepuesto: filtros.esRepuesto } }
+          : {}),
+      },
+      orderBy: { codigo: 'asc' },
+      select: {
+        id: true,
+        codigo: true,
+        nombre: true,
+        activo: true,
+        seguimiento: true,
+        stockMinimo: true,
+        familia: { select: { id: true, nombre: true, esRepuesto: true } },
+        unidadMedida: { select: { codigo: true, nombre: true, entera: true } },
+      },
+    });
+    return filas.map((f) => ({
+      insumoId: f.id,
+      codigo: f.codigo,
+      nombre: f.nombre,
+      activo: f.activo,
+      // VarChar sin enum de Prisma: seguro por el CHECK `insumos_seguimiento_check`.
+      seguimiento: f.seguimiento as SeguimientoInsumo,
+      stockMinimo: f.stockMinimo === null ? null : Number(f.stockMinimo),
+      familia: f.familia,
+      unidadMedida: f.unidadMedida,
+    }));
   }
 }

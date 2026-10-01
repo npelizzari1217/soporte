@@ -62,6 +62,7 @@ import { useCambiarEstadoActivoInsumo } from "../hooks/use-insumo-abm-mutations"
 import { nombreDeCatalogo } from "../lib/nombre-de-catalogo";
 import { nombreDeUsuario } from "../lib/nombre-de-usuario";
 import { resolverDeCatalogo } from "../lib/resolucion-de-catalogo";
+import { ETIQUETA_REPOSICION, VARIANTE_REPOSICION } from "../lib/reposicion";
 import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
 import { MovimientoSalidaDialog } from "./movimiento-salida-dialog";
 import { MovimientoAjusteDialog } from "./movimiento-ajuste-dialog";
@@ -69,7 +70,6 @@ import { InsumoFormDialog } from "./insumo-form-dialog";
 import { UnidadesInsumoSection } from "./unidades-insumo-section";
 import type {
   CondicionStock,
-  EstadoReposicionInsumo,
   Insumo,
   MovimientoInsumo,
   TipoMovimientoInsumo,
@@ -77,27 +77,6 @@ import type {
 
 /** Placeholder de la celda sin valor, el mismo que usan los listados. */
 const SIN_VALOR = "—";
-
-/**
- * Cómo se lee cada estado de reposición en pantalla. Es traducción, no
- * decisión: el estado ya viene resuelto del backend.
- *
- * El `Record<EstadoReposicionInsumo, …>` es el mecanismo, no una prolijidad: si
- * mañana entra un cuarto estado en `ESTADOS_REPOSICION_INSUMO`, esto rompe el
- * typecheck en vez de renderizar una etiqueta vacía en silencio.
- */
-const ETIQUETA_REPOSICION: Record<EstadoReposicionInsumo, string> = {
-  SIN_PUNTO_DEFINIDO: "Sin punto de reposición definido",
-  SUFICIENTE: "Existencia suficiente",
-  BAJO_MINIMO: "Hay que reponer",
-};
-
-/** Variante del badge por estado, con la misma cobertura exhaustiva. */
-const VARIANTE_REPOSICION: Record<EstadoReposicionInsumo, "outline" | "success" | "destructive"> = {
-  SIN_PUNTO_DEFINIDO: "outline",
-  SUFICIENTE: "success",
-  BAJO_MINIMO: "destructive",
-};
 
 /**
  * Cómo se lee cada tipo de asiento en pantalla. Mismo mecanismo que

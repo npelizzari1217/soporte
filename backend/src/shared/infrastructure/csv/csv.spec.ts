@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BOM_UTF8,
+  cantidadCsv,
   ColumnaCsv,
   SEPARADOR_CSV,
   diaArgentinoCsv,
@@ -162,5 +163,61 @@ describe('montoCsv', () => {
     // Con separador de miles, Excel en español lee "1.234,50" como número
     // sólo si la configuración regional coincide; sin él lo lee siempre.
     expect(montoCsv(1234567.89)).toBe('1234567,89');
+  });
+});
+
+describe('cantidadCsv', () => {
+  const CELDA = /^-?\d+(,\d{2})?$/;
+
+  it('una unidad entera con valor entero sale sin decimales', () => {
+    expect(cantidadCsv(3, true).texto).toBe('3');
+  });
+
+  it('un fraccionario sale con dos decimales y coma', () => {
+    expect(cantidadCsv(2.5, false).texto).toBe('2,50');
+  });
+
+  it('un fraccionario en una unidad entera no se redondea', () => {
+    expect(cantidadCsv(2.5, true).texto).toBe('2,50');
+  });
+
+  it('un entero en una unidad fraccionaria lleva dos decimales', () => {
+    expect(cantidadCsv(3, false).texto).toBe('3,00');
+  });
+
+  it('un negativo sale sin apostrofo ni comillas', () => {
+    const csv = serializarCsv(
+      [{ c: cantidadCsv(-3, true) }],
+      [{ encabezado: 'C', valor: (f) => f.c }],
+    );
+    expect(csv).toBe(`${BOM_UTF8}C\r\n-3`);
+  });
+
+  it('-0 sale 0, nunca -0 ni -0,00', () => {
+    expect(cantidadCsv(-0, true).texto).toBe('0');
+    expect(cantidadCsv(-0, false).texto).toBe('0,00');
+    expect(cantidadCsv(-0.001, false).texto).toBe('0,00');
+  });
+
+  it('NaN e Infinity lanzan', () => {
+    expect(() => cantidadCsv(Number.NaN, true)).toThrow();
+    expect(() => cantidadCsv(Infinity, false)).toThrow();
+    expect(() => cantidadCsv(-Infinity, false)).toThrow();
+  });
+
+  it('la salida siempre cumple el formato numerico', () => {
+    for (const v of [0, 1, -1, 2.5, -2.5, 1234567.891, -0.4]) {
+      expect(cantidadCsv(v, false).texto).toMatch(CELDA);
+      expect(cantidadCsv(v, true).texto).toMatch(CELDA);
+    }
+  });
+
+  it('el texto libre sigue neutralizado y un number plano no cambia', () => {
+    const columnas: readonly ColumnaCsv<{ v: string | number }>[] = [
+      { encabezado: 'V', valor: (f) => f.v },
+    ];
+    expect(serializarCsv([{ v: '-3' }], columnas)).toBe(`${BOM_UTF8}V\r\n'-3`);
+    expect(serializarCsv([{ v: '=cmd' }], columnas)).toBe(`${BOM_UTF8}V\r\n'=cmd`);
+    expect(serializarCsv([{ v: -3 }], columnas)).toBe(`${BOM_UTF8}V\r\n'-3`);
   });
 });

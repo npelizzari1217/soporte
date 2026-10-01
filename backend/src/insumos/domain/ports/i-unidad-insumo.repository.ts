@@ -67,6 +67,22 @@ export interface IUnidadInsumoRepository {
   contarEnDepositoPorCondicion(insumoId: string): Promise<ConteoPorCondicion>;
 
   /**
+   * Versión de lote de `contarEnDepositoPorCondicion()`: cuenta las unidades
+   * `EN_DEPOSITO` de varios insumos por condición en una sola consulta agregada
+   * (las pendientes de serie cuentan: son `EN_DEPOSITO`).
+   *
+   * **Contrato**: cada id pedido está en el mapa, con ambas condiciones
+   * presentes (en `0` si no tiene unidades). Una lista vacía devuelve un mapa
+   * vacío sin ir a la base. Sin lock y sin exigir transacción: es una foto.
+   *
+   * @param insumoIds Insumos a contar.
+   * @returns Mapa insumoId -> unidades `EN_DEPOSITO` por condición.
+   */
+  contarEnDepositoPorCondicionDeInsumos(
+    insumoIds: readonly string[],
+  ): Promise<Map<string, ConteoPorCondicion>>;
+
+  /**
    * Cuenta las unidades del insumo por estado, con los cuatro presentes. Es el
    * insumo de `InsumoEntity.puedeCambiarSeguimiento()`. Sin lock propio.
    *
