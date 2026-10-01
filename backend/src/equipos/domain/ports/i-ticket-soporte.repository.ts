@@ -17,6 +17,12 @@ export interface ITicketSoporteRepository {
   /** Retorna los `ticket_soporte` vinculados a un equipo (histórico de incidencias). */
   findByEquipoId(equipoId: string): Promise<TicketSoporteEntity[]>;
 
+  /**
+   * Cuenta los tickets de soporte ABIERTOS de un equipo: vigentes (el satélite y el ticket base sin
+   * borrado lógico) y con un estado fuera de `estadosTerminales`. Solo lectura, sin locks.
+   */
+  contarAbiertosPorEquipo(equipoId: string, estadosTerminales: readonly string[]): Promise<number>;
+
   /** Persiste el `ticket_soporte` (upsert). */
   save(ticketSoporte: TicketSoporteEntity): Promise<void>;
 }

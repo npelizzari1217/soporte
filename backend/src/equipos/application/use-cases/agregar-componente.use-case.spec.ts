@@ -1,8 +1,15 @@
+import { describe, it, expect, vi } from 'vitest';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
-import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import type { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
+import type { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
+import type { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
+import type { IFamiliaInsumoRepository } from '../../../insumos/domain/ports/i-familia-insumo.repository';
+import { equipoDadoDeBaja, equipoVigente } from '../../testing/equipos-unit.fixtures';
 import { InsumoEntity } from '../../../insumos/domain/entities/insumo.entity';
 import { FamiliaInsumoEntity } from '../../../insumos/domain/entities/familia-insumo.entity';
 import {
+  EquipoDadoDeBajaError,
   EquipoNoEncontradoError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -16,21 +23,7 @@ import {
  * catálogo MASTER.
  */
 describe('AgregarComponenteUseCase', () => {
-  function makeEquipo() {
-    return EquipoInformaticoEntity.create({
-      nombre: 'X',
-      numeroSerie: null,
-      marca: null,
-      modelo: null,
-      fechaAdquisicion: null,
-      ubicacion: null,
-      importe: null,
-      fechaValoracion: null,
-      observaciones: null,
-      valorResidual: null,
-      fechaValorResidual: null,
-    });
-  }
+  const makeEquipo = equipoVigente;
 
   function makeInsumo(familiaId: string, activo = true) {
     return InsumoEntity.create({
@@ -49,36 +42,52 @@ describe('AgregarComponenteUseCase', () => {
     return FamiliaInsumoEntity.create({ codigo, nombre: 'Mouse', activo, esRepuesto });
   }
 
-  /** Construye el use case con mocks; los que no se pasan quedan sin llamadas registradas. */
-  function makeUseCase(overrides: {
-    equipoRepo?: unknown;
-    componenteRepo?: unknown;
-    insumoRepo?: unknown;
-    familiaInsumoRepo?: unknown;
-  }) {
-    return new AgregarComponenteUseCase(
-      (overrides.equipoRepo ?? { findById: vi.fn() }) as never,
-      (overrides.componenteRepo ?? { save: vi.fn() }) as never,
-      (overrides.insumoRepo ?? { findById: vi.fn() }) as never,
-      (overrides.familiaInsumoRepo ?? { findById: vi.fn() }) as never,
-    );
+  type EquipoRepoFake = Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>;
+  type ComponenteRepoFake = Pick<IComponenteEquipoRepository, 'save'>;
+
+  function makeEquipoRepo(equipo: EquipoInformaticoEntity | null) {
+    return {
+      bloquearParaOperarPiezas: vi.fn(async () => equipo),
+    } satisfies EquipoRepoFake;
+  }
+
+  function makeComponenteRepo() {
+    return { save: vi.fn(async () => {}) } satisfies ComponenteRepoFake;
+  }
+
+  function makeInsumoRepo(insumo: InsumoEntity | null) {
+    return { findById: vi.fn(async () => insumo) } satisfies Pick<IInsumoRepository, 'findById'>;
+  }
+
+  function makeFamiliaRepo(familia: FamiliaInsumoEntity | null) {
+    return { findById: vi.fn(async () => familia) } satisfies Pick<
+      IFamiliaInsumoRepository,
+      'findById'
+    >;
   }
 
   /** Arma los cuatro colaboradores con un equipo válido, un insumo y una familia dados. */
-  function armar(insumo: InsumoEntity | null, familia: FamiliaInsumoEntity | null) {
-    const equipo = makeEquipo();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo) };
-    const componenteRepo = { save: vi.fn() };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
-    const familiaInsumoRepo = { findById: vi.fn().mockResolvedValue(familia) };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo });
-    return { equipo, componenteRepo, insumoRepo, familiaInsumoRepo, useCase };
+  function armar(
+    insumo: InsumoEntity | null,
+    familia: FamiliaInsumoEntity | null,
+    equipo: EquipoInformaticoEntity | null = makeEquipo(),
+  ) {
+    const equipoRepo = makeEquipoRepo(equipo);
+    const componenteRepo = makeComponenteRepo();
+    const insumoRepo = makeInsumoRepo(insumo);
+    const familiaInsumoRepo = makeFamiliaRepo(familia);
+    const useCase = new AgregarComponenteUseCase(
+      equipoRepo,
+      componenteRepo,
+      insumoRepo,
+      familiaInsumoRepo,
+    );
+    const equipoId = equipo?.id ?? 'equipo-inexistente';
+    return { equipo, equipoId, equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo, useCase };
   }
 
   it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
-    const componenteRepo = { save: vi.fn() };
-    const useCase = makeUseCase({ equipoRepo, componenteRepo });
+    const { componenteRepo, useCase } = armar(null, null, null);
 
     const result = await useCase.execute({ equipoId: 'no-existe', insumoId: 'ins-1' });
 
@@ -90,11 +99,7 @@ describe('AgregarComponenteUseCase', () => {
   it('falla con EquipoNoEncontradoError si el equipo está soft-deleted', async () => {
     const equipo = makeEquipo();
     equipo.softDelete();
-    const componenteRepo = { save: vi.fn() };
-    const useCase = makeUseCase({
-      equipoRepo: { findById: vi.fn().mockResolvedValue(equipo) },
-      componenteRepo,
-    });
+    const { componenteRepo, useCase } = armar(null, null, equipo);
 
     const result = await useCase.execute({ equipoId: equipo.id, insumoId: 'ins-1' });
 
@@ -102,12 +107,47 @@ describe('AgregarComponenteUseCase', () => {
     expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
+  it('un equipo dado de baja falla con EquipoDadoDeBajaError, ni consulta el catálogo ni persiste (R11)', async () => {
+    const insumo = makeInsumo('fam-1');
+    const { equipoId, componenteRepo, insumoRepo, useCase } = armar(
+      insumo,
+      makeFamilia(true),
+      equipoDadoDeBaja(),
+    );
+
+    const preparado = await useCase.preparar({ equipoId, insumoId: insumo.id });
+    const ejecutado = await useCase.execute({ equipoId, insumoId: insumo.id });
+
+    expect(preparado.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+    expect(ejecutado.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+    expect(insumoRepo.findById).not.toHaveBeenCalled();
+    expect(componenteRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('lee el equipo con bloquearParaOperarPiezas (LE FOR SHARE) antes de tocar el catálogo', async () => {
+    const insumo = makeInsumo('fam-1');
+    const { equipo, equipoId, equipoRepo, insumoRepo, useCase } = armar(insumo, makeFamilia(true));
+    const orden: string[] = [];
+    equipoRepo.bloquearParaOperarPiezas.mockImplementation(async () => {
+      orden.push('lockEquipo');
+      return equipo;
+    });
+    insumoRepo.findById.mockImplementation(async () => {
+      orden.push('insumo');
+      return insumo;
+    });
+
+    await useCase.preparar({ equipoId, insumoId: insumo.id });
+
+    expect(orden).toEqual(['lockEquipo', 'insumo']);
+  });
+
   it('alta sin insumoId: falla y no persiste ni consulta el catálogo', async () => {
-    const { equipo, componenteRepo, insumoRepo, useCase } = armar(null, null);
+    const { equipoId, componenteRepo, insumoRepo, useCase } = armar(null, null);
 
     // Un llamador que salte la validación del borde (insumoId vacío o ausente).
-    const vacio = await useCase.execute({ equipoId: equipo.id, insumoId: '' });
-    const ausente = await useCase.execute({ equipoId: equipo.id } as never);
+    const vacio = await useCase.execute({ equipoId, insumoId: '' });
+    const ausente = await useCase.execute({ equipoId, insumoId: undefined as unknown as string });
 
     expect(vacio.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
     expect(ausente.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
@@ -117,16 +157,16 @@ describe('AgregarComponenteUseCase', () => {
 
   describe('cada guard rechaza con su error propio y no persiste', () => {
     it('insumo inexistente → InsumoRepuestoInexistenteError', async () => {
-      const { equipo, componenteRepo, useCase } = armar(null, null);
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: 'ins-x' });
+      const { equipoId, componenteRepo, useCase } = armar(null, null);
+      const result = await useCase.execute({ equipoId, insumoId: 'ins-x' });
       expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
 
     it('insumo inactivo → InsumoRepuestoInexistenteError', async () => {
       const insumo = makeInsumo('fam-1', false);
-      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true));
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(true));
+      const result = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
@@ -134,16 +174,16 @@ describe('AgregarComponenteUseCase', () => {
     it('insumo soft-deleted (con activo: true) → InsumoRepuestoInexistenteError', async () => {
       const insumo = makeInsumo('fam-1');
       insumo.softDelete();
-      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true));
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(true));
+      const result = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
 
     it('familia inexistente → InsumoRepuestoInexistenteError', async () => {
       const insumo = makeInsumo('fam-1');
-      const { equipo, componenteRepo, useCase } = armar(insumo, null);
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const { equipoId, componenteRepo, useCase } = armar(insumo, null);
+      const result = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
@@ -152,24 +192,27 @@ describe('AgregarComponenteUseCase', () => {
       const insumo = makeInsumo('fam-1');
       const familia = makeFamilia(true);
       familia.softDelete();
-      const { equipo, componenteRepo, useCase } = armar(insumo, familia);
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const { equipoId, componenteRepo, useCase } = armar(insumo, familia);
+      const result = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(result.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
 
     it('familia no repuesto (consumible) → InsumoNoEsRepuestoError', async () => {
       const insumo = makeInsumo('fam-1');
-      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(false));
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(false));
+      const result = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(result.getError()).toBeInstanceOf(InsumoNoEsRepuestoError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
 
     it('familia repuesto deshabilitada → FamiliaRepuestoDeshabilitadaError', async () => {
       const insumo = makeInsumo('fam-1');
-      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE', false));
-      const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const { equipoId, componenteRepo, useCase } = armar(
+        insumo,
+        makeFamilia(true, 'MOUSE', false),
+      );
+      const result = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(result.getError()).toBeInstanceOf(FamiliaRepuestoDeshabilitadaError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
     });
@@ -177,10 +220,10 @@ describe('AgregarComponenteUseCase', () => {
 
   it('alta válida: el componente queda vinculado al insumo y se guarda', async () => {
     const insumo = makeInsumo('fam-1');
-    const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TECLADO'));
+    const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TECLADO'));
 
     const result = await useCase.execute({
-      equipoId: equipo.id,
+      equipoId,
       insumoId: insumo.id,
       descripcion: 'Teclado USB',
       numeroSerie: 'SN-1',
@@ -198,9 +241,9 @@ describe('AgregarComponenteUseCase', () => {
 
   it('familia propia del tenant sin catálogo global (TORNILLO) se vincula sin consultar MASTER', async () => {
     const insumo = makeInsumo('fam-propia');
-    const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TORNILLO'));
+    const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'TORNILLO'));
 
-    const result = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+    const result = await useCase.execute({ equipoId, insumoId: insumo.id });
 
     expect(result.isOk()).toBe(true);
     expect(componenteRepo.save).toHaveBeenCalledTimes(1);
@@ -208,10 +251,10 @@ describe('AgregarComponenteUseCase', () => {
 
   it('permite N componentes del mismo tipo por equipo (sin restricción de unicidad)', async () => {
     const insumo = makeInsumo('fam-1');
-    const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+    const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
 
-    const r1 = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
-    const r2 = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+    const r1 = await useCase.execute({ equipoId, insumoId: insumo.id });
+    const r2 = await useCase.execute({ equipoId, insumoId: insumo.id });
 
     expect(r1.isOk()).toBe(true);
     expect(r2.isOk()).toBe(true);
@@ -226,24 +269,24 @@ describe('AgregarComponenteUseCase', () => {
   describe('preparar() (ADR-7)', () => {
     it('valida y construye el componente SIN guardarlo; execute() es preparar() + save()', async () => {
       const insumo = makeInsumo('fam-1');
-      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+      const { equipoId, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
 
-      const preparado = await useCase.preparar({ equipoId: equipo.id, insumoId: insumo.id });
+      const preparado = await useCase.preparar({ equipoId, insumoId: insumo.id });
 
       expect(preparado.isOk()).toBe(true);
       expect(componenteRepo.save).not.toHaveBeenCalled();
 
-      const guardado = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      const guardado = await useCase.execute({ equipoId, insumoId: insumo.id });
       expect(guardado.isOk()).toBe(true);
       expect(componenteRepo.save).toHaveBeenCalledWith(guardado.getValue());
     });
 
     it('con unidadId la entidad lleva la unidad y numeroSerie NULL, aunque el body traiga uno', async () => {
       const insumo = makeInsumo('fam-1');
-      const { equipo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+      const { equipoId, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
 
       const preparado = await useCase.preparar({
-        equipoId: equipo.id,
+        equipoId,
         insumoId: insumo.id,
         unidadId: 'unidad-1',
         numeroSerie: 'IGNORADO',
@@ -255,10 +298,10 @@ describe('AgregarComponenteUseCase', () => {
 
     it('sin unidadId conserva el serial de texto y unidadId NULL', async () => {
       const insumo = makeInsumo('fam-1');
-      const { equipo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+      const { equipoId, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
 
       const preparado = await useCase.preparar({
-        equipoId: equipo.id,
+        equipoId,
         insumoId: insumo.id,
         numeroSerie: 'SN-9',
       });

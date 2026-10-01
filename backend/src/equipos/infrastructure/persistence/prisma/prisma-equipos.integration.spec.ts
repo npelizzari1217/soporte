@@ -268,15 +268,81 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       ).rejects.toThrow();
     });
 
-    it('deactivate() + save() persiste activo=false sin tocar deletedAt', async () => {
+    const DATOS_BAJA = {
+      destino: 'DESCARTE' as const,
+      categoria: 'ROTURA' as const,
+      motivo: 'no enciende',
+      usuarioId: '00000000-0000-4000-8000-000000000001',
+      fecha: new Date('2026-10-01T12:00:00Z'),
+    };
+
+    it('save() de una entidad leída antes de la baja no reactiva el equipo ni toca baja_* (ediciones viejas)', async () => {
       const equipo = await crearEquipo();
-      equipo.deactivate();
+      const vieja = await withTenant(async () => equipoRepo.findById(equipo.id));
+      const aBajar = await withTenant(async () => equipoRepo.findById(equipo.id));
+      aBajar!.darDeBaja(DATOS_BAJA);
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(aBajar!)).toBe(true);
+      });
+
+      vieja!.actualizar({ nombre: 'Nombre editado' });
+      await withTenant(async () => {
+        await equipoRepo.save(vieja!);
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.nombre).toBe('Nombre editado');
+        expect(found!.activo).toBe(false);
+        expect(found!.bajaDestino).toBe('DESCARTE');
+        expect(found!.bajaCategoria).toBe('ROTURA');
+        expect(found!.bajaMotivo).toBe('no enciende');
+        expect(found!.bajaUsuarioId).toBe(DATOS_BAJA.usuarioId);
+      });
+    });
+
+    it('registrarBaja() escribe los cinco campos sin tocar deletedAt', async () => {
+      const equipo = await crearEquipo();
+      equipo.darDeBaja(DATOS_BAJA);
 
       await withTenant(async () => {
-        await equipoRepo.save(equipo);
+        expect(await equipoRepo.registrarBaja(equipo)).toBe(true);
         const found = await equipoRepo.findById(equipo.id);
         expect(found!.activo).toBe(false);
         expect(found!.isDeleted()).toBe(false);
+        expect(found!.bajaDestino).toBe('DESCARTE');
+        expect(found!.bajaCategoria).toBe('ROTURA');
+        expect(found!.bajaMotivo).toBe('no enciende');
+        expect(found!.bajaFecha).toEqual(DATOS_BAJA.fecha);
+        expect(found!.bajaUsuarioId).toBe(DATOS_BAJA.usuarioId);
+      });
+    });
+
+    it('registrarBaja() por segunda vez devuelve false y deja intactos los datos originales', async () => {
+      const equipo = await crearEquipo();
+      const otra = await withTenant(async () => equipoRepo.findById(equipo.id));
+      equipo.darDeBaja(DATOS_BAJA);
+      otra!.darDeBaja({ ...DATOS_BAJA, categoria: 'VEJEZ', destino: 'STOCK_USADO', motivo: null });
+
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(equipo)).toBe(true);
+        expect(await equipoRepo.registrarBaja(otra!)).toBe(false);
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.bajaDestino).toBe('DESCARTE');
+        expect(found!.bajaCategoria).toBe('ROTURA');
+        expect(found!.bajaMotivo).toBe('no enciende');
+      });
+    });
+
+    it('registrarBaja() sobre un equipo con borrado lógico devuelve false', async () => {
+      const equipo = await crearEquipo();
+      await withTenant(async () => {
+        await equipoRepo.delete(equipo.id);
+      });
+      equipo.darDeBaja(DATOS_BAJA);
+
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(equipo)).toBe(false);
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.activo).toBe(true);
+        expect(found!.bajaDestino).toBeNull();
       });
     });
 
@@ -524,6 +590,99 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
         expect(porEquipo.map((t) => t.id)).toContain(ticketSoporte.id);
       });
       ticketIdsCreados.push(ticket.id);
+    });
+
+    describe('contarAbiertosPorEquipo() (baja-equipo-completo, R10)', () => {
+      /** Estados propios de la prueba (codigo con prefijo de corrida): no dependen del seed. */
+      const estadoIdsCreados: string[] = [];
+
+      afterEach(async () => {
+        // Los tickets se limpian en `afterAll`; los estados de esta prueba van cuando ya no
+        // hay tickets que los referencien.
+        if (estadoIdsCreados.length > 0) {
+          await tenantClient.ticketSoporte.deleteMany({
+            where: { ticket: { estadoId: { in: estadoIdsCreados } } },
+          });
+          await tenantClient.ticket.deleteMany({ where: { estadoId: { in: estadoIdsCreados } } });
+          await tenantClient.estado.deleteMany({ where: { id: { in: estadoIdsCreados } } });
+          estadoIdsCreados.length = 0;
+        }
+      });
+
+      async function crearEstado(codigo: string): Promise<string> {
+        const estado = await tenantClient.estado.create({
+          data: { codigo: `T11_${RUN_PREFIX}_${codigo}`, nombre: codigo, orden: 1, activo: true },
+        });
+        estadoIdsCreados.push(estado.id);
+        return estado.id;
+      }
+
+      async function crearTicketSoporte(
+        equipoId: string,
+        estadoId: string,
+        borrado: 'ninguno' | 'ticket' | 'satelite' = 'ninguno',
+      ): Promise<void> {
+        const ticket = TicketEntity.create(makeTicketProps({ estadoId }));
+        const satelite = TicketSoporteEntity.create({
+          ticketId: ticket.id,
+          equipoId,
+          descripcionProblema: 'Conteo de abiertos',
+        });
+        await withTenant(async () => {
+          await ticketRepo.save(ticket);
+          await ticketSoporteRepo.save(satelite);
+        });
+        if (borrado === 'ticket') {
+          await tenantClient.ticket.update({
+            where: { id: ticket.id },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (borrado === 'satelite') {
+          await tenantClient.ticketSoporte.update({
+            where: { id: satelite.id },
+            data: { deletedAt: new Date() },
+          });
+        }
+      }
+
+      it('RESUELTO cuenta como abierto; CERRADO, CANCELADO y los borrados no', async () => {
+        const equipo = await crearEquipo();
+        const otro = await crearEquipo();
+        const nuevo = await crearEstado('NUEVO');
+        const resuelto = await crearEstado('RESUELTO');
+        const cerrado = await crearEstado('CERRADO');
+        const cancelado = await crearEstado('CANCELADO');
+        const terminales = [`T11_${RUN_PREFIX}_CERRADO`, `T11_${RUN_PREFIX}_CANCELADO`];
+
+        await crearTicketSoporte(equipo.id, nuevo);
+        await crearTicketSoporte(equipo.id, resuelto);
+        await crearTicketSoporte(equipo.id, cerrado);
+        await crearTicketSoporte(equipo.id, cancelado);
+        await crearTicketSoporte(equipo.id, nuevo, 'ticket');
+        await crearTicketSoporte(equipo.id, nuevo, 'satelite');
+        await crearTicketSoporte(otro.id, nuevo);
+
+        const abiertos = await withTenant(() =>
+          ticketSoporteRepo.contarAbiertosPorEquipo(equipo.id, terminales),
+        );
+        const delOtro = await withTenant(() =>
+          ticketSoporteRepo.contarAbiertosPorEquipo(otro.id, terminales),
+        );
+
+        expect(abiertos).toBe(2);
+        expect(delOtro).toBe(1);
+      });
+
+      it('un equipo sin tickets cuenta cero', async () => {
+        const equipo = await crearEquipo();
+
+        const abiertos = await withTenant(() =>
+          ticketSoporteRepo.contarAbiertosPorEquipo(equipo.id, ['CERRADO', 'CANCELADO']),
+        );
+
+        expect(abiertos).toBe(0);
+      });
     });
   });
 });

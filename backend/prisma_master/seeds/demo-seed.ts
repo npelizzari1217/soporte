@@ -106,7 +106,7 @@ import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cas
 
 import { CrearEquipoUseCase } from '../../src/equipos/application/use-cases/crear-equipo.use-case';
 import { CrearInsumoUseCase } from '../../src/insumos/application/use-cases/crear-insumo.use-case';
-import { AgregarComponenteUseCase } from '../../src/equipos/application/use-cases/agregar-componente.use-case';
+import { AgregarComponenteSinDescuentoUseCase } from '../../src/equipos/application/use-cases/agregar-componente-sin-descuento.use-case';
 import { CrearTicketSoporteUseCase } from '../../src/equipos/application/use-cases/crear-ticket-soporte.use-case';
 
 
@@ -473,7 +473,7 @@ async function crearEquiposDemo(
   usuarios: UsuariosDemo,
 ): Promise<void> {
   const crearEquipo = app.get(CrearEquipoUseCase);
-  const agregarComponente = app.get(AgregarComponenteUseCase);
+  const agregarComponente = app.get(AgregarComponenteSinDescuentoUseCase);
 
   const notebook = await crearEquipo.execute({
     nombre: 'Notebook Dell Latitude 5420',
@@ -488,8 +488,9 @@ async function crearEquiposDemo(
   const notebookId = notebook.getValue().id;
 
   // Los componentes se vinculan a un insumo repuesto del catálogo (único camino
-  // de alta). Se vinculan SIN descuento de stock: `AgregarComponenteUseCase`
-  // solo guarda el vínculo. La familia y la unidad las siembra el alta del tenant.
+  // de alta). Se vinculan SIN descuento de stock (alta sin descuento): el caso de uso toma
+  // el lock del equipo dentro de su propia transacción y solo guarda el vínculo. La familia
+  // y la unidad las siembra el alta del tenant.
   const crearInsumo = app.get(CrearInsumoUseCase);
   const unidad = await tenantClient.unidadMedida.findUnique({ where: { codigo: 'UNI' } });
   if (!unidad) {
@@ -510,6 +511,7 @@ async function crearEquiposDemo(
     const r = await agregarComponente.execute({
       equipoId: notebookId,
       insumoId: insumo.getValue().id,
+      usuarioId: usuarios.usuario,
       capacidad,
     });
     if (r.isFail()) {

@@ -7,6 +7,7 @@ import {
   DestinoRetiroComponente,
 } from '../../domain/entities/componente-equipo.entity';
 import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
+import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import {
   ComponenteDadoDeBajaError,
   ComponenteNoEncontradoError,
@@ -57,7 +58,7 @@ export interface RetirarComponenteDto {
  * Fuera de la transacción: el componente existe y pertenece al equipo, está
  * activo y el motivo cumple la regla del destino.
  *
- * Dentro de `txRunner.run()`: con `STOCK_USADO` primero la ENTRADA (la FK de
+ * Dentro de `txRunner.run()`, primero el LE `FOR SHARE` del equipo; luego, con `STOCK_USADO` primero la ENTRADA (la FK de
  * `baja_movimiento_id` exige que el movimiento exista) y después la marca
  * condicional `WHERE deleted_at IS NULL`. Si la ENTRADA falla o la marca toca 0
  * filas (otro retiro llegó antes), se lanza `FalloRetiroDeComponente` para que
@@ -77,6 +78,7 @@ export interface RetirarComponenteDto {
 export class RetirarComponenteUseCase {
   constructor(
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>,
     private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'findById' | 'retirar'>,
     private readonly registrarEntrada: Pick<
       RegistrarEntradaInsumoUseCase,
@@ -103,6 +105,13 @@ export class RetirarComponenteUseCase {
 
     try {
       return await this.txRunner.run(async () => {
+        // LE `FOR SHARE` (ADR-2): primer lock de la transacción, antes de cualquier lock de
+        // insumos. Solo se toma el lock y no se evalúa `activo`: las piezas de un equipo dado de
+        // baja ya están retiradas, y el CAS de `retirar()` rechaza un segundo retiro. Si la baja
+        // del equipo comitea antes, este retiro espera acá y después encuentra el componente ya
+        // retirado.
+        await this.equipoRepo.bloquearParaOperarPiezas(dto.equipoId);
+
         let bajaMovimientoId: string | null = null;
 
         if (dto.destino === 'STOCK_USADO') {

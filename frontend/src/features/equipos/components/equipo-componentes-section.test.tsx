@@ -493,4 +493,89 @@ describe("EquipoComponentesSection", () => {
       }
     });
   });
+
+  describe("equipo dado de baja (equipoActivo = false)", () => {
+    const base = {
+      equipoId: EQUIPO_ID,
+      insumoId: "11111111-1111-4111-8111-111111111111",
+      tipoNombre: "Disco rígido",
+      tipoActivo: true,
+      descripcion: null,
+      numeroSerie: null,
+      capacidad: "1TB",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-02-01T00:00:00.000Z",
+    };
+    const componentes = [
+      { ...base, id: "vigente", activo: true, deletedAt: null },
+      {
+        ...base,
+        id: "descartado",
+        activo: false,
+        deletedAt: "2026-02-01T00:00:00.000Z",
+        bajaDestino: "DESCARTE" as const,
+      },
+      {
+        ...base,
+        id: "devuelto",
+        activo: false,
+        deletedAt: "2026-02-01T00:00:00.000Z",
+        bajaDestino: "STOCK_USADO" as const,
+      },
+    ];
+
+    it("oculta editar, retirar y reactivar pero conserva las filas y el destino del retiro", async () => {
+      renderWithProviders(
+        <EquipoComponentesSection
+          equipoId={EQUIPO_ID}
+          componentes={componentes}
+          equipoActivo={false}
+        />,
+        {
+          user: buildUser({
+            permisos: ["EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"],
+          }),
+        },
+      );
+
+      expect(
+        await screen.findByTestId("componente-vigente"),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button")).toBeNull();
+      expect(
+        within(screen.getByTestId("componente-descartado")).getByText(
+          /descartado:/i,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("componente-devuelto")).getByText(
+          /devuelto al stock:/i,
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("regresión del delta: un componente devuelto al stock no ofrece reactivar y la fila indica el destino (equipo vigente)", async () => {
+      renderWithProviders(
+        <EquipoComponentesSection
+          equipoId={EQUIPO_ID}
+          componentes={componentes}
+        />,
+        {
+          user: buildUser({
+            permisos: ["EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"],
+          }),
+        },
+      );
+
+      const devuelto = within(await screen.findByTestId("componente-devuelto"));
+      expect(devuelto.queryByRole("button", { name: /reactivar/i })).toBeNull();
+      expect(devuelto.getByText(/devuelto al stock:/i)).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("componente-descartado")).getByRole(
+          "button",
+          { name: /reactivar/i },
+        ),
+      ).toBeInTheDocument();
+    });
+  });
 });

@@ -9,11 +9,14 @@ import {
   UnidadNoAdmitidaError,
 } from '../../../insumos/domain/errors/unidades-insumo.errors';
 import {
+  EquipoDadoDeBajaError,
   EquipoNoEncontradoError,
   UnidadConAltaSinDescuentoError,
 } from '../../domain/errors/equipos.errors';
 import { Result } from '../../../shared/domain/result';
 import { txRunnerFake } from '../../../insumos/testing/tx-runner-fake';
+import { unstubbed } from '../../../testing/mocks';
+import { agregarComponenteSobreEquipoDadoDeBaja } from '../../testing/equipos-unit.fixtures';
 
 /**
  * WU-10b (sdd/repuestos-numero-de-serie, D3) — alta sin descuento.
@@ -179,5 +182,23 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
     expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
     expect(altaInstalada).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
+  });
+
+  it('equipo dado de baja: EquipoDadoDeBajaError sin crear componente ni unidad (R11)', async () => {
+    const { useCase: agregar, componenteRepo } = agregarComponenteSobreEquipoDadoDeBaja();
+    const operaciones = { altaInstalada: vi.fn() };
+    const useCase = new AgregarComponenteSinDescuentoUseCase(
+      txRunnerFake(),
+      agregar,
+      { findById: unstubbed('insumoRepo.findById') },
+      operaciones,
+      { save: componenteRepo.save, findById: unstubbed('componenteRepo.findById') },
+    );
+
+    const result = await useCase.execute(dto);
+
+    expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+    expect(operaciones.altaInstalada).not.toHaveBeenCalled();
+    expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 });

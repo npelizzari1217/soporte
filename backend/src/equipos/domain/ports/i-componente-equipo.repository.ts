@@ -25,6 +25,15 @@ export interface IComponenteEquipoRepository {
   save(componente: ComponenteEquipoEntity): Promise<void>;
 
   /**
+   * Edita los datos propios del componente (CAS, baja-equipo-completo ADR-5): escribe SOLO
+   * `descripcion`, `numeroSerie`, `capacidad` y `updatedAt` con
+   * `updateMany ... WHERE id = ? AND deleted_at IS NULL`. Devuelve `true` si tocó la fila y
+   * `false` si el componente ya está retirado (o no existe): una entidad leída antes de una baja
+   * del equipo o de un retiro individual no puede pisar `deleted_at` ni los `baja_*`.
+   */
+  editar(componente: ComponenteEquipoEntity): Promise<boolean>;
+
+  /**
    * Marca el retiro del componente: escribe deleted_at y las columnas de retiro
    * con `updateMany ... WHERE id = ? AND deleted_at IS NULL`. Devuelve `true` si
    * tocó la fila y `false` si ya estaba retirada: es la exclusión mutua entre

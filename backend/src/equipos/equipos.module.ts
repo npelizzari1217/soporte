@@ -75,6 +75,8 @@ import { AgregarComponenteSinDescuentoUseCase } from './application/use-cases/ag
 import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/instalar-componente-desde-deposito.use-case';
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
 import { RetirarComponenteUseCase } from './application/use-cases/retirar-componente.use-case';
+import { DarDeBajaEquipoUseCase } from './application/use-cases/dar-de-baja-equipo.use-case';
+import { ResumenBajaEquipoUseCase } from './application/use-cases/resumen-baja-equipo.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
@@ -198,9 +200,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: EliminarEquipoUseCase,
-      useFactory: (equipoRepo: IEquipoInformaticoRepository) =>
-        new EliminarEquipoUseCase(equipoRepo),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY],
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        componenteRepo: IComponenteEquipoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new EliminarEquipoUseCase(equipoRepo, componenteRepo, txRunner),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       // WU-3 (sdd/repuestos-vinculo-componente): agrega INSUMO_REPOSITORY y
@@ -290,25 +295,94 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: RetirarComponenteUseCase,
       useFactory: (
         txRunner: ITenantTransactionRunner,
+        equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
         registrarEntrada: RegistrarEntradaInsumoUseCase,
         operaciones: OperacionesUnidadInsumo,
-      ) => new RetirarComponenteUseCase(txRunner, componenteRepo, registrarEntrada, operaciones),
+      ) =>
+        new RetirarComponenteUseCase(
+          txRunner,
+          equipoRepo,
+          componenteRepo,
+          registrarEntrada,
+          operaciones,
+        ),
       inject: [
         TENANT_TX_RUNNER,
+        EQUIPO_INFORMATICO_REPOSITORY,
         COMPONENTE_EQUIPO_REPOSITORY,
         RegistrarEntradaInsumoUseCase,
         OperacionesUnidadInsumo,
       ],
     },
     {
+      // sdd/baja-equipo-completo (ADR-3): baja atomica del equipo con todas sus piezas. Compone
+      // la devolucion en lote (`registrarDevolucionesDeEquipo`) o el descarte de unidades
+      // (`descartarInstaladas`) con el CAS de componentes y de equipo, en UNA transaccion.
+      provide: DarDeBajaEquipoUseCase,
+      useFactory: (
+        txRunner: ITenantTransactionRunner,
+        equipoRepo: IEquipoInformaticoRepository,
+        componenteRepo: IComponenteEquipoRepository,
+        registrarEntrada: RegistrarEntradaInsumoUseCase,
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new DarDeBajaEquipoUseCase(
+          txRunner,
+          equipoRepo,
+          componenteRepo,
+          registrarEntrada,
+          operaciones,
+          () => new Date(),
+        ),
+      inject: [
+        TENANT_TX_RUNNER,
+        EQUIPO_INFORMATICO_REPOSITORY,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        RegistrarEntradaInsumoUseCase,
+        OperacionesUnidadInsumo,
+      ],
+    },
+    {
+      // sdd/baja-equipo-completo (ADR-6, ADR-7): resumen previo a la baja, de solo lectura y sin
+      // transaccion. Cuenta los tickets abiertos por el puerto del satelite de soporte.
+      provide: ResumenBajaEquipoUseCase,
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        componenteRepo: IComponenteEquipoRepository,
+        insumoRepo: IInsumoRepository,
+        ticketSoporteRepo: ITicketSoporteRepository,
+        registrarEntrada: RegistrarEntradaInsumoUseCase,
+      ) =>
+        new ResumenBajaEquipoUseCase(
+          equipoRepo,
+          componenteRepo,
+          insumoRepo,
+          ticketSoporteRepo,
+          registrarEntrada,
+        ),
+      inject: [
+        EQUIPO_INFORMATICO_REPOSITORY,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        INSUMO_REPOSITORY,
+        TICKET_SOPORTE_REPOSITORY,
+        RegistrarEntradaInsumoUseCase,
+      ],
+    },
+    {
       provide: ReactivarComponenteUseCase,
       useFactory: (
         txRunner: ITenantTransactionRunner,
+        equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
         operaciones: OperacionesUnidadInsumo,
-      ) => new ReactivarComponenteUseCase(txRunner, componenteRepo, operaciones),
-      inject: [TENANT_TX_RUNNER, COMPONENTE_EQUIPO_REPOSITORY, OperacionesUnidadInsumo],
+      ) => new ReactivarComponenteUseCase(txRunner, equipoRepo, componenteRepo, operaciones),
+      inject: [
+        TENANT_TX_RUNNER,
+        EQUIPO_INFORMATICO_REPOSITORY,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        OperacionesUnidadInsumo,
+      ],
     },
     {
       provide: CrearTicketSoporteUseCase,

@@ -199,6 +199,7 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
   ) {
     return new RetirarComponenteUseCase(
       makeTxRunner(),
+      equipoRepo,
       repo,
       construirEntradaReal({
         tenantContext,

@@ -18,7 +18,7 @@ import { DomainError } from '../../../shared/domain/result';
 export class SerialDuplicadoError extends DomainError {
   readonly code = 'SERIAL_DUPLICADO';
 
-  constructor(serial: string) {
+  constructor(readonly serial: string) {
     super(
       `El número de serie "${serial}" ya está registrado para este insumo (en cualquier estado, incluso descartado).`,
     );
@@ -185,6 +185,30 @@ export class UnidadDelComponenteNoDisponibleError extends DomainError {
   constructor(componenteId: string) {
     super(
       `La unidad del componente "${componenteId}" ya no está disponible para reinstalarla: su último movimiento no fue el descarte de este componente.`,
+    );
+  }
+}
+
+/** Pieza que impide devolver un lote desde un equipo, con la causa que la bloquea. */
+export interface PiezaDevolucionProblematica {
+  componenteId: string;
+  insumoId: string | null;
+  causa: string;
+}
+
+/**
+ * DevolucionConPiezasProblematicasError — una o más piezas de un lote que vuelve
+ * de un equipo no pueden entrar al depósito. Lista TODAS, cada una con su causa,
+ * y se devuelve antes de escribir. El caso de uso de equipos la traduce a su
+ * propio error de baja.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class DevolucionConPiezasProblematicasError extends DomainError {
+  readonly code = 'DEVOLUCION_PIEZAS_PROBLEMATICAS';
+
+  constructor(readonly piezas: readonly PiezaDevolucionProblematica[]) {
+    super(
+      `${piezas.length} ${piezas.length === 1 ? 'pieza no puede' : 'piezas no pueden'} volver al depósito.`,
     );
   }
 }

@@ -5,6 +5,7 @@ import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equ
 import { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
 import { IFamiliaInsumoRepository } from '../../../insumos/domain/ports/i-familia-insumo.repository';
 import {
+  EquipoDadoDeBajaError,
   EquipoNoEncontradoError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
@@ -41,6 +42,10 @@ export interface AgregarComponenteDto {
  * y no se persiste nada.
  *
  * Guards, cada uno con su error de dominio propio:
+ * - equipo inexistente o con borrado lógico → `EquipoNoEncontradoError`; dado de baja
+ *   (`!activo`) → `EquipoDadoDeBajaError` (baja-equipo-completo R11). Se leen con
+ *   `bloquearParaOperarPiezas` (LE `FOR SHARE`), por lo que `preparar()` y `execute()`
+ *   exigen una transacción abierta.
  * - insumo inexistente, inactivo o soft-deleted → `InsumoRepuestoInexistenteError`
  *   (la FK no atrapa un insumo deshabilitado: la fila existe).
  * - familia inexistente o soft-deleted → `InsumoRepuestoInexistenteError`.
@@ -62,7 +67,7 @@ export interface AgregarComponenteDto {
  */
 export class AgregarComponenteUseCase {
   constructor(
-    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
+    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>,
     private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'save'>,
     private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
     private readonly familiaInsumoRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
@@ -82,9 +87,14 @@ export class AgregarComponenteUseCase {
    * el `numeroSerie` queda NULL: lo resuelve la unidad al leer (ADR-7).
    */
   async preparar(dto: AgregarComponenteDto): Promise<Result<ComponenteEquipoEntity, DomainError>> {
-    const equipo = await this.equipoRepo.findById(dto.equipoId);
+    // LE `FOR SHARE` (ADR-2): primer lock de la transacción del llamador. Serializa contra la
+    // baja y el borrado del equipo (que toman `FOR NO KEY UPDATE`) sin bloquear otras altas.
+    const equipo = await this.equipoRepo.bloquearParaOperarPiezas(dto.equipoId);
     if (!equipo || equipo.isDeleted()) {
       return Result.fail(new EquipoNoEncontradoError(dto.equipoId));
+    }
+    if (!equipo.activo) {
+      return Result.fail(new EquipoDadoDeBajaError(dto.equipoId));
     }
 
     // El use case no confía únicamente en la validación del borde HTTP.

@@ -43,7 +43,13 @@ function makeEquipoVigente(id: string, nombre: string): EquipoInformaticoEntity 
 
 function makeEquipoDadoDeBaja(id: string, nombre: string): EquipoInformaticoEntity {
   const equipo = makeEquipoVigente(id, nombre);
-  equipo.deactivate();
+  equipo.darDeBaja({
+    destino: 'DESCARTE',
+    categoria: 'VEJEZ',
+    motivo: null,
+    usuarioId: '00000000-0000-4000-8000-000000000001',
+    fecha: new Date('2026-10-01T12:00:00Z'),
+  });
   return equipo;
 }
 

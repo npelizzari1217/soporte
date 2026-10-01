@@ -19,8 +19,10 @@
  * (#2212). El botón "Nuevo equipo" (`EquipoCreateDialog`) SÍ gatea aparte
  * por `EQUIPOS:ALTAS`, que es la acción real que ejecuta.
  */
-import { useRouter } from "next/navigation";
-import { useEquipos } from "../hooks/use-equipos";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEquipos, queryStringEquipos } from "../hooks/use-equipos";
+import { useUrlFilters } from "@/shared/hooks/use-url-filters";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useSession } from "@/shared/hooks/use-session";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
@@ -69,7 +71,12 @@ function marcaDeEquipo(row: Equipo, catalogo: EstadoCatalogo<ModeloEquipo>): str
 
 export function EquiposListView() {
   const router = useRouter();
-  const equiposQuery = useEquipos();
+  const searchParams = useSearchParams();
+  const { updateFiltros } = useUrlFilters<{ incluirBajas: string; pagina: string }>("pagina");
+  // La URL es la fuente de verdad (deep-link y back/forward). Apagado por
+  // defecto: solo `?incluirBajas=true` lo enciende.
+  const incluirBajas = searchParams.get("incluirBajas") === "true";
+  const equiposQuery = useEquipos(true, { incluirBajas });
   const modelosQuery = useModelosEquipo();
   const { canModulo } = useSession();
 
@@ -96,14 +103,16 @@ export function EquiposListView() {
         actions={
           <>
             {/*
-              Sin filtros que pasar (sdd/exportar-listados-csv, capability
-              exportacion-equipos): el export siempre trae el inventario
-              activo completo, igual que `useEquipos()` de arriba.
+              La exportación sigue el mismo filtro que la lista (R11,
+              sdd/baja-equipo-completo): sin la casilla "Mostrar equipos dados
+              de baja" no manda parámetros y trae solo los vigentes; con ella
+              manda `?incluirBajas=true`, igual que `useEquipos` de arriba.
             */}
             <Can permiso="EQUIPOS:LECTURA">
               <ExportarCsvButton
                 recurso="equipos"
                 nombrePorDefecto="equipos.csv"
+                queryString={queryStringEquipos({ incluirBajas })}
                 etiqueta="Exportar a Excel"
               />
             </Can>
@@ -120,7 +129,16 @@ export function EquiposListView() {
         fallback={<ErrorState message="No tenés permiso para ver el inventario de equipos." />}
       >
         <div>
-          <div className="mb-3 flex justify-end">
+          <div className="mb-3 flex items-center justify-between gap-4">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Checkbox
+                checked={incluirBajas}
+                onCheckedChange={(checked) =>
+                  updateFiltros({ incluirBajas: checked === true ? "true" : "" }, { resetPage: false })
+                }
+              />
+              Mostrar equipos dados de baja
+            </label>
             <Can permiso="EQUIPOS:ALTAS">
               <EquipoCreateDialog />
             </Can>

@@ -1,7 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ReactivarComponenteUseCase } from './reactivar-componente.use-case';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import type { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
+import type { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
+import type { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
 import {
+  equipoDadoDeBaja,
+  equipoVigente,
+  txRunnerDeSpec,
+} from '../../testing/equipos-unit.fixtures';
+import {
+  EquipoDadoDeBajaError,
+  EquipoNoEncontradoError,
   ComponenteDevueltoAlStockError,
   ComponenteNoEncontradoError,
   ComponenteYaActivoError,
@@ -24,31 +35,45 @@ describe('ReactivarComponenteUseCase', () => {
     }).getValue();
   }
 
-  /** Arma el caso de uso con el orden de las escrituras registrado en `orden`. */
+  type ResultadoReinstalar = Awaited<ReturnType<OperacionesUnidadInsumo['reinstalar']>>;
+
+  /**
+   * Arma el caso de uso con el orden de las llamadas registrado en `orden`. `equipo` es lo que
+   * devuelve `bloquearParaOperarPiezas` (por defecto, un equipo vigente).
+   */
   function makeSetup(
     componente: ComponenteEquipoEntity | null,
-    reinstalar: unknown = Result.ok([]),
+    reinstalar: ResultadoReinstalar = Result.ok([]),
+    equipo: EquipoInformaticoEntity | null = equipoVigente(),
   ) {
     const orden: string[] = [];
-    const txRunner = { run: vi.fn((fn: () => unknown) => fn()) };
+    const txRunner = txRunnerDeSpec(orden);
+    vi.spyOn(txRunner, 'run');
+    const equipoRepo = {
+      bloquearParaOperarPiezas: vi.fn(async () => {
+        orden.push('lockEquipo');
+        return equipo;
+      }),
+    } satisfies Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>;
     const componenteRepo = {
-      findById: vi.fn().mockResolvedValue(componente),
+      findById: vi.fn(async () => componente),
       save: vi.fn(async () => {
         orden.push('save');
       }),
-    };
+    } satisfies Pick<IComponenteEquipoRepository, 'findById' | 'save'>;
     const operaciones = {
       reinstalar: vi.fn(async () => {
         orden.push('reinstalar');
         return reinstalar;
       }),
-    };
+    } satisfies Pick<OperacionesUnidadInsumo, 'reinstalar'>;
     const useCase = new ReactivarComponenteUseCase(
-      txRunner as never,
-      componenteRepo as never,
-      operaciones as never,
+      txRunner,
+      equipoRepo,
+      componenteRepo,
+      operaciones,
     );
-    return { useCase, txRunner, componenteRepo, operaciones, orden };
+    return { useCase, txRunner, equipoRepo, componenteRepo, operaciones, orden };
   }
 
   const dto = (componenteId: string, equipoId = 'equipo-1') => ({
@@ -98,6 +123,53 @@ describe('ReactivarComponenteUseCase', () => {
     expect(result.getValue().activo).toBe(true);
     expect(result.getValue().deletedAt).toBeNull();
     expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+  });
+
+  describe('equipo dado de baja (LE, R11)', () => {
+    it('toma el lock del equipo DENTRO de la transacción, antes de reinstalar o guardar', async () => {
+      const componente = makeComponente();
+      componente.softDelete();
+      const { useCase, orden } = makeSetup(componente);
+
+      await useCase.execute(dto(componente.id));
+
+      expect(orden).toEqual(['tx:inicio', 'lockEquipo', 'save', 'tx:fin']);
+    });
+
+    it('un equipo dado de baja falla con EquipoDadoDeBajaError sin tocar el componente ni la unidad', async () => {
+      const componente = makeComponente('unidad-1');
+      componente.retirar({
+        destino: 'DESCARTE',
+        motivo: 'Baja del equipo',
+        usuarioId: 'user-1',
+        bajaMovimientoId: null,
+      });
+      const { useCase, componenteRepo, operaciones } = makeSetup(
+        componente,
+        Result.ok([]),
+        equipoDadoDeBaja(),
+      );
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+      expect(operaciones.reinstalar).not.toHaveBeenCalled();
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(componente.activo).toBe(false);
+    });
+
+    it('un equipo inexistente o con borrado lógico falla con EquipoNoEncontradoError', async () => {
+      const componente = makeComponente();
+      componente.softDelete();
+      const borrado = equipoVigente();
+      borrado.softDelete();
+      for (const equipo of [null, borrado]) {
+        const { useCase, componenteRepo } = makeSetup(componente, Result.ok([]), equipo);
+        const result = await useCase.execute(dto(componente.id));
+        expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
+        expect(componenteRepo.save).not.toHaveBeenCalled();
+      }
+    });
   });
 
   describe('según el destino del retiro (sdd/stock-usado-componentes, ADR-5)', () => {
@@ -175,7 +247,7 @@ describe('ReactivarComponenteUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(txRunner.run).toHaveBeenCalledTimes(1);
-      expect(orden).toEqual(['reinstalar', 'save']);
+      expect(orden).toEqual(['tx:inicio', 'lockEquipo', 'reinstalar', 'save', 'tx:fin']);
       expect(operaciones.reinstalar).toHaveBeenCalledWith(
         [
           {
@@ -200,7 +272,7 @@ describe('ReactivarComponenteUseCase', () => {
       const result = await useCase.execute(dto(componente.id));
 
       expect(result.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
-      expect(orden).toEqual(['reinstalar']);
+      expect(orden).toEqual(['tx:inicio', 'lockEquipo', 'reinstalar', 'tx:fin']);
       expect(componenteRepo.save).not.toHaveBeenCalled();
       expect(componente.activo).toBe(false);
     });

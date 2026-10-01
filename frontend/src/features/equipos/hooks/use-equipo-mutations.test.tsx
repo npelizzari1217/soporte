@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { server } from "../../../../test/msw/server";
-import { useAgregarComponente } from "./use-equipo-mutations";
+import { useAgregarComponente, useDarDeBajaEquipo } from "./use-equipo-mutations";
 
 const EQUIPO_ID = "22222222-2222-2222-2222-222222222222";
 const INSUMO_ID = "11111111-1111-1111-1111-111111111111";
@@ -68,5 +68,43 @@ describe("useAgregarComponente", () => {
     expect(claves).toContain(JSON.stringify(["insumo", INSUMO_ID, "stock"]));
     expect(claves).toContain(JSON.stringify(["insumo", INSUMO_ID, "movimientos"]));
     expect(claves).toContain(JSON.stringify(["insumos"]));
+  });
+});
+
+describe("useDarDeBajaEquipo", () => {
+  it("pega a POST /equipos/:id/baja y al éxito invalida el listado, el detalle y los insumos", async () => {
+    let recibido: unknown = null;
+    server.use(
+      http.post(`*/equipos/${EQUIPO_ID}/baja`, async ({ request }) => {
+        recibido = await request.json();
+        return HttpResponse.json({ id: EQUIPO_ID, activo: false });
+      }),
+    );
+    const queryClient = buildClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useDarDeBajaEquipo(EQUIPO_ID), { wrapper: wrapper(queryClient) });
+
+    result.current.mutate({ destino: "DESCARTE", categoria: "VEJEZ" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(recibido).toEqual({ destino: "DESCARTE", categoria: "VEJEZ" });
+    const claves = invalidate.mock.calls.map(([filtro]) => filtro?.queryKey);
+    expect(claves).toEqual(expect.arrayContaining([["equipos"], ["equipo", EQUIPO_ID], ["insumos"]]));
+  });
+
+  it("con un 409 invalida el detalle (y con él el resumen) y no invalida el listado", async () => {
+    server.use(
+      http.post(`*/equipos/${EQUIPO_ID}/baja`, () =>
+        HttpResponse.json({ statusCode: 409, message: "cambió" }, { status: 409 }),
+      ),
+    );
+    const queryClient = buildClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useDarDeBajaEquipo(EQUIPO_ID), { wrapper: wrapper(queryClient) });
+
+    result.current.mutate({ destino: "STOCK_USADO", categoria: "VEJEZ" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(invalidate.mock.calls.map(([filtro]) => filtro?.queryKey)).toEqual([["equipo", EQUIPO_ID]]);
   });
 });

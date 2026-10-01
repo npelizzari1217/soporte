@@ -11,6 +11,8 @@
  *   GET    /equipos/:id                                       → ObtenerEquipoUseCase         `EQUIPOS:LECTURA`
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
+ *   GET    /equipos/:id/baja/resumen                          → ResumenBajaEquipoUseCase     `EQUIPOS:BORRADO` (baja-equipo-completo)
+ *   POST   /equipos/:id/baja                                  → DarDeBajaEquipoUseCase       `EQUIPOS:BORRADO` (baja-equipo-completo)
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteSinDescuentoUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
@@ -43,6 +45,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UnprocessableEntityException,
   UseGuards,
@@ -66,6 +69,11 @@ import { EditarComponenteUseCase } from '../../application/use-cases/editar-comp
 import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-componente.use-case';
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
 import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
+import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
+import {
+  ResumenBajaEquipo,
+  ResumenBajaEquipoUseCase,
+} from '../../application/use-cases/resumen-baja-equipo.use-case';
 
 import {
   EquipoNoEncontradoError,
@@ -84,6 +92,11 @@ import {
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
   UnidadConAltaSinDescuentoError,
+  EquipoDadoDeBajaError,
+  EquipoConComponentesActivosError,
+  MotivoBajaEquipoInvalidoError,
+  BajaEquipoConPiezasProblematicasError,
+  EquipoModificadoDuranteLaBajaError,
 } from '../../domain/errors/equipos.errors';
 
 import {
@@ -98,11 +111,13 @@ import {
   ComponenteResponseDto,
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
+  DarDeBajaEquipoHttpDto,
   EditarComponenteHttpDto,
   RetirarComponenteHttpDto,
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
+  ListarEquiposQueryDto,
   toComponenteResponseDto,
   toEquipoDetalleResponseDto,
   toEquipoResponseDto,
@@ -122,9 +137,47 @@ export function toHttpException(
   ) {
     return new NotFoundException(error.message);
   }
+  // Baja de equipo completo (baja-equipo-completo, R6): el conjunto de piezas cambió entre el
+  // chequeo previo y el lock del equipo. Nada se escribió y reintentar es seguro.
+  if (error instanceof EquipoModificadoDuranteLaBajaError) {
+    return new ConflictException(error.message);
+  }
   // Alta sin descuento de un insumo `SERIE` (D3): el serial ya lo tiene otra unidad.
   if (error instanceof SerialDuplicadoError) {
     return new ConflictException(error.message);
+  }
+  // Baja de equipo completo (ADR-7): con destino `STOCK_USADO`, lista TODAS las piezas que no
+  // pueden volver al depósito, cada una con su causa.
+  if (error instanceof BajaEquipoConPiezasProblematicasError) {
+    return new UnprocessableEntityException({
+      statusCode: 422,
+      message: error.message,
+      code: error.code,
+      piezas: error.piezas.map(({ componenteId, insumoId, causa }) => ({
+        componenteId,
+        insumoId,
+        causa,
+      })),
+    });
+  }
+  // El motivo de la baja no cabe (o la categoría no sirve): `largoMaximo` es el espacio
+  // disponible para el texto, el mismo que informa el resumen.
+  if (error instanceof MotivoBajaEquipoInvalidoError) {
+    return new UnprocessableEntityException({
+      statusCode: 422,
+      message: error.message,
+      code: error.code,
+      ...(error.largoMaximo === undefined ? {} : { largoMaximo: error.largoMaximo }),
+    });
+  }
+  // Borrar un equipo con piezas activas: informa la cantidad para que la pantalla ofrezca la baja.
+  if (error instanceof EquipoConComponentesActivosError) {
+    return new UnprocessableEntityException({
+      statusCode: 422,
+      message: error.message,
+      code: error.code,
+      cantidad: error.cantidad,
+    });
   }
   if (
     error instanceof EquipoInvalidoError ||
@@ -160,7 +213,9 @@ export function toHttpException(
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
     // línea en uno conocido.
-    error instanceof ExportacionDemasiadoGrandeError
+    error instanceof ExportacionDemasiadoGrandeError ||
+    // Baja de equipo completo (R8, R13): un equipo dado de baja no admite la operación.
+    error instanceof EquipoDadoDeBajaError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -215,6 +270,9 @@ export class EquiposController {
     private readonly instalarComponenteDesdeDepositoUseCase: InstalarComponenteDesdeDepositoUseCase,
     // sdd/stock-usado-componentes (WU-8a) — agregado al final por el mismo criterio.
     private readonly retirarComponenteUseCase: RetirarComponenteUseCase,
+    // sdd/baja-equipo-completo (WU-11) — agregados al final por el mismo criterio.
+    private readonly darDeBajaEquipoUseCase: DarDeBajaEquipoUseCase,
+    private readonly resumenBajaEquipoUseCase: ResumenBajaEquipoUseCase,
   ) {}
 
   /**
@@ -249,20 +307,23 @@ export class EquiposController {
 
   /**
    * GET /equipos
-   * Lista los equipos activos del inventario.
+   * Lista los equipos del inventario. Por defecto solo los vigentes; con `?incluirBajas=true`
+   * suma los dados de baja (R11, cada uno con su `baja`).
    */
   @Get()
   @RequiereAcciones('EQUIPOS:LECTURA')
-  async listar(): Promise<EquipoResponseDto[]> {
-    const result = await this.listarEquiposUseCase.execute();
+  async listar(@Query() query: ListarEquiposQueryDto): Promise<EquipoResponseDto[]> {
+    const result = await this.listarEquiposUseCase.execute({
+      incluirDadosDeBaja: query.incluirBajas ?? false,
+    });
     return result.getValue().map(toEquipoResponseDto);
   }
 
   /**
    * GET /equipos/export
-   * Exporta a CSV el inventario ACTIVO completo de equipos
-   * (sdd/exportar-listados-csv) — sin filtros, por diseño (spec, capability
-   * exportacion-equipos): cualquier query string que llegue se ignora.
+   * Exporta a CSV el inventario de equipos (sdd/exportar-listados-csv). Sigue el mismo filtro
+   * que la lista (R11): por defecto solo los vigentes; con `?incluirBajas=true` incluye los dados
+   * de baja, con "Baja" en la columna Estado. Cualquier otro query param se ignora.
    *
    * **Va declarada ANTES de `GET /equipos/:id`** (design D6): Nest resuelve las rutas
    * en el orden en que se registran y `:id` también matchea la palabra
@@ -274,8 +335,13 @@ export class EquiposController {
    */
   @Get('export')
   @RequiereAcciones('EQUIPOS:LECTURA')
-  async exportar(@Res({ passthrough: true }) res: RespuestaConHeaders): Promise<string> {
-    const result = await this.exportarEquiposUseCase.execute();
+  async exportar(
+    @Query() query: ListarEquiposQueryDto,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+  ): Promise<string> {
+    const result = await this.exportarEquiposUseCase.execute({
+      incluirDadosDeBaja: query.incluirBajas ?? false,
+    });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -350,8 +416,9 @@ export class EquiposController {
 
   /**
    * DELETE /equipos/:id
-   * Baja lógica (soft delete) del equipo.
+   * Borrado lógico (soft delete) de un equipo cargado por error.
    * @throws 404 equipo inexistente
+   * @throws 422 el equipo tiene piezas activas (informa la cantidad) o está dado de baja
    */
   @Delete(':id')
   @RequiereAcciones('EQUIPOS:BORRADO')
@@ -361,6 +428,69 @@ export class EquiposController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
+  }
+
+  /**
+   * GET /equipos/:id/baja/resumen
+   * Lo que el diálogo de baja muestra antes de confirmar: piezas activas con su serial y la causa
+   * que impediría devolverlas, tickets abiertos y el espacio del texto libre por categoría. Solo
+   * lectura. Exige `EQUIPOS:BORRADO`, la misma acción que la baja.
+   * @throws 404 equipo inexistente o con borrado lógico
+   * @throws 422 el equipo ya está dado de baja
+   */
+  @Get(':id/baja/resumen')
+  @RequiereAcciones('EQUIPOS:BORRADO')
+  async resumenBaja(@Param('id') id: string): Promise<ResumenBajaEquipo> {
+    if (!UUID_REGEX.test(id)) {
+      throw toHttpException(new EquipoNoEncontradoError(id));
+    }
+    const result = await this.resumenBajaEquipoUseCase.execute({ equipoId: id });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
+   * POST /equipos/:id/baja
+   * Da de baja el equipo con TODAS sus piezas activas en un mismo destino (`STOCK_USADO` o
+   * `DESCARTE`), todo o nada. `destino` es uno solo y obligatorio: un destino por pieza se
+   * descarta (R17). `usuarioId` sale de `JWT.sub`. Exige `EQUIPOS:BORRADO` y ningún permiso de
+   * insumos: el asiento de stock lo registra el caso de uso. Responde la ficha del equipo.
+   * @throws 400 `destino` o `categoria` ausentes o inválidos, `motivo` de más de 500 caracteres,
+   *   `seriales` con un `componenteId` repetido
+   * @throws 404 equipo inexistente o con borrado lógico
+   * @throws 409 las piezas cambiaron durante la baja (reintentable)
+   * @throws 422 equipo ya dado de baja, categoría `OTRA` sin texto, texto que no cabe
+   *   (`largoMaximo`), o piezas que no pueden volver al depósito (`piezas[]`)
+   */
+  @Post(':id/baja')
+  @RequiereAcciones('EQUIPOS:BORRADO')
+  @HttpCode(HttpStatus.OK)
+  async darDeBaja(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: DarDeBajaEquipoHttpDto,
+  ): Promise<EquipoDetalleResponseDto> {
+    if (!UUID_REGEX.test(id)) {
+      throw toHttpException(new EquipoNoEncontradoError(id));
+    }
+    const result = await this.darDeBajaEquipoUseCase.execute({
+      equipoId: id,
+      destino: dto.destino,
+      categoria: dto.categoria,
+      motivo: dto.motivo,
+      seriales: dto.seriales,
+      usuarioId: user.sub,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const detalle = await this.obtenerEquipoUseCase.execute({ equipoId: id });
+    if (detalle.isFail()) {
+      throw toHttpException(detalle.getError());
+    }
+    return toEquipoDetalleResponseDto(detalle.getValue());
   }
 
   /**

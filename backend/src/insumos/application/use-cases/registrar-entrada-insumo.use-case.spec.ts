@@ -60,7 +60,12 @@ describe('RegistrarEntradaInsumoUseCase', () => {
   }
 
   function buildOperaciones() {
-    return { ingresar: vi.fn(), devolverAlDeposito: vi.fn() };
+    return {
+      ingresar: vi.fn(),
+      devolverAlDeposito: vi.fn(),
+      devolverDesdeEquipo: vi.fn(),
+      serialesExistentes: vi.fn(),
+    };
   }
 
   /**

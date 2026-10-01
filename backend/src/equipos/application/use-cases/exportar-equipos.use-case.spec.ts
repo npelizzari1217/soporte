@@ -8,8 +8,9 @@
  *   `IEquipoInformaticoRepository` propio) — igual criterio D4 que tickets:
  *   con un solo argumento en el constructor no hay NADA que consultar por
  *   fila, el tipo lo impide.
- * - Sin filtros: `execute()` no recibe parámetros — `findAllActive()` no
- *   acepta ninguno (spec, "No filter parameters are accepted").
+ * - Un único filtro, `incluirDadosDeBaja` (R11, sdd/baja-equipo-completo): por defecto
+ *   `false` y se pasa tal cual a `ListarEquiposUseCase`, para que lista y exportación
+ *   sigan el mismo criterio.
  * - Columnas fijas y en orden: Nombre, Marca, N.º de serie, Estado.
  * - El tope de filas corta con un error de dominio, sin truncar en silencio.
  *   `total` es `items.length` (D4: no hay `count()` en el puerto — cap
@@ -55,7 +56,13 @@ function crearEquipo(
     id,
   );
   if (overrides.activo === false) {
-    equipo.deactivate();
+    equipo.darDeBaja({
+      destino: 'DESCARTE',
+      categoria: 'VEJEZ',
+      motivo: null,
+      usuarioId: '00000000-0000-4000-8000-000000000001',
+      fecha: new Date('2026-10-01T12:00:00Z'),
+    });
   }
   return equipo;
 }
@@ -91,13 +98,27 @@ describe('ExportarEquiposUseCase', () => {
     expect(filas[2]).toBe('Monitor LG;LG;;Baja');
   });
 
-  it('sin filtros: execute() no recibe parámetros ni se los pasa a ListarEquiposUseCase', async () => {
+  it('por defecto pide solo los vigentes a ListarEquiposUseCase (incluirDadosDeBaja=false)', async () => {
     const listarEquipos = crearListarEquiposFake([]);
     const useCase = new ExportarEquiposUseCase(listarEquipos);
 
     await useCase.execute();
 
-    expect(listarEquipos.execute).toHaveBeenCalledWith();
+    expect(listarEquipos.execute).toHaveBeenCalledWith({ incluirDadosDeBaja: false });
+  });
+
+  it('incluirDadosDeBaja=true se pasa a ListarEquiposUseCase y la fila del dado de baja dice "Baja"', async () => {
+    const activo = crearEquipo({ nombre: 'Vigente', numeroSerie: 'SN-1' }, 'e1');
+    const deBaja = crearEquipo({ nombre: 'Retirado', numeroSerie: 'SN-2', activo: false }, 'e2');
+    const listarEquipos = crearListarEquiposFake([activo, deBaja]);
+    const useCase = new ExportarEquiposUseCase(listarEquipos);
+
+    const result = await useCase.execute({ incluirDadosDeBaja: true });
+
+    expect(listarEquipos.execute).toHaveBeenCalledWith({ incluirDadosDeBaja: true });
+    const filas = lineas(result.getValue().contenido);
+    expect(filas[1]).toBe('Vigente;Dell;SN-1;Activo');
+    expect(filas[2]).toBe('Retirado;Dell;SN-2;Baja');
   });
 
   it('tope de filas: total === TOPE arma el archivo; total === TOPE + 1 falla y NO arma contenido', async () => {

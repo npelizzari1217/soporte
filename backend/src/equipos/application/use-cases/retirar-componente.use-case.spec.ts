@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { RetirarComponenteUseCase } from './retirar-componente.use-case';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { MovimientoInsumoEntity } from '../../../insumos/domain/entities/movimiento-insumo.entity';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { Result } from '../../../shared/domain/result';
 import {
   ComponenteDadoDeBajaError,
@@ -60,6 +61,12 @@ describe('RetirarComponenteUseCase', () => {
         return opciones.marcado ?? true;
       }),
     };
+    const equipoRepo = {
+      bloquearParaOperarPiezas: vi.fn(async () => {
+        orden.push('lock-equipo');
+        return null;
+      }),
+    } satisfies Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>;
     const registrarEntrada = {
       registrarDevolucionDeComponente: vi.fn(async () => {
         orden.push('entrada');
@@ -74,11 +81,12 @@ describe('RetirarComponenteUseCase', () => {
     };
     const useCase = new RetirarComponenteUseCase(
       txRunner as never,
+      equipoRepo,
       componenteRepo as never,
       registrarEntrada as never,
       operaciones as never,
     );
-    return { useCase, txRunner, componenteRepo, registrarEntrada, operaciones, orden };
+    return { useCase, txRunner, equipoRepo, componenteRepo, registrarEntrada, operaciones, orden };
   }
 
   const dto = (componenteId: string, extra: Record<string, unknown> = {}) => ({
@@ -96,7 +104,7 @@ describe('RetirarComponenteUseCase', () => {
     const result = await useCase.execute(dto(componente.id, { motivo: '  se cambio  ' }));
 
     expect(result.isOk()).toBe(true);
-    expect(orden).toEqual(['entrada', 'retirar']);
+    expect(orden).toEqual(['lock-equipo', 'entrada', 'retirar']);
     expect(txRunner.run).toHaveBeenCalledTimes(1);
     expect(registrarEntrada.registrarDevolucionDeComponente).toHaveBeenCalledWith({
       insumoId: 'insumo-1',
@@ -131,6 +139,25 @@ describe('RetirarComponenteUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(componente.bajaSinSalidaPrevia).toBe(true);
+  });
+
+  it('toma el lock del equipo (LE FOR SHARE) dentro de la transaccion, antes de cualquier escritura', async () => {
+    const componente = makeComponente('salida-1');
+    const { useCase, equipoRepo, txRunner } = makeSetup(componente);
+
+    await useCase.execute(dto(componente.id));
+
+    expect(equipoRepo.bloquearParaOperarPiezas).toHaveBeenCalledWith('equipo-1');
+    expect(txRunner.run).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechazos previos a la transaccion no toman el lock del equipo', async () => {
+    const { useCase, equipoRepo } = makeSetup(null);
+
+    const result = await useCase.execute(dto('inexistente'));
+
+    expect(result.getError()).toBeInstanceOf(ComponenteNoEncontradoError);
+    expect(equipoRepo.bloquearParaOperarPiezas).not.toHaveBeenCalled();
   });
 
   it('STOCK_USADO sin SALIDA vinculada y sin motivo: rechazo, sin transaccion ni movimiento', async () => {
@@ -231,7 +258,7 @@ describe('RetirarComponenteUseCase', () => {
 
     const result = await useCase.execute(dto(componente.id));
 
-    expect(orden).toEqual(['entrada', 'retirar']);
+    expect(orden).toEqual(['lock-equipo', 'entrada', 'retirar']);
     expect(result.getError()).toBeInstanceOf(ComponenteDadoDeBajaError);
     await expect(txRunner.run.mock.results[0].value).rejects.toThrow(/retiro del componente/);
   });
@@ -264,7 +291,7 @@ describe('RetirarComponenteUseCase', () => {
       const result = await useCase.execute(dto(componente.id, { numeroSerie: 'IGNORADO' }));
 
       expect(result.isOk()).toBe(true);
-      expect(orden).toEqual(['entrada', 'retirar']);
+      expect(orden).toEqual(['lock-equipo', 'entrada', 'retirar']);
       expect(registrarEntrada.registrarDevolucionDeComponente).toHaveBeenCalledWith(
         expect.objectContaining({ unidadId: 'unidad-1', componenteId: componente.id }),
       );
@@ -279,7 +306,7 @@ describe('RetirarComponenteUseCase', () => {
       );
 
       expect(result.isOk()).toBe(true);
-      expect(orden).toEqual(['descartar', 'retirar']);
+      expect(orden).toEqual(['lock-equipo', 'descartar', 'retirar']);
       expect(operaciones.descartarInstaladas).toHaveBeenCalledWith(
         [
           {

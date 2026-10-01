@@ -15,6 +15,7 @@ import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type {
   Componente,
   CreateComponenteDto,
+  BajaEquipoDto,
   CreateEquipoDto,
   EditarComponenteDto,
   EditarEquipoDto,
@@ -56,9 +57,35 @@ export function useEliminarEquipo() {
     mutationFn: (id: string) => apiFetch<void>(`equipos/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["equipos"] });
-      notifySuccess("Equipo dado de baja.");
+      notifySuccess("Equipo eliminado.");
     },
     onError: notifyError,
+  });
+}
+
+/**
+ * `POST /equipos/:id/baja`: baja del equipo completo (todo o nada). Devolver al
+ * stock mueve saldos y movimientos de varios insumos, por eso invalida el
+ * listado (todas sus variantes), el detalle y `["insumos"]`. Los errores (422
+ * de piezas o de motivo, 409 de reintento) los muestra el diálogo, no un toast.
+ */
+export function useDarDeBajaEquipo(equipoId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: BajaEquipoDto) => apiFetch<Equipo>(`equipos/${equipoId}/baja`, { method: "POST", json: dto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["equipos"] });
+      queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
+      queryClient.invalidateQueries({ queryKey: ["insumos"] });
+      notifySuccess("Equipo dado de baja.");
+    },
+    // 409 (el equipo cambió) y 422 (piezas, equipo ya dado de baja): el resumen y el detalle quedaron viejos.
+    // Invalidar `["equipo", id]` refresca los dos; no se reintenta la baja sola.
+    onError: (error) => {
+      if (error instanceof ApiError && (error.statusCode === 409 || error.statusCode === 422)) {
+        queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
+      }
+    },
   });
 }
 

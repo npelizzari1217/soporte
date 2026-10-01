@@ -69,9 +69,11 @@ const CELL_INACTIVO = "text-muted-foreground line-through";
 export interface EquipoComponentesSectionProps {
   equipoId: string;
   componentes: ComponenteConTipo[];
+  /** `false` = equipo dado de baja: la sección es de solo lectura (sin editar, retirar ni reactivar). Default `true`. */
+  equipoActivo?: boolean;
 }
 
-export function EquipoComponentesSection({ equipoId, componentes }: EquipoComponentesSectionProps) {
+export function EquipoComponentesSection({ equipoId, componentes, equipoActivo = true }: EquipoComponentesSectionProps) {
   const queryClient = useQueryClient();
   const componentesQuery = useQuery<ComponenteConTipo[]>({
     queryKey: ["componentes", equipoId],
@@ -140,7 +142,7 @@ export function EquipoComponentesSection({ equipoId, componentes }: EquipoCompon
                   {componente.capacidad ?? <span aria-hidden="true">—</span>}
                 </TableCell>
                 <TableCell rowSpan={2}>
-                  {componente.activo ? (
+                  {!equipoActivo ? null : componente.activo ? (
                     <div className="flex items-center gap-1">
                       <Can permiso="EQUIPOS:MODIFICACION">
                         <ComponenteEditDialog equipoId={equipoId} componente={componente} />

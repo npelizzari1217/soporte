@@ -8,6 +8,7 @@ import {
 import { parseImporte } from "./depreciacion";
 import { conDosDecimales } from "@/shared/lib/formato-numero";
 import { CONDICIONES_STOCK } from "@/features/insumos/types";
+import { CATEGORIAS_BAJA_EQUIPO, CAUSAS_PIEZA_BAJA } from "./types";
 
 /**
  * Topes de largo/rango de `equipos_informaticos`/`componentes_equipo`, espejo
@@ -298,3 +299,49 @@ export const retirarComponenteSchema = z
     }
   });
 export type RetirarComponenteFormValues = z.infer<typeof retirarComponenteSchema>;
+
+/**
+ * `baja` de `EquipoResponseDto` (R8): `null` mientras el equipo está vigente.
+ * Espejo del DTO del backend, que es la autoridad.
+ */
+export const bajaEquipoSchema = z
+  .object({
+    destino: z.enum(["STOCK_USADO", "DESCARTE"]),
+    categoria: z.enum(CATEGORIAS_BAJA_EQUIPO),
+    motivo: z.string().nullable(),
+    fecha: z.string().datetime(),
+    usuarioId: z.string().nullable(),
+  })
+  .nullable();
+
+/** Resumen previo a la baja (`GET /equipos/:id/baja/resumen`). */
+export const resumenBajaEquipoSchema = z.object({
+  equipoId: z.string(),
+  nombre: z.string(),
+  ticketsAbiertos: z.number(),
+  largoMaximoTexto: z.object({ VEJEZ: z.number(), DONACION: z.number(), ROTURA: z.number(), OTRA: z.number() }),
+  piezas: z.array(
+    z.object({
+      componenteId: z.string(),
+      descripcion: z.string().nullable(),
+      insumoId: z.string().nullable(),
+      insumoNombre: z.string().nullable(),
+      unidadId: z.string().nullable(),
+      numeroSerie: z.string().nullable(),
+      seguimiento: z.enum(["NINGUNO", "SERIE"]),
+      requiereSerial: z.boolean(),
+      serialSugerido: z.string().nullable(),
+      causaQueImpideDevolver: z.enum(CAUSAS_PIEZA_BAJA).nullable(),
+    }),
+  ),
+});
+
+/** Cuerpo del 422 `BAJA_EQUIPO_PIEZAS_PROBLEMATICAS` (`ApiError.raw`): todas las piezas juntas. */
+export const piezasProblematicasSchema = z.object({
+  piezas: z.array(
+    z.object({ componenteId: z.string(), insumoId: z.string().nullable(), causa: z.enum(CAUSAS_PIEZA_BAJA) }),
+  ),
+});
+
+/** Cuerpo del 422 `MOTIVO_BAJA_EQUIPO_INVALIDO`: `largoMaximo` solo viene con un texto demasiado largo. */
+export const motivoBajaInvalidoSchema = z.object({ code: z.literal("MOTIVO_BAJA_EQUIPO_INVALIDO"), largoMaximo: z.number().optional() });

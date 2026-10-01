@@ -2,10 +2,10 @@
 
 /**
  * EquipoDetailView — CONTAINER montado por `/equipos/[id]` (T5.13). Edición en
- * MODAL (`EquipoEditDialog`) + baja lógica detrás de `ConfirmDialog` +
+ * MODAL (`EquipoEditDialog`) + borrado (equipo cargado por error) detrás de `ConfirmDialog` +
  * componentes. Gates por acción (WU-7.6, `sdd/matriz-permisos-por-usuario`):
  * `EQUIPOS:ALTAS` (agregar componente), `EQUIPOS:MODIFICACION` (editar
- * equipo), `EQUIPOS:BORRADO` (dar de baja) — separados, ya no un único
+ * equipo), `EQUIPOS:BORRADO` (dar de baja el equipo completo y eliminar uno cargado por error) — separados, ya no un único
  * `equipo:gestionar` para las tres mutaciones. Consistente con
  * `EquiposController`. La asignación a personas se eliminó del dominio Equipos
  * — vive solo en `Ticket`.
@@ -26,6 +26,8 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { ComponenteCreateDialog } from "./componente-create-dialog";
+import { EquipoBajaBanner } from "./equipo-baja-banner";
+import { EquipoBajaDialog } from "./equipo-baja-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 
@@ -51,6 +53,8 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
   }
 
   const equipo = equipoQuery.data;
+  // Un equipo dado de baja es de solo lectura: la baja es definitiva (R8).
+  const equipoActivo = equipo.activo;
 
   return (
     <div className="flex flex-col gap-6">
@@ -58,33 +62,46 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         title={equipo.nombre}
         description={equipo.numeroSerie ?? undefined}
         actions={
-          <div className="flex items-center gap-2">
-            <Can permiso="EQUIPOS:ALTAS">
-              <ComponenteCreateDialog equipoId={equipo.id} />
-            </Can>
-            <Can permiso="EQUIPOS:MODIFICACION">
-              <EquipoEditDialog equipo={equipo} />
-            </Can>
-            <Can permiso="EQUIPOS:BORRADO">
-              <ConfirmDialog
-                trigger={
-                  <Button variant="destructive" size="sm">
-                    Dar de baja
-                  </Button>
-                }
-                title="Dar de baja equipo"
-                description={`¿Confirmás dar de baja "${equipo.nombre}"?`}
-                confirmLabel="Dar de baja"
-                confirmVariant="destructive"
-                isConfirming={eliminarMutation.isPending}
-                onConfirm={() => eliminarMutation.mutate(equipo.id, { onSuccess: () => router.push("/equipos") })}
-              />
-            </Can>
-          </div>
+          equipoActivo ? (
+            <div className="flex items-center gap-2">
+              <Can permiso="EQUIPOS:ALTAS">
+                <ComponenteCreateDialog equipoId={equipo.id} />
+              </Can>
+              <Can permiso="EQUIPOS:MODIFICACION">
+                <EquipoEditDialog equipo={equipo} />
+              </Can>
+              <Can permiso="EQUIPOS:BORRADO">
+                <EquipoBajaDialog equipoId={equipo.id} />
+                <ConfirmDialog
+                  trigger={
+                    <Button variant="destructive" size="sm">
+                      Eliminar equipo (cargado por error)
+                    </Button>
+                  }
+                  title="Eliminar equipo"
+                  description={`¿Confirmás eliminar "${equipo.nombre}"? Solo para equipos cargados por error. Si tiene piezas instaladas, dalo de baja.`}
+                  confirmLabel="Eliminar equipo"
+                  confirmVariant="destructive"
+                  isConfirming={eliminarMutation.isPending}
+                  onConfirm={() =>
+                    eliminarMutation.mutate(equipo.id, {
+                      onSuccess: () => router.push("/equipos"),
+                    })
+                  }
+                />
+              </Can>
+            </div>
+          ) : undefined
         }
       />
 
-      <EquipoComponentesSection equipoId={equipo.id} componentes={equipo.componentes} />
+      {!equipoActivo && <EquipoBajaBanner baja={equipo.baja} />}
+
+      <EquipoComponentesSection
+        equipoId={equipo.id}
+        componentes={equipo.componentes}
+        equipoActivo={equipoActivo}
+      />
     </div>
   );
 }
