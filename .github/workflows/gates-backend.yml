@@ -27,8 +27,13 @@ on:
       - 'backend/**'
       - '.nvmrc'
       - '.github/workflows/gates-backend.yml'
+      # Vive en la raiz pero lo corre este workflow: sin esta ruta, bajar la
+      # linea base del ratchet no dispara la compuerta que la mide.
+      - 'scripts/check-casts-en-specs.mjs'
   pull_request:
     paths: *rutas
+  # Relanzar sobre main sin un push que toque las rutas de arriba.
+  workflow_dispatch:
 
 concurrency:
   group: gates-backend-${{ github.ref }}
