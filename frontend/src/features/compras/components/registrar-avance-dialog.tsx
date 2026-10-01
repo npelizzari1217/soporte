@@ -50,7 +50,11 @@ import {
   type RegistrarRecepcionDeItemFormValues,
   type RegistrarEntregaDeItemFormValues,
 } from "../schemas";
+import { SerialesInput } from "@/features/insumos/components/seriales-input";
+import { useStockInsumo } from "@/features/insumos/hooks/use-stock-insumo";
+import { useSerialesRecepcion } from "../hooks/use-seriales-recepcion";
 import { aFechaInput, hoyFechaCalendario } from "@/shared/lib/formato-fecha";
+import { parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 import type { ItemCompra } from "../types";
 
 export interface RegistrarAvanceDialogProps {
@@ -168,7 +172,9 @@ export function RegistrarOrdenDialog({ compraId, item }: RegistrarAvanceDialogPr
 /** Requiere `cantidadOrdenada > 0` (si no, cualquier recepción excede lo ordenado, S43). */
 export function RegistrarRecepcionDialog({ compraId, item }: RegistrarAvanceDialogProps) {
   const [open, setOpen] = useState(false);
-  const registrarMutation = useRegistrarRecepcionDeItem(compraId);
+  const registrarMutation = useRegistrarRecepcionDeItem(compraId, item.insumoId);
+  const stockQuery = useStockInsumo(item.insumoId ?? "", { refetchOnMount: false });
+  const esSerie = !!item.insumoId && stockQuery.data?.seguimiento === "SERIE";
   const puedeRegistrar = item.cantidadOrdenada > 0 && !item.cerradoConFaltante;
   const defaultCantidad = item.cantidadRecibida > 0 ? item.cantidadRecibida : item.cantidadOrdenada;
   const defaultFecha = fechaODefault(item.fechaRecepcion);
@@ -187,9 +193,25 @@ export function RegistrarRecepcionDialog({ compraId, item }: RegistrarAvanceDial
   const sinCambio =
     Number(watch("cantidadRecibida")) === item.cantidadRecibida && watch("fecha") === defaultFecha;
 
+  // Los seriales son solo de las piezas NUEVAS: el delta, no el acumulado.
+  const tipeada = watch("cantidadRecibida");
+  const recibida = typeof tipeada === "number" ? tipeada : (parsearNumeroEsAr(String(tipeada ?? "")) ?? Number.NaN);
+  const delta = Math.round((recibida - item.cantidadRecibida) * 100) / 100;
+  const seriales = useSerialesRecepcion(esSerie, delta);
+
   function submit(values: RegistrarRecepcionDeItemFormValues) {
+    const paraEnviar = seriales.validar();
+    if (paraEnviar === null) return;
+    if (esSerie && seriales.cantidad === null) return;
     registrarMutation.mutate(
-      { itemId: item.id, dto: { cantidadRecibida: values.cantidadRecibida, fecha: values.fecha } },
+      {
+        itemId: item.id,
+        dto: {
+          cantidadRecibida: values.cantidadRecibida,
+          fecha: values.fecha,
+          ...(paraEnviar ? { seriales: paraEnviar } : {}),
+        },
+      },
       { onSuccess: () => setOpen(false) },
     );
   }
@@ -199,6 +221,7 @@ export function RegistrarRecepcionDialog({ compraId, item }: RegistrarAvanceDial
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
+        seriales.reiniciar();
         if (next) reset({ cantidadRecibida: defaultCantidad, fecha: defaultFecha });
       }}
     >
@@ -238,6 +261,23 @@ export function RegistrarRecepcionDialog({ compraId, item }: RegistrarAvanceDial
               </p>
             )}
           </div>
+          {seriales.requiere && seriales.cantidad !== 0 && (
+            <>
+              <SerialesInput
+                id="registrar-recepcion-serial"
+                cantidad={seriales.cantidad}
+                valores={seriales.valores}
+                errores={seriales.errores}
+                onChange={seriales.onChange}
+              />
+              {seriales.pendientes > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Las piezas sin número de serie quedan pendientes: lo cargás después desde la ficha del insumo (
+                  {seriales.pendientes} pendiente{seriales.pendientes === 1 ? "" : "s"}).
+                </p>
+              )}
+            </>
+          )}
           <div className="flex flex-col gap-1">
             <label htmlFor="registrar-recepcion-fecha" className="text-sm font-medium text-foreground">
               Fecha

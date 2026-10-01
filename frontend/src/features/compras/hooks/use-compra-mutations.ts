@@ -179,7 +179,7 @@ export function useRegistrarOrdenDeItem(compraId: string) {
  * etapas. **Rename de ruta** (WU-26): reemplaza a `useRegistrarCompraDeItem`
  * / `registrar-compra`. `cantidadRecibida` es ACUMULADO, no delta.
  */
-export function useRegistrarRecepcionDeItem(compraId: string) {
+export function useRegistrarRecepcionDeItem(compraId: string, insumoId: string | null = null) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ itemId, dto }: { itemId: string; dto: RegistrarRecepcionDeItemDto }) =>
@@ -189,6 +189,11 @@ export function useRegistrarRecepcionDeItem(compraId: string) {
       }),
     onSuccess: () => {
       invalidateCompraQueries(queryClient, compraId);
+      if (insumoId) {
+        // El stock sube por el delta y, para un insumo SERIE, nacen unidades.
+        queryClient.invalidateQueries({ queryKey: ["insumo", insumoId, "stock"] });
+        queryClient.invalidateQueries({ queryKey: ["insumo", insumoId, "unidades"] });
+      }
       notifySuccess("Recepción registrada.");
     },
     onError: notifyError,

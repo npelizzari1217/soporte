@@ -681,9 +681,9 @@ Commit sugerido: `feat(insumos): selector de unidad en salida y ajuste negativo`
 
 **Branch**: `feat/repuestos-numero-de-serie-wu18` · **Base**: wu17b
 
-- [ ] 18.1 `features/compras/components/registrar-avance-dialog.tsx` y schemas: con insumo `SERIE`, `seriales-input` de hasta el delta; los blancos quedan como pendientes (con aviso); delta fraccional rechazado en pantalla; invalida también `["insumo", id, "unidades"]`.
-- [ ] 18.2 Tests (MSW): recepción completa, parcial con pendientes, serial repetido, fraccional; `NINGUNO` sin cambios.
-- [ ] 18.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/compras && pnpm test`.
+- [x] 18.1 `features/compras/components/registrar-avance-dialog.tsx` y schemas: con insumo `SERIE`, `seriales-input` de hasta el delta; los blancos quedan como pendientes (con aviso); delta fraccional rechazado en pantalla; invalida también `["insumo", id, "unidades"]`.
+- [x] 18.2 Tests (MSW): recepción completa, parcial con pendientes, serial repetido, fraccional; `NINGUNO` sin cambios.
+- [x] 18.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/compras && pnpm test`.
 
 **Escenarios**: Recepción SERIE con todos los seriales / parciales / con serial repetido /
 fraccional; Recepción sin seriales (pendiente).

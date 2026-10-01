@@ -880,3 +880,10 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - `MovimientoSalidaDialog` (insumo `SERIE`) y la rama negativa de `MovimientoAjusteDialog`: eligen la pieza, la cantidad queda fija en 1 (`cantidadFija` en `MovimientoInsumoDialog`: campo deshabilitado y sin registrar; el caller setea 1), se envia `unidadId` y NO `condicion`. La salida avisa que deja la pieza como entregada (E1). El ajuste negativo mantiene el motivo obligatorio (F1). `RegistrarMovimientoInsumoDto.unidadId?`.
 - Un 422 (pieza tomada por otra operacion) sale por el toast de error existente y vuelve a pedir la lista (`refrescar`); el dialogo no se cierra y la pieza ya no elegible deja de estar seleccionada.
 - Tests (MSW, `movimiento-unidad.test.tsx`, 4): salida sin pendientes con cantidad fija y sin condicion, pieza obligatoria, 422 refresca la lista, ajuste negativo con pendientes y motivo.
+
+### WU-18 - seriales en la recepcion de compra (18.1 a 18.3), rama `-wu18`
+
+- `RegistrarRecepcionDialog`: con `item.insumoId` y `stock.seguimiento === "SERIE"` (de `useStockInsumo`, cache compartida) muestra `SerialesInput` con una casilla por pieza del DELTA (cantidad tipeada menos `item.cantidadRecibida`). Los blancos son validos y quedan pendientes, con aviso visible; solo se envian los seriales cargados (recortados), y `seriales` se omite si no hay ninguno o el insumo es `NINGUNO`. Delta fraccional (o > 100) muestra el aviso de `SerialesInput` y bloquea el envio.
+- `lib/seriales-recepcion.ts` (`evaluarSerialesRecepcion`: como `evaluarSeriales` pero tolera blancos) y `hooks/use-seriales-recepcion.ts`. `RegistrarRecepcionDeItemDto.seriales?`. `useRegistrarRecepcionDeItem(compraId, insumoId)` invalida ademas `["insumo", id, "stock"]` y `["insumo", id, "unidades"]`.
+- Los 409/422 salen por el toast del hook (el dialogo no se cierra). Si el usuario no tiene `INSUMOS:LECTURA` el stock no carga y el dialogo se comporta como `NINGUNO` (sin casillas: el backend deja todo pendiente).
+- Tests (MSW, `registrar-recepcion-seriales.test.tsx`, 7): completa, parcial con pendientes y aviso, sin seriales, repetido local, 409, fraccional, NINGUNO.
