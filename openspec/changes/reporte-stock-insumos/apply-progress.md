@@ -80,3 +80,13 @@ Rama `feat/reporte-stock-insumos-wu05` (base `-wu04-2`).
 - `lib/filtros-reporte-stock.ts`: schema Zod (`familiaId` uuid, tres booleanos `true`/`false`; inválido => ausente) y un solo serializador con orden estable; `soloBajoMinimo`/`ocultarSinStock` en `false` no se serializan, `esRepuesto=false` sí.
 - `types.ts`: `filaReporteStockSchema`/`reporteStockSchema` (Zod) con los tipos derivados; sin dinero.
 - `hooks/use-reporte-stock.ts`: clave `["reporte-stock", filtros]`, `staleTime: 0`, respuesta validada con el schema.
+
+## WU-6 — Frontend: vista, página, enlace y cierre (completo, 7/7)
+
+Rama `feat/reporte-stock-insumos-wu06` (base `-wu05`).
+
+- `components/reporte-stock-view.tsx`: filtros (familia, tipo, solo bajo mínimo, ocultar sin stock) parseados de la URL con `parsearFiltrosReporteStock` y escritos con `router.replace` + `serializarFiltrosReporteStock`; tabla con las columnas del CSV sobre una fila plana (`DataTable` usa `key` como clave y varias columnas salen del mismo campo anidado); "Generado el" con `formatearInstante` en el encabezado; negativos con `text-destructive` sin ocultar la fila; badge de reposición vía `lib/reposicion.ts`; `ExportarCsvButton` sin cambios con el query serializado.
+- `app/(dashboard)/insumos/reporte-stock/page.tsx`: `<Can permiso="INSUMOS:LECTURA">` con fallback `ErrorState`.
+- `catalogo-insumos-list-view.tsx`: enlace "Reporte de stock" (`Button asChild` + `Link`) dentro del `<Can>` de la sección, con `esRepuesto` precargado.
+- Tests: `reporte-stock-view.test.tsx` (10 casos, incluye la página con y sin permiso) y `catalogo-insumos-list-view.test.tsx` (3 casos).
+- Roadmap: viñeta "Reporte de stock" declarada **Cumplida**; el ítem sale del "Pendiente, sin construir" (queda la baja de equipo entero). `check-roadmap-fresco.mjs` exit 0.

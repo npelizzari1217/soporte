@@ -42,6 +42,7 @@
  * adapta su copy a la familia del ítem, así que no se duplica.
  */
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useInsumos } from "../hooks/use-insumos";
 import { useFamiliasInsumo } from "../hooks/use-familias-insumo";
@@ -145,7 +146,13 @@ export function CatalogoInsumosListView({
               familias/unidades — ver el JSDoc de `InsumosController`. El
               listado sigue siendo de lectura abierta para cualquier
               autenticado del inquilino; solo este trigger desaparece. */}
-          <div className="mb-3 flex justify-end">
+          <div className="mb-3 flex justify-end gap-2">
+            {/* Entrada al reporte de stock (reporte-stock-insumos): vive acá,
+                dentro del `<Can>` de la sección, con el tipo ya precargado.
+                No hay ítem nuevo en el sidebar. */}
+            <Button asChild size="sm" variant="outline">
+              <Link href={`/insumos/reporte-stock?esRepuesto=${esRepuesto}`}>Reporte de stock</Link>
+            </Button>
             <SoloAdminCliente>
               <InsumoFormDialog
                 trigger={

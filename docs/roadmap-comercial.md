@@ -134,10 +134,11 @@ desplegado el 2026-10-01 en los ocho tenants):
   (`backend/src/insumos/application/use-cases/devolver-entrega.use-case.ts`,
   `recuperar-unidad-descartada.use-case.ts`).
 
-**Pendiente, sin construir** (pedidos del dueño del producto): un reporte y
-exportación del stock, y la baja de un equipo entero con dos opciones (devolver
-todas sus piezas al stock, o descartarlas todas con un motivo común: vejez,
-donación, rotura u otra). Hoy el retiro opera componente por componente.
+**Pendiente, sin construir** (pedido del dueño del producto): la baja de un
+equipo entero con dos opciones (devolver todas sus piezas al stock, o
+descartarlas todas con un motivo común: vejez, donación, rotura u otra). Hoy el
+retiro opera componente por componente. El reporte y exportación del stock ya
+se entregó (ver "Reporte de stock" en "Decisiones de producto ya cerradas").
 
 Se anota acá, y no entre los seis puntos, porque no nació de la comparación
 competitiva: nació de operar el sistema.
@@ -274,7 +275,12 @@ Para no re-litigarlas al empezar cada punto.
   - Pantalla "Reporte de stock" dentro de la sección Insumos.
   - Cantidades con coma decimal y sin decimales en unidades enteras; un saldo
     negativo se exporta como número y se resalta en pantalla, nunca se esconde.
-  **Pendiente**: se declara Cumplida o Desviación al cerrar el ciclo.
+  **Cumplida** (2026-10-01, ciclo `reporte-stock-insumos`): `GET /insumos/reporte-stock`
+  y `/export` (`backend/src/insumos/interface/controllers/reporte-stock-insumos.controller.ts`,
+  `INSUMOS:LECTURA`), núcleo `consultar-reporte-stock.use-case.ts` con la misma fórmula que la
+  ficha, CSV con tope de 5000 filas (`exportar-reporte-stock.use-case.ts`) y pantalla
+  `/insumos/reporte-stock` (`frontend/src/features/insumos/components/reporte-stock-view.tsx`),
+  enlazada desde Insumos y Repuestos. Sin desviaciones.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 
