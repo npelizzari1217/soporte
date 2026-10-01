@@ -85,6 +85,20 @@ async function httpPost<T = unknown>(
   return { status: res.status, data };
 }
 
+async function httpPatch<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
 async function httpGet<T = unknown>(
   url: string,
   headers: Headers = {},
@@ -830,6 +844,312 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       // Ni el retiro ni el alta sin descuento tocaron el stock.
       expect(await movimientosDe(insumoA)).toHaveLength(0);
       expect(await movimientosDe(insumoB)).toHaveLength(0);
+    });
+  });
+
+  // ─── Insumo SERIE: instalar eligiendo la unidad (sdd/repuestos-numero-de-serie, WU-10a) ───
+
+  describe('Insumo SERIE: instalar una unidad elegida por serial', () => {
+    /** Insumo `SERIE` (unidad de medida entera), preparado por SQL directo: no hay ruta que lo haga hasta WU-12a. */
+    async function crearInsumoSerie(): Promise<string> {
+      const { familiaId } = await crearFamiliaRepuesto();
+      const unidadMedida = await tenantClient.unidadMedida.create({
+        data: {
+          codigo: `${RUN_PREFIX}E${randomBytes(2).toString('hex')}`,
+          nombre: 'Entera',
+          entera: true,
+        },
+      });
+      const insumo = await tenantClient.insumo.create({
+        data: {
+          codigo: `${RUN_PREFIX}S${randomBytes(3).toString('hex')}`,
+          nombre: 'Repuesto SERIE E2E',
+          familiaId,
+          unidadMedidaId: unidadMedida.id,
+          activo: true,
+          seguimiento: 'SERIE',
+        },
+      });
+      return insumo.id;
+    }
+
+    async function crearUnidad(
+      insumoId: string,
+      serial: string | null,
+      condicion: 'NUEVO' | 'USADO' = 'NUEVO',
+    ): Promise<string> {
+      const unidad = await tenantClient.unidadInsumo.create({
+        data: {
+          insumoId,
+          numeroSerie: serial,
+          numeroSerieNormalizado: serial === null ? null : serial.toUpperCase(),
+          condicion,
+          estado: 'EN_DEPOSITO',
+        },
+      });
+      return unidad.id;
+    }
+
+    async function unidadDe(id: string) {
+      return tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id } });
+    }
+
+    async function nada(insumoId: string, equipoId: string) {
+      expect(await movimientosDe(insumoId)).toHaveLength(0);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+    }
+
+    const PERMISOS = ['EQUIPOS:ALTAS', 'EQUIPOS:MODIFICACION', 'EQUIPOS:LECTURA'];
+
+    it('instala la unidad elegida: SALIDA con equipo, evento INSTALACION con componente, componente con unidad y serial resuelto; el body no manda sobre la unidad; EQUIPOS:ALTAS sin permisos de INSUMOS alcanza', async () => {
+      const insumoId = await crearInsumoSerie();
+      const unidadId = await crearUnidad(insumoId, 'SN-ELEGIDA-1', 'USADO');
+      const otraId = await crearUnidad(insumoId, 'SN-OTRA-1');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status, data } = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        // `numeroSerie` y `condicion` del body se ignoran: son datos de la unidad.
+        { insumoId, unidadId, numeroSerie: 'IGNORADO', condicion: 'NUEVO' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(201);
+      expect(data.unidadId).toBe(unidadId);
+      expect(data.numeroSerie).toBe('SN-ELEGIDA-1');
+
+      const unidad = await unidadDe(unidadId);
+      expect(unidad.estado).toBe('INSTALADA');
+      expect(unidad.equipoId).toBe(equipoId);
+      expect((await unidadDe(otraId)).estado).toBe('EN_DEPOSITO');
+
+      const [fila] = await componentesDe(equipoId);
+      expect(fila.unidadId).toBe(unidadId);
+      expect(fila.numeroSerie).toBeNull();
+
+      const movimientos = await movimientosDe(insumoId);
+      expect(movimientos).toHaveLength(1);
+      expect(movimientos[0]).toMatchObject({
+        tipo: 'SALIDA',
+        condicion: 'USADO',
+        unidadId,
+        equipoId,
+        usuarioId: actor.usuarioId,
+      });
+      expect(Number(movimientos[0].cantidad)).toBe(1);
+      expect(fila.instalacionMovimientoId).toBe(movimientos[0].id);
+
+      const eventos = await tenantClient.eventoUnidadInsumo.findMany({ where: { unidadId } });
+      expect(eventos).toHaveLength(1);
+      expect(eventos[0]).toMatchObject({
+        tipo: 'INSTALACION',
+        equipoId,
+        componenteId: fila.id,
+        movimientoId: movimientos[0].id,
+      });
+
+      const detalle = await httpGet<EquipoDetalleResponseDto>(
+        `${baseUrl}/equipos/${equipoId}`,
+        bearer(actor.accessToken),
+      );
+      const delDetalle = detalle.data.componentes.find((c) => c.id === fila.id);
+      expect(delDetalle?.numeroSerie).toBe('SN-ELEGIDA-1');
+      expect(delDetalle?.unidadId).toBe(unidadId);
+    });
+
+    it('insumo SERIE sin unidadId: 422 y no cambia nada (el componente se revierte)', async () => {
+      const insumoId = await crearInsumoSerie();
+      const unidadId = await crearUnidad(insumoId, 'SN-SIN-ELEGIR');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      await nada(insumoId, equipoId);
+      expect((await unidadDe(unidadId)).estado).toBe('EN_DEPOSITO');
+    });
+
+    it('unidad de serie pendiente: 422 y no cambia nada', async () => {
+      const insumoId = await crearInsumoSerie();
+      const pendienteId = await crearUnidad(insumoId, null);
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoId = await crearEquipoDirecto();
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId, unidadId: pendienteId },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      await nada(insumoId, equipoId);
+      expect((await unidadDe(pendienteId)).estado).toBe('EN_DEPOSITO');
+    });
+
+    it('unidad de OTRO insumo: 422 y no cambia nada; unidad inexistente: 404; unidadId mal formado: 400', async () => {
+      const insumoId = await crearInsumoSerie();
+      const otroInsumoId = await crearInsumoSerie();
+      const ajenaId = await crearUnidad(otroInsumoId, 'SN-AJENA');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoId = await crearEquipoDirecto();
+
+      const ajena = await httpPost(
+        installUrl(equipoId),
+        { insumoId, unidadId: ajenaId },
+        bearer(actor.accessToken),
+      );
+      expect(ajena.status).toBe(422);
+      expect((await unidadDe(ajenaId)).estado).toBe('EN_DEPOSITO');
+
+      const inexistente = await httpPost(
+        installUrl(equipoId),
+        { insumoId, unidadId: '00000000-0000-4000-8000-000000000099' },
+        bearer(actor.accessToken),
+      );
+      expect(inexistente.status).toBe(404);
+
+      const malFormado = await httpPost(
+        installUrl(equipoId),
+        { insumoId, unidadId: 'no-es-uuid' },
+        bearer(actor.accessToken),
+      );
+      expect(malFormado.status).toBe(400);
+
+      await nada(insumoId, equipoId);
+      expect(await movimientosDe(otroInsumoId)).toHaveLength(0);
+    });
+
+    it('una unidad ya instalada no se instala de nuevo: 422 y el primer componente queda intacto', async () => {
+      const insumoId = await crearInsumoSerie();
+      const unidadId = await crearUnidad(insumoId, 'SN-UNICA');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoA = await crearEquipoDirecto();
+      const equipoB = await crearEquipoDirecto();
+
+      const primera = await httpPost(
+        installUrl(equipoA),
+        { insumoId, unidadId },
+        bearer(actor.accessToken),
+      );
+      const segunda = await httpPost(
+        installUrl(equipoB),
+        { insumoId, unidadId },
+        bearer(actor.accessToken),
+      );
+
+      expect(primera.status).toBe(201);
+      expect(segunda.status).toBe(422);
+      expect(await componentesDe(equipoB)).toHaveLength(0);
+      expect((await unidadDe(unidadId)).equipoId).toBe(equipoA);
+      expect(await movimientosDe(insumoId)).toHaveLength(1);
+    });
+
+    it('la misma unidad en dos altas concurrentes: una gana (201) y la otra 422, con un solo componente, movimiento y evento', async () => {
+      const insumoId = await crearInsumoSerie();
+      const unidadId = await crearUnidad(insumoId, 'SN-CARRERA');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoA = await crearEquipoDirecto();
+      const equipoB = await crearEquipoDirecto();
+
+      const respuestas = await Promise.all(
+        [equipoA, equipoB].map((equipoId) =>
+          httpPost(installUrl(equipoId), { insumoId, unidadId }, bearer(actor.accessToken)),
+        ),
+      );
+
+      expect(respuestas.map((r) => r.status).sort()).toEqual([201, 422]);
+      expect((await componentesDe(equipoA)).length + (await componentesDe(equipoB)).length).toBe(1);
+      expect(await movimientosDe(insumoId)).toHaveLength(1);
+      expect(await tenantClient.eventoUnidadInsumo.count({ where: { unidadId } })).toBe(1);
+      expect((await unidadDe(unidadId)).estado).toBe('INSTALADA');
+    }, 30_000);
+
+    it('rollback de todo si falla una escritura posterior a la SALIDA: la unidad vuelve a EN_DEPOSITO y no queda movimiento ni evento ni componente', async () => {
+      const insumoId = await crearInsumoSerie();
+      const unidadId = await crearUnidad(insumoId, 'SN-ROLLBACK');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoId = await crearEquipoDirecto();
+      // Estado incoherente sembrado a propósito: un componente activo ya refiere la
+      // unidad (UNIQUE parcial por unidad), así que el `save()` final del alta (L4)
+      // falla DESPUÉS de que `instalar` escribió SALIDA, CAS y evento.
+      const otroEquipoId = await crearEquipoDirecto();
+      await tenantClient.componenteEquipo.create({
+        data: { equipoId: otroEquipoId, insumoId, unidadId },
+      });
+
+      const { status } = await httpPost(
+        installUrl(equipoId),
+        { insumoId, unidadId },
+        bearer(actor.accessToken),
+      );
+
+      // El filtro global traduce el P2002 del UNIQUE parcial a 409; lo que importa es el rollback.
+      expect(status).toBe(409);
+      expect((await unidadDe(unidadId)).estado).toBe('EN_DEPOSITO');
+      expect(await movimientosDe(insumoId)).toHaveLength(0);
+      expect(await tenantClient.eventoUnidadInsumo.count({ where: { unidadId } })).toBe(0);
+      expect(await componentesDe(equipoId)).toHaveLength(0);
+    });
+
+    it('editar: con unidad el serial en el PATCH es 422 y no cambia nada; los datos propios se editan; un legado edita su serial como siempre', async () => {
+      const insumoId = await crearInsumoSerie();
+      const unidadId = await crearUnidad(insumoId, 'SN-EDITAR');
+      const actor = await crearActorConPermisos(PERMISOS);
+      const equipoId = await crearEquipoDirecto();
+      const alta = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        { insumoId, unidadId },
+        bearer(actor.accessToken),
+      );
+      expect(alta.status).toBe(201);
+      const url = `${installUrl(equipoId)}/${alta.data.id}`;
+
+      const conSerial = await httpPatch(
+        url,
+        { numeroSerie: 'OTRO', descripcion: 'No debe guardarse' },
+        bearer(actor.accessToken),
+      );
+      expect(conSerial.status).toBe(422);
+      const intacto = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: alta.data.id },
+      });
+      expect(intacto.numeroSerie).toBeNull();
+      expect(intacto.descripcion).toBeNull();
+      expect((await unidadDe(unidadId)).numeroSerie).toBe('SN-EDITAR');
+
+      const datosPropios = await httpPatch<ComponenteResponseDto>(
+        url,
+        { descripcion: 'Con datos propios', capacidad: '1TB' },
+        bearer(actor.accessToken),
+      );
+      expect(datosPropios.status).toBe(200);
+      expect(datosPropios.data.numeroSerie).toBe('SN-EDITAR');
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: alta.data.id },
+      });
+      expect(fila.numeroSerie).toBeNull(); // el CHECK sigue cumpliéndose tras el UPDATE
+      expect(fila.descripcion).toBe('Con datos propios');
+
+      const legado = await httpPost<ComponenteResponseDto>(
+        installUrl(equipoId),
+        { insumoId, descontarStock: false, numeroSerie: 'LEGADO-1' },
+        bearer(actor.accessToken),
+      );
+      expect(legado.status).toBe(201);
+      const editado = await httpPatch<ComponenteResponseDto>(
+        `${installUrl(equipoId)}/${legado.data.id}`,
+        { numeroSerie: 'LEGADO-2' },
+        bearer(actor.accessToken),
+      );
+      expect(editado.status).toBe(200);
+      expect(editado.data.numeroSerie).toBe('LEGADO-2');
+      expect(editado.data.unidadId).toBeNull();
     });
   });
 

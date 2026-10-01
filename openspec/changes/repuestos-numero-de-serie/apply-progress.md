@@ -637,3 +637,14 @@ Rama `feat/repuestos-numero-de-serie-wu10a-3`. Parte de 10a.5 (testigo y mutacio
 - **Mutacion adversarial**: `save(componente)` antes de `operaciones.instalar` => ROJO: los 3 testigos (L1/L2/L3: "expected 1 to
   be 0") y 2 unit (orden preparar->instalar->save, y "no guarda si instalar falla"). Revertida; todo verde de nuevo.
 
+### WU-10a - parte 4 de 4 (e2e)
+
+Rama `feat/repuestos-numero-de-serie-wu10a-4`. Tareas 10a.5 y 10a.6 hechas (10a.1 a 10a.6 completas).
+
+- e2e en `equipos-instalar-desde-deposito.e2e.spec.ts` (mismo arnes, `usarLockMasterTest()`, insumo SERIE y unidades por SQL/Prisma
+  directo): instalar una unidad elegida (SALIDA con equipo, evento INSTALACION con componente, serial resuelto en respuesta y
+  detalle, body ignorado, `EQUIPOS:ALTAS` sin permisos de INSUMOS alcanza), sin unidad 422, pendiente 422, de otro insumo 422,
+  inexistente 404, mal formado 400, unidad ya instalada 422, dos altas concurrentes (una gana), rollback total si falla el `save()`
+  final (UNIQUE parcial por unidad sembrado; el filtro global traduce el P2002 a 409) y editar el serial de una unidad (422, sin
+  cambios) y de un legado (200).
+
