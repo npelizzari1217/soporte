@@ -214,3 +214,24 @@ Rama `feat/baja-equipo-completo-wu06` (6.1 y 6.2) y `feat/baja-equipo-completo-w
   El fake suma `serialesExistentes`, `existentes` y `chocaAlInsertar`. Los dos bloques existentes de `devolverAlDeposito` y
   `descartarInstaladas` ya cubrían varias unidades, lote que falla y unidad en otro equipo; no se tocaron.
 - Ayuda: sin deuda.
+
+## WU-7 — Insumos: `registrarDevolucionesDeEquipo` y `diagnosticarDevolucionesDeEquipo`
+
+Ramas: `feat/baja-equipo-completo-wu07` (7.1 + 7.3, registrar), `-wu07-2` (7.2, diagnosticar), `-wu07-3` (7.4 integración).
+
+- 7.1 `RegistrarEntradaInsumoUseCase.registrarDevolucionesDeEquipo({ equipoId, usuarioId, motivo, piezas })`, dentro de la
+  transacción del llamador y SIN `run()` propio (un P2002 residual sale como `FalloOperacionDeUnidad` y lo desenvuelve la baja).
+  Orden: L1 de todos los insumos distintos por id (también `NINGUNO`) → clasificación bajo L1 con los helpers de la devolución
+  de un componente (`validarInsumoElegible` sin `exigirHabilitado`, `validarCondicionAdmitida(USADO, admitirFamiliaNoVigente)`)
+  → todas las causas como `causasPrevias` → `devolverDesdeEquipo` (unidades y legados `SERIE`) → ENTRADA USADO de cantidad 1
+  por pieza `NINGUNO` (`asentar`, sin L2). Devuelve `Map<componenteId, movimientoId>`; una pieza sin insumo no figura.
+  Con causas devuelve `DevolucionConPiezasProblematicasError` (la traducción a `BajaEquipoConPiezasProblematicasError` es de WU-8).
+- 7.2 `diagnosticarDevolucionesDeEquipo(piezas)` sin transacción ni locks, con la misma clasificación; `SERIAL_DUPLICADO` por
+  `serialesExistentes` sin lock, agrupado por insumo. Desvío menor del diseño: el servicio `OperacionesUnidadInsumo` expone
+  `serialesExistentes` (delegando en su `unidadRepo`) para no sumar un sexto parámetro al constructor, que habría tocado 35 sitios.
+- 7.3 spec unitario con fakes `Pick` tipados y registro común de llamadas (L1 por id → `devolverDesdeEquipo` → ENTRADAs).
+  Mutación local: sin `.sort()` de los insumos y L1 salteado para todo menos el primero ⇒ el test de orden de locks falla; revertido.
+- 7.4 integración sobre `soporte_tenant_test` con PREFIJO (5 casos): lote mixto de dos unidades + `NINGUNO` + deshabilitado,
+  legado `SERIE`, insumo borrado sin cambios, `INSUMO_BORRADO` + `SERIAL_DUPLICADO` juntos sin cambios y `diagnosticar…`. El
+  invariante `SERIE` se verifica tras cada caso.
+- Ayuda: sin deuda.
