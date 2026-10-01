@@ -695,7 +695,7 @@ Commit sugerido: `feat(compras): seriales en la recepcion de items`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu19` · **Base**: wu18
 
-- [ ] 19.1 `componente-create-dialog.tsx`: con insumo `SERIE` y descuento, `selector-unidad` (sin pendientes) y sin selector de saldo; con `descontarStock = false`, serial obligatorio y selector de condición (D3); `NINGUNO`, como hoy. Types con `unidadId`.
+- [x] 19.1 `componente-create-dialog.tsx`: con insumo `SERIE` y descuento, `selector-unidad` (sin pendientes) y sin selector de saldo; con `descontarStock = false`, serial obligatorio y selector de condición (D3); `NINGUNO`, como hoy. Types con `unidadId`.
 - [ ] 19.2 `componente-retiro-dialog.tsx`: con unidad, sin campos nuevos; componente legado de un insumo `SERIE` y destino `STOCK_USADO`: campo serial **obligatorio**, precargado con el `numeroSerie` de texto cuando no está vacío y es válido (recortado, 1 a 255; la unicidad la decide el backend). `componente-edit-dialog.tsx`: serial deshabilitado cuando hay unidad. Mensaje de `UnidadDelComponenteNoDisponibleError` al reactivar.
 - [ ] 19.3 Tests (MSW): alta con unidad, alta sin descuento con serial, retiro legado precargado y vacío, edición con unidad, reactivar con unidad recuperada.
 - [ ] 19.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/equipos && pnpm test`.

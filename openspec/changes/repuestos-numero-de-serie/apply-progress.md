@@ -887,3 +887,9 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - `lib/seriales-recepcion.ts` (`evaluarSerialesRecepcion`: como `evaluarSeriales` pero tolera blancos) y `hooks/use-seriales-recepcion.ts`. `RegistrarRecepcionDeItemDto.seriales?`. `useRegistrarRecepcionDeItem(compraId, insumoId)` invalida ademas `["insumo", id, "stock"]` y `["insumo", id, "unidades"]`.
 - Los 409/422 salen por el toast del hook (el dialogo no se cierra). Si el usuario no tiene `INSUMOS:LECTURA` el stock no carga y el dialogo se comporta como `NINGUNO` (sin casillas: el backend deja todo pendiente).
 - Tests (MSW, `registrar-recepcion-seriales.test.tsx`, 7): completa, parcial con pendientes y aviso, sin seriales, repetido local, 409, fraccional, NINGUNO.
+
+### WU-19 - equipos: unidad o serial en el alta, serial en el retiro legado (19.1 a 19.4), rama `-wu19` (alta; el retiro, la edicion y reactivar van en `-wu19-2`)
+
+- `ComponenteCreateDialog`: el seguimiento sale del catalogo (`Insumo.seguimiento`). `SERIE` con descuento: `SelectorUnidad` (modo salida, sin pendientes), sin selector de saldo ni serial de texto, envia `unidadId`. `SERIE` sin descuento (D3): serial obligatorio (`numeroSerieSchema`) y condicion Nuevo/Usado propia, nunca `unidadId`. `NINGUNO` igual que antes. `CreateComponenteDto.unidadId?`, `Componente.unidadId?`.
+- Tests (MSW): alta con unidad, pieza obligatoria, alta sin descuento con serial.
+- Ayuda: `rg componente backend/ayuda/` no encuentra ningun articulo que esta UI vuelva falso; deuda anotada.

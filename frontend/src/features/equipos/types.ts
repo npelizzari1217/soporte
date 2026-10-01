@@ -57,7 +57,10 @@ export interface Componente {
   /** Repuesto del catálogo vinculado: obligatorio; el tipo ya no viaja en la respuesta. */
   insumoId: string;
   descripcion: string | null;
+  /** Con unidad, el serial resuelto de la unidad; sin ella (legado), el texto libre. */
   numeroSerie: string | null;
+  /** Unidad de un insumo `SERIE` que respalda el componente; `null` en un legado. Opcional para no obligar a cada fixture. */
+  unidadId?: string | null;
   capacidad: string | null;
   /** `false` = dado de baja (soft-delete). Listado enriquecido: `GET /equipos/:id` ahora trae TODOS los componentes, no solo los activos. */
   activo: boolean;
@@ -137,6 +140,8 @@ export interface CreateComponenteDto {
   descontarStock: boolean;
   /** Saldo del que se descuenta; solo se envía con `descontarStock: true` y el selector visible. */
   condicion?: CondicionStock;
+  /** Pieza elegida de un insumo `SERIE`; solo con `descontarStock: true` (sin descuento el backend responde 422). */
+  unidadId?: string;
   descripcion?: string | null;
   numeroSerie?: string | null;
   capacidad?: string | null;
