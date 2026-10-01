@@ -666,9 +666,9 @@ Commit sugerido: `feat(insumos): seriales en entrada y ajuste positivo`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu17b` · **Base**: wu17a
 
-- [ ] 17b.1 `selector-unidad.tsx` (unidad por serial; cantidad fija en 1); `movimiento-salida-dialog.tsx`: lista `disponibles=true` (sin pendientes); rama negativa del ajuste: lista `estado=EN_DEPOSITO` **con** pendientes (F1) y motivo obligatorio; el frontend no envía `condicion`. Muestra que la salida deja la unidad como entregada.
-- [ ] 17b.2 Tests (MSW): selector sin pendientes en la salida, con pendientes en el ajuste, cantidad fija, unidad tomada por otra operación (422) refresca la lista.
-- [ ] 17b.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
+- [x] 17b.1 `selector-unidad.tsx` (unidad por serial; cantidad fija en 1); `movimiento-salida-dialog.tsx`: lista `disponibles=true` (sin pendientes); rama negativa del ajuste: lista `estado=EN_DEPOSITO` **con** pendientes (F1) y motivo obligatorio; el frontend no envía `condicion`. Muestra que la salida deja la unidad como entregada.
+- [x] 17b.2 Tests (MSW): selector sin pendientes en la salida, con pendientes en el ajuste, cantidad fija, unidad tomada por otra operación (422) refresca la lista.
+- [x] 17b.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
 
 **Escenarios**: Salida de una unidad elegida por serial; Salida sin elegir unidad o con unidad no
 disponible; Ajuste negativo con unidad y motivo; Ajuste negativo de una unidad en serie pendiente;

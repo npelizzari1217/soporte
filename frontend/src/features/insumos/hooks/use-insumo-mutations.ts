@@ -50,6 +50,8 @@ export interface RegistrarMovimientoInsumoDto {
   condicion?: CondicionStock;
   /** Un serial por pieza, solo para entrada y ajuste positivo de un insumo `SERIE`; el insumo sin serie lo rechaza. */
   seriales?: string[];
+  /** Pieza elegida, solo para salida y ajuste negativo de un insumo `SERIE` (la cantidad es 1 y no viaja `condicion`). */
+  unidadId?: string;
 }
 
 /**

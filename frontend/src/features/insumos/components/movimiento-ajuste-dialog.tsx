@@ -49,7 +49,7 @@
  * tests de `schemas.test.ts`, llamando el schema directo), no de este
  * `<select>`.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Select } from "@/components/ui/select";
@@ -63,6 +63,8 @@ import type { TipoAjusteInsumo } from "../types";
 import { CondicionStockSelector } from "./condicion-stock-selector";
 import { useSerialesMovimiento } from "../hooks/use-seriales-movimiento";
 import { useStockInsumo } from "../hooks/use-stock-insumo";
+import { useSeleccionUnidad } from "../hooks/use-seleccion-unidad";
+import { SelectorUnidad } from "./selector-unidad";
 import { SerialesInput } from "./seriales-input";
 import { useSelectorCondicion } from "../hooks/use-selector-condicion";
 import { construirNotaEquiposNoDisponibles, MovimientoInsumoDialog } from "./movimiento-insumo-dialog";
@@ -110,6 +112,7 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<RegistrarAjusteInsumoFormValues>({
     // Recalculado en CADA render, mismo criterio que
@@ -124,6 +127,13 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
   // negativo elige unidades y no los lleva.
   const esSerie = stockQuery.data?.seguimiento === "SERIE" && watch("tipo") === "AJUSTE_POSITIVO";
   const seriales = useSerialesMovimiento(esSerie, watch("cantidad"));
+  // El negativo de un insumo `SERIE` da de baja UNA pieza elegida: cantidad 1, sin `condicion`.
+  const esUnidad = stockQuery.data?.seguimiento === "SERIE" && watch("tipo") === "AJUSTE_NEGATIVO";
+  const seleccion = useSeleccionUnidad(insumoId, esUnidad, "ajuste");
+
+  useEffect(() => {
+    setValue("cantidad", esUnidad ? (1 as never) : ("" as never));
+  }, [esUnidad, setValue]);
 
   // Único dueño de la limpieza del formulario: cierra y resetea juntos,
   // sin importar si lo dispara el éxito de la mutación o Radix (Escape/
@@ -134,19 +144,25 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
       reset();
       condicion.reiniciar();
       seriales.reiniciar();
+      seleccion.reiniciar();
     }
   }
 
   function submit(values: RegistrarAjusteInsumoFormValues) {
     const paraEnviar = seriales.validar();
     if (paraEnviar === null) return;
+    const unidadId = seleccion.validar();
+    if (unidadId === null) return;
     const dto: RegistrarAjusteInsumoDto = {
-      ...construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar }),
+      ...construirMovimientoInsumoDto({ ...values, condicion: esUnidad ? undefined : condicion.paraEnviar }),
       tipo: values.tipo,
       ...(paraEnviar ? { seriales: paraEnviar } : {}),
+      ...(unidadId ? { unidadId } : {}),
     };
     registrarMutation.mutate(dto, {
       onSuccess: () => handleOpenChange(false),
+      // La pieza pudo tomarla otra operación: se vuelve a pedir la lista y el toast da el motivo.
+      onError: seleccion.refrescar,
     });
   }
 
@@ -159,6 +175,7 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
       variant="secondary"
       motivoRequerido
       cantidadEntera={esSerie}
+      cantidadFija={esUnidad}
       camposTrasCantidad={
         esSerie && (
           <SerialesInput
@@ -195,7 +212,15 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
             </p>
           )}
         </div>
-        <CondicionStockSelector id="ajuste-condicion" selector={condicion} />
+        {esUnidad ? (
+          <SelectorUnidad
+            id="ajuste-unidad"
+            seleccion={seleccion}
+            nota="El ajuste negativo da de baja la pieza elegida; puede ser una de serie pendiente."
+          />
+        ) : (
+          <CondicionStockSelector id="ajuste-condicion" selector={condicion} />
+        )}
         </>
       }
     />
