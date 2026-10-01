@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:f645f122f7bd4951d47766ced56264dad04430e881feec7973460e428ec41ee4
-verdict: fail
-blockers: 1
-critical_findings: 1
+evidence_revision: sha256:f03bd00801012f5acb1d60419fa1bb680d6e0b578e6361d3df10e77134a4b236
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
 requirements: 11/11
 scenarios: 35/35
 test_command: (cd backend && pnpm test) && (cd frontend && pnpm test)
 test_exit_code: 0
-test_output_hash: sha256:abf507376b1c8ce98c60ea5b20f4d507d05fb990b5432f8bf021b7b326b434c1
-build_command: (cd backend && pnpm typecheck && pnpm lint && pnpm build) && (cd frontend && pnpm type-check && pnpm lint && pnpm build)
+test_output_hash: sha256:a28d06ab59a4e6b5fe9066caea9c9dae961f7ba756de131f255f832715de700c
+build_command: (cd backend && pnpm lint && pnpm typecheck && pnpm build) && (cd frontend && pnpm lint && pnpm type-check && pnpm build)
 build_exit_code: 0
-build_output_hash: sha256:ce3a871bce97bc3d8cfeb9b3c6930712773994493467bc8eead07b0ad2fa4710
+build_output_hash: sha256:8c545633c8a265cb395257e0731d272fbdab348ffc09db12b311aaf64b651075
 ```
 
 ## Verification Report
@@ -19,11 +19,19 @@ build_output_hash: sha256:ce3a871bce97bc3d8cfeb9b3c6930712773994493467bc8eead07b
 **Change**: reporte-stock-insumos
 **Version**: N/A (delta spec `specs/reporte-stock-insumos/spec.md`)
 **Mode**: Standard (feature; strict TDD not active)
-**Branch / revision**: `feat/reporte-stock-insumos-wu06-2` at `327543df`; `main` = merge-base = `089d5f2d`; evidence = sha256 of `git diff main...327543df`.
+**Pass**: 2 (re-verification after fix01)
+**Branch / revision**: `feat/reporte-stock-insumos-fix01` at `47a8558a`; `main` = merge-base = `089d5f2d`; evidence = sha256 of `git diff main...47a8558a`.
 
 ### Verdict
 
-**FAIL**: one blocker. The repository quality gate `node scripts/check-casts-en-specs.mjs` exits 1 on this cycle's diff. CI runs this gate in `.github/workflows/gates-backend.yml:109`, and the roadmap says it is run by hand before integrating. All 35 scenarios have a covering test that passed at runtime, and every other gate is green. The blocker is a two-line fix in one spec file.
+**PASS WITH WARNINGS**: zero blockers. The pass-1 CRITICAL (casts ratchet) is resolved: `node scripts/check-casts-en-specs.mjs` exits 0 at 666 casts in 121 files, equal to the base. Every gate is green, and all 35 scenarios have a covering test that passed at runtime. Two warnings remain (W1 residual, W2), neither blocks archive.
+
+### Historial
+
+| Pass | Revision | Verdict | Blockers | Notes |
+|---|---|---|---|---|
+| 1 | `sha256:f645f122f7bd4951d47766ced56264dad04430e881feec7973460e428ec41ee4` (`327543df`) | FAIL | 1 | C1: two `as never` casts in `reporte-stock-insumos.controller.spec.ts` raised the specs casts ratchet 666 -> 668. |
+| 2 | `sha256:f03bd00801012f5acb1d60419fa1bb680d6e0b578e6361d3df10e77134a4b236` (`47a8558a`) | PASS WITH WARNINGS | 0 | Remediated by `47a8558a`: the spec builds the real use cases with `unstubbed(...)` collaborators and spies `execute`; the commit also refreshed `state.yaml` (W1, partially). |
 
 ### Completeness
 
@@ -33,7 +41,7 @@ build_output_hash: sha256:ce3a871bce97bc3d8cfeb9b3c6930712773994493467bc8eead07b
 | Tasks complete | 44 |
 | Tasks incomplete | 0 |
 
-`gentle-ai sdd-status reporte-stock-insumos` reports `apply: all_done`, `tasks: 44/44 complete`, `verify: ready`. The task checkboxes match the code: every file named in tasks 1.1 to 6.6 exists in `git diff main...HEAD` with the described content.
+`gentle-ai sdd-status reporte-stock-insumos` reports `apply: all_done`, `tasks: 44/44 complete`; verify was blocked only by the pass-1 blocker on the previous revision. The only code change since pass 1 is `47a8558a` (one spec file plus `state.yaml`); task checkboxes still match the code.
 
 ### Build and Tests Execution
 
@@ -41,24 +49,27 @@ build_output_hash: sha256:ce3a871bce97bc3d8cfeb9b3c6930712773994493467bc8eead07b
 |---|---|---|---|
 | Backend lint | `cd backend && pnpm lint` | 0 | zero errors |
 | Backend typecheck | `cd backend && pnpm typecheck` | 0 | clean |
-| Backend tests | `cd backend && pnpm test` | 0 | 526 files / 6609 tests passed |
 | Backend build | `cd backend && pnpm build` | 0 | clean |
-| Frontend lint | `cd frontend && pnpm lint` | 0 | "No ESLint warnings or errors" |
+| Backend tests | `cd backend && pnpm test` | 0 | 526 files / 6609 tests passed |
+| Frontend lint | `cd frontend && pnpm lint` | 0 | clean |
 | Frontend typecheck | `cd frontend && pnpm type-check` | 0 | clean |
+| Frontend build | `cd frontend && pnpm build` | 0 | route `/insumos/reporte-stock` built |
 | Frontend tests | `cd frontend && pnpm test` | 0 | 225 files / 1734 tests passed |
-| Frontend build | `cd frontend && pnpm build` | 0 | route `/insumos/reporte-stock` built (static segment next to `/insumos/[id]`) |
 | Roadmap freshness | `node scripts/check-roadmap-fresco.mjs` | 0 | "El roadmap esta fresco" (3 decisions declared) |
+| Casts ratchet | `node scripts/check-casts-en-specs.mjs` | 0 | 666 in 121 files (base 666 in 121): "El ratchet se sostiene" |
 | Gate coverage | `node scripts/check-gate-coverage.mjs` | 0 | 2/2 projects covered |
-| **Casts ratchet** | `node scripts/check-casts-en-specs.mjs` | **1** | **668 in 122 files vs base 666 in 121; `reporte-stock-insumos.controller.spec.ts: 0 -> 2`** |
 
-The backend output includes known noise that does not affect the result: `orden-de-arranque.spec.ts` reports "Falta configurar" from its child processes, and `CorreoDeClienteAdapter`/Prisma errors are logged during green runs. The suite exits 0 with 526/526 files passed.
+Known noise during the green backend run (`orden-de-arranque.spec.ts` "Falta configurar", `CorreoDeClienteAdapter`/Prisma logs) does not affect the result. Coverage was not measured (`coverage_threshold: 0`). The pass-1 adversarial mutations were not repeated: the production code is byte-identical since pass 1 (`47a8558a` touches only a spec and `state.yaml`).
 
-A focused verbose re-run of the 9 backend files for this cycle passed 99/99 tests, including the e2e on an ephemeral tenant and the integration specs on Postgres. A focused verbose run of the 6 frontend files passed all tests. Coverage was not measured (`coverage_threshold: 0`).
+**Controller spec after fix01.** A focused verbose run of `reporte-stock-insumos.controller.spec.ts` passed 7/7, with the same seven test names and the same assertions as pass 1:
+- "declara INSUMOS:LECTURA en los dos handlers" (R5 403 scenarios, metadata)
+- "JwtAuthGuard y TenantGuard a nivel de clase, AccionesGuard por metodo" (R5)
+- "devuelve generadoEn en ISO y las filas, y pasa los filtros al caso de uso" (R1)
+- "entrega el CSV como descarga con los mismos filtros" (R3/R6 headers)
+- "el error de tope es 422 y no deja headers de descarga" (R6 more than 5000 rows)
+- "rechaza un familiaId que no es uuid" and "parsea los booleanos de la query y rechaza valores ajenos" (DTO, outside the scenarios)
 
-**Adversarial mutation (`rules.verify`)**, applied locally, reverted, with a clean tree confirmed afterwards (`git status --porcelain` empty):
-
-1. `evaluarReposicion(saldos.NUEVO, ...)` changed to `saldos.total` in `consultar-reporte-stock.use-case.ts`. Result: 3 red tests ("cada fila del reporte coincide con la ficha...", "NINGUNO: valores esperados...", "los usados no tapan el faltante..."). Reverted, back to green.
-2. The `CeldaNumericaCsv` bypass in `escaparValor` (`csv.ts`) disabled. Result: 2 red tests ("un negativo sale sin apostrofo", "un negativo sale sin apostrofo ni comillas"). Reverted, back to green.
+The fakes are now real `ConsultarReporteStockUseCase`/`ExportarReporteStockUseCase` instances with `execute` spied. The repositories are `unstubbed(...)`, so any path that bypassed the spy would throw instead of passing silently. The mappings in the matrix below hold.
 
 ### Spec Compliance Matrix
 
@@ -172,23 +183,21 @@ The **Cumplida** declaration is **true**. Its evidence paths exist, and "enlazad
 ### Issues Found
 
 **CRITICAL**
-1. **C1: casts ratchet gate fails.** `node scripts/check-casts-en-specs.mjs` exits 1 (668 in 122 files vs base 666 in 121). The cause is `backend/src/insumos/interface/controllers/reporte-stock-insumos.controller.spec.ts:44`:
-   `new ReporteStockInsumosController(consultar as never, exportar as never)`
-   It was introduced by `1eb32187` (WU-4). `git merge-base --is-ancestor 1eb32187 main` -> not an ancestor, so the finding belongs to this cycle and not to `main`. The gate is wired in CI (`.github/workflows/gates-backend.yml:109`), so integrating as-is turns the backend gates job red. Fix: type the fakes against their real surface without casts, for example `Pick<ConsultarReporteStockUseCase, 'execute'>`-shaped objects, or complete mocks with `unstubbed(...)` from `backend/src/testing/mocks.ts`. Then re-run the ratchet. Do not raise the baseline.
+
+None. Pass-1 C1 (casts ratchet) is resolved; see Historial.
 
 **WARNING**
-1. **W1: `openspec/changes/reporte-stock-insumos/state.yaml` is stale.** It says `phase: spec`, `design: false`, `tasks: false`, `tasks_progress: completed: [] / pending: []`, while design, tasks (44/44) and apply-progress exist. Under the repo rule in §3.3 of `~/proyectos/CLAUDE.md`, an artifact that lies is worse than a missing one. Native status does not read these fields, so routing is unaffected.
-2. **W2: Design deviation in the Testing Strategy.** The design asked for the comparison integration (R9) on an ephemeral tenant with `dropDatabase` hygiene. It runs on shared `soporte_tenant_test` with prefixed fixtures. apply-progress declares this and it is consistent with the repo pattern. It does not break any spec scenario.
+1. **W1 (residual): `state.yaml` `tasks_progress` is still empty.** `47a8558a` fixed `phase: verify`, `design: true` and `tasks: true`, but `tasks_progress` still reads `completed: []` / `pending: []` while tasks are 44/44. Native status does not read these fields, so routing is unaffected; it is a stale field under §3.3 of `~/proyectos/CLAUDE.md`.
+2. **W2: Design deviation in the Testing Strategy (carried forward).** The R9 comparison integration runs on the shared `soporte_tenant_test` with prefixed fixtures instead of an ephemeral tenant with `dropDatabase` hygiene. It is declared in apply-progress, consistent with the repo pattern, and breaks no scenario.
 
-**SUGGESTION**
-1. S1: `cantidadCsv` relies on `String(n)`/`toFixed(2)`. For |n| >= 1e21 these yield exponent notation, which would violate the documented `^-?\d+(,\d{2})?$` invariant. This is unreachable with Prisma `Decimal` quantities, but a guard or a test would make the "safe to skip neutralization" argument airtight.
-2. S2: Drop either the SQL `orderBy codigo` or the JS re-sort, or document that JS code-unit order is authoritative. The two can disagree under a non-C collation, and only the JS order reaches users.
-3. S3: Replace the native checkboxes with the shared UI checkbox component if one exists, for visual consistency.
-4. S4: `CEROS_LIBRO = {...} as SumasPorCondicionYTipo` in `consultar-reporte-stock.use-case.ts` is an unnecessary cast in production code. A typed constant compiles without it.
-5. S5: The `ExportacionStockDemasiadoGrandeError` branch in `toHttpException` returns the same 422 as the fallthrough. That is acceptable as explicit documentation, but a test that pins the 422 message text ("exportación demasiado grande") through HTTP would make the R6 "explicit error" clause fully observable. The e2e asserts only status and the absence of a partial CSV.
+**SUGGESTION** (carried forward from pass 1, none addressed, none blocking)
+1. S1: `cantidadCsv` relies on `String(n)`/`toFixed(2)`, which yield exponent notation for |n| >= 1e21. Unreachable with Prisma `Decimal` quantities; a guard or test would make the invariant airtight. Verdict: still open, optional.
+2. S2: Drop either the SQL `orderBy codigo` or the JS re-sort, or document that the JS code-unit order is authoritative. Verdict: still open, optional.
+3. S3: Use the shared UI checkbox component, if one exists, for the two boolean filters. Verdict: still open, cosmetic.
+4. S4: `CEROS_LIBRO = {...} as SumasPorCondicionYTipo` is an unnecessary cast in production code. Verdict: still open, optional.
+5. S5: Pin the 422 message text ("exportación demasiado grande") through HTTP in the e2e. Verdict: still open, optional.
 
 ### Process checks
 
-- Commits are Conventional Commits with no AI attribution. WU-5 and WU-6 note the Ayuda debt in their bodies ("Ayuda: pendiente — pantalla Reporte de stock y exportacion 'Exportar a Excel'"). Backend WUs say "sin deuda". `size:exception` is declared where used (`8ae62413`).
-- No Ayuda article is made false. Permissions are unchanged, and the report adds a new screen and route.
-- The roadmap point is closed with **Cumplida**, and `check-roadmap-fresco.mjs` passes.
+- `47a8558a` is a Conventional Commit with no AI attribution and declares "Ayuda: sin deuda" (correct: test-only change).
+- The roadmap point stays closed as **Cumplida**, and `check-roadmap-fresco.mjs` passes.
