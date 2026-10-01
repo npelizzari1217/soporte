@@ -1,5 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SessionContext } from "@/shared/providers/session-provider";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
@@ -8,9 +11,18 @@ import type { Equipo } from "../types";
 import type { ModeloEquipo } from "@/features/modelos-equipo/types";
 
 const pushMock = vi.fn();
+const replaceMock = vi.fn();
+let currentSearch = "";
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+  usePathname: () => "/equipos",
+  useSearchParams: () => new URLSearchParams(currentSearch),
 }));
+
+beforeEach(() => {
+  currentSearch = "";
+  replaceMock.mockClear();
+});
 
 /** El inventario se consulta siempre (sin gate de permiso backend). */
 function mockEquipos() {
@@ -177,5 +189,119 @@ describe("EquiposListView — columna Marca resuelta contra el catálogo", () =>
     renderWithProviders(<EquiposListView />, { user: buildUser({ permisos: ["EQUIPOS:LECTURA"] }) });
 
     expect(await screen.findByText("Compaq")).toBeInTheDocument();
+  });
+});
+
+/**
+ * R11 (sdd/baja-equipo-completo): filtro "Mostrar equipos dados de baja",
+ * apagado por defecto y guiado por la URL; la exportación pide lo mismo que
+ * la lista.
+ */
+describe("EquiposListView — filtro «Mostrar equipos dados de baja»", () => {
+  const VIGENTE = buildEquipo({ id: "11111111-1111-4111-8111-111111111111", nombre: "PC-VIGENTE" });
+  const DE_BAJA = buildEquipo({
+    id: "22222222-2222-4222-8222-222222222222",
+    nombre: "PC-DE-BAJA",
+    activo: false,
+    baja: {
+      destino: "DESCARTE",
+      categoria: "ROTURA",
+      motivo: null,
+      fecha: "2026-05-01T12:00:00.000Z",
+      usuarioId: null,
+    },
+  });
+  const user = () => buildUser({ permisos: ["EQUIPOS:LECTURA"] });
+
+  /** Responde como el backend: sin `incluirBajas=true` solo los vigentes. */
+  function mockListaConBajas(pedidas: string[]) {
+    server.use(
+      http.get("/api/equipos", ({ request }) => {
+        const url = new URL(request.url);
+        pedidas.push(url.search);
+        return HttpResponse.json(
+          url.searchParams.get("incluirBajas") === "true" ? [VIGENTE, DE_BAJA] : [VIGENTE],
+        );
+      }),
+    );
+  }
+
+  it("por defecto muestra solo el vigente y la petición no manda incluirBajas", async () => {
+    const pedidas: string[] = [];
+    mockListaConBajas(pedidas);
+    renderWithProviders(<EquiposListView />, { user: user() });
+
+    expect(await screen.findByText("PC-VIGENTE")).toBeInTheDocument();
+    expect(screen.queryByText("PC-DE-BAJA")).not.toBeInTheDocument();
+    expect(pedidas).toEqual([""]);
+    expect(screen.getByRole("checkbox", { name: /mostrar equipos dados de baja/i })).not.toBeChecked();
+  });
+
+  it("al tildar la casilla navega con ?incluirBajas=true", async () => {
+    mockListaConBajas([]);
+    renderWithProviders(<EquiposListView />, { user: user() });
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: /mostrar equipos dados de baja/i }));
+
+    expect(replaceMock).toHaveBeenCalledWith("/equipos?incluirBajas=true");
+  });
+
+  it("con ?incluirBajas=true en la URL se piden ambos y el dado de baja lleva «Baja»", async () => {
+    currentSearch = "incluirBajas=true";
+    const pedidas: string[] = [];
+    mockListaConBajas(pedidas);
+    renderWithProviders(<EquiposListView />, { user: user() });
+
+    const fila = (await screen.findByText("PC-DE-BAJA")).closest("tr");
+    expect(fila).not.toBeNull();
+    expect(within(fila as HTMLElement).getByText("Baja")).toBeInTheDocument();
+    const filaVigente = screen.getByText("PC-VIGENTE").closest("tr") as HTMLElement;
+    expect(within(filaVigente).getByText("Activo")).toBeInTheDocument();
+    expect(pedidas).toEqual(["?incluirBajas=true"]);
+    expect(screen.getByRole("checkbox", { name: /mostrar equipos dados de baja/i })).toBeChecked();
+  });
+
+  it("el botón de exportación pide el mismo parámetro que la lista", async () => {
+    const exportaciones: string[] = [];
+    server.use(
+      http.get("/api/equipos/export", ({ request }) => {
+        exportaciones.push(new URL(request.url).search);
+        return new HttpResponse("Nombre\n", { headers: { "content-type": "text/csv" } });
+      }),
+    );
+    mockListaConBajas([]);
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL: () => {} }));
+
+    const { unmount } = renderWithProviders(<EquiposListView />, { user: user() });
+    await userEvent.click(await screen.findByRole("button", { name: /exportar a excel/i }));
+    await waitFor(() => expect(exportaciones).toEqual([""]));
+    unmount();
+
+    currentSearch = "incluirBajas=true";
+    renderWithProviders(<EquiposListView />, { user: user() });
+    await userEvent.click(await screen.findByRole("button", { name: /exportar a excel/i }));
+    await waitFor(() => expect(exportaciones).toEqual(["", "?incluirBajas=true"]));
+    vi.unstubAllGlobals();
+  });
+
+  it("invalidar [\"equipos\"] refresca la variante activa y marca la inactiva", async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const pedidas: string[] = [];
+    mockListaConBajas(pedidas);
+    queryClient.setQueryData(["equipos", { incluirBajas: true }], [VIGENTE, DE_BAJA]);
+    render(
+      <QueryClientProvider client={queryClient}>
+        <SessionContext.Provider value={{ user: user(), isLoading: false, setUser: () => {} }}>
+          <EquiposListView />
+        </SessionContext.Provider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("PC-VIGENTE");
+    expect(pedidas).toEqual([""]);
+
+    await queryClient.invalidateQueries({ queryKey: ["equipos"] });
+
+    expect(pedidas).toEqual(["", ""]);
+    expect(queryClient.getQueryState(["equipos", { incluirBajas: true }])?.isInvalidated).toBe(true);
   });
 });

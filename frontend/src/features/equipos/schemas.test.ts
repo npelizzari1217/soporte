@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ZodIssue } from "zod";
-import { crearEquipoSchema, editarComponenteSchema } from "./schemas";
+import { bajaEquipoSchema, crearEquipoSchema, editarComponenteSchema } from "./schemas";
 
 /**
  * Validación cliente-side de los topes de largo/rango de `equipos_informaticos`/
@@ -162,5 +162,25 @@ describe("editarComponenteSchema — límites de largo", () => {
     const valor = "A".repeat(longitud);
     const result = editarComponenteSchema.safeParse({ ...baseComponenteValues(), [campo]: valor });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("bajaEquipoSchema", () => {
+  const baja = {
+    destino: "DESCARTE",
+    categoria: "ROTURA",
+    motivo: "Placa quemada",
+    fecha: "2026-05-01T12:00:00.000Z",
+    usuarioId: null,
+  };
+
+  it("acepta null (equipo vigente) y una baja completa", () => {
+    expect(bajaEquipoSchema.safeParse(null).success).toBe(true);
+    expect(bajaEquipoSchema.safeParse(baja).success).toBe(true);
+  });
+
+  it("rechaza una categoría o un destino fuera del dominio", () => {
+    expect(bajaEquipoSchema.safeParse({ ...baja, categoria: "OTRO" }).success).toBe(false);
+    expect(bajaEquipoSchema.safeParse({ ...baja, destino: "VENTA" }).success).toBe(false);
   });
 });

@@ -364,3 +364,15 @@ Rama: `feat/baja-equipo-completo-wu14` (base wu13).
 - 14.4 `equipos-incluir-bajas.e2e.spec.ts` (12 casos): lista por defecto / `false` / `true` con `baja`, borrado logico excluido, 400, 403; exportacion con y sin filtro ("Baja" en Estado); PATCH, POST componentes con y sin descuento y reactivar sobre equipo dado de baja => 422 sin cambios. El equipo se da de baja por HTTP (`DESCARTE`).
 - 14.5 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (627/116), `vitest run src/equipos src/tickets src/preventivo` (122 archivos, 1421 tests), e2e nuevo 12/12 y `pnpm test` completo (551 archivos, 6903 tests; unico FAIL del log: ruido conocido `orden-de-arranque.spec.ts`) en verde.
 - Ayuda: sin deuda en este WU (WU-15 corrige `equipos-listado.md` junto con el filtro visible).
+
+
+## WU-15 — Filtro de la lista y Ayuda del listado
+
+Rama: `feat/baja-equipo-completo-wu15` (base wu14-2).
+
+- 15.1 `types.ts`: `CATEGORIAS_BAJA_EQUIPO`, `CategoriaBajaEquipo`, `BajaEquipo` y `Equipo.baja?` (opcional para no obligar a cada fixture). `schemas.ts`: `bajaEquipoSchema` (nullable) con su test.
+- 15.2 `use-equipos.ts`: `useEquipos(enabled = true, { incluirBajas })`, clave `["equipos", { incluirBajas }]` (colgada de `["equipos"]`); `queryStringEquipos()` compartido con la exportacion: devuelve `incluirBajas=true` solo con la casilla tildada, si no `undefined` (la peticion no manda el parametro). Los demas callers (`useEquipos()` / `useEquipos(open)`) siguen pidiendo solo vigentes.
+- 15.3 `equipos-list-view.tsx`: casilla «Mostrar equipos dados de baja», apagada por defecto, guiada por la URL (`?incluirBajas=true`, via `useUrlFilters` con `resetPage: false`); la columna Estado ya mostraba la etiqueta «Baja» para `activo = false`; `ExportarCsvButton` recibe el mismo `queryString`; comentario reescrito.
+- 15.4 Tests en `equipos-list-view.test.tsx` (5 casos nuevos): por defecto solo el vigente y sin parametro; al tildar navega con `?incluirBajas=true`; con el parametro se piden ambos y el dado de baja lleva «Baja»; la exportacion pide lo mismo que la lista (sin y con filtro); invalidar `["equipos"]` refresca la variante activa y marca la inactiva.
+- 15.5 Ayuda `equipos-listado.md` editada a mano (sin prettier): la seccion «Sin filtros» pasa a describir la casilla; la exportacion sigue el filtro; se ajusta el parrafo del aviso de volumen. `rg "no tiene filtros"` sin resultados.
+- Ayuda: corregida en este WU; deuda restante: articulo nuevo sobre el flujo de baja de equipo, el boton renombrado y la ficha de un equipo dado de baja.

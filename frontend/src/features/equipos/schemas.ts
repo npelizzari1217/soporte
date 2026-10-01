@@ -8,6 +8,7 @@ import {
 import { parseImporte } from "./depreciacion";
 import { conDosDecimales } from "@/shared/lib/formato-numero";
 import { CONDICIONES_STOCK } from "@/features/insumos/types";
+import { CATEGORIAS_BAJA_EQUIPO } from "./types";
 
 /**
  * Topes de largo/rango de `equipos_informaticos`/`componentes_equipo`, espejo
@@ -298,3 +299,17 @@ export const retirarComponenteSchema = z
     }
   });
 export type RetirarComponenteFormValues = z.infer<typeof retirarComponenteSchema>;
+
+/**
+ * `baja` de `EquipoResponseDto` (R8): `null` mientras el equipo está vigente.
+ * Espejo del DTO del backend, que es la autoridad.
+ */
+export const bajaEquipoSchema = z
+  .object({
+    destino: z.enum(["STOCK_USADO", "DESCARTE"]),
+    categoria: z.enum(CATEGORIAS_BAJA_EQUIPO),
+    motivo: z.string().nullable(),
+    fecha: z.string().datetime(),
+    usuarioId: z.string().nullable(),
+  })
+  .nullable();

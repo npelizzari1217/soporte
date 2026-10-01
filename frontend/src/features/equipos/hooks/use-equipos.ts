@@ -16,16 +16,33 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import type { Equipo, EquipoDetalle } from "../types";
 
+export interface FiltrosEquipos {
+  /** Incluye los equipos dados de baja (R11). Apagado por defecto: la petición no manda el parámetro. */
+  incluirBajas?: boolean;
+}
+
+/** Query string del filtro, o `undefined` si no hay que mandar nada (compartida con la exportación). */
+export function queryStringEquipos({ incluirBajas }: FiltrosEquipos = {}): string | undefined {
+  return incluirBajas ? "incluirBajas=true" : undefined;
+}
+
 /**
  * @param enabled Permite no pedir el listado hasta que el consumidor lo
  * necesite (ej. un diálogo cerrado) — mismo criterio que
  * `useComentariosReparacion` (`features/edilicia`). `true` por defecto:
  * los callers que ya listan equipos apenas montan siguen igual.
+ * @param filtros `incluirBajas` agrega los equipos dados de baja. La clave
+ * `["equipos", { incluirBajas }]` cuelga de `["equipos"]`: invalidar ese
+ * prefijo refresca todas las variantes.
  */
-export function useEquipos(enabled = true) {
+export function useEquipos(enabled = true, filtros: FiltrosEquipos = {}) {
+  const incluirBajas = filtros.incluirBajas === true;
   return useQuery({
-    queryKey: ["equipos"],
-    queryFn: () => apiFetch<Equipo[]>("equipos"),
+    queryKey: ["equipos", { incluirBajas }],
+    queryFn: () => {
+      const qs = queryStringEquipos({ incluirBajas });
+      return apiFetch<Equipo[]>(qs ? `equipos?${qs}` : "equipos");
+    },
     enabled,
   });
 }

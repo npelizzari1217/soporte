@@ -20,6 +20,21 @@
  */
 import type { CondicionStock } from "@/features/insumos/types";
 
+/** Categorías de la baja de un equipo completo — espejo de `CATEGORIAS_BAJA_EQUIPO` del dominio (la autoridad es el DTO del backend). */
+export const CATEGORIAS_BAJA_EQUIPO = ["VEJEZ", "DONACION", "ROTURA", "OTRA"] as const;
+export type CategoriaBajaEquipo = (typeof CATEGORIAS_BAJA_EQUIPO)[number];
+
+/** Datos de la baja de un equipo (`EquipoResponseDto.baja`); `null` mientras está vigente. */
+export interface BajaEquipo {
+  destino: "STOCK_USADO" | "DESCARTE";
+  categoria: CategoriaBajaEquipo;
+  /** Texto trimmeado que cargó el usuario; `null` si no hubo. */
+  motivo: string | null;
+  /** Fecha ISO de la baja. */
+  fecha: string;
+  usuarioId: string | null;
+}
+
 export interface Equipo {
   id: string;
   nombre: string;
@@ -47,6 +62,8 @@ export interface Equipo {
   valorResidual: number | null;
   fechaValorResidual: string | null;
   activo: boolean;
+  /** Opcional para no obligar a cada fixture; el backend lo envía siempre (`null` = vigente). */
+  baja?: BajaEquipo | null;
   createdAt: string;
   updatedAt: string;
 }

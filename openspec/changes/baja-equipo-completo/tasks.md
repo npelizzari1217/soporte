@@ -425,12 +425,12 @@ Commit sugerido: `feat(equipos): listado y exportacion con filtro de equipos dad
 
 **Branch**: `feat/baja-equipo-completo-wu15` · **Base**: wu14
 
-- [ ] 15.1 `frontend/src/features/equipos/types.ts` y `schemas.ts`: campo `baja` (`destino`, `categoria`, `motivo`, `fecha`, `usuarioId` o `null`) en el equipo, y `CATEGORIAS_BAJA_EQUIPO` como espejo del dominio (la autoridad es el DTO del backend). (Req: R8, R11)
-- [ ] 15.2 `frontend/src/features/equipos/hooks/use-equipos.ts`: `useEquipos(enabled, { incluirBajas })` con clave `["equipos", { incluirBajas }]` (la invalidación por `["equipos"]` sigue cubriéndola). (Req: R11)
-- [ ] 15.3 `frontend/src/features/equipos/components/equipos-list-view.tsx`: casilla "Mostrar equipos dados de baja", **apagada por defecto**; etiqueta "Baja" en las filas dadas de baja; `ExportarCsvButton` recibe el mismo parámetro; actualizar el comentario de `:98-102` ("sin parámetros"). (Req: R11)
-- [ ] 15.4 Tests Vitest + MSW `equipos-list-view.test.tsx`: por defecto solo el vigente (la petición no manda `incluirBajas`); al tildar la casilla se piden ambos y el dado de baja lleva "Baja"; el botón de exportación pide el mismo parámetro que la lista; la invalidación por `["equipos"]` refresca ambas claves. (Req: R11)
-- [ ] 15.5 Ayuda `backend/ayuda/equipos-listado.md`: reescribir la sección "Sin filtros" (el listado ya tiene el filtro "Mostrar equipos dados de baja", apagado por defecto) y la exportación ("Como el listado no tiene filtros…" ⇒ la exportación sigue el filtro). Verificar con `rg -n -i "sin filtros|no tiene filtros|dados de baja" backend/ayuda/equipos-listado.md`; `mantenimiento-preventivo.md` queda como está (revisado: sigue verdadero). (Req: R11)
-- [ ] 15.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/equipos && pnpm test`.
+- [x] 15.1 `frontend/src/features/equipos/types.ts` y `schemas.ts`: campo `baja` (`destino`, `categoria`, `motivo`, `fecha`, `usuarioId` o `null`) en el equipo, y `CATEGORIAS_BAJA_EQUIPO` como espejo del dominio (la autoridad es el DTO del backend). (Req: R8, R11)
+- [x] 15.2 `frontend/src/features/equipos/hooks/use-equipos.ts`: `useEquipos(enabled, { incluirBajas })` con clave `["equipos", { incluirBajas }]` (la invalidación por `["equipos"]` sigue cubriéndola). (Req: R11)
+- [x] 15.3 `frontend/src/features/equipos/components/equipos-list-view.tsx`: casilla "Mostrar equipos dados de baja", **apagada por defecto**; etiqueta "Baja" en las filas dadas de baja; `ExportarCsvButton` recibe el mismo parámetro; actualizar el comentario de `:98-102` ("sin parámetros"). (Req: R11)
+- [x] 15.4 Tests Vitest + MSW `equipos-list-view.test.tsx`: por defecto solo el vigente (la petición no manda `incluirBajas`); al tildar la casilla se piden ambos y el dado de baja lleva "Baja"; el botón de exportación pide el mismo parámetro que la lista; la invalidación por `["equipos"]` refresca ambas claves. (Req: R11)
+- [x] 15.5 Ayuda `backend/ayuda/equipos-listado.md`: reescribir la sección "Sin filtros" (el listado ya tiene el filtro "Mostrar equipos dados de baja", apagado por defecto) y la exportación ("Como el listado no tiene filtros…" ⇒ la exportación sigue el filtro). Verificar con `rg -n -i "sin filtros|no tiene filtros|dados de baja" backend/ayuda/equipos-listado.md`; `mantenimiento-preventivo.md` queda como está (revisado: sigue verdadero). (Req: R11)
+- [x] 15.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/equipos && pnpm test`.
 
 **Escenarios**: Oculto por defecto; Visible con etiqueta; Exportación con el filtro (frontend).
 **PR boundary**: ~330 líneas, base wu14. Sin corte previsto. Revert: casilla, hook y botón; la Ayuda
