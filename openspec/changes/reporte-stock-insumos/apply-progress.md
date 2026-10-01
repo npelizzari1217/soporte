@@ -42,3 +42,19 @@ Rama `feat/reporte-stock-insumos-wu02` (base `-wu01-3`). Partido en dos ramas (`
 Desviación: la integración usa la base compartida de pruebas con prefijo y limpieza por prefijo, no una
 base efímera, por coherencia con los tres specs de integración de WU-1; los resultados se filtran por
 el prefijo de la corrida.
+
+## WU-3 — CSV, exportación y error de tope (completo, 7/7)
+
+Rama `feat/reporte-stock-insumos-wu03` (base `-wu02-2`), partido en dos ramas: `-wu03` (csv.ts y su spec) y `-wu03-2` (error, exportación, `armarExportCsv`).
+
+- `csv.ts`: `CeldaNumericaCsv` (`tipo: 'numero'`, `texto`), `ValorCelda` ampliado y `cantidadCsv(valor, entera)`.
+  `serializarCsv` pasa cada valor por `escaparValor`: la celda numérica sale verbatim y todo lo demás
+  conserva `escaparCelda` (texto y `number` plano siguen igual; las cuatro exportaciones existentes no cambian).
+  `-0` y un fraccionario que redondea a `-0,00` salen como `0` / `0,00`.
+- `ExportacionStockDemasiadoGrandeError` en `insumos.errors.ts`.
+- `exportar-reporte-stock.use-case.ts`: compone el núcleo con los mismos filtros; columnas de ADR-4;
+  etiquetas de reposición copiadas de la ficha (frontend; no hay copia en el backend).
+- Desviación mínima: `armarExportCsv` recibe un `ahora?: Date` opcional. Sin él, el nombre del archivo usaba
+  `new Date()` y no se podía probar que con reloj 2026-10-02T01:30Z lleve `2026-10-01`; el export pasa
+  `generadoEn`, así nombre y celda "Generado el" comparten instante. Los otros callers no lo pasan.
+- Specs: `csv.spec.ts` ampliado (`cantidadCsv`), `exportar-reporte-stock.use-case.spec.ts` (13 casos).

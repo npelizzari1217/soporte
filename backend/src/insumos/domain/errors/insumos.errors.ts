@@ -369,3 +369,24 @@ export class SecuenciaCodigoInsumoAgotadaError extends DomainError {
     );
   }
 }
+
+/**
+ * ExportacionStockDemasiadoGrandeError — la exportación a CSV del reporte de
+ * stock excedería el tope de filas (`TOPE_FILAS_EXPORT`, 5000), contado
+ * después de aplicar los filtros.
+ * → HTTP 422 en la capa de presentación.
+ *
+ * Existe para NO entregar un CSV truncado en silencio. A diferencia de la
+ * exportación de equipos, el reporte sí tiene filtros, así que el mensaje
+ * puede pedir acotarlos.
+ */
+export class ExportacionStockDemasiadoGrandeError extends DomainError {
+  readonly code = 'EXPORTACION_STOCK_DEMASIADO_GRANDE';
+
+  constructor(total: number, tope: number) {
+    super(
+      `El reporte de stock tiene ${total} filas y el máximo soportado por la exportación es ${tope}. ` +
+        `Acote los filtros (familia, tipo, solo bajo mínimo) para poder descargarlo.`,
+    );
+  }
+}

@@ -35,6 +35,12 @@ export interface ArmarExportCsvInput<T> {
    * cubrir la exportación en silencio.
    */
   alExceder: (total: number, tope: number) => DomainError;
+  /**
+   * Instante que fecha el nombre del archivo. Opcional: por defecto, ahora.
+   * Un export que ya muestra su propio instante de generación lo pasa para
+   * que nombre y contenido coincidan.
+   */
+  ahora?: Date;
 }
 
 /** Archivo listo para que el controller lo entregue como descarga. */
@@ -62,7 +68,7 @@ export interface ArmarExportCsvResult {
 export function armarExportCsv<T>(
   input: ArmarExportCsvInput<T>,
 ): Result<ArmarExportCsvResult, DomainError> {
-  const { filas, total, tope, columnas, prefijo, alExceder } = input;
+  const { filas, total, tope, columnas, prefijo, alExceder, ahora } = input;
 
   if (total > tope) {
     return Result.fail(alExceder(total, tope));
@@ -70,7 +76,7 @@ export function armarExportCsv<T>(
 
   return Result.ok({
     contenido: serializarCsv(filas, columnas),
-    nombreArchivo: `${prefijo}-${sufijoFechaArgentina()}.csv`,
+    nombreArchivo: `${prefijo}-${sufijoFechaArgentina(ahora ?? new Date())}.csv`,
   });
 }
 
@@ -82,6 +88,6 @@ export function armarExportCsv<T>(
  * importarla acá invertiría la dirección de dependencia entre un módulo
  * funcional y `shared`.
  */
-function sufijoFechaArgentina(): string {
-  return desplazarAArgentina(new Date()).toISOString().slice(0, 10);
+function sufijoFechaArgentina(instante: Date): string {
+  return desplazarAArgentina(instante).toISOString().slice(0, 10);
 }
