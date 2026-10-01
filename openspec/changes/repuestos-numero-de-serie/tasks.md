@@ -593,9 +593,9 @@ Commit sugerido: `feat(insumos): seguimiento por serie en el ABM del insumo`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu14` · **Base**: wu13
 
-- [ ] 14.1 `unidad-medida-form-dialog.tsx` y `unidad-medida-list.tsx`: casilla `entera` (columna en el listado); mostrar el error `UnidadMedidaEnUsoPorSerieError`. Schema Zod espejo.
-- [ ] 14.2 Tests (MSW): alta y edición con `entera`; desmarcar una usada por un insumo `SERIE` muestra el motivo.
-- [ ] 14.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
+- [x] 14.1 `unidad-medida-form-dialog.tsx` y `unidad-medida-list.tsx`: casilla `entera` (columna en el listado); mostrar el error `UnidadMedidaEnUsoPorSerieError`. Schema Zod espejo.
+- [x] 14.2 Tests (MSW): alta y edición con `entera`; desmarcar una usada por un insumo `SERIE` muestra el motivo.
+- [x] 14.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
 
 **Escenarios**: Marcar entera una unidad de medida propia; Desmarcar entera una unidad usada por un
 insumo SERIE (UI).

@@ -45,6 +45,11 @@ export function UnidadMedidaList() {
     { key: "codigo", header: "Código" },
     { key: "nombre", header: "Nombre" },
     {
+      key: "entera",
+      header: "Entera",
+      render: (row) => (row.entera ? <Badge variant="secondary">Entera</Badge> : <Badge variant="outline">No</Badge>),
+    },
+    {
       key: "activo",
       header: "Estado",
       render: (row) =>

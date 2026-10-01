@@ -286,6 +286,8 @@ export const unidadMedidaSchema = z.object({
     .trim()
     .min(1, "El nombre es requerido")
     .max(UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH)),
+  // Unidad que mide piezas enteras: condición para llevar un insumo por `SERIE`.
+  entera: z.boolean().default(false),
 });
 export type UnidadMedidaFormValues = z.infer<typeof unidadMedidaSchema>;
 

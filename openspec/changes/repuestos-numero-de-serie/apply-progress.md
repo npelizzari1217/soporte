@@ -824,3 +824,12 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   422 hacia `NINGUNO` sin PATCH de datos.
 - Gates (13.4), rama final `-wu13-2`: `pnpm lint` y `pnpm type-check` en cero; `pnpm vitest run src/features/insumos` 21 archivos / 284 tests verdes;
   `pnpm test` completo 213 archivos / 1639 tests verdes.
+
+### WU-14 - casilla `entera` en el ABM de unidades de medida (14.1 a 14.3), rama `-wu14`
+
+- `unidadMedidaSchema.entera` (boolean, default `false`). `UnidadMedidaFormDialog`: casilla "Entera" (precargada al editar); el POST/PATCH siempre lleva
+  `entera`. Un `ApiError` de la mutacion (p. ej. 422 `UNIDAD_MEDIDA_EN_USO_POR_SERIE`) se muestra en linea con el motivo del backend y el dialogo queda
+  abierto (el toast del hook se mantiene). `UnidadMedidaList`: columna "Entera".
+- Tests (MSW + `renderWithProviders`, 3 nuevos y 2 ajustados en `unidad-medida-form-dialog.test.tsx`): alta con `entera: true`, edicion con la casilla
+  precargada y marcada, desmarcar una unidad usada por un insumo `SERIE` muestra el motivo.
+- Gates (14.3), rama `-wu14`: `pnpm lint` y `pnpm type-check` en cero; `pnpm vitest run src/features/insumos` 21 archivos / 287 tests verdes; `pnpm test` completo verde.
