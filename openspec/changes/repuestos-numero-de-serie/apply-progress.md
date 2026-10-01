@@ -716,3 +716,13 @@ Ramas `-wu11-2` (testigos y carreras del retiro, 304 lineas), `-wu11-3` (e2e del
 - Specs unit: reactivar reescrito (orden reinstalar -> save en una tx, traduccion por code, error de insumos, legado sin tocar
   unidades, falla del `save` propaga) y controller (usuarioId del JWT, mapeo por code de las dos clases y de
   `SeguimientoNoModificableError`). Catalogo de errores de equipos: sigue en 18 (no se agregaron clases).
+
+### WU-11 - 11.3 (concurrencia y mutacion), rama `-wu11-5`
+
+- `retirar-reactivar-unidad.concurrencia.integration.spec.ts` suma reactivar: testigo L1/L2/L3 (sonda de `pg_locks` sobre
+  `componentes_equipo`, mismo patron de WU-10a), 8 reactivaciones simultaneas => una gana (resto `UnidadDelComponenteNoDisponible` o
+  `ComponenteYaActivo`, un solo evento `REACTIVACION`), reactivar y retirar a la vez en 5 rondas (sin 40P01; el componente y su unidad
+  quedan coherentes), reactivar tras recuperar (ADR-14, `RECUPERACION` real via `recuperarDescartadas`) y con el insumo vuelto a `NINGUNO`.
+- **Mutacion adversarial**: en `ReactivarComponenteUseCase`, `reactivar()` + `save()` movidos ANTES de `reinstalar`. Resultado: 8 rojos
+  (3 testigos de lock de la integracion, los 2 casos de rechazo de la integracion que dejaban el componente reactivado, y 3 unit de orden
+  y de rechazo). Revertida; los 26 tests de ambos specs vuelven a verde.

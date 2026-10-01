@@ -33,7 +33,13 @@ import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructur
 import { construirEntradaReal } from '../../../insumos/testing/entrada-insumo-real';
 import { construirOperacionesReal } from '../../../insumos/testing/operaciones-unidad-real';
 import { RetirarComponenteUseCase } from './retirar-componente.use-case';
-import { ComponenteDadoDeBajaError } from '../../domain/errors/equipos.errors';
+import { ReactivarComponenteUseCase } from './reactivar-componente.use-case';
+import {
+  ComponenteDadoDeBajaError,
+  ComponenteYaActivoError,
+  UnidadDelComponenteNoDisponibleError,
+} from '../../domain/errors/equipos.errors';
+import { SeguimientoNoModificableError } from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -169,6 +175,28 @@ describe('Retiro y reactivar con unidad — orden de locks y carreras (WU-11, AD
     );
   }
 
+  function makeReactivar(): ReactivarComponenteUseCase {
+    return new ReactivarComponenteUseCase(
+      makeTxRunner(),
+      componenteRepo,
+      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
+    );
+  }
+
+  /** Deja el componente descartado por el camino real (la unidad queda DESCARTADA, con su evento). */
+  async function descartarComponente(): Promise<void> {
+    const retirado = await conTenant(() =>
+      makeRetirar().execute({
+        equipoId,
+        componenteId,
+        destino: 'DESCARTE',
+        motivo: 'preparacion',
+        usuarioId: DUMMY_USUARIO_ID,
+      }),
+    );
+    expect(retirado.isOk()).toBe(true);
+  }
+
   async function esperarBloqueadoPor(testigo: PoolClient, pidBloqueante: number): Promise<number> {
     const limite = Date.now() + ESPERA_MAXIMA_MS;
     while (Date.now() < limite) {
@@ -300,5 +328,149 @@ describe('Retiro y reactivar con unidad — orden de locks y carreras (WU-11, AD
       },
       60_000,
     );
+  });
+
+  describe('reactivar (L1 a L3 antes de L4)', () => {
+    beforeEach(descartarComponente);
+
+    it.each(LOCKS_BAJOS)(
+      'esperando %s: el servicio todavia no guardo el componente (sin lock de relacion sobre componentes_equipo)',
+      async (_nombre, consulta, parametros) => {
+        const resultado = await conLockRetenidoSinComponente(consulta, parametros(), () =>
+          makeReactivar().execute({ equipoId, componenteId, usuarioId: DUMMY_USUARIO_ID }),
+        );
+
+        expect(resultado.isOk()).toBe(true);
+        const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+          where: { id: componenteId },
+        });
+        expect(fila.deletedAt).toBeNull();
+        const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({
+          where: { id: unidadId },
+        });
+        expect(unidad).toMatchObject({ estado: 'INSTALADA', equipoId });
+      },
+      30_000,
+    );
+
+    it(`${CONCURRENCIA} reactivaciones simultaneas del MISMO componente: UNA gana y el resto es rechazado, sin 40P01`, async () => {
+      const resultados = await conTenant(() =>
+        Promise.all(
+          Array.from({ length: CONCURRENCIA }, () =>
+            makeReactivar().execute({ equipoId, componenteId, usuarioId: DUMMY_USUARIO_ID }),
+          ),
+        ),
+      );
+
+      expect(resultados.filter((r) => r.isOk())).toHaveLength(1);
+      for (const perdedor of resultados.filter((r) => r.isFail())) {
+        const error = perdedor.getError();
+        expect(
+          error instanceof UnidadDelComponenteNoDisponibleError ||
+            error instanceof ComponenteYaActivoError,
+        ).toBe(true);
+      }
+      // Un DESCARTE (de la preparacion) y una sola REACTIVACION.
+      const eventos = await tenantClient.eventoUnidadInsumo.findMany({
+        where: { unidadId },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(eventos.map((e) => e.tipo)).toEqual(['DESCARTE', 'REACTIVACION']);
+    }, 60_000);
+
+    it('reactivar y retirar a la vez: ningun 40P01 y el componente queda coherente con su unidad', async () => {
+      // Las rondas alternan los ganadores posibles: retiro sobre un componente que otro
+      // reactivo antes, o reactivacion que llega tras un retiro. Se afirma el RESULTADO
+      // (consistencia de las dos filas), no el orden de los locks.
+      for (let ronda = 0; ronda < 5; ronda += 1) {
+        const resultados = await conTenant(() =>
+          Promise.all(
+            Array.from({ length: 4 }, (_, i) =>
+              i % 2 === 0
+                ? makeReactivar().execute({ equipoId, componenteId, usuarioId: DUMMY_USUARIO_ID })
+                : makeRetirar().execute({
+                    equipoId,
+                    componenteId,
+                    destino: 'DESCARTE',
+                    motivo: 'carrera',
+                    usuarioId: DUMMY_USUARIO_ID,
+                  }),
+            ),
+          ),
+        );
+        // Si algun caso de uso hubiera lanzado (40P01 u otro), `Promise.all` habria rechazado.
+        expect(resultados.length).toBe(4);
+
+        const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+          where: { id: componenteId },
+        });
+        const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({
+          where: { id: unidadId },
+        });
+        if (fila.deletedAt === null) {
+          expect(unidad).toMatchObject({ estado: 'INSTALADA', equipoId });
+        } else {
+          expect(unidad).toMatchObject({ estado: 'DESCARTADA', equipoId: null });
+        }
+        // Dejar el componente descartado para la ronda siguiente.
+        if (fila.deletedAt === null) await descartarComponente();
+      }
+    }, 120_000);
+
+    it('tras recuperar la pieza (ADR-14) reactivar se rechaza y no cambia nada', async () => {
+      const operaciones = construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo });
+      const recuperada = await conTenant(() =>
+        makeTxRunner().run(() =>
+          operaciones.recuperarDescartadas(insumoId, [unidadId], {
+            usuarioId: DUMMY_USUARIO_ID,
+            motivo: 'se recupero',
+            condicion: 'USADO',
+          }),
+        ),
+      );
+      expect(recuperada.isOk()).toBe(true);
+
+      const resultado = await conTenant(() =>
+        makeReactivar().execute({ equipoId, componenteId, usuarioId: DUMMY_USUARIO_ID }),
+      );
+
+      expect(resultado.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).not.toBeNull();
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad).toMatchObject({ estado: 'EN_DEPOSITO', equipoId: null });
+      const eventos = await tenantClient.eventoUnidadInsumo.findMany({
+        where: { unidadId },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(eventos.map((e) => e.tipo)).toEqual(['DESCARTE', 'RECUPERACION']);
+    }, 30_000);
+
+    it('con el insumo vuelto a NINGUNO reactivar se rechaza (SeguimientoNoModificable) y no cambia nada', async () => {
+      await tenantClient.insumo.update({
+        where: { id: insumoId },
+        data: { seguimiento: 'NINGUNO' },
+      });
+      try {
+        const resultado = await conTenant(() =>
+          makeReactivar().execute({ equipoId, componenteId, usuarioId: DUMMY_USUARIO_ID }),
+        );
+
+        expect(resultado.getError()).toBeInstanceOf(SeguimientoNoModificableError);
+      } finally {
+        await tenantClient.insumo.update({
+          where: { id: insumoId },
+          data: { seguimiento: 'SERIE' },
+        });
+      }
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad.estado).toBe('DESCARTADA');
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).not.toBeNull();
+    }, 30_000);
   });
 });
