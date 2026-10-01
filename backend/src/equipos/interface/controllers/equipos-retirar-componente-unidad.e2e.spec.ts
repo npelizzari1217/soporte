@@ -425,6 +425,73 @@ describe('Equipos e2e — retiro y reactivar con unidad (WU-11)', () => {
     });
   });
 
+  describe('Retiro de un componente con unidad de origen sin salida (D3)', () => {
+    /** Alta por HTTP sin descuento (D3): nace la unidad INSTALADA, sin SALIDA vinculada. */
+    async function escenarioD3(serial: string) {
+      const insumoId = await crearInsumoSerie();
+      const actor = await crearActorConPermisos(['EQUIPOS:ALTAS', 'EQUIPOS:BORRADO']);
+      const equipoId = await crearEquipoDirecto();
+      const alta = await httpPost<ComponenteResponseDto>(
+        `${baseUrl}/equipos/${equipoId}/componentes`,
+        { insumoId, descontarStock: false, numeroSerie: serial },
+        bearer(actor.accessToken),
+      );
+      expect(alta.status).toBe(201);
+      const unidad = await tenantClient.unidadInsumo.findFirstOrThrow({ where: { insumoId } });
+      expect(unidad).toMatchObject({ estado: 'INSTALADA', equipoId });
+      return { actor, insumoId, equipoId, unidadId: unidad.id, componenteId: alta.data.id };
+    }
+
+    it('STOCK_USADO con motivo -> la unidad queda EN_DEPOSITO USADO con su serial, existe la ENTRADA y se marca sin salida previa', async () => {
+      const { actor, insumoId, equipoId, unidadId, componenteId } = await escenarioD3('K9');
+
+      const { status, data } = await httpPost<ComponenteResponseDto>(
+        bajaUrl(equipoId, componenteId),
+        { destino: 'STOCK_USADO', motivo: 'pieza del equipo comprado' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.bajaDestino).toBe('STOCK_USADO');
+      expect(data.bajaSinSalidaPrevia).toBe(true);
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad).toMatchObject({
+        estado: 'EN_DEPOSITO',
+        condicion: 'USADO',
+        equipoId: null,
+        numeroSerie: 'K9',
+      });
+      const entradas = await tenantClient.movimientoInsumo.findMany({
+        where: { insumoId, tipo: 'ENTRADA', condicion: 'USADO', unidadId },
+      });
+      expect(entradas).toHaveLength(1);
+      expect(entradas[0].cantidad.toString()).toBe('1');
+      expect(entradas[0].id).toBe(data.bajaMovimientoId);
+      expect(
+        await tenantClient.movimientoInsumo.count({ where: { insumoId, tipo: 'SALIDA' } }),
+      ).toBe(0);
+    });
+
+    it('STOCK_USADO sin motivo -> 422 y la unidad sigue INSTALADA', async () => {
+      const { actor, insumoId, equipoId, unidadId, componenteId } = await escenarioD3('K9');
+
+      const { status } = await httpPost(
+        bajaUrl(equipoId, componenteId),
+        { destino: 'STOCK_USADO' },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad).toMatchObject({ estado: 'INSTALADA', equipoId });
+      expect(await tenantClient.movimientoInsumo.count({ where: { insumoId } })).toBe(0);
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).toBeNull();
+    });
+  });
+
   describe('Retiro de un componente LEGADO de un insumo SERIE', () => {
     it('STOCK_USADO con serial -> 200 y nace una unidad USADO en depósito con ese serial', async () => {
       const insumoId = await crearInsumoSerie();
