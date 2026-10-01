@@ -172,3 +172,17 @@ Comando: `pnpm vitest run src/equipos/application/use-cases/retirar-componente.u
 ### Ayuda
 
 Sin deuda.
+
+### WU-5 parte 2 — CAS de `EditarComponente` (`feat/baja-equipo-completo-wu05-2`)
+
+- 5.3 `ComponenteDadoDeBajaError` ya existía (y su mapeo 422): no se creó nada. Puerto:
+  `IComponenteEquipoRepository.editar(componente): Promise<boolean>`.
+- 5.4 `editar()` = `updateMany WHERE id AND deleted_at IS NULL` sobre `descripcion`, `numero_serie`,
+  `capacidad`, `updated_at`. Con unidad `numero_serie` se escribe NULL (CHECK
+  `componentes_equipo_unidad_sin_serie_texto_check`, igual que el mapper): lo expuso el e2e de
+  `equipos-instalar-desde-deposito` en la corrida amplia. `EditarComponenteUseCase` usa `editar()`;
+  `false` ⇒ `ComponenteDadoDeBajaError`; nunca `save`.
+- 5.5 `editar-componente.integration.spec.ts` (4 casos): edición normal (tres columnas), componente
+  con unidad (serial NULL), entidad leída antes de un retiro individual, entidad leída antes de la baja del equipo.
+- 5.7 Ningún fake implementa el puerto completo (todos usan `Pick`): nada que agregar.
+- Casts: `editar-componente.use-case.spec.ts` perdió un `as never`: ratchet 629 → 628 (117 archivos).

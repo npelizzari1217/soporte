@@ -61,6 +61,21 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
     });
   }
 
+  async editar(componente: ComponenteEquipoEntity): Promise<boolean> {
+    const { count } = await this.client.componenteEquipo.updateMany({
+      where: { id: componente.id, deletedAt: null },
+      data: {
+        descripcion: componente.descripcion,
+        // Con unidad el serial es el de la unidad: la columna queda NULL (CHECK
+        // `componentes_equipo_unidad_sin_serie_texto_check`, mismo criterio que el mapper).
+        numeroSerie: componente.unidadId != null ? null : componente.numeroSerie,
+        capacidad: componente.capacidad,
+        updatedAt: new Date(),
+      },
+    });
+    return count > 0;
+  }
+
   async retirar(componente: ComponenteEquipoEntity): Promise<boolean> {
     const { count } = await this.client.componenteEquipo.updateMany({
       where: { id: componente.id, deletedAt: null },

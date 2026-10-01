@@ -35,13 +35,16 @@ export interface EditarComponenteDto {
  * 3. Con unidad de insumo, `numeroSerie` en el PATCH → `SerialDeUnidadNoEditableError`
  *    (el serial es de la unidad y se corrige desde el insumo, ADR-7/ADR-9). Un
  *    componente legado edita su serial como siempre.
- * 4. Aplica `actualizar()` (PATCH semántico) y persiste.
+ * 4. Aplica `actualizar()` (PATCH semántico) y persiste con `editar()`: un CAS
+ *    (`WHERE id AND deleted_at IS NULL`) que escribe solo esas tres columnas. Si tocó 0 filas, el
+ *    componente se retiró después de leerlo (baja del equipo o retiro individual) →
+ *    `ComponenteDadoDeBajaError` y nada se pisa (baja-equipo-completo ADR-5).
  *
  * Sin throw — todos los fallos esperados retornan `Result.fail()`.
  */
 export class EditarComponenteUseCase {
   constructor(
-    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'findById' | 'save'>,
+    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'findById' | 'editar'>,
   ) {}
 
   async execute(dto: EditarComponenteDto): Promise<Result<ComponenteEquipoEntity, DomainError>> {
@@ -65,7 +68,10 @@ export class EditarComponenteUseCase {
       capacidad: dto.capacidad,
     });
 
-    await this.componenteRepo.save(componente);
+    const editado = await this.componenteRepo.editar(componente);
+    if (!editado) {
+      return Result.fail(new ComponenteDadoDeBajaError(componente.id));
+    }
     return Result.ok(componente);
   }
 }

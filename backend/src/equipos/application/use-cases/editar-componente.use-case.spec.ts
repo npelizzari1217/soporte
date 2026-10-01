@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EditarComponenteUseCase } from './editar-componente.use-case';
+import type { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import {
   ComponenteDadoDeBajaError,
@@ -23,9 +24,14 @@ describe('EditarComponenteUseCase', () => {
     }).getValue();
   }
 
-  function makeUseCase(componente: ComponenteEquipoEntity | null) {
-    const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-    return { componenteRepo, useCase: new EditarComponenteUseCase(componenteRepo as never) };
+  function makeUseCase(componente: ComponenteEquipoEntity | null, editado = true) {
+    const componenteRepo = {
+      findById: vi.fn(async () => componente),
+      editar: vi.fn(async () => editado),
+      // El use case no debe usarlo: queda espiado para probar que nunca se llama.
+      save: vi.fn(async () => {}),
+    } satisfies Pick<IComponenteEquipoRepository, 'findById' | 'editar' | 'save'>;
+    return { componenteRepo, useCase: new EditarComponenteUseCase(componenteRepo) };
   }
 
   it('falla con ComponenteNoEncontradoError si no existe', async () => {
@@ -81,7 +87,24 @@ describe('EditarComponenteUseCase', () => {
     expect(actualizado.descripcion).toBe('Nueva desc');
     expect(actualizado.numeroSerie).toBeNull();
     expect(actualizado.capacidad).toBe('8GB'); // no tocado (undefined)
-    expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+    expect(componenteRepo.editar).toHaveBeenCalledWith(componente);
+    expect(componenteRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('editar() devuelve false (retirado despues de leerlo): ComponenteDadoDeBajaError y nunca llama a save', async () => {
+    const componente = makeComponente();
+    const { useCase, componenteRepo } = makeUseCase(componente, false);
+
+    const result = await useCase.execute({
+      equipoId: 'equipo-1',
+      componenteId: componente.id,
+      descripcion: 'Edicion vieja',
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ComponenteDadoDeBajaError);
+    expect(componenteRepo.editar).toHaveBeenCalledTimes(1);
+    expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
   it('un tipoComponenteCodigo o un insumoId sobrantes no cambian el tipo ni el repuesto', async () => {
@@ -160,7 +183,8 @@ describe('EditarComponenteUseCase', () => {
       expect(result.getValue().descripcion).toBe('Nueva');
       expect(result.getValue().capacidad).toBe('16GB');
       expect(result.getValue().numeroSerie).toBe('SERIAL-DE-LA-UNIDAD');
-      expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+      expect(componenteRepo.editar).toHaveBeenCalledWith(componente);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
     });
   });
 });
