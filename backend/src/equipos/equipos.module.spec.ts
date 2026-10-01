@@ -20,6 +20,10 @@ import { InsumosModule } from '../insumos/insumos.module';
 import { EQUIPO_INFORMATICO_REPOSITORY } from './domain/ports/i-equipo-informatico.repository';
 import { COMPONENTE_EQUIPO_REPOSITORY } from './domain/ports/i-componente-equipo.repository';
 import { TICKET_SOPORTE_REPOSITORY } from './domain/ports/i-ticket-soporte.repository';
+import { DarDeBajaEquipoUseCase } from './application/use-cases/dar-de-baja-equipo.use-case';
+import { RegistrarEntradaInsumoUseCase } from '../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import { OperacionesUnidadInsumo } from '../insumos/application/services/operaciones-unidad-insumo.service';
+import { TENANT_TX_RUNNER } from '../shared/infrastructure/persistence/tenant-transaction-runner';
 
 describe('EquiposModule wiring (T13.7)', () => {
   it('registra EquiposController y SoporteController', () => {
@@ -50,4 +54,23 @@ describe('EquiposModule wiring (T13.7)', () => {
       expect(exportsList).toContain(token);
     },
   );
+
+  /**
+   * sdd/baja-equipo-completo (ADR-3): la baja compone la devolucion en lote de stock, las
+   * operaciones de unidad y el runner transaccional; sin esas cinco dependencias no levanta.
+   */
+  it('registra DarDeBajaEquipoUseCase con runner, repos de equipos y servicios de insumos', () => {
+    const providers = (Reflect.getMetadata('providers', EquiposModule) ?? []) as {
+      provide?: unknown;
+      inject?: unknown[];
+    }[];
+    const proveedor = providers.find((p) => p.provide === DarDeBajaEquipoUseCase);
+    expect(proveedor?.inject).toEqual([
+      TENANT_TX_RUNNER,
+      EQUIPO_INFORMATICO_REPOSITORY,
+      COMPONENTE_EQUIPO_REPOSITORY,
+      RegistrarEntradaInsumoUseCase,
+      OperacionesUnidadInsumo,
+    ]);
+  });
 });

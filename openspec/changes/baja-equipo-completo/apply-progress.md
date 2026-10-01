@@ -235,3 +235,26 @@ Ramas: `feat/baja-equipo-completo-wu07` (7.1 + 7.3, registrar), `-wu07-2` (7.2, 
   legado `SERIE`, insumo borrado sin cambios, `INSUMO_BORRADO` + `SERIAL_DUPLICADO` juntos sin cambios y `diagnosticar…`. El
   invariante `SERIE` se verifica tras cada caso.
 - Ayuda: sin deuda.
+
+## WU-8 — `DarDeBajaEquipoUseCase`: atomicidad, leyenda y wiring
+
+Rama: `feat/baja-equipo-completo-wu08` (un solo commit, `size:exception`).
+
+- 8.1 Fuera de `run()`: equipo existe y no borrado (`EquipoNoEncontradoError`), `!activo` (`EquipoDadoDeBajaError`), destino y
+  categoría del catálogo, `OTRA` con texto recortado y largo del texto contra `largoMaximoTextoBaja` (`MotivoBajaEquipoInvalidoError`
+  con `largoMaximo`; se valida, no se trunca). Con `STOCK_USADO`, `diagnosticarDevolucionesDeEquipo` y, si hay causas,
+  `BajaEquipoConPiezasProblematicasError` con todas.
+- 8.2 Dentro de `run()`: LE `bloquearParaModificar` + recheck (no borrado, activo) → leyenda recompuesta con el nombre bloqueado
+  (el nombre pudo cambiar) → relectura de piezas (conjunto de ids distinto ⇒ `EquipoModificadoDuranteLaBajaError`) → stock A
+  (`registrarDevolucionesDeEquipo`) o B (`descartarInstaladas` con items ordenados por `unidadId`) → componentes por id con
+  `retirar()` + CAS → `darDeBaja` + `registrarBaja` (CAS). Todo `fail` se lanza como `FalloBajaDeEquipo`; `FalloOperacionDeUnidad`
+  se deja propagar; ambos se desenvuelven afuera y `DevolucionConPiezasProblematicasError` se traduce a la del equipo. Cero piezas
+  ⇒ solo se marca el equipo. El reloj se inyecta como `ahora` (por defecto `new Date()`).
+- 8.3 `equipos.module.ts` registra el provider; `equipos.module.spec.ts` fija sus cinco dependencias (el resto del arbol lo
+  resuelven los e2e que compilan `EquiposModule`).
+- 8.4 Spec unitario (31 casos): orden LE → stock → L4 por id → equipo (A y B), misma leyenda en piezas/stock/equipo, seriales por
+  componente solo para legados, DESCARTE sin diagnóstico ni stock, rollback por cada `fail`/CAS en falso, traducción y
+  desenvoltura de errores, conjunto cambiado, cero piezas, equipo de baja/borrado/inexistente (afuera y bajo LE), `OTRA`, categoría
+  y destino inválidos, 500 y 501 con `largoMaximo`, nombre que crece bajo el lock.
+- Ayuda: sin deuda (sin ruta ni UI).
+
