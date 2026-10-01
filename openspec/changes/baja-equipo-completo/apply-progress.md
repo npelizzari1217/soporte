@@ -186,3 +186,16 @@ Sin deuda.
   con unidad (serial NULL), entidad leída antes de un retiro individual, entidad leída antes de la baja del equipo.
 - 5.7 Ningún fake implementa el puerto completo (todos usan `Pick`): nada que agregar.
 - Casts: `editar-componente.use-case.spec.ts` perdió un `as never`: ratchet 629 → 628 (117 archivos).
+
+## WU-6 — Insumos: clasificador, `serialesExistentes` y `devolverDesdeEquipo`
+
+Rama `feat/baja-equipo-completo-wu06` (6.1 y 6.2) y `feat/baja-equipo-completo-wu06-2` (6.3 a 6.5).
+
+### Parte 1 — 6.1 y 6.2
+
+- 6.1 `clasificar-pieza-devuelta.ts`: `CAUSAS_PIEZA_NO_DEVOLVIBLE`, `CausaPieza` y `clasificarPiezaDevuelta()` pura.
+  Recibe hechos ya leídos (`insumoVigente`, `familiaEsRepuesto`, `seguimiento`, `tieneUnidad`, `numeroSerie`,
+  `serialRepetidoEnElLote`); `SERIAL_DUPLICADO` no sale de acá (exige la base, bajo L2). Con `DESCARTE` devuelve `null`.
+  El insumo deshabilitado y la familia no vigente se admiten porque no son hechos de entrada.
+- 6.2 `serialesExistentes(insumoId, normalizados)` en el puerto y en `PrismaUnidadInsumoRepository`
+  (`findMany` por `numero_serie_normalizado`, sin lock; lista vacía sin consulta). Integración de 4 casos.

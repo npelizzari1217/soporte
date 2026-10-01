@@ -208,6 +208,25 @@ export class PrismaUnidadInsumoRepository implements IUnidadInsumoRepository {
   }
 
   /**
+   * @param insumoId Insumo en el que se busca.
+   * @param normalizados Seriales normalizados a buscar.
+   * @returns Los que ya existen en el insumo; vacío sin ir a la base si no se pidió ninguno.
+   */
+  async serialesExistentes(
+    insumoId: string,
+    normalizados: readonly string[],
+  ): Promise<Set<string>> {
+    if (normalizados.length === 0) return new Set();
+    const filas = await this.client.unidadInsumo.findMany({
+      where: { insumoId, numeroSerieNormalizado: { in: [...normalizados] } },
+      select: { numeroSerieNormalizado: true },
+    });
+    return new Set(
+      filas.flatMap((f) => (f.numeroSerieNormalizado === null ? [] : [f.numeroSerieNormalizado])),
+    );
+  }
+
+  /**
    * @param ids Ids de equipos.
    * @returns Mapa id -> nombre; vacío sin ir a la base si no hay ids.
    */

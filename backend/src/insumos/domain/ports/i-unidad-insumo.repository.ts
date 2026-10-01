@@ -111,6 +111,19 @@ export interface IUnidadInsumoRepository {
   findById(id: string): Promise<UnidadInsumoEntity | null>;
 
   /**
+   * De los seriales pedidos, devuelve los que YA tiene alguna unidad del insumo,
+   * en cualquier estado (incluso descartada: el índice único los cuenta a todos).
+   * Sin lock propio: solo es autoritativa bajo el L2 (advisory) del insumo que ya
+   * tiene el llamador, porque toda otra alta del mismo insumo necesita ese L2.
+   * Sin ese L2 es una foto.
+   *
+   * @param insumoId Insumo en el que se busca.
+   * @param normalizados Seriales ya normalizados con `normalizarSerial`; vacío devuelve vacío sin ir a la base.
+   * @returns El subconjunto de `normalizados` que ya existe.
+   */
+  serialesExistentes(insumoId: string, normalizados: readonly string[]): Promise<Set<string>>;
+
+  /**
    * Resuelve el nombre de los equipos que las unidades y su historial refieren.
    * Es una lectura de presentación, sin lock: los ids que no existen no aparecen.
    *
