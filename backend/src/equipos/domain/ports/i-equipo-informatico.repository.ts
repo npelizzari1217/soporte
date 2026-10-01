@@ -25,8 +25,45 @@ export interface IEquipoInformaticoRepository {
   /** Retorna todos los equipos activos (`activo=true`, no soft-deleted) del tenant. */
   findAllActive(): Promise<EquipoInformaticoEntity[]>;
 
-  /** Persiste el equipo (upsert: crea si no existe, actualiza si existe). */
+  /**
+   * Persiste el equipo (upsert: crea si no existe, actualiza si existe).
+   *
+   * La rama de actualización NO escribe `activo` ni `baja_*`: una entidad leída antes de una
+   * baja no puede reactivar el equipo ni pisar sus datos de baja. La rama de creación sí los
+   * conserva. El único escritor de la baja es `registrarBaja()`.
+   */
   save(equipo: EquipoInformaticoEntity): Promise<void>;
+
+  /**
+   * Lee el equipo tomando el lock LE `FOR NO KEY UPDATE` sobre su fila (ADR-2). Lo usan la baja,
+   * el borrado y la edición del equipo: espera a quien tenga `FOR SHARE` (altas, retiro,
+   * reactivación, ticket) y es exclusivo entre sí. Nunca `FOR UPDATE`: chocaría con el
+   * `FOR KEY SHARE` que los INSERT con FK al equipo toman y produciría deadlocks.
+   *
+   * Devuelve `null` si el equipo no existe. Un equipo con borrado lógico se devuelve igual
+   * (con `deletedAt`): decidir que no existe es del llamador.
+   *
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  bloquearParaModificar(id: string): Promise<EquipoInformaticoEntity | null>;
+
+  /**
+   * Igual que `bloquearParaModificar` pero con `FOR SHARE`: lo toman las operaciones que
+   * agregan, instalan, retiran o reactivan piezas y la creación de tickets, siempre como
+   * PRIMER lock de la transacción. Es compatible con otros `FOR SHARE` y con el `FOR KEY SHARE`
+   * de los INSERT con FK, y espera a una baja en curso (`FOR NO KEY UPDATE`).
+   *
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  bloquearParaOperarPiezas(id: string): Promise<EquipoInformaticoEntity | null>;
+
+  /**
+   * Da de baja el equipo escribiendo `activo = false` y los cinco campos `baja_*` de la entidad
+   * con un CAS (`WHERE id = ? AND activo = true AND deleted_at IS NULL`). Es el único escritor
+   * de la baja. Devuelve `false` si no tocó ninguna fila (ya estaba dado de baja o tiene
+   * borrado lógico).
+   */
+  registrarBaja(equipo: EquipoInformaticoEntity): Promise<boolean>;
 
   /** Baja lógica (soft delete) del equipo por id. */
   delete(id: string): Promise<void>;

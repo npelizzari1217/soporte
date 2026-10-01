@@ -16,3 +16,17 @@ Parte 1: `deactivate()` y `activate()` se eliminan; el spec de integración de `
 Parte 2: migración `20261001120000_equipos_informaticos_baja` aplicada en `soporte_tenant_test` y en
 los tenants de desarrollo (`pnpm migrate:tenants`, 2 migradas); `prisma migrate status` en "up to
 date". Los cinco errores salen con la forma `{ componenteId, insumoId, causa }` del diseño.
+
+## WU-2 — Repositorio de equipos: LE, `registrarBaja` y `save()` sin `activo`
+
+Una sola rama, `feat/baja-equipo-completo-wu02` (base wu01-3). Tareas 2.1 a 2.8 completas.
+
+- Puerto: `bloquearParaModificar`, `bloquearParaOperarPiezas`, `registrarBaja` con contrato en JSDoc.
+- Repo: ambos locks con `exigirTransaccionActiva` + `SELECT id ... FOR NO KEY UPDATE | FOR SHARE` y
+  `findById` por el mapper (devuelve la entidad aun con `deletedAt`); `save()` ya no escribe `activo`
+  ni `baja_*` en el UPDATE; `registrarBaja` es un CAS `updateMany`.
+- Specs: `prisma-equipos.integration.spec.ts` (4 casos nuevos: ediciones viejas, escritura de los
+  cinco campos, segunda baja, borrado lógico) y `prisma-equipo-informatico.locks.integration.spec.ts`
+  (contrato y 5 sondas de compatibilidad con `lock_timeout` y `55P03`).
+- 2.7: ningún fake implementa el puerto completo (solo `Pick<..., 'findById'>`), no hubo que tocar fakes.
+

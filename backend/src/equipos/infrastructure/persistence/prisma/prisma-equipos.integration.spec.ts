@@ -268,21 +268,81 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       ).rejects.toThrow();
     });
 
-    it('darDeBaja() + save() persiste activo=false sin tocar deletedAt', async () => {
+    const DATOS_BAJA = {
+      destino: 'DESCARTE' as const,
+      categoria: 'ROTURA' as const,
+      motivo: 'no enciende',
+      usuarioId: '00000000-0000-4000-8000-000000000001',
+      fecha: new Date('2026-10-01T12:00:00Z'),
+    };
+
+    it('save() de una entidad leída antes de la baja no reactiva el equipo ni toca baja_* (ediciones viejas)', async () => {
       const equipo = await crearEquipo();
-      equipo.darDeBaja({
-        destino: 'DESCARTE',
-        categoria: 'VEJEZ',
-        motivo: null,
-        usuarioId: '00000000-0000-4000-8000-000000000001',
-        fecha: new Date('2026-10-01T12:00:00Z'),
+      const vieja = await withTenant(async () => equipoRepo.findById(equipo.id));
+      const aBajar = await withTenant(async () => equipoRepo.findById(equipo.id));
+      aBajar!.darDeBaja(DATOS_BAJA);
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(aBajar!)).toBe(true);
       });
 
+      vieja!.actualizar({ nombre: 'Nombre editado' });
       await withTenant(async () => {
-        await equipoRepo.save(equipo);
+        await equipoRepo.save(vieja!);
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.nombre).toBe('Nombre editado');
+        expect(found!.activo).toBe(false);
+        expect(found!.bajaDestino).toBe('DESCARTE');
+        expect(found!.bajaCategoria).toBe('ROTURA');
+        expect(found!.bajaMotivo).toBe('no enciende');
+        expect(found!.bajaUsuarioId).toBe(DATOS_BAJA.usuarioId);
+      });
+    });
+
+    it('registrarBaja() escribe los cinco campos sin tocar deletedAt', async () => {
+      const equipo = await crearEquipo();
+      equipo.darDeBaja(DATOS_BAJA);
+
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(equipo)).toBe(true);
         const found = await equipoRepo.findById(equipo.id);
         expect(found!.activo).toBe(false);
         expect(found!.isDeleted()).toBe(false);
+        expect(found!.bajaDestino).toBe('DESCARTE');
+        expect(found!.bajaCategoria).toBe('ROTURA');
+        expect(found!.bajaMotivo).toBe('no enciende');
+        expect(found!.bajaFecha).toEqual(DATOS_BAJA.fecha);
+        expect(found!.bajaUsuarioId).toBe(DATOS_BAJA.usuarioId);
+      });
+    });
+
+    it('registrarBaja() por segunda vez devuelve false y deja intactos los datos originales', async () => {
+      const equipo = await crearEquipo();
+      const otra = await withTenant(async () => equipoRepo.findById(equipo.id));
+      equipo.darDeBaja(DATOS_BAJA);
+      otra!.darDeBaja({ ...DATOS_BAJA, categoria: 'VEJEZ', destino: 'STOCK_USADO', motivo: null });
+
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(equipo)).toBe(true);
+        expect(await equipoRepo.registrarBaja(otra!)).toBe(false);
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.bajaDestino).toBe('DESCARTE');
+        expect(found!.bajaCategoria).toBe('ROTURA');
+        expect(found!.bajaMotivo).toBe('no enciende');
+      });
+    });
+
+    it('registrarBaja() sobre un equipo con borrado lógico devuelve false', async () => {
+      const equipo = await crearEquipo();
+      await withTenant(async () => {
+        await equipoRepo.delete(equipo.id);
+      });
+      equipo.darDeBaja(DATOS_BAJA);
+
+      await withTenant(async () => {
+        expect(await equipoRepo.registrarBaja(equipo)).toBe(false);
+        const found = await equipoRepo.findById(equipo.id);
+        expect(found!.activo).toBe(true);
+        expect(found!.bajaDestino).toBeNull();
       });
     });
 
