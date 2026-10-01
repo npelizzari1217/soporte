@@ -64,6 +64,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       ingresar: vi.fn(),
       devolverAlDeposito: vi.fn(),
       devolverDesdeEquipo: vi.fn(),
+      serialesExistentes: vi.fn(),
     };
   }
 

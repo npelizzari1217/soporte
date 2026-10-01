@@ -203,7 +203,7 @@ export class RegistrarEntradaInsumoUseCase {
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly operaciones: Pick<
       OperacionesUnidadInsumo,
-      'ingresar' | 'devolverAlDeposito' | 'devolverDesdeEquipo'
+      'ingresar' | 'devolverAlDeposito' | 'devolverDesdeEquipo' | 'serialesExistentes'
     >,
   ) {}
 
@@ -552,6 +552,63 @@ export class RegistrarEntradaInsumoUseCase {
     }
 
     return Result.ok(movimientos);
+  }
+
+  /**
+   * Resumen previo a la baja con `STOCK_USADO`: las causas de TODAS las piezas
+   * que no pueden volver al depósito, sin transacción y sin locks. Es el camino
+   * rápido; la baja vuelve a validar bajo L1 y L2 con la misma clasificación.
+   *
+   * Lee el insumo y la familia con `findById` (el `seguimiento` sale de la
+   * entidad: `leerSeguimientoParaMovimiento` exige transacción) y consulta
+   * `serialesExistentes` sin lock para `SERIAL_DUPLICADO`.
+   *
+   * @param piezas Piezas activas del equipo.
+   * @returns Las causas de todas las piezas; vacío si todas pueden volver.
+   */
+  async diagnosticarDevolucionesDeEquipo(
+    piezas: readonly PiezaDeEquipoADevolver[],
+  ): Promise<CausaPieza[]> {
+    const insumoIds = [
+      ...new Set(piezas.flatMap((p) => (p.insumoId === null ? [] : [p.insumoId]))),
+    ].sort();
+    const hechos = new Map<string, HechosDelInsumo>();
+    for (const insumoId of insumoIds) {
+      hechos.set(insumoId, await this.hechosDelInsumo(insumoId, undefined));
+    }
+
+    const causas = this.clasificarPiezas(piezas, hechos);
+    const conCausa = new Set(causas.map((c) => c.componenteId));
+
+    const legadosPorInsumo = new Map<string, PiezaDeEquipoADevolver[]>();
+    for (const pieza of piezas) {
+      if (pieza.insumoId === null || pieza.unidadId !== null || conCausa.has(pieza.componenteId)) {
+        continue;
+      }
+      if (this.hechosDe(hechos, pieza.insumoId).seguimiento !== 'SERIE') continue;
+      legadosPorInsumo.set(pieza.insumoId, [
+        ...(legadosPorInsumo.get(pieza.insumoId) ?? []),
+        pieza,
+      ]);
+    }
+
+    const duplicadas: CausaPieza[] = [];
+    for (const insumoId of [...legadosPorInsumo.keys()].sort()) {
+      const delInsumo = legadosPorInsumo.get(insumoId) as PiezaDeEquipoADevolver[];
+      const normalizados = delInsumo.map((p) => normalizarSerial(p.numeroSerie ?? ''));
+      const existentes = await this.operaciones.serialesExistentes(insumoId, normalizados);
+      delInsumo.forEach((pieza, i) => {
+        if (existentes.has(normalizados[i])) {
+          duplicadas.push({
+            componenteId: pieza.componenteId,
+            insumoId,
+            causa: 'SERIAL_DUPLICADO',
+          });
+        }
+      });
+    }
+
+    return [...causas, ...duplicadas];
   }
 
   /**

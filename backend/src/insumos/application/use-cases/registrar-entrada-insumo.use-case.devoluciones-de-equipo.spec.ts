@@ -34,7 +34,7 @@ interface InsumoFixture {
  * para poder afirmar el ORDEN de lectura con lock, la pasada de `operaciones`
  * y las ENTRADAs.
  */
-function armar(insumos: Record<string, InsumoFixture>) {
+function armar(insumos: Record<string, InsumoFixture>, existentes: string[] = []) {
   const llamadas: string[] = [];
   const entradas: MovimientoInsumoEntity[] = [];
 
@@ -114,6 +114,9 @@ function armar(insumos: Record<string, InsumoFixture>) {
       return Result.ok(devueltas);
     },
   );
+  const serialesExistentes = vi.fn<OperacionesUnidadInsumo['serialesExistentes']>(
+    async () => new Set(existentes),
+  );
   const txRunner = txRunnerFake();
   const useCase = new RegistrarEntradaInsumoUseCase(
     insumoRepo,
@@ -124,9 +127,10 @@ function armar(insumos: Record<string, InsumoFixture>) {
       ingresar: unstubbed('ingresar'),
       devolverAlDeposito: unstubbed('devolverAlDeposito'),
       devolverDesdeEquipo,
+      serialesExistentes,
     },
   );
-  return { useCase, llamadas, entradas, devolverDesdeEquipo, txRunner };
+  return { useCase, llamadas, entradas, devolverDesdeEquipo, serialesExistentes, txRunner };
 }
 
 function pieza(
@@ -312,5 +316,54 @@ describe('RegistrarEntradaInsumoUseCase.registrarDevolucionesDeEquipo', () => {
     await useCase.registrarDevolucionesDeEquipo({ ...base, piezas: [pieza('c-1', 'ins-a')] });
 
     expect(devolverDesdeEquipo.mock.calls[0].slice(0, 2)).toEqual([[], []]);
+  });
+});
+
+describe('RegistrarEntradaInsumoUseCase.diagnosticarDevolucionesDeEquipo', () => {
+  it('no abre transaccion ni toma ningun lock', async () => {
+    const { useCase, llamadas, txRunner } = armar({ 'ins-a': {} });
+
+    const causas = await useCase.diagnosticarDevolucionesDeEquipo([pieza('c-1', 'ins-a')]);
+
+    expect(causas).toEqual([]);
+    expect(txRunner.abiertas).toBe(0);
+    expect(llamadas).toEqual([]);
+  });
+
+  it('lista las causas de TODAS las piezas, incluida SERIAL_DUPLICADO sin lock', async () => {
+    const { useCase, serialesExistentes } = armar(
+      {
+        'ins-a': { dadoDeBaja: true },
+        'ins-b': { seguimiento: 'SERIE' },
+        'ins-c': { familia: { esRepuesto: false } },
+      },
+      ['DUP-1'],
+    );
+
+    const causas = await useCase.diagnosticarDevolucionesDeEquipo([
+      pieza('c-1', 'ins-a'),
+      pieza('c-2', 'ins-b', { numeroSerie: 'dup-1' }),
+      pieza('c-3', 'ins-c'),
+      pieza('c-4', 'ins-b', { numeroSerie: 'libre' }),
+    ]);
+
+    expect(causas.map((c) => `${c.componenteId}:${c.causa}`)).toEqual([
+      'c-1:INSUMO_BORRADO',
+      'c-3:FAMILIA_NO_REPUESTO',
+      'c-2:SERIAL_DUPLICADO',
+    ]);
+    expect(serialesExistentes).toHaveBeenCalledWith('ins-b', ['DUP-1', 'LIBRE']);
+  });
+
+  it('un insumo inexistente es INSUMO_BORRADO y no consulta seriales de piezas con otra causa', async () => {
+    const { useCase, serialesExistentes } = armar({ 'ins-b': { seguimiento: 'SERIE' } });
+
+    const causas = await useCase.diagnosticarDevolucionesDeEquipo([
+      pieza('c-1', 'ins-x'),
+      pieza('c-2', 'ins-b', { unidadId: 'un-1' }),
+    ]);
+
+    expect(causas).toEqual([{ componenteId: 'c-1', insumoId: 'ins-x', causa: 'INSUMO_BORRADO' }]);
+    expect(serialesExistentes).not.toHaveBeenCalled();
   });
 });

@@ -116,6 +116,19 @@ export class OperacionesUnidadInsumo {
   ) {}
 
   /**
+   * Seriales normalizados que ya tienen una unidad del insumo, SIN lock: es el
+   * diagnóstico previo de la baja. Bajo L2 la misma consulta es autoritativa y
+   * la hace `devolverDesdeEquipo`.
+   *
+   * @param insumoId Insumo `SERIE` a consultar.
+   * @param normalizados Seriales ya normalizados.
+   * @returns Los que ya existen, en cualquier estado.
+   */
+  serialesExistentes(insumoId: string, normalizados: readonly string[]): Promise<Set<string>> {
+    return this.unidadRepo.serialesExistentes(insumoId, normalizados);
+  }
+
+  /**
    * Da de alta piezas en el depósito: una unidad (con serial o pendiente), su
    * movimiento de cantidad 1 y el evento `INGRESO` por cada una.
    *
