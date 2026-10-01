@@ -352,3 +352,15 @@ Rama: `feat/baja-equipo-completo-wu13` (una sola, solo tests; base wu12-2).
 - Fixture `BajaEquipoFixtures`: segundo insumo `SERIE` (`serie2Id`, entra en `todosLosInsumos`), `agregarUnidadInstalada` / `agregarUnidadEnDeposito` / `exigirInvarianteSerie` aceptan `insumoId`; pool de 6 a 10 conexiones.
 - 13.7 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), spec solo tres veces seguidas (8/8 cada vez), `vitest run src/equipos src/insumos` (155 archivos, 2615 tests) y `pnpm test` completo (550 archivos, 6887 tests; unico FAIL del log: ruido conocido `orden-de-arranque.spec.ts`) en verde.
 - Ayuda: sin deuda.
+
+
+## WU-14 — Lista y exportacion con `incluirBajas`
+
+Rama: `feat/baja-equipo-completo-wu14` (base wu13).
+
+- 14.1 Puerto + repo Prisma: `findAllIncluyendoDadosDeBaja()` (`deletedAt: null`, orden `createdAt desc`). `findAllActive()` queda intacto (`activo: true`). El unico consumidor de `findAllActive` de equipos es `ListarEquiposUseCase`; los selectores de otras pantallas consumen `GET /equipos` sin parametro, es decir, solo vigentes. Ningun use case de tickets, preventivo o compras importa el repo de equipos para listar.
+- 14.2 `ListarEquiposUseCase.execute({ incluirDadosDeBaja = false })` y `ExportarEquiposUseCase.execute({ incluirDadosDeBaja })` (la exportacion delega en la lista). La columna de estado ya decia "Baja" (`e.activo ? 'Activo' : 'Baja'`, columna `Estado`). JSDoc actualizado; el comentario del frontend (`equipos-list-view.tsx`) ya no dice "sin filtros": WU-15 lo reescribe con el filtro visible. El spec de la lista deja de usar `as never` (casts 628 -> 627 en 116 archivos).
+- 14.3 `ListarEquiposQueryDto { incluirBajas?: boolean }` (`parsearBooleanQuery` + `@IsBoolean`, un valor no booleano da 400) en `GET /equipos` y `GET /equipos/export`, ambos `EQUIPOS:LECTURA`. `EquipoResponseDto.baja` ya existia (WU-11).
+- 14.4 `equipos-incluir-bajas.e2e.spec.ts` (12 casos): lista por defecto / `false` / `true` con `baja`, borrado logico excluido, 400, 403; exportacion con y sin filtro ("Baja" en Estado); PATCH, POST componentes con y sin descuento y reactivar sobre equipo dado de baja => 422 sin cambios. El equipo se da de baja por HTTP (`DESCARTE`).
+- 14.5 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (627/116), `vitest run src/equipos src/tickets src/preventivo` (122 archivos, 1421 tests), e2e nuevo 12/12 y `pnpm test` completo (551 archivos, 6903 tests; unico FAIL del log: ruido conocido `orden-de-arranque.spec.ts`) en verde.
+- Ayuda: sin deuda en este WU (WU-15 corrige `equipos-listado.md` junto con el filtro visible).

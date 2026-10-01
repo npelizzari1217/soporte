@@ -42,8 +42,8 @@ import { execFileSync } from 'node:child_process';
  * una justificacion escrita en el PR — y si hace falta subirla seguido, el que
  * esta mal es el criterio, no el numero.
  */
-const BASE_OCURRENCIAS = 628;
-const BASE_ARCHIVOS = 117;
+const BASE_OCURRENCIAS = 627;
+const BASE_ARCHIVOS = 116;
 
 /**
  * Se ratchetean las DOS cifras. Solo el total dejaria pasar que la deuda se

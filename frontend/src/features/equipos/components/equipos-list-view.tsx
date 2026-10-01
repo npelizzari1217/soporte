@@ -96,9 +96,10 @@ export function EquiposListView() {
         actions={
           <>
             {/*
-              Sin filtros que pasar (sdd/exportar-listados-csv, capability
-              exportacion-equipos): el export siempre trae el inventario
-              activo completo, igual que `useEquipos()` de arriba.
+              Sin parámetros (sdd/exportar-listados-csv): el export trae solo los
+              equipos vigentes, igual que `useEquipos()` de arriba. El backend ya
+              acepta `?incluirBajas=true` (sdd/baja-equipo-completo); el filtro
+              visible y su parámetro llegan con el frontend de ese cambio.
             */}
             <Can permiso="EQUIPOS:LECTURA">
               <ExportarCsvButton

@@ -45,6 +45,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UnprocessableEntityException,
   UseGuards,
@@ -116,6 +117,7 @@ import {
   EditarEquipoHttpDto,
   EquipoDetalleResponseDto,
   EquipoResponseDto,
+  ListarEquiposQueryDto,
   toComponenteResponseDto,
   toEquipoDetalleResponseDto,
   toEquipoResponseDto,
@@ -305,20 +307,23 @@ export class EquiposController {
 
   /**
    * GET /equipos
-   * Lista los equipos activos del inventario.
+   * Lista los equipos del inventario. Por defecto solo los vigentes; con `?incluirBajas=true`
+   * suma los dados de baja (R11, cada uno con su `baja`).
    */
   @Get()
   @RequiereAcciones('EQUIPOS:LECTURA')
-  async listar(): Promise<EquipoResponseDto[]> {
-    const result = await this.listarEquiposUseCase.execute();
+  async listar(@Query() query: ListarEquiposQueryDto): Promise<EquipoResponseDto[]> {
+    const result = await this.listarEquiposUseCase.execute({
+      incluirDadosDeBaja: query.incluirBajas ?? false,
+    });
     return result.getValue().map(toEquipoResponseDto);
   }
 
   /**
    * GET /equipos/export
-   * Exporta a CSV el inventario ACTIVO completo de equipos
-   * (sdd/exportar-listados-csv) — sin filtros, por diseño (spec, capability
-   * exportacion-equipos): cualquier query string que llegue se ignora.
+   * Exporta a CSV el inventario de equipos (sdd/exportar-listados-csv). Sigue el mismo filtro
+   * que la lista (R11): por defecto solo los vigentes; con `?incluirBajas=true` incluye los dados
+   * de baja, con "Baja" en la columna Estado. Cualquier otro query param se ignora.
    *
    * **Va declarada ANTES de `GET /equipos/:id`** (design D6): Nest resuelve las rutas
    * en el orden en que se registran y `:id` también matchea la palabra
@@ -330,8 +335,13 @@ export class EquiposController {
    */
   @Get('export')
   @RequiereAcciones('EQUIPOS:LECTURA')
-  async exportar(@Res({ passthrough: true }) res: RespuestaConHeaders): Promise<string> {
-    const result = await this.exportarEquiposUseCase.execute();
+  async exportar(
+    @Query() query: ListarEquiposQueryDto,
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+  ): Promise<string> {
+    const result = await this.exportarEquiposUseCase.execute({
+      incluirDadosDeBaja: query.incluirBajas ?? false,
+    });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());

@@ -26,6 +26,13 @@ export interface IEquipoInformaticoRepository {
   findAllActive(): Promise<EquipoInformaticoEntity[]>;
 
   /**
+   * Retorna los equipos vigentes y los dados de baja (`activo` verdadero o falso), sin los
+   * borrados lógicos. Solo lo usan la lista y la exportación cuando piden `incluirBajas`
+   * (R11); los selectores de otras pantallas siguen usando `findAllActive()`.
+   */
+  findAllIncluyendoDadosDeBaja(): Promise<EquipoInformaticoEntity[]>;
+
+  /**
    * Persiste el equipo (upsert: crea si no existe, actualiza si existe).
    *
    * La rama de actualización NO escribe `activo` ni `baja_*`: una entidad leída antes de una

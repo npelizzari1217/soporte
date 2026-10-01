@@ -4,7 +4,7 @@ import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
 import { ColumnaCsv } from '../../../shared/infrastructure/csv/csv';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/equipos.errors';
-import { ListarEquiposUseCase } from './listar-equipos.use-case';
+import { ListarEquiposDto, ListarEquiposUseCase } from './listar-equipos.use-case';
 
 /** Archivo listo para que el controller lo entregue como descarga. */
 export interface ExportarEquiposResult {
@@ -15,17 +15,15 @@ export interface ExportarEquiposResult {
 }
 
 /**
- * ExportarEquiposUseCase — vuelca a CSV el inventario ACTIVO completo de
- * equipos IT del tenant (sdd/exportar-listados-csv, capability
- * exportacion-equipos).
+ * ExportarEquiposUseCase — vuelca a CSV el inventario de equipos IT del tenant
+ * (sdd/exportar-listados-csv, capability exportacion-equipos).
  *
- * **Sin DTO de entrada, y es intencional, no un olvido** (spec, "No filter
- * parameters are accepted"): `IEquipoInformaticoRepository.findAllActive()`
- * no acepta ningún argumento, y este caso de uso tampoco — a diferencia de
- * `ExportarTicketsUseCase`, acá NO hay un `Omit<Filtros, ...>` que declarar
- * porque no existe pantalla de filtros que espejar. Si en el futuro alguien
- * "arregla" esto agregándole parámetros, está agregando un comportamiento
- * que la spec pide explícitamente que NO exista.
+ * **Un único parámetro: `incluirDadosDeBaja`** (R11, sdd/baja-equipo-completo). La
+ * exportación sigue el mismo filtro que la lista: por defecto solo los equipos vigentes y,
+ * con `incluirDadosDeBaja`, también los dados de baja, con "Baja" en la columna Estado. No
+ * hay ningún otro filtro porque la pantalla no tiene otros que espejar (a diferencia de
+ * `ExportarTicketsUseCase`). Se delega tal cual a `ListarEquiposUseCase`, así lista y
+ * exportación no pueden divergir.
  *
  * **Por qué compone `ListarEquiposUseCase` en vez de inyectar
  * `IEquipoInformaticoRepository`** (design D4): con un solo argumento en el
@@ -35,7 +33,7 @@ export interface ExportarEquiposResult {
  * heredado sin agregar ninguna consulta nueva.
  *
  * **Por qué el tope se chequea DESPUÉS de traer todo** (design D4, threat
- * "Unbounded memory", residual aceptado): `findAllActive()` no tiene un
+ * "Unbounded memory", residual aceptado): la consulta no tiene un
  * `count()` en el puerto, y agregarle uno sería un cambio de firma de puerto
  * (prohibido en este cambio). `total` es por lo tanto `items.length`, no el
  * resultado de una consulta de conteo real. Esto NO es una regresión: el
@@ -50,8 +48,10 @@ export interface ExportarEquiposResult {
 export class ExportarEquiposUseCase {
   constructor(private readonly listarEquiposUseCase: Pick<ListarEquiposUseCase, 'execute'>) {}
 
-  async execute(): Promise<Result<ExportarEquiposResult, DomainError>> {
-    const listado = await this.listarEquiposUseCase.execute();
+  async execute(dto: ListarEquiposDto = {}): Promise<Result<ExportarEquiposResult, DomainError>> {
+    const listado = await this.listarEquiposUseCase.execute({
+      incluirDadosDeBaja: dto.incluirDadosDeBaja ?? false,
+    });
 
     if (listado.isFail()) {
       return Result.fail(listado.getError());

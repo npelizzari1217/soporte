@@ -51,6 +51,14 @@ export class PrismaEquipoInformaticoRepository implements IEquipoInformaticoRepo
     return rows.map(EquipoInformaticoMapper.toDomain);
   }
 
+  async findAllIncluyendoDadosDeBaja(): Promise<EquipoInformaticoEntity[]> {
+    const rows = await this.client.equipoInformatico.findMany({
+      where: { deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(EquipoInformaticoMapper.toDomain);
+  }
+
   async save(equipo: EquipoInformaticoEntity): Promise<void> {
     const data = EquipoInformaticoMapper.toPersistence(equipo);
     const {

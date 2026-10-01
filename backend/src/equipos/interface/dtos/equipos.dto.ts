@@ -38,6 +38,7 @@ import {
   CondicionStock,
 } from '../../../insumos/domain/entities/tipo-movimiento-insumo';
 import { EsSerialDeUnidad } from '../../../insumos/interface/validators/es-serial-de-unidad';
+import { parsearBooleanQuery } from '../../../insumos/interface/dtos/insumos.dto';
 import { transformarMotivo } from '../../../insumos/interface/dtos/movimientos-insumo.dto';
 import { MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
@@ -416,6 +417,20 @@ function SinComponenteIdRepetido(validationOptions?: ValidationOptions): Propert
     },
     validationOptions,
   );
+}
+
+/**
+ * Query de `GET /equipos` y `GET /equipos/export` (sdd/baja-equipo-completo, ADR-7, R11).
+ *
+ * `incluirBajas` llega como string (`?incluirBajas=true`): se parsea a mano con
+ * `parsearBooleanQuery`, igual que los filtros de insumos. Ausente equivale a `false`: solo
+ * los equipos vigentes. Un valor que no sea `true` ni `false` da 400.
+ */
+export class ListarEquiposQueryDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => parsearBooleanQuery(value))
+  @IsBoolean()
+  incluirBajas?: boolean;
 }
 
 /** Serial informado para un componente legado en `POST /equipos/:id/baja`. */

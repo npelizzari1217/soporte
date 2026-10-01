@@ -159,8 +159,18 @@ describe('EquiposController (T12.6)', () => {
       const { controller, listarEquiposUseCase } = buildController();
       listarEquiposUseCase.execute.mockResolvedValue(Result.ok([makeEquipo()]));
 
-      const result = await controller.listar();
+      const result = await controller.listar({});
       expect(result).toHaveLength(1);
+      expect(listarEquiposUseCase.execute).toHaveBeenCalledWith({ incluirDadosDeBaja: false });
+    });
+
+    it('incluirBajas=true se traduce a incluirDadosDeBaja', async () => {
+      const { controller, listarEquiposUseCase } = buildController();
+      listarEquiposUseCase.execute.mockResolvedValue(Result.ok([]));
+
+      await controller.listar({ incluirBajas: true });
+
+      expect(listarEquiposUseCase.execute).toHaveBeenCalledWith({ incluirDadosDeBaja: true });
     });
   });
 
@@ -814,7 +824,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
     const { controller } = buildController({ exportarEquipos });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(res);
+    const salida = await controller.exportar({}, res);
 
     expect(salida).toBe('Nombre;Marca');
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
@@ -824,16 +834,18 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
     expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
   });
 
-  it('no recibe query ni filtros — llama a execute() sin argumentos', async () => {
+  it('por defecto pide solo los vigentes; incluirBajas=true se traduce a incluirDadosDeBaja', async () => {
     const exportarEquipos = { execute: vi.fn() };
     exportarEquipos.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'equipos-2026-08-19.csv' }),
     );
     const { controller } = buildController({ exportarEquipos });
 
-    await controller.exportar(respuestaFalsa().res);
+    await controller.exportar({}, respuestaFalsa().res);
+    await controller.exportar({ incluirBajas: true }, respuestaFalsa().res);
 
-    expect(exportarEquipos.execute).toHaveBeenCalledWith();
+    expect(exportarEquipos.execute).toHaveBeenNthCalledWith(1, { incluirDadosDeBaja: false });
+    expect(exportarEquipos.execute).toHaveBeenNthCalledWith(2, { incluirDadosDeBaja: true });
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
@@ -844,7 +856,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
     const { controller } = buildController({ exportarEquipos });
     const { res, headers } = respuestaFalsa();
 
-    await expect(controller.exportar(res)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(controller.exportar({}, res)).rejects.toBeInstanceOf(UnprocessableEntityException);
     expect(headers.size).toBe(0);
   });
 });
