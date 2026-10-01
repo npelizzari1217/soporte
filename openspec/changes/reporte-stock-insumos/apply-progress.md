@@ -70,3 +70,13 @@ Rama `feat/reporte-stock-insumos-wu04` (base `-wu03-2`).
 - Specs: controller (7 casos: metadata, filtros, headers, 422 sin headers, DTO) y e2e (9 casos, tenant efimero, `usarLockMasterTest()`).
 - Gotcha: `fetch().text()` descarta el BOM; el e2e lo verifica sobre los bytes crudos (EF BB BF).
 - El e2e limpia `insumos`/`movimientos_insumo` del tenant en cada caso (el reporte lista todos los insumos de la base).
+
+## WU-5 — Frontend base (completo, 6/6)
+
+Rama `feat/reporte-stock-insumos-wu05` (base `-wu04-2`).
+
+- `lib/reposicion.ts`: `ETIQUETA_REPOSICION` y `VARIANTE_REPOSICION` movidas tal cual desde `insumo-detail-view.tsx` (mismo texto visible; el spec de la ficha no cambió).
+- `lib/formato-cantidad.ts`: `formatearCantidadEsAr(valor, entera)` sobre `formatearNumeroEsAr`; entero sin decimales, fraccionario siempre dos, `-0` => `0`. Con miles agrupados (formato es-AR de la app), a diferencia del CSV que no los lleva.
+- `lib/filtros-reporte-stock.ts`: schema Zod (`familiaId` uuid, tres booleanos `true`/`false`; inválido => ausente) y un solo serializador con orden estable; `soloBajoMinimo`/`ocultarSinStock` en `false` no se serializan, `esRepuesto=false` sí.
+- `types.ts`: `filaReporteStockSchema`/`reporteStockSchema` (Zod) con los tipos derivados; sin dinero.
+- `hooks/use-reporte-stock.ts`: clave `["reporte-stock", filtros]`, `staleTime: 0`, respuesta validada con el schema.

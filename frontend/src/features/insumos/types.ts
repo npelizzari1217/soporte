@@ -2,6 +2,7 @@
  * Tipos del catálogo de Insumos — espejo de los DTO reales del backend
  * (`backend/src/insumos/interface/dtos/insumos.dto.ts`).
  */
+import { z } from "zod";
 
 /**
  * Cómo se lleva el stock de un insumo, espejo de `SEGUIMIENTOS_INSUMO` del
@@ -399,3 +400,34 @@ export interface MovimientosInsumoFiltros {
   pagina?: number;
   porPagina?: number;
 }
+
+/**
+ * Espejo de `FilaReporteStockResponseDto` (backend,
+ * `insumos/interface/dtos/reporte-stock.dto.ts`) — una fila de
+ * `GET /insumos/reporte-stock`. Sin ningún campo de dinero (R4). El schema Zod
+ * es la única definición: el tipo se DERIVA de él.
+ */
+export const filaReporteStockSchema = z.object({
+  insumoId: z.string(),
+  codigo: z.string(),
+  nombre: z.string(),
+  activo: z.boolean(),
+  seguimiento: z.enum(SEGUIMIENTOS_INSUMO),
+  familia: z.object({ id: z.string(), nombre: z.string(), esRepuesto: z.boolean() }),
+  unidadMedida: z.object({ codigo: z.string(), nombre: z.string(), entera: z.boolean() }),
+  saldos: z.object({ NUEVO: z.number(), USADO: z.number(), total: z.number() }),
+  stockMinimo: z.number().nullable(),
+  estadoReposicion: z.enum(ESTADOS_REPOSICION_INSUMO),
+});
+
+/** Fila del reporte de stock, derivada de `filaReporteStockSchema`. */
+export type FilaReporteStock = z.infer<typeof filaReporteStockSchema>;
+
+/** Espejo de `ReporteStockResponseDto`: `generadoEn` es ISO 8601 (UTC). */
+export const reporteStockSchema = z.object({
+  generadoEn: z.string(),
+  filas: z.array(filaReporteStockSchema),
+});
+
+/** Respuesta del reporte de stock, derivada de `reporteStockSchema`. */
+export type ReporteStock = z.infer<typeof reporteStockSchema>;
