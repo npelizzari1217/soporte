@@ -207,6 +207,7 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
         movimientoRepo,
         familiaRepo: familiaInsumoRepo,
       }),
+      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
     );
   }
 

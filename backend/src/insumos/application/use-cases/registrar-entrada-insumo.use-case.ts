@@ -367,7 +367,14 @@ export class RegistrarEntradaInsumoUseCase {
         throw new Error('La devolución de un componente con unidad exige su componenteId.');
       }
       const devueltas = await this.operaciones.devolverAlDeposito(
-        [{ unidadId: dto.unidadId, equipoId: dto.equipoId, componenteId: dto.componenteId }],
+        [
+          {
+            unidadId: dto.unidadId,
+            equipoId: dto.equipoId,
+            componenteId: dto.componenteId,
+            insumoId: dto.insumoId,
+          },
+        ],
         { usuarioId: dto.usuarioId, motivo: dto.motivo },
       );
       return devueltas.isFail()

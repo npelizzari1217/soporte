@@ -945,7 +945,7 @@ describe('RegistrarEntradaInsumoUseCase', () => {
 
       expect(result.getValue()).toBe(movimiento);
       expect(c.operaciones.devolverAlDeposito).toHaveBeenCalledWith(
-        [{ unidadId: 'uni-1', equipoId: 'eq-1', componenteId: 'comp-1' }],
+        [{ unidadId: 'uni-1', equipoId: 'eq-1', componenteId: 'comp-1', insumoId: 'ins-1' }],
         { usuarioId: 'usr-7', motivo: 'retiro' },
       );
       expect(c.movimientoRepo.insert).not.toHaveBeenCalled();

@@ -360,6 +360,20 @@ export class RetirarComponenteHttpDto {
   @Transform(transformarMotivo)
   @MaxLength(MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH)
   motivo?: string | null;
+
+  /**
+   * Serial de un componente LEGADO (sin unidad) de un insumo hoy `SERIE`, para
+   * devolverlo al depósito (`STOCK_USADO`). Se recorta y se valida como el de una
+   * unidad (`ß` pasa a `SS`: la entidad lanza ante el desborde). Vacío o ausente no
+   * se valida acá: lo decide el caso de uso (`SerialRequeridoError`).
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
+  @ValidateIf((o: RetirarComponenteHttpDto) => o.numeroSerie !== '')
+  @EsSerialDeUnidad()
+  numeroSerie?: string | null;
 }
 
 // ─── Response DTOs ────────────────────────────────────────────────────────────

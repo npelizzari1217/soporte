@@ -429,7 +429,9 @@ export class EquiposController {
    * de insumos: el asiento de stock lo registra el caso de uso.
    * @throws 400 `destino` ausente o inválido
    * @throws 404 componente inexistente o de otro equipo
-   * @throws 422 componente ya dado de baja, o `DESCARTE` sin motivo
+   * @throws 409 el serial del legado ya lo tiene otra unidad del insumo
+   * @throws 422 componente ya dado de baja, `DESCARTE` sin motivo, o un legado de un
+   *   insumo `SERIE` sin `numeroSerie`
    */
   @Post(':id/componentes/:componenteId/baja')
   @RequiereAcciones('EQUIPOS:BORRADO')
@@ -445,6 +447,7 @@ export class EquiposController {
       componenteId,
       destino: dto.destino,
       motivo: dto.motivo,
+      numeroSerie: dto.numeroSerie,
       usuarioId: user.sub,
     });
     if (result.isFail()) {

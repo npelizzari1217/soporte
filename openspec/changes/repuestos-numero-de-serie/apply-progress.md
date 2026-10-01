@@ -675,3 +675,27 @@ Ramas `feat/repuestos-numero-de-serie-wu10b` (entidad, error, caso de uso + unit
   `unidadId` 422, serial ß*200 => 400. Los tests existentes de `NINGUNO` (condicion ignorada, sin movimiento) siguen verdes. El test
   del legado de un insumo SERIE (editar serial) ahora siembra el componente por SQL: ya no se puede crear un legado por la API.
 - Ayuda: sin deuda de backend (UI en WU-19).
+
+
+### WU-11 - parte 1 de 2 (retiro con unidad y legado con serial)
+
+Rama `feat/repuestos-numero-de-serie-wu11`. Tarea 11.1 hecha; 11.2 a 11.5 en la parte 2 (`-wu11-2`).
+
+- `RetirarComponenteUseCase(txRunner, componenteRepo, registrarEntrada, operaciones)`. `STOCK_USADO` pasa `unidadId`,
+  `componenteId` y `numeroSerie` a `registrarDevolucionDeComponente` (que ya resolvia las tres ramas desde WU-7a: con unidad
+  `devolverAlDeposito`, legado de insumo `SERIE` `ingresar` USADO con serial o `SerialRequeridoError`, `NINGUNO` como siempre).
+  `DESCARTE` con unidad: `operaciones.descartarInstaladas` (L1 a L3, sin movimiento) ANTES de la marca del componente (L4). `DESCARTE`
+  de un legado no toca ninguna unidad. Se pasa `insumoId` en los items de `devolverAlDeposito` y `descartarInstaladas`.
+- Carrera de dos retiros del mismo componente con unidad: el perdedor falla en L3 con `UNIDAD_NO_DISPONIBLE`; el caso de uso relee el
+  componente (READ COMMITTED ve el commit del ganador) y devuelve `ComponenteDadoDeBajaError`, no el error de la unidad. La relectura
+  se limita a ese codigo: un `SERIAL_DUPLICADO` (P2002) ya aborto la transaccion y cualquier consulta mas daria 500 (lo detecto el e2e).
+- Borde: `RetirarComponenteHttpDto.numeroSerie` (trim + `@EsSerialDeUnidad`, `@ValidateIf(valor !== '')`); el serial es opcional en el
+  DTO y lo exige el caso de uso solo para un legado de un insumo `SERIE` con `STOCK_USADO` (422 `SerialRequeridoError`, sin cambios).
+  Con unidad o con `DESCARTE` se ignora.
+- Specs: unit de retirar (orden descartar -> marcar, argumentos, legado, relectura solo ante UNIDAD_NO_DISPONIBLE); e2e nuevo
+  `equipos-retirar-componente-unidad.e2e.spec.ts` (BORRADO sin permisos de insumos: unidad vuelve USADO con serial y ENTRADA, descarte,
+  retiro repetido 422, legado con serial / sin serial 422 / serial repetido 409 con rollback / DESCARTE sin serial / 400 por largo;
+  los legados se siembran por SQL); testigos y carreras en `retirar-reactivar-unidad.concurrencia.integration.spec.ts` (3 locks x 2
+  destinos con sonda de `pg_locks` sobre `componentes_equipo`, y 8 retiros simultaneos por destino => uno gana, sin 40P01).
+- Ayuda: `rg -n "retir|reactiv" backend/ayuda/` solo encuentra `permisos-y-roles.md:162` ("al retirarlo, la pieza vuelve al deposito
+  como usada"), que sigue siendo verdadero. Sin cambios; deuda de UI en WU-19.

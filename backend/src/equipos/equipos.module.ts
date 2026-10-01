@@ -292,8 +292,14 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         txRunner: ITenantTransactionRunner,
         componenteRepo: IComponenteEquipoRepository,
         registrarEntrada: RegistrarEntradaInsumoUseCase,
-      ) => new RetirarComponenteUseCase(txRunner, componenteRepo, registrarEntrada),
-      inject: [TENANT_TX_RUNNER, COMPONENTE_EQUIPO_REPOSITORY, RegistrarEntradaInsumoUseCase],
+        operaciones: OperacionesUnidadInsumo,
+      ) => new RetirarComponenteUseCase(txRunner, componenteRepo, registrarEntrada, operaciones),
+      inject: [
+        TENANT_TX_RUNNER,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        RegistrarEntradaInsumoUseCase,
+        OperacionesUnidadInsumo,
+      ],
     },
     {
       provide: ReactivarComponenteUseCase,

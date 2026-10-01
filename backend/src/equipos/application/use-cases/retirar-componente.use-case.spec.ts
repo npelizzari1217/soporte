@@ -9,6 +9,10 @@ import {
   MotivoRetiroRequeridoError,
 } from '../../domain/errors/equipos.errors';
 import { CondicionUsadoNoAdmitidaError } from '../../../insumos/domain/errors/insumos.errors';
+import {
+  SerialDuplicadoError,
+  UnidadNoDisponibleError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 /**
  * `RetirarComponenteUseCase` (sdd/stock-usado-componentes, ADR-4).
@@ -45,7 +49,7 @@ describe('RetirarComponenteUseCase', () => {
   /** Runner fake: ejecuta el callback y deja propagar la excepcion, como el real al revertir. */
   function makeSetup(
     componente: ComponenteEquipoEntity | null,
-    opciones: { entrada?: unknown; marcado?: boolean } = {},
+    opciones: { entrada?: unknown; marcado?: boolean; descarte?: unknown } = {},
   ) {
     const orden: string[] = [];
     const txRunner = { run: vi.fn((fn: () => unknown) => fn()) };
@@ -62,12 +66,19 @@ describe('RetirarComponenteUseCase', () => {
         return opciones.entrada ?? Result.ok(makeEntrada());
       }),
     };
+    const operaciones = {
+      descartarInstaladas: vi.fn(async () => {
+        orden.push('descartar');
+        return opciones.descarte ?? Result.ok([]);
+      }),
+    };
     const useCase = new RetirarComponenteUseCase(
       txRunner as never,
       componenteRepo as never,
       registrarEntrada as never,
+      operaciones as never,
     );
-    return { useCase, txRunner, componenteRepo, registrarEntrada, orden };
+    return { useCase, txRunner, componenteRepo, registrarEntrada, operaciones, orden };
   }
 
   const dto = (componenteId: string, extra: Record<string, unknown> = {}) => ({
@@ -92,6 +103,9 @@ describe('RetirarComponenteUseCase', () => {
       equipoId: 'equipo-1',
       usuarioId: USUARIO,
       motivo: 'se cambio',
+      unidadId: null,
+      componenteId: componente.id,
+      numeroSerie: undefined,
     });
     expect(componente.bajaDestino).toBe('STOCK_USADO');
     expect(componente.bajaMotivo).toBe('se cambio');
@@ -228,5 +242,128 @@ describe('RetirarComponenteUseCase', () => {
     componenteRepo.retirar.mockRejectedValueOnce(new Error('conexion perdida'));
 
     await expect(useCase.execute(dto(componente.id))).rejects.toThrow('conexion perdida');
+  });
+
+  describe('con unidad (sdd/repuestos-numero-de-serie, ADR-12)', () => {
+    function makeConUnidad(): ComponenteEquipoEntity {
+      return ComponenteEquipoEntity.create({
+        equipoId: 'equipo-1',
+        insumoId: 'insumo-1',
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+        unidadId: 'unidad-1',
+        instalacionMovimientoId: 'salida-1',
+      }).getValue();
+    }
+
+    it('STOCK_USADO: la devolucion recibe la unidad y el componente, y la marca va despues', async () => {
+      const componente = makeConUnidad();
+      const { useCase, orden, registrarEntrada } = makeSetup(componente);
+
+      const result = await useCase.execute(dto(componente.id, { numeroSerie: 'IGNORADO' }));
+
+      expect(result.isOk()).toBe(true);
+      expect(orden).toEqual(['entrada', 'retirar']);
+      expect(registrarEntrada.registrarDevolucionDeComponente).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId: 'unidad-1', componenteId: componente.id }),
+      );
+    });
+
+    it('DESCARTE: descarta la unidad (con insumo, equipo y componente) ANTES de marcar el componente, sin ENTRADA', async () => {
+      const componente = makeConUnidad();
+      const { useCase, orden, operaciones, registrarEntrada } = makeSetup(componente);
+
+      const result = await useCase.execute(
+        dto(componente.id, { destino: 'DESCARTE', motivo: 'se rompio' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(orden).toEqual(['descartar', 'retirar']);
+      expect(operaciones.descartarInstaladas).toHaveBeenCalledWith(
+        [
+          {
+            unidadId: 'unidad-1',
+            equipoId: 'equipo-1',
+            componenteId: componente.id,
+            insumoId: 'insumo-1',
+          },
+        ],
+        { usuarioId: USUARIO, motivo: 'se rompio' },
+      );
+      expect(registrarEntrada.registrarDevolucionDeComponente).not.toHaveBeenCalled();
+      expect(componente.bajaDestino).toBe('DESCARTE');
+    });
+
+    it('DESCARTE de un componente sin unidad (legado): no toca la unidad', async () => {
+      const componente = makeComponente('salida-1');
+      const { useCase, operaciones } = makeSetup(componente);
+
+      const result = await useCase.execute(
+        dto(componente.id, { destino: 'DESCARTE', motivo: 'se rompio' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(operaciones.descartarInstaladas).not.toHaveBeenCalled();
+    });
+
+    it('STOCK_USADO legado: el serial del DTO viaja a la devolucion', async () => {
+      const componente = makeComponente('salida-1');
+      const { useCase, registrarEntrada } = makeSetup(componente);
+
+      await useCase.execute(dto(componente.id, { numeroSerie: 'SN-1' }));
+
+      expect(registrarEntrada.registrarDevolucionDeComponente).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId: null, numeroSerie: 'SN-1' }),
+      );
+    });
+
+    it('un fallo que no es UNIDAD_NO_DISPONIBLE (p. ej. serial duplicado) no relee el componente', async () => {
+      const componente = makeConUnidad();
+      const error = new SerialDuplicadoError('SN-1');
+      const { useCase, componenteRepo } = makeSetup(componente, { entrada: Result.fail(error) });
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.getError()).toBe(error);
+      expect(componenteRepo.findById).toHaveBeenCalledTimes(1);
+    });
+
+    it('si falla el descarte de la unidad: el error sale como Result y la marca nunca se intenta', async () => {
+      const componente = makeConUnidad();
+      const error = new MotivoRetiroRequeridoError('DESCARTE');
+      const { useCase, componenteRepo, txRunner } = makeSetup(componente, {
+        descarte: Result.fail(error),
+      });
+
+      const result = await useCase.execute(
+        dto(componente.id, { destino: 'DESCARTE', motivo: 'x' }),
+      );
+
+      expect(result.getError()).toBe(error);
+      expect(componenteRepo.retirar).not.toHaveBeenCalled();
+      await expect(txRunner.run.mock.results[0].value).rejects.toThrow(/retiro del componente/);
+    });
+
+    it('si la unidad falla porque otro retiro del mismo componente comiteo primero: ComponenteDadoDeBaja', async () => {
+      const componente = makeConUnidad();
+      const yaRetirado = makeConUnidad();
+      yaRetirado.retirar({
+        destino: 'DESCARTE',
+        motivo: 'x',
+        usuarioId: USUARIO,
+        bajaMovimientoId: null,
+      });
+      const { useCase, componenteRepo } = makeSetup(componente, {
+        descarte: Result.fail(new UnidadNoDisponibleError('unidad-1', 'ya no esta instalada')),
+      });
+      componenteRepo.findById.mockResolvedValueOnce(componente).mockResolvedValueOnce(yaRetirado);
+
+      const result = await useCase.execute(
+        dto(componente.id, { destino: 'DESCARTE', motivo: 'x' }),
+      );
+
+      expect(result.getError()).toBeInstanceOf(ComponenteDadoDeBajaError);
+    });
   });
 });
