@@ -258,3 +258,27 @@ Rama: `feat/baja-equipo-completo-wu08` (un solo commit, `size:exception`).
   y destino inválidos, 500 y 501 con `largoMaximo`, nombre que crece bajo el lock.
 - Ayuda: sin deuda (sin ruta ni UI).
 
+
+## WU-9 — Integración de la baja: opción A, opción B, leyenda y registro
+
+Ramas: `feat/baja-equipo-completo-wu09` (helper + leyenda, 388 líneas) -> `-wu09-2` (opciones A y B, 285) -> `-wu09-3` (registro, R16, artefactos, 253). Corte de 926 líneas en tres partes, cada una verde en lint, typecheck y sus specs. WU-10 basa en wu09-3.
+
+- 9.1 `backend/src/equipos/testing/baja-equipo.fixtures.ts`: clase `BajaEquipoFixtures` (wiring real de `DarDeBajaEquipoUseCase`
+  sobre `soporte_tenant_test` con PREFIJO por corrida, no tenant efímero: es el patrón de los demás specs de integración de la
+  baja). Insumos `NINGUNO`, `SERIE`, deshabilitado y borrado; `crearEquipo`, `agregarComponente` (legados incluidos),
+  `agregarUnidadInstalada` (entrada con serial + `operaciones.instalar` + componente), `saldos`, `sembrarSaldo`, `foto()`,
+  `exigirInvarianteSerie()`, `limpiar()` y `cerrar()`. El pool sale de `conUtc()` (regla de lint: `new Pool` solo en el helper).
+- 9.2 `dar-de-baja-equipo.opcion-a.integration.spec.ts` (5 casos): NINGUNO, dos NINGUNO, unidad "S1", insumo deshabilitado, ROTURA sin texto.
+- 9.3 `dar-de-baja-equipo.opcion-b.integration.spec.ts` (5 casos): tres componentes, NINGUNO + "S1", sin asiento negativo, insumo
+  borrado, legado SERIE sin serial.
+- 9.4 `dar-de-baja-equipo.leyenda.integration.spec.ts` (4 casos): leyenda idéntica en los tres lugares, sin texto, 500 y 501.
+- 9.5 `dar-de-baja-equipo.registro.integration.spec.ts` (7 casos): registro de la baja, dos unidades por cada destino, sin piezas,
+  todas retiradas, segunda baja, borrado lógico.
+- 9.6 R16: el spec unitario `cambiar-seguimiento-insumo.use-case.spec.ts` ("rechaza con unidades instaladas", `it.each`
+  `['instaladas', { INSTALADA: 1 }]`) cubre la regla con fakes y el integration `orden-de-locks.concurrencia.integration.spec.ts`
+  caso 3 la cubre con unidades `EN_DEPOSITO`; ninguno con una unidad `INSTALADA` real. Se agregó
+  `backend/src/insumos/application/use-cases/cambiar-seguimiento-insumo.integration.spec.ts` (1 caso): el cambio se rechaza con
+  `SeguimientoNoModificableError`, el insumo sigue `SERIE` y la baja posterior descarta la unidad.
+- 9.7 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), `vitest run src/equipos src/insumos` (150 archivos, 2530 tests) y `pnpm test` completo (545 archivos, 6802 tests) en verde; el único FAIL del log es el ruido conocido `orden-de-arranque.spec.ts`.
+- El invariante `SERIE` corre en `afterEach` de los cuatro specs de la baja y al final del caso R16.
+- Ayuda: sin deuda.
