@@ -155,6 +155,24 @@ export interface IMovimientoInsumoRepository {
   sumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo>;
 
   /**
+   * Devuelve el desglose de la bitácora por condición y tipo de VARIOS insumos
+   * en una sola consulta agregada (`groupBy` con `insumoId IN (...)`). Es la
+   * versión de lote de `sumByTipo()`, pensada para el reporte de stock: evita
+   * una consulta por insumo.
+   *
+   * **Contrato**: cada id pedido está en el mapa, con los ceros completos (2
+   * condiciones x 4 tipos) si no tiene filas. Una lista vacía devuelve un mapa
+   * vacío sin ir a la base. Los ids repetidos se tratan como uno.
+   *
+   * Igual que `sumByTipo()`: sin lock y sin exigir transacción. Su resultado es
+   * una FOTO y no autoriza ninguna salida. El saldo se deriva con `calcularSaldos()`.
+   *
+   * @param insumoIds Insumos cuya bitácora se suma.
+   * @returns Mapa insumoId -> sumas por condición y tipo, con `0` donde no hay movimientos.
+   */
+  sumByTipoDeInsumos(insumoIds: readonly string[]): Promise<Map<string, SumasPorCondicionYTipo>>;
+
+  /**
    * Devuelve las FILAS de la bitácora de un insumo, paginadas y ordenadas, con
    * el total del universo completo.
    *
