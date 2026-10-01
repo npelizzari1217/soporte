@@ -626,3 +626,14 @@ Rama `feat/repuestos-numero-de-serie-wu10a-2`. Tarea 10a.3 hecha; 10a.5 (e2e, te
   sin unidad intacto), del servicio (propiedad del insumo antes de locks), del controller (unidadId, mapeo de errores) y del DTO.
 - Ayuda: sin cambios; deuda de UI en WU-19.
 
+### WU-10a - parte 3 de 4 (testigo de orden de locks y mutacion adversarial)
+
+Rama `feat/repuestos-numero-de-serie-wu10a-3`. Parte de 10a.5 (testigo y mutacion); el e2e va en la parte 4.
+
+- Testigo en `instalar-componente-desde-deposito.concurrencia.integration.spec.ts`: un cliente externo retiene L1, L2 o L3; con
+  `pg_blocking_pids` acotado (sin bucles que sobrevivan) y `pg_locks` se comprueba que el servicio bloqueado no tiene lock de relacion
+  sobre `componentes_equipo`. No se usa `transactionid`: los `FOR SHARE` de L1 ya le asignan xid. La instalacion siempre se espera
+  en el `finally` para no escribir despues de la limpieza.
+- **Mutacion adversarial**: `save(componente)` antes de `operaciones.instalar` => ROJO: los 3 testigos (L1/L2/L3: "expected 1 to
+  be 0") y 2 unit (orden preparar->instalar->save, y "no guarda si instalar falla"). Revertida; todo verde de nuevo.
+
