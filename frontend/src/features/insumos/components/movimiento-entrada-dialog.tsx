@@ -36,6 +36,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRegistrarEntradaInsumo, construirMovimientoInsumoDto } from "../hooks/use-insumo-mutations";
 import { registrarMovimientoInsumoSchema, type RegistrarMovimientoInsumoFormValues } from "../schemas";
 import { CondicionStockSelector } from "./condicion-stock-selector";
+import { useSerialesMovimiento } from "../hooks/use-seriales-movimiento";
+import { useStockInsumo } from "../hooks/use-stock-insumo";
+import { SerialesInput } from "./seriales-input";
 import { useSelectorCondicion } from "../hooks/use-selector-condicion";
 import { construirNotaEquiposNoDisponibles, MovimientoInsumoDialog } from "./movimiento-insumo-dialog";
 
@@ -61,15 +64,20 @@ export function MovimientoEntradaDialog({ insumoId, activo, nombreItem = "insumo
   const condicion = useSelectorCondicion(insumoId);
   const registrarMutation = useRegistrarEntradaInsumo(insumoId);
   const entradaDeshabilitada = !activo;
+  const stockQuery = useStockInsumo(insumoId, { refetchOnMount: false });
+  const esSerie = stockQuery.data?.seguimiento === "SERIE";
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<RegistrarMovimientoInsumoFormValues>({
     resolver: zodResolver(registrarMovimientoInsumoSchema),
   });
+
+  const seriales = useSerialesMovimiento(esSerie, watch("cantidad"));
 
   // Único dueño de la limpieza del formulario: cierra y resetea juntos,
   // sin importar si lo dispara el éxito de la mutación o Radix (Escape/
@@ -79,11 +87,15 @@ export function MovimientoEntradaDialog({ insumoId, activo, nombreItem = "insumo
     if (!next) {
       reset();
       condicion.reiniciar();
+      seriales.reiniciar();
     }
   }
 
   function submit(values: RegistrarMovimientoInsumoFormValues) {
-    registrarMutation.mutate(construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar }), {
+    const paraEnviar = seriales.validar();
+    if (paraEnviar === null) return;
+    const dto = construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar });
+    registrarMutation.mutate(paraEnviar ? { ...dto, seriales: paraEnviar } : dto, {
       onSuccess: () => handleOpenChange(false),
     });
   }
@@ -105,6 +117,18 @@ export function MovimientoEntradaDialog({ insumoId, activo, nombreItem = "insumo
       errorMotivo={errors.motivo}
       registroEquipo={register("equipoId")}
       registroSector={register("sectorId")}
+      cantidadEntera={esSerie}
+      camposTrasCantidad={
+        esSerie && (
+          <SerialesInput
+            id="entrada-seriales"
+            cantidad={seriales.cantidad}
+            valores={seriales.valores}
+            errores={seriales.errores}
+            onChange={seriales.onChange}
+          />
+        )
+      }
       camposAdicionales={<CondicionStockSelector id="entrada-condicion" selector={condicion} />}
     />
   );

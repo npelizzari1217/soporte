@@ -8,7 +8,9 @@
  * cache de sesión `["componentes", equipoId]`.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
+import { ApiError } from "@/shared/api/types";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type {
   Componente,
@@ -19,6 +21,9 @@ import type {
   Equipo,
   RetirarComponenteDto,
 } from "../types";
+
+const MENSAJE_UNIDAD_NO_DISPONIBLE =
+  "No se puede reactivar: la pieza de este componente ya no está disponible (se recuperó al depósito o tuvo otro movimiento). Agregá un componente nuevo eligiendo otra pieza.";
 
 export function useCrearEquipo() {
   const queryClient = useQueryClient();
@@ -137,6 +142,13 @@ export function useReactivarComponente(equipoId: string) {
       queryClient.invalidateQueries({ queryKey: ["equipo", equipoId] });
       notifySuccess("Componente reactivado.");
     },
-    onError: notifyError,
+    onError: (error) => {
+      // El código del 422 no viaja en el cuerpo: se reconoce el mensaje del backend.
+      if (error instanceof ApiError && /ya no está disponible para reinstalarla/.test(error.message)) {
+        toast.error(MENSAJE_UNIDAD_NO_DISPONIBLE);
+        return;
+      }
+      notifyError(error);
+    },
   });
 }

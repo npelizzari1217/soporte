@@ -11,6 +11,8 @@ import { IUnidadMedidaRepository } from '../../domain/ports/i-unidad-medida.repo
 export interface CrearUnidadMedidaDto {
   codigo: string;
   nombre: string;
+  /** `true` si la unidad mide piezas enteras (F3); por defecto `false`. */
+  entera?: boolean;
 }
 
 /**
@@ -42,7 +44,12 @@ export class CrearUnidadMedidaUseCase {
     }
 
     const nombre = normalizarNombreUnidadMedida(dto.nombre);
-    const unidad = UnidadMedidaEntity.create({ codigo, nombre, activo: true });
+    const unidad = UnidadMedidaEntity.create({
+      codigo,
+      nombre,
+      activo: true,
+      entera: dto.entera,
+    });
     await this.unidadRepo.save(unidad);
 
     return Result.ok(unidad);

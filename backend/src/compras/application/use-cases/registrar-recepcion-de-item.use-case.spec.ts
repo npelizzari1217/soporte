@@ -50,6 +50,7 @@ import { Result } from '../../../shared/domain/result';
 import { MovimientoInsumoEntity } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import { RegistrarEntradaInsumoDto } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 import { InsumoNoEncontradoError } from '../../../insumos/domain/errors/insumos.errors';
+import { SerialDuplicadoError } from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 const INSUMO_ID = 'insumo-uuid';
 
@@ -112,7 +113,7 @@ function baseDto(
 describe('RegistrarRecepcionDeItemUseCase', () => {
   function makeCollaborators(
     compra: CompraEntity | null,
-    entradaFalla: InsumoNoEncontradoError | null = null,
+    entradaFalla: InsumoNoEncontradoError | SerialDuplicadoError | null = null,
   ) {
     const compraRepo = {
       findByIdConItems: vi.fn().mockResolvedValue(compra),
@@ -309,7 +310,63 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
         usuarioId: 'usuario-uuid',
         condicion: 'NUEVO',
         itemCompraId: item.id,
+        completarConPendientes: true,
       });
+    });
+
+    // Insumo SERIE (ADR-11): los seriales de ESTA recepción viajan a la entrada
+    // junto con la opción que completa con serie pendiente.
+    it('con seriales, los pasa a la entrada con completarConPendientes', async () => {
+      const { compra, item } = compraConItemOrdenado(10, 8, INSUMO_ID);
+      const c = makeCollaborators(compra);
+
+      await c.useCase.execute(
+        baseDto(compra, item, { cantidadRecibida: 4, seriales: ['SN-1', 'SN-2'] }),
+      );
+
+      const dtoEntrada = c.registrarEntradaInsumo.execute.mock
+        .calls[0][0] as RegistrarEntradaInsumoDto;
+      expect(dtoEntrada.seriales).toEqual(['SN-1', 'SN-2']);
+      expect(dtoEntrada.completarConPendientes).toBe(true);
+      expect(dtoEntrada.cantidad).toBe(4);
+    });
+
+    it('sin seriales, no manda la clave (un insumo NINGUNO rechazaría un arreglo vacío)', async () => {
+      const { compra, item } = compraConItemOrdenado(10, 8, INSUMO_ID);
+      const c = makeCollaborators(compra);
+
+      await c.useCase.execute(baseDto(compra, item, { cantidadRecibida: 4 }));
+
+      const dtoEntrada = c.registrarEntradaInsumo.execute.mock
+        .calls[0][0] as RegistrarEntradaInsumoDto;
+      expect('seriales' in dtoEntrada).toBe(false);
+    });
+
+    it('con delta cero no llama a la entrada aunque vengan seriales', async () => {
+      const { compra, item } = compraConItemOrdenado(10, 8, INSUMO_ID);
+      item.registrarRecepcion(4, new Date('2026-08-03'));
+      const c = makeCollaborators(compra);
+
+      const result = await c.useCase.execute(
+        baseDto(compra, item, { cantidadRecibida: 4, seriales: ['SN-1'] }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.registrarEntradaInsumo.execute).not.toHaveBeenCalled();
+    });
+
+    it('un serial duplicado de la entrada revierte la recepción y vuelve como Result.fail', async () => {
+      const { compra, item } = compraConItemOrdenado(10, 8, INSUMO_ID);
+      const duplicado = new SerialDuplicadoError('SN-1');
+      const c = makeCollaborators(compra, duplicado);
+
+      const result = await c.useCase.execute(
+        baseDto(compra, item, { cantidadRecibida: 4, seriales: ['SN-1'] }),
+      );
+
+      expect(c.estadoTx.comiteado).toBe(false);
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBe(duplicado);
     });
 
     // Lo que se compra entra siempre como NUEVO, sin depender del default del

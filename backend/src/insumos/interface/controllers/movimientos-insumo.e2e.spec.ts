@@ -493,6 +493,8 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
         admiteUsado: false,
         stockMinimo: 5,
         estadoReposicion: 'SUFICIENTE',
+        seguimiento: 'NINGUNO',
+        pendientesDeSerie: 0,
       });
     });
   });

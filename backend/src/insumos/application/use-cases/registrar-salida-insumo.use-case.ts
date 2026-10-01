@@ -6,10 +6,19 @@ import {
   CONDICION_STOCK_POR_DEFECTO,
   CondicionStock,
 } from '../../domain/entities/tipo-movimiento-insumo';
-import { StockInsuficienteError } from '../../domain/errors/insumos.errors';
+import {
+  InsumoNoEncontradoError,
+  StockInsuficienteError,
+} from '../../domain/errors/insumos.errors';
+import {
+  SerialesNoCoincidenError,
+  UnidadNoAdmitidaError,
+  UnidadRequeridaError,
+} from '../../domain/errors/unidades-insumo.errors';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import { OperacionesUnidadInsumo } from '../services/operaciones-unidad-insumo.service';
 import {
   validarCondicionAdmitida,
   validarInsumoElegible,
@@ -38,6 +47,12 @@ export interface RegistrarSalidaInsumoDto {
   equipoId?: string | null;
   /** A qué sector fue lo que salió. Trazabilidad, no stock: hay UN solo stock. */
   sectorId?: string | null;
+  /**
+   * Unidad que sale, obligatoria si el insumo se sigue por `SERIE` (con serial:
+   * la pendiente no sale, solo se da de baja por ajuste) y rechazada con
+   * `UnidadNoAdmitidaError` si no.
+   */
+  unidadId?: string | null;
 }
 
 /**
@@ -77,6 +92,14 @@ export interface RegistrarSalidaInsumoDto {
  *   stock atrapado, sin forma de llegar a cero salvo rehabilitando el insumo o
  *   asentando un ajuste que mentiría sobre lo que pasó.
  *
+ * **Rama `SERIE` (ADR-5).** Lo PRIMERO que toca la transacción es L1
+ * (`leerSeguimientoParaMovimiento`, `FOR SHARE`): el seguimiento de esa lectura
+ * decide la rama y ningún otro lock se toma antes, así que el cambio de
+ * seguimiento nunca espera acá teniendo L2. Con `SERIE` no se compara saldo:
+ * `OperacionesUnidadInsumo.sacarDelDeposito` autoriza si la unidad elegida está
+ * `EN_DEPOSITO`, con serial y en la condición pedida, y la deja `ENTREGADA`.
+ * Rechaza con `UnidadNoDisponibleError`, no con `StockInsuficienteError`.
+ *
  * La fórmula del saldo NO vive acá: `calcularSaldos()` la resuelve (compone `calcularStock()`) en el
  * dominio, para que la consulta que muestra el stock en la ficha del insumo
  * derive el mismo número que este caso de uso usa para autorizar.
@@ -85,20 +108,25 @@ export interface RegistrarSalidaInsumoDto {
  */
 export class RegistrarSalidaInsumoUseCase {
   constructor(
-    private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
+    private readonly insumoRepo: Pick<
+      IInsumoRepository,
+      'findById' | 'leerSeguimientoParaMovimiento'
+    >,
     private readonly movimientoRepo: Pick<
       IMovimientoInsumoRepository,
       'insert' | 'lockAndSumByTipo'
     >,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'sacarDelDeposito'>,
   ) {}
 
   /**
    * @param dto Datos de la salida, con el `usuarioId` ya resuelto por el borde.
    * @returns El movimiento asentado; `InsumoNoEncontradoError` si el insumo no
    *   existe o está dado de baja; o `StockInsuficienteError` si el depósito no
-   *   tiene con qué cubrir la cantidad pedida.
+   *   tiene con qué cubrir la cantidad pedida; y con `SERIE`, `UnidadRequeridaError`,
+   *   `SerialesNoCoincidenError` (la cantidad no es 1) o `UnidadNoDisponibleError`.
    * @throws Error si la cantidad no es finita, no es positiva, pasa el techo de
    *   negocio o tiene más decimales que la columna, o si el motivo excede su
    *   tope de largo: son violaciones de contrato del caller que el borde
@@ -154,6 +182,46 @@ export class RegistrarSalidaInsumoUseCase {
     const asiento = movimiento.getValue();
 
     return this.txRunner.run(async () => {
+      // L1 primero (ADR-5): el `seguimiento` de esta lectura decide la rama.
+      const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(asiento.insumoId);
+      if (seguimiento === null) {
+        return Result.fail<MovimientoInsumoEntity, DomainError>(
+          new InsumoNoEncontradoError(asiento.insumoId),
+        );
+      }
+
+      if (seguimiento === 'NINGUNO' && dto.unidadId != null) {
+        return Result.fail<MovimientoInsumoEntity, DomainError>(
+          new UnidadNoAdmitidaError(asiento.insumoId),
+        );
+      }
+
+      if (seguimiento === 'SERIE') {
+        if (dto.unidadId == null) {
+          return Result.fail<MovimientoInsumoEntity, DomainError>(
+            new UnidadRequeridaError(asiento.insumoId),
+          );
+        }
+        // Una unidad es una pieza: la cantidad solo puede ser 1.
+        if (dto.cantidad !== 1) {
+          return Result.fail<MovimientoInsumoEntity, DomainError>(
+            new SerialesNoCoincidenError(dto.cantidad, 1),
+          );
+        }
+        const sacada = await this.operaciones.sacarDelDeposito(asiento.insumoId, [dto.unidadId], {
+          tipo: 'SALIDA',
+          usuarioId: dto.usuarioId,
+          motivo: dto.motivo,
+          // Solo si el caller la pidió: la omisión NO equivale a `NUEVO` acá.
+          condicion: dto.condicion,
+          equipoId: dto.equipoId,
+          sectorId: dto.sectorId,
+        });
+        return sacada.isFail()
+          ? Result.fail<MovimientoInsumoEntity, DomainError>(sacada.getError())
+          : Result.ok<MovimientoInsumoEntity, DomainError>(sacada.getValue()[0].movimiento);
+      }
+
       // Desde acá y hasta el commit, nadie más puede evaluar el stock de este
       // insumo: el advisory lock lo toma `lockAndSumByTipo()` y se libera solo
       // al cerrar la transacción. La lectura va ANTES del insert porque leer

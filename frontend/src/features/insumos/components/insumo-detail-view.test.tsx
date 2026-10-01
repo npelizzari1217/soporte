@@ -23,6 +23,7 @@ const INSUMO: Insumo = {
   unidadMedidaId: "um-1",
   stockMinimo: 5,
   activo: true,
+  seguimiento: "NINGUNO",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -41,6 +42,7 @@ const OTRO_INSUMO: Insumo = {
   unidadMedidaId: "um-2",
   stockMinimo: null,
   activo: false,
+  seguimiento: "NINGUNO",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -72,6 +74,7 @@ const UNIDADES: UnidadMedida[] = [
     codigo: "UN",
     nombre: "Unidad",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   },
@@ -80,6 +83,7 @@ const UNIDADES: UnidadMedida[] = [
     codigo: "M",
     nombre: "Metro",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   },
@@ -92,6 +96,8 @@ const STOCK_SUFICIENTE: StockInsumo = {
   admiteUsado: false,
   stockMinimo: 5,
   estadoReposicion: "SUFICIENTE",
+  seguimiento: "NINGUNO",
+  pendientesDeSerie: 0,
 };
 
 const LECTOR = buildUser({ permisos: ["INSUMOS:LECTURA"], modulos: ["INSUMOS"] });
@@ -130,6 +136,8 @@ const MOVIMIENTO_BASE: MovimientoInsumo = {
   equipoId: null,
   sectorId: null,
   itemCompraId: null,
+  unidadId: null,
+  numeroSerie: null,
   createdAt: "2026-03-01T13:30:00.000Z",
 };
 
@@ -223,6 +231,8 @@ describe("InsumoDetailView — estado de reposición", () => {
       admiteUsado: false,
       stockMinimo: 5,
       estadoReposicion: "BAJO_MINIMO",
+      seguimiento: "NINGUNO",
+      pendientesDeSerie: 0,
     });
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
@@ -238,6 +248,8 @@ describe("InsumoDetailView — estado de reposición", () => {
       admiteUsado: false,
       stockMinimo: null,
       estadoReposicion: "SIN_PUNTO_DEFINIDO",
+      seguimiento: "NINGUNO",
+      pendientesDeSerie: 0,
     });
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
@@ -307,6 +319,8 @@ describe("InsumoDetailView — saldos nuevo y usado", () => {
       admiteUsado: true,
       stockMinimo: 5,
       estadoReposicion: "BAJO_MINIMO",
+      seguimiento: "NINGUNO",
+      pendientesDeSerie: 0,
     });
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
@@ -1162,5 +1176,48 @@ describe("InsumoDetailView — vocabulario según la familia", () => {
 
     expect(await screen.findByText(/no se encontró el repuesto/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Repuestos/ })).toHaveAttribute("href", "/repuestos");
+  });
+});
+
+describe("InsumoDetailView — unidades por serie", () => {
+  const INSUMO_SERIE: Insumo = { ...INSUMO, seguimiento: "SERIE" };
+
+  it("un insumo NINGUNO no muestra la sección de unidades ni la consulta", async () => {
+    mockFicha([INSUMO], STOCK_SUFICIENTE);
+    let consultado = false;
+    server.use(
+      http.get("/api/insumos/:insumoId/unidades", () => {
+        consultado = true;
+        return HttpResponse.json([]);
+      }),
+    );
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByText("Existencia")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Unidades" })).not.toBeInTheDocument();
+    expect(consultado).toBe(false);
+  });
+
+  it("un insumo SERIE muestra la sección con sus unidades", async () => {
+    mockFicha([INSUMO_SERIE], { ...STOCK_SUFICIENTE, seguimiento: "SERIE" });
+    server.use(
+      http.get("/api/insumos/:insumoId/unidades", () =>
+        HttpResponse.json([
+          {
+            id: "u-1",
+            insumoId: INSUMO.id,
+            numeroSerie: "SN-001",
+            condicion: "NUEVO",
+            estado: "EN_DEPOSITO",
+            equipoId: null,
+            equipoNombre: null,
+          },
+        ]),
+      ),
+    );
+    renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
+
+    expect(await screen.findByRole("heading", { name: "Unidades" })).toBeInTheDocument();
+    expect(await screen.findByText("SN-001")).toBeInTheDocument();
   });
 });

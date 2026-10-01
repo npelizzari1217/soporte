@@ -11,7 +11,7 @@
  *   GET    /equipos/:id                                       → ObtenerEquipoUseCase         `EQUIPOS:LECTURA`
  *   PATCH  /equipos/:id                                       → EditarEquipoUseCase          `EQUIPOS:MODIFICACION`
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
- *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteUseCase (descontarStock=false) `EQUIPOS:ALTAS`
+ *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteSinDescuentoUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
  *   PATCH  /equipos/:id/componentes/:componenteId/reactivar   → ReactivarComponenteUseCase   `EQUIPOS:MODIFICACION`
@@ -33,6 +33,7 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -59,7 +60,7 @@ import { EditarEquipoUseCase } from '../../application/use-cases/editar-equipo.u
 import { ObtenerEquipoUseCase } from '../../application/use-cases/obtener-equipo.use-case';
 import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos.use-case';
 import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
-import { AgregarComponenteUseCase } from '../../application/use-cases/agregar-componente.use-case';
+import { AgregarComponenteSinDescuentoUseCase } from '../../application/use-cases/agregar-componente-sin-descuento.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-cases/instalar-componente-desde-deposito.use-case';
 import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
 import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-componente.use-case';
@@ -76,13 +77,23 @@ import {
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
   ComponenteDevueltoAlStockError,
+  SerialDeUnidadNoEditableError,
   MotivoRetiroRequeridoError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
+  UnidadConAltaSinDescuentoError,
 } from '../../domain/errors/equipos.errors';
 
+import {
+  SerialDuplicadoError,
+  SerialRequeridoError,
+  UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
+  UnidadRequeridaError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
 import {
   ComponenteResponseDto,
   CreateComponenteHttpDto,
@@ -102,9 +113,18 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 /** Mapea un `DomainError` de los use cases de equipos a la `HttpException` correspondiente. */
 export function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException {
-  if (error instanceof EquipoNoEncontradoError || error instanceof ComponenteNoEncontradoError) {
+): NotFoundException | ConflictException | UnprocessableEntityException {
+  if (
+    error instanceof EquipoNoEncontradoError ||
+    error instanceof ComponenteNoEncontradoError ||
+    // `unidadId` del body que no existe: se contesta como las rutas de unidades de insumo.
+    error instanceof UnidadNoEncontradaError
+  ) {
     return new NotFoundException(error.message);
+  }
+  // Alta sin descuento de un insumo `SERIE` (D3): el serial ya lo tiene otra unidad.
+  if (error instanceof SerialDuplicadoError) {
+    return new ConflictException(error.message);
   }
   if (
     error instanceof EquipoInvalidoError ||
@@ -119,6 +139,17 @@ export function toHttpException(
     // Reactivar tras devolver al stock (sdd/stock-usado-componentes): doble conteo.
     error instanceof ComponenteDevueltoAlStockError ||
     error instanceof MotivoRetiroRequeridoError ||
+    // El serial de un componente con unidad se corrige desde la unidad (ADR-7).
+    error instanceof SerialDeUnidadNoEditableError ||
+    // Instalar con unidad (ADR-7): la unidad elegida no sirve, o el insumo exige elegir una.
+    error instanceof UnidadNoDisponibleError ||
+    error instanceof UnidadRequeridaError ||
+    // Reactivar (ADR-14): la unidad ya no está descartada por este componente. El error
+    // llega del módulo equipos o, sin traducir, del de insumos (clase duplicada): por `code`.
+    error.code === 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE' ||
+    error instanceof UnidadNoAdmitidaError ||
+    error instanceof UnidadConAltaSinDescuentoError ||
+    error instanceof SerialRequeridoError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
     // `modeloEquipoId`.
@@ -172,7 +203,7 @@ export class EquiposController {
     private readonly obtenerEquipoUseCase: ObtenerEquipoUseCase,
     private readonly listarEquiposUseCase: ListarEquiposUseCase,
     private readonly eliminarEquipoUseCase: EliminarEquipoUseCase,
-    private readonly agregarComponenteUseCase: AgregarComponenteUseCase,
+    private readonly agregarComponenteSinDescuentoUseCase: AgregarComponenteSinDescuentoUseCase,
     private readonly editarComponenteUseCase: EditarComponenteUseCase,
     private readonly reactivarComponenteUseCase: ReactivarComponenteUseCase,
     // Agregado al final (no reordena los anteriores) — mismo criterio que
@@ -338,12 +369,19 @@ export class EquiposController {
    * obligatorio y el tipo se deriva de la familia del repuesto. Con
    * `descontarStock` omitido o `true`, registra en UNA transacción la SALIDA de
    * 1 unidad y el alta (`InstalarComponenteDesdeDepositoUseCase`); con `false`
-   * solo agrega el componente (`AgregarComponenteUseCase`). `usuarioId` sale
+   * agrega el componente sin movimiento (`AgregarComponenteSinDescuentoUseCase`);
+   * con un insumo `SERIE` el `numeroSerie` es obligatorio y crea la unidad ya instalada (D3). `usuarioId` sale
    * siempre de `JWT.sub` vía `@CurrentUser()`, nunca del body.
    * @throws 400 `insumoId` ausente o inválido, `descontarStock` no booleano
    * @throws 404 equipo inexistente
    * @throws 422 insumo inexistente/deshabilitado, familia que no es de
-   *   repuesto o deshabilitada, o stock insuficiente (con descuento)
+   *   repuesto o deshabilitada, o stock insuficiente (con descuento); con
+   *   insumo `SERIE`, falta `unidadId` o la unidad no está disponible (pendiente,
+   *   de otro insumo, ya tomada)
+   * @throws 404 además: `unidadId` inexistente
+   * @throws 422 además, sin descuento: `unidadId` (no se elige una unidad) o insumo
+   *   `SERIE` sin `numeroSerie`
+   * @throws 409 sin descuento, insumo `SERIE`: el serial ya lo tiene otra unidad
    */
   @Post(':id/componentes')
   @RequiereAcciones('EQUIPOS:ALTAS')
@@ -360,17 +398,25 @@ export class EquiposController {
       numeroSerie: dto.numeroSerie ?? null,
       capacidad: dto.capacidad ?? null,
     };
-    // ADR-7: `condicion` solo tiene sentido con descuento (es la del saldo del
-    // que sale la unidad). Con `descontarStock=false` no hay movimiento y se
-    // ignora, en vez de dar 400 al diálogo que desmarca la casilla tras elegir USADO.
+    // ADR-7: con descuento, `condicion` es la del saldo del que sale la unidad. Sin
+    // descuento no hay movimiento: el caso de uso la aplica a la unidad que nace
+    // solo si el insumo es `SERIE` (D3) y con `NINGUNO` la ignora, en vez de dar 400
+    // al diálogo que desmarca la casilla tras elegir USADO. `unidadId` sin descuento
+    // se pasa igual para que el caso de uso lo rechace (422) y no se descarte en silencio.
     const result =
       (dto.descontarStock ?? true)
         ? await this.instalarComponenteDesdeDepositoUseCase.execute({
             ...datos,
             usuarioId: user.sub,
             condicion: dto.condicion,
+            unidadId: dto.unidadId,
           })
-        : await this.agregarComponenteUseCase.execute(datos);
+        : await this.agregarComponenteSinDescuentoUseCase.execute({
+            ...datos,
+            usuarioId: user.sub,
+            condicion: dto.condicion,
+            unidadId: dto.unidadId,
+          });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -386,7 +432,9 @@ export class EquiposController {
    * de insumos: el asiento de stock lo registra el caso de uso.
    * @throws 400 `destino` ausente o inválido
    * @throws 404 componente inexistente o de otro equipo
-   * @throws 422 componente ya dado de baja, o `DESCARTE` sin motivo
+   * @throws 409 el serial del legado ya lo tiene otra unidad del insumo
+   * @throws 422 componente ya dado de baja, `DESCARTE` sin motivo, o un legado de un
+   *   insumo `SERIE` sin `numeroSerie`
    */
   @Post(':id/componentes/:componenteId/baja')
   @RequiereAcciones('EQUIPOS:BORRADO')
@@ -402,6 +450,7 @@ export class EquiposController {
       componenteId,
       destino: dto.destino,
       motivo: dto.motivo,
+      numeroSerie: dto.numeroSerie,
       usuarioId: user.sub,
     });
     if (result.isFail()) {
@@ -442,16 +491,22 @@ export class EquiposController {
    * PATCH /equipos/:id/componentes/:componenteId/reactivar
    * Revierte la baja lógica de un componente (listado enriquecido de componentes).
    * @throws 404 componente inexistente
-   * @throws 422 componente ya activo
+   * @throws 422 componente ya activo, devuelto al stock, con unidad que ya no está
+   *   descartada por él, o de un insumo que dejó de seguirse por serie
    */
   @Patch(':id/componentes/:componenteId/reactivar')
   @RequiereAcciones('EQUIPOS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async reactivarComponente(
+    @CurrentUser() user: JwtPayload,
     @Param('id') equipoId: string,
     @Param('componenteId') componenteId: string,
   ): Promise<ComponenteResponseDto> {
-    const result = await this.reactivarComponenteUseCase.execute({ equipoId, componenteId });
+    const result = await this.reactivarComponenteUseCase.execute({
+      equipoId,
+      componenteId,
+      usuarioId: user.sub,
+    });
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }

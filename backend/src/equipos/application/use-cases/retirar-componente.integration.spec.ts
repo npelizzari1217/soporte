@@ -20,6 +20,7 @@ import { vi } from 'vitest';
 import { Pool, type PoolClient } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { construirEntradaReal } from '../../../insumos/testing/entrada-insumo-real';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
@@ -33,6 +34,7 @@ import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructur
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { construirOperacionesReal } from '../../../insumos/testing/operaciones-unidad-real';
 import { RegistrarEntradaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 import { RetirarComponenteUseCase } from './retirar-componente.use-case';
 import { ComponenteDadoDeBajaError } from '../../domain/errors/equipos.errors';
@@ -198,7 +200,14 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
     return new RetirarComponenteUseCase(
       makeTxRunner(),
       repo,
-      new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaInsumoRepo),
+      construirEntradaReal({
+        tenantContext,
+        txRunner: makeTxRunner(),
+        insumoRepo,
+        movimientoRepo,
+        familiaRepo: familiaInsumoRepo,
+      }),
+      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
     );
   }
 
@@ -377,10 +386,18 @@ describe('RetirarComponenteUseCase - base real (WU-7, ADR-4)', () => {
       },
     });
     const txRunner = makeTxRunner();
+    const operaciones = construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo });
     const instalar = new InstalarComponenteDesdeDepositoUseCase(
       txRunner,
       new AgregarComponenteUseCase(equipoRepo, componenteRepo, insumoRepo, familiaInsumoRepo),
-      new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaInsumoRepo),
+      new RegistrarSalidaInsumoUseCase(
+        insumoRepo,
+        movimientoRepo,
+        txRunner,
+        familiaInsumoRepo,
+        operaciones,
+      ),
+      operaciones,
       componenteRepo,
     );
 

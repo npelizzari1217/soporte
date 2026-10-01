@@ -18,6 +18,7 @@ function filaMovimiento(
     equipoId: null,
     sectorId: null,
     itemCompraId: null,
+    unidadId: null,
     createdAt: new Date('2026-09-06T10:00:00.000Z'),
     ...overrides,
   };
@@ -44,6 +45,17 @@ function crearMovimiento(
 
 describe('MovimientoInsumoMapper', () => {
   describe('toDomain()', () => {
+    it('lleva el serial de la unidad cuando la lectura lo incluye, y null si no', () => {
+      const conUnidad = MovimientoInsumoMapper.toDomain(
+        filaMovimiento({ unidadId: 'u-1', unidad: { numeroSerie: 'SN-1' } }),
+      );
+      const sinUnidad = MovimientoInsumoMapper.toDomain(filaMovimiento());
+
+      expect(conUnidad.numeroSerie).toBe('SN-1');
+      expect(conUnidad.unidadId).toBe('u-1');
+      expect(sinUnidad.numeroSerie).toBeNull();
+    });
+
     it('convierte una fila Prisma a MovimientoInsumoEntity', () => {
       const entity = MovimientoInsumoMapper.toDomain(filaMovimiento());
 
@@ -298,6 +310,7 @@ describe('MovimientoInsumoMapper', () => {
     const fila = MovimientoInsumoMapper.toPersistence(movimiento);
     const reconstruido = MovimientoInsumoMapper.toDomain({
       ...fila,
+      unidadId: null,
       cantidad: new Prisma.Decimal(fila.cantidad),
       createdAt: fechaDeLaBase,
     });
@@ -313,5 +326,24 @@ describe('MovimientoInsumoMapper', () => {
     expect(reconstruido.itemCompraId).toBe(movimiento.itemCompraId);
     expect(reconstruido.createdAt).toEqual(fechaDeLaBase);
     expect(reconstruido.createdAt).not.toEqual(movimiento.createdAt);
+  });
+
+  describe('unidadId', () => {
+    it('toDomain() lee la unidad de la fila, o null si es un movimiento por cantidad', () => {
+      expect(MovimientoInsumoMapper.toDomain(filaMovimiento()).unidadId).toBeNull();
+      expect(
+        MovimientoInsumoMapper.toDomain(
+          filaMovimiento({ unidadId: 'unidad-1', cantidad: new Prisma.Decimal('1.00') }),
+        ).unidadId,
+      ).toBe('unidad-1');
+    });
+
+    it('toPersistence() lleva la unidad de la entidad, y null explícito si no tiene', () => {
+      const conUnidad = crearMovimiento({ unidadId: 'unidad-1', cantidad: 1 });
+
+      expect(MovimientoInsumoMapper.toPersistence(conUnidad).unidadId).toBe('unidad-1');
+      const sinUnidad = MovimientoInsumoMapper.toPersistence(crearMovimiento());
+      expect(sinUnidad).toHaveProperty('unidadId', null);
+    });
   });
 });

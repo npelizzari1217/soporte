@@ -650,6 +650,50 @@ revert es inevitable, la vía fiel es restaurar el dump de `predeploy-dump.ps1` 
 siguiente ("Restore de datos"); se pierde lo escrito después del deploy. Revertir sin restaurar
 acepta las dos consecuencias de la tabla, con su alcance ya medido por el detector.
 
+### Rollback del tracker `repuestos-numero-de-serie`
+
+Este release es **una sola entrega** (los estados intermedios no son desplegables) y su migración
+`20260930140000_unidades_insumo_serie` es **aditiva**: agrega `unidades_medida.entera`,
+`insumos.seguimiento` (default `NINGUNO`), la tabla `unidades_insumo`, `movimientos_insumo.unidad_id`,
+`componentes_equipo.unidad_id` y la tabla `eventos_unidad_insumo`. El `git reset --hard` no la
+deshace, y con los defaults inertes el binario viejo sigue funcionando. Qué se pierde al revertir
+depende del estado de cada tenant. El detector es de solo lectura; se corre en cada tenant activo
+(con `psql` contra la base de ese tenant, nunca contra master). Las bases de los tenants se toman
+del registro, nunca se hardcodean:
+
+```powershell
+& 'C:\Program Files\PostgreSQL\16\bin\psql.exe' $env:DATABASE_URL_MASTER -t -A -F '|' -c "SELECT nombre, db_name, activo FROM clientes;"
+```
+
+```sql
+SELECT
+  (SELECT count(*) FROM insumos WHERE seguimiento = 'SERIE')               AS insumos_serie,
+  (SELECT count(*) FROM unidades_insumo)                                   AS unidades,
+  (SELECT count(*) FROM movimientos_insumo WHERE unidad_id IS NOT NULL)    AS movimientos_con_unidad;
+```
+
+| Resultado | Qué significa |
+|---|---|
+| Los tres en 0 en **todos** los tenants | `git reset --hard <commit-de-rollback>` y `.\deploy.ps1`. La migración queda aplicada y no molesta al binario viejo. Revertir el código es gratis. |
+| Cualquiera > 0 | Ya hay insumos con seguimiento por serie o piezas cargadas. El binario viejo suma el libro por cantidad (coincide mientras valga el invariante) pero asienta salidas **sin unidad** en insumos `SERIE`, y eso rompe el invariante. Además, su edición del serial de un componente con unidad choca con el CHECK `componentes_equipo_unidad_sin_serie_texto_check` (500 acotado a esas filas). |
+
+Con cualquiera de los valores > 0, la vía preferida es **corregir hacia adelante**. Si el revert es
+inevitable, la vía fiel es restaurar el dump de `predeploy-dump.ps1` siguiendo la sección siguiente
+("Restore de datos"); se pierde lo escrito después del deploy. Revertir **sin** restaurar exige,
+antes de volver a desplegar el ciclo, conciliar en cada tenant los movimientos que el binario viejo
+asentó sin unidad en insumos `SERIE`:
+
+```sql
+SELECT m.*
+FROM movimientos_insumo m
+JOIN insumos i ON i.id = m.insumo_id
+WHERE i.seguimiento = 'SERIE'
+  AND m.unidad_id IS NULL;
+```
+
+Cada fila que aparezca después de la fecha del deploy es una salida o un ajuste que hay que
+atribuir a una unidad concreta, o corregir, antes de redesplegar.
+
 ### Restore de datos (si el backfill de fechas hay que revertirlo)
 
 Caso puntual: el backfill de `sdd/sesion-utc-y-backfill-de-fechas` (issue #173, ADR-6) resta 3
@@ -775,6 +819,31 @@ Si la migración tenant falló en algún tenant, los deploys siguientes fallan c
 recuperación (`prisma migrate resolve --rolled-back` con `--config prisma.tenant.config.ts` y el
 `DATABASE_URL_TENANT` de ese tenant, y luego re-correr `deploy.ps1`) es la descrita en "Nota
 histórica: precondición de componentes sin repuesto (retirada)".
+
+### Verificación de `repuestos-numero-de-serie`
+
+En un tenant activo, con `psql` contra su base (la base sale de `SELECT nombre, db_name, activo FROM
+clientes;` en master, nunca hardcodeada). Todo es de solo lectura:
+
+```sql
+\d unidades_insumo      -- existe, con sus CHECK y el índice único parcial por serial normalizado
+```
+
+```sql
+SELECT
+  (SELECT count(*) FROM insumos WHERE seguimiento = 'SERIE')               AS insumos_serie,
+  (SELECT count(*) FROM unidades_insumo)                                   AS unidades,
+  (SELECT count(*) FROM movimientos_insumo WHERE unidad_id IS NOT NULL)    AS movimientos_con_unidad;
+-- esperado tras el deploy: 0, 0, 0
+```
+
+```sql
+SELECT codigo, entera FROM unidades_medida;
+-- UNI y PAR en true
+```
+
+Un tenant que renombró `UNI` no recibe `entera = true` de la migración (esta actualiza por código):
+se marca a mano. El dueño activa `SERIE` insumo por insumo, con saldo cero, desde el ABM.
 
 ### El smoke de la matriz depende del build
 

@@ -241,6 +241,8 @@ export interface RegistrarOrdenDeItemDto {
 export interface RegistrarRecepcionDeItemDto {
   cantidadRecibida: number;
   fecha?: string;
+  /** Solo los de las piezas NUEVAS (el delta), nunca el acumulado; se omite para un insumo sin serie. */
+  seriales?: string[];
 }
 
 /** Body de registrar avance de entrega (`RegistrarEntregaDeItemHttpDto`) — `cantidadEntregada` es ACUMULADO, no delta. */

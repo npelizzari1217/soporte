@@ -39,6 +39,7 @@ function buildUnidad(overrides: Partial<UnidadMedida> = {}): UnidadMedida {
     codigo: "UN",
     nombre: "Unidad",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -54,6 +55,7 @@ function buildInsumo(overrides: Partial<Insumo> = {}): Insumo {
     unidadMedidaId: "um-1",
     stockMinimo: 5,
     activo: true,
+    seguimiento: "NINGUNO",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -481,5 +483,241 @@ describe("InsumoFormDialog — el catálogo se cae y se recupera", () => {
     await waitFor(() => expect(familia).not.toBeDisabled());
     // El assert que importa: el DOM muestra el valor guardado, no el placeholder.
     await waitFor(() => expect(familia.value).toBe("fam-1"));
+  });
+});
+
+/**
+ * Seguimiento por serie (WU-13). El backend NO acepta `seguimiento` en el
+ * `PATCH /insumos/:id`: se cambia con `PATCH /insumos/:id/seguimiento`, así que
+ * editar datos y seguimiento a la vez son DOS llamadas, y el orden depende de
+ * la dirección. Estos tests miran el orden en que llegaron al servidor.
+ */
+describe("InsumoFormDialog — seguimiento", () => {
+  type Llamada = { ruta: "datos" | "seguimiento"; body: Record<string, unknown> };
+
+  /** Registra las llamadas en orden; cada ruta responde lo que le diga `respuestas`. */
+  function mockEdicion(
+    insumo: Insumo,
+    respuestas: { datos?: () => Response; seguimiento?: () => Response } = {},
+  ): Llamada[] {
+    const llamadas: Llamada[] = [];
+    server.use(
+      http.patch(`/api/insumos/${insumo.id}`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        llamadas.push({ ruta: "datos", body });
+        return respuestas.datos?.() ?? HttpResponse.json({ ...insumo, ...body });
+      }),
+      http.patch(`/api/insumos/${insumo.id}/seguimiento`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        llamadas.push({ ruta: "seguimiento", body });
+        return respuestas.seguimiento?.() ?? HttpResponse.json({ ...insumo, ...body });
+      }),
+    );
+    return llamadas;
+  }
+
+  const rutas = (llamadas: Llamada[]) => llamadas.map((l) => l.ruta);
+
+  async function abrirEdicion(insumo: Insumo) {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoFormDialog insumo={insumo} trigger={<button>Editar</button>} />);
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await screen.findByLabelText("Familia");
+    return user;
+  }
+
+  it("alta con SERIE: el POST lleva seguimiento", async () => {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/insumos", async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...buildInsumo(), ...enviado, id: "ins-2" }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
+    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
+    await user.type(screen.getByLabelText("Nombre"), "Disco SSD");
+    await user.selectOptions(await screen.findByLabelText("Familia"), "fam-1");
+    await user.selectOptions(screen.getByLabelText("Unidad de medida"), "um-1");
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(enviado.seguimiento).toBe("SERIE"));
+  });
+
+  it("avisa que la unidad elegida no es entera al elegir SERIE (el 422 del backend sigue siendo la barrera)", async () => {
+    mockCatalogosConDatos();
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
+    await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
+    await user.selectOptions(await screen.findByLabelText("Unidad de medida"), "um-1");
+
+    expect(screen.queryByText(/no es entera/i)).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    expect(screen.getByText(/no es entera/i)).toBeInTheDocument();
+  });
+
+  it("sin cambiar el seguimiento solo viaja el PATCH de datos, y sin la clave seguimiento", async () => {
+    const insumo = buildInsumo();
+    const llamadas = mockEdicion(insumo);
+    const user = await abrirEdicion(insumo);
+
+    expect(screen.getByLabelText("Seguimiento")).toHaveValue("NINGUNO");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(llamadas).toHaveLength(1));
+    expect(llamadas[0].ruta).toBe("datos");
+    expect(llamadas[0].body).not.toHaveProperty("seguimiento");
+  });
+
+  it("hacia SERIE con otros cambios: primero PATCH /insumos/:id y después …/seguimiento", async () => {
+    const insumo = buildInsumo();
+    const llamadas = mockEdicion(insumo);
+    const user = await abrirEdicion(insumo);
+
+    await user.type(screen.getByLabelText("Nombre"), " v2");
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(rutas(llamadas)).toEqual(["datos", "seguimiento"]));
+    expect(llamadas[0].body.nombre).toBe("Tóner negro HP 26A v2");
+    expect(llamadas[1].body).toEqual({ seguimiento: "SERIE" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("hacia NINGUNO con otros cambios: primero …/seguimiento y después PATCH /insumos/:id", async () => {
+    const insumo = buildInsumo({ seguimiento: "SERIE" });
+    const llamadas = mockEdicion(insumo);
+    const user = await abrirEdicion(insumo);
+
+    await user.type(screen.getByLabelText("Nombre"), " v2");
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "NINGUNO");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(rutas(llamadas)).toEqual(["seguimiento", "datos"]));
+    expect(llamadas[0].body).toEqual({ seguimiento: "NINGUNO" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("si solo cambia el seguimiento, no manda el PATCH de datos", async () => {
+    const insumo = buildInsumo();
+    const llamadas = mockEdicion(insumo);
+    const user = await abrirEdicion(insumo);
+
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(rutas(llamadas)).toEqual(["seguimiento"]));
+  });
+
+  it("hacia SERIE, si la segunda llamada falla: el diálogo sigue abierto, dice que lo demás se guardó y el reintento manda solo el seguimiento", async () => {
+    const insumo = buildInsumo();
+    let falla = true;
+    const llamadas = mockEdicion(insumo, {
+      seguimiento: () =>
+        falla
+          ? HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 })
+          : HttpResponse.json({ ...insumo, seguimiento: "SERIE" }),
+    });
+    const user = await abrirEdicion(insumo);
+
+    await user.type(screen.getByLabelText("Nombre"), " v2");
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText(/los demás cambios ya se guardaron/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(rutas(llamadas)).toEqual(["datos", "seguimiento"]);
+
+    falla = false;
+    await user.click(screen.getByRole("button", { name: /reintentar seguimiento/i }));
+
+    await waitFor(() => expect(rutas(llamadas)).toEqual(["datos", "seguimiento", "seguimiento"]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("hacia NINGUNO, si falla la segunda llamada (datos): dice que el seguimiento ya se cambió y el reintento manda solo los datos", async () => {
+    const insumo = buildInsumo({ seguimiento: "SERIE" });
+    let falla = true;
+    const llamadas = mockEdicion(insumo, {
+      datos: () =>
+        falla
+          ? HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 })
+          : HttpResponse.json({ ...insumo, seguimiento: "NINGUNO" }),
+    });
+    const user = await abrirEdicion(insumo);
+
+    await user.type(screen.getByLabelText("Nombre"), " v2");
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "NINGUNO");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText(/el seguimiento ya se cambió/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    falla = false;
+    await user.click(screen.getByRole("button", { name: /reintentar guardado/i }));
+
+    await waitFor(() => expect(rutas(llamadas)).toEqual(["seguimiento", "datos", "datos"]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("409 UNIDAD_MEDIDA_CAMBIADA: pide reintentar, y reintentar alcanza", async () => {
+    const insumo = buildInsumo();
+    let falla = true;
+    const llamadas = mockEdicion(insumo, {
+      seguimiento: () =>
+        falla
+          ? HttpResponse.json({ statusCode: 409, message: "La unidad de medida cambió", code: "UNIDAD_MEDIDA_CAMBIADA" }, { status: 409 })
+          : HttpResponse.json({ ...insumo, seguimiento: "SERIE" }),
+    });
+    const user = await abrirEdicion(insumo);
+
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText(/reintentá el cambio/i)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    falla = false;
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(rutas(llamadas)).toEqual(["seguimiento", "seguimiento"]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("422 por saldo distinto de cero: muestra el motivo del backend", async () => {
+    const insumo = buildInsumo();
+    const MOTIVO = "No se puede activar el seguimiento por serie: el insumo tiene saldo 3";
+    mockEdicion(insumo, {
+      seguimiento: () => HttpResponse.json({ statusCode: 422, message: MOTIVO }, { status: 422 }),
+    });
+    const user = await abrirEdicion(insumo);
+
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText(new RegExp(MOTIVO))).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("hacia NINGUNO, si el seguimiento se rechaza (unidades vivas) NO se manda el PATCH de datos", async () => {
+    const insumo = buildInsumo({ seguimiento: "SERIE" });
+    const MOTIVO = "Hay unidades en depósito o instaladas";
+    const llamadas = mockEdicion(insumo, {
+      seguimiento: () => HttpResponse.json({ statusCode: 422, message: MOTIVO }, { status: 422 }),
+    });
+    const user = await abrirEdicion(insumo);
+
+    await user.type(screen.getByLabelText("Nombre"), " v2");
+    await user.selectOptions(screen.getByLabelText("Seguimiento"), "NINGUNO");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText(new RegExp(MOTIVO))).toBeInTheDocument();
+    expect(screen.queryByText(/ya se guardaron/i)).not.toBeInTheDocument();
+    expect(rutas(llamadas)).toEqual(["seguimiento"]);
   });
 });

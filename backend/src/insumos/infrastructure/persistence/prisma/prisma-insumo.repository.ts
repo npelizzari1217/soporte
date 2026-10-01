@@ -18,6 +18,8 @@ import {
   PrefijoCodigoInsumo,
 } from '../../../domain/ports/i-insumo.repository';
 import { InsumoEntity } from '../../../domain/entities/insumo.entity';
+import type { SeguimientoInsumo } from '../../../domain/entities/unidad-insumo.entity';
+import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
 import {
   CompatibilidadModeloMapper,
   InsumoCodigoAlternativoMapper,
@@ -249,6 +251,10 @@ export class PrismaInsumoRepository implements IInsumoRepository {
    */
   async save(insumo: InsumoEntity): Promise<void> {
     const data = InsumoMapper.toPersistence(insumo);
+    // W3: `seguimiento` viaja en el CREATE pero NO en el UPDATE. Una entidad
+    // leída antes de un cambio de seguimiento lo reescribiría con el valor
+    // viejo; el único escritor es `cambiarSeguimiento()`.
+    const { seguimiento: _seguimiento, ...dataSinSeguimiento } = data;
 
     const codigos = insumo.codigosAlternativos.map((codigo) =>
       InsumoCodigoAlternativoMapper.toPersistence(codigo),
@@ -268,7 +274,7 @@ export class PrismaInsumoRepository implements IInsumoRepository {
         compatibilidad: { create: compatibilidad },
       },
       update: {
-        ...data,
+        ...dataSinSeguimiento,
         codigosAlternativos: {
           // Con la lista vacía el filtro es `{}`: se van todos. Un
           // `notIn: []` dependería de cómo Prisma traduce el conjunto vacío.
@@ -334,5 +340,81 @@ export class PrismaInsumoRepository implements IInsumoRepository {
 
     const partes = rows[0].codigo.split('-');
     return parseInt(partes[partes.length - 1], 10) || 0;
+  }
+
+  /**
+   * `FOR SHARE` sobre la fila (L1 de ADR-12). Contrato en
+   * `IInsumoRepository.leerSeguimientoParaMovimiento`.
+   *
+   * @param id Id del insumo.
+   * @returns El seguimiento, o `null` si el insumo no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async leerSeguimientoParaMovimiento(id: string): Promise<SeguimientoInsumo | null> {
+    const client = this.client;
+    exigirTransaccionActiva(
+      this.tenantContext,
+      'PrismaInsumoRepository.leerSeguimientoParaMovimiento()',
+    );
+    const filas = await client.$queryRaw<Array<{ seguimiento: string }>>`
+      SELECT seguimiento FROM insumos WHERE id = ${id}::uuid FOR SHARE
+    `;
+    // VarChar sin enum de Prisma: seguro por el CHECK `insumos_seguimiento_check`.
+    return filas.length > 0 ? (filas[0].seguimiento as SeguimientoInsumo) : null;
+  }
+
+  /**
+   * `FOR NO KEY UPDATE` sobre la fila (L1 de ADR-12). Contrato en
+   * `IInsumoRepository.bloquearParaCambioDeSeguimiento`.
+   *
+   * @param id Id del insumo.
+   * @returns `seguimiento` y `unidadMedidaId` bajo el lock, o `null` si no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async bloquearParaCambioDeSeguimiento(
+    id: string,
+  ): Promise<{ seguimiento: SeguimientoInsumo; unidadMedidaId: string } | null> {
+    const client = this.client;
+    exigirTransaccionActiva(
+      this.tenantContext,
+      'PrismaInsumoRepository.bloquearParaCambioDeSeguimiento()',
+    );
+    const filas = await client.$queryRaw<Array<{ seguimiento: string; unidad_medida_id: string }>>`
+      SELECT seguimiento, unidad_medida_id FROM insumos WHERE id = ${id}::uuid FOR NO KEY UPDATE
+    `;
+    if (filas.length === 0) return null;
+    return {
+      seguimiento: filas[0].seguimiento as SeguimientoInsumo,
+      unidadMedidaId: filas[0].unidad_medida_id,
+    };
+  }
+
+  /**
+   * Único escritor de `seguimiento` (W3). `updateMany` y no `update`: así la
+   * ausencia de la fila es un conteo de cero que se convierte en un error
+   * claro, en vez de un `P2025` crudo.
+   *
+   * @param id Id del insumo.
+   * @param valor Nuevo seguimiento.
+   * @throws Error si el insumo no existe.
+   */
+  async cambiarSeguimiento(id: string, valor: SeguimientoInsumo): Promise<void> {
+    const { count } = await this.client.insumo.updateMany({
+      where: { id },
+      data: { seguimiento: valor },
+    });
+    if (count === 0) {
+      throw new Error(`PrismaInsumoRepository.cambiarSeguimiento(): el insumo ${id} no existe.`);
+    }
+  }
+
+  /**
+   * @param unidadMedidaId Id de la unidad de medida.
+   * @returns Cantidad de insumos `SERIE` no eliminados que la usan.
+   */
+  async contarSeriePorUnidadMedida(unidadMedidaId: string): Promise<number> {
+    return this.client.insumo.count({
+      where: { unidadMedidaId, seguimiento: 'SERIE', deletedAt: null },
+    });
   }
 }

@@ -29,6 +29,8 @@
  */
 import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
@@ -41,6 +43,11 @@ import {
   MinLength,
 } from 'class-validator';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
+import { EsSerialDeUnidad } from '../../../insumos/interface/validators/es-serial-de-unidad';
+import {
+  MOVIMIENTO_INSUMO_SERIALES_MAX,
+  transformarSeriales,
+} from '../../../insumos/interface/dtos/movimientos-insumo.dto';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
@@ -304,6 +311,20 @@ export class RegistrarRecepcionDeItemHttpDto {
   @IsOptional()
   @IsDateString()
   fecha?: string;
+
+  /**
+   * Seriales de las piezas que entran en esta recepción (insumo `SERIE`).
+   * Cada uno se recorta y se valida por su largo recortado Y normalizado (1 a
+   * 255): la entidad lanza ante el desborde y sin este espejo saldría un 500.
+   * Que el insumo admita seriales o que no superen el delta es regla de negocio
+   * (422), no de forma.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MOVIMIENTO_INSUMO_SERIALES_MAX)
+  @Transform(transformarSeriales)
+  @EsSerialDeUnidad({ each: true })
+  seriales?: string[];
 }
 
 /** Ver `RegistrarOrdenDeItemHttpDto` — mismo criterio para `cantidadEntregada`. */

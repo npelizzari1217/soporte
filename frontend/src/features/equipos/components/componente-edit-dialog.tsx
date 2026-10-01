@@ -8,6 +8,7 @@
  * tipo se deriva de la familia del repuesto y se muestra como texto de solo
  * lectura (`tipoNombre`, "—" si no se pudo resolver). El PATCH NO envía
  * `tipoComponenteCodigo` ni `insumoId`.
+ * Con unidad (insumo `SERIE`) el serial queda deshabilitado y no se envía.
  * Solo aplica a componentes ACTIVOS — un componente dado de baja se edita
  * después de reactivarlo (`EditarComponenteUseCase` lo rechaza).
  */
@@ -31,6 +32,7 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
   const [open, setOpen] = useState(false);
   const editarMutation = useEditarComponente(equipoId);
 
+  const conUnidad = !!componente.unidadId;
   const defaults: EditarComponenteFormValues = {
     descripcion: componente.descripcion ?? "",
     numeroSerie: componente.numeroSerie ?? "",
@@ -52,7 +54,8 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
         componenteId: componente.id,
         dto: {
           descripcion: values.descripcion || null,
-          numeroSerie: values.numeroSerie || null,
+          // Con unidad el serial es de la unidad y se corrige desde el insumo: enviarlo da 422.
+          ...(!conUnidad && { numeroSerie: values.numeroSerie || null }),
           capacidad: values.capacidad || null,
         },
       },
@@ -101,7 +104,12 @@ export function ComponenteEditDialog({ equipoId, componente }: ComponenteEditDia
             <label htmlFor="editar-componente-serie" className="text-sm font-medium text-foreground">
               Número de serie
             </label>
-            <Input id="editar-componente-serie" {...register("numeroSerie")} />
+            <Input id="editar-componente-serie" disabled={conUnidad} {...register("numeroSerie")} />
+            {conUnidad && (
+              <p className="text-xs text-muted-foreground">
+                El serial es el de la pieza: se corrige desde las unidades del insumo.
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label htmlFor="editar-componente-capacidad" className="text-sm font-medium text-foreground">

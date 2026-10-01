@@ -226,6 +226,46 @@ describe('RegistrarRecepcionDeItemHttpDto', () => {
   });
 });
 
+describe('RegistrarRecepcionDeItemHttpDto — seriales', () => {
+  const validar = (seriales: unknown) =>
+    validate(plainToInstance(RegistrarRecepcionDeItemHttpDto, { cantidadRecibida: 2, seriales }));
+
+  it('acepta seriales y los recorta', async () => {
+    const dto = plainToInstance(RegistrarRecepcionDeItemHttpDto, {
+      cantidadRecibida: 2,
+      seriales: ['  SN-1 ', 'SN-2'],
+    });
+    expect(await validate(dto)).toHaveLength(0);
+    expect(dto.seriales).toEqual(['SN-1', 'SN-2']);
+  });
+
+  it('acepta la recepción sin seriales (serie pendiente)', async () => {
+    const dto = plainToInstance(RegistrarRecepcionDeItemHttpDto, { cantidadRecibida: 2 });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('rechaza un serial vacío o solo espacios', async () => {
+    expect((await validar(['  '])).some((e) => e.property === 'seriales')).toBe(true);
+  });
+
+  it('rechaza un serial de más de 255 caracteres', async () => {
+    expect((await validar(['A'.repeat(256)])).some((e) => e.property === 'seriales')).toBe(true);
+  });
+
+  it('rechaza un serial cuya forma normalizada excede 255 (ß pasa a SS)', async () => {
+    expect((await validar(['ß'.repeat(200)])).some((e) => e.property === 'seriales')).toBe(true);
+  });
+
+  it('rechaza más de 100 seriales', async () => {
+    const muchos = Array.from({ length: 101 }, (_, i) => `SN-${i}`);
+    expect((await validar(muchos)).some((e) => e.property === 'seriales')).toBe(true);
+  });
+
+  it('rechaza seriales que no es un arreglo', async () => {
+    expect((await validar('SN-1')).some((e) => e.property === 'seriales')).toBe(true);
+  });
+});
+
 describe('RegistrarEntregaDeItemHttpDto', () => {
   it('acepta cantidadEntregada válida', async () => {
     const dto = plainToInstance(RegistrarEntregaDeItemHttpDto, { cantidadEntregada: 1 });

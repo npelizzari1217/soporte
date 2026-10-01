@@ -34,6 +34,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { construirEntradaReal } from '../../../insumos/testing/entrada-insumo-real';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import {
@@ -49,7 +50,6 @@ import { RegistrarRecepcionDeItemUseCase } from './registrar-recepcion-de-item.u
 import { PrismaFamiliaInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-familia-insumo.repository';
 import { PrismaInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-insumo.repository';
 import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
-import { RegistrarEntradaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -106,7 +106,13 @@ describe('Recepción de compra → entrada de stock (insumos-entrega-3, unidades
       compraRepo,
       new RegistrarOperacionCompra(operacionRepo),
       txRunner,
-      new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaInsumoRepo),
+      construirEntradaReal({
+        tenantContext,
+        txRunner: txRunner,
+        insumoRepo,
+        movimientoRepo,
+        familiaRepo: familiaInsumoRepo,
+      }),
     );
   }
 
@@ -338,11 +344,13 @@ describe('Recepción de compra → entrada de stock (insumos-entrega-3, unidades
   // haya dejado de existir. Sin este caso, un guard borrado por completo
   // dejaría el test de arriba en verde.
   it('el mismo insumo deshabilitado sigue rechazando la entrada MANUAL, sin origen de compra', async () => {
-    const entrada = new RegistrarEntradaInsumoUseCase(
+    const entrada = construirEntradaReal({
+      tenantContext,
+      txRunner: txRunner,
       insumoRepo,
       movimientoRepo,
-      familiaInsumoRepo,
-    );
+      familiaRepo: familiaInsumoRepo,
+    });
 
     const result = await withTenant(() =>
       entrada.execute({ insumoId: insumoDeshabilitadoId, cantidad: 2, usuarioId }),

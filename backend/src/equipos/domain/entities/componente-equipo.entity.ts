@@ -91,8 +91,17 @@ export interface ComponenteEquipoProps {
    */
   insumoId: string;
   descripcion: string | null;
+  /**
+   * Serial del componente. Con `unidadId` es el serial RESUELTO de la unidad (lo
+   * pone el mapper al leer; la base guarda NULL, ADR-7): una sola fuente.
+   */
   numeroSerie: string | null;
   capacidad: string | null;
+  /**
+   * Unidad de insumo `SERIE` que el componente lleva (FK → `unidades_insumo.id`).
+   * `null` = componente legado o de un insumo sin seguimiento por serie.
+   */
+  unidadId?: string | null;
   /**
    * SALIDA de stock que respaldó la instalación (FK → `movimientos_insumo.id`).
    * `null` = no consta una SALIDA vinculada: componente cargado a mano o
@@ -130,6 +139,7 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoPropsComp
     super(
       {
         ...props,
+        unidadId: props.unidadId ?? null,
         instalacionMovimientoId: props.instalacionMovimientoId ?? null,
         bajaDestino: props.bajaDestino ?? null,
         bajaMotivo: props.bajaMotivo ?? null,
@@ -196,6 +206,11 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoPropsComp
 
   get capacidad(): string | null {
     return this.props.capacidad;
+  }
+
+  /** Unidad de insumo que lleva este componente, o `null` si es legado / sin seguimiento por serie. */
+  get unidadId(): string | null {
+    return this.props.unidadId;
   }
 
   /** SALIDA de stock vinculada a la instalación, o `null` si no consta ninguna. */
@@ -270,6 +285,17 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoPropsComp
    */
   vincularInstalacion(movimientoId: string): void {
     this.props.instalacionMovimientoId = movimientoId;
+    this.touch();
+  }
+
+  /**
+   * Vincula la unidad de insumo que el componente lleva (alta sin descuento, D3).
+   * El serial pasa a ser el de la unidad: la columna propia queda NULL (ADR-7) y
+   * se resuelve al leer.
+   */
+  vincularUnidad(unidadId: string): void {
+    this.props.unidadId = unidadId;
+    this.props.numeroSerie = null;
     this.touch();
   }
 

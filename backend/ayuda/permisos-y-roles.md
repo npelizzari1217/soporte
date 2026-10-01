@@ -145,7 +145,7 @@ sin pasar por esta grilla.
 |---|---|
 | `LECTURA` | Consultar la existencia actual de un insumo y su historial de movimientos |
 | `ALTAS` | Registrar entradas y salidas de depósito |
-| `AJUSTAR` | Corregir la existencia registrada contra un conteo físico |
+| `AJUSTAR` | Corregir la existencia registrada contra un conteo físico, corregir el número de serie de una pieza y recuperar una pieza descartada |
 
 **`ALTAS` es el permiso del trabajo de todos los días.** Es el que necesita
 quien saca un tóner del depósito para instalarlo, o quien asienta la mercadería
@@ -170,12 +170,14 @@ continuación.
 **`AJUSTAR` es otra cosa, y conviene darla con más cuidado.** No existe en
 ninguna otra fila de la grilla, así que la casilla no se entiende sola mirándola:
 es el permiso para asentar "conté físicamente y hay tres menos de lo que el
-sistema dice". Es la única operación que puede hacer desaparecer un faltante de
-los números sin que nada haya salido del depósito, y por eso se separa del
-registro cotidiano — quien mueve insumos todos los días no es necesariamente
-quien está autorizado a explicar una diferencia. Todo ajuste exige un motivo
-escrito, que queda guardado junto con el nombre de quien lo hizo. Es el mismo
-criterio por el que en Compras `APROBACION` va aparte de `MODIFICACION`.
+sistema dice". También cubre otras dos correcciones de ese tipo: corregir el
+número de serie de una pieza ya cargado y recuperar una pieza que se había dado
+de baja por error. Con un ajuste se puede hacer desaparecer un faltante de los
+números sin que nada haya salido del depósito, y por eso se separa del registro
+cotidiano — quien mueve insumos todos los días no es necesariamente quien está
+autorizado a explicar una diferencia. Todo ajuste, corrección de serie o
+recuperación exige un motivo escrito, que queda guardado junto con el nombre de
+quien lo hizo. Es el mismo criterio por el que en Compras `APROBACION` va aparte de `MODIFICACION`.
 
 **En la fila Insumos no hay `MODIFICACION` ni `BORRADO`, y no es un olvido.** El
 historial de movimientos no se edita ni se borra: nada de lo que ya se registró

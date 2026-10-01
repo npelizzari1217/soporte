@@ -33,11 +33,14 @@
  * de `StockInsuficienteError` sigue manejándose como backstop (ver el test
  * homónimo en el archivo de test).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRegistrarSalidaInsumo, construirMovimientoInsumoDto } from "../hooks/use-insumo-mutations";
 import { registrarSalidaInsumoSchema, type RegistrarMovimientoInsumoFormValues } from "../schemas";
+import { useStockInsumo } from "../hooks/use-stock-insumo";
+import { useSeleccionUnidad } from "../hooks/use-seleccion-unidad";
+import { SelectorUnidad } from "./selector-unidad";
 import { CondicionStockSelector } from "./condicion-stock-selector";
 import { useSelectorCondicion } from "../hooks/use-selector-condicion";
 import { construirNotaEquiposNoDisponibles, MovimientoInsumoDialog } from "./movimiento-insumo-dialog";
@@ -67,12 +70,17 @@ export function MovimientoSalidaDialog({ insumoId, stockDisponible }: Movimiento
   const [open, setOpen] = useState(false);
   const condicion = useSelectorCondicion(insumoId);
   const registrarMutation = useRegistrarSalidaInsumo(insumoId);
+  const stockQuery = useStockInsumo(insumoId, { refetchOnMount: false });
+  // Un insumo `SERIE` saca UNA pieza elegida por serial: cantidad fija en 1 y sin `condicion`.
+  const esSerie = stockQuery.data?.seguimiento === "SERIE";
+  const seleccion = useSeleccionUnidad(insumoId, esSerie, "salida");
   const salidaDeshabilitada = stockDisponible !== undefined && stockDisponible <= 0;
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<RegistrarMovimientoInsumoFormValues>({
     // Recalculado en CADA render, mismo criterio que
@@ -82,6 +90,10 @@ export function MovimientoSalidaDialog({ insumoId, stockDisponible }: Movimiento
     resolver: zodResolver(registrarSalidaInsumoSchema(stockDisponible)),
   });
 
+  useEffect(() => {
+    if (esSerie) setValue("cantidad", 1 as never);
+  }, [esSerie, setValue]);
+
   // Único dueño de la limpieza del formulario: cierra y resetea juntos,
   // sin importar si lo dispara el éxito de la mutación o Radix (Escape/
   // overlay/X) a través de `onOpenChange`.
@@ -90,12 +102,21 @@ export function MovimientoSalidaDialog({ insumoId, stockDisponible }: Movimiento
     if (!next) {
       reset();
       condicion.reiniciar();
+      seleccion.reiniciar();
     }
   }
 
   function submit(values: RegistrarMovimientoInsumoFormValues) {
-    registrarMutation.mutate(construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar }), {
+    const unidadId = seleccion.validar();
+    if (unidadId === null) return;
+    const dto = construirMovimientoInsumoDto({
+      ...values,
+      condicion: esSerie ? undefined : condicion.paraEnviar,
+    });
+    registrarMutation.mutate(unidadId ? { ...dto, unidadId } : dto, {
       onSuccess: () => handleOpenChange(false),
+      // La pieza pudo tomarla otra operación: se vuelve a pedir la lista y el toast da el motivo.
+      onError: seleccion.refrescar,
     });
   }
 
@@ -117,7 +138,18 @@ export function MovimientoSalidaDialog({ insumoId, stockDisponible }: Movimiento
       errorMotivo={errors.motivo}
       registroEquipo={register("equipoId")}
       registroSector={register("sectorId")}
-      camposAdicionales={<CondicionStockSelector id="salida-condicion" selector={condicion} />}
+      cantidadFija={esSerie}
+      camposAdicionales={
+        esSerie ? (
+          <SelectorUnidad
+            id="salida-unidad"
+            seleccion={seleccion}
+            nota="La salida deja la pieza como entregada."
+          />
+        ) : (
+          <CondicionStockSelector id="salida-condicion" selector={condicion} />
+        )
+      }
     />
   );
 }

@@ -222,4 +222,58 @@ describe('AgregarComponenteUseCase', () => {
   it('no depende del catálogo MASTER: el constructor solo recibe cuatro colaboradores', () => {
     expect(AgregarComponenteUseCase.length).toBe(4);
   });
+
+  describe('preparar() (ADR-7)', () => {
+    it('valida y construye el componente SIN guardarlo; execute() es preparar() + save()', async () => {
+      const insumo = makeInsumo('fam-1');
+      const { equipo, componenteRepo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+
+      const preparado = await useCase.preparar({ equipoId: equipo.id, insumoId: insumo.id });
+
+      expect(preparado.isOk()).toBe(true);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+
+      const guardado = await useCase.execute({ equipoId: equipo.id, insumoId: insumo.id });
+      expect(guardado.isOk()).toBe(true);
+      expect(componenteRepo.save).toHaveBeenCalledWith(guardado.getValue());
+    });
+
+    it('con unidadId la entidad lleva la unidad y numeroSerie NULL, aunque el body traiga uno', async () => {
+      const insumo = makeInsumo('fam-1');
+      const { equipo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+
+      const preparado = await useCase.preparar({
+        equipoId: equipo.id,
+        insumoId: insumo.id,
+        unidadId: 'unidad-1',
+        numeroSerie: 'IGNORADO',
+      });
+
+      expect(preparado.getValue().unidadId).toBe('unidad-1');
+      expect(preparado.getValue().numeroSerie).toBeNull();
+    });
+
+    it('sin unidadId conserva el serial de texto y unidadId NULL', async () => {
+      const insumo = makeInsumo('fam-1');
+      const { equipo, useCase } = armar(insumo, makeFamilia(true, 'MOUSE'));
+
+      const preparado = await useCase.preparar({
+        equipoId: equipo.id,
+        insumoId: insumo.id,
+        numeroSerie: 'SN-9',
+      });
+
+      expect(preparado.getValue().unidadId).toBeNull();
+      expect(preparado.getValue().numeroSerie).toBe('SN-9');
+    });
+
+    it('un fallo de validacion no escribe nada', async () => {
+      const { componenteRepo, useCase } = armar(null, null);
+
+      const preparado = await useCase.preparar({ equipoId: 'x', insumoId: 'no-existe' });
+
+      expect(preparado.isFail()).toBe(true);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+  });
 });

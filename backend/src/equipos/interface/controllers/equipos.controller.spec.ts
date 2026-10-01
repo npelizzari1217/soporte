@@ -13,7 +13,7 @@
  * Ref spec: sdd/flujos-especializados/spec F3-Q1..Q3. Tarea: T12.6.
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { EquiposController, toHttpException } from './equipos.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../../shared/domain/result';
@@ -28,6 +28,16 @@ import {
   ComponenteYaActivoError,
 } from '../../domain/errors/equipos.errors';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
+import {
+  UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
+  UnidadRequeridaError,
+  SerialDuplicadoError,
+  SeguimientoNoModificableError,
+  UnidadDelComponenteNoDisponibleError as UnidadDelComponenteDeInsumosError,
+  SerialRequeridoError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 function makeEquipo(): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.create(
@@ -55,7 +65,7 @@ describe('EquiposController (T12.6)', () => {
     const obtenerEquipoUseCase = { execute: vi.fn() };
     const listarEquiposUseCase = { execute: vi.fn() };
     const eliminarEquipoUseCase = { execute: vi.fn() };
-    const agregarComponenteUseCase = { execute: vi.fn() };
+    const agregarComponenteSinDescuentoUseCase = { execute: vi.fn() };
     const editarComponenteUseCase = { execute: vi.fn() };
     const reactivarComponenteUseCase = { execute: vi.fn() };
     const exportarEquiposUseCase = { execute: vi.fn() };
@@ -68,7 +78,7 @@ describe('EquiposController (T12.6)', () => {
       obtenerEquipoUseCase as any,
       listarEquiposUseCase as any,
       eliminarEquipoUseCase as any,
-      agregarComponenteUseCase as any,
+      agregarComponenteSinDescuentoUseCase as any,
       editarComponenteUseCase as any,
       reactivarComponenteUseCase as any,
       exportarEquiposUseCase as any,
@@ -83,7 +93,7 @@ describe('EquiposController (T12.6)', () => {
       obtenerEquipoUseCase,
       listarEquiposUseCase,
       eliminarEquipoUseCase,
-      agregarComponenteUseCase,
+      agregarComponenteSinDescuentoUseCase,
       editarComponenteUseCase,
       reactivarComponenteUseCase,
       exportarEquiposUseCase,
@@ -227,8 +237,11 @@ describe('EquiposController (T12.6)', () => {
       }).getValue();
 
     it('descontarStock omitido → instala desde el depósito; usuarioId sale del JWT, nunca del body', async () => {
-      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
-        buildController();
+      const {
+        controller,
+        instalarComponenteDesdeDepositoUseCase,
+        agregarComponenteSinDescuentoUseCase,
+      } = buildController();
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
       const result = await controller.agregarComponente(actor, 'equipo-uuid', {
@@ -245,7 +258,7 @@ describe('EquiposController (T12.6)', () => {
         numeroSerie: null,
         capacidad: null,
       });
-      expect(agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+      expect(agregarComponenteSinDescuentoUseCase.execute).not.toHaveBeenCalled();
       expect(result.insumoId).toBe(insumoId);
     });
 
@@ -265,10 +278,38 @@ describe('EquiposController (T12.6)', () => {
       },
     );
 
-    it('descontarStock false con condicion → la condición se ignora y no se pasa (ADR-7)', async () => {
-      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
-        buildController();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+    it('con descuento y sin descuento, unidadId llega al caso de uso (sin descuento se rechaza allá, no se descarta acá)', async () => {
+      const unidadId = '0190aaaa-0000-7000-8000-000000000001';
+      const {
+        controller,
+        instalarComponenteDesdeDepositoUseCase,
+        agregarComponenteSinDescuentoUseCase,
+      } = buildController();
+      instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+      agregarComponenteSinDescuentoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+
+      await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, unidadId } as any);
+      await controller.agregarComponente(actor, 'equipo-uuid', {
+        insumoId,
+        unidadId,
+        descontarStock: false,
+      } as any);
+
+      expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId }),
+      );
+      expect(agregarComponenteSinDescuentoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ unidadId, usuarioId: 'usuario-jwt-uuid' }),
+      );
+    });
+
+    it('descontarStock false con condicion → la condición llega al caso de uso, que la aplica solo con SERIE (D3)', async () => {
+      const {
+        controller,
+        instalarComponenteDesdeDepositoUseCase,
+        agregarComponenteSinDescuentoUseCase,
+      } = buildController();
+      agregarComponenteSinDescuentoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
       await controller.agregarComponente(actor, 'equipo-uuid', {
         insumoId,
@@ -276,14 +317,18 @@ describe('EquiposController (T12.6)', () => {
         condicion: 'USADO',
       } as any);
 
-      const payload = agregarComponenteUseCase.execute.mock.calls[0][0];
-      expect(payload).not.toHaveProperty('condicion');
+      expect(agregarComponenteSinDescuentoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ condicion: 'USADO' }),
+      );
       expect(instalarComponenteDesdeDepositoUseCase.execute).not.toHaveBeenCalled();
     });
 
     it('descontarStock true → instala desde el depósito', async () => {
-      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
-        buildController();
+      const {
+        controller,
+        instalarComponenteDesdeDepositoUseCase,
+        agregarComponenteSinDescuentoUseCase,
+      } = buildController();
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
       await controller.agregarComponente(actor, 'equipo-uuid', {
@@ -292,25 +337,31 @@ describe('EquiposController (T12.6)', () => {
       } as any);
 
       expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledTimes(1);
-      expect(agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+      expect(agregarComponenteSinDescuentoUseCase.execute).not.toHaveBeenCalled();
     });
 
     it('descontarStock false → agrega sin movimiento de stock', async () => {
-      const { controller, instalarComponenteDesdeDepositoUseCase, agregarComponenteUseCase } =
-        buildController();
-      agregarComponenteUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
+      const {
+        controller,
+        instalarComponenteDesdeDepositoUseCase,
+        agregarComponenteSinDescuentoUseCase,
+      } = buildController();
+      agregarComponenteSinDescuentoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
       const result = await controller.agregarComponente(actor, 'equipo-uuid', {
         insumoId,
         descontarStock: false,
       } as any);
 
-      expect(agregarComponenteUseCase.execute).toHaveBeenCalledWith({
+      expect(agregarComponenteSinDescuentoUseCase.execute).toHaveBeenCalledWith({
         equipoId: 'equipo-uuid',
         insumoId,
+        usuarioId: 'usuario-jwt-uuid',
         descripcion: null,
         numeroSerie: null,
         capacidad: null,
+        condicion: undefined,
+        unidadId: undefined,
       });
       expect(instalarComponenteDesdeDepositoUseCase.execute).not.toHaveBeenCalled();
       expect(result.insumoId).toBe(insumoId);
@@ -348,8 +399,8 @@ describe('EquiposController (T12.6)', () => {
     });
 
     it('insumo inexistente sin descuento → 422', async () => {
-      const { controller, agregarComponenteUseCase } = buildController();
-      agregarComponenteUseCase.execute.mockResolvedValue(
+      const { controller, agregarComponenteSinDescuentoUseCase } = buildController();
+      agregarComponenteSinDescuentoUseCase.execute.mockResolvedValue(
         Result.fail(new EquiposErrors.InsumoRepuestoInexistenteError(insumoId)),
       );
 
@@ -517,6 +568,25 @@ describe('EquiposController (T12.6)', () => {
   });
 
   describe('PATCH /equipos/:id/componentes/:componenteId/reactivar', () => {
+    const actor = { sub: 'usuario-jwt-uuid' } as any;
+
+    it('pasa el usuario del JWT (firma el evento REACTIVACION de la unidad)', async () => {
+      const { controller, reactivarComponenteUseCase } = buildController();
+      reactivarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new ComponenteYaActivoError('componente-1')),
+      );
+
+      await expect(
+        controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1'),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(reactivarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        componenteId: 'componente-1',
+        usuarioId: 'usuario-jwt-uuid',
+      });
+    });
+
     it('reactiva el componente', async () => {
       const { controller, reactivarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
@@ -528,7 +598,7 @@ describe('EquiposController (T12.6)', () => {
       }).getValue();
       reactivarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
-      const result = await controller.reactivarComponente('equipo-uuid', 'componente-1');
+      const result = await controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1');
       expect(result.id).toBeDefined();
       expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
@@ -539,9 +609,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new ComponenteYaActivoError('componente-1')),
       );
 
-      await expect(controller.reactivarComponente('equipo-uuid', 'componente-1')).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(
+        controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1'),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('componente devuelto al stock → 422', async () => {
@@ -550,9 +620,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new EquiposErrors.ComponenteDevueltoAlStockError('componente-1')),
       );
 
-      await expect(controller.reactivarComponente('equipo-uuid', 'componente-1')).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(
+        controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1'),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
@@ -576,7 +646,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // obtenerEquipoUseCase
       stub() as any, // listarEquiposUseCase
       stub() as any, // eliminarEquipoUseCase
-      stub() as any, // agregarComponenteUseCase
+      stub() as any, // agregarComponenteSinDescuentoUseCase
       stub() as any, // editarComponenteUseCase
       stub() as any, // reactivarComponenteUseCase
       exportarEquipos as any, // exportarEquiposUseCase
@@ -654,8 +724,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 15 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6, más MotivoRetiroRequerido y ComponenteDevueltoAlStock de sdd/stock-usado-componentes)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(15);
+  it('el catálogo tiene EXACTAMENTE 18 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6, más MotivoRetiroRequerido y ComponenteDevueltoAlStock de sdd/stock-usado-componentes, más SerialDeUnidadNoEditable, UnidadDelComponenteNoDisponible y UnidadConAltaSinDescuento de sdd/repuestos-numero-de-serie)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(18);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -687,6 +757,24 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ComponenteDevueltoAlStockError',
       () => new EquiposErrors.ComponenteDevueltoAlStockError('componente-1'),
+      422,
+    ],
+    // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-7/ADR-8):
+    // reglas de negocio sobre un recurso que existe → 422 (la de editar lleva
+    // mapeo explícito; la de reactivar llega con el WU de reactivar).
+    [
+      'SerialDeUnidadNoEditableError',
+      () => new EquiposErrors.SerialDeUnidadNoEditableError('componente-1'),
+      422,
+    ],
+    [
+      'UnidadDelComponenteNoDisponibleError',
+      () => new EquiposErrors.UnidadDelComponenteNoDisponibleError('componente-1'),
+      422,
+    ],
+    [
+      'UnidadConAltaSinDescuentoError',
+      () => new EquiposErrors.UnidadConAltaSinDescuentoError('unidad-1'),
       422,
     ],
     // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene
@@ -755,5 +843,43 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     } else {
       expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
     }
+  });
+});
+
+describe('toHttpException — errores de unidades de insumo al instalar (sdd/repuestos-numero-de-serie, ADR-7)', () => {
+  const TABLA_UNIDADES: Array<[string, () => DomainError, 404 | 409 | 422]> = [
+    // Alta sin descuento (D3): serial repetido es un conflicto; serial ausente, una regla de negocio.
+    ['SerialDuplicadoError', () => new SerialDuplicadoError('SN-1'), 409],
+    ['SerialRequeridoError', () => new SerialRequeridoError('alta sin descuento'), 422],
+    ['UnidadNoEncontradaError', () => new UnidadNoEncontradaError('unidad-1'), 404],
+    [
+      'UnidadNoDisponibleError',
+      () => new UnidadNoDisponibleError('unidad-1', 'ya fue tomada.'),
+      422,
+    ],
+    ['UnidadRequeridaError', () => new UnidadRequeridaError('insumo-1'), 422],
+    ['UnidadNoAdmitidaError', () => new UnidadNoAdmitidaError('insumo-1'), 422],
+    // Reactivar (WU-11): la clase duplicada de insumos (mismo `code`) se mapea igual que la de equipos.
+    [
+      'UnidadDelComponenteNoDisponibleError (insumos)',
+      () => new UnidadDelComponenteDeInsumosError('componente-1'),
+      422,
+    ],
+    [
+      'SeguimientoNoModificableError',
+      () => new SeguimientoNoModificableError('el insumo ya no se sigue por serie.'),
+      422,
+    ],
+  ];
+
+  it.each(TABLA_UNIDADES)('%s → HTTP %i', (_nombre, factory, httpEsperado) => {
+    const excepcion = toHttpException(factory());
+
+    expect(excepcion.getStatus()).toBe(httpEsperado);
+    expect(excepcion).toBeInstanceOf(
+      { 404: NotFoundException, 409: ConflictException, 422: UnprocessableEntityException }[
+        httpEsperado
+      ],
+    );
   });
 });

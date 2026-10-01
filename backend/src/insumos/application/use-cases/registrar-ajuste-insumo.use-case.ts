@@ -8,10 +8,21 @@ import {
   DIRECCION_POR_TIPO_MOVIMIENTO,
   TipoAjusteInsumo,
 } from '../../domain/entities/tipo-movimiento-insumo';
-import { StockInsuficienteError } from '../../domain/errors/insumos.errors';
+import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
+import {
+  InsumoNoEncontradoError,
+  StockInsuficienteError,
+} from '../../domain/errors/insumos.errors';
+import {
+  SerialesNoCoincidenError,
+  UnidadNoAdmitidaError,
+  UnidadRequeridaError,
+} from '../../domain/errors/unidades-insumo.errors';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import { ingresarPorSerie } from '../services/ingresar-por-serie';
+import { OperacionesUnidadInsumo } from '../services/operaciones-unidad-insumo.service';
 import {
   validarCondicionAdmitida,
   validarInsumoElegible,
@@ -55,6 +66,18 @@ export interface RegistrarAjusteInsumoDto {
   equipoId?: string | null;
   /** Trazabilidad, no stock: hay UN solo stock, no uno por sector. */
   sectorId?: string | null;
+  /**
+   * Números de serie de las piezas que suma un `AJUSTE_POSITIVO` de un insumo
+   * `SERIE` (mismas reglas que la entrada). Con `NINGUNO` se rechazan con
+   * `UnidadNoAdmitidaError`.
+   */
+  seriales?: readonly string[] | null;
+  /**
+   * Unidad que da de baja un `AJUSTE_NEGATIVO` de un insumo `SERIE` (con serial
+   * o pendiente, F1): obligatoria ahí y rechazada con `UnidadNoAdmitidaError` en
+   * cualquier otro caso.
+   */
+  unidadId?: string | null;
 }
 
 /**
@@ -131,13 +154,17 @@ export interface RegistrarAjusteInsumoDto {
  */
 export class RegistrarAjusteInsumoUseCase {
   constructor(
-    private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
+    private readonly insumoRepo: Pick<
+      IInsumoRepository,
+      'findById' | 'leerSeguimientoParaMovimiento'
+    >,
     private readonly movimientoRepo: Pick<
       IMovimientoInsumoRepository,
       'insert' | 'lockAndSumByTipo'
     >,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar' | 'sacarDelDeposito'>,
   ) {}
 
   /**
@@ -154,6 +181,22 @@ export class RegistrarAjusteInsumoUseCase {
   async execute(
     dto: RegistrarAjusteInsumoDto,
   ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    const resultado = await this.executeTodos(dto);
+    return resultado.isFail()
+      ? Result.fail(resultado.getError())
+      : Result.ok(resultado.getValue()[0]);
+  }
+
+  /**
+   * Igual que `execute()` pero devuelve TODOS los movimientos asentados: uno
+   * salvo el ajuste positivo de un insumo `SERIE`, que asienta uno por unidad.
+   *
+   * @param dto Mismos datos que `execute()`.
+   * @returns Los movimientos asentados, o el error de dominio de `execute()`.
+   */
+  async executeTodos(
+    dto: RegistrarAjusteInsumoDto,
+  ): Promise<Result<MovimientoInsumoEntity[], DomainError>> {
     const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId);
 
     if (elegible.isFail()) {
@@ -198,41 +241,112 @@ export class RegistrarAjusteInsumoUseCase {
 
     const asiento = movimiento.getValue();
 
-    return this.txRunner.run(async () => {
-      // Desde acá y hasta el commit, nadie más puede evaluar el stock de este
-      // insumo: el advisory lock lo toma `lockAndSumByTipo()` y se libera solo
-      // al cerrar la transacción. La lectura va ANTES del insert porque leer
-      // después mediría un stock que ya incluye el ajuste en evaluación.
-      const sumas = await this.movimientoRepo.lockAndSumByTipo(asiento.insumoId);
-      // El saldo que se compara es el de la condición del asiento: un USADO no
-      // cubre una salida NUEVO ni al revés.
-      const disponible = calcularSaldos(sumas)[asiento.condicion];
+    try {
+      return await this.txRunner.run(async () => {
+        // L1 primero (ADR-5): el `seguimiento` de esta lectura decide la rama y
+        // ningún otro lock se toma antes. Un `FOR SHARE` no bloquea a los demás
+        // escritores del insumo; solo el cambio de seguimiento espera.
+        const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(asiento.insumoId);
+        if (seguimiento === null) {
+          return Result.fail<MovimientoInsumoEntity[], DomainError>(
+            new InsumoNoEncontradoError(asiento.insumoId),
+          );
+        }
 
-      // Solo la dirección que RESTA puede dejar el saldo negativo, y la
-      // pregunta se le hace a la tabla del dominio en vez de compararla contra
-      // el literal `AJUSTE_NEGATIVO`: es la misma fuente de verdad que usa
-      // `calcularStock()`, así que las dos no pueden discrepar sobre el signo
-      // de un tipo. El límite es el saldo EXACTO —dejar el depósito en cero es
-      // un resultado legítimo del conteo físico—, así que se rechaza solo lo
-      // que quedaría por debajo.
-      const resta = DIRECCION_POR_TIPO_MOVIMIENTO[asiento.tipo] === -1;
+        const esPositivo = DIRECCION_POR_TIPO_MOVIMIENTO[asiento.tipo] === 1;
 
-      if (resta && disponible < asiento.cantidad) {
-        // Un `Result.fail` no revierte la transacción —no es un `throw`—, y no
-        // hace falta que lo haga: hasta acá no se escribió ninguna fila. Lo
-        // único que la transacción sostenía era el lock, y el `run()` lo
-        // libera al cerrar igual.
-        return Result.fail<MovimientoInsumoEntity, DomainError>(
-          new StockInsuficienteError(asiento.insumoId, asiento.cantidad, disponible),
-        );
-      }
+        if (
+          (seguimiento === 'NINGUNO' && (dto.seriales != null || dto.unidadId != null)) ||
+          (seguimiento === 'SERIE' && esPositivo && dto.unidadId != null)
+        ) {
+          return Result.fail<MovimientoInsumoEntity[], DomainError>(
+            new UnidadNoAdmitidaError(asiento.insumoId),
+          );
+        }
 
-      // El asentado, NO `asiento`: issue #159 — `insert()` devuelve el
-      // asiento con el `createdAt` que realmente le puso la base, que puede
-      // diferir del reloj del proceso con el que se construyó acá arriba.
-      const asentado = await this.movimientoRepo.insert(asiento);
+        if (seguimiento === 'SERIE' && esPositivo) {
+          // El positivo de un insumo `SERIE` da de alta unidades, igual que la
+          // entrada; el motivo ya lo exigió la entidad arriba.
+          const ingresada = await ingresarPorSerie(this.operaciones, {
+            insumoId: asiento.insumoId,
+            cantidad: dto.cantidad,
+            seriales: dto.seriales,
+            condicion: asiento.condicion,
+            tipo: 'AJUSTE_POSITIVO',
+            usuarioId: dto.usuarioId,
+            motivo: dto.motivo,
+            equipoId: dto.equipoId,
+          });
+          return ingresada.isFail()
+            ? Result.fail<MovimientoInsumoEntity[], DomainError>(ingresada.getError())
+            : Result.ok<MovimientoInsumoEntity[], DomainError>(ingresada.getValue());
+        }
 
-      return Result.ok<MovimientoInsumoEntity, DomainError>(asentado);
-    });
+        if (seguimiento === 'SERIE') {
+          // El negativo de un insumo `SERIE` da de baja UNA unidad (queda
+          // `DESCARTADA`); admite la pendiente y no compara saldo.
+          if (dto.unidadId == null) {
+            return Result.fail<MovimientoInsumoEntity[], DomainError>(
+              new UnidadRequeridaError(asiento.insumoId),
+            );
+          }
+          if (dto.cantidad !== 1) {
+            return Result.fail<MovimientoInsumoEntity[], DomainError>(
+              new SerialesNoCoincidenError(dto.cantidad, 1),
+            );
+          }
+          const baja = await this.operaciones.sacarDelDeposito(asiento.insumoId, [dto.unidadId], {
+            tipo: 'AJUSTE_NEGATIVO',
+            usuarioId: dto.usuarioId,
+            motivo: dto.motivo,
+            condicion: dto.condicion,
+            equipoId: dto.equipoId,
+            sectorId: dto.sectorId,
+          });
+          return baja.isFail()
+            ? Result.fail<MovimientoInsumoEntity[], DomainError>(baja.getError())
+            : Result.ok<MovimientoInsumoEntity[], DomainError>([baja.getValue()[0].movimiento]);
+        }
+
+        // Desde acá y hasta el commit, nadie más puede evaluar el stock de este
+        // insumo: el advisory lock lo toma `lockAndSumByTipo()` y se libera solo
+        // al cerrar la transacción. La lectura va ANTES del insert porque leer
+        // después mediría un stock que ya incluye el ajuste en evaluación.
+        const sumas = await this.movimientoRepo.lockAndSumByTipo(asiento.insumoId);
+        // El saldo que se compara es el de la condición del asiento: un USADO no
+        // cubre una salida NUEVO ni al revés.
+        const disponible = calcularSaldos(sumas)[asiento.condicion];
+
+        // Solo la dirección que RESTA puede dejar el saldo negativo, y la
+        // pregunta se le hace a la tabla del dominio en vez de compararla contra
+        // el literal `AJUSTE_NEGATIVO`: es la misma fuente de verdad que usa
+        // `calcularStock()`, así que las dos no pueden discrepar sobre el signo
+        // de un tipo. El límite es el saldo EXACTO —dejar el depósito en cero es
+        // un resultado legítimo del conteo físico—, así que se rechaza solo lo
+        // que quedaría por debajo.
+        const resta = DIRECCION_POR_TIPO_MOVIMIENTO[asiento.tipo] === -1;
+
+        if (resta && disponible < asiento.cantidad) {
+          // Un `Result.fail` no revierte la transacción —no es un `throw`—, y no
+          // hace falta que lo haga: hasta acá no se escribió ninguna fila. Lo
+          // único que la transacción sostenía era el lock, y el `run()` lo
+          // libera al cerrar igual.
+          return Result.fail<MovimientoInsumoEntity[], DomainError>(
+            new StockInsuficienteError(asiento.insumoId, asiento.cantidad, disponible),
+          );
+        }
+
+        // El asentado, NO `asiento`: issue #159 — `insert()` devuelve el
+        // asiento con el `createdAt` que realmente le puso la base, que puede
+        // diferir del reloj del proceso con el que se construyó acá arriba.
+        const asentado = await this.movimientoRepo.insert(asiento);
+
+        return Result.ok<MovimientoInsumoEntity[], DomainError>([asentado]);
+      });
+    } catch (error) {
+      // La unicidad del serial (P2002) se desenvuelve AFUERA del `run()`.
+      if (error instanceof FalloOperacionDeUnidad) return Result.fail(error.errorDeDominio);
+      throw error;
+    }
   }
 }

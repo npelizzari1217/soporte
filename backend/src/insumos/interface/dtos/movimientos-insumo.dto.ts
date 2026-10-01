@@ -33,6 +33,8 @@
  * criterio que `solicitanteId` en `compras.dto.ts`.
  */
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsOptional,
@@ -45,6 +47,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
+import { EsSerialDeUnidad } from '../validators/es-serial-de-unidad';
 import {
   MovimientoInsumoEntity,
   MOVIMIENTO_INSUMO_CANTIDAD_DECIMALES,
@@ -59,6 +62,7 @@ import {
   TipoMovimientoInsumo,
   TIPOS_AJUSTE_INSUMO,
 } from '../../domain/entities/tipo-movimiento-insumo';
+import { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
 import { EstadoReposicionInsumo } from '../../domain/entities/estado-reposicion-insumo';
 import { StockDeInsumo } from '../../application/use-cases/consultar-stock-insumo.use-case';
 import { ListarMovimientosInsumoResult } from '../../application/use-cases/listar-movimientos-insumo.use-case';
@@ -88,6 +92,22 @@ export function transformarMotivo({ value }: { value: unknown }): unknown {
  * el tipo lo fija la ruta, no el body. Ver el JSDoc de
  * `MovimientosInsumoController` para por qué el tipo no viaja acá.
  */
+/** Tope de seriales por request: el mismo que el de piezas de una entrada por lote. */
+export const MOVIMIENTO_INSUMO_SERIALES_MAX = 100;
+
+/**
+ * Recorta cada serial del arreglo; deja intacto lo que no es un arreglo de
+ * strings para que `@IsArray`/`@EsSerialDeUnidad` reporten el error de forma.
+ *
+ * @param value Valor crudo del campo `seriales`.
+ * @returns El arreglo con cada string recortado, o el valor intacto.
+ */
+export function transformarSeriales({ value }: { value: unknown }): unknown {
+  return Array.isArray(value)
+    ? value.map((serial: unknown) => (typeof serial === 'string' ? serial.trim() : serial))
+    : value;
+}
+
 export class RegistrarMovimientoInsumoHttpDto {
   /**
    * Cantidad movida, SIEMPRE positiva: el signo lo da el tipo del movimiento.
@@ -164,6 +184,29 @@ export class RegistrarMovimientoInsumoHttpDto {
   @IsOptional()
   @IsIn(CONDICIONES_STOCK)
   condicion?: CondicionStock;
+
+  /**
+   * Seriales de las unidades que ENTRAN (entrada y ajuste positivo de un insumo
+   * `SERIE`). Cada uno se recorta y se valida por su largo recortado Y
+   * normalizado (1 a 255): la entidad lanza ante el desborde, y sin este espejo
+   * saldría un 500. Que el insumo admita seriales o que cuadren con la cantidad
+   * es regla de negocio (422), no de forma.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MOVIMIENTO_INSUMO_SERIALES_MAX)
+  @Transform(transformarSeriales)
+  @EsSerialDeUnidad({ each: true })
+  seriales?: string[];
+
+  /**
+   * Unidad que SALE (salida y ajuste negativo de un insumo `SERIE`). Viaja en
+   * el body, así que necesita `@IsUUID`: sin él un id mal formado llegaría a
+   * Postgres como `22P02` y saldría un 500.
+   */
+  @IsOptional()
+  @IsUUID()
+  unidadId?: string;
 }
 
 /**
@@ -214,7 +257,20 @@ export interface MovimientoInsumoResponseDto {
   itemCompraId: string | null;
   /** Condición del stock que movió el asiento. */
   condicion: CondicionStock;
+  /** Unidad por número de serie que movió el asiento; `null` si fue por cantidad. */
+  unidadId: string | null;
+  /** Serial de esa unidad hoy (puede ser `null` si quedó pendiente); `null` si fue por cantidad. */
+  numeroSerie: string | null;
   createdAt: string;
+}
+
+/**
+ * Response de una entrada o un ajuste: el PRIMER asiento con la forma de
+ * siempre (los consumidores previos siguen leyéndolo), más `movimientos` con
+ * TODOS los asentados —uno por unidad en un insumo `SERIE`—.
+ */
+export interface MovimientosRegistradosResponseDto extends MovimientoInsumoResponseDto {
+  movimientos: MovimientoInsumoResponseDto[];
 }
 
 /**
@@ -235,6 +291,10 @@ export interface StockInsumoResponseDto {
   admiteUsado: boolean;
   stockMinimo: number | null;
   estadoReposicion: EstadoReposicionInsumo;
+  /** Cómo se lleva el insumo: `NINGUNO` (por cantidad) o `SERIE` (por unidad). */
+  seguimiento: SeguimientoInsumo;
+  /** Unidades `SERIE` en depósito sin número de serie cargado; `0` en `NINGUNO`. */
+  pendientesDeSerie: number;
 }
 
 /**
@@ -257,8 +317,24 @@ export function toMovimientoInsumoResponseDto(
     sectorId: entidad.sectorId,
     itemCompraId: entidad.itemCompraId,
     condicion: entidad.condicion,
+    unidadId: entidad.unidadId,
+    numeroSerie: entidad.numeroSerie,
     createdAt: entidad.createdAt.toISOString(),
   };
+}
+
+/**
+ * Convierte los asientos de una entrada o un ajuste al shape de respuesta: el
+ * primero con la forma de siempre y la lista completa en `movimientos`.
+ *
+ * @param entidades Asientos registrados; al menos uno.
+ * @returns El DTO de respuesta.
+ */
+export function toMovimientosRegistradosResponseDto(
+  entidades: MovimientoInsumoEntity[],
+): MovimientosRegistradosResponseDto {
+  const movimientos = entidades.map(toMovimientoInsumoResponseDto);
+  return { ...movimientos[0], movimientos };
 }
 
 /**
@@ -280,6 +356,8 @@ export function toStockInsumoResponseDto(stock: StockDeInsumo): StockInsumoRespo
     admiteUsado: stock.admiteUsado,
     stockMinimo: stock.stockMinimo,
     estadoReposicion: stock.estadoReposicion,
+    seguimiento: stock.seguimiento,
+    pendientesDeSerie: stock.pendientesDeSerie,
   };
 }
 

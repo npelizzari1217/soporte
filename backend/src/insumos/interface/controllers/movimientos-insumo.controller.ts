@@ -72,16 +72,20 @@
  */
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
+  UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
+import { DomainError } from '../../../shared/domain/result';
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -101,18 +105,82 @@ import { ListarMovimientosInsumoUseCase } from '../../application/use-cases/list
 // de un controller. Dos copias derivarían, y la que se olvidara de un error
 // nuevo lo devolvería con el código equivocado.
 import { toHttpException } from './insumos.controller';
+import {
+  CantidadNoEnteraError,
+  MotivoCorreccionSerialInvalidoError,
+  MotivoRecuperacionRequeridoError,
+  SeguimientoNoModificableError,
+  SerialDuplicadoError,
+  SerialesNoCoincidenError,
+  SerialRequeridoError,
+  UnidadDelComponenteNoDisponibleError,
+  UnidadNoAdmitidaError,
+  UnidadNoDisponibleError,
+  UnidadNoEncontradaError,
+  UnidadRequeridaError,
+} from '../../domain/errors/unidades-insumo.errors';
+import {
+  UnidadMedidaCambiadaError,
+  UnidadMedidaEnUsoPorSerieError,
+  UnidadMedidaNoEnteraError,
+} from '../../domain/errors/unidades-medida.errors';
 
 import {
   ListarMovimientosInsumoQueryDto,
   ListarMovimientosInsumoResponseDto,
   MovimientoInsumoResponseDto,
+  MovimientosRegistradosResponseDto,
   RegistrarAjusteInsumoHttpDto,
   RegistrarMovimientoInsumoHttpDto,
   StockInsumoResponseDto,
   toListarMovimientosInsumoResponseDto,
   toMovimientoInsumoResponseDto,
+  toMovimientosRegistradosResponseDto,
   toStockInsumoResponseDto,
 } from '../dtos/movimientos-insumo.dto';
+
+/**
+ * Mapeo EXPLÍCITO de los errores de unidades por número de serie (ADR-8) a
+ * HTTP; el resto del dominio cae en `toHttpException` (404 del insumo, 422 por
+ * defecto).
+ *
+ * - 409: conflicto con el estado vigente —`SerialDuplicadoError` (otra unidad
+ *   del insumo ya lleva ese serial) y `UnidadMedidaCambiadaError` (la unidad de
+ *   medida cambió mientras se operaba; reintentable)—.
+ * - 404: `UnidadNoEncontradaError`.
+ * - 422: las demás violaciones de regla de negocio, una por una para que el
+ *   mapeo no dependa de que el default siga siendo 422.
+ *
+ * @param error Error de dominio devuelto por un caso de uso.
+ * @returns La excepción HTTP a lanzar.
+ */
+export function toHttpExceptionMovimiento(
+  error: DomainError,
+): NotFoundException | UnprocessableEntityException | ConflictException {
+  if (error instanceof SerialDuplicadoError || error instanceof UnidadMedidaCambiadaError) {
+    return new ConflictException(error.message);
+  }
+  if (error instanceof UnidadNoEncontradaError) {
+    return new NotFoundException(error.message);
+  }
+  if (
+    error instanceof UnidadNoAdmitidaError ||
+    error instanceof UnidadRequeridaError ||
+    error instanceof UnidadNoDisponibleError ||
+    error instanceof SerialesNoCoincidenError ||
+    error instanceof SerialRequeridoError ||
+    error instanceof CantidadNoEnteraError ||
+    error instanceof SeguimientoNoModificableError ||
+    error instanceof UnidadMedidaNoEnteraError ||
+    error instanceof UnidadMedidaEnUsoPorSerieError ||
+    error instanceof MotivoCorreccionSerialInvalidoError ||
+    error instanceof MotivoRecuperacionRequeridoError ||
+    error instanceof UnidadDelComponenteNoDisponibleError
+  ) {
+    return new UnprocessableEntityException(error.message);
+  }
+  return toHttpException(error);
+}
 
 @UseGuards(JwtAuthGuard, TenantGuard)
 @Controller('insumos')
@@ -137,7 +205,9 @@ export class MovimientosInsumoController {
    * @throws 401 sin JWT
    * @throws 403 sin `INSUMOS:ALTAS`
    * @throws 404 insumo inexistente o dado de baja
-   * @throws 422 insumo deshabilitado (la entrada es la única que lo exige habilitado)
+   * @throws 400 además: `seriales` con más de 100, o algún serial fuera de 1 a 255 (recortado y normalizado), o `unidadId` mal formado
+   * @throws 409 serial duplicado en el insumo
+   * @throws 422 insumo deshabilitado (la entrada es la única que lo exige habilitado), `unidadId` (la entrada no nombra unidades), o seriales que no cuadran con la cantidad / cantidad no entera en un insumo `SERIE`
    */
   @Post(':insumoId/movimientos/entrada')
   @UseGuards(AccionesGuard)
@@ -147,8 +217,13 @@ export class MovimientosInsumoController {
     @CurrentUser() user: JwtPayload,
     @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
     @Body() dto: RegistrarMovimientoInsumoHttpDto,
-  ): Promise<MovimientoInsumoResponseDto> {
-    const result = await this.registrarEntradaInsumoUseCase.execute({
+  ): Promise<MovimientosRegistradosResponseDto> {
+    // La entrada DA DE ALTA unidades: no hay unidad que nombrar.
+    if (dto.unidadId != null) {
+      throw toHttpExceptionMovimiento(new UnidadNoAdmitidaError(insumoId));
+    }
+
+    const result = await this.registrarEntradaInsumoUseCase.executeTodos({
       insumoId,
       cantidad: dto.cantidad,
       usuarioId: user.sub,
@@ -156,12 +231,13 @@ export class MovimientosInsumoController {
       equipoId: dto.equipoId ?? null,
       sectorId: dto.sectorId ?? null,
       condicion: dto.condicion,
+      seriales: dto.seriales,
     });
 
     if (result.isFail()) {
-      throw toHttpException(result.getError());
+      throw toHttpExceptionMovimiento(result.getError());
     }
-    return toMovimientoInsumoResponseDto(result.getValue());
+    return toMovimientosRegistradosResponseDto(result.getValue());
   }
 
   /**
@@ -191,6 +267,11 @@ export class MovimientosInsumoController {
     @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
     @Body() dto: RegistrarMovimientoInsumoHttpDto,
   ): Promise<MovimientoInsumoResponseDto> {
+    // La salida SACA una unidad existente: no hay seriales que dar de alta.
+    if (dto.seriales != null) {
+      throw toHttpExceptionMovimiento(new UnidadNoAdmitidaError(insumoId));
+    }
+
     const result = await this.registrarSalidaInsumoUseCase.execute({
       insumoId,
       cantidad: dto.cantidad,
@@ -199,10 +280,11 @@ export class MovimientosInsumoController {
       equipoId: dto.equipoId ?? null,
       sectorId: dto.sectorId ?? null,
       condicion: dto.condicion,
+      unidadId: dto.unidadId,
     });
 
     if (result.isFail()) {
-      throw toHttpException(result.getError());
+      throw toHttpExceptionMovimiento(result.getError());
     }
     return toMovimientoInsumoResponseDto(result.getValue());
   }
@@ -234,8 +316,8 @@ export class MovimientosInsumoController {
     @CurrentUser() user: JwtPayload,
     @Param('insumoId', new ParseUUIDPipe()) insumoId: string,
     @Body() dto: RegistrarAjusteInsumoHttpDto,
-  ): Promise<MovimientoInsumoResponseDto> {
-    const result = await this.registrarAjusteInsumoUseCase.execute({
+  ): Promise<MovimientosRegistradosResponseDto> {
+    const result = await this.registrarAjusteInsumoUseCase.executeTodos({
       insumoId,
       tipo: dto.tipo,
       cantidad: dto.cantidad,
@@ -244,12 +326,14 @@ export class MovimientosInsumoController {
       equipoId: dto.equipoId ?? null,
       sectorId: dto.sectorId ?? null,
       condicion: dto.condicion,
+      seriales: dto.seriales,
+      unidadId: dto.unidadId,
     });
 
     if (result.isFail()) {
-      throw toHttpException(result.getError());
+      throw toHttpExceptionMovimiento(result.getError());
     }
-    return toMovimientoInsumoResponseDto(result.getValue());
+    return toMovimientosRegistradosResponseDto(result.getValue());
   }
 
   /**

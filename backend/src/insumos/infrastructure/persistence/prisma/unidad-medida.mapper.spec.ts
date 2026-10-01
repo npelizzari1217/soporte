@@ -9,6 +9,7 @@ describe('UnidadMedidaMapper', () => {
       codigo: 'UN',
       nombre: 'Unidad',
       activo: true,
+      entera: false,
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date('2026-01-02'),
       deletedAt: null,
@@ -30,6 +31,7 @@ describe('UnidadMedidaMapper', () => {
       codigo: 'VIEJA',
       nombre: 'Vieja',
       activo: false,
+      entera: false,
       createdAt: new Date('2026-01-01'),
       updatedAt: new Date('2026-02-01'),
       deletedAt,
@@ -63,5 +65,34 @@ describe('UnidadMedidaMapper', () => {
     const row = UnidadMedidaMapper.toPersistence(entity);
 
     expect(row).not.toHaveProperty('createdAt');
+  });
+
+  it('toDomain() lee entera de la fila', () => {
+    const fila = {
+      id: 'id-3',
+      codigo: 'UNI',
+      nombre: 'Unidad',
+      activo: true,
+      createdAt: new Date('2026-01-01'),
+      updatedAt: new Date('2026-01-02'),
+      deletedAt: null,
+    };
+
+    expect(UnidadMedidaMapper.toDomain({ ...fila, entera: true }).entera).toBe(true);
+    expect(UnidadMedidaMapper.toDomain({ ...fila, entera: false }).entera).toBe(false);
+  });
+
+  it('toPersistence() manda entera, en true y en false', () => {
+    const entera = UnidadMedidaEntity.create(
+      { codigo: 'UNI', nombre: 'Unidad', activo: true, entera: true },
+      'id-1',
+    );
+    const noEntera = UnidadMedidaEntity.create(
+      { codigo: 'CM', nombre: 'Centímetro', activo: true },
+      'id-2',
+    );
+
+    expect(UnidadMedidaMapper.toPersistence(entera).entera).toBe(true);
+    expect(UnidadMedidaMapper.toPersistence(noEntera).entera).toBe(false);
   });
 });

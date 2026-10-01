@@ -191,8 +191,8 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
 
     const [[{ data }]] = client.unidadMedida.createMany.mock.calls;
     expect(data).toEqual([
-      { codigo: 'UNI', nombre: 'Unidad' },
-      { codigo: 'PAR', nombre: 'Pares' },
+      { codigo: 'UNI', nombre: 'Unidad', entera: true },
+      { codigo: 'PAR', nombre: 'Pares', entera: true },
       { codigo: 'CM', nombre: 'Centímetro' },
       { codigo: 'MM', nombre: 'Milímetro' },
     ]);

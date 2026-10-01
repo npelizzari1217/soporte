@@ -77,6 +77,17 @@ import {
   MOVIMIENTO_INSUMO_REPOSITORY,
 } from './domain/ports/i-movimiento-insumo.repository';
 import { PrismaMovimientoInsumoRepository } from './infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
+import { OperacionesUnidadInsumo } from './application/services/operaciones-unidad-insumo.service';
+import {
+  IUnidadInsumoRepository,
+  UNIDAD_INSUMO_REPOSITORY,
+} from './domain/ports/i-unidad-insumo.repository';
+import {
+  EVENTO_UNIDAD_INSUMO_REPOSITORY,
+  IEventoUnidadInsumoRepository,
+} from './domain/ports/i-evento-unidad-insumo.repository';
+import { PrismaUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-unidad-insumo.repository';
+import { PrismaEventoUnidadInsumoRepository } from './infrastructure/persistence/prisma/prisma-evento-unidad-insumo.repository';
 import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
@@ -101,6 +112,7 @@ import { NumeradorInsumo } from './domain/services/numerador-insumo.service';
 
 import { CrearInsumoUseCase } from './application/use-cases/crear-insumo.use-case';
 import { EditarInsumoUseCase } from './application/use-cases/editar-insumo.use-case';
+import { CambiarSeguimientoInsumoUseCase } from './application/use-cases/cambiar-seguimiento-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from './application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from './application/use-cases/listar-insumos.use-case';
 import { ListarInsumosPorModeloEquipoUseCase } from './application/use-cases/listar-insumos-por-modelo-equipo.use-case';
@@ -116,6 +128,13 @@ import { UnidadesMedidaController } from './interface/controllers/unidades-medid
 import { ModelosEquipoController } from './interface/controllers/modelos-equipo.controller';
 import { InsumosController } from './interface/controllers/insumos.controller';
 import { MovimientosInsumoController } from './interface/controllers/movimientos-insumo.controller';
+import { UnidadesInsumoController } from './interface/controllers/unidades-insumo.controller';
+import { ListarUnidadesInsumoUseCase } from './application/use-cases/listar-unidades-insumo.use-case';
+import { ConsultarHistorialUnidadUseCase } from './application/use-cases/consultar-historial-unidad.use-case';
+import { DevolverEntregaUseCase } from './application/use-cases/devolver-entrega.use-case';
+import { RecuperarUnidadDescartadaUseCase } from './application/use-cases/recuperar-unidad-descartada.use-case';
+import { CargarSerialUnidadUseCase } from './application/use-cases/cargar-serial-unidad.use-case';
+import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-serial-unidad.use-case';
 
 @Module({
   imports: [AuthModule],
@@ -125,6 +144,7 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     ModelosEquipoController,
     InsumosController,
     MovimientosInsumoController,
+    UnidadesInsumoController,
   ],
   providers: [
     { provide: FAMILIA_INSUMO_REPOSITORY, useClass: PrismaFamiliaInsumoRepository },
@@ -151,6 +171,27 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     },
 
     { provide: UNIDAD_MEDIDA_REPOSITORY, useClass: PrismaUnidadMedidaRepository },
+    // Unidades por número de serie (sdd/repuestos-numero-de-serie, ADR-4). No se
+    // exporta: la única puerta de las unidades será `OperacionesUnidadInsumo`.
+    { provide: UNIDAD_INSUMO_REPOSITORY, useClass: PrismaUnidadInsumoRepository },
+    // Bitácora append-only de las unidades (ADR-9). Tampoco se exporta.
+    { provide: EVENTO_UNIDAD_INSUMO_REPOSITORY, useClass: PrismaEventoUnidadInsumoRepository },
+    // Única puerta de las unidades (ADR-4). Sin exportar hasta que la consuman los casos de uso.
+    {
+      provide: OperacionesUnidadInsumo,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        eventoRepo: IEventoUnidadInsumoRepository,
+      ) => new OperacionesUnidadInsumo(insumoRepo, movimientoRepo, unidadRepo, eventoRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        EVENTO_UNIDAD_INSUMO_REPOSITORY,
+      ],
+    },
     {
       provide: CrearUnidadMedidaUseCase,
       useFactory: (repo: IUnidadMedidaRepository) => new CrearUnidadMedidaUseCase(repo),
@@ -158,8 +199,12 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     },
     {
       provide: EditarUnidadMedidaUseCase,
-      useFactory: (repo: IUnidadMedidaRepository) => new EditarUnidadMedidaUseCase(repo),
-      inject: [UNIDAD_MEDIDA_REPOSITORY],
+      useFactory: (
+        repo: IUnidadMedidaRepository,
+        insumoRepo: IInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new EditarUnidadMedidaUseCase(repo, insumoRepo, txRunner),
+      inject: [UNIDAD_MEDIDA_REPOSITORY, INSUMO_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       provide: CambiarEstadoActivoUnidadMedidaUseCase,
@@ -246,12 +291,118 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         familiaRepo: IFamiliaInsumoRepository,
         unidadRepo: IUnidadMedidaRepository,
         modeloRepo: IModeloEquipoRepository,
-      ) => new EditarInsumoUseCase(insumoRepo, familiaRepo, unidadRepo, modeloRepo),
+        txRunner: ITenantTransactionRunner,
+      ) => new EditarInsumoUseCase(insumoRepo, familiaRepo, unidadRepo, modeloRepo, txRunner),
       inject: [
         INSUMO_REPOSITORY,
         FAMILIA_INSUMO_REPOSITORY,
         UNIDAD_MEDIDA_REPOSITORY,
         MODELO_EQUIPO_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    // Borde de unidades (WU-8b). Las lecturas no toman locks; las escrituras abren
+    // la transacción y delegan en `OperacionesUnidadInsumo` (L1 primero).
+    {
+      provide: ListarUnidadesInsumoUseCase,
+      useFactory: (insumoRepo: IInsumoRepository, unidadRepo: IUnidadInsumoRepository) =>
+        new ListarUnidadesInsumoUseCase(insumoRepo, unidadRepo),
+      inject: [INSUMO_REPOSITORY, UNIDAD_INSUMO_REPOSITORY],
+    },
+    {
+      provide: ConsultarHistorialUnidadUseCase,
+      useFactory: (
+        unidadRepo: IUnidadInsumoRepository,
+        eventoRepo: IEventoUnidadInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+      ) => new ConsultarHistorialUnidadUseCase(unidadRepo, eventoRepo, movimientoRepo),
+      inject: [
+        UNIDAD_INSUMO_REPOSITORY,
+        EVENTO_UNIDAD_INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+      ],
+    },
+    {
+      provide: CargarSerialUnidadUseCase,
+      useFactory: (
+        unidadRepo: IUnidadInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) => new CargarSerialUnidadUseCase(unidadRepo, txRunner, operaciones),
+      inject: [UNIDAD_INSUMO_REPOSITORY, TENANT_TX_RUNNER, OperacionesUnidadInsumo],
+    },
+    {
+      provide: CorregirSerialUnidadUseCase,
+      useFactory: (
+        unidadRepo: IUnidadInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) => new CorregirSerialUnidadUseCase(unidadRepo, txRunner, operaciones),
+      inject: [UNIDAD_INSUMO_REPOSITORY, TENANT_TX_RUNNER, OperacionesUnidadInsumo],
+    },
+    {
+      provide: DevolverEntregaUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) => new DevolverEntregaUseCase(insumoRepo, unidadRepo, familiaRepo, txRunner, operaciones),
+      inject: [
+        INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        OperacionesUnidadInsumo,
+      ],
+    },
+    {
+      provide: RecuperarUnidadDescartadaUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        familiaRepo: IFamiliaInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RecuperarUnidadDescartadaUseCase(
+          insumoRepo,
+          unidadRepo,
+          familiaRepo,
+          txRunner,
+          operaciones,
+        ),
+      inject: [
+        INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        OperacionesUnidadInsumo,
+      ],
+    },
+    {
+      provide: CambiarSeguimientoInsumoUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        unidadMedidaRepo: IUnidadMedidaRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new CambiarSeguimientoInsumoUseCase(
+          insumoRepo,
+          unidadMedidaRepo,
+          movimientoRepo,
+          unidadRepo,
+          txRunner,
+        ),
+      inject: [
+        INSUMO_REPOSITORY,
+        UNIDAD_MEDIDA_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
       ],
     },
     {
@@ -275,18 +426,33 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
 
     { provide: MOVIMIENTO_INSUMO_REPOSITORY, useClass: PrismaMovimientoInsumoRepository },
     {
-      // La ENTRADA NO recibe el runner de transacciones, y esa ausencia es la
-      // decisión: una entrada SUMA, así que no puede dejar el saldo negativo y
-      // no tiene nada que decidir bajo la sección crítica. El `Pick` angosto de
-      // su constructor es lo que le impide tomar el advisory lock por
-      // descuido; pasarle el runner acá lo volvería posible de nuevo.
+      // La ENTRADA recibe el runner para leer el `seguimiento` bajo L1
+      // (`FOR SHARE`) antes de decidir la rama (ADR-5), pero su `Pick` de
+      // `movimientoRepo` sigue sin `lockAndSumByTipo`: la rama `NINGUNO` no toma
+      // el advisory lock del stock. El L2 de la rama `SERIE` lo toma
+      // `OperacionesUnidadInsumo`.
       provide: RegistrarEntradaInsumoUseCase,
       useFactory: (
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new RegistrarEntradaInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
+        txRunner: ITenantTransactionRunner,
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RegistrarEntradaInsumoUseCase(
+          insumoRepo,
+          movimientoRepo,
+          familiaRepo,
+          txRunner,
+          operaciones,
+        ),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        OperacionesUnidadInsumo,
+      ],
     },
     {
       // La SALIDA y el AJUSTE sí lo reciben: los dos pueden restar, y leer las
@@ -298,12 +464,21 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new RegistrarSalidaInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RegistrarSalidaInsumoUseCase(
+          insumoRepo,
+          movimientoRepo,
+          txRunner,
+          familiaRepo,
+          operaciones,
+        ),
       inject: [
         INSUMO_REPOSITORY,
         MOVIMIENTO_INSUMO_REPOSITORY,
         TENANT_TX_RUNNER,
         FAMILIA_INSUMO_REPOSITORY,
+        OperacionesUnidadInsumo,
       ],
     },
     {
@@ -313,16 +488,26 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         movimientoRepo: IMovimientoInsumoRepository,
         txRunner: ITenantTransactionRunner,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new RegistrarAjusteInsumoUseCase(insumoRepo, movimientoRepo, txRunner, familiaRepo),
+        operaciones: OperacionesUnidadInsumo,
+      ) =>
+        new RegistrarAjusteInsumoUseCase(
+          insumoRepo,
+          movimientoRepo,
+          txRunner,
+          familiaRepo,
+          operaciones,
+        ),
       inject: [
         INSUMO_REPOSITORY,
         MOVIMIENTO_INSUMO_REPOSITORY,
         TENANT_TX_RUNNER,
         FAMILIA_INSUMO_REPOSITORY,
+        OperacionesUnidadInsumo,
       ],
     },
     {
-      // La consulta tampoco lo recibe: usa `sumByTipo()`, la lectura SIN lock.
+      // La consulta tampoco lo recibe: usa `sumByTipo()` y el conteo de unidades,
+      // lecturas SIN lock.
       // Mostrar un número en pantalla no puede hacer esperar a los técnicos que
       // están sacando cosas del depósito.
       provide: ConsultarStockInsumoUseCase,
@@ -330,8 +515,14 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
         insumoRepo: IInsumoRepository,
         movimientoRepo: IMovimientoInsumoRepository,
         familiaRepo: IFamiliaInsumoRepository,
-      ) => new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo),
-      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, FAMILIA_INSUMO_REPOSITORY],
+        unidadRepo: IUnidadInsumoRepository,
+      ) => new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo, unidadRepo),
+      inject: [
+        INSUMO_REPOSITORY,
+        MOVIMIENTO_INSUMO_REPOSITORY,
+        FAMILIA_INSUMO_REPOSITORY,
+        UNIDAD_INSUMO_REPOSITORY,
+      ],
     },
     {
       // El LISTADO tampoco recibe el runner, por el mismo motivo que la
@@ -352,6 +543,8 @@ import { MovimientosInsumoController } from './interface/controllers/movimientos
     INSUMO_REPOSITORY,
     RegistrarEntradaInsumoUseCase,
     RegistrarSalidaInsumoUseCase,
+    // WU-10a: la instalación de equipos con unidad de insumo la usa (`instalar`).
+    OperacionesUnidadInsumo,
   ],
 })
 export class InsumosModule {}

@@ -1,12 +1,21 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
 import {
   CONDICION_STOCK_POR_DEFECTO,
   CondicionStock,
 } from '../../domain/entities/tipo-movimiento-insumo';
+import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
+import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
+import {
+  SerialRequeridoError,
+  UnidadNoAdmitidaError,
+} from '../../domain/errors/unidades-insumo.errors';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import { ingresarPorSerie } from '../services/ingresar-por-serie';
+import { OperacionesUnidadInsumo } from '../services/operaciones-unidad-insumo.service';
 import {
   validarCondicionAdmitida,
   validarInsumoElegible,
@@ -55,6 +64,21 @@ export interface RegistrarEntradaInsumoDto {
    * y nunca del body.
    */
   itemCompraId?: string | null;
+  /**
+   * Números de serie de las piezas que entran. Solo los admite un insumo
+   * `SERIE` (con `NINGUNO`, `UnidadNoAdmitidaError`); ahí son obligatorios y
+   * tantos como la cantidad (`SerialesNoCoincidenError`).
+   */
+  seriales?: readonly string[] | null;
+  /**
+   * Rellena con unidades de serie pendiente hasta la cantidad (ADR-6).
+   *
+   * **Opción interna, no un campo del DTO HTTP**: la pasa únicamente la
+   * recepción de compra, junto a `itemCompraId` y por el mismo criterio de
+   * origen. El controller enumera lo que pasa al caso de uso, así que un body
+   * no puede abrirla.
+   */
+  completarConPendientes?: boolean;
 }
 
 /**
@@ -62,28 +86,29 @@ export interface RegistrarEntradaInsumoDto {
  * existencias de un insumo: entró tal cantidad al depósito, la registró tal
  * persona.
  *
- * **NO abre transacción ni toma el advisory lock del stock, a propósito.** El
- * lock existe para una sola invariante —que el stock no quede negativo— y esa
- * invariante solo la pueden violar los movimientos que RESTAN. Una entrada
- * suma: no hay decisión que tomar bajo la sección crítica, y no hay nada que
- * revertir, porque la operación es un único `INSERT` de una fila, ya atómico
- * por sí mismo. Tomar el lock igual no sería gratis en ningún sentido: pagaría
- * el `GROUP BY` de toda la bitácora del insumo —un agregado que crece con el
- * historial— para no decidir nada, y haría esperar a las salidas del mismo
- * insumo detrás de cada recepción.
+ * **Siempre abre transacción (re-entrante), pero NO toma el advisory lock del
+ * stock en la rama `NINGUNO`, a propósito.** El lock existe para una sola
+ * invariante —que el stock no quede negativo— y esa invariante solo la pueden
+ * violar los movimientos que RESTAN. Una entrada `NINGUNO` suma: no hay decisión
+ * que tomar bajo la sección crítica, y tomarlo igual pagaría el `GROUP BY` de
+ * toda la bitácora y haría esperar a las salidas detrás de cada recepción.
  *
- * La carrera que esto deja abierta es inofensiva y conviene decirla: una
- * entrada que comitea mientras una salida evalúa bajo el lock hace que la
- * salida vea MENOS stock del que hay, así que a lo sumo rechaza una salida que
- * habría entrado. Nunca al revés.
+ * La transacción existe por otra razón (ADR-5 de
+ * sdd/repuestos-numero-de-serie): su PRIMER lock es L1
+ * (`leerSeguimientoParaMovimiento`, `FOR SHARE` sobre la fila del insumo) y el
+ * `seguimiento` de esa lectura decide la rama. Los `FOR SHARE` no se bloquean
+ * entre sí, así que las entradas `NINGUNO` siguen sin serializarse entre ellas;
+ * solo el cambio de seguimiento (L1 `FOR NO KEY UPDATE`) espera a todas.
  *
- * **Para los movimientos que RESTAN el lock NO es opcional**: tienen que leer
- * las sumas y decidir DENTRO de la misma transacción que después inserta (ver
- * `IMovimientoInsumoRepository.lockAndSumByTipo`). `RegistrarSalidaInsumoUseCase`
- * ya lo hace así y es el modelo a seguir para el `AJUSTE_NEGATIVO`. Que la
- * entrada reciba un `Pick` sin `lockAndSumByTipo` no es prolijidad: es lo que
- * hace que este caso de uso NO PUEDA tomar el lock por descuido ni saltearlo
- * el que sí lo necesita — el método directamente no está en su tipo.
+ * - `NINGUNO`: como siempre, un único `INSERT` del asiento. Un `seriales` se
+ *   rechaza con `UnidadNoAdmitidaError`. No toma L2.
+ * - `SERIE`: `ingresarPorSerie` (toma L2 y L3 en el orden de ADR-12) crea una
+ *   unidad por pieza con su movimiento. La cantidad debe ser entera y los
+ *   seriales tantos como ella, salvo `completarConPendientes`.
+ *
+ * Que la entrada reciba `Pick` sin `lockAndSumByTipo` sigue siendo lo que
+ * impide que este caso de uso tome el lock del stock por descuido: el método
+ * no está en su tipo. El L2 de la rama `SERIE` lo toma `OperacionesUnidadInsumo`.
  *
  * Dos reglas de elegibilidad, las dos delegadas en `validarInsumoElegible`:
  * el insumo tiene que existir y estar VIGENTE, y además HABILITADO cuando la
@@ -132,17 +157,25 @@ export interface RegistrarEntradaInsumoDto {
  */
 export class RegistrarEntradaInsumoUseCase {
   constructor(
-    private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
+    private readonly insumoRepo: Pick<
+      IInsumoRepository,
+      'findById' | 'leerSeguimientoParaMovimiento'
+    >,
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'insert'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
+    private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar' | 'devolverAlDeposito'>,
   ) {}
 
   /**
    * @param dto Datos de la entrada, con el `usuarioId` ya resuelto por el borde
    *   y el `itemCompraId` presente solo si la entrada nace de una recepción.
-   * @returns El movimiento asentado, o `InsumoNoEncontradoError` si el insumo
-   *   no existe o está dado de baja, o `InsumoDeshabilitadoError` si está
-   *   deshabilitado y la entrada es manual.
+   * @returns El movimiento asentado (con `SERIE` y varias piezas, el primero:
+   *   los demás quedan en la bitácora); `InsumoNoEncontradoError` si el insumo
+   *   no existe o está dado de baja; `InsumoDeshabilitadoError` si está
+   *   deshabilitado y la entrada es manual; `UnidadNoAdmitidaError` si trae
+   *   `seriales` y el insumo no es `SERIE`; o `CantidadNoEnteraError` /
+   *   `SerialesNoCoincidenError` / `SerialDuplicadoError` en la rama `SERIE`.
    * @throws Error si la cantidad no es finita, no es positiva, pasa el techo de
    *   negocio o tiene más decimales que la columna, o si el motivo excede su
    *   tope de largo: son violaciones de contrato del caller que el borde
@@ -151,12 +184,57 @@ export class RegistrarEntradaInsumoUseCase {
   async execute(
     dto: RegistrarEntradaInsumoDto,
   ): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    const resultado = await this.executeTodos(dto);
+    return resultado.isFail()
+      ? Result.fail(resultado.getError())
+      : Result.ok(resultado.getValue()[0]);
+  }
+
+  /**
+   * Igual que `execute()` pero devuelve TODOS los movimientos asentados: uno en
+   * `NINGUNO`, uno por unidad (en el orden de las piezas) en `SERIE`. Es lo que
+   * publica el borde HTTP.
+   *
+   * @param dto Mismos datos que `execute()`.
+   * @returns Los movimientos asentados, o el error de dominio de `execute()`.
+   */
+  async executeTodos(
+    dto: RegistrarEntradaInsumoDto,
+  ): Promise<Result<MovimientoInsumoEntity[], DomainError>> {
+    try {
+      return await this.txRunner.run(() => this.ejecutarBajoL1(dto));
+    } catch (error) {
+      // El único fallo posterior a escribir es la unicidad del serial (P2002):
+      // se desenvuelve AFUERA del `run()` para que la transacción ya haya
+      // revertido (o, si el llamador tiene la suya, la aborte él).
+      if (error instanceof FalloOperacionDeUnidad) return Result.fail(error.errorDeDominio);
+      throw error;
+    }
+  }
+
+  /**
+   * Cuerpo de la entrada, ya dentro de la transacción. Devuelve TODOS los
+   * movimientos asentados: uno en `NINGUNO`, uno por unidad en `SERIE`.
+   */
+  private async ejecutarBajoL1(
+    dto: RegistrarEntradaInsumoDto,
+  ): Promise<Result<MovimientoInsumoEntity[], DomainError>> {
+    // L1 primero, antes que cualquier otro lock: el `seguimiento` de esta
+    // lectura es el que decide la rama.
+    const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(dto.insumoId);
+    if (seguimiento === null) {
+      return Result.fail(new InsumoNoEncontradoError(dto.insumoId));
+    }
+
     // `== null` cubre el ausente y el nulo con una sola comparación: las dos
     // formas significan "carga manual". Preguntar por la PRESENCIA de la clave
     // —`'itemCompraId' in dto`— le abriría el salteo a quien mandara el campo
     // en `null`, que es justo la entrada manual escrita de la forma larga.
     const vieneDeUnaRecepcion = dto.itemCompraId != null;
 
+    // El guard de habilitado vale SOLO para la carga manual (ver la clase) y
+    // nunca se levanta por otra vía: la exención de la devolución (G2) vive en
+    // `registrarDevolucionDeComponente`, no acá.
     const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId, {
       exigirHabilitado: !vieneDeUnaRecepcion,
     });
@@ -174,7 +252,28 @@ export class RegistrarEntradaInsumoUseCase {
       return Result.fail(admitida.getError());
     }
 
-    return this.asentar(insumo.id, condicion, dto);
+    if (seguimiento === 'NINGUNO') {
+      if (dto.seriales != null) {
+        return Result.fail(new UnidadNoAdmitidaError(insumo.id));
+      }
+      const asentado = await this.asentar(insumo.id, condicion, dto);
+      return asentado.isFail()
+        ? Result.fail(asentado.getError())
+        : Result.ok([asentado.getValue()]);
+    }
+
+    return ingresarPorSerie(this.operaciones, {
+      insumoId: insumo.id,
+      cantidad: dto.cantidad,
+      seriales: dto.seriales,
+      completarConPendientes: dto.completarConPendientes,
+      condicion,
+      tipo: 'ENTRADA',
+      usuarioId: dto.usuarioId,
+      motivo: dto.motivo,
+      itemCompraId: dto.itemCompraId,
+      equipoId: dto.equipoId,
+    });
   }
 
   /**
@@ -194,16 +293,59 @@ export class RegistrarEntradaInsumoUseCase {
    * (el alcance de USADO no cambia).
    *
    * @param dto Insumo del componente, equipo de origen, usuario que retira y
-   *   motivo ya normalizado.
+   *   motivo ya normalizado; `unidadId`/`componenteId` si el componente lleva
+   *   unidad y `numeroSerie` si es un componente legado de un insumo `SERIE`.
    * @returns El movimiento asentado, o `InsumoNoEncontradoError` /
-   *   `CondicionUsadoNoAdmitidaError` según el guard que falle.
+   *   `CondicionUsadoNoAdmitidaError` según el guard que falle, o
+   *   `SerialRequeridoError` si el componente es legado de un insumo `SERIE`
+   *   y no trae serial.
    */
   async registrarDevolucionDeComponente(dto: {
     insumoId: string;
     equipoId: string;
     usuarioId: string;
     motivo?: string | null;
+    /** Unidad que lleva el componente; si viene, la pieza vuelve con su serial. */
+    unidadId?: string | null;
+    /** Componente que lleva la unidad. Obligatorio con `unidadId` (queda en el evento). */
+    componenteId?: string | null;
+    /** Serial de un componente LEGADO cuyo insumo hoy es `SERIE`. */
+    numeroSerie?: string | null;
   }): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    try {
+      return await this.txRunner.run(() => this.devolverBajoL1(dto));
+    } catch (error) {
+      if (error instanceof FalloOperacionDeUnidad) return Result.fail(error.errorDeDominio);
+      throw error;
+    }
+  }
+
+  /**
+   * Cuerpo de la devolución, dentro de la transacción del retiro. Ramas:
+   * componente con unidad → `devolverAlDeposito`; componente legado de un
+   * insumo hoy `SERIE` → `numeroSerie` obligatorio e `ingresar` USADO (ADR-7,
+   * sin serie pendiente: `SerialRequeridoError` sin cambiar nada); insumo
+   * `NINGUNO` → como siempre.
+   *
+   * **La exención de insumo deshabilitado (G2) es de ESTE camino y de ningún
+   * otro**: acá nunca se pide `exigirHabilitado`.
+   */
+  private async devolverBajoL1(dto: {
+    insumoId: string;
+    equipoId: string;
+    usuarioId: string;
+    motivo?: string | null;
+    unidadId?: string | null;
+    componenteId?: string | null;
+    numeroSerie?: string | null;
+  }): Promise<Result<MovimientoInsumoEntity, DomainError>> {
+    // L1 primero; con `unidadId` el servicio lo vuelve a leer (FOR SHARE es
+    // re-entrante) antes de tomar L2 y L3.
+    const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(dto.insumoId);
+    if (seguimiento === null) {
+      return Result.fail(new InsumoNoEncontradoError(dto.insumoId));
+    }
+
     const elegible = await validarInsumoElegible(this.insumoRepo, dto.insumoId);
 
     if (elegible.isFail()) {
@@ -218,6 +360,52 @@ export class RegistrarEntradaInsumoUseCase {
 
     if (admitida.isFail()) {
       return Result.fail(admitida.getError());
+    }
+
+    if (dto.unidadId != null) {
+      if (dto.componenteId == null) {
+        throw new Error('La devolución de un componente con unidad exige su componenteId.');
+      }
+      const devueltas = await this.operaciones.devolverAlDeposito(
+        [
+          {
+            unidadId: dto.unidadId,
+            equipoId: dto.equipoId,
+            componenteId: dto.componenteId,
+            insumoId: dto.insumoId,
+          },
+        ],
+        { usuarioId: dto.usuarioId, motivo: dto.motivo },
+      );
+      return devueltas.isFail()
+        ? Result.fail(devueltas.getError())
+        : Result.ok(devueltas.getValue()[0].movimiento);
+    }
+
+    if (seguimiento === 'SERIE') {
+      // Componente legado: no tiene unidad, así que el serial lo trae el retiro.
+      // Una pendiente no se admite (decisión del dueño): sin serial, nada cambia.
+      const serial = dto.numeroSerie?.trim() ?? '';
+      if (serial === '') {
+        return Result.fail(
+          new SerialRequeridoError(
+            `el insumo "${insumo.id}" se sigue por número de serie y el componente no tiene unidad: hace falta el serial para devolverlo al depósito.`,
+          ),
+        );
+      }
+      const ingresada = await ingresarPorSerie(this.operaciones, {
+        insumoId: insumo.id,
+        cantidad: 1,
+        seriales: [serial],
+        condicion: 'USADO',
+        tipo: 'ENTRADA',
+        usuarioId: dto.usuarioId,
+        motivo: dto.motivo,
+        equipoId: dto.equipoId,
+      });
+      return ingresada.isFail()
+        ? Result.fail(ingresada.getError())
+        : Result.ok(ingresada.getValue()[0]);
     }
 
     return this.asentar(insumo.id, 'USADO', {

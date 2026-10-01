@@ -7,6 +7,11 @@ import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cli
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import { Result } from '../../../shared/domain/result';
+import { SeguimientoNoModificableError } from '../../domain/errors/unidades-insumo.errors';
+import {
+  UnidadMedidaCambiadaError,
+  UnidadMedidaNoEnteraError,
+} from '../../domain/errors/unidades-medida.errors';
 import {
   CodigoAlternativoDuplicadoError,
   FamiliaInsumoDeshabilitadaError,
@@ -41,14 +46,23 @@ describe('InsumosController', () => {
     const editarUseCase = overrides.editar ?? { execute: vi.fn() };
     const cambiarEstadoUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
     const listarUseCase = overrides.listar ?? { execute: vi.fn() };
+    const cambiarSeguimientoUseCase = overrides.cambiarSeguimiento ?? { execute: vi.fn() };
 
     const controller = new InsumosController(
       crearUseCase as never,
       editarUseCase as never,
       cambiarEstadoUseCase as never,
       listarUseCase as never,
+      cambiarSeguimientoUseCase as never,
     );
-    return { controller, crearUseCase, editarUseCase, cambiarEstadoUseCase, listarUseCase };
+    return {
+      controller,
+      crearUseCase,
+      editarUseCase,
+      cambiarEstadoUseCase,
+      listarUseCase,
+      cambiarSeguimientoUseCase,
+    };
   }
 
   it('GET /insumos retorna el listado mapeado a DTO, con los códigos alternativos', async () => {
@@ -207,6 +221,62 @@ describe('InsumosController', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  describe('PATCH /insumos/:id/seguimiento', () => {
+    it('delega id y seguimiento al caso de uso y devuelve el insumo con su seguimiento', async () => {
+      const insumo = construirInsumo();
+      const cambiarSeguimiento = { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) };
+      const { controller } = buildController({ cambiarSeguimiento });
+
+      const result = await controller.cambiarSeguimiento('id-1', { seguimiento: 'SERIE' });
+
+      expect(cambiarSeguimiento.execute).toHaveBeenCalledWith({
+        insumoId: 'id-1',
+        seguimiento: 'SERIE',
+      });
+      expect(result.seguimiento).toBe('NINGUNO');
+    });
+
+    it.each([
+      ['UnidadMedidaCambiadaError', new UnidadMedidaCambiadaError('id-1'), ConflictException],
+      [
+        'SeguimientoNoModificableError',
+        new SeguimientoNoModificableError('hay unidades'),
+        UnprocessableEntityException,
+      ],
+      [
+        'UnidadMedidaNoEnteraError',
+        new UnidadMedidaNoEnteraError('uni-1'),
+        UnprocessableEntityException,
+      ],
+      ['InsumoNoEncontradoError', new InsumoNoEncontradoError('id-1'), NotFoundException],
+    ])('%s se mapea a su status HTTP', async (_nombre, error, esperada) => {
+      const { controller } = buildController({
+        cambiarSeguimiento: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
+      });
+
+      await expect(
+        controller.cambiarSeguimiento('id-1', { seguimiento: 'SERIE' }),
+      ).rejects.toBeInstanceOf(esperada);
+    });
+  });
+
+  it('POST /insumos con unidad no entera y SERIE lanza 422', async () => {
+    const { controller } = buildController({
+      crear: {
+        execute: vi.fn().mockResolvedValue(Result.fail(new UnidadMedidaNoEnteraError(UNIDAD_ID))),
+      },
+    });
+
+    await expect(
+      controller.crear({
+        nombre: 'Tóner negro',
+        familiaId: FAMILIA_ID,
+        unidadMedidaId: UNIDAD_ID,
+        seguimiento: 'SERIE',
+      }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
   /**
    * `CrearInsumoUseCase` ya no puede producir este error desde el #166 —el
    * cliente no elige código, así que no hay colisión que evaluar—, pero el
@@ -341,6 +411,7 @@ describe('InsumosController', () => {
       ['crear', true],
       ['editar', true],
       ['cambiarEstadoActivo', true],
+      ['cambiarSeguimiento', true],
       ['listar', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstarPresente) => {
       const handler = InsumosController.prototype[

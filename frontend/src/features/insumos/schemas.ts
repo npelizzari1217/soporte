@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { conDosDecimales, formatearNumeroEsAr, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
-import { CONDICIONES_STOCK, type TipoAjusteInsumo } from "./types";
+import { CONDICIONES_STOCK, SEGUIMIENTOS_INSUMO, type TipoAjusteInsumo } from "./types";
 
 /**
  * Topes de `movimientos_insumo`, espejo de las constantes de
@@ -286,6 +286,8 @@ export const unidadMedidaSchema = z.object({
     .trim()
     .min(1, "El nombre es requerido")
     .max(UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH, mensajeDemasiadoLargo("El nombre", UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH)),
+  // Unidad que mide piezas enteras: condición para llevar un insumo por `SERIE`.
+  entera: z.boolean().default(false),
 });
 export type UnidadMedidaFormValues = z.infer<typeof unidadMedidaSchema>;
 
@@ -303,6 +305,96 @@ const INSUMO_NOMBRE_MAX_LENGTH = 255;
 const INSUMO_STOCK_MINIMO_DECIMALES = 2;
 const INSUMO_STOCK_MINIMO_MINIMO = 0;
 const INSUMO_STOCK_MINIMO_MAXIMO = 1_000_000;
+
+/**
+ * Topes del número de serie de una unidad, espejo de `UNIDAD_SERIAL_MAX_LENGTH`
+ * (`unidad-insumo.entity.ts`) y de `MOVIMIENTO_INSUMO_SERIALES_MAX`
+ * (`movimiento-insumo.entity.ts`).
+ */
+export const UNIDAD_SERIAL_MAX_LENGTH = 255;
+export const SERIALES_MAX = 100;
+
+/**
+ * Forma normalizada de un serial, espejo de `normalizarSerial` del backend:
+ * sin espacios y en mayúsculas. Puede ser más larga que la tipeada (`ß` pasa a
+ * `SS`), y el backend valida el largo de las dos formas.
+ */
+export function normalizarSerial(serial: string): string {
+  return serial.replace(/\s+/g, "").toUpperCase();
+}
+
+/**
+ * Un número de serie: recortado, de 1 a 255 caracteres, también una vez
+ * normalizado (espejo de `@EsSerialDeUnidad`). Es feedback inmediato: la
+ * barrera real es el backend, que además rechaza el duplicado con 409.
+ */
+export const numeroSerieSchema = z
+  .string()
+  .trim()
+  .min(1, "El número de serie es requerido")
+  .max(UNIDAD_SERIAL_MAX_LENGTH, mensajeDemasiadoLargo("El número de serie", UNIDAD_SERIAL_MAX_LENGTH))
+  .refine(
+    (valor) => normalizarSerial(valor).length <= UNIDAD_SERIAL_MAX_LENGTH,
+    mensajeDemasiadoLargo("El número de serie", UNIDAD_SERIAL_MAX_LENGTH),
+  );
+
+/** Formulario de "Cargar serial" de una unidad pendiente: solo el serial. */
+export const cargarSerialSchema = z.object({ numeroSerie: numeroSerieSchema });
+export type CargarSerialFormValues = z.infer<typeof cargarSerialSchema>;
+
+/**
+ * Formulario de "Corregir serial": el serial nuevo y el motivo, obligatorio y de
+ * hasta 500 caracteres medidos TRIMEADOS (espejo de la corrección del backend,
+ * que responde 422 `MOTIVO_CORRECCION_SERIAL_INVALIDO` sin motivo).
+ */
+export const corregirSerialSchema = z.object({
+  numeroSerie: numeroSerieSchema,
+  motivo: z
+    .string({ required_error: "El motivo es requerido" })
+    .refine((valor) => valor.trim().length > 0, "El motivo es requerido")
+    .refine(
+      (valor) => valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+    ),
+});
+export type CorregirSerialFormValues = z.infer<typeof corregirSerialSchema>;
+
+/**
+ * Formulario de reingreso al depósito de una unidad. La devolución de una
+ * entrega admite motivo opcional; la recuperación de una descartada lo exige
+ * (el backend responde 422 `MOTIVO_RECUPERACION_REQUERIDO` sin él). La
+ * condición sale de un `<select>` cerrado (o queda en NUEVO si la familia no
+ * admite usados).
+ */
+const motivoReingresoOpcionalSchema = z
+  .string()
+  .optional()
+  .refine(
+    (valor) => valor === undefined || valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+    mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+  );
+
+export const devolucionEntregaSchema = z.object({
+  condicion: z.enum(["NUEVO", "USADO"]),
+  motivo: motivoReingresoOpcionalSchema,
+});
+export type ReingresoFormValues = z.infer<typeof devolucionEntregaSchema>;
+
+export const recuperacionSchema = z.object({
+  condicion: z.enum(["NUEVO", "USADO"]),
+  motivo: z
+    .string({ required_error: "El motivo es requerido" })
+    .refine((valor) => valor.trim().length > 0, "El motivo es requerido")
+    .refine(
+      (valor) => valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+    ),
+});
+
+/** Lista de seriales de una entrada, un ajuste o una recepción: hasta 100, cada uno válido. */
+export const serialesSchema = z
+  .array(numeroSerieSchema)
+  .max(SERIALES_MAX, `Podés cargar hasta ${SERIALES_MAX} números de serie por vez`);
 
 /**
  * Punto de reposición del insumo: OPCIONAL y, a diferencia de
@@ -368,5 +460,7 @@ export const insumoSchema = z.object({
   familiaId: z.string().min(1, "La familia es requerida"),
   unidadMedidaId: z.string().min(1, "La unidad de medida es requerida"),
   stockMinimo: stockMinimoInsumoSchema,
+  // Cómo se lleva el stock. Un `<select>` cerrado: no hay valor vacío posible.
+  seguimiento: z.enum(SEGUIMIENTOS_INSUMO).default("NINGUNO"),
 });
 export type InsumoFormValues = z.infer<typeof insumoSchema>;

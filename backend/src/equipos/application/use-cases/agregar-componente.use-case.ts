@@ -22,8 +22,14 @@ export interface AgregarComponenteDto {
   equipoId: string;
   insumoId: string;
   descripcion?: string | null;
+  /** Ignorado cuando viene `unidadId`: el serial es el de la unidad (ADR-7). */
   numeroSerie?: string | null;
   capacidad?: string | null;
+  /**
+   * Unidad de insumo `SERIE` que llevará el componente. La elige el caso de uso
+   * de instalación, que es quien la valida y la toma de locks; acá solo se copia.
+   */
+  unidadId?: string | null;
 }
 
 /**
@@ -47,6 +53,11 @@ export interface AgregarComponenteDto {
  * `tipo_componente_codigo` siga NOT NULL (hasta WU-6), la entidad sigue
  * escribiéndola con este valor derivado.
  *
+ * `preparar()` valida y construye la entidad SIN escribir (ADR-7): el caso de uso
+ * de instalación con unidad necesita validar primero, tomar los locks de la
+ * unidad (L1 a L3) y recién después guardar el componente (L4). `execute()` es
+ * `preparar()` + `save()`, sin cambio de conducta para quien no usa unidades.
+ *
  * Sin throw — todos los fallos esperados retornan `Result.fail()`.
  */
 export class AgregarComponenteUseCase {
@@ -58,6 +69,19 @@ export class AgregarComponenteUseCase {
   ) {}
 
   async execute(dto: AgregarComponenteDto): Promise<Result<ComponenteEquipoEntity, DomainError>> {
+    const preparado = await this.preparar(dto);
+    if (preparado.isFail()) {
+      return preparado;
+    }
+    await this.componenteRepo.save(preparado.getValue());
+    return preparado;
+  }
+
+  /**
+   * Valida el alta y construye el componente, sin persistir nada. Con `unidadId`
+   * el `numeroSerie` queda NULL: lo resuelve la unidad al leer (ADR-7).
+   */
+  async preparar(dto: AgregarComponenteDto): Promise<Result<ComponenteEquipoEntity, DomainError>> {
     const equipo = await this.equipoRepo.findById(dto.equipoId);
     if (!equipo || equipo.isDeleted()) {
       return Result.fail(new EquipoNoEncontradoError(dto.equipoId));
@@ -96,15 +120,13 @@ export class AgregarComponenteUseCase {
       equipoId: dto.equipoId,
       insumoId: insumo.id,
       descripcion: dto.descripcion ?? null,
-      numeroSerie: dto.numeroSerie ?? null,
+      numeroSerie: dto.unidadId ? null : (dto.numeroSerie ?? null),
       capacidad: dto.capacidad ?? null,
+      unidadId: dto.unidadId ?? null,
     });
     if (componenteResult.isFail()) {
       return Result.fail(componenteResult.getError());
     }
-    const componente = componenteResult.getValue();
-
-    await this.componenteRepo.save(componente);
-    return Result.ok(componente);
+    return Result.ok(componenteResult.getValue());
   }
 }

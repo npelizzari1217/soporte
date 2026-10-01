@@ -134,6 +134,12 @@ export interface MovimientoInsumoDialogProps {
   registroSector: UseFormRegisterReturn<"sectorId">;
   /** JSX ya resuelto por el caller (con SU `register` concreto) para insertar antes de "Cantidad". El ajuste lo usa para su selector de `tipo`; entrada y salida no lo pasan. */
   camposAdicionales?: ReactNode;
+  /** JSX ya resuelto por el caller para insertar justo después de "Cantidad" (los seriales de un insumo `SERIE`). */
+  camposTrasCantidad?: ReactNode;
+  /** `true` pide una cantidad entera (insumo `SERIE`): el campo avanza de a 1. */
+  cantidadEntera?: boolean;
+  /** `true` fija la cantidad en 1 (la pieza elegida): el campo se ve pero no se edita ni se registra. */
+  cantidadFija?: boolean;
 }
 
 /**
@@ -158,6 +164,9 @@ export function MovimientoInsumoDialog({
   registroEquipo,
   registroSector,
   camposAdicionales,
+  camposTrasCantidad,
+  cantidadEntera = false,
+  cantidadFija = false,
 }: MovimientoInsumoDialogProps) {
   // Los dos catálogos solo hacen falta DENTRO del diálogo: pedirlos ya con la
   // ficha montada le costaría un 403 innecesario a un usuario de depósito sin
@@ -194,20 +203,26 @@ export function MovimientoInsumoDialog({
             <label htmlFor={`${idPrefijo}-cantidad`} className="text-sm font-medium text-foreground">
               Cantidad
             </label>
-            <Input
-              id={`${idPrefijo}-cantidad`}
-              type="number"
-              step="0.01"
-              min="0.01"
-              error={!!errorCantidad}
-              {...registroCantidad}
-            />
+            {cantidadFija ? (
+              <Input id={`${idPrefijo}-cantidad`} value="1" readOnly disabled />
+            ) : (
+              <Input
+                id={`${idPrefijo}-cantidad`}
+                type="number"
+                step={cantidadEntera ? "1" : "0.01"}
+                min={cantidadEntera ? "1" : "0.01"}
+                error={!!errorCantidad}
+                {...registroCantidad}
+              />
+            )}
             {errorCantidad && (
               <p role="alert" className="text-sm text-destructive">
                 {errorCantidad.message}
               </p>
             )}
           </div>
+
+          {camposTrasCantidad}
 
           <div className="flex flex-col gap-1">
             <label htmlFor={`${idPrefijo}-motivo`} className="text-sm font-medium text-foreground">

@@ -17,6 +17,7 @@ function buildUnidad(overrides: Partial<UnidadMedida> = {}): UnidadMedida {
     codigo: "UN",
     nombre: "Unidad",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -40,7 +41,7 @@ describe("UnidadMedidaFormDialog", () => {
     await user.type(screen.getByLabelText("Nombre"), "Litro");
     await user.click(screen.getByRole("button", { name: /^crear$/i }));
 
-    await waitFor(() => expect(enviado).toEqual({ codigo: "LT", nombre: "Litro" }));
+    await waitFor(() => expect(enviado).toEqual({ codigo: "LT", nombre: "Litro", entera: false }));
   });
 
   it("editar prefilla desde la fila y el PATCH lleva el formulario completo", async () => {
@@ -65,7 +66,7 @@ describe("UnidadMedidaFormDialog", () => {
     await user.type(codigoInput, "UNI");
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
-    await waitFor(() => expect(enviado).toEqual({ codigo: "UNI", nombre: "Unidad" }));
+    await waitFor(() => expect(enviado).toEqual({ codigo: "UNI", nombre: "Unidad", entera: false }));
   });
 
   it("reabrir tras un cambio de la prop `unidad` muestra el valor vigente, no el del primer render", async () => {
@@ -124,5 +125,70 @@ describe("UnidadMedidaFormDialog", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/mayúsculas\/números\/guion bajo/i);
     expect(llamado).toBe(false);
+  });
+
+  it("crear con la casilla entera marcada envía entera: true", async () => {
+    const user = userEvent.setup();
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.post("/api/unidades-medida", async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...buildUnidad(), ...enviado, id: "um-2" }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<UnidadMedidaFormDialog trigger={<button>Nueva unidad</button>} />);
+    await user.click(screen.getByRole("button", { name: "Nueva unidad" }));
+    await user.type(screen.getByLabelText("Código"), "PZA");
+    await user.type(screen.getByLabelText("Nombre"), "Pieza");
+    await user.click(screen.getByRole("checkbox", { name: /entera/i }));
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(enviado).toEqual({ codigo: "PZA", nombre: "Pieza", entera: true }));
+  });
+
+  it("editar precarga la casilla y el PATCH lleva entera: true al marcarla", async () => {
+    const user = userEvent.setup();
+    const unidad = buildUnidad();
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.patch("/api/unidades-medida/um-1", async ({ request }) => {
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...unidad, ...enviado });
+      }),
+    );
+
+    renderWithProviders(<UnidadMedidaFormDialog unidad={unidad} trigger={<button>Editar</button>} />);
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    const casilla = screen.getByRole("checkbox", { name: /entera/i });
+    expect(casilla).toHaveAttribute("aria-checked", "false");
+    await user.click(casilla);
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(enviado).toEqual({ codigo: "UN", nombre: "Unidad", entera: true }));
+  });
+
+  it("desmarcar una unidad usada por un insumo SERIE muestra el motivo del backend y deja el diálogo abierto", async () => {
+    const user = userEvent.setup();
+    const motivo = "La unidad está en uso por insumos con seguimiento por serie.";
+    server.use(
+      http.patch("/api/unidades-medida/um-1", () =>
+        HttpResponse.json(
+          { statusCode: 422, code: "UNIDAD_MEDIDA_EN_USO_POR_SERIE", message: motivo, error: "Unprocessable Entity" },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    renderWithProviders(
+      <UnidadMedidaFormDialog unidad={buildUnidad({ entera: true })} trigger={<button>Editar</button>} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(screen.getByRole("checkbox", { name: /entera/i }));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText(motivo, { selector: "p[role='alert']" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^guardar$/i })).toBeInTheDocument();
   });
 });

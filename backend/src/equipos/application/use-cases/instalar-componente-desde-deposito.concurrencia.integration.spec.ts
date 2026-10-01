@@ -39,6 +39,7 @@ import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructur
 
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { construirOperacionesReal } from '../../../insumos/testing/operaciones-unidad-real';
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
 
@@ -99,6 +100,7 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
   let movimientoRepo: PrismaMovimientoInsumoRepository;
 
   const PREFIJO = `INSTC_${randomBytes(2).toString('hex')}_`;
+  const CODIGO_SERIE = `${PREFIJO}S`;
 
   let familiaId: string;
   let unidadMedidaId: string;
@@ -149,6 +151,7 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
   }, 30_000);
 
   afterAll(async () => {
+    await limpiarSerie();
     // Orden obligado por las FK: `movimientos_insumo.equipo_id` referencia
     // `equipos_informaticos.id` (misma base, a diferencia de `itemCompraId`) —
     // hay que borrar la bitácora ANTES de poder borrar los equipos.
@@ -166,7 +169,18 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
   beforeEach(async () => {
     await tenantClient.componenteEquipo.deleteMany({ where: { equipoId: { in: equipoIds } } });
     await tenantClient.movimientoInsumo.deleteMany({ where: { insumoId } });
+    await limpiarSerie();
   });
+
+  /** Borra lo que dejó el insumo `SERIE` del testigo, en el orden de las FK (todas `Restrict`). */
+  async function limpiarSerie(): Promise<void> {
+    await tenantClient.componenteEquipo.deleteMany({ where: { insumo: { codigo: CODIGO_SERIE } } });
+    await tenantClient.eventoUnidadInsumo.deleteMany({
+      where: { unidad: { insumo: { codigo: CODIGO_SERIE } } },
+    });
+    await tenantClient.movimientoInsumo.deleteMany({ where: { insumo: { codigo: CODIGO_SERIE } } });
+    await tenantClient.unidadInsumo.deleteMany({ where: { insumo: { codigo: CODIGO_SERIE } } });
+  }
 
   function conTenant<T>(fn: () => Promise<T>): Promise<T> {
     return tenantContext.run(
@@ -190,16 +204,19 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
       insumoRepo,
       familiaInsumoRepo,
     );
+    const operaciones = construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo });
     const registrarSalidaInsumoUseCase = new RegistrarSalidaInsumoUseCase(
       insumoRepo,
       movimientoRepo,
       txRunner,
       familiaInsumoRepo,
+      operaciones,
     );
     return new InstalarComponenteDesdeDepositoUseCase(
       txRunner,
       agregarComponenteUseCase,
       registrarSalidaInsumoUseCase,
+      operaciones,
       componenteRepo,
     );
   }
@@ -298,4 +315,138 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
     },
     60_000,
   );
+
+  /**
+   * TESTIGO del orden de locks (ADR-12, invariante L): con una unidad `SERIE`, el
+   * componente (L4) se escribe DESPUÉS de `operaciones.instalar` (L1, L2, L3).
+   *
+   * Un cliente externo retiene un lock bajo y la instalación queda esperándolo; con
+   * `pg_blocking_pids` (espera acotada) se comprueba, sobre el backend bloqueado, que
+   * TODAVÍA no escribió el componente: sin lock de relación sobre `componentes_equipo`
+   * (un INSERT toma `RowExclusiveLock` ahí). Si alguien guarda el componente antes de
+   * `instalar`, el lock ya estaría tomado y el test falla. No se mira `transactionid`:
+   * los locks de fila `FOR SHARE` de L1 ya le asignan un xid al servicio.
+   * No es una carrera de dos clientes (que puede no detectar una inversión): es una
+   * sonda determinista sobre qué tiene el servicio mientras espera.
+   */
+  describe('testigo del orden de locks al instalar una unidad (L1 a L3 antes de L4)', () => {
+    const ESPERA_MAXIMA_MS = 5_000;
+    let insumoSerieId: string;
+    let unidadId: string;
+
+    beforeEach(async () => {
+      const unidadEntera = await tenantClient.unidadMedida.create({
+        data: {
+          codigo: `${PREFIJO}E${randomBytes(2).toString('hex')}`,
+          nombre: 'Entera',
+          entera: true,
+        },
+      });
+      const insumo = await tenantClient.insumo.upsert({
+        where: { codigo: CODIGO_SERIE },
+        update: { seguimiento: 'SERIE' },
+        create: {
+          codigo: CODIGO_SERIE,
+          nombre: 'Repuesto SERIE del testigo',
+          familiaId,
+          unidadMedidaId: unidadEntera.id,
+          seguimiento: 'SERIE',
+        },
+      });
+      insumoSerieId = insumo.id;
+      unidadId = (
+        await tenantClient.unidadInsumo.create({
+          data: {
+            insumoId: insumoSerieId,
+            numeroSerie: 'SN-TESTIGO',
+            numeroSerieNormalizado: `${PREFIJO}SN-TESTIGO`,
+            condicion: 'NUEVO',
+            estado: 'EN_DEPOSITO',
+          },
+        })
+      ).id;
+    });
+
+    afterEach(async () => {
+      await limpiarSerie();
+    });
+
+    async function esperarBloqueadoPor(
+      testigo: PoolClient,
+      pidBloqueante: number,
+    ): Promise<number> {
+      const limite = Date.now() + ESPERA_MAXIMA_MS;
+      while (Date.now() < limite) {
+        const { rows } = await testigo.query(
+          'SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+          [pidBloqueante],
+        );
+        if (rows.length > 0) return rows[0].pid as number;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(
+        `Nadie quedo bloqueado por el backend ${pidBloqueante} en ${ESPERA_MAXIMA_MS} ms.`,
+      );
+    }
+
+    const LOCKS_BAJOS: Array<[string, string, () => unknown[]]> = [
+      [
+        'L1 (fila del insumo)',
+        'SELECT id FROM insumos WHERE id = $1 FOR NO KEY UPDATE',
+        () => [insumoSerieId],
+      ],
+      [
+        'L2 (advisory del insumo)',
+        'SELECT pg_advisory_xact_lock(hashtext($1))',
+        () => [`insumo-stock:${insumoSerieId}`],
+      ],
+      [
+        'L3 (fila de la unidad)',
+        'SELECT id FROM unidades_insumo WHERE id = $1 FOR NO KEY UPDATE',
+        () => [unidadId],
+      ],
+    ];
+
+    it.each(LOCKS_BAJOS)(
+      'esperando %s el servicio todavia no escribio el componente ni nada (sin lock de relacion sobre componentes_equipo)',
+      async (_nombre, consulta, parametros) => {
+        const bloqueador = await pool.connect();
+        const testigo = await pool.connect();
+        let operacion: Promise<{ isOk(): boolean }> | undefined;
+        try {
+          await bloqueador.query('BEGIN');
+          await bloqueador.query(consulta, parametros());
+          const { rows: pidRows } = await bloqueador.query('SELECT pg_backend_pid() AS pid');
+
+          operacion = conTenant(() =>
+            makeUseCase().execute({
+              equipoId: equipoIds[0],
+              insumoId: insumoSerieId,
+              usuarioId: DUMMY_USUARIO_ID,
+              unidadId,
+            }),
+          );
+          const pidServicio = await esperarBloqueadoPor(testigo, pidRows[0].pid);
+
+          const { rows } = await testigo.query(
+            `SELECT count(*) AS en_componentes FROM pg_locks
+             WHERE pid = $1 AND locktype = 'relation' AND relation = 'componentes_equipo'::regclass`,
+            [pidServicio],
+          );
+          expect(Number(rows[0].en_componentes)).toBe(0);
+        } finally {
+          await bloqueador.query('COMMIT').catch(() => undefined);
+          bloqueador.release();
+          testigo.release();
+          // Que la instalación termine siempre: si una aserción falló, no debe escribir después de la limpieza.
+          await operacion?.catch(() => undefined);
+        }
+
+        const resultado = await (operacion as Promise<{ isOk(): boolean }>);
+        expect(resultado.isOk()).toBe(true);
+        expect(await tenantClient.componenteEquipo.count({ where: { unidadId } })).toBe(1);
+      },
+      30_000,
+    );
+  });
 });

@@ -190,3 +190,36 @@ describe('UnidadMedidaEntity', () => {
     });
   });
 });
+
+describe('UnidadMedidaEntity — entera', () => {
+  const base = { codigo: 'UNI', nombre: 'Unidad', activo: true };
+  const fecha = new Date('2026-01-01');
+
+  it('create() sin entera queda false', () => {
+    expect(UnidadMedidaEntity.create(base).entera).toBe(false);
+  });
+
+  it('create() respeta entera explícito', () => {
+    expect(UnidadMedidaEntity.create({ ...base, entera: true }).entera).toBe(true);
+  });
+
+  it('reconstitute() conserva entera y lo lee false si falta', () => {
+    expect(
+      UnidadMedidaEntity.reconstitute({ ...base, entera: true }, 'u-1', fecha, fecha, null).entera,
+    ).toBe(true);
+    expect(UnidadMedidaEntity.reconstitute(base, 'u-2', fecha, fecha, null).entera).toBe(false);
+  });
+
+  it('actualizar() cambia entera en las dos direcciones y undefined no lo toca', () => {
+    const unidad = UnidadMedidaEntity.create(base);
+
+    unidad.actualizar({ entera: true });
+    expect(unidad.entera).toBe(true);
+
+    unidad.actualizar({ nombre: 'Otra' });
+    expect(unidad.entera).toBe(true);
+
+    unidad.actualizar({ entera: false });
+    expect(unidad.entera).toBe(false);
+  });
+});

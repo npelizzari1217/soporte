@@ -8,6 +8,7 @@ import {
   InsumoNoEsRepuestoError,
 } from '../../domain/errors/equipos.errors';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
+import { UnidadNoDisponibleError } from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 /**
  * WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153) —
@@ -57,13 +58,15 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     txRunner?: unknown;
     agregarComponenteUseCase?: unknown;
     registrarSalidaInsumoUseCase?: unknown;
+    operaciones?: unknown;
     componenteRepo?: unknown;
   }) {
     return new InstalarComponenteDesdeDepositoUseCase(
       (overrides.txRunner ?? makeTxRunner()) as never,
       (overrides.agregarComponenteUseCase ?? { execute: vi.fn() }) as never,
       (overrides.registrarSalidaInsumoUseCase ?? { execute: vi.fn() }) as never,
-      (overrides.componenteRepo ?? { save: vi.fn() }) as never,
+      (overrides.operaciones ?? { instalar: vi.fn() }) as never,
+      (overrides.componenteRepo ?? { save: vi.fn(), findById: vi.fn() }) as never,
     );
   }
 
@@ -277,5 +280,165 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
         usuarioId: 'usuario-uuid',
       }),
     ).rejects.toBe(fallaInesperada);
+  });
+
+  describe('con unidadId (ADR-7, orden de locks ADR-12)', () => {
+    const insumoId = 'insumo-uuid';
+
+    function armarConUnidad(
+      over: { instalar?: unknown; preparar?: unknown; findById?: unknown } = {},
+    ) {
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+        unidadId: 'unidad-1',
+      }).getValue();
+      const movimiento = makeMovimiento(insumoId);
+      const agregarComponenteUseCase = {
+        execute: vi.fn(),
+        preparar: vi.fn().mockResolvedValue(over.preparar ?? Result.ok(componente)),
+      };
+      const registrarSalidaInsumoUseCase = { execute: vi.fn() };
+      const operaciones = {
+        instalar: vi
+          .fn()
+          .mockResolvedValue(
+            over.instalar ?? Result.ok([{ unidad: { id: 'unidad-1' }, movimiento }]),
+          ),
+      };
+      const componenteRepo = {
+        save: vi.fn().mockResolvedValue(undefined),
+        findById: vi.fn().mockResolvedValue(over.findById ?? componente),
+      };
+      const useCase = makeUseCase({
+        agregarComponenteUseCase,
+        registrarSalidaInsumoUseCase,
+        operaciones,
+        componenteRepo,
+      });
+      return {
+        componente,
+        movimiento,
+        agregarComponenteUseCase,
+        registrarSalidaInsumoUseCase,
+        operaciones,
+        componenteRepo,
+        useCase,
+      };
+    }
+
+    const dto = {
+      equipoId: 'equipo-uuid',
+      insumoId,
+      usuarioId: 'usuario-uuid',
+      unidadId: 'unidad-1',
+      numeroSerie: 'IGNORADO',
+      condicion: 'USADO' as const,
+    };
+
+    it('preparar -> operaciones.instalar -> vincular -> UN solo save, y no usa la salida ni execute()', async () => {
+      const t = armarConUnidad();
+
+      const result = await t.useCase.execute(dto);
+
+      expect(result.isOk()).toBe(true);
+      expect(t.agregarComponenteUseCase.execute).not.toHaveBeenCalled();
+      expect(t.registrarSalidaInsumoUseCase.execute).not.toHaveBeenCalled();
+      expect(t.agregarComponenteUseCase.preparar).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+        unidadId: 'unidad-1',
+      });
+      expect(t.operaciones.instalar).toHaveBeenCalledWith(
+        [
+          {
+            unidadId: 'unidad-1',
+            equipoId: 'equipo-uuid',
+            componenteId: t.componente.id,
+            insumoId,
+          },
+        ],
+        { usuarioId: 'usuario-uuid' },
+      );
+      expect(t.componente.instalacionMovimientoId).toBe(t.movimiento.id);
+      expect(t.componenteRepo.save).toHaveBeenCalledTimes(1);
+      const orden = [
+        t.agregarComponenteUseCase.preparar.mock.invocationCallOrder[0],
+        t.operaciones.instalar.mock.invocationCallOrder[0],
+        t.componenteRepo.save.mock.invocationCallOrder[0],
+      ];
+      expect(orden).toEqual([...orden].sort((a, b) => a - b));
+    });
+
+    it('devuelve el componente releido (con el serial resuelto de la unidad)', async () => {
+      const releido = ComponenteEquipoEntity.create({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        descripcion: null,
+        numeroSerie: 'SN-RESUELTO',
+        capacidad: null,
+        unidadId: 'unidad-1',
+      }).getValue();
+      const t = armarConUnidad({ findById: releido });
+
+      const result = await t.useCase.execute(dto);
+
+      expect(result.getValue()).toBe(releido);
+    });
+
+    it('si operaciones.instalar falla (pendiente, de otro insumo, ya tomada) devuelve su error y NO guarda el componente', async () => {
+      const error = new UnidadNoDisponibleError('unidad-1', 'ya no esta en el deposito.');
+      const t = armarConUnidad({ instalar: Result.fail(error) });
+
+      const result = await t.useCase.execute(dto);
+
+      expect(result.getError()).toBe(error);
+      expect(t.componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('si preparar falla NO toma ningun lock ni escribe', async () => {
+      const error = new InsumoNoEsRepuestoError(insumoId);
+      const t = armarConUnidad({ preparar: Result.fail(error) });
+
+      const result = await t.useCase.execute(dto);
+
+      expect(result.getError()).toBe(error);
+      expect(t.operaciones.instalar).not.toHaveBeenCalled();
+      expect(t.componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sin unidadId sigue el camino de siempre (execute() del alta y la SALIDA), sin tocar operaciones', async () => {
+      const componente = makeComponente(insumoId);
+      const operaciones = { instalar: vi.fn() };
+      const registrarSalidaInsumoUseCase = {
+        execute: vi.fn().mockResolvedValue(Result.ok(makeMovimiento(insumoId))),
+      };
+      const agregarComponenteUseCase = {
+        execute: vi.fn().mockResolvedValue(Result.ok(componente)),
+        preparar: vi.fn(),
+      };
+      const useCase = makeUseCase({
+        agregarComponenteUseCase,
+        registrarSalidaInsumoUseCase,
+        operaciones,
+      });
+
+      const result = await useCase.execute({
+        equipoId: 'equipo-uuid',
+        insumoId,
+        usuarioId: 'usuario-uuid',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(operaciones.instalar).not.toHaveBeenCalled();
+      expect(agregarComponenteUseCase.preparar).not.toHaveBeenCalled();
+      expect(registrarSalidaInsumoUseCase.execute).toHaveBeenCalledTimes(1);
+    });
   });
 });

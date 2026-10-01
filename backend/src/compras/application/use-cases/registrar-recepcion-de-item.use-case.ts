@@ -53,6 +53,12 @@ export interface RegistrarRecepcionDeItemDto {
   usuarioId: string;
   cantidadRecibida: number;
   fecha?: Date;
+  /**
+   * Seriales de las piezas que entran en ESTA recepción (un insumo `SERIE`).
+   * Como mucho tantos como el delta: las piezas sin serial quedan con serie
+   * pendiente (ADR-6). Con un insumo `NINGUNO` la entrada los rechaza.
+   */
+  seriales?: readonly string[];
 }
 
 /**
@@ -89,6 +95,17 @@ export interface RegistrarRecepcionDeItemDto {
  * 3. **El fallo de la entrada se LANZA dentro del `run()`** y se convierte de
  *    vuelta a `Result.fail` afuera. Ver `FalloEntradaDeStock` para el porqué
  *    completo; en una línea: `$transaction` solo revierte ante una excepción.
+ *    Vale en especial para un serial duplicado de un insumo `SERIE`: si el
+ *    `P2002` ocurre dentro de la transacción, Postgres la deja abortada y solo
+ *    el rechazo del `run()` la cierra con rollback.
+ *
+ * ## Insumos `SERIE` (repuestos-numero-de-serie, ADR-11)
+ *
+ * La recepción sigue subiendo el stock por delta; `dto.seriales` viaja a la
+ * entrada junto con `completarConPendientes: true`. La entrada valida que el
+ * delta sea entero (`CantidadNoEnteraError`) y que los seriales no superen el
+ * delta (`SerialesNoCoincidenError`); cualquiera de los dos rechaza TODA la
+ * recepción, y el delta cero no crea ninguna unidad.
  *
  * El ítem SIN insumo —el histórico de texto libre, que es la mayoría— se
  * recibe exactamente como antes: no hay a qué insumo imputarle nada. Y un
@@ -178,6 +195,13 @@ export class RegistrarRecepcionDeItemUseCase {
           // que repita "vino de tal compra" sería el mismo hecho escrito dos
           // veces, y una de las dos copias envejece mal.
           itemCompraId: item.id,
+          // Con un insumo `SERIE` la entrada crea una unidad por pieza del
+          // delta y completa con serie pendiente las que no traen serial: la
+          // recepción queda completa igual (ADR-6). Con `NINGUNO` la opción
+          // no hace nada. Sin `seriales` no se manda la clave: `[]` ya es un
+          // dato y un insumo `NINGUNO` lo rechazaría.
+          completarConPendientes: true,
+          ...(dto.seriales !== undefined && { seriales: dto.seriales }),
         });
 
         if (entrada.isFail()) {

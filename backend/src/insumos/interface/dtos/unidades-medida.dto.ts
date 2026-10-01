@@ -69,6 +69,11 @@ export class CreateUnidadMedidaDto {
   @Transform(transformarNombre)
   @MaxLength(UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH)
   nombre!: string;
+
+  /** `true` si la unidad mide piezas enteras (F3). Ausente se lee como `false`. */
+  @IsOptional()
+  @IsBoolean()
+  entera?: boolean;
 }
 
 /** Body de `PATCH /unidades-medida/:id` — PATCH parcial. */
@@ -89,6 +94,11 @@ export class EditUnidadMedidaDto {
   @Transform(transformarNombre)
   @MaxLength(UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH)
   nombre?: string;
+
+  /** Marca o desmarca la unidad como entera; desmarcar se rechaza si un insumo `SERIE` la usa. */
+  @IsOptional()
+  @IsBoolean()
+  entera?: boolean;
 }
 
 /** Body de `PATCH /unidades-medida/:id/estado` — activar/desactivar. */
@@ -103,6 +113,7 @@ export interface UnidadMedidaResponseDto {
   codigo: string;
   nombre: string;
   activo: boolean;
+  entera: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -119,6 +130,7 @@ export function toUnidadMedidaResponseDto(unidad: UnidadMedidaEntity): UnidadMed
     codigo: unidad.codigo,
     nombre: unidad.nombre,
     activo: unidad.activo,
+    entera: unidad.entera,
     createdAt: unidad.createdAt.toISOString(),
     updatedAt: unidad.updatedAt.toISOString(),
   };

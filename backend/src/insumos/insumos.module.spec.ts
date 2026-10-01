@@ -150,18 +150,17 @@ describe('InsumosModule wiring', () => {
    * construye igual y le entrega al caso de uso un colaborador que no es el
    * que su constructor espera.
    *
-   * La asimetría entre los tres registros es la decisión de diseño, no un
-   * descuido: la ENTRADA no recibe el `TENANT_TX_RUNNER` porque suma y no
-   * decide nada bajo la sección crítica, mientras que la SALIDA y el AJUSTE lo
-   * reciben porque pueden dejar el saldo negativo. Si la entrada empezara a
-   * recibirlo, el `Pick` angosto de su constructor dejaría de ser el mecanismo
-   * que le impide tomar el lock por descuido.
+   * La asimetría entre los registros es la decisión de diseño: la ENTRADA recibe
+   * el `TENANT_TX_RUNNER` solo para leer el seguimiento bajo L1 (ADR-5) y su
+   * `Pick` de `movimientoRepo` sigue sin `lockAndSumByTipo`; la SALIDA y el
+   * AJUSTE lo reciben porque pueden dejar el saldo negativo. Los tres reciben
+   * además `OperacionesUnidadInsumo` para la rama `SERIE`.
    */
   it.each([
-    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 3],
-    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 4],
-    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 4],
-    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 3],
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 5],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 5],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 5],
+    ['ConsultarStockInsumoUseCase', ConsultarStockInsumoUseCase, 4],
     ['ListarMovimientosInsumoUseCase', ListarMovimientosInsumoUseCase, 2],
   ])('inyecta en %s los puertos que su constructor declara', (_nombre, useCase, cantidad) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
@@ -177,20 +176,20 @@ describe('InsumosModule wiring', () => {
 
   /**
    * La condición USADO se valida contra la familia del insumo: los tres casos
-   * de uso que asientan movimientos reciben el catálogo de familias, y como
-   * ÚLTIMO parámetro de su constructor.
+   * de uso que asientan movimientos reciben el catálogo de familias, en la
+   * posición que su constructor declara.
    */
   it.each([
-    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase],
-    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase],
-    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase],
-  ])('inyecta en %s el catálogo de familias como último puerto', (_nombre, useCase) => {
+    ['RegistrarEntradaInsumoUseCase', RegistrarEntradaInsumoUseCase, 2],
+    ['RegistrarSalidaInsumoUseCase', RegistrarSalidaInsumoUseCase, 3],
+    ['RegistrarAjusteInsumoUseCase', RegistrarAjusteInsumoUseCase, 3],
+  ])('inyecta en %s el catálogo de familias en su posición', (_nombre, useCase, posicion) => {
     const providers = (Reflect.getMetadata('providers', InsumosModule) ?? []) as Array<{
       provide?: unknown;
       inject?: unknown[];
     }>;
     const registro = providers.find((p) => p.provide === useCase);
 
-    expect(registro?.inject?.[registro.inject.length - 1]).toBe(FAMILIA_INSUMO_REPOSITORY);
+    expect(registro?.inject?.[posicion]).toBe(FAMILIA_INSUMO_REPOSITORY);
   });
 });

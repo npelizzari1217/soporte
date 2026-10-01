@@ -38,6 +38,13 @@ export interface MovimientoInsumoProps {
    * `movimientos_insumo_item_compra_id_fkey`.
    */
   itemCompraId: string | null;
+  /**
+   * Unidad por número de serie que mueve el asiento, o `null` si es un
+   * movimiento por cantidad. Con unidad, `cantidad` es siempre 1 (una unidad
+   * por pieza). Que el insumo sea `SERIE` y la unidad sea de ese insumo lo
+   * garantiza `OperacionesUnidadInsumo`; la FK y el CHECK son backstop.
+   */
+  unidadId: string | null;
 }
 
 /**
@@ -48,12 +55,13 @@ export interface MovimientoInsumoProps {
  */
 export type CrearMovimientoInsumoProps = Omit<
   MovimientoInsumoProps,
-  'motivo' | 'equipoId' | 'sectorId' | 'itemCompraId'
+  'motivo' | 'equipoId' | 'sectorId' | 'itemCompraId' | 'unidadId'
 > & {
   motivo?: string | null;
   equipoId?: string | null;
   sectorId?: string | null;
   itemCompraId?: string | null;
+  unidadId?: string | null;
 };
 
 /** Escala de la columna: `movimientos_insumo.cantidad DECIMAL(10,2)`. */
@@ -167,6 +175,22 @@ function validarCantidad(cantidad: number): void {
 }
 
 /**
+ * Regla `unidadId ⇒ cantidad = 1`: un movimiento de una unidad por número de
+ * serie mueve exactamente una pieza. Espeja el CHECK
+ * `movimientos_insumo_unidad_cantidad_check` y va como `throw` por el mismo
+ * motivo que `validarCantidad`.
+ *
+ * @param unidadId Unidad del movimiento, o `null` si es por cantidad.
+ * @param cantidad Cantidad ya validada.
+ * @returns Nada; lanza si hay unidad y la cantidad no es 1.
+ */
+function validarUnidad(unidadId: string | null, cantidad: number): void {
+  if (unidadId !== null && cantidad !== 1) {
+    throw new Error('MovimientoInsumoEntity: un movimiento con unidad debe tener cantidad 1.');
+  }
+}
+
+/**
  * Precondición de largo del motivo, medida sobre el valor YA normalizado.
  * Mismo criterio `throw` que `validarCantidad`, y por el mismo motivo.
  *
@@ -206,6 +230,14 @@ function validarMotivo(motivo: string | null): void {
  * Ref design: openspec/changes/insumos-entrega-2/design.md, decisiones 3 y 4.
  */
 export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
+  /**
+   * Serial de la unidad del asiento, resuelto en la LECTURA. No es columna del
+   * asiento ni participa de `create()`: solo lo completa `reconstitute()` cuando
+   * el repositorio trae la unidad. `null` si el asiento es por cantidad o el
+   * caller no lo resolvió.
+   */
+  private _numeroSerie: string | null = null;
+
   private constructor(props: MovimientoInsumoProps, id?: string) {
     super(props, id);
   }
@@ -239,6 +271,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
     id?: string,
   ): Result<MovimientoInsumoEntity, MotivoAjusteRequeridoError> {
     validarCantidad(props.cantidad);
+    validarUnidad(props.unidadId ?? null, props.cantidad);
 
     const motivo = normalizarMotivoMovimiento(props.motivo);
     validarMotivo(motivo);
@@ -259,6 +292,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
           equipoId: props.equipoId ?? null,
           sectorId: props.sectorId ?? null,
           itemCompraId: props.itemCompraId ?? null,
+          unidadId: props.unidadId ?? null,
         },
         id,
       ),
@@ -280,17 +314,20 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
    * movimiento "modificado hoy" que nadie tocó nunca—. Mismo criterio que
    * `ComentarioReparacionEntity.reconstitute`.
    *
-   * @param props Campos del movimiento leídos de la base, con el motivo ya normalizado en su momento.
+   * @param props Campos del movimiento leídos de la base, con el motivo ya normalizado en su momento. `unidadId` ausente se lee como `null`; `MovimientoInsumoMapper` lo manda siempre.
    * @param id Id persistido.
    * @param createdAt Momento en que se asentó el movimiento.
+   * @param numeroSerie Serial de la unidad del asiento, si la lectura lo trajo.
    * @returns La entidad reconstituida.
    */
   static reconstitute(
-    props: MovimientoInsumoProps,
+    props: Omit<MovimientoInsumoProps, 'unidadId'> & { unidadId?: string | null },
     id: string,
     createdAt: Date,
+    numeroSerie: string | null = null,
   ): MovimientoInsumoEntity {
-    const entity = new MovimientoInsumoEntity(props, id);
+    const entity = new MovimientoInsumoEntity({ ...props, unidadId: props.unidadId ?? null }, id);
+    entity._numeroSerie = numeroSerie;
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: createdAt });
     entity._deletedAt = null;
     return entity;
@@ -345,5 +382,15 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
    */
   get itemCompraId(): string | null {
     return this.props.itemCompraId;
+  }
+
+  /** Unidad por número de serie que mueve el asiento, o `null` si es por cantidad. */
+  get unidadId(): string | null {
+    return this.props.unidadId;
+  }
+
+  /** Serial de la unidad del asiento, si el repositorio lo resolvió al leer; si no, `null`. */
+  get numeroSerie(): string | null {
+    return this._numeroSerie;
   }
 }

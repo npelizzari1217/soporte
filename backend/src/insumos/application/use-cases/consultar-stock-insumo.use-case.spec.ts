@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ConsultarStockInsumoUseCase } from './consultar-stock-insumo.use-case';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
+import { UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { TipoMovimientoInsumo } from '../../domain/entities/tipo-movimiento-insumo';
 import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
 import { sumasCon } from '../../testing/sumas-movimiento';
@@ -54,6 +55,8 @@ describe('ConsultarStockInsumoUseCase', () => {
       insumo?: InsumoEntity | null;
       sumas?: SumasPorCondicionYTipo;
       familia?: EstadoFamiliaFake;
+      unidades?: UnidadInsumoEntity[];
+      conteo?: { NUEVO: number; USADO: number };
     } = {},
   ) {
     const encontrado = opciones.insumo === undefined ? insumo() : opciones.insumo;
@@ -67,9 +70,21 @@ describe('ConsultarStockInsumoUseCase', () => {
 
     const familiaRepo = familiaRepoFake(opciones.familia);
 
-    const useCase = new ConsultarStockInsumoUseCase(insumoRepo, movimientoRepo, familiaRepo);
+    const unidadRepo = {
+      contarEnDepositoPorCondicion: vi
+        .fn()
+        .mockResolvedValue(opciones.conteo ?? { NUEVO: 0, USADO: 0 }),
+      listarPorInsumo: vi.fn().mockResolvedValue(opciones.unidades ?? []),
+    };
 
-    return { useCase, insumoRepo, movimientoRepo, familiaRepo };
+    const useCase = new ConsultarStockInsumoUseCase(
+      insumoRepo,
+      movimientoRepo,
+      familiaRepo,
+      unidadRepo,
+    );
+
+    return { useCase, insumoRepo, movimientoRepo, familiaRepo, unidadRepo };
   }
 
   // ─── El saldo ────────────────────────────────────────────────────────────
@@ -208,6 +223,8 @@ describe('ConsultarStockInsumoUseCase', () => {
       admiteUsado: true,
       stockMinimo: 20,
       estadoReposicion: 'SUFICIENTE',
+      seguimiento: 'NINGUNO',
+      pendientesDeSerie: 0,
     });
   });
 
@@ -333,5 +350,77 @@ describe('ConsultarStockInsumoUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().stock).toBe(8);
     expect(result.getValue().estadoReposicion).toBe('SUFICIENTE');
+  });
+
+  // ─── Insumo SERIE: el saldo sale de contar unidades (ADR-2) ──────────────
+
+  describe('insumo SERIE', () => {
+    function insumoSerie(stockMinimo: number | null = null): InsumoEntity {
+      return InsumoEntity.create(
+        { ...propsDeInsumo({ stockMinimo }), seguimiento: 'SERIE' },
+        'ins-1',
+      );
+    }
+
+    function pendiente(): UnidadInsumoEntity {
+      return UnidadInsumoEntity.crearEnDeposito({
+        insumoId: 'ins-1',
+        condicion: 'NUEVO',
+        numeroSerie: null,
+      }).getValue();
+    }
+
+    it('el saldo por condición sale del conteo de unidades EN_DEPOSITO, no de la bitácora', async () => {
+      // La bitácora diría 50 NUEVO: si el caso de uso la leyera, el número saldría de ahí.
+      const c = buildColaboradores({
+        insumo: insumoSerie(),
+        sumas: sumas({ ENTRADA: 50 }),
+        conteo: { NUEVO: 3, USADO: 2 },
+      });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().saldos).toEqual({ NUEVO: 3, USADO: 2 });
+      expect(result.getValue().stock).toBe(5);
+      expect(result.getValue().seguimiento).toBe('SERIE');
+      expect(c.movimientoRepo.sumByTipo).not.toHaveBeenCalled();
+      expect(c.unidadRepo.contarEnDepositoPorCondicion).toHaveBeenCalledWith('ins-1');
+    });
+
+    it('informa cuántas series pendientes hay entre las unidades en depósito', async () => {
+      const c = buildColaboradores({
+        insumo: insumoSerie(),
+        conteo: { NUEVO: 2, USADO: 0 },
+        unidades: [pendiente(), pendiente()],
+      });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().pendientesDeSerie).toBe(2);
+      expect(c.unidadRepo.listarPorInsumo).toHaveBeenCalledWith('ins-1', ['EN_DEPOSITO']);
+    });
+
+    it('la reposición se evalúa sobre el saldo NUEVO: los usados no ocultan la falta', async () => {
+      const c = buildColaboradores({
+        insumo: insumoSerie(5),
+        conteo: { NUEVO: 2, USADO: 10 },
+      });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().estadoReposicion).toBe('BAJO_MINIMO');
+    });
+
+    it('un insumo NINGUNO conserva la bitácora, sin pendientes y sin leer unidades', async () => {
+      const c = buildColaboradores({ sumas: sumas({ ENTRADA: 7 }) });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().stock).toBe(7);
+      expect(result.getValue().seguimiento).toBe('NINGUNO');
+      expect(result.getValue().pendientesDeSerie).toBe(0);
+      expect(c.unidadRepo.contarEnDepositoPorCondicion).not.toHaveBeenCalled();
+      expect(c.unidadRepo.listarPorInsumo).not.toHaveBeenCalled();
+    });
   });
 });

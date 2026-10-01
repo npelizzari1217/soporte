@@ -66,6 +66,7 @@ import { MovimientoEntradaDialog } from "./movimiento-entrada-dialog";
 import { MovimientoSalidaDialog } from "./movimiento-salida-dialog";
 import { MovimientoAjusteDialog } from "./movimiento-ajuste-dialog";
 import { InsumoFormDialog } from "./insumo-form-dialog";
+import { UnidadesInsumoSection } from "./unidades-insumo-section";
 import type {
   CondicionStock,
   EstadoReposicionInsumo,
@@ -399,6 +400,9 @@ export function InsumoDetailView({ insumoId, seccion = "insumos" }: InsumoDetail
           </div>
           {existencia(nombre)}
         </section>
+
+        {/* Solo un insumo con seguimiento por serie tiene unidades. */}
+        {insumo.seguimiento === "SERIE" && <UnidadesInsumoSection insumoId={insumo.id} />}
 
         <section className="flex flex-col gap-3 rounded-lg border border-border p-4">
           <h2 className="text-sm font-semibold text-foreground">Movimientos</h2>

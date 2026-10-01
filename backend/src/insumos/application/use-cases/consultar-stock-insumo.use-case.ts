@@ -3,10 +3,16 @@ import {
   EstadoReposicionInsumo,
   evaluarReposicion,
 } from '../../domain/entities/estado-reposicion-insumo';
-import { calcularSaldos, CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
+import { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
+import {
+  calcularSaldos,
+  CondicionStock,
+  saldosDesdeUnidades,
+} from '../../domain/entities/tipo-movimiento-insumo';
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import { IUnidadInsumoRepository } from '../../domain/ports/i-unidad-insumo.repository';
 import {
   validarCondicionAdmitida,
   validarInsumoElegible,
@@ -46,6 +52,13 @@ export interface StockDeInsumo {
    * USADO no cuenta: un repuesto usado no reemplaza a uno nuevo para reponer.
    */
   estadoReposicion: EstadoReposicionInsumo;
+  /** Cómo se sigue el insumo: decide de qué fuente sale el saldo (ADR-2). */
+  seguimiento: SeguimientoInsumo;
+  /**
+   * Unidades `EN_DEPOSITO` sin serial cargado (series pendientes). Siempre `0`
+   * con `NINGUNO`. Cuentan en el saldo pero no pueden salir ni instalarse.
+   */
+  pendientesDeSerie: number;
 }
 
 /**
@@ -74,6 +87,13 @@ export interface StockDeInsumo {
  * mismo que el registro de una salida usa para autorizar. Dos copias
  * discreparían el día que entre un tipo nuevo.
  *
+ * **Único lector que ramifica por seguimiento (ADR-2).** Con `SERIE` el saldo
+ * sale de contar las unidades `EN_DEPOSITO` por condición
+ * (`saldosDesdeUnidades`); con `NINGUNO`, de la bitácora. `INSTALADA`,
+ * `ENTREGADA` y `DESCARTADA` no cuentan. Las dos fuentes coinciden por el
+ * invariante que verifica `invariante-serie.integration.spec.ts`. Leer el
+ * seguimiento sin lock es coherente con lo dicho arriba: es una foto.
+ *
  * Elegibilidad del insumo:
  *
  * - Existir y estar VIGENTE es obligatorio. La baja lógica cuenta como
@@ -91,6 +111,10 @@ export class ConsultarStockInsumoUseCase {
     private readonly insumoRepo: Pick<IInsumoRepository, 'findById'>,
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'sumByTipo'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
+    private readonly unidadRepo: Pick<
+      IUnidadInsumoRepository,
+      'contarEnDepositoPorCondicion' | 'listarPorInsumo'
+    >,
   ) {}
 
   /**
@@ -110,8 +134,15 @@ export class ConsultarStockInsumoUseCase {
     // El id sale de la entidad recién leída y no del argumento: es el valor
     // canónico que la base ya reconoció, mismo criterio que el registro de una
     // salida.
-    const sumas = await this.movimientoRepo.sumByTipo(insumo.id);
-    const saldos = calcularSaldos(sumas);
+    const esSerie = insumo.seguimiento === 'SERIE';
+    const saldos = esSerie
+      ? saldosDesdeUnidades(await this.unidadRepo.contarEnDepositoPorCondicion(insumo.id))
+      : calcularSaldos(await this.movimientoRepo.sumByTipo(insumo.id));
+    const pendientesDeSerie = esSerie
+      ? (await this.unidadRepo.listarPorInsumo(insumo.id, ['EN_DEPOSITO'])).filter(
+          (unidad) => unidad.numeroSerie === null,
+        ).length
+      : 0;
     const admiteUsado = (await validarCondicionAdmitida(this.familiaRepo, insumo, 'USADO')).isOk();
 
     return Result.ok({
@@ -122,6 +153,8 @@ export class ConsultarStockInsumoUseCase {
       stockMinimo: insumo.stockMinimo,
       // La reposición mira solo lo NUEVO: los usados no ocultan la falta.
       estadoReposicion: evaluarReposicion(saldos.NUEVO, insumo.stockMinimo),
+      seguimiento: insumo.seguimiento,
+      pendientesDeSerie,
     });
   }
 }

@@ -25,12 +25,14 @@ import {
   Min,
   MinLength,
   IsUUID,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import {
   CONDICIONES_STOCK,
   CondicionStock,
 } from '../../../insumos/domain/entities/tipo-movimiento-insumo';
+import { EsSerialDeUnidad } from '../../../insumos/interface/validators/es-serial-de-unidad';
 import { transformarMotivo } from '../../../insumos/interface/dtos/movimientos-insumo.dto';
 import { MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
@@ -275,21 +277,41 @@ export class CreateComponenteHttpDto {
   descontarStock?: boolean;
 
   /**
-   * Condición del saldo del que sale la unidad. Omitida = `NUEVO`. Solo rige
-   * con `descontarStock` verdadero: con `false` el controller la ignora (ADR-7).
+   * Condición del saldo del que sale la unidad. Omitida = `NUEVO`. Con
+   * `descontarStock` verdadero es la del saldo; con `false` solo la aplica el caso
+   * de uso a la unidad que nace de un insumo `SERIE` (D3) y con `NINGUNO` se ignora.
    */
   @IsOptional()
   @IsIn(CONDICIONES_STOCK)
   condicion?: CondicionStock;
+
+  /**
+   * Unidad `SERIE` que se instala (la elige el usuario por su serial). Obligatoria
+   * en la práctica para un insumo `SERIE` con descuento; con ella `condicion` y
+   * `numeroSerie` se ignoran porque son datos de la unidad (ADR-7). Con
+   * `descontarStock: false` se rechaza (422): sin descuento la unidad nace del serial.
+   */
+  @IsOptional()
+  @IsUUID()
+  unidadId?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(COMPONENTE_DESCRIPCION_MAX_LENGTH)
   descripcion?: string | null;
 
+  /**
+   * Serial. Con un insumo `SERIE` sin descuento es el de la unidad que nace (D3): se
+   * recorta y se mide también normalizado (`ß` pasa a `SS`), porque la entidad lanza
+   * ante el desborde. Vacío o ausente no se valida acá: lo decide el caso de uso
+   * (`SerialRequeridoError` con `SERIE`; con `NINGUNO` el campo es opcional).
+   */
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
   @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
+  @ValidateIf((o: CreateComponenteHttpDto) => o.numeroSerie !== '')
+  @EsSerialDeUnidad()
   numeroSerie?: string | null;
 
   @IsOptional()
@@ -338,6 +360,20 @@ export class RetirarComponenteHttpDto {
   @Transform(transformarMotivo)
   @MaxLength(MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH)
   motivo?: string | null;
+
+  /**
+   * Serial de un componente LEGADO (sin unidad) de un insumo hoy `SERIE`, para
+   * devolverlo al depósito (`STOCK_USADO`). Se recorta y se valida como el de una
+   * unidad (`ß` pasa a `SS`: la entidad lanza ante el desborde). Vacío o ausente no
+   * se valida acá: lo decide el caso de uso (`SerialRequeridoError`).
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(COMPONENTE_NUMERO_SERIE_MAX_LENGTH)
+  @ValidateIf((o: RetirarComponenteHttpDto) => o.numeroSerie !== '')
+  @EsSerialDeUnidad()
+  numeroSerie?: string | null;
 }
 
 // ─── Response DTOs ────────────────────────────────────────────────────────────
@@ -401,7 +437,10 @@ export interface ComponenteResponseDto {
   /** Repuesto del catálogo vinculado; el tipo ya no viaja en esta respuesta (ADR-6). */
   insumoId: string;
   descripcion: string | null;
+  /** Con unidad, el serial de la unidad (resuelto al leer); si no, el texto del componente. */
   numeroSerie: string | null;
+  /** Unidad de insumo `SERIE` que lleva el componente, o `null` (legado / sin seguimiento por serie). */
+  unidadId: string | null;
   capacidad: string | null;
   activo: boolean;
   deletedAt: string | null;
@@ -424,6 +463,7 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
     insumoId: componente.insumoId,
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
+    unidadId: componente.unidadId,
     capacidad: componente.capacidad,
     activo: componente.activo,
     deletedAt: componente.deletedAt ? componente.deletedAt.toISOString() : null,

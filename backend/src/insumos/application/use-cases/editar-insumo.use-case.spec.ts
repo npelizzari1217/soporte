@@ -6,12 +6,14 @@ import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codigo-alternativo.entity';
 import { CompatibilidadModelo } from '../../domain/entities/compatibilidad-modelo';
 import { ModeloEquipoEntity } from '../../domain/entities/modelo-equipo.entity';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { UnidadMedidaNoEnteraError } from '../../domain/errors/unidades-medida.errors';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 
 describe('EditarInsumoUseCase', () => {
   type InsumoRepoMock = Pick<
     IInsumoRepository,
-    'findById' | 'findConflictosDeCodigoAlternativo' | 'save'
+    'findById' | 'findConflictosDeCodigoAlternativo' | 'save' | 'bloquearParaCambioDeSeguimiento'
   >;
 
   function buildInsumo(
@@ -39,6 +41,9 @@ describe('EditarInsumoUseCase', () => {
       findById: vi.fn().mockResolvedValue(insumo),
       findConflictosDeCodigoAlternativo: vi.fn().mockResolvedValue([]),
       save: vi.fn().mockResolvedValue(undefined),
+      bloquearParaCambioDeSeguimiento: vi
+        .fn()
+        .mockResolvedValue({ seguimiento: 'NINGUNO', unidadMedidaId: 'uni-1' }),
       ...overrides,
     };
   }
@@ -55,8 +60,19 @@ describe('EditarInsumoUseCase', () => {
     return { findById: vi.fn().mockResolvedValue(familia) };
   }
 
-  function buildUnidadRepo(unidad: UnidadMedidaEntity | null = unidadHabilitada()) {
-    return { findById: vi.fn().mockResolvedValue(unidad) };
+  function buildUnidadRepo(
+    unidad: UnidadMedidaEntity | null = unidadHabilitada(),
+    { entera = true }: { entera?: boolean } = {},
+  ) {
+    return {
+      findById: vi.fn().mockResolvedValue(unidad),
+      leerParaUso: vi.fn().mockResolvedValue(unidad ? { entera } : null),
+    };
+  }
+
+  /** Runner falso que ejecuta el callback directamente, sin Prisma real. */
+  function buildTxRunner(): Pick<ITenantTransactionRunner, 'run'> {
+    return { run: async <T>(fn: () => Promise<T>): Promise<T> => fn() };
   }
 
   function modeloHabilitado(id: string): ModeloEquipoEntity {
@@ -88,6 +104,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: '  Tóner negro XL  ' });
@@ -106,6 +123,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'inexistente', nombre: 'X' });
@@ -127,6 +145,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -141,6 +160,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', stockMinimo: null });
@@ -170,6 +190,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -193,6 +214,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-2' });
@@ -215,6 +237,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-2' });
@@ -230,6 +253,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(null),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-9' });
@@ -248,6 +272,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(familia),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', familiaId: 'fam-2' });
@@ -270,6 +295,7 @@ describe('EditarInsumoUseCase', () => {
       familiaRepo,
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -285,6 +311,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
@@ -300,6 +327,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(null),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-9' });
@@ -317,6 +345,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(unidad),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
@@ -333,6 +362,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       unidadRepo,
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -375,6 +405,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -395,6 +426,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', codigosAlternativos: [] });
@@ -419,6 +451,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -450,6 +483,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     await useCase.execute({
@@ -470,6 +504,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -494,6 +529,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -519,6 +555,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -547,6 +584,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro' });
@@ -566,6 +604,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo(),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({ id: 'ins-1', compatibilidad: [] });
@@ -581,6 +620,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-9': null }),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -602,6 +642,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-1': modelo }),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -623,6 +664,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-1': modelo }),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -651,6 +693,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-1': deshabilitado }),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -680,6 +723,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       buildModeloRepo({ 'mod-2': deshabilitado }),
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -700,6 +744,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildTxRunner(),
     );
 
     await useCase.execute({
@@ -719,6 +764,7 @@ describe('EditarInsumoUseCase', () => {
       buildFamiliaRepo(),
       buildUnidadRepo(),
       modeloRepo,
+      buildTxRunner(),
     );
 
     const result = await useCase.execute({
@@ -742,4 +788,71 @@ describe('EditarInsumoUseCase', () => {
    * revalidación de código con la que la compatibilidad duplicada pueda
    * competir por prioridad.
    */
+
+  // ─── Cambio de unidad de medida: L0 destino y L1 (ADR-12) ─────────────────
+
+  describe('cambio de unidad de medida', () => {
+    function armar(seguimientoConL1: 'NINGUNO' | 'SERIE', entera: boolean) {
+      const orden: string[] = [];
+      const insumo = buildInsumo();
+      const repo = buildInsumoRepo(insumo, {
+        bloquearParaCambioDeSeguimiento: vi.fn(async () => {
+          orden.push('L1');
+          return { seguimiento: seguimientoConL1, unidadMedidaId: 'uni-1' };
+        }),
+      });
+      const unidadRepo = buildUnidadRepo(unidadHabilitada(), { entera });
+      unidadRepo.leerParaUso.mockImplementation(async () => {
+        orden.push('L0');
+        return { entera };
+      });
+      const useCase = new EditarInsumoUseCase(
+        repo,
+        buildFamiliaRepo(),
+        unidadRepo,
+        buildModeloRepo(),
+        buildTxRunner(),
+      );
+      return { useCase, repo, unidadRepo, orden };
+    }
+
+    it('toma L0 sobre la unidad destino y despues L1, y guarda', async () => {
+      const { useCase, repo, unidadRepo, orden } = armar('NINGUNO', false);
+
+      const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
+
+      expect(result.isOk()).toBe(true);
+      expect(unidadRepo.leerParaUso).toHaveBeenCalledWith('uni-2');
+      expect(orden).toEqual(['L0', 'L1']);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza una unidad no entera en un insumo SERIE (segun la lectura con L1) y no guarda', async () => {
+      const { useCase, repo } = armar('SERIE', false);
+
+      const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
+
+      expect(result.getError()).toBeInstanceOf(UnidadMedidaNoEnteraError);
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('acepta una unidad entera en un insumo SERIE', async () => {
+      const { useCase, repo } = armar('SERIE', true);
+
+      const result = await useCase.execute({ id: 'ins-1', unidadMedidaId: 'uni-2' });
+
+      expect(result.isOk()).toBe(true);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin cambio de unidad no toma L0 ni L1', async () => {
+      const { useCase, repo, unidadRepo } = armar('SERIE', false);
+
+      const result = await useCase.execute({ id: 'ins-1', nombre: 'Otro nombre' });
+
+      expect(result.isOk()).toBe(true);
+      expect(unidadRepo.leerParaUso).not.toHaveBeenCalled();
+      expect(repo.bloquearParaCambioDeSeguimiento).not.toHaveBeenCalled();
+    });
+  });
 });

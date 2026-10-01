@@ -306,6 +306,23 @@ describe('PrismaInsumoRepository — Integration', () => {
     expect(found!.createdAt).toEqual(creado!.createdAt);
   });
 
+  it('contarSeriePorUnidadMedida() cuenta solo los insumos SERIE vigentes de esa unidad', async () => {
+    const serie = construirInsumo('CNT_S1');
+    const serieBorrado = construirInsumo('CNT_S2');
+    serieBorrado.softDelete();
+    const ninguno = construirInsumo('CNT_N');
+    await repo.save(serie);
+    await repo.save(serieBorrado);
+    await repo.save(ninguno);
+    await tenantClient.insumo.updateMany({
+      where: { id: { in: [serie.id, serieBorrado.id] } },
+      data: { seguimiento: 'SERIE' },
+    });
+
+    expect(await repo.contarSeriePorUnidadMedida(unidadMedidaId)).toBe(1);
+    expect(await repo.contarSeriePorUnidadMedida('00000000-0000-4000-8000-000000000000')).toBe(0);
+  });
+
   it('findByCodigo() encuentra el insumo por su código único', async () => {
     const insumo = construirInsumo('PORCODIGO');
     await repo.save(insumo);

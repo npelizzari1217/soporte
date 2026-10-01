@@ -23,6 +23,14 @@
  * `INSUMOS:LECTURA` el selector queda habilitado, en NUEVO y sin saldos (decide
  * el backend). Sin descuento no se consulta el stock ni se envía `condicion`.
  *
+ * Repuesto con seguimiento `SERIE` (repuestos-numero-de-serie, WU-19): con
+ * descuento se elige primero la condición (nuevo o usado, con las reglas del
+ * selector de saldo) y después la PIEZA por su serial (`SelectorUnidad`, solo las
+ * que tienen serial y esa condición) y se envía `unidadId`, sin `condicion` ni
+ * serial de texto (la unidad ya los tiene). Sin descuento (D3) el serial es obligatorio y
+ * la condición se elige acá; nunca se manda `unidadId` (el backend responde
+ * 422 `UNIDAD_CON_ALTA_SIN_DESCUENTO`). Con `NINGUNO` nada cambia.
+ *
  * `submit()` envía `values.campo || undefined` (no `null`): el alta es un POST,
  * un campo vacío se omite del body en vez de mandarse como "borrar".
  */
@@ -38,6 +46,9 @@ import { useAgregarComponente } from "../hooks/use-equipo-mutations";
 import { useInsumos } from "@/features/insumos/hooks/use-insumos";
 import { useSelectorCondicion } from "@/features/insumos/hooks/use-selector-condicion";
 import { CondicionStockSelector } from "@/features/insumos/components/condicion-stock-selector";
+import { useSeleccionUnidad } from "@/features/insumos/hooks/use-seleccion-unidad";
+import { SelectorUnidad } from "@/features/insumos/components/selector-unidad";
+import { numeroSerieSchema } from "@/features/insumos/schemas";
 import { agregarComponenteSchema, type AgregarComponenteFormValues } from "../schemas";
 
 export interface ComponenteCreateDialogProps {
@@ -49,6 +60,7 @@ const EMPTY: AgregarComponenteFormValues = {
   descontarStock: true,
   descripcion: "",
   numeroSerie: "",
+  condicion: "NUEVO",
   capacidad: "",
 };
 
@@ -62,6 +74,7 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
     control,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm<AgregarComponenteFormValues>({
     resolver: zodResolver(agregarComponenteSchema),
@@ -71,20 +84,45 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
   const repuestos = repuestosQuery.data ?? [];
   const insumoId = useWatch({ control, name: "insumoId" });
   const descontarStock = useWatch({ control, name: "descontarStock" });
-  // Sin descuento el id va vacío: la consulta de stock no corre y no hay selector.
+  const esSerie = repuestos.find((repuesto) => repuesto.id === insumoId)?.seguimiento === "SERIE";
+  const eligePieza = esSerie && descontarStock;
+  const serieSinDescuento = esSerie && !descontarStock;
+  // Sin descuento, o con una pieza por elegir, el id va vacío: la consulta de stock no corre y no hay selector.
+  // Con una pieza por elegir, la condición se elige primero y filtra las piezas (`selector.valor`).
   const selector = useSelectorCondicion(descontarStock ? insumoId : "");
+  const seleccion = useSeleccionUnidad(insumoId, eligePieza, "salida", selector.valor);
 
   function submit(values: AgregarComponenteFormValues) {
+    const comun = {
+      insumoId: values.insumoId,
+      descontarStock: values.descontarStock,
+      descripcion: values.descripcion || undefined,
+      capacidad: values.capacidad || undefined,
+    };
+    const onSuccess = () => setOpen(false);
+    if (eligePieza) {
+      const unidadId = seleccion.validar();
+      if (!unidadId) return;
+      // La unidad ya trae su serial y su condición: no se mandan.
+      agregarMutation.mutate({ ...comun, unidadId }, { onSuccess, onError: seleccion.refrescar });
+      return;
+    }
+    if (serieSinDescuento) {
+      const serial = numeroSerieSchema.safeParse(values.numeroSerie ?? "");
+      if (!serial.success) {
+        setError("numeroSerie", { message: serial.error.issues[0].message });
+        return;
+      }
+      agregarMutation.mutate({ ...comun, numeroSerie: serial.data, condicion: values.condicion }, { onSuccess });
+      return;
+    }
     agregarMutation.mutate(
       {
-        insumoId: values.insumoId,
-        descontarStock: values.descontarStock,
+        ...comun,
         condicion: values.descontarStock ? selector.paraEnviar : undefined,
-        descripcion: values.descripcion || undefined,
         numeroSerie: values.numeroSerie || undefined,
-        capacidad: values.capacidad || undefined,
       },
-      { onSuccess: () => setOpen(false) },
+      { onSuccess },
     );
   }
 
@@ -99,6 +137,7 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
         if (next) {
           reset(EMPTY);
           selector.reiniciar();
+          seleccion.reiniciar();
         }
       }}
     >
@@ -138,12 +177,19 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
             </label>
             <Input id="crear-componente-descripcion" {...register("descripcion")} />
           </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="crear-componente-serie" className="text-sm font-medium text-foreground">
-              Número de serie
-            </label>
-            <Input id="crear-componente-serie" {...register("numeroSerie")} />
-          </div>
+          {!eligePieza && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="crear-componente-serie" className="text-sm font-medium text-foreground">
+                {serieSinDescuento ? "Número de serie (obligatorio)" : "Número de serie"}
+              </label>
+              <Input id="crear-componente-serie" error={!!errors.numeroSerie} {...register("numeroSerie")} />
+              {errors.numeroSerie && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.numeroSerie.message}
+                </p>
+              )}
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <label htmlFor="crear-componente-capacidad" className="text-sm font-medium text-foreground">
               Capacidad
@@ -166,6 +212,24 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
             </p>
           </div>
           {descontarStock && <CondicionStockSelector id="crear-componente-condicion" selector={selector} />}
+          {eligePieza && (
+            <SelectorUnidad
+              id="crear-componente-pieza"
+              seleccion={seleccion}
+              nota="La pieza elegida se instala en el equipo."
+            />
+          )}
+          {serieSinDescuento && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="crear-componente-condicion" className="text-sm font-medium text-foreground">
+                Condición
+              </label>
+              <Select id="crear-componente-condicion" {...register("condicion")}>
+                <option value="NUEVO">Nuevo</option>
+                <option value="USADO">Usado</option>
+              </Select>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="submit" isLoading={agregarMutation.isPending}>
               Agregar

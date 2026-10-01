@@ -469,4 +469,111 @@ describe("ComponenteCreateDialog", () => {
       });
     });
   });
+
+  describe("repuesto con seguimiento por serie (SERIE)", () => {
+    const UNIDADES = [
+      { id: "u1", insumoId: MOUSE_ID, numeroSerie: "SN-AAA", condicion: "NUEVO", estado: "EN_DEPOSITO", equipoId: null, equipoNombre: null },
+      { id: "u2", insumoId: MOUSE_ID, numeroSerie: "SN-BBB", condicion: "USADO", estado: "EN_DEPOSITO", equipoId: null, equipoNombre: null },
+    ];
+
+    function mockSerie() {
+      server.use(
+        http.get("/api/insumos", () => HttpResponse.json([{ ...REPUESTOS_CATALOGO[0], seguimiento: "SERIE" }])),
+      );
+    }
+
+    it("con descuento ofrece las piezas disponibles, sin saldo ni serial de texto, y envía unidadId", async () => {
+      mockSerie();
+      let consulta: URL | undefined;
+      server.use(
+        http.get(`/api/insumos/${MOUSE_ID}/unidades`, ({ request }) => {
+          consulta = new URL(request.url);
+          return HttpResponse.json(UNIDADES);
+        }),
+      );
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+
+      const pieza = await screen.findByLabelText(/pieza \(por número de serie\)/i);
+      await screen.findByRole("option", { name: /SN-AAA/ });
+      expect(consulta?.searchParams.get("disponibles")).toBe("true");
+      expect(screen.queryByLabelText(/^número de serie/i)).not.toBeInTheDocument();
+
+      await user.selectOptions(pieza, "u1");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().unidadId).toBe("u1"));
+      expect(post.body()).toMatchObject({ insumoId: MOUSE_ID, descontarStock: true });
+      expect(post.body()).not.toHaveProperty("condicion");
+      expect(post.body()).not.toHaveProperty("numeroSerie");
+    });
+
+    it("con descuento se elige la condición y solo se listan las piezas de esa condición, por serial", async () => {
+      mockSerie();
+      mockStock({ NUEVO: 1, USADO: 1 }, true);
+      server.use(http.get(`/api/insumos/${MOUSE_ID}/unidades`, () => HttpResponse.json(UNIDADES)));
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+
+      const condicion = await screen.findByLabelText("Condición");
+      const pieza = await screen.findByLabelText(/pieza \(por número de serie\)/i);
+      await screen.findByRole("option", { name: /SN-AAA/ });
+      expect(screen.queryByRole("option", { name: /SN-BBB/ })).not.toBeInTheDocument();
+
+      await user.selectOptions(condicion, "USADO");
+      expect(await screen.findByRole("option", { name: /SN-BBB/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /SN-AAA/ })).not.toBeInTheDocument();
+
+      await user.selectOptions(pieza, "u2");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+      await waitFor(() => expect(post.body().unidadId).toBe("u2"));
+      expect(post.body()).not.toHaveProperty("condicion");
+    });
+
+    it("con descuento y sin elegir pieza muestra el error y no hace POST", async () => {
+      mockSerie();
+      server.use(http.get(`/api/insumos/${MOUSE_ID}/unidades`, () => HttpResponse.json(UNIDADES)));
+      let posteado = false;
+      server.use(
+        http.post(`/api/equipos/${EQUIPO_ID}/componentes`, () => {
+          posteado = true;
+          return HttpResponse.json(COMPONENTE_RESPUESTA, { status: 201 });
+        }),
+      );
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+      await screen.findByRole("option", { name: /SN-AAA/ });
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      expect(await screen.findByText("Elegí la pieza")).toBeInTheDocument();
+      expect(posteado).toBe(false);
+    });
+
+    it("sin descuento pide el serial y la condición, y no envía unidadId", async () => {
+      mockSerie();
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+      await user.click(screen.getByRole("checkbox", { name: /descontar del depósito/i }));
+
+      expect(screen.queryByLabelText(/pieza \(por número de serie\)/i)).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+      expect(await screen.findByText("El número de serie es requerido")).toBeInTheDocument();
+      expect(post.body()).toEqual({});
+
+      await user.type(screen.getByLabelText(/número de serie \(obligatorio\)/i), "  SN-777 ");
+      await user.selectOptions(screen.getByLabelText("Condición"), "USADO");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+
+      await waitFor(() => expect(post.body().numeroSerie).toBe("SN-777"));
+      expect(post.body()).toMatchObject({ descontarStock: false, condicion: "USADO" });
+      expect(post.body()).not.toHaveProperty("unidadId");
+    });
+  });
 });

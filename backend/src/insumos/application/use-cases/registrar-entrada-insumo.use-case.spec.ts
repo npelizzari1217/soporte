@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Result } from '../../../shared/domain/result';
+import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
+import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
+import { SerialDuplicadoError } from '../../domain/errors/unidades-insumo.errors';
 import { RegistrarEntradaInsumoUseCase } from './registrar-entrada-insumo.use-case';
+import type { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
 import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
 import { familiaRepoFake } from '../../testing/familia-repo-fake';
 import { sumasCon } from '../../testing/sumas-movimiento';
+import { txRunnerFake } from '../../testing/tx-runner-fake';
 
 describe('RegistrarEntradaInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -43,8 +49,18 @@ describe('RegistrarEntradaInsumoUseCase', () => {
     );
   }
 
-  function buildInsumoRepo(insumo: InsumoEntity | null = insumoVigente()) {
-    return { findById: vi.fn().mockResolvedValue(insumo) };
+  function buildInsumoRepo(
+    insumo: InsumoEntity | null = insumoVigente(),
+    seguimiento: SeguimientoInsumo = 'NINGUNO',
+  ) {
+    return {
+      findById: vi.fn().mockResolvedValue(insumo),
+      leerSeguimientoParaMovimiento: vi.fn().mockResolvedValue(insumo ? seguimiento : null),
+    };
+  }
+
+  function buildOperaciones() {
+    return { ingresar: vi.fn(), devolverAlDeposito: vi.fn() };
   }
 
   /**
@@ -84,6 +100,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -117,6 +135,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -136,6 +156,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       buildMovimientoRepo(),
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, usuarioId: 'usr-99' });
@@ -148,6 +170,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       buildMovimientoRepo(),
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -168,6 +192,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       buildMovimientoRepo(),
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({
@@ -187,6 +213,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       buildMovimientoRepo(),
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, motivo: '   ' });
@@ -209,6 +237,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
@@ -229,6 +259,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       buildMovimientoRepo(),
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -258,6 +290,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     await useCase.execute(dtoBase);
@@ -273,6 +307,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(null),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, insumoId: 'inexistente' });
@@ -293,6 +329,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(insumoDadoDeBaja()),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -322,6 +360,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(insumoDeshabilitado()),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -356,6 +396,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(insumoDeshabilitado()),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
@@ -377,6 +419,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(insumoDeshabilitado()),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: null });
@@ -399,6 +443,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(insumoDadoDeBaja()),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute({ ...dtoBase, itemCompraId: 'item-77' });
@@ -419,6 +465,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(insumoDadoDeBaja(false)),
       buildMovimientoRepo(),
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     const result = await useCase.execute(dtoBase);
@@ -440,6 +488,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
       buildInsumoRepo(),
       movimientoRepo,
       familiaRepoFake(),
+      txRunnerFake(),
+      buildOperaciones(),
     );
 
     await expect(useCase.execute({ ...dtoBase, cantidad: 0 })).rejects.toThrow(/cantidad/);
@@ -455,6 +505,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(),
         buildMovimientoRepo(),
         familiaRepo,
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.execute(dtoBase);
@@ -469,6 +521,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(),
         movimientoRepo,
         familiaRepoFake(),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
@@ -484,6 +538,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(),
         movimientoRepo,
         familiaRepoFake({ esRepuesto: false }),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
@@ -499,6 +555,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(insumoDeshabilitado()),
         movimientoRepo,
         familiaRepoFake(),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
@@ -515,6 +573,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
           buildInsumoRepo(),
           movimientoRepo,
           familiaRepoFake(familia),
+          txRunnerFake(),
+          buildOperaciones(),
         );
 
         const result = await useCase.execute({ ...dtoBase, condicion: 'USADO' });
@@ -541,6 +601,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(),
         movimientoRepo,
         familiaRepoFake(),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
@@ -561,6 +623,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(insumoDeshabilitado()),
         buildMovimientoRepo(),
         familiaRepoFake(),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
@@ -574,6 +638,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
           buildInsumoRepo(insumoDeshabilitado()),
           buildMovimientoRepo(),
           familiaRepoFake(familia),
+          txRunnerFake(),
+          buildOperaciones(),
         );
 
         const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
@@ -588,6 +654,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(),
         movimientoRepo,
         familiaRepoFake({ esRepuesto: false, dadaDeBaja: true }),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
@@ -602,6 +670,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         buildInsumoRepo(),
         buildMovimientoRepo(),
         familiaRepoFake({ inexistente: true }),
+        txRunnerFake(),
+        buildOperaciones(),
       );
 
       const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
@@ -616,6 +686,8 @@ describe('RegistrarEntradaInsumoUseCase', () => {
           buildInsumoRepo(insumo),
           movimientoRepo,
           familiaRepoFake(),
+          txRunnerFake(),
+          buildOperaciones(),
         );
 
         const result = await useCase.registrarDevolucionDeComponente(dtoDevolucion);
@@ -623,6 +695,336 @@ describe('RegistrarEntradaInsumoUseCase', () => {
         expect(result.getError().code).toBe('INSUMO_NO_ENCONTRADO');
         expect(movimientoRepo.insert).not.toHaveBeenCalled();
       }
+    });
+  });
+
+  // ─── Seguimiento por serie (ADR-5, ADR-6, ADR-7) ─────────────────────────
+
+  describe('seguimiento por serie', () => {
+    function movimientoDeUnidad(): MovimientoInsumoEntity {
+      return MovimientoInsumoEntity.create({
+        insumoId: 'ins-1',
+        tipo: 'ENTRADA',
+        condicion: 'NUEVO',
+        cantidad: 1,
+        usuarioId: 'usr-7',
+      }).getValue();
+    }
+
+    function armar(seguimiento: SeguimientoInsumo) {
+      const insumoRepo = buildInsumoRepo(insumoVigente(), seguimiento);
+      const movimientoRepo = buildMovimientoRepo();
+      const operaciones = buildOperaciones();
+      const txRunner = txRunnerFake();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        insumoRepo,
+        movimientoRepo,
+        familiaRepoFake(),
+        txRunner,
+        operaciones,
+      );
+      return { useCase, insumoRepo, movimientoRepo, operaciones, txRunner };
+    }
+
+    it('NINGUNO abre la transaccion, lee L1 y asienta como siempre, sin ingresar unidades ni tomar L2', async () => {
+      const c = armar('NINGUNO');
+
+      const result = await c.useCase.execute(dtoBase);
+
+      expect(result.isOk()).toBe(true);
+      expect(c.txRunner.abiertas).toBe(1);
+      expect(c.insumoRepo.leerSeguimientoParaMovimiento).toHaveBeenCalledWith('ins-1');
+      expect(c.movimientoRepo.insert).toHaveBeenCalledTimes(1);
+      expect(c.movimientoRepo.lockAndSumByTipo).not.toHaveBeenCalled();
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('NINGUNO con seriales: UnidadNoAdmitidaError, sin asentar', async () => {
+      const c = armar('NINGUNO');
+
+      const result = await c.useCase.execute({ ...dtoBase, seriales: ['SN-1'] });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_ADMITIDA');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('insumo inexistente: lo dice la lectura de L1 y no se asienta nada', async () => {
+      const c = armar('NINGUNO');
+      c.insumoRepo.leerSeguimientoParaMovimiento.mockResolvedValue(null);
+
+      const result = await c.useCase.execute(dtoBase);
+
+      expect(result.getError().code).toBe('INSUMO_NO_ENCONTRADO');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('SERIE con tantos seriales como la cantidad: ingresa una pieza por serial', async () => {
+      const c = armar('SERIE');
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([
+          { unidad: {}, movimiento: movimientoDeUnidad() },
+          { unidad: {}, movimiento: movimientoDeUnidad() },
+        ]),
+      );
+
+      const result = await c.useCase.execute({
+        ...dtoBase,
+        cantidad: 2,
+        seriales: ['SN-1', 'SN-2'],
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.operaciones.ingresar).toHaveBeenCalledWith(
+        'ins-1',
+        [{ numeroSerie: 'SN-1' }, { numeroSerie: 'SN-2' }],
+        expect.objectContaining({ tipo: 'ENTRADA', condicion: 'NUEVO' }),
+      );
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('executeTodos devuelve TODOS los movimientos de la entrada SERIE y execute solo el primero', async () => {
+      const c = armar('SERIE');
+      const primero = movimientoDeUnidad();
+      const segundo = movimientoDeUnidad();
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([
+          { unidad: {}, movimiento: primero },
+          { unidad: {}, movimiento: segundo },
+        ]),
+      );
+      const dto = { ...dtoBase, cantidad: 2, seriales: ['SN-1', 'SN-2'] };
+
+      const todos = await c.useCase.executeTodos(dto);
+      const uno = await c.useCase.execute(dto);
+
+      expect(todos.getValue()).toEqual([primero, segundo]);
+      expect(uno.getValue()).toBe(primero);
+    });
+
+    it.each([
+      ['sin seriales', undefined],
+      ['con menos seriales que la cantidad', ['SN-1']],
+      ['con mas seriales que la cantidad', ['SN-1', 'SN-2', 'SN-3']],
+    ])('SERIE %s: SerialesNoCoincidenError sin ingresar', async (_caso, seriales) => {
+      const c = armar('SERIE');
+
+      const result = await c.useCase.execute({ ...dtoBase, cantidad: 2, seriales });
+
+      expect(result.getError().code).toBe('SERIALES_NO_COINCIDEN');
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('SERIE con cantidad fraccional: CantidadNoEnteraError', async () => {
+      const c = armar('SERIE');
+
+      const result = await c.useCase.execute({ ...dtoBase, cantidad: 1.5, seriales: ['SN-1'] });
+
+      expect(result.getError().code).toBe('CANTIDAD_NO_ENTERA');
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('SERIE con un serial repetido: el servicio lo rechaza y se devuelve su error', async () => {
+      const c = armar('SERIE');
+      c.operaciones.ingresar.mockResolvedValue(Result.fail(new SerialDuplicadoError('SN-1')));
+
+      const result = await c.useCase.execute({
+        ...dtoBase,
+        cantidad: 2,
+        seriales: ['SN-1', 'SN-1'],
+      });
+
+      expect(result.getError().code).toBe('SERIAL_DUPLICADO');
+    });
+
+    it('SERIE con serial repetido en la base (P2002): se desenvuelve como Result.fail', async () => {
+      const c = armar('SERIE');
+      c.operaciones.ingresar.mockRejectedValue(
+        new FalloOperacionDeUnidad(new SerialDuplicadoError('SN-1')),
+      );
+
+      const result = await c.useCase.execute({ ...dtoBase, cantidad: 1, seriales: ['SN-1'] });
+
+      expect(result.getError().code).toBe('SERIAL_DUPLICADO');
+    });
+
+    it('completarConPendientes rellena con unidades pendientes hasta la cantidad', async () => {
+      const c = armar('SERIE');
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([{ unidad: {}, movimiento: movimientoDeUnidad() }]),
+      );
+
+      const result = await c.useCase.execute({
+        ...dtoBase,
+        cantidad: 3,
+        seriales: ['SN-1'],
+        completarConPendientes: true,
+        itemCompraId: 'item-1',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.operaciones.ingresar).toHaveBeenCalledWith(
+        'ins-1',
+        [{ numeroSerie: 'SN-1' }, { numeroSerie: null }, { numeroSerie: null }],
+        expect.objectContaining({ itemCompraId: 'item-1' }),
+      );
+    });
+
+    it('completarConPendientes con mas seriales que la cantidad sigue rechazando', async () => {
+      const c = armar('SERIE');
+
+      const result = await c.useCase.execute({
+        ...dtoBase,
+        cantidad: 1,
+        seriales: ['SN-1', 'SN-2'],
+        completarConPendientes: true,
+      });
+
+      expect(result.getError().code).toBe('SERIALES_NO_COINCIDEN');
+    });
+
+    it('la entrada MANUAL de un insumo SERIE deshabilitado sigue rechazada (G2 no la alcanza)', async () => {
+      const insumoRepo = buildInsumoRepo(insumoDeshabilitado(), 'SERIE');
+      const operaciones = buildOperaciones();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        insumoRepo,
+        buildMovimientoRepo(),
+        familiaRepoFake(),
+        txRunnerFake(),
+        operaciones,
+      );
+
+      const result = await useCase.execute({ ...dtoBase, cantidad: 1, seriales: ['SN-1'] });
+
+      expect(result.getError().code).toBe('INSUMO_DESHABILITADO');
+      expect(operaciones.ingresar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('registrarDevolucionDeComponente con seguimiento', () => {
+    const devolucion = {
+      insumoId: 'ins-1',
+      equipoId: 'eq-1',
+      usuarioId: 'usr-7',
+      motivo: 'retiro',
+    };
+
+    function armar(seguimiento: SeguimientoInsumo, insumo = insumoVigente()) {
+      const movimientoRepo = buildMovimientoRepo();
+      const operaciones = buildOperaciones();
+      const useCase = new RegistrarEntradaInsumoUseCase(
+        buildInsumoRepo(insumo, seguimiento),
+        movimientoRepo,
+        familiaRepoFake({ esRepuesto: true }),
+        txRunnerFake(),
+        operaciones,
+      );
+      return { useCase, movimientoRepo, operaciones };
+    }
+
+    function movimientoUsado(): MovimientoInsumoEntity {
+      return MovimientoInsumoEntity.create({
+        insumoId: 'ins-1',
+        tipo: 'ENTRADA',
+        condicion: 'USADO',
+        cantidad: 1,
+        usuarioId: 'usr-7',
+        equipoId: 'eq-1',
+      }).getValue();
+    }
+
+    it('componente con unidad: devolverAlDeposito con su componente, sin asentar otra entrada', async () => {
+      const c = armar('SERIE');
+      const movimiento = movimientoUsado();
+      c.operaciones.devolverAlDeposito.mockResolvedValue(Result.ok([{ unidad: {}, movimiento }]));
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        unidadId: 'uni-1',
+        componenteId: 'comp-1',
+      });
+
+      expect(result.getValue()).toBe(movimiento);
+      expect(c.operaciones.devolverAlDeposito).toHaveBeenCalledWith(
+        [{ unidadId: 'uni-1', equipoId: 'eq-1', componenteId: 'comp-1', insumoId: 'ins-1' }],
+        { usuarioId: 'usr-7', motivo: 'retiro' },
+      );
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('componente legado de un insumo SERIE con serial: ingresa una unidad USADO con el equipo', async () => {
+      const c = armar('SERIE');
+      const movimiento = movimientoUsado();
+      c.operaciones.ingresar.mockResolvedValue(Result.ok([{ unidad: {}, movimiento }]));
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        numeroSerie: 'SN-9',
+      });
+
+      expect(result.getValue()).toBe(movimiento);
+      expect(c.operaciones.ingresar).toHaveBeenCalledWith(
+        'ins-1',
+        [{ numeroSerie: 'SN-9' }],
+        expect.objectContaining({ condicion: 'USADO', tipo: 'ENTRADA', equipoId: 'eq-1' }),
+      );
+    });
+
+    it.each([
+      ['ausente', undefined],
+      ['vacio', '   '],
+    ])(
+      'componente legado de un insumo SERIE con serial %s: SerialRequeridoError y no cambia nada',
+      async (_caso, numeroSerie) => {
+        const c = armar('SERIE');
+
+        const result = await c.useCase.registrarDevolucionDeComponente({
+          ...devolucion,
+          numeroSerie,
+        });
+
+        expect(result.getError().code).toBe('SERIAL_REQUERIDO');
+        expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+        expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+      },
+    );
+
+    it('insumo NINGUNO: como siempre, una ENTRADA USADO del equipo', async () => {
+      const c = armar('NINGUNO');
+
+      const result = await c.useCase.registrarDevolucionDeComponente(devolucion);
+
+      expect(result.getValue().condicion).toBe('USADO');
+      expect(c.movimientoRepo.insert).toHaveBeenCalledTimes(1);
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('G2: un insumo DESHABILITADO se admite en la devolucion con unidad', async () => {
+      const c = armar('SERIE', insumoDeshabilitado());
+      c.operaciones.devolverAlDeposito.mockResolvedValue(
+        Result.ok([{ unidad: {}, movimiento: movimientoUsado() }]),
+      );
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        unidadId: 'uni-1',
+        componenteId: 'comp-1',
+      });
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('un serial repetido en la base (P2002) se devuelve como Result.fail', async () => {
+      const c = armar('SERIE');
+      c.operaciones.ingresar.mockRejectedValue(
+        new FalloOperacionDeUnidad(new SerialDuplicadoError('SN-9')),
+      );
+
+      const result = await c.useCase.registrarDevolucionDeComponente({
+        ...devolucion,
+        numeroSerie: 'SN-9',
+      });
+
+      expect(result.getError().code).toBe('SERIAL_DUPLICADO');
     });
   });
 });

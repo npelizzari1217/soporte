@@ -64,6 +64,8 @@ function stock(saldos: { NUEVO: number; USADO: number }, admiteUsado: boolean): 
     admiteUsado,
     stockMinimo: null,
     estadoReposicion: "SIN_PUNTO_DEFINIDO",
+    seguimiento: "NINGUNO",
+    pendientesDeSerie: 0,
   };
 }
 

@@ -4,6 +4,7 @@ import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.
 import {
   ComponenteDadoDeBajaError,
   ComponenteNoEncontradoError,
+  SerialDeUnidadNoEditableError,
 } from '../../domain/errors/equipos.errors';
 
 /**
@@ -100,5 +101,66 @@ describe('EditarComponenteUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).not.toHaveProperty('tipoComponenteCodigo');
     expect(result.getValue().insumoId).toBe('insumo-1');
+  });
+
+  describe('componente con unidad de insumo (ADR-7)', () => {
+    function makeConUnidad() {
+      return ComponenteEquipoEntity.create({
+        equipoId: 'equipo-1',
+        insumoId: 'insumo-1',
+        descripcion: 'Original',
+        numeroSerie: 'SERIAL-DE-LA-UNIDAD',
+        capacidad: '8GB',
+        unidadId: 'unidad-1',
+      }).getValue();
+    }
+
+    it('numeroSerie en el PATCH falla con SerialDeUnidadNoEditableError y no persiste', async () => {
+      const componente = makeConUnidad();
+      const { useCase, componenteRepo } = makeUseCase(componente);
+
+      const result = await useCase.execute({
+        equipoId: 'equipo-1',
+        componenteId: componente.id,
+        numeroSerie: 'OTRO',
+        descripcion: 'Nueva',
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(SerialDeUnidadNoEditableError);
+      expect(componente.descripcion).toBe('Original');
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('tambien rechaza numeroSerie null (limpiar el serial de la unidad)', async () => {
+      const componente = makeConUnidad();
+      const { useCase } = makeUseCase(componente);
+
+      const result = await useCase.execute({
+        equipoId: 'equipo-1',
+        componenteId: componente.id,
+        numeroSerie: null,
+      });
+
+      expect(result.getError()).toBeInstanceOf(SerialDeUnidadNoEditableError);
+    });
+
+    it('sin numeroSerie edita los datos propios y no toca el serial resuelto', async () => {
+      const componente = makeConUnidad();
+      const { useCase, componenteRepo } = makeUseCase(componente);
+
+      const result = await useCase.execute({
+        equipoId: 'equipo-1',
+        componenteId: componente.id,
+        descripcion: 'Nueva',
+        capacidad: '16GB',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().descripcion).toBe('Nueva');
+      expect(result.getValue().capacidad).toBe('16GB');
+      expect(result.getValue().numeroSerie).toBe('SERIAL-DE-LA-UNIDAD');
+      expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+    });
   });
 });

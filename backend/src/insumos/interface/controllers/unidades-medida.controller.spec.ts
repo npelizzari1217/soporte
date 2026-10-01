@@ -9,6 +9,7 @@ import { Result } from '../../../shared/domain/result';
 import {
   UnidadMedidaNoEncontradaError,
   UnidadMedidaCodigoDuplicadoError,
+  UnidadMedidaEnUsoPorSerieError,
 } from '../../domain/errors/unidades-medida.errors';
 
 describe('UnidadesMedidaController', () => {
@@ -58,6 +59,35 @@ describe('UnidadesMedidaController', () => {
     });
 
     await expect(controller.crear({ codigo: 'A', nombre: 'A' })).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
+  });
+
+  it('PATCH /unidades-medida/:id pasa `entera` al caso de uso y devuelve la unidad con `entera`', async () => {
+    const unidad = UnidadMedidaEntity.create({
+      codigo: 'A',
+      nombre: 'A',
+      activo: true,
+      entera: true,
+    });
+    const { controller, editarUseCase } = buildController({
+      editar: { execute: vi.fn().mockResolvedValue(Result.ok(unidad)) },
+    });
+
+    const result = await controller.editar('id-1', { entera: true });
+
+    expect(editarUseCase.execute).toHaveBeenCalledWith({ id: 'id-1', entera: true });
+    expect(result.entera).toBe(true);
+  });
+
+  it('PATCH /unidades-medida/:id desmarcando una unidad usada por un insumo SERIE lanza 422', async () => {
+    const { controller } = buildController({
+      editar: {
+        execute: vi.fn().mockResolvedValue(Result.fail(new UnidadMedidaEnUsoPorSerieError('id-1'))),
+      },
+    });
+
+    await expect(controller.editar('id-1', { entera: false })).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
   });

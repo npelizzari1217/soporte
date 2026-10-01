@@ -1,6 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { RegistrarEntradaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
 import {
   ComponenteEquipoEntity,
   DestinoRetiroComponente,
@@ -37,6 +38,12 @@ export interface RetirarComponenteDto {
   destino: DestinoRetiroComponente;
   /** Motivo crudo del usuario; el caso de uso lo normaliza. */
   motivo?: string | null;
+  /**
+   * Serial de un componente LEGADO (sin unidad) cuyo insumo hoy se sigue por serie:
+   * obligatorio con `STOCK_USADO` en ese caso (`SerialRequeridoError` si falta).
+   * Se ignora si el componente lleva unidad (el serial es el de la unidad) y con `DESCARTE`.
+   */
+  numeroSerie?: string | null;
   /** Quién retira. Lo pone el borde desde el usuario autenticado, nunca el body. */
   usuarioId: string;
 }
@@ -56,6 +63,16 @@ export interface RetirarComponenteDto {
  * filas (otro retiro llegó antes), se lanza `FalloRetiroDeComponente` para que
  * Postgres revierta la ENTRADA. Así dos retiros concurrentes dejan UNA sola
  * ENTRADA. Cualquier otra excepción propaga.
+ *
+ * ## Con unidad (sdd/repuestos-numero-de-serie, ADR-12)
+ *
+ * El componente (L4) se marca SIEMPRE después de los locks de insumos (L1 a L3):
+ * - `STOCK_USADO`: `registrarDevolucionDeComponente` recibe la unidad y la devuelve
+ *   al depósito en USADO con su serial; con un componente legado de un insumo hoy
+ *   `SERIE` exige `numeroSerie` (`SerialRequeridoError`, sin cambiar nada).
+ * - `DESCARTE`: `operaciones.descartarInstaladas` (sin movimiento).
+ * Si la unidad ya no está instalada por el retiro de otro (carrera de dos retiros),
+ * se relee el componente bajo los locks y se informa `ComponenteDadoDeBajaError`.
  */
 export class RetirarComponenteUseCase {
   constructor(
@@ -65,6 +82,7 @@ export class RetirarComponenteUseCase {
       RegistrarEntradaInsumoUseCase,
       'registrarDevolucionDeComponente'
     >,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'descartarInstaladas'>,
   ) {}
 
   async execute(dto: RetirarComponenteDto): Promise<Result<ComponenteEquipoEntity, DomainError>> {
@@ -93,11 +111,29 @@ export class RetirarComponenteUseCase {
             equipoId: dto.equipoId,
             usuarioId: dto.usuarioId,
             motivo,
+            unidadId: componente.unidadId,
+            componenteId: componente.id,
+            numeroSerie: dto.numeroSerie,
           });
           if (entrada.isFail()) {
-            throw new FalloRetiroDeComponente(entrada.getError());
+            throw await this.fallo(entrada.getError(), componente);
           }
           bajaMovimientoId = entrada.getValue().id;
+        } else if (componente.unidadId !== null) {
+          const descartada = await this.operaciones.descartarInstaladas(
+            [
+              {
+                unidadId: componente.unidadId,
+                equipoId: dto.equipoId,
+                componenteId: componente.id,
+                insumoId: componente.insumoId,
+              },
+            ],
+            { usuarioId: dto.usuarioId, motivo },
+          );
+          if (descartada.isFail()) {
+            throw await this.fallo(descartada.getError(), componente);
+          }
         }
 
         componente.retirar({
@@ -121,5 +157,28 @@ export class RetirarComponenteUseCase {
       }
       throw error;
     }
+  }
+
+  /**
+   * Error a lanzar cuando falla una operación de unidad. Bajo los locks de insumos
+   * la unidad puede haber cambiado porque otro retiro del MISMO componente comiteó
+   * primero: se relee el componente (READ COMMITTED ve ese commit) y, si ya está
+   * dado de baja, el error es el del retiro repetido y no el de la unidad.
+   *
+   * Solo se relee ante `UNIDAD_NO_DISPONIBLE`, que no escribió nada: otros fallos
+   * (p. ej. `SERIAL_DUPLICADO`, un P2002 que ya abortó la transacción) no admiten
+   * ninguna consulta más y se devuelven tal cual para que `run()` revierta.
+   */
+  private async fallo(
+    error: DomainError,
+    componente: ComponenteEquipoEntity,
+  ): Promise<FalloRetiroDeComponente> {
+    if (error.code === 'UNIDAD_NO_DISPONIBLE') {
+      const actual = await this.componenteRepo.findById(componente.id);
+      if (actual?.isDeleted()) {
+        return new FalloRetiroDeComponente(new ComponenteDadoDeBajaError(componente.id));
+      }
+    }
+    return new FalloRetiroDeComponente(error);
   }
 }

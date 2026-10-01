@@ -8,6 +8,7 @@
  *   POST  /insumos             → CrearInsumoUseCase
  *   PATCH /insumos/:id         → EditarInsumoUseCase
  *   PATCH /insumos/:id/estado  → CambiarEstadoActivoInsumoUseCase
+ *   PATCH /insumos/:id/seguimiento → CambiarSeguimientoInsumoUseCase
  *
  * Ruta de lectura (SIN gate — cualquier autenticado del tenant, que necesita
  * el catálogo para elegir un insumo en cualquier otra pantalla):
@@ -39,6 +40,7 @@ import {
 import { CrearInsumoUseCase } from '../../application/use-cases/crear-insumo.use-case';
 import { EditarInsumoUseCase } from '../../application/use-cases/editar-insumo.use-case';
 import { CambiarEstadoActivoInsumoUseCase } from '../../application/use-cases/cambiar-estado-activo-insumo.use-case';
+import { CambiarSeguimientoInsumoUseCase } from '../../application/use-cases/cambiar-seguimiento-insumo.use-case';
 import { ListarInsumosUseCase } from '../../application/use-cases/listar-insumos.use-case';
 import { DomainError } from '../../../shared/domain/result';
 import {
@@ -46,11 +48,13 @@ import {
   InsumoNoEncontradoError,
   SecuenciaCodigoInsumoAgotadaError,
 } from '../../domain/errors/insumos.errors';
+import { UnidadMedidaCambiadaError } from '../../domain/errors/unidades-medida.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 import {
   CambiarEstadoActivoInsumoDto,
+  CambiarSeguimientoInsumoHttpDto,
   CreateInsumoDto,
   EditInsumoDto,
   InsumoResponseDto,
@@ -72,7 +76,12 @@ import {
  * `NumeradorCompraAgotadoError` (compras).
  *
  * @param error Error de dominio devuelto por un use case.
- * @returns 404 si el insumo no existe; 409 si la serie de códigos se agotó; 422 para el resto, incluida la condición USADO no admitida.
+ * `UnidadMedidaCambiadaError` también es 409: otra edición le cambió la unidad
+ * al insumo en medio del pedido y el cliente puede repetirlo. Los demás errores
+ * del seguimiento (`SeguimientoNoModificableError`, `UnidadMedidaNoEnteraError`)
+ * son reglas de negocio y caen en el 422 por defecto.
+ *
+ * @returns 404 si el insumo no existe; 409 si la serie de códigos se agotó o la unidad de medida cambió en el medio; 422 para el resto, incluida la condición USADO no admitida.
  */
 export function toHttpException(
   error: DomainError,
@@ -80,7 +89,10 @@ export function toHttpException(
   if (error instanceof InsumoNoEncontradoError) {
     return new NotFoundException(error.message);
   }
-  if (error instanceof SecuenciaCodigoInsumoAgotadaError) {
+  if (
+    error instanceof SecuenciaCodigoInsumoAgotadaError ||
+    error instanceof UnidadMedidaCambiadaError
+  ) {
     return new ConflictException(error.message);
   }
   // Explícito aunque coincida con el default: USADO en un insumo que no es
@@ -100,6 +112,7 @@ export class InsumosController {
     private readonly editarInsumoUseCase: EditarInsumoUseCase,
     private readonly cambiarEstadoActivoInsumoUseCase: CambiarEstadoActivoInsumoUseCase,
     private readonly listarInsumosUseCase: ListarInsumosUseCase,
+    private readonly cambiarSeguimientoInsumoUseCase: CambiarSeguimientoInsumoUseCase,
   ) {}
 
   /**
@@ -128,7 +141,7 @@ export class InsumosController {
    * @param dto Datos del insumo, con su lista completa de códigos alternativos.
    * @returns El insumo creado.
    * @throws 403 sin rol ADMINISTRADOR
-   * @throws 422 código duplicado, familia o unidad no elegible, código alternativo duplicado
+   * @throws 422 código duplicado, familia o unidad no elegible, código alternativo duplicado, `seguimiento` SERIE con unidad no entera
    */
   @Post()
   @UseGuards(AdminClienteGuard)
@@ -150,7 +163,8 @@ export class InsumosController {
    * @throws 400 id mal formado
    * @throws 403 sin rol ADMINISTRADOR
    * @throws 404 insumo inexistente
-   * @throws 422 código duplicado, familia o unidad no elegible, código alternativo duplicado
+   * @throws 409 la unidad de medida cambió mientras se procesaba el pedido (reintentable)
+   * @throws 422 código duplicado, familia o unidad no elegible, código alternativo duplicado, insumo SERIE con unidad no entera
    */
   @Patch(':id')
   @UseGuards(AdminClienteGuard)
@@ -184,6 +198,38 @@ export class InsumosController {
     const result = await this.cambiarEstadoActivoInsumoUseCase.execute({
       id,
       activo: dto.activo,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return toInsumoResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /insumos/:id/seguimiento — activa o desactiva el número de serie.
+   *
+   * Es la llave que vuelve alcanzable el modo `SERIE`: hasta acá ningún insumo
+   * puede tenerlo por HTTP. Pedir el valor que el insumo ya tiene es un no-op
+   * válido (200 con el insumo sin cambios).
+   *
+   * @param id Id del insumo.
+   * @param dto Seguimiento deseado.
+   * @returns El insumo con su seguimiento vigente.
+   * @throws 400 id mal formado o `seguimiento` fuera de `NINGUNO`/`SERIE`
+   * @throws 403 sin rol ADMINISTRADOR
+   * @throws 404 insumo inexistente
+   * @throws 409 la unidad de medida cambió mientras se procesaba el pedido (reintentable)
+   * @throws 422 activar con saldo distinto de cero o con unidad no entera; volver a NINGUNO con unidades vivas
+   */
+  @Patch(':id/seguimiento')
+  @UseGuards(AdminClienteGuard)
+  async cambiarSeguimiento(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: CambiarSeguimientoInsumoHttpDto,
+  ): Promise<InsumoResponseDto> {
+    const result = await this.cambiarSeguimientoInsumoUseCase.execute({
+      insumoId: id,
+      seguimiento: dto.seguimiento,
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());

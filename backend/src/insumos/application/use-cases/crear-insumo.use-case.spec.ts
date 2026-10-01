@@ -9,6 +9,7 @@ import { InsumoCodigoAlternativoEntity } from '../../domain/entities/insumo-codi
 import { ModeloEquipoEntity } from '../../domain/entities/modelo-equipo.entity';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { SecuenciaCodigoInsumoAgotadaError } from '../../domain/errors/insumos.errors';
+import { UnidadMedidaNoEnteraError } from '../../domain/errors/unidades-medida.errors';
 import { NumeradorInsumo } from '../../domain/services/numerador-insumo.service';
 
 describe('CrearInsumoUseCase', () => {
@@ -42,8 +43,15 @@ describe('CrearInsumoUseCase', () => {
     return { findById: vi.fn().mockResolvedValue(familia) };
   }
 
-  function buildUnidadRepo(unidad: UnidadMedidaEntity | null = unidadHabilitada()) {
-    return { findById: vi.fn().mockResolvedValue(unidad) };
+  function buildUnidadRepo(
+    unidad: UnidadMedidaEntity | null = unidadHabilitada(),
+    { entera = true }: { entera?: boolean } = {},
+  ) {
+    return {
+      findById: vi.fn().mockResolvedValue(unidad),
+      // L0 (ADR-12): la lectura `FOR SHARE` que el alta toma siempre.
+      leerParaUso: vi.fn().mockResolvedValue(unidad ? { entera } : null),
+    };
   }
 
   /**
@@ -1148,5 +1156,72 @@ describe('CrearInsumoUseCase', () => {
 
     const guardado = save.mock.calls[0]![0] as InsumoEntity;
     expect(guardado.compatibilidad).toEqual([{ modeloEquipoId: 'mod-1', rol: 'NEGRO' }]);
+  });
+
+  // ─── Seguimiento y L0 (ADR-12) ────────────────────────────────────────────
+
+  it('toma L0 (leerParaUso de la unidad elegida) antes de numerar, siempre', async () => {
+    const orden: string[] = [];
+    const unidadRepo = buildUnidadRepo();
+    unidadRepo.leerParaUso.mockImplementation(async () => {
+      orden.push('L0');
+      return { entera: false };
+    });
+    const numerador = buildNumerador({
+      generarCodigo: vi.fn(async () => {
+        orden.push('LC');
+        return Result.ok<string, SecuenciaCodigoInsumoAgotadaError>('INS-0001');
+      }),
+    });
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      unidadRepo,
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute(dtoBase);
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().seguimiento).toBe('NINGUNO');
+    expect(unidadRepo.leerParaUso).toHaveBeenCalledWith('uni-1');
+    expect(orden).toEqual(['L0', 'LC']);
+  });
+
+  it('crea un insumo SERIE con unidad entera', async () => {
+    const useCase = new CrearInsumoUseCase(
+      buildInsumoRepo(),
+      buildFamiliaRepo(),
+      buildUnidadRepo(),
+      buildModeloRepo(),
+      buildNumerador(),
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute({ ...dtoBase, seguimiento: 'SERIE' });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().seguimiento).toBe('SERIE');
+  });
+
+  it('rechaza SERIE con unidad no entera: UnidadMedidaNoEnteraError, sin numerar ni guardar', async () => {
+    const insumoRepo = buildInsumoRepo();
+    const numerador = buildNumerador();
+    const useCase = new CrearInsumoUseCase(
+      insumoRepo,
+      buildFamiliaRepo(),
+      buildUnidadRepo(unidadHabilitada(), { entera: false }),
+      buildModeloRepo(),
+      numerador,
+      buildTxRunner(),
+    );
+
+    const result = await useCase.execute({ ...dtoBase, seguimiento: 'SERIE' });
+
+    expect(result.getError()).toBeInstanceOf(UnidadMedidaNoEnteraError);
+    expect(numerador.generarCodigo).not.toHaveBeenCalled();
+    expect(insumoRepo.save).not.toHaveBeenCalled();
   });
 });

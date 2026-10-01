@@ -29,7 +29,8 @@ import {
   SumasPorCondicionYTipo,
   TIPOS_MOVIMIENTO_INSUMO,
 } from '../../../domain/entities/tipo-movimiento-insumo';
-import { MovimientoInsumoMapper } from './movimiento-insumo.mapper';
+import { INCLUIR_SERIAL_DE_LA_UNIDAD, MovimientoInsumoMapper } from './movimiento-insumo.mapper';
+import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
 
 /**
  * Prefijo de la clave del advisory lock. Va acá, en una constante, y no
@@ -78,8 +79,26 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   async insert(movimiento: MovimientoInsumoEntity): Promise<MovimientoInsumoEntity> {
     const fila = await this.client.movimientoInsumo.create({
       data: MovimientoInsumoMapper.toPersistence(movimiento),
+      include: INCLUIR_SERIAL_DE_LA_UNIDAD,
     });
     return MovimientoInsumoMapper.toDomain(fila);
+  }
+
+  /**
+   * Toma el advisory lock transaccional `insumo-stock:<id>` (L2 de ADR-12) sin
+   * leer nada. Ver el contrato en `IMovimientoInsumoRepository.bloquearStock`.
+   *
+   * Exige transacción activa (`exigirTransaccionActiva`): fuera de ella el lock
+   * se libera al terminar la sentencia y no serializaría a nadie. Es el único
+   * punto que conoce la clave, y `lockAndSumByTipo()` pasa por acá.
+   *
+   * @param insumoId Insumo cuyo stock se bloquea.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async bloquearStock(insumoId: string): Promise<void> {
+    const client = this.client;
+    exigirTransaccionActiva(this.tenantContext, 'PrismaMovimientoInsumoRepository.bloquearStock()');
+    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${PREFIJO_LOCK_STOCK + insumoId}))`;
   }
 
   /**
@@ -113,18 +132,10 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
   async lockAndSumByTipo(insumoId: string): Promise<SumasPorCondicionYTipo> {
     const client = this.client;
 
-    if (this.tenantContext.get()?.enTransaccion !== true) {
-      throw new Error(
-        'PrismaMovimientoInsumoRepository.lockAndSumByTipo() requiere una transacción activa ' +
-          '(ITenantTransactionRunner.run): fuera de ella Postgres libera el advisory lock al ' +
-          'terminar la sentencia y dos escritores del mismo insumo verían las mismas sumas.',
-      );
-    }
-
-    // El lock se toma ANTES de leer y se libera solo al cerrar la transacción
-    // (commit o rollback) — nunca hay que liberarlo a mano. Serializa por
-    // INSUMO: dos técnicos sacando cosas distintas no se esperan entre sí.
-    await client.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${PREFIJO_LOCK_STOCK + insumoId}))`;
+    // La precondición y el lock viven en `bloquearStock()`: es el ÚNICO lugar
+    // que toma `insumo-stock:<id>` (L2 de ADR-12). Antes de leer, y sin
+    // liberarlo a mano: se suelta solo al cerrar la transacción.
+    await this.bloquearStock(insumoId);
 
     return this.sumarPorTipo(client, insumoId);
   }
@@ -196,11 +207,25 @@ export class PrismaMovimientoInsumoRepository implements IMovimientoInsumoReposi
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: paginacion?.limit,
         skip: paginacion?.offset,
+        include: INCLUIR_SERIAL_DE_LA_UNIDAD,
       }),
       client.movimientoInsumo.count({ where }),
     ]);
 
     return { movimientos: filas.map(MovimientoInsumoMapper.toDomain), total };
+  }
+
+  /**
+   * @param ids Ids de movimientos.
+   * @returns Los movimientos encontrados, con el serial de su unidad.
+   */
+  async listarPorIds(ids: readonly string[]): Promise<MovimientoInsumoEntity[]> {
+    if (ids.length === 0) return [];
+    const filas = await this.client.movimientoInsumo.findMany({
+      where: { id: { in: [...ids] } },
+      include: INCLUIR_SERIAL_DE_LA_UNIDAD,
+    });
+    return filas.map(MovimientoInsumoMapper.toDomain);
   }
 
   /**

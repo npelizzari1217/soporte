@@ -149,6 +149,12 @@ import {
 // que venga. Traducirlo a una clase propia de compras daría dos errores para
 // una sola causa.
 import { InsumoNoEncontradoError } from '../../../insumos/domain/errors/insumos.errors';
+import {
+  CantidadNoEnteraError,
+  SerialDuplicadoError,
+  SerialesNoCoincidenError,
+  UnidadNoAdmitidaError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 import {
   AgregarItemCompraHttpDto,
@@ -189,7 +195,13 @@ export function toHttpException(
   if (error instanceof CompraNoEncontradaError || error instanceof ItemCompraNoEncontradoError) {
     return new NotFoundException(error.message);
   }
-  if (error instanceof SinCicloActivoError || error instanceof NumeradorCompraAgotadoError) {
+  // Un serial ya cargado en el insumo: conflicto con el estado vigente, igual
+  // que en `toHttpExceptionMovimiento`. La recepción revierte entera.
+  if (
+    error instanceof SinCicloActivoError ||
+    error instanceof NumeradorCompraAgotadoError ||
+    error instanceof SerialDuplicadoError
+  ) {
     return new ConflictException(error.message);
   }
   if (
@@ -231,7 +243,13 @@ export function toHttpException(
     // `POST /compras/:id/items` se leería como "la compra no existe" y
     // mandaría a mirar el lugar equivocado. Se lista explícito por el mismo
     // motivo que el de arriba.
-    error instanceof InsumoNoEncontradoError
+    error instanceof InsumoNoEncontradoError ||
+    // Recepción de un insumo `SERIE` (repuestos-numero-de-serie, ADR-11):
+    // seriales sobre un insumo sin seguimiento, más seriales que el delta o
+    // un delta fraccional. Los tres rechazan TODA la recepción.
+    error instanceof UnidadNoAdmitidaError ||
+    error instanceof SerialesNoCoincidenError ||
+    error instanceof CantidadNoEnteraError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -541,9 +559,14 @@ export class ComprasController {
    * — SEGUNDA de las tres etapas (R1, S42-S43, S46). **Rename de ruta**
    * (WU-24): reemplaza a `registrar-compra`.
    * @throws 404 compra o ítem inexistente
+   * @throws 400 `seriales` con más de 100, o algún serial fuera de 1 a 255
+   *             (recortado y normalizado)
+   * @throws 409 serial duplicado en el insumo `SERIE` (la recepción revierte)
    * @throws 422 compra cancelada, ítem no aprobado, exceso (S43), retroceso
    *             (S46), fecha futura/fuera de orden, o ítem ya cerrado con
-   *             faltante
+   *             faltante; o, con insumo: seriales sobre un insumo sin
+   *             seguimiento, más seriales que el delta, o delta fraccional
+   *             en un insumo `SERIE`
    */
   @Post(':id/items/:itemId/registrar-recepcion')
   @RequiereAcciones('COMPRAS:MODIFICACION')
@@ -560,6 +583,7 @@ export class ComprasController {
       usuarioId: user.sub,
       cantidadRecibida: dto.cantidadRecibida,
       ...(dto.fecha !== undefined && { fecha: new Date(dto.fecha) }),
+      ...(dto.seriales !== undefined && { seriales: dto.seriales }),
     });
 
     if (result.isFail()) {

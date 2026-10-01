@@ -6,6 +6,7 @@ import {
   CONDICIONES_STOCK,
   DIRECCION_POR_TIPO_MOVIMIENTO,
   esAjuste,
+  saldosDesdeUnidades,
   TIPOS_AJUSTE_INSUMO,
   TIPOS_MOVIMIENTO_INSUMO,
   TipoMovimientoInsumo,
@@ -161,5 +162,34 @@ describe('calcularSaldos', () => {
     const saldos = calcularSaldos(sumasCon({ NUEVO: { SALIDA: 2 }, USADO: { ENTRADA: 5 } }));
 
     expect(saldos).toEqual({ NUEVO: -2, USADO: 5, total: 3 });
+  });
+});
+
+describe('saldosDesdeUnidades', () => {
+  /** Escenario "Saldo de un insumo SERIE": 4 NUEVO y 2 USADO en el depósito (la INSTALADA no cuenta). */
+  it('devuelve el conteo por condición y el total como suma', () => {
+    expect(saldosDesdeUnidades({ NUEVO: 4, USADO: 2 })).toEqual({ NUEVO: 4, USADO: 2, total: 6 });
+  });
+
+  it('sin unidades es todo cero', () => {
+    expect(saldosDesdeUnidades({ NUEVO: 0, USADO: 0 })).toEqual({ NUEVO: 0, USADO: 0, total: 0 });
+  });
+
+  it('coincide con calcularSaldos del libro cuando el libro refleja las mismas unidades', () => {
+    const libro = {
+      NUEVO: { ENTRADA: 5, SALIDA: 1 },
+      USADO: { ENTRADA: 2 },
+    };
+
+    const desdeLibro = calcularSaldos(sumasCon(libro));
+
+    expect(saldosDesdeUnidades({ NUEVO: 4, USADO: 2 })).toEqual(desdeLibro);
+  });
+
+  it('no altera calcularStock ni calcularSaldos (siguen contando por tipo)', () => {
+    const desglose = { ENTRADA: 3, SALIDA: 0, AJUSTE_POSITIVO: 0, AJUSTE_NEGATIVO: 1 };
+
+    expect(calcularStock(desglose)).toBe(2);
+    expect(calcularSaldos(sumasCon({ NUEVO: desglose }))).toEqual({ NUEVO: 2, USADO: 0, total: 2 });
   });
 });

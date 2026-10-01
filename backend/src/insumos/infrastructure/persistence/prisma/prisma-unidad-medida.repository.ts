@@ -10,6 +10,7 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { IUnidadMedidaRepository } from '../../../domain/ports/i-unidad-medida.repository';
 import { UnidadMedidaEntity } from '../../../domain/entities/unidad-medida.entity';
 import { UnidadMedidaMapper } from './unidad-medida.mapper';
+import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
 
 @Injectable()
 export class PrismaUnidadMedidaRepository implements IUnidadMedidaRepository {
@@ -75,5 +76,50 @@ export class PrismaUnidadMedidaRepository implements IUnidadMedidaRepository {
       create: data,
       update: data,
     });
+  }
+
+  /**
+   * `FOR SHARE` sobre la fila (L0 de ADR-12) y lectura de `entera`. El contrato
+   * completo está en `IUnidadMedidaRepository.leerParaUso`.
+   *
+   * @param id Id de la unidad de medida.
+   * @returns `{ entera }`, o `null` si no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async leerParaUso(id: string): Promise<{ entera: boolean } | null> {
+    const client = this.client;
+    exigirTransaccionActiva(this.tenantContext, 'PrismaUnidadMedidaRepository.leerParaUso()');
+    const filas = await client.$queryRaw<Array<{ entera: boolean }>>`
+      SELECT entera FROM unidades_medida WHERE id = ${id}::uuid FOR SHARE
+    `;
+    return filas.length > 0 ? { entera: filas[0].entera } : null;
+  }
+
+  /**
+   * `FOR UPDATE` si el cambio toca `codigo`, `FOR NO KEY UPDATE` si no (L0 de
+   * ADR-12). Bloquea primero y lee después, en dos sentencias: bajo READ
+   * COMMITTED la segunda ve lo que comiteó quien tenía la fila antes.
+   *
+   * @param id Id de la unidad de medida.
+   * @param modo Si el cambio toca `codigo` o no.
+   * @returns La unidad leída bajo el lock, o `null` si no existe.
+   * @throws Error si no hay una transacción activa del tenant.
+   */
+  async bloquearParaEdicion(
+    id: string,
+    modo: 'CAMBIA_CODIGO' | 'SIN_CAMBIO_DE_CODIGO',
+  ): Promise<UnidadMedidaEntity | null> {
+    const client = this.client;
+    exigirTransaccionActiva(
+      this.tenantContext,
+      'PrismaUnidadMedidaRepository.bloquearParaEdicion()',
+    );
+    if (modo === 'CAMBIA_CODIGO') {
+      await client.$queryRaw`SELECT id FROM unidades_medida WHERE id = ${id}::uuid FOR UPDATE`;
+    } else {
+      await client.$queryRaw`SELECT id FROM unidades_medida WHERE id = ${id}::uuid FOR NO KEY UPDATE`;
+    }
+    const row = await client.unidadMedida.findUnique({ where: { id } });
+    return row ? UnidadMedidaMapper.toDomain(row) : null;
   }
 }

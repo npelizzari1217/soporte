@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Result } from '../../../shared/domain/result';
 import { RegistrarAjusteInsumoUseCase } from './registrar-ajuste-insumo.use-case';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { InsumoEntity } from '../../domain/entities/insumo.entity';
+import type { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
+import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.entity';
+import { SerialDuplicadoError } from '../../domain/errors/unidades-insumo.errors';
+import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
 import {
   TipoAjusteInsumo,
   TipoMovimientoInsumo,
@@ -9,7 +14,9 @@ import {
 } from '../../domain/entities/tipo-movimiento-insumo';
 import { SumasPorCondicionYTipo } from '../../domain/entities/tipo-movimiento-insumo';
 import { EstadoFamiliaFake, familiaRepoFake } from '../../testing/familia-repo-fake';
+import { operacionesEnMemoria } from '../../testing/operaciones-unidad-en-memoria';
 import { sumasCon } from '../../testing/sumas-movimiento';
+import { UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 
 describe('RegistrarAjusteInsumoUseCase', () => {
   function propsDeInsumo(activo: boolean) {
@@ -71,6 +78,7 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       insumo?: InsumoEntity | null;
       sumas?: SumasPorCondicionYTipo;
       familia?: EstadoFamiliaFake;
+      seguimiento?: SeguimientoInsumo;
     } = {},
   ) {
     const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
@@ -83,7 +91,13 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       if (!estado.dentroDeTransaccion) llamadasFueraDeTransaccion.push(metodo);
     }
 
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
+    const insumoRepo = {
+      findById: vi.fn().mockResolvedValue(insumo),
+      leerSeguimientoParaMovimiento: vi
+        .fn()
+        .mockResolvedValue(insumo ? (opciones.seguimiento ?? 'NINGUNO') : null),
+    };
+    const operaciones = { ingresar: vi.fn(), sacarDelDeposito: vi.fn() };
 
     const movimientoRepo = {
       // Resuelve con el MISMO asiento que recibió, a propósito — issue #159:
@@ -124,10 +138,12 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       movimientoRepo,
       txRunner,
       familiaRepo,
+      operaciones,
     );
 
     return {
       useCase,
+      operaciones,
       insumoRepo,
       movimientoRepo,
       familiaRepo,
@@ -191,7 +207,10 @@ describe('RegistrarAjusteInsumoUseCase', () => {
    */
   it('devuelve el asiento que resuelve insert(), no el que construyó antes de llamarlo', async () => {
     const asentadoPorLaBase = { esElAsientoQueDevuelveLaBase: true };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumoVigente()) };
+    const insumoRepo = {
+      findById: vi.fn().mockResolvedValue(insumoVigente()),
+      leerSeguimientoParaMovimiento: vi.fn().mockResolvedValue('NINGUNO'),
+    };
     const movimientoRepo = {
       insert: vi.fn().mockResolvedValue(asentadoPorLaBase),
       lockAndSumByTipo: vi.fn().mockResolvedValue(sumas({ ENTRADA: 100 })),
@@ -204,6 +223,7 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       movimientoRepo,
       txRunner,
       familiaRepoFake(),
+      { ingresar: vi.fn(), sacarDelDeposito: vi.fn() },
     );
 
     const result = await useCase.execute(dtoDe('AJUSTE_POSITIVO'));
@@ -678,6 +698,273 @@ describe('RegistrarAjusteInsumoUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError().code).toBe('CONDICION_USADO_NO_ADMITIDA');
       expect(c.transacciones.abiertas).toBe(0);
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── Seguimiento por serie (ADR-5) ───────────────────────────────────────
+
+  describe('seguimiento por serie', () => {
+    function movimientoDeUnidad(): MovimientoInsumoEntity {
+      return MovimientoInsumoEntity.create({
+        insumoId: 'ins-1',
+        tipo: 'AJUSTE_POSITIVO',
+        condicion: 'NUEVO',
+        cantidad: 1,
+        usuarioId: 'usr-7',
+        motivo: 'Conteo físico del 06/09',
+      }).getValue();
+    }
+
+    it('lee el seguimiento con L1 ANTES de cualquier otro lock', async () => {
+      const c = buildColaboradores();
+
+      await c.useCase.execute(dtoDe('AJUSTE_NEGATIVO'));
+
+      const l1 = c.insumoRepo.leerSeguimientoParaMovimiento.mock.invocationCallOrder[0];
+      const l2 = c.movimientoRepo.lockAndSumByTipo.mock.invocationCallOrder[0];
+      expect(l1).toBeLessThan(l2);
+    });
+
+    it('AJUSTE_POSITIVO SERIE con seriales y motivo: ingresa las unidades, sin tocar el stock agregado', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([{ unidad: {}, movimiento: movimientoDeUnidad() }]),
+      );
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 1,
+        seriales: ['SN-1'],
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.operaciones.ingresar).toHaveBeenCalledWith(
+        'ins-1',
+        [{ numeroSerie: 'SN-1' }],
+        expect.objectContaining({ tipo: 'AJUSTE_POSITIVO', motivo: 'Conteo físico del 06/09' }),
+      );
+      expect(c.movimientoRepo.lockAndSumByTipo).not.toHaveBeenCalled();
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('executeTodos devuelve un movimiento por unidad en el ajuste positivo SERIE', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+      const a = movimientoDeUnidad();
+      const b = movimientoDeUnidad();
+      c.operaciones.ingresar.mockResolvedValue(
+        Result.ok([
+          { unidad: {}, movimiento: a },
+          { unidad: {}, movimiento: b },
+        ]),
+      );
+
+      const result = await c.useCase.executeTodos({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 2,
+        seriales: ['SN-1', 'SN-2'],
+      });
+
+      expect(result.getValue()).toEqual([a, b]);
+    });
+
+    it('AJUSTE_POSITIVO SERIE sin motivo: MotivoAjusteRequeridoError, sin ingresar', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 1,
+        motivo: '  ',
+        seriales: ['SN-1'],
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('MOTIVO_AJUSTE_REQUERIDO');
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('AJUSTE_POSITIVO SERIE con cantidad fraccional: CantidadNoEnteraError', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 1.5,
+        seriales: ['SN-1'],
+      });
+
+      expect(result.getError().code).toBe('CANTIDAD_NO_ENTERA');
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('AJUSTE_POSITIVO SERIE sin seriales: SerialesNoCoincidenError', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+
+      const result = await c.useCase.execute(dtoDe('AJUSTE_POSITIVO'));
+
+      expect(result.getError().code).toBe('SERIALES_NO_COINCIDEN');
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('serial repetido en la base (P2002): desenvuelve SerialDuplicadoError como Result.fail', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+      c.operaciones.ingresar.mockRejectedValue(
+        new FalloOperacionDeUnidad(new SerialDuplicadoError('SN-1')),
+      );
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 1,
+        seriales: ['SN-1'],
+      });
+
+      expect(result.getError().code).toBe('SERIAL_DUPLICADO');
+    });
+
+    it('insumo NINGUNO con seriales: UnidadNoAdmitidaError, sin asentar', async () => {
+      const c = buildColaboradores();
+
+      const result = await c.useCase.execute({ ...dtoDe('AJUSTE_POSITIVO'), seriales: ['SN-1'] });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_ADMITIDA');
+      expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── AJUSTE_NEGATIVO de un insumo SERIE (ADR-5, F1) ──────────────────────
+
+  describe('AJUSTE_NEGATIVO de un insumo SERIE', () => {
+    function unidad(
+      id: string,
+      numeroSerie: string | null,
+      condicion: 'NUEVO' | 'USADO' = 'NUEVO',
+    ) {
+      return UnidadInsumoEntity.crearEnDeposito(
+        { insumoId: 'ins-1', condicion, numeroSerie },
+        id,
+      ).getValue();
+    }
+
+    function armarSerie() {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+      const enMemoria = operacionesEnMemoria([
+        unidad('u-b1', 'B1', 'USADO'),
+        unidad('u-p', null),
+        UnidadInsumoEntity.crearInstalada(
+          { insumoId: 'ins-1', condicion: 'NUEVO', numeroSerie: 'I-1', equipoId: 'eq-1' },
+          'u-i',
+        ).getValue(),
+      ]);
+      const useCase = new RegistrarAjusteInsumoUseCase(
+        c.insumoRepo,
+        c.movimientoRepo,
+        { run: async <T>(fn: () => Promise<T>): Promise<T> => fn() },
+        familiaRepoFake(),
+        enMemoria.operaciones,
+      );
+      return { useCase, enMemoria, movimientoRepo: c.movimientoRepo };
+    }
+
+    const dtoSerie = {
+      ...dtoDe('AJUSTE_NEGATIVO'),
+      cantidad: 1,
+      condicion: 'USADO' as const,
+      unidadId: 'u-b1',
+      motivo: 'pieza extraviada',
+    };
+
+    it('da de baja la unidad elegida: movimiento con motivo y unidad DESCARTADA, sin tomar el saldo', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute(dtoSerie);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().tipo).toBe('AJUSTE_NEGATIVO');
+      expect(result.getValue().motivo).toBe('pieza extraviada');
+      expect(result.getValue().unidadId).toBe('u-b1');
+      expect(c.enMemoria.unidadRepo.guardarConEstadoEsperado).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u-b1', estado: 'DESCARTADA' }),
+        'EN_DEPOSITO',
+      );
+      expect(c.movimientoRepo.lockAndSumByTipo).not.toHaveBeenCalled();
+    });
+
+    it('admite una unidad en serie pendiente (F1): queda DESCARTADA sin serial', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({
+        ...dtoSerie,
+        condicion: undefined,
+        unidadId: 'u-p',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.enMemoria.unidadRepo.guardarConEstadoEsperado).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'u-p', estado: 'DESCARTADA', numeroSerie: null }),
+        'EN_DEPOSITO',
+      );
+    });
+
+    it.each([
+      ['sin motivo', { motivo: undefined }],
+      ['con motivo vacío', { motivo: '   ' }],
+    ])('%s: MotivoAjusteRequeridoError y la unidad no cambia', async (_caso, parcial) => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, ...parcial });
+
+      expect(result.getError().code).toBe('MOTIVO_AJUSTE_REQUERIDO');
+      expect(c.enMemoria.unidadRepo.guardarConEstadoEsperado).not.toHaveBeenCalled();
+    });
+
+    it('sin unidad: UnidadRequeridaError', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, unidadId: undefined });
+
+      expect(result.getError().code).toBe('UNIDAD_REQUERIDA');
+    });
+
+    it('cantidad distinta de 1: SerialesNoCoincidenError', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({ ...dtoSerie, cantidad: 2 });
+
+      expect(result.getError().code).toBe('SERIALES_NO_COINCIDEN');
+    });
+
+    it('una unidad INSTALADA: UnidadNoDisponibleError y no cambia nada', async () => {
+      const c = armarSerie();
+
+      const result = await c.useCase.execute({
+        ...dtoSerie,
+        condicion: undefined,
+        unidadId: 'u-i',
+      });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_DISPONIBLE');
+      expect(c.enMemoria.movimientos).toHaveLength(0);
+    });
+
+    it('un AJUSTE_POSITIVO SERIE con unidadId: UnidadNoAdmitidaError', async () => {
+      const c = buildColaboradores({ seguimiento: 'SERIE' });
+
+      const result = await c.useCase.execute({
+        ...dtoDe('AJUSTE_POSITIVO'),
+        cantidad: 1,
+        seriales: ['SN-1'],
+        unidadId: 'u-b1',
+      });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_ADMITIDA');
+      expect(c.operaciones.ingresar).not.toHaveBeenCalled();
+    });
+
+    it('un insumo NINGUNO con unidad: UnidadNoAdmitidaError, sin asentar', async () => {
+      const c = buildColaboradores();
+
+      const result = await c.useCase.execute({ ...dtoDe('AJUSTE_NEGATIVO'), unidadId: 'u-b1' });
+
+      expect(result.getError().code).toBe('UNIDAD_NO_ADMITIDA');
       expect(c.movimientoRepo.insert).not.toHaveBeenCalled();
     });
   });

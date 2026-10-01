@@ -3,6 +3,7 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
 import { CondicionStock } from '../../../insumos/domain/entities/tipo-movimiento-insumo';
 import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
 
@@ -51,8 +52,15 @@ export interface InstalarComponenteDesdeDepositoDto {
   /** Quién instala el repuesto. Lo pone el borde desde el usuario autenticado (`JWT.sub`), nunca el body. */
   usuarioId: string;
   descripcion?: string | null;
+  /** Ignorado con `unidadId`: el serial es el de la unidad (ADR-7). */
   numeroSerie?: string | null;
   capacidad?: string | null;
+  /**
+   * Unidad `SERIE` elegida (con serial, `EN_DEPOSITO`, del mismo insumo). Con ella la
+   * instalación va por `OperacionesUnidadInsumo.instalar`; sin ella, el camino de
+   * siempre, que para un insumo `SERIE` termina en `UnidadRequeridaError`.
+   */
+  unidadId?: string | null;
   /**
    * Condición del saldo del que sale la unidad. Omitida = `NUEVO`; la decide
    * y valida `RegistrarSalidaInsumoUseCase` (saldo de esa condición, ADR-6).
@@ -96,6 +104,14 @@ export interface InstalarComponenteDesdeDepositoDto {
  * falta ningún plumbing extra para que las dos escrituras compartan
  * atomicidad.
  *
+ * ## Con unidad (sdd/repuestos-numero-de-serie, ADR-7)
+ *
+ * Con `unidadId` el orden cambia por la invariante de locks L (ADR-12): el
+ * componente (L4) se guarda DESPUÉS de `OperacionesUnidadInsumo.instalar` (L1 a
+ * L3). Ver `instalarUnidad()`. Un insumo `SERIE` sin `unidadId` sigue el camino
+ * de arriba y la SALIDA lo rechaza con `UnidadRequeridaError`, que revierte el
+ * componente recién creado.
+ *
  * La cantidad de la salida es SIEMPRE 1 (issue #153, "NO entra: ninguna
  * noción de cantidad"): un componente es una unidad física.
  *
@@ -105,9 +121,13 @@ export interface InstalarComponenteDesdeDepositoDto {
 export class InstalarComponenteDesdeDepositoUseCase {
   constructor(
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
-    private readonly agregarComponenteUseCase: Pick<AgregarComponenteUseCase, 'execute'>,
+    private readonly agregarComponenteUseCase: Pick<
+      AgregarComponenteUseCase,
+      'execute' | 'preparar'
+    >,
     private readonly registrarSalidaInsumoUseCase: Pick<RegistrarSalidaInsumoUseCase, 'execute'>,
-    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'save'>,
+    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'instalar'>,
+    private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'save' | 'findById'>,
   ) {}
 
   async execute(
@@ -115,6 +135,10 @@ export class InstalarComponenteDesdeDepositoUseCase {
   ): Promise<Result<ComponenteEquipoEntity, DomainError>> {
     try {
       return await this.txRunner.run(async () => {
+        if (dto.unidadId) {
+          return await this.instalarUnidad(dto, dto.unidadId);
+        }
+
         const componenteResult = await this.agregarComponenteUseCase.execute({
           equipoId: dto.equipoId,
           insumoId: dto.insumoId,
@@ -161,5 +185,52 @@ export class InstalarComponenteDesdeDepositoUseCase {
       }
       throw error;
     }
+  }
+
+  /**
+   * Instalación de una unidad `SERIE` elegida (ADR-7), dentro de la transacción
+   * abierta por `execute()` y en este orden, que respeta la invariante L de
+   * ADR-12 (locks antes de la primera escritura; el componente es L4 y va último):
+   *
+   * 1. `preparar()`: valida y construye el componente con `unidadId`, sin escribir.
+   * 2. `operaciones.instalar()`: L1, L2 y L3, valida la unidad (en depósito, con
+   *    serial, del mismo insumo) y escribe SALIDA, CAS y evento `INSTALACION`.
+   *    Un `Result.fail` suyo no escribió nada, así que se devuelve tal cual.
+   * 3. `vincularInstalacion()` y un único `save()` del componente (L4).
+   *
+   * El `usuarioId` firma la SALIDA; `condicion` y `numeroSerie` del DTO se ignoran
+   * (la condición y el serial son de la unidad).
+   */
+  private async instalarUnidad(
+    dto: InstalarComponenteDesdeDepositoDto,
+    unidadId: string,
+  ): Promise<Result<ComponenteEquipoEntity, DomainError>> {
+    const preparado = await this.agregarComponenteUseCase.preparar({
+      equipoId: dto.equipoId,
+      insumoId: dto.insumoId,
+      descripcion: dto.descripcion ?? null,
+      numeroSerie: null,
+      capacidad: dto.capacidad ?? null,
+      unidadId,
+    });
+    if (preparado.isFail()) {
+      return Result.fail(preparado.getError());
+    }
+    const componente = preparado.getValue();
+
+    const instalada = await this.operaciones.instalar(
+      [{ unidadId, equipoId: dto.equipoId, componenteId: componente.id, insumoId: dto.insumoId }],
+      { usuarioId: dto.usuarioId },
+    );
+    if (instalada.isFail()) {
+      return Result.fail(instalada.getError());
+    }
+
+    componente.vincularInstalacion(instalada.getValue()[0].movimiento.id);
+    await this.componenteRepo.save(componente);
+
+    // La respuesta lleva el serial resuelto de la unidad: se relee por el mapper,
+    // la única fuente (ADR-7), en vez de duplicar la regla acá.
+    return Result.ok((await this.componenteRepo.findById(componente.id)) ?? componente);
   }
 }

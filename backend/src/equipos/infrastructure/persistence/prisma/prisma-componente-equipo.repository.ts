@@ -14,6 +14,9 @@ import { IComponenteEquipoRepository } from '../../../domain/ports/i-componente-
 import { ComponenteEquipoEntity } from '../../../domain/entities/componente-equipo.entity';
 import { ComponenteEquipoMapper } from './componente-equipo.mapper';
 
+/** El serial del componente con unidad vive en la unidad (ADR-7): toda lectura lo resuelve. */
+const INCLUIR_UNIDAD = { unidad: { select: { numeroSerie: true } } } as const;
+
 @Injectable()
 export class PrismaComponenteEquipoRepository implements IComponenteEquipoRepository {
   constructor(private readonly tenantContext: TenantContext) {}
@@ -23,13 +26,17 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
   }
 
   async findById(id: string): Promise<ComponenteEquipoEntity | null> {
-    const row = await this.client.componenteEquipo.findUnique({ where: { id } });
+    const row = await this.client.componenteEquipo.findUnique({
+      where: { id },
+      include: INCLUIR_UNIDAD,
+    });
     return row ? ComponenteEquipoMapper.toDomain(row) : null;
   }
 
   async findActiveByEquipoId(equipoId: string): Promise<ComponenteEquipoEntity[]> {
     const rows = await this.client.componenteEquipo.findMany({
       where: { equipoId, deletedAt: null },
+      include: INCLUIR_UNIDAD,
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(ComponenteEquipoMapper.toDomain);
@@ -38,6 +45,7 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
   async findAllByEquipoId(equipoId: string): Promise<ComponenteEquipoEntity[]> {
     const rows = await this.client.componenteEquipo.findMany({
       where: { equipoId },
+      include: INCLUIR_UNIDAD,
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(ComponenteEquipoMapper.toDomain);

@@ -24,9 +24,42 @@ describe('CreateUnidadMedidaDto', () => {
     expect(await validate(dto)).not.toHaveLength(0);
   });
 
+  it('acepta `entera` booleana y la deja ausente si no viene', async () => {
+    const con = plainToInstance(CreateUnidadMedidaDto, { codigo: 'UN', nombre: 'U', entera: true });
+    const sin = plainToInstance(CreateUnidadMedidaDto, { codigo: 'UN', nombre: 'U' });
+    expect(await validate(con)).toHaveLength(0);
+    expect(await validate(sin)).toHaveLength(0);
+    expect(con.entera).toBe(true);
+    expect(sin.entera).toBeUndefined();
+  });
+
+  it('rechaza `entera` que no es booleana', async () => {
+    const dto = plainToInstance(CreateUnidadMedidaDto, {
+      codigo: 'UN',
+      nombre: 'U',
+      entera: 'si',
+    });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
   it('acepta codigo válido (mayúsculas/números/guion bajo)', async () => {
     const dto = plainToInstance(CreateUnidadMedidaDto, { codigo: 'M2', nombre: 'Metro cuadrado' });
     expect(await validate(dto)).toHaveLength(0);
+  });
+});
+
+describe('EditUnidadMedidaDto — entera', () => {
+  it('acepta `entera` booleana (marcar o desmarcar) y su ausencia', async () => {
+    for (const entera of [true, false, undefined]) {
+      const dto = plainToInstance(EditUnidadMedidaDto, { entera });
+      expect(await validate(dto)).toHaveLength(0);
+      expect(dto.entera).toBe(entera);
+    }
+  });
+
+  it('rechaza `entera` que no es booleana', async () => {
+    const dto = plainToInstance(EditUnidadMedidaDto, { entera: 1 });
+    expect(await validate(dto)).not.toHaveLength(0);
   });
 });
 
@@ -119,5 +152,17 @@ describe('toUnidadMedidaResponseDto', () => {
     const dto = toUnidadMedidaResponseDto(unidad);
     expect(dto.codigo).toBe('A');
     expect(typeof dto.createdAt).toBe('string');
+  });
+
+  it('incluye `entera` en la respuesta', () => {
+    const entera = UnidadMedidaEntity.create({
+      codigo: 'A',
+      nombre: 'A',
+      activo: true,
+      entera: true,
+    });
+    const comun = UnidadMedidaEntity.create({ codigo: 'B', nombre: 'B', activo: true });
+    expect(toUnidadMedidaResponseDto(entera).entera).toBe(true);
+    expect(toUnidadMedidaResponseDto(comun).entera).toBe(false);
   });
 });
