@@ -858,3 +858,11 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - `UnidadesInsumoSection`: botones por fila. "Cargar serial" solo en una `EN_DEPOSITO` pendiente y con `INSUMOS:ALTAS`; "Corregir serial" en una unidad con serial que no este `INSTALADA` y con `INSUMOS:AJUSTAR` (via `useCan`).
 - Tests (MSW, 7 en `unidad-serial-dialog.test.tsx`): completar pendiente (sin motivo), serial repetido 409 en el campo, correccion valida, sin motivo, correccion a serial existente, acciones ocultas sin permiso y por permiso.
 - Gates (16a.3): ver el reporte de la rama; lint y type-check en cero.
+
+### WU-16b - reingreso al deposito (16b.1 a 16b.3), rama `-wu16b`
+
+- `hooks/use-reingreso-unidad-mutations.ts` (`useDevolverEntregaUnidad` -> `POST .../unidades/:unidadId/devolucion-entrega`, `{condicion, motivo?}`; `useRecuperarUnidadDescartada` -> `POST .../recuperacion`, `{condicion, motivo}`;
+  invalidan unidades, stock y movimientos; sin toast de error) y `unidad-reingreso-dialog.tsx` con modos `devolver` (motivo opcional) y `recuperar` (motivo obligatorio, max 500 trimeado).
+  `schemas.ts`: `devolucionEntregaSchema` y `recuperacionSchema`. USADO solo se ofrece con `admiteUsado` del stock (o con la consulta caida: decide el backend); sin selector se manda NUEVO. Una descartada pendiente se recupera sin serial y el dialogo lo aclara.
+- `UnidadesInsumoSection`: "Devolver al deposito" en una `ENTREGADA` con `INSUMOS:ALTAS`; "Recuperar" en una `DESCARTADA` con `INSUMOS:AJUSTAR`.
+- Tests (MSW, 8 en `unidad-reingreso-dialog.test.tsx`): devolucion NUEVO y USADO, familia sin usados, recuperacion con motivo (USADO) y sin motivo, pendiente, 422 de insumo vuelto a NINGUNO, acciones ocultas sin permiso.

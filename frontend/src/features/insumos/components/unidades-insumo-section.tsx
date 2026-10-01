@@ -23,6 +23,7 @@ import { useCan } from "@/shared/hooks/use-can";
 import { notifyError } from "@/shared/lib/toast";
 import { useUnidadesInsumo } from "../hooks/use-unidades-insumo";
 import { UnidadHistorialDialog } from "./unidad-historial-dialog";
+import { UnidadReingresoDialog, type ModoReingreso } from "./unidad-reingreso-dialog";
 import { UnidadSerialDialog, type ModoSerial } from "./unidad-serial-dialog";
 import { ESTADOS_UNIDAD_INSUMO } from "../types";
 import type { CondicionStock, EstadoUnidadInsumo, UnidadInsumo } from "../types";
@@ -68,6 +69,9 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
   );
   const [conHistorial, setConHistorial] = useState<UnidadInsumo | null>(null);
   const [conSerial, setConSerial] = useState<{ unidad: UnidadInsumo; modo: ModoSerial } | null>(null);
+  const [conReingreso, setConReingreso] = useState<{ unidad: UnidadInsumo; modo: ModoReingreso } | null>(
+    null,
+  );
   const puedeCargar = useCan("INSUMOS:ALTAS");
   const puedeCorregir = useCan("INSUMOS:AJUSTAR");
   const query = useUnidadesInsumo(insumoId);
@@ -124,6 +128,26 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
                 onClick={() => setConSerial({ unidad: fila, modo: "corregir" })}
               >
                 Corregir serial
+              </Button>
+            )}
+            {fila.estado === "ENTREGADA" && puedeCargar && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Devolver al depósito ${etiqueta}`}
+                onClick={() => setConReingreso({ unidad: fila, modo: "devolver" })}
+              >
+                Devolver al depósito
+              </Button>
+            )}
+            {fila.estado === "DESCARTADA" && puedeCorregir && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Recuperar ${etiqueta}`}
+                onClick={() => setConReingreso({ unidad: fila, modo: "recuperar" })}
+              >
+                Recuperar
               </Button>
             )}
             <Button
@@ -190,6 +214,12 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
         unidad={conSerial?.unidad ?? null}
         modo={conSerial?.modo ?? "cargar"}
         onClose={() => setConSerial(null)}
+      />
+      <UnidadReingresoDialog
+        insumoId={insumoId}
+        unidad={conReingreso?.unidad ?? null}
+        modo={conReingreso?.modo ?? "devolver"}
+        onClose={() => setConReingreso(null)}
       />
     </section>
   );

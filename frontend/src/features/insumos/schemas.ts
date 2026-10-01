@@ -359,6 +359,38 @@ export const corregirSerialSchema = z.object({
 });
 export type CorregirSerialFormValues = z.infer<typeof corregirSerialSchema>;
 
+/**
+ * Formulario de reingreso al depósito de una unidad. La devolución de una
+ * entrega admite motivo opcional; la recuperación de una descartada lo exige
+ * (el backend responde 422 `MOTIVO_RECUPERACION_REQUERIDO` sin él). La
+ * condición sale de un `<select>` cerrado (o queda en NUEVO si la familia no
+ * admite usados).
+ */
+const motivoReingresoOpcionalSchema = z
+  .string()
+  .optional()
+  .refine(
+    (valor) => valor === undefined || valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+    mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+  );
+
+export const devolucionEntregaSchema = z.object({
+  condicion: z.enum(["NUEVO", "USADO"]),
+  motivo: motivoReingresoOpcionalSchema,
+});
+export type ReingresoFormValues = z.infer<typeof devolucionEntregaSchema>;
+
+export const recuperacionSchema = z.object({
+  condicion: z.enum(["NUEVO", "USADO"]),
+  motivo: z
+    .string({ required_error: "El motivo es requerido" })
+    .refine((valor) => valor.trim().length > 0, "El motivo es requerido")
+    .refine(
+      (valor) => valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+    ),
+});
+
 /** Lista de seriales de una entrada, un ajuste o una recepción: hasta 100, cada uno válido. */
 export const serialesSchema = z
   .array(numeroSerieSchema)

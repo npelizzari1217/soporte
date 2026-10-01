@@ -637,13 +637,14 @@ Commit sugerido: `feat(insumos): cargar y corregir el serial de una unidad`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu16b` · **Base**: wu16a
 
-- [ ] 16b.1 `unidad-reingreso-dialog.tsx` para dos acciones: devolución de una `ENTREGADA` (condición NUEVO/USADO, motivo opcional, `ALTAS`) y recuperación de una `DESCARTADA` (condición NUEVO/USADO, motivo **obligatorio**, `AJUSTAR`); USADO solo si la familia admite usados; una pendiente descartada se recupera sin serial y el diálogo lo aclara; acciones en la sección de unidades según estado y permiso.
-- [ ] 16b.2 Tests (MSW): devolución NUEVO y USADO, recuperación con y sin motivo, pendiente, acción oculta sin permiso, error de insumo `NINGUNO`.
-- [ ] 16b.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
+- [x] 16b.1 `unidad-reingreso-dialog.tsx` para dos acciones: devolución de una `ENTREGADA` (condición NUEVO/USADO, motivo opcional, `ALTAS`) y recuperación de una `DESCARTADA` (condición NUEVO/USADO, motivo **obligatorio**, `AJUSTAR`); USADO solo si la familia admite usados; una pendiente descartada se recupera sin serial y el diálogo lo aclara; acciones en la sección de unidades según estado y permiso.
+- [x] 16b.2 Tests (MSW): devolución NUEVO y USADO, recuperación con y sin motivo, pendiente, acción oculta sin permiso, error de insumo `NINGUNO`.
+- [x] 16b.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
 
 **Escenarios**: Devolución de una pieza sin uso / usada; Recuperar una pieza dada de baja por
 error; Recuperar como usada; Recuperar una pendiente descartada; Recuperar sin motivo (UI).
 **PR boundary**: ~550 líneas reales, base wu16a. Corte si se pasa: devolución / recuperación.
+**Real**: 487 líneas (hook, schemas, diálogo, sección y sus 8 tests); sin corte limpio: un solo diálogo atiende ambas acciones, separarlas dejaría código sin sus tests.
 **Ayuda**: deuda en commit y PR.
 Commit sugerido: `feat(insumos): reingresar al deposito piezas entregadas o descartadas`.
 
