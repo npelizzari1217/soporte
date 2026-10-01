@@ -35,15 +35,15 @@ import { join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 /**
- * Linea base: el conteo del 2026-09-23 sobre `main` (`1263213`), medido por este
+ * Linea base: el conteo del 2026-10-01 sobre `main` (`84342b18`), medido por este
  * mismo script.
  *
  * Se baja cuando un cambio convierte casts a mocks completos. Se sube SOLO con
  * una justificacion escrita en el PR — y si hace falta subirla seguido, el que
  * esta mal es el criterio, no el numero.
  */
-const BASE_OCURRENCIAS = 693;
-const BASE_ARCHIVOS = 123;
+const BASE_OCURRENCIAS = 666;
+const BASE_ARCHIVOS = 121;
 
 /**
  * Se ratchetean las DOS cifras. Solo el total dejaria pasar que la deuda se
