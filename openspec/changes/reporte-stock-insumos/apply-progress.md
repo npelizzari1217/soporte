@@ -22,3 +22,15 @@ Decisiones de implementación:
 - El puerto de insumos exporta además `FiltrosCatalogoStock` (`familiaId?`, `esRepuesto?`).
 - Los specs usan el patrón del repo: base compartida `soporte_tenant_test`, fixtures con prefijo por
   corrida y `tenantContext.bind`; el de unidades crea su propio equipo (CHECK `INSTALADA` ⇒ `equipo_id`).
+
+## WU-2 — Caso de uso núcleo y comparación con la ficha (parte 1 de 2: 2.1 a 2.4)
+
+Rama `feat/reporte-stock-insumos-wu02` (base `-wu01-3`). Partido en dos ramas (`-wu02` y `-wu02-2`).
+
+- `consultar-reporte-stock.use-case.ts`: `ConsultarReporteStockUseCase` con los tres `Pick` de lote y
+  `ahora`. Reutiliza `FilaCatalogoStock`/`FiltrosCatalogoStock` del puerto. No consulta una fuente cuando
+  no hay ids de ese seguimiento; orden por código aplicado también en el caso de uso.
+- `consultar-reporte-stock.use-case.spec.ts`: 17 casos (columnas, filtros, ocultar sin stock con las
+  cuatro variantes, reloj antes de leer, SERIE vs. libro, sin N+1 con 50 ids).
+- Parte 1 de 2 (esta rama): tareas 2.1 a 2.4. La integración de comparación y la mutación (2.5, 2.6)
+  van en `feat/reporte-stock-insumos-wu02-2`.
