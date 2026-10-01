@@ -4,6 +4,42 @@
  */
 
 /**
+ * Cómo se lleva el stock de un insumo, espejo de `SEGUIMIENTOS_INSUMO` del
+ * backend (`backend/src/insumos/domain/entities/unidad-insumo.entity.ts`):
+ * `NINGUNO` es por cantidad, `SERIE` es una unidad por pieza con número de
+ * serie. La unión se DERIVA del array.
+ */
+export const SEGUIMIENTOS_INSUMO = ["NINGUNO", "SERIE"] as const;
+
+/** Seguimiento de un insumo, derivado de `SEGUIMIENTOS_INSUMO`. */
+export type SeguimientoInsumo = (typeof SEGUIMIENTOS_INSUMO)[number];
+
+/** Espejo de `ESTADOS_UNIDAD_INSUMO` (backend, `unidad-insumo.entity.ts`). */
+export const ESTADOS_UNIDAD_INSUMO = ["EN_DEPOSITO", "INSTALADA", "ENTREGADA", "DESCARTADA"] as const;
+
+/** Estado de una unidad, derivado de `ESTADOS_UNIDAD_INSUMO`. */
+export type EstadoUnidadInsumo = (typeof ESTADOS_UNIDAD_INSUMO)[number];
+
+/** Espejo de `TIPOS_EVENTO_UNIDAD` (backend, `unidad-insumo.entity.ts`). */
+export const TIPOS_EVENTO_UNIDAD = [
+  "INGRESO",
+  "ALTA_INSTALADA",
+  "SERIAL_CARGADO",
+  "CORRECCION_SERIAL",
+  "INSTALACION",
+  "RETIRO_A_DEPOSITO",
+  "DESCARTE",
+  "ENTREGA",
+  "DEVOLUCION_DE_ENTREGA",
+  "BAJA_DE_DEPOSITO",
+  "RECUPERACION",
+  "REACTIVACION",
+] as const;
+
+/** Tipo de evento de una unidad, derivado de `TIPOS_EVENTO_UNIDAD`. */
+export type TipoEventoUnidad = (typeof TIPOS_EVENTO_UNIDAD)[number];
+
+/**
  * Espejo de `InsumoResponseDto`, RECORTADO a los campos que el frontend
  * consume hoy: el catálogo se lee para poblar un `<select>`.
  *
@@ -32,6 +68,8 @@ export interface Insumo {
    * acepta que un ítem de compra apunte a uno deshabilitado.
    */
   activo: boolean;
+  /** Cómo se lleva el stock: por cantidad (`NINGUNO`) o una unidad por pieza (`SERIE`). */
+  seguimiento: SeguimientoInsumo;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,6 +88,8 @@ export interface CreateInsumoDto {
   unidadMedidaId: string;
   /** Ausente es "sin punto de reposición definido", que NO es cero. */
   stockMinimo?: number;
+  /** Ausente equivale a `NINGUNO`; `SERIE` exige una unidad de medida entera (422 si no). */
+  seguimiento?: SeguimientoInsumo;
 }
 
 /**
@@ -66,6 +106,13 @@ export interface EditInsumoDto {
   familiaId?: string;
   unidadMedidaId?: string;
   stockMinimo?: number | null;
+  // Sin `seguimiento`: el `EditInsumoDto` del backend NO lo acepta (la
+  // whitelist lo descarta en silencio). Se cambia por `CambiarSeguimientoInsumoDto`.
+}
+
+/** Body de `PATCH /insumos/:id/seguimiento` (`CambiarSeguimientoInsumoHttpDto`). */
+export interface CambiarSeguimientoInsumoDto {
+  seguimiento: SeguimientoInsumo;
 }
 
 /** Body de `PATCH /insumos/:id/estado` (`CambiarEstadoActivoInsumoDto`). */
@@ -127,6 +174,8 @@ export interface UnidadMedida {
   codigo: string;
   nombre: string;
   activo: boolean;
+  /** `true` si la unidad mide piezas enteras: condición para que un insumo se lleve por `SERIE`. */
+  entera: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -135,12 +184,16 @@ export interface UnidadMedida {
 export interface CreateUnidadMedidaDto {
   codigo: string;
   nombre: string;
+  /** Ausente se lee como `false` en el backend. */
+  entera?: boolean;
 }
 
 /** Body de `PATCH /unidades-medida/:id` (`EditUnidadMedidaDto`) — PATCH parcial. */
 export interface EditUnidadMedidaDto {
   codigo?: string;
   nombre?: string;
+  /** Desmarcarla con un insumo `SERIE` vigente que la usa es 422 `UNIDAD_MEDIDA_EN_USO_POR_SERIE`. */
+  entera?: boolean;
 }
 
 /** Body de `PATCH /unidades-medida/:id/estado` (`CambiarEstadoActivoUnidadMedidaDto`). */
@@ -207,6 +260,10 @@ export interface StockInsumo {
   stockMinimo: number | null;
   /** Lectura del saldo contra el punto de reposición, resuelta por el backend. */
   estadoReposicion: EstadoReposicionInsumo;
+  /** Cómo se lleva el insumo; resuelto por el backend. */
+  seguimiento: SeguimientoInsumo;
+  /** Unidades `SERIE` en depósito sin número de serie cargado; `0` en `NINGUNO`. */
+  pendientesDeSerie: number;
 }
 
 /**
@@ -273,7 +330,48 @@ export interface MovimientoInsumo {
   sectorId: string | null;
   /** Ítem de compra cuya recepción originó el asiento; `null` si la carga fue manual. */
   itemCompraId: string | null;
+  /** Unidad que movió el asiento; `null` en un insumo `NINGUNO`. */
+  unidadId: string | null;
+  /** Serial de esa unidad, resuelto por el backend; `null` sin unidad o con la serie pendiente. */
+  numeroSerie: string | null;
   createdAt: string;
+}
+
+/**
+ * Espejo de `MovimientosRegistradosResponseDto`: respuesta de la entrada y del
+ * ajuste. El primer asiento viene aplanado (compatibilidad) y `movimientos`
+ * trae TODOS, uno por unidad en un insumo `SERIE`.
+ */
+export interface MovimientosRegistrados extends MovimientoInsumo {
+  movimientos: MovimientoInsumo[];
+}
+
+/** Espejo de `UnidadInsumoResponseDto` (`unidades-insumo.dto.ts`). `numeroSerie: null` es "serie pendiente". */
+export interface UnidadInsumo {
+  id: string;
+  insumoId: string;
+  numeroSerie: string | null;
+  condicion: CondicionStock;
+  estado: EstadoUnidadInsumo;
+  equipoId: string | null;
+  equipoNombre: string | null;
+}
+
+/** Espejo de `EventoUnidadResponseDto` (`unidades-insumo.dto.ts`): un hecho del historial de una unidad. */
+export interface EventoUnidad {
+  id: string;
+  tipo: TipoEventoUnidad;
+  createdAt: string;
+  usuarioId: string;
+  movimientoId: string | null;
+  componenteId: string | null;
+  serialAnterior: string | null;
+  serialNuevo: string | null;
+  motivo: string | null;
+  equipoId: string | null;
+  equipoNombre: string | null;
+  sectorId: string | null;
+  sectorNombre: string | null;
 }
 
 /**

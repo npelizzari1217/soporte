@@ -796,3 +796,16 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   articulo queda falso. Deuda de UI en WU-14.
 - Gates (12b.5), rama final `-wu12b-3`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` completo 518 archivos / 6528 tests verdes (exit 0).
 - Reparto: wu12b (12b.1), wu12b-2 (12b.2 con sus unit/integracion/controller), wu12b-3 (12b.3 caso 7 + 12b.4 e2e).
+
+## WU-13 - Frontend: tipos, schemas, seguimiento en el ABM y orden de las dos llamadas
+
+### WU-13 - 13.1 (tipos y schemas), rama `-wu13`
+
+- `features/insumos/types.ts`: `SEGUIMIENTOS_INSUMO`/`SeguimientoInsumo`, `ESTADOS_UNIDAD_INSUMO`, `TIPOS_EVENTO_UNIDAD`; `Insumo.seguimiento`,
+  `UnidadMedida.entera`, `StockInsumo.seguimiento`/`pendientesDeSerie`, `MovimientoInsumo.unidadId`/`numeroSerie`, `MovimientosRegistrados`
+  (`movimientos[]`), `UnidadInsumo`, `EventoUnidad`, `CambiarSeguimientoInsumoDto`; `CreateInsumoDto.seguimiento?`, `CreateUnidadMedidaDto.entera?`,
+  `EditUnidadMedidaDto.entera?`. `EditInsumoDto` NO declara `seguimiento` (el backend lo descarta).
+- `schemas.ts`: `numeroSerieSchema` (trim, 1 a 255, tambien normalizado: `ß` -> `SS`), `serialesSchema` (max 100), `insumoSchema.seguimiento`
+  (enum, default `NINGUNO`). Tests en `schemas.test.ts`.
+- Fixtures de la suite de insumos actualizados con los campos nuevos requeridos. El dialogo solo suma `seguimiento` a `valoresVigentes` (el
+  selector y el orden de las llamadas son 13.2).

@@ -17,6 +17,7 @@ function buildUnidad(overrides: Partial<UnidadMedida> = {}): UnidadMedida {
     codigo: "UN",
     nombre: "Unidad",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,

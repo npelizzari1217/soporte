@@ -6,6 +6,8 @@ import {
   familiaInsumoSchema,
   unidadMedidaSchema,
   insumoSchema,
+  numeroSerieSchema,
+  serialesSchema,
 } from "./schemas";
 
 /**
@@ -583,5 +585,55 @@ describe("insumoSchema — stockMinimo (opcional, nullable, tope de decimales)",
   it("rechaza un valor por encima del techo de negocio (1.000.000)", () => {
     const result = insumoSchema.safeParse({ ...baseInsumoValues(), stockMinimo: "1000001" });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("insumoSchema — seguimiento", () => {
+  it("ausente queda en NINGUNO (stock por cantidad)", () => {
+    const result = insumoSchema.safeParse(baseInsumoValues());
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.seguimiento).toBe("NINGUNO");
+  });
+
+  it("acepta SERIE", () => {
+    const result = insumoSchema.safeParse({ ...baseInsumoValues(), seguimiento: "SERIE" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.seguimiento).toBe("SERIE");
+  });
+
+  it("rechaza un valor fuera del catálogo", () => {
+    expect(insumoSchema.safeParse({ ...baseInsumoValues(), seguimiento: "LOTE" }).success).toBe(false);
+  });
+});
+
+describe("numeroSerieSchema / serialesSchema — cotas del backend", () => {
+  it("recorta los bordes y acepta el largo máximo de 255", () => {
+    const result = numeroSerieSchema.safeParse(`  ${"A".repeat(255)}  `);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toHaveLength(255);
+  });
+
+  it("rechaza vacío y solo espacios", () => {
+    expect(numeroSerieSchema.safeParse("").success).toBe(false);
+    expect(numeroSerieSchema.safeParse("   ").success).toBe(false);
+  });
+
+  it("rechaza 256 caracteres", () => {
+    expect(numeroSerieSchema.safeParse("A".repeat(256)).success).toBe(false);
+  });
+
+  it("rechaza un serial que cabe tipeado pero se pasa de 255 una vez normalizado (ß -> SS)", () => {
+    expect(numeroSerieSchema.safeParse("ß".repeat(128)).success).toBe(false);
+    expect(numeroSerieSchema.safeParse("ß".repeat(127)).success).toBe(true);
+  });
+
+  it("acepta hasta 100 seriales y rechaza 101", () => {
+    const serial = (i: number) => `SN-${i}`;
+    expect(serialesSchema.safeParse(Array.from({ length: 100 }, (_, i) => serial(i))).success).toBe(true);
+    expect(serialesSchema.safeParse(Array.from({ length: 101 }, (_, i) => serial(i))).success).toBe(false);
+  });
+
+  it("rechaza la lista si algún serial es inválido", () => {
+    expect(serialesSchema.safeParse(["SN-1", " "]).success).toBe(false);
   });
 });

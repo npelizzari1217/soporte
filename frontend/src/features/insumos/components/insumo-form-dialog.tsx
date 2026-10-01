@@ -123,8 +123,9 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
         familiaId: insumo.familiaId,
         unidadMedidaId: insumo.unidadMedidaId,
         stockMinimo: insumo.stockMinimo ?? undefined,
+        seguimiento: insumo.seguimiento,
       }
-    : { nombre: "", familiaId: "", unidadMedidaId: "", stockMinimo: undefined };
+    : { nombre: "", familiaId: "", unidadMedidaId: "", stockMinimo: undefined, seguimiento: "NINGUNO" };
 
   const {
     register,

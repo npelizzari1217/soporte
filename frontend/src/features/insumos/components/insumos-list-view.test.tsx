@@ -31,6 +31,7 @@ const INSUMO_HABILITADO: Insumo = {
   unidadMedidaId: "um-1",
   stockMinimo: 5,
   activo: true,
+  seguimiento: "NINGUNO",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -43,6 +44,7 @@ const INSUMO_DESHABILITADO: Insumo = {
   unidadMedidaId: "um-2",
   stockMinimo: null,
   activo: false,
+  seguimiento: "NINGUNO",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -74,6 +76,7 @@ const UNIDADES: UnidadMedida[] = [
     codigo: "UN",
     nombre: "Unidad",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   },
@@ -82,6 +85,7 @@ const UNIDADES: UnidadMedida[] = [
     codigo: "M",
     nombre: "Metro",
     activo: true,
+    entera: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   },
