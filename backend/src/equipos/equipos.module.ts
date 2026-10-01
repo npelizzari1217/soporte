@@ -293,12 +293,21 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: RetirarComponenteUseCase,
       useFactory: (
         txRunner: ITenantTransactionRunner,
+        equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
         registrarEntrada: RegistrarEntradaInsumoUseCase,
         operaciones: OperacionesUnidadInsumo,
-      ) => new RetirarComponenteUseCase(txRunner, componenteRepo, registrarEntrada, operaciones),
+      ) =>
+        new RetirarComponenteUseCase(
+          txRunner,
+          equipoRepo,
+          componenteRepo,
+          registrarEntrada,
+          operaciones,
+        ),
       inject: [
         TENANT_TX_RUNNER,
+        EQUIPO_INFORMATICO_REPOSITORY,
         COMPONENTE_EQUIPO_REPOSITORY,
         RegistrarEntradaInsumoUseCase,
         OperacionesUnidadInsumo,

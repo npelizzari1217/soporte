@@ -19,7 +19,7 @@ describe('CrearTicketSoporteUseCase', () => {
     const ticketRepo = { save: vi.fn().mockResolvedValue(undefined) };
     const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
     const ticketSoporteRepo = { save: vi.fn().mockResolvedValue(undefined) };
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
+    const equipoRepo = { bloquearParaOperarPiezas: vi.fn().mockResolvedValue(null) };
     const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-id') };
     const tipoTicketRepo = {
       findByCodigo: vi.fn().mockResolvedValue({ id: 'tipo-soporte-id', codigo: 'SOPORTE' }),
@@ -106,7 +106,7 @@ describe('CrearTicketSoporteUseCase', () => {
     const { ticket, ticketSoporte } = result.getValue();
     expect(ticket.numero).toBe('SOP-2026-00001');
     expect(ticketSoporte.equipoId).toBeNull();
-    expect(deps.equipoRepo.findById).not.toHaveBeenCalled();
+    expect(deps.equipoRepo.bloquearParaOperarPiezas).not.toHaveBeenCalled();
   });
 
   it('crea el ticket con equipoId válido (activo y no eliminado)', async () => {
@@ -127,7 +127,7 @@ describe('CrearTicketSoporteUseCase', () => {
       },
       'equipo-1',
     );
-    deps.equipoRepo.findById.mockResolvedValue(equipo);
+    deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipo);
     const useCase = buildUseCase(deps);
 
     const result = await useCase.execute(baseDto({ equipoId: 'equipo-1' }));
@@ -138,7 +138,7 @@ describe('CrearTicketSoporteUseCase', () => {
 
   it('falla con EquipoInvalidoError si el equipo no existe', async () => {
     const deps = makeDeps();
-    deps.equipoRepo.findById.mockResolvedValue(null);
+    deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(null);
     const useCase = buildUseCase(deps);
 
     const result = await useCase.execute(baseDto({ equipoId: 'no-existe' }));
@@ -173,7 +173,7 @@ describe('CrearTicketSoporteUseCase', () => {
       usuarioId: '00000000-0000-4000-8000-000000000001',
       fecha: new Date('2026-10-01T12:00:00Z'),
     });
-    deps.equipoRepo.findById.mockResolvedValue(equipo);
+    deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipo);
     const useCase = buildUseCase(deps);
 
     const result = await useCase.execute(baseDto({ equipoId: 'equipo-1' }));
@@ -201,13 +201,63 @@ describe('CrearTicketSoporteUseCase', () => {
       'equipo-1',
     );
     equipo.softDelete();
-    deps.equipoRepo.findById.mockResolvedValue(equipo);
+    deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipo);
     const useCase = buildUseCase(deps);
 
     const result = await useCase.execute(baseDto({ equipoId: 'equipo-1' }));
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(EquipoInvalidoError);
+  });
+
+  it('con equipoId toma el lock del equipo DENTRO de la transaccion y ANTES de numerar', async () => {
+    const deps = makeDeps();
+    const orden: string[] = [];
+    const equipo = EquipoInformaticoEntity.create(
+      {
+        nombre: 'Notebook',
+        numeroSerie: null,
+        marca: null,
+        modelo: null,
+        fechaAdquisicion: null,
+        ubicacion: null,
+        importe: null,
+        fechaValoracion: null,
+        observaciones: null,
+        valorResidual: null,
+        fechaValorResidual: null,
+      },
+      'equipo-1',
+    );
+    deps.txRunner.run.mockImplementation(async (fn: () => Promise<unknown>) => {
+      orden.push('tx:inicio');
+      return fn();
+    });
+    deps.equipoRepo.bloquearParaOperarPiezas.mockImplementation(async () => {
+      orden.push('lock-equipo');
+      return equipo;
+    });
+    deps.numerador.generarNumero.mockImplementation(async () => {
+      orden.push('numerar');
+      return Result.ok('SOP-2026-00001');
+    });
+    const useCase = buildUseCase(deps);
+
+    const result = await useCase.execute(baseDto({ equipoId: 'equipo-1' }));
+
+    expect(result.isOk()).toBe(true);
+    expect(orden).toEqual(['tx:inicio', 'lock-equipo', 'numerar']);
+  });
+
+  it('un equipo invalido corta antes de numerar y sin escribir', async () => {
+    const deps = makeDeps();
+    const useCase = buildUseCase(deps);
+
+    const result = await useCase.execute(baseDto({ equipoId: 'no-existe' }));
+
+    expect(result.isFail()).toBe(true);
+    expect(deps.numerador.generarNumero).not.toHaveBeenCalled();
+    expect(deps.ticketSoporteRepo.save).not.toHaveBeenCalled();
   });
 
   it('falla con SolicitanteInvalidoError si el solicitante no existe en el tenant', async () => {
@@ -249,7 +299,7 @@ describe('CrearTicketSoporteUseCase', () => {
 
   it('no publica el evento si la creación falla (equipoId invalido)', async () => {
     const deps = makeDeps();
-    deps.equipoRepo.findById.mockResolvedValue(null);
+    deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(null);
     const useCase = buildUseCase(deps);
 
     await useCase.execute(baseDto({ equipoId: 'no-existe' }));

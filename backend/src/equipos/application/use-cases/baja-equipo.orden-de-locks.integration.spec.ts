@@ -10,6 +10,8 @@
  *
  * T4 (WU-4): el externo retiene LE `FOR NO KEY UPDATE`; `InstalarComponenteDesdeDeposito` (con
  * unidad) y `ReactivarComponente` esperan sin `RowShareLock` en `insumos` (L1) ni advisory (L2).
+ * T7 (WU-5): idem con `RetirarComponente` (DESCARTE de una pieza con unidad).
+ * T8 (WU-5): idem con `CrearTicketSoporte`: espera sin advisory de numeración ni lock en `tickets`.
  */
 import { randomBytes } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
@@ -25,6 +27,14 @@ import { PrismaFamiliaInsumoRepository } from '../../../insumos/infrastructure/p
 import { PrismaMovimientoInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-movimiento-insumo.repository';
 import { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
 import { construirOperacionesReal } from '../../../insumos/testing/operaciones-unidad-real';
+import { construirEntradaReal } from '../../../insumos/testing/entrada-insumo-real';
+import { PrismaTicketRepository } from '../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
+import { NumeradorTicket } from '../../../tickets/domain/services/numerador-ticket.service';
+import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
+import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
+import { Result } from '../../../shared/domain/result';
+import { RetirarComponenteUseCase } from './retirar-componente.use-case';
+import { CrearTicketSoporteUseCase } from './crear-ticket-soporte.use-case';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
 import { ReactivarComponenteUseCase } from './reactivar-componente.use-case';
@@ -142,11 +152,12 @@ describe('Baja de equipo — orden de locks, testigos (ADR-2)', () => {
       `SELECT
          count(*) FILTER (WHERE locktype = 'relation' AND relation = 'insumos'::regclass)::int AS insumos,
          count(*) FILTER (WHERE locktype = 'advisory')::int AS advisory,
-         count(*) FILTER (WHERE locktype = 'relation' AND relation = 'componentes_equipo'::regclass)::int AS componentes
+         count(*) FILTER (WHERE locktype = 'relation' AND relation = 'componentes_equipo'::regclass)::int AS componentes,
+         count(*) FILTER (WHERE locktype = 'relation' AND relation = 'tickets'::regclass)::int AS tickets
        FROM pg_locks WHERE pid = $1`,
       [pid],
     );
-    return rows[0] as { insumos: number; advisory: number; componentes: number };
+    return rows[0] as { insumos: number; advisory: number; componentes: number; tickets: number };
   }
 
   /**
@@ -169,7 +180,7 @@ describe('Baja de equipo — orden de locks, testigos (ADR-2)', () => {
       const pidServicio = await esperarBloqueadoPor(sonda, rows[0].pid as number);
 
       const locks = await locksPosteriores(sonda, pidServicio);
-      expect(locks).toEqual({ insumos: 0, advisory: 0, componentes: 0 });
+      expect(locks).toEqual({ insumos: 0, advisory: 0, componentes: 0, tickets: 0 });
     } finally {
       await externo.query('COMMIT').catch(() => undefined);
       externo.release();
@@ -266,5 +277,110 @@ describe('Baja de equipo — orden de locks, testigos (ADR-2)', () => {
       where: { id: componente.id },
     });
     expect(c.deletedAt).toBeNull();
+  }, 30_000);
+  it('T7: con el LE retenido en FOR NO KEY UPDATE, retirar (DESCARTE de una pieza con unidad) espera sin lock de insumos ni advisory', async () => {
+    const unidad = await tenantClient.unidadInsumo.create({
+      data: {
+        insumoId: insumoSerieId,
+        numeroSerie: 'S7',
+        numeroSerieNormalizado: `${PREFIJO}S7`,
+        condicion: 'NUEVO',
+        estado: 'INSTALADA',
+        equipoId,
+      },
+    });
+    const componente = await tenantClient.componenteEquipo.create({
+      data: { equipoId, insumoId: insumoSerieId, unidadId: unidad.id },
+    });
+    const useCase = new RetirarComponenteUseCase(
+      txRunner,
+      equipoRepo,
+      componenteRepo,
+      construirEntradaReal({ tenantContext, txRunner, insumoRepo, movimientoRepo, familiaRepo }),
+      construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
+    );
+
+    const result = await conLeRetenido(() =>
+      conTenant(() =>
+        useCase.execute({
+          equipoId,
+          componenteId: componente.id,
+          destino: 'DESCARTE',
+          motivo: 'testigo T7',
+          usuarioId: USUARIO,
+        }),
+      ),
+    );
+
+    expect(result.isOk()).toBe(true);
+    const c = await tenantClient.componenteEquipo.findUniqueOrThrow({
+      where: { id: componente.id },
+    });
+    expect(c.deletedAt).not.toBeNull();
+    const u = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidad.id } });
+    expect(u.estado).toBe('DESCARTADA');
+  }, 30_000);
+
+  it('T8: con el LE retenido en FOR NO KEY UPDATE, crear un ticket de soporte espera sin advisory de numeracion ni lock en tickets', async () => {
+    // Solo el numerador y el repo de tickets son reales: el advisory de numeración
+    // (`pg_advisory_xact_lock` en `findLastSecuencia`) es lo que el testigo vigila. El resto de las
+    // dependencias son fakes tipados: el use case recién las toca después de tomar el LE.
+    const tipoId = '01900000-0000-7000-8000-000000000571';
+    const ticketsGuardados: string[] = [];
+    const useCase = new CrearTicketSoporteUseCase(
+      {
+        save: async (t) => {
+          ticketsGuardados.push(t.numero);
+        },
+      },
+      { save: async () => {} },
+      { save: async () => {} },
+      { findIdByCodigo: async () => '01900000-0000-7000-8000-000000000572' },
+      {
+        findByCodigo: async () =>
+          TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'EQUIPOS', activo: true },
+            tipoId,
+          ),
+      },
+      { findIdByCodigo: async () => '01900000-0000-7000-8000-000000000573' },
+      { existeEnTenant: async () => true },
+      new NumeradorTicket(new PrismaTicketRepository(tenantContext)),
+      {
+        resolver: async () =>
+          Result.ok(
+            CicloClienteEntity.create(
+              {
+                cicloVigenteId: 'ciclo-vigente-1',
+                nombre: 'Ciclo testigos',
+                fechaInicio: new Date('2026-01-01'),
+                fechaFin: new Date('2026-12-31'),
+                activo: true,
+              },
+              '01900000-0000-7000-8000-000000000574',
+            ),
+          ),
+      },
+      equipoRepo,
+      { publish: () => {} },
+      txRunner,
+    );
+
+    const result = await conLeRetenido(() =>
+      conTenant(() =>
+        useCase.execute({
+          titulo: 'Testigo T8',
+          prioridadId: '01900000-0000-7000-8000-000000000575',
+          equipoId,
+          solicitanteId: USUARIO,
+          clienteId: 'test-cliente-lkw',
+          autorId: USUARIO,
+          anio: 2026,
+        }),
+      ),
+    );
+
+    expect(result.isOk()).toBe(true);
+    expect(ticketsGuardados).toEqual(['SOP-2026-00001']);
   }, 30_000);
 });

@@ -52,7 +52,8 @@ export interface CrearTicketSoporteDto {
  * agregando la validación OPCIONAL de `equipoId`:
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant.
- * 3. Si `equipoId` fue provisto: valida que exista, esté `activo` y no
+ * 3. **DENTRO de la transacción**, si `equipoId` fue provisto: toma el LE
+ *    `FOR SHARE` del equipo (antes del advisory de numeración) y valida que exista, esté `activo` y no
  *    eliminado — `Result.fail(EquipoInvalidoError)` si no. Si es `null`/
  *    ausente, el ticket se crea igual (F3-Q4, soporte de red/accesos sin
  *    equipo) — SIN consultar el repo de equipos.
@@ -85,7 +86,7 @@ export class CrearTicketSoporteUseCase {
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'existeEnTenant'>,
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
     private readonly resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'>,
-    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
+    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
@@ -108,14 +109,6 @@ export class CrearTicketSoporteUseCase {
       return Result.fail(cicloResult.getError());
     }
     const cicloActivo = cicloResult.getValue();
-
-    // 3. equipoId OPCIONAL (F3-Q4): solo se valida si fue provisto.
-    if (dto.equipoId) {
-      const equipo = await this.equipoRepo.findById(dto.equipoId);
-      if (!equipo || !equipo.activo || equipo.isDeleted()) {
-        return Result.fail(new EquipoInvalidoError(dto.equipoId));
-      }
-    }
 
     // 4-5. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
     //    es un bug de infraestructura, no un error del caller: throw defensivo.
@@ -141,6 +134,20 @@ export class CrearTicketSoporteUseCase {
     // 6. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
     //    persistencia atómica de ticket + operación + satélite.
     const resultado = await this.txRunner.run(async () => {
+      // 3. equipoId OPCIONAL (F3-Q4): solo se valida si fue provisto. LE `FOR SHARE` del equipo
+      //    (ADR-2/S5): primer lock de la transacción, ANTES del advisory de numeración. Así un
+      //    ticket nunca queda asociado a un equipo cuya baja comiteó entre la validación y el
+      //    alta. Falla sin escribir, así que devolver el `Result.fail` es seguro.
+      if (dto.equipoId) {
+        const equipo = await this.equipoRepo.bloquearParaOperarPiezas(dto.equipoId);
+        if (!equipo || !equipo.activo || equipo.isDeleted()) {
+          return Result.fail<
+            { ticket: TicketEntity; ticketSoporte: TicketSoporteEntity },
+            DomainError
+          >(new EquipoInvalidoError(dto.equipoId));
+        }
+      }
+
       const numeroResult = await this.numerador.generarNumero(
         tipoSoporte.id,
         tipoSoporte.codigo,

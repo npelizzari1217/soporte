@@ -134,3 +134,41 @@ transacción; con el LE `FOR SHARE` el `exigirTransaccionActiva` lo rechaza
 (`demo-seed.integration.spec.ts` rojo en la corrida completa). Corregido: el seed usa
 `AgregarComponenteSinDescuentoUseCase` (misma conducta con un insumo `NINGUNO`, ahora dentro de su
 propia transacción; firma con `usuarios.usuario`).
+
+## WU-5 — Guards con LE: retirar y ticket; CAS de `EditarComponente`
+
+Rama `feat/baja-equipo-completo-wu05` (base wu04-5), parte 1 de 2 (el CAS de `EditarComponente`, 5.3 a 5.5
+y 5.7, va en `feat/baja-equipo-completo-wu05-2`). Modo estándar (feature).
+
+- 5.1 `RetirarComponenteUseCase` recibe `equipoRepo` (`Pick<..., 'bloquearParaOperarPiezas'>`, ctor
+  `(txRunner, equipoRepo, componenteRepo, registrarEntrada, operaciones)`): el LE `FOR SHARE` es lo
+  primero dentro de `run()`; solo toma el lock (sin guard de `activo`). Las lecturas previas del
+  componente quedan afuera de la transacción (igual criterio que WU-4 con reactivar). Wiring en
+  `equipos.module.ts` y en los dos integration specs que lo construyen.
+- 5.2 `CrearTicketSoporteUseCase`: con `equipoId`, `bloquearParaOperarPiezas` es lo primero dentro de
+  `run()`, antes del numerador; `null`/borrado/`!activo` ⇒ `EquipoInvalidoError` sin escribir. Spec:
+  fake `bloquearParaOperarPiezas`, test de orden (`tx:inicio`, `lock-equipo`, `numerar`) y de corte antes de numerar.
+- 5.6 T7 y T8 en `baja-equipo.orden-de-locks.integration.spec.ts`; la sonda `locksPosteriores` suma `tickets`.
+  T8 usa el `NumeradorTicket` y `PrismaTicketRepository` reales (el advisory es lo vigilado) y fakes tipados del resto.
+- Callers fuera de `src/equipos`: `demo-seed.ts` y `soporte.controller` solo llaman
+  `CrearTicketSoporteUseCase.execute()`, que ya abre su propia transacción: sin cambios. Los specs
+  `prisma_master/seeds` pasan.
+
+### RED observado (guards sobre caminos existentes, antes de tocar el código)
+
+Comando: `pnpm vitest run src/equipos/application/use-cases/retirar-componente.use-case.spec.ts src/equipos/application/use-cases/crear-ticket-soporte.use-case.spec.ts`
+- `crear-ticket-soporte.use-case.spec.ts`: 7 de 11 rojos (el use case seguía llamando `findById`, el fake solo
+  expone `bloquearParaOperarPiezas`; el test de orden no veía `lock-equipo`).
+- `retirar-componente.use-case.spec.ts`: 24 de 24 rojos (el ctor aún no recibía `equipoRepo`; los casts
+  del spec desplazan los argumentos). GREEN tras implementar: ambos specs verdes.
+
+### Mutaciones de los testigos
+
+- T7: se quitó `await this.equipoRepo.bloquearParaOperarPiezas(...)` de `retirar-componente.use-case.ts`.
+  Rojo: `Error: Nadie quedo bloqueado por el backend <pid> en 5000 ms.` Revertido.
+- T8: se movió el bloque del LE después de `numerador.generarNumero`. Rojo:
+  `expected { insumos: 0, advisory: 1, … } to deeply equal { insumos: 0, advisory: 0, … }`. Revertido.
+
+### Ayuda
+
+Sin deuda.

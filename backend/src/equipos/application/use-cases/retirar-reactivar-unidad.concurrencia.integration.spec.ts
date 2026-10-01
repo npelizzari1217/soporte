@@ -166,6 +166,7 @@ describe('Retiro y reactivar con unidad — orden de locks y carreras (WU-11, AD
   function makeRetirar(): RetirarComponenteUseCase {
     return new RetirarComponenteUseCase(
       makeTxRunner(),
+      equipoRepo,
       componenteRepo,
       construirEntradaReal({
         tenantContext,
