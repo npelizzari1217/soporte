@@ -4,9 +4,12 @@ import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.
 import { MovimientoInsumoEntity } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import { Result } from '../../../shared/domain/result';
 import {
+  EquipoDadoDeBajaError,
   EquipoNoEncontradoError,
   InsumoNoEsRepuestoError,
 } from '../../domain/errors/equipos.errors';
+import { txRunnerFake } from '../../../insumos/testing/tx-runner-fake';
+import { agregarComponenteSobreEquipoDadoDeBaja } from '../../testing/equipos-unit.fixtures';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
 import { UnidadNoDisponibleError } from '../../../insumos/domain/errors/unidades-insumo.errors';
 
@@ -439,6 +442,46 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
       expect(operaciones.instalar).not.toHaveBeenCalled();
       expect(agregarComponenteUseCase.preparar).not.toHaveBeenCalled();
       expect(registrarSalidaInsumoUseCase.execute).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('equipo dado de baja (R11)', () => {
+    const dtoBase = { equipoId: 'equipo-uuid', insumoId: 'insumo-uuid', usuarioId: 'usuario-uuid' };
+
+    function armarSobreBaja() {
+      const { useCase: agregar, componenteRepo } = agregarComponenteSobreEquipoDadoDeBaja();
+      const operaciones = { instalar: vi.fn() };
+      const registrarSalidaInsumoUseCase = { execute: vi.fn() };
+      const useCase = makeUseCase({
+        txRunner: txRunnerFake(),
+        agregarComponenteUseCase: agregar,
+        registrarSalidaInsumoUseCase,
+        operaciones,
+        componenteRepo,
+      });
+      return { useCase, componenteRepo, operaciones, registrarSalidaInsumoUseCase };
+    }
+
+    it('instalar con unidad: EquipoDadoDeBajaError, sin componente ni movimiento de stock', async () => {
+      const { useCase, componenteRepo, operaciones, registrarSalidaInsumoUseCase } =
+        armarSobreBaja();
+
+      const result = await useCase.execute({ ...dtoBase, unidadId: 'unidad-1' });
+
+      expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+      expect(operaciones.instalar).not.toHaveBeenCalled();
+      expect(registrarSalidaInsumoUseCase.execute).not.toHaveBeenCalled();
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('instalar con insumo NINGUNO (sin unidad): EquipoDadoDeBajaError, sin SALIDA ni componente', async () => {
+      const { useCase, componenteRepo, registrarSalidaInsumoUseCase } = armarSobreBaja();
+
+      const result = await useCase.execute(dtoBase);
+
+      expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+      expect(registrarSalidaInsumoUseCase.execute).not.toHaveBeenCalled();
+      expect(componenteRepo.save).not.toHaveBeenCalled();
     });
   });
 });

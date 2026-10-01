@@ -1,4 +1,10 @@
 import { vi } from 'vitest';
+import { unstubbed } from '../../testing/mocks';
+import { AgregarComponenteUseCase } from '../application/use-cases/agregar-componente.use-case';
+import type { IComponenteEquipoRepository } from '../domain/ports/i-componente-equipo.repository';
+import type { IEquipoInformaticoRepository } from '../domain/ports/i-equipo-informatico.repository';
+import type { IInsumoRepository } from '../../insumos/domain/ports/i-insumo.repository';
+import type { IFamiliaInsumoRepository } from '../../insumos/domain/ports/i-familia-insumo.repository';
 import type { ITenantTransactionRunner } from '../../shared/infrastructure/persistence/tenant-transaction-runner';
 import {
   EquipoInformaticoEntity,
@@ -51,4 +57,31 @@ export function txRunnerDeSpec(llamadas: string[] = []): ITenantTransactionRunne
     },
     alCommitear: vi.fn(),
   };
+}
+
+/**
+ * `AgregarComponenteUseCase` REAL armado sobre un equipo dado de baja. El catálogo de insumos
+ * y familias lanza si se consulta: el guard del equipo tiene que cortar antes. Sirve para probar
+ * que cada camino de alta (instalar con unidad, con insumo `NINGUNO`, sin descuento) devuelve
+ * `EquipoDadoDeBajaError` sin crear el componente.
+ */
+export function agregarComponenteSobreEquipoDadoDeBaja() {
+  const equipo = equipoDadoDeBaja();
+  const equipoRepo = {
+    bloquearParaOperarPiezas: vi.fn(async () => equipo),
+  } satisfies Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>;
+  const componenteRepo = { save: vi.fn(async () => {}) } satisfies Pick<
+    IComponenteEquipoRepository,
+    'save'
+  >;
+  const insumoRepo = { findById: unstubbed('insumoRepo.findById') } satisfies Pick<
+    IInsumoRepository,
+    'findById'
+  >;
+  const familiaRepo = { findById: unstubbed('familiaRepo.findById') } satisfies Pick<
+    IFamiliaInsumoRepository,
+    'findById'
+  >;
+  const useCase = new AgregarComponenteUseCase(equipoRepo, componenteRepo, insumoRepo, familiaRepo);
+  return { equipo, useCase, componenteRepo };
 }
