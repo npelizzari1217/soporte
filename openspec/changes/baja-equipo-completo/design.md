@@ -31,6 +31,9 @@ Cada hecho se verificó el 2026-10-01 sobre HEAD `40f7298a`.
 | `save()` del equipo es un upsert que reescribe `activo` | `prisma-equipo-informatico.repository.ts:49-57` | Una edición con una entidad leída antes de la baja reactivaría el equipo. `save()` deja de escribir `activo` y `baja_*` (ADR-1) |
 | Los INSERT con FK a `equipos_informaticos` (componente, movimiento, evento, unidad) toman `FOR KEY SHARE` sobre el equipo, a veces después de L1–L3 | schema, ADR-12 previo | LE de la baja es `FOR NO KEY UPDATE`, que no choca con `FOR KEY SHARE`. Un `FOR UPDATE` sí chocaría y causaría un deadlock contra el retiro y la instalación |
 | `preparar()` de `AgregarComponenteUseCase` corre siempre dentro de una transacción (instalar y alta sin descuento) | `instalar-componente-desde-deposito.use-case.ts:137-142,208`; `agregar-componente-sin-descuento.use-case.ts:61,74` | El LE `FOR SHARE` va en `preparar()` y cubre los tres caminos de alta |
+| `EditarComponente` lee fuera de una transacción y guarda con `save()` (upsert). `toPersistence` escribe `deletedAt` y `baja_*` | `editar-componente.use-case.ts:48-68`; `componente-equipo.mapper.ts:69-73` | Una edición con una entidad leída antes de un retiro o de una baja resucita el componente. Se resuelve con un CAS (ADR-5) |
+| El `ValidationPipe` global usa `whitelist: true` sin `forbidNonWhitelisted` | `app.module.ts:71` | Las claves que el DTO no declara (por ejemplo, un destino por pieza) se descartan sin error (ADR-7, R17) |
+| `CrearTicketSoporte` valida el equipo fuera de la transacción. Adentro toma el advisory de numeración y después inserta el satélite con FK al equipo | `crear-ticket-soporte.use-case.ts:113-118,143-148` | Toma LE `FOR SHARE` al comienzo de su transacción (ADR-2) |
 | "Abierto" = estado no terminal; `ESTADOS_TERMINALES = {CERRADO, CANCELADO}` | `tickets/domain/state-machine/estados.constants.ts:25` | `RESUELTO` cuenta como abierto (R10) |
 | `ApiError.raw` conserva el cuerpo del error | `frontend/src/shared/api/types.ts:83-92` | El frontend lee `piezas` del 422 sin tocar `apiFetch` |
 
@@ -116,21 +119,35 @@ aplicada.
 |---|---|---|
 | `DarDeBajaEquipo`, `EliminarEquipo`, `EditarEquipo` | `bloquearParaModificar(id)`: `SELECT … FOR NO KEY UPDATE`, devuelve la entidad vigente | Existe, no borrado, `activo` |
 | `AgregarComponente.preparar()` (cubre instalar, con y sin unidad, y alta sin descuento), `ReactivarComponente`, `RetirarComponente` | `bloquearParaOperarPiezas(id)`: `SELECT … FOR SHARE` | `activo` (el retiro solo toma el lock: sus piezas ya están retiradas en un equipo dado de baja) |
+| `CrearTicketSoporte` (si trae `equipoId`) | `bloquearParaOperarPiezas(id)` al comienzo de su `run()`, **antes** del advisory de numeración | `activo` y no borrado; si no, `EquipoInvalidoError`, como hoy |
 
-Ambos métodos llaman a `exigirTransaccionActiva`. `EditarEquipo` y `EliminarEquipo` pasan a correr
-enteros en `txRunner.run()`. `ReactivarComponente` mueve su chequeo dentro de la transacción.
+**Implementación (los dos métodos).**
+
+1. Llaman a `exigirTransaccionActiva`.
+2. Corren `$queryRaw SELECT id FROM equipos_informaticos WHERE id = $1::uuid FOR NO KEY UPDATE`
+   (o `FOR SHARE`).
+3. Devuelven `findUnique` a través del mapper: la fila ya está bloqueada, así que la lectura es la
+   vigente. Es el mismo patrón que `bloquearPorIds` de unidades.
+4. Devuelven `null` si la fila no existe. El caller trata `null` o `deletedAt` como
+   `EquipoNoEncontradoError` (o `EquipoInvalidoError` en el ticket).
+
+`EditarEquipo` y `EliminarEquipo` pasan a correr enteros en `txRunner.run()`. `ReactivarComponente`
+mueve su chequeo dentro de la transacción.
 
 **Orden extendido**: LE → L0 → LC → L1 → L2 → L3 → L4. Ningún camino toma LE junto con L0 o LC.
+El advisory de numeración de tickets queda después de LE y la baja nunca lo toma, así que no hay
+ciclo.
 
 **Por qué no hay ciclo.**
 
 - El LE explícito se toma siempre primero.
-- Los locks implícitos de FK sobre el equipo son `FOR KEY SHARE`. Llegan después de L1–L3 (las
-  ENTRADA del retiro, los eventos, la fila del componente) y no chocan ni con `FOR SHARE` ni con
-  `FOR NO KEY UPDATE`.
+- Hay caminos que nunca toman LE y que sí escriben filas con FK al equipo después de tomar L1 o
+  L2: la salida y el ajuste de insumos con `equipoId`. Esos INSERT toman `FOR KEY SHARE` sobre la
+  fila del equipo, que no choca ni con `FOR SHARE` ni con `FOR NO KEY UPDATE`.
 - Por eso se rechaza `FOR UPDATE` para la baja. La baja tendría LE `FOR UPDATE` y esperaría L2 de
-  un insumo X. Un retiro concurrente tendría L2(X) y esperaría el `FOR KEY SHARE` del equipo al
-  insertar su ENTRADA. El resultado sería `40P01`.
+  un insumo X. Una salida manual concurrente con `equipoId` tendría L2(X) y esperaría el
+  `FOR KEY SHARE` del equipo al insertar su movimiento. El resultado sería `40P01`.
+- El testigo T6 fija esta elección (ADR-10).
 
 **Por qué `FOR SHARE` en las altas.** Dos instalaciones sobre el mismo equipo no se serializan
 entre sí. Sí esperan a una baja o a un borrado en vuelo, y al obtener el lock ven `activo = false`
@@ -139,9 +156,8 @@ y rechazan con `EquipoDadoDeBajaError`.
 Rechazado: confiar en los CAS (deja ganar a un alta posterior a la lectura de piezas de la baja, y
 el componente queda activo sobre un equipo dado de baja, lo que viola R8 y R15).
 
-**Residual aceptado.** `CrearTicketSoporte` lee `activo` sin LE. Un ticket creado en el mismo
-instante que la baja puede comitear: es un ticket abierto más sobre un equipo dado de baja, que es
-el estado que R10 ya admite.
+**Ticket contra baja (R10).** Con el LE `FOR SHARE`, un ticket en vuelo hace esperar a la baja. Un
+ticket que llega después de la baja ve `activo = false` y se rechaza. Ya no hay ventana.
 
 ### ADR-3: `DarDeBajaEquipoUseCase` — una transacción, una llamada por destino
 
@@ -152,9 +168,16 @@ el estado que R10 ya admite.
 2. `categoria` es válida. Con `OTRA`, el texto recortado es obligatorio. La leyenda cabe
    (ADR-4). Si algo falla, `MotivoBajaEquipoInvalidoError`.
 3. Se leen los componentes activos. Con `STOCK_USADO`, se corre
-   `registrarEntrada.diagnosticarDevolucionesDeEquipo(piezas)` (sin locks, con
-   `clasificarPiezaDevuelta`). Si hay alguna pieza con problema,
-   `BajaEquipoConPiezasProblematicasError` con **todas**.
+   `registrarEntrada.diagnosticarDevolucionesDeEquipo(piezas)`:
+   - Corre sin transacción y sin locks.
+   - Lee el insumo con `findById`, y su `seguimiento` sale de la entidad.
+     `leerSeguimientoParaMovimiento` no sirve acá porque exige una transacción activa.
+   - Lee la familia con `findById`.
+   - Llama a `unidadRepo.serialesExistentes` sin lock.
+   - Corre `clasificarPiezaDevuelta`.
+
+   Si hay alguna pieza con problema, `BajaEquipoConPiezasProblematicasError` con **todas**,
+   incluida `SERIAL_DUPLICADO`.
 
 **Dentro de `txRunner.run()`**, en este orden:
 
@@ -170,21 +193,25 @@ el estado que R10 ya admite.
 **`registrarDevolucionesDeEquipo`** (insumos, dentro de la transacción del llamador):
 
 1. **L1** `leerSeguimientoParaMovimiento` de **todos** los insumos distintos, ordenados por id.
-2. `clasificarPiezaDevuelta` de cada pieza bajo L1: `validarInsumoElegible` sin `exigirHabilitado`;
-   `validarCondicionAdmitida(USADO, { admitirFamiliaNoVigente: true })`; legado `SERIE` sin serial,
-   con serial inválido o repetido en el lote. Junta **todas** las causas. Si hay alguna, devuelve
-   `Result.fail` antes de escribir.
-3. `operaciones.devolverDesdeEquipo(conUnidad, legados, o)`: un **método nuevo del servicio**.
-   `devolverAlDeposito` pasa a delegar en él con `legados = []`. Hace:
+2. `clasificarPiezaDevuelta` de cada pieza bajo L1. Aplica `validarInsumoElegible` sin
+   `exigirHabilitado` y `validarCondicionAdmitida(USADO, { admitirFamiliaNoVigente: true })`, y
+   detecta el legado `SERIE` sin serial, con serial inválido o repetido en el lote.
+   - Junta **todas** las causas como `causasPrevias`, sin cortar.
+   - Si no hay piezas `SERIE` sin causa y `causasPrevias` no está vacía, devuelve `Result.fail`.
+3. `operaciones.devolverDesdeEquipo(conUnidad, legados, o, causasPrevias)`: un **método nuevo del
+   servicio**. Recibe solo las piezas `SERIE` sin causa previa. `devolverAlDeposito` pasa a delegar
+   en él con `legados = []` y sin causas previas. Hace:
    - Fotos sin lock de las unidades.
    - `bloquearInsumos` de la unión de insumos con unidad e insumos legados, ordenados: L1 se repite
      sin esperar (`FOR SHARE` ya tomado por la misma transacción) y después L2 de todos.
-   - L3 de las unidades por id.
    - Bajo L2, `unidadRepo.serialesExistentes(insumoId, normalizados)`, un puerto nuevo. Bajo L2 la
      consulta es autoritativa, porque otra alta del mismo insumo necesita ese L2. Un serial que ya
-     existe es una causa con su `componenteId`, no un P2002.
-   - Valida todo, arma las escrituras y escribe: `RETIRO_A_DEPOSITO` para las unidades, `INGRESO`
-     con `equipoId` para los legados.
+     existe es la causa `SERIAL_DUPLICADO` con su `componenteId`, no un P2002.
+   - **Une** esas causas con `causasPrevias`. Si la unión no está vacía, devuelve
+     `DevolucionConPiezasProblematicasError` con todas, antes de L3 y sin escribir. Así R6 lista
+     juntas, por ejemplo, `INSUMO_BORRADO` y `SERIAL_DUPLICADO`.
+   - L3 de las unidades por id. Valida las transiciones y arma las escrituras.
+   - Escribe: `RETIRO_A_DEPOSITO` para las unidades e `INGRESO` con `equipoId` para los legados.
 4. ENTRADA `USADO` de cantidad 1 por cada pieza `NINGUNO` (`asentar`). **No toma L2**, como dice
    `:89`, y **no toma ningún lock nuevo**: su L1 ya está tomado desde el paso 1. Los INSERT solo
    agregan `FOR KEY SHARE` sobre `insumos` y `equipos_informaticos`, que no chocan con ningún lock
@@ -242,9 +269,21 @@ diverge. El equipo guarda la categoría y el texto estructurados, no la leyenda.
 | `EditarEquipo` | Bajo LE: `!activo` | `EquipoDadoDeBajaError` (422) |
 | `AgregarComponente.preparar()` (instalar y alta sin descuento) | Bajo LE `FOR SHARE`: `!activo` | `EquipoDadoDeBajaError` |
 | `ReactivarComponente` | Bajo LE `FOR SHARE`: `!activo` (delta de `componentes-catalogo-unico`) | `EquipoDadoDeBajaError` |
+| `EditarComponente` | `save()` (upsert) se reemplaza por `componenteRepo.editar(componente)`: un CAS `updateMany WHERE id = ? AND deleted_at IS NULL` que escribe **solo** `descripcion`, `numero_serie`, `capacidad` y `updated_at`. 0 filas → `ComponenteDadoDeBajaError` | `ComponenteDadoDeBajaError` (422) |
 | Doble baja | Afuera y bajo LE; el CAS de `registrarBaja` es el backstop | `EquipoDadoDeBajaError` |
 | `CrearTicketSoporte` | Ya vigente (`crear-ticket-soporte.use-case.ts:115`); se cubre con un test | — |
 | `EliminarEquipo` (**corrección de defecto**) | Bajo LE `FOR NO KEY UPDATE`: si `!activo`, `EquipoDadoDeBajaError`; si `findActiveByEquipoId(id).length > 0`, `EquipoConComponentesActivosError(cantidad)` (422) | |
+
+**`EditarComponente`: CAS y no LE.**
+
+- LE `FOR SHARE` no la protege contra el retiro individual: el retiro también toma `FOR SHARE`, y
+  dos `FOR SHARE` no se excluyen.
+- Hacerla correcta con locks exigiría además un lock de fila del componente.
+- El CAS cubre la baja y el retiro con una sola sentencia, no toma ningún lock del orden y no
+  escribe columnas de estado.
+- No hace falta mirar el equipo: un equipo dado de baja no tiene componentes activos, así que el
+  CAS falla igual.
+- Rechazado: LE `FOR SHARE` con relectura, que deja abierta la carrera contra el retiro.
 
 **Strict TDD en el borrado.** Primero se escriben los tests de regresión y se corren en RED contra
 el código actual, que hoy borra:
@@ -291,6 +330,17 @@ Las causas (`INSUMO_BORRADO`, `FAMILIA_NO_REPUESTO`, `SERIAL_REQUERIDO`, `SERIAL
 tienen mapeo explícito en `toHttpException`, y el de piezas pasa un objeto a
 `UnprocessableEntityException`.
 
+**Destino por pieza (R17).** El DTO no declara un destino por pieza, y el `ValidationPipe` global
+(`whitelist: true`, sin `forbidNonWhitelisted`, `app.module.ts:71`) descarta sin error cualquier
+clave no declarada, también dentro de los elementos de `seriales`.
+
+- **Decisión: se ignora.** El único `destino` de primer nivel se aplica a todas las piezas, y una
+  clave `destino` por pieza no tiene efecto.
+- Un pedido sin `destino` de primer nivel da 400.
+- Rechazado: `forbidNonWhitelisted` solo en esta ruta. El pipe global corre primero y ya habría
+  descartado la clave, y cambiarlo a nivel global queda fuera de alcance.
+- Se ajustó el escenario de R17 en la spec.
+
 **La exportación cambia de contrato.** El ciclo de 2026-08 (`exportar-listados-csv`, solo en
 engram) declaraba "sin parámetros". R11 lo reemplaza; se actualizan el JSDoc de
 `ExportarEquiposUseCase` y el comentario de `equipos-list-view.tsx:98-102`.
@@ -323,6 +373,8 @@ ficha de un equipo dado de baja.
 
 | Área | Capa | Qué |
 |---|---|---|
+| Validación del request | Unit (`equipos/interface/dtos/equipos.dto.spec.ts`) + e2e | 400 si `destino` falta o es inválido, si `categoria` falta o es inválida, si `motivo` tiene más de 500 caracteres crudos o si `seriales` repite un `componenteId`. `OTRA` sin texto o con solo espacios da 422 (dominio). Un `destino` por pieza se ignora y se aplica el de primer nivel (R17) |
+| Ediciones viejas | Integración | (a) `EditarEquipo` con una entidad leída antes de la baja no reactiva el equipo, y `save()` de una entidad vieja deja `activo` y `baja_*` intactos (ADR-1). (b) `EditarComponente` con una entidad leída antes de una baja o de un retiro devuelve `ComponenteDadoDeBajaError` y el componente sigue retirado con sus `baja_*` (ADR-5) |
 | Entidad, leyenda, categorías | Unit | `componerLeyendaBaja` (con y sin texto); borde de 500 exactos y 501; `darDeBaja` sobre un equipo no vigente lanza |
 | `clasificarPiezaDevuelta` | Unit | Cada causa; legado con serial; el insumo deshabilitado y la familia no vigente se admiten |
 | `DarDeBajaEquipoUseCase` | Unit (fakes) | Orden de llamadas (LE → stock → L4 por id → equipo); `Result.fail` interno → excepción → `fail` afuera; conjunto cambiado → 409; cero piezas |
@@ -331,8 +383,9 @@ ficha de un equipo dado de baja.
 | Leyenda en tres lugares | Integración | `baja_motivo` = `movimientos.motivo` = `eventos.motivo` = la cadena esperada |
 | Invariante `SERIE` | Integración | El helper `insumos/testing/invariante-serie.ts` después de cada baja |
 | Testigos de orden de locks | Integración, `baja-equipo.orden-de-locks.integration.spec.ts` | Ver abajo |
-| Resultado concurrente | Integración `*.concurrencia` | Baja `STOCK_USADO` de E1 contra la instalación en E2 de unidades de los mismos insumos en orden inverso (R15), 10 iteraciones: sin `40P01`, invariante en verde. Baja contra alta sin descuento sobre el mismo equipo: un solo desenlace válido. Dos bajas del mismo equipo: una sola completa |
-| HTTP | e2e | 403 sin `BORRADO`; 422 con `piezas`; resumen; `incluirBajas` en la lista y la exportación; `PATCH` y `POST …/componentes` sobre un equipo dado de baja |
+| Causas juntas (R6) | Integración | Un componente con insumo borrado y un legado con serial ya existente en el insumo: el 422 lista los dos (`INSUMO_BORRADO` y `SERIAL_DUPLICADO`), tanto por el diagnóstico de afuera como por el camino transaccional (diagnóstico salteado con un repo espía) |
+| Resultado concurrente | Integración `*.concurrencia` | Cada caso con 10 iteraciones, sin `40P01` y con el invariante `SERIE` en verde. (a) Baja `STOCK_USADO` de E1 contra `InstalarComponenteDesdeDeposito` en E2 de unidades de los mismos insumos en orden inverso (R15). (b) Baja de E1 contra `InstalarComponenteDesdeDeposito` **en E1**, una vez con unidad y otra con insumo `NINGUNO`: o la instalación comitea antes y la baja da 409 o retira la pieza, o la instalación da `EquipoDadoDeBajaError`. Nunca queda un componente activo ni una unidad `INSTALADA` en el equipo dado de baja. (c) Baja contra alta sin descuento sobre el mismo equipo. (d) Dos bajas del mismo equipo: una sola completa. (e) Baja contra `CrearTicketSoporte` del mismo equipo: o el ticket existe y la baja lo cuenta como abierto, o el ticket se rechaza (R10) |
+| HTTP | e2e | 403 sin `BORRADO`; `BORRADO` sin ningún permiso de INSUMOS completa `STOCK_USADO` y registra las ENTRADAs (R12, segundo escenario); 422 con `piezas`; resumen; `incluirBajas` en la lista y la exportación; `PATCH` y `POST …/componentes` sobre un equipo dado de baja |
 | Frontend | Vitest + Testing Library + MSW | Habilitación del botón por nombre; serial precargado; piezas del 422 listadas; filtro y etiqueta en la lista; botón renombrado; ficha de solo lectura |
 
 **Testigos deterministas** (patrón de `retirar-reactivar-unidad.concurrencia.integration.spec.ts:200-245`):
@@ -351,6 +404,22 @@ ficha de un equipo dado de baja.
 | T3 | `FOR NO KEY UPDATE` de una unidad | Advisory de sus insumos | `RowExclusiveLock` en `movimientos_insumo` (ninguna ENTRADA `NINGUNO` antes de L3) y en `componentes_equipo` |
 | T4 | LE `FOR NO KEY UPDATE` | — (la instalación con unidad y la reactivación esperan) | `RowShareLock` en `insumos`; ningún advisory |
 | T5 | LE `FOR SHARE` + INSERT de un componente, sin commit | — | El `DELETE` espera; tras el COMMIT del externo responde `EquipoConComponentesActivosError` |
+| T6 | (inverso) La baja queda retenida en L2 con LE tomado (externo con el advisory de un insumo) | — | Un segundo cliente hace `INSERT INTO movimientos_insumo (… equipo_id …)` del mismo equipo con `lock_timeout` corto y **no** se bloquea. Fija `FOR NO KEY UPDATE` frente a `FOR UPDATE` |
+| T7 | LE `FOR NO KEY UPDATE` | — (`RetirarComponente` espera) | `RowShareLock` en `insumos`; ningún advisory. Igual que T4, pero para el retiro |
+| T8 | LE `FOR NO KEY UPDATE` | — (`CrearTicketSoporte` espera) | Advisory de numeración de tickets; ningún `RowExclusiveLock` en `tickets` |
+
+T4 cubre la instalación con unidad y la reactivación. T7 y T8 agregan el retiro y el ticket, que
+ahora también toman LE.
+
+**Home de los tests del delta `unidades-insumo-serie`**:
+`insumos/application/services/operaciones-unidad-insumo.service.spec.ts`. Los bloques de
+`devolverAlDeposito` y `descartarInstaladas` (`:786-855`) suman `devolverDesdeEquipo`: lote mixto,
+unidad instalada en otro equipo, unidad ya no instalada y causas unidas sin escribir. `:893` es el
+caso de unidad que ya no está en el estado esperado.
+
+**`stock-insumo-condicion` no necesita delta.** La devolución en lote asienta ENTRADAs `USADO` por
+el mismo camino (`asentar` y las escrituras del servicio) y con los mismos guards de condición que
+el retiro individual. No cambia ninguna regla de condición ni de saldo.
 
 ### ADR-11: rollback y partición
 
@@ -369,10 +438,10 @@ el tracker se integra a `main` una sola vez; la partición final la cierra `sdd-
 |---|---|
 | 1 | Borrado: tests RED, fix con LE `FOR NO KEY UPDATE`, `EquipoConComponentesActivosError`, botón renombrado, T5 |
 | 2 | Migración, entidad, mapper, `save()` sin `activo`, `registrarBaja`, `bloquearPara*` |
-| 3 | Guards con LE en editar, `preparar`, reactivar y retirar; T4 |
+| 3 | Guards con LE en editar, `preparar`, reactivar, retirar y ticket; CAS de `EditarComponente`; tests de ediciones viejas; T4, T7, T8 |
 | 4 | Insumos: `clasificarPiezaDevuelta`, `serialesExistentes`, `devolverDesdeEquipo`, `registrarDevolucionesDeEquipo` y `diagnosticar…` |
-| 5 | `DarDeBajaEquipoUseCase` con atomicidad, leyenda y T1–T3 |
-| 6 | HTTP: baja, resumen, tickets abiertos, errores, e2e y prueba de concurrencia de resultado |
+| 5 | `DarDeBajaEquipoUseCase` con atomicidad, leyenda, causas juntas y T1–T3, T6 |
+| 6 | HTTP: baja, resumen, tickets abiertos, errores, `equipos.dto.spec.ts`, e2e (incluidos R12 y R17) y pruebas de concurrencia de resultado (a)–(e) |
 | 7 | Lista: `incluirBajas` en la lista y la exportación, filtro y `equipos-listado.md` |
 | 8 | Diálogo, ficha de solo lectura, `permisos-y-roles.md` y Cumplida/Desviación en el roadmap |
 
@@ -386,8 +455,9 @@ POST /equipos/:id/baja ─→ DarDeBajaEquipoUseCase
   run():
     LE  equipos FOR NO KEY UPDATE ── recheck · piezas iguales? ──→ 409
     A:  RegistrarEntrada.registrarDevolucionesDeEquipo
-          L1 todos los insumos (ordenados) → clasificar bajo L1
-          └→ Operaciones.devolverDesdeEquipo: L2 SERIE → L3 unidades → escribir
+          L1 todos los insumos (ordenados) → causas de insumo/familia/serial
+          └→ Operaciones.devolverDesdeEquipo: L2 SERIE → seriales existentes
+             → unir causas (fail si hay) → L3 unidades → escribir
           └→ ENTRADAs NINGUNO (sin lock nuevo)
     B:  Operaciones.descartarInstaladas: L1 → L2 → L3 → escribir
     L4  componentes por id (CAS) ── equipo registrarBaja (CAS)
@@ -407,7 +477,12 @@ POST /equipos/:id/baja ─→ DarDeBajaEquipoUseCase
 | `backend/src/equipos/infrastructure/persistence/prisma/{prisma-equipo-informatico.repository,equipo-informatico.mapper,prisma-ticket-soporte.repository}.ts` | Modify | Implementaciones; `save()` sin `activo`/`baja_*` |
 | `backend/src/equipos/application/use-cases/dar-de-baja-equipo.use-case.ts` | Create | ADR-3 |
 | `backend/src/equipos/application/use-cases/resumen-baja-equipo.use-case.ts` | Create | ADR-7 |
-| `backend/src/equipos/application/use-cases/{eliminar-equipo,editar-equipo,agregar-componente,reactivar-componente,retirar-componente,listar-equipos,exportar-equipos}.use-case.ts` | Modify | LE, guards, `incluirDadosDeBaja` |
+| `backend/src/equipos/application/use-cases/{eliminar-equipo,editar-equipo,agregar-componente,reactivar-componente,retirar-componente,crear-ticket-soporte,listar-equipos,exportar-equipos}.use-case.ts` | Modify | LE, guards, `incluirDadosDeBaja` |
+| `backend/src/equipos/application/use-cases/editar-componente.use-case.ts`, `domain/ports/i-componente-equipo.repository.ts`, `prisma-componente-equipo.repository.ts` | Modify | `editar()` con CAS en lugar de `save()` (ADR-5) |
+| `backend/src/preventivo/application/use-cases/generar-preventivos.use-case.spec.ts:46`, `backend/src/equipos/application/use-cases/crear-ticket-soporte.use-case.spec.ts:169`, `backend/src/equipos/application/use-cases/exportar-equipos.use-case.spec.ts:58` | Modify | Usan `deactivate()`: pasan a `darDeBaja(...)` o a reconstituir el equipo con datos de baja. `crear-ticket-soporte` además falsea `bloquearParaOperarPiezas` |
+| `backend/src/equipos/infrastructure/persistence/prisma/prisma-equipos.integration.spec.ts:271-273` | Modify | Se reescribe: `save()` deja `activo` y `baja_*` intactos y `registrarBaja` es el único escritor (CAS, segunda llamada → `false`) |
+| `backend/src/equipos/application/use-cases/{agregar-componente,editar-componente,editar-equipo,eliminar-equipo,reactivar-componente,retirar-componente}.use-case.spec.ts` | Modify | Fakes: `findById` → `bloquearParaOperarPiezas` / `bloquearParaModificar`; `save` → `editar`; `txRunner` donde antes no había |
+| `backend/src/equipos/interface/dtos/equipos.dto.spec.ts` | Modify | Validación de `DarDeBajaEquipoHttpDto` (ADR-10) |
 | `backend/src/insumos/application/services/clasificar-pieza-devuelta.ts` | Create | Clasificador puro y causas |
 | `backend/src/insumos/application/services/operaciones-unidad-insumo.service.ts` | Modify | `devolverDesdeEquipo`; `devolverAlDeposito` delega |
 | `backend/src/insumos/domain/ports/i-unidad-insumo.repository.ts` + Prisma | Modify | `serialesExistentes` |
@@ -423,14 +498,19 @@ POST /equipos/:id/baja ─→ DarDeBajaEquipoUseCase
 ```ts
 // insumos
 export interface LegadoEnEquipo { componenteId: string; insumoId: string; equipoId: string; numeroSerie: string }
-devolverDesdeEquipo(conUnidad: readonly ItemEnEquipo[], legados: readonly LegadoEnEquipo[], o: ContextoUnidad)
+devolverDesdeEquipo(conUnidad: readonly ItemEnEquipo[], legados: readonly LegadoEnEquipo[], o: ContextoUnidad, causasPrevias?: readonly CausaPieza[])
   : Promise<Result<Map<string /*componenteId*/, UnidadConMovimiento>, DomainError>>;
 export interface PiezaADevolver { componenteId: string; insumoId: string; unidadId: string | null; numeroSerie: string | null }
 registrarDevolucionesDeEquipo(dto: { equipoId: string; usuarioId: string; motivo: string; piezas: readonly PiezaADevolver[] })
   : Promise<Result<Map<string, string /*movimientoId*/>, DomainError>>; // fail: DevolucionConPiezasProblematicasError { piezas: { componenteId; insumoId; causa }[] }
 // equipos
-bloquearParaModificar(id: string): Promise<EquipoInformaticoEntity | null>;     // FOR NO KEY UPDATE
-bloquearParaOperarPiezas(id: string): Promise<EquipoInformaticoEntity | null>;  // FOR SHARE
+bloquearParaModificar(id: string): Promise<EquipoInformaticoEntity | null>;     // raw SELECT id … FOR NO KEY UPDATE + findUnique vía mapper
+bloquearParaOperarPiezas(id: string): Promise<EquipoInformaticoEntity | null>;  // raw SELECT id … FOR SHARE + findUnique vía mapper; caller: null o deletedAt → no encontrado
+// equipos, componentes
+editar(componente: ComponenteEquipoEntity): Promise<boolean>; // CAS WHERE deleted_at IS NULL; solo descripcion, numero_serie, capacidad
+// insumos
+devolverDesdeEquipo(..., causasPrevias: readonly CausaPieza[]) // une causas antes de L3 y de escribir
+serialesExistentes(insumoId: string, normalizados: readonly string[]): Promise<Set<string>>;
 registrarBaja(equipo: EquipoInformaticoEntity): Promise<boolean>;               // CAS activo = true
 ```
 

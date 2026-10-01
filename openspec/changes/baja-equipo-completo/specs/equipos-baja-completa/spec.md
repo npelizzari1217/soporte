@@ -515,5 +515,11 @@ aprobación.
 #### Scenario: Destino por pieza
 
 - GIVEN un equipo con dos componentes activos
-- WHEN se solicita la baja con un destino distinto por componente
-- THEN el sistema rechaza la solicitud y nada cambia
+- WHEN se solicita la baja con destino `DESCARTE` de primer nivel y, además, una clave de destino distinta por componente
+- THEN el sistema ignora los destinos por pieza y ambos componentes quedan retirados con `DESCARTE`
+
+#### Scenario: Destino solo por pieza
+
+- GIVEN un equipo con dos componentes activos
+- WHEN se solicita la baja con destinos por componente y sin destino de primer nivel
+- THEN el sistema rechaza la solicitud por destino faltante y nada cambia
