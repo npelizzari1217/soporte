@@ -281,6 +281,8 @@ export const retirarComponenteSchema = z
   .object({
     destino: z.enum(["STOCK_USADO", "DESCARTE"]),
     motivo: z.string().optional(),
+    /** Solo el legado de un insumo `SERIE` lo pide; el diálogo lo valida con `numeroSerieSchema`. */
+    numeroSerie: z.string().optional(),
   })
   .superRefine((valores, ctx) => {
     const motivo = (valores.motivo ?? "").trim();

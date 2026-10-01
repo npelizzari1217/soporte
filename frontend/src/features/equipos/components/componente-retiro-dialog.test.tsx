@@ -145,4 +145,78 @@ describe("ComponenteRetiroDialog", () => {
       expect.arrayContaining([["equipo", EQUIPO_ID], ["insumo", INSUMO_ID, "stock"], ["insumo", INSUMO_ID, "movimientos"]]),
     );
   });
+
+  describe("componente legado de un insumo SERIE", () => {
+    const INSUMO_SERIE = {
+      id: INSUMO_ID,
+      codigo: "RAM-1",
+      nombre: "Memoria",
+      familiaId: "f1",
+      unidadMedidaId: "u1",
+      stockMinimo: null,
+      activo: true,
+      seguimiento: "SERIE",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    function renderSerie(comp: ComponenteConTipo) {
+      server.use(http.get("/api/insumos", () => HttpResponse.json([INSUMO_SERIE])));
+      return renderWithProviders(<ComponenteRetiroDialog equipoId={EQUIPO_ID} componente={comp} />, {
+        user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+      });
+    }
+
+    it("con serial de texto válido precarga el campo y lo envía al devolver al stock", async () => {
+      const user = userEvent.setup();
+      const cuerpos = capturar();
+      renderSerie({ ...componente, numeroSerie: " SN-LEGADO " });
+      await abrir(user);
+
+      expect(await screen.findByLabelText(/número de serie de la pieza/i)).toHaveValue("SN-LEGADO");
+      await user.click(screen.getByRole("button", { name: /confirmar baja/i }));
+
+      await waitFor(() => expect(cuerpos).toEqual([{ destino: "STOCK_USADO", numeroSerie: "SN-LEGADO" }]));
+    });
+
+    it("sin serial de texto el campo arranca vacío, es obligatorio y bloquea el envío", async () => {
+      const user = userEvent.setup();
+      const cuerpos = capturar();
+      renderSerie({ ...componente, numeroSerie: null });
+      await abrir(user);
+
+      expect(await screen.findByLabelText(/número de serie de la pieza/i)).toHaveValue("");
+      await user.click(screen.getByRole("button", { name: /confirmar baja/i }));
+
+      expect(await screen.findByText("El número de serie es requerido")).toBeVisible();
+      expect(cuerpos).toHaveLength(0);
+    });
+
+    it("al descartar no pide ni envía el serial", async () => {
+      const user = userEvent.setup();
+      const cuerpos = capturar();
+      renderSerie({ ...componente, numeroSerie: "SN-LEGADO" });
+      await abrir(user);
+      await screen.findByLabelText(/número de serie de la pieza/i);
+
+      await user.click(screen.getByLabelText(/descartar por rotura/i));
+      expect(screen.queryByLabelText(/número de serie de la pieza/i)).not.toBeInTheDocument();
+      await user.type(screen.getByLabelText(/motivo/i), "Rota");
+      await user.click(screen.getByRole("button", { name: /confirmar baja/i }));
+
+      await waitFor(() => expect(cuerpos).toEqual([{ destino: "DESCARTE", motivo: "Rota" }]));
+    });
+
+    it("con unidad no hay campos nuevos", async () => {
+      const user = userEvent.setup();
+      const cuerpos = capturar();
+      renderSerie({ ...componente, unidadId: "unidad-1", numeroSerie: "SN-1" });
+      await abrir(user);
+
+      expect(screen.queryByLabelText(/número de serie de la pieza/i)).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /confirmar baja/i }));
+
+      await waitFor(() => expect(cuerpos).toEqual([{ destino: "STOCK_USADO" }]));
+    });
+  });
 });

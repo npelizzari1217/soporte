@@ -892,4 +892,11 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 
 - `ComponenteCreateDialog`: el seguimiento sale del catalogo (`Insumo.seguimiento`). `SERIE` con descuento: `SelectorUnidad` (modo salida, sin pendientes), sin selector de saldo ni serial de texto, envia `unidadId`. `SERIE` sin descuento (D3): serial obligatorio (`numeroSerieSchema`) y condicion Nuevo/Usado propia, nunca `unidadId`. `NINGUNO` igual que antes. `CreateComponenteDto.unidadId?`, `Componente.unidadId?`.
 - Tests (MSW): alta con unidad, pieza obligatoria, alta sin descuento con serial.
+
+### WU-19 (parte 2) - retiro legado, edicion y reactivar (19.2 a 19.4), rama `-wu19-2`
+
+- `ComponenteRetiroDialog`: legado (sin `unidadId`) de un insumo `SERIE` + `STOCK_USADO`: campo serial obligatorio, precargado con el `numeroSerie` de texto si es valido; con unidad o `DESCARTE` no hay campo. `RetirarComponenteDto.numeroSerie?`. El seguimiento sale de `useInsumos(true)` (lectura abierta, no exige INSUMOS:LECTURA).
+- `ComponenteEditDialog`: con unidad el serial queda deshabilitado y el PATCH no lo envia (evita el 422 `SERIAL_DE_UNIDAD_NO_EDITABLE`).
+- `useReactivarComponente`: el 422 `UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE` muestra un mensaje claro. El codigo NO viaja en el cuerpo (`error` es el texto HTTP), asi que se reconoce por el texto del mensaje del backend.
+- Tests (MSW): retiro legado precargado / vacio / descarte / con unidad, edicion con unidad, reactivar con unidad recuperada.
 - Ayuda: `rg componente backend/ayuda/` no encuentra ningun articulo que esta UI vuelva falso; deuda anotada.

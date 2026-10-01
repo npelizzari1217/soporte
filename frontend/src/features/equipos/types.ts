@@ -84,6 +84,8 @@ export type DestinoRetiro = (typeof DESTINOS_RETIRO)[number];
 export interface RetirarComponenteDto {
   destino: DestinoRetiro;
   motivo?: string;
+  /** Solo en el retiro al stock de un componente legado de un insumo `SERIE`. */
+  numeroSerie?: string;
 }
 
 /**

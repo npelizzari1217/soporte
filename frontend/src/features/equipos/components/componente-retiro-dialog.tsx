@@ -6,6 +6,13 @@
  * por rotura. El motivo se exige en el cliente solo para el descarte; el
  * backend además lo exige para la devolución sin SALIDA vinculada y responde
  * 422, que se muestra dentro del diálogo (la autoridad es el backend).
+ *
+ * Con unidad (insumo `SERIE`) el retiro no pide nada más: la unidad vuelve al
+ * depósito con su serial. Un componente LEGADO (sin unidad) de un insumo hoy
+ * `SERIE` que se devuelve al stock exige el serial de la pieza: el campo
+ * arranca con el número de serie de texto cuando es válido (recortado, 1 a 255)
+ * y el backend decide si ya está usado (409). Se pide en el cliente solo para
+ * ese caso; el seguimiento sale del catálogo (lectura abierta).
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -15,6 +22,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useRetirarComponente } from "../hooks/use-equipo-mutations";
+import { Input } from "@/components/ui/input";
+import { useInsumos } from "@/features/insumos/hooks/use-insumos";
+import { numeroSerieSchema } from "@/features/insumos/schemas";
 import { retirarComponenteSchema, type RetirarComponenteFormValues } from "../schemas";
 import type { ComponenteConTipo } from "../types";
 
@@ -23,30 +33,53 @@ export interface ComponenteRetiroDialogProps {
   componente: ComponenteConTipo;
 }
 
-const DEFAULTS: RetirarComponenteFormValues = { destino: "STOCK_USADO", motivo: "" };
+/** El serial de texto del legado, solo si ya es un serial válido: si no, el campo arranca vacío. */
+function serialPrecargado(componente: ComponenteConTipo): string {
+  const serial = numeroSerieSchema.safeParse(componente.numeroSerie ?? "");
+  return serial.success ? serial.data : "";
+}
 
 export function ComponenteRetiroDialog({ equipoId, componente }: ComponenteRetiroDialogProps) {
   const [open, setOpen] = useState(false);
   const retirarMutation = useRetirarComponente(equipoId);
+  const insumosQuery = useInsumos(true);
+  const esLegadoSerie =
+    !componente.unidadId && insumosQuery.data?.find((insumo) => insumo.id === componente.insumoId)?.seguimiento === "SERIE";
+  const defaults: RetirarComponenteFormValues = {
+    destino: "STOCK_USADO",
+    motivo: "",
+    numeroSerie: serialPrecargado(componente),
+  };
 
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     watch,
     formState: { errors },
   } = useForm<RetirarComponenteFormValues>({
     resolver: zodResolver(retirarComponenteSchema),
-    defaultValues: DEFAULTS,
+    defaultValues: defaults,
   });
   const destino = watch("destino");
+  const pideSerial = esLegadoSerie && destino === "STOCK_USADO";
 
   function submit(values: RetirarComponenteFormValues) {
     const motivo = (values.motivo ?? "").trim();
+    let numeroSerie: string | undefined;
+    if (pideSerial) {
+      const serial = numeroSerieSchema.safeParse(values.numeroSerie ?? "");
+      if (!serial.success) {
+        setError("numeroSerie", { message: serial.error.issues[0].message });
+        return;
+      }
+      numeroSerie = serial.data;
+    }
     retirarMutation.mutate(
       {
         componenteId: componente.id,
-        dto: { destino: values.destino, ...(motivo !== "" && { motivo }) },
+        dto: { destino: values.destino, ...(motivo !== "" && { motivo }), ...(numeroSerie && { numeroSerie }) },
       },
       { onSuccess: () => setOpen(false) },
     );
@@ -58,7 +91,7 @@ export function ComponenteRetiroDialog({ equipoId, componente }: ComponenteRetir
       onOpenChange={(next) => {
         setOpen(next);
         if (next) {
-          reset(DEFAULTS);
+          reset(defaults);
           retirarMutation.reset();
         }
       }}
@@ -95,6 +128,23 @@ export function ComponenteRetiroDialog({ equipoId, componente }: ComponenteRetir
               </p>
             )}
           </div>
+          {pideSerial && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="retiro-componente-serie" className="text-sm font-medium text-foreground">
+                Número de serie de la pieza (obligatorio)
+              </label>
+              <Input id="retiro-componente-serie" error={!!errors.numeroSerie} {...register("numeroSerie")} />
+              {errors.numeroSerie && (
+                <p role="alert" className="text-xs text-destructive">
+                  {errors.numeroSerie.message}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Este componente se cargó antes del seguimiento por serie: al volver al stock se registra con este
+                serial.
+              </p>
+            </div>
+          )}
           {retirarMutation.error && (
             <p role="alert" className="text-sm text-destructive">
               {retirarMutation.error.message}

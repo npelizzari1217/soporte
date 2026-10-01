@@ -86,4 +86,29 @@ describe("ComponenteEditDialog", () => {
 
     expect(await screen.findByTestId("editar-componente-tipo")).toHaveTextContent("Teclado mecánico");
   });
+
+  it("con unidad el serial queda deshabilitado y el PATCH no lo envía", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> = {};
+    server.use(
+      http.patch(`/api/equipos/${EQUIPO_ID}/componentes/c1`, async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(COMPONENTE);
+      }),
+    );
+    renderWithProviders(<ComponenteEditDialog equipoId={EQUIPO_ID} componente={{ ...COMPONENTE, unidadId: "unidad-1" }} />, {
+      user: buildUser({ permisos: ["equipo:gestionar"] }),
+    });
+
+    await user.click(screen.getByLabelText(/editar componente/i));
+
+    expect(await screen.findByLabelText(/número de serie/i)).toBeDisabled();
+    expect(screen.getByLabelText(/número de serie/i)).toHaveValue("SN-001");
+    await user.clear(screen.getByLabelText(/capacidad/i));
+    await user.type(screen.getByLabelText(/capacidad/i), "32GB");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturedBody.capacidad).toBe("32GB"));
+    expect(capturedBody).not.toHaveProperty("numeroSerie");
+  });
 });

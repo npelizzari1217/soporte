@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionContext } from "@/shared/providers/session-provider";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { toast } from "sonner";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 
 /**
@@ -16,6 +17,8 @@ import { EquipoComponentesSection } from "./equipo-componentes-section";
  * catálogo de activos (que no incluye tipos dados de baja — bug que
  * mostraba el UUID/código crudo). Sin nombre de tipo se muestra "—".
  */
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const EQUIPO_ID = "55555555-5555-5555-5555-555555555555";
 
@@ -321,6 +324,49 @@ describe("EquipoComponentesSection", () => {
     await user.click(await screen.findByRole("button", { name: /reactivar/i }));
 
     await waitFor(() => expect(metodoRecibido).toBe("PATCH"));
+  });
+
+  it("reactivar un componente cuya unidad se recuperó muestra un mensaje claro", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.patch(`/api/equipos/${EQUIPO_ID}/componentes/baja-1/reactivar`, () =>
+        HttpResponse.json(
+          {
+            statusCode: 422,
+            message:
+              'La unidad del componente "baja-1" ya no está disponible para reinstalarla: su último movimiento no fue el descarte de este componente.',
+            error: "Unprocessable Entity",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    const componentes = [
+      {
+        id: "baja-1",
+        equipoId: EQUIPO_ID,
+        insumoId: "11111111-1111-4111-8111-111111111111",
+        unidadId: "unidad-1",
+        tipoNombre: "Disco rígido",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: "SN-1",
+        capacidad: "1TB",
+        activo: false,
+        deletedAt: "2026-02-01T00:00:00.000Z",
+        bajaDestino: "DESCARTE" as const,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /reactivar/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/ya no está disponible/i)));
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining("baja-1"));
   });
 
   it("la papelera de un componente activo abre el diálogo de retiro en vez de dar de baja directo", async () => {
