@@ -281,6 +281,29 @@ Para no re-litigarlas al empezar cada punto.
   ficha, CSV con tope de 5000 filas (`exportar-reporte-stock.use-case.ts`) y pantalla
   `/insumos/reporte-stock` (`frontend/src/features/insumos/components/reporte-stock-view.tsx`),
   enlazada desde Insumos y Repuestos. Sin desviaciones.
+- **Baja de equipo completo** (pedido fuera de los seis puntos; decisiones del
+  dueño del 2026-10-01, ciclo `baja-equipo-completo`, exploración en
+  `openspec/changes/baja-equipo-completo/exploration.md`):
+  - Dos opciones, todo o nada: **devolver todas las piezas al stock** (como
+    usadas) o **descartarlas todas**. La misma leyenda queda en todas las piezas.
+  - El motivo es una categoría (vejez, donación, rotura, otra) más un texto
+    libre; las dos opciones lo llevan, y "otra" exige texto.
+  - La baja es **definitiva**: no se deshace.
+  - Si el equipo tiene tickets abiertos, la baja se permite con un aviso de
+    cuántos hay.
+  - El equipo dado de baja sigue en la lista con la etiqueta "Baja", oculto por
+    un filtro por defecto; su ficha y su historial siguen visibles. No admite
+    agregar piezas ni editarse.
+  - Permiso: `EQUIPOS:BORRADO`, el mismo del retiro de una pieza.
+  - Descartar todo **no** deja asiento negativo en el stock.
+  - El borrado actual queda solo para equipos cargados por error: se bloquea si
+    el equipo tiene piezas activas y el botón cambia de nombre.
+  - Al devolver al stock, el formulario pide el serial de cada pieza legada de
+    un insumo con serie; una pieza cuyo insumo fue borrado frena la baja y se
+    informa.
+  - Confirmación: resumen y confirmar para devolver al stock; además, escribir
+    el nombre del equipo para descartar todo.
+  **Pendiente**: se declara Cumplida o Desviación al cerrar el ciclo.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 
