@@ -10,7 +10,7 @@
  * `usarLockMasterTest()`. Un solo actor por test: dos clientes con el mismo
  * `dbName` violan el UNIQUE de `clientes.db_name`.
  */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   INestApplication,
   MiddlewareConsumer,
@@ -52,6 +52,20 @@ const PLAINTEXT_PASSWORD = 'E2eEquiposRetiroUnidadSecret!123';
 // ─── Helpers HTTP (fetch nativo, mismo patrón que compras.e2e.spec.ts) ─────
 
 type Headers = Record<string, string>;
+
+async function httpPatch<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
 
 async function httpPost<T = unknown>(
   url: string,
@@ -508,6 +522,242 @@ describe('Equipos e2e — retiro y reactivar con unidad (WU-11)', () => {
       );
 
       expect(status).toBe(400);
+    });
+  });
+
+  // ─── Reactivar ──────────────────────────────────────────────────────────
+
+  function reactivarUrl(equipoId: string, componenteId: string): string {
+    return `${baseUrl}/equipos/${equipoId}/componentes/${componenteId}/reactivar`;
+  }
+
+  /**
+   * Componente ya retirado y su unidad, sembrados por SQL como los deja cada camino:
+   * `DESCARTE` (unidad DESCARTADA, ultimo evento DESCARTE de este componente) o
+   * `STOCK_USADO` (unidad EN_DEPOSITO, con su ENTRADA).
+   */
+  async function escenarioRetirado(
+    permisos: string[],
+    destino: 'DESCARTE' | 'STOCK_USADO' = 'DESCARTE',
+  ) {
+    const insumoId = await crearInsumoSerie();
+    const actor = await crearActorConPermisos(permisos);
+    const equipoId = await crearEquipoDirecto();
+    const unidadId = await sembrarUnidadInstalada(insumoId, equipoId, 'SN-REACT-1');
+    const componenteId = await crearComponenteConUnidad(equipoId, insumoId, unidadId);
+
+    let bajaMovimientoId: string | null = null;
+    if (destino === 'STOCK_USADO') {
+      bajaMovimientoId = (
+        await tenantClient.movimientoInsumo.create({
+          data: {
+            insumoId,
+            tipo: 'ENTRADA',
+            condicion: 'USADO',
+            cantidad: 1,
+            usuarioId: actor.usuarioId,
+            equipoId,
+            unidadId,
+          },
+        })
+      ).id;
+    }
+    await tenantClient.unidadInsumo.update({
+      where: { id: unidadId },
+      data:
+        destino === 'DESCARTE'
+          ? { estado: 'DESCARTADA', equipoId: null }
+          : { estado: 'EN_DEPOSITO', condicion: 'USADO', equipoId: null },
+    });
+    await tenantClient.eventoUnidadInsumo.create({
+      data: {
+        unidadId,
+        tipo: destino === 'DESCARTE' ? 'DESCARTE' : 'RETIRO_A_DEPOSITO',
+        equipoId,
+        componenteId,
+        usuarioId: actor.usuarioId,
+        movimientoId: bajaMovimientoId,
+        motivo: 'sembrado',
+      },
+    });
+    await tenantClient.componenteEquipo.update({
+      where: { id: componenteId },
+      data: {
+        deletedAt: new Date(),
+        bajaDestino: destino,
+        bajaMotivo: 'sembrado',
+        bajaMovimientoId,
+        bajaUsuarioId: actor.usuarioId,
+      },
+    });
+    return { actor, insumoId, equipoId, unidadId, componenteId };
+  }
+
+  describe('Reactivar un componente con unidad', () => {
+    it('tras DESCARTE, con EQUIPOS:MODIFICACION y sin permisos de insumos -> 200, unidad INSTALADA en el equipo y evento REACTIVACION', async () => {
+      const { actor, equipoId, unidadId, componenteId } = await escenarioRetirado([
+        'EQUIPOS:MODIFICACION',
+      ]);
+
+      const { status, data } = await httpPatch<ComponenteResponseDto>(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.bajaDestino).toBeNull();
+      expect(data.numeroSerie).toBe('SN-REACT-1');
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad).toMatchObject({ estado: 'INSTALADA', equipoId });
+      const eventos = await eventosDe(unidadId);
+      expect(eventos.map((e) => e.tipo)).toEqual(['DESCARTE', 'REACTIVACION']);
+      expect(eventos[1]).toMatchObject({ componenteId, equipoId, usuarioId: actor.usuarioId });
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).toBeNull();
+    });
+
+    it('sin EQUIPOS:MODIFICACION -> 403 y nada cambia', async () => {
+      const { actor, equipoId, unidadId, componenteId } = await escenarioRetirado([
+        'EQUIPOS:LECTURA',
+        'INSUMOS:AJUSTAR',
+      ]);
+
+      const { status } = await httpPatch(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(403);
+      expect(await eventosDe(unidadId)).toHaveLength(1);
+    });
+
+    it('tras devolverlo al stock como USADO -> 422 (asimetria vigente) y la unidad sigue en deposito', async () => {
+      const { actor, equipoId, unidadId, componenteId } = await escenarioRetirado(
+        ['EQUIPOS:MODIFICACION'],
+        'STOCK_USADO',
+      );
+
+      const { status } = await httpPatch(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad.estado).toBe('EN_DEPOSITO');
+    });
+
+    it('con la unidad descartada por OTRO evento (no por este componente) -> 422 y nada cambia', async () => {
+      const { actor, equipoId, unidadId, componenteId } = await escenarioRetirado([
+        'EQUIPOS:MODIFICACION',
+      ]);
+      await tenantClient.eventoUnidadInsumo.create({
+        data: {
+          unidadId,
+          tipo: 'DESCARTE',
+          equipoId,
+          componenteId: randomUUID(),
+          usuarioId: actor.usuarioId,
+          motivo: 'otro componente',
+        },
+      });
+
+      const { status } = await httpPatch(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad.estado).toBe('DESCARTADA');
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).not.toBeNull();
+    });
+
+    it('con la pieza recuperada (ADR-14) -> 422 y el componente sigue dado de baja', async () => {
+      const { actor, equipoId, unidadId, componenteId } = await escenarioRetirado([
+        'EQUIPOS:MODIFICACION',
+      ]);
+      // Estado que deja la recuperacion: unidad de nuevo en deposito, ultimo evento RECUPERACION.
+      await tenantClient.unidadInsumo.update({
+        where: { id: unidadId },
+        data: { estado: 'EN_DEPOSITO', condicion: 'USADO' },
+      });
+      await tenantClient.eventoUnidadInsumo.create({
+        data: {
+          unidadId,
+          tipo: 'RECUPERACION',
+          usuarioId: actor.usuarioId,
+          motivo: 'se recupero',
+        },
+      });
+
+      const { status } = await httpPatch(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componenteId },
+      });
+      expect(fila.deletedAt).not.toBeNull();
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad.estado).toBe('EN_DEPOSITO');
+    });
+
+    it('con el insumo vuelto a NINGUNO -> 422 y no se reinstala nada', async () => {
+      const { actor, insumoId, equipoId, unidadId, componenteId } = await escenarioRetirado([
+        'EQUIPOS:MODIFICACION',
+      ]);
+      await tenantClient.insumo.update({
+        where: { id: insumoId },
+        data: { seguimiento: 'NINGUNO' },
+      });
+
+      const { status } = await httpPatch(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      const unidad = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id: unidadId } });
+      expect(unidad.estado).toBe('DESCARTADA');
+    });
+  });
+
+  describe('Reactivar un componente LEGADO', () => {
+    it('retiro legado (sin unidad) de un insumo SERIE -> 200, como siempre, sin eventos de unidad', async () => {
+      const insumoId = await crearInsumoSerie();
+      const actor = await crearActorConPermisos(['EQUIPOS:MODIFICACION']);
+      const equipoId = await crearEquipoDirecto();
+      const componenteId = await crearComponenteLegado(equipoId, insumoId, 'LEGADO-R1');
+      await tenantClient.componenteEquipo.update({
+        where: { id: componenteId },
+        data: { deletedAt: new Date() },
+      });
+
+      const { status, data } = await httpPatch<ComponenteResponseDto>(
+        reactivarUrl(equipoId, componenteId),
+        {},
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.numeroSerie).toBe('LEGADO-R1');
+      expect(await tenantClient.eventoUnidadInsumo.count({ where: { unidad: { insumoId } } })).toBe(
+        0,
+      );
     });
   });
 });

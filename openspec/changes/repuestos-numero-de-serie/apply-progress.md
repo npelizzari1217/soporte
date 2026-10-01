@@ -726,3 +726,10 @@ Ramas `-wu11-2` (testigos y carreras del retiro, 304 lineas), `-wu11-3` (e2e del
 - **Mutacion adversarial**: en `ReactivarComponenteUseCase`, `reactivar()` + `save()` movidos ANTES de `reinstalar`. Resultado: 8 rojos
   (3 testigos de lock de la integracion, los 2 casos de rechazo de la integracion que dejaban el componente reactivado, y 3 unit de orden
   y de rechazo). Revertida; los 26 tests de ambos specs vuelven a verde.
+
+### WU-11 - 11.4 (e2e de reactivar), rama `-wu11-6`
+
+- `equipos-retirar-componente-unidad.e2e.spec.ts` suma: reactivar tras DESCARTE con solo `EQUIPOS:MODIFICACION` (200, serial resuelto,
+  unidad INSTALADA en el equipo, evento `REACTIVACION` firmado), 403 sin permiso, tras STOCK_USADO 422, unidad descartada por otro
+  evento 422, pieza recuperada (`RECUPERACION`) 422 con el componente aun dado de baja, insumo vuelto a `NINGUNO` 422, y un retiro
+  legado reactivado como siempre (sin eventos de unidad). Los estados de partida se siembran por SQL.
