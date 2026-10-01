@@ -15,6 +15,8 @@
  * Tarea: T12.6.
  */
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
@@ -25,9 +27,12 @@ import {
   Min,
   MinLength,
   IsUUID,
+  ValidateBy,
   ValidateIf,
+  ValidateNested,
+  ValidationOptions,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   CONDICIONES_STOCK,
   CondicionStock,
@@ -41,6 +46,10 @@ import {
   TicketEntity,
 } from '../../../tickets/domain/entities/ticket.entity';
 import {
+  CATEGORIAS_BAJA_EQUIPO,
+  CategoriaBajaEquipo,
+  DESTINOS_BAJA_EQUIPO,
+  DestinoBajaEquipo,
   EquipoInformaticoEntity,
   EQUIPO_NOMBRE_MAX_LENGTH,
   EQUIPO_NUMERO_SERIE_MAX_LENGTH,
@@ -376,6 +385,83 @@ export class RetirarComponenteHttpDto {
   numeroSerie?: string | null;
 }
 
+/** Tope del texto crudo del motivo de la baja: el de la leyenda compuesta (ADR-4). */
+const BAJA_MOTIVO_MAX_LENGTH = 500;
+/** Tope de seriales por baja (ADR-7). */
+const BAJA_SERIALES_MAX = 200;
+
+/** Nombre de la restricción de `SinComponenteIdRepetido` en `ValidationError.constraints`. */
+export const SIN_COMPONENTE_ID_REPETIDO = 'sinComponenteIdRepetido';
+
+/**
+ * Decorador de propiedad sobre un arreglo de objetos con `componenteId`: rechaza (400) dos
+ * elementos para el mismo componente, porque no hay forma de decidir cuál serial vale.
+ */
+function SinComponenteIdRepetido(validationOptions?: ValidationOptions): PropertyDecorator {
+  return ValidateBy(
+    {
+      name: SIN_COMPONENTE_ID_REPETIDO,
+      validator: {
+        validate: (valor: unknown): boolean => {
+          if (!Array.isArray(valor)) return false;
+          const ids = valor.map((item: unknown) =>
+            typeof item === 'object' && item !== null && 'componenteId' in item
+              ? item.componenteId
+              : undefined,
+          );
+          return new Set(ids).size === ids.length;
+        },
+        defaultMessage: () => 'seriales no admite dos elementos con el mismo componenteId',
+      },
+    },
+    validationOptions,
+  );
+}
+
+/** Serial informado para un componente legado en `POST /equipos/:id/baja`. */
+export class SerialDeComponenteBajaHttpDto {
+  @IsUUID()
+  componenteId!: string;
+
+  /**
+   * Sin `@EsSerialDeUnidad` a propósito: un serial inválido, vacío o repetido es una causa por
+   * pieza (422 con `piezas[]`), y rechazarlo acá con 400 mostraría de a uno lo que la baja
+   * informa junto. Se recorta; el dominio lo valida y lo normaliza.
+   */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  numeroSerie!: string;
+}
+
+/**
+ * Body de `POST /equipos/:id/baja` (sdd/baja-equipo-completo, ADR-7). `destino` es UNO solo para
+ * todas las piezas y es obligatorio. NO declara un destino por pieza: el `ValidationPipe` global
+ * (`whitelist: true`) descarta cualquier clave no declarada, también dentro de `seriales`, así
+ * que un `destino` por pieza no tiene efecto (R17). `motivo` es el texto libre de la categoría:
+ * el tope de 500 es del texto crudo; el espacio real lo valida el dominio (422 con `largoMaximo`).
+ */
+export class DarDeBajaEquipoHttpDto {
+  @IsIn(DESTINOS_BAJA_EQUIPO)
+  destino!: DestinoBajaEquipo;
+
+  @IsIn(CATEGORIAS_BAJA_EQUIPO)
+  categoria!: CategoriaBajaEquipo;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(BAJA_MOTIVO_MAX_LENGTH)
+  motivo?: string | null;
+
+  /** Seriales de los legados `SERIE`, por `componenteId`; sin repetidos. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(BAJA_SERIALES_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => SerialDeComponenteBajaHttpDto)
+  @SinComponenteIdRepetido()
+  seriales?: SerialDeComponenteBajaHttpDto[];
+}
+
 // ─── Response DTOs ────────────────────────────────────────────────────────────
 
 /** Shape de respuesta de un equipo informático. */
@@ -394,8 +480,19 @@ export interface EquipoResponseDto {
   valorResidual: number | null;
   fechaValorResidual: string | null;
   activo: boolean;
+  /** Registro de la baja del equipo; `null` mientras está vigente. */
+  baja: BajaEquipoResponseDto | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Datos de la baja de un equipo (sdd/baja-equipo-completo, ADR-7). */
+export interface BajaEquipoResponseDto {
+  destino: DestinoBajaEquipo;
+  categoria: CategoriaBajaEquipo;
+  motivo: string | null;
+  fecha: string;
+  usuarioId: string | null;
 }
 
 /** Convierte `EquipoInformaticoEntity` al shape de respuesta HTTP. */
@@ -415,8 +512,21 @@ export function toEquipoResponseDto(equipo: EquipoInformaticoEntity): EquipoResp
     valorResidual: equipo.valorResidual,
     fechaValorResidual: equipo.fechaValorResidual ? equipo.fechaValorResidual.toISOString() : null,
     activo: equipo.activo,
+    baja: toBajaEquipoResponseDto(equipo),
     createdAt: equipo.createdAt.toISOString(),
     updatedAt: equipo.updatedAt.toISOString(),
+  };
+}
+
+function toBajaEquipoResponseDto(equipo: EquipoInformaticoEntity): BajaEquipoResponseDto | null {
+  const { bajaDestino, bajaCategoria, bajaFecha } = equipo;
+  if (bajaDestino === null || bajaCategoria === null || bajaFecha === null) return null;
+  return {
+    destino: bajaDestino,
+    categoria: bajaCategoria,
+    motivo: equipo.bajaMotivo,
+    fecha: bajaFecha.toISOString(),
+    usuarioId: equipo.bajaUsuarioId,
   };
 }
 

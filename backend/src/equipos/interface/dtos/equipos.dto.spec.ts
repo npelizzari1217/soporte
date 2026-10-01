@@ -8,7 +8,7 @@
  * nombrar campo.
  */
 import 'reflect-metadata';
-import { validate } from 'class-validator';
+import { validate, ValidationError } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
   CreateTicketSoporteHttpDto,
@@ -17,7 +17,9 @@ import {
   CreateComponenteHttpDto,
   EditarComponenteHttpDto,
   RetirarComponenteHttpDto,
+  DarDeBajaEquipoHttpDto,
   toComponenteResponseDto,
+  toEquipoResponseDto,
 } from './equipos.dto';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import {
@@ -481,5 +483,171 @@ describe('RetirarComponenteHttpDto — destino obligatorio y motivo normalizado'
       motivo: ` ${'a'.repeat(500)} `,
     });
     expect(await validate(dto)).toHaveLength(0);
+  });
+});
+
+/**
+ * Body de `POST /equipos/:id/baja` (baja-equipo-completo, ADR-7, R17). El `ValidationPipe` global
+ * corre con `whitelist: true`; acá se reproduce con `validate(..., { whitelist: true })`.
+ */
+describe('DarDeBajaEquipoHttpDto', () => {
+  const idA = '11111111-1111-4111-8111-111111111111';
+  const idB = '22222222-2222-4222-8222-222222222222';
+
+  async function errores(plain: object): Promise<ValidationError[]> {
+    return validate(plainToInstance(DarDeBajaEquipoHttpDto, plain), { whitelist: true });
+  }
+  const errorDe = async (plain: object, campo: string) =>
+    (await errores(plain)).find((e) => e.property === campo);
+
+  it('acepta un pedido mínimo y uno completo', async () => {
+    expect(await errores({ destino: 'STOCK_USADO', categoria: 'VEJEZ' })).toHaveLength(0);
+    expect(
+      await errores({
+        destino: 'DESCARTE',
+        categoria: 'OTRA',
+        motivo: 'reciclado para repuestos',
+        seriales: [{ componenteId: idA, numeroSerie: 'LEG-1' }],
+      }),
+    ).toHaveLength(0);
+  });
+
+  it.each([['REGALO'], [undefined]])('destino %s → 400, por isIn', async (destino) => {
+    const error = await errorDe({ destino, categoria: 'VEJEZ' }, 'destino');
+    expect(error?.constraints).toHaveProperty('isIn');
+  });
+
+  it.each([['OTROS'], [undefined]])('categoria %s → 400, por isIn', async (categoria) => {
+    const error = await errorDe({ destino: 'DESCARTE', categoria }, 'categoria');
+    expect(error?.constraints).toHaveProperty('isIn');
+  });
+
+  it('motivo de 501 caracteres crudos → 400, por maxLength; 500 pasa', async () => {
+    const base = { destino: 'DESCARTE', categoria: 'OTRA' };
+    const error = await errorDe({ ...base, motivo: 'a'.repeat(501) }, 'motivo');
+    expect(error?.constraints).toHaveProperty('maxLength');
+    expect(await errores({ ...base, motivo: 'a'.repeat(500) })).toHaveLength(0);
+  });
+
+  it('seriales con un componenteId repetido → 400, por sinComponenteIdRepetido', async () => {
+    const error = await errorDe(
+      {
+        destino: 'STOCK_USADO',
+        categoria: 'VEJEZ',
+        seriales: [
+          { componenteId: idA, numeroSerie: 'X1' },
+          { componenteId: idA, numeroSerie: 'X2' },
+        ],
+      },
+      'seriales',
+    );
+    expect(error?.constraints).toHaveProperty('sinComponenteIdRepetido');
+  });
+
+  it('seriales con componenteId distintos y el mismo serial pasa (lo decide el dominio)', async () => {
+    const lista = await errores({
+      destino: 'STOCK_USADO',
+      categoria: 'VEJEZ',
+      seriales: [
+        { componenteId: idA, numeroSerie: 'X1' },
+        { componenteId: idB, numeroSerie: 'X 1' },
+      ],
+    });
+    expect(lista).toHaveLength(0);
+  });
+
+  it('rechaza más de 200 seriales, un componenteId que no es uuid y un serial que no es texto', async () => {
+    const muchos = Array.from({ length: 201 }, (_, i) => ({
+      componenteId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      numeroSerie: 'S',
+    }));
+    const base = { destino: 'STOCK_USADO', categoria: 'VEJEZ' };
+    expect((await errorDe({ ...base, seriales: muchos }, 'seriales'))?.constraints).toHaveProperty(
+      'arrayMaxSize',
+    );
+    const hijo = (
+      await errorDe(
+        { ...base, seriales: [{ componenteId: 'no-uuid', numeroSerie: 'S' }] },
+        'seriales',
+      )
+    )?.children?.[0];
+    expect(hijo?.children?.[0]?.constraints).toHaveProperty('isUuid');
+    const noTexto = (
+      await errorDe({ ...base, seriales: [{ componenteId: idA, numeroSerie: 7 }] }, 'seriales')
+    )?.children?.[0];
+    expect(noTexto?.children?.[0]?.constraints).toHaveProperty('isString');
+  });
+
+  it('una clave destino por pieza se descarta con el whitelist', async () => {
+    const dto = plainToInstance(DarDeBajaEquipoHttpDto, {
+      destino: 'DESCARTE',
+      categoria: 'VEJEZ',
+      seriales: [{ componenteId: idA, numeroSerie: 'X1', destino: 'STOCK_USADO' }],
+    });
+    expect(await validate(dto, { whitelist: true })).toHaveLength(0);
+    expect(dto.seriales?.[0]).not.toHaveProperty('destino');
+    expect(dto.seriales?.[0]).toMatchObject({ componenteId: idA, numeroSerie: 'X1' });
+  });
+
+  it('destinos por pieza y sin destino de primer nivel → 400', async () => {
+    const dto = plainToInstance(DarDeBajaEquipoHttpDto, {
+      categoria: 'VEJEZ',
+      seriales: [{ componenteId: idA, numeroSerie: 'X1', destino: 'DESCARTE' }],
+    });
+    const lista = await validate(dto, { whitelist: true });
+    expect(lista.find((e) => e.property === 'destino')?.constraints).toHaveProperty('isIn');
+  });
+
+  it('el numeroSerie de un serial se recorta', () => {
+    const dto = plainToInstance(DarDeBajaEquipoHttpDto, {
+      destino: 'STOCK_USADO',
+      categoria: 'VEJEZ',
+      seriales: [{ componenteId: idA, numeroSerie: '  LEG-1  ' }],
+    });
+    expect(dto.seriales?.[0].numeroSerie).toBe('LEG-1');
+  });
+});
+
+describe('toEquipoResponseDto — baja', () => {
+  function equipo(): EquipoInformaticoEntity {
+    return EquipoInformaticoEntity.create({
+      nombre: 'PC-1',
+      numeroSerie: null,
+      marca: null,
+      modelo: null,
+      fechaAdquisicion: null,
+      ubicacion: null,
+      importe: null,
+      fechaValoracion: null,
+      observaciones: null,
+      valorResidual: null,
+      fechaValorResidual: null,
+    });
+  }
+
+  it('un equipo vigente responde baja: null', () => {
+    expect(toEquipoResponseDto(equipo()).baja).toBeNull();
+  });
+
+  it('un equipo dado de baja responde destino, categoría, motivo, fecha y usuario', () => {
+    const e = equipo();
+    e.darDeBaja({
+      destino: 'DESCARTE',
+      categoria: 'OTRA',
+      motivo: 'reciclado',
+      usuarioId: 'u-1',
+      fecha: new Date('2026-10-01T10:00:00Z'),
+    });
+
+    expect(toEquipoResponseDto(e)).toMatchObject({
+      activo: false,
+      baja: {
+        destino: 'DESCARTE',
+        categoria: 'OTRA',
+        motivo: 'reciclado',
+        fecha: '2026-10-01T10:00:00.000Z',
+        usuarioId: 'u-1',
+      },
+    });
   });
 });
