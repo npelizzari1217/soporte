@@ -591,5 +591,98 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       });
       ticketIdsCreados.push(ticket.id);
     });
+
+    describe('contarAbiertosPorEquipo() (baja-equipo-completo, R10)', () => {
+      /** Estados propios de la prueba (codigo con prefijo de corrida): no dependen del seed. */
+      const estadoIdsCreados: string[] = [];
+
+      afterEach(async () => {
+        // Los tickets se limpian en `afterAll`; los estados de esta prueba van cuando ya no
+        // hay tickets que los referencien.
+        if (estadoIdsCreados.length > 0) {
+          await tenantClient.ticketSoporte.deleteMany({
+            where: { ticket: { estadoId: { in: estadoIdsCreados } } },
+          });
+          await tenantClient.ticket.deleteMany({ where: { estadoId: { in: estadoIdsCreados } } });
+          await tenantClient.estado.deleteMany({ where: { id: { in: estadoIdsCreados } } });
+          estadoIdsCreados.length = 0;
+        }
+      });
+
+      async function crearEstado(codigo: string): Promise<string> {
+        const estado = await tenantClient.estado.create({
+          data: { codigo: `T11_${RUN_PREFIX}_${codigo}`, nombre: codigo, orden: 1, activo: true },
+        });
+        estadoIdsCreados.push(estado.id);
+        return estado.id;
+      }
+
+      async function crearTicketSoporte(
+        equipoId: string,
+        estadoId: string,
+        borrado: 'ninguno' | 'ticket' | 'satelite' = 'ninguno',
+      ): Promise<void> {
+        const ticket = TicketEntity.create(makeTicketProps({ estadoId }));
+        const satelite = TicketSoporteEntity.create({
+          ticketId: ticket.id,
+          equipoId,
+          descripcionProblema: 'Conteo de abiertos',
+        });
+        await withTenant(async () => {
+          await ticketRepo.save(ticket);
+          await ticketSoporteRepo.save(satelite);
+        });
+        if (borrado === 'ticket') {
+          await tenantClient.ticket.update({
+            where: { id: ticket.id },
+            data: { deletedAt: new Date() },
+          });
+        }
+        if (borrado === 'satelite') {
+          await tenantClient.ticketSoporte.update({
+            where: { id: satelite.id },
+            data: { deletedAt: new Date() },
+          });
+        }
+      }
+
+      it('RESUELTO cuenta como abierto; CERRADO, CANCELADO y los borrados no', async () => {
+        const equipo = await crearEquipo();
+        const otro = await crearEquipo();
+        const nuevo = await crearEstado('NUEVO');
+        const resuelto = await crearEstado('RESUELTO');
+        const cerrado = await crearEstado('CERRADO');
+        const cancelado = await crearEstado('CANCELADO');
+        const terminales = [`T11_${RUN_PREFIX}_CERRADO`, `T11_${RUN_PREFIX}_CANCELADO`];
+
+        await crearTicketSoporte(equipo.id, nuevo);
+        await crearTicketSoporte(equipo.id, resuelto);
+        await crearTicketSoporte(equipo.id, cerrado);
+        await crearTicketSoporte(equipo.id, cancelado);
+        await crearTicketSoporte(equipo.id, nuevo, 'ticket');
+        await crearTicketSoporte(equipo.id, nuevo, 'satelite');
+        await crearTicketSoporte(otro.id, nuevo);
+
+        const abiertos = await withTenant(() =>
+          ticketSoporteRepo.contarAbiertosPorEquipo(equipo.id, terminales),
+        );
+        const delOtro = await withTenant(() =>
+          ticketSoporteRepo.contarAbiertosPorEquipo(otro.id, terminales),
+        );
+
+        expect(abiertos).toBe(2);
+        expect(delOtro).toBe(1);
+      });
+
+      it('un equipo sin tickets cuenta cero', async () => {
+        const equipo = await crearEquipo();
+
+        const abiertos = await withTenant(() =>
+          ticketSoporteRepo.contarAbiertosPorEquipo(equipo.id, ['CERRADO', 'CANCELADO']),
+        );
+
+        expect(abiertos).toBe(0);
+      });
+    });
   });
 });

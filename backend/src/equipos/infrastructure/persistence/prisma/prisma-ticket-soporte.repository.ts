@@ -37,6 +37,19 @@ export class PrismaTicketSoporteRepository implements ITicketSoporteRepository {
     return rows.map(TicketSoporteMapper.toDomain);
   }
 
+  async contarAbiertosPorEquipo(
+    equipoId: string,
+    estadosTerminales: readonly string[],
+  ): Promise<number> {
+    return this.client.ticketSoporte.count({
+      where: {
+        equipoId,
+        deletedAt: null,
+        ticket: { deletedAt: null, estado: { codigo: { notIn: [...estadosTerminales] } } },
+      },
+    });
+  }
+
   async save(ticketSoporte: TicketSoporteEntity): Promise<void> {
     const data = TicketSoporteMapper.toPersistence(ticketSoporte);
     const { createdAt: _createdAt, ...updateData } = data;
