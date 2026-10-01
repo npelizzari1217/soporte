@@ -18,6 +18,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -40,6 +41,7 @@ import {
   INSUMO_STOCK_MINIMO_MINIMO,
   normalizarNombreInsumo,
 } from '../../domain/entities/insumo.entity';
+import { SEGUIMIENTOS_INSUMO, SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
 import {
   InsumoCodigoAlternativoEntity,
   INSUMO_CODIGO_ALTERNATIVO_CODIGO_MAX_LENGTH,
@@ -173,6 +175,14 @@ export class CreateInsumoDto {
   unidadMedidaId!: string;
 
   /**
+   * Seguimiento inicial. Ausente equivale a `NINGUNO` (stock por cantidad).
+   * `SERIE` exige una unidad de medida entera: si no lo es, 422.
+   */
+  @IsOptional()
+  @IsIn(SEGUIMIENTOS_INSUMO)
+  seguimiento?: SeguimientoInsumo;
+
+  /**
    * Punto de reposición. Ausente o `null` es "sin punto definido", que NO es
    * cero — de ahí el `@IsOptional`, que deja pasar el `null` explícito.
    *
@@ -299,6 +309,12 @@ export class CambiarEstadoActivoInsumoDto {
   activo!: boolean;
 }
 
+/** Body de `PATCH /insumos/:id/seguimiento`. */
+export class CambiarSeguimientoInsumoHttpDto {
+  @IsIn(SEGUIMIENTOS_INSUMO)
+  seguimiento!: SeguimientoInsumo;
+}
+
 /**
  * Normaliza un booleano que llega como query param: Express los entrega
  * siempre como string. Vive suelto y no repetido en cada campo porque la
@@ -374,6 +390,8 @@ export interface InsumoResponseDto {
   unidadMedidaId: string;
   stockMinimo: number | null;
   activo: boolean;
+  /** `SERIE` lleva un número de serie por pieza; `NINGUNO` es stock por cantidad. */
+  seguimiento: SeguimientoInsumo;
   codigosAlternativos: InsumoCodigoAlternativoResponseDto[];
   compatibilidad: CompatibilidadResponseDto[];
   createdAt: string;
@@ -424,6 +442,7 @@ export function toInsumoResponseDto(entidad: InsumoEntity): InsumoResponseDto {
     unidadMedidaId: entidad.unidadMedidaId,
     stockMinimo: entidad.stockMinimo,
     activo: entidad.activo,
+    seguimiento: entidad.seguimiento,
     codigosAlternativos: entidad.codigosAlternativos.map(toCodigoAlternativoResponseDto),
     compatibilidad: entidad.compatibilidad.map(toCompatibilidadResponseDto),
     createdAt: entidad.createdAt.toISOString(),

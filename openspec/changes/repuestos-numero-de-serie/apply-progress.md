@@ -737,3 +737,18 @@ Ramas `-wu11-2` (testigos y carreras del retiro, 304 lineas), `-wu11-3` (e2e del
 ### WU-11 - 11.5 (gates)
 
 Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` completo 517 archivos / 6467 tests verdes (exit 0).
+
+## WU-12a - La llave (`PATCH /insumos/:id/seguimiento`)
+
+### WU-12a - 12a.1 y 12a.2 (endpoint, DTOs, respuestas), rama `-wu12a`
+
+- `PATCH /insumos/:id/seguimiento` (`AdminClienteGuard` por metodo, body `CambiarSeguimientoInsumoHttpDto` con `@IsIn(SEGUIMIENTOS_INSUMO)`)
+  delega en `CambiarSeguimientoInsumoUseCase` (5o argumento del constructor de `InsumosController`). Pedir el valor vigente es 200 sin cambios.
+- `toHttpException` de insumos: `UnidadMedidaCambiadaError` => 409 (reintentable); `SeguimientoNoModificableError` y
+  `UnidadMedidaNoEnteraError` caen en el 422 por defecto (alta, PATCH general y PATCH de seguimiento).
+- `CreateInsumoDto.seguimiento?` (`@IsOptional @IsIn`) y `InsumoResponseDto.seguimiento` (alta, edicion, estado, seguimiento y listado
+  comparten `toInsumoResponseDto`). `EditInsumoDto` NO lleva `seguimiento` (el whitelist lo descarta): solo cambia por el PATCH propio.
+- Unit specs: controller (delegacion, 4 mapeos, alta con unidad no entera, metadata RBAC) y DTO (alta, PATCH, respuesta).
+- Primer PR desplegable hacia SERIE. Ayuda: `rg -n "seguimiento|serie" backend/ayuda/` no encuentra ningun articulo que describa el modo
+  de seguimiento; ninguno queda falso. Deuda: articulo del modo de seguimiento por serie (pausa de Ayuda).
+

@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
+  CambiarSeguimientoInsumoHttpDto,
   CreateInsumoDto,
   EditInsumoDto,
   ListarInsumosQueryDto,
@@ -644,6 +645,56 @@ describe('toInsumoResponseDto', () => {
 
     expect(toInsumoResponseDto(insumo).stockMinimo).toBeNull();
   });
+
+  it('incluye el seguimiento del insumo, NINGUNO por defecto y SERIE si lo tiene', () => {
+    const props = {
+      codigo: 'TON-001',
+      nombre: 'Tóner negro',
+      familiaId: FAMILIA_ID,
+      unidadMedidaId: UNIDAD_ID,
+      stockMinimo: null,
+      activo: true,
+      codigosAlternativos: [],
+      compatibilidad: [],
+    };
+
+    expect(toInsumoResponseDto(InsumoEntity.create(props)).seguimiento).toBe('NINGUNO');
+    expect(
+      toInsumoResponseDto(InsumoEntity.create({ ...props, seguimiento: 'SERIE' })).seguimiento,
+    ).toBe('SERIE');
+  });
+});
+
+describe('seguimiento en los bodies', () => {
+  it.each(['NINGUNO', 'SERIE'])('el alta acepta seguimiento %s', async (valor) => {
+    const dto = plainToInstance(CreateInsumoDto, bodyAlta({ seguimiento: valor }));
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('el alta acepta seguimiento ausente', async () => {
+    const dto = plainToInstance(CreateInsumoDto, bodyAlta());
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('el alta rechaza un seguimiento fuera de NINGUNO/SERIE', async () => {
+    const dto = plainToInstance(CreateInsumoDto, bodyAlta({ seguimiento: 'LOTE' }));
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'seguimiento')).toBe(true);
+  });
+
+  it.each([['SERIE'], ['NINGUNO']])('el PATCH de seguimiento acepta %s', async (valor) => {
+    const dto = plainToInstance(CambiarSeguimientoInsumoHttpDto, { seguimiento: valor });
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it.each([[undefined], [null], ['LOTE'], [''], [1]])(
+    'el PATCH de seguimiento rechaza %s',
+    async (valor) => {
+      const dto = plainToInstance(CambiarSeguimientoInsumoHttpDto, { seguimiento: valor });
+      const errores = await validate(dto);
+      expect(errores.some((e) => e.property === 'seguimiento')).toBe(true);
+    },
+  );
 });
 
 /**
