@@ -499,8 +499,11 @@ nada. La reactivación de un componente con unidad DEBE exigir que la unidad sig
 depósito, se instaló en otro equipo o se dio de baja por otra vía, el sistema DEBE
 rechazar la reactivación sin cambiar nada, y para volver a instalar la pieza se
 usa el alta con descuento eligiendo la unidad. Reactivar un componente legado sin
-unidad NO DEBE crear una unidad.
-(Previously: la reactivación solo cambiaba el componente; ahora, si tiene unidad descartada, la unidad vuelve a INSTALADA.)
+unidad NO DEBE crear una unidad. El sistema NO DEBE permitir reactivar un
+componente de un equipo dado de baja, cualquiera sea el destino de su retiro,
+porque la baja del equipo es definitiva (spec `equipos-baja-completa`); ante el
+intento DEBE rechazar sin cambiar nada.
+(Previously: no existía la excepción del equipo dado de baja; un componente retirado con DESCARTE de un equipo con activo=false podía reactivarse.)
 
 #### Scenario: Reactivar tras devolver al stock
 
@@ -551,6 +554,12 @@ unidad NO DEBE crear una unidad.
 - GIVEN un componente legado retirado con `DESCARTE`, de un insumo `SERIE`
 - WHEN se lo reactiva
 - THEN el componente vuelve a estar activo y no se crea ninguna unidad
+
+#### Scenario: Reactivar un componente de un equipo dado de baja
+
+- GIVEN un equipo dado de baja con destino `DESCARTE` y un componente retirado con `DESCARTE` cuya unidad "S1" está `DESCARTADA`
+- WHEN se intenta reactivar el componente
+- THEN el sistema rechaza la reactivación, el componente sigue retirado y "S1" sigue `DESCARTADA`
 ### Requirement: El componente conserva el registro de su retiro
 
 El sistema DEBE guardar en el propio componente, al retirarlo, el destino

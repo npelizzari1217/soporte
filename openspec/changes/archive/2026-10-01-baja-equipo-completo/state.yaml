@@ -1,5 +1,6 @@
 change: baja-equipo-completo
-phase: proposal
+phase: archive
+archived_date: 2026-10-01
 artifact_store: openspec
 research:
   selected: false
@@ -7,7 +8,13 @@ product_decisions: confirmed 2026-10-01 (recomendadas P1-P11; docs/roadmap-comer
 artifacts:
   exploration: true
   proposal: true
-  specs: false
-  design: false
-  tasks: false
+  specs: true
+  design: true
+  tasks: true
+  verify_report: true
+  archive_report: true
+tasks_progress:
+  total: 115
+  completed: 115
+  pending: 0
 last_updated: 2026-10-01
