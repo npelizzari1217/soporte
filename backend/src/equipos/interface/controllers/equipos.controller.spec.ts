@@ -872,6 +872,21 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
   });
 });
 
+describe('toHttpException — borrado de un equipo (baja-equipo-completo, R13)', () => {
+  it('EquipoConComponentesActivosError → 422 con la cantidad en el mensaje', () => {
+    const excepcion = toHttpException(new EquiposErrors.EquipoConComponentesActivosError(3));
+
+    expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    expect(excepcion.message).toContain('3 piezas activas');
+  });
+
+  it('EquipoDadoDeBajaError → 422', () => {
+    const excepcion = toHttpException(new EquiposErrors.EquipoDadoDeBajaError('equipo-1'));
+
+    expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
 describe('toHttpException — errores de unidades de insumo al instalar (sdd/repuestos-numero-de-serie, ADR-7)', () => {
   const TABLA_UNIDADES: Array<[string, () => DomainError, 404 | 409 | 422]> = [
     // Alta sin descuento (D3): serial repetido es un conflicto; serial ausente, una regla de negocio.

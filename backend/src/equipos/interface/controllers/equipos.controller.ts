@@ -84,6 +84,8 @@ import {
   InsumoNoEsRepuestoError,
   FamiliaRepuestoDeshabilitadaError,
   UnidadConAltaSinDescuentoError,
+  EquipoDadoDeBajaError,
+  EquipoConComponentesActivosError,
 } from '../../domain/errors/equipos.errors';
 
 import {
@@ -160,7 +162,12 @@ export function toHttpException(
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
     // línea en uno conocido.
-    error instanceof ExportacionDemasiadoGrandeError
+    error instanceof ExportacionDemasiadoGrandeError ||
+    // Borrado de un equipo (baja-equipo-completo, R13): con piezas activas el mensaje informa
+    // la cantidad; dado de baja no admite el borrado. El resto de los errores de la baja se
+    // mapea en WU-11.
+    error instanceof EquipoDadoDeBajaError ||
+    error instanceof EquipoConComponentesActivosError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -350,8 +357,9 @@ export class EquiposController {
 
   /**
    * DELETE /equipos/:id
-   * Baja lógica (soft delete) del equipo.
+   * Borrado lógico (soft delete) de un equipo cargado por error.
    * @throws 404 equipo inexistente
+   * @throws 422 el equipo tiene piezas activas (informa la cantidad) o está dado de baja
    */
   @Delete(':id')
   @RequiereAcciones('EQUIPOS:BORRADO')
