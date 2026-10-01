@@ -1,0 +1,13 @@
+change: baja-equipo-completo
+phase: proposal
+artifact_store: openspec
+research:
+  selected: false
+product_decisions: confirmed 2026-10-01 (recomendadas P1-P11; docs/roadmap-comercial.md, "Decisiones de producto ya cerradas", viñeta "Baja de equipo completo"); P12 resuelta por medición 2026-10-01 (8 tenants, 0 datos a corregir)
+artifacts:
+  exploration: true
+  proposal: true
+  specs: false
+  design: false
+  tasks: false
+last_updated: 2026-10-01
