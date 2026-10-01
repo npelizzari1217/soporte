@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { EquipoDetailView } from "./equipo-detail-view";
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -87,5 +91,54 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
 
     expect(await screen.findAllByRole("button", { name: /agregar componente/i })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /instalar desde depósito/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("EquipoDetailView — borrado de un equipo cargado por error (baja-equipo-completo, R13)", () => {
+  beforeEach(() => {
+    mockBackend();
+    vi.mocked(toast.error).mockClear();
+  });
+
+  it("el botón del borrado dice «Eliminar equipo (cargado por error)» y ningún botón dice «Dar de baja»", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+    });
+
+    expect(await screen.findByRole("button", { name: "Eliminar equipo (cargado por error)" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^dar de baja$/i })).not.toBeInTheDocument();
+  });
+
+  it("la confirmación aclara que es solo para equipos cargados por error y sugiere dar de baja", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Eliminar equipo (cargado por error)" }));
+
+    expect(
+      await screen.findByText(/Solo para equipos cargados por error\. Si tiene piezas instaladas, dalo de baja\./),
+    ).toBeInTheDocument();
+  });
+
+  it("el 422 del borrado con piezas activas muestra el mensaje del backend con la cantidad", async () => {
+    server.use(
+      http.delete(`/api/equipos/${EQUIPO_ID}`, () =>
+        HttpResponse.json(
+          { message: "El equipo tiene 2 piezas activas: dalo de baja en lugar de borrarlo." },
+          { status: 422 },
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:BORRADO"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Eliminar equipo (cargado por error)" }));
+    await user.click(await screen.findByRole("button", { name: "Eliminar equipo" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("2 piezas activas")));
   });
 });

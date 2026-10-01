@@ -2,10 +2,10 @@
 
 /**
  * EquipoDetailView — CONTAINER montado por `/equipos/[id]` (T5.13). Edición en
- * MODAL (`EquipoEditDialog`) + baja lógica detrás de `ConfirmDialog` +
+ * MODAL (`EquipoEditDialog`) + borrado (equipo cargado por error) detrás de `ConfirmDialog` +
  * componentes. Gates por acción (WU-7.6, `sdd/matriz-permisos-por-usuario`):
  * `EQUIPOS:ALTAS` (agregar componente), `EQUIPOS:MODIFICACION` (editar
- * equipo), `EQUIPOS:BORRADO` (dar de baja) — separados, ya no un único
+ * equipo), `EQUIPOS:BORRADO` (eliminar equipo cargado por error) — separados, ya no un único
  * `equipo:gestionar` para las tres mutaciones. Consistente con
  * `EquiposController`. La asignación a personas se eliminó del dominio Equipos
  * — vive solo en `Ticket`.
@@ -69,12 +69,12 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
               <ConfirmDialog
                 trigger={
                   <Button variant="destructive" size="sm">
-                    Dar de baja
+                    Eliminar equipo (cargado por error)
                   </Button>
                 }
-                title="Dar de baja equipo"
-                description={`¿Confirmás dar de baja "${equipo.nombre}"?`}
-                confirmLabel="Dar de baja"
+                title="Eliminar equipo"
+                description={`¿Confirmás eliminar "${equipo.nombre}"? Solo para equipos cargados por error. Si tiene piezas instaladas, dalo de baja.`}
+                confirmLabel="Eliminar equipo"
                 confirmVariant="destructive"
                 isConfirming={eliminarMutation.isPending}
                 onConfirm={() => eliminarMutation.mutate(equipo.id, { onSuccess: () => router.push("/equipos") })}

@@ -56,7 +56,7 @@ export function useEliminarEquipo() {
     mutationFn: (id: string) => apiFetch<void>(`equipos/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["equipos"] });
-      notifySuccess("Equipo dado de baja.");
+      notifySuccess("Equipo eliminado.");
     },
     onError: notifyError,
   });
