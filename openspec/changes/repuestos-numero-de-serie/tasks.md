@@ -560,7 +560,7 @@ Commit sugerido: `feat(insumos): endpoint de seguimiento por serie del insumo`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu12b` · **Base**: wu12a
 
-- [ ] 12b.1 `CrearUnidadMedidaHttpDto` y `EditarUnidadMedidaHttpDto`: `entera?: boolean` (default `false` en el alta); respuesta con `entera`. `CrearUnidadMedidaUseCase` la acepta.
+- [x] 12b.1 `CrearUnidadMedidaHttpDto` y `EditarUnidadMedidaHttpDto`: `entera?: boolean` (default `false` en el alta); respuesta con `entera`. `CrearUnidadMedidaUseCase` la acepta.
 - [ ] 12b.2 `EditarUnidadMedidaUseCase`: toma L0 de escritura —`FOR UPDATE` siempre que el DTO traiga `codigo`, `FOR NO KEY UPDATE` si no— y luego cuenta insumos `SERIE`; desmarcar con alguno en uso ⇒ `UnidadMedidaEnUsoPorSerieError` (422). No toma ningún otro lock del orden.
 - [ ] 12b.3 `orden-de-locks` **caso 7**: desmarcar `entera` contra una activación en vuelo ⇒ sin `40P01`; la edición espera en L0 y se rechaza. **Mutación adversarial local**: tomar `FOR NO KEY UPDATE` aunque venga `codigo`, o contar antes de bloquear ⇒ el spec debe ponerse rojo; revertir.
 - [ ] 12b.4 Specs unitarios y e2e (`usarLockMasterTest()`): marcar `entera` una unidad propia; desmarcar una usada por un insumo `SERIE`; renombrar `codigo` de `UNI` con un insumo `SERIE` vigente (la entera no se toca, el insumo sigue válido); gate actual del ABM de catálogos conservado.

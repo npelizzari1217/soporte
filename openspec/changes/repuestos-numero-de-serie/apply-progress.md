@@ -765,3 +765,12 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - Las unidades sembradas por SQL fuera de EN_DEPOSITO deben llevar serial (CHECK `unidades_insumo_serie_pendiente_check`).
 - Gates: ver el informe de la fase (lint, typecheck, `src/insumos src/equipos src/compras` y suite completa en cero).
 
+
+## WU-12b - Unidades de medida `entera` (F3), caso 7 de `orden-de-locks`
+
+### WU-12b - 12b.1 (alta con `entera` y respuesta), rama `-wu12b`
+
+- `CreateUnidadMedidaDto.entera?` (`@IsOptional @IsBoolean`) y `CrearUnidadMedidaDto.entera?` en el caso de uso (por defecto `false` en la
+  entidad). `UnidadMedidaResponseDto.entera` (alta, edicion, estado y listado comparten `toUnidadMedidaResponseDto`).
+- Unit specs: DTO (acepta, ausente, rechaza no booleana, respuesta) y alta (default `false` / `true`).
+- `EditUnidadMedidaDto.entera` queda para 12b.2: aceptarla antes de que el caso de uso la aplique la descartaria en silencio.

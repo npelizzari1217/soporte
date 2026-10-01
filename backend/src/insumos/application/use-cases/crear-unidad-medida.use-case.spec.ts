@@ -54,6 +54,18 @@ describe('CrearUnidadMedidaUseCase', () => {
     expect(result.getValue().nombre).toBe('Unidad');
   });
 
+  it('crea la unidad no entera por defecto y entera si el DTO lo pide', async () => {
+    const repo = buildRepo();
+    const useCase = new CrearUnidadMedidaUseCase(repo);
+
+    const comun = await useCase.execute({ codigo: 'LT', nombre: 'Litro' });
+    const entera = await useCase.execute({ codigo: 'BOB', nombre: 'Bobina', entera: true });
+
+    expect(comun.getValue().entera).toBe(false);
+    expect(entera.getValue().entera).toBe(true);
+    expect(repo.save).toHaveBeenLastCalledWith(expect.objectContaining({ entera: true }));
+  });
+
   it('busca el duplicado por el codigo YA normalizado', async () => {
     const repo = buildRepo();
     const useCase = new CrearUnidadMedidaUseCase(repo);
