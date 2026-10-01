@@ -354,3 +354,20 @@ export class UnidadDelComponenteNoDisponibleError extends DomainError {
     );
   }
 }
+
+/**
+ * UnidadConAltaSinDescuentoError — el alta con `descontarStock: false` trae
+ * `unidadId`. Sin descuento no se elige una unidad del depósito: la unidad nace
+ * con el alta (D3) a partir del `numeroSerie`; elegir una existente es instalar
+ * con descuento.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class UnidadConAltaSinDescuentoError extends DomainError {
+  readonly code = 'UNIDAD_CON_ALTA_SIN_DESCUENTO';
+
+  constructor(unidadId: string) {
+    super(
+      `El alta sin descuento no admite elegir la unidad "${unidadId}": informá el número de serie para crear una, o instalá con descuento para elegir una del depósito.`,
+    );
+  }
+}

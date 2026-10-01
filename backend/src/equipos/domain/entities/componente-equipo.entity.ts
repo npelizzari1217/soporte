@@ -289,6 +289,17 @@ export class ComponenteEquipoEntity extends BaseEntity<ComponenteEquipoPropsComp
   }
 
   /**
+   * Vincula la unidad de insumo que el componente lleva (alta sin descuento, D3).
+   * El serial pasa a ser el de la unidad: la columna propia queda NULL (ADR-7) y
+   * se resuelve al leer.
+   */
+  vincularUnidad(unidadId: string): void {
+    this.props.unidadId = unidadId;
+    this.props.numeroSerie = null;
+    this.touch();
+  }
+
+  /**
    * Regla del motivo de retiro. Es obligatorio (con contenido) en `DESCARTE` y
    * en `STOCK_USADO` cuando no consta una SALIDA vinculada: sin él, esa vuelta
    * al stock fabricaría una unidad sin explicación. En `STOCK_USADO` con SALIDA

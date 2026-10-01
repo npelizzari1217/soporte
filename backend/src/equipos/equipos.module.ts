@@ -71,6 +71,7 @@ import { ObtenerEquipoUseCase } from './application/use-cases/obtener-equipo.use
 import { ListarEquiposUseCase } from './application/use-cases/listar-equipos.use-case';
 import { EliminarEquipoUseCase } from './application/use-cases/eliminar-equipo.use-case';
 import { AgregarComponenteUseCase } from './application/use-cases/agregar-componente.use-case';
+import { AgregarComponenteSinDescuentoUseCase } from './application/use-cases/agregar-componente-sin-descuento.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/instalar-componente-desde-deposito.use-case';
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
 import { RetirarComponenteUseCase } from './application/use-cases/retirar-componente.use-case';
@@ -246,6 +247,32 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         TENANT_TX_RUNNER,
         AgregarComponenteUseCase,
         RegistrarSalidaInsumoUseCase,
+        OperacionesUnidadInsumo,
+        COMPONENTE_EQUIPO_REPOSITORY,
+      ],
+    },
+    {
+      // sdd/repuestos-numero-de-serie (D3): alta sin descuento. Con insumo `SERIE` crea
+      // la unidad ya instalada (L1 a L3) y guarda el componente despues (L4), en una tx.
+      provide: AgregarComponenteSinDescuentoUseCase,
+      useFactory: (
+        txRunner: ITenantTransactionRunner,
+        agregarComponenteUseCase: AgregarComponenteUseCase,
+        insumoRepo: IInsumoRepository,
+        operaciones: OperacionesUnidadInsumo,
+        componenteRepo: IComponenteEquipoRepository,
+      ) =>
+        new AgregarComponenteSinDescuentoUseCase(
+          txRunner,
+          agregarComponenteUseCase,
+          insumoRepo,
+          operaciones,
+          componenteRepo,
+        ),
+      inject: [
+        TENANT_TX_RUNNER,
+        AgregarComponenteUseCase,
+        INSUMO_REPOSITORY,
         OperacionesUnidadInsumo,
         COMPONENTE_EQUIPO_REPOSITORY,
       ],
