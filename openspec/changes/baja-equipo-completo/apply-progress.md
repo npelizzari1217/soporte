@@ -336,3 +336,19 @@ Ramas: `feat/baja-equipo-completo-wu12` (arnes + permisos, validacion, piezas pr
 - El 409 `EQUIPO_MODIFICADO_DURANTE_LA_BAJA` no se prueba por HTTP (exige una carrera): lo cubre WU-13.
 - 12.2 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), spec solo dos veces (24/24), `vitest run src/equipos` (51 archivos, 740 tests) y `pnpm test` completo (549 archivos, 6879 tests; unico FAIL del log: ruido conocido `orden-de-arranque.spec.ts`) en verde.
 - Ayuda: sin deuda.
+
+
+## WU-13 — Concurrencia de resultado (a)-(e)
+
+Rama: `feat/baja-equipo-completo-wu13` (una sola, solo tests; base wu12-2).
+
+- 13.1 `baja-equipo.concurrencia.integration.spec.ts` (8 casos, 10 iteraciones cada uno, filas limpias entre iteraciones sobre `soporte_tenant_test` con PREFIJO; los tickets usan catalogo propio de la corrida). Helper `escalonar`: un cliente externo retiene un lock, las operaciones se lanzan de a una (el orden del arreglo es el orden de llegada), se espera con `pg_stat_activity`/`pg_blocking_pids` a que queden en la cola y recien entonces el COMMIT del externo. `resultados()` exige que ninguna operacion termine rechazada (cualquier `40P01` o error de sistema la rechazaria) y cada caso cierra con `exigirInvarianteSerie` de los dos insumos `SERIE`.
+- Orden de llegada alternado por iteracion (pares: baja primero; impares: la otra primero): en (b)/(c) salen 5 bajas y 5 entradas ganadoras por variante, en (e) 5 tickets creados y 5 rechazados; se afirma que ambos caminos ocurren.
+- 13.2 (a) E1 con unidades de X e Y contra dos instalaciones en E2 (Y y X); el externo retiene L1 del insumo de id mas alto. Las tres terminan OK y, por insumo y condicion, las unidades `EN_DEPOSITO` igualan el saldo del libro.
+- 13.3/13.4 (b) y (c), cuatro variantes (instalar con unidad, instalar `NINGUNO`, alta sin descuento `SERIE` y `NINGUNO`): exactamente una gana; si gana la baja la entrada da `EquipoDadoDeBajaError`, si gana la entrada la baja da `EquipoModificadoDuranteLaBajaError` y la pieza queda activa en el equipo vigente. Un equipo dado de baja nunca conserva componentes activos ni unidades `INSTALADA`.
+- 13.5 (d) dos bajas: una OK, la otra `EquipoDadoDeBajaError`, exactamente 2 ENTRADA (una por pieza).
+- 13.6 (e) baja vs `CrearTicketSoporte` (repos de ticket reales; solo catalogos y ciclo como fakes tipados con ids reales de filas propias): la baja siempre termina; o el ticket existe (`ticket_soporte` activo, `contarAbiertosPorEquipo` = 1) o se rechaza con `EquipoInvalidoError` sin filas.
+- Caso 409 determinista (extra): el externo toma el LE `FOR SHARE` como una alta, inserta una pieza y comitea con la baja ya en cola: la baja da `EquipoModificadoDuranteLaBajaError` y la foto de unidades, movimientos, eventos y equipos no cambia.
+- Fixture `BajaEquipoFixtures`: segundo insumo `SERIE` (`serie2Id`, entra en `todosLosInsumos`), `agregarUnidadInstalada` / `agregarUnidadEnDeposito` / `exigirInvarianteSerie` aceptan `insumoId`; pool de 6 a 10 conexiones.
+- 13.7 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), spec solo tres veces seguidas (8/8 cada vez), `vitest run src/equipos src/insumos` (155 archivos, 2615 tests) y `pnpm test` completo (550 archivos, 6887 tests; unico FAIL del log: ruido conocido `orden-de-arranque.spec.ts`) en verde.
+- Ayuda: sin deuda.

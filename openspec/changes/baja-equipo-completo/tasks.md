@@ -389,13 +389,13 @@ Commit sugerido: `test(equipos): e2e de la baja de equipo completo`.
 
 **Branch**: `feat/baja-equipo-completo-wu13` · **Base**: wu12
 
-- [ ] 13.1 Crear `backend/src/equipos/application/use-cases/baja-equipo.concurrencia.integration.spec.ts` con un helper `repetir(10, caso)`: cada iteración sobre un tenant efímero limpio; afirma **sin `40P01`**, sin error de sistema, y el invariante `SERIE` (`insumos/testing/invariante-serie.ts` (read-only)) en verde. (Req: R15)
-- [ ] 13.2 Caso **(a)**: baja `STOCK_USADO` de "E1" (componentes de los insumos `SERIE` X e Y) contra `InstalarComponenteDesdeDeposito` en "E2" de unidades de Y y de X en orden inverso: ambas terminan; por insumo las unidades `EN_DEPOSITO` por condición igualan el saldo del libro. (Req: R15)
-- [ ] 13.3 Caso **(b)**: baja de "E1" contra `InstalarComponenteDesdeDeposito` **en E1**, una vez con unidad y otra con insumo `NINGUNO`: o la instalación comitea antes y la baja da 409 o retira la pieza, o la instalación da `EquipoDadoDeBajaError`; nunca queda un componente activo ni una unidad `INSTALADA` en el equipo dado de baja. (Req: R15, R8)
-- [ ] 13.4 Caso **(c)**: baja contra alta sin descuento sobre el mismo equipo; mismo resultado que (b). (Req: R15)
-- [ ] 13.5 Caso **(d)**: dos bajas del mismo equipo a la vez: exactamente una se completa, la otra da `EquipoDadoDeBajaError` y no hay movimientos duplicados. (Req: R15)
-- [ ] 13.6 Caso **(e)**: baja contra `CrearTicketSoporte` del mismo equipo: o el ticket existe y la baja lo cuenta como abierto (resumen) y lo conserva, o el ticket se rechaza (`EquipoInvalidoError`). (Req: R10, R15)
-- [ ] 13.7 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos/application/use-cases/baja-equipo.concurrencia && pnpm test` y `node scripts/check-casts-en-specs.mjs`. Correr el spec **tres veces seguidas** para descartar flakiness y declarar el resultado en el PR.
+- [x] 13.1 Crear `backend/src/equipos/application/use-cases/baja-equipo.concurrencia.integration.spec.ts` con un helper `repetir(10, caso)`: cada iteración sobre un tenant efímero limpio; afirma **sin `40P01`**, sin error de sistema, y el invariante `SERIE` (`insumos/testing/invariante-serie.ts` (read-only)) en verde. (Req: R15)
+- [x] 13.2 Caso **(a)**: baja `STOCK_USADO` de "E1" (componentes de los insumos `SERIE` X e Y) contra `InstalarComponenteDesdeDeposito` en "E2" de unidades de Y y de X en orden inverso: ambas terminan; por insumo las unidades `EN_DEPOSITO` por condición igualan el saldo del libro. (Req: R15)
+- [x] 13.3 Caso **(b)**: baja de "E1" contra `InstalarComponenteDesdeDeposito` **en E1**, una vez con unidad y otra con insumo `NINGUNO`: o la instalación comitea antes y la baja da 409 o retira la pieza, o la instalación da `EquipoDadoDeBajaError`; nunca queda un componente activo ni una unidad `INSTALADA` en el equipo dado de baja. (Req: R15, R8)
+- [x] 13.4 Caso **(c)**: baja contra alta sin descuento sobre el mismo equipo; mismo resultado que (b). (Req: R15)
+- [x] 13.5 Caso **(d)**: dos bajas del mismo equipo a la vez: exactamente una se completa, la otra da `EquipoDadoDeBajaError` y no hay movimientos duplicados. (Req: R15)
+- [x] 13.6 Caso **(e)**: baja contra `CrearTicketSoporte` del mismo equipo: o el ticket existe y la baja lo cuenta como abierto (resumen) y lo conserva, o el ticket se rechaza (`EquipoInvalidoError`). (Req: R10, R15)
+- [x] 13.7 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos/application/use-cases/baja-equipo.concurrencia && pnpm test` y `node scripts/check-casts-en-specs.mjs`. Correr el spec **tres veces seguidas** para descartar flakiness y declarar el resultado en el PR.
 
 **Escenarios**: R15 (3): Baja contra instalación sobre los mismos insumos; Dos bajas simultáneas
 del mismo equipo; Baja contra agregar componente. Más R10 (ticket vs. baja).

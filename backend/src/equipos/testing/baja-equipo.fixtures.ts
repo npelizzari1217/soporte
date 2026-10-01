@@ -69,12 +69,14 @@ export class BajaEquipoFixtures {
   readonly useCase: DarDeBajaEquipoUseCase;
 
   serieId = '';
+  /** Segundo insumo `SERIE`, para los casos que cruzan dos insumos en orden inverso. */
+  serie2Id = '';
   ningunoId = '';
   deshabilitadoId = '';
   borradoId = '';
 
   private constructor() {
-    this.pool = conUtc(this.prismaServiceParaUrl.buildTenantUrl(TENANT_TEST_DB_NAME), { max: 6 });
+    this.pool = conUtc(this.prismaServiceParaUrl.buildTenantUrl(TENANT_TEST_DB_NAME), { max: 10 });
     this.tenantClient = new TenantPrismaClient({ adapter: new PrismaPg(this.pool) });
     this.txRunner = new PrismaTenantTransactionRunner(this.tenantContext, { error: () => {} });
     this.equipoRepo = new PrismaEquipoInformaticoRepository(this.tenantContext);
@@ -130,6 +132,7 @@ export class BajaEquipoFixtures {
         })
       ).id;
     f.serieId = await crearInsumo('S', { seguimiento: 'SERIE' });
+    f.serie2Id = await crearInsumo('S2', { seguimiento: 'SERIE' });
     f.ningunoId = await crearInsumo('N', {});
     f.deshabilitadoId = await crearInsumo('D', { activo: false });
     f.borradoId = await crearInsumo('B', { deletedAt: new Date('2026-01-01T00:00:00Z') });
@@ -137,7 +140,7 @@ export class BajaEquipoFixtures {
   }
 
   get todosLosInsumos(): string[] {
-    return [this.serieId, this.ningunoId, this.deshabilitadoId, this.borradoId];
+    return [this.serieId, this.serie2Id, this.ningunoId, this.deshabilitadoId, this.borradoId];
   }
 
   conTenant<T>(fn: () => Promise<T>): Promise<T> {
@@ -171,10 +174,11 @@ export class BajaEquipoFixtures {
   async agregarUnidadInstalada(
     equipoId: string,
     serial: string,
+    insumoId = this.serieId,
   ): Promise<{ componenteId: string; unidadId: string }> {
     const alta = await this.conTenant(() =>
       this.registrarEntrada.execute({
-        insumoId: this.serieId,
+        insumoId,
         cantidad: 1,
         usuarioId: this.usuarioId,
         seriales: [serial],
@@ -182,7 +186,7 @@ export class BajaEquipoFixtures {
     );
     if (alta.isFail()) throw alta.getError();
     const unidad = await this.tenantClient.unidadInsumo.findFirstOrThrow({
-      where: { insumoId: this.serieId, numeroSerie: serial },
+      where: { insumoId, numeroSerie: serial },
     });
     const componenteId = randomUUID();
     const instalada = await this.conTenant(() =>
@@ -194,16 +198,16 @@ export class BajaEquipoFixtures {
     );
     if (instalada.isFail()) throw instalada.getError();
     await this.tenantClient.componenteEquipo.create({
-      data: { id: componenteId, equipoId, insumoId: this.serieId, unidadId: unidad.id },
+      data: { id: componenteId, equipoId, insumoId, unidadId: unidad.id },
     });
     return { componenteId, unidadId: unidad.id };
   }
 
   /** Unidad `SERIE` ya existente en el depósito (alta por entrada), sin instalar. */
-  async agregarUnidadEnDeposito(serial: string): Promise<string> {
+  async agregarUnidadEnDeposito(serial: string, insumoId = this.serieId): Promise<string> {
     const alta = await this.conTenant(() =>
       this.registrarEntrada.execute({
-        insumoId: this.serieId,
+        insumoId,
         cantidad: 1,
         usuarioId: this.usuarioId,
         seriales: [serial],
@@ -212,7 +216,7 @@ export class BajaEquipoFixtures {
     if (alta.isFail()) throw alta.getError();
     return (
       await this.tenantClient.unidadInsumo.findFirstOrThrow({
-        where: { insumoId: this.serieId, numeroSerie: serial },
+        where: { insumoId, numeroSerie: serial },
       })
     ).id;
   }
@@ -260,7 +264,7 @@ export class BajaEquipoFixtures {
   }
 
   /** Invariante del insumo `SERIE`: se llama tras CADA caso. */
-  async exigirInvarianteSerie(): Promise<string[]> {
+  async exigirInvarianteSerie(insumoId = this.serieId): Promise<string[]> {
     return this.conTenant(() =>
       leerYVerificarInvarianteSerie(
         {
@@ -268,7 +272,7 @@ export class BajaEquipoFixtures {
           movimientoRepo: this.movimientoRepo,
           eventoRepo: this.eventoRepo,
         },
-        this.serieId,
+        insumoId,
       ),
     );
   }
