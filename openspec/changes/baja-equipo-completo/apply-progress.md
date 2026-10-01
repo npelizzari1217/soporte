@@ -325,3 +325,14 @@ Ramas: `feat/baja-equipo-completo-wu11` (11.1 conteo de tickets abiertos) -> `-w
 - 11.6 Ayuda `permisos-y-roles.md`: "tres trabajos" pasa a cuatro y suma la baja completa con `BORRADO` de Equipos; "esos tres casos" pasa a cuatro. `rg -n "tres trabajos|esos tres" backend/ayuda` sin resultados. Ojo: `prettier --write` sobre ese `.md` lo reformatea entero; se aplico a mano.
 - Ayuda: deuda, articulo del flujo de baja de equipo.
 
+
+
+## WU-12 — e2e HTTP de la baja
+
+Ramas: `feat/baja-equipo-completo-wu12` (arnes + permisos, validacion, piezas problematicas; 628 lineas, `size:exception`) -> `-wu12-2` (resumen, tickets abiertos, ficha, ticket nuevo). WU-13 bases on wu12-2.
+
+- 12.1 `dar-de-baja-equipo.e2e.spec.ts` (24 casos, tenant efimero, `usarLockMasterTest()`; higiene filas -> `app.close()` -> `dropDatabase`). Las piezas, unidades y tickets se siembran por SQL; `POST /soporte` para el ticket nuevo exige sembrar `tipo_operacion CAMBIO_ESTADO`, estado `NUEVO`, tipo `SOPORTE`, prioridad y un ciclo activo (sin ese catalogo el caso da 500 antes de llegar a la validacion del equipo).
+- Observado: `baja.motivo` en la respuesta es el texto recortado (sin leyenda); la leyenda `Baja del equipo «<nombre>» — <Etiqueta>[: <texto>]` vive en `componentes[].bajaMotivo` y en movimientos/eventos. Con texto de N caracteres la leyenda mide 500.
+- El 409 `EQUIPO_MODIFICADO_DURANTE_LA_BAJA` no se prueba por HTTP (exige una carrera): lo cubre WU-13.
+- 12.2 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), spec solo dos veces (24/24), `vitest run src/equipos` (51 archivos, 740 tests) y `pnpm test` completo (549 archivos, 6879 tests; unico FAIL del log: ruido conocido `orden-de-arranque.spec.ts`) en verde.
+- Ayuda: sin deuda.
