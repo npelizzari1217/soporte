@@ -10,6 +10,9 @@
  * - `ajuste`: `?estado=EN_DEPOSITO`, que SÍ incluye las pendientes (decisión F1:
  *   una pendiente se puede dar de baja con motivo).
  *
+ * Con `condicion` la lista se acota, en el cliente, a las unidades de esa
+ * condición (alta de un componente: se elige la condición y después la pieza).
+ *
  * La `queryKey` cuelga de `["insumo", id, "unidades"]`, así que toda mutación
  * que invalida las unidades la refresca por prefijo. Con `requiere` en `false`
  * no hay consulta y `validar` devuelve `undefined`: el payload no lleva
@@ -18,7 +21,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
-import type { UnidadInsumo } from "../types";
+import type { CondicionStock, UnidadInsumo } from "../types";
 
 export type ModoSeleccionUnidad = "salida" | "ajuste";
 
@@ -47,8 +50,14 @@ export interface SeleccionUnidad {
  * @param insumoId Insumo cuyas unidades se listan.
  * @param requiere `true` cuando el movimiento exige elegir una pieza.
  * @param modo Qué lista de unidades corresponde a la puerta.
+ * @param condicion Si se indica, solo se listan las unidades de esa condición.
  */
-export function useSeleccionUnidad(insumoId: string, requiere: boolean, modo: ModoSeleccionUnidad): SeleccionUnidad {
+export function useSeleccionUnidad(
+  insumoId: string,
+  requiere: boolean,
+  modo: ModoSeleccionUnidad,
+  condicion?: CondicionStock,
+): SeleccionUnidad {
   const [elegida, setElegida] = useState("");
   const [intentado, setIntentado] = useState(false);
   const query = useQuery({
@@ -58,11 +67,12 @@ export function useSeleccionUnidad(insumoId: string, requiere: boolean, modo: Mo
     enabled: !!insumoId && requiere,
   });
 
-  const unidadId = query.data?.some((unidad) => unidad.id === elegida) ? elegida : "";
+  const unidades = condicion ? query.data?.filter((unidad) => unidad.condicion === condicion) : query.data;
+  const unidadId = unidades?.some((unidad) => unidad.id === elegida) ? elegida : "";
 
   return {
     requiere,
-    unidades: query.data,
+    unidades,
     cargando: query.isLoading,
     fallo: query.isError,
     unidadId,

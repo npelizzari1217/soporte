@@ -920,3 +920,15 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 | integration: corregirSerial sobre INSTALADA cambia serial, conserva estado/equipo, audita | `isOk()` false | pasa | - |
 | e2e: 201 sobre INSTALADA, sigue instalada, evento | 422 en vez de 201 | pasa | quitado el caso "422 sobre una instalada" |
 | frontend MSW: unidad instalada tambien se corrige | boton ausente | pasa | comentario de la seccion |
+
+### fix02 - cobertura D3 en el retiro y condicion antes de la pieza en el alta (3 CRITICAL de verify-report), rama `-fix02`
+
+- Escenarios "Retiro al stock de una unidad de origen sin salida" y "Retiro al stock sin motivo": el comportamiento ya existia (regla `SIN_SALIDA_REGISTRADA` y getter `bajaSinSalidaPrevia`); faltaba la prueba. Dos e2e nuevos en `equipos-retirar-componente-unidad.e2e.spec.ts`, con el alta D3 por HTTP (`descontarStock: false`). La marca "sin salida registrada del depósito" se expone como `bajaSinSalidaPrevia: true` en la respuesta del retiro (la UI la dibuja en `equipo-componentes-section.tsx`).
+- Escenario "Selector de unidad en el alta": `ComponenteCreateDialog` muestra el selector de condicion tambien para insumos `SERIE` con descuento (`useSelectorCondicion` con las reglas existentes: USADO solo si la familia lo admite o la consulta de stock no esta disponible; fijo si un unico saldo) y `useSeleccionUnidad` recibe una `condicion` opcional que filtra la lista en el cliente. El payload sigue sin `condicion` (la unidad la trae). Tarea 19.1 enmendada.
+- Ayuda: deuda — elegir condicion y pieza en el alta (pausa de Ayuda).
+
+| Test | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| e2e: STOCK_USADO con motivo sobre unidad D3 (EN_DEPOSITO USADO, ENTRADA, `bajaSinSalidaPrevia`) | n/a: cobertura, verde en la primera corrida. Mutacion: getter `bajaSinSalidaPrevia` forzado a false -> falla; revertida | pasa | - |
+| e2e: STOCK_USADO sin motivo sobre unidad D3 -> 422, sigue INSTALADA | n/a: cobertura, verde en la primera corrida. Mutacion: regla `SIN_SALIDA_REGISTRADA` desactivada en `validarRetiro` -> falla; revertida | pasa | - |
+| frontend MSW: elegir condicion y solo se listan las piezas de esa condicion | falla ("Unable to find a label with the text of: Condición") con el codigo previo | pasa | quitada la rama `!esSerie` del selector; assert viejo "sin Condición" eliminado |

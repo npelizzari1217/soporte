@@ -499,7 +499,6 @@ describe("ComponenteCreateDialog", () => {
       const pieza = await screen.findByLabelText(/pieza \(por número de serie\)/i);
       await screen.findByRole("option", { name: /SN-AAA/ });
       expect(consulta?.searchParams.get("disponibles")).toBe("true");
-      expect(screen.queryByLabelText("Condición")).not.toBeInTheDocument();
       expect(screen.queryByLabelText(/^número de serie/i)).not.toBeInTheDocument();
 
       await user.selectOptions(pieza, "u1");
@@ -509,6 +508,30 @@ describe("ComponenteCreateDialog", () => {
       expect(post.body()).toMatchObject({ insumoId: MOUSE_ID, descontarStock: true });
       expect(post.body()).not.toHaveProperty("condicion");
       expect(post.body()).not.toHaveProperty("numeroSerie");
+    });
+
+    it("con descuento se elige la condición y solo se listan las piezas de esa condición, por serial", async () => {
+      mockSerie();
+      mockStock({ NUEVO: 1, USADO: 1 }, true);
+      server.use(http.get(`/api/insumos/${MOUSE_ID}/unidades`, () => HttpResponse.json(UNIDADES)));
+      const post = capturarPost();
+      renderDialog();
+      const user = await abrirDialog();
+      await user.selectOptions(await screen.findByLabelText(/repuesto del catálogo/i), MOUSE_ID);
+
+      const condicion = await screen.findByLabelText("Condición");
+      const pieza = await screen.findByLabelText(/pieza \(por número de serie\)/i);
+      await screen.findByRole("option", { name: /SN-AAA/ });
+      expect(screen.queryByRole("option", { name: /SN-BBB/ })).not.toBeInTheDocument();
+
+      await user.selectOptions(condicion, "USADO");
+      expect(await screen.findByRole("option", { name: /SN-BBB/ })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /SN-AAA/ })).not.toBeInTheDocument();
+
+      await user.selectOptions(pieza, "u2");
+      await user.click(screen.getByRole("button", { name: /agregar$/i }));
+      await waitFor(() => expect(post.body().unidadId).toBe("u2"));
+      expect(post.body()).not.toHaveProperty("condicion");
     });
 
     it("con descuento y sin elegir pieza muestra el error y no hace POST", async () => {

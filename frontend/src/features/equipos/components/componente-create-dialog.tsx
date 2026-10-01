@@ -24,9 +24,10 @@
  * el backend). Sin descuento no se consulta el stock ni se envía `condicion`.
  *
  * Repuesto con seguimiento `SERIE` (repuestos-numero-de-serie, WU-19): con
- * descuento se elige la PIEZA por su serial (`SelectorUnidad`, solo las que
- * tienen serial) y se envía `unidadId`; no hay selector de saldo ni serial de
- * texto (la unidad ya lo tiene). Sin descuento (D3) el serial es obligatorio y
+ * descuento se elige primero la condición (nuevo o usado, con las reglas del
+ * selector de saldo) y después la PIEZA por su serial (`SelectorUnidad`, solo las
+ * que tienen serial y esa condición) y se envía `unidadId`, sin `condicion` ni
+ * serial de texto (la unidad ya los tiene). Sin descuento (D3) el serial es obligatorio y
  * la condición se elige acá; nunca se manda `unidadId` (el backend responde
  * 422 `UNIDAD_CON_ALTA_SIN_DESCUENTO`). Con `NINGUNO` nada cambia.
  *
@@ -87,8 +88,9 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
   const eligePieza = esSerie && descontarStock;
   const serieSinDescuento = esSerie && !descontarStock;
   // Sin descuento, o con una pieza por elegir, el id va vacío: la consulta de stock no corre y no hay selector.
-  const selector = useSelectorCondicion(descontarStock && !esSerie ? insumoId : "");
-  const seleccion = useSeleccionUnidad(insumoId, eligePieza, "salida");
+  // Con una pieza por elegir, la condición se elige primero y filtra las piezas (`selector.valor`).
+  const selector = useSelectorCondicion(descontarStock ? insumoId : "");
+  const seleccion = useSeleccionUnidad(insumoId, eligePieza, "salida", selector.valor);
 
   function submit(values: AgregarComponenteFormValues) {
     const comun = {
@@ -209,15 +211,13 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
               Si lo desmarcás, el componente se registra sin descontar una unidad del stock del repuesto.
             </p>
           </div>
+          {descontarStock && <CondicionStockSelector id="crear-componente-condicion" selector={selector} />}
           {eligePieza && (
             <SelectorUnidad
               id="crear-componente-pieza"
               seleccion={seleccion}
               nota="La pieza elegida se instala en el equipo."
             />
-          )}
-          {descontarStock && !esSerie && (
-            <CondicionStockSelector id="crear-componente-condicion" selector={selector} />
           )}
           {serieSinDescuento && (
             <div className="flex flex-col gap-1">
