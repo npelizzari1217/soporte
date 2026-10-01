@@ -371,3 +371,79 @@ export class UnidadConAltaSinDescuentoError extends DomainError {
     );
   }
 }
+
+/** EquipoDadoDeBajaError — la operación no admite un equipo dado de baja. → HTTP 422. */
+export class EquipoDadoDeBajaError extends DomainError {
+  readonly code = 'EQUIPO_DADO_DE_BAJA';
+
+  constructor(equipoId: string) {
+    super(`El equipo "${equipoId}" está dado de baja y no admite esta operación.`);
+  }
+}
+
+/**
+ * EquipoConComponentesActivosError — borrar un equipo con piezas activas dejaría
+ * unidades instaladas huérfanas. → HTTP 422; informa la cantidad.
+ */
+export class EquipoConComponentesActivosError extends DomainError {
+  readonly code = 'EQUIPO_CON_COMPONENTES_ACTIVOS';
+
+  constructor(readonly cantidad: number) {
+    super(
+      `El equipo tiene ${cantidad} ${cantidad === 1 ? 'pieza activa' : 'piezas activas'}: dalo de baja en lugar de borrarlo.`,
+    );
+  }
+}
+
+/**
+ * MotivoBajaEquipoInvalidoError — la categoría de la baja no es válida, `OTRA`
+ * llegó sin texto o la leyenda compuesta no cabe en 500 caracteres. Con
+ * `largoMaximo` informa el espacio disponible para el texto.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class MotivoBajaEquipoInvalidoError extends DomainError {
+  readonly code = 'MOTIVO_BAJA_EQUIPO_INVALIDO';
+
+  constructor(readonly largoMaximo?: number) {
+    super(
+      largoMaximo === undefined
+        ? 'La baja del equipo necesita una categoría válida y, con la categoría "Otra", un motivo.'
+        : `El motivo de la baja excede el espacio disponible: admite hasta ${largoMaximo} caracteres.`,
+    );
+  }
+}
+
+/** Pieza que impide devolver el equipo al stock, con la causa que la bloquea. */
+export interface PiezaProblematicaDeBaja {
+  componenteId: string;
+  insumoId: string | null;
+  causa: string;
+}
+
+/**
+ * BajaEquipoConPiezasProblematicasError — con destino `STOCK_USADO`, una o más
+ * piezas no pueden volver al depósito. Lista TODAS las piezas, cada una con su causa.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class BajaEquipoConPiezasProblematicasError extends DomainError {
+  readonly code = 'BAJA_EQUIPO_PIEZAS_PROBLEMATICAS';
+
+  constructor(readonly piezas: PiezaProblematicaDeBaja[]) {
+    super(
+      `${piezas.length} ${piezas.length === 1 ? 'pieza no puede' : 'piezas no pueden'} volver al depósito: revisalas antes de dar de baja el equipo.`,
+    );
+  }
+}
+
+/**
+ * EquipoModificadoDuranteLaBajaError — entre el chequeo previo y el lock del
+ * equipo cambió el conjunto de piezas activas. Nada se escribió: se reintenta.
+ * → HTTP 409 en la capa de presentación.
+ */
+export class EquipoModificadoDuranteLaBajaError extends DomainError {
+  readonly code = 'EQUIPO_MODIFICADO_DURANTE_LA_BAJA';
+
+  constructor(equipoId: string) {
+    super(`Las piezas del equipo "${equipoId}" cambiaron durante la baja. Volvé a intentarlo.`);
+  }
+}

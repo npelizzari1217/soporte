@@ -724,8 +724,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 18 clases de error (16 previas menos TipoComponenteInactivo, ComponenteVinculadoTipoInmutable y TipoComponenteCodigoRequerido, retiradas en sdd/catalogo-unico-componentes WU-5 y WU-6, más MotivoRetiroRequerido y ComponenteDevueltoAlStock de sdd/stock-usado-componentes, más SerialDeUnidadNoEditable, UnidadDelComponenteNoDisponible y UnidadConAltaSinDescuento de sdd/repuestos-numero-de-serie)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(18);
+  it('el catálogo tiene EXACTAMENTE 23 clases de error (18 previas más EquipoDadoDeBaja, EquipoConComponentesActivos, MotivoBajaEquipoInvalido, BajaEquipoConPiezasProblematicas y EquipoModificadoDuranteLaBaja de sdd/baja-equipo-completo)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(23);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -775,6 +775,32 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'UnidadConAltaSinDescuentoError',
       () => new EquiposErrors.UnidadConAltaSinDescuentoError('unidad-1'),
+      422,
+    ],
+    // Baja de equipo completo (sdd/baja-equipo-completo): hoy caen en el default 422;
+    // WU-11 mapea explícito los tres de la baja y pasa EquipoModificadoDuranteLaBaja a 409.
+    ['EquipoDadoDeBajaError', () => new EquiposErrors.EquipoDadoDeBajaError('equipo-1'), 422],
+    [
+      'EquipoConComponentesActivosError',
+      () => new EquiposErrors.EquipoConComponentesActivosError(1),
+      422,
+    ],
+    [
+      'MotivoBajaEquipoInvalidoError',
+      () => new EquiposErrors.MotivoBajaEquipoInvalidoError(214),
+      422,
+    ],
+    [
+      'BajaEquipoConPiezasProblematicasError',
+      () =>
+        new EquiposErrors.BajaEquipoConPiezasProblematicasError([
+          { componenteId: 'componente-1', insumoId: 'insumo-1', causa: 'SERIAL_REQUERIDO' },
+        ]),
+      422,
+    ],
+    [
+      'EquipoModificadoDuranteLaBajaError',
+      () => new EquiposErrors.EquipoModificadoDuranteLaBajaError('equipo-1'),
       422,
     ],
     // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene
