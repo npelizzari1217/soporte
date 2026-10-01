@@ -26,6 +26,7 @@ import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 
+import { PrismaEquipoInformaticoRepository } from '../../infrastructure/persistence/prisma/prisma-equipo-informatico.repository';
 import { PrismaComponenteEquipoRepository } from '../../infrastructure/persistence/prisma/prisma-componente-equipo.repository';
 import { PrismaInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-insumo.repository';
 import { PrismaFamiliaInsumoRepository } from '../../../insumos/infrastructure/persistence/prisma/prisma-familia-insumo.repository';
@@ -58,6 +59,7 @@ describe('Retiro y reactivar con unidad — orden de locks y carreras (WU-11, AD
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let tenantContext: TenantContext;
 
+  let equipoRepo: PrismaEquipoInformaticoRepository;
   let componenteRepo: PrismaComponenteEquipoRepository;
   let insumoRepo: PrismaInsumoRepository;
   let familiaInsumoRepo: PrismaFamiliaInsumoRepository;
@@ -80,6 +82,7 @@ describe('Retiro y reactivar con unidad — orden de locks y carreras (WU-11, AD
     tenantClient = new TenantPrismaClient({ adapter: new PrismaPg(pool) });
 
     tenantContext = new TenantContext();
+    equipoRepo = new PrismaEquipoInformaticoRepository(tenantContext);
     componenteRepo = new PrismaComponenteEquipoRepository(tenantContext);
     insumoRepo = new PrismaInsumoRepository(tenantContext);
     familiaInsumoRepo = new PrismaFamiliaInsumoRepository(tenantContext);
@@ -178,6 +181,7 @@ describe('Retiro y reactivar con unidad — orden de locks y carreras (WU-11, AD
   function makeReactivar(): ReactivarComponenteUseCase {
     return new ReactivarComponenteUseCase(
       makeTxRunner(),
+      equipoRepo,
       componenteRepo,
       construirOperacionesReal({ tenantContext, insumoRepo, movimientoRepo }),
     );

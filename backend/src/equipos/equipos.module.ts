@@ -308,10 +308,16 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: ReactivarComponenteUseCase,
       useFactory: (
         txRunner: ITenantTransactionRunner,
+        equipoRepo: IEquipoInformaticoRepository,
         componenteRepo: IComponenteEquipoRepository,
         operaciones: OperacionesUnidadInsumo,
-      ) => new ReactivarComponenteUseCase(txRunner, componenteRepo, operaciones),
-      inject: [TENANT_TX_RUNNER, COMPONENTE_EQUIPO_REPOSITORY, OperacionesUnidadInsumo],
+      ) => new ReactivarComponenteUseCase(txRunner, equipoRepo, componenteRepo, operaciones),
+      inject: [
+        TENANT_TX_RUNNER,
+        EQUIPO_INFORMATICO_REPOSITORY,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        OperacionesUnidadInsumo,
+      ],
     },
     {
       provide: CrearTicketSoporteUseCase,

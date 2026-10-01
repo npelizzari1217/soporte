@@ -2,11 +2,14 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
 import {
   ComponenteDevueltoAlStockError,
   ComponenteNoEncontradoError,
   ComponenteYaActivoError,
+  EquipoDadoDeBajaError,
+  EquipoNoEncontradoError,
   UnidadDelComponenteNoDisponibleError,
 } from '../../domain/errors/equipos.errors';
 
@@ -29,7 +32,10 @@ export interface ReactivarComponenteDto {
  *    `RetirarComponenteUseCase` rechaza el retiro de algo ya dado de baja).
  * 3. Si volvió al stock como USADO (`bajaDestino === 'STOCK_USADO'`) →
  *    `ComponenteDevueltoAlStockError`: reactivarlo lo contaría dos veces.
- * 4. Con unidad, dentro de `txRunner.run()` y en este orden (ADR-12, el componente es
+ * 4. Dentro de `txRunner.run()`, primero el lock LE `FOR SHARE` del equipo
+ *    (`bloquearParaOperarPiezas`, ADR-2): inexistente o borrado → `EquipoNoEncontradoError`;
+ *    dado de baja → `EquipoDadoDeBajaError` sin tocar el componente ni la unidad
+ *    (baja-equipo-completo R11). Después, con unidad, en este orden (ADR-12, el componente es
  *    L4 y va último): `operaciones.reinstalar` (L1, L2, L3; la unidad vuelve a
  *    `INSTALADA` solo si su último evento es el `DESCARTE` de este componente) y
  *    después `reactivar()` + `save()`. Una unidad recuperada o movida por otra vía
@@ -46,6 +52,7 @@ export interface ReactivarComponenteDto {
 export class ReactivarComponenteUseCase {
   constructor(
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>,
     private readonly componenteRepo: Pick<IComponenteEquipoRepository, 'findById' | 'save'>,
     private readonly operaciones: Pick<OperacionesUnidadInsumo, 'reinstalar'>,
   ) {}
@@ -65,6 +72,21 @@ export class ReactivarComponenteUseCase {
     }
 
     return this.txRunner.run(async () => {
+      // LE `FOR SHARE` (ADR-2): primer lock de la transacción, antes de cualquier lock de insumos.
+      // Un equipo dado de baja no admite reactivar sus piezas (R11): la baja ya las devolvió o
+      // descartó. Falla sin escribir, así que devolver el `Result.fail` es seguro.
+      const equipo = await this.equipoRepo.bloquearParaOperarPiezas(dto.equipoId);
+      if (!equipo || equipo.isDeleted()) {
+        return Result.fail<ComponenteEquipoEntity, DomainError>(
+          new EquipoNoEncontradoError(dto.equipoId),
+        );
+      }
+      if (!equipo.activo) {
+        return Result.fail<ComponenteEquipoEntity, DomainError>(
+          new EquipoDadoDeBajaError(dto.equipoId),
+        );
+      }
+
       if (componente.unidadId !== null) {
         const reinstalada = await this.operaciones.reinstalar(
           [
