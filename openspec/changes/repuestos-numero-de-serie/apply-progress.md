@@ -733,3 +733,7 @@ Ramas `-wu11-2` (testigos y carreras del retiro, 304 lineas), `-wu11-3` (e2e del
   unidad INSTALADA en el equipo, evento `REACTIVACION` firmado), 403 sin permiso, tras STOCK_USADO 422, unidad descartada por otro
   evento 422, pieza recuperada (`RECUPERACION`) 422 con el componente aun dado de baja, insumo vuelto a `NINGUNO` 422, y un retiro
   legado reactivado como siempre (sin eventos de unidad). Los estados de partida se siembran por SQL.
+
+### WU-11 - 11.5 (gates)
+
+Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` completo 517 archivos / 6467 tests verdes (exit 0).
