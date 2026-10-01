@@ -19,7 +19,9 @@
  * ACCIÓN, y estos hooks son `useMutation` sin auto-gatearse: el gate de la UI
  * lo aplica el CALLER, mismo criterio que el resto de los diálogos del repo.
  *
- * Las tres mutaciones invalidan DOS lecturas al tener éxito: la existencia
+ * Las tres mutaciones invalidan además las unidades por serie
+ * (`["insumo", insumoId, "unidades"]`): una entrada o un ajuste positivo `SERIE`
+ * las crea. Y DOS lecturas más al tener éxito: la existencia
  * (`["insumo", insumoId, "stock"]`, `useStockInsumo`) y la bitácora
  * (`["insumo", insumoId, "movimientos"]`, PREFIJO — cubre cualquier página
  * cacheada, ver `useMovimientosInsumo`). Un movimiento nuevo cambia las dos a
@@ -46,6 +48,8 @@ export interface RegistrarMovimientoInsumoDto {
   sectorId?: string;
   /** Solo viaja cuando el diálogo muestra el selector; sin ella el backend aplica `NUEVO`. */
   condicion?: CondicionStock;
+  /** Un serial por pieza, solo para entrada y ajuste positivo de un insumo `SERIE`; el insumo sin serie lo rechaza. */
+  seriales?: string[];
 }
 
 /**
@@ -105,6 +109,7 @@ function useRegistrarMovimientoInsumo<TDto>(
         json: dto,
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["insumo", insumoId, "unidades"] });
       queryClient.invalidateQueries({ queryKey: ["insumo", insumoId, "stock"] });
       queryClient.invalidateQueries({ queryKey: ["insumo", insumoId, "movimientos"] });
       notifySuccess(mensajeExito);

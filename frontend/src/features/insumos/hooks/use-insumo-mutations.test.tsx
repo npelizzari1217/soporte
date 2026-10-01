@@ -75,6 +75,7 @@ describe("useRegistrarEntradaInsumo", () => {
     // `queryKey` como campo opcional del propio tipo de TanStack Query.
     const keys = invalidateSpy.mock.calls.map((call) => call[0]?.queryKey);
     expect(keys).toContainEqual(["insumo", INSUMO_ID, "stock"]);
+    expect(keys).toContainEqual(["insumo", INSUMO_ID, "unidades"]);
     expect(keys).toContainEqual(["insumo", INSUMO_ID, "movimientos"]);
     invalidateSpy.mockRestore();
   });

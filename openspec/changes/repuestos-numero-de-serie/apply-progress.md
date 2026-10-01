@@ -866,3 +866,10 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   `schemas.ts`: `devolucionEntregaSchema` y `recuperacionSchema`. USADO solo se ofrece con `admiteUsado` del stock (o con la consulta caida: decide el backend); sin selector se manda NUEVO. Una descartada pendiente se recupera sin serial y el dialogo lo aclara.
 - `UnidadesInsumoSection`: "Devolver al deposito" en una `ENTREGADA` con `INSUMOS:ALTAS`; "Recuperar" en una `DESCARTADA` con `INSUMOS:AJUSTAR`.
 - Tests (MSW, 8 en `unidad-reingreso-dialog.test.tsx`): devolucion NUEVO y USADO, familia sin usados, recuperacion con motivo (USADO) y sin motivo, pendiente, 422 de insumo vuelto a NINGUNO, acciones ocultas sin permiso.
+
+### WU-17a - seriales en entrada y ajuste positivo (17a.1 a 17a.3), rama `-wu17a`
+
+- `lib/seriales.ts` (`evaluarSeriales`: cantidad entera 1..100, sin blancos, largo via `numeroSerieSchema`, repetidos comparando `normalizarSerial` ahora exportado de `schemas.ts`), `hooks/use-seriales-movimiento.ts` (estado de las casillas) y `components/seriales-input.tsx` (una casilla por pieza; sin casillas y con aviso si la cantidad no es entera).
+- `MovimientoEntradaDialog` y `MovimientoAjusteDialog`: con `stock.seguimiento === "SERIE"` (y `tipo === AJUSTE_POSITIVO` en el ajuste) muestran los seriales tras "Cantidad", la cantidad avanza de a 1 y viaja `seriales`. `MovimientoInsumoDialog` gana `camposTrasCantidad` y `cantidadEntera`. `NINGUNO` y el ajuste negativo quedan como estaban (sin `seriales`).
+- `RegistrarMovimientoInsumoDto.seriales?`; `useRegistrarMovimientoInsumo` invalida tambien `["insumo", id, "unidades"]`. Los 409 y 422 salen por el toast de error existente (el dialogo no se cierra).
+- Tests (MSW, `movimiento-seriales.test.tsx`, 10): entrada SERIE con seriales recortados, repetido local normalizado, casilla en blanco, cantidad no entera, 409 del backend, ajuste positivo con seriales, ajuste sin motivo (no envia), ajuste negativo sin seriales, NINGUNO sin campo en entrada y ajuste. Mas la invalidacion de unidades en `use-insumo-mutations.test.tsx`.

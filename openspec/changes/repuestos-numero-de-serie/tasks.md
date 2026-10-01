@@ -652,9 +652,9 @@ Commit sugerido: `feat(insumos): reingresar al deposito piezas entregadas o desc
 
 **Branch**: `feat/repuestos-numero-de-serie-wu17a` · **Base**: wu16b
 
-- [ ] 17a.1 `seriales-input.tsx` (N inputs según la cantidad, cantidad entera, máx. 100, sin blancos, detección de repetidos locales); `movimiento-entrada-dialog.tsx` y la rama positiva del ajuste: con insumo `SERIE`, seriales obligatorios y cantidad entera; errores 409 y 422 en pantalla; invalida `["insumo", id, "unidades"]`, stock y movimientos. Con `NINGUNO`, sin cambios.
-- [ ] 17a.2 Tests (MSW): entrada `SERIE` con seriales, repetido local, repetido del backend, ajuste positivo sin motivo; `NINGUNO` sin campo de seriales.
-- [ ] 17a.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
+- [x] 17a.1 `seriales-input.tsx` (N inputs según la cantidad, cantidad entera, máx. 100, sin blancos, detección de repetidos locales); `movimiento-entrada-dialog.tsx` y la rama positiva del ajuste: con insumo `SERIE`, seriales obligatorios y cantidad entera; errores 409 y 422 en pantalla; invalida `["insumo", id, "unidades"]`, stock y movimientos. Con `NINGUNO`, sin cambios.
+- [x] 17a.2 Tests (MSW): entrada `SERIE` con seriales, repetido local, repetido del backend, ajuste positivo sin motivo; `NINGUNO` sin campo de seriales.
+- [x] 17a.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
 
 **Escenarios**: Entrada manual SERIE con seriales; Entrada manual SERIE sin serial o repetido;
 Ajuste positivo SERIE; Ajuste positivo SERIE sin motivo; Insumo NINGUNO sin cambios (UI).

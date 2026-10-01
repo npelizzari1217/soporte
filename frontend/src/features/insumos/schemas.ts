@@ -319,7 +319,7 @@ export const SERIALES_MAX = 100;
  * sin espacios y en mayúsculas. Puede ser más larga que la tipeada (`ß` pasa a
  * `SS`), y el backend valida el largo de las dos formas.
  */
-function normalizarSerial(serial: string): string {
+export function normalizarSerial(serial: string): string {
   return serial.replace(/\s+/g, "").toUpperCase();
 }
 

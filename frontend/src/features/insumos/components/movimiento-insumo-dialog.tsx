@@ -134,6 +134,10 @@ export interface MovimientoInsumoDialogProps {
   registroSector: UseFormRegisterReturn<"sectorId">;
   /** JSX ya resuelto por el caller (con SU `register` concreto) para insertar antes de "Cantidad". El ajuste lo usa para su selector de `tipo`; entrada y salida no lo pasan. */
   camposAdicionales?: ReactNode;
+  /** JSX ya resuelto por el caller para insertar justo después de "Cantidad" (los seriales de un insumo `SERIE`). */
+  camposTrasCantidad?: ReactNode;
+  /** `true` pide una cantidad entera (insumo `SERIE`): el campo avanza de a 1. */
+  cantidadEntera?: boolean;
 }
 
 /**
@@ -158,6 +162,8 @@ export function MovimientoInsumoDialog({
   registroEquipo,
   registroSector,
   camposAdicionales,
+  camposTrasCantidad,
+  cantidadEntera = false,
 }: MovimientoInsumoDialogProps) {
   // Los dos catálogos solo hacen falta DENTRO del diálogo: pedirlos ya con la
   // ficha montada le costaría un 403 innecesario a un usuario de depósito sin
@@ -197,8 +203,8 @@ export function MovimientoInsumoDialog({
             <Input
               id={`${idPrefijo}-cantidad`}
               type="number"
-              step="0.01"
-              min="0.01"
+              step={cantidadEntera ? "1" : "0.01"}
+              min={cantidadEntera ? "1" : "0.01"}
               error={!!errorCantidad}
               {...registroCantidad}
             />
@@ -208,6 +214,8 @@ export function MovimientoInsumoDialog({
               </p>
             )}
           </div>
+
+          {camposTrasCantidad}
 
           <div className="flex flex-col gap-1">
             <label htmlFor={`${idPrefijo}-motivo`} className="text-sm font-medium text-foreground">

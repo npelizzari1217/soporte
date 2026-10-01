@@ -61,6 +61,9 @@ import {
 import { registrarAjusteInsumoSchema, type RegistrarAjusteInsumoFormValues } from "../schemas";
 import type { TipoAjusteInsumo } from "../types";
 import { CondicionStockSelector } from "./condicion-stock-selector";
+import { useSerialesMovimiento } from "../hooks/use-seriales-movimiento";
+import { useStockInsumo } from "../hooks/use-stock-insumo";
+import { SerialesInput } from "./seriales-input";
 import { useSelectorCondicion } from "../hooks/use-selector-condicion";
 import { construirNotaEquiposNoDisponibles, MovimientoInsumoDialog } from "./movimiento-insumo-dialog";
 
@@ -100,11 +103,13 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
   const [open, setOpen] = useState(false);
   const condicion = useSelectorCondicion(insumoId);
   const registrarMutation = useRegistrarAjusteInsumo(insumoId);
+  const stockQuery = useStockInsumo(insumoId, { refetchOnMount: false });
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<RegistrarAjusteInsumoFormValues>({
     // Recalculado en CADA render, mismo criterio que
@@ -115,6 +120,11 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
     defaultValues: { tipo: "AJUSTE_POSITIVO" },
   });
 
+  // Los seriales aplican solo al ajuste POSITIVO de un insumo `SERIE`; el
+  // negativo elige unidades y no los lleva.
+  const esSerie = stockQuery.data?.seguimiento === "SERIE" && watch("tipo") === "AJUSTE_POSITIVO";
+  const seriales = useSerialesMovimiento(esSerie, watch("cantidad"));
+
   // Único dueño de la limpieza del formulario: cierra y resetea juntos,
   // sin importar si lo dispara el éxito de la mutación o Radix (Escape/
   // overlay/X) a través de `onOpenChange`.
@@ -123,13 +133,17 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
     if (!next) {
       reset();
       condicion.reiniciar();
+      seriales.reiniciar();
     }
   }
 
   function submit(values: RegistrarAjusteInsumoFormValues) {
+    const paraEnviar = seriales.validar();
+    if (paraEnviar === null) return;
     const dto: RegistrarAjusteInsumoDto = {
       ...construirMovimientoInsumoDto({ ...values, condicion: condicion.paraEnviar }),
       tipo: values.tipo,
+      ...(paraEnviar ? { seriales: paraEnviar } : {}),
     };
     registrarMutation.mutate(dto, {
       onSuccess: () => handleOpenChange(false),
@@ -144,6 +158,18 @@ export function MovimientoAjusteDialog({ insumoId, stockDisponible }: Movimiento
       idPrefijo="ajuste"
       variant="secondary"
       motivoRequerido
+      cantidadEntera={esSerie}
+      camposTrasCantidad={
+        esSerie && (
+          <SerialesInput
+            id="ajuste-seriales"
+            cantidad={seriales.cantidad}
+            valores={seriales.valores}
+            errores={seriales.errores}
+            onChange={seriales.onChange}
+          />
+        )
+      }
       notaEquiposNoDisponibles={NOTA_EQUIPOS_NO_DISPONIBLES}
       isPending={registrarMutation.isPending}
       onSubmit={handleSubmit(submit)}
