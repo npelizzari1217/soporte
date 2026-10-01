@@ -52,7 +52,16 @@ componente (issue #153); el faltante se evalúa por condición, no sobre el tota
 Con `false`, el sistema DEBE registrar el componente sin ningún movimiento de
 stock. Serie y capacidad DEBEN seguir siendo datos del componente en ambos
 casos. Cuando el flujo se invoca con `descontarStock: false` e incluye una
-condición, si se ignora o se rechaza queda a decisión de diseño.
+condición, si se ignora o se rechaza queda a decisión de diseño. En un insumo
+`SERIE` con `descontarStock: true`, el alta DEBE exigir elegir una unidad
+`EN_DEPOSITO` con serial, identificada por su serial y de la condición elegida;
+NO DEBE aceptar una unidad en serie pendiente ni un alta sin unidad. La SALIDA
+DEBE referenciar esa unidad con cantidad 1, la unidad DEBE pasar a `INSTALADA` en
+el equipo y quedar vinculada al componente, y el serial del componente DEBE ser el
+de la unidad, sin ingreso libre. Si la unidad ya no está disponible al momento de
+confirmar, el sistema DEBE rechazar el alta y revertir todo. Con `false` en un
+insumo `SERIE` rige el requerimiento de unidad instalada sin descuento.
+(Previously: el alta con descuento solo restaba 1 del saldo de la condición; ahora, en insumos SERIE, exige elegir la unidad y la instala.)
 
 #### Scenario: Descuento por defecto
 
@@ -103,6 +112,30 @@ condición, si se ignora o se rechaza queda a decisión de diseño.
 - WHEN el usuario abre el alta con descuento
 - THEN el selector PUEDE mostrarse fijo en ese saldo
 
+#### Scenario: Instalar una unidad SERIE elegida por serial
+
+- GIVEN un insumo `SERIE` con las unidades "S1" y "S2" `EN_DEPOSITO` NUEVO
+- WHEN se agrega un componente con descuento eligiendo la unidad "S1"
+- THEN existe una SALIDA de cantidad 1 de "S1", "S1" queda `INSTALADA` en el equipo, el componente tiene el serial "S1" y el saldo NUEVO es 1
+
+#### Scenario: Alta SERIE sin unidad o con unidad pendiente
+
+- GIVEN un insumo `SERIE` con una unidad en serie pendiente
+- WHEN se agrega un componente con descuento sin unidad, o eligiendo la pendiente
+- THEN el sistema rechaza el alta y no queda componente ni movimiento
+
+#### Scenario: Unidad tomada por otra operación
+
+- GIVEN una unidad `EN_DEPOSITO` elegida en el alta
+- WHEN otra operación la toma antes de confirmar
+- THEN el sistema rechaza el alta y no queda ni componente ni movimiento
+
+#### Scenario: Selector de unidad en el alta
+
+- GIVEN la pantalla de alta con descuento de un insumo `SERIE` con unidades de ambas condiciones
+- WHEN el usuario elige la condición
+- THEN se listan solo las unidades `EN_DEPOSITO` con serial de esa condición, identificadas por serial
+
 ### Requirement: El tipo del componente se deriva de la familia y no se almacena
 
 El sistema NO DEBE almacenar el tipo del componente ni tomarlo del request: el
@@ -129,7 +162,11 @@ para mostrar.
 El sistema NO DEBE permitir cambiar el `insumoId` ni el tipo de un componente
 existente mediante edición; el reemplazo de un repuesto DEBE ser el retiro del
 componente más un alta nueva. El sistema DEBE seguir permitiendo editar los
-demás datos del componente (serie, capacidad).
+demás datos del componente (serie, capacidad). El serial de un componente
+vinculado a una unidad NO DEBE editarse desde el componente: DEBE corregirse por
+la corrección de serial de la unidad, con motivo (spec `unidades-insumo-serie`).
+El serial de texto de un componente legado sin unidad DEBE seguir siendo editable.
+(Previously: la serie del componente siempre era editable; ahora, si el componente tiene unidad, se corrige por la unidad.)
 
 #### Scenario: Edición de datos propios
 
@@ -148,6 +185,18 @@ demás datos del componente (serie, capacidad).
 - GIVEN un componente instalado con insumo A
 - WHEN se lo retira y se agrega un componente con insumo B
 - THEN el equipo tiene el componente B activo y el A retirado
+
+#### Scenario: Editar el serial de un componente con unidad
+
+- GIVEN un componente vinculado a la unidad "S1"
+- WHEN se intenta editar su serie desde el componente
+- THEN el sistema no cambia el serial de la unidad y la capacidad puede editarse
+
+#### Scenario: Editar el serial de un componente legado
+
+- GIVEN un componente instalado antes de este cambio, sin unidad
+- WHEN se edita su serie
+- THEN el dato se actualiza
 
 ### Requirement: El display del tipo resuelve por la familia del tenant
 
@@ -245,13 +294,31 @@ del retiro quedan a decisión de diseño.
 
 Consecuencia de permisos asumida: quien tiene `EQUIPOS:BORRADO` puede sumar
 existencias USADO al depósito sin tener permisos de insumos, del mismo modo que
-`EQUIPOS:ALTAS` ya descuenta stock al instalar sin permisos de insumos.
+`EQUIPOS:ALTAS` ya descuenta stock al instalar sin permisos de insumos. El dueño lo
+confirmó para las unidades de un insumo `SERIE`: `EQUIPOS:ALTAS` instala unidades y
+crea unidades instaladas sin descuento, `EQUIPOS:BORRADO` las devuelve al depósito
+o las descarta y `EQUIPOS:MODIFICACION` las reinstala al reactivar, sin permisos de
+insumos (spec `unidades-insumo-serie`).
 
 Con `STOCK_USADO`, el retiro DEBE admitir un insumo deshabilitado y una familia
 dada de baja o deshabilitada, porque la pieza existe físicamente (decisión del
-dueño, 2026-09-30). Esta exención vale solo para el retiro: NO DEBE extenderse a
-la ENTRADA ni al AJUSTE manuales. El retiro NO DEBE admitir un insumo dado de
+dueño, 2026-09-30). Por el mismo motivo, el dueño la extendió a dos operaciones
+sobre unidades de un insumo `SERIE`: la devolución de una unidad entregada y la
+recuperación de una unidad descartada (spec `unidades-insumo-serie`). NO DEBE
+extenderse a la ENTRADA ni al AJUSTE manuales. El retiro NO DEBE admitir un insumo dado de
 baja ni un insumo cuya familia no es de repuesto.
+
+Cuando el componente está vinculado a una unidad, con `STOCK_USADO` la ENTRADA
+DEBE referenciar esa unidad con cantidad 1 y la unidad DEBE volver a
+`EN_DEPOSITO` con condición `USADO`, conservando su serial y sin equipo; con
+`DESCARTE` la unidad DEBE pasar a `DESCARTADA` sin movimiento y sin cambio de
+saldo. El retiro y el cambio de la unidad DEBEN ser atómicos. Con `STOCK_USADO`
+de un componente legado sin unidad de un insumo `SERIE`, el sistema DEBE exigir un
+serial y crear con él una unidad `EN_DEPOSITO` `USADO`, cumpliendo la unicidad
+normalizada; NO DEBE crear una unidad en serie pendiente, y sin serial DEBE
+rechazar el retiro sin cambiar nada. La interfaz DEBE precargar ese serial con el
+serial de texto del componente cuando no está vacío y es válido.
+(Previously: el retiro solo movía saldo por cantidad; ahora, si el componente tiene unidad, la devuelve al depósito o la descarta.)
 
 #### Scenario: Devolver al stock como usado
 
@@ -336,6 +403,36 @@ baja ni un insumo cuya familia no es de repuesto.
   confirmar, la lista de componentes y los saldos y movimientos del insumo se
   muestran actualizados
 
+#### Scenario: Devolver una unidad al depósito
+
+- GIVEN un componente vinculado a la unidad "S1" `INSTALADA`, instalada con descuento
+- WHEN se lo retira con destino `STOCK_USADO`
+- THEN "S1" queda `EN_DEPOSITO` `USADO` con serial "S1" y sin equipo, la ENTRADA USADO referencia "S1" con cantidad 1 y el saldo USADO aumenta en 1
+
+#### Scenario: Descartar una unidad
+
+- GIVEN un componente vinculado a la unidad "S1" `INSTALADA`
+- WHEN se lo retira con destino `DESCARTE` y motivo "placa quemada"
+- THEN "S1" queda `DESCARTADA`, no se registra movimiento y los saldos no cambian
+
+#### Scenario: Retiro al stock de un componente legado de un insumo SERIE
+
+- GIVEN un componente legado sin unidad de un insumo ahora `SERIE`, con motivo informado
+- WHEN se lo retira con destino `STOCK_USADO` informando el serial "L1"
+- THEN se crea la unidad "L1" `EN_DEPOSITO` `USADO`, se registra la ENTRADA USADO de cantidad 1 y el saldo USADO aumenta en 1
+
+#### Scenario: Retiro al stock de un legado sin serial informado
+
+- GIVEN un componente legado sin unidad de un insumo `SERIE`, con motivo informado
+- WHEN se lo retira con destino `STOCK_USADO` sin serial o con serial vacío
+- THEN el sistema rechaza el retiro, el componente sigue activo y no se crea ninguna unidad ni movimiento
+
+#### Scenario: Serial precargado en el retiro de un legado
+
+- GIVEN un componente legado sin unidad de un insumo `SERIE` con serial de texto "L1"
+- WHEN el usuario elige devolverlo al stock
+- THEN el diálogo muestra el serial precargado con "L1" y el usuario puede cambiarlo antes de confirmar
+
 ### Requirement: Un componente que vino con el equipo puede devolverse al stock con motivo obligatorio
 
 El sistema DEBE permitir devolver al stock como USADO un componente sin SALIDA
@@ -391,7 +488,19 @@ El sistema NO DEBE permitir reactivar un componente cuyo retiro tuvo destino
 vez; ante el intento DEBE rechazar sin cambiar nada. El sistema DEBE permitir
 reactivar un componente retirado con destino `DESCARTE` y un componente cuyo
 retiro es legado (anterior a este cambio, sin destino). Para volver a instalar
-una pieza devuelta al stock se usa el alta con descuento de saldo USADO.
+una pieza devuelta al stock se usa el alta con descuento de saldo USADO. Al
+reactivar un componente descartado vinculado a una unidad, la unidad `DESCARTADA`
+DEBE volver a `INSTALADA` en el mismo equipo, en la misma transacción, sin
+movimiento y sin cambio de saldo; el componente y la unidad NO DEBEN quedar en
+estados inconsistentes. Si el insumo del componente ya no está en `SERIE`, el
+sistema DEBE rechazar la reactivación de un componente con unidad sin cambiar
+nada. La reactivación de un componente con unidad DEBE exigir que la unidad siga
+`DESCARTADA` por el descarte de ese mismo componente; si la unidad se recuperó al
+depósito, se instaló en otro equipo o se dio de baja por otra vía, el sistema DEBE
+rechazar la reactivación sin cambiar nada, y para volver a instalar la pieza se
+usa el alta con descuento eligiendo la unidad. Reactivar un componente legado sin
+unidad NO DEBE crear una unidad.
+(Previously: la reactivación solo cambiaba el componente; ahora, si tiene unidad descartada, la unidad vuelve a INSTALADA.)
 
 #### Scenario: Reactivar tras devolver al stock
 
@@ -419,6 +528,29 @@ una pieza devuelta al stock se usa el alta con descuento de saldo USADO.
 - WHEN el usuario la consulta
 - THEN no se le ofrece reactivarlo y la fila indica el destino del retiro
 
+#### Scenario: Reactivar un componente con unidad descartada
+
+- GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" está `DESCARTADA`
+- WHEN se lo reactiva
+- THEN el componente está activo, "S1" está `INSTALADA` en el mismo equipo, no hay movimientos nuevos y los saldos no cambian
+
+#### Scenario: Reactivar un componente con unidad de un insumo que volvió a NINGUNO
+
+- GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" está `DESCARTADA`, y su insumo cambiado a `NINGUNO`
+- WHEN se intenta reactivarlo
+- THEN el sistema rechaza la reactivación, el componente sigue retirado y "S1" sigue `DESCARTADA`
+
+#### Scenario: Reactivar un componente cuya unidad se recuperó
+
+- GIVEN un componente retirado con `DESCARTE` cuya unidad "S1" se recuperó después al depósito
+- WHEN se intenta reactivar el componente
+- THEN el sistema rechaza la reactivación, el componente sigue retirado y "S1" sigue `EN_DEPOSITO`
+
+#### Scenario: Reactivar un componente legado sin unidad
+
+- GIVEN un componente legado retirado con `DESCARTE`, de un insumo `SERIE`
+- WHEN se lo reactiva
+- THEN el componente vuelve a estar activo y no se crea ninguna unidad
 ### Requirement: El componente conserva el registro de su retiro
 
 El sistema DEBE guardar en el propio componente, al retirarlo, el destino
@@ -462,3 +594,45 @@ sin clave foránea entre bases (`baja_usuario_id`), según el diseño.
 - WHEN se aplica la migración
 - THEN ninguna fila existente se modifica ni se borra, salvo el valor por
   defecto `NUEVO` de la condición de los movimientos
+### Requirement: Un componente de un insumo SERIE instalado sin descuento crea una unidad ya instalada
+
+Cuando se agrega un componente de un insumo `SERIE` con `descontarStock: false`
+(la pieza vino dentro de un equipo comprado), el sistema DEBE exigir su serial y
+DEBE crear una unidad en estado `INSTALADA` en ese equipo, con la condición
+indicada (por defecto `NUEVO`), vinculada al componente, sin registrar ningún
+movimiento de origen y sin alterar ningún saldo. El serial DEBE cumplir la
+unicidad normalizada del insumo. La unidad DEBE figurar en el historial. Si luego
+el componente se retira al stock, DEBE volver como `EN_DEPOSITO` `USADO` con ese
+mismo serial. Como el componente no tiene SALIDA de instalación, ese retiro DEBE
+exigir el motivo de la regla vigente de "pieza que vino con el equipo".
+
+#### Scenario: Alta sin descuento con serial
+
+- GIVEN un insumo `SERIE` con saldo conocido
+- WHEN se agrega un componente con `descontarStock: false` y serial "K9"
+- THEN existe una unidad "K9" `INSTALADA` en el equipo, vinculada al componente, sin movimientos nuevos y con el saldo sin cambios
+
+#### Scenario: Alta sin descuento sin serial
+
+- GIVEN un insumo `SERIE`
+- WHEN se agrega un componente con `descontarStock: false` sin serial o con serial vacío
+- THEN el sistema rechaza el alta y no persiste el componente ni la unidad
+
+#### Scenario: Alta sin descuento con serial repetido
+
+- GIVEN un insumo `SERIE` con una unidad de serial "K9"
+- WHEN se agrega un componente con `descontarStock: false` y serial "k9"
+- THEN el sistema rechaza el alta y no persiste nada
+
+#### Scenario: Retiro al stock de una unidad de origen sin salida
+
+- GIVEN un componente con unidad "K9" `INSTALADA` creada sin descuento
+- WHEN se lo retira con destino `STOCK_USADO` y motivo "pieza del equipo comprado"
+- THEN "K9" queda `EN_DEPOSITO` `USADO` con serial "K9", existe una ENTRADA USADO de cantidad 1 para "K9" y la marca "sin salida registrada del depósito" aparece
+
+#### Scenario: Retiro al stock sin motivo
+
+- GIVEN un componente con unidad creada sin descuento
+- WHEN se lo retira con destino `STOCK_USADO` sin motivo
+- THEN el sistema rechaza el retiro y la unidad sigue `INSTALADA`
+
