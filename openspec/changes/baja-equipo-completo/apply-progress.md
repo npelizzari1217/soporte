@@ -298,3 +298,16 @@ Ramas: `feat/baja-equipo-completo-wu10` (10.1 a 10.6: atomicidad, legados y caus
   juntas `INSUMO_BORRADO` + `SERIAL_DUPLICADO` por los dos caminos. Ninguna unidad queda con `numero_serie` nulo.
 - 10.2: los "dos insumos borrados" son dos componentes del mismo insumo borrado del fixture (el error es por componente).
 - Fixture: `pool` pasa a ser público (los testigos de locks lo usan) y `agregarUnidadEnDeposito(serial)`.
+- 10.7 `baja-equipo.orden-de-locks.integration.spec.ts`: `esperarBloqueadoPor`, `locksPosteriores` y el nuevo `conLockExterno` (externo retiene un
+  lock, espera acotada con `pg_blocking_pids`, aserciones sobre `pg_locks` del que espera, COMMIT, resultado) pasan a nivel de módulo;
+  `conLeRetenido` es ahora un envoltorio de `conLockExterno` (T4, T7 y T8 sin cambios de comportamiento). Segundo `describe` con
+  `BajaEquipoFixtures` y la baja real: T1 (externo con LE `FOR SHARE`: la baja espera sin `insumos` ni advisory), T2 (advisory
+  `insumo-stock:<serie>` retenido: la baja espera ese advisory, tiene `RowShareLock` en `equipos_informaticos` e `insumos`, ningún
+  `RowExclusiveLock` en `componentes_equipo`/`movimientos_insumo`/`unidades_insumo` y `FOR UPDATE NOWAIT` sobre los componentes
+  tiene éxito), T3 (unidad retenida `FOR NO KEY UPDATE`: advisory del insumo `SERIE` ya tomado, ninguna ENTRADA `NINGUNO` ni escritura de
+  componentes antes de L3) y T6 (baja retenida en L2: un `INSERT` en `movimientos_insumo` con `equipo_id` y `lock_timeout` de 500 ms no se bloquea).
+- Mutaciones locales (cada una revertida): `bloquearParaModificar` con `FOR SHARE` => T1 rojo; con `FOR UPDATE` => T6 rojo (55P03 por la FK
+  `FOR KEY SHARE`); escritura de un componente antes del stock => T2 y T3 rojos (`RowExclusiveLock`); ENTRADA `NINGUNO` antes de L3 =>
+  T2 y T3 rojos; L2 omitido (`bloquearStock` sin efecto) => T2, T3 y T6 rojos.
+- 10.8 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), `vitest run src/equipos src/insumos` (152 archivos, 2547 tests), `pnpm test` completo (547 archivos, 6819 tests) en verde; el testigo corrido tres veces seguidas: 8/8 cada vez. El único FAIL del log es el ruido conocido `orden-de-arranque.spec.ts`.
+- Ayuda: sin deuda.
