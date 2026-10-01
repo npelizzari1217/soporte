@@ -166,7 +166,13 @@ describe('CrearTicketSoporteUseCase', () => {
       },
       'equipo-1',
     );
-    equipo.deactivate();
+    equipo.darDeBaja({
+      destino: 'DESCARTE',
+      categoria: 'VEJEZ',
+      motivo: null,
+      usuarioId: '00000000-0000-4000-8000-000000000001',
+      fecha: new Date('2026-10-01T12:00:00Z'),
+    });
     deps.equipoRepo.findById.mockResolvedValue(equipo);
     const useCase = buildUseCase(deps);
 

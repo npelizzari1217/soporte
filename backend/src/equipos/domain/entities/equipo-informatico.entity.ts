@@ -1,4 +1,5 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { DESTINOS_RETIRO_COMPONENTE, DestinoRetiroComponente } from './componente-equipo.entity';
 
 /**
  * Topes de largo/rango, espejando `equipos_informaticos.*`
@@ -57,6 +58,73 @@ export const EQUIPO_VALOR_MONETARIO_MINIMO = 0;
  *    pasa de `throw` a `Result<T, DomainError>` → 422: mejor un error de
  *    negocio explícito que un 500 que el borde no puede prevenir.
  */
+
+/**
+ * Categorías de la baja de un equipo. Catálogo CERRADO por el CHECK
+ * `equipos_informaticos_baja_categoria_check`; esta constante es la fuente única y
+ * el spec de constraints la compara contra el CHECK real.
+ */
+export const CATEGORIAS_BAJA_EQUIPO = ['VEJEZ', 'DONACION', 'ROTURA', 'OTRA'] as const;
+export type CategoriaBajaEquipo = (typeof CATEGORIAS_BAJA_EQUIPO)[number];
+
+/** Etiqueta legible de cada categoría; es la que entra en la leyenda de la baja. */
+export const ETIQUETAS_CATEGORIA_BAJA: Record<CategoriaBajaEquipo, string> = {
+  VEJEZ: 'Vejez',
+  DONACION: 'Donación',
+  ROTURA: 'Rotura',
+  OTRA: 'Otra',
+};
+
+/**
+ * Destinos de las piezas en la baja del equipo: son los mismos del retiro
+ * individual de un componente (mismo CHECK de catálogo, misma fuente única).
+ */
+export const DESTINOS_BAJA_EQUIPO = DESTINOS_RETIRO_COMPONENTE;
+export type DestinoBajaEquipo = DestinoRetiroComponente;
+
+/** Tope de la leyenda compuesta: el `baja_motivo` de cada pieza admite 500 caracteres. */
+const LEYENDA_BAJA_MAX_LENGTH = 500;
+/** Largo fijo de la leyenda sin nombre ni etiqueta: `Baja del equipo «` + `» — ` + `: `. */
+const LEYENDA_BAJA_LARGO_FIJO = 23;
+
+/** `true` si el valor pertenece al catálogo cerrado de categorías de baja. */
+export function esCategoriaBajaEquipo(valor: unknown): valor is CategoriaBajaEquipo {
+  return CATEGORIAS_BAJA_EQUIPO.some((categoria) => categoria === valor);
+}
+
+function etiquetaDeCategoria(categoria: CategoriaBajaEquipo): string {
+  if (!esCategoriaBajaEquipo(categoria)) {
+    throw new Error(`EquipoInformaticoEntity: categoría de baja "${String(categoria)}" inválida.`);
+  }
+  return ETIQUETAS_CATEGORIA_BAJA[categoria];
+}
+
+/**
+ * Compone la leyenda única de la baja: `Baja del equipo «<nombre>» — <Etiqueta>`,
+ * más `: <texto>` si hay texto. El texto se recorta antes; vacío equivale a ausente.
+ * Es la misma que se guarda en cada pieza y en los movimientos y eventos de stock.
+ */
+export function componerLeyendaBaja(
+  nombre: string,
+  categoria: CategoriaBajaEquipo,
+  texto?: string | null,
+): string {
+  const base = `Baja del equipo «${nombre}» — ${etiquetaDeCategoria(categoria)}`;
+  const recortado = texto?.trim() ?? '';
+  return recortado === '' ? base : `${base}: ${recortado}`;
+}
+
+/**
+ * Espacio disponible para el texto libre de la baja, para que la leyenda
+ * compuesta quepa en 500 caracteres. Siempre positivo: con el nombre en su tope
+ * de 255 y la etiqueta más larga queda en 214.
+ */
+export function largoMaximoTextoBaja(nombre: string, categoria: CategoriaBajaEquipo): number {
+  return (
+    LEYENDA_BAJA_MAX_LENGTH -
+    (nombre.length + LEYENDA_BAJA_LARGO_FIJO + etiquetaDeCategoria(categoria).length)
+  );
+}
 
 /**
  * Normaliza `ubicacion` a mayúscula — invariante de dominio declarada en
@@ -190,6 +258,29 @@ export interface EquipoInformaticoProps {
    * `ticket_soporte` existentes.
    */
   activo: boolean;
+  /**
+   * Datos de la baja. Los cinco son `null` en un equipo vigente y, tras
+   * `darDeBaja()`, van completos (el motivo solo es obligatorio con la categoría
+   * `OTRA`). Un equipo `activo = false` sin ninguno es un dato histórico y se
+   * admite (CHECK `equipos_informaticos_baja_coherente_check`). Opcionales en las
+   * props para no romper a quien reconstituye un equipo vigente.
+   */
+  bajaDestino?: DestinoBajaEquipo | null;
+  bajaCategoria?: CategoriaBajaEquipo | null;
+  /** Solo el texto libre recortado; la leyenda compuesta vive en las piezas. */
+  bajaMotivo?: string | null;
+  bajaFecha?: Date | null;
+  bajaUsuarioId?: string | null;
+}
+
+/** Entrada de `EquipoInformaticoEntity.darDeBaja()`. */
+export interface DarDeBajaEquipoProps {
+  destino: DestinoBajaEquipo;
+  categoria: CategoriaBajaEquipo;
+  /** Texto libre; se recorta y vacío equivale a ausente. */
+  motivo?: string | null;
+  usuarioId: string;
+  fecha: Date;
 }
 
 /**
@@ -203,7 +294,13 @@ export interface EquipoInformaticoProps {
  */
 export type CrearEquipoInformaticoProps = Omit<
   EquipoInformaticoProps,
-  'activo' | 'modeloEquipoId'
+  | 'activo'
+  | 'modeloEquipoId'
+  | 'bajaDestino'
+  | 'bajaCategoria'
+  | 'bajaMotivo'
+  | 'bajaFecha'
+  | 'bajaUsuarioId'
 > & {
   modeloEquipoId?: string | null;
 };
@@ -212,8 +309,8 @@ export type CrearEquipoInformaticoProps = Omit<
  * EquipoInformaticoEntity — entidad de dominio del inventario de equipos IT
  * (F3-Q1, ADR-9).
  *
- * DECISIÓN CLAVE (ADR-9): `deactivate()` (activo=false, historial
- * preservado) es DISTINTO de `softDelete()` heredado de `BaseEntity`
+ * DECISIÓN CLAVE (ADR-9): la baja (`darDeBaja()`, activo=false con sus datos,
+ * historial preservado) es DISTINTA de `softDelete()` heredado de `BaseEntity`
  * (deletedAt, baja lógica completa). Ambos NO rompen tickets de soporte que
  * referencian el equipo (`ticket_soporte.equipoId` no tiene ON DELETE
  * restrictivo a nivel de dominio).
@@ -228,7 +325,7 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
 
   /**
    * Factory method para un nuevo equipo. `activo` se inicializa siempre en
-   * `true` — la baja se hace explícitamente vía `deactivate()`.
+   * `true` — la baja se hace explícitamente vía `darDeBaja()`.
    *
    * @throws Error si algún campo de texto excede su tope de largo DESPUÉS de
    *   normalizar (ver `normalizarUbicacion`), o si `importe`/`valorResidual`
@@ -246,7 +343,17 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     validarValorMonetario('importe', props.importe);
     validarValorMonetario('valorResidual', props.valorResidual);
     return new EquipoInformaticoEntity(
-      { ...props, ubicacion, modeloEquipoId: props.modeloEquipoId ?? null, activo: true },
+      {
+        ...props,
+        ubicacion,
+        modeloEquipoId: props.modeloEquipoId ?? null,
+        activo: true,
+        bajaDestino: null,
+        bajaCategoria: null,
+        bajaMotivo: null,
+        bajaFecha: null,
+        bajaUsuarioId: null,
+      },
       id,
     );
   }
@@ -320,22 +427,53 @@ export class EquipoInformaticoEntity extends BaseEntity<EquipoInformaticoProps> 
     return this.props.activo;
   }
 
+  get bajaDestino(): DestinoBajaEquipo | null {
+    return this.props.bajaDestino ?? null;
+  }
+
+  get bajaCategoria(): CategoriaBajaEquipo | null {
+    return this.props.bajaCategoria ?? null;
+  }
+
+  get bajaMotivo(): string | null {
+    return this.props.bajaMotivo ?? null;
+  }
+
+  get bajaFecha(): Date | null {
+    return this.props.bajaFecha ?? null;
+  }
+
+  get bajaUsuarioId(): string | null {
+    return this.props.bajaUsuarioId ?? null;
+  }
+
   // ─── Comportamiento de dominio ─────────────────────────────────────────
 
   /**
-   * Da de baja el equipo (fuera de servicio). NO es soft delete: el
-   * registro permanece visible en el historial y sigue siendo referenciable
-   * por `ticket_soporte` existentes. Ver diferencia con `softDelete()` en
-   * el JSDoc de la clase (ADR-9).
+   * Da de baja el equipo (fuera de servicio) y deja el registro de la baja. NO es
+   * soft delete: el registro permanece visible en el historial y sigue siendo
+   * referenciable por `ticket_soporte` existentes. No hay vuelta atrás: la entidad
+   * no tiene `activate()` (R8). Quien persiste es `registrarBaja()` del repositorio.
+   *
+   * @throws Error si el equipo ya no está vigente, si la categoría no es del
+   *   catálogo o si es `OTRA` sin texto. Contrato del caller: el caso de uso
+   *   valida antes y devuelve `Result`; el CHECK de la base es el backstop.
    */
-  deactivate(): void {
+  darDeBaja(datos: DarDeBajaEquipoProps): void {
+    if (!this.props.activo) {
+      throw new Error('EquipoInformaticoEntity: el equipo ya está dado de baja.');
+    }
+    etiquetaDeCategoria(datos.categoria);
+    const texto = datos.motivo?.trim() ?? '';
+    if (datos.categoria === 'OTRA' && texto === '') {
+      throw new Error('EquipoInformaticoEntity: la categoría OTRA exige un motivo.');
+    }
     this.props.activo = false;
-    this.touch();
-  }
-
-  /** Reactiva un equipo previamente dado de baja. */
-  activate(): void {
-    this.props.activo = true;
+    this.props.bajaDestino = datos.destino;
+    this.props.bajaCategoria = datos.categoria;
+    this.props.bajaMotivo = texto === '' ? null : texto;
+    this.props.bajaFecha = datos.fecha;
+    this.props.bajaUsuarioId = datos.usuarioId;
     this.touch();
   }
 

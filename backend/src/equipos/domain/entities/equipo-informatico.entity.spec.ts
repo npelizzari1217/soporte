@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
+  CATEGORIAS_BAJA_EQUIPO,
   CrearEquipoInformaticoProps,
+  DESTINOS_BAJA_EQUIPO,
+  ETIQUETAS_CATEGORIA_BAJA,
   EquipoInformaticoEntity,
+  componerLeyendaBaja,
+  largoMaximoTextoBaja,
   normalizarUbicacion,
 } from './equipo-informatico.entity';
 import { DomainError } from '../../../shared/domain/result';
 
 /**
- * T10.1 [U][RED] — EquipoInformaticoEntity: `deactivate()` (activo=false)
+ * T10.1 [U][RED] — EquipoInformaticoEntity: `darDeBaja()` (activo=false)
  * distinto de `softDelete()` (deletedAt); `actualizar()`. La asignación a
  * personas se eliminó del dominio Equipos — vive solo en `Ticket`.
  *
@@ -55,11 +60,158 @@ describe('EquipoInformaticoEntity', () => {
     expect(equipo.numeroSerie).toBe('SN-001');
   });
 
-  it('deactivate() setea activo=false SIN tocar deletedAt (distinto de softDelete)', () => {
+  it('darDeBaja() setea activo=false y guarda los cinco datos SIN tocar deletedAt', () => {
     const equipo = makeEquipo();
-    equipo.deactivate();
+    const fecha = new Date('2026-10-01T12:00:00Z');
+    equipo.darDeBaja({
+      destino: 'STOCK_USADO',
+      categoria: 'ROTURA',
+      motivo: '  no enciende  ',
+      usuarioId: 'u1',
+      fecha,
+    });
     expect(equipo.activo).toBe(false);
     expect(equipo.isDeleted()).toBe(false);
+    expect(equipo.bajaDestino).toBe('STOCK_USADO');
+    expect(equipo.bajaCategoria).toBe('ROTURA');
+    expect(equipo.bajaMotivo).toBe('no enciende');
+    expect(equipo.bajaFecha).toBe(fecha);
+    expect(equipo.bajaUsuarioId).toBe('u1');
+  });
+
+  it('create() deja los datos de baja en null', () => {
+    const equipo = makeEquipo();
+    expect(equipo.bajaDestino).toBeNull();
+    expect(equipo.bajaCategoria).toBeNull();
+    expect(equipo.bajaMotivo).toBeNull();
+    expect(equipo.bajaFecha).toBeNull();
+    expect(equipo.bajaUsuarioId).toBeNull();
+  });
+
+  it('darDeBaja() sin texto guarda bajaMotivo en null', () => {
+    const equipo = makeEquipo();
+    equipo.darDeBaja({
+      destino: 'DESCARTE',
+      categoria: 'VEJEZ',
+      motivo: '   ',
+      usuarioId: 'u1',
+      fecha: new Date(),
+    });
+    expect(equipo.bajaMotivo).toBeNull();
+  });
+
+  it('darDeBaja() sobre un equipo no vigente lanza y no pisa los datos originales', () => {
+    const equipo = makeEquipo();
+    equipo.darDeBaja({
+      destino: 'DESCARTE',
+      categoria: 'VEJEZ',
+      usuarioId: 'u1',
+      fecha: new Date(),
+    });
+    expect(() =>
+      equipo.darDeBaja({
+        destino: 'STOCK_USADO',
+        categoria: 'ROTURA',
+        usuarioId: 'u2',
+        fecha: new Date(),
+      }),
+    ).toThrow(/ya está dado de baja/);
+    expect(equipo.bajaDestino).toBe('DESCARTE');
+    expect(equipo.bajaUsuarioId).toBe('u1');
+  });
+
+  it.each([[undefined], [null], [''], ['   ']])(
+    'darDeBaja() con categoría OTRA y motivo %j lanza',
+    (motivo) => {
+      const equipo = makeEquipo();
+      expect(() =>
+        equipo.darDeBaja({
+          destino: 'DESCARTE',
+          categoria: 'OTRA',
+          motivo,
+          usuarioId: 'u1',
+          fecha: new Date(),
+        }),
+      ).toThrow(/OTRA exige un motivo/);
+      expect(equipo.activo).toBe(true);
+    },
+  );
+
+  it('darDeBaja() con una categoría fuera del catálogo lanza', () => {
+    const equipo = makeEquipo();
+    expect(() =>
+      equipo.darDeBaja({
+        destino: 'DESCARTE',
+        // @ts-expect-error categoría fuera del catálogo a propósito
+        categoria: 'OBSOLESCENCIA',
+        usuarioId: 'u1',
+        fecha: new Date(),
+      }),
+    ).toThrow(/categoría de baja/);
+    expect(equipo.activo).toBe(true);
+  });
+
+  describe('leyenda de la baja', () => {
+    it('compone la leyenda con texto', () => {
+      expect(componerLeyendaBaja('PC-Caja-3', 'DONACION', 'a la escuela N° 12')).toBe(
+        'Baja del equipo «PC-Caja-3» — Donación: a la escuela N° 12',
+      );
+    });
+
+    it.each([[undefined], [null], ['  ']])('compone la leyenda sin texto (%j)', (texto) => {
+      expect(componerLeyendaBaja('PC-1', 'VEJEZ', texto)).toBe('Baja del equipo «PC-1» — Vejez');
+    });
+
+    it('recorta el texto antes de componer', () => {
+      expect(componerLeyendaBaja('PC-1', 'ROTURA', '  no enciende ')).toBe(
+        'Baja del equipo «PC-1» — Rotura: no enciende',
+      );
+    });
+
+    it('con el texto en el largo máximo la leyenda mide exactamente 500', () => {
+      const max = largoMaximoTextoBaja('PC-Caja-3', 'DONACION');
+      const leyenda = componerLeyendaBaja('PC-Caja-3', 'DONACION', 'x'.repeat(max));
+      expect(leyenda).toHaveLength(500);
+    });
+
+    it('con un carácter más la leyenda mide 501', () => {
+      const max = largoMaximoTextoBaja('PC-Caja-3', 'DONACION');
+      const leyenda = componerLeyendaBaja('PC-Caja-3', 'DONACION', 'x'.repeat(max + 1));
+      expect(leyenda).toHaveLength(501);
+    });
+
+    it('con el nombre de 255 y Donación el espacio para el texto es 214', () => {
+      expect(largoMaximoTextoBaja('A'.repeat(255), 'DONACION')).toBe(214);
+    });
+
+    it('la leyenda sin texto cabe siempre, aun con el nombre en su tope', () => {
+      for (const categoria of CATEGORIAS_BAJA_EQUIPO) {
+        expect(largoMaximoTextoBaja('A'.repeat(255), categoria)).toBeGreaterThan(0);
+      }
+    });
+
+    it('una categoría fuera del catálogo lanza', () => {
+      expect(() =>
+        // @ts-expect-error categoría fuera del catálogo a propósito
+        componerLeyendaBaja('PC-1', 'OBSOLESCENCIA'),
+      ).toThrow(/categoría de baja/);
+    });
+  });
+
+  it('el catálogo de categorías y sus etiquetas coinciden', () => {
+    expect(Object.keys(ETIQUETAS_CATEGORIA_BAJA).sort()).toEqual(
+      [...CATEGORIAS_BAJA_EQUIPO].sort(),
+    );
+    expect(ETIQUETAS_CATEGORIA_BAJA).toEqual({
+      VEJEZ: 'Vejez',
+      DONACION: 'Donación',
+      ROTURA: 'Rotura',
+      OTRA: 'Otra',
+    });
+  });
+
+  it('los destinos de la baja son los del retiro de un componente', () => {
+    expect([...DESTINOS_BAJA_EQUIPO]).toEqual(['STOCK_USADO', 'DESCARTE']);
   });
 
   it('softDelete() (heredado de BaseEntity) setea deletedAt SIN tocar activo', () => {

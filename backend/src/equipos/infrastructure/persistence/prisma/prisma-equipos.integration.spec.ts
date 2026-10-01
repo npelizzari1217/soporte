@@ -268,9 +268,15 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       ).rejects.toThrow();
     });
 
-    it('deactivate() + save() persiste activo=false sin tocar deletedAt', async () => {
+    it('darDeBaja() + save() persiste activo=false sin tocar deletedAt', async () => {
       const equipo = await crearEquipo();
-      equipo.deactivate();
+      equipo.darDeBaja({
+        destino: 'DESCARTE',
+        categoria: 'VEJEZ',
+        motivo: null,
+        usuarioId: '00000000-0000-4000-8000-000000000001',
+        fecha: new Date('2026-10-01T12:00:00Z'),
+      });
 
       await withTenant(async () => {
         await equipoRepo.save(equipo);
