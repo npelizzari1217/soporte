@@ -134,11 +134,10 @@ desplegado el 2026-10-01 en los ocho tenants):
   (`backend/src/insumos/application/use-cases/devolver-entrega.use-case.ts`,
   `recuperar-unidad-descartada.use-case.ts`).
 
-**Pendiente, sin construir** (pedido del dueño del producto): la baja de un
-equipo entero con dos opciones (devolver todas sus piezas al stock, o
-descartarlas todas con un motivo común: vejez, donación, rotura u otra). Hoy el
-retiro opera componente por componente. El reporte y exportación del stock ya
-se entregó (ver "Reporte de stock" en "Decisiones de producto ya cerradas").
+No queda nada pendiente en este módulo: la baja de un equipo entero (devolver
+todas sus piezas al stock o descartarlas todas con un motivo común) y el reporte
+y exportación del stock ya se entregaron (ver "Baja de equipo completo" y
+"Reporte de stock" en "Decisiones de producto ya cerradas").
 
 Se anota acá, y no entre los seis puntos, porque no nació de la comparación
 competitiva: nació de operar el sistema.
@@ -303,7 +302,16 @@ Para no re-litigarlas al empezar cada punto.
     informa.
   - Confirmación: resumen y confirmar para devolver al stock; además, escribir
     el nombre del equipo para descartar todo.
-  **Pendiente**: se declara Cumplida o Desviación al cerrar el ciclo.
+  **Cumplida** (ciclo `baja-equipo-completo`, 2026-10-01): `POST /equipos/:id/baja` y
+  `GET /equipos/:id/baja/resumen`
+  (`backend/src/equipos/application/use-cases/dar-de-baja-equipo.use-case.ts`),
+  diálogo de baja
+  (`frontend/src/features/equipos/components/equipo-baja-dialog.tsx`), filtro
+  "Mostrar equipos dados de baja" en la lista y ficha de solo lectura con banner
+  (`equipo-baja-banner.tsx`). Sin desviaciones: las reglas inferidas (no se
+  reactivan piezas ni se borra un equipo dado de baja; la exportación sigue el
+  filtro de la lista) son consecuencia de la decisión, y las exclusiones de R17
+  son decisión, no desviación.
 
 ### 1 · Exportar a Excel/CSV — Baja — **ENTREGADO**
 

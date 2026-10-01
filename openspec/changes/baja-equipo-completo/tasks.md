@@ -462,12 +462,12 @@ Commit sugerido: `feat(equipos): dialogo de baja de equipo completo`.
 
 **Branch**: `feat/baja-equipo-completo-wu17` · **Base**: wu16
 
-- [ ] 17.1 `equipo-detail-view.tsx`: con `activo = false`, banner con fecha, categoría, motivo y destino de la baja; se ocultan agregar, editar, dar de baja y eliminar. (Req: R8, R11)
-- [ ] 17.2 `frontend/src/features/equipos/components/equipo-componentes-section.tsx`: prop `equipoActivo`; con `false` se ocultan retirar y reactivar (la fila retirada sigue mostrando el destino del retiro). (Req: R11)
-- [ ] 17.3 Tests `equipo-detail-view.test.tsx` y `equipo-componentes-section.test.tsx`: ficha de equipo dado de baja con banner y sin acciones; vigente con todas; los componentes retirados y su historial siguen visibles; **regresión del delta** "Interfaz de reactivar": un componente retirado con `STOCK_USADO` no ofrece reactivar y la fila indica el destino. (Req: R8, R11)
-- [ ] 17.4 Cierre del roadmap en `docs/roadmap-comercial.md`: la viñeta "Baja de equipo completo" de "Decisiones de producto ya cerradas" pasa a **Cumplida** (evidencia: ciclo `baja-equipo-completo`, rutas `POST /equipos/:id/baja` y `GET /equipos/:id/baja/resumen`, diálogo de baja) o **Desviación** con su motivo si apply o verify encontraron algo no implementado; declarar también que las exclusiones de R17 son decisión y no desviación.
-- [ ] 17.5 Correr `node scripts/check-roadmap-fresco.mjs` y confirmar que pasa.
-- [ ] 17.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/equipos && pnpm test`, más `node scripts/check-roadmap-fresco.mjs`.
+- [x] 17.1 `equipo-detail-view.tsx`: con `activo = false`, banner con fecha, categoría, motivo y destino de la baja; se ocultan agregar, editar, dar de baja y eliminar. (Req: R8, R11)
+- [x] 17.2 `frontend/src/features/equipos/components/equipo-componentes-section.tsx`: prop `equipoActivo`; con `false` se ocultan retirar y reactivar (la fila retirada sigue mostrando el destino del retiro). (Req: R11)
+- [x] 17.3 Tests `equipo-detail-view.test.tsx` y `equipo-componentes-section.test.tsx`: ficha de equipo dado de baja con banner y sin acciones; vigente con todas; los componentes retirados y su historial siguen visibles; **regresión del delta** "Interfaz de reactivar": un componente retirado con `STOCK_USADO` no ofrece reactivar y la fila indica el destino. (Req: R8, R11)
+- [x] 17.4 Cierre del roadmap en `docs/roadmap-comercial.md`: la viñeta "Baja de equipo completo" de "Decisiones de producto ya cerradas" pasa a **Cumplida** (evidencia: ciclo `baja-equipo-completo`, rutas `POST /equipos/:id/baja` y `GET /equipos/:id/baja/resumen`, diálogo de baja) o **Desviación** con su motivo si apply o verify encontraron algo no implementado; declarar también que las exclusiones de R17 son decisión y no desviación.
+- [x] 17.5 Correr `node scripts/check-roadmap-fresco.mjs` y confirmar que pasa.
+- [x] 17.6 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/equipos && pnpm test`, más `node scripts/check-roadmap-fresco.mjs`.
 
 **Escenarios**: Ficha visible (frontend); Interfaz de reactivar (regresión del delta); Sin
 reactivación (UI).

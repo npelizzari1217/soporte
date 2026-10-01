@@ -26,6 +26,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useEquipo } from "../hooks/use-equipos";
 import { useEliminarEquipo } from "../hooks/use-equipo-mutations";
 import { ComponenteCreateDialog } from "./componente-create-dialog";
+import { EquipoBajaBanner } from "./equipo-baja-banner";
 import { EquipoBajaDialog } from "./equipo-baja-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
@@ -52,6 +53,8 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
   }
 
   const equipo = equipoQuery.data;
+  // Un equipo dado de baja es de solo lectura: la baja es definitiva (R8).
+  const equipoActivo = equipo.activo;
 
   return (
     <div className="flex flex-col gap-6">
@@ -59,34 +62,46 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         title={equipo.nombre}
         description={equipo.numeroSerie ?? undefined}
         actions={
-          <div className="flex items-center gap-2">
-            <Can permiso="EQUIPOS:ALTAS">
-              <ComponenteCreateDialog equipoId={equipo.id} />
-            </Can>
-            <Can permiso="EQUIPOS:MODIFICACION">
-              <EquipoEditDialog equipo={equipo} />
-            </Can>
-            <Can permiso="EQUIPOS:BORRADO">
-              <EquipoBajaDialog equipoId={equipo.id} />
-              <ConfirmDialog
-                trigger={
-                  <Button variant="destructive" size="sm">
-                    Eliminar equipo (cargado por error)
-                  </Button>
-                }
-                title="Eliminar equipo"
-                description={`¿Confirmás eliminar "${equipo.nombre}"? Solo para equipos cargados por error. Si tiene piezas instaladas, dalo de baja.`}
-                confirmLabel="Eliminar equipo"
-                confirmVariant="destructive"
-                isConfirming={eliminarMutation.isPending}
-                onConfirm={() => eliminarMutation.mutate(equipo.id, { onSuccess: () => router.push("/equipos") })}
-              />
-            </Can>
-          </div>
+          equipoActivo ? (
+            <div className="flex items-center gap-2">
+              <Can permiso="EQUIPOS:ALTAS">
+                <ComponenteCreateDialog equipoId={equipo.id} />
+              </Can>
+              <Can permiso="EQUIPOS:MODIFICACION">
+                <EquipoEditDialog equipo={equipo} />
+              </Can>
+              <Can permiso="EQUIPOS:BORRADO">
+                <EquipoBajaDialog equipoId={equipo.id} />
+                <ConfirmDialog
+                  trigger={
+                    <Button variant="destructive" size="sm">
+                      Eliminar equipo (cargado por error)
+                    </Button>
+                  }
+                  title="Eliminar equipo"
+                  description={`¿Confirmás eliminar "${equipo.nombre}"? Solo para equipos cargados por error. Si tiene piezas instaladas, dalo de baja.`}
+                  confirmLabel="Eliminar equipo"
+                  confirmVariant="destructive"
+                  isConfirming={eliminarMutation.isPending}
+                  onConfirm={() =>
+                    eliminarMutation.mutate(equipo.id, {
+                      onSuccess: () => router.push("/equipos"),
+                    })
+                  }
+                />
+              </Can>
+            </div>
+          ) : undefined
         }
       />
 
-      <EquipoComponentesSection equipoId={equipo.id} componentes={equipo.componentes} />
+      {!equipoActivo && <EquipoBajaBanner baja={equipo.baja} />}
+
+      <EquipoComponentesSection
+        equipoId={equipo.id}
+        componentes={equipo.componentes}
+        equipoActivo={equipoActivo}
+      />
     </div>
   );
 }

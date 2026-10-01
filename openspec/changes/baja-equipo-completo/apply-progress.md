@@ -390,3 +390,15 @@ Ramas: `feat/baja-equipo-completo-wu16` (tipos, schemas y mutacion) -> `-wu16-2`
 - 16.5 `equipo-detail-view.tsx`: «Dar de baja» (con `EQUIPOS:BORRADO`) abre el dialogo; el borrado conserva «Eliminar equipo (cargado por error)».
 - 16.6 Tests: `equipo-baja-dialog.test.tsx` (10), `baja-equipo-reglas.test.ts`, `equipo-detail-view.test.tsx` (+3), `use-equipo-mutations.test.tsx` (+2), `schemas.test.ts` (+3).
 - Ayuda: pendiente, articulo nuevo sobre el flujo de baja (destinos, categoria y motivo, serial de piezas legadas, confirmacion por nombre) y el boton «Dar de baja» del equipo.
+
+
+## WU-17 — Ficha de solo lectura y cierre del roadmap
+
+Rama: `feat/baja-equipo-completo-wu17` (base wu16-3).
+
+- 17.1 `equipo-baja-banner.tsx` (nuevo): fecha, categoria, destino y motivo de la baja (reusa `ETIQUETAS_CATEGORIA_BAJA`). `equipo-detail-view.tsx`: con `activo = false` muestra el banner y oculta agregar, editar, dar de baja y eliminar (toolbar completo).
+- 17.2 `equipo-componentes-section.tsx`: prop `equipoActivo` (default `true`); con `false` no hay acciones en ninguna fila, y las filas retiradas siguen mostrando el destino del retiro.
+- 17.3 Tests: `equipo-detail-view.test.tsx` (+4: banner, sin acciones aun con todos los permisos, retirados visibles, vigente sin banner y con todas las acciones) y `equipo-componentes-section.test.tsx` (+2, incluida la regresion del delta: devuelto al stock no ofrece reactivar y la fila indica el destino).
+- 17.4 `docs/roadmap-comercial.md`: la viñeta "Baja de equipo completo" pasa a **Cumplida**; el parrafo "Pendiente, sin construir" de Insumos pasa a decir que no queda nada pendiente.
+- 17.5 `node scripts/check-roadmap-fresco.mjs`: "El roadmap esta fresco."
+- Ayuda: pendiente, la ficha de un equipo dado de baja (banner, acciones ocultas).
