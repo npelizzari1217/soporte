@@ -52,7 +52,8 @@ export class BajaEquipoFixtures {
   readonly usuarioId = USUARIO_BAJA;
 
   private readonly prismaServiceParaUrl = new PrismaService(MASTER_TEST_URL);
-  private readonly pool: Pool;
+  /** Pool compartido: los testigos de locks lo usan para sus clientes externos. */
+  readonly pool: Pool;
   readonly tenantClient: InstanceType<typeof TenantPrismaClient>;
   readonly tenantContext = new TenantContext();
   readonly txRunner: PrismaTenantTransactionRunner;
@@ -196,6 +197,24 @@ export class BajaEquipoFixtures {
       data: { id: componenteId, equipoId, insumoId: this.serieId, unidadId: unidad.id },
     });
     return { componenteId, unidadId: unidad.id };
+  }
+
+  /** Unidad `SERIE` ya existente en el depósito (alta por entrada), sin instalar. */
+  async agregarUnidadEnDeposito(serial: string): Promise<string> {
+    const alta = await this.conTenant(() =>
+      this.registrarEntrada.execute({
+        insumoId: this.serieId,
+        cantidad: 1,
+        usuarioId: this.usuarioId,
+        seriales: [serial],
+      }),
+    );
+    if (alta.isFail()) throw alta.getError();
+    return (
+      await this.tenantClient.unidadInsumo.findFirstOrThrow({
+        where: { insumoId: this.serieId, numeroSerie: serial },
+      })
+    ).id;
   }
 
   /** Saldos `NUEVO` y `USADO` del libro de un insumo. */

@@ -282,3 +282,19 @@ Ramas: `feat/baja-equipo-completo-wu09` (helper + leyenda, 388 líneas) -> `-wu0
 - 9.7 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), `vitest run src/equipos src/insumos` (150 archivos, 2530 tests) y `pnpm test` completo (545 archivos, 6802 tests) en verde; el único FAIL del log es el ruido conocido `orden-de-arranque.spec.ts`.
 - El invariante `SERIE` corre en `afterEach` de los cuatro specs de la baja y al final del caso R16.
 - Ayuda: sin deuda.
+
+
+## WU-10 — Integración: atomicidad, legados, causas juntas y testigos T1–T3, T6
+
+Ramas: `feat/baja-equipo-completo-wu10` (10.1 a 10.6: atomicidad, legados y causas juntas) -> `-wu10-2` (10.7: testigos T1, T2, T3 y T6). Corte pedido por tasks.md.
+
+- 10.1 a 10.4 `dar-de-baja-equipo.atomicidad.integration.spec.ts` (6 casos): insumo borrado (por el diagnóstico de afuera y por el camino
+  transaccional con el diagnóstico salteado con `vi.spyOn`), dos borrados + legado sin serial (los tres componentes con su causa, por los
+  dos caminos), falla al marcar el equipo (`registrarBaja` => `false`; dentro del `run()` el saldo `USADO` ya subió y después todo
+  revierte) y serial legado ya existente que falla bajo L2 sin escribir. Todos comparan `fx.foto()` antes/después.
+- 10.5 y 10.6 `dar-de-baja-equipo.legados.integration.spec.ts` (7 casos): "LEG-1" crea la unidad `EN_DEPOSITO` `USADO` con su ENTRADA;
+  sin serial => `SERIAL_REQUERIDO`; "x1" y "X 1" => ambos por `SERIAL_REPETIDO` (dentro del lote el clasificador usa esa causa, no
+  `SERIAL_DUPLICADO`, que es contra la base); "a1" con "A1" existente => `SERIAL_DUPLICADO`; insumo borrado => `INSUMO_BORRADO`; causas
+  juntas `INSUMO_BORRADO` + `SERIAL_DUPLICADO` por los dos caminos. Ninguna unidad queda con `numero_serie` nulo.
+- 10.2: los "dos insumos borrados" son dos componentes del mismo insumo borrado del fixture (el error es por componente).
+- Fixture: `pool` pasa a ser público (los testigos de locks lo usan) y `agregarUnidadEnDeposito(serial)`.
