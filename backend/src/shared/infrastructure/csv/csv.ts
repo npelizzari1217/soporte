@@ -45,8 +45,22 @@ const FIN_DE_LINEA = '\r\n';
  */
 const INICIOS_DE_FORMULA = ['=', '+', '-', '@'];
 
+/**
+ * Celda numérica ya formateada, producida solo por `cantidadCsv`.
+ *
+ * Existe porque `neutralizarFormula` antepone un apóstrofo a todo texto que
+ * empieza con `-`, y una cantidad negativa legítima no puede salir como
+ * `'-3`. Su `texto` cumple siempre `^-?\d+(,\d{2})?$`: sin `=`, `+`, `@`,
+ * letras ni separadores, así que una planilla lo lee como literal numérico y
+ * emitirlo sin neutralizar es seguro.
+ */
+export interface CeldaNumericaCsv {
+  readonly tipo: 'numero';
+  readonly texto: string;
+}
+
 /** Valor admitido en una celda antes de ser formateado a texto. */
-export type ValorCelda = string | number | boolean | null | undefined;
+export type ValorCelda = string | number | boolean | null | undefined | CeldaNumericaCsv;
 
 /**
  * Una columna del CSV: su encabezado y cómo extraerla de la fila.
@@ -73,7 +87,7 @@ export interface ColumnaCsv<T> {
 export function serializarCsv<T>(filas: readonly T[], columnas: readonly ColumnaCsv<T>[]): string {
   const encabezado = columnas.map((columna) => escaparCelda(columna.encabezado));
   const cuerpo = filas.map((fila) =>
-    columnas.map((columna) => escaparCelda(aTexto(columna.valor(fila)))).join(SEPARADOR_CSV),
+    columnas.map((columna) => escaparValor(columna.valor(fila))).join(SEPARADOR_CSV),
   );
 
   return BOM_UTF8 + [encabezado.join(SEPARADOR_CSV), ...cuerpo].join(FIN_DE_LINEA);
@@ -89,7 +103,27 @@ function aTexto(valor: ValorCelda): string {
   if (valor === null || valor === undefined) {
     return '';
   }
+  if (esCeldaNumerica(valor)) {
+    return valor.texto;
+  }
   return String(valor);
+}
+
+/** Distingue la celda numérica tipada de cualquier otro valor de celda. */
+function esCeldaNumerica(valor: ValorCelda): valor is CeldaNumericaCsv {
+  return typeof valor === 'object' && valor !== null && valor.tipo === 'numero';
+}
+
+/**
+ * Escapa un valor de celda. La celda numérica tipada se emite tal cual (ver
+ * `CeldaNumericaCsv`); todo lo demás pasa por `escaparCelda` y su
+ * neutralización de fórmulas.
+ */
+function escaparValor(valor: ValorCelda): string {
+  if (esCeldaNumerica(valor)) {
+    return valor.texto;
+  }
+  return escaparCelda(aTexto(valor));
 }
 
 /**
@@ -226,4 +260,29 @@ function dosDigitos(valor: number): string {
  */
 export function montoCsv(monto: number): string {
   return monto.toFixed(2).replace('.', ',');
+}
+
+/**
+ * Formatea una cantidad de stock como celda numérica tipada.
+ *
+ * Una unidad `entera` con valor entero sale sin decimales (`3`); cualquier
+ * fraccionario sale siempre con dos decimales y coma (`2,50`), también en una
+ * unidad entera: nunca se redondea. Sin separador de miles. `-0` se
+ * normaliza a `0`.
+ *
+ * @param valor Cantidad en unidades normales (no en centésimas).
+ * @param entera Si la unidad de medida solo admite cantidades enteras.
+ * @throws Error si `valor` no es un número finito.
+ */
+export function cantidadCsv(valor: number, entera: boolean): CeldaNumericaCsv {
+  if (!Number.isFinite(valor)) {
+    throw new Error(`cantidadCsv: la cantidad debe ser un número finito (recibido ${valor}).`);
+  }
+  const normalizado = valor === 0 ? 0 : valor;
+  const texto =
+    entera && Number.isInteger(normalizado)
+      ? String(normalizado)
+      : normalizado.toFixed(2).replace('.', ',');
+  // `toFixed(2)` de un fraccionario chico negativo (-0.001) da "-0,00".
+  return { tipo: 'numero', texto: texto === '-0,00' ? '0,00' : texto };
 }
