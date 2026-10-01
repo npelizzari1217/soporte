@@ -26,13 +26,58 @@ export type CategoriaBajaEquipo = (typeof CATEGORIAS_BAJA_EQUIPO)[number];
 
 /** Datos de la baja de un equipo (`EquipoResponseDto.baja`); `null` mientras está vigente. */
 export interface BajaEquipo {
-  destino: "STOCK_USADO" | "DESCARTE";
+  destino: DestinoBajaEquipo;
   categoria: CategoriaBajaEquipo;
   /** Texto trimmeado que cargó el usuario; `null` si no hubo. */
   motivo: string | null;
   /** Fecha ISO de la baja. */
   fecha: string;
   usuarioId: string | null;
+}
+
+/** Destinos de la baja de un equipo completo: uno solo para todas las piezas. */
+export type DestinoBajaEquipo = "STOCK_USADO" | "DESCARTE";
+
+/** Causas por las que una pieza no puede volver al stock (espejo de `CausaPieza` del backend). */
+export const CAUSAS_PIEZA_BAJA = [
+  "INSUMO_BORRADO",
+  "FAMILIA_NO_REPUESTO",
+  "SERIAL_REQUERIDO",
+  "SERIAL_INVALIDO",
+  "SERIAL_REPETIDO",
+  "SERIAL_DUPLICADO",
+] as const;
+export type CausaPiezaBaja = (typeof CAUSAS_PIEZA_BAJA)[number];
+
+/** Pieza del resumen de `GET /equipos/:id/baja/resumen`. */
+export interface PiezaResumenBaja {
+  componenteId: string;
+  descripcion: string | null;
+  insumoId: string | null;
+  insumoNombre: string | null;
+  unidadId: string | null;
+  numeroSerie: string | null;
+  seguimiento: "NINGUNO" | "SERIE";
+  /** Legado de un insumo `SERIE`: la baja al stock exige su serial. */
+  requiereSerial: boolean;
+  serialSugerido: string | null;
+  causaQueImpideDevolver: CausaPiezaBaja | null;
+}
+
+export interface ResumenBajaEquipo {
+  equipoId: string;
+  nombre: string;
+  ticketsAbiertos: number;
+  largoMaximoTexto: Record<CategoriaBajaEquipo, number>;
+  piezas: PiezaResumenBaja[];
+}
+
+/** Body de `POST /equipos/:id/baja`. */
+export interface BajaEquipoDto {
+  destino: DestinoBajaEquipo;
+  categoria: CategoriaBajaEquipo;
+  motivo?: string;
+  seriales?: { componenteId: string; numeroSerie: string }[];
 }
 
 export interface Equipo {

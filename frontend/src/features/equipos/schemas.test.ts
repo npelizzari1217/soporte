@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import type { ZodIssue } from "zod";
-import { bajaEquipoSchema, crearEquipoSchema, editarComponenteSchema } from "./schemas";
+import {
+  bajaEquipoSchema,
+  crearEquipoSchema,
+  editarComponenteSchema,
+  motivoBajaInvalidoSchema,
+  piezasProblematicasSchema,
+  resumenBajaEquipoSchema,
+} from "./schemas";
 
 /**
  * Validación cliente-side de los topes de largo/rango de `equipos_informaticos`/
@@ -182,5 +189,45 @@ describe("bajaEquipoSchema", () => {
   it("rechaza una categoría o un destino fuera del dominio", () => {
     expect(bajaEquipoSchema.safeParse({ ...baja, categoria: "OTRO" }).success).toBe(false);
     expect(bajaEquipoSchema.safeParse({ ...baja, destino: "VENTA" }).success).toBe(false);
+  });
+});
+
+describe("schemas de la baja del equipo completo", () => {
+  const pieza = {
+    componenteId: "c1",
+    descripcion: null,
+    insumoId: null,
+    insumoNombre: null,
+    unidadId: null,
+    numeroSerie: null,
+    seguimiento: "NINGUNO",
+    requiereSerial: false,
+    serialSugerido: null,
+    causaQueImpideDevolver: null,
+  };
+  const resumen = {
+    equipoId: "e1",
+    nombre: "PC-1",
+    ticketsAbiertos: 1,
+    largoMaximoTexto: { VEJEZ: 460, DONACION: 455, ROTURA: 458, OTRA: 480 },
+    piezas: [pieza],
+  };
+
+  it("el resumen acepta el contrato del backend y rechaza una causa desconocida", () => {
+    expect(resumenBajaEquipoSchema.safeParse(resumen).success).toBe(true);
+    const rota = { ...resumen, piezas: [{ ...pieza, causaQueImpideDevolver: "OTRA_COSA" }] };
+    expect(resumenBajaEquipoSchema.safeParse(rota).success).toBe(false);
+  });
+
+  it("el 422 de piezas se parsea con la causa de cada una", () => {
+    const cuerpo = { piezas: [{ componenteId: "c1", insumoId: null, causa: "SERIAL_DUPLICADO" }] };
+    expect(piezasProblematicasSchema.safeParse(cuerpo).success).toBe(true);
+    expect(piezasProblematicasSchema.safeParse({ piezas: [{ componenteId: "c1" }] }).success).toBe(false);
+  });
+
+  it("el 422 del motivo solo se reconoce por su código y trae largoMaximo opcional", () => {
+    expect(motivoBajaInvalidoSchema.safeParse({ code: "MOTIVO_BAJA_EQUIPO_INVALIDO", largoMaximo: 450 }).success).toBe(true);
+    expect(motivoBajaInvalidoSchema.safeParse({ code: "MOTIVO_BAJA_EQUIPO_INVALIDO" }).success).toBe(true);
+    expect(motivoBajaInvalidoSchema.safeParse({ statusCode: 422 }).success).toBe(false);
   });
 });
