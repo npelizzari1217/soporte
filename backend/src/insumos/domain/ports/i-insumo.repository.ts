@@ -219,6 +219,17 @@ export interface IInsumoRepository {
   cambiarSeguimiento(id: string, valor: SeguimientoInsumo): Promise<void>;
 
   /**
+   * Cuenta los insumos vigentes con seguimiento `SERIE` que usan la unidad de
+   * medida. Lo usa `EditarUnidadMedida` para decidir si `entera` se puede
+   * desmarcar; va DESPUÉS de tomar la fila de la unidad (L0 de ADR-12) y no
+   * toma ningún lock propio.
+   *
+   * @param unidadMedidaId Id de la unidad de medida.
+   * @returns Cantidad de insumos `SERIE` no eliminados que la usan.
+   */
+  contarSeriePorUnidadMedida(unidadMedidaId: string): Promise<number>;
+
+  /**
    * Retorna la última secuencia de la SERIE `prefijo` (`INS` o `REP`) usada en
    * `codigo` (formato `{PREFIJO}-{SEQ4}`, ej. `INS-0007`). `0` si la serie
    * todavía no tiene ningún código con ese formato en el tenant.

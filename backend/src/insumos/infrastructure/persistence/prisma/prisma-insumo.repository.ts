@@ -407,4 +407,14 @@ export class PrismaInsumoRepository implements IInsumoRepository {
       throw new Error(`PrismaInsumoRepository.cambiarSeguimiento(): el insumo ${id} no existe.`);
     }
   }
+
+  /**
+   * @param unidadMedidaId Id de la unidad de medida.
+   * @returns Cantidad de insumos `SERIE` no eliminados que la usan.
+   */
+  async contarSeriePorUnidadMedida(unidadMedidaId: string): Promise<number> {
+    return this.client.insumo.count({
+      where: { unidadMedidaId, seguimiento: 'SERIE', deletedAt: null },
+    });
+  }
 }

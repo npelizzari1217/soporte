@@ -94,6 +94,11 @@ export class EditUnidadMedidaDto {
   @Transform(transformarNombre)
   @MaxLength(UNIDAD_MEDIDA_NOMBRE_MAX_LENGTH)
   nombre?: string;
+
+  /** Marca o desmarca la unidad como entera; desmarcar se rechaza si un insumo `SERIE` la usa. */
+  @IsOptional()
+  @IsBoolean()
+  entera?: boolean;
 }
 
 /** Body de `PATCH /unidades-medida/:id/estado` — activar/desactivar. */

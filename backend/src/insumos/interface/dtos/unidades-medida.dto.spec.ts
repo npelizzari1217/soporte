@@ -48,6 +48,21 @@ describe('CreateUnidadMedidaDto', () => {
   });
 });
 
+describe('EditUnidadMedidaDto — entera', () => {
+  it('acepta `entera` booleana (marcar o desmarcar) y su ausencia', async () => {
+    for (const entera of [true, false, undefined]) {
+      const dto = plainToInstance(EditUnidadMedidaDto, { entera });
+      expect(await validate(dto)).toHaveLength(0);
+      expect(dto.entera).toBe(entera);
+    }
+  });
+
+  it('rechaza `entera` que no es booleana', async () => {
+    const dto = plainToInstance(EditUnidadMedidaDto, { entera: 1 });
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+});
+
 /**
  * Los topes de largo están declarados en LOS DOS DTOs (alta y edición).
  * Recorrer los dos no es redundancia: con un solo caso, borrar el decorador de

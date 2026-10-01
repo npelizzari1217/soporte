@@ -774,3 +774,10 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   entidad). `UnidadMedidaResponseDto.entera` (alta, edicion, estado y listado comparten `toUnidadMedidaResponseDto`).
 - Unit specs: DTO (acepta, ausente, rechaza no booleana, respuesta) y alta (default `false` / `true`).
 - `EditUnidadMedidaDto.entera` queda para 12b.2: aceptarla antes de que el caso de uso la aplique la descartaria en silencio.
+
+### WU-12b - 12b.2 (editar con L0 y conteo de insumos SERIE), rama `-wu12b-2`
+
+- `EditarUnidadMedidaUseCase(unidadRepo, insumoRepo, txRunner)`: todo dentro de `txRunner.run()`; toma L0 con `bloquearParaEdicion` (`FOR UPDATE`
+  si el DTO trae `codigo`, aunque sea el mismo, y `FOR NO KEY UPDATE` si no) ANTES de buscar duplicados y de contar; desmarcar `entera` con algun
+  insumo `SERIE` vigente (`contarSeriePorUnidadMedida`, nuevo en el puerto y en Prisma; excluye los de baja logica) => `UnidadMedidaEnUsoPorSerieError`
+  (422 por el mapeo por defecto). Un `Result.fail` no escribe nada. No toma ningun otro lock del orden. `EditUnidadMedidaDto.entera?`.

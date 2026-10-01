@@ -199,8 +199,12 @@ import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-se
     },
     {
       provide: EditarUnidadMedidaUseCase,
-      useFactory: (repo: IUnidadMedidaRepository) => new EditarUnidadMedidaUseCase(repo),
-      inject: [UNIDAD_MEDIDA_REPOSITORY],
+      useFactory: (
+        repo: IUnidadMedidaRepository,
+        insumoRepo: IInsumoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new EditarUnidadMedidaUseCase(repo, insumoRepo, txRunner),
+      inject: [UNIDAD_MEDIDA_REPOSITORY, INSUMO_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       provide: CambiarEstadoActivoUnidadMedidaUseCase,
