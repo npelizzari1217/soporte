@@ -144,6 +144,9 @@ export function toHttpException(
     // Instalar con unidad (ADR-7): la unidad elegida no sirve, o el insumo exige elegir una.
     error instanceof UnidadNoDisponibleError ||
     error instanceof UnidadRequeridaError ||
+    // Reactivar (ADR-14): la unidad ya no está descartada por este componente. El error
+    // llega del módulo equipos o, sin traducir, del de insumos (clase duplicada): por `code`.
+    error.code === 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE' ||
     error instanceof UnidadNoAdmitidaError ||
     error instanceof UnidadConAltaSinDescuentoError ||
     error instanceof SerialRequeridoError ||
@@ -488,16 +491,22 @@ export class EquiposController {
    * PATCH /equipos/:id/componentes/:componenteId/reactivar
    * Revierte la baja lógica de un componente (listado enriquecido de componentes).
    * @throws 404 componente inexistente
-   * @throws 422 componente ya activo
+   * @throws 422 componente ya activo, devuelto al stock, con unidad que ya no está
+   *   descartada por él, o de un insumo que dejó de seguirse por serie
    */
   @Patch(':id/componentes/:componenteId/reactivar')
   @RequiereAcciones('EQUIPOS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async reactivarComponente(
+    @CurrentUser() user: JwtPayload,
     @Param('id') equipoId: string,
     @Param('componenteId') componenteId: string,
   ): Promise<ComponenteResponseDto> {
-    const result = await this.reactivarComponenteUseCase.execute({ equipoId, componenteId });
+    const result = await this.reactivarComponenteUseCase.execute({
+      equipoId,
+      componenteId,
+      usuarioId: user.sub,
+    });
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }

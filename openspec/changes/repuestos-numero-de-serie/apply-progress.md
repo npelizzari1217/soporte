@@ -699,3 +699,20 @@ Rama `feat/repuestos-numero-de-serie-wu11`. Tarea 11.1 hecha; 11.2 a 11.5 en la 
   destinos con sonda de `pg_locks` sobre `componentes_equipo`, y 8 retiros simultaneos por destino => uno gana, sin 40P01).
 - Ayuda: `rg -n "retir|reactiv" backend/ayuda/` solo encuentra `permisos-y-roles.md:162` ("al retirarlo, la pieza vuelve al deposito
   como usada"), que sigue siendo verdadero. Sin cambios; deuda de UI en WU-19.
+
+### WU-11 - parte 2 (reactivar en transaccion)
+
+Ramas `-wu11-2` (testigos y carreras del retiro, 304 lineas), `-wu11-3` (e2e del retiro, 513, size:exception) y `-wu11-4`
+(reactivar). Tarea 11.2 hecha.
+
+- `ReactivarComponenteUseCase(txRunner, componenteRepo, operaciones)`; el DTO pide `usuarioId` (el controller pasa `JWT.sub`, firma
+  el evento `REACTIVACION`). Las validaciones previas no cambian y quedan FUERA de la transaccion (no encontrado, ya activo,
+  `STOCK_USADO` rechazado). Con unidad, dentro de `run()`: `operaciones.reinstalar` (L1, L2, L3) y despues `reactivar()` + `save()` (L4).
+  Sin unidad (legado o `NINGUNO`): igual que antes, solo en la transaccion.
+- Errores: el servicio de insumos devuelve su clase duplicada `UnidadDelComponenteNoDisponibleError`; el caso de uso la traduce POR
+  `code` (`UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE`) a la de equipos. `SeguimientoNoModificableError` (insumo ya `NINGUNO`) llega tal cual.
+  `toHttpException` de equipos mapea a 422, por `code`, cualquiera de las dos clases (la de insumos ya no depende del default).
+  Tras recuperar (ADR-14) el ultimo evento de la unidad es `RECUPERACION` => `UnidadDelComponenteNoDisponibleError`.
+- Specs unit: reactivar reescrito (orden reinstalar -> save en una tx, traduccion por code, error de insumos, legado sin tocar
+  unidades, falla del `save` propaga) y controller (usuarioId del JWT, mapeo por code de las dos clases y de
+  `SeguimientoNoModificableError`). Catalogo de errores de equipos: sigue en 18 (no se agregaron clases).

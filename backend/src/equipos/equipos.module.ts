@@ -303,9 +303,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: ReactivarComponenteUseCase,
-      useFactory: (componenteRepo: IComponenteEquipoRepository) =>
-        new ReactivarComponenteUseCase(componenteRepo),
-      inject: [COMPONENTE_EQUIPO_REPOSITORY],
+      useFactory: (
+        txRunner: ITenantTransactionRunner,
+        componenteRepo: IComponenteEquipoRepository,
+        operaciones: OperacionesUnidadInsumo,
+      ) => new ReactivarComponenteUseCase(txRunner, componenteRepo, operaciones),
+      inject: [TENANT_TX_RUNNER, COMPONENTE_EQUIPO_REPOSITORY, OperacionesUnidadInsumo],
     },
     {
       provide: CrearTicketSoporteUseCase,

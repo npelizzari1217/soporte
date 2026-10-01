@@ -34,6 +34,8 @@ import {
   UnidadNoEncontradaError,
   UnidadRequeridaError,
   SerialDuplicadoError,
+  SeguimientoNoModificableError,
+  UnidadDelComponenteNoDisponibleError as UnidadDelComponenteDeInsumosError,
   SerialRequeridoError,
 } from '../../../insumos/domain/errors/unidades-insumo.errors';
 
@@ -566,6 +568,25 @@ describe('EquiposController (T12.6)', () => {
   });
 
   describe('PATCH /equipos/:id/componentes/:componenteId/reactivar', () => {
+    const actor = { sub: 'usuario-jwt-uuid' } as any;
+
+    it('pasa el usuario del JWT (firma el evento REACTIVACION de la unidad)', async () => {
+      const { controller, reactivarComponenteUseCase } = buildController();
+      reactivarComponenteUseCase.execute.mockResolvedValue(
+        Result.fail(new ComponenteYaActivoError('componente-1')),
+      );
+
+      await expect(
+        controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1'),
+      ).rejects.toThrow(UnprocessableEntityException);
+
+      expect(reactivarComponenteUseCase.execute).toHaveBeenCalledWith({
+        equipoId: 'equipo-uuid',
+        componenteId: 'componente-1',
+        usuarioId: 'usuario-jwt-uuid',
+      });
+    });
+
     it('reactiva el componente', async () => {
       const { controller, reactivarComponenteUseCase } = buildController();
       const componente = ComponenteEquipoEntity.create({
@@ -577,7 +598,7 @@ describe('EquiposController (T12.6)', () => {
       }).getValue();
       reactivarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
-      const result = await controller.reactivarComponente('equipo-uuid', 'componente-1');
+      const result = await controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1');
       expect(result.id).toBeDefined();
       expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
@@ -588,9 +609,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new ComponenteYaActivoError('componente-1')),
       );
 
-      await expect(controller.reactivarComponente('equipo-uuid', 'componente-1')).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(
+        controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1'),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('componente devuelto al stock → 422', async () => {
@@ -599,9 +620,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new EquiposErrors.ComponenteDevueltoAlStockError('componente-1')),
       );
 
-      await expect(controller.reactivarComponente('equipo-uuid', 'componente-1')).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(
+        controller.reactivarComponente(actor, 'equipo-uuid', 'componente-1'),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
@@ -838,6 +859,17 @@ describe('toHttpException — errores de unidades de insumo al instalar (sdd/rep
     ],
     ['UnidadRequeridaError', () => new UnidadRequeridaError('insumo-1'), 422],
     ['UnidadNoAdmitidaError', () => new UnidadNoAdmitidaError('insumo-1'), 422],
+    // Reactivar (WU-11): la clase duplicada de insumos (mismo `code`) se mapea igual que la de equipos.
+    [
+      'UnidadDelComponenteNoDisponibleError (insumos)',
+      () => new UnidadDelComponenteDeInsumosError('componente-1'),
+      422,
+    ],
+    [
+      'SeguimientoNoModificableError',
+      () => new SeguimientoNoModificableError('el insumo ya no se sigue por serie.'),
+      422,
+    ],
   ];
 
   it.each(TABLA_UNIDADES)('%s → HTTP %i', (_nombre, factory, httpEsperado) => {

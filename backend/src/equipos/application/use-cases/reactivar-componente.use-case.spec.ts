@@ -5,47 +5,84 @@ import {
   ComponenteDevueltoAlStockError,
   ComponenteNoEncontradoError,
   ComponenteYaActivoError,
+  UnidadDelComponenteNoDisponibleError,
 } from '../../domain/errors/equipos.errors';
+import { Result } from '../../../shared/domain/result';
+import * as UnidadesErrors from '../../../insumos/domain/errors/unidades-insumo.errors';
 
 describe('ReactivarComponenteUseCase', () => {
-  function makeComponente() {
+  const USUARIO = 'usuario-1';
+
+  function makeComponente(unidadId: string | null = null) {
     return ComponenteEquipoEntity.create({
       equipoId: 'equipo-1',
       insumoId: 'insumo-1',
       descripcion: null,
       numeroSerie: null,
       capacidad: null,
+      unidadId,
     }).getValue();
   }
 
-  it('falla con ComponenteNoEncontradoError si no existe', async () => {
-    const componenteRepo = { findById: vi.fn().mockResolvedValue(null), save: vi.fn() };
-    const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+  /** Arma el caso de uso con el orden de las escrituras registrado en `orden`. */
+  function makeSetup(
+    componente: ComponenteEquipoEntity | null,
+    reinstalar: unknown = Result.ok([]),
+  ) {
+    const orden: string[] = [];
+    const txRunner = { run: vi.fn((fn: () => unknown) => fn()) };
+    const componenteRepo = {
+      findById: vi.fn().mockResolvedValue(componente),
+      save: vi.fn(async () => {
+        orden.push('save');
+      }),
+    };
+    const operaciones = {
+      reinstalar: vi.fn(async () => {
+        orden.push('reinstalar');
+        return reinstalar;
+      }),
+    };
+    const useCase = new ReactivarComponenteUseCase(
+      txRunner as never,
+      componenteRepo as never,
+      operaciones as never,
+    );
+    return { useCase, txRunner, componenteRepo, operaciones, orden };
+  }
 
-    const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: 'no-existe' });
-    expect(result.isFail()).toBe(true);
+  const dto = (componenteId: string, equipoId = 'equipo-1') => ({
+    equipoId,
+    componenteId,
+    usuarioId: USUARIO,
+  });
+
+  it('falla con ComponenteNoEncontradoError si no existe', async () => {
+    const { useCase, txRunner } = makeSetup(null);
+
+    const result = await useCase.execute(dto('no-existe'));
+
     expect(result.getError()).toBeInstanceOf(ComponenteNoEncontradoError);
+    expect(txRunner.run).not.toHaveBeenCalled();
   });
 
   it('falla con ComponenteNoEncontradoError si el componente pertenece a OTRO equipo', async () => {
     const componente = makeComponente();
     componente.softDelete();
-    const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-    const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+    const { useCase, componenteRepo } = makeSetup(componente);
 
-    const result = await useCase.execute({ equipoId: 'equipo-2', componenteId: componente.id });
-    expect(result.isFail()).toBe(true);
+    const result = await useCase.execute(dto(componente.id, 'equipo-2'));
+
     expect(result.getError()).toBeInstanceOf(ComponenteNoEncontradoError);
     expect(componenteRepo.save).not.toHaveBeenCalled();
   });
 
   it('falla con ComponenteYaActivoError si el componente ya está activo', async () => {
     const componente = makeComponente();
-    const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-    const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+    const { useCase, componenteRepo } = makeSetup(componente);
 
-    const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id });
-    expect(result.isFail()).toBe(true);
+    const result = await useCase.execute(dto(componente.id));
+
     expect(result.getError()).toBeInstanceOf(ComponenteYaActivoError);
     expect(componenteRepo.save).not.toHaveBeenCalled();
   });
@@ -53,10 +90,10 @@ describe('ReactivarComponenteUseCase', () => {
   it('reactiva el componente dado de baja (limpia deletedAt) y persiste', async () => {
     const componente = makeComponente();
     componente.softDelete();
-    const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-    const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+    const { useCase, componenteRepo } = makeSetup(componente);
 
-    const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id });
+    const result = await useCase.execute(dto(componente.id));
+
     expect(result.isOk()).toBe(true);
     expect(result.getValue().activo).toBe(true);
     expect(result.getValue().deletedAt).toBeNull();
@@ -72,14 +109,13 @@ describe('ReactivarComponenteUseCase', () => {
         usuarioId: 'user-1',
         bajaMovimientoId: 'mov-entrada',
       });
-      const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-      const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+      const { useCase, componenteRepo, txRunner } = makeSetup(componente);
 
-      const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id });
+      const result = await useCase.execute(dto(componente.id));
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(ComponenteDevueltoAlStockError);
       expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(txRunner.run).not.toHaveBeenCalled();
       expect(componente.activo).toBe(false);
       expect(componente.bajaDestino).toBe('STOCK_USADO');
     });
@@ -92,10 +128,9 @@ describe('ReactivarComponenteUseCase', () => {
         usuarioId: 'user-1',
         bajaMovimientoId: null,
       });
-      const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-      const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+      const { useCase, componenteRepo } = makeSetup(componente);
 
-      const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id });
+      const result = await useCase.execute(dto(componente.id));
 
       expect(result.isOk()).toBe(true);
       expect(componente.activo).toBe(true);
@@ -105,18 +140,88 @@ describe('ReactivarComponenteUseCase', () => {
       expect(componenteRepo.save).toHaveBeenCalledWith(componente);
     });
 
-    it('reactiva un retiro LEGADO (sin destino) y persiste', async () => {
+    it('reactiva un retiro LEGADO (sin destino) y persiste, sin tocar ninguna unidad', async () => {
       const componente = makeComponente();
       componente.softDelete();
       expect(componente.bajaDestino).toBeNull();
-      const componenteRepo = { findById: vi.fn().mockResolvedValue(componente), save: vi.fn() };
-      const useCase = new ReactivarComponenteUseCase(componenteRepo as never);
+      const { useCase, componenteRepo, operaciones } = makeSetup(componente);
 
-      const result = await useCase.execute({ equipoId: 'equipo-1', componenteId: componente.id });
+      const result = await useCase.execute(dto(componente.id));
 
       expect(result.isOk()).toBe(true);
       expect(componente.activo).toBe(true);
       expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+      expect(operaciones.reinstalar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('con unidad (sdd/repuestos-numero-de-serie, ADR-12 y ADR-14)', () => {
+    function makeDescartado() {
+      const componente = makeComponente('unidad-1');
+      componente.retirar({
+        destino: 'DESCARTE',
+        motivo: 'Placa quemada',
+        usuarioId: 'user-1',
+        bajaMovimientoId: null,
+      });
+      return componente;
+    }
+
+    it('reinstala la unidad (L1 a L3) ANTES de guardar el componente (L4), todo en una transaccion', async () => {
+      const componente = makeDescartado();
+      const { useCase, operaciones, orden, txRunner } = makeSetup(componente);
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.isOk()).toBe(true);
+      expect(txRunner.run).toHaveBeenCalledTimes(1);
+      expect(orden).toEqual(['reinstalar', 'save']);
+      expect(operaciones.reinstalar).toHaveBeenCalledWith(
+        [
+          {
+            unidadId: 'unidad-1',
+            equipoId: 'equipo-1',
+            componenteId: componente.id,
+            insumoId: 'insumo-1',
+          },
+        ],
+        { usuarioId: USUARIO },
+      );
+      expect(componente.activo).toBe(true);
+    });
+
+    it('unidad que ya no esta descartada por este componente (recuperada, ADR-14): UnidadDelComponenteNoDisponible de equipos, sin guardar', async () => {
+      const componente = makeDescartado();
+      const { useCase, componenteRepo, orden } = makeSetup(
+        componente,
+        Result.fail(new UnidadesErrors.UnidadDelComponenteNoDisponibleError(componente.id)),
+      );
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
+      expect(orden).toEqual(['reinstalar']);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(componente.activo).toBe(false);
+    });
+
+    it('insumo que dejo de ser SERIE: el error de insumos llega tal cual y no se guarda', async () => {
+      const componente = makeDescartado();
+      const error = new UnidadesErrors.SeguimientoNoModificableError('ya no es SERIE');
+      const { useCase, componenteRepo } = makeSetup(componente, Result.fail(error));
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.getError()).toBe(error);
+      expect(componenteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('si el guardado falla despues de reinstalar, la excepcion propaga (la transaccion revierte la unidad)', async () => {
+      const componente = makeDescartado();
+      const { useCase, componenteRepo } = makeSetup(componente);
+      componenteRepo.save.mockRejectedValueOnce(new Error('conexion perdida'));
+
+      await expect(useCase.execute(dto(componente.id))).rejects.toThrow('conexion perdida');
     });
   });
 });
