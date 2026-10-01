@@ -66,3 +66,71 @@ compilación ni fixture.
 describa el botón del equipo como baja ni que diga que se puede borrar un equipo con piezas; no
 hay nada que quede falso. Deuda: artículo del botón renombrado «Eliminar equipo (cargado por
 error)» y del flujo de baja.
+
+
+## WU-4 — Guards con LE: editar equipo, agregar y reactivar componente
+
+Cinco partes encadenadas por la política de tamaño (la unidad suma ~1.500 líneas con tests): `feat/baja-equipo-completo-wu04` (editar equipo), `-wu04-2` (agregar/instalar/alta sin descuento + demo seed), `-wu04-3` (reactivar), `-wu04-4` (integración de guards), `-wu04-5` (testigo T4 y este registro). Base wu03. Modo estándar (feature): los tests
+de comportamiento nuevo se escribieron antes del código y se corrieron contra el código viejo.
+
+### RED observado (guards sobre caminos existentes)
+
+| Comando | RED observado |
+|---|---|
+| `pnpm vitest run src/equipos/application/use-cases/editar-equipo.use-case.spec.ts` contra `editar-equipo.use-case.ts` SIN tocar | 15 failed: `TypeError: this.equipoRepo.findById is not a function` (el fake nuevo solo expone `bloquearParaModificar`, el contrato de ADR-2/5). Incluye los tests nuevos "equipo dado de baja falla con EquipoDadoDeBajaError" y "lee con bloquearParaModificar dentro de la transacción" |
+| `reactivar-componente.use-case.spec.ts` | el test nuevo "equipo dado de baja" falla por comportamiento (el use case sin guard reactiva); se escribió junto al código |
+| T4 con mutación | ver "Mutación del testigo" |
+
+### Decisiones y desvíos
+
+- 4.2 `EditarEquipo`: corre entero en `txRunner.run()`; el P2002 se sigue mapeando afuera del `run()`
+  (un P2002 aborta la transacción, no se relee adentro).
+- 4.4 `AgregarComponente.preparar()` toma `bloquearParaOperarPiezas` como primer lock; `execute()`
+  (que llama a `preparar()`) pasó a exigir transacción. Único caller de `execute()`:
+  `InstalarComponenteDesdeDeposito` (camino sin unidad), ya dentro de su `run()`. Los tres caminos
+  pasan por `preparar()`: `rg -n "preparar\(" backend/src/equipos` (instalar con unidad, `execute()`
+  del camino NINGUNO y alta sin descuento).
+- 4.5 `ReactivarComponente`: el ctor suma `equipoRepo` (2.º argumento). **Desvío menor de diseño**:
+  las lecturas del componente (no encontrado, otro equipo, ya activo, `STOCK_USADO`) siguen
+  FUERA de la transacción, igual que antes, porque el delta exige que los 8 tests previos
+  sigan verdes sin cambiar sus aserciones (dos de ellos afirman `txRunner.run` no llamado). El LE
+  (`bloquearParaOperarPiezas(dto.equipoId)`) es lo primero DENTRO de la transacción, antes de
+  `reinstalar` (L1 a L3) y de `save` (L4). El equipo se toma de la URL, no del componente.
+- Fixtures nuevos de specs unitarios: `backend/src/equipos/testing/equipos-unit.fixtures.ts`
+  (`equipoVigente`, `equipoDadoDeBaja`, `txRunnerDeSpec`, `agregarComponenteSobreEquipoDadoDeBaja`).
+- 4.6 Casts: `editar-equipo`, `agregar-componente` y `reactivar-componente` specs quedaron sin
+  `as never`: ratchet 664/120 → 629/117 (base actualizada en `scripts/check-casts-en-specs.mjs`).
+  `instalar-componente-desde-deposito` y `agregar-componente-sin-descuento` conservan sus casts
+  previos (fuera del alcance); los bloques nuevos no agregan ninguno.
+- Regresión del delta de reactivar, los 8 tests que cubren los escenarios previos (sin cambiar
+  aserciones; solo el fake ganó `equipoRepo` y el orden registrado):
+  1. `reactivar-componente.use-case.spec.ts` › "rechaza con ComponenteDevueltoAlStockError si volvió al stock como USADO, y no persiste" (tras devolver al stock)
+  2. › "reactiva un DESCARTE y limpia el registro de retiro" (tras descartar)
+  3. › "reactiva un retiro LEGADO (sin destino) y persiste, sin tocar ninguna unidad" (retiro legado / legado sin unidad)
+  4. › "reinstala la unidad (L1 a L3) ANTES de guardar el componente (L4), todo en una transaccion" (componente con unidad descartada)
+  5. › "unidad que ya no esta descartada por este componente (recuperada, ADR-14)…" (unidad recuperada)
+  6. › "insumo que dejo de ser SERIE: el error de insumos llega tal cual y no se guarda" (insumo vuelto a NINGUNO)
+  7. `retirar-reactivar-unidad.concurrencia.integration.spec.ts` › "tras recuperar la pieza (ADR-14) reactivar se rechaza y no cambia nada"
+  8. `retirar-reactivar-unidad.concurrencia.integration.spec.ts` › "con el insumo vuelto a NINGUNO reactivar se rechaza (SeguimientoNoModificable) y no cambia nada"
+  (La fila de la interfaz es de frontend y no cambia.) Único cambio en esos specs: se pasó el
+  `equipoRepo` real al ctor en el integration.
+
+### Mutación del testigo T4
+
+`baja-equipo.orden-de-locks.integration.spec.ts` (archivo nuevo, dos casos: instalar con unidad y
+reactivar con unidad). Mutación local: se quitó el `FOR SHARE` de `bloquearParaOperarPiezas` en
+`prisma-equipo-informatico.repository.ts` (el lock se omite). Rojo observado en los dos casos:
+`Error: Nadie quedo bloqueado por el backend <pid> en 5000 ms.` (la operación no esperaba al LE).
+Revertido con `git checkout`; los dos casos vuelven a verde.
+
+### Ayuda
+
+Sin deuda (la UI no cambia aún).
+
+### Hallazgo en la suite completa
+
+`prisma_master/seeds/demo-seed.ts` llamaba a `AgregarComponenteUseCase.execute()` fuera de una
+transacción; con el LE `FOR SHARE` el `exigirTransaccionActiva` lo rechaza
+(`demo-seed.integration.spec.ts` rojo en la corrida completa). Corregido: el seed usa
+`AgregarComponenteSinDescuentoUseCase` (misma conducta con un insumo `NINGUNO`, ahora dentro de su
+propia transacción; firma con `usuarios.usuario`).
