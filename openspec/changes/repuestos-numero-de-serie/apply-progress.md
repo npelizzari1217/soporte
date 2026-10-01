@@ -580,3 +580,12 @@ Rama `feat/repuestos-numero-de-serie-wu09`. Parte 1 de 2 (codigo y tests unitari
   controller de insumos ni cambiar el mapeo de `InsumoNoEncontradoError` a 422). El catalogo de errores de compras no cambia.
 - Tests: unit (pasa seriales, sin seriales, delta cero, duplicado revierte), DTO (7 casos) y controller (mapeo).
 - Ayuda: sin cambios (la recepcion sigue subiendo por delta); deuda de UI en WU-18.
+
+### WU-9 - parte 2 de 2 (e2e)
+
+Rama `feat/repuestos-numero-de-serie-wu09-2`. Tareas 9.3 y 9.4 hechas (9.1 a 9.4 completas).
+
+- e2e en `compras.e2e.spec.ts` (mismo arnes, `usarLockMasterTest()`; insumo `SERIE` y unidad `entera` por SQL directo): todos los
+  seriales, parciales (pendientes), sin seriales, parcial acumulada, delta cero idempotente, serial repetido (409 con rollback de
+  acumulado, unidades y movimientos), fraccional 422, mas seriales que el delta 422, serial de 256 caracteres 400 y seriales sobre
+  un insumo `NINGUNO` 422.

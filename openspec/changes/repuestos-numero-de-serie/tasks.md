@@ -470,8 +470,8 @@ Commit sugerido: `feat(insumos): recuperacion de una pieza descartada`.
 
 - [x] 9.1 `RegistrarRecepcionDeItemDto`: `seriales?: string[]` (`@ArrayMaxSize`, cada uno 1 a 255). `registrar-recepcion-de-item.use-case.ts`: con insumo `SERIE`, dentro de la misma transacción de hoy: delta entero (`CantidadNoEnteraError`, rechaza toda la recepción), `seriales.length ≤ delta` (`SerialesNoCoincidenError`), llama `registrarEntradaInsumo.execute({ …, seriales, completarConPendientes: true, itemCompraId })`; delta cero no crea nada (idempotencia); recepción parcial crea solo las de su delta. La recepción queda completa aunque haya pendientes. `NINGUNO` sin cambios.
 - [x] 9.2 Controller de compras: mapeo de los errores; decoradores sin cambio. El flujo de recepción no acepta `condicion` (sigue fijo en NUEVO).
-- [ ] 9.3 Specs unitarios y e2e (`usarLockMasterTest()`): recepción con todos los seriales, parciales (pendientes), con serial repetido, fraccional, parcial acumulada, delta cero idempotente; el insumo `SERIE` se prepara por SQL directo.
-- [ ] 9.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/compras src/insumos/application` y `pnpm test`.
+- [x] 9.3 Specs unitarios y e2e (`usarLockMasterTest()`): recepción con todos los seriales, parciales (pendientes), con serial repetido, fraccional, parcial acumulada, delta cero idempotente; el insumo `SERIE` se prepara por SQL directo.
+- [x] 9.4 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/compras src/insumos/application` y `pnpm test`.
 
 **Escenarios**: Recepción de compra; El flujo de recepción no acepta condición; Recepción SERIE con
 todos los seriales; Recepción SERIE con seriales parciales; Recepción SERIE con serial repetido;

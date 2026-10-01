@@ -1260,6 +1260,268 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
     });
   });
 
+  describe('repuestos-numero-de-serie — recepción de un insumo SERIE (ADR-11)', () => {
+    const PERMISOS = [
+      'COMPRAS:ALTAS',
+      'COMPRAS:MODIFICACION',
+      'COMPRAS:APROBACION',
+      'COMPRAS:LECTURA',
+    ];
+
+    /**
+     * Insumo `SERIE` preparado por SQL directo: su ABM HTTP está detrás de
+     * `AdminClienteGuard` y el cambio de seguimiento es de otro work unit. La
+     * unidad de medida se marca `entera` con la misma vía.
+     */
+    async function crearInsumoSerie(): Promise<string> {
+      const unidad = await tenantClient.unidadMedida.create({
+        data: { codigo: `UE-${randomBytes(4).toString('hex')}`, nombre: 'Pieza E2E' },
+      });
+      await tenantClient.$executeRawUnsafe(
+        `UPDATE unidades_medida SET entera = true WHERE id = '${unidad.id}'::uuid`,
+      );
+      const insumo = await tenantClient.insumo.create({
+        data: {
+          codigo: `SER-E2E-${randomBytes(4).toString('hex').toUpperCase()}`,
+          nombre: 'Disco SSD E2E',
+          familiaId: familiaInsumoId,
+          unidadMedidaId: unidad.id,
+          activo: true,
+        },
+      });
+      await tenantClient.$executeRawUnsafe(
+        `UPDATE insumos SET seguimiento = 'SERIE' WHERE id = '${insumo.id}'::uuid`,
+      );
+      return insumo.id;
+    }
+
+    async function unidadesDe(
+      insumoId: string,
+    ): Promise<{ numeroSerie: string | null; estado: string; condicion: string }[]> {
+      const filas = await tenantClient.unidadInsumo.findMany({
+        where: { insumoId },
+        orderBy: { createdAt: 'asc' },
+      });
+      return filas.map((f) => ({
+        numeroSerie: f.numeroSerie,
+        estado: f.estado,
+        condicion: f.condicion,
+      }));
+    }
+
+    async function recibir(
+      token: string,
+      compraId: string,
+      itemId: string,
+      body: Record<string, unknown>,
+    ) {
+      return httpPost<ItemCompraResponseDto>(
+        `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
+        body,
+        bearer(token),
+      );
+    }
+
+    async function recibidaEnBase(token: string, compraId: string): Promise<number> {
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        bearer(token),
+      );
+      return detalle.data.items[0].cantidadRecibida;
+    }
+
+    it('con todos los seriales crea una unidad NUEVA por pieza, con su serial', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 3, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 3,
+        seriales: [' SN-1 ', 'SN-2', 'SN-3'],
+      });
+
+      expect(res.status).toBe(200);
+      expect(await unidadesDe(insumoId)).toEqual([
+        { numeroSerie: 'SN-1', estado: 'EN_DEPOSITO', condicion: 'NUEVO' },
+        { numeroSerie: 'SN-2', estado: 'EN_DEPOSITO', condicion: 'NUEVO' },
+        { numeroSerie: 'SN-3', estado: 'EN_DEPOSITO', condicion: 'NUEVO' },
+      ]);
+      expect(await movimientosDe(insumoId)).toHaveLength(3);
+    });
+
+    it('con seriales parciales completa con unidades de serie pendiente y la recepción queda completa', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 3, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 3,
+        seriales: ['SN-1'],
+      });
+
+      expect(res.status).toBe(200);
+      expect(res.data.cantidadRecibida).toBe(3);
+      const unidades = await unidadesDe(insumoId);
+      expect(unidades.map((u) => u.numeroSerie).filter((n) => n !== null)).toEqual(['SN-1']);
+      expect(unidades).toHaveLength(3);
+    });
+
+    it('sin seriales crea todas las unidades con serie pendiente', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 2, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, { cantidadRecibida: 2 });
+
+      expect(res.status).toBe(200);
+      expect((await unidadesDe(insumoId)).map((u) => u.numeroSerie)).toEqual([null, null]);
+    });
+
+    it('la recepción parcial acumulada crea solo las piezas de cada delta', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 5, {
+        insumoId,
+      });
+
+      expect(
+        (
+          await recibir(actor.accessToken, compraId, itemId, {
+            cantidadRecibida: 2,
+            seriales: ['A-1', 'A-2'],
+          })
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await recibir(actor.accessToken, compraId, itemId, {
+            cantidadRecibida: 5,
+            seriales: ['B-1'],
+          })
+        ).status,
+      ).toBe(200);
+
+      const unidades = await unidadesDe(insumoId);
+      expect(unidades).toHaveLength(5);
+      expect(unidades.map((u) => u.numeroSerie).filter((n) => n !== null)).toEqual([
+        'A-1',
+        'A-2',
+        'B-1',
+      ]);
+    });
+
+    it('reenviar el mismo acumulado (delta cero) no crea nada', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 3, {
+        insumoId,
+      });
+      await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 2,
+        seriales: ['Z-1', 'Z-2'],
+      });
+
+      const otra = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 2,
+        seriales: ['Z-9'],
+      });
+
+      expect(otra.status).toBe(200);
+      expect(await unidadesDe(insumoId)).toHaveLength(2);
+      expect(await movimientosDe(insumoId)).toHaveLength(2);
+    });
+
+    it('un serial repetido da 409 y revierte TODA la recepción (ni acumulado, ni unidades)', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 4, {
+        insumoId,
+      });
+      await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 1,
+        seriales: ['DUP-1'],
+      });
+
+      const repetido = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 3,
+        seriales: ['dup-1', 'NUEVO-2'],
+      });
+
+      expect(repetido.status).toBe(409);
+      expect(await recibidaEnBase(actor.accessToken, compraId)).toBe(1);
+      expect(await unidadesDe(insumoId)).toHaveLength(1);
+      expect(await movimientosDe(insumoId)).toHaveLength(1);
+    });
+
+    it('una cantidad fraccional da 422 y rechaza toda la recepción', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 4, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, { cantidadRecibida: 2.5 });
+
+      expect(res.status).toBe(422);
+      expect(await recibidaEnBase(actor.accessToken, compraId)).toBe(0);
+      expect(await unidadesDe(insumoId)).toEqual([]);
+    });
+
+    it('más seriales que el delta da 422 y no crea nada', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 4, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 1,
+        seriales: ['S-1', 'S-2'],
+      });
+
+      expect(res.status).toBe(422);
+      expect(await recibidaEnBase(actor.accessToken, compraId)).toBe(0);
+      expect(await unidadesDe(insumoId)).toEqual([]);
+    });
+
+    it('un serial fuera de 1 a 255 lo rechaza el borde con 400', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoSerie();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 2, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 1,
+        seriales: ['A'.repeat(256)],
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it('seriales sobre un insumo sin seguimiento dan 422 y la recepción no se asienta', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoEnCatalogo();
+      const { compraId, itemId } = await compraConItemListoParaRecibir(actor.accessToken, 2, {
+        insumoId,
+      });
+
+      const res = await recibir(actor.accessToken, compraId, itemId, {
+        cantidadRecibida: 1,
+        seriales: ['X-1'],
+      });
+
+      expect(res.status).toBe(422);
+      expect(await recibidaEnBase(actor.accessToken, compraId)).toBe(0);
+    });
+  });
+
   it('sanity: DATABASE_URL_MASTER apunta a una DB *_test y el tenant es efímero *_test', () => {
     expect(MASTER_TEST_URL).toMatch(/_test$/);
     expect(TENANT_DB_NAME).toMatch(/^soporte_prov_comprasE2E_.*_test$/);
