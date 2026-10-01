@@ -122,11 +122,14 @@ import { RegistrarSalidaInsumoUseCase } from './application/use-cases/registrar-
 import { RegistrarAjusteInsumoUseCase } from './application/use-cases/registrar-ajuste-insumo.use-case';
 import { ConsultarStockInsumoUseCase } from './application/use-cases/consultar-stock-insumo.use-case';
 import { ListarMovimientosInsumoUseCase } from './application/use-cases/listar-movimientos-insumo.use-case';
+import { ConsultarReporteStockUseCase } from './application/use-cases/consultar-reporte-stock.use-case';
+import { ExportarReporteStockUseCase } from './application/use-cases/exportar-reporte-stock.use-case';
 
 import { FamiliasInsumoController } from './interface/controllers/familias-insumo.controller';
 import { UnidadesMedidaController } from './interface/controllers/unidades-medida.controller';
 import { ModelosEquipoController } from './interface/controllers/modelos-equipo.controller';
 import { InsumosController } from './interface/controllers/insumos.controller';
+import { ReporteStockInsumosController } from './interface/controllers/reporte-stock-insumos.controller';
 import { MovimientosInsumoController } from './interface/controllers/movimientos-insumo.controller';
 import { UnidadesInsumoController } from './interface/controllers/unidades-insumo.controller';
 import { ListarUnidadesInsumoUseCase } from './application/use-cases/listar-unidades-insumo.use-case';
@@ -139,6 +142,9 @@ import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-se
 @Module({
   imports: [AuthModule],
   controllers: [
+    // PRIMERO: `InsumosController` tiene rutas `GET /insumos/:id/...` y Nest resuelve
+    // en orden de registro; el reporte no debe caer en ninguna de ellas.
+    ReporteStockInsumosController,
     FamiliasInsumoController,
     UnidadesMedidaController,
     ModelosEquipoController,
@@ -534,6 +540,24 @@ import { CorregirSerialUnidadUseCase } from './application/use-cases/corregir-se
       useFactory: (insumoRepo: IInsumoRepository, movimientoRepo: IMovimientoInsumoRepository) =>
         new ListarMovimientosInsumoUseCase(insumoRepo, movimientoRepo),
       inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY],
+    },
+    {
+      // Reporte de stock (reporte-stock-insumos): lectura pura por lote, sin
+      // runner ni lock. `ahora` fija `generadoEn` antes de leer.
+      provide: ConsultarReporteStockUseCase,
+      useFactory: (
+        insumoRepo: IInsumoRepository,
+        movimientoRepo: IMovimientoInsumoRepository,
+        unidadRepo: IUnidadInsumoRepository,
+      ) =>
+        new ConsultarReporteStockUseCase(insumoRepo, movimientoRepo, unidadRepo, () => new Date()),
+      inject: [INSUMO_REPOSITORY, MOVIMIENTO_INSUMO_REPOSITORY, UNIDAD_INSUMO_REPOSITORY],
+    },
+    {
+      provide: ExportarReporteStockUseCase,
+      useFactory: (consultar: ConsultarReporteStockUseCase) =>
+        new ExportarReporteStockUseCase(consultar),
+      inject: [ConsultarReporteStockUseCase],
     },
   ],
   exports: [

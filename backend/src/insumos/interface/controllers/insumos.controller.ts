@@ -45,6 +45,7 @@ import { ListarInsumosUseCase } from '../../application/use-cases/listar-insumos
 import { DomainError } from '../../../shared/domain/result';
 import {
   CondicionUsadoNoAdmitidaError,
+  ExportacionStockDemasiadoGrandeError,
   InsumoNoEncontradoError,
   SecuenciaCodigoInsumoAgotadaError,
 } from '../../domain/errors/insumos.errors';
@@ -99,6 +100,11 @@ export function toHttpException(
   // repuesto es una regla de negocio (422), y el mapeo no debe depender de que
   // el default siga siendo 422.
   if (error instanceof CondicionUsadoNoAdmitidaError) {
+    return new UnprocessableEntityException(error.message);
+  }
+  // Explícito: la exportación del reporte superó el tope de filas (422, no 400
+  // ni 500: el pedido es válido, el resultado no cabe).
+  if (error instanceof ExportacionStockDemasiadoGrandeError) {
     return new UnprocessableEntityException(error.message);
   }
   return new UnprocessableEntityException(error.message);

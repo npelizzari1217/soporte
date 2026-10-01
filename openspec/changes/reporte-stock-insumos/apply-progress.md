@@ -58,3 +58,15 @@ Rama `feat/reporte-stock-insumos-wu03` (base `-wu02-2`), partido en dos ramas: `
   `new Date()` y no se podía probar que con reloj 2026-10-02T01:30Z lleve `2026-10-01`; el export pasa
   `generadoEn`, así nombre y celda "Generado el" comparten instante. Los otros callers no lo pasan.
 - Specs: `csv.spec.ts` ampliado (`cantidadCsv`), `exportar-reporte-stock.use-case.spec.ts` (13 casos).
+
+## WU-4 — Borde HTTP (completo, 7/7)
+
+Rama `feat/reporte-stock-insumos-wu04` (base `-wu03-2`).
+
+- `reporte-stock.dto.ts`: `ReporteStockQueryDto` (`familiaId` uuid, `esRepuesto`, `soloBajoMinimo`, `ocultarSinStock` con `parsearBooleanQuery`, ahora exportado de `insumos.dto.ts`) y respuesta `{ generadoEn (ISO), filas }` armada campo por campo, sin dinero.
+- `reporte-stock-insumos.controller.ts`: `@Controller('insumos/reporte-stock')`, guards de clase `JwtAuthGuard`/`TenantGuard`, `AccionesGuard` + `INSUMOS:LECTURA` por metodo, headers de descarga como `equipos.controller.ts`; los dos handlers comparten el DTO de query.
+- `insumos.module.ts`: controller registrado PRIMERO; providers de los dos use cases (`ahora: () => new Date()`, el export con el nucleo inyectado).
+- `toHttpException`: `ExportacionStockDemasiadoGrandeError` a 422 explicito.
+- Specs: controller (7 casos: metadata, filtros, headers, 422 sin headers, DTO) y e2e (9 casos, tenant efimero, `usarLockMasterTest()`).
+- Gotcha: `fetch().text()` descarta el BOM; el e2e lo verifica sobre los bytes crudos (EF BB BF).
+- El e2e limpia `insumos`/`movimientos_insumo` del tenant en cada caso (el reporte lista todos los insumos de la base).
