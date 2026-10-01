@@ -849,3 +849,12 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   equipo, sector (destino de la entrega, resuelto por el backend desde el movimiento) y motivo. La seccion abre el dialogo desde el boton "Historial" de cada fila.
 - Tests (MSW, 10 en `unidad-historial-dialog.test.tsx`): vida completa en orden, descartada con motivo, entregada con sector, correccion de serial, unidad sin historia previa,
   los 12 tipos con etiqueta distinta, devolucion de entrega y recuperacion, error, dialogo cerrado sin consulta y apertura desde la fila correcta.
+
+### WU-16a - cargar y corregir serial (16a.1 a 16a.3), rama `-wu16a`
+
+- `hooks/use-serial-unidad-mutations.ts` (`useCargarSerialUnidad` -> `POST .../unidades/:unidadId/serial`; `useCorregirSerialUnidad` -> `POST .../correccion-serial`;
+  invalidan unidades, stock y movimientos; sin toast de error) y `unidad-serial-dialog.tsx` con modos `cargar` (solo serial) y `corregir` (serial nuevo + motivo obligatorio, max 500 trimeado).
+  `schemas.ts`: `cargarSerialSchema` y `corregirSerialSchema` (reusan `numeroSerieSchema`). Un 409 se pinta en el campo del serial; otro rechazo del backend, como alerta del formulario.
+- `UnidadesInsumoSection`: botones por fila. "Cargar serial" solo en una `EN_DEPOSITO` pendiente y con `INSUMOS:ALTAS`; "Corregir serial" en una unidad con serial que no este `INSTALADA` y con `INSUMOS:AJUSTAR` (via `useCan`).
+- Tests (MSW, 7 en `unidad-serial-dialog.test.tsx`): completar pendiente (sin motivo), serial repetido 409 en el campo, correccion valida, sin motivo, correccion a serial existente, acciones ocultas sin permiso y por permiso.
+- Gates (16a.3): ver el reporte de la rama; lint y type-check en cero.

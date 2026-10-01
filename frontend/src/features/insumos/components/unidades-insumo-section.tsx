@@ -19,9 +19,11 @@ import { DataTable, type Column } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { useCan } from "@/shared/hooks/use-can";
 import { notifyError } from "@/shared/lib/toast";
 import { useUnidadesInsumo } from "../hooks/use-unidades-insumo";
 import { UnidadHistorialDialog } from "./unidad-historial-dialog";
+import { UnidadSerialDialog, type ModoSerial } from "./unidad-serial-dialog";
 import { ESTADOS_UNIDAD_INSUMO } from "../types";
 import type { CondicionStock, EstadoUnidadInsumo, UnidadInsumo } from "../types";
 
@@ -65,6 +67,9 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
     TODOS_LOS_ESTADOS,
   );
   const [conHistorial, setConHistorial] = useState<UnidadInsumo | null>(null);
+  const [conSerial, setConSerial] = useState<{ unidad: UnidadInsumo; modo: ModoSerial } | null>(null);
+  const puedeCargar = useCan("INSUMOS:ALTAS");
+  const puedeCorregir = useCan("INSUMOS:AJUSTAR");
   const query = useUnidadesInsumo(insumoId);
 
   const todas = query.data;
@@ -93,16 +98,45 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
     {
       key: "id",
       header: "",
-      render: (fila) => (
-        <Button
-          variant="outline"
-          size="sm"
-          aria-label={`Ver historial de ${fila.numeroSerie ?? SERIE_PENDIENTE.toLowerCase()}`}
-          onClick={() => setConHistorial(fila)}
-        >
-          Historial
-        </Button>
-      ),
+      render: (fila) => {
+        const etiqueta = fila.numeroSerie ?? SERIE_PENDIENTE.toLowerCase();
+        // Cargar: solo una EN_DEPOSITO pendiente. Corregir: una con serial que no esté INSTALADA
+        // (el equipo guarda el serial del componente; el backend la rechaza con 422).
+        const pendiente = fila.estado === "EN_DEPOSITO" && fila.numeroSerie === null;
+        const corregible = fila.numeroSerie !== null && fila.estado !== "INSTALADA";
+        return (
+          <div className="flex gap-2">
+            {pendiente && puedeCargar && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Cargar serial de ${etiqueta}`}
+                onClick={() => setConSerial({ unidad: fila, modo: "cargar" })}
+              >
+                Cargar serial
+              </Button>
+            )}
+            {corregible && puedeCorregir && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Corregir serial de ${etiqueta}`}
+                onClick={() => setConSerial({ unidad: fila, modo: "corregir" })}
+              >
+                Corregir serial
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Ver historial de ${etiqueta}`}
+              onClick={() => setConHistorial(fila)}
+            >
+              Historial
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -150,6 +184,12 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
         insumoId={insumoId}
         unidad={conHistorial}
         onClose={() => setConHistorial(null)}
+      />
+      <UnidadSerialDialog
+        insumoId={insumoId}
+        unidad={conSerial?.unidad ?? null}
+        modo={conSerial?.modo ?? "cargar"}
+        onClose={() => setConSerial(null)}
       />
     </section>
   );

@@ -338,6 +338,27 @@ export const numeroSerieSchema = z
     mensajeDemasiadoLargo("El número de serie", UNIDAD_SERIAL_MAX_LENGTH),
   );
 
+/** Formulario de "Cargar serial" de una unidad pendiente: solo el serial. */
+export const cargarSerialSchema = z.object({ numeroSerie: numeroSerieSchema });
+export type CargarSerialFormValues = z.infer<typeof cargarSerialSchema>;
+
+/**
+ * Formulario de "Corregir serial": el serial nuevo y el motivo, obligatorio y de
+ * hasta 500 caracteres medidos TRIMEADOS (espejo de la corrección del backend,
+ * que responde 422 `MOTIVO_CORRECCION_SERIAL_INVALIDO` sin motivo).
+ */
+export const corregirSerialSchema = z.object({
+  numeroSerie: numeroSerieSchema,
+  motivo: z
+    .string({ required_error: "El motivo es requerido" })
+    .refine((valor) => valor.trim().length > 0, "El motivo es requerido")
+    .refine(
+      (valor) => valor.trim().length <= MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH,
+      mensajeDemasiadoLargo("El motivo", MOVIMIENTO_INSUMO_MOTIVO_MAX_LENGTH),
+    ),
+});
+export type CorregirSerialFormValues = z.infer<typeof corregirSerialSchema>;
+
 /** Lista de seriales de una entrada, un ajuste o una recepción: hasta 100, cada uno válido. */
 export const serialesSchema = z
   .array(numeroSerieSchema)

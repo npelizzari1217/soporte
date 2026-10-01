@@ -622,13 +622,14 @@ Commit sugerido: `feat(insumos): ficha con unidades e historial por serial`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu16a` · **Base**: wu15
 
-- [ ] 16a.1 `unidad-serial-dialog.tsx`: modo "cargar" (unidad pendiente, sin motivo, permiso `ALTAS`) y modo "corregir" (motivo obligatorio, máx. 500, permiso `AJUSTAR`); acciones visibles según permisos del usuario; `SerialDuplicadoError` mostrado en el campo. Invalida `["insumo", id, "unidades"]`, stock y movimientos.
-- [ ] 16a.2 Tests (MSW): completar pendiente, serial repetido, corrección válida, sin motivo, acción oculta sin permiso.
-- [ ] 16a.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
+- [x] 16a.1 `unidad-serial-dialog.tsx`: modo "cargar" (unidad pendiente, sin motivo, permiso `ALTAS`) y modo "corregir" (motivo obligatorio, máx. 500, permiso `AJUSTAR`); acciones visibles según permisos del usuario; `SerialDuplicadoError` mostrado en el campo. Invalida `["insumo", id, "unidades"]`, stock y movimientos.
+- [x] 16a.2 Tests (MSW): completar pendiente, serial repetido, corrección válida, sin motivo, acción oculta sin permiso.
+- [x] 16a.3 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
 
 **Escenarios**: Completar un serial pendiente; Completar con un serial repetido; Corrección válida;
 Corrección sin motivo; Corrección a un serial existente (UI).
 **PR boundary**: ~400 líneas reales, base wu15.
+**Real**: 462 líneas (hook, schemas, diálogo, sección y sus 7 tests); sin corte limpio: separar el diálogo de la sección dejaría código sin sus tests.
 **Ayuda**: deuda en commit y PR.
 Commit sugerido: `feat(insumos): cargar y corregir el serial de una unidad`.
 
