@@ -657,6 +657,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         usuarioId: 'user-1',
         condicion: 'NUEVO',
         itemCompraId: ITEM_ID,
+        completarConPendientes: true,
       });
     });
 

@@ -37,6 +37,12 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ComprasController, toHttpException } from './compras.controller';
+import {
+  CantidadNoEnteraError,
+  SerialDuplicadoError,
+  SerialesNoCoincidenError,
+  UnidadNoAdmitidaError,
+} from '../../../insumos/domain/errors/unidades-insumo.errors';
 import { InsumoNoEncontradoError } from '../../../insumos/domain/errors/insumos.errors';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
@@ -994,6 +1000,26 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     expect(excepcion.getStatus()).toBe(422);
     expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
     expect(excepcion).not.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('toHttpException — errores de la recepción de un insumo SERIE (ADR-11)', () => {
+  it('SerialDuplicadoError → 409', () => {
+    const excepcion = toHttpException(new SerialDuplicadoError('SN-1'));
+
+    expect(excepcion.getStatus()).toBe(409);
+    expect(excepcion).toBeInstanceOf(ConflictException);
+  });
+
+  it.each([
+    ['UnidadNoAdmitidaError', () => new UnidadNoAdmitidaError('insumo-1')],
+    ['SerialesNoCoincidenError', () => new SerialesNoCoincidenError(2, 3)],
+    ['CantidadNoEnteraError', () => new CantidadNoEnteraError(1.5)],
+  ])('%s → 422', (_nombre, factory) => {
+    const excepcion = toHttpException(factory());
+
+    expect(excepcion.getStatus()).toBe(422);
+    expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
   });
 });
 

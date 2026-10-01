@@ -564,3 +564,19 @@ Rama `feat/repuestos-numero-de-serie-wu08d-2`. Tareas 8d.2, 8d.4 y 8d.5 hechas (
   404 de insumo dado de baja y de unidad ajena, 400, 403 sin `AJUSTAR`, e historial con `RECUPERACION`.
 - Ayuda: `permisos-y-roles.md` corregido (fila de la tabla y parrafo de `AJUSTAR`: ya no es "la unica operacion"; cubre tambien
   corregir un serial y recuperar una pieza). Deuda de UI en WU-16b.
+
+## WU-9 - Recepcion de compra `SERIE` (compras)
+
+Rama `feat/repuestos-numero-de-serie-wu09`. Parte 1 de 2 (codigo y tests unitarios). Tareas 9.1 y 9.2 hechas; 9.3 (e2e) y 9.4 en la parte 2.
+
+- `RegistrarRecepcionDeItemHttpDto.seriales?` (`@ArrayMaxSize(100)`, `transformarSeriales` + `@EsSerialDeUnidad({each})`:
+  largo recortado y normalizado 1..255, 400 si no). `RegistrarRecepcionDeItemDto.seriales?` viaja a la entrada junto con
+  `completarConPendientes: true`; sin `seriales` no se manda la clave (un insumo `NINGUNO` rechazaria `[]`).
+- La validacion de delta entero (`CantidadNoEnteraError`) y `seriales.length <= delta` (`SerialesNoCoincidenError`) la hace la
+  entrada (`ingresarPorSerie`), dentro de la misma transaccion; el use case de recepcion ya LANZA ante `isFail` (`FalloEntradaDeStock`),
+  asi que cualquier fallo (incluido un `P2002` anidado) revierte acumulado, bitacora y unidades. Delta cero no llama a la entrada.
+- Controller: `toHttpException` mapea `SerialDuplicadoError` a 409 y lista `UnidadNoAdmitida`, `SerialesNoCoinciden` y
+  `CantidadNoEntera` como 422 (se importan las clases de insumos; no se importa `toHttpExceptionMovimiento` para no arrastrar el
+  controller de insumos ni cambiar el mapeo de `InsumoNoEncontradoError` a 422). El catalogo de errores de compras no cambia.
+- Tests: unit (pasa seriales, sin seriales, delta cero, duplicado revierte), DTO (7 casos) y controller (mapeo).
+- Ayuda: sin cambios (la recepcion sigue subiendo por delta); deuda de UI en WU-18.
