@@ -530,7 +530,7 @@ describe('OperacionesUnidadInsumo — Integration', () => {
     ).toBe('K-3');
   });
 
-  it('corregirSerial sobre una unidad INSTALADA se devuelve como Result.fail y, aun con commit, no escribe', async () => {
+  it('corregirSerial sobre una unidad INSTALADA cambia el serial, conserva estado y equipo y audita', async () => {
     const alta = await conTenant(() =>
       txRunner.run(() =>
         servicio.ingresar(insumoId, [{ numeroSerie: 'I-1' }], {
@@ -541,7 +541,7 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       ),
     );
     const id = alta.getValue()[0].unidad.id;
-    // La instalación llega con WU-5; acá se fija el estado directo para probar el rechazo.
+    // Se fija el estado directo: lo que se prueba es la corrección, no la instalación.
     const equipo = await tenantClient.equipoInformatico.create({
       data: { nombre: `${PREFIJO}EQ` },
     });
@@ -549,14 +549,28 @@ describe('OperacionesUnidadInsumo — Integration', () => {
       where: { id },
       data: { estado: 'INSTALADA', equipoId: equipo.id },
     });
-    const antes = await contar();
 
     const r = await conTenant(() =>
       txRunner.run(() => servicio.corregirSerial(id, 'I-9', { usuarioId, motivo: 'typo' })),
     );
 
-    expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
-    expect(await contar()).toEqual(antes);
+    expect(r.isOk()).toBe(true);
+    const fila = await tenantClient.unidadInsumo.findUniqueOrThrow({ where: { id } });
+    expect(fila).toMatchObject({
+      estado: 'INSTALADA',
+      equipoId: equipo.id,
+      numeroSerie: 'I-9',
+      numeroSerieNormalizado: 'I-9',
+    });
+    const evento = await tenantClient.eventoUnidadInsumo.findFirstOrThrow({
+      where: { unidadId: id, tipo: 'CORRECCION_SERIAL' },
+    });
+    expect(evento).toMatchObject({
+      serialAnterior: 'I-1',
+      serialNuevo: 'I-9',
+      motivo: 'typo',
+      usuarioId,
+    });
   });
 
   describe('operaciones de equipo (WU-5)', () => {

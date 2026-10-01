@@ -104,10 +104,10 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
       header: "",
       render: (fila) => {
         const etiqueta = fila.numeroSerie ?? SERIE_PENDIENTE.toLowerCase();
-        // Cargar: solo una EN_DEPOSITO pendiente. Corregir: una con serial que no esté INSTALADA
-        // (el equipo guarda el serial del componente; el backend la rechaza con 422).
+        // Cargar: solo una EN_DEPOSITO pendiente. Corregir: cualquiera con serial, también una
+        // INSTALADA (el componente resuelve el serial desde la unidad).
         const pendiente = fila.estado === "EN_DEPOSITO" && fila.numeroSerie === null;
-        const corregible = fila.numeroSerie !== null && fila.estado !== "INSTALADA";
+        const corregible = fila.numeroSerie !== null;
         return (
           <div className="flex gap-2">
             {pendiente && puedeCargar && (

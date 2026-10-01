@@ -906,3 +906,17 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - `DEPLOY-VPS-runbook.md`: seccion "Rollback del tracker `repuestos-numero-de-serie`" (detector de solo lectura por tenant con `insumos_serie`, `unidades` y `movimientos_con_unidad`; regla en 0 / > 0; via fiel = dump de `predeploy-dump.ps1`; consulta de conciliacion de `movimientos_insumo` con `unidad_id IS NULL` en insumos `SERIE`) y seccion "Verificacion de `repuestos-numero-de-serie`" (`\d unidades_insumo`, detector en 0, `unidades_medida` con `UNI` y `PAR` en `true`, `UNI` renombrada se marca a mano). Las bases de tenant salen del registro `clientes`, sin hardcodear.
 - Identificadores SQL verificados contra `20260930140000_unidades_insumo_serie/migration.sql`. Ningun `.ps1` cambia.
 - Ayuda: sin deuda.
+
+### fix01 - corregir el serial de una unidad instalada (CRITICAL de verify-report), rama `-fix01`
+
+- Defecto: `corregirSerial` rechazaba una unidad `INSTALADA`, contra el escenario "Corregir una unidad instalada". La tarea 4b.2 habia codificado el rechazo; se enmienda en tasks.md.
+- Fix: se quita la guarda en `OperacionesUnidadInsumo.corregirSerial`. El orden de locks no cambia (L1 -> L2 -> L3 sobre la unidad); L4 no se escribe porque `componentes_equipo.numero_serie` queda NULL y el serial se resuelve desde la unidad. Motivo obligatorio y P2002 -> `SerialDuplicadoError` intactos. `EditarComponenteUseCase` sigue rechazando el serial en un componente con unidad: la via es la unidad.
+- Frontend: "Corregir serial" tambien para unidades `INSTALADA` (sigue exigiendo `INSUMOS:AJUSTAR`).
+- Ayuda: sin cambios; `permisos-y-roles.md` (AJUSTAR corrige el serie de una pieza) sigue siendo cierto.
+
+| Test | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| service spec: corrige una INSTALADA (estado, equipo, evento) | falla (devolvia `UnidadNoDisponibleError`) | pasa | comentario del metodo actualizado |
+| integration: corregirSerial sobre INSTALADA cambia serial, conserva estado/equipo, audita | `isOk()` false | pasa | - |
+| e2e: 201 sobre INSTALADA, sigue instalada, evento | 422 en vez de 201 | pasa | quitado el caso "422 sobre una instalada" |
+| frontend MSW: unidad instalada tambien se corrige | boton ausente | pasa | comentario de la seccion |

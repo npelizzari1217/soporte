@@ -620,16 +620,30 @@ describe('OperacionesUnidadInsumo', () => {
       expect(ok.isOk()).toBe(true);
     });
 
-    it('rechaza una unidad INSTALADA, una pendiente y un serial vacío sin escribir', async () => {
-      const instalada = unidad(U1);
+    it('corrige una unidad INSTALADA: conserva el estado y el equipo y deja el evento', async () => {
+      const instalada = unidad(U1, { serial: 'OLD-1' });
       instalada.instalar('eq-1');
-      const t = armar({
-        unidades: [instalada, unidad(U2, { serial: null }), unidad(U3)],
+      const t = armar({ unidades: [instalada] });
+      const r = await t.servicio.corregirSerial(U1, 'NEW-1', { usuarioId: 'u-7', motivo: 'typo' });
+      expect(r.getValue()).toMatchObject({
+        estado: 'INSTALADA',
+        equipoId: 'eq-1',
+        numeroSerie: 'NEW-1',
       });
-      const r1 = await t.servicio.corregirSerial(U1, 'X', { usuarioId: 'u', motivo: 'm' });
+      expect(t.llamadas.filter((l) => l.startsWith('W:cas'))).toEqual(['W:cas:INSTALADA']);
+      expect(t.eventos[0]).toMatchObject({
+        tipo: 'CORRECCION_SERIAL',
+        serialAnterior: 'OLD-1',
+        serialNuevo: 'NEW-1',
+        motivo: 'typo',
+        usuarioId: 'u-7',
+      });
+    });
+
+    it('rechaza una pendiente y un serial vacío sin escribir', async () => {
+      const t = armar({ unidades: [unidad(U2, { serial: null }), unidad(U3)] });
       const r2 = await t.servicio.corregirSerial(U2, 'X', { usuarioId: 'u', motivo: 'm' });
       const r3 = await t.servicio.corregirSerial(U3, '  ', { usuarioId: 'u', motivo: 'm' });
-      expect(r1.getError()).toBeInstanceOf(UnidadNoDisponibleError);
       expect(r2.getError()).toBeInstanceOf(UnidadNoDisponibleError);
       expect(r3.getError()).toBeInstanceOf(SerialRequeridoError);
       expect(t.escribio()).toBe(false);

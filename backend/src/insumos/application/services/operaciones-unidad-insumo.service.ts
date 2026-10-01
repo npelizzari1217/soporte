@@ -578,8 +578,11 @@ export class OperacionesUnidadInsumo {
   /**
    * Corrige el serial de una unidad que ya lo tiene, con el motivo obligatorio:
    * el evento `CORRECCION_SERIAL` (serial anterior, serial nuevo, motivo y
-   * usuario) es el registro auditado. Se rechaza una unidad `INSTALADA` (su
-   * serial se corrige desde el componente) y una pendiente (se carga).
+   * usuario) es el registro auditado. Vale en cualquier estado, también
+   * `INSTALADA` (la unidad sigue instalada en su equipo): el componente tiene
+   * `numero_serie` NULL y resuelve el serial desde la unidad, así que L4 no se
+   * escribe y el orden de locks L1 → L2 → L3 no cambia. Se rechaza una pendiente
+   * (se carga).
    *
    * @param unidadId Unidad con serial.
    * @param numeroSerie Serial nuevo, crudo.
@@ -608,15 +611,6 @@ export class OperacionesUnidadInsumo {
     const leida = await this.leerUnidadBajoLock(unidadId);
     if (leida.isFail()) return Result.fail(leida.getError());
     const unidad = leida.getValue();
-
-    if (unidad.estado === 'INSTALADA') {
-      return Result.fail(
-        new UnidadNoDisponibleError(
-          unidad.id,
-          'está instalada en un equipo; su serial no se corrige desde la unidad.',
-        ),
-      );
-    }
 
     const estadoLeido = unidad.estado;
     const corregida = unidad.corregirSerial(numeroSerie);

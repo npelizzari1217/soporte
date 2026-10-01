@@ -95,6 +95,23 @@ describe("UnidadSerialDialog (desde la sección de unidades)", () => {
     });
   });
 
+  it("una unidad instalada también se corrige, con su motivo", async () => {
+    const instalada = buildUnidad({ estado: "INSTALADA", equipoId: "eq-1", equipoNombre: "PC-1" });
+    mockUnidades([instalada]);
+    const llamadas = mockPost("correccion-serial", () =>
+      HttpResponse.json({ ...instalada, numeroSerie: "SN-002" }),
+    );
+    renderWithProviders(<UnidadesInsumoSection insumoId={INSUMO_ID} />, { user: AJUSTAR });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Corregir serial de SN-001" }));
+    await userEvent.type(screen.getByLabelText("Número de serie nuevo"), "SN-002");
+    await userEvent.type(screen.getByLabelText("Motivo de la corrección"), "Error de tipeo");
+    await userEvent.click(screen.getByRole("button", { name: "Corregir serial" }));
+
+    await waitFor(() => expect(llamadas).toHaveLength(1));
+    expect(llamadas[0].body).toEqual({ numeroSerie: "SN-002", motivo: "Error de tipeo" });
+  });
+
   it("la corrección sin motivo no se envía y lo pide en pantalla", async () => {
     mockUnidades([buildUnidad()]);
     const llamadas = mockPost("correccion-serial", () => HttpResponse.json(buildUnidad()));

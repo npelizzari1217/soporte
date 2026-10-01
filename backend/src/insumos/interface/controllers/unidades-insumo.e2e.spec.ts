@@ -593,14 +593,10 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
       });
     });
 
-    it('422 sin motivo; 409 a un serial existente; 422 sobre una instalada', async () => {
+    it('422 sin motivo; 409 a un serial existente', async () => {
       const e = await prepararEscenario();
-      const [u1, u2] = await ingresar(e, ['SN-1', 'SN-2']);
+      const [u1] = await ingresar(e, ['SN-1', 'SN-2']);
       const ruta = (id: string): string => `${base(e.insumoId)}/unidades/${id}/correccion-serial`;
-      await tenantPool.query(
-        `UPDATE unidades_insumo SET estado = 'INSTALADA', equipo_id = $2 WHERE id = $1`,
-        [u2, await crearEquipo('Equipo')],
-      );
 
       const sinMotivo = await httpPost(ruta(u1), { numeroSerie: 'SN-X' }, bearer(e.token));
       const motivoBlanco = await httpPost(
@@ -613,16 +609,44 @@ describe('Unidades de insumo SERIE e2e — borde HTTP', () => {
         { numeroSerie: 'sn-2', motivo: 'Corrige' },
         bearer(e.token),
       );
-      const instalada = await httpPost(
-        ruta(u2),
-        { numeroSerie: 'SN-Y', motivo: 'Corrige' },
-        bearer(e.token),
-      );
 
       expect(sinMotivo.status).toBe(422);
       expect(motivoBlanco.status).toBe(422);
       expect(existente.status).toBe(409);
-      expect(instalada.status).toBe(422);
+    });
+
+    it('corrige una unidad INSTALADA: 201, sigue instalada en su equipo y deja el evento', async () => {
+      const e = await prepararEscenario();
+      const [u1] = await ingresar(e, ['SN-1']);
+      const equipoId = await crearEquipo('Equipo');
+      await tenantPool.query(
+        `UPDATE unidades_insumo SET estado = 'INSTALADA', equipo_id = $2 WHERE id = $1`,
+        [u1, equipoId],
+      );
+
+      const res = await httpPost<UnidadInsumoResponseDto>(
+        `${base(e.insumoId)}/unidades/${u1}/correccion-serial`,
+        { numeroSerie: 'SN-1B', motivo: 'Error de tipeo' },
+        bearer(e.token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data).toMatchObject({ numeroSerie: 'SN-1B', estado: 'INSTALADA', equipoId });
+      const fila = await tenantPool.query(
+        `SELECT estado, equipo_id, numero_serie FROM unidades_insumo WHERE id = $1`,
+        [u1],
+      );
+      expect(fila.rows[0]).toMatchObject({
+        estado: 'INSTALADA',
+        equipo_id: equipoId,
+        numero_serie: 'SN-1B',
+      });
+      const h = await historial(e, u1);
+      expect(h.find((x) => x.tipo === 'CORRECCION_SERIAL')).toMatchObject({
+        serialAnterior: 'SN-1',
+        serialNuevo: 'SN-1B',
+        motivo: 'Error de tipeo',
+      });
     });
   });
 
