@@ -711,9 +711,9 @@ Commit sugerido: `feat(equipos): unidad o serial en el alta y retiro de componen
 
 **Branch**: `feat/repuestos-numero-de-serie-wu20` · **Base**: wu19
 
-- [ ] 20.1 `DEPLOY-VPS-runbook.md`: sección "Rollback del tracker `repuestos-numero-de-serie`" con el detector de solo lectura por tenant (ADR-10: `insumos_serie` y `unidades`; agregar el conteo de movimientos que referencian unidades), la regla (ambos en 0: revertir código es gratis y la migración queda; mayores que 0: preferir corregir hacia adelante, vía fiel = restaurar el dump de `predeploy-dump.ps1`, y la consulta de conciliación de `movimientos_insumo` con `unidad_id IS NULL` en insumos `SERIE` antes de volver a desplegar), y el paso de verificación post-deploy (`\d unidades_insumo`, detector en 0, `SELECT codigo, entera FROM unidades_medida` con `UNI` y `PAR` en `true`; un tenant que renombró `UNI` se marca a mano).
-- [ ] 20.2 Sin cambios a `deploy.ps1` ni a ningún `.ps1` (ASCII, sin BOM; no se agrega script). Verificar el texto con `rg -n "Rollback del tracker" DEPLOY-VPS-runbook.md`.
-- [ ] 20.3 Quality gates: documentación solamente; `git diff --stat` confirma que solo cambia el runbook.
+- [x] 20.1 `DEPLOY-VPS-runbook.md`: sección "Rollback del tracker `repuestos-numero-de-serie`" con el detector de solo lectura por tenant (ADR-10: `insumos_serie` y `unidades`; agregar el conteo de movimientos que referencian unidades), la regla (ambos en 0: revertir código es gratis y la migración queda; mayores que 0: preferir corregir hacia adelante, vía fiel = restaurar el dump de `predeploy-dump.ps1`, y la consulta de conciliación de `movimientos_insumo` con `unidad_id IS NULL` en insumos `SERIE` antes de volver a desplegar), y el paso de verificación post-deploy (`\d unidades_insumo`, detector en 0, `SELECT codigo, entera FROM unidades_medida` con `UNI` y `PAR` en `true`; un tenant que renombró `UNI` se marca a mano).
+- [x] 20.2 Sin cambios a `deploy.ps1` ni a ningún `.ps1` (ASCII, sin BOM; no se agrega script). Verificar el texto con `rg -n "Rollback del tracker" DEPLOY-VPS-runbook.md`.
+- [x] 20.3 Quality gates: documentación solamente; `git diff --stat` confirma que solo cambia el runbook.
 
 **Escenarios**: Migración aditiva y rollback (criterio de éxito de la propuesta).
 **PR boundary**: ~100 líneas, base wu19.

@@ -900,3 +900,9 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - `useReactivarComponente`: el 422 `UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE` muestra un mensaje claro. El codigo NO viaja en el cuerpo (`error` es el texto HTTP), asi que se reconoce por el texto del mensaje del backend.
 - Tests (MSW): retiro legado precargado / vacio / descarte / con unidad, edicion con unidad, reactivar con unidad recuperada.
 - Ayuda: `rg componente backend/ayuda/` no encuentra ningun articulo que esta UI vuelva falso; deuda anotada.
+
+### WU-20 - runbook: rollback y detector del tracker (20.1 a 20.3), rama `-wu20`
+
+- `DEPLOY-VPS-runbook.md`: seccion "Rollback del tracker `repuestos-numero-de-serie`" (detector de solo lectura por tenant con `insumos_serie`, `unidades` y `movimientos_con_unidad`; regla en 0 / > 0; via fiel = dump de `predeploy-dump.ps1`; consulta de conciliacion de `movimientos_insumo` con `unidad_id IS NULL` en insumos `SERIE`) y seccion "Verificacion de `repuestos-numero-de-serie`" (`\d unidades_insumo`, detector en 0, `unidades_medida` con `UNI` y `PAR` en `true`, `UNI` renombrada se marca a mano). Las bases de tenant salen del registro `clientes`, sin hardcodear.
+- Identificadores SQL verificados contra `20260930140000_unidades_insumo_serie/migration.sql`. Ningun `.ps1` cambia.
+- Ayuda: sin deuda.
