@@ -4,6 +4,7 @@ import { MovimientoInsumoEntity } from '../../domain/entities/movimiento-insumo.
 import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
 import { MotivoAjusteRequeridoError } from '../../domain/errors/insumos.errors';
 import {
+  DevolucionConPiezasProblematicasError,
   MotivoCorreccionSerialInvalidoError,
   SeguimientoNoModificableError,
   SerialDuplicadoError,
@@ -15,6 +16,7 @@ import {
 } from '../../domain/errors/unidades-insumo.errors';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import { SeguimientoInsumo } from '../../domain/entities/unidad-insumo.entity';
+import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
 import { OperacionesUnidadInsumo } from './operaciones-unidad-insumo.service';
 
 const INSUMO = '11111111-1111-4111-8111-111111111111';
@@ -38,6 +40,10 @@ function armar(opciones: {
   unidades?: UnidadInsumoEntity[];
   /** Historia previa por unidad, para el guard de `reinstalar`. */
   historias?: Record<string, EventoUnidadInsumoEntity[]>;
+  /** Seriales normalizados que `serialesExistentes` dice que ya existen (por insumo). */
+  existentes?: Record<string, string[]>;
+  /** Hace que el INSERT de una unidad nueva choque contra el índice único (P2002 residual). */
+  chocaAlInsertar?: boolean;
 }) {
   const llamadas: string[] = [];
   const escritas: Array<{ id: string; estado: EstadoUnidadInsumo }> = [];
@@ -73,7 +79,15 @@ function armar(opciones: {
       },
       insertar: async (u) => {
         llamadas.push('W:insertar');
+        if (opciones.chocaAlInsertar === true) {
+          throw new FalloOperacionDeUnidad(new SerialDuplicadoError(u.numeroSerie ?? ''));
+        }
         insertadas.push(u);
+      },
+      serialesExistentes: async (insumoId, normalizados) => {
+        llamadas.push(`S:${insumoId}:${normalizados.join(',')}`);
+        const existentes = opciones.existentes?.[insumoId] ?? [];
+        return new Set(normalizados.filter((n) => existentes.includes(n)));
       },
       guardarConEstadoEsperado: async (u, esperado) => {
         llamadas.push(`W:cas:${esperado}`);
@@ -820,6 +834,192 @@ describe('OperacionesUnidadInsumo', () => {
           expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
           expect(t.escribio()).toBe(false);
         }
+      });
+    });
+
+    describe('devolverAlDeposito (regresión sobre devolverDesdeEquipo)', () => {
+      it('conserva el orden de locks L1, L2, L3 y no consulta seriales', async () => {
+        const t = armar({ unidades: [instalada(U2), instalada(U1)] });
+        const r = await t.servicio.devolverAlDeposito([item(U2, C2), item(U1, C1)], {
+          usuarioId: 'u',
+        });
+        expect(r.getValue().map((x) => x.unidad.id)).toEqual([U2, U1]);
+        expect(t.llamadas.filter((l) => /^(L|S)/.test(l))).toEqual([
+          `L1:${INSUMO}`,
+          `L2:${INSUMO}`,
+          `L3:${U1},${U2}`,
+        ]);
+      });
+
+      it('un lote vacío no toma locks ni escribe', async () => {
+        const t = armar({});
+        expect((await t.servicio.devolverAlDeposito([], { usuarioId: 'u' })).getValue()).toEqual(
+          [],
+        );
+        expect(t.llamadas).toEqual([]);
+      });
+    });
+
+    describe('devolverDesdeEquipo', () => {
+      const legado = (componenteId: string, numeroSerie: string, insumoId = INSUMO) => ({
+        componenteId,
+        insumoId,
+        equipoId: EQ,
+        numeroSerie,
+      });
+
+      it('devuelve varias unidades en una transaccion', async () => {
+        const t = armar({ unidades: [instalada(U1), instalada(U2), instalada(U3)] });
+        const r = await t.servicio.devolverDesdeEquipo(
+          [item(U1, C1), item(U2, C2), item(U3, C3)],
+          [],
+          { usuarioId: 'u', motivo: 'baja' },
+        );
+        expect([...r.getValue().keys()]).toEqual([C1, C2, C3]);
+        expect(t.escritas.map((e) => e.estado)).toEqual([
+          'EN_DEPOSITO',
+          'EN_DEPOSITO',
+          'EN_DEPOSITO',
+        ]);
+        expect(t.eventos.map((e) => e.tipo)).toEqual(Array(3).fill('RETIRO_A_DEPOSITO'));
+      });
+
+      it('un lote mixto devuelve las unidades y da de alta los legados USADO con INGRESO y equipoId', async () => {
+        const t = armar({ unidades: [instalada(U1)] });
+        const r = await t.servicio.devolverDesdeEquipo([item(U1, C1)], [legado(C2, ' sn 77 ')], {
+          usuarioId: 'u',
+          motivo: 'baja',
+        });
+        const porComponente = r.getValue();
+        expect(porComponente.get(C1)?.unidad.estado).toBe('EN_DEPOSITO');
+        expect(porComponente.get(C2)?.unidad).toMatchObject({
+          estado: 'EN_DEPOSITO',
+          condicion: 'USADO',
+          numeroSerieNormalizado: 'SN77',
+        });
+        expect(t.movimientos.map((m) => [m.tipo, m.condicion, m.cantidad, m.equipoId])).toEqual([
+          ['ENTRADA', 'USADO', 1, EQ],
+          ['ENTRADA', 'USADO', 1, EQ],
+        ]);
+        expect(t.eventos.map((e) => [e.tipo, e.equipoId, e.componenteId])).toEqual([
+          ['RETIRO_A_DEPOSITO', EQ, C1],
+          ['INGRESO', EQ, C2],
+        ]);
+        expect(t.insertadas).toHaveLength(1);
+      });
+
+      it('toma L1 de todos los insumos, luego L2 de todos, bajo L2 consulta seriales y recién después toma L3, en orden de id', async () => {
+        const t = armar({ unidades: [instalada(U1, { insumo: OTRO_INSUMO })] });
+        await t.servicio.devolverDesdeEquipo([item(U1, C1)], [legado(C2, 'a1')], {
+          usuarioId: 'u',
+        });
+        expect(t.llamadas.filter((l) => /^(L|S)/.test(l))).toEqual([
+          `L1:${INSUMO}`,
+          `L1:${OTRO_INSUMO}`,
+          `L2:${INSUMO}`,
+          `L2:${OTRO_INSUMO}`,
+          `S:${INSUMO}:A1`,
+          `L3:${U1}`,
+        ]);
+        expect(t.llamadas.findIndex((l) => l.startsWith('W:'))).toBeGreaterThan(
+          t.llamadas.indexOf(`L3:${U1}`),
+        );
+      });
+
+      it('un legado no toma L3 y un lote solo de legados no lo pide', async () => {
+        const t = armar({});
+        await t.servicio.devolverDesdeEquipo([], [legado(C1, 'a1'), legado(C2, 'b2')], {
+          usuarioId: 'u',
+        });
+        expect(t.llamadas.some((l) => l.startsWith('L3'))).toBe(false);
+        expect(t.insertadas).toHaveLength(2);
+      });
+
+      it('una unidad que ya no esta INSTALADA rechaza el lote sin cambios', async () => {
+        const t = armar({ unidades: [instalada(U1), unidad(U2)] });
+        const r = await t.servicio.devolverDesdeEquipo(
+          [item(U1, C1), item(U2, C2)],
+          [legado(C3, 'x9')],
+          { usuarioId: 'u' },
+        );
+        expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+        expect(t.escribio()).toBe(false);
+      });
+
+      it('una unidad INSTALADA en otro equipo rechaza el lote sin cambios', async () => {
+        const t = armar({ unidades: [instalada(U1), instalada(U2)] });
+        const r = await t.servicio.devolverDesdeEquipo(
+          [item(U1, C1), item(U2, C2, 'eq-otro')],
+          [],
+          { usuarioId: 'u' },
+        );
+        expect(r.getError()).toBeInstanceOf(UnidadNoDisponibleError);
+        expect(t.escribio()).toBe(false);
+      });
+
+      it('SERIAL_DUPLICADO bajo L2 falla antes de L3 y sin escribir', async () => {
+        const t = armar({ unidades: [instalada(U1)], existentes: { [INSUMO]: ['DUP'] } });
+        const r = await t.servicio.devolverDesdeEquipo(
+          [item(U1, C1)],
+          [legado(C2, 'dup'), legado(C3, 'ok')],
+          { usuarioId: 'u' },
+        );
+        const error = r.getError() as DevolucionConPiezasProblematicasError;
+        expect(error).toBeInstanceOf(DevolucionConPiezasProblematicasError);
+        expect(error.piezas).toEqual([
+          { componenteId: C2, insumoId: INSUMO, causa: 'SERIAL_DUPLICADO' },
+        ]);
+        expect(t.llamadas.some((l) => l.startsWith('L3'))).toBe(false);
+        expect(t.escribio()).toBe(false);
+      });
+
+      it('une las causas previas con SERIAL_DUPLICADO, todas juntas y sin escribir', async () => {
+        const t = armar({ unidades: [instalada(U1)], existentes: { [INSUMO]: ['DUP'] } });
+        const r = await t.servicio.devolverDesdeEquipo(
+          [item(U1, C1)],
+          [legado(C2, 'dup')],
+          { usuarioId: 'u' },
+          [{ componenteId: 'comp-9', insumoId: OTRO_INSUMO, causa: 'INSUMO_BORRADO' }],
+        );
+        const error = r.getError() as DevolucionConPiezasProblematicasError;
+        expect(error.piezas.map((p) => [p.componenteId, p.causa])).toEqual([
+          ['comp-9', 'INSUMO_BORRADO'],
+          [C2, 'SERIAL_DUPLICADO'],
+        ]);
+        expect(t.llamadas.some((l) => l.startsWith('L3'))).toBe(false);
+        expect(t.escribio()).toBe(false);
+      });
+
+      it('causas previas sin piezas que devolver fallan sin tomar locks', async () => {
+        const t = armar({});
+        const r = await t.servicio.devolverDesdeEquipo([], [], { usuarioId: 'u' }, [
+          { componenteId: C1, insumoId: INSUMO, causa: 'SERIAL_REQUERIDO' },
+        ]);
+        expect(r.getError()).toBeInstanceOf(DevolucionConPiezasProblematicasError);
+        expect(t.llamadas).toEqual([]);
+      });
+
+      it('un P2002 residual del INSERT se relanza como SERIAL_DUPLICADO de la pieza cuyo serial chocó', async () => {
+        const t = armar({ chocaAlInsertar: true });
+        const intento = t.servicio.devolverDesdeEquipo([], [legado(C1, 'a1'), legado(C2, 'b2')], {
+          usuarioId: 'u',
+        });
+        const fallo = await intento.then(
+          () => null,
+          (e: unknown) => e,
+        );
+        expect(fallo).toBeInstanceOf(FalloOperacionDeUnidad);
+        expect((fallo as FalloOperacionDeUnidad).errorDeDominio).toMatchObject({
+          code: 'DEVOLUCION_PIEZAS_PROBLEMATICAS',
+          piezas: [{ componenteId: C1, insumoId: INSUMO, causa: 'SERIAL_DUPLICADO' }],
+        });
+      });
+
+      it('un insumo que no es SERIE rechaza el lote tras L1, sin L2 ni escritura', async () => {
+        const t = armar({ seguimiento: 'NINGUNO' });
+        const r = await t.servicio.devolverDesdeEquipo([], [legado(C1, 'a1')], { usuarioId: 'u' });
+        expect(r.getError()).toBeInstanceOf(UnidadNoAdmitidaError);
+        expect(t.llamadas).toEqual([`L1:${INSUMO}`]);
       });
     });
 

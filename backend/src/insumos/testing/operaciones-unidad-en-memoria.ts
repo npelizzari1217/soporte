@@ -26,6 +26,7 @@ export function operacionesEnMemoria(
       }),
     ),
     guardarConEstadoEsperado: vi.fn(async () => undefined),
+    serialesExistentes: vi.fn(async () => new Set<string>()),
   };
   const operaciones = new OperacionesUnidadInsumo(
     { leerSeguimientoParaMovimiento: vi.fn(async () => seguimiento) },

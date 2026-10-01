@@ -6,9 +6,14 @@ import {
   normalizarMotivoMovimiento,
 } from '../../domain/entities/movimiento-insumo.entity';
 import { CondicionStock } from '../../domain/entities/tipo-movimiento-insumo';
-import { EstadoUnidadInsumo, UnidadInsumoEntity } from '../../domain/entities/unidad-insumo.entity';
+import {
+  EstadoUnidadInsumo,
+  UnidadInsumoEntity,
+  normalizarSerial,
+} from '../../domain/entities/unidad-insumo.entity';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import {
+  DevolucionConPiezasProblematicasError,
   MotivoCorreccionSerialInvalidoError,
   SeguimientoNoModificableError,
   SerialDuplicadoError,
@@ -17,10 +22,12 @@ import {
   UnidadNoDisponibleError,
   UnidadNoEncontradaError,
 } from '../../domain/errors/unidades-insumo.errors';
+import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
 import { IEventoUnidadInsumoRepository } from '../../domain/ports/i-evento-unidad-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
 import { IUnidadInsumoRepository } from '../../domain/ports/i-unidad-insumo.repository';
+import { CausaPieza } from './clasificar-pieza-devuelta';
 
 /** Quién opera y por qué; lo comparte todo el lote. */
 export interface ContextoUnidad {
@@ -46,6 +53,14 @@ export interface ItemEnEquipo {
    * (el `insumoId` de una unidad es inmutable, así que la lectura sin lock alcanza).
    */
   insumoId?: string;
+}
+
+/** Un componente legado (serial de texto, sin unidad) de un insumo `SERIE` que vuelve de un equipo (ADR-3). */
+export interface LegadoEnEquipo {
+  componenteId: string;
+  insumoId: string;
+  equipoId: string;
+  numeroSerie: string;
 }
 
 /** Una escritura sin movimiento: unidad (CAS o INSERT) y evento. */
@@ -95,7 +110,7 @@ export class OperacionesUnidadInsumo {
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'bloquearStock' | 'insert'>,
     private readonly unidadRepo: Pick<
       IUnidadInsumoRepository,
-      'insertar' | 'bloquearPorIds' | 'guardarConEstadoEsperado' | 'findById'
+      'insertar' | 'bloquearPorIds' | 'guardarConEstadoEsperado' | 'findById' | 'serialesExistentes'
     >,
     private readonly eventoRepo: Pick<IEventoUnidadInsumoRepository, 'insert' | 'listarPorUnidad'>,
   ) {}
@@ -377,11 +392,67 @@ export class OperacionesUnidadInsumo {
     items: readonly ItemEnEquipo[],
     o: ContextoUnidad,
   ): Promise<Result<UnidadConMovimiento[], DomainError>> {
-    const lote = await this.leerLoteEnEquipo(items);
+    const devueltas = await this.devolverDesdeEquipo(items, [], o);
+    if (devueltas.isFail()) return Result.fail(devueltas.getError());
+    const porComponente = devueltas.getValue();
+    return Result.ok(
+      items.map((item) => porComponente.get(item.componenteId) as UnidadConMovimiento),
+    );
+  }
+
+  /**
+   * Devuelve al depósito, en UNA pasada de locks, las piezas de un equipo dado
+   * de baja (ADR-3): las unidades (`INSTALADA → EN_DEPOSITO`, evento
+   * `RETIRO_A_DEPOSITO`) y los componentes legados de insumos `SERIE` (unidad
+   * nueva `USADO` en el depósito, evento `INGRESO`), todo con ENTRADA USADO de
+   * cantidad 1 y el `equipoId` en movimiento y evento.
+   *
+   * Orden de locks: L1 y L2 de la unión de insumos (unidades y legados) en orden
+   * de id, y L3 de las unidades por id. El legado no toma L3 (inserta filas
+   * nuevas). Bajo L2 consulta `serialesExistentes`: un serial que ya existe es la
+   * causa `SERIAL_DUPLICADO`, y se UNE con `causasPrevias`. Si la unión no está
+   * vacía devuelve `DevolucionConPiezasProblematicasError` con todas, antes de
+   * L3 y sin escribir.
+   *
+   * @param conUnidad Piezas con unidad; `equipoId` debe ser el equipo donde está instalada.
+   * @param legados Componentes legados `SERIE` sin causa previa.
+   * @param o Usuario y motivo compartido por todo el lote.
+   * @param causasPrevias Causas que el llamador ya detectó bajo L1 en otras piezas.
+   * @returns Unidad y movimiento por `componenteId`; o el primer error de validación, sin haber escrito nada.
+   * @throws FalloOperacionDeUnidad con `DevolucionConPiezasProblematicasError` si un serial legado choca (P2002) al escribir.
+   */
+  async devolverDesdeEquipo(
+    conUnidad: readonly ItemEnEquipo[],
+    legados: readonly LegadoEnEquipo[],
+    o: ContextoUnidad,
+    causasPrevias: readonly CausaPieza[] = [],
+  ): Promise<Result<Map<string, UnidadConMovimiento>, DomainError>> {
+    if (conUnidad.length === 0 && legados.length === 0) {
+      return causasPrevias.length === 0
+        ? Result.ok(new Map())
+        : Result.fail(new DevolucionConPiezasProblematicasError(causasPrevias));
+    }
+
+    const fotos = await this.fotografiarLote(conUnidad);
+    if (fotos.isFail()) return Result.fail(fotos.getError());
+
+    const insumoIds = new Set([...fotos.getValue(), ...legados.map((l) => l.insumoId)]);
+    const bloqueo = await this.bloquearInsumos([...insumoIds].sort());
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    const duplicadas = await this.causasDeSerialDuplicado(legados);
+    if (causasPrevias.length > 0 || duplicadas.length > 0) {
+      return Result.fail(
+        new DevolucionConPiezasProblematicasError([...causasPrevias, ...duplicadas]),
+      );
+    }
+
+    const lote = await this.bloquearUnidades(conUnidad);
     if (lote.isFail()) return Result.fail(lote.getError());
 
     const escrituras: EscrituraDeUnidad[] = [];
-    for (const item of items) {
+    const componentes: string[] = [];
+    for (const item of conUnidad) {
       const unidad = lote.getValue().get(item.unidadId) as UnidadInsumoEntity;
       const instalada = this.exigirInstaladaEn(unidad, item);
       if (instalada.isFail()) return Result.fail(instalada.getError());
@@ -400,9 +471,82 @@ export class OperacionesUnidadInsumo {
       });
       if (armada.isFail()) return Result.fail(armada.getError());
       escrituras.push(armada.getValue());
+      componentes.push(item.componenteId);
+    }
+    for (const legado of legados) {
+      const creada = UnidadInsumoEntity.crearEnDeposito({
+        insumoId: legado.insumoId,
+        condicion: 'USADO',
+        numeroSerie: legado.numeroSerie,
+      });
+      if (creada.isFail()) return Result.fail(creada.getError());
+
+      const armada = this.armarEscritura(creada.getValue(), null, {
+        insumoId: legado.insumoId,
+        tipo: 'ENTRADA',
+        tipoEvento: 'INGRESO',
+        o,
+        equipoId: legado.equipoId,
+        componenteId: legado.componenteId,
+      });
+      if (armada.isFail()) return Result.fail(armada.getError());
+      escrituras.push(armada.getValue());
+      componentes.push(legado.componenteId);
     }
 
-    return Result.ok(await this.escribir(escrituras));
+    try {
+      const escritas = await this.escribir(escrituras);
+      return Result.ok(new Map(escritas.map((e, i) => [componentes[i], e])));
+    } catch (err) {
+      throw this.traducirSerialResidual(err, legados);
+    }
+  }
+
+  /**
+   * Bajo L2: causa `SERIAL_DUPLICADO` de cada legado cuyo serial ya tiene una
+   * unidad del mismo insumo (en cualquier estado). Una consulta por insumo.
+   */
+  private async causasDeSerialDuplicado(legados: readonly LegadoEnEquipo[]): Promise<CausaPieza[]> {
+    const porInsumo = new Map<string, LegadoEnEquipo[]>();
+    for (const legado of legados) {
+      porInsumo.set(legado.insumoId, [...(porInsumo.get(legado.insumoId) ?? []), legado]);
+    }
+
+    const causas: CausaPieza[] = [];
+    for (const insumoId of [...porInsumo.keys()].sort()) {
+      const delInsumo = porInsumo.get(insumoId) as LegadoEnEquipo[];
+      const existentes = await this.unidadRepo.serialesExistentes(
+        insumoId,
+        delInsumo.map((l) => normalizarSerial(l.numeroSerie)),
+      );
+      for (const legado of delInsumo) {
+        if (existentes.has(normalizarSerial(legado.numeroSerie))) {
+          causas.push({ componenteId: legado.componenteId, insumoId, causa: 'SERIAL_DUPLICADO' });
+        }
+      }
+    }
+    return causas;
+  }
+
+  /**
+   * Un P2002 residual (otra alta coló el serial entre `serialesExistentes` y el
+   * INSERT) deja la transacción abortada: no se puede devolver un `Result`. Se
+   * relanza como `SERIAL_DUPLICADO` de la pieza cuyo serial chocó; si el serial no
+   * identifica ningún legado, el error original sigue su camino.
+   */
+  private traducirSerialResidual(err: unknown, legados: readonly LegadoEnEquipo[]): unknown {
+    if (!(err instanceof FalloOperacionDeUnidad)) return err;
+    const duplicado = err.errorDeDominio;
+    if (!(duplicado instanceof SerialDuplicadoError)) return err;
+
+    const normalizado = normalizarSerial(duplicado.serial);
+    const legado = legados.find((l) => normalizarSerial(l.numeroSerie) === normalizado);
+    if (legado === undefined) return err;
+    return new FalloOperacionDeUnidad(
+      new DevolucionConPiezasProblematicasError([
+        { componenteId: legado.componenteId, insumoId: legado.insumoId, causa: 'SERIAL_DUPLICADO' },
+      ]),
+    );
   }
 
   /**
@@ -645,6 +789,23 @@ export class OperacionesUnidadInsumo {
   ): Promise<Result<Map<string, UnidadInsumoEntity>, DomainError>> {
     if (items.length === 0) return Result.ok(new Map());
 
+    const fotos = await this.fotografiarLote(items);
+    if (fotos.isFail()) return Result.fail(fotos.getError());
+
+    const bloqueo = await this.bloquearInsumos([...fotos.getValue()].sort(), errorSiNoEsSerie);
+    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
+
+    return this.bloquearUnidades(items);
+  }
+
+  /**
+   * Primera pasada del lote, sin lock: rechaza ids repetidos y unidades
+   * inexistentes, y devuelve los insumos de las unidades (el `insumoId` de una
+   * unidad es inmutable, así que la foto alcanza para decidir qué bloquear).
+   */
+  private async fotografiarLote(
+    items: readonly ItemEnEquipo[],
+  ): Promise<Result<Set<string>, DomainError>> {
     const ids = items.map((item) => item.unidadId);
     const repetida = ids.find((id, i) => ids.indexOf(id) !== i);
     if (repetida !== undefined) {
@@ -665,10 +826,15 @@ export class OperacionesUnidadInsumo {
       }
       insumoIds.add(foto.insumoId);
     }
+    return Result.ok(insumoIds);
+  }
 
-    const bloqueo = await this.bloquearInsumos([...insumoIds].sort(), errorSiNoEsSerie);
-    if (bloqueo.isFail()) return Result.fail(bloqueo.getError());
-
+  /** L3 del lote: las unidades por id, `FOR NO KEY UPDATE`. Sin items no toma nada. */
+  private async bloquearUnidades(
+    items: readonly ItemEnEquipo[],
+  ): Promise<Result<Map<string, UnidadInsumoEntity>, DomainError>> {
+    if (items.length === 0) return Result.ok(new Map());
+    const ids = items.map((item) => item.unidadId);
     const leidas = await this.unidadRepo.bloquearPorIds([...ids].sort());
     const porId = new Map(leidas.map((unidad) => [unidad.id, unidad]));
     const faltante = ids.find((id) => !porId.has(id));

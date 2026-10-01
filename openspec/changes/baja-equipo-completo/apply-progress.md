@@ -199,3 +199,18 @@ Rama `feat/baja-equipo-completo-wu06` (6.1 y 6.2) y `feat/baja-equipo-completo-w
   El insumo deshabilitado y la familia no vigente se admiten porque no son hechos de entrada.
 - 6.2 `serialesExistentes(insumoId, normalizados)` en el puerto y en `PrismaUnidadInsumoRepository`
   (`findMany` por `numero_serie_normalizado`, sin lock; lista vacía sin consulta). Integración de 4 casos.
+
+### Parte 2 — 6.3 a 6.5 (`feat/baja-equipo-completo-wu06-2`)
+
+- 6.3 `devolverDesdeEquipo(conUnidad, legados, o, causasPrevias = [])` devuelve `Map<componenteId, UnidadConMovimiento>`.
+  Orden: fotos sin lock (`fotografiarLote`) → L1 y L2 de la unión ordenada → `serialesExistentes` bajo L2 por insumo →
+  unión con `causasPrevias` y `DevolucionConPiezasProblematicasError` (nuevo, en `unidades-insumo.errors.ts`) ANTES de L3 →
+  L3 (`bloquearUnidades`) → validación de transiciones → escrituras (`RETIRO_A_DEPOSITO` e `INGRESO`, ambos con `equipoId`
+  y `componenteId`). Sin unidades ni legados y con causas previas falla sin tomar locks. `devolverAlDeposito` delega con `legados = []`.
+  `leerLoteEnEquipo` se partió en `fotografiarLote` + `bloquearInsumos` + `bloquearUnidades` (comportamiento intacto).
+  El P2002 residual (ya con la transacción abortada) se relanza como `FalloOperacionDeUnidad(DevolucionConPiezasProblematicasError)`
+  con `SERIAL_DUPLICADO` de la pieza cuyo serial chocó; `SerialDuplicadoError` ahora expone `serial`.
+- 6.4 `operaciones-unidad-insumo.service.spec.ts`: bloque nuevo `devolverDesdeEquipo` (11 casos) y regresión de `devolverAlDeposito` (2).
+  El fake suma `serialesExistentes`, `existentes` y `chocaAlInsertar`. Los dos bloques existentes de `devolverAlDeposito` y
+  `descartarInstaladas` ya cubrían varias unidades, lote que falla y unidad en otro equipo; no se tocaron.
+- Ayuda: sin deuda.
