@@ -84,7 +84,9 @@ declara `generadoEn`.
 ### ADR-3: borde HTTP en un controller nuevo, registrado primero
 
 `ReporteStockInsumosController`, `@Controller('insumos/reporte-stock')`: `GET /` (JSON) y
-`GET /export` (CSV). No va en `InsumosController`: su contrato documentado es "ABM por rol, lectura
+`GET /export` (CSV). A nivel de clase lleva `@UseGuards(JwtAuthGuard, TenantGuard)`, igual que los
+controllers hermanos; cada método suma `@UseGuards(AccionesGuard)` +
+`@RequiereAcciones('INSUMOS:LECTURA')`. El JSON devuelve `{ generadoEn: string (ISO), filas }`. No va en `InsumosController`: su contrato documentado es "ABM por rol, lectura
 abierta, sin `@RequiereAcciones`".
 
 Orden de rutas, verificado: hoy no hay `GET /insumos/:id`; los `GET` con parámetro son
@@ -108,12 +110,17 @@ export type ValorCelda = string | number | boolean | null | undefined | CeldaNum
 export function cantidadCsv(valor: number, entera: boolean): CeldaNumericaCsv;
 ```
 
-`escaparCelda` emite `texto` tal cual solo para `CeldaNumericaCsv`. Por qué es seguro: la única
-fábrica es `cantidadCsv`, que exige `Number.isFinite` (si no, lanza) y produce solo
-`^-?\d+(,\d{2})?$`. Sin `=`, `+`, `@`, letras ni separadores, una planilla lo lee como literal
-numérico. El texto libre sigue neutralizado. Formato: unidad `entera` y valor entero → sin
-decimales; si no, dos decimales con coma, sin miles. Un fraccionario en unidad entera muestra sus
-decimales, nunca se redondea. `-0` sale `0`.
+`aTexto` y `escaparCelda` emiten `CeldaNumericaCsv.texto` tal cual, sin neutralizar ni
+entrecomillar. Por qué es seguro: la única fábrica es `cantidadCsv`, que exige `Number.isFinite`
+(si no, lanza) y produce solo `^-?\d+(,\d{2})?$`. Sin `=`, `+`, `@`, letras ni separadores, una
+planilla lo lee como literal numérico. El texto libre sigue neutralizado.
+
+`cantidadCsv` recibe unidades normales, no centésimas: lo que devuelven `calcularSaldos` y
+`saldosDesdeUnidades`. Formato (spec R8): unidad `entera` y valor entero → sin decimales; cualquier
+fraccionario → siempre dos decimales con coma, sin miles, también en una unidad entera (nunca se
+redondea). `-0` se normaliza antes de formatear (`valor === 0 ? 0 : valor`, que convierte `-0` en
+`0`), así que sale `0` y nunca `-0` ni `-0,00`. `stockMinimo` llega como `number | null`: el repo
+convierte el `Decimal` de Prisma con `Number(...)`, igual que `InsumoMapper`; `null` es celda vacía.
 
 | Opción | Decisión |
 |---|---|
@@ -123,7 +130,7 @@ decimales, nunca se redondea. `-0` sale `0`.
 Columnas: Código; Nombre; Familia; Tipo (Consumible/Repuesto); Unidad de medida; Stock nuevo;
 Stock usado; Stock total; Punto de reposición; Estado de reposición (etiquetas de la ficha); Estado
 (Habilitado/Deshabilitado); Generado el (`fechaHoraCsv`, se repite por fila para no romper la
-tabla). Prefijo `stock-insumos`. Tope `TOPE_FILAS_EXPORT` sobre `filas.length` después del filtro
+tabla). Prefijo `reporte-stock-insumos`: archivo `reporte-stock-insumos-aaaa-mm-dd.csv` (spec R6). Tope `TOPE_FILAS_EXPORT` sobre `filas.length` después del filtro
 (residual aceptado de `ExportarEquiposUseCase`).
 
 ### ADR-5: frontend
@@ -137,8 +144,9 @@ tabla). Prefijo `stock-insumos`. Tope `TOPE_FILAS_EXPORT` sobre `filas.length` d
   destructivo. `ETIQUETA_REPOSICION` y `VARIANTE_REPOSICION` se mueven de `insumo-detail-view.tsx` a
   `lib/reposicion.ts`. `formatearCantidadEsAr(valor, entera)` en `lib/formato-cantidad.ts`.
   "Generado el" con `formatearInstante`.
-- Enlace "Reporte de stock" en `CatalogoInsumosListView`, dentro de su `<Can>`, con `esRepuesto` de
-  la sección precargado.
+- La entrada de menú (spec R7) es el enlace "Reporte de stock" en `CatalogoInsumosListView`, dentro
+  de su `<Can permiso="INSUMOS:LECTURA">`, con `esRepuesto` de la sección precargado. No hay ítem
+  nuevo en el sidebar (`nav-config.ts` no cambia).
 
 ### ADR-6: sin migración ni índice nuevo
 
@@ -154,7 +162,7 @@ cubriente rechazado: cuesta en cada escritura sin una medición que lo pida. Se 
             │              ├─ NINGUNO ids → sumByTipoDeInsumos ─→ calcularSaldos
             │              ├─ SERIE ids   → contarEnDeposito…   ─→ saldosDesdeUnidades
             │              └─ evaluarReposicion → filtros derivados
-            └─ armarExportCsv(cantidadCsv) ─→ text/csv + BOM
+            └─ armarExportCsv(cantidadCsv) ─→ text/csv + BOM (reporte-stock-insumos-aaaa-mm-dd.csv)
 
 ## File Changes
 
@@ -176,12 +184,18 @@ cubriente rechazado: cuesta en cada escritura sin una medición que lo pida. Se 
 
 | Capa | Qué | Cómo |
 |---|---|---|
-| Unit | Núcleo: rama por seguimiento, filtros derivados (negativo visible), `generadoEn` antes de leer, orden; export: columnas, etiquetas, tope 5001 → error; `cantidadCsv` (`3`, `2,50`, `-3` sin apóstrofo, `-0`, `NaN` lanza); texto `-3` sigue neutralizado | Fakes con `Pick` |
-| Unit | Controller: metadata `INSUMOS:LECTURA` en los dos handlers; error → 422 sin headers | Reflexión, patrón `equipos.controller.spec.ts` |
-| Integration | Métodos de lote: ceros, aislamiento por insumo, lista vacía | Base tenant real |
-| Integration | **Comparación**: por cada fila, saldos y `estadoReposicion` iguales a `ConsultarStockInsumoUseCase` para `NINGUNO` (ambas condiciones, negativo, sin movimientos) y `SERIE` (unidades en los 4 estados, pendiente); deshabilitado presente, baja lógica ausente | Higiene: filas → `app.close()` → `dropDatabase` |
-| E2E | 403 sin la acción en las dos rutas; ruta no capturada; headers, BOM, `;`, nombre; 400 con `familiaId` inválido | supertest |
-| Frontend | Filtros ↔ URL, mismo query string en el export, negativo y bajo mínimo resaltados, fallback sin permiso, formato | Vitest + MSW |
+| Unit | Núcleo: rama por seguimiento, filtros derivados (negativo visible), `generadoEn` antes de leer, orden | Fakes con `Pick` |
+| Unit | **Sin N+1 (R11)**: ~50 ids mezclados `NINGUNO`/`SERIE`; los fakes cuentan llamadas: `listarParaReporteStock` ×1, `sumByTipoDeInsumos` ×1, `contarEnDepositoPorCondicionDeInsumos` ×1; los fakes no exponen métodos por insumo (`sumByTipo`, `contarEnDepositoPorCondicion`, `findById`), así que una llamada por insumo no compila ni corre | Fakes contadores |
+| Unit | Export: llama al núcleo con los filtros idénticos que recibió, así que filas y orden del CSV coinciden con el JSON; columnas y etiquetas | Espía sobre el núcleo |
+| Unit | Tope (R6): exactamente 5000 filas → CSV completo (encabezado + 5000 líneas); 5001 → `ExportacionStockDemasiadoGrandeError` y ningún contenido | Fake de 5000/5001 filas |
+| Unit | Nombre (R6): coincide con `^reporte-stock-insumos-\d{4}-\d{2}-\d{2}\.csv$` | Export use case |
+| Unit | Generación (R1): con reloj inyectado en 2026-10-02T01:30Z (22:30 del 01/10 en Argentina), la celda "Generado el" vale `fechaHoraCsv(generadoEn)` = `01/10/2026 22:30` | Reloj fijo |
+| Unit | `cantidadCsv`: `3`, `2,50`, fraccionario en unidad entera `2,50`, `-3` sin apóstrofo, `-0` → `0`, `NaN` lanza; el texto `-3` sigue neutralizado | `csv.spec.ts` |
+| Unit | Controller: metadata `INSUMOS:LECTURA` en los dos handlers y guards de clase; error de tope → 422 sin headers; el JSON incluye `generadoEn` | Reflexión, patrón `equipos.controller.spec.ts` |
+| Integration | Métodos de lote: ceros, aislamiento por insumo, lista vacía; `stockMinimo` `Decimal` → `number`/`null` | Base tenant real |
+| Integration | **Comparación (R9)**: por cada fila, saldos y `estadoReposicion` iguales a `ConsultarStockInsumoUseCase` para `NINGUNO` (ambas condiciones, negativo, sin movimientos) y `SERIE` (unidades en los 4 estados, pendiente). Incluye un `SERIE` cuyo libro **difiere** de sus unidades (movimiento insertado directo en el fixture): la fila sigue a las unidades. Incluye un insumo deshabilitado y uno de familia deshabilitada (presentes) y una baja lógica (ausente) | Higiene: filas → `app.close()` → `dropDatabase` |
+| E2E | 403 sin la acción en las dos rutas; ruta no capturada; `Content-Type: text/csv; charset=utf-8`, `Content-Disposition` con el nombre de R6, BOM al inicio, `;`; JSON con `generadoEn`; 400 con `familiaId` inválido | supertest |
+| Frontend | Filtros ↔ URL, mismo query string en el export, negativo y bajo mínimo resaltados, formato; enlace "Reporte de stock" oculto sin `INSUMOS:LECTURA`; acceso directo por URL sin el permiso muestra el fallback | Vitest + MSW |
 
 ## Threat Matrix
 
@@ -197,5 +211,7 @@ controller y e2e; frontend).
 
 ## Open Questions
 
-- [ ] Hay que alinear con la spec: la columna "Generado el" repetida en el CSV y los dos decimales
-  fijos en unidades no enteras.
+Ninguna. Las dos pendientes quedaron resueltas por la spec alineada (commit `ca9a3039`):
+
+- [x] Columna "Generado el" repetida por fila en el CSV: spec R1.
+- [x] Fraccionarios siempre con dos decimales y enteros en unidad entera sin decimales: spec R8.
