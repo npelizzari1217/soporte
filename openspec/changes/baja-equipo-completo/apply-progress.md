@@ -311,3 +311,17 @@ Ramas: `feat/baja-equipo-completo-wu10` (10.1 a 10.6: atomicidad, legados y caus
   T2 y T3 rojos; L2 omitido (`bloquearStock` sin efecto) => T2, T3 y T6 rojos.
 - 10.8 Gates: `pnpm lint`, `pnpm typecheck`, `check-casts-en-specs.mjs` (628/117), `vitest run src/equipos src/insumos` (152 archivos, 2547 tests), `pnpm test` completo (547 archivos, 6819 tests) en verde; el testigo corrido tres veces seguidas: 8/8 cada vez. El único FAIL del log es el ruido conocido `orden-de-arranque.spec.ts`.
 - Ayuda: sin deuda.
+
+
+## WU-11 — HTTP: resumen y baja, tickets abiertos, errores y DTO
+
+Ramas: `feat/baja-equipo-completo-wu11` (11.1 conteo de tickets abiertos) -> `-wu11-2` (11.2 resumen) -> `-wu11-3` (11.3 DTO) -> `-wu11-4` (11.4 a 11.6 endpoints, errores y Ayuda). Corte por el presupuesto de 400 lineas (el WU completo rondaba 1170).
+
+- 11.1 El puerto `ITicketSoporteRepository` ya vivia en `equipos` (el satelite `ticket_soporte` es de este modulo), asi que `contarAbiertosPorEquipo(equipoId, estadosTerminales)` queda ahi, sin cruzar a `tickets`. Integracion con estados propios de la corrida (`T11_<prefijo>_RESUELTO`...) pasando como terminales los de CERRADO y CANCELADO: RESUELTO cuenta, los terminales y los borrados (ticket o satelite) no, otro equipo no.
+- 11.2 `ResumenBajaEquipoUseCase`: el diagnostico de `causaQueImpideDevolver` se delega en `registrarEntrada.diagnosticarDevolucionesDeEquipo` (el mismo de la baja, que usa `clasificarPiezaDevuelta`) pasando el `serialSugerido` como serial de los legados `SERIE`; un legado sin serial valido sale con `SERIAL_REQUERIDO`. Los insumos se leen por `insumoRepo.findById` (nombre y seguimiento); un insumo borrado igual aparece con su nombre y la causa `INSUMO_BORRADO`.
+- 11.3 `DarDeBajaEquipoHttpDto`. El serial por pieza NO usa `@EsSerialDeUnidad`: un serial invalido o repetido es una causa por pieza (422 con `piezas[]`), no un 400. `EquipoResponseDto.baja` es `null` mientras `bajaDestino/bajaCategoria/bajaFecha` no estan completos.
+- 11.4 `POST /equipos/:id/baja` responde la ficha (`ObtenerEquipoUseCase` despues de la baja, fuera de la transaccion). Un id que no es UUID da 404 en las dos rutas. `toHttpException`: `EquipoModificadoDuranteLaBajaError` 409; `BajaEquipoConPiezasProblematicasError`, `MotivoBajaEquipoInvalidoError` (con `largoMaximo` si hay) y `EquipoConComponentesActivosError` (con `cantidad`) devuelven un cuerpo objeto con `statusCode`, `message`, `code`; `EquipoDadoDeBajaError` 422.
+- 11.5 Spec del controller: TABLA ampliada a `404 | 409 | 422`, cuerpos de los cinco errores, reflexion `EQUIPOS:BORRADO` en los dos handlers y `EQUIPOS:LECTURA` en `listar`. Los casos de uso nuevos van como dobles tipados (`Object.create(Clase.prototype)` + `vi.spyOn(.., 'execute')`), sin ningun cast: el ratchet queda en 628/117.
+- 11.6 Ayuda `permisos-y-roles.md`: "tres trabajos" pasa a cuatro y suma la baja completa con `BORRADO` de Equipos; "esos tres casos" pasa a cuatro. `rg -n "tres trabajos|esos tres" backend/ayuda` sin resultados. Ojo: `prettier --write` sobre ese `.md` lo reformatea entero; se aplico a mano.
+- Ayuda: deuda, articulo del flujo de baja de equipo.
+

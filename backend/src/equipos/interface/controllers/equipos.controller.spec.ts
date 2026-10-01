@@ -15,10 +15,13 @@
 import 'reflect-metadata';
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { EquiposController, toHttpException } from './equipos.controller';
+import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
+import { ResumenBajaEquipoUseCase } from '../../application/use-cases/resumen-baja-equipo.use-case';
 import * as EquiposErrors from '../../domain/errors/equipos.errors';
 import {
   EquipoNoEncontradoError,
@@ -38,6 +41,20 @@ import {
   UnidadDelComponenteNoDisponibleError as UnidadDelComponenteDeInsumosError,
   SerialRequeridoError,
 } from '../../../insumos/domain/errors/unidades-insumo.errors';
+
+/*
+ * Dobles tipados de los casos de uso con `execute` espiado: se crean sobre el prototipo real (sin
+ * ejecutar su constructor), así que el tipo es el de la clase y no hace falta ningún cast.
+ */
+function darDeBajaEspiado() {
+  const caso: DarDeBajaEquipoUseCase = Object.create(DarDeBajaEquipoUseCase.prototype);
+  return { caso, execute: vi.spyOn(caso, 'execute') };
+}
+
+function resumenBajaEspiado() {
+  const caso: ResumenBajaEquipoUseCase = Object.create(ResumenBajaEquipoUseCase.prototype);
+  return { caso, execute: vi.spyOn(caso, 'execute') };
+}
 
 function makeEquipo(): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.create(
@@ -71,6 +88,8 @@ describe('EquiposController (T12.6)', () => {
     const exportarEquiposUseCase = { execute: vi.fn() };
     const instalarComponenteDesdeDepositoUseCase = { execute: vi.fn() };
     const retirarComponenteUseCase = { execute: vi.fn() };
+    const darDeBaja = darDeBajaEspiado();
+    const resumenBaja = resumenBajaEspiado();
 
     const controller = new EquiposController(
       crearEquipoUseCase as any,
@@ -84,9 +103,13 @@ describe('EquiposController (T12.6)', () => {
       exportarEquiposUseCase as any,
       instalarComponenteDesdeDepositoUseCase as any,
       retirarComponenteUseCase as any,
+      darDeBaja.caso,
+      resumenBaja.caso,
     );
 
     return {
+      darDeBajaUseCase: darDeBaja.execute,
+      resumenBajaUseCase: resumenBaja.execute,
       controller,
       crearEquipoUseCase,
       editarEquipoUseCase,
@@ -633,6 +656,117 @@ describe('EquiposController (T12.6)', () => {
       expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
     });
   });
+
+  describe('EquiposController — baja de equipo completo (WU-11)', () => {
+    const actor: JwtPayload = {
+      v: 1,
+      sub: 'usuario-jwt-uuid',
+      cliente_id: null,
+      rol: null,
+      permisos: [],
+      is_global_admin: false,
+      cliente_nombre: null,
+      membresias: [],
+      modulos: [],
+      nombre: 'Test',
+      apellido: 'Usuario',
+      cliente_logo_v: null,
+    };
+    const equipoId = '11111111-1111-4111-8111-111111111111';
+
+    function build() {
+      const { controller, obtenerEquipoUseCase, darDeBajaUseCase, resumenBajaUseCase } =
+        buildController();
+      return {
+        controller,
+        obtener: obtenerEquipoUseCase.execute,
+        darDeBaja: darDeBajaUseCase,
+        resumen: resumenBajaUseCase,
+      };
+    }
+
+    it.each(['darDeBaja', 'resumenBaja'] as const)(
+      '%s declara @RequiereAcciones("EQUIPOS:BORRADO")',
+      (handler) => {
+        const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype[handler]);
+        expect(meta).toEqual(['EQUIPOS:BORRADO']);
+      },
+    );
+
+    it('GET /equipos conserva EQUIPOS:LECTURA', () => {
+      const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.listar);
+      expect(meta).toEqual(['EQUIPOS:LECTURA']);
+    });
+
+    it('POST baja: pasa el usuario del JWT, el destino de primer nivel y responde la ficha', async () => {
+      const { controller, obtener, darDeBaja } = build();
+      const equipo = makeEquipo();
+      darDeBaja.mockResolvedValue(Result.ok(equipo));
+      obtener.mockResolvedValue(Result.ok({ equipo, componentes: [] }));
+
+      const salida = await controller.darDeBaja(actor, equipoId, {
+        destino: 'DESCARTE',
+        categoria: 'OTRA',
+        motivo: 'reciclado',
+        seriales: [{ componenteId: 'c-1', numeroSerie: 'LEG-1' }],
+      });
+
+      expect(darDeBaja).toHaveBeenCalledWith({
+        equipoId,
+        destino: 'DESCARTE',
+        categoria: 'OTRA',
+        motivo: 'reciclado',
+        seriales: [{ componenteId: 'c-1', numeroSerie: 'LEG-1' }],
+        usuarioId: 'usuario-jwt-uuid',
+      });
+      expect(salida.id).toBe('equipo-uuid');
+      expect(salida.componentes).toEqual([]);
+      expect(salida.baja).toBeNull();
+    });
+
+    it('POST baja: el error del caso de uso se traduce (409) y no lee la ficha', async () => {
+      const { controller, obtener, darDeBaja } = build();
+      darDeBaja.mockResolvedValue(
+        Result.fail(new EquiposErrors.EquipoModificadoDuranteLaBajaError(equipoId)),
+      );
+
+      await expect(
+        controller.darDeBaja(actor, equipoId, { destino: 'STOCK_USADO', categoria: 'VEJEZ' }),
+      ).rejects.toThrow(ConflictException);
+      expect(obtener).not.toHaveBeenCalled();
+    });
+
+    it('POST baja: un id que no es UUID es 404 y no llega al caso de uso', async () => {
+      const { controller, darDeBaja } = build();
+
+      await expect(
+        controller.darDeBaja(actor, 'no-es-uuid', { destino: 'STOCK_USADO', categoria: 'VEJEZ' }),
+      ).rejects.toThrow(NotFoundException);
+      expect(darDeBaja).not.toHaveBeenCalled();
+    });
+
+    it('GET resumen: devuelve el resumen del caso de uso', async () => {
+      const { controller, resumen } = build();
+      const valor = {
+        equipoId,
+        nombre: 'PC-1',
+        ticketsAbiertos: 2,
+        largoMaximoTexto: { VEJEZ: 1, DONACION: 2, ROTURA: 3, OTRA: 4 },
+        piezas: [],
+      };
+      resumen.mockResolvedValue(Result.ok(valor));
+
+      await expect(controller.resumenBaja(equipoId)).resolves.toEqual(valor);
+      expect(resumen).toHaveBeenCalledWith({ equipoId });
+    });
+
+    it('GET resumen: equipo dado de baja → 422', async () => {
+      const { controller, resumen } = build();
+      resumen.mockResolvedValue(Result.fail(new EquiposErrors.EquipoDadoDeBajaError(equipoId)));
+
+      await expect(controller.resumenBaja(equipoId)).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
 });
 
 describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-listados-csv)', () => {
@@ -652,6 +786,8 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       exportarEquipos as any, // exportarEquiposUseCase
       stub() as any, // instalarComponenteDesdeDepositoUseCase
       stub() as any, // retirarComponenteUseCase
+      darDeBajaEspiado().caso,
+      resumenBajaEspiado().caso,
     );
     return { controller, exportarEquipos };
   }
@@ -728,7 +864,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     expect(CLASES_DE_ERROR).toHaveLength(23);
   });
 
-  const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
+  const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
     ['EquipoNoEncontradoError', () => new EquiposErrors.EquipoNoEncontradoError('equipo-1'), 404],
     ['EquipoInvalidoError', () => new EquiposErrors.EquipoInvalidoError('equipo-1'), 422],
     ['NumeroSerieDuplicadoError', () => new EquiposErrors.NumeroSerieDuplicadoError('SN-001'), 422],
@@ -777,8 +913,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       () => new EquiposErrors.UnidadConAltaSinDescuentoError('unidad-1'),
       422,
     ],
-    // Baja de equipo completo (sdd/baja-equipo-completo): hoy caen en el default 422;
-    // WU-11 mapea explícito los tres de la baja y pasa EquipoModificadoDuranteLaBaja a 409.
+    // Baja de equipo completo (sdd/baja-equipo-completo): los cinco con mapeo explícito;
+    // EquipoModificadoDuranteLaBaja es un 409 reintentable.
     ['EquipoDadoDeBajaError', () => new EquiposErrors.EquipoDadoDeBajaError('equipo-1'), 422],
     [
       'EquipoConComponentesActivosError',
@@ -801,7 +937,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'EquipoModificadoDuranteLaBajaError',
       () => new EquiposErrors.EquipoModificadoDuranteLaBajaError('equipo-1'),
-      422,
+      409,
     ],
     // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene
     // su PROPIO `toHttpException`, con esa rama explícita) — nunca la produce
@@ -864,11 +1000,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     const excepcion = toHttpException(factory());
 
     expect(excepcion.getStatus()).toBe(httpEsperado);
-    if (httpEsperado === 404) {
-      expect(excepcion).toBeInstanceOf(NotFoundException);
-    } else {
-      expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
-    }
+    expect(excepcion).toBeInstanceOf(
+      { 404: NotFoundException, 409: ConflictException, 422: UnprocessableEntityException }[
+        httpEsperado
+      ],
+    );
   });
 });
 
@@ -884,6 +1020,60 @@ describe('toHttpException — borrado de un equipo (baja-equipo-completo, R13)',
     const excepcion = toHttpException(new EquiposErrors.EquipoDadoDeBajaError('equipo-1'));
 
     expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
+describe('toHttpException — cuerpos de los errores de la baja de equipo completo (ADR-7)', () => {
+  it('BajaEquipoConPiezasProblematicasError → 422 con code y piezas[] (componenteId, insumoId, causa)', () => {
+    const excepcion = toHttpException(
+      new EquiposErrors.BajaEquipoConPiezasProblematicasError([
+        { componenteId: 'c-1', insumoId: 'i-1', causa: 'SERIAL_REQUERIDO' },
+        { componenteId: 'c-2', insumoId: null, causa: 'INSUMO_BORRADO' },
+      ]),
+    );
+
+    expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    expect(excepcion.getResponse()).toEqual({
+      statusCode: 422,
+      message: expect.stringContaining('2 piezas no pueden volver al depósito'),
+      code: 'BAJA_EQUIPO_PIEZAS_PROBLEMATICAS',
+      piezas: [
+        { componenteId: 'c-1', insumoId: 'i-1', causa: 'SERIAL_REQUERIDO' },
+        { componenteId: 'c-2', insumoId: null, causa: 'INSUMO_BORRADO' },
+      ],
+    });
+  });
+
+  it('MotivoBajaEquipoInvalidoError con largoMaximo → 422 que informa largoMaximo', () => {
+    const excepcion = toHttpException(new EquiposErrors.MotivoBajaEquipoInvalidoError(214));
+
+    expect(excepcion.getResponse()).toMatchObject({
+      statusCode: 422,
+      code: 'MOTIVO_BAJA_EQUIPO_INVALIDO',
+      largoMaximo: 214,
+    });
+  });
+
+  it('MotivoBajaEquipoInvalidoError sin largoMaximo → 422 sin la clave', () => {
+    const excepcion = toHttpException(new EquiposErrors.MotivoBajaEquipoInvalidoError());
+
+    expect(excepcion.getResponse()).not.toHaveProperty('largoMaximo');
+  });
+
+  it('EquipoConComponentesActivosError → 422 que informa la cantidad', () => {
+    const excepcion = toHttpException(new EquiposErrors.EquipoConComponentesActivosError(3));
+
+    expect(excepcion.getResponse()).toMatchObject({
+      statusCode: 422,
+      code: 'EQUIPO_CON_COMPONENTES_ACTIVOS',
+      cantidad: 3,
+    });
+  });
+
+  it('EquipoModificadoDuranteLaBajaError → 409', () => {
+    const excepcion = toHttpException(new EquiposErrors.EquipoModificadoDuranteLaBajaError('e-1'));
+
+    expect(excepcion).toBeInstanceOf(ConflictException);
   });
 });
 

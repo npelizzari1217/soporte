@@ -76,6 +76,7 @@ import { InstalarComponenteDesdeDepositoUseCase } from './application/use-cases/
 import { EditarComponenteUseCase } from './application/use-cases/editar-componente.use-case';
 import { RetirarComponenteUseCase } from './application/use-cases/retirar-componente.use-case';
 import { DarDeBajaEquipoUseCase } from './application/use-cases/dar-de-baja-equipo.use-case';
+import { ResumenBajaEquipoUseCase } from './application/use-cases/resumen-baja-equipo.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
@@ -340,6 +341,32 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         COMPONENTE_EQUIPO_REPOSITORY,
         RegistrarEntradaInsumoUseCase,
         OperacionesUnidadInsumo,
+      ],
+    },
+    {
+      // sdd/baja-equipo-completo (ADR-6, ADR-7): resumen previo a la baja, de solo lectura y sin
+      // transaccion. Cuenta los tickets abiertos por el puerto del satelite de soporte.
+      provide: ResumenBajaEquipoUseCase,
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        componenteRepo: IComponenteEquipoRepository,
+        insumoRepo: IInsumoRepository,
+        ticketSoporteRepo: ITicketSoporteRepository,
+        registrarEntrada: RegistrarEntradaInsumoUseCase,
+      ) =>
+        new ResumenBajaEquipoUseCase(
+          equipoRepo,
+          componenteRepo,
+          insumoRepo,
+          ticketSoporteRepo,
+          registrarEntrada,
+        ),
+      inject: [
+        EQUIPO_INFORMATICO_REPOSITORY,
+        COMPONENTE_EQUIPO_REPOSITORY,
+        INSUMO_REPOSITORY,
+        TICKET_SOPORTE_REPOSITORY,
+        RegistrarEntradaInsumoUseCase,
       ],
     },
     {

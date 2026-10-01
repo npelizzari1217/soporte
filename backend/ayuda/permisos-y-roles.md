@@ -153,17 +153,20 @@ que acaba de llegar. Sin esa casilla la persona no puede registrar entradas ni
 salidas a mano desde Insumos, y la existencia que muestra el sistema deja de
 reflejar lo que hay en el depósito.
 
-Hay tres trabajos que mueven el stock sin pedir esta casilla, porque el permiso
+Hay cuatro trabajos que mueven el stock sin pedir esta casilla, porque el permiso
 que ya tienen alcanza:
 
 - **Instalar un repuesto en un equipo** con `ALTAS` de la fila **Equipos**: la
   salida del depósito se registra sola.
 - **Devolver un componente al stock** con `BORRADO` de la fila **Equipos**: al
   retirarlo, la pieza vuelve al depósito como usada.
+- **Dar de baja un equipo completo** con `BORRADO` de la fila **Equipos**: elegís
+  si todas sus piezas vuelven al depósito como usadas o se descartan, y el
+  sistema asienta el movimiento de cada una.
 - **Recibir una compra** con `MODIFICACION` de la fila **Compras**: la mercadería
   recibida entra al depósito.
 
-Fuera de esos tres casos, una entrada o una salida manual sí necesita `ALTAS` en
+Fuera de esos cuatro casos, una entrada o una salida manual sí necesita `ALTAS` en
 **Insumos**. Los ajustes van aparte: piden `AJUSTAR`, como se explica a
 continuación.
 
