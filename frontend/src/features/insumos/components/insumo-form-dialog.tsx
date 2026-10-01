@@ -57,10 +57,16 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useFamiliasInsumo } from "../hooks/use-familias-insumo";
 import { useUnidadesMedida } from "../hooks/use-unidades-medida";
-import { useCrearInsumo, useEditarInsumo } from "../hooks/use-insumo-abm-mutations";
+import { ApiError } from "@/shared/api/types";
+import {
+  useCambiarSeguimientoInsumo,
+  useCrearInsumo,
+  useEditarInsumo,
+} from "../hooks/use-insumo-abm-mutations";
 import { resolverLista } from "../lib/resolucion-de-catalogo";
 import { insumoSchema, type InsumoFormValues } from "../schemas";
-import type { CreateInsumoDto, EditInsumoDto, Insumo } from "../types";
+import { SEGUIMIENTOS_INSUMO } from "../types";
+import type { CreateInsumoDto, EditInsumoDto, Insumo, SeguimientoInsumo } from "../types";
 
 export interface InsumoFormDialogProps {
   trigger: ReactNode;
@@ -82,6 +88,33 @@ const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Creá una desd
 const NOTA_FAMILIAS_NO_DISPONIBLES = "No se pudieron cargar las familias de insumo.";
 const NOTA_UNIDADES_NO_DISPONIBLES = "No se pudieron cargar las unidades de medida.";
 
+const ETIQUETAS_SEGUIMIENTO: Record<SeguimientoInsumo, string> = {
+  NINGUNO: "Por cantidad",
+  SERIE: "Por número de serie",
+};
+
+/** Mensaje del 409 `UNIDAD_MEDIDA_CAMBIADA`: nada falló de verdad, hay que repetir. */
+const MENSAJE_UNIDAD_MEDIDA_CAMBIADA =
+  "La unidad de medida del insumo cambió mientras guardabas. Reintentá el cambio.";
+
+/**
+ * Paso que quedó sin hacer cuando la SEGUNDA de las dos llamadas falló. El
+ * orden depende de la dirección (hacia `SERIE`: datos y luego seguimiento;
+ * hacia `NINGUNO`: al revés), así que lo que falta puede ser cualquiera.
+ */
+interface PasoPendiente {
+  paso: "seguimiento" | "datos";
+  mensaje: string;
+}
+
+function motivoDelError(error: unknown, paso: "seguimiento" | "datos"): string {
+  if (error instanceof ApiError) {
+    if (paso === "seguimiento" && error.statusCode === 409) return MENSAJE_UNIDAD_MEDIDA_CAMBIADA;
+    return error.messages.join(" ");
+  }
+  return "Ocurrió un error inesperado. Intentá de nuevo.";
+}
+
 export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: InsumoFormDialogProps) {
   const [open, setOpen] = useState(false);
   const isEdit = !!insumo;
@@ -89,7 +122,11 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
   const unidadesQuery = useUnidadesMedida();
   const crearMutation = useCrearInsumo();
   const editarMutation = useEditarInsumo(insumo?.id ?? "");
+  const seguimientoMutation = useCambiarSeguimientoInsumo(insumo?.id ?? "");
+  const [pendiente, setPendiente] = useState<PasoPendiente | null>(null);
+  const [errorSeguimiento, setErrorSeguimiento] = useState<string | null>(null);
   const mutation = isEdit ? editarMutation : crearMutation;
+  const guardando = mutation.isPending || seguimientoMutation.isPending;
 
   const familias = familiasQuery.data ?? [];
   const unidades = unidadesQuery.data ?? [];
@@ -132,6 +169,7 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
     handleSubmit,
     reset,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<InsumoFormValues>({
     resolver: zodResolver(insumoSchema),
@@ -150,31 +188,108 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, unidadesListas]);
 
+  const seguimientoElegido = watch("seguimiento");
+  const unidadElegida = unidades.find((unidad) => unidad.id === watch("unidadMedidaId"));
+  const avisarUnidadNoEntera = seguimientoElegido === "SERIE" && unidadElegida !== undefined && !unidadElegida.entera;
+
+  /** Ejecuta un paso del cambio; `true` si salió bien. El error queda en el estado, no se propaga. */
+  async function ejecutarPaso(paso: "seguimiento" | "datos", values: InsumoFormValues, completo: boolean): Promise<boolean> {
+    try {
+      if (paso === "seguimiento") {
+        await seguimientoMutation.mutateAsync({ seguimiento: values.seguimiento });
+      } else {
+        await editarMutation.mutateAsync(construirEdicion(values));
+      }
+      return true;
+    } catch (error) {
+      if (paso === "seguimiento") {
+        const motivo = motivoDelError(error, "seguimiento");
+        if (completo) {
+          setPendiente({
+            paso,
+            mensaje: `Los demás cambios ya se guardaron, pero no se pudo cambiar el seguimiento: ${motivo} Podés reintentar solo el seguimiento.`,
+          });
+        } else {
+          setErrorSeguimiento(`No se pudo cambiar el seguimiento: ${motivo}`);
+        }
+      } else if (completo) {
+        // El PATCH de datos ya avisó por toast; acá solo se deja claro qué quedó hecho.
+        setPendiente({
+          paso,
+          mensaje: "El seguimiento ya se cambió, pero no se pudieron guardar los demás cambios. Podés reintentar solo el guardado.",
+        });
+      }
+      return false;
+    }
+  }
+
+  function construirEdicion(values: InsumoFormValues): EditInsumoDto {
+    // `stockMinimo` es el ÚNICO campo donde `null` viaja a propósito: es la
+    // orden explícita de borrar el punto de reposición cuando el usuario
+    // limpia el campo (ver el JSDoc de `EditInsumoDto`). Sin `codigo` (issue
+    // #166) ni `seguimiento`: el PATCH del insumo no lo acepta.
+    return {
+      nombre: values.nombre,
+      familiaId: values.familiaId,
+      unidadMedidaId: values.unidadMedidaId,
+      stockMinimo: values.stockMinimo ?? null,
+    };
+  }
+
+  function cambiaronLosDatos(values: InsumoFormValues, actual: Insumo): boolean {
+    return (
+      values.nombre !== actual.nombre ||
+      values.familiaId !== actual.familiaId ||
+      values.unidadMedidaId !== actual.unidadMedidaId ||
+      (values.stockMinimo ?? null) !== actual.stockMinimo
+    );
+  }
+
+  async function submitEdicion(values: InsumoFormValues, actual: Insumo) {
+    setErrorSeguimiento(null);
+
+    // Reintento: solo el paso que quedó sin hacer, nunca el que ya se guardó.
+    if (pendiente) {
+      setPendiente(null);
+      if (await ejecutarPaso(pendiente.paso, values, true)) setOpen(false);
+      return;
+    }
+
+    const cambiaSeguimiento = values.seguimiento !== actual.seguimiento;
+    if (!cambiaSeguimiento) {
+      editarMutation.mutate(construirEdicion(values), { onSuccess: () => setOpen(false) });
+      return;
+    }
+    if (!cambiaronLosDatos(values, actual)) {
+      if (await ejecutarPaso("seguimiento", values, false)) setOpen(false);
+      return;
+    }
+
+    // Hacia SERIE: primero los datos (puede estar corrigiendo la unidad de
+    // medida a una entera) y después el seguimiento. Hacia NINGUNO, al revés:
+    // si el seguimiento se rechaza, no se tocó nada más.
+    const [primero, segundo] =
+      values.seguimiento === "SERIE" ? (["datos", "seguimiento"] as const) : (["seguimiento", "datos"] as const);
+    if (!(await ejecutarPaso(primero, values, false))) return;
+    if (await ejecutarPaso(segundo, values, true)) setOpen(false);
+  }
+
   function submit(values: InsumoFormValues) {
     if (isEdit) {
-      // `stockMinimo` es el ÚNICO campo donde `null` viaja a propósito: es la
-      // orden explícita de borrar el punto de reposición cuando el usuario
-      // limpia el campo (ver el JSDoc de `EditInsumoDto`). Sin `codigo`: no
-      // es un campo editable (issue #166).
-      const dto: EditInsumoDto = {
-        nombre: values.nombre,
-        familiaId: values.familiaId,
-        unidadMedidaId: values.unidadMedidaId,
-        stockMinimo: values.stockMinimo ?? null,
-      };
-      editarMutation.mutate(dto, { onSuccess: () => setOpen(false) });
+      void submitEdicion(values, insumo);
       return;
     }
 
     // En el alta, vacío es AUSENCIA: `stockMinimo` no viaja en el body cuando
     // el campo queda sin completar (ni `undefined` explícito ni `null` — la
-    // clave directamente no está). Sin `codigo`: lo autogenera el sistema
-    // (issue #166) y el formulario no tiene ningún valor que ofrecer.
+    // clave directamente no está). Lo mismo `seguimiento`: ausente equivale a
+    // `NINGUNO`. Sin `codigo`: lo autogenera el sistema (issue #166).
     const dto: CreateInsumoDto = {
       nombre: values.nombre,
       familiaId: values.familiaId,
       unidadMedidaId: values.unidadMedidaId,
       ...(values.stockMinimo === undefined ? {} : { stockMinimo: values.stockMinimo }),
+      ...(values.seguimiento === "NINGUNO" ? {} : { seguimiento: values.seguimiento }),
     };
     crearMutation.mutate(dto, { onSuccess: () => setOpen(false) });
   }
@@ -184,7 +299,11 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (next) reset(valoresVigentes);
+        if (next) {
+          reset(valoresVigentes);
+          setPendiente(null);
+          setErrorSeguimiento(null);
+        }
       }}
     >
       <DialogTrigger asChild>{trigger}</DialogTrigger>
@@ -301,9 +420,32 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
             )}
           </div>
 
+          <div className="flex flex-col gap-1">
+            <label htmlFor="insumo-seguimiento" className="text-sm font-medium text-foreground">
+              Seguimiento
+            </label>
+            <Select id="insumo-seguimiento" {...register("seguimiento")}>
+              {SEGUIMIENTOS_INSUMO.map((valor) => (
+                <option key={valor} value={valor}>
+                  {ETIQUETAS_SEGUIMIENTO[valor]}
+                </option>
+              ))}
+            </Select>
+            {avisarUnidadNoEntera && (
+              <p className="text-xs text-muted-foreground">
+                La unidad de medida elegida no es entera: para llevar el insumo por número de serie tiene que serlo.
+              </p>
+            )}
+            {(pendiente || errorSeguimiento) && (
+              <p role="alert" className="text-sm text-destructive">
+                {pendiente?.mensaje ?? errorSeguimiento}
+              </p>
+            )}
+          </div>
+
           <div className="flex justify-end gap-2">
-            <Button type="submit" isLoading={mutation.isPending}>
-              {isEdit ? "Guardar" : "Crear"}
+            <Button type="submit" isLoading={guardando}>
+              {pendiente ? (pendiente.paso === "seguimiento" ? "Reintentar seguimiento" : "Reintentar guardado") : isEdit ? "Guardar" : "Crear"}
             </Button>
           </div>
         </form>

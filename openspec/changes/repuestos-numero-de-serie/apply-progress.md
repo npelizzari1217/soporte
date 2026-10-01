@@ -809,3 +809,18 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   (enum, default `NINGUNO`). Tests en `schemas.test.ts`.
 - Fixtures de la suite de insumos actualizados con los campos nuevos requeridos. El dialogo solo suma `seguimiento` a `valoresVigentes` (el
   selector y el orden de las llamadas son 13.2).
+
+### WU-13 - 13.2 y 13.3 (selector, orden de las dos llamadas, tests), rama `-wu13-2`
+
+- `useCambiarSeguimientoInsumo(id)` (`PATCH insumos/:id/seguimiento`, sin toast de error: el dialogo muestra el motivo en linea; invalida `["insumos"]`
+  y `["insumo", id]`). `InsumoFormDialog`: selector "Seguimiento" (Por cantidad / Por numero de serie); en el alta `seguimiento` solo viaja si es `SERIE`.
+- Edicion con cambio de seguimiento: hacia `SERIE` primero `PATCH /insumos/:id` y luego `.../seguimiento`; hacia `NINGUNO` al reves; si solo cambia el
+  seguimiento no se manda el PATCH de datos. Si falla la SEGUNDA llamada el dialogo queda abierto con el estado `pendiente` (que paso falta): hacia
+  `SERIE` dice que los demas cambios ya se guardaron y el boton pasa a "Reintentar seguimiento" (solo esa llamada); hacia `NINGUNO` dice que el
+  seguimiento ya se cambio y reintenta solo el guardado de datos. Si falla la PRIMERA no se afirma que algo se guardo. 409 => "Reintentá el cambio";
+  422 => motivo del backend. Aviso (no bloqueante) si se elige `SERIE` con una unidad no entera.
+- Tests (MSW + `renderWithProviders`, 10 nuevos en `insumo-form-dialog.test.tsx`): alta con SERIE, aviso de unidad no entera, sin cambio no viaja
+  la clave, orden en las dos direcciones, solo seguimiento, fallo de la segunda llamada (con reintento) en las dos direcciones, 409, 422 por saldo y
+  422 hacia `NINGUNO` sin PATCH de datos.
+- Gates (13.4), rama final `-wu13-2`: `pnpm lint` y `pnpm type-check` en cero; `pnpm vitest run src/features/insumos` 21 archivos / 284 tests verdes;
+  `pnpm test` completo 213 archivos / 1639 tests verdes.

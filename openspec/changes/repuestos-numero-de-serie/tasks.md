@@ -578,14 +578,15 @@ Commit sugerido: `feat(insumos): unidad de medida entera editable`.
 **Branch**: `feat/repuestos-numero-de-serie-wu13` · **Base**: wu12b
 
 - [x] 13.1 `features/insumos/types.ts` y `schemas.ts` (Zod espejo del backend): `seguimiento`, `entera`, `UnidadInsumo`, `EventoUnidad`, `seriales`, `unidadId`, `pendientesDeSerie`; cota de serial 1 a 255 y `seriales` máximo 100.
-- [ ] 13.2 `insumo-form-dialog.tsx`: selector de seguimiento; al editar con cambio de `seguimiento` más otros campos, el orden de llamadas según la dirección (hacia `SERIE`: primero `PATCH /insumos/:id` y luego `…/seguimiento`; hacia `NINGUNO`, al revés). Si la segunda falla, el diálogo queda abierto con el error, informa que los demás cambios ya se guardaron y deja reintentar solo el seguimiento. Manejo del 409 `UnidadMedidaCambiadaError` (reintentar). Mostrar el motivo de `SeguimientoNoModificableError`.
-- [ ] 13.3 Tests (MSW + `renderWithProviders`): alta con seguimiento; edición en las dos direcciones con el orden verificado; fallo de la segunda llamada; error de saldo distinto de cero.
-- [ ] 13.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
+- [x] 13.2 `insumo-form-dialog.tsx`: selector de seguimiento; al editar con cambio de `seguimiento` más otros campos, el orden de llamadas según la dirección (hacia `SERIE`: primero `PATCH /insumos/:id` y luego `…/seguimiento`; hacia `NINGUNO`, al revés). Si la segunda falla, el diálogo queda abierto con el error, informa que los demás cambios ya se guardaron y deja reintentar solo el seguimiento. Manejo del 409 `UnidadMedidaCambiadaError` (reintentar). Mostrar el motivo de `SeguimientoNoModificableError`.
+- [x] 13.3 Tests (MSW + `renderWithProviders`): alta con seguimiento; edición en las dos direcciones con el orden verificado; fallo de la segunda llamada; error de saldo distinto de cero.
+- [x] 13.4 Quality gates (frontend): `cd frontend && pnpm lint && pnpm type-check && pnpm vitest run src/features/insumos && pnpm test`.
 
 **Escenarios**: Activar con saldo cero / distinto de cero / con unidad no entera (UI); Volver a
 NINGUNO con unidades vivas (UI); Insumo NINGUNO sin cambios.
 **PR boundary**: ~550 líneas reales, base wu12b. Corte si se pasa: tipos/schemas / diálogo.
 **Ayuda**: deuda en commit y PR (texto de la nota de cabecera).
+**Real**: wu13 (13.1, 231 lineas) + wu13-2 (13.2/13.3, 441 lineas, size:exception: dialogo, hook y sus 10 tests).
 Commit sugerido: `feat(insumos): seguimiento por serie en el ABM del insumo`.
 
 ## WU-14 — Frontend: casilla `entera` en el ABM de unidades de medida

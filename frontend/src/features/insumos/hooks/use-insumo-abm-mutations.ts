@@ -25,7 +25,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
-import type { CambiarEstadoActivoInsumoDto, CreateInsumoDto, EditInsumoDto, Insumo } from "../types";
+import type {
+  CambiarEstadoActivoInsumoDto,
+  CambiarSeguimientoInsumoDto,
+  CreateInsumoDto,
+  EditInsumoDto,
+  Insumo,
+} from "../types";
 
 export function useCrearInsumo() {
   const queryClient = useQueryClient();
@@ -61,5 +67,27 @@ export function useCambiarEstadoActivoInsumo(id: string) {
       notifySuccess(insumo.activo ? "Insumo habilitado." : "Insumo deshabilitado.");
     },
     onError: notifyError,
+  });
+}
+
+/**
+ * `PATCH /insumos/:id/seguimiento` (solo administrador). SIN `onError` a
+ * propósito: el diálogo del insumo muestra el motivo en línea, junto al botón
+ * de reintento, y un toast además lo diría dos veces. Errores del backend:
+ * 409 `UNIDAD_MEDIDA_CAMBIADA` (reintentable), 422 `SeguimientoNoModificable`
+ * (saldo distinto de cero o unidades vivas) y 422 `UNIDAD_MEDIDA_NO_ENTERA`.
+ * Invalida también el stock del insumo, que lleva `seguimiento` y
+ * `pendientesDeSerie`.
+ */
+export function useCambiarSeguimientoInsumo(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CambiarSeguimientoInsumoDto) =>
+      apiFetch<Insumo>(`insumos/${id}/seguimiento`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["insumos"] });
+      queryClient.invalidateQueries({ queryKey: ["insumo", id] });
+      notifySuccess("Seguimiento actualizado.");
+    },
   });
 }
