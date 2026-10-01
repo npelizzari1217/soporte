@@ -118,3 +118,46 @@ describe('ComponenteEquipoMapper — registro de retiro (sdd/stock-usado-compone
     });
   });
 });
+
+describe('ComponenteEquipoMapper — unidad de insumo (sdd/repuestos-numero-de-serie, ADR-7)', () => {
+  it('toDomain(): con unidad el numeroSerie es el de la unidad, no la columna propia', () => {
+    const entity = ComponenteEquipoMapper.toDomain({
+      ...fila({ unidadId: 'unidad-1', numeroSerie: null }),
+      unidad: { numeroSerie: 'SN-UNIDAD' },
+    });
+    expect(entity.unidadId).toBe('unidad-1');
+    expect(entity.numeroSerie).toBe('SN-UNIDAD');
+  });
+
+  it('toDomain(): con unidad de serie pendiente el numeroSerie es null', () => {
+    const entity = ComponenteEquipoMapper.toDomain({
+      ...fila({ unidadId: 'unidad-1' }),
+      unidad: { numeroSerie: null },
+    });
+    expect(entity.numeroSerie).toBeNull();
+  });
+
+  it('toDomain(): un componente legado conserva su serial de texto y unidadId null', () => {
+    const entity = ComponenteEquipoMapper.toDomain(fila({ numeroSerie: 'LEGADO-1' }));
+    expect(entity.unidadId).toBeNull();
+    expect(entity.numeroSerie).toBe('LEGADO-1');
+  });
+
+  it('toPersistence(): con unidad escribe numero_serie NULL (aunque la entidad lleve el serial resuelto) y la unidad', () => {
+    const entity = ComponenteEquipoMapper.toDomain({
+      ...fila({ unidadId: 'unidad-1' }),
+      unidad: { numeroSerie: 'SN-UNIDAD' },
+    });
+    const data = ComponenteEquipoMapper.toPersistence(entity);
+    expect(data.numeroSerie).toBeNull();
+    expect(data.unidadId).toBe('unidad-1');
+  });
+
+  it('toPersistence(): un legado escribe su serial de texto y unidadId null', () => {
+    const data = ComponenteEquipoMapper.toPersistence(
+      ComponenteEquipoMapper.toDomain(fila({ numeroSerie: 'LEGADO-1' })),
+    );
+    expect(data.numeroSerie).toBe('LEGADO-1');
+    expect(data.unidadId).toBeNull();
+  });
+});

@@ -76,6 +76,7 @@ import {
   ComponenteDadoDeBajaError,
   ComponenteYaActivoError,
   ComponenteDevueltoAlStockError,
+  SerialDeUnidadNoEditableError,
   MotivoRetiroRequeridoError,
   ExportacionDemasiadoGrandeError,
   InsumoRepuestoInexistenteError,
@@ -119,6 +120,8 @@ export function toHttpException(
     // Reactivar tras devolver al stock (sdd/stock-usado-componentes): doble conteo.
     error instanceof ComponenteDevueltoAlStockError ||
     error instanceof MotivoRetiroRequeridoError ||
+    // El serial de un componente con unidad se corrige desde la unidad (ADR-7).
+    error instanceof SerialDeUnidadNoEditableError ||
     // `insumoId` es otro valor del BODY que referencia un catálogo (WU-3,
     // sdd/repuestos-vinculo-componente): mismo criterio 422 que
     // `modeloEquipoId`.

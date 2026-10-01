@@ -484,10 +484,10 @@ Commit sugerido: `feat(compras): recepcion de items con seriales y pendientes`.
 
 **Branch**: `feat/repuestos-numero-de-serie-wu10a` · **Base**: wu09
 
-- [ ] 10a.1 `ComponenteEquipoEntity.unidadId`; `PrismaComponenteEquipoRepository` incluye `unidad.numeroSerie` y el mapper lo expone como `numeroSerie`; `save()` escribe NULL en `numero_serie` cuando hay unidad. `ComponenteResponseDto`: `unidadId` y `numeroSerie` resuelto.
-- [ ] 10a.2 `AgregarComponenteUseCase` se parte en `preparar()` (valida y construye la entidad con `unidadId` y `numeroSerie` NULL, sin escribir) + `execute()` (preparar y guardar). Sin cambio de conducta para `NINGUNO`.
+- [x] 10a.1 `ComponenteEquipoEntity.unidadId`; `PrismaComponenteEquipoRepository` incluye `unidad.numeroSerie` y el mapper lo expone como `numeroSerie`; `save()` escribe NULL en `numero_serie` cuando hay unidad. `ComponenteResponseDto`: `unidadId` y `numeroSerie` resuelto.
+- [x] 10a.2 `AgregarComponenteUseCase` se parte en `preparar()` (valida y construye la entidad con `unidadId` y `numeroSerie` NULL, sin escribir) + `execute()` (preparar y guardar). Sin cambio de conducta para `NINGUNO`.
 - [ ] 10a.3 `InstalarComponenteDesdeDepositoUseCase` con `unidadId` y en este orden (ADR-12: locks antes de la primera escritura): `preparar()` → `operaciones.instalar([{ unidadId, equipoId, componenteId }])` (L1, L2, L3) → `vincularInstalacion(salida.id)` → un único `save()` (L4). Sin `unidadId`, el camino de hoy; insumo `SERIE` sin `unidadId` ⇒ `UnidadRequeridaError`. `numeroSerie` y `condicion` del body se ignoran con `unidadId`. Unidad pendiente o de otro insumo ⇒ `UnidadNoDisponibleError`.
-- [ ] 10a.4 `EditarComponenteUseCase`: con unidad, `numeroSerie` en el PATCH ⇒ `SerialDeUnidadNoEditableError` (422); legado como hoy.
+- [x] 10a.4 `EditarComponenteUseCase`: con unidad, `numeroSerie` en el PATCH ⇒ `SerialDeUnidadNoEditableError` (422); legado como hoy.
 - [ ] 10a.5 Borde: `CreateComponenteHttpDto.unidadId?`; mapeo de errores en `equipos.controller.ts`; e2e (`usarLockMasterTest()`): instalar una unidad elegida por serial, alta SERIE sin unidad o con pendiente, unidad tomada por otra operación (dos altas concurrentes ⇒ una), editar serial de unidad y de legado, rollback de todo si falla la SALIDA, `EQUIPOS:ALTAS` sin permisos de INSUMOS instala. **Mutación adversarial local**: escribir el componente (L4) antes de `operaciones.instalar` ⇒ el spec de orden debe detectarlo; revertir.
 - [ ] 10a.6 Quality gates (backend): `cd backend && pnpm lint && pnpm typecheck && pnpm vitest run src/equipos src/insumos/application` y `pnpm test`.
 

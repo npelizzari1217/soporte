@@ -401,7 +401,10 @@ export interface ComponenteResponseDto {
   /** Repuesto del catálogo vinculado; el tipo ya no viaja en esta respuesta (ADR-6). */
   insumoId: string;
   descripcion: string | null;
+  /** Con unidad, el serial de la unidad (resuelto al leer); si no, el texto del componente. */
   numeroSerie: string | null;
+  /** Unidad de insumo `SERIE` que lleva el componente, o `null` (legado / sin seguimiento por serie). */
+  unidadId: string | null;
   capacidad: string | null;
   activo: boolean;
   deletedAt: string | null;
@@ -424,6 +427,7 @@ export function toComponenteResponseDto(componente: ComponenteEquipoEntity): Com
     insumoId: componente.insumoId,
     descripcion: componente.descripcion,
     numeroSerie: componente.numeroSerie,
+    unidadId: componente.unidadId,
     capacidad: componente.capacidad,
     activo: componente.activo,
     deletedAt: componente.deletedAt ? componente.deletedAt.toISOString() : null,

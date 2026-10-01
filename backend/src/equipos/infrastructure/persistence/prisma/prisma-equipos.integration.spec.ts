@@ -64,6 +64,7 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
 
   const ticketIdsCreados: string[] = [];
   const equipoIdsCreados: string[] = [];
+  const unidadIdsCreadas: string[] = [];
   /** Fixture del catálogo `modelos_equipo` — destino de `equipos.modelo_equipo_id`. */
   let modeloEquipoId: string;
   /** Fixtures de WU-3 — destino de `componentes_equipo.insumo_id` (FK real, misma base). */
@@ -193,6 +194,10 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
       await tenantClient.componenteEquipo.deleteMany({
         where: { equipoId: { in: equipoIdsCreados } },
       });
+      // Las unidades de insumo (WU-10a) refieren al equipo y a los componentes: van entre ambos.
+      if (unidadIdsCreadas.length > 0) {
+        await tenantClient.unidadInsumo.deleteMany({ where: { id: { in: unidadIdsCreadas } } });
+      }
       await tenantClient.equipoInformatico.deleteMany({ where: { id: { in: equipoIdsCreados } } });
     }
     // Después de los componentes (arriba): `componentes_equipo.insumo_id` (WU-3,
@@ -416,6 +421,50 @@ describe('Equipos Persistence Repos — Integration (PR11)', () => {
         expect(trasUpdate!.descripcion).toBe('Memoria renombrada');
         expect(trasUpdate!.insumoId).toBe(insumoRepuestoId);
       });
+    });
+
+    it('con unidad: save() escribe numero_serie NULL y la lectura resuelve el serial de la unidad (ADR-7)', async () => {
+      const equipo = await crearEquipo();
+      const unidad = await tenantClient.unidadInsumo.create({
+        data: {
+          insumoId: insumoRepuestoId,
+          numeroSerie: 'SN-UNIDAD-WU10A',
+          numeroSerieNormalizado: `SN-UNIDAD-WU10A-${RUN_PREFIX}`,
+          condicion: 'NUEVO',
+          estado: 'INSTALADA',
+          equipoId: equipo.id,
+        },
+      });
+      unidadIdsCreadas.push(unidad.id);
+      const componente = ComponenteEquipoEntity.create({
+        equipoId: equipo.id,
+        insumoId: insumoRepuestoId,
+        descripcion: null,
+        numeroSerie: null,
+        capacidad: null,
+        unidadId: unidad.id,
+      }).getValue();
+
+      await withTenant(async () => {
+        await componenteRepo.save(componente);
+        const porId = await componenteRepo.findById(componente.id);
+        expect(porId!.unidadId).toBe(unidad.id);
+        expect(porId!.numeroSerie).toBe('SN-UNIDAD-WU10A');
+        const activos = await componenteRepo.findActiveByEquipoId(equipo.id);
+        expect(activos[0].numeroSerie).toBe('SN-UNIDAD-WU10A');
+        const todos = await componenteRepo.findAllByEquipoId(equipo.id);
+        expect(todos[0].numeroSerie).toBe('SN-UNIDAD-WU10A');
+
+        // Un UPDATE posterior (descripcion) sigue escribiendo NULL: el CHECK no se viola.
+        porId!.actualizar({ descripcion: 'Con unidad' });
+        await componenteRepo.save(porId!);
+      });
+      const fila = await tenantClient.componenteEquipo.findUniqueOrThrow({
+        where: { id: componente.id },
+      });
+      expect(fila.numeroSerie).toBeNull();
+      expect(fila.unidadId).toBe(unidad.id);
+      expect(fila.descripcion).toBe('Con unidad');
     });
 
     it('save() con insumoId inexistente falla — la FK real lo rechaza', async () => {

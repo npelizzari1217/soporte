@@ -4,6 +4,7 @@ import { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equ
 import {
   ComponenteDadoDeBajaError,
   ComponenteNoEncontradoError,
+  SerialDeUnidadNoEditableError,
 } from '../../domain/errors/equipos.errors';
 
 /** DTO de entrada para editar un componente de equipo (PATCH semántico). */
@@ -31,7 +32,10 @@ export interface EditarComponenteDto {
  *    de otro equipo.
  * 2. Si está dado de baja → `ComponenteDadoDeBajaError` (hay que reactivarlo
  *    primero — editar y reactivar son operaciones separadas).
- * 3. Aplica `actualizar()` (PATCH semántico) y persiste.
+ * 3. Con unidad de insumo, `numeroSerie` en el PATCH → `SerialDeUnidadNoEditableError`
+ *    (el serial es de la unidad y se corrige desde el insumo, ADR-7/ADR-9). Un
+ *    componente legado edita su serial como siempre.
+ * 4. Aplica `actualizar()` (PATCH semántico) y persiste.
  *
  * Sin throw — todos los fallos esperados retornan `Result.fail()`.
  */
@@ -49,6 +53,10 @@ export class EditarComponenteUseCase {
     }
     if (componente.isDeleted()) {
       return Result.fail(new ComponenteDadoDeBajaError(dto.componenteId));
+    }
+
+    if (componente.unidadId !== null && dto.numeroSerie !== undefined) {
+      return Result.fail(new SerialDeUnidadNoEditableError(componente.id));
     }
 
     componente.actualizar({

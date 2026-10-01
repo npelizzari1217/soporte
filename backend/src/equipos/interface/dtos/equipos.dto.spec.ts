@@ -342,6 +342,29 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
 describe('toComponenteResponseDto — registro del retiro (ADR-7)', () => {
   const props = { equipoId: 'equipo-uuid', insumoId: 'insumo-uuid' };
 
+  it('expone unidadId y el numeroSerie resuelto de la unidad; sin unidad, unidadId null', () => {
+    const conUnidad = toComponenteResponseDto(
+      ComponenteEquipoEntity.create({
+        ...props,
+        descripcion: null,
+        numeroSerie: 'SN-RESUELTO',
+        capacidad: null,
+        unidadId: 'unidad-uuid',
+      }).getValue(),
+    );
+    expect(conUnidad).toMatchObject({ unidadId: 'unidad-uuid', numeroSerie: 'SN-RESUELTO' });
+
+    const legado = toComponenteResponseDto(
+      ComponenteEquipoEntity.create({
+        ...props,
+        descripcion: null,
+        numeroSerie: 'LEGADO',
+        capacidad: null,
+      }).getValue(),
+    );
+    expect(legado).toMatchObject({ unidadId: null, numeroSerie: 'LEGADO' });
+  });
+
   it('un componente activo informa el retiro vacío y bajaSinSalidaPrevia false', () => {
     const dto = toComponenteResponseDto(
       ComponenteEquipoEntity.create({

@@ -589,3 +589,21 @@ Rama `feat/repuestos-numero-de-serie-wu09-2`. Tareas 9.3 y 9.4 hechas (9.1 a 9.4
   seriales, parciales (pendientes), sin seriales, parcial acumulada, delta cero idempotente, serial repetido (409 con rollback de
   acumulado, unidades y movimientos), fraccional 422, mas seriales que el delta 422, serial de 256 caracteres 400 y seriales sobre
   un insumo `NINGUNO` 422.
+
+## WU-10a - Equipos: entidad, mapper, editar, `preparar`, instalar con unidad
+
+Rama `feat/repuestos-numero-de-serie-wu10a`. Parte 1 de 2 (10a.1, 10a.2, 10a.4). 10a.3, 10a.5 y 10a.6 en la parte 2.
+
+- `ComponenteEquipoEntity.unidadId` (opcional, default null) con getter. Con unidad, `numeroSerie` de la entidad es el serial
+  RESUELTO de la unidad (lo pone el mapper al leer); `toPersistence` escribe NULL en `numero_serie` cuando hay unidad (CHECK).
+- `PrismaComponenteEquipoRepository`: todas las lecturas hacen `include: { unidad: { select: { numeroSerie } } }`; el mapper acepta
+  `ComponenteEquipoConUnidad`. `ComponenteResponseDto` suma `unidadId` (el `numeroSerie` ya sale resuelto).
+- `AgregarComponenteUseCase.preparar()` valida y construye sin escribir (con `unidadId` el serial queda NULL aunque el body traiga
+  uno); `execute()` = `preparar()` + `save()` (sin cambio de conducta para NINGUNO).
+- `EditarComponenteUseCase`: con unidad, cualquier `numeroSerie` en el PATCH (incluido null) devuelve `SerialDeUnidadNoEditableError`;
+  controller lo lista explicito como 422 (el catalogo de 17 clases ya lo incluia).
+- Tests: unit (agregar, editar, mapper, DTO) e integracion real (`prisma-equipos.integration.spec.ts`: escribe NULL, lee el serial de
+  la unidad en findById/findActive/findAll, UPDATE posterior no viola el CHECK). La limpieza borra las unidades antes que los equipos.
+- Ayuda: sin cambios; `equipos-listado.md` solo habla del serial del equipo (verdadero) y ningun articulo describe el serial del
+  componente. Deuda de UI en WU-19.
+
