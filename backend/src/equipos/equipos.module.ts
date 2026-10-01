@@ -198,9 +198,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: EliminarEquipoUseCase,
-      useFactory: (equipoRepo: IEquipoInformaticoRepository) =>
-        new EliminarEquipoUseCase(equipoRepo),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY],
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        componenteRepo: IComponenteEquipoRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new EliminarEquipoUseCase(equipoRepo, componenteRepo, txRunner),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       // WU-3 (sdd/repuestos-vinculo-componente): agrega INSUMO_REPOSITORY y
