@@ -3,11 +3,19 @@ import { EditarEquipoUseCase } from './editar-equipo.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ModeloEquipoEntity } from '../../../insumos/domain/entities/modelo-equipo.entity';
 import {
+  EquipoDadoDeBajaError,
   EquipoNoEncontradoError,
   ModeloEquipoDeshabilitadoError,
   ModeloEquipoInexistenteError,
   NumeroSerieDuplicadoError,
 } from '../../domain/errors/equipos.errors';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
+import type { IModeloEquipoRepository } from '../../../insumos/domain/ports/i-modelo-equipo.repository';
+import {
+  equipoDadoDeBaja,
+  equipoVigente,
+  txRunnerDeSpec,
+} from '../../testing/equipos-unit.fixtures';
 
 /**
  * T12.1 [U][RED] — EditarEquipoUseCase: numeroSerie duplicado →
@@ -15,58 +23,110 @@ import {
  * La ubicación es TEXTO LIBRE (no se valida) — el use case ya no inyecta
  * `ubicacionRepo`.
  *
+ * baja-equipo-completo (R11, R8): la lectura es `bloquearParaModificar` dentro de la
+ * transacción y un equipo dado de baja se rechaza sin guardar nada.
+ *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1.
  */
 describe('EditarEquipoUseCase', () => {
-  function makeEquipo(
-    overrides: Partial<Parameters<typeof EquipoInformaticoEntity.create>[0]> = {},
+  const makeEquipo = equipoVigente;
+
+  type EquipoRepoFake = Pick<
+    IEquipoInformaticoRepository,
+    'bloquearParaModificar' | 'findByNumeroSerie' | 'save'
+  >;
+
+  /** Repo de equipos tipado: `bloquearParaModificar` devuelve el equipo dado y registra el orden. */
+  function makeEquipoRepo(
+    equipo: EquipoInformaticoEntity | null,
+    extra: Partial<EquipoRepoFake> = {},
+    llamadas: string[] = [],
   ) {
-    return EquipoInformaticoEntity.create({
-      nombre: 'Original',
-      numeroSerie: 'SN-ORIG',
-      marca: null,
-      modelo: null,
-      fechaAdquisicion: null,
-      ubicacion: null,
-      importe: null,
-      fechaValoracion: null,
-      observaciones: null,
-      valorResidual: null,
-      fechaValorResidual: null,
-      ...overrides,
-    });
+    return {
+      bloquearParaModificar: vi.fn(async () => {
+        llamadas.push('bloquearParaModificar');
+        return equipo;
+      }),
+      findByNumeroSerie: vi.fn(async () => null),
+      save: vi.fn(async () => {}),
+      ...extra,
+    } satisfies EquipoRepoFake;
+  }
+
+  function makeUseCase(
+    equipoRepo: EquipoRepoFake,
+    modeloRepo: Pick<IModeloEquipoRepository, 'findById'> = makeModeloRepo(),
+    llamadas: string[] = [],
+  ) {
+    return new EditarEquipoUseCase(equipoRepo, txRunnerDeSpec(llamadas), modeloRepo);
   }
 
   /** Catálogo que nunca resuelve un modelo — los casos que no tocan `modeloEquipoId` no lo consultan. */
-  function makeModeloRepo() {
-    return { findById: vi.fn().mockResolvedValue(null) };
+  function makeModeloRepo(modelo: ModeloEquipoEntity | null = null) {
+    return { findById: vi.fn(async () => modelo) } satisfies Pick<
+      IModeloEquipoRepository,
+      'findById'
+    >;
   }
 
-  it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(null), save: vi.fn() };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      makeModeloRepo() as never,
-    );
+  describe('guards del equipo (LE)', () => {
+    it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
+      const equipoRepo = makeEquipoRepo(null);
+      const result = await makeUseCase(equipoRepo).execute({ equipoId: 'no-existe', nombre: 'X' });
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
+      expect(equipoRepo.save).not.toHaveBeenCalled();
+    });
 
-    const result = await useCase.execute({ equipoId: 'no-existe', nombre: 'X' });
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
+    it('falla con EquipoNoEncontradoError si el equipo tiene borrado lógico', async () => {
+      const borrado = makeEquipo();
+      borrado.softDelete();
+      const equipoRepo = makeEquipoRepo(borrado);
+      const result = await makeUseCase(equipoRepo).execute({ equipoId: borrado.id, nombre: 'X' });
+      expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
+      expect(equipoRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('un equipo dado de baja falla con EquipoDadoDeBajaError y no guarda nada', async () => {
+      const baja = equipoDadoDeBaja();
+      const equipoRepo = makeEquipoRepo(baja);
+      const result = await makeUseCase(equipoRepo).execute({ equipoId: baja.id, nombre: 'X' });
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
+      expect(equipoRepo.save).not.toHaveBeenCalled();
+      expect(baja.nombre).toBe('Original');
+    });
+
+    it('lee el equipo con bloquearParaModificar DENTRO de la transacción, antes de guardar', async () => {
+      const llamadas: string[] = [];
+      const equipo = makeEquipo();
+      const equipoRepo = makeEquipoRepo(
+        equipo,
+        {
+          save: vi.fn(async () => {
+            llamadas.push('save');
+          }),
+        },
+        llamadas,
+      );
+
+      await makeUseCase(equipoRepo, makeModeloRepo(), llamadas).execute({
+        equipoId: equipo.id,
+        nombre: 'Editado',
+      });
+
+      expect(llamadas).toEqual(['tx:inicio', 'bloquearParaModificar', 'save', 'tx:fin']);
+    });
   });
 
   it('edita nombre/marca (PATCH semántico) y persiste', async () => {
     const equipo = makeEquipo();
-    const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo), save: vi.fn() };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      makeModeloRepo() as never,
-    );
+    const equipoRepo = makeEquipoRepo(equipo);
 
-    const result = await useCase.execute({ equipoId: equipo.id, nombre: 'Editado' });
+    const result = await makeUseCase(equipoRepo).execute({
+      equipoId: equipo.id,
+      nombre: 'Editado',
+    });
     expect(result.isOk()).toBe(true);
     expect(result.getValue().nombre).toBe('Editado');
     expect(equipoRepo.save).toHaveBeenCalledTimes(1);
@@ -75,19 +135,14 @@ describe('EditarEquipoUseCase', () => {
   it('falla con NumeroSerieDuplicadoError si el nuevo numeroSerie pertenece a OTRO equipo', async () => {
     const equipo = makeEquipo();
     const otroEquipoConEseSerie = makeEquipo({ numeroSerie: 'SN-OTRO' });
-    const equipoRepo = {
-      findById: vi.fn().mockResolvedValue(equipo),
-      findByNumeroSerie: vi.fn().mockResolvedValue(otroEquipoConEseSerie),
-      save: vi.fn(),
-    };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      makeModeloRepo() as never,
-    );
+    const equipoRepo = makeEquipoRepo(equipo, {
+      findByNumeroSerie: vi.fn(async () => otroEquipoConEseSerie),
+    });
 
-    const result = await useCase.execute({ equipoId: equipo.id, numeroSerie: 'SN-OTRO' });
+    const result = await makeUseCase(equipoRepo).execute({
+      equipoId: equipo.id,
+      numeroSerie: 'SN-OTRO',
+    });
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(NumeroSerieDuplicadoError);
     expect(equipoRepo.save).not.toHaveBeenCalled();
@@ -95,19 +150,12 @@ describe('EditarEquipoUseCase', () => {
 
   it('permite mantener el mismo numeroSerie del propio equipo (no es duplicado consigo mismo)', async () => {
     const equipo = makeEquipo({ numeroSerie: 'SN-MISMO' });
-    const equipoRepo = {
-      findById: vi.fn().mockResolvedValue(equipo),
-      findByNumeroSerie: vi.fn().mockResolvedValue(equipo),
-      save: vi.fn(),
-    };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      makeModeloRepo() as never,
-    );
+    const equipoRepo = makeEquipoRepo(equipo, { findByNumeroSerie: vi.fn(async () => equipo) });
 
-    const result = await useCase.execute({ equipoId: equipo.id, numeroSerie: 'SN-MISMO' });
+    const result = await makeUseCase(equipoRepo).execute({
+      equipoId: equipo.id,
+      numeroSerie: 'SN-MISMO',
+    });
     expect(result.isOk()).toBe(true);
   });
 
@@ -120,19 +168,11 @@ describe('EditarEquipoUseCase', () => {
    */
   it('mapea P2002 a NumeroSerieDuplicadoError incluso con numeroSerie vacío', async () => {
     const equipo = makeEquipo({ numeroSerie: 'SN-ORIG' });
-    const equipoRepo = {
-      findById: vi.fn().mockResolvedValue(equipo),
-      findByNumeroSerie: vi.fn().mockResolvedValue(null),
+    const equipoRepo = makeEquipoRepo(equipo, {
       save: vi.fn().mockRejectedValue(Object.assign(new Error('unique'), { code: 'P2002' })),
-    };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const useCase = new EditarEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      makeModeloRepo() as never,
-    );
+    });
 
-    const result = await useCase.execute({ equipoId: equipo.id, numeroSerie: '' });
+    const result = await makeUseCase(equipoRepo).execute({ equipoId: equipo.id, numeroSerie: '' });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(NumeroSerieDuplicadoError);
@@ -148,22 +188,10 @@ describe('EditarEquipoUseCase', () => {
     const MODELO_ID = '01900000-0000-7000-8000-0000000000aa';
     const OTRO_MODELO_ID = '01900000-0000-7000-8000-0000000000bb';
 
-    function makeDeps(equipo: EquipoInformaticoEntity, modelo?: ModeloEquipoEntity | null) {
-      return {
-        equipoRepo: { findById: vi.fn().mockResolvedValue(equipo), save: vi.fn() },
-        txRunner: { run: vi.fn((fn: () => Promise<unknown>) => fn()) },
-        modeloRepo: { findById: vi.fn().mockResolvedValue(modelo ?? null) },
-      };
-    }
-
     it('editar otro campo NO toca el modelo asignado', async () => {
       const equipo = makeEquipo({ modeloEquipoId: MODELO_ID });
-      const { equipoRepo, txRunner, modeloRepo } = makeDeps(equipo);
-      const useCase = new EditarEquipoUseCase(
-        equipoRepo as never,
-        txRunner as never,
-        modeloRepo as never,
-      );
+      const modeloRepo = makeModeloRepo();
+      const useCase = makeUseCase(makeEquipoRepo(equipo), modeloRepo);
 
       const result = await useCase.execute({ equipoId: equipo.id, nombre: 'Editado' });
 
@@ -178,12 +206,7 @@ describe('EditarEquipoUseCase', () => {
         { marca: 'BROTHER', modelo: 'HL-L2350DW', activo: true },
         OTRO_MODELO_ID,
       );
-      const { equipoRepo, txRunner, modeloRepo } = makeDeps(equipo, modeloActivo);
-      const useCase = new EditarEquipoUseCase(
-        equipoRepo as never,
-        txRunner as never,
-        modeloRepo as never,
-      );
+      const useCase = makeUseCase(makeEquipoRepo(equipo), makeModeloRepo(modeloActivo));
 
       const result = await useCase.execute({
         equipoId: equipo.id,
@@ -196,12 +219,8 @@ describe('EditarEquipoUseCase', () => {
 
     it('desvincula el modelo cuando llega null', async () => {
       const equipo = makeEquipo({ modeloEquipoId: MODELO_ID });
-      const { equipoRepo, txRunner, modeloRepo } = makeDeps(equipo);
-      const useCase = new EditarEquipoUseCase(
-        equipoRepo as never,
-        txRunner as never,
-        modeloRepo as never,
-      );
+      const modeloRepo = makeModeloRepo();
+      const useCase = makeUseCase(makeEquipoRepo(equipo), modeloRepo);
 
       const result = await useCase.execute({ equipoId: equipo.id, modeloEquipoId: null });
 
@@ -221,14 +240,8 @@ describe('EditarEquipoUseCase', () => {
 
     function ejecutar(modelo: ModeloEquipoEntity | null) {
       const equipo = makeEquipo();
-      const equipoRepo = { findById: vi.fn().mockResolvedValue(equipo), save: vi.fn() };
-      const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-      const modeloRepo = { findById: vi.fn().mockResolvedValue(modelo) };
-      const useCase = new EditarEquipoUseCase(
-        equipoRepo as never,
-        txRunner as never,
-        modeloRepo as never,
-      );
+      const equipoRepo = makeEquipoRepo(equipo);
+      const useCase = makeUseCase(equipoRepo, makeModeloRepo(modelo));
 
       return {
         equipoRepo,

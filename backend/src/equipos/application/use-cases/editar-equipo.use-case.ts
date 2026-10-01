@@ -3,6 +3,7 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import {
+  EquipoDadoDeBajaError,
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
 } from '../../domain/errors/equipos.errors';
@@ -48,7 +49,10 @@ export interface EditarEquipoDto {
  * EditarEquipoUseCase — edita los datos de un equipo existente (F3-Q1).
  *
  * Flujo:
- * 1. Carga el equipo → `EquipoNoEncontradoError` si no existe/eliminado.
+ * 0. Corre entero en `txRunner.run()`; lo primero es el lock LE `FOR NO KEY UPDATE`
+ *    (`bloquearParaModificar`, ADR-2): serializa contra la baja y el borrado.
+ * 1. Carga el equipo → `EquipoNoEncontradoError` si no existe/eliminado, y
+ *    `EquipoDadoDeBajaError` si está dado de baja (`!activo`, R11).
  * 2. Si `numeroSerie` fue provisto y difiere del actual: verifica unicidad
  *    excluyendo el propio equipo → `NumeroSerieDuplicadoError` si
  *    pertenece a OTRO equipo.
@@ -58,8 +62,7 @@ export interface EditarEquipoDto {
  *    `undefined` ("no lo toques") y `null` ("desvinculalo") son los dos casos
  *    válidos que NO se validan. El modelo deshabilitado no lo puede atrapar la
  *    FK: la fila existe.
- * 4. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste
- *    en transacción (con la misma defensa P2002 que `CrearEquipoUseCase`).
+ * 4. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste (con la misma defensa P2002 que `CrearEquipoUseCase`).
  *
  * La ubicación pasó de FK (catálogo) a TEXTO LIBRE — ya no se valida.
  *
@@ -71,7 +74,7 @@ export class EditarEquipoUseCase {
   constructor(
     private readonly equipoRepo: Pick<
       IEquipoInformaticoRepository,
-      'findById' | 'findByNumeroSerie' | 'save'
+      'bloquearParaModificar' | 'findByNumeroSerie' | 'save'
     >,
     private readonly txRunner: ITenantTransactionRunner,
     // Va al final para no reordenar los args de los callers existentes (mismo
@@ -80,9 +83,37 @@ export class EditarEquipoUseCase {
   ) {}
 
   async execute(dto: EditarEquipoDto): Promise<Result<EquipoInformaticoEntity, DomainError>> {
-    const equipo = await this.equipoRepo.findById(dto.equipoId);
+    try {
+      return await this.txRunner.run(() => this.editar(dto));
+    } catch (err: unknown) {
+      // Comparación explícita contra las dos ausencias, no truthiness
+      // (alineado con el `!== null` de `CrearEquipoUseCase`): con truthiness,
+      // `numeroSerie: ''` —que el chequeo previo SÍ consulta— hacía re-lanzar
+      // un P2002 real y salía como 500 en vez del 422 de negocio. `undefined`
+      // es "no mandé el campo" y `null` es "borralo"; en ninguno de los dos el
+      // P2002 puede venir del índice único parcial de `numero_serie`, que es
+      // `WHERE numero_serie IS NOT NULL`.
+      if (
+        dto.numeroSerie !== undefined &&
+        dto.numeroSerie !== null &&
+        isPrismaUniqueConstraintError(err)
+      ) {
+        return Result.fail(new NumeroSerieDuplicadoError(dto.numeroSerie));
+      }
+      throw err;
+    }
+  }
+
+  /** Cuerpo transaccional: el lock LE del equipo es lo PRIMERO que se toma (ADR-2). */
+  private async editar(
+    dto: EditarEquipoDto,
+  ): Promise<Result<EquipoInformaticoEntity, DomainError>> {
+    const equipo = await this.equipoRepo.bloquearParaModificar(dto.equipoId);
     if (!equipo || equipo.isDeleted()) {
       return Result.fail(new EquipoNoEncontradoError(dto.equipoId));
+    }
+    if (!equipo.activo) {
+      return Result.fail(new EquipoDadoDeBajaError(dto.equipoId));
     }
 
     if (
@@ -123,28 +154,7 @@ export class EditarEquipoUseCase {
       fechaValorResidual: dto.fechaValorResidual,
     });
 
-    try {
-      await this.txRunner.run(async () => {
-        await this.equipoRepo.save(equipo);
-      });
-    } catch (err: unknown) {
-      // Comparación explícita contra las dos ausencias, no truthiness
-      // (alineado con el `!== null` de `CrearEquipoUseCase`): con truthiness,
-      // `numeroSerie: ''` —que el chequeo previo SÍ consulta— hacía re-lanzar
-      // un P2002 real y salía como 500 en vez del 422 de negocio. `undefined`
-      // es "no mandé el campo" y `null` es "borralo"; en ninguno de los dos el
-      // P2002 puede venir del índice único parcial de `numero_serie`, que es
-      // `WHERE numero_serie IS NOT NULL`.
-      if (
-        dto.numeroSerie !== undefined &&
-        dto.numeroSerie !== null &&
-        isPrismaUniqueConstraintError(err)
-      ) {
-        return Result.fail(new NumeroSerieDuplicadoError(dto.numeroSerie));
-      }
-      throw err;
-    }
-
+    await this.equipoRepo.save(equipo);
     return Result.ok(equipo);
   }
 }

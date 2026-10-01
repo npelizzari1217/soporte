@@ -229,8 +229,8 @@ Commit sugerido: `fix(equipos): el borrado rechaza equipos con piezas activas o 
 
 **Branch**: `feat/baja-equipo-completo-wu04` · **Base**: wu03
 
-- [ ] 4.1 Specs `backend/src/equipos/application/use-cases/editar-equipo.use-case.spec.ts`: equipo `!activo` ⇒ `EquipoDadoDeBajaError` y nada se guarda; inexistente o borrado ⇒ `EquipoNoEncontradoError`; la lectura es `bloquearParaModificar` dentro de `txRunner`. (Req: R11, R8)
-- [ ] 4.2 `editar-equipo.use-case.ts`: correr entero en `txRunner.run()`; `bloquearParaModificar` primero; guard `!activo`; `save()` ya no puede reactivar (WU-2). (Req: R11, R8)
+- [x] 4.1 Specs `backend/src/equipos/application/use-cases/editar-equipo.use-case.spec.ts`: equipo `!activo` ⇒ `EquipoDadoDeBajaError` y nada se guarda; inexistente o borrado ⇒ `EquipoNoEncontradoError`; la lectura es `bloquearParaModificar` dentro de `txRunner`. (Req: R11, R8)
+- [x] 4.2 `editar-equipo.use-case.ts`: correr entero en `txRunner.run()`; `bloquearParaModificar` primero; guard `!activo`; `save()` ya no puede reactivar (WU-2). (Req: R11, R8)
 - [ ] 4.3 Specs `agregar-componente.use-case.spec.ts`, `instalar-componente-desde-deposito.use-case.spec.ts` y `agregar-componente-sin-descuento.use-case.spec.ts`: sobre equipo dado de baja, los tres caminos (instalar con unidad, instalar con insumo `NINGUNO`, alta sin descuento) devuelven `EquipoDadoDeBajaError` sin crear componente ni mover stock; el fake expone `bloquearParaOperarPiezas` y no `findById`. (Req: R11)
 - [ ] 4.4 `agregar-componente.use-case.ts`: `preparar()` toma `bloquearParaOperarPiezas(id)` (LE `FOR SHARE`) como **primer** lock de la transacción (`null` o `deletedAt` ⇒ `EquipoNoEncontradoError`; `!activo` ⇒ `EquipoDadoDeBajaError`). Confirmar con `rg` que los tres caminos pasan por `preparar()`. (Req: R11, R15)
 - [ ] 4.5 `reactivar-componente.use-case.ts` y su spec: el chequeo del equipo pasa **dentro** de la transacción con `bloquearParaOperarPiezas`; `!activo` ⇒ `EquipoDadoDeBajaError` sin tocar el componente ni la unidad `DESCARTADA`. (Req: R11; delta `componentes-catalogo-unico`)
