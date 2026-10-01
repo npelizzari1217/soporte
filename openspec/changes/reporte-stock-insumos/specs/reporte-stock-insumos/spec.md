@@ -73,6 +73,7 @@ El reporte DEBE filtrar por familia, por tipo (consumible o repuesto) y por "sol
 - WHEN se genera el reporte sin filtro, y luego con "ocultar sin stock"
 - THEN el primero incluye ambos y el segundo solo el de total 2
 - AND un insumo con saldo negativo NO se oculta
+- AND un insumo con NUEVO 3 y USADO -3 (total 0) NO se oculta: se oculta solo cuando NUEVO y USADO son ambos 0
 
 #### Scenario: Baja lógica excluida, como la ficha
 
@@ -179,7 +180,7 @@ La pantalla "Reporte de stock" DEBE vivir dentro de la sección Insumos, con los
 
 ### Requirement: R8 Cantidades: coma decimal, enteros sin decimales, negativos visibles
 
-Las cantidades DEBEN mostrarse con coma decimal; en unidades de medida enteras, sin decimales; en las fraccionarias, con sus decimales. Un saldo negativo DEBE exportarse como número y resaltarse en pantalla; NUNCA se oculta ni se excluye.
+Las cantidades DEBEN mostrarse con coma decimal; en unidades de medida enteras, sin decimales cuando el valor es entero; en las fraccionarias, siempre con dos decimales (la precisión del dato), sin redondear. Un saldo negativo DEBE exportarse como número y resaltarse en pantalla; NUNCA se oculta ni se excluye.
 
 #### Scenario: Unidad entera
 
@@ -191,7 +192,7 @@ Las cantidades DEBEN mostrarse con coma decimal; en unidades de medida enteras, 
 
 - GIVEN un insumo cuya unidad no es entera con saldo 2,5
 - WHEN se muestra y se exporta
-- THEN aparece "2,5" con coma decimal
+- THEN aparece "2,50" con coma decimal
 
 #### Scenario: Negativo en el CSV
 

@@ -1,5 +1,5 @@
 change: reporte-stock-insumos
-phase: proposal
+phase: spec
 artifact_store: openspec
 research:
   selected: false
@@ -7,7 +7,7 @@ product_decisions: confirmed 2026-10-01 (recomendadas P1-P10; docs/roadmap-comer
 artifacts:
   exploration: true
   proposal: true
-  specs: false
+  specs: true
   design: false
   tasks: false
 tasks_progress:
