@@ -10,8 +10,9 @@
  * (activar, entrada con seriales, instalar, retirar, descartar y recuperar) que
  * cierra la cadena de backend.
  *
- * `entera` se prepara por SQL: su edición por HTTP llega en WU-12b. Higiene en
- * el orden: limpiar filas -> `app.close()` -> `dropDatabase`.
+ * `entera` se edita por HTTP (`POST`/`PATCH /unidades-medida`, WU-12b): marcarla,
+ * desmarcarla con y sin un insumo `SERIE`, y renombrar el código sin tocarla.
+ * Higiene en el orden: limpiar filas -> `app.close()` -> `dropDatabase`.
  */
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -48,6 +49,7 @@ import {
   StockInsumoResponseDto,
 } from '../dtos/movimientos-insumo.dto';
 import { InsumoResponseDto } from '../dtos/insumos.dto';
+import { UnidadMedidaResponseDto } from '../dtos/unidades-medida.dto';
 import { EventoUnidadResponseDto, UnidadInsumoResponseDto } from '../dtos/unidades-insumo.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
@@ -320,17 +322,13 @@ describe('Seguimiento por serie e2e — borde HTTP', () => {
 
   async function sembrarUnidadMedida(tokenAdmin: string, entera: boolean): Promise<string> {
     const marca = sufijo();
-    const unidad = await httpPost<{ id: string }>(
+    const unidad = await httpPost<UnidadMedidaResponseDto>(
       `${baseUrl}/unidades-medida`,
-      { codigo: `UM_${marca}`, nombre: 'Unidad de prueba' },
+      { codigo: `UM_${marca}`, nombre: 'Unidad de prueba', entera },
       bearer(tokenAdmin),
     );
     expect(unidad.status).toBe(201);
-    if (entera) {
-      await tenantPool.query('UPDATE unidades_medida SET entera = true WHERE id = $1', [
-        unidad.data.id,
-      ]);
-    }
+    expect(unidad.data.entera).toBe(entera);
     return unidad.data.id;
   }
 
@@ -684,6 +682,121 @@ describe('Seguimiento por serie e2e — borde HTTP', () => {
 
       // 7. Con unidades vivas en el depósito no se puede volver a NINGUNO.
       expect((await cambiarSeguimiento(token, insumoId, 'NINGUNO')).status).toBe(422);
+    });
+  });
+
+  describe('unidad de medida: entera (F3)', () => {
+    function urlUnidad(id: string): string {
+      return `${baseUrl}/unidades-medida/${id}`;
+    }
+
+    async function editarUnidad(token: string, id: string, cuerpo: Record<string, unknown>) {
+      return httpPatch<UnidadMedidaResponseDto & { message?: string }>(
+        urlUnidad(id),
+        cuerpo,
+        bearer(token),
+      );
+    }
+
+    async function enteraEnBase(id: string): Promise<boolean> {
+      const { rows } = await tenantPool.query('SELECT entera FROM unidades_medida WHERE id = $1', [
+        id,
+      ]);
+      return rows[0].entera as boolean;
+    }
+
+    it('marcar entera una unidad propia: antes no se puede activar SERIE, despues si', async () => {
+      const { token } = await crearAdministrador();
+      const { insumoId, unidadMedidaId } = await sembrarInsumo(token, { entera: false });
+      expect((await cambiarSeguimiento(token, insumoId, 'SERIE')).status).toBe(422);
+
+      const res = await editarUnidad(token, unidadMedidaId, { entera: true });
+
+      expect(res.status).toBe(200);
+      expect(res.data.entera).toBe(true);
+      expect(await enteraEnBase(unidadMedidaId)).toBe(true);
+      expect((await cambiarSeguimiento(token, insumoId, 'SERIE')).status).toBe(200);
+    });
+
+    it('el alta sin `entera` crea la unidad no entera', async () => {
+      const { token } = await crearAdministrador();
+
+      const res = await httpPost<UnidadMedidaResponseDto>(
+        `${baseUrl}/unidades-medida`,
+        { codigo: `UM_${sufijo()}`, nombre: 'Sin entera' },
+        bearer(token),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data.entera).toBe(false);
+    });
+
+    it('desmarcar entera una unidad usada por un insumo SERIE: 422 y la unidad sigue entera', async () => {
+      const { token } = await crearAdministrador();
+      const { insumoId, unidadMedidaId } = await sembrarInsumo(token);
+      expect((await cambiarSeguimiento(token, insumoId, 'SERIE')).status).toBe(200);
+
+      const res = await editarUnidad(token, unidadMedidaId, { entera: false, nombre: 'Otro' });
+
+      expect(res.status).toBe(422);
+      expect(res.data.message).toContain(unidadMedidaId);
+      expect(await enteraEnBase(unidadMedidaId)).toBe(true);
+      const listado = await httpGet<UnidadMedidaResponseDto[]>(
+        `${baseUrl}/unidades-medida`,
+        bearer(token),
+      );
+      const unidad = listado.data.find((u) => u.id === unidadMedidaId);
+      expect(unidad?.entera).toBe(true);
+      expect(unidad?.nombre).toBe('Unidad de prueba');
+    });
+
+    it('desmarcar entera con el insumo de vuelta en NINGUNO (o sin insumos SERIE): 200', async () => {
+      const { token } = await crearAdministrador();
+      const { insumoId, unidadMedidaId } = await sembrarInsumo(token);
+      expect((await cambiarSeguimiento(token, insumoId, 'SERIE')).status).toBe(200);
+      expect((await cambiarSeguimiento(token, insumoId, 'NINGUNO')).status).toBe(200);
+
+      const res = await editarUnidad(token, unidadMedidaId, { entera: false });
+
+      expect(res.status).toBe(200);
+      expect(res.data.entera).toBe(false);
+      expect(await enteraEnBase(unidadMedidaId)).toBe(false);
+    });
+
+    it('renombrar el codigo de una unidad entera usada por un insumo SERIE: 200, la entera no se toca y el insumo sigue valido', async () => {
+      const { token } = await crearAdministrador();
+      const { insumoId, unidadMedidaId } = await sembrarInsumo(token);
+      expect((await cambiarSeguimiento(token, insumoId, 'SERIE')).status).toBe(200);
+      const nuevoCodigo = `RENOMBRADA_${sufijo()}`;
+
+      const res = await editarUnidad(token, unidadMedidaId, { codigo: nuevoCodigo });
+
+      expect(res.status).toBe(200);
+      expect(res.data.codigo).toBe(nuevoCodigo);
+      expect(res.data.entera).toBe(true);
+      expect(await enteraEnBase(unidadMedidaId)).toBe(true);
+      expect(await seguimientoEnBase(insumoId)).toBe('SERIE');
+      // El insumo sigue operando por serie con la unidad renombrada.
+      const ingreso = await ingresar(token, insumoId, [`SN-${sufijo()}`]);
+      expect(ingreso.movimientos).toHaveLength(1);
+    });
+
+    it('gate del ABM conservado: sin administrador de cliente 403 y la unidad no cambia; entera no booleana 400', async () => {
+      const administrador = await crearAdministrador();
+      const { unidadMedidaId } = await sembrarInsumo(administrador.token);
+      const actor = await agregarActor(administrador.clienteId, [
+        'INSUMOS:AJUSTAR',
+        'INSUMOS:ALTAS',
+      ]);
+
+      const sinRol = await editarUnidad(actor.token, unidadMedidaId, { entera: false });
+      const invalido = await editarUnidad(administrador.token, unidadMedidaId, { entera: 'si' });
+      const sinJwt = await httpPatch(urlUnidad(unidadMedidaId), { entera: false });
+
+      expect(sinRol.status).toBe(403);
+      expect(invalido.status).toBe(400);
+      expect(sinJwt.status).toBe(401);
+      expect(await enteraEnBase(unidadMedidaId)).toBe(true);
     });
   });
 });

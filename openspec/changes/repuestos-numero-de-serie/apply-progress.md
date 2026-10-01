@@ -775,9 +775,24 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
 - Unit specs: DTO (acepta, ausente, rechaza no booleana, respuesta) y alta (default `false` / `true`).
 - `EditUnidadMedidaDto.entera` queda para 12b.2: aceptarla antes de que el caso de uso la aplique la descartaria en silencio.
 
-### WU-12b - 12b.2 (editar con L0 y conteo de insumos SERIE), rama `-wu12b-2`
+### WU-12b - 12b.2, 12b.3 y 12b.4 (editar con L0, caso 7, e2e), rama `-wu12b-2`
 
 - `EditarUnidadMedidaUseCase(unidadRepo, insumoRepo, txRunner)`: todo dentro de `txRunner.run()`; toma L0 con `bloquearParaEdicion` (`FOR UPDATE`
   si el DTO trae `codigo`, aunque sea el mismo, y `FOR NO KEY UPDATE` si no) ANTES de buscar duplicados y de contar; desmarcar `entera` con algun
   insumo `SERIE` vigente (`contarSeriePorUnidadMedida`, nuevo en el puerto y en Prisma; excluye los de baja logica) => `UnidadMedidaEnUsoPorSerieError`
   (422 por el mapeo por defecto). Un `Result.fail` no escribe nada. No toma ningun otro lock del orden. `EditUnidadMedidaDto.entera?`.
+- `orden-de-locks` caso 7 (4 tests): activacion en vuelo (L0 `FOR SHARE`) retenida, la edicion `entera:false` espera en L0 (`pg_blocking_pids`) y al
+  comitear la activacion se rechaza; el orden inverso (edicion primero, la activacion espera y ve la unidad no entera); y dos testigos del modo del
+  lock con una edicion que falla SIN escribir (un `UPDATE` de `codigo` escalaria a `FOR UPDATE` por si mismo y taparia el modo): con `codigo`, un
+  `FOR KEY SHARE NOWAIT` externo da 55P03; sin `codigo`, `FOR KEY SHARE` pasa y `FOR SHARE` da 55P03. El `PREFIJO` del spec pasa a mayuscula
+  (el caso de uso normaliza el codigo y el duplicado se busca normalizado).
+- Mutaciones locales (revertidas): (a) `FOR NO KEY UPDATE` aunque venga `codigo` => rojo en el testigo con `codigo` (1 de 20); (b) contar antes de
+  bloquear => rojo en el caso 7 principal (1 de 20: la edicion cuenta 0 mientras la activacion no comitea y desmarca).
+- e2e en `insumos-seguimiento.e2e.spec.ts` (harness reutilizado, `usarLockMasterTest()`): `sembrarUnidadMedida` ya crea la unidad con `entera` por HTTP;
+  marcar entera (antes 422 al activar, despues 200), alta por defecto no entera, desmarcar con insumo SERIE (422, sigue entera), desmarcar tras volver
+  a NINGUNO (200), renombrar `codigo` con insumo SERIE (entera intacta, entrada con serial sigue andando) y gate (403 sin administrador, 400 no
+  booleana, 401 sin JWT). Gate actual del ABM sin cambios.
+- Ayuda: `rg -n "unidad de medida|unidades de medida" backend/ayuda/` solo coincide en `permisos-y-roles.md` (el ABM sigue siendo por rol): ningun
+  articulo queda falso. Deuda de UI en WU-14.
+- Gates (12b.5), rama final `-wu12b-3`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` completo 518 archivos / 6528 tests verdes (exit 0).
+- Reparto: wu12b (12b.1), wu12b-2 (12b.2 con sus unit/integracion/controller), wu12b-3 (12b.3 caso 7 + 12b.4 e2e).

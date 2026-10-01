@@ -1,8 +1,8 @@
 /**
  * [INTEGRATION] Orden global de locks (ADR-12, invariante L) de
- * sdd/repuestos-numero-de-serie, casos 1 a 6: el cambio de seguimiento contra
+ * sdd/repuestos-numero-de-serie, casos 1 a 7: el cambio de seguimiento contra
  * `EditarInsumo`, contra otro cambio de seguimiento y contra la entrada (en los
- * dos ordenes), con los repositorios Prisma reales sobre `soporte_tenant_test`.
+ * dos ordenes), y la edicion de `entera` contra una activacion en vuelo, con los repositorios Prisma reales sobre `soporte_tenant_test`.
  *
  * Dos tipos de prueba, a proposito:
  *
@@ -32,11 +32,16 @@ import { PrismaMovimientoInsumoRepository } from './prisma-movimiento-insumo.rep
 import { PrismaUnidadInsumoRepository } from './prisma-unidad-insumo.repository';
 import { PrismaUnidadMedidaRepository } from './prisma-unidad-medida.repository';
 import { CambiarSeguimientoInsumoUseCase } from '../../../application/use-cases/cambiar-seguimiento-insumo.use-case';
+import { EditarUnidadMedidaUseCase } from '../../../application/use-cases/editar-unidad-medida.use-case';
 import { EditarInsumoUseCase } from '../../../application/use-cases/editar-insumo.use-case';
 import { RegistrarAjusteInsumoUseCase } from '../../../application/use-cases/registrar-ajuste-insumo.use-case';
 import { RegistrarEntradaInsumoUseCase } from '../../../application/use-cases/registrar-entrada-insumo.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../../application/use-cases/registrar-salida-insumo.use-case';
-import { UnidadMedidaCambiadaError } from '../../../domain/errors/unidades-medida.errors';
+import {
+  UnidadMedidaCambiadaError,
+  UnidadMedidaCodigoDuplicadoError,
+  UnidadMedidaEnUsoPorSerieError,
+} from '../../../domain/errors/unidades-medida.errors';
 import {
   SeguimientoNoModificableError,
   SerialesNoCoincidenError,
@@ -53,7 +58,7 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const PREFIJO_LOCK_STOCK = 'insumo-stock:';
 const ESPERA_MAXIMA_MS = 5_000;
 
-describe('Orden de locks (ADR-12), casos 1 a 6 — Integration', () => {
+describe('Orden de locks (ADR-12), casos 1 a 7 — Integration', () => {
   let prismaServiceParaUrl: PrismaService;
   let pool: Pool;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
@@ -61,11 +66,13 @@ describe('Orden de locks (ADR-12), casos 1 a 6 — Integration', () => {
   let txRunner: PrismaTenantTransactionRunner;
   let cambiar: CambiarSeguimientoInsumoUseCase;
   let editar: EditarInsumoUseCase;
+  let editarUnidad: EditarUnidadMedidaUseCase;
   let entrada: RegistrarEntradaInsumoUseCase;
   let salida: RegistrarSalidaInsumoUseCase;
   let ajuste: RegistrarAjusteInsumoUseCase;
 
-  const PREFIJO = `ODL_${randomBytes(2).toString('hex')}_`;
+  // En mayuscula: `EditarUnidadMedida` normaliza el codigo y el duplicado se busca por el valor normalizado.
+  const PREFIJO = `ODL_${randomBytes(2).toString('hex').toUpperCase()}_`;
   let insumoId: string;
   let unidadEntera: string;
   let unidadNoEntera: string;
@@ -94,6 +101,8 @@ describe('Orden de locks (ADR-12), casos 1 a 6 — Integration', () => {
       new PrismaModeloEquipoRepository(tenantContext),
       txRunner,
     );
+
+    editarUnidad = new EditarUnidadMedidaUseCase(unidadMedidaRepo, insumoRepo, txRunner);
 
     entrada = construirEntradaReal({
       tenantContext,
@@ -168,6 +177,10 @@ describe('Orden de locks (ADR-12), casos 1 a 6 — Integration', () => {
     await tenantClient.insumo.update({
       where: { id: insumoId },
       data: { seguimiento: 'NINGUNO', unidadMedidaId: unidadEntera },
+    });
+    await tenantClient.unidadMedida.update({
+      where: { id: unidadEntera },
+      data: { codigo: `${PREFIJO}E`, entera: true },
     });
   });
 
@@ -621,6 +634,145 @@ describe('Orden de locks (ADR-12), casos 1 a 6 — Integration', () => {
         }),
       );
       expect(r.isOk()).toBe(true);
+    }, 30_000);
+  });
+
+  describe('caso 7: EditarUnidadMedida (L0 exclusivo) contra la activacion NINGUNO -> SERIE', () => {
+    it('desmarcar entera con una activacion en vuelo: sin 40P01, la edicion espera en L0 y, al comitear la activacion, se rechaza', async () => {
+      const testigo = await pool.connect();
+      const retenida = compuerta();
+      const activacionLista = compuerta();
+      let pidActivacion = 0;
+      let activacion: Promise<unknown> | undefined;
+      let edicion: Promise<unknown> | undefined;
+      try {
+        // La activacion toma L0 FOR SHARE, L1 y L2, escribe SERIE y queda retenida sin comitear.
+        activacion = conTenant(() =>
+          txRunner.run(async () => {
+            const r = await cambiar.execute({ insumoId, seguimiento: 'SERIE' });
+            pidActivacion = await pidDeLaTransaccionActual();
+            activacionLista.abrir();
+            await retenida.esperar;
+            return r;
+          }),
+        );
+        await Promise.race([activacionLista.esperar, activacion]);
+
+        // La edicion pide L0 exclusivo: espera a la activacion y no tiene nada mas del orden.
+        edicion = conTenant(() => editarUnidad.execute({ id: unidadEntera, entera: false }));
+        await esperarBloqueadoPor(testigo, pidActivacion);
+      } finally {
+        retenida.abrir();
+        testigo.release();
+      }
+
+      const rActivacion = (await activacion) as Resultado;
+      const rEdicion = (await edicion) as Resultado;
+      expect(rActivacion.isOk()).toBe(true);
+      // La edicion vio al insumo SERIE comiteado: se rechaza y la unidad sigue entera.
+      expect(rEdicion.isFail()).toBe(true);
+      expect(rEdicion.getError()).toBeInstanceOf(UnidadMedidaEnUsoPorSerieError);
+      const unidad = await tenantClient.unidadMedida.findUniqueOrThrow({
+        where: { id: unidadEntera },
+      });
+      expect(unidad.entera).toBe(true);
+      expect(await seguimientoActual()).toBe('SERIE');
+    }, 30_000);
+
+    it('con la edicion primero: la activacion espera la fila de la unidad (FOR SHARE) y, al comitear la edicion, se rechaza como no entera', async () => {
+      const retenida = compuerta();
+      const edicionLista = compuerta();
+      const testigo = await pool.connect();
+      let pidEdicion = 0;
+      let edicion: Promise<unknown> | undefined;
+      let activacion: Promise<unknown> | undefined;
+      try {
+        edicion = conTenant(() =>
+          txRunner.run(async () => {
+            const r = await editarUnidad.execute({ id: unidadEntera, entera: false });
+            pidEdicion = await pidDeLaTransaccionActual();
+            edicionLista.abrir();
+            await retenida.esperar;
+            return r;
+          }),
+        );
+        await Promise.race([edicionLista.esperar, edicion]);
+        activacion = conTenant(() => cambiar.execute({ insumoId, seguimiento: 'SERIE' }));
+        await esperarBloqueadoPor(testigo, pidEdicion);
+      } finally {
+        retenida.abrir();
+        testigo.release();
+      }
+
+      expect(((await edicion) as Resultado).isOk()).toBe(true);
+      const rActivacion = (await activacion) as Resultado;
+      expect(rActivacion.isFail()).toBe(true);
+      expect(await seguimientoActual()).toBe('NINGUNO');
+    }, 30_000);
+
+    /**
+     * Retiene una edicion que FALLA despues de tomar L0 (el fallo no escribe, asi que el
+     * lock que se observa es el de la lectura y no el que toma un `UPDATE`) y prueba, desde
+     * un cliente externo, que lock tiene la fila de la unidad.
+     */
+    async function sondearLocksDeLaFila(
+      edicion: Parameters<typeof editarUnidad.execute>[0],
+    ): Promise<{ resultado: Resultado; keyShare: string; share: string }> {
+      const testigo = await pool.connect();
+      const retenida = compuerta();
+      const lista = compuerta();
+      let retenedora: Promise<unknown> | undefined;
+      const sondear = async (modo: 'KEY SHARE' | 'SHARE'): Promise<string> => {
+        await testigo.query('BEGIN');
+        const r = await testigo
+          .query(`SELECT id FROM unidades_medida WHERE id = $1 FOR ${modo} NOWAIT`, [unidadEntera])
+          .then(() => 'libre')
+          .catch((e: { code?: string }) => e.code ?? 'error');
+        await testigo.query('ROLLBACK');
+        return r;
+      };
+      try {
+        retenedora = conTenant(() =>
+          txRunner.run(async () => {
+            const r = await editarUnidad.execute(edicion);
+            lista.abrir();
+            await retenida.esperar;
+            return r;
+          }),
+        );
+        await Promise.race([lista.esperar, retenedora]);
+        const keyShare = await sondear('KEY SHARE');
+        const share = await sondear('SHARE');
+        retenida.abrir();
+        return { resultado: (await retenedora) as Resultado, keyShare, share };
+      } finally {
+        retenida.abrir();
+        testigo.release();
+      }
+    }
+
+    it('testigo: con `codigo` toma FOR UPDATE (choca con el FOR KEY SHARE de las FK), no FOR NO KEY UPDATE', async () => {
+      // Codigo ya ocupado por otra unidad: la edicion falla tras tomar L0 y sin escribir.
+      const { resultado, keyShare, share } = await sondearLocksDeLaFila({
+        id: unidadEntera,
+        codigo: `${PREFIJO}N`,
+      });
+      expect(resultado.getError()).toBeInstanceOf(UnidadMedidaCodigoDuplicadoError);
+      // FOR UPDATE choca con FOR KEY SHARE (55P03); FOR NO KEY UPDATE lo dejaria pasar.
+      expect(keyShare).toBe('55P03');
+      expect(share).toBe('55P03');
+    }, 30_000);
+
+    it('testigo: sin `codigo` toma FOR NO KEY UPDATE: deja pasar al FOR KEY SHARE de las FK pero bloquea al FOR SHARE', async () => {
+      await tenantClient.insumo.update({ where: { id: insumoId }, data: { seguimiento: 'SERIE' } });
+      // Desmarcar con un insumo SERIE en uso falla tras tomar L0 y sin escribir.
+      const { resultado, keyShare, share } = await sondearLocksDeLaFila({
+        id: unidadEntera,
+        entera: false,
+      });
+      expect(resultado.getError()).toBeInstanceOf(UnidadMedidaEnUsoPorSerieError);
+      expect(keyShare).toBe('libre');
+      expect(share).toBe('55P03');
     }, 30_000);
   });
 });
