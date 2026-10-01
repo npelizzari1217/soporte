@@ -5,6 +5,7 @@ import {
   CONDICION_STOCK_POR_DEFECTO,
   CondicionStock,
 } from '../../domain/entities/tipo-movimiento-insumo';
+import { SeguimientoInsumo, normalizarSerial } from '../../domain/entities/unidad-insumo.entity';
 import { FalloOperacionDeUnidad } from '../../domain/errors/fallo-operacion-de-unidad';
 import { InsumoNoEncontradoError } from '../../domain/errors/insumos.errors';
 import {
@@ -14,8 +15,13 @@ import {
 import { IFamiliaInsumoRepository } from '../../domain/ports/i-familia-insumo.repository';
 import { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
 import { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import { CausaPieza, clasificarPiezaDevuelta } from '../services/clasificar-pieza-devuelta';
 import { ingresarPorSerie } from '../services/ingresar-por-serie';
-import { OperacionesUnidadInsumo } from '../services/operaciones-unidad-insumo.service';
+import {
+  ItemEnEquipo,
+  LegadoEnEquipo,
+  OperacionesUnidadInsumo,
+} from '../services/operaciones-unidad-insumo.service';
 import {
   validarCondicionAdmitida,
   validarInsumoElegible,
@@ -79,6 +85,37 @@ export interface RegistrarEntradaInsumoDto {
    * no puede abrirla.
    */
   completarConPendientes?: boolean;
+}
+
+/**
+ * Una pieza activa de un equipo que se da de baja con destino `STOCK_USADO`.
+ * Es lo que el llamador ya leyó del componente; el insumo, la familia y el
+ * seguimiento los lee este caso de uso.
+ */
+export interface PiezaDeEquipoADevolver {
+  componenteId: string;
+  /** `null` si el componente no tiene insumo: no toca stock. */
+  insumoId: string | null;
+  /** Unidad que lleva el componente; `null` si es `NINGUNO` o un legado de serial de texto. */
+  unidadId: string | null;
+  /** Serial de texto del componente legado. */
+  numeroSerie: string | null;
+}
+
+/** Datos de la baja compartidos por todas las piezas de `registrarDevolucionesDeEquipo`. */
+export interface DevolucionesDeEquipoDto {
+  equipoId: string;
+  usuarioId: string;
+  /** Leyenda de la baja: la misma para todas las piezas. */
+  motivo: string;
+  piezas: readonly PiezaDeEquipoADevolver[];
+}
+
+/** Hechos de un insumo que `clasificarPiezaDevuelta` necesita. */
+interface HechosDelInsumo {
+  vigente: boolean;
+  familiaEsRepuesto: boolean;
+  seguimiento: SeguimientoInsumo;
 }
 
 /**
@@ -164,7 +201,10 @@ export class RegistrarEntradaInsumoUseCase {
     private readonly movimientoRepo: Pick<IMovimientoInsumoRepository, 'insert'>,
     private readonly familiaRepo: Pick<IFamiliaInsumoRepository, 'findById'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
-    private readonly operaciones: Pick<OperacionesUnidadInsumo, 'ingresar' | 'devolverAlDeposito'>,
+    private readonly operaciones: Pick<
+      OperacionesUnidadInsumo,
+      'ingresar' | 'devolverAlDeposito' | 'devolverDesdeEquipo'
+    >,
   ) {}
 
   /**
@@ -415,6 +455,173 @@ export class RegistrarEntradaInsumoUseCase {
       motivo: dto.motivo,
       equipoId: dto.equipoId,
     });
+  }
+
+  /**
+   * Devuelve al depósito TODAS las piezas de un equipo dado de baja con destino
+   * `STOCK_USADO` (ADR-3), dentro de la transacción del llamador (la primera
+   * lectura con lock lanza fuera de una).
+   *
+   * Orden de locks: L1 de todos los insumos distintos en orden de id (también
+   * los `NINGUNO`); después `devolverDesdeEquipo` toma L2 y L3 de los insumos con
+   * unidad o legado. Las ENTRADAs de los `NINGUNO` se asientan al final: no
+   * toman L2 ni ningún lock nuevo, su L1 ya está tomado.
+   *
+   * Las causas de TODAS las piezas se juntan sin cortar (`INSUMO_BORRADO`,
+   * `FAMILIA_NO_REPUESTO`, `SERIAL_*`) y viajan como `causasPrevias`: si hay
+   * alguna, `devolverDesdeEquipo` las une con `SERIAL_DUPLICADO` y rechaza todo
+   * antes de escribir.
+   *
+   * No envuelve nada en `run()`: un P2002 residual sale como
+   * `FalloOperacionDeUnidad` con `DevolucionConPiezasProblematicasError` y el
+   * llamador lo desenvuelve fuera de su transacción.
+   *
+   * @param dto Equipo, usuario, leyenda compartida y piezas activas.
+   * @returns `Map<componenteId, movimientoId>` de las piezas con insumo; o
+   *   `DevolucionConPiezasProblematicasError` con todas las causas, sin haber escrito nada.
+   * @throws Error si no hay transacción activa.
+   */
+  async registrarDevolucionesDeEquipo(
+    dto: DevolucionesDeEquipoDto,
+  ): Promise<Result<Map<string, string>, DomainError>> {
+    const insumoIds = [
+      ...new Set(dto.piezas.flatMap((p) => (p.insumoId === null ? [] : [p.insumoId]))),
+    ].sort();
+
+    // L1 de todos, en orden de id y antes de cualquier L2 (ADR-3 paso 1).
+    const hechos = new Map<string, HechosDelInsumo>();
+    for (const insumoId of insumoIds) {
+      const seguimiento = await this.insumoRepo.leerSeguimientoParaMovimiento(insumoId);
+      hechos.set(insumoId, await this.hechosDelInsumo(insumoId, seguimiento));
+    }
+
+    const causas = this.clasificarPiezas(dto.piezas, hechos);
+    const conCausa = new Set(causas.map((c) => c.componenteId));
+    const contexto = { usuarioId: dto.usuarioId, motivo: dto.motivo };
+
+    const conUnidad: ItemEnEquipo[] = [];
+    const legados: LegadoEnEquipo[] = [];
+    const ningunos: string[] = [];
+    for (const pieza of dto.piezas) {
+      if (pieza.insumoId === null || conCausa.has(pieza.componenteId)) continue;
+      if (pieza.unidadId !== null) {
+        conUnidad.push({
+          unidadId: pieza.unidadId,
+          equipoId: dto.equipoId,
+          componenteId: pieza.componenteId,
+          insumoId: pieza.insumoId,
+        });
+      } else if (this.hechosDe(hechos, pieza.insumoId).seguimiento === 'SERIE') {
+        legados.push({
+          componenteId: pieza.componenteId,
+          insumoId: pieza.insumoId,
+          equipoId: dto.equipoId,
+          numeroSerie: pieza.numeroSerie?.trim() ?? '',
+        });
+      } else {
+        ningunos.push(pieza.componenteId);
+      }
+    }
+
+    const devueltas = await this.operaciones.devolverDesdeEquipo(
+      conUnidad,
+      legados,
+      contexto,
+      causas,
+    );
+    if (devueltas.isFail()) return Result.fail(devueltas.getError());
+
+    const movimientos = new Map<string, string>();
+    for (const [componenteId, devuelta] of devueltas.getValue()) {
+      movimientos.set(componenteId, devuelta.movimiento.id);
+    }
+
+    for (const pieza of dto.piezas) {
+      if (!ningunos.includes(pieza.componenteId)) continue;
+      const asentado = await this.asentar(pieza.insumoId as string, 'USADO', {
+        insumoId: pieza.insumoId as string,
+        cantidad: 1,
+        usuarioId: dto.usuarioId,
+        motivo: dto.motivo,
+        equipoId: dto.equipoId,
+      });
+      // Inalcanzable hoy (ver `asentar`); lanzar y no devolver `fail`, porque ya
+      // hubo escrituras en la transacción del llamador.
+      if (asentado.isFail()) throw new Error(asentado.getError().message);
+      movimientos.set(pieza.componenteId, asentado.getValue().id);
+    }
+
+    return Result.ok(movimientos);
+  }
+
+  /**
+   * Hechos de un insumo con las mismas reglas que la devolución de UN
+   * componente: elegible sin exigir habilitado, y USADO admitido aunque la
+   * familia esté dada de baja o deshabilitada.
+   *
+   * @param seguimientoLeido Seguimiento leído bajo L1 (`null`: el insumo no
+   *   existe); `undefined` toma el de la entidad (camino sin locks).
+   */
+  private async hechosDelInsumo(
+    insumoId: string,
+    seguimientoLeido: SeguimientoInsumo | null | undefined,
+  ): Promise<HechosDelInsumo> {
+    const noVigente = { vigente: false, familiaEsRepuesto: false, seguimiento: 'NINGUNO' as const };
+    if (seguimientoLeido === null) return noVigente;
+
+    const elegible = await validarInsumoElegible(this.insumoRepo, insumoId);
+    if (elegible.isFail()) return noVigente;
+
+    const insumo = elegible.getValue();
+    const admitida = await validarCondicionAdmitida(this.familiaRepo, insumo, 'USADO', {
+      admitirFamiliaNoVigente: true,
+    });
+    return {
+      vigente: true,
+      familiaEsRepuesto: admitida.isOk(),
+      seguimiento: seguimientoLeido ?? insumo.seguimiento,
+    };
+  }
+
+  private hechosDe(
+    hechos: ReadonlyMap<string, HechosDelInsumo>,
+    insumoId: string,
+  ): HechosDelInsumo {
+    return hechos.get(insumoId) as HechosDelInsumo;
+  }
+
+  /** Aplica `clasificarPiezaDevuelta` a todas las piezas, sin cortar en la primera causa. */
+  private clasificarPiezas(
+    piezas: readonly PiezaDeEquipoADevolver[],
+    hechos: ReadonlyMap<string, HechosDelInsumo>,
+  ): CausaPieza[] {
+    const repeticiones = new Map<string, number>();
+    const claveSerial = (p: PiezaDeEquipoADevolver) =>
+      `${p.insumoId}\u0000${normalizarSerial(p.numeroSerie ?? '')}`;
+    for (const pieza of piezas) {
+      if (pieza.insumoId === null || pieza.unidadId !== null) continue;
+      if (normalizarSerial(pieza.numeroSerie ?? '') === '') continue;
+      repeticiones.set(claveSerial(pieza), (repeticiones.get(claveSerial(pieza)) ?? 0) + 1);
+    }
+
+    const causas: CausaPieza[] = [];
+    for (const pieza of piezas) {
+      const h = pieza.insumoId === null ? undefined : this.hechosDe(hechos, pieza.insumoId);
+      const causa = clasificarPiezaDevuelta({
+        destino: 'STOCK_USADO',
+        insumoId: pieza.insumoId,
+        insumoVigente: h?.vigente ?? false,
+        familiaEsRepuesto: h === undefined ? null : h.familiaEsRepuesto,
+        seguimiento: h?.seguimiento ?? 'NINGUNO',
+        tieneUnidad: pieza.unidadId !== null,
+        numeroSerie: pieza.numeroSerie,
+        serialRepetidoEnElLote: (repeticiones.get(claveSerial(pieza)) ?? 0) > 1,
+      });
+      if (causa !== null) {
+        causas.push({ componenteId: pieza.componenteId, insumoId: pieza.insumoId, causa });
+      }
+    }
+    return causas;
   }
 
   /**
