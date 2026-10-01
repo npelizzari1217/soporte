@@ -1,5 +1,5 @@
 change: reporte-stock-insumos
-phase: spec
+phase: verify
 artifact_store: openspec
 research:
   selected: false
@@ -8,8 +8,8 @@ artifacts:
   exploration: true
   proposal: true
   specs: true
-  design: false
-  tasks: false
+  design: true
+  tasks: true
 tasks_progress:
   completed: []
   pending: []

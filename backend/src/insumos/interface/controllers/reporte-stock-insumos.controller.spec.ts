@@ -16,7 +16,12 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { Result } from '../../../shared/domain/result';
 import { ExportacionStockDemasiadoGrandeError } from '../../domain/errors/insumos.errors';
-import { ReporteStock } from '../../application/use-cases/consultar-reporte-stock.use-case';
+import { unstubbed } from '../../../testing/mocks';
+import {
+  ConsultarReporteStockUseCase,
+  ReporteStock,
+} from '../../application/use-cases/consultar-reporte-stock.use-case';
+import { ExportarReporteStockUseCase } from '../../application/use-cases/exportar-reporte-stock.use-case';
 import { ReporteStockQueryDto } from '../dtos/reporte-stock.dto';
 import { ReporteStockInsumosController } from './reporte-stock-insumos.controller';
 
@@ -38,10 +43,22 @@ const REPORTE: ReporteStock = {
   ],
 };
 
+/**
+ * Casos de uso reales con colaboradores sin stubear y `execute` espiado: el
+ * controller recibe instancias del tipo exacto sin casts (ratchet de casts en
+ * specs, `scripts/check-casts-en-specs.mjs`).
+ */
 function build() {
-  const consultar = { execute: vi.fn().mockResolvedValue(REPORTE) };
-  const exportar = { execute: vi.fn() };
-  const controller = new ReporteStockInsumosController(consultar as never, exportar as never);
+  const consultarReal = new ConsultarReporteStockUseCase(
+    { listarParaReporteStock: unstubbed('listarParaReporteStock') },
+    { sumByTipoDeInsumos: unstubbed('sumByTipoDeInsumos') },
+    { contarEnDepositoPorCondicionDeInsumos: unstubbed('contarEnDepositoPorCondicionDeInsumos') },
+    () => REPORTE.generadoEn,
+  );
+  const exportarReal = new ExportarReporteStockUseCase(consultarReal);
+  const consultar = { execute: vi.spyOn(consultarReal, 'execute').mockResolvedValue(REPORTE) };
+  const exportar = { execute: vi.spyOn(exportarReal, 'execute') };
+  const controller = new ReporteStockInsumosController(consultarReal, exportarReal);
   const headers = new Map<string, string>();
   const res = { setHeader: (n: string, v: string) => void headers.set(n, v) };
   return { controller, consultar, exportar, res, headers };
