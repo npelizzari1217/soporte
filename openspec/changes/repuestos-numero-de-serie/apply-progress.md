@@ -841,3 +841,11 @@ Rama final `-wu11-6`: `pnpm lint` y `pnpm typecheck` en cero; `pnpm test` comple
   el universo completo. La ficha la monta solo con `seguimiento = SERIE`. La mutacion de seguimiento ya invalida `["insumo", id]`, que cubre la clave por prefijo.
 - Tests (MSW, 6 en `unidades-insumo-section.test.tsx` y 2 en `insumo-detail-view.test.tsx`): NINGUNO sin seccion ni consulta, SERIE con unidades de todos los estados, pendientes, filtro, vacio, error.
 - Corte de WU-15 segun tasks.md: esta rama es la seccion; el historial (15.2, parte del 15.3 y 15.4) va en `-wu15-2`.
+
+### WU-15 parte 2 - historial por serial (15.2 a 15.4), rama `-wu15-2`
+
+- `hooks/use-historial-unidad.ts` (clave `["insumo", id, "unidades", unidadId, "historial"]`, apagada con `unidadId` null) y `unidad-historial-dialog.tsx`:
+  linea de tiempo cronologica (orden del servidor); cubre los 12 `TIPOS_EVENTO_UNIDAD` con un `Record` de etiquetas; detalle por evento: serial anterior/nuevo,
+  equipo, sector (destino de la entrega, resuelto por el backend desde el movimiento) y motivo. La seccion abre el dialogo desde el boton "Historial" de cada fila.
+- Tests (MSW, 10 en `unidad-historial-dialog.test.tsx`): vida completa en orden, descartada con motivo, entregada con sector, correccion de serial, unidad sin historia previa,
+  los 12 tipos con etiqueta distinta, devolucion de entrega y recuperacion, error, dialogo cerrado sin consulta y apertura desde la fila correcta.

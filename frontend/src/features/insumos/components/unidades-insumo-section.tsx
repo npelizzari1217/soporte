@@ -17,9 +17,11 @@
 import { useState } from "react";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { notifyError } from "@/shared/lib/toast";
 import { useUnidadesInsumo } from "../hooks/use-unidades-insumo";
+import { UnidadHistorialDialog } from "./unidad-historial-dialog";
 import { ESTADOS_UNIDAD_INSUMO } from "../types";
 import type { CondicionStock, EstadoUnidadInsumo, UnidadInsumo } from "../types";
 
@@ -62,6 +64,7 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
   const [estado, setEstado] = useState<EstadoUnidadInsumo | typeof TODOS_LOS_ESTADOS>(
     TODOS_LOS_ESTADOS,
   );
+  const [conHistorial, setConHistorial] = useState<UnidadInsumo | null>(null);
   const query = useUnidadesInsumo(insumoId);
 
   const todas = query.data;
@@ -87,6 +90,20 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
     },
     // El guion es correcto: solo una unidad INSTALADA tiene equipo.
     { key: "equipoNombre", header: "Equipo", render: (fila) => fila.equipoNombre ?? SIN_VALOR },
+    {
+      key: "id",
+      header: "",
+      render: (fila) => (
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={`Ver historial de ${fila.numeroSerie ?? SERIE_PENDIENTE.toLowerCase()}`}
+          onClick={() => setConHistorial(fila)}
+        >
+          Historial
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -128,6 +145,11 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
             ? "Todavía no hay unidades registradas para este insumo."
             : "No hay unidades en ese estado."
         }
+      />
+      <UnidadHistorialDialog
+        insumoId={insumoId}
+        unidad={conHistorial}
+        onClose={() => setConHistorial(null)}
       />
     </section>
   );
