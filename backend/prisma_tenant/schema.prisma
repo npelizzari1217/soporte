@@ -584,6 +584,15 @@ model EquipoInformatico {
   valorResidual      Decimal?  @map("valor_residual") @db.Decimal(14, 2)
   fechaValorResidual DateTime? @map("fecha_valor_residual") @db.Date
   activo             Boolean   @default(true)
+  /// Baja del equipo completo (sdd/baja-equipo-completo, ADR-1). Todo NULL en un
+  /// equipo vigente. CHECK de catálogo y `equipos_informaticos_baja_coherente_check`
+  /// enforced via migration SQL. `baja_usuario_id` es referencia blanda a master (sin FK).
+  bajaDestino        String?   @map("baja_destino") @db.VarChar(20)
+  bajaCategoria      String?   @map("baja_categoria") @db.VarChar(20)
+  /// Solo el texto libre recortado; la leyenda compuesta vive en las piezas.
+  bajaMotivo         String?   @map("baja_motivo") @db.Text
+  bajaFecha          DateTime? @map("baja_fecha") @db.Timestamptz
+  bajaUsuarioId      String?   @map("baja_usuario_id") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz

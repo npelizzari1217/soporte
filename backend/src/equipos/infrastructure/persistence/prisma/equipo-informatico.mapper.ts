@@ -7,7 +7,11 @@
  * Tarea: T11.2.
  */
 import type { EquipoInformatico as PrismaEquipoInformatico, Prisma } from '.prisma/tenant';
-import { EquipoInformaticoEntity } from '../../../domain/entities/equipo-informatico.entity';
+import {
+  CategoriaBajaEquipo,
+  DestinoBajaEquipo,
+  EquipoInformaticoEntity,
+} from '../../../domain/entities/equipo-informatico.entity';
 
 export class EquipoInformaticoMapper {
   /**
@@ -31,6 +35,11 @@ export class EquipoInformaticoMapper {
         valorResidual: row.valorResidual !== null ? Number(row.valorResidual) : null,
         fechaValorResidual: row.fechaValorResidual ?? null,
         activo: row.activo,
+        bajaDestino: row.bajaDestino as DestinoBajaEquipo | null,
+        bajaCategoria: row.bajaCategoria as CategoriaBajaEquipo | null,
+        bajaMotivo: row.bajaMotivo ?? null,
+        bajaFecha: row.bajaFecha ?? null,
+        bajaUsuarioId: row.bajaUsuarioId ?? null,
       },
       row.id,
       row.createdAt,
@@ -74,6 +83,11 @@ export class EquipoInformaticoMapper {
       valorResidual: entity.valorResidual,
       fechaValorResidual: entity.fechaValorResidual,
       activo: entity.activo,
+      bajaDestino: entity.bajaDestino,
+      bajaCategoria: entity.bajaCategoria,
+      bajaMotivo: entity.bajaMotivo,
+      bajaFecha: entity.bajaFecha,
+      bajaUsuarioId: entity.bajaUsuarioId,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };
