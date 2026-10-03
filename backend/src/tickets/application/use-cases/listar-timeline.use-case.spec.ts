@@ -159,4 +159,33 @@ describe('ListarTimelineUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).toEqual([publica]);
   });
+
+  it('ticket de solicitante externo (solicitanteId null): sin ver_todos → 404 y no lee el timeline', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(
+      TicketEntity.create(
+        {
+          numero: 'SOP-2026-00002',
+          titulo: 'Pedido del formulario publico',
+          descripcion: null,
+          tipoId: 'tipo-uuid',
+          estadoId: 'estado-uuid',
+          prioridadId: 'prioridad-uuid',
+          cicloId: null,
+          ticketReferenciaId: null,
+          solicitanteId: null,
+          solicitanteExternoId: 'externo-uuid',
+        },
+        'ticket-uuid',
+      ),
+    );
+
+    const result = await c.useCase.execute(
+      baseDto({ actorId: 'tercero-uuid', tienePermisoVerTodos: false }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+    expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
+  });
 });

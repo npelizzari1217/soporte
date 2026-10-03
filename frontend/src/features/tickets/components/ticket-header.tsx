@@ -79,7 +79,7 @@ export function TicketHeader({
         <div>
           <dt className="text-muted-foreground">Solicitante</dt>
           <dd className="text-foreground">
-            {nombreCompleto(ticket.solicitanteNombre, ticket.solicitanteApellido, ticket.solicitanteId)}
+            {nombreCompleto(ticket.solicitanteNombre, ticket.solicitanteApellido, ticket.solicitanteId ?? "—")}
           </dd>
         </div>
         <div>

@@ -2,7 +2,7 @@
  * [INTEGRATION] Solicitantes externos (sdd/formulario-publico-qr, WU-6, tarea 6.4) contra Postgres
  * REAL, en dos bases de INQUILINO EFÍMERAS migradas con todas las migraciones: guardar y leer,
  * `findNombres` en lote, una fila por pedido (sin deduplicar por email), aislamiento entre tenants
- * (el mismo email en A y B son dos externos sin vínculo), que no toca `tickets` y el `rollback.sql`.
+ * (el mismo email en A y B son dos externos sin vínculo), y el `rollback.sql`.
  * No toca master: sin `usarLockMasterTest()`. Higiene: filas -> cerrar pool -> dropDatabase.
  */
 import { randomBytes } from 'node:crypto';
@@ -157,22 +157,23 @@ describe('PrismaSolicitanteExternoRepository (WU-6, tenant efímero)', () => {
     await expect(enA(() => repo.save(e))).rejects.toThrow();
   });
 
-  it('no toca `tickets`: la columna solicitante_id sigue NOT NULL (eso es la WU-7)', async () => {
-    const filas = await clientA.$queryRawUnsafe<{ is_nullable: string }[]>(
-      `SELECT is_nullable FROM information_schema.columns
-       WHERE table_name = 'tickets' AND column_name = 'solicitante_id'`,
-    );
-    const externa = await clientA.$queryRawUnsafe<{ column_name: string }[]>(
-      `SELECT column_name FROM information_schema.columns
-       WHERE table_name = 'tickets' AND column_name = 'solicitante_externo_id'`,
-    );
-
-    expect(filas).toEqual([{ is_nullable: 'NO' }]);
-    expect(externa).toEqual([]);
-  });
-
-  it('rollback.sql borra la tabla y el índice', async () => {
+  it('rollback.sql borra la tabla y el índice (con el vínculo de la WU-7 revertido antes)', async () => {
     await enA(() => repo.save(externo('Ana')));
+    // La FK RESTRICT de `tickets.solicitante_externo_id` (WU-7) frena el DROP: se revierte primero.
+    const rollbackWu7 = fs
+      .readFileSync(
+        path.resolve(CARPETA, '../20261003150000_tickets_solicitante_externo/rollback.sql'),
+        'utf8',
+      )
+      .split('\n')
+      .filter((linea) => !linea.startsWith('--'))
+      .join('\n')
+      .split(';')
+      .map((sentencia) => sentencia.trim())
+      .filter(Boolean);
+    for (const sentencia of rollbackWu7) {
+      await clientA.$executeRawUnsafe(sentencia);
+    }
 
     const sentencias = fs
       .readFileSync(path.join(CARPETA, 'rollback.sql'), 'utf8')

@@ -195,7 +195,8 @@ export interface TicketResponseDto {
   prioridadId: string;
   cicloId: string | null;
   ticketReferenciaId: string | null;
-  solicitanteId: string;
+  /** `null` si el ticket lo abrió un solicitante externo (formulario público). */
+  solicitanteId: string | null;
   asignadoId: string | null;
   /** Resuelto batch cross-DB (sdd/beta-frontend item 2). `null` = no resuelto (ver `NombresResueltos`). */
   solicitanteNombre: string | null;

@@ -22,7 +22,8 @@ export interface Ticket {
   prioridadId: string;
   cicloId: string | null;
   ticketReferenciaId: string | null;
-  solicitanteId: string;
+  /** `null` si el ticket lo abrió un solicitante externo (formulario público). */
+  solicitanteId: string | null;
   asignadoId: string | null;
   /** Resuelto batch cross-DB por el backend (sdd/beta-frontend/backend-gaps item 2). `null` = no resuelto (usuario removido del tenant). */
   solicitanteNombre: string | null;

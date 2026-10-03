@@ -61,6 +61,12 @@ export class TicketNotificacionListener {
         return;
       }
 
+      // Guard provisorio (WU-7): un ticket de solicitante externo no tiene usuario ni contacto
+      // interno. La WU-9 lo reemplaza por el resolver del contacto del externo.
+      if (!ticket.solicitanteId) {
+        return;
+      }
+
       const contacto = await this.contactoResolver.resolverContacto(ticket.solicitanteId);
       if (!contacto) {
         return;
@@ -101,6 +107,12 @@ export class TicketNotificacionListener {
     try {
       const ticket = await this.ticketRepo.findById(event.ticketId);
       if (!ticket) {
+        return;
+      }
+
+      // Guard provisorio (WU-7): un ticket de solicitante externo no tiene usuario ni contacto
+      // interno. La WU-9 lo reemplaza por el resolver del contacto del externo.
+      if (!ticket.solicitanteId) {
         return;
       }
 

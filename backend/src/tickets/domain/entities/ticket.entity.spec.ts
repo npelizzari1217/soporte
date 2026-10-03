@@ -244,6 +244,36 @@ describe('TicketEntity', () => {
    * recién Postgres, con un `PrismaClientKnownRequestError` sin mapear (fix
    * defecto "límite de largo de titulo", análogo a `sectores`/`preventivo`).
    */
+  describe('create() — exactamente un solicitante (interno o externo)', () => {
+    it('acepta solo solicitanteId (ticket interno): solicitanteExternoId queda null', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+      expect(ticket.solicitanteId).toBe('solicitante-uuid');
+      expect(ticket.solicitanteExternoId).toBeNull();
+    });
+
+    it('acepta solo solicitanteExternoId (ticket del formulario publico)', () => {
+      const ticket = TicketEntity.create({
+        ...baseCrearProps(),
+        solicitanteId: null,
+        solicitanteExternoId: 'externo-uuid',
+      });
+      expect(ticket.solicitanteId).toBeNull();
+      expect(ticket.solicitanteExternoId).toBe('externo-uuid');
+    });
+
+    it('rechaza ambos', () => {
+      expect(() =>
+        TicketEntity.create({ ...baseCrearProps(), solicitanteExternoId: 'externo-uuid' }),
+      ).toThrow(/exactamente uno/);
+    });
+
+    it('rechaza ninguno', () => {
+      expect(() => TicketEntity.create({ ...baseCrearProps(), solicitanteId: null })).toThrow(
+        /exactamente uno/,
+      );
+    });
+  });
+
   describe('create() — tope de largo de titulo', () => {
     it('rechaza titulo de más de 255 caracteres', () => {
       expect(() => TicketEntity.create({ ...baseCrearProps(), titulo: 'A'.repeat(256) })).toThrow();

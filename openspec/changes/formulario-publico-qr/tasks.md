@@ -117,11 +117,13 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-7 — Solicitante nullable, CHECK y tipos
 
-- [ ] 7.1 Migración tenant: `solicitante_id` nullable, `solicitante_externo_id` FK RESTRICT con índice parcial y CHECK `tickets_solicitante_exactamente_uno`, con `rollback.sql`.
-- [ ] 7.2 Tests: integración del CHECK (ambos o ninguno falla; filas viejas intactas); unit de la invariante en `TicketEntity.create`.
-- [ ] 7.3 `TicketEntity` y mapper con props nullable.
-- [ ] 7.4 Ajustes de solo tipos: `tickets.controller.ts` (salteo del nulo), listeners de estado, comentario y CSAT (guard provisorio sin envío), tipos del SLA, DTO y `types.ts` del FE.
-- [ ] 7.5 Tests de dueño con `null` en `obtener-ticket`, `listar-timeline` y `adjuntar-archivo`. El repo debe compilar.
+- [x] 7.1 Migración tenant: `solicitante_id` nullable, `solicitante_externo_id` FK RESTRICT con índice parcial y CHECK `tickets_solicitante_exactamente_uno`, con `rollback.sql`.
+- [x] 7.2 Tests: integración del CHECK (ambos o ninguno falla; filas viejas intactas); unit de la invariante en `TicketEntity.create`.
+- [x] 7.3 `TicketEntity` y mapper con props nullable.
+- [x] 7.4 Ajustes de solo tipos: `tickets.controller.ts` (salteo del nulo), listeners de estado, comentario y CSAT (guard provisorio sin envío), tipos del SLA, DTO y `types.ts` del FE.
+- [x] 7.5 Tests de dueño con `null` en `obtener-ticket`, `listar-timeline` y `adjuntar-archivo`. El repo debe compilar.
+
+> **WU-7 en un solo commit, `size:exception`** (2026-10-03, ~490 lineas con tests): ensanchar `solicitante_id` a `string | null` en el schema rompe el typecheck de todos los lectores, asi que el schema, la migracion, la entidad, el mapper y los ajustes de tipo no compilan por separado; y partir el spec de integracion del codigo que prueba separaria el codigo de sus tests. Listeners de estado, comentario y CSAT llevan un guard provisorio (`if (!ticket.solicitanteId) return`) que la WU-9 reemplaza por el resolver del contacto del externo.
 
 ## WU-8 — Lectores con datos del externo
 

@@ -184,7 +184,7 @@ model TipoOperacion {
 /// Solicitante externo (sdd/formulario-publico-qr, WU-6): quien pide por el formulario público sin
 /// cuenta. Vive solo en el tenant; no hay Usuario ni Membresía. Una fila por pedido confirmado.
 /// Retención (D11): se conserva mientras exista el ticket; sin borrado en esta entrega.
-/// El vínculo `tickets.solicitante_externo_id` llega en la WU-7.
+/// El vínculo es `tickets.solicitante_externo_id` (WU-7, FK RESTRICT).
 model SolicitanteExterno {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   nombre            String   @db.VarChar(120)
@@ -193,6 +193,8 @@ model SolicitanteExterno {
   emailVerificadoAt DateTime @map("email_verificado_at") @db.Timestamptz
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tickets Ticket[]
 
   @@index([email])
   @@map("solicitantes_externos")
@@ -251,8 +253,12 @@ model Ticket {
   cicloId            String?   @map("ciclo_id") @db.Uuid
   /// Self-FK nullable → tickets.id. "Este ticket continúa de #X".
   ticketReferenciaId String?   @map("ticket_referencia_id") @db.Uuid
-  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
-  solicitanteId      String    @map("solicitante_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB. NULL solo si el ticket lo abrió un solicitante
+  /// externo (formulario público): CHECK tickets_solicitante_exactamente_uno.
+  solicitanteId      String?   @map("solicitante_id") @db.Uuid
+  /// FK real → solicitantes_externos.id (sdd/formulario-publico-qr, WU-7). Exactamente uno de
+  /// solicitante_id / solicitante_externo_id es NOT NULL.
+  solicitanteExternoId String? @map("solicitante_externo_id") @db.Uuid
   /// Soft ref → master.usuarios.id. NULL = sin asignar.
   asignadoId         String?   @map("asignado_id") @db.Uuid
   /// Calculado por el módulo SLA (prioridad + tipo). NULL = sin SLA aplicable.
@@ -278,6 +284,7 @@ model Ticket {
   prioridad        Prioridad     @relation(fields: [prioridadId], references: [id])
   ciclo            CicloCliente? @relation(fields: [cicloId], references: [id])
   ticketReferencia Ticket?       @relation("TicketContinuacion", fields: [ticketReferenciaId], references: [id])
+  solicitanteExterno SolicitanteExterno? @relation(fields: [solicitanteExternoId], references: [id], onDelete: Restrict)
   ticketsDerivados Ticket[]      @relation("TicketContinuacion")
 
   operaciones           OperacionTicket[]
@@ -296,6 +303,7 @@ model Ticket {
   @@index([cicloId]) // partial WHERE ciclo_id IS NOT NULL — ver migration SQL
   @@index([ticketReferenciaId]) // partial WHERE ticket_referencia_id IS NOT NULL — ver migration SQL
   @@index([solicitanteId])
+  @@index([solicitanteExternoId]) // partial WHERE solicitante_externo_id IS NOT NULL — ver migration SQL
   @@index([asignadoId]) // partial WHERE asignado_id IS NOT NULL — ver migration SQL
   @@index([createdAt])
   @@index([vencido])

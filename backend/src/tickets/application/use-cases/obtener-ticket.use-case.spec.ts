@@ -99,4 +99,59 @@ describe('ObtenerTicketUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
   });
+
+  it('ticket de solicitante externo (solicitanteId null): sin ver_todos se deniega con 404', async () => {
+    const ticket = TicketEntity.create(
+      {
+        numero: 'SOP-2026-00002',
+        titulo: 'Pedido del formulario publico',
+        descripcion: null,
+        tipoId: 'tipo-uuid',
+        estadoId: 'estado-uuid',
+        prioridadId: 'prioridad-uuid',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: null,
+        solicitanteExternoId: 'externo-uuid',
+      },
+      'ticket-uuid',
+    );
+    const { useCase } = makeUseCase(ticket);
+
+    const result = await useCase.execute({
+      ticketId: 'ticket-uuid',
+      actorId: 'actor-uuid',
+      tienePermisoVerTodos: false,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  it('ticket de solicitante externo: con ver_todos se puede ver', async () => {
+    const ticket = TicketEntity.create(
+      {
+        numero: 'SOP-2026-00002',
+        titulo: 'Pedido del formulario publico',
+        descripcion: null,
+        tipoId: 'tipo-uuid',
+        estadoId: 'estado-uuid',
+        prioridadId: 'prioridad-uuid',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: null,
+        solicitanteExternoId: 'externo-uuid',
+      },
+      'ticket-uuid',
+    );
+    const { useCase } = makeUseCase(ticket);
+
+    const result = await useCase.execute({
+      ticketId: 'ticket-uuid',
+      actorId: 'actor-uuid',
+      tienePermisoVerTodos: true,
+    });
+
+    expect(result.isOk()).toBe(true);
+  });
 });

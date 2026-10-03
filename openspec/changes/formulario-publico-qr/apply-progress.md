@@ -130,3 +130,26 @@ Modo: estandar. Tareas 6.1 a 6.4 marcadas en `tasks.md`. Rama `feat/formulario-p
 - Retencion D11 anotada como punto a revisar en la migracion, en `schema.prisma`, en `tasks.md` y para el cuerpo del PR.
 - Entorno: se aplico la migracion a `soporte_tenant_test` con `pnpm migrate:tenant` y `DATABASE_URL_TENANT` explicita.
 - Deuda de Ayuda: ninguna (sin pantalla ni flujo visible).
+
+## WU-7 — Solicitante nullable, CHECK y tipos (completa)
+
+Modo: estandar. Tareas 7.1 a 7.5 marcadas en `tasks.md`. Rama `feat/formulario-publico-qr-wu07`, apilada sobre `feat/formulario-publico-qr-wu06b`. `size:exception`: un solo commit (ver nota en `tasks.md`).
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/tickets/...`: 52 archivos, 474 tests verdes (incluye `tickets-solicitante-externo.integration.spec.ts`, 9 tests contra tenant efimero) |
+| Runtime harness | Integracion: `solicitante_id` nullable, solo uno de los dos pasa, ambos y ninguno fallan con el CHECK (tambien en UPDATE), FK inexistente y RESTRICT, `rollback.sql` falla por diseño con un ticket externo y es atomico, ida y vuelta conserva las filas viejas |
+| Rollback | `20261003150000_tickets_solicitante_externo/rollback.sql` (SET NOT NULL falla por diseño si hay tickets externos); resto con `git revert` |
+
+### Decisiones tomadas en apply
+
+- `TicketProps.solicitanteExternoId` es opcional en el tipo (ausente = null) para no tocar ~60 callers de `reconstitute`/`create`; el getter siempre devuelve `string | null`. `TicketEntity.create` lanza si no hay exactamente uno de los dos (espeja el CHECK).
+- Lectores tocados: `tickets.controller.ts` (`resolverNombresPorTicket` saltea el nulo), `ticket.dto.ts` y `frontend/src/features/tickets/types.ts` (`solicitanteId: string | null`), `ticket-header.tsx` (fallback "—"), listeners `ticket-notificacion` (2) y `ticket-csat` (guard provisorio, no envian), SLA (`i-sla-ticket-query.repository.ts`, `sla-vencido.event.ts`). Los chequeos de dueño (`obtener-ticket`, `listar-timeline`, `adjuntar-archivo`) no cambian: `null !== actorId` deniega; con tests nuevos.
+- No hay doubles de test de puertos que actualizar (el puerto `ITicketRepository` no cambio). Un fixture de `ticket.mapper.spec.ts` suma `solicitanteExternoId: null`.
+- El spec de integracion de la WU-6 se ajusto: se quito la prueba "no toca tickets" (ahora falsa) y su prueba de rollback revierte primero el de la WU-7 (la FK RESTRICT frena el DROP).
+- `rollback.sql` se ejecuta como una sola sentencia multiple (psql `-1` o el cliente `pg`) para que la falla sea atomica.
+- Entorno: se aplico la migracion a `soporte_tenant_test` con `pnpm migrate:tenant` y `DATABASE_URL_TENANT` explicita.
+- Deuda de Ayuda: ninguna (sin pantalla; los tickets existentes se ven igual).
+

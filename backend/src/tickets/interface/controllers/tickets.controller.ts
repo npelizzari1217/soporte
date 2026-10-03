@@ -201,7 +201,10 @@ export class TicketsController {
   ): Promise<Map<string, NombresResueltos>> {
     const idsUsuarios = new Set<string>();
     for (const t of tickets) {
-      idsUsuarios.add(t.solicitanteId);
+      // Ticket de solicitante externo: no hay usuario que resolver (sus datos llegan en la WU-8).
+      if (t.solicitanteId) {
+        idsUsuarios.add(t.solicitanteId);
+      }
       if (t.asignadoId) {
         idsUsuarios.add(t.asignadoId);
       }
@@ -211,7 +214,7 @@ export class TicketsController {
     const porTicket = new Map<string, NombresResueltos>();
     for (const t of tickets) {
       porTicket.set(t.id, {
-        solicitante: nombresPorUsuario.get(t.solicitanteId),
+        solicitante: t.solicitanteId ? nombresPorUsuario.get(t.solicitanteId) : undefined,
         asignado: t.asignadoId ? nombresPorUsuario.get(t.asignadoId) : undefined,
       });
     }
