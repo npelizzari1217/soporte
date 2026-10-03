@@ -30,6 +30,7 @@ import { EquipoBajaBanner } from "./equipo-baja-banner";
 import { EquipoBajaDialog } from "./equipo-baja-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
+import { EquipoQrPanel } from "./equipo-qr-panel";
 
 export interface EquipoDetailViewProps {
   equipoId: string;
@@ -96,6 +97,12 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
       />
 
       {!equipoActivo && <EquipoBajaBanner baja={equipo.baja} />}
+
+      {equipoActivo && (
+        <Can permiso="EQUIPOS:MODIFICACION">
+          <EquipoQrPanel equipoId={equipo.id} equipoNombre={equipo.nombre} />
+        </Can>
+      )}
 
       <EquipoComponentesSection
         equipoId={equipo.id}

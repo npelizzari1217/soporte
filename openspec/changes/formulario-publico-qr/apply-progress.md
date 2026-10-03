@@ -86,3 +86,26 @@ Modo: estandar. Tareas 4.1 a 4.5 marcadas en `tasks.md`. Cuatro ramas apiladas s
 - Entorno: hubo que aplicar la migracion a `soporte_tenant_test` (`DATABASE_URL_TENANT=... pnpm migrate:tenant`) para que los specs de integracion existentes vieran las columnas nuevas.
 - Deuda de Ayuda: ninguna todavia (sin pantalla); el panel del QR es WU-5.
 
+
+## WU-5 — FE: panel QR (completa)
+
+Modo: estandar. Tareas 5.1 a 5.4 marcadas en `tasks.md`. Dos ramas apiladas sobre `feat/formulario-publico-qr-wu04d`: `wu05` (5a, dependencia y utilidades) y `wu05b` (5b, hook y panel). Se partio porque el total (495 lineas sin lockfile) excede el presupuesto de 400 y cada parte lleva sus tests.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/features/equipos`: 17 archivos, 212 tests verdes (5 de `qr-equipo.test.ts`, 11 de `equipo-qr-panel.test.tsx`) |
+| Runtime harness | N/A: componente con MSW para el POST; canvas, `window.open` y descarga mockeados (jsdom no los implementa) |
+| Rollback | Revertir 5b quita el panel y el hook; revertir 5a quita la dependencia y las utilidades |
+
+### Decisiones tomadas en apply
+
+- Libreria: `uqr` 0.1.3, MIT, 0 dependencias, 28 KB de ESM sin minificar, `sideEffects: false`. No hizo falta el fallback.
+- El backend no informa si el equipo ya tiene QR (la ficha no trae `qrEmitidoAt`), asi que el boton siempre pide confirmacion y dice "Emitir QR" hasta que se emite uno en la sesion, luego "Regenerar QR". El token solo viaja en la respuesta del POST: se muestra mientras el panel esta montado y no se cachea (`gcTime: 0`).
+- PNG: se dibujan los modulos directo en un canvas (sin pasar por `Image`/SVG), con la zona de silencio de 2 modulos. SVG: texto armado a mano con numeros fijos, sin HTML de usuario.
+- Impresion: ventana propia con solo ese SVG y el nombre del equipo como `textContent`. Sin impresion en lote (fuera de alcance).
+- Avisos por `ApiError.code`: `QR_REQUIERE_SLUG` y `QR_SLUG_CAMBIADO`; 404/403 sin codigo caen al mensaje del backend.
+- Panel oculto sin `EQUIPOS:MODIFICACION` y para equipos dados de baja.
+- Deuda de Ayuda: seccion nueva "QR del equipo" en `/equipos/[id]` (emitir, regenerar, descargar, imprimir; regenerar invalida el impreso). No hay articulo previo que se vuelva falso.
+- Nota operativa: el lockfile cambia (9 lineas) y `deploy.ps1` aborta; el proximo deploy necesita `pnpm install` a mano con los servicios detenidos.

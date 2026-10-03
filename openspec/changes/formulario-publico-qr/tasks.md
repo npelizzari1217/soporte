@@ -95,14 +95,16 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 - [x] 4.4 `POST /equipos/:id/qr` con `@RequiereAcciones('EQUIPOS:MODIFICACION')`.
 - [x] 4.5 Integración `findByQrHash`; e2e 401/403; integración CAS concurrente emitir vs cambiar slug.
 
-> **WU-4 partida en cuatro PRs** (2026-10-03, 1.051 lineas en total): 4a migracion tenant, puerto y repo con su integracion (267); 4b caso de uso, errores y mapeo con sus specs (293); 4c endpoint, DTO y modulo con el spec del controller (145); 4d e2e 401/403/emision/regeneracion/slug/carrera CAS (343). Cada parte compila y pasa sola; ninguna separa el codigo de su spec de unidad. El e2e va aparte porque solo suma pruebas sobre la ruta de 4c (criterio del dueño del 2026-09-28).
+> **WU-4 partida en tres PRs** (2026-10-03, 1.051 lineas en total): 4a migracion tenant, puerto y repo con su integracion, #305 (267); 4b caso de uso, errores y mapeo con sus specs, #306 (293); 4c endpoint, DTO, modulo, spec del controller y e2e 401/403/emision/regeneracion/slug/carrera CAS, #307 (488), con `size:exception`: el e2e solo prueba la ruta de 4c y separarlo dejaria el endpoint sin su prueba de integracion (criterio del dueño del 2026-09-28). Las otras dos partes compilan y pasan solas con sus tests.
 
 ## WU-5 — FE: panel QR
 
-- [ ] 5.1 Verificar licencia y tamaño de `uqr` (fallback `qrcode-generator`); agregar dependencia en `frontend/package.json`.
-- [ ] 5.2 Panel de QR en `equipo-detail-view` (SVG propio, descarga SVG y PNG, aviso de regeneración).
-- [ ] 5.3 Tests del panel: emitir, regenerar, aviso. Anotar deuda de Ayuda.
-- [ ] 5.4 Nota operativa en el PR: el lockfile cambia y `deploy.ps1` aborta; instalar a mano con servicios detenidos (no editar scripts de deploy).
+- [x] 5.1 Verificar licencia y tamaño de `uqr` (fallback `qrcode-generator`); agregar dependencia en `frontend/package.json`.
+- [x] 5.2 Panel de QR en `equipo-detail-view` (SVG propio, descarga SVG y PNG, aviso de regeneración).
+- [x] 5.3 Tests del panel: emitir, regenerar, aviso. Anotar deuda de Ayuda.
+- [x] 5.4 Nota operativa en el PR: el lockfile cambia y `deploy.ps1` aborta; instalar a mano con servicios detenidos (no editar scripts de deploy).
+
+> **WU-5 partida en dos PRs** (2026-10-03, 495 lineas sin el lockfile; 9 de lockfile): 5a dependencia `uqr` y utilidades de QR (matriz, path SVG, SVG y PNG, schema Zod) con su spec (114); 5b hook de emision, panel y su montaje en `equipo-detail-view` con el spec del panel (381). Cada parte compila y pasa sola con sus tests. Librería: `uqr` 0.1.3 (MIT, sin dependencias, 28 KB de ESM sin minificar, `sideEffects: false`). El lockfile cambia: el proximo deploy necesita `pnpm install` a mano con los servicios detenidos (`deploy.ps1` aborta).
 
 ## WU-6 — Solicitantes externos (tenant)
 
