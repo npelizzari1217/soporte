@@ -593,6 +593,10 @@ model EquipoInformatico {
   bajaMotivo         String?   @map("baja_motivo") @db.Text
   bajaFecha          DateTime? @map("baja_fecha") @db.Timestamptz
   bajaUsuarioId      String?   @map("baja_usuario_id") @db.Uuid
+  /// QR del equipo (sdd/formulario-publico-qr, ADR-10): sha256 hex del token opaco, nunca el
+  /// token en claro. UNIQUE nullable. Solo `guardarQrHash()` lo escribe.
+  qrTokenHash        String?   @unique @map("qr_token_hash") @db.VarChar(64)
+  qrEmitidoAt        DateTime? @map("qr_emitido_at") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
