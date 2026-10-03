@@ -46,6 +46,17 @@ Eso cambia contra quién se compite:
 tiene que ser cubrir compras y edilicia en el mismo lugar, y usarse sin
 consultor.
 
+> **Actualizado el 2026-10-03.** Esta tabla es del 2026-08-19 y quedó corta en tres
+> cosas. GLPI 11 (octubre 2025) ya trae portal de autoservicio, 2FA, webhooks, API
+> v2, un plugin oficial de IA y, por el plugin oficial Order, pedidos con aprobación;
+> lo que sigue sin integrar es la cadena compra → recepción → stock → componente de
+> equipo. **ManageEngine ServiceDesk Plus** no figuraba y es el competidor más
+> parecido en alcance: activos, órdenes de compra con aprobación, contratos y
+> preventivo, desde unos USD 33 por técnico al mes en su edición Professional.
+> **Odoo** tampoco figuraba: Helpdesk, Mantenimiento, Compras e Inventario, con
+> factura electrónica ARCA. Lo que se agrega para cerrar esas brechas está en
+> "Segunda etapa — brechas frente a la competencia".
+
 ## Los seis puntos
 
 | # | Qué | Dificultad | Estimado | Estado |
@@ -608,6 +619,42 @@ No es una comodidad, es un agujero de producto:
 Alcance mínimo: que un usuario autenticado cambie su propia contraseña
 validando la actual. El reseteo por olvido (con email) es un problema distinto y
 más grande — necesita tokens de un solo uso con vencimiento — y puede ir después.
+
+## Segunda etapa — brechas frente a la competencia
+
+> Acordada el 2026-10-03, a partir de una comparación nueva contra GLPI 11,
+> ServiceDesk Plus, Freshservice, Jira Service Management, Zendesk, Freshdesk,
+> Zoho Desk, los CMMS (Fracttal, MaintainX, UpKeep, Limble) y Odoo. La conclusión:
+> la competencia gana en **cómo entra el pedido** (canales, autoservicio,
+> movilidad), no en lo que se hace con él. Lo que no tiene ninguno integrado es la
+> cadena compra → recepción → stock → componente de equipo: ese diferencial se
+> protege, no se diluye.
+
+Ordenada de más a menos importante. La dificultad es una estimación sin explorar
+el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
+
+| Orden | Qué agregar | Por qué | Dificultad | Estado |
+|---|---|---|---|---|
+| 0 | **Reseteo de contraseña para usuarios en varios clientes** | Es un defecto en producción: `solicitar-reset-password.use-case.ts` corta sin mandar mail si el usuario tiene más de una membresía activa, y la pantalla responde igual que si lo hubiera mandado. Un técnico que está en varios clientes no puede recuperar su clave | Baja · 1-2 días | Pendiente |
+| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | Pendiente |
+| 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | Pendiente |
+| 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | Pendiente |
+| 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | Pendiente |
+| 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | Pendiente |
+| 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | Pendiente |
+| 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
+| 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
+| 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | Pendiente |
+| 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email: va con el punto 6, postergado | Alta · 2-4 semanas | Postergado con el punto 6 |
+| 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
+
+**Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
+licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
+
+**Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
+Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
+Odoo y de los proveedores regionales salen de agregadores y son indicativos. No se
+verificó presencia local ni facturación en pesos de ningún proveedor extranjero.
 
 ## Deuda técnica conocida
 
