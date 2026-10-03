@@ -185,3 +185,25 @@ Modo: estandar. Partida en dos commits: 9a en `feat/formulario-publico-qr-wu09` 
 - Los listeners SLA vencido y preventivo siguen con `IUsuarioContactoResolver` (destinatarios internos).
 - Comentario interno: no publica `TicketComentadoEvent`, por lo que el listener nunca corre; el test lo deja documentado.
 - Deuda de Ayuda: los externos reciben mails de estado, comentario publico y CSAT.
+
+
+## WU-10 — `CrearTicketSoporteUseCase` para externos (completa, 3/3)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu10`, apilada sobre `feat/formulario-publico-qr-wu09b`. Un solo commit (bajo el limite de 400); sin `size:exception`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `crear-ticket-soporte.use-case.spec.ts`: 24 tests verdes (OMITIR con equipo inexistente, de baja y eliminado; RECHAZAR explicito y default; lock antes de numerar con OMITIR; externo sin consulta a master; autor `AUTOR_FORMULARIO_PUBLICO`; ambos o ninguno solicitante lanza) |
+| Runtime harness | Integracion `baja-equipo.concurrencia.integration.spec.ts` caso (e2) contra tenant efimero: baja vs ticket externo con `OMITIR`, 10 iteraciones con orden alternado; el ticket siempre se crea, con equipo solo si la baja llego despues, y ambos caminos se observan |
+| Rollback | `git revert` del commit; sin migracion. El alta autenticada sigue con `RECHAZAR` por defecto |
+
+### Decisiones tomadas en apply
+
+- `CrearTicketSoporteDto`: `solicitanteId` y `solicitanteExternoId` opcionales (exactamente uno), `equipoInvalido?: 'RECHAZAR' | 'OMITIR'` (default `RECHAZAR`). Ambos o ninguno es un error de programacion del caller: lanza, como el catalogo faltante, en vez de `Result.fail`.
+- El externo no pasa por `IUsuarioMasterChecker`: lo respalda la FK de `tickets.solicitante_externo_id`.
+- `OMITIR` conserva el `FOR SHARE` previo a numerar; solo cambia el desenlace (equipoId null en vez de `EquipoInvalidoError`).
+- `AUTOR_FORMULARIO_PUBLICO` en `tickets/domain/constants/formulario-publico.constants.ts`. El caller (WU-14) lo pasa como `autorId`.
+- El spec de integracion existente (carrera baja vs ticket) se extendio con (e2) en lugar de crear un spec nuevo, para reutilizar sus fixtures y su escalonado por locks.
+- Deuda de Ayuda: ninguna (sin pantalla).

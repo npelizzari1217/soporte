@@ -5,6 +5,7 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { EquipoInvalidoError } from '../../domain/errors/equipos.errors';
 import { Result } from '../../../shared/domain/result';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import { AUTOR_FORMULARIO_PUBLICO } from '../../../tickets/domain/constants/formulario-publico.constants';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 
 /**
@@ -305,5 +306,205 @@ describe('CrearTicketSoporteUseCase', () => {
     await useCase.execute(baseDto({ equipoId: 'no-existe' }));
 
     expect(deps.eventPublisher.publish).not.toHaveBeenCalled();
+  });
+
+  describe('equipoInvalido', () => {
+    function equipoActivo() {
+      return EquipoInformaticoEntity.create(
+        {
+          nombre: 'Notebook',
+          numeroSerie: null,
+          marca: null,
+          modelo: null,
+          fechaAdquisicion: null,
+          ubicacion: null,
+          importe: null,
+          fechaValoracion: null,
+          observaciones: null,
+          valorResidual: null,
+          fechaValorResidual: null,
+        },
+        'equipo-1',
+      );
+    }
+
+    function equipoDeBaja() {
+      const equipo = equipoActivo();
+      equipo.darDeBaja({
+        destino: 'DESCARTE',
+        categoria: 'VEJEZ',
+        motivo: null,
+        usuarioId: '00000000-0000-4000-8000-000000000001',
+        fecha: new Date('2026-10-01T12:00:00Z'),
+      });
+      return equipo;
+    }
+
+    it('OMITIR con el equipo inexistente: crea el ticket sin equipo y sin error', async () => {
+      const deps = makeDeps();
+      deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(null);
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ equipoId: 'no-existe', equipoInvalido: 'OMITIR' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().ticketSoporte.equipoId).toBeNull();
+      expect(deps.ticketSoporteRepo.save).toHaveBeenCalledTimes(1);
+      expect(deps.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('OMITIR con el equipo dado de baja: crea el ticket sin equipo', async () => {
+      const deps = makeDeps();
+      deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipoDeBaja());
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ equipoId: 'equipo-1', equipoInvalido: 'OMITIR' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().ticketSoporte.equipoId).toBeNull();
+    });
+
+    it('OMITIR con el equipo eliminado (soft delete): crea el ticket sin equipo', async () => {
+      const deps = makeDeps();
+      const equipo = equipoActivo();
+      equipo.softDelete();
+      deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipo);
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ equipoId: 'equipo-1', equipoInvalido: 'OMITIR' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().ticketSoporte.equipoId).toBeNull();
+    });
+
+    it('OMITIR con un equipo válido lo conserva', async () => {
+      const deps = makeDeps();
+      deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipoActivo());
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ equipoId: 'equipo-1', equipoInvalido: 'OMITIR' }),
+      );
+
+      expect(result.getValue().ticketSoporte.equipoId).toBe('equipo-1');
+    });
+
+    it('OMITIR sigue tomando el lock dentro de la transaccion y antes de numerar (S5)', async () => {
+      const deps = makeDeps();
+      const orden: string[] = [];
+      deps.txRunner.run.mockImplementation(async (fn: () => Promise<unknown>) => {
+        orden.push('tx:inicio');
+        return fn();
+      });
+      deps.equipoRepo.bloquearParaOperarPiezas.mockImplementation(async () => {
+        orden.push('lock-equipo');
+        return equipoDeBaja();
+      });
+      deps.numerador.generarNumero.mockImplementation(async () => {
+        orden.push('numerar');
+        return Result.ok('SOP-2026-00001');
+      });
+      const useCase = buildUseCase(deps);
+
+      await useCase.execute(baseDto({ equipoId: 'equipo-1', equipoInvalido: 'OMITIR' }));
+
+      expect(orden).toEqual(['tx:inicio', 'lock-equipo', 'numerar']);
+    });
+
+    it('RECHAZAR explícito falla con EquipoInvalidoError y no escribe', async () => {
+      const deps = makeDeps();
+      deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(equipoDeBaja());
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ equipoId: 'equipo-1', equipoInvalido: 'RECHAZAR' }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(EquipoInvalidoError);
+      expect(deps.ticketSoporteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sin política (default) rechaza el equipo inválido', async () => {
+      const deps = makeDeps();
+      deps.equipoRepo.bloquearParaOperarPiezas.mockResolvedValue(null);
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(baseDto({ equipoId: 'no-existe' }));
+
+      expect(result.getError()).toBeInstanceOf(EquipoInvalidoError);
+    });
+  });
+
+  describe('solicitante externo', () => {
+    it('crea el ticket con solicitanteExternoId, sin consultar master y con solicitanteId null', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ solicitanteId: null, solicitanteExternoId: 'externo-1' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      const { ticket } = result.getValue();
+      expect(ticket.solicitanteId).toBeNull();
+      expect(ticket.solicitanteExternoId).toBe('externo-1');
+      expect(deps.usuarioMasterChecker.existeEnTenant).not.toHaveBeenCalled();
+    });
+
+    it('registra la operación de apertura con AUTOR_FORMULARIO_PUBLICO', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      await useCase.execute(
+        baseDto({
+          solicitanteId: undefined,
+          solicitanteExternoId: 'externo-1',
+          autorId: AUTOR_FORMULARIO_PUBLICO,
+        }),
+      );
+
+      const operacion = deps.operacionRepo.save.mock.calls[0][0];
+      expect(operacion.autorId).toBe(AUTOR_FORMULARIO_PUBLICO);
+    });
+
+    it('AUTOR_FORMULARIO_PUBLICO es el UUID nulo', () => {
+      expect(AUTOR_FORMULARIO_PUBLICO).toBe('00000000-0000-0000-0000-000000000000');
+    });
+
+    it('con un usuario registrado deja solicitanteExternoId en null', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(baseDto());
+
+      expect(result.getValue().ticket.solicitanteExternoId).toBeNull();
+    });
+
+    it('lanza si llegan los dos solicitantes, sin escribir', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      await expect(
+        useCase.execute(baseDto({ solicitanteId: 'usuario-1', solicitanteExternoId: 'externo-1' })),
+      ).rejects.toThrow(/exactamente uno/);
+      expect(deps.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('lanza si no llega ninguno, sin escribir', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      await expect(useCase.execute(baseDto({ solicitanteId: null }))).rejects.toThrow(
+        /exactamente uno/,
+      );
+      expect(deps.ticketRepo.save).not.toHaveBeenCalled();
+    });
   });
 });

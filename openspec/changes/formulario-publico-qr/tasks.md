@@ -142,9 +142,9 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-10 — `CrearTicketSoporteUseCase` para externos
 
-- [ ] 10.1 Test unit de `equipoInvalido` `OMITIR` y `RECHAZAR`.
-- [ ] 10.2 DTO: `solicitanteExternoId` y `equipoInvalido`; constante `AUTOR_FORMULARIO_PUBLICO` en `tickets/domain/constants`.
-- [ ] 10.3 Integración: carrera con la baja del equipo conserva el `FOR SHARE` (S5).
+- [x] 10.1 Test unit de `equipoInvalido` `OMITIR` y `RECHAZAR`.
+- [x] 10.2 DTO: `solicitanteExternoId` y `equipoInvalido`; constante `AUTOR_FORMULARIO_PUBLICO` en `tickets/domain/constants`.
+- [x] 10.3 Integración: carrera con la baja del equipo conserva el `FOR SHARE` (S5).
 
 ## WU-11 — Tokens y pendientes
 

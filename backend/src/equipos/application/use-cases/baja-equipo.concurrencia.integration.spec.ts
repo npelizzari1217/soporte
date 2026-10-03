@@ -33,6 +33,7 @@ import {
 } from '../../domain/errors/equipos.errors';
 import { AgregarComponenteUseCase } from './agregar-componente.use-case';
 import { AgregarComponenteSinDescuentoUseCase } from './agregar-componente-sin-descuento.use-case';
+import { AUTOR_FORMULARIO_PUBLICO } from '../../../tickets/domain/constants/formulario-publico.constants';
 import { CrearTicketSoporteUseCase } from './crear-ticket-soporte.use-case';
 import { InstalarComponenteDesdeDepositoUseCase } from './instalar-componente-desde-deposito.use-case';
 
@@ -181,6 +182,7 @@ describe('Baja de equipo — concurrencia de resultado (R15, R10)', () => {
       await c.ticketSoporte.deleteMany({ where: { ticket: { tipoId: ticketTipoId } } });
       await c.operacionTicket.deleteMany({ where: { ticket: { tipoId: ticketTipoId } } });
       await c.ticket.deleteMany({ where: { tipoId: ticketTipoId } });
+      await c.solicitanteExterno.deleteMany({ where: { nombre: `${fx.prefijo}externo` } });
     }
     await fx.limpiar();
   }
@@ -247,7 +249,10 @@ describe('Baja de equipo — concurrencia de resultado (R15, R10)', () => {
       );
   };
 
-  const crearTicket = (equipoId: string): Operacion => {
+  const crearTicket = (
+    equipoId: string,
+    extra: Partial<Parameters<CrearTicketSoporteUseCase['execute']>[0]> = {},
+  ): Operacion => {
     const useCase = new CrearTicketSoporteUseCase(
       new PrismaTicketRepository(fx.tenantContext),
       new PrismaOperacionTicketRepository(fx.tenantContext),
@@ -292,9 +297,22 @@ describe('Baja de equipo — concurrencia de resultado (R15, R10)', () => {
           clienteId: 'test-cliente-bja',
           autorId: fx.usuarioId,
           anio: 2026,
+          ...extra,
         }),
       );
   };
+
+  /** Solicitante externo de la corrida (el ticket externo lo referencia por FK RESTRICT). */
+  async function crearExterno(): Promise<string> {
+    const externo = await fx.tenantClient.solicitanteExterno.create({
+      data: {
+        nombre: `${fx.prefijo}externo`,
+        email: `${fx.prefijo.toLowerCase()}externo@example.com`,
+        emailVerificadoAt: new Date(),
+      },
+    });
+    return externo.id;
+  }
 
   /**
    * Baja y otra operación del mismo equipo, escalonadas sobre su LE. Las iteraciones pares llegan
@@ -538,6 +556,54 @@ describe('Baja de equipo — concurrencia de resultado (R15, R10)', () => {
       // El orden de llegada alterna: ambos caminos (ticket creado / ticket rechazado) quedan cubiertos.
       expect(conTicket).toBeGreaterThan(0);
       expect(conTicket).toBeLessThan(ITERACIONES);
+    },
+    TIMEOUT_CASO_MS,
+  );
+
+  it(
+    '(e2) baja contra crear un ticket externo con OMITIR: el ticket siempre se crea; con equipo solo si la baja llegó después, sin equipo si llegó antes',
+    async () => {
+      let conEquipo = 0;
+      let sinEquipo = 0;
+      await repetir(ITERACIONES, async (i) => {
+        await limpiarTodo();
+        const e1 = await equipoConPiezas(i);
+        const externoId = await crearExterno();
+
+        const [baja, ticket] = await bajaYOtra(
+          e1.id,
+          crearTicket(e1.id, {
+            solicitanteId: null,
+            solicitanteExternoId: externoId,
+            equipoInvalido: 'OMITIR',
+            autorId: AUTOR_FORMULARIO_PUBLICO,
+          }),
+          i,
+        );
+
+        expect(baja.isOk()).toBe(true);
+        // OMITIR nunca rechaza: el FOR SHARE se toma primero y decide con el estado ya comiteado.
+        expect(ticket.isOk()).toBe(true);
+        const filas = await fx.tenantClient.ticketSoporte.findMany({
+          where: { ticket: { tipoId: ticketTipoId } },
+          include: { ticket: true },
+        });
+        expect(filas).toHaveLength(1);
+        expect(filas[0].ticket.solicitanteId).toBeNull();
+        expect(filas[0].ticket.solicitanteExternoId).toBe(externoId);
+        if (filas[0].equipoId === null) {
+          sinEquipo += 1;
+        } else {
+          conEquipo += 1;
+          expect(filas[0].equipoId).toBe(e1.id);
+        }
+        expect(await exigirEquipoCoherente(e1.id)).toBe(false);
+        await exigirInvariantes();
+      });
+      console.info(`[concurrencia] (e2) OMITIR: con equipo ${conEquipo}, sin equipo ${sinEquipo}`);
+      // El orden de llegada alterna: ambos caminos quedan cubiertos.
+      expect(conEquipo).toBeGreaterThan(0);
+      expect(sinEquipo).toBeGreaterThan(0);
     },
     TIMEOUT_CASO_MS,
   );
