@@ -8,6 +8,10 @@
  * ausentes al backend). Gate `ticket:crear` — INDEPENDIENTE del gate
  * `equipo:gestionar` del inventario (ver hook), visible incluso a
  * USUARIO/COLABORADOR que no gestionan equipos.
+ *
+ * `equipoInicial` y `abiertoInicial` (sdd/formulario-publico-qr, WU-18): el landing `/pedido-qr`
+ * abre el diálogo ya con el equipo del QR elegido. El equipo se ofrece como opción aunque el
+ * listado no lo traiga (un USUARIO sin `EQUIPOS:LECTURA` recibe 403 en `GET /equipos`).
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -22,8 +26,15 @@ import { useEquipos } from "../hooks/use-equipos";
 import { useCrearTicketSoporte } from "../hooks/use-ticket-soporte-mutations";
 import { crearTicketSoporteSchema, type CrearTicketSoporteFormValues } from "../schemas";
 
-export function TicketSoporteCreateDialog() {
-  const [open, setOpen] = useState(false);
+export interface TicketSoporteCreateDialogProps {
+  /** Equipo preseleccionado (el del QR); no viaja si el usuario elige "Sin equipo". */
+  equipoInicial?: { id: string; nombre: string };
+  /** Abre el diálogo al montar. Por defecto, cerrado. */
+  abiertoInicial?: boolean;
+}
+
+export function TicketSoporteCreateDialog({ equipoInicial, abiertoInicial = false }: TicketSoporteCreateDialogProps = {}) {
+  const [open, setOpen] = useState(abiertoInicial);
   const prioridadesQuery = usePrioridades();
   const equiposQuery = useEquipos();
   const crearMutation = useCrearTicketSoporte();
@@ -33,7 +44,10 @@ export function TicketSoporteCreateDialog() {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<CrearTicketSoporteFormValues>({ resolver: zodResolver(crearTicketSoporteSchema) });
+  } = useForm<CrearTicketSoporteFormValues>({
+    resolver: zodResolver(crearTicketSoporteSchema),
+    defaultValues: { equipoId: equipoInicial?.id ?? "" },
+  });
 
   function submit(values: CrearTicketSoporteFormValues) {
     crearMutation.mutate(
@@ -93,9 +107,10 @@ export function TicketSoporteCreateDialog() {
             <label htmlFor="soporte-equipo" className="text-sm font-medium text-foreground">
               Equipo (opcional)
             </label>
-            <Select id="soporte-equipo" defaultValue="" {...register("equipoId")}>
+            <Select id="soporte-equipo" defaultValue={equipoInicial?.id ?? ""} {...register("equipoId")}>
               <option value="">Sin equipo</option>
-              {(equiposQuery.data ?? []).map((equipo) => (
+              {equipoInicial && <option value={equipoInicial.id}>{equipoInicial.nombre}</option>}
+              {(equiposQuery.data ?? []).filter((equipo) => equipo.id !== equipoInicial?.id).map((equipo) => (
                 <option key={equipo.id} value={equipo.id}>
                   {equipo.nombre}
                   {equipo.numeroSerie ? ` (${equipo.numeroSerie})` : ""}
