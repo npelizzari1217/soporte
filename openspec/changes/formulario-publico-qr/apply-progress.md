@@ -164,3 +164,24 @@ Un solo commit (~232 lineas con tests, bajo el limite de 400); sin `size:excepti
 - Tests: controller (listado mixto sin telefono y con un solo batch; detalle con telefono, sin telefono, registrado sin consulta al externo); header (con y sin telefono, y `<script>` en titulo, nombre y telefono como texto, sin nodo `script`).
 - Verificacion: backend lint/typecheck limpios, `pnpm test` 562 archivos / 7073 tests; frontend lint, type-check, 230 archivos / 1817 tests; casts 627/116; roadmap fresco.
 - Deuda de Ayuda: el detalle de ticket ahora muestra nombre y telefono del solicitante externo (y el listado su nombre); el articulo de tickets debe mencionarlo en la tanda final.
+
+
+## WU-9 — Resolver de contacto y listeners (completa, 3/3)
+
+Modo: estandar. Partida en dos commits: 9a en `feat/formulario-publico-qr-wu09` (resolver + spec, 138 lineas) y 9b en `feat/formulario-publico-qr-wu09b` (listeners, plantillas, modulos y specs). Sin `size:exception`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/notificaciones src/csat`: 24 archivos, 184 tests verdes (resolver 5, plantillas, listeners) |
+| Runtime harness | N/A: listeners y plantillas son unitarios con dobles de puertos; el resolver solo compone dos puertos ya cubiertos por integracion (WU-6) |
+| Rollback | `git revert` de 9b (los listeners vuelven al guard de WU-7) y luego de 9a |
+
+### Decisiones tomadas en apply
+
+- `IContactoSolicitanteResolver.resolver(ticket)` recibe `{ solicitanteId, solicitanteExternoId }` (el `TicketEntity` cumple estructuralmente). Adaptador sin Prisma: compone `IUsuarioContactoResolver` y `ISolicitanteExternoRepository.findById`. Se exporta `CONTACTO_SOLICITANTE_RESOLVER` desde `NotificacionesModule`; `CsatModule` lo usa.
+- Plantillas de estado y comentario publico: flag opcional `sinLink` (el listener lo pasa desde `contacto.esExterno`); sin link, ni texto ni HTML contienen `/tickets/`. El titulo sigue escapado (test con `<script>`).
+- Los listeners SLA vencido y preventivo siguen con `IUsuarioContactoResolver` (destinatarios internos).
+- Comentario interno: no publica `TicketComentadoEvent`, por lo que el listener nunca corre; el test lo deja documentado.
+- Deuda de Ayuda: los externos reciben mails de estado, comentario publico y CSAT.

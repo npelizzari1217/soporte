@@ -6,6 +6,15 @@ import {
   USUARIO_CONTACTO_RESOLVER,
   IUsuarioContactoResolver,
 } from './domain/ports/i-usuario-contacto-resolver';
+import {
+  CONTACTO_SOLICITANTE_RESOLVER,
+  IContactoSolicitanteResolver,
+} from './domain/ports/i-contacto-solicitante-resolver';
+import { ContactoSolicitanteResolverAdapter } from './infrastructure/contacto-solicitante-resolver.adapter';
+import {
+  SOLICITANTE_EXTERNO_REPOSITORY,
+  ISolicitanteExternoRepository,
+} from '../tickets/domain/ports/i-solicitante-externo.repository';
 import { PrismaUsuarioContactoResolver } from './infrastructure/persistence/prisma/prisma-usuario-contacto-resolver';
 
 import { TicketNotificacionListener } from './infrastructure/listeners/ticket-notificacion.listener';
@@ -41,6 +50,8 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
  *   `TenantContext`, sin config del cliente, o si falla el descifrado —
  *   nunca fail-fast (D2).
  * - `USUARIO_CONTACTO_RESOLVER` → `PrismaUsuarioContactoResolver` (master).
+ * - `CONTACTO_SOLICITANTE_RESOLVER` → ramifica entre ese resolver y los solicitantes externos
+ *   (tenant); lo usan los listeners de estado, comentario público y CSAT.
  * - Listeners: `TicketNotificacionListener` (estado_cambiado/comentado,
  *   solicitante) + `SlaVencidoNotificacionListener` (sla.vencido, asignado
  *   + administradores — hereda el `TenantContext` del `tenantContext.run()`
@@ -76,16 +87,24 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
       inject: [TenantContext, CLIENTE_EMAIL_CONFIG_REPOSITORY, LOGGER],
     },
     { provide: USUARIO_CONTACTO_RESOLVER, useClass: PrismaUsuarioContactoResolver },
+    {
+      provide: CONTACTO_SOLICITANTE_RESOLVER,
+      useFactory: (
+        usuarioResolver: IUsuarioContactoResolver,
+        externoRepo: ISolicitanteExternoRepository,
+      ) => new ContactoSolicitanteResolverAdapter(usuarioResolver, externoRepo),
+      inject: [USUARIO_CONTACTO_RESOLVER, SOLICITANTE_EXTERNO_REPOSITORY],
+    },
 
     {
       provide: TicketNotificacionListener,
       useFactory: (
         ticketRepo: ITicketRepository,
-        contactoResolver: IUsuarioContactoResolver,
+        contactoResolver: IContactoSolicitanteResolver,
         emailSender: IEmailSender,
         logger: ILogger,
       ) => new TicketNotificacionListener(ticketRepo, contactoResolver, emailSender, logger),
-      inject: [TICKET_REPOSITORY, USUARIO_CONTACTO_RESOLVER, EMAIL_SENDER, LOGGER],
+      inject: [TICKET_REPOSITORY, CONTACTO_SOLICITANTE_RESOLVER, EMAIL_SENDER, LOGGER],
     },
     {
       provide: SlaVencidoNotificacionListener,
@@ -124,6 +143,6 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
       inject: [TICKET_REPOSITORY, USUARIO_CONTACTO_RESOLVER, EMAIL_SENDER, TenantContext, LOGGER],
     },
   ],
-  exports: [EMAIL_SENDER, USUARIO_CONTACTO_RESOLVER],
+  exports: [EMAIL_SENDER, USUARIO_CONTACTO_RESOLVER, CONTACTO_SOLICITANTE_RESOLVER],
 })
 export class NotificacionesModule {}

@@ -4,8 +4,8 @@
  * email al SOLICITANTE del ticket (N3).
  *
  * Flujo por evento: carga el ticket (`TICKET_REPOSITORY`, para
- * numero/titulo/solicitanteId — el evento NO lleva PII) → resuelve el
- * contacto del solicitante (`IUsuarioContactoResolver`) → si no resuelve
+ * numero/titulo/solicitante — el evento NO lleva PII) → resuelve el
+ * contacto del solicitante, registrado o externo (`IContactoSolicitanteResolver`) → si no resuelve
  * (usuario sin email/soft-deleted) se OMITE el envío (N4, no falla el
  * resto) → arma el `EmailMessage` con la plantilla correspondiente →
  * `IEmailSender.send()`.
@@ -25,7 +25,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { TicketEstadoCambiadoEvent } from '../../../tickets/domain/events/ticket-estado-cambiado.event';
 import { TicketComentadoEvent } from '../../../tickets/domain/events/ticket-comentado.event';
-import { IUsuarioContactoResolver } from '../../domain/ports/i-usuario-contacto-resolver';
+import { IContactoSolicitanteResolver } from '../../domain/ports/i-contacto-solicitante-resolver';
 import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
 import {
   templateCambioEstado,
@@ -38,7 +38,7 @@ import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 export class TicketNotificacionListener {
   constructor(
     private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
-    private readonly contactoResolver: Pick<IUsuarioContactoResolver, 'resolverContacto'>,
+    private readonly contactoResolver: Pick<IContactoSolicitanteResolver, 'resolver'>,
     private readonly emailSender: Pick<IEmailSender, 'send'>,
     private readonly logger: Pick<ILogger, 'error'>,
   ) {}
@@ -61,13 +61,7 @@ export class TicketNotificacionListener {
         return;
       }
 
-      // Guard provisorio (WU-7): un ticket de solicitante externo no tiene usuario ni contacto
-      // interno. La WU-9 lo reemplaza por el resolver del contacto del externo.
-      if (!ticket.solicitanteId) {
-        return;
-      }
-
-      const contacto = await this.contactoResolver.resolverContacto(ticket.solicitanteId);
+      const contacto = await this.contactoResolver.resolver(ticket);
       if (!contacto) {
         return;
       }
@@ -79,6 +73,7 @@ export class TicketNotificacionListener {
         appBaseUrl: entorno.APP_BASE_URL,
         estadoAnteriorCodigo: event.estadoAnteriorCodigo,
         estadoNuevoCodigo: event.estadoNuevoCodigo,
+        sinLink: contacto.esExterno,
       });
 
       await this.emailSender.send({ to: contacto.email, ...plantilla });
@@ -110,13 +105,7 @@ export class TicketNotificacionListener {
         return;
       }
 
-      // Guard provisorio (WU-7): un ticket de solicitante externo no tiene usuario ni contacto
-      // interno. La WU-9 lo reemplaza por el resolver del contacto del externo.
-      if (!ticket.solicitanteId) {
-        return;
-      }
-
-      const contacto = await this.contactoResolver.resolverContacto(ticket.solicitanteId);
+      const contacto = await this.contactoResolver.resolver(ticket);
       if (!contacto) {
         return;
       }
@@ -126,6 +115,7 @@ export class TicketNotificacionListener {
         titulo: ticket.titulo,
         ticketId: ticket.id,
         appBaseUrl: entorno.APP_BASE_URL,
+        sinLink: contacto.esExterno,
       });
 
       await this.emailSender.send({ to: contacto.email, ...plantilla });

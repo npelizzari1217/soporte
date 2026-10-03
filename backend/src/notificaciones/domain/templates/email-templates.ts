@@ -8,6 +8,11 @@ interface DatosTicketBase {
   ticketId: string;
   /** Base pública de la app (env `APP_BASE_URL`), inyectada por el caller (infra). */
   appBaseUrl: string;
+  /**
+   * El destinatario es un solicitante externo: no tiene cuenta, así que el mail NO lleva el link a
+   * `/tickets/:id` (D5).
+   */
+  sinLink?: boolean;
 }
 
 /** Cuerpo de una plantilla renderizada: subject/text/html (sin `to` — lo agrega el listener). */
@@ -15,6 +20,16 @@ type PlantillaEmail = Omit<EmailMessage, 'to'>;
 
 function linkTicket(datos: DatosTicketBase): string {
   return `${datos.appBaseUrl}/tickets/${datos.ticketId}`;
+}
+
+/** Cierre en texto plano: el link al ticket, salvo que el destinatario sea un externo. */
+function textoLink(datos: DatosTicketBase): string {
+  return datos.sinLink ? '' : `\n\nVer ticket: ${linkTicket(datos)}`;
+}
+
+/** Cierre en HTML: el link al ticket, salvo que el destinatario sea un externo. */
+function htmlLink(datos: DatosTicketBase): string {
+  return datos.sinLink ? '' : `<p><a href="${escaparHtml(linkTicket(datos))}">Ver ticket</a></p>`;
 }
 
 // escaparHtml vive en shared/domain/escapar-html.ts (WU-3, reseteo-contrasena-olvidada).
@@ -30,16 +45,15 @@ export function templateCambioEstado(
   datos: DatosTicketBase & { estadoAnteriorCodigo: string; estadoNuevoCodigo: string },
 ): PlantillaEmail {
   const subject = `Ticket ${datos.numero} cambió de estado`;
-  const link = linkTicket(datos);
   const text =
     `El ticket ${datos.numero} - ${datos.titulo} cambió de estado: ` +
-    `${datos.estadoAnteriorCodigo} → ${datos.estadoNuevoCodigo}.\n\n` +
-    `Ver ticket: ${link}`;
+    `${datos.estadoAnteriorCodigo} → ${datos.estadoNuevoCodigo}.` +
+    textoLink(datos);
   const html =
     `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
     `cambió de estado: ${escaparHtml(datos.estadoAnteriorCodigo)} → ` +
     `${escaparHtml(datos.estadoNuevoCodigo)}.</p>` +
-    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
+    htmlLink(datos);
 
   return { subject, text, html };
 }
@@ -52,14 +66,12 @@ export function templateCambioEstado(
  */
 export function templateComentarioPublico(datos: DatosTicketBase): PlantillaEmail {
   const subject = `Nuevo comentario en el ticket ${datos.numero}`;
-  const link = linkTicket(datos);
   const text =
-    `Hay un nuevo comentario en el ticket ${datos.numero} - ${datos.titulo}.\n\n` +
-    `Ver ticket: ${link}`;
+    `Hay un nuevo comentario en el ticket ${datos.numero} - ${datos.titulo}.` + textoLink(datos);
   const html =
     `<p>Hay un nuevo comentario en el ticket <strong>${escaparHtml(datos.numero)}</strong> - ` +
     `${escaparHtml(datos.titulo)}.</p>` +
-    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
+    htmlLink(datos);
 
   return { subject, text, html };
 }

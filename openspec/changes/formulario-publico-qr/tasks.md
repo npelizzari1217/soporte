@@ -134,9 +134,11 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-9 — Resolver de contacto y listeners
 
-- [ ] 9.1 Tests: resolver (rama master y externa); comentario público envía un mail, interno ninguno; estado envía mail sin link; CSAT al externo.
-- [ ] 9.2 `IContactoSolicitanteResolver` y adaptador; plantillas sin link a `/tickets/:id` para externos.
-- [ ] 9.3 Listeners de estado, comentario público y CSAT usan el resolver (reemplaza el guard provisorio de WU-7).
+- [x] 9.1 Tests: resolver (rama master y externa); comentario público envía un mail, interno ninguno; estado envía mail sin link; CSAT al externo.
+- [x] 9.2 `IContactoSolicitanteResolver` y adaptador; plantillas sin link a `/tickets/:id` para externos.
+- [x] 9.3 Listeners de estado, comentario público y CSAT usan el resolver (reemplaza el guard provisorio de WU-7).
+
+> **WU-9 partida en dos PRs** (2026-10-03, ~410 lineas con tests): 9a puerto `IContactoSolicitanteResolver`, adaptador y su spec (138); 9b plantillas con `sinLink`, listeners de estado, comentario publico y CSAT sobre el resolver, cableado en `NotificacionesModule`/`CsatModule` y sus specs (~270). Cada parte compila y pasa sola con sus tests. **Deuda de Ayuda**: los solicitantes externos ahora reciben mails (estado, comentario publico y encuesta CSAT, sin link al ticket); el articulo de notificaciones debe mencionarlo en la tanda final.
 
 ## WU-10 — `CrearTicketSoporteUseCase` para externos
 
