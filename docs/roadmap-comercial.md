@@ -55,11 +55,12 @@ consultor.
 | 3 | Encuesta de satisfacción | Media | 4-6 días | **HECHO** — del 2026-08-22 (`24b0618`) al 2026-09-04 |
 | 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | **HECHO** — del 2026-08-24 (`bd098f9`) al 2026-09-05 |
 | 5 | Horario laboral en el SLA | Media | 4-6 días | **HECHO** — 2026-09-09 (`a5ec64d`, PR #146), en producción |
-| 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20 |
+| 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20; **POSTERGADO** el 2026-10-03 hasta consultar a los clientes |
 
 Estimado restante sobre los seis puntos: **cero**. Lo único que sigue sin
 construirse es la recepción de correo del punto 6, diferida por decisión del
-2026-08-20.
+2026-08-20 y postergada el 2026-10-03 a una versión posterior, hasta consultar a
+los clientes si les sirve (ver el punto 6).
 
 El plan de dos carriles en paralelo **ya no aplica**: se describe más abajo
 porque explica cómo se ejecutaron los puntos 2 a 4, no porque quede trabajo que
@@ -474,7 +475,7 @@ solo para todos los inquilinos— se resolvió el 2026-09-29 con el ciclo
 `horario-laboral-por-cliente`. Los feriados por cliente llegaron antes, con el
 ciclo `feriados-configurables` (issue #216).
 
-### 6 · Ticket por email entrante — Alta
+### 6 · Ticket por email entrante — Alta — **POSTERGADO**
 
 La más valiosa y la más cara. Hoy hay envío (SMTP) pero **no recepción**. Sin
 esto cada persona tiene que aprender a entrar a una app; con esto manda un mail
@@ -489,6 +490,38 @@ como siempre.
 - **Bucles**: un autorespondedor de vacaciones puede generar tickets infinitos.
 - **Infraestructura fuera del código**: casilla o proveedor de correo entrante.
   En un VPS Windows, un webhook de proveedor es más confiable que un poller IMAP.
+
+> **Postergado el 2026-10-03 por decisión del dueño**, a una versión posterior.
+> Antes de construirlo se consulta a los clientes si les sirve. El motivo es la
+> experiencia de quien trabaja en varios clientes.
+>
+> **El problema.** `Usuario` es global: `email` es `@unique` en la base master
+> (`backend/prisma_master/schema.prisma`, modelo `Usuario`) y la relación con
+> cada cliente va por `Membresia`. Un técnico que está en ocho clientes manda el
+> mail desde Outlook con una sola dirección, y ese mail no dice para qué cliente
+> es ni de qué tipo es el pedido. El ticket exige las dos cosas: el tenant, y
+> `tipoId` y `prioridadId`, que son obligatorios en `prisma_tenant/schema.prisma`.
+>
+> **Lo que se descartó y por qué:**
+>
+> - **Una dirección por cliente.** Resuelve el ruteo, pero obliga a cada persona
+>   a acordarse de una dirección por cliente: ocho, en el caso del técnico.
+> - **Una sola dirección, con pregunta por mail.** Si el remitente está en un solo
+>   cliente, el ticket va directo. Si está en varios, el sistema contesta con un
+>   link firmado de un solo uso por cliente, y la persona elige. Funciona, pero
+>   el ida y vuelta no convenció.
+>
+> **Notas de diseño para cuando se retome:**
+>
+> - El tenant **nunca se adivina** (por ejemplo, "el último cliente que usó"): un
+>   ticket cargado en el tenant equivocado expone datos de un cliente a otro.
+> - Una respuesta a un ticket existente no es ambigua: el hilo
+>   (`Message-ID`/`References`) apunta a un ticket que ya tiene su tenant.
+> - Una etiqueta opcional en el asunto (`[Cliente] ...`) evita la pregunta a quien
+>   la use.
+> - El tipo no viene en el mail: lo razonable es un tipo por defecto ("Sin
+>   clasificar") que una persona corrige en el triage. Clasificar con IA queda
+>   afuera de una primera versión: si clasifica mal, el SLA se calcula mal.
 
 ## Orden acordado
 
@@ -507,7 +540,7 @@ como siempre.
 5. ~~**Punto 5 — es el siguiente, y el último que queda.**~~ — **entregado** el
    2026-09-09 (PR #146), con la desviación del calendario global, corregida el
    2026-09-29.
-6. Punto 6 — diferido.
+6. Punto 6 — diferido; postergado el 2026-10-03 hasta consultar a los clientes.
 
 **No queda ningún punto abierto.**
 
