@@ -259,3 +259,18 @@ export class SlugDuplicadoError extends DomainError {
     super('Ya existe otro cliente con ese slug.');
   }
 }
+
+/**
+ * OnlyRootCanConfigurarFormularioError — el actor que invoca
+ * `ConfigurarFormularioPublicoUseCase` no es `is_global_admin`. Defensa en
+ * profundidad: `GlobalAdminGuard` ya lo bloquea en el controller; esto cubre
+ * la invocacion directa del caso de uso.
+ * → HTTP 403 en la capa de presentacion.
+ */
+export class OnlyRootCanConfigurarFormularioError extends DomainError {
+  readonly code = 'CLIENTES_ONLY_ROOT_CAN_CONFIGURAR_FORMULARIO';
+
+  constructor() {
+    super('Solo un usuario ROOT (is_global_admin) puede configurar el formulario público.');
+  }
+}
