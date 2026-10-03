@@ -170,8 +170,7 @@ export function useReactivarComponente(equipoId: string) {
       notifySuccess("Componente reactivado.");
     },
     onError: (error) => {
-      // El código del 422 no viaja en el cuerpo: se reconoce el mensaje del backend.
-      if (error instanceof ApiError && /ya no está disponible para reinstalarla/.test(error.message)) {
+      if (error instanceof ApiError && error.code === "UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE") {
         toast.error(MENSAJE_UNIDAD_NO_DISPONIBLE);
         return;
       }

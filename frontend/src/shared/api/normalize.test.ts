@@ -54,4 +54,30 @@ describe("normalize", () => {
       ]);
     }
   });
+
+  it("4xx con `code` de dominio en el cuerpo → ApiError.code lo expone", async () => {
+    const res = new Response(
+      JSON.stringify({ statusCode: 422, message: "Algo falló", code: "UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE" }),
+      { status: 422, headers: { "content-type": "application/json" } },
+    );
+
+    await expect(normalize(res)).rejects.toMatchObject({
+      statusCode: 422,
+      code: "UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE",
+    });
+  });
+
+  it("4xx sin `code`, o con un `code` que no es texto → ApiError.code queda undefined", async () => {
+    for (const cuerpo of [{ statusCode: 400, message: "x" }, { statusCode: 400, message: "x", code: 42 }]) {
+      const res = new Response(JSON.stringify(cuerpo), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+
+      const error = await normalize(res).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).code).toBeUndefined();
+    }
+  });
 });

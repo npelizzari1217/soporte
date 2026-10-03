@@ -1082,6 +1082,18 @@ describe('toHttpException — cuerpos de los errores de la baja de equipo comple
     });
   });
 
+  it('UnidadDelComponenteNoDisponibleError → 422 con el code en el cuerpo (el frontend elige el aviso por code)', () => {
+    const excepcion = toHttpException(
+      new EquiposErrors.UnidadDelComponenteNoDisponibleError('comp-1'),
+    );
+
+    expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
+    expect(excepcion.getResponse()).toMatchObject({
+      statusCode: 422,
+      code: 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE',
+    });
+  });
+
   it('EquipoModificadoDuranteLaBajaError → 409', () => {
     const excepcion = toHttpException(new EquiposErrors.EquipoModificadoDuranteLaBajaError('e-1'));
 
