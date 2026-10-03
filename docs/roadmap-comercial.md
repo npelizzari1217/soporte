@@ -669,8 +669,11 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     después al alta del ticket con el equipo cargado. Sin mail no hay forma de
     comprobar un email tipeado (precisado el 2026-10-03, al proponer).
   - El ticket entra **directo como NUEVO**, sin estado de moderación.
-  - Quien pidió recibe el **número del ticket, los cambios de estado y la
-    encuesta CSAT** por mail. No hay página de seguimiento.
+  - Quien pidió recibe el **número del ticket, los cambios de estado, los
+    comentarios públicos y la encuesta CSAT** por mail. No hay página de
+    seguimiento. Los comentarios públicos se sumaron el 2026-10-03, al diseñar.
+  - El link de confirmación vence a las **24 horas** (decidido el 2026-10-03, al
+    diseñar).
   - Tipo **SOPORTE** y prioridad **MEDIA**, fijos: quien pide no los elige.
   - El identificador del cliente en la URL lo carga el **ROOT** y **no cambia**
     después de emitido el primer QR.
