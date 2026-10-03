@@ -201,10 +201,10 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-18 — FE: camino D3
 
-- [ ] 18.1 Tests: `destinoPosLogin` (`//evil`, `https:`, `/tickets` caen a `/`), hook `use-login` (incluye selector multi-cliente), middleware de `/login`, landing (coincide / otra organización).
-- [ ] 18.2 `frontend/src/shared/auth/destino-pos-login.ts` (allowlist solo `/pedido-qr`).
-- [ ] 18.3 `use-login.ts` y middleware usan `destinoPosLogin`; la página pública redirige a `/login?siguiente=...`.
-- [ ] 18.4 `(dashboard)/pedido-qr/page.tsx` y props `equipoInicial`/`abiertoInicial` en `ticket-soporte-create-dialog.tsx`.
+- [x] 18.1 Tests: `destinoPosLogin` (`//evil`, `https:`, `/tickets` caen a `/`), hook `use-login` (incluye selector multi-cliente), middleware de `/login`, landing (coincide / otra organización).
+- [x] 18.2 `frontend/src/shared/auth/destino-pos-login.ts` (allowlist solo `/pedido-qr`).
+- [x] 18.3 `use-login.ts` y middleware usan `destinoPosLogin`; la página pública redirige a `/login?siguiente=...`.
+- [x] 18.4 `(dashboard)/pedido-qr/page.tsx` y props `equipoInicial`/`abiertoInicial` en `ticket-soporte-create-dialog.tsx`.
 
 ## WU-19 — Confirmación FE, registro y cierre de roadmap
 
