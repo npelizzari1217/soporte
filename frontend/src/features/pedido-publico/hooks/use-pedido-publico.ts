@@ -72,3 +72,34 @@ export function useEnviarPedido(
       }),
   });
 }
+
+export interface PedidoConfirmado {
+  numero: string;
+}
+
+/** 409: el cliente todavía no tiene un ciclo de soporte activo; el link sigue vigente. */
+export const MENSAJE_SIN_CICLO_ACTIVO =
+  "Por ahora no podemos registrar tu pedido. Tu link sigue siendo válido: volvé a abrirlo más tarde.";
+
+export const MENSAJE_LINK_NO_VALIDO = "El link no es válido o venció.";
+
+/** Mensaje de la confirmación: el 409 es transitorio y el resto reusa `mensajeDeErrorPedido`. */
+export function mensajeDeErrorConfirmacion(error: ApiError | null): string {
+  if (error?.statusCode === 409) return MENSAJE_SIN_CICLO_ACTIVO;
+  if (error?.statusCode === 429) return "Hiciste demasiados intentos. Esperá unos minutos y volvé a intentar.";
+  if (error?.statusCode === 404) return MENSAJE_LINK_NO_VALIDO;
+  return mensajeDeErrorPedido(error);
+}
+
+/**
+ * `POST publico/c/:slug/pedido/confirmar` — la ÚNICA llamada que consume el token. Se dispara
+ * desde un botón, nunca al cargar la página: un escáner de links que abre la URL no lo quema.
+ */
+export function useConfirmarPedido(
+  slug: string,
+): UseMutationResult<PedidoConfirmado, ApiError, string> {
+  return useMutation<PedidoConfirmado, ApiError, string>({
+    mutationFn: (token) =>
+      apiFetch<PedidoConfirmado>(`${rutaPedido(slug)}/confirmar`, { method: "POST", json: { token } }),
+  });
+}
