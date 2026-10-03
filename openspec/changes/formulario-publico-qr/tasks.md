@@ -188,9 +188,11 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-16 — FE: página pública
 
-- [ ] 16.1 Tests: middleware (`/c/` público; `/clientes` y `/compras` siguen protegidas), página en modo `EXTERNO` y `SESION`, schema Zod.
-- [ ] 16.2 Agregar `"/c/"` a `RUTAS_PUBLICAS` en `frontend/src/middleware.ts`.
-- [ ] 16.3 `(publico)/c/[slug]/pedido/page.tsx`, schema (límites del DTO) y hooks; copy en voseo, mapeo de 404 y 429. Anotar deuda de Ayuda.
+- [x] 16.1 Tests: middleware (`/c/` público; `/clientes` y `/compras` siguen protegidas), página en modo `EXTERNO` y `SESION`, schema Zod.
+- [x] 16.2 Agregar `"/c/"` a `RUTAS_PUBLICAS` en `frontend/src/middleware.ts`.
+- [x] 16.3 `(publico)/c/[slug]/pedido/page.tsx`, schema (límites del DTO) y hooks; copy en voseo, mapeo de 404 y 429. Anotar deuda de Ayuda.
+
+> **WU-16 partida en tres commits** (2026-10-04): 16a middleware y su test (30 líneas); 16b schema, tipos y hooks con sus tests (316); 16c container, formulario, página y tests. Cada parte compila y pasa sola. **Deuda de Ayuda**: pantalla pública nueva `/c/<slug>/pedido` (formulario con nombre, email, teléfono, asunto y descripción; aviso de revisar el correo). Hasta la WU-18, el redirect del modo `SESION` a `/login?siguiente=...` aún no vuelve al destino.
 
 ## WU-17 — BE: `GET /soporte/qr`
 

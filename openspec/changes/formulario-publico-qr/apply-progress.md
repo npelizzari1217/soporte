@@ -324,3 +324,26 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu15`, apilada sobre `feat/form
 - Wiring: `FormularioPublicoModule` importa `TicketsModule` (catalogos, solicitante externo) y `EquiposModule` ahora exporta `CrearTicketSoporteUseCase`; `ConfirmarPedidoPublicoUseCase` se arma por factory (como el resto del modulo). `CORREO_DE_CLIENTE` y `TAREAS_SEGUNDO_PLANO` siguen locales y sin registrar en `AppModule`.
 - La plantilla no lleva link al ticket (el externo no tiene sesion) y escapa `nombre`, `clienteNombre` y `numero` en el html.
 - Deuda de Ayuda: ninguna (sin pantalla).
+
+
+## WU-16 — FE: página pública (completa, 3/3)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu16`, apilada sobre `feat/formulario-publico-qr-wu15b`. Tres commits (16a middleware, 16b schema y hooks, 16c container, formulario y página); sin `size:exception`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/middleware.test.ts src/features/pedido-publico 'src/app/(publico)'`: middleware 21 (6 nuevos: `/c/` pasa sin cookie, `/clientes`, `/compras` y `/admin/c/x` redirigen a `/login`), schema 13, hooks 7, vista 9, página 2 |
+| Runtime harness | N/A: componentes y hooks aislados con MSW sobre `/api/publico/...`; el backend no esta registrado en `AppModule` todavia |
+| Rollback | `git revert` de 16c, 16b y 16a; la ruta `/c/` deja de ser publica con 16a |
+
+### Decisiones tomadas en apply
+
+- Feature nueva `features/pedido-publico` (types, schemas, hooks, components). Hooks con `apiFetch` (como `use-solicitar-reset`): estas rutas no responden 401, asi que el refresh nunca corre.
+- El contexto real es `{ cliente: {nombre}, equipo: {nombre} | null, modo }`. `EXTERNO` muestra el formulario; `SESION` hace `router.replace` a `/login?siguiente=<encodeURIComponent('/pedido-qr?c=<slug>&e=<token>')>`. El retorno post-login (`destinoPosLogin`) es WU-18: hoy el login ignora `siguiente`.
+- Errores: 404 del contexto = mensaje uniforme sin reintento; 429, red y 5xx del contexto con reintento. Al enviar, 429/404/red/5xx se muestran sobre el formulario, que sigue disponible.
+- Limites del schema espejan el DTO: nombre 1-120, email 254, telefono 30, titulo 3-150, descripcion 1-4000; se recorta como el backend. Telefono vacio no se manda.
+- `equipoToken` viaja en el POST solo si hay `?e=`. Pagina server fina; `?e=` repetido toma el primero, vacio = null.
+- Pantalla de confirmacion (`/c/<slug>/pedido/confirmar`) es WU-19.
+- Deuda de Ayuda: pantalla publica nueva de pedido por QR (ver `tasks.md`).
