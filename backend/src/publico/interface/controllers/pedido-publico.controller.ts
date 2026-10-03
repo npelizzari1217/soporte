@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  ConflictException,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -12,6 +13,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
+import { ConfirmarPedidoPublicoUseCase } from '../../application/use-cases/confirmar-pedido-publico.use-case';
+import { NotificarPedidoCreadoService } from '../../application/services/notificar-pedido-creado.service';
+import { ConfirmarPedidoDto } from '../dtos/confirmar-pedido.dto';
+import { SinCicloActivoError } from '../../../tickets/domain/errors/tickets.errors';
 import { SolicitarPedidoPublicoUseCase } from '../../application/use-cases/solicitar-pedido-publico.use-case';
 import { PedidoPendienteInvalidoError } from '../../domain/errors/publico.errors';
 import { PedidoPublicoDto } from '../dtos/pedido-publico.dto';
@@ -35,9 +40,9 @@ const RESPUESTA_SOLICITUD = {
  * Sin lógica de negocio: traduce HTTP a casos de uso.
  *
  * Cada ruta aplica `@SkipThrottle` sobre los throttlers que no le corresponden (ADR-8): `contexto`
- * solo lleva `contexto`; `solicitud` lleva `email` y `cliente`.
+ * solo lleva `contexto`; `solicitud` lleva `email` y `cliente`; `confirmar` lleva `confirmacion`.
  *
- * Ref design: ADR-1, ADR-8, ADR-9. Tarea: 12.3, 13.3.
+ * Ref design: ADR-1, ADR-8, ADR-9. Tarea: 12.3, 13.3, 15.2.
  */
 @Controller('publico/c/:slug/pedido')
 @UseGuards(PedidoPublicoThrottlerGuard)
@@ -45,10 +50,12 @@ export class PedidoPublicoController {
   constructor(
     private readonly consultarContextoUseCase: ConsultarContextoPedidoUseCase,
     private readonly solicitarPedidoUseCase: SolicitarPedidoPublicoUseCase,
+    private readonly confirmarPedidoUseCase: ConfirmarPedidoPublicoUseCase,
+    private readonly notificarPedidoCreado: NotificarPedidoCreadoService,
   ) {}
 
   @Get('contexto')
-  @SkipThrottle({ email: true, cliente: true })
+  @SkipThrottle({ email: true, cliente: true, confirmacion: true })
   async contexto(
     @Param('slug') slug: string,
     @Query('e') token?: unknown,
@@ -62,7 +69,7 @@ export class PedidoPublicoController {
 
   @Post('solicitud')
   @HttpCode(HttpStatus.ACCEPTED)
-  @SkipThrottle({ contexto: true })
+  @SkipThrottle({ contexto: true, confirmacion: true })
   async solicitud(
     @Param('slug') slug: string,
     @Body() dto: PedidoPublicoDto,
@@ -76,5 +83,26 @@ export class PedidoPublicoController {
       throw new NotFoundException(MENSAJE_NO_DISPONIBLE);
     }
     return RESPUESTA_SOLICITUD;
+  }
+
+  @Post('confirmar')
+  @HttpCode(HttpStatus.OK)
+  @SkipThrottle({ contexto: true, email: true, cliente: true })
+  async confirmar(
+    @Param('slug') slug: string,
+    @Body() dto: ConfirmarPedidoDto,
+  ): Promise<{ numero: string }> {
+    const resultado = await this.confirmarPedidoUseCase.ejecutar({ slug, token: dto.token });
+    if (resultado.isFail()) {
+      const error = resultado.getError();
+      if (error instanceof SinCicloActivoError) {
+        throw new ConflictException(error.message);
+      }
+      throw new NotFoundException(MENSAJE_NO_DISPONIBLE);
+    }
+    const confirmado = resultado.getValue();
+    // Post-commit: el mail sale después de la transacción y no condiciona la respuesta.
+    this.notificarPedidoCreado.notificar(confirmado);
+    return { numero: confirmado.numero };
   }
 }

@@ -301,3 +301,26 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu14`, apilada sobre `feat/form
 - Devuelve `PedidoPublicoConfirmado` (`ticketId`, `numero`, `nombre`, `email`, `clienteId`, `clienteNombre`) para que la ruta de la WU-15 mande el mail con el numero fuera de la transaccion.
 - La integracion usa un doble en memoria del token de master (solo se prueba la atomicidad del tenant), asi que no toca `soporte_master_test` ni llama a `usarLockMasterTest()`.
 - Deuda de Ayuda: ninguna (sin pantalla; ruta no expuesta).
+
+
+## WU-15 — Ruta de confirmación (completa, 2/2)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu15`, apilada sobre `feat/formulario-publico-qr-wu14c`. Tres commits (15a plantilla, 15b servicio del mail, 15c ruta y e2e). `size:exception` para 15c: el e2e es la unica prueba del wiring.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/publico src/equipos`: 70 archivos, 930 tests verdes (2 de plantilla, 2 del servicio, 8 e2e) |
+| Runtime harness | e2e `pedido-publico-confirmar.e2e.spec.ts` (dos tenants efimeros con catalogo y ciclo, guards reales, `EMAIL_SENDER` falso): `clienteId` y `dbName` de B inyectados en el body no escriben en B (ticket solo en A); mail con el numero a `email` del solicitante, nombre escapado; token de B en slug de A = mismo 404 que inexistente; cliente inactivo, token usado y vencido dan 404 sin ticket ni mail; 400 sin token; 409 sin ciclo con el pendiente intacto; 6.º intento con el mismo token y XFF distintos da 429 |
+| Rollback | `git revert` de 15c, 15b y 15a; sin migracion y sin consumidores (el modulo no esta en `AppModule`) |
+
+### Decisiones tomadas en apply
+
+- `cliente.slug === :slug` ya lo garantiza el caso de uso de WU-14: el tenant sale del slug resuelto y `token.clienteId === cliente.id`. La ruta no repite la comprobacion.
+- Mail: `NotificarPedidoCreadoService` (application/services) arma `templatePedidoCreado` y lo difiere con `ITareasSegundoPlano`; el controller lo llama despues de que el caso de uso devuelve (post-commit). No se toco el constructor del caso de uso de WU-14.
+- Respuesta: 200 `{ numero }`; `SinCicloActivoError` 409; todo otro fallo 404 con el mensaje uniforme.
+- Throttler `confirmacion` (5 / 15 min): tracker = sha256 del `token` del body (el crudo no vive en el storage en memoria), sin `x-forwarded-for`. `@SkipThrottle` de `contexto` y `solicitud` ahora tambien salta `confirmacion`; `confirmar` salta los otros tres.
+- Wiring: `FormularioPublicoModule` importa `TicketsModule` (catalogos, solicitante externo) y `EquiposModule` ahora exporta `CrearTicketSoporteUseCase`; `ConfirmarPedidoPublicoUseCase` se arma por factory (como el resto del modulo). `CORREO_DE_CLIENTE` y `TAREAS_SEGUNDO_PLANO` siguen locales y sin registrar en `AppModule`.
+- La plantilla no lleva link al ticket (el externo no tiene sesion) y escapa `nombre`, `clienteNombre` y `numero` en el html.
+- Deuda de Ayuda: ninguna (sin pantalla).

@@ -466,6 +466,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       inject: [ListarEquiposUseCase],
     },
   ],
-  exports: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TICKET_SOPORTE_REPOSITORY],
+  exports: [
+    EQUIPO_INFORMATICO_REPOSITORY,
+    COMPONENTE_EQUIPO_REPOSITORY,
+    TICKET_SOPORTE_REPOSITORY,
+    // sdd/formulario-publico-qr WU-15: `ConfirmarPedidoPublicoUseCase` crea el ticket del externo.
+    CrearTicketSoporteUseCase,
+  ],
 })
 export class EquiposModule {}

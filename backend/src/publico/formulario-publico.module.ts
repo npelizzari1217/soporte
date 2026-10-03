@@ -2,6 +2,20 @@ import { Module } from '@nestjs/common';
 import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
 import { AuthModule } from '../auth/auth.module';
 import { EquiposModule } from '../equipos/equipos.module';
+import { CrearTicketSoporteUseCase } from '../equipos/application/use-cases/crear-ticket-soporte.use-case';
+import { TicketsModule } from '../tickets/tickets.module';
+import {
+  IPrioridadRepository,
+  PRIORIDAD_REPOSITORY,
+} from '../tickets/domain/ports/i-prioridad.repository';
+import {
+  ISolicitanteExternoRepository,
+  SOLICITANTE_EXTERNO_REPOSITORY,
+} from '../tickets/domain/ports/i-solicitante-externo.repository';
+import {
+  ITenantTransactionRunner,
+  TENANT_TX_RUNNER,
+} from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { CORREO_DE_CLIENTE, ICorreoDeCliente } from '../auth/domain/ports/i-correo-de-cliente.port';
 import { CorreoDeClienteAdapter } from '../auth/infrastructure/email/correo-de-cliente.adapter';
@@ -39,10 +53,14 @@ import {
 } from './domain/ports/i-pedido-publico-token.repository';
 import { PrismaPedidoPendienteRepository } from './infrastructure/persistence/prisma/prisma-pedido-pendiente.repository';
 import { PrismaPedidoPublicoTokenRepository } from './infrastructure/persistence/prisma/prisma-pedido-publico-token.repository';
+import { ConfirmarPedidoPublicoUseCase } from './application/use-cases/confirmar-pedido-publico.use-case';
+import { NotificarPedidoCreadoService } from './application/services/notificar-pedido-creado.service';
 import { SolicitarPedidoPublicoUseCase } from './application/use-cases/solicitar-pedido-publico.use-case';
 import { ConsultarContextoPedidoUseCase } from './application/use-cases/consultar-contexto-pedido.use-case';
 import {
   CLIENTE_THROTTLE_LIMIT,
+  CONFIRMACION_THROTTLE_LIMIT,
+  CONFIRMACION_THROTTLE_TTL_MS,
   CLIENTE_THROTTLE_TTL_MS,
   CONTEXTO_THROTTLE_LIMIT,
   CONTEXTO_THROTTLE_TTL_MS,
@@ -50,6 +68,7 @@ import {
   EMAIL_THROTTLE_TTL_MS,
   PedidoPublicoThrottlerGuard,
   trackerCliente,
+  trackerConfirmacion,
   trackerEmail,
 } from './infrastructure/guards/pedido-publico-throttler.guard';
 import { PedidoPublicoController } from './interface/controllers/pedido-publico.controller';
@@ -72,10 +91,10 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
  * - Throttler: opciones con nombre y `ThrottlerStorage` locales (no hay `forRoot` ni `APP_GUARD`).
  *   El guard se aplica por `@UseGuards` en el controller. El storage es memoria de un proceso.
  *
- * Ref design: ADR-8, ADR-9. Tarea: 12.3, 13.3.
+ * Ref design: ADR-8, ADR-9. Tarea: 12.3, 13.3, 15.2.
  */
 @Module({
-  imports: [AuthModule, EquiposModule, NotificacionesModule],
+  imports: [AuthModule, EquiposModule, NotificacionesModule, TicketsModule],
   controllers: [PedidoPublicoController],
   providers: [
     {
@@ -93,6 +112,12 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
           limit: CLIENTE_THROTTLE_LIMIT,
           ttl: CLIENTE_THROTTLE_TTL_MS,
           getTracker: trackerCliente,
+        },
+        {
+          name: 'confirmacion',
+          limit: CONFIRMACION_THROTTLE_LIMIT,
+          ttl: CONFIRMACION_THROTTLE_TTL_MS,
+          getTracker: trackerConfirmacion,
         },
       ],
     },
@@ -179,6 +204,48 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
         PEDIDO_PUBLICO_TOKEN_REPOSITORY,
         TAREAS_SEGUNDO_PLANO,
       ],
+    },
+    {
+      provide: ConfirmarPedidoPublicoUseCase,
+      useFactory: (
+        resolver: ResolverClientePublicoService,
+        correoDeCliente: ICorreoDeCliente,
+        tokenRepo: IPedidoPublicoTokenRepository,
+        pendienteRepo: IPedidoPendienteRepository,
+        solicitanteRepo: ISolicitanteExternoRepository,
+        prioridadRepo: IPrioridadRepository,
+        crearTicketSoporte: CrearTicketSoporteUseCase,
+        txRunner: ITenantTransactionRunner,
+        logger: ILogger,
+      ) =>
+        new ConfirmarPedidoPublicoUseCase(
+          resolver,
+          correoDeCliente,
+          tokenRepo,
+          pendienteRepo,
+          solicitanteRepo,
+          prioridadRepo,
+          crearTicketSoporte,
+          txRunner,
+          logger,
+        ),
+      inject: [
+        ResolverClientePublicoService,
+        CORREO_DE_CLIENTE,
+        PEDIDO_PUBLICO_TOKEN_REPOSITORY,
+        PEDIDO_PENDIENTE_REPOSITORY,
+        SOLICITANTE_EXTERNO_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
+        CrearTicketSoporteUseCase,
+        TENANT_TX_RUNNER,
+        LOGGER,
+      ],
+    },
+    {
+      provide: NotificarPedidoCreadoService,
+      useFactory: (correoDeCliente: ICorreoDeCliente, tareas: ITareasSegundoPlano) =>
+        new NotificarPedidoCreadoService(correoDeCliente, tareas),
+      inject: [CORREO_DE_CLIENTE, TAREAS_SEGUNDO_PLANO],
     },
   ],
 })

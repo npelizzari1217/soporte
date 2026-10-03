@@ -181,8 +181,10 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-15 — Ruta de confirmación
 
-- [ ] 15.1 Tests e2e: dos tenants con guards reales y `clienteId` inyectado en el body no escribe en A; cliente inactivo, token usado o vencido dan 404; mail con el número.
-- [ ] 15.2 DTO, `POST publico/c/:slug/pedido/confirmar` (exige `cliente.slug === :slug`; throttler `confirmacion`), `templatePedidoCreado`.
+- [x] 15.1 Tests e2e: dos tenants con guards reales y `clienteId` inyectado en el body no escribe en A; cliente inactivo, token usado o vencido dan 404; mail con el número.
+- [x] 15.2 DTO, `POST publico/c/:slug/pedido/confirmar` (exige `cliente.slug === :slug`; throttler `confirmacion`), `templatePedidoCreado`.
+
+> **WU-15 partida en tres commits** (2026-10-03, ~620 lineas con tests): 15a plantilla `templatePedidoCreado` y su spec (65); 15b `NotificarPedidoCreadoService` y su spec (72); 15c DTO, tracker `confirmacion`, ruta `POST confirmar`, wiring del modulo (sin registrar en `AppModule`) y el e2e. Cada parte compila y pasa sola con sus tests. `size:exception` para 15c (el e2e es ~80 % del commit y es la unica prueba del wiring). **Deuda de Ayuda**: ninguna (sin pantalla; la ruta aun no esta expuesta).
 
 ## WU-16 — FE: página pública
 

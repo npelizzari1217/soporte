@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
@@ -18,6 +19,15 @@ export const CLIENTE_THROTTLE_LIMIT = 30;
 
 /** Ventana del throttler `cliente`, en milisegundos (60 min). */
 export const CLIENTE_THROTTLE_TTL_MS = 60 * 60_000;
+
+/** Cupo del throttler `confirmacion`: 5 confirmaciones por token en la ventana (ADR-8). */
+export const CONFIRMACION_THROTTLE_LIMIT = 5;
+
+/** Ventana del throttler `confirmacion`, en milisegundos (15 min). */
+export const CONFIRMACION_THROTTLE_TTL_MS = 15 * 60_000;
+
+/** Tope de caracteres del token en la clave: un body hostil no infla el storage en memoria. */
+const TOKEN_CLAVE_MAX = 256;
 
 /** Tope de caracteres del email en la clave: un body hostil no infla el storage en memoria. */
 const EMAIL_CLAVE_MAX = 320;
@@ -50,12 +60,23 @@ export function trackerCliente(req: Record<string, unknown>): string {
 }
 
 /**
+ * Tracker del throttler `confirmacion`: sha256 del token del body, para que el token crudo no viva
+ * en el storage en memoria. Sin `x-forwarded-for` (falsificable): rotarlo no da cupo nuevo sobre
+ * el mismo token. Un body sin token comparte un contador.
+ */
+export function trackerConfirmacion(req: Record<string, unknown>): string {
+  const body = req.body as Record<string, unknown> | undefined;
+  const token = typeof body?.token === 'string' ? body.token.slice(0, TOKEN_CLAVE_MAX) : '';
+  return token ? createHash('sha256').update(token).digest('hex') : 'sin-token';
+}
+
+/**
  * PedidoPublicoThrottlerGuard — rate limiting de las rutas públicas del pedido (ADR-8).
  *
  * Throttler `contexto` (`GET contexto`): tracker `${xff}:${slug}`, molde de `CsatThrottlerGuard`
  * (es el `getTracker` de la clase, el de cualquier throttler sin tracker propio). Los throttlers
  * `email` y `cliente` (`POST solicitud`) llevan su propio `getTracker` en las opciones del módulo
- * (`trackerEmail`, `trackerCliente`); cada ruta aplica `@SkipThrottle` sobre los que no le tocan.
+ * (`trackerEmail`, `trackerCliente`, `trackerConfirmacion`); cada ruta aplica `@SkipThrottle` sobre los que no le tocan.
  * Todo el frontend habla con el backend por el BFF, así que el backend ve una sola IP: el slug es
  * el componente que separa los cupos y `x-forwarded-for` es solo un discriminador falsificable.
  * Solo frena la enumeración de slugs y tokens; no protege ninguna escritura. Un slug inexistente
@@ -64,7 +85,7 @@ export function trackerCliente(req: Record<string, unknown>): string {
  * Los throttlers con nombre (`getOptionsToken()`) y el `ThrottlerStorage` se proveen locales en
  * `FormularioPublicoModule`; no hay `ThrottlerModule.forRoot` ni `APP_GUARD`.
  *
- * Ref design: ADR-8. Tarea: 12.3, 13.3.
+ * Ref design: ADR-8. Tarea: 12.3, 13.3, 15.2.
  */
 @Injectable()
 export class PedidoPublicoThrottlerGuard extends ThrottlerGuard {
