@@ -173,9 +173,11 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-14 — Confirmación (UC)
 
-- [ ] 14.1 Tests de integración: `Promise.all` de dos confirmaciones da un ticket y un 404; sin ciclo activo da 409, sin ticket y el pendiente sigue válido; `prioridadId` CRITICA se ignora y sale MEDIA.
-- [ ] 14.2 `ConfirmarPedidoPublicoUseCase`: `txRunner.run`, DELETE RETURNING, error centinela para rollback, `used_at` post-commit, prioridad `MEDIA` por código.
-- [ ] 14.3 Test unit del UC.
+- [x] 14.1 Tests de integración: `Promise.all` de dos confirmaciones da un ticket y un 404; sin ciclo activo da 409, sin ticket y el pendiente sigue válido; `prioridadId` CRITICA se ignora y sale MEDIA.
+- [x] 14.2 `ConfirmarPedidoPublicoUseCase`: `txRunner.run`, DELETE RETURNING, error centinela para rollback, `used_at` post-commit, prioridad `MEDIA` por código.
+- [x] 14.3 Test unit del UC.
+
+> **WU-14 partida en tres commits** (2026-10-03, ~900 lineas con tests): 14a caso de uso y su spec unit de camino feliz y rollback (495); 14b spec unit de los rechazos 404 y del catalogo defensivo (120); 14c integracion contra tenant efimero (~290). Cada parte compila y pasa sola. 14a supera 400 porque el caso de uso (212) y el doble de sus colaboradores (~190) no se pueden separar de su spec. **Deuda de Ayuda**: ninguna (sin pantalla; sin ruta todavia).
 
 ## WU-15 — Ruta de confirmación
 

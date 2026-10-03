@@ -279,3 +279,25 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu13`, apilada sobre `feat/form
 - El caso de uso recibe `Pick<IEquipoInformaticoRepository, 'findByQrHash'>` para evitar un doble completo en el spec.
 - Deuda de Ayuda: ninguna (sin pantalla; ruta no expuesta).
 
+
+## WU-14 — Confirmación (UC) (completa, 3/3)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu14`, apilada sobre `feat/formulario-publico-qr-wu13c`. Tres commits (14a caso de uso y spec unit, 14b spec unit de rechazos, 14c integracion). 14a supera 400 lineas (495): el caso de uso y el doble de sus colaboradores no se separan de su spec.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/publico`: unit del caso de uso (16: camino feliz, orden tx/commit/marcarUsado, ROLLBACK ante fallo del ticket, 404 uniformes, MEDIA por codigo) e integracion (3) |
+| Runtime harness | Integracion `confirmar-pedido-publico.use-case.integration.spec.ts` (tenant efimero, repos y `txRunner` reales, `CrearTicketSoporteUseCase` real): `Promise.all` de dos confirmaciones da un ticket, un solicitante y un 404; sin ciclo activo da `SinCicloActivoError`, sin ticket ni solicitante, pendiente intacto y el mismo link confirma cuando aparece el ciclo; `prioridadId` CRITICA ignorado, ticket MEDIA. Mutacion verificada: devolver `null` en vez de lanzar el centinela pone en rojo el caso de ciclo |
+| Rollback | `git revert` de 14c, 14b y 14a; sin migracion y sin consumidores (el modulo no esta en `AppModule`) |
+
+### Decisiones tomadas en apply
+
+- Comando `{ slug, token }` (token crudo). Orden: `findByHash` + `isVigente()`, resolver del slug (bind), `token.clienteId === cliente.id` (un token de B en el slug de A es 404), correo `LISTO`, prioridad `MEDIA` por `findIdByCodigo` (si falta lanza, antes de abrir la transaccion), luego `txRunner.run`.
+- Dentro de la transaccion: `consumir`; null o `isExpired()` devuelve el 404 (el vencido queda borrado, era PII sin verificar). Con el pendiente, guarda el solicitante externo y llama a `CrearTicketSoporteUseCase` (`solicitanteId: null`, `equipoInvalido: 'OMITIR'`, `autorId: AUTOR_FORMULARIO_PUBLICO`, `anio` del servidor).
+- Un `Result.fail` del ticket (o del solicitante) lanza `ConfirmacionAbortadaError` (privado del archivo, lleva la causa): ROLLBACK restaura el pendiente y el caso de uso devuelve la causa (409 `SinCicloActivoError`). El resto de las excepciones se propaga.
+- `marcarUsado` post-commit y best-effort: si falla se loguea con `ILogger.error` y la confirmacion sigue ok.
+- Devuelve `PedidoPublicoConfirmado` (`ticketId`, `numero`, `nombre`, `email`, `clienteId`, `clienteNombre`) para que la ruta de la WU-15 mande el mail con el numero fuera de la transaccion.
+- La integracion usa un doble en memoria del token de master (solo se prueba la atomicidad del tenant), asi que no toca `soporte_master_test` ni llama a `usarLockMasterTest()`.
+- Deuda de Ayuda: ninguna (sin pantalla; ruta no expuesta).
