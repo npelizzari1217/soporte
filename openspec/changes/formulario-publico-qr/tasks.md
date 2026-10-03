@@ -208,8 +208,8 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-19 — Confirmación FE, registro y cierre de roadmap
 
-- [ ] 19.1 Test de la página de confirmación: lee `#token=`, `replaceState`, consume solo en el POST, 404.
-- [ ] 19.2 `(publico)/c/[slug]/pedido/confirmar/page.tsx`.
-- [ ] 19.3 Registrar `FormularioPublicoModule` en `backend/src/app.module.ts` (ADR-12).
-- [ ] 19.4 Declarar Cumplida o Desviación (con motivo) en la viñeta "Segunda etapa, punto 1" de `docs/roadmap-comercial.md`; correr `node scripts/check-roadmap-fresco.mjs`.
-- [ ] 19.5 Anotar deuda de Ayuda y recordar en el PR del tracker: instalación manual de la dependencia QR con servicios detenidos antes del deploy.
+- [x] 19.1 Test de la página de confirmación: lee `#token=`, `replaceState`, consume solo en el POST, 404.
+- [x] 19.2 `(publico)/c/[slug]/pedido/confirmar/page.tsx`.
+- [x] 19.3 Registrar `FormularioPublicoModule` en `backend/src/app.module.ts` (ADR-12).
+- [x] 19.4 Declarar Cumplida o Desviación (con motivo) en la viñeta "Segunda etapa, punto 1" de `docs/roadmap-comercial.md`; correr `node scripts/check-roadmap-fresco.mjs`.
+- [x] 19.5 Anotar deuda de Ayuda y recordar en el PR del tracker: instalación manual de la dependencia QR con servicios detenidos antes del deploy.

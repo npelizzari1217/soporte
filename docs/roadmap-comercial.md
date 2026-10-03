@@ -636,7 +636,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | Orden | Qué agregar | Por qué | Dificultad | Estado |
 |---|---|---|---|---|
 | 0 | **Reseteo de contraseña para usuarios en varios clientes** | Es un defecto en producción: `solicitar-reset-password.use-case.ts` corta sin mandar mail si el usuario tiene más de una membresía activa, y la pantalla responde igual que si lo hubiera mandado. Un técnico que está en varios clientes no puede recuperar su clave | Baja · 1-2 días | **Entregado** — 2026-10-03 (PR #296, `48f06f8b`) |
-| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | Pendiente |
+| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | **Implementado** — cadena de 19 PRs sobre `feat/formulario-publico-qr`, pendiente de merge y deploy |
 | 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | Pendiente |
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | Pendiente |
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | Pendiente |
@@ -687,6 +687,16 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     La retención queda anotada para revisarla.
   - Fuera del formulario, un cliente lo tiene **apagado por defecto** y lo
     habilita el ROOT, igual que la encuesta CSAT.
+  - **Cumplida** (2026-10-04, ciclo `formulario-publico-qr`, 19 work units): las 13
+    viñetas están implementadas y probadas contra el código, sin desviación. El
+    ticket nace con tipo SOPORTE, prioridad MEDIA y estado NUEVO; el solicitante
+    externo vive en el tenant; la confirmación es de un solo uso y vence a las 24 h;
+    los límites son 3 por mail y cliente cada 15 minutos y 30 por cliente por hora; el
+    cliente sin correo `LISTO` pasa por login con el equipo cargado. Dos precisiones
+    que no son desviaciones: el enum de tres modos de la exploración se reemplazó
+    antes de implementar por un booleano de habilitación y la regla de correo
+    deducida (decisiones D12 y D3 del diseño), y los cupos del throttler viven en la
+    memoria de un solo proceso, así que un reinicio los pone en cero.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de

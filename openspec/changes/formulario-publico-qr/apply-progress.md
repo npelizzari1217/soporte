@@ -391,3 +391,38 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu18`, apilada sobre `feat/form
 - El diálogo ofrece `equipoInicial` como opción propia (y filtra el duplicado del listado): un USUARIO sin `EQUIPOS:LECTURA` recibe 403 en `GET /equipos` y, sin esto, la preselección se perdería.
 - Landing: `equipo: null` abre el diálogo sin preselección con un aviso; 404 = "otra organización" sin reintento; 403 = sin permiso.
 - Deuda de Ayuda: el login vuelve al flujo del QR; landing `/pedido-qr`; el diálogo abre preseleccionado.
+
+
+## WU-19 — Confirmación FE, registro y cierre de roadmap (completa, 5/5)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu19`, apilada sobre `feat/formulario-publico-qr-wu18b`. Tres commits (19a página de confirmación, 19b registro del módulo y e2e, 19c roadmap y artefactos); sin `size:exception`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `confirmar-pedido-view.test.tsx` (6: lee `#token=` y llama `replaceState` sin pegarle al backend al cargar; el botón hace el POST con el token decodificado; 404 terminal sin botón; 409 y 429 dejan el botón; sin token o mal codificado no llama) y `page.test.tsx` (1) |
+| Runtime harness | Backend: `app-module.registro.e2e.spec.ts` arranca el `AppModule` REAL y las tres rutas públicas responden 404 uniforme sin sesión (mutación verificada: sin el registro devuelve "Cannot GET"); `pedido-publico-flujo.e2e.spec.ts` recorre `solicitud` -> link REAL del mail -> `confirmar` -> segundo `confirmar` 404, con un ticket y mail con el número |
+| Rollback | `git revert` de 19c, 19b y 19a; quitar `FormularioPublicoModule` de `app.module.ts` deja las rutas públicas inexistentes (ADR-12) |
+
+### Decisiones tomadas en apply
+
+- Página server fina + container `ConfirmarPedidoView` en `features/pedido-publico` (como WU-16). El token se lee del fragmento, se saca con `replaceState` y SOLO el botón "Confirmar pedido" lo consume: abrir la URL (escáner de links) no lo quema.
+- 404 (y link sin token o mal codificado) = mensaje uniforme sin reintento. 409 (sin ciclo activo), 429, red y 5xx dejan el botón; el token queda en memoria.
+- BFF: `frontend/src/app/api/[...path]/route.ts` reenvía `publico/*` sin cookie (solo agrega `Authorization` si hay cookie `at`) y reenvía `x-forwarded-for` solo para ese prefijo. No hizo falta tocarlo.
+- e2e de flujo completo: no estaba pedido explícitamente por el diseño (solo la fila de la tabla de tareas), se agregó porque une `solicitud` y `confirmar` con el link real que arma el servidor, no con un token sembrado.
+- Roadmap: viñeta del punto 1 declara **Cumplida** (13 viñetas contrastadas una a una; ver reporte del apply) y la fila de la tabla queda "Implementado, pendiente de merge y deploy" hasta que el tracker llegue a `main`. `check-roadmap-fresco.mjs` solo exige declaración para los "Punto N" de la sección de decisiones cerradas; la viñeta de segunda etapa se declaró igual por la regla del CLAUDE.md.
+
+### Deuda de Ayuda (escritura suspendida)
+
+- Pantalla pública nueva de confirmación `/c/<slug>/pedido/confirmar` (botón "Confirmar pedido", número del ticket, avisos de link inválido, sin ciclo activo y demasiados intentos).
+- El flujo público completo de punta a punta (QR -> formulario -> mail -> confirmación -> avisos por mail), más lo ya anotado en WU-3, WU-5, WU-8, WU-9, WU-16 y WU-18.
+
+### Notas de deploy para el PR del tracker
+
+- Migraciones master: formulario público en `clientes` (`20261003120000_add_cliente_formulario_publico`) y `pedido_publico_tokens` (`20261003160000_pedido_publico_tokens`).
+- Migraciones tenant: `equipos_qr` (`20261003130000`), `solicitantes_externos` (`20261003140000`), `tickets_solicitante_externo` (`20261003150000`, el `SET NOT NULL` del rollback falla si hay tickets externos) y `pedidos_publicos_pendientes` (`20261003170000`). Correr `migrate:tenants`.
+- El lockfile del frontend cambió (`uqr`): `deploy.ps1` aborta; hacer `pnpm install` a mano con los servicios detenidos ANTES de `deploy.ps1`.
+- Retención de los datos del solicitante externo (D11): quedan mientras exista el ticket; pendiente de revisar.
+- Los cupos del throttler viven en memoria de un proceso: un reinicio los pone en cero.
+- El formulario nace apagado por cliente: nada es visible hasta que el ROOT lo habilita.
