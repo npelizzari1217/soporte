@@ -207,3 +207,28 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu10`, apilada sobre `feat/form
 - `AUTOR_FORMULARIO_PUBLICO` en `tickets/domain/constants/formulario-publico.constants.ts`. El caller (WU-14) lo pasa como `autorId`.
 - El spec de integracion existente (carrera baja vs ticket) se extendio con (e2) en lugar de crear un spec nuevo, para reutilizar sus fixtures y su escalonado por locks.
 - Deuda de Ayuda: ninguna (sin pantalla).
+
+
+## WU-11 — Tokens y pendientes (completa, 4/4)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu11`, apilada sobre `feat/formulario-publico-qr-wu10`. Cuatro commits (11a a 11d), cada uno bajo 400 lineas, con sus tests; sin `size:exception`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/publico`: 4 archivos, 39 tests verdes (8 de `PedidoPublicoTokenEntity`, 12 de `PedidoPendienteEntity`, 7 de integracion master, 12 de integracion tenant) |
+| Runtime harness | Integracion master (`soporte_master_test`): hash UNIQUE, FK a clientes, `marcarUsado` con 8 llamadas concurrentes (gana una), `rollback.sql` y reaplicacion. Integracion tenant (dos tenants efimeros): `DELETE ... RETURNING` con 6 confirmaciones concurrentes cada una en su transaccion (gana una), ROLLBACK restaura la fila, purga solo de vencidos y solo del tenant activo, FK `SET NULL`, aislamiento A/B, `rollback.sql` |
+| Rollback | Migraciones `20261003160000_pedido_publico_tokens` (master) y `20261003170000_pedidos_publicos_pendientes` (tenant), ambas con `rollback.sql` (destructivo: los links enviados responden 404); el modulo `src/publico` no tiene consumidores todavia, `git revert` limpio |
+
+### Decisiones tomadas en apply
+
+- Modulo `backend/src/publico/` (domain y infrastructure; `FormularioPublicoModule` llega en la WU-12 sin registrar).
+- `PEDIDO_PUBLICO_TTL_MS` (24 h) vive en `domain/constants`; ambas entidades lo aplican al crear (`PedidoPublicoTokenEntity.emitir`, `PedidoPendienteEntity.create`). El instante exacto de `expiresAt` ya cuenta como vencido (`<=`).
+- `PedidoPendienteEntity.create` devuelve `Result` con `PedidoPendienteInvalidoError` (limites del DTO de ADR: nombre 1-120, email 254, telefono 30, titulo 3-150, descripcion 1-4000); normaliza igual que el solicitante externo.
+- `IPedidoPendienteRepository`: `save`, `consumir(id)` (`DELETE ... RETURNING` por SQL crudo, devuelve la fila o null, no filtra vigencia: el caller valida `isExpired()`), `purgarVencidos(ahora?)`. Usa `TenantContext.getClient()`, asi que dentro de `txRunner.run` participa de la transaccion y un ROLLBACK restaura la fila.
+- `IPedidoPublicoTokenRepository`: `save`, `findByHash` (sin filtrar vigencia), `marcarUsado(id)` (CAS `used_at IS NULL`, post-commit best-effort). Sin barrido de tokens en master (ADR-7).
+- Master: FK a `clientes` `ON DELETE RESTRICT`, indice por `cliente_id`. Tenant: FK a `equipos_informaticos` `ON DELETE SET NULL`, indice por `expires_at` (purga) e indice parcial por `equipo_id`.
+- Entorno: se aplicaron ambas migraciones a `soporte_master_test` (`pnpm migrate:master`) y `soporte_tenant_test` (`pnpm migrate:tenant`) con `DATABASE_URL_*` explicita; en la integracion master, el test de `rollback.sql` reaplica `migration.sql` al terminar.
+- Deuda de Ayuda: ninguna (sin pantalla ni flujo visible).
+

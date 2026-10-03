@@ -148,10 +148,12 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-11 — Tokens y pendientes
 
-- [ ] 11.1 Migración master `pedido_publico_tokens` (sin PII) y migración tenant `pedidos_publicos_pendientes` (FK equipo SET NULL), con `rollback.sql`.
-- [ ] 11.2 Test unit de vigencia (`PedidoPublicoTokenEntity`, `PedidoPendienteEntity`; TTL 24 h).
-- [ ] 11.3 Entidades, puertos y repos Prisma (`DELETE ... RETURNING`, purga de vencidos).
-- [ ] 11.4 Integración: DELETE concurrente y purga.
+- [x] 11.1 Migración master `pedido_publico_tokens` (sin PII) y migración tenant `pedidos_publicos_pendientes` (FK equipo SET NULL), con `rollback.sql`.
+- [x] 11.2 Test unit de vigencia (`PedidoPublicoTokenEntity`, `PedidoPendienteEntity`; TTL 24 h).
+- [x] 11.3 Entidades, puertos y repos Prisma (`DELETE ... RETURNING`, purga de vencidos).
+- [x] 11.4 Integración: DELETE concurrente y purga.
+
+> **WU-11 partida en cuatro commits** (2026-10-03, ~1.000 lineas con tests, bajo 400 cada uno): 11a entidad, constante de TTL y puerto del token (227); 11b migracion master, schema, mapper, repo y su integracion (285); 11c entidad, error y puerto del pendiente (250); 11d migracion tenant, schema, mapper, repo y su integracion (~400 con docs). Cada parte compila y pasa sola con sus tests. **Deuda de Ayuda**: ninguna (sin pantalla).
 
 ## WU-12 — Contexto público
 

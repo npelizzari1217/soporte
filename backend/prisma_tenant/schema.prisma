@@ -200,6 +200,28 @@ model SolicitanteExterno {
   @@map("solicitantes_externos")
 }
 
+/// Pedido público aún sin verificar (sdd/formulario-publico-qr, WU-11, ADR-7). Acá vive la PII del
+/// pedido; master solo guarda el hash del token, bajo el MISMO id (soft ref, sin FK cross-DB).
+/// Se borra al confirmar (DELETE ... RETURNING) o al vencer (purga en cada solicitud nueva).
+model PedidoPublicoPendiente {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String   @db.VarChar(120)
+  email       String   @db.VarChar(254)
+  telefono    String?  @db.VarChar(30)
+  titulo      String   @db.VarChar(150)
+  descripcion String   @db.Text
+  equipoId    String?  @map("equipo_id") @db.Uuid
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  equipo EquipoInformatico? @relation(fields: [equipoId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  /// ÍNDICE PARCIAL WHERE equipo_id IS NOT NULL — enforced via CREATE INDEX en migration SQL.
+  @@index([equipoId])
+  @@map("pedidos_publicos_pendientes")
+}
+
 model CicloCliente {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Soft ref → master.ciclos_vigentes.id. Sin FK: cross-DB imposible en Postgres.
@@ -635,6 +657,7 @@ model EquipoInformatico {
   movimientos      MovimientoInsumo[]
   unidadesInsumo   UnidadInsumo[]
   eventosUnidad    EventoUnidadInsumo[]
+  pedidosPublicos  PedidoPublicoPendiente[]
 
   @@map("equipos_informaticos")
 }
