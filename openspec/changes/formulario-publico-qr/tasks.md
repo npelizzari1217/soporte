@@ -81,9 +81,11 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-3 — FE: diálogo de configuración
 
-- [ ] 3.1 Schema Zod del slug (espeja `SLUG_REGEX`) y hook de `PATCH` en `frontend/src/features/clientes/`.
-- [ ] 3.2 `configurar-formulario-publico-dialog` (molde `configurar-csat-dialog`).
-- [ ] 3.3 Tests del diálogo y del schema. Anotar deuda de Ayuda en commit y PR.
+- [x] 3.1 Schema Zod del slug (espeja `SLUG_REGEX`) y hook de `PATCH` en `frontend/src/features/clientes/`.
+- [x] 3.2 `configurar-formulario-publico-dialog` (molde `configurar-csat-dialog`).
+- [x] 3.3 Tests del diálogo y del schema. Anotar deuda de Ayuda en commit y PR.
+
+> **WU-3 con `size:exception`** (2026-10-03): 434 lineas en el frontend. Partirla dejaria el hook de `PATCH` sin su propio test (lo ejercita el spec del dialogo), y el criterio del dueño rechaza esa mitad. Lleva ademas un segundo commit de backend: `code` en el cuerpo de los cuatro errores del slug (`SLUG_INVALIDO`, `SLUG_CONGELADO`, `SLUG_DUPLICADO`, `SLUG_REQUERIDO`), para que el aviso del frontend se decida por `ApiError.code` y no por el texto.
 
 ## WU-4 — QR del equipo (BE)
 

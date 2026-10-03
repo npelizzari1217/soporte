@@ -1,7 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
+import { ApiError } from "@/shared/api/types";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import { validarLogoClienteCliente } from "../lib/validar-logo-cliente-cliente";
 import type {
@@ -10,6 +12,7 @@ import type {
   ClienteLogoDto,
   ConfigurarCorreoDto,
   ConfigurarCsatDto,
+  ConfigurarFormularioPublicoDto,
   CreateClienteDto,
   UpdateClienteDto,
 } from "../types";
@@ -119,6 +122,41 @@ export function useConfigurarCsatCliente(clienteId: string) {
       notifySuccess("Configuración de encuesta de satisfacción guardada.");
     },
     onError: notifyError,
+  });
+}
+
+/**
+ * Avisos por código de dominio del backend (`ApiError.code`), que no depende
+ * del texto del mensaje. Un código ausente o desconocido cae al mensaje del
+ * backend (`notifyError`).
+ */
+const AVISO_FORMULARIO_PUBLICO_POR_CODIGO: Record<string, string> = {
+  SLUG_INVALIDO: "El slug no es válido. Usá minúsculas, números y guiones.",
+  SLUG_DUPLICADO: "Ya hay otro cliente con ese slug. Elegí otro.",
+  SLUG_CONGELADO: "El slug ya no se puede cambiar porque se emitió un QR con él.",
+  SLUG_REQUERIDO: "Cargá un slug antes de habilitar el formulario público.",
+};
+
+/**
+ * Carga el slug y/o prende/apaga el formulario público del cliente
+ * (`PATCH /clientes/:id/formulario-publico`, sdd/formulario-publico-qr D7/D12).
+ * Solo ROOT. La respuesta es el `Cliente` con `slug` y
+ * `formularioPublicoHabilitado`, así que alcanza con invalidar el listado.
+ */
+export function useConfigurarFormularioPublicoCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: ConfigurarFormularioPublicoDto) =>
+      apiFetch<Cliente>(`clientes/${clienteId}/formulario-publico`, { method: "PATCH", json: dto }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      notifySuccess("Configuración del formulario público guardada.");
+    },
+    onError: (err) => {
+      const aviso = err instanceof ApiError && err.code ? AVISO_FORMULARIO_PUBLICO_POR_CODIGO[err.code] : undefined;
+      if (aviso) toast.error(aviso);
+      else notifyError(err);
+    },
   });
 }
 

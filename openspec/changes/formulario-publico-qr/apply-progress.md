@@ -41,6 +41,24 @@ Modo: estandar (sin TDD estricto). Tareas 2.1 a 2.4 marcadas en `tasks.md`. Rama
 - `ClienteResponseDto` suma `slug` y `formularioPublicoHabilitado` (la spec pide poder consultar la configuracion); se actualizaron 2 `toEqual` del spec del controller.
 - DTO: `@Matches(SLUG_REGEX)` y `@MaxLength` cortan la basura en el borde; el dominio sigue siendo la fuente (UUID, id, dbName).
 
-### Pendiente de WU-3 en adelante
+## WU-3 — FE: dialogo de configuracion (completa)
 
-Sin tocar.
+Modo: estandar. Tareas 3.1 a 3.3 marcadas en `tasks.md`. Rama `feat/formulario-publico-qr-wu03`, apilada sobre `feat/formulario-publico-qr-wu02b`. `size:exception` (434 lineas de frontend): el hook quedaria sin test propio si se partiera. Dos commits: frontend, y un fix de backend con `code` en los errores del slug.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/features/clientes`: 7 archivos, 73 tests verdes (7 del dialogo + casos del schema) |
+| Runtime harness | N/A: componente aislado, MSW para el PATCH. Backend: e2e `formulario-publico.e2e.spec.ts` asevera `code` en 400/409 |
+| Rollback | Revertir los dos commits; el dialogo solo se monta en `ClienteAcciones` (ROOT) |
+
+### Decisiones tomadas en apply
+
+- El dialogo manda solo lo que cambio; slug invalido y habilitar sin slug se rechazan en el front sin llamar al backend.
+- El aviso se decide por `ApiError.code` (mapa en el hook); sin codigo cae al mensaje del backend.
+- Hallazgo: el backend no enviaba `code` en estos errores. Se corrigio en `toHttpException` para los cuatro errores del slug. El 400 de borde del DTO (`@Matches`) sigue sin `code` y cae al mensaje.
+- El front no sabe si el slug esta congelado (la respuesta no lo trae): se entera por el 409.
+- Deuda de Ayuda: boton "Formulario" (solo ROOT) por fila de cliente, con slug y habilitacion. No hay articulo previo que se vuelva falso.
+- `pnpm lint` del frontend requiere `JWT_SECRET` en el entorno (se uso un valor ficticio).
+

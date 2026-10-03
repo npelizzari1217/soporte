@@ -14,6 +14,8 @@ const CLIENTE_UNO = {
   dbName: "tenant_c1",
   activo: true,
   csatHabilitado: false,
+  slug: null,
+  formularioPublicoHabilitado: false,
   correo: { configurado: false, verificadoAt: null },
 };
 
@@ -25,6 +27,8 @@ const CLIENTE_INACTIVO = {
   dbName: "tenant_c9",
   activo: false,
   csatHabilitado: false,
+  slug: null,
+  formularioPublicoHabilitado: false,
   correo: { configurado: false, verificadoAt: null },
 };
 

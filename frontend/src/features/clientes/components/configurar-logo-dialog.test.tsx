@@ -21,6 +21,8 @@ const CLIENTE: Cliente = {
   dbName: "cliente_uno",
   activo: true,
   csatHabilitado: false,
+  slug: null,
+  formularioPublicoHabilitado: false,
 };
 
 function buildFile({
