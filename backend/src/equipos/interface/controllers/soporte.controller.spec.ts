@@ -23,6 +23,7 @@ import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
 } from '../../../tickets/domain/errors/tickets.errors';
+import { ResolverQrAutenticadoUseCase } from '../../application/use-cases/resolver-qr-autenticado.use-case';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 
 const USER = payloadDeTest({
@@ -60,6 +61,8 @@ describe('SoporteController (T13.4)', () => {
       crearTicketSoporteUseCase as any,
       registrarSolucionUseCase as any,
       obtenerEquipoDeTicketUseCase as any,
+      // Real y con repos vacíos: este spec no ejercita la ruta del QR (la cubre su e2e).
+      new ResolverQrAutenticadoUseCase({ findById: vi.fn() }, { findByQrHash: vi.fn() }),
     );
 
     return {

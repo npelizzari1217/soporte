@@ -5,6 +5,8 @@
  * Rutas:
  *   POST /soporte                  → CrearTicketSoporteUseCase       [ticket:crear]
  *   POST /soporte/:id/solucion     → RegistrarSolucionUseCase        [ticket:editar]
+ *   GET  /soporte/qr?c=&e=         → ResolverQrAutenticadoUseCase    [TICKETS:ALTAS]
+ *                                    (DEBE declararse antes de `:ticketId`)
  *   GET  /soporte/:ticketId        → ObtenerEquipoDeTicketUseCase    (sin permiso extra,
  *                                    igual criterio que `TicketsController.findOne`)
  *
@@ -31,6 +33,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -53,9 +56,14 @@ import {
 import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from '../../application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
+import {
+  QrAutenticadoResult,
+  ResolverQrAutenticadoUseCase,
+} from '../../application/use-cases/resolver-qr-autenticado.use-case';
 
 import {
   EquipoInvalidoError,
+  QrDeOtraOrganizacionError,
   TicketSoporteNoEncontradoError,
 } from '../../domain/errors/equipos.errors';
 
@@ -74,7 +82,11 @@ import {
 function toHttpException(
   error: DomainError,
 ): NotFoundException | UnprocessableEntityException | ConflictException {
-  if (error instanceof TicketNoEncontradoError || error instanceof TicketSoporteNoEncontradoError) {
+  if (
+    error instanceof TicketNoEncontradoError ||
+    error instanceof TicketSoporteNoEncontradoError ||
+    error instanceof QrDeOtraOrganizacionError
+  ) {
     return new NotFoundException(error.message);
   }
   if (error instanceof SinCicloActivoError || error instanceof SecuenciaAgotadaError) {
@@ -100,6 +112,7 @@ export class SoporteController {
     private readonly crearTicketSoporteUseCase: CrearTicketSoporteUseCase,
     private readonly registrarSolucionUseCase: RegistrarSolucionUseCase,
     private readonly obtenerEquipoDeTicketUseCase: ObtenerEquipoDeTicketUseCase,
+    private readonly resolverQrAutenticadoUseCase: ResolverQrAutenticadoUseCase,
   ) {}
 
   /**
@@ -157,6 +170,33 @@ export class SoporteController {
       throw toHttpException(result.getError());
     }
     return toTicketSoporteOnlyResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /soporte/qr?c=<slug>&e=<token>
+   * Camino autenticado del QR de un equipo (sdd/formulario-publico-qr, WU-17; ADR-9). El slug
+   * debe ser el del cliente de la sesión (404 si no). Devuelve `{ equipo: {id, nombre} | null }`.
+   *
+   * IMPORTANTE: va ANTES de `@Get(':ticketId')`; si no, Express matchea `/soporte/qr` como
+   * `ticketId = 'qr'`.
+   * @throws 404 el slug no es el del cliente de la sesión
+   */
+  @Get('qr')
+  @RequiereAcciones('TICKETS:ALTAS')
+  async resolverQr(
+    @Query('c') slug: unknown,
+    @Query('e') token: unknown,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<QrAutenticadoResult> {
+    const result = await this.resolverQrAutenticadoUseCase.execute({
+      clienteId: user.cliente_id as string,
+      slug,
+      token,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
   }
 
   /**
