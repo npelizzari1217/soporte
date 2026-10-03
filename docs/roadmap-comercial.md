@@ -4,14 +4,14 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-01 contra el código de `main` (`84342b18`),
+decisión.** Actualizado el 2026-10-03 contra el código de `main` (`9113c287`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
-semanal pasó a ser por cliente. Desde esa fecha entraron a `main` tres ciclos del
+semanal pasó a ser por cliente. Desde esa fecha entraron a `main` cinco ciclos del
 módulo de Insumos y Equipos, que no son puntos del roadmap: catálogo único de
-componentes, stock usado y seguimiento por número de serie (ver "El módulo de
-Insumos").
+componentes, stock usado, seguimiento por número de serie, reporte de stock y baja
+de equipo completo (ver "El módulo de Insumos").
 
 > **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
 > puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
@@ -100,6 +100,7 @@ para que el roadmap refleje el esfuerzo real, no solo el previsto.
 | **Rotación de `EMAIL_CRYPTO_KEY`** con re-cifrado de las contraseñas SMTP | 2026-09-28 (`9857e1a`) | Era deuda técnica: rotar la clave sin re-cifrar dejaba indescifrable toda contraseña SMTP guardada. La primera rotación real en producción se hizo el 2026-09-29 y destapó dos defectos del script, corregidos el mismo día: un `-DryRun` mal pasado por ssh corría la rotación real, y los archivos de recuperación salían en una sola línea |
 | **Reseteo de contraseña olvidada** por mail | 2026-09-28 (`521aca3`) | Lo que la sección del cambio de contraseña dejó "para después" — ver más abajo |
 | **Componentes de equipo con catálogo único, stock usado y seguimiento por número de serie** | 2026-09-29 a 2026-10-01 (ciclos `catalogo-unico-componentes`, `stock-usado-componentes` y `repuestos-numero-de-serie`, último commit `84342b18`) | Pedido de producto sobre Insumos y Equipos, posterior al análisis del 2026-08-19. Detalle en "El módulo de Insumos" |
+| **Reporte de stock de Insumos** y **baja de equipo completo** | 2026-10-01 (ciclos `reporte-stock-insumos` y `baja-equipo-completo`, último commit `9113c287`) | Pedido de producto sobre Insumos y Equipos, con decisiones del dueño del 2026-10-01. Detalle en "Decisiones de producto ya cerradas" |
 
 ### El módulo de Insumos
 
@@ -114,7 +115,9 @@ recepción de una compra que genera stock; y las pantallas de listado, ficha y
 bitácora.
 
 Desde el 2026-09-29 se sumaron tres ciclos, integrados en `main` y en producción (el último,
-desplegado el 2026-10-01 en los ocho tenants):
+desplegado el 2026-10-01 en los ocho tenants). El reporte de stock y la baja de equipo
+completo entraron a `main` el 2026-10-01, después de ese deploy, y se detallan en
+"Decisiones de producto ya cerradas":
 
 - **Catálogo único de componentes** (`catalogo-unico-componentes`): todo
   componente de un equipo exige un insumo repuesto del cliente; el tipo se deriva
@@ -202,8 +205,8 @@ escribiéndolo es conflicto garantizado.
 
 Para no re-litigarlas al empezar cada punto.
 
-> **Contrastadas contra el código el 2026-09-09, el 2026-09-23 y el
-> 2026-09-29.** La del punto 2 se cumplió tal cual. La del punto 4 **se desvió
+> **Contrastadas contra el código el 2026-09-09, el 2026-09-23, el 2026-09-29
+> y el 2026-10-03.** La del punto 2 se cumplió tal cual. La del punto 4 **se desvió
 > y ya se corrigió**: se había entregado reusando `MANTENIMIENTO`, y el issue
 > #135 le dio al preventivo su propio tipo `PREVENTIVO`. **La del punto 5 se
 > desvió y ya se corrigió**: se entregó con un horario semanal único y global en
@@ -259,7 +262,7 @@ Para no re-litigarlas al empezar cada punto.
     `calendario_laboral_dias` se dropeó el mismo día.
 - **Reporte de stock** (pedido fuera de los seis puntos; decisiones del dueño del
   2026-10-01, ciclo `reporte-stock-insumos`, exploración en
-  `openspec/changes/reporte-stock-insumos/exploration.md`):
+  `openspec/changes/archive/2026-10-01-reporte-stock-insumos/exploration.md`):
   - Solo la **foto del stock actual**; movimientos por período y detalle por
     serie quedan para otro pedido.
   - Una fila por insumo: código, nombre, familia, consumible o repuesto, unidad
@@ -282,7 +285,7 @@ Para no re-litigarlas al empezar cada punto.
   enlazada desde Insumos y Repuestos. Sin desviaciones.
 - **Baja de equipo completo** (pedido fuera de los seis puntos; decisiones del
   dueño del 2026-10-01, ciclo `baja-equipo-completo`, exploración en
-  `openspec/changes/baja-equipo-completo/exploration.md`):
+  `openspec/changes/archive/2026-10-01-baja-equipo-completo/exploration.md`):
   - Dos opciones, todo o nada: **devolver todas las piezas al stock** (como
     usadas) o **descartarlas todas**. La misma leyenda queda en todas las piezas.
   - El motivo es una categoría (vejez, donación, rotura, otra) más un texto
@@ -585,7 +588,7 @@ cabeza de alguien deja de existir cuando esa persona no está.
 | ~~**Regeneración reproducible del entorno**~~ — **RESUELTA** el 2026-09-29. La creación del contenedor está documentada desde el 2026-09-09: `README.md:282` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). El hueco de permisos del seed era menor de lo que decía esta fila. Al regenerar desde cero, cada usuario demo ya recibía su preset en el alta, por el fix W4 de `CrearUsuarioTenantUseCase`. Lo que fallaba era **re-correr** el seed: solo el técnico volvía a su preset, y COLABORADOR y USUARIO conservaban lo que alguien hubiera tocado a mano. Desde el 2026-09-29 se re-aplica a los tres, y `demo-seed.integration.spec.ts` prueba los dos casos | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
 | **Los feriados sembrados llegan hasta 2029.** Hasta el 2026-09-29 llegaban hasta 2028; la migración `20260929120000_seed_feriados_2029` sumó 2029 con las mismas reglas (el 17/06, Güemes, cae domingo y queda afuera). El horario semanal y los feriados ya se configuran desde la pantalla: `feriados-configurables` (issue #216, `912140e`) agregó el ABM de feriados globales (`/admin/feriados-globales`, solo ROOT) y por cliente (`/feriados`), y `horario-laboral-por-cliente` agregó `/horario-laboral`. Las dos cosas están en producción desde el deploy del 2026-09-29 | Los nacionales de 2030 en adelante no existen hasta que un ROOT los cargue desde `/admin/feriados-globales` o una migración los siembre. Sin eso, a partir de 2030 el SLA hábil cuenta los feriados nacionales como días laborables |
 | ~~**El horario semanal es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) vive en la base **master** (`backend/prisma_master/schema.prisma`), sin columna de cliente.~~ | **RESUELTA** el 2026-09-29. Ciclo `horario-laboral-por-cliente`: `CalendarioLaboralDiaCliente` en la base de cada tenant (un intervalo por día, editable por ADMINISTRADOR o ROOT). El SLA hábil lee solo el horario del propio cliente, sin unión con master; la tabla master `calendario_laboral_dias` se dropeó el mismo día (`20260929100000_drop_calendario_laboral_dias`). |
-| **666 `as never`/`as any` en 121 specs**, congelados por un ratchet que **no frena ningún merge** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Igual subió**: el 2026-09-29 medía 759 en 136, porque no corre en ningún lado donde frene un merge. Las integraciones de la semana fueron merges locales, y el CI de GitHub Actions estaba caído desde el 2026-09-18 por falta de minutos. Ese mismo día se bajaron los 66 casts nuevos completando los mocks contra sus puertos, y volvió a 693 en 123. El CI volvió a correr el 2026-10-01, pero sobre el push a `main`: con integraciones locales detecta después de integrar, así que el ratchet se sigue corriendo a mano antes. Convertir los 666 a mocks completos sigue pendiente, pero ya no puede empeorar. El 2026-10-01 la línea base bajó de 693 en 123 a **666 en 121** (`BASE_OCURRENCIAS` y `BASE_ARCHIVOS` en `scripts/check-casts-en-specs.mjs`). **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
+| **627 `as never`/`as any` en 116 specs**, congelados por un ratchet que **no frena ningún merge** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Igual subió**: el 2026-09-29 medía 759 en 136, porque no corre en ningún lado donde frene un merge. Las integraciones de la semana fueron merges locales, y el CI de GitHub Actions estaba caído desde el 2026-09-18 por falta de minutos. Ese mismo día se bajaron los 66 casts nuevos completando los mocks contra sus puertos, y volvió a 693 en 123. El CI volvió a correr el 2026-10-01, pero sobre el push a `main`: con integraciones locales detecta después de integrar, así que el ratchet se sigue corriendo a mano antes. Convertir los 627 a mocks completos sigue pendiente, pero ya no puede empeorar. El 2026-10-01 la línea base bajó de 693 en 123 a **666 en 121**, y después a **627 en 116** (`BASE_OCURRENCIAS` y `BASE_ARCHIVOS` en `scripts/check-casts-en-specs.mjs`, medido el 2026-10-03). **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
 | ~~123 errores de tipos escondidos tras la exclusión `**/*.spec.ts`~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril A). El gate quedó instalado y probado: un error de tipo en un spec ahora rompe `pnpm typecheck` |
 | ~~Render de fechas del frontend~~ | **RESUELTO** el 2026-08-21 (Fase 0, carril B). Un solo módulo formatea fechas, con regla de lint que impide una séptima copia |
 | ~~**Rotación de `EMAIL_CRYPTO_KEY`**: no existe herramienta~~ | ~~Rotarla sin re-cifrar convierte TODA contraseña SMTP guardada en basura indescifrable. El payload lleva prefijo `v1:` justamente para permitir una migración de re-cifrado, pero esa migración no está escrita~~ **RESUELTA** el 2026-09-28. El ciclo `rotacion-email-crypto-key` entrega el script Node + `.ps1` operativo + runbook + tests end to end (referencias `openspec/changes/archive/2026-09-28-rotacion-email-crypto-key/`)|
