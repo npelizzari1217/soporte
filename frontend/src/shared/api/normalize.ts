@@ -23,7 +23,8 @@ export async function normalize<T>(res: Response): Promise<T> {
     const msgs: string[] = Array.isArray(rawMsg)
       ? (rawMsg as string[])
       : [typeof rawMsg === "string" ? rawMsg : res.statusText];
-    throw new ApiError(res.status, msgs[0], msgs, body);
+    const rawCode = (body as Record<string, unknown>)?.code;
+    throw new ApiError(res.status, msgs[0], msgs, body, typeof rawCode === "string" ? rawCode : undefined);
   }
 
   return body as T;

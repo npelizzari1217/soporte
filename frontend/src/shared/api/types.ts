@@ -90,6 +90,11 @@ export class ApiError extends Error {
      */
     public readonly messages: string[] = [message],
     public readonly raw?: unknown,
+    /**
+     * Código de dominio del backend (`code` del cuerpo), cuando el error lo trae. Permite
+     * decidir el aviso sin comparar el texto del mensaje, que puede reescribirse.
+     */
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";

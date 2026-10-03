@@ -335,7 +335,7 @@ describe("EquipoComponentesSection", () => {
             statusCode: 422,
             message:
               'La unidad del componente "baja-1" ya no está disponible para reinstalarla: su último movimiento no fue el descarte de este componente.',
-            error: "Unprocessable Entity",
+            code: "UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE",
           },
           { status: 422 },
         ),
@@ -367,6 +367,44 @@ describe("EquipoComponentesSection", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/ya no está disponible/i)));
     expect(toast.error).not.toHaveBeenCalledWith(expect.stringContaining("baja-1"));
+  });
+
+  it("el aviso de la unidad no disponible se elige por `code`, no por el texto del mensaje", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.patch(`/api/equipos/${EQUIPO_ID}/componentes/baja-1/reactivar`, () =>
+        HttpResponse.json(
+          { statusCode: 422, message: "Texto redactado distinto", code: "UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE" },
+          { status: 422 },
+        ),
+      ),
+    );
+    const componentes = [
+      {
+        id: "baja-1",
+        equipoId: EQUIPO_ID,
+        insumoId: "11111111-1111-4111-8111-111111111111",
+        unidadId: "unidad-1",
+        tipoNombre: "Disco rígido",
+        tipoActivo: true,
+        descripcion: null,
+        numeroSerie: "SN-1",
+        capacidad: "1TB",
+        activo: false,
+        deletedAt: "2026-02-01T00:00:00.000Z",
+        bajaDestino: "DESCARTE" as const,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+      },
+    ];
+    renderWithProviders(<EquipoComponentesSection equipoId={EQUIPO_ID} componentes={componentes} />, {
+      user: buildUser({ permisos: ["EQUIPOS:MODIFICACION"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /reactivar/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/ya no está disponible/i)));
+    expect(toast.error).not.toHaveBeenCalledWith("Texto redactado distinto");
   });
 
   it("la papelera de un componente activo abre el diálogo de retiro en vez de dar de baja directo", async () => {

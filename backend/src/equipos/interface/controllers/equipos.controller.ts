@@ -179,6 +179,16 @@ export function toHttpException(
       cantidad: error.cantidad,
     });
   }
+  // Reactivar (ADR-14): la unidad ya no está descartada por este componente. Viaja el `code`
+  // para que el frontend elija el aviso sin comparar el texto del mensaje. Llega del módulo
+  // equipos o, sin traducir, del de insumos (clase duplicada): por `code`.
+  if (error.code === 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE') {
+    return new UnprocessableEntityException({
+      statusCode: 422,
+      message: error.message,
+      code: error.code,
+    });
+  }
   if (
     error instanceof EquipoInvalidoError ||
     error instanceof NumeroSerieDuplicadoError ||
@@ -197,9 +207,6 @@ export function toHttpException(
     // Instalar con unidad (ADR-7): la unidad elegida no sirve, o el insumo exige elegir una.
     error instanceof UnidadNoDisponibleError ||
     error instanceof UnidadRequeridaError ||
-    // Reactivar (ADR-14): la unidad ya no está descartada por este componente. El error
-    // llega del módulo equipos o, sin traducir, del de insumos (clase duplicada): por `code`.
-    error.code === 'UNIDAD_DEL_COMPONENTE_NO_DISPONIBLE' ||
     error instanceof UnidadNoAdmitidaError ||
     error instanceof UnidadConAltaSinDescuentoError ||
     error instanceof SerialRequeridoError ||
