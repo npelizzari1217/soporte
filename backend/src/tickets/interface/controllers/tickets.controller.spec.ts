@@ -594,8 +594,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 23 clases de error (22 previas + ExportacionDemasiadoGrandeError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(23);
+  it('el catálogo tiene EXACTAMENTE 24 clases de error (23 previas + SolicitanteExternoInvalidoError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(24);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -680,6 +680,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ExportacionDemasiadoGrandeError',
       () => new TicketsErrors.ExportacionDemasiadoGrandeError(6000, 5000),
+      422,
+    ],
+    [
+      'SolicitanteExternoInvalidoError',
+      () => new TicketsErrors.SolicitanteExternoInvalidoError('el nombre es obligatorio'),
       422,
     ],
   ];

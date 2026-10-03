@@ -96,6 +96,7 @@ import {
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   TicketBloqueadoParaEdicionError,
+  SolicitanteExternoInvalidoError,
   ExportacionDemasiadoGrandeError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
@@ -142,7 +143,9 @@ export function toHttpException(
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
     // línea en uno conocido.
-    error instanceof ExportacionDemasiadoGrandeError
+    error instanceof ExportacionDemasiadoGrandeError ||
+    // Formulario público (sdd/formulario-publico-qr, WU-6): datos del externo inválidos.
+    error instanceof SolicitanteExternoInvalidoError
   ) {
     return new UnprocessableEntityException(error.message);
   }
