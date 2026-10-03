@@ -651,6 +651,37 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 **Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
 licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
 
+### Decisiones de producto de la segunda etapa
+
+> Mismo criterio que "Decisiones de producto ya cerradas": cada viñeta entra a la
+> spec del ciclo como requerimiento con escenario, y al cerrar el punto declara
+> **Cumplida** o **Desviación** con su motivo.
+
+- **Segunda etapa, punto 1 — formulario público + QR** (decidido el 2026-10-03,
+  ciclo `formulario-publico-qr`, exploración en
+  `openspec/changes/formulario-publico-qr/exploration.md`):
+  - Puede pedir **cualquiera**, pero el ticket se crea recién cuando confirma un
+    link de un solo uso que le llega por mail.
+  - Quien pide sin cuenta es un **solicitante externo** guardado en la base del
+    cliente. No se le crea `Usuario` ni `Membresia`.
+  - Un cliente **sin correo configurado** solo acepta pedidos de sus usuarios
+    registrados.
+  - El ticket entra **directo como NUEVO**, sin estado de moderación.
+  - Quien pidió recibe el **número del ticket, los cambios de estado y la
+    encuesta CSAT** por mail. No hay página de seguimiento.
+  - Tipo **SOPORTE** y prioridad **MEDIA**, fijos: quien pide no los elige.
+  - El identificador del cliente en la URL lo carga el **ROOT** y **no cambia**
+    después de emitido el primer QR.
+  - **Un QR por equipo**, con un token opaco regenerable. Un equipo dado de baja
+    abre el formulario sin equipo cargado. La impresión en lote queda afuera.
+  - **Sin adjuntos** en esta primera entrega.
+  - Límites: **3 pedidos por mail cada 15 minutos** y **30 por cliente por hora**.
+    Al pasarse, un mensaje genérico de "intentá más tarde".
+  - Los datos del solicitante externo se guardan **mientras exista el ticket**.
+    La retención queda anotada para revisarla.
+  - Fuera del formulario, un cliente lo tiene **apagado por defecto** y lo
+    habilita el ROOT, igual que la encuesta CSAT.
+
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
 Odoo y de los proveedores regionales salen de agregadores y son indicativos. No se
