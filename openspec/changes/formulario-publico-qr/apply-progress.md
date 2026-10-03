@@ -368,3 +368,26 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu17`, apilada sobre `feat/form
 - `@Get('qr')` declarado antes de `@Get(':ticketId')`, con `TICKETS:ALTAS` (el alta de ticket que abre el dialogo). `c` y `e` se leen como `unknown` y el caso de uso los valida.
 - `soporte.controller.spec.ts` arma el caso de uso real con repos vacios para no sumar un cast (ratchet 627/116).
 - Deuda de Ayuda: ninguna (sin pantalla).
+
+
+## WU-18 — FE: camino D3 (completa, 4/4)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu18`, apilada sobre `feat/formulario-publico-qr-wu17b`. Tres commits (18a `destinoPosLogin`, 18b `use-login` y middleware, 18c landing y props del diálogo); sin `size:exception`. Artefactos en este último commit.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `destino-pos-login.test.ts` (22: `//evil.com`, `https:`, `javascript:`, `/tickets`, `/pedido-qr/x`, `%2f`, backslash, fragmento, CR/LF y tab caen a `/`); `use-login.test.tsx` (+5: `siguiente` válido, 3 inválidos a `/`, selector multi-cliente); `middleware.test.ts` (+5: `/login` con sesión respeta `siguiente`, inválidos a `/`, sin sesión no redirige); landing (4: coincide con equipo preseleccionado aunque `GET /equipos` dé 403, `equipo: null`, 404 otra organización, 403); página (2); diálogo (+3) |
+| Runtime harness | N/A: componentes y hooks con MSW sobre `/api/soporte/qr`; la integración real con el backend de WU-17 la cubre su e2e |
+| Rollback | `git revert` de 18c, 18b y 18a; el login vuelve a navegar siempre a `/` |
+
+### Decisiones tomadas en apply
+
+- WU-16 ya redirigía a `/login?siguiente=<encodeURIComponent('/pedido-qr?c=..&e=..')>`: no se tocó.
+- Allowlist: regex `^/pedido-qr(\?[^\s\\#control]*)?$`. Path exacto (sin `/` final ni `%`); la query admite cualquier cosa sin espacios, control, backslash ni `#`. Función pura, compartida por el cliente y el Edge.
+- `use-login` lee `siguiente` de `window.location.search` en el `onSuccess` (no `useSearchParams`): el hook no exige Suspense ni router, y el selector multi-cliente comparte el mismo camino.
+- El middleware calcula el destino una vez y lo usa en los tres redirects de `/login` con sesión viva.
+- El diálogo ofrece `equipoInicial` como opción propia (y filtra el duplicado del listado): un USUARIO sin `EQUIPOS:LECTURA` recibe 403 en `GET /equipos` y, sin esto, la preselección se perdería.
+- Landing: `equipo: null` abre el diálogo sin preselección con un aviso; 404 = "otra organización" sin reintento; 403 = sin permiso.
+- Deuda de Ayuda: el login vuelve al flujo del QR; landing `/pedido-qr`; el diálogo abre preseleccionado.
