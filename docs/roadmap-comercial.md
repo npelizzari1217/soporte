@@ -4,14 +4,14 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-01 contra el código de `main` (`84342b18`),
+decisión.** Actualizado el 2026-10-03 contra el código de `main` (`9113c287`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
-semanal pasó a ser por cliente. Desde esa fecha entraron a `main` tres ciclos del
+semanal pasó a ser por cliente. Desde esa fecha entraron a `main` cinco ciclos del
 módulo de Insumos y Equipos, que no son puntos del roadmap: catálogo único de
-componentes, stock usado y seguimiento por número de serie (ver "El módulo de
-Insumos").
+componentes, stock usado, seguimiento por número de serie, reporte de stock y baja
+de equipo completo (ver "El módulo de Insumos").
 
 > **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
 > puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
@@ -100,6 +100,7 @@ para que el roadmap refleje el esfuerzo real, no solo el previsto.
 | **Rotación de `EMAIL_CRYPTO_KEY`** con re-cifrado de las contraseñas SMTP | 2026-09-28 (`9857e1a`) | Era deuda técnica: rotar la clave sin re-cifrar dejaba indescifrable toda contraseña SMTP guardada. La primera rotación real en producción se hizo el 2026-09-29 y destapó dos defectos del script, corregidos el mismo día: un `-DryRun` mal pasado por ssh corría la rotación real, y los archivos de recuperación salían en una sola línea |
 | **Reseteo de contraseña olvidada** por mail | 2026-09-28 (`521aca3`) | Lo que la sección del cambio de contraseña dejó "para después" — ver más abajo |
 | **Componentes de equipo con catálogo único, stock usado y seguimiento por número de serie** | 2026-09-29 a 2026-10-01 (ciclos `catalogo-unico-componentes`, `stock-usado-componentes` y `repuestos-numero-de-serie`, último commit `84342b18`) | Pedido de producto sobre Insumos y Equipos, posterior al análisis del 2026-08-19. Detalle en "El módulo de Insumos" |
+| **Reporte de stock de Insumos** y **baja de equipo completo** | 2026-10-01 (ciclos `reporte-stock-insumos` y `baja-equipo-completo`, último commit `9113c287`) | Pedido de producto sobre Insumos y Equipos, con decisiones del dueño del 2026-10-01. Detalle en "Decisiones de producto ya cerradas" |
 
 ### El módulo de Insumos
 
@@ -114,7 +115,9 @@ recepción de una compra que genera stock; y las pantallas de listado, ficha y
 bitácora.
 
 Desde el 2026-09-29 se sumaron tres ciclos, integrados en `main` y en producción (el último,
-desplegado el 2026-10-01 en los ocho tenants):
+desplegado el 2026-10-01 en los ocho tenants). El reporte de stock y la baja de equipo
+completo entraron a `main` el 2026-10-01, después de ese deploy, y se detallan en
+"Decisiones de producto ya cerradas":
 
 - **Catálogo único de componentes** (`catalogo-unico-componentes`): todo
   componente de un equipo exige un insumo repuesto del cliente; el tipo se deriva
@@ -202,8 +205,8 @@ escribiéndolo es conflicto garantizado.
 
 Para no re-litigarlas al empezar cada punto.
 
-> **Contrastadas contra el código el 2026-09-09, el 2026-09-23 y el
-> 2026-09-29.** La del punto 2 se cumplió tal cual. La del punto 4 **se desvió
+> **Contrastadas contra el código el 2026-09-09, el 2026-09-23, el 2026-09-29
+> y el 2026-10-03.** La del punto 2 se cumplió tal cual. La del punto 4 **se desvió
 > y ya se corrigió**: se había entregado reusando `MANTENIMIENTO`, y el issue
 > #135 le dio al preventivo su propio tipo `PREVENTIVO`. **La del punto 5 se
 > desvió y ya se corrigió**: se entregó con un horario semanal único y global en
@@ -259,7 +262,7 @@ Para no re-litigarlas al empezar cada punto.
     `calendario_laboral_dias` se dropeó el mismo día.
 - **Reporte de stock** (pedido fuera de los seis puntos; decisiones del dueño del
   2026-10-01, ciclo `reporte-stock-insumos`, exploración en
-  `openspec/changes/reporte-stock-insumos/exploration.md`):
+  `openspec/changes/archive/2026-10-01-reporte-stock-insumos/exploration.md`):
   - Solo la **foto del stock actual**; movimientos por período y detalle por
     serie quedan para otro pedido.
   - Una fila por insumo: código, nombre, familia, consumible o repuesto, unidad
@@ -282,7 +285,7 @@ Para no re-litigarlas al empezar cada punto.
   enlazada desde Insumos y Repuestos. Sin desviaciones.
 - **Baja de equipo completo** (pedido fuera de los seis puntos; decisiones del
   dueño del 2026-10-01, ciclo `baja-equipo-completo`, exploración en
-  `openspec/changes/baja-equipo-completo/exploration.md`):
+  `openspec/changes/archive/2026-10-01-baja-equipo-completo/exploration.md`):
   - Dos opciones, todo o nada: **devolver todas las piezas al stock** (como
     usadas) o **descartarlas todas**. La misma leyenda queda en todas las piezas.
   - El motivo es una categoría (vejez, donación, rotura, otra) más un texto
