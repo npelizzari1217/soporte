@@ -115,6 +115,10 @@ describe('Equipos e2e — retirar componente con destino (WU-8a)', () => {
 
   const RUN_PREFIX = randomBytes(3).toString('hex').toUpperCase();
   let contadorFamilia = 0;
+  // Códigos de unidad de medida e insumo: un contador por corrida, sin azar (con 16 bits de azar dos
+  // llamadas de la misma corrida podían chocar contra el UNIQUE del código y volver flaky la suite).
+  let contadorUnidadMedida = 0;
+  let contadorInsumo = 0;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -262,7 +266,7 @@ describe('Equipos e2e — retirar componente con destino (WU-8a)', () => {
 
   async function crearUnidadMedida(): Promise<string> {
     const unidad = await tenantClient.unidadMedida.create({
-      data: { codigo: `${RUN_PREFIX}U${randomBytes(2).toString('hex')}`, nombre: 'Unidad E2E' },
+      data: { codigo: `${RUN_PREFIX}U${(contadorUnidadMedida += 1)}`, nombre: 'Unidad E2E' },
     });
     return unidad.id;
   }
@@ -270,7 +274,7 @@ describe('Equipos e2e — retirar componente con destino (WU-8a)', () => {
   async function crearInsumoRepuesto(familiaId: string, unidadMedidaId: string): Promise<string> {
     const insumo = await tenantClient.insumo.create({
       data: {
-        codigo: `${RUN_PREFIX}I${randomBytes(3).toString('hex')}`,
+        codigo: `${RUN_PREFIX}I${(contadorInsumo += 1)}`,
         nombre: 'Repuesto E2E',
         familiaId,
         unidadMedidaId,

@@ -101,6 +101,8 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
 
   const PREFIJO = `INSTC_${randomBytes(2).toString('hex')}_`;
   const CODIGO_SERIE = `${PREFIJO}S`;
+  // Código de unidad de medida por `beforeEach`: un contador, sin azar (16 bits chocaban).
+  let contadorUnidadMedida = 0;
 
   let familiaId: string;
   let unidadMedidaId: string;
@@ -337,7 +339,7 @@ describe('InstalarComponenteDesdeDepositoUseCase — Concurrencia real (WU-4, is
     beforeEach(async () => {
       const unidadEntera = await tenantClient.unidadMedida.create({
         data: {
-          codigo: `${PREFIJO}E${randomBytes(2).toString('hex')}`,
+          codigo: `${PREFIJO}E${(contadorUnidadMedida += 1)}`,
           nombre: 'Entera',
           entera: true,
         },

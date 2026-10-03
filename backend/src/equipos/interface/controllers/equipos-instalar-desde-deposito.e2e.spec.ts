@@ -138,6 +138,9 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
 
   const RUN_PREFIX = randomBytes(3).toString('hex').toUpperCase();
   let contadorFamilia = 0;
+  // Un contador por corrida para los códigos de unidad de medida: con 16 bits de azar dos llamadas
+  // de la misma corrida podían chocar contra el UNIQUE del código.
+  let contadorUnidadMedida = 0;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -285,7 +288,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
 
   async function crearUnidadMedida(): Promise<string> {
     const unidad = await tenantClient.unidadMedida.create({
-      data: { codigo: `${RUN_PREFIX}U${randomBytes(2).toString('hex')}`, nombre: 'Unidad E2E' },
+      data: { codigo: `${RUN_PREFIX}U${(contadorUnidadMedida += 1)}`, nombre: 'Unidad E2E' },
     });
     return unidad.id;
   }
@@ -855,7 +858,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedida = await tenantClient.unidadMedida.create({
         data: {
-          codigo: `${RUN_PREFIX}E${randomBytes(2).toString('hex')}`,
+          codigo: `${RUN_PREFIX}E${(contadorUnidadMedida += 1)}`,
           nombre: 'Entera',
           entera: true,
         },
@@ -1158,7 +1161,7 @@ describe('Equipos e2e — instalar componente desde depósito (WU-4, issue #153)
       const { familiaId } = await crearFamiliaRepuesto();
       const unidadMedida = await tenantClient.unidadMedida.create({
         data: {
-          codigo: `${RUN_PREFIX}D${randomBytes(2).toString('hex')}`,
+          codigo: `${RUN_PREFIX}D${(contadorUnidadMedida += 1)}`,
           nombre: 'Entera',
           entera: true,
         },
