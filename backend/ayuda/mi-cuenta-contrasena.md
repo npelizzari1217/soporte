@@ -36,10 +36,10 @@ seguridad, siempre te mostramos el mismo mensaje después de enviarlo, exista
 o no ese email en el sistema.
 
 El link solo te llega cuando se cumplen TODAS estas condiciones: tu cuenta
-está activa, pertenece a **un único** cliente, y ese cliente tiene el correo
-configurado. Si trabajás en más de un cliente, si tu cuenta no está activa
-en ninguno o si el cliente todavía no configuró el correo, el mail nunca
-sale — no es un error del sistema: pedile a tu administrador que te la restablezca.
+está activa, pertenece a al menos un cliente, y alguno de tus clientes tiene
+el correo configurado. Si trabajás en más de un cliente, el mail sale una sola
+vez, por el correo de uno de ellos. Si tu cuenta no está activa en ninguno o
+si ningún cliente configuró todavía el correo, el mail nunca sale — no es un error del sistema: pedile a tu administrador que te la restablezca.
 
 El link que recibís por mail vence a los **60 minutos**. Si se vence, pedí
 uno nuevo desde la misma pantalla. Al confirmar la contraseña nueva, el

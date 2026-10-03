@@ -12,7 +12,7 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
 export interface PasswordResetTokenProps {
   /** FK → master.usuarios.id. Dueño del token; `ON DELETE CASCADE` en la migración. */
   usuarioId: string;
-  /** FK → master.clientes.id. Tenant que emitió el token (el de la única membresía activa). */
+  /** FK → master.clientes.id. Tenant que emitió el token (el cliente cuyo correo envió el mail: el primero con correo LISTO, por `clienteId` ascendente). */
   clienteId: string;
   /** SHA-256 del token crudo. El token en texto plano NUNCA se persiste. */
   tokenHash: string;

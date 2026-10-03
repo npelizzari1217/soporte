@@ -173,22 +173,81 @@ describe('SolicitarResetPasswordUseCase', () => {
     expect(tokenRepo.save).not.toHaveBeenCalled();
   });
 
-  it('2+ membresías: loguea MEMBRESIAS_N con usuarioId, no consulta el correo', async () => {
-    const usuario = makeUsuario();
-    usuarioRepo.findByEmail.mockResolvedValue(usuario);
-    membresiaRepo.findActivasByUsuario.mockResolvedValue([
-      makeMembresia('cliente-1'),
-      makeMembresia('cliente-2'),
-    ]);
+  describe('2+ membresías (usuario de varios clientes)', () => {
+    const arrancarConDosClientes = (ordenDelRepo: string[]) => {
+      const usuario = makeUsuario();
+      usuarioRepo.findByEmail.mockResolvedValue(usuario);
+      membresiaRepo.findActivasByUsuario.mockResolvedValue(
+        ordenDelRepo.map((id) => makeMembresia(id)),
+      );
+      return usuario;
+    };
 
-    await useCase.ejecutar(EMAIL);
+    it('manda UN solo mail por el primer cliente LISTO (orden por clienteId) y emite el token con ese clienteId', async () => {
+      const usuario = arrancarConDosClientes(['cliente-b', 'cliente-a']);
+      correoDeCliente.estado.mockResolvedValue('LISTO');
 
-    expect(logger.log).toHaveBeenCalledWith(
-      `RESET_PASSWORD_SOLICITUD | resultado=MEMBRESIAS_N | usuarioId=${usuario.id}`,
-    );
-    expect(correoDeCliente.estado).not.toHaveBeenCalled();
-    expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
-    expect(tokenRepo.save).not.toHaveBeenCalled();
+      await useCase.ejecutar(EMAIL);
+
+      expect(correoDeCliente.estado).toHaveBeenCalledTimes(1);
+      expect(correoDeCliente.estado).toHaveBeenCalledWith('cliente-a');
+      expect(correoDeCliente.enviar).toHaveBeenCalledTimes(1);
+      expect(correoDeCliente.enviar.mock.calls[0][0]).toBe('cliente-a');
+      expect(tokenRepo.revocarVigentesDeUsuario).toHaveBeenCalledTimes(1);
+      expect(tokenRepo.save).toHaveBeenCalledTimes(1);
+      expect(tokenRepo.save.mock.calls[0][0].clienteId).toBe('cliente-a');
+      expect(logger.log).toHaveBeenCalledWith(
+        `RESET_PASSWORD_SOLICITUD | resultado=MAIL_DESPACHADO | usuarioId=${usuario.id} | clienteId=cliente-a`,
+      );
+    });
+
+    it('el resultado no depende del orden en que el repo devuelve las membresías', async () => {
+      arrancarConDosClientes(['cliente-a', 'cliente-b']);
+      correoDeCliente.estado.mockResolvedValue('LISTO');
+
+      await useCase.ejecutar(EMAIL);
+
+      expect(correoDeCliente.enviar.mock.calls[0][0]).toBe('cliente-a');
+    });
+
+    it('si el primer cliente no está LISTO, prueba el siguiente y manda por ese', async () => {
+      arrancarConDosClientes(['cliente-b', 'cliente-a']);
+      correoDeCliente.estado.mockImplementation(async (id: string) =>
+        id === 'cliente-a' ? 'SIN_CORREO' : 'LISTO',
+      );
+
+      await useCase.ejecutar(EMAIL);
+
+      expect(correoDeCliente.enviar).toHaveBeenCalledTimes(1);
+      expect(correoDeCliente.enviar.mock.calls[0][0]).toBe('cliente-b');
+      expect(tokenRepo.save.mock.calls[0][0].clienteId).toBe('cliente-b');
+    });
+
+    it('cliente no disponible también cuenta como "no LISTO" y se salta', async () => {
+      arrancarConDosClientes(['cliente-a', 'cliente-b']);
+      correoDeCliente.estado.mockImplementation(async (id: string) =>
+        id === 'cliente-a' ? 'CLIENTE_NO_DISPONIBLE' : 'LISTO',
+      );
+
+      await useCase.ejecutar(EMAIL);
+
+      expect(correoDeCliente.enviar.mock.calls[0][0]).toBe('cliente-b');
+    });
+
+    it('ningún cliente LISTO: loguea NINGUN_CLIENTE_CON_CORREO, sin revocar, token ni mail', async () => {
+      const usuario = arrancarConDosClientes(['cliente-a', 'cliente-b']);
+      correoDeCliente.estado.mockResolvedValue('SIN_CORREO');
+
+      await useCase.ejecutar(EMAIL);
+
+      expect(correoDeCliente.estado).toHaveBeenCalledTimes(2);
+      expect(logger.log).toHaveBeenCalledWith(
+        `RESET_PASSWORD_SOLICITUD | resultado=NINGUN_CLIENTE_CON_CORREO | usuarioId=${usuario.id}`,
+      );
+      expect(correoDeCliente.enviar).not.toHaveBeenCalled();
+      expect(tokenRepo.revocarVigentesDeUsuario).not.toHaveBeenCalled();
+      expect(tokenRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   it('cliente sin correo: loguea CLIENTE_SIN_CORREO, no revoca ni emite token', async () => {
