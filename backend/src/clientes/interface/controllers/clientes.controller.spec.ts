@@ -17,6 +17,7 @@ import {
 } from '@nestjs/common';
 import { ClientesController } from './clientes.controller';
 import { Result } from '../../../shared/domain/result';
+import { ConfigurarFormularioPublicoUseCase } from '../../application/use-cases/configurar-formulario-publico.use-case';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
 import { ClienteEmailConfigState } from '../../domain/ports/i-cliente-email-config.repository';
 import {
@@ -26,7 +27,12 @@ import {
   CorreoNoConfiguradoError,
   CorreoPasswordFaltanteError,
   EmailCryptoKeyAusenteError,
+  OnlyRootCanConfigurarFormularioError,
   OnlyRootCanCreateClienteError,
+  SlugCongeladoError,
+  SlugDuplicadoError,
+  SlugInvalidoError,
+  SlugRequeridoError,
 } from '../../domain/errors/clientes.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -42,6 +48,18 @@ function buildController() {
   const probarCorreoClienteUseCase = { execute: vi.fn() };
   const verCorreoClienteUseCase = { execute: vi.fn() };
   const configurarCsatClienteUseCase = { execute: vi.fn() };
+  // Instancia real con su puerto de repo doblado (sin cast): solo se espia `execute`.
+  const configurarFormularioPublicoUseCase = new ConfigurarFormularioPublicoUseCase({
+    findById: vi.fn(),
+    findByDbName: vi.fn(),
+    findBySlug: vi.fn(),
+    congelarSlug: vi.fn(),
+    cambiarSlugSiNoCongelado: vi.fn(),
+    findAll: vi.fn(),
+    save: vi.fn(),
+    delete: vi.fn(),
+  });
+  const executeFormularioPublico = vi.spyOn(configurarFormularioPublicoUseCase, 'execute');
   const controller = new ClientesController(
     crearClienteUseCase as any,
     listarClientesUseCase as any,
@@ -53,6 +71,7 @@ function buildController() {
     probarCorreoClienteUseCase as any,
     verCorreoClienteUseCase as any,
     configurarCsatClienteUseCase as any,
+    configurarFormularioPublicoUseCase,
   );
   return {
     controller,
@@ -66,6 +85,7 @@ function buildController() {
     probarCorreoClienteUseCase,
     verCorreoClienteUseCase,
     configurarCsatClienteUseCase,
+    configurarFormularioPublicoUseCase: { execute: executeFormularioPublico },
   };
 }
 
@@ -120,6 +140,8 @@ describe('ClientesController (T8.4)', () => {
         dbName: cliente.dbName,
         activo: true,
         csatHabilitado: false,
+        slug: null,
+        formularioPublicoHabilitado: false,
       });
       expect(crearClienteUseCase.execute).toHaveBeenCalledWith(
         {
@@ -195,6 +217,8 @@ describe('ClientesController (T8.4)', () => {
           dbName: cliente.dbName,
           activo: true,
           csatHabilitado: false,
+          slug: null,
+          formularioPublicoHabilitado: false,
           correo: { configurado: true, verificadoAt },
         },
       ]);
@@ -501,6 +525,44 @@ describe('ClientesController (T8.4)', () => {
       await expect(
         controller.configurarCsat('id-inexistente', { habilitado: true } as any),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('PATCH /clientes/:id/formulario-publico (sdd/formulario-publico-qr WU-2)', () => {
+    it('delega con el actor y devuelve slug y habilitacion', async () => {
+      const { controller, configurarFormularioPublicoUseCase } = buildController();
+      const cliente = buildCliente();
+      cliente.configurarSlug('colegio-norte');
+      cliente.habilitarFormulario(true);
+      configurarFormularioPublicoUseCase.execute.mockResolvedValue(Result.ok(cliente));
+
+      const result = await controller.configurarFormularioPublico(ROOT_USER, cliente.id, {
+        slug: 'colegio-norte',
+        habilitado: true,
+      });
+
+      expect(result.slug).toBe('colegio-norte');
+      expect(result.formularioPublicoHabilitado).toBe(true);
+      expect(configurarFormularioPublicoUseCase.execute).toHaveBeenCalledWith(
+        { clienteId: cliente.id, slug: 'colegio-norte', habilitado: true },
+        { isGlobalAdmin: true },
+      );
+    });
+
+    it.each([
+      ['403', new OnlyRootCanConfigurarFormularioError(), ForbiddenException],
+      ['404', new ClienteNoEncontradoError('x'), NotFoundException],
+      ['400', new SlugInvalidoError('formato'), BadRequestException],
+      ['409 congelado', new SlugCongeladoError(), ConflictException],
+      ['409 duplicado', new SlugDuplicadoError(), ConflictException],
+      ['409 sin slug', new SlugRequeridoError(), ConflictException],
+    ])('mapea el error de dominio a %s', async (_nombre, error, esperada) => {
+      const { controller, configurarFormularioPublicoUseCase } = buildController();
+      configurarFormularioPublicoUseCase.execute.mockResolvedValue(Result.fail(error));
+
+      await expect(
+        controller.configurarFormularioPublico(ROOT_USER, 'id', { habilitado: true }),
+      ).rejects.toBeInstanceOf(esperada);
     });
   });
 

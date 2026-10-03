@@ -53,11 +53,13 @@ import { QuitarCorreoClienteUseCase } from '../../application/use-cases/quitar-c
 import { ProbarCorreoClienteUseCase } from '../../application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from '../../application/use-cases/ver-correo-cliente.use-case';
 import { ConfigurarCsatClienteUseCase } from '../../application/use-cases/configurar-csat-cliente.use-case';
+import { ConfigurarFormularioPublicoUseCase } from '../../application/use-cases/configurar-formulario-publico.use-case';
 import {
   ClienteCorreoResponseDto,
   ClienteListItemResponseDto,
   ConfigurarCorreoClienteDto,
   ConfigurarCsatClienteDto,
+  ConfigurarFormularioPublicoDto,
   CreateClienteDto,
   UpdateClienteDto,
   ClienteResponseDto,
@@ -70,7 +72,12 @@ import {
   CorreoNoConfiguradoError,
   CorreoPasswordFaltanteError,
   EmailCryptoKeyAusenteError,
+  OnlyRootCanConfigurarFormularioError,
   OnlyRootCanCreateClienteError,
+  SlugCongeladoError,
+  SlugDuplicadoError,
+  SlugInvalidoError,
+  SlugRequeridoError,
 } from '../../domain/errors/clientes.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-admin.guard';
@@ -87,6 +94,8 @@ function toResponseDto(cliente: ClienteEntity): ClienteResponseDto {
     dbName: cliente.dbName,
     activo: cliente.activo,
     csatHabilitado: cliente.csatHabilitado,
+    slug: cliente.slug,
+    formularioPublicoHabilitado: cliente.formularioPublicoHabilitado,
   };
 }
 
@@ -135,16 +144,28 @@ function toHttpException(
   | BadRequestException
   | ServiceUnavailableException
   | InternalServerErrorException {
-  if (error instanceof OnlyRootCanCreateClienteError) {
+  if (
+    error instanceof OnlyRootCanCreateClienteError ||
+    error instanceof OnlyRootCanConfigurarFormularioError
+  ) {
     return new ForbiddenException(error.message);
   }
   if (error instanceof ClienteNoEncontradoError) {
     return new NotFoundException(error.message);
   }
-  if (error instanceof AdminEmailYaRegistradoError) {
+  if (
+    error instanceof AdminEmailYaRegistradoError ||
+    error instanceof SlugCongeladoError ||
+    error instanceof SlugDuplicadoError ||
+    error instanceof SlugRequeridoError
+  ) {
     return new ConflictException(error.message);
   }
-  if (error instanceof CorreoPasswordFaltanteError || error instanceof CorreoNoConfiguradoError) {
+  if (
+    error instanceof SlugInvalidoError ||
+    error instanceof CorreoPasswordFaltanteError ||
+    error instanceof CorreoNoConfiguradoError
+  ) {
     return new BadRequestException(error.message);
   }
   if (error instanceof EmailCryptoKeyAusenteError) {
@@ -169,6 +190,7 @@ export class ClientesController {
     private readonly probarCorreoClienteUseCase: ProbarCorreoClienteUseCase,
     private readonly verCorreoClienteUseCase: VerCorreoClienteUseCase,
     private readonly configurarCsatClienteUseCase: ConfigurarCsatClienteUseCase,
+    private readonly configurarFormularioPublicoUseCase: ConfigurarFormularioPublicoUseCase,
   ) {}
 
   /**
@@ -399,6 +421,34 @@ export class ClientesController {
       clienteId: id,
       habilitado: dto.habilitado,
     });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+
+    return toResponseDto(result.getValue());
+  }
+
+  /**
+   * PATCH /clientes/:id/formulario-publico
+   * Carga el slug y/o prende/apaga el formulario publico de un cliente
+   * (sdd/formulario-publico-qr, D7 y D12). Solo ROOT.
+   * @returns 200 + ClienteResponseDto con `slug` y `formularioPublicoHabilitado`
+   * @throws 400 slug con formato invalido (o con forma de identificador interno)
+   * @throws 404 el cliente no existe
+   * @throws 409 slug duplicado, slug congelado por un QR emitido, o habilitar sin slug
+   */
+  @Patch(':id/formulario-publico')
+  @HttpCode(HttpStatus.OK)
+  async configurarFormularioPublico(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: ConfigurarFormularioPublicoDto,
+  ): Promise<ClienteResponseDto> {
+    const result = await this.configurarFormularioPublicoUseCase.execute(
+      { clienteId: id, slug: dto.slug, habilitado: dto.habilitado },
+      { isGlobalAdmin: user.is_global_admin },
+    );
 
     if (result.isFail()) {
       throw toHttpException(result.getError());

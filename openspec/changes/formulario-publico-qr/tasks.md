@@ -72,10 +72,12 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-2 — Configurar formulario público (BE)
 
-- [ ] 2.1 Test unit de `ConfigurarFormularioPublicoUseCase`: sin slug no habilita, slug congelado no cambia, revalida `actor.isGlobalAdmin`.
-- [ ] 2.2 Crear `ConfigurarFormularioPublicoUseCase` en `backend/src/clientes/application/use-cases/`.
-- [ ] 2.3 `PATCH /clientes/:id/formulario-publico` + DTO en `clientes.controller.ts` (`JwtAuthGuard, GlobalAdminGuard`).
-- [ ] 2.4 e2e: ROOT 200 y ADMIN 403.
+- [x] 2.1 Test unit de `ConfigurarFormularioPublicoUseCase`: sin slug no habilita, slug congelado no cambia, revalida `actor.isGlobalAdmin`.
+- [x] 2.2 Crear `ConfigurarFormularioPublicoUseCase` en `backend/src/clientes/application/use-cases/`.
+- [x] 2.3 `PATCH /clientes/:id/formulario-publico` + DTO en `clientes.controller.ts` (`JwtAuthGuard, GlobalAdminGuard`).
+- [x] 2.4 e2e: ROOT 200 y ADMIN 403.
+
+> **WU-2 partida en dos PRs** (2026-10-03, 642 líneas): WU-2a con el caso de uso y su spec, y WU-2b con el controller, el DTO, el spec del controller y el e2e. Cada mitad viaja con sus tests (criterio del dueño del 2026-09-28).
 
 ## WU-3 — FE: diálogo de configuración
 
