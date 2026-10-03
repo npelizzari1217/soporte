@@ -57,10 +57,11 @@ describe('ReactivarComponenteUseCase', () => {
     } satisfies Pick<IEquipoInformaticoRepository, 'bloquearParaOperarPiezas'>;
     const componenteRepo = {
       findById: vi.fn(async () => componente),
-      save: vi.fn(async () => {
+      reactivar: vi.fn(async (_componente: ComponenteEquipoEntity) => {
         orden.push('save');
+        return true;
       }),
-    } satisfies Pick<IComponenteEquipoRepository, 'findById' | 'save'>;
+    } satisfies Pick<IComponenteEquipoRepository, 'findById' | 'reactivar'>;
     const operaciones = {
       reinstalar: vi.fn(async () => {
         orden.push('reinstalar');
@@ -99,7 +100,7 @@ describe('ReactivarComponenteUseCase', () => {
     const result = await useCase.execute(dto(componente.id, 'equipo-2'));
 
     expect(result.getError()).toBeInstanceOf(ComponenteNoEncontradoError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
+    expect(componenteRepo.reactivar).not.toHaveBeenCalled();
   });
 
   it('falla con ComponenteYaActivoError si el componente ya está activo', async () => {
@@ -109,7 +110,7 @@ describe('ReactivarComponenteUseCase', () => {
     const result = await useCase.execute(dto(componente.id));
 
     expect(result.getError()).toBeInstanceOf(ComponenteYaActivoError);
-    expect(componenteRepo.save).not.toHaveBeenCalled();
+    expect(componenteRepo.reactivar).not.toHaveBeenCalled();
   });
 
   it('reactiva el componente dado de baja (limpia deletedAt) y persiste', async () => {
@@ -122,7 +123,63 @@ describe('ReactivarComponenteUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().activo).toBe(true);
     expect(result.getValue().deletedAt).toBeNull();
-    expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+    expect(componenteRepo.reactivar).toHaveBeenCalledWith(componente);
+  });
+
+  describe('marca condicional (CAS)', () => {
+    it('si la marca no toca la fila y el componente ya está activo, devuelve ComponenteYaActivoError', async () => {
+      const componente = makeComponente();
+      componente.softDelete();
+      const { useCase, componenteRepo } = makeSetup(componente);
+      componenteRepo.reactivar.mockResolvedValueOnce(false);
+      componenteRepo.findById
+        .mockResolvedValueOnce(componente)
+        .mockResolvedValueOnce(makeComponente());
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.getError()).toBeInstanceOf(ComponenteYaActivoError);
+    });
+
+    it('si la marca no toca la fila y volvió al stock como USADO, devuelve ComponenteDevueltoAlStockError', async () => {
+      const componente = makeComponente();
+      componente.softDelete();
+      const devuelto = makeComponente();
+      devuelto.retirar({
+        destino: 'STOCK_USADO',
+        motivo: 'Pieza sana',
+        usuarioId: 'user-1',
+        bajaMovimientoId: 'mov-entrada',
+      });
+      const { useCase, componenteRepo } = makeSetup(componente);
+      componenteRepo.reactivar.mockResolvedValueOnce(false);
+      componenteRepo.findById.mockResolvedValueOnce(componente).mockResolvedValueOnce(devuelto);
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.getError()).toBeInstanceOf(ComponenteDevueltoAlStockError);
+    });
+
+    it('con unidad, una marca rechazada lanza dentro de la transacción para revertir la reinstalación', async () => {
+      const componente = makeComponente('unidad-1');
+      componente.softDelete();
+      const { useCase, componenteRepo, txRunner } = makeSetup(componente);
+      componenteRepo.reactivar.mockResolvedValueOnce(false);
+      let propagoDentroDeLaTx = false;
+      vi.mocked(txRunner.run).mockImplementationOnce(async (fn) => {
+        try {
+          return await fn();
+        } catch (error) {
+          propagoDentroDeLaTx = true;
+          throw error;
+        }
+      });
+
+      const result = await useCase.execute(dto(componente.id));
+
+      expect(result.isFail()).toBe(true);
+      expect(propagoDentroDeLaTx).toBe(true);
+    });
   });
 
   describe('equipo dado de baja (LE, R11)', () => {
@@ -154,7 +211,7 @@ describe('ReactivarComponenteUseCase', () => {
 
       expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
       expect(operaciones.reinstalar).not.toHaveBeenCalled();
-      expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(componenteRepo.reactivar).not.toHaveBeenCalled();
       expect(componente.activo).toBe(false);
     });
 
@@ -167,7 +224,7 @@ describe('ReactivarComponenteUseCase', () => {
         const { useCase, componenteRepo } = makeSetup(componente, Result.ok([]), equipo);
         const result = await useCase.execute(dto(componente.id));
         expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
-        expect(componenteRepo.save).not.toHaveBeenCalled();
+        expect(componenteRepo.reactivar).not.toHaveBeenCalled();
       }
     });
   });
@@ -186,7 +243,7 @@ describe('ReactivarComponenteUseCase', () => {
       const result = await useCase.execute(dto(componente.id));
 
       expect(result.getError()).toBeInstanceOf(ComponenteDevueltoAlStockError);
-      expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(componenteRepo.reactivar).not.toHaveBeenCalled();
       expect(txRunner.run).not.toHaveBeenCalled();
       expect(componente.activo).toBe(false);
       expect(componente.bajaDestino).toBe('STOCK_USADO');
@@ -209,7 +266,7 @@ describe('ReactivarComponenteUseCase', () => {
       expect(componente.bajaDestino).toBeNull();
       expect(componente.bajaMotivo).toBeNull();
       expect(componente.bajaUsuarioId).toBeNull();
-      expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+      expect(componenteRepo.reactivar).toHaveBeenCalledWith(componente);
     });
 
     it('reactiva un retiro LEGADO (sin destino) y persiste, sin tocar ninguna unidad', async () => {
@@ -222,7 +279,7 @@ describe('ReactivarComponenteUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(componente.activo).toBe(true);
-      expect(componenteRepo.save).toHaveBeenCalledWith(componente);
+      expect(componenteRepo.reactivar).toHaveBeenCalledWith(componente);
       expect(operaciones.reinstalar).not.toHaveBeenCalled();
     });
   });
@@ -273,7 +330,7 @@ describe('ReactivarComponenteUseCase', () => {
 
       expect(result.getError()).toBeInstanceOf(UnidadDelComponenteNoDisponibleError);
       expect(orden).toEqual(['tx:inicio', 'lockEquipo', 'reinstalar', 'tx:fin']);
-      expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(componenteRepo.reactivar).not.toHaveBeenCalled();
       expect(componente.activo).toBe(false);
     });
 
@@ -285,13 +342,13 @@ describe('ReactivarComponenteUseCase', () => {
       const result = await useCase.execute(dto(componente.id));
 
       expect(result.getError()).toBe(error);
-      expect(componenteRepo.save).not.toHaveBeenCalled();
+      expect(componenteRepo.reactivar).not.toHaveBeenCalled();
     });
 
     it('si el guardado falla despues de reinstalar, la excepcion propaga (la transaccion revierte la unidad)', async () => {
       const componente = makeDescartado();
       const { useCase, componenteRepo } = makeSetup(componente);
-      componenteRepo.save.mockRejectedValueOnce(new Error('conexion perdida'));
+      componenteRepo.reactivar.mockRejectedValueOnce(new Error('conexion perdida'));
 
       await expect(useCase.execute(dto(componente.id))).rejects.toThrow('conexion perdida');
     });

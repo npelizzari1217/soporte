@@ -21,7 +21,10 @@ export interface IComponenteEquipoRepository {
    */
   findAllByEquipoId(equipoId: string): Promise<ComponenteEquipoEntity[]>;
 
-  /** Persiste el componente (upsert). */
+  /**
+   * Persiste el componente (upsert). Solo para ALTAS: ninguna transición de estado debe pasar
+   * por acá, porque un upsert pisa lo que otro haya comiteado entre la lectura y el guardado.
+   */
   save(componente: ComponenteEquipoEntity): Promise<void>;
 
   /**
@@ -40,6 +43,15 @@ export interface IComponenteEquipoRepository {
    * dos retiros concurrentes.
    */
   retirar(componente: ComponenteEquipoEntity): Promise<boolean>;
+
+  /**
+   * Revierte el retiro (CAS): limpia `deleted_at` y las columnas `baja_*` con
+   * `updateMany ... WHERE id = ? AND deleted_at IS NOT NULL AND (baja_destino IS NULL OR
+   * baja_destino <> 'STOCK_USADO')`. Devuelve `true` si tocó la fila y `false` si el componente
+   * ya está activo (otra reactivación comiteó primero), volvió al stock como USADO o no existe:
+   * una entidad leída antes de ese cambio no puede pisarlo.
+   */
+  reactivar(componente: ComponenteEquipoEntity): Promise<boolean>;
 }
 
 /** Token de inyección de dependencias para IComponenteEquipoRepository en NestJS. */
