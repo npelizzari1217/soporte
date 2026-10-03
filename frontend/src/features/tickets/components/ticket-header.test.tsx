@@ -22,6 +22,8 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     cicloId: null,
     ticketReferenciaId: null,
     solicitanteId: "u1",
+    solicitanteExternoId: null,
+    solicitanteEsExterno: false,
     asignadoId: null,
     solicitanteNombre: "Juan",
     solicitanteApellido: "Pérez",
@@ -37,6 +39,52 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
 }
 
 describe("TicketHeader", () => {
+  describe("solicitante externo (formulario publico)", () => {
+    const externo = {
+      solicitanteId: null,
+      solicitanteExternoId: "ext-1",
+      solicitanteEsExterno: true,
+      solicitanteNombre: "Marta Externa",
+      solicitanteApellido: null,
+    };
+
+    it("muestra el nombre del externo (no el guion) y el telefono cuando existe", () => {
+      render(<TicketHeader tipoNombre="Incidente" ticket={buildTicket({ ...externo, solicitanteTelefono: "+54 11 5555-0000" })} />);
+      expect(screen.getByText("Marta Externa")).toBeInTheDocument();
+      expect(screen.queryByText("—")).not.toBeInTheDocument();
+      expect(screen.getByText("Teléfono")).toBeInTheDocument();
+      expect(screen.getByText("+54 11 5555-0000")).toBeInTheDocument();
+    });
+
+    it("sin telefono (null) no renderiza la fila ni etiqueta vacia", () => {
+      render(<TicketHeader ticket={buildTicket({ ...externo, solicitanteTelefono: null })} />);
+      expect(screen.getByText("Marta Externa")).toBeInTheDocument();
+      expect(screen.queryByText("Teléfono")).not.toBeInTheDocument();
+    });
+
+    it("sin el campo (listado) tampoco renderiza la fila de telefono", () => {
+      render(<TicketHeader ticket={buildTicket(externo)} />);
+      expect(screen.queryByText("Teléfono")).not.toBeInTheDocument();
+    });
+
+    it("un <script> en el titulo, el nombre y el telefono se muestra como texto, sin inyectar nodos", () => {
+      const { container } = render(
+        <TicketHeader
+          ticket={buildTicket({
+            ...externo,
+            titulo: "<script>alert(1)</script>",
+            solicitanteNombre: "<script>alert(2)</script>",
+            solicitanteTelefono: "<script>alert(3)</script>",
+          })}
+        />,
+      );
+      expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument();
+      expect(screen.getByText("<script>alert(2)</script>")).toBeInTheDocument();
+      expect(screen.getByText("<script>alert(3)</script>")).toBeInTheDocument();
+      expect(container.querySelector("script")).toBeNull();
+    });
+  });
+
   it("solicitante con nombre y sin apellido → muestra el nombre, no el ID crudo", () => {
     render(<TicketHeader ticket={buildTicket({ solicitanteNombre: "Juan Pérez", solicitanteApellido: "" })} />);
     expect(screen.getByText("Juan Pérez")).toBeInTheDocument();

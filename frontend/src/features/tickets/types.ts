@@ -24,6 +24,9 @@ export interface Ticket {
   ticketReferenciaId: string | null;
   /** `null` si el ticket lo abrió un solicitante externo (formulario público). */
   solicitanteId: string | null;
+  /** Id del solicitante externo (formulario público); `null` si lo abrió un usuario registrado. */
+  solicitanteExternoId: string | null;
+  solicitanteEsExterno: boolean;
   asignadoId: string | null;
   /** Resuelto batch cross-DB por el backend (sdd/beta-frontend/backend-gaps item 2). `null` = no resuelto (usuario removido del tenant). */
   solicitanteNombre: string | null;
@@ -31,6 +34,8 @@ export interface Ticket {
   /** `null` si `asignadoId` es `null`, o si el usuario no se pudo resolver. */
   asignadoNombre: string | null;
   asignadoApellido: string | null;
+  /** Solo en el detalle: teléfono del solicitante externo (`null` si no cargó). Ausente en el listado. */
+  solicitanteTelefono?: string | null;
   /** Calculado por el módulo SLA (Fase 4). `null` = sin SLA aplicable/calculado aún. */
   slaVenceAt: string | null;
   vencido: boolean;

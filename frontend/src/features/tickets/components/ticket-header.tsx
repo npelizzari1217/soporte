@@ -10,6 +10,10 @@
  * backend-gaps item 2). `null` = usuario no resuelto (removido del tenant)
  * → fallback al ID crudo, mejor que no mostrar nada.
  *
+ * Ticket de un solicitante externo: `solicitanteNombre` trae el nombre del externo y el teléfono
+ * (`solicitanteTelefono`, solo en el detalle) se muestra solo si no es nulo. Todo se renderiza como
+ * texto de React (escapado): nunca `dangerouslySetInnerHTML`.
+ *
  * SLA (`slaVenceAt`/`vencido`, item 2 del mismo batch) — antes gap
  * documentado, ahora expuesto por `toTicketResponseDto`.
  */
@@ -82,6 +86,12 @@ export function TicketHeader({
             {nombreCompleto(ticket.solicitanteNombre, ticket.solicitanteApellido, ticket.solicitanteId ?? "—")}
           </dd>
         </div>
+        {ticket.solicitanteTelefono && (
+          <div>
+            <dt className="text-muted-foreground">Teléfono</dt>
+            <dd className="text-foreground">{ticket.solicitanteTelefono}</dd>
+          </div>
+        )}
         <div>
           <dt className="text-muted-foreground">Asignado</dt>
           <dd className="text-foreground">

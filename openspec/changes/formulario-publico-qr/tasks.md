@@ -127,10 +127,10 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-8 — Lectores con datos del externo
 
-- [ ] 8.1 Test unit del controller (externo y mixto).
-- [ ] 8.2 Batch de nombres con `findNombres`; `solicitanteTelefono` solo en el detalle; campos `solicitanteExternoId/solicitanteEsExterno` en `ticket.dto.ts`.
-- [ ] 8.3 Tests FE de `ticket-header`: con y sin teléfono, y título con `<script>` como texto.
-- [ ] 8.4 `ticket-header.tsx`: teléfono condicional, sin `dangerouslySetInnerHTML`.
+- [x] 8.1 Test unit del controller (externo y mixto).
+- [x] 8.2 Batch de nombres con `findNombres`; `solicitanteTelefono` solo en el detalle; campos `solicitanteExternoId/solicitanteEsExterno` en `ticket.dto.ts`.
+- [x] 8.3 Tests FE de `ticket-header`: con y sin teléfono, y título con `<script>` como texto.
+- [x] 8.4 `ticket-header.tsx`: teléfono condicional, sin `dangerouslySetInnerHTML`.
 
 ## WU-9 — Resolver de contacto y listeners
 

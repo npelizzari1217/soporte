@@ -20,6 +20,8 @@ const TICKET = {
   cicloId: null,
   ticketReferenciaId: null,
   solicitanteId: "u-solicitante",
+  solicitanteExternoId: null,
+  solicitanteEsExterno: false,
   asignadoId: "u-tecnico",
   solicitanteNombre: "Marina",
   solicitanteApellido: "Pérez",

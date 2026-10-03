@@ -153,3 +153,14 @@ Modo: estandar. Tareas 7.1 a 7.5 marcadas en `tasks.md`. Rama `feat/formulario-p
 - Entorno: se aplico la migracion a `soporte_tenant_test` con `pnpm migrate:tenant` y `DATABASE_URL_TENANT` explicita.
 - Deuda de Ayuda: ninguna (sin pantalla; los tickets existentes se ven igual).
 
+
+## WU-8 — Lectores con datos del externo (completa, 4/4)
+
+Un solo commit (~232 lineas con tests, bajo el limite de 400); sin `size:exception`.
+
+- Backend: `TicketsController` recibe `SOLICITANTE_EXTERNO_REPOSITORY` (decimo cuarto argumento). `resolverNombresPorTicket` junta los ids de externos de todo el lote y hace UN `findNombres` (sin N+1); `NombresResueltos.solicitanteExterno` alimenta `solicitanteNombre` (apellido queda null). `GET /tickets/:id` hace `findById` solo si el ticket es externo y agrega `solicitanteTelefono` (null si no cargo); el listado no trae la clave.
+- `ticket.dto.ts`: `solicitanteExternoId`, `solicitanteEsExterno`, `solicitanteTelefono?`.
+- Frontend: `types.ts` espeja los campos; `ticket-header.tsx` muestra la fila "Teléfono" solo si el valor no es nulo; todo es texto de React (sin `dangerouslySetInnerHTML`).
+- Tests: controller (listado mixto sin telefono y con un solo batch; detalle con telefono, sin telefono, registrado sin consulta al externo); header (con y sin telefono, y `<script>` en titulo, nombre y telefono como texto, sin nodo `script`).
+- Verificacion: backend lint/typecheck limpios, `pnpm test` 562 archivos / 7073 tests; frontend lint, type-check, 230 archivos / 1817 tests; casts 627/116; roadmap fresco.
+- Deuda de Ayuda: el detalle de ticket ahora muestra nombre y telefono del solicitante externo (y el listado su nombre); el articulo de tickets debe mencionarlo en la tanda final.
