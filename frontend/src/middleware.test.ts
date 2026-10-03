@@ -142,6 +142,36 @@ describe("middleware", () => {
     expect(res.headers.get("location")).not.toMatch(/\/login/);
   });
 
+  // Spec: sdd/formulario-publico-qr, D3 — con sesion viva, /login vuelve al landing del QR.
+  it("redirects /login?siguiente=/pedido-qr?... to the landing when a session exists", async () => {
+    mockVerify.mockResolvedValueOnce(VALID_PAYLOAD);
+    const siguiente = "/pedido-qr?c=mi-colegio&e=tok-1";
+    const req = makeRequest(`/login?siguiente=${encodeURIComponent(siguiente)}`, { at: "valid-token" });
+    const res = await middleware(req);
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(`http://localhost${siguiente}`);
+  });
+
+  it.each(["//evil.com", "https://evil.com", "/tickets"])(
+    "redirects /login?siguiente=%s to / (outside the allowlist)",
+    async (siguiente) => {
+      const req = makeRequest(`/login?siguiente=${encodeURIComponent(siguiente)}`, { rt: "refresh-token" });
+      const res = await middleware(req);
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toBe("http://localhost/");
+    },
+  );
+
+  it("passes through /login?siguiente=... without a session (no redirect, the form shows)", async () => {
+    const req = makeRequest(`/login?siguiente=${encodeURIComponent("/pedido-qr?c=a")}`);
+    const res = await middleware(req);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
   // ── Rutas públicas (ADR-C7): el route group (publico) NO alcanza solo ────
   // El matcher intercepta todo salvo _next/api/archivos-con-extensión; la
   // única forma de que /encuesta/:token sea accesible sin sesión es una

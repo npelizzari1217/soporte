@@ -11,7 +11,9 @@
  *   2. `selectCliente(clienteId)` re-posts `{ email, password, clienteId }`
  *      using the credentials captured from step 1.
  *
- * On success: hace una navegación de PÁGINA COMPLETA a `/` (`window.location`,
+ * On success: hace una navegación de PÁGINA COMPLETA a `destinoPosLogin(?siguiente=)` —
+ * `/` salvo que `siguiente` sea el landing `/pedido-qr` (allowlist, sdd/formulario-publico-qr
+ * D3); el selector multi-cliente comparte el mismo `onSuccess` (`window.location`,
  * NO `router.push`). Un login es un cambio de identidad: con navegación cliente
  * el Router Cache de Next sirve el RSC de la sesión anterior y el
  * `SessionProvider` (que hidrata `user` una sola vez desde la cookie decodificada
@@ -34,6 +36,7 @@ import { apiFetch } from "@/shared/api/client";
 import { ApiError } from "@/shared/api/types";
 import type { JwtPayload } from "@/shared/api/types";
 import { writeLastActivity } from "@/shared/auth/idle-storage";
+import { destinoPosLogin } from "@/shared/auth/destino-pos-login";
 import type { Membresia } from "../components/ClienteSelection";
 
 interface LoginDto {
@@ -104,7 +107,8 @@ export function useLogin() {
       writeLastActivity(Date.now());
       // Navegación de página completa (ver JSDoc): resetea toda la caché cliente
       // para que el nuevo usuario no herede sesión/menú/datos del anterior.
-      window.location.assign("/");
+      const siguiente = new URLSearchParams(window.location.search).get("siguiente");
+      window.location.assign(destinoPosLogin(siguiente));
     },
 
     onError: (err) => {
