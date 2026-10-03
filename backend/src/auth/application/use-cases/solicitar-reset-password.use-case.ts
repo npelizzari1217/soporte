@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import { IPasswordResetTokenRepository } from '../../domain/ports/i-password-reset-token.repository';
-import { ICorreoDeCliente } from '../../domain/ports/i-correo-de-cliente.port';
+import { EstadoCorreoCliente, ICorreoDeCliente } from '../../domain/ports/i-correo-de-cliente.port';
 import { PasswordResetTokenEntity } from '../../domain/entities/password-reset-token.entity';
 import { templateResetPassword } from '../../domain/templates/reset-password-email.template';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -16,7 +16,7 @@ type ResultadoSolicitud =
   | 'CUENTA_INEXISTENTE'
   | 'CUENTA_NO_DISPONIBLE'
   | 'MEMBRESIAS_0'
-  | 'MEMBRESIAS_N'
+  | 'NINGUN_CLIENTE_CON_CORREO'
   | 'CLIENTE_SIN_CORREO'
   | 'CLIENTE_NO_DISPONIBLE'
   | 'MAIL_DESPACHADO';
@@ -28,8 +28,9 @@ type ResultadoSolicitud =
  * puede filtrar información por timing ni bifurcar una respuesta.
  *
  * Flujo: `findByEmail` (sin usuario/inactivo/soft-deleted → fin) →
- * `findActivasByUsuario` (≠1 → fin, misma query que `LoginUseCase`) →
- * `correo.estado(clienteId)` (≠`LISTO` → fin, sin token) → revoca vigentes →
+ * `findActivasByUsuario` (0 → fin, misma query que `LoginUseCase`) →
+ * `correo.estado(clienteId)` sobre cada membresía en orden de `clienteId`
+ * hasta el primer `LISTO` (ninguno → fin, sin token) → revoca vigentes →
  * `randomBytes(32)` → persiste solo el SHA-256 (TTL 60 min) → envía el mail
  * con el link desde `appBaseUrl` (NUNCA `Host`).
  *
@@ -66,19 +67,34 @@ export class SolicitarResetPasswordUseCase {
         this.log('MEMBRESIAS_0', usuario.id);
         return;
       }
-      if (membresias.length > 1) {
-        this.log('MEMBRESIAS_N', usuario.id);
-        return;
-      }
 
-      const clienteId = membresias[0].clienteId;
-      const estado = await this.correoDeCliente.estado(clienteId);
-      if (estado === 'SIN_CORREO') {
-        this.log('CLIENTE_SIN_CORREO', usuario.id, clienteId);
-        return;
+      // El password es global (master `Usuario`): sirve el SMTP de cualquier
+      // cliente del usuario. Orden estable por `clienteId` ascendente: el repo
+      // no garantiza orden y `MembresiaResuelta` no trae fecha de alta. Solo
+      // `estado` decide el salto al siguiente: `enviar()` nunca lanza.
+      const candidatos = [...membresias].sort((x, y) => x.clienteId.localeCompare(y.clienteId));
+      let clienteId: string | undefined;
+      let ultimoEstado: EstadoCorreoCliente = 'SIN_CORREO';
+      for (const candidato of candidatos) {
+        ultimoEstado = await this.correoDeCliente.estado(candidato.clienteId);
+        if (ultimoEstado === 'LISTO') {
+          clienteId = candidato.clienteId;
+          break;
+        }
       }
-      if (estado === 'CLIENTE_NO_DISPONIBLE') {
-        this.log('CLIENTE_NO_DISPONIBLE', usuario.id, clienteId);
+      if (clienteId === undefined) {
+        if (candidatos.length === 1) {
+          // Una sola membresía: motivo específico de ese cliente.
+          this.log(
+            ultimoEstado === 'CLIENTE_NO_DISPONIBLE'
+              ? 'CLIENTE_NO_DISPONIBLE'
+              : 'CLIENTE_SIN_CORREO',
+            usuario.id,
+            candidatos[0].clienteId,
+          );
+        } else {
+          this.log('NINGUN_CLIENTE_CON_CORREO', usuario.id);
+        }
         return;
       }
 

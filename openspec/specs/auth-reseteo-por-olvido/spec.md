@@ -15,13 +15,16 @@ de ruta quedan fijados en `sdd-design`.
 El sistema DEBE devolver la misma respuesta genérica en `POST
 /auth/forgot-password` sin importar existencia del email, actividad de la
 cuenta, cantidad de membresías (0, 1, 2+), disponibilidad de SMTP del
-tenant, o ausencia de `EMAIL_CRYPTO_KEY`. Solo con exactamente 1 membresía
-activa y SMTP configurado el sistema envía mail.
+tenant, o ausencia de `EMAIL_CRYPTO_KEY`. El sistema envía mail solo si el
+usuario tiene al menos 1 membresía activa y algún cliente suyo con SMTP
+configurado. Con 2+ membresías envía UN solo mail, por el SMTP del primer
+cliente con correo `LISTO` en orden ascendente de `clienteId`, y el token se
+emite con el `clienteId` de ese cliente (el password es global).
 
 #### Scenario: Ningún caso sin mail se distingue
 
-- GIVEN email inexistente, cuenta inactiva/soft-deleted, 0 o 2+ membresías,
-  tenant sin SMTP, o `EMAIL_CRYPTO_KEY` ausente
+- GIVEN email inexistente, cuenta inactiva/soft-deleted, 0 membresías,
+  ningún cliente del usuario con SMTP, o `EMAIL_CRYPTO_KEY` ausente
 - WHEN se solicita el reset
 - THEN la respuesta es genérica y no se envía mail
 
@@ -30,6 +33,15 @@ activa y SMTP configurado el sistema envía mail.
 - GIVEN email existente, cuenta activa, 1 membresía activa, tenant con SMTP
 - WHEN se solicita el reset
 - THEN la respuesta es idéntica a la anterior y se envía el mail
+
+#### Scenario: Con varios clientes se envía un solo mail por el primero con correo
+
+- GIVEN email existente, cuenta activa, 2+ membresías activas, y el primer
+  cliente (orden por `clienteId`) sin SMTP pero otro con SMTP
+- WHEN se solicita el reset
+- THEN la respuesta es idéntica a la genérica, se envía exactamente un mail
+  por el SMTP del primer cliente con SMTP, y el token queda con el `clienteId`
+  de ese cliente
 
 ### Requirement: La solicitud no filtra información por tiempo de respuesta
 

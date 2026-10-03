@@ -384,7 +384,7 @@ describe('POST /auth/forgot-password e2e (WU-7, 7.4)', () => {
     emails.push((await crearUsuario('cero-membresias')).email); // MEMBRESIAS_0
 
     {
-      const { id, email } = await crearUsuario('dos-membresias'); // MEMBRESIAS_N
+      const { id, email } = await crearUsuario('dos-membresias'); // NINGUN_CLIENTE_CON_CORREO (2 clientes sin SMTP)
       const [ca, cb] = [await crearCliente('n-a'), await crearCliente('n-b')];
       await crearMembresia(id, ca.id, rol);
       await crearMembresia(id, cb.id, rol);
