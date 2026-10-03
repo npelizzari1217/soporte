@@ -62,3 +62,27 @@ Modo: estandar. Tareas 3.1 a 3.3 marcadas en `tasks.md`. Rama `feat/formulario-p
 - Deuda de Ayuda: boton "Formulario" (solo ROOT) por fila de cliente, con slug y habilitacion. No hay articulo previo que se vuelva falso.
 - `pnpm lint` del frontend requiere `JWT_SECRET` en el entorno (se uso un valor ficticio).
 
+## WU-4 — QR del equipo (BE) (completa)
+
+Modo: estandar. Tareas 4.1 a 4.5 marcadas en `tasks.md`. Cuatro ramas apiladas sobre `feat/formulario-publico-qr-wu03`: `wu04` (4a), `wu04b` (4b), `wu04c` (4c), `wu04d` (4d). Se partio porque el total (1.051 lineas) excede el presupuesto de 400 y cada parte lleva sus tests.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Integracion | `prisma-equipo-informatico.qr.integration.spec.ts` (tenants efimeros A y B): `findByQrHash`, regeneracion, aislamiento entre tenants, CAS sobre equipo de baja/borrado/inexistente, UNIQUE nullable, `save()` no pisa el QR, `rollback.sql` |
+| Unit | `emitir-qr-equipo.use-case.spec.ts` (11): sin slug, CAS en 0 filas, congela antes de escribir, token 128 bits distinto del id, regenerar, baja, cliente inexistente; `equipos.controller.spec.ts` (accion, 404/403/409 con `code`/422) |
+| Runtime harness | e2e `emitir-qr-equipo.e2e.spec.ts` con guards reales: 401, 403 (sin congelar), 201 con solo el hash en la base, regeneracion, 409 `QR_REQUIERE_SLUG`, 404/422, carrera emitir vs cambiar slug (12 iteraciones, 3 corridas) |
+| Rollback | Migracion `20261003130000_equipos_qr` con `rollback.sql` (borra los hashes); resto con `git revert` |
+
+### Decisiones tomadas en apply
+
+- Orden del caso de uso: equipo (404/baja) y cliente/slug se validan ANTES del CAS de master, asi un equipo inexistente no congela el slug del cliente. Luego `congelarSlug(id, slugLeido)` y despues `guardarQrHash`.
+- `guardarQrHash` es un CAS (`activo = true AND deleted_at IS NULL`): una baja entre la lectura y la escritura da `false` y el caso de uso responde `EquipoDadoDeBaja`. `findByQrHash` devuelve tambien bajas y borrados: decidir "abre sin equipo" es del resolver de la WU-12.
+- `save()` y `toPersistence()` no escriben `qr_*`: solo `guardarQrHash`, como el slug con sus CAS.
+- Errores nuevos con `code` y 409: `QR_REQUIERE_SLUG`, `QR_SLUG_CAMBIADO`. `ClienteNoEncontradoError` mapea a 404. Los 404/422 existentes de equipos siguen sin `code` (mapeo compartido preexistente).
+- Invariante de la carrera, corregida al escribir el e2e: emitir puede ganar con el slug NUEVO si el cambio llega antes de leerlo (201/CAMBIADO, URL con el slug nuevo ya congelado). Lo prohibido es un QR con un slug distinto del que quedo vigente.
+- La URL se arma con `entorno.APP_BASE_URL` (sin barra final), nunca con `Host`. El token solo existe en la respuesta del POST.
+- Entorno: hubo que aplicar la migracion a `soporte_tenant_test` (`DATABASE_URL_TENANT=... pnpm migrate:tenant`) para que los specs de integracion existentes vieran las columnas nuevas.
+- Deuda de Ayuda: ninguna todavia (sin pantalla); el panel del QR es WU-5.
+

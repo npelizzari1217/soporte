@@ -89,11 +89,13 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-4 — QR del equipo (BE)
 
-- [ ] 4.1 Migración tenant: `equipos_informaticos.qr_token_hash` UNIQUE nullable y `qr_emitido_at`, con `rollback.sql`.
-- [ ] 4.2 Test unit de `EmitirQrEquipoUseCase`: sin slug falla, regenerar invalida el anterior, congela antes de escribir.
-- [ ] 4.3 `IEquipoInformaticoRepository.findByQrHash/guardarQrHash`, repo Prisma y `EmitirQrEquipoUseCase` (`randomBytes(16)` base64url, URL armada por el backend).
-- [ ] 4.4 `POST /equipos/:id/qr` con `@RequiereAcciones('EQUIPOS:MODIFICACION')`.
-- [ ] 4.5 Integración `findByQrHash`; e2e 401/403; integración CAS concurrente emitir vs cambiar slug.
+- [x] 4.1 Migración tenant: `equipos_informaticos.qr_token_hash` UNIQUE nullable y `qr_emitido_at`, con `rollback.sql`.
+- [x] 4.2 Test unit de `EmitirQrEquipoUseCase`: sin slug falla, regenerar invalida el anterior, congela antes de escribir.
+- [x] 4.3 `IEquipoInformaticoRepository.findByQrHash/guardarQrHash`, repo Prisma y `EmitirQrEquipoUseCase` (`randomBytes(16)` base64url, URL armada por el backend).
+- [x] 4.4 `POST /equipos/:id/qr` con `@RequiereAcciones('EQUIPOS:MODIFICACION')`.
+- [x] 4.5 Integración `findByQrHash`; e2e 401/403; integración CAS concurrente emitir vs cambiar slug.
+
+> **WU-4 partida en cuatro PRs** (2026-10-03, 1.051 lineas en total): 4a migracion tenant, puerto y repo con su integracion (267); 4b caso de uso, errores y mapeo con sus specs (293); 4c endpoint, DTO y modulo con el spec del controller (145); 4d e2e 401/403/emision/regeneracion/slug/carrera CAS (343). Cada parte compila y pasa sola; ninguna separa el codigo de su spec de unidad. El e2e va aparte porque solo suma pruebas sobre la ruta de 4c (criterio del dueño del 2026-09-28).
 
 ## WU-5 — FE: panel QR
 
