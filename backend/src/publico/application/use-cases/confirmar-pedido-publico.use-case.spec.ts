@@ -15,6 +15,7 @@ import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { SinCicloActivoError } from '../../../tickets/domain/errors/tickets.errors';
 import { PedidoPendienteEntity } from '../../domain/entities/pedido-pendiente.entity';
 import { PedidoPublicoTokenEntity } from '../../domain/entities/pedido-publico-token.entity';
+import { FormularioPublicoNoDisponibleError } from '../../domain/errors/publico.errors';
 import { ResolverClientePublicoService } from '../services/resolver-cliente-publico.service';
 import { ConfirmarPedidoPublicoUseCase } from './confirmar-pedido-publico.use-case';
 
@@ -182,6 +183,11 @@ function setup(
 
 const comando = { slug: 'colegio-norte', token: TOKEN_CRUDO };
 
+function esNoDisponible(r: Result<unknown, DomainError>): void {
+  expect(r.isFail()).toBe(true);
+  expect(r.getError()).toBeInstanceOf(FormularioPublicoNoDisponibleError);
+}
+
 describe('ConfirmarPedidoPublicoUseCase', () => {
   describe('camino feliz', () => {
     it('crea el ticket con los datos del pendiente, MEDIA, OMITIR y el autor del formulario', async () => {
@@ -279,5 +285,119 @@ describe('ConfirmarPedidoPublicoUseCase', () => {
       expect(tx.rollbacks).toBe(1);
       expect(tokenRepo.marcarUsado).not.toHaveBeenCalled();
     });
+  });
+
+  describe('404 uniforme', () => {
+    it('token inexistente: no toca el tenant ni la transaccion', async () => {
+      const { useCase, txRunner, pendienteRepo } = setup({ token: null });
+
+      esNoDisponible(await useCase.ejecutar(comando));
+      expect(txRunner.run).not.toHaveBeenCalled();
+      expect(pendienteRepo.consumir).not.toHaveBeenCalled();
+    });
+
+    it('token vacio no consulta master', async () => {
+      const { useCase, tokenRepo } = setup();
+
+      esNoDisponible(await useCase.ejecutar({ slug: 'colegio-norte', token: '' }));
+      expect(tokenRepo.findByHash).not.toHaveBeenCalled();
+    });
+
+    it('token vencido, usado o revocado no es vigente', async () => {
+      const vencido = PedidoPublicoTokenEntity.emitir({
+        clienteId: CLIENTE_ID,
+        tokenHash: sha256(TOKEN_CRUDO),
+        ahora: new Date('2020-01-01T00:00:00Z'),
+      });
+      const usado = PedidoPublicoTokenEntity.reconstitute(
+        {
+          clienteId: CLIENTE_ID,
+          tokenHash: sha256(TOKEN_CRUDO),
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: new Date(),
+          revokedAt: null,
+        },
+        'u',
+        new Date(),
+        new Date(),
+        null,
+      );
+      const revocado = PedidoPublicoTokenEntity.reconstitute(
+        {
+          clienteId: CLIENTE_ID,
+          tokenHash: sha256(TOKEN_CRUDO),
+          expiresAt: new Date(Date.now() + 60_000),
+          usedAt: null,
+          revokedAt: new Date(),
+        },
+        'r',
+        new Date(),
+        new Date(),
+        null,
+      );
+      for (const token of [vencido, usado, revocado]) {
+        const { useCase, txRunner } = setup({ token });
+        esNoDisponible(await useCase.ejecutar(comando));
+        expect(txRunner.run).not.toHaveBeenCalled();
+      }
+    });
+
+    it('token de otro cliente sobre este slug es 404 sin abrir transaccion', async () => {
+      const ajeno = PedidoPublicoTokenEntity.emitir({
+        clienteId: '01977a00-0000-7000-8000-0000000000c2',
+        tokenHash: sha256(TOKEN_CRUDO),
+      });
+      const { useCase, txRunner, crearTicketSoporte } = setup({ token: ajeno });
+
+      esNoDisponible(await useCase.ejecutar(comando));
+      expect(txRunner.run).not.toHaveBeenCalled();
+      expect(crearTicketSoporte.execute).not.toHaveBeenCalled();
+    });
+
+    it('slug inexistente o cliente no disponible es 404', async () => {
+      const { useCase, txRunner } = setup({ cliente: null });
+
+      esNoDisponible(await useCase.ejecutar(comando));
+      expect(txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it.each<EstadoCorreoCliente>(['SIN_CORREO', 'CLIENTE_NO_DISPONIBLE'])(
+      'correo en estado %s es 404 y no consume el pendiente',
+      async (estado) => {
+        const { useCase, pendienteRepo } = setup({ estado });
+
+        esNoDisponible(await useCase.ejecutar(comando));
+        expect(pendienteRepo.consumir).not.toHaveBeenCalled();
+      },
+    );
+
+    it('sin pendiente (ya consumido por otra confirmacion) es 404 y no crea nada', async () => {
+      const { useCase, crearTicketSoporte, solicitanteRepo, tokenRepo } = setup({
+        consumido: null,
+      });
+
+      esNoDisponible(await useCase.ejecutar(comando));
+      expect(solicitanteRepo.save).not.toHaveBeenCalled();
+      expect(crearTicketSoporte.execute).not.toHaveBeenCalled();
+      expect(tokenRepo.marcarUsado).not.toHaveBeenCalled();
+    });
+
+    it('pendiente vencido es 404, queda borrado (PII) y no crea ticket', async () => {
+      const { useCase, crearTicketSoporte, tx } = setup({
+        consumido: pendiente({ ahora: new Date('2020-01-01T00:00:00Z') }),
+      });
+
+      esNoDisponible(await useCase.ejecutar(comando));
+      expect(crearTicketSoporte.execute).not.toHaveBeenCalled();
+      expect(tx.commits).toBe(1);
+      expect(tx.rollbacks).toBe(0);
+    });
+  });
+
+  it('sin la prioridad MEDIA en el catalogo lanza un error defensivo antes de abrir la transaccion', async () => {
+    const { useCase, txRunner } = setup({ prioridadId: null });
+
+    await expect(useCase.ejecutar(comando)).rejects.toThrow(/MEDIA/);
+    expect(txRunner.run).not.toHaveBeenCalled();
   });
 });
