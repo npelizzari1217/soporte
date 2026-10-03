@@ -207,3 +207,55 @@ export class LogoClienteNoEncontradoError extends DomainError {
     super(`El cliente con id "${clienteId}" no tiene un logo disponible.`);
   }
 }
+
+/**
+ * SlugInvalidoError — el slug del formulario publico no cumple el formato
+ * (`SLUG_REGEX`), tiene forma de UUID, o coincide con el `id` o el `dbName`
+ * del cliente: el slug nunca puede ser un identificador interno.
+ * → HTTP 400/422 en la capa de presentacion.
+ */
+export class SlugInvalidoError extends DomainError {
+  readonly code = 'SLUG_INVALIDO';
+
+  constructor(motivo: string) {
+    super(`Slug inválido: ${motivo}`);
+  }
+}
+
+/**
+ * SlugCongeladoError — el cliente ya emitio un QR y su slug quedo congelado:
+ * cambiarlo romperia los QR impresos.
+ * → HTTP 409 Conflict en la capa de presentacion.
+ */
+export class SlugCongeladoError extends DomainError {
+  readonly code = 'SLUG_CONGELADO';
+
+  constructor() {
+    super('El slug del cliente está congelado porque ya se emitió un QR.');
+  }
+}
+
+/**
+ * SlugRequeridoError — se intento habilitar el formulario publico de un
+ * cliente sin slug: no existiria una URL publica.
+ * → HTTP 409/422 en la capa de presentacion.
+ */
+export class SlugRequeridoError extends DomainError {
+  readonly code = 'SLUG_REQUERIDO';
+
+  constructor() {
+    super('No se puede habilitar el formulario público de un cliente sin slug.');
+  }
+}
+
+/**
+ * SlugDuplicadoError — otro cliente ya usa ese slug (UNIQUE).
+ * → HTTP 409 Conflict en la capa de presentacion.
+ */
+export class SlugDuplicadoError extends DomainError {
+  readonly code = 'SLUG_DUPLICADO';
+
+  constructor() {
+    super('Ya existe otro cliente con ese slug.');
+  }
+}

@@ -18,7 +18,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { IClienteRepository } from '../../../domain/ports/i-cliente.repository';
+import {
+  IClienteRepository,
+  ResultadoCambioSlug,
+} from '../../../domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../domain/entities/cliente.entity';
 import { ClienteMapper } from './cliente.mapper';
 
@@ -38,6 +41,34 @@ export class PrismaClienteRepository implements IClienteRepository {
   async findByDbName(dbName: string): Promise<ClienteEntity | null> {
     const row = await this.client.cliente.findUnique({ where: { dbName } });
     return row ? ClienteMapper.toDomain(row) : null;
+  }
+
+  async findBySlug(slug: string): Promise<ClienteEntity | null> {
+    const row = await this.client.cliente.findUnique({ where: { slug } });
+    return row ? ClienteMapper.toDomain(row) : null;
+  }
+
+  async congelarSlug(id: string, slugEsperado: string): Promise<boolean> {
+    const filas = await this.client.$executeRaw`
+      UPDATE clientes
+         SET slug_congelado_at = coalesce(slug_congelado_at, now())
+       WHERE id = ${id}::uuid AND slug = ${slugEsperado}`;
+    return filas > 0;
+  }
+
+  async cambiarSlugSiNoCongelado(id: string, nuevo: string): Promise<ResultadoCambioSlug> {
+    try {
+      const { count } = await this.client.cliente.updateMany({
+        where: { id, slugCongeladoAt: null },
+        data: { slug: nuevo },
+      });
+      return count > 0 ? 'CAMBIADO' : 'CONGELADO';
+    } catch (err) {
+      if (typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002') {
+        return 'DUPLICADO';
+      }
+      throw err;
+    }
   }
 
   async findAll(): Promise<ClienteEntity[]> {

@@ -1,5 +1,8 @@
 import { ClienteEntity } from '../entities/cliente.entity';
 
+/** Resultado de `cambiarSlugSiNoCongelado`. */
+export type ResultadoCambioSlug = 'CAMBIADO' | 'CONGELADO' | 'DUPLICADO';
+
 /**
  * IClienteRepository — puerto de persistencia para la entidad Cliente.
  *
@@ -35,8 +38,30 @@ export interface IClienteRepository {
   findAll(): Promise<ClienteEntity[]>;
 
   /**
+   * Busca un cliente por su slug (formulario publico). Retorna null si no
+   * existe. Incluye inactivos y soft-deleted: el consumidor filtra.
+   */
+  findBySlug(slug: string): Promise<ClienteEntity | null>;
+
+  /**
+   * CAS de congelamiento (ADR-2): marca `slug_congelado_at` solo si el slug
+   * actual sigue siendo `slugEsperado` (`coalesce`: no pisa una marca previa).
+   * Devuelve `false` si el slug cambio (0 filas) y el caller debe abortar.
+   */
+  congelarSlug(id: string, slugEsperado: string): Promise<boolean>;
+
+  /**
+   * CAS de cambio de slug (ADR-2): escribe `nuevo` solo si el slug no esta
+   * congelado. `CONGELADO` si hay 0 filas por la marca (o el cliente no
+   * existe), `DUPLICADO` si otro cliente ya usa ese slug.
+   */
+  cambiarSlugSiNoCongelado(id: string, nuevo: string): Promise<ResultadoCambioSlug>;
+
+  /**
    * Persiste el cliente (upsert: crea si no existe, actualiza si existe).
    * El repositorio decide si es INSERT o UPDATE según si el id ya está en DB.
+   * NO escribe `slug` ni `slugCongeladoAt` (solo los CAS de arriba): un save
+   * con una entidad vieja no puede descongelar ni pisar un slug.
    */
   save(cliente: ClienteEntity): Promise<void>;
 

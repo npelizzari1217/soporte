@@ -60,13 +60,15 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-1 — Master: slug, habilitación y congelamiento
 
-- [ ] 1.1 Migración master aditiva: `clientes.slug` varchar(63) UNIQUE nullable, CHECK `clientes_slug_formato_check`, `formulario_publico_habilitado` default `false`, `slug_congelado_at`; actualizar `backend/prisma_master/schema.prisma`.
-- [ ] 1.2 Test: `SlugCliente` rechaza formato inválido y forma de UUID (`SlugInvalidoError`).
-- [ ] 1.3 Crear `backend/src/clientes/domain/value-objects/slug-cliente.ts` (`SLUG_REGEX`, rechazo UUID).
-- [ ] 1.4 Test: `configurarSlug` rechaza `slug === id` y `slug === dbName` (normalizado, guion bajo).
-- [ ] 1.5 `ClienteEntity.configurarSlug/habilitarFormulario` y mapper.
-- [ ] 1.6 `IClienteRepository.findBySlug/congelarSlug/cambiarSlugSiNoCongelado` + repo Prisma (CAS).
-- [ ] 1.7 Integración: unicidad del slug y CAS (`congelarSlug` con 0 filas, `cambiarSlugSiNoCongelado` rechazado).
+- [x] 1.1 Migración master aditiva: `clientes.slug` varchar(63) UNIQUE nullable, CHECK `clientes_slug_formato_check`, `formulario_publico_habilitado` default `false`, `slug_congelado_at`; actualizar `backend/prisma_master/schema.prisma`.
+- [x] 1.2 Test: `SlugCliente` rechaza formato inválido y forma de UUID (`SlugInvalidoError`).
+- [x] 1.3 Crear `backend/src/clientes/domain/value-objects/slug-cliente.ts` (`SLUG_REGEX`, rechazo UUID).
+- [x] 1.4 Test: `configurarSlug` rechaza `slug === id` y `slug === dbName` (normalizado, guion bajo).
+- [x] 1.5 `ClienteEntity.configurarSlug/habilitarFormulario` y mapper.
+- [x] 1.6 `IClienteRepository.findBySlug/congelarSlug/cambiarSlugSiNoCongelado` + repo Prisma (CAS).
+- [x] 1.7 Integración: unicidad del slug y CAS (`congelarSlug` con 0 filas, `cambiarSlugSiNoCongelado` rechazado).
+
+> **WU-1 con `size:exception`** (2026-10-03): 672 líneas en 31 archivos. Separar el spec de integración de los métodos CAS dejaría el código sin el test que lo prueba, y los 18 dobles de `IClienteRepository` son obligatorios para compilar (criterio del dueño del 2026-09-28).
 
 ## WU-2 — Configurar formulario público (BE)
 

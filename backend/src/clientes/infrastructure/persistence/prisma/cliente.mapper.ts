@@ -23,6 +23,9 @@ export class ClienteMapper {
         logoStorageKey: row.logoStorageKey ?? null,
         logoMimeType: row.logoMimeType ?? null,
         logoUpdatedAt: row.logoUpdatedAt ?? null,
+        slug: row.slug ?? null,
+        formularioPublicoHabilitado: row.formularioPublicoHabilitado,
+        slugCongeladoAt: row.slugCongeladoAt ?? null,
       },
       row.id,
       row.createdAt,
@@ -38,6 +41,11 @@ export class ClienteMapper {
    * estructuralmente imposible que una edición comercial (nombre, cuit, etc.)
    * borre la config de correo sin querer. La lectura/escritura de esas
    * columnas va por `IClienteEmailConfigRepository` (WU3), no por acá.
+   *
+   * `slug` y `slug_congelado_at` tambien se omiten (sdd/formulario-publico-qr,
+   * ADR-2): se escriben SOLO por los CAS de `IClienteRepository`. Si el upsert
+   * los reescribiera, un `save()` con una entidad leida antes de emitir un QR
+   * descongelaria el slug. `formularioPublicoHabilitado` si es espejo.
    *
    * Las 3 columnas de logo NO se omiten (design.md D4, a diferencia de
    * `smtp_*`): el logo no tiene cifrado ni invariante todo-o-nada que
@@ -61,6 +69,8 @@ export class ClienteMapper {
     | 'smtpConfigUpdatedAt'
     | 'smtpVerificadoAt'
     | 'smtpVerificacionError'
+    | 'slug'
+    | 'slugCongeladoAt'
   > {
     return {
       id: entity.id,
@@ -70,6 +80,7 @@ export class ClienteMapper {
       dbName: entity.dbName,
       activo: entity.activo,
       csatHabilitado: entity.csatHabilitado,
+      formularioPublicoHabilitado: entity.formularioPublicoHabilitado,
       logoStorageKey: entity.logoStorageKey,
       logoMimeType: entity.logoMimeType,
       logoUpdatedAt: entity.logoUpdatedAt,

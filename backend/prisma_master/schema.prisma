@@ -122,6 +122,20 @@ model Cliente {
   logoMimeType   String?   @map("logo_mime_type") @db.VarChar(50)
   logoUpdatedAt  DateTime? @map("logo_updated_at") @db.Timestamptz
 
+  /// ─── Formulario publico (sdd/formulario-publico-qr, WU-1) ────────────────
+  ///
+  /// `slug`: identifica al cliente en la URL publica. Formato y regla "no es
+  /// UUID / id / dbName" en `SlugCliente` y `ClienteEntity.configurarSlug`;
+  /// el CHECK `clientes_slug_formato_check` (solo SQL) espeja el formato.
+  /// `formularioPublicoHabilitado`: default false (D12).
+  /// `slugCongeladoAt`: se marca al emitir el primer QR; desde entonces el
+  /// slug no cambia. Slug y congelamiento se escriben SOLO por los CAS de
+  /// `IClienteRepository` (congelarSlug / cambiarSlugSiNoCongelado), nunca por
+  /// el upsert de `save()`.
+  slug                        String?   @unique @db.VarChar(63)
+  formularioPublicoHabilitado Boolean   @default(false) @map("formulario_publico_habilitado")
+  slugCongeladoAt             DateTime? @map("slug_congelado_at") @db.Timestamptz
+
   membresias          Membresia[]
   encuestaTokens      EncuestaToken[]
   passwordResetTokens PasswordResetToken[]

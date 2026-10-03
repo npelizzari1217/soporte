@@ -40,6 +40,9 @@ describe('TenantGuard (R12)', () => {
     const clienteRepo: IClienteRepository = {
       findById: vi.fn().mockResolvedValue(clienteRepoResult),
       findByDbName: vi.fn(),
+      findBySlug: vi.fn(),
+      congelarSlug: vi.fn(),
+      cambiarSlugSiNoCongelado: vi.fn(),
       findAll: vi.fn(),
       save: vi.fn(),
       delete: vi.fn(),
