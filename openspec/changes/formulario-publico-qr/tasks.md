@@ -165,9 +165,11 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-13 — Solicitud de pedido
 
-- [ ] 13.1 Tests: UC no `LISTO` da 404 y no escribe PII en master; plantilla escapa HTML (`<script>`); e2e del throttle (mismo email con XFF distintos comparte cupo y el 4.º da 429; límite por cliente; slug inexistente con contador propio).
-- [ ] 13.2 `SolicitarPedidoPublicoUseCase`, `PedidoPublicoDto`, `templateVerificarPedido` con `escaparHtml`.
-- [ ] 13.3 `POST publico/c/:slug/pedido/solicitud` (202 constante, mail por `ITareasSegundoPlano`, trackers `email` y `cliente`).
+- [x] 13.1 Tests: UC no `LISTO` da 404 y no escribe PII en master; plantilla escapa HTML (`<script>`); e2e del throttle (mismo email con XFF distintos comparte cupo y el 4.º da 429; límite por cliente; slug inexistente con contador propio).
+- [x] 13.2 `SolicitarPedidoPublicoUseCase`, `PedidoPublicoDto`, `templateVerificarPedido` con `escaparHtml`.
+- [x] 13.3 `POST publico/c/:slug/pedido/solicitud` (202 constante, mail por `ITareasSegundoPlano`, trackers `email` y `cliente`).
+
+> **WU-13 partida en tres commits** (2026-10-03, ~1.020 lineas con tests): 13a plantilla y su spec (89); 13b caso de uso y su spec (390); 13c DTO, trackers `email` y `cliente`, ruta `POST solicitud`, wiring del modulo (sin registrar en `AppModule`) y el e2e. Cada parte compila y pasa sola con sus tests. `size:exception` para 13c (el e2e es la mitad del commit y separarlo dejaria el wiring sin prueba). **Deuda de Ayuda**: ninguna (sin pantalla; la ruta aun no esta expuesta).
 
 ## WU-14 — Confirmación (UC)
 

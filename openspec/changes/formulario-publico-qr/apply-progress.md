@@ -253,3 +253,29 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu12`, apilada sobre `feat/form
 - Throttler: opciones con nombre `contexto` (30 / 60 s) y `ThrottlerStorage` locales; tracker `${xff}:${slug}` (clase). Los throttlers `email`, `cliente` y `confirmacion` llegan en las WU-13/15 con `@SkipThrottle` por ruta.
 - El e2e usa un `x-forwarded-for` distinto por request para no compartir cupo entre tests.
 - Deuda de Ayuda: ninguna (sin pantalla; ruta no expuesta).
+
+
+## WU-13 — Solicitud de pedido (completa, 3/3)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu13`, apilada sobre `feat/formulario-publico-qr-wu12b`. Tres commits (13a plantilla, 13b caso de uso, 13c ruta y e2e). `size:exception` para 13c: el e2e es la mitad del commit y separarlo dejaria el wiring sin prueba.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/publico`: 9 archivos, 81 tests verdes (3 de plantilla, 10 del caso de uso, 8 e2e) |
+| Runtime harness | e2e `pedido-publico-solicitud.e2e.spec.ts` (dos tenants efimeros, guards reales, `EMAIL_SENDER` falso): 202 constante con la PII solo en el tenant y solo el hash en master; correo sin `LISTO` da 404 sin escribir; mismo email con XFF distintos comparte cupo (4.º da 429, sin mail); pedido 31 al cliente da 429 y otro cliente no se afecta; slug inexistente con contador propio (404 x30, luego 429) |
+| Rollback | `git revert` de 13c, 13b y 13a; sin migracion y sin consumidores (el modulo no esta en `AppModule`) |
+
+### Decisiones tomadas en apply
+
+- El caso de uso corre sincrono (hay que decidir 404 vs 202) y solo el mail se difiere con `ITareasSegundoPlano`, desde el propio caso de uso. `TAREAS_SEGUNDO_PLANO` es local a `FormularioPublicoModule`, como en `RecuperacionPasswordModule`.
+- Orden de escrituras: resolver, `estado() === LISTO`, validar el pendiente (entidad), purgar vencidos, guardar pendiente (tenant), guardar token (master). Un estado distinto de `LISTO` o datos invalidos no escriben nada. Un token de master nunca apunta a una fila inexistente; un pendiente huerfano lo barre la purga.
+- Token de verificacion: `randomBytes(32)` en base64url (43 caracteres), solo el sha256 se persiste; el crudo vive unicamente en el link `APP_BASE_URL/c/<slug>/pedido/confirmar#token=...`.
+- Trackers por throttler: cierra el hueco conocido de WU-12. `email` y `cliente` llevan su propio `getTracker` en las opciones con nombre del modulo (`trackerEmail`, `trackerCliente`, exportados del guard); el `getTracker` de la clase queda para `contexto`. `@SkipThrottle` por ruta: `contexto` salta `email` y `cliente`; `solicitud` salta `contexto`.
+- Comportamiento del guard: los throttlers corren en orden; un 429 por email corta antes de `cliente`, asi que ese pedido rechazado no consume cupo del cliente. El 429 usa el mensaje por defecto de la libreria, el mismo para ambos limites.
+- Cuerpo del 202 constante: `{ mensaje }` fijo. El 404 reusa el mensaje uniforme del contexto. Datos invalidos para el dominio (que el DTO deberia filtrar antes) dan 400.
+- `PedidoPublicoDto`: `@Transform` recorta; `whitelist: true` descarta `prioridadId`, `clienteId` y similares (el e2e manda `prioridadId`).
+- El caso de uso recibe `Pick<IEquipoInformaticoRepository, 'findByQrHash'>` para evitar un doble completo en el spec.
+- Deuda de Ayuda: ninguna (sin pantalla; ruta no expuesta).
+
