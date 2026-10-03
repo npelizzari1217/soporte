@@ -506,6 +506,7 @@ describe('toStockInsumoResponseDto', () => {
       stock: 8,
       saldos: { NUEVO: 3, USADO: 5 },
       admiteUsado: true,
+      admiteUsadoEnReingreso: true,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
       seguimiento: 'NINGUNO' as const,
@@ -515,6 +516,7 @@ describe('toStockInsumoResponseDto', () => {
     expect(dto.stock).toBe(8);
     expect(dto.saldos).toEqual({ NUEVO: 3, USADO: 5 });
     expect(dto.admiteUsado).toBe(true);
+    expect(dto.admiteUsadoEnReingreso).toBe(true);
   });
 
   it('mapea el saldo con su punto de reposición y el estado ya resuelto', () => {
@@ -523,6 +525,7 @@ describe('toStockInsumoResponseDto', () => {
       stock: 2,
       saldos: { NUEVO: 2, USADO: 0 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
       seguimiento: 'NINGUNO' as const,
@@ -534,6 +537,7 @@ describe('toStockInsumoResponseDto', () => {
       stock: 2,
       saldos: { NUEVO: 2, USADO: 0 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
       stockMinimo: 10,
       estadoReposicion: 'BAJO_MINIMO',
       seguimiento: 'NINGUNO',
@@ -547,6 +551,7 @@ describe('toStockInsumoResponseDto', () => {
       stock: 4,
       saldos: { NUEVO: 4, USADO: 0 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
       seguimiento: 'SERIE' as const,
@@ -568,6 +573,7 @@ describe('toStockInsumoResponseDto', () => {
       stock: 0,
       saldos: { NUEVO: 0, USADO: 0 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
       stockMinimo: null,
       estadoReposicion: 'SIN_PUNTO_DEFINIDO',
       seguimiento: 'NINGUNO' as const,

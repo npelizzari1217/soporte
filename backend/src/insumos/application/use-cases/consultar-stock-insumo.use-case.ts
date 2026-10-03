@@ -45,6 +45,12 @@ export interface StockDeInsumo {
    * derive la regla por su cuenta.
    */
   admiteUsado: boolean;
+  /**
+   * Si el reingreso de una pieza (devolver una entrega, recuperar una descartada) admite la
+   * condición USADO. Es la regla de `admiteUsado` con la exención G2: la pieza existe físicamente,
+   * así que una familia dada de baja o deshabilitada no la impide; `esRepuesto = false` sí.
+   */
+  admiteUsadoEnReingreso: boolean;
   /** Punto de reposición del insumo, o `null` si no tiene uno definido. */
   stockMinimo: number | null;
   /**
@@ -144,12 +150,18 @@ export class ConsultarStockInsumoUseCase {
         ).length
       : 0;
     const admiteUsado = (await validarCondicionAdmitida(this.familiaRepo, insumo, 'USADO')).isOk();
+    const admiteUsadoEnReingreso = (
+      await validarCondicionAdmitida(this.familiaRepo, insumo, 'USADO', {
+        admitirFamiliaNoVigente: true,
+      })
+    ).isOk();
 
     return Result.ok({
       insumoId: insumo.id,
       stock: saldos.total,
       saldos: { NUEVO: saldos.NUEVO, USADO: saldos.USADO },
       admiteUsado,
+      admiteUsadoEnReingreso,
       stockMinimo: insumo.stockMinimo,
       // La reposición mira solo lo NUEVO: los usados no ocultan la falta.
       estadoReposicion: evaluarReposicion(saldos.NUEVO, insumo.stockMinimo),

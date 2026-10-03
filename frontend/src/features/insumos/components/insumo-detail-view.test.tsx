@@ -94,6 +94,7 @@ const STOCK_SUFICIENTE: StockInsumo = {
   stock: 12,
   saldos: { NUEVO: 12, USADO: 0 },
   admiteUsado: false,
+  admiteUsadoEnReingreso: false,
   stockMinimo: 5,
   estadoReposicion: "SUFICIENTE",
   seguimiento: "NINGUNO",
@@ -229,6 +230,7 @@ describe("InsumoDetailView — estado de reposición", () => {
       stock: 40,
       saldos: { NUEVO: 40, USADO: 0 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
       stockMinimo: 5,
       estadoReposicion: "BAJO_MINIMO",
       seguimiento: "NINGUNO",
@@ -246,6 +248,7 @@ describe("InsumoDetailView — estado de reposición", () => {
       stock: 3,
       saldos: { NUEVO: 3, USADO: 0 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
       stockMinimo: null,
       estadoReposicion: "SIN_PUNTO_DEFINIDO",
       seguimiento: "NINGUNO",
@@ -273,6 +276,7 @@ describe("InsumoDetailView — saldos nuevo y usado", () => {
       stock: 6,
       saldos: { NUEVO: 4, USADO: 2 },
       admiteUsado: true,
+      admiteUsadoEnReingreso: true,
     });
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
@@ -304,6 +308,7 @@ describe("InsumoDetailView — saldos nuevo y usado", () => {
       stock: 14,
       saldos: { NUEVO: 12, USADO: 2 },
       admiteUsado: false,
+      admiteUsadoEnReingreso: false,
     });
     renderWithProviders(<InsumoDetailView insumoId={INSUMO.id} />, { user: LECTOR });
 
@@ -317,6 +322,7 @@ describe("InsumoDetailView — saldos nuevo y usado", () => {
       stock: 20,
       saldos: { NUEVO: 0, USADO: 20 },
       admiteUsado: true,
+      admiteUsadoEnReingreso: true,
       stockMinimo: 5,
       estadoReposicion: "BAJO_MINIMO",
       seguimiento: "NINGUNO",

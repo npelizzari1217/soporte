@@ -8,8 +8,9 @@
  * - Modo `recuperar`: la unidad está `DESCARTADA`. Pide la condición y un
  *   motivo obligatorio de hasta 500 caracteres (`INSUMOS:AJUSTAR`).
  *
- * **USADO solo se ofrece si la familia admite usados** (`admiteUsado` del
- * stock, resuelto por el backend). Si la consulta de stock no está disponible
+ * **USADO solo se ofrece si el reingreso admite usados** (`admiteUsadoEnReingreso` del
+ * stock, resuelto por el backend con la exención G2: una familia de repuestos dada de baja o
+ * deshabilitada sigue admitiéndolo; `admiteUsado` no sirve acá porque exige familia vigente). Si la consulta de stock no está disponible
  * se ofrece igual y decide el backend; sin selector la condición es NUEVO.
  * Una pendiente descartada se recupera sin serial y el diálogo lo aclara.
  *
@@ -57,7 +58,7 @@ function FormularioReingreso({ insumoId, unidad, modo, onClose }: FormularioProp
   const recuperar = useRecuperarUnidadDescartada(insumoId, unidad.id);
   const mutation = recupera ? recuperar : devolver;
   const stockQuery = useStockInsumo(insumoId, { refetchOnMount: false });
-  const ofreceUsado = stockQuery.isError || stockQuery.data?.admiteUsado === true;
+  const ofreceUsado = stockQuery.isError || stockQuery.data?.admiteUsadoEnReingreso === true;
 
   const {
     register,

@@ -221,6 +221,7 @@ describe('ConsultarStockInsumoUseCase', () => {
       stock: 50,
       saldos: { NUEVO: 50, USADO: 0 },
       admiteUsado: true,
+      admiteUsadoEnReingreso: true,
       stockMinimo: 20,
       estadoReposicion: 'SUFICIENTE',
       seguimiento: 'NINGUNO',
@@ -302,6 +303,36 @@ describe('ConsultarStockInsumoUseCase', () => {
       const result = await c.useCase.execute('ins-1');
 
       expect(result.getValue().admiteUsado).toBe(false);
+    }
+  });
+
+  // ─── admiteUsadoEnReingreso (exención G2) ────────────────────────────────
+
+  it('admiteUsadoEnReingreso es true para una familia de repuestos aunque no esté vigente', async () => {
+    for (const familia of [
+      { esRepuesto: true },
+      { esRepuesto: true, activo: false },
+      { esRepuesto: true, dadaDeBaja: true },
+    ]) {
+      const c = buildColaboradores({ familia });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().admiteUsadoEnReingreso).toBe(true);
+    }
+  });
+
+  it('admiteUsadoEnReingreso es false si la familia no es de repuestos o no existe', async () => {
+    for (const familia of [
+      { esRepuesto: false },
+      { esRepuesto: false, activo: false },
+      { inexistente: true },
+    ]) {
+      const c = buildColaboradores({ familia });
+
+      const result = await c.useCase.execute('ins-1');
+
+      expect(result.getValue().admiteUsadoEnReingreso).toBe(false);
     }
   });
 

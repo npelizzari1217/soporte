@@ -29,12 +29,17 @@ const ENTREGADA = buildUnidad();
 const DESCARTADA = buildUnidad({ id: "u-2", numeroSerie: "SN-002", estado: "DESCARTADA" });
 const DESCARTADA_PENDIENTE = buildUnidad({ id: "u-3", numeroSerie: null, estado: "DESCARTADA" });
 
-function mockUnidades(unidades: UnidadInsumo[], admiteUsado = true): void {
+function mockUnidades(
+  unidades: UnidadInsumo[],
+  admiteUsado = true,
+  admiteUsadoEnReingreso = admiteUsado,
+): void {
   const stock: StockInsumo = {
     insumoId: INSUMO_ID,
     stock: 0,
     saldos: { NUEVO: 0, USADO: 0 },
     admiteUsado,
+    admiteUsadoEnReingreso,
     stockMinimo: null,
     estadoReposicion: "SIN_PUNTO_DEFINIDO",
     seguimiento: "SERIE",
@@ -102,6 +107,24 @@ describe("UnidadReingresoDialog (desde la sección de unidades)", () => {
 
     await waitFor(() => expect(llamadas).toHaveLength(1));
     expect(llamadas[0].body).toEqual({ condicion: "NUEVO" });
+  });
+
+  it("con la familia no vigente pero de repuestos (exención G2) sigue ofreciendo USADO al devolver y al recuperar", async () => {
+    mockUnidades([ENTREGADA, DESCARTADA], false, true);
+    const llamadas = mockPost("devolucion-entrega", MOVIMIENTO);
+    renderWithProviders(<UnidadesInsumoSection insumoId={INSUMO_ID} />, {
+      user: buildUser({ permisos: ["INSUMOS:LECTURA", "INSUMOS:ALTAS", "INSUMOS:AJUSTAR"], modulos: ["INSUMOS"] }),
+    });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Devolver al depósito SN-001" }));
+    await userEvent.selectOptions(await screen.findByLabelText("Condición"), "USADO");
+    await userEvent.click(screen.getByRole("button", { name: "Devolver al depósito" }));
+    await waitFor(() => expect(llamadas).toHaveLength(1));
+    expect(llamadas[0].body).toEqual({ condicion: "USADO" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await userEvent.click(await screen.findByRole("button", { name: "Recuperar SN-002" }));
+    expect(await screen.findByLabelText("Condición")).toBeInTheDocument();
   });
 
   it("recupera una descartada con su motivo, como usada", async () => {
