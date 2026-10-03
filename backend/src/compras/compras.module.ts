@@ -305,8 +305,9 @@ import { ComprasController } from './interface/controllers/compras.controller';
     },
     {
       provide: ObtenerCompraUseCase,
-      useFactory: (compraRepo: ICompraRepository) => new ObtenerCompraUseCase(compraRepo),
-      inject: [COMPRA_REPOSITORY],
+      useFactory: (compraRepo: ICompraRepository, insumoRepo: IInsumoRepository) =>
+        new ObtenerCompraUseCase(compraRepo, insumoRepo),
+      inject: [COMPRA_REPOSITORY, INSUMO_REPOSITORY],
     },
     {
       provide: ListarOperacionesCompraUseCase,

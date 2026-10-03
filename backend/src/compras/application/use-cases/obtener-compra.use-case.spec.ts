@@ -17,8 +17,28 @@ import { ObtenerCompraUseCase } from './obtener-compra.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import { CompraNoEncontradaError } from '../../domain/errors/compras.errors';
+import { InsumoEntity } from '../../../insumos/domain/entities/insumo.entity';
+import type { SeguimientoInsumo } from '../../../insumos/domain/entities/unidad-insumo.entity';
+import type { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
 
 const COMPRA_ID = 'compra-1';
+
+function crearInsumo(id: string, seguimiento: SeguimientoInsumo): InsumoEntity {
+  return InsumoEntity.create(
+    {
+      codigo: `COD-${id}`,
+      nombre: `Insumo ${id}`,
+      familiaId: 'fam-1',
+      unidadMedidaId: 'uni-1',
+      stockMinimo: null,
+      activo: true,
+      codigosAlternativos: [],
+      compatibilidad: [],
+      seguimiento,
+    },
+    id,
+  );
+}
 
 function crearItemPropsValidas(
   overrides: Partial<ItemCompraCreateProps> = {},
@@ -65,8 +85,9 @@ function crearCompra(
 describe('ObtenerCompraUseCase', () => {
   function makeCollaborators() {
     const compraRepo = { findByIdConItems: vi.fn() };
-    const useCase = new ObtenerCompraUseCase(compraRepo as never);
-    return { useCase, compraRepo };
+    const insumoRepo = { findById: vi.fn<IInsumoRepository['findById']>() };
+    const useCase = new ObtenerCompraUseCase(compraRepo as never, insumoRepo);
+    return { useCase, compraRepo, insumoRepo };
   }
 
   it('retorna la CompraEntity completa CON sus ítems', async () => {
@@ -78,10 +99,47 @@ describe('ObtenerCompraUseCase', () => {
     const result = await c.useCase.execute({ compraId: COMPRA_ID });
 
     expect(result.isOk()).toBe(true);
-    const encontrada = result.getValue();
+    const encontrada = result.getValue().compra;
     expect(encontrada.id).toBe(COMPRA_ID);
     expect(encontrada.items).toHaveLength(1);
     expect(encontrada.items[0].id).toBe('item-1');
+  });
+
+  it('resuelve el seguimiento de cada insumo declarado, una sola lectura por insumo, para que quien recibe no dependa de leer el catálogo', async () => {
+    const c = makeCollaborators();
+    const items = [
+      ItemCompraEntity.create(crearItemPropsValidas({ insumoId: 'ins-serie' }), 'item-1'),
+      ItemCompraEntity.create(crearItemPropsValidas({ insumoId: 'ins-serie' }), 'item-2'),
+      ItemCompraEntity.create(crearItemPropsValidas({ insumoId: 'ins-cant' }), 'item-3'),
+      ItemCompraEntity.create(crearItemPropsValidas(), 'item-4'),
+    ];
+    c.compraRepo.findByIdConItems.mockResolvedValue(crearCompra(items));
+    c.insumoRepo.findById.mockImplementation(async (id: string) =>
+      crearInsumo(id, id === 'ins-serie' ? 'SERIE' : 'NINGUNO'),
+    );
+
+    const result = await c.useCase.execute({ compraId: COMPRA_ID });
+
+    expect(Object.fromEntries(result.getValue().seguimientoPorInsumo)).toEqual({
+      'ins-serie': 'SERIE',
+      'ins-cant': 'NINGUNO',
+    });
+    expect(c.insumoRepo.findById).toHaveBeenCalledTimes(2);
+  });
+
+  it('un insumo que ya no existe no entra al mapa y no rompe el detalle', async () => {
+    const c = makeCollaborators();
+    const item = ItemCompraEntity.create(
+      crearItemPropsValidas({ insumoId: 'ins-borrado' }),
+      'item-1',
+    );
+    c.compraRepo.findByIdConItems.mockResolvedValue(crearCompra([item]));
+    c.insumoRepo.findById.mockResolvedValue(null);
+
+    const result = await c.useCase.execute({ compraId: COMPRA_ID });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().seguimientoPorInsumo.size).toBe(0);
   });
 
   it('compra inexistente -> CompraNoEncontradaError', async () => {

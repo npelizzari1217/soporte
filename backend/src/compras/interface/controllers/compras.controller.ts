@@ -800,7 +800,8 @@ export class ComprasController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toCompraDetalleResponseDto(result.getValue());
+    const { compra, seguimientoPorInsumo } = result.getValue();
+    return toCompraDetalleResponseDto(compra, seguimientoPorInsumo);
   }
 
   /**

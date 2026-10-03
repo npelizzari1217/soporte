@@ -1099,6 +1099,7 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       );
       expect(detalle.status).toBe(200);
       expect(detalle.data.items[0].insumoId).toBe(insumoId);
+      expect(detalle.data.items[0].insumoSeguimiento).toBe('NINGUNO');
 
       const primera = await httpPost<ItemCompraResponseDto>(
         `${baseUrl}/compras/${compraId}/items/${itemId}/registrar-recepcion`,
@@ -1121,6 +1122,21 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
         { tipo: 'ENTRADA', cantidad: 4, itemCompraId: itemId },
         { tipo: 'ENTRADA', cantidad: 6, itemCompraId: itemId },
       ]);
+    });
+
+    it('el detalle publica el seguimiento SERIE del insumo para quien recibe, sin exigirle INSUMOS:LECTURA', async () => {
+      const actor = await crearActorConPermisos(PERMISOS);
+      const insumoId = await crearInsumoEnCatalogo();
+      await tenantClient.insumo.update({ where: { id: insumoId }, data: { seguimiento: 'SERIE' } });
+      const { compraId } = await compraConItemListoParaRecibir(actor.accessToken, 3, { insumoId });
+
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${compraId}`,
+        bearer(actor.accessToken),
+      );
+
+      expect(detalle.status).toBe(200);
+      expect(detalle.data.items[0].insumoSeguimiento).toBe('SERIE');
     });
 
     /**

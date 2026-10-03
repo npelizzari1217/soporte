@@ -51,7 +51,6 @@ import {
   type RegistrarEntregaDeItemFormValues,
 } from "../schemas";
 import { SerialesInput } from "@/features/insumos/components/seriales-input";
-import { useStockInsumo } from "@/features/insumos/hooks/use-stock-insumo";
 import { useSerialesRecepcion } from "../hooks/use-seriales-recepcion";
 import { aFechaInput, hoyFechaCalendario } from "@/shared/lib/formato-fecha";
 import { parsearNumeroEsAr } from "@/shared/lib/formato-numero";
@@ -173,8 +172,9 @@ export function RegistrarOrdenDialog({ compraId, item }: RegistrarAvanceDialogPr
 export function RegistrarRecepcionDialog({ compraId, item }: RegistrarAvanceDialogProps) {
   const [open, setOpen] = useState(false);
   const registrarMutation = useRegistrarRecepcionDeItem(compraId, item.insumoId);
-  const stockQuery = useStockInsumo(item.insumoId ?? "", { refetchOnMount: false });
-  const esSerie = !!item.insumoId && stockQuery.data?.seguimiento === "SERIE";
+  // El seguimiento viaja con el ítem: quien recibe (COMPRAS:MODIFICACION) no necesita leer el stock
+  // del insumo (INSUMOS:LECTURA), y sin ese permiso las casillas de serial no aparecían.
+  const esSerie = !!item.insumoId && item.insumoSeguimiento === "SERIE";
   const puedeRegistrar = item.cantidadOrdenada > 0 && !item.cerradoConFaltante;
   const defaultCantidad = item.cantidadRecibida > 0 ? item.cantidadRecibida : item.cantidadOrdenada;
   const defaultFecha = fechaODefault(item.fechaRecepcion);

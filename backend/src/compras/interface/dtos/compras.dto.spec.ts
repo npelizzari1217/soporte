@@ -562,4 +562,53 @@ describe('toCompraDetalleResponseDto', () => {
     const dto = toCompraDetalleResponseDto(makeCompraConItems());
     expect(dto.sectorId).toBeNull();
   });
+
+  it('publica insumoSeguimiento por ítem desde el mapa resuelto, y null si no hay dato', () => {
+    const compra = ItemCompraEntity.create(
+      {
+        compraId: 'compra-1',
+        descripcion: 'Con insumo',
+        insumoId: 'ins-serie',
+        cantidad: 1,
+        proveedor: 'Proveedor SA',
+        monto: 100,
+        moneda: 'ARS',
+        fechaCotizacion: now,
+        observaciones: null,
+      },
+      'item-con-insumo',
+    );
+    const entidad = CompraEntity.reconstitute(
+      {
+        numero: 'COM-2026-00002',
+        fechaSolicitud: now,
+        motivo: 'Reposición',
+        descripcion: null,
+        solicitanteId: 'solicitante-1',
+        cicloId: 'ciclo-1',
+        canceladaEn: null,
+        canceladoPorId: null,
+        motivoCancelacion: null,
+      },
+      [compra],
+      'compra-2',
+      now,
+      now,
+      null,
+    );
+
+    const conMapa = toCompraDetalleResponseDto(entidad, new Map([['ins-serie', 'SERIE' as const]]));
+    const sinMapa = toCompraDetalleResponseDto(entidad);
+
+    expect(conMapa.items[0].insumoSeguimiento).toBe('SERIE');
+    expect(sinMapa.items[0].insumoSeguimiento).toBeNull();
+  });
+
+  it('un ítem sin insumo declarado publica insumoSeguimiento null', () => {
+    const dto = toCompraDetalleResponseDto(
+      makeCompraConItems(),
+      new Map([['ins-1', 'SERIE' as const]]),
+    );
+    expect(dto.items[0].insumoSeguimiento).toBeNull();
+  });
 });

@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { RegistrarRecepcionDialog } from "./registrar-avance-dialog";
-import type { SeguimientoInsumo } from "@/features/insumos/types";
 import type { ItemCompra } from "../types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -21,6 +20,7 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     compraId: COMPRA_ID,
     descripcion: "Disco",
     insumoId: INSUMO_ID,
+    insumoSeguimiento: "NINGUNO",
     cantidad: 3,
     proveedor: "ACME",
     monto: 100,
@@ -47,21 +47,9 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
   };
 }
 
-function preparar(seguimiento: SeguimientoInsumo, respuesta?: Response) {
+function preparar(respuesta?: Response) {
   const capturado: { body: Record<string, unknown> | null } = { body: null };
   server.use(
-    http.get(`/api/insumos/${INSUMO_ID}/stock`, () =>
-      HttpResponse.json({
-        insumoId: INSUMO_ID,
-        stock: 0,
-        saldos: { NUEVO: 0, USADO: 0 },
-        admiteUsado: false,
-        stockMinimo: null,
-        estadoReposicion: "SIN_PUNTO_DEFINIDO",
-        seguimiento,
-        pendientesDeSerie: 0,
-      }),
-    ),
     http.post(RUTA, async ({ request }) => {
       capturado.body = (await request.json()) as Record<string, unknown>;
       return respuesta ?? HttpResponse.json(buildItem({ cantidadRecibida: 3 }));
@@ -80,10 +68,27 @@ async function abrir(item: ItemCompra, esperarCasillas = true) {
   return user;
 }
 
+describe("RegistrarRecepcionDialog sin INSUMOS:LECTURA", () => {
+  it("pide los seriales con el seguimiento que trae el ítem aunque el stock del insumo responda 403", async () => {
+    const capturado = preparar();
+    server.use(
+      http.get(`/api/insumos/${INSUMO_ID}/stock`, () =>
+        HttpResponse.json({ message: "Forbidden" }, { status: 403 }),
+      ),
+    );
+    const user = await abrir(buildItem({ insumoSeguimiento: "SERIE" }));
+
+    await user.type(screen.getByLabelText(/pieza 1/i), "A1");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body?.seriales).toEqual(["A1"]));
+  });
+});
+
 describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
   it("recepción completa: manda los seriales de las piezas nuevas, recortados", async () => {
-    const capturado = preparar("SERIE");
-    const user = await abrir(buildItem());
+    const capturado = preparar();
+    const user = await abrir(buildItem({ insumoSeguimiento: "SERIE" }));
 
     await user.type(screen.getByLabelText(/pieza 1/i), "  A1 ");
     await user.type(screen.getByLabelText(/pieza 2/i), "B2");
@@ -95,8 +100,8 @@ describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
   });
 
   it("recepción parcial: las casillas son del delta y los blancos quedan pendientes, con aviso", async () => {
-    const capturado = preparar("SERIE");
-    const user = await abrir(buildItem({ cantidadRecibida: 1 }), false);
+    const capturado = preparar();
+    const user = await abrir(buildItem({ cantidadRecibida: 1, insumoSeguimiento: "SERIE" }), false);
     // El campo precarga el acumulado (1): sin piezas nuevas no hay casillas.
     expect(screen.queryByLabelText(/número de serie/i)).not.toBeInTheDocument();
     const cantidad = screen.getByLabelText(/cantidad recibida/i);
@@ -116,8 +121,8 @@ describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
   });
 
   it("sin ningún serial no manda `seriales` (todo queda pendiente)", async () => {
-    const capturado = preparar("SERIE");
-    const user = await abrir(buildItem());
+    const capturado = preparar();
+    const user = await abrir(buildItem({ insumoSeguimiento: "SERIE" }));
 
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
@@ -126,8 +131,8 @@ describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
   });
 
   it("serial repetido entre las casillas: lo marca y no pega a la API", async () => {
-    const capturado = preparar("SERIE");
-    const user = await abrir(buildItem());
+    const capturado = preparar();
+    const user = await abrir(buildItem({ insumoSeguimiento: "SERIE" }));
 
     await user.type(screen.getByLabelText(/pieza 1/i), "ab 1");
     await user.type(screen.getByLabelText(/pieza 2/i), "AB1");
@@ -139,10 +144,9 @@ describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
 
   it("serial repetido contra el depósito (409): avisa por toast y el diálogo sigue abierto", async () => {
     preparar(
-      "SERIE",
       HttpResponse.json({ message: "El número de serie ya existe", statusCode: 409 }, { status: 409 }),
     );
-    const user = await abrir(buildItem());
+    const user = await abrir(buildItem({ insumoSeguimiento: "SERIE" }));
 
     await user.type(screen.getByLabelText(/pieza 1/i), "A1");
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
@@ -152,8 +156,8 @@ describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
   });
 
   it("delta fraccional: lo rechaza en pantalla y no pega a la API", async () => {
-    const capturado = preparar("SERIE");
-    const user = await abrir(buildItem());
+    const capturado = preparar();
+    const user = await abrir(buildItem({ insumoSeguimiento: "SERIE" }));
 
     const cantidad = screen.getByLabelText(/cantidad recibida/i);
     await user.clear(cantidad);
@@ -168,7 +172,7 @@ describe("RegistrarRecepcionDialog con un insumo SERIE", () => {
 
 describe("RegistrarRecepcionDialog con un insumo sin serie", () => {
   it("NINGUNO: sin casillas y el body no lleva `seriales`", async () => {
-    const capturado = preparar("NINGUNO");
+    const capturado = preparar();
     const user = await abrir(buildItem(), false);
     await waitFor(() => expect(screen.getByLabelText(/cantidad recibida/i)).toBeInTheDocument());
     await new Promise((r) => setTimeout(r, 50));

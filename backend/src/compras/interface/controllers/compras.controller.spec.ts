@@ -731,7 +731,9 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         fechaCotizacion: new Date('2026-08-13'),
         observaciones: null,
       });
-      obtenerCompraUseCase.execute.mockResolvedValue(Result.ok(compra));
+      obtenerCompraUseCase.execute.mockResolvedValue(
+        Result.ok({ compra, seguimientoPorInsumo: new Map() }),
+      );
 
       const res = await controller.obtener('compra-1');
 

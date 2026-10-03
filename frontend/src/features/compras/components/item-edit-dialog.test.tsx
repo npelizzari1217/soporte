@@ -18,6 +18,7 @@ function buildItem(overrides: Partial<ItemCompra> = {}): ItemCompra {
     compraId: COMPRA_ID,
     descripcion: "Insumo original",
     insumoId: null,
+    insumoSeguimiento: null,
     cantidad: 2,
     proveedor: "ACME",
     monto: 100,
