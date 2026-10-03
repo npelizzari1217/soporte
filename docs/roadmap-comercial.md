@@ -665,7 +665,9 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - Quien pide sin cuenta es un **solicitante externo** guardado en la base del
     cliente. No se le crea `Usuario` ni `Membresia`.
   - Un cliente **sin correo configurado** solo acepta pedidos de sus usuarios
-    registrados.
+    registrados, y **con sesión iniciada**: el formulario y el QR llevan al login y
+    después al alta del ticket con el equipo cargado. Sin mail no hay forma de
+    comprobar un email tipeado (precisado el 2026-10-03, al proponer).
   - El ticket entra **directo como NUEVO**, sin estado de moderación.
   - Quien pidió recibe el **número del ticket, los cambios de estado y la
     encuesta CSAT** por mail. No hay página de seguimiento.
