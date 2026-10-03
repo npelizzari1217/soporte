@@ -111,6 +111,8 @@ describe('Equipos e2e — retiro y reactivar con unidad (WU-11)', () => {
 
   const RUN_PREFIX = randomBytes(3).toString('hex').toUpperCase();
   let contadorFamilia = 0;
+  // Un contador por corrida para los códigos de unidad de medida (sin azar: 16 bits chocaban).
+  let contadorUnidadMedida = 0;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -279,7 +281,7 @@ describe('Equipos e2e — retiro y reactivar con unidad (WU-11)', () => {
     const { familiaId } = await crearFamiliaRepuesto();
     const unidadMedida = await tenantClient.unidadMedida.create({
       data: {
-        codigo: `${RUN_PREFIX}E${randomBytes(2).toString('hex')}`,
+        codigo: `${RUN_PREFIX}E${(contadorUnidadMedida += 1)}`,
         nombre: 'Unidad entera E2E',
         entera: true,
       },
