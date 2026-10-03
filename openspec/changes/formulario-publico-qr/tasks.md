@@ -157,9 +157,11 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-12 — Contexto público
 
-- [ ] 12.1 Tests e2e (`TestHarnessModule`, guards reales): 404 uniforme para slug inexistente, deshabilitado, inactivo y borrado (mismo status, cuerpo y headers sin `Date`); token de B en slug de A da `equipo: null` byte a byte igual a uno inexistente; modos `EXTERNO` y `SESION`.
-- [ ] 12.2 Test unit de `ResolverClientePublicoService`.
-- [ ] 12.3 Servicio, `ConsultarContextoPedidoUseCase`, `GET publico/c/:slug/pedido/contexto`, `PedidoPublicoThrottlerGuard` (throttler `contexto`) y `FormularioPublicoModule` sin registrar.
+- [x] 12.1 Tests e2e (`TestHarnessModule`, guards reales): 404 uniforme para slug inexistente, deshabilitado, inactivo y borrado (mismo status, cuerpo y headers sin `Date`); token de B en slug de A da `equipo: null` byte a byte igual a uno inexistente; modos `EXTERNO` y `SESION`.
+- [x] 12.2 Test unit de `ResolverClientePublicoService`.
+- [x] 12.3 Servicio, `ConsultarContextoPedidoUseCase`, `GET publico/c/:slug/pedido/contexto`, `PedidoPublicoThrottlerGuard` (throttler `contexto`) y `FormularioPublicoModule` sin registrar.
+
+> **WU-12 partida en dos commits** (2026-10-03, ~680 lineas con tests): 12a error uniforme, `ResolverClientePublicoService` y su spec (186); 12b caso de uso, guard `contexto`, controller, `FormularioPublicoModule` (sin registrar en `AppModule`) y el e2e. Cada parte compila y pasa sola con sus tests. **Deuda de Ayuda**: ninguna (sin pantalla; la ruta aun no esta expuesta).
 
 ## WU-13 — Solicitud de pedido
 

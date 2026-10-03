@@ -168,7 +168,7 @@ Un solo commit (~232 lineas con tests, bajo el limite de 400); sin `size:excepti
 
 ## WU-9 — Resolver de contacto y listeners (completa, 3/3)
 
-Modo: estandar. Partida en dos commits: 9a en `feat/formulario-publico-qr-wu09` (resolver + spec, 138 lineas) y 9b en `feat/formulario-publico-qr-wu09b` (listeners, plantillas, modulos y specs). Sin `size:exception`.
+Modo: estandar. Partida en dos commits: 9a en `feat/formulario-publico-qr-wu09` (resolver + spec, 138 lineas) y 9b en `feat/formulario-publico-qr-wu09b` (listeners, plantillas, modulos y specs). `size:exception` para 12b (625 lineas, 340 de e2e): partirlo separaria el codigo de su unico test.
 
 ### Work Unit Evidence
 
@@ -232,3 +232,24 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu11`, apilada sobre `feat/form
 - Entorno: se aplicaron ambas migraciones a `soporte_master_test` (`pnpm migrate:master`) y `soporte_tenant_test` (`pnpm migrate:tenant`) con `DATABASE_URL_*` explicita; en la integracion master, el test de `rollback.sql` reaplica `migration.sql` al terminar.
 - Deuda de Ayuda: ninguna (sin pantalla ni flujo visible).
 
+
+## WU-12 — Contexto público (completa, 3/3)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu12`, apilada sobre `feat/formulario-publico-qr-wu11d`. Dos commits: 12a (error + resolver + spec) y 12b (caso de uso, guard, controller, modulo, e2e). `size:exception` para 12b (625 lineas, 340 de e2e): partirlo separaria el codigo de su unico test.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/publico`: unit del resolver (13: cuatro rechazos, 7 formatos invalidos sin consultar la base, mensajes identicos, bind con datos de la fila) |
+| Runtime harness | e2e `pedido-publico-contexto.e2e.spec.ts` (9 tests, dos tenants efimeros, guards reales): 404 uniforme (inexistente, deshabilitado, inactivo, borrado, mal formado: mismo status, cuerpo y headers sin `Date`), token de B en el slug de A byte a byte igual a inexistente y a sin token, baja y borrado = `equipo: null`, token desmedido, modos `EXTERNO`/`SESION`, 429 al 31.º pedido |
+| Rollback | `git revert` de 12b y luego 12a; sin migracion y sin consumidores (el modulo no esta en `AppModule`) |
+
+### Decisiones tomadas en apply
+
+- `ResolverClientePublicoService` bindea el tenant (como `ResolverEncuestaTokenService`) solo si el cliente pasa todos los filtros, con `dbName` e `id` de la fila de master. Un slug fuera de `SLUG_REGEX`/largo se rechaza sin consultar la base. Un solo `FormularioPublicoNoDisponibleError` para todos los motivos; el controller lo mapea a un `NotFoundException` de mensaje fijo.
+- `ConsultarContextoPedidoUseCase` reusa `hashTokenQr` de `equipos` y `findByQrHash`; token no-string, vacio o de mas de 128 caracteres cuenta como ausente. Equipo inactivo o borrado devuelve `equipo: null`. Solo nombres en la respuesta.
+- `CORREO_DE_CLIENTE` no se exporta de `RecuperacionPasswordModule`: `FormularioPublicoModule` lo arma local (mismo adaptador y repo de config SMTP), como ya hace ese modulo con el repo de config; evita importar un modulo con controller propio.
+- Throttler: opciones con nombre `contexto` (30 / 60 s) y `ThrottlerStorage` locales; tracker `${xff}:${slug}` (clase). Los throttlers `email`, `cliente` y `confirmacion` llegan en las WU-13/15 con `@SkipThrottle` por ruta.
+- El e2e usa un `x-forwarded-for` distinto por request para no compartir cupo entre tests.
+- Deuda de Ayuda: ninguna (sin pantalla; ruta no expuesta).
