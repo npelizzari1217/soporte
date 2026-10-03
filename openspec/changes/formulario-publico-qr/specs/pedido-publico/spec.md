@@ -76,7 +76,7 @@ Todo ticket creado por el formulario público (externo verificado) DEBE nacer en
 
 ### Requirement: Tipo SOPORTE y prioridad MEDIA fijos (D6)
 
-El ticket público DEBE tener tipo `SOPORTE` y prioridad `MEDIA`. El formulario NO DEBE ofrecer esos campos y el backend DEBE ignorar o rechazar `tipoId`, `prioridadId`, `estadoId` o `solicitanteId` enviados por el cliente.
+El ticket público DEBE tener tipo `SOPORTE` y prioridad `MEDIA`. El formulario NO DEBE ofrecer esos campos y el backend DEBE ignorar `tipoId`, `prioridadId`, `estadoId` o `solicitanteId` enviados por el cliente (el `ValidationPipe` global usa `whitelist: true` sin `forbidNonWhitelisted`).
 
 #### Scenario: Defaults
 
@@ -88,7 +88,7 @@ El ticket público DEBE tener tipo `SOPORTE` y prioridad `MEDIA`. El formulario 
 
 - GIVEN un pedido que incluye `prioridadId` de CRITICA
 - WHEN se procesa
-- THEN el ticket queda con prioridad `MEDIA` o el pedido se rechaza por campo no permitido
+- THEN el ticket queda con prioridad `MEDIA`
 
 ### Requirement: Límites anti-abuso (D10)
 
@@ -120,7 +120,7 @@ El sistema DEBE limitar a 3 pedidos por email cada 15 minutos y a 30 pedidos por
 
 ### Requirement: 404 uniforme ante cualquier rechazo (anti-enumeración)
 
-Todo rechazo público por slug inexistente, formulario deshabilitado, cliente inactivo o borrado, token de equipo inválido de otro cliente, o token de verificación inválido DEBE devolver el mismo código, cuerpo y forma de respuesta, sin diferencias distinguibles por contenido. Un token de equipo inválido o de baja NO DEBE producir este 404 cuando el slug es válido (ver `equipos-qr`: el formulario abre sin equipo).
+Todo rechazo público por slug inexistente, formulario deshabilitado, cliente inactivo o borrado, o token de verificación inválido DEBE devolver el mismo código, cuerpo y forma de respuesta, sin diferencias distinguibles por contenido. Un token de equipo inválido o de baja NO DEBE producir este 404 cuando el slug es válido (ver `equipos-qr`: el formulario abre sin equipo).
 
 #### Scenario: Slug inexistente
 

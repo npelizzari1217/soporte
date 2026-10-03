@@ -84,7 +84,7 @@ Todo cliente, nuevo o existente, DEBE tener el formulario público deshabilitado
 
 ### Requirement: Cliente sin correo configurado solo acepta usuarios con sesión (D3)
 
-El modo de aceptación NO ES configurable: lo determina `ICorreoDeCliente.estado()`. Si el estado es `LISTO`, el formulario acepta pedidos de externos verificados por mail (ver `pedido-publico`). Si el estado es `SIN_CORREO` o `CLIENTE_NO_DISPONIBLE`, el formulario DEBE aceptar únicamente pedidos de usuarios registrados con sesión iniciada en ese cliente. En ese caso el formulario y el QR DEBEN llevar al login y, tras iniciar sesión, al alta de ticket autenticada con el equipo del QR precargado. El sistema NO DEBE permitir que un anónimo, o alguien que solo tipee un email, cree un ticket en ese cliente.
+El modo de aceptación NO ES configurable: lo determina `ICorreoDeCliente.estado()`. Si el estado es `LISTO`, el formulario acepta pedidos de externos verificados por mail (ver `pedido-publico`). Si el estado es `SIN_CORREO` o `CLIENTE_NO_DISPONIBLE` (este último, pasado el filtro de cliente activo y habilitado, solo aparece ante un error de infraestructura, y exigir sesión falla cerrado), el formulario DEBE aceptar únicamente pedidos de usuarios registrados con sesión iniciada en ese cliente. En ese caso el formulario y el QR DEBEN llevar al login y, tras iniciar sesión, al alta de ticket autenticada con el equipo del QR precargado. El sistema NO DEBE permitir que un anónimo, o alguien que solo tipee un email, cree un ticket en ese cliente.
 
 #### Scenario: Anónimo en cliente sin correo
 

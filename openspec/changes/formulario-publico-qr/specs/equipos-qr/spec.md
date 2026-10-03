@@ -38,7 +38,7 @@ Regenerar el QR de un equipo DEBE invalidar el token anterior de inmediato y emi
 
 - GIVEN un equipo con QR emitido
 - WHEN un usuario autorizado regenera el QR
-- THEN el token nuevo resuelve al equipo y el token viejo responde 404 uniforme
+- THEN el token nuevo resuelve al equipo y el token viejo se comporta como un token inexistente: el formulario abre sin equipo, con la misma respuesta que sin token
 
 ### Requirement: Resolución del token solo dentro del cliente del slug (D8)
 
