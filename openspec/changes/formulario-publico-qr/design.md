@@ -47,6 +47,14 @@ Las decisiones D1-D12 del roadmap están cerradas, y este diseño no reabre ning
   `TicketEntity.create` la replica y falla antes del INSERT.
 - **Formato del slug.** La fuente es `SLUG_REGEX` en `clientes/domain/value-objects/slug-cliente.ts`.
   La copian el Zod del frontend y el CHECK `clientes_slug_formato_check`.
+- **El slug nunca es un identificador interno** (`formulario-publico-cliente/spec.md:15`). El
+  regex `[a-z0-9-]` acepta un UUID en minúsculas, así que el formato no alcanza. Se agregan dos
+  reglas más:
+  - `SlugCliente.crear()` rechaza todo valor con forma de UUID (`/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/`).
+  - `ClienteEntity.configurarSlug()` rechaza `slug === this.id` y `slug === this.dbName`. El
+    `dbName` se compara normalizado, porque admite guion bajo y el slug no.
+
+  Las dos fallan con `SlugInvalidoError` y van en la WU-1, cada una con su test unitario.
 - **Límites de longitud del pedido.** La fuente son los DTO del backend. Zod los espeja.
 
 ### Autorización: los dos lugares donde vive
@@ -150,19 +158,16 @@ convención del repo.
 - El token se busca **solo** en la base ya bindeada por el slug, así que un token de B nunca
   resuelve en A.
 
-**Redacción de la spec que hay que corregir** (no la edita este diseño):
-
-| Línea | Problema | Redacción sugerida |
-|---|---|---|
-| `specs/equipos-qr/spec.md:41` | "el token viejo responde 404 uniforme" contradice las líneas 35, 45 y 61 | "el token viejo se comporta como uno inexistente: el formulario abre sin equipo" |
-| `specs/pedido-publico/spec.md:123` (primera oración) | Incluye "token de equipo inválido de otro cliente" en la lista del 404, y la segunda oración de la misma línea lo niega | Sacarlo de la lista y dejar el 404 para slug, habilitación, cliente y token de verificación |
-| `specs/pedido-publico/spec.md:79` y `:91` | "ignorar o rechazar" | "ignorar" (ADR-4), para que verify tenga una sola salida válida |
-| `specs/formulario-publico-cliente/spec.md:87` (opcional) | Agregar que `CLIENTE_NO_DISPONIBLE` solo se alcanza después de resolver el slug | Ver ADR-1 |
-
 ### ADR-6: `solicitanteId` nullable + `solicitante_externo_id` + CHECK
 
-**Migración tenant**: `prisma_tenant/migrations/2026100XHHMMSS_solicitante_externo/`, con
-`migration.sql` y `rollback.sql`. Es la convención del repo (`20260823120000_encuestas_satisfaccion/rollback.sql`).
+**Migraciones tenant**: son dos, cada una con `migration.sql` y `rollback.sql`, que es la convención
+del repo (`20260823120000_encuestas_satisfaccion/rollback.sql`):
+
+- `..._solicitantes_externos/` (WU-6) cubre el paso 1.
+- `..._tickets_solicitante_externo/` (WU-7) cubre los pasos 2 a 4.
+
+La segunda es la que cambia el tipo Prisma de `solicitanteId` a `string | null`. Por eso la WU-7
+lleva también la entidad, el mapper y los ajustes de tipo de todos los lectores (ver "Work Units").
 
 1. `CREATE TABLE solicitantes_externos`:
    - `id uuid`
@@ -209,13 +214,14 @@ servicios detenidos. Un tenant creado después recibe la migración por la vía 
 | Nombres en listado y detalle | `tickets/interface/controllers/tickets.controller.ts:196-216` | Saltea el nulo en `idsUsuarios`. Agrega un batch de `ISolicitanteExternoRepository.findNombres(ids)` |
 | `resolverNombres` | `tickets/infrastructure/persistence/prisma/usuario-master.checker.ts:80-91` | Sin cambios. Los callers nunca pasan nulos (test) |
 | DTO de respuesta | `tickets/interface/dtos/ticket.dto.ts:198,275` | `solicitanteId: string \| null`, más `solicitanteExternoId` y `solicitanteEsExterno`. El nombre del externo va en `solicitanteNombre`, con apellido `null` |
+| Teléfono del externo (`solicitante-externo/spec.md:53-57`) | `ticket.dto.ts`, `ticket-header.tsx` | `solicitanteTelefono: string \| null` viaja **solo en el detalle** (`GET /tickets/:id`). El listado no lo trae. `ticket-header.tsx` renderiza la fila del teléfono solo si el valor no es nulo: no hay etiqueta vacía ni guion. Lleva un test de FE con y sin teléfono |
 | Entidad y mapper | `tickets/domain/entities/ticket.entity.ts:66,228`, `ticket.mapper.ts:40,78` | Las dos props pasan a nullable y la invariante va en `create` |
 | Autorización por dueño | `obtener-ticket.use-case.ts:40`, `listar-timeline.use-case.ts:56`, `adjuntar-archivo.use-case.ts:113` | No cambia el código: `null !== actorId` deniega a quien no tiene VER_TODOS. Lleva tests |
 | Filtro "mis tickets" | `prisma-ticket.repository.ts:134` | Sin cambios |
 | SLA | `sla/domain/events/sla-vencido.event.ts:20-30`, `i-sla-ticket-query.repository.ts:5`, `prisma-sla-ticket-query.repository.ts:39`, `marcar-vencidos.use-case.ts:51` | Solo cambian los tipos. El listener usa el asignado y los administradores (`sla-vencido-notificacion.listener.ts:77-86`) |
 | Contacto | `notificaciones/domain/ports/i-usuario-contacto-resolver.ts:21` | Se mantiene. Se agrega `IContactoSolicitanteResolver.resolver(ticket)`, que ramifica entre master y `solicitantes_externos` |
 | Cambio de estado | `ticket-notificacion.listener.ts:64` | Usa el resolver nuevo. Para un externo, la plantilla va **sin** el link a `/tickets/:id` (`email-templates.ts:17`), porque el externo no tiene sesión |
-| Comentario | `ticket-notificacion.listener.ts:107` | Saltea al externo. D5 no incluye comentarios (ver Open Questions) |
+| Comentario público | `ticket-notificacion.listener.ts:107` | Usa el resolver nuevo y la plantilla sin link. Es la decisión del dueño del 2026-10-03, que extiende D5 (`solicitante-externo/spec.md`, requisito D5 (c)). El comentario interno no publica `TicketComentadoEvent` (`crear-comentario.use-case.ts:116`), así que nunca llega al externo. Test: comentario público → un mail; comentario interno → ninguno |
 | CSAT | `csat/infrastructure/listeners/ticket-csat.listener.ts:86` | Usa el resolver nuevo. `csatHabilitado` y el token no cambian |
 | Exportes y dashboard | `exportar-tickets.use-case.ts:107,136-158`, `dashboard/` | No leen al solicitante. Sin cambios |
 | Frontend | `features/tickets/types.ts:25`, `components/ticket-header.tsx:82` | `string \| null`. El fallback ya no muestra el id |
@@ -239,7 +245,8 @@ servicios detenidos. Un tenant creado después recibe la migración por la vía 
   - `titulo`, `descripcion`
   - `equipo_id` (FK `ON DELETE SET NULL`, ya resuelto desde el QR)
   - `expires_at`, `created_at`
-- **TTL: 24 h.**
+- **TTL: 24 h.** Es una **decisión del dueño** del 2026-10-03, registrada en el roadmap. No es una
+  elección técnica de este diseño. Como contexto:
   - El token no cambia una credencial: crea un ticket.
   - Quien escanea frente al equipo suele leer el mail más tarde.
   - Reset usa 60 min (`2026-09-28-reseteo-contrasena-olvidada/design.md`, ADR-3) porque cambia una
@@ -332,7 +339,15 @@ El BFF ya reenvía el prefijo `publico/` (`frontend/src/app/api/[...path]/route.
    con dos props nuevas, `equipoInicial` y `abiertoInicial`. El alta usa `POST /soporte`, que ya
    existe.
 
-D6 no se aplica a esta vía: es el alta autenticada vigente.
+**D6 no se aplica, a propósito, a esta vía.** El tipo SOPORTE y la prioridad MEDIA fijos rigen solo
+para el ticket del externo verificado (`pedido-publico/spec.md`, D6). El camino D3 usa el diálogo
+autenticado que ya existe, y en él el usuario registrado **elige la prioridad**
+(`ticket-soporte-create-dialog.tsx:107-126`), como en cualquier alta de `POST /soporte`.
+
+**Orden de rutas en `SoporteController`.** `@Get('qr')` tiene que declararse **antes** de
+`@Get(':ticketId')` (`soporte.controller.ts:169`). Si se declara después, Express matchea `/soporte/qr`
+como `ticketId = 'qr'`. El e2e de la WU-17 comprueba que `GET /soporte/qr?c=&e=` llega al handler
+del QR y no al de `:ticketId`.
 
 ### ADR-10: librería de QR y formato de la URL
 
@@ -365,7 +380,7 @@ D6 no se aplica a esta vía: es el alta autenticada vigente.
 
 ### ADR-12: exposición gradual
 
-`FormularioPublicoModule` se registra en `app.module.ts` **recién en la WU-16**, en el mismo PR que
+`FormularioPublicoModule` se registra en `app.module.ts` **recién en la WU-19**, en el mismo PR que
 la página de confirmación. Hasta entonces las rutas públicas no existen y se prueban con un
 `TestHarnessModule` (molde `csat.e2e.spec.ts:91`).
 
@@ -427,6 +442,8 @@ PedidoPublicoDto { nombre 1-120, email IsEmail ≤254, telefono? ≤30, titulo 3
 | `siguiente` acepta una URL arbitraria | Open redirect | Unit de `destinoPosLogin`: `//evil`, `https:` y `/tickets` caen a `/` |
 | El externo recibe el link a `/tickets/:id` | Página de login inútil | Plantilla: la variante externa no lleva enlace |
 | El slug cambia después del QR | QR impresos rotos | Integración: CAS concurrente entre emitir y cambiar el slug; nunca quedan las dos escrituras |
+| El slug es un UUID, el `id` o el `dbName` | Filtra un identificador interno | Unit (WU-1): los tres casos dan `SlugInvalidoError` |
+| El texto del pedido se renderiza como HTML | XSS almacenado en las pantallas de técnicos | **Escapado**: las pantallas de técnicos renderizan título, descripción, nombre y teléfono con el escapado por defecto de React, y queda prohibido `dangerouslySetInnerHTML` sobre esos campos. Las plantillas de mail interpolan todo con `escaparHtml`. Tests: un título con `<script>` aparece como texto en `ticket-header` (FE) y aparece escapado en la plantilla (unit) |
 
 ---
 
@@ -451,59 +468,67 @@ de abuso", que `sdd-tasks` tiene que propagar sin cambios.
 
 ## Migration / Rollout
 
-- **Master** (WU-1 y WU-10): aditiva.
+- **Master** (WU-1 y WU-11): aditiva.
   - `clientes.slug`: varchar(63) UNIQUE nullable, con CHECK de formato.
   - `formulario_publico_habilitado`: default `false`.
   - `slug_congelado_at`.
   - `pedido_publico_tokens`.
-- **Tenant** (WU-4, WU-6 y WU-10): columnas QR, `solicitantes_externos`, el nullable con su CHECK y
-  `pedidos_publicos_pendientes`, vía `migrate:tenants`.
+- **Tenant** (WU-4, WU-6, WU-7 y WU-11): columnas QR (WU-4), `solicitantes_externos` (WU-6), el
+  nullable con su CHECK (WU-7) y `pedidos_publicos_pendientes` (WU-11), vía `migrate:tenants`.
+  - La migración de ADR-6 se parte en dos: la tabla va en la WU-6 y el `ALTER` con el CHECK va en
+    la WU-7, cada una con su `rollback.sql`.
   - Solo es irreversible el `SET NOT NULL` una vez que hay tickets externos (ADR-6).
 - **Rollback operativo**: deshabilitar el formulario por cliente lo vuelve inerte.
-  - Un QR emitido antes de la WU-16 apunta a una ruta que todavía no existe. No hay que anunciar
+  - Un QR emitido antes de la WU-19 apunta a una ruta que todavía no existe. No hay que anunciar
     nada hasta que la cadena esté completa.
 
 ---
 
 ## Work Units (`auto-chain`, un PR por WU; estimación ya corregida por 2)
 
-| WU | Alcance | Líneas |
-|---|---|---|
-| 1 | Master: slug, habilitación y `slug_congelado_at`; VO, entidad, mapper, `findBySlug` y CAS; integración | ~280 |
-| 2 | `ConfigurarFormularioPublicoUseCase` + `PATCH /clientes/:id/formulario-publico` + e2e ROOT/ADMIN | ~340 |
-| 3 | FE: `configurar-formulario-publico-dialog` (molde `configurar-csat-dialog`) + hook + test | ~300 |
-| 4 | Tenant: QR, `EmitirQrEquipoUseCase` (congela primero) y `POST /equipos/:id/qr` + tests | ~380 |
-| 5 | FE: dependencia `uqr` y panel de QR en `equipo-detail-view` con descarga + tests | ~280 |
-| 6 | Tenant: `solicitantes_externos`, nullable con CHECK, entidad, mapper y repo + integración | ~350 |
-| 7 | Lectores de listado y detalle (tabla de ADR-6), DTO y tolerancia en el FE | ~300 |
-| 8 | `IContactoSolicitanteResolver`, listeners de estado, comentario y CSAT, plantilla sin link | ~330 |
-| 9 | `CrearTicketSoporteUseCase`: solicitante externo y `equipoInvalido` + tests de carrera | ~280 |
-| 10 | Master `pedido_publico_tokens` y tenant `pedidos_publicos_pendientes`: entidades, repos e integración | ~340 |
-| 11 | `ResolverClientePublicoService`, contexto, guard, módulo (sin registrar) + e2e del 404 | ~380 |
-| 12 | `SolicitarPedidoPublicoUseCase`, plantilla y `POST solicitud` + e2e de throttle | ~380 |
-| 13 | `ConfirmarPedidoPublicoUseCase` y `POST confirmar` + e2e (dos tenants, concurrencia, inactivo) | ~400 |
-| 14 | FE: `/c/` en el middleware, página pública, schema y hooks + tests | ~380 |
-| 15 | D3: `GET /soporte/qr`, `destinoPosLogin`, `use-login`, middleware de `/login` y landing `pedido-qr` con el diálogo precargado | ~400 |
-| 16 | FE: página de confirmación + **registro en `app.module.ts`** + viñeta del roadmap Cumplida o Desviación | ~250 |
+| WU | Alcance | Tests que viajan en el PR | Líneas |
+|---|---|---|---|
+| 1 | Master: slug, habilitación y `slug_congelado_at`. VO `SlugCliente` (formato y rechazo de UUID), regla `id`/`dbName` en `configurarSlug`, mapper, `findBySlug` y CAS | Unit del VO y de la entidad (UUID, `id`, `dbName`, formato). Integración del CAS y la unicidad | ~300 |
+| 2 | `ConfigurarFormularioPublicoUseCase` + `PATCH /clientes/:id/formulario-publico` | Unit del UC (sin slug, congelado). e2e ROOT 200 y ADMIN 403 | ~340 |
+| 3 | FE: `configurar-formulario-publico-dialog` (molde `configurar-csat-dialog`) + hook | Test del diálogo y del schema Zod | ~300 |
+| 4 | Tenant: QR, `EmitirQrEquipoUseCase` (congela primero) y `POST /equipos/:id/qr` | Unit del UC (sin slug, regenerar). Integración de `findByQrHash`. e2e 401/403 | ~380 |
+| 5 | FE: dependencia `uqr` y panel de QR en `equipo-detail-view` con descarga | Test del panel (emitir, regenerar, aviso) | ~280 |
+| 6 | Tenant: tabla `solicitantes_externos` (migración propia), entidad, puerto y repo con `findNombres`. **No toca `tickets`** | Unit de la entidad. Integración del repo | ~260 |
+| 7 | `ALTER` nullable + `solicitante_externo_id` + CHECK, `TicketEntity` y mapper, y **ajustes de solo tipos** en todos los lectores de ADR-6: salteo del nulo en `resolverNombresPorTicket`, guard del nulo en los dos listeners y en CSAT (provisorio: no envía), tipos del SLA, DTO y `types.ts` del FE. Con esto el repo compila | Integración del CHECK (ambos o ninguno, filas viejas intactas). Unit de la invariante. Tests de dueño con `null` en `obtener`, `timeline` y `adjuntar` | ~390 |
+| 8 | Lectores con datos del externo: batch de nombres, `solicitanteTelefono` solo en el detalle, `ticket-header` (nombre, teléfono condicional, escapado) | Unit del controller (externo y mixto). FE: header con y sin teléfono, y `<script>` como texto | ~300 |
+| 9 | `IContactoSolicitanteResolver` + adaptador. Los listeners de estado, comentario público y CSAT pasan a usarlo (reemplaza el guard provisorio de la WU-7). Plantillas sin link | Unit del resolver (dos ramas). Listener: comentario público → mail, interno → ninguno. Estado → mail sin link. CSAT al externo | ~360 |
+| 10 | `CrearTicketSoporteUseCase`: solicitante externo, `AUTOR_FORMULARIO_PUBLICO` y `equipoInvalido` | Unit de `OMITIR`/`RECHAZAR`. Integración de la carrera con la baja (S5) | ~280 |
+| 11 | Master `pedido_publico_tokens` y tenant `pedidos_publicos_pendientes`: entidades y repos (DELETE RETURNING, purga) | Unit de vigencia. Integración: DELETE concurrente y purga | ~340 |
+| 12 | `ResolverClientePublicoService`, `ConsultarContextoPedidoUseCase`, `GET contexto`, guard y módulo (sin registrar) | Unit del resolver. e2e: 404 uniforme (4 causas), token de B, modos `EXTERNO`/`SESION` | ~380 |
+| 13 | `SolicitarPedidoPublicoUseCase`, plantilla de verificación y `POST solicitud` | Unit del UC (no LISTO → 404, sin PII en master). Plantilla escapada. e2e del throttle (email, XFF, cliente) | ~380 |
+| 14 | `ConfirmarPedidoPublicoUseCase` (transacción, rollback centinela, post-commit) | Unit del UC. Integración: doble confirmación da un ticket; sin ciclo da 409 y el pendiente sigue; prioridad MEDIA | ~290 |
+| 15 | `POST confirmar` + DTO + mail del número | e2e: dos tenants con guards reales, `clienteId` inyectado, cliente inactivo, token usado/vencido, mail con el número | ~260 |
+| 16 | FE: `/c/` en el middleware, página pública, schema y hooks | Test del middleware (`/c/` público, `/clientes` protegido), página en los dos modos, schema | ~380 |
+| 17 | BE: `GET /soporte/qr` declarado **antes** de `@Get(':ticketId')` + `ResolverQrAutenticadoUseCase` | Unit del UC (slug distinto → 404). e2e: orden de rutas, sesión de otro cliente, token de baja → `equipo: null` | ~200 |
+| 18 | FE: `destinoPosLogin`, `use-login` (`siguiente` y selector), middleware de `/login`, landing `pedido-qr` y props del diálogo | Unit de `destinoPosLogin` (open redirect). Hook. Middleware. Landing (coincide / otra organización) | ~340 |
+| 19 | FE: página de confirmación + **registro en `app.module.ts`** + viñeta del roadmap Cumplida o Desviación | Test de la página (fragmento, `replaceState`, 404). `check-roadmap-fresco.mjs` | ~250 |
 
-**Total**: ~5.400 líneas, contra 1.600-2.400 en la propuesta.
+**Total**: ~6.010 líneas, contra 1.600-2.400 en la propuesta.
 
-- Las WU 13 y 15 están en el techo de las 400 líneas. Si la WU-15 se pasa, se parte en backend
-  (`GET /soporte/qr`) y frontend.
-- Cada WU compila y pasa sus tests sola, y se revierte con `git revert`.
+- Ninguna WU pasa las 400 líneas. La más cargada es la WU-7, con ~390: si se pasa, los tests de dueño
+  con `null` se mudan a la WU-8, que solo agrega aserciones.
+- La confirmación, que antes ocupaba una WU de ~400, ya viene partida en las WU 14 (caso de uso) y
+  15 (ruta + e2e).
+- **Orden de compilación**:
+  - La WU-6 crea una tabla y no cambia ningún tipo existente.
+  - La WU-7 es la única que cambia el tipo Prisma de `tickets.solicitante_id`, y lleva todos los
+    ajustes de tipo que eso exige.
+  - Las WU 8 y 9 agregan conducta sobre tipos que ya compilan.
+  - Así, cada WU compila y pasa sus tests sola, y se revierte con `git revert` en orden inverso.
 - **Deuda de Ayuda**: formulario público, QR en la ficha y configuración ROOT. Se anota en el commit
-  y en el PR de las WU 3, 5, 14 y 16. La retención de datos de D11 se anota en el PR de la WU-6.
+  y en el PR de las WU 3, 5, 16 y 19. La retención de datos de D11 se anota en el PR de la WU-6.
 
 ---
 
 ## Open Questions
 
-- [ ] **Comentarios públicos al externo**: D5 enumera el número, los estados y el CSAT, así que el
-      diseño **no** manda los comentarios. Si el dueño los quiere, es un cambio de una línea en la
-      WU-8. Es un riesgo de desviación, no una decisión de este diseño.
 - [ ] **Throttle por email global** (más estricto que el escenario "en el mismo cliente"). Hay que
       confirmar que no contradice D10.
-- [ ] **TTL de 24 h** para el link de verificación. Es una decisión técnica; el dueño puede pedir
-      otro valor.
-- [ ] Hay correcciones de redacción de la spec pendientes (ADR-5). Las aplica el orquestador o
-      `sdd-spec` antes de `sdd-tasks`.
+
+Ya resueltas por el dueño el 2026-10-03: los comentarios públicos al externo (D5 extendido, WU-9) y
+el TTL de 24 h (ADR-7).

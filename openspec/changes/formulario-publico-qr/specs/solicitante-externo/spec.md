@@ -58,7 +58,7 @@ Listados, detalle, exportes, resolución de nombres, notificaciones y CSAT DEBEN
 
 ### Requirement: Notificaciones al externo por mail (D5)
 
-El externo DEBE recibir por mail, en la dirección verificada: (a) el número del ticket al crearse, (b) cada cambio de estado, y (c) la encuesta CSAT, con las mismas reglas de habilitación y de token que para un usuario registrado (`csatHabilitado`, un solo uso). La resolución del contacto DEBE leer del solicitante externo cuando `solicitante_id` es nulo. No DEBE enviarse ningún mail a un externo cuyo cliente tenga el correo no operativo; en ese caso, por D3, el externo no existe.
+El externo DEBE recibir por mail, en la dirección verificada: (a) el número del ticket al crearse, (b) cada cambio de estado, (c) cada comentario público del ticket (decisión del dueño del 2026-10-03, que extiende D5; los comentarios internos nunca se envían), y (d) la encuesta CSAT, con las mismas reglas de habilitación y de token que para un usuario registrado (`csatHabilitado`, un solo uso). La resolución del contacto DEBE leer del solicitante externo cuando `solicitante_id` es nulo. No DEBE enviarse ningún mail a un externo cuyo cliente tenga el correo no operativo; en ese caso, por D3, el externo no existe.
 
 #### Scenario: Número del ticket
 
@@ -71,6 +71,12 @@ El externo DEBE recibir por mail, en la dirección verificada: (a) el número de
 - GIVEN un ticket de solicitante externo
 - WHEN un técnico cambia su estado
 - THEN el externo recibe el mail de cambio de estado en su email verificado
+
+#### Scenario: Comentario público e interno
+
+- GIVEN un ticket de solicitante externo
+- WHEN un técnico agrega un comentario público, y después uno interno
+- THEN el externo recibe un mail por el comentario público en su email verificado, y ninguno por el interno
 
 #### Scenario: Encuesta CSAT
 
