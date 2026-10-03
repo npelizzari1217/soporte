@@ -476,3 +476,16 @@ export class QrSlugCambiadoError extends DomainError {
     );
   }
 }
+
+/**
+ * QrDeOtraOrganizacionError — el slug del QR no es el del cliente de la sesión (o el cliente no
+ * existe, está inactivo o borrado). Respuesta uniforme: no distingue los casos.
+ * → HTTP 404.
+ */
+export class QrDeOtraOrganizacionError extends DomainError {
+  readonly code = 'QR_DE_OTRA_ORGANIZACION';
+
+  constructor() {
+    super('El QR no corresponde a tu organización.');
+  }
+}

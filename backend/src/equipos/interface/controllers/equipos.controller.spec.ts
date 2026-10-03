@@ -956,8 +956,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 25 clases de error (18 previas, 5 de sdd/baja-equipo-completo y QrRequiereSlug y QrSlugCambiado de sdd/formulario-publico-qr)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(25);
+  it('el catálogo tiene EXACTAMENTE 26 clases de error (18 previas, 5 de sdd/baja-equipo-completo y QrRequiereSlug, QrSlugCambiado y QrDeOtraOrganizacion de sdd/formulario-publico-qr)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(26);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
@@ -1037,6 +1037,9 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     ['QrRequiereSlugError', () => new EquiposErrors.QrRequiereSlugError(), 409],
     ['QrSlugCambiadoError', () => new EquiposErrors.QrSlugCambiadoError(), 409],
+    // `QrDeOtraOrganizacionError` es 404 en `SoporteController` (`GET /soporte/qr`); acá nunca la
+    // produce un caso de uso y cae en el default 422, igual que la de abajo.
+    ['QrDeOtraOrganizacionError', () => new EquiposErrors.QrDeOtraOrganizacionError(), 422],
     // `TicketSoporteNoEncontradoError` es 404 en `SoporteController` (que tiene
     // su PROPIO `toHttpException`, con esa rama explícita) — nunca la produce
     // ningún use case de `EquiposController`, así que ACÁ cae en el default
