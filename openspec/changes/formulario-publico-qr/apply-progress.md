@@ -347,3 +347,24 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu16`, apilada sobre `feat/form
 - `equipoToken` viaja en el POST solo si hay `?e=`. Pagina server fina; `?e=` repetido toma el primero, vacio = null.
 - Pantalla de confirmacion (`/c/<slug>/pedido/confirmar`) es WU-19.
 - Deuda de Ayuda: pantalla publica nueva de pedido por QR (ver `tasks.md`).
+
+
+## WU-17 — BE: `GET /soporte/qr` (completa, 2/2)
+
+Modo: estandar. Rama `feat/formulario-publico-qr-wu17`, apilada sobre `feat/formulario-publico-qr-wu16b`. Tres commits (17a caso de uso y spec, 17b ruta y e2e, 17c artefactos); sin `size:exception`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/equipos`: unit `resolver-qr-autenticado.use-case.spec.ts` (11: slug distinto da 404 sin buscar el token; cliente inexistente, inactivo o sin slug dan el mismo 404; token inexistente, de baja, ausente, vacio o largo dan `equipo: null`), e2e (6) y `soporte.controller.spec.ts` |
+| Runtime harness | e2e `resolver-qr-autenticado.e2e.spec.ts` (tenant efimero, guards reales): 401; 403 con solo `TICKETS:LECTURA`; con solo `TICKETS:ALTAS` `/soporte/qr` devuelve 200 con el equipo (si cayera en `:ticketId` seria 403); `GET /soporte/:ticketId` sigue llegando a su handler; slug ajeno o ausente 404 sin revelar el equipo; token de baja, inexistente o ausente da `equipo: null`. Mutacion verificada: renombrar la ruta a `qr-zz` pone en rojo 4 de los 6 |
+| Rollback | `git revert` de 17b y 17a; sin migracion, solo lectura; el consumidor (`/pedido-qr`) llega en la WU-18 |
+
+### Decisiones tomadas en apply
+
+- El caso de uso compara `cliente.slug` (por `findById(JWT.cliente_id)`) con `?c=`; el tenant ya viene bindeado por `TenantGuard`, no se resuelve por slug. Cliente inexistente, inactivo, borrado o sin slug, y `c` ausente, dan el mismo 404 (`QrDeOtraOrganizacionError`, mapeado a 404 en `toHttpException`).
+- Con slug correcto, la resolucion del token replica `ConsultarContextoPedidoUseCase` (largo 1-128, `findByQrHash(hashTokenQr)`, baja o borrado = `equipo: null`) pero devuelve `{ id, nombre }`. No se extrajo helper compartido: son 6 lineas y viven en modulos distintos.
+- `@Get('qr')` declarado antes de `@Get(':ticketId')`, con `TICKETS:ALTAS` (el alta de ticket que abre el dialogo). `c` y `e` se leen como `unknown` y el caso de uso los valida.
+- `soporte.controller.spec.ts` arma el caso de uso real con repos vacios para no sumar un cast (ratchet 627/116).
+- Deuda de Ayuda: ninguna (sin pantalla).

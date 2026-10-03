@@ -196,8 +196,8 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-17 — BE: `GET /soporte/qr`
 
-- [ ] 17.1 Tests: unit del UC (slug distinto da 404); e2e de orden de rutas (`/soporte/qr` no llega a `:ticketId`), sesión de otro cliente, token de baja da `equipo: null`.
-- [ ] 17.2 `ResolverQrAutenticadoUseCase` y `@Get('qr')` declarado antes de `@Get(':ticketId')` en `soporte.controller.ts` (`TICKETS:ALTAS`).
+- [x] 17.1 Tests: unit del UC (slug distinto da 404); e2e de orden de rutas (`/soporte/qr` no llega a `:ticketId`), sesión de otro cliente, token de baja da `equipo: null`.
+- [x] 17.2 `ResolverQrAutenticadoUseCase` y `@Get('qr')` declarado antes de `@Get(':ticketId')` en `soporte.controller.ts` (`TICKETS:ALTAS`).
 
 ## WU-18 — FE: camino D3
 
