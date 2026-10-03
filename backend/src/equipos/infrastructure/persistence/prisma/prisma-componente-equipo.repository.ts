@@ -89,4 +89,25 @@ export class PrismaComponenteEquipoRepository implements IComponenteEquipoReposi
     });
     return count > 0;
   }
+
+  async reactivar(componente: ComponenteEquipoEntity): Promise<boolean> {
+    const { count } = await this.client.componenteEquipo.updateMany({
+      where: {
+        id: componente.id,
+        deletedAt: { not: null },
+        // `NOT (baja_destino = 'STOCK_USADO')` descartaría las filas con NULL: se listan los
+        // destinos que sí admiten reactivar.
+        OR: [{ bajaDestino: null }, { bajaDestino: 'DESCARTE' }],
+      },
+      data: {
+        deletedAt: null,
+        bajaDestino: null,
+        bajaMotivo: null,
+        bajaMovimientoId: null,
+        bajaUsuarioId: null,
+        updatedAt: new Date(),
+      },
+    });
+    return count > 0;
+  }
 }
