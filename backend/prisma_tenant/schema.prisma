@@ -181,6 +181,23 @@ model TipoOperacion {
 // El índice parcial de activo (WHERE deleted_at IS NULL) se agrega en la
 // migración.
 
+/// Solicitante externo (sdd/formulario-publico-qr, WU-6): quien pide por el formulario público sin
+/// cuenta. Vive solo en el tenant; no hay Usuario ni Membresía. Una fila por pedido confirmado.
+/// Retención (D11): se conserva mientras exista el ticket; sin borrado en esta entrega.
+/// El vínculo `tickets.solicitante_externo_id` llega en la WU-7.
+model SolicitanteExterno {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre            String   @db.VarChar(120)
+  email             String   @db.VarChar(254)
+  telefono          String?  @db.VarChar(30)
+  emailVerificadoAt DateTime @map("email_verificado_at") @db.Timestamptz
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([email])
+  @@map("solicitantes_externos")
+}
+
 model CicloCliente {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Soft ref → master.ciclos_vigentes.id. Sin FK: cross-DB imposible en Postgres.

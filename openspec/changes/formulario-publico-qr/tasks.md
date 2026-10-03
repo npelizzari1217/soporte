@@ -108,10 +108,12 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 
 ## WU-6 — Solicitantes externos (tenant)
 
-- [ ] 6.1 Migración tenant `solicitantes_externos` (id, nombre, email, telefono, email_verificado_at, timestamps, índice email) con `rollback.sql`; no toca `tickets`.
-- [ ] 6.2 Test unit de la entidad `SolicitanteExternoEntity`.
-- [ ] 6.3 Entidad, `ISolicitanteExternoRepository` (`findNombres`) y repo Prisma.
-- [ ] 6.4 Integración del repo. Anotar retención D11 en el PR.
+- [x] 6.1 Migración tenant `solicitantes_externos` (id, nombre, email, telefono, email_verificado_at, timestamps, índice email) con `rollback.sql`; no toca `tickets`.
+- [x] 6.2 Test unit de la entidad `SolicitanteExternoEntity`.
+- [x] 6.3 Entidad, `ISolicitanteExternoRepository` (`findNombres`) y repo Prisma.
+- [x] 6.4 Integración del repo. Anotar retención D11 en el PR.
+
+> **WU-6 partida en dos PRs** (2026-10-03, ~610 lineas): WU-6a con la entidad, el error y su spec unitario, y WU-6b con la migracion, el puerto, el repositorio y su spec de integracion. Cada parte viaja con sus tests. **Retencion D11 a revisar**: los datos del externo se conservan mientras exista el ticket; no hay borrado ni anonimizacion. Anotado en la migracion, en `schema.prisma` y en el cuerpo del PR.
 
 ## WU-7 — Solicitante nullable, CHECK y tipos
 

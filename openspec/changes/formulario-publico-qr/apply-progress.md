@@ -109,3 +109,24 @@ Modo: estandar. Tareas 5.1 a 5.4 marcadas en `tasks.md`. Dos ramas apiladas sobr
 - Panel oculto sin `EQUIPOS:MODIFICACION` y para equipos dados de baja.
 - Deuda de Ayuda: seccion nueva "QR del equipo" en `/equipos/[id]` (emitir, regenerar, descargar, imprimir; regenerar invalida el impreso). No hay articulo previo que se vuelva falso.
 - Nota operativa: el lockfile cambia (9 lineas) y `deploy.ps1` aborta; el proximo deploy necesita `pnpm install` a mano con los servicios detenidos.
+
+## WU-6 — Solicitantes externos (tenant) (completa)
+
+Modo: estandar. Tareas 6.1 a 6.4 marcadas en `tasks.md`. Rama `feat/formulario-publico-qr-wu06`, apilada sobre `feat/formulario-publico-qr-wu05b`. `size:exception`: un solo commit porque la migracion, el repo y su integracion (que ejecuta las migraciones y el `rollback.sql`) se prueban juntos.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run` de `solicitante-externo.entity.spec.ts` (unit) y `prisma-solicitante-externo.repository.integration.spec.ts`: 2 archivos, 23 tests verdes |
+| Runtime harness | Integracion contra dos tenants efimeros migrados: guardar/leer con y sin telefono, `findNombres` en lote, una fila por pedido (mismo email dos veces = dos filas), aislamiento A/B, `tickets.solicitante_id` sigue NOT NULL y sin `solicitante_externo_id`, `rollback.sql` |
+| Rollback | Migracion `20261003140000_solicitantes_externos` con `rollback.sql` (DROP INDEX + DROP TABLE, destructivo); resto con `git revert`. Con la WU-7 aplicada, revertir esa primero (la FK RESTRICT frena el DROP) |
+
+### Decisiones tomadas en apply
+
+- Ubicacion: modulo `tickets` (entidad, puerto `ISolicitanteExternoRepository` con `save/findById/findNombres`, mapper, repo Prisma), registrado y exportado como `SOLICITANTE_EXTERNO_REPOSITORY` en `TicketsModule`. No hay doubles de test que actualizar: el puerto es nuevo (0 implementaciones previas rotas).
+- `SolicitanteExternoEntity.create` devuelve `Result` con `SolicitanteExternoInvalidoError` (`code` `SOLICITANTE_EXTERNO_INVALIDO`): nombre 1-120, email valido hasta 254 (minusculas, trim), telefono hasta 30 (vacio pasa a null). Sin baja logica: la tabla no tiene `deleted_at` (D11: se conserva mientras exista el ticket).
+- `save` solo inserta (sin upsert por email, una fila por pedido confirmado).
+- Retencion D11 anotada como punto a revisar en la migracion, en `schema.prisma`, en `tasks.md` y para el cuerpo del PR.
+- Entorno: se aplico la migracion a `soporte_tenant_test` con `pnpm migrate:tenant` y `DATABASE_URL_TENANT` explicita.
+- Deuda de Ayuda: ninguna (sin pantalla ni flujo visible).
