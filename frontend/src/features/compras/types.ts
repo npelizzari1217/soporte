@@ -13,6 +13,8 @@
  * forma en el front — los hooks (`features/compras/hooks`) los usan como
  * genérico de `apiFetch<T>()`.
  */
+import type { SeguimientoInsumo } from "@/features/insumos/types";
+
 
 /** Estado de aprobación de un ítem — máquina de un paso, sin retorno (espejo de `EstadoAprobacionItem`). */
 export type EstadoAprobacionItem = "PENDIENTE" | "APROBADO" | "RECHAZADO";
@@ -72,6 +74,12 @@ export interface ItemCompra {
    * stock solo.
    */
   insumoId: string | null;
+  /**
+   * Cómo se lleva el insumo declarado: `SERIE` pide seriales al recibir. Lo resuelve el backend en el
+   * detalle de la compra, así que quien recibe no necesita `INSUMOS:LECTURA`. `null` si el ítem no
+   * declara insumo o el dato no se resolvió.
+   */
+  insumoSeguimiento: SeguimientoInsumo | null;
   cantidad: number;
   proveedor: string;
   monto: number;

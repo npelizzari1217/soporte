@@ -50,6 +50,7 @@ import {
 } from '../../../insumos/interface/dtos/movimientos-insumo.dto';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
+import type { SeguimientoInsumo } from '../../../insumos/domain/entities/unidad-insumo.entity';
 import {
   EstadoAprobacionItem,
   EstadoCompra,
@@ -498,6 +499,12 @@ export interface ItemCompraResponseDto {
    * stock del que no.
    */
   insumoId: string | null;
+  /**
+   * Cómo se lleva el insumo declarado (`SERIE` pide seriales al recibir), o `null` si el ítem no
+   * declara insumo o el dato no se resolvió. Solo `GET /compras/:id` lo resuelve; el resto de las
+   * respuestas lo publican en `null`. Existe para que quien recibe no necesite `INSUMOS:LECTURA`.
+   */
+  insumoSeguimiento: SeguimientoInsumo | null;
   cantidad: number;
   proveedor: string;
   monto: number;
@@ -525,12 +532,16 @@ export interface ItemCompraResponseDto {
 }
 
 /** Convierte un `ItemCompraEntity` al shape de respuesta HTTP. */
-export function toItemCompraResponseDto(item: ItemCompraEntity): ItemCompraResponseDto {
+export function toItemCompraResponseDto(
+  item: ItemCompraEntity,
+  insumoSeguimiento: SeguimientoInsumo | null = null,
+): ItemCompraResponseDto {
   return {
     id: item.id,
     compraId: item.compraId,
     descripcion: item.descripcion,
     insumoId: item.insumoId,
+    insumoSeguimiento,
     cantidad: item.cantidad,
     proveedor: item.proveedor,
     monto: item.monto,
@@ -640,7 +651,10 @@ export interface CompraDetalleResponseDto {
  * deba exponer a un consumidor HTTP, mismo criterio que `itemsActivos()`
  * (privado en la entidad) usa internamente para la derivación de estado.
  */
-export function toCompraDetalleResponseDto(compra: CompraEntity): CompraDetalleResponseDto {
+export function toCompraDetalleResponseDto(
+  compra: CompraEntity,
+  seguimientoPorInsumo: ReadonlyMap<string, SeguimientoInsumo> = new Map(),
+): CompraDetalleResponseDto {
   return {
     id: compra.id,
     numero: compra.numero,
@@ -657,7 +671,14 @@ export function toCompraDetalleResponseDto(compra: CompraEntity): CompraDetalleR
     canceladaEn: compra.canceladaEn ? compra.canceladaEn.toISOString() : null,
     canceladoPorId: compra.canceladoPorId,
     motivoCancelacion: compra.motivoCancelacion,
-    items: compra.items.filter((item) => !item.isDeleted()).map(toItemCompraResponseDto),
+    items: compra.items
+      .filter((item) => !item.isDeleted())
+      .map((item) =>
+        toItemCompraResponseDto(
+          item,
+          item.insumoId !== null ? (seguimientoPorInsumo.get(item.insumoId) ?? null) : null,
+        ),
+      ),
     createdAt: compra.createdAt.toISOString(),
     updatedAt: compra.updatedAt.toISOString(),
   };
