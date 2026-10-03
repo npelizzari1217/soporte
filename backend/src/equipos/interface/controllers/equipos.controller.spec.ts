@@ -13,7 +13,12 @@
  * Ref spec: sdd/flujos-especializados/spec F3-Q1..Q3. Tarea: T12.6.
  */
 import 'reflect-metadata';
-import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { EquiposController, toHttpException } from './equipos.controller';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
@@ -22,6 +27,9 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
 import { ResumenBajaEquipoUseCase } from '../../application/use-cases/resumen-baja-equipo.use-case';
+import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
+import { ClienteNoEncontradoError } from '../../../clientes/domain/errors/clientes.errors';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import * as EquiposErrors from '../../domain/errors/equipos.errors';
 import {
   EquipoNoEncontradoError,
@@ -53,6 +61,11 @@ function darDeBajaEspiado() {
 
 function resumenBajaEspiado() {
   const caso: ResumenBajaEquipoUseCase = Object.create(ResumenBajaEquipoUseCase.prototype);
+  return { caso, execute: vi.spyOn(caso, 'execute') };
+}
+
+function emitirQrEspiado() {
+  const caso: EmitirQrEquipoUseCase = Object.create(EmitirQrEquipoUseCase.prototype);
   return { caso, execute: vi.spyOn(caso, 'execute') };
 }
 
@@ -90,6 +103,7 @@ describe('EquiposController (T12.6)', () => {
     const retirarComponenteUseCase = { execute: vi.fn() };
     const darDeBaja = darDeBajaEspiado();
     const resumenBaja = resumenBajaEspiado();
+    const emitirQr = emitirQrEspiado();
 
     const controller = new EquiposController(
       crearEquipoUseCase as any,
@@ -105,9 +119,11 @@ describe('EquiposController (T12.6)', () => {
       retirarComponenteUseCase as any,
       darDeBaja.caso,
       resumenBaja.caso,
+      emitirQr.caso,
     );
 
     return {
+      emitirQrUseCase: emitirQr.execute,
       darDeBajaUseCase: darDeBaja.execute,
       resumenBajaUseCase: resumenBaja.execute,
       controller,
@@ -124,6 +140,73 @@ describe('EquiposController (T12.6)', () => {
       retirarComponenteUseCase,
     };
   }
+
+  describe('POST /equipos/:id/qr (formulario-publico-qr, WU-4)', () => {
+    const ID = '11111111-1111-4111-8111-111111111111';
+    const user = payloadDeTest({ cliente_id: 'cliente-1' });
+
+    it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
+      expect(Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.emitirQr)).toEqual([
+        'EQUIPOS:MODIFICACION',
+      ]);
+    });
+
+    it('delega con el cliente del JWT y devuelve la URL con la fecha en ISO', async () => {
+      const { controller, emitirQrUseCase } = buildController();
+      const emitidoAt = new Date('2026-10-03T12:00:00Z');
+      emitirQrUseCase.mockResolvedValue(
+        Result.ok({ url: 'https://x/c/acme/pedido?e=t', emitidoAt }),
+      );
+
+      const r = await controller.emitirQr(user, ID);
+
+      expect(emitirQrUseCase).toHaveBeenCalledWith({ equipoId: ID, clienteId: 'cliente-1' });
+      expect(r).toEqual({ url: 'https://x/c/acme/pedido?e=t', emitidoAt: emitidoAt.toISOString() });
+    });
+
+    it('un id que no es UUID es 404 sin llamar al caso de uso', async () => {
+      const { controller, emitirQrUseCase } = buildController();
+      await expect(controller.emitirQr(user, 'no-uuid')).rejects.toThrow(NotFoundException);
+      expect(emitirQrUseCase).not.toHaveBeenCalled();
+    });
+
+    it('sin cliente en la sesión es 403', async () => {
+      const { controller, emitirQrUseCase } = buildController();
+      await expect(controller.emitirQr(payloadDeTest({ cliente_id: null }), ID)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(emitirQrUseCase).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [new EquiposErrors.QrRequiereSlugError(), 'QR_REQUIERE_SLUG'],
+      [new EquiposErrors.QrSlugCambiadoError(), 'QR_SLUG_CAMBIADO'],
+    ])('%s → 409 con code en el cuerpo', async (error, code) => {
+      const { controller, emitirQrUseCase } = buildController();
+      emitirQrUseCase.mockResolvedValue(Result.fail(error));
+
+      const exc = await controller.emitirQr(user, ID).catch((e: unknown) => e);
+
+      expect(exc).toBeInstanceOf(ConflictException);
+      expect((exc as ConflictException).getResponse()).toEqual({
+        statusCode: 409,
+        message: error.message,
+        code,
+      });
+    });
+
+    it('equipo inexistente y cliente inexistente son 404; equipo de baja es 422', async () => {
+      const { controller, emitirQrUseCase } = buildController();
+      emitirQrUseCase.mockResolvedValueOnce(Result.fail(new EquipoNoEncontradoError(ID)));
+      await expect(controller.emitirQr(user, ID)).rejects.toThrow(NotFoundException);
+      emitirQrUseCase.mockResolvedValueOnce(Result.fail(new ClienteNoEncontradoError('c')));
+      await expect(controller.emitirQr(user, ID)).rejects.toThrow(NotFoundException);
+      emitirQrUseCase.mockResolvedValueOnce(
+        Result.fail(new EquiposErrors.EquipoDadoDeBajaError(ID)),
+      );
+      await expect(controller.emitirQr(user, ID)).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
 
   describe('POST /equipos', () => {
     it('crea el equipo → 201 + response', async () => {
@@ -798,6 +881,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       stub() as any, // retirarComponenteUseCase
       darDeBajaEspiado().caso,
       resumenBajaEspiado().caso,
+      emitirQrEspiado().caso,
     );
     return { controller, exportarEquipos };
   }

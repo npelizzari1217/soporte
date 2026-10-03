@@ -13,6 +13,7 @@
  *   DELETE /equipos/:id                                       → EliminarEquipoUseCase        `EQUIPOS:BORRADO`
  *   GET    /equipos/:id/baja/resumen                          → ResumenBajaEquipoUseCase     `EQUIPOS:BORRADO` (baja-equipo-completo)
  *   POST   /equipos/:id/baja                                  → DarDeBajaEquipoUseCase       `EQUIPOS:BORRADO` (baja-equipo-completo)
+ *   POST   /equipos/:id/qr                                    → EmitirQrEquipoUseCase        `EQUIPOS:MODIFICACION` (formulario-publico-qr)
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteSinDescuentoUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
@@ -38,6 +39,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -70,6 +72,7 @@ import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-co
 import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
 import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
 import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
+import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
 import {
   ResumenBajaEquipo,
   ResumenBajaEquipoUseCase,
@@ -115,6 +118,7 @@ import {
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
   DarDeBajaEquipoHttpDto,
+  QrEquipoResponseDto,
   EditarComponenteHttpDto,
   RetirarComponenteHttpDto,
   EditarEquipoHttpDto,
@@ -290,6 +294,8 @@ export class EquiposController {
     // sdd/baja-equipo-completo (WU-11) — agregados al final por el mismo criterio.
     private readonly darDeBajaEquipoUseCase: DarDeBajaEquipoUseCase,
     private readonly resumenBajaEquipoUseCase: ResumenBajaEquipoUseCase,
+    // sdd/formulario-publico-qr (WU-4) — agregado al final por el mismo criterio.
+    private readonly emitirQrEquipoUseCase: EmitirQrEquipoUseCase,
   ) {}
 
   /**
@@ -508,6 +514,40 @@ export class EquiposController {
       throw toHttpException(detalle.getError());
     }
     return toEquipoDetalleResponseDto(detalle.getValue());
+  }
+
+  /**
+   * POST /equipos/:id/qr
+   * Emite el QR del equipo, o lo regenera si ya tenía uno (el token anterior deja de resolver de
+   * inmediato). Devuelve la URL pública armada por el backend desde `APP_BASE_URL`: el token solo
+   * viaja en esta respuesta y en la base queda su hash. El primer QR congela el slug del cliente
+   * (`clienteId` sale del JWT, nunca del body). No exige que el formulario esté habilitado.
+   * @throws 404 equipo inexistente o con borrado lógico
+   * @throws 409 el cliente no tiene slug (`QR_REQUIERE_SLUG`) o su slug cambió durante la
+   *   emisión (`QR_SLUG_CAMBIADO`, reintentable)
+   * @throws 422 el equipo está dado de baja
+   */
+  @Post(':id/qr')
+  @RequiereAcciones('EQUIPOS:MODIFICACION')
+  async emitirQr(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ): Promise<QrEquipoResponseDto> {
+    if (!UUID_REGEX.test(id)) {
+      throw toHttpException(new EquipoNoEncontradoError(id));
+    }
+    if (user.cliente_id === null) {
+      throw new ForbiddenException('La emisión del QR requiere un cliente en la sesión.');
+    }
+    const result = await this.emitirQrEquipoUseCase.execute({
+      equipoId: id,
+      clienteId: user.cliente_id,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { url, emitidoAt } = result.getValue();
+    return { url, emitidoAt: emitidoAt.toISOString() };
   }
 
   /**
