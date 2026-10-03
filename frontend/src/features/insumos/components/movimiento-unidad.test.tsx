@@ -20,6 +20,7 @@ function stock(seguimiento: SeguimientoInsumo): StockInsumo {
     stock: 5,
     saldos: { NUEVO: 5, USADO: 0 },
     admiteUsado: false,
+    admiteUsadoEnReingreso: false,
     stockMinimo: null,
     estadoReposicion: "SIN_PUNTO_DEFINIDO",
     seguimiento,

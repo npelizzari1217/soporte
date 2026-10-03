@@ -257,6 +257,11 @@ export interface StockInsumo {
   saldos: Record<CondicionStock, number>;
   /** Si el insumo admite stock USADO (familia de repuestos vigente), ya resuelto por el backend. */
   admiteUsado: boolean;
+  /**
+   * Si devolver una entrega o recuperar una descartada admite USADO. Con la exención G2 del
+   * backend una familia de repuestos no vigente sí lo admite, así que NO es lo mismo que `admiteUsado`.
+   */
+  admiteUsadoEnReingreso: boolean;
   /** Punto de reposición del insumo, o `null` si no tiene uno definido. */
   stockMinimo: number | null;
   /** Lectura del saldo contra el punto de reposición, resuelta por el backend. */

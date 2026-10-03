@@ -491,6 +491,7 @@ describe('Movimientos de insumo e2e — celdas separadas y topes del borde', () 
         stock: 10,
         saldos: { NUEVO: 10, USADO: 0 },
         admiteUsado: false,
+        admiteUsadoEnReingreso: false,
         stockMinimo: 5,
         estadoReposicion: 'SUFICIENTE',
         seguimiento: 'NINGUNO',

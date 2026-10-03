@@ -62,6 +62,7 @@ function stock(saldos: { NUEVO: number; USADO: number }, admiteUsado: boolean): 
     stock: saldos.NUEVO + saldos.USADO,
     saldos,
     admiteUsado,
+    admiteUsadoEnReingreso: admiteUsado,
     stockMinimo: null,
     estadoReposicion: "SIN_PUNTO_DEFINIDO",
     seguimiento: "NINGUNO",

@@ -289,6 +289,8 @@ export interface StockInsumoResponseDto {
   saldos: Record<CondicionStock, number>;
   /** Si el insumo admite stock USADO (familia vigente de repuestos), ya resuelto por el backend. */
   admiteUsado: boolean;
+  /** Si devolver o recuperar una pieza admite USADO (exención G2: familia no vigente sí, no repuesto no). */
+  admiteUsadoEnReingreso: boolean;
   stockMinimo: number | null;
   estadoReposicion: EstadoReposicionInsumo;
   /** Cómo se lleva el insumo: `NINGUNO` (por cantidad) o `SERIE` (por unidad). */
@@ -354,6 +356,7 @@ export function toStockInsumoResponseDto(stock: StockDeInsumo): StockInsumoRespo
     stock: stock.stock,
     saldos: { NUEVO: stock.saldos.NUEVO, USADO: stock.saldos.USADO },
     admiteUsado: stock.admiteUsado,
+    admiteUsadoEnReingreso: stock.admiteUsadoEnReingreso,
     stockMinimo: stock.stockMinimo,
     estadoReposicion: stock.estadoReposicion,
     seguimiento: stock.seguimiento,
