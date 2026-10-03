@@ -287,7 +287,7 @@ Se copia el wiring de `RecuperacionPasswordModule` (`recuperacion-password.modul
 
 | Throttler | Ruta | Límite | Tracker |
 |---|---|---|---|
-| `email` | `POST solicitud` | 3 / 15 min | `email.trim().toLowerCase()` del body. Es **global** por email, no por slug: es más estricto que el escenario de la spec y frena el bombardeo de una casilla a través de varios clientes |
+| `email` | `POST solicitud` | 3 / 15 min | `${slug}:${email.trim().toLowerCase()}`. Es **por cliente**, como el escenario de la spec (decisión del dueño, 2026-10-03). El bombardeo de una casilla a través de varios clientes queda acotado por el tope de 30 por cliente por hora |
 | `cliente` | `POST solicitud` | 30 / 60 min | `params.slug`. Un slug inexistente tiene su propio contador, así que el 429 no revela existencia |
 | `contexto` | `GET contexto` | 30 / 60 s | `${xff}:${slug}`, molde de `csat-throttler.guard.ts:45`. Solo frena enumeración; no protege una escritura |
 | `confirmacion` | `POST confirmar` | 5 / 15 min | El token del body |
@@ -527,8 +527,5 @@ de abuso", que `sdd-tasks` tiene que propagar sin cambios.
 
 ## Open Questions
 
-- [ ] **Throttle por email global** (más estricto que el escenario "en el mismo cliente"). Hay que
-      confirmar que no contradice D10.
-
-Ya resueltas por el dueño el 2026-10-03: los comentarios públicos al externo (D5 extendido, WU-9) y
-el TTL de 24 h (ADR-7).
+Ninguna. Resueltas por el dueño el 2026-10-03: los comentarios públicos al externo (D5 extendido,
+WU-9), el TTL de 24 h (ADR-7) y el tope por email, que se cuenta **por cliente** (3 cada 15 minutos).

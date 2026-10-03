@@ -680,7 +680,8 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - **Un QR por equipo**, con un token opaco regenerable. Un equipo dado de baja
     abre el formulario sin equipo cargado. La impresión en lote queda afuera.
   - **Sin adjuntos** en esta primera entrega.
-  - Límites: **3 pedidos por mail cada 15 minutos** y **30 por cliente por hora**.
+  - Límites: **3 pedidos por mail cada 15 minutos**, contados por cliente, y **30 por
+    cliente por hora**.
     Al pasarse, un mensaje genérico de "intentá más tarde".
   - Los datos del solicitante externo se guardan **mientras exista el ticket**.
     La retención queda anotada para revisarla.
