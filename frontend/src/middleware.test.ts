@@ -214,6 +214,30 @@ describe("middleware", () => {
     expect(mockVerify).not.toHaveBeenCalled();
   });
 
+  // ── /c/ (sdd/formulario-publico-qr, WU-16) ───────────────────────────────
+  // Formulario público del QR: nadie tiene sesión. Es prefijo, no substring.
+
+  it.each(["/c/mi-colegio/pedido", "/c/mi-colegio/pedido/confirmar"])(
+    "passes through %s without any cookie",
+    async (ruta) => {
+      const res = await middleware(makeRequest(ruta));
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("location")).toBeNull();
+      expect(mockVerify).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["/clientes", "/compras", "/admin/c/x"])(
+    "still redirects %s to /login (/c/ is a prefix, not a substring)",
+    async (ruta) => {
+      const res = await middleware(makeRequest(ruta));
+
+      expect(res.status).toBe(307);
+      expect(res.headers.get("location")).toContain("/login");
+    },
+  );
+
   // ── Matcher exclusions ────────────────────────────────────────────────────
 
   it("config.matcher is exported and excludes api/_next/favicon", () => {

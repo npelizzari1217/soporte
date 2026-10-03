@@ -32,8 +32,13 @@ import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
  * responder nunca (el destinatario del mail NUNCA tiene sesión). Angosto a
  * propósito: una allowlist ancha (p. ej. `/`) dejaría pasar rutas protegidas
  * reales como `/tickets`.
+ *
+ * `/c/` (sdd/formulario-publico-qr, WU-16): formulario público al que llega
+ * quien escanea el QR de un equipo o abre el link del mail de confirmación;
+ * ninguno tiene sesión. Prefijo, no substring: `/clientes` y `/compras`
+ * siguen protegidas.
  */
-const RUTAS_PUBLICAS = ["/encuesta/", "/restablecer-password", "/olvide-password"];
+const RUTAS_PUBLICAS = ["/encuesta/", "/c/", "/restablecer-password", "/olvide-password"];
 
 /** Una entrada que termina en `/` es un prefijo; si no, la ruta es exacta. */
 function esRutaPublica(pathname: string): boolean {
