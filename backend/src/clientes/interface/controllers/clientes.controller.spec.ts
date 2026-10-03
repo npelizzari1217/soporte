@@ -564,6 +564,26 @@ describe('ClientesController (T8.4)', () => {
         controller.configurarFormularioPublico(ROOT_USER, 'id', { habilitado: true }),
       ).rejects.toBeInstanceOf(esperada);
     });
+
+    it.each([
+      ['SLUG_INVALIDO', new SlugInvalidoError('formato'), 400],
+      ['SLUG_CONGELADO', new SlugCongeladoError(), 409],
+      ['SLUG_DUPLICADO', new SlugDuplicadoError(), 409],
+      ['SLUG_REQUERIDO', new SlugRequeridoError(), 409],
+    ])('el error del slug viaja con code %s en el cuerpo', async (code, error, statusCode) => {
+      const { controller, configurarFormularioPublicoUseCase } = buildController();
+      configurarFormularioPublicoUseCase.execute.mockResolvedValue(Result.fail(error));
+
+      const thrown = await controller
+        .configurarFormularioPublico(ROOT_USER, 'id', { habilitado: true })
+        .catch((e: unknown) => e);
+
+      expect((thrown as { getResponse(): unknown }).getResponse()).toEqual({
+        statusCode,
+        message: error.message,
+        code,
+      });
+    });
   });
 
   describe('POST /clientes/:id/correo/probar (D6)', () => {

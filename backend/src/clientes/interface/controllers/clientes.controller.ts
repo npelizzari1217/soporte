@@ -153,19 +153,22 @@ function toHttpException(
   if (error instanceof ClienteNoEncontradoError) {
     return new NotFoundException(error.message);
   }
+  if (error instanceof AdminEmailYaRegistradoError) {
+    return new ConflictException(error.message);
+  }
+  // Errores del slug del formulario publico: viaja el `code` para que el frontend elija el
+  // aviso sin comparar el texto del mensaje.
   if (
-    error instanceof AdminEmailYaRegistradoError ||
     error instanceof SlugCongeladoError ||
     error instanceof SlugDuplicadoError ||
     error instanceof SlugRequeridoError
   ) {
-    return new ConflictException(error.message);
+    return new ConflictException({ statusCode: 409, message: error.message, code: error.code });
   }
-  if (
-    error instanceof SlugInvalidoError ||
-    error instanceof CorreoPasswordFaltanteError ||
-    error instanceof CorreoNoConfiguradoError
-  ) {
+  if (error instanceof SlugInvalidoError) {
+    return new BadRequestException({ statusCode: 400, message: error.message, code: error.code });
+  }
+  if (error instanceof CorreoPasswordFaltanteError || error instanceof CorreoNoConfiguradoError) {
     return new BadRequestException(error.message);
   }
   if (error instanceof EmailCryptoKeyAusenteError) {

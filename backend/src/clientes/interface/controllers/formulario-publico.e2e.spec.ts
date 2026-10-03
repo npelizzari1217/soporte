@@ -23,6 +23,8 @@ interface ClienteRespuesta {
   id: string;
   slug: string | null;
   formularioPublicoHabilitado: boolean;
+  /** Solo en las respuestas de error de dominio del slug. */
+  code?: string;
 }
 
 // Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
@@ -152,16 +154,18 @@ describe('Formulario publico e2e — PATCH /clientes/:id/formulario-publico', ()
 
   it('habilitar sin slug: 409 y no habilita', async () => {
     const id = await crearCliente('ssin');
-    const { status } = await patch(id, { habilitado: true }, token(true));
+    const { status, data } = await patch(id, { habilitado: true }, token(true));
     expect(status).toBe(409);
+    expect(data?.code).toBe('SLUG_REQUERIDO');
     expect((await leerFila(id)).formularioPublicoHabilitado).toBe(false);
   });
 
   it('slug duplicado: 409 y el segundo cliente no cambia', async () => {
     await crearCliente('sdupa', 'colegio-norte');
     const idB = await crearCliente('sdupb');
-    const { status } = await patch(idB, { slug: 'colegio-norte' }, token(true));
+    const { status, data } = await patch(idB, { slug: 'colegio-norte' }, token(true));
     expect(status).toBe(409);
+    expect(data?.code).toBe('SLUG_DUPLICADO');
     expect((await leerFila(idB)).slug).toBeNull();
   });
 
@@ -177,15 +181,17 @@ describe('Formulario publico e2e — PATCH /clientes/:id/formulario-publico', ()
 
   it('slug igual al dbName normalizado: 400', async () => {
     const id = await crearCliente('sdb');
-    const { status } = await patch(id, { slug: 'soporte-e2e-fp-sdb-test' }, token(true));
+    const { status, data } = await patch(id, { slug: 'soporte-e2e-fp-sdb-test' }, token(true));
     expect(status).toBe(400);
+    expect(data?.code).toBe('SLUG_INVALIDO');
   });
 
   it('slug congelado: 409 y el slug sigue igual', async () => {
     const id = await crearCliente('sfrz', 'colegio-norte');
     await masterClient.cliente.update({ where: { id }, data: { slugCongeladoAt: new Date() } });
-    const { status } = await patch(id, { slug: 'otro-slug' }, token(true));
+    const { status, data } = await patch(id, { slug: 'otro-slug' }, token(true));
     expect(status).toBe(409);
+    expect(data?.code).toBe('SLUG_CONGELADO');
     expect((await leerFila(id)).slug).toBe('colegio-norte');
   });
 });
