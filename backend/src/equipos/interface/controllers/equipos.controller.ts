@@ -97,7 +97,10 @@ import {
   MotivoBajaEquipoInvalidoError,
   BajaEquipoConPiezasProblematicasError,
   EquipoModificadoDuranteLaBajaError,
+  QrRequiereSlugError,
+  QrSlugCambiadoError,
 } from '../../domain/errors/equipos.errors';
+import { ClienteNoEncontradoError } from '../../../clientes/domain/errors/clientes.errors';
 
 import {
   SerialDuplicadoError,
@@ -132,6 +135,8 @@ export function toHttpException(
   if (
     error instanceof EquipoNoEncontradoError ||
     error instanceof ComponenteNoEncontradoError ||
+    // Emitir QR (formulario-publico-qr): el cliente de la sesión ya no existe.
+    error instanceof ClienteNoEncontradoError ||
     // `unidadId` del body que no existe: se contesta como las rutas de unidades de insumo.
     error instanceof UnidadNoEncontradaError
   ) {
@@ -141,6 +146,11 @@ export function toHttpException(
   // chequeo previo y el lock del equipo. Nada se escribió y reintentar es seguro.
   if (error instanceof EquipoModificadoDuranteLaBajaError) {
     return new ConflictException(error.message);
+  }
+  // Emitir QR (formulario-publico-qr, ADR-2): sin slug no hay URL que codificar, o el slug cambió
+  // mientras se emitía. Viaja el `code` para que la pantalla elija el aviso sin leer el texto.
+  if (error instanceof QrRequiereSlugError || error instanceof QrSlugCambiadoError) {
+    return new ConflictException({ statusCode: 409, message: error.message, code: error.code });
   }
   // Alta sin descuento de un insumo `SERIE` (D3): el serial ya lo tiene otra unidad.
   if (error instanceof SerialDuplicadoError) {

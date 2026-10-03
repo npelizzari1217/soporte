@@ -447,3 +447,32 @@ export class EquipoModificadoDuranteLaBajaError extends DomainError {
     super(`Las piezas del equipo "${equipoId}" cambiaron durante la baja. Volvé a intentarlo.`);
   }
 }
+
+/**
+ * QrRequiereSlugError — el cliente no tiene slug, así que no hay URL pública que codificar en
+ * el QR (sdd/formulario-publico-qr, ADR-2). → HTTP 409 con `code`.
+ */
+export class QrRequiereSlugError extends DomainError {
+  readonly code = 'QR_REQUIERE_SLUG';
+
+  constructor() {
+    super(
+      'El cliente no tiene un identificador público (slug): configuralo antes de emitir un QR.',
+    );
+  }
+}
+
+/**
+ * QrSlugCambiadoError — el slug cambió entre la lectura y el congelamiento (CAS de ADR-2), así
+ * que no se emitió nada: un QR con el slug viejo quedaría roto. Reintentar es seguro.
+ * → HTTP 409 con `code`.
+ */
+export class QrSlugCambiadoError extends DomainError {
+  readonly code = 'QR_SLUG_CAMBIADO';
+
+  constructor() {
+    super(
+      'El identificador público del cliente cambió mientras se emitía el QR. Volvé a intentarlo.',
+    );
+  }
+}
