@@ -193,7 +193,7 @@ WU-20 mutations, run the same way (a `git archive f19b92ff` copy in a scratch di
 | ADR-4 ignore client-sent ids | Yes | |
 | ADR-5 invalid QR on a valid slug | Yes | `equipo: null`, byte-identical |
 | ADR-6 nullable + CHECK | Yes | |
-| ADR-7 token master / pending tenant | Partially | Storage split followed. The purge bullet still says "no hay scheduler", but WU-20 added an hourly sweep, so the design text no longer matches the code; see W3. The write order in solicitud (pending, then token) is not stated in ADR-7 (concern 2) |
+| ADR-7 token master / pending tenant | Partially | Storage split followed. The purge bullet said "no hay scheduler" after WU-20 added an hourly sweep (W3); it was updated in `357bd405`. The write order in solicitud (pending, then token) is not stated in ADR-7 (concern 2) |
 | ADR-8 throttling | Yes | `contexto` uses XFF as ADR-8 states; the "behind the BFF" rationale is only in code, see S1. Trackers have no unit tests (design Testing Strategy lists them); e2e covers them, see S2 |
 | ADR-9 routes and D3 path | Yes | `@Get('qr')` before `@Get(':ticketId')`; allowlist `destinoPosLogin` |
 | ADR-10 `uqr` | Yes | MIT, 0 deps; lockfile change noted for deploy |
@@ -327,14 +327,14 @@ The residual moves to SUGGESTION S6. The design text that WU-20 made stale is a 
   - (c) pedido-publico "Descripcion excesiva": the HTTP 400 without mail is tested only with an invalid email; the 4001-character limit is tested at entity level.
   Code inspection shows the behavior is correct in all three. Each deserves one direct test.
 - W2. RESOLVED in WU-20 (`f19b92ff`); see "W2 verdict". It is kept here for traceability and does not count toward the total. The original finding: PII in unconfirmed or orphan `pedidos_publicos_pendientes` rows was purged only by the next solicitud in the same tenant.
-- W3. Design deviation introduced by WU-20. `design.md`, ADR-7, "Purga de PII sin verificar", still says "no hay scheduler", and the port JSDoc and the code now rely on an hourly `PurgaPendientesVencidosScheduler`. The deviation does not break any spec; it strengthens the purge. But the design artifact now describes a mechanism the code no longer has. Update that ADR-7 bullet to name the hourly sweep, its scope (active tenants only) and `PURGA_PENDIENTES_CRON`.
+- W3. RESOLVED after this verification in `357bd405` (docs and comments only, no behavior change): the ADR-7 bullet now names the hourly sweep, its active-tenants scope and `PURGA_PENDIENTES_CRON`. It is kept for traceability and does not count toward the total. The original finding: design deviation introduced by WU-20. `design.md`, ADR-7, "Purga de PII sin verificar", still says "no hay scheduler", and the port JSDoc and the code now rely on an hourly `PurgaPendientesVencidosScheduler`. The deviation does not break any spec; it strengthens the purge. But the design artifact now describes a mechanism the code no longer has. Update that ADR-7 bullet to name the hourly sweep, its scope (active tenants only) and `PURGA_PENDIENTES_CRON`.
 
 **SUGGESTION**:
 - S1. Add the BFF rationale for the `contexto` XFF tracker to ADR-8 (today it lives only in code), and state explicitly that rotating XFF bypasses the enumeration throttle.
 - S2. Add unit tests for `trackerEmail`, `trackerCliente` and `trackerConfirmacion`. The design Testing Strategy lists "trackers" as unit; today only the e2e covers them.
 - S3. Add one Playwright or real-process smoke for browser -> BFF -> backend on `publico/*`.
 - S4. WU-18 UX follow-ups: keep `siguiente` on a direct unauthenticated `/pedido-qr` visit; add `enabled: Boolean(slug)` to `useResolverQr`; give the landing a fallback after the dialog closes.
-- S5. Remove the stale "NO esta registrado en AppModule todavia" paragraph from the `FormularioPublicoModule` JSDoc (`backend/src/publico/formulario-publico.module.ts`), and the stale "El mail con el numero y la ruta llegan en la WU-15" line in `confirmar-pedido-publico.use-case.ts`. Still open after WU-20: the paragraph remains at line 82, and the new WU-20 bullet in the same JSDoc now contradicts it. The use-case line is also unchanged.
+- S5. RESOLVED after this verification in `357bd405`: both stale comments were rewritten. The original suggestion: remove the stale "NO esta registrado en AppModule todavia" paragraph from the `FormularioPublicoModule` JSDoc (`backend/src/publico/formulario-publico.module.ts`), and the stale "El mail con el numero y la ruta llegan en la WU-15" line in `confirmar-pedido-publico.use-case.ts`. Still open after WU-20: the paragraph remains at line 82, and the new WU-20 bullet in the same JSDoc now contradicts it. The use-case line is also unchanged.
 - S6. The WU-20 sweep does not reach inactive or soft-deleted clients (`listActiveTenants` only). Expired pending rows created up to 24 h before a suspension stay in the kept tenant DB until a reactivation, after which they are purged within about 1 h. Add this case to the D11 and client-lifecycle retention review. If it has to be closed in code, it needs a new method on the shared `ITenantEnumerator` port.
 
 ### Verdict
@@ -349,4 +349,4 @@ All 73 tasks are complete. Every gate is green on `f19b92ff`:
 
 The frontend gates passed on the first pass, and WU-20 does not touch the frontend. W2 is resolved: the hourly sweep reaches every active tenant, with the form on or off, and does not depend on traffic. This is proven by 6 unit tests, 4 mutations that go red, and a runtime probe that shows the cron registered in the real `AppModule`. The WU-20 TDD Cycle Evidence is present and valid.
 
-Open warnings: W1 (3 scenarios proven only by combined evidence) and W3 (the ADR-7 text still says "no hay scheduler"). Suggestions: S1 to S6. There are no critical findings and no blockers. All 57 scenarios remain covered by passing tests.
+Open warnings: W1 (3 scenarios proven only by combined evidence). W3 and S5 were resolved after this verification in `357bd405`, a docs-and-comments-only commit; lint and typecheck were re-run there and pass. Open suggestions: S1 to S4 and S6. There are no critical findings and no blockers. All 57 scenarios remain covered by passing tests.
