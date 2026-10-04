@@ -41,7 +41,7 @@ export interface ConfirmarPedidoPublicoCommand {
   readonly token: string;
 }
 
-/** Lo que la ruta (WU-15) necesita para mandar el mail con el número, ya fuera de la transacción. */
+/** Lo que la ruta necesita para mandar el mail con el número, ya fuera de la transacción. */
 export interface PedidoPublicoConfirmado {
   readonly ticketId: string;
   readonly numero: string;
@@ -79,7 +79,8 @@ class ConfirmacionAbortadaError extends Error {
  * 5. Post-commit y best-effort: `marcarUsado` en master. Si falla, el pendiente ya no existe y el
  *    token igual da 404.
  *
- * El mail con el número y la ruta llegan en la WU-15.
+ * El mail con el número lo manda la ruta (`PedidoPublicoController.confirmar`) después del commit,
+ * con `NotificarPedidoCreadoService`.
  *
  * Ref spec: pedido-publico D1. Ref design: ADR-4, ADR-7. Tarea: 14.2.
  */

@@ -79,8 +79,8 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
  * FormularioPublicoModule — rutas públicas del formulario de pedido por QR
  * (sdd/formulario-publico-qr).
  *
- * NO está registrado en `AppModule` todavía: las rutas no se exponen hasta el cierre del ciclo,
- * cuando el formulario está completo. Los e2e lo importan directo.
+ * Registrado en `AppModule` (WU-19, ADR-12). Cada cliente arranca con el formulario
+ * deshabilitado hasta que ROOT lo habilita.
  *
  * Wiring:
  * - `AuthModule` por `CLIENTE_REPOSITORY`; `EquiposModule` por `EQUIPO_INFORMATICO_REPOSITORY`;
