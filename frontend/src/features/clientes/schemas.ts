@@ -1,6 +1,8 @@
 import { z } from "zod";
 import {
   CLIENTE_CUIT_MAX_LENGTH,
+  CLIENTE_SLUG_MAX_LENGTH,
+  CLIENTE_SLUG_REGEX,
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
   CLIENTE_SMTP_TEXTO_MAX_LENGTH,
@@ -126,3 +128,19 @@ export function configurarCorreoSchema(yaConfigurado: boolean) {
     });
 }
 export type ConfigurarCorreoFormValues = z.infer<ReturnType<typeof configurarCorreoSchema>>;
+
+/**
+ * Espejo de `ConfigurarFormularioPublicoDto` (backend) y de `SLUG_REGEX` de
+ * `slug-cliente.ts`. El backend es la autoridad: además rechaza un slug con
+ * forma de UUID o igual al `id`/`dbName` del cliente, y eso el front no lo
+ * puede saber, así que lo muestra el 400.
+ */
+export const configurarFormularioPublicoSchema = z.object({
+  slug: z
+    .string()
+    .min(1, "El slug es requerido")
+    .max(CLIENTE_SLUG_MAX_LENGTH, mensajeDemasiadoLargo("El slug", CLIENTE_SLUG_MAX_LENGTH))
+    .regex(CLIENTE_SLUG_REGEX, "Usá solo minúsculas, números y guiones, sin empezar ni terminar con guion"),
+  habilitado: z.boolean(),
+});
+export type ConfigurarFormularioPublicoFormValues = z.infer<typeof configurarFormularioPublicoSchema>;

@@ -14,7 +14,7 @@
  * 3. `CLIENTE_REPOSITORY.findById` → si `csatHabilitado` es falso, no emite.
  * 4. `TICKET_REPOSITORY.findById` → numero/titulo/solicitanteId (el evento
  *    no lleva PII, mismo criterio que `TicketNotificacionListener`).
- * 5. `IUsuarioContactoResolver.resolverContacto` → email del solicitante.
+ * 5. `IContactoSolicitanteResolver.resolver` → email del solicitante (registrado o externo).
  * 6. `EmitirEncuestaUseCase.ejecutar` — revoca previos, genera y persiste el
  *    token, envía el mail.
  *
@@ -32,7 +32,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { TicketEstadoCambiadoEvent } from '../../../tickets/domain/events/ticket-estado-cambiado.event';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
-import { IUsuarioContactoResolver } from '../../../notificaciones/domain/ports/i-usuario-contacto-resolver';
+import { IContactoSolicitanteResolver } from '../../../notificaciones/domain/ports/i-contacto-solicitante-resolver';
 import { EmitirEncuestaUseCase } from '../../application/use-cases/emitir-encuesta.use-case';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -46,7 +46,7 @@ export class TicketCsatListener {
   constructor(
     private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
     private readonly clienteRepo: Pick<IClienteRepository, 'findById'>,
-    private readonly contactoResolver: Pick<IUsuarioContactoResolver, 'resolverContacto'>,
+    private readonly contactoResolver: Pick<IContactoSolicitanteResolver, 'resolver'>,
     private readonly emitirEncuestaUseCase: Pick<EmitirEncuestaUseCase, 'ejecutar'>,
     private readonly tenantContext: Pick<TenantContext, 'get'>,
     private readonly logger: Pick<ILogger, 'error'>,
@@ -83,7 +83,7 @@ export class TicketCsatListener {
         return;
       }
 
-      const contacto = await this.contactoResolver.resolverContacto(ticket.solicitanteId);
+      const contacto = await this.contactoResolver.resolver(ticket);
       if (!contacto) {
         return;
       }

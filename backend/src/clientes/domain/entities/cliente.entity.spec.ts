@@ -348,3 +348,95 @@ describe('ClienteEntity — tope de largo de nombre y razonSocial', () => {
     expect(CLIENTE_RAZON_SOCIAL_MAX_LENGTH).toBeLessThan(255);
   });
 });
+
+describe('ClienteEntity — slug y formulario publico (sdd/formulario-publico-qr, WU-1)', () => {
+  const ID = '0199aaaa-bbbb-7ccc-8ddd-eeeeffff0001';
+  const nuevo = (extra: { slugCongeladoAt?: Date } = {}) =>
+    ClienteEntity.create(
+      {
+        nombre: 'Colegio Norte',
+        razonSocial: null,
+        cuit: null,
+        dbName: 'colegio_norte_ab12',
+        activo: true,
+        ...extra,
+      },
+      ID,
+    );
+
+  it('defaults: sin slug, formulario deshabilitado y sin congelar', () => {
+    const c = nuevo();
+    expect(c.slug).toBeNull();
+    expect(c.formularioPublicoHabilitado).toBe(false);
+    expect(c.slugCongeladoAt).toBeNull();
+  });
+
+  describe('configurarSlug()', () => {
+    it('acepta un slug valido', () => {
+      const c = nuevo();
+      expect(c.configurarSlug('colegio-norte').isOk()).toBe(true);
+      expect(c.slug).toBe('colegio-norte');
+    });
+
+    it('rechaza un slug con mayusculas o espacios y no cambia el estado', () => {
+      const c = nuevo();
+      for (const malo of ['Colegio-Norte', 'colegio norte', 'colegio_norte']) {
+        const r = c.configurarSlug(malo);
+        expect(r.isFail()).toBe(true);
+        expect(r.getError().code).toBe('SLUG_INVALIDO');
+      }
+      expect(c.slug).toBeNull();
+    });
+
+    it('rechaza slug === id del cliente', () => {
+      const c = ClienteEntity.create(
+        { nombre: 'X', razonSocial: null, cuit: null, dbName: 'x_db', activo: true },
+        'id-interno-no-uuid',
+      );
+      const r = c.configurarSlug('id-interno-no-uuid');
+      expect(r.isFail()).toBe(true);
+      expect(r.getError().code).toBe('SLUG_INVALIDO');
+      expect(c.slug).toBeNull();
+    });
+
+    it('rechaza slug === id con forma de UUID', () => {
+      const r = nuevo().configurarSlug(ID);
+      expect(r.isFail()).toBe(true);
+      expect(r.getError().code).toBe('SLUG_INVALIDO');
+    });
+
+    it('rechaza slug === dbName normalizado (guion bajo -> guion)', () => {
+      const c = nuevo();
+      const r = c.configurarSlug('colegio-norte-ab12');
+      expect(r.isFail()).toBe(true);
+      expect(r.getError().code).toBe('SLUG_INVALIDO');
+      expect(c.slug).toBeNull();
+    });
+
+    it('rechaza el cambio de un slug congelado', () => {
+      const c = nuevo({ slugCongeladoAt: new Date() });
+      const r = c.configurarSlug('otro-slug');
+      expect(r.isFail()).toBe(true);
+      expect(r.getError().code).toBe('SLUG_CONGELADO');
+    });
+  });
+
+  describe('habilitarFormulario()', () => {
+    it('no habilita sin slug', () => {
+      const c = nuevo();
+      const r = c.habilitarFormulario(true);
+      expect(r.isFail()).toBe(true);
+      expect(r.getError().code).toBe('SLUG_REQUERIDO');
+      expect(c.formularioPublicoHabilitado).toBe(false);
+    });
+
+    it('habilita y deshabilita con slug cargado', () => {
+      const c = nuevo();
+      c.configurarSlug('colegio-norte');
+      expect(c.habilitarFormulario(true).isOk()).toBe(true);
+      expect(c.formularioPublicoHabilitado).toBe(true);
+      expect(c.habilitarFormulario(false).isOk()).toBe(true);
+      expect(c.formularioPublicoHabilitado).toBe(false);
+    });
+  });
+});

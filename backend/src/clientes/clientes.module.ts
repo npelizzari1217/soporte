@@ -99,6 +99,7 @@ import { QuitarCorreoClienteUseCase } from './application/use-cases/quitar-corre
 import { ProbarCorreoClienteUseCase } from './application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from './application/use-cases/ver-correo-cliente.use-case';
 import { ConfigurarCsatClienteUseCase } from './application/use-cases/configurar-csat-cliente.use-case';
+import { ConfigurarFormularioPublicoUseCase } from './application/use-cases/configurar-formulario-publico.use-case';
 import { ConfigurarLogoClienteUseCase } from './application/use-cases/configurar-logo-cliente.use-case';
 import { QuitarLogoClienteUseCase } from './application/use-cases/quitar-logo-cliente.use-case';
 import { VerLogoClienteUseCase } from './application/use-cases/ver-logo-cliente.use-case';
@@ -255,6 +256,11 @@ import { ClienteLogoController } from './interface/controllers/cliente-logo.cont
     {
       provide: ConfigurarCsatClienteUseCase,
       useFactory: (repo: IClienteRepository) => new ConfigurarCsatClienteUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
+    },
+    {
+      provide: ConfigurarFormularioPublicoUseCase,
+      useFactory: (repo: IClienteRepository) => new ConfigurarFormularioPublicoUseCase(repo),
       inject: [CLIENTE_REPOSITORY],
     },
     {

@@ -60,10 +60,13 @@ export class EquipoInformaticoMapper {
    * `modeloEquipoId: null` fijo pisaría el modelo del equipo en cada guardado.
    * `prisma-equipos.integration.spec.ts` guarda dos veces y relee para probar
    * que el valor sobrevive.
+   *
+   * Las columnas `qr_*` quedan afuera a propósito: solo `guardarQrHash()` las escribe, así un
+   * `save()` con una entidad vieja no regenera ni borra el QR.
    */
   static toPersistence(entity: EquipoInformaticoEntity): Omit<
     PrismaEquipoInformatico,
-    'updatedAt' | 'importe' | 'valorResidual'
+    'updatedAt' | 'importe' | 'valorResidual' | 'qrTokenHash' | 'qrEmitidoAt'
   > & {
     importe: Prisma.Decimal | number | string | null;
     valorResidual: Prisma.Decimal | number | string | null;

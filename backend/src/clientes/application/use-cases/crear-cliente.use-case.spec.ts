@@ -56,6 +56,9 @@ function makeClienteRepo(): IClienteRepository {
   return {
     findById: vi.fn(),
     findByDbName: vi.fn(),
+    findBySlug: vi.fn(),
+    congelarSlug: vi.fn(),
+    cambiarSlugSiNoCongelado: vi.fn(),
     findAll: vi.fn(),
     save: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),

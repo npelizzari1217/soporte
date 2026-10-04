@@ -1,4 +1,11 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
+import { Result } from '../../../shared/domain/result';
+import {
+  SlugCongeladoError,
+  SlugInvalidoError,
+  SlugRequeridoError,
+} from '../errors/clientes.errors';
+import { SlugCliente } from '../value-objects/slug-cliente';
 
 /**
  * Tope de largo de `cuit`, espejando `clientes.cuit VARCHAR(13)`
@@ -100,6 +107,20 @@ export interface ClienteProps {
   logoStorageKey?: string | null;
   logoMimeType?: string | null;
   logoUpdatedAt?: Date | null;
+  /**
+   * Slug del formulario publico (sdd/formulario-publico-qr, WU-1). `null` =
+   * sin URL publica. Defaults to null.
+   */
+  slug?: string | null;
+  /** Formulario publico habilitado (D12). Defaults to false. */
+  formularioPublicoHabilitado?: boolean;
+  /** Marca de congelamiento del slug (primer QR emitido). Defaults to null. */
+  slugCongeladoAt?: Date | null;
+}
+
+/** Normaliza un `dbName` (admite guion bajo) a la forma del slug (guion). */
+function normalizarDbName(dbName: string): string {
+  return dbName.toLowerCase().replace(/_/g, '-');
 }
 
 /**
@@ -134,6 +155,9 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
         logoStorageKey: props.logoStorageKey ?? null,
         logoMimeType: props.logoMimeType ?? null,
         logoUpdatedAt: props.logoUpdatedAt ?? null,
+        slug: props.slug ?? null,
+        formularioPublicoHabilitado: props.formularioPublicoHabilitado ?? false,
+        slugCongeladoAt: props.slugCongeladoAt ?? null,
       },
       id,
     );
@@ -158,6 +182,9 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
         logoStorageKey: props.logoStorageKey ?? null,
         logoMimeType: props.logoMimeType ?? null,
         logoUpdatedAt: props.logoUpdatedAt ?? null,
+        slug: props.slug ?? null,
+        formularioPublicoHabilitado: props.formularioPublicoHabilitado ?? false,
+        slugCongeladoAt: props.slugCongeladoAt ?? null,
       },
       id,
     );
@@ -212,6 +239,21 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
    */
   get logoUpdatedAt(): Date | null {
     return this.props.logoUpdatedAt ?? null;
+  }
+
+  /** Slug de la URL publica, o `null` si el cliente no tiene. */
+  get slug(): string | null {
+    return this.props.slug ?? null;
+  }
+
+  /** Ver `ClienteProps.formularioPublicoHabilitado`. Defaults to false. */
+  get formularioPublicoHabilitado(): boolean {
+    return this.props.formularioPublicoHabilitado ?? false;
+  }
+
+  /** Cuando se congelo el slug, o `null` si todavia se puede cambiar. */
+  get slugCongeladoAt(): Date | null {
+    return this.props.slugCongeladoAt ?? null;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────
@@ -285,5 +327,46 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
     this.props.logoMimeType = null;
     this.props.logoUpdatedAt = null;
     this.touch();
+  }
+
+  /**
+   * Carga o corrige el slug del formulario publico (D7). Valida formato y
+   * forma de UUID (`SlugCliente`) y rechaza que sea el `id` o el `dbName` del
+   * cliente (el `dbName` se compara normalizado: admite guion bajo y el slug
+   * no). Un slug congelado no cambia.
+   *
+   * Solo cambia el estado en memoria: la persistencia del slug pasa por el CAS
+   * `IClienteRepository.cambiarSlugSiNoCongelado`, que es quien decide ante
+   * una carrera con la emision de un QR.
+   */
+  configurarSlug(valor: string): Result<void, SlugInvalidoError | SlugCongeladoError> {
+    if (this.slugCongeladoAt !== null) {
+      return Result.fail(new SlugCongeladoError());
+    }
+    const slug = SlugCliente.crear(valor);
+    if (slug.isFail()) return Result.fail(slug.getError());
+    const v = slug.getValue().valor;
+    if (v === this.id.toLowerCase()) {
+      return Result.fail(new SlugInvalidoError('no puede ser el identificador del cliente.'));
+    }
+    if (v === normalizarDbName(this.dbName)) {
+      return Result.fail(new SlugInvalidoError('no puede ser el nombre de base del cliente.'));
+    }
+    this.props.slug = v;
+    this.touch();
+    return Result.ok(undefined);
+  }
+
+  /**
+   * Prende/apaga el formulario publico (D12). Habilitar exige slug: sin el no
+   * existiria una URL publica. Deshabilitar siempre se permite.
+   */
+  habilitarFormulario(habilitado: boolean): Result<void, SlugRequeridoError> {
+    if (habilitado && this.slug === null) {
+      return Result.fail(new SlugRequeridoError());
+    }
+    this.props.formularioPublicoHabilitado = habilitado;
+    this.touch();
+    return Result.ok(undefined);
   }
 }

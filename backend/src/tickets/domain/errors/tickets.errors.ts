@@ -419,3 +419,17 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
     );
   }
 }
+
+/**
+ * SolicitanteExternoInvalidoError — los datos de un solicitante externo (formulario público) no
+ * cumplen las reglas del dominio: nombre 1-120, email válido de hasta 254 y teléfono de hasta 30.
+ * Es la última línea de defensa: el DTO del borde ya filtra, pero el dominio no confía en él.
+ * (sdd/formulario-publico-qr, WU-6)
+ */
+export class SolicitanteExternoInvalidoError extends DomainError {
+  readonly code = 'SOLICITANTE_EXTERNO_INVALIDO';
+
+  constructor(motivo: string) {
+    super(`Solicitante externo inválido: ${motivo}`);
+  }
+}

@@ -17,12 +17,12 @@ export class SlaVencidoEvent implements DomainEvent {
   readonly occurredAt: Date;
   readonly ticketId: string;
   readonly asignadoId: string | null;
-  readonly solicitanteId: string;
+  readonly solicitanteId: string | null;
 
   constructor(props: {
     ticketId: string;
     asignadoId: string | null;
-    solicitanteId: string;
+    solicitanteId: string | null;
     occurredAt?: Date;
   }) {
     this.ticketId = props.ticketId;

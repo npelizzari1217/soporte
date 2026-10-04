@@ -24,6 +24,7 @@ import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { SolicitanteExternoEntity } from '../../domain/entities/solicitante-externo.entity';
 import {
   TicketNoEncontradoError,
   TicketBloqueadoParaEdicionError,
@@ -102,6 +103,10 @@ type DependenciasControlador = {
   asignarEnProceso: MockUseCase;
   exportarTickets: MockUseCase;
   obtenerCsatTicket: MockUseCase;
+  solicitanteExternoRepo: {
+    findNombres: ReturnType<typeof vi.fn>;
+    findById: ReturnType<typeof vi.fn>;
+  };
 };
 
 type ControladorDeTest = DependenciasControlador & {
@@ -145,6 +150,10 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     exportarTickets: overrides.exportarTickets ?? stub(),
     // WU9.2: default sin dato CSAT — la mayoría de los tests no ejercitan findOne.
     obtenerCsatTicket: overrides.obtenerCsatTicket ?? { execute: vi.fn().mockResolvedValue(null) },
+    solicitanteExternoRepo: overrides.solicitanteExternoRepo ?? {
+      findNombres: vi.fn().mockResolvedValue(new Map()),
+      findById: vi.fn().mockResolvedValue(null),
+    },
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
   // devuelve un Map vacío sin N+1.
@@ -164,6 +173,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     deps.asignarEnProceso as unknown as Ctor[10], // asignarYPonerEnProcesoUseCase
     deps.exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
     deps.obtenerCsatTicket as unknown as Ctor[12], // obtenerCsatTicketUseCase
+    deps.solicitanteExternoRepo as unknown as Ctor[13], // solicitanteExternoRepo
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -583,6 +593,118 @@ describe('TicketsController.findOne — CSAT en el detalle (WU9.2, ADR-C5)', () 
   });
 });
 
+describe('TicketsController — lectores con datos del solicitante externo (WU-8)', () => {
+  const LECTOR: JwtPayload = payloadDeTest({
+    sub: 'tecnico-1',
+    cliente_id: 'cliente-1',
+    rol: 'TECNICO',
+    permisos: ['TICKETS:LECTURA', 'TICKETS:VER_TODOS'],
+    cliente_nombre: 'Cliente 1',
+    modulos: ['SOPORTE'],
+  });
+
+  function ticketDe(id: string, origen: { usuario?: string; externo?: string }): TicketEntity {
+    return TicketEntity.create(
+      {
+        numero: `SOP-2026-${id}`,
+        titulo: 'Ticket',
+        descripcion: null,
+        tipoId: 'ti1',
+        estadoId: 'e1',
+        prioridadId: 'p1',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: origen.usuario ?? null,
+        solicitanteExternoId: origen.externo ?? null,
+      },
+      id,
+    );
+  }
+
+  function externo(nombre: string, telefono: string | null): SolicitanteExternoEntity {
+    return SolicitanteExternoEntity.create({
+      nombre,
+      email: 'ext@example.com',
+      telefono,
+      emailVerificadoAt: new Date('2026-10-03T10:00:00Z'),
+    }).getValue();
+  }
+
+  it('listado con externo y registrado mezclados: nombra a cada uno y NO trae el telefono', async () => {
+    const items = [ticketDe('t-ext', { externo: 'ext-1' }), ticketDe('t-reg', { usuario: 'u-1' })];
+    const listarTickets = {
+      execute: vi.fn().mockResolvedValue(Result.ok({ items, total: 2, pagina: 1, porPagina: 20 })),
+    };
+    const solicitanteExternoRepo = {
+      findNombres: vi.fn().mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
+      findById: vi.fn(),
+    };
+    const { controller, usuarioMasterChecker } = buildController({
+      listarTickets,
+      solicitanteExternoRepo,
+    });
+    usuarioMasterChecker.resolverNombres.mockResolvedValue(
+      new Map([['u-1', { nombre: 'Ana', apellido: 'Gomez' }]]),
+    );
+
+    const respuesta = await controller.findAll(LECTOR, {});
+
+    const [ext, reg] = respuesta.items;
+    expect(ext.solicitanteNombre).toBe('Marta Externa');
+    expect(ext.solicitanteApellido).toBeNull();
+    expect(ext.solicitanteEsExterno).toBe(true);
+    expect(ext.solicitanteExternoId).toBe('ext-1');
+    expect(reg.solicitanteNombre).toBe('Ana');
+    expect(reg.solicitanteEsExterno).toBe(false);
+    expect('solicitanteTelefono' in ext).toBe(false);
+    // Un solo batch para todo el listado (sin N+1) y solo con ids de externos.
+    expect(solicitanteExternoRepo.findNombres).toHaveBeenCalledTimes(1);
+    expect(solicitanteExternoRepo.findNombres).toHaveBeenCalledWith(['ext-1']);
+    expect(solicitanteExternoRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('detalle de un ticket externo: trae nombre y telefono', async () => {
+    const ticket = ticketDe('t-ext', { externo: 'ext-1' });
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const solicitanteExternoRepo = {
+      findNombres: vi.fn().mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
+      findById: vi.fn().mockResolvedValue(externo('Marta Externa', '+54 11 5555-0000')),
+    };
+    const { controller } = buildController({ obtenerTicket, solicitanteExternoRepo });
+
+    const respuesta = await controller.findOne(LECTOR, 't-ext');
+
+    expect(respuesta.solicitanteNombre).toBe('Marta Externa');
+    expect(respuesta.solicitanteTelefono).toBe('+54 11 5555-0000');
+  });
+
+  it('detalle de un externo sin telefono: solicitanteTelefono es null', async () => {
+    const ticket = ticketDe('t-ext', { externo: 'ext-1' });
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const solicitanteExternoRepo = {
+      findNombres: vi.fn().mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
+      findById: vi.fn().mockResolvedValue(externo('Marta Externa', null)),
+    };
+    const { controller } = buildController({ obtenerTicket, solicitanteExternoRepo });
+
+    const respuesta = await controller.findOne(LECTOR, 't-ext');
+
+    expect(respuesta.solicitanteTelefono).toBeNull();
+  });
+
+  it('detalle de un ticket de usuario registrado: no consulta al externo y el telefono es null', async () => {
+    const ticket = ticketDe('t-reg', { usuario: 'u-1' });
+    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const { controller, solicitanteExternoRepo } = buildController({ obtenerTicket });
+
+    const respuesta = await controller.findOne(LECTOR, 't-reg');
+
+    expect(respuesta.solicitanteTelefono).toBeNull();
+    expect(respuesta.solicitanteEsExterno).toBe(false);
+    expect(solicitanteExternoRepo.findById).not.toHaveBeenCalled();
+  });
+});
+
 describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
   /** Clases de error exportadas por `tickets.errors.ts` — el número de la verdad, no un literal a mano. */
   // Sin type predicate a propósito: cada export de `tickets.errors.ts` ya es
@@ -594,8 +716,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 23 clases de error (22 previas + ExportacionDemasiadoGrandeError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(23);
+  it('el catálogo tiene EXACTAMENTE 24 clases de error (23 previas + SolicitanteExternoInvalidoError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(24);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -680,6 +802,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'ExportacionDemasiadoGrandeError',
       () => new TicketsErrors.ExportacionDemasiadoGrandeError(6000, 5000),
+      422,
+    ],
+    [
+      'SolicitanteExternoInvalidoError',
+      () => new TicketsErrors.SolicitanteExternoInvalidoError('el nombre es obligatorio'),
       422,
     ],
   ];

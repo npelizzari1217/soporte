@@ -11,6 +11,7 @@
  *   registrarBaja() (CAS). Así una entidad vieja no reactiva el equipo.
  * - bloquearParaModificar() / bloquearParaOperarPiezas() son el nivel LE del orden de locks
  *   (ADR-2): `FOR NO KEY UPDATE` / `FOR SHARE`, nunca `FOR UPDATE`.
+ * - save() tampoco escribe `qr_*`: el único escritor del QR es guardarQrHash() (CAS).
  * - delete() es SIEMPRE soft delete (deletedAt), nunca DELETE físico.
  *
  * Tarea: T11.2.
@@ -113,6 +114,19 @@ export class PrismaEquipoInformaticoRepository implements IEquipoInformaticoRepo
         bajaFecha: equipo.bajaFecha,
         bajaUsuarioId: equipo.bajaUsuarioId,
       },
+    });
+    return count > 0;
+  }
+
+  async findByQrHash(qrTokenHash: string): Promise<EquipoInformaticoEntity | null> {
+    const row = await this.client.equipoInformatico.findUnique({ where: { qrTokenHash } });
+    return row ? EquipoInformaticoMapper.toDomain(row) : null;
+  }
+
+  async guardarQrHash(id: string, qrTokenHash: string, emitidoAt: Date): Promise<boolean> {
+    const { count } = await this.client.equipoInformatico.updateMany({
+      where: { id, activo: true, deletedAt: null },
+      data: { qrTokenHash, qrEmitidoAt: emitidoAt },
     });
     return count > 0;
   }

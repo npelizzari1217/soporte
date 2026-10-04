@@ -55,3 +55,14 @@ export const CLIENTE_CUIT_MAX_LENGTH = 13;
  * propia con constantes que exportar.
  */
 export const CLIENTE_SMTP_TEXTO_MAX_LENGTH = 255;
+
+/**
+ * Tope del slug del formulario público.
+ *
+ * Autoridad: `SLUG_MAX_LENGTH` de `backend/src/clientes/domain/value-objects/slug-cliente.ts`
+ * (columna `clientes.slug` `VarChar(63)` y CHECK `clientes_slug_formato_check`).
+ */
+export const CLIENTE_SLUG_MAX_LENGTH = 63;
+
+/** Espejo de `SLUG_REGEX` del backend (mismo archivo). Si cambia allá, cambia acá. */
+export const CLIENTE_SLUG_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;

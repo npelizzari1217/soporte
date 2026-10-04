@@ -195,7 +195,12 @@ export interface TicketResponseDto {
   prioridadId: string;
   cicloId: string | null;
   ticketReferenciaId: string | null;
-  solicitanteId: string;
+  /** `null` si el ticket lo abrió un solicitante externo (formulario público). */
+  solicitanteId: string | null;
+  /** Id del solicitante externo (formulario público); `null` si lo abrió un usuario registrado. */
+  solicitanteExternoId: string | null;
+  /** `true` si el ticket lo abrió un solicitante externo. */
+  solicitanteEsExterno: boolean;
   asignadoId: string | null;
   /** Resuelto batch cross-DB (sdd/beta-frontend item 2). `null` = no resuelto (ver `NombresResueltos`). */
   solicitanteNombre: string | null;
@@ -203,6 +208,11 @@ export interface TicketResponseDto {
   /** `null` si `asignadoId` es `null`, o si el usuario no se pudo resolver. */
   asignadoNombre: string | null;
   asignadoApellido: string | null;
+  /**
+   * Teléfono del solicitante externo. Viaja SOLO en el detalle (`GET /tickets/:id`): el listado
+   * no lo trae (ausente). En el detalle es `null` si no es externo o no cargó teléfono.
+   */
+  solicitanteTelefono?: string | null;
   /** Calculado por el módulo SLA. `null` = sin SLA aplicable/calculado aún (sdd/beta-frontend item 2). */
   slaVenceAt: string | null;
   /** Desnormalizado, recalculado por el módulo SLA (sdd/beta-frontend item 2). */
@@ -236,6 +246,8 @@ export interface TicketResponseDto {
  */
 export interface NombresResueltos {
   solicitante?: { nombre: string; apellido: string };
+  /** Solicitante externo: solo tiene un nombre (sin apellido). */
+  solicitanteExterno?: { nombre: string };
   asignado?: { nombre: string; apellido: string };
 }
 
@@ -261,6 +273,7 @@ export function toTicketResponseDto(
   ticket: TicketEntity,
   nombres?: NombresResueltos,
   csat?: { puntaje: number; comentario: string | null } | null,
+  solicitanteTelefono?: string | null,
 ): TicketResponseDto {
   return {
     id: ticket.id,
@@ -273,8 +286,10 @@ export function toTicketResponseDto(
     cicloId: ticket.cicloId,
     ticketReferenciaId: ticket.ticketReferenciaId,
     solicitanteId: ticket.solicitanteId,
+    solicitanteExternoId: ticket.solicitanteExternoId,
+    solicitanteEsExterno: ticket.solicitanteExternoId !== null,
     asignadoId: ticket.asignadoId,
-    solicitanteNombre: nombres?.solicitante?.nombre ?? null,
+    solicitanteNombre: nombres?.solicitante?.nombre ?? nombres?.solicitanteExterno?.nombre ?? null,
     solicitanteApellido: nombres?.solicitante?.apellido ?? null,
     asignadoNombre: nombres?.asignado?.nombre ?? null,
     asignadoApellido: nombres?.asignado?.apellido ?? null,
@@ -283,6 +298,7 @@ export function toTicketResponseDto(
     fechaCierre: ticket.fechaCierre ? ticket.fechaCierre.toISOString() : null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
+    ...(solicitanteTelefono !== undefined ? { solicitanteTelefono } : {}),
     ...(csat ? { csatPuntaje: csat.puntaje, csatComentario: csat.comentario } : {}),
   };
 }

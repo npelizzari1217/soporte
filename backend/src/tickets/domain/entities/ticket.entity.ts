@@ -62,8 +62,16 @@ export interface TicketProps {
   cicloId: string | null;
   /** Self-FK nullable → tickets.id. "Este ticket continúa de #X". */
   ticketReferenciaId: string | null;
-  /** Soft ref → master.usuarios.id. Sin FK cross-DB. */
-  solicitanteId: string;
+  /**
+   * Soft ref → master.usuarios.id. Sin FK cross-DB. `null` solo si el ticket lo abrió un solicitante
+   * externo (formulario público): exactamente uno de `solicitanteId` / `solicitanteExternoId`.
+   */
+  solicitanteId: string | null;
+  /**
+   * FK → solicitantes_externos.id. Opcional en el tipo para no romper a los callers que solo
+   * conocen al solicitante interno; ausente equivale a `null`.
+   */
+  solicitanteExternoId?: string | null;
   /** Soft ref → master.usuarios.id. NULL = sin asignar. */
   asignadoId: string | null;
   /** Calculado por el módulo SLA (Fase 4). NULL = sin SLA aplicable/calculado aún. */
@@ -140,6 +148,21 @@ export type SlaRegla = (typeof SLA_REGLAS)[number];
  * Ref spec: sdd/tickets-core/spec T4, T9, T11, T12. Ref design: ADR-3, ADR-4.
  * Tarea: T3.3, T3.4.
  */
+/**
+ * Invariante del origen del ticket: exactamente uno de `solicitanteId` y `solicitanteExternoId`.
+ * Espeja el CHECK `tickets_solicitante_exactamente_uno` para fallar antes del INSERT.
+ */
+function validarSolicitante(
+  solicitanteId: string | null,
+  solicitanteExternoId: string | null,
+): void {
+  if ((solicitanteId === null) === (solicitanteExternoId === null)) {
+    throw new Error(
+      'TicketEntity: exactamente uno de solicitanteId y solicitanteExternoId debe estar presente.',
+    );
+  }
+}
+
 export class TicketEntity extends BaseEntity<TicketProps> {
   /**
    * Cohorte de cálculo de SLA (ver {@link SlaRegla}). `undefined` en una
@@ -161,6 +184,7 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    */
   static create(props: CrearTicketProps, id?: string): TicketEntity {
     validarTitulo(props.titulo);
+    validarSolicitante(props.solicitanteId, props.solicitanteExternoId ?? null);
     return new TicketEntity(
       { ...props, asignadoId: null, slaVenceAt: null, vencido: false, fechaCierre: null },
       id,
@@ -225,8 +249,12 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     return this.props.ticketReferenciaId;
   }
 
-  get solicitanteId(): string {
+  get solicitanteId(): string | null {
     return this.props.solicitanteId;
+  }
+
+  get solicitanteExternoId(): string | null {
+    return this.props.solicitanteExternoId ?? null;
   }
 
   get asignadoId(): string | null {

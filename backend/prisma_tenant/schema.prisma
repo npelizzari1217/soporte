@@ -181,6 +181,47 @@ model TipoOperacion {
 // El índice parcial de activo (WHERE deleted_at IS NULL) se agrega en la
 // migración.
 
+/// Solicitante externo (sdd/formulario-publico-qr, WU-6): quien pide por el formulario público sin
+/// cuenta. Vive solo en el tenant; no hay Usuario ni Membresía. Una fila por pedido confirmado.
+/// Retención (D11): se conserva mientras exista el ticket; sin borrado en esta entrega.
+/// El vínculo es `tickets.solicitante_externo_id` (WU-7, FK RESTRICT).
+model SolicitanteExterno {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre            String   @db.VarChar(120)
+  email             String   @db.VarChar(254)
+  telefono          String?  @db.VarChar(30)
+  emailVerificadoAt DateTime @map("email_verificado_at") @db.Timestamptz
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tickets Ticket[]
+
+  @@index([email])
+  @@map("solicitantes_externos")
+}
+
+/// Pedido público aún sin verificar (sdd/formulario-publico-qr, WU-11, ADR-7). Acá vive la PII del
+/// pedido; master solo guarda el hash del token, bajo el MISMO id (soft ref, sin FK cross-DB).
+/// Se borra al confirmar (DELETE ... RETURNING) o al vencer (purga en cada solicitud nueva).
+model PedidoPublicoPendiente {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String   @db.VarChar(120)
+  email       String   @db.VarChar(254)
+  telefono    String?  @db.VarChar(30)
+  titulo      String   @db.VarChar(150)
+  descripcion String   @db.Text
+  equipoId    String?  @map("equipo_id") @db.Uuid
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  equipo EquipoInformatico? @relation(fields: [equipoId], references: [id], onDelete: SetNull)
+
+  @@index([expiresAt])
+  /// ÍNDICE PARCIAL WHERE equipo_id IS NOT NULL — enforced via CREATE INDEX en migration SQL.
+  @@index([equipoId])
+  @@map("pedidos_publicos_pendientes")
+}
+
 model CicloCliente {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Soft ref → master.ciclos_vigentes.id. Sin FK: cross-DB imposible en Postgres.
@@ -234,8 +275,12 @@ model Ticket {
   cicloId            String?   @map("ciclo_id") @db.Uuid
   /// Self-FK nullable → tickets.id. "Este ticket continúa de #X".
   ticketReferenciaId String?   @map("ticket_referencia_id") @db.Uuid
-  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
-  solicitanteId      String    @map("solicitante_id") @db.Uuid
+  /// Soft ref → master.usuarios.id. Sin FK cross-DB. NULL solo si el ticket lo abrió un solicitante
+  /// externo (formulario público): CHECK tickets_solicitante_exactamente_uno.
+  solicitanteId      String?   @map("solicitante_id") @db.Uuid
+  /// FK real → solicitantes_externos.id (sdd/formulario-publico-qr, WU-7). Exactamente uno de
+  /// solicitante_id / solicitante_externo_id es NOT NULL.
+  solicitanteExternoId String? @map("solicitante_externo_id") @db.Uuid
   /// Soft ref → master.usuarios.id. NULL = sin asignar.
   asignadoId         String?   @map("asignado_id") @db.Uuid
   /// Calculado por el módulo SLA (prioridad + tipo). NULL = sin SLA aplicable.
@@ -261,6 +306,7 @@ model Ticket {
   prioridad        Prioridad     @relation(fields: [prioridadId], references: [id])
   ciclo            CicloCliente? @relation(fields: [cicloId], references: [id])
   ticketReferencia Ticket?       @relation("TicketContinuacion", fields: [ticketReferenciaId], references: [id])
+  solicitanteExterno SolicitanteExterno? @relation(fields: [solicitanteExternoId], references: [id], onDelete: Restrict)
   ticketsDerivados Ticket[]      @relation("TicketContinuacion")
 
   operaciones           OperacionTicket[]
@@ -279,6 +325,7 @@ model Ticket {
   @@index([cicloId]) // partial WHERE ciclo_id IS NOT NULL — ver migration SQL
   @@index([ticketReferenciaId]) // partial WHERE ticket_referencia_id IS NOT NULL — ver migration SQL
   @@index([solicitanteId])
+  @@index([solicitanteExternoId]) // partial WHERE solicitante_externo_id IS NOT NULL — ver migration SQL
   @@index([asignadoId]) // partial WHERE asignado_id IS NOT NULL — ver migration SQL
   @@index([createdAt])
   @@index([vencido])
@@ -593,6 +640,10 @@ model EquipoInformatico {
   bajaMotivo         String?   @map("baja_motivo") @db.Text
   bajaFecha          DateTime? @map("baja_fecha") @db.Timestamptz
   bajaUsuarioId      String?   @map("baja_usuario_id") @db.Uuid
+  /// QR del equipo (sdd/formulario-publico-qr, ADR-10): sha256 hex del token opaco, nunca el
+  /// token en claro. UNIQUE nullable. Solo `guardarQrHash()` lo escribe.
+  qrTokenHash        String?   @unique @map("qr_token_hash") @db.VarChar(64)
+  qrEmitidoAt        DateTime? @map("qr_emitido_at") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
@@ -606,6 +657,7 @@ model EquipoInformatico {
   movimientos      MovimientoInsumo[]
   unidadesInsumo   UnidadInsumo[]
   eventosUnidad    EventoUnidadInsumo[]
+  pedidosPublicos  PedidoPublicoPendiente[]
 
   @@map("equipos_informaticos")
 }

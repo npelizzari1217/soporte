@@ -254,7 +254,10 @@ servicios detenidos. Un tenant creado después recibe la migración por la vía 
 - **Purga de PII sin verificar**:
   - la fila se borra al confirmar;
   - cada solicitud nueva hace `DELETE ... WHERE expires_at < now()` en su tenant;
-  - no hay scheduler.
+  - un barrido horario (`PurgaPendientesVencidosScheduler`, WU-20, remediación de W2) hace el
+    mismo borrado en cada tenant activo, aunque no llegue ninguna solicitud. La cadencia se
+    cambia con `PURGA_PENDIENTES_CRON`. No alcanza a los clientes dados de baja: el
+    enumerador de tenants solo lista los activos.
 
   Los tokens de master no se barren, igual que en el precedente.
 

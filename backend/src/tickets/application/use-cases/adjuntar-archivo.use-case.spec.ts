@@ -252,4 +252,33 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
 
     await expect(c.useCase.execute(baseDto())).rejects.toThrow(/ADJUNTO/);
   });
+
+  it('ticket de solicitante externo (solicitanteId null): sin ver_todos ni editar → 404 y no sube nada', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(
+      TicketEntity.create(
+        {
+          numero: 'SOP-2026-00002',
+          titulo: 'Pedido del formulario publico',
+          descripcion: null,
+          tipoId: 'tipo-uuid',
+          estadoId: 'estado-uuid',
+          prioridadId: 'prioridad-uuid',
+          cicloId: null,
+          ticketReferenciaId: null,
+          solicitanteId: null,
+          solicitanteExternoId: 'externo-uuid',
+        },
+        'ticket-uuid',
+      ),
+    );
+
+    const result = await c.useCase.execute(
+      baseDto({ tienePermisoVerTodos: false, tienePermisoEditar: false }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+    expect(c.fileStorage.upload).not.toHaveBeenCalled();
+  });
 });

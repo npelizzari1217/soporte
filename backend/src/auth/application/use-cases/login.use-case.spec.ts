@@ -110,6 +110,9 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
 const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findById: vi.fn(),
   findByDbName: vi.fn(),
+  findBySlug: vi.fn(),
+  congelarSlug: vi.fn(),
+  cambiarSlugSiNoCongelado: vi.fn(),
   findAll: vi.fn(),
   save: vi.fn(),
   delete: vi.fn(),

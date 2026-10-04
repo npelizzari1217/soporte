@@ -18,6 +18,13 @@ export interface Cliente {
    * a diferencia de la config de correo que necesita un endpoint aparte.
    */
   csatHabilitado: boolean;
+  /**
+   * Slug que identifica al cliente en la URL del formulario público
+   * (sdd/formulario-publico-qr). `null` hasta que ROOT lo carga.
+   */
+  slug: string | null;
+  /** Formulario público prendido por ROOT; apagado por defecto. */
+  formularioPublicoHabilitado: boolean;
 }
 
 export interface CreateClienteDto {
@@ -92,6 +99,16 @@ export interface ConfigurarCorreoDto {
 /** Body de `PATCH /clientes/:id/csat` — espejo de `ConfigurarCsatClienteDto` (backend, sdd/csat WU10.2). */
 export interface ConfigurarCsatDto {
   habilitado: boolean;
+}
+
+/**
+ * Body de `PATCH /clientes/:id/formulario-publico` — espejo de
+ * `ConfigurarFormularioPublicoDto` (backend). Patch parcial: se manda solo lo
+ * que cambió.
+ */
+export interface ConfigurarFormularioPublicoDto {
+  slug?: string;
+  habilitado?: boolean;
 }
 
 /**

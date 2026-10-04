@@ -53,6 +53,11 @@ import {
   EQUIPO_INFORMATICO_REPOSITORY,
   IEquipoInformaticoRepository,
 } from './domain/ports/i-equipo-informatico.repository';
+import { entorno } from '../config/entorno';
+import {
+  CLIENTE_REPOSITORY,
+  IClienteRepository,
+} from '../clientes/domain/ports/i-cliente.repository';
 import { PrismaEquipoInformaticoRepository } from './infrastructure/persistence/prisma/prisma-equipo-informatico.repository';
 import {
   COMPONENTE_EQUIPO_REPOSITORY,
@@ -81,6 +86,8 @@ import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-co
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from './application/use-cases/obtener-equipo-de-ticket.use-case';
+import { EmitirQrEquipoUseCase } from './application/use-cases/emitir-qr-equipo.use-case';
+import { ResolverQrAutenticadoUseCase } from './application/use-cases/resolver-qr-autenticado.use-case';
 import { ExportarEquiposUseCase } from './application/use-cases/exportar-equipos.use-case';
 
 import { EquiposController } from './interface/controllers/equipos.controller';
@@ -191,6 +198,21 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         insumoRepo: IInsumoRepository,
       ) => new ObtenerEquipoUseCase(equipoRepo, componenteRepo, insumoRepo),
       inject: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, INSUMO_REPOSITORY],
+    },
+    {
+      // sdd/formulario-publico-qr (WU-4): CLIENTE_REPOSITORY lo exporta AuthModule (ya importado).
+      // La URL se arma desde `entorno.APP_BASE_URL`, nunca desde el header `Host`.
+      provide: EmitirQrEquipoUseCase,
+      useFactory: (equipoRepo: IEquipoInformaticoRepository, clienteRepo: IClienteRepository) =>
+        new EmitirQrEquipoUseCase(equipoRepo, clienteRepo, entorno.APP_BASE_URL),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, CLIENTE_REPOSITORY],
+    },
+    {
+      // sdd/formulario-publico-qr (WU-17): camino autenticado del QR (D3). Solo lee.
+      provide: ResolverQrAutenticadoUseCase,
+      useFactory: (clienteRepo: IClienteRepository, equipoRepo: IEquipoInformaticoRepository) =>
+        new ResolverQrAutenticadoUseCase(clienteRepo, equipoRepo),
+      inject: [CLIENTE_REPOSITORY, EQUIPO_INFORMATICO_REPOSITORY],
     },
     {
       provide: ListarEquiposUseCase,
@@ -452,6 +474,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       inject: [ListarEquiposUseCase],
     },
   ],
-  exports: [EQUIPO_INFORMATICO_REPOSITORY, COMPONENTE_EQUIPO_REPOSITORY, TICKET_SOPORTE_REPOSITORY],
+  exports: [
+    EQUIPO_INFORMATICO_REPOSITORY,
+    COMPONENTE_EQUIPO_REPOSITORY,
+    TICKET_SOPORTE_REPOSITORY,
+    // sdd/formulario-publico-qr WU-15: `ConfirmarPedidoPublicoUseCase` crea el ticket del externo.
+    CrearTicketSoporteUseCase,
+  ],
 })
 export class EquiposModule {}

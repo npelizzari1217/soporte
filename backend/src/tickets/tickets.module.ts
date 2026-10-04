@@ -32,6 +32,8 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from './domain/ports/i-ciclo-cliente.repository';
+import { SOLICITANTE_EXTERNO_REPOSITORY } from './domain/ports/i-solicitante-externo.repository';
+import { PrismaSolicitanteExternoRepository } from './infrastructure/persistence/prisma/prisma-solicitante-externo.repository';
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
 import { CsatLecturaModule } from '../csat/csat-lectura.module';
 
@@ -147,6 +149,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: OPERACION_TICKET_REPOSITORY, useClass: PrismaOperacionTicketRepository },
     { provide: ARCHIVO_REPOSITORY, useClass: PrismaArchivoRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
+    { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
 
     {
       provide: NumeradorTicket,
@@ -481,6 +484,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     OPERACION_TICKET_REPOSITORY,
     ARCHIVO_REPOSITORY,
     CICLO_CLIENTE_REPOSITORY,
+    SOLICITANTE_EXTERNO_REPOSITORY,
     // sdd/preventivo WU-5 (5.1): CrearTicketUseCase exportado para que
     // GenerarPreventivosUseCase lo reuse en vez de reimplementar la sección
     // crítica de numeración (ADR-PV5) — mismo criterio que los tokens de

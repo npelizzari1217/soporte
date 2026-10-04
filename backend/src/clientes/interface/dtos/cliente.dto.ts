@@ -13,10 +13,12 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
+import { SLUG_MAX_LENGTH, SLUG_REGEX } from '../../domain/value-objects/slug-cliente';
 import {
   CLIENTE_CUIT_MAX_LENGTH,
   CLIENTE_NOMBRE_MAX_LENGTH,
@@ -116,6 +118,10 @@ export interface ClienteResponseDto {
    * `ConfigurarCsatDialog` arranca prellenado con el valor real.
    */
   csatHabilitado: boolean;
+  /** Slug del formulario publico (D7), o `null` si todavia no se cargo. */
+  slug: string | null;
+  /** Formulario publico habilitado (D12). Apagado por defecto. */
+  formularioPublicoHabilitado: boolean;
 }
 
 /**
@@ -126,6 +132,24 @@ export interface ClienteResponseDto {
 export class ConfigurarCsatClienteDto {
   @IsBoolean()
   habilitado!: boolean;
+}
+
+/**
+ * Body de `PATCH /clientes/:id/formulario-publico` (sdd/formulario-publico-qr
+ * WU-2). Patch parcial: `slug` y/o `habilitado`. El formato exacto del slug
+ * (incluido el rechazo de UUID, `id` y `dbName`) lo valida el dominio; el
+ * `@Matches` solo corta la basura obvia en el borde.
+ */
+export class ConfigurarFormularioPublicoDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(SLUG_MAX_LENGTH)
+  @Matches(SLUG_REGEX, { message: 'slug con formato inválido' })
+  slug?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  habilitado?: boolean;
 }
 
 /**

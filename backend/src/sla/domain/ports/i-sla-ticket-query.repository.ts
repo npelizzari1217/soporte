@@ -2,7 +2,7 @@
 export interface TicketVencible {
   id: string;
   asignadoId: string | null;
-  solicitanteId: string;
+  solicitanteId: string | null;
 }
 
 /**

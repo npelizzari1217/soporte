@@ -724,3 +724,9 @@ export function toEquipoDeTicketResponseDto(
 ): EquipoDeTicketResponseDto {
   return { equipo: resultado.equipo };
 }
+
+/** Respuesta de `POST /equipos/:id/qr`: la URL pública con el token (solo se muestra al emitir). */
+export interface QrEquipoResponseDto {
+  url: string;
+  emitidoAt: string;
+}

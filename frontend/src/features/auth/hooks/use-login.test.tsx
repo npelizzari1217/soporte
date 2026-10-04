@@ -42,6 +42,7 @@ describe("useLogin", () => {
         href: "http://localhost:3000/login",
         origin: "http://localhost:3000",
         pathname: "/login",
+        search: "",
         assign: assignMock,
         replace: vi.fn(),
       },
@@ -116,6 +117,69 @@ describe("useLogin", () => {
     await waitFor(() => expect(result.current.membresias).not.toBeNull());
     expect(result.current.membresias).toHaveLength(2);
     expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  const USER_OK = { sub: "1", cliente_id: "c1", rol: "USUARIO", permisos: [], is_global_admin: false, cliente_nombre: "Cliente Uno", membresias: [] };
+  const SIGUIENTE_QR = "/pedido-qr?c=mi-colegio&e=tok-1";
+
+  function conSiguiente(valor: string) {
+    window.location.search = `?siguiente=${encodeURIComponent(valor)}`;
+  }
+
+  // Spec: sdd/formulario-publico-qr, D3 — el login vuelve al landing del QR.
+  it("con ?siguiente=/pedido-qr?... navega ahi tras un login de una sola membresia", async () => {
+    server.use(http.post("/api/auth/login", () => HttpResponse.json({ user: USER_OK })));
+    conSiguiente(SIGUIENTE_QR);
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+    act(() => {
+      result.current.login("user@example.com", "secret123");
+    });
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith(SIGUIENTE_QR));
+  });
+
+  it.each(["//evil.com", "https://evil.com", "/tickets"])(
+    "con ?siguiente=%s (fuera de la allowlist) navega a /",
+    async (valor) => {
+      server.use(http.post("/api/auth/login", () => HttpResponse.json({ user: USER_OK })));
+      conSiguiente(valor);
+
+      const { result } = renderHook(() => useLogin(), { wrapper });
+      act(() => {
+        result.current.login("user@example.com", "secret123");
+      });
+
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
+      expect(assignMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("el selector multi-cliente tambien respeta ?siguiente= al elegir el cliente", async () => {
+    server.use(
+      http.post("/api/auth/login", async ({ request }) => {
+        const body = (await request.json()) as { clienteId?: string };
+        if (body.clienteId) return HttpResponse.json({ user: USER_OK });
+        return HttpResponse.json({
+          needsClienteSelection: true,
+          membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "USUARIO" }],
+        });
+      }),
+    );
+    conSiguiente(SIGUIENTE_QR);
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+    act(() => {
+      result.current.login("multi@example.com", "secret123");
+    });
+    await waitFor(() => expect(result.current.membresias).not.toBeNull());
+    expect(assignMock).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.selectCliente("c1");
+    });
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith(SIGUIENTE_QR));
   });
 
   it("selectCliente after multi-membership → re-posts with { email, password, clienteId } and redirects on success", async () => {

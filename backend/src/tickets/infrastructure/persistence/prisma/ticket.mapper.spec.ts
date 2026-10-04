@@ -22,6 +22,7 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     cicloId: 'ciclo-activo-id',
     ticketReferenciaId: null,
     solicitanteId: 'usuario-solicitante-id',
+    solicitanteExternoId: null,
     asignadoId: null,
     slaVenceAt: null,
     vencido: false,
