@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-03 contra el código de `main` (`9113c287`),
+decisión.** Actualizado el 2026-10-04 contra el código de `main` (`f39cf601`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
