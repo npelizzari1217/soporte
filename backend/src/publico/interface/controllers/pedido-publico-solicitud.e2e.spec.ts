@@ -267,6 +267,24 @@ describe('Formulario público e2e — POST solicitud (WU-13)', () => {
       expect(await tenantA.pedidoPublicoPendiente.count()).toBe(0);
       expect(await masterClient.pedidoPublicoToken.count()).toBe(0);
     });
+
+    it('una descripción de 4001 caracteres la rechaza el DTO con 400 (@MaxLength), sin escribir ni mandar mail', async () => {
+      await crearCliente({ slug: 'sol-400-desc', dbName: DB_A });
+
+      const r = await solicitar(
+        'sol-400-desc',
+        cuerpo('desc@example.com', { descripcion: 'x'.repeat(4001) }),
+      );
+      await tareas.esperarPendientes();
+
+      expect(r.status).toBe(400);
+      // Mensaje de class-validator: lo emite el ValidationPipe, no la entidad.
+      const { message } = JSON.parse(r.texto) as { message: string[] };
+      expect(message).toEqual(['descripcion must be shorter than or equal to 4000 characters']);
+      expect(await tenantA.pedidoPublicoPendiente.count()).toBe(0);
+      expect(await masterClient.pedidoPublicoToken.count()).toBe(0);
+      expect(correo.enviados).toHaveLength(0);
+    });
   });
 
   describe('correo sin LISTO (D3)', () => {
