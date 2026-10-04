@@ -299,6 +299,26 @@ Se copia el wiring de `RecuperacionPasswordModule` (`recuperacion-password.modul
 - El 429 lleva un solo mensaje genérico. No dice cuál límite se superó.
 - Cuentan todos los pedidos que llegan al guard, también los que nunca se verifican (spec, `:95`).
 
+**Por qué `contexto` usa XFF y los demás no** (agregado el 2026-10-04, sugerencia S1 del
+`verify-report.md`):
+
+- Todo el frontend habla con el backend a través del BFF (`frontend/src/app/api/[...path]/route.ts`),
+  así que el backend ve una sola IP de origen para todos los pedidos.
+- El BFF reenvía `x-forwarded-for` solo para el prefijo `publico/` (CSAT, ADR-C6), y lo reenvía
+  **tal como lo manda el cliente**. El backend no configura `trust proxy`. El header es
+  falsificable y no es un control de seguridad.
+- Por eso, en el tracker de `contexto` **el slug es lo que separa los cupos**. El XFF es solo un
+  discriminador entre clientes honestos.
+- **Consecuencia aceptada**: rotar el `x-forwarded-for` da un cupo nuevo de `contexto`, así que el
+  freno a la enumeración se puede evadir. El impacto es bajo:
+  - el slug de un cliente habilitado es público por naturaleza (va impreso en el QR);
+  - un slug deshabilitado y uno inexistente dan el mismo 404;
+  - `contexto` no escribe nada.
+- Los throttlers que protegen escrituras (`email`, `cliente`, `confirmacion`) **no** usan XFF.
+  Rotarlo no les da cupo nuevo: para `email` y `confirmacion` lo verifican tests e2e
+  (`pedido-publico-solicitud.e2e.spec.ts`, `pedido-publico-confirmar.e2e.spec.ts`), y el tracker
+  de `cliente` es solo el slug.
+
 **Limitación conocida**: el storage vive en la memoria de un solo proceso, igual que en CSAT y en
 reset. No escala horizontalmente, y un reinicio pone los cupos en cero.
 
