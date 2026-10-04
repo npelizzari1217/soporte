@@ -21,7 +21,8 @@ export interface IPedidoPendienteRepository {
 
   /**
    * Borra los pendientes vencidos (`expires_at <= ahora`) del tenant activo, que son PII sin
-   * verificar. No hay scheduler: lo invoca cada solicitud nueva. Devuelve la cantidad borrada.
+   * verificar. Lo invocan cada solicitud nueva y el barrido
+   * periódico `PurgaPendientesVencidosScheduler` (WU-20), que no depende de tráfico. Devuelve la cantidad borrada.
    */
   purgarVencidos(ahora?: Date): Promise<number>;
 }

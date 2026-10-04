@@ -42,6 +42,7 @@ import { TareasSegundoPlano } from '../shared/infrastructure/segundo-plano/tarea
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../shared/tenancy/tenant-context';
+import { ITenantEnumerator, TENANT_ENUMERATOR } from '../shared/domain/ports/i-tenant-enumerator';
 import { ResolverClientePublicoService } from './application/services/resolver-cliente-publico.service';
 import {
   IPedidoPendienteRepository,
@@ -71,6 +72,7 @@ import {
   trackerConfirmacion,
   trackerEmail,
 } from './infrastructure/guards/pedido-publico-throttler.guard';
+import { PurgaPendientesVencidosScheduler } from './infrastructure/schedulers/purga-pendientes-vencidos.scheduler';
 import { PedidoPublicoController } from './interface/controllers/pedido-publico.controller';
 
 /**
@@ -88,6 +90,9 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
  * - `CORREO_DE_CLIENTE` y su `CLIENTE_EMAIL_CONFIG_REPOSITORY` son LOCALES, igual que en
  *   `RecuperacionPasswordModule`: el adaptador solo lee estado, así que dos instancias son
  *   inofensivas.
+ * - `PurgaPendientesVencidosScheduler` (WU-20, W2): barrido horario que borra los pendientes
+ *   vencidos de cada tenant activo. `TENANT_ENUMERATOR` viene de `SharedModule` (`@Global()`) y
+ *   `ScheduleModule.forRoot()` de `AppModule`.
  * - Throttler: opciones con nombre y `ThrottlerStorage` locales (no hay `forRoot` ni `APP_GUARD`).
  *   El guard se aplica por `@UseGuards` en el controller. El storage es memoria de un proceso.
  *
@@ -246,6 +251,30 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
       useFactory: (correoDeCliente: ICorreoDeCliente, tareas: ITareasSegundoPlano) =>
         new NotificarPedidoCreadoService(correoDeCliente, tareas),
       inject: [CORREO_DE_CLIENTE, TAREAS_SEGUNDO_PLANO],
+    },
+    {
+      provide: PurgaPendientesVencidosScheduler,
+      useFactory: (
+        tenantEnumerator: ITenantEnumerator,
+        tenantContext: TenantContext,
+        prismaService: PrismaService,
+        pendienteRepo: IPedidoPendienteRepository,
+        logger: ILogger,
+      ) =>
+        new PurgaPendientesVencidosScheduler(
+          tenantEnumerator,
+          tenantContext,
+          prismaService,
+          pendienteRepo,
+          logger,
+        ),
+      inject: [
+        TENANT_ENUMERATOR,
+        TenantContext,
+        PrismaService,
+        PEDIDO_PENDIENTE_REPOSITORY,
+        LOGGER,
+      ],
     },
   ],
 })

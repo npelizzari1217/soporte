@@ -213,3 +213,10 @@ Orden verificado contra el diseño: sin errores de dependencia; se conserva WU-1
 - [x] 19.3 Registrar `FormularioPublicoModule` en `backend/src/app.module.ts` (ADR-12).
 - [x] 19.4 Declarar Cumplida o Desviación (con motivo) en la viñeta "Segunda etapa, punto 1" de `docs/roadmap-comercial.md`; correr `node scripts/check-roadmap-fresco.mjs`.
 - [x] 19.5 Anotar deuda de Ayuda y recordar en el PR del tracker: instalación manual de la dependencia QR con servicios detenidos antes del deploy.
+
+## WU-20 — Barrido periódico de pendientes vencidos (remediación W2)
+
+- [x] 20.1 Tests (unit, TDD): `PurgaPendientesVencidosScheduler` recorre los tenants activos, bindea `TenantContext` por tenant, aísla el fallo de uno, no propaga si falla la enumeración, loguea el conteo sin PII.
+- [x] 20.2 `purga-pendientes-vencidos.scheduler.ts` (`@Cron`, default cada hora, `PURGA_PENDIENTES_CRON`) y su wiring en `FormularioPublicoModule`; el caso de uso de solicitud conserva su purga.
+
+> **Alcance:** el barrido alcanza a los clientes `activo=true` y no soft-deleted (`listActiveTenants`), con el formulario apagado o no. NO alcanza a un cliente dado de baja. **Deuda de Ayuda**: ninguna (sin pantalla).

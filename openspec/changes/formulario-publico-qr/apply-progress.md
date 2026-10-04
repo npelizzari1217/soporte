@@ -426,3 +426,30 @@ Modo: estandar. Rama `feat/formulario-publico-qr-wu19`, apilada sobre `feat/form
 - Retención de los datos del solicitante externo (D11): quedan mientras exista el ticket; pendiente de revisar.
 - Los cupos del throttler viven en memoria de un proceso: un reinicio los pone en cero.
 - El formulario nace apagado por cliente: nada es visible hasta que el ROOT lo habilita.
+
+## WU-20 — Barrido periódico de pendientes vencidos, remediación W2 (completa, 2/2)
+
+Modo: Strict TDD (corrección de defecto, inyectado por el orquestador).
+
+### TDD Cycle Evidence
+
+| Tarea | RED | GREEN | REFACTOR |
+|---|---|---|---|
+| 20.1 / 20.2 spec del scheduler | `purga-pendientes-vencidos.scheduler.spec.ts` escrito primero (6 tests); `pnpm vitest run src/publico/infrastructure/schedulers` falló: no resolvía `./purga-pendientes-vencidos.scheduler` | Con el scheduler y el wiring: 6/6; `pnpm vitest run src/publico src/sla src/preventivo` 40 archivos, 300 tests verdes | Se sacaron los 3 `as never` del spec (mocks tipados con `vi.fn<Puerto[...]>()`) porque `check-casts-en-specs` marcó 630/117 contra la base 627/116; vuelve a 627/116. Prettier aplicado |
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/publico/infrastructure/schedulers`: 6/6 (fan-out, binding de `TenantContext`, aislamiento por tenant, log del conteo solo si > 0, sin tenants, enumeración caída) |
+| Runtime harness | N/A para el cron: el timing de `@Cron` no se testea (mismo criterio que sla y preventivo). El borrado en sí lo prueba `prisma-pedido-pendiente.repository.integration.spec.ts` (WU-11). El wiring lo prueba `app-module.registro.e2e.spec.ts`, que arranca el `AppModule` real |
+| Rollback | `git revert` del commit de WU-20: quita el scheduler, su spec, el provider y la nota del puerto |
+
+### Decisiones tomadas en apply
+
+- **Patrón copiado de `PreventivoSweepScheduler`**: enumera con `ITenantEnumerator.listActiveTenants()`, `getTenantClient` + `TenantContext.run` por tenant, `try/catch` por iteración con log enmascarado (`dbName` + mensaje), catch separado para la enumeración, `logger.error` en los fallos. No se usa zona horaria (ni sla ni preventivo la fijan).
+- **Tenants alcanzados**: solo `activo=true` y `deletedAt=null`. Cubre los de formulario apagado (el flag vive en master y el barrido no lo consulta). **Limitación**: un cliente dado de baja conserva sus pendientes vencidos; el enumerador no ofrece "todos". Ampliarlo exige un método nuevo en el puerto compartido; queda fuera de este WU.
+- **Cadencia**: cada hora (`CronExpression.EVERY_HOUR`, override `PURGA_PENDIENTES_CRON`). El TTL es 24 h: la PII vencida vive a lo sumo ~1 h de más, y la sentencia es un `DELETE` por `expires_at` barato. Cada 5 min (sla) sería ruido sin beneficio; diario (preventivo) dejaría hasta ~48 h.
+- **Sin caso de uso intermedio**: el scheduler llama a `purgarVencidos` del puerto directo; no hay lógica de negocio que envolver. La purga del caso de uso de solicitud queda.
+- **Sin spec de integración propio**: ni `SlaSweepScheduler` ni `PreventivoSweepScheduler` tienen uno. El borrado de vencidos (y la sobrevida de los vigentes) ya lo cubre la integración del repo de WU-11; el spec unit cubre la orquestación. Un integration spec sumaría solo el binding real de `TenantContext`, que `app-module.registro.e2e.spec.ts` ejercita en el boot.
+- El comentario del puerto decía "No hay scheduler"; se corrigió.
