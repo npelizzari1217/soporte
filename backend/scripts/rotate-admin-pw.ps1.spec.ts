@@ -10,9 +10,11 @@
  * Usa el bloque `param` real con un cuerpo inocuo (`testing/pwsh-param-block.ts`):
  * nunca rota nada. Sin pwsh, la suite se skippea.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
-import { correrParamBlock, MARCA_CUERPO, pwsh } from './testing/pwsh-param-block';
+import { correrParamBlock, MARCA_CUERPO, pwsh, PWSH_TIMEOUT_MS } from './testing/pwsh-param-block';
+
+vi.setConfig({ testTimeout: PWSH_TIMEOUT_MS, hookTimeout: PWSH_TIMEOUT_MS });
 
 const PS1_PATH = join(__dirname, '..', '..', 'rotate-admin-pw.ps1');
 

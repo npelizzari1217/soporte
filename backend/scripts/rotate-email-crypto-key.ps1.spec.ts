@@ -9,8 +9,8 @@
  *
  * Requiere `pwsh` (7+):
  *   PWSH_PATH=<ruta a pwsh> pnpm vitest run scripts/rotate-email-crypto-key.ps1.spec.ts
- * Sin `PWSH_PATH` y sin `pwsh` en el PATH, la suite entera se skippea — no
- * hay Windows/pwsh en el CI de este repo todavia (DEPLOY-VPS-runbook.md §5).
+ * Sin `PWSH_PATH` y sin `pwsh` en el PATH, la suite entera se skippea. El runner
+ * de Ubuntu del CI trae `pwsh`, asi que en el CI corre.
  *
  * Ref verify-report: C1, C3. Ref tasks: WU3-fix.
  */
@@ -18,7 +18,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { correrParamBlock, MARCA_CUERPO, pwsh, PWSH_ENV } from './testing/pwsh-param-block';
+import {
+  correrParamBlock,
+  MARCA_CUERPO,
+  pwsh,
+  PWSH_ENV,
+  PWSH_TIMEOUT_MS,
+} from './testing/pwsh-param-block';
+
+vi.setConfig({ testTimeout: PWSH_TIMEOUT_MS, hookTimeout: PWSH_TIMEOUT_MS });
 
 const PS1_PATH = join(__dirname, '..', '..', 'rotate-email-crypto-key.ps1');
 

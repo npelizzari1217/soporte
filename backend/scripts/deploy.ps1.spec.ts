@@ -10,12 +10,20 @@
  * Usa el bloque `param` real con un cuerpo inocuo (`testing/pwsh-param-block.ts`):
  * nunca ejecuta el deploy. Sin pwsh, la suite se skippea.
  */
-import { describe, expect, it, beforeAll } from 'vitest';
+import { describe, expect, it, beforeAll, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { correrParamBlock, MARCA_CUERPO, pwsh, PWSH_ENV } from './testing/pwsh-param-block';
+import {
+  correrParamBlock,
+  MARCA_CUERPO,
+  pwsh,
+  PWSH_ENV,
+  PWSH_TIMEOUT_MS,
+} from './testing/pwsh-param-block';
+
+vi.setConfig({ testTimeout: PWSH_TIMEOUT_MS, hookTimeout: PWSH_TIMEOUT_MS });
 
 const PS1_PATH = join(__dirname, '..', '..', 'deploy.ps1');
 
