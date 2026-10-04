@@ -86,6 +86,7 @@ describe('Formulario público e2e — POST confirmar (WU-15)', () => {
 
   async function limpiarTenant(tenant: InstanceType<typeof TenantPrismaClient>): Promise<void> {
     await tenant.ticketSoporte.deleteMany();
+    await tenant.equipoInformatico.deleteMany();
     await tenant.operacionTicket.deleteMany();
     await tenant.ticket.deleteMany();
     await tenant.solicitanteExterno.deleteMany();
@@ -247,6 +248,19 @@ describe('Formulario público e2e — POST confirmar (WU-15)', () => {
     return { status: res.status, texto: await res.text() };
   }
 
+  async function solicitar(slug: string, body: Record<string, unknown>): Promise<Respuesta> {
+    const res = await fetch(`${baseUrl}/publico/c/${slug}/pedido/solicitud`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'x-forwarded-for': randomBytes(6).toString('hex'),
+      },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, texto: await res.text() };
+  }
+
   describe('camino feliz (D1, ADR-4)', () => {
     it('crea el ticket en el tenant del slug aunque el body traiga un clienteId ajeno, y manda el mail con el número', async () => {
       const clienteA = await crearCliente({ slug: 'conf-a', dbName: DB_A });
@@ -279,6 +293,64 @@ describe('Formulario público e2e — POST confirmar (WU-15)', () => {
       expect(correo.enviados[0].html).toContain(numero);
       // El nombre del anónimo va escapado en el html.
       expect(correo.enviados[0].html).not.toContain('<b>Pérez</b>');
+    });
+
+    it('un externo sin cuenta nace en el tenant y no crea ningún Usuario ni Membresía en master (D2)', async () => {
+      const clienteA = await crearCliente({ slug: 'conf-externo', dbName: DB_A });
+      const email = `externo.${randomBytes(4).toString('hex')}@example.com`;
+      const token = await sembrarPedido(clienteA, tenantA, { email });
+      const usuariosAntes = await masterClient.usuario.count();
+      const membresiasAntes = await masterClient.membresia.count();
+
+      const r = await confirmar('conf-externo', { token });
+      await tareas.esperarPendientes();
+
+      expect(r.status).toBe(200);
+      const ticketsA = await tenantA.ticket.findMany({ include: { solicitanteExterno: true } });
+      expect(ticketsA).toHaveLength(1);
+      expect(ticketsA[0].solicitanteExterno?.email).toBe(email);
+      expect(await masterClient.usuario.count({ where: { email } })).toBe(0);
+      expect(await masterClient.usuario.count()).toBe(usuariosAntes);
+      expect(await masterClient.membresia.count()).toBe(membresiasAntes);
+      expect(await masterClient.membresia.count({ where: { clienteId: clienteA } })).toBe(0);
+    });
+
+    it('dos tenants: el token de equipo de B en el formulario de A deja el ticket solo en A, sin equipo, y no escribe nada en B', async () => {
+      await crearCliente({ slug: 'conf-dos-a', dbName: DB_A });
+      await crearCliente({ slug: 'conf-dos-b', dbName: DB_B });
+      await tenantB.equipoInformatico.create({
+        data: { nombre: 'PC-B', qrTokenHash: sha256('token-qr-de-b'), qrEmitidoAt: new Date() },
+      });
+
+      const s = await solicitar('conf-dos-a', {
+        nombre: 'Ana Pérez',
+        email: 'dos-tenants@example.com',
+        titulo: 'No enciende la PC',
+        descripcion: 'La PC del laboratorio no enciende.',
+        equipoToken: 'token-qr-de-b',
+      });
+      await tareas.esperarPendientes();
+      expect(s.status).toBe(202);
+      expect(await tenantA.pedidoPublicoPendiente.count()).toBe(1);
+      expect((await tenantA.pedidoPublicoPendiente.findFirstOrThrow()).equipoId).toBeNull();
+
+      const crudo = /\/pedido\/confirmar#token=([A-Za-z0-9_-]+)/.exec(
+        correo.enviados[0].text ?? '',
+      )?.[1];
+      expect(crudo).toBeDefined();
+      const r = await confirmar('conf-dos-a', { token: crudo });
+      await tareas.esperarPendientes();
+
+      expect(r.status).toBe(200);
+      expect(await tenantA.ticket.count()).toBe(1);
+      const equiposDelTicket = await tenantA.ticketSoporte.findMany();
+      expect(equiposDelTicket).toHaveLength(1);
+      expect(equiposDelTicket[0].equipoId).toBeNull();
+      expect(await tenantB.ticket.count()).toBe(0);
+      expect(await tenantB.ticketSoporte.count()).toBe(0);
+      expect(await tenantB.solicitanteExterno.count()).toBe(0);
+      expect(await tenantB.pedidoPublicoPendiente.count()).toBe(0);
+      expect(await tenantB.equipoInformatico.count()).toBe(1);
     });
 
     it('un body sin token da 400 y no escribe nada', async () => {
