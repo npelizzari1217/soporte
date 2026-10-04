@@ -38,7 +38,16 @@ export interface CrearTicketSoporteDto {
   prioridadId: string;
   equipoId?: string | null;
   descripcionProblema?: string | null;
-  solicitanteId: string;
+  /** Exactamente uno de `solicitanteId` y `solicitanteExternoId` (espeja el CHECK de `tickets`). */
+  solicitanteId?: string | null;
+  /** Solicitante externo del formulario público (ya persistido en el tenant). */
+  solicitanteExternoId?: string | null;
+  /**
+   * Qué hacer si `equipoId` no existe, está de baja o eliminado una vez tomado el lock.
+   * `RECHAZAR` (default): falla con `EquipoInvalidoError`. `OMITIR`: crea el ticket sin equipo.
+   * Lo usa el formulario público, donde el QR pudo quedar viejo entre la apertura y la confirmación.
+   */
+  equipoInvalido?: 'RECHAZAR' | 'OMITIR';
   clienteId: string;
   autorId: string;
   anio: number;
@@ -94,13 +103,26 @@ export class CrearTicketSoporteUseCase {
   async execute(
     dto: CrearTicketSoporteDto,
   ): Promise<Result<{ ticket: TicketEntity; ticketSoporte: TicketSoporteEntity }, DomainError>> {
-    // 1. Solicitante válido en el tenant (cross-DB, master.usuarios).
-    const solicitanteValido = await this.usuarioMasterChecker.existeEnTenant(
-      dto.solicitanteId,
-      dto.clienteId,
-    );
-    if (!solicitanteValido) {
-      return Result.fail(new SolicitanteInvalidoError(dto.solicitanteId));
+    // 1. Exactamente un origen: usuario de master o solicitante externo. Que falten los dos o
+    //    lleguen los dos es un error de programación del caller (el CHECK de `tickets` lo rechazaría).
+    const solicitanteId = dto.solicitanteId ?? null;
+    const solicitanteExternoId = dto.solicitanteExternoId ?? null;
+    if ((solicitanteId === null) === (solicitanteExternoId === null)) {
+      throw new Error(
+        'CrearTicketSoporteUseCase: exactamente uno de solicitanteId y solicitanteExternoId debe estar presente.',
+      );
+    }
+
+    // Solicitante válido en el tenant (cross-DB, master.usuarios). El externo no pasa por acá:
+    // lo respalda la FK de `tickets.solicitante_externo_id`.
+    if (solicitanteId !== null) {
+      const solicitanteValido = await this.usuarioMasterChecker.existeEnTenant(
+        solicitanteId,
+        dto.clienteId,
+      );
+      if (!solicitanteValido) {
+        return Result.fail(new SolicitanteInvalidoError(solicitanteId));
+      }
     }
 
     // 2. Ciclo ACTIVO del tenant — el servidor lo determina, nunca el cliente.
@@ -138,13 +160,18 @@ export class CrearTicketSoporteUseCase {
       //    (ADR-2/S5): primer lock de la transacción, ANTES del advisory de numeración. Así un
       //    ticket nunca queda asociado a un equipo cuya baja comiteó entre la validación y el
       //    alta. Falla sin escribir, así que devolver el `Result.fail` es seguro.
-      if (dto.equipoId) {
-        const equipo = await this.equipoRepo.bloquearParaOperarPiezas(dto.equipoId);
+      //    Con `equipoInvalido: 'OMITIR'` un equipo inválido no falla: el ticket nace sin equipo.
+      let equipoId = dto.equipoId ?? null;
+      if (equipoId) {
+        const equipo = await this.equipoRepo.bloquearParaOperarPiezas(equipoId);
         if (!equipo || !equipo.activo || equipo.isDeleted()) {
-          return Result.fail<
-            { ticket: TicketEntity; ticketSoporte: TicketSoporteEntity },
-            DomainError
-          >(new EquipoInvalidoError(dto.equipoId));
+          if (dto.equipoInvalido !== 'OMITIR') {
+            return Result.fail<
+              { ticket: TicketEntity; ticketSoporte: TicketSoporteEntity },
+              DomainError
+            >(new EquipoInvalidoError(equipoId));
+          }
+          equipoId = null;
         }
       }
 
@@ -169,7 +196,8 @@ export class CrearTicketSoporteUseCase {
         prioridadId: dto.prioridadId,
         cicloId: cicloActivo.id,
         ticketReferenciaId: null,
-        solicitanteId: dto.solicitanteId,
+        solicitanteId,
+        solicitanteExternoId,
       });
 
       const operacionApertura = OperacionTicketEntity.create({
@@ -185,7 +213,7 @@ export class CrearTicketSoporteUseCase {
 
       const ticketSoporte = TicketSoporteEntity.create({
         ticketId: ticket.id,
-        equipoId: dto.equipoId ?? null,
+        equipoId,
         descripcionProblema: dto.descripcionProblema ?? null,
       });
 

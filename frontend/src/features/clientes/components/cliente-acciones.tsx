@@ -16,6 +16,9 @@
  *
  * Logo (sdd/logo-por-cliente, WU4): mismo criterio, diálogo SEPARADO detrás
  * de `/logo`.
+ *
+ * Formulario público (sdd/formulario-publico-qr, WU-3): mismo criterio,
+ * diálogo SEPARADO detrás de `/formulario-publico`.
  */
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -23,6 +26,7 @@ import { VerClienteDialog } from "./ver-cliente-dialog";
 import { EditarClienteDialog } from "./editar-cliente-dialog";
 import { ConfigurarCorreoDialog } from "./configurar-correo-dialog";
 import { ConfigurarCsatDialog } from "./configurar-csat-dialog";
+import { ConfigurarFormularioPublicoDialog } from "./configurar-formulario-publico-dialog";
 import { ConfigurarLogoDialog } from "./configurar-logo-dialog";
 import { useActivarCliente, useDesactivarCliente } from "../hooks/use-clientes-mutations";
 import type { Cliente } from "../types";
@@ -41,6 +45,7 @@ export function ClienteAcciones({ cliente }: ClienteAccionesProps) {
       <EditarClienteDialog cliente={cliente} />
       <ConfigurarCorreoDialog cliente={cliente} />
       <ConfigurarCsatDialog cliente={cliente} />
+      <ConfigurarFormularioPublicoDialog cliente={cliente} />
       <ConfigurarLogoDialog cliente={cliente} />
       {cliente.activo ? (
         <ConfirmDialog

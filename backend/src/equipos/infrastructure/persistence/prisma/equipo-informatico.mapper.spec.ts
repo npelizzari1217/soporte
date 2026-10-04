@@ -23,6 +23,8 @@ function fila(over: Partial<PrismaEquipoInformatico> = {}): PrismaEquipoInformat
     bajaMotivo: null,
     bajaFecha: null,
     bajaUsuarioId: null,
+    qrTokenHash: null,
+    qrEmitidoAt: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
     deletedAt: null,
@@ -55,7 +57,13 @@ describe('EquipoInformaticoMapper — datos de baja', () => {
     expect(equipo.bajaDestino).toBe('STOCK_USADO');
     expect(equipo.bajaCategoria).toBe('OTRA');
 
-    const { updatedAt: _updatedAt, ...esperado } = original;
+    // Las columnas `qr_*` no viajan en toPersistence: solo `guardarQrHash()` las escribe.
+    const {
+      updatedAt: _updatedAt,
+      qrTokenHash: _qrHash,
+      qrEmitidoAt: _qrEmitidoAt,
+      ...esperado
+    } = original;
     expect(EquipoInformaticoMapper.toPersistence(equipo)).toEqual(esperado);
   });
 });

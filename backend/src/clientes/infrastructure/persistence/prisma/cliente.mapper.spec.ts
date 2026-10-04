@@ -39,6 +39,9 @@ const filaConLogo: PrismaCliente = {
   logoStorageKey: 'clientes/cliente-id-1/uuid-1',
   logoMimeType: 'image/png',
   logoUpdatedAt: new Date('2026-09-20T12:00:00Z'),
+  slug: 'acme',
+  formularioPublicoHabilitado: true,
+  slugCongeladoAt: new Date('2026-10-03T12:00:00Z'),
 };
 
 describe('ClienteMapper — round-trip del logo (WU1 T1.7)', () => {
@@ -130,5 +133,25 @@ describe('ClienteMapper — round-trip del logo (WU1 T1.7)', () => {
     expect(persistido.logoStorageKey).toBeNull();
     expect(persistido.logoMimeType).toBeNull();
     expect(persistido.logoUpdatedAt).toBeNull();
+  });
+});
+
+describe('ClienteMapper — formulario publico (sdd/formulario-publico-qr, WU-1)', () => {
+  it('toDomain() hidrata slug, habilitacion y congelamiento', () => {
+    const entidad = ClienteMapper.toDomain(filaConLogo);
+
+    expect(entidad.slug).toBe('acme');
+    expect(entidad.formularioPublicoHabilitado).toBe(true);
+    expect(entidad.slugCongeladoAt).toEqual(new Date('2026-10-03T12:00:00Z'));
+  });
+
+  it('toPersistence() espeja la habilitacion pero NO escribe slug ni congelamiento', () => {
+    const persistido = ClienteMapper.toPersistence(ClienteMapper.toDomain(filaConLogo));
+
+    expect(persistido.formularioPublicoHabilitado).toBe(true);
+    // Solo los CAS del repositorio los escriben: un save() con una entidad
+    // vieja no puede descongelar el slug.
+    expect(persistido).not.toHaveProperty('slug');
+    expect(persistido).not.toHaveProperty('slugCongeladoAt');
   });
 });

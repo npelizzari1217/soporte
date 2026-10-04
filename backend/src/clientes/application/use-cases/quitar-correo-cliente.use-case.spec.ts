@@ -24,6 +24,9 @@ function buildClienteRepoMock(cliente: ClienteEntity | null): IClienteRepository
   return {
     findById: vi.fn().mockResolvedValue(cliente),
     findByDbName: vi.fn(),
+    findBySlug: vi.fn(),
+    congelarSlug: vi.fn(),
+    cambiarSlugSiNoCongelado: vi.fn(),
     findAll: vi.fn(),
     save: vi.fn(),
     delete: vi.fn(),

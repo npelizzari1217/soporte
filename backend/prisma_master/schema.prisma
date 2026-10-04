@@ -122,9 +122,24 @@ model Cliente {
   logoMimeType   String?   @map("logo_mime_type") @db.VarChar(50)
   logoUpdatedAt  DateTime? @map("logo_updated_at") @db.Timestamptz
 
+  /// ─── Formulario publico (sdd/formulario-publico-qr, WU-1) ────────────────
+  ///
+  /// `slug`: identifica al cliente en la URL publica. Formato y regla "no es
+  /// UUID / id / dbName" en `SlugCliente` y `ClienteEntity.configurarSlug`;
+  /// el CHECK `clientes_slug_formato_check` (solo SQL) espeja el formato.
+  /// `formularioPublicoHabilitado`: default false (D12).
+  /// `slugCongeladoAt`: se marca al emitir el primer QR; desde entonces el
+  /// slug no cambia. Slug y congelamiento se escriben SOLO por los CAS de
+  /// `IClienteRepository` (congelarSlug / cambiarSlugSiNoCongelado), nunca por
+  /// el upsert de `save()`.
+  slug                        String?   @unique @db.VarChar(63)
+  formularioPublicoHabilitado Boolean   @default(false) @map("formulario_publico_habilitado")
+  slugCongeladoAt             DateTime? @map("slug_congelado_at") @db.Timestamptz
+
   membresias          Membresia[]
   encuestaTokens      EncuestaToken[]
   passwordResetTokens PasswordResetToken[]
+  pedidoPublicoTokens PedidoPublicoToken[]
 
   @@index([activo])
   @@map("clientes")
@@ -306,6 +321,33 @@ model EncuestaToken {
   /// un ticket por este par, antes de generar uno nuevo.
   @@index([clienteId, ticketId])
   @@map("encuesta_tokens")
+}
+
+// ─── PEDIDO_PUBLICO_TOKENS (token de verificacion del formulario publico) ────
+//
+// sdd/formulario-publico-qr, WU-11 (ADR-7). Solo el SHA-256 del token
+// (`tokenHash`), nunca el crudo, y NINGUN dato personal: nombre, email y
+// descripcion del pedido viven en el tenant (`pedidos_publicos_pendientes`).
+// Comparte el `id` con la fila pendiente del tenant. `expiresAt`: +24 h
+// (decision del dueño). `usedAt` se marca post-commit y es best-effort: la
+// atomicidad de la confirmacion la da el DELETE de la fila pendiente. Los
+// tokens de master no se barren (igual que `encuesta_tokens`).
+
+model PedidoPublicoToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId String    @map("cliente_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.Text
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  cliente Cliente @relation(fields: [clienteId], references: [id])
+
+  @@index([clienteId])
+  @@map("pedido_publico_tokens")
 }
 
 // ─── PASSWORD_RESET_TOKENS (token opaco de reseteo de contraseña por olvido) ──

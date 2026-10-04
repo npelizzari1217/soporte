@@ -11,9 +11,9 @@ import {
 } from '../clientes/domain/ports/i-cliente.repository';
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
 import {
-  USUARIO_CONTACTO_RESOLVER,
-  IUsuarioContactoResolver,
-} from '../notificaciones/domain/ports/i-usuario-contacto-resolver';
+  CONTACTO_SOLICITANTE_RESOLVER,
+  IContactoSolicitanteResolver,
+} from '../notificaciones/domain/ports/i-contacto-solicitante-resolver';
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { TenantContext } from '../shared/tenancy/tenant-context';
@@ -57,7 +57,7 @@ import {
  *   numero/titulo/solicitanteId — el evento `ticket.estado_cambiado` no
  *   lleva PII, mismo criterio que `TicketNotificacionListener`; los use
  *   cases del endpoint público también lo usan para devolver el número).
- * - Importa `NotificacionesModule` por `EMAIL_SENDER`/`USUARIO_CONTACTO_RESOLVER`
+ * - Importa `NotificacionesModule` por `EMAIL_SENDER`/`CONTACTO_SOLICITANTE_RESOLVER`
  *   (reusa el mismo `TenantAwareEmailSender` y el mismo resolver de
  *   contacto cross-DB que el resto de las notificaciones).
  * - Importa `CsatLecturaModule` por `ENCUESTA_SATISFACCION_REPOSITORY`
@@ -99,7 +99,7 @@ import {
       useFactory: (
         ticketRepo: ITicketRepository,
         clienteRepo: IClienteRepository,
-        contactoResolver: IUsuarioContactoResolver,
+        contactoResolver: IContactoSolicitanteResolver,
         emitirEncuestaUseCase: EmitirEncuestaUseCase,
         tenantContext: TenantContext,
         logger: ILogger,
@@ -115,7 +115,7 @@ import {
       inject: [
         TICKET_REPOSITORY,
         CLIENTE_REPOSITORY,
-        USUARIO_CONTACTO_RESOLVER,
+        CONTACTO_SOLICITANTE_RESOLVER,
         EmitirEncuestaUseCase,
         TenantContext,
         LOGGER,

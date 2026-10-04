@@ -134,3 +134,33 @@ describe('templatePreventivoGenerado', () => {
     expect(msg.subject.toLowerCase()).toContain('preventivo');
   });
 });
+
+describe('plantillas para un solicitante externo (sinLink)', () => {
+  const NOMBRE_CON_MARKUP = '<script>alert(1)</script> Ficha & Cía';
+  const datos = { ...DATOS_BASE, titulo: NOMBRE_CON_MARKUP, sinLink: true };
+
+  it.each([
+    [
+      'templateCambioEstado',
+      () =>
+        templateCambioEstado({
+          ...datos,
+          estadoAnteriorCodigo: 'NUEVO',
+          estadoNuevoCodigo: 'CERRADO',
+        }),
+    ],
+    ['templateComentarioPublico', () => templateComentarioPublico(datos)],
+  ])('%s no lleva link a /tickets/:id y sigue escapando el titulo', (_nombre, render) => {
+    const { text, html } = render();
+
+    expect(text).not.toContain('/tickets/');
+    expect(html).not.toContain('/tickets/');
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(text).toContain('SOP-2026-00042');
+  });
+
+  it('sin sinLink, el link se conserva (usuario registrado)', () => {
+    expect(templateComentarioPublico(DATOS_BASE).html).toContain('/tickets/ticket-abc');
+  });
+});

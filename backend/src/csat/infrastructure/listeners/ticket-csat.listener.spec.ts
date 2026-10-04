@@ -63,9 +63,11 @@ function makeListener(clienteCsatHabilitado = true) {
   const ticketRepo = { findById: vi.fn().mockResolvedValue(makeTicket()) };
   const clienteRepo = { findById: vi.fn().mockResolvedValue(makeCliente(clienteCsatHabilitado)) };
   const contactoResolver = {
-    resolverContacto: vi
-      .fn()
-      .mockResolvedValue({ email: 'solicitante@dominio.com', nombre: 'Solicitante' }),
+    resolver: vi.fn().mockResolvedValue({
+      email: 'solicitante@dominio.com',
+      nombre: 'Solicitante',
+      esExterno: false,
+    }),
   };
   const emitirEncuestaUseCase = { ejecutar: vi.fn().mockResolvedValue(undefined) };
   const tenantContext = { get: vi.fn().mockReturnValue({ clienteId: CLIENTE_ID }) };
@@ -102,6 +104,38 @@ describe('TicketCsatListener', () => {
         // ausente llegaba como cadena vacía sin que nada se pusiera rojo.
         appBaseUrl: 'http://localhost:5173',
       }),
+    );
+  });
+
+  it('un ticket de solicitante externo recibe la encuesta en su email verificado', async () => {
+    const { listener, ticketRepo, contactoResolver, emitirEncuestaUseCase } = makeListener(true);
+    const externo = TicketEntity.create(
+      {
+        numero: 'SOP-2026-00042',
+        titulo: 'La impresora no imprime',
+        descripcion: null,
+        tipoId: 'tipo-uuid',
+        estadoId: 'estado-uuid',
+        prioridadId: 'prioridad-uuid',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: null,
+        solicitanteExternoId: 'externo-uuid',
+      },
+      TICKET_ID,
+    );
+    ticketRepo.findById.mockResolvedValue(externo);
+    contactoResolver.resolver.mockResolvedValue({
+      email: 'externo@dominio.com',
+      nombre: 'Externo',
+      esExterno: true,
+    });
+
+    await listener.onTicketEstadoCambiado(makeEvent('CERRADO'));
+
+    expect(contactoResolver.resolver).toHaveBeenCalledWith(externo);
+    expect(emitirEncuestaUseCase.ejecutar).toHaveBeenCalledWith(
+      expect.objectContaining({ ticketId: TICKET_ID, destinatarioEmail: 'externo@dominio.com' }),
     );
   });
 

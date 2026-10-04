@@ -636,7 +636,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | Orden | Qué agregar | Por qué | Dificultad | Estado |
 |---|---|---|---|---|
 | 0 | **Reseteo de contraseña para usuarios en varios clientes** | Es un defecto en producción: `solicitar-reset-password.use-case.ts` corta sin mandar mail si el usuario tiene más de una membresía activa, y la pantalla responde igual que si lo hubiera mandado. Un técnico que está en varios clientes no puede recuperar su clave | Baja · 1-2 días | **Entregado** — 2026-10-03 (PR #296, `48f06f8b`) |
-| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | Pendiente |
+| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | **Implementado** — cadena de 19 PRs sobre `feat/formulario-publico-qr`, pendiente de merge y deploy |
 | 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | Pendiente |
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | Pendiente |
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | Pendiente |
@@ -650,6 +650,53 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 
 **Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
 licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
+
+### Decisiones de producto de la segunda etapa
+
+> Mismo criterio que "Decisiones de producto ya cerradas": cada viñeta entra a la
+> spec del ciclo como requerimiento con escenario, y al cerrar el punto declara
+> **Cumplida** o **Desviación** con su motivo.
+
+- **Segunda etapa, punto 1 — formulario público + QR** (decidido el 2026-10-03,
+  ciclo `formulario-publico-qr`, exploración en
+  `openspec/changes/formulario-publico-qr/exploration.md`):
+  - Puede pedir **cualquiera**, pero el ticket se crea recién cuando confirma un
+    link de un solo uso que le llega por mail.
+  - Quien pide sin cuenta es un **solicitante externo** guardado en la base del
+    cliente. No se le crea `Usuario` ni `Membresia`.
+  - Un cliente **sin correo configurado** solo acepta pedidos de sus usuarios
+    registrados, y **con sesión iniciada**: el formulario y el QR llevan al login y
+    después al alta del ticket con el equipo cargado. Sin mail no hay forma de
+    comprobar un email tipeado (precisado el 2026-10-03, al proponer).
+  - El ticket entra **directo como NUEVO**, sin estado de moderación.
+  - Quien pidió recibe el **número del ticket, los cambios de estado, los
+    comentarios públicos y la encuesta CSAT** por mail. No hay página de
+    seguimiento. Los comentarios públicos se sumaron el 2026-10-03, al diseñar.
+  - El link de confirmación vence a las **24 horas** (decidido el 2026-10-03, al
+    diseñar).
+  - Tipo **SOPORTE** y prioridad **MEDIA**, fijos: quien pide no los elige.
+  - El identificador del cliente en la URL lo carga el **ROOT** y **no cambia**
+    después de emitido el primer QR.
+  - **Un QR por equipo**, con un token opaco regenerable. Un equipo dado de baja
+    abre el formulario sin equipo cargado. La impresión en lote queda afuera.
+  - **Sin adjuntos** en esta primera entrega.
+  - Límites: **3 pedidos por mail cada 15 minutos**, contados por cliente, y **30 por
+    cliente por hora**.
+    Al pasarse, un mensaje genérico de "intentá más tarde".
+  - Los datos del solicitante externo se guardan **mientras exista el ticket**.
+    La retención queda anotada para revisarla.
+  - Fuera del formulario, un cliente lo tiene **apagado por defecto** y lo
+    habilita el ROOT, igual que la encuesta CSAT.
+  - **Cumplida** (2026-10-04, ciclo `formulario-publico-qr`, 19 work units): las 13
+    viñetas están implementadas y probadas contra el código, sin desviación. El
+    ticket nace con tipo SOPORTE, prioridad MEDIA y estado NUEVO; el solicitante
+    externo vive en el tenant; la confirmación es de un solo uso y vence a las 24 h;
+    los límites son 3 por mail y cliente cada 15 minutos y 30 por cliente por hora; el
+    cliente sin correo `LISTO` pasa por login con el equipo cargado. Dos precisiones
+    que no son desviaciones: el enum de tres modos de la exploración se reemplazó
+    antes de implementar por un booleano de habilitación y la regla de correo
+    deducida (decisiones D12 y D3 del diseño), y los cupos del throttler viven en la
+    memoria de un solo proceso, así que un reinicio los pone en cero.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de

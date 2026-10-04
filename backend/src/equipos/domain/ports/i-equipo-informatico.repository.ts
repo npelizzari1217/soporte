@@ -72,6 +72,22 @@ export interface IEquipoInformaticoRepository {
    */
   registrarBaja(equipo: EquipoInformaticoEntity): Promise<boolean>;
 
+  /**
+   * Busca el equipo cuyo QR tiene ese hash (sha256 hex del token). Devuelve `null` si ningún
+   * equipo del tenant activo lo tiene: un token de otro cliente no resuelve nunca, porque la
+   * búsqueda corre solo en la base del tenant. Devuelve también un equipo dado de baja o con
+   * borrado lógico: decidir que abre el formulario sin equipo es del llamador.
+   */
+  findByQrHash(qrTokenHash: string): Promise<EquipoInformaticoEntity | null>;
+
+  /**
+   * Escribe el hash del QR y su fecha de emisión con un CAS
+   * (`WHERE id = ? AND activo = true AND deleted_at IS NULL`). Reemplaza el hash anterior: el
+   * token viejo deja de resolver de inmediato. Es el único escritor de las columnas del QR.
+   * Devuelve `false` si no tocó ninguna fila (equipo inexistente, dado de baja o borrado).
+   */
+  guardarQrHash(id: string, qrTokenHash: string, emitidoAt: Date): Promise<boolean>;
+
   /** Baja lógica (soft delete) del equipo por id. */
   delete(id: string): Promise<void>;
 }

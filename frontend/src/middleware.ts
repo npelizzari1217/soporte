@@ -3,7 +3,8 @@
  *
  * Reads the `at` (access token) and `rt` (refresh token) cookies and enforces:
  *   - Unauthenticated users → redirect to /login
- *   - Authenticated users on /login → redirect to / (dashboard)
+ *   - Authenticated users on /login → redirect to / (dashboard), o a `/pedido-qr` si
+ *     `?siguiente=` lo pide (`destinoPosLogin`, allowlist)
  *   - Everything else → next()
  *
  * JWT verification is delegated to `shared/auth/verify.ts` (jose, Edge-compatible).
@@ -19,6 +20,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyAccessToken } from "@/shared/auth/verify";
+import { destinoPosLogin } from "@/shared/auth/destino-pos-login";
 import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
 
 /**
@@ -32,8 +34,13 @@ import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
  * responder nunca (el destinatario del mail NUNCA tiene sesión). Angosto a
  * propósito: una allowlist ancha (p. ej. `/`) dejaría pasar rutas protegidas
  * reales como `/tickets`.
+ *
+ * `/c/` (sdd/formulario-publico-qr, WU-16): formulario público al que llega
+ * quien escanea el QR de un equipo o abre el link del mail de confirmación;
+ * ninguno tiene sesión. Prefijo, no substring: `/clientes` y `/compras`
+ * siguen protegidas.
  */
-const RUTAS_PUBLICAS = ["/encuesta/", "/restablecer-password", "/olvide-password"];
+const RUTAS_PUBLICAS = ["/encuesta/", "/c/", "/restablecer-password", "/olvide-password"];
 
 /** Una entrada que termina en `/` es un prefijo; si no, la ruta es exacta. */
 function esRutaPublica(pathname: string): boolean {
@@ -54,6 +61,7 @@ export default async function middleware(request: NextRequest): Promise<NextResp
 
   // ── /login: redirect away if a session is alive ──────────────────────────
   if (pathname === "/login") {
+    const destino = destinoPosLogin(request.nextUrl.searchParams.get("siguiente"));
     if (at) {
       const result = await verifyAccessToken(at);
       if (result !== "invalid") {
@@ -62,18 +70,18 @@ export default async function middleware(request: NextRequest): Promise<NextResp
           return NextResponse.next();
         }
         // Valid at, OR expired at + rt present: session alive → dashboard
-        return NextResponse.redirect(new URL("/", request.url), { status: 307 });
+        return NextResponse.redirect(new URL(destino, request.url), { status: 307 });
       }
       // Invalid at: check if rt can save the session
       if (rt) {
-        return NextResponse.redirect(new URL("/", request.url), { status: 307 });
+        return NextResponse.redirect(new URL(destino, request.url), { status: 307 });
       }
       return NextResponse.next();
     }
 
     // No at: session alive only if rt present (client will refresh on first 401)
     if (rt) {
-      return NextResponse.redirect(new URL("/", request.url), { status: 307 });
+      return NextResponse.redirect(new URL(destino, request.url), { status: 307 });
     }
     return NextResponse.next();
   }

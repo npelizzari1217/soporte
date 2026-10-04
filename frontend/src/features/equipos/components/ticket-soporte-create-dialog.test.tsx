@@ -113,4 +113,47 @@ describe("TicketSoporteCreateDialog — vínculo OPCIONAL equipo↔ticket (80/20
     await waitFor(() => expect(bodyRecibido).not.toBeNull());
     expect(bodyRecibido).toMatchObject({ equipoId: EQUIPO_ID });
   });
+
+  // Spec: sdd/formulario-publico-qr (D3) — el landing del QR abre el dialogo con el equipo elegido.
+  it("equipoInicial + abiertoInicial: abre solo, con el equipo elegido, y lo envia aunque el listado no lo traiga", async () => {
+    const user = userEvent.setup();
+    let bodyRecibido: Record<string, unknown> | null = null;
+    server.use(
+      http.get("/api/equipos", () => HttpResponse.json({ message: "Forbidden" }, { status: 403 })),
+      http.post("/api/soporte", async ({ request }) => {
+        bodyRecibido = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: "ts1", ticketId: "t1", numero: "SOP-0003", titulo: "x", estadoId: "e1", equipoId: EQUIPO_ID });
+      }),
+    );
+
+    renderWithProviders(
+      <TicketSoporteCreateDialog abiertoInicial equipoInicial={{ id: EQUIPO_ID, nombre: "Notebook Dell" }} />,
+      { user: buildUser({ permisos: ["ticket:crear"] }) },
+    );
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect((screen.getByLabelText(/equipo/i) as HTMLSelectElement).value).toBe(EQUIPO_ID);
+
+    await user.type(screen.getByLabelText(/título/i), "Pantalla rota");
+    await user.selectOptions(screen.getByLabelText(/prioridad/i), PRIORIDAD_ID);
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(bodyRecibido).not.toBeNull());
+    expect(bodyRecibido).toMatchObject({ equipoId: EQUIPO_ID });
+  });
+
+  it("equipoInicial listado tambien por el endpoint: la opcion no se duplica", async () => {
+    renderWithProviders(
+      <TicketSoporteCreateDialog abiertoInicial equipoInicial={{ id: EQUIPO_ID, nombre: "Notebook Dell" }} />,
+      { user: buildUser({ permisos: ["ticket:crear"] }) },
+    );
+
+    await screen.findByRole("option", { name: /Notebook Dell/ });
+    await waitFor(() => expect(screen.getAllByRole("option", { name: /Notebook Dell/ })).toHaveLength(1));
+  });
+
+  it("sin props el dialogo arranca cerrado", () => {
+    renderWithProviders(<TicketSoporteCreateDialog />, { user: buildUser({ permisos: ["ticket:crear"] }) });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });

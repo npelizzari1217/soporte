@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { configurarCorreoSchema, crearClienteSchema, editarClienteSchema } from "./schemas";
+import {
+  configurarCorreoSchema,
+  configurarFormularioPublicoSchema,
+  crearClienteSchema,
+  editarClienteSchema,
+} from "./schemas";
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_EMAIL_MAX_LENGTH,
@@ -236,4 +241,19 @@ describe("crearClienteSchema — tope del email del administrador", () => {
     expect(adminEmail.length).toBeGreaterThan(USUARIO_EMAIL_MAX_LENGTH);
     expect(crearClienteSchema.safeParse({ ...CLIENTE_VALIDO, adminEmail }).success).toBe(false);
   });
+});
+
+describe("configurarFormularioPublicoSchema", () => {
+  const ok = (slug: string) => configurarFormularioPublicoSchema.safeParse({ slug, habilitado: false }).success;
+
+  it.each(["colegio-norte", "a", "a1", "0-9", "a".repeat(63)])("acepta %s", (slug) => {
+    expect(ok(slug)).toBe(true);
+  });
+
+  it.each(["", "Colegio", "colegio norte", "-norte", "norte-", "colegio_norte", "ñandú", "a".repeat(64)])(
+    "rechaza %j",
+    (slug) => {
+      expect(ok(slug)).toBe(false);
+    },
+  );
 });

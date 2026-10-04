@@ -96,6 +96,7 @@ import {
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   TicketBloqueadoParaEdicionError,
+  SolicitanteExternoInvalidoError,
   ExportacionDemasiadoGrandeError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
@@ -109,6 +110,10 @@ import {
   IUsuarioMasterChecker,
   USUARIO_MASTER_CHECKER,
 } from '../../domain/ports/i-usuario-master.checker';
+import {
+  ISolicitanteExternoRepository,
+  SOLICITANTE_EXTERNO_REPOSITORY,
+} from '../../domain/ports/i-solicitante-externo.repository';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
@@ -142,7 +147,9 @@ export function toHttpException(
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
     // línea en uno conocido.
-    error instanceof ExportacionDemasiadoGrandeError
+    error instanceof ExportacionDemasiadoGrandeError ||
+    // Formulario público (sdd/formulario-publico-qr, WU-6): datos del externo inválidos.
+    error instanceof SolicitanteExternoInvalidoError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -186,6 +193,8 @@ export class TicketsController {
     private readonly asignarYPonerEnProcesoUseCase: AsignarYPonerEnProcesoUseCase,
     private readonly exportarTicketsUseCase: ExportarTicketsUseCase,
     private readonly obtenerCsatTicketUseCase: ObtenerCsatTicketUseCase,
+    @Inject(SOLICITANTE_EXTERNO_REPOSITORY)
+    private readonly solicitanteExternoRepo: ISolicitanteExternoRepository,
   ) {}
 
   /**
@@ -194,21 +203,37 @@ export class TicketsController {
    * ticket, indexada por `ticket.id` (sdd/beta-frontend item 2).
    */
   private async resolverNombresPorTicket(
-    tickets: Pick<TicketResponseDto, 'id' | 'solicitanteId' | 'asignadoId'>[],
+    tickets: Pick<
+      TicketResponseDto,
+      'id' | 'solicitanteId' | 'solicitanteExternoId' | 'asignadoId'
+    >[],
   ): Promise<Map<string, NombresResueltos>> {
     const idsUsuarios = new Set<string>();
+    const idsExternos = new Set<string>();
     for (const t of tickets) {
-      idsUsuarios.add(t.solicitanteId);
+      if (t.solicitanteId) {
+        idsUsuarios.add(t.solicitanteId);
+      }
+      if (t.solicitanteExternoId) {
+        idsExternos.add(t.solicitanteExternoId);
+      }
       if (t.asignadoId) {
         idsUsuarios.add(t.asignadoId);
       }
     }
-    const nombresPorUsuario = await this.usuarioMasterChecker.resolverNombres([...idsUsuarios]);
+    const [nombresPorUsuario, nombresExternos] = await Promise.all([
+      this.usuarioMasterChecker.resolverNombres([...idsUsuarios]),
+      this.solicitanteExternoRepo.findNombres([...idsExternos]),
+    ]);
 
     const porTicket = new Map<string, NombresResueltos>();
     for (const t of tickets) {
+      const nombreExterno = t.solicitanteExternoId
+        ? nombresExternos.get(t.solicitanteExternoId)
+        : undefined;
       porTicket.set(t.id, {
-        solicitante: nombresPorUsuario.get(t.solicitanteId),
+        solicitante: t.solicitanteId ? nombresPorUsuario.get(t.solicitanteId) : undefined,
+        solicitanteExterno: nombreExterno === undefined ? undefined : { nombre: nombreExterno },
         asignado: t.asignadoId ? nombresPorUsuario.get(t.asignadoId) : undefined,
       });
     }
@@ -395,7 +420,11 @@ export class TicketsController {
         tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
       }),
     ]);
-    return toTicketResponseDto(ticket, nombres, csat);
+    // El teléfono del externo viaja solo en el detalle (nunca en el listado).
+    const externo = ticket.solicitanteExternoId
+      ? await this.solicitanteExternoRepo.findById(ticket.solicitanteExternoId)
+      : null;
+    return toTicketResponseDto(ticket, nombres, csat, externo?.telefono ?? null);
   }
 
   /**
