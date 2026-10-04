@@ -37,6 +37,14 @@ function resolverPwsh(): string | null {
 
 export const pwsh = resolverPwsh();
 
+/**
+ * Timeout de test y de hook para los specs que arrancan `pwsh`. Cada arranque en
+ * frio tarda 1-2 s en local y bastante mas en el runner de CI con la suite en
+ * paralelo; `correrParamBlock` arranca dos. El default de Vitest (5 s) fallaba
+ * de forma intermitente (#342). Cada spec lo aplica con `vi.setConfig`.
+ */
+export const PWSH_TIMEOUT_MS = 30_000;
+
 /** Marca que imprime el cuerpo inocuo, seguida de `Nombre=valor` por parametro bindeado. */
 export const MARCA_CUERPO = 'CUERPO-EJECUTADO';
 
