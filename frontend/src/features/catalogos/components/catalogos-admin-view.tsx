@@ -16,24 +16,29 @@ import { AdminNav } from "@/components/shell/admin-nav";
 import { TipoTicketList } from "./tipo-ticket-list";
 import { PrioridadList } from "./prioridad-list";
 import { SectorList } from "@/features/sectores/components/sector-list";
+import { RespuestaPredefinidaList } from "@/features/respuestas-predefinidas/components/respuesta-predefinida-list";
 
 /**
  * WU-31 (`compras-tres-etapas-y-sectores` R10): agrega el tab "Sectores" al
  * ABM existente de catálogos. El gate del backend (`AdminClienteGuard` por
  * método, S64) es el mismo que ya protege tipos/prioridades — no requiere
  * ninguna acción `MODULO:ACCION` nueva.
+ *
+ * Tab "Respuestas" (roadmap segunda etapa, punto 4): respuestas predefinidas de soporte,
+ * mismo gate (`AdminClienteGuard`) y tampoco agrega acciones.
  */
 export function CatalogosAdminView() {
   return (
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar catálogos." />}>
-        <PageHeader title="Catálogos" description="Tipos de ticket, prioridades y sectores del tenant." />
+        <PageHeader title="Catálogos" description="Tipos de ticket, prioridades, sectores y respuestas predefinidas del tenant." />
         <Tabs defaultValue="tipos">
           <TabsList>
             <TabsTrigger value="tipos">Tipos de ticket</TabsTrigger>
             <TabsTrigger value="prioridades">Prioridades</TabsTrigger>
             <TabsTrigger value="sectores">Sectores</TabsTrigger>
+            <TabsTrigger value="respuestas">Respuestas</TabsTrigger>
           </TabsList>
           <TabsContent value="tipos">
             <TipoTicketList />
@@ -43,6 +48,9 @@ export function CatalogosAdminView() {
           </TabsContent>
           <TabsContent value="sectores">
             <SectorList />
+          </TabsContent>
+          <TabsContent value="respuestas">
+            <RespuestaPredefinidaList />
           </TabsContent>
         </Tabs>
       </SoloAdminCliente>
