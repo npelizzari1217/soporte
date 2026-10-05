@@ -22,6 +22,9 @@ export function useResolverQr(slug: string | null, tokenQr: string | null): UseQ
   return useQuery<ResolucionQr, ApiError>({
     queryKey: ["soporte-qr", slug, tokenQr],
     queryFn: () => apiFetch<ResolucionQr>(`soporte/qr?${params.toString()}`),
+    // Sin `c` no hay a quién preguntar: el backend respondería 404 y se leería como "otra organización".
+    // Sin `e` sí se consulta: es el camino legítimo "formulario sin equipo" (`equipo: null`).
+    enabled: Boolean(slug),
     retry: false,
     // El token del QR es de uso repetible pero el resultado no cambia mientras el landing esté abierto.
     staleTime: Infinity,

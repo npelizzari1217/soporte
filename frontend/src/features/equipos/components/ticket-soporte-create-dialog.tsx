@@ -31,9 +31,11 @@ export interface TicketSoporteCreateDialogProps {
   equipoInicial?: { id: string; nombre: string };
   /** Abre el diálogo al montar. Por defecto, cerrado. */
   abiertoInicial?: boolean;
+  /** Aviso al padre cuando el diálogo se cierra (cancelar o alta exitosa). */
+  onCerrar?: () => void;
 }
 
-export function TicketSoporteCreateDialog({ equipoInicial, abiertoInicial = false }: TicketSoporteCreateDialogProps = {}) {
+export function TicketSoporteCreateDialog({ equipoInicial, abiertoInicial = false, onCerrar }: TicketSoporteCreateDialogProps = {}) {
   const [open, setOpen] = useState(abiertoInicial);
   const prioridadesQuery = usePrioridades();
   const equiposQuery = useEquipos();
@@ -63,6 +65,7 @@ export function TicketSoporteCreateDialog({ equipoInicial, abiertoInicial = fals
         onSuccess: () => {
           setOpen(false);
           reset();
+          onCerrar?.();
         },
       },
     );
@@ -73,7 +76,10 @@ export function TicketSoporteCreateDialog({ equipoInicial, abiertoInicial = fals
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) reset();
+        if (!next) {
+          reset();
+          onCerrar?.();
+        }
       }}
     >
       <DialogTrigger asChild>
