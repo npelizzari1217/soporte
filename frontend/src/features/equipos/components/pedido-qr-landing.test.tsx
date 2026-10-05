@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
-import { PedidoQrLanding, MENSAJE_QR_OTRA_ORGANIZACION } from "./pedido-qr-landing";
+import { PedidoQrLanding, MENSAJE_QR_OTRA_ORGANIZACION, MENSAJE_QR_INCOMPLETO } from "./pedido-qr-landing";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -73,5 +74,59 @@ describe("PedidoQrLanding", () => {
 
     await waitFor(() => expect(screen.getByText(/no tenés permiso/i)).toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("sin c: no consulta al backend y muestra el link incompleto (no 'otra organizacion')", async () => {
+    mockCatalogos();
+    let llamadas = 0;
+    server.use(
+      http.get("/api/soporte/qr", () => {
+        llamadas += 1;
+        return HttpResponse.json({ message: "Not found" }, { status: 404 });
+      }),
+    );
+
+    renderWithProviders(<PedidoQrLanding slug={null} tokenQr="tok-1" />, sesion);
+
+    expect(await screen.findByText(MENSAJE_QR_INCOMPLETO)).toBeInTheDocument();
+    // Margen para que una consulta indebida llegue a MSW antes de afirmar que no hubo ninguna.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(llamadas).toBe(0);
+    expect(screen.queryByText(MENSAJE_QR_OTRA_ORGANIZACION)).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("sin e: sigue consultando con solo c y resuelve equipo null", async () => {
+    mockCatalogos();
+    let url: URL | null = null;
+    server.use(
+      http.get("/api/soporte/qr", ({ request }) => {
+        url = new URL(request.url);
+        return HttpResponse.json({ equipo: null });
+      }),
+    );
+
+    renderWithProviders(<PedidoQrLanding slug="mi-colegio" tokenQr={null} />, sesion);
+
+    expect(await screen.findByText(/no encontramos el equipo/i)).toBeInTheDocument();
+    expect(url!.searchParams.get("c")).toBe("mi-colegio");
+    expect(url!.searchParams.has("e")).toBe(false);
+  });
+
+  it("al cerrar el dialogo muestra el fallback con link al listado y permite reabrirlo", async () => {
+    mockCatalogos();
+    server.use(http.get("/api/soporte/qr", () => HttpResponse.json({ equipo: null })));
+    const user = userEvent.setup();
+
+    renderWithProviders(<PedidoQrLanding slug="mi-colegio" tokenQr="tok-1" />, sesion);
+
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("link", { name: /listado de tickets/i })).toHaveAttribute("href", "/tickets");
+
+    await user.click(screen.getByRole("button", { name: /pedir soporte de nuevo/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 });

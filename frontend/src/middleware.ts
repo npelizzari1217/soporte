@@ -2,7 +2,8 @@
  * Next.js Middleware — route protection gate (Edge Runtime).
  *
  * Reads the `at` (access token) and `rt` (refresh token) cookies and enforces:
- *   - Unauthenticated users → redirect to /login
+ *   - Unauthenticated users → redirect to /login (en `/pedido-qr`, con `?siguiente=` para no
+ *     perder el QR tras el login)
  *   - Authenticated users on /login → redirect to / (dashboard), o a `/pedido-qr` si
  *     `?siguiente=` lo pide (`destinoPosLogin`, allowlist)
  *   - Everything else → next()
@@ -49,6 +50,18 @@ function esRutaPublica(pathname: string): boolean {
   );
 }
 
+/**
+ * Redirect a `/login`. Solo `/pedido-qr` lleva `?siguiente=` (path + query): es el único destino
+ * que `destinoPosLogin` admite, así que la visita directa al landing conserva el QR (`?c=&e=`)
+ * sin ensanchar la allowlist. El resto de las rutas protegidas sigue yendo a `/login` pelado.
+ */
+function redirigirALogin(request: NextRequest): NextResponse {
+  const { pathname, search } = request.nextUrl;
+  const login = new URL("/login", request.url);
+  if (pathname === "/pedido-qr") login.searchParams.set("siguiente", `${pathname}${search}`);
+  return NextResponse.redirect(login, { status: 307 });
+}
+
 export default async function middleware(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
@@ -93,7 +106,7 @@ export default async function middleware(request: NextRequest): Promise<NextResp
       // Tolerant: rt exists → let through, client refreshes on first 401.
       return NextResponse.next();
     }
-    return NextResponse.redirect(new URL("/login", request.url), { status: 307 });
+    return redirigirALogin(request);
   }
 
   const result = await verifyAccessToken(at);
@@ -103,12 +116,12 @@ export default async function middleware(request: NextRequest): Promise<NextResp
       // R26 tolerant: expired at + refresh token → let through.
       return NextResponse.next();
     }
-    return NextResponse.redirect(new URL("/login", request.url), { status: 307 });
+    return redirigirALogin(request);
   }
 
   if (result === "invalid") {
     // Forged/tampered token: redirect and clear the bad cookie immediately.
-    const res = NextResponse.redirect(new URL("/login", request.url), { status: 307 });
+    const res = redirigirALogin(request);
     res.cookies.set({
       name: cookieName(COOKIE_AT),
       value: "",

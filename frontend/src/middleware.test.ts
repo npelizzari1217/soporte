@@ -112,6 +112,50 @@ describe("middleware", () => {
     expect(setCookie).toContain("Max-Age=0");
   });
 
+  // ── /pedido-qr: la visita directa sin sesión conserva el QR (S4a) ────────
+  // El rechazo de un `siguiente` hostil sigue cubierto en el bloque de /login (allowlist de destinoPosLogin).
+
+  it("redirects /pedido-qr?c=x&e=y without a session to /login?siguiente=<path+query>", async () => {
+    const res = await middleware(makeRequest("/pedido-qr?c=x&e=y"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(
+      `http://localhost/login?siguiente=${encodeURIComponent("/pedido-qr?c=x&e=y")}`,
+    );
+  });
+
+  it("redirects a bare /pedido-qr without a session to /login?siguiente=/pedido-qr", async () => {
+    const res = await middleware(makeRequest("/pedido-qr"));
+
+    expect(res.headers.get("location")).toBe(`http://localhost/login?siguiente=${encodeURIComponent("/pedido-qr")}`);
+  });
+
+  it("keeps siguiente on /pedido-qr when `at` is expired and there is no `rt`", async () => {
+    mockVerify.mockResolvedValue("expired");
+    const res = await middleware(makeRequest("/pedido-qr?c=x", { at: "old" }));
+
+    expect(res.headers.get("location")).toBe(`http://localhost/login?siguiente=${encodeURIComponent("/pedido-qr?c=x")}`);
+  });
+
+  it("keeps siguiente on /pedido-qr when `at` is invalid", async () => {
+    mockVerify.mockResolvedValue("invalid");
+    const res = await middleware(makeRequest("/pedido-qr?c=x", { at: "bad" }));
+
+    expect(res.headers.get("location")).toBe(`http://localhost/login?siguiente=${encodeURIComponent("/pedido-qr?c=x")}`);
+  });
+
+  it("other protected routes still redirect to a bare /login (no siguiente)", async () => {
+    const res = await middleware(makeRequest("/tickets?x=1"));
+
+    expect(res.headers.get("location")).toBe("http://localhost/login");
+  });
+
+  it("a look-alike path (/pedido-qr/x) gets no siguiente", async () => {
+    const res = await middleware(makeRequest("/pedido-qr/x"));
+
+    expect(res.headers.get("location")).toBe("http://localhost/login");
+  });
+
   // ── /login path (redirect away if a session is alive) ─────────────────────
 
   it("passes through for /login when there is no session (no at, no rt)", async () => {
