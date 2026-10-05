@@ -15,11 +15,16 @@ import { http, HttpResponse, type RequestHandler } from "msw";
  * listado ahora consultan `useModelosEquipo()` para el selector/columna
  * `Marca`. VACÍO por default; el test que necesita modelos declara los suyos.
  *
+ * `GET /api/respuestas-predefinidas` está acá porque el formulario de comentario de ticket
+ * consulta las respuestas activas para su selector "Insertar respuesta": VACÍO por default
+ * (sin selector); el test que necesita respuestas declara las suyas.
+ *
  * `GET /api/clientes/actual/link-soporte` está acá porque el header del shell lo consulta en cada
  * pantalla: sin link (`url: null`) el botón no aparece, y los tests que no hablan de él no ven ruido.
  */
 export const handlers: RequestHandler[] = [
   http.get("/api/insumos", () => HttpResponse.json([])),
   http.get("/api/modelos-equipo", () => HttpResponse.json([])),
+  http.get("/api/respuestas-predefinidas", () => HttpResponse.json([])),
   http.get("/api/clientes/actual/link-soporte", () => HttpResponse.json({ url: null })),
 ];
