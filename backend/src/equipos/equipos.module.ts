@@ -87,6 +87,7 @@ import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from './application/use-cases/obtener-equipo-de-ticket.use-case';
 import { EmitirQrEquipoUseCase } from './application/use-cases/emitir-qr-equipo.use-case';
+import { ObtenerQrEquipoUseCase } from './application/use-cases/obtener-qr-equipo.use-case';
 import { ResolverQrAutenticadoUseCase } from './application/use-cases/resolver-qr-autenticado.use-case';
 import { ExportarEquiposUseCase } from './application/use-cases/exportar-equipos.use-case';
 
@@ -205,6 +206,13 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       provide: EmitirQrEquipoUseCase,
       useFactory: (equipoRepo: IEquipoInformaticoRepository, clienteRepo: IClienteRepository) =>
         new EmitirQrEquipoUseCase(equipoRepo, clienteRepo, entorno.APP_BASE_URL),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, CLIENTE_REPOSITORY],
+    },
+    {
+      // issue #356: lee el QR vigente. Misma URL base que la emisión (nunca el header `Host`).
+      provide: ObtenerQrEquipoUseCase,
+      useFactory: (equipoRepo: IEquipoInformaticoRepository, clienteRepo: IClienteRepository) =>
+        new ObtenerQrEquipoUseCase(equipoRepo, clienteRepo, entorno.APP_BASE_URL),
       inject: [EQUIPO_INFORMATICO_REPOSITORY, CLIENTE_REPOSITORY],
     },
     {

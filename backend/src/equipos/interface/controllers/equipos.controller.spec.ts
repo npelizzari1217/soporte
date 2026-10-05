@@ -28,6 +28,7 @@ import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.
 import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
 import { ResumenBajaEquipoUseCase } from '../../application/use-cases/resumen-baja-equipo.use-case';
 import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
+import { ObtenerQrEquipoUseCase } from '../../application/use-cases/obtener-qr-equipo.use-case';
 import { ClienteNoEncontradoError } from '../../../clientes/domain/errors/clientes.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import * as EquiposErrors from '../../domain/errors/equipos.errors';
@@ -69,6 +70,11 @@ function emitirQrEspiado() {
   return { caso, execute: vi.spyOn(caso, 'execute') };
 }
 
+function obtenerQrEspiado() {
+  const caso: ObtenerQrEquipoUseCase = Object.create(ObtenerQrEquipoUseCase.prototype);
+  return { caso, execute: vi.spyOn(caso, 'execute') };
+}
+
 function makeEquipo(): EquipoInformaticoEntity {
   return EquipoInformaticoEntity.create(
     {
@@ -104,6 +110,7 @@ describe('EquiposController (T12.6)', () => {
     const darDeBaja = darDeBajaEspiado();
     const resumenBaja = resumenBajaEspiado();
     const emitirQr = emitirQrEspiado();
+    const obtenerQr = obtenerQrEspiado();
 
     const controller = new EquiposController(
       crearEquipoUseCase as any,
@@ -120,10 +127,12 @@ describe('EquiposController (T12.6)', () => {
       darDeBaja.caso,
       resumenBaja.caso,
       emitirQr.caso,
+      obtenerQr.caso,
     );
 
     return {
       emitirQrUseCase: emitirQr.execute,
+      obtenerQrUseCase: obtenerQr.execute,
       darDeBajaUseCase: darDeBaja.execute,
       resumenBajaUseCase: resumenBaja.execute,
       controller,
@@ -205,6 +214,67 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new EquiposErrors.EquipoDadoDeBajaError(ID)),
       );
       await expect(controller.emitirQr(user, ID)).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
+
+  describe('GET /equipos/:id/qr (issue #356)', () => {
+    const ID = '11111111-1111-4111-8111-111111111111';
+    const user = payloadDeTest({ cliente_id: 'cliente-1' });
+
+    it('declara el mismo permiso que la emisión: @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
+      expect(Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.obtenerQr)).toEqual([
+        'EQUIPOS:MODIFICACION',
+      ]);
+    });
+
+    it('QR vigente: delega con el cliente del JWT y devuelve url y fecha en ISO', async () => {
+      const { controller, obtenerQrUseCase } = buildController();
+      const emitidoAt = new Date('2026-10-05T12:00:00Z');
+      obtenerQrUseCase.mockResolvedValue(
+        Result.ok({ estado: 'VIGENTE', url: 'https://x/c/acme/pedido?e=t', emitidoAt }),
+      );
+
+      const r = await controller.obtenerQr(user, ID);
+
+      expect(obtenerQrUseCase).toHaveBeenCalledWith({ equipoId: ID, clienteId: 'cliente-1' });
+      expect(r).toEqual({
+        estado: 'VIGENTE',
+        url: 'https://x/c/acme/pedido?e=t',
+        emitidoAt: emitidoAt.toISOString(),
+      });
+    });
+
+    it.each(['SIN_EMITIR', 'REQUIERE_REGENERAR'] as const)(
+      '%s es 200 con url y emitidoAt en null, no un 404',
+      async (estado) => {
+        const { controller, obtenerQrUseCase } = buildController();
+        obtenerQrUseCase.mockResolvedValue(Result.ok({ estado }));
+
+        expect(await controller.obtenerQr(user, ID)).toEqual({
+          estado,
+          url: null,
+          emitidoAt: null,
+        });
+      },
+    );
+
+    it('un id que no es UUID es 404 y sin cliente en la sesión es 403, sin llamar al caso de uso', async () => {
+      const { controller, obtenerQrUseCase } = buildController();
+      await expect(controller.obtenerQr(user, 'no-uuid')).rejects.toThrow(NotFoundException);
+      await expect(controller.obtenerQr(payloadDeTest({ cliente_id: null }), ID)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(obtenerQrUseCase).not.toHaveBeenCalled();
+    });
+
+    it('equipo inexistente es 404; equipo de baja es 422', async () => {
+      const { controller, obtenerQrUseCase } = buildController();
+      obtenerQrUseCase.mockResolvedValueOnce(Result.fail(new EquipoNoEncontradoError(ID)));
+      await expect(controller.obtenerQr(user, ID)).rejects.toThrow(NotFoundException);
+      obtenerQrUseCase.mockResolvedValueOnce(
+        Result.fail(new EquiposErrors.EquipoDadoDeBajaError(ID)),
+      );
+      await expect(controller.obtenerQr(user, ID)).rejects.toThrow(UnprocessableEntityException);
     });
   });
 
@@ -882,6 +952,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       darDeBajaEspiado().caso,
       resumenBajaEspiado().caso,
       emitirQrEspiado().caso,
+      obtenerQrEspiado().caso,
     );
     return { controller, exportarEquipos };
   }

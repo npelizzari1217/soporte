@@ -14,6 +14,7 @@
  *   GET    /equipos/:id/baja/resumen                          → ResumenBajaEquipoUseCase     `EQUIPOS:BORRADO` (baja-equipo-completo)
  *   POST   /equipos/:id/baja                                  → DarDeBajaEquipoUseCase       `EQUIPOS:BORRADO` (baja-equipo-completo)
  *   POST   /equipos/:id/qr                                    → EmitirQrEquipoUseCase        `EQUIPOS:MODIFICACION` (formulario-publico-qr)
+ *   GET    /equipos/:id/qr                                    → ObtenerQrEquipoUseCase       `EQUIPOS:MODIFICACION` (issue #356)
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteSinDescuentoUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
@@ -73,6 +74,7 @@ import { ReactivarComponenteUseCase } from '../../application/use-cases/reactiva
 import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
 import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
 import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
+import { ObtenerQrEquipoUseCase } from '../../application/use-cases/obtener-qr-equipo.use-case';
 import {
   ResumenBajaEquipo,
   ResumenBajaEquipoUseCase,
@@ -118,6 +120,7 @@ import {
   CreateComponenteHttpDto,
   CreateEquipoHttpDto,
   DarDeBajaEquipoHttpDto,
+  QrEquipoLeidoResponseDto,
   QrEquipoResponseDto,
   EditarComponenteHttpDto,
   RetirarComponenteHttpDto,
@@ -296,6 +299,8 @@ export class EquiposController {
     private readonly resumenBajaEquipoUseCase: ResumenBajaEquipoUseCase,
     // sdd/formulario-publico-qr (WU-4) — agregado al final por el mismo criterio.
     private readonly emitirQrEquipoUseCase: EmitirQrEquipoUseCase,
+    // issue #356 — agregado al final por el mismo criterio.
+    private readonly obtenerQrEquipoUseCase: ObtenerQrEquipoUseCase,
   ) {}
 
   /**
@@ -517,10 +522,45 @@ export class EquiposController {
   }
 
   /**
+   * GET /equipos/:id/qr
+   * Devuelve el QR vigente del equipo (issue #356) para mostrarlo, descargarlo o imprimirlo las
+   * veces que haga falta. Mismo permiso que emitirlo. "Sin QR para mostrar" NO es un 404: el
+   * recurso (el equipo) existe, así que contesta 200 con `estado` (`SIN_EMITIR` si nunca se
+   * emitió, `REQUIERE_REGENERAR` si se emitió antes de guardar el token en claro) y la pantalla
+   * elige el aviso sin tratar un caso normal como error.
+   * @throws 404 equipo inexistente o con borrado lógico
+   * @throws 422 el equipo está dado de baja
+   */
+  @Get(':id/qr')
+  @RequiereAcciones('EQUIPOS:MODIFICACION')
+  async obtenerQr(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ): Promise<QrEquipoLeidoResponseDto> {
+    if (!UUID_REGEX.test(id)) {
+      throw toHttpException(new EquipoNoEncontradoError(id));
+    }
+    if (user.cliente_id === null) {
+      throw new ForbiddenException('Ver el QR requiere un cliente en la sesión.');
+    }
+    const result = await this.obtenerQrEquipoUseCase.execute({
+      equipoId: id,
+      clienteId: user.cliente_id,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const qr = result.getValue();
+    return qr.estado === 'VIGENTE'
+      ? { estado: qr.estado, url: qr.url, emitidoAt: qr.emitidoAt.toISOString() }
+      : { estado: qr.estado, url: null, emitidoAt: null };
+  }
+
+  /**
    * POST /equipos/:id/qr
    * Emite el QR del equipo, o lo regenera si ya tenía uno (el token anterior deja de resolver de
-   * inmediato). Devuelve la URL pública armada por el backend desde `APP_BASE_URL`: el token solo
-   * viaja en esta respuesta y en la base queda su hash. El primer QR congela el slug del cliente
+   * inmediato). Devuelve la URL pública armada por el backend desde `APP_BASE_URL`: el token se
+   * guarda en claro junto a su hash (issue #356) y se vuelve a leer con `GET /equipos/:id/qr`. El primer QR congela el slug del cliente
    * (`clienteId` sale del JWT, nunca del body). No exige que el formulario esté habilitado.
    * @throws 404 equipo inexistente o con borrado lógico
    * @throws 409 el cliente no tiene slug (`QR_REQUIERE_SLUG`) o su slug cambió durante la

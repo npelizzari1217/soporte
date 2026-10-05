@@ -11,6 +11,14 @@ import { EquipoInformaticoEntity } from '../entities/equipo-informatico.entity';
  * Ref spec: sdd/flujos-especializados/spec F3-Q1. Ref design: "Firmas TS
  * clave" (ports/*). Tarea: T10.6.
  */
+/** Estado del QR de un equipo tal como está guardado (issue #356). */
+export interface QrEquipoGuardado {
+  activo: boolean;
+  qrToken: string | null;
+  qrTokenHash: string | null;
+  qrEmitidoAt: Date | null;
+}
+
 export interface IEquipoInformaticoRepository {
   /** Busca el equipo por su identificador técnico (UUIDv7). Incluye soft-deleted. */
   findById(id: string): Promise<EquipoInformaticoEntity | null>;
@@ -87,6 +95,14 @@ export interface IEquipoInformaticoRepository {
    * Devuelve `false` si no tocó ninguna fila (equipo inexistente, dado de baja o borrado).
    */
   guardarQr(id: string, qrToken: string, qrTokenHash: string, emitidoAt: Date): Promise<boolean>;
+
+  /**
+   * Lee el QR guardado del equipo (issue #356). Devuelve `null` si el equipo no existe o tiene
+   * borrado lógico; un equipo dado de baja SÍ se devuelve (decidir qué hacer con él es del
+   * llamador). `qrToken` es `null` cuando nunca se emitió QR o cuando se emitió antes de que el
+   * token se guardara en claro (`qrTokenHash` presente).
+   */
+  findQrById(id: string): Promise<QrEquipoGuardado | null>;
 
   /** Baja lógica (soft delete) del equipo por id. */
   delete(id: string): Promise<void>;
