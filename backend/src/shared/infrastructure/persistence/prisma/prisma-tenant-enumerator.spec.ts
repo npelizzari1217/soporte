@@ -7,7 +7,9 @@
 import { PrismaTenantEnumerator } from './prisma-tenant-enumerator';
 
 describe('PrismaTenantEnumerator', () => {
-  function makePrismaService(rows: { id: string; dbName: string }[]) {
+  type FilaCliente = { id: string; dbName: string; activo?: boolean; deletedAt?: Date | null };
+
+  function makePrismaService(rows: FilaCliente[]) {
     const findMany = vi.fn().mockResolvedValue(rows);
     const prismaService = {
       getMasterClient: () => ({ cliente: { findMany } }),
@@ -15,12 +17,16 @@ describe('PrismaTenantEnumerator', () => {
     return { prismaService, findMany };
   }
 
+  function makeEnumerator(rows: FilaCliente[]) {
+    const { prismaService, findMany } = makePrismaService(rows);
+    return { enumerator: new PrismaTenantEnumerator(prismaService as never), findMany };
+  }
+
   it('[CRITICAL] retorna clienteId/dbName de los clientes ACTIVOS, no soft-deleted', async () => {
-    const { prismaService, findMany } = makePrismaService([
+    const { enumerator, findMany } = makeEnumerator([
       { id: 'cliente-1', dbName: 'soporte_cliente_1' },
       { id: 'cliente-2', dbName: 'soporte_cliente_2' },
     ]);
-    const enumerator = new PrismaTenantEnumerator(prismaService as never);
 
     const tenants = await enumerator.listActiveTenants();
 
@@ -35,11 +41,30 @@ describe('PrismaTenantEnumerator', () => {
   });
 
   it('lista vacía si no hay clientes activos', async () => {
-    const { prismaService } = makePrismaService([]);
-    const enumerator = new PrismaTenantEnumerator(prismaService as never);
+    const { enumerator } = makeEnumerator([]);
 
     const tenants = await enumerator.listActiveTenants();
 
     expect(tenants).toEqual([]);
+  });
+
+  it('listTenantsConBase retorna TODOS los clientes con base (activos, inactivos y soft-deleted) sin filtrar', async () => {
+    const { enumerator, findMany } = makeEnumerator([
+      { id: 'cliente-1', dbName: 'soporte_cliente_1', activo: true, deletedAt: null },
+      { id: 'cliente-2', dbName: 'soporte_cliente_2', activo: false, deletedAt: new Date() },
+      { id: 'cliente-3', dbName: 'soporte_cliente_3', activo: true, deletedAt: new Date() },
+    ]);
+
+    const tenants = await enumerator.listTenantsConBase();
+
+    // `vivo` = lo que `listActiveTenants` incluiría: activo Y no soft-deleted.
+    expect(tenants).toEqual([
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
+      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2', vivo: false },
+      { clienteId: 'cliente-3', dbName: 'soporte_cliente_3', vivo: false },
+    ]);
+    expect(findMany).toHaveBeenCalledWith({
+      select: { id: true, dbName: true, activo: true, deletedAt: true },
+    });
   });
 });

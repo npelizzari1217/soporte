@@ -42,7 +42,7 @@ import { execFileSync } from 'node:child_process';
  * una justificacion escrita en el PR — y si hace falta subirla seguido, el que
  * esta mal es el criterio, no el numero.
  */
-const BASE_OCURRENCIAS = 627;
+const BASE_OCURRENCIAS = 626;
 const BASE_ARCHIVOS = 116;
 
 /**
