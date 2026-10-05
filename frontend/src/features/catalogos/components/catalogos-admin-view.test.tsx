@@ -28,6 +28,15 @@ const SECTOR_COMPUTACION = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const RESPUESTA_SALUDO = {
+  id: "r1",
+  titulo: "Saludo",
+  texto: "Hola, gracias por escribirnos.",
+  activo: true,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
 function mockBackend() {
   server.use(
     http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json([TIPO_INCIDENTE])),
@@ -103,5 +112,56 @@ describe("CatalogosAdminView", () => {
     await user.click(screen.getByRole("button", { name: /^crear$/i }));
 
     await waitFor(() => expect(creado).toEqual({ codigo: "LIBRERIA", nombre: "Librería" }));
+  });
+
+  it("tab Respuestas lista el catálogo (incluye desactivadas) y permite crear una nueva", async () => {
+    const user = userEvent.setup();
+    let creada: Record<string, unknown> = {};
+    server.use(
+      http.get("/api/respuestas-predefinidas", () =>
+        HttpResponse.json([
+          { ...RESPUESTA_SALUDO },
+          { ...RESPUESTA_SALUDO, id: "r2", titulo: "Cierre", activo: false },
+        ]),
+      ),
+      http.post("/api/respuestas-predefinidas", async ({ request }) => {
+        creada = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...RESPUESTA_SALUDO, id: "r3", ...creada }, { status: 201 });
+      }),
+    );
+
+    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await user.click(screen.getByRole("tab", { name: /respuestas/i }));
+    await screen.findByText("Saludo");
+    expect(screen.getByText("Cierre")).toBeInTheDocument();
+    expect(screen.getByText("Desactivada")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /nueva respuesta/i }));
+    await user.type(screen.getByLabelText("Título"), "Despedida");
+    await user.type(screen.getByLabelText("Texto"), "Quedamos atentos.");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(creada).toEqual({ titulo: "Despedida", texto: "Quedamos atentos." }));
+  });
+
+  it("tab Respuestas: desactivar una activa pega a /estado con activo=false tras confirmar", async () => {
+    const user = userEvent.setup();
+    let body: Record<string, unknown> = {};
+    server.use(
+      http.get("/api/respuestas-predefinidas", () => HttpResponse.json([RESPUESTA_SALUDO])),
+      http.patch("/api/respuestas-predefinidas/r1/estado", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ ...RESPUESTA_SALUDO, activo: false });
+      }),
+    );
+
+    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await user.click(screen.getByRole("tab", { name: /respuestas/i }));
+    await screen.findByText("Saludo");
+
+    await user.click(screen.getByRole("button", { name: "Desactivar" }));
+    await user.click(await screen.findByRole("button", { name: "Desactivar", hidden: false }));
+
+    await waitFor(() => expect(body).toEqual({ activo: false }));
   });
 });
