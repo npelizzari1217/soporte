@@ -1485,3 +1485,17 @@ model EventoUnidadInsumo {
   @@index([unidadId, createdAt])
   @@map("eventos_unidad_insumo")
 }
+
+/// Respuesta predefinida de soporte (roadmap segunda etapa, punto 4): texto reutilizable que se
+/// inserta en el comentario de un ticket. Compartida por cliente; se desactiva, no se borra.
+/// Los CHECK de largo y el UNIQUE sobre lower(titulo) viven solo en la migración SQL.
+model RespuestaPredefinida {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titulo    String   @db.VarChar(100)
+  texto     String   @db.VarChar(4000)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("respuestas_predefinidas")
+}
