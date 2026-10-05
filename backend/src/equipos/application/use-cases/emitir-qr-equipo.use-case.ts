@@ -17,7 +17,7 @@ export interface EmitirQrEquipoCommand {
 }
 
 export interface QrEmitido {
-  /** `${APP_BASE_URL}/c/<slug>/pedido?e=<token>`. El token solo existe en esta respuesta. */
+  /** `${APP_BASE_URL}/c/<slug>/pedido?e=<token>`. */
   url: string;
   emitidoAt: Date;
 }
@@ -25,17 +25,19 @@ export interface QrEmitido {
 /** Bytes de entropía del token: 128 bits (ADR-10). */
 const BYTES_TOKEN = 16;
 
-/** sha256 hex del token: lo único que se guarda (ADR-10) y lo que se busca al resolver. */
+/** sha256 hex del token: la clave con que se busca al resolver (ADR-10). */
 export function hashTokenQr(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
 /**
  * EmitirQrEquipoUseCase — emite o regenera el QR de un equipo (sdd/formulario-publico-qr, WU-4;
- * D8). Regenerar reemplaza el hash: el token anterior deja de resolver de inmediato.
+ * D8). Regenerar reemplaza el token y el hash: el anterior deja de resolver de inmediato.
+ * Desde el issue #356 el token se guarda EN CLARO junto al hash (la ficha muestra siempre el QR
+ * vigente); el hash sigue siendo la clave de búsqueda.
  *
  * Orden (ADR-2): primero se congela el slug en master (CAS con el slug leído) y recién después
- * se escribe el hash en el tenant. Un slug congelado sin QR es inofensivo; un QR sin el slug
+ * se escribe el QR en el tenant. Un slug congelado sin QR es inofensivo; un QR sin el slug
  * congelado es el defecto que hay que evitar. No exige que el formulario esté habilitado.
  *
  * El equipo se valida ANTES del CAS de master: un equipo inexistente es un 404 y no congela el
@@ -43,7 +45,7 @@ export function hashTokenQr(token: string): string {
  */
 export class EmitirQrEquipoUseCase {
   constructor(
-    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById' | 'guardarQrHash'>,
+    private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById' | 'guardarQr'>,
     private readonly clienteRepo: Pick<IClienteRepository, 'findById' | 'congelarSlug'>,
     /** `entorno.APP_BASE_URL`: `application/` no lee `process.env` y nunca se usa el header `Host`. */
     private readonly appBaseUrl: string,
@@ -73,7 +75,8 @@ export class EmitirQrEquipoUseCase {
 
     const token = randomBytes(BYTES_TOKEN).toString('base64url');
     const emitidoAt = new Date();
-    if (!(await this.equipoRepo.guardarQrHash(equipo.id, hashTokenQr(token), emitidoAt))) {
+    // Token y hash se escriben en la misma sentencia: no puede quedar uno sin el otro.
+    if (!(await this.equipoRepo.guardarQr(equipo.id, token, hashTokenQr(token), emitidoAt))) {
       // El equipo se dio de baja o se borró entre la lectura y el CAS.
       return Result.fail(new EquipoDadoDeBajaError(equipo.id));
     }

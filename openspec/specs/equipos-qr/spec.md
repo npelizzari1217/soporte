@@ -10,7 +10,7 @@ Definir la emisión, regeneración y resolución del QR por equipo con token opa
 
 ### Requirement: Un QR por equipo con token opaco (D8)
 
-Cada equipo PUEDE tener un QR. El QR DEBE codificar la URL pública `/c/<slug>/pedido?e=<token>`, donde el token es opaco y de al menos 128 bits de entropía. El token NO DEBE derivarse del `id` del equipo ni contener datos del equipo. El sistema DEBE guardar solo el hash del token, nunca el token en claro, y mostrarlo solo al emitirlo o regenerarlo. Emitir el QR requiere sesión y permiso sobre equipos; el primer QR emitido congela el slug del cliente (ver `formulario-publico-cliente`).
+Cada equipo PUEDE tener un QR. El QR DEBE codificar la URL pública `/c/<slug>/pedido?e=<token>`, donde el token es opaco y de al menos 128 bits de entropía. El token NO DEBE derivarse del `id` del equipo ni contener datos del equipo. El sistema DEBE guardar el hash del token (clave de búsqueda) y, desde el issue #356 (decisión del dueño, 2026-10-05, que revierte la regla original de guardar solo el hash), también el token en claro, para mostrar siempre el QR vigente y permitir descargarlo o imprimirlo las veces que haga falta; regenerar reemplaza ambos. Los QR emitidos antes de ese cambio no tienen token guardado y hay que regenerarlos una vez para verlos. Emitir el QR requiere sesión y permiso sobre equipos; el primer QR emitido congela el slug del cliente (ver `formulario-publico-cliente`).
 
 #### Scenario: Emisión del QR
 

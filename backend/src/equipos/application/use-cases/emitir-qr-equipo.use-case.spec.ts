@@ -39,8 +39,8 @@ function setup(
   const llamadas: string[] = [];
   const equipoRepo = {
     findById: vi.fn().mockResolvedValue(equipo),
-    guardarQrHash: vi.fn().mockImplementation(async () => {
-      llamadas.push('guardarQrHash');
+    guardarQr: vi.fn().mockImplementation(async () => {
+      llamadas.push('guardarQr');
       return over.guardar ?? true;
     }),
   };
@@ -60,7 +60,7 @@ function setup(
 const CMD = { equipoId: 'e1', clienteId: 'c1' };
 
 describe('EmitirQrEquipoUseCase', () => {
-  it('emite la URL con un token opaco de 128 bits y guarda solo su hash', async () => {
+  it('emite la URL con un token opaco de 128 bits y guarda el token en claro con su hash', async () => {
     const { useCase, equipoRepo } = setup();
 
     const r = await useCase.execute(CMD);
@@ -70,14 +70,15 @@ describe('EmitirQrEquipoUseCase', () => {
     expect(url.startsWith(`${BASE}/c/acme/pedido?e=`)).toBe(true);
     expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(Buffer.from(token, 'base64url')).toHaveLength(16);
-    expect(equipoRepo.guardarQrHash).toHaveBeenCalledWith(
+    // Token y hash viajan juntos en UNA llamada (atómica en el repo); el hash sigue siendo la clave.
+    expect(equipoRepo.guardarQr).toHaveBeenCalledTimes(1);
+    expect(equipoRepo.guardarQr).toHaveBeenCalledWith(
       expect.any(String),
+      token,
       hashTokenQr(token),
       emitidoAt,
     );
-    const guardado = equipoRepo.guardarQrHash.mock.calls[0][1] as string;
-    expect(guardado).not.toContain(token);
-    expect(guardado).toMatch(/^[0-9a-f]{64}$/);
+    expect(equipoRepo.guardarQr.mock.calls[0][2]).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('el token no se deriva del id del equipo', async () => {
@@ -88,16 +89,17 @@ describe('EmitirQrEquipoUseCase', () => {
     expect(token).not.toBe(hashTokenQr(equipo!.id));
   });
 
-  it('regenerar emite otro token y otro hash: el anterior queda reemplazado', async () => {
+  it('regenerar emite otro token y otro hash: el par anterior queda reemplazado', async () => {
     const { useCase, equipoRepo } = setup();
 
     const a = (await useCase.execute(CMD)).getValue().url;
     const b = (await useCase.execute(CMD)).getValue().url;
 
     expect(a).not.toBe(b);
-    expect(equipoRepo.guardarQrHash.mock.calls[0][1]).not.toBe(
-      equipoRepo.guardarQrHash.mock.calls[1][1],
-    );
+    const [primera, segunda] = equipoRepo.guardarQr.mock.calls;
+    expect(segunda[1]).not.toBe(primera[1]);
+    expect(segunda[2]).not.toBe(primera[2]);
+    expect(segunda[2]).toBe(hashTokenQr(segunda[1] as string));
   });
 
   it('congela el slug ANTES de escribir el hash, con el slug leído', async () => {
@@ -105,7 +107,7 @@ describe('EmitirQrEquipoUseCase', () => {
 
     await useCase.execute(CMD);
 
-    expect(llamadas).toEqual(['congelarSlug', 'guardarQrHash']);
+    expect(llamadas).toEqual(['congelarSlug', 'guardarQr']);
     expect(clienteRepo.congelarSlug).toHaveBeenCalledWith(expect.any(String), 'acme');
   });
 
@@ -116,7 +118,7 @@ describe('EmitirQrEquipoUseCase', () => {
 
     expect(r.getError()).toBeInstanceOf(QrRequiereSlugError);
     expect(clienteRepo.congelarSlug).not.toHaveBeenCalled();
-    expect(equipoRepo.guardarQrHash).not.toHaveBeenCalled();
+    expect(equipoRepo.guardarQr).not.toHaveBeenCalled();
   });
 
   it('si el slug cambió (CAS en 0 filas) no escribe el hash', async () => {
@@ -125,7 +127,7 @@ describe('EmitirQrEquipoUseCase', () => {
     const r = await useCase.execute(CMD);
 
     expect(r.getError()).toBeInstanceOf(QrSlugCambiadoError);
-    expect(equipoRepo.guardarQrHash).not.toHaveBeenCalled();
+    expect(equipoRepo.guardarQr).not.toHaveBeenCalled();
   });
 
   it('un equipo inexistente o borrado es 404 y no congela el slug', async () => {
