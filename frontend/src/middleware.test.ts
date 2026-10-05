@@ -322,4 +322,33 @@ describe("middleware", () => {
     expect(pattern).toContain("api");
     expect(pattern).toContain("favicon.ico");
   });
+
+  // ── Assets de la PWA: el navegador los pide sin sesión ────────────────────
+
+  it.each([
+    "/manifest.webmanifest",
+    "/icons/icon-192.png",
+    "/icons/icon-512.png",
+    "/icons/icon-maskable-192.png",
+    "/icons/icon-maskable-512.png",
+    "/icon.svg",
+    "/apple-icon.png",
+  ])("matcher leaves %s out of the middleware (no session needed)", (ruta) => {
+    // Next compila el matcher como `^<patrón>$` sobre el pathname (sin query: `/icon.svg?<hash>`
+    // llega como `/icon.svg`).
+    const re = new RegExp(`^${config.matcher[0]}$`);
+    expect(re.test(ruta)).toBe(false);
+  });
+
+  it.each(["/tickets", "/login", "/"])("matcher still intercepts %s", (ruta) => {
+    const re = new RegExp(`^${config.matcher[0]}$`);
+    expect(re.test(ruta)).toBe(true);
+  });
+
+  it("a normal protected route still redirects to /login without a session", async () => {
+    const res = await middleware(makeRequest("/tickets"));
+
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toContain("/login");
+  });
 });

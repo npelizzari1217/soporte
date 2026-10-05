@@ -1,11 +1,17 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "../styles/globals.css";
 import { Providers } from "@/shared/providers/providers";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Soporte",
+  applicationName: "Soporte",
+  appleWebApp: { capable: true, title: "Soporte", statusBarStyle: "default" },
   description: "Plataforma multi-tenant de tickets: soporte, compras y reparaciones edilicias",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
 };
 
 /**
