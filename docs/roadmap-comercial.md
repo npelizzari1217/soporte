@@ -727,6 +727,27 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     Apple se sirven sin sesión, y son los mismos para todos los clientes. El
     frontend no registra ningún service worker ni ofrece un botón de instalación
     propio. Sin desviación.
+- **Segunda etapa, punto 4 — respuestas predefinidas** (decidido el 2026-10-06,
+  issue #368):
+  - Las respuestas son **compartidas por cliente**: una tabla en la base de cada
+    cliente. No hay respuestas personales.
+  - Las gestiona el **ADMINISTRADOR del cliente y ROOT** desde `/admin/catalogos`,
+    igual que los sectores: `AdminClienteGuard` en las escrituras y ningún permiso
+    `MODULO:ACCION` nuevo.
+  - Las usa **cualquiera con `TICKETS:COMENTAR`**: un selector "Insertar respuesta" en
+    el formulario de comentario de un ticket de soporte, que **inserta el texto en el
+    cuadro para editarlo y nunca envía por sí solo**. Si el cuadro ya tiene texto, la
+    respuesta se agrega en una línea nueva sin borrar lo escrito. Solo se ofrecen las
+    respuestas **activas**.
+  - **Solo tickets de soporte**: las reparaciones de edilicia quedan afuera.
+  - Cada respuesta tiene **título** (obligatorio, de 1 a 100 caracteres, único por
+    cliente sin distinguir mayúsculas) y **texto** (obligatorio, de 1 a 4000
+    caracteres).
+  - **Se desactiva, no se borra**: un flag de activa y un endpoint de cambio de estado,
+    como los sectores.
+  - Lo público o interno sigue siendo la casilla que ya existe: la respuesta no lo
+    lleva.
+  - **Sin variables** en esta versión: el texto se inserta tal cual.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
