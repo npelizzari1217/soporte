@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <!-- El mask vive en el espacio del grupo de la llave, que ya esta rotado: los cortes van sin rotar. -->
+    <mask id="cortes-llave" maskUnits="userSpaceOnUse" x="-50" y="-50" width="200" height="200">
+      <rect x="-50" y="-50" width="200" height="200" fill="#fff"/>
+      <rect x="45" y="5" width="10" height="17" rx="1.5" fill="#000"/>
+      <circle cx="50" cy="80" r="4" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="100" height="100" fill="#2563eb"/>
+  <g transform="translate(50 50) scale(0.7) translate(-50 -50)">
+  <g fill="#ffffff">
+    <!-- Destornillador: mango abajo a la izquierda, punta arriba a la derecha. -->
+    <g transform="rotate(45 50 50)">
+      <rect x="42" y="57" width="16" height="31" rx="6"/>
+      <rect x="47.25" y="21" width="5.5" height="38"/>
+      <polygon points="47.25,21 52.75,21 51.4,12 48.6,12"/>
+    </g>
+    <!-- Llave: boca abierta arriba a la izquierda, anillo abajo a la derecha. -->
+    <g transform="rotate(-45 50 50)" mask="url(#cortes-llave)">
+      <circle cx="50" cy="22" r="13"/>
+      <rect x="45" y="28" width="10" height="46" rx="3"/>
+      <circle cx="50" cy="80" r="9"/>
+    </g>
+  </g>
+  </g>
+</svg>
