@@ -4,7 +4,7 @@
  * App real contra Postgres real y guards reales (JWT, tenant, acciones): tenant efímero,
  * `soporte_master_test` truncada en `beforeEach` y `usarLockMasterTest()`. Un actor por test:
  * dos clientes con el mismo `dbName` violan el UNIQUE de `clientes.db_name`. Cubre 401/403, la
- * emisión (token en claro y hash en la base), la regeneración, el congelamiento del slug y la carrera
+ * emisión (token en claro y hash en la base), la lectura `GET /equipos/:id/qr` (issue #356), la regeneración, el congelamiento del slug y la carrera
  * entre emitir y cambiar el slug (ADR-2).
  */
 import { createHash, randomBytes } from 'node:crypto';
@@ -51,7 +51,8 @@ interface Respuesta<T> {
 }
 
 interface CuerpoQr {
-  url?: string;
+  estado?: string;
+  url?: string | null;
   emitidoAt?: string;
   statusCode?: number;
   message?: string;
@@ -67,6 +68,11 @@ async function post(url: string, token?: string): Promise<Respuesta<CuerpoQr>> {
     },
     body: '{}',
   });
+  return { status: res.status, data: (await res.json().catch(() => null)) as CuerpoQr };
+}
+
+async function get(url: string, token?: string): Promise<Respuesta<CuerpoQr>> {
+  const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   return { status: res.status, data: (await res.json().catch(() => null)) as CuerpoQr };
 }
 
@@ -268,6 +274,72 @@ describe('Equipos e2e — POST /equipos/:id/qr (WU-4)', () => {
       where: { id: equipoId },
     });
     expect(fila.qrToken).toBe(segundo);
+  });
+
+  describe('GET /equipos/:id/qr (issue #356)', () => {
+    it('sin sesión 401; sin EQUIPOS:MODIFICACION 403', async () => {
+      const equipoId = await crearEquipo();
+      expect((await get(`${baseUrl}/equipos/${equipoId}/qr`)).status).toBe(401);
+
+      const actor = await crearActor(['EQUIPOS:LECTURA'], 'acme');
+      expect((await get(`${baseUrl}/equipos/${equipoId}/qr`, actor.accessToken)).status).toBe(403);
+    });
+
+    it('devuelve el mismo QR que emitió, las veces que se pida, y regenerar lo reemplaza', async () => {
+      const actor = await crearActor(['EQUIPOS:MODIFICACION'], 'acme');
+      const equipoId = await crearEquipo();
+      const emitido = await post(`${baseUrl}/equipos/${equipoId}/qr`, actor.accessToken);
+
+      const a = await get(`${baseUrl}/equipos/${equipoId}/qr`, actor.accessToken);
+      const b = await get(`${baseUrl}/equipos/${equipoId}/qr`, actor.accessToken);
+
+      expect(a.status).toBe(200);
+      expect(a.data).toEqual({
+        estado: 'VIGENTE',
+        url: emitido.data.url,
+        emitidoAt: emitido.data.emitidoAt,
+      });
+      expect(b.data).toEqual(a.data);
+
+      const nuevo = await post(`${baseUrl}/equipos/${equipoId}/qr`, actor.accessToken);
+      const c = await get(`${baseUrl}/equipos/${equipoId}/qr`, actor.accessToken);
+      expect(c.data.url).toBe(nuevo.data.url);
+      expect(c.data.url).not.toBe(a.data.url);
+    });
+
+    it('equipo sin QR es 200 SIN_EMITIR; con hash pero sin token (anterior al cambio) es REQUIERE_REGENERAR', async () => {
+      const actor = await crearActor(['EQUIPOS:MODIFICACION'], 'acme');
+      const sinQr = await crearEquipo();
+      const legado = await crearEquipo();
+      await tenantClient.equipoInformatico.update({
+        where: { id: legado },
+        data: { qrTokenHash: sha256('viejo'), qrEmitidoAt: new Date() },
+      });
+
+      const a = await get(`${baseUrl}/equipos/${sinQr}/qr`, actor.accessToken);
+      const b = await get(`${baseUrl}/equipos/${legado}/qr`, actor.accessToken);
+
+      expect(a.status).toBe(200);
+      expect(a.data).toEqual({ estado: 'SIN_EMITIR', url: null, emitidoAt: null });
+      expect(b.status).toBe(200);
+      expect(b.data).toEqual({ estado: 'REQUIERE_REGENERAR', url: null, emitidoAt: null });
+    });
+
+    it('equipo inexistente o id inválido es 404; equipo de baja es 422', async () => {
+      const actor = await crearActor(['EQUIPOS:MODIFICACION'], 'acme');
+      const deBaja = await crearEquipo({ activo: false });
+
+      const inexistente = await get(
+        `${baseUrl}/equipos/00000000-0000-4000-8000-000000000000/qr`,
+        actor.accessToken,
+      );
+      const invalido = await get(`${baseUrl}/equipos/no-uuid/qr`, actor.accessToken);
+      const baja = await get(`${baseUrl}/equipos/${deBaja}/qr`, actor.accessToken);
+
+      expect(inexistente.status).toBe(404);
+      expect(invalido.status).toBe(404);
+      expect(baja.status).toBe(422);
+    });
   });
 
   it('un cliente sin slug recibe 409 QR_REQUIERE_SLUG y no se escribe nada', async () => {

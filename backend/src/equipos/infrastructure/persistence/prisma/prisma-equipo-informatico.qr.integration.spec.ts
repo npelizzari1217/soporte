@@ -1,6 +1,6 @@
 /**
  * [INTEGRATION] QR del equipo (sdd/formulario-publico-qr, WU-4) contra Postgres REAL, en una base
- * de INQUILINO EFÍMERA propia migrada con todas las migraciones: `findByQrHash`, `guardarQr`
+ * de INQUILINO EFÍMERA propia migrada con todas las migraciones: `findByQrHash`, `guardarQr`/`findQrById`
  * (CAS), UNIQUE nullable, aislamiento entre tenants y el `rollback.sql`. No toca master: sin
  * `usarLockMasterTest()`. Higiene: filas -> cerrar pool -> dropDatabase.
  */
@@ -192,28 +192,53 @@ describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efí
     expect((await enA(() => repo.findByQrHash(HASH_1)))?.id).toBe(equipo.id);
   });
 
-  it('guardarQr guarda token y hash juntos; regenerar reemplaza ambos', async () => {
+  it('guardarQr guarda token y hash juntos y findQrById los devuelve; regenerar reemplaza ambos', async () => {
     const equipo = await crearEquipo(enA);
     const emitido = new Date('2026-10-05T12:00:00Z');
-    const leer = () =>
-      clientA.equipoInformatico.findUniqueOrThrow({
-        where: { id: equipo.id },
-        select: { qrToken: true, qrTokenHash: true, qrEmitidoAt: true },
-      });
 
     await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, emitido));
-    expect(await leer()).toEqual({
+    expect(await enA(() => repo.findQrById(equipo.id))).toEqual({
+      activo: true,
       qrToken: TOKEN_1,
       qrTokenHash: HASH_1,
       qrEmitidoAt: emitido,
     });
 
     await enA(() => repo.guardarQr(equipo.id, TOKEN_2, HASH_2, emitido));
-    expect(await leer()).toEqual({
-      qrToken: TOKEN_2,
-      qrTokenHash: HASH_2,
-      qrEmitidoAt: emitido,
+    const regenerado = await enA(() => repo.findQrById(equipo.id));
+    expect(regenerado?.qrToken).toBe(TOKEN_2);
+    expect(regenerado?.qrTokenHash).toBe(HASH_2);
+  });
+
+  it('findQrById: sin QR devuelve todo en null; inexistente o borrado devuelve null; de baja se devuelve', async () => {
+    const sinQr = await crearEquipo(enA, 'Sin QR');
+    const borrado = await crearEquipo(enA, 'Borrado');
+    await enA(() => repo.delete(borrado.id));
+    const baja = await crearEquipo(enA, 'De baja');
+    await clientA.equipoInformatico.update({ where: { id: baja.id }, data: { activo: false } });
+
+    expect(await enA(() => repo.findQrById(sinQr.id))).toEqual({
+      activo: true,
+      qrToken: null,
+      qrTokenHash: null,
+      qrEmitidoAt: null,
     });
+    expect(await enA(() => repo.findQrById(borrado.id))).toBeNull();
+    expect(await enA(() => repo.findQrById('00000000-0000-4000-8000-000000000000'))).toBeNull();
+    expect((await enA(() => repo.findQrById(baja.id)))?.activo).toBe(false);
+  });
+
+  it('un QR anterior al cambio (hash sin token) se lee con token null', async () => {
+    const equipo = await crearEquipo(enA);
+    await clientA.equipoInformatico.update({
+      where: { id: equipo.id },
+      data: { qrTokenHash: HASH_1, qrEmitidoAt: new Date() },
+    });
+
+    const qr = await enA(() => repo.findQrById(equipo.id));
+
+    expect(qr?.qrToken).toBeNull();
+    expect(qr?.qrTokenHash).toBe(HASH_1);
   });
 
   it('el CHECK rechaza un token sin hash', async () => {

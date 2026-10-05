@@ -19,7 +19,10 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { IEquipoInformaticoRepository } from '../../../domain/ports/i-equipo-informatico.repository';
+import {
+  IEquipoInformaticoRepository,
+  QrEquipoGuardado,
+} from '../../../domain/ports/i-equipo-informatico.repository';
 import { EquipoInformaticoEntity } from '../../../domain/entities/equipo-informatico.entity';
 import { EquipoInformaticoMapper } from './equipo-informatico.mapper';
 import { exigirTransaccionActiva } from '../../../../shared/infrastructure/persistence/exigir-transaccion-activa';
@@ -135,6 +138,14 @@ export class PrismaEquipoInformaticoRepository implements IEquipoInformaticoRepo
       data: { qrToken, qrTokenHash, qrEmitidoAt: emitidoAt },
     });
     return count > 0;
+  }
+
+  async findQrById(id: string): Promise<QrEquipoGuardado | null> {
+    const row = await this.client.equipoInformatico.findFirst({
+      where: { id, deletedAt: null },
+      select: { activo: true, qrToken: true, qrTokenHash: true, qrEmitidoAt: true },
+    });
+    return row;
   }
 
   async delete(id: string): Promise<void> {

@@ -725,8 +725,18 @@ export function toEquipoDeTicketResponseDto(
   return { equipo: resultado.equipo };
 }
 
-/** Respuesta de `POST /equipos/:id/qr`: la URL pública con el token (solo se muestra al emitir). */
+/** Respuesta de `POST /equipos/:id/qr`: la URL pública con el token del QR recién emitido. */
 export interface QrEquipoResponseDto {
   url: string;
   emitidoAt: string;
+}
+
+/**
+ * Respuesta de `GET /equipos/:id/qr` (issue #356): el QR vigente, o por qué no hay uno para
+ * mostrar. `url` y `emitidoAt` solo vienen con `VIGENTE`.
+ */
+export interface QrEquipoLeidoResponseDto {
+  estado: 'VIGENTE' | 'SIN_EMITIR' | 'REQUIERE_REGENERAR';
+  url: string | null;
+  emitidoAt: string | null;
 }
