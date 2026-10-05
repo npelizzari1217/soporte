@@ -14,8 +14,12 @@ import { http, HttpResponse, type RequestHandler } from "msw";
  * modelos-equipo-catalogo-y-compatibilidad): los dos diálogos de equipo y el
  * listado ahora consultan `useModelosEquipo()` para el selector/columna
  * `Marca`. VACÍO por default; el test que necesita modelos declara los suyos.
+ *
+ * `GET /api/clientes/actual/link-soporte` está acá porque el header del shell lo consulta en cada
+ * pantalla: sin link (`url: null`) el botón no aparece, y los tests que no hablan de él no ven ruido.
  */
 export const handlers: RequestHandler[] = [
   http.get("/api/insumos", () => HttpResponse.json([])),
   http.get("/api/modelos-equipo", () => HttpResponse.json([])),
+  http.get("/api/clientes/actual/link-soporte", () => HttpResponse.json({ url: null })),
 ];

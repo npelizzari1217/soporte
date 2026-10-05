@@ -103,12 +103,14 @@ import { ConfigurarFormularioPublicoUseCase } from './application/use-cases/conf
 import { ConfigurarLogoClienteUseCase } from './application/use-cases/configurar-logo-cliente.use-case';
 import { QuitarLogoClienteUseCase } from './application/use-cases/quitar-logo-cliente.use-case';
 import { VerLogoClienteUseCase } from './application/use-cases/ver-logo-cliente.use-case';
+import { VerLinkSoporteClienteUseCase } from './application/use-cases/ver-link-soporte-cliente.use-case';
 
 // ─── Controllers ─────────────────────────────────────────────────────────────
 import { CicloVigenteController } from './interface/controllers/ciclos-vigentes.controller';
 import { CiclosController } from './interface/controllers/ciclos.controller';
 import { ClientesController } from './interface/controllers/clientes.controller';
 import { ClienteLogoController } from './interface/controllers/cliente-logo.controller';
+import { ClienteLinkSoporteController } from './interface/controllers/cliente-link-soporte.controller';
 
 @Module({
   imports: [AuthModule],
@@ -117,6 +119,7 @@ import { ClienteLogoController } from './interface/controllers/cliente-logo.cont
     CiclosController,
     ClientesController,
     ClienteLogoController,
+    ClienteLinkSoporteController,
   ],
   providers: [
     { provide: CICLO_VIGENTE_REPOSITORY, useClass: PrismaCicloVigenteRepository },
@@ -280,6 +283,13 @@ import { ClienteLogoController } from './interface/controllers/cliente-logo.cont
       useFactory: (repo: IClienteRepository, fileStorage: IFileStorage) =>
         new VerLogoClienteUseCase(repo, fileStorage),
       inject: [CLIENTE_REPOSITORY, FILE_STORAGE],
+    },
+    {
+      // La URL se arma desde `entorno.APP_BASE_URL`, nunca desde el header `Host`.
+      provide: VerLinkSoporteClienteUseCase,
+      useFactory: (repo: IClienteRepository) =>
+        new VerLinkSoporteClienteUseCase(repo, entorno.APP_BASE_URL),
+      inject: [CLIENTE_REPOSITORY],
     },
     {
       provide: CrearClienteUseCase,

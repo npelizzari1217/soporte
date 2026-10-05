@@ -74,4 +74,22 @@ describe("DashboardHeader", () => {
 
     expect(await screen.findByRole("dialog", { name: /cambiar contraseña/i })).toBeInTheDocument();
   });
+
+  it("muestra 'Link de soporte' en el header cuando el cliente tiene link vigente", async () => {
+    server.use(
+      http.get("/api/clientes/actual/link-soporte", () =>
+        HttpResponse.json({ url: "https://soporte.example.com/c/acme/pedido" }),
+      ),
+    );
+    renderHeader();
+
+    expect(await screen.findByRole("button", { name: /link de soporte/i })).toBeInTheDocument();
+  });
+
+  it("no muestra 'Link de soporte' si el cliente no tiene link", async () => {
+    renderHeader();
+
+    await screen.findByRole("button", { name: /cambiar contraseña/i });
+    expect(screen.queryByRole("button", { name: /link de soporte/i })).not.toBeInTheDocument();
+  });
 });
