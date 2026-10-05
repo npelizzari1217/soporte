@@ -7,11 +7,14 @@
  * `ConfigurarCsatDialog`: el backend separa `/logo` en rutas propias.
  * Exclusivo ROOT (el caller ya gatea por `isGlobalAdmin`).
  *
- * El logo VIGENTE no se prellena acá: `GET /clientes` no expone
- * `logoUpdatedAt` (fuera de alcance de WU4 — design.md no lo pide) y el
- * binario del logo actual ya es visible en el sidebar de este mismo ROOT.
- * El diálogo solo previsualiza, client-side (`URL.createObjectURL`), el
- * archivo RECIÉN elegido, antes de subirlo.
+ * Al abrir muestra el logo VIGENTE desde `GET /clientes/:id/logo` (el mismo
+ * endpoint del sidebar; ROOT puede leer el de cualquier cliente, issue #354).
+ * `GET /clientes` no expone `logoUpdatedAt`, así que no se sabe de antemano si
+ * hay logo: se intenta cargar y, si falla (404 = sin logo), queda el ícono
+ * genérico. Cada apertura usa una versión nueva en la URL para no mostrar un
+ * logo cacheado después de subir o quitar. Elegir un archivo lo reemplaza por
+ * la vista previa client-side (`URL.createObjectURL`) del archivo RECIÉN
+ * elegido, antes de subirlo.
  *
  * "Quitar logo" se ofrece SIEMPRE, sin necesitar saber de antemano si el
  * cliente tiene uno — el `DELETE` es idempotente en el backend (spec, regla
@@ -43,6 +46,8 @@ export function ConfigurarLogoDialog({ cliente }: ConfigurarLogoDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [versionVigente, setVersionVigente] = useState(0);
+  const [vigenteNoCarga, setVigenteNoCarga] = useState(false);
   const subirMutation = useSubirLogoCliente(cliente.id);
   const quitarMutation = useQuitarLogoCliente(cliente.id);
 
@@ -50,7 +55,11 @@ export function ConfigurarLogoDialog({ cliente }: ConfigurarLogoDialogProps) {
   // recién elegido, nunca sobrevive a un cierre. Revoca la object URL
   // anterior para no filtrar memoria entre aperturas.
   useEffect(() => {
-    if (open) return;
+    if (open) {
+      setVersionVigente(Date.now());
+      setVigenteNoCarga(false);
+      return;
+    }
     setFile(null);
     setError(null);
     setPreviewUrl((current) => {
@@ -98,6 +107,14 @@ export function ConfigurarLogoDialog({ cliente }: ConfigurarLogoDialogProps) {
                 src={previewUrl}
                 alt="Vista previa del logo seleccionado"
                 className="h-full w-full object-contain"
+              />
+            ) : !vigenteNoCarga && versionVigente > 0 ? (
+              // eslint-disable-next-line @next/next/no-img-element -- binario autenticado servido por el BFF, mismo criterio que el logo del sidebar
+              <img
+                src={`/api/clientes/${cliente.id}/logo?v=${versionVigente}`}
+                alt={`Logo actual de ${cliente.nombre}`}
+                className="h-full w-full object-contain"
+                onError={() => setVigenteNoCarga(true)}
               />
             ) : (
               <Building2 className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
