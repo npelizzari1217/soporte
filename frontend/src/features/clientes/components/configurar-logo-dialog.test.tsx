@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -36,6 +36,53 @@ function buildFile({
 }
 
 describe("ConfigurarLogoDialog", () => {
+  it("al abrir muestra el logo vigente desde GET /clientes/:id/logo", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConfigurarLogoDialog cliente={CLIENTE} />);
+    await user.click(screen.getByRole("button", { name: /logo de cliente uno/i }));
+
+    const vigente = screen.getByAltText(/logo actual de cliente uno/i);
+    expect(vigente.getAttribute("src")).toMatch(/^\/api\/clientes\/c1\/logo\?v=\d+$/);
+  });
+
+  it("sin logo (la imagen no carga, 404) muestra el ícono genérico", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConfigurarLogoDialog cliente={CLIENTE} />);
+    await user.click(screen.getByRole("button", { name: /logo de cliente uno/i }));
+
+    fireEvent.error(screen.getByAltText(/logo actual de cliente uno/i));
+
+    expect(screen.queryByAltText(/logo actual de cliente uno/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("elegir un archivo reemplaza el logo vigente por la vista previa", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConfigurarLogoDialog cliente={CLIENTE} />);
+    await user.click(screen.getByRole("button", { name: /logo de cliente uno/i }));
+
+    await user.upload(screen.getByLabelText(/elegir archivo/i), buildFile());
+
+    expect(screen.getByAltText(/vista previa del logo/i)).toBeInTheDocument();
+    expect(screen.queryByAltText(/logo actual de cliente uno/i)).not.toBeInTheDocument();
+  });
+
+  it("reabrir vuelve a pedir el logo (otra versión en la URL) y olvida un fallo anterior", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<ConfigurarLogoDialog cliente={CLIENTE} />);
+    const abrir = () => user.click(screen.getByRole("button", { name: /logo de cliente uno/i }));
+
+    await abrir();
+    const primera = screen.getByAltText(/logo actual de cliente uno/i).getAttribute("src");
+    fireEvent.error(screen.getByAltText(/logo actual de cliente uno/i));
+    await user.keyboard("{Escape}");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await abrir();
+    const segunda = screen.getByAltText(/logo actual de cliente uno/i).getAttribute("src");
+    expect(segunda).not.toBe(primera);
+  });
+
   it("un SVG se rechaza inline y deja 'Subir' deshabilitado, sin llamar al backend", async () => {
     const user = userEvent.setup();
     let called = false;
