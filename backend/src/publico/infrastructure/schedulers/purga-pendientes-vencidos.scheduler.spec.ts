@@ -16,7 +16,9 @@ import { IPedidoPendienteRepository } from '../../domain/ports/i-pedido-pendient
 
 describe('PurgaPendientesVencidosScheduler', () => {
   function makeCollaborators() {
-    const tenantEnumerator = { listActiveTenants: vi.fn<ITenantEnumerator['listActiveTenants']>() };
+    const tenantEnumerator = {
+      listTenantsConBase: vi.fn<ITenantEnumerator['listTenantsConBase']>(),
+    };
     const tenantContext = new TenantContext();
     const prismaService = {
       // El scheduler solo reenvía el cliente a `TenantContext`: un marcador alcanza.
@@ -45,9 +47,9 @@ describe('PurgaPendientesVencidosScheduler', () => {
 
   it('recorre TODOS los tenants activos y purga los pendientes vencidos de cada uno', async () => {
     const c = makeCollaborators();
-    c.tenantEnumerator.listActiveTenants.mockResolvedValue([
-      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
-      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2' },
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
+      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2', vivo: true },
     ]);
 
     await c.scheduler.ejecutarBarrido();
@@ -57,10 +59,54 @@ describe('PurgaPendientesVencidosScheduler', () => {
     expect(c.prismaService.getTenantClient).toHaveBeenCalledWith('soporte_cliente_2');
   });
 
+  it('enumera con listTenantsConBase y purga también a un tenant dado de baja (PII sin confirmar no sobrevive a la baja)', async () => {
+    const c = makeCollaborators();
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-baja', dbName: 'soporte_cliente_baja', vivo: false },
+    ]);
+
+    await c.scheduler.ejecutarBarrido();
+
+    expect(c.tenantEnumerator.listTenantsConBase).toHaveBeenCalledTimes(1);
+    expect(c.prismaService.getTenantClient).toHaveBeenCalledWith('soporte_cliente_baja');
+    expect(c.pendienteRepo.purgarVencidos).toHaveBeenCalledTimes(1);
+  });
+
+  it('un tenant dado de baja sin la tabla (P2021: migrate-tenants solo migra activos) no es error: no puede tener pendientes', async () => {
+    const c = makeCollaborators();
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-baja', dbName: 'soporte_cliente_baja', vivo: false },
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
+    ]);
+    c.pendienteRepo.purgarVencidos
+      .mockRejectedValueOnce(Object.assign(new Error('table does not exist'), { code: 'P2021' }))
+      .mockResolvedValueOnce(2);
+
+    await c.scheduler.ejecutarBarrido();
+
+    expect(c.logger.error).not.toHaveBeenCalled();
+    expect(c.pendienteRepo.purgarVencidos).toHaveBeenCalledTimes(2);
+    expect(c.logger.log).toHaveBeenCalledWith(expect.stringContaining('soporte_cliente_1'));
+  });
+
+  it('un tenant VIVO sin la tabla (P2021) sí es error: es una migración rota y se loguea', async () => {
+    const c = makeCollaborators();
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
+    ]);
+    c.pendienteRepo.purgarVencidos.mockRejectedValueOnce(
+      Object.assign(new Error('table does not exist'), { code: 'P2021' }),
+    );
+
+    await c.scheduler.ejecutarBarrido();
+
+    expect(c.logger.error).toHaveBeenCalledWith(expect.stringContaining('soporte_cliente_1'));
+  });
+
   it('cada purga corre DENTRO de tenantContext.run() bindeado al tenant', async () => {
     const c = makeCollaborators();
-    c.tenantEnumerator.listActiveTenants.mockResolvedValue([
-      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
     ]);
     let ctxDentroDelRun: unknown;
     c.pendienteRepo.purgarVencidos.mockImplementation(async () => {
@@ -79,9 +125,9 @@ describe('PurgaPendientesVencidosScheduler', () => {
 
   it('un fallo en UN tenant se aísla — el barrido continúa con el resto, log con dbName + mensaje (nunca el objeto de error crudo)', async () => {
     const c = makeCollaborators();
-    c.tenantEnumerator.listActiveTenants.mockResolvedValue([
-      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
-      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2' },
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
+      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2', vivo: true },
     ]);
     c.pendienteRepo.purgarVencidos
       .mockRejectedValueOnce(new Error('tenant 1 caído'))
@@ -98,9 +144,9 @@ describe('PurgaPendientesVencidosScheduler', () => {
 
   it('loguea la cantidad borrada solo cuando hay algo que contar, sin datos del solicitante', async () => {
     const c = makeCollaborators();
-    c.tenantEnumerator.listActiveTenants.mockResolvedValue([
-      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
-      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2' },
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([
+      { clienteId: 'cliente-1', dbName: 'soporte_cliente_1', vivo: true },
+      { clienteId: 'cliente-2', dbName: 'soporte_cliente_2', vivo: true },
     ]);
     c.pendienteRepo.purgarVencidos.mockResolvedValueOnce(0).mockResolvedValueOnce(4);
 
@@ -113,7 +159,7 @@ describe('PurgaPendientesVencidosScheduler', () => {
 
   it('sin tenants activos → no lanza, no purga nada', async () => {
     const c = makeCollaborators();
-    c.tenantEnumerator.listActiveTenants.mockResolvedValue([]);
+    c.tenantEnumerator.listTenantsConBase.mockResolvedValue([]);
 
     await expect(c.scheduler.ejecutarBarrido()).resolves.toBeUndefined();
     expect(c.pendienteRepo.purgarVencidos).not.toHaveBeenCalled();
@@ -121,7 +167,7 @@ describe('PurgaPendientesVencidosScheduler', () => {
 
   it('la master DB falla al enumerar → el handler NO propaga (no unhandled rejection), queda logueado y no purga ningún tenant', async () => {
     const c = makeCollaborators();
-    c.tenantEnumerator.listActiveTenants.mockRejectedValue(new Error('master db caída'));
+    c.tenantEnumerator.listTenantsConBase.mockRejectedValue(new Error('master db caída'));
 
     await expect(c.scheduler.ejecutarBarrido()).resolves.toBeUndefined();
 

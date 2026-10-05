@@ -7,7 +7,11 @@
  */
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
-import { ITenantEnumerator, TenantActivo } from '../../../domain/ports/i-tenant-enumerator';
+import {
+  ITenantEnumerator,
+  TenantActivo,
+  TenantConBase,
+} from '../../../domain/ports/i-tenant-enumerator';
 
 @Injectable()
 export class PrismaTenantEnumerator implements ITenantEnumerator {
@@ -22,5 +26,18 @@ export class PrismaTenantEnumerator implements ITenantEnumerator {
       clienteId: row.id,
       dbName: row.dbName,
     }));
+  }
+
+  async listTenantsConBase(): Promise<TenantConBase[]> {
+    const rows = await this.prismaService.getMasterClient().cliente.findMany({
+      select: { id: true, dbName: true, activo: true, deletedAt: true },
+    });
+    return rows.map(
+      (row: { id: string; dbName: string; activo: boolean; deletedAt: Date | null }) => ({
+        clienteId: row.id,
+        dbName: row.dbName,
+        vivo: row.activo && row.deletedAt === null,
+      }),
+    );
   }
 }
