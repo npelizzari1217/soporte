@@ -640,9 +640,12 @@ model EquipoInformatico {
   bajaMotivo         String?   @map("baja_motivo") @db.Text
   bajaFecha          DateTime? @map("baja_fecha") @db.Timestamptz
   bajaUsuarioId      String?   @map("baja_usuario_id") @db.Uuid
-  /// QR del equipo (sdd/formulario-publico-qr, ADR-10): sha256 hex del token opaco, nunca el
-  /// token en claro. UNIQUE nullable. Solo `guardarQrHash()` lo escribe.
+  /// QR del equipo (sdd/formulario-publico-qr, ADR-10): sha256 hex del token opaco. UNIQUE
+  /// nullable; es la clave de búsqueda. Solo `guardarQr()` lo escribe.
   qrTokenHash        String?   @unique @map("qr_token_hash") @db.VarChar(64)
+  /// Token del QR EN CLARO (issue #356, revierte la D8): la ficha muestra siempre el QR vigente.
+  /// NULL en los QR emitidos antes de la migración. CHECK: token presente implica hash presente.
+  qrToken            String?   @map("qr_token")
   qrEmitidoAt        DateTime? @map("qr_emitido_at") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz

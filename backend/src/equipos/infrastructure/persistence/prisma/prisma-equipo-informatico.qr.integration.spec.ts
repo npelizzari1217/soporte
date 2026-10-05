@@ -1,6 +1,6 @@
 /**
  * [INTEGRATION] QR del equipo (sdd/formulario-publico-qr, WU-4) contra Postgres REAL, en una base
- * de INQUILINO EFÍMERA propia migrada con todas las migraciones: `findByQrHash`, `guardarQrHash`
+ * de INQUILINO EFÍMERA propia migrada con todas las migraciones: `findByQrHash`, `guardarQr`
  * (CAS), UNIQUE nullable, aislamiento entre tenants y el `rollback.sql`. No toca master: sin
  * `usarLockMasterTest()`. Higiene: filas -> cerrar pool -> dropDatabase.
  */
@@ -27,8 +27,27 @@ const CARPETA = path.resolve(
   '../../../../../prisma_tenant/migrations/20261003130000_equipos_qr',
 );
 
+const CARPETA_TOKEN = path.resolve(
+  __dirname,
+  '../../../../../prisma_tenant/migrations/20261005120000_equipos_qr_token_claro',
+);
+
 const HASH_1 = 'a'.repeat(64);
 const HASH_2 = 'b'.repeat(64);
+const TOKEN_1 = 'token-uno-AAAAAAAAAAAA';
+const TOKEN_2 = 'token-dos-BBBBBBBBBBBB';
+
+/** Sentencias de un rollback.sql, sin comentarios, para correrlas una por una. */
+function sentenciasDe(archivo: string): string[] {
+  return fs
+    .readFileSync(archivo, 'utf8')
+    .split('\n')
+    .filter((linea) => !linea.startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map((sentencia) => sentencia.trim())
+    .filter(Boolean);
+}
 
 describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efímero)', () => {
   const admin = new PostgresAdminService(MASTER_TEST_URL);
@@ -96,10 +115,10 @@ describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efí
     await clientB.equipoInformatico.deleteMany();
   });
 
-  it('guardarQrHash escribe el hash y findByQrHash devuelve el equipo', async () => {
+  it('guardarQr escribe token y hash y findByQrHash devuelve el equipo', async () => {
     const equipo = await crearEquipo(enA);
 
-    const guardado = await enA(() => repo.guardarQrHash(equipo.id, HASH_1, new Date()));
+    const guardado = await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, new Date()));
     const hallado = await enA(() => repo.findByQrHash(HASH_1));
 
     expect(guardado).toBe(true);
@@ -113,9 +132,9 @@ describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efí
 
   it('regenerar reemplaza el hash: el anterior deja de resolver', async () => {
     const equipo = await crearEquipo(enA);
-    await enA(() => repo.guardarQrHash(equipo.id, HASH_1, new Date()));
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, new Date()));
 
-    await enA(() => repo.guardarQrHash(equipo.id, HASH_2, new Date()));
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_2, HASH_2, new Date()));
 
     expect(await enA(() => repo.findByQrHash(HASH_1))).toBeNull();
     expect((await enA(() => repo.findByQrHash(HASH_2)))?.id).toBe(equipo.id);
@@ -123,7 +142,7 @@ describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efí
 
   it('el hash de un equipo del tenant B no resuelve en el tenant A', async () => {
     const deB = await crearEquipo(enB);
-    await enB(() => repo.guardarQrHash(deB.id, HASH_1, new Date()));
+    await enB(() => repo.guardarQr(deB.id, TOKEN_1, HASH_1, new Date()));
 
     expect(await enA(() => repo.findByQrHash(HASH_1))).toBeNull();
     expect((await enB(() => repo.findByQrHash(HASH_1)))?.id).toBe(deB.id);
@@ -135,18 +154,18 @@ describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efí
     const borrado = await crearEquipo(enA, 'Borrado');
     await enA(() => repo.delete(borrado.id));
 
-    expect(await enA(() => repo.guardarQrHash(baja.id, HASH_1, new Date()))).toBe(false);
-    expect(await enA(() => repo.guardarQrHash(borrado.id, HASH_2, new Date()))).toBe(false);
+    expect(await enA(() => repo.guardarQr(baja.id, TOKEN_1, HASH_1, new Date()))).toBe(false);
+    expect(await enA(() => repo.guardarQr(borrado.id, TOKEN_2, HASH_2, new Date()))).toBe(false);
     expect(
       await enA(() =>
-        repo.guardarQrHash('00000000-0000-4000-8000-000000000000', HASH_1, new Date()),
+        repo.guardarQr('00000000-0000-4000-8000-000000000000', TOKEN_1, HASH_1, new Date()),
       ),
     ).toBe(false);
   });
 
   it('findByQrHash devuelve un equipo dado de baja con QR emitido antes de la baja', async () => {
     const equipo = await crearEquipo(enA);
-    await enA(() => repo.guardarQrHash(equipo.id, HASH_1, new Date()));
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, new Date()));
     await clientA.equipoInformatico.update({ where: { id: equipo.id }, data: { activo: false } });
 
     const hallado = await enA(() => repo.findByQrHash(HASH_1));
@@ -159,33 +178,72 @@ describe('PrismaEquipoInformaticoRepository — QR del equipo (WU-4, tenant efí
     const uno = await crearEquipo(enA, 'Uno');
     const dos = await crearEquipo(enA, 'Dos');
     await crearEquipo(enA, 'Tres sin QR');
-    await enA(() => repo.guardarQrHash(uno.id, HASH_1, new Date()));
+    await enA(() => repo.guardarQr(uno.id, TOKEN_1, HASH_1, new Date()));
 
-    await expect(enA(() => repo.guardarQrHash(dos.id, HASH_1, new Date()))).rejects.toThrow();
+    await expect(enA(() => repo.guardarQr(dos.id, TOKEN_1, HASH_1, new Date()))).rejects.toThrow();
   });
 
   it('save() con una entidad vieja no pisa el QR', async () => {
     const equipo = await crearEquipo(enA);
-    await enA(() => repo.guardarQrHash(equipo.id, HASH_1, new Date()));
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, new Date()));
 
     await enA(() => repo.save(equipo));
 
     expect((await enA(() => repo.findByQrHash(HASH_1)))?.id).toBe(equipo.id);
   });
 
-  it('rollback.sql quita las columnas y el índice sin tocar las filas', async () => {
+  it('guardarQr guarda token y hash juntos; regenerar reemplaza ambos', async () => {
     const equipo = await crearEquipo(enA);
-    await enA(() => repo.guardarQrHash(equipo.id, HASH_1, new Date()));
+    const emitido = new Date('2026-10-05T12:00:00Z');
+    const leer = () =>
+      clientA.equipoInformatico.findUniqueOrThrow({
+        where: { id: equipo.id },
+        select: { qrToken: true, qrTokenHash: true, qrEmitidoAt: true },
+      });
 
-    const sentencias = fs
-      .readFileSync(path.join(CARPETA, 'rollback.sql'), 'utf8')
-      .split('\n')
-      .filter((linea) => !linea.startsWith('--'))
-      .join('\n')
-      .split(';')
-      .map((sentencia) => sentencia.trim())
-      .filter(Boolean);
-    for (const sentencia of sentencias) {
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, emitido));
+    expect(await leer()).toEqual({
+      qrToken: TOKEN_1,
+      qrTokenHash: HASH_1,
+      qrEmitidoAt: emitido,
+    });
+
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_2, HASH_2, emitido));
+    expect(await leer()).toEqual({
+      qrToken: TOKEN_2,
+      qrTokenHash: HASH_2,
+      qrEmitidoAt: emitido,
+    });
+  });
+
+  it('el CHECK rechaza un token sin hash', async () => {
+    const equipo = await crearEquipo(enA);
+    await expect(
+      clientA.equipoInformatico.update({ where: { id: equipo.id }, data: { qrToken: TOKEN_1 } }),
+    ).rejects.toThrow();
+  });
+
+  it('los rollback.sql quitan token, CHECK, columnas e índice sin tocar las filas', async () => {
+    const equipo = await crearEquipo(enA);
+    await enA(() => repo.guardarQr(equipo.id, TOKEN_1, HASH_1, new Date()));
+
+    // Se deshacen en orden inverso. Primero solo la del token en claro: quita la columna y el
+    // CHECK pero deja el hash, así que el QR impreso sigue resolviendo.
+    for (const sentencia of sentenciasDe(path.join(CARPETA_TOKEN, 'rollback.sql'))) {
+      await clientA.$executeRawUnsafe(sentencia);
+    }
+    const sinToken = await clientA.$queryRawUnsafe<{ column_name: string }[]>(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'equipos_informaticos' AND column_name = 'qr_token'`,
+    );
+    expect(sinToken).toEqual([]);
+    // Raw: con la columna ya fuera, el cliente de Prisma (que la conoce) no puede leer la fila.
+    const conHash = await clientA.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT id FROM equipos_informaticos WHERE qr_token_hash = '${HASH_1}'`,
+    );
+    expect(conHash.map((f) => f.id)).toEqual([equipo.id]);
+
+    for (const sentencia of sentenciasDe(path.join(CARPETA, 'rollback.sql'))) {
       await clientA.$executeRawUnsafe(sentencia);
     }
 

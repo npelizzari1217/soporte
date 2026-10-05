@@ -61,12 +61,12 @@ export class EquipoInformaticoMapper {
    * `prisma-equipos.integration.spec.ts` guarda dos veces y relee para probar
    * que el valor sobrevive.
    *
-   * Las columnas `qr_*` quedan afuera a propósito: solo `guardarQrHash()` las escribe, así un
+   * Las columnas `qr_*` quedan afuera a propósito: solo `guardarQr()` las escribe, así un
    * `save()` con una entidad vieja no regenera ni borra el QR.
    */
   static toPersistence(entity: EquipoInformaticoEntity): Omit<
     PrismaEquipoInformatico,
-    'updatedAt' | 'importe' | 'valorResidual' | 'qrTokenHash' | 'qrEmitidoAt'
+    'updatedAt' | 'importe' | 'valorResidual' | 'qrTokenHash' | 'qrToken' | 'qrEmitidoAt'
   > & {
     importe: Prisma.Decimal | number | string | null;
     valorResidual: Prisma.Decimal | number | string | null;

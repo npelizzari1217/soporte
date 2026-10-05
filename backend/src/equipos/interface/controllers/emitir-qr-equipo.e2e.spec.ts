@@ -4,7 +4,7 @@
  * App real contra Postgres real y guards reales (JWT, tenant, acciones): tenant efímero,
  * `soporte_master_test` truncada en `beforeEach` y `usarLockMasterTest()`. Un actor por test:
  * dos clientes con el mismo `dbName` violan el UNIQUE de `clientes.db_name`. Cubre 401/403, la
- * emisión (solo el hash en la base), la regeneración, el congelamiento del slug y la carrera
+ * emisión (token en claro y hash en la base), la regeneración, el congelamiento del slug y la carrera
  * entre emitir y cambiar el slug (ADR-2).
  */
 import { createHash, randomBytes } from 'node:crypto';
@@ -227,7 +227,7 @@ describe('Equipos e2e — POST /equipos/:id/qr (WU-4)', () => {
     expect(await slugCongelado(actor.clienteId)).toBe(false);
   });
 
-  it('emite la URL, guarda solo el hash y congela el slug', async () => {
+  it('emite la URL, guarda token en claro y hash, y congela el slug', async () => {
     const actor = await crearActor(['EQUIPOS:MODIFICACION'], 'acme');
     const equipoId = await crearEquipo();
 
@@ -241,12 +241,12 @@ describe('Equipos e2e — POST /equipos/:id/qr (WU-4)', () => {
       where: { id: equipoId },
     });
     expect(fila.qrTokenHash).toBe(sha256(token));
-    expect(fila.qrTokenHash).not.toContain(token);
+    expect(fila.qrToken).toBe(token);
     expect(fila.qrEmitidoAt).not.toBeNull();
     expect(await slugCongelado(actor.clienteId)).toBe(true);
   });
 
-  it('regenerar reemplaza el hash: el token anterior ya no corresponde a ningún equipo', async () => {
+  it('regenerar reemplaza token y hash: el token anterior ya no corresponde a ningún equipo', async () => {
     const actor = await crearActor(['EQUIPOS:MODIFICACION'], 'acme');
     const equipoId = await crearEquipo();
 
@@ -264,6 +264,10 @@ describe('Equipos e2e — POST /equipos/:id/qr (WU-4)', () => {
     expect(
       await tenantClient.equipoInformatico.count({ where: { qrTokenHash: sha256(segundo) } }),
     ).toBe(1);
+    const fila = await tenantClient.equipoInformatico.findUniqueOrThrow({
+      where: { id: equipoId },
+    });
+    expect(fila.qrToken).toBe(segundo);
   });
 
   it('un cliente sin slug recibe 409 QR_REQUIERE_SLUG y no se escribe nada', async () => {
@@ -308,7 +312,7 @@ describe('Equipos e2e — POST /equipos/:id/qr (WU-4)', () => {
       );
       await tenantClient.equipoInformatico.update({
         where: { id: equipoId },
-        data: { qrTokenHash: null, qrEmitidoAt: null },
+        data: { qrToken: null, qrTokenHash: null, qrEmitidoAt: null },
       });
 
       const [emision, cambio] = await Promise.all([
