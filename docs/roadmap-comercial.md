@@ -708,6 +708,18 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - La purga horaria de pedidos pendientes vencidos alcanza también a los
       clientes dados de baja (#352, PR #353). Sigue abierta la revisión de D11: no
       hay política de retención para la base de un cliente dado de baja.
+- **Segunda etapa, punto 2 — app instalable (PWA)** (decidido el 2026-10-05):
+  - Nombre instalado **"Soporte Sesitec"**, nombre corto **"Soporte"**.
+  - Abre en `/tickets`, el mismo destino que después de iniciar sesión, y en modo
+    `standalone` (sin barra del navegador).
+  - **Un solo ícono para todos los clientes**: el manifest es por origen, no por
+    cliente.
+  - **Sin soporte offline y sin service worker**: la app instalada solo funciona con
+    conexión, porque el roadmap deja lo offline afuera.
+  - Se instala desde el menú del navegador; no hay botón de instalación propio.
+  - El ícono es un dibujo propio (llave y destornillador cruzados, blanco sobre
+    `#2563eb`). Se reemplaza por el logo de un diseñador cambiando los archivos de
+    `frontend/public/icons/`.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
