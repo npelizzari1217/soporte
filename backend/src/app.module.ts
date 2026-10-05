@@ -13,6 +13,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { KbModule } from './kb/kb.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { SectoresModule } from './sectores/sectores.module';
+import { RespuestasPredefinidasModule } from './respuestas-predefinidas/respuestas-predefinidas.module';
 import { InsumosModule } from './insumos/insumos.module';
 import { CsatModule } from './csat/csat.module';
 import { PreventivoModule } from './preventivo/preventivo.module';
@@ -60,6 +61,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     KbModule,
     NotificacionesModule,
     SectoresModule,
+    RespuestasPredefinidasModule,
     InsumosModule,
     CsatModule,
     PreventivoModule,
