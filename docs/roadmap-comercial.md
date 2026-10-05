@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-04 contra el código de `main` (`f39cf601`),
+decisión.** Actualizado el 2026-10-05 contra el código de `main` (`76539316`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
@@ -636,7 +636,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | Orden | Qué agregar | Por qué | Dificultad | Estado |
 |---|---|---|---|---|
 | 0 | **Reseteo de contraseña para usuarios en varios clientes** | Es un defecto en producción: `solicitar-reset-password.use-case.ts` corta sin mandar mail si el usuario tiene más de una membresía activa, y la pantalla responde igual que si lo hubiera mandado. Un técnico que está en varios clientes no puede recuperar su clave | Baja · 1-2 días | **Entregado** — 2026-10-03 (PR #296, `48f06f8b`) |
-| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | **Implementado** — en `main` por el #300 (`f39cf601`), deploy pendiente |
+| 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | **Entregado** — en `main` por el #300 (`f39cf601`), desplegado el 2026-10-05; habilitado en Cic Lanus y probado de punta a punta en producción |
 | 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | Pendiente |
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | Pendiente |
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | Pendiente |
@@ -697,6 +697,17 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     antes de implementar por un booleano de habilitación y la regla de correo
     deducida (decisiones D12 y D3 del diseño), y los cupos del throttler viven en la
     memoria de un solo proceso, así que un reinicio los pone en cero.
+  - **Cambios posteriores al cierre** (2026-10-05, decisiones del dueño; no alteran
+    ninguna viñeta):
+    - El token del QR se guarda en claro, junto a su hash, para que la ficha del
+      equipo muestre siempre el QR vigente y se pueda descargar cuantas veces haga
+      falta (#356, PRs #357-#359). Revierte la decisión de diseño D8, que guardaba
+      solo el hash. El QR sigue siendo uno por equipo, opaco y regenerable.
+    - Los usuarios del cliente ven y copian el link genérico del formulario desde
+      el encabezado (#360, PR #361).
+    - La purga horaria de pedidos pendientes vencidos alcanza también a los
+      clientes dados de baja (#352, PR #353). Sigue abierta la revisión de D11: no
+      hay política de retención para la base de un cliente dado de baja.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
