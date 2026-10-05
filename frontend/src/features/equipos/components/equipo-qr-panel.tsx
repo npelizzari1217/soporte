@@ -4,10 +4,12 @@
  * EquipoQrPanel — emisión, regeneración, descarga e impresión del QR de UN equipo
  * (sdd/formulario-publico-qr D8; la impresión en lote está fuera de alcance).
  *
- * El backend no expone si el equipo ya tiene QR ni devuelve el token después de emitirlo:
- * por eso el botón siempre pide confirmación (si había uno impreso, deja de funcionar) y el
- * QR solo se muestra en la sesión en que se emitió. Se monta solo para equipos activos y
- * con `EQUIPOS:MODIFICACION` (el caller gatea; un equipo dado de baja no lo recibe).
+ * Desde el issue #356 el backend guarda el token del QR: al montar se lee el QR vigente
+ * (`GET /equipos/:id/qr`) y se puede descargar o imprimir cuantas veces haga falta. Regenerar
+ * sigue pidiendo confirmación (el impreso deja de funcionar) y reemplaza el QR mostrado. Un QR
+ * emitido antes de ese cambio no tiene token guardado: se avisa que hay que regenerarlo una vez.
+ * Se monta solo para equipos activos y con `EQUIPOS:MODIFICACION` (el caller gatea; un equipo
+ * dado de baja no lo recibe).
  */
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,6 +17,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { dispararDescarga } from "@/shared/lib/descarga";
 import { useEmitirQrEquipo } from "../hooks/use-emitir-qr-equipo";
+import { useQrEquipo } from "../hooks/use-qr-equipo";
 import { ladoQr, matrizQr, pathQr, pngQr, svgQrComoTexto } from "../qr-equipo";
 
 export interface EquipoQrPanelProps {
@@ -30,7 +33,11 @@ function nombreArchivo(nombre: string, ext: "svg" | "png"): string {
 export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
   const emitir = useEmitirQrEquipo(equipoId);
   const [confirmando, setConfirmando] = useState(false);
-  const qr = emitir.data;
+  const lectura = useQrEquipo(equipoId);
+  const vigente = lectura.data;
+  // Solo un QR VIGENTE trae url; el resto de los estados se explican con un mensaje.
+  const qr = vigente?.estado === "VIGENTE" && vigente.url ? { url: vigente.url } : null;
+  const requiereRegenerar = vigente?.estado === "REQUIERE_REGENERAR";
 
   const matriz = qr ? matrizQr(qr.url) : null;
   const lado = matriz ? ladoQr(matriz) : 0;
@@ -75,8 +82,8 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
       </p>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Button size="sm" disabled={emitir.isPending} onClick={() => setConfirmando(true)}>
-          {qr ? "Regenerar QR" : "Emitir QR"}
+        <Button size="sm" disabled={emitir.isPending || lectura.isPending} onClick={() => setConfirmando(true)}>
+          {qr || requiereRegenerar ? "Regenerar QR" : "Emitir QR"}
         </Button>
         {qr && (
           <>
@@ -92,6 +99,19 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
           </>
         )}
       </div>
+
+      {lectura.isPending && <p className="mt-3 text-sm text-muted-foreground">Cargando el QR…</p>}
+      {lectura.isError && (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          No se pudo cargar el QR del equipo. Recargá la pantalla para volver a intentarlo.
+        </p>
+      )}
+      {requiereRegenerar && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          Este equipo tiene un QR emitido antes de que el sistema pudiera volver a mostrarlo. Regeneralo una vez para
+          verlo y descargarlo; el que está impreso deja de funcionar al regenerar.
+        </p>
+      )}
 
       <ConfirmDialog
         open={confirmando}
@@ -119,8 +139,8 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
             <path d={pathQr(matriz)} fill="#000000" />
           </svg>
           <p className="text-xs text-muted-foreground">
-            Guardalo ahora: por seguridad el código no se vuelve a mostrar al salir de esta pantalla. Para obtener otro,
-            regeneralo.
+            Este es el QR vigente: podés descargarlo o imprimirlo cuando quieras. Si lo regenerás, el anterior deja de
+            funcionar.
           </p>
         </div>
       )}

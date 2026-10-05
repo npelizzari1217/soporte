@@ -32,8 +32,15 @@ function equipo(activo = true) {
   };
 }
 
-function montar(opts: { permisos?: string[]; activo?: boolean } = {}) {
+type QrLeidoMock = { estado: "VIGENTE" | "SIN_EMITIR" | "REQUIERE_REGENERAR"; url: string | null; emitidoAt: string | null };
+const SIN_EMITIR: QrLeidoMock = { estado: "SIN_EMITIR", url: null, emitidoAt: null };
+
+function montar(opts: { permisos?: string[]; activo?: boolean; qr?: QrLeidoMock; lecturas?: { n: number } } = {}) {
   server.use(
+    http.get(`/api/equipos/${EQUIPO_ID}/qr`, () => {
+      if (opts.lecturas) opts.lecturas.n += 1;
+      return HttpResponse.json(opts.qr ?? SIN_EMITIR);
+    }),
     http.get(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json(equipo(opts.activo ?? true))),
     http.get("/api/usuarios", () => HttpResponse.json([])),
   );
@@ -201,6 +208,52 @@ describe("EquipoQrPanel", () => {
     expect(ventana.print).toHaveBeenCalledTimes(1);
     expect(ventana.document.body.innerHTML).toContain("<svg");
     open.mockRestore();
+  });
+
+  it("al montar muestra el QR guardado y descarga sin volver a emitir", async () => {
+    let emisiones = 0;
+    server.use(http.post(`/api/equipos/${EQUIPO_ID}/qr`, () => ((emisiones += 1), HttpResponse.json({}, { status: 500 }))));
+    montar({ qr: { estado: "VIGENTE", url: URL_1, emitidoAt: "2026-10-03T10:00:00.000Z" } });
+
+    expect(await screen.findByRole("img", { name: "QR del equipo Notebook Dell" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Regenerar QR" })).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Descargar SVG" }));
+    await user.click(screen.getByRole("button", { name: "Descargar SVG" }));
+
+    expect(dispararDescarga).toHaveBeenCalledTimes(2);
+    expect((dispararDescarga.mock.calls[0] as [Blob, string])[1]).toBe("qr-notebook-dell.svg");
+    expect(emisiones).toBe(0);
+  });
+
+  it("un QR anterior al cambio avisa que hay que regenerarlo una vez y no muestra imagen", async () => {
+    montar({ qr: { estado: "REQUIERE_REGENERAR", url: null, emitidoAt: null } });
+
+    expect(await screen.findByText(/Regeneralo una vez para verlo/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Regenerar QR" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /QR del equipo/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Descargar SVG" })).not.toBeInTheDocument();
+  });
+
+  it("regenerar con un QR guardado muestra el nuevo y no vuelve a leer el viejo", async () => {
+    const lecturas = { n: 0 };
+    server.use(
+      http.post(`/api/equipos/${EQUIPO_ID}/qr`, () =>
+        HttpResponse.json({ url: URL_2, emitidoAt: "2026-10-05T10:00:00.000Z" }, { status: 201 }),
+      ),
+    );
+    montar({ qr: { estado: "VIGENTE", url: URL_1, emitidoAt: "2026-10-03T10:00:00.000Z" }, lecturas });
+    const primero = (await screen.findByRole("img", { name: /QR del equipo/ })).querySelector("path")?.getAttribute("d");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Regenerar QR" }));
+    const dialogo = await screen.findByRole("alertdialog");
+    await user.click(within(dialogo).getByRole("button", { name: "Generar QR" }));
+
+    await waitFor(() => {
+      const segundo = screen.getByRole("img", { name: /QR del equipo/ }).querySelector("path")?.getAttribute("d");
+      expect(segundo).not.toBe(primero);
+    });
+    expect(lecturas.n).toBe(1);
   });
 
   it("sin EQUIPOS:MODIFICACION no hay panel de QR", async () => {

@@ -13,6 +13,19 @@ export const qrEquipoSchema = z.object({
 
 export type QrEquipo = z.infer<typeof qrEquipoSchema>;
 
+/**
+ * Espejo de `QrEquipoLeidoResponseDto` (`GET /equipos/:id/qr`, issue #356). `url` y `emitidoAt`
+ * solo vienen con `VIGENTE`; `REQUIERE_REGENERAR` es un QR emitido antes de que el backend
+ * guardara el token (el impreso resuelve, pero no se puede volver a mostrar).
+ */
+export const qrEquipoLeidoSchema = z.object({
+  estado: z.enum(["VIGENTE", "SIN_EMITIR", "REQUIERE_REGENERAR"]),
+  url: z.string().url().nullable(),
+  emitidoAt: z.string().nullable(),
+});
+
+export type QrEquipoLeido = z.infer<typeof qrEquipoLeidoSchema>;
+
 /** Avisos por `ApiError.code` de `POST /equipos/:id/qr`. */
 export const AVISO_QR_POR_CODIGO: Record<string, string> = {
   QR_REQUIERE_SLUG: "Este cliente todavía no tiene un slug cargado. Pedile a un administrador global que lo configure.",
