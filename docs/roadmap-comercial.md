@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-05 contra el código de `main` (`76539316`),
+decisión.** Actualizado el 2026-10-06 contra el código de `main` (`9a80346b`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
@@ -637,7 +637,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 |---|---|---|---|---|
 | 0 | **Reseteo de contraseña para usuarios en varios clientes** | Es un defecto en producción: `solicitar-reset-password.use-case.ts` corta sin mandar mail si el usuario tiene más de una membresía activa, y la pantalla responde igual que si lo hubiera mandado. Un técnico que está en varios clientes no puede recuperar su clave | Baja · 1-2 días | **Entregado** — 2026-10-03 (PR #296, `48f06f8b`) |
 | 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | **Entregado** — en `main` por el #300 (`f39cf601`), desplegado el 2026-10-05; habilitado en Cic Lanus y probado de punta a punta en producción |
-| 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | Pendiente |
+| 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | **Entregado** — en `main` por el #365 (`9a80346b`), desplegado el 2026-10-05 |
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | Pendiente |
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | Pendiente |
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | Pendiente |
@@ -720,6 +720,13 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - El ícono es un dibujo propio (llave y destornillador cruzados, blanco sobre
     `#2563eb`). Se reemplaza por el logo de un diseñador cambiando los archivos de
     `frontend/public/icons/`.
+  - **Cumplida** (2026-10-06, PR #365, desplegado el 2026-10-05): las 6 viñetas
+    están implementadas y verificadas contra producción. `/manifest.webmanifest`
+    responde con "Soporte Sesitec" / "Soporte", `start_url` `/tickets`, `display`
+    `standalone` y `theme_color` `#2563eb`. Los cuatro íconos PNG, el favicon y el de
+    Apple se sirven sin sesión, y son los mismos para todos los clientes. El
+    frontend no registra ningún service worker ni ofrece un botón de instalación
+    propio. Sin desviación.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
