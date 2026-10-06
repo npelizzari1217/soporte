@@ -148,7 +148,7 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 ## WU-6 — M4, registro de la primera respuesta y meta en `AplicarSla` (~380 líneas)
 
 - [x] 6.1 Migración tenant M4 `…_tickets_primera_respuesta`: 3 columnas (`primera_respuesta_at`, `primera_respuesta_vence_at`, `primera_respuesta_vencida` con `DEFAULT false` en los dos lados), índice parcial `WHERE primera_respuesta_at IS NULL AND NOT primera_respuesta_vencida AND primera_respuesta_vence_at IS NOT NULL`, relleno SQL (comentarios públicos, no borrados, autor distinto del solicitante o cualquier interno si es externo, `WHERE primera_respuesta_at IS NULL`) y `rollback.sql` (`DROP`). (`sla-primera-respuesta R5`)
-- [x] 6.2 Test de integración del relleno: un comentario interno, uno público borrado y uno público de un técnico dan la fecha del último; ninguna meta ni vencimiento retroactivos; reaplicar no cambia ninguna fecha. (`sla-primera-respuesta R5`)
+- [x] 6.2 Test de integración del relleno: un comentario interno, uno público borrado y uno público de un técnico dan la fecha del primero; ninguna meta ni vencimiento retroactivos; reaplicar no cambia ninguna fecha. (`sla-primera-respuesta R5`)
 - [x] 6.3 Medir con `EXPLAIN ANALYZE` el relleno sobre una copia de un tenant de prueba y contar los `COMENTARIO` por tenant; dejar ambos resultados en el PR. (`sla-primera-respuesta R5`)
 - [x] 6.4 Test unit de `CrearComentarioUseCase`: comentario público de un técnico registra `primeraRespuestaAt` con la fecha de la operación; el interno, el del solicitante, la asignación y el cambio de estado no; solicitante externo registra con cualquier autor interno. (`sla-primera-respuesta R1`)
 - [x] 6.5 Test de integración: dos comentarios públicos concurrentes dejan la fecha del primero (`registrarSiFalta` con `updateMany where primeraRespuestaAt: null`); un segundo comentario no cambia la fecha. (`sla-primera-respuesta R1`)
@@ -160,9 +160,9 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 
 ## WU-7 — Barrido de primera respuesta y notificador común (~330 líneas)
 
-- [ ] 7.1 Test unit de `findPrimerasRespuestasVencidas` y del barrido: marca con CAS sobre `primeraRespuestaVencida=false` y publica `SlaPrimeraRespuestaVencidaEvent` solo si afectó 1 fila; no excluye ESPERANDO_CLIENTE; excluye con respuesta, RESUELTO, CERRADO, CANCELADO y borrados. (`sla-primera-respuesta R4`)
-- [ ] 7.2 Test de integración del repo: las condiciones de ADR-6 sobre Postgres real. (`sla-primera-respuesta R4`)
-- [ ] 7.3 Implementar `findPrimerasRespuestasVencidas(now)`, el paso 3 de `MarcarVencidosUseCase` y el evento `'sla.primera_respuesta_vencida'`. (`sla-primera-respuesta R4`)
+- [x] 7.1 Test unit de `findPrimerasRespuestasVencidas` y del barrido: marca con CAS sobre `primeraRespuestaVencida=false` y publica `SlaPrimeraRespuestaVencidaEvent` solo si afectó 1 fila; no excluye ESPERANDO_CLIENTE; excluye con respuesta, RESUELTO, CERRADO, CANCELADO y borrados. (`sla-primera-respuesta R4`)
+- [x] 7.2 Test de integración del repo: las condiciones de ADR-6 sobre Postgres real. (`sla-primera-respuesta R4`)
+- [x] 7.3 Implementar `findPrimerasRespuestasVencidas(now)`, el paso 3 de `MarcarVencidosUseCase` y el evento `'sla.primera_respuesta_vencida'`. (`sla-primera-respuesta R4`)
 - [ ] 7.4 Test unit de `NotificadorVencimientoSla`: asignado más administradores deduplicados por email (sin repetir si un administrador es el asignado); el fallo de un destinatario no impide los demás; plantilla con `escaparHtml`. (`sla-primera-respuesta R4`)
 - [ ] 7.5 Extraer `NotificadorVencimientoSla` (`notificaciones/infrastructure`) de `SlaVencidoNotificacionListener:62-121` y migrar ese listener a la entrega común (corrige también su duplicado); crear el listener de primera respuesta con `templatePrimeraRespuestaVencida`. (`sla-primera-respuesta R4`)
 - [ ] 7.6 Test e2e con `overrideProvider(EMAIL_SENDER)`: dos barridos envían un solo mail al asignado y a cada administrador; un ticket en espera sin respuesta igual se notifica y se marca; la respuesta posterior al vencimiento cuenta como vencida; sin meta no hay mail. (`sla-primera-respuesta R4`, `sla-primera-respuesta R6`)

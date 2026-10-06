@@ -100,7 +100,11 @@ describe('Primera respuesta — Integration (WU-6)', () => {
   const leer = async (id: string) =>
     client.ticket.findUniqueOrThrow({
       where: { id },
-      select: { primeraRespuestaAt: true, primeraRespuestaVenceAt: true },
+      select: {
+        primeraRespuestaAt: true,
+        primeraRespuestaVenceAt: true,
+        primeraRespuestaVencida: true,
+      },
     });
 
   it('un comentario público de un técnico registra la fecha de la operación', async () => {
@@ -186,5 +190,20 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     expect((await leer(respondido)).primeraRespuestaVenceAt).toBeNull();
     await repo.fijarVencimientoSiSinRespuesta(sinRespuesta, null);
     expect((await leer(sinRespuesta)).primeraRespuestaVenceAt).toBeNull();
+  });
+
+  it('fijarVencimientoSiSinRespuesta rearma el aviso: primeraRespuestaVencida vuelve a false (solo sin respuesta)', async () => {
+    const sinRespuesta = await crearTicket();
+    const respondido = await crearTicket();
+    await repo.registrarSiFalta(respondido, new Date('2026-10-01T12:00:00.000Z'));
+    for (const id of [sinRespuesta, respondido]) {
+      await client.ticket.update({ where: { id }, data: { primeraRespuestaVencida: true } });
+    }
+
+    await repo.fijarVencimientoSiSinRespuesta(sinRespuesta, new Date('2026-10-09T15:00:00.000Z'));
+    await repo.fijarVencimientoSiSinRespuesta(respondido, new Date('2026-10-09T15:00:00.000Z'));
+
+    expect((await leer(sinRespuesta)).primeraRespuestaVencida).toBe(false);
+    expect((await leer(respondido)).primeraRespuestaVencida).toBe(true);
   });
 });

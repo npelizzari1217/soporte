@@ -12,6 +12,7 @@ import { CalcularSlaHabilVenceService } from '../../../../calendario-laboral/dom
 import { ConsolidarRelojSlaUseCase } from '../../../application/use-cases/consolidar-reloj-sla.use-case';
 import { MarcarVencidosUseCase } from '../../../application/use-cases/marcar-vencidos.use-case';
 import { SlaVencidoEvent } from '../../../domain/events/sla-vencido.event';
+import { SlaPrimeraRespuestaVencidaEvent } from '../../../domain/events/sla-primera-respuesta-vencida.event';
 import { calendarioSemanal } from '../../../domain/entities/reloj-sla.fixtures';
 import { PrismaRelojSlaRepository } from './prisma-reloj-sla.repository';
 import { PrismaSlaTicketQueryRepository } from './prisma-sla-ticket-query.repository';
@@ -23,6 +24,14 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const USUARIO = '01900000-0000-7000-8000-000000000001';
 const PREFIJO = 'WU3C';
 const H = 3600_000;
+const ESTADOS_USADOS = [
+  'EN_PROCESO',
+  'ESPERANDO_CLIENTE',
+  'RESUELTO',
+  'CERRADO',
+  'CANCELADO',
+] as const;
+type EstadoUsado = (typeof ESTADOS_USADOS)[number];
 
 describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
   let prismaService: PrismaService;
@@ -34,6 +43,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
   let tipoOpId: string;
   let estados: Record<string, string>;
   const propios = new Set<string>();
+  const estadosCreados: string[] = [];
   const publish = vi.fn();
 
   const barrido = () =>
@@ -53,9 +63,17 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
         findVencibles: async (now) =>
           (await queryRepo.findVencibles(now)).filter((t) => propios.has(t.id)),
         marcarVencido: (id) => queryRepo.marcarVencido(id),
+        findPrimerasRespuestasVencidas: async (now) =>
+          (await queryRepo.findPrimerasRespuestasVencidas(now)).filter((t) => propios.has(t.id)),
+        marcarPrimeraRespuestaVencida: (id) => queryRepo.marcarPrimeraRespuestaVencida(id),
       },
       { publish },
     );
+
+  const primerasVencidas = (id: string) =>
+    publish.mock.calls.filter(
+      ([e]) => e instanceof SlaPrimeraRespuestaVencidaEvent && e.ticketId === id,
+    ).length;
 
   const notificados = (id: string) =>
     publish.mock.calls.filter(([e]) => e instanceof SlaVencidoEvent && e.ticketId === id).length;
@@ -89,8 +107,14 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
       })
     ).id;
     const filas = await client.estado.findMany({
-      where: { codigo: { in: ['EN_PROCESO', 'ESPERANDO_CLIENTE'] } },
+      where: { codigo: { in: [...ESTADOS_USADOS] } },
     });
+    // La base compartida solo trae los estados abiertos: se crean los terminales que falten (los
+    // códigos reales, porque el barrido filtra por código) y se borran al terminar.
+    for (const codigo of ESTADOS_USADOS.filter((c) => !filas.some((f) => f.codigo === c))) {
+      filas.push(await client.estado.create({ data: { codigo, nombre: `WU7 ${codigo}` } }));
+      estadosCreados.push(codigo);
+    }
     estados = Object.fromEntries(filas.map((e) => [e.codigo, e.id]));
     tipoOpId = (
       await client.tipoOperacion.findUniqueOrThrow({ where: { codigo: 'CAMBIO_ESTADO' } })
@@ -99,6 +123,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
 
   afterAll(async () => {
     await limpiar();
+    await client.estado.deleteMany({ where: { codigo: { in: estadosCreados } } });
     await prismaService.onModuleDestroy();
   }, 30_000);
 
@@ -108,10 +133,14 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
   });
 
   async function crearTicket(data: {
-    estado: 'EN_PROCESO' | 'ESPERANDO_CLIENTE';
-    slaVenceAt: Date;
-    slaAcumuladoS: number | null;
-    slaCorreDesde: Date | null;
+    estado: EstadoUsado;
+    slaVenceAt?: Date;
+    slaAcumuladoS?: number | null;
+    slaCorreDesde?: Date | null;
+    primeraRespuestaVenceAt?: Date;
+    primeraRespuestaAt?: Date;
+    primeraRespuestaVencida?: boolean;
+    deletedAt?: Date;
     slaRegla?: string;
     slaMetaS?: number;
     slaRelojVersion?: number;
@@ -228,5 +257,91 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
 
     expect((await client.ticket.findUniqueOrThrow({ where: { id } })).vencido).toBe(false);
     expect(notificados(id)).toBe(0);
+  });
+
+  describe('primera respuesta (WU-7, sla-primera-respuesta R4)', () => {
+    const vencida = () => new Date(Date.now() - 2 * H);
+
+    it('[CRITICAL] marca y notifica una vez; un segundo barrido no re-notifica', async () => {
+      const id = await crearTicket({ estado: 'EN_PROCESO', primeraRespuestaVenceAt: vencida() });
+
+      await barrido().execute();
+      await barrido().execute();
+
+      expect(
+        (await client.ticket.findUniqueOrThrow({ where: { id } })).primeraRespuestaVencida,
+      ).toBe(true);
+      expect(primerasVencidas(id)).toBe(1);
+    });
+
+    it('[CRITICAL] la primera respuesta no se pausa: ESPERANDO_CLIENTE sin respuesta se marca y notifica', async () => {
+      const id = await crearTicket({
+        estado: 'ESPERANDO_CLIENTE',
+        primeraRespuestaVenceAt: vencida(),
+        slaRelojPendiente: true,
+      });
+
+      await barrido().execute();
+
+      expect(primerasVencidas(id)).toBe(1);
+    });
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'] as const)(
+      'excluye el estado %s',
+      async (estado) => {
+        const id = await crearTicket({ estado, primeraRespuestaVenceAt: vencida() });
+
+        await barrido().execute();
+
+        expect(primerasVencidas(id)).toBe(0);
+        expect(
+          (await client.ticket.findUniqueOrThrow({ where: { id } })).primeraRespuestaVencida,
+        ).toBe(false);
+      },
+    );
+
+    it('excluye al ya respondido, al ya marcado, al borrado, al que aún no venció y al sin meta', async () => {
+      const ids = [
+        await crearTicket({
+          estado: 'EN_PROCESO',
+          primeraRespuestaVenceAt: vencida(),
+          primeraRespuestaAt: new Date(Date.now() - 3 * H),
+        }),
+        await crearTicket({
+          estado: 'EN_PROCESO',
+          primeraRespuestaVenceAt: vencida(),
+          primeraRespuestaVencida: true,
+        }),
+        await crearTicket({
+          estado: 'EN_PROCESO',
+          primeraRespuestaVenceAt: vencida(),
+          deletedAt: new Date(),
+        }),
+        await crearTicket({
+          estado: 'EN_PROCESO',
+          primeraRespuestaVenceAt: new Date(Date.now() + 2 * H),
+        }),
+        await crearTicket({ estado: 'EN_PROCESO' }),
+      ];
+
+      await barrido().execute();
+
+      expect(ids.map(primerasVencidas)).toEqual([0, 0, 0, 0, 0]);
+    });
+
+    it('el CAS no marca a un ticket que recibió respuesta entre la lectura y la marca', async () => {
+      const id = await crearTicket({ estado: 'EN_PROCESO', primeraRespuestaVenceAt: vencida() });
+      await client.ticket.update({ where: { id }, data: { primeraRespuestaAt: new Date() } });
+
+      expect(await queryRepo.marcarPrimeraRespuestaVencida(id)).toBe(false);
+    });
+
+    it('no toca el marcado de resolución: `vencido` queda como estaba', async () => {
+      const id = await crearTicket({ estado: 'EN_PROCESO', primeraRespuestaVenceAt: vencida() });
+
+      expect(await barrido().execute()).toBe(0);
+
+      expect((await client.ticket.findUniqueOrThrow({ where: { id } })).vencido).toBe(false);
+    });
   });
 });

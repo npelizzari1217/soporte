@@ -30,7 +30,9 @@ export class PrismaPrimeraRespuestaWriteRepository implements IPrimeraRespuestaW
   async fijarVencimientoSiSinRespuesta(ticketId: string, venceAt: Date | null): Promise<void> {
     await this.client.ticket.updateMany({
       where: { id: ticketId, primeraRespuestaAt: null },
-      data: { primeraRespuestaVenceAt: venceAt },
+      // Reescribir la meta rearma el aviso (`primeraRespuestaVencida=false`): si el ticket sigue sin
+      // respuesta y vuelve a vencer, notifica de nuevo. La insignia se deriva de las fechas.
+      data: { primeraRespuestaVenceAt: venceAt, primeraRespuestaVencida: false },
     });
   }
 }

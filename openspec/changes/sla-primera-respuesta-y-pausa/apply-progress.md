@@ -260,7 +260,7 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu06`, base `...-wu05b`. Estandar (feat
 Medido en `soporte_tenant_test` dentro de una transaccion que se deshace (`ROLLBACK`): se quitaron las columnas, se sembraron 20.000 tickets con 80.000 comentarios (4 por ticket: del solicitante, interno, borrado y de un tecnico) y se corrio el `UPDATE` real con `EXPLAIN (ANALYZE, BUFFERS)`.
 
 - Plan: `Hash Join` de `tickets` contra el subselect agregado (`HashAggregate` por `ticket_id`); un `Seq Scan` sobre `operaciones_ticket` (filtro `NOT es_interno AND deleted_at IS NULL`, descarta 40.000 filas) y otro sobre `tickets`; el indice por `ticket_id` no se usa porque se recorren todos.
-- Tiempo: `Execution Time` 1.143 ms en la primera corrida y ~0,7 s en la segunda para 20.000 filas actualizadas (de eso 0,41 s son los triggers de FK, ajenos al relleno). Sin tablas temporales ni bloqueos largos: el `UPDATE` corre dentro del `migrate deploy` transaccional de cada tenant.
+- Tiempo: `Execution Time` 1.143 s (≈1,1 s) en la primera corrida y ~0,7 s en la segunda para 20.000 filas actualizadas (de eso 0,41 s son los triggers de FK, ajenos al relleno). Sin tablas temporales ni bloqueos largos: el `UPDATE` corre dentro del `migrate deploy` transaccional de cada tenant.
 - Conteo de `COMENTARIO`: `soporte_tenant_test` tiene 0 reales (antes de sembrar). El conteo por tenant real se corre antes del deploy con `SELECT count(*) FROM operaciones_ticket o JOIN tipo_operacion t ON t.id = o.tipo_operacion_id AND t.codigo = 'COMENTARIO';` y se anota en el PR del tracker.
 
 ### Work Unit Evidence (parte 1)
@@ -298,3 +298,20 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu06c`, base `...-wu06b`.
 - Verificacion 6.10 sobre el arbol del commit: lint, typecheck, `pnpm vitest run src/tickets src/sla src/app.module.smoke.spec.ts` y ratchet de casts 617 en 114.
 - **Punto abierto para la WU-7**: `primeraRespuestaVencida` no se reinicia cuando una repriorizacion mueve el vencimiento hacia adelante. Un ticket ya marcado vencido (y notificado) que se repriorice a una meta mas larga conserva la marca; la WU-7 debe decidir si el barrido o la repriorizacion la limpian.
 - Ayuda: sin deuda nueva. Rollback: `AplicarSla` (escritura de la meta), el metodo del puerto y del repo.
+
+## WU-7 — parte 1: barrido de primera respuesta (tareas 7.1 a 7.3)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu07`, base `...-wu06c`. El notificador comun (7.4, 7.5), el e2e (7.6) y la verificacion final (7.7) quedan para la parte 2, para no pasar el presupuesto de 400 lineas.
+
+- `ISlaTicketQueryRepository` suma `findPrimerasRespuestasVencidas(now)` y `marcarPrimeraRespuestaVencida(id)`. La busqueda: `primeraRespuestaVenceAt < now`, `primeraRespuestaAt` y `deletedAt` nulos, `primeraRespuestaVencida=false`, estado fuera de RESUELTO, CERRADO y CANCELADO (`ESTADOS_TERMINALES` + RESUELTO). No excluye la espera ni mira `slaRelojPendiente`: la primera respuesta no tiene pausa. El marcado es un CAS que repite esas condiciones, asi que una respuesta que llega entre la lectura y la marca gana.
+- `SlaPrimeraRespuestaVencidaEvent` (`'sla.primera_respuesta_vencida'`, solo ids). `MarcarVencidosUseCase` corre el paso 3 despues del 2, con el mismo aislamiento por ticket y log-and-swallow del publisher; publica solo si el CAS afecto 1 fila. El retorno sigue contando solo la resolucion.
+- **Decision (orquestador, de diseno)**: `fijarVencimientoSiSinRespuesta` tambien pone `primeraRespuestaVencida=false` al reescribir la meta (misma condicion `primeraRespuestaAt: null`). Resuelve el punto abierto de la WU-6: un ticket sin respuesta que se repriorice a otra meta vuelve a notificar si vence de nuevo. La insignia se deriva de las fechas, asi que solo cambia la deduplicacion del mail. Un ticket ya respondido no se toca.
+- Tests: 5 unit nuevos del paso 3; integracion del repo en `marcar-vencidos.integration.spec.ts` (una sola notificacion en dos barridos, espera sin pausa, tres estados excluidos, respondido/ya marcado/borrado/futuro/sin meta, CAS contra respuesta intermedia, `vencido` intacto) y el reinicio en `primera-respuesta.integration.spec.ts`. La base compartida solo trae 4 estados: el spec crea los terminales que falten y los borra al terminar.
+- Ayuda: deuda — aviso por mail cuando vence la primera respuesta. Rollback: paso 3, metodos del puerto/repo, evento y la linea de reinicio en el repo de escritura.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts`: 96 archivos, 928 tests verdes |
+| Runtime harness | Integracion contra Postgres real (`soporte_tenant_test`) |
+| Rollback boundary | Paso 3 de `MarcarVencidosUseCase`, repo de consulta, evento y reinicio en el repo de escritura |
