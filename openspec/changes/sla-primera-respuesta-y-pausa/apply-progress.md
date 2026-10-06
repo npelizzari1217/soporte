@@ -36,3 +36,31 @@ Modo: estandar (sin TDD estricto). Tareas 1.1 a 1.10 marcadas en `tasks.md`. Ram
 
 - Ayuda: estado "Esperando al cliente" en tickets (escritura suspendida).
 - M1 no se despliega sin las WU-3 (cadena completa).
+
+## WU-2 — Motor de tiempo habil y medidores (parte 1 de 2: motor, tareas 2.1 a 2.4)
+
+Modo: estandar (sin TDD estricto). Rama `feat/sla-primera-respuesta-y-pausa-wu02`, base `feat/sla-primera-respuesta-y-pausa-wu01`. La WU se partio en dos commits apilados por presupuesto de 400 lineas: este es el motor; los medidores (2.5 a 2.7) van en `...-wu02b`.
+
+### Archivos
+
+- `backend/src/calendario-laboral/domain/services/calcular-sla-habil-vence.service.ts`: `sumarMsHabiles`, `msHabilesEntre`, `LIMITE_DIAS_RANGO = 3_700`; `venceAt` delega en `sumarMsHabiles(creadoEn, horas * 3_600_000)`; `buscarInicioVentanaAbierta` con `tope` opcional (sobrecarga: con `tope` devuelve `null`, sin `tope` lanza como antes).
+- Test: `calcular-sla-habil-vence.service.spec.ts` (bloque nuevo; los tests de `venceAt` existentes sin cambios).
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/calendario-laboral` |
+| Runtime harness | N/A: dominio puro, sin frontera de runtime |
+| Rollback | Funciones nuevas; `venceAt` conserva su contrato (tests previos intactos) |
+
+### Decisiones tomadas en apply
+
+- `tope` es un `Date`: la busqueda devuelve `null` si el dia candidato empieza en o despues del tope, o si agota la cota. `msHabilesEntre` ademas valida upfront que el rango no pase de 3.700 dias (lanza), y acota las iteraciones.
+- `sumarMsHabiles` exige `ms` finito y `>= 0` (no entero): `venceAt` con horas fraccionarias sigue funcionando como antes. Con `ms = 0` devuelve `desde` sin alinear a ventana.
+- Sin redondeo en el motor; el redondeo a segundos por tramo queda en `RelojSla` (WU-3b).
+- El limite de 400 ventanas se prueba con un calendario de 7 dias abiertos: 400 pasan y 402 lanzan.
+
+### Deuda
+
+- Ayuda: ninguna (no visible para el usuario).
