@@ -141,3 +141,12 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03b`, base `...-wu03a4`. Partida por 
 - Tests: `reloj-sla.spec.ts` (3b.1 a 3b.4, 3b.2b) y `reloj-sla.fixtures.ts` compartido.
 - Mutacion 3b.5 (`<=` a `<` en el cumplimiento), corrida con el spec completo antes de partir: rojo (`acumulado igual a la meta cumple`, 1 fallo de 23) y verde al restaurar. El test vive en `reloj-sla.cumplimiento.spec.ts`, que va en el siguiente intento.
 - Evidencia: `pnpm vitest run src/sla/domain` 34 tests verdes; lint, typecheck y ratchet de casts (626) limpios. Rollback: archivos nuevos sin consumidores.
+
+## WU-3b.2 — repo Prisma del reloj y test del estado actual (tarea 3b.9; parte de 3b.8 y 3b.11)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b2`, base `...-wu03b`. Partida por presupuesto: aca el repo con su integracion y el test unit de ADR-1; pendientes 3b.5/3b.6 (spec ya escrito, en stash `wu03b3`), 3b.8 (parte del caso de uso: idempotencia, `SLA_RELOJ_CONFLICTO`), 3b.10, 3b.11 (caso de uso, listener, modulo) y 3b.12.
+
+- `PrismaRelojSlaRepository`: `guardarSiVersion` es un `updateMany where slaRelojVersion` que escribe `slaRelojSeqHasta = version` y limpia el pendiente; sin `slaVenceAt` en el resultado no lo pisa; `transicionesDesde` ordena por `slaRelojSeq`.
+- Tests: `prisma-reloj-sla.repository.integration.spec.ts` (6, sin dejar filas: usa estados y tipo `CAMBIO_ESTADO` ya sembrados) y 2 casos nuevos en `reloj-sla.spec.ts` (el estado actual manda sobre el pliegue).
+- Mutacion 3b.9 (`orderBy slaRelojSeq` a `createdAt` en `transicionesDesde`): rojo (`transicionesDesde ordena por sla_reloj_seq y no por created_at`, 1 de 6); restaurado, verde.
+- Mutacion 3b.5 re-corrida (`<=` a `<`): rojo 1 fallo, restaurado verde; el test esta en el spec en stash.
