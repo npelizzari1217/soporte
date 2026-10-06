@@ -72,3 +72,25 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu02b`, base `feat/sla-primera-respuest
 - `backend/src/sla/domain/services/`: `medidor-tiempo-sla.ts` (`MedidorTiempoSla { entre; sumar }`), `medidor-habil.ts` (servicio, calendario y feriados vigentes por constructor), `medidor-corrido.ts` (tiempo de pared). Test: `medidores-sla.spec.ts`.
 - Evidencia: `pnpm vitest run src/calendario-laboral src/sla/domain` verde; dominio puro, sin runtime harness (N/A). Rollback: archivos nuevos sin consumidores.
 - Ayuda: ninguna deuda.
+
+## WU-3a — M2, columnas del reloj, repo y marcador (parte 1 de 2: migracion, tareas 3a.1 a 3a.5)
+
+Modo: estandar. Rama `feat/sla-primera-respuesta-y-pausa-wu03a`, base `feat/sla-primera-respuesta-y-pausa-wu02b`. Partida por presupuesto de 400 lineas: esta mitad es la migracion con su integracion; el repo y el marcador (3a.6 a 3a.13) van en la segunda.
+
+- Migracion `backend/prisma_tenant/migrations/20261007130000_tickets_reloj_sla/` (`migration.sql`, `rollback.sql`): 7 columnas de `tickets` con los DEFAULT en un segundo paso, 2 CHECK, indice parcial `tickets_sla_reloj_pendiente_idx`, `operaciones_ticket.sla_reloj_seq` con su indice parcial.
+- `schema.prisma`: columnas con `@default` y el comentario contra la trampa de `sla_regla`; `@@index(... map:)` para los dos indices parciales.
+- `ticket.mapper.ts`: el `Omit` de `toPersistence` excluye las 7 columnas (necesario para que compile el cliente regenerado); fixtures de `ticket.mapper.spec.ts` y `operacion-ticket.mapper.spec.ts` con las columnas nuevas.
+- Test: `tickets-reloj-sla.integration.spec.ts` (tenant efimero). Para el ticket "previo" corre el `rollback.sql`, siembra la fila y reaplica el `migration.sql` real: acumulado y corre_desde quedan NULL. La deriva Prisma/DDL lee los `@default` de `schema.prisma` porque el DMMF de runtime no los trae.
+
+### EXPLAIN / medicion de M2 (3a.5), `soporte_tenant_test`, dentro de una transaccion con ROLLBACK
+50.000 tickets previos sembrados con M2 deshecho; `migration.sql` completo: cada ALTER < 1 ms (los `ADD COLUMN ... NOT NULL DEFAULT` constantes no reescriben la tabla), `SET DEFAULT` 7-8 ms, `CREATE INDEX` parcial 21 ms y el de operaciones 6 ms. Las 50.000 filas quedan con `sla_acumulado_s` NULL (previos). Con 500 filas pendientes: `Bitmap Index Scan on tickets_sla_reloj_pendiente_idx`, 0,019 ms, ejecucion total 0,141 ms. El `EXPLAIN ANALYZE` no aplica a DDL: se midio con `\timing`.
+
+### Work Unit Evidence (parte 1)
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/tickets/infrastructure/persistence/prisma/tickets-reloj-sla.integration.spec.ts`: 8 tests verdes |
+| Runtime harness | Postgres real, tenant efimero migrado con `migrate deploy`; rollback y reaplicacion de M2 |
+| Rollback | `rollback.sql` de M2; el resto son archivos de prueba y tipos |
+
+M2 no se despliega sin la cadena completa.

@@ -24,6 +24,19 @@ function parseSlaRegla(value: string): SlaRegla {
   throw new Error(`TicketMapper: sla_regla con valor inesperado en la fila: "${value}".`);
 }
 
+/**
+ * Columnas del reloj de SLA (M2): las escribe `sla/` y el marcador con escrituras acotadas, nunca el
+ * upsert de la entidad. El `create` del repo fija `slaAcumuladoS` y `slaCorreDesde`.
+ */
+type ColumnasRelojSla =
+  | 'slaAcumuladoS'
+  | 'slaMetaS'
+  | 'slaCorreDesde'
+  | 'slaRelojSeqHasta'
+  | 'slaRelojVersion'
+  | 'slaRelojPendiente'
+  | 'slaCumplido';
+
 export class TicketMapper {
   /** Convierte una fila de DB Prisma → TicketEntity de dominio. */
   static toDomain(row: PrismaTicket): TicketEntity {
@@ -65,7 +78,9 @@ export class TicketMapper {
    * ticket reconstituido pisaría con código lo que es responsabilidad
    * exclusiva de la DB.
    */
-  static toPersistence(entity: TicketEntity): Omit<PrismaTicket, 'updatedAt' | 'slaRegla'> {
+  static toPersistence(
+    entity: TicketEntity,
+  ): Omit<PrismaTicket, 'updatedAt' | 'slaRegla' | ColumnasRelojSla> {
     return {
       id: entity.id,
       numero: entity.numero,
