@@ -271,3 +271,19 @@ Medido en `soporte_tenant_test` dentro de una transaccion que se deshace (`ROLLB
 | Rollback boundary | `rollback.sql` de M4, y las tres columnas del schema/mapper; sin consumidores todavia |
 
 - Ayuda: ningun articulo existente queda falso. Sin deuda nueva en esta parte.
+
+## WU-6 — parte 2: registro de la primera respuesta al comentar (tareas 6.4 a 6.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu06b`, base `...-wu06`. La meta en `AplicarSla` (6.8, 6.9) y la verificacion 6.10 viajan en la rama `...-wu06c` (stash `wu06c`).
+
+- `PrismaPrimeraRespuestaWriteRepository.registrarSiFalta` (`updateMany where { id, primeraRespuestaAt: null }`), puerto `IPrimeraRespuestaWriteRepository` con ese unico metodo, registrado y exportado en `TicketsModule`.
+- `CrearComentarioUseCase`: la operacion y el registro corren dentro de `txRunner.run`; registra solo si el comentario es publico y `autorId !== ticket.solicitanteId` (un externo tiene `solicitanteId` null: cualquier autor interno cuenta). Usa `Pick<..., 'registrarSiFalta'>`. El evento `ticket.comentado` sigue publicandose fuera de la tx.
+- Tests: unit (6 casos nuevos: tecnico registra con la fecha de la operacion, orden save/registrar dentro de la tx, interno no, solicitante no, externo si, rechazo por estado terminal no registra) e integracion `primera-respuesta.integration.spec.ts` sobre `soporte_tenant_test` con `PrismaTenantTransactionRunner` real (registro con la fecha persistida de la operacion, interno y del solicitante no cuentan, segundo comentario no cambia la fecha, dos registros concurrentes dejan una fecha estable, borrar el comentario que registro conserva la fecha). El spec crea `COMENTARIO` en `tipo_operacion` si falta (la base compartida no lo trae) y lo retira al final.
+- Fakes sin casts: el txRunner del unit es un objeto con `satisfies ITenantTransactionRunner` (ratchet 617/114).
+
+### Work Unit Evidence (parte 2)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run` de `crear-comentario.use-case.spec.ts` y `primera-respuesta.integration.spec.ts` |
+| Runtime harness | Integracion contra Postgres real con el runner transaccional real |
+| Rollback boundary | `CrearComentarioUseCase` (tx + registro), repo y puerto; la columna sigue de M4 |

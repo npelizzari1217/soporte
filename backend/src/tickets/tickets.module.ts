@@ -21,6 +21,11 @@ import {
 import { PrismaTipoOperacionRepository } from './infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { TICKET_REPOSITORY, ITicketRepository } from './domain/ports/i-ticket.repository';
 import { RELOJ_SLA_MARCADOR, IRelojSlaMarcador } from './domain/ports/i-reloj-sla-marcador';
+import { PrismaPrimeraRespuestaWriteRepository } from './infrastructure/persistence/prisma/prisma-primera-respuesta-write.repository';
+import {
+  PRIMERA_RESPUESTA_WRITE_REPOSITORY,
+  IPrimeraRespuestaWriteRepository,
+} from './domain/ports/i-primera-respuesta-write.repository';
 import { PrismaRelojSlaMarcador } from './infrastructure/persistence/prisma/prisma-reloj-sla-marcador';
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
 import {
@@ -152,6 +157,10 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: TICKET_REPOSITORY, useClass: PrismaTicketRepository },
     { provide: OPERACION_TICKET_REPOSITORY, useClass: PrismaOperacionTicketRepository },
     { provide: RELOJ_SLA_MARCADOR, useClass: PrismaRelojSlaMarcador },
+    {
+      provide: PRIMERA_RESPUESTA_WRITE_REPOSITORY,
+      useClass: PrismaPrimeraRespuestaWriteRepository,
+    },
     { provide: ARCHIVO_REPOSITORY, useClass: PrismaArchivoRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
     { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
@@ -361,6 +370,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         estadoRepo: IEstadoRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         eventPublisher: IDomainEventPublisher,
+        txRunner: ITenantTransactionRunner,
+        primeraRespuestaRepo: IPrimeraRespuestaWriteRepository,
       ) =>
         new CrearComentarioUseCase(
           ticketRepo,
@@ -368,6 +379,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
           estadoRepo,
           tipoOperacionRepo,
           eventPublisher,
+          txRunner,
+          primeraRespuestaRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -375,6 +388,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         ESTADO_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         DOMAIN_EVENT_PUBLISHER,
+        TENANT_TX_RUNNER,
+        PRIMERA_RESPUESTA_WRITE_REPOSITORY,
       ],
     },
     {
@@ -501,6 +516,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     TIPO_OPERACION_REPOSITORY,
     TICKET_REPOSITORY,
     OPERACION_TICKET_REPOSITORY,
+    PRIMERA_RESPUESTA_WRITE_REPOSITORY,
     ARCHIVO_REPOSITORY,
     CICLO_CLIENTE_REPOSITORY,
     SOLICITANTE_EXTERNO_REPOSITORY,
