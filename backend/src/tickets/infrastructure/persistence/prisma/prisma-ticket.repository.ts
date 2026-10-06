@@ -188,10 +188,22 @@ export class PrismaTicketRepository implements ITicketRepository {
       vencido: _vencido,
       ...updateData
     } = data;
+    // Marca de meta pendiente (issue #429), siempre en la misma escritura que persiste el ticket:
+    // 1. cambio de prioridad: una sola sentencia con `prioridadId <> nueva` en el WHERE, así que solo
+    //    afecta la fila si la prioridad cambia de verdad y la marca va junto con el cambio;
+    // 2. si no afectó nada (alta, o save sin cambio de prioridad) cae al upsert, que marca solo el alta
+    //    y nunca toca la marca de un ticket existente (la baja AplicarSla y un save no debe pisarla).
+    const { id, ...camposActualizables } = updateData;
+    const { count } = await this.client.ticket.updateMany({
+      where: { id, prioridadId: { not: data.prioridadId } },
+      data: { ...camposActualizables, slaMetaPendiente: true },
+    });
+    if (count === 1) return;
     await this.client.ticket.upsert({
       where: { id: data.id },
-      // Alta: el ticket nace "incorporado" al reloj, corriendo desde su creación (ADR-1).
-      create: { ...data, slaAcumuladoS: 0, slaCorreDesde: data.createdAt },
+      // Alta: el ticket nace "incorporado" al reloj, corriendo desde su creación (ADR-1), y con su
+      // meta de SLA pendiente de aplicar hasta que `AplicarSla` la fije.
+      create: { ...data, slaAcumuladoS: 0, slaCorreDesde: data.createdAt, slaMetaPendiente: true },
       update: updateData,
     });
   }

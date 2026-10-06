@@ -4,6 +4,8 @@
  *
  * - El alta nace incorporada al reloj (acumulado 0, corre_desde = created_at).
  * - `save` con lectura vieja no pisa `slaVenceAt` ni `vencido` (sla-reloj-activo R2).
+ * - Marca de meta pendiente (issue #429): el alta y el cambio de prioridad la dejan puesta en la misma
+ *   escritura que persiste el ticket; cualquier otro `save` no la toca.
  */
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
@@ -23,7 +25,7 @@ describe('PrismaTicketRepository.save acotado (WU-3a.2)', () => {
   let client: InstanceType<typeof TenantPrismaClient>;
   let tenantContext: TenantContext;
   let ticketRepo: PrismaTicketRepository;
-  let ids: { tipo: string; estado: string; prioridad: string };
+  let ids: { tipo: string; estado: string; prioridad: string; otraPrioridad: string };
   let contador = 0;
 
   beforeAll(async () => {
@@ -48,6 +50,11 @@ describe('PrismaTicketRepository.save acotado (WU-3a.2)', () => {
           data: { codigo: `WU3AP${s}`, nombre: 'WU3a', orden: 1, activo: true },
         })
       ).id,
+      otraPrioridad: (
+        await client.prioridad.create({
+          data: { codigo: `WU3AQ${s}`, nombre: 'WU3a otra', orden: 2, activo: true },
+        })
+      ).id,
     };
   }, 30_000);
 
@@ -55,7 +62,9 @@ describe('PrismaTicketRepository.save acotado (WU-3a.2)', () => {
     await client.ticket.deleteMany({ where: { tipoId: ids.tipo } });
     await client.tipoTicket.delete({ where: { id: ids.tipo } });
     await client.estado.delete({ where: { id: ids.estado } });
-    await client.prioridad.delete({ where: { id: ids.prioridad } });
+    await client.prioridad.deleteMany({
+      where: { id: { in: [ids.prioridad, ids.otraPrioridad] } },
+    });
     await prismaService.onModuleDestroy();
   }, 30_000);
 
@@ -101,5 +110,44 @@ describe('PrismaTicketRepository.save acotado (WU-3a.2)', () => {
     expect(fila.asignadoId).toBe(DUMMY_USUARIO_ID); // el save sí aplicó lo suyo
     expect(fila.slaVenceAt).toEqual(vence);
     expect(fila.vencido).toBe(true);
+  });
+
+  describe('marca de meta pendiente (issue #429)', () => {
+    const marca = async (id: string) =>
+      (await client.ticket.findUniqueOrThrow({ where: { id } })).slaMetaPendiente;
+
+    it('el alta deja la marca puesta', async () => {
+      const id = await crearTicket();
+
+      expect(await marca(id)).toBe(true);
+    });
+
+    it('un save que cambia la prioridad la deja puesta, aunque AplicarSla ya la hubiera bajado, y persiste la prioridad', async () => {
+      const id = await crearTicket();
+      await client.ticket.update({ where: { id }, data: { slaMetaPendiente: false } });
+      const ticket = await withTenant(() => ticketRepo.findById(id));
+
+      ticket!.actualizarDatos({ prioridadId: ids.otraPrioridad });
+      await withTenant(() => ticketRepo.save(ticket!));
+
+      const fila = await client.ticket.findUniqueOrThrow({ where: { id } });
+      expect(fila.prioridadId).toBe(ids.otraPrioridad);
+      expect(fila.slaMetaPendiente).toBe(true);
+    });
+
+    it('un save que no cambia la prioridad no toca la marca, esté puesta o bajada', async () => {
+      const id = await crearTicket();
+      await client.ticket.update({ where: { id }, data: { slaMetaPendiente: false } });
+      const ticket = await withTenant(() => ticketRepo.findById(id));
+
+      ticket!.assignTo(DUMMY_USUARIO_ID);
+      await withTenant(() => ticketRepo.save(ticket!));
+      expect(await marca(id)).toBe(false);
+
+      await client.ticket.update({ where: { id }, data: { slaMetaPendiente: true } });
+      ticket!.actualizarDatos({ titulo: 'Otro titulo' });
+      await withTenant(() => ticketRepo.save(ticket!));
+      expect(await marca(id)).toBe(true);
+    });
   });
 });
