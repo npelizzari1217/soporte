@@ -36,6 +36,10 @@ export interface MetricasResult {
     /** `cerradosATiempo / cerradosConSla`. `null` si `cerradosConSla=0`. */
     porcentaje: number | null;
   };
+  /** `aTiempo / conMeta`; `null` si `conMeta=0` (sdd/sla-primera-respuesta-y-pausa). */
+  cumplimientoPrimeraRespuesta: { conMeta: number; aTiempo: number; porcentaje: number | null };
+  /** Horas HÁBILES entre la creación y la primera respuesta; `null` sin datos. */
+  tiempoPromedioPrimeraRespuestaHoras: number | null;
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
   /**
@@ -54,6 +58,8 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
   tiempoPromedioResolucionHoras: null,
   cargaPorAgente: [],
   cumplimientoSla: { cerradosConSla: 0, cerradosATiempo: 0, porcentaje: null },
+  cumplimientoPrimeraRespuesta: { conMeta: 0, aTiempo: 0, porcentaje: null },
+  tiempoPromedioPrimeraRespuestaHoras: null,
   distribucionPorTipo: [],
   distribucionPorPrioridad: [],
 };
@@ -105,6 +111,8 @@ export class ObtenerMetricasUseCase {
       tiempoPromedio,
       cargaPorAgente,
       sla,
+      primeraRespuesta,
+      tiempoPrimeraRespuesta,
       distribucionPorTipo,
       distribucionPorPrioridad,
       csat,
@@ -113,6 +121,8 @@ export class ObtenerMetricasUseCase {
       this.dashboardRepo.tiempoPromedioResolucionHoras(filtro),
       this.dashboardRepo.cargaPorAgente(filtro),
       this.dashboardRepo.cumplimientoSla(filtro),
+      this.dashboardRepo.cumplimientoPrimeraRespuesta(filtro),
+      this.dashboardRepo.tiempoPromedioPrimeraRespuestaHoras(filtro),
       this.dashboardRepo.distribucionPorTipo(filtro),
       this.dashboardRepo.distribucionPorPrioridad(filtro),
       // ADR-C5: solo se consulta el repo CSAT si el actor tiene el permiso —
@@ -130,6 +140,13 @@ export class ObtenerMetricasUseCase {
         cerradosATiempo: sla.cerradosATiempo,
         porcentaje: sla.cerradosConSla > 0 ? sla.cerradosATiempo / sla.cerradosConSla : null,
       },
+      cumplimientoPrimeraRespuesta: {
+        conMeta: primeraRespuesta.conMeta,
+        aTiempo: primeraRespuesta.aTiempo,
+        porcentaje:
+          primeraRespuesta.conMeta > 0 ? primeraRespuesta.aTiempo / primeraRespuesta.conMeta : null,
+      },
+      tiempoPromedioPrimeraRespuestaHoras: tiempoPrimeraRespuesta,
       distribucionPorTipo,
       distribucionPorPrioridad,
       ...(csat ? { csatPromedio: csat.promedio, csatRespuestas: csat.respuestas } : {}),
