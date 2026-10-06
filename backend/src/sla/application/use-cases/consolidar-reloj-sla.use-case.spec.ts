@@ -19,6 +19,7 @@ function armar(filaInicial: RelojSlaFila | null, cas: boolean[] = [true]) {
       ),
     ),
     guardarSiVersion: vi.fn(async () => (llamadas.push('guardar'), cas.shift() ?? false)),
+    limpiarMetaPendiente: vi.fn(),
     findPendientes: vi.fn(),
   };
   const calendarioRepo = {

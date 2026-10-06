@@ -36,6 +36,13 @@ export interface AplicarSlaDto {
  * interviene y no hay pausa (ESPERANDO_CLIENTE no lo corre). Se escribe con `primeraRespuestaAt: null`
  * en el WHERE: repriorizar recalcula mientras no hay respuesta y deja el ticket ya respondido igual.
  *
+ * Marca de meta pendiente (issue #429): el alta y la repriorización dejan `sla_meta_pendiente = true`
+ * en la escritura que persiste el ticket; esta escritura con CAS la baja en la MISMA sentencia, y solo
+ * si `dto.prioridadId` sigue siendo la prioridad vigente (si repriorizaron en el medio, el CAS falla y
+ * la marca queda para la repriorización nueva). Si agota los dos intentos, o cualquier otra cosa
+ * falla, la marca queda puesta y el barrido de SLA reaplica con la prioridad vigente (`reconciliarMeta`).
+ * Un ticket terminal al repriorizar baja la marca sin escribir nada.
+ *
  * Editar las horas de una prioridad no pasa por acá: la meta de un ticket existente solo cambia
  * al repriorizarlo. La cohorte (`slaRegla`) se lee de la fila y nunca se reescribe. Sin fallback
  * silencioso: si el calendario o los feriados fallan, el error se propaga al listener.
@@ -97,7 +104,11 @@ export class AplicarSlaUseCase {
     for (let intento = 0; intento < 2; intento += 1) {
       const fila = await this.relojRepo.leer(dto.ticketId);
       if (!fila) return;
-      if (omitirTerminales && ESTADOS_TERMINALES.has(fila.estadoCodigo)) return;
+      if (omitirTerminales && ESTADOS_TERMINALES.has(fila.estadoCodigo)) {
+        // Nada se aplicará nunca a un ticket terminal: se baja la marca para que el barrido no insista.
+        await this.relojRepo.limpiarMetaPendiente(dto.ticketId);
+        return;
+      }
 
       const plegado = RelojSla.plegar({
         fila,
@@ -111,7 +122,11 @@ export class AplicarSlaUseCase {
         { metaS, estadoCodigo: fila.estadoCodigo, vencimientoActual: fila.slaVenceAt },
         medidor,
       );
-      if (await this.relojRepo.guardarSiVersion(fila.ticketId, fila.version, reloj)) {
+      if (
+        await this.relojRepo.guardarSiVersion(fila.ticketId, fila.version, reloj, {
+          prioridadAplicadaId: dto.prioridadId,
+        })
+      ) {
         const venceAt =
           ticket.slaRegla === 'HABIL' && primeraRespuestaHoras !== null
             ? medidor.sumar(ticket.createdAt, primeraRespuestaHoras * 3_600_000)

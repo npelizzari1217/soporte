@@ -74,6 +74,7 @@ function montar(m: Montaje = {}) {
     historialSinSecuencia: vi.fn().mockResolvedValue(m.historial ?? []),
     transicionesDesde: vi.fn().mockResolvedValue(m.transiciones ?? []),
     guardarSiVersion: vi.fn().mockResolvedValue(true),
+    limpiarMetaPendiente: vi.fn().mockResolvedValue(undefined),
     findPendientes: vi.fn().mockResolvedValue([]),
   } satisfies IRelojSlaRepository;
   const prioridadRepo = {
@@ -109,13 +110,18 @@ describe('AplicarSlaUseCase', () => {
 
       await c.useCase.alCrear(DTO);
 
-      expect(c.relojRepo.guardarSiVersion).toHaveBeenCalledWith('t1', 1, {
-        acumuladoS: 0,
-        metaS: 8 * H,
-        correDesde: L(10, 9),
-        cumplido: null,
-        slaVenceAt: L(10, 17),
-      });
+      expect(c.relojRepo.guardarSiVersion).toHaveBeenCalledWith(
+        't1',
+        1,
+        {
+          acumuladoS: 0,
+          metaS: 8 * H,
+          correDesde: L(10, 9),
+          cumplido: null,
+          slaVenceAt: L(10, 17),
+        },
+        { prioridadAplicadaId: 'prioridad-uuid' },
+      );
     });
 
     it('pliega lo pendiente primero: la pausa conserva lo acumulado y el vencimiento sale de lo que falta', async () => {
@@ -404,6 +410,53 @@ describe('AplicarSlaUseCase', () => {
       await c.useCase.alReprioritizar(DTO);
 
       expect(c.relojRepo.guardarSiVersion).not.toHaveBeenCalled();
+    });
+
+    it('un ticket terminal al repriorizar limpia la marca de meta pendiente: nada se aplicará nunca', async () => {
+      const c = montar({ fila: { estadoCodigo: 'CANCELADO', correDesde: null } });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(c.relojRepo.limpiarMetaPendiente).toHaveBeenCalledWith('t1');
+      expect(c.relojRepo.guardarSiVersion).not.toHaveBeenCalled();
+    });
+
+    it('un ticket terminal en el alta (no aplica la omisión) no limpia la marca por la vía de omisión', async () => {
+      const c = montar({ fila: { estadoCodigo: 'CERRADO' } });
+
+      await c.useCase.alCrear(DTO);
+
+      expect(c.relojRepo.limpiarMetaPendiente).not.toHaveBeenCalled();
+    });
+
+    it('la escritura con CAS lleva la prioridad aplicada: la marca solo se limpia si sigue siendo la vigente', async () => {
+      const c = montar();
+
+      await c.useCase.alReprioritizar({ ticketId: 't1', prioridadId: 'prioridad-vieja' });
+
+      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toEqual({
+        prioridadAplicadaId: 'prioridad-vieja',
+      });
+    });
+
+    it('un preventivo (meta null) pasa por la escritura normal y por lo tanto limpia la marca', async () => {
+      const c = montar({ ticket: ticket({ tipoId: TIPO_PREVENTIVO }) });
+
+      await c.useCase.alCrear(DTO);
+
+      expect(c.escrito().metaS).toBeNull();
+      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toEqual({
+        prioridadAplicadaId: 'prioridad-uuid',
+      });
+    });
+
+    it('dos CAS perdidos dejan la marca puesta (no se limpia por otra vía) y propagan el error', async () => {
+      const c = montar();
+      c.relojRepo.guardarSiVersion.mockResolvedValue(false);
+
+      await expect(c.useCase.alCrear(DTO)).rejects.toThrow('SLA_RELOJ_CONFLICTO');
+
+      expect(c.relojRepo.limpiarMetaPendiente).not.toHaveBeenCalled();
     });
 
     it('ticket inexistente: no escribe nada', async () => {

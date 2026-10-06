@@ -35,6 +35,7 @@ type ColumnasRelojSla =
   | 'slaRelojSeqHasta'
   | 'slaRelojVersion'
   | 'slaRelojPendiente'
+  | 'slaMetaPendiente'
   | 'slaCumplido'
   | 'primeraRespuestaAt'
   | 'primeraRespuestaVenceAt'

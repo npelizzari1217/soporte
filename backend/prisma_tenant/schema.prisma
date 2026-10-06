@@ -309,6 +309,8 @@ model Ticket {
   slaRelojVersion    Int       @default(0) @map("sla_reloj_version")
   slaRelojPendiente  Boolean   @default(false) @map("sla_reloj_pendiente")
   slaCumplido        Boolean?  @map("sla_cumplido")
+  /// Meta de SLA pendiente de aplicar (issue #429): la marcan el alta y la repriorizacion, la limpia AplicarSla con el CAS.
+  slaMetaPendiente   Boolean   @default(false) @map("sla_meta_pendiente")
   /// Primera respuesta (sdd/sla-primera-respuesta-y-pausa, M4). Las escribe solo un repo acotado
   /// (nunca el upsert de la entidad). `primeraRespuestaVencida` es espejo de su DEFAULT del DDL
   /// (trampa de sla_regla): un test de deriva las compara; tocar una exige tocar la otra.
@@ -349,6 +351,7 @@ model Ticket {
   @@index([createdAt])
   @@index([vencido])
   @@index([id], map: "tickets_sla_reloj_pendiente_idx") // partial WHERE sla_reloj_pendiente — ver migration SQL
+  @@index([id], map: "tickets_sla_meta_pendiente_idx") // partial WHERE sla_meta_pendiente — ver migration SQL
   @@index([primeraRespuestaVenceAt], map: "tickets_primera_respuesta_pendiente_idx") // partial — ver migration SQL
   @@map("tickets")
 }
