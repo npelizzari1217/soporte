@@ -334,7 +334,7 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
 
   it(
     '[CRITICAL] provisioning real completo: crea DB física, migra, siembra ' +
-      '(estados=6, prioridades=4, tipos_ticket incl. MANTENIMIENTO), inserta cliente + admin/membresía (R16-R19)',
+      '(estados=7, prioridades=4, tipos_ticket incl. MANTENIMIENTO), inserta cliente + admin/membresía (R16-R19)',
     async () => {
       const { status, data } = await httpPost<{
         id: string;
@@ -375,6 +375,7 @@ describe('Crear Cliente e2e — provisioning real (T8.5, R16-R19)', () => {
           'NUEVO',
           'ASIGNADO',
           'EN_PROCESO',
+          'ESPERANDO_CLIENTE',
           'RESUELTO',
           'CERRADO',
           'CANCELADO',

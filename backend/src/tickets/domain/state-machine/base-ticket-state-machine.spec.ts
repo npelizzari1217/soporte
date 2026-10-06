@@ -1,10 +1,11 @@
 /**
  * Tests — BaseTicketStateMachine
  *
- * Grafo fijo de 6 estados (ADR-3, T9 de sdd/tickets-core/spec):
+ * Grafo fijo de 7 estados (ADR-3, T9 de sdd/tickets-core/spec):
  *   NUEVO → {ASIGNADO, CANCELADO}
  *   ASIGNADO → {EN_PROCESO, CANCELADO}
- *   EN_PROCESO → {RESUELTO, CANCELADO}
+ *   EN_PROCESO → {RESUELTO, CANCELADO, ESPERANDO_CLIENTE}
+ *   ESPERANDO_CLIENTE → {EN_PROCESO, RESUELTO, CANCELADO}
  *   RESUELTO → {CERRADO}
  *   CERRADO, CANCELADO: terminales (sin arcos de salida)
  *
@@ -22,7 +23,7 @@ describe('BaseTicketStateMachine', () => {
     machine = new BaseTicketStateMachine();
   });
 
-  describe('transiciones válidas — 7 arcos del diagrama (ADR-3)', () => {
+  describe('transiciones válidas — 11 arcos del diagrama (ADR-3)', () => {
     it.each([
       ['NUEVO', 'ASIGNADO'],
       ['NUEVO', 'CANCELADO'],
@@ -31,6 +32,10 @@ describe('BaseTicketStateMachine', () => {
       ['EN_PROCESO', 'RESUELTO'],
       ['EN_PROCESO', 'CANCELADO'],
       ['RESUELTO', 'CERRADO'],
+      ['EN_PROCESO', 'ESPERANDO_CLIENTE'],
+      ['ESPERANDO_CLIENTE', 'EN_PROCESO'],
+      ['ESPERANDO_CLIENTE', 'RESUELTO'],
+      ['ESPERANDO_CLIENTE', 'CANCELADO'],
     ])('permite %s → %s', (desde, hacia) => {
       expect(machine.puedeTransicionar(desde, hacia, ctx)).toBe(true);
     });
@@ -49,6 +54,21 @@ describe('BaseTicketStateMachine', () => {
       ['CANCELADO', 'RESUELTO'],
       ['CANCELADO', 'CERRADO'],
     ])('rechaza %s → %s (terminal, sin arcos de salida — sin reapertura)', (desde, hacia) => {
+      expect(machine.puedeTransicionar(desde, hacia, ctx)).toBe(false);
+    });
+  });
+
+  describe('ESPERANDO_CLIENTE: arcos rechazados (ticket-esperando-cliente R1)', () => {
+    it.each([
+      ['NUEVO', 'ESPERANDO_CLIENTE'],
+      ['ASIGNADO', 'ESPERANDO_CLIENTE'],
+      ['RESUELTO', 'ESPERANDO_CLIENTE'],
+      ['ESPERANDO_CLIENTE', 'NUEVO'],
+      ['ESPERANDO_CLIENTE', 'ASIGNADO'],
+      ['ESPERANDO_CLIENTE', 'CERRADO'],
+      ['CERRADO', 'ESPERANDO_CLIENTE'],
+      ['CANCELADO', 'ESPERANDO_CLIENTE'],
+    ])('rechaza %s → %s', (desde, hacia) => {
       expect(machine.puedeTransicionar(desde, hacia, ctx)).toBe(false);
     });
   });

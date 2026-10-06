@@ -16,7 +16,10 @@ import {
   EstadoDestinoInvalidoError,
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
-import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
+import {
+  ESTADOS_NO_DESTINO_CORRECTIVO,
+  ESTADOS_TERMINALES,
+} from '../../domain/state-machine/estados.constants';
 
 /**
  * Estados destino que setean `fecha_cierre` al alcanzarse (T12).
@@ -133,9 +136,13 @@ export class TransicionarEstadoUseCase {
     // estado NO terminal salteando el grafo — incluso reabrir desde un estado
     // terminal (CERRADO/CANCELADO). BYPASSEA `canTransitionTo`/`puedeTransicionar`
     // a propósito. NUNCA lleva a un terminal (para CERRAR/CANCELAR van los
-    // arcos normales). El ticket soft-deleted YA se rechazó como 404 arriba,
+    // arcos normales) NI a ESPERANDO_CLIENTE (solo se entra por el arco desde
+    // EN_PROCESO). El ticket soft-deleted YA se rechazó como 404 arriba,
     // así que el salto nunca opera sobre un ticket borrado.
-    const saltoCorrectivo = dto.actorEsCorrector && !ESTADOS_TERMINALES.has(estadoDestino.codigo);
+    const saltoCorrectivo =
+      dto.actorEsCorrector &&
+      !ESTADOS_TERMINALES.has(estadoDestino.codigo) &&
+      !ESTADOS_NO_DESTINO_CORRECTIVO.has(estadoDestino.codigo);
 
     if (!arcoNormal && !saltoCorrectivo) {
       return Result.fail(new TransicionInvalidaError(estadoActual.codigo, estadoDestino.codigo));

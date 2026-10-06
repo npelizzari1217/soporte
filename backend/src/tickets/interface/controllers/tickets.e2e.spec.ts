@@ -10,7 +10,7 @@
  * `_test`) vía `PostgresAdminService` + `TenantMigrationRunnerAdapter`
  * (mismo patrón que `prisma-ticket-repository.aislamiento.integration.spec.ts`,
  * PR5), la siembra con `TenantSeederAdapter.seed()` (catálogos FIJOS reales:
- * 6 estados, 4 prioridades, 5 tipo_operacion, 4 tipos_ticket base — ADR-1),
+ * 7 estados, 4 prioridades, 5 tipo_operacion, 4 tipos_ticket base — ADR-1),
  * y la borra en `afterAll`. NUNCA toca `soporte_master`, `soporte_tenant_test`
  * ni ninguna otra DB compartida — aislamiento total del resto de la suite.
  *

@@ -51,7 +51,7 @@ describe('TicketStateMachineFactory', () => {
     expect(customFactory.resolve('TIPO_DESCONOCIDO')).toBe(customFallback);
   });
 
-  it('la máquina fallback tiene el grafo de 6 estados operativo (ADR-3)', () => {
+  it('la máquina fallback tiene el grafo de 7 estados operativo (ADR-3)', () => {
     const machine = factory.resolve('TIPO_DESCONOCIDO');
     expect(machine.puedeTransicionar('NUEVO', 'ASIGNADO', ctx)).toBe(true);
     expect(machine.puedeTransicionar('CERRADO', 'NUEVO', ctx)).toBe(false);
