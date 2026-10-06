@@ -15,6 +15,8 @@ export interface CrearPrioridadDto {
   orden: number;
   slaHoras?: number | null;
   slaActivo?: boolean;
+  /** Meta de primera respuesta (horas hábiles). Omitido o `null` = sin meta. */
+  slaPrimeraRespuestaHoras?: number | null;
 }
 
 /**
@@ -44,6 +46,7 @@ export class CrearPrioridadUseCase {
       activo: true,
       slaHoras: dto.slaHoras ?? null,
       slaActivo: dto.slaActivo ?? true,
+      slaPrimeraRespuestaHoras: dto.slaPrimeraRespuestaHoras ?? null,
     });
     await this.prioridadRepo.save(prioridad);
 

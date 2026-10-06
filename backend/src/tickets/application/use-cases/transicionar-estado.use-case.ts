@@ -27,10 +27,11 @@ import {
 /**
  * Estados destino que setean `fecha_cierre` al alcanzarse (T12).
  *
- * Coincide hoy con `estados-notificables.policy` (ambos son RESUELTO/CERRADO)
- * pero son conceptos distintos de la spec (T12 vs T13) — se mantienen
- * constantes separadas a propósito para no acoplar "cuándo cierra" a
- * "cuándo notifica" si alguna evoluciona de forma independiente.
+ * Ya NO coincide con `estados-notificables.policy`: desde la WU-4 esa política
+ * es {RESUELTO, CERRADO, ESPERANDO_CLIENTE} (el mail de espera), mientras que
+ * acá solo cierran RESUELTO/CERRADO. Son conceptos distintos de la spec
+ * (T12 vs T13) — se mantienen constantes separadas a propósito para no acoplar
+ * "cuándo cierra" a "cuándo notifica".
  */
 const ESTADOS_QUE_CIERRAN = new Set<string>(['RESUELTO', 'CERRADO']);
 

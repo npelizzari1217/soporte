@@ -91,6 +91,9 @@ model Prioridad {
   /// CHECK (sla_horas IS NULL OR sla_horas > 0) — enforced via migration SQL.
   slaHoras  Int?      @map("sla_horas")
   slaActivo Boolean   @default(true) @map("sla_activo")
+  /// CHECK (sla_primera_respuesta_horas IS NULL OR sla_primera_respuesta_horas > 0) — enforced via migration SQL.
+  /// Meta de primera respuesta en horas habiles; NULL = sin meta. No depende de `slaActivo`.
+  slaPrimeraRespuestaHoras Int? @map("sla_primera_respuesta_horas")
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
