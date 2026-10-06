@@ -19,13 +19,15 @@ function makeCollaborators() {
   const relojRepo = { findPendientes: vi.fn().mockResolvedValue([]) };
   const consolidar = { execute: vi.fn().mockResolvedValue('consolidado') };
   const eventPublisher = { publish: vi.fn() };
+  const logger = { error: vi.fn() };
   const useCase = new MarcarVencidosUseCase(
     relojRepo,
     consolidar,
     slaTicketQueryRepo,
     eventPublisher,
+    logger,
   );
-  return { useCase, slaTicketQueryRepo, relojRepo, consolidar, eventPublisher };
+  return { useCase, slaTicketQueryRepo, relojRepo, consolidar, eventPublisher, logger };
 }
 
 describe('MarcarVencidosUseCase', () => {
@@ -208,6 +210,19 @@ describe('MarcarVencidosUseCase', () => {
 
       expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
       expect(c.eventPublisher.publish.mock.calls[0][0].ticketId).toBe('ticket-2');
+    });
+
+    it('si la búsqueda del paso 3 falla, loguea y conserva el conteo del paso 2', async () => {
+      const c = makeCollaborators();
+      c.slaTicketQueryRepo.findVencibles.mockResolvedValue([
+        { id: 'ticket-1', asignadoId: null, solicitanteId: null },
+      ]);
+      c.slaTicketQueryRepo.findPrimerasRespuestasVencidas.mockRejectedValue(new Error('DB'));
+
+      await expect(c.useCase.execute()).resolves.toBe(1);
+
+      expect(c.logger.error).toHaveBeenCalledTimes(1);
+      expect(c.logger.error.mock.calls[0][0]).toContain('DB');
     });
 
     it('un fallo del publisher no aborta el resto', async () => {

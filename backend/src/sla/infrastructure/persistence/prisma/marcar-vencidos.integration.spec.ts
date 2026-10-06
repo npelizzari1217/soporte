@@ -43,7 +43,8 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
   let tipoOpId: string;
   let estados: Record<string, string>;
   const propios = new Set<string>();
-  const estadosCreados: string[] = [];
+  // Los estados que crea este spec llevan este prefijo en `nombre`; los reales de la base compartida no.
+  const NOMBRE_ESTADO_PROPIO = 'WU7 ';
   const publish = vi.fn();
 
   const barrido = () =>
@@ -68,6 +69,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
         marcarPrimeraRespuestaVencida: (id) => queryRepo.marcarPrimeraRespuestaVencida(id),
       },
       { publish },
+      { error: vi.fn() },
     );
 
   const primerasVencidas = (id: string) =>
@@ -87,6 +89,12 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
     await client.prioridad.deleteMany({ where: { codigo: { startsWith: PREFIJO } } });
   }
 
+  async function borrarEstadosPropios(): Promise<void> {
+    await client.estado.deleteMany({
+      where: { codigo: { in: [...ESTADOS_USADOS] }, nombre: { startsWith: NOMBRE_ESTADO_PROPIO } },
+    });
+  }
+
   beforeAll(async () => {
     prismaService = new PrismaService(MASTER_TEST_URL);
     client = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
@@ -95,6 +103,8 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
     relojRepo = new PrismaRelojSlaRepository(tenantContext);
     queryRepo = new PrismaSlaTicketQueryRepository(tenantContext);
     await limpiar();
+    // Restos de una corrida que murió antes del afterAll: solo los propios, por prefijo de nombre.
+    await borrarEstadosPropios();
     const s = randomBytes(3).toString('hex');
     tipoId = (
       await client.tipoTicket.create({
@@ -112,8 +122,11 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
     // La base compartida solo trae los estados abiertos: se crean los terminales que falten (los
     // códigos reales, porque el barrido filtra por código) y se borran al terminar.
     for (const codigo of ESTADOS_USADOS.filter((c) => !filas.some((f) => f.codigo === c))) {
-      filas.push(await client.estado.create({ data: { codigo, nombre: `WU7 ${codigo}` } }));
-      estadosCreados.push(codigo);
+      filas.push(
+        await client.estado.create({
+          data: { codigo, nombre: `${NOMBRE_ESTADO_PROPIO}${codigo}` },
+        }),
+      );
     }
     estados = Object.fromEntries(filas.map((e) => [e.codigo, e.id]));
     tipoOpId = (
@@ -122,9 +135,12 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
   }, 30_000);
 
   afterAll(async () => {
-    await limpiar();
-    await client.estado.deleteMany({ where: { codigo: { in: estadosCreados } } });
-    await prismaService.onModuleDestroy();
+    try {
+      await limpiar();
+      await borrarEstadosPropios();
+    } finally {
+      await prismaService.onModuleDestroy();
+    }
   }, 30_000);
 
   beforeEach(() => {
