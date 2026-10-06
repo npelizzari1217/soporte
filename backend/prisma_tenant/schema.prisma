@@ -296,6 +296,16 @@ model Ticket {
   /// actúa en ese camino. Mover la cohorte exige tocar los dos. Ningún caso
   /// de uso la elige: ver TicketEntity.slaRegla / TicketMapper.
   slaRegla           String    @default("HABIL") @map("sla_regla") @db.VarChar(16)
+  /// Reloj de SLA por tiempo activo (sdd/sla-primera-respuesta-y-pausa, M2). Los @default de
+  /// Prisma y los DEFAULT del DDL son dos fuentes espejadas (trampa de sla_regla): un test de
+  /// deriva las compara; tocar una exige tocar la otra. NULL en slaAcumuladoS = ticket previo.
+  slaAcumuladoS      Int?      @default(0) @map("sla_acumulado_s")
+  slaMetaS           Int?      @map("sla_meta_s")
+  slaCorreDesde      DateTime? @default(now()) @map("sla_corre_desde") @db.Timestamptz
+  slaRelojSeqHasta   Int       @default(0) @map("sla_reloj_seq_hasta")
+  slaRelojVersion    Int       @default(0) @map("sla_reloj_version")
+  slaRelojPendiente  Boolean   @default(false) @map("sla_reloj_pendiente")
+  slaCumplido        Boolean?  @map("sla_cumplido")
   fechaCierre        DateTime? @map("fecha_cierre") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -329,6 +339,7 @@ model Ticket {
   @@index([asignadoId]) // partial WHERE asignado_id IS NOT NULL — ver migration SQL
   @@index([createdAt])
   @@index([vencido])
+  @@index([id], map: "tickets_sla_reloj_pendiente_idx") // partial WHERE sla_reloj_pendiente — ver migration SQL
   @@map("tickets")
 }
 
@@ -394,6 +405,8 @@ model OperacionTicket {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+  /// Secuencia por ticket estampada por el marcador del reloj de SLA (M2). NULL = sin marcar.
+  slaRelojSeq      Int?      @map("sla_reloj_seq")
 
   ticket         Ticket        @relation(fields: [ticketId], references: [id])
   tipoOperacion  TipoOperacion @relation(fields: [tipoOperacionId], references: [id])
@@ -406,6 +419,7 @@ model OperacionTicket {
   @@index([tipoOperacionId])
   @@index([autorId])
   @@index([esInterno])
+  @@index([ticketId, slaRelojSeq], map: "operaciones_ticket_ticket_id_sla_reloj_seq_idx") // partial WHERE sla_reloj_seq IS NOT NULL — ver migration SQL
   @@map("operaciones_ticket")
 }
 

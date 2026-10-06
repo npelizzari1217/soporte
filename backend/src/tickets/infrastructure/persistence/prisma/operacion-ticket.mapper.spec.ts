@@ -20,6 +20,7 @@ function makeFakeRow(overrides: Partial<PrismaOperacionTicket> = {}): PrismaOper
     autorId: 'autor-id',
     esInterno: false,
     metadata: null,
+    slaRelojSeq: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),
     deletedAt: null,
