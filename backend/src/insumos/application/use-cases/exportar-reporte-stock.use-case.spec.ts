@@ -1,3 +1,4 @@
+import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportacionStockDemasiadoGrandeError } from '../../domain/errors/insumos.errors';
 import { FilaReporteStock, ReporteStock } from './consultar-reporte-stock.use-case';
 import { ExportarReporteStockUseCase } from './exportar-reporte-stock.use-case';
@@ -147,5 +148,18 @@ describe('ExportarReporteStockUseCase', () => {
   it('un nombre que empieza con = queda neutralizado', async () => {
     const { contenido } = await exportar([fila({ nombre: '=cmd' })]);
     expect(lineas(contenido)[1].split(';')[1]).toBe("'=cmd");
+  });
+
+  it('con formato xlsx las cantidades son numéricas y "Generado el" una fecha real', async () => {
+    const r = await armar([fila()]).useCase.execute({}, 'xlsx');
+
+    const hoja = (await leerXlsx(r.getValue().contenido)).worksheets[0];
+    const datos = hoja.getRow(2);
+    expect(datos.getCell(6).value).toBe(3);
+    expect(datos.getCell(7).value).toBe(2);
+    expect(datos.getCell(8).value).toBe(5);
+    expect(datos.getCell(9).value).toBe(5);
+    expect(datos.getCell(12).value).toBeInstanceOf(Date);
+    expect(r.getValue().nombreArchivo).toMatch(/^reporte-stock-insumos-.*\.xlsx$/);
   });
 });

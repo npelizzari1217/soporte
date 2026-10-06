@@ -17,6 +17,7 @@
  *   post-fetch, aceptado, documentado en el use case).
  * - Inyección de fórmula CSV en una celda de texto libre (`nombre`).
  */
+import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarEquiposUseCase } from './exportar-equipos.use-case';
 import { ListarEquiposUseCase } from './listar-equipos.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
@@ -156,5 +157,29 @@ describe('ExportarEquiposUseCase', () => {
     const { nombreArchivo } = (await useCase.execute()).getValue();
 
     expect(nombreArchivo).toMatch(/^equipos-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  it('con formato xlsx entrega las mismas 4 columnas y una fila por equipo', async () => {
+    const activo = crearEquipo(
+      { nombre: 'Notebook Dell', marca: 'Dell', numeroSerie: 'SN-001' },
+      'e1',
+    );
+    const useCase = new ExportarEquiposUseCase(crearListarEquiposFake([activo]));
+
+    const result = await useCase.execute({}, 'xlsx');
+
+    const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
+    expect((hoja.getRow(1).values as unknown[]).slice(1)).toEqual([
+      'Nombre',
+      'Marca',
+      'N.º de serie',
+      'Estado',
+    ]);
+    expect((hoja.getRow(2).values as unknown[]).slice(1)).toEqual([
+      'Notebook Dell',
+      'Dell',
+      'SN-001',
+      'Activo',
+    ]);
   });
 });

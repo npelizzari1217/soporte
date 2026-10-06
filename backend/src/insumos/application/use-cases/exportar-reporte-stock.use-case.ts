@@ -1,7 +1,12 @@
-import { armarExportCsv } from '../../../shared/application/armar-export-csv';
+import {
+  ArchivoExport,
+  ArchivoExportDe,
+  armarExport,
+  FormatoExport,
+} from '../../../shared/application/armar-export';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
-import { cantidadCsv, ColumnaCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
+import { cantidadCsv, ColumnaCsv, fechaHoraCelda } from '../../../shared/infrastructure/csv/csv';
 import { EstadoReposicionInsumo } from '../../domain/entities/estado-reposicion-insumo';
 import { ExportacionStockDemasiadoGrandeError } from '../../domain/errors/insumos.errors';
 import {
@@ -10,13 +15,8 @@ import {
   FiltrosReporteStock,
 } from './consultar-reporte-stock.use-case';
 
-/** Archivo listo para que el controller lo entregue como descarga. */
-export interface ExportarReporteStockResult {
-  /** CSV completo, con BOM y encabezado. */
-  contenido: string;
-  /** Nombre sugerido, con la fecha de generacion en hora de Argentina (`reporte-stock-insumos-2026-10-01.csv`). */
-  nombreArchivo: string;
-}
+/** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
+export type ExportarReporteStockResult = ArchivoExport;
 
 /** Mismas etiquetas que la ficha del insumo (`insumo-detail-view.tsx`). */
 const ETIQUETA_REPOSICION: Record<EstadoReposicionInsumo, string> = {
@@ -38,17 +38,19 @@ const ETIQUETA_REPOSICION: Record<EstadoReposicionInsumo, string> = {
 export class ExportarReporteStockUseCase {
   constructor(private readonly consultar: Pick<ConsultarReporteStockUseCase, 'execute'>) {}
 
-  async execute(
+  async execute<F extends FormatoExport | undefined = undefined>(
     filtros: FiltrosReporteStock = {},
-  ): Promise<Result<ExportarReporteStockResult, DomainError>> {
+    formato?: F,
+  ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
     const reporte = await this.consultar.execute(filtros);
 
-    return armarExportCsv({
+    return armarExport({
       filas: reporte.filas,
       total: reporte.filas.length,
       tope: TOPE_FILAS_EXPORT,
       columnas: ExportarReporteStockUseCase.columnas(reporte.generadoEn),
       prefijo: 'reporte-stock-insumos',
+      formato,
       alExceder: (total, tope) => new ExportacionStockDemasiadoGrandeError(total, tope),
       ahora: reporte.generadoEn,
     });
@@ -56,7 +58,7 @@ export class ExportarReporteStockUseCase {
 
   /** Columnas fijas del archivo; "Generado el" se repite por fila para no romper la tabla. */
   private static columnas(generadoEn: Date): readonly ColumnaCsv<FilaReporteStock>[] {
-    const generado = fechaHoraCsv(generadoEn);
+    const generado = fechaHoraCelda(generadoEn);
     return [
       { encabezado: 'Código', valor: (f) => f.codigo },
       { encabezado: 'Nombre', valor: (f) => f.nombre },

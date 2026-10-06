@@ -1,4 +1,9 @@
-import { armarExportCsv } from '../../../shared/application/armar-export-csv';
+import {
+  ArchivoExport,
+  ArchivoExportDe,
+  armarExport,
+  FormatoExport,
+} from '../../../shared/application/armar-export';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
 import { ColumnaCsv } from '../../../shared/infrastructure/csv/csv';
@@ -6,13 +11,8 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/equipos.errors';
 import { ListarEquiposDto, ListarEquiposUseCase } from './listar-equipos.use-case';
 
-/** Archivo listo para que el controller lo entregue como descarga. */
-export interface ExportarEquiposResult {
-  /** CSV completo, con BOM y encabezado. */
-  contenido: string;
-  /** Nombre sugerido, con la fecha de exportación en hora de Argentina (`equipos-2026-08-19.csv`). */
-  nombreArchivo: string;
-}
+/** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
+export type ExportarEquiposResult = ArchivoExport;
 
 /**
  * ExportarEquiposUseCase — vuelca a CSV el inventario de equipos IT del tenant
@@ -48,7 +48,10 @@ export interface ExportarEquiposResult {
 export class ExportarEquiposUseCase {
   constructor(private readonly listarEquiposUseCase: Pick<ListarEquiposUseCase, 'execute'>) {}
 
-  async execute(dto: ListarEquiposDto = {}): Promise<Result<ExportarEquiposResult, DomainError>> {
+  async execute<F extends FormatoExport | undefined = undefined>(
+    dto: ListarEquiposDto = {},
+    formato?: F,
+  ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
     const listado = await this.listarEquiposUseCase.execute({
       incluirDadosDeBaja: dto.incluirDadosDeBaja ?? false,
     });
@@ -59,13 +62,14 @@ export class ExportarEquiposUseCase {
 
     const equipos = listado.getValue();
 
-    return armarExportCsv({
+    return armarExport({
       filas: equipos,
       // Post-fetch: ver docblock de la clase ("Unbounded memory", residual aceptado).
       total: equipos.length,
       tope: TOPE_FILAS_EXPORT,
       columnas: ExportarEquiposUseCase.columnas(),
       prefijo: 'equipos',
+      formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
     });
   }

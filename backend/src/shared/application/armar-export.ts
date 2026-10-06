@@ -12,17 +12,39 @@ export const CONTENT_TYPE_EXPORT: Readonly<Record<FormatoExport, string>> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
-/** Archivo listo para que el controller lo entregue como descarga. */
-export interface ArchivoExport {
-  /** `string` para CSV (con BOM y encabezado); `Buffer` para xlsx. */
-  contenido: string | Buffer;
+/** Archivo CSV listo para descargar: texto con BOM y encabezado. */
+export interface ArchivoCsv {
+  contenido: string;
   /** Nombre sugerido, con la fecha de exportación en hora de Argentina. */
   nombreArchivo: string;
 }
 
-export interface ArmarExportInput<T> extends ArmarExportCsvInput<T> {
+/** Archivo xlsx listo para descargar: contenido binario. */
+export interface ArchivoXlsx {
+  contenido: Buffer;
+  nombreArchivo: string;
+}
+
+/** Archivo listo para que el controller lo entregue como descarga. */
+export type ArchivoExport = ArchivoCsv | ArchivoXlsx;
+
+/**
+ * Archivo que corresponde al formato pedido: sin formato (o `csv`) es texto,
+ * así quien no pide xlsx sigue leyendo `contenido` como `string`; con
+ * `FormatoExport` completo (el controller) es la unión.
+ */
+export type ArchivoExportDe<F extends FormatoExport | undefined> = F extends 'xlsx'
+  ? ArchivoXlsx
+  : F extends 'csv' | undefined
+    ? ArchivoCsv
+    : never;
+
+export interface ArmarExportInput<
+  T,
+  F extends FormatoExport | undefined = undefined,
+> extends ArmarExportCsvInput<T> {
   /** Formato de salida; por defecto `csv` (los llamadores previos no se rompen). */
-  formato?: FormatoExport;
+  formato?: F;
 }
 
 /**
@@ -30,8 +52,16 @@ export interface ArmarExportInput<T> extends ArmarExportCsvInput<T> {
  * `formato`. Mismas columnas, mismo tope de filas y mismo error de dominio
  * para los dos formatos: el tope se valida ANTES de serializar.
  */
-export async function armarExport<T>(
-  input: ArmarExportInput<T>,
+export async function armarExport<T, F extends FormatoExport | undefined = undefined>(
+  input: ArmarExportInput<T, F>,
+): Promise<Result<ArchivoExportDe<F>, DomainError>> {
+  // El tipo de retorno depende del formato pedido; la implementación no
+  // puede probárselo a TypeScript, por eso el único cast vive acá.
+  return armarSegunFormato(input) as Promise<Result<ArchivoExportDe<F>, DomainError>>;
+}
+
+async function armarSegunFormato<T>(
+  input: ArmarExportInput<T, FormatoExport | undefined>,
 ): Promise<Result<ArchivoExport, DomainError>> {
   if (input.formato !== 'xlsx') {
     return armarExportCsv(input);

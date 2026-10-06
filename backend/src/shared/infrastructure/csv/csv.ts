@@ -361,5 +361,14 @@ export function fechaHoraCelda(instante: Date | null | undefined): CeldaFechaCsv
  * número real con dos decimales para Excel.
  */
 export function montoCelda(monto: number): CeldaNumericaCsv {
-  return { tipo: 'numero', texto: montoCsv(monto), valor: monto, decimales: 2 };
+  return decimalCelda(monto);
+}
+
+/**
+ * Número con coma decimal y dos decimales fijos (mismo criterio de
+ * localización que `montoCsv`, sin ser moneda: p. ej. un porcentaje), como
+ * celda numérica real para Excel.
+ */
+export function decimalCelda(valor: number): CeldaNumericaCsv {
+  return { tipo: 'numero', texto: montoCsv(valor), valor, decimales: 2 };
 }

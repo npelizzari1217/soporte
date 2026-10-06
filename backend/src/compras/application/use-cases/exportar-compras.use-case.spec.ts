@@ -14,6 +14,7 @@
  * - El tope de filas corta con un error de dominio, no con un archivo
  *   truncado en silencio.
  */
+import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarComprasUseCase, TOPE_FILAS_EXPORT } from './exportar-compras.use-case';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/compras.errors';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
@@ -247,5 +248,27 @@ describe('ExportarComprasUseCase', () => {
       // comparación anterior seguiría en verde sin detectarlo.
       expect(nombreArchivo).toBe('compras-2026-03-01.csv');
     });
+  });
+
+  it('con formato xlsx entrega un libro con las mismas columnas y la fecha de solicitud como fecha real', async () => {
+    const { repo } = crearRepo([crearCompra('c1')]);
+
+    const result = await new ExportarComprasUseCase(repo).execute({}, 'xlsx');
+
+    const { contenido, nombreArchivo } = result.getValue();
+    expect(nombreArchivo).toMatch(/\.xlsx$/);
+    const hoja = (await leerXlsx(contenido)).worksheets[0];
+    const csv = await new ExportarComprasUseCase(repo).execute({});
+    const encabezadosCsv = lineas(csv.getValue().contenido)[0].split(';');
+    expect((hoja.getRow(1).values as unknown[]).slice(1)).toEqual(encabezadosCsv);
+    expect(hoja.getRow(2).getCell(2).value).toBeInstanceOf(Date);
+  });
+
+  it('con formato xlsx aplica el mismo tope de filas', async () => {
+    const { repo } = crearRepo([crearCompra('c1')], TOPE_FILAS_EXPORT + 1);
+
+    const result = await new ExportarComprasUseCase(repo).execute({}, 'xlsx');
+
+    expect(result.isFail()).toBe(true);
   });
 });
