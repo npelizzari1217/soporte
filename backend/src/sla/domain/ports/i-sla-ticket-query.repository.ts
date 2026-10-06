@@ -15,17 +15,19 @@ export interface TicketVencible {
 export interface ISlaTicketQueryRepository {
   /**
    * Retorna los tickets vencibles: `sla_vence_at < now`, `vencido=false`,
-   * no soft-deleted, y en estado NO terminal (excluye
-   * RESUELTO/CERRADO/CANCELADO, S4).
+   * no soft-deleted, sin `sla_reloj_pendiente` y con el reloj corriendo
+   * (`estado.codigo` en `ESTADOS_RELOJ_CORRE`: excluye espera, RESUELTO,
+   * CERRADO y CANCELADO).
    */
   findVencibles(now: Date): Promise<TicketVencible[]>;
 
   /**
    * Marca `vencido=true` en el ticket indicado. Idempotente: el `WHERE
-   * vencido=false` (o equivalente) vive en la implementación — un ticket ya
-   * marcado no se re-marca (S4).
+   * vencido=false` vive en la implementación — un ticket ya marcado no se
+   * re-marca (S4). Devuelve `true` solo si esta llamada afectó la fila: es
+   * lo que habilita publicar `sla.vencido` una sola vez.
    */
-  marcarVencido(ticketId: string): Promise<void>;
+  marcarVencido(ticketId: string): Promise<boolean>;
 }
 
 /** Token de inyección de dependencias para ISlaTicketQueryRepository en NestJS. */

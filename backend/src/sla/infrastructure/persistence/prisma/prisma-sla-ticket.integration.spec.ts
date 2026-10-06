@@ -33,6 +33,9 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
   let prioridadId: string;
   let estadoNuevoId: string;
   let estadoResueltoId: string;
+  let estadoEsperaId: string;
+  // Los estados con código real que el spec creó (los que ya existían no se tocan).
+  const estadosCreados: string[] = [];
 
   const NOW = new Date('2026-08-06T12:00:00.000Z');
   const PASADO = new Date('2026-08-06T08:00:00.000Z'); // < NOW → vencible
@@ -45,6 +48,8 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
     vencido?: boolean;
     deletedAt?: Date | null;
     asignadoId?: string | null;
+    slaRelojPendiente?: boolean;
+    slaCorreDesde?: Date | null;
   }) {
     return tenantClient.ticket.create({
       data: {
@@ -58,8 +63,21 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
         slaVenceAt: props.slaVenceAt,
         vencido: props.vencido ?? false,
         deletedAt: props.deletedAt ?? null,
+        slaRelojPendiente: props.slaRelojPendiente ?? false,
+        ...(props.slaCorreDesde !== undefined ? { slaCorreDesde: props.slaCorreDesde } : {}),
       },
     });
+  }
+
+  /** El barrido filtra por código real de estado: usa el existente o lo crea (y lo borra al final). */
+  async function estadoReal(codigo: string, orden: number): Promise<string> {
+    const existente = await tenantClient.estado.findFirst({ where: { codigo } });
+    if (existente) return existente.id;
+    const creado = await tenantClient.estado.create({
+      data: { codigo, nombre: `${PREFIX}${codigo}`, orden, activo: true },
+    });
+    estadosCreados.push(creado.id);
+    return creado.id;
   }
 
   beforeAll(async () => {
@@ -85,23 +103,16 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
     });
     prioridadId = prioridad.id;
 
-    const estadoNuevo = await tenantClient.estado.create({
-      data: { codigo: `${PREFIX}NUEVO`, nombre: 'Nuevo', orden: 10, activo: true },
-    });
-    estadoNuevoId = estadoNuevo.id;
-
-    const estadoResuelto = await tenantClient.estado.create({
-      data: { codigo: 'RESUELTO', nombre: 'Resuelto fixture', orden: 999, activo: true },
-    });
-    estadoResueltoId = estadoResuelto.id;
+    estadoNuevoId = await estadoReal('NUEVO', 10);
+    estadoResueltoId = await estadoReal('RESUELTO', 999);
+    estadoEsperaId = await estadoReal('ESPERANDO_CLIENTE', 998);
   }, 30_000);
 
   afterAll(async () => {
     await tenantClient.ticket.deleteMany({ where: { numero: { startsWith: PREFIX } } });
     await tenantClient.tipoTicket.deleteMany({ where: { codigo: `${PREFIX}TIPO` } });
     await tenantClient.prioridad.deleteMany({ where: { codigo: `${PREFIX}PRIORIDAD` } });
-    await tenantClient.estado.deleteMany({ where: { codigo: { startsWith: PREFIX } } });
-    await tenantClient.estado.deleteMany({ where: { id: estadoResueltoId } });
+    await tenantClient.estado.deleteMany({ where: { id: { in: estadosCreados } } });
     await prismaService.onModuleDestroy();
   }, 30_000);
 
@@ -172,6 +183,47 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
     });
   });
 
+  describe('findVencibles() con el reloj de pausa (sla-reloj-activo R4)', () => {
+    it('[CRITICAL] excluye un ticket en ESPERANDO_CLIENTE con vencimiento pasado y sin marca', async () => {
+      const enEspera = await crearTicket({
+        numero: `${PREFIX}0010`,
+        estadoId: estadoEsperaId,
+        slaVenceAt: PASADO,
+      });
+
+      const resultado = await queryRepo.findVencibles(NOW);
+
+      expect(resultado.map((t) => t.id)).not.toContain(enEspera.id);
+    });
+
+    it('[CRITICAL] excluye un ticket con el reloj pendiente de reconciliar (invariante "barrido sobre un pendiente")', async () => {
+      const pendiente = await crearTicket({
+        numero: `${PREFIX}0011`,
+        estadoId: estadoNuevoId,
+        slaVenceAt: PASADO,
+        slaRelojPendiente: true,
+      });
+
+      const resultado = await queryRepo.findVencibles(NOW);
+
+      expect(resultado.map((t) => t.id)).not.toContain(pendiente.id);
+      expect(await queryRepo.marcarVencido(pendiente.id)).toBe(false);
+    });
+
+    it('un previo corriendo se incluye por su estado aunque sla_corre_desde sea NULL', async () => {
+      const previo = await crearTicket({
+        numero: `${PREFIX}0012`,
+        estadoId: estadoNuevoId,
+        slaVenceAt: PASADO,
+        slaCorreDesde: null,
+      });
+
+      const resultado = await queryRepo.findVencibles(NOW);
+
+      expect(resultado.map((t) => t.id)).toContain(previo.id);
+    });
+  });
+
   describe('marcarVencido()', () => {
     it('[CRITICAL] marca vencido=true', async () => {
       const ticket = await crearTicket({
@@ -193,8 +245,8 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
         slaVenceAt: PASADO,
       });
 
-      await queryRepo.marcarVencido(ticket.id);
-      await queryRepo.marcarVencido(ticket.id);
+      expect(await queryRepo.marcarVencido(ticket.id)).toBe(true);
+      expect(await queryRepo.marcarVencido(ticket.id)).toBe(false);
 
       const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
       expect(fila.vencido).toBe(true);
