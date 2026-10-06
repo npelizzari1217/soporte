@@ -180,9 +180,9 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 
 ## WU-9a — Estado SLA derivado en el DTO y header (~300 líneas)
 
-- [ ] 9a.1 Test unit de `derivarEstadoSla`: ESPERANDO_CLIENTE da `EN_PAUSA` sin fecha vigente; resuelto con `cumplido === false` da `VENCIDO` aunque no haya marca del barrido (previo: `fechaCierre > slaVenceAt`); con reloj corriendo (por `ESTADOS_RELOJ_CORRE`, nunca por `sla_corre_desde`) y `slaVenceAt < ahora` da `VENCIDO`; en otro caso `AL_DIA` o `SIN_SLA`. (`sla-reloj-activo R5`)
-- [ ] 9a.2 Test unit de `derivarEstadoPrimeraRespuesta`: `SIN_META`, `PENDIENTE`, `VENCIDA` sin respuesta pasado el vencimiento, `CUMPLIDA` con `at <= venceAt` y `VENCIDA` con respuesta tardía. (`sla-primera-respuesta R4`, `sla-primera-respuesta R6`)
-- [ ] 9a.3 Implementar ambas funciones en `tickets/domain` y el DTO `ticket.dto.ts:275` con `sla: {estado, venceAt}` y `primeraRespuesta: {estado, venceAt, at}`. (`sla-reloj-activo R5`, `sla-primera-respuesta R4`)
+- [x] 9a.1 Test unit de `derivarEstadoSla`: ESPERANDO_CLIENTE da `EN_PAUSA` sin fecha vigente; resuelto con `cumplido === false` da `VENCIDO` aunque no haya marca del barrido (previo: `fechaCierre > slaVenceAt`); con reloj corriendo (por `ESTADOS_RELOJ_CORRE`, nunca por `sla_corre_desde`) y `slaVenceAt < ahora` da `VENCIDO`; en otro caso `AL_DIA` o `SIN_SLA`. (`sla-reloj-activo R5`)
+- [x] 9a.2 Test unit de `derivarEstadoPrimeraRespuesta`: `SIN_META`, `PENDIENTE`, `VENCIDA` sin respuesta pasado el vencimiento, `CUMPLIDA` con `at <= venceAt` y `VENCIDA` con respuesta tardía. (`sla-primera-respuesta R4`, `sla-primera-respuesta R6`)
+- [x] 9a.3 Implementar ambas funciones en `tickets/domain` y el DTO `ticket.dto.ts:275` con `sla: {estado, venceAt}` y `primeraRespuesta: {estado, venceAt, at}`. (`sla-reloj-activo R5`, `sla-primera-respuesta R4`)
 - [ ] 9a.4 Test FE de `ticket-header`: en pausa no muestra la fecha como vigente, resuelto tarde muestra vencido sin depender de `vencido`, badge de "primera respuesta vencida" y ausencia de badge para preventivo o sin meta. (`sla-reloj-activo R5`, `sla-primera-respuesta R4`, `sla-primera-respuesta R6`)
 - [ ] 9a.5 `ticket-header.tsx` deja de leer `vencido` y usa los estados derivados; ampliar `types.ts`. (`sla-reloj-activo R5`, `sla-primera-respuesta R4`)
 - [ ] 9a.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets`; frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`.

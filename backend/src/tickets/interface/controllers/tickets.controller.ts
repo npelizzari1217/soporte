@@ -118,6 +118,7 @@ import {
   ISolicitanteExternoRepository,
   SOLICITANTE_EXTERNO_REPOSITORY,
 } from '../../domain/ports/i-solicitante-externo.repository';
+import { ESTADO_REPOSITORY, IEstadoRepository } from '../../domain/ports/i-estado.repository';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
@@ -199,7 +200,17 @@ export class TicketsController {
     private readonly obtenerCsatTicketUseCase: ObtenerCsatTicketUseCase,
     @Inject(SOLICITANTE_EXTERNO_REPOSITORY)
     private readonly solicitanteExternoRepo: ISolicitanteExternoRepository,
+    @Inject(ESTADO_REPOSITORY) private readonly estadoRepo: IEstadoRepository,
   ) {}
+
+  /**
+   * Códigos de estado por `estadoId` (el catálogo es fijo y chico): el estado SLA derivado se
+   * calcula con el código (`ESTADOS_RELOJ_CORRE`), y el DTO solo conoce el id.
+   */
+  private async codigosPorEstadoId(): Promise<Map<string, string>> {
+    const estados = await this.estadoRepo.findAllActive();
+    return new Map(estados.map((e) => [e.id, e.codigo]));
+  }
 
   /**
    * Resuelve batch (sin N+1) los nombres de `solicitanteId`/`asignadoId` de
@@ -244,6 +255,23 @@ export class TicketsController {
     return porTicket;
   }
 
+  /** `toTicketResponseDto` con el código de estado resuelto del catálogo. */
+  private async aDto(
+    ticket: Parameters<typeof toTicketResponseDto>[0],
+    nombres: NombresResueltos | undefined,
+    csat?: { puntaje: number; comentario: string | null } | null,
+    solicitanteTelefono?: string | null,
+  ): Promise<TicketResponseDto> {
+    const codigos = await this.codigosPorEstadoId();
+    return toTicketResponseDto(
+      ticket,
+      nombres,
+      csat,
+      solicitanteTelefono,
+      codigos.get(ticket.estadoId) ?? '',
+    );
+  }
+
   /**
    * POST /tickets
    * Crea un ticket nuevo. `solicitanteId`/`autorId` = JWT.sub (T4); el
@@ -276,7 +304,7 @@ export class TicketsController {
     }
     const ticket = result.getValue();
     const nombres = (await this.resolverNombresPorTicket([ticket])).get(ticket.id);
-    return toTicketResponseDto(ticket, nombres);
+    return this.aDto(ticket, nombres);
   }
 
   /**
@@ -321,8 +349,17 @@ export class TicketsController {
     }
     const { items, total, pagina, porPagina } = result.getValue();
     const nombresPorTicket = await this.resolverNombresPorTicket(items);
+    const codigos = await this.codigosPorEstadoId();
     return {
-      items: items.map((t) => toTicketResponseDto(t, nombresPorTicket.get(t.id))),
+      items: items.map((t) =>
+        toTicketResponseDto(
+          t,
+          nombresPorTicket.get(t.id),
+          undefined,
+          undefined,
+          codigos.get(t.estadoId) ?? '',
+        ),
+      ),
       total,
       pagina,
       porPagina,
@@ -424,7 +461,7 @@ export class TicketsController {
     const externo = ticket.solicitanteExternoId
       ? await this.solicitanteExternoRepo.findById(ticket.solicitanteExternoId)
       : null;
-    return toTicketResponseDto(ticket, nombres, csat, externo?.telefono ?? null);
+    return this.aDto(ticket, nombres, csat, externo?.telefono ?? null);
   }
 
   /**
@@ -462,7 +499,7 @@ export class TicketsController {
     const nombresEditado = (await this.resolverNombresPorTicket([ticketEditado])).get(
       ticketEditado.id,
     );
-    return toTicketResponseDto(ticketEditado, nombresEditado);
+    return this.aDto(ticketEditado, nombresEditado);
   }
 
   /**
@@ -504,7 +541,7 @@ export class TicketsController {
     const nombresTransicionado = (await this.resolverNombresPorTicket([ticketTransicionado])).get(
       ticketTransicionado.id,
     );
-    return toTicketResponseDto(ticketTransicionado, nombresTransicionado);
+    return this.aDto(ticketTransicionado, nombresTransicionado);
   }
 
   /**
@@ -541,7 +578,7 @@ export class TicketsController {
     const nombresAsignado = (await this.resolverNombresPorTicket([ticketAsignado])).get(
       ticketAsignado.id,
     );
-    return toTicketResponseDto(ticketAsignado, nombresAsignado);
+    return this.aDto(ticketAsignado, nombresAsignado);
   }
 
   /**
@@ -605,7 +642,7 @@ export class TicketsController {
     const nombresEnProceso = (await this.resolverNombresPorTicket([ticketEnProceso])).get(
       ticketEnProceso.id,
     );
-    return toTicketResponseDto(ticketEnProceso, nombresEnProceso);
+    return this.aDto(ticketEnProceso, nombresEnProceso);
   }
 
   /**

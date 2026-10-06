@@ -175,6 +175,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     deps.exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
     deps.obtenerCsatTicket as unknown as Ctor[12], // obtenerCsatTicketUseCase
     deps.solicitanteExternoRepo as unknown as Ctor[13], // solicitanteExternoRepo
+    { findAllActive: vi.fn().mockResolvedValue([]) } as unknown as Ctor[14], // estadoRepo
   );
   return { controller, ...deps, usuarioMasterChecker };
 }

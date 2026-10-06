@@ -176,6 +176,9 @@ export interface RelojSlaSnapshot {
   readonly version: number;
   readonly pendiente: boolean;
   readonly cumplido: boolean | null;
+  /** Primera respuesta (ADR-6): lectura para el estado derivado. Ausente equivale a `null`. */
+  readonly primeraRespuestaAt?: Date | null;
+  readonly primeraRespuestaVenceAt?: Date | null;
 }
 
 export class TicketEntity extends BaseEntity<TicketProps> {

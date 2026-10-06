@@ -360,3 +360,21 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu08`, base `...-wu07c`. Los specs de i
 
 Rama `feat/sla-primera-respuesta-y-pausa-wu08b`, base `...-wu08`. `prisma-dashboard.integration.spec.ts` contra Postgres real, un ciclo por test: resolucion (incorporados, previos, reabierto y pliegue pendiente afuera, sin `vencido`), primera respuesta (2 de 4, rellenado solo en el tiempo medio, 1,25 h, sin datos), preventivo sin efecto y espera como abierto. Se corrigio el "(1 h)" de 8.3 a "(2 h)".
 - Ayuda: sin deuda nueva (la de la parte 1 sigue). Rollback: solo el spec.
+- Verificacion (arrastre de la validacion de la WU-8): lint y typecheck limpios; `pnpm test` backend completo: 626 archivos / 7666 tests, exit 0 (unico ruido conocido: `test/fixtures/orden-de-arranque.spec.ts`); `node scripts/check-casts-en-specs.mjs`: 617/114.
+
+## WU-9a — parte 1: backend (tareas 9a.1 a 9a.3; 9a.4, 9a.5 y 9a.6 del frontend quedan para la parte 2, stash `wu09ab`)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu09a`, base `...-wu08b`. El total (~557 lineas con docs) supera el presupuesto de 400, asi que se parte en la costura backend / frontend.
+
+- Dominio: `tickets/domain/policies/estado-sla-derivado.policy.ts` con `derivarEstadoSla` (SIN_SLA, EN_PAUSA, VENCIDO, AL_DIA; corriendo por `ESTADOS_RELOJ_CORRE`, nunca por `sla_corre_desde`; resuelto con `cumplido === false` da VENCIDO sin marca del barrido; previo: `fechaCierre > slaVenceAt`) y `derivarEstadoPrimeraRespuesta` (SIN_META, PENDIENTE, CUMPLIDA, VENCIDA; respuesta tardia es VENCIDA). Unit con 13 casos.
+- Decision: sin `slaVenceAt` (preventivo o sin SLA) da SIN_SLA aun en ESPERANDO_CLIENTE; el DTO no manda `sla.venceAt` en pausa.
+- `RelojSlaSnapshot` suma `primeraRespuestaAt`/`primeraRespuestaVenceAt` (opcionales, no rompen fixtures) y `TicketMapper.toDomain` los carga. `toTicketResponseDto` recibe `estadoCodigo` (y `ahora`) y suma `sla` y `primeraRespuesta`; el controller inyecta `ESTADO_REPOSITORY` y resuelve el codigo por `estadoId` (catalogo fijo, `findAllActive`).
+- Verificacion de esta parte: backend `pnpm lint` y `pnpm typecheck` limpios; `pnpm vitest run src/tickets`: 69 archivos / 695 tests verdes; `node scripts/check-casts-en-specs.mjs`: 617/114.
+- Ayuda: deuda — badges de SLA en pausa, vencido y primera respuesta en el encabezado del ticket.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/tickets`: 69 archivos / 695 tests verdes |
+| Runtime harness | N/A: el DTO se prueba por unit y por el spec del controller; sin frontera de runtime nueva |
+| Rollback boundary | policy + snapshot + mapper + DTO + controller y sus specs |

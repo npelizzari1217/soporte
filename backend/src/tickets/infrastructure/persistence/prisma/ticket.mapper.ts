@@ -73,6 +73,8 @@ export class TicketMapper {
         version: row.slaRelojVersion,
         pendiente: row.slaRelojPendiente,
         cumplido: row.slaCumplido ?? null,
+        primeraRespuestaAt: row.primeraRespuestaAt ?? null,
+        primeraRespuestaVenceAt: row.primeraRespuestaVenceAt ?? null,
       },
     );
   }
