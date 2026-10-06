@@ -6,6 +6,8 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IPrimeraRespuestaWriteRepository } from '../../domain/ports/i-primera-respuesta-write.repository';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import {
   TicketNoEncontradoError,
   ComentarioNoPermitidoError,
@@ -52,9 +54,13 @@ export interface CrearComentarioDto {
  *    esta restricción.
  * 3. Resuelve el id del tipo de operación `COMENTARIO` del catálogo tenant
  *    (catálogo FIJO garantizado por el seed — ausencia = `throw` defensivo).
- * 4. Persiste la operación (`OperacionTicketEntity`, timeline). Sin
- *    `ITenantTransactionRunner` (T24 — "los comentarios (write único) MAY
- *    omitir la transacción").
+ * 4. Persiste la operación (`OperacionTicketEntity`, timeline) dentro de
+ *    `txRunner.run`. Si el comentario es PÚBLICO y su autor no es el
+ *    solicitante (un externo tiene `solicitanteId = null`: cualquier autor
+ *    interno cuenta), registra en la misma tx la primera respuesta con
+ *    `registrarSiFalta` (`updateMany where primeraRespuestaAt: null`:
+ *    idempotente y resistente a la concurrencia; ADR-6, sla-primera-respuesta
+ *    R1). Un borrado posterior del comentario no recalcula esa fecha.
  * 5. Si es PÚBLICO, publica `TicketComentadoEvent` (log-and-swallow, ADR-6
  *    — un fallo del publisher nunca revierte el comentario ya persistido).
  *    Los comentarios INTERNOS NUNCA emiten evento (T17 — no deben
@@ -71,6 +77,11 @@ export class CrearComentarioUseCase {
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly eventPublisher: IDomainEventPublisher,
+    private readonly txRunner: ITenantTransactionRunner,
+    private readonly primeraRespuestaRepo: Pick<
+      IPrimeraRespuestaWriteRepository,
+      'registrarSiFalta'
+    >,
   ) {}
 
   async execute(dto: CrearComentarioDto): Promise<Result<OperacionTicketEntity, DomainError>> {
@@ -111,7 +122,13 @@ export class CrearComentarioUseCase {
       metadata: null,
     });
 
-    await this.operacionRepo.save(operacion);
+    const cuentaComoPrimeraRespuesta = !dto.esInterno && dto.autorId !== ticket.solicitanteId;
+    await this.txRunner.run(async () => {
+      await this.operacionRepo.save(operacion);
+      if (cuentaComoPrimeraRespuesta) {
+        await this.primeraRespuestaRepo.registrarSiFalta(ticket.id, operacion.createdAt);
+      }
+    });
 
     if (!dto.esInterno) {
       try {

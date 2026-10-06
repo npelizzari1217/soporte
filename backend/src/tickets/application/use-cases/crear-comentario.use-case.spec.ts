@@ -8,6 +8,7 @@
  * Ref spec: sdd/tickets-core/spec T16, T17. Ref design: ADR-6. Tarea: T9.1, T9.2.
  */
 import { CrearComentarioUseCase, CrearComentarioDto } from './crear-comentario.use-case';
+import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TicketComentadoEvent } from '../../domain/events/ticket-comentado.event';
@@ -35,7 +36,12 @@ const ESTADOS: Record<string, EstadoEntity> = {
   ),
 };
 
-function makeTicket(estadoCodigo: keyof typeof ESTADOS = 'NUEVO'): TicketEntity {
+function makeTicket(
+  estadoCodigo: keyof typeof ESTADOS = 'NUEVO',
+  origen: { solicitanteId: string | null; solicitanteExternoId?: string | null } = {
+    solicitanteId: 'solicitante-uuid',
+  },
+): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
@@ -46,7 +52,7 @@ function makeTicket(estadoCodigo: keyof typeof ESTADOS = 'NUEVO'): TicketEntity 
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
       ticketReferenciaId: null,
-      solicitanteId: 'solicitante-uuid',
+      ...origen,
     },
     'ticket-uuid',
   );
@@ -75,6 +81,15 @@ describe('CrearComentarioUseCase', () => {
       findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-comentario-uuid'),
     };
     const eventPublisher = { publish: vi.fn() };
+    const txRunner = {
+      llamadas: 0,
+      async run<T>(fn: () => Promise<T>): Promise<T> {
+        this.llamadas += 1;
+        return fn();
+      },
+      alCommitear: vi.fn(),
+    } satisfies ITenantTransactionRunner & { llamadas: number };
+    const primeraRespuestaRepo = { registrarSiFalta: vi.fn().mockResolvedValue(undefined) };
 
     const useCase = new CrearComentarioUseCase(
       ticketRepo as never,
@@ -82,9 +97,20 @@ describe('CrearComentarioUseCase', () => {
       estadoRepo as never,
       tipoOperacionRepo as never,
       eventPublisher as never,
+      txRunner,
+      primeraRespuestaRepo,
     );
 
-    return { useCase, ticketRepo, operacionRepo, estadoRepo, tipoOperacionRepo, eventPublisher };
+    return {
+      useCase,
+      ticketRepo,
+      operacionRepo,
+      estadoRepo,
+      tipoOperacionRepo,
+      eventPublisher,
+      txRunner,
+      primeraRespuestaRepo,
+    };
   }
 
   it('T16: comentario público en ticket NUEVO — crea operación COMENTARIO es_interno=false y emite TicketComentadoEvent', async () => {
@@ -185,5 +211,86 @@ describe('CrearComentarioUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  describe('primera respuesta (sla-primera-respuesta R1)', () => {
+    it('comentario público de un técnico registra la fecha de la operación, dentro de la tx', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(baseDto({ esInterno: false }));
+
+      const operacion = result.getValue();
+      expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledTimes(1);
+      expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledWith(
+        'ticket-uuid',
+        operacion.createdAt,
+      );
+      expect(c.txRunner.llamadas).toBe(1);
+    });
+
+    it('registra después de guardar la operación, ambos dentro de la misma tx', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      const orden: string[] = [];
+      c.operacionRepo.save.mockImplementation(() => {
+        orden.push('save');
+        return Promise.resolve();
+      });
+      c.primeraRespuestaRepo.registrarSiFalta.mockImplementation(() => {
+        orden.push('registrar');
+        return Promise.resolve();
+      });
+      c.txRunner.run = async <T>(fn: () => Promise<T>): Promise<T> => {
+        orden.push('tx-inicio');
+        const r = await fn();
+        orden.push('tx-fin');
+        return r;
+      };
+
+      await c.useCase.execute(baseDto({ esInterno: false }));
+
+      expect(orden).toEqual(['tx-inicio', 'save', 'registrar', 'tx-fin']);
+    });
+
+    it('un comentario interno no la registra', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      await c.useCase.execute(baseDto({ esInterno: true }));
+
+      expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+    });
+
+    it('un comentario público del propio solicitante no la registra', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      await c.useCase.execute(baseDto({ esInterno: false, autorId: 'solicitante-uuid' }));
+
+      expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('solicitante externo (solicitanteId null): cualquier autor interno la registra', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket('NUEVO', { solicitanteId: null, solicitanteExternoId: 'externo-uuid' }),
+      );
+
+      await c.useCase.execute(baseDto({ esInterno: false, autorId: 'cualquier-interno-uuid' }));
+
+      expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledTimes(1);
+    });
+
+    it('un rechazo por estado terminal no registra nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('CERRADO'));
+
+      await c.useCase.execute(baseDto({ esInterno: false }));
+
+      expect(c.txRunner.llamadas).toBe(0);
+      expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+    });
   });
 });
