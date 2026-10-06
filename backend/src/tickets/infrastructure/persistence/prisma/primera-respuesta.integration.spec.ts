@@ -32,6 +32,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
   let prioridadId: string;
   let estadoId: string;
   let creoComentario = false;
+  let creoEnProceso = false;
 
   async function limpiar(): Promise<void> {
     await client.operacionTicket.deleteMany({
@@ -69,8 +70,18 @@ describe('Primera respuesta — Integration (WU-6)', () => {
         data: { codigo: `${PREFIJO}P${s}`, nombre: 'WU6p', orden: 1, activo: true },
       })
     ).id;
-    estadoId = (await client.estado.findUniqueOrThrow({ where: { codigo: 'EN_PROCESO' } })).id;
     // La base compartida de tests no siempre trae el catálogo sembrado: se crea solo si falta y se retira al final.
+    const enProceso = await client.estado.findUnique({ where: { codigo: 'EN_PROCESO' } });
+    if (enProceso) {
+      estadoId = enProceso.id;
+    } else {
+      estadoId = (
+        await client.estado.create({
+          data: { codigo: 'EN_PROCESO', nombre: 'EN_PROCESO', orden: 30, activo: true },
+        })
+      ).id;
+      creoEnProceso = true;
+    }
     if (!(await client.tipoOperacion.findUnique({ where: { codigo: 'COMENTARIO' } }))) {
       await client.tipoOperacion.create({ data: { codigo: 'COMENTARIO', nombre: 'Comentario' } });
       creoComentario = true;
@@ -80,6 +91,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
   afterAll(async () => {
     await limpiar();
     if (creoComentario) await client.tipoOperacion.deleteMany({ where: { codigo: 'COMENTARIO' } });
+    if (creoEnProceso) await client.estado.delete({ where: { id: estadoId } });
     await prismaService.onModuleDestroy();
   }, 30_000);
 

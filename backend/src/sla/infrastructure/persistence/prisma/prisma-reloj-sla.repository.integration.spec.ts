@@ -1,6 +1,6 @@
 /**
  * [INTEGRATION] WU-3b (sdd/sla-primera-respuesta-y-pausa, sla-reloj-activo R1, R4): PrismaRelojSlaRepository
- * contra Postgres REAL (`soporte_tenant_test`). Usa los estados y el tipo `CAMBIO_ESTADO` ya sembrados;
+ * contra Postgres REAL (`soporte_tenant_test`). Siembra si faltan los estados y el tipo `CAMBIO_ESTADO` que usa (y borra solo los que creó);
  * crea solo un tipo de ticket, una prioridad y tickets propios, y los borra al final.
  */
 import { randomBytes } from 'node:crypto';
@@ -25,6 +25,7 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
   let prioridadId: string;
   let estados: Record<string, string>;
   let tipoOpId: string;
+  const creados: Array<() => Promise<unknown>> = [];
   let contador = 0;
 
   beforeAll(async () => {
@@ -50,13 +51,34 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
         data: { codigo: `WU3BP${s}`, nombre: 'WU3b', orden: 1, activo: true },
       })
     ).id;
+    // Catálogos que el spec necesita: se crean solo si faltan (una base nueva no los trae) y al
+    // terminar se borran únicamente los que creó este spec.
+    for (const [codigo, orden] of [
+      ['EN_PROCESO', 30],
+      ['ESPERANDO_CLIENTE', 35],
+    ] as const) {
+      const previo = await client.estado.findUnique({ where: { codigo } });
+      if (!previo) {
+        const e = await client.estado.create({
+          data: { codigo, nombre: codigo, orden, activo: true },
+        });
+        creados.push(() => client.estado.delete({ where: { id: e.id } }));
+      }
+    }
     const filas = await client.estado.findMany({
       where: { codigo: { in: ['EN_PROCESO', 'ESPERANDO_CLIENTE'] } },
     });
     estados = Object.fromEntries(filas.map((e) => [e.codigo, e.id]));
-    tipoOpId = (
-      await client.tipoOperacion.findUniqueOrThrow({ where: { codigo: 'CAMBIO_ESTADO' } })
-    ).id;
+    const tipoOp = await client.tipoOperacion.findUnique({ where: { codigo: 'CAMBIO_ESTADO' } });
+    if (tipoOp) {
+      tipoOpId = tipoOp.id;
+    } else {
+      const t = await client.tipoOperacion.create({
+        data: { codigo: 'CAMBIO_ESTADO', nombre: 'CAMBIO_ESTADO' },
+      });
+      tipoOpId = t.id;
+      creados.push(() => client.tipoOperacion.delete({ where: { id: t.id } }));
+    }
   }, 30_000);
 
   afterAll(async () => {
@@ -64,6 +86,7 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     await client.ticket.deleteMany({ where: { tipoId } });
     await client.tipoTicket.delete({ where: { id: tipoId } });
     await client.prioridad.delete({ where: { id: prioridadId } });
+    for (const borrar of creados.reverse()) await borrar();
     await prismaService.onModuleDestroy();
   }, 30_000);
 
