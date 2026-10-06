@@ -188,3 +188,14 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03c2`, base `...-wu03c`. Pieza A de t
 - Tests: `reloj-sla.meta.spec.ts` (derivacion, CORRIDO, detenido, sin meta, cumplimiento en RESUELTO incluido el borde `<=`) y un caso en `reloj-sla.cumplimiento.spec.ts` (la meta es la fijada en el ticket: tras bajar las horas de la prioridad a 4 h, resolver con 6 h sobre 8 h cumple).
 - Nota: `CalcularSlaVenceService` quedara sin consumidor de produccion al aterrizar `AplicarSla`; se deja para una limpieza aparte.
 - Evidencia: lint y typecheck limpios; `pnpm vitest run src/sla` 16 archivos, 119 tests verdes; ratchet de casts sin cambios. Rollback: archivos de dominio sin consumidores.
+
+## WU-3c.3 — `AplicarSlaUseCase` con meta del ticket y pliegue previo (tareas 3c.1 a 3c.4)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c3`, base `...-wu03c2`. Pieza B de tres, `size:exception`: el caso de uso cambia de API (sale `ISlaTicketWriteRepository`, entra el repo del reloj con CAS) y su spec se reescribe con el; partirlos separaria el codigo de los tests que lo prueban. Queda la pieza C (3c.6 integracion del barrido y 3c.8) en el stash `wu03c4`.
+
+- `AplicarSlaUseCase`: lee la fila del reloj, pliega con `RelojSla.plegar` (incorpora al previo con su vencimiento V intacto), aplica `RelojSla.conMeta` y escribe todo con un solo `guardarSiVersion`; un reintento y, si el CAS vuelve a perder, lanza `SLA_RELOJ_CONFLICTO` (el listener lo registra). Carga el calendario antes de leer y no lo toca para `CORRIDO`. Ya no depende de `estadoRepo` (el estado sale de la fila) ni de `CalcularSlaVenceService`.
+- Absorbe `setSlaVenceAt`: se borran `ISlaTicketWriteRepository` y `PrismaSlaTicketWriteRepository`, su token y su export en `SlaModule`; sale tambien su bloque de `prisma-sla-ticket.integration.spec.ts`.
+- Tests: `aplicar-sla.use-case.spec.ts` reescrito (21: meta y vencimiento, pliegue previo, repriorizar con acumulado conservado, CORRIDO, meta superada, reloj detenido, sin meta, preventivo, cumplimiento en RESUELTO, previos R7, CAS con reintento y conflicto, terminal, calendario roto).
+- Los e2e `aplicar-sla-*.e2e.spec.ts` se adaptaron: estado con codigo real `NUEVO` (el reloj corre por codigo) y `slaCorreDesde = createdAt`, como fija el alta real; el DEFAULT `now()` de la columna no aplica a un ticket con `createdAt` pasado.
+- Ratchet de casts: 624 a 617 en 114 archivos (el spec reescrito ya no usa `as never`).
+- `CalcularSlaVenceService` y su spec quedan sin consumidor de produccion; limpieza aparte.

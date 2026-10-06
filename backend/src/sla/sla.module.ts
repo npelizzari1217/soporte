@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
-import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
 import {
   PRIORIDAD_REPOSITORY,
   IPrioridadRepository,
@@ -12,11 +11,6 @@ import {
   ITipoTicketRepository,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
 
-import {
-  SLA_TICKET_WRITE_REPOSITORY,
-  ISlaTicketWriteRepository,
-} from './domain/ports/i-sla-ticket-write.repository';
-import { PrismaSlaTicketWriteRepository } from './infrastructure/persistence/prisma/prisma-sla-ticket-write.repository';
 import {
   SLA_TICKET_QUERY_REPOSITORY,
   ISlaTicketQueryRepository,
@@ -35,7 +29,6 @@ import {
 } from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
 import { CalcularSlaHabilVenceService } from '../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 
-import { CalcularSlaVenceService } from './domain/services/calcular-sla-vence.service';
 import { AplicarSlaUseCase } from './application/use-cases/aplicar-sla.use-case';
 import { MarcarVencidosUseCase } from './application/use-cases/marcar-vencidos.use-case';
 
@@ -71,7 +64,7 @@ import {
  * `TicketsModule`). Este módulo ahora es SOLO cálculo/seguimiento.
  *
  * Wiring:
- * - Repos: SLA_TICKET_WRITE_REPOSITORY, SLA_TICKET_QUERY_REPOSITORY (tenant,
+ * - Repos: SLA_TICKET_QUERY_REPOSITORY, RELOJ_SLA_REPOSITORY (tenant,
  *   vía TenantContext). TENANT_ENUMERATOR (master, vía PrismaService — S5) ya
  *   NO se registra acá: se promovió a `SharedModule` (`@Global()`, ola-2
  *   WU-0) para que no quede acoplado a `sla`. Este módulo solo lo INYECTA.
@@ -87,14 +80,14 @@ import {
  *   (WU-1, cálculo puro) + `CALENDARIO_LABORAL_SEMANAL_REPOSITORY`/
  *   `FERIADOS_LABORALES_REPOSITORY` (WU-2, `CalendarioLaboralModule`) para
  *   elegir el calculador por `ticket.slaRegla` (discriminador de cohortes:
- *   `CORRIDO` sigue con `CalcularSlaVenceService`, `HABIL` usa el nuevo).
+ *   `CORRIDO` mide tiempo de pared, `HABIL` tiempo hábil; ver `RelojSla.medidorPara`).
  *   Este módulo importa `CalendarioLaboralModule` para inyectar esos dos
  *   puertos — NO reimplementa el acceso a MASTER ni a la base del tenant
  *   (el calendario es por cliente desde sdd/horario-laboral-por-cliente).
  * - `ScheduleModule.forRoot()` ya NO se llama acá: se movió a `AppModule`
  *   (ola-2 WU-0) porque dos `forRoot()` de `@nestjs/schedule` fallan al
  *   bootear (no al compilar) si otro módulo (`preventivo`) también lo llama.
- * - Importa `TicketsModule` (para TICKET_REPOSITORY/ESTADO_REPOSITORY/
+ * - Importa `TicketsModule` (para TICKET_REPOSITORY/
  *   PRIORIDAD_REPOSITORY/TIPO_TICKET_REPOSITORY, que `AplicarSlaUseCase`
  *   necesita — el módulo SLA NO reimplementa ese acceso), `CalendarioLaboralModule`
  *   y `AuthModule`.
@@ -105,44 +98,36 @@ import {
 @Module({
   imports: [AuthModule, TicketsModule, CalendarioLaboralModule],
   providers: [
-    { provide: SLA_TICKET_WRITE_REPOSITORY, useClass: PrismaSlaTicketWriteRepository },
     { provide: SLA_TICKET_QUERY_REPOSITORY, useClass: PrismaSlaTicketQueryRepository },
 
     { provide: RELOJ_SLA_REPOSITORY, useClass: PrismaRelojSlaRepository },
 
-    { provide: CalcularSlaVenceService, useFactory: () => new CalcularSlaVenceService() },
     { provide: CalcularSlaHabilVenceService, useFactory: () => new CalcularSlaHabilVenceService() },
 
     {
       provide: AplicarSlaUseCase,
       useFactory: (
         prioridadRepo: IPrioridadRepository,
-        slaTicketWriteRepo: ISlaTicketWriteRepository,
+        relojRepo: IRelojSlaRepository,
         ticketRepo: ITicketRepository,
-        estadoRepo: IEstadoRepository,
-        calculador: CalcularSlaVenceService,
         tipoTicketRepo: ITipoTicketRepository,
-        calculadorHabil: CalcularSlaHabilVenceService,
+        calculoHabil: CalcularSlaHabilVenceService,
         calendarioRepo: ICalendarioLaboralSemanalRepository,
         feriadosRepo: IFeriadosLaboralesRepository,
       ) =>
         new AplicarSlaUseCase(
           prioridadRepo,
-          slaTicketWriteRepo,
+          relojRepo,
           ticketRepo,
-          estadoRepo,
-          calculador,
           tipoTicketRepo,
-          calculadorHabil,
+          calculoHabil,
           calendarioRepo,
           feriadosRepo,
         ),
       inject: [
         PRIORIDAD_REPOSITORY,
-        SLA_TICKET_WRITE_REPOSITORY,
+        RELOJ_SLA_REPOSITORY,
         TICKET_REPOSITORY,
-        ESTADO_REPOSITORY,
-        CalcularSlaVenceService,
         TIPO_TICKET_REPOSITORY,
         CalcularSlaHabilVenceService,
         CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
@@ -214,6 +199,6 @@ import {
       inject: [TENANT_ENUMERATOR, TenantContext, PrismaService, MarcarVencidosUseCase, LOGGER],
     },
   ],
-  exports: [SLA_TICKET_WRITE_REPOSITORY, SLA_TICKET_QUERY_REPOSITORY],
+  exports: [SLA_TICKET_QUERY_REPOSITORY],
 })
 export class SlaModule {}

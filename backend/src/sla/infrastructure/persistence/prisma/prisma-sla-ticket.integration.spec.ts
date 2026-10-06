@@ -1,6 +1,6 @@
 /**
- * SB3 [INTEGRATION] — RED→GREEN: PrismaSlaTicketQueryRepository +
- * PrismaSlaTicketWriteRepository contra Postgres REAL (`soporte_tenant_test`),
+ * SB3 [INTEGRATION] — RED→GREEN: PrismaSlaTicketQueryRepository
+ * contra Postgres REAL (`soporte_tenant_test`),
  * vía `TenantContext.bind()` (mismo patrón que `prisma-catalogos.integration.spec.ts`).
  *
  * Este spec inserta sus PROPIAS filas de fixture (estado/prioridad/tipo_ticket/
@@ -13,7 +13,6 @@ import { PrismaService } from '../../../../shared/infrastructure/persistence/pri
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaSlaTicketQueryRepository } from './prisma-sla-ticket-query.repository';
-import { PrismaSlaTicketWriteRepository } from './prisma-sla-ticket-write.repository';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -22,12 +21,11 @@ const MASTER_TEST_URL =
 const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const PREFIX = 'SB3_TEST_';
 
-describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — Integration (SB3/SB4)', () => {
+describe('PrismaSlaTicketQueryRepository — Integration (SB3/SB4)', () => {
   let prismaService: PrismaService;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let tenantContext: TenantContext;
   let queryRepo: PrismaSlaTicketQueryRepository;
-  let writeRepo: PrismaSlaTicketWriteRepository;
 
   let tipoId: string;
   let prioridadId: string;
@@ -91,7 +89,6 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
     });
 
     queryRepo = new PrismaSlaTicketQueryRepository(tenantContext);
-    writeRepo = new PrismaSlaTicketWriteRepository(tenantContext);
 
     const tipo = await tenantClient.tipoTicket.create({
       data: { codigo: `${PREFIX}TIPO`, nombre: 'Fixture', activo: true, modulo: 'SOPORTE' },
@@ -250,35 +247,6 @@ describe('PrismaSlaTicketQueryRepository + PrismaSlaTicketWriteRepository — In
 
       const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
       expect(fila.vencido).toBe(true);
-    });
-  });
-
-  describe('PrismaSlaTicketWriteRepository.setSlaVenceAt()', () => {
-    it('[CRITICAL] setea sla_vence_at con una fecha', async () => {
-      const ticket = await crearTicket({
-        numero: `${PREFIX}0008`,
-        estadoId: estadoNuevoId,
-        slaVenceAt: null,
-      });
-      const venceAt = new Date('2026-08-10T00:00:00.000Z');
-
-      await writeRepo.setSlaVenceAt(ticket.id, venceAt);
-
-      const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
-      expect(fila.slaVenceAt?.toISOString()).toBe(venceAt.toISOString());
-    });
-
-    it('setea sla_vence_at = null (sin config activa)', async () => {
-      const ticket = await crearTicket({
-        numero: `${PREFIX}0009`,
-        estadoId: estadoNuevoId,
-        slaVenceAt: new Date(),
-      });
-
-      await writeRepo.setSlaVenceAt(ticket.id, null);
-
-      const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
-      expect(fila.slaVenceAt).toBeNull();
     });
   });
 });
