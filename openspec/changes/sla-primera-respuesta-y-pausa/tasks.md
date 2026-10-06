@@ -141,9 +141,9 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 - [x] 5.2 Test de integración de M3: las prioridades existentes quedan sin meta; el CHECK rechaza 0 y negativos. (`sla-primera-respuesta R2`)
 - [x] 5.3 Test unit de entidad, mapper, DTO y casos de uso de prioridad (crear y editar): 4 guarda 4 h, vacío guarda sin meta, 0 y negativo se rechazan en la API. (`sla-primera-respuesta R2`)
 - [x] 5.4 Implementar entidad, mapper, DTO (`catalogo.dto.ts`) y casos de uso de `POST/PATCH /catalogos/prioridades`, sin cambio de permisos. (`sla-primera-respuesta R2`)
-- [ ] 5.5 Test FE del formulario y de la lista de prioridades: campo "Primera respuesta (h)" con Zod que espeja el DTO (vacío = sin meta, > 0). (`sla-primera-respuesta R2`)
-- [ ] 5.6 Campo en el formulario y columna en la lista del frontend. (`sla-primera-respuesta R2`)
-- [ ] 5.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/catalogos`; frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (campo de prioridad) en commit y PR.
+- [x] 5.5 Test FE del formulario y de la lista de prioridades: campo "Primera respuesta (h)" con Zod que espeja el DTO (vacío = sin meta, > 0). (`sla-primera-respuesta R2`)
+- [x] 5.6 Campo en el formulario y columna en la lista del frontend. (`sla-primera-respuesta R2`)
+- [x] 5.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/catalogos`; frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (campo de prioridad) en commit y PR.
 
 ## WU-6 — M4, registro de la primera respuesta y meta en `AplicarSla` (~380 líneas)
 
