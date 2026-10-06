@@ -5,8 +5,8 @@
  * `tenant-seeder.adapter.integration.spec.ts`).
  *
  * Contrato verificado (R19, decisión #2025 — reemplaza la lista original de
- * `estados` de R19: 6 códigos finales, no 8; ampliado por Fase 3 ADR-5):
- * - Siembra `estados` (6: NUEVO, ASIGNADO, EN_PROCESO, RESUELTO, CERRADO,
+ * `estados` de R19: 7 códigos finales (6 + ESPERANDO_CLIENTE), no 8; ampliado por Fase 3 ADR-5):
+ * - Siembra `estados` (7: NUEVO, ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE, RESUELTO, CERRADO,
  *   CANCELADO), `prioridades` (4), `tipo_operacion` (5 de R19 —
  *   APROBACION/RECHAZO removidos en PR-1 de sdd/redisenio-modulo-compras),
  *   `tipos_ticket` base incl. MANTENIMIENTO y PREVENTIVO (4) — cada catálogo vía `createMany` con
@@ -37,7 +37,7 @@ const MASTER_URL = 'postgresql://soporte:soporte@localhost:5432/soporte_master';
 
 function makeFakeClient() {
   return {
-    estado: { createMany: vi.fn().mockResolvedValue({ count: 6 }) },
+    estado: { createMany: vi.fn().mockResolvedValue({ count: 7 }) },
     prioridad: {
       createMany: vi.fn().mockResolvedValue({ count: 4 }),
     },
@@ -54,7 +54,7 @@ function makeFakePool() {
 }
 
 describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
-  it('[CRITICAL] siembra los 6 estados de la decisión #2025 (NO los 8 originales de R19)', async () => {
+  it('[CRITICAL] siembra los 7 estados (los 6 de la decisión #2025 más ESPERANDO_CLIENTE; NO los 8 originales de R19)', async () => {
     const client = makeFakeClient();
     const pool = makeFakePool();
     const createClient = vi.fn().mockReturnValue({ client, pool });
@@ -67,6 +67,11 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
         expect.objectContaining({ codigo: 'NUEVO' }),
         expect.objectContaining({ codigo: 'ASIGNADO' }),
         expect.objectContaining({ codigo: 'EN_PROCESO' }),
+        expect.objectContaining({
+          codigo: 'ESPERANDO_CLIENTE',
+          nombre: 'Esperando al cliente',
+          orden: 35,
+        }),
         expect.objectContaining({ codigo: 'RESUELTO' }),
         expect.objectContaining({ codigo: 'CERRADO' }),
         expect.objectContaining({ codigo: 'CANCELADO' }),

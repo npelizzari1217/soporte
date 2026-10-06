@@ -180,10 +180,18 @@ export class PrismaTicketRepository implements ITicketRepository {
     const data = TicketMapper.toPersistence(ticket);
     // createdAt se incluye en el CREATE; se excluye del UPDATE para nunca
     // pisar el timestamp de creación existente en DB.
-    const { createdAt: _createdAt, ...updateData } = data;
+    // slaVenceAt y vencido también salen del UPDATE: la entidad nunca los muta y los escribe el
+    // módulo SLA; un save con lectura vieja no puede pisarlos (sla-reloj-activo R2).
+    const {
+      createdAt: _createdAt,
+      slaVenceAt: _slaVenceAt,
+      vencido: _vencido,
+      ...updateData
+    } = data;
     await this.client.ticket.upsert({
       where: { id: data.id },
-      create: data,
+      // Alta: el ticket nace "incorporado" al reloj, corriendo desde su creación (ADR-1).
+      create: { ...data, slaAcumuladoS: 0, slaCorreDesde: data.createdAt },
       update: updateData,
     });
   }

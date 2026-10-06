@@ -24,6 +24,7 @@ const ESTADO_LABEL: Record<TicketEstadoCodigo, string> = {
   NUEVO: "Nuevo",
   ASIGNADO: "Asignado",
   EN_PROCESO: "En proceso",
+  ESPERANDO_CLIENTE: "Esperando al cliente",
   RESUELTO: "Resuelto",
   CERRADO: "Cerrado",
   CANCELADO: "Cancelado",

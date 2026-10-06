@@ -803,6 +803,61 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - En el detalle del ticket hay un botón **"Descargar PDF"**, visible para cualquiera
     que pueda ver el ticket.
 
+- **Segunda etapa, punto 6 — SLA de primera respuesta y pausa del reloj**
+  (decidido el 2026-10-06, ciclo `sla-primera-respuesta-y-pausa`):
+  - Se agrega el estado **"Esperando al cliente"**. Se entra desde *En proceso* y se
+    sale a *En proceso*, *Resuelto* o *Cancelado*.
+  - Mientras el ticket espera al cliente, **el reloj de resolución se detiene**. Al
+    volver, el vencimiento se corre por las **horas hábiles** que estuvo en pausa, y
+    el barrido no marca vencido un ticket que está esperando.
+  - Si el **solicitante comenta** mientras el ticket espera, el ticket vuelve solo a
+    *En proceso*.
+  - La **primera respuesta** es el primer comentario público de alguien que no sea el
+    solicitante.
+  - Cada prioridad suma una meta opcional, **"Primera respuesta (h)"** (vacía = sin
+    meta), medida en horas hábiles con el mismo calendario del cliente. La primera
+    respuesta **no se pausa**.
+  - Si la primera respuesta vence, el ticket lo muestra con un badge y se manda un
+    mail al asignado y a los administradores, igual que el vencimiento de resolución.
+  - Los **tickets existentes no se recalculan**, con el mismo criterio que el SLA
+    hábil. Sí se completa desde el historial **cuándo** tuvieron su primera
+    respuesta, para las métricas, pero sin meta retroactiva.
+  - **Tickets existentes y reloj activo** (precisado el 2026-10-06, al proponer):
+    antes del cambio no existía el estado de espera, así que todo su tiempo sin
+    resolver fue activo. Los **abiertos** se incorporan al reloj la primera vez que
+    hace falta (al pasar a esperar o al repriorizar), con todo el tiempo desde su
+    creación como acumulado activo, y su vencimiento actual no se toca. Los **ya
+    resueltos o cerrados** cuentan en el cumplimiento con el criterio anterior
+    corregido: **fecha de cierre contra vencimiento**, en vez de la marca del barrido.
+  - El dashboard suma el **% de cumplimiento de primera respuesta** y el **tiempo
+    medio de primera respuesta**, junto al cumplimiento de resolución.
+  - El cumplimiento de resolución se mide por **tiempo activo** (precisado el
+    2026-10-06, al explorar; reemplaza la versión anterior de esta viñeta, que
+    comparaba la fecha de cierre con el vencimiento). El reloj solo corre mientras el
+    ticket está en *Nuevo*, *Asignado* o *En proceso*; se detiene en *Esperando al
+    cliente* y al pasar a *Resuelto*. **Cumplió si las horas hábiles activas
+    acumuladas hasta la resolución no superan la meta de la prioridad.** Una semana
+    esperando al cliente no cuenta, y un cierre administrativo tardío tampoco: deja de
+    importar que *Cerrado* pise la fecha de cierre. Ya no depende de la marca que deja
+    el barrido, así que desaparece el falso "a tiempo" de un ticket resuelto tarde
+    antes de que el barrido corra.
+  - La pausa **siempre descuenta**, aunque el ticket haya entrado a *Esperando al
+    cliente* con el SLA ya vencido (precisado el 2026-10-06).
+  - Si un ticket resuelto se **reabre con un salto correctivo**, el reloj sigue
+    sumando desde donde quedó, sin tiempo extra, y el cumplimiento se evalúa con la
+    última resolución (precisado el 2026-10-06). **Decisión pendiente**: si una
+    reapertura debe sumar tiempo extra a la meta o arrancar un reloj nuevo. Se decide
+    cuando haya casos reales; el modelo de reloj activo admite cualquiera de las dos
+    sin rehacerse.
+  - El **tiempo medio de primera respuesta** se mide en **horas hábiles** (precisado
+    el 2026-10-06).
+  - Al pasar a *Esperando al cliente* se **avisa por mail al solicitante**: el estado
+    existe para pedirle algo (precisado el 2026-10-06).
+  - El salto correctivo de ROOT o ADMINISTRADOR **no puede llevar a *Esperando al
+    cliente***: solo se entra desde *En proceso*. Cualquier salida del estado, también
+    por salto, reanuda el reloj (precisado el 2026-10-06).
+  - Los **preventivos** siguen fuera del SLA, como hoy.
+
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
 Odoo y de los proveedores regionales salen de agregadores y son indicativos. No se

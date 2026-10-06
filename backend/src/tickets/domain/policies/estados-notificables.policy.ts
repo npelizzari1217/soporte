@@ -9,7 +9,9 @@
  *
  * Ref spec: sdd/tickets-core/spec T13. Ref design: ADR-6. Tarea: T7.1.
  */
-const ESTADOS_NOTIFICABLES = new Set<string>(['RESUELTO', 'CERRADO']);
+// ESPERANDO_CLIENTE (sdd/sla-primera-respuesta-y-pausa, ADR-5): al entrar a la espera el solicitante
+// recibe un mail. Salir de la espera hacia EN_PROCESO no es notificable, así que no envía el de espera.
+const ESTADOS_NOTIFICABLES = new Set<string>(['RESUELTO', 'CERRADO', 'ESPERANDO_CLIENTE']);
 
 /**
  * @param codigo Código semántico del estado destino (ej. "RESUELTO").

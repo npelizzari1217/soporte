@@ -163,6 +163,24 @@ function validarSolicitante(
   }
 }
 
+/**
+ * Reloj de SLA por tiempo activo, de solo lectura (sdd/sla-primera-respuesta-y-pausa, ADR-1).
+ * Lo carga `toDomain`; la entidad nunca lo muta (lo escribe `sla/` con CAS). `acumuladoS = null`
+ * es la unica prueba de ticket previo todavia no incorporado.
+ */
+export interface RelojSlaSnapshot {
+  readonly acumuladoS: number | null;
+  readonly metaS: number | null;
+  readonly correDesde: Date | null;
+  readonly seqHasta: number;
+  readonly version: number;
+  readonly pendiente: boolean;
+  readonly cumplido: boolean | null;
+  /** Primera respuesta (ADR-6): lectura para el estado derivado. Ausente equivale a `null`. */
+  readonly primeraRespuestaAt?: Date | null;
+  readonly primeraRespuestaVenceAt?: Date | null;
+}
+
 export class TicketEntity extends BaseEntity<TicketProps> {
   /**
    * Cohorte de cálculo de SLA (ver {@link SlaRegla}). `undefined` en una
@@ -171,6 +189,9 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    * recién en `reconstitute()`, después del INSERT real.
    */
   private _slaRegla: SlaRegla | undefined;
+
+  /** Snapshot del reloj de SLA. `null` en una entidad recien `create()`-ada (aun sin persistir). */
+  private _relojSla: RelojSlaSnapshot | null = null;
 
   /**
    * Factory method para nuevas instancias de dominio.
@@ -208,9 +229,15 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     updatedAt: Date,
     deletedAt: Date | null,
     slaRegla: SlaRegla = 'HABIL',
+    relojSla: RelojSlaSnapshot | null = null,
   ): TicketEntity {
     const entity = new TicketEntity(props, id);
-    Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt, _slaRegla: slaRegla });
+    Object.assign(entity, {
+      _createdAt: createdAt,
+      _updatedAt: updatedAt,
+      _slaRegla: slaRegla,
+      _relojSla: relojSla,
+    });
     entity._deletedAt = deletedAt;
     return entity;
   }
@@ -285,6 +312,11 @@ export class TicketEntity extends BaseEntity<TicketProps> {
       );
     }
     return this._slaRegla;
+  }
+
+  /** Snapshot de solo lectura del reloj de SLA; `null` antes de persistir. */
+  get relojSla(): RelojSlaSnapshot | null {
+    return this._relojSla;
   }
 
   // ─── Comportamiento de dominio ─────────────────────────────────────────

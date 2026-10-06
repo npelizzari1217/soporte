@@ -4,7 +4,8 @@ import {
   toTiempoPromedioChartData,
   toCargaPorAgenteChartData,
   toDistribucionChartData,
-  toSlaPercentage,
+  formatHoras,
+  toPorcentaje,
 } from "./metricas-map";
 
 describe("toAbiertosCerradosChartData", () => {
@@ -58,12 +59,27 @@ describe("toDistribucionChartData", () => {
   });
 });
 
-describe("toSlaPercentage", () => {
+describe("toPorcentaje", () => {
   it("convierte la fracción 0..1 del backend a puntos porcentuales 0..100, redondeado", () => {
-    expect(toSlaPercentage({ cerradosConSla: 3, cerradosATiempo: 2, porcentaje: 2 / 3 })).toBe(67);
+    expect(toPorcentaje(2 / 3)).toBe(67);
   });
 
-  it("porcentaje=null (cerradosConSla=0, evita división por cero) → 0, NO NaN", () => {
-    expect(toSlaPercentage({ cerradosConSla: 0, cerradosATiempo: 0, porcentaje: null })).toBe(0);
+  it("0 es un valor real (0 %), distinto de sin datos", () => {
+    expect(toPorcentaje(0)).toBe(0);
+  });
+
+  it("null (sin datos) → null, NO 0 ni NaN", () => {
+    expect(toPorcentaje(null)).toBeNull();
+  });
+});
+
+describe("formatHoras", () => {
+  it("un decimal con coma y unidad", () => {
+    expect(formatHoras(1.25)).toBe("1,3 h");
+    expect(formatHoras(0)).toBe("0,0 h");
+  });
+
+  it("null → null", () => {
+    expect(formatHoras(null)).toBeNull();
   });
 });

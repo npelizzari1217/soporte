@@ -246,3 +246,149 @@ describe('CalcularSlaHabilVenceService', () => {
     ).toThrow(/horas/i);
   });
 });
+
+/**
+ * WU-2 (sdd/sla-primera-respuesta-y-pausa, ADR-2): `msHabilesEntre` y
+ * `sumarMsHabiles` sobre el mismo núcleo que `venceAt`. Calendario L-V
+ * 09:00–18:00 local (UTC-3): 09:00 local = 12:00Z, 18:00 local = 21:00Z.
+ */
+describe('CalcularSlaHabilVenceService — msHabilesEntre / sumarMsHabiles', () => {
+  const service = new CalcularSlaHabilVenceService();
+  const HORA = 3_600_000;
+  const entre = (desde: string, hasta: string, feriados: readonly string[] = SIN_FERIADOS) =>
+    service.msHabilesEntre(
+      new Date(desde),
+      new Date(hasta),
+      CALENDARIO_L_A_V_9_A_18,
+      new Set(feriados),
+    );
+  const sumar = (desde: string, ms: number, feriados: readonly string[] = SIN_FERIADOS) =>
+    service
+      .sumarMsHabiles(new Date(desde), ms, CALENDARIO_L_A_V_9_A_18, new Set(feriados))
+      .toISOString();
+
+  describe('msHabilesEntre()', () => {
+    it('dentro de una ventana mide el tramo (miércoles 10:00 a 12:30 = 2,5 h)', () => {
+      expect(entre('2026-08-05T13:00:00.000Z', '2026-08-05T15:30:00.000Z')).toBe(2.5 * HORA);
+    });
+
+    it('la apertura se incluye: desde la apertura exacta cuenta desde 09:00', () => {
+      expect(entre('2026-08-05T12:00:00.000Z', '2026-08-05T13:00:00.000Z')).toBe(HORA);
+    });
+
+    it('el cierre es exclusivo: un rango que empieza en el cierre (18:00) suma 0', () => {
+      expect(entre('2026-08-05T21:00:00.000Z', '2026-08-05T23:00:00.000Z')).toBe(0);
+    });
+
+    it('un rango que termina en el cierre suma hasta el cierre', () => {
+      expect(entre('2026-08-05T20:00:00.000Z', '2026-08-05T21:00:00.000Z')).toBe(HORA);
+    });
+
+    it('cruza el fin de semana: viernes 17:00 a lunes 10:00 = 1 h + 1 h', () => {
+      // Viernes 17:00 local = 20:00Z; lunes 10:00 local = 13:00Z.
+      expect(entre('2026-08-07T20:00:00.000Z', '2026-08-10T13:00:00.000Z')).toBe(2 * HORA);
+    });
+
+    it('un feriado entre medio no suma: lunes feriado, viernes 17:00 a martes 10:00 = 1 h + 1 h', () => {
+      expect(entre('2026-08-07T20:00:00.000Z', '2026-08-11T13:00:00.000Z', ['2026-08-10'])).toBe(
+        2 * HORA,
+      );
+    });
+
+    it('un día cerrado (sábado) no suma', () => {
+      expect(entre('2026-08-08T13:00:00.000Z', '2026-08-08T20:00:00.000Z')).toBe(0);
+    });
+
+    it('hasta <= desde devuelve 0', () => {
+      expect(entre('2026-08-05T15:00:00.000Z', '2026-08-05T15:00:00.000Z')).toBe(0);
+      expect(entre('2026-08-05T15:00:00.000Z', '2026-08-05T13:00:00.000Z')).toBe(0);
+    });
+
+    it('un tramo sin ventana abierta (calendario cerrado) suma 0 sin lanzar', () => {
+      const ms = service.msHabilesEntre(
+        new Date('2026-08-05T13:00:00.000Z'),
+        new Date('2026-09-05T13:00:00.000Z'),
+        CALENDARIO_TOTALMENTE_CERRADO,
+        new Set(),
+      );
+
+      expect(ms).toBe(0);
+    });
+
+    it('lanza si el rango excede LIMITE_DIAS_RANGO = 3_700 días, y acepta el límite exacto', () => {
+      const desde = new Date('2026-08-05T13:00:00.000Z');
+      const enElLimite = new Date(desde.getTime() + 3_700 * 86_400_000);
+      const pasado = new Date(enElLimite.getTime() + 1);
+
+      expect(() =>
+        service.msHabilesEntre(desde, enElLimite, CALENDARIO_L_A_V_9_A_18, new Set()),
+      ).not.toThrow();
+      expect(() =>
+        service.msHabilesEntre(desde, pasado, CALENDARIO_L_A_V_9_A_18, new Set()),
+      ).toThrow(/3700|3\.700/);
+    });
+  });
+
+  describe('sumarMsHabiles()', () => {
+    it('ms = 0 devuelve desde sin alinearlo a una ventana', () => {
+      // Sábado 12:00 local: día cerrado.
+      expect(sumar('2026-08-08T15:00:00.000Z', 0)).toBe('2026-08-08T15:00:00.000Z');
+    });
+
+    it('cruza el fin de semana: viernes 17:00 + 2 h cae el lunes 10:00', () => {
+      expect(sumar('2026-08-07T20:00:00.000Z', 2 * HORA)).toBe('2026-08-10T13:00:00.000Z');
+    });
+
+    it('cruza un feriado: lunes feriado, viernes 17:00 + 2 h cae el martes 10:00', () => {
+      expect(sumar('2026-08-07T20:00:00.000Z', 2 * HORA, ['2026-08-10'])).toBe(
+        '2026-08-11T13:00:00.000Z',
+      );
+    });
+
+    it('viernes 17:30 con cierre 18:00 y meta 2 h vence el lunes 1 h 30 min después de la apertura', () => {
+      // Viernes 17:30 local = 20:30Z; 30 min hoy, 1 h 30 min el lunes: 09:00 + 1:30 = 10:30 local = 13:30Z.
+      expect(sumar('2026-08-07T20:30:00.000Z', 2 * HORA)).toBe('2026-08-10T13:30:00.000Z');
+    });
+
+    it('lanza si ms es negativo o no finito', () => {
+      const desde = new Date('2026-08-05T13:00:00.000Z');
+
+      expect(() => service.sumarMsHabiles(desde, -1, CALENDARIO_L_A_V_9_A_18, new Set())).toThrow(
+        /ms/,
+      );
+      expect(() =>
+        service.sumarMsHabiles(desde, Number.NaN, CALENDARIO_L_A_V_9_A_18, new Set()),
+      ).toThrow(/ms/);
+    });
+
+    it('conserva LIMITE_DIAS_BUSQUEDA = 400: 401 ventanas hábiles de 9 h lanzan, 400 no', () => {
+      const desde = new Date('2026-08-05T12:00:00.000Z'); // miércoles 09:00 local
+      const calendarioTodosLosDias: CalendarioLaboralSemanal = [
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+        { aperturaMinuto: 540, cierreMinuto: 1080 },
+      ];
+
+      expect(() =>
+        service.sumarMsHabiles(desde, 400 * 9 * HORA, calendarioTodosLosDias, new Set()),
+      ).not.toThrow();
+      expect(() =>
+        service.sumarMsHabiles(desde, 402 * 9 * HORA, calendarioTodosLosDias, new Set()),
+      ).toThrow(/ventanas hábiles/);
+    });
+  });
+
+  describe('venceAt() delega en sumarMsHabiles()', () => {
+    it('venceAt(creadoEn, h) equivale a sumarMsHabiles(creadoEn, h * 3_600_000)', () => {
+      const creadoEn = new Date('2026-08-07T20:30:00.000Z');
+
+      expect(service.venceAt(creadoEn, 2, CALENDARIO_L_A_V_9_A_18, new Set()).toISOString()).toBe(
+        sumar(creadoEn.toISOString(), 2 * HORA),
+      );
+    });
+  });
+});

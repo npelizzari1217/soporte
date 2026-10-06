@@ -38,5 +38,12 @@ export const prioridadSchema = z.object({
     .optional()
     .or(z.literal("")),
   slaActivo: z.boolean(),
+  // Meta de primera respuesta (horas hábiles): espejo de `slaPrimeraRespuestaHoras`
+  // del DTO — "" = sin meta (se envía `null`), si no entero > 0.
+  slaPrimeraRespuestaHoras: z
+    .string()
+    .regex(/^[1-9]\d*$/, "La primera respuesta debe ser un número entero mayor a 0")
+    .optional()
+    .or(z.literal("")),
 });
 export type PrioridadFormValues = z.infer<typeof prioridadSchema>;

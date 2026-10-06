@@ -41,6 +41,29 @@ describe('PrioridadEntity', () => {
     });
   });
 
+  describe('slaPrimeraRespuestaHoras', () => {
+    it('default null (sin meta) y acepta un valor explícito, sin depender de slaActivo', () => {
+      expect(PrioridadEntity.create(baseProps()).slaPrimeraRespuestaHoras).toBeNull();
+      const prioridad = PrioridadEntity.create({
+        ...baseProps(),
+        slaActivo: false,
+        slaPrimeraRespuestaHoras: 4,
+      });
+      expect(prioridad.slaPrimeraRespuestaHoras).toBe(4);
+    });
+
+    it('actualizar(): undefined no la toca, un número la fija y null la limpia', () => {
+      const prioridad = PrioridadEntity.create({ ...baseProps(), slaPrimeraRespuestaHoras: 4 });
+
+      prioridad.actualizar({ nombre: 'Otra' });
+      expect(prioridad.slaPrimeraRespuestaHoras).toBe(4);
+      prioridad.actualizar({ slaPrimeraRespuestaHoras: 2 });
+      expect(prioridad.slaPrimeraRespuestaHoras).toBe(2);
+      prioridad.actualizar({ slaPrimeraRespuestaHoras: null });
+      expect(prioridad.slaPrimeraRespuestaHoras).toBeNull();
+    });
+  });
+
   describe('reconstitute()', () => {
     it('reconstruye una entidad desde persistencia preservando id y timestamps exactos', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');

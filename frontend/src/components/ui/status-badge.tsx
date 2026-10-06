@@ -5,12 +5,13 @@ import { Badge, type BadgeProps } from "./badge";
  * ASIGNADO → EN_PROCESO → RESUELTO → CERRADO, + CANCELADO, sin reapertura)
  * to a token-driven Badge variant + Spanish label.
  */
-export type TicketEstado = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "RESUELTO" | "CERRADO" | "CANCELADO";
+export type TicketEstado = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "ESPERANDO_CLIENTE" | "RESUELTO" | "CERRADO" | "CANCELADO";
 
 const ESTADO_CONFIG: Record<TicketEstado, { label: string; variant: BadgeProps["variant"] }> = {
   NUEVO: { label: "Nuevo", variant: "default" },
   ASIGNADO: { label: "Asignado", variant: "secondary" },
   EN_PROCESO: { label: "En proceso", variant: "warning" },
+  ESPERANDO_CLIENTE: { label: "Esperando al cliente", variant: "secondary" },
   RESUELTO: { label: "Resuelto", variant: "success" },
   CERRADO: { label: "Cerrado", variant: "outline" },
   CANCELADO: { label: "Cancelado", variant: "destructive" },

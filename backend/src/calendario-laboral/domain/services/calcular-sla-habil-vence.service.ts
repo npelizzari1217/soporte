@@ -87,6 +87,16 @@ export type FeriadosLaborales = ReadonlySet<string>;
  */
 const LIMITE_DIAS_BUSQUEDA = 400;
 
+/**
+ * Cota del rango que `msHabilesEntre` acepta recorrer, en días (~10 años).
+ * Un rango mayor lanza: ningún reloj SLA ni métrica real lo necesita, y la cota
+ * evita recorrer sin fin un calendario sin ventanas.
+ */
+const LIMITE_DIAS_RANGO = 3_700;
+
+/** Milisegundos por día calendario (Argentina no tiene horario de verano). */
+const MS_POR_DIA = 86_400_000;
+
 /** Milisegundos por minuto — evita el número mágico repetido en los cálculos. */
 const MS_POR_MINUTO = 60_000;
 
@@ -124,8 +134,32 @@ export class CalcularSlaHabilVenceService {
       throw new Error(`CalcularSlaHabilVenceService: horas debe ser > 0, se recibió: ${horas}.`);
     }
 
-    let restanteMs = horas * 60 * 60 * 1000;
-    let cursor = this.buscarInicioVentanaAbierta(creadoEn, calendario, feriados);
+    return this.sumarMsHabiles(creadoEn, horas * 3_600_000, calendario, feriados);
+  }
+
+  /**
+   * Suma `ms` milisegundos HÁBILES a `desde`: avanza por las ventanas
+   * `[apertura, cierre)` abiertas, saltando días cerrados y feriados. Con
+   * `ms = 0` devuelve `desde` sin alinearlo a una ventana.
+   *
+   * @throws Error si `ms` no es un número finito >= 0.
+   * @throws Error si la búsqueda excede {@link LIMITE_DIAS_BUSQUEDA}.
+   */
+  sumarMsHabiles(
+    desde: Date,
+    ms: number,
+    calendario: CalendarioLaboralSemanal,
+    feriados: FeriadosLaborales,
+  ): Date {
+    if (!Number.isFinite(ms) || ms < 0) {
+      throw new Error(`CalcularSlaHabilVenceService: ms debe ser >= 0, se recibió: ${ms}.`);
+    }
+    if (ms === 0) {
+      return desde;
+    }
+
+    let restanteMs = ms;
+    let cursor = this.buscarInicioVentanaAbierta(desde, calendario, feriados);
 
     for (let cruces = 0; cruces <= LIMITE_DIAS_BUSQUEDA; cruces++) {
       const finVentana = this.finDeVentanaActual(cursor, calendario);
@@ -146,15 +180,72 @@ export class CalcularSlaHabilVenceService {
   }
 
   /**
+   * Milisegundos HÁBILES transcurridos en `[desde, hasta)`. Suma
+   * `min(cierre, hasta) - cursor` por cada ventana abierta que el rango toca.
+   * Un rango sin ninguna ventana abierta suma 0 sin lanzar; `hasta <= desde`
+   * devuelve 0.
+   *
+   * @throws Error si el rango excede {@link LIMITE_DIAS_RANGO} días.
+   */
+  msHabilesEntre(
+    desde: Date,
+    hasta: Date,
+    calendario: CalendarioLaboralSemanal,
+    feriados: FeriadosLaborales,
+  ): number {
+    if (hasta.getTime() <= desde.getTime()) {
+      return 0;
+    }
+    if (hasta.getTime() - desde.getTime() > LIMITE_DIAS_RANGO * MS_POR_DIA) {
+      throw new Error(
+        `CalcularSlaHabilVenceService: el rango excede ${LIMITE_DIAS_RANGO} días ` +
+          `(${desde.toISOString()} a ${hasta.toISOString()}).`,
+      );
+    }
+
+    let totalMs = 0;
+    let cursor = desde;
+    for (let cruces = 0; cruces <= LIMITE_DIAS_RANGO; cruces++) {
+      const inicio = this.buscarInicioVentanaAbierta(cursor, calendario, feriados, hasta);
+      if (inicio === null || inicio.getTime() >= hasta.getTime()) {
+        return totalMs;
+      }
+      const finVentana = this.finDeVentanaActual(inicio, calendario);
+      totalMs += Math.min(finVentana.getTime(), hasta.getTime()) - inicio.getTime();
+      cursor = finVentana;
+    }
+
+    throw new Error(
+      `CalcularSlaHabilVenceService: se excedieron ${LIMITE_DIAS_RANGO} ventanas midiendo el rango.`,
+    );
+  }
+
+  /**
    * Busca, a partir de `desde`, el instante en que arranca (o ya está
    * corriendo, si `desde` cae dentro de una ventana abierta) el cómputo de
    * horas hábiles.
+   *
+   * Con `tope`, la búsqueda se acota a ese instante y devuelve `null` si no
+   * hay ninguna ventana abierta que arranque antes: el tramo no suma tiempo
+   * en lugar de lanzar. Sin `tope`, lanza al agotar {@link LIMITE_DIAS_BUSQUEDA}.
    */
   private buscarInicioVentanaAbierta(
     desde: Date,
     calendario: CalendarioLaboralSemanal,
     feriados: FeriadosLaborales,
-  ): Date {
+  ): Date;
+  private buscarInicioVentanaAbierta(
+    desde: Date,
+    calendario: CalendarioLaboralSemanal,
+    feriados: FeriadosLaborales,
+    tope: Date,
+  ): Date | null;
+  private buscarInicioVentanaAbierta(
+    desde: Date,
+    calendario: CalendarioLaboralSemanal,
+    feriados: FeriadosLaborales,
+    tope?: Date,
+  ): Date | null {
     const base = this.diaLocalDe(desde);
     const msDelDia = this.msDelDiaLocal(desde);
 
@@ -162,6 +253,9 @@ export class CalcularSlaHabilVenceService {
       const candidato = this.sumarDias(base, offset);
       const diaSemana = this.diaSemanaDe(candidato);
       const claveDia = this.claveDiaDe(candidato);
+      if (tope && this.medianocheLocal(candidato).getTime() >= tope.getTime()) {
+        return null; // El día ya empieza pasado el tope: no hay ventana útil.
+      }
       const { aperturaMinuto, cierreMinuto } = calendario[diaSemana];
 
       // Se comparan los campos directamente, no a través de una variable
@@ -185,6 +279,10 @@ export class CalcularSlaHabilVenceService {
       }
 
       return new Date(this.medianocheLocal(candidato).getTime() + aperturaMs);
+    }
+
+    if (tope) {
+      return null;
     }
 
     throw new Error(

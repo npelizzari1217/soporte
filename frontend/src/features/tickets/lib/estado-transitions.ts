@@ -8,7 +8,8 @@ import type { TicketEstadoCodigo } from "../types";
 const VALID_TRANSITIONS: Record<string, TicketEstadoCodigo[]> = {
   NUEVO: ["ASIGNADO", "CANCELADO"],
   ASIGNADO: ["EN_PROCESO", "CANCELADO"],
-  EN_PROCESO: ["RESUELTO", "CANCELADO"],
+  EN_PROCESO: ["ESPERANDO_CLIENTE", "RESUELTO", "CANCELADO"],
+  ESPERANDO_CLIENTE: ["EN_PROCESO", "RESUELTO", "CANCELADO"],
   RESUELTO: ["CERRADO"],
 };
 
@@ -61,7 +62,9 @@ const ESTADOS_PRE_PROCESO: TicketEstadoCodigo[] = ["NUEVO", "ASIGNADO"];
 /**
  * Estados NO terminales — destinos del "salto correctivo" de ROOT/ADMINISTRADOR
  * (volver atrás/corregir/reabrir). Mirror del backend: el salto NUNCA lleva a un
- * terminal (CERRADO/CANCELADO).
+ * terminal (CERRADO/CANCELADO) ni a ESPERANDO_CLIENTE (`ESTADOS_NO_DESTINO_CORRECTIVO`:
+ * a la espera solo se entra por el arco normal desde EN_PROCESO). Sí puede SACAR un
+ * ticket de ESPERANDO_CLIENTE.
  */
 const ESTADOS_CORRECTIVOS: TicketEstadoCodigo[] = ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO"];
 

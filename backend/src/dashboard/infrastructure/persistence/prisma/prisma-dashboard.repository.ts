@@ -28,9 +28,15 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '.prisma/tenant';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import { TIPO_CODIGO_PREVENTIVO } from '../../../../tickets/domain/tipos-ticket.constants';
+import { CalcularSlaHabilVenceService } from '../../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+import { ICalendarioLaboralSemanalRepository } from '../../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
+import { IFeriadosLaboralesRepository } from '../../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import { promedioHorasHabiles } from '../../../domain/services/promedio-horas-habiles';
 import {
   CargaAgente,
   ConteoAbiertosCerrados,
+  CumplimientoPrimeraRespuestaCrudo,
   CumplimientoSlaCrudo,
   DistribucionPorPrioridad,
   DistribucionPorTipo,
@@ -42,7 +48,13 @@ const MS_POR_HORA = 1000 * 60 * 60;
 
 @Injectable()
 export class PrismaDashboardRepository implements IDashboardRepository {
-  constructor(private readonly tenantContext: TenantContext) {}
+  private readonly calculo = new CalcularSlaHabilVenceService();
+
+  constructor(
+    private readonly tenantContext: TenantContext,
+    private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
+    private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
+  ) {}
 
   private get client(): InstanceType<typeof TenantPrismaClient> {
     return this.tenantContext.getClient() as InstanceType<typeof TenantPrismaClient>;
@@ -98,19 +110,103 @@ export class PrismaDashboardRepository implements IDashboardRepository {
     }));
   }
 
+  /**
+   * Los preventivos no entran a las métricas de SLA (`dashboard-metricas-sla` R4). Se filtra por el
+   * tipo, no por la meta: un preventivo puede tener comentarios públicos de un técnico.
+   */
+  private readonly sinPreventivos: Prisma.TicketWhereInput = {
+    tipo: { codigo: { not: TIPO_CODIGO_PREVENTIVO } },
+  };
+
+  /**
+   * Cumplimiento de resolución por tiempo activo (`dashboard-metricas-sla` R1, ADR-7). Cuatro `count`
+   * en paralelo con field references de Prisma 7 (sin `$queryRaw`):
+   * - incorporados (`sla_acumulado_s` no nulo): cuenta el cumplimiento fijado en la resolución. Un
+   *   reabierto tiene `fechaCierre` y `sla_cumplido` nulos mientras su reloj corre: queda afuera.
+   * - previos (`sla_acumulado_s` nulo, nunca incorporados): `fechaCierre <= slaVenceAt`.
+   * Nunca lee `vencido`, que es la marca del barrido.
+   */
   async cumplimientoSla(filtro: MetricaFiltro): Promise<CumplimientoSlaCrudo> {
-    const whereCerradosConSla: Prisma.TicketWhereInput = {
+    const base: Prisma.TicketWhereInput = {
       ...this.buildWhere(filtro),
+      ...this.sinPreventivos,
       fechaCierre: { not: null },
+    };
+    const incorporados: Prisma.TicketWhereInput = {
+      ...base,
+      slaAcumuladoS: { not: null },
+      slaCumplido: { not: null },
+    };
+    const previos: Prisma.TicketWhereInput = {
+      ...base,
+      slaAcumuladoS: null,
       slaVenceAt: { not: null },
     };
 
-    const [cerradosConSla, cerradosATiempo] = await Promise.all([
-      this.client.ticket.count({ where: whereCerradosConSla }),
-      this.client.ticket.count({ where: { ...whereCerradosConSla, vencido: false } }),
-    ]);
+    const [incorporadosTotal, incorporadosATiempo, previosTotal, previosATiempo] =
+      await Promise.all([
+        this.client.ticket.count({ where: incorporados }),
+        this.client.ticket.count({ where: { ...incorporados, slaCumplido: true } }),
+        this.client.ticket.count({ where: previos }),
+        this.client.ticket.count({
+          where: { ...previos, fechaCierre: { lte: this.client.ticket.fields.slaVenceAt } },
+        }),
+      ]);
 
-    return { cerradosConSla, cerradosATiempo };
+    return {
+      cerradosConSla: incorporadosTotal + previosTotal,
+      cerradosATiempo: incorporadosATiempo + previosATiempo,
+    };
+  }
+
+  /**
+   * Universo: tickets con meta que ya respondieron o ya vencieron. Cumplido si la respuesta fue en o
+   * antes del vencimiento. Los rellenados sin meta no entran acá (sí en el tiempo medio).
+   */
+  async cumplimientoPrimeraRespuesta(
+    filtro: MetricaFiltro,
+  ): Promise<CumplimientoPrimeraRespuestaCrudo> {
+    const conMeta: Prisma.TicketWhereInput = {
+      ...this.buildWhere(filtro),
+      ...this.sinPreventivos,
+      primeraRespuestaVenceAt: { not: null },
+      OR: [{ primeraRespuestaAt: { not: null } }, { primeraRespuestaVenceAt: { lt: new Date() } }],
+    };
+    const [total, aTiempo] = await Promise.all([
+      this.client.ticket.count({ where: conMeta }),
+      this.client.ticket.count({
+        where: {
+          ...conMeta,
+          primeraRespuestaAt: { lte: this.client.ticket.fields.primeraRespuestaVenceAt },
+        },
+      }),
+    ]);
+    return { conMeta: total, aTiempo };
+  }
+
+  async tiempoPromedioPrimeraRespuestaHoras(filtro: MetricaFiltro): Promise<number | null> {
+    const filas = await this.client.ticket.findMany({
+      where: {
+        ...this.buildWhere(filtro),
+        ...this.sinPreventivos,
+        primeraRespuestaAt: { not: null },
+      },
+      select: { createdAt: true, primeraRespuestaAt: true },
+    });
+    if (filas.length === 0) return null;
+
+    // Calendario y feriados una sola vez por consulta, no por fila.
+    const [calendario, feriados] = await Promise.all([
+      this.calendarioRepo.obtener(),
+      this.feriadosRepo.obtener(),
+    ]);
+    return promedioHorasHabiles(
+      // `primeraRespuestaAt` no es null acá (filtrado en el where).
+      filas.map((f) => ({ desde: f.createdAt, hasta: f.primeraRespuestaAt! })),
+      this.calculo,
+      calendario,
+      feriados,
+    );
   }
 
   async distribucionPorTipo(filtro: MetricaFiltro): Promise<DistribucionPorTipo[]> {

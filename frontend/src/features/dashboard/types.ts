@@ -23,6 +23,15 @@ export interface MetricasDashboard {
     /** Fracción `0..1`; `null` si `cerradosConSla=0`. */
     porcentaje: number | null;
   };
+  /** `aTiempo / conMeta`; `porcentaje` es `null` si `conMeta=0`. */
+  cumplimientoPrimeraRespuesta: {
+    conMeta: number;
+    aTiempo: number;
+    /** Fracción `0..1`; `null` sin datos. */
+    porcentaje: number | null;
+  };
+  /** Horas HÁBILES entre la creación y la primera respuesta; `null` sin datos. */
+  tiempoPromedioPrimeraRespuestaHoras: number | null;
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
   /**

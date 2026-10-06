@@ -23,6 +23,7 @@ export class PrioridadMapper {
         activo: row.activo,
         slaHoras: row.slaHoras ?? null,
         slaActivo: row.slaActivo,
+        slaPrimeraRespuestaHoras: row.slaPrimeraRespuestaHoras ?? null,
       },
       row.id,
       row.createdAt,
@@ -47,6 +48,7 @@ export class PrioridadMapper {
       activo: entity.activo,
       slaHoras: entity.slaHoras,
       slaActivo: entity.slaActivo,
+      slaPrimeraRespuestaHoras: entity.slaPrimeraRespuestaHoras,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

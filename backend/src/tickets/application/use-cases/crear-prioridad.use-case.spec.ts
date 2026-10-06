@@ -75,6 +75,28 @@ describe('CrearPrioridadUseCase', () => {
     expect(result.getValue().slaActivo).toBe(false);
   });
 
+  it('slaPrimeraRespuestaHoras 4 guarda 4 h; omitido o null guarda sin meta', async () => {
+    const c = makeCollaborators();
+
+    const con = await c.useCase.execute({
+      codigo: 'URGENTE',
+      nombre: 'Urgente',
+      orden: 50,
+      slaPrimeraRespuestaHoras: 4,
+    });
+    const sin = await c.useCase.execute({ codigo: 'BAJA2', nombre: 'Baja 2', orden: 60 });
+    const nula = await c.useCase.execute({
+      codigo: 'BAJA3',
+      nombre: 'Baja 3',
+      orden: 70,
+      slaPrimeraRespuestaHoras: null,
+    });
+
+    expect(con.getValue().slaPrimeraRespuestaHoras).toBe(4);
+    expect(sin.getValue().slaPrimeraRespuestaHoras).toBeNull();
+    expect(nula.getValue().slaPrimeraRespuestaHoras).toBeNull();
+  });
+
   it('codigo ya existente (activa o soft-deleted) → PrioridadCodigoDuplicadaError (422), sin persistir', async () => {
     const existente = PrioridadEntity.create({
       codigo: 'ALTA',

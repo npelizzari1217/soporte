@@ -59,6 +59,24 @@ export function templateCambioEstado(
 }
 
 /**
+ * templateEsperandoCliente — aviso al solicitante de que el ticket quedó a la espera de su
+ * respuesta (`ticket-esperando-cliente` R4). Sin link para el solicitante externo.
+ */
+export function templateEsperandoCliente(datos: DatosTicketBase): PlantillaEmail {
+  const subject = `Ticket ${datos.numero}: necesitamos tu respuesta`;
+  const text =
+    `El ticket ${datos.numero} - ${datos.titulo} quedó a la espera de tu respuesta. ` +
+    `Cuando comentes, retomamos la atención.` +
+    textoLink(datos);
+  const html =
+    `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
+    `quedó a la espera de tu respuesta. Cuando comentes, retomamos la atención.</p>` +
+    htmlLink(datos);
+
+  return { subject, text, html };
+}
+
+/**
  * templateComentarioPublico — plantilla de `ticket.comentado` (comentario
  * público, N3).
  *
@@ -89,6 +107,24 @@ export function templateSlaVencido(datos: DatosTicketBase): PlantillaEmail {
   const html =
     `<p>El SLA del ticket <strong>${escaparHtml(datos.numero)}</strong> - ` +
     `${escaparHtml(datos.titulo)} venció.</p>` +
+    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
+
+  return { subject, text, html };
+}
+
+/**
+ * templatePrimeraRespuestaVencida — aviso al asignado y a los administradores de que un ticket sigue
+ * sin primera respuesta pasada su meta (`sla-primera-respuesta` R4).
+ */
+export function templatePrimeraRespuestaVencida(datos: DatosTicketBase): PlantillaEmail {
+  const subject = `Primera respuesta vencida — Ticket ${datos.numero}`;
+  const link = linkTicket(datos);
+  const text =
+    `El ticket ${datos.numero} - ${datos.titulo} sigue sin primera respuesta y venció la meta.\n\n` +
+    `Ver ticket: ${link}`;
+  const html =
+    `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
+    `sigue sin primera respuesta y venció la meta.</p>` +
     `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
 
   return { subject, text, html };

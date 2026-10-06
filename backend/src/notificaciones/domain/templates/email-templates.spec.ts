@@ -8,7 +8,9 @@
 import {
   templateCambioEstado,
   templateComentarioPublico,
+  templateEsperandoCliente,
   templateSlaVencido,
+  templatePrimeraRespuestaVencida,
   templatePreventivoGenerado,
 } from './email-templates';
 
@@ -44,7 +46,15 @@ describe.each([
     'templateComentarioPublico',
     () => templateComentarioPublico({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
   ],
+  [
+    'templateEsperandoCliente',
+    () => templateEsperandoCliente({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
+  ],
   ['templateSlaVencido', () => templateSlaVencido({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP })],
+  [
+    'templatePrimeraRespuestaVencida',
+    () => templatePrimeraRespuestaVencida({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
+  ],
   [
     'templatePreventivoGenerado',
     () => templatePreventivoGenerado({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
@@ -113,6 +123,18 @@ describe('templateComentarioPublico', () => {
   });
 });
 
+describe('templateEsperandoCliente', () => {
+  it('[R4] incluye numero, titulo, el pedido de respuesta y el link del ticket', () => {
+    const { subject, text, html } = templateEsperandoCliente(DATOS_BASE);
+
+    expect(subject).toContain('SOP-2026-00042');
+    expect(text).toContain('La impresora no imprime');
+    expect(text).toContain('a la espera de tu respuesta');
+    expect(text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+    expect(html).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+  });
+});
+
 describe('templateSlaVencido', () => {
   it('incluye numero, titulo y el link del ticket', () => {
     const msg = templateSlaVencido(DATOS_BASE);
@@ -150,6 +172,7 @@ describe('plantillas para un solicitante externo (sinLink)', () => {
         }),
     ],
     ['templateComentarioPublico', () => templateComentarioPublico(datos)],
+    ['templateEsperandoCliente', () => templateEsperandoCliente(datos)],
   ])('%s no lleva link a /tickets/:id y sigue escapando el titulo', (_nombre, render) => {
     const { text, html } = render();
 
@@ -162,5 +185,16 @@ describe('plantillas para un solicitante externo (sinLink)', () => {
 
   it('sin sinLink, el link se conserva (usuario registrado)', () => {
     expect(templateComentarioPublico(DATOS_BASE).html).toContain('/tickets/ticket-abc');
+  });
+});
+
+describe('templatePrimeraRespuestaVencida', () => {
+  it('incluye numero, titulo y el link del ticket', () => {
+    const { subject, text, html } = templatePrimeraRespuestaVencida(DATOS_BASE);
+
+    expect(subject).toBe('Primera respuesta vencida — Ticket SOP-2026-00042');
+    expect(text).toContain('sigue sin primera respuesta');
+    expect(text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+    expect(html).toContain('href="https://soporte.miempresa.com/tickets/ticket-abc"');
   });
 });

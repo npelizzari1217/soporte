@@ -3,7 +3,7 @@
  *
  * Diseñado para ser extensible: cada implementación específica por tipo de
  * ticket puede ignorar los campos que no utiliza. `BaseTicketStateMachine`
- * no consume ningún campo del contexto (grafo fijo de 6 estados, ADR-3).
+ * no consume ningún campo del contexto (grafo fijo de 7 estados, ADR-3).
  *
  * Extensibilidad futura (Fases 4/5): máquinas específicas por tipo
  * (COMPRAS/EDILICIA) registradas vía `TicketStateMachineFactory.register`
@@ -20,7 +20,7 @@ export interface StateMachineContext {
  * Puerto de la máquina de estados de tickets.
  *
  * Implementaciones concretas (Strategy pattern):
- * - `BaseTicketStateMachine`: grafo base de 6 estados (NUEVO→ASIGNADO→
+ * - `BaseTicketStateMachine`: grafo base de 7 estados (NUEVO→ASIGNADO→
  *   EN_PROCESO→RESUELTO→CERRADO + CANCELADO), común al fallback y a
  *   cualquier tipo sin máquina específica registrada.
  * - Máquinas específicas por tipo (Fases 4/5) se registran en

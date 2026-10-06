@@ -116,4 +116,19 @@ describe('EditarPrioridadUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().slaHoras).toBeNull();
   });
+
+  it('slaPrimeraRespuestaHoras: fija 4 h, undefined la conserva y null la limpia', async () => {
+    const prioridad = make('ALTA', 'id-1');
+    const c = makeCollaborators(prioridad);
+
+    await c.useCase.execute({ id: 'id-1', slaPrimeraRespuestaHoras: 4 });
+    expect(prioridad.slaPrimeraRespuestaHoras).toBe(4);
+
+    await c.useCase.execute({ id: 'id-1', nombre: 'Alta 2' });
+    expect(prioridad.slaPrimeraRespuestaHoras).toBe(4);
+
+    await c.useCase.execute({ id: 'id-1', slaPrimeraRespuestaHoras: null });
+    expect(prioridad.slaPrimeraRespuestaHoras).toBeNull();
+    expect(c.prioridadRepo.save).toHaveBeenCalledTimes(3);
+  });
 });

@@ -41,6 +41,8 @@ describe('DashboardController (D5)', () => {
     tiempoPromedioResolucionHoras: 12.5,
     cargaPorAgente: [{ asignadoId: 'agente-1', abiertos: 2 }],
     cumplimientoSla: { cerradosConSla: 4, cerradosATiempo: 3, porcentaje: 0.75 },
+    cumplimientoPrimeraRespuesta: { conMeta: 4, aTiempo: 2, porcentaje: 0.5 },
+    tiempoPromedioPrimeraRespuestaHoras: 1.25,
     distribucionPorTipo: [{ tipoId: 'tipo-1', total: 8 }],
     distribucionPorPrioridad: [{ prioridadId: 'prio-1', total: 8 }],
   };

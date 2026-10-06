@@ -19,8 +19,13 @@ describe("StatusBadge", () => {
     expect(screen.queryByText("Cerrado")).not.toBeInTheDocument();
   });
 
+  it("ESPERANDO_CLIENTE → renders label 'Esperando al cliente'", () => {
+    render(<StatusBadge estado="ESPERANDO_CLIENTE" />);
+    expect(screen.getByText("Esperando al cliente")).toBeInTheDocument();
+  });
+
   it("every workflow estado maps to a NON-EMPTY, DISTINCT label (no silent fallback)", () => {
-    const estados = ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO", "CERRADO", "CANCELADO"] as const;
+    const estados = ["NUEVO", "ASIGNADO", "EN_PROCESO", "ESPERANDO_CLIENTE", "RESUELTO", "CERRADO", "CANCELADO"] as const;
     const labels = estados.map((estado) => {
       const { unmount } = render(<StatusBadge estado={estado} />);
       const el = screen.getByTestId("status-badge");

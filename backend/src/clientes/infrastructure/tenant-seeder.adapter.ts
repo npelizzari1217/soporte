@@ -6,8 +6,8 @@
  * Catálogos sembrados (R19; `estados` reemplazado por decisión #2025, que
  * corrige la lista original de 8 códigos de R19 a los 6 finales; ampliado
  * por Fase 3 ADR-5/F3-S1 — GATED, aprobado por el dueño):
- * - `estados` (6, FIJO — NO editable por el admin del tenant): NUEVO,
- *   ASIGNADO, EN_PROCESO, RESUELTO, CERRADO, CANCELADO.
+ * - `estados` (7, FIJO — NO editable por el admin del tenant): NUEVO,
+ *   ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE, RESUELTO, CERRADO, CANCELADO.
  * - `prioridades` (4, FIJO): BAJA, MEDIA, ALTA, CRITICA.
  * - `tipo_operacion` (5, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
  *   ADJUNTO, AVANCE_EDILICIO.
@@ -81,6 +81,7 @@ const ESTADOS = [
   { codigo: 'NUEVO', nombre: 'Nuevo', orden: 10 },
   { codigo: 'ASIGNADO', nombre: 'Asignado', orden: 20 },
   { codigo: 'EN_PROCESO', nombre: 'En proceso', orden: 30 },
+  { codigo: 'ESPERANDO_CLIENTE', nombre: 'Esperando al cliente', orden: 35 },
   { codigo: 'RESUELTO', nombre: 'Resuelto', orden: 40 },
   { codigo: 'CERRADO', nombre: 'Cerrado', orden: 50 },
   { codigo: 'CANCELADO', nombre: 'Cancelado', orden: 60 },

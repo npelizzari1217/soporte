@@ -1,7 +1,7 @@
 import { ITicketStateMachine, StateMachineContext } from './i-ticket-state-machine';
 
 /**
- * Diagrama de transiciones base — 6 estados fijos (ADR-1/ADR-3).
+ * Diagrama de transiciones base — 7 estados fijos (ADR-1/ADR-3).
  *
  * NUEVO ──► ASIGNADO
  * NUEVO ──► CANCELADO
@@ -9,6 +9,10 @@ import { ITicketStateMachine, StateMachineContext } from './i-ticket-state-machi
  * ASIGNADO ──► CANCELADO
  * EN_PROCESO ──► RESUELTO
  * EN_PROCESO ──► CANCELADO
+ * EN_PROCESO ──► ESPERANDO_CLIENTE
+ * ESPERANDO_CLIENTE ──► EN_PROCESO
+ * ESPERANDO_CLIENTE ──► RESUELTO
+ * ESPERANDO_CLIENTE ──► CANCELADO
  * RESUELTO ──► CERRADO
  *
  * Terminales (sin arcos de salida — sin reapertura, T9/T11): CERRADO, CANCELADO.
@@ -19,7 +23,8 @@ import { ITicketStateMachine, StateMachineContext } from './i-ticket-state-machi
 const VALID_TRANSITIONS = new Map<string, ReadonlySet<string>>([
   ['NUEVO', new Set(['ASIGNADO', 'CANCELADO'])],
   ['ASIGNADO', new Set(['EN_PROCESO', 'CANCELADO'])],
-  ['EN_PROCESO', new Set(['RESUELTO', 'CANCELADO'])],
+  ['EN_PROCESO', new Set(['RESUELTO', 'CANCELADO', 'ESPERANDO_CLIENTE'])],
+  ['ESPERANDO_CLIENTE', new Set(['EN_PROCESO', 'RESUELTO', 'CANCELADO'])],
   ['RESUELTO', new Set(['CERRADO'])],
   // CERRADO, CANCELADO: terminales — sin clave → puedeTransicionar retorna false.
 ]);
@@ -27,7 +32,7 @@ const VALID_TRANSITIONS = new Map<string, ReadonlySet<string>>([
 /**
  * Implementación base de la máquina de estados de tickets.
  *
- * Codifica el grafo de 6 estados común a todos los tipos de ticket
+ * Codifica el grafo de 7 estados común a todos los tipos de ticket
  * (fallback de `TicketStateMachineFactory`). Función pura: no muta el
  * contexto ni mantiene estado entre llamadas — la misma instancia puede
  * reutilizarse como singleton.

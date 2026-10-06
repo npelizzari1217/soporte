@@ -15,6 +15,10 @@ describe('esEstadoNotificable (T7.1)', () => {
     expect(esEstadoNotificable('CERRADO')).toBe(true);
   });
 
+  it('ESPERANDO_CLIENTE es notificable (mail de espera al solicitante)', () => {
+    expect(esEstadoNotificable('ESPERANDO_CLIENTE')).toBe(true);
+  });
+
   it('NUEVO, ASIGNADO, EN_PROCESO y CANCELADO NO son notificables', () => {
     expect(esEstadoNotificable('NUEVO')).toBe(false);
     expect(esEstadoNotificable('ASIGNADO')).toBe(false);

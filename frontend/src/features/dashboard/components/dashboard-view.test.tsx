@@ -12,6 +12,8 @@ const METRICAS = {
   tiempoPromedioResolucionHoras: 24,
   cargaPorAgente: [{ asignadoId: "u1", abiertos: 2 }],
   cumplimientoSla: { cerradosConSla: 3, cerradosATiempo: 2, porcentaje: 2 / 3 },
+  cumplimientoPrimeraRespuesta: { conMeta: 4, aTiempo: 2, porcentaje: 0.5 },
+  tiempoPromedioPrimeraRespuestaHoras: 1.25,
   distribucionPorTipo: [{ tipoId: "ti1", total: 5 }],
   distribucionPorPrioridad: [{ prioridadId: "p-alta", total: 3 }],
 };
@@ -22,6 +24,8 @@ const METRICAS_VACIAS = {
   tiempoPromedioResolucionHoras: null,
   cargaPorAgente: [],
   cumplimientoSla: { cerradosConSla: 0, cerradosATiempo: 0, porcentaje: null },
+  cumplimientoPrimeraRespuesta: { conMeta: 0, aTiempo: 0, porcentaje: null },
+  tiempoPromedioPrimeraRespuestaHoras: null,
   distribucionPorTipo: [],
   distribucionPorPrioridad: [],
 };
@@ -77,6 +81,39 @@ describe("DashboardView", () => {
 
     const gaugeFigure = screen.getByRole("img", { name: "% Cumplimiento SLA: 67%" });
     expect(gaugeFigure).toBeInTheDocument();
+  });
+
+  it("muestra las tres tarjetas de SLA con sus valores", async () => {
+    renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+    expect(await screen.findByRole("img", { name: "% Cumplimiento SLA: 67%" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "% Primera respuesta a tiempo: 50%" })).toBeInTheDocument();
+    expect(screen.getByText("Tiempo medio de primera respuesta (horas hábiles)")).toBeInTheDocument();
+    expect(screen.getByText("1,3 h")).toBeInTheDocument();
+  });
+
+  it("con las tres métricas nulas se lee 'sin datos' y no 0 %", async () => {
+    mockBackend({
+      metricas: {
+        ...METRICAS,
+        cumplimientoSla: { cerradosConSla: 0, cerradosATiempo: 0, porcentaje: null },
+        cumplimientoPrimeraRespuesta: { conMeta: 0, aTiempo: 0, porcentaje: null },
+        tiempoPromedioPrimeraRespuestaHoras: null,
+      },
+    });
+    renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+    await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+    for (const titulo of [
+      "% Cumplimiento SLA",
+      "% Primera respuesta a tiempo",
+      "Tiempo medio de primera respuesta (horas hábiles)",
+    ]) {
+      const tarjeta = screen.getByText(titulo).closest("div")?.parentElement;
+      if (!tarjeta) throw new Error(`tarjeta sin contenedor: ${titulo}`);
+      expect(within(tarjeta).getByText(/sin datos/i)).toBeInTheDocument();
+    }
+    expect(screen.queryByText(/0\s?%/)).not.toBeInTheDocument();
   });
 
   it("elegir un ciclo en el filtro dispara un refetch con ese ciclo (?ciclo=<id>)", async () => {

@@ -25,7 +25,8 @@ describe("getValidNextStates", () => {
   it.each([
     ["NUEVO", ["ASIGNADO", "CANCELADO"]],
     ["ASIGNADO", ["EN_PROCESO", "CANCELADO"]],
-    ["EN_PROCESO", ["RESUELTO", "CANCELADO"]],
+    ["EN_PROCESO", ["ESPERANDO_CLIENTE", "RESUELTO", "CANCELADO"]],
+    ["ESPERANDO_CLIENTE", ["EN_PROCESO", "RESUELTO", "CANCELADO"]],
     ["RESUELTO", ["CERRADO"]],
   ] as const)("desde %s → %j", (desde, esperado) => {
     expect(getValidNextStates(desde)).toEqual(esperado);
@@ -53,7 +54,8 @@ describe("getManualNextStates", () => {
   it.each([
     ["NUEVO", ["CANCELADO"]],
     ["ASIGNADO", ["CANCELADO"]],
-    ["EN_PROCESO", ["RESUELTO", "CANCELADO"]],
+    ["EN_PROCESO", ["ESPERANDO_CLIENTE", "RESUELTO", "CANCELADO"]],
+    ["ESPERANDO_CLIENTE", ["EN_PROCESO", "RESUELTO", "CANCELADO"]],
     ["RESUELTO", ["CERRADO"]],
   ] as const)("desde %s → %j (sin el arco de arranque)", (desde, esperado) => {
     expect(getManualNextStates(desde)).toEqual(esperado);
@@ -78,6 +80,13 @@ describe("puedeAsignarYPonerEnProceso", () => {
  * menos el estado actual. NUNCA incluye CERRADO/CANCELADO.
  */
 describe("getEstadosCorrectivos", () => {
+  it("nunca ofrece ESPERANDO_CLIENTE como destino correctivo, y SÍ permite saltar desde él", () => {
+    for (const desde of ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO", "CERRADO", "CANCELADO"]) {
+      expect(getEstadosCorrectivos(desde)).not.toContain("ESPERANDO_CLIENTE");
+    }
+    expect(getEstadosCorrectivos("ESPERANDO_CLIENTE")).toEqual(["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO"]);
+  });
+
   it.each([
     ["NUEVO", ["ASIGNADO", "EN_PROCESO", "RESUELTO"]],
     ["EN_PROCESO", ["NUEVO", "ASIGNADO", "RESUELTO"]],
@@ -85,6 +94,18 @@ describe("getEstadosCorrectivos", () => {
     ["CANCELADO", ["NUEVO", "ASIGNADO", "EN_PROCESO", "RESUELTO"]],
   ] as const)("desde %s → %j (no terminales menos el actual)", (desde, esperado) => {
     expect(getEstadosCorrectivos(desde)).toEqual(esperado);
+  });
+
+  it("NUEVO/ASIGNADO/RESUELTO no tienen arco a ESPERANDO_CLIENTE (solo se entra desde EN_PROCESO)", () => {
+    for (const desde of ["NUEVO", "ASIGNADO", "RESUELTO", "CERRADO", "CANCELADO"]) {
+      expect(getValidNextStates(desde)).not.toContain("ESPERANDO_CLIENTE");
+    }
+  });
+
+  it("ESPERANDO_CLIENTE no sale hacia NUEVO, ASIGNADO ni CERRADO", () => {
+    for (const destino of ["NUEVO", "ASIGNADO", "CERRADO"]) {
+      expect(getValidNextStates("ESPERANDO_CLIENTE")).not.toContain(destino);
+    }
   });
 
   it.each(["CERRADO", "CANCELADO"] as const)("nunca ofrece el terminal %s como destino", (terminal) => {

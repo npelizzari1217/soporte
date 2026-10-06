@@ -15,6 +15,7 @@ function makeRow(overrides: Partial<Parameters<typeof PrioridadMapper.toDomain>[
     activo: true,
     slaHoras: 8,
     slaActivo: true,
+    slaPrimeraRespuestaHoras: 4,
     createdAt: new Date('2026-01-01'),
     updatedAt: new Date('2026-01-02'),
     deletedAt: null,
@@ -37,6 +38,13 @@ describe('PrioridadMapper', () => {
       expect(entity.activo).toBe(true);
       expect(entity.slaHoras).toBe(8);
       expect(entity.slaActivo).toBe(true);
+      expect(entity.slaPrimeraRespuestaHoras).toBe(4);
+    });
+
+    it('convierte slaPrimeraRespuestaHoras null de la DB (sin meta) en null de la entidad', () => {
+      const entity = PrioridadMapper.toDomain(makeRow({ slaPrimeraRespuestaHoras: null }));
+
+      expect(entity.slaPrimeraRespuestaHoras).toBeNull();
     });
 
     it('convierte slaHoras null de la DB (sin SLA aplicable) en slaHoras null de la entidad', () => {
@@ -80,6 +88,7 @@ describe('PrioridadMapper', () => {
         activo: entity.activo,
         slaHoras: entity.slaHoras,
         slaActivo: entity.slaActivo,
+        slaPrimeraRespuestaHoras: entity.slaPrimeraRespuestaHoras,
         deletedAt: entity.deletedAt,
         createdAt: entity.createdAt,
       });

@@ -24,6 +24,22 @@ function parseSlaRegla(value: string): SlaRegla {
   throw new Error(`TicketMapper: sla_regla con valor inesperado en la fila: "${value}".`);
 }
 
+/**
+ * Columnas del reloj de SLA (M2) y de la primera respuesta (M4): las escriben `sla/`, el marcador y el
+ * repo de primera respuesta con escrituras acotadas, nunca el upsert de la entidad. El `create` del repo fija `slaAcumuladoS` y `slaCorreDesde`.
+ */
+type ColumnasRelojSla =
+  | 'slaAcumuladoS'
+  | 'slaMetaS'
+  | 'slaCorreDesde'
+  | 'slaRelojSeqHasta'
+  | 'slaRelojVersion'
+  | 'slaRelojPendiente'
+  | 'slaCumplido'
+  | 'primeraRespuestaAt'
+  | 'primeraRespuestaVenceAt'
+  | 'primeraRespuestaVencida';
+
 export class TicketMapper {
   /** Convierte una fila de DB Prisma → TicketEntity de dominio. */
   static toDomain(row: PrismaTicket): TicketEntity {
@@ -49,6 +65,17 @@ export class TicketMapper {
       row.updatedAt,
       row.deletedAt ?? null,
       parseSlaRegla(row.slaRegla),
+      {
+        acumuladoS: row.slaAcumuladoS ?? null,
+        metaS: row.slaMetaS ?? null,
+        correDesde: row.slaCorreDesde ?? null,
+        seqHasta: row.slaRelojSeqHasta,
+        version: row.slaRelojVersion,
+        pendiente: row.slaRelojPendiente,
+        cumplido: row.slaCumplido ?? null,
+        primeraRespuestaAt: row.primeraRespuestaAt ?? null,
+        primeraRespuestaVenceAt: row.primeraRespuestaVenceAt ?? null,
+      },
     );
   }
 
@@ -65,7 +92,9 @@ export class TicketMapper {
    * ticket reconstituido pisaría con código lo que es responsabilidad
    * exclusiva de la DB.
    */
-  static toPersistence(entity: TicketEntity): Omit<PrismaTicket, 'updatedAt' | 'slaRegla'> {
+  static toPersistence(
+    entity: TicketEntity,
+  ): Omit<PrismaTicket, 'updatedAt' | 'slaRegla' | ColumnasRelojSla> {
     return {
       id: entity.id,
       numero: entity.numero,

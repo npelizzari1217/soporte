@@ -27,6 +27,12 @@ import {
 import { TICKET_TITULO_MAX_LENGTH, TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
+import {
+  derivarEstadoPrimeraRespuesta,
+  derivarEstadoSla,
+  EstadoPrimeraRespuestaDerivado,
+  EstadoSlaDerivado,
+} from '../../domain/policies/estado-sla-derivado.policy';
 
 /** Body de `POST /tickets` (T4). */
 export class CreateTicketDto {
@@ -217,6 +223,14 @@ export interface TicketResponseDto {
   slaVenceAt: string | null;
   /** Desnormalizado, recalculado por el módulo SLA (sdd/beta-frontend item 2). */
   vencido: boolean;
+  /** Estado SLA derivado (ADR-8): lo que se muestra; `vencido` queda como deduplicador del mail. */
+  sla: { estado: EstadoSlaDerivado; venceAt: string | null };
+  /** Primera respuesta derivada (ADR-8). `SIN_META` = sin badge (preventivo o prioridad sin meta). */
+  primeraRespuesta: {
+    estado: EstadoPrimeraRespuestaDerivado;
+    venceAt: string | null;
+    at: string | null;
+  };
   /**
    * Instante (no día) en que el ticket transicionó a un estado de cierre;
    * `null` si está abierto o fue reabierto. Viaja como ISO-8601 completo
@@ -271,10 +285,24 @@ export interface ListTicketsResponseDto {
  */
 export function toTicketResponseDto(
   ticket: TicketEntity,
-  nombres?: NombresResueltos,
-  csat?: { puntaje: number; comentario: string | null } | null,
-  solicitanteTelefono?: string | null,
+  nombres: NombresResueltos | undefined,
+  csat: { puntaje: number; comentario: string | null } | null | undefined,
+  solicitanteTelefono: string | null | undefined,
+  estadoCodigo: string,
+  ahora: Date = new Date(),
 ): TicketResponseDto {
+  const reloj = ticket.relojSla;
+  const primeraRespuestaVenceAt = reloj?.primeraRespuestaVenceAt ?? null;
+  const primeraRespuestaAt = reloj?.primeraRespuestaAt ?? null;
+  const estadoSla = derivarEstadoSla(
+    {
+      slaVenceAt: ticket.slaVenceAt,
+      fechaCierre: ticket.fechaCierre,
+      cumplido: reloj?.cumplido ?? null,
+    },
+    estadoCodigo,
+    ahora,
+  );
   return {
     id: ticket.id,
     numero: ticket.numero,
@@ -295,6 +323,20 @@ export function toTicketResponseDto(
     asignadoApellido: nombres?.asignado?.apellido ?? null,
     slaVenceAt: ticket.slaVenceAt ? ticket.slaVenceAt.toISOString() : null,
     vencido: ticket.vencido,
+    sla: {
+      estado: estadoSla,
+      // En pausa no hay vencimiento vigente: el guardado se recalcula al reanudar.
+      venceAt:
+        estadoSla === 'EN_PAUSA' || !ticket.slaVenceAt ? null : ticket.slaVenceAt.toISOString(),
+    },
+    primeraRespuesta: {
+      estado: derivarEstadoPrimeraRespuesta(
+        { venceAt: primeraRespuestaVenceAt, at: primeraRespuestaAt },
+        ahora,
+      ),
+      venceAt: primeraRespuestaVenceAt ? primeraRespuestaVenceAt.toISOString() : null,
+      at: primeraRespuestaAt ? primeraRespuestaAt.toISOString() : null,
+    },
     fechaCierre: ticket.fechaCierre ? ticket.fechaCierre.toISOString() : null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),

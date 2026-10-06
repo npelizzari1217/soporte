@@ -1,0 +1,413 @@
+# Apply progress: sla-primera-respuesta-y-pausa
+
+## WU-1 — Estado ESPERANDO_CLIENTE, constantes y guardia (completa)
+
+Modo: estandar (sin TDD estricto). Tareas 1.1 a 1.10 marcadas en `tasks.md`. Rama `feat/sla-primera-respuesta-y-pausa-wu01`, base el tracker `feat/sla-primera-respuesta-y-pausa`.
+
+### Archivos
+
+- Migracion M1 `backend/prisma_tenant/migrations/20261007120000_estado_esperando_cliente/` (`migration.sql` con `ON CONFLICT (codigo) DO NOTHING`, `rollback.sql`).
+- `backend/src/tickets/domain/state-machine/estados.constants.ts`: `ESTADOS_RELOJ_CORRE`, `ESTADOS_NO_DESTINO_CORRECTIVO`, `afectaRelojSla`.
+- `base-ticket-state-machine.ts`: arcos EN_PROCESO→ESPERANDO_CLIENTE y ESPERANDO_CLIENTE→EN_PROCESO/RESUELTO/CANCELADO.
+- `transicionar-estado.use-case.ts`: `saltoCorrectivo` excluye `ESTADOS_NO_DESTINO_CORRECTIVO`.
+- `tenant-seeder.adapter.ts`: estado sembrado con `orden` 35.
+- Tests: `estados.constants.spec.ts` (nuevo), `base-ticket-state-machine.spec.ts`, `transicionar-estado.use-case.spec.ts`, `tenant-seeder.adapter.spec.ts`, `tenant-seeder.adapter.integration.spec.ts`, `crear-cliente.e2e.spec.ts`; comentarios de "6 estados" actualizados en `tickets.e2e.spec.ts`, `ticket-state-machine.factory.spec.ts`, `i-ticket-state-machine.ts`, `prisma-estado.repository.ts`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/tickets src/catalogos src/clientes`: 108 archivos, 999 tests verdes |
+| Runtime harness | Integracion `tenant-seeder.adapter.integration.spec.ts` sobre tenant efimero migrado con `migrate deploy`: M1 deja el estado una vez, reaplicar M1 y `seed()` dos veces no lo duplican; `crear-cliente.e2e.spec.ts` verifica los 7 codigos en orden |
+| Rollback | `rollback.sql` de M1 (probado en una transaccion descartada sobre `soporte_tenant_test`); constantes y guardia sin consumidores externos |
+| Lint / tipos | `pnpm lint` y `pnpm typecheck` sin errores; ratchet de casts 626 (base 626) |
+
+### Decisiones tomadas en apply
+
+- `afectaRelojSla` se implementa como `corre(anterior) !== corre(nuevo) || nuevo === 'RESUELTO'`. Consecuencias: EN_PROCESO→CANCELADO es verdadero (corre→detenido), ESPERANDO_CLIENTE→CANCELADO y RESUELTO→CERRADO son falsos (ambos detenidos).
+- `ESTADOS_RELOJ_CORRE = {NUEVO, ASIGNADO, EN_PROCESO}`.
+- El `rollback.sql` reubica tambien `operaciones_ticket.estado_anterior_id/estado_nuevo_id` en EN_PROCESO, ademas de `tickets.estado_id`: ambas son FK a `estados` y sin eso el `DELETE` fallaria con historial.
+- El test de M1 vive en el spec de integracion del seeder (ya levanta un tenant efimero migrado) y ejecuta el `migration.sql` real. El caso existente `seed()` borra antes la fila de ESPERANDO_CLIENTE para que pruebe el seed y no la migracion (mismo patron que PREVENTIVO).
+- Los "5 specs que cuentan 6 estados": seeder unit, seeder integration, `crear-cliente.e2e`, maquina base y comentario de `tickets.e2e`.
+- Frontend (`estado-transitions.ts`, badge) queda en WU-9b, como indica `tasks.md`.
+- Ayuda: `ayuda/tickets-listado.md` lista los estados del ticket; no se vuelve falsa (el estado no es alcanzable desde la UI hasta WU-9b). Deuda anotada en el commit.
+
+### Deuda
+
+- Ayuda: estado "Esperando al cliente" en tickets (escritura suspendida).
+- M1 no se despliega sin las WU-3 (cadena completa).
+
+## WU-2 — Motor de tiempo habil y medidores (parte 1 de 2: motor, tareas 2.1 a 2.4)
+
+Modo: estandar (sin TDD estricto). Rama `feat/sla-primera-respuesta-y-pausa-wu02`, base `feat/sla-primera-respuesta-y-pausa-wu01`. La WU se partio en dos commits apilados por presupuesto de 400 lineas: este es el motor; los medidores (2.5 a 2.7) van en `...-wu02b`.
+
+### Archivos
+
+- `backend/src/calendario-laboral/domain/services/calcular-sla-habil-vence.service.ts`: `sumarMsHabiles`, `msHabilesEntre`, `LIMITE_DIAS_RANGO = 3_700`; `venceAt` delega en `sumarMsHabiles(creadoEn, horas * 3_600_000)`; `buscarInicioVentanaAbierta` con `tope` opcional (sobrecarga: con `tope` devuelve `null`, sin `tope` lanza como antes).
+- Test: `calcular-sla-habil-vence.service.spec.ts` (bloque nuevo; los tests de `venceAt` existentes sin cambios).
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/calendario-laboral` |
+| Runtime harness | N/A: dominio puro, sin frontera de runtime |
+| Rollback | Funciones nuevas; `venceAt` conserva su contrato (tests previos intactos) |
+
+### Decisiones tomadas en apply
+
+- `tope` es un `Date`: la busqueda devuelve `null` si el dia candidato empieza en o despues del tope, o si agota la cota. `msHabilesEntre` ademas valida upfront que el rango no pase de 3.700 dias (lanza), y acota las iteraciones.
+- `sumarMsHabiles` exige `ms` finito y `>= 0` (no entero): `venceAt` con horas fraccionarias sigue funcionando como antes. Con `ms = 0` devuelve `desde` sin alinear a ventana.
+- Sin redondeo en el motor; el redondeo a segundos por tramo queda en `RelojSla` (WU-3b).
+- El limite de 400 ventanas se prueba con un calendario de 7 dias abiertos: 400 pasan y 402 lanzan.
+
+### Deuda
+
+- Ayuda: ninguna (no visible para el usuario).
+
+## WU-2 — parte 2 de 2: medidores (tareas 2.5 a 2.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu02b`, base `feat/sla-primera-respuesta-y-pausa-wu02`. Con esta parte la WU-2 queda completa.
+
+- `backend/src/sla/domain/services/`: `medidor-tiempo-sla.ts` (`MedidorTiempoSla { entre; sumar }`), `medidor-habil.ts` (servicio, calendario y feriados vigentes por constructor), `medidor-corrido.ts` (tiempo de pared). Test: `medidores-sla.spec.ts`.
+- Evidencia: `pnpm vitest run src/calendario-laboral src/sla/domain` verde; dominio puro, sin runtime harness (N/A). Rollback: archivos nuevos sin consumidores.
+- Ayuda: ninguna deuda.
+
+## WU-3a — M2, columnas del reloj, repo y marcador (parte 1 de 2: migracion, tareas 3a.1 a 3a.5)
+
+Modo: estandar. Rama `feat/sla-primera-respuesta-y-pausa-wu03a`, base `feat/sla-primera-respuesta-y-pausa-wu02b`. Partida por presupuesto de 400 lineas: esta mitad es la migracion con su integracion; el repo y el marcador (3a.6 a 3a.13) van en la segunda.
+
+- Migracion `backend/prisma_tenant/migrations/20261007130000_tickets_reloj_sla/` (`migration.sql`, `rollback.sql`): 7 columnas de `tickets` con los DEFAULT en un segundo paso, 2 CHECK, indice parcial `tickets_sla_reloj_pendiente_idx`, `operaciones_ticket.sla_reloj_seq` con su indice parcial.
+- `schema.prisma`: columnas con `@default` y el comentario contra la trampa de `sla_regla`; `@@index(... map:)` para los dos indices parciales.
+- `ticket.mapper.ts`: el `Omit` de `toPersistence` excluye las 7 columnas (necesario para que compile el cliente regenerado); fixtures de `ticket.mapper.spec.ts` y `operacion-ticket.mapper.spec.ts` con las columnas nuevas.
+- Test: `tickets-reloj-sla.integration.spec.ts` (tenant efimero). Para el ticket "previo" corre el `rollback.sql`, siembra la fila y reaplica el `migration.sql` real: acumulado y corre_desde quedan NULL. La deriva Prisma/DDL lee los `@default` de `schema.prisma` porque el DMMF de runtime no los trae.
+
+### EXPLAIN / medicion de M2 (3a.5), `soporte_tenant_test`, dentro de una transaccion con ROLLBACK
+50.000 tickets previos sembrados con M2 deshecho; `migration.sql` completo: cada ALTER < 1 ms (los `ADD COLUMN ... NOT NULL DEFAULT` constantes no reescriben la tabla), `SET DEFAULT` 7-8 ms, `CREATE INDEX` parcial 21 ms y el de operaciones 6 ms. Las 50.000 filas quedan con `sla_acumulado_s` NULL (previos). Con 500 filas pendientes: `Bitmap Index Scan on tickets_sla_reloj_pendiente_idx`, 0,019 ms, ejecucion total 0,141 ms. El `EXPLAIN ANALYZE` no aplica a DDL: se midio con `\timing`.
+
+### Work Unit Evidence (parte 1)
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/tickets/infrastructure/persistence/prisma/tickets-reloj-sla.integration.spec.ts`: 8 tests verdes |
+| Runtime harness | Postgres real, tenant efimero migrado con `migrate deploy`; rollback y reaplicacion de M2 |
+| Rollback | `rollback.sql` de M2; el resto son archivos de prueba y tipos |
+
+M2 no se despliega sin la cadena completa.
+
+## WU-3a.2 — repo acotado y snapshot del reloj (tareas 3a.6 a 3a.8)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03a2`, base `...-wu03a`.
+
+- `prisma-ticket.repository.ts`: la rama `update` del upsert descarta `slaVenceAt` y `vencido`; la rama `create` fija `slaAcumuladoS: 0` y `slaCorreDesde = createdAt`.
+- `ticket.entity.ts`: `RelojSlaSnapshot` de solo lectura (getter `relojSla`, `null` antes de persistir), cargado por `TicketMapper.toDomain`.
+- Tests: `prisma-ticket-repository.save.integration.spec.ts` (alta incorporada; `save` con lectura vieja deja `slaVenceAt` y `vencido` intactos) y casos nuevos en `ticket.mapper.spec.ts`.
+- Evidencia: `pnpm vitest run src/tickets src/equipos/mantenimiento` 61 archivos, 621 tests verdes; lint y typecheck limpios; ratchet de casts 626 (base 626). Rollback: el repo y la entidad sin consumidores nuevos.
+
+## WU-3a.3 — marcador del reloj y evento (tareas 3a.9 a 3a.14)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03a3`, base `...-wu03a2`. Con esta parte la WU-3a queda completa.
+
+- Puertos `IRelojSlaMarcador` y `IPrimeraRespuestaWriteRepository` (este solo declarado) en `tickets/domain/ports`; `TicketTransicionadoEvent` (`'ticket.transicionado'`).
+- `PrismaRelojSlaMarcador`: `ticket.update` con `increment` de `sla_reloj_version` (toma el lock de la fila) y `operacionTicket.update` con `slaRelojSeq`. Registrado en `TicketsModule` y pasado como 9.o argumento a `TransicionarEstadoUseCase`.
+- `TransicionarEstadoUseCase`: dentro de la tx, despues de `save(ticket)` y `save(operacion)`, marca solo si `afectaRelojSla`, y publica el evento en `alCommitear`.
+- Tests: unit del caso de uso (marca y publica solo si afecta; NUEVO a ASIGNADO no; marcador que falla no publica) y `prisma-reloj-sla-marcador.integration.spec.ts` (rollback no deja version ni seq ni evento; dos transiciones concurrentes dan seq 1 y 2 y version 2).
+- Decision: los tests T13 existentes filtran por clase de evento, porque RESUELTO ahora publica dos eventos (el de notificaciones y `ticket.transicionado`); el mock de `alCommitear` imita al runner real (callback protegido).
+- Evidencia: lint y typecheck limpios; `pnpm vitest run src/tickets src/equipos/mantenimiento` verde. Rollback: el marcador sin listener no tiene efecto observable (columnas nuevas sin consumidores hasta la WU-3b).
+- La asercion de DB de 3a.12 sobre `AsignarYPonerEnProcesoUseCase` (deja `sla_reloj_seq` NULL) va en el commit siguiente (WU-3a.4), por presupuesto de 400 lineas.
+
+## WU-3a.4 — regresion de AsignarYPonerEnProceso
+
+- `asignar-y-poner-en-proceso.reloj-sla.integration.spec.ts` (nuevo): el caso de uso real contra Postgres deja todas sus operaciones con `sla_reloj_seq` NULL y la version del reloj en 0. Cierra la asercion de DB de 3a.12.
+- Verificacion: `pnpm vitest run` del spec 1/1, eslint del archivo limpio.
+- Decision: los tests T13 existentes filtran por clase de evento, porque RESUELTO ahora publica dos eventos; el mock de `alCommitear` imita al runner real (callback protegido).
+- Evidencia: lint y typecheck limpios; `pnpm vitest run src/tickets src/equipos/mantenimiento` verde. Rollback: sin listener el marcador no tiene efecto observable (columnas sin consumidores hasta la WU-3b).
+
+## WU-3b.1 — `RelojSla` y puerto del repo (tareas 3b.1 a 3b.4, 3b.2b, 3b.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b`, base `...-wu03a4`. Partida por presupuesto de 400 lineas: esta parte es el dominio puro con sus tests de pausa/reanudacion/derivado/orden; quedan para el siguiente intento 3b.5 y 3b.6 (specs ya escritos, en `git stash` `wu03b2`), 3b.8 a 3b.12.
+
+- `sla/domain/entities/reloj-sla.ts`: `RelojSla.plegar` (pliegue puro; el estado actual manda sobre `corre_desde`, `acumulado NULL` = previo se incorpora, tiempos recortados a monotono, redondeo `Math.round(ms/1000)` por tramo, vencimiento derivado solo si termina corriendo y hubo reanudacion) y `RelojSla.medidorPara` (cohorte por `slaRegla`).
+- `sla/domain/ports/i-reloj-sla.repository.ts`: `leer`, `historialSinSecuencia`, `transicionesDesde`, `guardarSiVersion`, `findPendientes`.
+- Tests: `reloj-sla.spec.ts` (3b.1 a 3b.4, 3b.2b) y `reloj-sla.fixtures.ts` compartido.
+- Mutacion 3b.5 (`<=` a `<` en el cumplimiento), corrida con el spec completo antes de partir: rojo (`acumulado igual a la meta cumple`, 1 fallo de 23) y verde al restaurar. El test vive en `reloj-sla.cumplimiento.spec.ts`, que va en el siguiente intento.
+- Evidencia: `pnpm vitest run src/sla/domain` 34 tests verdes; lint, typecheck y ratchet de casts (626) limpios. Rollback: archivos nuevos sin consumidores.
+
+## WU-3b.2 — repo Prisma del reloj y test del estado actual (tarea 3b.9; parte de 3b.8 y 3b.11)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b2`, base `...-wu03b`. Partida por presupuesto: aca el repo con su integracion y el test unit de ADR-1; pendientes 3b.5/3b.6 (spec ya escrito, en stash `wu03b3`), 3b.8 (parte del caso de uso: idempotencia, `SLA_RELOJ_CONFLICTO`), 3b.10, 3b.11 (caso de uso, listener, modulo) y 3b.12.
+
+- `PrismaRelojSlaRepository`: `guardarSiVersion` es un `updateMany where slaRelojVersion` que escribe `slaRelojSeqHasta = version` y limpia el pendiente; sin `slaVenceAt` en el resultado no lo pisa; `transicionesDesde` ordena por `slaRelojSeq`.
+- Tests: `prisma-reloj-sla.repository.integration.spec.ts` (6, sin dejar filas: usa estados y tipo `CAMBIO_ESTADO` ya sembrados) y 2 casos nuevos en `reloj-sla.spec.ts` (el estado actual manda sobre el pliegue).
+- Mutacion 3b.9 (`orderBy slaRelojSeq` a `createdAt` en `transicionesDesde`): rojo (`transicionesDesde ordena por sla_reloj_seq y no por created_at`, 1 de 6); restaurado, verde.
+- Mutacion 3b.5 re-corrida (`<=` a `<`): rojo 1 fallo, restaurado verde; el test esta en el spec en stash.
+
+## WU-3b.3 — cumplimiento, caso de uso, listener y modulo (tareas 3b.5, 3b.6, 3b.10, 3b.11)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b3`, base `...-wu03b2`. Pendientes: la mitad de caso de uso de 3b.8 (integracion con repo real: CAS con version vieja deja pendiente, re-pliegue idempotente) y 3b.12 (verificacion final).
+
+- `reloj-sla.cumplimiento.spec.ts` (3b.5, 3b.6): mutacion `<=` a `<` re-corrida, rojo (1 fallo) y verde al restaurar.
+- `ConsolidarRelojSlaUseCase`: calendario y feriados antes de leer; un reintento del CAS; si falla otra vez devuelve `conflicto` y registra `SLA_RELOJ_CONFLICTO` (el ticket sigue pendiente porque el marcador lo dejo asi); `historialSinSecuencia` solo con `acumuladoS` null.
+- `RelojSlaListener` (`ticket.transicionado`, log-and-swallow `SLA_RELOJ_ERROR`) y registro en `SlaModule` (`RELOJ_SLA_REPOSITORY`, caso de uso, listener); `SlaModule` no importa nada nuevo de tickets, sin ciclo.
+- Fixtures: se exporta `calendarioSemanal`.
+- Evidencia: `pnpm vitest run src/sla` verde; lint y typecheck limpios.
+
+## WU-3b.4 — integracion del caso de uso (tarea 3b.8, cierre de 3b.12)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b4`, base `...-wu03b3`. Con esta parte la WU-3b queda completa.
+
+- `consolidar-reloj-sla.integration.spec.ts`: el caso de uso con el `PrismaRelojSlaRepository` real. Una version que sube entre la lectura y la escritura da `conflicto`, registra `SLA_RELOJ_CONFLICTO` y deja `sla_reloj_pendiente = true`; consolidar dos veces sin operaciones nuevas no cambia nada (salvo `updated_at`). El spec borra sus filas (prefijo `WU3BC`) al empezar y al terminar.
+- El registro de `SlaModule` (repo, caso de uso, listener) queda cubierto en su DI por `src/app.module.smoke.spec.ts` (1/1).
+- Verificacion de la WU: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/sla src/tickets` y ratchet de casts, ver el commit.
+
+## WU-3c.1 — barrido que reconcilia y marca solo con reloj corriendo (tareas 3c.5 y 3c.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c`, base `...-wu03b4`. Partida por presupuesto de 400 lineas: aca el barrido y la higiene de tests de la WU-3b; quedan para el siguiente intento 3c.1 a 3c.4 (`AplicarSla`, que ademas reescribe su spec, ~1000 lineas) y 3c.6 (integracion del barrido) y 3c.8 (verificacion final), en el stash `wu03c2`.
+
+- `MarcarVencidosUseCase`: el paso 1 reconcilia los `sla_reloj_pendiente` con `ConsolidarRelojSlaUseCase` (un fallo por ticket se aisla; ese ticket sigue pendiente); el paso 2 usa `findVencibles`, que ahora exige `slaRelojPendiente = false` y `estado.codigo in ESTADOS_RELOJ_CORRE` (fuente unica, cubre tambien a los previos corriendo con `sla_corre_desde` NULL). `marcarVencido` devuelve `boolean` (el `updateMany` afecto 1 fila) y el evento `sla.vencido` sale solo si fue `true`: una marca ya puesta permanece y no se re-notifica.
+- Tests: 4 casos nuevos en `marcar-vencidos.use-case.spec.ts` (orden reconciliar antes de evaluar, fallo aislado, marca ya puesta, un solo evento) y 3 en `prisma-sla-ticket.integration.spec.ts` (ESPERANDO_CLIENTE con vencimiento pasado, pendiente excluido, previo corriendo con `corre_desde` NULL; `marcarVencido` booleano). Ese spec usa el estado `NUEVO` real (el existente o uno creado que borra al final).
+- Higiene de la WU-3b: `prisma-reloj-sla.repository.integration.spec.ts` barre al empezar sus filas (`WU3B*` sin `WU3BC*`, que es del spec de consolidacion) y `prisma-reloj-sla-marcador.integration.spec.ts` barre el tipo de operacion `WU3AO*` y sus operaciones; elimino la fila residual `WU3AOb5596d` de `soporte_tenant_test`. Los demas prefijos `WU3A*` los comparten otros specs y no se barren.
+- Cableado: `SlaModule` pasa el repo del reloj y `ConsolidarRelojSlaUseCase` a `MarcarVencidosUseCase`.
+- Evidencia: lint, typecheck, `pnpm vitest run src/sla src/tickets` y `src/app.module.smoke.spec.ts` verdes sobre este arbol; ratchet de casts 626 a 624 (el spec del barrido ya no usa `as never`), base bajada a 624 en 115 archivos.
+
+## WU-3c.2 — vencimiento derivado y meta en `RelojSla` (base de 3c.1 a 3c.3)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c2`, base `...-wu03c`. Pieza A de tres: solo el dominio puro; sin consumidores todavia. Quedan `AplicarSlaUseCase` con su spec, e2e, cableado y borrado de `ISlaTicketWriteRepository` (3c.1 a 3c.4, un commit `size:exception`: cambio de API del caso de uso con la reescritura de su spec) y el test de integracion del barrido (3c.6) con la verificacion 3c.8; todo en el stash `wu03c3`.
+
+- `RelojSla.vencimientoDerivado` (la regla de ADR-4 extraida de `plegar`, que ahora la usa) y `RelojSla.conMeta` (meta null sin `slaHoras`, con `slaActivo=false` o para preventivos; vencimiento derivado solo con el reloj corriendo; cumplimiento recalculado en RESUELTO).
+- Anclaje: `sumar(corre_desde, meta - acumulado)` es la formula de ADR-4 (`inicioTramo` = `corre_desde`); conforme al diseno, no es una desviacion.
+- Tests: `reloj-sla.meta.spec.ts` (derivacion, CORRIDO, detenido, sin meta, cumplimiento en RESUELTO incluido el borde `<=`) y un caso en `reloj-sla.cumplimiento.spec.ts` (la meta es la fijada en el ticket: tras bajar las horas de la prioridad a 4 h, resolver con 6 h sobre 8 h cumple).
+- Nota: `CalcularSlaVenceService` quedara sin consumidor de produccion al aterrizar `AplicarSla`; se deja para una limpieza aparte.
+- Evidencia: lint y typecheck limpios; `pnpm vitest run src/sla` 16 archivos, 119 tests verdes; ratchet de casts sin cambios. Rollback: archivos de dominio sin consumidores.
+
+## WU-3c.3 — `AplicarSlaUseCase` con meta del ticket y pliegue previo (tareas 3c.1 a 3c.4)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c3`, base `...-wu03c2`. Pieza B de tres, `size:exception`: el caso de uso cambia de API (sale `ISlaTicketWriteRepository`, entra el repo del reloj con CAS) y su spec se reescribe con el; partirlos separaria el codigo de los tests que lo prueban. Queda la pieza C (3c.6 integracion del barrido y 3c.8) en el stash `wu03c4`.
+
+- `AplicarSlaUseCase`: lee la fila del reloj, pliega con `RelojSla.plegar` (incorpora al previo con su vencimiento V intacto), aplica `RelojSla.conMeta` y escribe todo con un solo `guardarSiVersion`; un reintento y, si el CAS vuelve a perder, lanza `SLA_RELOJ_CONFLICTO` (el listener lo registra). Carga el calendario antes de leer y no lo toca para `CORRIDO`. Ya no depende de `estadoRepo` (el estado sale de la fila) ni de `CalcularSlaVenceService`.
+- Absorbe `setSlaVenceAt`: se borran `ISlaTicketWriteRepository` y `PrismaSlaTicketWriteRepository`, su token y su export en `SlaModule`; sale tambien su bloque de `prisma-sla-ticket.integration.spec.ts`.
+- Tests: `aplicar-sla.use-case.spec.ts` reescrito (21: meta y vencimiento, pliegue previo, repriorizar con acumulado conservado, CORRIDO, meta superada, reloj detenido, sin meta, preventivo, cumplimiento en RESUELTO, previos R7, CAS con reintento y conflicto, terminal, calendario roto).
+- Los e2e `aplicar-sla-*.e2e.spec.ts` se adaptaron: estado con codigo real `NUEVO` (el reloj corre por codigo) y `slaCorreDesde = createdAt`, como fija el alta real; el DEFAULT `now()` de la columna no aplica a un ticket con `createdAt` pasado.
+- Ratchet de casts: 624 a 617 en 114 archivos (el spec reescrito ya no usa `as never`).
+- `CalcularSlaVenceService` y su spec quedan sin consumidor de produccion; limpieza aparte.
+
+## WU-3c.4 — integracion del barrido (tareas 3c.6 y 3c.8, cierre de la WU-3c)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c4`, base `...-wu03c3`. Con esta parte la WU-3c y la WU-3 quedan completas.
+
+- `marcar-vencidos.integration.spec.ts`: `MarcarVencidosUseCase` con `PrismaRelojSlaRepository`, `PrismaSlaTicketQueryRepository` y `ConsolidarRelojSlaUseCase` reales contra `soporte_tenant_test`. Los repos se acotan a las filas del spec (prefijo `WU3C`, barridas al empezar y al terminar) para no tocar fixtures de otros specs.
+- Casos: huerfano de pausa con dos listeners caidos (pausa, reanudacion, pausa) se reconcilia antes de evaluar y, en espera, no se marca; huerfano reanudado con vencimiento viejo pasado no se marca y el pliegue lo deriva hacia adelante; un previo corriendo con `sla_corre_desde` NULL se marca por estado y se notifica una sola vez; un ticket en ESPERANDO_CLIENTE con vencimiento pasado no se marca ni se notifica.
+- Verificacion 3c.8 sobre este arbol: lint, typecheck, `pnpm vitest run src/sla src/tickets`, `src/app.module.smoke.spec.ts` y ratchet de casts (617), ver el commit.
+
+## WU-4 — Reanudacion por comentario y mail de espera (completa: parte 1 tareas 4.1, 4.3, 4.4, 4.5, 4.7; parte 2 tareas 4.2, 4.6, 4.8)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu04`, base `...-wu03c4`. Partida por presupuesto de 400 lineas: aca listener, politica, plantilla y sus unit; la parte 2 (rama `...-wu04b`) agrega el e2e `esperando-cliente.e2e.spec.ts` (4.2, 4.6) y cierra con la verificacion 4.8.
+
+- `ReanudarPorComentarioListener` (`tickets/infrastructure/listeners`, registrado en `TicketsModule`, sin ciclo): escucha `ticket.comentado`, recarga el ticket, exige estado ESPERANDO_CLIENTE y `autorId === solicitanteId`, y transiciona a EN_PROCESO con `TransicionarEstadoUseCase` (`actorEsCorrector: false`, el solicitante como autor). `TransicionInvalidaError` del segundo comentario concurrente y cualquier fallo se loguean y se ignoran. Se apoya en que el evento solo se emite para comentarios publicos.
+- Mail de espera: `estados-notificables.policy.ts` incluye ESPERANDO_CLIENTE (asi `TransicionarEstadoUseCase` publica `ticket.estado_cambiado` al entrar; la salida a EN_PROCESO no es notificable y no envia). `templateEsperandoCliente` (escapa HTML, sin link para el externo) y `TicketNotificacionListener.onTicketEstadoCambiado` la elige al ir a ESPERANDO_CLIENTE. Sin correo resoluble: se registra y no se envia.
+- Tests: unit del listener (7 casos), de la politica, de la plantilla (escapado, externo), del `TicketNotificacionListener` (plantilla elegida, SMTP caido, externo sin correo, externo con correo, salida) y del use case (evento al entrar, ninguno al salir).
+- Parte 2: e2e (`usarLockMasterTest()`, tenant efimero: filas, `app.close()`, `dropDatabase`) con comentario interno/publico, marcador del reloj, timeline y mail con `EMAIL_SENDER` overrideado (4.2, 4.6) ; verificacion 4.8 verde sobre el arbol final.
+- Deuda de Ayuda: el ticket vuelve solo a En proceso cuando el solicitante comenta, y el solicitante recibe un mail al pasar a Esperando al cliente.
+- Rollback: listener, politica, plantilla y su eleccion en el listener de notificaciones.
+
+## WU-5 — Meta "Primera respuesta (h)" por prioridad (parte 1: backend, tareas 5.1 a 5.4)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu05`, base `...-wu04b`. Estandar (feature, sin TDD estricto). Partida por presupuesto de 400 lineas (el total, con el frontend, daba ~470 sin docs): aca el backend completo; el frontend (5.5, 5.6) y la verificacion 5.7 viajan en la rama `...-wu05b` (stash `wu05b`).
+
+- M3 `20261007140000_prioridades_primera_respuesta`: `prioridades.sla_primera_respuesta_horas integer NULL` con CHECK `> 0` (`prioridades_sla_primera_respuesta_horas_check`) y `rollback.sql`; `schema.prisma` (`slaPrimeraRespuestaHoras`); cliente regenerado y migracion aplicada a `soporte_tenant_test`.
+- Backend: `PrioridadEntity` (prop opcional, default `null`, `actualizar` PATCH semantico), `PrioridadMapper`, `CrearPrioridadUseCase`/`EditarPrioridadUseCase`, DTOs `CreatePrioridadDto`/`EditPrioridadDto` (`@IsInt @Min(1)`, `null` limpia) y la respuesta. Sin cambio de permisos. La meta no depende de `slaActivo` (ADR-6).
+- Arrastre de la validacion de la WU-4: comentarios de `transicionar-estado.use-case.ts` y `asignar-y-poner-en-proceso.use-case.ts` corregidos (la politica de notificables es {RESUELTO, CERRADO, ESPERANDO_CLIENTE}). Solo comentarios.
+- Ayuda: ningun articulo existente queda falso (`backend/ayuda/*` no describe el catalogo de prioridades). Deuda: campo "Primera respuesta (h)" en las prioridades del catalogo.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/tickets src/catalogos` (backend): 66 archivos, 658 tests verdes; `src/catalogos` no existe como carpeta (el CRUD de prioridades vive en `src/tickets`) |
+| Runtime harness | `prioridades-primera-respuesta.integration.spec.ts` (tenant efimero, Postgres real): previas sin meta, NULL y positivo aceptados, CHECK rechaza 0 y -1, rollback; 5 tests verdes |
+| Rollback boundary | `rollback.sql` de M3 y la columna del schema/entidad/DTO; sin consumidores todavia |
+
+- Verificacion backend: lint y typecheck limpios; ratchet de casts 617 en 114 (sin cambios).
+- Pendiente (parte 2, `...-wu05b`): 5.5, 5.6 (formulario y lista del frontend) y 5.7 (verificacion de frontend).
+
+## WU-5 — parte 2: frontend (tareas 5.5, 5.6, 5.7; WU-5 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu05b`, base `...-wu05`.
+
+- `Prioridad.slaPrimeraRespuestaHoras` y los DTOs de crear/editar; schema Zod que espeja el DTO (vacio = sin meta, se envia `null`; si no, entero > 0); campo "Primera respuesta (h)" en `prioridad-form-dialog.tsx`; columna "Primera respuesta" en `prioridad-list.tsx` ("Sin meta" o `Nh`).
+- Tests: formulario (valor vigente, entero positivo, vacio a null, 0 y -2 rechazados sin enviar) y lista (`prioridad-list.test.tsx`); fixture de `ticket-edit-form.test.tsx` ajustado al tipo.
+- Verificacion 5.7 sobre el arbol del commit: frontend `JWT_SECRET=dummy pnpm lint` limpio, `pnpm type-check` limpio, `pnpm test` 245 archivos / 1971 tests verdes; ratchet de casts 617 en 114. El backend se verifico en la parte 1.
+- Ayuda: deuda — campo "Primera respuesta (h)" en las prioridades del catalogo. Rollback: archivos del frontend de esta parte.
+
+## WU-6 — M4, registro de la primera respuesta y meta en `AplicarSla` (parte 1: M4 con relleno, tareas 6.1 a 6.3)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu06`, base `...-wu05b`. Estandar (feature, sin TDD estricto). Partida por presupuesto de 400 lineas (el total medido daba ~810 sin docs): aca la migracion M4 con su relleno y su spec de integracion (no se separan: sin `size:exception`); el registro en `CrearComentarioUseCase` y la meta en `AplicarSla` (6.4 a 6.10) viajan en el stash `wu06b` y salen en la rama `...-wu06b`.
+
+- M4 `20261007150000_tickets_primera_respuesta`: `primera_respuesta_at`, `primera_respuesta_vence_at` (NULL) y `primera_respuesta_vencida boolean NOT NULL DEFAULT false`; indice parcial `tickets_primera_respuesta_pendiente_idx` (`WHERE primera_respuesta_at IS NULL AND NOT primera_respuesta_vencida AND primera_respuesta_vence_at IS NOT NULL`); relleno `UPDATE ... SET primera_respuesta_at = MIN(created_at)` de los comentarios publicos no borrados de alguien distinto del solicitante (cualquier autor si es externo), con `WHERE primera_respuesta_at IS NULL`; `rollback.sql`. Sin meta ni vencimiento retroactivos.
+- `schema.prisma` con los tres campos y el `@default(false)` espejo del DDL; cliente regenerado y migracion aplicada a `soporte_tenant_test`. `TicketMapper.toPersistence` suma las tres columnas al `Omit` (las escribira solo un repo acotado).
+- Spec de integracion `tickets-primera-respuesta.integration.spec.ts` (tenant efimero, `pg` crudo, 7 tests): relleno (interno, borrado, del solicitante, externo, sin comentarios), sin meta retroactiva con prioridad que ya tiene meta, idempotencia del relleno aun con un comentario anterior agregado despues, default `false`, predicado del indice, rollback y reaplicacion, y deriva Prisma/DDL.
+
+### 6.3 — EXPLAIN ANALYZE del relleno y conteo de `COMENTARIO` (para el PR)
+
+Medido en `soporte_tenant_test` dentro de una transaccion que se deshace (`ROLLBACK`): se quitaron las columnas, se sembraron 20.000 tickets con 80.000 comentarios (4 por ticket: del solicitante, interno, borrado y de un tecnico) y se corrio el `UPDATE` real con `EXPLAIN (ANALYZE, BUFFERS)`.
+
+- Plan: `Hash Join` de `tickets` contra el subselect agregado (`HashAggregate` por `ticket_id`); un `Seq Scan` sobre `operaciones_ticket` (filtro `NOT es_interno AND deleted_at IS NULL`, descarta 40.000 filas) y otro sobre `tickets`; el indice por `ticket_id` no se usa porque se recorren todos.
+- Tiempo: `Execution Time` 1.143 s (≈1,1 s) en la primera corrida y ~0,7 s en la segunda para 20.000 filas actualizadas (de eso 0,41 s son los triggers de FK, ajenos al relleno). Sin tablas temporales ni bloqueos largos: el `UPDATE` corre dentro del `migrate deploy` transaccional de cada tenant.
+- Conteo de `COMENTARIO`: `soporte_tenant_test` tiene 0 reales (antes de sembrar). El conteo por tenant real se corre antes del deploy con `SELECT count(*) FROM operaciones_ticket o JOIN tipo_operacion t ON t.id = o.tipo_operacion_id AND t.codigo = 'COMENTARIO';` y se anota en el PR del tracker.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/tickets/infrastructure/persistence/prisma/tickets-primera-respuesta.integration.spec.ts`: 7 tests verdes |
+| Runtime harness | Mismo spec contra Postgres real (tenant efimero) y `EXPLAIN ANALYZE` sobre `soporte_tenant_test` |
+| Rollback boundary | `rollback.sql` de M4, y las tres columnas del schema/mapper; sin consumidores todavia |
+
+- Ayuda: ningun articulo existente queda falso. Sin deuda nueva en esta parte.
+
+## WU-6 — parte 2: registro de la primera respuesta al comentar (tareas 6.4 a 6.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu06b`, base `...-wu06`. La meta en `AplicarSla` (6.8, 6.9) y la verificacion 6.10 viajan en la rama `...-wu06c` (stash `wu06c`).
+
+- `PrismaPrimeraRespuestaWriteRepository.registrarSiFalta` (`updateMany where { id, primeraRespuestaAt: null }`), puerto `IPrimeraRespuestaWriteRepository` con ese unico metodo, registrado y exportado en `TicketsModule`.
+- `CrearComentarioUseCase`: la operacion y el registro corren dentro de `txRunner.run`; registra solo si el comentario es publico y `autorId !== ticket.solicitanteId` (un externo tiene `solicitanteId` null: cualquier autor interno cuenta). Usa `Pick<..., 'registrarSiFalta'>`. El evento `ticket.comentado` sigue publicandose fuera de la tx.
+- Tests: unit (6 casos nuevos: tecnico registra con la fecha de la operacion, orden save/registrar dentro de la tx, interno no, solicitante no, externo si, rechazo por estado terminal no registra) e integracion `primera-respuesta.integration.spec.ts` sobre `soporte_tenant_test` con `PrismaTenantTransactionRunner` real (registro con la fecha persistida de la operacion, interno y del solicitante no cuentan, segundo comentario no cambia la fecha, dos registros concurrentes dejan una fecha estable, borrar el comentario que registro conserva la fecha). El spec crea `COMENTARIO` en `tipo_operacion` si falta (la base compartida no lo trae) y lo retira al final.
+- Fakes sin casts: el txRunner del unit es un objeto con `satisfies ITenantTransactionRunner` (ratchet 617/114).
+
+### Work Unit Evidence (parte 2)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run` de `crear-comentario.use-case.spec.ts` y `primera-respuesta.integration.spec.ts` |
+| Runtime harness | Integracion contra Postgres real con el runner transaccional real |
+| Rollback boundary | `CrearComentarioUseCase` (tx + registro), repo y puerto; la columna sigue de M4 |
+
+## WU-6 — parte 3: meta de primera respuesta en `AplicarSla` (tareas 6.8 a 6.10; WU-6 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu06c`, base `...-wu06b`.
+
+- `IPrimeraRespuestaWriteRepository.fijarVencimientoSiSinRespuesta(ticketId, venceAt | null)`: `updateMany where { id, primeraRespuestaAt: null }`. Un ticket ya respondido no cambia al repriorizar; uno sin respuesta se reescribe (o se limpia con `null`).
+- `AplicarSlaUseCase` (recibe el repo como `Pick<..., 'fijarVencimientoSiSinRespuesta'>`, cableado en `SlaModule`): tras ganar el CAS del reloj escribe `medidor.sumar(createdAt, h * 3_600_000)` solo para `HABIL`, prioridad con `slaPrimeraRespuestaHoras` y no preventivo; en cualquier otro caso escribe `null`. `slaActivo` no interviene y no hay pausa (ESPERANDO_CLIENTE no corre el vencimiento). Un CAS perdido no escribe hasta ganar el reintento; un ticket terminal que no recalcula no lo toca.
+- Tests: 9 casos nuevos en `aplicar-sla.use-case.spec.ts` (viernes 17:30 meta 2 h da lunes 10:30, `slaActivo=false`, sin meta, preventivo, CORRIDO, repriorizar, espera, CAS, terminal); integracion `primera-respuesta.integration.spec.ts` suma el caso de `fijarVencimientoSiSinRespuesta` (sin respuesta escribe y limpia, respondido queda igual); los dos e2e `aplicar-sla-*.e2e.spec.ts` pasan el repo real.
+- Verificacion 6.10 sobre el arbol del commit: lint, typecheck, `pnpm vitest run src/tickets src/sla src/app.module.smoke.spec.ts` y ratchet de casts 617 en 114.
+- **Punto abierto para la WU-7**: `primeraRespuestaVencida` no se reinicia cuando una repriorizacion mueve el vencimiento hacia adelante. Un ticket ya marcado vencido (y notificado) que se repriorice a una meta mas larga conserva la marca; la WU-7 debe decidir si el barrido o la repriorizacion la limpian.
+- Ayuda: sin deuda nueva. Rollback: `AplicarSla` (escritura de la meta), el metodo del puerto y del repo.
+
+## WU-7 — parte 1: barrido de primera respuesta (tareas 7.1 a 7.3)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu07`, base `...-wu06c`. El notificador comun (7.4, 7.5), el e2e (7.6) y la verificacion final (7.7) quedan para la parte 2, para no pasar el presupuesto de 400 lineas.
+
+- `ISlaTicketQueryRepository` suma `findPrimerasRespuestasVencidas(now)` y `marcarPrimeraRespuestaVencida(id)`. La busqueda: `primeraRespuestaVenceAt < now`, `primeraRespuestaAt` y `deletedAt` nulos, `primeraRespuestaVencida=false`, estado fuera de RESUELTO, CERRADO y CANCELADO (`ESTADOS_TERMINALES` + RESUELTO). No excluye la espera ni mira `slaRelojPendiente`: la primera respuesta no tiene pausa. El marcado es un CAS que repite esas condiciones, asi que una respuesta que llega entre la lectura y la marca gana.
+- `SlaPrimeraRespuestaVencidaEvent` (`'sla.primera_respuesta_vencida'`, solo ids). `MarcarVencidosUseCase` corre el paso 3 despues del 2, con el mismo aislamiento por ticket y log-and-swallow del publisher; publica solo si el CAS afecto 1 fila. El retorno sigue contando solo la resolucion.
+- **Decision (orquestador, de diseno)**: `fijarVencimientoSiSinRespuesta` tambien pone `primeraRespuestaVencida=false` al reescribir la meta (misma condicion `primeraRespuestaAt: null`). Resuelve el punto abierto de la WU-6: un ticket sin respuesta que se repriorice a otra meta vuelve a notificar si vence de nuevo. La insignia se deriva de las fechas, asi que solo cambia la deduplicacion del mail. Un ticket ya respondido no se toca.
+- Tests: 5 unit nuevos del paso 3; integracion del repo en `marcar-vencidos.integration.spec.ts` (una sola notificacion en dos barridos, espera sin pausa, tres estados excluidos, respondido/ya marcado/borrado/futuro/sin meta, CAS contra respuesta intermedia, `vencido` intacto) y el reinicio en `primera-respuesta.integration.spec.ts`. La base compartida solo trae 4 estados: el spec crea los terminales que falten y los borra al terminar.
+- Ayuda: deuda — aviso por mail cuando vence la primera respuesta. Rollback: paso 3, metodos del puerto/repo, evento y la linea de reinicio en el repo de escritura.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts`: 96 archivos, 928 tests verdes |
+| Runtime harness | Integracion contra Postgres real (`soporte_tenant_test`) |
+| Rollback boundary | Paso 3 de `MarcarVencidosUseCase`, repo de consulta, evento y reinicio en el repo de escritura |
+
+## WU-7 — parte 2: notificador comun y listeners (tareas 7.4 y 7.5)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu07b`, base `...-wu07`. El e2e (7.6) y la verificacion final (7.7) quedan para la parte 3 (stash `wu07c`) por el presupuesto de 400 lineas.
+
+- `NotificadorVencimientoSla` (`notificaciones/infrastructure`, sin decoradores, cableado por factory): asignado mas administradores del tenant activo, deduplicados por email sin distinguir mayusculas, `send()` aislado por destinatario y try/catch total. Recibe la plantilla y el nombre del listener (solo para el log).
+- `SlaVencidoNotificacionListener` pasa a delegar en el notificador (esto corrige su duplicado cuando un administrador es el asignado). Nuevo `SlaPrimeraRespuestaVencidaNotificacionListener` sobre `'sla.primera_respuesta_vencida'` con `templatePrimeraRespuestaVencida` (`escaparHtml`, en el spec de escapado). Ambos y el notificador cableados en `notificaciones.module.ts`.
+- Tests: los 9 casos de comportamiento del listener se movieron a `notificador-vencimiento-sla.spec.ts` (mas dedupe por email y uso de la plantilla recibida); el spec del listener queda como delegacion fina de los dos listeners. El tamano del commit es sobre todo ese movimiento de tests (~330 lineas borradas y reescritas): `size:exception` razonable si el ledger no descuenta movimientos.
+- Ayuda: deuda — aviso por mail cuando vence la primera respuesta. Rollback: notificador, el segundo listener, la plantilla y el cableado; el listener de `sla.vencido` vuelve a su version previa.
+
+### Work Unit Evidence (parte 2)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts`: 97 archivos, 936 tests verdes; lint y typecheck limpios; ratchet 617/114 |
+| Runtime harness | Cableado de Nest comprobado por `app.module.smoke.spec.ts`; el e2e con mail fake llega en la parte 3 |
+| Rollback boundary | `notificaciones/` (notificador, listeners, plantilla, modulo) |
+
+## WU-7 — parte 3: e2e y verificacion (tareas 7.6 y 7.7; WU-7 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu07c`, base `...-wu07b`.
+
+- `sla-primera-respuesta.e2e.spec.ts` (sin HTTP): barrido real dentro de `tenantContext.run()`, Prisma real, listeners reales y `EMAIL_SENDER` fake. Tenant efimero `soporte_prov_primRespE2E_*_test`; `usarLockMasterTest()` y truncate de la master en `beforeEach`; filas, `app.close()` y `dropDatabase` en ese orden.
+- 5 casos: dos barridos envian un solo mail al asignado y a cada administrador; un administrador que es el asignado recibe uno solo; un ticket en espera sin respuesta se notifica y se marca; la respuesta posterior al vencimiento cuenta como vencida y no vuelve a avisar; respondido a tiempo y sin meta no avisan.
+- Verificacion 7.7 sobre el arbol del commit: lint, typecheck, `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts` (98 archivos, 941 tests) y ratchet de casts 617 en 114.
+- Ayuda: deuda — aviso por mail cuando vence la primera respuesta. Rollback: solo el e2e.
+
+### Work Unit Evidence (parte 3)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/sla/infrastructure/schedulers/sla-primera-respuesta.e2e.spec.ts`: 5 verdes |
+| Runtime harness | E2E contra Postgres real con mail fake |
+| Rollback boundary | El archivo del e2e |
+
+## WU-8 — parte 1: dashboard backend (tareas 8.3 y 8.6; 8.1, 8.2, 8.4, 8.5 y 8.7 quedan para la parte 2, stash `wu08b`)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu08`, base `...-wu07c`. Los specs de integracion nuevos (8.1, 8.2, 8.4, 8.5: ~300 lineas) y la verificacion final (8.7) van en la parte 2 por el presupuesto de 400.
+
+- Repo: `cumplimientoSla` pasa a incorporados (`sla_cumplido`) mas previos (`fechaCierre <= slaVenceAt`), cuatro `count` con field references; `cumplimientoPrimeraRespuesta` y `tiempoPromedioPrimeraRespuestaHoras` nuevos; preventivos fuera por tipo. `promedioHorasHabiles` (dominio puro) con su unit (8.3: 2 h y 0,5 h dan 1,25 h; el "(1 h)" de la tarea es 2 h habiles, el promedio es el de la spec). Un reabierto tiene `fechaCierre` nulo, asi que no entra.
+- Arrastres de la WU-7: paso 3 aislado con log (`MarcarVencidosUseCase` recibe el logger); el spec de integracion borra sus estados terminales por prefijo de nombre, antes y despues.
+- Ayuda: deuda — indicadores de primera respuesta y cumplimiento por tiempo activo en el dashboard.
+
+## WU-8 — parte 2: integracion y verificacion (tareas 8.1, 8.2, 8.4, 8.5 y 8.7; WU-8 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu08b`, base `...-wu08`. `prisma-dashboard.integration.spec.ts` contra Postgres real, un ciclo por test: resolucion (incorporados, previos, reabierto y pliegue pendiente afuera, sin `vencido`), primera respuesta (2 de 4, rellenado solo en el tiempo medio, 1,25 h, sin datos), preventivo sin efecto y espera como abierto. Se corrigio el "(1 h)" de 8.3 a "(2 h)".
+- Ayuda: sin deuda nueva (la de la parte 1 sigue). Rollback: solo el spec.
+- Verificacion (arrastre de la validacion de la WU-8): lint y typecheck limpios; `pnpm test` backend completo: 626 archivos / 7666 tests, exit 0 (unico ruido conocido: `test/fixtures/orden-de-arranque.spec.ts`); `node scripts/check-casts-en-specs.mjs`: 617/114.
+
+## WU-9a — parte 1: backend (tareas 9a.1 a 9a.3; 9a.4, 9a.5 y 9a.6 del frontend quedan para la parte 2, stash `wu09ab`)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu09a`, base `...-wu08b`. El total (~557 lineas con docs) supera el presupuesto de 400, asi que se parte en la costura backend / frontend.
+
+- Dominio: `tickets/domain/policies/estado-sla-derivado.policy.ts` con `derivarEstadoSla` (SIN_SLA, EN_PAUSA, VENCIDO, AL_DIA; corriendo por `ESTADOS_RELOJ_CORRE`, nunca por `sla_corre_desde`; resuelto con `cumplido === false` da VENCIDO sin marca del barrido; previo: `fechaCierre > slaVenceAt`) y `derivarEstadoPrimeraRespuesta` (SIN_META, PENDIENTE, CUMPLIDA, VENCIDA; respuesta tardia es VENCIDA). Unit con 13 casos.
+- Decision: sin `slaVenceAt` (preventivo o sin SLA) da SIN_SLA aun en ESPERANDO_CLIENTE; el DTO no manda `sla.venceAt` en pausa.
+- `RelojSlaSnapshot` suma `primeraRespuestaAt`/`primeraRespuestaVenceAt` (opcionales, no rompen fixtures) y `TicketMapper.toDomain` los carga. `toTicketResponseDto` recibe `estadoCodigo` (y `ahora`) y suma `sla` y `primeraRespuesta`; el controller inyecta `ESTADO_REPOSITORY` y resuelve el codigo por `estadoId` (catalogo fijo, `findAllActive`).
+- Verificacion de esta parte: backend `pnpm lint` y `pnpm typecheck` limpios; `pnpm vitest run src/tickets`: 69 archivos / 695 tests verdes; `node scripts/check-casts-en-specs.mjs`: 617/114.
+- Ayuda: deuda — badges de SLA en pausa, vencido y primera respuesta en el encabezado del ticket.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/tickets`: 69 archivos / 695 tests verdes |
+| Runtime harness | N/A: el DTO se prueba por unit y por el spec del controller; sin frontera de runtime nueva |
+| Rollback boundary | policy + snapshot + mapper + DTO + controller y sus specs |
+
+## WU-9a — parte 2: frontend (tareas 9a.4, 9a.5 y 9a.6; WU-9a completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu09ab`, base `...-wu09a`.
+
+- `ticket-header.tsx` deja de leer `vencido`; badges "SLA al dia", "SLA vencido", "SLA en pausa" (sin fecha vigente: "En pausa, esperando al cliente") y "Primera respuesta vencida"; sin badge para SIN_META, PENDIENTE y CUMPLIDA. `types.ts` suma `sla`, `primeraRespuesta`, `EstadoSla` y `EstadoPrimeraRespuesta`. 6 tests nuevos en `ticket-header.test.tsx`.
+- Arrastre: el cast nuevo de la WU-5 en `prioridad-form-dialog.test.tsx` (`as Record<string, unknown>` en `abrirYGuardar`) se reemplazo por un parseo con zod; los dos casts previos del archivo no son de la WU-5 y quedan.
+- Verificacion 9a.6 sobre el arbol del commit: `JWT_SECRET=dummy pnpm lint` y `pnpm type-check` limpios; `pnpm test` frontend 245 archivos / 1978 tests; `node scripts/check-casts-en-specs.mjs`: 617/114.
+- Ayuda: deuda — badges de SLA en pausa, vencido y primera respuesta en el encabezado del ticket.
+
+### Work Unit Evidence (parte 2)
+| Evidence | Value |
+|---|---|
+| Focused test | frontend `pnpm test`: 245 archivos / 1978 tests verdes |
+| Runtime harness | N/A: componente presentacional sin frontera de runtime nueva |
+| Rollback boundary | `ticket-header.tsx`, `types.ts` y sus specs, mas el spec del dialogo de prioridad |
+
+
+## WU-9b — frontend: arcos, badge, tarjetas (tareas 9b.1 a 9b.5 y 9b.7; 9b.7 quedo hecha en el PR del tracker #421; 9b.6 es un paso posterior al deploy, fuera de la lista de tareas)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu09b`, base `...-wu09ab`.
+
+- Espejo de estados: `estado-transitions.ts` suma EN_PROCESO->ESPERANDO_CLIENTE y ESPERANDO_CLIENTE->EN_PROCESO|RESUELTO|CANCELADO; `ESTADOS_CORRECTIVOS` no lista ESPERANDO_CLIENTE (el salto desde ese estado sigue posible). `TicketEstadoCodigo`, `status-badge.tsx` ("Esperando al cliente", variante secondary) y la etiqueta del control de transicion actualizados, con tests de arcos, correctivos, badge y control.
+- Dashboard: `types.ts` suma `cumplimientoPrimeraRespuesta` y `tiempoPromedioPrimeraRespuestaHoras`; `metricas-map.ts` reemplaza `toSlaPercentage` por `toPorcentaje` (nulo queda nulo) y suma `formatHoras`; `dashboard-view.tsx` muestra tres tarjetas (cumplimiento de resolucion, % primera respuesta a tiempo, tiempo medio en horas habiles); nulo se lee "Sin datos", nunca 0 %. Cambio de comportamiento: la tarjeta de resolucion ya no muestra 0 % ante nulo.
+- Arrastre 1 (backend): `estadoSla` con codigo desconocido caia en la rama "resuelto" y mostraba AL_DIA. `derivarEstadoSla` ahora trata un codigo fuera de RESUELTO/CERRADO/CANCELADO como corriendo (deriva de las fechas); el controller registra un warning (`codigoDeEstado`) en `aDto` y en el listado. Test unit en la policy; sin test de controller propio.
+- Arrastre 2 (Ayuda): `backend/ayuda/tickets-listado.md` suma "Esperando al cliente" a los estados con la regla de pausa. Revisados los demas articulos: ninguno otro queda falso.
+- Ayuda: deuda — estado "Esperando al cliente", regla de pausa del SLA, campo de primera respuesta en prioridades e indicadores del dashboard.
+- Verificacion: frontend `JWT_SECRET=dummy pnpm lint` y `pnpm type-check` limpios, `pnpm test` 245 archivos / 1990 tests; backend `pnpm lint`, `pnpm typecheck` limpios, `pnpm vitest run src/tickets` 69 archivos / 697 tests; `node scripts/check-casts-en-specs.mjs`: 617/114.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test | frontend `pnpm test`: 245 archivos / 1990 tests verdes; backend `src/tickets`: 697 verdes |
+| Runtime harness | N/A: componentes presentacionales (Testing Library + msw) y funcion pura de dominio |
+| Rollback boundary | `estado-transitions.ts`, `types.ts`, `status-badge.tsx`, control de transicion, modulo dashboard FE, policy/controller del estado SLA, `tickets-listado.md` y sus specs |
+
+## Remediacion del verify
+
+Rama `feat/sla-primera-respuesta-y-pausa-verify-fix`, base `...-wu09b`. Cierra los hallazgos de `verify-report.md`.
+
+- **C1** (escenario "Eventos que no cuentan", `sla-primera-respuesta` R1): `esperando-cliente.e2e.spec.ts` suma un test con Prisma real. Tras tres cambios de estado, una asignacion manual (`PATCH /tickets/:id/asignar`) y otra transicion, `primera_respuesta_at` sigue NULL; el primer comentario publico de un no solicitante la fija. El tecnico del spec recibe `TICKETS:ASIGNAR`.
+- **W1**: el encabezado de la WU-9b ya coincide con `tasks.md` (9b.7 hecha en el PR #421; 9b.6 es un paso posterior al deploy) y la seccion WU-3a.3 duplicada quedo en una sola, con su nota de la asercion 3a.12.

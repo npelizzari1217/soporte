@@ -4,6 +4,8 @@ import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-eve
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEstadoCambiadoEvent } from '../../domain/events/ticket-estado-cambiado.event';
+import { TicketTransicionadoEvent } from '../../domain/events/ticket-transicionado.event';
+import { IRelojSlaMarcador } from '../../domain/ports/i-reloj-sla-marcador';
 import { esEstadoNotificable } from '../../domain/policies/estados-notificables.policy';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -16,15 +18,20 @@ import {
   EstadoDestinoInvalidoError,
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
-import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
+import {
+  afectaRelojSla,
+  ESTADOS_NO_DESTINO_CORRECTIVO,
+  ESTADOS_TERMINALES,
+} from '../../domain/state-machine/estados.constants';
 
 /**
  * Estados destino que setean `fecha_cierre` al alcanzarse (T12).
  *
- * Coincide hoy con `estados-notificables.policy` (ambos son RESUELTO/CERRADO)
- * pero son conceptos distintos de la spec (T12 vs T13) — se mantienen
- * constantes separadas a propósito para no acoplar "cuándo cierra" a
- * "cuándo notifica" si alguna evoluciona de forma independiente.
+ * Ya NO coincide con `estados-notificables.policy`: desde la WU-4 esa política
+ * es {RESUELTO, CERRADO, ESPERANDO_CLIENTE} (el mail de espera), mientras que
+ * acá solo cierran RESUELTO/CERRADO. Son conceptos distintos de la spec
+ * (T12 vs T13) — se mantienen constantes separadas a propósito para no acoplar
+ * "cuándo cierra" a "cuándo notifica".
  */
 const ESTADOS_QUE_CIERRAN = new Set<string>(['RESUELTO', 'CERRADO']);
 
@@ -93,6 +100,7 @@ export class TransicionarEstadoUseCase {
     private readonly stateMachineFactory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly relojMarcador: IRelojSlaMarcador,
   ) {}
 
   async execute(dto: TransicionarEstadoDto): Promise<Result<TicketEntity, DomainError>> {
@@ -133,9 +141,13 @@ export class TransicionarEstadoUseCase {
     // estado NO terminal salteando el grafo — incluso reabrir desde un estado
     // terminal (CERRADO/CANCELADO). BYPASSEA `canTransitionTo`/`puedeTransicionar`
     // a propósito. NUNCA lleva a un terminal (para CERRAR/CANCELAR van los
-    // arcos normales). El ticket soft-deleted YA se rechazó como 404 arriba,
+    // arcos normales) NI a ESPERANDO_CLIENTE (solo se entra por el arco desde
+    // EN_PROCESO). El ticket soft-deleted YA se rechazó como 404 arriba,
     // así que el salto nunca opera sobre un ticket borrado.
-    const saltoCorrectivo = dto.actorEsCorrector && !ESTADOS_TERMINALES.has(estadoDestino.codigo);
+    const saltoCorrectivo =
+      dto.actorEsCorrector &&
+      !ESTADOS_TERMINALES.has(estadoDestino.codigo) &&
+      !ESTADOS_NO_DESTINO_CORRECTIVO.has(estadoDestino.codigo);
 
     if (!arcoNormal && !saltoCorrectivo) {
       return Result.fail(new TransicionInvalidaError(estadoActual.codigo, estadoDestino.codigo));
@@ -183,6 +195,22 @@ export class TransicionarEstadoUseCase {
 
       await this.ticketRepo.save(ticket);
       await this.operacionRepo.save(operacion);
+
+      // Reloj de SLA (ADR-3): dentro de la tx, DESPUÉS de guardar ticket y operación (el save del
+      // ticket ya tomó el lock de la fila), solo si la transición afecta el reloj. El evento sale
+      // post-commit: un rollback no deja ni la versión incrementada ni el evento.
+      if (afectaRelojSla(estadoAnteriorCodigo, estadoDestino.codigo)) {
+        await this.relojMarcador.marcar(ticket.id, operacion.id);
+        this.txRunner.alCommitear(() =>
+          this.eventPublisher.publish(
+            new TicketTransicionadoEvent({
+              ticketId: ticket.id,
+              estadoAnteriorCodigo,
+              estadoNuevoCodigo: estadoDestino.codigo,
+            }),
+          ),
+        );
+      }
     });
 
     // POST-COMMIT (T13): solo si el destino es notificable.
