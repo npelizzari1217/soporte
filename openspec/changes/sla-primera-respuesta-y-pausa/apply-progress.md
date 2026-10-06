@@ -199,3 +199,11 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03c3`, base `...-wu03c2`. Pieza B de 
 - Los e2e `aplicar-sla-*.e2e.spec.ts` se adaptaron: estado con codigo real `NUEVO` (el reloj corre por codigo) y `slaCorreDesde = createdAt`, como fija el alta real; el DEFAULT `now()` de la columna no aplica a un ticket con `createdAt` pasado.
 - Ratchet de casts: 624 a 617 en 114 archivos (el spec reescrito ya no usa `as never`).
 - `CalcularSlaVenceService` y su spec quedan sin consumidor de produccion; limpieza aparte.
+
+## WU-3c.4 — integracion del barrido (tareas 3c.6 y 3c.8, cierre de la WU-3c)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c4`, base `...-wu03c3`. Con esta parte la WU-3c y la WU-3 quedan completas.
+
+- `marcar-vencidos.integration.spec.ts`: `MarcarVencidosUseCase` con `PrismaRelojSlaRepository`, `PrismaSlaTicketQueryRepository` y `ConsolidarRelojSlaUseCase` reales contra `soporte_tenant_test`. Los repos se acotan a las filas del spec (prefijo `WU3C`, barridas al empezar y al terminar) para no tocar fixtures de otros specs.
+- Casos: huerfano de pausa con dos listeners caidos (pausa, reanudacion, pausa) se reconcilia antes de evaluar y, en espera, no se marca; huerfano reanudado con vencimiento viejo pasado no se marca y el pliegue lo deriva hacia adelante; un previo corriendo con `sla_corre_desde` NULL se marca por estado y se notifica una sola vez; un ticket en ESPERANDO_CLIENTE con vencimiento pasado no se marca ni se notifica.
+- Verificacion 3c.8 sobre este arbol: lint, typecheck, `pnpm vitest run src/sla src/tickets`, `src/app.module.smoke.spec.ts` y ratchet de casts (617), ver el commit.
