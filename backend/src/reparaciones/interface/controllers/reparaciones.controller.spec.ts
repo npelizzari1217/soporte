@@ -13,7 +13,7 @@
  * Tarea: T8.6, T9.6.
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { NotFoundException, UnprocessableEntityException, StreamableFile } from '@nestjs/common';
 import { ReparacionesController, toHttpException } from './reparaciones.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../../shared/domain/result';
@@ -597,7 +597,43 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
   });
 
-  it('no recibe query ni filtros — llama a execute() sin argumentos', async () => {
+  it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
+    const exportarReparaciones = { execute: vi.fn() };
+    exportarReparaciones.execute.mockResolvedValue(
+      Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'reparaciones-2026-08-19.xlsx' }),
+    );
+    const { controller } = buildController({ exportarReparaciones });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(res, 'xlsx');
+
+    expect(salida).toBeInstanceOf(StreamableFile);
+    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith('xlsx');
+    expect(headers.get('Content-Type')).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(headers.get('Content-Disposition')).toBe(
+      'attachment; filename="reparaciones-2026-08-19.xlsx"',
+    );
+    expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+  });
+
+  it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
+    const exportarReparaciones = { execute: vi.fn() };
+    exportarReparaciones.execute.mockResolvedValue(
+      Result.ok({ contenido: 'a;b', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarReparaciones });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(res);
+
+    expect(salida).toBe('a;b');
+    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith('csv');
+    expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+  });
+
+  it('no recibe query ni filtros — llama a execute() solo con el formato', async () => {
     const exportarReparaciones = { execute: vi.fn() };
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
@@ -606,7 +642,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
 
     await controller.exportar(respuestaFalsa().res);
 
-    expect(exportarReparaciones.execute).toHaveBeenCalledWith();
+    expect(exportarReparaciones.execute).toHaveBeenCalledWith('csv');
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {

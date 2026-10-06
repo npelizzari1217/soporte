@@ -5,7 +5,7 @@
  * el e2e.
  */
 import 'reflect-metadata';
-import { UnprocessableEntityException } from '@nestjs/common';
+import { StreamableFile, UnprocessableEntityException } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -111,11 +111,34 @@ describe('ReporteStockInsumosController', () => {
 
       const salida = await controller.exportar(query, res);
 
-      expect(exportar.execute).toHaveBeenCalledWith(query);
+      expect(exportar.execute).toHaveBeenCalledWith(query, 'csv');
       expect(salida).toBe('Codigo');
       expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
       expect(headers.get('Content-Disposition')).toBe(
         'attachment; filename="reporte-stock-insumos-2026-10-01.csv"',
+      );
+      expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+    });
+
+    it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx', async () => {
+      const { controller, exportar, res, headers } = build();
+      exportar.execute.mockResolvedValue(
+        Result.ok({
+          contenido: Buffer.from('PK'),
+          nombreArchivo: 'reporte-stock-insumos-2026-10-01.xlsx',
+        }),
+      );
+      const query = { esRepuesto: true };
+
+      const salida = await controller.exportar(query, res, 'xlsx');
+
+      expect(salida).toBeInstanceOf(StreamableFile);
+      expect(exportar.execute).toHaveBeenCalledWith(query, 'xlsx');
+      expect(headers.get('Content-Type')).toBe(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(headers.get('Content-Disposition')).toBe(
+        'attachment; filename="reporte-stock-insumos-2026-10-01.xlsx"',
       );
       expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
     });

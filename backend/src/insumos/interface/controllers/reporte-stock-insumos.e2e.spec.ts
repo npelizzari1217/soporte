@@ -15,6 +15,7 @@
  * cada caso parte de una base sin insumos. Higiene: filas → `app.close()` →
  * `dropDatabase`.
  */
+import { leerXlsx } from '../../../testing/leer-xlsx';
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
   INestApplication,
@@ -384,6 +385,38 @@ describe('Reporte de stock e2e — permisos, formato y filtros', () => {
       expect(csv.bom).toBe(true);
       expect(csv.texto.split('\r\n')[0]).toContain(';');
       expect(filasCsv(csv.texto)[0][0]).toBe('CSV-1');
+    });
+  });
+
+  describe('Formato xlsx (?formato=xlsx)', () => {
+    it('entrega bytes crudos de un libro válido (no JSON de un Buffer), con sus headers', async () => {
+      const token = await crearActor(['INSUMOS:LECTURA']);
+      const { familiaId, unidadId } = await sembrarFamiliaYUnidad(false);
+      await sembrarInsumo('XLS-1', familiaId, unidadId, { entrada: 2, stockMinimo: 5 });
+
+      const res = await fetch(urlCsv('?formato=xlsx'), { headers: bearer(token) });
+      const bytes = new Uint8Array(await res.arrayBuffer());
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(res.headers.get('content-disposition')).toMatch(
+        /^attachment; filename="reporte-stock-insumos-\d{4}-\d{2}-\d{2}\.xlsx"$/,
+      );
+      expect(res.headers.get('access-control-expose-headers')).toContain('Content-Disposition');
+      // Firma ZIP ("PK"): un Buffer serializado como JSON empezaría con `{`.
+      expect([bytes[0], bytes[1]]).toEqual([0x50, 0x4b]);
+      const hoja = (await leerXlsx(bytes)).worksheets[0];
+      expect(hoja.getRow(2).getCell(1).value).toBe('XLS-1');
+    });
+
+    it('un formato desconocido es 400', async () => {
+      const token = await crearActor(['INSUMOS:LECTURA']);
+
+      const invalido = await fetch(urlCsv('?formato=pdf'), { headers: bearer(token) });
+
+      expect(invalido.status).toBe(400);
     });
   });
 

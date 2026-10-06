@@ -18,6 +18,7 @@ import {
   ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
+  StreamableFile,
 } from '@nestjs/common';
 import { EquiposController, toHttpException } from './equipos.controller';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
@@ -989,6 +990,42 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
     expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
   });
 
+  it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
+    const exportarEquipos = { execute: vi.fn() };
+    exportarEquipos.execute.mockResolvedValue(
+      Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'equipos-2026-08-19.xlsx' }),
+    );
+    const { controller } = buildController({ exportarEquipos });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar({}, res, 'xlsx');
+
+    expect(salida).toBeInstanceOf(StreamableFile);
+    expect(exportarEquipos.execute).toHaveBeenLastCalledWith({ incluirDadosDeBaja: false }, 'xlsx');
+    expect(headers.get('Content-Type')).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(headers.get('Content-Disposition')).toBe(
+      'attachment; filename="equipos-2026-08-19.xlsx"',
+    );
+    expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+  });
+
+  it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
+    const exportarEquipos = { execute: vi.fn() };
+    exportarEquipos.execute.mockResolvedValue(
+      Result.ok({ contenido: 'a;b', nombreArchivo: 'equipos-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarEquipos });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar({}, res);
+
+    expect(salida).toBe('a;b');
+    expect(exportarEquipos.execute).toHaveBeenLastCalledWith({ incluirDadosDeBaja: false }, 'csv');
+    expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+  });
+
   it('por defecto pide solo los vigentes; incluirBajas=true se traduce a incluirDadosDeBaja', async () => {
     const exportarEquipos = { execute: vi.fn() };
     exportarEquipos.execute.mockResolvedValue(
@@ -999,8 +1036,12 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
     await controller.exportar({}, respuestaFalsa().res);
     await controller.exportar({ incluirBajas: true }, respuestaFalsa().res);
 
-    expect(exportarEquipos.execute).toHaveBeenNthCalledWith(1, { incluirDadosDeBaja: false });
-    expect(exportarEquipos.execute).toHaveBeenNthCalledWith(2, { incluirDadosDeBaja: true });
+    expect(exportarEquipos.execute).toHaveBeenNthCalledWith(
+      1,
+      { incluirDadosDeBaja: false },
+      'csv',
+    );
+    expect(exportarEquipos.execute).toHaveBeenNthCalledWith(2, { incluirDadosDeBaja: true }, 'csv');
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {

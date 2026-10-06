@@ -14,7 +14,10 @@
  * sin chequeos de permiso inline. Los dos handlers comparten el DTO de query:
  * los filtros del CSV son los del JSON.
  */
-import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards, StreamableFile } from '@nestjs/common';
+import { FormatoExport } from '../../../shared/application/armar-export';
+import { entregarExport } from '../../../shared/interface/export/entregar-export';
+import { ParseFormatoExportPipe } from '../../../shared/interface/export/formato-export.pipe';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
@@ -66,18 +69,12 @@ export class ReporteStockInsumosController {
   async exportar(
     @Query() query: ReporteStockQueryDto,
     @Res({ passthrough: true }) res: RespuestaConHeaders,
-  ): Promise<string> {
-    const result = await this.exportarReporteStockUseCase.execute(query);
+    @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
+  ): Promise<string | StreamableFile> {
+    const result = await this.exportarReporteStockUseCase.execute(query, formato);
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const { contenido, nombreArchivo } = result.getValue();
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
-    // Sin esto el navegador no puede leer el nombre del archivo.
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-
-    return contenido;
+    return entregarExport(res, formato, result.getValue());
   }
 }
