@@ -322,6 +322,8 @@ import { ClienteLinkSoporteController } from './interface/controllers/cliente-li
       ],
     },
   ],
-  exports: [],
+  // `VerLogoClienteUseCase`: la ficha PDF de un ticket (`TicketPdfModule`)
+  // imprime el logo del cliente con el mismo caso de uso que sirve el logo.
+  exports: [VerLogoClienteUseCase],
 })
 export class ClientesModule {}

@@ -8,6 +8,7 @@ import { TicketsModule } from './tickets/tickets.module';
 import { ComprasModule } from './compras/compras.module';
 import { ReparacionesModule } from './reparaciones/reparaciones.module';
 import { EquiposModule } from './equipos/equipos.module';
+import { TicketPdfModule } from './ticket-pdf/ticket-pdf.module';
 import { SlaModule } from './sla/sla.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { KbModule } from './kb/kb.module';
@@ -56,6 +57,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     ComprasModule,
     ReparacionesModule,
     EquiposModule,
+    TicketPdfModule,
     SlaModule,
     DashboardModule,
     KbModule,

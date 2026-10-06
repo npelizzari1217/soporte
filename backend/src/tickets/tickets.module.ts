@@ -490,6 +490,11 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     // crítica de numeración (ADR-PV5) — mismo criterio que los tokens de
     // repositorio de arriba.
     CrearTicketUseCase,
+    // La ficha PDF (`TicketPdfModule`) reusa el MISMO acceso que el detalle:
+    // estos dos casos de uso deciden quién ve el ticket y su timeline, y
+    // reimplementarlos allá abriría la puerta a divergir de esa regla.
+    ObtenerTicketUseCase,
+    ListarTimelineUseCase,
   ],
 })
 export class TicketsModule {}
