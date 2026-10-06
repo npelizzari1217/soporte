@@ -49,10 +49,15 @@ import {
   NotFoundException,
   Param,
   Post,
+  Query,
   Res,
   UnprocessableEntityException,
   UseGuards,
+  StreamableFile,
 } from '@nestjs/common';
+import { FormatoExport } from '../../../shared/application/armar-export';
+import { entregarExport } from '../../../shared/interface/export/entregar-export';
+import { ParseFormatoExportPipe } from '../../../shared/interface/export/formato-export.pipe';
 
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -252,21 +257,16 @@ export class ReparacionesController {
    */
   @Get('export')
   @RequiereAcciones('EDILICIA:LECTURA')
-  async exportar(@Res({ passthrough: true }) res: RespuestaConHeaders): Promise<string> {
-    const result = await this.exportarReparacionesUseCase.execute();
+  async exportar(
+    @Res({ passthrough: true }) res: RespuestaConHeaders,
+    @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
+  ): Promise<string | StreamableFile> {
+    const result = await this.exportarReparacionesUseCase.execute(formato);
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const { contenido, nombreArchivo } = result.getValue();
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
-    // El navegador no puede leer un header que no esté expuesto por CORS, y
-    // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-
-    return contenido;
+    return entregarExport(res, formato, result.getValue());
   }
 
   /**
