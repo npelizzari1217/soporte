@@ -246,3 +246,28 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu05b`, base `...-wu05`.
 - Tests: formulario (valor vigente, entero positivo, vacio a null, 0 y -2 rechazados sin enviar) y lista (`prioridad-list.test.tsx`); fixture de `ticket-edit-form.test.tsx` ajustado al tipo.
 - Verificacion 5.7 sobre el arbol del commit: frontend `JWT_SECRET=dummy pnpm lint` limpio, `pnpm type-check` limpio, `pnpm test` 245 archivos / 1971 tests verdes; ratchet de casts 617 en 114. El backend se verifico en la parte 1.
 - Ayuda: deuda — campo "Primera respuesta (h)" en las prioridades del catalogo. Rollback: archivos del frontend de esta parte.
+
+## WU-6 — M4, registro de la primera respuesta y meta en `AplicarSla` (parte 1: M4 con relleno, tareas 6.1 a 6.3)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu06`, base `...-wu05b`. Estandar (feature, sin TDD estricto). Partida por presupuesto de 400 lineas (el total medido daba ~810 sin docs): aca la migracion M4 con su relleno y su spec de integracion (no se separan: sin `size:exception`); el registro en `CrearComentarioUseCase` y la meta en `AplicarSla` (6.4 a 6.10) viajan en el stash `wu06b` y salen en la rama `...-wu06b`.
+
+- M4 `20261007150000_tickets_primera_respuesta`: `primera_respuesta_at`, `primera_respuesta_vence_at` (NULL) y `primera_respuesta_vencida boolean NOT NULL DEFAULT false`; indice parcial `tickets_primera_respuesta_pendiente_idx` (`WHERE primera_respuesta_at IS NULL AND NOT primera_respuesta_vencida AND primera_respuesta_vence_at IS NOT NULL`); relleno `UPDATE ... SET primera_respuesta_at = MIN(created_at)` de los comentarios publicos no borrados de alguien distinto del solicitante (cualquier autor si es externo), con `WHERE primera_respuesta_at IS NULL`; `rollback.sql`. Sin meta ni vencimiento retroactivos.
+- `schema.prisma` con los tres campos y el `@default(false)` espejo del DDL; cliente regenerado y migracion aplicada a `soporte_tenant_test`. `TicketMapper.toPersistence` suma las tres columnas al `Omit` (las escribira solo un repo acotado).
+- Spec de integracion `tickets-primera-respuesta.integration.spec.ts` (tenant efimero, `pg` crudo, 7 tests): relleno (interno, borrado, del solicitante, externo, sin comentarios), sin meta retroactiva con prioridad que ya tiene meta, idempotencia del relleno aun con un comentario anterior agregado despues, default `false`, predicado del indice, rollback y reaplicacion, y deriva Prisma/DDL.
+
+### 6.3 — EXPLAIN ANALYZE del relleno y conteo de `COMENTARIO` (para el PR)
+
+Medido en `soporte_tenant_test` dentro de una transaccion que se deshace (`ROLLBACK`): se quitaron las columnas, se sembraron 20.000 tickets con 80.000 comentarios (4 por ticket: del solicitante, interno, borrado y de un tecnico) y se corrio el `UPDATE` real con `EXPLAIN (ANALYZE, BUFFERS)`.
+
+- Plan: `Hash Join` de `tickets` contra el subselect agregado (`HashAggregate` por `ticket_id`); un `Seq Scan` sobre `operaciones_ticket` (filtro `NOT es_interno AND deleted_at IS NULL`, descarta 40.000 filas) y otro sobre `tickets`; el indice por `ticket_id` no se usa porque se recorren todos.
+- Tiempo: `Execution Time` 1.143 ms en la primera corrida y ~0,7 s en la segunda para 20.000 filas actualizadas (de eso 0,41 s son los triggers de FK, ajenos al relleno). Sin tablas temporales ni bloqueos largos: el `UPDATE` corre dentro del `migrate deploy` transaccional de cada tenant.
+- Conteo de `COMENTARIO`: `soporte_tenant_test` tiene 0 reales (antes de sembrar). El conteo por tenant real se corre antes del deploy con `SELECT count(*) FROM operaciones_ticket o JOIN tipo_operacion t ON t.id = o.tipo_operacion_id AND t.codigo = 'COMENTARIO';` y se anota en el PR del tracker.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/tickets/infrastructure/persistence/prisma/tickets-primera-respuesta.integration.spec.ts`: 7 tests verdes |
+| Runtime harness | Mismo spec contra Postgres real (tenant efimero) y `EXPLAIN ANALYZE` sobre `soporte_tenant_test` |
+| Rollback boundary | `rollback.sql` de M4, y las tres columnas del schema/mapper; sin consumidores todavia |
+
+- Ayuda: ningun articulo existente queda falso. Sin deuda nueva en esta parte.
