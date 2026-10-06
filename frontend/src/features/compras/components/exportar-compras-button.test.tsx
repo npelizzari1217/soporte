@@ -17,6 +17,13 @@ const FILTROS: ComprasFiltros = {
   sectorId: "11111111-1111-1111-1111-111111111111",
 };
 
+/** Abre el menú "Exportar" y elige un formato. */
+async function exportarComo(formato: "Excel" | "CSV") {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: /^exportar$/i }));
+  await user.click(await screen.findByRole("menuitem", { name: formato }));
+}
+
 /**
  * jsdom no implementa la API de object URLs, y el anchor sintético es
  * justamente lo que dispara la descarga real: se stubbean para poder
@@ -54,7 +61,7 @@ describe("ExportarComprasButton", () => {
     );
 
     renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
-    await userEvent.setup().click(screen.getByRole("button", { name: /exportar a excel/i }));
+    await exportarComo("CSV");
 
     await waitFor(() => expect(descargas).toHaveLength(1));
 
@@ -83,7 +90,7 @@ describe("ExportarComprasButton", () => {
     );
 
     renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
-    await userEvent.setup().click(screen.getByRole("button", { name: /exportar a excel/i }));
+    await exportarComo("CSV");
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
@@ -101,9 +108,73 @@ describe("ExportarComprasButton", () => {
     );
 
     renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
-    await userEvent.setup().click(screen.getByRole("button", { name: /exportar a excel/i }));
+    await exportarComo("CSV");
 
     await waitFor(() => expect(descargas).toHaveLength(1));
     expect(descargas[0].nombre).toBe("compras.csv");
+  });
+
+  it("el menú ofrece Excel primero y CSV después", async () => {
+    renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /^exportar$/i }));
+
+    const opciones = await screen.findAllByRole("menuitem");
+    expect(opciones.map((o) => o.textContent)).toEqual(["Excel", "CSV"]);
+  });
+
+  it("Excel pide formato=xlsx con los mismos filtros, sin paginación, y baja un .xlsx", async () => {
+    let urlPedida = "";
+    server.use(
+      http.get("/api/compras/export", ({ request }) => {
+        urlPedida = request.url;
+        return new HttpResponse(new Uint8Array([0x50, 0x4b]), {
+          headers: {
+            "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "content-disposition": 'attachment; filename="compras-2026-08-19.xlsx"',
+          },
+        });
+      }),
+    );
+
+    renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
+    await exportarComo("Excel");
+
+    await waitFor(() => expect(descargas).toHaveLength(1));
+    const params = new URL(urlPedida).searchParams;
+    expect(params.get("formato")).toBe("xlsx");
+    expect(params.get("estado")).toBe("COMPLETADAS");
+    expect(params.get("pagina")).toBeNull();
+    expect(descargas[0].nombre).toBe("compras-2026-08-19.xlsx");
+  });
+
+  it("CSV no manda el parámetro formato (el backend toma csv por defecto)", async () => {
+    let urlPedida = "";
+    server.use(
+      http.get("/api/compras/export", ({ request }) => {
+        urlPedida = request.url;
+        return new HttpResponse("numero\n", { headers: { "content-type": "text/csv" } });
+      }),
+    );
+
+    renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
+    await exportarComo("CSV");
+
+    await waitFor(() => expect(descargas).toHaveLength(1));
+    expect(new URL(urlPedida).searchParams.has("formato")).toBe(false);
+  });
+
+  it("sin Content-Disposition, el nombre por defecto de Excel termina en .xlsx", async () => {
+    server.use(
+      http.get("/api/compras/export", () =>
+        new HttpResponse(new Uint8Array([0x50, 0x4b]), { headers: { "content-type": "application/octet-stream" } }),
+      ),
+    );
+
+    renderWithProviders(<ExportarComprasButton filtros={FILTROS} />, { user: buildUser() });
+    await exportarComo("Excel");
+
+    await waitFor(() => expect(descargas).toHaveLength(1));
+    expect(descargas[0].nombre).toBe("compras.xlsx");
   });
 });

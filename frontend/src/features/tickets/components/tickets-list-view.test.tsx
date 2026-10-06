@@ -197,7 +197,7 @@ describe("TicketsListView", () => {
       expect(select.value).toBe("c-2024");
     });
 
-    it("«Exportar a Excel» usa el ciclo elegido en el filtro", async () => {
+    it("«Exportar → Excel» usa el ciclo elegido en el filtro y pide xlsx", async () => {
       URL.createObjectURL = vi.fn(() => "blob:mock");
       URL.revokeObjectURL = vi.fn();
       const clickSpy = vi
@@ -216,10 +216,12 @@ describe("TicketsListView", () => {
       renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
       await screen.findByText("Impresora rota");
 
-      await user.click(screen.getByRole("button", { name: /exportar a excel/i }));
+      await user.click(screen.getByRole("button", { name: /^exportar$/i }));
+      await user.click(await screen.findByRole("menuitem", { name: "Excel" }));
 
       await waitFor(() => expect(clickSpy).toHaveBeenCalled());
       expect(new URL(urlExportPedida).searchParams.get("ciclo")).toBe("c-2024");
+      expect(new URL(urlExportPedida).searchParams.get("formato")).toBe("xlsx");
     });
 
     it("sin ciclo activo, precarga y pide el ciclo más reciente por fechaInicio", async () => {

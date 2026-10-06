@@ -213,4 +213,37 @@ describe("/api/[...path] generic BFF proxy", () => {
     );
     expect(await res.text()).toContain("COM-1,Insumos");
   });
+
+  it.each([
+    ["xlsx", "compras/export", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "compras-2026-08-19.xlsx"],
+    ["pdf", "tickets/t1/pdf", "application/pdf", "ticket-SOP-2026-00001.pdf"],
+  ])(
+    "GET: descarga %s → bytes exactos, content-type y Content-Disposition intactos (no se decodifica como texto)",
+    async (_formato, ruta, contentType, nombre) => {
+      // Firma ZIP/PDF más bytes inválidos como UTF-8.
+      const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x25, 0x50, 0x44, 0x46, 0xff, 0xfe, 0x80, 0x00]);
+      server.use(
+        http.get(
+          `${BACKEND}/${ruta}`,
+          () =>
+            new HttpResponse(bytes, {
+              headers: {
+                "content-type": contentType,
+                "content-disposition": `attachment; filename="${nombre}"`,
+              },
+            }),
+        ),
+      );
+
+      const req = new NextRequest(`http://localhost/api/${ruta}?formato=xlsx`, {
+        headers: { cookie: "at=token123" },
+      });
+      const res = await GET(req, { params: Promise.resolve({ path: ruta.split("/") }) });
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe(contentType);
+      expect(res.headers.get("content-disposition")).toBe(`attachment; filename="${nombre}"`);
+      expect(Array.from(new Uint8Array(await res.arrayBuffer()))).toEqual(Array.from(bytes));
+    },
+  );
 });

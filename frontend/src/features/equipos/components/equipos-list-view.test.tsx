@@ -273,13 +273,15 @@ describe("EquiposListView — filtro «Mostrar equipos dados de baja»", () => {
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: () => "blob:x", revokeObjectURL: () => {} }));
 
     const { unmount } = renderWithProviders(<EquiposListView />, { user: user() });
-    await userEvent.click(await screen.findByRole("button", { name: /exportar a excel/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^exportar$/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "CSV" }));
     await waitFor(() => expect(exportaciones).toEqual([""]));
     unmount();
 
     currentSearch = "incluirBajas=true";
     renderWithProviders(<EquiposListView />, { user: user() });
-    await userEvent.click(await screen.findByRole("button", { name: /exportar a excel/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /^exportar$/i }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "CSV" }));
     await waitFor(() => expect(exportaciones).toEqual(["", "?incluirBajas=true"]));
     vi.unstubAllGlobals();
   });

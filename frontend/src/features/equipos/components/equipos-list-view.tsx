@@ -113,7 +113,6 @@ export function EquiposListView() {
                 recurso="equipos"
                 nombrePorDefecto="equipos.csv"
                 queryString={queryStringEquipos({ incluirBajas })}
-                etiqueta="Exportar a Excel"
               />
             </Can>
             {canModulo("TICKETS") ? (
