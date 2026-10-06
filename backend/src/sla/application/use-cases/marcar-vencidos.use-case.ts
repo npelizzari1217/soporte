@@ -4,6 +4,7 @@ import { ConsolidarRelojSlaUseCase } from './consolidar-reloj-sla.use-case';
 import { SlaVencidoEvent } from '../../domain/events/sla-vencido.event';
 import { SlaPrimeraRespuestaVencidaEvent } from '../../domain/events/sla-primera-respuesta-vencida.event';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 
 /**
  * MarcarVencidosUseCase — barrido de vencimiento de SLA (S4, S6). Marca
@@ -43,6 +44,7 @@ export class MarcarVencidosUseCase {
       | 'marcarPrimeraRespuestaVencida'
     >,
     private readonly eventPublisher: IDomainEventPublisher,
+    private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
   /** @returns la cantidad de tickets efectivamente marcados como vencidos (resolución). */
@@ -83,7 +85,12 @@ export class MarcarVencidosUseCase {
       }
     }
 
-    await this.barrerPrimerasRespuestas(ahora);
+    try {
+      await this.barrerPrimerasRespuestas(ahora);
+    } catch (error) {
+      // Aislamiento del paso 3: un fallo de la búsqueda no rechaza el barrido ya hecho en el paso 2.
+      this.logger.error(`SLA_PRIMERA_RESPUESTA_BARRIDO_FALLO | ${String(error)}`);
+    }
 
     return marcados;
   }

@@ -16,6 +16,7 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
+import { CalendarioLaboralSemanal } from '../../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 import { PrismaDashboardRepository } from './prisma-dashboard.repository';
 
 const MASTER_TEST_URL =
@@ -27,6 +28,16 @@ const CLIENTE_ID = 'test-cliente-pr-d';
 const DUMMY_SOLICITANTE_ID = '01900000-0000-7000-8000-000000000201';
 const AGENTE_1_ID = '01900000-0000-7000-8000-000000000301';
 const AGENTE_2_ID = '01900000-0000-7000-8000-000000000302';
+
+const CALENDARIO_L_A_V_9_A_18: CalendarioLaboralSemanal = [
+  { aperturaMinuto: null, cierreMinuto: null },
+  { aperturaMinuto: 540, cierreMinuto: 1080 },
+  { aperturaMinuto: 540, cierreMinuto: 1080 },
+  { aperturaMinuto: 540, cierreMinuto: 1080 },
+  { aperturaMinuto: 540, cierreMinuto: 1080 },
+  { aperturaMinuto: 540, cierreMinuto: 1080 },
+  { aperturaMinuto: null, cierreMinuto: null },
+];
 
 describe('PrismaDashboardRepository — Integration (PR-D)', () => {
   let prismaService: PrismaService;
@@ -65,6 +76,7 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     fechaCierre?: Date | null;
     slaVenceAt?: Date | null;
     vencido?: boolean;
+    slaAcumuladoS?: number | null;
   }) {
     return tenantClient.ticket.create({
       data: {
@@ -81,6 +93,7 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
         vencido: overrides.vencido ?? false,
         fechaCierre: overrides.fechaCierre ?? null,
         createdAt: overrides.createdAt ?? new Date(),
+        ...(overrides.slaAcumuladoS !== undefined && { slaAcumuladoS: overrides.slaAcumuladoS }),
       },
     });
   }
@@ -89,7 +102,11 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     prismaService = new PrismaService(MASTER_TEST_URL);
     tenantClient = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
     tenantContext = new TenantContext();
-    repo = new PrismaDashboardRepository(tenantContext);
+    repo = new PrismaDashboardRepository(
+      tenantContext,
+      { obtener: async () => CALENDARIO_L_A_V_9_A_18 },
+      { obtener: async () => new Set<string>() },
+    );
 
     const tipo = await tenantClient.tipoTicket.create({
       data: {
@@ -303,8 +320,8 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     });
   });
 
-  describe('cumplimientoSla()', () => {
-    it('cuenta cerradosConSla y cerradosATiempo (cerrados_no_vencidos) del scope', async () => {
+  describe('cumplimientoSla() — previos (fechaCierre <= slaVenceAt)', () => {
+    it('cuenta cerradosConSla y cerradosATiempo de los previos por fechaCierre contra slaVenceAt, sin leer `vencido`', async () => {
       const cicloSla = await tenantClient.cicloCliente.create({
         data: {
           cicloVigenteId: DUMMY_SOLICITANTE_ID,
@@ -321,14 +338,16 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
           cicloId: cicloSla.id,
           fechaCierre: new Date(),
           slaVenceAt: new Date('2099-01-01'),
-          vencido: false,
+          vencido: true,
+          slaAcumuladoS: null,
         });
         // cerrado, con SLA, vencido
         await crearTicket({
           cicloId: cicloSla.id,
           fechaCierre: new Date(),
           slaVenceAt: new Date('2020-01-01'),
-          vencido: true,
+          vencido: false,
+          slaAcumuladoS: null,
         });
         // cerrado, SIN SLA aplicable (no cuenta en el denominador)
         await crearTicket({
@@ -336,6 +355,7 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
           fechaCierre: new Date(),
           slaVenceAt: null,
           vencido: false,
+          slaAcumuladoS: null,
         });
         // abierto (no cuenta, no está cerrado)
         await crearTicket({

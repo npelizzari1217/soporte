@@ -26,6 +26,8 @@ export interface MetricasResponseDto {
     cerradosATiempo: number;
     porcentaje: number | null;
   };
+  cumplimientoPrimeraRespuesta: { conMeta: number; aTiempo: number; porcentaje: number | null };
+  tiempoPromedioPrimeraRespuestaHoras: number | null;
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
   /** KPI de satisfacción (WU9.1, ADR-C5). AUSENTE sin `CSAT:LECTURA`. */

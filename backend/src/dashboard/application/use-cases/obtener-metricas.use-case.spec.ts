@@ -16,6 +16,8 @@ describe('ObtenerMetricasUseCase', () => {
       tiempoPromedioResolucionHoras: vi.fn().mockResolvedValue(12.5),
       cargaPorAgente: vi.fn().mockResolvedValue([{ asignadoId: 'agente-1', abiertos: 2 }]),
       cumplimientoSla: vi.fn().mockResolvedValue({ cerradosConSla: 4, cerradosATiempo: 3 }),
+      cumplimientoPrimeraRespuesta: vi.fn().mockResolvedValue({ conMeta: 4, aTiempo: 2 }),
+      tiempoPromedioPrimeraRespuestaHoras: vi.fn().mockResolvedValue(1.25),
       distribucionPorTipo: vi.fn().mockResolvedValue([{ tipoId: 'tipo-1', total: 8 }]),
       distribucionPorPrioridad: vi.fn().mockResolvedValue([{ prioridadId: 'prio-1', total: 8 }]),
     };
@@ -53,6 +55,10 @@ describe('ObtenerMetricasUseCase', () => {
     expect(c.dashboardRepo.tiempoPromedioResolucionHoras).toHaveBeenCalledWith(filtroEsperado);
     expect(c.dashboardRepo.cargaPorAgente).toHaveBeenCalledWith(filtroEsperado);
     expect(c.dashboardRepo.cumplimientoSla).toHaveBeenCalledWith(filtroEsperado);
+    expect(c.dashboardRepo.cumplimientoPrimeraRespuesta).toHaveBeenCalledWith(filtroEsperado);
+    expect(c.dashboardRepo.tiempoPromedioPrimeraRespuestaHoras).toHaveBeenCalledWith(
+      filtroEsperado,
+    );
     expect(c.dashboardRepo.distribucionPorTipo).toHaveBeenCalledWith(filtroEsperado);
     expect(c.dashboardRepo.distribucionPorPrioridad).toHaveBeenCalledWith(filtroEsperado);
   });
@@ -106,6 +112,8 @@ describe('ObtenerMetricasUseCase', () => {
       tiempoPromedioResolucionHoras: null,
       cargaPorAgente: [],
       cumplimientoSla: { cerradosConSla: 0, cerradosATiempo: 0, porcentaje: null },
+      cumplimientoPrimeraRespuesta: { conMeta: 0, aTiempo: 0, porcentaje: null },
+      tiempoPromedioPrimeraRespuestaHoras: null,
       distribucionPorTipo: [],
       distribucionPorPrioridad: [],
     });
@@ -123,6 +131,8 @@ describe('ObtenerMetricasUseCase', () => {
       tiempoPromedioResolucionHoras: 12.5,
       cargaPorAgente: [{ asignadoId: 'agente-1', abiertos: 2 }],
       cumplimientoSla: { cerradosConSla: 4, cerradosATiempo: 3, porcentaje: 0.75 },
+      cumplimientoPrimeraRespuesta: { conMeta: 4, aTiempo: 2, porcentaje: 0.5 },
+      tiempoPromedioPrimeraRespuestaHoras: 1.25,
       distribucionPorTipo: [{ tipoId: 'tipo-1', total: 8 }],
       distribucionPorPrioridad: [{ prioridadId: 'prio-1', total: 8 }],
     });
@@ -135,6 +145,21 @@ describe('ObtenerMetricasUseCase', () => {
     const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
 
     expect(result.cumplimientoSla.porcentaje).toBeNull();
+  });
+
+  it('primera respuesta sin tickets con meta ⇒ porcentaje null y tiempo medio null, no 0', async () => {
+    const c = makeCollaborators(CICLO);
+    c.dashboardRepo.cumplimientoPrimeraRespuesta.mockResolvedValue({ conMeta: 0, aTiempo: 0 });
+    c.dashboardRepo.tiempoPromedioPrimeraRespuestaHoras.mockResolvedValue(null);
+
+    const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+
+    expect(result.cumplimientoPrimeraRespuesta).toEqual({
+      conMeta: 0,
+      aTiempo: 0,
+      porcentaje: null,
+    });
+    expect(result.tiempoPromedioPrimeraRespuestaHoras).toBeNull();
   });
 
   // WU9.1 (ADR-C5): el gateo de csatPromedio/csatRespuestas va DENTRO del

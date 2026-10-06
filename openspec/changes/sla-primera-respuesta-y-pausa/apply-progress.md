@@ -347,3 +347,11 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu07c`, base `...-wu07b`.
 | Focused test | `pnpm vitest run src/sla/infrastructure/schedulers/sla-primera-respuesta.e2e.spec.ts`: 5 verdes |
 | Runtime harness | E2E contra Postgres real con mail fake |
 | Rollback boundary | El archivo del e2e |
+
+## WU-8 — parte 1: dashboard backend (tareas 8.3 y 8.6; 8.1, 8.2, 8.4, 8.5 y 8.7 quedan para la parte 2, stash `wu08b`)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu08`, base `...-wu07c`. Los specs de integracion nuevos (8.1, 8.2, 8.4, 8.5: ~300 lineas) y la verificacion final (8.7) van en la parte 2 por el presupuesto de 400.
+
+- Repo: `cumplimientoSla` pasa a incorporados (`sla_cumplido`) mas previos (`fechaCierre <= slaVenceAt`), cuatro `count` con field references; `cumplimientoPrimeraRespuesta` y `tiempoPromedioPrimeraRespuestaHoras` nuevos; preventivos fuera por tipo. `promedioHorasHabiles` (dominio puro) con su unit (8.3: 2 h y 0,5 h dan 1,25 h; el "(1 h)" de la tarea es 2 h habiles, el promedio es el de la spec). Un reabierto tiene `fechaCierre` nulo, asi que no entra.
+- Arrastres de la WU-7: paso 3 aislado con log (`MarcarVencidosUseCase` recibe el logger); el spec de integracion borra sus estados terminales por prefijo de nombre, antes y despues.
+- Ayuda: deuda — indicadores de primera respuesta y cumplimiento por tiempo activo en el dashboard.

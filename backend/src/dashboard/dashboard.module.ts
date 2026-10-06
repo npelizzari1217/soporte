@@ -5,6 +5,16 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
+import {
+  CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+  ICalendarioLaboralSemanalRepository,
+} from '../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
+import {
+  FERIADOS_LABORALES_REPOSITORY,
+  IFeriadosLaboralesRepository,
+} from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import { TenantContext } from '../shared/tenancy/tenant-context';
 import { CsatLecturaModule } from '../csat/csat-lectura.module';
 import {
   ENCUESTA_SATISFACCION_REPOSITORY,
@@ -32,6 +42,9 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  *   WU9.1 (ADR-C5): también recibe ENCUESTA_SATISFACCION_REPOSITORY de
  *   `CsatLecturaModule` para el KPI `csatPromedio`/`csatRespuestas`,
  *   gateado POR CAMPO dentro del propio use case — no acá.
+ * - sdd/sla-primera-respuesta-y-pausa: el repo recibe el calendario y los feriados del cliente
+ *   (`CalendarioLaboralModule`, sin ciclo) para medir el tiempo medio de primera respuesta en horas
+ *   hábiles.
  * - Importa `TicketsModule` (para CICLO_CLIENTE_REPOSITORY), `CsatLecturaModule`
  *   (para ENCUESTA_SATISFACCION_REPOSITORY) y `AuthModule` (guards del
  *   controller).
@@ -40,10 +53,18 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule, CsatLecturaModule],
+  imports: [AuthModule, TicketsModule, CsatLecturaModule, CalendarioLaboralModule],
   controllers: [DashboardController],
   providers: [
-    { provide: DASHBOARD_REPOSITORY, useClass: PrismaDashboardRepository },
+    {
+      provide: DASHBOARD_REPOSITORY,
+      useFactory: (
+        tenantContext: TenantContext,
+        calendarioRepo: ICalendarioLaboralSemanalRepository,
+        feriadosRepo: IFeriadosLaboralesRepository,
+      ) => new PrismaDashboardRepository(tenantContext, calendarioRepo, feriadosRepo),
+      inject: [TenantContext, CALENDARIO_LABORAL_SEMANAL_REPOSITORY, FERIADOS_LABORALES_REPOSITORY],
+    },
     {
       provide: ObtenerMetricasUseCase,
       useFactory: (
