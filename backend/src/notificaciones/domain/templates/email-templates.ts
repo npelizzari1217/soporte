@@ -113,6 +113,24 @@ export function templateSlaVencido(datos: DatosTicketBase): PlantillaEmail {
 }
 
 /**
+ * templatePrimeraRespuestaVencida — aviso al asignado y a los administradores de que un ticket sigue
+ * sin primera respuesta pasada su meta (`sla-primera-respuesta` R4).
+ */
+export function templatePrimeraRespuestaVencida(datos: DatosTicketBase): PlantillaEmail {
+  const subject = `Primera respuesta vencida — Ticket ${datos.numero}`;
+  const link = linkTicket(datos);
+  const text =
+    `El ticket ${datos.numero} - ${datos.titulo} sigue sin primera respuesta y venció la meta.\n\n` +
+    `Ver ticket: ${link}`;
+  const html =
+    `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
+    `sigue sin primera respuesta y venció la meta.</p>` +
+    `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
+
+  return { subject, text, html };
+}
+
+/**
  * templatePreventivoGenerado — plantilla de `preventivo.generado` ([R11],
  * WU-6). Se dispara solo cuando el barrido efectivamente creó un ticket
  * `PREVENTIVO` desde un plan vencido — nunca en un salteo.
