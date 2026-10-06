@@ -40,6 +40,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Logger,
   NotFoundException,
   Param,
   Patch,
@@ -184,6 +185,8 @@ interface RespuestaConHeaders {
 @UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller('tickets')
 export class TicketsController {
+  private readonly logger = new Logger(TicketsController.name);
+
   constructor(
     private readonly crearTicketUseCase: CrearTicketUseCase,
     private readonly obtenerTicketUseCase: ObtenerTicketUseCase,
@@ -210,6 +213,19 @@ export class TicketsController {
   private async codigosPorEstadoId(): Promise<Map<string, string>> {
     const estados = await this.estadoRepo.findAllActive();
     return new Map(estados.map((e) => [e.id, e.codigo]));
+  }
+
+  /**
+   * Código del estado o `''` si el catálogo no lo conoce (se registra). La política del estado SLA
+   * trata el código desconocido como "corriendo", nunca como resuelto.
+   */
+  private codigoDeEstado(codigos: Map<string, string>, estadoId: string): string {
+    const codigo = codigos.get(estadoId);
+    if (codigo === undefined) {
+      this.logger.warn(`Estado ${estadoId} fuera del catálogo activo: SLA derivado sin código`);
+      return '';
+    }
+    return codigo;
   }
 
   /**
@@ -268,7 +284,7 @@ export class TicketsController {
       nombres,
       csat,
       solicitanteTelefono,
-      codigos.get(ticket.estadoId) ?? '',
+      this.codigoDeEstado(codigos, ticket.estadoId),
     );
   }
 
@@ -357,7 +373,7 @@ export class TicketsController {
           nombresPorTicket.get(t.id),
           undefined,
           undefined,
-          codigos.get(t.estadoId) ?? '',
+          this.codigoDeEstado(codigos, t.estadoId),
         ),
       ),
       total,

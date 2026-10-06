@@ -10,7 +10,7 @@
 
 import type { Modulo } from "@/shared/auth/modulo-access";
 
-export type TicketEstadoCodigo = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "RESUELTO" | "CERRADO" | "CANCELADO";
+export type TicketEstadoCodigo = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "ESPERANDO_CLIENTE" | "RESUELTO" | "CERRADO" | "CANCELADO";
 
 /** Estado SLA derivado por el backend (ADR-8 de sla-primera-respuesta-y-pausa). */
 export type EstadoSla = "SIN_SLA" | "AL_DIA" | "EN_PAUSA" | "VENCIDO";

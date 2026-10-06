@@ -23,11 +23,16 @@ export interface EntradaPrimeraRespuesta {
 
 const ESTADO_ESPERA = 'ESPERANDO_CLIENTE';
 
+/** Estados donde el reloj ya no corre y el cumplimiento está fijado (o se deriva del cierre). */
+const ESTADOS_RESUELTOS: ReadonlySet<string> = new Set(['RESUELTO', 'CERRADO', 'CANCELADO']);
+
 /**
  * - sin vencimiento (preventivo o sin SLA): `SIN_SLA`;
  * - ESPERANDO_CLIENTE: `EN_PAUSA` (el vencimiento guardado no es vigente);
  * - reloj corriendo (por `ESTADOS_RELOJ_CORRE`, nunca por `sla_corre_desde`): `VENCIDO` si
  *   `slaVenceAt < ahora`, si no `AL_DIA`;
+ * - código desconocido (no es ninguno de los 7 estados): se trata como corriendo, nunca como
+ *   resuelto, para que un código que no resolvió el catálogo no muestre `AL_DIA` por omisión;
  * - resuelto o cerrado: `VENCIDO` si `cumplido === false`; en un previo sin cumplimiento,
  *   `fechaCierre > slaVenceAt`.
  */
@@ -43,7 +48,7 @@ export function derivarEstadoSla(
   if (estadoCodigo === ESTADO_ESPERA) {
     return 'EN_PAUSA';
   }
-  if (ESTADOS_RELOJ_CORRE.has(estadoCodigo)) {
+  if (ESTADOS_RELOJ_CORRE.has(estadoCodigo) || !ESTADOS_RESUELTOS.has(estadoCodigo)) {
     return slaVenceAt.getTime() < ahora.getTime() ? 'VENCIDO' : 'AL_DIA';
   }
   if (cumplido === false) {

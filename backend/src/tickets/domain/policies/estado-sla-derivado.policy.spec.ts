@@ -32,6 +32,14 @@ describe('derivarEstadoSla', () => {
     ).toBe('AL_DIA');
   });
 
+  it.each(['', 'ESTADO_INEXISTENTE'])(
+    'un código desconocido (%j) no cae en la rama de resuelto: se deriva como corriendo',
+    (estado) => {
+      expect(derivarEstadoSla({ ...base, slaVenceAt: ANTES }, estado, AHORA)).toBe('VENCIDO');
+      expect(derivarEstadoSla(base, estado, AHORA)).toBe('AL_DIA');
+    },
+  );
+
   it('resuelto con cumplido=false da VENCIDO sin marca del barrido', () => {
     expect(derivarEstadoSla({ ...base, cumplido: false }, 'RESUELTO', AHORA)).toBe('VENCIDO');
   });
