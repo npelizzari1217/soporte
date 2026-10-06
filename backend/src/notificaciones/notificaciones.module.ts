@@ -19,6 +19,8 @@ import { PrismaUsuarioContactoResolver } from './infrastructure/persistence/pris
 
 import { TicketNotificacionListener } from './infrastructure/listeners/ticket-notificacion.listener';
 import { SlaVencidoNotificacionListener } from './infrastructure/listeners/sla-vencido-notificacion.listener';
+import { SlaPrimeraRespuestaVencidaNotificacionListener } from './infrastructure/listeners/sla-primera-respuesta-vencida-notificacion.listener';
+import { NotificadorVencimientoSla } from './infrastructure/notificador-vencimiento-sla';
 import { PreventivoGeneradoNotificacionListener } from './infrastructure/listeners/preventivo-generado-notificacion.listener';
 
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
@@ -54,7 +56,8 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
  *   (tenant); lo usan los listeners de estado, comentario público y CSAT.
  * - Listeners: `TicketNotificacionListener` (estado_cambiado/comentado,
  *   solicitante) + `SlaVencidoNotificacionListener` (sla.vencido, asignado
- *   + administradores — hereda el `TenantContext` del `tenantContext.run()`
+ *   + administradores, y `SlaPrimeraRespuestaVencidaNotificacionListener`, ambos con la entrega común
+ *   `NotificadorVencimientoSla` — hereda el `TenantContext` del `tenantContext.run()`
  *   del job SLA, ADR-P8) + `PreventivoGeneradoNotificacionListener`
  *   (preventivo.generado, WU-6/[R11]: responsable del plan + administradores
  *   — mismo patrón ALS/TenantContext, hereda el scope abierto por el
@@ -107,7 +110,7 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
       inject: [TICKET_REPOSITORY, CONTACTO_SOLICITANTE_RESOLVER, EMAIL_SENDER, LOGGER],
     },
     {
-      provide: SlaVencidoNotificacionListener,
+      provide: NotificadorVencimientoSla,
       useFactory: (
         ticketRepo: ITicketRepository,
         contactoResolver: IUsuarioContactoResolver,
@@ -115,7 +118,7 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
         tenantContext: TenantContext,
         logger: ILogger,
       ) =>
-        new SlaVencidoNotificacionListener(
+        new NotificadorVencimientoSla(
           ticketRepo,
           contactoResolver,
           emailSender,
@@ -123,6 +126,18 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
           logger,
         ),
       inject: [TICKET_REPOSITORY, USUARIO_CONTACTO_RESOLVER, EMAIL_SENDER, TenantContext, LOGGER],
+    },
+    {
+      provide: SlaVencidoNotificacionListener,
+      useFactory: (notificador: NotificadorVencimientoSla) =>
+        new SlaVencidoNotificacionListener(notificador),
+      inject: [NotificadorVencimientoSla],
+    },
+    {
+      provide: SlaPrimeraRespuestaVencidaNotificacionListener,
+      useFactory: (notificador: NotificadorVencimientoSla) =>
+        new SlaPrimeraRespuestaVencidaNotificacionListener(notificador),
+      inject: [NotificadorVencimientoSla],
     },
     {
       provide: PreventivoGeneradoNotificacionListener,

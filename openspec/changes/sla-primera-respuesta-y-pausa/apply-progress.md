@@ -315,3 +315,19 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu07`, base `...-wu06c`. El notificador
 | Focused test | `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts`: 96 archivos, 928 tests verdes |
 | Runtime harness | Integracion contra Postgres real (`soporte_tenant_test`) |
 | Rollback boundary | Paso 3 de `MarcarVencidosUseCase`, repo de consulta, evento y reinicio en el repo de escritura |
+
+## WU-7 — parte 2: notificador comun y listeners (tareas 7.4 y 7.5)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu07b`, base `...-wu07`. El e2e (7.6) y la verificacion final (7.7) quedan para la parte 3 (stash `wu07c`) por el presupuesto de 400 lineas.
+
+- `NotificadorVencimientoSla` (`notificaciones/infrastructure`, sin decoradores, cableado por factory): asignado mas administradores del tenant activo, deduplicados por email sin distinguir mayusculas, `send()` aislado por destinatario y try/catch total. Recibe la plantilla y el nombre del listener (solo para el log).
+- `SlaVencidoNotificacionListener` pasa a delegar en el notificador (esto corrige su duplicado cuando un administrador es el asignado). Nuevo `SlaPrimeraRespuestaVencidaNotificacionListener` sobre `'sla.primera_respuesta_vencida'` con `templatePrimeraRespuestaVencida` (`escaparHtml`, en el spec de escapado). Ambos y el notificador cableados en `notificaciones.module.ts`.
+- Tests: los 9 casos de comportamiento del listener se movieron a `notificador-vencimiento-sla.spec.ts` (mas dedupe por email y uso de la plantilla recibida); el spec del listener queda como delegacion fina de los dos listeners. El tamano del commit es sobre todo ese movimiento de tests (~330 lineas borradas y reescritas): `size:exception` razonable si el ledger no descuenta movimientos.
+- Ayuda: deuda — aviso por mail cuando vence la primera respuesta. Rollback: notificador, el segundo listener, la plantilla y el cableado; el listener de `sla.vencido` vuelve a su version previa.
+
+### Work Unit Evidence (parte 2)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts`: 97 archivos, 936 tests verdes; lint y typecheck limpios; ratchet 617/114 |
+| Runtime harness | Cableado de Nest comprobado por `app.module.smoke.spec.ts`; el e2e con mail fake llega en la parte 3 |
+| Rollback boundary | `notificaciones/` (notificador, listeners, plantilla, modulo) |

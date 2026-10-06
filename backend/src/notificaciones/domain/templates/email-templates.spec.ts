@@ -10,6 +10,7 @@ import {
   templateComentarioPublico,
   templateEsperandoCliente,
   templateSlaVencido,
+  templatePrimeraRespuestaVencida,
   templatePreventivoGenerado,
 } from './email-templates';
 
@@ -50,6 +51,10 @@ describe.each([
     () => templateEsperandoCliente({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
   ],
   ['templateSlaVencido', () => templateSlaVencido({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP })],
+  [
+    'templatePrimeraRespuestaVencida',
+    () => templatePrimeraRespuestaVencida({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
+  ],
   [
     'templatePreventivoGenerado',
     () => templatePreventivoGenerado({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
@@ -180,5 +185,16 @@ describe('plantillas para un solicitante externo (sinLink)', () => {
 
   it('sin sinLink, el link se conserva (usuario registrado)', () => {
     expect(templateComentarioPublico(DATOS_BASE).html).toContain('/tickets/ticket-abc');
+  });
+});
+
+describe('templatePrimeraRespuestaVencida', () => {
+  it('incluye numero, titulo y el link del ticket', () => {
+    const { subject, text, html } = templatePrimeraRespuestaVencida(DATOS_BASE);
+
+    expect(subject).toBe('Primera respuesta vencida — Ticket SOP-2026-00042');
+    expect(text).toContain('sigue sin primera respuesta');
+    expect(text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+    expect(html).toContain('href="https://soporte.miempresa.com/tickets/ticket-abc"');
   });
 });
