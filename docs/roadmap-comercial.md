@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-06 contra el código de `main` (`34af7504`),
+decisión.** Actualizado el 2026-10-07 contra el código de `main` (`1fb5f803`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
@@ -641,7 +641,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | **Entregado** — en `main` por los PRs #379-#387 (`34af7504`), desplegado el 2026-10-06 |
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | **Entregado** — en `main` por los PRs #369-#375 (`ba083775`), desplegado el 2026-10-06 |
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | Pendiente |
-| 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | Pendiente |
+| 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | Pendiente |
@@ -805,6 +805,17 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
 
 - **Segunda etapa, punto 6 — SLA de primera respuesta y pausa del reloj**
   (decidido el 2026-10-06, ciclo `sla-primera-respuesta-y-pausa`):
+  - **Cumplida** (2026-10-06, PRs #391-#422, merge `56341154`, desplegado el mismo
+    día con 4 migraciones de tenant que no recalculan vencimientos ni cumplimientos).
+    Todas las viñetas de abajo están implementadas, cada una como requerimiento con
+    escenario en `openspec/changes/sla-primera-respuesta-y-pausa/specs/`, y la
+    verificación cerró sin bloqueantes. **Precisión**: los tickets de la cohorte
+    anterior al SLA hábil (`CORRIDO`, todos previos a este cambio) miden su tiempo
+    activo y sus pausas en tiempo de pared, no en horas hábiles, igual que ya medían
+    su vencimiento; tampoco reciben meta de primera respuesta, coherente con "sin meta
+    retroactiva". Todo ticket nuevo es hábil. La **decisión pendiente** de la
+    reapertura (tiempo extra o reloj nuevo) quedó fuera de alcance, como dice su
+    viñeta.
   - Se agrega el estado **"Esperando al cliente"**. Se entra desde *En proceso* y se
     sale a *En proceso*, *Resuelto* o *Cancelado*.
   - Mientras el ticket espera al cliente, **el reloj de resolución se detiene**. Al
