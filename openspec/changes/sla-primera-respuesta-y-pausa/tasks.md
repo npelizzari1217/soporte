@@ -165,8 +165,8 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 - [x] 7.3 Implementar `findPrimerasRespuestasVencidas(now)`, el paso 3 de `MarcarVencidosUseCase` y el evento `'sla.primera_respuesta_vencida'`. (`sla-primera-respuesta R4`)
 - [x] 7.4 Test unit de `NotificadorVencimientoSla`: asignado más administradores deduplicados por email (sin repetir si un administrador es el asignado); el fallo de un destinatario no impide los demás; plantilla con `escaparHtml`. (`sla-primera-respuesta R4`)
 - [x] 7.5 Extraer `NotificadorVencimientoSla` (`notificaciones/infrastructure`) de `SlaVencidoNotificacionListener:62-121` y migrar ese listener a la entrega común (corrige también su duplicado); crear el listener de primera respuesta con `templatePrimeraRespuestaVencida`. (`sla-primera-respuesta R4`)
-- [ ] 7.6 Test e2e con `overrideProvider(EMAIL_SENDER)`: dos barridos envían un solo mail al asignado y a cada administrador; un ticket en espera sin respuesta igual se notifica y se marca; la respuesta posterior al vencimiento cuenta como vencida; sin meta no hay mail. (`sla-primera-respuesta R4`, `sla-primera-respuesta R6`)
-- [ ] 7.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/sla src/notificaciones`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 7.6 Test e2e con `overrideProvider(EMAIL_SENDER)`: dos barridos envían un solo mail al asignado y a cada administrador; un ticket en espera sin respuesta igual se notifica y se marca; la respuesta posterior al vencimiento cuenta como vencida; sin meta no hay mail. (`sla-primera-respuesta R4`, `sla-primera-respuesta R6`)
+- [x] 7.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/sla src/notificaciones`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-8 — Dashboard backend (~360 líneas)
 

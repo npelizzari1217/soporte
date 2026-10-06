@@ -331,3 +331,19 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu07b`, base `...-wu07`. El e2e (7.6) y
 | Focused test | `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts`: 97 archivos, 936 tests verdes; lint y typecheck limpios; ratchet 617/114 |
 | Runtime harness | Cableado de Nest comprobado por `app.module.smoke.spec.ts`; el e2e con mail fake llega en la parte 3 |
 | Rollback boundary | `notificaciones/` (notificador, listeners, plantilla, modulo) |
+
+## WU-7 — parte 3: e2e y verificacion (tareas 7.6 y 7.7; WU-7 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu07c`, base `...-wu07b`.
+
+- `sla-primera-respuesta.e2e.spec.ts` (sin HTTP): barrido real dentro de `tenantContext.run()`, Prisma real, listeners reales y `EMAIL_SENDER` fake. Tenant efimero `soporte_prov_primRespE2E_*_test`; `usarLockMasterTest()` y truncate de la master en `beforeEach`; filas, `app.close()` y `dropDatabase` en ese orden.
+- 5 casos: dos barridos envian un solo mail al asignado y a cada administrador; un administrador que es el asignado recibe uno solo; un ticket en espera sin respuesta se notifica y se marca; la respuesta posterior al vencimiento cuenta como vencida y no vuelve a avisar; respondido a tiempo y sin meta no avisan.
+- Verificacion 7.7 sobre el arbol del commit: lint, typecheck, `pnpm vitest run src/sla src/notificaciones src/tickets src/app.module.smoke.spec.ts` (98 archivos, 941 tests) y ratchet de casts 617 en 114.
+- Ayuda: deuda — aviso por mail cuando vence la primera respuesta. Rollback: solo el e2e.
+
+### Work Unit Evidence (parte 3)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/sla/infrastructure/schedulers/sla-primera-respuesta.e2e.spec.ts`: 5 verdes |
+| Runtime harness | E2E contra Postgres real con mail fake |
+| Rollback boundary | El archivo del e2e |
