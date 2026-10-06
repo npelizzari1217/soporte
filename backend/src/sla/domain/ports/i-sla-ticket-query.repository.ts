@@ -28,6 +28,20 @@ export interface ISlaTicketQueryRepository {
    * lo que habilita publicar `sla.vencido` una sola vez.
    */
   marcarVencido(ticketId: string): Promise<boolean>;
+
+  /**
+   * Tickets con la primera respuesta vencida y todavía sin marcar (`sla-primera-respuesta` R4):
+   * `primeraRespuestaVenceAt < now`, `primeraRespuestaAt` y `deletedAt` nulos,
+   * `primeraRespuestaVencida=false` y estado fuera de RESUELTO, CERRADO y CANCELADO. NO excluye la
+   * espera ni mira el reloj pendiente: la primera respuesta no tiene pausa.
+   */
+  findPrimerasRespuestasVencidas(now: Date): Promise<TicketVencible[]>;
+
+  /**
+   * Marca `primeraRespuestaVencida=true` con un CAS sobre `false` (y `primeraRespuestaAt` nulo).
+   * Devuelve `true` solo si esta llamada afectó la fila: habilita publicar el evento una sola vez.
+   */
+  marcarPrimeraRespuestaVencida(ticketId: string): Promise<boolean>;
 }
 
 /** Token de inyección de dependencias para ISlaTicketQueryRepository en NestJS. */

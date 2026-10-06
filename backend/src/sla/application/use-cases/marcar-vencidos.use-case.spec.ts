@@ -7,11 +7,14 @@
  */
 import { MarcarVencidosUseCase } from './marcar-vencidos.use-case';
 import { SlaVencidoEvent } from '../../domain/events/sla-vencido.event';
+import { SlaPrimeraRespuestaVencidaEvent } from '../../domain/events/sla-primera-respuesta-vencida.event';
 
 function makeCollaborators() {
   const slaTicketQueryRepo = {
-    findVencibles: vi.fn(),
+    findVencibles: vi.fn().mockResolvedValue([]),
     marcarVencido: vi.fn().mockResolvedValue(true),
+    findPrimerasRespuestasVencidas: vi.fn().mockResolvedValue([]),
+    marcarPrimeraRespuestaVencida: vi.fn().mockResolvedValue(true),
   };
   const relojRepo = { findPendientes: vi.fn().mockResolvedValue([]) };
   const consolidar = { execute: vi.fn().mockResolvedValue('consolidado') };
@@ -70,7 +73,12 @@ describe('MarcarVencidosUseCase', () => {
 
     await c.useCase.execute();
 
-    expect(Object.keys(c.slaTicketQueryRepo)).toEqual(['findVencibles', 'marcarVencido']);
+    expect(Object.keys(c.slaTicketQueryRepo)).toEqual([
+      'findVencibles',
+      'marcarVencido',
+      'findPrimerasRespuestasVencidas',
+      'marcarPrimeraRespuestaVencida',
+    ]);
   });
 
   it('un fallo al marcar un ticket NO aborta el resto del barrido (aislamiento por ticket)', async () => {
@@ -140,6 +148,81 @@ describe('MarcarVencidosUseCase', () => {
       await c.useCase.execute();
 
       expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('paso 3: primera respuesta vencida (sla-primera-respuesta R4)', () => {
+    const fila = { id: 'ticket-1', asignadoId: 'agente-1', solicitanteId: 'sol-1' };
+
+    it('marca con CAS y publica SlaPrimeraRespuestaVencidaEvent por cada ticket', async () => {
+      const c = makeCollaborators();
+      c.slaTicketQueryRepo.findPrimerasRespuestasVencidas.mockResolvedValue([
+        fila,
+        { id: 'ticket-2', asignadoId: null, solicitanteId: null },
+      ]);
+
+      await c.useCase.execute();
+
+      expect(c.slaTicketQueryRepo.marcarPrimeraRespuestaVencida.mock.calls).toEqual([
+        ['ticket-1'],
+        ['ticket-2'],
+      ]);
+      const eventos = c.eventPublisher.publish.mock.calls.map(([e]) => e);
+      expect(eventos).toHaveLength(2);
+      expect(eventos[0]).toBeInstanceOf(SlaPrimeraRespuestaVencidaEvent);
+      expect(eventos[0]).toMatchObject({
+        name: 'sla.primera_respuesta_vencida',
+        ticketId: 'ticket-1',
+        asignadoId: 'agente-1',
+        solicitanteId: 'sol-1',
+      });
+    });
+
+    it('si el CAS no afectó la fila (otro barrido ganó) no publica', async () => {
+      const c = makeCollaborators();
+      c.slaTicketQueryRepo.findPrimerasRespuestasVencidas.mockResolvedValue([fila]);
+      c.slaTicketQueryRepo.marcarPrimeraRespuestaVencida.mockResolvedValue(false);
+
+      await c.useCase.execute();
+
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('no cuenta en el retorno (que es de resolución) y corre aunque no haya vencibles', async () => {
+      const c = makeCollaborators();
+      c.slaTicketQueryRepo.findPrimerasRespuestasVencidas.mockResolvedValue([fila]);
+
+      expect(await c.useCase.execute()).toBe(0);
+      expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('un fallo al marcar un ticket no aborta el resto', async () => {
+      const c = makeCollaborators();
+      c.slaTicketQueryRepo.findPrimerasRespuestasVencidas.mockResolvedValue([
+        fila,
+        { ...fila, id: 'ticket-2' },
+      ]);
+      c.slaTicketQueryRepo.marcarPrimeraRespuestaVencida.mockRejectedValueOnce(new Error('DB'));
+
+      await c.useCase.execute();
+
+      expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+      expect(c.eventPublisher.publish.mock.calls[0][0].ticketId).toBe('ticket-2');
+    });
+
+    it('un fallo del publisher no aborta el resto', async () => {
+      const c = makeCollaborators();
+      c.slaTicketQueryRepo.findPrimerasRespuestasVencidas.mockResolvedValue([
+        fila,
+        { ...fila, id: 'ticket-2' },
+      ]);
+      c.eventPublisher.publish.mockImplementationOnce(() => {
+        throw new Error('bus');
+      });
+
+      await c.useCase.execute();
+
+      expect(c.slaTicketQueryRepo.marcarPrimeraRespuestaVencida).toHaveBeenCalledTimes(2);
     });
   });
 });
