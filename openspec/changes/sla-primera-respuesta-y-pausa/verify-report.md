@@ -1,17 +1,17 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:8b54d7302454fcf3e244c4b7c5d0311eeba7b793a8603e1c6f89865e7ac8460d
-verdict: fail
-blockers: 1
-critical_findings: 1
+evidence_revision: sha256:ce1a822b4ead07ffc1e61d99e4f535bea38ab7ad6bea9d6f25e52993a4aee55d
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
 requirements: 24/24
-scenarios: 62/63
+scenarios: 63/63
 test_command: cd backend && pnpm test
 test_exit_code: 0
-test_output_hash: sha256:9625d88443f87a765645d9d45cdc5c8bb5321a2599125189e52fa409fee3e5d6
+test_output_hash: sha256:ea9e321537e7391ee0fee122e85318f5c6e59c070c9c3f77d3ec4933e8218e03
 build_command: cd backend && pnpm lint && pnpm typecheck
 build_exit_code: 0
-build_output_hash: sha256:60d56fa71895b1f02e36ea73699565a21f21f501f5b4e8d54d0b7e344c0d41ec
+build_output_hash: sha256:529a7a73e31bc62668a1e8739951adb557876fbfa59e6fa24be8e3bae6ba4f3f
 ```
 
 ## Verification Report
@@ -19,7 +19,16 @@ build_output_hash: sha256:60d56fa71895b1f02e36ea73699565a21f21f501f5b4e8d54d0b7e
 **Change**: sla-primera-respuesta-y-pausa
 **Version**: N/A (new capabilities: ticket-esperando-cliente, sla-reloj-activo, sla-primera-respuesta, dashboard-metricas-sla)
 **Mode**: Standard (feature; no Strict TDD injection)
-**Candidate**: branch `feat/sla-primera-respuesta-y-pausa-wu09b` (tip of the whole chain), HEAD `a6b82cde`, diff `git diff main...HEAD` (merge base `81b0d224`), 154 files, +9964/-1220. `evidence_revision` is the sha256 of that diff.
+**Candidate**: branch `feat/sla-primera-respuesta-y-pausa-verify-fix` (chain tip `-wu09b` + the first-pass verify report + the remediation commit), HEAD `9a1cd63e`, diff `git diff main...HEAD` (merge base `81b0d224`), 155 files, +10236/-1220. `evidence_revision` is the sha256 of that diff.
+
+**Revision history**:
+
+| Pass | HEAD | `evidence_revision` | Verdict | Findings |
+|---|---|---|---|---|
+| 1 | `a6b82cde` (`-wu09b`, 154 files, +9964/-1220) | `sha256:8b54d730...` | FAIL | C1 (scenario "Eventos que no cuentan" PARTIAL), W1 (apply-progress vs tasks), S1 to S6 |
+| 2 (this one) | `9a1cd63e` (`-verify-fix`) | `sha256:ce1a822b...` | PASS WITH WARNINGS | C1 and W1 resolved; S2 raised to W2; S1, S3 to S6 kept |
+
+The remediation is commit `9a1cd63e` (one new e2e test plus `apply-progress.md`; no production code). This pass re-verifies C1 and W1 and re-runs every gate on the new HEAD. Sections the remediation did not touch (spec compliance for the other 62 scenarios, roadmap fidelity, correctness, design coherence, the first-pass mutation table) keep their first-pass evidence; the full suite re-run below confirms that every test behind them still passes.
 
 ### Completeness
 
@@ -29,34 +38,37 @@ build_output_hash: sha256:60d56fa71895b1f02e36ea73699565a21f21f501f5b4e8d54d0b7e
 | Tasks complete | 103 |
 | Tasks incomplete | 0 |
 
-`gentle-ai sdd-status sla-primera-respuesta-y-pausa --cwd . --json`: `taskProgress` 103/103, `applyState: all_done`, `verify: ready`, no `blockedReasons`. 9b.6 (roadmap closure) is not a checkbox: `tasks.md` declares it a post-deploy delivery step.
+`gentle-ai sdd-status sla-primera-respuesta-y-pausa --cwd . --json` (pass 2, on `9a1cd63e`): `taskProgress` 103/103, `applyState: all_done`, `verify: ready`; its only `blockedReasons` entry is "failed verification evidence is incomplete; rerun SDD verification", which refers to the pass-1 FAIL report this revision replaces. 9b.6 (roadmap closure) is not a checkbox: `tasks.md` declares it a post-deploy delivery step.
 
-Every WU section of `apply-progress.md` maps to commits in `git log main..HEAD` (34 implementation commits after the 8 planning commits): WU-1 `6a801779`; WU-2 `003621e9`, `03bd3df0`; WU-3a `b67f5286`, `b090f424`, `91012ce1`, `e1ab4a6c`; WU-3b `fbcd9261`, `6f3e49ea`, `e3e472b4`, `98ea3f08`; WU-3c `c1de1266`, `70a83e1a`, `dc45c63b`, `5f116213`; WU-4 `98bef385`, `9849bd0b`; WU-5 `e882560f`, `80d2f16a`; WU-6 `b9920d1b`, `9c538a1d`, `32c186b2`; WU-7 `cd14df0a`, `508ef375`, `b28f2976`, `bb74c0a5`; WU-8 `18868895`, `e9818935`, `fc37318d`; WU-9a `5c3c457f`, `d44459ac`; WU-9b `6e2b197c`, `a6b82cde`. The chain PRs #391-#420 and the tracker PR #421 are open; #421 carries the 9b.7 deploy notes.
+Every WU section of `apply-progress.md` maps to commits in `git log main..HEAD` (34 implementation commits after the 8 planning commits): WU-1 `6a801779`; WU-2 `003621e9`, `03bd3df0`; WU-3a `b67f5286`, `b090f424`, `91012ce1`, `e1ab4a6c`; WU-3b `fbcd9261`, `6f3e49ea`, `e3e472b4`, `98ea3f08`; WU-3c `c1de1266`, `70a83e1a`, `dc45c63b`, `5f116213`; WU-4 `98bef385`, `9849bd0b`; WU-5 `e882560f`, `80d2f16a`; WU-6 `b9920d1b`, `9c538a1d`, `32c186b2`; WU-7 `cd14df0a`, `508ef375`, `b28f2976`, `bb74c0a5`; WU-8 `18868895`, `e9818935`, `fc37318d`; WU-9a `5c3c457f`, `d44459ac`; WU-9b `6e2b197c`, `a6b82cde`. The chain PRs #391-#420 and the tracker PR #421 are open; #421 carries the 9b.7 deploy notes. Pass 2 adds `681534f5` (pass-1 verify report) and `9a1cd63e` (remediation, section "Remediacion del verify" of `apply-progress.md`).
 
 ### Build & Tests Execution
 
-All gates were run by this verification, in the foreground, on `a6b82cde`:
+Pass 2: every gate was re-run by this verification, in the foreground, on `9a1cd63e` (worktree clean except the pre-existing untracked `soporte.jpg`):
 
 ```text
 backend  pnpm lint                                  exit 0  (eslint ., zero errors)
 backend  pnpm typecheck                             exit 0  (tsc --noEmit -p tsconfig.typecheck.json)
-backend  pnpm test                                  exit 0  627 files, 7685 tests passed (1072 s)
+backend  pnpm test                                  exit 0  627 files, 7686 tests passed (1092 s)
 frontend JWT_SECRET=dummy pnpm lint                 exit 0  (No ESLint warnings or errors)
 frontend pnpm type-check                            exit 0
 frontend pnpm test                                  exit 0  245 files, 1990 tests passed
 root     node scripts/check-casts-en-specs.mjs      exit 0  (617 in 114 files, base 617/114; ratchet holds)
 root     node scripts/check-roadmap-fresco.mjs      exit 0  ("El roadmap esta fresco"; 3 decisions declared on delivered points)
+native   gentle-ai sdd-status ... --json            taskProgress 103/103, applyState all_done, verify ready
 ```
 
-**Build**: Passed. `build_output_hash` is the sha256 of the two observed result lines for backend lint and typecheck.
+Pass 1 on `a6b82cde` had the same results, with 7685 backend tests (1072 s). The +1 is the new C1 test.
 
-**Tests**: Passed (0 failed, 0 skipped). `test_output_hash` is the sha256 of the full backend log. The three `FAIL orden-de-arranque.spec.ts` blocks are the child processes that the boot-order test launches on purpose; the outer suite reports 627/627 files. The ERROR/WARN lines come from forced-failure tests and from controller specs whose fixture estados are outside the catalog (see S6).
+**Build**: Passed. `build_output_hash` is the sha256 of the two observed result lines (`backend pnpm lint: exit 0`, `backend pnpm typecheck: exit 0`).
 
-Environment: `soporte-postgres-master` up; `soporte_tenant_test` already at 57/57 tenant migrations ("Database schema is up to date"); Prisma clients regenerated (`generate:tenant`, `generate:master`) before the run, no tracked file changed.
+**Tests**: Passed (0 failed, 0 skipped). `test_output_hash` is the sha256 of the full pass-2 backend log. The three `FAIL orden-de-arranque.spec.ts` blocks are the child processes that the boot-order test launches on purpose; the outer suite reports 627/627 files. The ERROR/WARN lines come from forced-failure tests and from controller specs whose fixture estados are outside the catalog (see S6).
+
+Environment: `soporte-postgres-master` up; `soporte_tenant_test` already at 57/57 tenant migrations ("Database schema is up to date"); Prisma clients regenerated (`generate:tenant`, `generate:master`) before the pass-1 run, no tracked file changed. The remediation does not touch any Prisma schema.
 
 **Coverage**: not measured (threshold 0 in `openspec/config.yaml`) -> Not available.
 
-**Adversarial mutation** (`rules.verify`). Run on an rsync copy of `backend/` in a scratch directory with `node_modules` linked and the orphan-sweep `globalSetup` removed; the worktree was never touched (`git status` shows only the pre-existing untracked `soporte.jpg`).
+**Adversarial mutation, pass 1** (`rules.verify`). Run on an rsync copy of `backend/` in a scratch directory with `node_modules` linked and the orphan-sweep `globalSetup` removed; the worktree was never touched (`git status` shows only the pre-existing untracked `soporte.jpg`).
 
 | Mutation | Result | After revert |
 |---|---|---|
@@ -121,7 +133,7 @@ Totals counted from the four spec files with native heading rules: 24 requiremen
 | Req | Scenario | Test | Result |
 |---|---|---|---|
 | R1 | Primera respuesta válida | `crear-comentario.use-case.spec.ts > comentario público de un técnico registra la fecha de la operación, dentro de la tx`; `primera-respuesta.integration.spec.ts > un comentario público de un técnico registra la fecha de la operación` | COMPLIANT |
-| R1 | Eventos que no cuentan | `crear-comentario.use-case.spec.ts > un comentario interno no la registra`, `> un comentario público del propio solicitante no la registra`; `primera-respuesta.integration.spec.ts > el interno y el público del solicitante no cuentan`. No test runs an assignment or a state change and then asserts `primera_respuesta_at IS NULL` (see C1) | PARTIAL |
+| R1 | Eventos que no cuentan | `crear-comentario.use-case.spec.ts > un comentario interno no la registra`, `> un comentario público del propio solicitante no la registra`; `primera-respuesta.integration.spec.ts > el interno y el público del solicitante no cuentan`; pass 2: `esperando-cliente.e2e.spec.ts > sla-primera-respuesta R1 "Eventos que no cuentan": asignar y cambiar de estado dejan primera_respuesta_at en NULL; ...` (mutations MA, MT, MC RED) | COMPLIANT |
 | R1 | Solicitante externo | `crear-comentario.use-case.spec.ts > solicitante externo (solicitanteId null): cualquier autor interno la registra` | COMPLIANT |
 | R1 | Segundo comentario o concurrencia | `primera-respuesta.integration.spec.ts > un segundo comentario no cambia la fecha`, `> dos registros concurrentes dejan UNA fecha ...` | COMPLIANT |
 | R1 | El comentario que la registró se borra después | `primera-respuesta.integration.spec.ts > borrar el comentario que registró la primera respuesta no cambia la fecha` | COMPLIANT |
@@ -156,7 +168,7 @@ Totals counted from the four spec files with native heading rules: 24 requiremen
 | R4 | Preventivo resuelto | `prisma-dashboard.integration.spec.ts > un preventivo resuelto con respuesta de un técnico no altera ninguna de las tres métricas` | COMPLIANT |
 | R5 | Ticket en espera | `prisma-dashboard.integration.spec.ts > un ticket asignado en ESPERANDO_CLIENTE cuenta en abiertos y en la carga, y no en el cumplimiento de resolución` | COMPLIANT |
 
-**Compliance summary**: 62/63 scenarios COMPLIANT, 1 PARTIAL, 0 FAILING, 0 UNTESTED.
+**Compliance summary**: 63/63 scenarios COMPLIANT, 0 PARTIAL, 0 FAILING, 0 UNTESTED (pass 1: 62/63, one PARTIAL).
 
 ### Roadmap Decision Fidelity
 
@@ -207,17 +219,38 @@ No undeclared deviation was found. The roadmap row 6 is still "Pendiente" and th
 
 Migrations: M1-M4 (`20261007120000` .. `20261007150000`) sort after the last migration on `main` (`20261006120000_respuestas_predefinidas`), each has a `rollback.sql`, M1 is idempotent (`ON CONFLICT DO NOTHING`), the M4 backfill is idempotent (`WHERE primera_respuesta_at IS NULL`) and writes no due date, and neither M2 nor M4 recalculates anything. Integration specs apply the rollback and re-apply each migration.
 
+### Re-verification (pass 2: C1 and W1 remediation)
+
+**C1: RESOLVED.** `backend/src/tickets/interface/controllers/esperando-cliente.e2e.spec.ts` adds the test `sla-primera-respuesta R1 "Eventos que no cuentan": asignar y cambiar de estado dejan primera_respuesta_at en NULL; el primer público de un no solicitante la fija`. It runs against real Prisma and a real HTTP stack: `escenario()` creates the ticket as the requester and makes three state changes (ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE); the test asserts `primeraRespuestaAt` is NULL (line 329), then makes a manual assignment (`PATCH /tickets/:id/asignar`, 200) and one more state change (`PATCH /tickets/:id/estado` to EN_PROCESO, 200) and asserts NULL again (line 347); finally the technician's first public comment (201) sets it (line 351). The technician gets `TICKETS:ASIGNAR` for the assignment call. Together with the existing internal-comment and requester-comment tests, all four events of the scenario now have a passing runtime assertion.
+
+Mutation on an rsync copy of `backend/` in the scratch directory (`node_modules` linked, orphan-sweep `globalSetup` removed, run with the local `vitest` binary); the worktree was never touched:
+
+| Mutation | Result | After revert |
+|---|---|---|
+| Baseline (unmutated copy) | GREEN, 3/3 | n/a |
+| MA `PrismaOperacionTicketRepository.save` registers the first response when the operation type is `ASIGNACION` | RED: new test, `expected <date> to be null` at line 347 (after the assignment); other 2 tests green | |
+| MT same `save` registers it on any operation with `estadoAnteriorId` and `estadoNuevoId` (every state change) | RED: new test at line 329 (after the three transitions of `escenario()`) | |
+| MC `registrarSiFalta` writes nothing | RED: new test at line 351 (the first public comment no longer sets the date) | GREEN, 3/3; `src/` diffed identical to the worktree |
+
+**W1: RESOLVED.** `apply-progress.md` now has one `## WU-3a.3` section (line 107, keeping the 3a.12 assertion note); the WU-9b heading says 9b.1 to 9b.5 and 9b.7 are done (9b.7 in tracker PR #421) and 9b.6 is a post-deploy step outside the task list, which matches `tasks.md` (line 197 note for 9b.6, line 198 `[x] 9b.7`). A new section "Remediacion del verify" records the C1/W1 fix with its branch and base.
+
+**Scope of the remediation**: `git show --stat 9a1cd63e` touches only the e2e spec (+39/-1) and `apply-progress.md` (+9/-9 net). No production file changed, so the first-pass correctness, coherence and roadmap evidence still holds.
+
+**Classification change**: S2 is raised to warning W2 (see below). Re-reading it for the final verdict: it is the only finding where a valid operation can leave persisted SLA data wrong with no automatic recovery. The other suggestions stay suggestions.
+
 ### Issues Found
 
-**CRITICAL**:
-- **C1 (test-evidence gap, not a behavioral defect)** `sla-primera-respuesta` R1, scenario "Eventos que no cuentan": no runtime test runs an assignment or a state change and then asserts that `primera_respuesta_at` is still NULL. Only the internal comment and the requester's comment are tested (`crear-comentario.use-case.spec.ts`, `primera-respuesta.integration.spec.ts`). Static evidence says the behavior is correct: `registrarSiFalta` has a single caller, `CrearComentarioUseCase.execute` (`backend/src/tickets/application/use-cases/crear-comentario.use-case.ts:129`), and it is the only place that creates a `COMENTARIO` operation. Remediation: one assertion, for example in `esperando-cliente.e2e.spec.ts`: after the assignment and the transitions and before any comment, `primera_respuesta_at` is NULL. Under the skill rule (a scenario is compliant only with a passing covering test), the scenario stays PARTIAL and blocks archive until that test exists. The gentle-ai validator refuses a passing verdict with 62/63 scenarios.
+**CRITICAL**: None.
+
+- *Resolved in pass 2*: **C1 (test-evidence gap, not a behavioral defect)** `sla-primera-respuesta` R1, scenario "Eventos que no cuentan": no runtime test runs an assignment or a state change and then asserts that `primera_respuesta_at` is still NULL. Only the internal comment and the requester's comment are tested (`crear-comentario.use-case.spec.ts`, `primera-respuesta.integration.spec.ts`). Static evidence says the behavior is correct: `registrarSiFalta` has a single caller, `CrearComentarioUseCase.execute` (`backend/src/tickets/application/use-cases/crear-comentario.use-case.ts:129`), and it is the only place that creates a `COMENTARIO` operation. Remediation: one assertion, for example in `esperando-cliente.e2e.spec.ts`: after the assignment and the transitions and before any comment, `primera_respuesta_at` is NULL. Under the skill rule (a scenario is compliant only with a passing covering test), the scenario stayed PARTIAL and blocked archive. Pass 2: closed by the new e2e test (see "Re-verification").
 
 **WARNING**:
-- **W1** `apply-progress.md` contradicts `tasks.md`. The WU-9b heading says "9b.6 y 9b.7 quedan pendientes", but `tasks.md` marks 9b.7 done (the deploy notes are in PR #421) and turns 9b.6 into a post-deploy step. The "WU-3a.3" section also appears twice. This is artifact hygiene, but under §3.3 an artifact that misstates progress needs fixing before archive.
+- **W2 (raised from S2 in pass 2)** `AplicarSlaUseCase` gives up after two lost CAS rounds and throws `SLA_RELOJ_CONFLICTO`. The listener only logs it, and nothing re-applies the target: the sweep reconciles only `sla_reloj_pendiente`, and `ConsolidarRelojSlaUseCase` never sets `sla_meta_s`. A creation or reprioritization that races two transitions would keep a stale or missing target. The probability is low and the failure is logged, but it is the only path where persisted SLA data can stay wrong with no automatic recovery. Not a blocker; follow up after deploy (re-apply on conflict, or let the sweep reconcile a missing target).
+- *Resolved in pass 2*: **W1** `apply-progress.md` contradicted `tasks.md`. The WU-9b heading says "9b.6 y 9b.7 quedan pendientes", but `tasks.md` marks 9b.7 done (the deploy notes are in PR #421) and turns 9b.6 into a post-deploy step. The "WU-3a.3" section also appears twice. This is artifact hygiene, but under §3.3 an artifact that misstates progress needs fixing before archive. Pass 2: fixed in `9a1cd63e` (see "Re-verification").
 
 **SUGGESTION**:
 - **S1** When 9b.6 declares the bullet, state the precision for the legacy `CORRIDO` cohort: its pause is measured in wall time (spec R9), while the roadmap sub-bullet says "horas hábiles". New tickets are always `HABIL`, so this is a precision rather than a deviation. A CORRIDO ticket also gets no first-response due date (`aplicar-sla.use-case.ts`, HABIL only).
-- **S2** `AplicarSlaUseCase` gives up after two lost CAS rounds and throws `SLA_RELOJ_CONFLICTO`. The listener only logs it, and nothing re-applies the target: the sweep reconciles only `sla_reloj_pendiente`, and `ConsolidarRelojSlaUseCase` never sets `sla_meta_s`. A creation or reprioritization that races two transitions would keep a stale or missing target. The probability is low and the failure is logged.
+- **S2** Raised to W2 in pass 2 (same content).
 - **S3** The resolution `vencido` flag is not reset when a reprioritization moves the due date forward. This is the same as before the change, but it is now asymmetric with `primera_respuesta_vencida`, which is reset. A ticket that becomes overdue again would get no second mail. The displayed state is derived from the dates, so only the mail is affected.
 - **S4** `tiempoPromedioPrimeraRespuestaHoras` loads every answered ticket in scope without a bound and walks business windows per row on each dashboard request (`prisma-dashboard.repository.ts:187`). Watch this on large tenants.
 - **S5** Migration folders are dated 2026-10-07 (one day ahead). They are harmless for ordering today, but any tenant migration created on `main` before the deploy needs a later timestamp.
@@ -232,6 +265,8 @@ Migrations: M1-M4 (`20261007120000` .. `20261007150000`) sort after the last mig
 
 ### Verdict
 
-FAIL
+PASS WITH WARNINGS
 
-This is not a behavior failure: all gates are green, every requirement is implemented, and every roadmap sub-bullet matches the code with no undeclared deviation. The FAIL comes from one evidence gap: 62/63 scenarios have passing runtime coverage, and the remaining scenario is PARTIAL (C1). Closing it takes one assertion and a re-verify. Fix W1 (apply-progress) in the same pass. Expected outcome after that: PASS WITH WARNINGS.
+Pass 2 on `9a1cd63e`: all gates are green, 24/24 requirements are implemented, 63/63 scenarios have passing runtime coverage, and every roadmap sub-bullet matches the code with no undeclared deviation. C1 is closed by a runtime test that three mutations turn red, and W1 is closed in `apply-progress.md`. The remaining warning (W2, CAS give-up without re-application) and suggestions S1, S3 to S6 do not block archive; S1 must go into the 9b.6 roadmap declaration after deploy.
+
+Pass 1 on `a6b82cde` was FAIL, only because of the C1 evidence gap (62/63 scenarios); behavior was already correct.
