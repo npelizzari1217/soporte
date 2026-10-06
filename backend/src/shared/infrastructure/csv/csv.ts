@@ -57,10 +57,37 @@ const INICIOS_DE_FORMULA = ['=', '+', '-', '@'];
 export interface CeldaNumericaCsv {
   readonly tipo: 'numero';
   readonly texto: string;
+  /**
+   * Valor numérico crudo, para el serializador de Excel (que escribe una
+   * celda numérica real y no el `texto` con coma decimal). Opcional: el CSV
+   * solo lee `texto`.
+   */
+  readonly valor?: number;
+  /** Decimales que muestra Excel (0 o 2); solo lo lee el serializador de Excel. */
+  readonly decimales?: number;
 }
 
+/**
+ * Celda de fecha o fecha-hora ya formateada, producida solo por
+ * `fechaCelda`/`fechaHoraCelda`/`diaArgentinoCelda`.
+ *
+ * `texto` es el MISMO `dd/mm/aaaa[ hh:mm]` que emiten `fechaCsv` y
+ * compañía (el CSV no cambia). `fecha` lleva los componentes UTC ya
+ * desplazados a hora de Argentina, de modo que Excel —que guarda la fecha
+ * como número de serie leyendo componentes UTC— muestre exactamente el
+ * mismo valor que el CSV.
+ */
+export interface CeldaFechaCsv {
+  readonly tipo: 'fecha' | 'fechaHora';
+  readonly texto: string;
+  readonly fecha: Date;
+}
+
+/** Celda cuyo `texto` es seguro de emitir sin neutralizar (ver cada interfaz). */
+export type CeldaTipadaCsv = CeldaNumericaCsv | CeldaFechaCsv;
+
 /** Valor admitido en una celda antes de ser formateado a texto. */
-export type ValorCelda = string | number | boolean | null | undefined | CeldaNumericaCsv;
+export type ValorCelda = string | number | boolean | null | undefined | CeldaTipadaCsv;
 
 /**
  * Una columna del CSV: su encabezado y cómo extraerla de la fila.
@@ -103,24 +130,24 @@ function aTexto(valor: ValorCelda): string {
   if (valor === null || valor === undefined) {
     return '';
   }
-  if (esCeldaNumerica(valor)) {
+  if (esCeldaTipada(valor)) {
     return valor.texto;
   }
   return String(valor);
 }
 
-/** Distingue la celda numérica tipada de cualquier otro valor de celda. */
-function esCeldaNumerica(valor: ValorCelda): valor is CeldaNumericaCsv {
-  return typeof valor === 'object' && valor !== null && valor.tipo === 'numero';
+/** Distingue una celda tipada (numérica o de fecha) de cualquier otro valor de celda. */
+export function esCeldaTipada(valor: ValorCelda): valor is CeldaTipadaCsv {
+  return typeof valor === 'object' && valor !== null && 'tipo' in valor;
 }
 
 /**
- * Escapa un valor de celda. La celda numérica tipada se emite tal cual (ver
- * `CeldaNumericaCsv`); todo lo demás pasa por `escaparCelda` y su
+ * Escapa un valor de celda. La celda tipada se emite tal cual (ver
+ * `CeldaNumericaCsv` y `CeldaFechaCsv`); todo lo demás pasa por `escaparCelda` y su
  * neutralización de fórmulas.
  */
 function escaparValor(valor: ValorCelda): string {
-  if (esCeldaNumerica(valor)) {
+  if (esCeldaTipada(valor)) {
     return valor.texto;
   }
   return escaparCelda(aTexto(valor));
@@ -284,5 +311,55 @@ export function cantidadCsv(valor: number, entera: boolean): CeldaNumericaCsv {
       ? String(normalizado)
       : normalizado.toFixed(2).replace('.', ',');
   // `toFixed(2)` de un fraccionario chico negativo (-0.001) da "-0,00".
-  return { tipo: 'numero', texto: texto === '-0,00' ? '0,00' : texto };
+  return {
+    tipo: 'numero',
+    texto: texto === '-0,00' ? '0,00' : texto,
+    valor: normalizado,
+    decimales: texto.includes(',') ? 2 : 0,
+  };
+}
+
+/**
+ * Variante tipada de `fechaCsv`: mismo texto en el CSV, y una fecha real
+ * (`@db.Date`, sin desplazar) para Excel. `null`/`undefined` → celda vacía.
+ */
+export function fechaCelda(fecha: Date | null | undefined): CeldaFechaCsv | null {
+  if (fecha === null || fecha === undefined) {
+    return null;
+  }
+  return { tipo: 'fecha', texto: fechaCsv(fecha), fecha };
+}
+
+/**
+ * Variante tipada de `diaArgentinoCsv`: el día argentino de un instante,
+ * como fecha real para Excel (medianoche UTC de ese día).
+ */
+export function diaArgentinoCelda(instante: Date | null | undefined): CeldaFechaCsv | null {
+  if (instante === null || instante === undefined) {
+    return null;
+  }
+  const local = desplazarAArgentina(instante);
+  const dia = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+  return { tipo: 'fecha', texto: diaArgentinoCsv(instante), fecha: dia };
+}
+
+/**
+ * Variante tipada de `fechaHoraCsv`: fecha-hora argentina como fecha real
+ * para Excel (componentes UTC = hora local mostrada, sin segundos).
+ */
+export function fechaHoraCelda(instante: Date | null | undefined): CeldaFechaCsv | null {
+  if (instante === null || instante === undefined) {
+    return null;
+  }
+  const local = desplazarAArgentina(instante);
+  const minuto = new Date(Math.floor(local.getTime() / 60_000) * 60_000);
+  return { tipo: 'fechaHora', texto: fechaHoraCsv(instante), fecha: minuto };
+}
+
+/**
+ * Variante tipada de `montoCsv`: mismo texto en el CSV (`1234,50`) y un
+ * número real con dos decimales para Excel.
+ */
+export function montoCelda(monto: number): CeldaNumericaCsv {
+  return { tipo: 'numero', texto: montoCsv(monto), valor: monto, decimales: 2 };
 }

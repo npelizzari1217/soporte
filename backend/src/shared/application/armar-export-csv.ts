@@ -76,8 +76,13 @@ export function armarExportCsv<T>(
 
   return Result.ok({
     contenido: serializarCsv(filas, columnas),
-    nombreArchivo: `${prefijo}-${sufijoFechaArgentina(ahora ?? new Date())}.csv`,
+    nombreArchivo: nombreArchivoExport(prefijo, 'csv', ahora),
   });
+}
+
+/** Nombre `prefijo-aaaa-mm-dd.ext` con la fecha de Argentina del instante dado (por defecto, ahora). */
+export function nombreArchivoExport(prefijo: string, extension: string, ahora?: Date): string {
+  return `${prefijo}-${sufijoFechaArgentina(ahora ?? new Date())}.${extension}`;
 }
 
 /**

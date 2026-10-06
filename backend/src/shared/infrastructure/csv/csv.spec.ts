@@ -5,9 +5,13 @@ import {
   cantidadCsv,
   ColumnaCsv,
   SEPARADOR_CSV,
+  diaArgentinoCelda,
   diaArgentinoCsv,
+  fechaCelda,
   fechaCsv,
+  fechaHoraCelda,
   fechaHoraCsv,
+  montoCelda,
   montoCsv,
   serializarCsv,
 } from './csv';
@@ -219,5 +223,42 @@ describe('cantidadCsv', () => {
     expect(serializarCsv([{ v: '-3' }], columnas)).toBe(`${BOM_UTF8}V\r\n'-3`);
     expect(serializarCsv([{ v: '=cmd' }], columnas)).toBe(`${BOM_UTF8}V\r\n'=cmd`);
     expect(serializarCsv([{ v: -3 }], columnas)).toBe(`${BOM_UTF8}V\r\n'-3`);
+  });
+});
+
+describe('celdas tipadas — el texto del CSV es idéntico al de los helpers de texto', () => {
+  const instante = new Date('2026-08-20T01:30:45.000Z');
+  const fecha = new Date('2026-08-19T00:00:00.000Z');
+
+  it('cada variante tipada emite el mismo texto que su helper', () => {
+    expect(fechaHoraCelda(instante)?.texto).toBe(fechaHoraCsv(instante));
+    expect(diaArgentinoCelda(instante)?.texto).toBe(diaArgentinoCsv(instante));
+    expect(fechaCelda(fecha)?.texto).toBe(fechaCsv(fecha));
+    expect(montoCelda(1234.5).texto).toBe(montoCsv(1234.5));
+  });
+
+  it('llevan el valor crudo con los componentes UTC ya en hora argentina', () => {
+    expect(fechaHoraCelda(instante)?.fecha.toISOString()).toBe('2026-08-19T22:30:00.000Z');
+    expect(diaArgentinoCelda(instante)?.fecha.toISOString()).toBe('2026-08-19T00:00:00.000Z');
+    expect(fechaCelda(fecha)?.fecha).toBe(fecha);
+    expect(montoCelda(1234.5)).toMatchObject({ valor: 1234.5, decimales: 2 });
+    expect(cantidadCsv(3, true)).toMatchObject({ valor: 3, decimales: 0 });
+    expect(cantidadCsv(2.5, true)).toMatchObject({ valor: 2.5, decimales: 2 });
+  });
+
+  it('null y undefined son celda vacía', () => {
+    expect(fechaHoraCelda(null)).toBeNull();
+    expect(diaArgentinoCelda(undefined)).toBeNull();
+    expect(fechaCelda(null)).toBeNull();
+  });
+
+  it('el CSV las emite tal cual, sin neutralizar un monto negativo', () => {
+    const columnas: readonly ColumnaCsv<{ f: Date; m: number }>[] = [
+      { encabezado: 'F', valor: (x) => fechaHoraCelda(x.f) },
+      { encabezado: 'M', valor: (x) => montoCelda(x.m) },
+    ];
+    expect(serializarCsv([{ f: instante, m: -5 }], columnas)).toBe(
+      `${BOM_UTF8}F;M\r\n19/08/2026 22:30;-5,00`,
+    );
   });
 });
