@@ -36,6 +36,12 @@ La primera respuesta DEBE ser el primer comentario **público** de alguien disti
 - WHEN se agrega otro comentario público
 - THEN la fecha registrada no cambia y es la del primero
 
+#### Scenario: El comentario que la registró se borra después
+
+- GIVEN un ticket cuya primera respuesta quedó registrada por un comentario público de un técnico
+- WHEN ese comentario se borra
+- THEN la fecha de primera respuesta se conserva: la respuesta ocurrió y no se recalcula
+
 ### Requirement: R2 Meta opcional por prioridad
 
 Cada prioridad DEBE admitir una meta opcional "Primera respuesta (h)", en horas hábiles. Vacía significa sin meta. Si se informa, DEBE ser un número mayor que cero. El valor NO se recalcula en tickets existentes, y las prioridades existentes quedan sin meta.

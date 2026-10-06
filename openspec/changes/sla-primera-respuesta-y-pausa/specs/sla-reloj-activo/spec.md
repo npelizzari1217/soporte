@@ -60,13 +60,19 @@ Al reanudar, el sistema DEBE derivar el vencimiento sumando, desde el instante d
 
 ### Requirement: R3 Cumplimiento fijado en cada resolución
 
-Al pasar a RESUELTO el sistema DEBE fijar el cumplimiento: cumplió si el acumulado activo es menor o igual a la meta de la prioridad vigente. Cada resolución posterior (tras una reapertura) DEBE reescribirlo: gana la última. El cumplimiento NO depende de la marca del barrido, de la fecha de cierre ni de pasar a CERRADO.
+Al pasar a RESUELTO el sistema DEBE fijar el cumplimiento: cumplió si el acumulado activo es menor o igual a la meta del ticket. La meta es la de su prioridad, fijada al crear el ticket o al repriorizarlo; editar después las horas de una prioridad NO afecta a los tickets existentes. Para un ticket previo al cambio, la meta es el tiempo hábil entre su creación y su vencimiento. Cada resolución posterior (tras una reapertura) DEBE reescribirlo: gana la última. El cumplimiento NO depende de la marca del barrido, de la fecha de cierre ni de pasar a CERRADO.
 
 #### Scenario: Resuelto a tiempo tras una semana de espera
 
 - GIVEN meta de 8 h, 5 h activas y 7 días en ESPERANDO_CLIENTE
 - WHEN se pasa a RESUELTO
 - THEN el ticket cumplió
+
+#### Scenario: Editar la prioridad no cambia la meta de un ticket existente
+
+- GIVEN un ticket creado con una prioridad de meta 8 h
+- WHEN un administrador cambia la meta de esa prioridad a 4 h y después el ticket se resuelve con 6 h activas
+- THEN el ticket cumplió, porque su meta sigue siendo 8 h
 
 #### Scenario: Resuelto tarde antes del barrido
 
