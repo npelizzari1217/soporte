@@ -34,6 +34,7 @@ import {
   ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
+  StreamableFile,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ComprasController, toHttpException } from './compras.controller';
@@ -688,6 +689,40 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       // Sin exponerlo, el navegador no puede leer el header y el frontend se
       // queda sin el nombre del archivo.
       expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+    });
+
+    it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
+      const { controller, exportarComprasUseCase } = buildController();
+      exportarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'compras-2026-08-19.xlsx' }),
+      );
+      const { res, headers } = respuestaFalsa();
+
+      const salida = await controller.exportar({}, res, 'xlsx');
+
+      expect(salida).toBeInstanceOf(StreamableFile);
+      expect(exportarComprasUseCase.execute).toHaveBeenLastCalledWith(expect.anything(), 'xlsx');
+      expect(headers.get('Content-Type')).toBe(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(headers.get('Content-Disposition')).toBe(
+        'attachment; filename="compras-2026-08-19.xlsx"',
+      );
+      expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+    });
+
+    it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
+      const { controller, exportarComprasUseCase } = buildController();
+      exportarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ contenido: 'a;b', nombreArchivo: 'compras-2026-08-19.csv' }),
+      );
+      const { res, headers } = respuestaFalsa();
+
+      const salida = await controller.exportar({}, res);
+
+      expect(salida).toBe('a;b');
+      expect(exportarComprasUseCase.execute).toHaveBeenLastCalledWith(expect.anything(), 'csv');
+      expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
     });
 
     it('NO le pasa paginación al use case: exporta el universo filtrado, no la página', async () => {

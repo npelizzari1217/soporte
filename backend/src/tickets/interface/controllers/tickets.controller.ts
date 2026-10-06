@@ -48,7 +48,11 @@ import {
   Res,
   UnprocessableEntityException,
   UseGuards,
+  StreamableFile,
 } from '@nestjs/common';
+import { FormatoExport } from '../../../shared/application/armar-export';
+import { entregarExport } from '../../../shared/interface/export/entregar-export';
+import { ParseFormatoExportPipe } from '../../../shared/interface/export/formato-export.pipe';
 import { CrearTicketUseCase } from '../../application/use-cases/crear-ticket.use-case';
 import { ObtenerTicketUseCase } from '../../application/use-cases/obtener-ticket.use-case';
 import { ListarTicketsUseCase } from '../../application/use-cases/listar-tickets.use-case';
@@ -350,38 +354,34 @@ export class TicketsController {
     @CurrentUser() user: JwtPayload,
     @Query() query: ExportarTicketsQueryDto,
     @Res({ passthrough: true }) res: RespuestaConHeaders,
-  ): Promise<string> {
+    @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
+  ): Promise<string | StreamableFile> {
     const sinRestriccionModulo = user.is_global_admin || user.rol === 'ADMINISTRADOR';
     const modulosPermitidos = sinRestriccionModulo ? null : user.modulos;
 
-    const result = await this.exportarTicketsUseCase.execute({
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
-      modulosPermitidos,
-      filtros: {
-        estadoId: query.estado,
-        tiposIds: query.tipo ? [query.tipo] : undefined,
-        prioridadId: query.prioridad,
-        asignadoId: query.asignado,
-        cicloId: query.ciclo,
-        fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
-        fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
-        busqueda: query.busqueda,
+    const result = await this.exportarTicketsUseCase.execute(
+      {
+        actorId: user.sub,
+        tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+        modulosPermitidos,
+        filtros: {
+          estadoId: query.estado,
+          tiposIds: query.tipo ? [query.tipo] : undefined,
+          prioridadId: query.prioridad,
+          asignadoId: query.asignado,
+          cicloId: query.ciclo,
+          fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
+          fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
+          busqueda: query.busqueda,
+        },
       },
-    });
+      formato,
+    );
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const { contenido, nombreArchivo } = result.getValue();
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${nombreArchivo}"`);
-    // El navegador no puede leer un header que no esté expuesto por CORS, y
-    // sin esto el frontend no tiene de dónde sacar el nombre del archivo.
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition');
-
-    return contenido;
+    return entregarExport(res, formato, result.getValue());
   }
 
   /**

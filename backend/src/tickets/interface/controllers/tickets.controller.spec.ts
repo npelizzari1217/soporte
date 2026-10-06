@@ -16,6 +16,7 @@ import {
   ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
+  StreamableFile,
 } from '@nestjs/common';
 import { TicketsController, toHttpException } from './tickets.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
@@ -426,6 +427,42 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
   });
 
+  it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'tickets-2026-08-19.xlsx' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(USUARIO_SOPORTE, {}, res, 'xlsx');
+
+    expect(salida).toBeInstanceOf(StreamableFile);
+    expect(exportarTickets.execute).toHaveBeenLastCalledWith(expect.anything(), 'xlsx');
+    expect(headers.get('Content-Type')).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(headers.get('Content-Disposition')).toBe(
+      'attachment; filename="tickets-2026-08-19.xlsx"',
+    );
+    expect(headers.get('Access-Control-Expose-Headers')).toBe('Content-Disposition');
+  });
+
+  it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
+    const exportarTickets = { execute: vi.fn() };
+    exportarTickets.execute.mockResolvedValue(
+      Result.ok({ contenido: 'a;b', nombreArchivo: 'tickets-2026-08-19.csv' }),
+    );
+    const { controller } = buildController({ exportarTickets });
+    const { res, headers } = respuestaFalsa();
+
+    const salida = await controller.exportar(USUARIO_SOPORTE, {}, res);
+
+    expect(salida).toBe('a;b');
+    expect(exportarTickets.execute).toHaveBeenLastCalledWith(expect.anything(), 'csv');
+    expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
+  });
+
   it('deriva el scope de filas del actor (TICKETS:VER_TODOS), NUNCA del query — sin el permiso, exporta acotado al actor', async () => {
     const exportarTickets = { execute: vi.fn() };
     exportarTickets.execute.mockResolvedValue(
@@ -437,6 +474,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
 
     expect(exportarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({ actorId: 'usr-2', tienePermisoVerTodos: false }),
+      'csv',
     );
   });
 
@@ -451,6 +489,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
 
     expect(exportarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({ modulosPermitidos: null }),
+      'csv',
     );
   });
 
