@@ -822,6 +822,13 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - Los **tickets existentes no se recalculan**, con el mismo criterio que el SLA
     hábil. Sí se completa desde el historial **cuándo** tuvieron su primera
     respuesta, para las métricas, pero sin meta retroactiva.
+  - **Tickets existentes y reloj activo** (precisado el 2026-10-06, al proponer):
+    antes del cambio no existía el estado de espera, así que todo su tiempo sin
+    resolver fue activo. Los **abiertos** se incorporan al reloj la primera vez que
+    hace falta (al pasar a esperar o al repriorizar), con todo el tiempo desde su
+    creación como acumulado activo, y su vencimiento actual no se toca. Los **ya
+    resueltos o cerrados** cuentan en el cumplimiento con el criterio anterior
+    corregido: **fecha de cierre contra vencimiento**, en vez de la marca del barrido.
   - El dashboard suma el **% de cumplimiento de primera respuesta** y el **tiempo
     medio de primera respuesta**, junto al cumplimiento de resolución.
   - El cumplimiento de resolución se mide por **tiempo activo** (precisado el
