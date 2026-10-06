@@ -107,11 +107,11 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 - [x] 3b.2b Test unit (invariante "el cursor se ordena por tiempo"): `t_i = max(created_at_i, t_{i-1}, corre_desde)`, sin tramos negativos. (`sla-reloj-activo R1`)
 - [x] 3b.6 Test unit de incorporación de previos: `acumulado = 0`, `corre_desde = createdAt`, `meta = entre(createdAt, slaVenceAt)` (pared si `CORRIDO`; null sin vencimiento); se pliega primero el historial sin secuencia y después el que la tiene; el vencimiento no cambia; un previo RESUELTO→CERRADO no se incorpora. (`sla-reloj-activo R7`, `sla-reloj-activo R8`)
 - [x] 3b.7 Crear `sla/domain` `RelojSla` (pliegue por secuencia, recorte monótono, incorporación de previos, elección de medidor por `slaRegla`, vencimiento derivado y cumplimiento) y `IRelojSlaRepository` (`leer`, `historialSinSecuencia`, `transicionesDesde`, `guardarSiVersion`, `findPendientes`). (`sla-reloj-activo R1`, `sla-reloj-activo R2`, `sla-reloj-activo R3`)
-- [ ] 3b.8 Test de integración (invariante "una transición entra durante el pliegue"): `guardarSiVersion` con versión vieja devuelve `false` y el ticket queda pendiente (`SLA_RELOJ_CONFLICTO`); repetir el pliegue sin operaciones nuevas es idempotente. (`sla-reloj-activo R4`)
+- [x] 3b.8 Test de integración (invariante "una transición entra durante el pliegue"): `guardarSiVersion` con versión vieja devuelve `false` y el ticket queda pendiente (`SLA_RELOJ_CONFLICTO`); repetir el pliegue sin operaciones nuevas es idempotente. (`sla-reloj-activo R4`)
 - [x] 3b.9 Test de integración (mutación): ordenar por `created_at` en lugar de `sla_reloj_seq` pone en rojo el caso "transición A con `createdAt` anterior que comitea después del pliegue de B; el pliegue siguiente incluye A (`seq` de A > cursor)". (`sla-reloj-activo R1`)
 - [x] 3b.10 Test unit de `ConsolidarRelojSlaUseCase`: carga calendario y feriados antes de leer, reintenta una vez el CAS y deja pendiente si vuelve a fallar. (`sla-reloj-activo R4`)
 - [x] 3b.11 Implementar `ConsolidarRelojSlaUseCase`, `PrismaRelojSlaRepository` y `RelojSlaListener` (`@OnEvent('ticket.transicionado')`, log-and-swallow con `SLA_RELOJ_ERROR`); registrar en `SlaModule` sin ciclo con `TicketsModule`. (`sla-reloj-activo R1`, `sla-reloj-activo R4`)
-- [ ] 3b.12 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/sla`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 3b.12 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/sla`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-3c — `AplicarSla` con meta y barrido (~250 líneas)
 

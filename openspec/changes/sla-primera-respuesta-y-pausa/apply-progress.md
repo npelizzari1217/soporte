@@ -160,3 +160,11 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03b3`, base `...-wu03b2`. Pendientes:
 - `RelojSlaListener` (`ticket.transicionado`, log-and-swallow `SLA_RELOJ_ERROR`) y registro en `SlaModule` (`RELOJ_SLA_REPOSITORY`, caso de uso, listener); `SlaModule` no importa nada nuevo de tickets, sin ciclo.
 - Fixtures: se exporta `calendarioSemanal`.
 - Evidencia: `pnpm vitest run src/sla` verde; lint y typecheck limpios.
+
+## WU-3b.4 — integracion del caso de uso (tarea 3b.8, cierre de 3b.12)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b4`, base `...-wu03b3`. Con esta parte la WU-3b queda completa.
+
+- `consolidar-reloj-sla.integration.spec.ts`: el caso de uso con el `PrismaRelojSlaRepository` real. Una version que sube entre la lectura y la escritura da `conflicto`, registra `SLA_RELOJ_CONFLICTO` y deja `sla_reloj_pendiente = true`; consolidar dos veces sin operaciones nuevas no cambia nada (salvo `updated_at`). El spec borra sus filas (prefijo `WU3BC`) al empezar y al terminar.
+- El registro de `SlaModule` (repo, caso de uso, listener) queda cubierto en su DI por `src/app.module.smoke.spec.ts` (1/1).
+- Verificacion de la WU: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/sla src/tickets` y ratchet de casts, ver el commit.
