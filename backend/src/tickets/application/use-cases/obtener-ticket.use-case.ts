@@ -30,7 +30,7 @@ export interface ObtenerTicketDto {
  * Ref spec: sdd/tickets-core/spec T6, T23. Tarea: T6.3.
  */
 export class ObtenerTicketUseCase {
-  constructor(private readonly ticketRepo: ITicketRepository) {}
+  constructor(private readonly ticketRepo: Pick<ITicketRepository, 'findById'>) {}
 
   async execute(dto: ObtenerTicketDto): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
