@@ -803,6 +803,32 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - En el detalle del ticket hay un botón **"Descargar PDF"**, visible para cualquiera
     que pueda ver el ticket.
 
+- **Segunda etapa, punto 6 — SLA de primera respuesta y pausa del reloj**
+  (decidido el 2026-10-06, ciclo `sla-primera-respuesta-y-pausa`):
+  - Se agrega el estado **"Esperando al cliente"**. Se entra desde *En proceso* y se
+    sale a *En proceso*, *Resuelto* o *Cancelado*.
+  - Mientras el ticket espera al cliente, **el reloj de resolución se detiene**. Al
+    volver, el vencimiento se corre por las **horas hábiles** que estuvo en pausa, y
+    el barrido no marca vencido un ticket que está esperando.
+  - Si el **solicitante comenta** mientras el ticket espera, el ticket vuelve solo a
+    *En proceso*.
+  - La **primera respuesta** es el primer comentario público de alguien que no sea el
+    solicitante.
+  - Cada prioridad suma una meta opcional, **"Primera respuesta (h)"** (vacía = sin
+    meta), medida en horas hábiles con el mismo calendario del cliente. La primera
+    respuesta **no se pausa**.
+  - Si la primera respuesta vence, el ticket lo muestra con un badge y se manda un
+    mail al asignado y a los administradores, igual que el vencimiento de resolución.
+  - Los **tickets existentes no se recalculan**, con el mismo criterio que el SLA
+    hábil. Sí se completa desde el historial **cuándo** tuvieron su primera
+    respuesta, para las métricas, pero sin meta retroactiva.
+  - El dashboard suma el **% de cumplimiento de primera respuesta** y el **tiempo
+    medio de primera respuesta**, junto al cumplimiento de resolución.
+  - El cumplimiento se calcula comparando la **fecha de cierre con el vencimiento**,
+    no con la marca que deja el barrido. Hoy un ticket resuelto después de su
+    vencimiento, pero antes de que corra el barrido, cuenta como "a tiempo".
+  - Los **preventivos** siguen fuera del SLA, como hoy.
+
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
 Odoo y de los proveedores regionales salen de agregadores y son indicativos. No se
