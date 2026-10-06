@@ -38,6 +38,12 @@ describe('Marcador del reloj de SLA y save acotado (WU-3a)', () => {
     txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
     ticketRepo = new PrismaTicketRepository(tenantContext);
     marcador = new PrismaRelojSlaMarcador(tenantContext);
+    // Residuo de una corrida abortada: el tipo de operación `WU3AO*` es solo de este spec (los demás
+    // prefijos `WU3A*` los comparten otros specs, por eso no se barren).
+    await client.operacionTicket.deleteMany({
+      where: { tipoOperacion: { codigo: { startsWith: 'WU3AO' } } },
+    });
+    await client.tipoOperacion.deleteMany({ where: { codigo: { startsWith: 'WU3AO' } } });
     const s = randomBytes(3).toString('hex');
     ids = {
       tipo: (

@@ -152,10 +152,17 @@ import {
     {
       provide: MarcarVencidosUseCase,
       useFactory: (
+        relojRepo: IRelojSlaRepository,
+        consolidar: ConsolidarRelojSlaUseCase,
         slaTicketQueryRepo: ISlaTicketQueryRepository,
         eventPublisher: IDomainEventPublisher,
-      ) => new MarcarVencidosUseCase(slaTicketQueryRepo, eventPublisher),
-      inject: [SLA_TICKET_QUERY_REPOSITORY, DOMAIN_EVENT_PUBLISHER],
+      ) => new MarcarVencidosUseCase(relojRepo, consolidar, slaTicketQueryRepo, eventPublisher),
+      inject: [
+        RELOJ_SLA_REPOSITORY,
+        ConsolidarRelojSlaUseCase,
+        SLA_TICKET_QUERY_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
+      ],
     },
 
     {

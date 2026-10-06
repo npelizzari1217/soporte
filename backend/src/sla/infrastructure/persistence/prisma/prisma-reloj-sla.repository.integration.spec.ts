@@ -33,6 +33,12 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     const tenantContext = new TenantContext();
     tenantContext.bind({ prismaClient: client, dbName: TENANT_TEST_DB_NAME, clienteId: 'wu3b' });
     repo = new PrismaRelojSlaRepository(tenantContext);
+    // Residuo de una corrida abortada. `WU3BC*` es del spec de consolidación y no se barre.
+    const propios = { codigo: { startsWith: 'WU3B', not: { startsWith: 'WU3BC' } } };
+    await client.operacionTicket.deleteMany({ where: { ticket: { tipo: propios } } });
+    await client.ticket.deleteMany({ where: { tipo: propios } });
+    await client.tipoTicket.deleteMany({ where: propios });
+    await client.prioridad.deleteMany({ where: { codigo: { startsWith: 'WU3BP' } } });
     const s = randomBytes(3).toString('hex');
     tipoId = (
       await client.tipoTicket.create({
