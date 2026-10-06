@@ -20,6 +20,8 @@ import {
 } from './domain/ports/i-tipo-operacion.repository';
 import { PrismaTipoOperacionRepository } from './infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { TICKET_REPOSITORY, ITicketRepository } from './domain/ports/i-ticket.repository';
+import { RELOJ_SLA_MARCADOR, IRelojSlaMarcador } from './domain/ports/i-reloj-sla-marcador';
+import { PrismaRelojSlaMarcador } from './infrastructure/persistence/prisma/prisma-reloj-sla-marcador';
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
 import {
   OPERACION_TICKET_REPOSITORY,
@@ -147,6 +149,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: TIPO_OPERACION_REPOSITORY, useClass: PrismaTipoOperacionRepository },
     { provide: TICKET_REPOSITORY, useClass: PrismaTicketRepository },
     { provide: OPERACION_TICKET_REPOSITORY, useClass: PrismaOperacionTicketRepository },
+    { provide: RELOJ_SLA_MARCADOR, useClass: PrismaRelojSlaMarcador },
     { provide: ARCHIVO_REPOSITORY, useClass: PrismaArchivoRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
     { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
@@ -243,6 +246,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         stateMachineFactory: TicketStateMachineFactory,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
+        relojMarcador: IRelojSlaMarcador,
       ) =>
         new TransicionarEstadoUseCase(
           ticketRepo,
@@ -253,6 +257,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
           stateMachineFactory,
           eventPublisher,
           txRunner,
+          relojMarcador,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -263,6 +268,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         TicketStateMachineFactory,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
+        RELOJ_SLA_MARCADOR,
       ],
     },
     {

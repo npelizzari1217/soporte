@@ -103,3 +103,26 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03a2`, base `...-wu03a`.
 - `ticket.entity.ts`: `RelojSlaSnapshot` de solo lectura (getter `relojSla`, `null` antes de persistir), cargado por `TicketMapper.toDomain`.
 - Tests: `prisma-ticket-repository.save.integration.spec.ts` (alta incorporada; `save` con lectura vieja deja `slaVenceAt` y `vencido` intactos) y casos nuevos en `ticket.mapper.spec.ts`.
 - Evidencia: `pnpm vitest run src/tickets src/equipos/mantenimiento` 61 archivos, 621 tests verdes; lint y typecheck limpios; ratchet de casts 626 (base 626). Rollback: el repo y la entidad sin consumidores nuevos.
+
+## WU-3a.3 — marcador del reloj y evento (tareas 3a.9 a 3a.14)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03a3`, base `...-wu03a2`. Con esta parte la WU-3a queda completa.
+
+- Puertos `IRelojSlaMarcador` y `IPrimeraRespuestaWriteRepository` (este solo declarado) en `tickets/domain/ports`; `TicketTransicionadoEvent` (`'ticket.transicionado'`).
+- `PrismaRelojSlaMarcador`: `ticket.update` con `increment` de `sla_reloj_version` (toma el lock de la fila) y `operacionTicket.update` con `slaRelojSeq`. Registrado en `TicketsModule` y pasado como 9.o argumento a `TransicionarEstadoUseCase`.
+- `TransicionarEstadoUseCase`: dentro de la tx, despues de `save(ticket)` y `save(operacion)`, marca solo si `afectaRelojSla`, y publica el evento en `alCommitear`.
+- Tests: unit del caso de uso (marca y publica solo si afecta; NUEVO a ASIGNADO no; marcador que falla no publica) y `prisma-reloj-sla-marcador.integration.spec.ts` (rollback no deja version ni seq ni evento; dos transiciones concurrentes dan seq 1 y 2 y version 2; `AsignarYPonerEnProceso` real contra Postgres deja todas sus `sla_reloj_seq` en NULL y la version en 0).
+- Decision: los tests T13 existentes filtran por clase de evento, porque RESUELTO ahora publica dos eventos (el de notificaciones y `ticket.transicionado`); el mock de `alCommitear` imita al runner real (callback protegido).
+- Evidencia: lint y typecheck limpios; `pnpm vitest run src/tickets src/equipos/mantenimiento` verde. Rollback: el marcador sin listener no tiene efecto observable (columnas nuevas sin consumidores hasta la WU-3b).
+
+## WU-3a.3 — marcador del reloj y evento (tareas 3a.9 a 3a.14)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03a3`, base `...-wu03a2`.
+
+- Puertos `IRelojSlaMarcador` y `IPrimeraRespuestaWriteRepository` (este solo declarado) en `tickets/domain/ports`; `TicketTransicionadoEvent` (`'ticket.transicionado'`).
+- `PrismaRelojSlaMarcador`: `ticket.update` con `increment` de `sla_reloj_version` (toma el lock de la fila) y `operacionTicket.update` con `slaRelojSeq`. Registrado en `TicketsModule` y pasado como 9.o argumento a `TransicionarEstadoUseCase`.
+- `TransicionarEstadoUseCase`: dentro de la tx, despues de `save(ticket)` y `save(operacion)`, marca solo si `afectaRelojSla`, y publica el evento en `alCommitear`.
+- Tests: unit del caso de uso (marca y publica solo si afecta; NUEVO a ASIGNADO no; marcador que falla no publica) y `prisma-reloj-sla-marcador.integration.spec.ts` (rollback no deja version ni seq ni evento; dos transiciones concurrentes dan seq 1 y 2 y version 2).
+- La asercion de DB de 3a.12 sobre `AsignarYPonerEnProcesoUseCase` (deja `sla_reloj_seq` NULL) va en el commit siguiente (WU-3a.4), por presupuesto de 400 lineas.
+- Decision: los tests T13 existentes filtran por clase de evento, porque RESUELTO ahora publica dos eventos; el mock de `alCommitear` imita al runner real (callback protegido).
+- Evidencia: lint y typecheck limpios; `pnpm vitest run src/tickets src/equipos/mantenimiento` verde. Rollback: sin listener el marcador no tiene efecto observable (columnas sin consumidores hasta la WU-3b).

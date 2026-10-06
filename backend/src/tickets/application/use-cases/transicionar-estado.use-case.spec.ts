@@ -116,7 +116,18 @@ describe('TransicionarEstadoUseCase', () => {
     const eventPublisher = { publish: vi.fn() };
     // txRunner.run ejecuta el callback DIRECTAMENTE (sin Prisma real) — pero
     // preserva la semántica "corre dentro de la tx" para los tests.
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      // Como el runner real: el callback post-commit corre protegido, un error no sube a la tx.
+      alCommitear: vi.fn((fn: () => void) => {
+        try {
+          fn();
+        } catch {
+          /* swallow */
+        }
+      }),
+    };
+    const relojMarcador = { marcar: vi.fn().mockResolvedValue(undefined) };
 
     const useCase = new TransicionarEstadoUseCase(
       ticketRepo as never,
@@ -127,6 +138,7 @@ describe('TransicionarEstadoUseCase', () => {
       stateMachineFactory,
       eventPublisher as never,
       txRunner as never,
+      relojMarcador,
     );
 
     return {
@@ -138,6 +150,7 @@ describe('TransicionarEstadoUseCase', () => {
       tipoOperacionRepo,
       eventPublisher,
       txRunner,
+      relojMarcador,
     };
   }
 
@@ -279,8 +292,12 @@ describe('TransicionarEstadoUseCase', () => {
     const result = await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'RESUELTO' }));
 
     expect(result.isOk()).toBe(true);
-    expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
-    const evento = c.eventPublisher.publish.mock.calls[0][0] as TicketEstadoCambiadoEvent;
+    // RESUELTO también afecta el reloj: además del de notificaciones sale ticket.transicionado.
+    const notificaciones = c.eventPublisher.publish.mock.calls.filter(
+      (x) => x[0] instanceof TicketEstadoCambiadoEvent,
+    );
+    expect(notificaciones).toHaveLength(1);
+    const evento = notificaciones[0][0] as TicketEstadoCambiadoEvent;
     expect(evento).toBeInstanceOf(TicketEstadoCambiadoEvent);
     expect(evento.name).toBe('ticket.estado_cambiado');
     expect(evento.ticketId).toBe('ticket-uuid');
@@ -411,6 +428,54 @@ describe('TransicionarEstadoUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
     expect(ticket.estadoId).toBe('estado-cancelado-uuid');
     expect(c.txRunner.run).not.toHaveBeenCalled();
+  });
+
+  // ─── Reloj de SLA: marcador y evento (sla-reloj-activo R1) ───────────────
+  describe('marcador del reloj de SLA', () => {
+    it('EN_PROCESO→ESPERANDO_CLIENTE marca después de guardar ticket y operación, y publica ticket.transicionado post-commit', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('EN_PROCESO'));
+
+      const result = await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'ESPERANDO_CLIENTE' }));
+
+      expect(result.isOk()).toBe(true);
+      const operacion = c.operacionRepo.save.mock.calls[0][0];
+      expect(c.relojMarcador.marcar).toHaveBeenCalledWith('ticket-uuid', operacion.id);
+      expect(c.relojMarcador.marcar.mock.invocationCallOrder[0]).toBeGreaterThan(
+        c.operacionRepo.save.mock.invocationCallOrder[0],
+      );
+      expect(c.txRunner.alCommitear).toHaveBeenCalledTimes(1);
+      const eventos = c.eventPublisher.publish.mock.calls.map((x) => x[0]);
+      expect(eventos).toContainEqual(
+        expect.objectContaining({
+          name: 'ticket.transicionado',
+          ticketId: 'ticket-uuid',
+          estadoAnteriorCodigo: 'EN_PROCESO',
+          estadoNuevoCodigo: 'ESPERANDO_CLIENTE',
+        }),
+      );
+    });
+
+    it('un arco donde el reloj sigue corriendo (NUEVO→ASIGNADO) no marca ni publica', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'ASIGNADO' }));
+
+      expect(c.relojMarcador.marcar).not.toHaveBeenCalled();
+      expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
+    });
+
+    it('el evento no sale si la tx falla: el marcador que lanza deja alCommitear sin llamar a publish', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('EN_PROCESO'));
+      c.relojMarcador.marcar.mockRejectedValue(new Error('boom'));
+
+      await expect(c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'RESUELTO' }))).rejects.toThrow(
+        'boom',
+      );
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    });
   });
 
   // ─── Salto correctivo (ROOT/ADMINISTRADOR) ───────────────────────────────
