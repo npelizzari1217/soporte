@@ -237,3 +237,12 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu05`, base `...-wu04b`. Estandar (feat
 
 - Verificacion backend: lint y typecheck limpios; ratchet de casts 617 en 114 (sin cambios).
 - Pendiente (parte 2, `...-wu05b`): 5.5, 5.6 (formulario y lista del frontend) y 5.7 (verificacion de frontend).
+
+## WU-5 — parte 2: frontend (tareas 5.5, 5.6, 5.7; WU-5 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu05b`, base `...-wu05`.
+
+- `Prioridad.slaPrimeraRespuestaHoras` y los DTOs de crear/editar; schema Zod que espeja el DTO (vacio = sin meta, se envia `null`; si no, entero > 0); campo "Primera respuesta (h)" en `prioridad-form-dialog.tsx`; columna "Primera respuesta" en `prioridad-list.tsx` ("Sin meta" o `Nh`).
+- Tests: formulario (valor vigente, entero positivo, vacio a null, 0 y -2 rechazados sin enviar) y lista (`prioridad-list.test.tsx`); fixture de `ticket-edit-form.test.tsx` ajustado al tipo.
+- Verificacion 5.7 sobre el arbol del commit: frontend `JWT_SECRET=dummy pnpm lint` limpio, `pnpm type-check` limpio, `pnpm test` 245 archivos / 1971 tests verdes; ratchet de casts 617 en 114. El backend se verifico en la parte 1.
+- Ayuda: deuda — campo "Primera respuesta (h)" en las prioridades del catalogo. Rollback: archivos del frontend de esta parte.

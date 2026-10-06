@@ -24,6 +24,7 @@ function buildPrioridad(overrides: Partial<Prioridad> = {}): Prioridad {
     activo: true,
     slaHoras: null,
     slaActivo: true,
+    slaPrimeraRespuestaHoras: null,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     ...overrides,
@@ -79,5 +80,60 @@ describe("PrioridadFormDialog", () => {
 
     await waitFor(() => expect(capturado.nombre).toBe("Prioridad Renombrada"));
     expect(capturado.orden).toBe(2);
+  });
+
+  describe("Primera respuesta (h)", () => {
+    async function abrirYGuardar(prioridad: Prioridad, tipear?: string) {
+      const user = userEvent.setup();
+      let capturado: Record<string, unknown> | null = null;
+      server.use(
+        http.patch("/api/catalogos/prioridades/p1", async ({ request }) => {
+          capturado = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({ ...prioridad, ...capturado });
+        }),
+      );
+      renderWithProviders(<PrioridadFormDialog prioridad={prioridad} trigger={<button>Editar</button>} />);
+      await user.click(screen.getByRole("button", { name: "Editar" }));
+      const campo = screen.getByLabelText(/primera respuesta \(h\)/i);
+      if (tipear !== undefined) {
+        await user.clear(campo);
+        if (tipear) await user.type(campo, tipear);
+      }
+      await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+      return { campo, leer: () => capturado };
+    }
+
+    it("muestra la meta vigente de la prioridad", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <PrioridadFormDialog
+          prioridad={buildPrioridad({ slaPrimeraRespuestaHoras: 4 })}
+          trigger={<button>Editar</button>}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "Editar" }));
+
+      expect(screen.getByLabelText(/primera respuesta \(h\)/i)).toHaveValue(4);
+    });
+
+    it("un valor entero positivo se envía como número", async () => {
+      const { leer } = await abrirYGuardar(buildPrioridad(), "4");
+
+      await waitFor(() => expect(leer()?.slaPrimeraRespuestaHoras).toBe(4));
+    });
+
+    it("vacío se envía como null (sin meta)", async () => {
+      const { leer } = await abrirYGuardar(buildPrioridad({ slaPrimeraRespuestaHoras: 4 }), "");
+
+      await waitFor(() => expect(leer()).not.toBeNull());
+      expect(leer()?.slaPrimeraRespuestaHoras).toBeNull();
+    });
+
+    it.each(["0", "-2"])("%s se rechaza en el formulario y no se envía", async (valor) => {
+      const { leer } = await abrirYGuardar(buildPrioridad(), valor);
+
+      expect(await screen.findByText(/mayor a 0/i)).toBeInTheDocument();
+      expect(leer()).toBeNull();
+    });
   });
 });

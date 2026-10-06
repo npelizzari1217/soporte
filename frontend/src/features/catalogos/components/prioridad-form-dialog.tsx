@@ -39,8 +39,10 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
         orden: prioridad.orden,
         slaHoras: prioridad.slaHoras !== null ? String(prioridad.slaHoras) : "",
         slaActivo: prioridad.slaActivo,
+        slaPrimeraRespuestaHoras:
+          prioridad.slaPrimeraRespuestaHoras !== null ? String(prioridad.slaPrimeraRespuestaHoras) : "",
       }
-    : { codigo: "", nombre: "", color: "", orden: 0, slaHoras: "", slaActivo: true };
+    : { codigo: "", nombre: "", color: "", orden: 0, slaHoras: "", slaActivo: true, slaPrimeraRespuestaHoras: "" };
 
   const {
     register,
@@ -63,6 +65,9 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
         orden: values.orden,
         slaHoras: values.slaHoras ? Number(values.slaHoras) : null,
         slaActivo: values.slaActivo,
+        slaPrimeraRespuestaHoras: values.slaPrimeraRespuestaHoras
+          ? Number(values.slaPrimeraRespuestaHoras)
+          : null,
       },
       {
         onSuccess: () => {
@@ -156,6 +161,25 @@ export function PrioridadFormDialog({ trigger, prioridad }: PrioridadFormDialogP
               />
               SLA activo
             </label>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="prioridad-sla-primera-respuesta" className="text-sm font-medium text-foreground">
+              Primera respuesta (h)
+            </label>
+            <Input
+              id="prioridad-sla-primera-respuesta"
+              type="number"
+              min={1}
+              placeholder="Sin meta"
+              error={!!errors.slaPrimeraRespuestaHoras}
+              {...register("slaPrimeraRespuestaHoras")}
+            />
+            {errors.slaPrimeraRespuestaHoras && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.slaPrimeraRespuestaHoras.message}
+              </p>
+            )}
           </div>
 
           <div className="flex justify-end gap-2">

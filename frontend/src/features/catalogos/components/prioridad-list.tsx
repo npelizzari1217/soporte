@@ -50,6 +50,12 @@ export function PrioridadList() {
           : `${row.slaHoras}h${row.slaActivo ? "" : " (inactivo)"}`,
     },
     {
+      key: "slaPrimeraRespuestaHoras",
+      header: "Primera respuesta",
+      render: (row) =>
+        row.slaPrimeraRespuestaHoras === null ? "Sin meta" : `${row.slaPrimeraRespuestaHoras}h`,
+    },
+    {
       key: "activo",
       header: "Estado",
       render: (row) => (row.activo ? <Badge variant="success">Activa</Badge> : <Badge variant="outline">Baja</Badge>),

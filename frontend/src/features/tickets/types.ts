@@ -149,6 +149,8 @@ export interface Prioridad {
   /** Horas objetivo de SLA (movido de la tabla separada `sla_config` a `prioridades`). `null` = sin SLA aplicable. */
   slaHoras: number | null;
   slaActivo: boolean;
+  /** Meta de primera respuesta en horas hábiles. `null` = sin meta. */
+  slaPrimeraRespuestaHoras: number | null;
   createdAt: string;
   updatedAt: string;
 }
