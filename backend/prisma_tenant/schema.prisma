@@ -309,6 +309,12 @@ model Ticket {
   slaRelojVersion    Int       @default(0) @map("sla_reloj_version")
   slaRelojPendiente  Boolean   @default(false) @map("sla_reloj_pendiente")
   slaCumplido        Boolean?  @map("sla_cumplido")
+  /// Primera respuesta (sdd/sla-primera-respuesta-y-pausa, M4). Las escribe solo un repo acotado
+  /// (nunca el upsert de la entidad). `primeraRespuestaVencida` es espejo de su DEFAULT del DDL
+  /// (trampa de sla_regla): un test de deriva las compara; tocar una exige tocar la otra.
+  primeraRespuestaAt       DateTime? @map("primera_respuesta_at") @db.Timestamptz
+  primeraRespuestaVenceAt  DateTime? @map("primera_respuesta_vence_at") @db.Timestamptz
+  primeraRespuestaVencida  Boolean   @default(false) @map("primera_respuesta_vencida")
   fechaCierre        DateTime? @map("fecha_cierre") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
@@ -343,6 +349,7 @@ model Ticket {
   @@index([createdAt])
   @@index([vencido])
   @@index([id], map: "tickets_sla_reloj_pendiente_idx") // partial WHERE sla_reloj_pendiente — ver migration SQL
+  @@index([primeraRespuestaVenceAt], map: "tickets_primera_respuesta_pendiente_idx") // partial — ver migration SQL
   @@map("tickets")
 }
 
