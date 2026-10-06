@@ -170,13 +170,13 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 
 ## WU-8 — Dashboard backend (~360 líneas)
 
-- [ ] 8.1 Test de integración del cumplimiento de resolución: incorporados con `slaCumplido` (resuelto tarde antes del barrido cuenta como no cumplido; 5 h activas y 7 días de espera sobre meta de 8 h cuenta como cumplido) y previos con `fechaCierre <= slaVenceAt` (cerrado tarde sin marca cuenta como no cumplido); sin datos devuelve nulo. (`dashboard-metricas-sla R1`, `sla-reloj-activo R8`)
-- [ ] 8.2 Test de integración de primera respuesta: cuatro tickets con meta (dos a tiempo, uno tarde, uno sin respuesta y vencido) dan 50 %; el rellenado sin meta entra al tiempo medio y no al porcentaje; sin datos devuelve nulo. (`dashboard-metricas-sla R2`)
-- [x] 8.3 Test unit del tiempo medio hábil: viernes 17:00 respondido lunes 10:00 (1 h) y viernes 17:00 respondido 17:30 (0,5 h) dan 1,25 h hábiles, no de pared. (`dashboard-metricas-sla R2`)
-- [ ] 8.4 Test de integración de preventivos: un preventivo resuelto con comentarios públicos de un técnico no altera ninguna de las tres métricas (filtro por `tipoId`). (`dashboard-metricas-sla R4`)
-- [ ] 8.5 Test de integración (invariante "estado de espera como abierto"): un ticket asignado en ESPERANDO_CLIENTE cuenta en `abiertos` y en `cargaPorAgente` y no en el cumplimiento de resolución. (`dashboard-metricas-sla R5`)
+- [x] 8.1 Test de integración del cumplimiento de resolución: incorporados con `slaCumplido` (resuelto tarde antes del barrido cuenta como no cumplido; 5 h activas y 7 días de espera sobre meta de 8 h cuenta como cumplido) y previos con `fechaCierre <= slaVenceAt` (cerrado tarde sin marca cuenta como no cumplido); sin datos devuelve nulo. (`dashboard-metricas-sla R1`, `sla-reloj-activo R8`)
+- [x] 8.2 Test de integración de primera respuesta: cuatro tickets con meta (dos a tiempo, uno tarde, uno sin respuesta y vencido) dan 50 %; el rellenado sin meta entra al tiempo medio y no al porcentaje; sin datos devuelve nulo. (`dashboard-metricas-sla R2`)
+- [x] 8.3 Test unit del tiempo medio hábil: viernes 17:00 respondido lunes 10:00 (2 h) y viernes 17:00 respondido 17:30 (0,5 h) dan 1,25 h hábiles, no de pared. (`dashboard-metricas-sla R2`)
+- [x] 8.4 Test de integración de preventivos: un preventivo resuelto con comentarios públicos de un técnico no altera ninguna de las tres métricas (filtro por `tipoId`). (`dashboard-metricas-sla R4`)
+- [x] 8.5 Test de integración (invariante "estado de espera como abierto"): un ticket asignado en ESPERANDO_CLIENTE cuenta en `abiertos` y en `cargaPorAgente` y no en el cumplimiento de resolución. (`dashboard-metricas-sla R5`)
 - [x] 8.6 `prisma-dashboard.repository.ts`: cuatro `count` en paralelo con field references de Prisma 7 (sin `$queryRaw`), primera respuesta con `lte: fields.primeraRespuestaVenceAt` y tiempo medio con `msHabilesEntre`, calendario vigente y feriados cargados una vez por consulta; `DashboardModule` importa `CalendarioLaboralModule`; payload aditivo. (`dashboard-metricas-sla R1`, `dashboard-metricas-sla R2`, `dashboard-metricas-sla R4`)
-- [ ] 8.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/dashboard` y **`pnpm test` completo** (última WU de backend); raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (indicadores) en commit y PR.
+- [x] 8.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/dashboard` y **`pnpm test` completo** (última WU de backend); raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (indicadores) en commit y PR.
 
 ## WU-9a — Estado SLA derivado en el DTO y header (~300 líneas)
 
