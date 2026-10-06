@@ -355,3 +355,8 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu08`, base `...-wu07c`. Los specs de i
 - Repo: `cumplimientoSla` pasa a incorporados (`sla_cumplido`) mas previos (`fechaCierre <= slaVenceAt`), cuatro `count` con field references; `cumplimientoPrimeraRespuesta` y `tiempoPromedioPrimeraRespuestaHoras` nuevos; preventivos fuera por tipo. `promedioHorasHabiles` (dominio puro) con su unit (8.3: 2 h y 0,5 h dan 1,25 h; el "(1 h)" de la tarea es 2 h habiles, el promedio es el de la spec). Un reabierto tiene `fechaCierre` nulo, asi que no entra.
 - Arrastres de la WU-7: paso 3 aislado con log (`MarcarVencidosUseCase` recibe el logger); el spec de integracion borra sus estados terminales por prefijo de nombre, antes y despues.
 - Ayuda: deuda — indicadores de primera respuesta y cumplimiento por tiempo activo en el dashboard.
+
+## WU-8 — parte 2: integracion y verificacion (tareas 8.1, 8.2, 8.4, 8.5 y 8.7; WU-8 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu08b`, base `...-wu08`. `prisma-dashboard.integration.spec.ts` contra Postgres real, un ciclo por test: resolucion (incorporados, previos, reabierto y pliegue pendiente afuera, sin `vencido`), primera respuesta (2 de 4, rellenado solo en el tiempo medio, 1,25 h, sin datos), preventivo sin efecto y espera como abierto. Se corrigio el "(1 h)" de 8.3 a "(2 h)".
+- Ayuda: sin deuda nueva (la de la parte 1 sigue). Rollback: solo el spec.
