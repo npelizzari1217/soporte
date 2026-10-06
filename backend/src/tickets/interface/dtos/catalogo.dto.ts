@@ -100,6 +100,16 @@ export class CreatePrioridadDto {
   @IsOptional()
   @IsBoolean()
   slaActivo?: boolean;
+
+  /**
+   * Meta de primera respuesta en horas hábiles. Omitido o `null` = sin meta;
+   * 0 y negativos se rechazan (la base lo refuerza con un CHECK `> 0`).
+   */
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  slaPrimeraRespuestaHoras?: number | null;
 }
 
 /** Body de `PATCH /catalogos/prioridades/:id` (T2) — PATCH parcial. */
@@ -139,6 +149,16 @@ export class EditPrioridadDto {
   @IsOptional()
   @IsBoolean()
   slaActivo?: boolean;
+
+  /**
+   * Meta de primera respuesta en horas hábiles. Omitido o `null` = sin meta;
+   * 0 y negativos se rechazan (la base lo refuerza con un CHECK `> 0`).
+   */
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  slaPrimeraRespuestaHoras?: number | null;
 }
 
 /** Body de `PATCH /catalogos/{tipos-ticket|prioridades}/:id/estado` (T2) — activar/desactivar. */
@@ -185,6 +205,7 @@ export interface PrioridadResponseDto {
   activo: boolean;
   slaHoras: number | null;
   slaActivo: boolean;
+  slaPrimeraRespuestaHoras: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -200,6 +221,7 @@ export function toPrioridadResponseDto(prioridad: PrioridadEntity): PrioridadRes
     activo: prioridad.activo,
     slaHoras: prioridad.slaHoras,
     slaActivo: prioridad.slaActivo,
+    slaPrimeraRespuestaHoras: prioridad.slaPrimeraRespuestaHoras,
     createdAt: prioridad.createdAt.toISOString(),
     updatedAt: prioridad.updatedAt.toISOString(),
   };

@@ -75,7 +75,7 @@ interface PasoTransicion {
  *    y persiste el ticket una vez.
  *
  * No publica eventos: EN_PROCESO no es un estado notificable (los notificables
- * son RESUELTO/CERRADO — ver `estados-notificables.policy`).
+ * son RESUELTO/CERRADO/ESPERANDO_CLIENTE — ver `estados-notificables.policy`).
  *
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  */

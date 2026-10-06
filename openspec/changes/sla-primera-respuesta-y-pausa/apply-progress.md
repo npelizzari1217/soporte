@@ -218,3 +218,22 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu04`, base `...-wu03c4`. Partida por p
 - Parte 2: e2e (`usarLockMasterTest()`, tenant efimero: filas, `app.close()`, `dropDatabase`) con comentario interno/publico, marcador del reloj, timeline y mail con `EMAIL_SENDER` overrideado (4.2, 4.6) ; verificacion 4.8 verde sobre el arbol final.
 - Deuda de Ayuda: el ticket vuelve solo a En proceso cuando el solicitante comenta, y el solicitante recibe un mail al pasar a Esperando al cliente.
 - Rollback: listener, politica, plantilla y su eleccion en el listener de notificaciones.
+
+## WU-5 — Meta "Primera respuesta (h)" por prioridad (parte 1: backend, tareas 5.1 a 5.4)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu05`, base `...-wu04b`. Estandar (feature, sin TDD estricto). Partida por presupuesto de 400 lineas (el total, con el frontend, daba ~470 sin docs): aca el backend completo; el frontend (5.5, 5.6) y la verificacion 5.7 viajan en la rama `...-wu05b` (stash `wu05b`).
+
+- M3 `20261007140000_prioridades_primera_respuesta`: `prioridades.sla_primera_respuesta_horas integer NULL` con CHECK `> 0` (`prioridades_sla_primera_respuesta_horas_check`) y `rollback.sql`; `schema.prisma` (`slaPrimeraRespuestaHoras`); cliente regenerado y migracion aplicada a `soporte_tenant_test`.
+- Backend: `PrioridadEntity` (prop opcional, default `null`, `actualizar` PATCH semantico), `PrioridadMapper`, `CrearPrioridadUseCase`/`EditarPrioridadUseCase`, DTOs `CreatePrioridadDto`/`EditPrioridadDto` (`@IsInt @Min(1)`, `null` limpia) y la respuesta. Sin cambio de permisos. La meta no depende de `slaActivo` (ADR-6).
+- Arrastre de la validacion de la WU-4: comentarios de `transicionar-estado.use-case.ts` y `asignar-y-poner-en-proceso.use-case.ts` corregidos (la politica de notificables es {RESUELTO, CERRADO, ESPERANDO_CLIENTE}). Solo comentarios.
+- Ayuda: ningun articulo existente queda falso (`backend/ayuda/*` no describe el catalogo de prioridades). Deuda: campo "Primera respuesta (h)" en las prioridades del catalogo.
+
+### Work Unit Evidence (parte 1)
+| Evidence | Value |
+|---|---|
+| Focused test | `pnpm vitest run src/tickets src/catalogos` (backend): 66 archivos, 658 tests verdes; `src/catalogos` no existe como carpeta (el CRUD de prioridades vive en `src/tickets`) |
+| Runtime harness | `prioridades-primera-respuesta.integration.spec.ts` (tenant efimero, Postgres real): previas sin meta, NULL y positivo aceptados, CHECK rechaza 0 y -1, rollback; 5 tests verdes |
+| Rollback boundary | `rollback.sql` de M3 y la columna del schema/entidad/DTO; sin consumidores todavia |
+
+- Verificacion backend: lint y typecheck limpios; ratchet de casts 617 en 114 (sin cambios).
+- Pendiente (parte 2, `...-wu05b`): 5.5, 5.6 (formulario y lista del frontend) y 5.7 (verificacion de frontend).

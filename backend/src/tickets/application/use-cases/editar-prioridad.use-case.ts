@@ -19,6 +19,8 @@ export interface EditarPrioridadDto {
   orden?: number;
   slaHoras?: number | null;
   slaActivo?: boolean;
+  /** `undefined` no toca la meta de primera respuesta; `null` la limpia (sin meta). */
+  slaPrimeraRespuestaHoras?: number | null;
 }
 
 /**
@@ -57,6 +59,7 @@ export class EditarPrioridadUseCase {
       orden: dto.orden,
       slaHoras: dto.slaHoras,
       slaActivo: dto.slaActivo,
+      slaPrimeraRespuestaHoras: dto.slaPrimeraRespuestaHoras,
     });
     await this.prioridadRepo.save(prioridad);
 

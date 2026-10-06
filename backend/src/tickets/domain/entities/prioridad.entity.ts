@@ -9,6 +9,9 @@ import { BaseEntity } from '../../../shared/domain/base-entity';
  * horas objetivo de resolución de SLA para tickets de esta prioridad.
  * `slaHoras: null` = sin SLA aplicable (mismo significado que "sin fila en
  * sla_config" antes de la migración).
+ *
+ * `slaPrimeraRespuestaHoras`: meta opcional de primera respuesta, en horas
+ * hábiles. `null` = sin meta. Es independiente de `slaActivo`.
  */
 export interface PrioridadProps {
   codigo: string;
@@ -18,6 +21,7 @@ export interface PrioridadProps {
   activo: boolean;
   slaHoras: number | null;
   slaActivo: boolean;
+  slaPrimeraRespuestaHoras: number | null;
 }
 
 /**
@@ -28,8 +32,11 @@ export interface PrioridadProps {
  * `prioridad.slaHoras`/`prioridad.slaActivo` como `undefined` una vez
  * construida la entidad (`PrioridadProps` los exige).
  */
-export type PrioridadCreateProps = Omit<PrioridadProps, 'slaHoras' | 'slaActivo'> &
-  Partial<Pick<PrioridadProps, 'slaHoras' | 'slaActivo'>>;
+export type PrioridadCreateProps = Omit<
+  PrioridadProps,
+  'slaHoras' | 'slaActivo' | 'slaPrimeraRespuestaHoras'
+> &
+  Partial<Pick<PrioridadProps, 'slaHoras' | 'slaActivo' | 'slaPrimeraRespuestaHoras'>>;
 
 /**
  * PrioridadEntity — entidad de dominio del catálogo FIJO de 4 prioridades
@@ -44,7 +51,10 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
    * Factory method para nuevas instancias de dominio.
    */
   static create(props: PrioridadCreateProps, id?: string): PrioridadEntity {
-    return new PrioridadEntity({ slaHoras: null, slaActivo: true, ...props }, id);
+    return new PrioridadEntity(
+      { slaHoras: null, slaActivo: true, slaPrimeraRespuestaHoras: null, ...props },
+      id,
+    );
   }
 
   /**
@@ -57,7 +67,10 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     updatedAt: Date,
     deletedAt: Date | null,
   ): PrioridadEntity {
-    const entity = new PrioridadEntity({ slaHoras: null, slaActivo: true, ...props }, id);
+    const entity = new PrioridadEntity(
+      { slaHoras: null, slaActivo: true, slaPrimeraRespuestaHoras: null, ...props },
+      id,
+    );
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt });
     entity._deletedAt = deletedAt;
     return entity;
@@ -95,6 +108,11 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     return this.props.slaActivo;
   }
 
+  /** Meta de primera respuesta en horas hábiles. `null` = sin meta; no depende de `slaActivo`. */
+  get slaPrimeraRespuestaHoras(): number | null {
+    return this.props.slaPrimeraRespuestaHoras;
+  }
+
   // ─── Comportamiento de dominio (T2, CRUD editable — PR11) ────────────────
 
   /**
@@ -115,6 +133,7 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     orden?: number;
     slaHoras?: number | null;
     slaActivo?: boolean;
+    slaPrimeraRespuestaHoras?: number | null;
   }): void {
     if (datos.codigo !== undefined) {
       this.props.codigo = datos.codigo;
@@ -133,6 +152,9 @@ export class PrioridadEntity extends BaseEntity<PrioridadProps> {
     }
     if (datos.slaActivo !== undefined) {
       this.props.slaActivo = datos.slaActivo;
+    }
+    if (datos.slaPrimeraRespuestaHoras !== undefined) {
+      this.props.slaPrimeraRespuestaHoras = datos.slaPrimeraRespuestaHoras;
     }
     this.touch();
   }
