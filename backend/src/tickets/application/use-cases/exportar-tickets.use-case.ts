@@ -1,7 +1,16 @@
-import { armarExportCsv } from '../../../shared/application/armar-export-csv';
+import {
+  ArchivoExport,
+  ArchivoExportDe,
+  armarExport,
+  FormatoExport,
+} from '../../../shared/application/armar-export';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
-import { ColumnaCsv, diaArgentinoCsv, fechaHoraCsv } from '../../../shared/infrastructure/csv/csv';
+import {
+  ColumnaCsv,
+  diaArgentinoCelda,
+  fechaHoraCelda,
+} from '../../../shared/infrastructure/csv/csv';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/tickets.errors';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -29,13 +38,8 @@ export interface ExportarTicketsDto {
   modulosPermitidos?: string[] | null;
 }
 
-/** Archivo listo para que el controller lo entregue como descarga. */
-export interface ExportarTicketsResult {
-  /** CSV completo, con BOM y encabezado. */
-  contenido: string;
-  /** Nombre sugerido, con la fecha de exportación en hora de Argentina (`tickets-2026-08-19.csv`). */
-  nombreArchivo: string;
-}
+/** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
+export type ExportarTicketsResult = ArchivoExport;
 
 /**
  * ExportarTicketsUseCase — vuelca a CSV el listado de tickets del tenant
@@ -76,7 +80,10 @@ export class ExportarTicketsUseCase {
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'resolverNombres'>,
   ) {}
 
-  async execute(dto: ExportarTicketsDto): Promise<Result<ExportarTicketsResult, DomainError>> {
+  async execute<F extends FormatoExport | undefined = undefined>(
+    dto: ExportarTicketsDto,
+    formato?: F,
+  ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
     // Fetch acotado: nunca más de TOPE_FILAS_EXPORT filas, sin importar cuántas
     // matchean el filtro — `total` (de `count()`, dentro del use case
     // compuesto) es la verdad sobre si el resultado entra o no.
@@ -112,7 +119,7 @@ export class ExportarTicketsUseCase {
       prioridades.map((prioridad) => [prioridad.id, prioridad.nombre]),
     );
 
-    return armarExportCsv({
+    return armarExport({
       filas: items,
       total,
       tope: TOPE_FILAS_EXPORT,
@@ -122,6 +129,7 @@ export class ExportarTicketsUseCase {
         nombresPorUsuario,
       ),
       prefijo: 'tickets',
+      formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
     });
   }
@@ -150,12 +158,12 @@ export class ExportarTicketsUseCase {
       // `createdAt` y `fechaCierre` son ambas `@db.Timestamptz` (un instante
       // real; `fechaCierre` lo pasó a ser en sdd/corregir-fecha-cierre-tickets,
       // que además fijó por decisión de producto que esta columna sigue
-      // mostrando SOLO el día argentino, no fecha+hora). `fechaHoraCsv`
-      // desplaza y muestra fecha+hora; `diaArgentinoCsv` desplaza y trunca al
-      // día. Usar `fechaCsv` acá (que NO desplaza, pensado para columnas
+      // mostrando SOLO el día argentino, no fecha+hora). `fechaHoraCelda`
+      // desplaza y muestra fecha+hora; `diaArgentinoCelda` desplaza y trunca al
+      // día. Usar `fechaCelda` acá (que NO desplaza, pensado para columnas
       // `@db.Date`) reintroduciría el bug de la ventana 21:00-23:59 ART.
-      { encabezado: 'Fecha de creación', valor: (t) => fechaHoraCsv(t.createdAt) },
-      { encabezado: 'Fecha de cierre', valor: (t) => diaArgentinoCsv(t.fechaCierre) },
+      { encabezado: 'Fecha de creación', valor: (t) => fechaHoraCelda(t.createdAt) },
+      { encabezado: 'Fecha de cierre', valor: (t) => diaArgentinoCelda(t.fechaCierre) },
     ];
   }
 }

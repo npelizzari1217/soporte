@@ -1,7 +1,12 @@
-import { armarExportCsv } from '../../../shared/application/armar-export-csv';
+import {
+  ArchivoExport,
+  ArchivoExportDe,
+  armarExport,
+  FormatoExport,
+} from '../../../shared/application/armar-export';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
-import { ColumnaCsv, fechaCsv, montoCsv } from '../../../shared/infrastructure/csv/csv';
+import { ColumnaCsv, fechaCelda, montoCelda } from '../../../shared/infrastructure/csv/csv';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/compras.errors';
 import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
@@ -62,13 +67,8 @@ export interface ExportarComprasDto {
   fechaHasta?: Date;
 }
 
-/** Archivo listo para que el controller lo entregue como descarga. */
-export interface ExportarComprasResult {
-  /** CSV completo, con BOM y encabezado. */
-  contenido: string;
-  /** Nombre sugerido, con la fecha de exportación (`compras-2026-08-19.csv`). */
-  nombreArchivo: string;
-}
+/** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
+export type ExportarComprasResult = ArchivoExport;
 
 /**
  * ExportarComprasUseCase — vuelca a CSV el listado de compras del tenant
@@ -92,7 +92,10 @@ export interface ExportarComprasResult {
 export class ExportarComprasUseCase {
   constructor(private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>) {}
 
-  async execute(dto: ExportarComprasDto): Promise<Result<ExportarComprasResult, DomainError>> {
+  async execute<F extends FormatoExport | undefined = undefined>(
+    dto: ExportarComprasDto,
+    formato?: F,
+  ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
     const filtros: CompraListFiltros = {
       ...(dto.cicloId !== undefined && { cicloId: dto.cicloId }),
       grupoEstado: dto.estado ?? GRUPO_ESTADO_DEFAULT,
@@ -104,12 +107,13 @@ export class ExportarComprasUseCase {
 
     const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
 
-    return armarExportCsv({
+    return armarExport({
       filas: compras,
       total,
       tope: TOPE_FILAS_EXPORT,
       columnas: ExportarComprasUseCase.columnas(compras),
       prefijo: 'compras',
+      formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
     });
   }
@@ -127,7 +131,7 @@ export class ExportarComprasUseCase {
   private static columnas(compras: readonly CompraEntity[]): readonly ColumnaCsv<CompraEntity>[] {
     return [
       { encabezado: 'Número', valor: (compra) => compra.numero },
-      { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCsv(compra.fechaSolicitud) },
+      { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCelda(compra.fechaSolicitud) },
       { encabezado: 'Motivo', valor: (compra) => compra.motivo },
       { encabezado: 'Estado', valor: (compra) => ETIQUETA_ESTADO[compra.estado] },
       { encabezado: 'Comprado', valor: (compra) => (compra.comprado ? 'Sí' : 'No') },
@@ -162,7 +166,7 @@ export class ExportarComprasUseCase {
       encabezado: `Total ${moneda}`,
       valor: (compra: CompraEntity) => {
         const total = compra.totalesPorMoneda[moneda];
-        return total === undefined ? '' : montoCsv(total);
+        return total === undefined ? null : montoCelda(total);
       },
     }));
   }

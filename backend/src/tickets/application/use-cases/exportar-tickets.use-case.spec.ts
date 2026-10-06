@@ -14,6 +14,7 @@
  * - El tope de filas corta con un error de dominio, sin truncar en silencio.
  * - Inyección de fórmula CSV en una celda de texto libre (`titulo`).
  */
+import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarTicketsUseCase } from './exportar-tickets.use-case';
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
@@ -341,5 +342,66 @@ describe('ExportarTicketsUseCase', () => {
     ).getValue();
 
     expect(nombreArchivo).toMatch(/^tickets-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  describe('formato xlsx', () => {
+    function armar(items: TicketEntity[], total = items.length) {
+      return new ExportarTicketsUseCase(
+        crearListarTicketsFake(items, total),
+        crearEstadoRepo(ESTADOS),
+        crearPrioridadRepo(PRIORIDADES),
+        crearUsuarioMasterChecker(),
+      );
+    }
+
+    it('entrega un .xlsx con las MISMAS columnas que el CSV, números y fechas tipados, y la hora argentina', async () => {
+      // 01:30 UTC del 20/08 = 22:30 del 19/08 en Argentina.
+      const ticket = crearTicket({
+        id: 't1',
+        titulo: '=SUM(A1)',
+        createdAt: new Date('2026-08-20T01:30:00.000Z'),
+        fechaCierre: new Date('2026-08-20T01:30:00.000Z'),
+      });
+
+      const result = await armar([ticket]).execute(
+        { actorId: 'actor-1', tienePermisoVerTodos: true },
+        'xlsx',
+      );
+
+      const { contenido, nombreArchivo } = result.getValue();
+      expect(nombreArchivo).toMatch(/^tickets-\d{4}-\d{2}-\d{2}\.xlsx$/);
+      const hoja = (await leerXlsx(contenido)).worksheets[0];
+      const encabezados = (hoja.getRow(1).values as unknown[]).slice(1);
+      expect(encabezados).toEqual([
+        'Número',
+        'Título',
+        'Estado',
+        'Prioridad',
+        'Técnico asignado',
+        'Fecha de creación',
+        'Fecha de cierre',
+      ]);
+      const fila = hoja.getRow(2);
+      expect(fila.getCell(2).value).toBe('=SUM(A1)');
+      expect(fila.getCell(2).formula).toBeUndefined();
+      expect((fila.getCell(6).value as Date).toISOString()).toBe('2026-08-19T22:30:00.000Z');
+      expect((fila.getCell(7).value as Date).toISOString()).toBe('2026-08-19T00:00:00.000Z');
+    });
+
+    it('aplica el mismo tope: total === TOPE + 1 falla con el mismo error que el CSV', async () => {
+      const ticket = crearTicket({ id: 't1' });
+
+      const ok = await armar([ticket], TOPE_FILAS_EXPORT).execute(
+        { actorId: 'actor-1', tienePermisoVerTodos: true },
+        'xlsx',
+      );
+      const excedido = await armar([ticket], TOPE_FILAS_EXPORT + 1).execute(
+        { actorId: 'actor-1', tienePermisoVerTodos: true },
+        'xlsx',
+      );
+
+      expect(ok.isFail()).toBe(false);
+      expect(excedido.getError()).toBeInstanceOf(ExportacionDemasiadoGrandeError);
+    });
   });
 });

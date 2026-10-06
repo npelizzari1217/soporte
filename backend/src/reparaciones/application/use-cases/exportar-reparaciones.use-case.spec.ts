@@ -26,6 +26,7 @@
  *   hay `count()` en el puerto, cap post-fetch, documentado en el use case).
  * - Inyección de fórmula CSV en una celda de texto libre (`titulo`).
  */
+import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarReparacionesUseCase } from './exportar-reparaciones.use-case';
 import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparaciones.use-case';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
@@ -270,5 +271,25 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     expect(consultasCon1Fila).toBe(consultasCon50Filas);
     expect(consultasCon1Fila).toBe(5);
     expect(consultasCon50Filas).toBe(5);
+  });
+
+  it('con formato xlsx el avance es numérico y el resto de las columnas se conserva', async () => {
+    const r1 = crearReparacion(
+      {
+        numero: 'EDI-2026-00001',
+        titulo: 'Reparar cañería',
+        ubicacion: 'Central',
+        porcentajeAvance: 50,
+      },
+      'e1',
+    );
+    const useCase = new ExportarReparacionesUseCase(crearListarReparacionesFake([r1]));
+
+    const result = await useCase.execute('xlsx');
+
+    const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
+    expect(hoja.getRow(2).getCell(1).value).toBe('EDI-2026-00001');
+    expect(hoja.getRow(2).getCell(4).value).toBe(50);
+    expect(result.getValue().nombreArchivo).toMatch(/^reparaciones-.*\.xlsx$/);
   });
 });

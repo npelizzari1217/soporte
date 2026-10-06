@@ -1,17 +1,17 @@
-import { armarExportCsv } from '../../../shared/application/armar-export-csv';
+import {
+  ArchivoExport,
+  ArchivoExportDe,
+  armarExport,
+  FormatoExport,
+} from '../../../shared/application/armar-export';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
-import { ColumnaCsv } from '../../../shared/infrastructure/csv/csv';
+import { ColumnaCsv, decimalCelda } from '../../../shared/infrastructure/csv/csv';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/reparaciones.errors';
 import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparaciones.use-case';
 
-/** Archivo listo para que el controller lo entregue como descarga. */
-export interface ExportarReparacionesResult {
-  /** CSV completo, con BOM y encabezado. */
-  contenido: string;
-  /** Nombre sugerido, con la fecha de exportación en hora de Argentina (`reparaciones-2026-08-19.csv`). */
-  nombreArchivo: string;
-}
+/** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
+export type ExportarReparacionesResult = ArchivoExport;
 
 /**
  * ExportarReparacionesUseCase — vuelca a CSV el listado COMPLETO de
@@ -58,7 +58,9 @@ export class ExportarReparacionesUseCase {
     private readonly listarReparacionesUseCase: Pick<ListarReparacionesUseCase, 'execute'>,
   ) {}
 
-  async execute(): Promise<Result<ExportarReparacionesResult, DomainError>> {
+  async execute<F extends FormatoExport | undefined = undefined>(
+    formato?: F,
+  ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
     const listado = await this.listarReparacionesUseCase.execute();
 
     if (listado.isFail()) {
@@ -67,13 +69,14 @@ export class ExportarReparacionesUseCase {
 
     const reparaciones = listado.getValue();
 
-    return armarExportCsv({
+    return armarExport({
       filas: reparaciones,
       // Post-fetch: ver docblock de la clase ("Unbounded memory", residual aceptado).
       total: reparaciones.length,
       tope: TOPE_FILAS_EXPORT,
       columnas: ExportarReparacionesUseCase.columnas(),
       prefijo: 'reparaciones',
+      formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
     });
   }
@@ -95,7 +98,7 @@ export class ExportarReparacionesUseCase {
         // decimal, dos decimales fijos, sin separador de miles — porque es
         // el que Excel en español necesita para leer la celda como número
         // y no como texto, y ese criterio es de LOCALIZACIÓN, no de moneda.
-        valor: (r) => r.ticketEdilicia.porcentajeAvance.toFixed(2).replace('.', ','),
+        valor: (r) => decimalCelda(r.ticketEdilicia.porcentajeAvance),
       },
     ];
   }
