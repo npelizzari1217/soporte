@@ -50,6 +50,7 @@ import { PrismaCicloClienteRepository } from '../tickets/infrastructure/persiste
 import { PrismaTenantTransactionRunner } from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { NumeradorTicket } from '../tickets/domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
+import { PrismaRelojSlaMarcador } from '../tickets/infrastructure/persistence/prisma/prisma-reloj-sla-marcador';
 import { TicketStateMachineFactory } from '../tickets/domain/state-machine/ticket-state-machine.factory';
 import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../tickets/application/use-cases/transicionar-estado.use-case';
@@ -137,6 +138,7 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
       new TicketStateMachineFactory(),
       new NoopDomainEventPublisher(),
       txRunner,
+      new PrismaRelojSlaMarcador(tenantContext),
     );
 
     const tipoMantenimiento = await tenantClient.tipoTicket.findUniqueOrThrow({

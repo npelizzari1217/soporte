@@ -4,6 +4,8 @@ import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-eve
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketEstadoCambiadoEvent } from '../../domain/events/ticket-estado-cambiado.event';
+import { TicketTransicionadoEvent } from '../../domain/events/ticket-transicionado.event';
+import { IRelojSlaMarcador } from '../../domain/ports/i-reloj-sla-marcador';
 import { esEstadoNotificable } from '../../domain/policies/estados-notificables.policy';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -17,6 +19,7 @@ import {
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
 import {
+  afectaRelojSla,
   ESTADOS_NO_DESTINO_CORRECTIVO,
   ESTADOS_TERMINALES,
 } from '../../domain/state-machine/estados.constants';
@@ -96,6 +99,7 @@ export class TransicionarEstadoUseCase {
     private readonly stateMachineFactory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly relojMarcador: IRelojSlaMarcador,
   ) {}
 
   async execute(dto: TransicionarEstadoDto): Promise<Result<TicketEntity, DomainError>> {
@@ -190,6 +194,22 @@ export class TransicionarEstadoUseCase {
 
       await this.ticketRepo.save(ticket);
       await this.operacionRepo.save(operacion);
+
+      // Reloj de SLA (ADR-3): dentro de la tx, DESPUÉS de guardar ticket y operación (el save del
+      // ticket ya tomó el lock de la fila), solo si la transición afecta el reloj. El evento sale
+      // post-commit: un rollback no deja ni la versión incrementada ni el evento.
+      if (afectaRelojSla(estadoAnteriorCodigo, estadoDestino.codigo)) {
+        await this.relojMarcador.marcar(ticket.id, operacion.id);
+        this.txRunner.alCommitear(() =>
+          this.eventPublisher.publish(
+            new TicketTransicionadoEvent({
+              ticketId: ticket.id,
+              estadoAnteriorCodigo,
+              estadoNuevoCodigo: estadoDestino.codigo,
+            }),
+          ),
+        );
+      }
     });
 
     // POST-COMMIT (T13): solo si el destino es notificable.
