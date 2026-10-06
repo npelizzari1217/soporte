@@ -116,6 +116,95 @@ describe('TicketNotificacionListener', () => {
       expect(msg.html).not.toContain('/tickets/');
     });
 
+    describe('al entrar a ESPERANDO_CLIENTE (ticket-esperando-cliente R4)', () => {
+      const evento = (anterior: string, nuevo: string) =>
+        new TicketEstadoCambiadoEvent({
+          ticketId: 'ticket-uuid',
+          estadoAnteriorCodigo: anterior,
+          estadoNuevoCodigo: nuevo,
+          autorId: 'autor-uuid',
+        });
+
+      it('envía al solicitante la plantilla de espera, no la de cambio de estado', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        contactoResolver.resolver.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+          esExterno: false,
+        });
+
+        await listener.onTicketEstadoCambiado(evento('EN_PROCESO', 'ESPERANDO_CLIENTE'));
+
+        expect(emailSender.send).toHaveBeenCalledTimes(1);
+        const msg = emailSender.send.mock.calls[0][0];
+        expect(msg.to).toBe('solicitante@dominio.com');
+        expect(msg.text).toContain('a la espera de tu respuesta');
+        expect(msg.text).not.toContain('cambió de estado');
+        expect(msg.text).toContain('/tickets/ticket-uuid');
+      });
+
+      it('el SMTP que falla no se propaga: queda registrado', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender, logger } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        contactoResolver.resolver.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+          esExterno: false,
+        });
+        emailSender.send.mockRejectedValue(new Error('SMTP caído'));
+
+        await expect(
+          listener.onTicketEstadoCambiado(evento('EN_PROCESO', 'ESPERANDO_CLIENTE')),
+        ).resolves.toBeUndefined();
+
+        expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('SMTP caído'));
+      });
+
+      it('el solicitante externo sin correo no recibe nada y el hecho se registra', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender, logger } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicketExterno());
+        contactoResolver.resolver.mockResolvedValue(null);
+
+        await listener.onTicketEstadoCambiado(evento('EN_PROCESO', 'ESPERANDO_CLIENTE'));
+
+        expect(emailSender.send).not.toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
+      });
+
+      it('el solicitante externo con correo recibe el aviso sin link al ticket', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicketExterno());
+        contactoResolver.resolver.mockResolvedValue({
+          email: 'externo@dominio.com',
+          nombre: 'Externo',
+          esExterno: true,
+        });
+
+        await listener.onTicketEstadoCambiado(evento('EN_PROCESO', 'ESPERANDO_CLIENTE'));
+
+        const msg = emailSender.send.mock.calls[0][0];
+        expect(msg.to).toBe('externo@dominio.com');
+        expect(msg.text).not.toContain('/tickets/');
+        expect(msg.html).not.toContain('/tickets/');
+      });
+
+      it('la salida a EN_PROCESO no envía el mail de espera (el listener solo lo elige al entrar)', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        contactoResolver.resolver.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+          esExterno: false,
+        });
+
+        await listener.onTicketEstadoCambiado(evento('ESPERANDO_CLIENTE', 'EN_PROCESO'));
+
+        const msg = emailSender.send.mock.calls[0]?.[0];
+        expect(msg?.text ?? '').not.toContain('a la espera de tu respuesta');
+      });
+    });
+
     it('si el ticket no existe → no envía email (swallow)', async () => {
       const { listener, ticketRepo, emailSender } = makeListener();
       ticketRepo.findById.mockResolvedValue(null);

@@ -59,6 +59,24 @@ export function templateCambioEstado(
 }
 
 /**
+ * templateEsperandoCliente — aviso al solicitante de que el ticket quedó a la espera de su
+ * respuesta (`ticket-esperando-cliente` R4). Sin link para el solicitante externo.
+ */
+export function templateEsperandoCliente(datos: DatosTicketBase): PlantillaEmail {
+  const subject = `Ticket ${datos.numero}: necesitamos tu respuesta`;
+  const text =
+    `El ticket ${datos.numero} - ${datos.titulo} quedó a la espera de tu respuesta. ` +
+    `Cuando comentes, retomamos la atención.` +
+    textoLink(datos);
+  const html =
+    `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
+    `quedó a la espera de tu respuesta. Cuando comentes, retomamos la atención.</p>` +
+    htmlLink(datos);
+
+  return { subject, text, html };
+}
+
+/**
  * templateComentarioPublico — plantilla de `ticket.comentado` (comentario
  * público, N3).
  *

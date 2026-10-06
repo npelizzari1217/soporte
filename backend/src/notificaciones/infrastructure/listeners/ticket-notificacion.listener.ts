@@ -30,6 +30,7 @@ import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
 import {
   templateCambioEstado,
   templateComentarioPublico,
+  templateEsperandoCliente,
 } from '../../domain/templates/email-templates';
 import { entorno } from '../../../config/entorno';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -63,18 +64,30 @@ export class TicketNotificacionListener {
 
       const contacto = await this.contactoResolver.resolver(ticket);
       if (!contacto) {
+        if (event.estadoNuevoCodigo === 'ESPERANDO_CLIENTE') {
+          this.logger.error(
+            `TicketNotificacionListener: el solicitante no tiene correo, no se envía el aviso de espera (ticketId=${event.ticketId})`,
+          );
+        }
         return;
       }
 
-      const plantilla = templateCambioEstado({
+      const base = {
         numero: ticket.numero,
         titulo: ticket.titulo,
         ticketId: ticket.id,
         appBaseUrl: entorno.APP_BASE_URL,
-        estadoAnteriorCodigo: event.estadoAnteriorCodigo,
-        estadoNuevoCodigo: event.estadoNuevoCodigo,
         sinLink: contacto.esExterno,
-      });
+      };
+      // Al entrar a la espera el mail es el de espera (ticket-esperando-cliente R4), no el genérico.
+      const plantilla =
+        event.estadoNuevoCodigo === 'ESPERANDO_CLIENTE'
+          ? templateEsperandoCliente(base)
+          : templateCambioEstado({
+              ...base,
+              estadoAnteriorCodigo: event.estadoAnteriorCodigo,
+              estadoNuevoCodigo: event.estadoNuevoCodigo,
+            });
 
       await this.emailSender.send({ to: contacto.email, ...plantilla });
     } catch (err) {
