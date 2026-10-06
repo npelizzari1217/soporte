@@ -150,3 +150,13 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03b2`, base `...-wu03b`. Partida por 
 - Tests: `prisma-reloj-sla.repository.integration.spec.ts` (6, sin dejar filas: usa estados y tipo `CAMBIO_ESTADO` ya sembrados) y 2 casos nuevos en `reloj-sla.spec.ts` (el estado actual manda sobre el pliegue).
 - Mutacion 3b.9 (`orderBy slaRelojSeq` a `createdAt` en `transicionesDesde`): rojo (`transicionesDesde ordena por sla_reloj_seq y no por created_at`, 1 de 6); restaurado, verde.
 - Mutacion 3b.5 re-corrida (`<=` a `<`): rojo 1 fallo, restaurado verde; el test esta en el spec en stash.
+
+## WU-3b.3 — cumplimiento, caso de uso, listener y modulo (tareas 3b.5, 3b.6, 3b.10, 3b.11)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b3`, base `...-wu03b2`. Pendientes: la mitad de caso de uso de 3b.8 (integracion con repo real: CAS con version vieja deja pendiente, re-pliegue idempotente) y 3b.12 (verificacion final).
+
+- `reloj-sla.cumplimiento.spec.ts` (3b.5, 3b.6): mutacion `<=` a `<` re-corrida, rojo (1 fallo) y verde al restaurar.
+- `ConsolidarRelojSlaUseCase`: calendario y feriados antes de leer; un reintento del CAS; si falla otra vez devuelve `conflicto` y registra `SLA_RELOJ_CONFLICTO` (el ticket sigue pendiente porque el marcador lo dejo asi); `historialSinSecuencia` solo con `acumuladoS` null.
+- `RelojSlaListener` (`ticket.transicionado`, log-and-swallow `SLA_RELOJ_ERROR`) y registro en `SlaModule` (`RELOJ_SLA_REPOSITORY`, caso de uso, listener); `SlaModule` no importa nada nuevo de tickets, sin ciclo.
+- Fixtures: se exporta `calendarioSemanal`.
+- Evidencia: `pnpm vitest run src/sla` verde; lint y typecheck limpios.

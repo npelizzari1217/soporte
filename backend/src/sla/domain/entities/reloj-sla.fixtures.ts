@@ -12,7 +12,7 @@ import { RelojSla, RelojSlaFila, TransicionReloj } from './reloj-sla';
 export const H = 3600;
 export const abierto = { aperturaMinuto: 540, cierreMinuto: 1080 };
 export const cerrado = { aperturaMinuto: null, cierreMinuto: null };
-const CALENDARIO: CalendarioLaboralSemanal = [
+export const calendarioSemanal: CalendarioLaboralSemanal = [
   cerrado,
   abierto,
   abierto,
@@ -27,9 +27,9 @@ export const calculo = new CalcularSlaHabilVenceService();
 export const L = (dia: number, hora: number, min = 0): Date =>
   new Date(Date.UTC(2026, 7, dia, hora + 3, min));
 
-export const habil = (calendario = CALENDARIO) =>
+export const habil = (calendario = calendarioSemanal) =>
   RelojSla.medidorPara('HABIL', calculo, calendario, new Set());
-export const corrido = () => RelojSla.medidorPara('CORRIDO', calculo, CALENDARIO, new Set());
+export const corrido = () => RelojSla.medidorPara('CORRIDO', calculo, calendarioSemanal, new Set());
 
 export const fila = (over: Partial<RelojSlaFila> = {}): RelojSlaFila => ({
   ticketId: 't1',

@@ -39,6 +39,10 @@ import { CalcularSlaVenceService } from './domain/services/calcular-sla-vence.se
 import { AplicarSlaUseCase } from './application/use-cases/aplicar-sla.use-case';
 import { MarcarVencidosUseCase } from './application/use-cases/marcar-vencidos.use-case';
 
+import { RELOJ_SLA_REPOSITORY, IRelojSlaRepository } from './domain/ports/i-reloj-sla.repository';
+import { PrismaRelojSlaRepository } from './infrastructure/persistence/prisma/prisma-reloj-sla.repository';
+import { ConsolidarRelojSlaUseCase } from './application/use-cases/consolidar-reloj-sla.use-case';
+import { RelojSlaListener } from './infrastructure/listeners/reloj-sla.listener';
 import { AplicarSlaListener } from './infrastructure/listeners/aplicar-sla.listener';
 import { SlaSweepScheduler } from './infrastructure/schedulers/sla-sweep.scheduler';
 
@@ -104,6 +108,8 @@ import {
     { provide: SLA_TICKET_WRITE_REPOSITORY, useClass: PrismaSlaTicketWriteRepository },
     { provide: SLA_TICKET_QUERY_REPOSITORY, useClass: PrismaSlaTicketQueryRepository },
 
+    { provide: RELOJ_SLA_REPOSITORY, useClass: PrismaRelojSlaRepository },
+
     { provide: CalcularSlaVenceService, useFactory: () => new CalcularSlaVenceService() },
     { provide: CalcularSlaHabilVenceService, useFactory: () => new CalcularSlaHabilVenceService() },
 
@@ -150,6 +156,30 @@ import {
         eventPublisher: IDomainEventPublisher,
       ) => new MarcarVencidosUseCase(slaTicketQueryRepo, eventPublisher),
       inject: [SLA_TICKET_QUERY_REPOSITORY, DOMAIN_EVENT_PUBLISHER],
+    },
+
+    {
+      provide: ConsolidarRelojSlaUseCase,
+      useFactory: (
+        repo: IRelojSlaRepository,
+        calculo: CalcularSlaHabilVenceService,
+        calendarioRepo: ICalendarioLaboralSemanalRepository,
+        feriadosRepo: IFeriadosLaboralesRepository,
+        logger: ILogger,
+      ) => new ConsolidarRelojSlaUseCase(repo, calculo, calendarioRepo, feriadosRepo, logger),
+      inject: [
+        RELOJ_SLA_REPOSITORY,
+        CalcularSlaHabilVenceService,
+        CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+        FERIADOS_LABORALES_REPOSITORY,
+        LOGGER,
+      ],
+    },
+    {
+      provide: RelojSlaListener,
+      useFactory: (consolidar: ConsolidarRelojSlaUseCase, logger: ILogger) =>
+        new RelojSlaListener(consolidar, logger),
+      inject: [ConsolidarRelojSlaUseCase, LOGGER],
     },
 
     {
