@@ -149,4 +149,30 @@ describe('RelojSla.plegar', () => {
 
     expect(r.acumuladoS).toBe(2 * H);
   });
+
+  describe('el estado actual del ticket manda sobre el pliegue (ADR-1)', () => {
+    it('una operación perdida deja el pliegue detenido pero el ticket está EN_PROCESO: el reloj corre desde la última operación', () => {
+      const r = RelojSla.plegar({
+        fila: fila({ estadoCodigo: 'EN_PROCESO' }),
+        medidor: habil(),
+        historialSinSecuencia: [],
+        transiciones: [op('EN_PROCESO', 'ESPERANDO_CLIENTE', L(10, 12))],
+      });
+
+      expect(r.acumuladoS).toBe(3 * H);
+      expect(r.correDesde).toEqual(L(10, 12));
+    });
+
+    it('una operación perdida deja el pliegue corriendo pero el ticket está en espera: cierra el tramo en la última operación', () => {
+      const r = RelojSla.plegar({
+        fila: fila({ estadoCodigo: 'ESPERANDO_CLIENTE', acumuladoS: 0, correDesde: null }),
+        medidor: habil(),
+        historialSinSecuencia: [],
+        transiciones: [op('ESPERANDO_CLIENTE', 'EN_PROCESO', L(10, 10))],
+      });
+
+      expect(r.acumuladoS).toBe(0);
+      expect(r.correDesde).toBeNull();
+    });
+  });
 });
