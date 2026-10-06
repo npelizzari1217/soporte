@@ -42,6 +42,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
   let prioridadId: string;
   let tipoOpId: string;
   let estados: Record<string, string>;
+  let tipoOpCreado: string | null = null;
   const propios = new Set<string>();
   // Los estados que crea este spec llevan este prefijo en `nombre`; los reales de la base compartida no.
   const NOMBRE_ESTADO_PROPIO = 'WU7 ';
@@ -119,7 +120,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
     const filas = await client.estado.findMany({
       where: { codigo: { in: [...ESTADOS_USADOS] } },
     });
-    // La base compartida solo trae los estados abiertos: se crean los terminales que falten (los
+    // Una base nueva no trae estados; la compartida solo los abiertos: se crean los terminales que falten (los
     // códigos reales, porque el barrido filtra por código) y se borran al terminar.
     for (const codigo of ESTADOS_USADOS.filter((c) => !filas.some((f) => f.codigo === c))) {
       filas.push(
@@ -129,15 +130,24 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
       );
     }
     estados = Object.fromEntries(filas.map((e) => [e.codigo, e.id]));
-    tipoOpId = (
-      await client.tipoOperacion.findUniqueOrThrow({ where: { codigo: 'CAMBIO_ESTADO' } })
-    ).id;
+    const tipoOp = await client.tipoOperacion.findUnique({ where: { codigo: 'CAMBIO_ESTADO' } });
+    if (tipoOp) {
+      tipoOpId = tipoOp.id;
+    } else {
+      // Una base nueva no trae el tipo: se crea y se borra al terminar (solo si lo creó este spec).
+      tipoOpId = tipoOpCreado = (
+        await client.tipoOperacion.create({
+          data: { codigo: 'CAMBIO_ESTADO', nombre: 'CAMBIO_ESTADO' },
+        })
+      ).id;
+    }
   }, 30_000);
 
   afterAll(async () => {
     try {
       await limpiar();
       await borrarEstadosPropios();
+      if (tipoOpCreado) await client.tipoOperacion.delete({ where: { id: tipoOpCreado } });
     } finally {
       await prismaService.onModuleDestroy();
     }
