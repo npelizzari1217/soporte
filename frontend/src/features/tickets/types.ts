@@ -12,6 +12,10 @@ import type { Modulo } from "@/shared/auth/modulo-access";
 
 export type TicketEstadoCodigo = "NUEVO" | "ASIGNADO" | "EN_PROCESO" | "RESUELTO" | "CERRADO" | "CANCELADO";
 
+/** Estado SLA derivado por el backend (ADR-8 de sla-primera-respuesta-y-pausa). */
+export type EstadoSla = "SIN_SLA" | "AL_DIA" | "EN_PAUSA" | "VENCIDO";
+export type EstadoPrimeraRespuesta = "SIN_META" | "PENDIENTE" | "CUMPLIDA" | "VENCIDA";
+
 export interface Ticket {
   id: string;
   numero: string;
@@ -38,7 +42,12 @@ export interface Ticket {
   solicitanteTelefono?: string | null;
   /** Calculado por el módulo SLA (Fase 4). `null` = sin SLA aplicable/calculado aún. */
   slaVenceAt: string | null;
+  /** Desnormalizado: deduplicador del mail del barrido. Lo que se muestra es `sla`. */
   vencido: boolean;
+  /** Estado SLA derivado por el backend (sla-primera-respuesta-y-pausa, ADR-8). */
+  sla: { estado: EstadoSla; venceAt: string | null };
+  /** `SIN_META` = sin badge (preventivo o prioridad sin meta). */
+  primeraRespuesta: { estado: EstadoPrimeraRespuesta; venceAt: string | null; at: string | null };
   /**
    * Instante (no día) en que el ticket cerró — espejo de
    * `TicketResponseDto.fechaCierre` del backend, que ahora es

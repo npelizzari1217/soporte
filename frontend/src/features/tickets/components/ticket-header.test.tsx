@@ -31,6 +31,8 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     asignadoApellido: null,
     slaVenceAt: null,
     vencido: false,
+    sla: { estado: "SIN_SLA", venceAt: null },
+    primeraRespuesta: { estado: "SIN_META", venceAt: null, at: null },
     fechaCierre: null,
     createdAt: "2026-08-15T12:00:00.000Z",
     updatedAt: "2026-08-15T12:00:00.000Z",
@@ -98,7 +100,11 @@ describe("TicketHeader", () => {
 
   it("con slaVenceAt, muestra 'SLA vence' con FECHA Y HORA (regresión: antes se comía la hora)", () => {
     // 2026-08-20T23:30:00.000Z = 20:30 en America/Argentina/Buenos_Aires (UTC-3).
-    render(<TicketHeader ticket={buildTicket({ slaVenceAt: "2026-08-20T23:30:00.000Z" })} />);
+    render(
+      <TicketHeader
+        ticket={buildTicket({ sla: { estado: "AL_DIA", venceAt: "2026-08-20T23:30:00.000Z" } })}
+      />,
+    );
 
     expect(screen.getByText("SLA vence")).toBeInTheDocument();
     expect(screen.getByText("20/08/2026 20:30")).toBeInTheDocument();
@@ -110,6 +116,67 @@ describe("TicketHeader", () => {
 
     expect(screen.getByText("Creado")).toBeInTheDocument();
     expect(screen.getByText("15/08/2026 09:00")).toBeInTheDocument();
+  });
+
+  describe("estado SLA derivado (sla-primera-respuesta-y-pausa)", () => {
+    it("en pausa: badge 'SLA en pausa' y la fecha guardada NO se muestra como vigente", () => {
+      render(
+        <TicketHeader
+          ticket={buildTicket({
+            slaVenceAt: "2026-08-20T23:30:00.000Z",
+            sla: { estado: "EN_PAUSA", venceAt: "2026-08-20T23:30:00.000Z" },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("SLA en pausa")).toBeInTheDocument();
+      expect(screen.queryByText("SLA vence")).not.toBeInTheDocument();
+      expect(screen.queryByText("20/08/2026 20:30")).not.toBeInTheDocument();
+    });
+
+    it("resuelto tarde muestra 'SLA vencido' sin depender de `vencido`", () => {
+      render(
+        <TicketHeader
+          ticket={buildTicket({
+            vencido: false,
+            sla: { estado: "VENCIDO", venceAt: "2026-08-20T23:30:00.000Z" },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("SLA vencido")).toBeInTheDocument();
+    });
+
+    it("`vencido` en true no alcanza: el badge sale del estado derivado", () => {
+      render(<TicketHeader ticket={buildTicket({ vencido: true })} />);
+
+      expect(screen.queryByText("SLA vencido")).not.toBeInTheDocument();
+    });
+
+    it("primera respuesta vencida muestra su badge", () => {
+      render(
+        <TicketHeader
+          ticket={buildTicket({
+            primeraRespuesta: { estado: "VENCIDA", venceAt: "2026-08-15T13:00:00.000Z", at: null },
+          })}
+        />,
+      );
+
+      expect(screen.getByText("Primera respuesta vencida")).toBeInTheDocument();
+    });
+
+    it.each(["SIN_META", "PENDIENTE", "CUMPLIDA"] as const)(
+      "primera respuesta %s no muestra badge (preventivo o sin meta incluidos)",
+      (estado) => {
+        render(
+          <TicketHeader
+            ticket={buildTicket({ primeraRespuesta: { estado, venceAt: null, at: null } })}
+          />,
+        );
+
+        expect(screen.queryByText(/primera respuesta/i)).not.toBeInTheDocument();
+      },
+    );
   });
 
   // WU9.3 (gateo de UI, ADR-C5 backend): `puedeVerCsat` lo resuelve el
