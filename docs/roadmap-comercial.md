@@ -824,9 +824,31 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     respuesta, para las métricas, pero sin meta retroactiva.
   - El dashboard suma el **% de cumplimiento de primera respuesta** y el **tiempo
     medio de primera respuesta**, junto al cumplimiento de resolución.
-  - El cumplimiento se calcula comparando la **fecha de cierre con el vencimiento**,
-    no con la marca que deja el barrido. Hoy un ticket resuelto después de su
-    vencimiento, pero antes de que corra el barrido, cuenta como "a tiempo".
+  - El cumplimiento de resolución se mide por **tiempo activo** (precisado el
+    2026-10-06, al explorar; reemplaza la versión anterior de esta viñeta, que
+    comparaba la fecha de cierre con el vencimiento). El reloj solo corre mientras el
+    ticket está en *Nuevo*, *Asignado* o *En proceso*; se detiene en *Esperando al
+    cliente* y al pasar a *Resuelto*. **Cumplió si las horas hábiles activas
+    acumuladas hasta la resolución no superan la meta de la prioridad.** Una semana
+    esperando al cliente no cuenta, y un cierre administrativo tardío tampoco: deja de
+    importar que *Cerrado* pise la fecha de cierre. Ya no depende de la marca que deja
+    el barrido, así que desaparece el falso "a tiempo" de un ticket resuelto tarde
+    antes de que el barrido corra.
+  - La pausa **siempre descuenta**, aunque el ticket haya entrado a *Esperando al
+    cliente* con el SLA ya vencido (precisado el 2026-10-06).
+  - Si un ticket resuelto se **reabre con un salto correctivo**, el reloj sigue
+    sumando desde donde quedó, sin tiempo extra, y el cumplimiento se evalúa con la
+    última resolución (precisado el 2026-10-06). **Decisión pendiente**: si una
+    reapertura debe sumar tiempo extra a la meta o arrancar un reloj nuevo. Se decide
+    cuando haya casos reales; el modelo de reloj activo admite cualquiera de las dos
+    sin rehacerse.
+  - El **tiempo medio de primera respuesta** se mide en **horas hábiles** (precisado
+    el 2026-10-06).
+  - Al pasar a *Esperando al cliente* se **avisa por mail al solicitante**: el estado
+    existe para pedirle algo (precisado el 2026-10-06).
+  - El salto correctivo de ROOT o ADMINISTRADOR **no puede llevar a *Esperando al
+    cliente***: solo se entra desde *En proceso*. Cualquier salida del estado, también
+    por salto, reanuda el reloj (precisado el 2026-10-06).
   - Los **preventivos** siguen fuera del SLA, como hoy.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
