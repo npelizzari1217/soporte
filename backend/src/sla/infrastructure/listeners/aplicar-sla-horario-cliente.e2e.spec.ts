@@ -54,12 +54,10 @@ import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/t
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 import { PrismaTicketRepository } from '../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
-import { PrismaEstadoRepository } from '../../../tickets/infrastructure/persistence/prisma/prisma-estado.repository';
 import { PrismaPrioridadRepository } from '../../../tickets/infrastructure/persistence/prisma/prisma-prioridad.repository';
 import { PrismaTipoTicketRepository } from '../../../tickets/infrastructure/persistence/prisma/prisma-tipo-ticket.repository';
 
-import { PrismaSlaTicketWriteRepository } from '../persistence/prisma/prisma-sla-ticket-write.repository';
-import { CalcularSlaVenceService } from '../../domain/services/calcular-sla-vence.service';
+import { PrismaRelojSlaRepository } from '../persistence/prisma/prisma-reloj-sla.repository';
 import { AplicarSlaUseCase } from '../../application/use-cases/aplicar-sla.use-case';
 import { AplicarSlaListener } from './aplicar-sla.listener';
 
@@ -141,7 +139,7 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
     });
     tipoAId = tipoA.id;
     const estadoA = await tenantAClient.estado.create({
-      data: { codigo: 'HORCLI_NUEVO_A', nombre: 'Nuevo fixture A', orden: 10, activo: true },
+      data: { codigo: 'NUEVO', nombre: 'Nuevo fixture A', orden: 10, activo: true },
     });
     estadoAId = estadoA.id;
     const prioridadCreacionA = await tenantAClient.prioridad.create({
@@ -175,7 +173,7 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
     });
     tipoBId = tipoB.id;
     const estadoB = await tenantBClient.estado.create({
-      data: { codigo: 'HORCLI_NUEVO_B', nombre: 'Nuevo fixture B', orden: 10, activo: true },
+      data: { codigo: 'NUEVO', nombre: 'Nuevo fixture B', orden: 10, activo: true },
     });
     estadoBId = estadoB.id;
     const prioridadB = await tenantBClient.prioridad.create({
@@ -195,10 +193,8 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
     // criterio que `aplicar-sla-habil-feriados.e2e.spec.ts`.
     const useCase = new AplicarSlaUseCase(
       new PrismaPrioridadRepository(tenantContext),
-      new PrismaSlaTicketWriteRepository(tenantContext),
+      new PrismaRelojSlaRepository(tenantContext),
       new PrismaTicketRepository(tenantContext),
-      new PrismaEstadoRepository(tenantContext),
-      new CalcularSlaVenceService(),
       new PrismaTipoTicketRepository(tenantContext),
       new CalcularSlaHabilVenceService(),
       new PrismaCalendarioLaboralSemanalRepository(tenantContext),
@@ -240,6 +236,8 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
         prioridadId: prioridadCreacionAId,
         solicitanteId: randomUUID(),
         createdAt: CREADO_EN,
+        // El alta real fija `sla_corre_desde = createdAt`; el DEFAULT de la columna (now()) no aplica.
+        slaCorreDesde: CREADO_EN,
       },
     });
     await tenantContext.run(
@@ -309,6 +307,8 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
         prioridadId: prioridadCreacionAId,
         solicitanteId: randomUUID(),
         createdAt: CREADO_EN,
+        // El alta real fija `sla_corre_desde = createdAt`; el DEFAULT de la columna (now()) no aplica.
+        slaCorreDesde: CREADO_EN,
       },
     });
     await tenantContext.run(
@@ -334,6 +334,8 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
         prioridadId: prioridadBId,
         solicitanteId: randomUUID(),
         createdAt: CREADO_EN,
+        // El alta real fija `sla_corre_desde = createdAt`; el DEFAULT de la columna (now()) no aplica.
+        slaCorreDesde: CREADO_EN,
       },
     });
     await tenantContext.run(
