@@ -189,13 +189,13 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 
 ## WU-9b — Frontend: arcos, badge, tarjetas y cierre del roadmap (~300 líneas)
 
-- [ ] 9b.1 Test FE de `estado-transitions.ts`: arcos de ESPERANDO_CLIENTE espejados; `ESTADOS_CORRECTIVOS` (`features/tickets/lib/estado-transitions.ts:66`) no lista ESPERANDO_CLIENTE como destino correctivo y sí lo permite como origen. (`ticket-esperando-cliente R2`)
-- [ ] 9b.2 Espejo de arcos y correctivos en `estado-transitions.ts`, `status-badge` y el control de transición. (`ticket-esperando-cliente R1`, `ticket-esperando-cliente R2`)
-- [ ] 9b.3 Test FE de las tarjetas del dashboard: tres tarjetas con sus valores, y con datos nulos se lee "sin datos" y no 0 %. (`dashboard-metricas-sla R3`)
-- [ ] 9b.4 Tarjetas de primera respuesta (% y tiempo medio) junto al cumplimiento de resolución. (`dashboard-metricas-sla R3`)
-- [ ] 9b.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (estado nuevo, regla de pausa, campo de prioridad, indicadores) en commit y PR.
-- [ ] 9b.6 Cierre, DESPUÉS del deploy de la cadena completa: en `docs/roadmap-comercial.md` marcar el punto 6 como Entregado y declarar **Cumplida** o **Desviación** (con motivo) en la viñeta "Segunda etapa, punto 6"; correr `node scripts/check-roadmap-fresco.mjs`. La decisión pendiente de reapertura (tiempo extra o reloj nuevo) queda declarada como fuera de alcance.
-- [ ] 9b.7 Notas de deploy en el PR del tracker: despliegue solo de la cadena completa; 4 migraciones tenant (M1, M2, M3, M4) por `migrate:tenants`, cada una con `rollback.sql`; `EXPLAIN ANALYZE` de M2 y M4 y conteo de `COMENTARIO` por tenant ya anotados; el lockfile no se espera que cambie; ninguna migración recalcula vencimientos ni cumplimientos.
+- [x] 9b.1 Test FE de `estado-transitions.ts`: arcos de ESPERANDO_CLIENTE espejados; `ESTADOS_CORRECTIVOS` (`features/tickets/lib/estado-transitions.ts:66`) no lista ESPERANDO_CLIENTE como destino correctivo y sí lo permite como origen. (`ticket-esperando-cliente R2`)
+- [x] 9b.2 Espejo de arcos y correctivos en `estado-transitions.ts`, `status-badge` y el control de transición. (`ticket-esperando-cliente R1`, `ticket-esperando-cliente R2`)
+- [x] 9b.3 Test FE de las tarjetas del dashboard: tres tarjetas con sus valores, y con datos nulos se lee "sin datos" y no 0 %. (`dashboard-metricas-sla R3`)
+- [x] 9b.4 Tarjetas de primera respuesta (% y tiempo medio) junto al cumplimiento de resolución. (`dashboard-metricas-sla R3`)
+- [x] 9b.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (estado nuevo, regla de pausa, campo de prioridad, indicadores) en commit y PR.
+> **9b.6 — cierre posterior al deploy (paso de entrega, fuera de la lista de tareas de implementación):** Cierre, DESPUÉS del deploy de la cadena completa: en `docs/roadmap-comercial.md` marcar el punto 6 como Entregado y declarar **Cumplida** o **Desviación** (con motivo) en la viñeta "Segunda etapa, punto 6"; correr `node scripts/check-roadmap-fresco.mjs`. La decisión pendiente de reapertura (tiempo extra o reloj nuevo) queda declarada como fuera de alcance.
+- [x] 9b.7 Notas de deploy en el PR del tracker: despliegue solo de la cadena completa; 4 migraciones tenant (M1, M2, M3, M4) por `migrate:tenants`, cada una con `rollback.sql`; `EXPLAIN ANALYZE` de M2 y M4 y conteo de `COMENTARIO` por tenant ya anotados; el lockfile no se espera que cambie; ninguna migración recalcula vencimientos ni cumplimientos.
 
 ## Cobertura de requerimientos (para verify)
 

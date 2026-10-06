@@ -31,13 +31,22 @@ describe("TicketTransitionControl", () => {
     expect(options).toEqual(["Cancelado"]);
   });
 
-  it("TECNICO, estado EN_PROCESO → ofrece EXACTAMENTE [RESUELTO, CANCELADO] (flujo posterior, sin cambios)", () => {
+  it("TECNICO, estado EN_PROCESO → ofrece EXACTAMENTE [ESPERANDO_CLIENTE, RESUELTO, CANCELADO]", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="EN_PROCESO" onTransicionar={vi.fn()} isSubmitting={false} />,
       { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Resuelto", "Cancelado"]);
+    expect(options).toEqual(["Esperando al cliente", "Resuelto", "Cancelado"]);
+  });
+
+  it("TECNICO, estado ESPERANDO_CLIENTE → ofrece [EN_PROCESO, RESUELTO, CANCELADO]", () => {
+    renderWithProviders(
+      <TicketTransitionControl estadoActualCodigo="ESPERANDO_CLIENTE" onTransicionar={vi.fn()} isSubmitting={false} />,
+      { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
+    );
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options).toEqual(["En proceso", "Resuelto", "Cancelado"]);
   });
 
   it("TECNICO, estado terminal (CERRADO, sin reapertura) → NO ofrece ningún select, muestra mensaje de estado final", () => {

@@ -395,3 +395,21 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu09ab`, base `...-wu09a`.
 | Runtime harness | N/A: componente presentacional sin frontera de runtime nueva |
 | Rollback boundary | `ticket-header.tsx`, `types.ts` y sus specs, mas el spec del dialogo de prioridad |
 
+
+## WU-9b — frontend: arcos, badge, tarjetas (tareas 9b.1 a 9b.5; 9b.6 y 9b.7 quedan pendientes)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu09b`, base `...-wu09ab`.
+
+- Espejo de estados: `estado-transitions.ts` suma EN_PROCESO->ESPERANDO_CLIENTE y ESPERANDO_CLIENTE->EN_PROCESO|RESUELTO|CANCELADO; `ESTADOS_CORRECTIVOS` no lista ESPERANDO_CLIENTE (el salto desde ese estado sigue posible). `TicketEstadoCodigo`, `status-badge.tsx` ("Esperando al cliente", variante secondary) y la etiqueta del control de transicion actualizados, con tests de arcos, correctivos, badge y control.
+- Dashboard: `types.ts` suma `cumplimientoPrimeraRespuesta` y `tiempoPromedioPrimeraRespuestaHoras`; `metricas-map.ts` reemplaza `toSlaPercentage` por `toPorcentaje` (nulo queda nulo) y suma `formatHoras`; `dashboard-view.tsx` muestra tres tarjetas (cumplimiento de resolucion, % primera respuesta a tiempo, tiempo medio en horas habiles); nulo se lee "Sin datos", nunca 0 %. Cambio de comportamiento: la tarjeta de resolucion ya no muestra 0 % ante nulo.
+- Arrastre 1 (backend): `estadoSla` con codigo desconocido caia en la rama "resuelto" y mostraba AL_DIA. `derivarEstadoSla` ahora trata un codigo fuera de RESUELTO/CERRADO/CANCELADO como corriendo (deriva de las fechas); el controller registra un warning (`codigoDeEstado`) en `aDto` y en el listado. Test unit en la policy; sin test de controller propio.
+- Arrastre 2 (Ayuda): `backend/ayuda/tickets-listado.md` suma "Esperando al cliente" a los estados con la regla de pausa. Revisados los demas articulos: ninguno otro queda falso.
+- Ayuda: deuda — estado "Esperando al cliente", regla de pausa del SLA, campo de primera respuesta en prioridades e indicadores del dashboard.
+- Verificacion: frontend `JWT_SECRET=dummy pnpm lint` y `pnpm type-check` limpios, `pnpm test` 245 archivos / 1990 tests; backend `pnpm lint`, `pnpm typecheck` limpios, `pnpm vitest run src/tickets` 69 archivos / 697 tests; `node scripts/check-casts-en-specs.mjs`: 617/114.
+
+### Work Unit Evidence
+| Evidence | Value |
+|---|---|
+| Focused test | frontend `pnpm test`: 245 archivos / 1990 tests verdes; backend `src/tickets`: 697 verdes |
+| Runtime harness | N/A: componentes presentacionales (Testing Library + msw) y funcion pura de dominio |
+| Rollback boundary | `estado-transitions.ts`, `types.ts`, `status-badge.tsx`, control de transicion, modulo dashboard FE, policy/controller del estado SLA, `tickets-listado.md` y sus specs |

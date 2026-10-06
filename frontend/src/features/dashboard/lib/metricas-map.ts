@@ -62,12 +62,18 @@ export function toDistribucionChartData<T extends { total: number }>(
 }
 
 /**
- * T2.5 — % cumplimiento SLA (GaugeChart, escala 0-100). El backend calcula
- * `porcentaje` como fracción `0..1` (ADR-P5); `null` cuando `cerradosConSla
- * =0` (evita división por cero) se muestra como `0`, redondeado a entero
- * (el gauge renderiza el número tal cual, sin decimales).
+ * T2.5 — % de cumplimiento (GaugeChart, escala 0-100) a partir de la fracción
+ * `0..1` del backend (ADR-P5), redondeado a entero. `null` (sin datos, evita
+ * división por cero) se devuelve como `null`: la vista lo muestra como "sin
+ * datos", NUNCA como 0 % (sdd/sla-primera-respuesta-y-pausa, dashboard R3).
  */
-export function toSlaPercentage(cumplimientoSla: MetricasDashboard["cumplimientoSla"]): number {
-  if (cumplimientoSla.porcentaje === null) return 0;
-  return Math.round(cumplimientoSla.porcentaje * 100);
+export function toPorcentaje(fraccion: number | null): number | null {
+  if (fraccion === null) return null;
+  return Math.round(fraccion * 100);
+}
+
+/** Horas con un decimal y la unidad ("1,3 h"); `null` → `null` (sin datos). */
+export function formatHoras(horas: number | null): string | null {
+  if (horas === null) return null;
+  return `${horas.toFixed(1).replace(".", ",")} h`;
 }

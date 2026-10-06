@@ -36,7 +36,9 @@ Arriba del listado hay filtros combinables (se aplican todos juntos, no uno
 a la vez):
 
 - **Estado** — el estado actual del ticket (Nuevo, Asignado, En proceso,
-  Resuelto, Cerrado, Cancelado).
+  Esperando al cliente, Resuelto, Cerrado, Cancelado). En "Esperando al
+  cliente" el ticket queda a la espera del solicitante: el reloj del SLA se
+  pausa y se reanuda cuando el solicitante responde con un comentario público.
 - **Tipo** — el tipo de ticket, según el catálogo del tenant.
 - **Prioridad** — la prioridad cargada.
 - **Asignado** — solo visible si tenés permiso para ver todos los tickets;

@@ -20,7 +20,8 @@ import {
   toAbiertosCerradosChartData,
   toCargaPorAgenteChartData,
   toDistribucionChartData,
-  toSlaPercentage,
+  formatHoras,
+  toPorcentaje,
   toTiempoPromedioChartData,
 } from "../lib/metricas-map";
 import { PageHeader } from "@/components/shared/page-header";
@@ -118,6 +119,9 @@ export function DashboardView() {
   }
 
   const metricas = metricasQuery.data;
+  const cumplimientoResolucion = toPorcentaje(metricas.cumplimientoSla.porcentaje);
+  const cumplimientoPrimeraRespuesta = toPorcentaje(metricas.cumplimientoPrimeraRespuesta.porcentaje);
+  const tiempoPrimeraRespuesta = formatHoras(metricas.tiempoPromedioPrimeraRespuestaHoras);
   const sinDatos =
     metricas.abiertos === 0 &&
     metricas.cerrados === 0 &&
@@ -182,7 +186,37 @@ export function DashboardView() {
               <CardTitle>% Cumplimiento SLA</CardTitle>
             </CardHeader>
             <CardContent>
-              <GaugeChart title="% Cumplimiento SLA" value={toSlaPercentage(metricas.cumplimientoSla)} />
+              {cumplimientoResolucion === null ? (
+                <p className="text-sm text-muted-foreground">Sin datos.</p>
+              ) : (
+                <GaugeChart title="% Cumplimiento SLA" value={cumplimientoResolucion} />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>% Primera respuesta a tiempo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {cumplimientoPrimeraRespuesta === null ? (
+                <p className="text-sm text-muted-foreground">Sin datos.</p>
+              ) : (
+                <GaugeChart title="% Primera respuesta a tiempo" value={cumplimientoPrimeraRespuesta} />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tiempo medio de primera respuesta (horas hábiles)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {tiempoPrimeraRespuesta === null ? (
+                <p className="text-sm text-muted-foreground">Sin datos.</p>
+              ) : (
+                <p className="text-2xl font-semibold text-foreground">{tiempoPrimeraRespuesta}</p>
+              )}
             </CardContent>
           </Card>
 
