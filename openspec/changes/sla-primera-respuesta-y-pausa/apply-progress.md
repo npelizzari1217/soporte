@@ -64,3 +64,11 @@ Modo: estandar (sin TDD estricto). Rama `feat/sla-primera-respuesta-y-pausa-wu02
 ### Deuda
 
 - Ayuda: ninguna (no visible para el usuario).
+
+## WU-2 — parte 2 de 2: medidores (tareas 2.5 a 2.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu02b`, base `feat/sla-primera-respuesta-y-pausa-wu02`. Con esta parte la WU-2 queda completa.
+
+- `backend/src/sla/domain/services/`: `medidor-tiempo-sla.ts` (`MedidorTiempoSla { entre; sumar }`), `medidor-habil.ts` (servicio, calendario y feriados vigentes por constructor), `medidor-corrido.ts` (tiempo de pared). Test: `medidores-sla.spec.ts`.
+- Evidencia: `pnpm vitest run src/calendario-laboral src/sla/domain` verde; dominio puro, sin runtime harness (N/A). Rollback: archivos nuevos sin consumidores.
+- Ayuda: ninguna deuda.
