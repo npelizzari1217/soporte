@@ -209,7 +209,6 @@ export function ReparacionesList() {
             <ExportarCsvButton
               recurso="reparaciones"
               nombrePorDefecto="reparaciones.csv"
-              etiqueta="Exportar a Excel"
             />
             <Can permiso="EDILICIA:ALTAS">
               <ReparacionCreateDialog />

@@ -6,7 +6,7 @@
  * Foto del stock actual, una fila por insumo. Los filtros viven en la URL
  * (deep-link y recarga los conservan) y se parsean/serializan con
  * `lib/filtros-reporte-stock`: el MISMO query string alimenta la consulta
- * (`useReporteStock`) y el botón "Exportar a Excel", así que el CSV y la
+ * (`useReporteStock`) y el menú "Exportar", así que el CSV y la
  * pantalla no pueden contar distinto.
  *
  * Sin valorizar: el insumo no tiene costo, así que no hay ninguna columna de
@@ -151,7 +151,6 @@ export function ReporteStockView() {
             recurso="insumos/reporte-stock"
             nombrePorDefecto="reporte-stock-insumos.csv"
             queryString={queryString}
-            etiqueta="Exportar a Excel"
           />
         }
       />

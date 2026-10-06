@@ -128,7 +128,7 @@ describe("ReporteStockView", () => {
     expect(replaceMock).toHaveBeenLastCalledWith("/insumos/reporte-stock?esRepuesto=true&soloBajoMinimo=true");
   });
 
-  it('"Exportar a Excel" pide el mismo query string que la consulta (R3, R6)', async () => {
+  it('"Exportar → CSV" pide el mismo query string que la consulta (R3, R6)', async () => {
     currentSearch = `familiaId=${FAMILIA_ID}&esRepuesto=false&ocultarSinStock=true`;
     let urlExport = "";
     server.use(
@@ -143,7 +143,8 @@ describe("ReporteStockView", () => {
     renderWithProviders(<ReporteStockView />, { user: LECTOR });
     await screen.findByText("R-1");
 
-    await user.click(screen.getByRole("button", { name: "Exportar a Excel" }));
+    await user.click(screen.getByRole("button", { name: "Exportar" }));
+    await user.click(await screen.findByRole("menuitem", { name: "CSV" }));
 
     await waitFor(() => expect(urlExport).not.toBe(""));
     const qsExport = new URL(urlExport).search.replace(/^\?/, "");

@@ -34,7 +34,6 @@ export function ExportarTicketsButton({ filtros }: ExportarTicketsButtonProps) {
       recurso="tickets"
       nombrePorDefecto="tickets.csv"
       queryString={buildExportTicketsQueryString(filtros)}
-      etiqueta="Exportar a Excel"
     />
   );
 }

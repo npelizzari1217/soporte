@@ -27,13 +27,17 @@ import { apiFetchBlob } from "@/shared/api/client";
 import { dispararDescarga, nombreDesdeContentDisposition } from "@/shared/lib/descarga";
 import { notifyError } from "@/shared/lib/toast";
 
+/** Formatos que el backend sabe entregar en `GET /{recurso}/export`. */
+export type FormatoExportacion = "xlsx" | "csv";
+
 export interface UseExportarCsvParams {
   /** Segmento de ruta del recurso (ej. `"compras"`, `"tickets"`). La ruta pedida es `${recurso}/export`. */
   recurso: string;
   /**
-   * Nombre con el que se guarda el archivo si el backend no manda un
-   * `Content-Disposition` legible. Sin fecha a propósito: inventarla acá
-   * sería afirmar algo del contenido que este código no sabe.
+   * Nombre (con extensión `.csv`) con el que se guarda el archivo si el
+   * backend no manda un `Content-Disposition` legible; para `xlsx` se cambia
+   * la extensión. Sin fecha a propósito: inventarla acá sería afirmar algo
+   * del contenido que este código no sabe.
    */
   nombrePorDefecto: string;
   /**
@@ -45,23 +49,38 @@ export interface UseExportarCsvParams {
 }
 
 /**
- * Descarga el listado de `recurso` en CSV.
+ * Arma la ruta de export: `csv` (o sin formato) no manda nada, que es lo que
+ * el backend toma por defecto; `xlsx` agrega `formato=xlsx` a los filtros.
+ */
+function rutaDeExport(recurso: string, queryString: string | undefined, formato: FormatoExportacion): string {
+  const partes = [queryString, formato === "xlsx" ? "formato=xlsx" : undefined].filter(Boolean);
+  return `${recurso}/export${partes.length > 0 ? `?${partes.join("&")}` : ""}`;
+}
+
+/** `tickets.csv` → `tickets.xlsx` cuando el formato es xlsx. */
+function nombreSegunFormato(nombre: string, formato: FormatoExportacion): string {
+  return formato === "xlsx" ? nombre.replace(/\.csv$/i, ".xlsx") : nombre;
+}
+
+/**
+ * Descarga el listado de `recurso` en el formato pedido (por defecto, CSV).
  *
  * @param params Ver {@link UseExportarCsvParams}.
- * @returns La mutación de TanStack — `mutate()` dispara la descarga, `isPending` alimenta el estado de carga del botón.
+ * @returns La mutación de TanStack — `mutate("xlsx" | "csv")` dispara la descarga, `isPending` alimenta el estado de carga del botón.
  */
 export function useExportarCsv({
   recurso,
   nombrePorDefecto,
   queryString,
-}: UseExportarCsvParams): UseMutationResult<void, unknown, void> {
+}: UseExportarCsvParams): UseMutationResult<void, unknown, FormatoExportacion | void> {
   return useMutation({
-    mutationFn: async (): Promise<void> => {
-      const ruta = `${recurso}/export${queryString ? `?${queryString}` : ""}`;
-      const archivo = await apiFetchBlob(ruta);
+    mutationFn: async (formato: FormatoExportacion | void): Promise<void> => {
+      const formatoPedido: FormatoExportacion = formato ?? "csv";
+      const archivo = await apiFetchBlob(rutaDeExport(recurso, queryString, formatoPedido));
       dispararDescarga(
         archivo.blob,
-        nombreDesdeContentDisposition(archivo.contentDisposition) ?? nombrePorDefecto,
+        nombreDesdeContentDisposition(archivo.contentDisposition) ??
+          nombreSegunFormato(nombrePorDefecto, formatoPedido),
       );
     },
     onError: notifyError,

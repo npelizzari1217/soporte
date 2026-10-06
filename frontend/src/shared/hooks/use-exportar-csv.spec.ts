@@ -90,3 +90,54 @@ describe("useExportarCsv", () => {
     expect(dispararDescarga).not.toHaveBeenCalled();
   });
 });
+
+describe("useExportarCsv — formato", () => {
+  it("xlsx agrega formato=xlsx a los filtros y, sin Content-Disposition, nombra el archivo .xlsx", async () => {
+    let urlPedida = "";
+    server.use(
+      http.get("/api/tickets/export", ({ request }) => {
+        urlPedida = request.url;
+        return new HttpResponse(new Uint8Array([0x50, 0x4b]), {
+          headers: { "content-type": "application/octet-stream" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () =>
+        useExportarCsv({ recurso: "tickets", nombrePorDefecto: "tickets.csv", queryString: "estado=a" }),
+      { wrapper: wrapper(buildClient()) },
+    );
+    result.current.mutate("xlsx");
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(new URL(urlPedida).search).toBe("?estado=a&formato=xlsx");
+    const [blob, nombre] = vi.mocked(dispararDescarga).mock.calls[0];
+    expect(nombre).toBe("tickets.xlsx");
+    // Los bytes llegan intactos (no se decodifican como texto).
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(new Uint8Array([0x50, 0x4b]));
+  });
+
+  it("csv (o sin argumento) no agrega formato a la ruta", async () => {
+    const pedidas: string[] = [];
+    server.use(
+      http.get("/api/tickets/export", ({ request }) => {
+        pedidas.push(new URL(request.url).search);
+        return new HttpResponse("a\n", { headers: { "content-type": "text/csv" } });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => useExportarCsv({ recurso: "tickets", nombrePorDefecto: "tickets.csv" }),
+      { wrapper: wrapper(buildClient()) },
+    );
+    result.current.mutate("csv");
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    result.current.reset();
+    result.current.mutate();
+    await waitFor(() => expect(pedidas).toHaveLength(2));
+
+    expect(pedidas).toEqual(["", ""]);
+  });
+});

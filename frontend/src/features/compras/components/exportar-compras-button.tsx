@@ -38,7 +38,6 @@ export function ExportarComprasButton({ filtros }: ExportarComprasButtonProps) {
       recurso="compras"
       nombrePorDefecto="compras.csv"
       queryString={buildExportComprasQueryString(filtros)}
-      etiqueta="Exportar a Excel"
     />
   );
 }
