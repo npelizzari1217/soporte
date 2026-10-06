@@ -316,6 +316,20 @@ describe('TransicionarEstadoUseCase', () => {
     expect(c.eventPublisher.publish).not.toHaveBeenCalled();
   });
 
+  it('R4: EN_PROCESO→ESPERANDO_CLIENTE emite TicketEstadoCambiadoEvent; la salida a EN_PROCESO no', async () => {
+    const entra = makeCollaborators();
+    entra.ticketRepo.findById.mockResolvedValue(makeTicket('EN_PROCESO'));
+    await entra.useCase.execute(baseDto({ nuevoEstadoCodigo: 'ESPERANDO_CLIENTE' }));
+    const estadoCambiado = (c: ReturnType<typeof makeCollaborators>) =>
+      c.eventPublisher.publish.mock.calls.filter((x) => x[0] instanceof TicketEstadoCambiadoEvent);
+    expect(estadoCambiado(entra)).toHaveLength(1);
+
+    const sale = makeCollaborators();
+    sale.ticketRepo.findById.mockResolvedValue(makeTicket('ESPERANDO_CLIENTE'));
+    await sale.useCase.execute(baseDto({ nuevoEstadoCodigo: 'EN_PROCESO' }));
+    expect(estadoCambiado(sale)).toHaveLength(0);
+  });
+
   it('T13: publisher que lanza → log-and-swallow, Result.ok igual (no revierte la transición ya committeada)', async () => {
     const c = makeCollaborators();
     const ticketEnProceso = TicketEntity.create(

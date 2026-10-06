@@ -37,6 +37,8 @@ import {
 import { SOLICITANTE_EXTERNO_REPOSITORY } from './domain/ports/i-solicitante-externo.repository';
 import { PrismaSolicitanteExternoRepository } from './infrastructure/persistence/prisma/prisma-solicitante-externo.repository';
 import { PrismaCicloClienteRepository } from './infrastructure/persistence/prisma/prisma-ciclo-cliente.repository';
+import { ReanudarPorComentarioListener } from './infrastructure/listeners/reanudar-por-comentario.listener';
+import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { CsatLecturaModule } from '../csat/csat-lectura.module';
 
 import { NumeradorTicket } from './domain/services/numerador-ticket.service';
@@ -270,6 +272,17 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         TENANT_TX_RUNNER,
         RELOJ_SLA_MARCADOR,
       ],
+    },
+    {
+      // ADR-5: el solicitante que comenta en público reanuda un ticket en ESPERANDO_CLIENTE.
+      provide: ReanudarPorComentarioListener,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+        transicionar: TransicionarEstadoUseCase,
+        logger: ILogger,
+      ) => new ReanudarPorComentarioListener(ticketRepo, estadoRepo, transicionar, logger),
+      inject: [TICKET_REPOSITORY, ESTADO_REPOSITORY, TransicionarEstadoUseCase, LOGGER],
     },
     {
       provide: AsignarTicketUseCase,
