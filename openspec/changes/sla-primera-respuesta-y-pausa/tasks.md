@@ -127,13 +127,13 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 ## WU-4 — Reanudación por comentario y mail de espera (~230 líneas)
 
 - [x] 4.1 Test unit de `ReanudarPorComentarioListener`: el solicitante comenta en público en ESPERANDO_CLIENTE y transiciona a EN_PROCESO con `actorEsCorrector: false` y el solicitante como autor; otro autor no reanuda; ticket en EN_PROCESO no genera transición; `TransicionInvalidaError` del segundo comentario concurrente se loguea y se ignora. (`ticket-esperando-cliente R3`)
-- [ ] 4.2 Test e2e (invariante "comentario interno"): un comentario interno del solicitante deja el ticket en ESPERANDO_CLIENTE y el reloj detenido; uno público lo pasa a EN_PROCESO con el cambio en el timeline. (`ticket-esperando-cliente R3`, `sla-reloj-activo R1`)
+- [x] 4.2 Test e2e (invariante "comentario interno"): un comentario interno del solicitante deja el ticket en ESPERANDO_CLIENTE y el reloj detenido; uno público lo pasa a EN_PROCESO con el cambio en el timeline. (`ticket-esperando-cliente R3`, `sla-reloj-activo R1`)
 - [x] 4.3 `ReanudarPorComentarioListener` en `tickets/infrastructure` (`@OnEvent('ticket.comentado')`) y registro en `TicketsModule`. (`ticket-esperando-cliente R3`)
 - [x] 4.4 Test unit: `estados-notificables.policy.ts` incluye ESPERANDO_CLIENTE; `templateEsperandoCliente` escapa HTML (`escaparHtml`) y omite el link para el externo. (`ticket-esperando-cliente R4`)
 - [x] 4.5 Test unit de `TicketNotificacionListener`: elige `templateEsperandoCliente` al ir a ESPERANDO_CLIENTE; el SMTP que falla no revierte la transición y se registra; el solicitante externo sin correo no recibe y se loguea; la salida a EN_PROCESO no envía el mail de espera. (`ticket-esperando-cliente R4`)
-- [ ] 4.6 Test e2e con `overrideProvider(EMAIL_SENDER)`: EN_PROCESO→ESPERANDO_CLIENTE envía un mail al solicitante. (`ticket-esperando-cliente R4`)
+- [x] 4.6 Test e2e con `overrideProvider(EMAIL_SENDER)`: EN_PROCESO→ESPERANDO_CLIENTE envía un mail al solicitante. (`ticket-esperando-cliente R4`)
 - [x] 4.7 Implementar la política, la plantilla y la elección en `TicketNotificacionListener.onTicketEstadoCambiado`. (`ticket-esperando-cliente R4`)
-- [ ] 4.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets src/notificaciones`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 4.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets src/notificaciones`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-5 — Meta "Primera respuesta (h)" por prioridad (~340 líneas)
 

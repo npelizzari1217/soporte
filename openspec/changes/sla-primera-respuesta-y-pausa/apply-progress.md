@@ -208,13 +208,13 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03c4`, base `...-wu03c3`. Con esta pa
 - Casos: huerfano de pausa con dos listeners caidos (pausa, reanudacion, pausa) se reconcilia antes de evaluar y, en espera, no se marca; huerfano reanudado con vencimiento viejo pasado no se marca y el pliegue lo deriva hacia adelante; un previo corriendo con `sla_corre_desde` NULL se marca por estado y se notifica una sola vez; un ticket en ESPERANDO_CLIENTE con vencimiento pasado no se marca ni se notifica.
 - Verificacion 3c.8 sobre este arbol: lint, typecheck, `pnpm vitest run src/sla src/tickets`, `src/app.module.smoke.spec.ts` y ratchet de casts (617), ver el commit.
 
-## WU-4 — Reanudacion por comentario y mail de espera (parte 1 de 2: tareas 4.1, 4.3, 4.4, 4.5, 4.7)
+## WU-4 — Reanudacion por comentario y mail de espera (completa: parte 1 tareas 4.1, 4.3, 4.4, 4.5, 4.7; parte 2 tareas 4.2, 4.6, 4.8)
 
-Rama `feat/sla-primera-respuesta-y-pausa-wu04`, base `...-wu03c4`. Partida por presupuesto de 400 lineas: aca listener, politica, plantilla y sus unit; quedan 4.2 y 4.6 (el e2e `esperando-cliente.e2e.spec.ts`, 316 lineas, ya escrito y verde) y 4.8 en el stash `wu04b`.
+Rama `feat/sla-primera-respuesta-y-pausa-wu04`, base `...-wu03c4`. Partida por presupuesto de 400 lineas: aca listener, politica, plantilla y sus unit; la parte 2 (rama `...-wu04b`) agrega el e2e `esperando-cliente.e2e.spec.ts` (4.2, 4.6) y cierra con la verificacion 4.8.
 
 - `ReanudarPorComentarioListener` (`tickets/infrastructure/listeners`, registrado en `TicketsModule`, sin ciclo): escucha `ticket.comentado`, recarga el ticket, exige estado ESPERANDO_CLIENTE y `autorId === solicitanteId`, y transiciona a EN_PROCESO con `TransicionarEstadoUseCase` (`actorEsCorrector: false`, el solicitante como autor). `TransicionInvalidaError` del segundo comentario concurrente y cualquier fallo se loguean y se ignoran. Se apoya en que el evento solo se emite para comentarios publicos.
 - Mail de espera: `estados-notificables.policy.ts` incluye ESPERANDO_CLIENTE (asi `TransicionarEstadoUseCase` publica `ticket.estado_cambiado` al entrar; la salida a EN_PROCESO no es notificable y no envia). `templateEsperandoCliente` (escapa HTML, sin link para el externo) y `TicketNotificacionListener.onTicketEstadoCambiado` la elige al ir a ESPERANDO_CLIENTE. Sin correo resoluble: se registra y no se envia.
 - Tests: unit del listener (7 casos), de la politica, de la plantilla (escapado, externo), del `TicketNotificacionListener` (plantilla elegida, SMTP caido, externo sin correo, externo con correo, salida) y del use case (evento al entrar, ninguno al salir).
-- Pendiente (stash `wu04b`): e2e con comentario interno/publico, marcador del reloj, timeline y mail con `EMAIL_SENDER` overrideado (4.2, 4.6) y la verificacion final 4.8 sobre el arbol completo.
+- Parte 2: e2e (`usarLockMasterTest()`, tenant efimero: filas, `app.close()`, `dropDatabase`) con comentario interno/publico, marcador del reloj, timeline y mail con `EMAIL_SENDER` overrideado (4.2, 4.6) ; verificacion 4.8 verde sobre el arbol final.
 - Deuda de Ayuda: el ticket vuelve solo a En proceso cuando el solicitante comenta, y el solicitante recibe un mail al pasar a Esperando al cliente.
 - Rollback: listener, politica, plantilla y su eleccion en el listener de notificaciones.
