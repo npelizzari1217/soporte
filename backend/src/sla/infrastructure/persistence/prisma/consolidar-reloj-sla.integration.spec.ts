@@ -148,6 +148,7 @@ describe('ConsolidarRelojSlaUseCase + PrismaRelojSlaRepository — Integration (
       transicionesDesde: (t, s) => repo.transicionesDesde(t, s),
       limpiarMetaPendiente: (t) => repo.limpiarMetaPendiente(t),
       findPendientes: () => repo.findPendientes(),
+      findMetaPendiente: () => repo.findMetaPendiente(),
       guardarSiVersion: async (t, v, reloj) => {
         await client.ticket.update({
           where: { id: t },

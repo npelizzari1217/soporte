@@ -36,6 +36,12 @@ export interface IRelojSlaRepository {
 
   /** Ids de los tickets con `sla_reloj_pendiente`. */
   findPendientes(): Promise<string[]>;
+
+  /**
+   * Ids de los tickets con `sla_meta_pendiente` y no borrados, acotado a un lote por barrido (issue
+   * #429): la meta de SLA que el alta o la repriorización marcaron y `AplicarSla` no llegó a aplicar.
+   */
+  findMetaPendiente(): Promise<string[]>;
 }
 
 export const RELOJ_SLA_REPOSITORY = Symbol('RELOJ_SLA_REPOSITORY');

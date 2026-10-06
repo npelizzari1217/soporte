@@ -16,18 +16,23 @@ function makeCollaborators() {
     findPrimerasRespuestasVencidas: vi.fn().mockResolvedValue([]),
     marcarPrimeraRespuestaVencida: vi.fn().mockResolvedValue(true),
   };
-  const relojRepo = { findPendientes: vi.fn().mockResolvedValue([]) };
+  const relojRepo = {
+    findPendientes: vi.fn().mockResolvedValue([]),
+    findMetaPendiente: vi.fn().mockResolvedValue([]),
+  };
   const consolidar = { execute: vi.fn().mockResolvedValue('consolidado') };
+  const aplicarSla = { reconciliarMeta: vi.fn().mockResolvedValue(undefined) };
   const eventPublisher = { publish: vi.fn() };
   const logger = { error: vi.fn() };
   const useCase = new MarcarVencidosUseCase(
     relojRepo,
     consolidar,
+    aplicarSla,
     slaTicketQueryRepo,
     eventPublisher,
     logger,
   );
-  return { useCase, slaTicketQueryRepo, relojRepo, consolidar, eventPublisher, logger };
+  return { useCase, slaTicketQueryRepo, relojRepo, consolidar, aplicarSla, eventPublisher, logger };
 }
 
 describe('MarcarVencidosUseCase', () => {
@@ -118,6 +123,50 @@ describe('MarcarVencidosUseCase', () => {
       await c.useCase.execute();
 
       expect(orden).toEqual(['consolidar:huerfano-1', 'consolidar:huerfano-2', 'findVencibles']);
+    });
+
+    it('reaplica la meta de los tickets marcados ANTES de evaluar el vencimiento (issue #429)', async () => {
+      const c = makeCollaborators();
+      const orden: string[] = [];
+      c.relojRepo.findMetaPendiente.mockResolvedValue(['marcado-1', 'marcado-2']);
+      c.aplicarSla.reconciliarMeta.mockImplementation(async (id: string) => {
+        orden.push(`meta:${id}`);
+      });
+      c.slaTicketQueryRepo.findVencibles.mockImplementation(async () => {
+        orden.push('findVencibles');
+        return [];
+      });
+
+      await c.useCase.execute();
+
+      expect(orden).toEqual(['meta:marcado-1', 'meta:marcado-2', 'findVencibles']);
+    });
+
+    it('un fallo al reaplicar la meta de un ticket se registra y no detiene a los demás ni al barrido', async () => {
+      const c = makeCollaborators();
+      c.relojRepo.findMetaPendiente.mockResolvedValue(['roto', 'sano']);
+      c.aplicarSla.reconciliarMeta.mockRejectedValueOnce(
+        new Error('SLA_RELOJ_CONFLICTO | ticket=roto'),
+      );
+      c.slaTicketQueryRepo.findVencibles.mockResolvedValue([vencible]);
+
+      const marcados = await c.useCase.execute();
+
+      expect(c.aplicarSla.reconciliarMeta).toHaveBeenCalledTimes(2);
+      expect(c.aplicarSla.reconciliarMeta).toHaveBeenLastCalledWith('sano');
+      expect(c.logger.error).toHaveBeenCalledWith(expect.stringContaining('roto'));
+      expect(marcados).toBe(1);
+    });
+
+    it('un fallo al listar los marcados se registra y el barrido sigue', async () => {
+      const c = makeCollaborators();
+      c.relojRepo.findMetaPendiente.mockRejectedValue(new Error('base caída'));
+      c.slaTicketQueryRepo.findVencibles.mockResolvedValue([vencible]);
+
+      const marcados = await c.useCase.execute();
+
+      expect(c.logger.error).toHaveBeenCalledWith(expect.stringContaining('base caída'));
+      expect(marcados).toBe(1);
     });
 
     it('un pendiente que no se puede reconciliar no aborta el barrido (queda pendiente y el repo lo excluye)', async () => {

@@ -25,6 +25,9 @@ interface OperacionLeida {
   estadoNuevo: { codigo: string } | null;
 }
 
+/** Tope de tickets marcados que un barrido reaplica: el resto queda marcado para el barrido siguiente. */
+const LOTE_META_PENDIENTE = 200;
+
 @Injectable()
 export class PrismaRelojSlaRepository implements IRelojSlaRepository {
   constructor(private readonly tenantContext: TenantContext) {}
@@ -147,6 +150,16 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
     const filas = await this.client.ticket.findMany({
       where: { slaRelojPendiente: true, deletedAt: null },
       select: { id: true },
+    });
+    return filas.map((f) => f.id);
+  }
+
+  async findMetaPendiente(): Promise<string[]> {
+    const filas = await this.client.ticket.findMany({
+      where: { slaMetaPendiente: true, deletedAt: null },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: LOTE_META_PENDIENTE,
     });
     return filas.map((f) => f.id);
   }

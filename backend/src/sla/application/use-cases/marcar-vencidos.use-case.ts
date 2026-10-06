@@ -1,6 +1,7 @@
 import { ISlaTicketQueryRepository } from '../../domain/ports/i-sla-ticket-query.repository';
 import { IRelojSlaRepository } from '../../domain/ports/i-reloj-sla.repository';
 import { ConsolidarRelojSlaUseCase } from './consolidar-reloj-sla.use-case';
+import { AplicarSlaUseCase } from './aplicar-sla.use-case';
 import { SlaVencidoEvent } from '../../domain/events/sla-vencido.event';
 import { SlaPrimeraRespuestaVencidaEvent } from '../../domain/events/sla-primera-respuesta-vencida.event';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
@@ -21,7 +22,11 @@ import { ILogger } from '../../../shared/domain/ports/i-logger.port';
  * del barrido — se registra como no-marcado y se continúa (mismo criterio
  * de aislamiento que el barrido multi-tenant, ADR-P3, pero a nivel de fila).
  *
- * sdd/sla-primera-respuesta-y-pausa (ADR-4, sla-reloj-activo R4): el barrido corre en tres pasos.
+ * sdd/sla-primera-respuesta-y-pausa (ADR-4, sla-reloj-activo R4): el barrido corre en tres pasos,
+ * precedidos por la reaplicación de metas (issue #429): los tickets con `sla_meta_pendiente` (el alta o
+ * la repriorización marcaron la meta y `AplicarSla` no llegó a aplicarla) se reaplican con la
+ * prioridad vigente (`AplicarSlaUseCase.reconciliarMeta`), un fallo por ticket se registra y no detiene
+ * a los demás; así el paso 2 ya ve el vencimiento correcto.
  * 1. Reconcilia los `sla_reloj_pendiente` (huérfano de pausa: falló el listener). Un pendiente que no
  *    se pudo reconciliar sigue pendiente y el paso 2 lo excluye, para no marcar con un vencimiento viejo.
  * 2. Marca vencidos solo con el reloj corriendo (`ESTADOS_RELOJ_CORRE`, que incluye a los previos). El
@@ -34,8 +39,9 @@ import { ILogger } from '../../../shared/domain/ports/i-logger.port';
  */
 export class MarcarVencidosUseCase {
   constructor(
-    private readonly relojRepo: Pick<IRelojSlaRepository, 'findPendientes'>,
+    private readonly relojRepo: Pick<IRelojSlaRepository, 'findPendientes' | 'findMetaPendiente'>,
     private readonly consolidar: Pick<ConsolidarRelojSlaUseCase, 'execute'>,
+    private readonly aplicarSla: Pick<AplicarSlaUseCase, 'reconciliarMeta'>,
     private readonly slaTicketQueryRepo: Pick<
       ISlaTicketQueryRepository,
       | 'findVencibles'
@@ -56,6 +62,8 @@ export class MarcarVencidosUseCase {
         // Aislamiento por ticket: sigue pendiente y el paso 2 no lo marca.
       }
     }
+
+    await this.reaplicarMetasPendientes();
 
     const ahora = new Date();
     const vencibles = await this.slaTicketQueryRepo.findVencibles(ahora);
@@ -93,6 +101,27 @@ export class MarcarVencidosUseCase {
     }
 
     return marcados;
+  }
+
+  /**
+   * Reaplica la meta de los tickets con `sla_meta_pendiente` (issue #429). Aislado por ticket y del
+   * resto del barrido: un fallo se registra, la marca sigue puesta y el barrido siguiente reintenta.
+   */
+  private async reaplicarMetasPendientes(): Promise<void> {
+    let ids: string[];
+    try {
+      ids = await this.relojRepo.findMetaPendiente();
+    } catch (error) {
+      this.logger.error(`SLA_META_PENDIENTE_LISTADO_FALLO | ${String(error)}`);
+      return;
+    }
+    for (const ticketId of ids) {
+      try {
+        await this.aplicarSla.reconciliarMeta(ticketId);
+      } catch (error) {
+        this.logger.error(`SLA_META_PENDIENTE_FALLO | ticket=${ticketId} | ${String(error)}`);
+      }
+    }
   }
 
   /** Paso 3. Aislado del paso 2: un fallo acá no cambia el conteo de resolución ni lo aborta. */

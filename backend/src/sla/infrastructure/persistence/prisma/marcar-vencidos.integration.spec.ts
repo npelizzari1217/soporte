@@ -53,6 +53,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
       {
         findPendientes: async () =>
           (await relojRepo.findPendientes()).filter((i) => propios.has(i)),
+        findMetaPendiente: async () => [],
       },
       new ConsolidarRelojSlaUseCase(
         relojRepo,
@@ -61,6 +62,7 @@ describe('MarcarVencidosUseCase + repos Prisma — Integration (WU-3c)', () => {
         { obtener: async () => new Set<string>() },
         { error: vi.fn() },
       ),
+      { reconciliarMeta: async () => undefined },
       {
         findVencibles: async (now) =>
           (await queryRepo.findVencibles(now)).filter((t) => propios.has(t.id)),

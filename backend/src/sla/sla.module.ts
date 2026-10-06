@@ -146,6 +146,7 @@ import {
       useFactory: (
         relojRepo: IRelojSlaRepository,
         consolidar: ConsolidarRelojSlaUseCase,
+        aplicarSla: AplicarSlaUseCase,
         slaTicketQueryRepo: ISlaTicketQueryRepository,
         eventPublisher: IDomainEventPublisher,
         logger: ILogger,
@@ -153,6 +154,7 @@ import {
         new MarcarVencidosUseCase(
           relojRepo,
           consolidar,
+          aplicarSla,
           slaTicketQueryRepo,
           eventPublisher,
           logger,
@@ -160,6 +162,7 @@ import {
       inject: [
         RELOJ_SLA_REPOSITORY,
         ConsolidarRelojSlaUseCase,
+        AplicarSlaUseCase,
         SLA_TICKET_QUERY_REPOSITORY,
         DOMAIN_EVENT_PUBLISHER,
         LOGGER,
