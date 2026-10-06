@@ -20,7 +20,11 @@ import {
 const TIPO_PREVENTIVO = 'tipo-preventivo-uuid';
 const DTO = { ticketId: 't1', prioridadId: 'prioridad-uuid' };
 
-const prioridad = (slaHoras: number | null, slaActivo = true) =>
+const prioridad = (
+  slaHoras: number | null,
+  slaActivo = true,
+  slaPrimeraRespuestaHoras: number | null = null,
+) =>
   PrioridadEntity.create({
     codigo: 'ALTA',
     nombre: 'Alta',
@@ -29,9 +33,12 @@ const prioridad = (slaHoras: number | null, slaActivo = true) =>
     activo: true,
     slaHoras,
     slaActivo,
+    slaPrimeraRespuestaHoras,
   });
 
-function ticket(over: { tipoId?: string; slaRegla?: SlaRegla } = {}): TicketEntity {
+function ticket(
+  over: { tipoId?: string; slaRegla?: SlaRegla; createdAt?: Date } = {},
+): TicketEntity {
   const t = TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
@@ -46,7 +53,10 @@ function ticket(over: { tipoId?: string; slaRegla?: SlaRegla } = {}): TicketEnti
     },
     't1',
   );
-  Object.assign(t, { _slaRegla: over.slaRegla ?? 'HABIL' });
+  Object.assign(t, {
+    _slaRegla: over.slaRegla ?? 'HABIL',
+    ...(over.createdAt ? { _createdAt: over.createdAt } : {}),
+  });
   return t;
 }
 
@@ -75,6 +85,9 @@ function montar(m: Montaje = {}) {
   const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue(TIPO_PREVENTIVO) };
   const calendarioRepo = { obtener: vi.fn().mockResolvedValue(calendarioSemanal) };
   const feriadosRepo = { obtener: vi.fn().mockResolvedValue(new Set<string>()) };
+  const primeraRespuestaRepo = {
+    fijarVencimientoSiSinRespuesta: vi.fn().mockResolvedValue(undefined),
+  };
   const useCase = new AplicarSlaUseCase(
     prioridadRepo,
     relojRepo,
@@ -83,9 +96,10 @@ function montar(m: Montaje = {}) {
     calculo,
     calendarioRepo,
     feriadosRepo,
+    primeraRespuestaRepo,
   );
   const escrito = () => relojRepo.guardarSiVersion.mock.calls[0][2];
-  return { useCase, relojRepo, prioridadRepo, calendarioRepo, escrito };
+  return { useCase, relojRepo, prioridadRepo, calendarioRepo, primeraRespuestaRepo, escrito };
 }
 
 describe('AplicarSlaUseCase', () => {
@@ -194,6 +208,107 @@ describe('AplicarSlaUseCase', () => {
 
       expect(c.escrito()).toMatchObject({ metaS: null, cumplido: null, slaVenceAt: null });
       expect(c.prioridadRepo.findById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('vencimiento de primera respuesta (primera-respuesta R3, R6)', () => {
+    const vence = (c: ReturnType<typeof montar>) =>
+      c.primeraRespuestaRepo.fijarVencimientoSiSinRespuesta.mock.calls[0];
+
+    it('HABIL con meta: suma las horas hábiles desde createdAt (viernes 17:30, meta 2 h, cierre 18:00)', async () => {
+      const c = montar({
+        prioridad: prioridad(8, true, 2),
+        ticket: ticket({ createdAt: L(14, 17, 30) }),
+      });
+
+      await c.useCase.alCrear(DTO);
+
+      // Quedan 30 min del viernes y 1 h 30 min después de la apertura del lunes.
+      expect(vence(c)).toEqual(['t1', L(17, 10, 30)]);
+    });
+
+    it('slaActivo=false no apaga la meta de primera respuesta (solo la de resolución)', async () => {
+      const c = montar({
+        prioridad: prioridad(8, false, 4),
+        ticket: ticket({ createdAt: L(10, 9) }),
+      });
+
+      await c.useCase.alCrear(DTO);
+
+      expect(c.escrito().metaS).toBeNull();
+      expect(vence(c)).toEqual(['t1', L(10, 13)]);
+    });
+
+    it('prioridad sin meta: limpia el vencimiento', async () => {
+      const c = montar({ prioridad: prioridad(8, true, null) });
+
+      await c.useCase.alCrear(DTO);
+
+      expect(vence(c)).toEqual(['t1', null]);
+    });
+
+    it('preventivo: sin vencimiento aunque la prioridad tenga meta, y no consulta la prioridad', async () => {
+      const c = montar({
+        prioridad: prioridad(8, true, 4),
+        ticket: ticket({ tipoId: TIPO_PREVENTIVO }),
+      });
+
+      await c.useCase.alCrear(DTO);
+
+      expect(c.prioridadRepo.findById).not.toHaveBeenCalled();
+      expect(vence(c)).toEqual(['t1', null]);
+    });
+
+    it('cohorte CORRIDO: sin vencimiento de primera respuesta (meta solo hábil)', async () => {
+      const c = montar({
+        prioridad: prioridad(8, true, 4),
+        ticket: ticket({ slaRegla: 'CORRIDO' }),
+      });
+
+      await c.useCase.alCrear(DTO);
+
+      expect(vence(c)).toEqual(['t1', null]);
+    });
+
+    it('repriorizar reescribe con el repo condicionado a "sin respuesta" (el respondido queda igual)', async () => {
+      const c = montar({
+        prioridad: prioridad(8, true, 2),
+        ticket: ticket({ createdAt: L(10, 9) }),
+      });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      // El método del puerto es el que lleva `primeraRespuestaAt: null` en el WHERE (ver su integración).
+      expect(vence(c)).toEqual(['t1', L(10, 11)]);
+    });
+
+    it('entrar a ESPERANDO_CLIENTE no corre el vencimiento: se calcula desde createdAt, sin pausas', async () => {
+      const c = montar({
+        fila: { estadoCodigo: 'ESPERANDO_CLIENTE', acumuladoS: 3 * H, correDesde: null },
+        prioridad: prioridad(8, true, 2),
+        ticket: ticket({ createdAt: L(10, 9) }),
+      });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(vence(c)).toEqual(['t1', L(10, 11)]);
+    });
+
+    it('un CAS perdido no escribe el vencimiento hasta que el reintento lo gana', async () => {
+      const c = montar({ prioridad: prioridad(8, true, 2) });
+      c.relojRepo.guardarSiVersion.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+      await c.useCase.alCrear(DTO);
+
+      expect(c.primeraRespuestaRepo.fijarVencimientoSiSinRespuesta).toHaveBeenCalledTimes(1);
+    });
+
+    it('un ticket terminal que no recalcula no toca el vencimiento', async () => {
+      const c = montar({ fila: { estadoCodigo: 'CERRADO' }, prioridad: prioridad(8, true, 2) });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(c.primeraRespuestaRepo.fijarVencimientoSiSinRespuesta).not.toHaveBeenCalled();
     });
   });
 

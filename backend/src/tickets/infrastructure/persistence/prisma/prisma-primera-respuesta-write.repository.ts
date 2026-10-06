@@ -2,7 +2,7 @@
  * PrismaPrimeraRespuestaWriteRepository — implementa IPrimeraRespuestaWriteRepository
  * (sdd/sla-primera-respuesta-y-pausa, ADR-6).
  *
- * `registrarSiFalta` es un `updateMany where { id, primeraRespuestaAt: null }`: la condición viaja en el
+ * Los dos métodos son `updateMany where { id, primeraRespuestaAt: null }`: la condición viaja en el
  * UPDATE, así que dos comentarios concurrentes dejan la fecha del que llegó primero y una respuesta ya
  * registrada no se pisa. `registrarSiFalta` corre dentro de la tx del comentario (el `client` del
  * TenantContext es el transaccional).
@@ -24,6 +24,13 @@ export class PrismaPrimeraRespuestaWriteRepository implements IPrimeraRespuestaW
     await this.client.ticket.updateMany({
       where: { id: ticketId, primeraRespuestaAt: null },
       data: { primeraRespuestaAt: instante },
+    });
+  }
+
+  async fijarVencimientoSiSinRespuesta(ticketId: string, venceAt: Date | null): Promise<void> {
+    await this.client.ticket.updateMany({
+      where: { id: ticketId, primeraRespuestaAt: null },
+      data: { primeraRespuestaVenceAt: venceAt },
     });
   }
 }
