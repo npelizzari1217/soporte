@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -101,6 +101,31 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     } else {
       expect(screen.queryByRole("button", { name: /^editar$/i })).not.toBeInTheDocument();
     }
+  });
+
+  it("«Descargar PDF» es visible para quien solo puede ver el ticket y pide GET /tickets/:id/pdf", async () => {
+    let pdfPedido = false;
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/pdf`, () => {
+        pdfPedido = true;
+        return new HttpResponse(new Uint8Array([0x25, 0x50, 0x44, 0x46]), {
+          headers: { "content-type": "application/pdf" },
+        });
+      }),
+    );
+
+    // Sin ningún permiso de acción: el botón no está gateado.
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+    await screen.findByText("Impresora rota");
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /descargar pdf/i }));
+
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    expect(pdfPedido).toBe(true);
+    clickSpy.mockRestore();
   });
 
   it("editar (modal) → click en «Editar» abre el modal precargado y guardar dispara PATCH /tickets/:id", async () => {

@@ -32,6 +32,7 @@ import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-contr
 import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
+import { TicketPdfButton } from "./ticket-pdf-button";
 
 /** Código del tipo de ticket que habilita la consulta del equipo vinculado (satélite `ticket_soporte`). */
 const TIPO_SOPORTE_CODIGO = "SOPORTE";
@@ -149,6 +150,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
             </span>
           )}
         </Can>
+        <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />
       </div>
 
       <section>

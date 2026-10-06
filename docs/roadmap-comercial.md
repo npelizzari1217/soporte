@@ -758,6 +758,39 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     Una precisión que no es desviación: el ABM lista también las desactivadas, para
     poder reactivarlas, a diferencia del listado de sectores, que solo muestra las
     activas.
+- **Segunda etapa, punto 3 — exportar a Excel y PDF** (decidido el 2026-10-06,
+  issue #378):
+  - Las **5 exportaciones CSV que ya existen** (tickets, compras, equipos,
+    reparaciones y reporte de stock de insumos) pasan a poder bajarse también como
+    **Excel real (`.xlsx`)**, con las mismas columnas, los mismos filtros, los mismos
+    permisos y el mismo tope de 5000 filas (el mismo 422 al pasarse). El CSV se
+    mantiene.
+  - Las celdas son **tipadas**: los números como números, las fechas y fechas con hora
+    como fechas reales de Excel (con la hora de Argentina que ya muestra el CSV) y el
+    texto como texto. El encabezado va en **negrita**, **congelado** y con
+    **autofiltro**, y las columnas tienen un ancho razonable. Las celdas son siempre
+    valores, nunca fórmulas.
+  - El formato se elige con `?formato=xlsx` en las mismas rutas `/export`; sin el
+    parámetro sigue siendo CSV, así que quien ya usa la ruta no se rompe.
+  - En la pantalla, el botón de exportar pasa a ser un menú **"Exportar"** con
+    **Excel** (primera opción, la predeterminada) y **CSV**, y los dos mandan los
+    mismos filtros.
+  - El **PDF de un ticket** sale de `GET /tickets/:id/pdf`, con el mismo permiso y las
+    mismas reglas de acceso que el detalle (un solicitante solo obtiene el suyo). Sirve
+    tanto para tickets de soporte como para reparaciones.
+  - El PDF lleva el **logo del cliente** (si es png o jpeg; con webp o sin logo, el
+    nombre del cliente en texto), el número, título, estado, prioridad, tipo,
+    solicitante, asignado, fechas de creación y cierre y vencimiento de SLA, la
+    descripción y lo propio de cada flujo (equipo, problema y solución en soporte;
+    ubicación, avance y subtareas en edilicia). Cierra con el **historial de
+    comentarios públicos y cambios de estado**.
+  - **Los comentarios internos nunca van en el PDF**, ni siquiera para quien tiene
+    `TICKETS:OBSERVAR`: es un documento que se descarga y se reenvía.
+  - A4, con "Página X de Y" y la fecha de generación al pie. Se genera con una
+    librería de JavaScript puro, **sin navegador headless** (el VPS es Windows y no
+    tiene Chrome).
+  - En el detalle del ticket hay un botón **"Descargar PDF"**, visible para cualquiera
+    que pueda ver el ticket.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
