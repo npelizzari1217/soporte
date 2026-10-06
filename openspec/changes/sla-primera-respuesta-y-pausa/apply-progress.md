@@ -287,3 +287,14 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu06b`, base `...-wu06`. La meta en `Ap
 | Focused test | `pnpm vitest run` de `crear-comentario.use-case.spec.ts` y `primera-respuesta.integration.spec.ts` |
 | Runtime harness | Integracion contra Postgres real con el runner transaccional real |
 | Rollback boundary | `CrearComentarioUseCase` (tx + registro), repo y puerto; la columna sigue de M4 |
+
+## WU-6 — parte 3: meta de primera respuesta en `AplicarSla` (tareas 6.8 a 6.10; WU-6 completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu06c`, base `...-wu06b`.
+
+- `IPrimeraRespuestaWriteRepository.fijarVencimientoSiSinRespuesta(ticketId, venceAt | null)`: `updateMany where { id, primeraRespuestaAt: null }`. Un ticket ya respondido no cambia al repriorizar; uno sin respuesta se reescribe (o se limpia con `null`).
+- `AplicarSlaUseCase` (recibe el repo como `Pick<..., 'fijarVencimientoSiSinRespuesta'>`, cableado en `SlaModule`): tras ganar el CAS del reloj escribe `medidor.sumar(createdAt, h * 3_600_000)` solo para `HABIL`, prioridad con `slaPrimeraRespuestaHoras` y no preventivo; en cualquier otro caso escribe `null`. `slaActivo` no interviene y no hay pausa (ESPERANDO_CLIENTE no corre el vencimiento). Un CAS perdido no escribe hasta ganar el reintento; un ticket terminal que no recalcula no lo toca.
+- Tests: 9 casos nuevos en `aplicar-sla.use-case.spec.ts` (viernes 17:30 meta 2 h da lunes 10:30, `slaActivo=false`, sin meta, preventivo, CORRIDO, repriorizar, espera, CAS, terminal); integracion `primera-respuesta.integration.spec.ts` suma el caso de `fijarVencimientoSiSinRespuesta` (sin respuesta escribe y limpia, respondido queda igual); los dos e2e `aplicar-sla-*.e2e.spec.ts` pasan el repo real.
+- Verificacion 6.10 sobre el arbol del commit: lint, typecheck, `pnpm vitest run src/tickets src/sla src/app.module.smoke.spec.ts` y ratchet de casts 617 en 114.
+- **Punto abierto para la WU-7**: `primeraRespuestaVencida` no se reinicia cuando una repriorizacion mueve el vencimiento hacia adelante. Un ticket ya marcado vencido (y notificado) que se repriorice a una meta mas larga conserva la marca; la WU-7 debe decidir si el barrido o la repriorizacion la limpian.
+- Ayuda: sin deuda nueva. Rollback: `AplicarSla` (escritura de la meta), el metodo del puerto y del repo.

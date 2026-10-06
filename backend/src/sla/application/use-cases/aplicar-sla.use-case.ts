@@ -3,6 +3,7 @@ import { RelojSla } from '../../domain/entities/reloj-sla';
 import { MedidorCorrido } from '../../domain/services/medidor-corrido';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.repository';
+import { IPrimeraRespuestaWriteRepository } from '../../../tickets/domain/ports/i-primera-respuesta-write.repository';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.constants';
 import { ESTADOS_TERMINALES } from '../../../tickets/domain/state-machine/estados.constants';
@@ -29,6 +30,12 @@ export interface AplicarSlaDto {
  *    pierde las pausas); detenido lo deja como está;
  * 4. en RESUELTO recalcula `sla_cumplido` con la meta nueva.
  *
+ * Además fija el vencimiento de primera respuesta (ADR-6; sla-primera-respuesta R3, R6):
+ * `sumarMsHabiles(createdAt, h * 3_600_000)` solo para `HABIL`, con prioridad con meta
+ * (`slaPrimeraRespuestaHoras`) y no preventivo; en cualquier otro caso lo limpia. `slaActivo` NO
+ * interviene y no hay pausa (ESPERANDO_CLIENTE no lo corre). Se escribe con `primeraRespuestaAt: null`
+ * en el WHERE: repriorizar recalcula mientras no hay respuesta y deja el ticket ya respondido igual.
+ *
  * Editar las horas de una prioridad no pasa por acá: la meta de un ticket existente solo cambia
  * al repriorizarlo. La cohorte (`slaRegla`) se lee de la fila y nunca se reescribe. Sin fallback
  * silencioso: si el calendario o los feriados fallan, el error se propaga al listener.
@@ -42,6 +49,10 @@ export class AplicarSlaUseCase {
     private readonly calculoHabil: CalcularSlaHabilVenceService,
     private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
     private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
+    private readonly primeraRespuestaRepo: Pick<
+      IPrimeraRespuestaWriteRepository,
+      'fijarVencimientoSiSinRespuesta'
+    >,
   ) {}
 
   /** `ticket.creado` (S2). */
@@ -62,11 +73,14 @@ export class AplicarSlaUseCase {
     // sembrar (`null`) la comparación no iguala y el cálculo sigue normal.
     const tipoPreventivoId = await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO);
     let metaS: number | null = null;
+    let primeraRespuestaHoras: number | null = null;
     if (ticket.tipoId !== tipoPreventivoId) {
       const prioridad = await this.prioridadRepo.findById(dto.prioridadId);
       if (prioridad && prioridad.slaHoras !== null && prioridad.slaActivo) {
         metaS = Math.round(prioridad.slaHoras * 3600);
       }
+      // `slaActivo` solo gobierna la resolución: la meta de primera respuesta vive aparte (ADR-6).
+      primeraRespuestaHoras = prioridad?.slaPrimeraRespuestaHoras ?? null;
     }
 
     // El calendario se carga antes de leer el reloj: ninguna lectura de MASTER queda entre la
@@ -97,7 +111,14 @@ export class AplicarSlaUseCase {
         { metaS, estadoCodigo: fila.estadoCodigo, vencimientoActual: fila.slaVenceAt },
         medidor,
       );
-      if (await this.relojRepo.guardarSiVersion(fila.ticketId, fila.version, reloj)) return;
+      if (await this.relojRepo.guardarSiVersion(fila.ticketId, fila.version, reloj)) {
+        const venceAt =
+          ticket.slaRegla === 'HABIL' && primeraRespuestaHoras !== null
+            ? medidor.sumar(ticket.createdAt, primeraRespuestaHoras * 3_600_000)
+            : null;
+        await this.primeraRespuestaRepo.fijarVencimientoSiSinRespuesta(dto.ticketId, venceAt);
+        return;
+      }
     }
     throw new Error(`SLA_RELOJ_CONFLICTO | ticket=${dto.ticketId}`);
   }

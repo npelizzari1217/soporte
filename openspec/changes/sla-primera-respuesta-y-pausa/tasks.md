@@ -154,9 +154,9 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 - [x] 6.5 Test de integración: dos comentarios públicos concurrentes dejan la fecha del primero (`registrarSiFalta` con `updateMany where primeraRespuestaAt: null`); un segundo comentario no cambia la fecha. (`sla-primera-respuesta R1`)
 - [x] 6.6 Test de integración (invariante "borrado posterior"): borrar el comentario que registró la primera respuesta no cambia la fecha. (`sla-primera-respuesta R1`)
 - [x] 6.7 `PrismaPrimeraRespuestaWriteRepository.registrarSiFalta` y su llamada en `CrearComentarioUseCase` dentro de `txRunner.run`. (`sla-primera-respuesta R1`)
-- [ ] 6.8 Test unit de `AplicarSlaUseCase`: fija `primera_respuesta_vence_at = sumarMsHabiles(createdAt, h * 3_600_000)` solo para `HABIL`, prioridad con meta y no preventivo; `slaActivo=false` no apaga la meta; preventivo y prioridad sin meta no tienen vencimiento; repriorizar reescribe con `where primeraRespuestaAt: null` y deja el ticket ya respondido igual; entrar a ESPERANDO_CLIENTE no corre el vencimiento. (`sla-primera-respuesta R3`, `sla-primera-respuesta R6`)
-- [ ] 6.9 `AplicarSlaUseCase`: fijar y reescribir `primera_respuesta_vence_at` según 6.8. (`sla-primera-respuesta R3`, `sla-primera-respuesta R6`)
-- [ ] 6.10 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets src/sla`; raíz `node scripts/check-casts-en-specs.mjs`. Nota de riesgo de presupuesto: ~380 líneas; no partir el relleno SQL de su spec de integración.
+- [x] 6.8 Test unit de `AplicarSlaUseCase`: fija `primera_respuesta_vence_at = sumarMsHabiles(createdAt, h * 3_600_000)` solo para `HABIL`, prioridad con meta y no preventivo; `slaActivo=false` no apaga la meta; preventivo y prioridad sin meta no tienen vencimiento; repriorizar reescribe con `where primeraRespuestaAt: null` y deja el ticket ya respondido igual; entrar a ESPERANDO_CLIENTE no corre el vencimiento. (`sla-primera-respuesta R3`, `sla-primera-respuesta R6`)
+- [x] 6.9 `AplicarSlaUseCase`: fijar y reescribir `primera_respuesta_vence_at` según 6.8. (`sla-primera-respuesta R3`, `sla-primera-respuesta R6`)
+- [x] 6.10 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets src/sla`; raíz `node scripts/check-casts-en-specs.mjs`. Nota de riesgo de presupuesto: ~380 líneas; no partir el relleno SQL de su spec de integración.
 
 ## WU-7 — Barrido de primera respuesta y notificador común (~330 líneas)
 

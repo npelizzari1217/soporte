@@ -7,6 +7,10 @@ import {
   IPrioridadRepository,
 } from '../tickets/domain/ports/i-prioridad.repository';
 import {
+  PRIMERA_RESPUESTA_WRITE_REPOSITORY,
+  IPrimeraRespuestaWriteRepository,
+} from '../tickets/domain/ports/i-primera-respuesta-write.repository';
+import {
   TIPO_TICKET_REPOSITORY,
   ITipoTicketRepository,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
@@ -114,6 +118,7 @@ import {
         calculoHabil: CalcularSlaHabilVenceService,
         calendarioRepo: ICalendarioLaboralSemanalRepository,
         feriadosRepo: IFeriadosLaboralesRepository,
+        primeraRespuestaRepo: IPrimeraRespuestaWriteRepository,
       ) =>
         new AplicarSlaUseCase(
           prioridadRepo,
@@ -123,6 +128,7 @@ import {
           calculoHabil,
           calendarioRepo,
           feriadosRepo,
+          primeraRespuestaRepo,
         ),
       inject: [
         PRIORIDAD_REPOSITORY,
@@ -132,6 +138,7 @@ import {
         CalcularSlaHabilVenceService,
         CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
         FERIADOS_LABORALES_REPOSITORY,
+        PRIMERA_RESPUESTA_WRITE_REPOSITORY,
       ],
     },
     {

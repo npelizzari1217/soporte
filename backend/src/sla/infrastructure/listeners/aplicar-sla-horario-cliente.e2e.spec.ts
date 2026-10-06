@@ -59,6 +59,7 @@ import { PrismaTipoTicketRepository } from '../../../tickets/infrastructure/pers
 
 import { PrismaRelojSlaRepository } from '../persistence/prisma/prisma-reloj-sla.repository';
 import { AplicarSlaUseCase } from '../../application/use-cases/aplicar-sla.use-case';
+import { PrismaPrimeraRespuestaWriteRepository } from '../../../tickets/infrastructure/persistence/prisma/prisma-primera-respuesta-write.repository';
 import { AplicarSlaListener } from './aplicar-sla.listener';
 
 import { PrismaCalendarioLaboralSemanalRepository } from '../../../calendario-laboral/infrastructure/persistence/prisma/prisma-calendario-laboral-semanal.repository';
@@ -199,6 +200,7 @@ describe('SLA HABIL e2e — horario laboral por cliente gobierna el vencimiento 
       new CalcularSlaHabilVenceService(),
       new PrismaCalendarioLaboralSemanalRepository(tenantContext),
       new PrismaFeriadosLaboralesRepository(prismaService, tenantContext),
+      new PrismaPrimeraRespuestaWriteRepository(tenantContext),
     );
     aplicarSlaListener = new AplicarSlaListener(useCase, logger);
 
