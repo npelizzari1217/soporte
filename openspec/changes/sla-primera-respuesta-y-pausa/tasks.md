@@ -76,9 +76,9 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 - [x] 2.2 Test unit de `sumarMsHabiles`: `ms = 0` devuelve `desde`, cruce de día/feriado/fin de semana, `LIMITE_DIAS_BUSQUEDA = 400` conservado; caso viernes 17:30 con cierre 18:00 y meta 2 h vence el día hábil siguiente 1 h 30 min después de la apertura. (`sla-primera-respuesta R3`)
 - [x] 2.3 Test de regresión: los tests actuales de `venceAt` pasan sin cambios. (`sla-reloj-activo R2`)
 - [x] 2.4 `calcular-sla-habil-vence.service.ts`: agregar `msHabilesEntre` y `sumarMsHabiles` sobre el núcleo privado; `venceAt(creadoEn, horas)` delega en `sumarMsHabiles(creadoEn, horas * 3_600_000)`; `buscarInicioVentanaAbierta` acepta `tope` opcional y devuelve `null` al pasarlo. (`sla-reloj-activo R2`)
-- [ ] 2.5 Test unit de los medidores: `MedidorHabil` usa calendario y feriados vigentes; `MedidorCorrido` usa tiempo de pared (48 h de pared = 48 h). (`sla-reloj-activo R9`)
-- [ ] 2.6 Crear `sla/domain` `MedidorTiempoSla { entre; sumar }`, `MedidorHabil` y `MedidorCorrido`. (`sla-reloj-activo R9`)
-- [ ] 2.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/calendario-laboral src/sla/domain`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 2.5 Test unit de los medidores: `MedidorHabil` usa calendario y feriados vigentes; `MedidorCorrido` usa tiempo de pared (48 h de pared = 48 h). (`sla-reloj-activo R9`)
+- [x] 2.6 Crear `sla/domain` `MedidorTiempoSla { entre; sumar }`, `MedidorHabil` y `MedidorCorrido`. (`sla-reloj-activo R9`)
+- [x] 2.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/calendario-laboral src/sla/domain`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-3a — M2, columnas del reloj, repo y marcador (~390 líneas)
 
