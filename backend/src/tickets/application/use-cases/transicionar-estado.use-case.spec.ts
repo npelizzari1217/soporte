@@ -39,6 +39,16 @@ const ESTADOS: Record<string, EstadoEntity> = {
     { codigo: 'RESUELTO', nombre: 'Resuelto', color: null, orden: 4, activo: true },
     'estado-resuelto-uuid',
   ),
+  ESPERANDO_CLIENTE: EstadoEntity.create(
+    {
+      codigo: 'ESPERANDO_CLIENTE',
+      nombre: 'Esperando al cliente',
+      color: null,
+      orden: 35,
+      activo: true,
+    },
+    'estado-esperando-cliente-uuid',
+  ),
   CERRADO: EstadoEntity.create(
     { codigo: 'CERRADO', nombre: 'Cerrado', color: null, orden: 5, activo: true },
     'estado-cerrado-uuid',
@@ -465,6 +475,37 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
       expect(ticket.estadoId).toBe('estado-nuevo-uuid');
       expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it.each(['NUEVO', 'ASIGNADO', 'RESUELTO'] as const)(
+      'corrector: el salto %s→ESPERANDO_CLIENTE se rechaza (422) y el estado no cambia',
+      async (origen) => {
+        const c = makeCollaborators();
+        const ticket = makeTicket(origen);
+        c.ticketRepo.findById.mockResolvedValue(ticket);
+
+        const result = await c.useCase.execute(
+          baseDto({ nuevoEstadoCodigo: 'ESPERANDO_CLIENTE', actorEsCorrector: true }),
+        );
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
+        expect(ticket.estadoId).toBe(ESTADOS[origen].id);
+        expect(c.txRunner.run).not.toHaveBeenCalled();
+      },
+    );
+
+    it('corrector: el salto SALE de ESPERANDO_CLIENTE (→ASIGNADO) → OK', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('ESPERANDO_CLIENTE'));
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'ASIGNADO', actorEsCorrector: true }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe('estado-asignado-uuid');
+      expect(c.txRunner.run).toHaveBeenCalledTimes(1);
     });
 
     it('corrector: un ticket soft-deleted sigue siendo inválido (404), el salto NO lo reabre', async () => {

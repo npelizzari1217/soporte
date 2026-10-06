@@ -59,16 +59,16 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 
 ## WU-1 — Estado ESPERANDO_CLIENTE, constantes y guardia (~300 líneas)
 
-- [ ] 1.1 Migración tenant M1 `…_estado_esperando_cliente` con `INSERT INTO estados … ('ESPERANDO_CLIENTE','Esperando al cliente',35,…) ON CONFLICT (codigo) DO NOTHING` y `rollback.sql` que mueve los tickets en espera a EN_PROCESO y borra la fila. (`ticket-esperando-cliente R1`)
-- [ ] 1.2 Sumar el estado al seeder `tenant-seeder.adapter.ts:80-87` para los tenants nuevos. (`ticket-esperando-cliente R1`)
-- [ ] 1.3 Test de integración: cliente existente con M1 y cliente nuevo tienen `ESPERANDO_CLIENTE` exactamente una vez; reaplicar M1 no lo duplica. (`ticket-esperando-cliente R1`)
-- [ ] 1.4 Test unit de la máquina: arcos EN_PROCESO→ESPERANDO_CLIENTE y ESPERANDO_CLIENTE→EN_PROCESO/RESUELTO/CANCELADO aceptados; NUEVO/ASIGNADO/RESUELTO→ESPERANDO_CLIENTE y ESPERANDO_CLIENTE→NUEVO/ASIGNADO/CERRADO rechazados. (`ticket-esperando-cliente R1`)
-- [ ] 1.5 Agregar a `tickets/domain/state-machine/estados.constants.ts` `ESTADOS_RELOJ_CORRE`, `ESTADOS_NO_DESTINO_CORRECTIVO = {ESPERANDO_CLIENTE}` y `afectaRelojSla(anterior, nuevo)`; extender los arcos de la máquina. (`ticket-esperando-cliente R1`, `sla-reloj-activo R1`)
-- [ ] 1.6 Test unit de `afectaRelojSla`: verdadero al cambiar corre/detenido o al ir a RESUELTO; falso en arcos NUEVO→ASIGNADO→EN_PROCESO. (`sla-reloj-activo R1`)
-- [ ] 1.7 Test unit de `TransicionarEstadoUseCase` (invariante "el salto lleva a ESPERANDO_CLIENTE"): ROOT/ADMINISTRADOR con salto a ESPERANDO_CLIENTE desde NUEVO, ASIGNADO o RESUELTO recibe `TransicionInvalidaError` (422) y el estado no cambia; el salto desde ESPERANDO_CLIENTE a ASIGNADO se acepta. (`ticket-esperando-cliente R2`)
-- [ ] 1.8 `TransicionarEstadoUseCase`: `saltoCorrectivo` exige además `!ESTADOS_NO_DESTINO_CORRECTIVO.has(destino)`. (`ticket-esperando-cliente R2`)
-- [ ] 1.9 Actualizar los 5 specs que cuentan 6 estados para que cuenten 7 (exploración §1.4).
-- [ ] 1.10 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets src/catalogos`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (estado nuevo) en commit y PR; avisar en el PR que M1 no se despliega sin las WU-3.
+- [x] 1.1 Migración tenant M1 `…_estado_esperando_cliente` con `INSERT INTO estados … ('ESPERANDO_CLIENTE','Esperando al cliente',35,…) ON CONFLICT (codigo) DO NOTHING` y `rollback.sql` que mueve los tickets en espera a EN_PROCESO y borra la fila. (`ticket-esperando-cliente R1`)
+- [x] 1.2 Sumar el estado al seeder `tenant-seeder.adapter.ts:80-87` para los tenants nuevos. (`ticket-esperando-cliente R1`)
+- [x] 1.3 Test de integración: cliente existente con M1 y cliente nuevo tienen `ESPERANDO_CLIENTE` exactamente una vez; reaplicar M1 no lo duplica. (`ticket-esperando-cliente R1`)
+- [x] 1.4 Test unit de la máquina: arcos EN_PROCESO→ESPERANDO_CLIENTE y ESPERANDO_CLIENTE→EN_PROCESO/RESUELTO/CANCELADO aceptados; NUEVO/ASIGNADO/RESUELTO→ESPERANDO_CLIENTE y ESPERANDO_CLIENTE→NUEVO/ASIGNADO/CERRADO rechazados. (`ticket-esperando-cliente R1`)
+- [x] 1.5 Agregar a `tickets/domain/state-machine/estados.constants.ts` `ESTADOS_RELOJ_CORRE`, `ESTADOS_NO_DESTINO_CORRECTIVO = {ESPERANDO_CLIENTE}` y `afectaRelojSla(anterior, nuevo)`; extender los arcos de la máquina. (`ticket-esperando-cliente R1`, `sla-reloj-activo R1`)
+- [x] 1.6 Test unit de `afectaRelojSla`: verdadero al cambiar corre/detenido o al ir a RESUELTO; falso en arcos NUEVO→ASIGNADO→EN_PROCESO. (`sla-reloj-activo R1`)
+- [x] 1.7 Test unit de `TransicionarEstadoUseCase` (invariante "el salto lleva a ESPERANDO_CLIENTE"): ROOT/ADMINISTRADOR con salto a ESPERANDO_CLIENTE desde NUEVO, ASIGNADO o RESUELTO recibe `TransicionInvalidaError` (422) y el estado no cambia; el salto desde ESPERANDO_CLIENTE a ASIGNADO se acepta. (`ticket-esperando-cliente R2`)
+- [x] 1.8 `TransicionarEstadoUseCase`: `saltoCorrectivo` exige además `!ESTADOS_NO_DESTINO_CORRECTIVO.has(destino)`. (`ticket-esperando-cliente R2`)
+- [x] 1.9 Actualizar los 5 specs que cuentan 6 estados para que cuenten 7 (exploración §1.4).
+- [x] 1.10 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/tickets src/catalogos`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (estado nuevo) en commit y PR; avisar en el PR que M1 no se despliega sin las WU-3.
 
 ## WU-2 — Motor de tiempo hábil y medidores (~330 líneas)
 

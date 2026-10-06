@@ -12,7 +12,7 @@
  *
  * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1; WU-1
  * sdd/repuestos-familias; issue #155):
- * - Tras `seed()`, la DB tenant tiene 6 estados / 4 prioridades /
+ * - Tras `seed()`, la DB tenant tiene 7 estados / 4 prioridades /
  *   5 tipo_operacion (los de R19; APROBACION/RECHAZO removidos en PR-1 de
  *   sdd/redisenio-modulo-compras) / 4 tipos_ticket / 11 familias_insumo de
  *   repuesto / 4 unidades_medida (issue #155) persistidos con los códigos
@@ -29,6 +29,8 @@
  * Tarea: T7.4 (base) / T1.1-T1.2 (Fase 3, PR1 gated)
  */
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PostgresAdminService } from './postgres-admin.service';
@@ -98,6 +100,10 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     // única fuente posible del PREVENTIVO que se verifica abajo sea seed().
     await verifyClient.tipoTicket.deleteMany({ where: { codigo: 'PREVENTIVO' } });
 
+    // Mismo motivo, para ESPERANDO_CLIENTE: la migración M1 ya lo insertó al
+    // correr `migrate deploy`; el test de M1 (abajo) cubre ese camino.
+    await verifyClient.estado.deleteMany({ where: { codigo: 'ESPERANDO_CLIENTE' } });
+
     // Mismo motivo, para familias_insumo: la migración de datos
     // 20260910120100_seed_familias_insumo_repuesto ya insertó las 11 filas
     // al correr `migrate deploy` en el beforeAll. Sin este DELETE, la
@@ -124,6 +130,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
       'NUEVO',
       'ASIGNADO',
       'EN_PROCESO',
+      'ESPERANDO_CLIENTE',
       'RESUELTO',
       'CERRADO',
       'CANCELADO',
@@ -191,12 +198,45 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
         }),
       ]);
 
-    expect(estados).toHaveLength(6);
+    expect(estados).toHaveLength(7);
     expect(prioridades).toHaveLength(4);
     expect(tipoOperacion).toHaveLength(5);
     expect(tiposTicket).toHaveLength(4);
     expect(familias).toHaveLength(11);
     expect(unidades).toHaveLength(4); // issue #155
+  }, 30_000);
+
+  /**
+   * ticket-esperando-cliente R1 — el estado existe EXACTAMENTE una vez tanto en
+   * un cliente existente (lo inserta la migración M1) como en uno nuevo (lo
+   * siembra el seeder), y reaplicar cualquiera de los dos no lo duplica.
+   */
+  it('[CRITICAL] ESPERANDO_CLIENTE queda una sola vez con M1, con seed() y al reaplicar M1', async () => {
+    const contar = () => verifyClient.estado.count({ where: { codigo: 'ESPERANDO_CLIENTE' } });
+    const m1 = readFileSync(
+      join(
+        __dirname,
+        '../../../prisma_tenant/migrations/20261007120000_estado_esperando_cliente/migration.sql',
+      ),
+      'utf8',
+    );
+
+    // Cliente existente: solo migraciones (sin seed).
+    await verifyClient.estado.deleteMany({ where: { codigo: 'ESPERANDO_CLIENTE' } });
+    await verifyPool.query(m1);
+    expect(await contar()).toBe(1);
+    await verifyPool.query(m1);
+    expect(await contar()).toBe(1);
+
+    // Cliente nuevo: seed() sobre la base ya migrada tampoco lo duplica.
+    await seeder.seed(DB_NAME);
+    await seeder.seed(DB_NAME);
+    expect(await contar()).toBe(1);
+
+    const fila = await verifyClient.estado.findUniqueOrThrow({
+      where: { codigo: 'ESPERANDO_CLIENTE' },
+    });
+    expect(fila).toMatchObject({ nombre: 'Esperando al cliente', orden: 35, activo: true });
   }, 30_000);
 
   /**

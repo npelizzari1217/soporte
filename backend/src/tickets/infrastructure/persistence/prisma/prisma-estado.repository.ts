@@ -1,7 +1,7 @@
 /**
  * PrismaEstadoRepository — implementación del puerto IEstadoRepository.
  *
- * El catálogo de estados es sembrado en provisioning (ADR-1, 6 códigos
+ * El catálogo de estados es sembrado en provisioning (ADR-1, 7 códigos
  * fijos). Este repo es SOLO LECTURA — ningún use case crea/modifica estados
  * (spec T1: sin endpoints de alta/baja/edición).
  *
