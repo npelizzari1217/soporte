@@ -131,3 +131,13 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03a3`, base `...-wu03a2`.
 - Verificacion: `pnpm vitest run` del spec 1/1, eslint del archivo limpio.
 - Decision: los tests T13 existentes filtran por clase de evento, porque RESUELTO ahora publica dos eventos; el mock de `alCommitear` imita al runner real (callback protegido).
 - Evidencia: lint y typecheck limpios; `pnpm vitest run src/tickets src/equipos/mantenimiento` verde. Rollback: sin listener el marcador no tiene efecto observable (columnas sin consumidores hasta la WU-3b).
+
+## WU-3b.1 — `RelojSla` y puerto del repo (tareas 3b.1 a 3b.4, 3b.2b, 3b.7)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03b`, base `...-wu03a4`. Partida por presupuesto de 400 lineas: esta parte es el dominio puro con sus tests de pausa/reanudacion/derivado/orden; quedan para el siguiente intento 3b.5 y 3b.6 (specs ya escritos, en `git stash` `wu03b2`), 3b.8 a 3b.12.
+
+- `sla/domain/entities/reloj-sla.ts`: `RelojSla.plegar` (pliegue puro; el estado actual manda sobre `corre_desde`, `acumulado NULL` = previo se incorpora, tiempos recortados a monotono, redondeo `Math.round(ms/1000)` por tramo, vencimiento derivado solo si termina corriendo y hubo reanudacion) y `RelojSla.medidorPara` (cohorte por `slaRegla`).
+- `sla/domain/ports/i-reloj-sla.repository.ts`: `leer`, `historialSinSecuencia`, `transicionesDesde`, `guardarSiVersion`, `findPendientes`.
+- Tests: `reloj-sla.spec.ts` (3b.1 a 3b.4, 3b.2b) y `reloj-sla.fixtures.ts` compartido.
+- Mutacion 3b.5 (`<=` a `<` en el cumplimiento), corrida con el spec completo antes de partir: rojo (`acumulado igual a la meta cumple`, 1 fallo de 23) y verde al restaurar. El test vive en `reloj-sla.cumplimiento.spec.ts`, que va en el siguiente intento.
+- Evidencia: `pnpm vitest run src/sla/domain` 34 tests verdes; lint, typecheck y ratchet de casts (626) limpios. Rollback: archivos nuevos sin consumidores.
