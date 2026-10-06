@@ -129,14 +129,58 @@ export class RelojSla {
     const resultado: RelojSlaResultado = { acumuladoS, metaS, correDesde, cumplido };
     if (!(correActual && reanudo && metaS !== null && correDesde)) return resultado;
 
-    // Vencimiento derivado (ADR-4): lo que falta desde el inicio del tramo, o el exceso ya consumido.
-    const restanteS = metaS - acumuladoS;
-    const slaVenceAt =
-      restanteS > 0
-        ? medidor.sumar(correDesde, restanteS * 1000)
-        : fila.slaVenceAt && fila.slaVenceAt < correDesde
-          ? fila.slaVenceAt
-          : correDesde;
+    const slaVenceAt = RelojSla.vencimientoDerivado({
+      metaS,
+      acumuladoS,
+      correDesde,
+      vencimientoActual: fila.slaVenceAt,
+      medidor,
+    });
+    return { ...resultado, slaVenceAt };
+  }
+
+  /**
+   * Vencimiento derivado (ADR-4): lo que falta desde el inicio del tramo, o el exceso ya consumido.
+   * Anclar en `correDesde` equivale a `meta - (acumulado + entre(correDesde, ahora))` sumado desde
+   * ahora, sin depender del reloj de pared.
+   */
+  static vencimientoDerivado(p: {
+    metaS: number;
+    acumuladoS: number;
+    correDesde: Date;
+    vencimientoActual: Date | null;
+    medidor: MedidorTiempoSla;
+  }): Date {
+    const restanteS = p.metaS - p.acumuladoS;
+    if (restanteS > 0) return p.medidor.sumar(p.correDesde, restanteS * 1000);
+    return p.vencimientoActual && p.vencimientoActual < p.correDesde
+      ? p.vencimientoActual
+      : p.correDesde;
+  }
+
+  /**
+   * Aplica la meta de la prioridad sobre un reloj ya plegado (ADR-4, `AplicarSla`). Sin meta
+   * (preventivo, sin `slaHoras` o `slaActivo=false`) el ticket queda sin vencimiento ni cumplimiento.
+   * Con el reloj corriendo deriva el vencimiento; detenido lo deja como esta. En RESUELTO recalcula
+   * el cumplimiento con la meta nueva.
+   */
+  static conMeta(
+    base: RelojSlaResultado,
+    p: { metaS: number | null; estadoCodigo: string; vencimientoActual: Date | null },
+    medidor: MedidorTiempoSla,
+  ): RelojSlaResultado {
+    const { metaS, estadoCodigo } = p;
+    if (metaS === null) return { ...base, metaS: null, cumplido: null, slaVenceAt: null };
+    const cumplido = estadoCodigo === 'RESUELTO' ? base.acumuladoS <= metaS : base.cumplido;
+    const resultado = { ...base, metaS, cumplido };
+    if (!ESTADOS_RELOJ_CORRE.has(estadoCodigo) || !base.correDesde) return resultado;
+    const slaVenceAt = RelojSla.vencimientoDerivado({
+      metaS,
+      acumuladoS: base.acumuladoS,
+      correDesde: base.correDesde,
+      vencimientoActual: base.slaVenceAt !== undefined ? base.slaVenceAt : p.vencimientoActual,
+      medidor,
+    });
     return { ...resultado, slaVenceAt };
   }
 }

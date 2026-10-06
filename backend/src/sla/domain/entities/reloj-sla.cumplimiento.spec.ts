@@ -32,6 +32,15 @@ describe('RelojSla.plegar', () => {
       expect(r.cumplido).toBe(true);
     });
 
+    it('la meta es la fijada en el ticket: tras bajar las horas de la prioridad a 4 h, resolver con 6 h sobre una meta de 8 h cumple', () => {
+      // El pliegue no consulta la prioridad: solo `fila.metaS`, que fija AplicarSla al crear o repriorizar.
+      const r = resolver({ metaS: 8 * H, acumuladoS: 6 * H, correDesde: null }, [
+        op('ESPERANDO_CLIENTE', 'RESUELTO', L(11, 12)),
+      ]);
+
+      expect(r.cumplido).toBe(true);
+    });
+
     it('9 h sobre una meta de 8 h no cumple de inmediato', () => {
       const r = resolver({}, [op('EN_PROCESO', 'RESUELTO', L(10, 18))]);
 

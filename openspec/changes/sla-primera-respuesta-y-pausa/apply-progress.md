@@ -178,3 +178,13 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03c`, base `...-wu03b4`. Partida por 
 - Higiene de la WU-3b: `prisma-reloj-sla.repository.integration.spec.ts` barre al empezar sus filas (`WU3B*` sin `WU3BC*`, que es del spec de consolidacion) y `prisma-reloj-sla-marcador.integration.spec.ts` barre el tipo de operacion `WU3AO*` y sus operaciones; elimino la fila residual `WU3AOb5596d` de `soporte_tenant_test`. Los demas prefijos `WU3A*` los comparten otros specs y no se barren.
 - Cableado: `SlaModule` pasa el repo del reloj y `ConsolidarRelojSlaUseCase` a `MarcarVencidosUseCase`.
 - Evidencia: lint, typecheck, `pnpm vitest run src/sla src/tickets` y `src/app.module.smoke.spec.ts` verdes sobre este arbol; ratchet de casts 626 a 624 (el spec del barrido ya no usa `as never`), base bajada a 624 en 115 archivos.
+
+## WU-3c.2 — vencimiento derivado y meta en `RelojSla` (base de 3c.1 a 3c.3)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03c2`, base `...-wu03c`. Pieza A de tres: solo el dominio puro; sin consumidores todavia. Quedan `AplicarSlaUseCase` con su spec, e2e, cableado y borrado de `ISlaTicketWriteRepository` (3c.1 a 3c.4, un commit `size:exception`: cambio de API del caso de uso con la reescritura de su spec) y el test de integracion del barrido (3c.6) con la verificacion 3c.8; todo en el stash `wu03c3`.
+
+- `RelojSla.vencimientoDerivado` (la regla de ADR-4 extraida de `plegar`, que ahora la usa) y `RelojSla.conMeta` (meta null sin `slaHoras`, con `slaActivo=false` o para preventivos; vencimiento derivado solo con el reloj corriendo; cumplimiento recalculado en RESUELTO).
+- Anclaje: `sumar(corre_desde, meta - acumulado)` es la formula de ADR-4 (`inicioTramo` = `corre_desde`); conforme al diseno, no es una desviacion.
+- Tests: `reloj-sla.meta.spec.ts` (derivacion, CORRIDO, detenido, sin meta, cumplimiento en RESUELTO incluido el borde `<=`) y un caso en `reloj-sla.cumplimiento.spec.ts` (la meta es la fijada en el ticket: tras bajar las horas de la prioridad a 4 h, resolver con 6 h sobre 8 h cumple).
+- Nota: `CalcularSlaVenceService` quedara sin consumidor de produccion al aterrizar `AplicarSla`; se deja para una limpieza aparte.
+- Evidencia: lint y typecheck limpios; `pnpm vitest run src/sla` 16 archivos, 119 tests verdes; ratchet de casts sin cambios. Rollback: archivos de dominio sin consumidores.
