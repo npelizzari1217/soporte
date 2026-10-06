@@ -228,7 +228,13 @@ describe('Ticket esperando al cliente e2e (WU-4: R3, R4)', () => {
     );
     const tecnico = await crearActor(
       'TECNICO',
-      ['TICKETS:ALTAS', 'TICKETS:COMENTAR', 'TICKETS:VER_TODOS', 'TICKETS:TRANSICIONAR'],
+      [
+        'TICKETS:ALTAS',
+        'TICKETS:COMENTAR',
+        'TICKETS:VER_TODOS',
+        'TICKETS:TRANSICIONAR',
+        'TICKETS:ASIGNAR',
+      ],
       cliente.id,
     );
     const creado = await http<TicketResponseDto>(
@@ -312,5 +318,36 @@ describe('Ticket esperando al cliente e2e (WU-4: R3, R4)', () => {
     expect(reanudacion).toHaveLength(1);
     // La salida de la espera no reenvía el mail de espera.
     expect(mailsDeEspera()).toHaveLength(1);
+  });
+
+  it('sla-primera-respuesta R1 "Eventos que no cuentan": asignar y cambiar de estado dejan primera_respuesta_at en NULL; el primer público de un no solicitante la fija', async () => {
+    const { tecnico, ticketId } = await escenario();
+    const primeraRespuesta = async (): Promise<Date | null> =>
+      (await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } })).primeraRespuestaAt;
+
+    // escenario() ya cambió de estado tres veces (ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE).
+    expect(await primeraRespuesta()).toBeNull();
+
+    // Asignación manual del técnico.
+    const asignado = await http(
+      'PATCH',
+      `${baseUrl}/tickets/${ticketId}/asignar`,
+      { asignadoId: tecnico.usuario.id },
+      bearer(tecnico.accessToken),
+    );
+    expect(asignado.status).toBe(200);
+    // Un cambio de estado más, después de asignar.
+    const transicion = await http(
+      'PATCH',
+      `${baseUrl}/tickets/${ticketId}/estado`,
+      { nuevoEstadoCodigo: 'EN_PROCESO' },
+      bearer(tecnico.accessToken),
+    );
+    expect(transicion.status).toBe(200);
+    expect(await primeraRespuesta()).toBeNull();
+
+    // El primer comentario público de un no solicitante sí la registra.
+    expect((await comentar(tecnico.accessToken, ticketId, false)).status).toBe(201);
+    expect(await primeraRespuesta()).not.toBeNull();
   });
 });

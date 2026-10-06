@@ -114,15 +114,6 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu03a3`, base `...-wu03a2`. Con esta pa
 - Tests: unit del caso de uso (marca y publica solo si afecta; NUEVO a ASIGNADO no; marcador que falla no publica) y `prisma-reloj-sla-marcador.integration.spec.ts` (rollback no deja version ni seq ni evento; dos transiciones concurrentes dan seq 1 y 2 y version 2).
 - Decision: los tests T13 existentes filtran por clase de evento, porque RESUELTO ahora publica dos eventos (el de notificaciones y `ticket.transicionado`); el mock de `alCommitear` imita al runner real (callback protegido).
 - Evidencia: lint y typecheck limpios; `pnpm vitest run src/tickets src/equipos/mantenimiento` verde. Rollback: el marcador sin listener no tiene efecto observable (columnas nuevas sin consumidores hasta la WU-3b).
-
-## WU-3a.3 — marcador del reloj y evento (tareas 3a.9 a 3a.14)
-
-Rama `feat/sla-primera-respuesta-y-pausa-wu03a3`, base `...-wu03a2`.
-
-- Puertos `IRelojSlaMarcador` y `IPrimeraRespuestaWriteRepository` (este solo declarado) en `tickets/domain/ports`; `TicketTransicionadoEvent` (`'ticket.transicionado'`).
-- `PrismaRelojSlaMarcador`: `ticket.update` con `increment` de `sla_reloj_version` (toma el lock de la fila) y `operacionTicket.update` con `slaRelojSeq`. Registrado en `TicketsModule` y pasado como 9.o argumento a `TransicionarEstadoUseCase`.
-- `TransicionarEstadoUseCase`: dentro de la tx, despues de `save(ticket)` y `save(operacion)`, marca solo si `afectaRelojSla`, y publica el evento en `alCommitear`.
-- Tests: unit del caso de uso (marca y publica solo si afecta; NUEVO a ASIGNADO no; marcador que falla no publica) y `prisma-reloj-sla-marcador.integration.spec.ts` (rollback no deja version ni seq ni evento; dos transiciones concurrentes dan seq 1 y 2 y version 2).
 - La asercion de DB de 3a.12 sobre `AsignarYPonerEnProcesoUseCase` (deja `sla_reloj_seq` NULL) va en el commit siguiente (WU-3a.4), por presupuesto de 400 lineas.
 
 ## WU-3a.4 — regresion de AsignarYPonerEnProceso
@@ -396,7 +387,7 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu09ab`, base `...-wu09a`.
 | Rollback boundary | `ticket-header.tsx`, `types.ts` y sus specs, mas el spec del dialogo de prioridad |
 
 
-## WU-9b — frontend: arcos, badge, tarjetas (tareas 9b.1 a 9b.5; 9b.6 y 9b.7 quedan pendientes)
+## WU-9b — frontend: arcos, badge, tarjetas (tareas 9b.1 a 9b.5 y 9b.7; 9b.7 quedo hecha en el PR del tracker #421; 9b.6 es un paso posterior al deploy, fuera de la lista de tareas)
 
 Rama `feat/sla-primera-respuesta-y-pausa-wu09b`, base `...-wu09ab`.
 
@@ -413,3 +404,10 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu09b`, base `...-wu09ab`.
 | Focused test | frontend `pnpm test`: 245 archivos / 1990 tests verdes; backend `src/tickets`: 697 verdes |
 | Runtime harness | N/A: componentes presentacionales (Testing Library + msw) y funcion pura de dominio |
 | Rollback boundary | `estado-transitions.ts`, `types.ts`, `status-badge.tsx`, control de transicion, modulo dashboard FE, policy/controller del estado SLA, `tickets-listado.md` y sus specs |
+
+## Remediacion del verify
+
+Rama `feat/sla-primera-respuesta-y-pausa-verify-fix`, base `...-wu09b`. Cierra los hallazgos de `verify-report.md`.
+
+- **C1** (escenario "Eventos que no cuentan", `sla-primera-respuesta` R1): `esperando-cliente.e2e.spec.ts` suma un test con Prisma real. Tras tres cambios de estado, una asignacion manual (`PATCH /tickets/:id/asignar`) y otra transicion, `primera_respuesta_at` sigue NULL; el primer comentario publico de un no solicitante la fija. El tecnico del spec recibe `TICKETS:ASIGNAR`.
+- **W1**: el encabezado de la WU-9b ya coincide con `tasks.md` (9b.7 hecha en el PR #421; 9b.6 es un paso posterior al deploy) y la seccion WU-3a.3 duplicada quedo en una sola, con su nota de la asercion 3a.12.
