@@ -87,9 +87,9 @@ Despliegue: solo la cadena completa. Si M1 llega a producción sin las WU-3, la 
 - [x] 3a.3 Test de integración de M2: las filas existentes quedan con `sla_acumulado_s` y `sla_corre_desde` NULL (ticket previo), los defaults aplican a filas nuevas y los CHECK rechazan valores inválidos; sin recálculo de vencimientos ni cumplimientos. (`sla-reloj-activo R7`)
 - [x] 3a.4 Test de deriva al estilo de `tickets-sla-regla.integration.spec.ts`: los defaults de Prisma y del DDL coinciden en las 5 columnas con default (`information_schema.columns.column_default`).
 - [x] 3a.5 Medir con `EXPLAIN ANALYZE` en un tenant de prueba el índice parcial y el relleno de defaults de M2 antes del deploy; dejar el resultado en el PR.
-- [ ] 3a.6 Test de integración (invariante "`save` con lectura vieja"): cargar, consolidar, `save` deja `slaVenceAt` y `vencido` intactos. (`sla-reloj-activo R2`)
-- [ ] 3a.7 `PrismaTicketRepository.save`: rama `create` con `slaAcumuladoS: 0` y `slaCorreDesde = createdAt`; sacar de `toPersistence` las 7 columnas nuevas y también `slaVenceAt` y `vencido` de la rama `update`; ampliar el `Omit`. (`sla-reloj-activo R2`)
-- [ ] 3a.8 `RelojSlaSnapshot` de solo lectura en `ticket.entity.ts`, cargado por `toDomain`.
+- [x] 3a.6 Test de integración (invariante "`save` con lectura vieja"): cargar, consolidar, `save` deja `slaVenceAt` y `vencido` intactos. (`sla-reloj-activo R2`)
+- [x] 3a.7 `PrismaTicketRepository.save`: rama `create` con `slaAcumuladoS: 0` y `slaCorreDesde = createdAt`; sacar de `toPersistence` las 7 columnas nuevas y también `slaVenceAt` y `vencido` de la rama `update`; ampliar el `Omit`. (`sla-reloj-activo R2`)
+- [x] 3a.8 `RelojSlaSnapshot` de solo lectura en `ticket.entity.ts`, cargado por `toDomain`.
 - [ ] 3a.9 Declarar los puertos `IRelojSlaMarcador` y `IPrimeraRespuestaWriteRepository` en `tickets/domain/ports` y `TicketTransicionadoEvent` (`'ticket.transicionado'`).
 - [ ] 3a.10 Test de integración (invariante "el marcador queda fuera de la tx"): un rollback forzado de la tx no deja `sla_reloj_version` incrementada. (`sla-reloj-activo R4`)
 - [ ] 3a.11 Test de integración (invariante "secuencias repetidas o con huecos"): dos transiciones concurrentes sobre el mismo ticket dejan `seq` 1 y 2 y `sla_reloj_version = 2`. (`sla-reloj-activo R1`)

@@ -62,6 +62,15 @@ export class TicketMapper {
       row.updatedAt,
       row.deletedAt ?? null,
       parseSlaRegla(row.slaRegla),
+      {
+        acumuladoS: row.slaAcumuladoS ?? null,
+        metaS: row.slaMetaS ?? null,
+        correDesde: row.slaCorreDesde ?? null,
+        seqHasta: row.slaRelojSeqHasta,
+        version: row.slaRelojVersion,
+        pendiente: row.slaRelojPendiente,
+        cumplido: row.slaCumplido ?? null,
+      },
     );
   }
 
