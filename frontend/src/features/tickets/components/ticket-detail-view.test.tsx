@@ -29,6 +29,8 @@ const TICKET = {
   asignadoApellido: "Díaz",
   slaVenceAt: "2020-01-01T00:00:00.000Z",
   vencido: true,
+  sla: { estado: "VENCIDO", venceAt: "2020-01-01T00:00:00.000Z" },
+  primeraRespuesta: { estado: "SIN_META", venceAt: null, at: null },
   fechaCierre: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",

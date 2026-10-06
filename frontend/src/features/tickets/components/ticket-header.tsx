@@ -14,8 +14,9 @@
  * (`solicitanteTelefono`, solo en el detalle) se muestra solo si no es nulo. Todo se renderiza como
  * texto de React (escapado): nunca `dangerouslySetInnerHTML`.
  *
- * SLA (`slaVenceAt`/`vencido`, item 2 del mismo batch) — antes gap
- * documentado, ahora expuesto por `toTicketResponseDto`.
+ * SLA: el estado lo deriva el backend (`ticket.sla.estado`, ADR-8 de sla-primera-respuesta-y-pausa);
+ * este componente no lee `vencido`, que es solo el deduplicador del mail. En pausa no se muestra
+ * una fecha de vencimiento como vigente. El badge de primera respuesta aparece solo si está vencida.
  */
 import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
@@ -55,6 +56,8 @@ export function TicketHeader({
   puedeVerCsat = false,
 }: TicketHeaderProps) {
   const muestraCsat = puedeVerCsat && ticket.csatPuntaje !== undefined;
+  const estadoSla = ticket.sla.estado;
+  const venceAt = estadoSla === "EN_PAUSA" || estadoSla === "SIN_SLA" ? null : ticket.sla.venceAt;
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -65,10 +68,11 @@ export function TicketHeader({
         <div className="flex items-center gap-2">
           <StatusBadge estado={(estadoCodigo as TicketEstado) ?? "NUEVO"} />
           <PriorityBadge prioridad={prioridadCodigo ?? "-"} />
-          {ticket.slaVenceAt && (
-            <Badge variant={ticket.vencido ? "destructive" : "success"}>
-              {ticket.vencido ? "SLA vencido" : "SLA al día"}
-            </Badge>
+          {estadoSla === "VENCIDO" && <Badge variant="destructive">SLA vencido</Badge>}
+          {estadoSla === "AL_DIA" && <Badge variant="success">SLA al día</Badge>}
+          {estadoSla === "EN_PAUSA" && <Badge variant="secondary">SLA en pausa</Badge>}
+          {ticket.primeraRespuesta.estado === "VENCIDA" && (
+            <Badge variant="destructive">Primera respuesta vencida</Badge>
           )}
         </div>
       </div>
@@ -102,7 +106,7 @@ export function TicketHeader({
         </div>
         <div>
           <dt className="text-muted-foreground">
-            {ticket.slaVenceAt ? "SLA vence" : "Creado"}
+            {venceAt ? "SLA vence" : estadoSla === "EN_PAUSA" ? "SLA" : "Creado"}
           </dt>
           {/*
            * Ticket.slaVenceAt / createdAt son @db.Timestamptz — instante.
@@ -112,7 +116,9 @@ export function TicketHeader({
            * las 09:00 o a las 23:00.
            */}
           <dd className="text-foreground">
-            {formatearInstante(ticket.slaVenceAt ?? ticket.createdAt)}
+            {estadoSla === "EN_PAUSA"
+              ? "En pausa, esperando al cliente"
+              : formatearInstante(venceAt ?? ticket.createdAt)}
           </dd>
         </div>
       </dl>

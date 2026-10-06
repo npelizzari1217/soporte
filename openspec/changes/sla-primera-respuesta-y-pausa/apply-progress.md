@@ -378,3 +378,20 @@ Rama `feat/sla-primera-respuesta-y-pausa-wu09a`, base `...-wu08b`. El total (~55
 | Focused test | `pnpm vitest run src/tickets`: 69 archivos / 695 tests verdes |
 | Runtime harness | N/A: el DTO se prueba por unit y por el spec del controller; sin frontera de runtime nueva |
 | Rollback boundary | policy + snapshot + mapper + DTO + controller y sus specs |
+
+## WU-9a — parte 2: frontend (tareas 9a.4, 9a.5 y 9a.6; WU-9a completa)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu09ab`, base `...-wu09a`.
+
+- `ticket-header.tsx` deja de leer `vencido`; badges "SLA al dia", "SLA vencido", "SLA en pausa" (sin fecha vigente: "En pausa, esperando al cliente") y "Primera respuesta vencida"; sin badge para SIN_META, PENDIENTE y CUMPLIDA. `types.ts` suma `sla`, `primeraRespuesta`, `EstadoSla` y `EstadoPrimeraRespuesta`. 6 tests nuevos en `ticket-header.test.tsx`.
+- Arrastre: el cast nuevo de la WU-5 en `prioridad-form-dialog.test.tsx` (`as Record<string, unknown>` en `abrirYGuardar`) se reemplazo por un parseo con zod; los dos casts previos del archivo no son de la WU-5 y quedan.
+- Verificacion 9a.6 sobre el arbol del commit: `JWT_SECRET=dummy pnpm lint` y `pnpm type-check` limpios; `pnpm test` frontend 245 archivos / 1978 tests; `node scripts/check-casts-en-specs.mjs`: 617/114.
+- Ayuda: deuda — badges de SLA en pausa, vencido y primera respuesta en el encabezado del ticket.
+
+### Work Unit Evidence (parte 2)
+| Evidence | Value |
+|---|---|
+| Focused test | frontend `pnpm test`: 245 archivos / 1978 tests verdes |
+| Runtime harness | N/A: componente presentacional sin frontera de runtime nueva |
+| Rollback boundary | `ticket-header.tsx`, `types.ts` y sus specs, mas el spec del dialogo de prioridad |
+

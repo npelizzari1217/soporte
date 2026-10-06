@@ -2,10 +2,14 @@ import { describe, it, expect } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { z } from "zod";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders } from "../../../../test/render-with-providers";
 import { PrioridadFormDialog } from "./prioridad-form-dialog";
 import type { Prioridad } from "@/features/tickets/types";
+
+/** Cuerpo JSON capturado en los handlers de msw, tipado por parseo y no por cast. */
+const cuerpoJson = z.record(z.string(), z.unknown());
 
 /**
  * PrioridadFormDialog — regresión de dialogos-reset-valores-vigentes: mismo
@@ -88,7 +92,7 @@ describe("PrioridadFormDialog", () => {
       let capturado: Record<string, unknown> | null = null;
       server.use(
         http.patch("/api/catalogos/prioridades/p1", async ({ request }) => {
-          capturado = (await request.json()) as Record<string, unknown>;
+          capturado = cuerpoJson.parse(await request.json());
           return HttpResponse.json({ ...prioridad, ...capturado });
         }),
       );
