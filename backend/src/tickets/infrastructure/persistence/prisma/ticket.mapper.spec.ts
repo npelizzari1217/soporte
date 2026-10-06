@@ -43,6 +43,30 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
 }
 
 describe('TicketMapper', () => {
+  describe('reloj de SLA (M2)', () => {
+    it('toDomain() carga el snapshot de solo lectura; acumulado NULL = ticket previo', () => {
+      const previo = TicketMapper.toDomain(
+        makeFakeRow({ slaAcumuladoS: null, slaCorreDesde: null }),
+      );
+      expect(previo.relojSla).toMatchObject({
+        acumuladoS: null,
+        correDesde: null,
+        pendiente: false,
+      });
+      const nuevo = TicketMapper.toDomain(makeFakeRow({ slaMetaS: 3600, slaRelojVersion: 2 }));
+      expect(nuevo.relojSla).toMatchObject({ acumuladoS: 0, metaS: 3600, version: 2 });
+    });
+
+    it('toPersistence() no incluye ninguna de las 7 columnas del reloj', () => {
+      const data = TicketMapper.toPersistence(TicketMapper.toDomain(makeFakeRow()));
+      expect(
+        Object.keys(data).filter(
+          (k) => k.startsWith('slaReloj') || /^sla(Acumulado|Meta|Corre|Cumplido)/.test(k),
+        ),
+      ).toEqual([]);
+    });
+  });
+
   describe('toDomain()', () => {
     it('mapea todos los campos de una fila Prisma a TicketEntity', () => {
       const row = makeFakeRow();

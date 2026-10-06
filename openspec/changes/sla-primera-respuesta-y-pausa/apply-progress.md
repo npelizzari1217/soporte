@@ -94,3 +94,12 @@ Modo: estandar. Rama `feat/sla-primera-respuesta-y-pausa-wu03a`, base `feat/sla-
 | Rollback | `rollback.sql` de M2; el resto son archivos de prueba y tipos |
 
 M2 no se despliega sin la cadena completa.
+
+## WU-3a.2 — repo acotado y snapshot del reloj (tareas 3a.6 a 3a.8)
+
+Rama `feat/sla-primera-respuesta-y-pausa-wu03a2`, base `...-wu03a`.
+
+- `prisma-ticket.repository.ts`: la rama `update` del upsert descarta `slaVenceAt` y `vencido`; la rama `create` fija `slaAcumuladoS: 0` y `slaCorreDesde = createdAt`.
+- `ticket.entity.ts`: `RelojSlaSnapshot` de solo lectura (getter `relojSla`, `null` antes de persistir), cargado por `TicketMapper.toDomain`.
+- Tests: `prisma-ticket-repository.save.integration.spec.ts` (alta incorporada; `save` con lectura vieja deja `slaVenceAt` y `vencido` intactos) y casos nuevos en `ticket.mapper.spec.ts`.
+- Evidencia: `pnpm vitest run src/tickets src/equipos/mantenimiento` 61 archivos, 621 tests verdes; lint y typecheck limpios; ratchet de casts 626 (base 626). Rollback: el repo y la entidad sin consumidores nuevos.
