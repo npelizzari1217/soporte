@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-06 contra el código de `main` (`9a80346b`),
+decisión.** Actualizado el 2026-10-06 contra el código de `main` (`ba083775`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
@@ -639,7 +639,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 1 | **Formulario público por cliente + QR en los equipos** | El cliente viene en la URL, así que no tiene la ambigüedad que postergó el punto 6. El QR pegado en el equipo abre el formulario con el equipo cargado. Lo difícil: frenar el spam y decidir qué pasa con quien pide sin usuario | Media · 5-8 días | **Entregado** — en `main` por el #300 (`f39cf601`), desplegado el 2026-10-05; habilitado en Cic Lanus y probado de punta a punta en producción |
 | 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | **Entregado** — en `main` por el #365 (`9a80346b`), desplegado el 2026-10-05 |
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | Pendiente |
-| 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | Pendiente |
+| 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | **Entregado** — en `main` por los PRs #369-#375 (`ba083775`), desplegado el 2026-10-06 |
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | Pendiente |
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | Pendiente |
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
@@ -748,6 +748,16 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - Lo público o interno sigue siendo la casilla que ya existe: la respuesta no lo
     lleva.
   - **Sin variables** en esta versión: el texto se inserta tal cual.
+  - **Cumplida** (2026-10-06, PRs #369-#375, desplegado el mismo día): las 8 viñetas
+    están implementadas y probadas. La tabla `respuestas_predefinidas` vive en la
+    base de cada cliente, con un índice único sobre `lower(titulo)` y los límites de
+    largo como CHECK. `GET /respuestas-predefinidas` queda abierto a los usuarios del
+    cliente, y las tres escrituras llevan `AdminClienteGuard`, sin permisos nuevos.
+    El selector ofrece solo las activas (`?activas=true`), agrega el texto en una
+    línea nueva y no envía el comentario. Ni edilicia ni las reparaciones lo usan.
+    Una precisión que no es desviación: el ABM lista también las desactivadas, para
+    poder reactivarlas, a diferencia del listado de sectores, que solo muestra las
+    activas.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
