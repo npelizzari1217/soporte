@@ -220,11 +220,11 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 - [x] 10.1 Test de `ipDelNavegador` del BFF (`frontend/src/shared/auth/sesion-bff.test.ts`): toma la entrada más a la derecha de `x-forwarded-for` (la que agrega IIS/ARR) y descarta lo que el navegador mande a la izquierda; quita el puerto (`1.2.3.4:56789` → `1.2.3.4`, `[2001:db8::1]:56789` → `2001:db8::1`); una IP sin puerto pasa igual; lo que no es IP válida no se reenvía. IPv4 e IPv6, con y sin puerto. (I4)
 - [x] 10.2 Crear `frontend/src/shared/auth/sesion-bff.ts` (`responderConSesion`, `ipDelNavegador`) y agregar la cookie `td` en `shared/auth/cookies.ts` (httpOnly, `sameSite lax`, `__Host-` en prod, `TRUSTED_DEVICE_MAX_AGE` de 30 días). (I4, D1, D2)
-- [ ] 10.3 Test de las rutas BFF con msw: `login` envía `x-soporte-ip-navegador` y la cookie `td` como `dispositivoConfiable`, y quita `dispositivoConfiable` del body antes de responder; `2fa/verificar` guarda `td` si viene; `login/continuar` y `login/seleccionar` fijan las cookies de sesión; ninguna respuesta filtra el token del dispositivo ni contraseñas. (D1, D3, L7, L2)
-- [ ] 10.4 Modificar `frontend/src/app/api/auth/login/route.ts` y crear `.../2fa/verificar/route.ts`, `.../login/continuar/route.ts`, `.../login/seleccionar/route.ts`. Enrolamiento y autogestión van por el proxy genérico `[...path]`. (D1, L7)
+- [x] 10.3 Test de las rutas BFF con msw: `login` envía `x-soporte-ip-navegador` y la cookie `td` como `dispositivoConfiable`, y quita `dispositivoConfiable` del body antes de responder; `2fa/verificar` guarda `td` si viene; `login/continuar` y `login/seleccionar` fijan las cookies de sesión; ninguna respuesta filtra el token del dispositivo ni contraseñas. (D1, D3, L7, L2)
+- [x] 10.4 Modificar `frontend/src/app/api/auth/login/route.ts` y crear `.../2fa/verificar/route.ts`, `.../login/continuar/route.ts`, `.../login/seleccionar/route.ts`. Enrolamiento y autogestión van por el proxy genérico `[...path]`. (D1, L7)
 - [x] 10.5 Test de `apiFetch`: un 401 de las rutas del flujo de login no dispara refresh ni re-postea la contraseña; las rutas fuera del set sí refrescan. (L7, I1)
 - [x] 10.6 Cambiar el chequeo `path !== "auth/refresh"` de `frontend/src/shared/api/client.ts:74` por un set `RUTAS_SIN_REFRESH` con las rutas del flujo de login. (L7, I1)
-- [ ] 10.7 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Nota de riesgo de presupuesto: ~395 líneas, sin corte más limpio (BFF y su helper viajan con sus tests).
+- [x] 10.7 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Nota de riesgo de presupuesto: ~395 líneas, sin corte más limpio (BFF y su helper viajan con sus tests).
 
 ## WU-11a — Máquina de login y desafío (~380 líneas)
 
