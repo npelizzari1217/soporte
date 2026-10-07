@@ -378,3 +378,15 @@ WU-11a entera sumaba 553 lineas; el orquestador la partio por la costura que pro
 - `login/page.tsx` renderiza por paso; el enrolamiento es un aviso provisorio hasta WU-11b.
 - Hallazgos del validador que pasan a WU-11b (mismo hook): un desafio o ticket vencido deja al usuario en el mismo paso sin forma de volver a las credenciales, y un 401 del selector dice "Credenciales incorrectas". Falta "Volver" y un mensaje propio para el desafio vencido.
 - Evidencia: frontend 250 archivos, 2037 tests verdes; type-check, lint y ratchet limpios.
+
+## WU-11b — Enrolamiento forzado y codigos de recuperacion (partida en dos)
+
+WU-11b entera sumaba ~530 lineas de codigo y tests (tope 400), asi que se parte en dos. Ninguna tarea de tasks.md (11b.1-11b.5) se tilda en la parte A.
+
+### Parte A (`feat/verificacion-dos-pasos-wu11b`): arreglos arrastrados de la validacion de 11a2
+
+- `use-login.ts`: `volver()` descarta desafio y ticket y regresa a `credenciales`; la pagina muestra "Volver" en los pasos codigo, seleccion y enrolamiento (placeholder).
+- Desafio o ticket vencido: un 401 de `login/continuar` o `login/seleccionar` muestra `MENSAJE_VENCIDO` ("La verificacion vencio. Volve a iniciar sesion.") y vuelve a `credenciales`, en vez de "Codigo incorrecto" o "Credenciales incorrectas".
+- Heuristica de 5 minutos en `2fa/verificar`: el backend responde el MISMO 401 para un codigo equivocado y para un desafio vencido (anti-oraculo, por diseno). El frontend no puede distinguirlos por la respuesta, asi que el paso del codigo guarda `emitidoAt` y un 401 pasados 5 minutos (`DESAFIO_VERIFICAR_MS`, la duracion del desafio VERIFICAR) se trata como vencimiento. Antes del plazo, un 401 sigue siendo "Codigo incorrecto".
+- Tests: volver desde codigo y desde seleccion, 401 de continuar, 401 de seleccionar, verificar vencido por plazo (con `Date.now` simulado), y "Volver" en la pagina.
+- Parte B pendiente (tareas 11b.1-11b.5): componentes `EnrolamientoTfa` y `CodigosRecuperacion`, estados `enrolamiento` (iniciar) y `codigos`, continuar con ticket. Borrador completo fuera del repo, en el scratchpad de la sesion (`wu11b-rest/`).

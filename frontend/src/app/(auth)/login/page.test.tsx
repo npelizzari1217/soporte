@@ -128,7 +128,7 @@ describe("LoginPage", () => {
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
   });
 
-  it("2FA obligatorio sin configurar → muestra el aviso de enrolamiento (placeholder de WU-11b)", async () => {
+  it("2FA obligatorio sin configurar → muestra el aviso de enrolamiento (placeholder hasta WU-11b parte B)", async () => {
     server.use(
       http.post("/api/auth/login", () =>
         HttpResponse.json({ needsEnrolamiento2fa: true, desafio: "ds-2" }),
@@ -144,5 +144,20 @@ describe("LoginPage", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent(/verificación en dos pasos/i);
     expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("Volver en el paso del código regresa a las credenciales", async () => {
+    server.use(
+      http.post("/api/auth/login", () => HttpResponse.json({ needs2fa: true, desafio: "ds-1", recordarDisponible: true })),
+    );
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText(/email/i), "u@example.com");
+    await user.type(screen.getByLabelText(/contraseña/i), "secret123");
+    await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+    await user.click(await screen.findByRole("button", { name: /volver/i }));
+
+    expect(await screen.findByLabelText(/email/i)).toBeInTheDocument();
   });
 });

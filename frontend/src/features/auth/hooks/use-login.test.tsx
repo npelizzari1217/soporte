@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../../../../test/msw/server";
-import { mensajeDeErrorDeLogin, useLogin } from "./use-login";
+import { MENSAJE_VENCIDO, mensajeDeErrorDeLogin, useLogin } from "./use-login";
 import { writeLastActivity } from "@/shared/auth/idle-storage";
 
 // Spec: [R23] BFF login route — flujo de 1 vs varias membresías.
@@ -427,5 +427,73 @@ describe("useLogin", () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/suspendid/i)),
     );
+  });
+
+  it("volver desde el paso del código regresa a credenciales y descarta el desafío", async () => {
+    const result = await llegarAlCodigo();
+    act(() => {
+      result.current.volver();
+    });
+    expect(result.current.paso).toBe("credenciales");
+    act(() => {
+      result.current.verificarCodigo("123456", false);
+    });
+    expect(result.current.isPending).toBe(false);
+  });
+
+  it("volver desde la selección regresa a credenciales", async () => {
+    const result = await llegarAlCodigo(SELECCION);
+    expect(result.current.paso).toBe("seleccion");
+    act(() => {
+      result.current.volver();
+    });
+    expect(result.current.paso).toBe("credenciales");
+    expect(result.current.membresias).toBeNull();
+  });
+
+  it("continuar con 401 tras verificar → avisa que venció y vuelve a credenciales", async () => {
+    const { toast } = await import("sonner");
+    server.use(
+      http.post("/api/auth/2fa/verificar", () => HttpResponse.json({ ticket: "tk-9" })),
+      http.post("/api/auth/login/continuar", () => HttpResponse.json({ statusCode: 401 }, { status: 401 })),
+    );
+    const result = await llegarAlCodigo();
+    act(() => {
+      result.current.verificarCodigo("123456", false);
+    });
+    await waitFor(() => expect(result.current.paso).toBe("credenciales"));
+    expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
+  });
+
+  it("seleccionar con 401 → avisa que venció, no 'credenciales incorrectas', y vuelve a credenciales", async () => {
+    const { toast } = await import("sonner");
+    server.use(
+      http.post("/api/auth/login/seleccionar", () => HttpResponse.json({ statusCode: 401 }, { status: 401 })),
+    );
+    const result = await llegarAlCodigo(SELECCION);
+    act(() => {
+      result.current.selectCliente("c1");
+    });
+    await waitFor(() => expect(result.current.paso).toBe("credenciales"));
+    expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/credenciales incorrectas/i));
+  });
+
+  it("verificar rechazado pasado el plazo del desafío → vencido y vuelve a credenciales", async () => {
+    const { toast } = await import("sonner");
+    server.use(
+      http.post("/api/auth/2fa/verificar", () => HttpResponse.json({ statusCode: 401 }, { status: 401 })),
+    );
+    const ahora = Date.now();
+    const spy = vi.spyOn(Date, "now");
+    spy.mockReturnValue(ahora);
+    const result = await llegarAlCodigo();
+    spy.mockReturnValue(ahora + 6 * 60_000);
+    act(() => {
+      result.current.verificarCodigo("000000", false);
+    });
+    await waitFor(() => expect(result.current.paso).toBe("credenciales"));
+    expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
+    spy.mockRestore();
   });
 });

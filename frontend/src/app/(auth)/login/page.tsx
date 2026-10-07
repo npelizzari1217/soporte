@@ -15,12 +15,22 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { DesafioTfaForm } from "@/features/auth/components/desafio-tfa-form";
+import { Button } from "@/components/ui/button";
 import { ClienteSelection } from "@/features/auth/components/ClienteSelection";
 import { AvisoMotivo } from "@/features/auth/components/AvisoMotivo";
 import { useLogin } from "@/features/auth/hooks/use-login";
 
 export default function LoginPage() {
-  const { login, verificarCodigo, selectCliente, paso, membresias, recordarDisponible, isPending } = useLogin();
+  const {
+    login,
+    volver,
+    verificarCodigo,
+    selectCliente,
+    paso,
+    membresias,
+    recordarDisponible,
+    isPending,
+  } = useLogin();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(135deg,var(--background)_0%,var(--login-gradient-accent)_100%)] p-4">
@@ -51,7 +61,7 @@ export default function LoginPage() {
           />
         )}
         {paso === "enrolamiento" && (
-          // Placeholder: la pantalla de enrolamiento obligatorio llega en WU-11b.
+          // Placeholder: la pantalla de enrolamiento obligatorio llega en WU-11b (parte B).
           <p role="status" className="text-center text-sm text-muted-foreground">
             La activación de la verificación en dos pasos todavía no está disponible desde esta pantalla.
           </p>
@@ -61,6 +71,11 @@ export default function LoginPage() {
             onSubmit={({ email, password }) => login(email, password)}
             isLoading={isPending}
           />
+        )}
+        {paso !== "credenciales" && (
+          <Button type="button" variant="ghost" className="mt-4 w-full" onClick={volver} disabled={isPending}>
+            Volver
+          </Button>
         )}
       </div>
     </div>
