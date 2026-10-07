@@ -71,6 +71,22 @@ export class PrismaClienteRepository implements IClienteRepository {
     }
   }
 
+  async fijarRequiere2fa(id: string, requiere: boolean): Promise<boolean> {
+    const { count } = await this.client.cliente.updateMany({
+      where: { id },
+      data: { requiere2fa: requiere },
+    });
+    return count > 0;
+  }
+
+  async obtenerRequiere2fa(id: string): Promise<boolean | null> {
+    const row = await this.client.cliente.findUnique({
+      where: { id },
+      select: { requiere2fa: true },
+    });
+    return row ? row.requiere2fa : null;
+  }
+
   async findAll(): Promise<ClienteEntity[]> {
     const rows = await this.client.cliente.findMany();
     return rows.map(ClienteMapper.toDomain);
