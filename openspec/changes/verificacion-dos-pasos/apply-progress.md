@@ -235,3 +235,10 @@ WU-5b entera sumaba ~640 lineas de codigo y tests; el orquestador la partio por 
 - **size:exception autorizado por el dueno el 2026-10-07** (~510 lineas): partir separaria el cambio de conducta de los specs que necesita para quedar en verde. Reset del ledger autorizado en la misma decision.
 - Evidencia: suite completa 646 archivos, 7862 tests verdes; typecheck, lint y ratchet de casts limpios.
 - Cobertura que se movio: "el token master de ROOT guarda `clienteId` null en el refresh" sale del unit de login y entra en el e2e de 5c.7.
+
+### 5c2 (`feat/verificacion-dos-pasos-wu05c2`, tareas 5c.7 y 5c.8)
+
+- `backend/src/auth/interface/controllers/login-2fa.e2e.spec.ts` (8 tests, Postgres real, filas con sufijo aleatorio y limpieza propia): sin 2FA con 1 y 2 clientes; con 2FA con 1 y 2 clientes (verificar, continuar, seleccionar); desafio no reusable (L2); refresh y `/auth/switch` sin codigo (L8); refresh token que sigue valido (L9); ENROLAR rechazado en continuar y seleccionar hasta confirmar (L5); secreto con AAD de otro usuario da 401 sin sesion (L11); C3; ROOT con `cliente_id` NULL en el refresh token.
+- Mutacion verificada: `some` por `every` en `es-obligado-2fa.ts` hace fallar C3 y L5; revertida.
+- 5c.8: lint, typecheck, ratchet de casts limpios y el spec nuevo en verde; la suite completa no se corrio en esta unidad (la corre el orquestador).
+- Para el PR: el login cambia de contrato (`needs2fa`, `needsEnrolamiento2fa`, `ticket` en la seleccion; ROOT entra por continuar con alcance MASTER); deuda de Ayuda anotada (suspendida); advertir la exposicion de la cadena (ver Despliegue).
