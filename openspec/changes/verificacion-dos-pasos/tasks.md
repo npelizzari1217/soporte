@@ -230,7 +230,7 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 - [ ] 11a.1 Test de `use-login.ts`: estados `credenciales → codigo | enrolamiento | seleccion`; guarda `desafio`/`ticket` solo en memoria y nunca la contraseña; el selector usa el ticket sin re-enviar contraseña ni código; error genérico ante 401; `recordar` solo si `recordarDisponible !== false`. (L1, L2, L6, L7, D1)
 - [ ] 11a.2 Refactor de `frontend/src/features/auth/hooks/use-login.ts` (hoy `:88-99` guarda la contraseña) y espejo Zod de los formatos de código en `features/auth/schemas.ts` (6 dígitos o recuperación `XXXX-XXXX-XXXX`). (L6, L7, T5)
-- [ ] 11a.3 Test del componente `DesafioTfaForm`: acepta código o recuperación, "Recordar este dispositivo" oculto con `recordarDisponible === false`, mensaje genérico en error, estado deshabilitado mientras envía. (L6, D1, D4)
+- [x] 11a.3 Test del componente `DesafioTfaForm`: acepta código o recuperación, "Recordar este dispositivo" oculto con `recordarDisponible === false`, mensaje genérico en error, estado deshabilitado mientras envía. (L6, D1, D4)
 - [ ] 11a.4 Crear `features/auth/components/desafio-tfa-form.tsx` y adaptar el selector de cliente a usar el ticket; conectar la página de login. Anotar deuda de Ayuda (desafío) en commit y PR. (L6, L7, D1)
 - [ ] 11a.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`.
 
