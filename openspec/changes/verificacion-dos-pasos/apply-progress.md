@@ -30,3 +30,28 @@ Modo: estandar (sin TDD estricto). Tareas 1.1 a 1.4 marcadas en `tasks.md`. Rama
 ### Deuda
 
 - M1 no se despliega sin la cadena completa de WU.
+
+## WU-2 — TOTP nativo, formatos y regla de obligacion (completa)
+
+Modo: estandar. Tareas 2.1 a 2.7 marcadas en `tasks.md`. Rama `feat/verificacion-dos-pasos-wu02` (base `...-wu01`).
+
+### Archivos (todos nuevos, sin consumidores)
+
+- `backend/src/auth/domain/ports/totp-service.port.ts` (`ITotpService`, token `TOTP_SERVICE`).
+- `backend/src/auth/infrastructure/tfa/totp-nativo.service.ts` + spec (vectores SHA-1 del RFC 6238 apendice B, ventana +-1/+-2, mal formados, base32, URI).
+- `backend/src/auth/domain/tfa/{formato-codigo,tfa.constants,es-obligado-2fa}.ts` + specs de los dos primeros y de `es-obligado-2fa`.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/auth/domain/tfa src/auth/infrastructure/tfa/totp-nativo.service.spec.ts`: 3 archivos, 33 tests verdes |
+| Lint / tipos | `pnpm lint` y `pnpm typecheck` sin errores; ratchet de casts 617 (base 617) |
+| Rollback | Archivos nuevos sin consumidores |
+
+### Decisiones tomadas en apply
+
+- `esObligado2fa` recibe `{ activa?, clienteRequiere2fa }[]`: `activa` ausente se asume true (el login consulta solo activas, ADR-8); `activa === false` no cuenta. WU-7 agrega `clienteRequiere2fa` a la proyeccion de membresia.
+- `clasificarCodigo` devuelve `'totp' | 'recuperacion' | 'invalido'`; `normalizarCodigoRecuperacion` devuelve `null` si el largo (12) o el alfabeto Crockford no cierran.
+- `verificar` recorre toda la ventana sin cortar y compara con `timingSafeEqual`.
+- Constantes: `DESAFIO_DURACION_MS`, `DESAFIO_ENROLAMIENTO_DURACION_MS`, `TICKET_DURACION_MS`, `DISPOSITIVO_CONFIABLE_DURACION_MS`, `LIMITADOR_VENTANA_MS`, `LIMITADOR_MAX_INTENTOS`.
