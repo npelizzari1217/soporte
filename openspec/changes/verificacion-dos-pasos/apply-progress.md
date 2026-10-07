@@ -256,9 +256,9 @@ WU-6a entera sumaba ~730 lineas de codigo y tests (presupuesto 400); el orquesta
 - `auth.module.ts`: solo el registro de `DISPOSITIVO_CONFIABLE_REPOSITORY`.
 - Evidencia: typecheck, lint y ratchet de casts (617) limpios; el spec de integracion en verde.
 
-### 6a-ii — Emision y uso (pendiente; tareas 6a.3, 6a.4, 6a.5 y el tramo de login de 6a.8)
+### 6a-ii — Emision y uso (hecha; tareas 6a.3, 6a.4, 6a.5; 6a.8 queda para 6a-iii)
 
-`VerificarDesafioUseCase` acepta `recordar` y emite el dispositivo (ROOT nunca); `LoginUseCase` suma `dispositivos` y omite el desafio con un token valido de un usuario no ROOT con 2FA activo; DTOs y controladores (`dispositivoConfiable` en el body de login; `recordar` y `dispositivoConfiable` en la respuesta de `2fa/verificar`); e2e sin el tramo de desactivar.
+`VerificarDesafioUseCase` acepta `recordar` y emite el dispositivo (ROOT nunca); `LoginUseCase` suma `dispositivos` y omite el desafio con un token valido de un usuario no ROOT con 2FA activo; DTOs y controladores (`dispositivoConfiable` en el body de login; `recordar` y `dispositivoConfiable` en la respuesta de `2fa/verificar`); e2e `dispositivo-confiable.e2e.spec.ts` sin el tramo de desactivar (verificar con `recordar` emite el token, el login siguiente lo usa, sin la contrasena no entra, un token ajeno sigue con el desafio). Evidencia: `src/auth` 79 archivos, 940 tests verdes; typecheck, lint y ratchet (617) limpios. El tramo de desactivar del e2e y la casilla 6a.8 llegan con 6a-iii.
 
 ### 6a-iii — Desactivacion propia (pendiente; tareas 6a.6, 6a.7 y el tramo de desactivar de 6a.8)
 

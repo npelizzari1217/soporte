@@ -31,6 +31,7 @@ import {
   DesafioDto,
   SeleccionarClienteDto,
   TicketDto,
+  VerificarConRecordarDto,
   VerificarDesafioDto,
 } from '../dtos/tfa-login.dto';
 
@@ -46,9 +47,13 @@ export class TfaLoginController {
 
   @Post('2fa/verificar')
   @HttpCode(HttpStatus.OK)
-  async verificar(@Body() dto: VerificarDesafioDto): Promise<{ ticket: string }> {
-    const { ticket } = desenvolver(await this.verificarDesafio.execute(dto.desafio, dto.codigo));
-    return { ticket };
+  async verificar(
+    @Body() dto: VerificarConRecordarDto,
+  ): Promise<{ ticket: string; dispositivoConfiable?: string }> {
+    const { ticket, dispositivoConfiable } = desenvolver(
+      await this.verificarDesafio.execute(dto.desafio, dto.codigo, dto.recordar === true),
+    );
+    return { ticket, ...(dispositivoConfiable ? { dispositivoConfiable } : {}) };
   }
 
   @Post('2fa/enrolamiento/iniciar')
