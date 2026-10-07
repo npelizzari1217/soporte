@@ -7,6 +7,7 @@ import { Logger } from '@nestjs/common';
 import { Pool } from 'pg';
 import { Result } from '../../../shared/domain/result';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { unstubbed } from '../../../testing/mocks';
 import { URL_MASTER_TEST_POR_DEFECTO, usarLockMasterTest } from '../../../testing/lock-master-test';
 import { SecretoTotpIndescifrableError } from '../../domain/errors/tfa.errors';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
@@ -47,16 +48,31 @@ describe('VerificadorCodigoTfa con el limitador real', () => {
         secretoPendienteCifrado: null,
         pendienteCreadoAt: null,
       }),
-    } as unknown as ITfaRepository;
-    const secretos = {
-      descifrar: () =>
-        indescifrable ? Result.fail(new SecretoTotpIndescifrableError()) : Result.ok('S'),
-    } as unknown as SecretoTotpCifrado;
+      guardarPendiente: unstubbed('guardarPendiente'),
+      promoverPendiente: unstubbed('promoverPendiente'),
+      registrarPaso: unstubbed('registrarPaso'),
+      reemplazarCodigos: unstubbed('reemplazarCodigos'),
+      obtenerCodigosDisponibles: async () => [],
+      consumirCodigo: unstubbed('consumirCodigo'),
+      contarCodigosRestantes: unstubbed('contarCodigosRestantes'),
+      eliminarTodo: unstubbed('eliminarTodo'),
+    } satisfies ITfaRepository;
+    // Object.create evita construir el servicio real (cipher privado): solo importa `descifrar`.
+    const secretos: SecretoTotpCifrado = Object.create(SecretoTotpCifrado.prototype);
+    vi.spyOn(secretos, 'descifrar').mockImplementation(() =>
+      indescifrable ? Result.fail(new SecretoTotpIndescifrableError()) : Result.ok('S'),
+    );
+    const totp = {
+      generarSecreto: unstubbed('generarSecreto'),
+      uri: unstubbed('uri'),
+      verificar: () => null,
+    } satisfies ITotpService;
+    const hash = { hash: unstubbed('hash'), verify: async () => false } satisfies IHashProvider;
     verificador = new VerificadorCodigoTfa(
       repo,
-      { verificar: () => null } as unknown as ITotpService,
+      totp,
       new PrismaLimitadorIntentos(prismaService),
-      {} as unknown as IHashProvider,
+      hash,
       secretos,
     );
   });

@@ -491,6 +491,26 @@ describe('LoginUseCase', () => {
       expect(refreshTokenRepo.save).not.toHaveBeenCalled();
     });
 
+    it('un secreto pendiente (sin secreto activo) no se pide en el login (T4)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      const membresia = makeMembresiaResuelta();
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([membresia]);
+      clienteRepo.findById.mockResolvedValue(makeCliente());
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresia);
+      tfaRepo.obtener.mockResolvedValue({
+        secretoCifrado: null,
+        confirmadoAt: null,
+        ultimoPaso: 0,
+        secretoPendienteCifrado: 'pendiente-cifrado',
+        pendienteCreadoAt: new Date(),
+      });
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(result.getValue().kind).toBe('tokens');
+      expect(desafios.crear).not.toHaveBeenCalled();
+    });
+
     it('ROOT sin 2FA → desafio ENROLAR y {needsEnrolamiento2fa}, nunca un access token (L3, L5)', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
       tfaRepo.obtener.mockResolvedValue(null);

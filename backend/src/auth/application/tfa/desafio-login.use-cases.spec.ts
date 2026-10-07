@@ -20,15 +20,20 @@ const rechazado = () =>
 
 describe('use cases de desafio de login', () => {
   const desafios = {
+    crear: unstubbed('crear'),
     buscarSinVerificar: vi.fn(),
     verificar: vi.fn(),
-  } as unknown as Record<'buscarSinVerificar' | 'verificar', ReturnType<typeof vi.fn>>;
+    buscarTicket: unstubbed('buscarTicket'),
+    consumir: unstubbed('consumir'),
+  } satisfies IDesafioLoginRepository;
   // Object.create evita construir el verificador real: solo importa `verificar`.
   const verificador: VerificadorCodigoTfa = Object.create(VerificadorCodigoTfa.prototype);
   const verificar = vi.spyOn(verificador, 'verificar');
-  const iniciar = { execute: vi.fn() };
-  const confirmar = { execute: vi.fn() };
-  const repo = desafios as unknown as IDesafioLoginRepository;
+  const iniciar: IniciarSecretoTfa = Object.create(IniciarSecretoTfa.prototype);
+  const iniciarExecute = vi.spyOn(iniciar, 'execute');
+  const confirmar: ConfirmarSecretoTfa = Object.create(ConfirmarSecretoTfa.prototype);
+  const confirmarExecute = vi.spyOn(confirmar, 'execute');
+  const repo: IDesafioLoginRepository = desafios;
   const usuarios = {
     findByEmail: unstubbed('findByEmail'),
     findById: vi.fn(),
@@ -135,43 +140,37 @@ describe('use cases de desafio de login', () => {
 
   describe('enrolamiento', () => {
     it('iniciar sirve solo con un ENROLAR sin verificar y delega en el secreto pendiente', async () => {
-      const uc = new IniciarEnrolamientoLoginUseCase(repo, iniciar as unknown as IniciarSecretoTfa);
-      iniciar.execute.mockResolvedValue(Result.ok({ otpauthUri: 'otpauth://x', claveManual: 'K' }));
+      const uc = new IniciarEnrolamientoLoginUseCase(repo, iniciar);
+      iniciarExecute.mockResolvedValue(Result.ok({ otpauthUri: 'otpauth://x', claveManual: 'K' }));
       expect((await uc.execute('d')).getValue()).toEqual({
         otpauthUri: 'otpauth://x',
         claveManual: 'K',
       });
       expect(desafios.buscarSinVerificar).toHaveBeenCalledWith('d', 'ENROLAR');
-      expect(iniciar.execute).toHaveBeenCalledWith('u1');
+      expect(iniciarExecute).toHaveBeenCalledWith('u1');
 
       desafios.buscarSinVerificar.mockResolvedValue(null);
       expect((await uc.execute('d')).getError()).toBeInstanceOf(SegundoPasoRechazadoError);
     });
 
     it('iniciar sin clave maestra propaga el 503', async () => {
-      const uc = new IniciarEnrolamientoLoginUseCase(repo, iniciar as unknown as IniciarSecretoTfa);
-      iniciar.execute.mockResolvedValue(Result.fail(new TfaNoDisponibleError()));
+      const uc = new IniciarEnrolamientoLoginUseCase(repo, iniciar);
+      iniciarExecute.mockResolvedValue(Result.fail(new TfaNoDisponibleError()));
       expect((await uc.execute('d')).getError()).toBeInstanceOf(TfaNoDisponibleError);
     });
 
     it('confirmar activa, devuelve los 10 codigos y el ticket', async () => {
-      const uc = new ConfirmarEnrolamientoLoginUseCase(
-        repo,
-        confirmar as unknown as ConfirmarSecretoTfa,
-      );
+      const uc = new ConfirmarEnrolamientoLoginUseCase(repo, confirmar);
       const codigos = Array.from({ length: 10 }, (_, i) => `C${i}`);
-      confirmar.execute.mockResolvedValue(Result.ok({ codigosRecuperacion: codigos }));
+      confirmarExecute.mockResolvedValue(Result.ok({ codigosRecuperacion: codigos }));
       const r = await uc.execute('d', '123456');
       expect(r.getValue()).toEqual({ codigosRecuperacion: codigos, ticket: 'ticket-1' });
       expect(desafios.verificar).toHaveBeenCalledWith('d', 'ENROLAR', 'u1');
     });
 
     it('un codigo rechazado (o repetido) no rota el desafio', async () => {
-      const uc = new ConfirmarEnrolamientoLoginUseCase(
-        repo,
-        confirmar as unknown as ConfirmarSecretoTfa,
-      );
-      confirmar.execute.mockResolvedValue(rechazado());
+      const uc = new ConfirmarEnrolamientoLoginUseCase(repo, confirmar);
+      confirmarExecute.mockResolvedValue(Result.fail(new SegundoPasoRechazadoError()));
       expect((await uc.execute('d', '123456')).getError()).toBeInstanceOf(
         SegundoPasoRechazadoError,
       );
@@ -179,13 +178,10 @@ describe('use cases de desafio de login', () => {
     });
 
     it('confirmar con un desafio invalido no toca el limitador', async () => {
-      const uc = new ConfirmarEnrolamientoLoginUseCase(
-        repo,
-        confirmar as unknown as ConfirmarSecretoTfa,
-      );
+      const uc = new ConfirmarEnrolamientoLoginUseCase(repo, confirmar);
       desafios.buscarSinVerificar.mockResolvedValue(null);
       expect((await uc.execute('d', '123456')).isFail()).toBe(true);
-      expect(confirmar.execute).not.toHaveBeenCalled();
+      expect(confirmarExecute).not.toHaveBeenCalled();
     });
   });
 });

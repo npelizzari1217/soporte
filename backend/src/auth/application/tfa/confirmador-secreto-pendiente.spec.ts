@@ -1,3 +1,4 @@
+import { unstubbed } from '../../../testing/mocks';
 import { Logger } from '@nestjs/common';
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { EstadoTfa, ITfaRepository } from '../../domain/ports/tfa-repository.port';
@@ -17,10 +18,30 @@ const ESTADO: EstadoTfa = {
 };
 
 describe('ConfirmadorSecretoPendiente', () => {
-  const repo = { obtener: vi.fn(), promoverPendiente: vi.fn() };
-  const totp = { verificar: vi.fn() };
-  const limitador = { reservar: vi.fn(), liberar: vi.fn(), devolver: vi.fn() };
-  const secretos = { descifrar: vi.fn() };
+  const repo = {
+    obtener: vi.fn(),
+    guardarPendiente: unstubbed('guardarPendiente'),
+    promoverPendiente: vi.fn(),
+    registrarPaso: unstubbed('registrarPaso'),
+    reemplazarCodigos: unstubbed('reemplazarCodigos'),
+    obtenerCodigosDisponibles: unstubbed('obtenerCodigosDisponibles'),
+    consumirCodigo: unstubbed('consumirCodigo'),
+    contarCodigosRestantes: unstubbed('contarCodigosRestantes'),
+    eliminarTodo: unstubbed('eliminarTodo'),
+  } satisfies ITfaRepository;
+  const totp = {
+    generarSecreto: unstubbed('generarSecreto'),
+    uri: unstubbed('uri'),
+    verificar: vi.fn(),
+  } satisfies ITotpService;
+  const limitador = {
+    reservar: vi.fn(),
+    liberar: vi.fn(),
+    devolver: vi.fn(),
+  } satisfies ILimitadorIntentos;
+  // Object.create evita construir el servicio real (cipher privado): solo importa `descifrar`.
+  const secretosSvc: SecretoTotpCifrado = Object.create(SecretoTotpCifrado.prototype);
+  const secretos = { descifrar: vi.spyOn(secretosSvc, 'descifrar') };
   let confirmador: ConfirmadorSecretoPendiente;
   let logError: ReturnType<typeof vi.spyOn>;
 
@@ -34,12 +55,7 @@ describe('ConfirmadorSecretoPendiente', () => {
     );
     totp.verificar.mockImplementation((secreto: string) => (secreto === 'PENDIENTE' ? 42 : null));
     logError = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    confirmador = new ConfirmadorSecretoPendiente(
-      repo as unknown as ITfaRepository,
-      totp as unknown as ITotpService,
-      limitador as unknown as ILimitadorIntentos,
-      secretos as unknown as SecretoTotpCifrado,
-    );
+    confirmador = new ConfirmadorSecretoPendiente(repo, totp, limitador, secretosSvc);
   });
   afterEach(() => logError.mockRestore());
 

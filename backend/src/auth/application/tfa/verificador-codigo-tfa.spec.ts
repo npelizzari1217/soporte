@@ -1,3 +1,4 @@
+import { unstubbed } from '../../../testing/mocks';
 import { Logger } from '@nestjs/common';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
@@ -28,14 +29,29 @@ function estado(secretoCifrado: string | null = ACTIVO): EstadoTfa {
 describe('VerificadorCodigoTfa', () => {
   const repo = {
     obtener: vi.fn(),
+    guardarPendiente: unstubbed('guardarPendiente'),
+    promoverPendiente: unstubbed('promoverPendiente'),
     registrarPaso: vi.fn(),
+    reemplazarCodigos: unstubbed('reemplazarCodigos'),
     obtenerCodigosDisponibles: vi.fn(),
     consumirCodigo: vi.fn(),
-  };
-  const totp = { verificar: vi.fn() };
-  const limitador = { reservar: vi.fn(), liberar: vi.fn(), devolver: vi.fn() };
-  const hash = { verify: vi.fn() };
-  const secretos = { descifrar: vi.fn() };
+    contarCodigosRestantes: unstubbed('contarCodigosRestantes'),
+    eliminarTodo: unstubbed('eliminarTodo'),
+  } satisfies ITfaRepository;
+  const totp = {
+    generarSecreto: unstubbed('generarSecreto'),
+    uri: unstubbed('uri'),
+    verificar: vi.fn(),
+  } satisfies ITotpService;
+  const limitador = {
+    reservar: vi.fn(),
+    liberar: vi.fn(),
+    devolver: vi.fn(),
+  } satisfies ILimitadorIntentos;
+  const hash = { hash: unstubbed('hash'), verify: vi.fn() } satisfies IHashProvider;
+  // Object.create evita construir el servicio real (cipher privado): solo importa `descifrar`.
+  const secretosSvc: SecretoTotpCifrado = Object.create(SecretoTotpCifrado.prototype);
+  const secretos = { descifrar: vi.spyOn(secretosSvc, 'descifrar') };
   let logError: ReturnType<typeof vi.spyOn>;
   let verificador: VerificadorCodigoTfa;
 
@@ -52,13 +68,7 @@ describe('VerificadorCodigoTfa', () => {
     secretos.descifrar.mockReturnValue(Result.ok('SECRETO'));
     totp.verificar.mockReturnValue(100);
     logError = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    verificador = new VerificadorCodigoTfa(
-      repo as unknown as ITfaRepository,
-      totp as unknown as ITotpService,
-      limitador as unknown as ILimitadorIntentos,
-      hash as unknown as IHashProvider,
-      secretos as unknown as SecretoTotpCifrado,
-    );
+    verificador = new VerificadorCodigoTfa(repo, totp, limitador, hash, secretosSvc);
   });
   afterEach(() => logError.mockRestore());
 

@@ -1,3 +1,4 @@
+import { unstubbed } from '../../../testing/mocks';
 import { Result } from '../../../shared/domain/result';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { SinMembresiaActivaError } from '../../domain/errors/auth.errors';
@@ -24,16 +25,32 @@ const usuario = (isGlobalAdmin = false) =>
   });
 
 describe('continuar y seleccionar el cliente del login', () => {
-  const desafios = { buscarTicket: vi.fn(), consumir: vi.fn() };
-  const usuarioRepo = { findById: vi.fn() };
-  const membresiaRepo = { findActivasByUsuario: vi.fn(), findActivaByUsuarioYCliente: vi.fn() };
-  const emitir = { emitir: vi.fn() };
-  const args = [
-    desafios as unknown as IDesafioLoginRepository,
-    usuarioRepo as unknown as IUsuarioRepository,
-    membresiaRepo as unknown as IMembresiaRepository,
-    emitir as unknown as EmitirSesionService,
-  ] as const;
+  const desafios = {
+    crear: unstubbed('crear'),
+    buscarSinVerificar: unstubbed('buscarSinVerificar'),
+    verificar: unstubbed('verificar'),
+    buscarTicket: vi.fn(),
+    consumir: vi.fn(),
+  } satisfies IDesafioLoginRepository;
+  const usuarioRepo = {
+    findByEmail: unstubbed('findByEmail'),
+    findById: vi.fn(),
+    create: unstubbed('create'),
+    save: unstubbed('save'),
+  } satisfies IUsuarioRepository;
+  const membresiaRepo = {
+    findActivasByUsuario: vi.fn(),
+    findActivaByUsuarioYCliente: vi.fn(),
+    findActivasByCliente: unstubbed('findActivasByCliente'),
+    findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
+    findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+    create: unstubbed('create'),
+    save: unstubbed('save'),
+  } satisfies IMembresiaRepository;
+  // Object.create evita construir el servicio real: solo importa `emitir`.
+  const emitirSvc: EmitirSesionService = Object.create(EmitirSesionService.prototype);
+  const emitir = { emitir: vi.spyOn(emitirSvc, 'emitir') };
+  const args = [desafios, usuarioRepo, membresiaRepo, emitirSvc] as const;
   const sesion = { accessToken: 'a', refreshToken: 'r' };
   let u: UsuarioEntity;
 
