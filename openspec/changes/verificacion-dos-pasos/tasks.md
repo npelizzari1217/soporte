@@ -144,8 +144,8 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-5b — Continuar, seleccionar y rutas públicas (~280 líneas)
 
-- [ ] 5b.1 Test unit de `ContinuarLoginUseCase`: exige `verificado_at`; ROOT o una membresía consume el ticket y emite sesión; con más de una devuelve las membresías y el mismo ticket sin consumirlo; un `ENROLAR` sin verificar es rechazado. (L2, L5, L7)
-- [ ] 5b.2 Test unit de `SeleccionarClienteLoginUseCase`: valida `findActivaByUsuarioYCliente` antes de consumir; membresía inexistente o inactiva da el mismo error que un ticket inválido y el ticket sigue vigente; no pide ni reenvía contraseña ni código. (L7)
+- [x] 5b.1 Test unit de `ContinuarLoginUseCase`: exige `verificado_at`; ROOT o una membresía consume el ticket y emite sesión; con más de una devuelve las membresías y el mismo ticket sin consumirlo; un `ENROLAR` sin verificar es rechazado. (L2, L5, L7)
+- [x] 5b.2 Test unit de `SeleccionarClienteLoginUseCase`: valida `findActivaByUsuarioYCliente` antes de consumir; membresía inexistente o inactiva da el mismo error que un ticket inválido y el ticket sigue vigente; no pide ni reenvía contraseña ni código. (L7)
 - [ ] 5b.3 Test unit: el refresh y el cambio de cliente existentes no piden el código. (L8)
 - [ ] 5b.4 Implementar ambos use cases y `auth/interface/controllers/tfa-login.controller.ts` con las 5 rutas públicas (`/auth/2fa/verificar`, `/auth/2fa/enrolamiento/iniciar|confirmar`, `/auth/login/continuar`, `/auth/login/seleccionar`) y sus DTOs, todavía sin enganchar a `LoginUseCase`. (L2, L5, L7)
 - [ ] 5b.5 Test e2e del controller con desafíos sembrados por el repo: verificar → continuar → sesión; ticket reutilizado 401; seleccionar con cliente ajeno 401 y ticket vivo. (L2, L7)

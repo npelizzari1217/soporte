@@ -20,6 +20,8 @@ export interface IDesafioLoginRepository {
    * 5 min. Devuelve el ticket; el texto del desafio deja de servir (L2).
    */
   verificar(token: string, proposito: PropositoDesafio, usuarioId: string): Promise<string | null>;
+  /** Lectura sin consumir de un ticket vigente (`verificado_at` fijado): dueno de la continuacion. */
+  buscarTicket(ticket: string): Promise<DesafioVigente | null>;
   /** CAS de uso unico sobre un ticket (`verificado_at` fijado). */
   consumir(ticket: string, usuarioId: string): Promise<boolean>;
 }

@@ -111,6 +111,19 @@ describe('PrismaDesafioLoginRepository', () => {
     expect(await repo.consumir(ticket, b)).toBe(false);
   });
 
+  it('buscarTicket solo ve tickets verificados, vigentes y sin usar', async () => {
+    const usuario = await crearUsuario();
+    const desafio = await repo.crear(usuario, 'ENROLAR');
+    expect(await repo.buscarTicket(desafio)).toBeNull();
+    const ticket = (await repo.verificar(desafio, 'ENROLAR', usuario)) as string;
+    expect(await repo.buscarTicket(ticket)).toEqual({ usuarioId: usuario });
+    await repo.consumir(ticket, usuario);
+    expect(await repo.buscarTicket(ticket)).toBeNull();
+    const otro = await repo.crear(usuario, 'SELECCIONAR');
+    ahora = new Date(ahora.getTime() + TICKET_DURACION_MS + 1);
+    expect(await repo.buscarTicket(otro)).toBeNull();
+  });
+
   it('un token desconocido no sirve', async () => {
     const usuario = await crearUsuario();
     expect(await repo.buscarSinVerificar('x'.repeat(64), 'VERIFICAR')).toBeNull();
