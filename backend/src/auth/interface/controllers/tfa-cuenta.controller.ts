@@ -10,11 +10,13 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  ConflictException,
   ServiceUnavailableException,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
 import { DomainError, Result } from '../../../shared/domain/result';
+import { DesactivarTfaUseCase } from '../../application/tfa/desactivar-tfa.use-case';
 import {
   ConfirmarSecretoTfa,
   EstadoTfaCuenta,
@@ -23,7 +25,7 @@ import {
   RegenerarCodigosTfa,
   SecretoPendienteDto,
 } from '../../application/tfa/tfa-cuenta.use-cases';
-import { TfaNoDisponibleError } from '../../domain/errors/tfa.errors';
+import { Tfa2faObligatorioError, TfaNoDisponibleError } from '../../domain/errors/tfa.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
@@ -37,6 +39,7 @@ export class TfaCuentaController {
     private readonly iniciarSecreto: IniciarSecretoTfa,
     private readonly confirmarSecreto: ConfirmarSecretoTfa,
     private readonly regenerarCodigos: RegenerarCodigosTfa,
+    private readonly desactivarTfa: DesactivarTfaUseCase,
   ) {}
 
   @Get()
@@ -70,11 +73,18 @@ export class TfaCuentaController {
   ): Promise<{ codigosRecuperacion: string[] }> {
     return desenvolver(await this.regenerarCodigos.execute(user.sub, dto.codigo));
   }
+
+  @Post('desactivar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async desactivar(@CurrentUser() user: JwtPayload, @Body() dto: CodigoTfaDto): Promise<void> {
+    desenvolver(await this.desactivarTfa.execute(user.sub, dto.codigo));
+  }
 }
 
 function desenvolver<T>(result: Result<T, DomainError>): T {
   if (result.isOk()) return result.getValue();
   const error = result.getError();
   if (error instanceof TfaNoDisponibleError) throw new ServiceUnavailableException(error.message);
+  if (error instanceof Tfa2faObligatorioError) throw new ConflictException(error.message);
   throw new UnprocessableEntityException(error.message);
 }

@@ -142,5 +142,23 @@ describe('Dispositivo confiable (e2e)', () => {
       dispositivoConfiable: 'f'.repeat(64),
     });
     expect(otroToken.body.needs2fa).toBe(true);
+
+    // T8, D6: desactivar con un codigo valido borra el 2FA y revoca el dispositivo.
+    const desactivar = await post(
+      '/auth/2fa/desactivar',
+      { codigo: codigoDeTest(usuarioId) },
+      conToken.body.accessToken,
+    );
+    expect(desactivar.status).toBe(204);
+    const { rows } = await pool.query(
+      'SELECT revocado_at FROM tfa_dispositivos_confiables WHERE usuario_id = $1',
+      [usuarioId],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].revocado_at).not.toBeNull();
+    const sinTfa = await pool.query('SELECT 1 FROM usuarios_tfa WHERE usuario_id = $1', [
+      usuarioId,
+    ]);
+    expect(sinTfa.rowCount).toBe(0);
   });
 });

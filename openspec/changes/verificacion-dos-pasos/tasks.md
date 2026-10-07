@@ -169,9 +169,9 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 - [x] 6a.3 Test unit de `VerificarDesafioUseCase` con `recordar: true`: emite `dispositivoConfiable` para un usuario normal; ROOT no recibe dispositivo aunque envíe `recordar` (D4); `recordarDisponible` falso para ROOT. (D1, D4)
 - [x] 6a.4 Test unit de `LoginUseCase` con dispositivo: un token válido del usuario con 2FA activo omite el desafío pero no la contraseña; de otro usuario, revocado, vencido o de un ROOT se ignora y sigue el desafío. (D3, D4)
 - [x] 6a.5 Implementar emisión en `VerificarDesafioUseCase` y uso en `LoginUseCase` (`dispositivoConfiable` en el body de `POST /auth/login`). (D1, D3, D4)
-- [ ] 6a.6 Test unit de desactivación propia: `POST /auth/2fa/desactivar` con código válido y `!esObligado2fa` borra todo vía `eliminarTodo` (revoca dispositivos e invalida desafíos, D6); obligado → `Tfa2faObligatorioError` 409 (mismo `esObligado2fa` que el login); código inválido 422. (T8, D6)
-- [ ] 6a.7 Implementar `DesactivarTfaUseCase` y la ruta `POST /auth/2fa/desactivar` en `TfaCuentaController`; luego revocar refresh tokens con log-and-swallow. (T8, D6)
-- [ ] 6a.8 Test e2e: verificar con `recordar` → login siguiente con el token omite el desafío; desactivar el 2FA revoca el dispositivo. (D1, D3, D6)
+- [x] 6a.6 Test unit de desactivación propia: `POST /auth/2fa/desactivar` con código válido y `!esObligado2fa` borra todo vía `eliminarTodo` (revoca dispositivos e invalida desafíos, D6); obligado → `Tfa2faObligatorioError` 409 (mismo `esObligado2fa` que el login); código inválido 422. (T8, D6)
+- [x] 6a.7 Implementar `DesactivarTfaUseCase` y la ruta `POST /auth/2fa/desactivar` en `TfaCuentaController`; luego revocar refresh tokens con log-and-swallow. (T8, D6)
+- [x] 6a.8 Test e2e: verificar con `recordar` → login siguiente con el token omite el desafío; desactivar el 2FA revoca el dispositivo. (D1, D3, D6)
 - [ ] 6a.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-6b — Fail-closed al cambiar la contraseña (~300 líneas)

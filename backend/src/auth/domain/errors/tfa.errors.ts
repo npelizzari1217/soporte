@@ -30,3 +30,12 @@ export class TfaNoDisponibleError extends DomainError {
     super('La verificacion en dos pasos no esta disponible en este momento.');
   }
 }
+
+/** El usuario esta obligado a tener 2FA (ROOT o cliente que lo exige): no puede desactivarlo. T8. → HTTP 409. */
+export class Tfa2faObligatorioError extends DomainError {
+  readonly code = 'AUTH_TFA_OBLIGATORIO';
+
+  constructor() {
+    super('La verificacion en dos pasos es obligatoria para esta cuenta.');
+  }
+}
