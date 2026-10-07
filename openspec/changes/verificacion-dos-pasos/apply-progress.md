@@ -312,3 +312,9 @@ WU-8 entera sumaba ~875 lineas de codigo y tests; la costura de tasks.md ("API v
 ### 8b (`feat/verificacion-dos-pasos-wu08b`, tarea 8.5)
 
 - e2e `usuarios-reseteo-tfa.e2e.spec.ts`: ROOT, ADMINISTRADOR y TECNICO contra cada caso de la regla; tras el reseteo, el siguiente login obliga a enrolar de nuevo (S5). Un ROOT con token MASTER cambia de cliente antes de resetear (la ruta vive bajo `TenantGuard`).
+
+### 8c (`feat/verificacion-dos-pasos-wu08c`, tareas 8.6 a 8.8)
+
+- `backend/scripts/resetear-2fa-root.ts` (molde `reset-password.ts`, sin `.ps1`): solo para un usuario existente con `isGlobalAdmin`; si no, sale con 1 sin escribir nada. Un unico `$transaction` con los efectos de `eliminarTodo` mas la revocacion de refresh; imprime solo `OK`; lee `RESET_EMAIL` y el `.env` con `process.loadEnvFile()`. Se corre con `corepack pnpm exec ts-node scripts/resetear-2fa-root.ts`; la entrada del runbook va en WU-9.
+- Sus efectos duplican los de `eliminarTodo`: si uno cambia, el otro tambien.
+- Evidencia: spec del script 4 tests verdes (dos corridas reales de ts-node: `OK` con salida 0, y salida 1 para un no ROOT sin cambios); typecheck, lint y ratchet limpios.
