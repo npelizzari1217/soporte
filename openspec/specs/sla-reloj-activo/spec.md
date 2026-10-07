@@ -88,7 +88,7 @@ Al pasar a RESUELTO el sistema DEBE fijar el cumplimiento: cumplió si el acumul
 
 ### Requirement: R4 El barrido marca vencido solo con reloj corriendo
 
-El barrido DEBE marcar vencido únicamente a tickets con el reloj corriendo y vencimiento anterior al instante actual. Un ticket en ESPERANDO_CLIENTE o RESUELTO NO DEBE vencer, y el barrido sigue comparando solo el vencimiento contra el ahora. Una marca de vencido ya puesta permanece.
+El barrido DEBE marcar vencido únicamente a tickets con el reloj corriendo y vencimiento anterior al instante actual. Un ticket en ESPERANDO_CLIENTE o RESUELTO NO DEBE vencer, y el barrido sigue comparando solo el vencimiento contra el ahora. Una marca de vencido ya puesta permanece frente al barrido; una repriorización que deja el vencimiento en el futuro la rearma.
 
 #### Scenario: Ticket en espera
 
@@ -107,6 +107,18 @@ El barrido DEBE marcar vencido únicamente a tickets con el reloj corriendo y ve
 - GIVEN un ticket que salió de la espera pero conserva el reloj sin reanudar (falló el procesamiento posterior)
 - WHEN corre el barrido
 - THEN el barrido reconcilia el reloj antes de evaluar el vencimiento
+
+#### Scenario: Repriorizar rearma el aviso
+
+- GIVEN un ticket con el reloj corriendo ya marcado vencido (mail enviado)
+- WHEN se repriorizó y su vencimiento nuevo queda en el futuro
+- THEN la marca se baja, y cuando el vencimiento nuevo pasa el barrido lo marca y envía un mail más
+
+#### Scenario: Repriorizar sin salir del vencimiento
+
+- GIVEN un ticket con el reloj corriendo ya marcado vencido (mail enviado)
+- WHEN se repriorizó y su vencimiento nuevo sigue en el pasado
+- THEN la marca permanece y no se envía otro mail
 
 ### Requirement: R5 Estado SLA derivado
 

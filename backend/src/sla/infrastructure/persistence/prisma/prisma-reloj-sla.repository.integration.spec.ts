@@ -258,6 +258,67 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
       expect(await marca(id)).toBe(true);
     });
 
+    describe('rearme del aviso de vencido (issue #432)', () => {
+      const vencido = async (id: string) =>
+        (await client.ticket.findUniqueOrThrow({ where: { id } })).vencido;
+      const conVencido = async () => {
+        const id = await crearTicket();
+        await client.ticket.update({ where: { id }, data: { vencido: true } });
+        return id;
+      };
+
+      it('con rearmarVencido la misma escritura del CAS baja vencido', async () => {
+        const id = await conVencido();
+        const futuro = { ...reloj, slaVenceAt: min(600) };
+
+        expect(
+          await repo.guardarSiVersion(id, 0, futuro, {
+            prioridadAplicadaId: prioridadId,
+            rearmarVencido: true,
+          }),
+        ).toBe(true);
+
+        expect(await vencido(id)).toBe(false);
+        expect((await client.ticket.findUniqueOrThrow({ where: { id } })).slaVenceAt).toEqual(
+          min(600),
+        );
+      });
+
+      it('sin rearmarVencido (vencimiento aun pasado) la marca permanece', async () => {
+        const id = await conVencido();
+
+        await repo.guardarSiVersion(
+          id,
+          0,
+          { ...reloj, slaVenceAt: min(-600) },
+          { prioridadAplicadaId: prioridadId, rearmarVencido: false },
+        );
+
+        expect(await vencido(id)).toBe(true);
+      });
+
+      it('una escritura sin meta (consolidacion) nunca toca vencido', async () => {
+        const id = await conVencido();
+
+        await repo.guardarSiVersion(id, 0, { ...reloj, slaVenceAt: min(600) });
+
+        expect(await vencido(id)).toBe(true);
+      });
+
+      it('un CAS perdido no rearma', async () => {
+        const id = await conVencido();
+
+        expect(
+          await repo.guardarSiVersion(id, 7, reloj, {
+            prioridadAplicadaId: prioridadId,
+            rearmarVencido: true,
+          }),
+        ).toBe(false);
+
+        expect(await vencido(id)).toBe(true);
+      });
+    });
+
     it('findMetaPendiente lista solo los marcados y no borrados', async () => {
       const marcado = await crearTicket();
       const borrado = await crearTicket({ deletedAt: min(1) });

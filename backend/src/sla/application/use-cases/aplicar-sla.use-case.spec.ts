@@ -105,6 +105,15 @@ function montar(m: Montaje = {}) {
 }
 
 describe('AplicarSlaUseCase', () => {
+  // El "ahora" del rearme del aviso de vencido es el reloj de pared: se fija para que el caso no dependa de la fecha de la corrida.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(L(11, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   describe('meta y vencimiento (R2, R9)', () => {
     it('alta: fija la meta de la prioridad y deriva el vencimiento desde el inicio del tramo', async () => {
       const c = montar();
@@ -121,7 +130,7 @@ describe('AplicarSlaUseCase', () => {
           cumplido: null,
           slaVenceAt: L(10, 17),
         },
-        { prioridadAplicadaId: 'prioridad-uuid' },
+        { prioridadAplicadaId: 'prioridad-uuid', rearmarVencido: false },
       );
     });
 
@@ -215,6 +224,60 @@ describe('AplicarSlaUseCase', () => {
 
       expect(c.escrito()).toMatchObject({ metaS: null, cumplido: null, slaVenceAt: null });
       expect(c.prioridadRepo.findById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rearme del aviso de vencido (issue #432)', () => {
+    const meta = (c: ReturnType<typeof montar>) => c.relojRepo.guardarSiVersion.mock.calls[0][3];
+
+    it('el vencimiento nuevo queda en el futuro: la misma escritura rearma la marca de vencido', async () => {
+      // Ahora = L(11, 12); alta con meta de 8 h hábiles desde L(10, 9) vence L(10, 17): pasado.
+      const c = montar({
+        fila: { acumuladoS: 0, correDesde: L(11, 9) },
+        prioridad: prioridad(8),
+      });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(c.escrito().slaVenceAt).toEqual(L(11, 17));
+      expect(meta(c)).toEqual({ prioridadAplicadaId: 'prioridad-uuid', rearmarVencido: true });
+    });
+
+    it('el vencimiento nuevo sigue en el pasado: no rearma (no se repite el mail)', async () => {
+      const c = montar({ fila: { acumuladoS: 0, correDesde: L(10, 9) }, prioridad: prioridad(8) });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(c.escrito().slaVenceAt).toEqual(L(10, 17));
+      expect(meta(c)).toEqual({ prioridadAplicadaId: 'prioridad-uuid', rearmarVencido: false });
+    });
+
+    it('un vencimiento exactamente igual a ahora no rearma (estrictamente posterior)', async () => {
+      const c = montar({ fila: { acumuladoS: 0, correDesde: L(11, 9) }, prioridad: prioridad(3) });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(c.escrito().slaVenceAt).toEqual(L(11, 12));
+      expect(meta(c)?.rearmarVencido).toBe(false);
+    });
+
+    it('con el reloj detenido no hay vencimiento nuevo: no rearma', async () => {
+      const c = montar({
+        fila: { estadoCodigo: 'ESPERANDO_CLIENTE', acumuladoS: 3 * H, correDesde: null },
+        prioridad: prioridad(4),
+      });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(meta(c)?.rearmarVencido).toBe(false);
+    });
+
+    it('sin meta (vencimiento null) no rearma', async () => {
+      const c = montar({ prioridad: prioridad(null) });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(meta(c)?.rearmarVencido).toBe(false);
     });
   });
 
@@ -435,7 +498,7 @@ describe('AplicarSlaUseCase', () => {
 
       await c.useCase.alReprioritizar({ ticketId: 't1', prioridadId: 'prioridad-vieja' });
 
-      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toEqual({
+      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toMatchObject({
         prioridadAplicadaId: 'prioridad-vieja',
       });
     });
@@ -446,7 +509,7 @@ describe('AplicarSlaUseCase', () => {
       await c.useCase.alCrear(DTO);
 
       expect(c.escrito().metaS).toBeNull();
-      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toEqual({
+      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toMatchObject({
         prioridadAplicadaId: 'prioridad-uuid',
       });
     });
@@ -496,7 +559,7 @@ describe('AplicarSlaUseCase', () => {
       await c.useCase.reconciliarMeta('t1');
 
       expect(c.prioridadRepo.findById).toHaveBeenCalledWith('prioridad-vigente');
-      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toEqual({
+      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toMatchObject({
         prioridadAplicadaId: 'prioridad-vigente',
       });
       expect(c.escrito().metaS).toBe(4 * H);

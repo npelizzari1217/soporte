@@ -43,6 +43,11 @@ export interface AplicarSlaDto {
  * falla, la marca queda puesta y el barrido de SLA reaplica con la prioridad vigente (`reconciliarMeta`).
  * Un ticket terminal al repriorizar baja la marca sin escribir nada.
  *
+ * Aviso de vencido (issue #432): `vencido` solo deduplica el mail del barrido. Si el vencimiento
+ * nuevo queda estrictamente en el futuro, la MISMA escritura con CAS lo baja (`rearmarVencido`) y el
+ * barrido puede avisar de nuevo cuando vuelva a vencer; si sigue pasado, la marca permanece y no se
+ * repite el mail. Un reloj detenido (vencimiento intacto) o sin meta no rearma.
+ *
  * Editar las horas de una prioridad no pasa por acá: la meta de un ticket existente solo cambia
  * al repriorizarlo. La cohorte (`slaRegla`) se lee de la fila y nunca se reescribe. Sin fallback
  * silencioso: si el calendario o los feriados fallan, el error se propaga al listener.
@@ -135,9 +140,14 @@ export class AplicarSlaUseCase {
         { metaS, estadoCodigo: fila.estadoCodigo, vencimientoActual: fila.slaVenceAt },
         medidor,
       );
+      // Vencimiento nuevo estrictamente posterior a ahora: rearma el aviso de vencido (issue #432).
+      // `undefined` (reloj detenido, no se toca) y `null` (sin meta) no rearman. Mismo "ahora" de
+      // pared que el barrido (`MarcarVencidosUseCase`), que es quien compara el vencimiento.
+      const rearmarVencido = (reloj.slaVenceAt?.getTime() ?? -Infinity) > Date.now();
       if (
         await this.relojRepo.guardarSiVersion(fila.ticketId, fila.version, reloj, {
           prioridadAplicadaId: dto.prioridadId,
+          rearmarVencido,
         })
       ) {
         const venceAt =
