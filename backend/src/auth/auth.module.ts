@@ -80,6 +80,13 @@ import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
 
 // ─── Use Cases ───────────────────────────────────────────────────────────────
+import { DESAFIO_LOGIN_REPOSITORY } from './domain/ports/desafio-login-repository.port';
+import { PrismaDesafioLoginRepository } from './infrastructure/tfa/prisma-desafio-login.repository';
+import {
+  ConfirmarEnrolamientoLoginUseCase,
+  IniciarEnrolamientoLoginUseCase,
+  VerificarDesafioUseCase,
+} from './application/tfa/desafio-login.use-cases';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-case';
 import { LogoutUseCase } from './application/use-cases/logout.use-case';
@@ -150,6 +157,15 @@ import { RolesController } from './interface/controllers/roles.controller';
     IniciarSecretoTfa,
     ConfirmarSecretoTfa,
     RegenerarCodigosTfa,
+    // Login con segundo paso (WU-5a): desafios opacos y sus use cases, aun sin rutas (WU-5b).
+    {
+      provide: DESAFIO_LOGIN_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaDesafioLoginRepository(prisma),
+      inject: [PrismaService],
+    },
+    VerificarDesafioUseCase,
+    IniciarEnrolamientoLoginUseCase,
+    ConfirmarEnrolamientoLoginUseCase,
 
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
