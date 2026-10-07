@@ -18,6 +18,8 @@ import { EmitirSesionService } from '../emitir-sesion.service';
 import { ITfaRepository } from '../../domain/ports/tfa-repository.port';
 import { IDesafioLoginRepository } from '../../domain/ports/desafio-login-repository.port';
 import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
+import { hashTokenDispositivo } from '../tfa/token-dispositivo';
 
 /**
  * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
@@ -47,6 +49,8 @@ export interface LoginDto {
   clienteId?: string;
   /** IP del navegador para el limitador (I4). Ausente = `sin-ip`. */
   ip?: string;
+  /** Token del dispositivo confiable que el BFF lee de su cookie `td` (D3). */
+  dispositivoConfiable?: string;
 }
 
 /** Vista de una membresía para el selector de cliente del front (R4, R27). */
@@ -111,6 +115,7 @@ export class LoginUseCase {
     private readonly limitador: ILimitadorIntentos,
     private readonly tfaRepo: ITfaRepository,
     private readonly desafios: IDesafioLoginRepository,
+    private readonly dispositivos: IDispositivoConfiableRepository,
   ) {
     this.emitirSesion = new EmitirSesionService(
       membresiaRepo,
@@ -162,14 +167,24 @@ export class LoginUseCase {
     // ROOT obliga en la practica.
     const estadoTfa = await this.tfaRepo.obtener(usuario.id);
     if (estadoTfa?.secretoCifrado != null) {
-      // TODO(WU-6a): el dispositivo confiable llega despues; ROOT nunca lo tiene (D4).
-      return Result.ok({
-        kind: 'needs2fa',
-        desafio: await this.desafios.crear(usuario.id, 'VERIFICAR'),
-        recordarDisponible: !usuario.isGlobalAdmin,
-      });
-    }
-    if (esObligado2fa(usuario.isGlobalAdmin, membresiasActivas)) {
+      // Un dispositivo confiable valido omite el desafio, nunca la contrasena (D3). ROOT no
+      // lo tiene aunque lo envie, ni siquiera si lo emitieron antes de que fuera ROOT (D4).
+      const omiteDesafio =
+        !usuario.isGlobalAdmin &&
+        dto.dispositivoConfiable !== undefined &&
+        (await this.dispositivos.esValido(
+          usuario.id,
+          hashTokenDispositivo(dto.dispositivoConfiable),
+          new Date(),
+        ));
+      if (!omiteDesafio) {
+        return Result.ok({
+          kind: 'needs2fa',
+          desafio: await this.desafios.crear(usuario.id, 'VERIFICAR'),
+          recordarDisponible: !usuario.isGlobalAdmin,
+        });
+      }
+    } else if (esObligado2fa(usuario.isGlobalAdmin, membresiasActivas)) {
       return Result.ok({
         kind: 'needsEnrolamiento2fa',
         desafio: await this.desafios.crear(usuario.id, 'ENROLAR'),

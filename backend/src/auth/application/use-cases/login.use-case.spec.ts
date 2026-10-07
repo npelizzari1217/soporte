@@ -174,7 +174,14 @@ const makeDesafios = () => ({
   consumir: unstubbed('consumir'),
 });
 
+const makeDispositivos = () => ({
+  crear: unstubbed('crear'),
+  esValido: vi.fn().mockResolvedValue(false),
+  revocarTodosDe: unstubbed('revocarTodosDe'),
+});
+
 describe('LoginUseCase', () => {
+  let dispositivos: ReturnType<typeof makeDispositivos>;
   let tfaRepo: ReturnType<typeof makeTfaRepo>;
   let desafios: ReturnType<typeof makeDesafios>;
   let limitador: ReturnType<typeof makeLimitador>;
@@ -198,6 +205,7 @@ describe('LoginUseCase', () => {
     limitador = makeLimitador();
     tfaRepo = makeTfaRepo();
     desafios = makeDesafios();
+    dispositivos = makeDispositivos();
     useCase = new LoginUseCase(
       usuarioRepo,
       membresiaRepo,
@@ -209,6 +217,7 @@ describe('LoginUseCase', () => {
       limitador,
       tfaRepo,
       desafios,
+      dispositivos,
     );
   });
 
@@ -490,6 +499,62 @@ describe('LoginUseCase', () => {
         desafio: 'desafio-ENROLAR',
       });
       expect(tokenService.signJwt).not.toHaveBeenCalled();
+    });
+
+    describe('dispositivo confiable (D3, D4)', () => {
+      const entrar = (extra = {}) =>
+        useCase.execute({
+          email: 'user@test.com',
+          password: 'secret',
+          dispositivoConfiable: 'token-crudo',
+          ...extra,
+        });
+      const hashDelToken = crypto.createHash('sha256').update('token-crudo').digest('hex');
+
+      beforeEach(() => {
+        usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+        const membresia = makeMembresiaResuelta();
+        membresiaRepo.findActivasByUsuario.mockResolvedValue([membresia]);
+        membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresia);
+        clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
+        tfaRepo.obtener.mockResolvedValue(EST_ACTIVO);
+      });
+
+      it('un token valido del usuario omite el desafio y consulta por el hash, no por el crudo', async () => {
+        dispositivos.esValido.mockResolvedValue(true);
+        expect((await entrar()).getValue().kind).toBe('tokens');
+        expect(dispositivos.esValido).toHaveBeenCalledWith(
+          expect.any(String),
+          hashDelToken,
+          expect.any(Date),
+        );
+        expect(desafios.crear).not.toHaveBeenCalled();
+      });
+
+      it('no omite la contrasena: password incorrecta sigue siendo 401', async () => {
+        dispositivos.esValido.mockResolvedValue(true);
+        hashProvider.verify.mockResolvedValue(false);
+        expect((await entrar()).isFail()).toBe(true);
+        expect(dispositivos.esValido).not.toHaveBeenCalled();
+      });
+
+      it('un token ajeno, revocado o vencido (esValido falso) sigue con el desafio', async () => {
+        dispositivos.esValido.mockResolvedValue(false);
+        expect((await entrar()).getValue()).toMatchObject({ kind: 'needs2fa' });
+      });
+
+      it('sin token no consulta el repositorio y sigue con el desafio', async () => {
+        const r = await entrar({ dispositivoConfiable: undefined });
+        expect(r.getValue()).toMatchObject({ kind: 'needs2fa' });
+        expect(dispositivos.esValido).not.toHaveBeenCalled();
+      });
+
+      it('un token valido de quien hoy es ROOT se ignora (D4)', async () => {
+        usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
+        dispositivos.esValido.mockResolvedValue(true);
+        expect((await entrar()).getValue()).toMatchObject({ kind: 'needs2fa' });
+        expect(dispositivos.esValido).not.toHaveBeenCalled();
+      });
     });
 
     it('ROOT con 2FA → VERIFICAR sin dispositivo confiable (D4)', async () => {

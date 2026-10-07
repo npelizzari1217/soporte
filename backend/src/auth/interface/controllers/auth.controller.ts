@@ -146,6 +146,9 @@ export class AuthController {
       password: dto.password,
       ip: ipDelNavegador(req),
       ...(dto.clienteId !== undefined ? { clienteId: dto.clienteId } : {}),
+      ...(dto.dispositivoConfiable !== undefined
+        ? { dispositivoConfiable: dto.dispositivoConfiable }
+        : {}),
     });
 
     if (result.isFail()) {

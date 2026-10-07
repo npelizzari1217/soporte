@@ -24,6 +24,12 @@ export class LoginRequestDto {
   @IsString()
   @IsNotEmpty()
   clienteId?: string;
+
+  /** Token del dispositivo confiable (cookie `td` del BFF, D3). */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  dispositivoConfiable?: string;
 }
 
 /** Body de `POST /auth/refresh`. */

@@ -31,6 +31,7 @@ import { JwtTokenService } from '../../jwt-token.service';
 import { ILogger } from '../../../../shared/domain/ports/i-logger.port';
 import { EmitirSesionService } from '../../../application/emitir-sesion.service';
 import { PrismaTfaRepository } from '../../tfa/prisma-tfa.repository';
+import { PrismaDispositivoConfiableRepository } from '../../tfa/prisma-dispositivo-confiable.repository';
 import { PrismaDesafioLoginRepository } from '../../tfa/prisma-desafio-login.repository';
 import { LoginUseCase } from '../../../application/use-cases/login.use-case';
 import { RefreshTokenUseCase } from '../../../application/use-cases/refresh-token.use-case';
@@ -122,6 +123,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       new PrismaLimitadorIntentos(prismaService),
       new PrismaTfaRepository(prismaService),
       new PrismaDesafioLoginRepository(prismaService),
+      new PrismaDispositivoConfiableRepository(prismaService),
     );
     refreshTokenUseCase = new RefreshTokenUseCase(
       refreshTokenRepo,
