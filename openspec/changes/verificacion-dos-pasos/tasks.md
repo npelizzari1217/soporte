@@ -82,13 +82,13 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-2 — TOTP nativo, formatos y regla de obligación (~330 líneas)
 
-- [ ] 2.1 Test unit de `TotpNativoService` (`backend/src/auth/infrastructure/tfa/totp-nativo.service.spec.ts`): vectores SHA-1 del RFC 6238 apéndice B (secreto `12345678901234567890`, T = 59, 1111111109, 1111111111, 1234567890, 2000000000, truncados a 6 dígitos); ventana ±1 acepta y ±2 rechaza; códigos mal formados; devuelve el paso aceptado; `generarSecreto` de 20 bytes en base32 sin padding; `uri` con `issuer=Soporte&algorithm=SHA1&digits=6&period=30`. (T1)
-- [ ] 2.2 Crear `auth/domain/ports/totp-service.port.ts` (`ITotpService`) y `auth/infrastructure/tfa/totp-nativo.service.ts` con `crypto.createHmac('sha1')`, base32 propio y `timingSafeEqual`. (T1)
-- [ ] 2.3 Test unit de `formato-codigo.ts`: `clasificarCodigo` distingue 6 dígitos de recuperación; `normalizarCodigoRecuperacion` pasa a mayúsculas, quita guiones y espacios, `O→0`, `I/L→1`; rechaza longitud errónea; `normalizarEmail`. (T5, I3)
-- [ ] 2.4 Crear `auth/domain/tfa/formato-codigo.ts` y `auth/domain/tfa/tfa.constants.ts` (duraciones de desafío 5/15 min, ticket 5 min, dispositivo 30 días, ventana 15 min, máximo 5). (T1, T5, I1)
-- [ ] 2.5 Test unit de `esObligado2fa` con mutación: ROOT obligado; usuario con una membresía activa que exige 2FA obligado; dos clientes sin política no obligado; `some` → `every` pone un caso en rojo; membresías inactivas no cuentan. (L3)
-- [ ] 2.6 Crear `auth/domain/tfa/es-obligado-2fa.ts`. (L3)
-- [ ] 2.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/domain/tfa src/auth/infrastructure/tfa`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 2.1 Test unit de `TotpNativoService` (`backend/src/auth/infrastructure/tfa/totp-nativo.service.spec.ts`): vectores SHA-1 del RFC 6238 apéndice B (secreto `12345678901234567890`, T = 59, 1111111109, 1111111111, 1234567890, 2000000000, truncados a 6 dígitos); ventana ±1 acepta y ±2 rechaza; códigos mal formados; devuelve el paso aceptado; `generarSecreto` de 20 bytes en base32 sin padding; `uri` con `issuer=Soporte&algorithm=SHA1&digits=6&period=30`. (T1)
+- [x] 2.2 Crear `auth/domain/ports/totp-service.port.ts` (`ITotpService`) y `auth/infrastructure/tfa/totp-nativo.service.ts` con `crypto.createHmac('sha1')`, base32 propio y `timingSafeEqual`. (T1)
+- [x] 2.3 Test unit de `formato-codigo.ts`: `clasificarCodigo` distingue 6 dígitos de recuperación; `normalizarCodigoRecuperacion` pasa a mayúsculas, quita guiones y espacios, `O→0`, `I/L→1`; rechaza longitud errónea; `normalizarEmail`. (T5, I3)
+- [x] 2.4 Crear `auth/domain/tfa/formato-codigo.ts` y `auth/domain/tfa/tfa.constants.ts` (duraciones de desafío 5/15 min, ticket 5 min, dispositivo 30 días, ventana 15 min, máximo 5). (T1, T5, I1)
+- [x] 2.5 Test unit de `esObligado2fa` con mutación: ROOT obligado; usuario con una membresía activa que exige 2FA obligado; dos clientes sin política no obligado; `some` → `every` pone un caso en rojo; membresías inactivas no cuentan. (L3)
+- [x] 2.6 Crear `auth/domain/tfa/es-obligado-2fa.ts`. (L3)
+- [x] 2.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/domain/tfa src/auth/infrastructure/tfa`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-3 — Limitador de intentos, IP y aplicación en el login (~390 líneas)
 
