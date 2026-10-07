@@ -195,10 +195,10 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-8 — Reseteo de 2FA por API y por script (~390 líneas)
 
-- [ ] 8.1 Test de integración de `findClientesDeTodasByUsuario(usuarioId): Promise<string[]>`: sin filtro de `activo`, `deletedAt` ni estado del cliente (cuentan inactivas, de clientes suspendidos y soft-deleted). (S2)
-- [ ] 8.2 Agregar `findClientesDeTodasByUsuario` a `IMembresiaRepository` y a `prisma-membresia.repository.ts`. (S2)
-- [ ] 8.3 Test unit de `ResetearTfaUsuarioUseCase`: ROOT resetea a cualquiera, incluido otro ROOT; ADMINISTRADOR solo con membresía activa del destino en su cliente, todas las membresías en su cliente y destino no ROOT, también a sí mismo; cualquier incumplimiento (otras membresías, membresía soft-deleted en otro cliente, destino ROOT, otro cliente) → `MembresiaNoEncontradaError` 404 idéntico al de un id inexistente; TECNICO/rol sin administración 403. (S1, S2, S4, S8)
-- [ ] 8.4 Implementar `ResetearTfaUsuarioUseCase` (efectos de S3 con `eliminarTodo`, refresh con log-and-swallow) y `DELETE /usuarios/:id/2fa` en `UsuariosController` con `AdminClienteGuard`. (S1, S2, S3, S4, S8, D6)
+- [x] 8.1 Test de integración de `findClientesDeTodasByUsuario(usuarioId): Promise<string[]>`: sin filtro de `activo`, `deletedAt` ni estado del cliente (cuentan inactivas, de clientes suspendidos y soft-deleted). (S2)
+- [x] 8.2 Agregar `findClientesDeTodasByUsuario` a `IMembresiaRepository` y a `prisma-membresia.repository.ts`. (S2)
+- [x] 8.3 Test unit de `ResetearTfaUsuarioUseCase`: ROOT resetea a cualquiera, incluido otro ROOT; ADMINISTRADOR solo con membresía activa del destino en su cliente, todas las membresías en su cliente y destino no ROOT, también a sí mismo; cualquier incumplimiento (otras membresías, membresía soft-deleted en otro cliente, destino ROOT, otro cliente) → `MembresiaNoEncontradaError` 404 idéntico al de un id inexistente; TECNICO/rol sin administración 403. (S1, S2, S4, S8)
+- [x] 8.4 Implementar `ResetearTfaUsuarioUseCase` (efectos de S3 con `eliminarTodo`, refresh con log-and-swallow) y `DELETE /usuarios/:id/2fa` en `UsuariosController` con `AdminClienteGuard`. (S1, S2, S3, S4, S8, D6)
 - [ ] 8.5 Test e2e: ROOT, ADMINISTRADOR y TECNICO contra cada caso de 8.3; tras el reseteo el próximo login exige o no el 2FA según `esObligado2fa` (obligado → `needsEnrolamiento2fa`; no obligado → sesión). (S3, S5)
 - [ ] 8.6 Test de integración del script `backend/scripts/resetear-2fa-root.ts` (`scripts/resetear-2fa-root.spec.ts`): exige que el usuario exista y sea `isGlobalAdmin` (si no, exit 1 sin tocar nada); aplica los efectos de S3 en una transacción; imprime solo `OK`; nunca imprime secretos ni códigos; carga `.env` con `process.loadEnvFile()`; lee `RESET_EMAIL`. (S3, S6, S7)
 - [ ] 8.7 Crear `backend/scripts/resetear-2fa-root.ts` (molde `reset-password.ts`, sin `.ps1`, invocación `corepack pnpm exec ts-node scripts/resetear-2fa-root.ts`). (S6, S7)

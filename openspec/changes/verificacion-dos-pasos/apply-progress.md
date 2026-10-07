@@ -297,3 +297,14 @@ WU-7 entera sumaba 448 lineas de codigo y tests: agregar dos metodos obligatorio
 - `PoliticaTfaController` (`GET` y `PUT /politica-2fa`) bajo `JwtAuthGuard` + `TenantGuard` y `AdminClienteGuard` en los dos metodos: el `clienteId` sale del JWT (un token sin cliente recibe 403 en `TenantGuard`); un `clienteId` en el body se ignora (DTO con whitelist); cliente inexistente, 404.
 - e2e `politica-tfa.e2e.spec.ts`: TECNICO 403 en GET y PUT, aislamiento entre clientes, body ignorado, body invalido 400, sesiones abiertas sobreviven a activar y desactivar (C4). C3 y C5 de punta a punta quedan cubiertos en unit (y C3 en el e2e de login de 5c2).
 - Evidencia: `src/auth src/clientes` 132 archivos, 1358 tests verdes; typecheck, lint y ratchet limpios.
+
+## WU-8 — Reseteo de 2FA por API y por script (partida en tres: 8 regla y ruta, 8b e2e, 8c script)
+
+WU-8 entera sumaba ~875 lineas de codigo y tests; la costura de tasks.md ("API vs script") no alcanzaba, asi que el orquestador la partio en tres, cada parte en verde con sus predecesoras.
+
+### 8 (`feat/verificacion-dos-pasos-wu08`, tareas 8.1 a 8.4)
+
+- `IMembresiaRepository.findClientesDeTodasByUsuario` (sin ningun filtro: cuenta membresias inactivas, de clientes suspendidos y borradas) con su test de integracion; 8 mocks existentes completados.
+- `ResetearTfaUsuarioUseCase` (dependencias `Pick<>`): ROOT resetea a cualquiera, incluido otro ROOT; un ADMINISTRADOR solo a un usuario no ROOT con membresia ACTIVA en su cliente y con TODAS sus membresias en ese cliente (puede resetearse a si mismo con la misma regla). Todo rechazo es el mismo `MembresiaNoEncontradaError` (404) que un id inexistente. El reseteo corre `eliminarTodo` y despues revoca los refresh (registrar y seguir).
+- `DELETE /usuarios/:id/2fa` en `UsuariosController` con `AdminClienteGuard`, 204. Bajo `TenantGuard`: un ROOT con token MASTER debe cambiar de cliente antes; el ROOT bloqueado de todo usa el script (8c).
+- Evidencia: `src/auth` 81 archivos, 968 tests verdes; typecheck, lint y ratchet limpios.

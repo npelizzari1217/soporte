@@ -76,6 +76,14 @@ export class PrismaMembresiaRepository implements IMembresiaRepository {
     return row ? MembresiaMapper.toResuelta(row as PrismaMembresiaResuelta) : null;
   }
 
+  async findClientesDeTodasByUsuario(usuarioId: string): Promise<string[]> {
+    const rows = await this.client.membresia.findMany({
+      where: { usuarioId },
+      select: { clienteId: true },
+    });
+    return rows.map((r) => r.clienteId);
+  }
+
   async create(membresia: MembresiaEntity): Promise<void> {
     await this.client.membresia.create({
       data: {

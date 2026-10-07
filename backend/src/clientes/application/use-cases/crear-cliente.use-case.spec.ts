@@ -84,6 +84,7 @@ function makeMembresiaRepo(): IMembresiaRepository {
     findActivasByUsuario: unstubbed('findActivasByUsuario'),
     findActivaByUsuarioYCliente: unstubbed('findActivaByUsuarioYCliente'),
     findActivasByCliente: unstubbed('findActivasByCliente'),
+    findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
     findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
     save: unstubbed('save'),
   };

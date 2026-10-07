@@ -129,6 +129,7 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   // RefreshTokenUseCase nunca crea/muta membresías, solo las lee vía
   // resolverScope: un stub mudo taparía que producción empiece a llamarlos.
   findActivasByCliente: unstubbed('findActivasByCliente'),
+  findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
   findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
   create: unstubbed('create'),
   save: unstubbed('save'),

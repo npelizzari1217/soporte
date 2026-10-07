@@ -103,6 +103,7 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   // LoginUseCase nunca llama a estos métodos (solo lee membresías, nunca
   // crea/muta): un stub mudo taparía que producción empiece a llamarlos.
   findActivasByCliente: unstubbed('findActivasByCliente'),
+  findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
   findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
   create: unstubbed('create'),
   save: unstubbed('save'),
