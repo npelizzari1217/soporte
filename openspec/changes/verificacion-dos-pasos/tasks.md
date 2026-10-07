@@ -206,10 +206,10 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-9 — Rotación de clave con destinos TOTP, seed del ROOT y runbook (~390 líneas)
 
-- [ ] 9.1 Test de integración de la rotación (`rotar-email-crypto-key` con destinos): los secretos TOTP activos y pendientes y la contraseña SMTP se re-cifran con la clave nueva y siguen descifrando (AAD `tfa:{usuario_id}` e `id`); rotación idempotente (`migradas=N ya_migradas=M` totales). (K1, K2)
-- [ ] 9.2 Test de integración de atomicidad: un fallo en un destino revierte toda la transacción (mismo `FOR UPDATE`, relectura round-trip, mismos exit codes). (K2)
-- [ ] 9.3 Test de integración de `--verificar`: recorre todos los destinos y falla con un secreto que no descifra. (K3)
-- [ ] 9.4 Generalizar `backend/scripts/rotar-email-crypto-key.mjs` de una columna a una lista de destinos (`clientes.smtp_password_cifrada` con AAD `id`; `usuarios_tfa.secreto_cifrado` y `usuarios_tfa.secreto_pendiente_cifrado` con AAD `tfa:{usuario_id}`); actualizar solo el comentario de cabecera de `rotate-email-crypto-key.ps1` (100 % ASCII, sin BOM; no se agrega ningún `.ps1`). (K1, K2, K3)
+- [x] 9.1 Test de integración de la rotación (`rotar-email-crypto-key` con destinos): los secretos TOTP activos y pendientes y la contraseña SMTP se re-cifran con la clave nueva y siguen descifrando (AAD `tfa:{usuario_id}` e `id`); rotación idempotente (`migradas=N ya_migradas=M` totales). (K1, K2)
+- [x] 9.2 Test de integración de atomicidad: un fallo en un destino revierte toda la transacción (mismo `FOR UPDATE`, relectura round-trip, mismos exit codes). (K2)
+- [x] 9.3 Test de integración de `--verificar`: recorre todos los destinos y falla con un secreto que no descifra. (K3)
+- [x] 9.4 Generalizar `backend/scripts/rotar-email-crypto-key.mjs` de una columna a una lista de destinos (`clientes.smtp_password_cifrada` con AAD `id`; `usuarios_tfa.secreto_cifrado` y `usuarios_tfa.secreto_pendiente_cifrado` con AAD `tfa:{usuario_id}`); actualizar solo el comentario de cabecera de `rotate-email-crypto-key.ps1` (100 % ASCII, sin BOM; no se agrega ningún `.ps1`). (K1, K2, K3)
 - [ ] 9.5 Test e2e: tras una rotación con un secreto manipulado el login responde 401 (no 500) y loguea `TFA_SECRETO_INDESCIFRABLE`. (K4, T12)
 - [ ] 9.6 Test unit del seed `root-bootstrap.seed.ts`: con `ROOT_ADMIN_TOTP_SECRET` presente, `NODE_ENV` ausente, `production`, `staging` → termina con error sin crear ni tocar el ROOT; `development` y `test` → activa el 2FA con ese secreto; sin la variable, el ROOT pasa por la configuración forzada. (L10)
 - [ ] 9.7 Implementar la lista positiva (fail-closed) en `root-bootstrap.seed.ts`; documentar el valor de desarrollo en `.env.example` y en el README. (L10)

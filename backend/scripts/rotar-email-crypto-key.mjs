@@ -1,6 +1,8 @@
-// Rotación de `EMAIL_CRYPTO_KEY`: re-cifra `clientes.smtp_password_cifrada`
-// de una clave anterior (`OLD_KEY`) a una nueva (`NEW_KEY`), preservando el
-// formato `v1` de `AesGcmSecretCipher` sin introducir keyring ni `kid`.
+// Rotación de `EMAIL_CRYPTO_KEY`: re-cifra todos los secretos que protege esa
+// clave (lista `DESTINOS`: la contraseña SMTP de `clientes` y los secretos TOTP
+// activo y pendiente de `usuarios_tfa`) de una clave anterior (`OLD_KEY`) a una
+// nueva (`NEW_KEY`), preservando el formato `v1` de `AesGcmSecretCipher` sin
+// introducir keyring ni `kid`. Todos los destinos van en UNA sola transacción.
 //
 // Ref proposal/spec: sdd/rotacion-email-crypto-key. Ref design: ADR-1 a
 // ADR-5. Ref tasks: WU1 (1.3, 1.4) agregó validación y clasificación. WU2a
@@ -14,6 +16,33 @@
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 import { cifrarV1, descifrarV1, leerClaveHex } from './lib/cifrado-secreto-v1.mjs';
+
+/**
+ * Destinos cifrados con `EMAIL_CRYPTO_KEY`. `aad` arma el AAD de cada fila a
+ * partir de su clave primaria: SMTP usa el `id` del cliente; los secretos TOTP
+ * usan `tfa:{usuario_id}` (el mismo que `SecretoTotpCifrado`). Agregar un
+ * secreto nuevo cifrado con esta clave es agregar una entrada acá.
+ */
+export const DESTINOS = [
+  { tabla: 'clientes', pk: 'id', columna: 'smtp_password_cifrada', aad: (pk) => String(pk) },
+  {
+    tabla: 'usuarios_tfa',
+    pk: 'usuario_id',
+    columna: 'secreto_cifrado',
+    aad: (pk) => `tfa:${pk}`,
+  },
+  {
+    tabla: 'usuarios_tfa',
+    pk: 'usuario_id',
+    columna: 'secreto_pendiente_cifrado',
+    aad: (pk) => `tfa:${pk}`,
+  },
+];
+
+const nombreDestino = (d) => `${d.tabla}.${d.columna}`;
+const sqlSeleccion = (d, paraActualizar) =>
+  `SELECT ${d.pk} AS pk, ${d.columna} AS payload FROM ${d.tabla} WHERE ${d.columna} IS NOT NULL ORDER BY ${d.pk}` +
+  (paraActualizar ? ' FOR UPDATE' : '');
 
 /**
  * Valida `OLD_KEY` y `NEW_KEY` ANTES de abrir cualquier conexión a la base
@@ -84,9 +113,11 @@ export function validarClaveVerificar(verificarKey) {
  * @returns {{ estado: 'pendiente', textoPlano: string } | { estado: 'ya_migrada' } | { estado: 'indescifrable' }}
  */
 export function clasificarFila(fila, oldKeyBuf, newKeyBuf) {
-  const aad = String(fila.id);
-  const payload = fila.smtp_password_cifrada;
+  return clasificarPayload(fila.smtp_password_cifrada, String(fila.id), oldKeyBuf, newKeyBuf);
+}
 
+/** Misma clasificación que {@link clasificarFila}, para cualquier destino (payload + AAD). */
+export function clasificarPayload(payload, aad, oldKeyBuf, newKeyBuf) {
   try {
     const textoPlano = descifrarV1(oldKeyBuf, payload, aad);
     return { estado: 'pendiente', textoPlano };
@@ -146,81 +177,86 @@ export async function ejecutarRotacion(pool, opciones, deps = {}) {
   try {
     await client.query(esDryRun ? 'BEGIN READ ONLY' : 'BEGIN');
 
-    const selectSql = esDryRun
-      ? `SELECT id, smtp_password_cifrada FROM clientes WHERE smtp_password_cifrada IS NOT NULL ORDER BY id`
-      : `SELECT id, smtp_password_cifrada FROM clientes WHERE smtp_password_cifrada IS NOT NULL ORDER BY id FOR UPDATE`;
-    const { rows } = await client.query(selectSql);
-
     let migradas = 0;
     let yaMigradas = 0;
     const textosPlanosEsperados = new Map();
 
-    for (const fila of rows) {
-      const id = String(fila.id);
-      const clasificacion = clasificarFila(fila, oldKeyBuf, newKeyBuf);
+    for (const destino of DESTINOS) {
+      // `FOR UPDATE` se omite en dry-run: Postgres lo rechaza en READ ONLY.
+      const { rows } = await client.query(sqlSeleccion(destino, !esDryRun));
 
-      if (clasificacion.estado === 'indescifrable') {
-        await client.query('ROLLBACK');
-        return falloDeDatos(`fila ${id}: indescifrable con OLD_KEY y con NEW_KEY`);
-      }
+      for (const fila of rows) {
+        const id = String(fila.pk);
+        const aad = destino.aad(fila.pk);
+        const clave = `${nombreDestino(destino)}:${id}`;
+        const clasificacion = clasificarPayload(fila.payload, aad, oldKeyBuf, newKeyBuf);
 
-      if (clasificacion.estado === 'ya_migrada') {
-        yaMigradas++;
-        continue;
-      }
-
-      // estado === 'pendiente'
-      const nuevoPayload = cifrar(newKeyBuf, clasificacion.textoPlano, id);
-      textosPlanosEsperados.set(id, clasificacion.textoPlano);
-
-      if (esDryRun) {
-        // Round-trip SOLO en memoria — ningún UPDATE (spec: "--dry-run no escribe nada").
-        let planoRedescifrado;
-        try {
-          planoRedescifrado = descifrarV1(newKeyBuf, nuevoPayload, id);
-        } catch {
+        if (clasificacion.estado === 'indescifrable') {
           await client.query('ROLLBACK');
-          return falloDeDatos(`fila ${id}: round-trip en memoria (dry-run) no descifró`);
+          return falloDeDatos(
+            `${nombreDestino(destino)} ${id}: indescifrable con OLD_KEY y con NEW_KEY`,
+          );
         }
-        if (planoRedescifrado !== clasificacion.textoPlano) {
+
+        if (clasificacion.estado === 'ya_migrada') {
+          yaMigradas++;
+          continue;
+        }
+
+        // estado === 'pendiente'
+        const nuevoPayload = cifrar(newKeyBuf, clasificacion.textoPlano, aad);
+        textosPlanosEsperados.set(clave, clasificacion.textoPlano);
+
+        if (esDryRun) {
+          // Round-trip SOLO en memoria — ningún UPDATE (spec: "--dry-run no escribe nada").
+          let planoRedescifrado;
+          try {
+            planoRedescifrado = descifrarV1(newKeyBuf, nuevoPayload, aad);
+          } catch {
+            await client.query('ROLLBACK');
+            return falloDeDatos(`${clave}: round-trip en memoria (dry-run) no descifró`);
+          }
+          if (planoRedescifrado !== clasificacion.textoPlano) {
+            await client.query('ROLLBACK');
+            return falloDeDatos(`${clave}: round-trip en memoria (dry-run) no coincide`);
+          }
+          migradas++;
+          continue;
+        }
+
+        const resultadoUpdate = await client.query(
+          `UPDATE ${destino.tabla} SET ${destino.columna} = $1 WHERE ${destino.pk} = $2 AND ${destino.columna} = $3`,
+          [nuevoPayload, fila.pk, fila.payload],
+        );
+        if (resultadoUpdate.rowCount !== 1) {
           await client.query('ROLLBACK');
-          return falloDeDatos(`fila ${id}: round-trip en memoria (dry-run) no coincide`);
+          return falloDeDatos(`${clave}: UPDATE no afectó exactamente una fila`);
         }
         migradas++;
-        continue;
       }
-
-      const resultadoUpdate = await client.query(
-        `UPDATE clientes SET smtp_password_cifrada = $1 WHERE id = $2 AND smtp_password_cifrada = $3`,
-        [nuevoPayload, fila.id, fila.smtp_password_cifrada],
-      );
-      if (resultadoUpdate.rowCount !== 1) {
-        await client.query('ROLLBACK');
-        return falloDeDatos(`fila ${id}: UPDATE no afectó exactamente una fila`);
-      }
-      migradas++;
     }
 
     if (!esDryRun) {
       // Verificación round-trip contra la base (ADR-2): relee TODAS las
-      // filas no nulas, dentro de la misma transacción, y confirma que
-      // descifran con NEW_KEY reproduciendo el texto plano guardado.
-      const relectura = await client.query(
-        `SELECT id, smtp_password_cifrada FROM clientes WHERE smtp_password_cifrada IS NOT NULL ORDER BY id`,
-      );
-      for (const fila of relectura.rows) {
-        const id = String(fila.id);
-        let plano;
-        try {
-          plano = descifrarV1(newKeyBuf, fila.smtp_password_cifrada, id);
-        } catch {
-          await client.query('ROLLBACK');
-          return falloDeDatos(`fila ${id}: la relectura no descifra con NEW_KEY`);
-        }
-        const esperado = textosPlanosEsperados.get(id);
-        if (esperado !== undefined && plano !== esperado) {
-          await client.query('ROLLBACK');
-          return falloDeDatos(`fila ${id}: la relectura no reproduce el texto plano original`);
+      // filas no nulas de TODOS los destinos, dentro de la misma transacción,
+      // y confirma que descifran con NEW_KEY reproduciendo el texto plano guardado.
+      for (const destino of DESTINOS) {
+        const relectura = await client.query(sqlSeleccion(destino, false));
+        for (const fila of relectura.rows) {
+          const id = String(fila.pk);
+          const clave = `${nombreDestino(destino)}:${id}`;
+          let plano;
+          try {
+            plano = descifrarV1(newKeyBuf, fila.payload, destino.aad(fila.pk));
+          } catch {
+            await client.query('ROLLBACK');
+            return falloDeDatos(`${clave}: la relectura no descifra con NEW_KEY`);
+          }
+          const esperado = textosPlanosEsperados.get(clave);
+          if (esperado !== undefined && plano !== esperado) {
+            await client.query('ROLLBACK');
+            return falloDeDatos(`${clave}: la relectura no reproduce el texto plano original`);
+          }
         }
       }
     }
@@ -244,8 +280,8 @@ export async function ejecutarRotacion(pool, opciones, deps = {}) {
 
 /**
  * Modo `--verificar`: dentro de `BEGIN READ ONLY` … `ROLLBACK` (nunca
- * escribe por construcción), comprueba que toda fila no nula descifra con
- * `verificarKeyBuf` usando su `id` como AAD. Nunca imprime la clave ni
+ * escribe por construcción), comprueba que toda fila no nula de todos los destinos descifra con
+ * `verificarKeyBuf` usando su AAD. Nunca imprime la clave ni
  * texto descifrado — solo el `id` de la fila que falla, como
  * {@link falloDeDatos}.
  * @param {import('pg').Pool} pool
@@ -259,17 +295,17 @@ export async function ejecutarVerificacion(pool, opciones) {
   try {
     await client.query('BEGIN READ ONLY');
 
-    const { rows } = await client.query(
-      `SELECT id, smtp_password_cifrada FROM clientes WHERE smtp_password_cifrada IS NOT NULL ORDER BY id`,
-    );
-
-    for (const fila of rows) {
-      const id = String(fila.id);
-      try {
-        descifrarV1(verificarKeyBuf, fila.smtp_password_cifrada, id);
-      } catch {
-        await client.query('ROLLBACK');
-        return falloDeDatos(`fila ${id}: indescifrable con la clave de --verificar`);
+    for (const destino of DESTINOS) {
+      const { rows } = await client.query(sqlSeleccion(destino, false));
+      for (const fila of rows) {
+        try {
+          descifrarV1(verificarKeyBuf, fila.payload, destino.aad(fila.pk));
+        } catch {
+          await client.query('ROLLBACK');
+          return falloDeDatos(
+            `${nombreDestino(destino)} ${String(fila.pk)}: indescifrable con la clave de --verificar`,
+          );
+        }
       }
     }
 

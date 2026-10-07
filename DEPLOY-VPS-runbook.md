@@ -60,6 +60,19 @@ servicios NSSM.
 
 El `git pull` lo hace el script **en el VPS**; nada se sube desde la máquina de desarrollo.
 
+## Preflight de `EMAIL_CRYPTO_KEY` y 2FA (antes del deploy)
+
+El 2FA cifra su secreto con `EMAIL_CRYPTO_KEY`. Antes de desplegar, comprobá que `backend\.env` la
+tenga (sin imprimirla); `deploy.ps1` la genera solo si falta, pero un valor inválido deja a todos
+los usuarios con 2FA sin poder entrar:
+
+```powershell
+if ((Get-Content C:\soporte\backend\.env) -match '^EMAIL_CRYPTO_KEY=[0-9a-fA-F]{64}$') { 'EMAIL_CRYPTO_KEY ok' } else { 'EMAIL_CRYPTO_KEY AUSENTE O INVALIDA' }
+```
+
+Tras el deploy, **todo ROOT queda obligado a enrolar el 2FA en su primer login**: tené el celular
+con la app de autenticación a mano antes de entrar.
+
 ## Preflight que conviene correr antes
 
 El deploy aborta solo, pero estos tres chequeos son de lectura y evitan la ida y vuelta:
@@ -359,7 +372,10 @@ pasó de verdad el 2026-09-09, desplegando `83bdc8a`.
 
 ### 5. Rotación de `EMAIL_CRYPTO_KEY` (`rotate-email-crypto-key.ps1`)
 
-Cifra en reposo la contraseña SMTP de cada cliente. Se genera **una sola vez** en el deploy
+Cifra en reposo la contraseña SMTP de cada cliente **y los secretos TOTP del 2FA**
+(`usuarios_tfa.secreto_cifrado` y `secreto_pendiente_cifrado`, AAD `tfa:{usuario_id}`). La
+rotación re-cifra los tres destinos en una sola transacción: si cualquiera no descifra, no se
+modifica ninguno, y `--verificar` también los recorre. Se genera **una sola vez** en el deploy
 (`deploy.ps1` paso 5b) y, si existe, no se toca — regenerarla a mano convierte toda credencial
 guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
 el valor; eso es lo que hace `rotate-email-crypto-key.ps1` (ver `sdd/rotacion-email-crypto-key`).
@@ -749,6 +765,32 @@ el sitio esté publicado. Verificá desde afuera:
 ```bash
 curl -sL -o /dev/null -w "%{http_code} %{url_effective}\n" https://soporte.sesitec.net/
 # esperado: 200 https://soporte.sesitec.net/login  (la raíz redirige con 307)
+```
+
+### Verificación de IP del limitador de intentos (2FA)
+
+El limitador de intentos guarda la IP del cliente en la clave. Después del deploy, con un login
+fallido de prueba hecho desde afuera, las claves de `auth_intentos_fallidos` deben terminar en una
+IP pública, **no** en `sin-ip` ni en `127.0.0.1`:
+
+```powershell
+docker exec soporte-postgres-master psql -U soporte -d soporte_master -c "SELECT clave FROM auth_intentos_fallidos ORDER BY 1 DESC LIMIT 10;"
+```
+
+Si terminan en `sin-ip` o `127.0.0.1`, el proxy no está reenviando la IP real y el límite se
+comparte entre todos los usuarios: corregirlo antes de dar el deploy por bueno.
+
+### Recuperación del 2FA de un ROOT (`resetear-2fa-root.ts`)
+
+Un ROOT que perdió su autenticador no puede resetearse por la API (queda bajo `TenantGuard`). El
+operador, en el VPS, borra su 2FA y revoca sus sesiones; el siguiente login obliga a enrolar de
+nuevo. Solo funciona con un usuario existente que sea ROOT; con otro sale con 1 sin escribir nada:
+
+```powershell
+cd C:\soporte\backend
+$env:RESET_EMAIL = 'root@ejemplo.com'
+corepack pnpm exec ts-node scripts/resetear-2fa-root.ts   # imprime OK
+Remove-Item Env:RESET_EMAIL
 ```
 
 ### Verificación de la sesión UTC (sdd/sesion-utc-y-backfill-de-fechas, ADR-1/ADR-6)
