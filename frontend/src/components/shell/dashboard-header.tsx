@@ -17,6 +17,7 @@ import { TenantSwitcher } from "./tenant-switcher";
 import { ThemeToggle } from "./theme-toggle";
 import { Button } from "@/components/ui/button";
 import { CambiarPasswordDialog } from "@/features/auth/components/CambiarPasswordDialog";
+import { ConfigurarTfaDialog } from "@/features/auth/components/configurar-tfa-dialog";
 import { LinkSoporteDialog } from "@/features/clientes/components/link-soporte-dialog";
 
 export function DashboardHeader() {
@@ -38,6 +39,7 @@ export function DashboardHeader() {
       <div className="flex items-center gap-2">
         <ThemeToggle />
         <LinkSoporteDialog />
+        <ConfigurarTfaDialog />
         <CambiarPasswordDialog />
         <Button variant="ghost" size="sm" disabled={isLoggingOut} onClick={handleLogout}>
           {isLoggingOut ? "Cerrando sesión…" : "Cerrar sesión"}

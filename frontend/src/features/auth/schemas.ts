@@ -86,3 +86,23 @@ export const codigoDesafioSchema = z.object({
   recordar: z.boolean(),
 });
 export type CodigoDesafioFormValues = z.infer<typeof codigoDesafioSchema>;
+
+/**
+ * Espejo de las respuestas de `/auth/2fa/**` (ajustes de 2FA del perfil). Los códigos de
+ * recuperación solo viajan en la activación inicial y al regenerar; nunca se persisten.
+ *
+ * Spec: sdd/verificacion-dos-pasos — T3, T4, T8, T9.
+ */
+export const estadoTfaSchema = z.object({
+  activo: z.boolean(),
+  obligado: z.boolean(),
+  codigosRestantes: z.number(),
+  pendiente: z.boolean(),
+});
+export type EstadoTfa = z.infer<typeof estadoTfaSchema>;
+
+export const iniciarSecretoTfaSchema = z.object({ otpauthUri: z.string(), claveManual: z.string() });
+export type IniciarSecretoTfa = z.infer<typeof iniciarSecretoTfaSchema>;
+
+export const confirmarSecretoTfaSchema = z.object({ codigosRecuperacion: z.array(z.string()).optional() });
+export const codigosTfaSchema = z.object({ codigosRecuperacion: z.array(z.string()) });
