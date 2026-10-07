@@ -308,3 +308,7 @@ WU-8 entera sumaba ~875 lineas de codigo y tests; la costura de tasks.md ("API v
 - `ResetearTfaUsuarioUseCase` (dependencias `Pick<>`): ROOT resetea a cualquiera, incluido otro ROOT; un ADMINISTRADOR solo a un usuario no ROOT con membresia ACTIVA en su cliente y con TODAS sus membresias en ese cliente (puede resetearse a si mismo con la misma regla). Todo rechazo es el mismo `MembresiaNoEncontradaError` (404) que un id inexistente. El reseteo corre `eliminarTodo` y despues revoca los refresh (registrar y seguir).
 - `DELETE /usuarios/:id/2fa` en `UsuariosController` con `AdminClienteGuard`, 204. Bajo `TenantGuard`: un ROOT con token MASTER debe cambiar de cliente antes; el ROOT bloqueado de todo usa el script (8c).
 - Evidencia: `src/auth` 81 archivos, 968 tests verdes; typecheck, lint y ratchet limpios.
+
+### 8b (`feat/verificacion-dos-pasos-wu08b`, tarea 8.5)
+
+- e2e `usuarios-reseteo-tfa.e2e.spec.ts`: ROOT, ADMINISTRADOR y TECNICO contra cada caso de la regla; tras el reseteo, el siguiente login obliga a enrolar de nuevo (S5). Un ROOT con token MASTER cambia de cliente antes de resetear (la ruta vive bajo `TenantGuard`).
