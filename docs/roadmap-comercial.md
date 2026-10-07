@@ -803,6 +803,34 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - En el detalle del ticket hay un botón **"Descargar PDF"**, visible para cualquiera
     que pueda ver el ticket.
 
+- **Segunda etapa, punto 5 — verificación en dos pasos (2FA)** (decidido el
+  2026-10-07, ciclo `verificacion-dos-pasos`):
+  - El segundo paso es una **app autenticadora** (TOTP: Google Authenticator,
+    Microsoft Authenticator, Authy). Al activarlo se entregan **10 códigos de
+    recuperación** de un solo uso, que se muestran una sola vez. No hay código por
+    mail: el correo sale por el SMTP de cada cliente, y ROOT o un cliente sin correo
+    configurado no lo recibirían.
+  - El 2FA es **por usuario**, no por cliente: el usuario es global y puede estar en
+    varios clientes.
+  - Cada usuario puede activarlo por su cuenta. El **ADMINISTRADOR** de un cliente
+    puede **exigirlo para su cliente**. Si un usuario está en varios clientes y alguno
+    lo exige, se le pide al entrar a cualquiera. Si le toca y no lo tiene configurado,
+    después de la contraseña se lo obliga a configurarlo antes de seguir.
+  - Para **ROOT** es obligatorio.
+  - Se pide **una sola vez por login**, después de la contraseña y antes del selector
+    de cliente. Cambiar de cliente o renovar la sesión no lo vuelve a pedir.
+  - **"Recordar este dispositivo" por 30 días.** Se invalida al cambiar la contraseña
+    o al resetear el 2FA.
+  - Si el usuario pierde el celular y los códigos, **ROOT le resetea el 2FA**. El
+    ADMINISTRADOR de un cliente también puede, pero solo si el usuario pertenece
+    únicamente a su cliente: un admin no le baja la seguridad a alguien que también
+    está en otro cliente.
+  - El **reseteo de contraseña por mail no desactiva el 2FA**: el siguiente login
+    igual pide el código.
+  - **Límite de intentos** en el login y en la verificación del código (del orden de
+    5 cada 15 minutos por usuario). Hoy el login no tiene ninguno.
+  - Fuera de alcance: llaves físicas o passkeys (WebAuthn), SMS y un registro de
+    auditoría de logins.
 - **Segunda etapa, punto 6 — SLA de primera respuesta y pausa del reloj**
   (decidido el 2026-10-06, ciclo `sla-primera-respuesta-y-pausa`):
   - **Cumplida** (2026-10-06, PRs #391-#422, merge `56341154`, desplegado el mismo
