@@ -11,6 +11,7 @@ import {
 } from '../../domain/ports/tfa-repository.port';
 import { ITotpService } from '../../domain/ports/totp-service.port';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
+import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
 import { ConfirmadorSecretoPendiente } from './confirmador-secreto-pendiente';
 import { SecretoTotpCifrado } from './secreto-totp-cifrado';
 import {
@@ -95,6 +96,10 @@ describe('use cases de autogestion de 2FA', () => {
     liberar: async () => undefined,
     devolver: async () => undefined,
   };
+  let activas: MembresiaResuelta[] = [];
+  const membresias: Pick<IMembresiaRepository, 'findActivasByUsuario'> = {
+    findActivasByUsuario: async () => activas,
+  };
   const usuarios: Pick<IUsuarioRepository, 'findById'> = {
     findById: async () =>
       UsuarioEntity.create({
@@ -117,16 +122,29 @@ describe('use cases de autogestion de 2FA', () => {
     repo = new RepoEnMemoria();
     disponible = true;
     ROOT = false;
+    activas = [];
     secretoNuevo = 'S1';
     const secretos = new SecretoTotpCifrado(cipher);
     const verificador = new VerificadorCodigoTfa(repo, totp, limitador, hash, secretos);
     confirmador = new ConfirmadorSecretoPendiente(repo, totp, limitador, secretos);
     // El stub de usuarios solo implementa `findById`, lo unico que los use cases consultan.
     const usuarioRepo = Object.assign(Object.create(null), usuarios);
-    obtener = new ObtenerEstadoTfa(repo, usuarioRepo);
+    const membresiaRepo = Object.assign(Object.create(null), membresias);
+    obtener = new ObtenerEstadoTfa(repo, usuarioRepo, membresiaRepo);
     iniciar = new IniciarSecretoTfa(repo, totp, cipher, usuarioRepo, secretos, verificador);
     confirmar = new ConfirmarSecretoTfa(repo, hash, confirmador);
     regenerar = new RegenerarCodigosTfa(repo, hash, verificador);
+  });
+
+  it('estado: obligado cuando una membresia activa pertenece a un cliente con la politica (C3)', async () => {
+    activas = [
+      { clienteId: 'c1', clienteNombre: 'A', rolCodigo: 'TECNICO', clienteRequiere2fa: true },
+    ];
+    expect((await obtener.execute(U)).obligado).toBe(true);
+    activas = [
+      { clienteId: 'c1', clienteNombre: 'A', rolCodigo: 'TECNICO', clienteRequiere2fa: false },
+    ];
+    expect((await obtener.execute(U)).obligado).toBe(false);
   });
 
   it('estado: obligado por esObligado2fa y sin secreto en la respuesta (T3)', async () => {

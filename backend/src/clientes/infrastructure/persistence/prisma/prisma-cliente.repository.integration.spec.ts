@@ -150,4 +150,26 @@ describe('PrismaClienteRepository — slug y congelamiento (WU-1, integracion)',
     await repo.save(leido);
     expect((await repo.findById(c.id))!.formularioPublicoHabilitado).toBe(true);
   });
+
+  it('politica de 2FA: default false, fijar/obtener tocan solo esa columna y save no la pisa (C1, C2)', async () => {
+    const c = await crearCliente('p2fa');
+    expect(await repo.obtenerRequiere2fa(c.id)).toBe(false);
+
+    const lecturaVieja = (await repo.findById(c.id))!;
+    expect(await repo.fijarRequiere2fa(c.id, true)).toBe(true);
+    expect(await repo.obtenerRequiere2fa(c.id)).toBe(true);
+    expect((await repo.findById(c.id))!.nombre).toBe(c.nombre);
+
+    await repo.save(lecturaVieja);
+    expect(await repo.obtenerRequiere2fa(c.id)).toBe(true);
+
+    expect(await repo.fijarRequiere2fa(c.id, false)).toBe(true);
+    expect(await repo.obtenerRequiere2fa(c.id)).toBe(false);
+  });
+
+  it('politica de 2FA: un cliente inexistente devuelve false / null', async () => {
+    const inexistente = '018f0000-0000-7000-8000-000000000000';
+    expect(await repo.fijarRequiere2fa(inexistente, true)).toBe(false);
+    expect(await repo.obtenerRequiere2fa(inexistente)).toBeNull();
+  });
 });

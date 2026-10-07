@@ -5,6 +5,10 @@ import { SegundoPasoRechazadoError, TfaNoDisponibleError } from '../../domain/er
 import { HASH_PROVIDER, IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ITfaRepository, TFA_REPOSITORY } from '../../domain/ports/tfa-repository.port';
 import { ITotpService, TOTP_SERVICE } from '../../domain/ports/totp-service.port';
+import {
+  IMembresiaRepository,
+  MEMBRESIA_REPOSITORY,
+} from '../../domain/ports/i-membresia.repository';
 import { IUsuarioRepository, USUARIO_REPOSITORY } from '../../domain/ports/i-usuario.repository';
 import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
 import { emitirJuegoCodigos, prepararJuegoCodigos } from './codigos-recuperacion';
@@ -25,18 +29,19 @@ export class ObtenerEstadoTfa {
   constructor(
     @Inject(TFA_REPOSITORY) private readonly repo: ITfaRepository,
     @Inject(USUARIO_REPOSITORY) private readonly usuarios: IUsuarioRepository,
+    @Inject(MEMBRESIA_REPOSITORY) private readonly membresias: IMembresiaRepository,
   ) {}
 
   async execute(usuarioId: string): Promise<EstadoTfaCuenta> {
-    const [estado, usuario, codigosRestantes] = await Promise.all([
+    const [estado, usuario, codigosRestantes, activas] = await Promise.all([
       this.repo.obtener(usuarioId),
       this.usuarios.findById(usuarioId),
       this.repo.contarCodigosRestantes(usuarioId),
+      this.membresias.findActivasByUsuario(usuarioId),
     ]);
     return {
       activo: estado?.secretoCifrado != null,
-      // TODO(WU-7): sumar las membresias activas con `requiere2fa` cuando exista la politica.
-      obligado: esObligado2fa(usuario?.isGlobalAdmin ?? false, []),
+      obligado: esObligado2fa(usuario?.isGlobalAdmin ?? false, activas),
       codigosRestantes,
       pendiente: estado?.secretoPendienteCifrado != null,
     };

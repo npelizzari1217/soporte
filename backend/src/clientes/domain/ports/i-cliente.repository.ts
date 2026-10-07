@@ -58,6 +58,16 @@ export interface IClienteRepository {
   cambiarSlugSiNoCongelado(id: string, nuevo: string): Promise<ResultadoCambioSlug>;
 
   /**
+   * Politica de 2FA del cliente (`requiere_2fa`). Se escribe SOLO aca, con un UPDATE
+   * dirigido: `save` no la lleva, asi que una entidad vieja no puede pisarla.
+   * Devuelve `false` si el cliente no existe.
+   */
+  fijarRequiere2fa(id: string, requiere: boolean): Promise<boolean>;
+
+  /** Lee solo `requiere_2fa`; `null` si el cliente no existe. */
+  obtenerRequiere2fa(id: string): Promise<boolean | null>;
+
+  /**
    * Persiste el cliente (upsert: crea si no existe, actualiza si existe).
    * El repositorio decide si es INSERT o UPDATE según si el id ya está en DB.
    * NO escribe `slug` ni `slugCongeladoAt` (solo los CAS de arriba): un save

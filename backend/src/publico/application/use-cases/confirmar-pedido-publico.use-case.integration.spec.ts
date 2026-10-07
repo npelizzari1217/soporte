@@ -89,6 +89,8 @@ describe('ConfirmarPedidoPublicoUseCase (WU-14, tenant efimero)', () => {
       ),
     ),
     congelarSlug: vi.fn(),
+    fijarRequiere2fa: vi.fn(),
+    obtenerRequiere2fa: vi.fn(),
     cambiarSlugSiNoCongelado: vi.fn(),
     findAll: vi.fn(),
     save: vi.fn(),

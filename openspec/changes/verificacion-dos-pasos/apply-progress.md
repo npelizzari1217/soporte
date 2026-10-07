@@ -280,3 +280,13 @@ WU-6a entera sumaba ~730 lineas de codigo y tests (presupuesto 400); el orquesta
 - `backend/scripts/reset-password.ts`: `$transaction([updateMany dispositivos, update usuario])`. Integracion: revoca y cambia; el fallo del UPDATE (byte nulo en `text`, rechazado por Postgres despues del updateMany) deja contrasena vieja y los 2 dispositivos vivos.
 - Evidencia: `src/auth` 80 archivos, 955 tests verdes; typecheck y lint limpios; ratchet de casts 617 (sin subir). ~310 lineas de codigo y tests.
 - Deuda de Ayuda (suspendida): cambiar o resetear la contrasena ahora cierra los dispositivos confiables; el articulo se escribe en la tanda final.
+
+## WU-7 — Politica de 2FA por cliente (partida: 7 repo y obligado, 7b ruta y caso de uso)
+
+WU-7 entera sumaba 448 lineas de codigo y tests: agregar dos metodos obligatorios a `IClienteRepository` obligo a tocar 21 mocks de specs (~42 lineas). El orquestador la partio por la costura que propuso el ejecutor.
+
+### 7 (`feat/verificacion-dos-pasos-wu07`, tareas 7.1 y 7.2 + correccion de `ObtenerEstadoTfa`)
+
+- `IClienteRepository.fijarRequiere2fa` (`updateMany` dirigido que devuelve boolean, nunca por el upsert de `save`) y `obtenerRequiere2fa` (null si el cliente no existe), con 2 tests de integracion; los 21 mocks existentes se completaron sin casts.
+- `ObtenerEstadoTfa` calcula `obligado` con las membresias activas (`esObligado2fa(isGlobalAdmin, activas)`): `GET /auth/2fa` ya refleja la politica del cliente. Se quito el `TODO(WU-7)`.
+- Evidencia: specs focales 22 verdes; typecheck y lint limpios. Sobre WU-7 entera: `src/auth src/clientes` 132 archivos, 1358 tests verdes; ratchet de casts 617.
