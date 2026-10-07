@@ -55,3 +55,27 @@ Modo: estandar. Tareas 2.1 a 2.7 marcadas en `tasks.md`. Rama `feat/verificacion
 - `clasificarCodigo` devuelve `'totp' | 'recuperacion' | 'invalido'`; `normalizarCodigoRecuperacion` devuelve `null` si el largo (12) o el alfabeto Crockford no cierran.
 - `verificar` recorre toda la ventana sin cortar y compara con `timingSafeEqual`.
 - Constantes: `DESAFIO_DURACION_MS`, `DESAFIO_ENROLAMIENTO_DURACION_MS`, `TICKET_DURACION_MS`, `DISPOSITIVO_CONFIABLE_DURACION_MS`, `LIMITADOR_VENTANA_MS`, `LIMITADOR_MAX_INTENTOS`.
+
+## WU-3a — Limitador de intentos (completa; WU-3 partida en 3a y 3b)
+
+Modo: estandar. Tareas 3.1, 3.2 y 3.7 marcadas en `tasks.md`. Rama `feat/verificacion-dos-pasos-wu03` (base `...-wu02`). WU-3 completa sumaba 546 lineas de codigo y tests; el orquestador la partio por la costura que marca la tarea 3.9: el limitador y su higiene van en 3a, la IP y su aplicacion en el login van en 3b (`feat/verificacion-dos-pasos-wu03b`).
+
+### Archivos
+
+- `backend/src/auth/domain/ports/limitador-intentos.port.ts` (`ILimitadorIntentos`, `ReservaIntento`).
+- `backend/src/auth/infrastructure/tfa/prisma-limitador-intentos.ts` + spec de integracion (reserva atomica, `liberar` en exito, `devolver` acotado por `ventana_inicio`, purga horaria con reloj inyectable). Sin consumidores hasta 3b.
+- `backend/test/barrido-huerfanas.global-setup.mjs`: `TRUNCATE auth_intentos_fallidos` una vez por corrida, bajo el lock de master.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/auth/infrastructure/tfa/prisma-limitador-intentos.integration.spec.ts`: 7 tests verdes |
+| Lint / tipos | `pnpm lint` y `pnpm typecheck` sin errores |
+| Suite completa | Corrida sobre WU-3 entera (3a+3b): 634 archivos, 7779 tests verdes |
+| Rollback | Archivos nuevos sin consumidores; el truncate del setup es inocuo sin la tabla en uso |
+
+### Decisiones tomadas en apply
+
+- `devolver` compara `date_trunc('milliseconds', ventana_inicio)`: `timestamptz` guarda microsegundos y un `Date` de JS solo milisegundos.
+- El adaptador recibe un reloj inyectable como segundo argumento (para testear la purga horaria); en 3b se registra con `useFactory`.
