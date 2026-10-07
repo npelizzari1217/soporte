@@ -66,3 +66,23 @@ export const restablecerPasswordSchema = z
     path: ["repetirPassword"],
   });
 export type RestablecerPasswordFormValues = z.infer<typeof restablecerPasswordSchema>;
+
+/**
+ * codigoDesafioSchema — validación cliente-side del segundo paso del login. Acepta el código
+ * TOTP de 6 dígitos o un código de recuperación `XXXX-XXXX-XXXX` (los guiones son opcionales y
+ * el backend normaliza mayúsculas). El backend sigue siendo la fuente de verdad.
+ *
+ * Spec: sdd/verificacion-dos-pasos — L6, L7.
+ */
+export const codigoDesafioSchema = z.object({
+  codigo: z
+    .string()
+    .trim()
+    .min(1, "Ingresá el código")
+    .regex(
+      /^(\d{6}|[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4})$/,
+      "Ingresá los 6 dígitos de la app o un código de recuperación",
+    ),
+  recordar: z.boolean(),
+});
+export type CodigoDesafioFormValues = z.infer<typeof codigoDesafioSchema>;

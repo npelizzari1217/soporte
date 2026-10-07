@@ -361,3 +361,13 @@ WU-10 entera sumaba ~560 lineas (~170 de codigo, ~350 de tests). El orquestador 
 - El enrolamiento (`auth/2fa/enrolamiento/*`) y la autogestion van por el proxy generico `[...path]` (ADR-11): sin rutas dedicadas.
 - Correccion del validador: `verificar` toleraba mal un 2xx con cuerpo vacio o null (desestructurar null daba 500); ahora responde 200 sin cookies, con su test.
 - Evidencia: frontend 249 archivos, 2022 tests verdes (antes de la correccion; el test nuevo de verificar pasa); type-check, lint y ratchet limpios.
+
+## WU-11a — Maquina de login y desafio (partida: 11a formulario, 11a2 maquina y pagina)
+
+WU-11a entera sumaba 553 lineas; el orquestador la partio por la costura que propuso el ejecutor.
+
+### 11a (`feat/verificacion-dos-pasos-wu11a`, tarea 11a.3 y la mitad de schema de 11a.2 y de formulario de 11a.4)
+
+- `schemas.ts`: `codigoDesafioSchema` acepta 6 digitos o `XXXX-XXXX-XXXX` (guiones opcionales); `recordar` booleano.
+- `DesafioTfaForm` (presentacional): input etiquetado con `inputMode="numeric"` y `autoComplete="one-time-code"`; casilla "Recordar este dispositivo" oculta si `recordarDisponible === false`; deshabilitado mientras envia; errores en linea. Sin cablear hasta 11a2.
+- Evidencia: `src/features/auth` 60 tests verdes; type-check y lint limpios. Sobre WU-11a entera: frontend 250 archivos, 2037 tests verdes; ratchet 617.
