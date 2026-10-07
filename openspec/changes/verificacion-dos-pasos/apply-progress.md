@@ -422,3 +422,9 @@ WU-11b entera sumaba ~530 lineas de codigo y tests (tope 400), asi que se parte 
 - `notas-deploy.md` (13.6) para pegar en el PR del tracker.
 - Verificacion: `pnpm test` 254 archivos / 2064 tests OK; `pnpm type-check` OK; `JWT_SECRET=dummy pnpm lint` OK; `check-casts-en-specs.mjs` 617/617.
 - Deuda de Ayuda: politica de 2FA por cliente y reseteo de 2FA por el admin (lista completa en `notas-deploy.md`).
+
+## Remediacion del verify (`feat/verificacion-dos-pasos-verify-fix`, hallazgos C1 y W1)
+
+- C1: test nuevo en `login.use-case.spec.ts` ("un secreto pendiente (sin secreto activo) no se pide en el login (T4)"): usuario no obligado con estado `{secretoCifrado: null, secretoPendienteCifrado: 'pendiente-cifrado'}` y contrasena correcta -> `kind: 'tokens'` y `desafios.crear` sin llamar. Mutacion `estadoTfa?.secretoCifrado != null` -> `estadoTfa != null` en `login.use-case.ts`: RED (1 failed, 41 passed); revertida: GREEN (42/42).
+- W1: los 24 `as unknown as` agregados por la cadena en 5 specs se reemplazaron por mocks completos (`satisfies <Puerto>` con `unstubbed()` para lo no usado) y `Object.create(Clase.prototype)` + `vi.spyOn` para las clases con miembros privados (`SecretoTotpCifrado`, `EmitirSesionService`, `IniciarSecretoTfa`, `ConfirmarSecretoTfa`). Ningun `as unknown as` preexistente en `main` se toco; sin `as never`/`as any` nuevos.
+- W2 (`backend/.env.example`) y sugerencias: fuera de alcance, sin cambios.
