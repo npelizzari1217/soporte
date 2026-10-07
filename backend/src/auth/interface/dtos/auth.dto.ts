@@ -90,7 +90,24 @@ export interface TokensResponseDto {
 export interface SelectionResponseDto {
   needsClienteSelection: true;
   membresias: { cliente_id: string; nombre: string; rol: string }[];
+  /** Ticket de un solo uso para `POST /auth/login/seleccionar` (L7). */
+  ticket: string;
 }
+
+/** Contrasena valida pero falta el segundo paso (L1): el `desafio` no es un token de sesion. */
+export interface Needs2faResponseDto {
+  needs2fa: true;
+  desafio: string;
+  recordarDisponible: boolean;
+}
+
+export interface NeedsEnrolamiento2faResponseDto {
+  needsEnrolamiento2fa: true;
+  desafio: string;
+}
+
+export type LoginResponseDto =
+  TokensResponseDto | SelectionResponseDto | Needs2faResponseDto | NeedsEnrolamiento2faResponseDto;
 
 /** Respuesta de `POST /auth/switch`: solo el nuevo access token (R10). */
 export interface SwitchTenantResponseDto {

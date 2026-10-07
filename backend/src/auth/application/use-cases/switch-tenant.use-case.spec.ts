@@ -46,6 +46,7 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-2',
   clienteNombre: 'Beta SA',
   rolCodigo: 'ADMINISTRADOR',
+  clienteRequiere2fa: false,
   ...overrides,
 });
 

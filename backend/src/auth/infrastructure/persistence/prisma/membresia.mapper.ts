@@ -33,6 +33,7 @@ export class MembresiaMapper {
       clienteId: row.cliente.id,
       clienteNombre: row.cliente.nombre,
       rolCodigo: row.rol.codigo,
+      clienteRequiere2fa: row.cliente.requiere2fa,
     };
   }
 }

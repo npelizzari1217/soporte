@@ -25,6 +25,11 @@
  * probado en `soporte1/backend/src/clientes/interface/smoke.e2e.spec.ts`),
  * evitando agregar una dependencia nueva al proyecto para este PR.
  */
+import {
+  activarTfaDeTest,
+  codigoDeTest,
+  reiniciarAntireplay,
+} from '../../test-helpers/tfa-de-test';
 import { Pool } from 'pg';
 import {
   Controller,
@@ -153,11 +158,14 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
   let jwtService: JwtService;
+  let emailKeyOriginal: string | undefined;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
       process.env.DATABASE_URL_MASTER = TEST_DB_URL;
     }
+    emailKeyOriginal = process.env.EMAIL_CRYPTO_KEY;
+    process.env.EMAIL_CRYPTO_KEY = 'f'.repeat(64);
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [TestHarnessModule],
@@ -186,6 +194,8 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   }, 60_000);
 
   afterAll(async () => {
+    if (emailKeyOriginal === undefined) delete process.env.EMAIL_CRYPTO_KEY;
+    else process.env.EMAIL_CRYPTO_KEY = emailKeyOriginal;
     try {
       await app?.close();
     } catch (_err) {
@@ -199,6 +209,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
   }, 30_000);
 
   beforeEach(async () => {
+    reiniciarAntireplay();
     // usuario_cliente_permisos (WU-7.1) no tiene FK declarada — el TRUNCATE
     // ... CASCADE de las otras tablas no la alcanza, hay que nombrarla.
     // roles_permisos/permisos ya NO existen (migración
@@ -256,6 +267,8 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       isGlobalAdmin: overrides.isGlobalAdmin ?? false,
     });
     await usuarioRepo.save(usuario);
+    // L3: el ROOT esta obligado; entra con un secreto de prueba conocido, nunca por un bypass.
+    if (usuario.isGlobalAdmin) await activarTfaDeTest(prismaService, usuario.id);
     return usuario;
   }
 
@@ -268,13 +281,31 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     await masterClient.membresia.create({ data: { usuarioId, clienteId, rolId, activo } });
   }
 
+  type LoginData = {
+    accessToken?: string;
+    refreshToken?: string;
+    needsClienteSelection?: true;
+    needs2fa?: true;
+    desafio?: string;
+    membresias?: { cliente_id: string; nombre: string; rol: string }[];
+  };
+
+  /** Login completo: si pide el segundo paso lo resuelve con el codigo de prueba (L1). */
   async function login(email: string, password = PLAINTEXT_PASSWORD, clienteId?: string) {
-    return httpPost<{
-      accessToken?: string;
-      refreshToken?: string;
-      needsClienteSelection?: true;
-      membresias?: { cliente_id: string; nombre: string; rol: string }[];
-    }>(`${baseUrl}/auth/login`, { email, password, ...(clienteId ? { clienteId } : {}) });
+    const paso1 = await httpPost<LoginData>(`${baseUrl}/auth/login`, {
+      email,
+      password,
+      ...(clienteId ? { clienteId } : {}),
+    });
+    if (!paso1.data?.needs2fa) return paso1;
+    const usuario = await usuarioRepo.findByEmail(email);
+    const verificado = await httpPost<{ ticket: string }>(`${baseUrl}/auth/2fa/verificar`, {
+      desafio: paso1.data.desafio,
+      codigo: codigoDeTest(usuario!.id),
+    });
+    return httpPost<LoginData>(`${baseUrl}/auth/login/continuar`, {
+      ticket: verificado.data.ticket,
+    });
   }
 
   // ─── R3–R6 — Login ────────────────────────────────────────────────────
@@ -316,9 +347,10 @@ describe('Auth e2e (R3–R14, PR6)', () => {
     it('root sin clienteId → 200, token MASTER', async () => {
       const root = await createUsuario('login-root', { isGlobalAdmin: true });
 
-      const { status } = await login(root.email);
+      const { status, data } = await login(root.email);
 
       expect(status).toBe(200);
+      expect(data.accessToken).toEqual(expect.any(String));
     });
 
     it('password incorrecto → 401', async () => {

@@ -20,6 +20,8 @@ export interface MembresiaResuelta {
   clienteId: string;
   clienteNombre: string;
   rolCodigo: string;
+  /** Politica del cliente (L3, C3): una membresia activa con `true` obliga al usuario a tener 2FA. */
+  clienteRequiere2fa: boolean;
 }
 
 /**
