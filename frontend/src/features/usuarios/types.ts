@@ -83,3 +83,8 @@ export interface Role {
   nombre: string;
   descripcion: string | null;
 }
+
+/** Espejo de `GET/PUT /politica-2fa` (el cliente sale del JWT, nunca viaja). */
+export interface PoliticaTfa {
+  requiere2fa: boolean;
+}

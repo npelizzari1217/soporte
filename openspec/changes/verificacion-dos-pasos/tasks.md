@@ -172,7 +172,7 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 - [x] 6a.6 Test unit de desactivación propia: `POST /auth/2fa/desactivar` con código válido y `!esObligado2fa` borra todo vía `eliminarTodo` (revoca dispositivos e invalida desafíos, D6); obligado → `Tfa2faObligatorioError` 409 (mismo `esObligado2fa` que el login); código inválido 422. (T8, D6)
 - [x] 6a.7 Implementar `DesactivarTfaUseCase` y la ruta `POST /auth/2fa/desactivar` en `TfaCuentaController`; luego revocar refresh tokens con log-and-swallow. (T8, D6)
 - [x] 6a.8 Test e2e: verificar con `recordar` → login siguiente con el token omite el desafío; desactivar el 2FA revoca el dispositivo. (D1, D3, D6)
-- [ ] 6a.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 6a.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-6b — Fail-closed al cambiar la contraseña (~300 líneas)
 
@@ -251,12 +251,12 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-13 — Política y reseteo en administración (~280 líneas)
 
-- [ ] 13.1 Test de `PoliticaTfaCard`: muestra y cambia `requiere2fa` con confirmación; visible solo para quien administra; error no deja el interruptor inconsistente. (C1, C2)
-- [ ] 13.2 Crear `PoliticaTfaCard` en `usuarios-admin-view.tsx` (hooks y tipos en `features/usuarios/`). (C1)
-- [ ] 13.3 Test del botón "Resetear 2FA" en `editar-usuario-dialog.tsx`: pide confirmación, llama a `DELETE /usuarios/:id/2fa`, muestra el 404 genérico sin revelar por qué. (S1, S2, S4)
-- [ ] 13.4 Agregar el botón y su confirmación a `editar-usuario-dialog.tsx`. Anotar deuda de Ayuda (política y reseteo) en commit y PR. (S1, S2)
-- [ ] 13.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test` completo; raíz `node scripts/check-casts-en-specs.mjs`.
-- [ ] 13.6 Notas de deploy en el PR del tracker: M1 master con `rollback.sql`; comprobar `EMAIL_CRYPTO_KEY` válida en `backend/.env` antes del deploy; primer login de cada ROOT con enrolamiento forzado (tener el celular a mano); despliegue solo de la cadena completa; después del deploy, dos contraseñas incorrectas desde fuera con un email de prueba y `SELECT clave FROM auth_intentos_fallidos` en master: la clave debe terminar en una IP pública, nunca `sin-ip` ni `127.0.0.1`; borrar esa fila; smoke de login sin 2FA y del ROOT completo; el lockfile no se espera que cambie.
+- [x] 13.1 Test de `PoliticaTfaCard`: muestra y cambia `requiere2fa` con confirmación; visible solo para quien administra; error no deja el interruptor inconsistente. (C1, C2)
+- [x] 13.2 Crear `PoliticaTfaCard` en `usuarios-admin-view.tsx` (hooks y tipos en `features/usuarios/`). (C1)
+- [x] 13.3 Test del botón "Resetear 2FA" en `editar-usuario-dialog.tsx`: pide confirmación, llama a `DELETE /usuarios/:id/2fa`, muestra el 404 genérico sin revelar por qué. (S1, S2, S4)
+- [x] 13.4 Agregar el botón y su confirmación a `editar-usuario-dialog.tsx`. Anotar deuda de Ayuda (política y reseteo) en commit y PR. (S1, S2)
+- [x] 13.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test` completo; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 13.6 Notas de deploy en el PR del tracker: M1 master con `rollback.sql`; comprobar `EMAIL_CRYPTO_KEY` válida en `backend/.env` antes del deploy; primer login de cada ROOT con enrolamiento forzado (tener el celular a mano); despliegue solo de la cadena completa; después del deploy, dos contraseñas incorrectas desde fuera con un email de prueba y `SELECT clave FROM auth_intentos_fallidos` en master: la clave debe terminar en una IP pública, nunca `sin-ip` ni `127.0.0.1`; borrar esa fila; smoke de login sin 2FA y del ROOT completo; el lockfile no se espera que cambie.
 
 > **13.7 — cierre posterior al deploy (paso de entrega, fuera de la lista de tareas de implementación):** DESPUÉS del deploy de la cadena completa y de la verificación de IP: en `docs/roadmap-comercial.md` marcar el punto 5 de la segunda etapa como Entregado y declarar **Cumplida** o **Desviación** (con motivo) en la viñeta de su decisión de producto ("Decisiones de producto ya cerradas", incluidas las "Precisiones del 2026-10-07"); correr `node scripts/check-roadmap-fresco.mjs`. Diferencia con el diseño: el diseño ubica la viñeta en la WU-13; aquí va después del deploy para no declarar Cumplida algo no entregado. La pregunta abierta "ROOT→ROOT sin UI" queda declarada como fuera de alcance (se cumple por API y script).
 
