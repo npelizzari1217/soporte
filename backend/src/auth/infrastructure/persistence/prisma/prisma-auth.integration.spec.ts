@@ -12,6 +12,7 @@
  * y JwtTokenService reales (no fakes).
  */
 import * as crypto from 'crypto';
+import { PrismaLimitadorIntentos } from '../../tfa/prisma-limitador-intentos';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaClienteRepository } from '../../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
@@ -97,6 +98,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       tokenService,
       refreshTokenRepo,
       permisosRepo,
+      new PrismaLimitadorIntentos(prismaService),
     );
     refreshTokenUseCase = new RefreshTokenUseCase(
       refreshTokenRepo,
