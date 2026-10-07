@@ -133,14 +133,14 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-5a — Repo de desafíos, EmitirSesion, verificar y enrolamiento (~360 líneas)
 
-- [ ] 5a.1 Test unit de no regresión de `EmitirSesionService` extraído de los pasos 5-6 de `LoginUseCase` (`login.use-case.ts:153-206`): los tests actuales de `LoginUseCase` pasan sin cambios. (L1)
-- [ ] 5a.2 Extraer `auth/application/emitir-sesion.service.ts` sin cambio de conducta y usarlo desde `LoginUseCase`. (L1)
+- [x] 5a.1 Test unit de no regresión de `EmitirSesionService` extraído de los pasos 5-6 de `LoginUseCase` (`login.use-case.ts:153-206`): los tests actuales de `LoginUseCase` pasan sin cambios. (L1)
+- [x] 5a.2 Extraer `auth/application/emitir-sesion.service.ts` sin cambio de conducta y usarlo desde `LoginUseCase`. (L1)
 - [x] 5a.3 Test de integración de `PrismaDesafioLoginRepository`: CAS con `token_hash`, `usado_at IS NULL`, `expira_at > now()`; al verificar el token se reemplaza por el del ticket y el string del desafío deja de servir; un desafío vencido o usado no sirve; de otro usuario no sirve. (L2)
 - [x] 5a.4 Crear `auth/domain/ports/desafio-login-repository.port.ts` y `auth/infrastructure/tfa/prisma-desafio-login.repository.ts`: crear (token opaco de 32 bytes, SHA-256), `verificar` con rotación, `consumir`, `iniciarEnrolamiento`. (L2, L5)
-- [ ] 5a.5 Test unit de `VerificarDesafioUseCase`: acepta TOTP o recuperación vía `VerificadorCodigoTfa`; desafío inválido se valida antes de reservar y no consume cupo; desafío, ticket, código erróneo y bloqueo dan el mismo `SegundoPasoRechazadoError`; un `ENROLAR` no sirve en `verificar`. (L2, L5, L6, L11)
-- [ ] 5a.6 Test unit de enrolamiento iniciar/confirmar: un `ENROLAR` sin `verificado_at` sirve solo para iniciar y confirmar; confirmar acepta solo TOTP del pendiente; genera 10 códigos y devuelve ticket; reintento con el mismo código rechazado. (L5, T4, T5)
-- [ ] 5a.7 Implementar `VerificarDesafioUseCase`, `IniciarEnrolamientoLoginUseCase` y `ConfirmarEnrolamientoLoginUseCase`. (L5, L6, T4, T5)
-- [ ] 5a.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 5a.5 Test unit de `VerificarDesafioUseCase`: acepta TOTP o recuperación vía `VerificadorCodigoTfa`; desafío inválido se valida antes de reservar y no consume cupo; desafío, ticket, código erróneo y bloqueo dan el mismo `SegundoPasoRechazadoError`; un `ENROLAR` no sirve en `verificar`. (L2, L5, L6, L11)
+- [x] 5a.6 Test unit de enrolamiento iniciar/confirmar: un `ENROLAR` sin `verificado_at` sirve solo para iniciar y confirmar; confirmar acepta solo TOTP del pendiente; genera 10 códigos y devuelve ticket; reintento con el mismo código rechazado. (L5, T4, T5)
+- [x] 5a.7 Implementar `VerificarDesafioUseCase`, `IniciarEnrolamientoLoginUseCase` y `ConfirmarEnrolamientoLoginUseCase`. (L5, L6, T4, T5)
+- [x] 5a.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-5b — Continuar, seleccionar y rutas públicas (~280 líneas)
 

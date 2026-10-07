@@ -6,19 +6,15 @@ import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository'
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
-import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
+import { ITokenService } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
-import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import {
   CredencialesInvalidasError,
   SinMembresiaActivaError,
 } from '../../domain/errors/auth.errors';
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { normalizarEmail } from '../../domain/tfa/formato-codigo';
-import { resolverScope } from './resolver-scope';
-
-/** Duración del refresh token: 7 días en milisegundos (R7). */
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+import { EmitirSesionService } from '../emitir-sesion.service';
 
 /**
  * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
@@ -95,6 +91,8 @@ export type LoginResult =
  *    genera un refresh token aleatorio, persistiendo SOLO su SHA-256 (R7).
  */
 export class LoginUseCase {
+  private readonly emitirSesion: EmitirSesionService;
+
   constructor(
     private readonly usuarioRepo: IUsuarioRepository,
     private readonly membresiaRepo: IMembresiaRepository,
@@ -104,7 +102,15 @@ export class LoginUseCase {
     private readonly refreshTokenRepo: IRefreshTokenRepository,
     private readonly permisosRepo: IMatrizPermisosRepository,
     private readonly limitador: ILimitadorIntentos,
-  ) {}
+  ) {
+    this.emitirSesion = new EmitirSesionService(
+      membresiaRepo,
+      clienteRepo,
+      tokenService,
+      refreshTokenRepo,
+      permisosRepo,
+    );
+  }
 
   async execute(dto: LoginDto): Promise<Result<LoginResult, DomainError>> {
     // 0. Limitador (I1, I5): la reserva es el fallo provisional. Bloqueado devuelve lo mismo
@@ -167,59 +173,10 @@ export class LoginUseCase {
       });
     }
 
-    // 5. resolverScope: única fuente de verdad de autz de tenant
-    const scopeResult = await resolverScope(
-      { usuarioId: usuario.id, isGlobalAdmin: usuario.isGlobalAdmin },
-      clienteIdObjetivo,
-      this.membresiaRepo,
-      this.clienteRepo,
-      this.permisosRepo,
-    );
-
-    if (scopeResult.isFail()) {
-      return Result.fail(scopeResult.getError());
-    }
-    const scope = scopeResult.getValue();
-
-    // 6. Firmar JWT con el payload nuevo (ADR-3, `v` — ADR-P7/WU-7.1)
-    const payload: JwtPayload = {
-      v: VERSION_PAYLOAD_JWT,
-      sub: usuario.id,
-      cliente_id: scope.clienteId,
-      rol: scope.rol,
-      permisos: scope.permisos,
-      is_global_admin: usuario.isGlobalAdmin,
-      cliente_nombre: scope.clienteNombre,
-      membresias: membresiasActivas.map((m) => ({
-        cliente_id: m.clienteId,
-        nombre: m.clienteNombre,
-        rol: m.rolCodigo,
-      })),
-      modulos: scope.modulos,
-      // Identidad global del usuario (constante entre tenants) — la
-      // UsuarioEntity ya está cargada en este flujo, sin query extra.
-      nombre: usuario.nombre,
-      apellido: usuario.apellido,
-      cliente_logo_v: scope.clienteLogoVersion,
-    };
-    const accessToken = this.tokenService.signJwt(payload);
-
-    // Generar refresh token: random hex + SHA-256 para almacenamiento (R7)
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-
-    const refreshTokenEntity = RefreshTokenEntity.create({
-      usuarioId: usuario.id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-      revokedAt: null,
-      // Opción B (decisión #2025): el refresh token nace con el cliente_id
-      // ya resuelto por resolverScope — PR4 lo reusa tal cual, sin pista.
-      clienteId: scope.clienteId,
-    });
-
-    await this.refreshTokenRepo.save(refreshTokenEntity);
-
-    return Result.ok({ kind: 'tokens', accessToken, refreshToken: rawToken });
+    // 5-6. Scope, JWT y refresh token: EmitirSesionService (sin cambio de conducta).
+    const sesion = await this.emitirSesion.emitir(usuario, membresiasActivas, clienteIdObjetivo);
+    if (sesion.isFail()) return Result.fail(sesion.getError());
+    const { accessToken, refreshToken } = sesion.getValue();
+    return Result.ok({ kind: 'tokens', accessToken, refreshToken });
   }
 }

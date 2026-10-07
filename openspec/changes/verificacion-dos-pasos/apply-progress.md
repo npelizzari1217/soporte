@@ -194,3 +194,12 @@ WU-5a entera sumaba ~640 lineas de codigo y tests. El orquestador la partio en d
 - `backend/src/auth/domain/ports/desafio-login-repository.port.ts` (`PropositoDesafio`, `DesafioVigente`): `crear`, `buscarSinVerificar(token, proposito)` (cubre VERIFICAR y ENROLAR), `verificar` (CAS que rota el token a ticket) y `consumir` (CAS de uso unico).
 - `backend/src/auth/infrastructure/tfa/prisma-desafio-login.repository.ts` con reloj inyectable (el vencimiento se compara con el reloj de la aplicacion, no con `now()` de la base) + spec de integracion contra Postgres real: 7 tests.
 - Sin cableado hasta 5a2.
+
+### 5a2 (`feat/verificacion-dos-pasos-wu05a2`, tareas 5a.1, 5a.2, 5a.5 a 5a.8)
+
+- `backend/src/auth/application/emitir-sesion.service.ts`: pasos 5-6 de `LoginUseCase` extraidos sin cambio de conducta (scope, JWT, refresh, respuesta `tokens`); `LoginUseCase` lo construye adentro y conserva su firma. Su no regresion la cubre el spec de login sin cambios.
+- `backend/src/auth/application/tfa/desafio-login.use-cases.ts` + spec: `VerificarDesafioUseCase` (busca el desafio antes de reservar en el limitador; TOTP o recuperacion; rota a ticket; no emite sesion), `IniciarEnrolamientoLoginUseCase` y `ConfirmarEnrolamientoLoginUseCase` (solo desafios ENROLAR; reusan `IniciarSecretoTfa` y `ConfirmarSecretoTfa`; confirmar devuelve los 10 codigos y rota a ticket).
+- `auth.module.ts`: repo de desafios con `useFactory` (reloj) y los 3 casos de uso.
+- La sesion se emite solo en `continuar` (WU-5b): el "guarde los codigos" es la UI mas ese paso diferido.
+- Carreras raras aceptadas: si el desafio vence entre confirmar y rotar, el 2FA queda activo sin que el usuario vea los codigos (los regenera con un TOTP); si la rotacion falla en verificar, un codigo de recuperacion queda gastado.
+- Evidencia: suite completa 643 archivos, 7845 tests verdes; typecheck, lint y ratchet de casts limpios.
