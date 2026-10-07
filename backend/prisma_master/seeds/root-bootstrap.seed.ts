@@ -23,6 +23,12 @@
  *       "garantizar que exista un root", y merece decisión explícita del
  *       dueño (borrar la fila o correr una reactivación manual), no un efecto
  *       secundario de re-ejecutar el seed en cada deploy.
+ *   - `ROOT_ADMIN_TOTP_SECRET` (opcional, L10): activa el 2FA del ROOT con un secreto
+ *     CONOCIDO, solo si `NODE_ENV` vale exactamente `development` o `test` (lista
+ *     positiva, fail-closed). Con la variable presente y `NODE_ENV` ausente (el VPS),
+ *     `production` o cualquier otro valor, el seed termina con error ANTES de tocar la
+ *     base: un secreto conocido en el VPS sería una puerta trasera. Sin la variable, el
+ *     ROOT pasa por la configuración forzada del 2FA en su primer login.
  *   - El password en texto plano MUST NOT loguearse nunca (no hay ningún
  *     `console.log`/`Logger` que reciba `env.password` en este archivo).
  *
@@ -40,6 +46,8 @@ import {
   USUARIO_EMAIL_MAX_LENGTH,
   USUARIO_NOMBRE_MAX_LENGTH,
 } from '../../src/auth/domain/entities/usuario.entity';
+import { SecretoTotpCifrado } from '../../src/auth/application/tfa/secreto-totp-cifrado';
+import { AesGcmSecretCipher } from '../../src/shared/infrastructure/crypto/aes-gcm-secret-cipher';
 import { PrismaService } from '../../src/shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 
@@ -88,6 +96,34 @@ export interface RootBootstrapEnv {
   password: string;
   nombre: string;
   apellido: string;
+  /** Secreto TOTP conocido (base32), solo para `development` y `test`. */
+  totpSecret?: string;
+}
+
+/** Entornos donde se honra `ROOT_ADMIN_TOTP_SECRET` (lista positiva, fail-closed). */
+const ENTORNOS_CON_TOTP_CONOCIDO: readonly string[] = ['development', 'test'];
+
+/**
+ * Rechaza `ROOT_ADMIN_TOTP_SECRET` fuera de la lista positiva. Se llama ANTES de cualquier
+ * acceso a la base. Un guard `!== 'production'` fallaría abierto con `NODE_ENV` ausente.
+ */
+export function assertTotpPermitido(
+  totpSecret: string | undefined,
+  nodeEnv: string | undefined,
+): void {
+  if (totpSecret === undefined) return;
+  if (nodeEnv === undefined || !ENTORNOS_CON_TOTP_CONOCIDO.includes(nodeEnv)) {
+    throw new Error(
+      `[root-bootstrap] ROOT_ADMIN_TOTP_SECRET solo se admite con NODE_ENV=development o test ` +
+        `(NODE_ENV actual: ${nodeEnv ?? 'ausente'}). Quitá la variable: un secreto conocido ` +
+        `fuera de desarrollo es una puerta trasera.`,
+    );
+  }
+  if (!/^[A-Z2-7]{16,}$/.test(totpSecret)) {
+    throw new Error(
+      '[root-bootstrap] ROOT_ADMIN_TOTP_SECRET debe ser base32 (A-Z, 2-7), 16+ caracteres.',
+    );
+  }
 }
 
 /** Agrupa las 4 env `ROOT_ADMIN_*` — falta cualquiera → throw (R2). */
@@ -99,6 +135,7 @@ export function readRootBootstrapEnv(): RootBootstrapEnv {
     password: requireEnv('ROOT_ADMIN_PASSWORD'),
     nombre: requireEnvConTope('ROOT_ADMIN_NOMBRE', USUARIO_NOMBRE_MAX_LENGTH),
     apellido: requireEnvConTope('ROOT_ADMIN_APELLIDO', USUARIO_APELLIDO_MAX_LENGTH),
+    totpSecret: process.env.ROOT_ADMIN_TOTP_SECRET?.trim() || undefined,
   };
 }
 
@@ -129,6 +166,8 @@ export class RootBootstrapAccountInactiveError extends Error {
  * @param masterClient  Cliente Prisma de la DB master (usuarios).
  * @param env           Datos del root leídos de env (`readRootBootstrapEnv()`).
  * @param hashProvider  Puerto de hashing — Argon2HashProvider real en producción.
+ * @param entorno       Entorno cuyo `NODE_ENV` valida se valida `env.totpSecret` (L10).
+ * @param secretos      Cifrador del secreto TOTP (AAD `tfa:{usuarioId}`, `EMAIL_CRYPTO_KEY`).
  * @throws RootBootstrapAccountInactiveError si `env.email` ya existe pero está
  *   suspendida o soft-deleted.
  */
@@ -136,7 +175,12 @@ export async function bootstrapRoot(
   masterClient: InstanceType<typeof MasterPrismaClient>,
   env: RootBootstrapEnv,
   hashProvider: IHashProvider = new Argon2HashProvider(),
+  entorno: Record<string, string | undefined> = process.env,
+  secretos: SecretoTotpCifrado = new SecretoTotpCifrado(new AesGcmSecretCipher()),
 ): Promise<void> {
+  // L10: antes de cualquier lectura o escritura en la base.
+  assertTotpPermitido(env.totpSecret, entorno.NODE_ENV);
+
   // Idempotente por email (UNIQUE): findUnique primero para decidir
   // create vs no-op SIN hashear salvo que se vaya a crear la fila (el
   // argon2id hash es costoso y el camino existente lo descartaría igual).
@@ -150,13 +194,14 @@ export async function bootstrapRoot(
     // el password ni se pisan nombre/apellido. isGlobalAdmin NO se fuerza acá
     // a propósito: si alguien lo bajó a false manualmente, ese es un cambio
     // de negocio consciente que este seed no debe revertir en cada deploy.
+    await activarTotp(masterClient, secretos, existing.id, env.totpSecret);
     return;
   }
 
   // create: fila nueva con isGlobalAdmin=true, activo=true, sin membresía ni rol.
   // Hash argon2id calculado SOLO acá, donde realmente se persiste.
   const passwordHash = await hashProvider.hash(env.password);
-  await masterClient.usuario.create({
+  const creado = await masterClient.usuario.create({
     data: {
       email: env.email,
       nombre: env.nombre,
@@ -165,6 +210,30 @@ export async function bootstrapRoot(
       activo: true,
       isGlobalAdmin: true,
     },
+  });
+  await activarTotp(masterClient, secretos, creado.id, env.totpSecret);
+}
+
+/** Deja el 2FA del ROOT activo con el secreto conocido (solo si se pidió y ya pasó el guard). */
+async function activarTotp(
+  masterClient: InstanceType<typeof MasterPrismaClient>,
+  secretos: SecretoTotpCifrado,
+  usuarioId: string,
+  totpSecret: string | undefined,
+): Promise<void> {
+  if (totpSecret === undefined) return;
+  const secretoCifrado = secretos.cifrar(usuarioId, totpSecret);
+  const datos = {
+    secretoCifrado,
+    confirmadoAt: new Date(),
+    ultimoPaso: 0,
+    secretoPendienteCifrado: null,
+    pendienteCreadoAt: null,
+  };
+  await masterClient.usuarioTfa.upsert({
+    where: { usuarioId },
+    create: { usuarioId, ...datos },
+    update: datos,
   });
 }
 

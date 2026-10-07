@@ -210,11 +210,11 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 - [x] 9.2 Test de integración de atomicidad: un fallo en un destino revierte toda la transacción (mismo `FOR UPDATE`, relectura round-trip, mismos exit codes). (K2)
 - [x] 9.3 Test de integración de `--verificar`: recorre todos los destinos y falla con un secreto que no descifra. (K3)
 - [x] 9.4 Generalizar `backend/scripts/rotar-email-crypto-key.mjs` de una columna a una lista de destinos (`clientes.smtp_password_cifrada` con AAD `id`; `usuarios_tfa.secreto_cifrado` y `usuarios_tfa.secreto_pendiente_cifrado` con AAD `tfa:{usuario_id}`); actualizar solo el comentario de cabecera de `rotate-email-crypto-key.ps1` (100 % ASCII, sin BOM; no se agrega ningún `.ps1`). (K1, K2, K3)
-- [ ] 9.5 Test e2e: tras una rotación con un secreto manipulado el login responde 401 (no 500) y loguea `TFA_SECRETO_INDESCIFRABLE`. (K4, T12)
-- [ ] 9.6 Test unit del seed `root-bootstrap.seed.ts`: con `ROOT_ADMIN_TOTP_SECRET` presente, `NODE_ENV` ausente, `production`, `staging` → termina con error sin crear ni tocar el ROOT; `development` y `test` → activa el 2FA con ese secreto; sin la variable, el ROOT pasa por la configuración forzada. (L10)
-- [ ] 9.7 Implementar la lista positiva (fail-closed) en `root-bootstrap.seed.ts`; documentar el valor de desarrollo en `.env.example` y en el README. (L10)
-- [ ] 9.8 Runbook `DEPLOY-VPS-runbook.md`: §5 (rotación) menciona los secretos TOTP; sección nueva para `resetear-2fa-root.ts`; paso de verificación de IP posterior al deploy y comprobación de `EMAIL_CRYPTO_KEY` previa al deploy. (K1, S6, I4)
-- [ ] 9.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run scripts src/auth` y **`pnpm test` completo** (última WU de backend); raíz `node scripts/check-casts-en-specs.mjs`. Nota de riesgo de presupuesto: ~390 líneas; si pasa de 400, partir rotación (9.1-9.5, 9.8) de seed (9.6-9.7).
+- [x] 9.5 Test e2e: tras una rotación con un secreto manipulado el login responde 401 (no 500) y loguea `TFA_SECRETO_INDESCIFRABLE`. (K4, T12)
+- [x] 9.6 Test unit del seed `root-bootstrap.seed.ts`: con `ROOT_ADMIN_TOTP_SECRET` presente, `NODE_ENV` ausente, `production`, `staging` → termina con error sin crear ni tocar el ROOT; `development` y `test` → activa el 2FA con ese secreto; sin la variable, el ROOT pasa por la configuración forzada. (L10)
+- [x] 9.7 Implementar la lista positiva (fail-closed) en `root-bootstrap.seed.ts`; documentar el valor de desarrollo en `.env.example` y en el README. (L10)
+- [x] 9.8 Runbook `DEPLOY-VPS-runbook.md`: §5 (rotación) menciona los secretos TOTP; sección nueva para `resetear-2fa-root.ts`; paso de verificación de IP posterior al deploy y comprobación de `EMAIL_CRYPTO_KEY` previa al deploy. (K1, S6, I4) _Nota: la línea de `ROOT_ADMIN_TOTP_SECRET` en `backend/.env.example` queda pendiente, la agrega una persona (el archivo tiene lectura denegada por permisos)._
+- [x] 9.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run scripts src/auth` y **`pnpm test` completo** (última WU de backend); raíz `node scripts/check-casts-en-specs.mjs`. Nota de riesgo de presupuesto: ~390 líneas; si pasa de 400, partir rotación (9.1-9.5, 9.8) de seed (9.6-9.7).
 
 ## WU-10 — BFF: cookie `td`, IP y rutas de login (~395 líneas)
 

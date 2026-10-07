@@ -334,3 +334,11 @@ WU-9 entera estimaba ~390 lineas de codigo y tests pero la rotacion sola ya suma
 
 - 9.5 (e2e del login con secreto manipulado: 401 y log `TFA_SECRETO_INDESCIFRABLE`), 9.6-9.7 (seed con lista positiva de `NODE_ENV`), README y 9.9 (incluye `pnpm test` completo).
 - `backend/.env.example` no se puede leer ni editar con los permisos actuales: su documentacion de `ROOT_ADMIN_TOTP_SECRET` queda para quien tenga acceso. 9.8 sigue sin tildar por ese resto.
+
+### B (`feat/verificacion-dos-pasos-wu09b`, tareas 9.5 a 9.7, resto de 9.8 y 9.9)
+
+- e2e `tfa-secreto-indescifrable.e2e.spec.ts`: un secreto TOTP manipulado, cifrado para otro usuario o basura hace que `POST /auth/2fa/verificar` responda 401 (nunca 500) y loguee `TFA_SECRETO_INDESCIFRABLE`.
+- `root-bootstrap.seed.ts`: `assertTotpPermitido` (lista positiva `development`/`test`, fail-closed) corre como primera sentencia de `bootstrapRoot`, antes de leer o escribir la base; exige base32. Con el secreto permitido, `usuarios_tfa` se activa por upsert con `SecretoTotpCifrado` real (AAD `tfa:{usuarioId}`), tambien para un ROOT preexistente. `bootstrapRoot` recibe `entorno` (por defecto `process.env`) y `secretos` como parametros.
+- Tests en `root-bootstrap.seed.integration.spec.ts` (base real, no un fake: armar un cliente Prisma falso exigia casts): un caso por valor de `NODE_ENV` ausente, `production`, `staging`, `Production`, vacio, que verifican que no se crea ni toca nada; `development` y `test` activan el 2FA y el secreto descifra; sin la variable no hay 2FA.
+- README: fila de `ROOT_ADMIN_TOTP_SECRET` (solo desarrollo y test).
+- **Pendiente para una persona:** `backend/.env.example` no se puede leer ni editar con los permisos actuales; falta agregarle una linea `ROOT_ADMIN_TOTP_SECRET=` comentada, con el valor de desarrollo documentado en el README.
