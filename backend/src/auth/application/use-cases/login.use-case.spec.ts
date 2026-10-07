@@ -47,6 +47,7 @@ import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
+import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { unstubbed } from '../../../testing/mocks';
 
 // ─── Factories de entidades/mocks de test ────────────────────────────────────
@@ -139,7 +140,16 @@ const makePermisosRepo = (): Mocked<IMatrizPermisosRepository> => ({
   setPermisos: vi.fn().mockResolvedValue(undefined),
 });
 
+const RESERVA = { clave: 'k', ventanaInicio: new Date() };
+
+const makeLimitador = (): Mocked<ILimitadorIntentos> => ({
+  reservar: vi.fn().mockResolvedValue(RESERVA),
+  liberar: vi.fn().mockResolvedValue(undefined),
+  devolver: vi.fn().mockResolvedValue(undefined),
+});
+
 describe('LoginUseCase', () => {
+  let limitador: ReturnType<typeof makeLimitador>;
   let usuarioRepo: ReturnType<typeof makeUsuarioRepo>;
   let membresiaRepo: ReturnType<typeof makeMembresiaRepo>;
   let clienteRepo: ReturnType<typeof makeClienteRepo>;
@@ -157,6 +167,7 @@ describe('LoginUseCase', () => {
     tokenService = makeTokenService();
     refreshTokenRepo = makeRefreshTokenRepo();
     permisosRepo = makePermisosRepo();
+    limitador = makeLimitador();
     useCase = new LoginUseCase(
       usuarioRepo,
       membresiaRepo,
@@ -165,6 +176,7 @@ describe('LoginUseCase', () => {
       tokenService,
       refreshTokenRepo,
       permisosRepo,
+      limitador,
     );
   });
 
@@ -636,6 +648,79 @@ describe('LoginUseCase', () => {
       await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
       expect(captured!.sub).toBe(usuario.id);
+    });
+  });
+
+  // ─── WU-3 — limitador de intentos (I1, I2, I3, I5) ────────────────────────
+
+  describe('Limitador de intentos', () => {
+    const clave = (email: string, ip: string) =>
+      `pwd:${crypto.createHash('sha256').update(email).digest('hex')}:${ip}`;
+
+    it('la clave es pwd:{sha256(email normalizado)}:{ip}, sin el email en claro', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(null);
+
+      await useCase.execute({ email: '  Juan@Test.COM ', password: 'x', ip: '203.0.113.9' });
+
+      const usada = limitador.reservar.mock.calls[0][0];
+      expect(usada).toBe(clave('juan@test.com', '203.0.113.9'));
+      expect(usada).not.toContain('juan');
+    });
+
+    it('sin ip usa sin-ip', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(null);
+
+      await useCase.execute({ email: 'a@test.com', password: 'x' });
+
+      expect(limitador.reservar).toHaveBeenCalledWith(clave('a@test.com', 'sin-ip'));
+    });
+
+    it('bloqueado: ejecuta verify(DUMMY_HASH), no busca al usuario y devuelve CredencialesInvalidas', async () => {
+      limitador.reservar.mockResolvedValue(null);
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'bien' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CredencialesInvalidasError);
+      expect(hashProvider.verify).toHaveBeenCalledWith('bien', DUMMY_HASH);
+      expect(usuarioRepo.findByEmail).not.toHaveBeenCalled();
+      expect(limitador.liberar).not.toHaveBeenCalled();
+    });
+
+    it('bloqueado y fallo normal son indistinguibles (mismo error y mismo mensaje)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(null);
+      const normal = await useCase.execute({ email: 'a@test.com', password: 'x' });
+      limitador.reservar.mockResolvedValue(null);
+      const bloqueado = await useCase.execute({ email: 'a@test.com', password: 'x' });
+
+      expect(bloqueado.getError()).toEqual(normal.getError());
+    });
+
+    it('password incorrecto no libera (la reserva queda como fallo)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      hashProvider.verify.mockResolvedValue(false);
+
+      await useCase.execute({ email: 'user@test.com', password: 'mal' });
+
+      expect(limitador.liberar).not.toHaveBeenCalled();
+    });
+
+    it('email inexistente cuenta igual: reserva y no libera', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(null);
+
+      await useCase.execute({ email: 'noexiste@test.com', password: 'x' });
+
+      expect(limitador.reservar).toHaveBeenCalledTimes(1);
+      expect(limitador.liberar).not.toHaveBeenCalled();
+    });
+
+    it('password correcto libera la clave', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([]);
+
+      await useCase.execute({ email: 'user@test.com', password: 'ok', ip: '1.2.3.4' });
+
+      expect(limitador.liberar).toHaveBeenCalledWith(clave('user@test.com', '1.2.3.4'));
     });
   });
 });

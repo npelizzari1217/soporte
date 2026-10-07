@@ -58,6 +58,9 @@ import { PrismaClienteRepository } from '../clientes/infrastructure/persistence/
 import { HASH_PROVIDER } from './domain/ports/i-hash.provider';
 import { TOKEN_SERVICE, ITokenService } from './domain/ports/i-token.service';
 import { Argon2HashProvider } from './infrastructure/argon2-hash.provider';
+import { LIMITADOR_INTENTOS, ILimitadorIntentos } from './domain/ports/limitador-intentos.port';
+import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import { PrismaLimitadorIntentos } from './infrastructure/tfa/prisma-limitador-intentos';
 import { JwtTokenService } from './infrastructure/jwt-token.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
@@ -126,6 +129,11 @@ import { RolesController } from './interface/controllers/roles.controller';
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
     { provide: TOKEN_SERVICE, useClass: JwtTokenService },
+    {
+      provide: LIMITADOR_INTENTOS,
+      useFactory: (prisma: PrismaService) => new PrismaLimitadorIntentos(prisma),
+      inject: [PrismaService],
+    },
     // LOGGER: provisto globalmente por SharedModule (@Global) — no se
     // redeclara acá, solo se inyecta vía el token en el factory de abajo.
 
@@ -140,6 +148,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         tokenService: ITokenService,
         refreshTokenRepo: IRefreshTokenRepository,
         permisosRepo: IMatrizPermisosRepository,
+        limitador: ILimitadorIntentos,
       ) =>
         new LoginUseCase(
           usuarioRepo,
@@ -149,6 +158,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           tokenService,
           refreshTokenRepo,
           permisosRepo,
+          limitador,
         ),
       inject: [
         USUARIO_REPOSITORY,
@@ -158,6 +168,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         TOKEN_SERVICE,
         REFRESH_TOKEN_REPOSITORY,
         MATRIZ_PERMISOS_REPOSITORY,
+        LIMITADOR_INTENTOS,
       ],
     },
     {

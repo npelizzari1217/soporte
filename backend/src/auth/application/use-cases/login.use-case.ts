@@ -13,6 +13,8 @@ import {
   CredencialesInvalidasError,
   SinMembresiaActivaError,
 } from '../../domain/errors/auth.errors';
+import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
+import { normalizarEmail } from '../../domain/tfa/formato-codigo';
 import { resolverScope } from './resolver-scope';
 
 /** Duración del refresh token: 7 días en milisegundos (R7). */
@@ -44,6 +46,8 @@ export interface LoginDto {
   password: string;
   /** Cliente elegido explícitamente (R5). Ausente = auto-resolución (R4). */
   clienteId?: string;
+  /** IP del navegador para el limitador (I4). Ausente = `sin-ip`. */
+  ip?: string;
 }
 
 /** Vista de una membresía para el selector de cliente del front (R4, R27). */
@@ -99,9 +103,20 @@ export class LoginUseCase {
     private readonly tokenService: ITokenService,
     private readonly refreshTokenRepo: IRefreshTokenRepository,
     private readonly permisosRepo: IMatrizPermisosRepository,
+    private readonly limitador: ILimitadorIntentos,
   ) {}
 
   async execute(dto: LoginDto): Promise<Result<LoginResult, DomainError>> {
+    // 0. Limitador (I1, I5): la reserva es el fallo provisional. Bloqueado devuelve lo mismo
+    // que una credencial invalida, con el mismo costo de argon2 (DUMMY_HASH), sin pista.
+    const hashEmail = crypto.createHash('sha256').update(normalizarEmail(dto.email)).digest('hex');
+    const claveLimite = `pwd:${hashEmail}:${dto.ip ?? 'sin-ip'}`;
+    const reserva = await this.limitador.reservar(claveLimite);
+    if (reserva === null) {
+      await this.hashProvider.verify(dto.password, DUMMY_HASH);
+      return Result.fail(new CredencialesInvalidasError());
+    }
+
     // 1. Buscar usuario por email (identidad global)
     const usuario = await this.usuarioRepo.findByEmail(dto.email);
 
@@ -118,6 +133,8 @@ export class LoginUseCase {
     if (!passwordOk) {
       return Result.fail(new CredencialesInvalidasError());
     }
+    // Exito de contrasena: el contador vuelve a cero (I2). Solo los fallos cuentan.
+    await this.limitador.liberar(claveLimite);
 
     // 3. Resolver membresías activas — siempre, alimentan membresias[] del JWT
     // y el selector del front (R4, R6).

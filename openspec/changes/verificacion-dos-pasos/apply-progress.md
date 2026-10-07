@@ -79,3 +79,27 @@ Modo: estandar. Tareas 3.1, 3.2 y 3.7 marcadas en `tasks.md`. Rama `feat/verific
 
 - `devolver` compara `date_trunc('milliseconds', ventana_inicio)`: `timestamptz` guarda microsegundos y un `Date` de JS solo milisegundos.
 - El adaptador recibe un reloj inyectable como segundo argumento (para testear la purga horaria); en 3b se registra con `useFactory`.
+
+## WU-3b — IP del navegador y limite en el login (completa)
+
+Modo: estandar. Tareas 3.3 a 3.6, 3.8 y 3.9 marcadas en `tasks.md`. Rama `feat/verificacion-dos-pasos-wu03b` (base `...-wu03`).
+
+### Archivos
+
+- `backend/src/auth/interface/ip-del-navegador.ts` + spec: honra `x-soporte-ip-navegador` solo desde un par loopback (`127.0.0.1`, `::1`, `::ffff:127.0.0.1`) y solo si `isIP` lo acepta; si no, el socket sin `::ffff:`; si no, `sin-ip`. La forma con puerto no es IP valida (el BFF la recorta en WU-10).
+- `LoginUseCase`: reserva antes de buscar el usuario con clave `pwd:{sha256(email normalizado)}:{ip}`; bloqueado corre el verify contra `DUMMY_HASH` y devuelve `CredencialesInvalidasError`; `liberar` solo con la contrasena correcta.
+- `AuthController.login` pasa la IP; `auth.module.ts` registra el adaptador con `useFactory`.
+- Specs: unit del caso de uso y del controller, e2e `limite-intentos.e2e.spec.ts` (bloqueado igual a invalido, el bloqueo sobrevive a reconstruir el modulo); `prisma-auth.integration.spec.ts` pasa el adaptador real.
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/auth`: 64 archivos, 834 tests verdes |
+| Suite completa | Sobre WU-3 entera: 634 archivos, 7779 tests verdes |
+| Lint / tipos | `pnpm lint` y `pnpm typecheck` sin errores; ratchet de casts sin cambios |
+| Rollback | Revertir este commit deja el limitador sin consumidores (WU-3a) |
+
+### Decisiones tomadas en apply
+
+- El "quinto fallo bloquea" de 3.5 lo prueba el e2e; el unit usa el limitador mockeado.
