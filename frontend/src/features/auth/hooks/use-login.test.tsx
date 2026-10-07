@@ -502,6 +502,35 @@ describe("useLogin", () => {
     spy.mockRestore();
   });
 
+  it.each([
+    ["dentro del plazo de 15 min → código incorrecto y sigue en el alta", 14 * 60_000, "enrolamiento", false],
+    ["pasado el plazo de 15 min → vencido y vuelve a credenciales", 16 * 60_000, "credenciales", true],
+  ])("confirmar el alta con 401 %s", async (_titulo, demora, pasoEsperado, vencido) => {
+    const { toast } = await import("sonner");
+    server.use(
+      http.post("/api/auth/2fa/enrolamiento/iniciar", () =>
+        HttpResponse.json({ otpauthUri: "otpauth://totp/x?secret=ABC", claveManual: "ABC" }),
+      ),
+      http.post("/api/auth/2fa/enrolamiento/confirmar", () =>
+        HttpResponse.json({ statusCode: 401 }, { status: 401 }),
+      ),
+    );
+    const ahora = Date.now();
+    const spy = vi.spyOn(Date, "now");
+    spy.mockReturnValue(ahora);
+    const result = await llegarAlCodigo({ needsEnrolamiento2fa: true, desafio: "ds-2" });
+    await waitFor(() => expect(result.current.datosEnrolamiento).not.toBeNull());
+    spy.mockReturnValue(ahora + demora);
+    act(() => {
+      result.current.confirmarEnrolamiento("123456");
+    });
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(result.current.paso).toBe(pasoEsperado);
+    if (vencido) expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
+    else expect(toast.error).toHaveBeenCalledWith("Código incorrecto. Intentá de nuevo.");
+    spy.mockRestore();
+  });
+
   it("enrolamiento forzado: iniciar → confirmar → códigos → continuar → sesión", async () => {
     let confirmar: unknown = null;
     let continuar: unknown = null;
