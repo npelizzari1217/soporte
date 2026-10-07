@@ -213,3 +213,12 @@ WU-5b entera sumaba ~640 lineas de codigo y tests; el orquestador la partio por 
 - `buscarTicket(ticket)` en el puerto y el adaptador de desafios: lectura de un ticket verificado, sin usar y vigente (`buscarSinVerificar` excluye los verificados). Con su test de integracion.
 - `backend/src/auth/application/tfa/continuar-login.use-cases.ts` + spec: `ContinuarLoginUseCase` es el unico lugar del flujo de 2FA que emite sesion; ROOT sale con alcance MASTER, una membresia emite, mas de una devuelve la lista y el MISMO ticket sin consumirlo. `SeleccionarClienteLoginUseCase` valida la membresia antes de consumir (si no existe, mismo rechazo y el ticket sigue vigente). Ninguno pide contrasena ni codigo.
 - Consume antes de emitir: si `emitir` falla, el ticket queda gastado y el usuario vuelve a loguear (se prefiere a arriesgar dos sesiones con un ticket).
+
+### 5b2 (`feat/verificacion-dos-pasos-wu05b2`, tareas 5b.3 a 5b.6)
+
+- `TfaLoginController` con las cinco rutas publicas del segundo paso (`2fa/verificar`, `2fa/enrolamiento/iniciar|confirmar`, `login/continuar`, `login/seleccionar`): errores de codigo y de ticket en 401 (tabla del diseno), falta de clave maestra en 503, sin membresia activa en 403. `clienteId` con `@IsUUID()` (un id mal formado hacia que Prisma lanzara y la ruta diera 500).
+- `auth.module.ts`: `EmitirSesionService` como provider y los dos casos de uso.
+- e2e `tfa-login.e2e.spec.ts` con desafios sembrados por el repo; limpia sus filas.
+- 5b.3 (L8) lo cubre el e2e para el refresh; el cambio de cliente queda para el e2e de 5c.7.
+- Para WU-10/11: el `apiFetch` del frontend refresca ante cualquier 401; `auth/2fa/*` y `auth/login/continuar|seleccionar` tienen que entrar en el conjunto de rutas que nunca refrescan.
+- Evidencia: suite completa sobre WU-5b entera 645 archivos, 7858 tests verdes; specs focales 55 verdes; typecheck, lint y ratchet limpios.
