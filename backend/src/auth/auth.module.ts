@@ -62,6 +62,8 @@ import { LIMITADOR_INTENTOS, ILimitadorIntentos } from './domain/ports/limitador
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { PrismaLimitadorIntentos } from './infrastructure/tfa/prisma-limitador-intentos';
 import { ITfaRepository, TFA_REPOSITORY } from './domain/ports/tfa-repository.port';
+import { DISPOSITIVO_CONFIABLE_REPOSITORY } from './domain/ports/dispositivo-confiable-repository.port';
+import { PrismaDispositivoConfiableRepository } from './infrastructure/tfa/prisma-dispositivo-confiable.repository';
 import { PrismaTfaRepository } from './infrastructure/tfa/prisma-tfa.repository';
 import { TOTP_SERVICE } from './domain/ports/totp-service.port';
 import { TotpNativoService } from './infrastructure/tfa/totp-nativo.service';
@@ -163,6 +165,8 @@ import { RolesController } from './interface/controllers/roles.controller';
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
 
     { provide: TFA_REPOSITORY, useClass: PrismaTfaRepository },
+    // Dispositivos confiables (WU-6a): sin consumidores hasta 6a-ii.
+    { provide: DISPOSITIVO_CONFIABLE_REPOSITORY, useClass: PrismaDispositivoConfiableRepository },
     { provide: TOTP_SERVICE, useClass: TotpNativoService },
     // 2FA (sdd/verificacion-dos-pasos): primer consumidor, la autogestion de WU-4c.
     SecretoTotpCifrado,

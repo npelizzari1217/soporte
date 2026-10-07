@@ -164,8 +164,8 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-6a — Dispositivo confiable (~330 líneas)
 
-- [ ] 6a.1 Test de integración de `PrismaDispositivoConfiableRepository`: `crear` guarda solo el SHA-256 del token; `esValido` falso si el usuario no coincide, está revocado o vencido; `revocarTodosDe` revoca todos y lanza ante fallo (fail-closed); vigencia exacta de 30 días. (D2, D3, D7)
-- [ ] 6a.2 Crear `IDispositivoConfiableRepository` en `auth/domain/ports` y su adaptador Prisma; registrar en `AuthModule`. (D2, D7)
+- [x] 6a.1 Test de integración de `PrismaDispositivoConfiableRepository`: `crear` guarda solo el SHA-256 del token; `esValido` falso si el usuario no coincide, está revocado o vencido; `revocarTodosDe` revoca todos y lanza ante fallo (fail-closed); vigencia exacta de 30 días. (D2, D3, D7)
+- [x] 6a.2 Crear `IDispositivoConfiableRepository` en `auth/domain/ports` y su adaptador Prisma; registrar en `AuthModule`. (D2, D7)
 - [ ] 6a.3 Test unit de `VerificarDesafioUseCase` con `recordar: true`: emite `dispositivoConfiable` para un usuario normal; ROOT no recibe dispositivo aunque envíe `recordar` (D4); `recordarDisponible` falso para ROOT. (D1, D4)
 - [ ] 6a.4 Test unit de `LoginUseCase` con dispositivo: un token válido del usuario con 2FA activo omite el desafío pero no la contraseña; de otro usuario, revocado, vencido o de un ROOT se ignora y sigue el desafío. (D3, D4)
 - [ ] 6a.5 Implementar emisión en `VerificarDesafioUseCase` y uso en `LoginUseCase` (`dispositivoConfiable` en el body de `POST /auth/login`). (D1, D3, D4)
