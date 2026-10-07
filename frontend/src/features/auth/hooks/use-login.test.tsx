@@ -237,6 +237,11 @@ describe("useLogin", () => {
   });
 
   it("needsEnrolamiento2fa → paso enrolamiento", async () => {
+    server.use(
+      http.post("/api/auth/2fa/enrolamiento/iniciar", () =>
+        HttpResponse.json({ otpauthUri: "otpauth://totp/x?secret=ABC", claveManual: "ABC" }),
+      ),
+    );
     const result = await llegarAlCodigo({ needsEnrolamiento2fa: true, desafio: "ds-2" });
     expect(result.current.paso).toBe("enrolamiento");
     expect(assignMock).not.toHaveBeenCalled();
@@ -495,5 +500,39 @@ describe("useLogin", () => {
     await waitFor(() => expect(result.current.paso).toBe("credenciales"));
     expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
     spy.mockRestore();
+  });
+
+  it("enrolamiento forzado: iniciar → confirmar → códigos → continuar → sesión", async () => {
+    let confirmar: unknown = null;
+    let continuar: unknown = null;
+    server.use(
+      http.post("/api/auth/2fa/enrolamiento/iniciar", () =>
+        HttpResponse.json({ otpauthUri: "otpauth://totp/x?secret=ABC", claveManual: "ABC" }),
+      ),
+      http.post("/api/auth/2fa/enrolamiento/confirmar", async ({ request }) => {
+        confirmar = await request.json();
+        return HttpResponse.json({ codigosRecuperacion: ["AAAA-BBBB-CCCC"], ticket: "tk-5" });
+      }),
+      http.post("/api/auth/login/continuar", async ({ request }) => {
+        continuar = await request.json();
+        return HttpResponse.json({ user: USER_OK });
+      }),
+    );
+    const result = await llegarAlCodigo({ needsEnrolamiento2fa: true, desafio: "ds-2" });
+    await waitFor(() => expect(result.current.datosEnrolamiento).toEqual({ otpauthUri: "otpauth://totp/x?secret=ABC", claveManual: "ABC" }));
+
+    act(() => {
+      result.current.confirmarEnrolamiento("123456");
+    });
+    await waitFor(() => expect(result.current.paso).toBe("codigos"));
+    expect(confirmar).toEqual({ desafio: "ds-2", codigo: "123456" });
+    expect(result.current.codigosRecuperacion).toEqual(["AAAA-BBBB-CCCC"]);
+    expect(continuar).toBeNull();
+
+    act(() => {
+      result.current.continuarTrasCodigos();
+    });
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
+    expect(continuar).toEqual({ ticket: "tk-5" });
   });
 });

@@ -236,11 +236,11 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-11b — Enrolamiento forzado y códigos de recuperación (~360 líneas)
 
-- [ ] 11b.1 Test de `EnrolamientoTfa`: muestra el QR (`encode` de `uqr`, como `features/equipos/qr-equipo.ts:6`) y la clave manual; confirma con un código de 6 dígitos del pendiente; error de código no avanza. (T4, L5)
-- [ ] 11b.2 Test de `CodigosRecuperacion`: lista los 10 códigos, copiar, casilla "Los guardé" y botón Continuar deshabilitado hasta marcarla; Continuar llama a `login/continuar` con el ticket. (T5, L5)
-- [ ] 11b.3 Crear `features/auth/components/enrolamiento-tfa.tsx` y `codigos-recuperacion.tsx`; estados `enrolamiento` y `codigos` en `use-login.ts`. (T4, T5, L5)
-- [ ] 11b.4 Test del flujo forzado en `use-login`: `needsEnrolamiento2fa` → iniciar → confirmar → códigos → continuar → sesión o selector. (L5, L7)
-- [ ] 11b.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (enrolamiento forzado) en commit y PR.
+- [x] 11b.1 Test de `EnrolamientoTfa`: muestra el QR (`encode` de `uqr`, como `features/equipos/qr-equipo.ts:6`) y la clave manual; confirma con un código de 6 dígitos del pendiente; error de código no avanza. (T4, L5)
+- [x] 11b.2 Test de `CodigosRecuperacion`: lista los 10 códigos, copiar, casilla "Los guardé" y botón Continuar deshabilitado hasta marcarla; Continuar llama a `login/continuar` con el ticket. (T5, L5)
+- [x] 11b.3 Crear `features/auth/components/enrolamiento-tfa.tsx` y `codigos-recuperacion.tsx`; estados `enrolamiento` y `codigos` en `use-login.ts`. (T4, T5, L5)
+- [x] 11b.4 Test del flujo forzado en `use-login`: `needsEnrolamiento2fa` → iniciar → confirmar → códigos → continuar → sesión o selector. (L5, L7)
+- [x] 11b.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (enrolamiento forzado) en commit y PR.
 
 ## WU-12 — Ajustes de 2FA en el perfil (~390 líneas)
 
