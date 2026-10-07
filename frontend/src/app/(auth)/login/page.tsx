@@ -15,6 +15,8 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { DesafioTfaForm } from "@/features/auth/components/desafio-tfa-form";
+import { EnrolamientoTfa } from "@/features/auth/components/enrolamiento-tfa";
+import { CodigosRecuperacion } from "@/features/auth/components/codigos-recuperacion";
 import { Button } from "@/components/ui/button";
 import { ClienteSelection } from "@/features/auth/components/ClienteSelection";
 import { AvisoMotivo } from "@/features/auth/components/AvisoMotivo";
@@ -26,6 +28,10 @@ export default function LoginPage() {
     volver,
     verificarCodigo,
     selectCliente,
+    confirmarEnrolamiento,
+    continuarTrasCodigos,
+    datosEnrolamiento,
+    codigosRecuperacion,
     paso,
     membresias,
     recordarDisponible,
@@ -45,6 +51,7 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             {paso === "seleccion" && "Elegí con qué cliente querés ingresar"}
             {paso === "codigo" && "Confirmá que sos vos con un segundo paso"}
+            {paso === "codigos" && "Guardá tus códigos de recuperación"}
             {paso === "enrolamiento" && "Tu cuenta necesita activar la verificación en dos pasos"}
             {paso === "credenciales" && "Ingresá tus credenciales para continuar"}
           </p>
@@ -61,10 +68,10 @@ export default function LoginPage() {
           />
         )}
         {paso === "enrolamiento" && (
-          // Placeholder: la pantalla de enrolamiento obligatorio llega en WU-11b (parte B).
-          <p role="status" className="text-center text-sm text-muted-foreground">
-            La activación de la verificación en dos pasos todavía no está disponible desde esta pantalla.
-          </p>
+          <EnrolamientoTfa datos={datosEnrolamiento} onConfirmar={confirmarEnrolamiento} isLoading={isPending} />
+        )}
+        {paso === "codigos" && codigosRecuperacion && (
+          <CodigosRecuperacion codigos={codigosRecuperacion} onContinuar={continuarTrasCodigos} isLoading={isPending} />
         )}
         {paso === "credenciales" && (
           <LoginForm
@@ -72,7 +79,7 @@ export default function LoginPage() {
             isLoading={isPending}
           />
         )}
-        {paso !== "credenciales" && (
+        {paso !== "credenciales" && paso !== "codigos" && (
           <Button type="button" variant="ghost" className="mt-4 w-full" onClick={volver} disabled={isPending}>
             Volver
           </Button>

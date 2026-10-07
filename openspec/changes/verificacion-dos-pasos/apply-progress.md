@@ -390,3 +390,11 @@ WU-11b entera sumaba ~530 lineas de codigo y tests (tope 400), asi que se parte 
 - Heuristica de 5 minutos en `2fa/verificar`: el backend responde el MISMO 401 para un codigo equivocado y para un desafio vencido (anti-oraculo, por diseno). El frontend no puede distinguirlos por la respuesta, asi que el paso del codigo guarda `emitidoAt` y un 401 pasados 5 minutos (`DESAFIO_VERIFICAR_MS`, la duracion del desafio VERIFICAR) se trata como vencimiento. Antes del plazo, un 401 sigue siendo "Codigo incorrecto".
 - Tests: volver desde codigo y desde seleccion, 401 de continuar, 401 de seleccionar, verificar vencido por plazo (con `Date.now` simulado), y "Volver" en la pagina.
 - Parte B pendiente (tareas 11b.1-11b.5): componentes `EnrolamientoTfa` y `CodigosRecuperacion`, estados `enrolamiento` (iniciar) y `codigos`, continuar con ticket. Borrador completo fuera del repo, en el scratchpad de la sesion (`wu11b-rest/`).
+
+### Parte B (`feat/verificacion-dos-pasos-wu11b2`, tareas 11b.1 a 11b.5)
+
+- Componentes presentacionales `EnrolamientoTfa` (QR como SVG con nombre accesible, dibujado con `uqr` como el QR de equipos; clave manual de solo lectura; codigo de 6 digitos validado en el cliente) y `CodigosRecuperacion` (lista monoespaciada, copiar al portapapeles, casilla "Los guardé" que habilita "Continuar").
+- `use-login.ts`: al llegar `needsEnrolamiento2fa` llama a `enrolamiento/iniciar` con el desafio; `confirmarEnrolamiento` pasa al paso `codigos` con los 10 codigos y el ticket; `continuarTrasCodigos` llama a `login/continuar` recien despues de la casilla. Un 401 de `iniciar` o `continuar` usa el aviso de vencimiento de la parte A. Un codigo equivocado en `confirmar` se trata como en `verificar`.
+- Los codigos se muestran una sola vez; en ese paso no hay "Volver".
+- Tests: componentes (11b.1, 11b.2), flujo del hook (iniciar, confirmar, codigos, continuar) y flujo completo de la pagina.
+- Deuda de Ayuda: pantalla de enrolamiento forzado en el login (QR, clave manual, codigos de recuperacion, "Los guardé").

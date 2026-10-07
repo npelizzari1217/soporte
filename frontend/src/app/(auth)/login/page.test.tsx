@@ -128,11 +128,22 @@ describe("LoginPage", () => {
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
   });
 
-  it("2FA obligatorio sin configurar → muestra el aviso de enrolamiento (placeholder hasta WU-11b parte B)", async () => {
+  it("2FA obligatorio → QR, confirma, muestra los códigos y recién al marcar 'Los guardé' continúa", async () => {
+    let continuar: unknown = null;
     server.use(
-      http.post("/api/auth/login", () =>
-        HttpResponse.json({ needsEnrolamiento2fa: true, desafio: "ds-2" }),
+      http.post("/api/auth/login", () => HttpResponse.json({ needsEnrolamiento2fa: true, desafio: "ds-2" })),
+      http.post("/api/auth/2fa/enrolamiento/iniciar", () =>
+        HttpResponse.json({ otpauthUri: "otpauth://totp/Soporte:u?secret=JBSWY3DPEHPK3PXP", claveManual: "JBSW Y3DP" }),
       ),
+      http.post("/api/auth/2fa/enrolamiento/confirmar", () =>
+        HttpResponse.json({ codigosRecuperacion: ["AAAA-BBBB-CCCC", "DDDD-EEEE-FFFF"], ticket: "tk-5" }),
+      ),
+      http.post("/api/auth/login/continuar", async ({ request }) => {
+        continuar = await request.json();
+        return HttpResponse.json({
+          user: { sub: "1", cliente_id: "c1", rol: "USUARIO", permisos: [], is_global_admin: false, cliente_nombre: "C", membresias: [] },
+        });
+      }),
     );
 
     const user = userEvent.setup();
@@ -142,8 +153,20 @@ describe("LoginPage", () => {
     await user.type(screen.getByLabelText(/contraseña/i), "secret123");
     await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(/verificación en dos pasos/i);
-    expect(assignMock).not.toHaveBeenCalled();
+    expect(await screen.findByRole("img", { name: /qr/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/cargá esta clave/i)).toHaveValue("JBSW Y3DP");
+    await user.type(screen.getByLabelText(/código de verificación/i), "123456");
+    await user.click(screen.getByRole("button", { name: /activar/i }));
+
+    expect(await screen.findByText("AAAA-BBBB-CCCC")).toBeInTheDocument();
+    const continuarBtn = screen.getByRole("button", { name: /continuar/i });
+    expect(continuarBtn).toBeDisabled();
+    expect(continuar).toBeNull();
+    await user.click(screen.getByLabelText(/los guardé/i));
+    await user.click(continuarBtn);
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
+    expect(continuar).toEqual({ ticket: "tk-5" });
   });
 
   it("Volver en el paso del código regresa a las credenciales", async () => {

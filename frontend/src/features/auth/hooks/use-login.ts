@@ -4,7 +4,7 @@
  * use-login — CONTAINER hook for the login mutation.
  *
  * Calls the BFF POST /api/auth/login. Máquina de pasos (`paso`):
- *   credenciales → codigo (2FA activo) | enrolamiento (2FA obligatorio, UI en WU-11b parte B)
+ *   credenciales → codigo (2FA activo) | enrolamiento (2FA obligatorio) → codigos (recuperación, una vez)
  *                → seleccion (varias membresías) → sesión.
  *   1. POST { email, password } → `{ user }` (cookies, listo) | `{ needs2fa, desafio,
  *      recordarDisponible }` | `{ needsEnrolamiento2fa, desafio }` | `{ needsClienteSelection,
@@ -60,6 +60,16 @@ interface SeleccionarDto {
 
 type Seleccion = { needsClienteSelection: true; membresias: Membresia[]; ticket: string };
 
+interface ConfirmarEnrolamientoDto {
+  desafio: string;
+  codigo: string;
+}
+
+interface DatosEnrolamiento {
+  otpauthUri: string;
+  claveManual: string;
+}
+
 /** El desafío o el ticket ya no sirven: el servidor los rechazó (401) en un paso que los consume. */
 type Vencido = { vencido: true };
 
@@ -78,7 +88,8 @@ type Respuesta =
 export type PasoLogin =
   | { paso: "credenciales" }
   | { paso: "codigo"; desafio: string; recordarDisponible: boolean; emitidoAt: number }
-  | { paso: "enrolamiento"; desafio: string }
+  | { paso: "enrolamiento"; desafio: string; datos: DatosEnrolamiento | null }
+  | { paso: "codigos"; codigos: string[]; ticket: string }
   | { paso: "seleccion"; membresias: Membresia[]; ticket: string };
 
 /**
@@ -128,7 +139,8 @@ export function useLogin() {
       return;
     }
     if ("needsEnrolamiento2fa" in result) {
-      setFase({ paso: "enrolamiento", desafio: result.desafio });
+      setFase({ paso: "enrolamiento", desafio: result.desafio, datos: null });
+      iniciarMutation.mutate(result.desafio);
       return;
     }
     if ("needsClienteSelection" in result) {
@@ -160,6 +172,38 @@ export function useLogin() {
       throw err;
     }
   }
+
+  const iniciarMutation = useMutation<DatosEnrolamiento, ApiError, string>({
+    mutationFn: (desafio) =>
+      apiFetch<DatosEnrolamiento>("auth/2fa/enrolamiento/iniciar", { method: "POST", json: { desafio } }),
+    onSuccess: (datos) => setFase((f) => (f.paso === "enrolamiento" ? { ...f, datos } : f)),
+    onError: (err) => {
+      if (err.statusCode === 401) alResponder({ vencido: true });
+      else alFallar(err);
+    },
+  });
+
+  const confirmarMutation = useMutation<{ codigosRecuperacion: string[]; ticket: string }, ApiError, ConfirmarEnrolamientoDto>({
+    mutationFn: (dto) =>
+      apiFetch<{ codigosRecuperacion: string[]; ticket: string }>("auth/2fa/enrolamiento/confirmar", {
+        method: "POST",
+        json: dto,
+      }),
+    onSuccess: (r) => setFase({ paso: "codigos", codigos: r.codigosRecuperacion, ticket: r.ticket }),
+    onError: (err) => {
+      toast.error(
+        err.statusCode === 0 || err.statusCode >= 500
+          ? mensajeDeErrorDeLogin(err.statusCode)
+          : "Código incorrecto. Intentá de nuevo.",
+      );
+    },
+  });
+
+  const continuarMutation = useMutation<Respuesta, ApiError, string>({
+    mutationFn: continuar,
+    onSuccess: alResponder,
+    onError: alFallar,
+  });
 
   const loginMutation = useMutation<Respuesta, ApiError, LoginDto>({
     mutationFn: (dto) => apiFetch<Respuesta>("auth/login", { method: "POST", json: dto }),
@@ -219,6 +263,16 @@ export function useLogin() {
     seleccionarMutation.mutate({ ticket: fase.ticket, clienteId });
   }
 
+  function confirmarEnrolamiento(codigo: string) {
+    if (fase.paso !== "enrolamiento") return;
+    confirmarMutation.mutate({ desafio: fase.desafio, codigo });
+  }
+
+  function continuarTrasCodigos() {
+    if (fase.paso !== "codigos") return;
+    continuarMutation.mutate(fase.ticket);
+  }
+
   /** Descarta desafío y ticket y vuelve a pedir credenciales. */
   function volver() {
     setFase({ paso: "credenciales" });
@@ -227,12 +281,20 @@ export function useLogin() {
   return {
     login,
     volver,
+    confirmarEnrolamiento,
+    continuarTrasCodigos,
+    datosEnrolamiento: fase.paso === "enrolamiento" ? fase.datos : null,
+    codigosRecuperacion: fase.paso === "codigos" ? fase.codigos : null,
     verificarCodigo,
     selectCliente,
     paso: fase.paso,
     membresias: fase.paso === "seleccion" ? fase.membresias : null,
     recordarDisponible: fase.paso === "codigo" ? fase.recordarDisponible : false,
     isPending:
-      loginMutation.isPending || verificarMutation.isPending || seleccionarMutation.isPending,
+      loginMutation.isPending ||
+      verificarMutation.isPending ||
+      seleccionarMutation.isPending ||
+      confirmarMutation.isPending ||
+      continuarMutation.isPending,
   };
 }
