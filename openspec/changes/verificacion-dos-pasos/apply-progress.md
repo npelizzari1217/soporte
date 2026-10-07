@@ -163,3 +163,17 @@ Modo: estandar. Tareas 4b.1 a 4b.8 marcadas en `tasks.md`. Rama `feat/verificaci
 - **4b-i** (`feat/verificacion-dos-pasos-wu04b`, tareas 4b.1, 4b.2, 4b.6, 4b.7): `SecretoTotpCifrado`, errores de dominio, `claveLimiteCodigo`, `resultado-segundo-paso.ts` (tipo comun, extraido para que cada mitad compile sola) y `ConfirmadorSecretoPendiente`.
 - **4b-ii** (`feat/verificacion-dos-pasos-wu04b2`, tareas 4b.3, 4b.4, 4b.5, 4b.8): `VerificadorCodigoTfa` con su unit y su integracion con el limitador real. `pnpm vitest run src/auth/application/tfa`: 4 archivos, 26 tests verdes; typecheck, lint y ratchet de casts limpios.
 - WU-4b completa sumaba ~596 lineas de codigo y tests; el orquestador la partio por la costura que propuso el ejecutor.
+
+## WU-4c — Autogestion de 2FA (partida: 4c-i casos de uso, 4c-ii HTTP y cableado)
+
+WU-4c entera sumaba ~650 lineas de codigo y tests; el orquestador la partio por la costura que propuso el ejecutor.
+
+### 4c-i (`feat/verificacion-dos-pasos-wu04c`, tareas 4c.1 y 4c.2; 4c.3 solo casos de uso)
+
+- `backend/src/auth/application/tfa/codigos-recuperacion.ts`: genera 10 codigos Crockford, los hashea y reemplaza el set anterior.
+- `backend/src/auth/application/tfa/tfa-cuenta.use-cases.ts`: `ObtenerEstadoTfa`, `IniciarSecretoTfa`, `ConfirmarSecretoTfa`, `RegenerarCodigosTfa` + spec unit (T3, T4, T9, T10, T11 y el 503 sin clave maestra).
+- `TfaNoDisponibleError` en `tfa.errors.ts`.
+- Sin cableado en `auth.module.ts` (llega con el primer consumidor HTTP en 4c-ii).
+- `obligado` usa por ahora solo ROOT: la regla del cliente que exige 2FA llega con la politica en WU-7 (`TODO(WU-7)`).
+- `IniciarSecretoTfa` con 2FA activo y sin codigo llama al verificador con cadena vacia: cuenta como fallo del limitador, a proposito.
+- Evidencia: `pnpm vitest run src/auth/application/tfa` 33 tests verdes; typecheck y lint limpios. Suite completa sobre WU-4c entera: 641 archivos, 7828 tests verdes.
