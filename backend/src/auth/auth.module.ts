@@ -63,6 +63,18 @@ import { PrismaService } from '../shared/infrastructure/persistence/prisma.servi
 import { PrismaLimitadorIntentos } from './infrastructure/tfa/prisma-limitador-intentos';
 import { TFA_REPOSITORY } from './domain/ports/tfa-repository.port';
 import { PrismaTfaRepository } from './infrastructure/tfa/prisma-tfa.repository';
+import { TOTP_SERVICE } from './domain/ports/totp-service.port';
+import { TotpNativoService } from './infrastructure/tfa/totp-nativo.service';
+import { SecretoTotpCifrado } from './application/tfa/secreto-totp-cifrado';
+import { VerificadorCodigoTfa } from './application/tfa/verificador-codigo-tfa';
+import { ConfirmadorSecretoPendiente } from './application/tfa/confirmador-secreto-pendiente';
+import {
+  ConfirmarSecretoTfa,
+  IniciarSecretoTfa,
+  ObtenerEstadoTfa,
+  RegenerarCodigosTfa,
+} from './application/tfa/tfa-cuenta.use-cases';
+import { TfaCuentaController } from './interface/controllers/tfa-cuenta.controller';
 import { JwtTokenService } from './infrastructure/jwt-token.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
@@ -111,7 +123,7 @@ import { RolesController } from './interface/controllers/roles.controller';
       signOptions: { expiresIn: '15m', algorithm: 'HS256' },
     }),
   ],
-  controllers: [AuthController, UsuariosController, RolesController],
+  controllers: [AuthController, UsuariosController, RolesController, TfaCuentaController],
   providers: [
     // ─── Repositories ──────────────────────────────────────────────────────
     { provide: USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
@@ -129,6 +141,15 @@ import { RolesController } from './interface/controllers/roles.controller';
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
 
     { provide: TFA_REPOSITORY, useClass: PrismaTfaRepository },
+    { provide: TOTP_SERVICE, useClass: TotpNativoService },
+    // 2FA (sdd/verificacion-dos-pasos): primer consumidor, la autogestion de WU-4c.
+    SecretoTotpCifrado,
+    VerificadorCodigoTfa,
+    ConfirmadorSecretoPendiente,
+    ObtenerEstadoTfa,
+    IniciarSecretoTfa,
+    ConfirmarSecretoTfa,
+    RegenerarCodigosTfa,
 
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
