@@ -222,3 +222,16 @@ WU-5b entera sumaba ~640 lineas de codigo y tests; el orquestador la partio por 
 - 5b.3 (L8) lo cubre el e2e para el refresh; el cambio de cliente queda para el e2e de 5c.7.
 - Para WU-10/11: el `apiFetch` del frontend refresca ante cualquier 401; `auth/2fa/*` y `auth/login/continuar|seleccionar` tienen que entrar en el conjunto de rutas que nunca refrescan.
 - Evidencia: suite completa sobre WU-5b entera 645 archivos, 7858 tests verdes; specs focales 55 verdes; typecheck, lint y ratchet limpios.
+
+## WU-5c — LoginUseCase con la decision de segundo paso (5c con size:exception; 5c.7 en WU-5c2)
+
+### 5c (`feat/verificacion-dos-pasos-wu05c`, tareas 5c.1 a 5c.6)
+
+- Tras la contrasena correcta: 2FA activo (`secretoCifrado != null`) devuelve un desafio VERIFICAR `{needs2fa, desafio, recordarDisponible}` sin tokens; obligado sin 2FA devuelve uno ENROLAR `{needsEnrolamiento2fa, desafio}`; si no, la conducta de antes. El paso corre antes de la rama de `clienteId`, asi que el `clienteId` del body no lo saltea. La respuesta de seleccion suma `ticket`.
+- `MembresiaResuelta.clienteRequiere2fa` (mapper + fixtures): `esObligado2fa` ya cuenta la politica por cliente; como `requiere_2fa` nace en false, hasta WU-7 solo ROOT obliga en la practica.
+- `tfa-de-test.ts` (helper solo de specs): activa 2FA con un secreto conocido y genera codigos con los servicios reales. Los e2e e integracion que loguean como ROOT (`auth.e2e`, `autorizacion.e2e`, `prisma-auth.integration`) pasan por el segundo paso; no hay bypass ni variable de entorno.
+- `recordarDisponible = !isGlobalAdmin` se anuncia pero no tiene efecto hasta WU-6a.
+- Contrato que cambia: ROOT con `clienteId` en el login ya no recibe un token con alcance; entra con alcance MASTER por continuar y se mueve con el cambio de cliente (L7).
+- **size:exception autorizado por el dueno el 2026-10-07** (~510 lineas): partir separaria el cambio de conducta de los specs que necesita para quedar en verde. Reset del ledger autorizado en la misma decision.
+- Evidencia: suite completa 646 archivos, 7862 tests verdes; typecheck, lint y ratchet de casts limpios.
+- Cobertura que se movio: "el token master de ROOT guarda `clienteId` null en el refresh" sale del unit de login y entra en el e2e de 5c.7.

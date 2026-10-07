@@ -22,12 +22,16 @@ import { PrismaRefreshTokenRepository } from './prisma-refresh-token.repository'
 import { PrismaMatrizPermisosRepository } from './prisma-matriz-permisos.repository';
 import { ClienteEntity } from '../../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../domain/entities/usuario.entity';
+import { Result } from '../../../../shared/domain/result';
 import { RoleEntity } from '../../../domain/entities/role.entity';
 import { PermisoEntity } from '../../../domain/entities/permiso.entity';
 import { Argon2HashProvider } from '../../argon2-hash.provider';
 import { JwtService } from '@nestjs/jwt';
 import { JwtTokenService } from '../../jwt-token.service';
 import { ILogger } from '../../../../shared/domain/ports/i-logger.port';
+import { EmitirSesionService } from '../../../application/emitir-sesion.service';
+import { PrismaTfaRepository } from '../../tfa/prisma-tfa.repository';
+import { PrismaDesafioLoginRepository } from '../../tfa/prisma-desafio-login.repository';
 import { LoginUseCase } from '../../../application/use-cases/login.use-case';
 import { RefreshTokenUseCase } from '../../../application/use-cases/refresh-token.use-case';
 import { LogoutUseCase } from '../../../application/use-cases/logout.use-case';
@@ -72,6 +76,16 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   let logger: TestLogger;
 
   let loginUseCase: LoginUseCase;
+  let emitirSesion: EmitirSesionService;
+
+  /**
+   * ROOT ya no obtiene sesion en `LoginUseCase` (L3: pasa por el segundo paso, cubierto en el
+   * e2e). Estos casos prueban refresh/logout/scope, asi que emiten la sesion final directo.
+   */
+  async function sesionRoot(root: UsuarioEntity, clienteId: string | null) {
+    const sesion = await emitirSesion.emitir(root, [], clienteId);
+    return Result.ok({ kind: 'tokens' as const, ...sesion.getValue() });
+  }
   let refreshTokenUseCase: RefreshTokenUseCase;
   let logoutUseCase: LogoutUseCase;
   let logoutAllUseCase: LogoutAllUseCase;
@@ -90,6 +104,13 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       new JwtService({ secret: JWT_SECRET, signOptions: { expiresIn: '15m', algorithm: 'HS256' } }),
     );
 
+    emitirSesion = new EmitirSesionService(
+      membresiaRepo,
+      clienteRepo,
+      tokenService,
+      refreshTokenRepo,
+      permisosRepo,
+    );
     loginUseCase = new LoginUseCase(
       usuarioRepo,
       membresiaRepo,
@@ -99,6 +120,8 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       refreshTokenRepo,
       permisosRepo,
       new PrismaLimitadorIntentos(prismaService),
+      new PrismaTfaRepository(prismaService),
+      new PrismaDesafioLoginRepository(prismaService),
     );
     refreshTokenUseCase = new RefreshTokenUseCase(
       refreshTokenRepo,
@@ -314,10 +337,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     it('root sin clienteId → token MASTER (cliente_id/rol null, permisos = bypass total, WU-7.1)', async () => {
       const root = await createUsuario('login-root', { isGlobalAdmin: true });
 
-      const result = await loginUseCase.execute({
-        email: root.email,
-        password: PLAINTEXT_PASSWORD,
-      });
+      const result = await sesionRoot(root, null);
 
       expect(result.isOk()).toBe(true);
       const value = result.getValue();
@@ -348,11 +368,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       const cliente = await createCliente('login-root-scoped');
       const root = await createUsuario('login-root-scoped', { isGlobalAdmin: true });
 
-      const result = await loginUseCase.execute({
-        email: root.email,
-        password: PLAINTEXT_PASSWORD,
-        clienteId: cliente.id,
-      });
+      const result = await sesionRoot(root, cliente.id);
 
       expect(result.isOk()).toBe(true);
       const value = result.getValue();
@@ -413,10 +429,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       });
       // Root para simplificar: no requiere membresía para emitir tokens.
       const rootUsuario = await createUsuario('refresh-revoked-root', { isGlobalAdmin: true });
-      const rootLogin = await loginUseCase.execute({
-        email: rootUsuario.email,
-        password: PLAINTEXT_PASSWORD,
-      });
+      const rootLogin = await sesionRoot(rootUsuario, null);
       const rootValue = rootLogin.getValue();
       if (rootValue.kind !== 'tokens') throw new Error('expected tokens');
 
@@ -463,10 +476,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
   describe('LogoutUseCase + LogoutAllUseCase (R9)', () => {
     it('logout revoca el refresh token actual', async () => {
       const root = await createUsuario('logout-single', { isGlobalAdmin: true });
-      const loginResult = await loginUseCase.execute({
-        email: root.email,
-        password: PLAINTEXT_PASSWORD,
-      });
+      const loginResult = await sesionRoot(root, null);
       const value = loginResult.getValue();
       if (value.kind !== 'tokens') throw new Error('expected tokens');
 
@@ -480,14 +490,8 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
 
     it('logout-all revoca todos los refresh tokens del usuario', async () => {
       const root = await createUsuario('logout-all', { isGlobalAdmin: true });
-      const login1 = await loginUseCase.execute({
-        email: root.email,
-        password: PLAINTEXT_PASSWORD,
-      });
-      const login2 = await loginUseCase.execute({
-        email: root.email,
-        password: PLAINTEXT_PASSWORD,
-      });
+      const login1 = await sesionRoot(root, null);
+      const login2 = await sesionRoot(root, null);
       const v1 = login1.getValue();
       const v2 = login2.getValue();
       if (v1.kind !== 'tokens' || v2.kind !== 'tokens') throw new Error('expected tokens');
@@ -511,10 +515,7 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
     it('root salta a cualquier cliente activo y audita el salto', async () => {
       const cliente = await createCliente('switch-root');
       const root = await createUsuario('switch-root', { isGlobalAdmin: true });
-      const loginResult = await loginUseCase.execute({
-        email: root.email,
-        password: PLAINTEXT_PASSWORD,
-      });
+      const loginResult = await sesionRoot(root, null);
       const value = loginResult.getValue();
       if (value.kind !== 'tokens') throw new Error('expected tokens');
       const actorPayload = tokenService.verifyJwt(value.accessToken) as JwtPayload;

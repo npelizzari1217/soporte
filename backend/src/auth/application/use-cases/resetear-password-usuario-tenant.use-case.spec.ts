@@ -68,6 +68,7 @@ const membresiaActivaEn = (clienteId: string): MembresiaResuelta => ({
   clienteId,
   clienteNombre: 'Cliente Test',
   rolCodigo: 'ADMINISTRADOR',
+  clienteRequiere2fa: false,
 });
 
 const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({

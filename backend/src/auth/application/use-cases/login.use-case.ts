@@ -15,6 +15,9 @@ import {
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { normalizarEmail } from '../../domain/tfa/formato-codigo';
 import { EmitirSesionService } from '../emitir-sesion.service';
+import { ITfaRepository } from '../../domain/ports/tfa-repository.port';
+import { IDesafioLoginRepository } from '../../domain/ports/desafio-login-repository.port';
+import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
 
 /**
  * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
@@ -57,12 +60,16 @@ export interface MembresiaView {
  * LoginResult — resultado del login.
  * - `tokens`: credenciales válidas y scope resuelto → JWT + refresh emitidos.
  * - `selection`: usuario normal con >1 membresías activas y sin `clienteId`
- *   explícito → el front debe mostrar el selector y re-postear con el
- *   `clienteId` elegido (R4, R27). NO se emiten tokens en este caso.
+ *   explícito → el front muestra el selector y elige con el `ticket` (o re-postea con el
+ *   `clienteId`, R4, R27). NO se emiten tokens en este caso.
+ * - `needs2fa` / `needsEnrolamiento2fa`: la contraseña es válida pero falta el segundo paso
+ *   (L1, L3, L4, L5). El `desafio` no es un token de sesión.
  */
 export type LoginResult =
   | { kind: 'tokens'; accessToken: string; refreshToken: string }
-  | { kind: 'selection'; membresias: MembresiaView[] };
+  | { kind: 'selection'; membresias: MembresiaView[]; ticket: string }
+  | { kind: 'needs2fa'; desafio: string; recordarDisponible: boolean }
+  | { kind: 'needsEnrolamiento2fa'; desafio: string };
 
 /**
  * LoginUseCase — autentica un usuario global y resuelve el scope de tenant.
@@ -102,6 +109,8 @@ export class LoginUseCase {
     private readonly refreshTokenRepo: IRefreshTokenRepository,
     private readonly permisosRepo: IMatrizPermisosRepository,
     private readonly limitador: ILimitadorIntentos,
+    private readonly tfaRepo: ITfaRepository,
+    private readonly desafios: IDesafioLoginRepository,
   ) {
     this.emitirSesion = new EmitirSesionService(
       membresiaRepo,
@@ -146,6 +155,27 @@ export class LoginUseCase {
     // y el selector del front (R4, R6).
     const membresiasActivas = await this.membresiaRepo.findActivasByUsuario(usuario.id);
 
+    // 3b. Segundo paso (L1, L3, L4, L5): con la contrasena valida y antes de cualquier sesion.
+    // Si lo hay, `clienteId` se ignora: el cliente se elige despues, con el ticket (L7).
+    // La politica por cliente ya cuenta aca: `esObligado2fa` recibe `clienteRequiere2fa` de cada
+    // membresia activa. Como `requiere_2fa` nace en false, hasta WU-7 (ruta para activarla) solo
+    // ROOT obliga en la practica.
+    const estadoTfa = await this.tfaRepo.obtener(usuario.id);
+    if (estadoTfa?.secretoCifrado != null) {
+      // TODO(WU-6a): el dispositivo confiable llega despues; ROOT nunca lo tiene (D4).
+      return Result.ok({
+        kind: 'needs2fa',
+        desafio: await this.desafios.crear(usuario.id, 'VERIFICAR'),
+        recordarDisponible: !usuario.isGlobalAdmin,
+      });
+    }
+    if (esObligado2fa(usuario.isGlobalAdmin, membresiasActivas)) {
+      return Result.ok({
+        kind: 'needsEnrolamiento2fa',
+        desafio: await this.desafios.crear(usuario.id, 'ENROLAR'),
+      });
+    }
+
     // 4. Determinar el clienteId objetivo
     let clienteIdObjetivo: string | null;
 
@@ -162,9 +192,10 @@ export class LoginUseCase {
       // R4: normal con exactamente 1 membresía → auto-selección.
       clienteIdObjetivo = membresiasActivas[0].clienteId;
     } else {
-      // R4: normal con >1 membresías → el front debe mostrar el selector.
+      // R4: normal con >1 membresías → el front debe mostrar el selector (ticket de un solo uso).
       return Result.ok({
         kind: 'selection',
+        ticket: await this.desafios.crear(usuario.id, 'SELECCIONAR'),
         membresias: membresiasActivas.map((m) => ({
           cliente_id: m.clienteId,
           nombre: m.clienteNombre,

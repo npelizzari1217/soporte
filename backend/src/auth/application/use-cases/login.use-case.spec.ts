@@ -46,7 +46,6 @@ import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { ITokenService, JwtPayload } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
-import { PARES_VALIDOS } from '../../../shared/domain/acciones';
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { unstubbed } from '../../../testing/mocks';
 
@@ -87,6 +86,7 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
+  clienteRequiere2fa: false,
   ...overrides,
 });
 
@@ -148,7 +148,35 @@ const makeLimitador = (): Mocked<ILimitadorIntentos> => ({
   devolver: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeTfaRepo = () => ({
+  obtener: vi.fn().mockResolvedValue(null),
+  ...unstubbedTfa(),
+});
+function unstubbedTfa() {
+  const noUsado = (n: string) => unstubbed(n);
+  return {
+    guardarPendiente: noUsado('guardarPendiente'),
+    promoverPendiente: noUsado('promoverPendiente'),
+    registrarPaso: noUsado('registrarPaso'),
+    reemplazarCodigos: noUsado('reemplazarCodigos'),
+    obtenerCodigosDisponibles: noUsado('obtenerCodigosDisponibles'),
+    consumirCodigo: noUsado('consumirCodigo'),
+    contarCodigosRestantes: noUsado('contarCodigosRestantes'),
+    eliminarTodo: noUsado('eliminarTodo'),
+  };
+}
+
+const makeDesafios = () => ({
+  crear: vi.fn((_u: string, proposito: string) => Promise.resolve(`desafio-${proposito}`)),
+  buscarSinVerificar: unstubbed('buscarSinVerificar'),
+  verificar: unstubbed('verificar'),
+  buscarTicket: unstubbed('buscarTicket'),
+  consumir: unstubbed('consumir'),
+});
+
 describe('LoginUseCase', () => {
+  let tfaRepo: ReturnType<typeof makeTfaRepo>;
+  let desafios: ReturnType<typeof makeDesafios>;
   let limitador: ReturnType<typeof makeLimitador>;
   let usuarioRepo: ReturnType<typeof makeUsuarioRepo>;
   let membresiaRepo: ReturnType<typeof makeMembresiaRepo>;
@@ -168,6 +196,8 @@ describe('LoginUseCase', () => {
     refreshTokenRepo = makeRefreshTokenRepo();
     permisosRepo = makePermisosRepo();
     limitador = makeLimitador();
+    tfaRepo = makeTfaRepo();
+    desafios = makeDesafios();
     useCase = new LoginUseCase(
       usuarioRepo,
       membresiaRepo,
@@ -177,6 +207,8 @@ describe('LoginUseCase', () => {
       refreshTokenRepo,
       permisosRepo,
       limitador,
+      tfaRepo,
+      desafios,
     );
   });
 
@@ -376,41 +408,6 @@ describe('LoginUseCase', () => {
     });
   });
 
-  // ─── T3.6 — root sin clienteId (R4) ────────────────────────────────────────
-
-  describe('Root sin clienteId → token master', () => {
-    it('emite token con cliente_id/rol null, permisos = bypass total (WU-7.1), is_global_admin true', async () => {
-      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
-      membresiaRepo.findActivasByUsuario.mockResolvedValue([]);
-
-      let captured: JwtPayload | undefined;
-      tokenService.signJwt.mockImplementation((p) => {
-        captured = p;
-        return 'jwt.token';
-      });
-
-      const result = await useCase.execute({ email: 'root@test.com', password: 'secret' });
-
-      expect(result.isOk()).toBe(true);
-      expect(result.getValue().kind).toBe('tokens');
-      expect(captured!.cliente_id).toBeNull();
-      expect(captured!.rol).toBeNull();
-      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
-      expect(captured!.is_global_admin).toBe(true);
-      expect(captured!.cliente_nombre).toBeNull();
-      expect(clienteRepo.findById).not.toHaveBeenCalled();
-    });
-
-    it('root con 0 membresías NO recibe SinMembresiaActiva (a diferencia de un normal)', async () => {
-      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
-      membresiaRepo.findActivasByUsuario.mockResolvedValue([]);
-
-      const result = await useCase.execute({ email: 'root@test.com', password: 'secret' });
-
-      expect(result.isOk()).toBe(true);
-    });
-  });
-
   // ─── T3.7 — clienteId provisto no seleccionable (R5) ───────────────────────
 
   describe('clienteId provisto no seleccionable → 403 ClienteNoAutorizado', () => {
@@ -429,8 +426,8 @@ describe('LoginUseCase', () => {
       expect(result.getError()).toBeInstanceOf(ClienteNoAutorizadoError);
     });
 
-    it('cliente inactivo (incluso siendo root)', async () => {
-      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
+    it('cliente inactivo', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
       clienteRepo.findById.mockResolvedValue(makeCliente({ activo: false }));
 
       const result = await useCase.execute({
@@ -454,57 +451,107 @@ describe('LoginUseCase', () => {
     });
   });
 
-  // ─── T3.8 — root con clienteId válido (R5) ─────────────────────────────────
+  // ─── WU-5c — decision del segundo paso (L1, L3, L4, L5, L7) ────────────────
 
-  describe('Root con clienteId de cualquier cliente activo → token scopeado (bypass total, WU-7.1)', () => {
-    it('CON membresía en ese cliente → rol de la membresía, permisos = bypass total, sin leer la matriz', async () => {
-      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
-      clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
-      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(
-        makeMembresiaResuelta({ rolCodigo: 'ADMINISTRADOR' }),
-      );
+  describe('Segundo paso tras la contrasena valida', () => {
+    const EST_ACTIVO = {
+      secretoCifrado: 'cifrado',
+      confirmadoAt: new Date(),
+      ultimoPaso: 0,
+      secretoPendienteCifrado: null,
+      pendienteCreadoAt: null,
+    };
 
-      let captured: JwtPayload | undefined;
-      tokenService.signJwt.mockImplementation((p) => {
-        captured = p;
-        return 'jwt.token';
+    it('2FA activo → desafio VERIFICAR y {needs2fa} sin emitir sesion (L4)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([makeMembresiaResuelta()]);
+      tfaRepo.obtener.mockResolvedValue(EST_ACTIVO);
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(result.getValue()).toEqual({
+        kind: 'needs2fa',
+        desafio: 'desafio-VERIFICAR',
+        recordarDisponible: true,
       });
-
-      const result = await useCase.execute({
-        email: 'root@test.com',
-        password: 'secret',
-        clienteId: 'cliente-1',
-      });
-
-      expect(result.isOk()).toBe(true);
-      expect(captured!.cliente_id).toBe('cliente-1');
-      expect(captured!.rol).toBe('ADMINISTRADOR');
-      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
-      expect(captured!.is_global_admin).toBe(true);
-      expect(permisosRepo.findByUsuarioYCliente).not.toHaveBeenCalled();
+      expect(desafios.crear).toHaveBeenCalledWith(expect.any(String), 'VERIFICAR');
+      expect(tokenService.signJwt).not.toHaveBeenCalled();
+      expect(refreshTokenRepo.save).not.toHaveBeenCalled();
     });
 
-    it('SIN membresía en ese cliente → rol=null, permisos = bypass total igual (root no necesita membresía)', async () => {
+    it('ROOT sin 2FA → desafio ENROLAR y {needsEnrolamiento2fa}, nunca un access token (L3, L5)', async () => {
       usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
-      clienteRepo.findById.mockResolvedValue(makeCliente({ nombre: 'Acme SA' }));
-      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
+      tfaRepo.obtener.mockResolvedValue(null);
 
-      let captured: JwtPayload | undefined;
-      tokenService.signJwt.mockImplementation((p) => {
-        captured = p;
-        return 'jwt.token';
+      const result = await useCase.execute({ email: 'root@test.com', password: 'secret' });
+
+      expect(result.getValue()).toEqual({
+        kind: 'needsEnrolamiento2fa',
+        desafio: 'desafio-ENROLAR',
       });
+      expect(tokenService.signJwt).not.toHaveBeenCalled();
+    });
+
+    it('ROOT con 2FA → VERIFICAR sin dispositivo confiable (D4)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
+      tfaRepo.obtener.mockResolvedValue(EST_ACTIVO);
+
+      const result = await useCase.execute({ email: 'root@test.com', password: 'secret' });
+
+      expect(result.getValue()).toMatchObject({ kind: 'needs2fa', recordarDisponible: false });
+    });
+
+    it('una membresia cuyo cliente exige 2FA obliga al enrolamiento (L3, C3)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([
+        makeMembresiaResuelta({ clienteId: 'a' }),
+        makeMembresiaResuelta({ clienteId: 'b', clienteRequiere2fa: true }),
+      ]);
+      tfaRepo.obtener.mockResolvedValue(null);
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(result.getValue().kind).toBe('needsEnrolamiento2fa');
+    });
+
+    it('con segundo paso, clienteId se ignora (L7)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([makeMembresiaResuelta()]);
+      tfaRepo.obtener.mockResolvedValue(EST_ACTIVO);
 
       const result = await useCase.execute({
-        email: 'root@test.com',
+        email: 'user@test.com',
         password: 'secret',
-        clienteId: 'cliente-1',
+        clienteId: 'otro',
       });
 
-      expect(result.isOk()).toBe(true);
-      expect(captured!.rol).toBeNull();
-      expect(captured!.permisos).toEqual([...PARES_VALIDOS]);
-      expect(captured!.cliente_nombre).toBe('Acme SA');
+      expect(result.getValue().kind).toBe('needs2fa');
+      expect(membresiaRepo.findActivaByUsuarioYCliente).not.toHaveBeenCalled();
+    });
+
+    it('sin 2FA y mas de una membresia → SELECCIONAR con ticket, sin sesion (L7)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      membresiaRepo.findActivasByUsuario.mockResolvedValue([
+        makeMembresiaResuelta({ clienteId: 'a' }),
+        makeMembresiaResuelta({ clienteId: 'b' }),
+      ]);
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(result.getValue()).toMatchObject({ kind: 'selection', ticket: 'desafio-SELECCIONAR' });
+      expect(tokenService.signJwt).not.toHaveBeenCalled();
+    });
+
+    it('contrasena invalida: no consulta el 2FA ni revela si lo hay (L1)', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario());
+      hashProvider.verify.mockResolvedValue(false);
+      tfaRepo.obtener.mockResolvedValue(EST_ACTIVO);
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'mala' });
+
+      expect(result.getError()).toBeInstanceOf(CredencialesInvalidasError);
+      expect(tfaRepo.obtener).not.toHaveBeenCalled();
+      expect(desafios.crear).not.toHaveBeenCalled();
     });
   });
 
@@ -596,20 +643,6 @@ describe('LoginUseCase', () => {
       await useCase.execute({ email: 'user@test.com', password: 'secret' });
 
       expect(saved!.clienteId).toBe('cliente-1');
-    });
-
-    it('root sin clienteId (token master) persiste clienteId null en el refresh token', async () => {
-      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
-      membresiaRepo.findActivasByUsuario.mockResolvedValue([]);
-
-      let saved: RefreshTokenEntity | undefined;
-      refreshTokenRepo.save.mockImplementation(async (token) => {
-        saved = token;
-      });
-
-      await useCase.execute({ email: 'root@test.com', password: 'secret' });
-
-      expect(saved!.clienteId).toBeNull();
     });
 
     it('el payload incluye nombre/apellido de la UsuarioEntity autenticada', async () => {

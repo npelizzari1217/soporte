@@ -71,6 +71,7 @@ import { PrismaClienteRepository } from '../../../clientes/infrastructure/persis
 import { PrismaUsuarioRepository } from '../../infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMatrizPermisosRepository } from '../../infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
 import { CodigoAccion } from '../../../shared/domain/acciones';
+import { activarTfaDeTest, codigoDeTest } from '../../test-helpers/tfa-de-test';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
@@ -270,6 +271,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
   let baseUrl: string;
 
   let prismaService: PrismaService;
+  let emailKeyOriginal: string | undefined;
   let masterClient: InstanceType<typeof MasterPrismaClient>;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let clienteRepo: PrismaClienteRepository;
@@ -287,6 +289,8 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     if (!process.env.DATABASE_URL_MASTER) {
       process.env.DATABASE_URL_MASTER = MASTER_TEST_URL;
     }
+    emailKeyOriginal = process.env.EMAIL_CRYPTO_KEY;
+    process.env.EMAIL_CRYPTO_KEY = 'f'.repeat(64);
 
     await admin.createDatabase(TENANT_DB_NAME);
     await new TenantMigrationRunnerAdapter(MASTER_TEST_URL).run(TENANT_DB_NAME);
@@ -334,6 +338,8 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
   }, 90_000);
 
   afterAll(async () => {
+    if (emailKeyOriginal === undefined) delete process.env.EMAIL_CRYPTO_KEY;
+    else process.env.EMAIL_CRYPTO_KEY = emailKeyOriginal;
     try {
       await app?.close();
     } catch {
@@ -404,13 +410,24 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       isGlobalAdmin,
     });
     await usuarioRepo.save(usuario);
+    // L3: el ROOT esta obligado; entra con un secreto de prueba conocido, nunca por un bypass.
+    if (isGlobalAdmin) await activarTfaDeTest(prismaService, usuario.id);
     return usuario;
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {
-    const { data } = await httpPost<{ accessToken: string }>(`${baseUrl}/auth/login`, {
-      email,
-      password: PLAINTEXT_PASSWORD,
+    const paso1 = await httpPost<{ accessToken: string; needs2fa?: true; desafio?: string }>(
+      `${baseUrl}/auth/login`,
+      { email, password: PLAINTEXT_PASSWORD },
+    );
+    if (!paso1.data.needs2fa) return paso1.data;
+    const usuario = await usuarioRepo.findByEmail(email);
+    const { data: v } = await httpPost<{ ticket: string }>(`${baseUrl}/auth/2fa/verificar`, {
+      desafio: paso1.data.desafio,
+      codigo: codigoDeTest(usuario!.id),
+    });
+    const { data } = await httpPost<{ accessToken: string }>(`${baseUrl}/auth/login/continuar`, {
+      ticket: v.ticket,
     });
     return data;
   }

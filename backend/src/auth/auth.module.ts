@@ -61,7 +61,7 @@ import { Argon2HashProvider } from './infrastructure/argon2-hash.provider';
 import { LIMITADOR_INTENTOS, ILimitadorIntentos } from './domain/ports/limitador-intentos.port';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { PrismaLimitadorIntentos } from './infrastructure/tfa/prisma-limitador-intentos';
-import { TFA_REPOSITORY } from './domain/ports/tfa-repository.port';
+import { ITfaRepository, TFA_REPOSITORY } from './domain/ports/tfa-repository.port';
 import { PrismaTfaRepository } from './infrastructure/tfa/prisma-tfa.repository';
 import { TOTP_SERVICE } from './domain/ports/totp-service.port';
 import { TotpNativoService } from './infrastructure/tfa/totp-nativo.service';
@@ -245,6 +245,8 @@ import { RolesController } from './interface/controllers/roles.controller';
         refreshTokenRepo: IRefreshTokenRepository,
         permisosRepo: IMatrizPermisosRepository,
         limitador: ILimitadorIntentos,
+        tfaRepo: ITfaRepository,
+        desafios: IDesafioLoginRepository,
       ) =>
         new LoginUseCase(
           usuarioRepo,
@@ -255,6 +257,8 @@ import { RolesController } from './interface/controllers/roles.controller';
           refreshTokenRepo,
           permisosRepo,
           limitador,
+          tfaRepo,
+          desafios,
         ),
       inject: [
         USUARIO_REPOSITORY,
@@ -265,6 +269,8 @@ import { RolesController } from './interface/controllers/roles.controller';
         REFRESH_TOKEN_REPOSITORY,
         MATRIZ_PERMISOS_REPOSITORY,
         LIMITADOR_INTENTOS,
+        TFA_REPOSITORY,
+        DESAFIO_LOGIN_REPOSITORY,
       ],
     },
     {

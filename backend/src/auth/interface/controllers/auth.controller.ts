@@ -52,7 +52,7 @@ import {
   LoginRequestDto,
   LogoutRequestDto,
   RefreshRequestDto,
-  SelectionResponseDto,
+  LoginResponseDto,
   SwitchTenantRequestDto,
   SwitchTenantResponseDto,
   TokensResponseDto,
@@ -140,10 +140,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(
-    @Body() dto: LoginRequestDto,
-    @Req() req: RequestConIp,
-  ): Promise<TokensResponseDto | SelectionResponseDto> {
+  async login(@Body() dto: LoginRequestDto, @Req() req: RequestConIp): Promise<LoginResponseDto> {
     const result = await this.loginUseCase.execute({
       email: dto.email,
       password: dto.password,
@@ -157,7 +154,17 @@ export class AuthController {
 
     const value = result.getValue();
     if (value.kind === 'selection') {
-      return { needsClienteSelection: true, membresias: value.membresias };
+      return { needsClienteSelection: true, membresias: value.membresias, ticket: value.ticket };
+    }
+    if (value.kind === 'needs2fa') {
+      return {
+        needs2fa: true,
+        desafio: value.desafio,
+        recordarDisponible: value.recordarDisponible,
+      };
+    }
+    if (value.kind === 'needsEnrolamiento2fa') {
+      return { needsEnrolamiento2fa: true, desafio: value.desafio };
     }
     return { accessToken: value.accessToken, refreshToken: value.refreshToken };
   }
