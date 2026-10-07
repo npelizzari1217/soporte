@@ -115,7 +115,7 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
     ticketId: string,
     version: number,
     reloj: RelojSlaResultado,
-    meta?: { prioridadAplicadaId: string },
+    meta?: { prioridadAplicadaId: string; rearmarVencido?: boolean },
   ): Promise<boolean> {
     const { count } = await this.client.ticket.updateMany({
       // Con meta aplicada, la prioridad vigente entra al WHERE: la reprioritización no versiona el
@@ -134,6 +134,8 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
         slaRelojSeqHasta: version,
         slaRelojPendiente: false,
         ...(meta ? { slaMetaPendiente: false } : {}),
+        // Vencimiento nuevo en el futuro: se rearma el aviso de vencido en la misma escritura (issue #432).
+        ...(meta?.rearmarVencido ? { vencido: false } : {}),
       },
     });
     return count === 1;

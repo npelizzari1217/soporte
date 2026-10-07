@@ -23,12 +23,16 @@ export interface IRelojSlaRepository {
    * repriorizaron mientras tanto, no escribe, devuelve `false` y la marca queda puesta: la meta de la
    * prioridad vieja nunca se escribe ni consume la marca que la repriorización nueva necesita.
    * Sin `prioridadAplicadaId` (la consolidación del pendiente) no toca la marca.
+   *
+   * Con `rearmarVencido` (issue #432) la misma escritura baja `vencido`: la repriorización dejó el
+   * vencimiento en el futuro y el aviso de "SLA vencido" debe poder enviarse otra vez. Sin él (o con
+   * `false`, vencimiento todavía pasado) `vencido` no se toca, para no repetir el mail.
    */
   guardarSiVersion(
     ticketId: string,
     version: number,
     reloj: RelojSlaResultado,
-    meta?: { prioridadAplicadaId: string },
+    meta?: { prioridadAplicadaId: string; rearmarVencido?: boolean },
   ): Promise<boolean>;
 
   /** Baja `sla_meta_pendiente` sin otra escritura: el ticket es terminal y nada se aplicará nunca. */
