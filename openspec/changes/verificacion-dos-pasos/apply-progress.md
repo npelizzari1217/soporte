@@ -243,7 +243,7 @@ WU-5b entera sumaba ~640 lineas de codigo y tests; el orquestador la partio por 
 - 5c.8: lint, typecheck, ratchet de casts limpios y el spec nuevo en verde; la suite completa no se corrio en esta unidad (la corre el orquestador).
 - Para el PR: el login cambia de contrato (`needs2fa`, `needsEnrolamiento2fa`, `ticket` en la seleccion; ROOT entra por continuar con alcance MASTER); deuda de Ayuda anotada (suspendida); advertir la exposicion de la cadena (ver Despliegue).
 
-## WU-6a — Dispositivo confiable y desactivacion propia (partida en tres: 6a-i repo, 6a-ii emision y uso, 6a-iii desactivacion)
+## WU-6a — Dispositivo confiable y desactivacion propia (COMPLETA; partida en tres: 6a-i repo, 6a-ii emision y uso, 6a-iii desactivacion)
 
 WU-6a entera sumaba ~730 lineas de codigo y tests (presupuesto 400); el orquestador la partio por la costura propuesta, cada parte con su rama y compilando sola. El resto del trabajo (6a-ii y 6a-iii) esta implementado y verde (`src/auth`: 80 archivos, 946 tests) y guardado fuera del repo para reaplicarlo por partes.
 
@@ -260,6 +260,15 @@ WU-6a entera sumaba ~730 lineas de codigo y tests (presupuesto 400); el orquesta
 
 `VerificarDesafioUseCase` acepta `recordar` y emite el dispositivo (ROOT nunca); `LoginUseCase` suma `dispositivos` y omite el desafio con un token valido de un usuario no ROOT con 2FA activo; DTOs y controladores (`dispositivoConfiable` en el body de login; `recordar` y `dispositivoConfiable` en la respuesta de `2fa/verificar`); e2e `dispositivo-confiable.e2e.spec.ts` sin el tramo de desactivar (verificar con `recordar` emite el token, el login siguiente lo usa, sin la contrasena no entra, un token ajeno sigue con el desafio). Evidencia: `src/auth` 79 archivos, 940 tests verdes; typecheck, lint y ratchet (617) limpios. El tramo de desactivar del e2e y la casilla 6a.8 llegan con 6a-iii.
 
-### 6a-iii — Desactivacion propia (pendiente; tareas 6a.6, 6a.7 y el tramo de desactivar de 6a.8)
+### 6a-iii — Desactivacion propia (hecha; tareas 6a.6, 6a.7, 6a.8)
 
-`Tfa2faObligatorioError`, `DesactivarTfaUseCase` y `POST /auth/2fa/desactivar` (204, 409 obligado, 422 codigo); `eliminarTodo` y despues revocar refresh con log-and-swallow.
+- `Tfa2faObligatorioError` (`tfa.errors.ts`) y `application/tfa/desactivar-tfa.use-case.ts` + spec unit (5 tests): el obligado (`esObligado2fa` con las membresias activas, igual que el login) se rechaza ANTES de reservar cupo; codigo invalido no borra; `eliminarTodo` y despues revocar refresh con log-and-swallow.
+- `POST /auth/2fa/desactivar` en `TfaCuentaController`: 204, 409 obligado, 422 codigo. Provider en `auth.module.ts`.
+- e2e `dispositivo-confiable.e2e.spec.ts`: suma el tramo de desactivar (204, dispositivo revocado, `usuarios_tfa` vacio).
+- Evidencia: `src/auth` 80 archivos, 946 tests verdes; typecheck, lint y ratchet de casts (617) limpios; sin `as unknown as` nuevos.
+
+### Evidencia de WU-6a completa y riesgos residuales
+
+- Riesgo: la fila del dispositivo se crea DESPUES de rotar el ticket; si `crear` lanza, el ticket ya se gasto y el usuario vuelve a loguear.
+- Riesgo: en la desactivacion, si revocar los refresh tokens falla se loguea y se traga; el 2FA ya quedo desactivado y las sesiones abiertas siguen vivas hasta vencer.
+- Deuda de Ayuda (suspendida): el usuario ya puede desactivar su propio 2FA; la pantalla llega en WU-12 y el articulo se escribe en la tanda final.

@@ -67,6 +67,7 @@ import {
   IDispositivoConfiableRepository,
 } from './domain/ports/dispositivo-confiable-repository.port';
 import { PrismaDispositivoConfiableRepository } from './infrastructure/tfa/prisma-dispositivo-confiable.repository';
+import { DesactivarTfaUseCase } from './application/tfa/desactivar-tfa.use-case';
 import { PrismaTfaRepository } from './infrastructure/tfa/prisma-tfa.repository';
 import { TOTP_SERVICE } from './domain/ports/totp-service.port';
 import { TotpNativoService } from './infrastructure/tfa/totp-nativo.service';
@@ -179,6 +180,7 @@ import { RolesController } from './interface/controllers/roles.controller';
     IniciarSecretoTfa,
     ConfirmarSecretoTfa,
     RegenerarCodigosTfa,
+    DesactivarTfaUseCase,
     // Login con segundo paso (WU-5a): desafios opacos y sus use cases, aun sin rutas (WU-5b).
     {
       provide: DESAFIO_LOGIN_REPOSITORY,
