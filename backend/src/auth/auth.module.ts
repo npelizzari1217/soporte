@@ -61,6 +61,8 @@ import { Argon2HashProvider } from './infrastructure/argon2-hash.provider';
 import { LIMITADOR_INTENTOS, ILimitadorIntentos } from './domain/ports/limitador-intentos.port';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { PrismaLimitadorIntentos } from './infrastructure/tfa/prisma-limitador-intentos';
+import { TFA_REPOSITORY } from './domain/ports/tfa-repository.port';
+import { PrismaTfaRepository } from './infrastructure/tfa/prisma-tfa.repository';
 import { JwtTokenService } from './infrastructure/jwt-token.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
@@ -125,6 +127,8 @@ import { RolesController } from './interface/controllers/roles.controller';
     // CLIENTE_REPOSITORY: cross-feature. resolverScope/TenantGuard verifican
     // cliente activo. ClientesModule NO exporta este token todavía.
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
+
+    { provide: TFA_REPOSITORY, useClass: PrismaTfaRepository },
 
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
