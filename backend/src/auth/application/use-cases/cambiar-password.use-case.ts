@@ -3,6 +3,7 @@ import { DomainError } from '../../../shared/domain/result';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import {
   UsuarioNoDisponibleError,
@@ -42,8 +43,11 @@ export interface CambiarPasswordDto {
  *    `IHashProvider` que usa el login. Prohibido invocar `argon2` directo:
  *    ver el bug real de `scripts/reset-password.ts` que este camino hace
  *    estructuralmente imposible.
- * 5. Persiste con `usuarioRepo.save()` (upsert) — punto de no retorno.
- * 6. Revoca todas las sesiones. Si falla, NO propaga el error: la
+ * 5. Revoca los dispositivos confiables del segundo paso ANTES de guardar
+ *    (fail-closed, D5): si lanza, se propaga y `save` nunca corre. No
+ *    desactiva el 2FA.
+ * 6. Persiste con `usuarioRepo.save()` (upsert) — punto de no retorno.
+ * 7. Revoca todas las sesiones. Si falla, NO propaga el error: la
  *    contraseña ya cambió, que es lo que el usuario pidió; solo deja
  *    rastro con `logger.error` (D5) — devolver un fallo acá le mentiría al
  *    usuario sobre el estado de su credencial.
@@ -53,6 +57,7 @@ export class CambiarPasswordUseCase {
     private readonly usuarioRepo: IUsuarioRepository,
     private readonly hashProvider: IHashProvider,
     private readonly refreshTokenRepo: IRefreshTokenRepository,
+    private readonly dispositivoRepo: Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>,
     private readonly logger: ILogger,
   ) {}
 
@@ -72,6 +77,7 @@ export class CambiarPasswordUseCase {
     }
 
     await usuario.hashPassword(dto.passwordNueva, this.hashProvider);
+    await this.dispositivoRepo.revocarTodosDe(dto.usuarioId);
     await this.usuarioRepo.save(usuario);
 
     try {

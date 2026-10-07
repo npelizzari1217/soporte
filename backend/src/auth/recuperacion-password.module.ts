@@ -22,6 +22,10 @@ import {
   IRefreshTokenRepository,
 } from './domain/ports/i-refresh-token.repository';
 import {
+  DISPOSITIVO_CONFIABLE_REPOSITORY,
+  IDispositivoConfiableRepository,
+} from './domain/ports/dispositivo-confiable-repository.port';
+import {
   CLIENTE_REPOSITORY,
   IClienteRepository,
 } from '../clientes/domain/ports/i-cliente.repository';
@@ -195,6 +199,7 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
         usuarioRepo: IUsuarioRepository,
         hashProvider: IHashProvider,
         refreshTokenRepo: IRefreshTokenRepository,
+        dispositivoRepo: IDispositivoConfiableRepository,
         correoDeCliente: ICorreoDeCliente,
         tareas: ITareasSegundoPlano,
         logger: ILogger,
@@ -204,6 +209,7 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
           usuarioRepo,
           hashProvider,
           refreshTokenRepo,
+          dispositivoRepo,
           correoDeCliente,
           tareas,
           logger,
@@ -213,6 +219,7 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
         USUARIO_REPOSITORY,
         HASH_PROVIDER,
         REFRESH_TOKEN_REPOSITORY,
+        DISPOSITIVO_CONFIABLE_REPOSITORY,
         CORREO_DE_CLIENTE,
         TAREAS_SEGUNDO_PLANO,
         LOGGER,

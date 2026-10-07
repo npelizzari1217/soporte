@@ -4,6 +4,7 @@ import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IPasswordResetTokenRepository } from '../../domain/ports/i-password-reset-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { ICorreoDeCliente } from '../../domain/ports/i-correo-de-cliente.port';
 import { ITareasSegundoPlano } from '../../../shared/domain/ports/i-tareas-segundo-plano.port';
 import { templateResetConfirmado } from '../../domain/templates/reset-password-email.template';
@@ -22,7 +23,8 @@ import { ResetLinkInvalidoError } from '../../domain/errors/recuperacion-passwor
  * → MISMO error, sin consumir el token) → `usuario.hashPassword()` en
  * memoria (NUNCA `argon2` directo, mismo criterio que `CambiarPasswordUseCase`
  * y lo que el incidente de `scripts/reset-password.ts` hace estructuralmente
- * imposible acá) → `consumirSiVigente` (CAS; `false` → MISMO error, el hash
+ * imposible acá) → `dispositivoRepo.revocarTodosDe` (fail-closed, D5: si lanza, token y hash
+ * quedan intactos) → `consumirSiVigente` (CAS; `false` → MISMO error, el hash
  * en memoria se descarta) → `usuarioRepo.save` (punto de no retorno) →
  * `revokeAllByUsuarioId` en `try/catch`, sin propagar → `tareas.lanzar(...)`
  * con el mail de aviso por `token.clienteId`, misma pareja `estado` →
@@ -41,6 +43,7 @@ export class ConfirmarResetPasswordUseCase {
     private readonly usuarioRepo: IUsuarioRepository,
     private readonly hashProvider: IHashProvider,
     private readonly refreshTokenRepo: IRefreshTokenRepository,
+    private readonly dispositivoRepo: Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>,
     private readonly correoDeCliente: ICorreoDeCliente,
     private readonly tareas: ITareasSegundoPlano,
     private readonly logger: ILogger,
@@ -60,6 +63,11 @@ export class ConfirmarResetPasswordUseCase {
     }
 
     await usuario.hashPassword(passwordNueva, this.hashProvider);
+
+    // Fail-closed (D5): los dispositivos se revocan ANTES del CAS. Si lanza, el
+    // token y el hash quedan intactos y el usuario puede reintentar. El reset
+    // por mail NO desactiva el 2FA.
+    await this.dispositivoRepo.revocarTodosDe(usuario.id);
 
     const consumido = await this.tokenRepo.consumirSiVigente(token.id);
     if (!consumido) {

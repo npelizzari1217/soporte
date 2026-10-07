@@ -31,6 +31,7 @@ import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import {
   MembresiaNoEncontradaError,
@@ -98,6 +99,12 @@ const makeRefreshTokenRepo = (): Mocked<Pick<IRefreshTokenRepository, 'revokeAll
   revokeAllByUsuarioId: vi.fn().mockResolvedValue(undefined),
 });
 
+const makeDispositivoRepo = (): Mocked<
+  Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>
+> => ({
+  revocarTodosDe: vi.fn().mockResolvedValue(undefined),
+});
+
 const makeLogger = (): Mocked<ILogger> => ({
   error: vi.fn(),
   // El camino feliz nunca audita por `log()` — solo degrada por `error()`.
@@ -109,6 +116,7 @@ describe('ResetearPasswordUsuarioTenantUseCase', () => {
   let membresiaRepo: Mocked<Pick<IMembresiaRepository, 'findActivaByUsuarioYCliente'>>;
   let hashProvider: Mocked<IHashProvider>;
   let refreshTokenRepo: Mocked<Pick<IRefreshTokenRepository, 'revokeAllByUsuarioId'>>;
+  let dispositivoRepo: Mocked<Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>>;
   let logger: Mocked<ILogger>;
   let useCase: ResetearPasswordUsuarioTenantUseCase;
 
@@ -117,14 +125,60 @@ describe('ResetearPasswordUsuarioTenantUseCase', () => {
     membresiaRepo = makeMembresiaRepo();
     hashProvider = makeHashProvider();
     refreshTokenRepo = makeRefreshTokenRepo();
+    dispositivoRepo = makeDispositivoRepo();
     logger = makeLogger();
     useCase = new ResetearPasswordUsuarioTenantUseCase(
       usuarioRepo,
       membresiaRepo,
       hashProvider,
       refreshTokenRepo,
+      dispositivoRepo,
       logger,
     );
+  });
+
+  describe('Dispositivos confiables fail-closed (D5, U1, U2)', () => {
+    const input = { clienteId: CLIENTE_A, usuarioId: USUARIO_ID, password: PASSWORD_NUEVA };
+
+    beforeEach(() => {
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(membresiaActivaEn(CLIENTE_A));
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+    });
+
+    it('si revocarTodosDe lanza, la excepción se propaga y save nunca se llama', async () => {
+      dispositivoRepo.revocarTodosDe.mockRejectedValue(new Error('boom'));
+
+      await expect(useCase.execute(input)).rejects.toThrow('boom');
+
+      expect(usuarioRepo.save).not.toHaveBeenCalled();
+      expect(refreshTokenRepo.revokeAllByUsuarioId).not.toHaveBeenCalled();
+    });
+
+    it('revoca los dispositivos del DESTINO antes del save y luego los refresh', async () => {
+      const orden: string[] = [];
+      dispositivoRepo.revocarTodosDe.mockImplementation(async () => {
+        orden.push('dispositivos');
+      });
+      usuarioRepo.save.mockImplementation(async () => {
+        orden.push('save');
+      });
+      refreshTokenRepo.revokeAllByUsuarioId.mockImplementation(async () => {
+        orden.push('refresh');
+      });
+
+      await useCase.execute(input);
+
+      expect(orden).toEqual(['dispositivos', 'save', 'refresh']);
+      expect(dispositivoRepo.revocarTodosDe).toHaveBeenCalledWith(USUARIO_ID);
+    });
+
+    it('sin membresía en el cliente: no revoca dispositivos', async () => {
+      membresiaRepo.findActivaByUsuarioYCliente.mockResolvedValue(null);
+
+      await useCase.execute(input);
+
+      expect(dispositivoRepo.revocarTodosDe).not.toHaveBeenCalled();
+    });
   });
 
   describe('Reset exitoso (R1)', () => {

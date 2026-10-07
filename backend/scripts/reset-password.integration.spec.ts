@@ -142,6 +142,65 @@ describe('resetPassword (integración)', () => {
     }
   });
 
+  // ─── Fail-closed del segundo paso (WU-6b, D5) ───────────────────────────────
+  describe('dispositivos confiables del segundo paso', () => {
+    const EMAIL = 'reset-password-dispositivos@integration.test';
+
+    const crearUsuarioConDispositivos = async () => {
+      const usuario = await masterClient.usuario.create({
+        data: {
+          email: EMAIL,
+          nombre: 'Admin',
+          apellido: 'Dispositivos',
+          passwordHash: 'hash-viejo',
+          activo: true,
+        },
+      });
+      const futuro = new Date(Date.now() + 60 * 60 * 1000);
+      await masterClient.tfaDispositivoConfiable.createMany({
+        data: [
+          { usuarioId: usuario.id, tokenHash: `${usuario.id}-a`, expiraAt: futuro },
+          { usuarioId: usuario.id, tokenHash: `${usuario.id}-b`, expiraAt: futuro },
+        ],
+      });
+      return usuario;
+    };
+
+    const vivos = (usuarioId: string) =>
+      masterClient.tfaDispositivoConfiable.count({ where: { usuarioId, revocadoAt: null } });
+
+    it('revoca todos los dispositivos y cambia la contraseña', async () => {
+      const usuario = await crearUsuarioConDispositivos();
+
+      await resetPassword(
+        masterClient,
+        { email: EMAIL, password: 'clave-nueva' },
+        makeFakeHashProvider(),
+      );
+
+      expect(await vivos(usuario.id)).toBe(0);
+      const row = await masterClient.usuario.findUnique({ where: { email: EMAIL } });
+      expect(row?.passwordHash).toBe('hashed:clave-nueva');
+    });
+
+    it('[CRITICAL] atómico: si el UPDATE de la contraseña falla, los dispositivos siguen vivos', async () => {
+      const usuario = await crearUsuarioConDispositivos();
+      // Postgres rechaza el byte nulo en `text`: el UPDATE falla DESPUÉS del updateMany.
+      const hashInvalido: IHashProvider = {
+        hash: vi.fn(async () => 'hash\u0000invalido'),
+        verify: vi.fn(),
+      };
+
+      await expect(
+        resetPassword(masterClient, { email: EMAIL, password: 'clave-nueva' }, hashInvalido),
+      ).rejects.toThrow();
+
+      expect(await vivos(usuario.id)).toBe(2);
+      const row = await masterClient.usuario.findUnique({ where: { email: EMAIL } });
+      expect(row?.passwordHash).toBe('hash-viejo');
+    });
+  });
+
   // ─── EL PUNTO CRÍTICO: el hash seteado por el script tiene que validar ──────
   // contra el MISMO verificador que usa LoginUseCase al loguear. Acá se usa
   // el Argon2HashProvider REAL (no el fake de arriba) en ambos lados —
