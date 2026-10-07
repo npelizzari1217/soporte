@@ -102,3 +102,14 @@ export function useDesactivarMembresiaUsuarioTenant(usuarioId: string) {
     onError: notifyError,
   });
 }
+
+/**
+ * Resetea el 2FA del usuario `usuarioId` (`DELETE .../2fa` → 204). Sin
+ * toasts: `EditarUsuarioDialog` compone el mensaje, y ante un 404 muestra uno
+ * neutro sin revelar por qué (usuario inexistente, ROOT o de otro cliente).
+ */
+export function useResetearTfaUsuarioTenant(usuarioId: string) {
+  return useMutation({
+    mutationFn: () => apiFetch<void>(`usuarios/${usuarioId}/2fa`, { method: "DELETE" }),
+  });
+}

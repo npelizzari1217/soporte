@@ -413,3 +413,12 @@ WU-11b entera sumaba ~530 lineas de codigo y tests (tope 400), asi que se parte 
 - Tests (6): activar, cambiar, regenerar, desactivar, obligado, 422 sin refresh. Sin casts.
 - Verificacion: `pnpm test` 253 archivos / 2059 tests OK; `pnpm type-check` OK; `JWT_SECRET=dummy pnpm lint` OK; `check-casts-en-specs.mjs` 617/617.
 - Deuda de Ayuda: ajustes de 2FA del perfil.
+
+## WU-13 — Politica y reseteo en administracion (`feat/verificacion-dos-pasos-wu13`, tareas 13.1 a 13.6; 13.7 queda sin tildar)
+
+- `PoliticaTfaCard` (nuevo, montado en `usuarios-admin-view.tsx` dentro de `SoloAdminCliente`) y hooks `use-politica-tfa.ts` (`GET/PUT politica-2fa`; sin update optimista, un PUT fallido deja el estado del servidor). Confirma con `ConfirmDialog` y avisa que no se cortan las sesiones abiertas.
+- `EditarUsuarioDialog`: boton "Resetear 2FA" con `ConfirmDialog`; hook `useResetearTfaUsuarioTenant` (`DELETE usuarios/:id/2fa`). Todo error muestra el mismo mensaje neutro ("No se pudo resetear el 2FA de este usuario."), sin el motivo.
+- Tests: 3 de la tarjeta (cambiar con confirmacion, fallo del PUT, gate de no admin) y 2 del reseteo (confirmacion + DELETE, 404 neutro). Sin casts.
+- `notas-deploy.md` (13.6) para pegar en el PR del tracker.
+- Verificacion: `pnpm test` 254 archivos / 2064 tests OK; `pnpm type-check` OK; `JWT_SECRET=dummy pnpm lint` OK; `check-casts-en-specs.mjs` 617/617.
+- Deuda de Ayuda: politica de 2FA por cliente y reseteo de 2FA por el admin (lista completa en `notas-deploy.md`).

@@ -209,4 +209,47 @@ describe("EditarUsuarioDialog (spec §5, ADR-3 reset-de-contrasena-por-admin)", 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Usuario actualizado."));
     expect(passwordCalls).toBe(0);
   });
+  describe("Resetear 2FA (S1, S2, S4)", () => {
+    it("pide confirmación y llama a DELETE /usuarios/:id/2fa", async () => {
+      const user = userEvent.setup();
+      let llamadas = 0;
+      server.use(
+        http.delete("/api/usuarios/u1/2fa", () => {
+          llamadas += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      renderWithProviders(<EditarUsuarioDialog usuario={USUARIO} />, {
+        user: buildUser({ rol: "ADMINISTRADOR" }),
+      });
+      await user.click(screen.getByRole("button", { name: /editar/i }));
+      await user.click(await screen.findByRole("button", { name: /resetear 2fa/i }));
+
+      expect(await screen.findByText(/tendrá que configurarla de nuevo/i)).toBeInTheDocument();
+      expect(llamadas).toBe(0);
+      await user.click(screen.getByRole("button", { name: /^resetear$/i }));
+
+      await waitFor(() => expect(llamadas).toBe(1));
+      await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    });
+
+    it("un 404 muestra un mensaje neutro sin revelar el motivo", async () => {
+      const user = userEvent.setup();
+      server.use(
+        http.delete("/api/usuarios/u1/2fa", () =>
+          HttpResponse.json({ message: "Usuario no encontrado" }, { status: 404 }),
+        ),
+      );
+      renderWithProviders(<EditarUsuarioDialog usuario={USUARIO} />, {
+        user: buildUser({ rol: "ADMINISTRADOR" }),
+      });
+      await user.click(screen.getByRole("button", { name: /editar/i }));
+      await user.click(await screen.findByRole("button", { name: /resetear 2fa/i }));
+      await user.click(await screen.findByRole("button", { name: /^resetear$/i }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith("No se pudo resetear el 2FA de este usuario."),
+      );
+    });
+  });
 });
