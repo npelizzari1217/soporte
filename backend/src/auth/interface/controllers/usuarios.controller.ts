@@ -8,6 +8,7 @@
  *   PATCH  /usuarios/:id/rol                  → CambiarRolUsuarioTenantUseCase [AdminClienteGuard] (R6: `reaplicarPreset` opcional)
  *   PATCH  /usuarios/:id                      → EditarUsuarioTenantUseCase      [AdminClienteGuard]
  *   PATCH  /usuarios/:id/password             → ResetearPasswordUsuarioTenantUseCase [AdminClienteGuard] (sdd/reset-de-contrasena-por-admin, ADR-1)
+ *   DELETE /usuarios/:id/2fa                  → ResetearTfaUsuarioUseCase [AdminClienteGuard] (verificacion-dos-pasos, ADR-8/9)
  *   DELETE /usuarios/:id/membresia            → DesactivarMembresiaUsuarioTenantUseCase [AdminClienteGuard]
  *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
  *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
@@ -68,6 +69,7 @@ import { CrearUsuarioTenantUseCase } from '../../application/use-cases/crear-usu
 import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/cambiar-rol-usuario-tenant.use-case';
 import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-usuario-tenant.use-case';
 import { ResetearPasswordUsuarioTenantUseCase } from '../../application/use-cases/resetear-password-usuario-tenant.use-case';
+import { ResetearTfaUsuarioUseCase } from '../../application/tfa/resetear-tfa-usuario.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
@@ -163,6 +165,7 @@ export class UsuariosController {
     private readonly obtenerPermisosUsuarioTenantUseCase: ObtenerPermisosUsuarioTenantUseCase,
     private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
     private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+    private readonly resetearTfaUsuarioUseCase: ResetearTfaUsuarioUseCase,
   ) {}
 
   /**
@@ -309,6 +312,31 @@ export class UsuariosController {
       clienteId: actor.cliente_id as string,
       usuarioId,
       password: dto.password,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+  }
+
+  /**
+   * DELETE /usuarios/:id/2fa
+   * Resetea el 2FA del usuario `:id` (secreto, codigos, dispositivos y desafios) y revoca sus
+   * sesiones. ROOT: a cualquiera. ADMINISTRADOR: solo a un no ROOT cuyas membresias, todas, son
+   * de su cliente. 204 sin cuerpo.
+   * @throws 404 identico para id inexistente y para cualquier destino no permitido (S4)
+   */
+  @Delete(':id/2fa')
+  @UseGuards(AdminClienteGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetearTfa(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+  ): Promise<void> {
+    const result = await this.resetearTfaUsuarioUseCase.execute({
+      actorEsRoot: actor.is_global_admin,
+      clienteId: actor.cliente_id as string,
+      usuarioId,
     });
 
     if (result.isFail()) {

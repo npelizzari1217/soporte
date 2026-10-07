@@ -139,6 +139,10 @@ class ToggleableMembresiaRepo implements IMembresiaRepository {
 
   // El e2e solo fuerza la falla de create() (Seam 2, T8.5) — el resto
   // delega tal cual al repositorio Prisma real, sin comportamiento propio.
+  findClientesDeTodasByUsuario(usuarioId: string): Promise<string[]> {
+    return this.real.findClientesDeTodasByUsuario(usuarioId);
+  }
+
   findActivasByCliente(clienteId: string): Promise<MembresiaConUsuario[]> {
     return this.real.findActivasByCliente(clienteId);
   }

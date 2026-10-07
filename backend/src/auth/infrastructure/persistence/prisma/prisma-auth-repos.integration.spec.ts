@@ -440,6 +440,30 @@ describe('Auth Prisma Repositories — Integration (T5.3 + T5.4)', () => {
       expect(found).toBeNull();
     });
 
+    it('findClientesDeTodasByUsuario cuenta TODAS: activas, inactivas, de cliente suspendido y soft-deleted', async () => {
+      const usuario = await createTestUsuario('todas-membresias');
+      const role = await createTestRoleConPermisos('USUARIO', ['ticket:crear']);
+      const activa = await createTestCliente('todas-activa');
+      const inactiva = await createTestCliente('todas-inactiva');
+      const suspendido = await createTestCliente('todas-suspendido', false);
+      const borrada = await createTestCliente('todas-borrada');
+      await createTestMembresia(usuario.id, activa.id, role.id);
+      await createTestMembresia(usuario.id, inactiva.id, role.id, false);
+      await createTestMembresia(usuario.id, suspendido.id, role.id);
+      await createTestMembresia(usuario.id, borrada.id, role.id);
+      await masterClient.membresia.updateMany({
+        where: { usuarioId: usuario.id, clienteId: borrada.id },
+        data: { deletedAt: new Date() },
+      });
+      const otro = await createTestUsuario('todas-otro');
+      await createTestMembresia(otro.id, activa.id, role.id);
+
+      const ids = await membresiaRepo.findClientesDeTodasByUsuario(usuario.id);
+
+      expect([...ids].sort()).toEqual([activa.id, inactiva.id, suspendido.id, borrada.id].sort());
+      expect(await membresiaRepo.findClientesDeTodasByUsuario(crypto.randomUUID())).toEqual([]);
+    });
+
     it('save() persiste cambiarRol() — round-trip vía findByUsuarioYCliente', async () => {
       const cliente = await createTestCliente('save-cambiar-rol');
       const usuario = await createTestUsuario('save-cambiar-rol-user');

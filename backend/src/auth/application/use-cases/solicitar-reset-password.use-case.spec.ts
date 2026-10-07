@@ -72,6 +72,7 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn(),
   findActivaByUsuarioYCliente: unstubbed('findActivaByUsuarioYCliente'),
   findActivasByCliente: unstubbed('findActivasByCliente'),
+  findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
   findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
   create: unstubbed('create'),
   save: unstubbed('save'),
