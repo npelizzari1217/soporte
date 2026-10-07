@@ -62,6 +62,23 @@ async function rawFetch(path: string, init?: ApiFetchInit): Promise<Response> {
  * - If `path === 'auth/refresh'`: skips the refresh loop entirely (prevents infinite recursion).
  * - Network `TypeError`s are normalized to `ApiError(0, "Error de red")`.
  */
+/**
+ * Rutas donde un 401 NUNCA dispara refresh: `auth/refresh` (recursión) y el flujo de login, donde
+ * el 401 significa credencial/código/ticket inválido y reintentar re-postearía la contraseña
+ * (el limitador contaría doble). Se suma `auth/2fa/enrolamiento/*` por prefijo (`sinRefresh`).
+ */
+const RUTAS_SIN_REFRESH: ReadonlySet<string> = new Set([
+  "auth/refresh",
+  "auth/login",
+  "auth/2fa/verificar",
+  "auth/login/continuar",
+  "auth/login/seleccionar",
+]);
+
+function sinRefresh(path: string): boolean {
+  return RUTAS_SIN_REFRESH.has(path) || path.startsWith("auth/2fa/enrolamiento/");
+}
+
 async function fetchConRefresh(path: string, init?: ApiFetchInit): Promise<Response> {
   let res: Response;
   try {
@@ -71,7 +88,7 @@ async function fetchConRefresh(path: string, init?: ApiFetchInit): Promise<Respo
     throw err;
   }
 
-  if (res.status === 401 && path !== "auth/refresh") {
+  if (res.status === 401 && !sinRefresh(path)) {
     try {
       await refreshSession();
     } catch {

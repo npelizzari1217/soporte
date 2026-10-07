@@ -342,3 +342,15 @@ WU-9 entera estimaba ~390 lineas de codigo y tests pero la rotacion sola ya suma
 - Tests en `root-bootstrap.seed.integration.spec.ts` (base real, no un fake: armar un cliente Prisma falso exigia casts): un caso por valor de `NODE_ENV` ausente, `production`, `staging`, `Production`, vacio, que verifican que no se crea ni toca nada; `development` y `test` activan el 2FA y el secreto descifra; sin la variable no hay 2FA.
 - README: fila de `ROOT_ADMIN_TOTP_SECRET` (solo desarrollo y test).
 - **Pendiente para una persona:** `backend/.env.example` no se puede leer ni editar con los permisos actuales; falta agregarle una linea `ROOT_ADMIN_TOTP_SECRET=` comentada, con el valor de desarrollo documentado en el README.
+
+## WU-10 — BFF: cookie `td`, IP y rutas de login (partida: 10 helper y login, 10b rutas nuevas)
+
+WU-10 entera sumaba ~560 lineas (~170 de codigo, ~350 de tests). El orquestador la partio por la costura que propuso el ejecutor.
+
+### 10 (`feat/verificacion-dos-pasos-wu10`, tareas 10.1, 10.2, 10.5, 10.6 y la parte de login de 10.3/10.4)
+
+- `frontend/src/shared/auth/sesion-bff.ts`: `ipDelNavegador` toma la entrada MAS A LA DERECHA de `x-forwarded-for` (la agrega IIS ARR), le saca el puerto (`ip:puerto`, `[v6]:puerto`, `[v6]`; ARR usa `includePortInXForwardedFor=true` por defecto) y la devuelve solo si `net.isIP` la acepta. `responderConSesion` pone `at`/`rt` solo si la respuesta trae los dos tokens; si no, pasa el cuerpo sin cookies.
+- `cookies.ts`: cookie `td` (httpOnly, mismo `cookieAttrs`, `__Host-` en produccion, 30 dias).
+- `login/route.ts` reescrita: manda la IP como `x-soporte-ip-navegador` solo si es valida, manda la cookie `td` como `dispositivoConfiable` (descarta uno que mande el cliente) y no lo devuelve en la respuesta.
+- `client.ts`: `RUTAS_SIN_REFRESH` (`auth/refresh`, `auth/login`, `auth/2fa/verificar`, `auth/2fa/enrolamiento/*` por prefijo, `auth/login/continuar`, `auth/login/seleccionar`): un 401 de esas rutas no dispara el refresh ni re-postea la contrasena.
+- Evidencia: `src/shared` + test del login 294 verdes; type-check y lint limpios. Sobre WU-10 entera: frontend 249 archivos, 2022 tests verdes; ratchet de casts 617.

@@ -7,6 +7,8 @@ import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
  */
 export const COOKIE_AT = "at";
 export const COOKIE_RT = "rt";
+/** Dispositivo confiable (2FA): httpOnly, solo lo lee el BFF. */
+export const COOKIE_TD = "td";
 
 /**
  * Access token max-age: 15 minutes. Must stay in sync with the backend's
@@ -19,6 +21,11 @@ export const ACCESS_MAX_AGE = 900; // 15 min
  * refresh token TTL.
  */
 export const REFRESH_MAX_AGE = 604800; // 7 days
+
+/**
+ * Dispositivo confiable: 30 días. Espeja los 30 días de `expira_at` del backend (ADR-7, D2).
+ */
+export const TRUSTED_DEVICE_MAX_AGE = 2592000; // 30 days
 
 /**
  * Return the cookie name, prefixed with `__Host-` in production.
