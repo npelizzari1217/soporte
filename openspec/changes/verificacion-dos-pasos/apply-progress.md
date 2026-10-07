@@ -354,3 +354,10 @@ WU-10 entera sumaba ~560 lineas (~170 de codigo, ~350 de tests). El orquestador 
 - `login/route.ts` reescrita: manda la IP como `x-soporte-ip-navegador` solo si es valida, manda la cookie `td` como `dispositivoConfiable` (descarta uno que mande el cliente) y no lo devuelve en la respuesta.
 - `client.ts`: `RUTAS_SIN_REFRESH` (`auth/refresh`, `auth/login`, `auth/2fa/verificar`, `auth/2fa/enrolamiento/*` por prefijo, `auth/login/continuar`, `auth/login/seleccionar`): un 401 de esas rutas no dispara el refresh ni re-postea la contrasena.
 - Evidencia: `src/shared` + test del login 294 verdes; type-check y lint limpios. Sobre WU-10 entera: frontend 249 archivos, 2022 tests verdes; ratchet de casts 617.
+
+### 10b (`feat/verificacion-dos-pasos-wu10b`, tareas 10.3, 10.4 y 10.7)
+
+- Rutas BFF nuevas: `api/auth/2fa/verificar` (pone la cookie `td` desde `dispositivoConfiable` y la saca del JSON; nunca pone `at`/`rt`), `api/auth/login/continuar` y `api/auth/login/seleccionar` (via `responderConSesion`). La IP no viaja en estas rutas: el backend la lee solo en el login.
+- El enrolamiento (`auth/2fa/enrolamiento/*`) y la autogestion van por el proxy generico `[...path]` (ADR-11): sin rutas dedicadas.
+- Correccion del validador: `verificar` toleraba mal un 2xx con cuerpo vacio o null (desestructurar null daba 500); ahora responde 200 sin cookies, con su test.
+- Evidencia: frontend 249 archivos, 2022 tests verdes (antes de la correccion; el test nuevo de verificar pasa); type-check, lint y ratchet limpios.
