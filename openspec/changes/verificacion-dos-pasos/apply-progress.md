@@ -103,3 +103,29 @@ Modo: estandar. Tareas 3.3 a 3.6, 3.8 y 3.9 marcadas en `tasks.md`. Rama `feat/v
 ### Decisiones tomadas en apply
 
 - El "quinto fallo bloquea" de 3.5 lo prueba el e2e; el unit usa el limitador mockeado.
+
+## WU-4a — Repositorio de 2FA con CAS (completa)
+
+Modo: estandar. Tareas 4a.1 a 4a.6 marcadas en `tasks.md`. Rama `feat/verificacion-dos-pasos-wu04a` (base `...-wu03b`).
+
+### Archivos
+
+- `backend/src/auth/domain/ports/tfa-repository.port.ts`: `ITfaRepository`, `EstadoTfa`, token `TFA_REPOSITORY`.
+- `backend/src/auth/infrastructure/tfa/prisma-tfa.repository.ts`: `registrarPaso` y `promoverPendiente` como un solo `UPDATE` condicional (SQL del ADR-2); `consumirCodigo` con `updateMany ... usadoAt: null`; `reemplazarCodigos` y `eliminarTodo` en `$transaction`.
+- `auth.module.ts`: registra `TFA_REPOSITORY` (sin consumidores hasta 4b).
+- `prisma-tfa.repository.integration.spec.ts`: 13 tests contra Postgres real, sin truncar (usuarios con sufijo aleatorio, borrado por cascada).
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/auth/infrastructure/tfa`: 4 archivos, 43 tests verdes |
+| Mutacion | `ultimo_paso <` a `<=` en `registrarPaso`: 4 tests en rojo; restaurado |
+| Lint / tipos / casts | `pnpm lint`, `pnpm typecheck` sin errores; ratchet de casts sin cambios (617) |
+| Rollback | Puerto y adaptador sin consumidores; revertir el commit no deja huerfanos |
+
+### Decisiones tomadas en apply
+
+- Se agrego `obtenerCodigosDisponibles(usuarioId)` al puerto (no estaba en la lista de 4a.5): los codigos van hasheados con argon2id, asi que el verificador necesita los hashes para comparar con `IHashProvider.verify` y luego consumir por `id`. El repositorio no hashea; recibe y devuelve hashes.
+- `consumirCodigo` recibe el `id` del codigo, no el texto.
+- El fallo forzado de `reemplazarCodigos` usa un NUL en el hash (Postgres lo rechaza en `text`); el de `eliminarTodo` usa un trigger temporal acotado al usuario del test, que se elimina en `finally`.

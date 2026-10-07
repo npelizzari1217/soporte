@@ -104,12 +104,12 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-4a — Repositorio de 2FA con CAS (~340 líneas)
 
-- [ ] 4a.1 Test de integración del CAS de `ultimo_paso` (`prisma-tfa.repository.integration.spec.ts`): dos `registrarPaso` concurrentes del mismo paso → exactamente una acepta; mutación `<` → `<=` en el CAS pone el test en rojo; `registrarPaso` con `secreto_cifrado` distinto del leído devuelve 0 filas. (T2)
-- [ ] 4a.2 Test de integración de la promoción del pendiente: un único CAS fija `secreto_cifrado`, `confirmado_at`, `ultimo_paso = paso de la confirmación` y limpia el pendiente; con otro pendiente leído no promueve; confirmar y repetir el mismo código en el login es rechazo. (T2, T4, T10)
-- [ ] 4a.3 Test de integración de códigos de recuperación: guardar 10 hasheados; consumir uno con `UPDATE … WHERE usado_at IS NULL`, dos consumos concurrentes del mismo código → uno gana; regenerar borra el juego anterior e inserta 10 en una transacción (con fallo forzado queda el juego previo intacto). (T5, T9)
-- [ ] 4a.4 Test de integración de `eliminarTodo`: en una transacción borra `usuarios_tfa` y códigos, revoca dispositivos e invalida desafíos abiertos; con fallo forzado a mitad no queda nada a medias. (D6, S3)
-- [ ] 4a.5 Crear `auth/domain/ports/tfa-repository.port.ts` (`ITfaRepository`) y `auth/infrastructure/tfa/prisma-tfa.repository.ts`: `obtener`, `guardarPendiente`, `promoverPendiente`, `registrarPaso`, `reemplazarCodigos`, `consumirCodigo`, `contarCodigosRestantes`, `eliminarTodo`; registrar en `AuthModule`. Spec con `usarLockMasterTest()` si trunca. (T2, T4, T5, T9, T10, D6)
-- [ ] 4a.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/infrastructure/tfa`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 4a.1 Test de integración del CAS de `ultimo_paso` (`prisma-tfa.repository.integration.spec.ts`): dos `registrarPaso` concurrentes del mismo paso → exactamente una acepta; mutación `<` → `<=` en el CAS pone el test en rojo; `registrarPaso` con `secreto_cifrado` distinto del leído devuelve 0 filas. (T2)
+- [x] 4a.2 Test de integración de la promoción del pendiente: un único CAS fija `secreto_cifrado`, `confirmado_at`, `ultimo_paso = paso de la confirmación` y limpia el pendiente; con otro pendiente leído no promueve; confirmar y repetir el mismo código en el login es rechazo. (T2, T4, T10)
+- [x] 4a.3 Test de integración de códigos de recuperación: guardar 10 hasheados; consumir uno con `UPDATE … WHERE usado_at IS NULL`, dos consumos concurrentes del mismo código → uno gana; regenerar borra el juego anterior e inserta 10 en una transacción (con fallo forzado queda el juego previo intacto). (T5, T9)
+- [x] 4a.4 Test de integración de `eliminarTodo`: en una transacción borra `usuarios_tfa` y códigos, revoca dispositivos e invalida desafíos abiertos; con fallo forzado a mitad no queda nada a medias. (D6, S3)
+- [x] 4a.5 Crear `auth/domain/ports/tfa-repository.port.ts` (`ITfaRepository`) y `auth/infrastructure/tfa/prisma-tfa.repository.ts`: `obtener`, `guardarPendiente`, `promoverPendiente`, `registrarPaso`, `reemplazarCodigos`, `consumirCodigo`, `contarCodigosRestantes`, `eliminarTodo`; registrar en `AuthModule`. Spec con `usarLockMasterTest()` si trunca. (T2, T4, T5, T9, T10, D6)
+- [x] 4a.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/infrastructure/tfa`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-4b — Verificador común y confirmador de pendiente (~330 líneas)
 
