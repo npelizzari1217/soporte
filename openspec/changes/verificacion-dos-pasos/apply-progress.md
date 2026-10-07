@@ -371,3 +371,10 @@ WU-11a entera sumaba 553 lineas; el orquestador la partio por la costura que pro
 - `schemas.ts`: `codigoDesafioSchema` acepta 6 digitos o `XXXX-XXXX-XXXX` (guiones opcionales); `recordar` booleano.
 - `DesafioTfaForm` (presentacional): input etiquetado con `inputMode="numeric"` y `autoComplete="one-time-code"`; casilla "Recordar este dispositivo" oculta si `recordarDisponible === false`; deshabilitado mientras envia; errores en linea. Sin cablear hasta 11a2.
 - Evidencia: `src/features/auth` 60 tests verdes; type-check y lint limpios. Sobre WU-11a entera: frontend 250 archivos, 2037 tests verdes; ratchet 617.
+
+### 11a2 (`feat/verificacion-dos-pasos-wu11a2`, tareas 11a.1, 11a.2, 11a.4 y 11a.5)
+
+- `use-login.ts`: maquina `credenciales | codigo | enrolamiento | seleccion`. Ya no guarda la contrasena: solo `desafio` o `ticket`. `verificarCodigo` encadena `2fa/verificar` y `login/continuar`; el selector usa `login/seleccionar` con el ticket, tanto en el camino con 2FA como en el multi-cliente sin 2FA. Un codigo incorrecto deja en el paso del codigo con un mensaje generico; 5xx y red usan `mensajeDeErrorDeLogin`. `recordarDisponible` ausente cuenta como true (el backend siempre lo manda; ROOT nunca recibe dispositivo).
+- `login/page.tsx` renderiza por paso; el enrolamiento es un aviso provisorio hasta WU-11b.
+- Hallazgos del validador que pasan a WU-11b (mismo hook): un desafio o ticket vencido deja al usuario en el mismo paso sin forma de volver a las credenciales, y un 401 del selector dice "Credenciales incorrectas". Falta "Volver" y un mensaje propio para el desafio vencido.
+- Evidencia: frontend 250 archivos, 2037 tests verdes; type-check, lint y ratchet limpios.
