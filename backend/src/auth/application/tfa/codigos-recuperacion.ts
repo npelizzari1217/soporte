@@ -13,6 +13,21 @@ const generarCodigo = (): string => {
   return `${crudo.slice(0, 4)}-${crudo.slice(4, 8)}-${crudo.slice(8)}`;
 };
 
+/** Un juego de codigos ya hasheado, listo para guardar: el texto plano se muestra una sola vez. */
+export interface JuegoCodigos {
+  codigos: string[];
+  hashes: string[];
+}
+
+/** Genera 10 codigos y sus hashes sin escribir nada: lo que puede fallar ocurre antes de guardar. */
+export async function prepararJuegoCodigos(hash: IHashProvider): Promise<JuegoCodigos> {
+  const codigos = Array.from({ length: CANTIDAD }, generarCodigo);
+  const hashes = await Promise.all(
+    codigos.map((c) => hash.hash(normalizarCodigoRecuperacion(c) ?? c)),
+  );
+  return { codigos, hashes };
+}
+
 /**
  * Genera un juego nuevo de 10 codigos, guarda sus hashes reemplazando el anterior (una
  * transaccion en el repositorio) y devuelve el texto plano: es la unica vez que se ve (T4, T9).
@@ -22,10 +37,7 @@ export async function emitirJuegoCodigos(
   hash: IHashProvider,
   usuarioId: string,
 ): Promise<string[]> {
-  const codigos = Array.from({ length: CANTIDAD }, generarCodigo);
-  const hashes = await Promise.all(
-    codigos.map((c) => hash.hash(normalizarCodigoRecuperacion(c) ?? c)),
-  );
+  const { codigos, hashes } = await prepararJuegoCodigos(hash);
   await repo.reemplazarCodigos(usuarioId, hashes);
   return codigos;
 }

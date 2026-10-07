@@ -73,6 +73,7 @@ describe('use cases de autogestion de 2FA', () => {
   let obtener: ObtenerEstadoTfa;
   let iniciar: IniciarSecretoTfa;
   let confirmar: ConfirmarSecretoTfa;
+  let confirmador: ConfirmadorSecretoPendiente;
   let regenerar: RegenerarCodigosTfa;
 
   const cipher: ISecretCipher = {
@@ -119,7 +120,7 @@ describe('use cases de autogestion de 2FA', () => {
     secretoNuevo = 'S1';
     const secretos = new SecretoTotpCifrado(cipher);
     const verificador = new VerificadorCodigoTfa(repo, totp, limitador, hash, secretos);
-    const confirmador = new ConfirmadorSecretoPendiente(repo, totp, limitador, secretos);
+    confirmador = new ConfirmadorSecretoPendiente(repo, totp, limitador, secretos);
     // El stub de usuarios solo implementa `findById`, lo unico que los use cases consultan.
     const usuarioRepo = Object.assign(Object.create(null), usuarios);
     obtener = new ObtenerEstadoTfa(repo, usuarioRepo);
@@ -173,6 +174,21 @@ describe('use cases de autogestion de 2FA', () => {
     expect(repo.codigos).toHaveLength(10);
   });
 
+  it('si hashear los codigos falla, el 2FA no queda activo sin codigos', async () => {
+    await iniciar.execute(U);
+    const hashRoto: IHashProvider = {
+      ...hash,
+      hash: async () => {
+        throw new Error('argon2 caido');
+      },
+    };
+    const confirmarRoto = new ConfirmarSecretoTfa(repo, hashRoto, confirmador);
+
+    await expect(confirmarRoto.execute(U, codigoDe('S1'))).rejects.toThrow('argon2 caido');
+    expect(repo.estado?.secretoCifrado).toBeNull();
+    expect(repo.estado?.secretoPendienteCifrado).toBe(`tfa:${U}|S1`);
+  });
+
   it('con 2FA activo, cambiar de celular exige codigo y el activo rige hasta confirmar (T10)', async () => {
     await activar('S1');
     secretoNuevo = 'S2';
@@ -207,7 +223,10 @@ describe('use cases de autogestion de 2FA', () => {
   });
 
   it('ninguna accion de autogestion envia mail ni ofrece otro canal (T11)', () => {
-    const fuentes = ['tfa-cuenta.use-cases.ts']
+    const fuentes = [
+      'tfa-cuenta.use-cases.ts',
+      '../../interface/controllers/tfa-cuenta.controller.ts',
+    ]
       .map((f) => readFileSync(join(__dirname, f), 'utf8'))
       .join('\n');
     const imports = fuentes.split('\n').filter((l) => l.includes(' from '));

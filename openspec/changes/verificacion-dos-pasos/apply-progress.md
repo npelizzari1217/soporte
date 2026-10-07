@@ -177,3 +177,10 @@ WU-4c entera sumaba ~650 lineas de codigo y tests; el orquestador la partio por 
 - `obligado` usa por ahora solo ROOT: la regla del cliente que exige 2FA llega con la politica en WU-7 (`TODO(WU-7)`).
 - `IniciarSecretoTfa` con 2FA activo y sin codigo llama al verificador con cadena vacia: cuenta como fallo del limitador, a proposito.
 - Evidencia: `pnpm vitest run src/auth/application/tfa` 33 tests verdes; typecheck y lint limpios. Suite completa sobre WU-4c entera: 641 archivos, 7828 tests verdes.
+
+### 4c-ii (`feat/verificacion-dos-pasos-wu04c2`, tareas 4c.3 DTOs, 4c.4, 4c.5, 4c.6)
+
+- `TfaCuentaController` (`GET /auth/2fa`, `POST /auth/2fa/secreto/iniciar|confirmar`, `POST /auth/2fa/codigos`) bajo `JwtAuthGuard`; errores de codigo en 422 y falta de clave maestra en 503. DTOs en `interface/dtos/tfa-cuenta.dto.ts` (el directorio real es `dtos/`, no `dto/` como decia la tarea).
+- e2e `tfa-cuenta.e2e.spec.ts` con guards reales; cableado en `auth.module.ts` (TOTP, cifrado, verificador, confirmador, los 4 casos de uso y el controller).
+- Correccion del validador: `ConfirmarSecretoTfa` genera y hashea los codigos ANTES de promover el secreto (`prepararJuegoCodigos`), asi una falla del hash no deja el 2FA activo sin codigos. Queda solo el error de base entre las dos escrituras; el usuario regenera con un TOTP.
+- Evidencia: `pnpm vitest run src/auth/application/tfa` + e2e: 6 archivos, 37 tests verdes; typecheck, lint y ratchet de casts limpios.

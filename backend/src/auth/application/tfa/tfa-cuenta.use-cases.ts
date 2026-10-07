@@ -7,7 +7,7 @@ import { ITfaRepository, TFA_REPOSITORY } from '../../domain/ports/tfa-repositor
 import { ITotpService, TOTP_SERVICE } from '../../domain/ports/totp-service.port';
 import { IUsuarioRepository, USUARIO_REPOSITORY } from '../../domain/ports/i-usuario.repository';
 import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
-import { emitirJuegoCodigos } from './codigos-recuperacion';
+import { emitirJuegoCodigos, prepararJuegoCodigos } from './codigos-recuperacion';
 import { ConfirmadorSecretoPendiente } from './confirmador-secreto-pendiente';
 import { SecretoTotpCifrado } from './secreto-totp-cifrado';
 import { VerificadorCodigoTfa } from './verificador-codigo-tfa';
@@ -92,11 +92,15 @@ export class ConfirmarSecretoTfa {
     codigo: string,
   ): Promise<Result<{ codigosRecuperacion?: string[] }, SegundoPasoRechazadoError>> {
     const primeraActivacion = (await this.repo.obtener(usuarioId))?.secretoCifrado == null;
+    // Los codigos se generan y hashean ANTES de promover: si eso falla, el 2FA no queda activo
+    // sin codigos. Queda solo el error de base entre las dos escrituras; ahi el usuario regenera
+    // los codigos con un TOTP (`POST /auth/2fa/codigos`).
+    const juego = primeraActivacion ? await prepararJuegoCodigos(this.hash) : null;
     const confirmado = await this.confirmador.confirmar(usuarioId, codigo);
     if (confirmado.isFail()) return Result.fail(confirmado.getError());
-    if (!primeraActivacion) return Result.ok({});
-    const codigosRecuperacion = await emitirJuegoCodigos(this.repo, this.hash, usuarioId);
-    return Result.ok({ codigosRecuperacion });
+    if (!juego) return Result.ok({});
+    await this.repo.reemplazarCodigos(usuarioId, juego.hashes);
+    return Result.ok({ codigosRecuperacion: juego.codigos });
   }
 }
 
