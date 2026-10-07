@@ -242,3 +242,24 @@ WU-5b entera sumaba ~640 lineas de codigo y tests; el orquestador la partio por 
 - Mutacion verificada: `some` por `every` en `es-obligado-2fa.ts` hace fallar C3 y L5; revertida.
 - 5c.8: lint, typecheck, ratchet de casts limpios y el spec nuevo en verde; la suite completa no se corrio en esta unidad (la corre el orquestador).
 - Para el PR: el login cambia de contrato (`needs2fa`, `needsEnrolamiento2fa`, `ticket` en la seleccion; ROOT entra por continuar con alcance MASTER); deuda de Ayuda anotada (suspendida); advertir la exposicion de la cadena (ver Despliegue).
+
+## WU-6a — Dispositivo confiable y desactivacion propia (partida en tres: 6a-i repo, 6a-ii emision y uso, 6a-iii desactivacion)
+
+WU-6a entera sumaba ~730 lineas de codigo y tests (presupuesto 400); el orquestador la partio por la costura propuesta, cada parte con su rama y compilando sola. El resto del trabajo (6a-ii y 6a-iii) esta implementado y verde (`src/auth`: 80 archivos, 946 tests) y guardado fuera del repo para reaplicarlo por partes.
+
+### 6a-i — Repositorio (hecha; tareas 6a.1 y 6a.2)
+
+- `backend/src/auth/domain/ports/dispositivo-confiable-repository.port.ts`: `IDispositivoConfiableRepository` (`crear`, `esValido`, `revocarTodosDe`) y el token `DISPOSITIVO_CONFIABLE_REPOSITORY`.
+- `backend/src/auth/infrastructure/tfa/prisma-dispositivo-confiable.repository.ts`: guarda solo el hash; `esValido` exige usuario, no revocado y `expira_at > ahora` (el limite exacto ya vencio); `revocarTodosDe` lanza ante fallo (fail-closed).
+- `prisma-dispositivo-confiable.repository.integration.spec.ts`: 5 tests contra Postgres real (solo hash en la fila, 30 dias, dueno, vigencia exacta, revocacion y fallo forzado).
+- `application/tfa/token-dispositivo.ts`: token opaco de 32 bytes y su SHA-256; sin consumidores hasta 6a-ii.
+- `auth.module.ts`: solo el registro de `DISPOSITIVO_CONFIABLE_REPOSITORY`.
+- Evidencia: typecheck, lint y ratchet de casts (617) limpios; el spec de integracion en verde.
+
+### 6a-ii — Emision y uso (pendiente; tareas 6a.3, 6a.4, 6a.5 y el tramo de login de 6a.8)
+
+`VerificarDesafioUseCase` acepta `recordar` y emite el dispositivo (ROOT nunca); `LoginUseCase` suma `dispositivos` y omite el desafio con un token valido de un usuario no ROOT con 2FA activo; DTOs y controladores (`dispositivoConfiable` en el body de login; `recordar` y `dispositivoConfiable` en la respuesta de `2fa/verificar`); e2e sin el tramo de desactivar.
+
+### 6a-iii — Desactivacion propia (pendiente; tareas 6a.6, 6a.7 y el tramo de desactivar de 6a.8)
+
+`Tfa2faObligatorioError`, `DesactivarTfaUseCase` y `POST /auth/2fa/desactivar` (204, 409 obligado, 422 codigo); `eliminarTodo` y despues revocar refresh con log-and-swallow.
