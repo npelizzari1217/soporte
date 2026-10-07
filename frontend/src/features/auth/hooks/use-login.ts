@@ -4,7 +4,7 @@
  * use-login — CONTAINER hook for the login mutation.
  *
  * Calls the BFF POST /api/auth/login. Máquina de pasos (`paso`):
- *   credenciales → codigo (2FA activo) | enrolamiento (2FA obligatorio, UI en WU-11b)
+ *   credenciales → codigo (2FA activo) | enrolamiento (2FA obligatorio, UI en WU-11b parte B)
  *                → seleccion (varias membresías) → sesión.
  *   1. POST { email, password } → `{ user }` (cookies, listo) | `{ needs2fa, desafio,
  *      recordarDisponible }` | `{ needsEnrolamiento2fa, desafio }` | `{ needsClienteSelection,
@@ -60,7 +60,16 @@ interface SeleccionarDto {
 
 type Seleccion = { needsClienteSelection: true; membresias: Membresia[]; ticket: string };
 
+/** El desafío o el ticket ya no sirven: el servidor los rechazó (401) en un paso que los consume. */
+type Vencido = { vencido: true };
+
+/** Duración del desafío VERIFICAR (design D2): pasado ese plazo un rechazo es un vencimiento. */
+const DESAFIO_VERIFICAR_MS = 5 * 60_000;
+
+export const MENSAJE_VENCIDO = "La verificación venció. Volvé a iniciar sesión.";
+
 type Respuesta =
+  | Vencido
   | { user: JwtPayload }
   | { needs2fa: true; desafio: string; recordarDisponible?: boolean }
   | { needsEnrolamiento2fa: true; desafio: string }
@@ -68,7 +77,7 @@ type Respuesta =
 
 export type PasoLogin =
   | { paso: "credenciales" }
-  | { paso: "codigo"; desafio: string; recordarDisponible: boolean }
+  | { paso: "codigo"; desafio: string; recordarDisponible: boolean; emitidoAt: number }
   | { paso: "enrolamiento"; desafio: string }
   | { paso: "seleccion"; membresias: Membresia[]; ticket: string };
 
@@ -104,11 +113,17 @@ export function useLogin() {
   const [fase, setFase] = useState<PasoLogin>({ paso: "credenciales" });
 
   function alResponder(result: Respuesta) {
+    if ("vencido" in result) {
+      toast.error(MENSAJE_VENCIDO);
+      setFase({ paso: "credenciales" });
+      return;
+    }
     if ("needs2fa" in result) {
       setFase({
         paso: "codigo",
         desafio: result.desafio,
         recordarDisponible: result.recordarDisponible !== false,
+        emitidoAt: Date.now(),
       });
       return;
     }
@@ -136,6 +151,16 @@ export function useLogin() {
     toast.error(mensajeDeErrorDeLogin(err.statusCode));
   };
 
+  /** Un 401 del paso que consume el ticket significa ticket muerto; el resto sube como error. */
+  async function continuar(ticket: string): Promise<Respuesta> {
+    try {
+      return await apiFetch<Respuesta>("auth/login/continuar", { method: "POST", json: { ticket } });
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 401) return { vencido: true };
+      throw err;
+    }
+  }
+
   const loginMutation = useMutation<Respuesta, ApiError, LoginDto>({
     mutationFn: (dto) => apiFetch<Respuesta>("auth/login", { method: "POST", json: dto }),
     onSuccess: alResponder,
@@ -148,10 +173,15 @@ export function useLogin() {
         method: "POST",
         json: dto,
       });
-      return apiFetch<Respuesta>("auth/login/continuar", { method: "POST", json: { ticket } });
+      return continuar(ticket);
     },
     onSuccess: alResponder,
     onError: (err) => {
+      // Un rechazo pasado el plazo del desafío es un vencimiento, no un código equivocado.
+      if (err.statusCode === 401 && fase.paso === "codigo" && Date.now() - fase.emitidoAt > DESAFIO_VERIFICAR_MS) {
+        alResponder({ vencido: true });
+        return;
+      }
       // Un código equivocado dice lo mismo que cualquier rechazo del segundo paso.
       toast.error(
         err.statusCode === 0 || err.statusCode >= 500
@@ -162,7 +192,14 @@ export function useLogin() {
   });
 
   const seleccionarMutation = useMutation<Respuesta, ApiError, SeleccionarDto>({
-    mutationFn: (dto) => apiFetch<Respuesta>("auth/login/seleccionar", { method: "POST", json: dto }),
+    mutationFn: async (dto) => {
+      try {
+        return await apiFetch<Respuesta>("auth/login/seleccionar", { method: "POST", json: dto });
+      } catch (err) {
+        if (err instanceof ApiError && err.statusCode === 401) return { vencido: true };
+        throw err;
+      }
+    },
     onSuccess: alResponder,
     onError: alFallar,
   });
@@ -182,8 +219,14 @@ export function useLogin() {
     seleccionarMutation.mutate({ ticket: fase.ticket, clienteId });
   }
 
+  /** Descarta desafío y ticket y vuelve a pedir credenciales. */
+  function volver() {
+    setFase({ paso: "credenciales" });
+  }
+
   return {
     login,
+    volver,
     verificarCodigo,
     selectCliente,
     paso: fase.paso,
