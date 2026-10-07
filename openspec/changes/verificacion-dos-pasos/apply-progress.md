@@ -290,3 +290,10 @@ WU-7 entera sumaba 448 lineas de codigo y tests: agregar dos metodos obligatorio
 - `IClienteRepository.fijarRequiere2fa` (`updateMany` dirigido que devuelve boolean, nunca por el upsert de `save`) y `obtenerRequiere2fa` (null si el cliente no existe), con 2 tests de integracion; los 21 mocks existentes se completaron sin casts.
 - `ObtenerEstadoTfa` calcula `obligado` con las membresias activas (`esObligado2fa(isGlobalAdmin, activas)`): `GET /auth/2fa` ya refleja la politica del cliente. Se quito el `TODO(WU-7)`.
 - Evidencia: specs focales 22 verdes; typecheck y lint limpios. Sobre WU-7 entera: `src/auth src/clientes` 132 archivos, 1358 tests verdes; ratchet de casts 617.
+
+### 7b (`feat/verificacion-dos-pasos-wu07b`, tareas 7.3 a 7.6)
+
+- `ConfigurarPoliticaTfaUseCase` (`execute({clienteId, requiere2fa})` y `obtener(clienteId)`): depende solo de `IClienteRepository`, asi que no puede revocar sesiones (C4) ni tocar el 2FA (C5).
+- `PoliticaTfaController` (`GET` y `PUT /politica-2fa`) bajo `JwtAuthGuard` + `TenantGuard` y `AdminClienteGuard` en los dos metodos: el `clienteId` sale del JWT (un token sin cliente recibe 403 en `TenantGuard`); un `clienteId` en el body se ignora (DTO con whitelist); cliente inexistente, 404.
+- e2e `politica-tfa.e2e.spec.ts`: TECNICO 403 en GET y PUT, aislamiento entre clientes, body ignorado, body invalido 400, sesiones abiertas sobreviven a activar y desactivar (C4). C3 y C5 de punta a punta quedan cubiertos en unit (y C3 en el e2e de login de 5c2).
+- Evidencia: `src/auth src/clientes` 132 archivos, 1358 tests verdes; typecheck, lint y ratchet limpios.

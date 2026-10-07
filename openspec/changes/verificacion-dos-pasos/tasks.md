@@ -188,10 +188,10 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 - [x] 7.1 Test de integración (invariante "`requiere_2fa` entra en `toPersistence`"): cargar el cliente, fijar la política, `save` con la lectura vieja → sigue `true`; `fijarRequiere2fa` y `obtenerRequiere2fa` leen y escriben solo esa columna; default `false` en clientes nuevos. (C1, C2)
 - [x] 7.2 Agregar `fijarRequiere2fa` y `obtenerRequiere2fa` a `IClienteRepository` y a `prisma-cliente.repository.ts`; `ClienteMapper.toPersistence` y `ClienteEntity` no la llevan. (C1, C2)
-- [ ] 7.3 Test unit de `ConfigurarPoliticaTfaUseCase`: usa `actor.cliente_id`, nunca un id del body; no revoca sesiones (C4); desactivar la política no borra el 2FA de nadie (C5). (C1, C4, C5)
-- [ ] 7.4 Implementar `ConfigurarPoliticaTfaUseCase`, `clientes/interface/controllers/politica-tfa.controller.ts` (`GET`/`PUT /politica-2fa`, `JwtAuthGuard, TenantGuard` por clase y `AdminClienteGuard` por método, molde `HorarioLaboralController`) y DTO `{requiere2fa: boolean}`. (C1, C2)
-- [ ] 7.5 Test e2e `politica-tfa.e2e.spec.ts`: ADMINISTRADOR cambia la de su cliente; TECNICO recibe 403; un cliente no ve ni cambia la de otro; el efecto alcanza al usuario también en otros clientes en su próximo login; las sesiones abiertas siguen hasta vencer; al desactivar, quien ya tiene 2FA sigue con 2FA. (C1, C2, C3, C4, C5)
-- [ ] 7.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/clientes src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 7.3 Test unit de `ConfigurarPoliticaTfaUseCase`: usa `actor.cliente_id`, nunca un id del body; no revoca sesiones (C4); desactivar la política no borra el 2FA de nadie (C5). (C1, C4, C5)
+- [x] 7.4 Implementar `ConfigurarPoliticaTfaUseCase`, `clientes/interface/controllers/politica-tfa.controller.ts` (`GET`/`PUT /politica-2fa`, `JwtAuthGuard, TenantGuard` por clase y `AdminClienteGuard` por método, molde `HorarioLaboralController`) y DTO `{requiere2fa: boolean}`. (C1, C2)
+- [x] 7.5 Test e2e `politica-tfa.e2e.spec.ts`: ADMINISTRADOR cambia la de su cliente; TECNICO recibe 403; un cliente no ve ni cambia la de otro; el efecto alcanza al usuario también en otros clientes en su próximo login; las sesiones abiertas siguen hasta vencer; al desactivar, quien ya tiene 2FA sigue con 2FA. (C1, C2, C3, C4, C5)
+- [x] 7.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/clientes src/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-8 — Reseteo de 2FA por API y por script (~390 líneas)
 

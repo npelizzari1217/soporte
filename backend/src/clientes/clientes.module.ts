@@ -98,6 +98,8 @@ import { ConfigurarCorreoClienteUseCase } from './application/use-cases/configur
 import { QuitarCorreoClienteUseCase } from './application/use-cases/quitar-correo-cliente.use-case';
 import { ProbarCorreoClienteUseCase } from './application/use-cases/probar-correo-cliente.use-case';
 import { VerCorreoClienteUseCase } from './application/use-cases/ver-correo-cliente.use-case';
+import { ConfigurarPoliticaTfaUseCase } from './application/use-cases/configurar-politica-tfa.use-case';
+import { PoliticaTfaController } from './interface/controllers/politica-tfa.controller';
 import { ConfigurarCsatClienteUseCase } from './application/use-cases/configurar-csat-cliente.use-case';
 import { ConfigurarFormularioPublicoUseCase } from './application/use-cases/configurar-formulario-publico.use-case';
 import { ConfigurarLogoClienteUseCase } from './application/use-cases/configurar-logo-cliente.use-case';
@@ -120,6 +122,7 @@ import { ClienteLinkSoporteController } from './interface/controllers/cliente-li
     ClientesController,
     ClienteLogoController,
     ClienteLinkSoporteController,
+    PoliticaTfaController,
   ],
   providers: [
     { provide: CICLO_VIGENTE_REPOSITORY, useClass: PrismaCicloVigenteRepository },
@@ -255,6 +258,11 @@ import { ClienteLinkSoporteController } from './interface/controllers/cliente-li
         emailConfigRepo: IClienteEmailConfigRepository,
       ) => new VerCorreoClienteUseCase(clienteRepo, emailConfigRepo),
       inject: [CLIENTE_REPOSITORY, CLIENTE_EMAIL_CONFIG_REPOSITORY],
+    },
+    {
+      provide: ConfigurarPoliticaTfaUseCase,
+      useFactory: (repo: IClienteRepository) => new ConfigurarPoliticaTfaUseCase(repo),
+      inject: [CLIENTE_REPOSITORY],
     },
     {
       provide: ConfigurarCsatClienteUseCase,
