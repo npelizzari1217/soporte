@@ -119,4 +119,74 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(401);
     expect(res.headers.getSetCookie()).toHaveLength(0);
   });
+
+  it("manda x-soporte-ip-navegador (derecha de XFF, sin puerto) y la cookie td como dispositivoConfiable; ignora el del body", async () => {
+    let cabecera: string | null = null;
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.post(`${BACKEND}/auth/login`, async ({ request }) => {
+        cabecera = request.headers.get("x-soporte-ip-navegador");
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ needs2fa: true, desafio: "d", recordarDisponible: true });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "a@b.c", password: "pw", dispositivoConfiable: "del-cliente" }),
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "6.6.6.6, 1.2.3.4:56789",
+        cookie: "td=de-la-cookie",
+      },
+    });
+
+    const res = await POST(req);
+
+    expect(cabecera).toBe("1.2.3.4");
+    expect(enviado.dispositivoConfiable).toBe("de-la-cookie");
+    expect(await res.json()).toEqual({ needs2fa: true, desafio: "d", recordarDisponible: true });
+    expect(res.headers.getSetCookie()).toHaveLength(0);
+  });
+
+  it("sin cookie td ni XFF válido → no manda dispositivoConfiable ni la cabecera de IP", async () => {
+    let cabecera: string | null = "x";
+    let enviado: Record<string, unknown> = {};
+    server.use(
+      http.post(`${BACKEND}/auth/login`, async ({ request }) => {
+        cabecera = request.headers.get("x-soporte-ip-navegador");
+        enviado = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ needsEnrolamiento2fa: true, desafio: "d" });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "a@b.c", password: "pw", dispositivoConfiable: "del-cliente" }),
+      headers: { "content-type": "application/json", "x-forwarded-for": "basura" },
+    });
+
+    await POST(req);
+
+    expect(cabecera).toBeNull();
+    expect(enviado).not.toHaveProperty("dispositivoConfiable");
+  });
+
+  it("quita dispositivoConfiable de la respuesta aunque el backend lo mande", async () => {
+    server.use(
+      http.post(`${BACKEND}/auth/login`, () =>
+        HttpResponse.json({ needs2fa: true, desafio: "d", dispositivoConfiable: "secreto" }),
+      ),
+    );
+
+    const req = new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "a@b.c", password: "pw" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+
+    expect(JSON.stringify(await res.json())).not.toContain("secreto");
+  });
 });
