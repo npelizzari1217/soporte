@@ -76,6 +76,9 @@ type Vencido = { vencido: true };
 /** Duración del desafío VERIFICAR (design D2): pasado ese plazo un rechazo es un vencimiento. */
 const DESAFIO_VERIFICAR_MS = 5 * 60_000;
 
+/** Duración del desafío ENROLAR (design D2): 15 minutos para escanear el QR y confirmar. */
+const DESAFIO_ENROLAR_MS = 15 * 60_000;
+
 export const MENSAJE_VENCIDO = "La verificación venció. Volvé a iniciar sesión.";
 
 type Respuesta =
@@ -88,7 +91,7 @@ type Respuesta =
 export type PasoLogin =
   | { paso: "credenciales" }
   | { paso: "codigo"; desafio: string; recordarDisponible: boolean; emitidoAt: number }
-  | { paso: "enrolamiento"; desafio: string; datos: DatosEnrolamiento | null }
+  | { paso: "enrolamiento"; desafio: string; datos: DatosEnrolamiento | null; emitidoAt: number }
   | { paso: "codigos"; codigos: string[]; ticket: string }
   | { paso: "seleccion"; membresias: Membresia[]; ticket: string };
 
@@ -139,7 +142,7 @@ export function useLogin() {
       return;
     }
     if ("needsEnrolamiento2fa" in result) {
-      setFase({ paso: "enrolamiento", desafio: result.desafio, datos: null });
+      setFase({ paso: "enrolamiento", desafio: result.desafio, datos: null, emitidoAt: Date.now() });
       iniciarMutation.mutate(result.desafio);
       return;
     }
@@ -191,6 +194,11 @@ export function useLogin() {
       }),
     onSuccess: (r) => setFase({ paso: "codigos", codigos: r.codigosRecuperacion, ticket: r.ticket }),
     onError: (err) => {
+      // Como en verificar: pasado el plazo del desafío ENROLAR, un rechazo es un vencimiento.
+      if (err.statusCode === 401 && fase.paso === "enrolamiento" && Date.now() - fase.emitidoAt > DESAFIO_ENROLAR_MS) {
+        alResponder({ vencido: true });
+        return;
+      }
       toast.error(
         err.statusCode === 0 || err.statusCode >= 500
           ? mensajeDeErrorDeLogin(err.statusCode)

@@ -398,3 +398,9 @@ WU-11b entera sumaba ~530 lineas de codigo y tests (tope 400), asi que se parte 
 - Los codigos se muestran una sola vez; en ese paso no hay "Volver".
 - Tests: componentes (11b.1, 11b.2), flujo del hook (iniciar, confirmar, codigos, continuar) y flujo completo de la pagina.
 - Deuda de Ayuda: pantalla de enrolamiento forzado en el login (QR, clave manual, codigos de recuperacion, "Los guardé").
+
+## WU-11c — Desafio de alta vencido (hallazgo de la validacion de WU-11b)
+
+- `use-login.ts`: el paso `enrolamiento` guarda `emitidoAt`; un 401 al confirmar el alta pasados 15 minutos (`DESAFIO_ENROLAR_MS`, la duracion del desafio ENROLAR) muestra `MENSAJE_VENCIDO` y vuelve a las credenciales. Antes del plazo sigue "Codigo incorrecto". Misma heuristica que verificar (5 min), porque el backend responde 401 en los dos casos.
+- Test parametrizado: 14 minutos (sigue en el alta) y 16 minutos (vencido).
+- Evidencia: test del hook 28 verdes; type-check y lint limpios.
