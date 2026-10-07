@@ -831,6 +831,30 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     5 cada 15 minutos por usuario). Hoy el login no tiene ninguno.
   - Fuera de alcance: llaves físicas o passkeys (WebAuthn), SMS y un registro de
     auditoría de logins.
+  - Precisiones del 2026-10-07, al explorar:
+    - Un usuario **no obligado** puede **desactivar** su 2FA; uno obligado, no.
+      Cualquiera puede **regenerar los códigos** y **cambiar de celular**. Las tres
+      cosas piden un código válido.
+    - **ROOT sin celular ni códigos** se recupera con un **script de operador** en el
+      VPS. Un ROOT puede resetear el 2FA de otro ROOT; un ADMINISTRADOR **nunca**
+      resetea a un ROOT.
+    - Para el reseteo por ADMINISTRADOR, "pertenece únicamente a su cliente" cuenta
+      **todas** las membresías del usuario, también las inactivas y las de clientes
+      suspendidos.
+    - **"Recordar este dispositivo" no está disponible para ROOT.** Para los demás se
+      invalida al cambiar la contraseña por cualquier vía: el propio usuario, el
+      reseteo por mail y el reseteo por un administrador.
+    - Si un administrador empieza a exigir el 2FA, las **sesiones abiertas siguen**
+      hasta que venzan y el 2FA se pide en el próximo login.
+    - El límite de intentos de la **contraseña** es por usuario **e IP**: el BFF le
+      pasa al backend la IP real del navegador, para que un tercero no pueda
+      bloquear a un usuario. El del **código** es por usuario, porque para llegar a
+      ese paso ya hace falta la contraseña.
+    - En la configuración obligatoria, el login termina **recién cuando el usuario
+      confirma que guardó los 10 códigos**.
+    - **No hay forma de relajar el 2FA fuera de producción.** Los tests usan un
+      secreto conocido y generan el código.
+    - El aviso por mail al activar o resetear el 2FA queda fuera de alcance.
 - **Segunda etapa, punto 6 — SLA de primera respuesta y pausa del reloj**
   (decidido el 2026-10-06, ciclo `sla-primera-respuesta-y-pausa`):
   - **Cumplida** (2026-10-06, PRs #391-#422, merge `56341154`, desplegado el mismo
