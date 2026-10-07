@@ -363,9 +363,23 @@ import { RolesController } from './interface/controllers/roles.controller';
         usuarioRepo: IUsuarioRepository,
         hashProvider: IHashProvider,
         refreshTokenRepo: IRefreshTokenRepository,
+        dispositivoRepo: IDispositivoConfiableRepository,
         logger: ILogger,
-      ) => new CambiarPasswordUseCase(usuarioRepo, hashProvider, refreshTokenRepo, logger),
-      inject: [USUARIO_REPOSITORY, HASH_PROVIDER, REFRESH_TOKEN_REPOSITORY, LOGGER],
+      ) =>
+        new CambiarPasswordUseCase(
+          usuarioRepo,
+          hashProvider,
+          refreshTokenRepo,
+          dispositivoRepo,
+          logger,
+        ),
+      inject: [
+        USUARIO_REPOSITORY,
+        HASH_PROVIDER,
+        REFRESH_TOKEN_REPOSITORY,
+        DISPOSITIVO_CONFIABLE_REPOSITORY,
+        LOGGER,
+      ],
     },
     // ─── Gestión mínima de usuarios (sdd/beta-frontend/spec §5) ──────────────
     {
@@ -425,6 +439,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         membresiaRepo: IMembresiaRepository,
         hashProvider: IHashProvider,
         refreshTokenRepo: IRefreshTokenRepository,
+        dispositivoRepo: IDispositivoConfiableRepository,
         logger: ILogger,
       ) =>
         new ResetearPasswordUsuarioTenantUseCase(
@@ -432,6 +447,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           membresiaRepo,
           hashProvider,
           refreshTokenRepo,
+          dispositivoRepo,
           logger,
         ),
       inject: [
@@ -439,6 +455,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         MEMBRESIA_REPOSITORY,
         HASH_PROVIDER,
         REFRESH_TOKEN_REPOSITORY,
+        DISPOSITIVO_CONFIABLE_REPOSITORY,
         LOGGER,
       ],
     },
@@ -515,6 +532,9 @@ import { RolesController } from './interface/controllers/roles.controller';
     // revocar sesiones tras un reset exitoso — mismo criterio que los
     // tokens de arriba.
     REFRESH_TOKEN_REPOSITORY,
+    // DISPOSITIVO_CONFIABLE_REPOSITORY: ConfirmarResetPasswordUseCase revoca los
+    // dispositivos confiables antes de cambiar la contraseña (WU-6b, D5).
+    DISPOSITIVO_CONFIABLE_REPOSITORY,
   ],
 })
 export class AuthModule {}

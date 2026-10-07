@@ -26,6 +26,7 @@
  *     de cero en vez de crear un usuario nuevo o salir en silencio.
  *   - La contraseña en texto plano NUNCA se imprime ni se loguea, ni en
  *     claro ni parcial, ni en logs ni en mensajes de error.
+ *   - Revoca los dispositivos confiables del 2FA en la misma transacción.
  *   - Sale con 0 solo si el UPDATE se aplicó de verdad.
  *
  * Uso:
@@ -89,10 +90,19 @@ export async function resetPassword(
   }
 
   const passwordHash = await hashProvider.hash(env.password);
-  await masterClient.usuario.update({
-    where: { email: env.email },
-    data: { passwordHash },
-  });
+  // Fail-closed (D5): revocar los dispositivos confiables del segundo paso y
+  // cambiar la contraseña van en UNA transacción. Un fallo no deja contraseña
+  // nueva con dispositivos vivos. No toca el 2FA del usuario.
+  await masterClient.$transaction([
+    masterClient.tfaDispositivoConfiable.updateMany({
+      where: { usuarioId: existing.id, revocadoAt: null },
+      data: { revocadoAt: new Date() },
+    }),
+    masterClient.usuario.update({
+      where: { email: env.email },
+      data: { passwordHash },
+    }),
+  ]);
 }
 
 // ─── Ejecución directa (ts-node) ───────────────────────────────────────────────

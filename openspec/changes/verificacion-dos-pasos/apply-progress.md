@@ -272,3 +272,11 @@ WU-6a entera sumaba ~730 lineas de codigo y tests (presupuesto 400); el orquesta
 - Riesgo: la fila del dispositivo se crea DESPUES de rotar el ticket; si `crear` lanza, el ticket ya se gasto y el usuario vuelve a loguear.
 - Riesgo: en la desactivacion, si revocar los refresh tokens falla se loguea y se traga; el 2FA ya quedo desactivado y las sesiones abiertas siguen vivas hasta vencer.
 - Deuda de Ayuda (suspendida): el usuario ya puede desactivar su propio 2FA; la pantalla llega en WU-12 y el articulo se escribe en la tanda final.
+
+## WU-6b — Fail-closed al cambiar la contrasena (COMPLETA; tareas 6b.1 a 6b.7)
+
+- Orden nuevo, con `IDispositivoConfiableRepository.revocarTodosDe` (ya existia desde 6a-i, sin cambios al puerto) ANTES de guardar la contrasena: `CambiarPasswordUseCase` (verificar actual, hash, revocar dispositivos, save, refresh log-and-swallow), `ResetearPasswordUsuarioTenantUseCase` (igual, sobre el destino) y `ConfirmarResetPasswordUseCase` (hash en memoria, revocar dispositivos, CAS del token, save). Si la revocacion lanza, se propaga y no corre ni el CAS ni el save: el token queda vigente y el usuario reintenta o pide otro link. Ningun camino desactiva el 2FA.
+- Los casos de uso reciben `Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>` despues del repo de refresh; `auth.module.ts` lo inyecta y exporta `DISPOSITIVO_CONFIABLE_REPOSITORY` para `recuperacion-password.module.ts`.
+- `backend/scripts/reset-password.ts`: `$transaction([updateMany dispositivos, update usuario])`. Integracion: revoca y cambia; el fallo del UPDATE (byte nulo en `text`, rechazado por Postgres despues del updateMany) deja contrasena vieja y los 2 dispositivos vivos.
+- Evidencia: `src/auth` 80 archivos, 955 tests verdes; typecheck y lint limpios; ratchet de casts 617 (sin subir). ~310 lineas de codigo y tests.
+- Deuda de Ayuda (suspendida): cambiar o resetear la contrasena ahora cierra los dispositivos confiables; el articulo se escribe en la tanda final.

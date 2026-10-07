@@ -176,13 +176,13 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-6b — Fail-closed al cambiar la contraseña (~300 líneas)
 
-- [ ] 6b.1 Test unit de `CambiarPasswordUseCase`: el puerto `revocarTodosDe` lanza → `save` nunca se llama y la excepción se propaga; orden verificar actual → hash en memoria → revocar dispositivos → `save` → revocar refresh (log-and-swallow); el cambio no desactiva el 2FA. (D5, U2)
-- [ ] 6b.2 Test unit de `ResetearPasswordUsuarioTenantUseCase`: mismo contrato; revoca dispositivos del destino antes del `save`; no desactiva el 2FA del destino. (D5, U1, U2)
-- [ ] 6b.3 Test unit de `ConfirmarResetPasswordUseCase`: hash en memoria → revocar dispositivos → CAS del token → `save`; si la revocación lanza, `save` y `consumirSiVigente` nunca se llaman y el token sigue vigente; no desactiva el 2FA. (D5, O1, O2)
-- [ ] 6b.4 Aplicar el orden nuevo en `cambiar-password.use-case.ts`, `resetear-password-usuario-tenant.use-case.ts` y `confirmar-reset-password.use-case.ts`; inyectar `IDispositivoConfiableRepository`. (D5, U1, O1)
-- [ ] 6b.5 Test de integración de `backend/scripts/reset-password.ts`: `$transaction([updateMany dispositivos, update usuario])` revoca los dispositivos y cambia la contraseña de forma atómica; un fallo no deja contraseña nueva con dispositivos vivos. Respeta las reglas de scripts del repo (`eslint .` cubre `scripts/**`). (D5)
-- [ ] 6b.6 Actualizar `reset-password.ts` según 6b.5. (D5)
-- [ ] 6b.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth src/usuarios`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 6b.1 Test unit de `CambiarPasswordUseCase`: el puerto `revocarTodosDe` lanza → `save` nunca se llama y la excepción se propaga; orden verificar actual → hash en memoria → revocar dispositivos → `save` → revocar refresh (log-and-swallow); el cambio no desactiva el 2FA. (D5, U2)
+- [x] 6b.2 Test unit de `ResetearPasswordUsuarioTenantUseCase`: mismo contrato; revoca dispositivos del destino antes del `save`; no desactiva el 2FA del destino. (D5, U1, U2)
+- [x] 6b.3 Test unit de `ConfirmarResetPasswordUseCase`: hash en memoria → revocar dispositivos → CAS del token → `save`; si la revocación lanza, `save` y `consumirSiVigente` nunca se llaman y el token sigue vigente; no desactiva el 2FA. (D5, O1, O2)
+- [x] 6b.4 Aplicar el orden nuevo en `cambiar-password.use-case.ts`, `resetear-password-usuario-tenant.use-case.ts` y `confirmar-reset-password.use-case.ts`; inyectar `IDispositivoConfiableRepository`. (D5, U1, O1)
+- [x] 6b.5 Test de integración de `backend/scripts/reset-password.ts`: `$transaction([updateMany dispositivos, update usuario])` revoca los dispositivos y cambia la contraseña de forma atómica; un fallo no deja contraseña nueva con dispositivos vivos. Respeta las reglas de scripts del repo (`eslint .` cubre `scripts/**`). (D5)
+- [x] 6b.6 Actualizar `reset-password.ts` según 6b.5. (D5)
+- [x] 6b.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth src/usuarios`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-7 — Política de 2FA por cliente (~280 líneas)
 

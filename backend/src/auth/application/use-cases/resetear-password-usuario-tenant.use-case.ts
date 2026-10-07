@@ -3,6 +3,7 @@ import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import {
   MembresiaNoEncontradaError,
@@ -59,8 +60,10 @@ export type ResetearPasswordUsuarioTenantError =
  * 3. `!usuario.activo || usuario.isDeleted()` → `UsuarioNoDisponibleError`.
  * 4. `usuario.hashPassword(password, hashProvider)` (`usuario.entity.ts:191`)
  *    — ÚNICA vía. Prohibido invocar `argon2` directo.
- * 5. `usuarioRepo.save(usuario)` — punto de no retorno.
- * 6. `try { revokeAllByUsuarioId(usuarioId) } catch { logger.error(...) }` —
+ * 5. `dispositivoRepo.revocarTodosDe(usuarioId)` ANTES de guardar (fail-closed,
+ *    D5): si lanza, se propaga y `save` nunca corre. No desactiva el 2FA.
+ * 6. `usuarioRepo.save(usuario)` — punto de no retorno.
+ * 7. `try { revokeAllByUsuarioId(usuarioId) } catch { logger.error(...) }` —
  *    NO propaga el fallo, NUNCA loguea el plaintext.
  */
 export class ResetearPasswordUsuarioTenantUseCase {
@@ -69,6 +72,7 @@ export class ResetearPasswordUsuarioTenantUseCase {
     private readonly membresiaRepo: Pick<IMembresiaRepository, 'findActivaByUsuarioYCliente'>,
     private readonly hashProvider: IHashProvider,
     private readonly refreshTokenRepo: Pick<IRefreshTokenRepository, 'revokeAllByUsuarioId'>,
+    private readonly dispositivoRepo: Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>,
     private readonly logger: ILogger,
   ) {}
 
@@ -93,6 +97,7 @@ export class ResetearPasswordUsuarioTenantUseCase {
     }
 
     await usuario.hashPassword(input.password, this.hashProvider);
+    await this.dispositivoRepo.revocarTodosDe(input.usuarioId);
     await this.usuarioRepo.save(usuario);
 
     try {
