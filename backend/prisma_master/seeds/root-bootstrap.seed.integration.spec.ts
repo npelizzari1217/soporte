@@ -27,6 +27,7 @@ import {
   requireEnv,
   readRootBootstrapEnv,
   bootstrapRoot,
+  assertTotpPermitido,
   RootBootstrapAccountInactiveError,
   type RootBootstrapEnv,
 } from './root-bootstrap.seed';
@@ -37,6 +38,8 @@ import {
 } from '../../src/auth/domain/entities/usuario.entity';
 import { PrismaService } from '../../src/shared/infrastructure/persistence/prisma.service';
 import { MasterPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
+import { SecretoTotpCifrado } from '../../src/auth/application/tfa/secreto-totp-cifrado';
+import { AesGcmSecretCipher } from '../../src/shared/infrastructure/crypto/aes-gcm-secret-cipher';
 import type { IHashProvider } from '../../src/auth/domain/ports/i-hash.provider';
 
 // ─── requireEnv() / readRootBootstrapEnv() — unit, sin DB ─────────────────────
@@ -70,7 +73,12 @@ describe('requireEnv (T1.4, R2)', () => {
 
 describe('readRootBootstrapEnv (R2)', () => {
   const ORIGINAL_ENV = process.env;
-  const ALL_VARS = ['ROOT_ADMIN_EMAIL', 'ROOT_ADMIN_PASSWORD', 'ROOT_ADMIN_NOMBRE', 'ROOT_ADMIN_APELLIDO'];
+  const ALL_VARS = [
+    'ROOT_ADMIN_EMAIL',
+    'ROOT_ADMIN_PASSWORD',
+    'ROOT_ADMIN_NOMBRE',
+    'ROOT_ADMIN_APELLIDO',
+  ];
 
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV };
@@ -285,5 +293,86 @@ describe('bootstrapRoot (T1.4, integración)', () => {
     } catch (err) {
       expect((err as Error).message).not.toContain('PLAINTEXT_SECRET_MUST_NOT_LEAK');
     }
+  });
+});
+
+// ─── ROOT_ADMIN_TOTP_SECRET (L10) — lista positiva de NODE_ENV ─────────────────
+
+describe('ROOT_ADMIN_TOTP_SECRET (L10)', () => {
+  const SECRETO = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+  const EMAIL = 'root-bootstrap@integration.test';
+  let prismaService: PrismaService;
+  let masterClient: InstanceType<typeof MasterPrismaClient>;
+  let emailKeyOriginal: string | undefined;
+
+  beforeAll(() => {
+    emailKeyOriginal = process.env.EMAIL_CRYPTO_KEY;
+    process.env.EMAIL_CRYPTO_KEY = 'a'.repeat(64);
+    prismaService = new PrismaService(TEST_DB_URL);
+    masterClient = prismaService.getMasterClient();
+  });
+
+  afterAll(async () => {
+    if (emailKeyOriginal === undefined) delete process.env.EMAIL_CRYPTO_KEY;
+    else process.env.EMAIL_CRYPTO_KEY = emailKeyOriginal;
+    await prismaService.onModuleDestroy();
+  });
+
+  beforeEach(async () => {
+    await masterClient.$executeRawUnsafe(
+      'TRUNCATE TABLE membresias, refresh_tokens, usuarios RESTART IDENTITY CASCADE',
+    );
+  });
+
+  const conTotp = (): RootBootstrapEnv => makeEnv({ totpSecret: SECRETO });
+
+  it.each([undefined, 'production', 'staging', 'Production', ''])(
+    '[CRITICAL] NODE_ENV=%j con la variable presente → error y no crea ni toca el ROOT',
+    async (nodeEnv) => {
+      await expect(
+        bootstrapRoot(masterClient, conTotp(), makeFakeHashProvider(), { NODE_ENV: nodeEnv }),
+      ).rejects.toThrow(/ROOT_ADMIN_TOTP_SECRET/);
+      expect(await masterClient.usuario.count()).toBe(0);
+      expect(await masterClient.usuarioTfa.count()).toBe(0);
+    },
+  );
+
+  it('[CRITICAL] ROOT preexistente + NODE_ENV=production → error y sin 2FA', async () => {
+    await bootstrapRoot(masterClient, makeEnv(), makeFakeHashProvider(), {
+      NODE_ENV: 'production',
+    });
+    await expect(
+      bootstrapRoot(masterClient, conTotp(), makeFakeHashProvider(), { NODE_ENV: 'production' }),
+    ).rejects.toThrow(/ROOT_ADMIN_TOTP_SECRET/);
+    expect(await masterClient.usuarioTfa.count()).toBe(0);
+  });
+
+  it.each(['development', 'test'])(
+    'NODE_ENV=%s → activa el 2FA con ese secreto',
+    async (nodeEnv) => {
+      await bootstrapRoot(masterClient, conTotp(), makeFakeHashProvider(), { NODE_ENV: nodeEnv });
+
+      const root = await masterClient.usuario.findUniqueOrThrow({ where: { email: EMAIL } });
+      const tfa = await masterClient.usuarioTfa.findUniqueOrThrow({
+        where: { usuarioId: root.id },
+      });
+      expect(tfa.confirmadoAt).not.toBeNull();
+      expect(
+        new SecretoTotpCifrado(new AesGcmSecretCipher())
+          .descifrar(root.id, tfa.secretoCifrado!)
+          .getValue(),
+      ).toBe(SECRETO);
+    },
+  );
+
+  it('sin la variable el ROOT no queda con 2FA (configuración forzada) en cualquier NODE_ENV', async () => {
+    await bootstrapRoot(masterClient, makeEnv(), makeFakeHashProvider(), {
+      NODE_ENV: 'production',
+    });
+    expect(await masterClient.usuarioTfa.count()).toBe(0);
+  });
+
+  it('rechaza un secreto que no es base32', () => {
+    expect(() => assertTotpPermitido('no es base32', 'test')).toThrow(/base32/);
   });
 });

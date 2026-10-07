@@ -16,6 +16,7 @@ import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IPasswordResetTokenRepository } from '../../domain/ports/i-password-reset-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { ICorreoDeCliente } from '../../domain/ports/i-correo-de-cliente.port';
 import { ITareasSegundoPlano } from '../../../shared/domain/ports/i-tareas-segundo-plano.port';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -97,6 +98,12 @@ const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
   save: unstubbed('save'),
 });
 
+const makeDispositivoRepo = (): Mocked<
+  Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>
+> => ({
+  revocarTodosDe: vi.fn().mockResolvedValue(undefined),
+});
+
 const makeCorreoDeCliente = (): Mocked<ICorreoDeCliente> => ({
   estado: vi.fn().mockResolvedValue('LISTO'),
   enviar: vi.fn().mockResolvedValue(undefined),
@@ -111,6 +118,7 @@ describe('ConfirmarResetPasswordUseCase', () => {
   let usuarioRepo: Mocked<IUsuarioRepository>;
   let hashProvider: Mocked<IHashProvider>;
   let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
+  let dispositivoRepo: Mocked<Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>>;
   let correoDeCliente: Mocked<ICorreoDeCliente>;
   let tareas: Mocked<ITareasSegundoPlano>;
   let logger: Mocked<ILogger>;
@@ -121,6 +129,7 @@ describe('ConfirmarResetPasswordUseCase', () => {
     usuarioRepo = makeUsuarioRepo();
     hashProvider = makeHashProvider();
     refreshTokenRepo = makeRefreshTokenRepo();
+    dispositivoRepo = makeDispositivoRepo();
     correoDeCliente = makeCorreoDeCliente();
     tareas = makeTareas();
     logger = makeLogger();
@@ -129,10 +138,61 @@ describe('ConfirmarResetPasswordUseCase', () => {
       usuarioRepo,
       hashProvider,
       refreshTokenRepo,
+      dispositivoRepo,
       correoDeCliente,
       tareas,
       logger,
     );
+  });
+
+  describe('Dispositivos confiables fail-closed (D5, O1, O2)', () => {
+    it('si revocarTodosDe lanza: propaga, y ni el CAS ni save corren (el token sigue vigente)', async () => {
+      const token = makeToken();
+      tokenRepo.findByHash.mockResolvedValue(token);
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      dispositivoRepo.revocarTodosDe.mockRejectedValue(new Error('boom'));
+
+      await expect(useCase.ejecutar(TOKEN_CRUDO, PASSWORD_NUEVA)).rejects.toThrow('boom');
+
+      expect(tokenRepo.consumirSiVigente).not.toHaveBeenCalled();
+      expect(usuarioRepo.save).not.toHaveBeenCalled();
+      expect(refreshTokenRepo.revokeAllByUsuarioId).not.toHaveBeenCalled();
+      expect(tareas.lanzar).not.toHaveBeenCalled();
+    });
+
+    it('orden: hash en memoria → revocar dispositivos → CAS del token → save', async () => {
+      const usuario = makeUsuario();
+      tokenRepo.findByHash.mockResolvedValue(makeToken());
+      usuarioRepo.findById.mockResolvedValue(usuario);
+      const orden: string[] = [];
+      hashProvider.hash.mockImplementation(async () => {
+        orden.push('hash');
+        return 'nuevo-hash';
+      });
+      dispositivoRepo.revocarTodosDe.mockImplementation(async () => {
+        orden.push('dispositivos');
+      });
+      tokenRepo.consumirSiVigente.mockImplementation(async () => {
+        orden.push('cas');
+        return true;
+      });
+      usuarioRepo.save.mockImplementation(async () => {
+        orden.push('save');
+      });
+
+      await useCase.ejecutar(TOKEN_CRUDO, PASSWORD_NUEVA);
+
+      expect(orden).toEqual(['hash', 'dispositivos', 'cas', 'save']);
+      expect(dispositivoRepo.revocarTodosDe).toHaveBeenCalledWith(usuario.id);
+    });
+
+    it('token inválido o cuenta no disponible: no revoca dispositivos', async () => {
+      tokenRepo.findByHash.mockResolvedValue(null);
+
+      await useCase.ejecutar(TOKEN_CRUDO, PASSWORD_NUEVA);
+
+      expect(dispositivoRepo.revocarTodosDe).not.toHaveBeenCalled();
+    });
   });
 
   describe('Las 4 causas de token inválido dan el mismo error', () => {

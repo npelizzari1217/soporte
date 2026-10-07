@@ -65,6 +65,23 @@ async function tomarTurno(client, clave) {
 }
 
 /**
+ * Vacia `auth_intentos_fallidos` de la master de test una vez por corrida (I8): el estado del
+ * limitador sobrevive entre corridas y arrastraria bloqueos a los e2e que hacen login. Corre con
+ * el turno tomado, asi que no pisa a una corrida viva. Nunca aborta la suite.
+ */
+async function vaciarIntentosFallidos(urlMaster) {
+  let client;
+  try {
+    client = await conectar(urlMaster);
+    await client.query('TRUNCATE auth_intentos_fallidos');
+  } catch (error) {
+    console.warn(`${PREFIJO} No se pudo vaciar auth_intentos_fallidos: ${error.message}`);
+  } finally {
+    await client?.end();
+  }
+}
+
+/**
  * Lee los `db_name` de los tenants reales.
  * @returns {Promise<string[] | null>} `null` si no se pudo leer (y entonces no se barre).
  */
@@ -104,6 +121,7 @@ export default async function globalSetup() {
     }
 
     try {
+      await vaciarIntentosFallidos(urlMaster);
       const dbNamesRegistrados = await leerRegistroDeClientes(urlMaster);
       if (dbNamesRegistrados === null) return;
 

@@ -28,6 +28,8 @@ import {
   UsuarioNoDisponibleError,
 } from '../../domain/errors/auth.errors';
 import * as AuthErrors from '../../domain/errors/auth.errors';
+
+const REQ = { headers: {}, socket: { remoteAddress: '127.0.0.1' } };
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
@@ -88,10 +90,14 @@ describe('AuthController (T6.5)', () => {
         Result.ok({ kind: 'tokens', accessToken: 'at', refreshToken: 'rt' }),
       );
 
-      const result = await controller.login({ email: 'a@a.com', password: 'pw' } as any);
+      const result = await controller.login({ email: 'a@a.com', password: 'pw' } as any, REQ);
 
       expect(result).toEqual({ accessToken: 'at', refreshToken: 'rt' });
-      expect(loginUseCase.execute).toHaveBeenCalledWith({ email: 'a@a.com', password: 'pw' });
+      expect(loginUseCase.execute).toHaveBeenCalledWith({
+        email: 'a@a.com',
+        password: 'pw',
+        ip: 'sin-ip',
+      });
     });
 
     it('>1 membresías sin clienteId → 200 { needsClienteSelection: true, membresias }', async () => {
@@ -99,7 +105,7 @@ describe('AuthController (T6.5)', () => {
       const membresias = [{ cliente_id: 'c1', nombre: 'C1', rol: 'TECNICO' }];
       loginUseCase.execute.mockResolvedValue(Result.ok({ kind: 'selection', membresias }));
 
-      const result = await controller.login({ email: 'a@a.com', password: 'pw' } as any);
+      const result = await controller.login({ email: 'a@a.com', password: 'pw' } as any, REQ);
 
       expect(result).toEqual({ needsClienteSelection: true, membresias });
     });
@@ -108,18 +114,18 @@ describe('AuthController (T6.5)', () => {
       const { controller, loginUseCase } = buildController();
       loginUseCase.execute.mockResolvedValue(Result.fail(new CredencialesInvalidasError()));
 
-      await expect(controller.login({ email: 'a@a.com', password: 'bad' } as any)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(
+        controller.login({ email: 'a@a.com', password: 'bad' } as any, REQ),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('0 membresías activas → ForbiddenException', async () => {
       const { controller, loginUseCase } = buildController();
       loginUseCase.execute.mockResolvedValue(Result.fail(new SinMembresiaActivaError()));
 
-      await expect(controller.login({ email: 'a@a.com', password: 'pw' } as any)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(
+        controller.login({ email: 'a@a.com', password: 'pw' } as any, REQ),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it('clienteId no autorizado → ForbiddenException', async () => {
@@ -127,7 +133,7 @@ describe('AuthController (T6.5)', () => {
       loginUseCase.execute.mockResolvedValue(Result.fail(new ClienteNoAutorizadoError()));
 
       await expect(
-        controller.login({ email: 'a@a.com', password: 'pw', clienteId: 'x' } as any),
+        controller.login({ email: 'a@a.com', password: 'pw', clienteId: 'x' } as any, REQ),
       ).rejects.toThrow(ForbiddenException);
     });
   });

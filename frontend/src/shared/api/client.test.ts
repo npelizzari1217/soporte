@@ -149,4 +149,50 @@ describe("apiFetch", () => {
     expect(capturedContentType).toContain("application/json");
     expect(capturedBody).toEqual({ nombre: "Nuevo ticket" });
   });
+
+  it.each([
+    "auth/login",
+    "auth/2fa/verificar",
+    "auth/2fa/enrolamiento/iniciar",
+    "auth/2fa/enrolamiento/confirmar",
+    "auth/login/continuar",
+    "auth/login/seleccionar",
+  ])("401 en %s → NO refresca ni reintenta (no re-postea la contraseña)", async (ruta) => {
+    let llamadas = 0;
+    let refrescos = 0;
+    server.use(
+      http.post(`/api/${ruta}`, () => {
+        llamadas += 1;
+        return HttpResponse.json({ statusCode: 401, message: "No" }, { status: 401 });
+      }),
+      http.post("/api/auth/refresh", () => {
+        refrescos += 1;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    await expect(apiFetch(ruta, { method: "POST", json: {} })).rejects.toBeInstanceOf(ApiError);
+    expect(llamadas).toBe(1);
+    expect(refrescos).toBe(0);
+  });
+
+  it("401 en una ruta fuera del set (auth/2fa) sí refresca y reintenta", async () => {
+    let refrescos = 0;
+    let llamadas = 0;
+    server.use(
+      http.get("/api/auth/2fa", () => {
+        llamadas += 1;
+        return llamadas === 1
+          ? new HttpResponse(null, { status: 401 })
+          : HttpResponse.json({ activo: true });
+      }),
+      http.post("/api/auth/refresh", () => {
+        refrescos += 1;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    expect(await apiFetch("auth/2fa")).toEqual({ activo: true });
+    expect(refrescos).toBe(1);
+  });
 });

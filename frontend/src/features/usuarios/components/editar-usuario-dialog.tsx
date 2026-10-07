@@ -29,9 +29,11 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ApiError } from "@/shared/api/types";
 import {
   useEditarUsuarioTenant,
+  useResetearTfaUsuarioTenant,
   useResetearPasswordUsuarioTenant,
 } from "../hooks/use-usuarios-tenant-mutations";
 import { editarUsuarioSchema, type EditarUsuarioFormValues } from "../schemas";
@@ -51,6 +53,7 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
   const [open, setOpen] = useState(false);
   const identidadMutation = useEditarUsuarioTenant(usuario.id);
   const passwordMutation = useResetearPasswordUsuarioTenant(usuario.id);
+  const tfaMutation = useResetearTfaUsuarioTenant(usuario.id);
   const defaults: EditarUsuarioFormValues = {
     nombre: usuario.nombre,
     apellido: usuario.apellido,
@@ -103,6 +106,14 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
 
     toast.success("Usuario actualizado. Contraseña restablecida: las sesiones del usuario se cerraron.");
     setOpen(false);
+  }
+
+  function resetearTfa() {
+    tfaMutation.mutate(undefined, {
+      onSuccess: () => toast.success("2FA reseteado. Deberá configurarlo de nuevo en su próximo ingreso si está obligado."),
+      // Cualquier caso no permitido llega como 404: mensaje neutro, sin el motivo.
+      onError: () => toast.error("No se pudo resetear el 2FA de este usuario."),
+    });
   }
 
   return (
@@ -211,6 +222,25 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
             </Button>
           </div>
         </form>
+
+        <div className="flex flex-col gap-1 border-t border-white/10 pt-3">
+          <ConfirmDialog
+            trigger={
+              <Button type="button" size="sm" variant="outline" className="self-start">
+                Resetear 2FA
+              </Button>
+            }
+            title="Resetear 2FA"
+            description={`¿Confirmás resetear la verificación en dos pasos de "${usuario.nombre} ${usuario.apellido}"? Si su cliente o su rol lo obligan, tendrá que configurarla de nuevo en su próximo ingreso.`}
+            confirmLabel="Resetear"
+            confirmVariant="destructive"
+            isConfirming={tfaMutation.isPending}
+            onConfirm={resetearTfa}
+          />
+          <p className="text-xs text-muted-foreground">
+            Usalo si perdió el celular y los códigos de recuperación.
+          </p>
+        </div>
       </DialogContent>
     </Dialog>
   );

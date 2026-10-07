@@ -20,6 +20,8 @@ export interface MembresiaResuelta {
   clienteId: string;
   clienteNombre: string;
   rolCodigo: string;
+  /** Politica del cliente (L3, C3): una membresia activa con `true` obliga al usuario a tener 2FA. */
+  clienteRequiere2fa: boolean;
 }
 
 /**
@@ -65,6 +67,14 @@ export interface IMembresiaRepository {
     usuarioId: string,
     clienteId: string,
   ): Promise<MembresiaResuelta | null>;
+
+  /**
+   * Ids de TODOS los clientes donde el usuario tiene una membresía, SIN ningún
+   * filtro: cuentan las inactivas, las soft-deleted y las de clientes suspendidos
+   * o borrados. Es la base del reseteo de 2FA por un ADMINISTRADOR (ADR-8): ante
+   * la duda el reseteo queda en manos de ROOT.
+   */
+  findClientesDeTodasByUsuario(usuarioId: string): Promise<string[]>;
 
   /**
    * Retorna TODAS las membresías ACTIVAS del cliente dado, con el usuario y

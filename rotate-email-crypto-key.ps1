@@ -1,5 +1,6 @@
-# rotate-email-crypto-key.ps1 - Rota EMAIL_CRYPTO_KEY re-cifrando
-# clientes.smtp_password_cifrada de OLD_KEY a NEW_KEY (VPS Windows).
+# rotate-email-crypto-key.ps1 - Rota EMAIL_CRYPTO_KEY re-cifrando de OLD_KEY a NEW_KEY
+# todo lo que esa clave protege (VPS Windows): clientes.smtp_password_cifrada,
+# usuarios_tfa.secreto_cifrado y usuarios_tfa.secreto_pendiente_cifrado (2FA).
 # 100% ASCII (PS 5.1 lee .ps1 sin BOM como ANSI: un solo caracter no-ASCII
 # corrompe el parseo, igual que rotate-admin-pw.ps1).
 #

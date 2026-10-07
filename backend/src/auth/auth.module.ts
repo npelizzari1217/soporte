@@ -58,11 +58,51 @@ import { PrismaClienteRepository } from '../clientes/infrastructure/persistence/
 import { HASH_PROVIDER } from './domain/ports/i-hash.provider';
 import { TOKEN_SERVICE, ITokenService } from './domain/ports/i-token.service';
 import { Argon2HashProvider } from './infrastructure/argon2-hash.provider';
+import { LIMITADOR_INTENTOS, ILimitadorIntentos } from './domain/ports/limitador-intentos.port';
+import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import { PrismaLimitadorIntentos } from './infrastructure/tfa/prisma-limitador-intentos';
+import { ITfaRepository, TFA_REPOSITORY } from './domain/ports/tfa-repository.port';
+import {
+  DISPOSITIVO_CONFIABLE_REPOSITORY,
+  IDispositivoConfiableRepository,
+} from './domain/ports/dispositivo-confiable-repository.port';
+import { PrismaDispositivoConfiableRepository } from './infrastructure/tfa/prisma-dispositivo-confiable.repository';
+import { DesactivarTfaUseCase } from './application/tfa/desactivar-tfa.use-case';
+import { ResetearTfaUsuarioUseCase } from './application/tfa/resetear-tfa-usuario.use-case';
+import { PrismaTfaRepository } from './infrastructure/tfa/prisma-tfa.repository';
+import { TOTP_SERVICE } from './domain/ports/totp-service.port';
+import { TotpNativoService } from './infrastructure/tfa/totp-nativo.service';
+import { SecretoTotpCifrado } from './application/tfa/secreto-totp-cifrado';
+import { VerificadorCodigoTfa } from './application/tfa/verificador-codigo-tfa';
+import { ConfirmadorSecretoPendiente } from './application/tfa/confirmador-secreto-pendiente';
+import {
+  ConfirmarSecretoTfa,
+  IniciarSecretoTfa,
+  ObtenerEstadoTfa,
+  RegenerarCodigosTfa,
+} from './application/tfa/tfa-cuenta.use-cases';
+import { TfaCuentaController } from './interface/controllers/tfa-cuenta.controller';
 import { JwtTokenService } from './infrastructure/jwt-token.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
 
 // ─── Use Cases ───────────────────────────────────────────────────────────────
+import {
+  DESAFIO_LOGIN_REPOSITORY,
+  IDesafioLoginRepository,
+} from './domain/ports/desafio-login-repository.port';
+import { PrismaDesafioLoginRepository } from './infrastructure/tfa/prisma-desafio-login.repository';
+import {
+  ConfirmarEnrolamientoLoginUseCase,
+  IniciarEnrolamientoLoginUseCase,
+  VerificarDesafioUseCase,
+} from './application/tfa/desafio-login.use-cases';
+import {
+  ContinuarLoginUseCase,
+  SeleccionarClienteLoginUseCase,
+} from './application/tfa/continuar-login.use-cases';
+import { EmitirSesionService } from './application/emitir-sesion.service';
+import { TfaLoginController } from './interface/controllers/tfa-login.controller';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-case';
 import { LogoutUseCase } from './application/use-cases/logout.use-case';
@@ -106,7 +146,13 @@ import { RolesController } from './interface/controllers/roles.controller';
       signOptions: { expiresIn: '15m', algorithm: 'HS256' },
     }),
   ],
-  controllers: [AuthController, UsuariosController, RolesController],
+  controllers: [
+    AuthController,
+    UsuariosController,
+    RolesController,
+    TfaCuentaController,
+    TfaLoginController,
+  ],
   providers: [
     // ─── Repositories ──────────────────────────────────────────────────────
     { provide: USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
@@ -123,9 +169,78 @@ import { RolesController } from './interface/controllers/roles.controller';
     // cliente activo. ClientesModule NO exporta este token todavía.
     { provide: CLIENTE_REPOSITORY, useClass: PrismaClienteRepository },
 
+    { provide: TFA_REPOSITORY, useClass: PrismaTfaRepository },
+    // Dispositivos confiables (WU-6a): los consume el LoginUseCase.
+    { provide: DISPOSITIVO_CONFIABLE_REPOSITORY, useClass: PrismaDispositivoConfiableRepository },
+    { provide: TOTP_SERVICE, useClass: TotpNativoService },
+    // 2FA (sdd/verificacion-dos-pasos): primer consumidor, la autogestion de WU-4c.
+    SecretoTotpCifrado,
+    VerificadorCodigoTfa,
+    ConfirmadorSecretoPendiente,
+    ObtenerEstadoTfa,
+    IniciarSecretoTfa,
+    ConfirmarSecretoTfa,
+    RegenerarCodigosTfa,
+    DesactivarTfaUseCase,
+    ResetearTfaUsuarioUseCase,
+    // Login con segundo paso (WU-5a): desafios opacos y sus use cases, aun sin rutas (WU-5b).
+    {
+      provide: DESAFIO_LOGIN_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaDesafioLoginRepository(prisma),
+      inject: [PrismaService],
+    },
+    VerificarDesafioUseCase,
+    IniciarEnrolamientoLoginUseCase,
+    ConfirmarEnrolamientoLoginUseCase,
+    // Continuar y seleccionar (WU-5b): unico punto donde el flujo de 2FA emite sesion.
+    {
+      provide: EmitirSesionService,
+      useFactory: (
+        membresiaRepo: IMembresiaRepository,
+        clienteRepo: IClienteRepository,
+        tokenService: ITokenService,
+        refreshTokenRepo: IRefreshTokenRepository,
+        permisosRepo: IMatrizPermisosRepository,
+      ) =>
+        new EmitirSesionService(
+          membresiaRepo,
+          clienteRepo,
+          tokenService,
+          refreshTokenRepo,
+          permisosRepo,
+        ),
+      inject: [
+        MEMBRESIA_REPOSITORY,
+        CLIENTE_REPOSITORY,
+        TOKEN_SERVICE,
+        REFRESH_TOKEN_REPOSITORY,
+        MATRIZ_PERMISOS_REPOSITORY,
+      ],
+    },
+    ...[ContinuarLoginUseCase, SeleccionarClienteLoginUseCase].map((UseCase) => ({
+      provide: UseCase,
+      useFactory: (
+        desafios: IDesafioLoginRepository,
+        usuarioRepo: IUsuarioRepository,
+        membresiaRepo: IMembresiaRepository,
+        emitirSesion: EmitirSesionService,
+      ) => new UseCase(desafios, usuarioRepo, membresiaRepo, emitirSesion),
+      inject: [
+        DESAFIO_LOGIN_REPOSITORY,
+        USUARIO_REPOSITORY,
+        MEMBRESIA_REPOSITORY,
+        EmitirSesionService,
+      ],
+    })),
+
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
     { provide: TOKEN_SERVICE, useClass: JwtTokenService },
+    {
+      provide: LIMITADOR_INTENTOS,
+      useFactory: (prisma: PrismaService) => new PrismaLimitadorIntentos(prisma),
+      inject: [PrismaService],
+    },
     // LOGGER: provisto globalmente por SharedModule (@Global) — no se
     // redeclara acá, solo se inyecta vía el token en el factory de abajo.
 
@@ -140,6 +255,10 @@ import { RolesController } from './interface/controllers/roles.controller';
         tokenService: ITokenService,
         refreshTokenRepo: IRefreshTokenRepository,
         permisosRepo: IMatrizPermisosRepository,
+        limitador: ILimitadorIntentos,
+        tfaRepo: ITfaRepository,
+        desafios: IDesafioLoginRepository,
+        dispositivos: IDispositivoConfiableRepository,
       ) =>
         new LoginUseCase(
           usuarioRepo,
@@ -149,6 +268,10 @@ import { RolesController } from './interface/controllers/roles.controller';
           tokenService,
           refreshTokenRepo,
           permisosRepo,
+          limitador,
+          tfaRepo,
+          desafios,
+          dispositivos,
         ),
       inject: [
         USUARIO_REPOSITORY,
@@ -158,6 +281,10 @@ import { RolesController } from './interface/controllers/roles.controller';
         TOKEN_SERVICE,
         REFRESH_TOKEN_REPOSITORY,
         MATRIZ_PERMISOS_REPOSITORY,
+        LIMITADOR_INTENTOS,
+        TFA_REPOSITORY,
+        DESAFIO_LOGIN_REPOSITORY,
+        DISPOSITIVO_CONFIABLE_REPOSITORY,
       ],
     },
     {
@@ -238,9 +365,23 @@ import { RolesController } from './interface/controllers/roles.controller';
         usuarioRepo: IUsuarioRepository,
         hashProvider: IHashProvider,
         refreshTokenRepo: IRefreshTokenRepository,
+        dispositivoRepo: IDispositivoConfiableRepository,
         logger: ILogger,
-      ) => new CambiarPasswordUseCase(usuarioRepo, hashProvider, refreshTokenRepo, logger),
-      inject: [USUARIO_REPOSITORY, HASH_PROVIDER, REFRESH_TOKEN_REPOSITORY, LOGGER],
+      ) =>
+        new CambiarPasswordUseCase(
+          usuarioRepo,
+          hashProvider,
+          refreshTokenRepo,
+          dispositivoRepo,
+          logger,
+        ),
+      inject: [
+        USUARIO_REPOSITORY,
+        HASH_PROVIDER,
+        REFRESH_TOKEN_REPOSITORY,
+        DISPOSITIVO_CONFIABLE_REPOSITORY,
+        LOGGER,
+      ],
     },
     // ─── Gestión mínima de usuarios (sdd/beta-frontend/spec §5) ──────────────
     {
@@ -300,6 +441,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         membresiaRepo: IMembresiaRepository,
         hashProvider: IHashProvider,
         refreshTokenRepo: IRefreshTokenRepository,
+        dispositivoRepo: IDispositivoConfiableRepository,
         logger: ILogger,
       ) =>
         new ResetearPasswordUsuarioTenantUseCase(
@@ -307,6 +449,7 @@ import { RolesController } from './interface/controllers/roles.controller';
           membresiaRepo,
           hashProvider,
           refreshTokenRepo,
+          dispositivoRepo,
           logger,
         ),
       inject: [
@@ -314,6 +457,7 @@ import { RolesController } from './interface/controllers/roles.controller';
         MEMBRESIA_REPOSITORY,
         HASH_PROVIDER,
         REFRESH_TOKEN_REPOSITORY,
+        DISPOSITIVO_CONFIABLE_REPOSITORY,
         LOGGER,
       ],
     },
@@ -390,6 +534,9 @@ import { RolesController } from './interface/controllers/roles.controller';
     // revocar sesiones tras un reset exitoso — mismo criterio que los
     // tokens de arriba.
     REFRESH_TOKEN_REPOSITORY,
+    // DISPOSITIVO_CONFIABLE_REPOSITORY: ConfirmarResetPasswordUseCase revoca los
+    // dispositivos confiables antes de cambiar la contraseña (WU-6b, D5).
+    DISPOSITIVO_CONFIABLE_REPOSITORY,
   ],
 })
 export class AuthModule {}

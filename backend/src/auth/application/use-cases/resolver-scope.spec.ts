@@ -61,6 +61,7 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
+  clienteRequiere2fa: false,
   ...overrides,
 });
 
@@ -69,6 +70,8 @@ const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findByDbName: vi.fn(),
   findBySlug: vi.fn(),
   congelarSlug: vi.fn(),
+  fijarRequiere2fa: vi.fn(),
+  obtenerRequiere2fa: vi.fn(),
   cambiarSlugSiNoCongelado: vi.fn(),
   findAll: vi.fn(),
   save: vi.fn(),
@@ -79,6 +82,7 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByUsuario: vi.fn(),
   findActivaByUsuarioYCliente: vi.fn(),
   findActivasByCliente: vi.fn(),
+  findClientesDeTodasByUsuario: vi.fn(),
   findByUsuarioYCliente: vi.fn(),
   create: vi.fn().mockResolvedValue(undefined),
   save: vi.fn().mockResolvedValue(undefined),

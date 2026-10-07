@@ -58,6 +58,8 @@ function makeClienteRepo(): IClienteRepository {
     findByDbName: vi.fn(),
     findBySlug: vi.fn(),
     congelarSlug: vi.fn(),
+    fijarRequiere2fa: vi.fn(),
+    obtenerRequiere2fa: vi.fn(),
     cambiarSlugSiNoCongelado: vi.fn(),
     findAll: vi.fn(),
     save: vi.fn().mockResolvedValue(undefined),
@@ -82,6 +84,7 @@ function makeMembresiaRepo(): IMembresiaRepository {
     findActivasByUsuario: unstubbed('findActivasByUsuario'),
     findActivaByUsuarioYCliente: unstubbed('findActivaByUsuarioYCliente'),
     findActivasByCliente: unstubbed('findActivasByCliente'),
+    findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
     findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
     save: unstubbed('save'),
   };

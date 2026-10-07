@@ -71,6 +71,7 @@ export class ClienteMapper {
     | 'smtpVerificacionError'
     | 'slug'
     | 'slugCongeladoAt'
+    | 'requiere2fa'
   > {
     return {
       id: entity.id,

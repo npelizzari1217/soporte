@@ -25,6 +25,7 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import {
   UsuarioNoDisponibleError,
@@ -77,6 +78,12 @@ const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
   save: unstubbed('save'),
 });
 
+const makeDispositivoRepo = (): Mocked<
+  Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>
+> => ({
+  revocarTodosDe: vi.fn().mockResolvedValue(undefined),
+});
+
 const makeLogger = (): Mocked<ILogger> => ({
   error: vi.fn(),
   // El camino feliz nunca audita por `log()` — solo degrada por `error()`.
@@ -87,6 +94,7 @@ describe('CambiarPasswordUseCase', () => {
   let usuarioRepo: Mocked<IUsuarioRepository>;
   let hashProvider: Mocked<IHashProvider>;
   let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
+  let dispositivoRepo: Mocked<Pick<IDispositivoConfiableRepository, 'revocarTodosDe'>>;
   let logger: Mocked<ILogger>;
   let useCase: CambiarPasswordUseCase;
 
@@ -94,8 +102,15 @@ describe('CambiarPasswordUseCase', () => {
     usuarioRepo = makeUsuarioRepo();
     hashProvider = makeHashProvider();
     refreshTokenRepo = makeRefreshTokenRepo();
+    dispositivoRepo = makeDispositivoRepo();
     logger = makeLogger();
-    useCase = new CambiarPasswordUseCase(usuarioRepo, hashProvider, refreshTokenRepo, logger);
+    useCase = new CambiarPasswordUseCase(
+      usuarioRepo,
+      hashProvider,
+      refreshTokenRepo,
+      dispositivoRepo,
+      logger,
+    );
   });
 
   describe('Cambio exitoso', () => {
@@ -171,6 +186,60 @@ describe('CambiarPasswordUseCase', () => {
       });
 
       expect(orden).toEqual(['save', 'revoke']);
+    });
+  });
+
+  describe('Dispositivos confiables fail-closed (D5, U2)', () => {
+    const dto = {
+      usuarioId: USUARIO_ID,
+      passwordActual: PASSWORD_ACTUAL,
+      passwordNueva: PASSWORD_NUEVA,
+    };
+
+    it('si revocarTodosDe lanza, la excepción se propaga y save nunca se llama', async () => {
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      dispositivoRepo.revocarTodosDe.mockRejectedValue(new Error('boom'));
+
+      await expect(useCase.execute(dto)).rejects.toThrow('boom');
+
+      expect(usuarioRepo.save).not.toHaveBeenCalled();
+      expect(refreshTokenRepo.revokeAllByUsuarioId).not.toHaveBeenCalled();
+    });
+
+    it('orden: verificar actual → hash → revocar dispositivos → save → revocar refresh', async () => {
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      const orden: string[] = [];
+      hashProvider.verify.mockImplementation(async () => {
+        orden.push('verify');
+        return true;
+      });
+      hashProvider.hash.mockImplementation(async () => {
+        orden.push('hash');
+        return 'nuevo-hash';
+      });
+      dispositivoRepo.revocarTodosDe.mockImplementation(async () => {
+        orden.push('dispositivos');
+      });
+      usuarioRepo.save.mockImplementation(async () => {
+        orden.push('save');
+      });
+      refreshTokenRepo.revokeAllByUsuarioId.mockImplementation(async () => {
+        orden.push('refresh');
+      });
+
+      await useCase.execute(dto);
+
+      expect(orden).toEqual(['verify', 'hash', 'dispositivos', 'save', 'refresh']);
+      expect(dispositivoRepo.revocarTodosDe).toHaveBeenCalledWith(USUARIO_ID);
+    });
+
+    it('contraseña actual incorrecta: no revoca dispositivos', async () => {
+      usuarioRepo.findById.mockResolvedValue(makeUsuario());
+      hashProvider.verify.mockResolvedValue(false);
+
+      await useCase.execute(dto);
+
+      expect(dispositivoRepo.revocarTodosDe).not.toHaveBeenCalled();
     });
   });
 

@@ -33,6 +33,7 @@ import {
   HttpStatus,
   Inject,
   Post,
+  Req,
   UnauthorizedException,
   UnprocessableEntityException,
   UseGuards,
@@ -51,7 +52,7 @@ import {
   LoginRequestDto,
   LogoutRequestDto,
   RefreshRequestDto,
-  SelectionResponseDto,
+  LoginResponseDto,
   SwitchTenantRequestDto,
   SwitchTenantResponseDto,
   TokensResponseDto,
@@ -67,6 +68,7 @@ import {
   TokenRevocadoError,
   UsuarioNoDisponibleError,
 } from '../../domain/errors/auth.errors';
+import { ipDelNavegador, RequestConIp } from '../ip-del-navegador';
 import { DomainError } from '../../../shared/domain/result';
 import { ILogger, LOGGER } from '../../../shared/domain/ports/i-logger.port';
 
@@ -138,11 +140,15 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginRequestDto): Promise<TokensResponseDto | SelectionResponseDto> {
+  async login(@Body() dto: LoginRequestDto, @Req() req: RequestConIp): Promise<LoginResponseDto> {
     const result = await this.loginUseCase.execute({
       email: dto.email,
       password: dto.password,
+      ip: ipDelNavegador(req),
       ...(dto.clienteId !== undefined ? { clienteId: dto.clienteId } : {}),
+      ...(dto.dispositivoConfiable !== undefined
+        ? { dispositivoConfiable: dto.dispositivoConfiable }
+        : {}),
     });
 
     if (result.isFail()) {
@@ -151,7 +157,17 @@ export class AuthController {
 
     const value = result.getValue();
     if (value.kind === 'selection') {
-      return { needsClienteSelection: true, membresias: value.membresias };
+      return { needsClienteSelection: true, membresias: value.membresias, ticket: value.ticket };
+    }
+    if (value.kind === 'needs2fa') {
+      return {
+        needs2fa: true,
+        desafio: value.desafio,
+        recordarDisponible: value.recordarDisponible,
+      };
+    }
+    if (value.kind === 'needsEnrolamiento2fa') {
+      return { needsEnrolamiento2fa: true, desafio: value.desafio };
     }
     return { accessToken: value.accessToken, refreshToken: value.refreshToken };
   }

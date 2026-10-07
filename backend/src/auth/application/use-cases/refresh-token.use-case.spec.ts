@@ -106,6 +106,7 @@ const makeMembresiaResuelta = (overrides: Partial<MembresiaResuelta> = {}): Memb
   clienteId: 'cliente-1',
   clienteNombre: 'Acme SA',
   rolCodigo: 'TECNICO',
+  clienteRequiere2fa: false,
   ...overrides,
 });
 
@@ -128,6 +129,7 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   // RefreshTokenUseCase nunca crea/muta membresías, solo las lee vía
   // resolverScope: un stub mudo taparía que producción empiece a llamarlos.
   findActivasByCliente: unstubbed('findActivasByCliente'),
+  findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
   findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
   create: unstubbed('create'),
   save: unstubbed('save'),
@@ -138,6 +140,8 @@ const makeClienteRepo = (): Mocked<IClienteRepository> => ({
   findByDbName: vi.fn(),
   findBySlug: vi.fn(),
   congelarSlug: vi.fn(),
+  fijarRequiere2fa: vi.fn(),
+  obtenerRequiere2fa: vi.fn(),
   cambiarSlugSiNoCongelado: vi.fn(),
   findAll: vi.fn(),
   save: vi.fn(),

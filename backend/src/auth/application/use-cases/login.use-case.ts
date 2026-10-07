@@ -6,17 +6,20 @@ import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository'
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
-import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
+import { ITokenService } from '../../domain/ports/i-token.service';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
-import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import {
   CredencialesInvalidasError,
   SinMembresiaActivaError,
 } from '../../domain/errors/auth.errors';
-import { resolverScope } from './resolver-scope';
-
-/** Duración del refresh token: 7 días en milisegundos (R7). */
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
+import { normalizarEmail } from '../../domain/tfa/formato-codigo';
+import { EmitirSesionService } from '../emitir-sesion.service';
+import { ITfaRepository } from '../../domain/ports/tfa-repository.port';
+import { IDesafioLoginRepository } from '../../domain/ports/desafio-login-repository.port';
+import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
+import { hashTokenDispositivo } from '../tfa/token-dispositivo';
 
 /**
  * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
@@ -44,6 +47,10 @@ export interface LoginDto {
   password: string;
   /** Cliente elegido explícitamente (R5). Ausente = auto-resolución (R4). */
   clienteId?: string;
+  /** IP del navegador para el limitador (I4). Ausente = `sin-ip`. */
+  ip?: string;
+  /** Token del dispositivo confiable que el BFF lee de su cookie `td` (D3). */
+  dispositivoConfiable?: string;
 }
 
 /** Vista de una membresía para el selector de cliente del front (R4, R27). */
@@ -57,12 +64,16 @@ export interface MembresiaView {
  * LoginResult — resultado del login.
  * - `tokens`: credenciales válidas y scope resuelto → JWT + refresh emitidos.
  * - `selection`: usuario normal con >1 membresías activas y sin `clienteId`
- *   explícito → el front debe mostrar el selector y re-postear con el
- *   `clienteId` elegido (R4, R27). NO se emiten tokens en este caso.
+ *   explícito → el front muestra el selector y elige con el `ticket` (o re-postea con el
+ *   `clienteId`, R4, R27). NO se emiten tokens en este caso.
+ * - `needs2fa` / `needsEnrolamiento2fa`: la contraseña es válida pero falta el segundo paso
+ *   (L1, L3, L4, L5). El `desafio` no es un token de sesión.
  */
 export type LoginResult =
   | { kind: 'tokens'; accessToken: string; refreshToken: string }
-  | { kind: 'selection'; membresias: MembresiaView[] };
+  | { kind: 'selection'; membresias: MembresiaView[]; ticket: string }
+  | { kind: 'needs2fa'; desafio: string; recordarDisponible: boolean }
+  | { kind: 'needsEnrolamiento2fa'; desafio: string };
 
 /**
  * LoginUseCase — autentica un usuario global y resuelve el scope de tenant.
@@ -91,6 +102,8 @@ export type LoginResult =
  *    genera un refresh token aleatorio, persistiendo SOLO su SHA-256 (R7).
  */
 export class LoginUseCase {
+  private readonly emitirSesion: EmitirSesionService;
+
   constructor(
     private readonly usuarioRepo: IUsuarioRepository,
     private readonly membresiaRepo: IMembresiaRepository,
@@ -99,9 +112,31 @@ export class LoginUseCase {
     private readonly tokenService: ITokenService,
     private readonly refreshTokenRepo: IRefreshTokenRepository,
     private readonly permisosRepo: IMatrizPermisosRepository,
-  ) {}
+    private readonly limitador: ILimitadorIntentos,
+    private readonly tfaRepo: ITfaRepository,
+    private readonly desafios: IDesafioLoginRepository,
+    private readonly dispositivos: IDispositivoConfiableRepository,
+  ) {
+    this.emitirSesion = new EmitirSesionService(
+      membresiaRepo,
+      clienteRepo,
+      tokenService,
+      refreshTokenRepo,
+      permisosRepo,
+    );
+  }
 
   async execute(dto: LoginDto): Promise<Result<LoginResult, DomainError>> {
+    // 0. Limitador (I1, I5): la reserva es el fallo provisional. Bloqueado devuelve lo mismo
+    // que una credencial invalida, con el mismo costo de argon2 (DUMMY_HASH), sin pista.
+    const hashEmail = crypto.createHash('sha256').update(normalizarEmail(dto.email)).digest('hex');
+    const claveLimite = `pwd:${hashEmail}:${dto.ip ?? 'sin-ip'}`;
+    const reserva = await this.limitador.reservar(claveLimite);
+    if (reserva === null) {
+      await this.hashProvider.verify(dto.password, DUMMY_HASH);
+      return Result.fail(new CredencialesInvalidasError());
+    }
+
     // 1. Buscar usuario por email (identidad global)
     const usuario = await this.usuarioRepo.findByEmail(dto.email);
 
@@ -118,10 +153,43 @@ export class LoginUseCase {
     if (!passwordOk) {
       return Result.fail(new CredencialesInvalidasError());
     }
+    // Exito de contrasena: el contador vuelve a cero (I2). Solo los fallos cuentan.
+    await this.limitador.liberar(claveLimite);
 
     // 3. Resolver membresías activas — siempre, alimentan membresias[] del JWT
     // y el selector del front (R4, R6).
     const membresiasActivas = await this.membresiaRepo.findActivasByUsuario(usuario.id);
+
+    // 3b. Segundo paso (L1, L3, L4, L5): con la contrasena valida y antes de cualquier sesion.
+    // Si lo hay, `clienteId` se ignora: el cliente se elige despues, con el ticket (L7).
+    // La politica por cliente ya cuenta aca: `esObligado2fa` recibe `clienteRequiere2fa` de cada
+    // membresia activa. Como `requiere_2fa` nace en false, hasta WU-7 (ruta para activarla) solo
+    // ROOT obliga en la practica.
+    const estadoTfa = await this.tfaRepo.obtener(usuario.id);
+    if (estadoTfa?.secretoCifrado != null) {
+      // Un dispositivo confiable valido omite el desafio, nunca la contrasena (D3). ROOT no
+      // lo tiene aunque lo envie, ni siquiera si lo emitieron antes de que fuera ROOT (D4).
+      const omiteDesafio =
+        !usuario.isGlobalAdmin &&
+        dto.dispositivoConfiable !== undefined &&
+        (await this.dispositivos.esValido(
+          usuario.id,
+          hashTokenDispositivo(dto.dispositivoConfiable),
+          new Date(),
+        ));
+      if (!omiteDesafio) {
+        return Result.ok({
+          kind: 'needs2fa',
+          desafio: await this.desafios.crear(usuario.id, 'VERIFICAR'),
+          recordarDisponible: !usuario.isGlobalAdmin,
+        });
+      }
+    } else if (esObligado2fa(usuario.isGlobalAdmin, membresiasActivas)) {
+      return Result.ok({
+        kind: 'needsEnrolamiento2fa',
+        desafio: await this.desafios.crear(usuario.id, 'ENROLAR'),
+      });
+    }
 
     // 4. Determinar el clienteId objetivo
     let clienteIdObjetivo: string | null;
@@ -139,9 +207,10 @@ export class LoginUseCase {
       // R4: normal con exactamente 1 membresía → auto-selección.
       clienteIdObjetivo = membresiasActivas[0].clienteId;
     } else {
-      // R4: normal con >1 membresías → el front debe mostrar el selector.
+      // R4: normal con >1 membresías → el front debe mostrar el selector (ticket de un solo uso).
       return Result.ok({
         kind: 'selection',
+        ticket: await this.desafios.crear(usuario.id, 'SELECCIONAR'),
         membresias: membresiasActivas.map((m) => ({
           cliente_id: m.clienteId,
           nombre: m.clienteNombre,
@@ -150,59 +219,10 @@ export class LoginUseCase {
       });
     }
 
-    // 5. resolverScope: única fuente de verdad de autz de tenant
-    const scopeResult = await resolverScope(
-      { usuarioId: usuario.id, isGlobalAdmin: usuario.isGlobalAdmin },
-      clienteIdObjetivo,
-      this.membresiaRepo,
-      this.clienteRepo,
-      this.permisosRepo,
-    );
-
-    if (scopeResult.isFail()) {
-      return Result.fail(scopeResult.getError());
-    }
-    const scope = scopeResult.getValue();
-
-    // 6. Firmar JWT con el payload nuevo (ADR-3, `v` — ADR-P7/WU-7.1)
-    const payload: JwtPayload = {
-      v: VERSION_PAYLOAD_JWT,
-      sub: usuario.id,
-      cliente_id: scope.clienteId,
-      rol: scope.rol,
-      permisos: scope.permisos,
-      is_global_admin: usuario.isGlobalAdmin,
-      cliente_nombre: scope.clienteNombre,
-      membresias: membresiasActivas.map((m) => ({
-        cliente_id: m.clienteId,
-        nombre: m.clienteNombre,
-        rol: m.rolCodigo,
-      })),
-      modulos: scope.modulos,
-      // Identidad global del usuario (constante entre tenants) — la
-      // UsuarioEntity ya está cargada en este flujo, sin query extra.
-      nombre: usuario.nombre,
-      apellido: usuario.apellido,
-      cliente_logo_v: scope.clienteLogoVersion,
-    };
-    const accessToken = this.tokenService.signJwt(payload);
-
-    // Generar refresh token: random hex + SHA-256 para almacenamiento (R7)
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-
-    const refreshTokenEntity = RefreshTokenEntity.create({
-      usuarioId: usuario.id,
-      tokenHash,
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-      revokedAt: null,
-      // Opción B (decisión #2025): el refresh token nace con el cliente_id
-      // ya resuelto por resolverScope — PR4 lo reusa tal cual, sin pista.
-      clienteId: scope.clienteId,
-    });
-
-    await this.refreshTokenRepo.save(refreshTokenEntity);
-
-    return Result.ok({ kind: 'tokens', accessToken, refreshToken: rawToken });
+    // 5-6. Scope, JWT y refresh token: EmitirSesionService (sin cambio de conducta).
+    const sesion = await this.emitirSesion.emitir(usuario, membresiasActivas, clienteIdObjetivo);
+    if (sesion.isFail()) return Result.fail(sesion.getError());
+    const { accessToken, refreshToken } = sesion.getValue();
+    return Result.ok({ kind: 'tokens', accessToken, refreshToken });
   }
 }

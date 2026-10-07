@@ -108,6 +108,11 @@ model Cliente {
   /// de `smtp_*` — mismo criterio que `smtpSecure`.
   csatHabilitado Boolean @default(false) @map("csat_habilitado")
 
+  /// Politica de 2FA obligatorio (sdd/verificacion-dos-pasos, ADR-3). Default false
+  /// tambien en el DDL. Se escribe solo por `fijarRequiere2fa`: `ClienteMapper.toPersistence`
+  /// NO la incluye, para que un `save()` con lectura vieja no la pise.
+  requiere2fa Boolean @default(false) @map("requiere_2fa")
+
   /// ─── Logo del cliente (sdd/logo-por-cliente, WU1) ────────────────────────
   ///
   /// Las tres columnas viajan SIEMPRE juntas desde `ConfigurarLogoCliente` /
@@ -208,6 +213,10 @@ model Usuario {
   refreshTokens       RefreshToken[]
   membresias          Membresia[]
   passwordResetTokens PasswordResetToken[]
+  tfa                 UsuarioTfa?
+  tfaCodigos          TfaCodigoRecuperacion[]
+  tfaDispositivos     TfaDispositivoConfiable[]
+  authDesafios        AuthDesafio[]
 
   @@index([activo]) // el índice real en DB es parcial: WHERE deleted_at IS NULL — ver migration SQL
   @@map("usuarios")
@@ -528,4 +537,77 @@ model Feriado {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("feriados")
+}
+
+// ─── 2FA (sdd/verificacion-dos-pasos, ADR-3, migracion M1) ───────────────────
+//
+// Tablas propias (no columnas en `usuarios`): el upsert de UsuarioEntity no debe
+// poder pisar el estado de 2FA. Los CHECK de par nulo y de `proposito` viven solo
+// en la migracion SQL (Prisma no los expresa). `auth_intentos_fallidos` no tiene FK.
+
+model UsuarioTfa {
+  usuarioId               String    @id @map("usuario_id") @db.Uuid
+  secretoCifrado          String?   @map("secreto_cifrado") @db.Text
+  confirmadoAt            DateTime? @map("confirmado_at") @db.Timestamptz
+  ultimoPaso              Int       @default(0) @map("ultimo_paso")
+  secretoPendienteCifrado String?   @map("secreto_pendiente_cifrado") @db.Text
+  pendienteCreadoAt       DateTime? @map("pendiente_creado_at") @db.Timestamptz
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@map("usuarios_tfa")
+}
+
+model TfaCodigoRecuperacion {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId  String    @map("usuario_id") @db.Uuid
+  codigoHash String    @map("codigo_hash") @db.Text
+  usadoAt    DateTime? @map("usado_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("tfa_codigos_recuperacion")
+}
+
+model TfaDispositivoConfiable {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId  String    @map("usuario_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.Text
+  expiraAt   DateTime  @map("expira_at") @db.Timestamptz
+  revocadoAt DateTime? @map("revocado_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("tfa_dispositivos_confiables")
+}
+
+model AuthDesafio {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId    String    @map("usuario_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash") @db.Text
+  /// VERIFICAR | ENROLAR | SELECCIONAR (CHECK en la migracion).
+  proposito    String    @db.VarChar(12)
+  verificadoAt DateTime? @map("verificado_at") @db.Timestamptz
+  usadoAt      DateTime? @map("usado_at") @db.Timestamptz
+  expiraAt     DateTime  @map("expira_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("auth_desafios")
+}
+
+model AuthIntentoFallido {
+  clave         String   @id @db.VarChar(200)
+  fallos        Int
+  ventanaInicio DateTime @map("ventana_inicio") @db.Timestamptz
+
+  @@map("auth_intentos_fallidos")
 }

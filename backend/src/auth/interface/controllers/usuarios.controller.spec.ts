@@ -5,6 +5,7 @@
  * `clientes.controller.spec.ts`) — NO cubre guards reales (JwtAuthGuard/
  * TenantGuard/PermissionsGuard, ya testeados aparte).
  */
+import { ResetearTfaUsuarioUseCase } from '../../application/tfa/resetear-tfa-usuario.use-case';
 import {
   ConflictException,
   ForbiddenException,
@@ -38,6 +39,14 @@ function buildController() {
   const obtenerPermisosUsuarioTenantUseCase = { execute: vi.fn() };
   const asignarPermisosUsuarioTenantUseCase = { execute: vi.fn() };
   const aplicarPresetPermisosUseCase = { execute: vi.fn() };
+  // Caso de uso real armado con puertos tipados: tipado completo, sin casts.
+  const resetearTfaUsuarioUseCase = new ResetearTfaUsuarioUseCase(
+    { eliminarTodo: vi.fn() },
+    { findById: vi.fn() },
+    { findActivaByUsuarioYCliente: vi.fn(), findClientesDeTodasByUsuario: vi.fn() },
+    { revokeAllByUsuarioId: vi.fn() },
+    { log: vi.fn(), error: vi.fn() },
+  );
   const controller = new UsuariosController(
     listarUsuariosTenantUseCase as any,
     crearUsuarioTenantUseCase as any,
@@ -48,6 +57,7 @@ function buildController() {
     obtenerPermisosUsuarioTenantUseCase as any,
     asignarPermisosUsuarioTenantUseCase as any,
     aplicarPresetPermisosUseCase as any,
+    resetearTfaUsuarioUseCase,
   );
   return {
     controller,

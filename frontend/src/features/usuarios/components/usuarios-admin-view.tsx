@@ -26,6 +26,7 @@ import { EditarUsuarioDialog } from "./editar-usuario-dialog";
 import { CambiarRolControl } from "./cambiar-rol-control";
 import { DesactivarMembresiaControl } from "./desactivar-membresia-control";
 import { AsignarPermisosControl } from "./asignar-permisos-control";
+import { PoliticaTfaCard } from "./politica-tfa-card";
 import type { UsuarioTenant } from "../types";
 
 export function UsuariosAdminView() {
@@ -67,6 +68,8 @@ function UsuariosAdminContent() {
         description="Usuarios con membresía activa en este tenant."
         actions={<CrearUsuarioDialog />}
       />
+
+      <PoliticaTfaCard />
 
       {usuariosQuery.isLoading || usuariosQuery.isError ? (
         <DataTable
