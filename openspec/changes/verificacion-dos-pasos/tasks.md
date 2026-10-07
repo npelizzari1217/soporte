@@ -244,10 +244,10 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-12 — Ajustes de 2FA en el perfil (~390 líneas)
 
-- [ ] 12.1 Test de `ConfigurarTfaDialog`: sin 2FA muestra activar (QR, confirmar código, mostrar los 10 códigos una sola vez); con 2FA muestra cambiar celular (pide código antes del QR), regenerar (pide código) y desactivar (pide código); desactivar deshabilitado y con explicación si `obligado`; errores 422 sin disparar refresh; nunca muestra el secreto actual. (T3, T7, T8, T9, T10)
-- [ ] 12.2 Crear `features/auth/components/configurar-tfa-dialog.tsx` y su hook de cuenta; enganchar junto a `CambiarPasswordDialog` en `dashboard-header.tsx:41`. (T7, T8, T9, T10)
-- [ ] 12.3 Espejo Zod de los DTOs de `/auth/2fa/**` en `features/auth/schemas.ts`. (T4, T8, T9)
-- [ ] 12.4 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (ajustes de 2FA del perfil) en commit y PR. Nota de riesgo de presupuesto: ~390 líneas; si pasa de 400, partir activar/cambiar de regenerar/desactivar.
+- [x] 12.1 Test de `ConfigurarTfaDialog`: sin 2FA muestra activar (QR, confirmar código, mostrar los 10 códigos una sola vez); con 2FA muestra cambiar celular (pide código antes del QR), regenerar (pide código) y desactivar (pide código); desactivar deshabilitado y con explicación si `obligado`; errores 422 sin disparar refresh; nunca muestra el secreto actual. (T3, T7, T8, T9, T10)
+- [x] 12.2 Crear `features/auth/components/configurar-tfa-dialog.tsx` y su hook de cuenta; enganchar junto a `CambiarPasswordDialog` en `dashboard-header.tsx:41`. (T7, T8, T9, T10)
+- [x] 12.3 Espejo Zod de los DTOs de `/auth/2fa/**` en `features/auth/schemas.ts`. (T4, T8, T9)
+- [x] 12.4 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs`. Anotar deuda de Ayuda (ajustes de 2FA del perfil) en commit y PR. Nota de riesgo de presupuesto: ~390 líneas; si pasa de 400, partir activar/cambiar de regenerar/desactivar.
 
 ## WU-13 — Política y reseteo en administración (~280 líneas)
 

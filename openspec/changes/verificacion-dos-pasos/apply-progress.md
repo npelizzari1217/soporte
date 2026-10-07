@@ -404,3 +404,12 @@ WU-11b entera sumaba ~530 lineas de codigo y tests (tope 400), asi que se parte 
 - `use-login.ts`: el paso `enrolamiento` guarda `emitidoAt`; un 401 al confirmar el alta pasados 15 minutos (`DESAFIO_ENROLAR_MS`, la duracion del desafio ENROLAR) muestra `MENSAJE_VENCIDO` y vuelve a las credenciales. Antes del plazo sigue "Codigo incorrecto". Misma heuristica que verificar (5 min), porque el backend responde 401 en los dos casos.
 - Test parametrizado: 14 minutos (sigue en el alta) y 16 minutos (vencido).
 - Evidencia: test del hook 28 verdes; type-check y lint limpios.
+
+## WU-12 — Ajustes de 2FA en el perfil (`feat/verificacion-dos-pasos-wu12`, tareas 12.1 a 12.4)
+
+- `ConfigurarTfaDialog` (junto a `CambiarPasswordDialog` en `dashboard-header.tsx`) y hook `use-tfa-cuenta.ts` (consulta `GET auth/2fa` y mutaciones iniciar/confirmar/codigos/desactivar por `apiFetch`); espejo Zod en `schemas.ts`. Reusa `EnrolamientoTfa` y `CodigosRecuperacion`.
+- Sin 2FA: activar (QR, confirmar, 10 codigos una vez). Con 2FA: cambiar celular, regenerar y desactivar piden el codigo antes de actuar; el cambio de celular confirma con `{}` y no muestra codigos. Con `obligado` no se ofrece desactivar y se explica. Codigos solo en estado del componente.
+- La respuesta de estado no trae el motivo de la obligacion: el texto es generico ("tu cliente o tu rol").
+- Tests (6): activar, cambiar, regenerar, desactivar, obligado, 422 sin refresh. Sin casts.
+- Verificacion: `pnpm test` 253 archivos / 2059 tests OK; `pnpm type-check` OK; `JWT_SECRET=dummy pnpm lint` OK; `check-casts-en-specs.mjs` 617/617.
+- Deuda de Ayuda: ajustes de 2FA del perfil.
