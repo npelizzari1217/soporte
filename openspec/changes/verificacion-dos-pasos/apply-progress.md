@@ -318,3 +318,19 @@ WU-8 entera sumaba ~875 lineas de codigo y tests; la costura de tasks.md ("API v
 - `backend/scripts/resetear-2fa-root.ts` (molde `reset-password.ts`, sin `.ps1`): solo para un usuario existente con `isGlobalAdmin`; si no, sale con 1 sin escribir nada. Un unico `$transaction` con los efectos de `eliminarTodo` mas la revocacion de refresh; imprime solo `OK`; lee `RESET_EMAIL` y el `.env` con `process.loadEnvFile()`. Se corre con `corepack pnpm exec ts-node scripts/resetear-2fa-root.ts`; la entrada del runbook va en WU-9.
 - Sus efectos duplican los de `eliminarTodo`: si uno cambia, el otro tambien.
 - Evidencia: spec del script 4 tests verdes (dos corridas reales de ts-node: `OK` con salida 0, y salida 1 para un no ROOT sin cambios); typecheck, lint y ratchet limpios.
+
+## WU-9 — Rotacion con destinos TOTP, seed del ROOT y runbook (partida en A y B)
+
+WU-9 entera estimaba ~390 lineas de codigo y tests pero la rotacion sola ya sumaba 363; con el e2e 9.5 y el seed pasaba de ~500. El orquestador aprobo partirla.
+
+### A (`feat/verificacion-dos-pasos-wu09`, tareas 9.1 a 9.4 y la parte de runbook de 9.8)
+
+- `rotar-email-crypto-key.mjs` recorre una lista `DESTINOS` (SMTP con AAD `id`; `secreto_cifrado` y `secreto_pendiente_cifrado` con AAD `tfa:{usuario_id}`) en una sola transaccion: rotar, `--dry-run`, relectura round-trip y `--verificar`. Un destino indescifrable revierte todo. La linea de salida `migradas=N ya_migradas=M` suma todos los destinos. `clasificarFila` conserva su firma; se agrego `clasificarPayload`.
+- `rotate-email-crypto-key.ps1`: solo el comentario de cabecera (ASCII, sin BOM).
+- Los specs de integracion y de proceso reproducen el schema hasta `20261008120000_verificacion_dos_pasos` y cubren round-trip, re-corrida idempotente, atomicidad con SMTP ya re-cifrado, AAD movido y `--verificar`.
+- `DEPLOY-VPS-runbook.md`: seccion 5 menciona los secretos TOTP; preflight de `EMAIL_CRYPTO_KEY` y enrolamiento forzado del ROOT; verificacion de IP en `auth_intentos_fallidos`; recuperacion con `resetear-2fa-root.ts`.
+
+### B (pendiente)
+
+- 9.5 (e2e del login con secreto manipulado: 401 y log `TFA_SECRETO_INDESCIFRABLE`), 9.6-9.7 (seed con lista positiva de `NODE_ENV`), README y 9.9 (incluye `pnpm test` completo).
+- `backend/.env.example` no se puede leer ni editar con los permisos actuales: su documentacion de `ROOT_ADMIN_TOTP_SECRET` queda para quien tenga acceso. 9.8 sigue sin tildar por ese resto.

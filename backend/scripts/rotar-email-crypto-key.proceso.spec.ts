@@ -22,7 +22,7 @@ const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../prisma_master/migrations');
-const ULTIMA_CARPETA_PREVIA = '20260820160000_add_cliente_smtp_config';
+const ULTIMA_CARPETA_PREVIA = '20261008120000_verificacion_dos_pasos';
 const EPHEMERAL_DB_NAME = `soporte_rotacion_proceso_${randomBytes(4).toString('hex')}_test`;
 const SCRIPT_PATH = path.resolve(__dirname, 'rotar-email-crypto-key.mjs');
 
@@ -108,6 +108,7 @@ describe('rotar-email-crypto-key.mjs — proceso real (WU2b, ADR-3)', () => {
 
   afterEach(async () => {
     await pool.query('DELETE FROM clientes');
+    await pool.query('DELETE FROM usuarios'); // borra usuarios_tfa en cascada
   });
 
   const envRotar = (): Record<string, string> => ({
@@ -132,6 +133,30 @@ describe('rotar-email-crypto-key.mjs — proceso real (WU2b, ADR-3)', () => {
     const segunda = await correrScript([], envRotar()); // no-op: ya quedó en NEW_KEY
     expect(segunda.exitCode).toBe(0);
     assertSinSecretos(segunda.salida, textoPlano);
+  });
+
+  it('rotación y --verificar cubren los secretos TOTP: exit 0 y salida con los totales (K1, K3)', async () => {
+    const id = randomUUID();
+    const textoPlano = 'secreto-totp-proceso';
+    await pool.query(
+      `INSERT INTO usuarios (id, email, nombre, apellido, password_hash, updated_at)
+       VALUES ($1, $2, 'T', 'F', 'x', now())`,
+      [id, `${id}@tfa.test`],
+    );
+    await pool.query(
+      `INSERT INTO usuarios_tfa (usuario_id, secreto_cifrado, confirmado_at, updated_at)
+       VALUES ($1, $2, now(), now())`,
+      [id, cifrarV1(oldKeyBuf, textoPlano, `tfa:${id}`)],
+    );
+
+    const rotacion = await correrScript([], envRotar());
+    expect(rotacion.exitCode).toBe(0);
+    expect(rotacion.salida).toContain('migradas=1 ya_migradas=0');
+    assertSinSecretos(rotacion.salida, textoPlano);
+
+    const verificacion = await correrScript(['--verificar'], envVerificar());
+    expect(verificacion.exitCode).toBe(0);
+    assertSinSecretos(verificacion.salida, textoPlano);
   });
 
   it('rotación con fila indescifrable: exit 3, sin secretos en la salida', async () => {

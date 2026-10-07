@@ -29,9 +29,9 @@ const MASTER_TEST_URL =
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
 const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../prisma_master/migrations');
-// Misma carpeta límite que el molde: reproducimos el schema hasta las
-// columnas SMTP incluidas, porque acá probamos la rotación, no la migración.
-const ULTIMA_CARPETA_PREVIA = '20260820160000_add_cliente_smtp_config';
+// Reproducimos el schema hasta la migración de `usuarios_tfa` incluida (destinos
+// TOTP de la rotación), porque acá probamos la rotación, no las migraciones.
+const ULTIMA_CARPETA_PREVIA = '20261008120000_verificacion_dos_pasos';
 const EPHEMERAL_DB_NAME = `soporte_rotacion_email_${randomBytes(4).toString('hex')}_test`;
 
 const OLD_KEY_HEX = 'a'.repeat(64);
@@ -77,6 +77,36 @@ async function insertarCliente(
   );
 }
 
+/** Inserta un usuario con su fila de 2FA; `activo`/`pendiente` null dejan la columna en NULL. */
+async function insertarUsuarioTfa(
+  pool: InstanceType<typeof Pool>,
+  id: string,
+  activo: string | null,
+  pendiente: string | null,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO usuarios (id, email, nombre, apellido, password_hash, updated_at)
+     VALUES ($1, $2, 'T', 'F', 'x', now())`,
+    [id, `${id}@tfa.test`],
+  );
+  await pool.query(
+    `INSERT INTO usuarios_tfa (usuario_id, secreto_cifrado, confirmado_at, secreto_pendiente_cifrado, pendiente_creado_at, updated_at)
+     VALUES ($1, $2, CASE WHEN $2::text IS NULL THEN NULL ELSE now() END, $3, CASE WHEN $3::text IS NULL THEN NULL ELSE now() END, now())`,
+    [id, activo, pendiente],
+  );
+}
+
+async function leerTfa(
+  pool: InstanceType<typeof Pool>,
+  id: string,
+): Promise<{ secreto_cifrado: string | null; secreto_pendiente_cifrado: string | null }> {
+  const { rows } = await pool.query(
+    `SELECT secreto_cifrado, secreto_pendiente_cifrado FROM usuarios_tfa WHERE usuario_id = $1`,
+    [id],
+  );
+  return rows[0];
+}
+
 describe('rotar-email-crypto-key — ejecutarRotacion() (WU2a, master)', () => {
   let pool: InstanceType<typeof Pool>;
   const admin = new PostgresAdminService(MASTER_TEST_URL);
@@ -103,6 +133,7 @@ describe('rotar-email-crypto-key — ejecutarRotacion() (WU2a, master)', () => {
   // porque esta DB nunca es `soporte_master_test`.
   afterEach(async () => {
     await pool.query('DELETE FROM clientes');
+    await pool.query('DELETE FROM usuarios'); // borra usuarios_tfa en cascada
   });
 
   it('rotación completa: filas OLD_KEY pasan a NEW_KEY, AAD = id, texto plano preservado', async () => {
@@ -296,5 +327,111 @@ describe('rotar-email-crypto-key — ejecutarRotacion() (WU2a, master)', () => {
     expect(rows.find((r) => r.id === idIndescifrable).smtp_password_cifrada).toBe(
       payloadIndescifrable,
     );
+  });
+
+  describe('destinos TOTP (usuarios_tfa)', () => {
+    it('re-cifra SMTP, secreto activo y pendiente; descifran con la clave nueva y AAD propio (K1, K2)', async () => {
+      const idCliente = randomUUID();
+      const idUsuario = randomUUID();
+      await insertarCliente(pool, idCliente, 'tfa-smtp', cifrarV1(oldKeyBuf, 'smtp', idCliente));
+      await insertarUsuarioTfa(
+        pool,
+        idUsuario,
+        cifrarV1(oldKeyBuf, 'totp-activo', `tfa:${idUsuario}`),
+        cifrarV1(oldKeyBuf, 'totp-pendiente', `tfa:${idUsuario}`),
+      );
+
+      const resultado = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(resultado).toMatchObject({ exitCode: 0, migradas: 3, yaMigradas: 0 });
+
+      const tfa = await leerTfa(pool, idUsuario);
+      const aad = `tfa:${idUsuario}`;
+      expect(descifrarV1(newKeyBuf, tfa.secreto_cifrado as string, aad)).toBe('totp-activo');
+      expect(descifrarV1(newKeyBuf, tfa.secreto_pendiente_cifrado as string, aad)).toBe(
+        'totp-pendiente',
+      );
+      expect(() => descifrarV1(oldKeyBuf, tfa.secreto_cifrado as string, aad)).toThrow();
+      const { rows } = await pool.query(
+        `SELECT smtp_password_cifrada FROM clientes WHERE id = $1`,
+        [idCliente],
+      );
+      expect(descifrarV1(newKeyBuf, rows[0].smtp_password_cifrada, idCliente)).toBe('smtp');
+    });
+
+    it('idempotente: la segunda corrida cuenta ya_migradas y no toca nada; columnas NULL se ignoran', async () => {
+      const idUsuario = randomUUID();
+      const idSoloActivo = randomUUID();
+      await insertarUsuarioTfa(
+        pool,
+        idUsuario,
+        cifrarV1(oldKeyBuf, 'a', `tfa:${idUsuario}`),
+        cifrarV1(oldKeyBuf, 'p', `tfa:${idUsuario}`),
+      );
+      await insertarUsuarioTfa(
+        pool,
+        idSoloActivo,
+        cifrarV1(oldKeyBuf, 'b', `tfa:${idSoloActivo}`),
+        null,
+      );
+
+      const primera = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(primera).toMatchObject({ exitCode: 0, migradas: 3, yaMigradas: 0 });
+      const trasPrimera = await leerTfa(pool, idUsuario);
+
+      const segunda = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(segunda).toMatchObject({ exitCode: 0, migradas: 0, yaMigradas: 3 });
+      expect(await leerTfa(pool, idUsuario)).toEqual(trasPrimera);
+      expect((await leerTfa(pool, idSoloActivo)).secreto_pendiente_cifrado).toBeNull();
+    });
+
+    it('un secreto TOTP indescifrable revierte TODO, también el SMTP ya re-cifrado (K2)', async () => {
+      const idCliente = randomUUID();
+      const idUsuario = randomUUID();
+      const smtpOriginal = cifrarV1(oldKeyBuf, 'smtp', idCliente);
+      const activoOriginal = cifrarV1(oldKeyBuf, 'a', `tfa:${idUsuario}`);
+      const pendienteAjeno = cifrarV1(otraKeyBuf, 'p', `tfa:${idUsuario}`);
+      await insertarCliente(pool, idCliente, 'tfa-rollback', smtpOriginal);
+      await insertarUsuarioTfa(pool, idUsuario, activoOriginal, pendienteAjeno);
+
+      const resultado = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(resultado).toMatchObject({ exitCode: 3 });
+
+      const tfa = await leerTfa(pool, idUsuario);
+      expect(tfa.secreto_cifrado).toBe(activoOriginal);
+      expect(tfa.secreto_pendiente_cifrado).toBe(pendienteAjeno);
+      const { rows } = await pool.query(
+        `SELECT smtp_password_cifrada FROM clientes WHERE id = $1`,
+        [idCliente],
+      );
+      expect(rows[0].smtp_password_cifrada).toBe(smtpOriginal);
+    });
+
+    it('un ciphertext TOTP movido a otro usuario no descifra (AAD tfa:{usuario_id})', async () => {
+      const idA = randomUUID();
+      const idB = randomUUID();
+      await insertarUsuarioTfa(pool, idA, cifrarV1(oldKeyBuf, 'a', `tfa:${idB}`), null);
+
+      const resultado = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(resultado).toMatchObject({ exitCode: 3 });
+    });
+
+    it('--verificar recorre los destinos TOTP: ok con la clave vigente, falla con un secreto ajeno (K3)', async () => {
+      const idUsuario = randomUUID();
+      await insertarUsuarioTfa(
+        pool,
+        idUsuario,
+        cifrarV1(newKeyBuf, 'a', `tfa:${idUsuario}`),
+        cifrarV1(newKeyBuf, 'p', `tfa:${idUsuario}`),
+      );
+      expect(await ejecutarVerificacion(pool, { verificarKeyBuf: newKeyBuf })).toMatchObject({
+        exitCode: 0,
+      });
+
+      const pendienteAjeno = cifrarV1(otraKeyBuf, 'p', `tfa:${idUsuario}`);
+      await pool.query(`UPDATE usuarios_tfa SET secreto_pendiente_cifrado = $1`, [pendienteAjeno]);
+      const resultado = await ejecutarVerificacion(pool, { verificarKeyBuf: newKeyBuf });
+      expect(resultado.exitCode).toBe(3);
+      expect((await leerTfa(pool, idUsuario)).secreto_pendiente_cifrado).toBe(pendienteAjeno);
+    });
   });
 });
