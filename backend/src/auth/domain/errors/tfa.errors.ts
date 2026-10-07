@@ -21,3 +21,12 @@ export class SecretoTotpIndescifrableError extends DomainError {
     super('El secreto TOTP no se pudo descifrar.');
   }
 }
+
+/** Falta la clave maestra: no se puede enrolar (ADR de clave ausente). → HTTP 503. */
+export class TfaNoDisponibleError extends DomainError {
+  readonly code = 'AUTH_TFA_NO_DISPONIBLE';
+
+  constructor() {
+    super('La verificacion en dos pasos no esta disponible en este momento.');
+  }
+}
