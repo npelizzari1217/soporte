@@ -258,6 +258,22 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
       expect(await marca(id)).toBe(true);
     });
 
+    it('findMetaPendiente lista solo los marcados y no borrados', async () => {
+      const marcado = await crearTicket();
+      const borrado = await crearTicket({ deletedAt: min(1) });
+      const sinMarca = await crearTicket();
+      await client.ticket.updateMany({
+        where: { id: { in: [marcado, borrado] } },
+        data: { slaMetaPendiente: true },
+      });
+
+      const ids = await repo.findMetaPendiente();
+
+      expect(ids).toContain(marcado);
+      expect(ids).not.toContain(borrado);
+      expect(ids).not.toContain(sinMarca);
+    });
+
     it('limpiarMetaPendiente baja la marca sin tocar el resto del reloj', async () => {
       const id = await crearTicket();
       await client.ticket.update({

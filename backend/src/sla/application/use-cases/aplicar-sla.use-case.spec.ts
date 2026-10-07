@@ -37,7 +37,7 @@ const prioridad = (
   });
 
 function ticket(
-  over: { tipoId?: string; slaRegla?: SlaRegla; createdAt?: Date } = {},
+  over: { tipoId?: string; slaRegla?: SlaRegla; createdAt?: Date; prioridadId?: string } = {},
 ): TicketEntity {
   const t = TicketEntity.create(
     {
@@ -46,7 +46,7 @@ function ticket(
       descripcion: null,
       tipoId: over.tipoId ?? 'tipo-uuid',
       estadoId: 'estado-uuid',
-      prioridadId: 'prioridad-uuid',
+      prioridadId: over.prioridadId ?? 'prioridad-uuid',
       cicloId: null,
       ticketReferenciaId: null,
       solicitanteId: 'solicitante-uuid',
@@ -75,6 +75,7 @@ function montar(m: Montaje = {}) {
     transicionesDesde: vi.fn().mockResolvedValue(m.transiciones ?? []),
     guardarSiVersion: vi.fn().mockResolvedValue(true),
     limpiarMetaPendiente: vi.fn().mockResolvedValue(undefined),
+    findMetaPendiente: vi.fn().mockResolvedValue([]),
     findPendientes: vi.fn().mockResolvedValue([]),
   } satisfies IRelojSlaRepository;
   const prioridadRepo = {
@@ -482,6 +483,41 @@ describe('AplicarSlaUseCase', () => {
 
       await expect(c.useCase.alCrear(DTO)).rejects.toThrow('MASTER caído');
       expect(c.relojRepo.guardarSiVersion).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reconciliarMeta — reaplicación desde el barrido (issue #429)', () => {
+    it('aplica con la prioridad VIGENTE del ticket, no con la de un evento viejo', async () => {
+      const c = montar({
+        ticket: ticket({ prioridadId: 'prioridad-vigente' }),
+        prioridad: prioridad(4),
+      });
+
+      await c.useCase.reconciliarMeta('t1');
+
+      expect(c.prioridadRepo.findById).toHaveBeenCalledWith('prioridad-vigente');
+      expect(c.relojRepo.guardarSiVersion.mock.calls[0][3]).toEqual({
+        prioridadAplicadaId: 'prioridad-vigente',
+      });
+      expect(c.escrito().metaS).toBe(4 * H);
+    });
+
+    it('un ticket terminal baja la marca sin recalcular', async () => {
+      const c = montar({ fila: { estadoCodigo: 'CERRADO', correDesde: null } });
+
+      await c.useCase.reconciliarMeta('t1');
+
+      expect(c.relojRepo.limpiarMetaPendiente).toHaveBeenCalledWith('t1');
+      expect(c.relojRepo.guardarSiVersion).not.toHaveBeenCalled();
+    });
+
+    it('un ticket inexistente o borrado no hace nada', async () => {
+      const c = montar({ ticket: null });
+
+      await c.useCase.reconciliarMeta('t1');
+
+      expect(c.relojRepo.guardarSiVersion).not.toHaveBeenCalled();
+      expect(c.relojRepo.limpiarMetaPendiente).not.toHaveBeenCalled();
     });
   });
 });

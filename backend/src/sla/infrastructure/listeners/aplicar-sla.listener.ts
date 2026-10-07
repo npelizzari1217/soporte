@@ -17,6 +17,11 @@
  * `ILogger` (`logger.error`, mismo puerto/nivel que usa el barrido de SLA en
  * `sla-sweep.scheduler.ts:55-56`) en vez de swallowear en silencio total.
  *
+ * Marca de meta pendiente (issue #429): el alta y la repriorización dejan `sla_meta_pendiente` en la
+ * misma escritura que persiste el ticket, así que el swallow de acá no pierde la meta: si el use case
+ * falla (CAS perdido dos veces, calendario, base) la marca sigue puesta y el barrido de SLA reaplica
+ * con la prioridad vigente (`AplicarSlaUseCase.reconciliarMeta`).
+ *
  * Ref spec: sdd/premium/spec S2, S3; sdd/feriados-configurables "A failed
  * SLA calculation is logged, not silent". Ref design: ADR-P2, ADR-P8, D10.
  * Tarea: SA13, 5.3.

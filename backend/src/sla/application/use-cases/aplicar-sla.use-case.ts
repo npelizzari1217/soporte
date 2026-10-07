@@ -72,6 +72,19 @@ export class AplicarSlaUseCase {
     await this.aplicar(dto, true);
   }
 
+  /**
+   * Reaplicación desde el barrido de SLA (issue #429) de un ticket con `sla_meta_pendiente`: la
+   * aplicación del alta o la repriorización falló y la marca quedó puesta. Aplica con la prioridad
+   * VIGENTE leída del ticket, nunca la de un evento viejo; un ticket terminal solo baja la marca.
+   * Un ticket inexistente o borrado no hace nada (el barrido tampoco lo lista). Los errores
+   * propagan: el barrido los registra y la marca sigue puesta para el barrido siguiente.
+   */
+  async reconciliarMeta(ticketId: string): Promise<void> {
+    const ticket = await this.ticketRepo.findById(ticketId);
+    if (!ticket || ticket.isDeleted()) return;
+    await this.aplicar({ ticketId, prioridadId: ticket.prioridadId }, true);
+  }
+
   private async aplicar(dto: AplicarSlaDto, omitirTerminales: boolean): Promise<void> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) return;
