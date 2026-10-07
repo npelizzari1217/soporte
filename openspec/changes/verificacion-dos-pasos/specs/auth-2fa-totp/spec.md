@@ -250,4 +250,4 @@ M = viñetas principales; P = "Precisiones del 2026-10-07, al explorar", ambas e
 | P8 | Sin forma de relajar el 2FA fuera de producción; tests con secreto conocido | `auth-2fa-login`: L10 |
 | P9 | Aviso por mail al activar o resetear: fuera de alcance | `auth-2fa-totp`: T11 |
 
-Nada de la decisión queda sin implementar; lo declarado fuera de alcance (M10, P9) está en T11 con su motivo. Requerimientos de soporte sin viñeta propia: T3, T12, L4, L11, I8, D7, S5, S7, S8, C2, C5, `email-crypto-key-rotacion`: K1-K4, `usuarios-reset-password`: U3.
+Nada de la decisión queda sin implementar; lo declarado fuera de alcance (M10, P9) está en T11 con su motivo. Requerimientos de soporte sin viñeta propia: T3, T12, L4, L11, I8, D7, S5, S7, S8, C2, C5, `email-crypto-key-rotacion`: K1-K4, `usuarios-reset-password`: el requerimiento MODIFIED "Un fallo de revocación no hace fallar la respuesta".

@@ -57,7 +57,7 @@ Preguntas de `config.yaml`: espeja otra capa (Zod del frontend; backend fuente);
 
 ## Entrega
 
-`auto-chain` sobre `feat/verificacion-dos-pasos`, ~3.0-3.4k líneas, 9-11 PRs bajo 400 (plan en `exploration.md` §5).
+`auto-chain` sobre `feat/verificacion-dos-pasos`, 19 PRs bajo 400 (plan en `design.md`, "Delivery slices"). La exploración estimaba ~3.0-3.4k líneas en 9-11 PRs; el diseño lo llevó a ~6.250 líneas y el orquestador aceptó el desvío el 2026-10-07.
 
 ## Riesgos
 
