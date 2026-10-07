@@ -64,6 +64,18 @@ export class PrismaDesafioLoginRepository implements IDesafioLoginRepository {
     });
   }
 
+  async buscarTicket(ticket: string): Promise<DesafioVigente | null> {
+    return this.client.authDesafio.findFirst({
+      where: {
+        tokenHash: hashear(ticket),
+        verificadoAt: { not: null },
+        usadoAt: null,
+        expiraAt: { gt: this.reloj() },
+      },
+      select: { usuarioId: true },
+    });
+  }
+
   async verificar(
     token: string,
     proposito: PropositoDesafio,

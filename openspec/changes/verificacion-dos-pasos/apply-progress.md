@@ -203,3 +203,13 @@ WU-5a entera sumaba ~640 lineas de codigo y tests. El orquestador la partio en d
 - La sesion se emite solo en `continuar` (WU-5b): el "guarde los codigos" es la UI mas ese paso diferido.
 - Carreras raras aceptadas: si el desafio vence entre confirmar y rotar, el 2FA queda activo sin que el usuario vea los codigos (los regenera con un TOTP); si la rotacion falla en verificar, un codigo de recuperacion queda gastado.
 - Evidencia: suite completa 643 archivos, 7845 tests verdes; typecheck, lint y ratchet de casts limpios.
+
+## WU-5b — Continuar, seleccionar y rutas publicas (partida: 5b casos de uso, 5b2 HTTP y cableado)
+
+WU-5b entera sumaba ~640 lineas de codigo y tests; el orquestador la partio por la costura que propuso el ejecutor.
+
+### 5b (`feat/verificacion-dos-pasos-wu05b`, tareas 5b.1, 5b.2 y la primera mitad de 5b.4)
+
+- `buscarTicket(ticket)` en el puerto y el adaptador de desafios: lectura de un ticket verificado, sin usar y vigente (`buscarSinVerificar` excluye los verificados). Con su test de integracion.
+- `backend/src/auth/application/tfa/continuar-login.use-cases.ts` + spec: `ContinuarLoginUseCase` es el unico lugar del flujo de 2FA que emite sesion; ROOT sale con alcance MASTER, una membresia emite, mas de una devuelve la lista y el MISMO ticket sin consumirlo. `SeleccionarClienteLoginUseCase` valida la membresia antes de consumir (si no existe, mismo rechazo y el ticket sigue vigente). Ninguno pide contrasena ni codigo.
+- Consume antes de emitir: si `emitir` falla, el ticket queda gastado y el usuario vuelve a loguear (se prefiere a arriesgar dos sesiones con un ticket).
