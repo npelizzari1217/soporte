@@ -1,14 +1,14 @@
 ```yaml
 schema: gentle-ai.verify-result/v1
-evidence_revision: sha256:b1ac9364942a85e2cca3dd51302ac0c7de3f1d3912c639265204864e749566db
-verdict: fail
-blockers: 1
-critical_findings: 1
+evidence_revision: sha256:29d29cb887e1d8f4679aa66ee488aba74ba2a0fe0f6bd458baeef12db0e79e61
+verdict: pass_with_warnings
+blockers: 0
+critical_findings: 0
 requirements: 61/61
-scenarios: 123/124
+scenarios: 124/124
 test_command: cd backend && pnpm test
 test_exit_code: 0
-test_output_hash: sha256:53813571f863e4a2f8408a9382e858740f7ac9887f1b3ac7ddb7f1bd7d4e58c2
+test_output_hash: sha256:e028273d0fc187ab04df4059b78469cd9920f800b7f5d0f3cfd08b8b589e2341
 build_command: cd backend && pnpm lint && pnpm typecheck
 build_exit_code: 0
 build_output_hash: sha256:529a7a73e31bc62668a1e8739951adb557876fbfa59e6fa24be8e3bae6ba4f3f
@@ -19,7 +19,16 @@ build_output_hash: sha256:529a7a73e31bc62668a1e8739951adb557876fbfa59e6fa24be8e3
 **Change**: verificacion-dos-pasos
 **Version**: N/A (new capabilities: auth-2fa-totp, auth-2fa-login, auth-2fa-dispositivo-confiable, auth-limite-intentos, auth-2fa-politica-cliente, auth-2fa-reseteo; deltas: usuarios-reset-password, auth-reseteo-por-olvido, email-crypto-key-rotacion)
 **Mode**: Standard (feature; no Strict TDD injection)
-**Candidate**: branch `feat/verificacion-dos-pasos-wu13` (tip of the feature-branch chain, every work unit included), HEAD `e0e24870`, diff `git diff main...HEAD` (merge base `009f8eb8` = `main`), 185 files, +12506/-431. `evidence_revision` is the sha256 of that diff.
+**Candidate**: branch `feat/verificacion-dos-pasos-verify-fix` (chain tip `-wu13` + the first-pass verify report + the remediation commit), HEAD `d3812808`, diff `git diff main...HEAD` (merge base `009f8eb8` = `main`), 186 files, +12925/-431. `evidence_revision` is the sha256 of that diff.
+
+**Revision history**:
+
+| Pass | HEAD | `evidence_revision` | Verdict | Findings |
+|---|---|---|---|---|
+| 1 | `e0e24870` (`-wu13`, 185 files, +12506/-431) | `sha256:b1ac9364...` | FAIL | C1 (T4 "Un secreto pendiente no se pide en el login" UNTESTED), W1 (`as unknown as` casts), W2 (`.env.example`), S1 to S5 |
+| 2 (this one) | `d3812808` (`-verify-fix`) | `sha256:29d29cb8...` | PASS WITH WARNINGS | C1 and W1 resolved; W2 and S1 to S5 kept |
+
+The remediation is commit `d3812808` (one new unit test, 24 casts replaced in 5 specs, and `apply-progress.md`; no production code). This pass re-verifies C1 and W1 and re-runs every gate on the new HEAD. Sections the remediation did not touch (spec compliance for the other 123 scenarios, roadmap fidelity, correctness, design coherence) keep their first-pass evidence; the full suite re-run below confirms that every test behind them still passes.
 
 ### Completeness
 
@@ -29,11 +38,25 @@ build_output_hash: sha256:529a7a73e31bc62668a1e8739951adb557876fbfa59e6fa24be8e3
 | Tasks complete | 128 |
 | Tasks incomplete | 0 |
 
-`gentle-ai sdd-status verificacion-dos-pasos --cwd . --json`: `taskProgress` 128/128, `allComplete: true`, `verifyReport: missing` (this report). 13.7 (roadmap closure) is not a checkbox: `tasks.md` declares it a post-deploy delivery step. Every work unit in `apply-progress.md` (WU-1 to WU-13, with the splits 3a/3b, 4b-i/4b-ii, 4c-i/4c-ii, 5a/5a2, 5b/5b2, 5c/5c2, 6a-i/ii/iii, 7/7b, 8/8b/8c, 9A/9B, 10/10b, 11a/11a2, 11b A/B, 11c) maps to the 35 implementation commits in `git log main..HEAD` (`b4213c32` to `e0e24870`), after the 7 planning commits. Task 9.7 is checked but only half done (W2).
+`gentle-ai sdd-status verificacion-dos-pasos --cwd . --json` (pass 2, on `d3812808`): `taskProgress` 128/128, `allComplete: true`, `applyState: all_done`, `verify: ready`; its only `blockedReasons` entry is "failed verification evidence is incomplete; rerun SDD verification", which refers to the pass-1 FAIL report this revision replaces (pass 1: `verifyReport: missing`). 13.7 (roadmap closure) is not a checkbox: `tasks.md` declares it a post-deploy delivery step. Every work unit in `apply-progress.md` (WU-1 to WU-13, with the splits 3a/3b, 4b-i/4b-ii, 4c-i/4c-ii, 5a/5a2, 5b/5b2, 5c/5c2, 6a-i/ii/iii, 7/7b, 8/8b/8c, 9A/9B, 10/10b, 11a/11a2, 11b A/B, 11c) maps to the 35 implementation commits in `git log main..HEAD` (`b4213c32` to `e0e24870`), after the 7 planning commits. Task 9.7 is checked but only half done (W2). Pass 2 adds `b46ff2e4` (pass-1 verify report) and `d3812808` (remediation, section "Remediacion del verify" of `apply-progress.md`).
 
 ### Build & Tests Execution
 
-Every gate was run by this verification, in the foreground, on `e0e24870` (worktree clean except the pre-existing untracked `soporte.jpg`):
+Pass 2: every gate was re-run by this verification on `d3812808` (worktree clean except the pre-existing untracked `soporte.jpg`), one `pnpm test` at a time:
+
+```text
+backend  pnpm lint                                  exit 0  (eslint ., zero errors)
+backend  pnpm typecheck                             exit 0  (tsc --noEmit -p tsconfig.typecheck.json)
+backend  pnpm test                                  exit 0  656 files, 7955 tests passed (1091 s)
+frontend JWT_SECRET=dummy pnpm lint                 exit 0  (No ESLint warnings or errors)
+frontend pnpm type-check                            exit 0
+frontend pnpm test                                  exit 0  254 files, 2064 tests passed (215 s)
+root     node scripts/check-casts-en-specs.mjs      exit 0  (617 in 114 files, base 617/114; ratchet holds)
+root     node scripts/check-roadmap-fresco.mjs      exit 0  ("El roadmap esta fresco"; 3 decisions declared on delivered points)
+native   gentle-ai sdd-status ... --json            taskProgress 128/128, applyState all_done, verify ready
+```
+
+The +1 backend test is the new C1 test. Pass 1, on `e0e24870`, run in the foreground:
 
 ```text
 backend  pnpm lint                                  exit 0  (eslint ., zero errors)
@@ -49,13 +72,13 @@ native   gentle-ai sdd-status ... --json            taskProgress 128/128, allCom
 
 **Build**: Passed. `build_output_hash` is the sha256 of the two observed result lines (`backend pnpm lint: exit 0`, `backend pnpm typecheck: exit 0`).
 
-**Tests**: Passed (0 failed, 0 skipped). `test_output_hash` is the sha256 of the full backend log. The three `FAIL orden-de-arranque.spec.ts` blocks are the child processes that the boot-order test launches on purpose; the outer suite reports 656/656 files. ERROR/WARN lines come from forced-failure tests and from controller fixtures outside the catalog.
+**Tests**: Passed (0 failed, 0 skipped). `test_output_hash` is the sha256 of the full pass-2 backend log. The three `FAIL orden-de-arranque.spec.ts` blocks are the child processes that the boot-order test launches on purpose; the outer suite reports 656/656 files. ERROR/WARN lines come from forced-failure tests and from controller fixtures outside the catalog.
 
-Environment: `soporte-postgres-master` up. Note: while the backend suite was running, this verification started two one-file Vitest runs on a scratch copy whose config still had the orphan-sweep `globalSetup`; that setup takes the same advisory lock as `usarLockMasterTest()` and skips if it cannot get it, and the main run finished green, so the evidence above is unaffected.
+Environment: `soporte-postgres-master` up. In pass 2 the scratch-copy mutation ran with the orphan-sweep `globalSetup` removed and only a unit spec (no database). Pass 1 note: while the backend suite was running, this verification started two one-file Vitest runs on a scratch copy whose config still had the orphan-sweep `globalSetup`; that setup takes the same advisory lock as `usarLockMasterTest()` and skips if it cannot get it, and the main run finished green, so the evidence above is unaffected.
 
 **Coverage**: not measured (threshold 0 in `openspec/config.yaml`) -> Not available.
 
-**Adversarial mutation** (on a scratch copy of `backend/` with `node_modules` linked and the orphan sweep removed; the worktree was never touched):
+**Adversarial mutation, pass 1** (on a scratch copy of `backend/` with `node_modules` linked and the orphan sweep removed; the worktree was never touched):
 
 | Mutation | Result |
 |---|---|
@@ -81,7 +104,7 @@ Totals counted from the nine spec files with the native heading rules (`### Requ
 | T3 | Ninguna respuesta posterior lo devuelve | `tfa-cuenta.use-cases.spec.ts > estado: obligado por esObligado2fa y sin secreto en la respuesta (T3)`; FE `configurar-tfa-dialog.test.tsx` | COMPLIANT |
 | T4 | Confirmación correcta | `tfa-cuenta.use-cases.spec.ts > confirmar activa y entrega 10 codigos solo la primera vez`; `confirmador-secreto-pendiente.spec.ts > acepta un TOTP del pendiente, promueve ...` | COMPLIANT |
 | T4 | Confirmación con código incorrecto | same `tfa-cuenta` test ("uno erroneo no activa"); `desafio-login.use-cases.spec.ts > un codigo rechazado (o repetido) no rota el desafio` | COMPLIANT |
-| T4 | Un secreto pendiente no se pide en el login | **none**: no test logs in a user whose `usuarios_tfa` row has only a pending secret (see C1) | UNTESTED |
+| T4 | Un secreto pendiente no se pide en el login | pass 2: `login.use-case.spec.ts > un secreto pendiente (sin secreto activo) no se pide en el login (T4)` (mutation M1 RED; see "Re-verification") | COMPLIANT |
 | T4 | Reiniciar reemplaza el pendiente | `prisma-tfa.repository.integration.spec.ts > con otro pendiente leido no promueve`; `confirmador-secreto-pendiente.spec.ts > un CAS en falso (pendiente reemplazado) rechaza y no libera` | COMPLIANT |
 | T5 | Diez códigos mostrados una vez | `tfa-cuenta.use-cases.spec.ts > confirmar activa y entrega 10 codigos solo la primera vez`; `login-2fa.e2e.spec.ts > ENROLAR ...` (`toHaveLength(10)`); FE `codigos-recuperacion.test.tsx > lista los 10 códigos` | COMPLIANT |
 | T5 | Un código usado no vuelve a servir | `verificador-codigo-tfa.spec.ts > un codigo de recuperacion ya consumido por otro (CAS en falso) rechaza`; `prisma-tfa.repository.integration.spec.ts > guarda 10, consume uno y cuenta los restantes` | COMPLIANT |
@@ -237,7 +260,7 @@ Totals counted from the nine spec files with the native heading rules (`### Requ
 | MOD | La revocación falla pero la operación igual reporta éxito | `> la revocación falla pero la operación igual reporta éxito`; `> el argumento de logger.error en la revocación fallida NO contiene el plaintext` | COMPLIANT |
 | MOD | La tolerancia no alcanza a los dispositivos confiables | `> si revocarTodosDe lanza, la excepción se propaga y save nunca se llama` | COMPLIANT |
 
-**Compliance summary**: 123/124 scenarios COMPLIANT, 0 PARTIAL, 0 FAILING, 1 UNTESTED (T4 "Un secreto pendiente no se pide en el login").
+**Compliance summary**: 124/124 scenarios COMPLIANT, 0 PARTIAL, 0 FAILING, 0 UNTESTED (pass 1: 123/124, T4 "Un secreto pendiente no se pide en el login" UNTESTED).
 
 ### Roadmap Decision Fidelity
 
@@ -271,7 +294,7 @@ No undeclared deviation was found. The roadmap row for point 5 is still pending 
 
 | Requirement | Status | Notes |
 |---|---|---|
-| auth-2fa-totp T1-T12 | Implemented | T4 "pending secret not asked at login" is correct in code (`estadoTfa?.secretoCifrado != null`), but untested (C1) |
+| auth-2fa-totp T1-T12 | Implemented | T4 "pending secret not asked at login" (`estadoTfa?.secretoCifrado != null`) is pinned by a unit test since pass 2 (C1 resolved) |
 | auth-2fa-login L1-L11 | Implemented | only two session issuers in the 2FA flow (`ContinuarLoginUseCase`, `SeleccionarClienteLoginUseCase`); `LoginUseCase` issues only when no second step applies or a valid non-ROOT trusted device exists |
 | auth-2fa-dispositivo-confiable D1-D7 | Implemented | revocation before persisting the password on every path; `eliminarTodo` in one transaction |
 | auth-limite-intentos I1-I8 | Implemented | failures only; blocked path runs `verify(DUMMY_HASH)` and returns the same error |
@@ -290,7 +313,7 @@ Checks requested by the orchestrator, confirmed in code:
 5. **Key rotation and undecryptable secrets.** `rotar-email-crypto-key.mjs` rotates `secreto_cifrado` and `secreto_pendiente_cifrado` with AAD `tfa:{usuario_id}` in the same transaction as SMTP. An undecryptable secret yields `SegundoPasoRechazadoError` (401), logs `TFA_SECRETO_INDESCIFRABLE | usuarioId=...` and returns the limiter reservation. Confirmed by the e2e.
 6. **Admin reset rule.** All memberships (inactive, of suspended clients and soft-deleted) through an unfiltered query; a ROOT target is refused; every refusal is the same `MembresiaNoEncontradaError` (404) as an unknown id; refusals happen before any write. Confirmed.
 7. **Frontend.** `use-login.ts` keeps only `desafio`/`ticket` in its state machine, never the password. Forced enrollment calls `login/continuar` only from `continuarTrasCodigos`, reachable after the "Los guardé" checkbox. `RUTAS_SIN_REFRESH` covers `auth/login`, `auth/2fa/verificar`, `auth/2fa/enrolamiento/*`, `auth/login/continuar` and `auth/login/seleccionar`; self-service `auth/2fa`, `auth/2fa/secreto/*`, `auth/2fa/codigos` and `auth/2fa/desactivar` keep refresh-on-401 (`client.test.ts > 401 en una ruta fuera del set (auth/2fa) sí refresca`). Confirmed.
-8. **Cast evasion.** Not clean: 24 `as unknown as` casts survive in 5 backend spec files (W1).
+8. **Cast evasion.** Pass 1: not clean, 24 `as unknown as` casts in 5 backend spec files (W1). Pass 2: clean (see "Re-verification").
 9. **Known residuals.** See the warnings and suggestions below; all are accepted except the `.env.example` gap, which stays open as W2.
 
 ### Coherence (Design)
@@ -310,14 +333,36 @@ Checks requested by the orchestrator, confirmed in code:
 | ADR-11 frontend | Yes | BFF routes only where cookies are set; enrollment and self-service through the generic proxy |
 | Seed with positive list (`development`, `test`) and `.env.example` | Partially | README documents `ROOT_ADMIN_TOTP_SECRET`; `backend/.env.example` could not be read or edited (W2) |
 
+### Re-verification (pass 2: C1 and W1 remediation)
+
+**C1: RESOLVED.** `backend/src/auth/application/use-cases/login.use-case.spec.ts` adds the test `un secreto pendiente (sin secreto activo) no se pide en el login (T4)` in the "Segundo paso tras la contrasena valida" block. A non-obligated user with one active membership logs in with the right password while `tfaRepo.obtener` returns `{secretoCifrado: null, confirmadoAt: null, ultimoPaso: 0, secretoPendienteCifrado: 'pendiente-cifrado', pendienteCreadoAt: <now>}`; the test asserts `kind: 'tokens'` and that `desafios.crear` was never called. That is exactly the scenario: a pending secret alone does not trigger the second step.
+
+Mutation on an rsync copy of `backend/` in the scratch directory (`node_modules` linked, orphan-sweep `globalSetup` removed from the copy's `vitest.config.ts`, local `vitest` binary); the worktree was never touched:
+
+| Mutation | Result | After revert |
+|---|---|---|
+| Baseline `login.use-case.spec.ts` (unmutated copy) | GREEN, 42/42 | n/a |
+| M1 `login.use-case.ts:169` `estadoTfa?.secretoCifrado != null` -> `estadoTfa != null` | RED: 1 failed, 41 passed; the new T4 test fails with `expected 'needs2fa' to be 'tokens'` | GREEN, 42/42; `src/` diffed identical to the worktree |
+
+The same mutation survived the whole auth suite in pass 1, so the new test is the one that pins the scenario. This matches the result recorded by apply in "Remediacion del verify".
+
+**W1: RESOLVED.** `git diff main...HEAD -U0 -- backend frontend | rg '^\+.*as unknown as'` prints nothing (exit 1). Line counts of `as unknown as` under `backend/` are 186 at the merge base `009f8eb8` and 186 at `d3812808` (pass 1 counted with a different method, so its 160/184 figures are not comparable; the delta is what matters, and it is now zero). The 24 casts were replaced by complete mocks typed with `satisfies <Port>` (`ITfaRepository`, `ITotpService`, `ILimitadorIntentos`, `IDesafioLoginRepository`, `IUsuarioRepository`, `IMembresiaRepository`, `IHashProvider`) with `unstubbed()` for unused members, and by `Object.create(Class.prototype)` plus `vi.spyOn` for the four classes with private members (`SecretoTotpCifrado`, `EmitirSesionService`, `IniciarSecretoTfa`, `ConfirmarSecretoTfa`). No pre-existing `as unknown as` on `main` was touched.
+
+`as never` / `as any` in the diff vs `main`: 5 added lines, all `as any` in `backend/src/auth/interface/controllers/auth.controller.spec.ts`, and each one replaces a removed line with the same cast (the chain only added the `REQ` argument to an existing `controller.login({...} as any)` call). Removed lines with these casts: 5. Net change: zero, which is why `check-casts-en-specs.mjs` reports 617 in 114 files against a base of 617/114. The ratchet accounts for them correctly. The ratchet still does not count `as unknown as`; extending its regex remains a possible follow-up, not a finding of this change.
+
+**Scope of the remediation**: `git show --stat d3812808` touches only six spec files (`login.use-case.spec.ts` +20, and the five specs of W1) and `apply-progress.md` (+6). No production file changed, so the first-pass correctness, coherence and roadmap evidence still holds.
+
+**W2**: unchanged. `backend/.env.example` is not in `git diff main...HEAD --name-only`, and reading it is still denied to this verification. It stays open as a warning owned by a person.
+
 ### Issues Found
 
-**CRITICAL**:
-- **C1 (test-evidence gap, not a behavioral defect)** `auth-2fa-totp` T4, scenario "Un secreto pendiente no se pide en el login": no test logs in a user whose `usuarios_tfa` row holds only a pending secret and asserts that no challenge is issued. The code is correct (`login.use-case.ts:169`, `if (estadoTfa?.secretoCifrado != null)`), but nothing pins it. Mutation on a scratch copy (worktree untouched): replacing the condition with `estadoTfa != null` (a user with only a pending secret, for example one who started enrollment and never confirmed, would get a `VERIFICAR` challenge with no usable secret and could not log in) leaves `login.use-case.spec.ts` green (41/41) and every spec under `src/auth` and `src/clientes/interface` green (97 files, 1134 tests). Under the skill rule (a scenario is compliant only with a passing covering test) the scenario is UNTESTED and blocks archive. Remediation: one unit test in `login.use-case.spec.ts` (state `{secretoCifrado: null, secretoPendienteCifrado: 'x', ...}` and a non-obligated user → `kind: 'tokens'`, `desafios.crear` not called), or one e2e step in `tfa-cuenta.e2e.spec.ts` (start enrollment, do not confirm, log in → tokens).
+**CRITICAL**: None.
+
+- *Resolved in pass 2*: **C1 (test-evidence gap, not a behavioral defect)** `auth-2fa-totp` T4, scenario "Un secreto pendiente no se pide en el login": no test logs in a user whose `usuarios_tfa` row holds only a pending secret and asserts that no challenge is issued. The code is correct (`login.use-case.ts:169`, `if (estadoTfa?.secretoCifrado != null)`), but nothing pins it. Mutation on a scratch copy (worktree untouched): replacing the condition with `estadoTfa != null` (a user with only a pending secret, for example one who started enrollment and never confirmed, would get a `VERIFICAR` challenge with no usable secret and could not log in) leaves `login.use-case.spec.ts` green (41/41) and every spec under `src/auth` and `src/clientes/interface` green (97 files, 1134 tests). Under the skill rule (a scenario is compliant only with a passing covering test) the scenario is UNTESTED and blocks archive. Remediation: one unit test in `login.use-case.spec.ts` (state `{secretoCifrado: null, secretoPendienteCifrado: 'x', ...}` and a non-obligated user → `kind: 'tokens'`, `desafios.crear` not called), or one e2e step in `tfa-cuenta.e2e.spec.ts` (start enrollment, do not confirm, log in → tokens). Pass 2: closed by the new unit test in `d3812808` (see "Re-verification").
 
 **WARNING**:
-- **W1** 24 `as unknown as` casts were added to backend specs (backend total 160 on `main`, 184 on HEAD), in `confirmador-secreto-pendiente.spec.ts`, `continuar-login.use-cases.spec.ts`, `desafio-login.use-cases.spec.ts`, `verificador-codigo-tfa.spec.ts` and `verificador-codigo-tfa.integration.spec.ts` (commits `bd2fe962`, `9272e264`, `f6245164`, `f70ce7d3`). `AGENTS.md:33` forbids unchecked casts; `check-casts-en-specs.mjs` only counts `as never`/`as any`, so the ratchet stays at 617 while the same debt grows through a form it does not count. The apply-progress line "sin `as unknown as` nuevos" (WU-6a) is true only for WU-6a. Not a blocker for behavior; fix by completing the mocks with `unstubbed()` (`src/testing/mocks.ts`), and consider extending the ratchet regex.
-- **W2** Task 9.7 is checked, but its text ("documentar el valor de desarrollo en `.env.example` y en el README") is only half done: the README has the `ROOT_ADMIN_TOTP_SECRET` row, `backend/.env.example` was never edited (permission denied for the agents and for this verification). The note sits under 9.8, not 9.7. A person has to add the commented line before archive or the task text must say so.
+- *Resolved in pass 2*: **W1** 24 `as unknown as` casts were added to backend specs (backend total 160 on `main`, 184 on HEAD), in `confirmador-secreto-pendiente.spec.ts`, `continuar-login.use-cases.spec.ts`, `desafio-login.use-cases.spec.ts`, `verificador-codigo-tfa.spec.ts` and `verificador-codigo-tfa.integration.spec.ts` (commits `bd2fe962`, `9272e264`, `f6245164`, `f70ce7d3`). `AGENTS.md:33` forbids unchecked casts; `check-casts-en-specs.mjs` only counts `as never`/`as any`, so the ratchet stays at 617 while the same debt grows through a form it does not count. The apply-progress line "sin `as unknown as` nuevos" (WU-6a) is true only for WU-6a. Not a blocker for behavior; fix by completing the mocks with `unstubbed()` (`src/testing/mocks.ts`), and consider extending the ratchet regex. Pass 2: all 24 removed in `d3812808`; zero `as unknown as` added vs `main` (see "Re-verification").
+- **W2** Task 9.7 is checked, but its text ("documentar el valor de desarrollo en `.env.example` y en el README") is only half done: the README has the `ROOT_ADMIN_TOTP_SECRET` row, `backend/.env.example` was never edited (permission denied for the agents and for this verification). The note sits under 9.8, not 9.7. A person has to add the commented line before archive or the task text must say so. Pass 2: still open (no change in the remediation).
 
 **SUGGESTION**:
 - **S1** The forced-enrollment ticket lives 5 minutes from confirmation (`TICKET_DURACION_MS`). A user who takes longer on the "Los guardé" screen gets "La verificación venció" and must log in again, now with an active 2FA. Behavior is safe (no session without the step), but a longer ticket for the `ENROLAR` rotation would match the 15-minute enrollment window.
@@ -333,6 +378,8 @@ Checks requested by the orchestrator, confirmed in code:
 
 ### Verdict
 
-FAIL
+PASS WITH WARNINGS
 
-All gates are green (backend 7954 tests, frontend 2064 tests, lint, types, casts ratchet, roadmap check), 61/61 requirements are implemented, and every roadmap sub-bullet and precision matches the code with no undeclared deviation. The checks requested by the orchestrator hold in code, except the cast evasion (W1). The verdict is FAIL only because of C1: one scenario (T4 "Un secreto pendiente no se pide en el login") has no covering test, and a mutation that breaks it survives the whole auth suite. Behavior is correct today. Remediation is one test; after it, a re-verification of C1 is expected to give PASS WITH WARNINGS (W1 casts, W2 `.env.example`).
+Pass 2 on `d3812808`: all gates are green (backend 656 files / 7955 tests, frontend 254 files / 2064 tests, lint, types, casts ratchet 617/617, roadmap check), 61/61 requirements are implemented, 124/124 scenarios have passing runtime coverage, and every roadmap sub-bullet matches the code with no undeclared deviation. C1 is closed by a unit test that the pass-1 surviving mutation now turns red, and W1 is closed with zero `as unknown as` added vs `main`. The remaining warning (W2, `backend/.env.example` without `ROOT_ADMIN_TOTP_SECRET`, needs a person) and suggestions S1 to S5 do not block archive; S4 must go into the 13.7 roadmap declaration after deploy.
+
+Pass 1 on `e0e24870` was FAIL, only because of the C1 evidence gap (123/124 scenarios); behavior was already correct.
