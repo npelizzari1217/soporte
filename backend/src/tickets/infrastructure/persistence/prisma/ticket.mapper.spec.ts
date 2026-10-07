@@ -33,6 +33,7 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     slaRelojSeqHasta: 0,
     slaRelojVersion: 0,
     slaRelojPendiente: false,
+    slaMetaPendiente: false,
     slaCumplido: null,
     primeraRespuestaAt: null,
     primeraRespuestaVenceAt: null,

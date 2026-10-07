@@ -23,6 +23,7 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
   let repo: PrismaRelojSlaRepository;
   let tipoId: string;
   let prioridadId: string;
+  let otraPrioridadId: string;
   let estados: Record<string, string>;
   let tipoOpId: string;
   const creados: Array<() => Promise<unknown>> = [];
@@ -49,6 +50,11 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     prioridadId = (
       await client.prioridad.create({
         data: { codigo: `WU3BP${s}`, nombre: 'WU3b', orden: 1, activo: true },
+      })
+    ).id;
+    otraPrioridadId = (
+      await client.prioridad.create({
+        data: { codigo: `WU3BP2${s}`, nombre: 'WU3b otra', orden: 2, activo: true },
       })
     ).id;
     // Catálogos que el spec necesita: se crean solo si faltan (una base nueva no los trae) y al
@@ -85,7 +91,7 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     await client.operacionTicket.deleteMany({ where: { ticket: { tipoId } } });
     await client.ticket.deleteMany({ where: { tipoId } });
     await client.tipoTicket.delete({ where: { id: tipoId } });
-    await client.prioridad.delete({ where: { id: prioridadId } });
+    await client.prioridad.deleteMany({ where: { id: { in: [prioridadId, otraPrioridadId] } } });
     for (const borrar of creados.reverse()) await borrar();
     await prismaService.onModuleDestroy();
   }, 30_000);
@@ -209,5 +215,61 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     const pendientes = await repo.findPendientes();
     expect(pendientes).toContain(id);
     expect(pendientes).not.toContain(borrado);
+  });
+
+  describe('marca de meta pendiente (issue #429)', () => {
+    const reloj = { acumuladoS: 0, metaS: 7200, correDesde: min(5), cumplido: null };
+    const marca = async (id: string) =>
+      (await client.ticket.findUniqueOrThrow({ where: { id } })).slaMetaPendiente;
+
+    it('con la prioridad aplicada igual a la vigente, el CAS escribe y limpia la marca en la misma escritura', async () => {
+      const id = await crearTicket();
+      await client.ticket.update({ where: { id }, data: { slaMetaPendiente: true } });
+
+      expect(await repo.guardarSiVersion(id, 0, reloj, { prioridadAplicadaId: prioridadId })).toBe(
+        true,
+      );
+
+      expect(await marca(id)).toBe(false);
+      expect((await client.ticket.findUniqueOrThrow({ where: { id } })).slaMetaS).toBe(7200);
+    });
+
+    it('con una prioridad aplicada distinta de la vigente (repriorizaron en el medio) no escribe y la marca sigue puesta', async () => {
+      const id = await crearTicket();
+      await client.ticket.update({
+        where: { id },
+        data: { slaMetaPendiente: true, prioridadId: otraPrioridadId },
+      });
+
+      expect(await repo.guardarSiVersion(id, 0, reloj, { prioridadAplicadaId: prioridadId })).toBe(
+        false,
+      );
+
+      expect(await marca(id)).toBe(true);
+      expect((await client.ticket.findUniqueOrThrow({ where: { id } })).slaMetaS).toBeNull();
+    });
+
+    it('sin prioridad aplicada (consolidación del pendiente del reloj) no toca la marca', async () => {
+      const id = await crearTicket();
+      await client.ticket.update({ where: { id }, data: { slaMetaPendiente: true } });
+
+      expect(await repo.guardarSiVersion(id, 0, reloj)).toBe(true);
+
+      expect(await marca(id)).toBe(true);
+    });
+
+    it('limpiarMetaPendiente baja la marca sin tocar el resto del reloj', async () => {
+      const id = await crearTicket();
+      await client.ticket.update({
+        where: { id },
+        data: { slaMetaPendiente: true, slaRelojPendiente: true },
+      });
+
+      await repo.limpiarMetaPendiente(id);
+
+      const fila = await client.ticket.findUniqueOrThrow({ where: { id } });
+      expect(fila.slaMetaPendiente).toBe(false);
+      expect(fila.slaRelojPendiente).toBe(true);
+    });
   });
 });

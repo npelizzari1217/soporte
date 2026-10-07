@@ -17,8 +17,22 @@ export interface IRelojSlaRepository {
   /**
    * CAS: escribe el reloj solo si `sla_reloj_version` sigue siendo `version`; deja el cursor en
    * `version` y limpia el pendiente. `false` si entró otra transición (0 filas afectadas).
+   *
+   * Con `prioridadAplicadaId` (la escritura de `AplicarSla`, issue #429) el CAS exige además que esa
+   * sea la prioridad vigente del ticket y, en la MISMA escritura, baja `sla_meta_pendiente`. Si
+   * repriorizaron mientras tanto, no escribe, devuelve `false` y la marca queda puesta: la meta de la
+   * prioridad vieja nunca se escribe ni consume la marca que la repriorización nueva necesita.
+   * Sin `prioridadAplicadaId` (la consolidación del pendiente) no toca la marca.
    */
-  guardarSiVersion(ticketId: string, version: number, reloj: RelojSlaResultado): Promise<boolean>;
+  guardarSiVersion(
+    ticketId: string,
+    version: number,
+    reloj: RelojSlaResultado,
+    meta?: { prioridadAplicadaId: string },
+  ): Promise<boolean>;
+
+  /** Baja `sla_meta_pendiente` sin otra escritura: el ticket es terminal y nada se aplicará nunca. */
+  limpiarMetaPendiente(ticketId: string): Promise<void>;
 
   /** Ids de los tickets con `sla_reloj_pendiente`. */
   findPendientes(): Promise<string[]>;

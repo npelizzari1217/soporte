@@ -112,9 +112,16 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
     ticketId: string,
     version: number,
     reloj: RelojSlaResultado,
+    meta?: { prioridadAplicadaId: string },
   ): Promise<boolean> {
     const { count } = await this.client.ticket.updateMany({
-      where: { id: ticketId, slaRelojVersion: version },
+      // Con meta aplicada, la prioridad vigente entra al WHERE: la reprioritización no versiona el
+      // reloj, así que sin esto el CAS no vería un cambio de prioridad entre la lectura y la escritura.
+      where: {
+        id: ticketId,
+        slaRelojVersion: version,
+        ...(meta ? { prioridadId: meta.prioridadAplicadaId } : {}),
+      },
       data: {
         slaAcumuladoS: reloj.acumuladoS,
         slaMetaS: reloj.metaS,
@@ -123,9 +130,17 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
         ...(reloj.slaVenceAt !== undefined ? { slaVenceAt: reloj.slaVenceAt } : {}),
         slaRelojSeqHasta: version,
         slaRelojPendiente: false,
+        ...(meta ? { slaMetaPendiente: false } : {}),
       },
     });
     return count === 1;
+  }
+
+  async limpiarMetaPendiente(ticketId: string): Promise<void> {
+    await this.client.ticket.updateMany({
+      where: { id: ticketId, slaMetaPendiente: true },
+      data: { slaMetaPendiente: false },
+    });
   }
 
   async findPendientes(): Promise<string[]> {

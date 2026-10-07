@@ -144,7 +144,7 @@ describe('tickets — migracion M2 del reloj de SLA (WU-3a, tenant efimero)', ()
     );
   });
 
-  it('deriva: los defaults de Prisma y del DDL coinciden en las 5 columnas con default', async () => {
+  it('deriva: los defaults de Prisma y del DDL coinciden en las 6 columnas con default', async () => {
     // El runtime DMMF no trae los defaults: se leen del schema.prisma, la fuente real.
     const schema = readFileSync(join(MIGRACION, '../../schema.prisma'), 'utf8');
     const modeloTicket = schema.slice(
@@ -167,7 +167,7 @@ describe('tickets — migracion M2 del reloj de SLA (WU-3a, tenant efimero)', ()
         .map((x) => [x.column_name, String(x.column_default).replace(/^'?(.*?)'?(::.*)?$/, '$1')]),
     );
     delete prisma['sla_regla'];
-    expect(Object.keys(ddl)).toHaveLength(5);
+    expect(Object.keys(ddl)).toHaveLength(6);
     expect(ddl).toEqual(prisma);
   });
 });
