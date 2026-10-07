@@ -14,3 +14,6 @@ export const DISPOSITIVO_CONFIABLE_DURACION_MS = 30 * DIA_MS;
 export const LIMITADOR_VENTANA_MS = 15 * MINUTO_MS;
 /** Maximo de intentos por ventana (I1). */
 export const LIMITADOR_MAX_INTENTOS = 5;
+
+/** Clave del limitador compartida por todo codigo de segundo paso de un usuario (I6). */
+export const claveLimiteCodigo = (usuarioId: string): string => `cod:${usuarioId}`;

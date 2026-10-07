@@ -113,13 +113,13 @@ Despliegue: solo la cadena completa. Entre la WU-5c y la WU-11a el backend ya ex
 
 ## WU-4b — Verificador común y confirmador de pendiente (~330 líneas)
 
-- [ ] 4b.1 Test unit de `SecretoTotpCifrado`: cifra con AAD `tfa:{usuarioId}`; un ciphertext SMTP (AAD = id de cliente) no descifra como TOTP y uno movido entre usuarios falla; el fallo de descifrado devuelve `Result.fail`, nunca lanza. (T3, T12, K1)
-- [ ] 4b.2 Crear `auth/application/tfa/secreto-totp-cifrado.ts` sobre `ISecretCipher`. (T3, T12)
+- [x] 4b.1 Test unit de `SecretoTotpCifrado`: cifra con AAD `tfa:{usuarioId}`; un ciphertext SMTP (AAD = id de cliente) no descifra como TOTP y uno movido entre usuarios falla; el fallo de descifrado devuelve `Result.fail`, nunca lanza. (T3, T12, K1)
+- [x] 4b.2 Crear `auth/application/tfa/secreto-totp-cifrado.ts` sobre `ISecretCipher`. (T3, T12)
 - [ ] 4b.3 Test unit de `VerificadorCodigoTfa` con puertos mockeados: acepta TOTP del secreto activo y código de recuperación; reserva `cod:{usuarioId}` antes de verificar; bloqueado no verifica nada ni acepta el código correcto; éxito llama a `liberar`; fallo no libera; secreto indescifrable → `SegundoPasoRechazadoError`, loguea `TFA_SECRETO_INDESCIFRABLE | usuarioId=…` sin código ni clave, llama a `devolver` (mutación `devolver` → `liberar` pone en rojo el caso "3 fallos y luego indescifrable deja fallos = 3"); un recuperación sigue funcionando con secreto indescifrable; un `devolver` que falla se loguea y no se propaga. (T2, T5, T12, I6, I7, K4)
 - [ ] 4b.4 Test de integración del limitador con el verificador: 3 fallos y un intento con secreto indescifrable dejan `fallos = 3`. (T12, I1, I6)
 - [ ] 4b.5 Crear `auth/application/tfa/verificador-codigo-tfa.ts` y `SegundoPasoRechazadoError` (401, mensaje genérico) en `auth/domain/errors`. (T2, T5, T12, I6, I7)
-- [ ] 4b.6 Test unit de `ConfirmadorSecretoPendiente`: acepta solo un TOTP del secreto pendiente; rechaza un código de recuperación y uno del secreto activo; comparte el limitador `cod:{usuarioId}`; promueve con el CAS y fija `ultimo_paso`; no hereda un paso ajeno. (T4, T10, T2, I6)
-- [ ] 4b.7 Crear `auth/application/tfa/confirmador-secreto-pendiente.ts`. (T4, T10)
+- [x] 4b.6 Test unit de `ConfirmadorSecretoPendiente`: acepta solo un TOTP del secreto pendiente; rechaza un código de recuperación y uno del secreto activo; comparte el limitador `cod:{usuarioId}`; promueve con el CAS y fija `ultimo_paso`; no hereda un paso ajeno. (T4, T10, T2, I6)
+- [x] 4b.7 Crear `auth/application/tfa/confirmador-secreto-pendiente.ts`. (T4, T10)
 - [ ] 4b.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application/tfa`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## WU-4c — Autogestión de 2FA (~380 líneas)

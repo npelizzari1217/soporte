@@ -129,3 +129,31 @@ Modo: estandar. Tareas 4a.1 a 4a.6 marcadas en `tasks.md`. Rama `feat/verificaci
 - Se agrego `obtenerCodigosDisponibles(usuarioId)` al puerto (no estaba en la lista de 4a.5): los codigos van hasheados con argon2id, asi que el verificador necesita los hashes para comparar con `IHashProvider.verify` y luego consumir por `id`. El repositorio no hashea; recibe y devuelve hashes.
 - `consumirCodigo` recibe el `id` del codigo, no el texto.
 - El fallo forzado de `reemplazarCodigos` usa un NUL en el hash (Postgres lo rechaza en `text`); el de `eliminarTodo` usa un trigger temporal acotado al usuario del test, que se elimina en `finally`.
+
+## WU-4b — Verificador comun y confirmador de pendiente (partida: 4b-i confirmador y cifrado, 4b-ii verificador)
+
+Modo: estandar. Tareas 4b.1 a 4b.8 marcadas en `tasks.md`. Rama `feat/verificacion-dos-pasos-wu04b` (base `...-wu04a`).
+
+### Archivos
+
+- `backend/src/auth/domain/errors/tfa.errors.ts`: `SegundoPasoRechazadoError` (401, generico) y `SecretoTotpIndescifrableError`.
+- `backend/src/auth/domain/tfa/tfa.constants.ts`: `claveLimiteCodigo(usuarioId)` = `cod:{usuarioId}`, compartida por verificador y confirmador (I6).
+- `backend/src/auth/application/tfa/secreto-totp-cifrado.ts`: `cifrar`/`descifrar` con AAD `tfa:{usuarioId}`; el fallo es `Result.fail`.
+- `backend/src/auth/application/tfa/verificador-codigo-tfa.ts`: TOTP activo (con `registrarPaso`) o recuperacion (`IHashProvider.verify` + `consumirCodigo`); reserva primero; exito `liberar`; indescifrable `devolver` y log `TFA_SECRETO_INDESCIFRABLE | usuarioId=…`.
+- `backend/src/auth/application/tfa/confirmador-secreto-pendiente.ts`: solo TOTP del pendiente, `promoverPendiente` con el paso confirmado.
+- Specs: unit de los tres, mas `verificador-codigo-tfa.integration.spec.ts` (limitador real, 3 fallos + indescifrable = 3).
+
+### Work Unit Evidence
+
+| Evidence | Valor |
+|---|---|
+| Test focal | `pnpm vitest run src/auth/application/tfa`: 4 archivos, 26 tests verdes |
+| Mutacion | `devolver` a `liberar` en el verificador: 3 tests en rojo (incluido el de integracion); restaurado |
+| Lint / tipos / casts | `pnpm lint`, `pnpm typecheck` sin errores; ratchet de casts sin cambios (617) |
+| Rollback | Servicios sin rutas ni consumidores; revertir el commit no deja huerfanos |
+
+### Decisiones tomadas en apply
+
+- Un codigo de formato invalido cuenta como fallo (la reserva queda) y no consulta el repositorio.
+- Los providers de Nest no se registran en `auth.module.ts` hasta 4c, que es el primer consumidor.
+- El confirmador tambien devuelve la reserva si el pendiente no descifra.
