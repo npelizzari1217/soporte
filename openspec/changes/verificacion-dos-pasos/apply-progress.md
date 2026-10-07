@@ -157,3 +157,9 @@ Modo: estandar. Tareas 4b.1 a 4b.8 marcadas en `tasks.md`. Rama `feat/verificaci
 - Un codigo de formato invalido cuenta como fallo (la reserva queda) y no consulta el repositorio.
 - Los providers de Nest no se registran en `auth.module.ts` hasta 4c, que es el primer consumidor.
 - El confirmador tambien devuelve la reserva si el pendiente no descifra.
+
+### WU-4b — reparto final
+
+- **4b-i** (`feat/verificacion-dos-pasos-wu04b`, tareas 4b.1, 4b.2, 4b.6, 4b.7): `SecretoTotpCifrado`, errores de dominio, `claveLimiteCodigo`, `resultado-segundo-paso.ts` (tipo comun, extraido para que cada mitad compile sola) y `ConfirmadorSecretoPendiente`.
+- **4b-ii** (`feat/verificacion-dos-pasos-wu04b2`, tareas 4b.3, 4b.4, 4b.5, 4b.8): `VerificadorCodigoTfa` con su unit y su integracion con el limitador real. `pnpm vitest run src/auth/application/tfa`: 4 archivos, 26 tests verdes; typecheck, lint y ratchet de casts limpios.
+- WU-4b completa sumaba ~596 lineas de codigo y tests; el orquestador la partio por la costura que propuso el ejecutor.
