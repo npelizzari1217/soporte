@@ -155,16 +155,19 @@ describe("useLogin", () => {
     },
   );
 
+  const SELECCION = {
+    needsClienteSelection: true,
+    ticket: "tk-1",
+    membresias: [
+      { cliente_id: "c1", nombre: "Cliente Uno", rol: "USUARIO" },
+      { cliente_id: "c2", nombre: "Cliente Dos", rol: "TECNICO" },
+    ],
+  };
+
   it("el selector multi-cliente tambien respeta ?siguiente= al elegir el cliente", async () => {
     server.use(
-      http.post("/api/auth/login", async ({ request }) => {
-        const body = (await request.json()) as { clienteId?: string };
-        if (body.clienteId) return HttpResponse.json({ user: USER_OK });
-        return HttpResponse.json({
-          needsClienteSelection: true,
-          membresias: [{ cliente_id: "c1", nombre: "Cliente Uno", rol: "USUARIO" }],
-        });
-      }),
+      http.post("/api/auth/login", () => HttpResponse.json(SELECCION)),
+      http.post("/api/auth/login/seleccionar", () => HttpResponse.json({ user: USER_OK })),
     );
     conSiguiente(SIGUIENTE_QR);
 
@@ -182,39 +185,130 @@ describe("useLogin", () => {
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith(SIGUIENTE_QR));
   });
 
-  it("selectCliente after multi-membership → re-posts with { email, password, clienteId } and redirects on success", async () => {
+  it("selectCliente usa el ticket: manda { ticket, clienteId } sin contraseña ni código", async () => {
     let capturedBody: unknown = null;
     server.use(
-      http.post("/api/auth/login", async ({ request }) => {
-        const body = (await request.json()) as { clienteId?: string };
-        if (body.clienteId) {
-          capturedBody = body;
-          return HttpResponse.json({ user: { sub: "1", cliente_id: "c2", rol: "TECNICO", permisos: [], is_global_admin: false, cliente_nombre: "Cliente Dos", membresias: [] } });
-        }
-        return HttpResponse.json({
-          needsClienteSelection: true,
-          membresias: [{ cliente_id: "c2", nombre: "Cliente Dos", rol: "TECNICO" }],
-        });
+      http.post("/api/auth/login", () => HttpResponse.json(SELECCION)),
+      http.post("/api/auth/login/seleccionar", async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({ user: USER_OK });
       }),
     );
 
     const { result } = renderHook(() => useLogin(), { wrapper });
-
     act(() => {
       result.current.login("multi@example.com", "secret123");
     });
-    await waitFor(() => expect(result.current.membresias).not.toBeNull());
+    await waitFor(() => expect(result.current.paso).toBe("seleccion"));
 
     act(() => {
       result.current.selectCliente("c2");
     });
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
-    expect(capturedBody).toEqual({
-      email: "multi@example.com",
-      password: "secret123",
-      clienteId: "c2",
+    expect(capturedBody).toEqual({ ticket: "tk-1", clienteId: "c2" });
+  });
+
+  const DESAFIO = { needs2fa: true, desafio: "ds-1", recordarDisponible: true };
+
+  async function llegarAlCodigo(respuesta: object = DESAFIO) {
+    server.use(http.post("/api/auth/login", () => HttpResponse.json(respuesta)));
+    const rendered = renderHook(() => useLogin(), { wrapper });
+    act(() => {
+      rendered.result.current.login("user@example.com", "secret123");
     });
+    await waitFor(() => expect(rendered.result.current.paso).not.toBe("credenciales"));
+    return rendered.result;
+  }
+
+  it("needs2fa → paso codigo, sin sesión ni redirección; expone recordarDisponible", async () => {
+    const result = await llegarAlCodigo();
+    expect(result.current.paso).toBe("codigo");
+    expect(result.current.recordarDisponible).toBe(true);
+    expect(assignMock).not.toHaveBeenCalled();
+    expect(writeLastActivity).not.toHaveBeenCalled();
+  });
+
+  it("recordarDisponible === false se refleja; ausente se trata como disponible", async () => {
+    const no = await llegarAlCodigo({ ...DESAFIO, recordarDisponible: false });
+    expect(no.current.recordarDisponible).toBe(false);
+    const ausente = await llegarAlCodigo({ needs2fa: true, desafio: "ds-1" });
+    expect(ausente.current.recordarDisponible).toBe(true);
+  });
+
+  it("needsEnrolamiento2fa → paso enrolamiento", async () => {
+    const result = await llegarAlCodigo({ needsEnrolamiento2fa: true, desafio: "ds-2" });
+    expect(result.current.paso).toBe("enrolamiento");
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+
+  it("verificarCodigo → verificar con el desafío, luego continuar con el ticket, y redirige", async () => {
+    let verificar: unknown = null;
+    let continuar: unknown = null;
+    server.use(
+      http.post("/api/auth/2fa/verificar", async ({ request }) => {
+        verificar = await request.json();
+        return HttpResponse.json({ ticket: "tk-9" });
+      }),
+      http.post("/api/auth/login/continuar", async ({ request }) => {
+        continuar = await request.json();
+        return HttpResponse.json({ user: USER_OK });
+      }),
+    );
+    const result = await llegarAlCodigo();
+
+    act(() => {
+      result.current.verificarCodigo("123456", true);
+    });
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
+    expect(verificar).toEqual({ desafio: "ds-1", codigo: "123456", recordar: true });
+    expect(continuar).toEqual({ ticket: "tk-9" });
+    expect(writeLastActivity).toHaveBeenCalledWith(expect.any(Number));
+  });
+
+  it("verificarCodigo con varias membresías → paso seleccion con el ticket que devuelve continuar", async () => {
+    let seleccionar: unknown = null;
+    server.use(
+      http.post("/api/auth/2fa/verificar", () => HttpResponse.json({ ticket: "tk-9" })),
+      http.post("/api/auth/login/continuar", () => HttpResponse.json(SELECCION)),
+      http.post("/api/auth/login/seleccionar", async ({ request }) => {
+        seleccionar = await request.json();
+        return HttpResponse.json({ user: USER_OK });
+      }),
+    );
+    const result = await llegarAlCodigo();
+
+    act(() => {
+      result.current.verificarCodigo("123456", false);
+    });
+    await waitFor(() => expect(result.current.paso).toBe("seleccion"));
+    act(() => {
+      result.current.selectCliente("c1");
+    });
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
+    expect(seleccionar).toEqual({ ticket: "tk-1", clienteId: "c1" });
+  });
+
+  it("código equivocado (401) → toast genérico, sigue en el paso codigo y no redirige", async () => {
+    const { toast } = await import("sonner");
+    server.use(
+      http.post("/api/auth/2fa/verificar", () =>
+        HttpResponse.json({ statusCode: 401, message: "detalle interno" }, { status: 401 }),
+      ),
+    );
+    const result = await llegarAlCodigo();
+
+    act(() => {
+      result.current.verificarCodigo("000000", false);
+    });
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/código incorrecto/i)),
+    );
+    expect(result.current.paso).toBe("codigo");
+    expect(assignMock).not.toHaveBeenCalled();
   });
 
   it("401 credenciales inválidas → shows a generic toast error, does not redirect", async () => {
