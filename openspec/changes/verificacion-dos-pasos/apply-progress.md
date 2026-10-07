@@ -184,3 +184,13 @@ WU-4c entera sumaba ~650 lineas de codigo y tests; el orquestador la partio por 
 - e2e `tfa-cuenta.e2e.spec.ts` con guards reales; cableado en `auth.module.ts` (TOTP, cifrado, verificador, confirmador, los 4 casos de uso y el controller).
 - Correccion del validador: `ConfirmarSecretoTfa` genera y hashea los codigos ANTES de promover el secreto (`prepararJuegoCodigos`), asi una falla del hash no deja el 2FA activo sin codigos. Queda solo el error de base entre las dos escrituras; el usuario regenera con un TOTP.
 - Evidencia: `pnpm vitest run src/auth/application/tfa` + e2e: 6 archivos, 37 tests verdes; typecheck, lint y ratchet de casts limpios.
+
+## WU-5a — Desafios, EmitirSesion, verificar y enrolamiento (partida: 5a repo, 5a2 sesion y casos de uso)
+
+WU-5a entera sumaba ~640 lineas de codigo y tests. El orquestador la partio en dos, cada mitad bajo 400 y compilando sola: el repo de desafios no depende del resto, y el resto importa solo su puerto.
+
+### 5a (`feat/verificacion-dos-pasos-wu05a`, tareas 5a.3 y 5a.4)
+
+- `backend/src/auth/domain/ports/desafio-login-repository.port.ts` (`PropositoDesafio`, `DesafioVigente`): `crear`, `buscarSinVerificar(token, proposito)` (cubre VERIFICAR y ENROLAR), `verificar` (CAS que rota el token a ticket) y `consumir` (CAS de uso unico).
+- `backend/src/auth/infrastructure/tfa/prisma-desafio-login.repository.ts` con reloj inyectable (el vencimiento se compara con el reloj de la aplicacion, no con `now()` de la base) + spec de integracion contra Postgres real: 7 tests.
+- Sin cableado hasta 5a2.
