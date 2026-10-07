@@ -80,13 +80,22 @@ import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
 
 // ─── Use Cases ───────────────────────────────────────────────────────────────
-import { DESAFIO_LOGIN_REPOSITORY } from './domain/ports/desafio-login-repository.port';
+import {
+  DESAFIO_LOGIN_REPOSITORY,
+  IDesafioLoginRepository,
+} from './domain/ports/desafio-login-repository.port';
 import { PrismaDesafioLoginRepository } from './infrastructure/tfa/prisma-desafio-login.repository';
 import {
   ConfirmarEnrolamientoLoginUseCase,
   IniciarEnrolamientoLoginUseCase,
   VerificarDesafioUseCase,
 } from './application/tfa/desafio-login.use-cases';
+import {
+  ContinuarLoginUseCase,
+  SeleccionarClienteLoginUseCase,
+} from './application/tfa/continuar-login.use-cases';
+import { EmitirSesionService } from './application/emitir-sesion.service';
+import { TfaLoginController } from './interface/controllers/tfa-login.controller';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-case';
 import { LogoutUseCase } from './application/use-cases/logout.use-case';
@@ -130,7 +139,13 @@ import { RolesController } from './interface/controllers/roles.controller';
       signOptions: { expiresIn: '15m', algorithm: 'HS256' },
     }),
   ],
-  controllers: [AuthController, UsuariosController, RolesController, TfaCuentaController],
+  controllers: [
+    AuthController,
+    UsuariosController,
+    RolesController,
+    TfaCuentaController,
+    TfaLoginController,
+  ],
   providers: [
     // ─── Repositories ──────────────────────────────────────────────────────
     { provide: USUARIO_REPOSITORY, useClass: PrismaUsuarioRepository },
@@ -166,6 +181,46 @@ import { RolesController } from './interface/controllers/roles.controller';
     VerificarDesafioUseCase,
     IniciarEnrolamientoLoginUseCase,
     ConfirmarEnrolamientoLoginUseCase,
+    // Continuar y seleccionar (WU-5b): unico punto donde el flujo de 2FA emite sesion.
+    {
+      provide: EmitirSesionService,
+      useFactory: (
+        membresiaRepo: IMembresiaRepository,
+        clienteRepo: IClienteRepository,
+        tokenService: ITokenService,
+        refreshTokenRepo: IRefreshTokenRepository,
+        permisosRepo: IMatrizPermisosRepository,
+      ) =>
+        new EmitirSesionService(
+          membresiaRepo,
+          clienteRepo,
+          tokenService,
+          refreshTokenRepo,
+          permisosRepo,
+        ),
+      inject: [
+        MEMBRESIA_REPOSITORY,
+        CLIENTE_REPOSITORY,
+        TOKEN_SERVICE,
+        REFRESH_TOKEN_REPOSITORY,
+        MATRIZ_PERMISOS_REPOSITORY,
+      ],
+    },
+    ...[ContinuarLoginUseCase, SeleccionarClienteLoginUseCase].map((UseCase) => ({
+      provide: UseCase,
+      useFactory: (
+        desafios: IDesafioLoginRepository,
+        usuarioRepo: IUsuarioRepository,
+        membresiaRepo: IMembresiaRepository,
+        emitirSesion: EmitirSesionService,
+      ) => new UseCase(desafios, usuarioRepo, membresiaRepo, emitirSesion),
+      inject: [
+        DESAFIO_LOGIN_REPOSITORY,
+        USUARIO_REPOSITORY,
+        MEMBRESIA_REPOSITORY,
+        EmitirSesionService,
+      ],
+    })),
 
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
