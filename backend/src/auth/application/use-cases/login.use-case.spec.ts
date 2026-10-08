@@ -48,6 +48,7 @@ import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.rep
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { unstubbed } from '../../../testing/mocks';
+import { DISPOSITIVO_CONFIABLE_DURACION_MS } from '../../domain/tfa/tfa.constants';
 
 // ─── Factories de entidades/mocks de test ────────────────────────────────────
 
@@ -179,7 +180,8 @@ const makeDesafios = () => ({
 
 const makeDispositivos = () => ({
   crear: unstubbed('crear'),
-  esValido: vi.fn().mockResolvedValue(false),
+  esValido: unstubbed('esValido'),
+  renovar: vi.fn().mockResolvedValue(false),
   revocarTodosDe: unstubbed('revocarTodosDe'),
 });
 
@@ -484,7 +486,6 @@ describe('LoginUseCase', () => {
       expect(result.getValue()).toEqual({
         kind: 'needs2fa',
         desafio: 'desafio-VERIFICAR',
-        recordarDisponible: true,
       });
       expect(desafios.crear).toHaveBeenCalledWith(expect.any(String), 'VERIFICAR');
       expect(tokenService.signJwt).not.toHaveBeenCalled();
@@ -543,40 +544,55 @@ describe('LoginUseCase', () => {
         tfaRepo.obtener.mockResolvedValue(EST_ACTIVO);
       });
 
-      it('un token valido del usuario omite el desafio y consulta por el hash, no por el crudo', async () => {
-        dispositivos.esValido.mockResolvedValue(true);
-        expect((await entrar()).getValue().kind).toBe('tokens');
-        expect(dispositivos.esValido).toHaveBeenCalledWith(
-          expect.any(String),
-          hashDelToken,
-          expect.any(Date),
-        );
+      it('un token valido omite el desafio, se renueva 30 dias por el hash (no el crudo) y se devuelve', async () => {
+        dispositivos.renovar.mockResolvedValue(true);
+        const antes = Date.now();
+        const r = (await entrar()).getValue();
+        expect(r).toMatchObject({ kind: 'tokens', dispositivoConfiable: 'token-crudo' });
+        const [, hash, nuevaExpiraAt, ahora] = dispositivos.renovar.mock.calls[0];
+        expect(hash).toBe(hashDelToken);
+        expect(nuevaExpiraAt.getTime() - ahora.getTime()).toBe(DISPOSITIVO_CONFIABLE_DURACION_MS);
+        expect(ahora.getTime()).toBeGreaterThanOrEqual(antes);
         expect(desafios.crear).not.toHaveBeenCalled();
       });
 
-      it('no omite la contrasena: password incorrecta sigue siendo 401', async () => {
-        dispositivos.esValido.mockResolvedValue(true);
-        hashProvider.verify.mockResolvedValue(false);
-        expect((await entrar()).isFail()).toBe(true);
-        expect(dispositivos.esValido).not.toHaveBeenCalled();
+      it('con varias membresias el selector tambien devuelve el dispositivo renovado', async () => {
+        dispositivos.renovar.mockResolvedValue(true);
+        membresiaRepo.findActivasByUsuario.mockResolvedValue([
+          makeMembresiaResuelta({ clienteId: 'a' }),
+          makeMembresiaResuelta({ clienteId: 'b' }),
+        ]);
+        expect((await entrar()).getValue()).toMatchObject({
+          kind: 'selection',
+          dispositivoConfiable: 'token-crudo',
+        });
       });
 
-      it('un token ajeno, revocado o vencido (esValido falso) sigue con el desafio', async () => {
-        dispositivos.esValido.mockResolvedValue(false);
-        expect((await entrar()).getValue()).toMatchObject({ kind: 'needs2fa' });
+      it('no omite la contrasena: password incorrecta sigue siendo 401', async () => {
+        dispositivos.renovar.mockResolvedValue(true);
+        hashProvider.verify.mockResolvedValue(false);
+        expect((await entrar()).isFail()).toBe(true);
+        expect(dispositivos.renovar).not.toHaveBeenCalled();
+      });
+
+      it('un token ajeno, revocado o vencido (no se renueva) sigue con el desafio', async () => {
+        dispositivos.renovar.mockResolvedValue(false);
+        const r = (await entrar()).getValue();
+        expect(r).toMatchObject({ kind: 'needs2fa' });
+        expect(r).not.toHaveProperty('dispositivoConfiable');
       });
 
       it('sin token no consulta el repositorio y sigue con el desafio', async () => {
         const r = await entrar({ dispositivoConfiable: undefined });
         expect(r.getValue()).toMatchObject({ kind: 'needs2fa' });
-        expect(dispositivos.esValido).not.toHaveBeenCalled();
+        expect(dispositivos.renovar).not.toHaveBeenCalled();
       });
 
-      it('un token valido de quien hoy es ROOT se ignora (D4)', async () => {
+      it('un token valido de quien hoy es ROOT se ignora y no se renueva (D4)', async () => {
         usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ isGlobalAdmin: true }));
-        dispositivos.esValido.mockResolvedValue(true);
+        dispositivos.renovar.mockResolvedValue(true);
         expect((await entrar()).getValue()).toMatchObject({ kind: 'needs2fa' });
-        expect(dispositivos.esValido).not.toHaveBeenCalled();
+        expect(dispositivos.renovar).not.toHaveBeenCalled();
       });
     });
 
@@ -586,7 +602,7 @@ describe('LoginUseCase', () => {
 
       const result = await useCase.execute({ email: 'root@test.com', password: 'secret' });
 
-      expect(result.getValue()).toMatchObject({ kind: 'needs2fa', recordarDisponible: false });
+      expect(result.getValue()).toMatchObject({ kind: 'needs2fa' });
     });
 
     it('una membresia cuyo cliente exige 2FA obliga al enrolamiento (L3, C3)', async () => {

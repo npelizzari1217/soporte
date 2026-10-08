@@ -3,11 +3,11 @@
 /**
  * DesafioTfaForm — PRESENTATIONAL component del segundo paso del login.
  *
- * Pide el código de la app autenticadora (6 dígitos) o un código de recuperación. "Recordar este
- * dispositivo" solo se ofrece si el backend lo anuncia (`recordarDisponible !== false`).
- * El error lo comunica el container (toast); este componente no hace llamadas.
+ * Pide el código de la app autenticadora (6 dígitos) o un código de recuperación. No hay casilla
+ * para recordar el dispositivo: el backend lo confía solo al verificar (salvo ROOT, que ve el
+ * código siempre). El error lo comunica el container (toast); este componente no hace llamadas.
  *
- * Spec: sdd/verificacion-dos-pasos — L6, D1, D4.
+ * Spec: sdd/verificacion-dos-pasos — L6, D4.
  */
 
 import { useForm } from "react-hook-form";
@@ -19,17 +19,16 @@ import { codigoDesafioSchema, type CodigoDesafioFormValues } from "../schemas";
 interface DesafioTfaFormProps {
   onSubmit: (values: CodigoDesafioFormValues) => void;
   isLoading: boolean;
-  recordarDisponible?: boolean;
 }
 
-export function DesafioTfaForm({ onSubmit, isLoading, recordarDisponible }: DesafioTfaFormProps) {
+export function DesafioTfaForm({ onSubmit, isLoading }: DesafioTfaFormProps) {
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<CodigoDesafioFormValues>({
     resolver: zodResolver(codigoDesafioSchema),
-    defaultValues: { codigo: "", recordar: false },
+    defaultValues: { codigo: "" },
   });
 
   return (
@@ -58,13 +57,6 @@ export function DesafioTfaForm({ onSubmit, isLoading, recordarDisponible }: Desa
           </p>
         )}
       </div>
-
-      {recordarDisponible !== false && (
-        <label htmlFor="recordar" className="flex items-center gap-2 text-sm text-foreground">
-          <input id="recordar" type="checkbox" disabled={isLoading} {...register("recordar")} />
-          Recordar este dispositivo
-        </label>
-      )}
 
       <Button type="submit" isLoading={isLoading} className="w-full">
         Verificar

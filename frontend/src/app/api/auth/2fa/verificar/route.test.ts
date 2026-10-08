@@ -26,7 +26,7 @@ describe("POST /api/auth/2fa/verificar", () => {
       ),
     );
 
-    const res = await POST(req({ desafio: "d", codigo: "123456", recordar: true }));
+    const res = await POST(req({ desafio: "d", codigo: "123456" }));
 
     expect(await res.json()).toEqual({ ticket: "tk" });
     const setCookies = res.headers.getSetCookie();

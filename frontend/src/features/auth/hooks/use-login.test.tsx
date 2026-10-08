@@ -209,7 +209,7 @@ describe("useLogin", () => {
     expect(capturedBody).toEqual({ ticket: "tk-1", clienteId: "c2" });
   });
 
-  const DESAFIO = { needs2fa: true, desafio: "ds-1", recordarDisponible: true };
+  const DESAFIO = { needs2fa: true, desafio: "ds-1" };
 
   async function llegarAlCodigo(respuesta: object = DESAFIO) {
     server.use(http.post("/api/auth/login", () => HttpResponse.json(respuesta)));
@@ -221,19 +221,11 @@ describe("useLogin", () => {
     return rendered.result;
   }
 
-  it("needs2fa → paso codigo, sin sesión ni redirección; expone recordarDisponible", async () => {
+  it("needs2fa → paso codigo, sin sesión ni redirección", async () => {
     const result = await llegarAlCodigo();
     expect(result.current.paso).toBe("codigo");
-    expect(result.current.recordarDisponible).toBe(true);
     expect(assignMock).not.toHaveBeenCalled();
     expect(writeLastActivity).not.toHaveBeenCalled();
-  });
-
-  it("recordarDisponible === false se refleja; ausente se trata como disponible", async () => {
-    const no = await llegarAlCodigo({ ...DESAFIO, recordarDisponible: false });
-    expect(no.current.recordarDisponible).toBe(false);
-    const ausente = await llegarAlCodigo({ needs2fa: true, desafio: "ds-1" });
-    expect(ausente.current.recordarDisponible).toBe(true);
   });
 
   it("needsEnrolamiento2fa → paso enrolamiento", async () => {
@@ -263,11 +255,11 @@ describe("useLogin", () => {
     const result = await llegarAlCodigo();
 
     act(() => {
-      result.current.verificarCodigo("123456", true);
+      result.current.verificarCodigo("123456");
     });
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
-    expect(verificar).toEqual({ desafio: "ds-1", codigo: "123456", recordar: true });
+    expect(verificar).toEqual({ desafio: "ds-1", codigo: "123456" });
     expect(continuar).toEqual({ ticket: "tk-9" });
     expect(writeLastActivity).toHaveBeenCalledWith(expect.any(Number));
   });
@@ -285,7 +277,7 @@ describe("useLogin", () => {
     const result = await llegarAlCodigo();
 
     act(() => {
-      result.current.verificarCodigo("123456", false);
+      result.current.verificarCodigo("123456");
     });
     await waitFor(() => expect(result.current.paso).toBe("seleccion"));
     act(() => {
@@ -306,7 +298,7 @@ describe("useLogin", () => {
     const result = await llegarAlCodigo();
 
     act(() => {
-      result.current.verificarCodigo("000000", false);
+      result.current.verificarCodigo("000000");
     });
 
     await waitFor(() =>
@@ -441,7 +433,7 @@ describe("useLogin", () => {
     });
     expect(result.current.paso).toBe("credenciales");
     act(() => {
-      result.current.verificarCodigo("123456", false);
+      result.current.verificarCodigo("123456");
     });
     expect(result.current.isPending).toBe(false);
   });
@@ -464,7 +456,7 @@ describe("useLogin", () => {
     );
     const result = await llegarAlCodigo();
     act(() => {
-      result.current.verificarCodigo("123456", false);
+      result.current.verificarCodigo("123456");
     });
     await waitFor(() => expect(result.current.paso).toBe("credenciales"));
     expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
@@ -495,7 +487,7 @@ describe("useLogin", () => {
     const result = await llegarAlCodigo();
     spy.mockReturnValue(ahora + 6 * 60_000);
     act(() => {
-      result.current.verificarCodigo("000000", false);
+      result.current.verificarCodigo("000000");
     });
     await waitFor(() => expect(result.current.paso).toBe("credenciales"));
     expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);

@@ -6,10 +6,9 @@
  * Calls the BFF POST /api/auth/login. Máquina de pasos (`paso`):
  *   credenciales → codigo (2FA activo) | enrolamiento (2FA obligatorio) → codigos (recuperación, una vez)
  *                → seleccion (varias membresías) → sesión.
- *   1. POST { email, password } → `{ user }` (cookies, listo) | `{ needs2fa, desafio,
- *      recordarDisponible }` | `{ needsEnrolamiento2fa, desafio }` | `{ needsClienteSelection,
+ *   1. POST { email, password } → `{ user }` (cookies, listo) | `{ needs2fa, desafio }` | `{ needsEnrolamiento2fa, desafio }` | `{ needsClienteSelection,
  *      membresias, ticket }`.
- *   2. `verificarCodigo` → POST 2fa/verificar `{ desafio, codigo, recordar }` → `{ ticket }` y de
+ *   2. `verificarCodigo` → POST 2fa/verificar `{ desafio, codigo }` → `{ ticket }` y de
  *      inmediato POST login/continuar `{ ticket }` → sesión o selección.
  *   3. `selectCliente` → POST login/seleccionar `{ ticket, clienteId }`.
  * La contraseña NO se guarda: solo viven en memoria el `desafio` y el `ticket`.
@@ -50,7 +49,6 @@ interface LoginDto {
 interface VerificarDto {
   desafio: string;
   codigo: string;
-  recordar: boolean;
 }
 
 interface SeleccionarDto {
@@ -84,13 +82,13 @@ export const MENSAJE_VENCIDO = "La verificación venció. Volvé a iniciar sesi�
 type Respuesta =
   | Vencido
   | { user: JwtPayload }
-  | { needs2fa: true; desafio: string; recordarDisponible?: boolean }
+  | { needs2fa: true; desafio: string }
   | { needsEnrolamiento2fa: true; desafio: string }
   | Seleccion;
 
 export type PasoLogin =
   | { paso: "credenciales" }
-  | { paso: "codigo"; desafio: string; recordarDisponible: boolean; emitidoAt: number }
+  | { paso: "codigo"; desafio: string; emitidoAt: number }
   | { paso: "enrolamiento"; desafio: string; datos: DatosEnrolamiento | null; emitidoAt: number }
   | { paso: "codigos"; codigos: string[]; ticket: string }
   | { paso: "seleccion"; membresias: Membresia[]; ticket: string };
@@ -136,7 +134,6 @@ export function useLogin() {
       setFase({
         paso: "codigo",
         desafio: result.desafio,
-        recordarDisponible: result.recordarDisponible !== false,
         emitidoAt: Date.now(),
       });
       return;
@@ -261,9 +258,9 @@ export function useLogin() {
     loginMutation.mutate({ email, password });
   }
 
-  function verificarCodigo(codigo: string, recordar: boolean) {
+  function verificarCodigo(codigo: string) {
     if (fase.paso !== "codigo") return;
-    verificarMutation.mutate({ desafio: fase.desafio, codigo, recordar });
+    verificarMutation.mutate({ desafio: fase.desafio, codigo });
   }
 
   function selectCliente(clienteId: string) {
@@ -297,7 +294,6 @@ export function useLogin() {
     selectCliente,
     paso: fase.paso,
     membresias: fase.paso === "seleccion" ? fase.membresias : null,
-    recordarDisponible: fase.paso === "codigo" ? fase.recordarDisponible : false,
     isPending:
       loginMutation.isPending ||
       verificarMutation.isPending ||

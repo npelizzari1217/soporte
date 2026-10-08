@@ -3,7 +3,7 @@ import { cookieAttrs, COOKIE_TD, TRUSTED_DEVICE_MAX_AGE } from "@/shared/auth/co
 
 /**
  * POST /api/auth/2fa/verificar — verifica el código del desafío y devuelve `{ ticket }`.
- * Si el backend emite un dispositivo confiable (`recordar`), lo guarda en la cookie httpOnly `td`
+ * Si el backend emite un dispositivo confiable (todo segundo paso exitoso de un no-ROOT), lo guarda en la cookie httpOnly `td`
  * y NO lo incluye en la respuesta: el token del dispositivo nunca llega al JS del navegador.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {

@@ -829,8 +829,14 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - Para **ROOT** es obligatorio.
   - Se pide **una sola vez por login**, después de la contraseña y antes del selector
     de cliente. Cambiar de cliente o renovar la sesión no lo vuelve a pedir.
-  - **"Recordar este dispositivo" por 30 días.** Se invalida al cambiar la contraseña
-    o al resetear el 2FA.
+  - **Dispositivo de confianza automático, ventana de 30 días** (cambiado el
+    2026-10-08 por decisión del dueño; antes era una casilla "Recordar este
+    dispositivo"). Todo segundo paso exitoso (código de la app o de recuperación) de
+    un usuario que no es ROOT deja a ese navegador como de confianza, sin casilla.
+    Cada login que se saltea el código gracias a ese dispositivo renueva 30 días más;
+    30 días sin usarlo y el código se vuelve a pedir. Se invalida al cambiar la
+    contraseña, al resetear el 2FA, al desactivarlo y al **cerrar todas las
+    sesiones**. El cierre de sesión normal no lo invalida.
   - Si el usuario pierde el celular y los códigos, **ROOT le resetea el 2FA**. El
     ADMINISTRADOR de un cliente también puede, pero solo si el usuario pertenece
     únicamente a su cliente: un admin no le baja la seguridad a alguien que también
@@ -851,9 +857,10 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - Para el reseteo por ADMINISTRADOR, "pertenece únicamente a su cliente" cuenta
       **todas** las membresías del usuario, también las inactivas y las de clientes
       suspendidos.
-    - **"Recordar este dispositivo" no está disponible para ROOT.** Para los demás se
-      invalida al cambiar la contraseña por cualquier vía: el propio usuario, el
-      reseteo por mail y el reseteo por un administrador.
+    - **ROOT no tiene dispositivo de confianza: el código se le pide siempre**
+      (vigente tras el cambio del 2026-10-08). Para los demás se invalida al cambiar
+      la contraseña por cualquier vía: el propio usuario, el reseteo por mail y el
+      reseteo por un administrador.
     - Si un administrador empieza a exigir el 2FA, las **sesiones abiertas siguen**
       hasta que venzan y el 2FA se pide en el próximo login.
     - El límite de intentos de la **contraseña** es por usuario **e IP**: el BFF le

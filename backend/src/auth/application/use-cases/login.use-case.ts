@@ -20,6 +20,7 @@ import { IDesafioLoginRepository } from '../../domain/ports/desafio-login-reposi
 import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
 import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
 import { hashTokenDispositivo } from '../tfa/token-dispositivo';
+import { DISPOSITIVO_CONFIABLE_DURACION_MS } from '../../domain/tfa/tfa.constants';
 
 /**
  * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
@@ -63,6 +64,8 @@ export interface MembresiaView {
 /**
  * LoginResult — resultado del login.
  * - `tokens`: credenciales válidas y scope resuelto → JWT + refresh emitidos.
+ *   `dispositivoConfiable` (en `tokens` y `selection`) devuelve el token del dispositivo que acaba
+ *   de omitir el desafío y fue renovado 30 días más: el BFF re-fija su cookie (ventana deslizante).
  * - `selection`: usuario normal con >1 membresías activas y sin `clienteId`
  *   explícito → el front muestra el selector y elige con el `ticket` (o re-postea con el
  *   `clienteId`, R4, R27). NO se emiten tokens en este caso.
@@ -70,9 +73,14 @@ export interface MembresiaView {
  *   (L1, L3, L4, L5). El `desafio` no es un token de sesión.
  */
 export type LoginResult =
-  | { kind: 'tokens'; accessToken: string; refreshToken: string }
-  | { kind: 'selection'; membresias: MembresiaView[]; ticket: string }
-  | { kind: 'needs2fa'; desafio: string; recordarDisponible: boolean }
+  | { kind: 'tokens'; accessToken: string; refreshToken: string; dispositivoConfiable?: string }
+  | {
+      kind: 'selection';
+      membresias: MembresiaView[];
+      ticket: string;
+      dispositivoConfiable?: string;
+    }
+  | { kind: 'needs2fa'; desafio: string }
   | { kind: 'needsEnrolamiento2fa'; desafio: string };
 
 /**
@@ -166,22 +174,25 @@ export class LoginUseCase {
     // membresia activa. Como `requiere_2fa` nace en false, hasta WU-7 (ruta para activarla) solo
     // ROOT obliga en la practica.
     const estadoTfa = await this.tfaRepo.obtener(usuario.id);
+    let dispositivoRenovado: string | undefined;
     if (estadoTfa?.secretoCifrado != null) {
       // Un dispositivo confiable valido omite el desafio, nunca la contrasena (D3). ROOT no
       // lo tiene aunque lo envie, ni siquiera si lo emitieron antes de que fuera ROOT (D4).
-      const omiteDesafio =
-        !usuario.isGlobalAdmin &&
-        dto.dispositivoConfiable !== undefined &&
-        (await this.dispositivos.esValido(
+      // Ventana deslizante: omitir el desafio gracias a un dispositivo vigente lo renueva 30 dias.
+      if (!usuario.isGlobalAdmin && dto.dispositivoConfiable !== undefined) {
+        const ahora = new Date();
+        const renovado = await this.dispositivos.renovar(
           usuario.id,
           hashTokenDispositivo(dto.dispositivoConfiable),
-          new Date(),
-        ));
-      if (!omiteDesafio) {
+          new Date(ahora.getTime() + DISPOSITIVO_CONFIABLE_DURACION_MS),
+          ahora,
+        );
+        if (renovado) dispositivoRenovado = dto.dispositivoConfiable;
+      }
+      if (dispositivoRenovado === undefined) {
         return Result.ok({
           kind: 'needs2fa',
           desafio: await this.desafios.crear(usuario.id, 'VERIFICAR'),
-          recordarDisponible: !usuario.isGlobalAdmin,
         });
       }
     } else if (esObligado2fa(usuario.isGlobalAdmin, membresiasActivas)) {
@@ -216,6 +227,7 @@ export class LoginUseCase {
           nombre: m.clienteNombre,
           rol: m.rolCodigo,
         })),
+        ...(dispositivoRenovado !== undefined ? { dispositivoConfiable: dispositivoRenovado } : {}),
       });
     }
 
@@ -223,6 +235,11 @@ export class LoginUseCase {
     const sesion = await this.emitirSesion.emitir(usuario, membresiasActivas, clienteIdObjetivo);
     if (sesion.isFail()) return Result.fail(sesion.getError());
     const { accessToken, refreshToken } = sesion.getValue();
-    return Result.ok({ kind: 'tokens', accessToken, refreshToken });
+    return Result.ok({
+      kind: 'tokens',
+      accessToken,
+      refreshToken,
+      ...(dispositivoRenovado !== undefined ? { dispositivoConfiable: dispositivoRenovado } : {}),
+    });
   }
 }

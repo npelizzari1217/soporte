@@ -235,7 +235,7 @@ M = viñetas principales; P = "Precisiones del 2026-10-07, al explorar", ambas e
 | M3 | Activación propia; ADMINISTRADOR lo exige para su cliente; cualquier cliente que lo exija; configuración forzada tras la contraseña | `auth-2fa-totp`: T7; `auth-2fa-politica-cliente`: C1, C3; `auth-2fa-login`: L3, L5 |
 | M4 | Obligatorio para ROOT | `auth-2fa-login`: L3, L10; `auth-2fa-totp`: T8 |
 | M5 | Una vez por login, tras la contraseña y antes del selector; cambiar de cliente o renovar no lo pide | `auth-2fa-login`: L1, L2, L6, L7, L8, L9 |
-| M6 | "Recordar este dispositivo" 30 días; se invalida al cambiar contraseña o resetear 2FA | `auth-2fa-dispositivo-confiable`: D1, D2, D3, D5, D6; `usuarios-reset-password`: U1; `auth-reseteo-por-olvido`: O1 |
+| M6 | Dispositivo de confianza automático, ventana deslizante de 30 días (cambiado 2026-10-08); se invalida al cambiar contraseña, resetear 2FA o cerrar todas las sesiones | `auth-2fa-dispositivo-confiable`: D1, D2, D3, D5, D6, D8; `usuarios-reset-password`: U1; `auth-reseteo-por-olvido`: O1 |
 | M7 | ROOT resetea el 2FA; ADMINISTRADOR solo si el usuario pertenece únicamente a su cliente | `auth-2fa-reseteo`: S1, S2, S3, S4 |
 | M8 | El reset de contraseña por mail no desactiva el 2FA | `auth-reseteo-por-olvido`: O2; `usuarios-reset-password`: U2 |
 | M9 | Límite de intentos en login y verificación del código (5 cada 15 min) | `auth-limite-intentos`: I1-I8 |

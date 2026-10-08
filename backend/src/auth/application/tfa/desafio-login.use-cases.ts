@@ -26,8 +26,9 @@ const rechazo = (): Result<never, SegundoPasoRechazadoError> =>
  * `POST /auth/2fa/verificar`: el desafio `VERIFICAR` se valida ANTES de reservar cupo del
  * limitador (un desafio basura no gasta intentos); desafio, ticket, codigo erroneo y bloqueo dan
  * el mismo rechazo (L2, L6, L11). Un `ENROLAR` no sirve aca (L5). Al verificar el token rota a un
- * ticket para `continuar`. Con `recordar` y un usuario que no es ROOT emite ademas un dispositivo
- * confiable (D1, D4): el token crudo sale una sola vez, en esta respuesta.
+ * ticket para `continuar`. Todo segundo paso exitoso (codigo TOTP o de recuperacion) de un usuario
+ * que no es ROOT emite ademas un dispositivo confiable, sin casilla (decision del dueno,
+ * 2026-10-08; D4): el token crudo sale una sola vez, en esta respuesta.
  */
 @Injectable()
 export class VerificarDesafioUseCase {
@@ -42,7 +43,6 @@ export class VerificarDesafioUseCase {
   async execute(
     desafio: string,
     codigo: string,
-    recordar = false,
   ): Promise<
     Result<
       { usuarioId: string; ticket: string; dispositivoConfiable?: string },
@@ -55,7 +55,7 @@ export class VerificarDesafioUseCase {
     if (verificado.isFail()) return rechazo();
     const ticket = await this.desafios.verificar(desafio, 'VERIFICAR', vigente.usuarioId);
     if (!ticket) return rechazo();
-    const dispositivoConfiable = recordar ? await this.emitirDispositivo(vigente.usuarioId) : null;
+    const dispositivoConfiable = await this.emitirDispositivo(vigente.usuarioId);
     return Result.ok({
       usuarioId: vigente.usuarioId,
       ticket,
@@ -63,7 +63,7 @@ export class VerificarDesafioUseCase {
     });
   }
 
-  /** ROOT nunca recibe dispositivo, aunque lo pida (D4). */
+  /** ROOT nunca recibe dispositivo: el codigo se le pide siempre (D4). */
   private async emitirDispositivo(usuarioId: string): Promise<string | null> {
     const usuario = await this.usuarios.findById(usuarioId);
     if (!usuario || usuario.isGlobalAdmin) return null;

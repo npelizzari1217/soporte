@@ -2,48 +2,60 @@
 
 ## Purpose
 
-Definir "Recordar este dispositivo": cuándo se ofrece, cuánto dura, para quién nunca está disponible y qué lo invalida, con invalidación que falla cerrado.
+Definir el dispositivo de confianza automático: cuándo se emite, cuánto dura (ventana deslizante de 30 días), para quién nunca se emite y qué lo invalida, con invalidación que falla cerrada.
 
-> **Decisión de producto citada.** `docs/roadmap-comercial.md`, "Decisiones de producto de la segunda etapa", viñeta "Segunda etapa, punto 5 — verificación en dos pasos (2FA)": viñeta de "Recordar este dispositivo" por 30 días y precisión sobre ROOT y las vías de cambio de contraseña. Trazabilidad completa en `auth-2fa-totp`.
+> **Decisión de producto citada.** `docs/roadmap-comercial.md`, "Decisiones de producto de la segunda etapa", viñeta "Segunda etapa, punto 5 — verificación en dos pasos (2FA)": viñetas del dispositivo de confianza (30 días) y de ROOT y las vías de cambio de contraseña. **Cambiado el 2026-10-08 por decisión del dueño**: la confianza es automática (sin casilla "Recordar este dispositivo"), la vigencia se renueva en cada login que omite el código y "Cerrar todas las sesiones" invalida los dispositivos. Trazabilidad completa en `auth-2fa-totp`.
 
 ## Definiciones
 
-- **Dispositivo confiable**: navegador al que el usuario pidió recordar tras superar el segundo paso; no se le vuelve a pedir el código mientras valga.
+- **Dispositivo confiable**: navegador de un usuario no ROOT que superó el segundo paso; no se le vuelve a pedir el código mientras valga.
 - **Fail-closed**: si la invalidación falla, la operación que la dispara informa fallo y no deja un dispositivo válido junto a la credencial nueva.
 
 ## Requirements
 
-### Requirement: D1 Alta del dispositivo al verificar con "recordar"
+### Requirement: D1 Alta automática del dispositivo al verificar
 
-Cuando el usuario supera el segundo paso eligiendo "recordar este dispositivo", el sistema DEBE emitir un token opaco, mostrarlo en crudo una sola vez y persistir solo un derivado no reversible. El token DEBE viajar en una cookie httpOnly gestionada por el BFF y valer por navegador.
+Cuando un usuario no ROOT supera el segundo paso (código de la app o de recuperación), el sistema DEBE emitir un token opaco sin que el usuario lo pida, mostrarlo en crudo una sola vez y persistir solo un derivado no reversible. El token DEBE viajar en una cookie httpOnly gestionada por el BFF y valer por navegador. La interfaz NO DEBE ofrecer casilla para recordar el dispositivo.
 
-#### Scenario: Recordar tras el segundo paso
+#### Scenario: Confianza automática tras el segundo paso
 
-- GIVEN un usuario no ROOT que supera el desafío marcando "recordar"
+- GIVEN un usuario no ROOT que supera el desafío
 - WHEN se completa la verificación
 - THEN el BFF fija una cookie httpOnly con el token y la base guarda solo su derivado
 
-#### Scenario: Sin marcar "recordar"
+#### Scenario: Código de recuperación
 
-- GIVEN un usuario que supera el desafío sin marcar "recordar"
+- GIVEN un usuario no ROOT que supera el desafío con un código de recuperación
 - WHEN se completa la verificación
+- THEN también se emite el dispositivo
+
+#### Scenario: Código incorrecto
+
+- GIVEN un usuario que falla el desafío
+- WHEN se rechaza la verificación
 - THEN no se emite token ni cookie de dispositivo
 
-### Requirement: D2 Vigencia de 30 días
+### Requirement: D2 Vigencia deslizante de 30 días
 
-El dispositivo DEBE valer 30 días desde su emisión y ni un instante más.
+El dispositivo DEBE valer 30 días desde su emisión o desde su último uso y ni un instante más. Cada login que omite el desafío gracias a un dispositivo vigente DEBE mover su vencimiento a 30 días desde ese login, y el BFF DEBE re-fijar la cookie con 30 días nuevos. Un dispositivo vencido NO DEBE renovarse.
 
 #### Scenario: Dentro de la vigencia
 
-- GIVEN un dispositivo emitido hace 29 días
+- GIVEN un dispositivo vigente
 - WHEN el usuario hace login con su token
 - THEN no se le pide código
 
+#### Scenario: Renovación
+
+- GIVEN un dispositivo emitido hace 29 días
+- WHEN el usuario hace login con su token
+- THEN su vencimiento pasa a 30 días desde ese login y el BFF re-fija la cookie con 30 días
+
 #### Scenario: Vencido
 
-- GIVEN un dispositivo emitido hace 31 días
+- GIVEN un dispositivo sin uso hace más de 30 días
 - WHEN el usuario hace login con su token
-- THEN se le pide el código
+- THEN se le pide el código y el dispositivo no se renueva
 
 ### Requirement: D3 Un dispositivo válido omite el desafío, no la contraseña
 
@@ -69,11 +81,11 @@ Con un token de dispositivo válido del mismo usuario, el login DEBE omitir el s
 
 ### Requirement: D4 No disponible para ROOT
 
-El sistema NO DEBE ofrecer ni emitir dispositivo confiable a un ROOT y NO DEBE honrar un token si el usuario es ROOT al momento del login.
+El sistema NO DEBE emitir dispositivo confiable a un ROOT (el código se le pide siempre) y NO DEBE honrar ni renovar un token si el usuario es ROOT al momento del login.
 
 #### Scenario: ROOT no recibe token
 
-- GIVEN un ROOT que supera el desafío marcando "recordar"
+- GIVEN un ROOT que supera el desafío
 - WHEN se completa la verificación
 - THEN no se emite token y el siguiente login pide código
 

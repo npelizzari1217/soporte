@@ -34,7 +34,6 @@ export default function LoginPage() {
     codigosRecuperacion,
     paso,
     membresias,
-    recordarDisponible,
     isPending,
   } = useLogin();
 
@@ -62,9 +61,8 @@ export default function LoginPage() {
         )}
         {paso === "codigo" && (
           <DesafioTfaForm
-            onSubmit={({ codigo, recordar }) => verificarCodigo(codigo, recordar)}
+            onSubmit={({ codigo }) => verificarCodigo(codigo)}
             isLoading={isPending}
-            recordarDisponible={recordarDisponible}
           />
         )}
         {paso === "enrolamiento" && (

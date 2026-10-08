@@ -43,6 +43,7 @@ describe('use cases de desafio de login', () => {
   const dispositivos = {
     crear: vi.fn(),
     esValido: unstubbed('esValido'),
+    renovar: unstubbed('renovar'),
     revocarTodosDe: unstubbed('revocarTodosDe'),
   } satisfies IDispositivoConfiableRepository;
   const usuario = (isGlobalAdmin: boolean) =>
@@ -86,15 +87,15 @@ describe('use cases de desafio de login', () => {
       expect(desafios.verificar).not.toHaveBeenCalled();
     });
 
-    describe('recordar este dispositivo (D1, D4)', () => {
+    describe('confianza automatica del dispositivo (D4, decision 2026-10-08)', () => {
       beforeEach(() => {
         verificar.mockResolvedValue(Result.ok(undefined));
         usuarios.findById.mockResolvedValue(usuario(false));
       });
 
-      it('un usuario normal con recordar recibe el token crudo y se guarda solo su hash por 30 dias', async () => {
+      it('un usuario normal recibe el token crudo, sin pedirlo, y se guarda solo su hash por 30 dias', async () => {
         const antes = Date.now();
-        const r = await uc().execute('d', '123456', true);
+        const r = await uc().execute('d', '123456');
         const token = r.getValue().dispositivoConfiable;
         expect(token).toMatch(/^[0-9a-f]{64}$/);
         const [usuarioId, hash, expiraAt] = dispositivos.crear.mock.calls[0];
@@ -109,22 +110,16 @@ describe('use cases de desafio de login', () => {
         );
       });
 
-      it('sin recordar no emite dispositivo', async () => {
-        const r = await uc().execute('d', '123456');
-        expect(r.getValue()).toEqual({ usuarioId: 'u1', ticket: 'ticket-1' });
-        expect(dispositivos.crear).not.toHaveBeenCalled();
-      });
-
-      it('ROOT no recibe dispositivo aunque envie recordar (D4)', async () => {
+      it('ROOT nunca recibe dispositivo: el codigo se le pide siempre (D4)', async () => {
         usuarios.findById.mockResolvedValue(usuario(true));
-        const r = await uc().execute('d', '123456', true);
+        const r = await uc().execute('d', '123456');
         expect(r.getValue()).toEqual({ usuarioId: 'u1', ticket: 'ticket-1' });
         expect(dispositivos.crear).not.toHaveBeenCalled();
       });
 
       it('si el codigo falla no se emite dispositivo', async () => {
         verificar.mockResolvedValue(rechazado());
-        await uc().execute('d', '000000', true);
+        await uc().execute('d', '000000');
         expect(dispositivos.crear).not.toHaveBeenCalled();
       });
     });

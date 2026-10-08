@@ -80,6 +80,30 @@ describe('PrismaDispositivoConfiableRepository', () => {
     expect(await repo.esValido(u, sha('crudo-3'), enTreintaDias)).toBe(false);
   });
 
+  it('renovar mueve expira_at de un dispositivo vigente del dueno y no resucita uno vencido ni ajeno', async () => {
+    const u = await crearUsuario();
+    const otro = await crearUsuario();
+    await repo.crear(u, sha('crudo-r'), enTreintaDias);
+    const medio = new Date(AHORA.getTime() + 10 * 24 * 60 * 60 * 1000);
+    const nueva = new Date(medio.getTime() + DISPOSITIVO_CONFIABLE_DURACION_MS);
+    expect(await repo.renovar(otro, sha('crudo-r'), nueva, medio)).toBe(false);
+    expect(await repo.renovar(u, sha('crudo-r'), nueva, medio)).toBe(true);
+    const { rows } = await pool.query(
+      'SELECT expira_at FROM tfa_dispositivos_confiables WHERE usuario_id = $1',
+      [u],
+    );
+    expect(rows[0].expira_at.getTime()).toBe(nueva.getTime());
+    // Vencido (ahora >= expira_at): sigue pidiendo el codigo.
+    expect(await repo.renovar(u, sha('crudo-r'), nueva, nueva)).toBe(false);
+  });
+
+  it('renovar no toca un dispositivo revocado', async () => {
+    const u = await crearUsuario();
+    await repo.crear(u, sha('crudo-rv'), enTreintaDias);
+    await repo.revocarTodosDe(u);
+    expect(await repo.renovar(u, sha('crudo-rv'), enTreintaDias, AHORA)).toBe(false);
+  });
+
   it('revocarTodosDe revoca todos los del usuario y deja los de otro (D7)', async () => {
     const u = await crearUsuario();
     const otro = await crearUsuario();

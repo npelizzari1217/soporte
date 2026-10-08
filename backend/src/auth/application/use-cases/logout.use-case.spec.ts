@@ -116,6 +116,7 @@ describe('LogoutAllUseCase', () => {
   const dispositivos = {
     crear: unstubbed('crear'),
     esValido: unstubbed('esValido'),
+    renovar: unstubbed('renovar'),
     revocarTodosDe: vi.fn(),
   } satisfies IDispositivoConfiableRepository;
   let useCase: LogoutAllUseCase;

@@ -23,6 +23,19 @@ export class PrismaDispositivoConfiableRepository implements IDispositivoConfiab
     return fila !== null;
   }
 
+  async renovar(
+    usuarioId: string,
+    tokenHash: string,
+    nuevaExpiraAt: Date,
+    ahora: Date,
+  ): Promise<boolean> {
+    const { count } = await this.client.tfaDispositivoConfiable.updateMany({
+      where: { usuarioId, tokenHash, revocadoAt: null, expiraAt: { gt: ahora } },
+      data: { expiraAt: nuevaExpiraAt },
+    });
+    return count > 0;
+  }
+
   async revocarTodosDe(usuarioId: string): Promise<void> {
     await this.client.tfaDispositivoConfiable.updateMany({
       where: { usuarioId, revocadoAt: null },

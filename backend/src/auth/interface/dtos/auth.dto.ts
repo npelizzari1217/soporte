@@ -86,6 +86,8 @@ export class CambiarPasswordRequestDto {
 export interface TokensResponseDto {
   accessToken: string;
   refreshToken: string;
+  /** Solo en el login que omitio el desafio: dispositivo confiable renovado (solo para el BFF). */
+  dispositivoConfiable?: string;
 }
 
 /**
@@ -98,13 +100,14 @@ export interface SelectionResponseDto {
   membresias: { cliente_id: string; nombre: string; rol: string }[];
   /** Ticket de un solo uso para `POST /auth/login/seleccionar` (L7). */
   ticket: string;
+  /** Dispositivo confiable renovado: el BFF lo pasa a la cookie `td` y no llega al navegador. */
+  dispositivoConfiable?: string;
 }
 
 /** Contrasena valida pero falta el segundo paso (L1): el `desafio` no es un token de sesion. */
 export interface Needs2faResponseDto {
   needs2fa: true;
   desafio: string;
-  recordarDisponible: boolean;
 }
 
 export interface NeedsEnrolamiento2faResponseDto {

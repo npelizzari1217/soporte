@@ -69,6 +69,53 @@ describe("POST /api/auth/login", () => {
     expect(rtCookieStr).toMatch(/Max-Age=604800/i);
   });
 
+  it("login que omitió el código por dispositivo confiable → re-fija td con 30 días y NO lo expone en el body", async () => {
+    const accessToken = makeJwt(testPayload);
+    let cuerpoAlBackend: { dispositivoConfiable?: string } = {};
+    server.use(
+      http.post(`${BACKEND}/auth/login`, async ({ request }) => {
+        cuerpoAlBackend = (await request.json()) as { dispositivoConfiable?: string };
+        return HttpResponse.json({
+          accessToken,
+          refreshToken: "rt-1",
+          dispositivoConfiable: "tok-dispositivo",
+        });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "test@example.com", password: "password123" }),
+      headers: { "content-type": "application/json", cookie: "td=tok-dispositivo" },
+    });
+
+    const res = await POST(req);
+
+    expect(cuerpoAlBackend.dispositivoConfiable).toBe("tok-dispositivo");
+    expect(JSON.stringify(await res.json())).not.toContain("tok-dispositivo");
+    const td = res.headers.getSetCookie().find((c) => c.startsWith("td="));
+    expect(td).toContain("td=tok-dispositivo");
+    expect(td).toMatch(/HttpOnly/i);
+    expect(td).toMatch(/Max-Age=2592000/i);
+  });
+
+  it("sesión sin dispositivo renovado (pidió el código) → no toca la cookie td", async () => {
+    server.use(
+      http.post(`${BACKEND}/auth/login`, () =>
+        HttpResponse.json({ accessToken: makeJwt(testPayload), refreshToken: "rt-1" }),
+      ),
+    );
+    const req = new NextRequest("http://localhost/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "test@example.com", password: "password123" }),
+      headers: { "content-type": "application/json" },
+    });
+
+    const res = await POST(req);
+
+    expect(res.headers.getSetCookie().some((c) => c.startsWith("td="))).toBe(false);
+  });
+
   it("needsClienteSelection (multi-membresía) → passes through membresias[], sets NO cookies", async () => {
     server.use(
       http.post(`${BACKEND}/auth/login`, () =>
@@ -127,7 +174,7 @@ describe("POST /api/auth/login", () => {
       http.post(`${BACKEND}/auth/login`, async ({ request }) => {
         cabecera = request.headers.get("x-soporte-ip-navegador");
         enviado = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ needs2fa: true, desafio: "d", recordarDisponible: true });
+        return HttpResponse.json({ needs2fa: true, desafio: "d" });
       }),
     );
 
@@ -145,7 +192,7 @@ describe("POST /api/auth/login", () => {
 
     expect(cabecera).toBe("1.2.3.4");
     expect(enviado.dispositivoConfiable).toBe("de-la-cookie");
-    expect(await res.json()).toEqual({ needs2fa: true, desafio: "d", recordarDisponible: true });
+    expect(await res.json()).toEqual({ needs2fa: true, desafio: "d" });
     expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 
