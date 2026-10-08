@@ -134,7 +134,10 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       permisosRepo,
     );
     logoutUseCase = new LogoutUseCase(refreshTokenRepo);
-    logoutAllUseCase = new LogoutAllUseCase(refreshTokenRepo);
+    logoutAllUseCase = new LogoutAllUseCase(
+      refreshTokenRepo,
+      new PrismaDispositivoConfiableRepository(prismaService),
+    );
   });
 
   beforeEach(() => {

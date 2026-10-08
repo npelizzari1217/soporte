@@ -124,3 +124,19 @@ El sistema NO DEBE persistir ni loguear el token de dispositivo en crudo.
 - GIVEN un dispositivo emitido
 - WHEN se inspeccionan la fila y los logs
 - THEN no aparece el token en crudo
+
+### Requirement: D8 Cerrar todas las sesiones invalida los dispositivos
+
+"Cerrar todas las sesiones" DEBE invalidar todos los dispositivos confiables del usuario, de modo que el código se pida de nuevo en todos lados; si la invalidación falla, la operación DEBE informar fallo. El cierre de sesión normal NO DEBE invalidarlos.
+
+#### Scenario: Cerrar todas las sesiones
+
+- GIVEN un usuario con dos dispositivos vigentes
+- WHEN cierra todas las sesiones
+- THEN ambos dispositivos quedan inválidos y el próximo login pide código
+
+#### Scenario: Cierre de sesión normal
+
+- GIVEN un usuario con un dispositivo vigente
+- WHEN cierra la sesión actual
+- THEN el dispositivo sigue vigente

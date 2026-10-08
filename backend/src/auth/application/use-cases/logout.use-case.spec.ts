@@ -16,6 +16,8 @@ import { LogoutUseCase } from './logout.use-case';
 import { LogoutAllUseCase } from './logout-all.use-case';
 import { RefreshTokenEntity } from '../../domain/entities/refresh-token.entity';
 import { IRefreshTokenRepository } from '../../domain/ports/i-refresh-token.repository';
+import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
+import { unstubbed } from '../../../testing/mocks';
 import { TokenInvalidoError } from '../../domain/errors/auth.errors';
 
 const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -111,11 +113,29 @@ describe('LogoutUseCase', () => {
 
 describe('LogoutAllUseCase', () => {
   let refreshTokenRepo: Mocked<IRefreshTokenRepository>;
+  const dispositivos = {
+    crear: unstubbed('crear'),
+    esValido: unstubbed('esValido'),
+    revocarTodosDe: vi.fn(),
+  } satisfies IDispositivoConfiableRepository;
   let useCase: LogoutAllUseCase;
 
   beforeEach(() => {
     refreshTokenRepo = makeRefreshTokenRepo();
-    useCase = new LogoutAllUseCase(refreshTokenRepo);
+    dispositivos.revocarTodosDe.mockReset().mockResolvedValue(undefined);
+    useCase = new LogoutAllUseCase(refreshTokenRepo, dispositivos);
+  });
+
+  it('revoca todos los dispositivos confiables del usuario (el codigo se pide de nuevo en todos lados)', async () => {
+    await useCase.execute({ usuarioId: 'usuario-uuid' });
+
+    expect(dispositivos.revocarTodosDe).toHaveBeenCalledWith('usuario-uuid');
+  });
+
+  it('es fail-closed: si la revocacion de dispositivos falla, propaga el error', async () => {
+    dispositivos.revocarTodosDe.mockRejectedValue(new Error('db caida'));
+
+    await expect(useCase.execute({ usuarioId: 'usuario-uuid' })).rejects.toThrow('db caida');
   });
 
   it('delega en revokeAllByUsuarioId del repo', async () => {

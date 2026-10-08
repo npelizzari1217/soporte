@@ -322,9 +322,11 @@ import { RolesController } from './interface/controllers/roles.controller';
     },
     {
       provide: LogoutAllUseCase,
-      useFactory: (refreshTokenRepo: IRefreshTokenRepository) =>
-        new LogoutAllUseCase(refreshTokenRepo),
-      inject: [REFRESH_TOKEN_REPOSITORY],
+      useFactory: (
+        refreshTokenRepo: IRefreshTokenRepository,
+        dispositivos: IDispositivoConfiableRepository,
+      ) => new LogoutAllUseCase(refreshTokenRepo, dispositivos),
+      inject: [REFRESH_TOKEN_REPOSITORY, DISPOSITIVO_CONFIABLE_REPOSITORY],
     },
     {
       provide: SwitchTenantUseCase,
