@@ -66,12 +66,11 @@ consultor.
 | 3 | Encuesta de satisfacción | Media | 4-6 días | **HECHO** — del 2026-08-22 (`24b0618`) al 2026-09-04 |
 | 4 | Mantenimiento preventivo recurrente | Media | 5-8 días | **HECHO** — del 2026-08-24 (`bd098f9`) al 2026-09-05 |
 | 5 | Horario laboral en el SLA | Media | 4-6 días | **HECHO** — 2026-09-09 (`a5ec64d`, PR #146), en producción |
-| 6 | Ticket por email entrante | Alta | 2-3 semanas | **DIFERIDO** por decisión del 2026-08-20; **POSTERGADO** el 2026-10-03 hasta consultar a los clientes |
+| 6 | Ticket por email entrante | Alta | 2-3 semanas | **DESCARTADO POR AHORA** el 2026-10-08 (antes: diferido el 2026-08-20, postergado el 2026-10-03) |
 
-Estimado restante sobre los seis puntos: **cero**. Lo único que sigue sin
-construirse es la recepción de correo del punto 6, diferida por decisión del
-2026-08-20 y postergada el 2026-10-03 a una versión posterior, hasta consultar a
-los clientes si les sirve (ver el punto 6).
+Estimado restante sobre los seis puntos: **cero**. La recepción de correo del
+punto 6 quedó **descartada por ahora** el 2026-10-08: no está claro que los
+usuarios la quieran (ver el punto 6).
 
 El plan de dos carriles en paralelo **ya no aplica**: se describe más abajo
 porque explica cómo se ejecutaron los puntos 2 a 4, no porque quede trabajo que
@@ -486,7 +485,12 @@ solo para todos los inquilinos— se resolvió el 2026-09-29 con el ciclo
 `horario-laboral-por-cliente`. Los feriados por cliente llegaron antes, con el
 ciclo `feriados-configurables` (issue #216).
 
-### 6 · Ticket por email entrante — Alta — **POSTERGADO**
+### 6 · Ticket por email entrante — Alta — **DESCARTADO POR AHORA**
+
+> **Descartado por ahora el 2026-10-08 por decisión del dueño**: no está claro
+> que los usuarios lo quieran. No se construye ni se ofrece como siguiente paso.
+> El análisis de abajo se conserva por si se retoma con pedidos concretos de
+> clientes.
 
 La más valiosa y la más cara. Hoy hay envío (SMTP) pero **no recepción**. Sin
 esto cada persona tiene que aprender a entrar a una app; con esto manda un mail
@@ -551,7 +555,9 @@ como siempre.
 5. ~~**Punto 5 — es el siguiente, y el último que queda.**~~ — **entregado** el
    2026-09-09 (PR #146), con la desviación del calendario global, corregida el
    2026-09-29.
-6. Punto 6 — diferido; postergado el 2026-10-03 hasta consultar a los clientes.
+6. ~~Punto 6 — diferido; postergado el 2026-10-03 hasta consultar a los clientes.~~
+   — **descartado por ahora** el 2026-10-08: no está claro que los usuarios lo
+   quieran.
 
 **No queda ningún punto abierto.**
 
@@ -645,7 +651,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | Pendiente |
-| 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email: va con el punto 6, postergado | Alta · 2-4 semanas | Postergado con el punto 6 |
+| 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | Sin base desde el 2026-10-08: requiere decidir cómo se resuelve el cliente |
 | 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
 
 **Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
