@@ -644,9 +644,10 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
-| 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | Pendiente |
+| 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | Pendiente — decisiones cerradas el 2026-10-08: un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email: va con el punto 6, postergado | Alta · 2-4 semanas | Postergado con el punto 6 |
 | 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
+| 12 | **Tareas con técnico y crédito por tarea** | Sumado el 2026-10-08, al decidir el punto 9. Un ticket puede necesitar varios técnicos: uno empieza y otro termina, o hay varios oficios o pasos. Cada tarea del ticket lleva su técnico y el crédito va a quien la completó, no a quien cerró el ticket. Generaliza a todos los tipos las subtareas que hoy solo tiene Edilicia (`SubtareaEdilicia`, que guarda quién la completó pero no tiene responsable) | Media-Alta · 5-8 días (a refinar) | Pendiente — va después del punto 9 |
 
 **Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
 licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
@@ -937,6 +938,38 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     cliente***: solo se entra desde *En proceso*. Cualquier salida del estado, también
     por salto, reanuda el reloj (precisado el 2026-10-06).
   - Los **preventivos** siguen fuera del SLA, como hoy.
+- **Segunda etapa, punto 9 — asignación automática por tipo** (decidido el
+  2026-10-08):
+  - La regla es **solo por tipo de ticket**. La ubicación queda afuera: hoy es texto
+    libre y ni siquiera vive en el ticket (sale del equipo o del campo de Edilicia),
+    así que una regla por ubicación fallaría en silencio por una diferencia de
+    escritura. Se puede sumar cuando exista un catálogo de ubicaciones.
+  - **Un responsable fijo por tipo**: una regla por tipo, sin orden ni prioridad
+    entre reglas, sin grupos y sin reparto por turnos ni por carga. Eso es el motor
+    de reglas que esta fila deja afuera.
+  - Aplica en **todos los canales** de alta: el alta normal, Soporte con equipo,
+    Edilicia, el formulario público con QR y los preventivos recurrentes.
+  - Si la regla le pone responsable, el ticket **nace en *Asignado***; si no hay
+    regla para el tipo, nace en *Nuevo* y sin asignar, como hoy. La bitácora
+    registra que lo asignó el sistema por la regla del tipo.
+  - Si el responsable de la regla **no es válido** (dado de baja, sin membresía en
+    el cliente o sin el módulo del tipo), el ticket se crea igual, **sin asignar y en
+    *Nuevo***: un problema de configuración nunca impide pedir ayuda. La pantalla de
+    reglas marca la regla rota. Al configurar, solo se puede elegir a alguien válido
+    para ese tipo.
+  - El responsable **se puede reasignar en cualquier momento hasta que el ticket se
+    cierra**. Un ticket cerrado no se reasigna (hoy la asignación no mira el estado).
+  - **Mail al responsable cada vez que le asignan un ticket**, por la regla o por una
+    reasignación manual, con la cuenta de correo del cliente. Si el cliente no tiene
+    correo configurado, la asignación se hace igual y no sale mail.
+  - Las reglas las configura el **ADMINISTRADOR del cliente** (y ROOT), en una
+    pantalla nueva del menú de administración: una fila por tipo de ticket con un
+    selector del responsable. Fila vacía = ese tipo no tiene regla.
+  - **El trabajo compartido entre técnicos va en otro ciclo** (punto 12). Un
+    responsable por ticket no reparte el crédito: si un técnico hizo el 60 % y otro
+    el 40 %, los indicadores por asignado se lo dan al último, y un problema con
+    varios oficios (electricista, sistemas, constructor) o varios pasos (formatear
+    una PC, instalar aplicaciones e impresoras) necesita un técnico por tarea.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
