@@ -83,7 +83,6 @@ export const codigoDesafioSchema = z.object({
       /^(\d{6}|[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4})$/,
       "Ingresá los 6 dígitos de la app o un código de recuperación",
     ),
-  recordar: z.boolean(),
 });
 export type CodigoDesafioFormValues = z.infer<typeof codigoDesafioSchema>;
 

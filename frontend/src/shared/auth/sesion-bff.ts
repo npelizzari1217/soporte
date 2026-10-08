@@ -6,6 +6,8 @@ import {
   COOKIE_RT,
   ACCESS_MAX_AGE,
   REFRESH_MAX_AGE,
+  COOKIE_TD,
+  TRUSTED_DEVICE_MAX_AGE,
 } from "@/shared/auth/cookies";
 import { decodeJwtPayload } from "@/shared/api/types";
 
@@ -36,7 +38,9 @@ export function ipDelNavegador(request: NextRequest): string | undefined {
 /**
  * Traduce la respuesta del backend en la del BFF. Un error se propaga tal cual sin cookies; una
  * respuesta con tokens fija `at`/`rt` y devuelve `{ user }`; cualquier otra (segundo paso,
- * selección de cliente) se reenvía sin cookies. `dispositivoConfiable` nunca sale hacia el cliente.
+ * selección de cliente) se reenvía sin cookies de sesión. `dispositivoConfiable` nunca sale hacia el
+ * cliente: si viene (login que omitió el código gracias a un dispositivo vigente, que el backend
+ * renovó 30 días), se re-fija la cookie `td` con 30 días nuevos (ventana deslizante).
  */
 export async function responderConSesion(backendRes: Response): Promise<NextResponse> {
   const data = await backendRes.json().catch(() => null);
@@ -48,14 +52,26 @@ export async function responderConSesion(backendRes: Response): Promise<NextResp
     );
   }
 
+  const dispositivoConfiable: unknown =
+    data && typeof data === "object" ? data.dispositivoConfiable : undefined;
+  const fijarDispositivo = (response: NextResponse): NextResponse => {
+    if (typeof dispositivoConfiable === "string" && dispositivoConfiable) {
+      response.cookies.set({
+        ...cookieAttrs(COOKIE_TD, TRUSTED_DEVICE_MAX_AGE),
+        value: dispositivoConfiable,
+      });
+    }
+    return response;
+  };
+
   if (data && typeof data.accessToken === "string" && typeof data.refreshToken === "string") {
     // El payload viene del backend de confianza por red privada: no se verifica la firma.
     const response = NextResponse.json({ user: decodeJwtPayload(data.accessToken) });
     response.cookies.set({ ...cookieAttrs(COOKIE_AT, ACCESS_MAX_AGE), value: data.accessToken });
     response.cookies.set({ ...cookieAttrs(COOKIE_RT, REFRESH_MAX_AGE), value: data.refreshToken });
-    return response;
+    return fijarDispositivo(response);
   }
 
   if (data && typeof data === "object") delete data.dispositivoConfiable;
-  return NextResponse.json(data);
+  return fijarDispositivo(NextResponse.json(data));
 }

@@ -104,7 +104,7 @@ describe("LoginPage", () => {
   it("2FA activo → pide el código, lo verifica y entra", async () => {
     server.use(
       http.post("/api/auth/login", () =>
-        HttpResponse.json({ needs2fa: true, desafio: "ds-1", recordarDisponible: true }),
+        HttpResponse.json({ needs2fa: true, desafio: "ds-1" }),
       ),
       http.post("/api/auth/2fa/verificar", () => HttpResponse.json({ ticket: "tk-9" })),
       http.post("/api/auth/login/continuar", () =>
@@ -122,7 +122,6 @@ describe("LoginPage", () => {
     const codigo = await screen.findByLabelText(/código de verificación/i);
     expect(screen.queryByLabelText(/contraseña/i)).not.toBeInTheDocument();
     await user.type(codigo, "123456");
-    await user.click(screen.getByLabelText(/recordar este dispositivo/i));
     await user.click(screen.getByRole("button", { name: /verificar/i }));
 
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
@@ -171,7 +170,7 @@ describe("LoginPage", () => {
 
   it("Volver en el paso del código regresa a las credenciales", async () => {
     server.use(
-      http.post("/api/auth/login", () => HttpResponse.json({ needs2fa: true, desafio: "ds-1", recordarDisponible: true })),
+      http.post("/api/auth/login", () => HttpResponse.json({ needs2fa: true, desafio: "ds-1" })),
     );
     const user = userEvent.setup();
     renderPage();

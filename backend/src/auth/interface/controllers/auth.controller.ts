@@ -157,19 +157,24 @@ export class AuthController {
 
     const value = result.getValue();
     if (value.kind === 'selection') {
-      return { needsClienteSelection: true, membresias: value.membresias, ticket: value.ticket };
+      return {
+        needsClienteSelection: true,
+        membresias: value.membresias,
+        ticket: value.ticket,
+        ...(value.dispositivoConfiable ? { dispositivoConfiable: value.dispositivoConfiable } : {}),
+      };
     }
     if (value.kind === 'needs2fa') {
-      return {
-        needs2fa: true,
-        desafio: value.desafio,
-        recordarDisponible: value.recordarDisponible,
-      };
+      return { needs2fa: true, desafio: value.desafio };
     }
     if (value.kind === 'needsEnrolamiento2fa') {
       return { needsEnrolamiento2fa: true, desafio: value.desafio };
     }
-    return { accessToken: value.accessToken, refreshToken: value.refreshToken };
+    return {
+      accessToken: value.accessToken,
+      refreshToken: value.refreshToken,
+      ...(value.dispositivoConfiable ? { dispositivoConfiable: value.dispositivoConfiable } : {}),
+    };
   }
 
   @Post('refresh')

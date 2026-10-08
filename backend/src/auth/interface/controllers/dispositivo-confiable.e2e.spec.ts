@@ -112,12 +112,11 @@ describe('Dispositivo confiable (e2e)', () => {
     else process.env.EMAIL_CRYPTO_KEY = emailKeyOriginal;
   }, 30_000);
 
-  it('verificar con recordar emite el token; el login siguiente lo usa', async () => {
+  it('verificar emite el token sin pedirlo; el login siguiente lo usa y lo renueva', async () => {
     const primero = await post('/auth/login', { email, password: PASSWORD });
     const v = await post('/auth/2fa/verificar', {
       desafio: primero.body.desafio,
       codigo: codigoDeTest(usuarioId),
-      recordar: true,
     });
     const dispositivo = String(v.body.dispositivoConfiable);
     expect(dispositivo).toMatch(/^[0-9a-f]{64}$/);
@@ -130,6 +129,8 @@ describe('Dispositivo confiable (e2e)', () => {
     });
     expect(conToken.status).toBe(200);
     expect(conToken.body.accessToken).toEqual(expect.any(String));
+    // Ventana deslizante: el backend devuelve el token para que el BFF re-fije la cookie.
+    expect(conToken.body.dispositivoConfiable).toBe(dispositivo);
     const malaClave = await post('/auth/login', {
       email,
       password: 'otra',
