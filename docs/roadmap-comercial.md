@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-07 contra el código de `main` (`1fb5f803`),
+decisión.** Actualizado el 2026-10-08 contra el código de `main` (`20b320a4`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
@@ -640,7 +640,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 2 | **App instalable (PWA), con conexión** | El técnico la abre desde el celular como una app, sin tienda. El modo sin conexión es Alta y queda afuera | Baja · 1-2 días | **Entregado** — en `main` por el #365 (`9a80346b`), desplegado el 2026-10-05 |
 | 3 | **Exportar a Excel y PDF** | Hoy solo hay CSV. El PDF de un ticket u orden de trabajo es un pedido habitual | Baja-Media · 2-4 días | **Entregado** — en `main` por los PRs #379-#387 (`34af7504`), desplegado el 2026-10-06 |
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | **Entregado** — en `main` por los PRs #369-#375 (`ba083775`), desplegado el 2026-10-06 |
-| 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | Pendiente |
+| 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | **Entregado** — en `main` por el #472 (`20b320a4`), desplegado el 2026-10-07 |
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
@@ -805,6 +805,16 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
 
 - **Segunda etapa, punto 5 — verificación en dos pasos (2FA)** (decidido el
   2026-10-07, ciclo `verificacion-dos-pasos`):
+  - **Cumplida** (2026-10-07, cadena de PRs #437-#473 integrada por el #472,
+    `20b320a4`, desplegada el mismo día con una migración master sin relleno).
+    Todas las viñetas de abajo y las precisiones están implementadas, cada una como
+    requerimiento con escenario en `openspec/changes/verificacion-dos-pasos/specs/`;
+    la verificación cerró en PASS WITH WARNINGS (61/61 requerimientos, 124/124
+    escenarios). Probado en producción: el ROOT configuró su 2FA en el primer login y
+    el límite de intentos registra la IP real del navegador. **Precisiones**: el
+    reseteo de un ROOT por otro ROOT existe por API y por el script de operador, sin
+    botón en la pantalla; y para el reseteo por un ADMINISTRADOR también cuentan las
+    membresías borradas, algo más estricto que "todas las membresías" de la decisión.
   - El segundo paso es una **app autenticadora** (TOTP: Google Authenticator,
     Microsoft Authenticator, Authy). Al activarlo se entregan **10 códigos de
     recuperación** de un solo uso, que se muestran una sola vez. No hay código por
