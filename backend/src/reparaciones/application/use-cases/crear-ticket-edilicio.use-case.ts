@@ -2,10 +2,12 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
-import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
+import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
 import { NumeradorTicket } from '../../../tickets/domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import { ResolverAsignacionAutomatica } from '../../../tickets/application/services/resolver-asignacion-automatica.service';
+import { operacionesDeApertura } from '../../../tickets/application/services/operaciones-apertura';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
@@ -82,6 +84,7 @@ export class CrearTicketEdilicioUseCase {
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'existeEnTenant'>,
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
     private readonly resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'>,
+    private readonly resolverAsignacion: Pick<ResolverAsignacionAutomatica, 'resolver'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
@@ -128,6 +131,11 @@ export class CrearTicketEdilicioUseCase {
 
     // 5. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
     //    persistencia atómica de ticket + operación + satélite.
+    // Regla de asignación del tipo: sin regla o regla rota → null y el alta sigue como siempre;
+    // un fallo de consulta del tenant se propaga (ver el resolver). Resuelve fuera de la tx.
+    const asignacion = await this.resolverAsignacion.resolver(tipoEdilicia, dto.clienteId);
+    const estadoInicialId = asignacion?.estadoAsignadoId ?? estadoNuevoId;
+
     const resultado = await this.txRunner.run(async () => {
       const numeroResult = await this.numerador.generarNumero(
         tipoEdilicia.id,
@@ -146,22 +154,24 @@ export class CrearTicketEdilicioUseCase {
         titulo: dto.titulo,
         descripcion: dto.descripcion ?? null,
         tipoId: tipoEdilicia.id,
-        estadoId: estadoNuevoId,
+        estadoId: estadoInicialId,
         prioridadId: dto.prioridadId,
         cicloId: cicloActivo.id,
         ticketReferenciaId: null,
         solicitanteId: dto.solicitanteId,
       });
 
-      const operacionApertura = OperacionTicketEntity.create({
+      // La regla asigna ANTES del primer `save()`: el ticket nace ASIGNADO.
+      if (asignacion) ticket.assignTo(asignacion.asignadoId);
+
+      // La apertura conserva el autor del dto; la ASIGNACION es de AUTOR_SISTEMA.
+      const operaciones = operacionesDeApertura({
         ticketId: ticket.id,
-        tipoOperacionId: tipoOperacionAperturaId,
-        descripcion: null,
-        estadoAnteriorId: null,
-        estadoNuevoId: estadoNuevoId,
+        tipoId: tipoEdilicia.id,
+        estadoInicialId,
+        tipoOperacionAperturaId,
         autorId: dto.autorId,
-        esInterno: false,
-        metadata: null,
+        asignacion,
       });
 
       const ticketEdilicia = TicketEdiliciaEntity.create({
@@ -170,7 +180,9 @@ export class CrearTicketEdilicioUseCase {
       });
 
       await this.ticketRepo.save(ticket);
-      await this.operacionRepo.save(operacionApertura);
+      for (const operacion of operaciones) {
+        await this.operacionRepo.save(operacion);
+      }
       await this.ticketEdiliciaRepo.save(ticketEdilicia);
 
       return Result.ok<{ ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity }, DomainError>(
@@ -197,6 +209,20 @@ export class CrearTicketEdilicioUseCase {
           }),
         );
       });
+      // `ticket.asignado` solo si la regla asignó, después de `ticket.creado` y también por
+      // `alCommitear`: un ROLLBACK no deja ningún evento de un ticket inexistente.
+      if (asignacion) {
+        this.txRunner.alCommitear(() => {
+          this.eventPublisher.publish(
+            new TicketAsignadoEvent({
+              ticketId: ticket.id,
+              asignadoId: asignacion.asignadoId,
+              origen: 'REGLA_TIPO',
+              autorId: null,
+            }),
+          );
+        });
+      }
     }
 
     return resultado;

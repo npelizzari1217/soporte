@@ -126,6 +126,7 @@ describe('ConfirmarPedidoPublicoUseCase (WU-14, tenant efimero)', () => {
       { existeEnTenant: async () => true },
       new NumeradorTicket(new PrismaTicketRepository(tenantContext)),
       new ResolverCicloActivoParaCreacion(new PrismaCicloClienteRepository(tenantContext)),
+      { resolver: async () => null },
       new PrismaEquipoInformaticoRepository(tenantContext),
       { publish: publicar },
       txRunner,

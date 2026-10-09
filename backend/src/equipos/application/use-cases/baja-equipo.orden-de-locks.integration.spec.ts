@@ -386,6 +386,7 @@ describe('Baja de equipo — orden de locks, testigos (ADR-2)', () => {
             ),
           ),
       },
+      { resolver: async () => null },
       equipoRepo,
       { publish: () => {} },
       txRunner,

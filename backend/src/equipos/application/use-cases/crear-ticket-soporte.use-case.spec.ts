@@ -7,6 +7,8 @@ import { Result } from '../../../shared/domain/result';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
 import { AUTOR_FORMULARIO_PUBLICO } from '../../../tickets/domain/constants/formulario-publico.constants';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
+import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
+import { AUTOR_SISTEMA } from '../../../tickets/domain/constants/autor-sistema.constants';
 
 /**
  * T13.1 [U][RED] — CrearTicketSoporteUseCase: base+satélite tx; equipoId
@@ -44,6 +46,7 @@ describe('CrearTicketSoporteUseCase', () => {
         ),
       ),
     };
+    const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
     const txRunner = {
       run: vi.fn((fn: () => Promise<unknown>) => fn()),
       alCommitear: vi.fn((fn: () => void) => fn()),
@@ -60,6 +63,7 @@ describe('CrearTicketSoporteUseCase', () => {
       usuarioMasterChecker,
       numerador,
       resolverCicloActivo,
+      resolverAsignacion,
       eventPublisher,
       txRunner,
     };
@@ -91,6 +95,7 @@ describe('CrearTicketSoporteUseCase', () => {
       deps.usuarioMasterChecker as never,
       deps.numerador as never,
       deps.resolverCicloActivo as never,
+      deps.resolverAsignacion,
       deps.equipoRepo as never,
       deps.eventPublisher,
       deps.txRunner as never,
@@ -505,6 +510,110 @@ describe('CrearTicketSoporteUseCase', () => {
         /exactamente uno/,
       );
       expect(deps.ticketRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('asignación automática por regla del tipo (A1, A3, A4, A6, A7, A8, N1)', () => {
+    const ASIGNACION = {
+      asignadoId: 'u-responsable',
+      estadoAsignadoId: 'estado-asignado-id',
+      tipoOperacionAsignacionId: 'tipo-op-asignacion-id',
+    };
+
+    it('con regla: nace ASIGNADO con asignado_id, apertura null→ASIGNADO y ASIGNACION del sistema', async () => {
+      const deps = makeDeps();
+      deps.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+
+      const result = await buildUseCase(deps).execute(baseDto());
+
+      const { ticket } = result.getValue();
+      expect(ticket.estadoId).toBe('estado-asignado-id');
+      expect(ticket.asignadoId).toBe('u-responsable');
+      expect(deps.resolverAsignacion.resolver).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'tipo-soporte-id' }),
+        'cliente-1',
+      );
+      const ops = deps.operacionRepo.save.mock.calls.map(([op]) => op);
+      expect(ops).toHaveLength(2);
+      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-op-apertura-id');
+      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-id');
+      expect(apertura.estadoAnteriorId).toBeNull();
+      expect(apertura.estadoNuevoId).toBe('estado-asignado-id');
+      expect(apertura.autorId).toBe('usuario-1');
+      expect(asignacion.autorId).toBe(AUTOR_SISTEMA);
+    });
+
+    it('formulario público: la apertura conserva AUTOR_FORMULARIO_PUBLICO y la ASIGNACION es del sistema', async () => {
+      const deps = makeDeps();
+      deps.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+
+      await buildUseCase(deps).execute(
+        baseDto({
+          solicitanteId: null,
+          solicitanteExternoId: 'externo-1',
+          autorId: AUTOR_FORMULARIO_PUBLICO,
+        }),
+      );
+
+      const ops = deps.operacionRepo.save.mock.calls.map(([op]) => op);
+      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-op-apertura-id');
+      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-id');
+      expect(apertura.autorId).toBe(AUTOR_FORMULARIO_PUBLICO);
+      expect(asignacion.autorId).toBe(AUTOR_SISTEMA);
+    });
+
+    it('sin regla o regla rota (el resolver devuelve null): NUEVO, sin asignado, una operación y solo ticket.creado', async () => {
+      const deps = makeDeps();
+
+      const result = await buildUseCase(deps).execute(baseDto());
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().ticket.estadoId).toBe('estado-nuevo-id');
+      expect(result.getValue().ticket.asignadoId).toBeNull();
+      expect(deps.operacionRepo.save).toHaveBeenCalledTimes(1);
+      expect(deps.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('con regla: ticket.asignado REGLA_TIPO después de ticket.creado, solo al correr la cola de alCommitear', async () => {
+      const deps = makeDeps();
+      deps.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+      const cola: Array<() => void> = [];
+      deps.txRunner.alCommitear.mockImplementation((fn: () => void) => {
+        cola.push(fn);
+      });
+
+      const result = await buildUseCase(deps).execute(baseDto());
+
+      expect(deps.eventPublisher.publish).not.toHaveBeenCalled();
+      cola.forEach((fn) => fn());
+      const eventos = deps.eventPublisher.publish.mock.calls.map(([e]) => e);
+      expect(eventos[0]).toBeInstanceOf(TicketCreadoEvent);
+      expect(eventos[1]).toBeInstanceOf(TicketAsignadoEvent);
+      expect(eventos[1]).toMatchObject({
+        ticketId: result.getValue().ticket.id,
+        asignadoId: 'u-responsable',
+        origen: 'REGLA_TIPO',
+        autorId: null,
+      });
+      expect(eventos).toHaveLength(2);
+    });
+
+    it('un equipo inválido corta sin escribir y sin publicar ticket.asignado', async () => {
+      const deps = makeDeps();
+      deps.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+
+      const result = await buildUseCase(deps).execute(baseDto({ equipoId: 'no-existe' }));
+
+      expect(result.isFail()).toBe(true);
+      expect(deps.eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('si el resolver rechaza (consulta de tenant), el alta rechaza sin abrir la transacción', async () => {
+      const deps = makeDeps();
+      deps.resolverAsignacion.resolver.mockRejectedValue(new Error('tenant caido'));
+
+      await expect(buildUseCase(deps).execute(baseDto())).rejects.toThrow('tenant caido');
+      expect(deps.txRunner.run).not.toHaveBeenCalled();
     });
   });
 });

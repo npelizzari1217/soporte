@@ -13,6 +13,8 @@ import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-clien
 import { CrearTicketEdilicioUseCase } from './crear-ticket-edilicio.use-case';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
+import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
+import { AUTOR_SISTEMA } from '../../../tickets/domain/constants/autor-sistema.constants';
 
 function makeCicloActivo(): CicloClienteEntity {
   return CicloClienteEntity.reconstitute(
@@ -45,6 +47,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     const resolverCicloActivo = {
       resolver: vi.fn().mockResolvedValue(Result.ok(makeCicloActivo())),
     };
+    const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
     const txRunner = {
       run: vi.fn((fn: () => Promise<unknown>) => fn()),
       alCommitear: vi.fn((fn: () => void) => fn()),
@@ -61,6 +64,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       usuarioMasterChecker as any,
       numerador as any,
       resolverCicloActivo as any,
+      resolverAsignacion,
       eventPublisher,
       txRunner as any,
     );
@@ -72,6 +76,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       ticketEdiliciaRepo,
       usuarioMasterChecker,
       eventPublisher,
+      resolverAsignacion,
       txRunner,
     };
   }
@@ -143,5 +148,80 @@ describe('CrearTicketEdilicioUseCase', () => {
     await useCase.execute(baseDto);
 
     expect(eventPublisher.publish).not.toHaveBeenCalled();
+  });
+
+  describe('asignación automática por regla del tipo (A1, A3, A4, A6, A7, A8, N1)', () => {
+    const ASIGNACION = {
+      asignadoId: 'u-responsable',
+      estadoAsignadoId: 'estado-asignado-uuid',
+      tipoOperacionAsignacionId: 'tipo-op-asignacion-uuid',
+    };
+
+    it('con regla: nace ASIGNADO con asignado_id, apertura null→ASIGNADO y ASIGNACION del sistema', async () => {
+      const { useCase, resolverAsignacion, operacionRepo } = buildDeps();
+      resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+
+      const result = await useCase.execute(baseDto);
+
+      const { ticket } = result.getValue();
+      expect(ticket.estadoId).toBe('estado-asignado-uuid');
+      expect(ticket.asignadoId).toBe('u-responsable');
+      expect(resolverAsignacion.resolver).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'tipo-edilicia-uuid' }),
+        'cliente-uuid',
+      );
+      const ops = operacionRepo.save.mock.calls.map(([op]) => op);
+      expect(ops).toHaveLength(2);
+      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-operacion-uuid');
+      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-uuid');
+      expect(apertura.estadoAnteriorId).toBeNull();
+      expect(apertura.estadoNuevoId).toBe('estado-asignado-uuid');
+      expect(apertura.autorId).toBe('usuario-uuid');
+      expect(asignacion.autorId).toBe(AUTOR_SISTEMA);
+    });
+
+    it('sin regla o regla rota (el resolver devuelve null): NUEVO, sin asignado, una operación y solo ticket.creado', async () => {
+      const { useCase, operacionRepo, eventPublisher } = buildDeps();
+
+      const result = await useCase.execute(baseDto);
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().ticket.estadoId).toBe('estado-nuevo-uuid');
+      expect(result.getValue().ticket.asignadoId).toBeNull();
+      expect(operacionRepo.save).toHaveBeenCalledTimes(1);
+      expect(eventPublisher.publish).toHaveBeenCalledTimes(1);
+    });
+
+    it('con regla: ticket.asignado REGLA_TIPO después de ticket.creado, solo al correr la cola de alCommitear', async () => {
+      const { useCase, resolverAsignacion, txRunner, eventPublisher } = buildDeps();
+      resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+      const cola: Array<() => void> = [];
+      txRunner.alCommitear.mockImplementation((fn: () => void) => {
+        cola.push(fn);
+      });
+
+      const result = await useCase.execute(baseDto);
+
+      expect(eventPublisher.publish).not.toHaveBeenCalled();
+      cola.forEach((fn) => fn());
+      const eventos = eventPublisher.publish.mock.calls.map(([e]) => e);
+      expect(eventos[0]).toBeInstanceOf(TicketCreadoEvent);
+      expect(eventos[1]).toBeInstanceOf(TicketAsignadoEvent);
+      expect(eventos[1]).toMatchObject({
+        ticketId: result.getValue().ticket.id,
+        asignadoId: 'u-responsable',
+        origen: 'REGLA_TIPO',
+        autorId: null,
+      });
+      expect(eventos).toHaveLength(2);
+    });
+
+    it('si el resolver rechaza (consulta de tenant), el alta rechaza sin abrir la transacción', async () => {
+      const { useCase, resolverAsignacion, txRunner } = buildDeps();
+      resolverAsignacion.resolver.mockRejectedValue(new Error('tenant caido'));
+
+      await expect(useCase.execute(baseDto)).rejects.toThrow('tenant caido');
+      expect(txRunner.run).not.toHaveBeenCalled();
+    });
   });
 });

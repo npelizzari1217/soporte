@@ -38,3 +38,11 @@ Estado: completa (tareas 2.8, 2.9 y 2.10). WU-2 queda cerrada en tres ramas enca
 - 2.10: lint, typecheck, `pnpm test` completo y ratchet de casts en verde (617/114).
 
 Desvíos de WU-2: la partición pactada era 2a/2b; 2b con las integraciones daba ~490 líneas, así que las integraciones pasaron a una tercera rama (2c). `orden-de-arranque.spec.ts` falla en este worktree por falta de `backend/.env` (`DATABASE_URL_MASTER`, `APP_BASE_URL`), no por el cambio.
+
+## WU-3a — Soporte, formulario público y Edilicia: casos de uso y cableado (rama `feat/asignacion-automatica-por-tipo-wu03`)
+
+Estado: parcial (tareas 3.1 y 3.2 hechas; 3.3 y 3.4 pendientes). WU-3 se parte para respetar el tope de 400 líneas: 3a (esta) lleva el código con sus tests unit; 3b llevará los casos con regla por canal contra Postgres (3.3) y la verificación final (3.4).
+
+- 3.2: `CrearTicketSoporteUseCase` y `CrearTicketEdilicioUseCase` reciben `ResolverAsignacionAutomatica` (parámetro tras el resolver de ciclo), resuelven antes de abrir la transacción, `assignTo` antes del primer `save`, `operacionesDeApertura` y `ticket.asignado` por `alCommitear` tras `ticket.creado`. `equipos.module.ts` y `reparaciones.module.ts` lo inyectan desde `TicketsModule` (sin reconstruirlo). El formulario público no tiene use case propio: usa `CrearTicketSoporteUseCase`, así que queda cubierto. Los archivos no tenían comentarios de "nunca auto-asigna".
+- 3.1: casos con y sin regla, regla rota (resolver nulo), cola de `alCommitear`, rechazo del tenant, y en Soporte la apertura con `AUTOR_FORMULARIO_PUBLICO` frente a la `ASIGNACION` de `AUTOR_SISTEMA`. Las tres construcciones de integración existentes reciben el resolver nulo.
+- Verificado: los e2e existentes `reparaciones.e2e` y `pedido-publico-confirmar.e2e` levantan la app real (el cableado de DI resuelve).
