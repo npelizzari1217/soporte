@@ -84,6 +84,7 @@ const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   findById: vi.fn(),
   save: vi.fn().mockResolvedValue(undefined),
   findByEmail: unstubbed('findByEmail'),
+  findManyByEmailInsensitive: unstubbed('findManyByEmailInsensitive'),
   create: unstubbed('create'),
 });
 

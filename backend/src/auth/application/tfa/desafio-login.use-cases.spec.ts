@@ -36,6 +36,7 @@ describe('use cases de desafio de login', () => {
   const repo: IDesafioLoginRepository = desafios;
   const usuarios = {
     findByEmail: unstubbed('findByEmail'),
+    findManyByEmailInsensitive: unstubbed('findManyByEmailInsensitive'),
     findById: vi.fn(),
     create: unstubbed('create'),
     save: unstubbed('save'),

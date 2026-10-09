@@ -34,6 +34,7 @@ describe('continuar y seleccionar el cliente del login', () => {
   } satisfies IDesafioLoginRepository;
   const usuarioRepo = {
     findByEmail: unstubbed('findByEmail'),
+    findManyByEmailInsensitive: unstubbed('findManyByEmailInsensitive'),
     findById: vi.fn(),
     create: unstubbed('create'),
     save: unstubbed('save'),

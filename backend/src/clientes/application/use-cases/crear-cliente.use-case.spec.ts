@@ -70,6 +70,7 @@ function makeClienteRepo(): IClienteRepository {
 function makeUsuarioRepo(): IUsuarioRepository {
   return {
     findByEmail: vi.fn().mockResolvedValue(null),
+    findManyByEmailInsensitive: vi.fn(),
     findById: vi.fn(),
     create: vi.fn().mockResolvedValue(undefined),
     save: vi.fn().mockResolvedValue(undefined),

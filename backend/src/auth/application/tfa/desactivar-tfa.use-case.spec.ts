@@ -34,6 +34,7 @@ describe('DesactivarTfaUseCase', () => {
   } satisfies ITfaRepository;
   const usuarios = {
     findByEmail: unstubbed('findByEmail'),
+    findManyByEmailInsensitive: unstubbed('findManyByEmailInsensitive'),
     findById: vi.fn(),
     create: unstubbed('create'),
     save: unstubbed('save'),
