@@ -83,6 +83,7 @@ import { RetirarComponenteUseCase } from './application/use-cases/retirar-compon
 import { DarDeBajaEquipoUseCase } from './application/use-cases/dar-de-baja-equipo.use-case';
 import { ResumenBajaEquipoUseCase } from './application/use-cases/resumen-baja-equipo.use-case';
 import { ReactivarComponenteUseCase } from './application/use-cases/reactivar-componente.use-case';
+import { ResolverAsignacionAutomatica } from '../tickets/application/services/resolver-asignacion-automatica.service';
 import { CrearTicketSoporteUseCase } from './application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from './application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from './application/use-cases/obtener-equipo-de-ticket.use-case';
@@ -426,6 +427,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         usuarioMasterChecker: IUsuarioMasterChecker,
         numerador: NumeradorTicket,
         resolverCicloActivo: ResolverCicloActivoParaCreacion,
+        resolverAsignacion: ResolverAsignacionAutomatica,
         equipoRepo: IEquipoInformaticoRepository,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
@@ -440,6 +442,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
           usuarioMasterChecker,
           numerador,
           resolverCicloActivo,
+          resolverAsignacion,
           equipoRepo,
           eventPublisher,
           txRunner,
@@ -454,6 +457,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         USUARIO_MASTER_CHECKER,
         NumeradorTicket,
         ResolverCicloActivoParaCreacion,
+        ResolverAsignacionAutomatica,
         EQUIPO_INFORMATICO_REPOSITORY,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,

@@ -125,6 +125,7 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
       usuarioMasterChecker as IUsuarioMasterChecker,
       new NumeradorTicket(ticketRepo),
       new ResolverCicloActivoParaCreacion(cicloRepo),
+      { resolver: async () => null },
       new NoopDomainEventPublisher(),
       txRunner,
     );

@@ -46,6 +46,8 @@ import { PrismaCicloClienteRepository } from '../tickets/infrastructure/persiste
 import { PrismaTenantTransactionRunner } from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { NumeradorTicket } from '../tickets/domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
+import { PrismaReglaAsignacionRepository } from '../tickets/infrastructure/persistence/prisma/prisma-regla-asignacion.repository';
+import { ResolverAsignacionAutomatica } from '../tickets/application/services/resolver-asignacion-automatica.service';
 import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
 import { IUsuarioMasterChecker } from '../tickets/domain/ports/i-usuario-master.checker';
 
@@ -63,13 +65,7 @@ const MASTER_TEST_URL =
 const TENANT_DB_NAME = `soporte_prov_prevGenE2E_${randomBytes(4).toString('hex')}_test`;
 const CLIENTE_ID = 'prev-gen-e2e-cliente';
 const DUMMY_RESPONSABLE_ID = '01900000-0000-7000-8000-000000000101';
-
-/** Publisher no-op — usado para `TicketCreadoEvent` (SLA), fuera de alcance acá. */
-class NoopDomainEventPublisher implements IDomainEventPublisher {
-  publish(_event: DomainEvent): void {
-    // no-op
-  }
-}
+const RESPONSABLE_REGLA_ID = '01900000-0000-7000-8000-000000000102';
 
 /**
  * Publisher que graba los eventos publicados — WU-6 [R11]: prueba que
@@ -96,10 +92,18 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
   let crearTicketUseCase: CrearTicketUseCase;
   let generarPreventivosUseCase: GenerarPreventivosUseCase;
   let eventPublisher: RecordingDomainEventPublisher;
+  let ticketEventPublisher: RecordingDomainEventPublisher;
+  let reglaRepo: PrismaReglaAsignacionRepository;
   let usuarioMasterChecker: IUsuarioMasterChecker & {
     existeEnTenant: ReturnType<typeof vi.fn<(u: string, c: string) => Promise<boolean>>>;
+    listarTecnicosAsignables: ReturnType<
+      typeof vi.fn<IUsuarioMasterChecker['listarTecnicosAsignables']>
+    >;
   };
-  let logger: { error: ReturnType<typeof vi.fn<(mensaje: string) => void>> };
+  let logger: {
+    error: ReturnType<typeof vi.fn<(mensaje: string) => void>>;
+    log: ReturnType<typeof vi.fn<(mensaje: string) => void>>;
+  };
 
   let prioridadId: string;
   let tipoPreventivoId: string;
@@ -177,8 +181,14 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
         .mockResolvedValue(true),
       resolverNombres: vi.fn().mockResolvedValue(new Map()),
       getAutorizacionModulos: vi.fn().mockResolvedValue({ esAdminTotal: false, modulos: [] }),
-      listarTecnicosAsignables: vi.fn().mockResolvedValue([]),
+      listarTecnicosAsignables: vi
+        .fn<IUsuarioMasterChecker['listarTecnicosAsignables']>()
+        .mockResolvedValue([]),
     };
+
+    reglaRepo = new PrismaReglaAsignacionRepository(tenantContext);
+    ticketEventPublisher = new RecordingDomainEventPublisher();
+    logger = { error: vi.fn<(mensaje: string) => void>(), log: vi.fn<(mensaje: string) => void>() };
 
     crearTicketUseCase = new CrearTicketUseCase(
       ticketRepo,
@@ -190,13 +200,19 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       usuarioMasterChecker,
       new NumeradorTicket(ticketRepo),
       new ResolverCicloActivoParaCreacion(cicloRepo),
-      new NoopDomainEventPublisher(),
+      new ResolverAsignacionAutomatica(
+        reglaRepo,
+        usuarioMasterChecker,
+        estadoRepo,
+        tipoOperacionRepo,
+        logger,
+      ),
+      ticketEventPublisher,
       txRunner,
     );
 
     planRepo = new PrismaPlanPreventivoRepository(tenantContext);
     generacionRepo = new PrismaPreventivoGeneracionRepository(tenantContext);
-    logger = { error: vi.fn<(mensaje: string) => void>() };
 
     eventPublisher = new RecordingDomainEventPublisher();
     // Doble mínimo (WU-2): los planes de este spec fijan `ubicacion`, nunca
@@ -240,10 +256,14 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     });
   }, 60_000);
 
-  afterEach(() => {
+  afterEach(async () => {
     usuarioMasterChecker.existeEnTenant.mockReset().mockResolvedValue(true);
+    usuarioMasterChecker.listarTecnicosAsignables.mockReset().mockResolvedValue([]);
     logger.error.mockReset();
+    logger.log.mockReset();
     eventPublisher.publicados.length = 0;
+    ticketEventPublisher.publicados.length = 0;
+    await withTenant(() => reglaRepo.quitar(tipoPreventivoId));
   });
 
   afterAll(async () => {
@@ -414,7 +434,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     expect(filaCicloActual!.resultado).toBe('SALTEADO_PENDIENTE');
     expect(filaCicloActual!.ticketId).toBeNull();
     // El ticket histórico (creado a mano arriba, fuera del use case bajo
-    // prueba) SÍ dispara su propio TicketCreadoEvent vía NoopDomainEventPublisher
+    // prueba) SÍ dispara su propio TicketCreadoEvent vía el publisher de tickets
     // — irrelevante acá. Lo que importa es que ESTA corrida, que solo generó
     // un SALTEADO_PENDIENTE, no agregó ningún preventivo.generado.
     expect(eventPublisher.publicados).toHaveLength(0);
@@ -437,5 +457,72 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBe(plan.proximaEjecucionEn.getTime());
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(plan.id));
+  });
+
+  describe('regla de asignación automática en el preventivo (A6, A7, A9, N1)', () => {
+    async function conRegla() {
+      await withTenant(() =>
+        reglaRepo.fijar(tipoPreventivoId, RESPONSABLE_REGLA_ID, DUMMY_RESPONSABLE_ID),
+      );
+      usuarioMasterChecker.listarTecnicosAsignables.mockResolvedValue([
+        { id: RESPONSABLE_REGLA_ID, nombre: 'Tina', apellido: 'Tecnica' },
+      ]);
+    }
+
+    // El barrido procesa TODOS los planes vencidos del tenant (los de tests anteriores también).
+    const nombresDe = (ticketId: string) =>
+      ticketEventPublisher.publicados
+        .filter((e) => 'ticketId' in e && e.ticketId === ticketId)
+        .map((e) => e.name);
+
+    it('aplica la regla dentro de la transacción del plan: ticket ASIGNADO y ticket.asignado post-commit', async () => {
+      await conRegla();
+      const plan = await crearPlan();
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      const [ticket] = await ticketsDelPlan(plan);
+      expect(ticket.asignadoId).toBe(RESPONSABLE_REGLA_ID);
+      const asignado = await tenantClient.estado.findUniqueOrThrow({
+        where: { codigo: 'ASIGNADO' },
+      });
+      expect(ticket.estadoId).toBe(asignado.id);
+      expect(nombresDe(ticket.id)).toEqual(['ticket.creado', 'ticket.asignado']);
+      expect(await generacionesDelPlan(plan)).toHaveLength(1);
+    });
+
+    it('un fallo del maestro al evaluar la regla no aborta el plan: el ticket nace NUEVO y sin asignar', async () => {
+      await conRegla();
+      usuarioMasterChecker.listarTecnicosAsignables.mockRejectedValue(new Error('master caido'));
+      const plan = await crearPlan();
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      const [ticket] = await ticketsDelPlan(plan);
+      expect(ticket.asignadoId).toBeNull();
+      expect(await generacionesDelPlan(plan)).toHaveLength(1);
+      expect(nombresDe(ticket.id)).toEqual(['ticket.creado']);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('ASIGNACION_AUTOMATICA_DEGRADADA'),
+      );
+    });
+
+    it('un fallo forzado del plan después de crear el ticket → ROLLBACK total y ningún ticket.asignado', async () => {
+      await conRegla();
+      const plan = await crearPlan();
+      const spy = vi
+        .spyOn(generacionRepo, 'marcarGenerado')
+        .mockRejectedValue(new Error('fallo forzado del plan'));
+
+      try {
+        await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(await ticketsDelPlan(plan)).toHaveLength(0);
+      expect(await generacionesDelPlan(plan)).toHaveLength(0);
+      expect(ticketEventPublisher.publicados).toHaveLength(0);
+    });
   });
 });

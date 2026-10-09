@@ -58,6 +58,7 @@ import {
 } from './domain/ports/i-reparacion-compra.repository';
 import { PrismaReparacionCompraRepository } from './infrastructure/persistence/prisma/prisma-reparacion-compra.repository';
 
+import { ResolverAsignacionAutomatica } from '../tickets/application/services/resolver-asignacion-automatica.service';
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
 import { CrearSubtareaUseCase } from './application/use-cases/crear-subtarea.use-case';
@@ -137,6 +138,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         usuarioMasterChecker: IUsuarioMasterChecker,
         numerador: NumeradorTicket,
         resolverCicloActivo: ResolverCicloActivoParaCreacion,
+        resolverAsignacion: ResolverAsignacionAutomatica,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
       ) =>
@@ -150,6 +152,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
           usuarioMasterChecker,
           numerador,
           resolverCicloActivo,
+          resolverAsignacion,
           eventPublisher,
           txRunner,
         ),
@@ -163,6 +166,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         USUARIO_MASTER_CHECKER,
         NumeradorTicket,
         ResolverCicloActivoParaCreacion,
+        ResolverAsignacionAutomatica,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
       ],

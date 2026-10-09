@@ -971,6 +971,16 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - Las reglas las configura el **ADMINISTRADOR del cliente** (y ROOT), en una
     pantalla nueva del menú de administración: una fila por tipo de ticket con un
     selector del responsable. Fila vacía = ese tipo no tiene regla.
+  - **Precisiones del 2026-10-09, al explorar** (ciclo `asignacion-automatica-por-tipo`):
+    - El responsable fijo puede ser un **TECNICO o un COLABORADOR** con el módulo del
+      tipo, el mismo universo que ofrece hoy el selector de asignación manual. Un
+      ADMINISTRADOR no se ofrece como responsable de una regla.
+    - "Cerrado", para bloquear la reasignación, son los estados finales: **Cerrado y
+      Cancelado**. Un ticket *Resuelto* todavía se puede reasignar.
+    - El mail de asignación sale **siempre**, también cuando alguien se asigna un
+      ticket a sí mismo.
+    - Asignar a mano un ticket que está en *Nuevo* lo pasa a ***Asignado***, igual que
+      la regla: un ticket con responsable no queda en *Nuevo*.
   - **El trabajo compartido entre técnicos va en otro ciclo** (punto 12). Un
     responsable por ticket no reparte el crédito: si un técnico hizo el 60 % y otro
     el 40 %, los indicadores por asignado se lo dan al último, y un problema con

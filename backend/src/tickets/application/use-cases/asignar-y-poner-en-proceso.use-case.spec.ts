@@ -11,6 +11,8 @@ import {
   AsignarYPonerEnProcesoUseCase,
   AsignarYPonerEnProcesoDto,
 } from './asignar-y-poner-en-proceso.use-case';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
 import {
@@ -18,6 +20,7 @@ import {
   AsignadoNoElegibleError,
   TicketNoEncontradoError,
   TransicionInvalidaError,
+  TicketCerradoNoReasignableError,
 } from '../../domain/errors/tickets.errors';
 
 /** Catálogo fijo de estados code → { id, codigo } para los mocks del repo. */
@@ -26,6 +29,8 @@ const ESTADOS: Record<string, { id: string; codigo: string }> = {
   ASIGNADO: { id: 'estado-asignado-uuid', codigo: 'ASIGNADO' },
   EN_PROCESO: { id: 'estado-enproceso-uuid', codigo: 'EN_PROCESO' },
   RESUELTO: { id: 'estado-resuelto-uuid', codigo: 'RESUELTO' },
+  CERRADO: { id: 'estado-cerrado-uuid', codigo: 'CERRADO' },
+  CANCELADO: { id: 'estado-cancelado-uuid', codigo: 'CANCELADO' },
 };
 
 function makeTicket(estadoCodigo: keyof typeof ESTADOS): TicketEntity {
@@ -87,7 +92,15 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
         .mockResolvedValue({ esAdminTotal: false, modulos: ['SOPORTE'] }),
     };
     const stateMachineFactory = { resolve: vi.fn(() => new BaseTicketStateMachine()) };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // `alCommitear` encola: el test decide cuándo "comitea" corriendo la cola.
+    const alCommitear: Array<() => void> = [];
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => {
+        alCommitear.push(fn);
+      }),
+    };
+    const eventPublisher = { publish: vi.fn() } satisfies IDomainEventPublisher;
 
     const useCase = new AsignarYPonerEnProcesoUseCase(
       ticketRepo as never,
@@ -98,6 +111,7 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       usuarioMasterChecker as never,
       stateMachineFactory as never,
       txRunner as never,
+      eventPublisher,
     );
 
     return {
@@ -110,6 +124,8 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       usuarioMasterChecker,
       stateMachineFactory,
       txRunner,
+      eventPublisher,
+      alCommitear,
     };
   }
 
@@ -206,5 +222,52 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
     expect(c.txRunner.run).not.toHaveBeenCalled();
+  });
+
+  it.each(['CERRADO', 'CANCELADO'])(
+    'M1: ticket %s → TicketCerradoNoReasignableError antes de consultar master o resolver pasos',
+    async (estado) => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket(estado));
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketCerradoNoReasignableError);
+      expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
+      expect(c.stateMachineFactory.resolve).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('N1: ticket.asignado MANUAL con autorId del actor, publicado solo al correr la cola de alCommitear', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+    await c.useCase.execute(baseDto());
+
+    expect(c.txRunner.run).toHaveBeenCalledTimes(1);
+    expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    c.alCommitear.forEach((fn) => fn());
+    expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    const evento = c.eventPublisher.publish.mock.calls[0][0] as TicketAsignadoEvent;
+    expect(evento).toBeInstanceOf(TicketAsignadoEvent);
+    expect(evento).toMatchObject({
+      ticketId: 'ticket-uuid',
+      asignadoId: 'agente-uuid',
+      origen: 'MANUAL',
+      autorId: 'asignador-uuid',
+    });
+  });
+
+  it('un rechazo (RESUELTO) no publica ticket.asignado', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('RESUELTO'));
+
+    await c.useCase.execute(baseDto());
+
+    expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
   });
 });

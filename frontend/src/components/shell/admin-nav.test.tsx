@@ -35,7 +35,7 @@ function payload(overrides: Partial<JwtPayload>): JwtPayload {
 // ADR-P5: las 5 secciones son ADMINISTRADOR-o-ROOT exclusivas — un TECNICO
 // no ve NINGÚN link de gestión, aunque las lecturas de catálogos sigan abiertas.
 describe("AdminNav (ADR-P5)", () => {
-  it("ADMINISTRADOR ve las 6 secciones", () => {
+  it("ADMINISTRADOR ve las 7 secciones", () => {
     renderWithUser(payload({ rol: "ADMINISTRADOR" }));
     expect(screen.getByRole("link", { name: "Catálogos" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ciclos" })).toBeInTheDocument();
@@ -53,6 +53,8 @@ describe("AdminNav (ADR-P5)", () => {
     // Ciclo modelos-equipo-catalogo-y-compatibilidad: sexta sección, mismo
     // gate `esAdminCliente`, sin permiso nuevo en la matriz `MODULO:ACCION`.
     expect(screen.getByRole("link", { name: "Modelos de equipo" })).toBeInTheDocument();
+    // Ciclo asignacion-automatica-por-tipo (R5/R6): mismo gate `esAdminCliente`.
+    expect(screen.getByRole("link", { name: "Asignación automática" })).toBeInTheDocument();
   });
 
   it("TECNICO (no admin, no root) no ve ninguna sección", () => {

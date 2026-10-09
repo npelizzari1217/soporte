@@ -51,6 +51,9 @@ const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   // `crear`/`editar`/`cambiarEstadoActivo` solo con `AdminClienteGuard`, sin
   // permiso propio en la matriz `MODULO:ACCION`.
   { href: "/admin/modelos-equipo", label: "Modelos de equipo" },
+  // Reglas de asignación automática por tipo (ciclo asignacion-automatica-por-tipo):
+  // MISMO gate `esAdminCliente`; el backend usa `AdminClienteGuard`, sin permiso en la matriz.
+  { href: "/admin/reglas-asignacion", label: "Asignación automática" },
   // "Clientes" NO vive en el área Admin: es exclusivo de ROOT (plataforma),
   // no una sección administrable por el ADMINISTRADOR del tenant. Se accede
   // por su ítem top-level propio del sidebar (nav-config.ts), gateado por

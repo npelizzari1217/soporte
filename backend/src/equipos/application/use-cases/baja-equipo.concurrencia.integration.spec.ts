@@ -283,6 +283,7 @@ describe('Baja de equipo — concurrencia de resultado (R15, R10)', () => {
             ),
           ),
       },
+      { resolver: async () => null },
       fx.equipoRepo,
       { publish: () => {} },
       fx.txRunner,

@@ -130,7 +130,8 @@ model TipoTicket {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  tickets Ticket[]
+  tickets         Ticket[]
+  reglaAsignacion ReglaAsignacion?
 
   @@index([modulo, activo])
   @@map("tipos_ticket")
@@ -1525,4 +1526,19 @@ model RespuestaPredefinida {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("respuestas_predefinidas")
+}
+
+/// Regla de asignación automática (roadmap segunda etapa, punto 9): el responsable fijo de un tipo.
+/// PK = tipo_id (una regla por tipo). `responsableId` y `actualizadoPor` son soft refs a
+/// master.usuarios (sin FK, cross-DB). Sin fila = sin regla.
+model ReglaAsignacion {
+  tipoId         String   @id @map("tipo_id") @db.Uuid
+  responsableId  String   @map("responsable_id") @db.Uuid
+  actualizadoPor String   @map("actualizado_por") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  tipo TipoTicket @relation(fields: [tipoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("reglas_asignacion")
 }

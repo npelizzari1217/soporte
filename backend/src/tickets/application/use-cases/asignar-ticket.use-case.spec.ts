@@ -8,21 +8,39 @@
  * mapea al tipo del ticket; sin él → 422 (ortogonal al permiso del asignador).
  */
 import { AsignarTicketUseCase, AsignarTicketDto } from './asignar-ticket.use-case';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { EstadoEntity } from '../../domain/entities/estado.entity';
+import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
+  TicketCerradoNoReasignableError,
 } from '../../domain/errors/tickets.errors';
 
-function makeTicket(overrides: Partial<{ asignadoId: string | null }> = {}): TicketEntity {
+/** Catálogo fijo de estados del tenant: código → id. */
+const ESTADO_IDS: Record<string, string> = {
+  NUEVO: 'estado-nuevo-uuid',
+  ASIGNADO: 'estado-asignado-uuid',
+  EN_PROCESO: 'estado-enproceso-uuid',
+  ESPERANDO_CLIENTE: 'estado-espera-uuid',
+  RESUELTO: 'estado-resuelto-uuid',
+  CERRADO: 'estado-cerrado-uuid',
+  CANCELADO: 'estado-cancelado-uuid',
+};
+
+function makeTicket(
+  overrides: Partial<{ asignadoId: string | null; estado: keyof typeof ESTADO_IDS }> = {},
+): TicketEntity {
   const ticket = TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Ticket de prueba',
       descripcion: null,
       tipoId: 'tipo-soporte-uuid',
-      estadoId: 'estado-nuevo-uuid',
+      estadoId: ESTADO_IDS[overrides.estado ?? 'NUEVO'],
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
       ticketReferenciaId: null,
@@ -68,9 +86,28 @@ describe('AsignarTicketUseCase', () => {
       findById: vi.fn().mockResolvedValue({ codigo: 'SOPORTE', modulo: 'SOPORTE' }),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-asignacion-uuid'),
+      findIdByCodigo: vi.fn(async (codigo: string) =>
+        codigo === 'CAMBIO_ESTADO' ? 'tipo-op-cambio-uuid' : 'tipo-op-asignacion-uuid',
+      ),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // `alCommitear` encola: el test decide cuándo "comitea" corriendo la cola.
+    const alCommitear: Array<() => void> = [];
+    const txRunner = {
+      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+      alCommitear: vi.fn((fn: () => void) => {
+        alCommitear.push(fn);
+      }),
+    };
+    const estadoRepo = {
+      findById: vi.fn(async (id: string) => {
+        const codigo = Object.keys(ESTADO_IDS).find((c) => ESTADO_IDS[c] === id);
+        return codigo
+          ? EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 1, activo: true }, id)
+          : null;
+      }),
+      findIdByCodigo: vi.fn(async (codigo: string) => ESTADO_IDS[codigo] ?? null),
+    } satisfies Pick<IEstadoRepository, 'findById' | 'findIdByCodigo'>;
+    const eventPublisher = { publish: vi.fn() } satisfies IDomainEventPublisher;
 
     const useCase = new AsignarTicketUseCase(
       ticketRepo as never,
@@ -79,6 +116,8 @@ describe('AsignarTicketUseCase', () => {
       tipoTicketRepo as never,
       tipoOperacionRepo as never,
       txRunner as never,
+      estadoRepo,
+      eventPublisher,
     );
 
     return {
@@ -89,6 +128,9 @@ describe('AsignarTicketUseCase', () => {
       tipoTicketRepo,
       tipoOperacionRepo,
       txRunner,
+      estadoRepo,
+      eventPublisher,
+      alCommitear,
     };
   }
 
@@ -104,7 +146,7 @@ describe('AsignarTicketUseCase', () => {
 
     expect(c.txRunner.run).toHaveBeenCalledTimes(1);
     expect(c.ticketRepo.save).toHaveBeenCalledWith(ticket);
-    expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+    expect(c.operacionRepo.save).toHaveBeenCalledTimes(2);
     const operacionGuardada = c.operacionRepo.save.mock.calls[0][0];
     expect(operacionGuardada.ticketId).toBe('ticket-uuid');
     expect(operacionGuardada.tipoOperacionId).toBe('tipo-op-asignacion-uuid');
@@ -223,5 +265,103 @@ describe('AsignarTicketUseCase', () => {
     expect(result.isOk()).toBe(true);
     // No necesita cargar el tipo por módulo cuando ve todo (short-circuit esAdminTotal).
     expect(c.tipoTicketRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it.each(['CERRADO', 'CANCELADO'])(
+    'M1: ticket %s → TicketCerradoNoReasignableError, sin consultar master ni escribir ni publicar',
+    async (estado) => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado }));
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketCerradoNoReasignableError);
+      expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['ASIGNADO', 'EN_PROCESO', 'ESPERANDO_CLIENTE', 'RESUELTO'])(
+    'M2: ticket %s se reasigna sin cambiar de estado (solo ASIGNACION)',
+    async (estado) => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado, asignadoId: 'otro-uuid' }));
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().estadoId).toBe(ESTADO_IDS[estado]);
+      expect(result.getValue().asignadoId).toBe('agente-uuid');
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+      expect(c.operacionRepo.save.mock.calls[0][0].tipoOperacionId).toBe('tipo-op-asignacion-uuid');
+    },
+  );
+
+  it('M3: NUEVO → ASIGNADO en la misma tx, con CAMBIO_ESTADO del actor además de ASIGNACION', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado: 'NUEVO' }));
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().estadoId).toBe(ESTADO_IDS.ASIGNADO);
+    const ops = c.operacionRepo.save.mock.calls.map((call) => call[0]);
+    const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-uuid');
+    const cambio = ops.find((o) => o.tipoOperacionId === 'tipo-op-cambio-uuid');
+    expect(asignacion?.estadoNuevoId).toBeNull();
+    expect(cambio?.estadoAnteriorId).toBe(ESTADO_IDS.NUEVO);
+    expect(cambio?.estadoNuevoId).toBe(ESTADO_IDS.ASIGNADO);
+    expect(cambio?.autorId).toBe('asignador-uuid');
+    expect(c.txRunner.run).toHaveBeenCalledTimes(1);
+    expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('N1: ticket.asignado MANUAL con autorId del actor, solo al correr la cola de alCommitear', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket());
+
+    await c.useCase.execute(baseDto());
+
+    expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    c.alCommitear.forEach((fn) => fn());
+    expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    const evento = c.eventPublisher.publish.mock.calls[0][0] as TicketAsignadoEvent;
+    expect(evento).toBeInstanceOf(TicketAsignadoEvent);
+    expect(evento).toMatchObject({
+      ticketId: 'ticket-uuid',
+      asignadoId: 'agente-uuid',
+      origen: 'MANUAL',
+      autorId: 'asignador-uuid',
+    });
+  });
+
+  it('destinatario no elegible en un NUEVO conserva su error y no publica', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket());
+    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
+      esAdminTotal: false,
+      modulos: ['COMPRAS'],
+    });
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.getError()).toBeInstanceOf(AsignadoNoElegibleError);
+    expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
+  });
+
+  it('autoasignación (asignado = actor) sigue permitida', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket());
+
+    const result = await c.useCase.execute(
+      baseDto({ asignadoId: 'asignador-uuid', autorId: 'asignador-uuid' }),
+    );
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().asignadoId).toBe('asignador-uuid');
   });
 });

@@ -112,6 +112,9 @@ export interface IUsuarioMasterChecker {
    * archivos, incluida una key de wire/hook), desproporcionado para una
    * ampliación de filtro; este JSDoc es la fuente de verdad del universo real.
    *
+   * Este mismo universo define quién puede ser responsable de una regla de asignación
+   * automática por tipo (`evaluarResponsableRegla`): ADMINISTRADOR y ROOT quedan fuera.
+   *
    * @param clienteId UUID del cliente activo (TenantContext.clienteId).
    * @param modulo Código del módulo del tipo del ticket (ver `modulos.ts`), o
    *               `null` si el ticket es de un tipo custom sin módulo. Con

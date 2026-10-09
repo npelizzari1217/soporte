@@ -151,3 +151,39 @@ export function templatePreventivoGenerado(datos: DatosTicketBase): PlantillaEma
 
   return { subject, text, html };
 }
+
+/**
+ * templateTicketAsignado — aviso a la persona a la que se le asignó un ticket, ya sea por la regla
+ * de su tipo o a mano (`notificacion-asignacion` N2). `tipoNombre` y `prioridadNombre` son
+ * opcionales: si falta alguno, esa línea se omite sin cancelar el aviso.
+ */
+export function templateTicketAsignado(
+  datos: DatosTicketBase & {
+    origen: 'REGLA_TIPO' | 'MANUAL';
+    tipoNombre?: string | null;
+    prioridadNombre?: string | null;
+  },
+): PlantillaEmail {
+  const subject = `Ticket ${datos.numero} asignado a usted`;
+  const motivo =
+    datos.origen === 'REGLA_TIPO'
+      ? 'Se le asignó automáticamente, según la regla de su tipo,'
+      : 'Le asignaron';
+  const detalles: string[] = [];
+  if (datos.tipoNombre) detalles.push(`Tipo: ${datos.tipoNombre}`);
+  if (datos.prioridadNombre) detalles.push(`Prioridad: ${datos.prioridadNombre}`);
+
+  const text =
+    `${motivo} el ticket ${datos.numero} - ${datos.titulo}.` +
+    (detalles.length > 0 ? `\n\n${detalles.join('\n')}` : '') +
+    textoLink(datos);
+  const html =
+    `<p>${motivo} el ticket <strong>${escaparHtml(datos.numero)}</strong> - ` +
+    `${escaparHtml(datos.titulo)}.</p>` +
+    (detalles.length > 0
+      ? `<ul>${detalles.map((d) => `<li>${escaparHtml(d)}</li>`).join('')}</ul>`
+      : '') +
+    htmlLink(datos);
+
+  return { subject, text, html };
+}

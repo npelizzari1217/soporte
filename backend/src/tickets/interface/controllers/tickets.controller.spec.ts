@@ -756,8 +756,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 24 clases de error (23 previas + SolicitanteExternoInvalidoError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(24);
+  it('el catálogo tiene EXACTAMENTE 25 clases de error (24 previas + TicketCerradoNoReasignableError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(25);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -787,6 +787,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'AsignadoNoElegibleError',
       () => new TicketsErrors.AsignadoNoElegibleError('user-1', 'tipo-1'),
+      422,
+    ],
+    [
+      'TicketCerradoNoReasignableError',
+      () => new TicketsErrors.TicketCerradoNoReasignableError('ticket-1', 'CERRADO'),
       422,
     ],
     ['SolicitanteInvalidoError', () => new TicketsErrors.SolicitanteInvalidoError('user-1'), 422],

@@ -5,6 +5,7 @@ import {
   getValidNextStates,
   puedeAsignarYPonerEnProceso,
   puedeEditarDatos,
+  puedeReasignar,
 } from "./estado-transitions";
 
 /**
@@ -137,4 +138,18 @@ describe("puedeEditarDatos", () => {
       expect(puedeEditarDatos(estado, true)).toBe(true);
     },
   );
+});
+
+/** Reasignación simple (M4): todo estado no terminal; complemento de CERRADO/CANCELADO. */
+describe("puedeReasignar", () => {
+  it.each(["NUEVO", "ASIGNADO", "EN_PROCESO", "ESPERANDO_CLIENTE", "RESUELTO"] as const)(
+    "%s → se puede reasignar",
+    (estado) => {
+      expect(puedeReasignar(estado)).toBe(true);
+    },
+  );
+
+  it.each(["CERRADO", "CANCELADO"] as const)("%s (terminal) → no se puede reasignar", (estado) => {
+    expect(puedeReasignar(estado)).toBe(false);
+  });
 });

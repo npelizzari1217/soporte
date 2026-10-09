@@ -106,6 +106,7 @@ describe('AsignarYPonerEnProceso no marca el reloj de SLA (WU-3a.4)', () => {
       },
       new TicketStateMachineFactory(),
       txRunner,
+      { publish: () => {} },
     );
 
     try {
