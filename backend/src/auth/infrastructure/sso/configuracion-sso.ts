@@ -1,26 +1,6 @@
+import { ConfigProveedorSso, IConfiguracionSso } from '../../domain/ports/configuracion-sso.port';
 import { ProveedorSso } from '../../domain/sso/proveedores-sso';
 import { slugDeProveedor } from '../../domain/sso/proveedor-slug';
-
-/** Configuracion de un proveedor ya habilitado (sdd/login-sso, ADR-3). */
-export interface ConfigProveedorSso {
-  clientId: string;
-  clientSecret: string;
-  urlAutorizacion: string;
-  urlToken: string;
-  urlJwks: string;
-  redirectUri: string;
-  /** Emisores aceptados (Google). */
-  emisores?: string[];
-  /** Plantilla con `{tid}` (Microsoft). */
-  plantillaEmisor?: string;
-}
-
-export interface IConfiguracionSso {
-  /** `null` si el proveedor no tiene su par client id y client secret completo. */
-  obtener(proveedor: ProveedorSso): ConfigProveedorSso | null;
-}
-
-export const CONFIGURACION_SSO = Symbol('IConfiguracionSso');
 
 type PartesFijas = Omit<ConfigProveedorSso, 'clientId' | 'clientSecret' | 'redirectUri'>;
 

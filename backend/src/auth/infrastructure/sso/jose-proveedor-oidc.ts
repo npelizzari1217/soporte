@@ -7,7 +7,7 @@ import {
 } from '../../domain/ports/proveedor-oidc.port';
 import { IdentidadSsoVerificada } from '../../domain/sso/identidad-sso-verificada';
 import { ProveedorSso } from '../../domain/sso/proveedores-sso';
-import { ConfigProveedorSso, IConfiguracionSso } from './configuracion-sso';
+import { ConfigProveedorSso, IConfiguracionSso } from '../../domain/ports/configuracion-sso.port';
 import { validarClaimsGoogle } from './validar-claims-google';
 import { validarClaimsMicrosoft } from './validar-claims-microsoft';
 

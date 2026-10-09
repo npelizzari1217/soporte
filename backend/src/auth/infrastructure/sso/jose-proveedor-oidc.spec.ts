@@ -1,7 +1,7 @@
 import { iniciarIdpFalso, IdpFalso } from '../../../testing/idp-falso';
 import { SsoNoDisponibleError, SsoRechazadoError } from '../../domain/errors/sso.errors';
 import { ProveedorSso } from '../../domain/sso/proveedores-sso';
-import { ConfigProveedorSso, IConfiguracionSso } from './configuracion-sso';
+import { ConfigProveedorSso, IConfiguracionSso } from '../../domain/ports/configuracion-sso.port';
 import { JoseProveedorOidc } from './jose-proveedor-oidc';
 
 const NONCE = 'nonce-guardado';
