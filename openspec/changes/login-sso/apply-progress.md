@@ -58,3 +58,23 @@ Verificacion (1.11), desde `backend/`: `pnpm lint` exit 0; `pnpm typecheck` exit
 | Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts src/auth/infrastructure/sso/prisma-sso-estado.repository.integration.spec.ts`: 12 passed |
 | Harness de runtime | integracion sobre `soporte_master_test` (CAS, concurrencia, purga) |
 | Frontera de rollback | `prisma-sso-estado.repository.ts` y su spec; sin consumidores |
+
+## Unidad 2 (WU-1b) - rama `feat/login-sso-wu01b` (base `feat/login-sso-wu01a2`)
+
+Sin partir: el diff de la WU contra su base es de 323 lineas de codigo y specs (tope duro 380). Dos commits en la misma rama: vinculos (2.1-2.2) y busqueda por email con los 10 mocks (2.3-2.5).
+
+- [x] 2.1 a 2.2 puerto `IIdentidadSsoRepository` + `PrismaIdentidadSsoRepository` e integracion (8 tests)
+- [x] 2.3 a 2.5 `findManyByEmailInsensitive` (`$queryRaw`, `lower(email) = lower($1) LIMIT 2`), integracion (5 tests) y una linea en cada uno de los 10 specs
+- [x] 2.6 verificacion
+
+Notas:
+- Los mocks que ya usaban `unstubbed('...')` recibieron `unstubbed('findManyByEmailInsensitive')` (misma forma que sus vecinos); el resto `vi.fn()`. Una linea por spec, sin casts.
+- El spec del repositorio de usuarios se llama `prisma-usuario.repository.email-insensitive.integration.spec.ts` (no existia un spec propio del repositorio).
+- El mapeo de la fila cruda (snake_case) a `PrismaUsuario` se hace en el repositorio y delega en `UsuarioMapper.toDomain`.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth`: 87 archivos, 1007 tests en verde; `crear-cliente.use-case.spec.ts`: 7 en verde |
+| Harness de runtime | integracion sobre `soporte_master_test` (unicos, carrera de `vincular`, cascada, LIMIT 2, `_` no comodin) |
+| Casts | 617 en 114 archivos (base 617), sin subir |
+| Frontera de rollback | revertir los dos commits de codigo; sin consumidores |
