@@ -648,7 +648,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | **Entregado** — en `main` por los PRs #369-#375 (`ba083775`), desplegado el 2026-10-06 |
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | **Entregado** — en `main` por el #472 (`20b320a4`), desplegado el 2026-10-07 |
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
-| 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente |
+| 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente — decisiones cerradas el 2026-10-09: solo usuarios existentes, convive con la contraseña |
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | **Entregado** — en `main` por el #490 (`776c6d69`), desplegado el 2026-10-09. Un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | Sin base desde el 2026-10-08: requiere decidir cómo se resuelve el cliente |
@@ -998,6 +998,39 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     el 40 %, los indicadores por asignado se lo dan al último, y un problema con
     varios oficios (electricista, sistemas, constructor) o varios pasos (formatear
     una PC, instalar aplicaciones e impresoras) necesita un técnico por tarea.
+- **Segunda etapa, punto 7 — login con Google o Microsoft (SSO)** (decidido el
+  2026-10-09, ciclo en #507):
+  - Solo entran **usuarios que ya existen**, creados por un administrador como hoy.
+    Se los reconoce por el **email verificado** que devuelve el proveedor; si ese
+    email no está en el sistema, no entra. No hay alta automática.
+  - El SSO **convive con la contraseña**: el usuario puede entrar de las dos formas,
+    y el olvido de contraseña sigue igual. No hay política "solo SSO" por cliente.
+    La baja de un usuario sigue siendo desactivar su membresía.
+  - Después del SSO se pide **el 2FA propio con las reglas de hoy** (ROOT siempre;
+    cualquier usuario con un cliente que lo exige), con el dispositivo de confianza
+    de 30 días. Entrar por SSO no cuenta como segundo paso: no se puede comprobar
+    que el proveedor lo haya pedido.
+  - **Una sola app por proveedor para toda la plataforma**, configurada en el
+    servidor. Los clientes no configuran nada: el cliente se elige después de
+    entrar, así que una configuración por cliente no encaja con el login global.
+  - Se acepta **cualquier cuenta de Google o de Microsoft**, personal o de
+    organización, siempre que el **proveedor garantice que el email está
+    verificado**. Un email sin verificar nunca identifica a nadie. En Microsoft esto
+    cierra la vulnerabilidad conocida como nOAuth (un email escrito a mano en otra
+    organización de Entra).
+  - **ROOT no entra por SSO**: solo con contraseña y app autenticadora, como hoy.
+  - En el primer ingreso, el usuario queda **vinculado a esa cuenta puntual del
+    proveedor** (por su identificador inmutable, no por el email). Otra cuenta con
+    el mismo email no entra: el caso típico es una dirección del colegio que pasa a
+    otra persona. El vínculo lo **resetea un administrador**, con el criterio del
+    reseteo de 2FA: ROOT a cualquiera; un ADMINISTRADOR solo a quien pertenece
+    únicamente a su cliente.
+  - El **selector de cliente no cambia**: quien tiene varios elige después del SSO y
+    del 2FA, como hoy.
+  - Los botones están **solo en la pantalla de login**. En esta entrega el usuario no
+    ve ni desvincula su propia cuenta; eso lo hace el administrador.
+  - Queda afuera, como en el punto 5: la **auditoría de logins**, el **alta
+    automática** y la política **"solo SSO"**. Se pueden sumar después.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
