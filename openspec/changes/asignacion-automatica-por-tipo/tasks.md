@@ -126,10 +126,10 @@ Rama `feat/asignacion-automatica-por-tipo-wu05` → target `feat/asignacion-auto
 
 Rama `feat/asignacion-automatica-por-tipo-wu06` → target `feat/asignacion-automatica-por-tipo-wu05`. Requerimientos: N1, N2, N3, N4, N5, N6, N7.
 
-- [ ] 6.1 Tests unit de `templateTicketAsignado`: asunto `Ticket {numero} asignado a usted`; cuerpo con número, título, tipo y prioridad; texto distinto para `REGLA_TIPO` y `MANUAL`; escape HTML de título y nombres; link `/tickets/:id`. (N2)
-- [ ] 6.2 Agregar `templateTicketAsignado` a `backend/src/notificaciones/domain/templates/email-templates.ts`. (N2)
+- [x] 6.1 Tests unit de `templateTicketAsignado`: asunto `Ticket {numero} asignado a usted`; cuerpo con número, título, tipo y prioridad; texto distinto para `REGLA_TIPO` y `MANUAL`; escape HTML de título y nombres; link `/tickets/:id`. (N2)
+- [x] 6.2 Agregar `templateTicketAsignado` a `backend/src/notificaciones/domain/templates/email-templates.ts`. (N2)
 - [ ] 6.3 Tests unit de `TicketAsignadoNotificacionListener`: manda el mail al asignado; autoasignación (`autorId` = `asignadoId`) → `send` llamado (sin rama de omisión); tipo o prioridad faltante omite esa línea sin cancelar; ticket inexistente → log `TICKET_ASIGNADO_SIN_TICKET` y termina; sin contacto → log `TICKET_ASIGNADO_SIN_CONTACTO` sin dirección ni nombre; `send` lanza → el handler resuelve y loguea con el `ticketId`, nunca el error crudo; sin correo configurado no hay excepción (`EMAIL_CLIENTE_SIN_CONFIG` ya lo registra el sender); no deduplica contra `preventivo.generado`. (N3, N4, N5, N6, N7)
-- [ ] 6.4 Crear `ticket-asignado-notificacion.listener.ts` (molde `PreventivoGeneradoNotificacionListener`, `@OnEvent('ticket.asignado')`) y registrarlo en `notificaciones.module.ts` (tomar `TICKET_REPOSITORY`, `TIPO_TICKET_REPOSITORY`, `PRIORIDAD_REPOSITORY` de `TicketsModule` si hace falta exportarlos). (N1, N2, N6)
+- [x] 6.4 Crear `ticket-asignado-notificacion.listener.ts` (molde `PreventivoGeneradoNotificacionListener`, `@OnEvent('ticket.asignado')`) y registrarlo en `notificaciones.module.ts` (tomar `TICKET_REPOSITORY`, `TIPO_TICKET_REPOSITORY`, `PRIORIDAD_REPOSITORY` de `TicketsModule` si hace falta exportarlos). (N1, N2, N6)
 - [ ] 6.5 Test de integración o e2e de punta a punta con el `EMAIL_SENDER` falso: alta con regla y asignación manual disparan un mail al responsable, con contexto del cliente correcto. (N1, N2, N6)
 - [ ] 6.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm test` completo (última WU de backend); raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada (mail de asignación).
 

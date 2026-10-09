@@ -22,6 +22,15 @@ import { SlaVencidoNotificacionListener } from './infrastructure/listeners/sla-v
 import { SlaPrimeraRespuestaVencidaNotificacionListener } from './infrastructure/listeners/sla-primera-respuesta-vencida-notificacion.listener';
 import { NotificadorVencimientoSla } from './infrastructure/notificador-vencimiento-sla';
 import { PreventivoGeneradoNotificacionListener } from './infrastructure/listeners/preventivo-generado-notificacion.listener';
+import { TicketAsignadoNotificacionListener } from './infrastructure/listeners/ticket-asignado-notificacion.listener';
+import {
+  TIPO_TICKET_REPOSITORY,
+  ITipoTicketRepository,
+} from '../tickets/domain/ports/i-tipo-ticket.repository';
+import {
+  PRIORIDAD_REPOSITORY,
+  IPrioridadRepository,
+} from '../tickets/domain/ports/i-prioridad.repository';
 
 import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sender';
 import { TenantAwareEmailSender } from './infrastructure/email/tenant-aware-email-sender';
@@ -61,7 +70,8 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
  *   del job SLA, ADR-P8) + `PreventivoGeneradoNotificacionListener`
  *   (preventivo.generado, WU-6/[R11]: responsable del plan + administradores
  *   — mismo patrón ALS/TenantContext, hereda el scope abierto por el
- *   barrido `PreventivoSweepScheduler`).
+ *   barrido `PreventivoSweepScheduler`) + `TicketAsignadoNotificacionListener`
+ *   (ticket.asignado: mail a la persona asignada, por regla o a mano).
  * - Importa `TicketsModule` (TICKET_REPOSITORY — los listeners cargan el
  *   ticket para numero/titulo/solicitanteId/asignadoId, los eventos no
  *   llevan PII). No expone controllers (módulo sin endpoints HTTP en beta).
@@ -156,6 +166,33 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
           logger,
         ),
       inject: [TICKET_REPOSITORY, USUARIO_CONTACTO_RESOLVER, EMAIL_SENDER, TenantContext, LOGGER],
+    },
+    {
+      provide: TicketAsignadoNotificacionListener,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoRepo: ITipoTicketRepository,
+        prioridadRepo: IPrioridadRepository,
+        contactoResolver: IUsuarioContactoResolver,
+        emailSender: IEmailSender,
+        logger: ILogger,
+      ) =>
+        new TicketAsignadoNotificacionListener(
+          ticketRepo,
+          tipoRepo,
+          prioridadRepo,
+          contactoResolver,
+          emailSender,
+          logger,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
+        USUARIO_CONTACTO_RESOLVER,
+        EMAIL_SENDER,
+        LOGGER,
+      ],
     },
   ],
   exports: [EMAIL_SENDER, USUARIO_CONTACTO_RESOLVER, CONTACTO_SOLICITANTE_RESOLVER],

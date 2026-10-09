@@ -98,3 +98,12 @@ Estado: completa (tareas 5.4, 5.5, 5.7 y 5.8). WU-5 queda cerrada en 5a y 5b.
 Desvíos: el 422 no expone el nombre de la clase en el cuerpo, así que el e2e verifica el mensaje ("ya no se puede reasignar"). El responsable de la regla debe tener rol TECNICO/COLABORADOR (regla de `listarTecnicosAsignables`); si no, la regla queda ROTA y el ticket nace sin asignar.
 
 **Deuda de Ayuda para el cuerpo del PR:** asignar y poner en proceso un ticket cerrado o cancelado se rechaza con 422. Sin edición de `backend/ayuda` mientras dure la pausa.
+
+## WU-6a — Plantilla y listener del mail de asignación (rama `feat/asignacion-automatica-por-tipo-wu06`, sobre `...-wu05b`)
+
+Estado: parcial (tareas 6.1, 6.2 y 6.4 hechas; 6.3, 6.5 y 6.6 en la rama `...-wu06b`). El `target` de tasks.md dice `...-wu05`, pero el padre real es `...-wu05b` (PR #498) porque WU-5 se partió en 5a/5b. WU-6 se parte para respetar el tope de 380 líneas acumuladas: 6a lleva el código de producción y los tests de la plantilla; 6b lleva los tests del listener (6.3), el e2e (6.5) y la verificación (6.6).
+
+- 6.1 / 6.2: `templateTicketAsignado` en `email-templates.ts`: asunto `Ticket {numero} asignado a usted`, texto distinto para `REGLA_TIPO` ("automáticamente, según la regla de su tipo") y `MANUAL` ("Le asignaron"), líneas de tipo y prioridad opcionales, HTML escapado y link `/tickets/:id`.
+- 6.4: `TicketAsignadoNotificacionListener` (`@OnEvent('ticket.asignado')`), registrado en `notificaciones.module.ts` con `TICKET_REPOSITORY`, `TIPO_TICKET_REPOSITORY` y `PRIORIDAD_REPOSITORY`. `TicketsModule` ya exportaba los tres: no hizo falta tocarlo ni aparece import circular nuevo. Sin rama de omisión por autoasignación. Logs `TICKET_ASIGNADO_SIN_TICKET`, `TICKET_ASIGNADO_SIN_CONTACTO` y `TICKET_ASIGNADO_FALLO_NOTIFICACION`, todos con el `ticketId` y nunca la dirección, el nombre ni el error crudo.
+
+**Deuda de Ayuda para el cuerpo del PR:** la persona asignada ahora recibe un mail cuando le asignan un ticket (por la regla del tipo o a mano). Sin edición de `backend/ayuda` mientras dure la pausa.

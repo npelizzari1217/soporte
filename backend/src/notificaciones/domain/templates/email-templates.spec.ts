@@ -12,6 +12,7 @@ import {
   templateSlaVencido,
   templatePrimeraRespuestaVencida,
   templatePreventivoGenerado,
+  templateTicketAsignado,
 } from './email-templates';
 
 const DATOS_BASE = {
@@ -196,5 +197,62 @@ describe('templatePrimeraRespuestaVencida', () => {
     expect(text).toContain('sigue sin primera respuesta');
     expect(text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
     expect(html).toContain('href="https://soporte.miempresa.com/tickets/ticket-abc"');
+  });
+});
+
+describe('templateTicketAsignado', () => {
+  const DATOS = {
+    ...DATOS_BASE,
+    origen: 'MANUAL' as const,
+    tipoNombre: 'Soporte técnico',
+    prioridadNombre: 'Alta',
+  };
+
+  it('asunto, número, título, tipo, prioridad y link', () => {
+    const { subject, text, html } = templateTicketAsignado(DATOS);
+
+    expect(subject).toBe('Ticket SOP-2026-00042 asignado a usted');
+    expect(text).toContain('SOP-2026-00042 - La impresora no imprime');
+    expect(text).toContain('Tipo: Soporte técnico');
+    expect(text).toContain('Prioridad: Alta');
+    expect(text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+    expect(html).toContain('href="https://soporte.miempresa.com/tickets/ticket-abc"');
+  });
+
+  it('el texto distingue la regla del tipo de la asignación a mano', () => {
+    const regla = templateTicketAsignado({ ...DATOS, origen: 'REGLA_TIPO' });
+    const manual = templateTicketAsignado(DATOS);
+
+    expect(regla.text).toContain('automáticamente');
+    expect(manual.text).not.toContain('automáticamente');
+    expect(manual.text).toContain('Le asignaron');
+  });
+
+  it('sin tipo o sin prioridad omite esa línea y conserva el resto', () => {
+    const { text, html } = templateTicketAsignado({
+      ...DATOS,
+      tipoNombre: null,
+      prioridadNombre: undefined,
+    });
+
+    expect(text).not.toContain('Tipo:');
+    expect(text).not.toContain('Prioridad:');
+    expect(html).not.toContain('<ul>');
+    expect(text).toContain('SOP-2026-00042');
+  });
+
+  it('escapa el HTML del título, el tipo y la prioridad; el texto plano no', () => {
+    const { text, html } = templateTicketAsignado({
+      ...DATOS,
+      titulo: TITULO_CON_MARKUP,
+      tipoNombre: '<b>Tipo</b>',
+      prioridadNombre: 'A & B',
+    });
+
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<b>Tipo</b>');
+    expect(html).toContain('&lt;b&gt;Tipo&lt;/b&gt;');
+    expect(html).toContain('A &amp; B');
+    expect(text).toContain('<script>');
   });
 });
