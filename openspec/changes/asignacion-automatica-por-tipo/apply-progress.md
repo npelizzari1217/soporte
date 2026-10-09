@@ -107,3 +107,8 @@ Estado: parcial (tareas 6.1, 6.2 y 6.4 hechas; 6.3, 6.5 y 6.6 en la rama `...-wu
 - 6.4: `TicketAsignadoNotificacionListener` (`@OnEvent('ticket.asignado')`), registrado en `notificaciones.module.ts` con `TICKET_REPOSITORY`, `TIPO_TICKET_REPOSITORY` y `PRIORIDAD_REPOSITORY`. `TicketsModule` ya exportaba los tres: no hizo falta tocarlo ni aparece import circular nuevo. Sin rama de omisión por autoasignación. Logs `TICKET_ASIGNADO_SIN_TICKET`, `TICKET_ASIGNADO_SIN_CONTACTO` y `TICKET_ASIGNADO_FALLO_NOTIFICACION`, todos con el `ticketId` y nunca la dirección, el nombre ni el error crudo.
 
 **Deuda de Ayuda para el cuerpo del PR:** la persona asignada ahora recibe un mail cuando le asignan un ticket (por la regla del tipo o a mano). Sin edición de `backend/ayuda` mientras dure la pausa.
+
+## WU-6b-1 — Tests unitarios del listener (rama `feat/asignacion-automatica-por-tipo-wu06`)
+
+- 6.3: `ticket-asignado-notificacion.listener.spec.ts` (10 tests): mail al asignado con asunto, tipo y prioridad (N2); autoasignación manda el mail (N3); el origen cambia el texto; tipo o prioridad faltante omite la línea; ticket inexistente y sin contacto loguean su código sin datos personales; `send` o `findById` que lanzan se tragan y loguean solo el `ticketId` (N5); sin correo configurado no hay error (N4); no deduplica (N7).
+- El código del listener y su spec unitario van en la misma rama (size:exception: separarlos rompería la unidad). 6.5 y 6.6 siguen en `...-wu06b`.
