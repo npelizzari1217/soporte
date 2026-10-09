@@ -78,3 +78,35 @@ Notas:
 | Harness de runtime | integracion sobre `soporte_master_test` (unicos, carrera de `vincular`, cascada, LIMIT 2, `_` no comodin) |
 | Casts | 617 en 114 archivos (base 617), sin subir |
 | Frontera de rollback | revertir los dos commits de codigo; sin consumidores |
+
+## Unidad 3 (WU-2a) - ramas `feat/login-sso-wu02a` y `feat/login-sso-wu02a2`
+
+Partida: el diff completo contra `feat/login-sso-wu01b` era de 498 lineas (tope duro 380). Costura limpia, cada mitad lleva sus tests:
+- `feat/login-sso-wu02a` (base `feat/login-sso-wu01b`, 267 lineas): tareas 3.1 a 3.3.
+- `feat/login-sso-wu02a2` (base `feat/login-sso-wu02a`, ~240 lineas de codigo y specs): tareas 3.4 a 3.9.
+
+Modo: estandar (feature, sin TDD estricto).
+
+- [x] 3.1 dominio `proveedor-slug`, `identidad-sso-verificada`, `sso.errors.ts` y puerto `IProveedorOidc` (`wu02a`)
+- [x] 3.2 a 3.3 `ConfiguracionSsoDesdeEntorno` y su spec (`wu02a`)
+- [x] 3.4 a 3.5 validador de Google (`wu02a2`)
+- [x] 3.6 a 3.7 validador de Microsoft (`wu02a2`)
+- [x] 3.8 mutaciones (`wu02a2`)
+- [x] 3.9 verificacion (`wu02a2`)
+
+Notas:
+- El diseno no fija la forma del puerto `IProveedorOidc`; queda `construirUrlAutorizacion(proveedor, {state, nonce, codeChallenge})` y `verificarCodigo(proveedor, {code, codeVerifier, nonce})`. La WU-2b lo implementa.
+- `ConfiguracionSsoDesdeEntorno` recibe `appBaseUrl` (la WU-5a le pasa `entorno.APP_BASE_URL`) y el `env` (por defecto `process.env`, leido en cada llamada). Los valores se devuelven con `trim()`.
+- Los validadores reciben el nonce esperado y la configuracion del emisor (`emisores` en Google, `plantillaEmisor` en Microsoft) y lanzan `SsoRechazadoError` (motivos `TOKEN_INVALIDO` o `EMAIL_NO_VERIFICADO`). Google tambien comprueba `iss` contra `emisores` (defensa en profundidad sobre `jwtVerify`).
+- Rechazan tambien un `email` vacio o solo espacios (`EMAIL_NO_VERIFICADO`).
+
+Mutaciones (3.8), cada una revertida:
+- Microsoft: reemplazar `claims.xms_edov !== true` por `false` -> 4 tests en rojo (`xms_edov` ausente, `false`, la cadena `"true"`, `1`).
+- Google (extra): reemplazar `claims.email_verified !== true` por `false` -> 4 tests en rojo (ausente, `false`, la cadena `"true"`, `1`).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/domain/sso src/auth/infrastructure/sso` (ver verificacion final del reporte) |
+| Harness de runtime | N/A: funciones puras sobre payloads y lectura de un `env` inyectado |
+| Casts | 617 en 114 archivos (base 617), sin subir |
+| Frontera de rollback | `wu02a`: dominio, errores, puerto y configuracion; `wu02a2`: los dos validadores y sus specs; sin consumidores |

@@ -106,15 +106,15 @@ Rama `feat/login-sso-wu01b` → target `feat/login-sso-wu01a`. Requerimientos: S
 
 Rama `feat/login-sso-wu02a` → target `feat/login-sso-wu01b`. Requerimientos: SC1, SC2, SL3, SL4, SL5.
 
-- [ ] 3.1 Crear `backend/src/auth/domain/sso/` (slug ↔ proveedor, `IdentidadSsoVerificada`), `backend/src/auth/domain/errors/sso.errors.ts` (`SsoRechazadoError` con `motivo`, `SsoNoDisponibleError`) y el puerto `backend/src/auth/domain/ports/proveedor-oidc.port.ts` (`IProveedorOidc` + token), sin Prisma ni `jose`. (ADR-3)
-- [ ] 3.2 Test `configuracion-sso.spec.ts`: `obtener` devuelve `null` si `SSO_<P>_CLIENT_ID` o `SSO_<P>_CLIENT_SECRET` falta, está vacío o es solo espacios; con ambos devuelve las URLs fijadas del diseño y `redirectUri = ${APP_BASE_URL}/api/auth/sso/<slug>/callback`; lee el entorno en cada llamada (cambiarlo entre dos llamadas cambia el resultado); no depende de `Host`. (SC1, SC2)
-- [ ] 3.3 Implementar `backend/src/auth/infrastructure/sso/configuracion-sso.ts` (`ConfiguracionSsoDesdeEntorno` + token `CONFIGURACION_SSO`) con `const v = process.env.X; if (v === undefined || v.trim() === '') return null;`, nunca `?? ''`; no agregar las variables a `VARIABLES_REQUERIDAS`. `regla-env-vacio.lint.spec.ts` sigue verde. (ADR-10)
-- [ ] 3.4 Test `validar-claims-google.spec.ts`: `nonce` distinto; `email_verified` ausente, `false` y la cadena `"true"` → rechazo; `email` ausente o no string; `sub` vacío; `hd` presente acepta; devuelve `{ subject: sub, email }`. (SL3, SL5)
-- [ ] 3.5 Implementar `backend/src/auth/infrastructure/sso/validar-claims-google.ts`. (SL3, SL5)
-- [ ] 3.6 Test `validar-claims-microsoft.spec.ts`: `iss` ≠ plantilla con `tid`; `tid` no string; `ver` ≠ `'2.0'`; `nonce` distinto; falta `oid` o `tid`; `xms_edov` ausente, `false` y la cadena `"true"` → rechazo; `email` ausente con solo `preferred_username`/`upn`/`unique_name` → rechazo; subject = `tid:oid`. (SL4, SL5)
-- [ ] 3.7 Implementar `backend/src/auth/infrastructure/sso/validar-claims-microsoft.ts` (el emisor se compara después de la firma contra `plantillaEmisor`). (SL4, SL5)
-- [ ] 3.8 Mutación: quitar `xms_edov === true` del validador de Microsoft → el test de 3.6 se pone en rojo (documentar y revertir). (invariante del diseño)
-- [ ] 3.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/domain/sso src/auth/infrastructure/sso`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 3.1 Crear `backend/src/auth/domain/sso/` (slug ↔ proveedor, `IdentidadSsoVerificada`), `backend/src/auth/domain/errors/sso.errors.ts` (`SsoRechazadoError` con `motivo`, `SsoNoDisponibleError`) y el puerto `backend/src/auth/domain/ports/proveedor-oidc.port.ts` (`IProveedorOidc` + token), sin Prisma ni `jose`. (ADR-3)
+- [x] 3.2 Test `configuracion-sso.spec.ts`: `obtener` devuelve `null` si `SSO_<P>_CLIENT_ID` o `SSO_<P>_CLIENT_SECRET` falta, está vacío o es solo espacios; con ambos devuelve las URLs fijadas del diseño y `redirectUri = ${APP_BASE_URL}/api/auth/sso/<slug>/callback`; lee el entorno en cada llamada (cambiarlo entre dos llamadas cambia el resultado); no depende de `Host`. (SC1, SC2)
+- [x] 3.3 Implementar `backend/src/auth/infrastructure/sso/configuracion-sso.ts` (`ConfiguracionSsoDesdeEntorno` + token `CONFIGURACION_SSO`) con `const v = process.env.X; if (v === undefined || v.trim() === '') return null;`, nunca `?? ''`; no agregar las variables a `VARIABLES_REQUERIDAS`. `regla-env-vacio.lint.spec.ts` sigue verde. (ADR-10)
+- [x] 3.4 Test `validar-claims-google.spec.ts`: `nonce` distinto; `email_verified` ausente, `false` y la cadena `"true"` → rechazo; `email` ausente o no string; `sub` vacío; `hd` presente acepta; devuelve `{ subject: sub, email }`. (SL3, SL5)
+- [x] 3.5 Implementar `backend/src/auth/infrastructure/sso/validar-claims-google.ts`. (SL3, SL5)
+- [x] 3.6 Test `validar-claims-microsoft.spec.ts`: `iss` ≠ plantilla con `tid`; `tid` no string; `ver` ≠ `'2.0'`; `nonce` distinto; falta `oid` o `tid`; `xms_edov` ausente, `false` y la cadena `"true"` → rechazo; `email` ausente con solo `preferred_username`/`upn`/`unique_name` → rechazo; subject = `tid:oid`. (SL4, SL5)
+- [x] 3.7 Implementar `backend/src/auth/infrastructure/sso/validar-claims-microsoft.ts` (el emisor se compara después de la firma contra `plantillaEmisor`). (SL4, SL5)
+- [x] 3.8 Mutación: quitar `xms_edov === true` del validador de Microsoft → el test de 3.6 se pone en rojo (documentar y revertir). (invariante del diseño)
+- [x] 3.9 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/domain/sso src/auth/infrastructure/sso`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## Unidad 4 (WU-2b) — `JoseProveedorOidc`, IdP falso y baja del spike (~360 líneas)
 
