@@ -100,7 +100,7 @@ Cuando una asignación manual recae sobre un ticket en NUEVO, el sistema DEBE mo
 
 ### Requirement: M4 La interfaz permite reasignar hasta el cierre
 
-La vista de detalle del ticket DEBE ofrecer un control de reasignación en EN_PROCESO, ESPERANDO_CLIENTE y RESUELTO, que use `PATCH /tickets/:id/asignar` y la lista de asignables existente (`GET /tickets/:id/asignables`). En NUEVO y ASIGNADO DEBE seguir el control unificado de asignar y poner en proceso. En CERRADO y CANCELADO NO DEBE mostrarse ningún control de asignación.
+La vista de detalle del ticket DEBE ofrecer un control de reasignación simple, sin forzar cambio de estado, en NUEVO, ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE y RESUELTO, que use `PATCH /tickets/:id/asignar` y la lista de asignables existente (`GET /tickets/:id/asignables`). En NUEVO y ASIGNADO convive con el control unificado de asignar y poner en proceso. En CERRADO y CANCELADO NO DEBE mostrarse ningún control de asignación.
 
 #### Scenario: En proceso
 
@@ -130,7 +130,7 @@ La vista de detalle del ticket DEBE ofrecer un control de reasignación en EN_PR
 
 - GIVEN un ticket en NUEVO o ASIGNADO
 - WHEN se abre el detalle
-- THEN se muestra el control unificado y no el de reasignación simple
+- THEN se muestran el control unificado y el de reasignación simple
 
 #### Scenario: Usuario sin permiso
 

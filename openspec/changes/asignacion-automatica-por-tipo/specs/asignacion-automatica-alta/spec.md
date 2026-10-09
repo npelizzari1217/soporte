@@ -154,7 +154,7 @@ El sistema DEBE aplicar la regla del tipo en los cinco canales. Cada canal DEBE 
 
 ### Requirement: A7 La asignación es atómica con el alta
 
-Ticket, apertura de bitácora y operación ASIGNACION DEBEN persistirse en la misma transacción. Si la transacción se revierte, NO DEBE quedar ticket, ni operación, ni evento publicado. La resolución de la regla DEBE ocurrir antes de abrir la transacción para no alargar la ventana del bloqueo de numeración. En el canal preventivo, la asignación DEBE ocurrir dentro de la transacción por plan y su reversión DEBE deshacer también la asignación; un fallo de las consultas de resolución NO DEBE abortar la transacción por plan.
+Ticket, apertura de bitácora y operación ASIGNACION DEBEN persistirse en la misma transacción. Si la transacción se revierte, NO DEBE quedar ticket, ni operación, ni evento publicado. La resolución de la regla DEBE ocurrir antes de abrir la transacción para no alargar la ventana del bloqueo de numeración. En el canal preventivo, la asignación DEBE ocurrir dentro de la transacción por plan y su reversión DEBE deshacer también la asignación; un fallo de las consultas al maestro NO DEBE abortar la transacción por plan (un fallo de una consulta al tenant dentro de esa transacción la aborta igual y se propaga, como hoy).
 
 #### Scenario: Reversión del alta
 
