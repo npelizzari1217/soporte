@@ -130,12 +130,12 @@ Rama `feat/login-sso-wu02b` → target `feat/login-sso-wu02a`. Requerimientos: S
 
 Rama `feat/login-sso-wu03` → target `feat/login-sso-wu02b`. Requerimientos: L1, D3, SL11, SL8 (el login con contraseña no cambia). Prueba de que no cambia: los specs existentes pasan **sin ninguna edición**.
 
-- [ ] 5.1 Test `backend/src/auth/application/evaluar-segundo-paso.service.spec.ts` con las ramas de hoy: obligado sin 2FA → `needsEnrolamiento2fa`; con 2FA y sin dispositivo → `needs2fa`; con dispositivo válido → `continuar` con `dispositivoRenovado` renovado por `DISPOSITIVO_CONFIABLE_DURACION_MS`; ROOT excluido del dispositivo; no obligado → `continuar`. Mocks completos, sin casts. (D3, SL11, L1)
-- [ ] 5.2 Crear `backend/src/auth/application/evaluar-segundo-paso.service.ts` moviendo textualmente `login.use-case.ts:176-203` (`tfaRepo.obtener`, exclusión ROOT, `renovar`, `esObligado2fa`). (ADR-6)
-- [ ] 5.3 Modificar `backend/src/auth/application/use-cases/login.use-case.ts`: construye el servicio internamente, igual que `EmitirSesionService`; conserva su constructor de 11 parámetros; `dispositivoRenovado` sigue alimentando `selection` y `tokens`. (ADR-6, SL8)
-- [ ] 5.4 Registrar el servicio como provider en `backend/src/auth/auth.module.ts`. Si `auth.module.spec.ts` se rompe sin editarlo, mover este registro a 9.3 y anotarlo. (ADR-6)
-- [ ] 5.5 Prueba de no cambio: `git diff --stat feat/login-sso-wu02b..HEAD` sobre `login.use-case.spec.ts`, `continuar-login.use-cases.spec.ts`, `auth.controller.spec.ts`, `auth.module.spec.ts` y los e2e `login-2fa`, `dispositivo-confiable`, `limite-intentos`, `auth`, `tfa-login`, `tfa-secreto-indescifrable` devuelve vacío, y todos corren en verde. (ADR-6, L1, D3)
-- [ ] 5.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application` y los seis e2e anteriores; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 5.1 Test `backend/src/auth/application/evaluar-segundo-paso.service.spec.ts` con las ramas de hoy: obligado sin 2FA → `needsEnrolamiento2fa`; con 2FA y sin dispositivo → `needs2fa`; con dispositivo válido → `continuar` con `dispositivoRenovado` renovado por `DISPOSITIVO_CONFIABLE_DURACION_MS`; ROOT excluido del dispositivo; no obligado → `continuar`. Mocks completos, sin casts. (D3, SL11, L1)
+- [x] 5.2 Crear `backend/src/auth/application/evaluar-segundo-paso.service.ts` moviendo textualmente `login.use-case.ts:176-203` (`tfaRepo.obtener`, exclusión ROOT, `renovar`, `esObligado2fa`). (ADR-6)
+- [x] 5.3 Modificar `backend/src/auth/application/use-cases/login.use-case.ts`: construye el servicio internamente, igual que `EmitirSesionService`; conserva su constructor de 11 parámetros; `dispositivoRenovado` sigue alimentando `selection` y `tokens`. (ADR-6, SL8)
+- [x] 5.4 Registrar el servicio como provider en `backend/src/auth/auth.module.ts`. Si `auth.module.spec.ts` se rompe sin editarlo, mover este registro a 9.3 y anotarlo. (ADR-6)
+- [x] 5.5 Prueba de no cambio: `git diff --stat feat/login-sso-wu02b..HEAD` sobre `login.use-case.spec.ts`, `continuar-login.use-cases.spec.ts`, `auth.controller.spec.ts`, `auth.module.spec.ts` y los e2e `login-2fa`, `dispositivo-confiable`, `limite-intentos`, `auth`, `tfa-login`, `tfa-secreto-indescifrable` devuelve vacío, y todos corren en verde. (ADR-6, L1, D3)
+- [x] 5.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application` y los seis e2e anteriores; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## Unidad 6 (WU-4a) — `pkce`, `IniciarSso` y `ListarProveedoresSso` (~240 líneas)
 

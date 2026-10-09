@@ -150,3 +150,29 @@ Notas para unidades siguientes:
 | Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso`: 6 archivos, 79 tests en verde |
 | Harness de runtime | IdP falso `node:http` en `127.0.0.1:0` (JWKS, `/token`, caida de red) |
 | Frontera de rollback | revertir `893c6065`; el spike `jose-humo` vuelve y no hay consumidores |
+
+## Unidad 5 (WU-3) - rama `feat/login-sso-wu03`
+
+Modo: estandar (refactor sin cambio de conducta).
+
+- [x] 5.1 `evaluar-segundo-paso.service.spec.ts` (7 tests, mocks completos, sin casts)
+- [x] 5.2 `evaluar-segundo-paso.service.ts` (lineas 176-203 de `login.use-case.ts`, confirmadas antes de mover)
+- [x] 5.3 `LoginUseCase` construye el servicio; sigue con 11 parametros
+- [x] 5.4 Provider en `auth.module.ts`: **se queda** (`auth.module.spec.ts` pasa sin editarse)
+- [x] 5.5 Prueba de no cambio: `git diff --stat feat/login-sso-wu02b..HEAD` sobre los 10 specs protegidos, vacio
+- [x] 5.6 verificacion
+
+Commit de codigo: `ce968600` (`refactor(auth): extrae EvaluarSegundoPasoService del login`).
+
+Verificacion observada (backend/ salvo la ultima):
+- `pnpm lint`: 0 errores.
+- `pnpm typecheck`: 0 errores.
+- `pnpm vitest run src/auth/application`: 28 archivos, 285 tests en verde.
+- Los seis e2e + `auth.module.spec.ts` + `auth.controller.spec.ts`: 8 archivos, 98 tests en verde.
+- `node scripts/check-casts-en-specs.mjs` (raiz): 617 en 114 archivos (base 617), sin subir.
+
+Desviaciones del diseno: ninguna.
+
+Notas para unidades siguientes:
+- `LoginUseCase` conserva `tfaRepo`, `desafios` y `dispositivos` como propiedades solo por el constructor de 11 parametros; el servicio ya no se obtiene de ellas.
+- `CompletarSsoUseCase` (WU-4b) inyecta `EvaluarSegundoPasoService` desde el provider ya registrado.
