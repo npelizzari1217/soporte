@@ -112,3 +112,12 @@ Estado: parcial (tareas 6.1, 6.2 y 6.4 hechas; 6.3, 6.5 y 6.6 en la rama `...-wu
 
 - 6.3: `ticket-asignado-notificacion.listener.spec.ts` (10 tests): mail al asignado con asunto, tipo y prioridad (N2); autoasignación manda el mail (N3); el origen cambia el texto; tipo o prioridad faltante omite la línea; ticket inexistente y sin contacto loguean su código sin datos personales; `send` o `findById` que lanzan se tragan y loguean solo el `ticketId` (N5); sin correo configurado no hay error (N4); no deduplica (N7).
 - El código del listener y su spec unitario van en la misma rama (size:exception: separarlos rompería la unidad). 6.5 y 6.6 siguen en `...-wu06b`.
+
+## WU-6b-2 — E2E del mail y verificación final (rama `feat/asignacion-automatica-por-tipo-wu06b`, sobre `...-wu06`)
+
+Estado: WU-6 completa (6.1 a 6.6). Última WU de backend.
+
+- 6.5: `ticket-asignado-notificacion.e2e.spec.ts` (4 tests, DB tenant efímera propia, `EMAIL_SENDER` falso, `usarLockMasterTest()`): alta con regla manda mail al responsable (texto "automáticamente", link al ticket); alta sin regla no manda; asignación manual avisa al asignado, la autoasignación también y la reasignación avisa al nuevo; asignación rechazada por ticket cerrado (422) no manda mail. Se quitó una llamada duplicada a `usarLockMasterTest()` del borrador.
+- 6.6: `pnpm lint` y `pnpm typecheck` sin errores; `pnpm test` completo 667 archivos / 8076 tests verdes; ratchet de casts 617 en 114 archivos (sin cambio).
+
+**Deuda de Ayuda para el cuerpo del PR:** la persona asignada recibe un mail cuando le asignan un ticket (por la regla del tipo o a mano). Sin edición de `backend/ayuda` mientras dure la pausa.
