@@ -74,3 +74,15 @@ Estado: completa (tareas 4.6 a 4.8). WU-4 queda cerrada en 4a (dominio y casos d
 - 4.8: lint, typecheck, `vitest run src/reglas-asignacion` y ratchet de casts (617/114) en verde; `pnpm test` completo en el reporte del apply.
 
 Desvíos: el e2e no desactiva la membresía por HTTP sino directo en master (no hay endpoint en este módulo). **Deuda de Ayuda para el cuerpo del PR:** API sin pantalla hasta la WU-7; sin artículo de Ayuda nuevo mientras dure la pausa.
+
+## WU-5a — Asignación manual: `AsignarTicketUseCase` (rama `feat/asignacion-automatica-por-tipo-wu05`, sobre `...-wu04c`)
+
+Estado: parcial (tareas 5.1, 5.2, 5.3 y 5.6 hechas; 5.4, 5.5, 5.7 y 5.8 pendientes). El `target` de tasks.md dice `...-wu04`, pero el padre real es `...-wu04c` (PR #496) porque WU-4 se partió en 4a/4b/4c. WU-5 se parte para respetar el tope: 5a (esta) lleva `AsignarTicketUseCase`, el error nuevo y el comentario del controller; 5b llevará `AsignarYPonerEnProcesoUseCase` (5.4, 5.5), el e2e (5.7) y la verificación final (5.8).
+
+- 5.1: `TicketCerradoNoReasignableError(ticketId, estadoCodigo)` (código `TICKET_CERRADO_NO_REASIGNABLE`) y mapeo explícito a 422 en `toHttpException`; el catálogo de `tickets.controller.spec.ts` pasa de 24 a 25 clases.
+- 5.2 / 5.3: `AsignarTicketUseCase` recibe `estadoRepo` y `eventPublisher` (al final del constructor). La guarda terminal va antes de `estaActivoEnTenant`; un `NUEVO` pasa a `ASIGNADO` en la misma transacción con `CAMBIO_ESTADO` del actor; `ticket.asignado` `MANUAL` (`autorId` = actor) sale por `alCommitear`. El factory de `tickets.module.ts` inyecta `ESTADO_REPOSITORY` y `DOMAIN_EVENT_PUBLISHER`. Comentarios falsos reescritos. **Mutación comprobada:** con `const eraNuevo = false` fallan dos tests (`T14 asignación válida` y `M3 NUEVO → ASIGNADO`); restaurado.
+- 5.6: el comentario del controller ("el sistema nunca auto-asigna") reescrito; `rg "nunca auto-asigna|auto-asign"` sobre `backend/src` y `frontend/src` queda sin coincidencias fuera de specs.
+
+Desvío: el orden de escritura dentro de la transacción es `ASIGNACION`, `CAMBIO_ESTADO`, `save` del ticket (antes era `save` del ticket y después la operación), como pide el ADR-6 (mismo orden que `AsignarYPonerEnProcesoUseCase`).
+
+**Deuda de Ayuda para el cuerpo del PR:** asignar a mano un ticket Nuevo lo pasa a Asignado, y un ticket cerrado o cancelado ya no se puede reasignar (422). Sin edición de `backend/ayuda` mientras dure la pausa.

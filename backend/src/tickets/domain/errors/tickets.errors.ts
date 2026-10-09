@@ -143,6 +143,21 @@ export class AsignadoNoElegibleError extends DomainError {
 }
 
 /**
+ * TicketCerradoNoReasignableError — se intentó asignar a mano un ticket en un
+ * estado final (CERRADO o CANCELADO). Un ticket cerrado no se reasigna; RESUELTO
+ * no es final y sí se reasigna. Mapea a 422.
+ *
+ * Ref spec: sdd/asignacion-automatica-por-tipo M1.
+ */
+export class TicketCerradoNoReasignableError extends DomainError {
+  readonly code = 'TICKET_CERRADO_NO_REASIGNABLE';
+
+  constructor(ticketId: string, estadoCodigo: string) {
+    super(`El ticket "${ticketId}" está en estado ${estadoCodigo} y ya no se puede reasignar.`);
+  }
+}
+
+/**
  * SolicitanteInvalidoError — el `solicitanteId` (autor del JWT) no existe
  * en `master.usuarios` (no soft-deleted) o no tiene membresía viva en el
  * tenant activo (validado con `IUsuarioMasterChecker.existeEnTenant`).

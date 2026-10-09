@@ -336,6 +336,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         tipoTicketRepo: ITipoTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
+        estadoRepo: IEstadoRepository,
+        eventPublisher: IDomainEventPublisher,
       ) =>
         new AsignarTicketUseCase(
           ticketRepo,
@@ -344,6 +346,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
           tipoTicketRepo,
           tipoOperacionRepo,
           txRunner,
+          estadoRepo,
+          eventPublisher,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -352,6 +356,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         TIPO_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
+        ESTADO_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
       ],
     },
     {

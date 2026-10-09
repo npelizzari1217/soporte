@@ -7,11 +7,16 @@ import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticke
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
+import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
+  TicketCerradoNoReasignableError,
 } from '../../domain/errors/tickets.errors';
 
 /**
@@ -21,9 +26,9 @@ import {
  *   master.usuarios). Puede ser el propio `autorId` (un agente "toma" un
  *   ticket) o un tercero (un COLABORADOR/TECNICO+ con `ticket:asignar` se
  *   lo asigna a otro) — el use case no distingue ambos casos, ambos son
- *   asignación MANUAL (T14). Lo único prohibido es la auto-asignación
- *   AUTOMÁTICA por el sistema (sin acción humana), que este flujo nunca
- *   dispara por sí mismo.
+ *   asignación MANUAL (T14). La asignación AUTOMÁTICA por regla de tipo
+ *   (sin acción humana) vive en el alta del ticket, no en este flujo; un
+ *   ticket nacido por regla se reasigna acá igual que cualquier otro.
  * - `clienteId`: `cliente_id` del JWT — usado SOLO para la validación
  *   cross-DB del asignado (`IUsuarioMasterChecker.estaActivoEnTenant`).
  * - `autorId`: `sub` del JWT del actor que ejecuta la acción (quien tiene
@@ -43,6 +48,8 @@ export interface AsignarTicketDto {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
+ *    Si está en un estado final (CERRADO/CANCELADO) → `TicketCerradoNoReasignableError`
+ *    (422), antes de consultar a master. RESUELTO sí se reasigna.
  * 2. Valida que el asignado existe en `master.usuarios` con `activo=true` y
  *    pertenece (vía membresía activa) al tenant activo (cross-DB,
  *    `IUsuarioMasterChecker.estaActivoEnTenant`). Si no → `AsignadoInvalidoError` (422).
@@ -65,12 +72,11 @@ export interface AsignarTicketDto {
  *    estado, T9/T12 siguen siendo el único camino para transicionar), y
  *    persiste ambos.
  *
- * DELIBERADAMENTE NO transiciona el estado del ticket (ej. NUEVO→ASIGNADO):
- * ni la spec (T14/T15) ni el design/tasks de esta fase piden acoplar
- * asignación con transición de estado — son conceptos ortogonales, igual
- * que T9 (máquina de estados, PR7) y T14 (asignación, PR8) lo son en la
- * SPEC. Si se necesitara ese acoplamiento, el caller debe invocar
- * `TransicionarEstadoUseCase` por separado (PATCH .../estado).
+ * Un ticket en NUEVO pasa a ASIGNADO en la MISMA transacción (operación
+ * `CAMBIO_ESTADO NUEVO → ASIGNADO` del actor, además de la `ASIGNACION`): un
+ * ticket con responsable no puede quedar en Nuevo. En cualquier otro estado
+ * abierto la asignación NO cambia el estado. Tras el commit publica
+ * `ticket.asignado` (origen `MANUAL`, `autorId` = actor) vía `alCommitear`.
  *
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  *
@@ -87,12 +93,25 @@ export class AsignarTicketUseCase {
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly estadoRepo: Pick<IEstadoRepository, 'findById' | 'findIdByCodigo'>,
+    private readonly eventPublisher: IDomainEventPublisher,
   ) {}
 
   async execute(dto: AsignarTicketDto): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+    }
+
+    // M1: terminal antes de las validaciones del asignado (determinista, sin master).
+    const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
+    if (!estadoActual) {
+      throw new Error(
+        `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
+      );
+    }
+    if (ESTADOS_TERMINALES.has(estadoActual.codigo)) {
+      return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoActual.codigo));
     }
 
     const asignadoActivo = await this.usuarioMasterChecker.estaActivoEnTenant(
@@ -128,6 +147,21 @@ export class AsignarTicketUseCase {
       );
     }
 
+    // M3: solo un ticket NUEVO pasa a ASIGNADO; los ids se resuelven antes de la tx.
+    const eraNuevo = estadoActual.codigo === 'NUEVO';
+    let estadoAsignadoId: string | null = null;
+    let tipoCambioEstadoId: string | null = null;
+    if (eraNuevo) {
+      estadoAsignadoId = await this.estadoRepo.findIdByCodigo('ASIGNADO');
+      tipoCambioEstadoId = await this.tipoOperacionRepo.findIdByCodigo('CAMBIO_ESTADO');
+      if (!estadoAsignadoId || !tipoCambioEstadoId) {
+        throw new Error(
+          'Catálogos inconsistentes: faltan el estado "ASIGNADO" o el tipo_operacion "CAMBIO_ESTADO" en el tenant activo.',
+        );
+      }
+    }
+    const estadoAnteriorId = ticket.estadoId;
+
     await this.txRunner.run(async () => {
       ticket.assignTo(dto.asignadoId);
 
@@ -142,8 +176,37 @@ export class AsignarTicketUseCase {
         metadata: null,
       });
 
-      await this.ticketRepo.save(ticket);
       await this.operacionRepo.save(operacion);
+
+      if (estadoAsignadoId && tipoCambioEstadoId) {
+        ticket.updateEstado(estadoAsignadoId);
+        await this.operacionRepo.save(
+          OperacionTicketEntity.create({
+            ticketId: ticket.id,
+            tipoOperacionId: tipoCambioEstadoId,
+            descripcion: null,
+            estadoAnteriorId,
+            estadoNuevoId: estadoAsignadoId,
+            autorId: dto.autorId,
+            esInterno: false,
+            metadata: null,
+          }),
+        );
+      }
+
+      await this.ticketRepo.save(ticket);
+    });
+
+    // N1: el evento sale recién al commit de la transacción más externa.
+    this.txRunner.alCommitear(() => {
+      this.eventPublisher.publish(
+        new TicketAsignadoEvent({
+          ticketId: ticket.id,
+          asignadoId: dto.asignadoId,
+          origen: 'MANUAL',
+          autorId: dto.autorId,
+        }),
+      );
     });
 
     return Result.ok(ticket);

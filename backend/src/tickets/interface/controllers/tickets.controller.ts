@@ -97,6 +97,7 @@ import {
   TransicionInvalidaError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
+  TicketCerradoNoReasignableError,
   ComentarioNoPermitidoError,
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
@@ -146,6 +147,7 @@ export function toHttpException(
     error instanceof TransicionInvalidaError ||
     error instanceof AsignadoInvalidoError ||
     error instanceof AsignadoNoElegibleError ||
+    error instanceof TicketCerradoNoReasignableError ||
     error instanceof ComentarioNoPermitidoError ||
     error instanceof ArchivoTamanoCeroError ||
     error instanceof TipoArchivoNoPermitidoError ||
@@ -564,14 +566,16 @@ export class TicketsController {
    * PATCH /tickets/:id/asignar
    * Asignación manual de un responsable (T14, T15). `asignadoId` puede ser
    * el propio actor ("tomar" el ticket) o un tercero — ambos son
-   * asignación MANUAL; el sistema nunca auto-asigna. Requiere
-   * `ticket:asignar`. El `asignadoId` debe existir/estar activo en el
+   * asignación MANUAL. Un ticket nacido por regla de tipo se reasigna igual que
+   * cualquier otro. Un ticket NUEVO pasa a ASIGNADO; uno CERRADO/CANCELADO no se
+   * reasigna. Requiere `ticket:asignar`. El `asignadoId` debe existir/estar activo en el
    * tenant (cross-DB) y ser elegible para el `tipoId` del ticket
    * (elegibilidad por el módulo del catálogo del tipo) — la elegibilidad es
    * ortogonal al permiso del actor (T15).
    * @throws 403 sin `ticket:asignar`
    * @throws 404 ticket inexistente/otro tenant
-   * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`)
+   * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),
+   *             o ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`)
    */
   @Patch(':id/asignar')
   @RequiereAcciones('TICKETS:ASIGNAR')
