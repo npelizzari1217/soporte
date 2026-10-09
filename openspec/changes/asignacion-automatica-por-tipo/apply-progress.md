@@ -28,3 +28,13 @@ Estado: completa (tareas 2.6 y 2.7). Segunda partición de WU-2: el diff total d
 
 - 2.7: `CrearTicketUseCase` recibe `ResolverAsignacionAutomatica` (12.º parámetro, tras el resolver de ciclo), resuelve en la fase de lectura, `assignTo` antes del primer `save`, `operacionesDeApertura` y `ticket.asignado` por `alCommitear` después de `ticket.creado`. `TicketsModule` registra `REGLA_ASIGNACION_REPOSITORY` y el resolver (`useFactory`) y exporta ambos. El archivo no tenía comentarios de "nunca auto-asigna".
 - 2.6: specs del caso de uso (con regla, sin regla, regla rota, cola de `alCommitear`, rechazo del tenant). Las otras dos construcciones del caso de uso (`mantenimiento` y `generar-preventivos` integration) reciben el resolver nulo.
+
+## WU-2c — Integraciones del alta con regla y del preventivo (rama `feat/asignacion-automatica-por-tipo-wu02c`)
+
+Estado: completa (tareas 2.8, 2.9 y 2.10). WU-2 queda cerrada en tres ramas encadenadas: 2a, 2b, 2c.
+
+- 2.8: `crear-ticket.asignacion-automatica.integration.spec.ts` (tenant efímero): con regla nace ASIGNADO con apertura null→ASIGNADO y ASIGNACION de `AUTOR_SISTEMA`; sin regla idéntico a hoy; el `save` de la ASIGNACION forzado a fallar deja cero tickets y cero eventos (atomicidad). `CrearTicketUseCase` no tiene satélite, así que la falla se fuerza en el repo de operaciones.
+- 2.9: tres casos en `generar-preventivos.integration.spec.ts` (regla aplicada dentro de la tx del plan; fallo del maestro no aborta el plan; `marcarGenerado` forzado a fallar → ROLLBACK y ningún `ticket.asignado`) y el caso de SLA (A9) en la integración nueva. El barrido procesa todos los planes vencidos del tenant: los eventos se filtran por `ticketId` y el fallo forzado es permanente en la corrida.
+- 2.10: lint, typecheck, `pnpm test` completo y ratchet de casts en verde (617/114).
+
+Desvíos de WU-2: la partición pactada era 2a/2b; 2b con las integraciones daba ~490 líneas, así que las integraciones pasaron a una tercera rama (2c). `orden-de-arranque.spec.ts` falla en este worktree por falta de `backend/.env` (`DATABASE_URL_MASTER`, `APP_BASE_URL`), no por el cambio.
