@@ -130,3 +130,13 @@ Estado: parcial (tareas 7.1, 7.2 y 7.5 hechas; 7.3, 7.4 y 7.6 en la rama `...-wu
 - 7.5: ítem `Asignación automática` en `ADMIN_NAV_ITEMS` con el gate `esAdminCliente`; el test existente de `AdminNav` pasa a 7 secciones y el de TECNICO ya cubre que no se ve.
 
 **Deuda de Ayuda para el cuerpo del PR:** nueva pantalla "Asignación automática" (aún sin vista; llega en 7b). Sin edición de `backend/ayuda` mientras dure la pausa.
+
+## WU-7b — Vista y página (rama `feat/asignacion-automatica-por-tipo-wu07b`, sobre `...-wu07`)
+
+Estado: WU-7 completa (7.1 a 7.6).
+
+- 7.3 / 7.4: `reglas-asignacion-admin-view.tsx` (`<AdminNav />` + `<SoloAdminCliente>`, `DataTable`, `Select` nativo) y la página fina `app/(dashboard)/admin/reglas-asignacion/page.tsx`. El `Select` es controlado por el dato del servidor: ante un 422 no se invalida la lista y el selector vuelve a la regla anterior; la fila en curso (`mutation.variables.tipoId`) queda deshabilitada. Regla rota: el responsable actual se ofrece como opción deshabilitada ("Usuario no disponible" si no hay nombre). Opciones: solo `candidatosPorModulo[fila.modulo]`.
+- Test de la vista (8 casos con msw): gate de no administrador, fila con nombre/código/módulo/badge, solo candidatos del módulo, rota con y sin nombre, PUT con id y con `null`, fila deshabilitada durante el PUT, 422 con toast y selector restaurado.
+- 7.6: frontend `JWT_SECRET=dummy pnpm lint` sin avisos, `pnpm type-check` limpio, `pnpm test` 257 archivos / 2081 tests verdes; ratchet de casts 617/114 sin cambio.
+
+**Deuda de Ayuda para el cuerpo del PR:** pantalla nueva "Asignación automática" (Admin): el administrador elige el responsable de cada tipo; regla rota marcada; fila vacía = sin regla. Sin edición de `backend/ayuda` mientras dure la pausa.
