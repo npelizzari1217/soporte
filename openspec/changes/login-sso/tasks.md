@@ -141,13 +141,13 @@ Rama `feat/login-sso-wu03` → target `feat/login-sso-wu02b`. Requerimientos: L1
 
 Rama `feat/login-sso-wu04a` → target `feat/login-sso-wu03`. Requerimientos: SL9, SL10, SC2, SC3.
 
-- [ ] 6.1 Test `pkce.spec.ts`: el desafío S256 coincide con el vector de la RFC 7636; el verifier cumple longitud y alfabeto; dos generaciones difieren; `sha256` hex estable. (SL9)
-- [ ] 6.2 Crear `backend/src/auth/application/sso/pkce.ts` (`node:crypto`). (SL9)
-- [ ] 6.3 Test `iniciar-sso.use-case.spec.ts`: la URL lleva `response_type=code`, `scope=openid email profile`, `state`, `nonce`, `code_challenge` S256, `response_mode=query`, `prompt=select_account`, `redirect_uri` y `client_id`; solo se persisten `state_hash` y `navegador_hash` (el `state` y el `bindingToken` crudos no); `expira_at` = ahora + 10 minutos; `siguiente` se guarda ya saneado; proveedor sin configuración → `SsoNoDisponibleError`; devuelve `authorizeUrl` y `bindingToken`. (SL9, SL10, SC2)
-- [ ] 6.4 Implementar `backend/src/auth/application/sso/iniciar-sso.use-case.ts`. (SL9, SL10)
-- [ ] 6.5 Test `listar-proveedores-sso.use-case.spec.ts`: devuelve solo slugs de proveedores con configuración válida, en minúsculas; ninguno configurado → lista vacía. (SC2, SC3)
-- [ ] 6.6 Implementar `backend/src/auth/application/sso/listar-proveedores-sso.use-case.ts`. (SC3)
-- [ ] 6.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application/sso`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 6.1 Test `pkce.spec.ts`: el desafío S256 coincide con el vector de la RFC 7636; el verifier cumple longitud y alfabeto; dos generaciones difieren; `sha256` hex estable. (SL9)
+- [x] 6.2 Crear `backend/src/auth/application/sso/pkce.ts` (`node:crypto`). (SL9)
+- [x] 6.3 Test `iniciar-sso.use-case.spec.ts`: la URL lleva `response_type=code`, `scope=openid email profile`, `state`, `nonce`, `code_challenge` S256, `response_mode=query`, `prompt=select_account`, `redirect_uri` y `client_id`; solo se persisten `state_hash` y `navegador_hash` (el `state` y el `bindingToken` crudos no); `expira_at` = ahora + 10 minutos; `siguiente` se guarda ya saneado; proveedor sin configuración → `SsoNoDisponibleError`; devuelve `authorizeUrl` y `bindingToken`. (SL9, SL10, SC2)
+- [x] 6.4 Implementar `backend/src/auth/application/sso/iniciar-sso.use-case.ts`. (SL9, SL10)
+- [x] 6.5 Test `listar-proveedores-sso.use-case.spec.ts`: devuelve solo slugs de proveedores con configuración válida, en minúsculas; ninguno configurado → lista vacía. (SC2, SC3)
+- [x] 6.6 Implementar `backend/src/auth/application/sso/listar-proveedores-sso.use-case.ts`. (SC3)
+- [x] 6.7 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application/sso`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## Unidad 7 (WU-4b) — `CompletarSsoUseCase`: pasos 1, 2 y 4 a 7 (~230 líneas)
 

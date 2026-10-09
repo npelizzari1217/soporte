@@ -176,3 +176,40 @@ Desviaciones del diseno: ninguna.
 Notas para unidades siguientes:
 - `LoginUseCase` conserva `tfaRepo`, `desafios` y `dispositivos` como propiedades solo por el constructor de 11 parametros; el servicio ya no se obtiene de ellas.
 - `CompletarSsoUseCase` (WU-4b) inyecta `EvaluarSegundoPasoService` desde el provider ya registrado.
+
+## Unidad 6 (WU-4a) - rama `feat/login-sso-wu04a`
+
+Modo: estandar (feature).
+
+- [x] 6.1 y 6.2 `pkce.spec.ts` (4 tests, vector de la RFC 7636) y `pkce.ts`
+- [x] 6.3 y 6.4 `iniciar-sso.use-case.spec.ts` (6 tests) e `iniciar-sso.use-case.ts`
+- [x] 6.5 y 6.6 `listar-proveedores-sso.use-case.spec.ts` (3 tests) y `listar-proveedores-sso.use-case.ts`
+- [x] 6.7 verificacion
+
+Commits: `2c4ee54c` (`refactor(auth): mueve la configuracion SSO a un puerto de dominio`), `757a66fd` (`feat(auth): pkce, IniciarSso y ListarProveedoresSso`).
+
+Verificacion observada (backend/ salvo las dos ultimas):
+- `pnpm lint`: 0 errores.
+- `pnpm typecheck`: 0 errores.
+- `pnpm vitest run src/auth/application/sso src/auth/infrastructure/sso src/auth/domain/sso`: 10 archivos, 97 tests en verde.
+- `rg "infrastructure" src/auth/application/sso`: vacio.
+- `node scripts/check-casts-en-specs.mjs` (raiz): 617 en 114 archivos (base 617), sin subir.
+
+Adicion (arrastre de la WU-2a): la interfaz `IConfiguracionSso`, `ConfigProveedorSso` y el token `CONFIGURACION_SSO` pasaron de `infrastructure/sso/configuracion-sso.ts` a `domain/ports/configuracion-sso.port.ts`, para que application no importe de infraestructura. `ConfiguracionSsoDesdeEntorno` queda en infraestructura e implementa el puerto. Importadores actualizados: `jose-proveedor-oidc.ts` y su spec. Sin cambio de conducta.
+
+Desviaciones del diseno:
+- `IniciarSsoUseCase` no re-sanea `siguiente`: la lista permitida vive solo en el BFF (`destinoPosLogin`) y el backend no tiene una; se guarda tal como llega (ya saneado) o `null`. La WU-5a debe acotar el DTO a 300 caracteres (`VARCHAR(300)`).
+- El spec del caso de uso no valida los parametros de la URL (`scope`, `response_mode`, `prompt`, `client_id`, `redirect_uri`): `rg infrastructure` sobre application debe quedar vacio y esos parametros ya los prueba `jose-proveedor-oidc.spec.ts`. Aca se prueba lo que se le entrega al puerto y lo que se persiste.
+- `ListarProveedoresSsoUseCase.execute()` es sincrono (la configuracion es sincrona) y devuelve `SlugSso[]`.
+- `SsoNoDisponibleError` se lanza (no se devuelve como `Result`), igual que el puerto OIDC.
+
+Notas para unidades siguientes:
+- `pkce.ts` exporta `generarAleatorioUrl`, `generarCodeVerifier`, `calcularCodeChallenge` y `sha256Hex`; la WU-4b usa `sha256Hex` para el `navegadorHash` y el `stateHash` del CAS.
+- `SSO_ESTADO_TTL_MS` se exporta desde `iniciar-sso.use-case.ts`.
+- La WU-5a registra `IniciarSsoUseCase`, `ListarProveedoresSsoUseCase` y `ConfiguracionSsoDesdeEntorno` bajo `CONFIGURACION_SSO` importado ahora del puerto de dominio.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/application/sso src/auth/infrastructure/sso src/auth/domain/sso`: 10 archivos, 97 tests en verde |
+| Harness de runtime | N/A: casos de uso inertes, sin cableado hasta la WU-5a |
+| Frontera de rollback | revertir `757a66fd` (casos de uso) y, por separado, `2c4ee54c` (puerto) |
