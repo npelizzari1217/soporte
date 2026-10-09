@@ -3,14 +3,18 @@ import { LOGGER, ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { MotivoSsoRechazado, SsoRechazadoError } from '../../domain/errors/sso.errors';
 import {
+  DESAFIO_LOGIN_REPOSITORY,
+  IDesafioLoginRepository,
+} from '../../domain/ports/desafio-login-repository.port';
+import {
   IIdentidadSsoRepository,
   IDENTIDAD_SSO_REPOSITORY,
 } from '../../domain/ports/identidad-sso-repository.port';
 import {
   IMembresiaRepository,
   MEMBRESIA_REPOSITORY,
-  MembresiaResuelta,
 } from '../../domain/ports/i-membresia.repository';
+import { ILimitadorIntentos, LIMITADOR_INTENTOS } from '../../domain/ports/limitador-intentos.port';
 import { IProveedorOidc, PROVEEDOR_OIDC } from '../../domain/ports/proveedor-oidc.port';
 import {
   ISsoEstadoRepository,
@@ -19,6 +23,7 @@ import {
 import { IUsuarioRepository, USUARIO_REPOSITORY } from '../../domain/ports/i-usuario.repository';
 import { IdentidadSsoVerificada } from '../../domain/sso/identidad-sso-verificada';
 import { ProveedorSso } from '../../domain/sso/proveedores-sso';
+import { EvaluarSegundoPasoService } from '../evaluar-segundo-paso.service';
 import { sha256Hex } from './pkce';
 
 export interface CompletarSsoInput {
@@ -28,23 +33,24 @@ export interface CompletarSsoInput {
   state: string;
   /** Valor crudo de la cookie `sso_st`; solo su hash toca la base. */
   bindingToken: string;
+  /** IP del navegador para el limitador (I9). Ausente = `sin-ip`, igual que `pwd:`. */
+  ip?: string;
+  /** Token crudo del dispositivo confiable (cookie `td`); solo lo lee el segundo paso. */
+  dispositivoConfiable?: string;
 }
 
 /**
- * Usuario ya resuelto y habilitado (pasos 1 a 7 de ADR-7). La unidad siguiente agrega el
- * vinculo (`resueltoPorEmail`), el segundo paso y el ticket.
+ * Resultado del paso 10 de ADR-7. Nunca trae tokens de sesion: el desafio o el ticket los
+ * canjea `ContinuarLoginUseCase` / `SeleccionarClienteLoginUseCase` (SL11, SL12, L7).
  */
-export interface CompletarSsoResolucion {
-  usuario: UsuarioEntity;
-  membresias: MembresiaResuelta[];
-  identidad: IdentidadSsoVerificada;
-  /** `true` si no habia vinculo y el usuario salio de `findManyByEmailInsensitive`. */
-  resueltoPorEmail: boolean;
-  siguiente: string | null;
-}
+export type CompletarSsoResultado = (
+  | { kind: 'needs2fa'; desafio: string }
+  | { kind: 'needsEnrolamiento2fa'; desafio: string }
+  | { kind: 'ticket'; ticket: string; dispositivoConfiable?: string }
+) & { siguiente: string | null };
 
 /**
- * CompletarSsoUseCase — pasos 1, 2 y 4 a 7 de ADR-7 (sdd/login-sso). Inerte: nada lo cablea
+ * CompletarSsoUseCase — los diez pasos de ADR-7 (sdd/login-sso). Inerte: nada lo cablea
  * hasta la WU-5a. Ningun camino crea usuario, membresia ni cliente (SV2). Todo rechazo lanza
  * `SsoRechazadoError`; un fallo de red o un 5xx del proveedor se propaga sin convertirse en
  * rechazo.
@@ -57,10 +63,13 @@ export class CompletarSsoUseCase {
     @Inject(IDENTIDAD_SSO_REPOSITORY) private readonly vinculos: IIdentidadSsoRepository,
     @Inject(USUARIO_REPOSITORY) private readonly usuarios: IUsuarioRepository,
     @Inject(MEMBRESIA_REPOSITORY) private readonly membresias: IMembresiaRepository,
+    @Inject(LIMITADOR_INTENTOS) private readonly limitador: ILimitadorIntentos,
+    @Inject(EvaluarSegundoPasoService) private readonly segundoPaso: EvaluarSegundoPasoService,
+    @Inject(DESAFIO_LOGIN_REPOSITORY) private readonly desafios: IDesafioLoginRepository,
     @Inject(LOGGER) private readonly logger: ILogger,
   ) {}
 
-  async execute(input: CompletarSsoInput): Promise<CompletarSsoResolucion> {
+  async execute(input: CompletarSsoInput): Promise<CompletarSsoResultado> {
     const { proveedor } = input;
 
     // Paso 1: CAS del estado. Cero filas = rechazo sin llamar al proveedor.
@@ -84,8 +93,11 @@ export class CompletarSsoUseCase {
       throw e;
     }
 
-    // Paso 3 (WU-4c, unidad 8): aca va `limitador.reservar('sso:<PROVEEDOR>:<sha256(subject)>:<ip>')`,
-    // antes de resolver al usuario; los pasos 4 a 8 que fallan dejan la reserva como falla.
+    // Paso 3: la reserva es el fallo provisional (I9). Los pasos 4 a 8 que fallan o lanzan la
+    // dejan contada; `liberar` solo corre tras el paso 8. Bloqueado = el rechazo generico.
+    const claveLimite = `sso:${proveedor}:${sha256Hex(identidad.subject)}:${input.ip ?? 'sin-ip'}`;
+    const reserva = await this.limitador.reservar(claveLimite);
+    if (reserva === null) this.rechazar(proveedor, 'BLOQUEADO');
 
     // Paso 4: primero por vinculo (un cambio de email igual entra), despues por email.
     let usuario: UsuarioEntity | null;
@@ -112,7 +124,32 @@ export class CompletarSsoUseCase {
     const membresias = await this.membresias.findActivasByUsuario(usuario.id);
     if (membresias.length === 0) this.rechazar(proveedor, 'SIN_MEMBRESIA', usuario.id);
 
-    return { usuario, membresias, identidad, resueltoPorEmail, siguiente: estado.siguiente };
+    // Paso 8: solo si se resolvio por email. Un vinculo previo ya es la identidad.
+    if (resueltoPorEmail) {
+      const vinculo = await this.vinculos.vincular(usuario.id, proveedor, identidad.subject);
+      if (vinculo === 'OTRA_CUENTA') this.rechazar(proveedor, 'OTRA_CUENTA', usuario.id);
+    }
+
+    // Paso 9: exito del primer factor; el contador vuelve a cero (I2).
+    await this.limitador.liberar(claveLimite);
+
+    // Paso 10: el 2FA propio manda; el SSO no cuenta como segundo paso (SL11).
+    const decision = await this.segundoPaso.evaluar(
+      usuario,
+      membresias,
+      input.dispositivoConfiable,
+    );
+    if (decision.kind !== 'continuar') {
+      return { ...decision, siguiente: estado.siguiente };
+    }
+    return {
+      kind: 'ticket',
+      ticket: await this.desafios.crear(usuario.id, 'SELECCIONAR'),
+      ...(decision.dispositivoRenovado !== undefined
+        ? { dispositivoConfiable: decision.dispositivoRenovado }
+        : {}),
+      siguiente: estado.siguiente,
+    };
   }
 
   /** Deja la causa en el log (nunca email, sujeto ni token) y lanza el rechazo generico. */
