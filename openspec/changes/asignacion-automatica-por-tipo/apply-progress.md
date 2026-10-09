@@ -54,3 +54,13 @@ Estado: completa (tareas 3.3 y 3.4). WU-3 queda cerrada.
 - 3.3: `asignacion-automatica.canales.integration.spec.ts` (tenant efímero, 5 casos): Soporte, formulario público (apertura `AUTOR_FORMULARIO_PUBLICO`, `ASIGNACION` de `AUTOR_SISTEMA`) y Edilicia nacen ASIGNADO con la regla; ROLLBACK de Soporte (cero ticket, cero operaciones nuevas, cero eventos); y `POST /tickets` con el responsable fuera de `listarTecnicosAsignables` (membresía dada de baja) → alta ok, NUEVO, sin asignado, una sola operación.
 - Desvío: el 3.3 pedía e2e HTTP. Se probó a nivel de caso de uso sobre Postgres real (mismo cableado que los módulos); el DI real ya lo ejercitan `reparaciones.e2e` y `pedido-publico-confirmar.e2e`. Master es un doble (no se trunca master, sin `usarLockMasterTest()`).
 - 3.4: verificación en el reporte del apply. **Deuda de Ayuda para el cuerpo del PR:** un ticket de Soporte, Edilicia o del formulario público ahora puede nacer Asignado (con responsable y la bitácora "Asignación automática") si el tipo tiene regla; los artículos de Ayuda que describen esos altos como "siempre Nuevo" o sin responsable deben revisarse al levantar la pausa de la Ayuda.
+
+## WU-4a — Casos de uso de configuración (rama `feat/asignacion-automatica-por-tipo-wu04`)
+
+Estado: parcial (tareas 4.1 a 4.5 hechas; 4.6 a 4.8 pendientes). WU-4 se parte en la costura pactada: 4a (esta) lleva dominio, casos de uso y sus unit; 4b llevará controller, DTO, módulo, registro en `app.module.ts`, e2e y la verificación final.
+
+- 4.1: `reglas-asignacion/domain/estado-regla-asignacion.ts` (estados, `ReglaAsignacionFila`, `CandidatoRegla`) y `domain/errors.ts` (`TipoTicketNoConfigurableError`, `ResponsableReglaNoElegibleError`).
+- 4.2 / 4.3: `ListarReglasAsignacionUseCase` devuelve `{ reglas, candidatosPorModulo }`; una consulta a master por módulo distinto; `ROTA` toma el nombre de `resolverNombres` en un solo lote (`null` si el usuario fue borrado).
+- 4.4 / 4.5: `ConfigurarReglaAsignacionUseCase` devuelve `Result<ReglaAsignacionFila, ...>`; `null` quita sin consultar a master; el UUID se revalida contra `listarTecnicosAsignables` y se fija con el actor; un fallo de master se propaga.
+
+Desvíos: el caso de uso de configuración usa `esResponsableElegible` (la función pura de WU-1) sobre la lista que ya trajo, en vez de `evaluarResponsableRegla`, para reutilizar la misma consulta y devolver el nombre del candidato sin una segunda llamada a master; el criterio es el mismo. Los dos casos filtran también `activo`/`isDeleted` del tipo, por si el repo devolviera un tipo de baja. Verificación completa (lint, typecheck, ratchet de casts, `pnpm test`) en el reporte del apply.
