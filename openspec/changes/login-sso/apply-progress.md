@@ -1,6 +1,6 @@
 # Apply progress: login-sso
 
-## Unidad 1 (WU-1a) - lote 1 de 2: rama `feat/login-sso-wu01a`
+## Unidad 1 (WU-1a) - lotes 1 y 2 (ramas `feat/login-sso-wu01a` y `feat/login-sso-wu01a2`)
 
 Partida por la contingencia de tasks.md (el diff real de la WU superaba el tope duro de 380 lineas):
 - `feat/login-sso-wu01a` (base `feat/login-sso`): tareas 1.1 a 1.7.
@@ -14,7 +14,9 @@ Modo: estandar (feature, sin TDD estricto).
 - [x] 1.5 migracion M1 y rollback
 - [x] 1.6 esquema Prisma y cliente
 - [x] 1.7 `PROVEEDORES_SSO` y puerto `ISsoEstadoRepository`
-- [ ] 1.8 a 1.11 en la rama `feat/login-sso-wu01a2`
+- [x] 1.8 a 1.9 repositorio de estados e integracion (rama `wu01a2`)
+- [x] 1.10 mutaciones (rama `wu01a2`)
+- [x] 1.11 verificacion (rama `wu01a2`)
 
 ### Resultado del gate del spike (1.4), Node v24.20.0
 
@@ -42,3 +44,17 @@ Solo se probo Node 24 (el de esta maquina). El VPS usa Node 22.12 o superior seg
 | Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts`: 1 passed |
 | Harness de runtime | criterios 2 y 5 del spike (arriba) |
 | Frontera de rollback | `git revert` del commit; `rollback.sql` de M1; sin consumidores |
+
+### Lote 2 (rama `feat/login-sso-wu01a2`)
+
+Mutaciones (1.10), cada una revertida:
+- Quitar `usado_at IS NULL` del CAS: en rojo "consumir devuelve ... una sola vez" y "dos consumos concurrentes".
+- Quitar `navegador_hash` del CAS: en rojo "navegador ajeno devuelve null y la fila sigue consumible".
+
+Verificacion (1.11), desde `backend/`: `pnpm lint` exit 0; `pnpm typecheck` exit 0; `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts src/auth/infrastructure/sso/prisma-sso-estado.repository.integration.spec.ts` 2 archivos, 12 tests en verde. Raiz: `node scripts/check-casts-en-specs.mjs` 617 en 114 archivos (base 617), sin subir. Migracion M1 aplicada a `soporte_master_test`, rollback ejecutado una vez y reaplicada (`prisma migrate status`: al dia).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts src/auth/infrastructure/sso/prisma-sso-estado.repository.integration.spec.ts`: 12 passed |
+| Harness de runtime | integracion sobre `soporte_master_test` (CAS, concurrencia, purga) |
+| Frontera de rollback | `prisma-sso-estado.repository.ts` y su spec; sin consumidores |
