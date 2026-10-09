@@ -5,6 +5,7 @@ import { SharedModule } from './shared/shared.module';
 import { AuthModule } from './auth/auth.module';
 import { ClientesModule } from './clientes/clientes.module';
 import { TicketsModule } from './tickets/tickets.module';
+import { ReglasAsignacionModule } from './reglas-asignacion/reglas-asignacion.module';
 import { ComprasModule } from './compras/compras.module';
 import { ReparacionesModule } from './reparaciones/reparaciones.module';
 import { EquiposModule } from './equipos/equipos.module';
@@ -54,6 +55,7 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     AuthModule,
     ClientesModule,
     TicketsModule,
+    ReglasAsignacionModule,
     ComprasModule,
     ReparacionesModule,
     EquiposModule,

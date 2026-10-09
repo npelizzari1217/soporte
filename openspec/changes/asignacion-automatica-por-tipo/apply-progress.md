@@ -64,3 +64,13 @@ Estado: parcial (tareas 4.1 a 4.5 hechas; 4.6 a 4.8 pendientes). WU-4 se parte e
 - 4.4 / 4.5: `ConfigurarReglaAsignacionUseCase` devuelve `Result<ReglaAsignacionFila, ...>`; `null` quita sin consultar a master; el UUID se revalida contra `listarTecnicosAsignables` y se fija con el actor; un fallo de master se propaga.
 
 Desvíos: el caso de uso de configuración usa `esResponsableElegible` (la función pura de WU-1) sobre la lista que ya trajo, en vez de `evaluarResponsableRegla`, para reutilizar la misma consulta y devolver el nombre del candidato sin una segunda llamada a master; el criterio es el mismo. Los dos casos filtran también `activo`/`isDeleted` del tipo, por si el repo devolviera un tipo de baja. Verificación completa (lint, typecheck, ratchet de casts, `pnpm test`) en el reporte del apply.
+
+## WU-4c — Controller, DTO, módulo y e2e (rama `feat/asignacion-automatica-por-tipo-wu04c`, sobre 4b)
+
+Estado: completa (tareas 4.6 a 4.8). WU-4 queda cerrada en 4a (dominio y casos de uso), 4b (listar / configurar) y 4c.
+
+- 4.6: `ReglasAsignacionController` (`GET /reglas-asignacion`, `PUT /reglas-asignacion/:tipoId`; guards de clase `JwtAuthGuard, TenantGuard` y `AdminClienteGuard` por método; `TipoTicketNoConfigurableError` → 404, el resto → 422), DTO `ConfigurarReglaAsignacionBodyDto` (`@IsDefined()` + `@ValidateIf(!== null) @IsUUID()`), `ReglasAsignacionModule` (`imports: [AuthModule, TicketsModule]`, casos de uso por `useFactory`) y registro en `app.module.ts`.
+- 4.7: `reglas-asignacion.e2e.spec.ts` contra Postgres real (tenant efímero, usuarios, membresías y matriz de master sembrados de verdad, `usarLockMasterTest()`): 401, 403 para TECNICO/COLABORADOR/USUARIO, ROOT lee, `SIN_REGLA` con candidatos solo TECNICO/COLABORADOR con el módulo, fijar/reemplazar/quitar, `ROTA` por módulo perdido y por membresía inactiva, 404 (inexistente y de baja), 422 (ADMIN, sin módulo, desconocido) con la regla anterior intacta, 400 de forma, `clienteId` del body ignorado.
+- 4.8: lint, typecheck, `vitest run src/reglas-asignacion` y ratchet de casts (617/114) en verde; `pnpm test` completo en el reporte del apply.
+
+Desvíos: el e2e no desactiva la membresía por HTTP sino directo en master (no hay endpoint en este módulo). **Deuda de Ayuda para el cuerpo del PR:** API sin pantalla hasta la WU-7; sin artículo de Ayuda nuevo mientras dure la pausa.

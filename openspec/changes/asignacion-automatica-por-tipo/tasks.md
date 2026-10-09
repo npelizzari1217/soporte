@@ -98,16 +98,16 @@ Rama `feat/asignacion-automatica-por-tipo-wu03` → target `feat/asignacion-auto
 
 Rama `feat/asignacion-automatica-por-tipo-wu04` → target `feat/asignacion-automatica-por-tipo-wu03`. Requerimientos: R1, R2, R3, R4, R5, R7.
 
-Partición aplicada en la costura pactada: 4a (4.1 a 4.5, rama `...-wu04`) y 4b (4.6 a 4.8, rama `...-wu04b`, sobre 4a).
+Partición aplicada en la costura pactada: 4a (4.1 a 4.5, rama `...-wu04`) y 4b (listar, rama `...-wu04b`), 4c (4.6 a 4.8, controller, módulo y e2e, rama `...-wu04c`).
 
 - [x] 4.1 Crear `backend/src/reglas-asignacion/domain/estado-regla-asignacion.ts` (`ESTADOS_REGLA_ASIGNACION = ['SIN_REGLA', 'VALIDA', 'ROTA'] as const`) y `domain/errors.ts` (`TipoTicketNoConfigurableError` 404, `ResponsableReglaNoElegibleError` 422). (R3, R4)
 - [x] 4.2 Tests unit de `ListarReglasAsignacionUseCase`: una fila por tipo activo; un tipo dado de baja no aparece; `SIN_REGLA` / `VALIDA` (con nombre del candidato) / `ROTA` (nombre de `resolverNombres`, `null` si el usuario fue borrado); `listarTecnicosAsignables` una vez por módulo distinto, no por fila; candidatos por módulo. (R2, R4)
 - [x] 4.3 Crear `ListarReglasAsignacionUseCase`. (R2, R4)
 - [x] 4.4 Tests unit de `ConfigurarReglaAsignacionUseCase`: `null` → `quitar` idempotente; UUID válido → `evaluarResponsableRegla` y `fijar(tipoId, responsableId, actor.sub)`; ADMINISTRADOR, usuario de otro cliente, sin el módulo o dado de baja → `ResponsableReglaNoElegibleError` sin escribir; tipo inexistente o borrado → `TipoTicketNoConfigurableError`; un fallo de master se propaga (no se degrada). (R1, R2, R3)
 - [x] 4.5 Crear `ConfigurarReglaAsignacionUseCase`. (R1, R3)
-- [ ] 4.6 `ReglasAsignacionController` (`GET /reglas-asignacion`, `PUT /reglas-asignacion/:tipoId`; `JwtAuthGuard, TenantGuard` por clase y `AdminClienteGuard` por método; `ParseUUIDPipe`; `clienteId = actor.cliente_id`), DTO con `@IsDefined()` y `@ValidateIf(o => o.responsableId !== null) @IsUUID()`, `ReglasAsignacionModule` (`imports: [AuthModule, TicketsModule]`) y registro en `app.module.ts`. (R5, R3)
-- [ ] 4.7 e2e `reglas-asignacion.e2e.spec.ts` (tenant efímero, `usarLockMasterTest()`): 403 para TECNICO y sin sesión; ADMINISTRADOR del cliente y ROOT leen y editan; `PUT` con ADMIN como responsable → 422; tipo inexistente → 404; estados `SIN_REGLA`/`VALIDA`/`ROTA` tras desactivar la membresía; `PUT` con `null` quita la regla; el `clienteId` del body se ignora. (R2, R3, R4, R5)
-- [ ] 4.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/reglas-asignacion` y el e2e; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada (la pantalla llega en la WU-7).
+- [x] 4.6 `ReglasAsignacionController` (`GET /reglas-asignacion`, `PUT /reglas-asignacion/:tipoId`; `JwtAuthGuard, TenantGuard` por clase y `AdminClienteGuard` por método; `ParseUUIDPipe`; `clienteId = actor.cliente_id`), DTO con `@IsDefined()` y `@ValidateIf(o => o.responsableId !== null) @IsUUID()`, `ReglasAsignacionModule` (`imports: [AuthModule, TicketsModule]`) y registro en `app.module.ts`. (R5, R3)
+- [x] 4.7 e2e `reglas-asignacion.e2e.spec.ts` (tenant efímero, `usarLockMasterTest()`): 403 para TECNICO y sin sesión; ADMINISTRADOR del cliente y ROOT leen y editan; `PUT` con ADMIN como responsable → 422; tipo inexistente → 404; estados `SIN_REGLA`/`VALIDA`/`ROTA` tras desactivar la membresía; `PUT` con `null` quita la regla; el `clienteId` del body se ignora. (R2, R3, R4, R5)
+- [x] 4.8 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/reglas-asignacion` y el e2e; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada (la pantalla llega en la WU-7).
 
 ## WU-5 — Asignación manual: terminal, Nuevo→Asignado, evento y comentarios (~300 líneas)
 
