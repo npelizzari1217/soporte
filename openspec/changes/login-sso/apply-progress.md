@@ -110,3 +110,43 @@ Mutaciones (3.8), cada una revertida:
 | Harness de runtime | N/A: funciones puras sobre payloads y lectura de un `env` inyectado |
 | Casts | 617 en 114 archivos (base 617), sin subir |
 | Frontera de rollback | `wu02a`: dominio, errores, puerto y configuracion; `wu02a2`: los dos validadores y sus specs; sin consumidores |
+
+## Unidad 4 (WU-2b) - rama `feat/login-sso-wu02b`
+
+Modo: estandar. **size:exception aceptado**: ~435 lineas de codigo (estimacion 360); el spec no se entrega sin el adaptador y el IdP falso, y no hay costura limpia.
+
+- [x] 4.1 `src/testing/idp-falso.ts` (servidor `node:http`, `/token` y `/jwks`, firma RS256, clave ajena, HS256 y `none`, contador de llamadas)
+- [x] 4.2 `jose-proveedor-oidc.spec.ts` (17 tests)
+- [x] 4.3 `jose-proveedor-oidc.ts`
+- [x] 4.4 baja de `jose-humo.ts` y su spec
+- [x] 4.5 verificacion
+
+Commit de codigo: `893c6065` (`feat(auth): adaptador OIDC con jose, IdP falso y baja del spike`).
+
+Verificacion observada (backend/ salvo la ultima):
+- `pnpm lint`: 0 errores.
+- `pnpm typecheck`: 0 errores.
+- `pnpm vitest run src/auth/infrastructure/sso`: 6 archivos, 79 tests en verde (17 del spec nuevo).
+- `pnpm build` y `node -e "require('./dist/auth/infrastructure/sso/jose-proveedor-oidc.js')"`: `require ok`, sin `ERR_REQUIRE_ESM`; `dist/testing` no contiene `idp-falso`.
+- `rg "from 'jose'" src`: solo el adaptador y `src/testing/idp-falso.ts`.
+- `rg "jose-humo" src`: vacio.
+- `node scripts/check-casts-en-specs.mjs` (raiz): 617 en 114 archivos (base 617), sin subir.
+
+Rojo observado antes del verde: la primera corrida fallo en "vencido" porque `JWTExpired` no extiende `JWTClaimValidationFailed` en jose 6; se agrego a la lista de rechazos.
+
+Desviaciones del diseno:
+- `tsconfig.build.json` no necesito cambios: ya excluye `src/testing/**`.
+- `jwtVerify` corre sin la opcion `issuer`; el emisor lo comparan los validadores en ambos proveedores.
+- El adaptador recibe `IConfiguracionSso` en el constructor.
+- Una respuesta 200 del `/token` sin `id_token` lanza un error comun (500), no un rechazo.
+- El IdP falso firma las variantes HS256 y `alg: none`, porque el spec no puede importar `jose`.
+
+Notas para unidades siguientes:
+- La WU-5a registra `new JoseProveedorOidc(configuracionSso)` bajo el token `PROVEEDOR_OIDC`.
+- Queda pendiente en la WU-5a el arranque con `pnpm start` (criterio 5 de ADR-2).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso`: 6 archivos, 79 tests en verde |
+| Harness de runtime | IdP falso `node:http` en `127.0.0.1:0` (JWKS, `/token`, caida de red) |
+| Frontera de rollback | revertir `893c6065`; el spike `jose-humo` vuelve y no hay consumidores |
