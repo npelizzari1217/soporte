@@ -140,3 +140,14 @@ Estado: WU-7 completa (7.1 a 7.6).
 - 7.6: frontend `JWT_SECRET=dummy pnpm lint` sin avisos, `pnpm type-check` limpio, `pnpm test` 257 archivos / 2081 tests verdes; ratchet de casts 617/114 sin cambio.
 
 **Deuda de Ayuda para el cuerpo del PR:** pantalla nueva "Asignación automática" (Admin): el administrador elige el responsable de cada tipo; regla rota marcada; fila vacía = sin regla. Sin edición de `backend/ayuda` mientras dure la pausa.
+
+## WU-8 — Control de reasignación y notas de deploy (rama `feat/asignacion-automatica-por-tipo-wu08`, sobre `...-wu07b`)
+
+Estado: WU-8 completa (8.1 a 8.6). Última WU del ciclo; la tarea 8.7 (cierre del roadmap) es posterior al deploy y queda fuera de la lista.
+
+- 8.1 / 8.2: `puedeReasignar` en `features/tickets/lib/estado-transitions.ts` (complemento de un `ESTADOS_TERMINALES` local, espejo del backend; el front no tenía esa constante). Test: verdadero en los 5 estados no terminales, falso en CERRADO y CANCELADO.
+- 8.3 / 8.4: `ticket-reasignar-control.tsx` (presentacional, gate `TICKETS:ASIGNAR` solamente, `aria-label` "Cambiar responsable" para no chocar con "Asignar responsable") montado en `ticket-detail-view.tsx` cuando `puedeReasignar(estadoCodigo)`, con `useAsignarTicket` y los candidatos de `useTecnicosAsignables`. Tests: `ticket-reasignar-control.test.tsx` (4) y `ticket-detail-view-reasignar.test.tsx` (8: convive con "Asignar y poner en proceso" en NUEVO/ASIGNADO, solo reasignar en EN_PROCESO, oculto en CERRADO/CANCELADO y sin permiso, PATCH `/asignar` con el elegido, 422 con toast). Un ticket nacido por regla es indistinguible en el front: usa el mismo endpoint que M5 cubre en el backend.
+- 8.5: frontend `JWT_SECRET=dummy pnpm lint` sin avisos, `pnpm type-check` limpio, `pnpm test` 259 archivos / 2100 tests verdes; ratchet de casts 617/114 sin cambio. `check-roadmap-fresco.mjs` no aplica: el cierre del punto 9 es la tarea 8.7, posterior al deploy.
+- 8.6: las notas de deploy para el PR del tracker #490 se redactaron en un archivo de trabajo (no se editó ningún PR): `/tmp/claude-1000/-home-usuario-proyectos-soporte/eb56f49b-b4d2-4398-b319-2511a73a4312/scratchpad/deploy-notes-490.md`. Hechos verificados: carpeta de migración `20261009120000_reglas_asignacion` con `migration.sql` y `rollback.sql`; ningún `package.json` ni lockfile cambia contra `main`; el código de producción no suma `process.env`.
+
+**Deuda de Ayuda para el cuerpo del PR:** control «Reasignar» en el detalle del ticket (cambia el responsable sin tocar el estado, hasta el cierre). Sin edición de `backend/ayuda` mientras dure la pausa.

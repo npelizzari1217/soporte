@@ -12,13 +12,14 @@ import { useTecnicosAsignables } from "../hooks/use-tecnicos-asignables";
 import { useEquipoDeTicket } from "../hooks/use-equipo-de-ticket";
 import {
   useAsignarEnProceso,
+  useAsignarTicket,
   useComentar,
   useEditarTicket,
   useSubirAdjunto,
   useTransicionarEstado,
 } from "../hooks/use-ticket-mutations";
 import { buildIdToCodigoMap } from "../lib/catalog-map";
-import { puedeAsignarYPonerEnProceso, puedeEditarDatos } from "../lib/estado-transitions";
+import { puedeAsignarYPonerEnProceso, puedeEditarDatos, puedeReasignar } from "../lib/estado-transitions";
 import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
 import { DetailSkeleton } from "@/components/shared/skeletons";
@@ -29,6 +30,7 @@ import { TicketTimeline } from "./ticket-timeline";
 import { TicketCommentForm } from "./ticket-comment-form";
 import { TicketTransitionControl } from "./ticket-transition-control";
 import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-control";
+import { TicketReasignarControl } from "./ticket-reasignar-control";
 import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
@@ -65,6 +67,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const comentarMutation = useComentar(ticketId);
   const transicionarMutation = useTransicionarEstado(ticketId);
   const asignarEnProcesoMutation = useAsignarEnProceso(ticketId);
+  const reasignarMutation = useAsignarTicket(ticketId);
   const editarMutation = useEditarTicket(ticketId);
   const adjuntarMutation = useSubirAdjunto(ticketId);
 
@@ -120,6 +123,13 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
             tecnicos={tecnicosQuery.data ?? []}
             onAsignar={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
             isSubmitting={asignarEnProcesoMutation.isPending}
+          />
+        )}
+        {estadoCodigo && puedeReasignar(estadoCodigo) && (
+          <TicketReasignarControl
+            tecnicos={tecnicosQuery.data ?? []}
+            onReasignar={(asignadoId) => reasignarMutation.mutate({ asignadoId })}
+            isSubmitting={reasignarMutation.isPending}
           />
         )}
         {estadoCodigo && (
