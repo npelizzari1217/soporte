@@ -804,6 +804,151 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     });
   });
 
+  // ─── WU-5b — reasignación hasta el cierre (M1, M2, M3, M5) ─────────────────
+
+  describe('PATCH /tickets/:id/asignar y /asignar-en-proceso — estados terminales y NUEVO (WU-5b)', () => {
+    async function armarEscenario(prefijo: string) {
+      const cliente = await createClienteTenant();
+      const roleUsuario = await createRoleConPermisos('USUARIO', [
+        'ticket:crear',
+        'ticket:comentar',
+      ]);
+      const roleTecnico = await createRoleConPermisos('TECNICO', [
+        'ticket:crear',
+        'ticket:comentar',
+        'ticket:ver_todos',
+        'ticket:asignar',
+        'ticket:transicionar',
+      ]);
+      const usuario = await createUsuario(`usr-${randomBytes(2).toString('hex')}`);
+      const tecnico = await createUsuario(`tec-${randomBytes(2).toString('hex')}`);
+      await createMembresia(usuario.id, cliente.id, roleUsuario.id);
+      await createMembresia(tecnico.id, cliente.id, roleTecnico.id);
+      const loginUsuario = await login(usuario.email);
+      const loginTecnico = await login(tecnico.email);
+      const tipoId = await createTipoTicketAislado(prefijo);
+      const crear = async (titulo: string) => {
+        const res = await httpPost<TicketResponseDto>(
+          `${baseUrl}/tickets`,
+          { titulo, tipoId, prioridadId: prioridadMediaId },
+          bearer(loginUsuario.accessToken),
+        );
+        expect(res.status).toBe(201);
+        return res.data;
+      };
+      return {
+        tecnico,
+        loginTecnico,
+        tipoId,
+        clienteId: cliente.id,
+        roleTecnicoId: roleTecnico.id,
+        crear,
+      };
+    }
+
+    async function forzarEstado(ticketId: string, codigo: string): Promise<string> {
+      const estado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo } });
+      await tenantClient.ticket.update({ where: { id: ticketId }, data: { estadoId: estado.id } });
+      return estado.id;
+    }
+
+    async function contarOperaciones(ticketId: string): Promise<number> {
+      return tenantClient.operacionTicket.count({ where: { ticketId } });
+    }
+
+    it('CERRADO → 422 TicketCerradoNoReasignable en /asignar, sin operaciones nuevas', async () => {
+      const { tecnico, loginTecnico, crear } = await armarEscenario('CRR');
+      const ticket = await crear('Cerrado no se reasigna');
+      const estadoCerrado = await forzarEstado(ticket.id, 'CERRADO');
+      const antes = await contarOperaciones(ticket.id);
+
+      const res = await httpPatch(
+        `${baseUrl}/tickets/${ticket.id}/asignar`,
+        { asignadoId: tecnico.id },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(res.data)).toContain('ya no se puede reasignar');
+      expect(await contarOperaciones(ticket.id)).toBe(antes);
+      const despues = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
+      expect(despues.asignadoId).toBeNull();
+      expect(despues.estadoId).toBe(estadoCerrado);
+    });
+
+    it('CANCELADO → 422 en /asignar-en-proceso, sin operaciones nuevas', async () => {
+      const { tecnico, loginTecnico, crear } = await armarEscenario('CNC');
+      const ticket = await crear('Cancelado no se reasigna');
+      await forzarEstado(ticket.id, 'CANCELADO');
+      const antes = await contarOperaciones(ticket.id);
+
+      const res = await httpPatch(
+        `${baseUrl}/tickets/${ticket.id}/asignar-en-proceso`,
+        { asignadoId: tecnico.id },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(res.data)).toContain('ya no se puede reasignar');
+      expect(await contarOperaciones(ticket.id)).toBe(antes);
+    });
+
+    it('NUEVO → ASIGNADO al asignar a mano', async () => {
+      const { tecnico, loginTecnico, crear } = await armarEscenario('NVO');
+      const ticket = await crear('Nuevo pasa a Asignado');
+      const estadoAsignado = await tenantClient.estado.findUniqueOrThrow({
+        where: { codigo: 'ASIGNADO' },
+      });
+
+      const res = await httpPatch<TicketResponseDto>(
+        `${baseUrl}/tickets/${ticket.id}/asignar`,
+        { asignadoId: tecnico.id },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.data.asignadoId).toBe(tecnico.id);
+      expect(res.data.estadoId).toBe(estadoAsignado.id);
+    });
+
+    it('RESUELTO → 200 en /asignar: cambia el asignado sin cambiar el estado', async () => {
+      const { tecnico, loginTecnico, crear } = await armarEscenario('RSL');
+      const ticket = await crear('Resuelto se reasigna');
+      const estadoResuelto = await forzarEstado(ticket.id, 'RESUELTO');
+
+      const res = await httpPatch<TicketResponseDto>(
+        `${baseUrl}/tickets/${ticket.id}/asignar`,
+        { asignadoId: tecnico.id },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.data.asignadoId).toBe(tecnico.id);
+      expect(res.data.estadoId).toBe(estadoResuelto);
+    });
+
+    it('un ticket nacido por regla se reasigna igual que cualquier otro (M5)', async () => {
+      const { tecnico, loginTecnico, tipoId, clienteId, roleTecnicoId, crear } =
+        await armarEscenario('RGL');
+      const responsable = await createUsuario(`res-${randomBytes(2).toString('hex')}`);
+      await createMembresia(responsable.id, clienteId, roleTecnicoId);
+      await tenantClient.reglaAsignacion.create({
+        data: { tipoId, responsableId: responsable.id, actualizadoPor: tecnico.id },
+      });
+      const ticket = await crear('Nacido por regla');
+      expect(ticket.asignadoId).toBe(responsable.id);
+
+      const res = await httpPatch<TicketResponseDto>(
+        `${baseUrl}/tickets/${ticket.id}/asignar`,
+        { asignadoId: tecnico.id },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.data.asignadoId).toBe(tecnico.id);
+    });
+  });
+
   // ─── T16/T17/T18/T19 — Timeline/comentarios (PR9) ──────────────────────────
 
   describe('POST /tickets/:id/comentarios (T16, T17, T19)', () => {

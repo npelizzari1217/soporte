@@ -86,3 +86,15 @@ Estado: parcial (tareas 5.1, 5.2, 5.3 y 5.6 hechas; 5.4, 5.5, 5.7 y 5.8 pendient
 Desvío: el orden de escritura dentro de la transacción es `ASIGNACION`, `CAMBIO_ESTADO`, `save` del ticket (antes era `save` del ticket y después la operación), como pide el ADR-6 (mismo orden que `AsignarYPonerEnProcesoUseCase`).
 
 **Deuda de Ayuda para el cuerpo del PR:** asignar a mano un ticket Nuevo lo pasa a Asignado, y un ticket cerrado o cancelado ya no se puede reasignar (422). Sin edición de `backend/ayuda` mientras dure la pausa.
+
+## WU-5b — `AsignarYPonerEnProcesoUseCase` y e2e (rama `feat/asignacion-automatica-por-tipo-wu05b`, sobre `...-wu05`)
+
+Estado: completa (tareas 5.4, 5.5, 5.7 y 5.8). WU-5 queda cerrada en 5a y 5b.
+
+- 5.4 / 5.5: `AsignarYPonerEnProcesoUseCase` recibe `eventPublisher` (último parámetro). Carga `estadoActual` antes de las validaciones de master y, si es `CERRADO`/`CANCELADO`, devuelve `TicketCerradoNoReasignableError`; `RESUELTO` conserva `TransicionInvalidaError`. `ticket.asignado` `MANUAL` (`autorId` = actor) sale por `alCommitear` tras el `run`. El factory de `tickets.module.ts` inyecta `DOMAIN_EVENT_PUBLISHER`. JSDoc del controller (`asignar-en-proceso`) y del caso de uso actualizados. **Mutación comprobada:** con la guarda terminal anulada fallan los dos tests M1 (CERRADO y CANCELADO); restaurado. El spec de integración del reloj de SLA solo suma el parámetro nuevo.
+- 5.7: bloque `WU-5b` en `tickets.e2e.spec.ts` (se extiende el harness existente): `/asignar` en CERRADO → 422 sin operaciones nuevas ni cambio de asignado/estado; `/asignar-en-proceso` en CANCELADO → 422 sin operaciones nuevas; NUEVO → ASIGNADO por `/asignar`; RESUELTO → 200 sin cambio de estado; ticket nacido por regla (responsable TECNICO con módulo) se reasigna con 200.
+- 5.8: lint, typecheck, `vitest run src/tickets` (75 archivos, 760 tests), e2e, `demo-seed.integration.spec.ts` y ratchet de casts (617/114) en verde.
+
+Desvíos: el 422 no expone el nombre de la clase en el cuerpo, así que el e2e verifica el mensaje ("ya no se puede reasignar"). El responsable de la regla debe tener rol TECNICO/COLABORADOR (regla de `listarTecnicosAsignables`); si no, la regla queda ROTA y el ticket nace sin asignar.
+
+**Deuda de Ayuda para el cuerpo del PR:** asignar y poner en proceso un ticket cerrado o cancelado se rechaza con 422. Sin edición de `backend/ayuda` mientras dure la pausa.
