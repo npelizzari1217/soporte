@@ -1031,6 +1031,14 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     ve ni desvincula su propia cuenta; eso lo hace el administrador.
   - Queda afuera, como en el punto 5: la **auditoría de logins**, el **alta
     automática** y la política **"solo SSO"**. Se pueden sumar después.
+  - **Precisiones del 2026-10-09, al explorar** (ciclo `login-sso`):
+    - "Resetear vínculo SSO" es **un solo botón** que borra los vínculos del usuario
+      con **todos** los proveedores y además **cierra sus sesiones abiertas**, igual
+      que el reseteo de 2FA.
+    - Cuando el SSO no deja entrar, el usuario ve **un único mensaje genérico**, sea
+      cual sea el motivo (email inexistente o sin verificar, otra cuenta con el mismo
+      email, ROOT, usuario inactivo o sin membresías). El motivo real queda solo en
+      los logs del servidor, como hoy en el login con contraseña.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
