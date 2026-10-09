@@ -713,7 +713,6 @@ async function seedDemoTenantData(
         prioridadCodigo: 'MEDIA',
         solicitanteId: usuarios.colaborador,
         asignarAId: usuarios.tecnico,
-        transiciones: ['ASIGNADO'],
       },
       {
         titulo: 'Servidor de archivos caído',
@@ -722,7 +721,7 @@ async function seedDemoTenantData(
         prioridadCodigo: 'CRITICA',
         solicitanteId: usuarios.usuario,
         asignarAId: usuarios.tecnico,
-        transiciones: ['ASIGNADO', 'EN_PROCESO'],
+        transiciones: ['EN_PROCESO'],
       },
       {
         titulo: 'Instalar impresora de red en oficina 2do piso',
@@ -731,7 +730,7 @@ async function seedDemoTenantData(
         prioridadCodigo: 'BAJA',
         solicitanteId: usuarios.colaborador,
         asignarAId: usuarios.tecnico,
-        transiciones: ['ASIGNADO', 'EN_PROCESO', 'RESUELTO', 'CERRADO'],
+        transiciones: ['EN_PROCESO', 'RESUELTO', 'CERRADO'],
       },
       {
         titulo: 'Aire acondicionado de la sala de reuniones no enfría',
@@ -747,7 +746,7 @@ async function seedDemoTenantData(
         prioridadCodigo: 'ALTA',
         solicitanteId: usuarios.colaborador,
         asignarAId: usuarios.tecnico,
-        transiciones: ['ASIGNADO', 'CANCELADO'],
+        transiciones: ['CANCELADO'],
       },
       {
         titulo: 'Renovar licencia de Office 365',
@@ -763,7 +762,6 @@ async function seedDemoTenantData(
         prioridadCodigo: 'BAJA',
         solicitanteId: usuarios.tecnico,
         asignarAId: usuarios.tecnico,
-        transiciones: ['ASIGNADO'],
       },
     ];
 
