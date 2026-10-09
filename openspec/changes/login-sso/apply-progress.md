@@ -213,3 +213,15 @@ Notas para unidades siguientes:
 | Comando focalizado | `pnpm vitest run src/auth/application/sso src/auth/infrastructure/sso src/auth/domain/sso`: 10 archivos, 97 tests en verde |
 | Harness de runtime | N/A: casos de uso inertes, sin cableado hasta la WU-5a |
 | Frontera de rollback | revertir `757a66fd` (casos de uso) y, por separado, `2c4ee54c` (puerto) |
+
+## Unidad 7 (WU-4b) - rama `feat/login-sso-wu04b`
+
+Modo: estandar (feature). Tareas 7.1 a 7.4 hechas. Commit: `2ba51686` (`feat(auth): CompletarSsoUseCase hasta la resolucion del usuario`).
+
+Mutacion 7.3: sin el chequeo `isGlobalAdmin`, `vitest run src/auth/application/sso/completar` dio 2 rojos de 18 (`ROOT se rechaza resuelto por email`, `ROOT se rechaza tambien si ya estaba vinculado (promovido despues)`); revertida, 31 tests en verde.
+
+Verificacion observada (backend/ salvo las dos ultimas): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/auth/application/sso` 4 archivos, 31 tests en verde; `rg infrastructure src/auth/application/sso` vacio; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. `execute` devuelve `CompletarSsoResolucion` (usuario, membresias, identidad, resueltoPorEmail, siguiente) y todo rechazo lanza `SsoRechazadoError` tras loguear `SSO_RECHAZADO` con el `ILogger` del dominio.
+
+Notas para la WU-4c: el paso 3 va en el comentario marcado antes de resolver al usuario; el limitador debe cubrir los pasos 4 a 7 como falla. `vincular` solo si `resueltoPorEmail`. Constructor actual: estados, oidc, vinculos, usuarios, membresias, logger.
