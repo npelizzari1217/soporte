@@ -10,12 +10,16 @@ import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.reposito
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
+import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TransicionInvalidaError,
+  TicketCerradoNoReasignableError,
 } from '../../domain/errors/tickets.errors';
 
 /**
@@ -61,21 +65,24 @@ interface PasoTransicion {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe/está soft-deleted → `TicketNoEncontradoError` (404).
+ *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
  * 3. Valida elegibilidad por módulo del tipo → `AsignadoNoElegibleError` (422).
  * 4. Calcula el camino de arcos desde el estado actual hasta EN_PROCESO
  *    (NUEVO→ASIGNADO→EN_PROCESO; desde ASIGNADO solo →EN_PROCESO; ya en
  *    EN_PROCESO no avanza, solo asigna). Si el estado actual NO puede llegar a
- *    EN_PROCESO por arcos válidos (RESUELTO/CERRADO/CANCELADO) →
+ *    EN_PROCESO por arcos válidos (RESUELTO) →
  *    `TransicionInvalidaError` (422), SIN mutar nada. Cada arco se valida con
  *    la entidad (`canTransitionTo`) Y la máquina de estados (`puedeTransicionar`).
  * 5. En UNA transacción (`ITenantTransactionRunner`): `assignTo` + operación
  *    ASIGNACION, luego por cada arco `updateEstado` + operación CAMBIO_ESTADO,
  *    y persiste el ticket una vez.
  *
- * No publica eventos: EN_PROCESO no es un estado notificable (los notificables
- * son RESUELTO/CERRADO/ESPERANDO_CLIENTE — ver `estados-notificables.policy`).
+ * Un ticket en CERRADO/CANCELADO se rechaza con `TicketCerradoNoReasignableError`
+ * (422) antes de consultar a master. Tras el commit publica `ticket.asignado`
+ * (origen `MANUAL`) vía `alCommitear`; EN_PROCESO en sí no es un estado
+ * notificable (ver `estados-notificables.policy`).
  *
  * Sin throw para fallos esperados — todos se modelan con `Result.fail()`.
  */
@@ -92,12 +99,26 @@ export class AsignarYPonerEnProcesoUseCase {
     >,
     private readonly stateMachineFactory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly eventPublisher: IDomainEventPublisher,
   ) {}
 
   async execute(dto: AsignarYPonerEnProcesoDto): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+    }
+
+    // Catálogos FIJOS (ADR-1): su ausencia es un bug de infraestructura → throw
+    // defensivo (mismo patrón que TransicionarEstadoUseCase).
+    const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
+    if (!estadoActual) {
+      throw new Error(
+        `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
+      );
+    }
+    // M1: terminal antes de las validaciones del asignado y de resolver los pasos.
+    if (ESTADOS_TERMINALES.has(estadoActual.codigo)) {
+      return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoActual.codigo));
     }
 
     const asignadoActivo = await this.usuarioMasterChecker.estaActivoEnTenant(
@@ -119,14 +140,6 @@ export class AsignarYPonerEnProcesoUseCase {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
     }
 
-    // Catálogos FIJOS (ADR-1): su ausencia es un bug de infraestructura → throw
-    // defensivo (mismo patrón que TransicionarEstadoUseCase).
-    const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
-    if (!estadoActual) {
-      throw new Error(
-        `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
-      );
-    }
     const tipoTicket = await this.tipoTicketRepo.findById(ticket.tipoId);
     if (!tipoTicket) {
       throw new Error(
@@ -193,6 +206,18 @@ export class AsignarYPonerEnProcesoUseCase {
       }
 
       await this.ticketRepo.save(ticket);
+    });
+
+    // N1: el evento sale recién al commit de la transacción más externa.
+    this.txRunner.alCommitear(() => {
+      this.eventPublisher.publish(
+        new TicketAsignadoEvent({
+          ticketId: ticket.id,
+          asignadoId: dto.asignadoId,
+          origen: 'MANUAL',
+          autorId: dto.autorId,
+        }),
+      );
     });
 
     return Result.ok(ticket);

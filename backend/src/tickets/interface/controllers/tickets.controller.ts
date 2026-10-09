@@ -638,8 +638,9 @@ export class TicketsController {
    * `clienteId`/`autorId` del JWT.
    * @throws 403 sin `ticket:asignar` o `ticket:transicionar`
    * @throws 404 ticket inexistente/otro tenant
-   * @throws 422 asignado inválido/no elegible, o el estado actual no puede
-   *             llegar a EN_PROCESO (RESUELTO/CERRADO/CANCELADO)
+   * @throws 422 asignado inválido/no elegible, ticket CERRADO/CANCELADO
+   *             (`TicketCerradoNoReasignableError`), o el estado actual no
+   *             puede llegar a EN_PROCESO (RESUELTO)
    */
   @Patch(':id/asignar-en-proceso')
   @RequiereAcciones('TICKETS:ASIGNAR', 'TICKETS:TRANSICIONAR')

@@ -380,6 +380,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         usuarioMasterChecker: IUsuarioMasterChecker,
         stateMachineFactory: TicketStateMachineFactory,
         txRunner: ITenantTransactionRunner,
+        eventPublisher: IDomainEventPublisher,
       ) =>
         new AsignarYPonerEnProcesoUseCase(
           ticketRepo,
@@ -390,6 +391,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
           usuarioMasterChecker,
           stateMachineFactory,
           txRunner,
+          eventPublisher,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -400,6 +402,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         USUARIO_MASTER_CHECKER,
         TicketStateMachineFactory,
         TENANT_TX_RUNNER,
+        DOMAIN_EVENT_PUBLISHER,
       ],
     },
     {
