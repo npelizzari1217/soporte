@@ -15,12 +15,10 @@ import {
 import { ILimitadorIntentos } from '../../domain/ports/limitador-intentos.port';
 import { normalizarEmail } from '../../domain/tfa/formato-codigo';
 import { EmitirSesionService } from '../emitir-sesion.service';
+import { EvaluarSegundoPasoService } from '../evaluar-segundo-paso.service';
 import { ITfaRepository } from '../../domain/ports/tfa-repository.port';
 import { IDesafioLoginRepository } from '../../domain/ports/desafio-login-repository.port';
-import { esObligado2fa } from '../../domain/tfa/es-obligado-2fa';
 import { IDispositivoConfiableRepository } from '../../domain/ports/dispositivo-confiable-repository.port';
-import { hashTokenDispositivo } from '../tfa/token-dispositivo';
-import { DISPOSITIVO_CONFIABLE_DURACION_MS } from '../../domain/tfa/tfa.constants';
 
 /**
  * DUMMY_HASH — hash argon2id pre-calculado para defensa de timing side-channel.
@@ -111,6 +109,7 @@ export type LoginResult =
  */
 export class LoginUseCase {
   private readonly emitirSesion: EmitirSesionService;
+  private readonly evaluarSegundoPaso: EvaluarSegundoPasoService;
 
   constructor(
     private readonly usuarioRepo: IUsuarioRepository,
@@ -132,6 +131,7 @@ export class LoginUseCase {
       refreshTokenRepo,
       permisosRepo,
     );
+    this.evaluarSegundoPaso = new EvaluarSegundoPasoService(tfaRepo, desafios, dispositivos);
   }
 
   async execute(dto: LoginDto): Promise<Result<LoginResult, DomainError>> {
@@ -173,34 +173,13 @@ export class LoginUseCase {
     // La politica por cliente ya cuenta aca: `esObligado2fa` recibe `clienteRequiere2fa` de cada
     // membresia activa. Como `requiere_2fa` nace en false, hasta WU-7 (ruta para activarla) solo
     // ROOT obliga en la practica.
-    const estadoTfa = await this.tfaRepo.obtener(usuario.id);
-    let dispositivoRenovado: string | undefined;
-    if (estadoTfa?.secretoCifrado != null) {
-      // Un dispositivo confiable valido omite el desafio, nunca la contrasena (D3). ROOT no
-      // lo tiene aunque lo envie, ni siquiera si lo emitieron antes de que fuera ROOT (D4).
-      // Ventana deslizante: omitir el desafio gracias a un dispositivo vigente lo renueva 30 dias.
-      if (!usuario.isGlobalAdmin && dto.dispositivoConfiable !== undefined) {
-        const ahora = new Date();
-        const renovado = await this.dispositivos.renovar(
-          usuario.id,
-          hashTokenDispositivo(dto.dispositivoConfiable),
-          new Date(ahora.getTime() + DISPOSITIVO_CONFIABLE_DURACION_MS),
-          ahora,
-        );
-        if (renovado) dispositivoRenovado = dto.dispositivoConfiable;
-      }
-      if (dispositivoRenovado === undefined) {
-        return Result.ok({
-          kind: 'needs2fa',
-          desafio: await this.desafios.crear(usuario.id, 'VERIFICAR'),
-        });
-      }
-    } else if (esObligado2fa(usuario.isGlobalAdmin, membresiasActivas)) {
-      return Result.ok({
-        kind: 'needsEnrolamiento2fa',
-        desafio: await this.desafios.crear(usuario.id, 'ENROLAR'),
-      });
-    }
+    const decision = await this.evaluarSegundoPaso.evaluar(
+      usuario,
+      membresiasActivas,
+      dto.dispositivoConfiable,
+    );
+    if (decision.kind !== 'continuar') return Result.ok(decision);
+    const dispositivoRenovado = decision.dispositivoRenovado;
 
     // 4. Determinar el clienteId objetivo
     let clienteIdObjetivo: string | null;

@@ -102,6 +102,7 @@ import {
   SeleccionarClienteLoginUseCase,
 } from './application/tfa/continuar-login.use-cases';
 import { EmitirSesionService } from './application/emitir-sesion.service';
+import { EvaluarSegundoPasoService } from './application/evaluar-segundo-paso.service';
 import { TfaLoginController } from './interface/controllers/tfa-login.controller';
 import { LoginUseCase } from './application/use-cases/login.use-case';
 import { RefreshTokenUseCase } from './application/use-cases/refresh-token.use-case';
@@ -216,6 +217,16 @@ import { RolesController } from './interface/controllers/roles.controller';
         REFRESH_TOKEN_REPOSITORY,
         MATRIZ_PERMISOS_REPOSITORY,
       ],
+    },
+    // Segundo paso compartido con el login SSO (login-sso ADR-6).
+    {
+      provide: EvaluarSegundoPasoService,
+      useFactory: (
+        tfaRepo: ITfaRepository,
+        desafios: IDesafioLoginRepository,
+        dispositivos: IDispositivoConfiableRepository,
+      ) => new EvaluarSegundoPasoService(tfaRepo, desafios, dispositivos),
+      inject: [TFA_REPOSITORY, DESAFIO_LOGIN_REPOSITORY, DISPOSITIVO_CONFIABLE_REPOSITORY],
     },
     ...[ContinuarLoginUseCase, SeleccionarClienteLoginUseCase].map((UseCase) => ({
       provide: UseCase,
