@@ -121,3 +121,12 @@ Estado: WU-6 completa (6.1 a 6.6). Última WU de backend.
 - 6.6: `pnpm lint` y `pnpm typecheck` sin errores; `pnpm test` completo 667 archivos / 8076 tests verdes; ratchet de casts 617 en 114 archivos (sin cambio).
 
 **Deuda de Ayuda para el cuerpo del PR:** la persona asignada recibe un mail cuando le asignan un ticket (por la regla del tipo o a mano). Sin edición de `backend/ayuda` mientras dure la pausa.
+
+## WU-7a — Tipos, schemas, hooks e ítem del nav (rama `feat/asignacion-automatica-por-tipo-wu07`, sobre `...-wu06b`)
+
+Estado: parcial (tareas 7.1, 7.2 y 7.5 hechas; 7.3, 7.4 y 7.6 en la rama `...-wu07b`). WU-7 se parte en 7a/7b por la costura de tasks.md: 7a ya suma ~265 líneas y la vista con su test no entra en 400.
+
+- 7.1 / 7.2: `features/reglas-asignacion/{types,schemas}.ts` (Zod espejo de `ReglaAsignacionFila`, `CandidatoRegla`, `ESTADOS_REGLA_ASIGNACION` y del body del PUT; los tipos se infieren del schema) y los hooks `useReglasAsignacion()` (`queryKey: ["reglas-asignacion"]`, la respuesta se valida con Zod) y `useConfigurarReglaAsignacion()` (invalida la key; `notifySuccess`/`notifyError`). Tests: `schemas.test.ts` (5) y `hooks/use-reglas-asignacion.test.tsx` (4, msw; el 422 muestra el toast y no invalida).
+- 7.5: ítem `Asignación automática` en `ADMIN_NAV_ITEMS` con el gate `esAdminCliente`; el test existente de `AdminNav` pasa a 7 secciones y el de TECNICO ya cubre que no se ve.
+
+**Deuda de Ayuda para el cuerpo del PR:** nueva pantalla "Asignación automática" (aún sin vista; llega en 7b). Sin edición de `backend/ayuda` mientras dure la pausa.

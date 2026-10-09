@@ -137,11 +137,11 @@ Rama `feat/asignacion-automatica-por-tipo-wu06` → target `feat/asignacion-auto
 
 Rama `feat/asignacion-automatica-por-tipo-wu07` → target `feat/asignacion-automatica-por-tipo-wu06`. Requerimientos: R6, R4 (presentación), R5 (gate de la vista).
 
-- [ ] 7.1 Test de schemas Zod `features/reglas-asignacion/schemas.ts` (espejo de `ReglaAsignacionFilaDto`, `CandidatoDto`, `ESTADOS_REGLA_ASIGNACION`) y de los hooks `useReglasAsignacion()` (`queryKey: ["reglas-asignacion"]`) y `useConfigurarReglaAsignacion()` (invalida la key; toast de éxito y de error) con msw. (R6)
-- [ ] 7.2 Crear `types.ts`, `schemas.ts` y `hooks/*` sobre `apiFetch`, como `use-modelos-equipo.ts`. (R6)
+- [x] 7.1 Test de schemas Zod `features/reglas-asignacion/schemas.ts` (espejo de `ReglaAsignacionFilaDto`, `CandidatoDto`, `ESTADOS_REGLA_ASIGNACION`) y de los hooks `useReglasAsignacion()` (`queryKey: ["reglas-asignacion"]`) y `useConfigurarReglaAsignacion()` (invalida la key; toast de éxito y de error) con msw. (R6)
+- [x] 7.2 Crear `types.ts`, `schemas.ts` y `hooks/*` sobre `apiFetch`, como `use-modelos-equipo.ts`. (R6)
 - [ ] 7.3 Test de `reglas-asignacion-admin-view.tsx`: una fila por tipo activo con nombre, código y módulo; vacía = "Sin regla" y envía `null`; badges "Sin regla", "Activa", "Rota" con el texto de ayuda; regla rota muestra al responsable actual como opción deshabilitada, y "Usuario no disponible" si no hay nombre; fila deshabilitada mientras corre el `PUT`; `PUT` rechazado (422) → toast y el selector vuelve a la regla anterior; solo candidatos del módulo del tipo. (R4, R6)
 - [ ] 7.4 Crear `components/reglas-asignacion-admin-view.tsx` (dentro de `<SoloAdminCliente>` + `<AdminNav />`, `Select` nativo de `@/components/ui/select`) y la página fina `app/(dashboard)/admin/reglas-asignacion/page.tsx` (molde `admin/modelos-equipo/page.tsx`). (R5, R6)
-- [ ] 7.5 Test e implementación del ítem `{ href: "/admin/reglas-asignacion", label: "Asignación automática" }` en `ADMIN_NAV_ITEMS` (`components/shell/admin-nav.tsx`) con el mismo gate `esAdminCliente`: visible para quien administra, oculto para los demás. (R5, R6)
+- [x] 7.5 Test e implementación del ítem `{ href: "/admin/reglas-asignacion", label: "Asignación automática" }` en `ADMIN_NAV_ITEMS` (`components/shell/admin-nav.tsx`) con el mismo gate `esAdminCliente`: visible para quien administra, oculto para los demás. (R5, R6)
 - [ ] 7.6 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test` de las rutas de la WU; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada (pantalla "Asignación automática").
 
 ## WU-8 — Frontend: control de reasignación (~200 líneas)
