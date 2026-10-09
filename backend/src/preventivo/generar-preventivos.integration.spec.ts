@@ -190,6 +190,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       usuarioMasterChecker,
       new NumeradorTicket(ticketRepo),
       new ResolverCicloActivoParaCreacion(cicloRepo),
+      { resolver: async () => null },
       new NoopDomainEventPublisher(),
       txRunner,
     );

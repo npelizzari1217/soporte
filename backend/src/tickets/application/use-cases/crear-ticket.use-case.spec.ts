@@ -19,6 +19,8 @@ import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { TicketCreadoEvent } from '../../domain/events/ticket-creado.event';
+import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
+import { AUTOR_SISTEMA } from '../../domain/constants/autor-sistema.constants';
 import {
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
@@ -113,6 +115,7 @@ describe('CrearTicketUseCase', () => {
         }
       }),
     };
+    const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
     const eventPublisher = { publish: vi.fn() };
 
     const useCase = new CrearTicketUseCase(
@@ -125,6 +128,7 @@ describe('CrearTicketUseCase', () => {
       usuarioMasterChecker as never,
       numerador as never,
       resolverCicloActivo as never,
+      resolverAsignacion,
       eventPublisher as never,
       txRunner as never,
     );
@@ -140,6 +144,7 @@ describe('CrearTicketUseCase', () => {
       usuarioMasterChecker,
       numerador,
       resolverCicloActivo,
+      resolverAsignacion,
       eventPublisher,
       txRunner,
     };
@@ -308,6 +313,96 @@ describe('CrearTicketUseCase', () => {
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
     expect(c.operacionRepo.save).not.toHaveBeenCalled();
   });
+
+  describe('asignación automática por regla del tipo (A1-A4, A7, A8, N1)', () => {
+    const ASIGNACION = {
+      asignadoId: 'u-responsable',
+      estadoAsignadoId: 'estado-asignado-uuid',
+      tipoOperacionAsignacionId: 'tipo-op-asignacion-uuid',
+    };
+
+    it('con regla: nace ASIGNADO con asignado_id, apertura null→ASIGNADO y ASIGNACION del sistema', async () => {
+      const c = makeCollaborators();
+      c.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+
+      const result = await c.useCase.execute(baseDto());
+
+      const ticket = result.getValue();
+      expect(ticket.estadoId).toBe('estado-asignado-uuid');
+      expect(ticket.asignadoId).toBe('u-responsable');
+      expect(c.resolverAsignacion.resolver).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'tipo-soporte-uuid' }),
+        'cliente-uuid',
+      );
+      const ops = c.operacionRepo.save.mock.calls.map(([op]) => op);
+      expect(ops).toHaveLength(2);
+      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-op-cambio-estado-uuid');
+      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-uuid');
+      expect(apertura.estadoAnteriorId).toBeNull();
+      expect(apertura.estadoNuevoId).toBe('estado-asignado-uuid');
+      expect(apertura.autorId).toBe('solicitante-uuid');
+      expect(asignacion.autorId).toBe(AUTOR_SISTEMA);
+      expect(asignacion.metadata).toEqual({
+        origen: 'REGLA_TIPO',
+        tipoId: 'tipo-soporte-uuid',
+        asignadoId: 'u-responsable',
+      });
+    });
+
+    it('sin regla: idéntico a hoy (NUEVO, sin asignado, una sola operación, solo ticket.creado)', async () => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.getValue().estadoId).toBe('estado-nuevo-uuid');
+      expect(result.getValue().asignadoId).toBeNull();
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+      expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+      expect(c.eventPublisher.publish.mock.calls[0][0]).toBeInstanceOf(TicketCreadoEvent);
+    });
+
+    it('regla rota (el resolver devuelve null): nace NUEVO y sin error', async () => {
+      const c = makeCollaborators();
+      c.resolverAsignacion.resolver.mockResolvedValue(null);
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().asignadoId).toBeNull();
+    });
+
+    it('con regla: publica ticket.asignado REGLA_TIPO después de ticket.creado, solo al correr la cola de alCommitear', async () => {
+      const c = makeCollaborators();
+      c.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
+      const cola: Array<() => void> = [];
+      c.txRunner.alCommitear.mockImplementation((fn: () => void) => {
+        cola.push(fn);
+      });
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+      cola.forEach((fn) => fn());
+      const eventos = c.eventPublisher.publish.mock.calls.map(([e]) => e);
+      expect(eventos[0]).toBeInstanceOf(TicketCreadoEvent);
+      expect(eventos[1]).toBeInstanceOf(TicketAsignadoEvent);
+      expect(eventos[1]).toMatchObject({
+        ticketId: result.getValue().id,
+        asignadoId: 'u-responsable',
+        origen: 'REGLA_TIPO',
+        autorId: null,
+      });
+      expect(eventos).toHaveLength(2);
+    });
+
+    it('si el resolver rechaza (consulta de tenant), el alta rechaza sin abrir la transacción', async () => {
+      const c = makeCollaborators();
+      c.resolverAsignacion.resolver.mockRejectedValue(new Error('tenant caido'));
+
+      await expect(c.useCase.execute(baseDto())).rejects.toThrow('tenant caido');
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+  });
 });
 
 /**
@@ -388,6 +483,7 @@ describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (run
       usuarioMasterChecker as never,
       numerador as never,
       resolverCicloActivo as never,
+      { resolver: vi.fn().mockResolvedValue(null) },
       eventPublisher as never,
       txRunner,
     );

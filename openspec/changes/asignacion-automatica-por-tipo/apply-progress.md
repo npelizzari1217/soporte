@@ -21,3 +21,10 @@ Estado: completa (tareas 2.1 a 2.5). WU-2 se parte en la costura pactada: 2a (es
 - 2.4 / 2.5: `operacionesDeApertura` y su spec (búsqueda por tipo de operación).
 
 Desvíos: el resolver loguea `REGLA_ROTA` con `logger.log` y `DEGRADADA` con `logger.error` (el puerto `ILogger` solo tiene esos dos niveles). El spec no repite el caso "tipo inactivo": `desactivar()` ya cubre baja e inactivo a la vez.
+
+## WU-2b — `CrearTicketUseCase` y cableado (rama `feat/asignacion-automatica-por-tipo-wu02b`)
+
+Estado: completa (tareas 2.6 y 2.7). Segunda partición de WU-2: el diff total de 2b con las integraciones pasaba de 490 líneas, así que las integraciones 2.8 y 2.9 van en 2c (`...-wu02c`), sobre esta rama.
+
+- 2.7: `CrearTicketUseCase` recibe `ResolverAsignacionAutomatica` (12.º parámetro, tras el resolver de ciclo), resuelve en la fase de lectura, `assignTo` antes del primer `save`, `operacionesDeApertura` y `ticket.asignado` por `alCommitear` después de `ticket.creado`. `TicketsModule` registra `REGLA_ASIGNACION_REPOSITORY` y el resolver (`useFactory`) y exporta ambos. El archivo no tenía comentarios de "nunca auto-asigna".
+- 2.6: specs del caso de uso (con regla, sin regla, regla rota, cola de `alCommitear`, rechazo del tenant). Las otras dos construcciones del caso de uso (`mantenimiento` y `generar-preventivos` integration) reciben el resolver nulo.

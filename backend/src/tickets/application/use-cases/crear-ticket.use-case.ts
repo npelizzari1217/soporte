@@ -2,10 +2,12 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
-import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketCreadoEvent } from '../../domain/events/ticket-creado.event';
+import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
+import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
+import { operacionesDeApertura } from '../services/operaciones-apertura';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -58,6 +60,9 @@ export interface CrearTicketDto {
  * 6. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO (catálogos
  *    FIJOS garantizados por el seed de provisioning, ADR-1 — su ausencia es
  *    un fallo de infraestructura, no un error esperado del caller: `throw`).
+ *    Y, en la misma fase de solo lectura, la regla de asignación automática
+ *    del tipo (`ResolverAsignacionAutomatica`): nunca hace fallar el alta; si
+ *    asigna, el ticket nace ASIGNADO con su responsable (ADR-2/ADR-3).
  * 7. **DENTRO de la transacción** (`ITenantTransactionRunner.run`, requisito
  *    de ADR-5): genera el `numero` (`NumeradorTicket.generarNumero`, que
  *    internamente adquiere el advisory lock vía `findLastSecuencia`), crea
@@ -84,6 +89,7 @@ export class CrearTicketUseCase {
     private readonly usuarioMasterChecker: IUsuarioMasterChecker,
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
     private readonly resolverCicloActivo: Pick<ResolverCicloActivoParaCreacion, 'resolver'>,
+    private readonly resolverAsignacion: Pick<ResolverAsignacionAutomatica, 'resolver'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
   ) {}
@@ -142,6 +148,11 @@ export class CrearTicketUseCase {
       );
     }
 
+    // 6b. Regla de asignación del tipo (ADR-2): sin regla o regla rota → null y el alta sigue
+    //     como siempre. Un fallo de consulta del tenant se propaga (ver el resolver).
+    const asignacion = await this.resolverAsignacion.resolver(tipoTicket, dto.clienteId);
+    const estadoInicialId = asignacion?.estadoAsignadoId ?? estadoNuevoId;
+
     // 7. Sección crítica: numeración (advisory lock, ADR-5) + persistencia,
     //    atómica en la MISMA transacción.
     const resultado = await this.txRunner.run(async () => {
@@ -159,26 +170,29 @@ export class CrearTicketUseCase {
         titulo: dto.titulo,
         descripcion: dto.descripcion ?? null,
         tipoId: dto.tipoId,
-        estadoId: estadoNuevoId,
+        estadoId: estadoInicialId,
         prioridadId: dto.prioridadId,
         cicloId: cicloActivo.id,
         ticketReferenciaId: dto.ticketReferenciaId ?? null,
         solicitanteId: dto.solicitanteId,
       });
 
-      const operacionApertura = OperacionTicketEntity.create({
+      // La regla asigna ANTES del primer `save()` (ADR-3): el ticket nace ASIGNADO.
+      if (asignacion) ticket.assignTo(asignacion.asignadoId);
+
+      const operaciones = operacionesDeApertura({
         ticketId: ticket.id,
-        tipoOperacionId: tipoOperacionAperturaId,
-        descripcion: null,
-        estadoAnteriorId: null,
-        estadoNuevoId: estadoNuevoId,
+        tipoId: dto.tipoId,
+        estadoInicialId,
+        tipoOperacionAperturaId,
         autorId: dto.autorId,
-        esInterno: false,
-        metadata: null,
+        asignacion,
       });
 
       await this.ticketRepo.save(ticket);
-      await this.operacionRepo.save(operacionApertura);
+      for (const operacion of operaciones) {
+        await this.operacionRepo.save(operacion);
+      }
 
       return Result.ok<TicketEntity, DomainError>(ticket);
     });
@@ -211,6 +225,20 @@ export class CrearTicketUseCase {
           }),
         );
       });
+      // N1: `ticket.asignado` solo si la regla asignó, después de `ticket.creado`, y también por
+      // `alCommitear`: un ROLLBACK del plan (preventivo) no deja ningún evento de un ticket inexistente.
+      if (asignacion) {
+        this.txRunner.alCommitear(() => {
+          this.eventPublisher.publish(
+            new TicketAsignadoEvent({
+              ticketId: ticket.id,
+              asignadoId: asignacion.asignadoId,
+              origen: 'REGLA_TIPO',
+              autorId: null,
+            }),
+          );
+        });
+      }
     }
 
     return resultado;

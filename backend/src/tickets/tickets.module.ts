@@ -28,6 +28,12 @@ import {
 } from './domain/ports/i-primera-respuesta-write.repository';
 import { PrismaRelojSlaMarcador } from './infrastructure/persistence/prisma/prisma-reloj-sla-marcador';
 import { PrismaTicketRepository } from './infrastructure/persistence/prisma/prisma-ticket.repository';
+import { PrismaReglaAsignacionRepository } from './infrastructure/persistence/prisma/prisma-regla-asignacion.repository';
+import {
+  IReglaAsignacionRepository,
+  REGLA_ASIGNACION_REPOSITORY,
+} from './domain/ports/i-regla-asignacion.repository';
+import { ResolverAsignacionAutomatica } from './application/services/resolver-asignacion-automatica.service';
 import {
   OPERACION_TICKET_REPOSITORY,
   IOperacionTicketRepository,
@@ -164,6 +170,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: ARCHIVO_REPOSITORY, useClass: PrismaArchivoRepository },
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
     { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
+    { provide: REGLA_ASIGNACION_REPOSITORY, useClass: PrismaReglaAsignacionRepository },
 
     {
       provide: NumeradorTicket,
@@ -177,6 +184,30 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
       inject: [CICLO_CLIENTE_REPOSITORY],
     },
     {
+      provide: ResolverAsignacionAutomatica,
+      useFactory: (
+        reglaRepo: IReglaAsignacionRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+        estadoRepo: IEstadoRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        logger: ILogger,
+      ) =>
+        new ResolverAsignacionAutomatica(
+          reglaRepo,
+          usuarioMasterChecker,
+          estadoRepo,
+          tipoOperacionRepo,
+          logger,
+        ),
+      inject: [
+        REGLA_ASIGNACION_REPOSITORY,
+        USUARIO_MASTER_CHECKER,
+        ESTADO_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        LOGGER,
+      ],
+    },
+    {
       provide: CrearTicketUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
@@ -188,6 +219,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         usuarioMasterChecker: IUsuarioMasterChecker,
         numerador: NumeradorTicket,
         resolverCicloActivo: ResolverCicloActivoParaCreacion,
+        resolverAsignacion: ResolverAsignacionAutomatica,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
       ) =>
@@ -201,6 +233,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
           usuarioMasterChecker,
           numerador,
           resolverCicloActivo,
+          resolverAsignacion,
           eventPublisher,
           txRunner,
         ),
@@ -214,6 +247,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         USUARIO_MASTER_CHECKER,
         NumeradorTicket,
         ResolverCicloActivoParaCreacion,
+        ResolverAsignacionAutomatica,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
       ],
@@ -520,6 +554,10 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     ARCHIVO_REPOSITORY,
     CICLO_CLIENTE_REPOSITORY,
     SOLICITANTE_EXTERNO_REPOSITORY,
+    // sdd/asignacion-automatica-por-tipo: la regla y su resolver los consumen las altas de otros
+    // módulos (Equipos, Reparaciones) y la pantalla de configuración.
+    REGLA_ASIGNACION_REPOSITORY,
+    ResolverAsignacionAutomatica,
     // sdd/preventivo WU-5 (5.1): CrearTicketUseCase exportado para que
     // GenerarPreventivosUseCase lo reuse en vez de reimplementar la sección
     // crítica de numeración (ADR-PV5) — mismo criterio que los tokens de
