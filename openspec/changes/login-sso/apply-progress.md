@@ -225,3 +225,24 @@ Verificacion observada (backend/ salvo las dos ultimas): `pnpm lint` 0 errores; 
 Desviaciones del diseno: ninguna. `execute` devuelve `CompletarSsoResolucion` (usuario, membresias, identidad, resueltoPorEmail, siguiente) y todo rechazo lanza `SsoRechazadoError` tras loguear `SSO_RECHAZADO` con el `ILogger` del dominio.
 
 Notas para la WU-4c: el paso 3 va en el comentario marcado antes de resolver al usuario; el limitador debe cubrir los pasos 4 a 7 como falla. `vincular` solo si `resueltoPorEmail`. Constructor actual: estados, oidc, vinculos, usuarios, membresias, logger.
+
+## Unidad 8 (WU-4c) - rama `feat/login-sso-wu04c`
+
+Modo: estandar (feature). Tareas 8.1 a 8.4 hechas. Commits: `facb7bb3` (`feat(auth): CompletarSsoUseCase con limitador, vinculo, segundo paso y ticket`). size:exception: 404 lineas con docs y 375 sin ellas, sin costura que mantenga la unidad junta.
+
+Mutaciones 8.3 (`vitest run src/auth/application/sso/completar`, 45 tests en verde de base; todas revertidas, 45 en verde):
+- (a) sin `liberar`: 1 rojo, `libera la clave solo despues de vincular (paso 8) y antes del segundo paso`.
+- (b) `reservar` despues del rechazo (tras el paso 7): 7 rojos, `agotado: BLOQUEADO con token valido...`, `reserva entre el canje y la resolucion del usuario, no antes` y los `rechazo SIN_USUARIO/AMBIGUO/INACTIVO/ROOT/SIN_MEMBRESIA` de "la reserva queda como falla".
+- (c) pasos 5 a 7 despues de `vincular`: 4 rojos, `usuario ROOT / borrado / inactivo / sin membresias resuelto por email: vincular no se llama`.
+
+Verificacion observada (backend/ salvo las dos ultimas): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/auth/application` 32 archivos, 343 tests en verde; `rg infrastructure src/auth/application/sso` vacio; `git diff --stat feat/login-sso-wu04b..HEAD -- src/auth/application/tfa src/auth/application/use-cases` vacio; `check-casts-en-specs.mjs` 617 (base 617).
+
+Diseno: el IP llega como `CompletarSsoInput.ip?` (ausente = `sin-ip`, como `pwd:`) y el token `td` como `dispositivoConfiable?`. El resultado es `CompletarSsoResultado` (`needs2fa` | `needsEnrolamiento2fa` | `ticket`, mas `siguiente`); reemplaza a `CompletarSsoResolucion`, sin otros usuarios. Con una o varias membresias el SSO entrega el mismo ticket `SELECCIONAR`. Desviaciones: ninguna.
+
+Notas para la WU-5a: constructor = `SSO_ESTADO_REPOSITORY`, `PROVEEDOR_OIDC`, `IDENTIDAD_SSO_REPOSITORY`, `USUARIO_REPOSITORY`, `MEMBRESIA_REPOSITORY`, `LIMITADOR_INTENTOS`, la clase `EvaluarSegundoPasoService` (ya provista en auth.module) y `DESAFIO_LOGIN_REPOSITORY`, `LOGGER`. El controlador pasa `ip` desde `x-soporte-ip-navegador` y `dispositivoConfiable` desde la cookie `td`.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/application`: 32 archivos, 343 tests en verde |
+| Harness de runtime | N/A: caso de uso inerte, sin cableado hasta la WU-5a |
+| Frontera de rollback | revertir el commit de `completar-sso.use-case.ts` y su spec |

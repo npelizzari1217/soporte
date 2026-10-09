@@ -160,12 +160,14 @@ Rama `feat/login-sso-wu04b` → target `feat/login-sso-wu04a`. Requerimientos: S
 
 ## Unidad 8 (WU-4c) — `CompletarSsoUseCase`: limitador, vínculo, segundo paso y ticket (~210 líneas)
 
+size:exception: 404 líneas con docs y 375 sin ellas; no hay costura que mantenga la unidad junta.
+
 Rama `feat/login-sso-wu04c` → target `feat/login-sso-wu04b`. Requerimientos: I9, SL11, SL12, L1, L7, SV2, SV4, SV6, SL13.
 
-- [ ] 8.1 Ampliar `completar-sso.use-case.spec.ts` (pasos 3 y 8 a 10): `reservar` con la clave exacta `sso:<PROVEEDOR>:<sha256(subject)>:<ip>` entre el paso 2 y el 4; `BLOQUEADO` si el límite se agotó; los pasos 4 a 8 que fallan dejan la reserva como falla; `liberar` solo después del paso 8; **`vincular` no se llama** si el usuario es inactivo, ROOT o sin membresías; solo se vincula cuando se resolvió por email; `OTRA_CUENTA` → rechazo; resultado `needs2fa`, `needsEnrolamiento2fa` o, para `continuar`, `desafios.crear(id,'SELECCIONAR')` con el ticket y el `dispositivoConfiable` renovado; `siguiente` pasa tal cual; el SSO no cuenta como segundo paso. (I9, SL11, SL12, L1, L7, SV2, SV4, SV6, SL13)
-- [ ] 8.2 Completar `completar-sso.use-case.ts`: insertar el limitador antes del paso 4 y agregar `vincular`, `liberar`, `EvaluarSegundoPasoService.evaluar` y la emisión del ticket; `ContinuarLoginUseCase` y `SeleccionarClienteLoginUseCase` quedan sin cambios y siguen siendo los únicos emisores. (ADR-7)
-- [ ] 8.3 Mutaciones: quitar `liberar` o mover `reservar` después del rechazo → rojo en el test de la clave y del orden; mover los pasos 5 a 7 después de `vincular` → rojo en "vincular no se llama" (documentar y revertir). (invariantes del diseño)
-- [ ] 8.4 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 8.1 Ampliar `completar-sso.use-case.spec.ts` (pasos 3 y 8 a 10): `reservar` con la clave exacta `sso:<PROVEEDOR>:<sha256(subject)>:<ip>` entre el paso 2 y el 4; `BLOQUEADO` si el límite se agotó; los pasos 4 a 8 que fallan dejan la reserva como falla; `liberar` solo después del paso 8; **`vincular` no se llama** si el usuario es inactivo, ROOT o sin membresías; solo se vincula cuando se resolvió por email; `OTRA_CUENTA` → rechazo; resultado `needs2fa`, `needsEnrolamiento2fa` o, para `continuar`, `desafios.crear(id,'SELECCIONAR')` con el ticket y el `dispositivoConfiable` renovado; `siguiente` pasa tal cual; el SSO no cuenta como segundo paso. (I9, SL11, SL12, L1, L7, SV2, SV4, SV6, SL13)
+- [x] 8.2 Completar `completar-sso.use-case.ts`: insertar el limitador antes del paso 4 y agregar `vincular`, `liberar`, `EvaluarSegundoPasoService.evaluar` y la emisión del ticket; `ContinuarLoginUseCase` y `SeleccionarClienteLoginUseCase` quedan sin cambios y siguen siendo los únicos emisores. (ADR-7)
+- [x] 8.3 Mutaciones: quitar `liberar` o mover `reservar` después del rechazo → rojo en el test de la clave y del orden; mover los pasos 5 a 7 después de `vincular` → rojo en "vincular no se llama" (documentar y revertir). (invariantes del diseño)
+- [x] 8.4 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth/application`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## Unidad 9 (WU-5a) — `SsoController`, cableado y e2e básico (~400 líneas)
 
