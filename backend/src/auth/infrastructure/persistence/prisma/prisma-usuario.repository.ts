@@ -28,6 +28,7 @@ interface FilaUsuarioCruda {
   password_hash: string;
   activo: boolean;
   is_global_admin: boolean;
+  es_integracion: boolean;
   created_at: Date;
   updated_at: Date;
   deleted_at: Date | null;
@@ -52,7 +53,7 @@ export class PrismaUsuarioRepository implements IUsuarioRepository {
    */
   async findManyByEmailInsensitive(email: string): Promise<UsuarioEntity[]> {
     const filas = await this.client.$queryRaw<FilaUsuarioCruda[]>`
-      SELECT id, email, nombre, apellido, password_hash, activo, is_global_admin,
+      SELECT id, email, nombre, apellido, password_hash, activo, is_global_admin, es_integracion,
              created_at, updated_at, deleted_at
       FROM usuarios WHERE lower(email) = lower(${email}) LIMIT 2`;
     return filas.map((f) =>
@@ -64,6 +65,7 @@ export class PrismaUsuarioRepository implements IUsuarioRepository {
         passwordHash: f.password_hash,
         activo: f.activo,
         isGlobalAdmin: f.is_global_admin,
+        esIntegracion: f.es_integracion,
         createdAt: f.created_at,
         updatedAt: f.updated_at,
         deletedAt: f.deleted_at,

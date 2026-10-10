@@ -31,7 +31,10 @@ export class UsuarioMapper {
     );
   }
 
-  static toPersistence(entity: UsuarioEntity): Omit<PrismaUsuario, 'createdAt' | 'updatedAt'> {
+  /** `esIntegracion` queda fuera: lo fija solo el alta del usuario tecnico (T2), no el upsert. */
+  static toPersistence(
+    entity: UsuarioEntity,
+  ): Omit<PrismaUsuario, 'createdAt' | 'updatedAt' | 'esIntegracion'> {
     return {
       id: entity.id,
       email: entity.email,

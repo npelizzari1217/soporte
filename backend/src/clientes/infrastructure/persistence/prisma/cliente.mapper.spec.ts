@@ -37,6 +37,7 @@ const filaConLogo: PrismaCliente = {
   smtpVerificacionError: null,
   csatHabilitado: false,
   requiere2fa: false,
+  apiHabilitada: false,
   logoStorageKey: 'clientes/cliente-id-1/uuid-1',
   logoMimeType: 'image/png',
   logoUpdatedAt: new Date('2026-09-20T12:00:00Z'),

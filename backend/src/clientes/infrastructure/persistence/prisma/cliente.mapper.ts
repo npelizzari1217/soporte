@@ -47,6 +47,9 @@ export class ClienteMapper {
    * los reescribiera, un `save()` con una entidad leida antes de emitir un QR
    * descongelaria el slug. `formularioPublicoHabilitado` si es espejo.
    *
+   * `api_habilitada` tambien se omite: solo la cambia el endpoint de ROOT (sdd/api-publica, T2),
+   * nunca el upsert comercial.
+   *
    * Las 3 columnas de logo NO se omiten (design.md D4, a diferencia de
    * `smtp_*`): el logo no tiene cifrado ni invariante todo-o-nada que
    * justifique un repo satélite, así que es espejo completo. Omitirlas acá
@@ -72,6 +75,7 @@ export class ClienteMapper {
     | 'slug'
     | 'slugCongeladoAt'
     | 'requiere2fa'
+    | 'apiHabilitada'
   > {
     return {
       id: entity.id,
