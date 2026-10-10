@@ -355,3 +355,15 @@ Commit de tests: ver `git log` de la rama (`test(auth): e2e del reseteo del vinc
 Verificacion observada en la punta: ver el informe de la unidad (lint, typecheck, vitest focalizado, `pnpm test` completo solo, `check-casts-en-specs.mjs` 617).
 
 Desviaciones del diseno: ninguna. Deuda de Ayuda: la pantalla "Resetear vinculo SSO" llega en la unidad 15.
+
+## Unidad 12 (WU-7a) — rama `feat/login-sso-wu07a` (tareas 12.1 a 12.4)
+
+Base `feat/login-sso-wu06c` (el target de tasks.md decia wu06; corregido). Commit de codigo: `feat(frontend): cookies SSO y ruta BFF iniciar del login con proveedor externo`, 187 inserciones en 4 archivos.
+
+- `cookies.ts`: `COOKIE_SSO_ESTADO`, `COOKIE_SSO_PASO`, `SSO_ESTADO_MAX_AGE=600`, `SSO_PASO_MAX_AGE=120`; sin helpers nuevos.
+- `GET /api/auth/sso/[proveedor]/iniciar`: slug fuera de `google|microsoft` o cualquier falla (no 2xx, red, forma invalida segun el schema Zod espejo) → 302 `/login?motivo=sso-error`. `siguiente` pasa por `destinoPosLogin` antes del `POST /auth/sso/:p/iniciar`; reenvia `x-soporte-ip-navegador`. Exito: `sso_st` = `bindingToken` y 302 a `authorizeUrl`.
+- Para WU-7b: el callback lee `sso_st` (con `cookieName`) como `binding`; el `siguiente` ya saneado vive en el backend (`sso_estados.siguiente`) y vuelve en la respuesta del callback, que se vuelve a sanear.
+
+Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 92 en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).

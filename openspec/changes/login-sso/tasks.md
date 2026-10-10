@@ -42,7 +42,7 @@ Ramas por WU (base entre paréntesis):
 - WU-5a `feat/login-sso-wu05a` (wu04c)
 - WU-5b `feat/login-sso-wu05b` (wu05a)
 - WU-6 `feat/login-sso-wu06` (wu05b2); WU-6b `feat/login-sso-wu06b` (wu06); WU-6c `feat/login-sso-wu06c` (wu06b)
-- WU-7a `feat/login-sso-wu07a` (wu06)
+- WU-7a `feat/login-sso-wu07a` (wu06c)
 - WU-7b `feat/login-sso-wu07b` (wu07a)
 - WU-8a `feat/login-sso-wu08a` (wu07b)
 - WU-8b `feat/login-sso-wu08b` (wu08a)
@@ -205,12 +205,12 @@ Rama `feat/login-sso-wu06` (11.1, 11.2) → target `feat/login-sso-wu05b2`; rama
 
 ## Unidad 12 (WU-7a) — BFF: cookies y ruta `iniciar` (~250 líneas)
 
-Rama `feat/login-sso-wu07a` → target `feat/login-sso-wu06`. Requerimientos: SL9, SL10, SL14.
+Rama `feat/login-sso-wu07a` → target `feat/login-sso-wu06c`. Requerimientos: SL9, SL10, SL14.
 
-- [ ] 12.1 Test `frontend/src/app/api/auth/sso/[proveedor]/iniciar/route.test.ts` (patrón `route.test.ts` con `fetch` simulado): slug fuera de `google|microsoft` → `sso-error`; `siguiente` pasa por `destinoPosLogin` (un destino externo se descarta); cookie `sso_st` httpOnly, `sameSite: lax`, `Path=/`, 600 s, con `__Host-` en producción; redirige 302 a `authorizeUrl`; cualquier falla del backend → 302 `/login?motivo=sso-error`. (SL9, SL10, SL14)
-- [ ] 12.2 Agregar a `frontend/src/shared/auth/cookies.ts` `COOKIE_SSO_ESTADO="sso_st"`, `COOKIE_SSO_PASO="sso_paso"`, `SSO_ESTADO_MAX_AGE=600`, `SSO_PASO_MAX_AGE=120` con los helpers `cookieAttrs`/`clearCookieAttrs` existentes. (SL14)
-- [ ] 12.3 Crear `frontend/src/app/api/auth/sso/[proveedor]/iniciar/route.ts`. (SL9, SL10)
-- [ ] 12.4 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/app/api/auth/sso src/shared/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 12.1 Test `frontend/src/app/api/auth/sso/[proveedor]/iniciar/route.test.ts` (patrón `route.test.ts` con `fetch` simulado): slug fuera de `google|microsoft` → `sso-error`; `siguiente` pasa por `destinoPosLogin` (un destino externo se descarta); cookie `sso_st` httpOnly, `sameSite: lax`, `Path=/`, 600 s, con `__Host-` en producción; redirige 302 a `authorizeUrl`; cualquier falla del backend → 302 `/login?motivo=sso-error`. (SL9, SL10, SL14)
+- [x] 12.2 Agregar a `frontend/src/shared/auth/cookies.ts` `COOKIE_SSO_ESTADO="sso_st"`, `COOKIE_SSO_PASO="sso_paso"`, `SSO_ESTADO_MAX_AGE=600`, `SSO_PASO_MAX_AGE=120` con los helpers `cookieAttrs`/`clearCookieAttrs` existentes. (SL14)
+- [x] 12.3 Crear `frontend/src/app/api/auth/sso/[proveedor]/iniciar/route.ts`. (SL9, SL10)
+- [x] 12.4 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/app/api/auth/sso src/shared/auth`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## Unidad 13 (WU-7b) — BFF: rutas `callback` y `paso` (~360 líneas)
 
