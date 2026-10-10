@@ -95,6 +95,7 @@ import { PrismaIdentidadSsoRepository } from './infrastructure/sso/prisma-identi
 import { PrismaSsoEstadoRepository } from './infrastructure/sso/prisma-sso-estado.repository';
 import { CompletarSsoUseCase } from './application/sso/completar-sso.use-case';
 import { IniciarSsoUseCase } from './application/sso/iniciar-sso.use-case';
+import { ResetearVinculoSsoUseCase } from './application/sso/resetear-vinculo-sso.use-case';
 import { ListarProveedoresSsoUseCase } from './application/sso/listar-proveedores-sso.use-case';
 import { SsoController } from './interface/controllers/sso.controller';
 
@@ -275,6 +276,7 @@ import { RolesController } from './interface/controllers/roles.controller';
       inject: [CONFIGURACION_SSO],
     },
     ListarProveedoresSsoUseCase,
+    ResetearVinculoSsoUseCase,
     IniciarSsoUseCase,
     CompletarSsoUseCase,
 

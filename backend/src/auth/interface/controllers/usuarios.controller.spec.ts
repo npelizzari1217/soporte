@@ -6,6 +6,7 @@
  * TenantGuard/PermissionsGuard, ya testeados aparte).
  */
 import { ResetearTfaUsuarioUseCase } from '../../application/tfa/resetear-tfa-usuario.use-case';
+import { ResetearVinculoSsoUseCase } from '../../application/sso/resetear-vinculo-sso.use-case';
 import {
   ConflictException,
   ForbiddenException,
@@ -47,6 +48,13 @@ function buildController() {
     { revokeAllByUsuarioId: vi.fn() },
     { log: vi.fn(), error: vi.fn() },
   );
+  const resetearVinculoSsoUseCase = new ResetearVinculoSsoUseCase(
+    { eliminarTodasDeUsuario: vi.fn() },
+    { findById: vi.fn() },
+    { findActivaByUsuarioYCliente: vi.fn(), findClientesDeTodasByUsuario: vi.fn() },
+    { revokeAllByUsuarioId: vi.fn() },
+    { log: vi.fn(), error: vi.fn() },
+  );
   const controller = new UsuariosController(
     listarUsuariosTenantUseCase as any,
     crearUsuarioTenantUseCase as any,
@@ -58,6 +66,7 @@ function buildController() {
     asignarPermisosUsuarioTenantUseCase as any,
     aplicarPresetPermisosUseCase as any,
     resetearTfaUsuarioUseCase,
+    resetearVinculoSsoUseCase,
   );
   return {
     controller,
