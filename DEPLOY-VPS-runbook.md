@@ -708,6 +708,38 @@ la ventana de `predeploy-dump.ps1`. Su `rollback.sql` es **destructivo**: borra 
 (los usuarios se revinculan en el siguiente ingreso por SSO) y los estados de flujo en curso. Se
 revierte **primero el código** y después se corre el `rollback.sql` contra master.
 
+## API pública (v1)
+
+La API entra apagada: ningún cliente la tiene habilitada hasta que ROOT la habilita desde Clientes.
+Qué cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migración master | `20261011120000_api_publica`, **aditiva**: `clientes.api_habilitada` y `usuarios.es_integracion` con default `false`, y la tabla `api_claves`. Sin backfill ni seed. Entra por `migrate:master` dentro de la ventana de `predeploy-dump.ps1`. |
+| Dependencia nueva | `@nestjs/swagger` en el backend. **Cambia `backend/pnpm-lock.yaml`**, así que `deploy.ps1` aborta y hay que instalar a mano: ver "4. Cambió un lockfile". |
+| Variable nueva | `API_V1_RATE_LIMIT` en `backend/.env`, **opcional**: pedidos por minuto por clave, default `60`. Un valor que no sea un entero positivo usa el default. |
+| Ruta nueva del frontend | `/api/v1/*`, servida por el mismo Next (BFF), que reenvía al backend solo `X-Api-Key` y `X-Forwarded-For`, nunca cookies. **IIS no cambia**: `/api/*` ya llega a Next. |
+
+### Smoke posterior al deploy
+
+```bash
+curl -s -o /dev/null -w "%{http_code} %{content_type}\n" https://soporte.sesitec.net/api/v1/openapi.json
+# esperado: 200 application/json...
+curl -s -o /dev/null -w "%{http_code}\n" https://soporte.sesitec.net/api/v1/tickets
+# esperado sin clave: 401
+```
+
+### Migración y rollback
+
+Su `rollback.sql` es **destructivo**: borra todas las claves y las dos columnas, y los sistemas
+externos dejan de entrar. Se revierte **primero el código** y después se corre el `rollback.sql`
+contra master. El rollback no borra las filas de los usuarios de integración
+(`integracion+<clienteId>@integraciones.invalid`): sin la columna `es_integracion`, el código viejo
+los trata como usuarios comunes.
+
+Para cortar la API sin revert, alcanza con que ROOT la deshabilite en cada cliente: las claves
+dejan de funcionar en el acto y se conservan.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida
