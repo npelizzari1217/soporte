@@ -212,7 +212,7 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - Deuda de Ayuda, anotada en los dos commits.
   - Verificación (writer, sobre el cambio entero antes de partir): `pnpm lint` y `pnpm type-check` en 0; `integraciones`, `components/shell` y la página 60/60; `pnpm test` 2199/2199 en 268 archivos; casts en 617. Control del orquestador: `1ef870ea` solo, `pnpm type-check` en 0 y `src/features/integraciones` 5/5.
   - ~~**Abierto, decisión del dueño:** ¿el ADMINISTRADOR tiene que ver si la API está habilitada antes de intentar un alta?~~ Resuelto por el dueño el 2026-10-10: queda como está en la etapa 1, con la nota de la página y el 422. Sin cambio de backend.
-  - **Abierto, decisión del dueño:** los mensajes de los errores 422 llegan del backend sin tildes ("no esta habilitada") y se ven así en la UI.
+  - ~~**Abierto, decisión del dueño:** los mensajes de los errores 422 llegan del backend sin tildes.~~ Resuelto por el dueño el 2026-10-10: se corrigen en el backend. `7b08017a`, 20 líneas: 6 mensajes de `integraciones.errors.ts` (el resto del backend ya llevaba tildes, por ejemplo `tickets.errors.ts:139`) y los 2 fixtures del frontend que imitan el 422. Verificación (orquestador): backend `pnpm lint` y `pnpm typecheck` en 0, `src/integraciones` y `test/integraciones` 106/106; frontend `src/features/integraciones` 13/13.
 
 ## Próximo paso
-Las dos decisiones abiertas de T9; después T10 (docs, cierre y `judgment-day`), en `feat/api-publica-t10`, que sale de `t9`.
+T10 (docs, cierre y `judgment-day`), en `feat/api-publica-t10`, que sale de `t9`.
