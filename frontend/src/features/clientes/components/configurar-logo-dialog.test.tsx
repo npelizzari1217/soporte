@@ -23,6 +23,7 @@ const CLIENTE: Cliente = {
   csatHabilitado: false,
   slug: null,
   formularioPublicoHabilitado: false,
+  apiHabilitada: false,
 };
 
 function buildFile({

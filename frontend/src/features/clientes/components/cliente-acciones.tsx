@@ -19,11 +19,15 @@
  *
  * Formulario público (sdd/formulario-publico-qr, WU-3): mismo criterio,
  * diálogo SEPARADO detrás de `/formulario-publico`.
+ *
+ * API pública (api-publica, T8): mismo criterio, diálogo SEPARADO detrás de
+ * `/api`.
  */
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { VerClienteDialog } from "./ver-cliente-dialog";
 import { EditarClienteDialog } from "./editar-cliente-dialog";
+import { ConfigurarApiDialog } from "./configurar-api-dialog";
 import { ConfigurarCorreoDialog } from "./configurar-correo-dialog";
 import { ConfigurarCsatDialog } from "./configurar-csat-dialog";
 import { ConfigurarFormularioPublicoDialog } from "./configurar-formulario-publico-dialog";
@@ -45,6 +49,7 @@ export function ClienteAcciones({ cliente }: ClienteAccionesProps) {
       <EditarClienteDialog cliente={cliente} />
       <ConfigurarCorreoDialog cliente={cliente} />
       <ConfigurarCsatDialog cliente={cliente} />
+      <ConfigurarApiDialog cliente={cliente} />
       <ConfigurarFormularioPublicoDialog cliente={cliente} />
       <ConfigurarLogoDialog cliente={cliente} />
       {cliente.activo ? (

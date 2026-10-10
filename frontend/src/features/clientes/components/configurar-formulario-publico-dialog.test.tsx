@@ -25,6 +25,7 @@ const CLIENTE_SIN_SLUG: Cliente = {
   csatHabilitado: false,
   slug: null,
   formularioPublicoHabilitado: false,
+  apiHabilitada: false,
 };
 
 const CLIENTE_CON_SLUG: Cliente = { ...CLIENTE_SIN_SLUG, slug: "colegio-norte" };

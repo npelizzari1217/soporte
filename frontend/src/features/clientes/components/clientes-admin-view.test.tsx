@@ -16,6 +16,7 @@ const CLIENTE_UNO = {
   csatHabilitado: false,
   slug: null,
   formularioPublicoHabilitado: false,
+  apiHabilitada: false,
   correo: { configurado: false, verificadoAt: null },
 };
 
@@ -29,6 +30,7 @@ const CLIENTE_INACTIVO = {
   csatHabilitado: false,
   slug: null,
   formularioPublicoHabilitado: false,
+  apiHabilitada: false,
   correo: { configurado: false, verificadoAt: null },
 };
 
@@ -47,6 +49,8 @@ describe("ClientesAdminView", () => {
 
     if (shouldShowContent) {
       await screen.findByText("Cliente Uno");
+      // CA4 (api-publica): la acción de API pública vive dentro del mismo gate.
+      expect(screen.getByRole("button", { name: /api pública de cliente uno/i })).toBeInTheDocument();
     } else {
       expect(await screen.findByText(/solo.*root/i)).toBeInTheDocument();
       expect(screen.queryByText("Cliente Uno")).not.toBeInTheDocument();

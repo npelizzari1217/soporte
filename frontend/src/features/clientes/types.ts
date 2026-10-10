@@ -25,6 +25,11 @@ export interface Cliente {
   slug: string | null;
   /** Formulario público prendido por ROOT; apagado por defecto. */
   formularioPublicoHabilitado: boolean;
+  /**
+   * API pública prendida por ROOT (api-publica, CA4); apagada por defecto.
+   * Con la API apagada, ninguna clave del cliente funciona.
+   */
+  apiHabilitada: boolean;
 }
 
 export interface CreateClienteDto {
@@ -99,6 +104,17 @@ export interface ConfigurarCorreoDto {
 /** Body de `PATCH /clientes/:id/csat` — espejo de `ConfigurarCsatClienteDto` (backend, sdd/csat WU10.2). */
 export interface ConfigurarCsatDto {
   habilitado: boolean;
+}
+
+/** Body de `PATCH /clientes/:id/api` — espejo de `ConfigurarApiClienteDto` (backend, api-publica T2). */
+export interface ConfigurarApiDto {
+  habilitada: boolean;
+}
+
+/** Respuesta de `PATCH /clientes/:id/api` — espejo de `ConfigurarApiClienteOutput` (backend). */
+export interface ClienteApiEstado {
+  clienteId: string;
+  apiHabilitada: boolean;
 }
 
 /**
