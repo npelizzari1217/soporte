@@ -69,7 +69,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T1 — Modelo en master** (~350): flag `Cliente.apiHabilitada`, marca de usuario de integración en `Usuario` y tabla de claves (prefijo, hash, permisos, nombre, creador, último uso, revocada). Migración con `rollback.sql`, puerto y repositorio, y tests de integración. Ruta: delegada.
 - [x] **T2 — Habilitación por ROOT** (~350): `PATCH /clientes/:id/api`. Al habilitar, crea de forma idempotente el usuario de integración y su membresía. El login con contraseña y con SSO rechaza a ese usuario, y las listas de usuarios lo excluyen. Ruta: delegada.
 - [x] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
-- [ ] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
+- [x] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
 - [ ] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
 - [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
@@ -106,6 +106,15 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
     - `POST {nombre, permisos[]}` → 201 con `clave` en claro, la única vez. Responde 422 si la API está deshabilitada, si un permiso está fuera del subconjunto o si el nombre es inválido;
     - `DELETE` → 204, idempotente, y 404 si la clave es de otro cliente o no existe.
   - Verificación: lint y typecheck en 0 en cada punta; `integraciones` más los dos e2e, 45/45; casts en 617. Todos los `TRUNCATE usuarios` existentes usan `CASCADE`, así que `api_claves` no los rompe. La suite completa del backend se corre en segundo plano en `t3c`.
+- 2026-10-10: T4 hecha, en 2 unidades:
+  - `t4` — `cb9ccc8c`, 389 líneas, `size:exception`: el guard tiene 155 líneas y su spec 234. Partirlo separaría el código de los tests que lo prueban, que es el criterio de excepción de la política de tamaño;
+  - `t4b` — `9604e787`, 350 líneas: el throttler por clave (60 por minuto, configurable con `API_V1_RATE_LIMIT`, almacenamiento propio en memoria), `ApiV1Module`, el decorador `@ApiV1(ruta)` y un e2e con un controller de prueba.
+  - El guard lee solo `x-api-key` (`sop_…`, hasta 128 caracteres) y da el mismo `401 No autorizado` en todos los rechazos; el motivo real va al log con el id de la clave.
+  - Abre el tenant con los mismos bloques que `TenantGuard`, sin modificarlo.
+  - Actor sintético: `sub` es el usuario de integración; `permisos` son los de la clave, más `VER_TODOS` si tiene lectura; `modulos` es `['TICKETS']`; `request.apiClave` lleva `{id, prefijo}`.
+  - El orden es guard de clave, después throttler, después `AccionesGuard`. Un pedido sin autenticar no consume cupo.
+  - Verificación: en `t4b`, lint y typecheck en 0, 69/69 y casts en 617. Control del orquestador en `t4`: typecheck y lint en 0, y `integraciones` 49/49.
+  - Para T5: los controllers van dentro de `ApiV1Module`, con `@ApiV1('tickets')` y `@RequiereAcciones`, y el actor llega por `@CurrentUser()`. Un harness de test necesita `AuthModule`, `ApiV1Module` y `TenantScopeMiddleware`.
 
 ## Próximo paso
-T4 (guard por clave y módulo `v1`), en `feat/api-publica-t4`, que sale de `t3c`. El guard verifica `revocadaAt`, `cliente.activo` y `cliente.apiHabilitada`, y responde el mismo 401 en todos los casos.
+T5 (endpoints `v1` de tickets), en `feat/api-publica-t5`, que sale de `t4b`. Incluye que `usuario-master.checker.ts` acepte al usuario de integración como autor.
