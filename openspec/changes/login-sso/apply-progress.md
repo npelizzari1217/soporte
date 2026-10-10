@@ -287,3 +287,26 @@ Commit de tests: `3df98096` (`test(auth): matriz e2e del login SSO, vinculo por 
 - "Solo hashes en `state_hash` y `navegador_hash`" ya lo cubria el test de `iniciar` de la WU-5a.
 
 Verificacion observada en la punta (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts` 18 tests en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+### Rama `feat/login-sso-wu05b2` (tareas 10.3, 10.4, 10.6 y 10.7)
+
+Commit de tests: `c69685b7` (`test(auth): e2e del login SSO, segundo paso, selector, concurrencia, limites y ROOT`), 327 inserciones y 25 borrados en `backend/test/sso.e2e.spec.ts`.
+
+- El IdP falso (`src/testing/idp-falso.ts`, fuera de las superficies editables) responde un unico token para todos los `/token`; para los flujos simultaneos el spec levanta un `/token` propio que responde por `code` (`conIdpPorCodigo`) y `configuracion.urlToken` lo usa mientras exista.
+- 2FA: `EMAIL_CRYPTO_KEY` se fija en el spec si falta (la pide `activarTfaDeTest`) y se restaura al final. El dispositivo confiable se inserta por SQL con `sha256(token)`; la renovacion se prueba con `expira_at` a 1 dia que pasa a mas de 20.
+- Un segundo ingreso del mismo email necesita el mismo `sub`: con otro sujeto es `OTRA_CUENTA` (401).
+- I9: cinco rechazos por `SIN_USUARIO` con el mismo sujeto dejan `fallos = 5`; el sexto, con token y usuario validos, es `BLOQUEADO`. Cuatro fallos y un exito dejan la clave sin fila.
+
+Mutaciones 10.6 (`vitest run test/sso.e2e.spec.ts`, 30 tests en verde de base; ambas revertidas con `git checkout -- <archivo>`, `git status` limpio):
+- sin el chequeo de ROOT en `completar-sso.use-case.ts`: 1 rojo, `ROOT con email verificado es 401, tambien si ya estaba vinculado, y no deja filas`.
+- sin `xms_edov !== true` en `validar-claims-microsoft.ts`: 1 rojo, `Microsoft exige xms_edov === true y con el entra`.
+
+Verificacion observada en la punta (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts` 30 tests en verde (3 corridas seguidas); `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run test/sso.e2e.spec.ts`: 30 tests en verde |
+| Harness de runtime | IdP falso `node:http`, `/token` por `code` para la concurrencia, `soporte_master_test` |
+| Frontera de rollback | revertir `c69685b7`; solo tests |
