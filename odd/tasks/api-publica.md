@@ -72,6 +72,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
 - [x] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
 - [x] **T5c — Catálogos `v1`** (~300, salió en 600): `GET /api/v1/catalogos` con tipos, prioridades y estados, para que el integrador descubra los ids que exige el alta. Aprobado por el dueño el 2026-10-10. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
+- [x] **T5d — El comentario por API no cuenta como primera respuesta** (~50): `CrearComentarioDto.autorEsIntegracion` (por defecto `false`) y `TicketsV1Controller` lo manda en `true`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
@@ -132,7 +133,7 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - Verificación: lint y typecheck en 0 en cada punta; en `t5b`, 836/836; casts en 617. Control del orquestador: typecheck en 0 y e2e de tickets v1 6/6.
   - Cableado: `TicketsModule` no exporta `ListarTicketsUseCase` ni `CrearComentarioUseCase`, así que se arman con `useFactory` en `ApiV1Module`. Lo prolijo sería exportarlos desde `tickets.module.ts` (2 líneas, fuera de la superficie).
   - ~~**Abierto, decisión del dueño:** un integrador no puede descubrir los `tipoId` y `prioridadId` que exige el alta, porque v1 no expone catálogos.~~ Resuelto en T5c.
-  - **Abierto, decisión del dueño:** un comentario por API sobre un ticket cuyo solicitante no es el usuario de integración cuenta como primera respuesta de SLA.
+  - ~~**Abierto, decisión del dueño:** un comentario por API sobre un ticket cuyo solicitante no es el usuario de integración cuenta como primera respuesta de SLA.~~ Resuelto por el dueño el 2026-10-10: no cuenta (T5d).
 
 - 2026-10-10: T5c hecha, en la rama `feat/api-publica-t5c` (sale de `t5b`):
   - **Decisión del dueño:** se aprueba un endpoint de catálogos de solo lectura. Amplía el "solo tickets" de CA1, pero sirve al alta de tickets: sin él, `tipoId` y `prioridadId` no se pueden descubrir.
@@ -147,5 +148,16 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - El e2e prueba: forma exacta, tipo y prioridad dados de baja excluidos, tipos de otro módulo excluidos, que los ids publicados sirven para crear un ticket, 401 sin clave y con clave inexistente, 403 sin `TICKETS:LECTURA`, y que una clave de A no ve ids ni tipos de B.
   - Verificación (writer, en `t5c`): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/integraciones` 62/62; e2e de catálogos, tickets y auth v1 17/17; casts en 617.
 
+- 2026-10-10: T5d hecha, en la rama `feat/api-publica-t5d` (sale de `t5c`):
+  - **Decisión del dueño:** un comentario público hecho por la API no cuenta como primera respuesta de SLA. El usuario de integración habla por el cliente, no por soporte.
+  - `ef625c97`, 59 líneas (54+, 5−): `fix(tickets)`. `CrearComentarioDto` suma `autorEsIntegracion?: boolean` y la regla queda: no interno, autor distinto del solicitante **y** autor que no es el usuario de integración. `TicketsV1Controller` lo manda en `true`; el `TicketsController` humano no cambia (queda en `false`). Notificaciones, operación del timeline y visibilidad pública siguen igual.
+  - TDD:
+    - RED (unitario): `primera respuesta (sla-primera-respuesta R1) > un comentario público del usuario de integración no la registra, aunque no sea el solicitante` falló con `AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times` (15/16).
+    - RED (e2e, con el código de producción en stash): `T5d: un comentario por API sobre el ticket de una persona no cuenta como primera respuesta` falló con `AssertionError: expected 2026-10-10T17:11:06.229Z to be null` (6/7).
+    - GREEN: el spec del caso de uso 16/16, con el test existente "comentario público de un técnico registra la fecha" en verde (el camino humano no cambia); el e2e de tickets v1 7/7.
+  - El e2e crea el ticket por API, pasa el solicitante a una persona y comenta por API: `tickets.primera_respuesta_at` queda en `NULL`.
+  - Verificación (writer, en `t5d`): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run` del caso de uso, `src/tickets/interface` y `src/integraciones` 205/205; e2e de tickets v1 7/7; casts en 617.
+  - Hallazgo abierto: `POST /api/v1/tickets` acepta un `tipoId` de otro módulo (p. ej. EDILICIA); el ticket se crea y la misma clave no lo puede listar. Pendiente de decisión del dueño.
+
 ## Próximo paso
-Resolver con el dueño la primera respuesta de SLA. Después, T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5c`.
+T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5d`.
