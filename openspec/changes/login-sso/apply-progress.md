@@ -406,3 +406,13 @@ Base `feat/login-sso-wu07b2` (el target de tasks.md decia wu07b; corregido). La 
 Verificacion observada en la punta (frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/auth src/shared/api src/app` 232 en verde (41 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
 
 Desviaciones del diseno: ninguna. Deuda de Ayuda: botones SSO de la pantalla de login y mensaje generico de falla del SSO.
+
+### Unidad 14 (WU-8a), segunda mitad — rama `feat/login-sso-wu08a2` (tareas 14.3, 14.4 y 14.7)
+
+Base `feat/login-sso-wu08a`. Commit de codigo: `feat(frontend): efecto de retorno ?sso=1 en el login con proveedor externo`, 172 inserciones y 2 borrados en 2 archivos.
+
+- `use-login.ts`: efecto de montaje con guarda `useRef` que llama una vez a `POST auth/sso/paso`. Cualquier fallo (404 incluido) → toast con `MENSAJE_SSO_ERROR`. Tras responder (o fallar) `history.replaceState(null, "", pathname[?query sin sso])`; despues `ticket` → `continuarMutation.mutate`, el resto → `alResponder`. Dependencias `[]` con `eslint-disable react-hooks/exhaustive-deps` justificado (la guarda impide releer la cookie de un solo uso).
+- Gotcha de test: `renderHook` no duplica efectos bajo StrictMode, y `<StrictMode>` dentro de `QueryClientProvider` tampoco. El test de "una sola llamada" usa `render` con `StrictMode` por fuera del proveedor y un `QueryClient` estable; se verifico por mutacion (sin la guarda la llamada se hace 2 veces y el test falla).
+- 14.7 (verificacion en la punta, frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/auth src/shared/api src/app` 240 en verde (41 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: botones SSO de la pantalla de login y mensaje generico de falla del SSO.
