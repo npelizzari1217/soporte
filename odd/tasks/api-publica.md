@@ -66,7 +66,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - **Estrategia:** `ask-on-risk`, con cadena `feature-branch-chain` (elegida por el dueño el 2026-10-10). El tracker es `feat/api-publica` y cada tarea va en `feat/api-publica-tN`, apilada sobre la anterior. Todo local mientras dure la pausa de GitHub.
 
 ## Tareas
-- [ ] **T1 — Modelo en master** (~350): flag `Cliente.apiHabilitada`, marca de usuario de integración en `Usuario` y tabla de claves (prefijo, hash, permisos, nombre, creador, último uso, revocada). Migración con `rollback.sql`, puerto y repositorio, y tests de integración. Ruta: delegada.
+- [x] **T1 — Modelo en master** (~350): flag `Cliente.apiHabilitada`, marca de usuario de integración en `Usuario` y tabla de claves (prefijo, hash, permisos, nombre, creador, último uso, revocada). Migración con `rollback.sql`, puerto y repositorio, y tests de integración. Ruta: delegada.
 - [ ] **T2 — Habilitación por ROOT** (~350): `PATCH /clientes/:id/api`. Al habilitar, crea de forma idempotente el usuario de integración y su membresía. El login con contraseña y con SSO rechaza a ese usuario, y las listas de usuarios lo excluyen. Ruta: delegada.
 - [ ] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
 - [ ] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
@@ -82,6 +82,12 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
 
 ## Progreso
 - 2026-10-10: decisiones cerradas (`947d95af`). Documento creado en la rama local `feat/api-publica`, que sale de `docs/roadmap-decisiones-punto-8`.
+- 2026-10-10: T1 hecha y partida en dos unidades por tamaño (435 líneas en un solo commit). La costura es limpia: cada unidad lleva sus tests.
+  - `feat/api-publica-t1` — `de9bc76e`, 103 líneas: schema, migración `20261011120000_api_publica` con `rollback.sql`, y los mappers de Usuario y Cliente, que omiten las columnas nuevas en el upsert.
+  - `feat/api-publica-t1b` — `f9a31471`, 332 líneas: puerto, repositorio Prisma con su spec de integración y el generador de claves `sop_`.
+  - Decisiones de esquema: `cliente_id` y `usuario_id` en CASCADE, `creada_por_id` en RESTRICT, `prefijo` y `hash` únicos.
+  - Verificación en cada punta: typecheck y lint en 0; en `t1`, 159/159 de persistencia de clientes y auth; en `t1b`, 11/11 de `integraciones`. Antes de partir, los casts daban 617 y 726/726 en `src/integraciones`, `src/clientes` y `src/auth/infrastructure`.
+  - Se amplió la superficie con el OK del dueño: 4 mappers y specs que Prisma rompía al tipar las columnas nuevas como obligatorias.
 
 ## Próximo paso
-T1, en `feat/api-publica-t1`.
+T2 (habilitación por ROOT), en `feat/api-publica-t2`, que sale de `t1b`. Su superficie de edición tiene que incluir desde el arranque `UsuarioEntity` y `ClienteEntity`, con sus mappers y specs, y sacar de los `Omit` de `toPersistence` los campos que T2 escriba.
