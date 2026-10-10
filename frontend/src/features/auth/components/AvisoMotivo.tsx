@@ -3,7 +3,8 @@
 /**
  * AvisoMotivo — cartel de `/login` que lee `?motivo=` de la URL (WU4).
  *
- * Único motivo soportado hoy: `password-cambiada` (redirección tras
+ * Motivos soportados: `sso-error` (falla del login con proveedor externo, mensaje genérico
+ * único, SL13) y `password-cambiada` (redirección tras
  * `CambiarPasswordDialog`, 204 → BFF limpia cookies → acá). Es un mensaje
  * de ÉXITO, no de error: la sesión anterior se cerró a propósito porque el
  * usuario lo pidió.
@@ -20,9 +21,27 @@
  */
 import { useSearchParams } from "next/navigation";
 
+/**
+ * Único mensaje de falla del SSO, idéntico para cualquier motivo de rechazo (SL13): el motivo
+ * real queda solo en los logs del servidor y nunca llega a la URL ni a la pantalla.
+ */
+export const MENSAJE_SSO_ERROR =
+  "No pudimos iniciar sesión con ese proveedor. Probá de nuevo o ingresá con tu email y contraseña.";
+
 export function AvisoMotivo() {
   const searchParams = useSearchParams();
   const motivo = searchParams.get("motivo");
+
+  if (motivo === "sso-error") {
+    return (
+      <div
+        role="alert"
+        className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-foreground"
+      >
+        {MENSAJE_SSO_ERROR}
+      </div>
+    );
+  }
 
   if (motivo !== "password-cambiada") return null;
 

@@ -217,6 +217,7 @@ model Usuario {
   tfaCodigos          TfaCodigoRecuperacion[]
   tfaDispositivos     TfaDispositivoConfiable[]
   authDesafios        AuthDesafio[]
+  identidadesSso      UsuarioIdentidadSso[]
 
   @@index([activo]) // el índice real en DB es parcial: WHERE deleted_at IS NULL — ver migration SQL
   @@map("usuarios")
@@ -610,4 +611,38 @@ model AuthIntentoFallido {
   ventanaInicio DateTime @map("ventana_inicio") @db.Timestamptz
 
   @@map("auth_intentos_fallidos")
+}
+
+/// Estado de un flujo SSO: de un solo uso (CAS sobre `usado_at`) y atado al navegador.
+/// Solo hashes de `state` y del `bindingToken`. CHECK de `proveedor` en la migracion.
+model SsoEstado {
+  stateHash     String    @id @map("state_hash") @db.Text
+  /// GOOGLE | MICROSOFT (CHECK en la migracion).
+  proveedor     String    @db.VarChar(12)
+  nonce         String    @db.Text
+  codeVerifier  String    @map("code_verifier") @db.Text
+  navegadorHash String    @map("navegador_hash") @db.Text
+  siguiente     String?   @db.VarChar(300)
+  expiraAt      DateTime  @map("expira_at") @db.Timestamptz
+  usadoAt       DateTime? @map("usado_at") @db.Timestamptz
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([expiraAt])
+  @@map("sso_estados")
+}
+
+/// Vinculo inmutable (usuario, proveedor, sujeto). El sujeto de Microsoft es `tid:oid`.
+/// CHECK de `proveedor` en la migracion.
+model UsuarioIdentidadSso {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  usuarioId String   @map("usuario_id") @db.Uuid
+  proveedor String   @db.VarChar(12)
+  subject   String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, proveedor])
+  @@unique([proveedor, subject])
+  @@map("usuarios_identidades_sso")
 }

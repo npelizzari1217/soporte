@@ -113,3 +113,15 @@ export function useResetearTfaUsuarioTenant(usuarioId: string) {
     mutationFn: () => apiFetch<void>(`usuarios/${usuarioId}/2fa`, { method: "DELETE" }),
   });
 }
+
+/**
+ * Resetea el vínculo SSO del usuario `usuarioId` (`DELETE .../sso` → 204):
+ * borra los vínculos de todos los proveedores y cierra sus sesiones. Misma
+ * forma que el reseteo de 2FA: sin toasts ni invalidación, el mensaje lo
+ * compone `EditarUsuarioDialog` y un 404 es neutro (toda denegación es igual).
+ */
+export function useResetearVinculoSsoUsuarioTenant(usuarioId: string) {
+  return useMutation({
+    mutationFn: () => apiFetch<void>(`usuarios/${usuarioId}/sso`, { method: "DELETE" }),
+  });
+}

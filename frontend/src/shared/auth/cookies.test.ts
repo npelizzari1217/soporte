@@ -6,6 +6,10 @@ import {
   cookieName,
   COOKIE_AT,
   COOKIE_RT,
+  COOKIE_SSO_ESTADO,
+  COOKIE_SSO_PASO,
+  SSO_ESTADO_MAX_AGE,
+  SSO_PASO_MAX_AGE,
   REFRESH_MAX_AGE,
 } from "./cookies";
 
@@ -67,5 +71,31 @@ describe("clearCookieAttrs", () => {
     const attrs = clearCookieAttrs(COOKIE_RT);
     expect(attrs.maxAge).toBe(0);
     expect(attrs.httpOnly).toBe(true);
+  });
+});
+
+describe("cookies SSO", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("nombres y vigencias del flujo SSO", () => {
+    expect(COOKIE_SSO_ESTADO).toBe("sso_st");
+    expect(COOKIE_SSO_PASO).toBe("sso_paso");
+    expect(SSO_ESTADO_MAX_AGE).toBe(600);
+    expect(SSO_PASO_MAX_AGE).toBe(120);
+  });
+
+  it("sso_st usa los helpers: httpOnly, lax, Path=/ y __Host- en producción", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(cookieAttrs(COOKIE_SSO_ESTADO, SSO_ESTADO_MAX_AGE)).toMatchObject({
+      name: "__Host-sso_st",
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/",
+      maxAge: 600,
+    });
+    expect(clearCookieAttrs(COOKIE_SSO_PASO)).toMatchObject({ name: "__Host-sso_paso", maxAge: 0 });
   });
 });

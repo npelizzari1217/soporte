@@ -118,6 +118,7 @@ const makeRefreshTokenRepo = (): Mocked<IRefreshTokenRepository> => ({
 
 const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   findByEmail: vi.fn(),
+  findManyByEmailInsensitive: vi.fn(),
   findById: vi.fn(),
   create: vi.fn(),
   save: vi.fn(),

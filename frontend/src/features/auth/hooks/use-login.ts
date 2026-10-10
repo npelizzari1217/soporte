@@ -24,6 +24,12 @@
  * limpia TODA la caché cliente (Router Cache, React Query, SessionProvider).
  * El (dashboard) route group mapea a `/`, NO `/dashboard`.
  *
+ * Login con proveedor externo (SSO): el callback del BFF deja a la persona en `/login?sso=1`. Al
+ * montar, un efecto llama UNA vez a `POST /api/auth/sso/paso` (guarda `useRef`: StrictMode corre
+ * los efectos dos veces y la segunda lectura da 404 porque la cookie ya se consumió). `ticket`
+ * sigue por `continuarMutation`; los desafíos 2FA, por `alResponder`. Un fallo muestra el mensaje
+ * genérico único. Después `history.replaceState` quita `sso` y conserva `siguiente`.
+ *
  * Errores como toasts, ver `mensajeDeErrorDeLogin`: 403 → tenant suspendido;
  * 5xx/red → problema de infraestructura, dicho como tal; el resto → mensaje
  * genérico e idéntico entre sí, sin enumeración de usuarios.
@@ -31,7 +37,7 @@
  * Spec: [R23] BFF login route. Design: Container/Presentational pattern.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { apiFetch } from "@/shared/api/client";
@@ -39,6 +45,7 @@ import { ApiError } from "@/shared/api/types";
 import type { JwtPayload } from "@/shared/api/types";
 import { writeLastActivity } from "@/shared/auth/idle-storage";
 import { destinoPosLogin } from "@/shared/auth/destino-pos-login";
+import { MENSAJE_SSO_ERROR } from "../components/AvisoMotivo";
 import type { Membresia } from "../components/ClienteSelection";
 
 interface LoginDto {
@@ -85,6 +92,9 @@ type Respuesta =
   | { needs2fa: true; desafio: string }
   | { needsEnrolamiento2fa: true; desafio: string }
   | Seleccion;
+
+/** Lo que entrega `POST /api/auth/sso/paso` (una sola vez) tras volver del proveedor externo. */
+type PasoSso = Extract<Respuesta, { needs2fa: true } | { needsEnrolamiento2fa: true }> | { ticket: string };
 
 export type PasoLogin =
   | { paso: "credenciales" }
@@ -158,6 +168,8 @@ export function useLogin() {
     const siguiente = new URLSearchParams(window.location.search).get("siguiente");
     window.location.assign(destinoPosLogin(siguiente));
   }
+
+  const pasoSsoLeido = useRef(false);
 
   const alFallar = (err: ApiError) => {
     toast.error(mensajeDeErrorDeLogin(err.statusCode));
@@ -252,6 +264,29 @@ export function useLogin() {
     onSuccess: alResponder,
     onError: alFallar,
   });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("sso") !== "1" || pasoSsoLeido.current) return;
+    pasoSsoLeido.current = true;
+
+    void (async () => {
+      let resultado: PasoSso | null = null;
+      try {
+        resultado = await apiFetch<PasoSso>("auth/sso/paso", { method: "POST" });
+      } catch {
+        toast.error(MENSAJE_SSO_ERROR);
+      }
+      params.delete("sso");
+      const query = params.toString();
+      window.history.replaceState(null, "", window.location.pathname + (query ? `?${query}` : ""));
+      if (resultado === null) return;
+      if ("ticket" in resultado) continuarMutation.mutate(resultado.ticket);
+      else alResponder(resultado);
+    })();
+    // Solo al montar: la guarda impide releer la cookie de un solo uso.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function login(email: string, password: string) {
     setFase({ paso: "credenciales" });

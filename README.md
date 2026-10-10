@@ -158,6 +158,7 @@ Las variables marcadas **Requerida** se validan al arrancar (`backend/src/config
 | `SLA_SWEEP_CRON` | Expresión cron del barrido periódico de vencimiento de SLA (`SlaSweepScheduler`, módulo `sla/`). Default: cada 5 min (`CronExpression.EVERY_5_MINUTES`) si no está seteada. |
 | `PREVENTIVO_SWEEP_CRON` | Expresión cron del barrido de generación de mantenimiento preventivo (`PreventivoSweepScheduler`, módulo `preventivo/`). Default: todos los días a la 1am (`CronExpression.EVERY_DAY_AT_1AM`) si no está seteada. |
 | `APP_BASE_URL` | **Requerida — sin default.** URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
+| `SSO_GOOGLE_CLIENT_ID` / `SSO_GOOGLE_CLIENT_SECRET` / `SSO_MICROSOFT_CLIENT_ID` / `SSO_MICROSOFT_CLIENT_SECRET` | **Opcionales.** Credenciales de la app OAuth de cada proveedor para el login con Google o Microsoft. Un proveedor se habilita solo con su par completo (ID y secreto no vacíos); sin ninguna de las cuatro, `GET /api/auth/sso/proveedores` devuelve `{"proveedores":[]}`, no aparece ningún botón y el login con contraseña queda igual. La URI de redirección se deriva de `APP_BASE_URL`: `${APP_BASE_URL}/api/auth/sso/<google\|microsoft>/callback`. Alta de las apps y rotación del secreto: `DEPLOY-VPS-runbook.md`, sección "Login con Google o Microsoft (SSO)". |
 | `PORT` / `NODE_ENV` | Configuración de la app. |
 
 ### Dependencias nuevas (módulo SLA, Fase 4)

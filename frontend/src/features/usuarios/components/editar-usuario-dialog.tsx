@@ -34,6 +34,7 @@ import { ApiError } from "@/shared/api/types";
 import {
   useEditarUsuarioTenant,
   useResetearTfaUsuarioTenant,
+  useResetearVinculoSsoUsuarioTenant,
   useResetearPasswordUsuarioTenant,
 } from "../hooks/use-usuarios-tenant-mutations";
 import { editarUsuarioSchema, type EditarUsuarioFormValues } from "../schemas";
@@ -54,6 +55,7 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
   const identidadMutation = useEditarUsuarioTenant(usuario.id);
   const passwordMutation = useResetearPasswordUsuarioTenant(usuario.id);
   const tfaMutation = useResetearTfaUsuarioTenant(usuario.id);
+  const ssoMutation = useResetearVinculoSsoUsuarioTenant(usuario.id);
   const defaults: EditarUsuarioFormValues = {
     nombre: usuario.nombre,
     apellido: usuario.apellido,
@@ -113,6 +115,15 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
       onSuccess: () => toast.success("2FA reseteado. Deberá configurarlo de nuevo en su próximo ingreso si está obligado."),
       // Cualquier caso no permitido llega como 404: mensaje neutro, sin el motivo.
       onError: () => toast.error("No se pudo resetear el 2FA de este usuario."),
+    });
+  }
+
+  function resetearVinculoSso() {
+    ssoMutation.mutate(undefined, {
+      onSuccess: () =>
+        toast.success("Vínculo SSO reseteado. Se cerraron sus sesiones y se vinculará de nuevo en su próximo ingreso con Google o Microsoft."),
+      // Cualquier caso no permitido llega como 404: mensaje neutro, sin el motivo.
+      onError: () => toast.error("No se pudo resetear el vínculo SSO de este usuario."),
     });
   }
 
@@ -239,6 +250,22 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
           />
           <p className="text-xs text-muted-foreground">
             Usalo si perdió el celular y los códigos de recuperación.
+          </p>
+          <ConfirmDialog
+            trigger={
+              <Button type="button" size="sm" variant="outline" className="mt-2 self-start">
+                Resetear vínculo SSO
+              </Button>
+            }
+            title="Resetear vínculo SSO"
+            description={`¿Confirmás resetear el vínculo con Google y Microsoft de "${usuario.nombre} ${usuario.apellido}"? Se cierran sus sesiones abiertas y el próximo ingreso con SSO lo vincula de nuevo. No cambia su contraseña ni su 2FA.`}
+            confirmLabel="Resetear"
+            confirmVariant="destructive"
+            isConfirming={ssoMutation.isPending}
+            onConfirm={resetearVinculoSso}
+          />
+          <p className="text-xs text-muted-foreground">
+            Usalo si el usuario cambió de cuenta de Google o Microsoft.
           </p>
         </div>
       </DialogContent>

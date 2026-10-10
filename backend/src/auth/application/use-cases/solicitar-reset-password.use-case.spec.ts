@@ -63,6 +63,7 @@ const makeMembresia = (clienteId = CLIENTE_ID): MembresiaResuelta => ({
 
 const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   findByEmail: vi.fn(),
+  findManyByEmailInsensitive: vi.fn(),
   findById: unstubbed('findById'),
   save: unstubbed('save'),
   create: unstubbed('create'),

@@ -9,6 +9,7 @@
  *   PATCH  /usuarios/:id                      → EditarUsuarioTenantUseCase      [AdminClienteGuard]
  *   PATCH  /usuarios/:id/password             → ResetearPasswordUsuarioTenantUseCase [AdminClienteGuard] (sdd/reset-de-contrasena-por-admin, ADR-1)
  *   DELETE /usuarios/:id/2fa                  → ResetearTfaUsuarioUseCase [AdminClienteGuard] (verificacion-dos-pasos, ADR-8/9)
+ *   DELETE /usuarios/:id/sso                  → ResetearVinculoSsoUseCase [AdminClienteGuard] (login-sso, ADR-8; sin ruta de autoservicio, SC5)
  *   DELETE /usuarios/:id/membresia            → DesactivarMembresiaUsuarioTenantUseCase [AdminClienteGuard]
  *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
  *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
@@ -70,6 +71,7 @@ import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/camb
 import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-usuario-tenant.use-case';
 import { ResetearPasswordUsuarioTenantUseCase } from '../../application/use-cases/resetear-password-usuario-tenant.use-case';
 import { ResetearTfaUsuarioUseCase } from '../../application/tfa/resetear-tfa-usuario.use-case';
+import { ResetearVinculoSsoUseCase } from '../../application/sso/resetear-vinculo-sso.use-case';
 import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
 import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
@@ -166,6 +168,7 @@ export class UsuariosController {
     private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
     private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
     private readonly resetearTfaUsuarioUseCase: ResetearTfaUsuarioUseCase,
+    private readonly resetearVinculoSsoUseCase: ResetearVinculoSsoUseCase,
   ) {}
 
   /**
@@ -334,6 +337,30 @@ export class UsuariosController {
     @Param('id') usuarioId: string,
   ): Promise<void> {
     const result = await this.resetearTfaUsuarioUseCase.execute({
+      actorEsRoot: actor.is_global_admin,
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+  }
+
+  /**
+   * DELETE /usuarios/:id/sso
+   * Borra los vinculos SSO del usuario `:id` (todos los proveedores) y revoca sus sesiones. Misma
+   * politica que el reseteo de 2FA. Sin ruta de autoservicio. 204 sin cuerpo.
+   * @throws 404 identico para id inexistente y para cualquier destino no permitido (SV8)
+   */
+  @Delete(':id/sso')
+  @UseGuards(AdminClienteGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetearVinculoSso(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+  ): Promise<void> {
+    const result = await this.resetearVinculoSsoUseCase.execute({
       actorEsRoot: actor.is_global_admin,
       clienteId: actor.cliente_id as string,
       usuarioId,

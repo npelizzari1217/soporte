@@ -62,6 +62,7 @@ const makeUsuarioRepo = (): Mocked<IUsuarioRepository> => ({
   // CambiarPasswordUseCase busca por ID, nunca por email — un stub mudo
   // taparía que producción empiece a llamarlo.
   findByEmail: unstubbed('findByEmail'),
+  findManyByEmailInsensitive: unstubbed('findManyByEmailInsensitive'),
   create: unstubbed('create'),
 });
 

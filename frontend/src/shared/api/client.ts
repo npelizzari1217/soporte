@@ -66,6 +66,7 @@ async function rawFetch(path: string, init?: ApiFetchInit): Promise<Response> {
  * Rutas donde un 401 NUNCA dispara refresh: `auth/refresh` (recursión) y el flujo de login, donde
  * el 401 significa credencial/código/ticket inválido y reintentar re-postearía la contraseña
  * (el limitador contaría doble). Se suma `auth/2fa/enrolamiento/*` por prefijo (`sinRefresh`).
+ * `auth/sso/paso` consume una cookie de un solo uso: un 404/401 no se reintenta.
  */
 const RUTAS_SIN_REFRESH: ReadonlySet<string> = new Set([
   "auth/refresh",
@@ -73,6 +74,7 @@ const RUTAS_SIN_REFRESH: ReadonlySet<string> = new Set([
   "auth/2fa/verificar",
   "auth/login/continuar",
   "auth/login/seleccionar",
+  "auth/sso/paso",
 ]);
 
 function sinRefresh(path: string): boolean {

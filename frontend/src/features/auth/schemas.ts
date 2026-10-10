@@ -105,3 +105,13 @@ export type IniciarSecretoTfa = z.infer<typeof iniciarSecretoTfaSchema>;
 
 export const confirmarSecretoTfaSchema = z.object({ codigosRecuperacion: z.array(z.string()).optional() });
 export const codigosTfaSchema = z.object({ codigosRecuperacion: z.array(z.string()) });
+
+/**
+ * Espejo de `GET /auth/sso/proveedores` (lista pública de proveedores habilitados, SC3).
+ * Solo slugs: el backend no devuelve client ids, secrets ni el estado de los deshabilitados.
+ *
+ * Spec: sdd/login-sso — SC3, SC4.
+ */
+export const SLUGS_SSO = ["google", "microsoft"] as const;
+export type SlugSso = (typeof SLUGS_SSO)[number];
+export const proveedoresSsoSchema = z.object({ proveedores: z.array(z.enum(SLUGS_SSO)) });

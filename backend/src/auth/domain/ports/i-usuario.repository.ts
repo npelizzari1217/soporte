@@ -22,6 +22,13 @@ export interface IUsuarioRepository {
   findByEmail(email: string): Promise<UsuarioEntity | null>;
 
   /**
+   * Busca usuarios cuyo email coincide sin distinguir mayúsculas (login SSO, ADR-5).
+   * Devuelve a lo sumo 2: alcanza para distinguir "ninguno", "uno" y "ambiguo".
+   * `findByEmail` sigue siendo exacto.
+   */
+  findManyByEmailInsensitive(email: string): Promise<UsuarioEntity[]>;
+
+  /**
    * Busca un usuario por su identificador técnico (UUIDv7).
    * Incluye usuarios soft-deleted.
    */

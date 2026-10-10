@@ -11,6 +11,7 @@ import {
   REFRESH_TOKEN_REPOSITORY,
 } from '../../domain/ports/i-refresh-token.repository';
 import { IUsuarioRepository, USUARIO_REPOSITORY } from '../../domain/ports/i-usuario.repository';
+import { puedeResetearAUsuario } from '../politica-reseteo-usuario';
 import { ITfaRepository, TFA_REPOSITORY } from '../../domain/ports/tfa-repository.port';
 
 export interface ResetearTfaUsuarioInput {
@@ -44,7 +45,10 @@ export class ResetearTfaUsuarioUseCase {
   ) {}
 
   async execute(input: ResetearTfaUsuarioInput): Promise<Result<void, MembresiaNoEncontradaError>> {
-    const permitido = await this.puedeResetear(input);
+    const permitido = await puedeResetearAUsuario(input, {
+      usuarios: this.usuarios,
+      membresias: this.membresias,
+    });
     if (!permitido) return Result.fail(new MembresiaNoEncontradaError());
 
     await this.tfa.eliminarTodo(input.usuarioId);
@@ -57,19 +61,5 @@ export class ResetearTfaUsuarioUseCase {
       );
     }
     return Result.ok(undefined);
-  }
-
-  private async puedeResetear(input: ResetearTfaUsuarioInput): Promise<boolean> {
-    const destino = await this.usuarios.findById(input.usuarioId);
-    if (!destino) return false;
-    if (input.actorEsRoot) return true;
-    if (destino.isGlobalAdmin) return false;
-    const activa = await this.membresias.findActivaByUsuarioYCliente(
-      input.usuarioId,
-      input.clienteId,
-    );
-    if (!activa) return false;
-    const clientes = await this.membresias.findClientesDeTodasByUsuario(input.usuarioId);
-    return clientes.every((id) => id === input.clienteId);
   }
 }

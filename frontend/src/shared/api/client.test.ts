@@ -157,6 +157,7 @@ describe("apiFetch", () => {
     "auth/2fa/enrolamiento/confirmar",
     "auth/login/continuar",
     "auth/login/seleccionar",
+    "auth/sso/paso",
   ])("401 en %s → NO refresca ni reintenta (no re-postea la contraseña)", async (ruta) => {
     let llamadas = 0;
     let refrescos = 0;

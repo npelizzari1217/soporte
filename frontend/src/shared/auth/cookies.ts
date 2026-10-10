@@ -9,6 +9,10 @@ export const COOKIE_AT = "at";
 export const COOKIE_RT = "rt";
 /** Dispositivo confiable (2FA): httpOnly, solo lo lee el BFF. */
 export const COOKIE_TD = "td";
+/** Atadura del flujo SSO al navegador (`bindingToken`): httpOnly, vive lo que dura el flujo. */
+export const COOKIE_SSO_ESTADO = "sso_st";
+/** Resultado del callback SSO hasta que la pantalla de login lo consume una sola vez. */
+export const COOKIE_SSO_PASO = "sso_paso";
 
 /**
  * Access token max-age: 15 minutes. Must stay in sync with the backend's
@@ -26,6 +30,12 @@ export const REFRESH_MAX_AGE = 604800; // 7 days
  * Dispositivo confiable: 30 días. Espeja los 30 días de `expira_at` del backend (ADR-7, D2).
  */
 export const TRUSTED_DEVICE_MAX_AGE = 2592000; // 30 days
+
+/** `sso_st`: 10 minutos, igual que la vigencia del estado en el backend. */
+export const SSO_ESTADO_MAX_AGE = 600;
+
+/** `sso_paso`: 2 minutos, el tiempo de que el navegador cargue `/login?sso=1` y lo consuma. */
+export const SSO_PASO_MAX_AGE = 120;
 
 /**
  * Return the cookie name, prefixed with `__Host-` in production.

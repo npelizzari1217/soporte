@@ -1,0 +1,442 @@
+# Apply progress: login-sso
+
+## Unidad 1 (WU-1a) - lotes 1 y 2 (ramas `feat/login-sso-wu01a` y `feat/login-sso-wu01a2`)
+
+Partida por la contingencia de tasks.md (el diff real de la WU superaba el tope duro de 380 lineas):
+- `feat/login-sso-wu01a` (base `feat/login-sso`): tareas 1.1 a 1.7.
+- `feat/login-sso-wu01a2` (base `feat/login-sso-wu01a`): tareas 1.8 a 1.11 (repositorio de estados, su integracion y las mutaciones).
+
+Modo: estandar (feature, sin TDD estricto).
+
+### Tareas
+
+- [x] 1.1 a 1.4 spike `jose` (gate PASADO)
+- [x] 1.5 migracion M1 y rollback
+- [x] 1.6 esquema Prisma y cliente
+- [x] 1.7 `PROVEEDORES_SSO` y puerto `ISsoEstadoRepository`
+- [x] 1.8 a 1.9 repositorio de estados e integracion (rama `wu01a2`)
+- [x] 1.10 mutaciones (rama `wu01a2`)
+- [x] 1.11 verificacion (rama `wu01a2`)
+
+### Resultado del gate del spike (1.4), Node v24.20.0
+
+| Criterio | Resultado |
+|---|---|
+| 1. `pnpm typecheck` sin shim | 0 errores. No hizo falta `src/types/jose.d.ts` |
+| 2. `pnpm build` + `node -e "require('./dist/auth/infrastructure/sso/jose-humo.js').humo().then(console.log)"` | build exit 0; imprime `ok`; sin `ERR_REQUIRE_ESM`, sin `ERR_REQUIRE_ASYNC_MODULE` y sin `ExperimentalWarning` |
+| 3. `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts` | 1 test en verde |
+| 4. `pnpm lint` | exit 0, 0 errores |
+| 5. `pnpm start` | arranca (`Nest application successfully started`) con `DATABASE_URL_MASTER` de test, `JWT_SECRET` y `APP_BASE_URL` por entorno; se repite en 9.5 con `AuthModule` importando el adaptador |
+
+Solo se probo Node 24 (el de esta maquina). El VPS usa Node 22.12 o superior segun el diseno: se confirma en el runbook (WU-9).
+
+### Notas
+
+- `pnpm add jose@^6.2.8` resolvio `jose 6.2.12`; `package.json` quedo con `^6.2.12` (cumple el mayor del diseno).
+- Migracion `20261010120000_login_sso` aplicada a `soporte_master_test` con `prisma migrate deploy`; `rollback.sql` ejecutado una vez y la migracion reaplicada. Las tablas deben quedar con duenio `soporte` (el rol de los tests): la reaplicacion se hizo con ese rol, no con `$POSTGRES_USER`, porque si no el repositorio falla con `permission denied`.
+- La URL de la base de test sale del default de `src/testing/lock-master-test.ts` (`URL_MASTER_TEST_POR_DEFECTO`); no se leyo ni se creo ningun `.env`.
+- El puerto recibe los hashes ya calculados (el caso de uso de la WU-4a los calcula con `pkce.sha256`).
+
+### Work Unit Evidence (lote 1)
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts`: 1 passed |
+| Harness de runtime | criterios 2 y 5 del spike (arriba) |
+| Frontera de rollback | `git revert` del commit; `rollback.sql` de M1; sin consumidores |
+
+### Lote 2 (rama `feat/login-sso-wu01a2`)
+
+Mutaciones (1.10), cada una revertida:
+- Quitar `usado_at IS NULL` del CAS: en rojo "consumir devuelve ... una sola vez" y "dos consumos concurrentes".
+- Quitar `navegador_hash` del CAS: en rojo "navegador ajeno devuelve null y la fila sigue consumible".
+
+Verificacion (1.11), desde `backend/`: `pnpm lint` exit 0; `pnpm typecheck` exit 0; `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts src/auth/infrastructure/sso/prisma-sso-estado.repository.integration.spec.ts` 2 archivos, 12 tests en verde. Raiz: `node scripts/check-casts-en-specs.mjs` 617 en 114 archivos (base 617), sin subir. Migracion M1 aplicada a `soporte_master_test`, rollback ejecutado una vez y reaplicada (`prisma migrate status`: al dia).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso/jose-humo.spec.ts src/auth/infrastructure/sso/prisma-sso-estado.repository.integration.spec.ts`: 12 passed |
+| Harness de runtime | integracion sobre `soporte_master_test` (CAS, concurrencia, purga) |
+| Frontera de rollback | `prisma-sso-estado.repository.ts` y su spec; sin consumidores |
+
+## Unidad 2 (WU-1b) - rama `feat/login-sso-wu01b` (base `feat/login-sso-wu01a2`)
+
+Sin partir: el diff de la WU contra su base es de 323 lineas de codigo y specs (tope duro 380). Dos commits en la misma rama: vinculos (2.1-2.2) y busqueda por email con los 10 mocks (2.3-2.5).
+
+- [x] 2.1 a 2.2 puerto `IIdentidadSsoRepository` + `PrismaIdentidadSsoRepository` e integracion (8 tests)
+- [x] 2.3 a 2.5 `findManyByEmailInsensitive` (`$queryRaw`, `lower(email) = lower($1) LIMIT 2`), integracion (5 tests) y una linea en cada uno de los 10 specs
+- [x] 2.6 verificacion
+
+Notas:
+- Los mocks que ya usaban `unstubbed('...')` recibieron `unstubbed('findManyByEmailInsensitive')` (misma forma que sus vecinos); el resto `vi.fn()`. Una linea por spec, sin casts.
+- El spec del repositorio de usuarios se llama `prisma-usuario.repository.email-insensitive.integration.spec.ts` (no existia un spec propio del repositorio).
+- El mapeo de la fila cruda (snake_case) a `PrismaUsuario` se hace en el repositorio y delega en `UsuarioMapper.toDomain`.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth`: 87 archivos, 1007 tests en verde; `crear-cliente.use-case.spec.ts`: 7 en verde |
+| Harness de runtime | integracion sobre `soporte_master_test` (unicos, carrera de `vincular`, cascada, LIMIT 2, `_` no comodin) |
+| Casts | 617 en 114 archivos (base 617), sin subir |
+| Frontera de rollback | revertir los dos commits de codigo; sin consumidores |
+
+## Unidad 3 (WU-2a) - ramas `feat/login-sso-wu02a` y `feat/login-sso-wu02a2`
+
+Partida: el diff completo contra `feat/login-sso-wu01b` era de 498 lineas (tope duro 380). Costura limpia, cada mitad lleva sus tests:
+- `feat/login-sso-wu02a` (base `feat/login-sso-wu01b`, 267 lineas): tareas 3.1 a 3.3.
+- `feat/login-sso-wu02a2` (base `feat/login-sso-wu02a`, ~240 lineas de codigo y specs): tareas 3.4 a 3.9.
+
+Modo: estandar (feature, sin TDD estricto).
+
+- [x] 3.1 dominio `proveedor-slug`, `identidad-sso-verificada`, `sso.errors.ts` y puerto `IProveedorOidc` (`wu02a`)
+- [x] 3.2 a 3.3 `ConfiguracionSsoDesdeEntorno` y su spec (`wu02a`)
+- [x] 3.4 a 3.5 validador de Google (`wu02a2`)
+- [x] 3.6 a 3.7 validador de Microsoft (`wu02a2`)
+- [x] 3.8 mutaciones (`wu02a2`)
+- [x] 3.9 verificacion (`wu02a2`)
+
+Notas:
+- El diseno no fija la forma del puerto `IProveedorOidc`; queda `construirUrlAutorizacion(proveedor, {state, nonce, codeChallenge})` y `verificarCodigo(proveedor, {code, codeVerifier, nonce})`. La WU-2b lo implementa.
+- `ConfiguracionSsoDesdeEntorno` recibe `appBaseUrl` (la WU-5a le pasa `entorno.APP_BASE_URL`) y el `env` (por defecto `process.env`, leido en cada llamada). Los valores se devuelven con `trim()`.
+- Los validadores reciben el nonce esperado y la configuracion del emisor (`emisores` en Google, `plantillaEmisor` en Microsoft) y lanzan `SsoRechazadoError` (motivos `TOKEN_INVALIDO` o `EMAIL_NO_VERIFICADO`). Google tambien comprueba `iss` contra `emisores` (defensa en profundidad sobre `jwtVerify`).
+- Rechazan tambien un `email` vacio o solo espacios (`EMAIL_NO_VERIFICADO`).
+
+Mutaciones (3.8), cada una revertida:
+- Microsoft: reemplazar `claims.xms_edov !== true` por `false` -> 4 tests en rojo (`xms_edov` ausente, `false`, la cadena `"true"`, `1`).
+- Google (extra): reemplazar `claims.email_verified !== true` por `false` -> 4 tests en rojo (ausente, `false`, la cadena `"true"`, `1`).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/domain/sso src/auth/infrastructure/sso` (ver verificacion final del reporte) |
+| Harness de runtime | N/A: funciones puras sobre payloads y lectura de un `env` inyectado |
+| Casts | 617 en 114 archivos (base 617), sin subir |
+| Frontera de rollback | `wu02a`: dominio, errores, puerto y configuracion; `wu02a2`: los dos validadores y sus specs; sin consumidores |
+
+## Unidad 4 (WU-2b) - rama `feat/login-sso-wu02b`
+
+Modo: estandar. **size:exception aceptado**: ~435 lineas de codigo (estimacion 360); el spec no se entrega sin el adaptador y el IdP falso, y no hay costura limpia.
+
+- [x] 4.1 `src/testing/idp-falso.ts` (servidor `node:http`, `/token` y `/jwks`, firma RS256, clave ajena, HS256 y `none`, contador de llamadas)
+- [x] 4.2 `jose-proveedor-oidc.spec.ts` (17 tests)
+- [x] 4.3 `jose-proveedor-oidc.ts`
+- [x] 4.4 baja de `jose-humo.ts` y su spec
+- [x] 4.5 verificacion
+
+Commit de codigo: `893c6065` (`feat(auth): adaptador OIDC con jose, IdP falso y baja del spike`).
+
+Verificacion observada (backend/ salvo la ultima):
+- `pnpm lint`: 0 errores.
+- `pnpm typecheck`: 0 errores.
+- `pnpm vitest run src/auth/infrastructure/sso`: 6 archivos, 79 tests en verde (17 del spec nuevo).
+- `pnpm build` y `node -e "require('./dist/auth/infrastructure/sso/jose-proveedor-oidc.js')"`: `require ok`, sin `ERR_REQUIRE_ESM`; `dist/testing` no contiene `idp-falso`.
+- `rg "from 'jose'" src`: solo el adaptador y `src/testing/idp-falso.ts`.
+- `rg "jose-humo" src`: vacio.
+- `node scripts/check-casts-en-specs.mjs` (raiz): 617 en 114 archivos (base 617), sin subir.
+
+Rojo observado antes del verde: la primera corrida fallo en "vencido" porque `JWTExpired` no extiende `JWTClaimValidationFailed` en jose 6; se agrego a la lista de rechazos.
+
+Desviaciones del diseno:
+- `tsconfig.build.json` no necesito cambios: ya excluye `src/testing/**`.
+- `jwtVerify` corre sin la opcion `issuer`; el emisor lo comparan los validadores en ambos proveedores.
+- El adaptador recibe `IConfiguracionSso` en el constructor.
+- Una respuesta 200 del `/token` sin `id_token` lanza un error comun (500), no un rechazo.
+- El IdP falso firma las variantes HS256 y `alg: none`, porque el spec no puede importar `jose`.
+
+Notas para unidades siguientes:
+- La WU-5a registra `new JoseProveedorOidc(configuracionSso)` bajo el token `PROVEEDOR_OIDC`.
+- Queda pendiente en la WU-5a el arranque con `pnpm start` (criterio 5 de ADR-2).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/infrastructure/sso`: 6 archivos, 79 tests en verde |
+| Harness de runtime | IdP falso `node:http` en `127.0.0.1:0` (JWKS, `/token`, caida de red) |
+| Frontera de rollback | revertir `893c6065`; el spike `jose-humo` vuelve y no hay consumidores |
+
+## Unidad 5 (WU-3) - rama `feat/login-sso-wu03`
+
+Modo: estandar (refactor sin cambio de conducta).
+
+- [x] 5.1 `evaluar-segundo-paso.service.spec.ts` (7 tests, mocks completos, sin casts)
+- [x] 5.2 `evaluar-segundo-paso.service.ts` (lineas 176-203 de `login.use-case.ts`, confirmadas antes de mover)
+- [x] 5.3 `LoginUseCase` construye el servicio; sigue con 11 parametros
+- [x] 5.4 Provider en `auth.module.ts`: **se queda** (`auth.module.spec.ts` pasa sin editarse)
+- [x] 5.5 Prueba de no cambio: `git diff --stat feat/login-sso-wu02b..HEAD` sobre los 10 specs protegidos, vacio
+- [x] 5.6 verificacion
+
+Commit de codigo: `ce968600` (`refactor(auth): extrae EvaluarSegundoPasoService del login`).
+
+Verificacion observada (backend/ salvo la ultima):
+- `pnpm lint`: 0 errores.
+- `pnpm typecheck`: 0 errores.
+- `pnpm vitest run src/auth/application`: 28 archivos, 285 tests en verde.
+- Los seis e2e + `auth.module.spec.ts` + `auth.controller.spec.ts`: 8 archivos, 98 tests en verde.
+- `node scripts/check-casts-en-specs.mjs` (raiz): 617 en 114 archivos (base 617), sin subir.
+
+Desviaciones del diseno: ninguna.
+
+Notas para unidades siguientes:
+- `LoginUseCase` conserva `tfaRepo`, `desafios` y `dispositivos` como propiedades solo por el constructor de 11 parametros; el servicio ya no se obtiene de ellas.
+- `CompletarSsoUseCase` (WU-4b) inyecta `EvaluarSegundoPasoService` desde el provider ya registrado.
+
+## Unidad 6 (WU-4a) - rama `feat/login-sso-wu04a`
+
+Modo: estandar (feature).
+
+- [x] 6.1 y 6.2 `pkce.spec.ts` (4 tests, vector de la RFC 7636) y `pkce.ts`
+- [x] 6.3 y 6.4 `iniciar-sso.use-case.spec.ts` (6 tests) e `iniciar-sso.use-case.ts`
+- [x] 6.5 y 6.6 `listar-proveedores-sso.use-case.spec.ts` (3 tests) y `listar-proveedores-sso.use-case.ts`
+- [x] 6.7 verificacion
+
+Commits: `2c4ee54c` (`refactor(auth): mueve la configuracion SSO a un puerto de dominio`), `757a66fd` (`feat(auth): pkce, IniciarSso y ListarProveedoresSso`).
+
+Verificacion observada (backend/ salvo las dos ultimas):
+- `pnpm lint`: 0 errores.
+- `pnpm typecheck`: 0 errores.
+- `pnpm vitest run src/auth/application/sso src/auth/infrastructure/sso src/auth/domain/sso`: 10 archivos, 97 tests en verde.
+- `rg "infrastructure" src/auth/application/sso`: vacio.
+- `node scripts/check-casts-en-specs.mjs` (raiz): 617 en 114 archivos (base 617), sin subir.
+
+Adicion (arrastre de la WU-2a): la interfaz `IConfiguracionSso`, `ConfigProveedorSso` y el token `CONFIGURACION_SSO` pasaron de `infrastructure/sso/configuracion-sso.ts` a `domain/ports/configuracion-sso.port.ts`, para que application no importe de infraestructura. `ConfiguracionSsoDesdeEntorno` queda en infraestructura e implementa el puerto. Importadores actualizados: `jose-proveedor-oidc.ts` y su spec. Sin cambio de conducta.
+
+Desviaciones del diseno:
+- `IniciarSsoUseCase` no re-sanea `siguiente`: la lista permitida vive solo en el BFF (`destinoPosLogin`) y el backend no tiene una; se guarda tal como llega (ya saneado) o `null`. La WU-5a debe acotar el DTO a 300 caracteres (`VARCHAR(300)`).
+- El spec del caso de uso no valida los parametros de la URL (`scope`, `response_mode`, `prompt`, `client_id`, `redirect_uri`): `rg infrastructure` sobre application debe quedar vacio y esos parametros ya los prueba `jose-proveedor-oidc.spec.ts`. Aca se prueba lo que se le entrega al puerto y lo que se persiste.
+- `ListarProveedoresSsoUseCase.execute()` es sincrono (la configuracion es sincrona) y devuelve `SlugSso[]`.
+- `SsoNoDisponibleError` se lanza (no se devuelve como `Result`), igual que el puerto OIDC.
+
+Notas para unidades siguientes:
+- `pkce.ts` exporta `generarAleatorioUrl`, `generarCodeVerifier`, `calcularCodeChallenge` y `sha256Hex`; la WU-4b usa `sha256Hex` para el `navegadorHash` y el `stateHash` del CAS.
+- `SSO_ESTADO_TTL_MS` se exporta desde `iniciar-sso.use-case.ts`.
+- La WU-5a registra `IniciarSsoUseCase`, `ListarProveedoresSsoUseCase` y `ConfiguracionSsoDesdeEntorno` bajo `CONFIGURACION_SSO` importado ahora del puerto de dominio.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/application/sso src/auth/infrastructure/sso src/auth/domain/sso`: 10 archivos, 97 tests en verde |
+| Harness de runtime | N/A: casos de uso inertes, sin cableado hasta la WU-5a |
+| Frontera de rollback | revertir `757a66fd` (casos de uso) y, por separado, `2c4ee54c` (puerto) |
+
+## Unidad 7 (WU-4b) - rama `feat/login-sso-wu04b`
+
+Modo: estandar (feature). Tareas 7.1 a 7.4 hechas. Commit: `2ba51686` (`feat(auth): CompletarSsoUseCase hasta la resolucion del usuario`).
+
+Mutacion 7.3: sin el chequeo `isGlobalAdmin`, `vitest run src/auth/application/sso/completar` dio 2 rojos de 18 (`ROOT se rechaza resuelto por email`, `ROOT se rechaza tambien si ya estaba vinculado (promovido despues)`); revertida, 31 tests en verde.
+
+Verificacion observada (backend/ salvo las dos ultimas): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/auth/application/sso` 4 archivos, 31 tests en verde; `rg infrastructure src/auth/application/sso` vacio; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. `execute` devuelve `CompletarSsoResolucion` (usuario, membresias, identidad, resueltoPorEmail, siguiente) y todo rechazo lanza `SsoRechazadoError` tras loguear `SSO_RECHAZADO` con el `ILogger` del dominio.
+
+Notas para la WU-4c: el paso 3 va en el comentario marcado antes de resolver al usuario; el limitador debe cubrir los pasos 4 a 7 como falla. `vincular` solo si `resueltoPorEmail`. Constructor actual: estados, oidc, vinculos, usuarios, membresias, logger.
+
+## Unidad 8 (WU-4c) - rama `feat/login-sso-wu04c`
+
+Modo: estandar (feature). Tareas 8.1 a 8.4 hechas. Commits: `facb7bb3` (`feat(auth): CompletarSsoUseCase con limitador, vinculo, segundo paso y ticket`). size:exception: 404 lineas con docs y 375 sin ellas, sin costura que mantenga la unidad junta.
+
+Mutaciones 8.3 (`vitest run src/auth/application/sso/completar`, 45 tests en verde de base; todas revertidas, 45 en verde):
+- (a) sin `liberar`: 1 rojo, `libera la clave solo despues de vincular (paso 8) y antes del segundo paso`.
+- (b) `reservar` despues del rechazo (tras el paso 7): 7 rojos, `agotado: BLOQUEADO con token valido...`, `reserva entre el canje y la resolucion del usuario, no antes` y los `rechazo SIN_USUARIO/AMBIGUO/INACTIVO/ROOT/SIN_MEMBRESIA` de "la reserva queda como falla".
+- (c) pasos 5 a 7 despues de `vincular`: 4 rojos, `usuario ROOT / borrado / inactivo / sin membresias resuelto por email: vincular no se llama`.
+
+Verificacion observada (backend/ salvo las dos ultimas): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/auth/application` 32 archivos, 343 tests en verde; `rg infrastructure src/auth/application/sso` vacio; `git diff --stat feat/login-sso-wu04b..HEAD -- src/auth/application/tfa src/auth/application/use-cases` vacio; `check-casts-en-specs.mjs` 617 (base 617).
+
+Diseno: el IP llega como `CompletarSsoInput.ip?` (ausente = `sin-ip`, como `pwd:`) y el token `td` como `dispositivoConfiable?`. El resultado es `CompletarSsoResultado` (`needs2fa` | `needsEnrolamiento2fa` | `ticket`, mas `siguiente`); reemplaza a `CompletarSsoResolucion`, sin otros usuarios. Con una o varias membresias el SSO entrega el mismo ticket `SELECCIONAR`. Desviaciones: ninguna.
+
+Notas para la WU-5a: constructor = `SSO_ESTADO_REPOSITORY`, `PROVEEDOR_OIDC`, `IDENTIDAD_SSO_REPOSITORY`, `USUARIO_REPOSITORY`, `MEMBRESIA_REPOSITORY`, `LIMITADOR_INTENTOS`, la clase `EvaluarSegundoPasoService` (ya provista en auth.module) y `DESAFIO_LOGIN_REPOSITORY`, `LOGGER`. El controlador pasa `ip` desde `x-soporte-ip-navegador` y `dispositivoConfiable` desde la cookie `td`.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/application`: 32 archivos, 343 tests en verde |
+| Harness de runtime | N/A: caso de uso inerte, sin cableado hasta la WU-5a |
+| Frontera de rollback | revertir el commit de `completar-sso.use-case.ts` y su spec |
+
+## Unidad 9 (WU-5a) - rama `feat/login-sso-wu05a`
+
+Modo: estandar (feature). Tareas 9.1 a 9.6 hechas. Commit: `f4e9367c` (`feat(auth): SsoController, cableado del login SSO y e2e basico`), 377 lineas de codigo y spec (tope duro 380).
+
+- Casos movidos a la unidad 10 (tarea 10.5) por el tope: "estado vencido" y "proveedor cruzado", mas el `siguiente` de 301 caracteres (400) y la comprobacion de que solo hashes quedan en `state_hash` y `navegador_hash`. Se reescribieron antes de commitear; no hay codigo sin probar: el DTO tiene `MaxLength(300)`.
+- Cableado: `PrismaSsoEstadoRepository` va por `useFactory` porque su segundo parametro (`ahora`, un reloj) no es resoluble por Nest. Los tres casos de uso se registran como clase (ya llevan `@Inject`). `ConfiguracionSsoDesdeEntorno` recibe `entorno.APP_BASE_URL`; `JoseProveedorOidc` se construye con `CONFIGURACION_SSO`, asi `overrideProvider(CONFIGURACION_SSO)` tambien cambia el adaptador.
+- Contrato HTTP: `POST /auth/sso/:proveedor/callback` recibe `{code, state, binding, dispositivoConfiable?}` y devuelve el `CompletarSsoResultado` tal cual (`kind`, `desafio` o `ticket`, `siguiente`, `dispositivoConfiable?`). La IP sale de `ipDelNavegador(req)`. Un callback de un proveedor deshabilitado cae en el CAS (no hay estado) y responde el 401 generico; el 404 solo aplica a slug desconocido y a `iniciar` de un proveedor deshabilitado. Un body mal formado sigue siendo 400 del `ValidationPipe`.
+
+Mutaciones 9.4 (`vitest run test/sso.e2e.spec.ts`, 5 tests en verde de base; ambas revertidas con `git checkout`):
+- sin `AND usado_at IS NULL` en el CAS: 1 rojo, `el callback valido entrega ticket y el replay del mismo state es 401 ...`.
+- sin `AND navegador_hash = ...` en el CAS: 1 rojo, `sso_st de otro flujo es 401 y el flujo propio sigue consumible`.
+
+Arranque 9.5 (`pnpm build` y `pnpm start` con `DATABASE_URL_MASTER`, `APP_BASE_URL`, `JWT_SECRET`, `EMAIL_CRYPTO_KEY` y `PORT=3987`; proceso detenido despues):
+- sin variables `SSO_*`: arranca, `GET /api/auth/sso/proveedores` → 200 `{"proveedores":[]}`.
+- con `SSO_GOOGLE_CLIENT_ID` y `SSO_GOOGLE_CLIENT_SECRET`: arranca, 200 `{"proveedores":["google"]}`.
+
+Verificacion observada (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts src/auth` 97 archivos, 1141 tests en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (el login SSO no tiene UI hasta la WU-7).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run test/sso.e2e.spec.ts src/auth`: 97 archivos, 1141 tests en verde |
+| Harness de runtime | IdP falso `node:http` + `soporte_master_test`, listener real; `pnpm start` con y sin `SSO_*` |
+| Frontera de rollback | revertir `f4e9367c`; los casos de uso vuelven a quedar inertes |
+
+## Unidad 10 (WU-5b) - ramas `feat/login-sso-wu05b` y `feat/login-sso-wu05b2`
+
+Modo: estandar (feature, solo tests). La unidad se parte en dos ramas apiladas por el tope de 400 lineas. La numeracion de tasks.md se corrigio: 10.5 = casos movidos, 10.6 = mutaciones e2e, 10.7 = verificacion.
+
+### Rama `feat/login-sso-wu05b` (tareas 10.1, 10.2 y 10.5)
+
+Commit de tests: `3df98096` (`test(auth): matriz e2e del login SSO, vinculo por sujeto y rechazos genericos`), 243 inserciones y 25 borrados en `backend/test/sso.e2e.spec.ts`.
+
+- El spec ahora sustituye `LOGGER` por un espia para comprobar que el motivo del rechazo (`SSO_RECHAZADO | proveedor=... | motivo=...`) solo sale por el log y nunca por la respuesta. MICROSOFT se habilita solo dentro de `conMicrosoft`, para no romper el caso de proveedor deshabilitado.
+- Usuario borrado (`deleted_at`) llega a `INACTIVO`, no a `SIN_USUARIO`: la busqueda por email insensible a mayusculas no filtra borrados.
+- El ambiguo se arma con dos filas cuyo email difiere solo en mayusculas (el `@unique` de `usuarios.email` distingue mayusculas).
+- "Solo hashes en `state_hash` y `navegador_hash`" ya lo cubria el test de `iniciar` de la WU-5a.
+
+Verificacion observada en la punta (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts` 18 tests en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+### Rama `feat/login-sso-wu05b2` (tareas 10.3, 10.4, 10.6 y 10.7)
+
+Commit de tests: `c69685b7` (`test(auth): e2e del login SSO, segundo paso, selector, concurrencia, limites y ROOT`), 327 inserciones y 25 borrados en `backend/test/sso.e2e.spec.ts`.
+
+- El IdP falso (`src/testing/idp-falso.ts`, fuera de las superficies editables) responde un unico token para todos los `/token`; para los flujos simultaneos el spec levanta un `/token` propio que responde por `code` (`conIdpPorCodigo`) y `configuracion.urlToken` lo usa mientras exista.
+- 2FA: `EMAIL_CRYPTO_KEY` se fija en el spec si falta (la pide `activarTfaDeTest`) y se restaura al final. El dispositivo confiable se inserta por SQL con `sha256(token)`; la renovacion se prueba con `expira_at` a 1 dia que pasa a mas de 20.
+- Un segundo ingreso del mismo email necesita el mismo `sub`: con otro sujeto es `OTRA_CUENTA` (401).
+- I9: cinco rechazos por `SIN_USUARIO` con el mismo sujeto dejan `fallos = 5`; el sexto, con token y usuario validos, es `BLOQUEADO`. Cuatro fallos y un exito dejan la clave sin fila.
+
+Mutaciones 10.6 (`vitest run test/sso.e2e.spec.ts`, 30 tests en verde de base; ambas revertidas con `git checkout -- <archivo>`, `git status` limpio):
+- sin el chequeo de ROOT en `completar-sso.use-case.ts`: 1 rojo, `ROOT con email verificado es 401, tambien si ya estaba vinculado, y no deja filas`.
+- sin `xms_edov !== true` en `validar-claims-microsoft.ts`: 1 rojo, `Microsoft exige xms_edov === true y con el entra`.
+
+Verificacion observada en la punta (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts` 30 tests en verde (3 corridas seguidas); `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda.
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run test/sso.e2e.spec.ts`: 30 tests en verde |
+| Harness de runtime | IdP falso `node:http`, `/token` por `code` para la concurrencia, `soporte_master_test` |
+| Frontera de rollback | revertir `c69685b7`; solo tests |
+
+## Unidad 11 (WU-6) - lote 1 (rama `feat/login-sso-wu06`, tareas 11.1 y 11.2)
+
+Partida en dos ramas por el tope de 400 lineas (estimado ~570 con use case, controller y e2e): `feat/login-sso-wu06` (base `feat/login-sso-wu05b2`) lleva la extraccion de la politica; `feat/login-sso-wu06b` (base `feat/login-sso-wu06`) llevara 11.3 a 11.6.
+
+Modo: estandar (refactor con tests).
+
+Commit de codigo: `44f02bd6` (`refactor(auth): politica de reseteo de usuario compartida, extraida del reseteo de 2FA`), 140 inserciones y 15 borrados.
+
+- `puedeResetearAUsuario(input, { usuarios, membresias })` en `application/politica-reseteo-usuario.ts` es el cuerpo de `puedeResetear` movido textualmente; `ResetearTfaUsuarioUseCase` la llama.
+- `resetear-tfa-usuario.use-case.spec.ts` y `usuarios-reseteo-tfa.e2e.spec.ts` sin diff. El e2e vive en `backend/src/auth/interface/controllers/`, no en `backend/test/` como suponia el hallazgo del encargo.
+- El spec de la politica cubre las cinco reglas de ADR-8; ROOT no consulta membresias (se verifica que los metodos no se llamen).
+
+Verificacion observada en la punta (backend/): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/auth/application src/auth/interface/controllers/usuarios-reseteo-tfa.e2e.spec.ts` 357 tests en verde.
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (refactor interno).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/application src/auth/interface/controllers/usuarios-reseteo-tfa.e2e.spec.ts`: 357 en verde |
+| Frontera de rollback | revertir `44f02bd6`; sin migraciones |
+
+### Rama `feat/login-sso-wu06b` (tareas 11.3 y 11.4)
+
+Tercera rama: el codigo con su spec ya sumaba 228 lineas y el e2e 279, asi que 11.5 y 11.6 pasan a `feat/login-sso-wu06c` (base `feat/login-sso-wu06b`).
+
+- `ResetearVinculoSsoUseCase` usa `puedeResetearAUsuario`; `eliminarTodasDeUsuario` y despues `revokeAllByUsuarioId` con log-and-swallow por `LOGGER`. Toda denegacion es `MembresiaNoEncontradaError`.
+- `DELETE :id/sso` en `UsuariosController` con `AdminClienteGuard` por metodo; `clienteId = actor.cliente_id`. Sin ruta de autoservicio.
+- `usuarios.controller.spec.ts` (fuera de las superficies iniciales, autorizado) arma el use case real con puertos tipados, sin casts.
+
+Verificacion observada en la punta (backend/): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores.
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: la pantalla "Resetear vinculo SSO" llega en la unidad 15.
+
+### Rama `feat/login-sso-wu06c` (tareas 11.5 y 11.6)
+
+Commit de tests: ver `git log` de la rama (`test(auth): e2e del reseteo del vinculo SSO por ROOT y administrador`), 279 inserciones en `backend/test/usuarios-reseteo-sso.e2e.spec.ts`.
+
+- Sin tenant efimero real: el reseteo solo toca la base master, como el e2e del reseteo de 2FA; los clientes llevan `db_name` con sufijo aleatorio y todo se borra al final (las identidades caen en cascada con `usuarios`). `usarLockMasterTest()` antes del `describe`.
+- Casos: ROOT sobre multicliente (vinculos borrados, refresh 401, re-vinculo `VINCULADO`); sin tocar contrasena, 2FA, dispositivo ni membresia; ROOT sobre ROOT 204; ADMINISTRADOR a un usuario de su cliente y a si mismo; multicliente, inactiva en otro cliente, ROOT, otro cliente e inexistente con el mismo 404 y vinculos intactos; TECNICO 403 sobre si mismo y rutas de autoservicio inexistentes.
+- `POST /auth/refresh` responde 200.
+
+Verificacion observada en la punta: ver el informe de la unidad (lint, typecheck, vitest focalizado, `pnpm test` completo solo, `check-casts-en-specs.mjs` 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: la pantalla "Resetear vinculo SSO" llega en la unidad 15.
+
+## Unidad 12 (WU-7a) — rama `feat/login-sso-wu07a` (tareas 12.1 a 12.4)
+
+Base `feat/login-sso-wu06c` (el target de tasks.md decia wu06; corregido). Commit de codigo: `feat(frontend): cookies SSO y ruta BFF iniciar del login con proveedor externo`, 187 inserciones en 4 archivos.
+
+- `cookies.ts`: `COOKIE_SSO_ESTADO`, `COOKIE_SSO_PASO`, `SSO_ESTADO_MAX_AGE=600`, `SSO_PASO_MAX_AGE=120`; sin helpers nuevos.
+- `GET /api/auth/sso/[proveedor]/iniciar`: slug fuera de `google|microsoft` o cualquier falla (no 2xx, red, forma invalida segun el schema Zod espejo) → 302 `/login?motivo=sso-error`. `siguiente` pasa por `destinoPosLogin` antes del `POST /auth/sso/:p/iniciar`; reenvia `x-soporte-ip-navegador`. Exito: `sso_st` = `bindingToken` y 302 a `authorizeUrl`.
+- Para WU-7b: el callback lee `sso_st` (con `cookieName`) como `binding`; el `siguiente` ya saneado vive en el backend (`sso_estados.siguiente`) y vuelve en la respuesta del callback, que se vuelve a sanear.
+
+Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 92 en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
+
+## Unidad 13 (WU-7b) — rama `feat/login-sso-wu07b` (tareas 13.1 y 13.2)
+
+Base `feat/login-sso-wu07a`. La unidad se parte en dos ramas apiladas porque el codigo junto (callback 261 + paso 107 lineas) mas los docs superaba las 400 lineas por PR: `wu07b` lleva el callback; `feat/login-sso-wu07b2` lleva `paso` (13.3 a 13.5). Commit de codigo: `feat(frontend): ruta BFF callback del login con proveedor externo`, 261 inserciones en 2 archivos.
+
+- `GET /api/auth/sso/[proveedor]/callback`: siempre borra `sso_st` y responde `Cache-Control: no-store` + `Referrer-Policy: no-referrer`. `error=access_denied` → 302 `/login`; otro `error`, falta de `code`/`state`/cookie, slug fuera de la lista, no 2xx, red o forma invalida → 302 `/login?motivo=sso-error`.
+- Contrato real del backend: el campo discriminante es `kind` (`needs2fa` | `needsEnrolamiento2fa` | `ticket`), con `desafio` o `ticket`, `siguiente: string | null` y, solo en `ticket`, `dispositivoConfiable` renovado. El BFF lo valida con un schema Zod espejo y lo traduce a `sso_paso = {k:'2fa'|'enrol'|'ticket', t}` (httpOnly, 120 s; `t` es el desafio o el ticket, nunca un JWT).
+- `dispositivoConfiable` hacia el backend sale solo de la cookie `td`; el de la URL se ignora. Si el backend lo renueva se re-fija `td` (30 dias).
+- `siguiente` se vuelve a sanear con `destinoPosLogin`; se omite de `/login?sso=1` cuando es `/`.
+
+Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 103 en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
+
+## Unidad 13 (WU-7b), segunda mitad — rama `feat/login-sso-wu07b2` (tareas 13.3 a 13.5)
+
+Base `feat/login-sso-wu07b`. Commit de codigo: `feat(frontend): ruta BFF paso que entrega una sola vez el resultado del login con proveedor externo`, 107 inserciones en 2 archivos.
+
+- `POST /api/auth/sso/paso`: lee `sso_paso`, la borra siempre (tambien ante forma invalida) y la valida con Zod (`k` en `2fa|enrol|ticket`, `t` no vacio; los campos extra no salen). Devuelve `{needs2fa:true,desafio}`, `{needsEnrolamiento2fa:true,desafio}` o `{ticket}`; cookie ausente o invalida → 404 sin cuerpo. Todas las respuestas llevan `Cache-Control: no-store`.
+- El modulo no exporta `GET`: un GET recibe 405 de Next y no toca la cookie (verificado en el test).
+- Para WU-8a: `/login?sso=1` debe llamar a `POST auth/sso/paso` una sola vez (la segunda lectura da 404), con `siguiente` leido de la URL; 404 → mensaje generico; el `ticket` va a `continuarMutation` y los otros dos a `alResponder`. `auth/sso/paso` debe entrar en `RUTAS_SIN_REFRESH`.
+
+Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 114 en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
+
+## Unidad 14 (WU-8a), primera mitad — rama `feat/login-sso-wu08a` (tareas 14.1, 14.2, 14.5 y 14.6)
+
+Base `feat/login-sso-wu07b2` (el target de tasks.md decia wu07b; corregido). La unidad se parte en 8a-i (esta rama: esquema, hook de proveedores, `BotonesSso`, `AvisoMotivo`, `RUTAS_SIN_REFRESH`) y 8a-ii (`feat/login-sso-wu08a2`: efecto `?sso=1` y verificacion 14.7), porque el efecto con sus tests no entraba en el presupuesto de 400 lineas por PR. Commit de codigo: `feat(frontend): botones de login con proveedor externo, aviso de falla generico y ruta sin refresh`, 335 inserciones y 7 borrados en 12 archivos.
+
+- `proveedoresSsoSchema` (espejo de `GET auth/sso/proveedores`, slugs `google|microsoft`) en `schemas.ts`. `useProveedoresSso` (react-query, `retry: false`) devuelve `{proveedores}`; ante falla o forma invalida la lista queda vacia y el formulario de contrasena sigue igual.
+- `botones-sso.tsx` (archivo en kebab-case, presentacional): `<a href="/api/auth/sso/<slug>/iniciar[?siguiente=…]">` con `Button asChild`; sin lista no renderiza. La pagina lo monta solo con `paso === 'credenciales'` y lee `siguiente` de `window.location.search` una vez resuelta la consulta (client-only, sin desajuste de hidratacion); el BFF lo vuelve a sanear.
+- `AvisoMotivo`: exporta `MENSAJE_SSO_ERROR`, el texto generico unico (la spec no fija el literal; se eligio uno en voseo). `motivo=sso-error` → `role="alert"`; los parametros extra no cambian el texto.
+- `RUTAS_SIN_REFRESH` gana `auth/sso/paso`; el test `it.each` de 401 sin refresh lo cubre.
+- Para 8a-ii: `use-login.ts` debe importar `MENSAJE_SSO_ERROR` de `AvisoMotivo.tsx` para el toast del 404 de `paso`.
+
+Verificacion observada en la punta (frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/auth src/shared/api src/app` 232 en verde (41 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: botones SSO de la pantalla de login y mensaje generico de falla del SSO.
+
+### Unidad 14 (WU-8a), segunda mitad — rama `feat/login-sso-wu08a2` (tareas 14.3, 14.4 y 14.7)
+
+Base `feat/login-sso-wu08a`. Commit de codigo: `feat(frontend): efecto de retorno ?sso=1 en el login con proveedor externo`, 172 inserciones y 2 borrados en 2 archivos.
+
+- `use-login.ts`: efecto de montaje con guarda `useRef` que llama una vez a `POST auth/sso/paso`. Cualquier fallo (404 incluido) → toast con `MENSAJE_SSO_ERROR`. Tras responder (o fallar) `history.replaceState(null, "", pathname[?query sin sso])`; despues `ticket` → `continuarMutation.mutate`, el resto → `alResponder`. Dependencias `[]` con `eslint-disable react-hooks/exhaustive-deps` justificado (la guarda impide releer la cookie de un solo uso).
+- Gotcha de test: `renderHook` no duplica efectos bajo StrictMode, y `<StrictMode>` dentro de `QueryClientProvider` tampoco. El test de "una sola llamada" usa `render` con `StrictMode` por fuera del proveedor y un `QueryClient` estable; se verifico por mutacion (sin la guarda la llamada se hace 2 veces y el test falla).
+- 14.7 (verificacion en la punta, frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/auth src/shared/api src/app` 240 en verde (41 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: botones SSO de la pantalla de login y mensaje generico de falla del SSO.
+
+## Unidad 15 (WU-8b) — rama `feat/login-sso-wu08b` (tareas 15.1 a 15.4)
+
+Base `feat/login-sso-wu08a2` (el target de tasks.md decia wu08a; corregido). Commit de codigo: `feat(frontend): boton admin "Resetear vinculo SSO" junto a "Resetear 2FA"`, 87 inserciones en 3 archivos.
+
+- `useResetearVinculoSsoUsuarioTenant(usuarioId)`: `DELETE usuarios/:id/sso`, copia exacta de `useResetearTfaUsuarioTenant` (sin toasts; el dialogo compone el mensaje).
+- Boton en `EditarUsuarioDialog` con `ConfirmDialog`, debajo del bloque de "Resetear 2FA", sin condiciones de visibilidad nuevas (el 2FA tampoco las tiene en el componente: la autorizacion es del backend, todo rechazo llega como 404). Exito → toast; error → toast neutro "No se pudo resetear el vinculo SSO de este usuario." (mismo patron que el de 2FA, con el nombre del reseteo; no distingue motivo).
+- Gotcha: el reseteo de 2FA NO invalida ninguna query (no hay `onSuccess` con `invalidateQueries`), asi que el de SSO tampoco: no cambia nada que la lista muestre. 15.1 decia "invalida la query"; se siguio el patron real.
+- Tests solo via el dialogo (el hook no tiene archivo propio): aparece junto a "Resetear 2FA", confirmar llama al endpoint una vez y muestra el toast, 404 → mensaje neutro y sin toast de exito.
+- Verificacion (frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/usuarios` 44 en verde (6 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: boton "Resetear vinculo SSO" (backend/ayuda no se toco).
+
+## Unidad 16 (WU-9) — rama `feat/login-sso-wu09` (tareas 16.1 a 16.6)
+
+Base `feat/login-sso-wu08b`. Commit de documentacion: `docs: variables SSO en el README y runbook de alta de proveedores, smoke y mitigacion`, 65 inserciones en 2 archivos (`README.md`, `DEPLOY-VPS-runbook.md`).
+
+- 16.1: una fila en la tabla de variables del README con las cuatro `SSO_*` (opcionales; proveedor habilitado solo con su par completo; URI derivada de `APP_BASE_URL`).
+- 16.2 a 16.4: seccion "Login con Google o Microsoft (SSO)" del runbook antes de "Cuando algo falla": Google Cloud Console, Entra, rotacion del secreto, smoke (`proveedores`, `Host` por IIS/ARR, `nssm get soporte-backend Application`, variable MACHINE `SSO_*`), mitigacion sin revert, migracion y rollback. El procedimiento del manifiesto de Entra y el `removeUnverifiedEmailClaim` quedan marcados **por confirmar en staging** (resultado a registrar en `verify-report.md`, V.1); no se inventa confirmacion.
+- 16.5: las notas de deploy se redactaron para agregarse al cuerpo del PR del tracker (#510); no se editó GitHub. Borrador fuera del repo, entregado al orquestador.
+- Deuda de Ayuda consolidada (escritura suspendida, `backend/ayuda` sin tocar): botones SSO del login; mensaje generico de falla (`MENSAJE_SSO_ERROR`); el login por SSO que continua con el 2FA o el selector de cliente; boton admin "Resetear vinculo SSO".
+- 16.6, verificacion final observada: frontend `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm test` 264 archivos y 2160 tests en verde; backend `pnpm lint` 0 errores y `pnpm typecheck` 0 errores; raiz `check-casts-en-specs.mjs` 617 (base 617); `check-roadmap-fresco.mjs` "El roadmap esta fresco" (el cierre del roadmap es V.2, no se toco); `rg "todo|TODO|FIXME" openspec/changes/login-sso` solo devuelve la palabra castellana "todo", sin pendientes de implementacion.
+
+Desviaciones del diseno: ninguna. Pendientes fuera de apply: V.1 (chequeo manual en staging) y V.2 (cierre del roadmap tras el deploy). Con esta unidad terminan las tareas de apply del ciclo: 16 unidades, listo para `sdd-verify`.
