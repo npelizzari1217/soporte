@@ -594,6 +594,70 @@ Ninguna clave se imprime en ningún mensaje, en ningún exit code.
 
 ---
 
+## Login con Google o Microsoft (SSO)
+
+El login con proveedor externo es **opcional** y se activa solo con variables en `backend/.env`.
+Sin ninguna `SSO_*`, el sistema se comporta como antes. El único archivo que las define es
+`backend/.env` (`deploy.ps1` no cambia: `dotenv/config` lo carga). La URI de redirección se deriva
+de `APP_BASE_URL`: `${APP_BASE_URL}/api/auth/sso/<google|microsoft>/callback`.
+
+### Google Cloud Console
+
+1. Crear un cliente OAuth de tipo **Aplicación web**.
+2. Pantalla de consentimiento **publicada** (en modo prueba solo entran los usuarios de prueba).
+3. URIs de redirección autorizadas:
+   - `https://soporte.sesitec.net/api/auth/sso/google/callback`
+   - `http://localhost:<puerto>/api/auth/sso/google/callback` para desarrollo.
+4. Cargar `SSO_GOOGLE_CLIENT_ID` y `SSO_GOOGLE_CLIENT_SECRET` en `backend/.env`.
+
+### Registro de la app en Entra (Microsoft)
+
+1. `signInAudience = AzureADandPersonalMicrosoftAccount`.
+2. URI de redirección de tipo **Web**: `https://soporte.sesitec.net/api/auth/sso/microsoft/callback`.
+3. Claims opcionales `email` y `xms_edov` en el **ID token**. **Procedimiento del manifiesto por
+   confirmar en staging**: registrar el resultado en `openspec/changes/login-sso/verify-report.md`.
+4. `PATCH /applications/{id}/authenticationBehaviors` con `{"removeUnverifiedEmailClaim": true}`
+   (Microsoft Graph). **Por confirmar en staging**; registrar el resultado.
+5. Cargar `SSO_MICROSOFT_CLIENT_ID` y `SSO_MICROSOFT_CLIENT_SECRET` en `backend/.env`.
+
+**El secreto de cliente vence como máximo a los 24 meses.** Dejar un recordatorio de calendario
+antes del vencimiento. Rotación: crear el secreto nuevo en la consola, editar
+`SSO_MICROSOFT_CLIENT_SECRET` en `backend/.env` y reiniciar el servicio (`soporte-backend`). El
+mismo procedimiento sirve para Google.
+
+### Smoke posterior al deploy
+
+```bash
+curl -s https://soporte.sesitec.net/api/auth/sso/proveedores
+# esperado con ambos pares cargados: {"proveedores":["google","microsoft"]}
+# esperado sin variables SSO_*:      {"proveedores":[]}
+```
+
+- **IIS/ARR debe conservar el `Host` original.** El BFF arma las redirecciones con
+  `request.url`: seguir `https://soporte.sesitec.net/api/auth/sso/google/iniciar` y comprobar que
+  la vuelta cae en `https://soporte.sesitec.net/login?...` y no en `localhost`.
+- `/api/auth/sso/*` debe llegar a Next sin cambios.
+- Registrar el binario de Node en uso: `nssm get soporte-backend Application`. Debe ser Node 22.12
+  o superior (dependencia `jose`).
+- Confirmar que no hay una variable de entorno de MÁQUINA `SSO_*` obsoleta, que pisaría a la de
+  `backend/.env`:
+
+```powershell
+[Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'SSO_*' }
+```
+
+### Mitigación rápida sin revert
+
+Quitar las `SSO_*` de `backend/.env` y reiniciar `soporte-backend`: desaparecen los botones y el
+login con contraseña queda exactamente como hoy.
+
+### Migración y rollback
+
+La migración master `20261010120000_login_sso` es **aditiva** y entra por `migrate:master` dentro de
+la ventana de `predeploy-dump.ps1`. Su `rollback.sql` es **destructivo**: borra los vínculos SSO
+(los usuarios se revinculan en el siguiente ingreso por SSO) y los estados de flujo en curso. Se
+revierte **primero el código** y después se corre el `rollback.sql` contra master.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida
