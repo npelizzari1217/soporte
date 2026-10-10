@@ -331,3 +331,15 @@ Desviaciones del diseno: ninguna. Ayuda: sin deuda (refactor interno).
 |---|---|
 | Comando focalizado | `pnpm vitest run src/auth/application src/auth/interface/controllers/usuarios-reseteo-tfa.e2e.spec.ts`: 357 en verde |
 | Frontera de rollback | revertir `44f02bd6`; sin migraciones |
+
+### Rama `feat/login-sso-wu06b` (tareas 11.3 y 11.4)
+
+Tercera rama: el codigo con su spec ya sumaba 228 lineas y el e2e 279, asi que 11.5 y 11.6 pasan a `feat/login-sso-wu06c` (base `feat/login-sso-wu06b`).
+
+- `ResetearVinculoSsoUseCase` usa `puedeResetearAUsuario`; `eliminarTodasDeUsuario` y despues `revokeAllByUsuarioId` con log-and-swallow por `LOGGER`. Toda denegacion es `MembresiaNoEncontradaError`.
+- `DELETE :id/sso` en `UsuariosController` con `AdminClienteGuard` por metodo; `clienteId = actor.cliente_id`. Sin ruta de autoservicio.
+- `usuarios.controller.spec.ts` (fuera de las superficies iniciales, autorizado) arma el use case real con puertos tipados, sin casts.
+
+Verificacion observada en la punta (backend/): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores.
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: la pantalla "Resetear vinculo SSO" llega en la unidad 15.

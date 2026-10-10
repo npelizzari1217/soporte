@@ -41,7 +41,7 @@ Ramas por WU (base entre paréntesis):
 - WU-4c `feat/login-sso-wu04c` (wu04b)
 - WU-5a `feat/login-sso-wu05a` (wu04c)
 - WU-5b `feat/login-sso-wu05b` (wu05a)
-- WU-6 `feat/login-sso-wu06` (wu05b2); WU-6b `feat/login-sso-wu06b` (wu06)
+- WU-6 `feat/login-sso-wu06` (wu05b2); WU-6b `feat/login-sso-wu06b` (wu06); WU-6c `feat/login-sso-wu06c` (wu06b)
 - WU-7a `feat/login-sso-wu07a` (wu06)
 - WU-7b `feat/login-sso-wu07b` (wu07a)
 - WU-8a `feat/login-sso-wu08a` (wu07b)
@@ -194,12 +194,12 @@ Rama `feat/login-sso-wu05b` (10.1, 10.2, 10.5) → target `feat/login-sso-wu05a`
 
 ## Unidad 11 (WU-6) — Reseteo del vínculo SSO y política compartida (~390 líneas)
 
-Rama `feat/login-sso-wu06` (11.1, 11.2) → target `feat/login-sso-wu05b2`; rama `feat/login-sso-wu06b` (11.3 a 11.6) → target `feat/login-sso-wu06`, partida por el tope de 400 lineas. Requerimientos: SV7, SV8, SC5. Última WU de backend: corre el `pnpm test` completo.
+Rama `feat/login-sso-wu06` (11.1, 11.2) → target `feat/login-sso-wu05b2`; rama `feat/login-sso-wu06b` (11.3, 11.4) → target `feat/login-sso-wu06`; rama `feat/login-sso-wu06c` (11.5, 11.6) → target `feat/login-sso-wu06b`. Partida por el tope de 400 lineas (el codigo con sus tests de la 06b suma ~230; el e2e ~280). Requerimientos: SV7, SV8, SC5. Última WU de backend: corre el `pnpm test` completo.
 
 - [x] 11.1 Test `politica-reseteo-usuario.spec.ts` con las cinco reglas de ADR-8: objetivo inexistente → `false`; actor ROOT → `true` (incluso objetivo ROOT, inactivo o borrado); objetivo ROOT → `false`; sin membresía activa en el cliente del actor → `false`; membresías (incluidas inactivas, borradas y de clientes suspendidos) todas en el cliente del actor. (SV8)
 - [x] 11.2 Crear `backend/src/auth/application/politica-reseteo-usuario.ts` moviendo textualmente `resetear-tfa-usuario.use-case.ts:62-74` y modificar `backend/src/auth/application/tfa/resetear-tfa-usuario.use-case.ts` para usarla; su spec y `usuarios-reseteo-tfa.e2e.spec.ts` (vive en `backend/src/auth/interface/controllers/`) quedan sin editar (`git diff --stat` vacío). (SV8, ADR-8)
-- [ ] 11.3 Test `resetear-vinculo-sso.use-case.spec.ts`: denegado → `MembresiaNoEncontradaError` (mismo 404 para toda denegación); autorizado → `eliminarTodasDeUsuario` y luego `revokeAllByUsuarioId`; la revocación que lanza se loguea y no deshace el borrado; sin vínculos → 204; no toca contraseña, 2FA ni membresías; los dispositivos de confianza se conservan. (SV7, SV8)
-- [ ] 11.4 Implementar `backend/src/auth/application/sso/resetear-vinculo-sso.use-case.ts` y agregar `DELETE :id/sso` a `backend/src/auth/interface/controllers/usuarios.controller.ts` (`JwtAuthGuard, TenantGuard` por clase y `AdminClienteGuard` por método; `clienteId = actor.cliente_id`; JSDoc de rutas actualizado); no existe ruta de autoservicio para el propio usuario. (SV7, SV8, SC5)
+- [x] 11.3 Test `resetear-vinculo-sso.use-case.spec.ts`: denegado → `MembresiaNoEncontradaError` (mismo 404 para toda denegación); autorizado → `eliminarTodasDeUsuario` y luego `revokeAllByUsuarioId`; la revocación que lanza se loguea y no deshace el borrado; sin vínculos → 204; no toca contraseña, 2FA ni membresías; los dispositivos de confianza se conservan. (SV7, SV8)
+- [x] 11.4 Implementar `backend/src/auth/application/sso/resetear-vinculo-sso.use-case.ts` y agregar `DELETE :id/sso` a `backend/src/auth/interface/controllers/usuarios.controller.ts` (`JwtAuthGuard, TenantGuard` por clase y `AdminClienteGuard` por método; `clienteId = actor.cliente_id`; JSDoc de rutas actualizado); no existe ruta de autoservicio para el propio usuario. (SV7, SV8, SC5)
 - [ ] 11.5 e2e `backend/test/usuarios-reseteo-sso.e2e.spec.ts` (tenant efímero, `usarLockMasterTest()`): ROOT resetea a cualquiera; ADMINISTRADOR de un solo cliente → 204; ADMINISTRADOR con usuario multicliente → 404; membresía inactiva en otro cliente → 404; objetivo ROOT → 404; inexistente y de otro cliente con respuestas idénticas; ROOT sobre ROOT → 204 sin efecto; refresh tokens revocados; revinculación posterior; un usuario sin permiso de administración no puede resetear ni a sí mismo (403/404). (SV7, SV8, SC5)
 - [ ] 11.6 Verificación: backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run src/auth test/usuarios-reseteo-sso.e2e.spec.ts test/usuarios-reseteo-tfa.e2e.spec.ts`, y luego `pnpm test` completo **corrido solo**; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada (la pantalla llega en la unidad 15).
 
