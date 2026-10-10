@@ -392,3 +392,17 @@ Base `feat/login-sso-wu07b`. Commit de codigo: `feat(frontend): ruta BFF paso qu
 Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 114 en verde; `check-casts-en-specs.mjs` 617 (base 617).
 
 Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
+
+## Unidad 14 (WU-8a), primera mitad — rama `feat/login-sso-wu08a` (tareas 14.1, 14.2, 14.5 y 14.6)
+
+Base `feat/login-sso-wu07b2` (el target de tasks.md decia wu07b; corregido). La unidad se parte en 8a-i (esta rama: esquema, hook de proveedores, `BotonesSso`, `AvisoMotivo`, `RUTAS_SIN_REFRESH`) y 8a-ii (`feat/login-sso-wu08a2`: efecto `?sso=1` y verificacion 14.7), porque el efecto con sus tests no entraba en el presupuesto de 400 lineas por PR. Commit de codigo: `feat(frontend): botones de login con proveedor externo, aviso de falla generico y ruta sin refresh`, 335 inserciones y 7 borrados en 12 archivos.
+
+- `proveedoresSsoSchema` (espejo de `GET auth/sso/proveedores`, slugs `google|microsoft`) en `schemas.ts`. `useProveedoresSso` (react-query, `retry: false`) devuelve `{proveedores}`; ante falla o forma invalida la lista queda vacia y el formulario de contrasena sigue igual.
+- `botones-sso.tsx` (archivo en kebab-case, presentacional): `<a href="/api/auth/sso/<slug>/iniciar[?siguiente=…]">` con `Button asChild`; sin lista no renderiza. La pagina lo monta solo con `paso === 'credenciales'` y lee `siguiente` de `window.location.search` una vez resuelta la consulta (client-only, sin desajuste de hidratacion); el BFF lo vuelve a sanear.
+- `AvisoMotivo`: exporta `MENSAJE_SSO_ERROR`, el texto generico unico (la spec no fija el literal; se eligio uno en voseo). `motivo=sso-error` → `role="alert"`; los parametros extra no cambian el texto.
+- `RUTAS_SIN_REFRESH` gana `auth/sso/paso`; el test `it.each` de 401 sin refresh lo cubre.
+- Para 8a-ii: `use-login.ts` debe importar `MENSAJE_SSO_ERROR` de `AvisoMotivo.tsx` para el toast del 404 de `paso`.
+
+Verificacion observada en la punta (frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/auth src/shared/api src/app` 232 en verde (41 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: botones SSO de la pantalla de login y mensaje generico de falla del SSO.

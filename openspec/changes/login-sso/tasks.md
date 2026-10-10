@@ -224,14 +224,14 @@ Rama `feat/login-sso-wu07b` → target `feat/login-sso-wu07a`. Requerimientos: S
 
 ## Unidad 14 (WU-8a) — Botones, efecto `?sso=1`, `AvisoMotivo` y `RUTAS_SIN_REFRESH` (~390 líneas)
 
-Rama `feat/login-sso-wu08a` → target `feat/login-sso-wu07b`. Requerimientos: SC3, SC4, SC5, SL12, SL13, SL14. Los tests de vista corrieron ~1,5x el pronóstico en el ciclo anterior: si el diff supera 400, aplicar la partición 8a-i / 8a-ii del encabezado.
+Rama `feat/login-sso-wu08a` → target `feat/login-sso-wu07b2`. **Partida en dos ramas apiladas** (el diff superaba 400): `wu08a` (8a-i) lleva 14.1, 14.2, 14.5 y 14.6; `feat/login-sso-wu08a2` (8a-ii, base `wu08a`) lleva 14.3, 14.4 y 14.7. Requerimientos: SC3, SC4, SC5, SL12, SL13, SL14. Los tests de vista corrieron ~1,5x el pronóstico en el ciclo anterior: si el diff supera 400, aplicar la partición 8a-i / 8a-ii del encabezado.
 
-- [ ] 14.1 Test de `useProveedoresSso` y `BotonesSso` (msw): `GET auth/sso/proveedores` valida con el schema espejo; un botón por proveedor listado y ninguno si la lista está vacía; el enlace es `<a href="/api/auth/sso/<slug>/iniciar?siguiente=…">` (navegación completa); visibles solo con `paso === 'credenciales'`; ningún control de vincular o desvincular en la pantalla del propio usuario. (SC3, SC4, SC5)
-- [ ] 14.2 Crear `frontend/src/features/auth/hooks/use-proveedores-sso.ts`, `frontend/src/features/auth/components/botones-sso.tsx` (presentacional), el schema en `frontend/src/features/auth/schemas.ts` y montarlo en `frontend/src/app/(auth)/login/page.tsx`. (SC3, SC4)
+- [x] 14.1 Test de `useProveedoresSso` y `BotonesSso` (msw): `GET auth/sso/proveedores` valida con el schema espejo; un botón por proveedor listado y ninguno si la lista está vacía; el enlace es `<a href="/api/auth/sso/<slug>/iniciar?siguiente=…">` (navegación completa); visibles solo con `paso === 'credenciales'`; ningún control de vincular o desvincular en la pantalla del propio usuario. (SC3, SC4, SC5)
+- [x] 14.2 Crear `frontend/src/features/auth/hooks/use-proveedores-sso.ts`, `frontend/src/features/auth/components/botones-sso.tsx` (presentacional), el schema en `frontend/src/features/auth/schemas.ts` y montarlo en `frontend/src/app/(auth)/login/page.tsx`. (SC3, SC4)
 - [ ] 14.3 Test del efecto `?sso=1` en `use-login`: cada clase (`2fa`, `enrol`, `ticket`) continúa el flujo existente (`alResponder` / `continuarMutation`); bajo StrictMode llama a `paso` una sola vez (guarda con `useRef`); 404 → toast con el mensaje genérico; `history.replaceState` quita `sso` y conserva `siguiente`; `alResponder` reinicia `soporte:idle:last-activity`. (SL12, SL14)
 - [ ] 14.4 Modificar `frontend/src/features/auth/hooks/use-login.ts` con el efecto de montaje de ADR-9. (SL12, SL14)
-- [ ] 14.5 Test de `AvisoMotivo` (`motivo=sso-error` → `role="alert"` con el texto genérico único de la spec, el mismo para todo motivo) y de `RUTAS_SIN_REFRESH` (contiene `"auth/sso/paso"`). (SL13)
-- [ ] 14.6 Modificar `frontend/src/features/auth/components/AvisoMotivo.tsx` y `frontend/src/shared/api/client.ts` (`RUTAS_SIN_REFRESH`). (SL13)
+- [x] 14.5 Test de `AvisoMotivo` (`motivo=sso-error` → `role="alert"` con el texto genérico único de la spec, el mismo para todo motivo) y de `RUTAS_SIN_REFRESH` (contiene `"auth/sso/paso"`). (SL13)
+- [x] 14.6 Modificar `frontend/src/features/auth/components/AvisoMotivo.tsx` y `frontend/src/shared/api/client.ts` (`RUTAS_SIN_REFRESH`). (SL13)
 - [ ] 14.7 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/features/auth src/shared/api src/app`; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada (botones SSO, mensaje genérico de falla).
 
 ## Unidad 15 (WU-8b) — Botón admin "Resetear vínculo SSO" (~180 líneas)
