@@ -416,3 +416,15 @@ Base `feat/login-sso-wu08a`. Commit de codigo: `feat(frontend): efecto de retorn
 - 14.7 (verificacion en la punta, frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/auth src/shared/api src/app` 240 en verde (41 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
 
 Desviaciones del diseno: ninguna. Deuda de Ayuda: botones SSO de la pantalla de login y mensaje generico de falla del SSO.
+
+## Unidad 15 (WU-8b) — rama `feat/login-sso-wu08b` (tareas 15.1 a 15.4)
+
+Base `feat/login-sso-wu08a2` (el target de tasks.md decia wu08a; corregido). Commit de codigo: `feat(frontend): boton admin "Resetear vinculo SSO" junto a "Resetear 2FA"`, 87 inserciones en 3 archivos.
+
+- `useResetearVinculoSsoUsuarioTenant(usuarioId)`: `DELETE usuarios/:id/sso`, copia exacta de `useResetearTfaUsuarioTenant` (sin toasts; el dialogo compone el mensaje).
+- Boton en `EditarUsuarioDialog` con `ConfirmDialog`, debajo del bloque de "Resetear 2FA", sin condiciones de visibilidad nuevas (el 2FA tampoco las tiene en el componente: la autorizacion es del backend, todo rechazo llega como 404). Exito → toast; error → toast neutro "No se pudo resetear el vinculo SSO de este usuario." (mismo patron que el de 2FA, con el nombre del reseteo; no distingue motivo).
+- Gotcha: el reseteo de 2FA NO invalida ninguna query (no hay `onSuccess` con `invalidateQueries`), asi que el de SSO tampoco: no cambia nada que la lista muestre. 15.1 decia "invalida la query"; se siguio el patron real.
+- Tests solo via el dialogo (el hook no tiene archivo propio): aparece junto a "Resetear 2FA", confirmar llama al endpoint una vez y muestra el toast, 404 → mensaje neutro y sin toast de exito.
+- Verificacion (frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/usuarios` 44 en verde (6 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: boton "Resetear vinculo SSO" (backend/ayuda no se toco).

@@ -45,7 +45,7 @@ Ramas por WU (base entre paréntesis):
 - WU-7a `feat/login-sso-wu07a` (wu06c)
 - WU-7b `feat/login-sso-wu07b` (wu07a)
 - WU-8a `feat/login-sso-wu08a` (wu07b)
-- WU-8b `feat/login-sso-wu08b` (wu08a)
+- WU-8b `feat/login-sso-wu08b` (wu08a2)
 - WU-9 `feat/login-sso-wu09` (wu08b)
 
 Verificación común por WU (lo que aplique): backend `pnpm lint`, `pnpm typecheck`, `pnpm vitest run <rutas>`; frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm test`; raíz `node scripts/check-casts-en-specs.mjs` (el ratchet no debe subir: los mocks completos de repositorios llevan la línea nueva, sin casts). Specs de integración y e2e sobre bases de test compartidas: aplicar antes la migración master `20261010120000_login_sso` a `soporte_master_test` (una vez, desde la WU-1a); todo spec que trunca `soporte_master_test` llama `usarLockMasterTest()` (`src/testing/lock-master-test.ts`) antes de su `describe`; borrar solo lo que el spec creó. Tenant efímero: limpiar filas → `app.close()` → `dropDatabase`. Si la suite tira `PrismaClientKnownRequestError` masivo, comprobar primero la base (`pnpm prisma migrate status --schema prisma_tenant/schema.prisma`). El `pnpm test` completo del backend corre **solo** (sin otros procesos sobre la base) en la última WU de backend (WU-6) y el del frontend en la WU-9. Specs que no cambian: se prueba con `git diff --stat <rama base>..HEAD -- <rutas>` vacío.
@@ -236,12 +236,12 @@ Rama `feat/login-sso-wu08a` → target `feat/login-sso-wu07b2`. **Partida en dos
 
 ## Unidad 15 (WU-8b) — Botón admin "Resetear vínculo SSO" (~180 líneas)
 
-Rama `feat/login-sso-wu08b` → target `feat/login-sso-wu08a`. Requerimientos: SV7, SV8.
+Rama `feat/login-sso-wu08b` → target `feat/login-sso-wu08a2`. Requerimientos: SV7, SV8.
 
-- [ ] 15.1 Test del botón y de `useResetearVinculoSsoUsuarioTenant`: el botón "Resetear vínculo SSO" aparece junto a "Resetear 2FA" y abre `ConfirmDialog`; confirmar llama `DELETE usuarios/:id/sso` e invalida la query; un 404 muestra el mismo mensaje neutro que el reseteo de 2FA; éxito → toast. (SV7, SV8)
-- [ ] 15.2 Agregar `useResetearVinculoSsoUsuarioTenant` en `frontend/src/features/usuarios/hooks/use-usuarios-tenant-mutations.ts`. (SV7)
-- [ ] 15.3 Agregar el botón con `ConfirmDialog` en `frontend/src/features/usuarios/components/editar-usuario-dialog.tsx`. (SV7, SV8)
-- [ ] 15.4 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/features/usuarios`; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada ("Resetear vínculo SSO").
+- [x] 15.1 Test del botón y de `useResetearVinculoSsoUsuarioTenant`: el botón "Resetear vínculo SSO" aparece junto a "Resetear 2FA" y abre `ConfirmDialog`; confirmar llama `DELETE usuarios/:id/sso` e invalida la query; un 404 muestra el mismo mensaje neutro que el reseteo de 2FA; éxito → toast. (SV7, SV8)
+- [x] 15.2 Agregar `useResetearVinculoSsoUsuarioTenant` en `frontend/src/features/usuarios/hooks/use-usuarios-tenant-mutations.ts`. (SV7)
+- [x] 15.3 Agregar el botón con `ConfirmDialog` en `frontend/src/features/usuarios/components/editar-usuario-dialog.tsx`. (SV7, SV8)
+- [x] 15.4 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/features/usuarios`; raíz `node scripts/check-casts-en-specs.mjs`. Deuda de Ayuda anotada ("Resetear vínculo SSO").
 
 ## Unidad 16 (WU-9) — README, runbook y notas de deploy (~140 líneas)
 
