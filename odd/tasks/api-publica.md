@@ -78,7 +78,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T7 — Ruta BFF `/api/v1/*`** (~200, salió en 354): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [x] **T8 — Diálogo de ROOT** (~250, salió en 300): habilitar o deshabilitar la API por cliente. Ruta: delegada.
 - [x] **T9 — Pantalla "Integraciones"** (~380, salió en 821): listar, crear (con la clave mostrada una sola vez) y revocar, con último uso. Ruta: delegada.
-- [ ] **T10 — Docs y cierre** (~120): README, notas de deploy en el runbook, deuda de Ayuda, verificación completa y `judgment-day`, porque es un cambio grande y de seguridad. Ruta: delegada para la verificación.
+- [x] **T10 — Docs y cierre** (~120): README, notas de deploy en el runbook, deuda de Ayuda, verificación completa y `judgment-day`, porque es un cambio grande y de seguridad. Ruta: delegada para la verificación.
 
 ## Verificación
 Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas de backend y frontend, el ratchet de casts y `judgment-day`. RDD está apagado.
@@ -214,5 +214,32 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - ~~**Abierto, decisión del dueño:** ¿el ADMINISTRADOR tiene que ver si la API está habilitada antes de intentar un alta?~~ Resuelto por el dueño el 2026-10-10: queda como está en la etapa 1, con la nota de la página y el 422. Sin cambio de backend.
   - ~~**Abierto, decisión del dueño:** los mensajes de los errores 422 llegan del backend sin tildes.~~ Resuelto por el dueño el 2026-10-10: se corrigen en el backend. `7b08017a`, 20 líneas: 6 mensajes de `integraciones.errors.ts` (el resto del backend ya llevaba tildes, por ejemplo `tickets.errors.ts:139`) y los 2 fixtures del frontend que imitan el 422. Verificación (orquestador): backend `pnpm lint` y `pnpm typecheck` en 0, `src/integraciones` y `test/integraciones` 106/106; frontend `src/features/integraciones` 13/13.
 
+- 2026-10-11: T10 hecha, en la rama `feat/api-publica-t10` (sale de `t9`):
+  - Docs, `09a324b7` (85 líneas):
+    - README, sección "API pública (v1)" y la variable `API_V1_RATE_LIMIT`;
+    - runbook, sección "API pública (v1)": la migración y su rollback, la dependencia, la variable, la ruta BFF sin cambios en IIS y un chequeo rápido post-deploy con `curl`;
+    - roadmap: el punto 8 queda "En curso" (faltan los webhooks); la etapa 1 queda "Cumplida, con cinco desviaciones aprobadas por el dueño"; la deuda técnica suma la nueva subsección "Deuda de Ayuda".
+  - `7221e662`: el límite en memoria por proceso se suma como deuda, a pedido del dueño.
+  - Verificación completa en `09a324b7` (worker), toda verde:
+    - backend: `pnpm lint` y `pnpm typecheck` en 0; `pnpm test` 701/701 archivos y 8400/8400 tests (unos 22 minutos);
+    - frontend: `pnpm lint` y `pnpm type-check` en 0; `pnpm test` 268/268 y 2199/2199;
+    - casts en 617 y roadmap fresco;
+    - ningún `.env`, secreto ni clave en el diff.
+  - `judgment-day`, con dos jueces ciegos sobre el diff congelado `66865b6d..7221e662` (98 archivos de código). Ningún juez marcó nada como crítico. Los dos confirmaron tres advertencias que rompían criterios de aceptación; el dueño aprobó corregirlas como bugfix con TDD:
+    - **JD-1**, `447ac3f3`: el límite contaba por clave **y por ruta** (unas 300 por minuto), porque `generateKey` de `@nestjs/throttler` mete el controller y el método. Ahora hay un solo cupo por clave para todas las rutas v1 (CA6). RED: `[200, 201, 200, 201]`; GREEN: `[200, 201, 200, 429]`.
+    - **JD-2**, `d37b9656`: el actor heredaba el rol de la membresía. Si un ADMINISTRADOR subía al usuario de integración a ADMINISTRADOR, todas las claves saltaban su subconjunto de permisos (CA3). Ahora el rol queda fijo en `USUARIO` (`ROL_ACTOR_API`). RED (e2e): una clave de solo lectura creaba tickets (201 en vez de 403).
+    - **JD-3**, `46a0a256`: ver, comentar y `ticketReferenciaId` aceptaban tickets de cualquier módulo. `TicketsV1Query` los limita a TICKETS: un ticket de otro módulo da el mismo 404 que uno inexistente, y 422 como referencia. RED: 200 en vez de 404.
+    - Verificación del fix: lint y typecheck en 0; `integraciones` 118/118; `tickets` y `auth` 1925/1925; casts en 617.
+    - La re-revisión acotada de los dos jueces sobre el delta `7221e662..46a0a256` no encontró nada. **JUDGMENT: APPROVED.**
+  - `271d08ee`: el 404 de `ver` y `comentar` en el OpenAPI menciona el módulo TICKETS. `src/integraciones/interface` y el e2e de OpenAPI dan 21/21.
+  - `fd2bf63c`: lo que no se corrigió pasa a la deuda técnica del roadmap:
+    - JD-4, confirmado como sugerencia: las notificaciones van a la dirección `.invalid`;
+    - vistos por un solo juez: JD-5 (un guardado viejo de cliente vuelve a habilitar la API), JD-6 (un segundo `ThrottlerModule` global) y JD-7 (dos habilitaciones a la vez dan un 500).
+  - Pendientes para el dueño, fuera de esta feature:
+    - `API_V1_RATE_LIMIT` falta en `backend/.env.example` (a Claude se le negó el acceso a ese archivo);
+    - `rollback.sql` deja a los usuarios de integración en `usuarios`;
+    - el punto 7 (SSO) del roadmap todavía dice "Pendiente", aunque está desplegado;
+    - el próximo deploy necesita la instalación manual del runbook ("4. Cambió un lockfile"), porque `@nestjs/swagger` cambió el lockfile.
+
 ## Próximo paso
-T10 (docs, cierre y `judgment-day`), en `feat/api-publica-t10`, que sale de `t9`.
+Feature cerrada: T1 a T10 hechas, en ramas locales. Integrar la cadena a `main`, hacer el push y el deploy son decisiones del dueño, y nada sube a GitHub hasta nuevo aviso.
