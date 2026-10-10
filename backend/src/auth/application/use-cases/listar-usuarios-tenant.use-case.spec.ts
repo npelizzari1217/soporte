@@ -12,6 +12,7 @@ describe('ListarUsuariosTenantUseCase (G2/G3, sdd/beta-frontend)', () => {
           apellido: 'Tec',
           email: 'ada@test.com',
           rolCodigo: 'TECNICO',
+          esIntegracion: false,
         },
       ]),
     };
@@ -32,5 +33,20 @@ describe('ListarUsuariosTenantUseCase (G2/G3, sdd/beta-frontend)', () => {
 
     expect(membresiaRepo.findActivasByCliente).toHaveBeenCalledOnce();
     expect(membresiaRepo.findActivasByCliente).toHaveBeenCalledWith('cliente-del-token');
+  });
+
+  it('excluye al usuario de integracion de la API publica', async () => {
+    const base = { nombre: 'X', apellido: 'Y', rolCodigo: 'USUARIO' };
+    const membresiaRepo = {
+      findActivasByCliente: vi.fn().mockResolvedValue([
+        { ...base, membresiaId: 'm1', usuarioId: 'u1', email: 'a@test.com', esIntegracion: false },
+        { ...base, membresiaId: 'm2', usuarioId: 'u2', email: 'i@x.invalid', esIntegracion: true },
+      ]),
+    };
+    const useCase = new ListarUsuariosTenantUseCase(membresiaRepo);
+
+    const result = await useCase.execute({ clienteId: 'cliente-a' });
+
+    expect(result.getValue().map((u) => u.usuarioId)).toEqual(['u1']);
   });
 });

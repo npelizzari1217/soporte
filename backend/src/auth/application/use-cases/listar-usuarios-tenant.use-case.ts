@@ -30,6 +30,7 @@ export class ListarUsuariosTenantUseCase {
     input: ListarUsuariosTenantInput,
   ): Promise<Result<MembresiaConUsuario[], DomainError>> {
     const usuarios = await this.membresiaRepo.findActivasByCliente(input.clienteId);
-    return Result.ok(usuarios);
+    // El usuario tecnico de la API publica no es una persona: no se lista (sdd/api-publica, CA2).
+    return Result.ok(usuarios.filter((u) => !u.esIntegracion));
   }
 }

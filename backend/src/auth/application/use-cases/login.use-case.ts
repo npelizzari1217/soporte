@@ -151,7 +151,9 @@ export class LoginUseCase {
     // Defensa de timing side-channel (R3): siempre llamamos hashProvider.verify()
     // para normalizar el tiempo de respuesta independientemente de si el
     // usuario existe, está activo o fue soft-deleted. El resultado se descarta.
-    if (!usuario || !usuario.activo || usuario.isDeleted()) {
+    // El usuario de integracion (API publica) nunca entra por login: mismo trato que una
+    // credencial invalida, con el mismo costo de argon2.
+    if (!usuario || !usuario.activo || usuario.isDeleted() || usuario.esIntegracion) {
       await this.hashProvider.verify(dto.password, DUMMY_HASH);
       return Result.fail(new CredencialesInvalidasError());
     }
