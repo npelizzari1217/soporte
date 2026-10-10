@@ -367,3 +367,16 @@ Base `feat/login-sso-wu06c` (el target de tasks.md decia wu06; corregido). Commi
 Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 92 en verde; `check-casts-en-specs.mjs` 617 (base 617).
 
 Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
+
+## Unidad 13 (WU-7b) — rama `feat/login-sso-wu07b` (tareas 13.1 y 13.2)
+
+Base `feat/login-sso-wu07a`. La unidad se parte en dos ramas apiladas porque el codigo junto (callback 261 + paso 107 lineas) mas los docs superaba las 400 lineas por PR: `wu07b` lleva el callback; `feat/login-sso-wu07b2` lleva `paso` (13.3 a 13.5). Commit de codigo: `feat(frontend): ruta BFF callback del login con proveedor externo`, 261 inserciones en 2 archivos.
+
+- `GET /api/auth/sso/[proveedor]/callback`: siempre borra `sso_st` y responde `Cache-Control: no-store` + `Referrer-Policy: no-referrer`. `error=access_denied` → 302 `/login`; otro `error`, falta de `code`/`state`/cookie, slug fuera de la lista, no 2xx, red o forma invalida → 302 `/login?motivo=sso-error`.
+- Contrato real del backend: el campo discriminante es `kind` (`needs2fa` | `needsEnrolamiento2fa` | `ticket`), con `desafio` o `ticket`, `siguiente: string | null` y, solo en `ticket`, `dispositivoConfiable` renovado. El BFF lo valida con un schema Zod espejo y lo traduce a `sso_paso = {k:'2fa'|'enrol'|'ticket', t}` (httpOnly, 120 s; `t` es el desafio o el ticket, nunca un JWT).
+- `dispositivoConfiable` hacia el backend sale solo de la cookie `td`; el de la URL se ignora. Si el backend lo renueva se re-fija `td` (30 dias).
+- `siguiente` se vuelve a sanear con `destinoPosLogin`; se omite de `/login?sso=1` cuando es `/`.
+
+Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 103 en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
