@@ -1,4 +1,6 @@
 # openspec/config.yaml — soporte
+# CONGELADO desde el 2026-10-10: ODD reemplazó a SDD y este archivo queda como historia.
+# Ver ~/proyectos/CLAUDE.md §3.2 y §6.1. No lo lee ninguna herramienta vigente.
 # Generado por sdd-init el 2026-09-01.
 
 schema: spec-driven
@@ -10,19 +12,7 @@ context: |
   espejo del backend). pnpm + Vitest, sin Jest. Postgres en Docker
   (soporte-postgres-master:5432), base de control soporte_master + una base
   por inquilino. Result<T, DomainError> para fallos esperados del dominio.
-  strict_tdd: false para features — el test no tiene que escribirse antes que la
-  implementación, pero sigue viajando en el mismo commit. En bugfixes TDD sigue siendo
-  OBLIGATORIO: el test de regresión se escribe antes del fix y tiene que fallar por la
-  razón correcta. Ver AGENTS.md.
 
-# La excepcion de los bugfixes NO cabe en este booleano, y por eso va escrita aca:
-# strict_tdd: false aplica SOLO a las features. En un cambio cuyo tipo de trabajo es
-# CORRECCION DE DEFECTO, TDD sigue siendo OBLIGATORIO. El orquestador inyecta
-# "STRICT TDD MODE IS ACTIVE" al lanzar sdd-apply y sdd-verify, y esa inyeccion manda
-# por encima de este valor: sdd-apply debe cargar strict-tdd.md y entregar su tabla de
-# TDD Cycle Evidence (RED -> GREEN -> REFACTOR), y sdd-verify la exige.
-# Ver la seccion `## Tests` de AGENTS.md y la 6.3 de ~/proyectos/CLAUDE.md.
-strict_tdd: false
 
 testing:
   backend:
@@ -59,10 +49,6 @@ rules:
     guidelines:
       - "Corrección de defecto: RED verificado (correr y ver fallar por la razón correcta) antes de GREEN"
       - Máximo ~5 archivos de código por commit hacia el revisor (GGA lee AGENTS.md del repo)
-    # false = regla general (features). En un bugfix el orquestador inyecta
-    # "STRICT TDD MODE IS ACTIVE" y esa inyección manda sobre este valor, igual que
-    # sobre strict_tdd (ver el comentario de arriba y la 6.3 de ~/proyectos/CLAUDE.md).
-    tdd: false
     test_command: "pnpm test"
   verify:
     test_command: "pnpm test"
@@ -73,9 +59,3 @@ rules:
       - RDD está OFF (decidido por default, gentle-ai#3289) — delivery bajo política ordinaria del repo, nunca fabricar un receipt
   archive:
     - Advertir antes de fusionar deltas destructivos sobre specs/ vigentes
-
-# Artefactos del ciclo SDD: fuente unica en Git, bajo openspec/changes/.
-# Engram queda como memoria (decisiones, hallazgos, contexto entre sesiones),
-# nunca como copia de estos artefactos. Decision del 2026-09-15.
-sdd:
-  artifact_store: openspec

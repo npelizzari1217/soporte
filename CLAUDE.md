@@ -1,6 +1,6 @@
 # CLAUDE.md — soporte
 
-> Las reglas universales (SDD, persistencia, commits, rama+PR, TDD,
+> Las reglas universales (flujo de trabajo ODD, persistencia, commits, rama+PR, TDD,
 > delegación, estándares de código) viven en `~/proyectos/CLAUDE.md`. Este archivo define
 > solo lo específico de este proyecto: qué es, su stack, cómo se opera y sus convenciones
 > propias.
@@ -96,8 +96,8 @@ La pregunta: **¿alguien que leyó la Ayuda ayer haría algo mal hoy por culpa d
 cambio?** Si la respuesta es sí, actualizarla. Una Ayuda que miente es peor que una que
 falta.
 
-**En el ciclo SDD, la Ayuda va DENTRO del work unit del módulo**, nunca en una tarea final
-de documentación.
+**La Ayuda va dentro de la unidad de trabajo del módulo**, nunca en una tarea final de
+documentación.
 
 ---
 
@@ -119,24 +119,21 @@ El alcance del lint es `eslint .` y cubre `src/**/*.ts` y `scripts/**/*.{mjs,js,
 
 ## Dónde vive el historial de decisiones
 
-Este repo aplica el reparto de la §3.3 de `~/proyectos/CLAUDE.md`: **los artefactos del
-ciclo viven en Git, la memoria vive en engram, y nada vive en los dos lados.**
+Este repo aplica el reparto de la §3.3 de `~/proyectos/CLAUDE.md`: **el documento de tareas
+vive en Git, la memoria vive en engram**, y el espejo de ODD es la única copia permitida.
 
-- **Artefactos del ciclo → `openspec/changes/<change>/`.** Desde el 2026-09-15,
-  `openspec/config.yaml` declara `sdd.artifact_store: openspec` y el dispatcher lee solo
-  esos archivos. Cada ciclo lleva `proposal.md`, `specs/`, `design.md`, `tasks.md`,
-  `apply-progress.md`, `verify-report.md` y `state.yaml`.
-  **No crear copias en engram de ninguno de esos artefactos.**
+- **Trabajo nuevo (desde el 2026-10-10) → ODD.** Cada feature lleva su documento
+  `odd/tasks/<feature>.md` y su espejo en engram (`odd/<feature>/tasks`). Ver §3.3 y §6 del
+  global.
+- **`openspec/` es historia congelada de solo lectura.** Los ciclos SDD entre el 2026-08-30
+  y el 2026-10-10 están en `openspec/changes/archive/`, y las specs vigentes en
+  `openspec/specs/` siguen siendo una referencia consultable. Nada se borra, pero ninguna
+  herramienta lee ya `openspec/config.yaml`.
 - **Memoria → engram.** Decisiones con su porqué, hallazgos, gotchas, narrativa de
-  bugfixes, resúmenes de sesión. Puede referenciar un artefacto por ruta o por sha;
-  nunca copiar su contenido.
-- Las copias que existieron hasta el 2026-09-15 quedaron como **lápidas** con el título
-  prefijado `[MIGRADO A GIT]` y un puntero al archivo. Si una búsqueda devuelve una,
-  **no se lee su contenido**: se va al archivo.
-- `openspec/` existe desde el 2026-08-30. Los ciclos desde esa fecha están ahí. Hasta el
-  2026-09-15 estuvieron un nivel más abajo, en `openspec/changes/sdd/<change>/`; se
-  movieron con `git mv` (commit `9d1e152`) porque el modo `openspec` los busca en
-  `changes/<change>/`.
+  bugfixes, resúmenes de sesión. Puede referenciar un artefacto por ruta o por sha.
+- Las copias de artefactos que existieron en engram hasta el 2026-09-15 quedaron como
+  **lápidas** con el título prefijado `[MIGRADO A GIT]` y un puntero al archivo. Si una
+  búsqueda devuelve una, **no se lee su contenido**: se va al archivo.
 - **Los ciclos anteriores al 2026-08-30 viven solo en engram** y no se backfillearon:
   habría que reconstruir artefactos a partir de observaciones, y un artefacto inventado
   miente peor que uno ausente. Para recuperar una decisión vieja, `mem_search` →
@@ -144,13 +141,13 @@ ciclo viven en Git, la memoria vive en engram, y nada vive en los dos lados.**
 
 ---
 
-## Un ciclo que implementa un punto del roadmap cita su decisión de producto
+## Una feature que implementa un punto del roadmap cita su decisión de producto
 
 `docs/roadmap-comercial.md` tiene una sección, **"Decisiones de producto ya cerradas"**,
-donde vive lo que se acordó para cada punto antes de que existiera código. Ese archivo
-**no lo lee ninguna fase del ciclo SDD**. Por eso se colaron dos desviaciones.
+donde vive lo que se acordó para cada punto antes de que existiera código. Ningún paso del
+flujo de trabajo lee ese archivo por sí solo. Por eso se colaron dos desviaciones.
 
-La del punto 5 es la que hay que tener presente: el ciclo `sdd/sla-habil` tuvo
+La del punto 5 es la que hay que tener presente: el ciclo `sla-habil` (SDD) tuvo
 **diez pasadas de revisión adversarial** —WU-1 tres veces, WU-2 tres, WU-3 cuatro—, con
 un FAILED real encontrado por mutación, corregido y re-revisado. Y ninguna vio que el
 calendario entregado es **global** cuando la decisión acordada pedía **por cliente**.
@@ -159,19 +156,20 @@ calendario entregado es **global** cuando la decisión acordada pedía **por cli
 `AGENTS.md` y contra la spec de su propio work unit. La decisión existía desde tres días
 antes de que el ciclo arrancara, y nunca entró al alcance de nadie.
 
-Por eso, cuando un ciclo implementa un punto del roadmap:
+Por eso, cuando una feature implementa un punto del roadmap:
 
-1. **La spec cita la decisión por ruta** — `docs/roadmap-comercial.md`, sección
-   "Decisiones de producto ya cerradas", viñeta del punto.
-2. **Cada viñeta de esa decisión se convierte en un requerimiento con su escenario
-   verificable.** No se parafrasea en prosa suelta: entra como requerimiento, que es lo
-   que `sdd-verify` sabe contrastar.
-3. Si algo de la decisión **no** se va a implementar, se declara en la spec con su
+1. **El documento ODD de la feature (`odd/tasks/<feature>.md`) cita la decisión por ruta**
+   — `docs/roadmap-comercial.md`, sección "Decisiones de producto ya cerradas", viñeta del
+   punto.
+2. **Cada viñeta de esa decisión se convierte en un criterio de aceptación con su
+   verificación concreta.** No se parafrasea en prosa suelta: entra como criterio, que es
+   lo que el cierre de ODD sabe contrastar.
+3. Si algo de la decisión **no** se va a implementar, se declara en el documento con su
    motivo, antes de empezar. Una desviación acordada de antemano es una decisión; una
    descubierta dos meses después es un defecto.
 
-Esto no agrega una fase ni un control nuevo: le da a `sdd-verify` —que ya existe y ya
-corre— el insumo que le faltaba.
+Esto no agrega una fase ni un control nuevo: le da a la verificación del cierre de ODD
+—y a `judgment-day`, cuando se usa— el insumo que le faltaba.
 
 **Al cerrar el punto**, su viñeta en "Decisiones de producto ya cerradas" declara
 **Cumplida** o **Desviación** con su motivo. No es opcional:
