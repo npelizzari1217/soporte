@@ -104,7 +104,10 @@ export class TicketsV1Controller {
   @ParamIdTicket()
   @ApiOkResponse({ type: TicketV1 })
   @ApiBadRequestResponse({ type: ErrorV1, description: 'El id no es un uuid.' })
-  @ApiNotFoundResponse({ type: ErrorV1, description: 'El ticket no existe o es de otro cliente.' })
+  @ApiNotFoundResponse({
+    type: ErrorV1,
+    description: 'El ticket no existe, es de otro cliente o no es del módulo TICKETS.',
+  })
   async ver(
     @CurrentUser() actor: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
@@ -202,7 +205,10 @@ export class TicketsV1Controller {
     type: ErrorV1,
     description: 'El id no es un uuid o el cuerpo no cumple el contrato.',
   })
-  @ApiNotFoundResponse({ type: ErrorV1, description: 'El ticket no existe o es de otro cliente.' })
+  @ApiNotFoundResponse({
+    type: ErrorV1,
+    description: 'El ticket no existe, es de otro cliente o no es del módulo TICKETS.',
+  })
   @ApiUnprocessableEntityResponse({
     type: ErrorV1,
     description: 'El estado del ticket no admite comentarios.',
