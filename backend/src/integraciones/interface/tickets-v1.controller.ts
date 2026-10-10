@@ -18,6 +18,7 @@ import { CrearTicketUseCase } from '../../tickets/application/use-cases/crear-ti
 import { ListarTicketsUseCase } from '../../tickets/application/use-cases/listar-tickets.use-case';
 import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtener-ticket.use-case';
 import { toHttpException } from '../../tickets/interface/controllers/tickets.controller';
+import { TicketsV1Query } from '../application/tickets-v1.query';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiV1 } from './api-v1.decorator';
 import { ErrorV1 } from './error-v1.dto';
@@ -52,6 +53,7 @@ export class TicketsV1Controller {
     private readonly crearComentario: CrearComentarioUseCase,
     private readonly presenter: TicketsV1Presenter,
     private readonly tiposV1: TiposTicketV1Query,
+    private readonly ticketsV1: TicketsV1Query,
   ) {}
 
   /** Lista los tickets del cliente de la clave, paginados. Requiere `TICKETS:LECTURA`. */
@@ -89,7 +91,10 @@ export class TicketsV1Controller {
     return { items: await this.presenter.presentar(items), total, pagina, porPagina };
   }
 
-  /** Un ticket del cliente de la clave. Uno de otro cliente da 404. Requiere `TICKETS:LECTURA`. */
+  /**
+   * Un ticket del cliente de la clave. Uno de otro cliente o de otro modulo da el mismo 404 que uno
+   * inexistente. Requiere `TICKETS:LECTURA`.
+   */
   @Get(':id')
   @RequiereAcciones('TICKETS:LECTURA')
   @ApiOperation({
@@ -104,6 +109,10 @@ export class TicketsV1Controller {
     @CurrentUser() actor: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TicketV1> {
+    const deV1 = await this.ticketsV1.validarExistente(id);
+    if (deV1.isFail()) {
+      throw toHttpException(deV1.getError());
+    }
     const result = await this.obtenerTicket.execute({
       ticketId: id,
       actorId: actor.sub,
@@ -120,7 +129,9 @@ export class TicketsV1Controller {
    * Crea un ticket a nombre del usuario de integracion (solicitante y autor). Requiere
    * `TICKETS:ALTAS`. 422 si tipo, prioridad o referencia no existen; 409 si no hay ciclo activo.
    * El tipo tiene que ser uno de los que publica `GET /v1/catalogos` (activo, del modulo TICKETS):
-   * si no, 422 con el mismo mensaje sea inexistente, dado de baja o de otro modulo (T5e).
+   * si no, 422 con el mismo mensaje sea inexistente, dado de baja o de otro modulo (T5e). La
+   * referencia, si viene, tiene que ser un ticket del modulo TICKETS: si no, el mismo 422 que una
+   * referencia inexistente.
    */
   @Post()
   @RequiereAcciones('TICKETS:ALTAS')
@@ -145,6 +156,12 @@ export class TicketsV1Controller {
     if (tipo.isFail()) {
       throw toHttpException(tipo.getError());
     }
+    if (dto.ticketReferenciaId) {
+      const referencia = await this.ticketsV1.validarReferencia(dto.ticketReferenciaId);
+      if (referencia.isFail()) {
+        throw toHttpException(referencia.getError());
+      }
+    }
     const result = await this.crearTicket.execute({
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,
@@ -165,7 +182,8 @@ export class TicketsV1Controller {
 
   /**
    * Agrega un comentario PUBLICO a un ticket del cliente de la clave. Requiere `TICKETS:COMENTAR`.
-   * Nunca es interno: la API no tiene forma de pedirlo. 404 si el ticket no es del cliente. El autor
+   * Nunca es interno: la API no tiene forma de pedirlo. 404 si el ticket no es del cliente o es de
+   * otro modulo, antes de escribir nada. El autor
    * es el usuario de integracion, que habla por el cliente: el comentario no cuenta como primera
    * respuesta de SLA (`autorEsIntegracion`, T5d).
    */
@@ -194,6 +212,10 @@ export class TicketsV1Controller {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CrearComentarioV1Dto,
   ): Promise<ComentarioV1> {
+    const deV1 = await this.ticketsV1.validarExistente(id);
+    if (deV1.isFail()) {
+      throw toHttpException(deV1.getError());
+    }
     const result = await this.crearComentario.execute({
       ticketId: id,
       texto: dto.texto,

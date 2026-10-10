@@ -47,6 +47,7 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import { TicketsV1Query } from './application/tickets-v1.query';
 import { TiposTicketV1Query } from './application/tipos-ticket-v1.query';
 import { IntegracionesModule } from './integraciones.module';
 import { CatalogosV1Controller } from './interface/catalogos-v1.controller';
@@ -126,6 +127,13 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
       provide: TiposTicketV1Query,
       useFactory: (listarTipos: ListarTiposTicketUseCase) => new TiposTicketV1Query(listarTipos),
       inject: [ListarTiposTicketUseCase],
+    },
+    // Gate de modulo de ver, comentar y la referencia del alta (solo tickets del modulo TICKETS).
+    {
+      provide: TicketsV1Query,
+      useFactory: (ticketRepo: ITicketRepository, tipoTicketRepo: ITipoTicketRepository) =>
+        new TicketsV1Query(ticketRepo, tipoTicketRepo),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: ListarPrioridadesUseCase,

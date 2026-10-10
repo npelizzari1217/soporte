@@ -311,6 +311,47 @@ describe('API v1 e2e — tickets', () => {
     expect(await a.tenant.ticket.count()).toBe(0);
   });
 
+  it('JD-3: un ticket de otro modulo no existe para v1: 404 al ver y comentar, 422 como referencia', async () => {
+    const a = await crearEntorno(DB_A);
+    const clave = await emitirClave(a, TODOS);
+    const creado = await crearTicket(a, clave);
+    // El ticket pasa a un tipo de otro modulo (EDILICIA, del seed), como uno creado por la app.
+    const edilicia = await a.tenant.tipoTicket.findUniqueOrThrow({ where: { codigo: 'EDILICIA' } });
+    await a.tenant.ticket.update({ where: { id: creado.data.id }, data: { tipoId: edilicia.id } });
+    const inexistenteId = '01977a00-0000-7000-8000-00000000beef';
+    /** Cuerpo sin el id pedido, para comparar el 404 de un ticket ajeno con el de uno inexistente. */
+    const sinId = (data: unknown, id: string) => JSON.stringify(data).replaceAll(id, '<id>');
+
+    const detalle = await llamar(clave, 'GET', `/${creado.data.id}`);
+    const detalleInexistente = await llamar(clave, 'GET', `/${inexistenteId}`);
+    expect(detalle.status).toBe(404);
+    expect(sinId(detalle.data, creado.data.id)).toBe(
+      sinId(detalleInexistente.data, inexistenteId),
+    );
+
+    const comentario = await llamar(clave, 'POST', `/${creado.data.id}/comentarios`, {
+      texto: 'No deberia quedar',
+    });
+    const comentarioInexistente = await llamar(clave, 'POST', `/${inexistenteId}/comentarios`, {
+      texto: 'No deberia quedar',
+    });
+    expect(comentario.status).toBe(404);
+    expect(sinId(comentario.data, creado.data.id)).toBe(
+      sinId(comentarioInexistente.data, inexistenteId),
+    );
+    // Solo la operacion de apertura: el comentario no se escribio.
+    expect(await a.tenant.operacionTicket.count({ where: { ticketId: creado.data.id } })).toBe(1);
+
+    const conReferencia = await llamar(clave, 'POST', '', {
+      titulo: 'Continua el de otro modulo',
+      tipoId: a.tipoId,
+      prioridadId: a.prioridadId,
+      ticketReferenciaId: creado.data.id,
+    });
+    expect(conReferencia.status).toBe(422);
+    expect(await a.tenant.ticket.count()).toBe(1);
+  });
+
   it('el detalle nunca incluye comentarios internos ni ids internos', async () => {
     const a = await crearEntorno(DB_A);
     const clave = await emitirClave(a, TODOS);

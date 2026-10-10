@@ -11,6 +11,7 @@ import { OperacionTicketEntity } from '../../tickets/domain/entities/operacion-t
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../tickets/domain/errors/tickets.errors';
 import { TipoTicketV1NoDisponibleError } from '../domain/integraciones.errors';
+import { TicketsV1Query } from '../application/tickets-v1.query';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiClaveGuard } from '../infrastructure/api-clave.guard';
 import { ApiV1ThrottlerGuard } from '../infrastructure/api-v1-throttler.guard';
@@ -48,7 +49,7 @@ function ticket(): TicketEntity {
   });
 }
 
-async function armar(encontrado = true, tipoPublicado = true) {
+async function armar(encontrado = true, tipoPublicado = true, deV1 = true) {
   const listar = vi
     .fn()
     .mockResolvedValue(Result.ok({ items: [ticket()], total: 1, pagina: 1, porPagina: 20 }));
@@ -78,6 +79,10 @@ async function armar(encontrado = true, tipoPublicado = true) {
     .mockResolvedValue(
       tipoPublicado ? Result.ok(undefined) : Result.fail(new TipoTicketV1NoDisponibleError()),
     );
+  const validarExistente = vi
+    .fn()
+    .mockResolvedValue(deV1 ? Result.ok(undefined) : Result.fail(new TicketNoEncontradoError(ID)));
+  const validarReferencia = vi.fn().mockResolvedValue(Result.ok(undefined));
   const modulo = await Test.createTestingModule({
     controllers: [TicketsV1Controller],
     providers: [
@@ -87,6 +92,7 @@ async function armar(encontrado = true, tipoPublicado = true) {
       { provide: CrearTicketUseCase, useValue: { execute: crear } },
       { provide: CrearComentarioUseCase, useValue: { execute: comentar } },
       { provide: TiposTicketV1Query, useValue: { validarParaAlta: validarTipo } },
+      { provide: TicketsV1Query, useValue: { validarExistente, validarReferencia } },
     ],
   })
     .overrideGuard(ApiClaveGuard)
@@ -103,6 +109,7 @@ async function armar(encontrado = true, tipoPublicado = true) {
     crear,
     comentar,
     validarTipo,
+    validarExistente,
   };
 }
 
@@ -199,5 +206,17 @@ describe('TicketsV1Controller (lectura)', () => {
       autorEsIntegracion: true,
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
+  });
+
+  it('JD-3: un ticket fuera de v1 es 404 al ver y al comentar, sin llegar a los casos de uso', async () => {
+    const { controller, obtener, comentar, validarExistente } = await armar(true, true, false);
+
+    await expect(controller.ver(actor, ID)).rejects.toMatchObject({ status: 404 });
+    await expect(controller.comentar(actor, ID, { texto: 'hola' })).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(validarExistente).toHaveBeenCalledWith(ID);
+    expect(obtener).not.toHaveBeenCalled();
+    expect(comentar).not.toHaveBeenCalled();
   });
 });
