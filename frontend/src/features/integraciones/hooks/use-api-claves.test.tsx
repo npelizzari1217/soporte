@@ -94,7 +94,7 @@ describe("hooks de claves de la API pública", () => {
   it("useCrearApiClave informa el 422 con el mensaje del backend y no llama al callback", async () => {
     server.use(
       http.post("/api/integraciones/claves", () =>
-        HttpResponse.json({ statusCode: 422, message: "La API del cliente no esta habilitada." }, { status: 422 }),
+        HttpResponse.json({ statusCode: 422, message: "La API del cliente no está habilitada." }, { status: 422 }),
       ),
     );
     const onClaveCreada = vi.fn();
@@ -105,7 +105,7 @@ describe("hooks de claves de la API pública", () => {
       result.current.mutateAsync({ nombre: "ERP", permisos: ["TICKETS:LECTURA"] }).catch(() => undefined),
     );
 
-    expect(toast.error).toHaveBeenCalledWith("La API del cliente no esta habilitada.");
+    expect(toast.error).toHaveBeenCalledWith("La API del cliente no está habilitada.");
     expect(onClaveCreada).not.toHaveBeenCalled();
   });
 

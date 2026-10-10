@@ -22,7 +22,7 @@ export class RolIntegracionNoEncontradoError extends DomainError {
   readonly code = 'API_ROL_INTEGRACION_NO_ENCONTRADO';
 
   constructor(codigo: string) {
-    super(`No existe el rol ${codigo} para la membresia del usuario de integracion.`);
+    super(`No existe el rol ${codigo} para la membresía del usuario de integración.`);
   }
 }
 
@@ -31,7 +31,7 @@ export class EmailIntegracionOcupadoError extends DomainError {
   readonly code = 'API_EMAIL_INTEGRACION_OCUPADO';
 
   constructor() {
-    super('El email tecnico de integracion ya lo usa otro usuario.');
+    super('El email técnico de integración ya lo usa otro usuario.');
   }
 }
 
@@ -40,7 +40,7 @@ export class ApiNoHabilitadaError extends DomainError {
   readonly code = 'API_NO_HABILITADA';
 
   constructor() {
-    super('La API del cliente no esta habilitada.');
+    super('La API del cliente no está habilitada.');
   }
 }
 
@@ -49,7 +49,7 @@ export class UsuarioIntegracionNoEncontradoError extends DomainError {
   readonly code = 'API_USUARIO_INTEGRACION_NO_ENCONTRADO';
 
   constructor() {
-    super('No existe el usuario de integracion del cliente.');
+    super('No existe el usuario de integración del cliente.');
   }
 }
 
@@ -58,7 +58,7 @@ export class PermisosApiInvalidosError extends DomainError {
   readonly code = 'API_PERMISOS_INVALIDOS';
 
   constructor() {
-    super('La clave necesita al menos un permiso, y todos deben ser de la API publica.');
+    super('La clave necesita al menos un permiso, y todos deben ser de la API pública.');
   }
 }
 
@@ -88,6 +88,6 @@ export class TipoTicketV1NoDisponibleError extends DomainError {
   readonly code = 'API_TIPO_TICKET_NO_DISPONIBLE';
 
   constructor() {
-    super('El tipo de ticket no existe o no esta disponible en la API.');
+    super('El tipo de ticket no existe o no está disponible en la API.');
   }
 }

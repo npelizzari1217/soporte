@@ -168,7 +168,7 @@ describe("IntegracionesAdminView", () => {
     mockLista([]);
     server.use(
       http.post("/api/integraciones/claves", () =>
-        HttpResponse.json({ statusCode: 422, message: "La API del cliente no esta habilitada." }, { status: 422 }),
+        HttpResponse.json({ statusCode: 422, message: "La API del cliente no está habilitada." }, { status: 422 }),
       ),
     );
     renderAdmin();
@@ -177,7 +177,7 @@ describe("IntegracionesAdminView", () => {
     await user.click(screen.getByRole("checkbox", { name: "Ver tickets" }));
     await user.click(screen.getByRole("button", { name: "Crear" }));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La API del cliente no esta habilitada."));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La API del cliente no está habilitada."));
     expect(screen.getByRole("heading", { name: "Nueva clave de API" })).toBeInTheDocument();
     expect(screen.queryByText("Clave creada")).not.toBeInTheDocument();
   });
