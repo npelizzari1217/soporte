@@ -370,6 +370,56 @@ backend fallido queda tapado por un install de frontend exitoso y se lee como re
 completa. Es la misma trampa que el `echo $?` detrás de un pipe, unos párrafos más arriba —
 pasó de verdad el 2026-09-09, desplegando `83bdc8a`.
 
+#### Aun con Node 24 al frente, el `postinstall` del backend puede fallar igual
+
+Verificado el 2026-10-10, desplegando `504a3725` (la dependencia `jose` cambió el lockfile).
+Con `C:\nodejs24` al frente del PATH, el install del backend falló en su `postinstall` con el
+mismo mensaje del bloque de arriba:
+
+```
+postinstall:  ERROR  packages field missing or empty
+[ELIFECYCLE] Command failed with exit code 1.
+```
+
+Esta vez **no era Node**: `node -v` daba `v24.20.0`. Era **pnpm**. El `postinstall` llama a
+`pnpm run generate:master` con `pnpm` a secas, y en el VPS `pnpm` a secas no es el de
+`corepack`:
+
+| Comando | Resuelve a | Versión |
+|---|---|---|
+| `corepack pnpm` | el que fija el proyecto | **11.18.0** |
+| `pnpm` a secas | `C:\Users\Administrator\AppData\Roaming\npm\pnpm.cmd` (global de npm) | **9.15.4** |
+
+pnpm 9 lee el `pnpm-workspace.yaml` del backend, que no tiene campo `packages` (solo
+`allowBuilds` y `publicHoistPattern`, que son de pnpm 11), y lo rechaza. Anteponer
+`C:\nodejs24` no ayuda: esa carpeta no tiene un shim de `pnpm` (`where.exe pnpm` no la lista),
+así que `pnpm` a secas cae primero en `AppData\Roaming\npm` y después en
+`C:\Program Files\nodejs`.
+
+**Qué hacer si pasa.** El install **sí completó** antes del `postinstall`: las dependencias
+nuevas quedan en `node_modules` (en este caso, `jose`). Lo único que falla es el
+`prisma generate`, y `deploy.ps1` lo vuelve a correr por `corepack` en su paso de builds. Por
+eso alcanza con:
+
+1. Confirmar que la dependencia nueva quedó instalada, por ejemplo con
+   `Test-Path C:\soporte\backend\node_modules\jose\package.json`.
+2. Saltear el install del frontend si su lockfile no cambió. El `throw` del backend corta el
+   bloque antes de llegar al frontend.
+3. Re-correr `.\deploy.ps1`. El 2026-10-10 terminó con `DEPLOY OK`.
+
+Si cambió el lockfile del **frontend**, su install hay que correrlo igual, aparte.
+
+**El arreglo de fondo**, que todavía no se hizo, es desinstalar ese pnpm 9 global
+(`npm rm -g pnpm`), así `pnpm` a secas cae en el shim de `corepack`. **El VPS es compartido con
+educandow**: antes de borrarlo, confirmar que ningún script ni servicio de educandow depende de
+`pnpm` 9. Es la misma regla que con el Node 22 de más arriba.
+
+**Un detalle del rollback en este camino.** Cuando el primer `deploy.ps1` aborta por el
+lockfile, el pull ya está hecho. La segunda corrida anota como punto de rollback el `HEAD` nuevo
+(`Rollback: git reset --hard <commit nuevo>`), y no el commit anterior al deploy. El punto real
+de rollback es el commit que tenía producción **antes** del primer `deploy.ps1`, más el dump de
+`predeploy-dump.ps1`. Anotalo antes de empezar, con `git rev-parse --short HEAD` en el VPS.
+
 ### 5. Rotación de `EMAIL_CRYPTO_KEY` (`rotate-email-crypto-key.ps1`)
 
 Cifra en reposo la contraseña SMTP de cada cliente **y los secretos TOTP del 2FA**
