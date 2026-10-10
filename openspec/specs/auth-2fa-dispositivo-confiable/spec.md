@@ -57,9 +57,9 @@ El dispositivo DEBE valer 30 días desde su emisión o desde su último uso y ni
 - WHEN el usuario hace login con su token
 - THEN se le pide el código y el dispositivo no se renueva
 
-### Requirement: D3 Un dispositivo válido omite el desafío, no la contraseña
+### Requirement: D3 Un dispositivo válido omite el desafío, no el primer factor
 
-Con un token de dispositivo válido del mismo usuario, el login DEBE omitir el segundo paso pero DEBE exigir la contraseña. Un token vencido, revocado, desconocido o emitido para otro usuario DEBE ignorarse y el login sigue con el desafío normal.
+Con un token de dispositivo válido del mismo usuario, el login DEBE omitir el segundo paso pero DEBE exigir el primer factor: la contraseña, o el ingreso por SSO completo y aceptado. Un dispositivo válido NO DEBE permitir entrar sin uno de los dos. Un token vencido, revocado, desconocido o emitido para otro usuario DEBE ignorarse y el login sigue con el desafío normal. La vigencia de 30 días y su renovación son las de D2, también cuando el primer factor fue el SSO.
 
 #### Scenario: Dispositivo válido
 
@@ -78,6 +78,30 @@ Con un token de dispositivo válido del mismo usuario, el login DEBE omitir el s
 - GIVEN un dispositivo vigente
 - WHEN la contraseña es incorrecta
 - THEN el login falla como cualquier credencial inválida
+
+#### Scenario: SSO con dispositivo válido
+
+- GIVEN un usuario con 2FA y un dispositivo vigente
+- WHEN supera el ingreso por SSO con el token del dispositivo
+- THEN no se le pide código, recibe el ticket de selección y el dispositivo se renueva a 30 días desde ese ingreso
+
+#### Scenario: SSO con dispositivo de otro usuario o revocado
+
+- GIVEN un token de dispositivo de otro usuario, o uno revocado
+- WHEN el usuario supera el ingreso por SSO con él
+- THEN recibe el desafío normal
+
+#### Scenario: Dispositivo válido sin primer factor
+
+- GIVEN un dispositivo vigente
+- WHEN el ingreso por SSO se rechaza (por ejemplo, email sin verificar)
+- THEN no se omite nada: no hay ticket, ni desafío, ni sesión
+
+#### Scenario: Dispositivo vencido con SSO
+
+- GIVEN un dispositivo sin uso hace más de 30 días
+- WHEN el usuario supera el ingreso por SSO con él
+- THEN se le pide el código y el dispositivo no se renueva
 
 ### Requirement: D4 No disponible para ROOT
 
