@@ -10,13 +10,13 @@ Definir cómo el segundo factor se integra al login: orden de pasos, desafío, q
 
 - **Obligado**: ROOT, o usuario con al menos una membresía activa en un cliente activo que exige 2FA.
 - **Desafío**: estado intermedio, entre contraseña correcta y sesión, que prueba que el usuario ya superó el paso de contraseña.
-- **Ticket de selección**: prueba de un solo uso, de vida corta, de que el usuario superó la contraseña y, si le corresponde, el segundo paso, usada para elegir cliente sin reenviar credenciales.
+- **Ticket de selección**: prueba de un solo uso y vida corta de que el usuario superó el primer factor (contraseña o SSO) y, si le corresponde, el segundo paso, usada para elegir cliente sin reenviar credenciales.
 
 ## Requirements
 
 ### Requirement: L1 Orden del login
 
-El login DEBE seguir este orden: contraseña, después segundo paso o configuración forzada, después selector de cliente (si hay más de una membresía), después sesión. El sistema NO DEBE emitir ningún token de sesión antes de completar los pasos que le corresponden al usuario. Una contraseña incorrecta NO DEBE revelar si la cuenta tiene 2FA.
+El login DEBE seguir este orden: primer factor (contraseña o ingreso por SSO), después segundo paso o configuración forzada, después selector de cliente (si hay más de una membresía), después sesión. El sistema NO DEBE emitir ningún token de sesión antes de completar los pasos que le corresponden al usuario, por ninguno de los dos primeros factores. Entrar por SSO NO DEBE contar como segundo paso. Una contraseña incorrecta NO DEBE revelar si la cuenta tiene 2FA.
 
 #### Scenario: Usuario con 2FA y un solo cliente
 
@@ -35,6 +35,24 @@ El login DEBE seguir este orden: contraseña, después segundo paso o configurac
 - GIVEN un usuario con 2FA y otro sin 2FA
 - WHEN se envía una contraseña incorrecta para cada uno
 - THEN ambas respuestas son idénticas
+
+#### Scenario: Usuario con 2FA que entra por SSO
+
+- GIVEN un usuario con 2FA activo, una membresía y sin dispositivo de confianza vigente
+- WHEN supera el ingreso por SSO
+- THEN recibe un desafío y ningún token; con un código válido recibe la sesión
+
+#### Scenario: SSO no cuenta como segundo paso
+
+- GIVEN un usuario obligado a 2FA que supera el ingreso por SSO
+- WHEN el proveedor ya había pedido su propia verificación en dos pasos
+- THEN igual se le pide el segundo paso propio
+
+#### Scenario: SSO con varios clientes
+
+- GIVEN un usuario con 2FA activo y dos membresías
+- WHEN supera el SSO y el código
+- THEN recién entonces se le presenta el selector
 
 ### Requirement: L2 El desafío es opaco, de vida corta y de un solo uso
 
@@ -136,7 +154,7 @@ En el paso del segundo factor el usuario DEBE poder presentar un código TOTP o 
 
 ### Requirement: L7 El selector usa un ticket y no reenvía contraseña ni código
 
-Tras el paso previo, el selector de cliente DEBE completarse con un ticket de selección de un solo uso y vida corta, sin reenviar la contraseña y sin pedir el código otra vez. El clienteId elegido DEBE ser una membresía activa del usuario; de lo contrario se rechaza con el mismo error que un ticket inválido.
+Tras el primer factor (contraseña o SSO) y el paso previo que le corresponda, el selector de cliente DEBE completarse con un ticket de selección de un solo uso y vida corta, sin reenviar la contraseña y sin pedir el código otra vez. El ticket DEBE ser el mismo, con el mismo canje, tanto si el primer factor fue la contraseña como el SSO. El clienteId elegido DEBE ser una membresía activa del usuario; de lo contrario se rechaza con el mismo error que un ticket inválido.
 
 #### Scenario: Selección con ticket
 
@@ -161,6 +179,18 @@ Tras el paso previo, el selector de cliente DEBE completarse con un ticket de se
 - GIVEN un usuario sin 2FA, no obligado, con dos membresías
 - WHEN supera la contraseña
 - THEN elige cliente con un ticket, sin reenviar la contraseña
+
+#### Scenario: Ticket emitido por el SSO
+
+- GIVEN un usuario no obligado con dos membresías que superó el ingreso por SSO
+- WHEN elige cliente con el ticket que recibió
+- THEN recibe la sesión por el mismo canje y sin enviar contraseña
+
+#### Scenario: Ticket del SSO reutilizado
+
+- GIVEN un ticket emitido por el SSO ya canjeado
+- WHEN se lo presenta de nuevo
+- THEN se rechaza igual que cualquier ticket reutilizado
 
 ### Requirement: L8 Refresh y cambio de cliente no piden el código
 
