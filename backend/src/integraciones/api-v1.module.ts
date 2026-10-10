@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from '../auth/auth.module';
 import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
+import { ListarEstadosUseCase } from '../tickets/application/use-cases/listar-estados.use-case';
+import { ListarPrioridadesUseCase } from '../tickets/application/use-cases/listar-prioridades.use-case';
 import { ListarTicketsUseCase } from '../tickets/application/use-cases/listar-tickets.use-case';
+import { ListarTiposTicketUseCase } from '../tickets/application/use-cases/listar-tipos-ticket.use-case';
 import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
@@ -16,6 +19,10 @@ import {
   IPrimeraRespuestaWriteRepository,
   PRIMERA_RESPUESTA_WRITE_REPOSITORY,
 } from '../tickets/domain/ports/i-primera-respuesta-write.repository';
+import {
+  IPrioridadRepository,
+  PRIORIDAD_REPOSITORY,
+} from '../tickets/domain/ports/i-prioridad.repository';
 import { ITicketRepository, TICKET_REPOSITORY } from '../tickets/domain/ports/i-ticket.repository';
 import {
   ITipoTicketRepository,
@@ -41,6 +48,7 @@ import {
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IntegracionesModule } from './integraciones.module';
+import { CatalogosV1Controller } from './interface/catalogos-v1.controller';
 import { TicketsV1Controller } from './interface/tickets-v1.controller';
 import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
 
@@ -60,7 +68,7 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
       useFactory: () => [{ limit: limiteApiV1(), ttl: API_V1_VENTANA_MS }],
     }),
   ],
-  controllers: [TicketsV1Controller],
+  controllers: [TicketsV1Controller, CatalogosV1Controller],
   providers: [
     ApiClaveGuard,
     ApiV1ThrottlerGuard,
@@ -104,6 +112,24 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
         TENANT_TX_RUNNER,
         PRIMERA_RESPUESTA_WRITE_REPOSITORY,
       ],
+    },
+    // Catalogos de `GET /v1/catalogos` (T5c): mismos casos de uso que la API interna.
+    {
+      provide: ListarTiposTicketUseCase,
+      useFactory: (tipoTicketRepo: ITipoTicketRepository) =>
+        new ListarTiposTicketUseCase(tipoTicketRepo),
+      inject: [TIPO_TICKET_REPOSITORY],
+    },
+    {
+      provide: ListarPrioridadesUseCase,
+      useFactory: (prioridadRepo: IPrioridadRepository) =>
+        new ListarPrioridadesUseCase(prioridadRepo),
+      inject: [PRIORIDAD_REPOSITORY],
+    },
+    {
+      provide: ListarEstadosUseCase,
+      useFactory: (estadoRepo: IEstadoRepository) => new ListarEstadosUseCase(estadoRepo),
+      inject: [ESTADO_REPOSITORY],
     },
   ],
   exports: [ApiClaveGuard, ApiV1ThrottlerGuard, ThrottlerModule, IntegracionesModule],
