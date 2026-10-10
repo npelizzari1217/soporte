@@ -67,7 +67,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 
 ## Tareas
 - [x] **T1 — Modelo en master** (~350): flag `Cliente.apiHabilitada`, marca de usuario de integración en `Usuario` y tabla de claves (prefijo, hash, permisos, nombre, creador, último uso, revocada). Migración con `rollback.sql`, puerto y repositorio, y tests de integración. Ruta: delegada.
-- [ ] **T2 — Habilitación por ROOT** (~350): `PATCH /clientes/:id/api`. Al habilitar, crea de forma idempotente el usuario de integración y su membresía. El login con contraseña y con SSO rechaza a ese usuario, y las listas de usuarios lo excluyen. Ruta: delegada.
+- [x] **T2 — Habilitación por ROOT** (~350): `PATCH /clientes/:id/api`. Al habilitar, crea de forma idempotente el usuario de integración y su membresía. El login con contraseña y con SSO rechaza a ese usuario, y las listas de usuarios lo excluyen. Ruta: delegada.
 - [ ] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
 - [ ] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
 - [ ] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
@@ -88,6 +88,15 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - Decisiones de esquema: `cliente_id` y `usuario_id` en CASCADE, `creada_por_id` en RESTRICT, `prefijo` y `hash` únicos.
   - Verificación en cada punta: typecheck y lint en 0; en `t1`, 159/159 de persistencia de clientes y auth; en `t1b`, 11/11 de `integraciones`. Antes de partir, los casts daban 617 y 726/726 en `src/integraciones`, `src/clientes` y `src/auth/infrastructure`.
   - Se amplió la superficie con el OK del dueño: 4 mappers y specs que Prisma rompía al tipar las columnas nuevas como obligatorias.
+- 2026-10-10: T2 hecha, en 4 unidades apiladas (salió en 759 líneas en total, el doble de lo estimado):
+  - `t2` — `1c014cd6`, 100 líneas: `esIntegracion` y `apiHabilitada` en las entidades y los mappers, que ahora los espejan completos;
+  - `t2b` — `8f33bdaf`, 290 líneas: `ConfigurarApiClienteUseCase`. Habilitar crea el usuario de integración una sola vez (`integracion+<clienteId>@integraciones.invalid`, rol `USUARIO` sin celdas de matriz, contraseña inutilizable). Deshabilitar conserva usuario y claves;
+  - `t2c` — `01e5e9e7`, 283 líneas: `PATCH /clientes/:id/api` con `GlobalAdminGuard`, `IntegracionesModule` y e2e;
+  - `t2d` — `ebe2e295`, 90 líneas: el login con contraseña y el SSO (motivo `INTEGRACION`, solo en el log) rechazan al usuario de integración con el error genérico, y la lista de usuarios lo excluye (`MembresiaConUsuario.esIntegracion`).
+  - Verificación: lint y typecheck en 0 en cada punta; en `t2c`, 1582/1582 del set completo. Control del orquestador en `t2d`: typecheck y lint en 0, e2e más los specs de login, SSO y lista 100/100; casts en 617.
+  - El dueño amplió la superficie: membresías, `sso.errors.ts`.
+  - Corrección: el writer dijo que el typecheck no cubre los specs, y es falso. `tsconfig.typecheck.json` incluye `src/**/*`, así que los specs de `src` están cubiertos y dan verde.
+  - Pendiente para T5: `tickets/.../usuario-master.checker.ts` tiene que aceptar al usuario de integración como autor, y hay que revisar si aparece en los selectores de asignado.
 
 ## Próximo paso
-T2 (habilitación por ROOT), en `feat/api-publica-t2`, que sale de `t1b`. Su superficie de edición tiene que incluir desde el arranque `UsuarioEntity` y `ClienteEntity`, con sus mappers y specs, y sacar de los `Omit` de `toPersistence` los campos que T2 escriba.
+T3 (claves para el ADMINISTRADOR), en `feat/api-publica-t3`, que sale de `t2d`.
