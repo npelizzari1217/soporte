@@ -1,4 +1,15 @@
 import { Body, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+  ApiUnprocessableEntityResponse,
+} from '@nestjs/swagger';
 import { CurrentUser, RequiereAcciones } from '../../auth/infrastructure/guards/decorators';
 import { puedeEjecutar } from '../../auth/domain/permisos.util';
 import { JwtPayload } from '../../auth/domain/ports/i-token.service';
@@ -9,6 +20,7 @@ import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtene
 import { toHttpException } from '../../tickets/interface/controllers/tickets.controller';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiV1 } from './api-v1.decorator';
+import { ErrorV1 } from './error-v1.dto';
 import {
   ComentarioV1,
   CrearComentarioV1Dto,
@@ -21,12 +33,17 @@ import { TicketsV1Presenter } from './tickets-v1.presenter';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 
+/** Path param `id` documentado como uuid: `ParseUUIDPipe` responde 400 a cualquier otra cosa. */
+const ParamIdTicket = (): MethodDecorator =>
+  ApiParam({ name: 'id', format: 'uuid', description: 'Id del ticket.' });
+
 /**
  * API publica `v1` de tickets (sdd/api-publica, T5, CA1): listar, ver, crear y comentar. Reusa los casos de uso
  * de la API interna; la clave llega como un actor sintetico (ver `ApiClaveGuard`). Sin logica de
  * negocio: traduce HTTP a caso de uso y el resultado al contrato `v1`.
  */
 @ApiV1('tickets')
+@ApiTags('Tickets')
 export class TicketsV1Controller {
   constructor(
     private readonly listarTickets: ListarTicketsUseCase,
@@ -40,6 +57,12 @@ export class TicketsV1Controller {
   /** Lista los tickets del cliente de la clave, paginados. Requiere `TICKETS:LECTURA`. */
   @Get()
   @RequiereAcciones('TICKETS:LECTURA')
+  @ApiOperation({
+    summary: 'Lista los tickets del cliente',
+    description: 'Paginado y con filtros combinables (AND). Requiere el permiso de lectura.',
+  })
+  @ApiOkResponse({ type: ListaTicketsV1 })
+  @ApiBadRequestResponse({ type: ErrorV1, description: 'Filtros o paginación inválidos.' })
   async listar(
     @CurrentUser() actor: JwtPayload,
     @Query() query: ListarTicketsV1QueryDto,
@@ -69,6 +92,14 @@ export class TicketsV1Controller {
   /** Un ticket del cliente de la clave. Uno de otro cliente da 404. Requiere `TICKETS:LECTURA`. */
   @Get(':id')
   @RequiereAcciones('TICKETS:LECTURA')
+  @ApiOperation({
+    summary: 'Obtiene un ticket del cliente',
+    description: 'Nunca trae comentarios internos. Requiere el permiso de lectura.',
+  })
+  @ParamIdTicket()
+  @ApiOkResponse({ type: TicketV1 })
+  @ApiBadRequestResponse({ type: ErrorV1, description: 'El id no es un uuid.' })
+  @ApiNotFoundResponse({ type: ErrorV1, description: 'El ticket no existe o es de otro cliente.' })
   async ver(
     @CurrentUser() actor: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
@@ -94,6 +125,21 @@ export class TicketsV1Controller {
   @Post()
   @RequiereAcciones('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Crea un ticket',
+    description:
+      'El ticket queda a nombre de la integración del cliente. Tipo y prioridad salen de ' +
+      '`GET /api/v1/catalogos`. Requiere el permiso de alta.',
+  })
+  @ApiCreatedResponse({ type: TicketV1 })
+  @ApiBadRequestResponse({ type: ErrorV1, description: 'El cuerpo no cumple el contrato.' })
+  @ApiUnprocessableEntityResponse({
+    type: ErrorV1,
+    description:
+      'El tipo no está publicado en el catálogo (inexistente, dado de baja o de otro módulo), o la ' +
+      'prioridad o el ticket de referencia no existen.',
+  })
+  @ApiConflictResponse({ type: ErrorV1, description: 'El cliente no tiene un ciclo activo.' })
   async crear(@CurrentUser() actor: JwtPayload, @Body() dto: CrearTicketV1Dto): Promise<TicketV1> {
     const tipo = await this.tiposV1.validarParaAlta(dto.tipoId);
     if (tipo.isFail()) {
@@ -126,6 +172,23 @@ export class TicketsV1Controller {
   @Post(':id/comentarios')
   @RequiereAcciones('TICKETS:COMENTAR')
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Comenta un ticket',
+    description:
+      'El comentario siempre es público y no cuenta como primera respuesta del SLA. Requiere el ' +
+      'permiso de comentario.',
+  })
+  @ParamIdTicket()
+  @ApiCreatedResponse({ type: ComentarioV1 })
+  @ApiBadRequestResponse({
+    type: ErrorV1,
+    description: 'El id no es un uuid o el cuerpo no cumple el contrato.',
+  })
+  @ApiNotFoundResponse({ type: ErrorV1, description: 'El ticket no existe o es de otro cliente.' })
+  @ApiUnprocessableEntityResponse({
+    type: ErrorV1,
+    description: 'El estado del ticket no admite comentarios.',
+  })
   async comentar(
     @CurrentUser() actor: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,

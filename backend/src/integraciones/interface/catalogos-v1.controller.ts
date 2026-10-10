@@ -1,4 +1,5 @@
 import { Get } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { RequiereAcciones } from '../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../shared/domain/result';
 import { ListarEstadosUseCase } from '../../tickets/application/use-cases/listar-estados.use-case';
@@ -16,6 +17,7 @@ import { aCatalogosV1 } from './catalogos-v1.presenter';
  * tipos salen de `TiposTicketV1Query`, la misma fuente que valida el alta (T5e).
  */
 @ApiV1('catalogos')
+@ApiTags('Catálogos')
 export class CatalogosV1Controller {
   constructor(
     private readonly tiposV1: TiposTicketV1Query,
@@ -26,6 +28,13 @@ export class CatalogosV1Controller {
   /** Tipos, prioridades y estados del cliente de la clave. Requiere `TICKETS:LECTURA`. */
   @Get()
   @RequiereAcciones('TICKETS:LECTURA')
+  @ApiOperation({
+    summary: 'Lista los catálogos del cliente',
+    description:
+      'Tipos, prioridades y estados: los ids que pide el alta de tickets y los que devuelven los ' +
+      'tickets. Requiere el permiso de lectura.',
+  })
+  @ApiOkResponse({ type: CatalogosV1 })
   async listar(): Promise<CatalogosV1> {
     const [tipos, prioridades, estados] = await Promise.all([
       this.tiposV1.listar(),
