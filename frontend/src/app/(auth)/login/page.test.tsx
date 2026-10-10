@@ -40,6 +40,7 @@ describe("LoginPage", () => {
         href: "http://localhost:3000/login",
         origin: "http://localhost:3000",
         pathname: "/login",
+        search: "",
         assign: assignMock,
         replace: vi.fn(),
       },
@@ -181,5 +182,73 @@ describe("LoginPage", () => {
     await user.click(await screen.findByRole("button", { name: /volver/i }));
 
     expect(await screen.findByLabelText(/email/i)).toBeInTheDocument();
+  });
+
+  // Spec: sdd/login-sso — SC4.
+  it("con proveedores habilitados → muestra un enlace por proveedor junto al formulario", async () => {
+    server.use(
+      http.get("/api/auth/sso/proveedores", () => HttpResponse.json({ proveedores: ["google", "microsoft"] })),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Continuar con Google" })).toHaveAttribute(
+      "href",
+      "/api/auth/sso/google/iniciar",
+    );
+    expect(screen.getByRole("link", { name: "Continuar con Microsoft" })).toBeInTheDocument();
+    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
+  });
+
+  it("lista vacía → sin botones de SSO y el formulario de contraseña funciona", async () => {
+    server.use(
+      http.get("/api/auth/sso/proveedores", () => HttpResponse.json({ proveedores: [] })),
+      http.post("/api/auth/login", () =>
+        HttpResponse.json({ user: { sub: "1", cliente_id: "c1", rol: "USUARIO", permisos: [], is_global_admin: false, cliente_nombre: "Cliente Uno", membresias: [] } }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText(/email/i), "user@example.com");
+    await user.type(screen.getByLabelText(/contraseña/i), "secret123");
+    await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
+    expect(screen.queryByRole("link", { name: /continuar con/i })).not.toBeInTheDocument();
+  });
+
+  it("falla de la consulta de proveedores → sin botones de SSO", async () => {
+    let consultas = 0;
+    server.use(
+      http.get("/api/auth/sso/proveedores", () => {
+        consultas += 1;
+        return HttpResponse.json({ message: "boom" }, { status: 500 });
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => expect(consultas).toBe(1));
+    expect(screen.queryByRole("link", { name: /continuar con/i })).not.toBeInTheDocument();
+  });
+
+  it("los botones desaparecen al pasar al segundo paso (solo con paso === credenciales)", async () => {
+    server.use(
+      http.get("/api/auth/sso/proveedores", () => HttpResponse.json({ proveedores: ["google"] })),
+      http.post("/api/auth/login", () => HttpResponse.json({ needs2fa: true, desafio: "ds-1" })),
+    );
+
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("link", { name: "Continuar con Google" });
+    await user.type(screen.getByLabelText(/email/i), "user@example.com");
+    await user.type(screen.getByLabelText(/contraseña/i), "secret123");
+    await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
+
+    await screen.findByLabelText(/código de verificación/i);
+    expect(screen.queryByRole("link", { name: /continuar con/i })).not.toBeInTheDocument();
   });
 });

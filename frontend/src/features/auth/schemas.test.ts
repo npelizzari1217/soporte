@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loginSchema, restablecerPasswordSchema, solicitarResetSchema } from "./schemas";
+import { loginSchema, proveedoresSsoSchema, restablecerPasswordSchema, solicitarResetSchema } from "./schemas";
 
 describe("loginSchema", () => {
   it("valid email + non-empty password → parses successfully", () => {
@@ -71,5 +71,24 @@ describe("restablecerPasswordSchema", () => {
       expect(result.error.issues[0].message).toBe("Las contraseñas no coinciden");
       expect(result.error.issues[0].path).toEqual(["repetirPassword"]);
     }
+  });
+});
+
+describe("proveedoresSsoSchema", () => {
+  it("lista con ambos proveedores → parsea", () => {
+    const result = proveedoresSsoSchema.safeParse({ proveedores: ["google", "microsoft"] });
+    expect(result.success).toBe(true);
+  });
+
+  it("lista vacía → parsea", () => {
+    expect(proveedoresSsoSchema.safeParse({ proveedores: [] }).success).toBe(true);
+  });
+
+  it("proveedor desconocido → falla", () => {
+    expect(proveedoresSsoSchema.safeParse({ proveedores: ["github"] }).success).toBe(false);
+  });
+
+  it("sin la clave `proveedores` → falla", () => {
+    expect(proveedoresSsoSchema.safeParse({}).success).toBe(false);
   });
 });
