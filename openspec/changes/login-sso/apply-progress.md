@@ -343,3 +343,15 @@ Tercera rama: el codigo con su spec ya sumaba 228 lineas y el e2e 279, asi que 1
 Verificacion observada en la punta (backend/): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores.
 
 Desviaciones del diseno: ninguna. Deuda de Ayuda: la pantalla "Resetear vinculo SSO" llega en la unidad 15.
+
+### Rama `feat/login-sso-wu06c` (tareas 11.5 y 11.6)
+
+Commit de tests: ver `git log` de la rama (`test(auth): e2e del reseteo del vinculo SSO por ROOT y administrador`), 279 inserciones en `backend/test/usuarios-reseteo-sso.e2e.spec.ts`.
+
+- Sin tenant efimero real: el reseteo solo toca la base master, como el e2e del reseteo de 2FA; los clientes llevan `db_name` con sufijo aleatorio y todo se borra al final (las identidades caen en cascada con `usuarios`). `usarLockMasterTest()` antes del `describe`.
+- Casos: ROOT sobre multicliente (vinculos borrados, refresh 401, re-vinculo `VINCULADO`); sin tocar contrasena, 2FA, dispositivo ni membresia; ROOT sobre ROOT 204; ADMINISTRADOR a un usuario de su cliente y a si mismo; multicliente, inactiva en otro cliente, ROOT, otro cliente e inexistente con el mismo 404 y vinculos intactos; TECNICO 403 sobre si mismo y rutas de autoservicio inexistentes.
+- `POST /auth/refresh` responde 200.
+
+Verificacion observada en la punta: ver el informe de la unidad (lint, typecheck, vitest focalizado, `pnpm test` completo solo, `check-casts-en-specs.mjs` 617).
+
+Desviaciones del diseno: ninguna. Deuda de Ayuda: la pantalla "Resetear vinculo SSO" llega en la unidad 15.
