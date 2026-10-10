@@ -75,7 +75,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T5d — El comentario por API no cuenta como primera respuesta** (~50): `CrearComentarioDto.autorEsIntegracion` (por defecto `false`) y `TicketsV1Controller` lo manda en `true`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [x] **T5e — El alta `v1` rechaza tipos fuera de TICKETS** (~150, salió en 207): `POST /api/v1/tickets` responde 422 si `tipoId` no es un tipo activo del módulo `TICKETS`, el mismo conjunto que publica `GET /api/v1/catalogos`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [x] **T6 — OpenAPI** (~200, salió en 572): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
-- [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
+- [x] **T7 — Ruta BFF `/api/v1/*`** (~200, salió en 354): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
 - [ ] **T9 — Pantalla "Integraciones"** (~380): listar, crear (con la clave mostrada una sola vez) y revocar, con último uso. Ruta: delegada.
 - [ ] **T10 — Docs y cierre** (~120): README, notas de deploy en el runbook, deuda de Ayuda, verificación completa y `judgment-day`, porque es un cambio grande y de seguridad. Ruta: delegada para la verificación.
@@ -181,5 +181,18 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - Verificación (worker, en el working tree antes de partir): `pnpm typecheck` y `pnpm lint` en 0; e2e de OpenAPI 5/5; `src/integraciones` y `test/integraciones` 106/106 en 17 archivos; casts en 617. Control del orquestador: `pnpm typecheck` en 0.
   - Gotcha: `scripts/check-casts-en-specs.mjs` se corre desde la raíz del repo. Desde `backend/` imprime un error y sale con 0.
 
+- 2026-10-10: T7 hecha, en la rama `feat/api-publica-t7` (sale de `t6b`):
+  - `354ae7f4`, 354 líneas: `frontend/src/app/api/v1/[[...path]]/route.ts` (91), su `route.test.ts` (253) y un caso en `middleware.test.ts` (10).
+  - Problema que cierra: antes, `/api/v1/*` caía en el proxy genérico `[...path]`, que descarta `x-api-key` e inyecta el Bearer de la cookie `at`. Un navegador con sesión abierta convertía su cookie en credencial de la API.
+  - Precedencia (Next 15.5.19): el segmento estático `v1` le gana a `api/[...path]`. El catch-all opcional `[[...path]]` hace que también `/api/v1` pelado caiga acá. Lo confirman `pnpm build` (tabla de rutas) y una prueba con `next start`.
+  - Headers de salida: se arman de cero con una allowlist, `x-api-key` y `x-forwarded-for`. Nunca viajan `authorization` ni `cookie`, y un test lo prueba con los dos presentes.
+  - Headers de respuesta: `content-type`, `retry-after` y `x-ratelimit-*`, que son los que manda `@nestjs/throttler` 6. `set-cookie` y el resto se descartan.
+  - Métodos: solo `GET` y `POST`. Para el resto Next responde 405 sin tocar el backend.
+  - Traversal: 400 para un segmento vacío, `.`, `..` o con `/` o `\` (cubre `..%2F`, que Next no normaliza). Cada segmento se re-encodea. Next ya reescribe `/api/v1/../x` y `%2e%2e` antes del ruteo.
+  - Backend caído: 502 con `{statusCode, message}`. El proxy genérico no lo maneja: el fetch tira y Next da 500.
+  - Middleware: sin cambios. Su matcher ya excluye `/api/*`, y un test lo fija para v1.
+  - Verificación (writer): `pnpm lint` y `pnpm type-check` en 0; `src/app/api` y `src/middleware` 139/139; `pnpm test` 2180/2180 en 265 archivos; casts en 617. Control del orquestador: el spec de v1, 16/16.
+  - Nota abierta, sin acción: `x-forwarded-for` pasa tal como llega (igual que `publico/`), así que un cliente puede falsearlo. Hoy no afecta, porque el límite es por clave. Si algún día se audita por IP, IIS tiene que fijarlo.
+
 ## Próximo paso
-T7 (ruta BFF `/api/v1/*`), en `feat/api-publica-t7`, que sale de `t6b`.
+T8 (diálogo de ROOT para habilitar la API), en `feat/api-publica-t8`, que sale de `t7`.
