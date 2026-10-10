@@ -74,7 +74,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T5c — Catálogos `v1`** (~300, salió en 600): `GET /api/v1/catalogos` con tipos, prioridades y estados, para que el integrador descubra los ids que exige el alta. Aprobado por el dueño el 2026-10-10. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [x] **T5d — El comentario por API no cuenta como primera respuesta** (~50): `CrearComentarioDto.autorEsIntegracion` (por defecto `false`) y `TicketsV1Controller` lo manda en `true`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [x] **T5e — El alta `v1` rechaza tipos fuera de TICKETS** (~150, salió en 207): `POST /api/v1/tickets` responde 422 si `tipoId` no es un tipo activo del módulo `TICKETS`, el mismo conjunto que publica `GET /api/v1/catalogos`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
-- [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
+- [x] **T6 — OpenAPI** (~200, salió en 572): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
 - [ ] **T9 — Pantalla "Integraciones"** (~380): listar, crear (con la clave mostrada una sola vez) y revocar, con último uso. Ruta: delegada.
@@ -171,5 +171,15 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
     - Los unitarios (`tipos-ticket-v1.query.spec.ts`, 4 casos, y 2 casos `T5e` en el spec del controller) se escribieron junto con la implementación: no tienen RED propio.
   - Verificación (writer, en `t5e`): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/integraciones` 68/68; e2e de tickets y catálogos v1 13/13; casts en 617.
 
+- 2026-10-10: T6 hecha, en 2 ramas (572 líneas escritas, sin contar las 86 del lock):
+  - `t6` — `3bdd627a`, 361 líneas: `@nestjs/swagger@11.4.7` y anotaciones en los DTOs y controllers v1, más `ErrorV1` (`error-v1.dto.ts`). Son metadatos y no cambian el comportamiento.
+  - `t6b` — `cee8f446`, 211 líneas: `openapi-v1.ts`, el llamado en `main.ts` y el e2e.
+  - La costura es limpia: `t6` compila y pasa sola (typecheck y lint en 0; `src/integraciones` 68/68).
+  - Contrato: `GET /api/v1/openapi.json`, sin clave y sin límite de requests (se registra en el adapter HTTP, no en un controller). No hay Swagger UI (`ui: false`) ni YAML. `include: [ApiV1Module]` sin `deepScanRoutes`: el documento trae solo las 4 rutas v1.
+  - **Decisión del dueño:** el JSON queda público en todos los entornos, producción incluida, porque describe el contrato y no expone datos.
+  - El e2e (5 casos) levanta el `AppModule` completo, verifica la lista exacta de rutas y que no aparezcan `/integraciones/claves`, `/clientes`, `/auth`, `/usuarios` ni `/publico`.
+  - Verificación (worker, en el working tree antes de partir): `pnpm typecheck` y `pnpm lint` en 0; e2e de OpenAPI 5/5; `src/integraciones` y `test/integraciones` 106/106 en 17 archivos; casts en 617. Control del orquestador: `pnpm typecheck` en 0.
+  - Gotcha: `scripts/check-casts-en-specs.mjs` se corre desde la raíz del repo. Desde `backend/` imprime un error y sale con 0.
+
 ## Próximo paso
-T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5e`.
+T7 (ruta BFF `/api/v1/*`), en `feat/api-publica-t7`, que sale de `t6b`.
