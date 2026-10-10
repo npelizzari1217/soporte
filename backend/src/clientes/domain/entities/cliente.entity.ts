@@ -116,6 +116,8 @@ export interface ClienteProps {
   formularioPublicoHabilitado?: boolean;
   /** Marca de congelamiento del slug (primer QR emitido). Defaults to null. */
   slugCongeladoAt?: Date | null;
+  /** API publica habilitada (sdd/api-publica): solo ROOT la cambia. Defaults to false. */
+  apiHabilitada?: boolean;
 }
 
 /** Normaliza un `dbName` (admite guion bajo) a la forma del slug (guion). */
@@ -158,6 +160,7 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
         slug: props.slug ?? null,
         formularioPublicoHabilitado: props.formularioPublicoHabilitado ?? false,
         slugCongeladoAt: props.slugCongeladoAt ?? null,
+        apiHabilitada: props.apiHabilitada ?? false,
       },
       id,
     );
@@ -185,6 +188,7 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
         slug: props.slug ?? null,
         formularioPublicoHabilitado: props.formularioPublicoHabilitado ?? false,
         slugCongeladoAt: props.slugCongeladoAt ?? null,
+        apiHabilitada: props.apiHabilitada ?? false,
       },
       id,
     );
@@ -244,6 +248,11 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
   /** Slug de la URL publica, o `null` si el cliente no tiene. */
   get slug(): string | null {
     return this.props.slug ?? null;
+  }
+
+  /** Ver `ClienteProps.apiHabilitada`. Defaults to false. */
+  get apiHabilitada(): boolean {
+    return this.props.apiHabilitada ?? false;
   }
 
   /** Ver `ClienteProps.formularioPublicoHabilitado`. Defaults to false. */
@@ -368,5 +377,17 @@ export class ClienteEntity extends BaseEntity<ClienteProps> {
     this.props.formularioPublicoHabilitado = habilitado;
     this.touch();
     return Result.ok(undefined);
+  }
+
+  /** Habilita la API publica del cliente. Idempotente. */
+  habilitarApi(): void {
+    this.props.apiHabilitada = true;
+    this.touch();
+  }
+
+  /** Deshabilita la API publica: ninguna clave del cliente funciona. Idempotente. */
+  deshabilitarApi(): void {
+    this.props.apiHabilitada = false;
+    this.touch();
   }
 }

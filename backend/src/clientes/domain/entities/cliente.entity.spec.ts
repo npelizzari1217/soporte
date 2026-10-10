@@ -440,3 +440,18 @@ describe('ClienteEntity — slug y formulario publico (sdd/formulario-publico-qr
     });
   });
 });
+
+describe('ClienteEntity — apiHabilitada (sdd/api-publica)', () => {
+  it('nace deshabilitada y habilitarApi()/deshabilitarApi() la prenden y apagan', () => {
+    const cliente = makeCliente();
+    expect(cliente.apiHabilitada).toBe(false);
+
+    cliente.habilitarApi();
+    expect(cliente.apiHabilitada).toBe(true);
+    cliente.habilitarApi();
+    expect(cliente.apiHabilitada).toBe(true);
+
+    cliente.deshabilitarApi();
+    expect(cliente.apiHabilitada).toBe(false);
+  });
+});

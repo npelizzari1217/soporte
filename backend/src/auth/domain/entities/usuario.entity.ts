@@ -74,6 +74,12 @@ export interface UsuarioProps {
    * Defaults to false.
    */
   isGlobalAdmin?: boolean;
+  /**
+   * true si es el usuario tecnico de la API publica de un cliente (sdd/api-publica).
+   * No es una persona: no entra por login ni por SSO y no figura en las listas de usuarios.
+   * Se fija solo al crearlo. Defaults to false.
+   */
+  esIntegracion?: boolean;
 }
 
 /**
@@ -97,7 +103,14 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
    */
   static create(props: UsuarioProps, id?: string): UsuarioEntity {
     validarLargos(props);
-    return new UsuarioEntity({ ...props, isGlobalAdmin: props.isGlobalAdmin ?? false }, id);
+    return new UsuarioEntity(
+      {
+        ...props,
+        isGlobalAdmin: props.isGlobalAdmin ?? false,
+        esIntegracion: props.esIntegracion ?? false,
+      },
+      id,
+    );
   }
 
   /**
@@ -110,7 +123,14 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
     updatedAt: Date,
     deletedAt: Date | null,
   ): UsuarioEntity {
-    const entity = new UsuarioEntity({ ...props, isGlobalAdmin: props.isGlobalAdmin ?? false }, id);
+    const entity = new UsuarioEntity(
+      {
+        ...props,
+        isGlobalAdmin: props.isGlobalAdmin ?? false,
+        esIntegracion: props.esIntegracion ?? false,
+      },
+      id,
+    );
     (entity as unknown as { _createdAt: Date })._createdAt = createdAt;
     (entity as unknown as { _updatedAt: Date })._updatedAt = updatedAt;
     entity._deletedAt = deletedAt;
@@ -141,6 +161,10 @@ export class UsuarioEntity extends BaseEntity<UsuarioProps> {
 
   get isGlobalAdmin(): boolean {
     return this.props.isGlobalAdmin ?? false;
+  }
+
+  get esIntegracion(): boolean {
+    return this.props.esIntegracion ?? false;
   }
 
   // ─── Comportamiento de dominio ────────────────────────────────────────────

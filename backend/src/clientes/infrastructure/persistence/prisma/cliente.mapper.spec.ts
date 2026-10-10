@@ -157,3 +157,14 @@ describe('ClienteMapper — formulario publico (sdd/formulario-publico-qr, WU-1)
     expect(persistido).not.toHaveProperty('slugCongeladoAt');
   });
 });
+
+describe('ClienteMapper — API publica (sdd/api-publica, T2)', () => {
+  it('toDomain() hidrata el flag y toPersistence() lo espeja', () => {
+    const habilitada = ClienteMapper.toDomain({ ...filaConLogo, apiHabilitada: true });
+    expect(habilitada.apiHabilitada).toBe(true);
+    expect(ClienteMapper.toPersistence(habilitada).apiHabilitada).toBe(true);
+
+    const apagada = ClienteMapper.toDomain(filaConLogo);
+    expect(ClienteMapper.toPersistence(apagada).apiHabilitada).toBe(false);
+  });
+});
