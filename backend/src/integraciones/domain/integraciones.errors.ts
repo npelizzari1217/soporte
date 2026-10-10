@@ -34,3 +34,48 @@ export class EmailIntegracionOcupadoError extends DomainError {
     super('El email tecnico de integracion ya lo usa otro usuario.');
   }
 }
+
+/** El cliente no tiene la API habilitada: no se pueden emitir claves. */
+export class ApiNoHabilitadaError extends DomainError {
+  readonly code = 'API_NO_HABILITADA';
+
+  constructor() {
+    super('La API del cliente no esta habilitada.');
+  }
+}
+
+/** El cliente tiene la API habilitada pero falta su usuario de integracion. */
+export class UsuarioIntegracionNoEncontradoError extends DomainError {
+  readonly code = 'API_USUARIO_INTEGRACION_NO_ENCONTRADO';
+
+  constructor() {
+    super('No existe el usuario de integracion del cliente.');
+  }
+}
+
+/** Los permisos de la clave estan vacios o incluyen alguno fuera de `PERMISOS_API`. */
+export class PermisosApiInvalidosError extends DomainError {
+  readonly code = 'API_PERMISOS_INVALIDOS';
+
+  constructor() {
+    super('La clave necesita al menos un permiso, y todos deben ser de la API publica.');
+  }
+}
+
+/** El nombre de la clave esta vacio o es demasiado largo. */
+export class NombreClaveInvalidoError extends DomainError {
+  readonly code = 'API_NOMBRE_CLAVE_INVALIDO';
+
+  constructor(maximo: number) {
+    super(`El nombre de la clave es obligatorio y admite hasta ${maximo} caracteres.`);
+  }
+}
+
+/** La clave no existe en el cliente del actor (o es de otro cliente: no se distingue). */
+export class ApiClaveNoEncontradaError extends DomainError {
+  readonly code = 'API_CLAVE_NO_ENCONTRADA';
+
+  constructor() {
+    super('Clave de API no encontrada.');
+  }
+}
