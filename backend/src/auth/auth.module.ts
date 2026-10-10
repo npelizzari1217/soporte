@@ -85,6 +85,18 @@ import { TfaCuentaController } from './interface/controllers/tfa-cuenta.controll
 import { JwtTokenService } from './infrastructure/jwt-token.service';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { entorno } from '../config/entorno';
+import { CONFIGURACION_SSO, IConfiguracionSso } from './domain/ports/configuracion-sso.port';
+import { IDENTIDAD_SSO_REPOSITORY } from './domain/ports/identidad-sso-repository.port';
+import { PROVEEDOR_OIDC } from './domain/ports/proveedor-oidc.port';
+import { SSO_ESTADO_REPOSITORY } from './domain/ports/sso-estado-repository.port';
+import { ConfiguracionSsoDesdeEntorno } from './infrastructure/sso/configuracion-sso';
+import { JoseProveedorOidc } from './infrastructure/sso/jose-proveedor-oidc';
+import { PrismaIdentidadSsoRepository } from './infrastructure/sso/prisma-identidad-sso.repository';
+import { PrismaSsoEstadoRepository } from './infrastructure/sso/prisma-sso-estado.repository';
+import { CompletarSsoUseCase } from './application/sso/completar-sso.use-case';
+import { IniciarSsoUseCase } from './application/sso/iniciar-sso.use-case';
+import { ListarProveedoresSsoUseCase } from './application/sso/listar-proveedores-sso.use-case';
+import { SsoController } from './interface/controllers/sso.controller';
 
 // ─── Use Cases ───────────────────────────────────────────────────────────────
 import {
@@ -153,6 +165,7 @@ import { RolesController } from './interface/controllers/roles.controller';
     RolesController,
     TfaCuentaController,
     TfaLoginController,
+    SsoController,
   ],
   providers: [
     // ─── Repositories ──────────────────────────────────────────────────────
@@ -243,6 +256,27 @@ import { RolesController } from './interface/controllers/roles.controller';
         EmitirSesionService,
       ],
     })),
+
+    // ─── Login SSO (sdd/login-sso, ADR-1, ADR-2, ADR-7) ──────────────────────
+    // Factory: el segundo parametro (`ahora`) es un reloj inyectable que Nest no sabe resolver.
+    {
+      provide: SSO_ESTADO_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaSsoEstadoRepository(prisma),
+      inject: [PrismaService],
+    },
+    { provide: IDENTIDAD_SSO_REPOSITORY, useClass: PrismaIdentidadSsoRepository },
+    {
+      provide: CONFIGURACION_SSO,
+      useFactory: () => new ConfiguracionSsoDesdeEntorno(entorno.APP_BASE_URL),
+    },
+    {
+      provide: PROVEEDOR_OIDC,
+      useFactory: (configuracion: IConfiguracionSso) => new JoseProveedorOidc(configuracion),
+      inject: [CONFIGURACION_SSO],
+    },
+    ListarProveedoresSsoUseCase,
+    IniciarSsoUseCase,
+    CompletarSsoUseCase,
 
     // ─── Services ───────────────────────────────────────────────────────────
     { provide: HASH_PROVIDER, useClass: Argon2HashProvider },
