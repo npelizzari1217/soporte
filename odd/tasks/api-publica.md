@@ -76,7 +76,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T5e — El alta `v1` rechaza tipos fuera de TICKETS** (~150, salió en 207): `POST /api/v1/tickets` responde 422 si `tipoId` no es un tipo activo del módulo `TICKETS`, el mismo conjunto que publica `GET /api/v1/catalogos`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [x] **T6 — OpenAPI** (~200, salió en 572): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [x] **T7 — Ruta BFF `/api/v1/*`** (~200, salió en 354): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
-- [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
+- [x] **T8 — Diálogo de ROOT** (~250, salió en 300): habilitar o deshabilitar la API por cliente. Ruta: delegada.
 - [ ] **T9 — Pantalla "Integraciones"** (~380): listar, crear (con la clave mostrada una sola vez) y revocar, con último uso. Ruta: delegada.
 - [ ] **T10 — Docs y cierre** (~120): README, notas de deploy en el runbook, deuda de Ayuda, verificación completa y `judgment-day`, porque es un cambio grande y de seguridad. Ruta: delegada para la verificación.
 
@@ -194,5 +194,13 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - Verificación (writer): `pnpm lint` y `pnpm type-check` en 0; `src/app/api` y `src/middleware` 139/139; `pnpm test` 2180/2180 en 265 archivos; casts en 617. Control del orquestador: el spec de v1, 16/16.
   - Nota abierta, sin acción: `x-forwarded-for` pasa tal como llega (igual que `publico/`), así que un cliente puede falsearlo. Hoy no afecta, porque el límite es por clave. Si algún día se audita por IP, IIS tiene que fijarlo.
 
+- 2026-10-10: T8 hecha, en la rama `feat/api-publica-t8` (sale de `t7`), en 2 commits:
+  - `0b87b002`, 28 líneas: `feat(clientes)`. `toResponseDto` (`clientes.controller.ts`) no devolvía `apiHabilitada`; ahora va en `ClienteResponseDto`, junto a `formularioPublicoHabilitado`. La misma función alimenta el detalle y el listado. Spec del controller con las dos formas exactas actualizadas y un caso nuevo.
+  - `c43358aa`, 272 líneas: `feat(clientes)`. `configurar-api-dialog.tsx` con su test, `useConfigurarApiCliente` (invalida `["clientes"]`), `apiHabilitada` en el tipo `Cliente`, `ConfigurarApiDto` y `ClienteApiEstado`. `clientes/schemas.ts` solo tiene schemas de formularios, así que no hubo cambio de Zod.
+  - Flujo: botón "API" en `ClienteAcciones`, que solo se monta bajo `isGlobalAdmin` (el mismo gating que CSAT, con una aserción sumada al test del gate). El diálogo muestra el estado y una sola acción, que pasa por `ConfirmDialog`; deshabilitar va con estilo destructivo.
+  - Texto al deshabilitar: las claves dejan de funcionar en el acto, y las claves y el usuario de integración se conservan; al volver a habilitar, "las claves no revocadas vuelven a funcionar". Texto al habilitar: el ADMINISTRADOR crea las claves desde "Integraciones" (se nombra la pantalla, sin enlace, porque es T9).
+  - Deuda de Ayuda, anotada en el commit: el artículo de clientes (ROOT) no tiene la acción "API pública", y falta el artículo de Integraciones (T9).
+  - Verificación (writer): backend `pnpm lint` y `pnpm typecheck` en 0, `src/clientes` 405/405; frontend `pnpm lint` y `pnpm type-check` en 0, `src/features/clientes` 86/86, `pnpm test` 2185/2185 en 266 archivos; casts en 617. Control del orquestador: el test del diálogo, 5/5.
+
 ## Próximo paso
-T8 (diálogo de ROOT para habilitar la API), en `feat/api-publica-t8`, que sale de `t7`.
+T9 (pantalla "Integraciones" del ADMINISTRADOR), en `feat/api-publica-t9`, que sale de `t8`.
