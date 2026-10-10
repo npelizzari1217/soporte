@@ -266,4 +266,20 @@ describe('API v1 e2e — autenticacion por clave', () => {
     expect(estados).toEqual([...Array(LIMITE).fill(200), 429]);
     expect((await llamar(k2.clave)).status).toBe(200);
   });
+
+  it('JD-1: el cupo es por clave y lo comparten todas las rutas v1, no uno por ruta', async () => {
+    const e = await crearEntorno();
+    const k1 = await emitirClave(e, ['TICKETS:LECTURA', 'TICKETS:ALTAS']);
+    const k2 = await emitirClave(e, ['TICKETS:LECTURA', 'TICKETS:ALTAS']);
+
+    // Alterna dos handlers distintos (GET y POST) con la misma clave: suman al mismo cupo.
+    const estados: number[] = [];
+    for (let i = 0; i < LIMITE + 1; i++) {
+      estados.push((await llamar(k1.clave, i % 2 === 0 ? 'GET' : 'POST')).status);
+    }
+
+    expect(estados).toEqual([200, 201, 200, 429]);
+    expect((await llamar(k1.clave, 'POST')).status).toBe(429);
+    expect((await llamar(k2.clave, 'POST')).status).toBe(201);
+  });
 });

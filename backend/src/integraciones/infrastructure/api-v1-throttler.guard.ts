@@ -4,9 +4,12 @@
  * El tracker es el id de la clave que dejo `ApiClaveGuard`, no la IP: todo el trafico llega por el
  * BFF y el backend ve una sola IP. Debe correr DESPUES de `ApiClaveGuard`; si no hay clave
  * autenticada (no deberia pasar) usa un tracker fijo en vez de abrir un cupo por IP.
+ * El cupo es UNO por clave para toda la API `v1`: la key de storage no lleva clase ni handler (a
+ * diferencia de `ThrottlerGuard`), asi que todas las rutas `v1` descuentan del mismo cupo.
  * Storage en memoria de un solo proceso, como el de CSAT: al escalar horizontal el limite se multiplica.
  */
-import { Injectable } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { ExecutionContext, Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { ApiClaveAutenticada } from './api-clave.guard';
 
@@ -25,5 +28,10 @@ export function limiteApiV1(env: NodeJS.ProcessEnv = process.env): number {
 export class ApiV1ThrottlerGuard extends ThrottlerGuard {
   protected async getTracker(req: { apiClave?: ApiClaveAutenticada }): Promise<string> {
     return req.apiClave?.id ?? 'sin-clave';
+  }
+
+  /** Key de storage: solo el throttler y la clave, nunca la ruta (un cupo por clave, CA6). */
+  protected generateKey(_context: ExecutionContext, suffix: string, name: string): string {
+    return createHash('sha256').update(`api-v1-${name}-${suffix}`).digest('hex');
   }
 }
