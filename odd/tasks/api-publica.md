@@ -77,7 +77,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T6 — OpenAPI** (~200, salió en 572): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [x] **T7 — Ruta BFF `/api/v1/*`** (~200, salió en 354): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [x] **T8 — Diálogo de ROOT** (~250, salió en 300): habilitar o deshabilitar la API por cliente. Ruta: delegada.
-- [ ] **T9 — Pantalla "Integraciones"** (~380): listar, crear (con la clave mostrada una sola vez) y revocar, con último uso. Ruta: delegada.
+- [x] **T9 — Pantalla "Integraciones"** (~380, salió en 821): listar, crear (con la clave mostrada una sola vez) y revocar, con último uso. Ruta: delegada.
 - [ ] **T10 — Docs y cierre** (~120): README, notas de deploy en el runbook, deuda de Ayuda, verificación completa y `judgment-day`, porque es un cambio grande y de seguridad. Ruta: delegada para la verificación.
 
 ## Verificación
@@ -202,5 +202,17 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - Deuda de Ayuda, anotada en el commit: el artículo de clientes (ROOT) no tiene la acción "API pública", y falta el artículo de Integraciones (T9).
   - Verificación (writer): backend `pnpm lint` y `pnpm typecheck` en 0, `src/clientes` 405/405; frontend `pnpm lint` y `pnpm type-check` en 0, `src/features/clientes` 86/86, `pnpm test` 2185/2185 en 266 archivos; casts en 617. Control del orquestador: el test del diálogo, 5/5.
 
+- 2026-10-10: T9 hecha, en la rama `feat/api-publica-t9` (sale de `t8`), en 2 commits (821 líneas, el doble de lo estimado):
+  - `1ef870ea`, 271 líneas: schemas (`features/integraciones/schemas.ts`, permisos `TICKETS:LECTURA`/`ALTAS`/`COMENTAR` como "Ver", "Crear" y "Comentar tickets", y la validación del nombre de 1 a 100 caracteres, igual que el backend) y hooks con sus tests.
+  - `96fbc960`, 550 líneas, `size:exception`: la vista, los diálogos, la página `/admin/integraciones` y el ítem del menú, con sus tests. Son unas 330 líneas de componentes más 215 del test de la vista que los cubre; partirlo separaría el código de sus tests.
+  - La clave en claro no entra en la caché: `mutationFn` la saca de la respuesta, se la pasa a un callback y devuelve el resto sin ella, porque React Query guarda en su `MutationCache` lo que devuelve una mutación. Vive solo en un `useState` de la vista y vuelve a `null` al cerrar el diálogo, que ignora el clic afuera. Hay tests que pasan las cachés y `localStorage` a texto y verifican que la clave no aparezca.
+  - Gating: `<SoloAdminCliente>` en la vista y el mismo filtro `esAdminCliente` en el menú, con tests para TECNICO, ADMINISTRADOR y ROOT.
+  - Listado: el prefijo, "Nunca" sin último uso, y las revocadas con un badge "Revocada" y su fecha, el nombre tachado y sin botón de revocar. Revocar pasa por `ConfirmDialog`.
+  - API deshabilitada: el ADMINISTRADOR no tiene de dónde leerlo (el JWT no trae la marca y `/clientes/*` exige `GlobalAdminGuard`). El alta muestra el mensaje del 422 en un toast, y una nota en la página dice que ROOT tiene que habilitarla y da `/api/v1`, `X-Api-Key` y `/api/v1/openapi.json`.
+  - Deuda de Ayuda, anotada en los dos commits.
+  - Verificación (writer, sobre el cambio entero antes de partir): `pnpm lint` y `pnpm type-check` en 0; `integraciones`, `components/shell` y la página 60/60; `pnpm test` 2199/2199 en 268 archivos; casts en 617. Control del orquestador: `1ef870ea` solo, `pnpm type-check` en 0 y `src/features/integraciones` 5/5.
+  - **Abierto, decisión del dueño:** ¿el ADMINISTRADOR tiene que ver si la API está habilitada antes de intentar un alta? Requiere un cambio de backend (un `GET` de estado de solo lectura, o la marca en el JWT).
+  - **Abierto, decisión del dueño:** los mensajes de los errores 422 llegan del backend sin tildes ("no esta habilitada") y se ven así en la UI.
+
 ## Próximo paso
-T9 (pantalla "Integraciones" del ADMINISTRADOR), en `feat/api-publica-t9`, que sale de `t8`.
+Las dos decisiones abiertas de T9; después T10 (docs, cierre y `judgment-day`), en `feat/api-publica-t10`, que sale de `t9`.
