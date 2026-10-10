@@ -246,3 +246,29 @@ Notas para la WU-5a: constructor = `SSO_ESTADO_REPOSITORY`, `PROVEEDOR_OIDC`, `I
 | Comando focalizado | `pnpm vitest run src/auth/application`: 32 archivos, 343 tests en verde |
 | Harness de runtime | N/A: caso de uso inerte, sin cableado hasta la WU-5a |
 | Frontera de rollback | revertir el commit de `completar-sso.use-case.ts` y su spec |
+
+## Unidad 9 (WU-5a) - rama `feat/login-sso-wu05a`
+
+Modo: estandar (feature). Tareas 9.1 a 9.6 hechas. Commit: `f4e9367c` (`feat(auth): SsoController, cableado del login SSO y e2e basico`), 377 lineas de codigo y spec (tope duro 380).
+
+- Casos movidos a la unidad 10 (tarea 10.5) por el tope: "estado vencido" y "proveedor cruzado", mas el `siguiente` de 301 caracteres (400) y la comprobacion de que solo hashes quedan en `state_hash` y `navegador_hash`. Se reescribieron antes de commitear; no hay codigo sin probar: el DTO tiene `MaxLength(300)`.
+- Cableado: `PrismaSsoEstadoRepository` va por `useFactory` porque su segundo parametro (`ahora`, un reloj) no es resoluble por Nest. Los tres casos de uso se registran como clase (ya llevan `@Inject`). `ConfiguracionSsoDesdeEntorno` recibe `entorno.APP_BASE_URL`; `JoseProveedorOidc` se construye con `CONFIGURACION_SSO`, asi `overrideProvider(CONFIGURACION_SSO)` tambien cambia el adaptador.
+- Contrato HTTP: `POST /auth/sso/:proveedor/callback` recibe `{code, state, binding, dispositivoConfiable?}` y devuelve el `CompletarSsoResultado` tal cual (`kind`, `desafio` o `ticket`, `siguiente`, `dispositivoConfiable?`). La IP sale de `ipDelNavegador(req)`. Un callback de un proveedor deshabilitado cae en el CAS (no hay estado) y responde el 401 generico; el 404 solo aplica a slug desconocido y a `iniciar` de un proveedor deshabilitado. Un body mal formado sigue siendo 400 del `ValidationPipe`.
+
+Mutaciones 9.4 (`vitest run test/sso.e2e.spec.ts`, 5 tests en verde de base; ambas revertidas con `git checkout`):
+- sin `AND usado_at IS NULL` en el CAS: 1 rojo, `el callback valido entrega ticket y el replay del mismo state es 401 ...`.
+- sin `AND navegador_hash = ...` en el CAS: 1 rojo, `sso_st de otro flujo es 401 y el flujo propio sigue consumible`.
+
+Arranque 9.5 (`pnpm build` y `pnpm start` con `DATABASE_URL_MASTER`, `APP_BASE_URL`, `JWT_SECRET`, `EMAIL_CRYPTO_KEY` y `PORT=3987`; proceso detenido despues):
+- sin variables `SSO_*`: arranca, `GET /api/auth/sso/proveedores` → 200 `{"proveedores":[]}`.
+- con `SSO_GOOGLE_CLIENT_ID` y `SSO_GOOGLE_CLIENT_SECRET`: arranca, 200 `{"proveedores":["google"]}`.
+
+Verificacion observada (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts src/auth` 97 archivos, 1141 tests en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (el login SSO no tiene UI hasta la WU-7).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run test/sso.e2e.spec.ts src/auth`: 97 archivos, 1141 tests en verde |
+| Harness de runtime | IdP falso `node:http` + `soporte_master_test`, listener real; `pnpm start` con y sin `SSO_*` |
+| Frontera de rollback | revertir `f4e9367c`; los casos de uso vuelven a quedar inertes |
