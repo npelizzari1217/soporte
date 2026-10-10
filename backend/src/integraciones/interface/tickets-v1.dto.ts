@@ -11,9 +11,11 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+import { TICKET_TITULO_MAX_LENGTH } from '../../tickets/domain/entities/ticket.entity';
 import { TicketResponseDto } from '../../tickets/interface/dtos/ticket.dto';
 
 /** Query de `GET /v1/tickets`: filtros combinables (AND) y paginacion. */
@@ -63,6 +65,36 @@ export class ListarTicketsV1QueryDto {
   porPagina?: number;
 }
 
+/** Body de `POST /v1/tickets`. */
+export class CrearTicketV1Dto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(TICKET_TITULO_MAX_LENGTH)
+  titulo!: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
+
+  @IsUUID()
+  tipoId!: string;
+
+  @IsUUID()
+  prioridadId!: string;
+
+  /** "Continua de #X": id de un ticket existente del mismo cliente. */
+  @IsOptional()
+  @IsUUID()
+  ticketReferenciaId?: string | null;
+}
+
+/** Body de `POST /v1/tickets/:id/comentarios`. Siempre es un comentario publico. */
+export class CrearComentarioV1Dto {
+  @IsString()
+  @MinLength(1)
+  texto!: string;
+}
+
 export interface TicketV1 {
   id: string;
   numero: string;
@@ -88,6 +120,15 @@ export interface ListaTicketsV1 {
   total: number;
   pagina: number;
   porPagina: number;
+}
+
+export interface ComentarioV1 {
+  id: string;
+  ticketId: string;
+  texto: string;
+  /** Siempre `false`: la API no crea ni muestra comentarios internos. */
+  esInterno: false;
+  createdAt: string;
 }
 
 /** Proyeccion `v1` de un ticket ya armado por la API interna (lista blanca de campos). */

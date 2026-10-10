@@ -1,16 +1,30 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from '../auth/auth.module';
+import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarTicketsUseCase } from '../tickets/application/use-cases/listar-tickets.use-case';
 import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
+import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
+import {
+  IOperacionTicketRepository,
+  OPERACION_TICKET_REPOSITORY,
+} from '../tickets/domain/ports/i-operacion-ticket.repository';
+import {
+  IPrimeraRespuestaWriteRepository,
+  PRIMERA_RESPUESTA_WRITE_REPOSITORY,
+} from '../tickets/domain/ports/i-primera-respuesta-write.repository';
 import { ITicketRepository, TICKET_REPOSITORY } from '../tickets/domain/ports/i-ticket.repository';
 import {
   ITipoTicketRepository,
   TIPO_TICKET_REPOSITORY,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
+import {
+  ITipoOperacionRepository,
+  TIPO_OPERACION_REPOSITORY,
+} from '../tickets/domain/ports/i-tipo-operacion.repository';
 import { TicketsModule } from '../tickets/tickets.module';
 import { ApiClaveGuard } from './infrastructure/api-clave.guard';
 import {
@@ -18,6 +32,14 @@ import {
   ApiV1ThrottlerGuard,
   limiteApiV1,
 } from './infrastructure/api-v1-throttler.guard';
+import {
+  DOMAIN_EVENT_PUBLISHER,
+  IDomainEventPublisher,
+} from '../shared/domain/ports/i-domain-event-publisher';
+import {
+  ITenantTransactionRunner,
+  TENANT_TX_RUNNER,
+} from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IntegracionesModule } from './integraciones.module';
 import { TicketsV1Controller } from './interface/tickets-v1.controller';
 import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
@@ -43,7 +65,7 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
     ApiClaveGuard,
     ApiV1ThrottlerGuard,
     TicketsV1Presenter,
-    // TicketsModule no exporta este caso de uso: se arma con los mismos repositorios que exporta.
+    // TicketsModule no exporta estos casos de uso: se arman con los mismos repositorios que exporta.
     {
       provide: ListarTicketsUseCase,
       useFactory: (
@@ -52,6 +74,36 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
         tipoTicketRepo: ITipoTicketRepository,
       ) => new ListarTicketsUseCase(ticketRepo, cicloRepo, tipoTicketRepo),
       inject: [TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY, TIPO_TICKET_REPOSITORY],
+    },
+    {
+      provide: CrearComentarioUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        estadoRepo: IEstadoRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        eventPublisher: IDomainEventPublisher,
+        txRunner: ITenantTransactionRunner,
+        primeraRespuestaRepo: IPrimeraRespuestaWriteRepository,
+      ) =>
+        new CrearComentarioUseCase(
+          ticketRepo,
+          operacionRepo,
+          estadoRepo,
+          tipoOperacionRepo,
+          eventPublisher,
+          txRunner,
+          primeraRespuestaRepo,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
+        TENANT_TX_RUNNER,
+        PRIMERA_RESPUESTA_WRITE_REPOSITORY,
+      ],
     },
   ],
   exports: [ApiClaveGuard, ApiV1ThrottlerGuard, ThrottlerModule, IntegracionesModule],

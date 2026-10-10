@@ -4,7 +4,10 @@ import { JwtPayload } from '../../auth/domain/ports/i-token.service';
 import { AccionesGuard } from '../../auth/infrastructure/guards/acciones.guard';
 import { Result } from '../../shared/domain/result';
 import { ListarTicketsUseCase } from '../../tickets/application/use-cases/listar-tickets.use-case';
+import { CrearComentarioUseCase } from '../../tickets/application/use-cases/crear-comentario.use-case';
+import { CrearTicketUseCase } from '../../tickets/application/use-cases/crear-ticket.use-case';
 import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtener-ticket.use-case';
+import { OperacionTicketEntity } from '../../tickets/domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../tickets/domain/errors/tickets.errors';
 import { ApiClaveGuard } from '../infrastructure/api-clave.guard';
@@ -52,6 +55,21 @@ async function armar(encontrado = true) {
     .mockResolvedValue(
       encontrado ? Result.ok(ticket()) : Result.fail(new TicketNoEncontradoError(ID)),
     );
+  const crear = vi.fn().mockResolvedValue(Result.ok(ticket()));
+  const comentar = vi.fn().mockResolvedValue(
+    Result.ok(
+      OperacionTicketEntity.create({
+        ticketId: ID,
+        tipoOperacionId: 'op-1',
+        descripcion: 'hola',
+        estadoAnteriorId: null,
+        estadoNuevoId: null,
+        autorId: actor.sub,
+        esInterno: false,
+        metadata: null,
+      }),
+    ),
+  );
   const presentar = vi.fn().mockResolvedValue([{ numero: 'SOP-2026-00001' }]);
   const modulo = await Test.createTestingModule({
     controllers: [TicketsV1Controller],
@@ -59,6 +77,8 @@ async function armar(encontrado = true) {
       { provide: TicketsV1Presenter, useValue: { presentar } },
       { provide: ListarTicketsUseCase, useValue: { execute: listar } },
       { provide: ObtenerTicketUseCase, useValue: { execute: obtener } },
+      { provide: CrearTicketUseCase, useValue: { execute: crear } },
+      { provide: CrearComentarioUseCase, useValue: { execute: comentar } },
     ],
   })
     .overrideGuard(ApiClaveGuard)
@@ -68,7 +88,7 @@ async function armar(encontrado = true) {
     .overrideGuard(AccionesGuard)
     .useValue({})
     .compile();
-  return { controller: modulo.get(TicketsV1Controller), listar, obtener, presentar };
+  return { controller: modulo.get(TicketsV1Controller), listar, obtener, crear, comentar };
 }
 
 describe('TicketsV1Controller (lectura)', () => {
@@ -114,5 +134,37 @@ describe('TicketsV1Controller (lectura)', () => {
     const { controller } = await armar(false);
 
     await expect(controller.ver(actor, ID)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('crea el ticket a nombre del actor (solicitante y autor) con el anio del servidor', async () => {
+    const { controller, crear } = await armar();
+
+    await controller.crear(actor, { titulo: 'T', tipoId: ID, prioridadId: ID });
+
+    expect(crear).toHaveBeenCalledWith({
+      titulo: 'T',
+      descripcion: null,
+      tipoId: ID,
+      prioridadId: ID,
+      ticketReferenciaId: null,
+      solicitanteId: actor.sub,
+      clienteId: 'c1',
+      autorId: actor.sub,
+      anio: new Date().getFullYear(),
+    });
+  });
+
+  it('el comentario es siempre publico y de autoria del actor', async () => {
+    const { controller, comentar } = await armar();
+
+    const res = await controller.comentar(actor, ID, { texto: 'hola' });
+
+    expect(comentar).toHaveBeenCalledWith({
+      ticketId: ID,
+      texto: 'hola',
+      autorId: actor.sub,
+      esInterno: false,
+    });
+    expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
   });
 });
