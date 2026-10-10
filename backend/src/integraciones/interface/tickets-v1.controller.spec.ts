@@ -154,7 +154,7 @@ describe('TicketsV1Controller (lectura)', () => {
     });
   });
 
-  it('el comentario es siempre publico y de autoria del actor', async () => {
+  it('el comentario es siempre publico, de autoria del actor y marcado como de integracion', async () => {
     const { controller, comentar } = await armar();
 
     const res = await controller.comentar(actor, ID, { texto: 'hola' });
@@ -164,6 +164,7 @@ describe('TicketsV1Controller (lectura)', () => {
       texto: 'hola',
       autorId: actor.sub,
       esInterno: false,
+      autorEsIntegracion: true,
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
   });

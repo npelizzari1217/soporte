@@ -37,6 +37,12 @@ export interface CrearComentarioDto {
   texto: string;
   autorId: string;
   esInterno: boolean;
+  /**
+   * `true` cuando el autor es el usuario de integración de un cliente (API pública `v1`). Ese usuario
+   * habla por el cliente, no por soporte: su comentario nunca cuenta como primera respuesta de SLA.
+   * Por defecto `false` (la API interna, donde el autor es una persona).
+   */
+  autorEsIntegracion?: boolean;
 }
 
 /**
@@ -55,9 +61,12 @@ export interface CrearComentarioDto {
  * 3. Resuelve el id del tipo de operación `COMENTARIO` del catálogo tenant
  *    (catálogo FIJO garantizado por el seed — ausencia = `throw` defensivo).
  * 4. Persiste la operación (`OperacionTicketEntity`, timeline) dentro de
- *    `txRunner.run`. Si el comentario es PÚBLICO y su autor no es el
+ *    `txRunner.run`. Si el comentario es PÚBLICO, su autor no es el
  *    solicitante (un externo tiene `solicitanteId = null`: cualquier autor
- *    interno cuenta), registra en la misma tx la primera respuesta con
+ *    interno cuenta) y tampoco es el usuario de integración del cliente
+ *    (`autorEsIntegracion`: la API pública habla por el cliente, no por
+ *    soporte; decisión del dueño del 2026-10-10, api-publica T5d),
+ *    registra en la misma tx la primera respuesta con
  *    `registrarSiFalta` (`updateMany where primeraRespuestaAt: null`:
  *    idempotente y resistente a la concurrencia; ADR-6, sla-primera-respuesta
  *    R1). Un borrado posterior del comentario no recalcula esa fecha.
@@ -122,7 +131,8 @@ export class CrearComentarioUseCase {
       metadata: null,
     });
 
-    const cuentaComoPrimeraRespuesta = !dto.esInterno && dto.autorId !== ticket.solicitanteId;
+    const cuentaComoPrimeraRespuesta =
+      !dto.esInterno && dto.autorId !== ticket.solicitanteId && dto.autorEsIntegracion !== true;
     await this.txRunner.run(async () => {
       await this.operacionRepo.save(operacion);
       if (cuentaComoPrimeraRespuesta) {

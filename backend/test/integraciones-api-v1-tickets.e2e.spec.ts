@@ -258,6 +258,27 @@ describe('API v1 e2e — tickets', () => {
     expect(op).toMatchObject({ esInterno: false, autorId: a.usuarioId });
   });
 
+  it('T5d: un comentario por API sobre el ticket de una persona no cuenta como primera respuesta', async () => {
+    const a = await crearEntorno(DB_A);
+    const clave = await emitirClave(a, TODOS);
+    const creado = await crearTicket(a, clave);
+    // El solicitante pasa a ser una persona: sin la regla, el autor (usuario de integracion) no es
+    // el solicitante y el comentario registraria la primera respuesta.
+    await a.tenant.ticket.update({
+      where: { id: creado.data.id },
+      data: { solicitanteId: a.adminId },
+    });
+
+    const comentario = await llamar(clave, 'POST', `/${creado.data.id}/comentarios`, {
+      texto: 'Seguimos sin impresora',
+    });
+
+    expect(comentario.status).toBe(201);
+    const fila = await a.tenant.ticket.findUniqueOrThrow({ where: { id: creado.data.id } });
+    expect(fila.solicitanteId).toBe(a.adminId);
+    expect(fila.primeraRespuestaAt).toBeNull();
+  });
+
   it('el detalle nunca incluye comentarios internos ni ids internos', async () => {
     const a = await crearEntorno(DB_A);
     const clave = await emitirClave(a, TODOS);

@@ -283,6 +283,20 @@ describe('CrearComentarioUseCase', () => {
       expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledTimes(1);
     });
 
+    it('un comentario público del usuario de integración no la registra, aunque no sea el solicitante', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({ esInterno: false, autorId: 'integracion-uuid', autorEsIntegracion: true }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+      expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+    });
+
     it('un rechazo por estado terminal no registra nada', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket('CERRADO'));

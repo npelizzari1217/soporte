@@ -111,7 +111,9 @@ export class TicketsV1Controller {
 
   /**
    * Agrega un comentario PUBLICO a un ticket del cliente de la clave. Requiere `TICKETS:COMENTAR`.
-   * Nunca es interno: la API no tiene forma de pedirlo. 404 si el ticket no es del cliente.
+   * Nunca es interno: la API no tiene forma de pedirlo. 404 si el ticket no es del cliente. El autor
+   * es el usuario de integracion, que habla por el cliente: el comentario no cuenta como primera
+   * respuesta de SLA (`autorEsIntegracion`, T5d).
    */
   @Post(':id/comentarios')
   @RequiereAcciones('TICKETS:COMENTAR')
@@ -126,6 +128,7 @@ export class TicketsV1Controller {
       texto: dto.texto,
       autorId: actor.sub,
       esInterno: false,
+      autorEsIntegracion: true,
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
