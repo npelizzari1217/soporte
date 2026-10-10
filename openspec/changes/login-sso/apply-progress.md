@@ -310,3 +310,24 @@ Desviaciones del diseno: ninguna. Ayuda: sin deuda.
 | Comando focalizado | `pnpm vitest run test/sso.e2e.spec.ts`: 30 tests en verde |
 | Harness de runtime | IdP falso `node:http`, `/token` por `code` para la concurrencia, `soporte_master_test` |
 | Frontera de rollback | revertir `c69685b7`; solo tests |
+
+## Unidad 11 (WU-6) - lote 1 (rama `feat/login-sso-wu06`, tareas 11.1 y 11.2)
+
+Partida en dos ramas por el tope de 400 lineas (estimado ~570 con use case, controller y e2e): `feat/login-sso-wu06` (base `feat/login-sso-wu05b2`) lleva la extraccion de la politica; `feat/login-sso-wu06b` (base `feat/login-sso-wu06`) llevara 11.3 a 11.6.
+
+Modo: estandar (refactor con tests).
+
+Commit de codigo: `44f02bd6` (`refactor(auth): politica de reseteo de usuario compartida, extraida del reseteo de 2FA`), 140 inserciones y 15 borrados.
+
+- `puedeResetearAUsuario(input, { usuarios, membresias })` en `application/politica-reseteo-usuario.ts` es el cuerpo de `puedeResetear` movido textualmente; `ResetearTfaUsuarioUseCase` la llama.
+- `resetear-tfa-usuario.use-case.spec.ts` y `usuarios-reseteo-tfa.e2e.spec.ts` sin diff. El e2e vive en `backend/src/auth/interface/controllers/`, no en `backend/test/` como suponia el hallazgo del encargo.
+- El spec de la politica cubre las cinco reglas de ADR-8; ROOT no consulta membresias (se verifica que los metodos no se llamen).
+
+Verificacion observada en la punta (backend/): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/auth/application src/auth/interface/controllers/usuarios-reseteo-tfa.e2e.spec.ts` 357 tests en verde.
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (refactor interno).
+
+| Evidencia | Valor |
+|---|---|
+| Comando focalizado | `pnpm vitest run src/auth/application src/auth/interface/controllers/usuarios-reseteo-tfa.e2e.spec.ts`: 357 en verde |
+| Frontera de rollback | revertir `44f02bd6`; sin migraciones |
