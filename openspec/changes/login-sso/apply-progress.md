@@ -272,3 +272,18 @@ Desviaciones del diseno: ninguna. Ayuda: sin deuda (el login SSO no tiene UI has
 | Comando focalizado | `pnpm vitest run test/sso.e2e.spec.ts src/auth`: 97 archivos, 1141 tests en verde |
 | Harness de runtime | IdP falso `node:http` + `soporte_master_test`, listener real; `pnpm start` con y sin `SSO_*` |
 | Frontera de rollback | revertir `f4e9367c`; los casos de uso vuelven a quedar inertes |
+
+## Unidad 10 (WU-5b) - ramas `feat/login-sso-wu05b` y `feat/login-sso-wu05b2`
+
+Modo: estandar (feature, solo tests). La unidad se parte en dos ramas apiladas por el tope de 400 lineas. La numeracion de tasks.md se corrigio: 10.5 = casos movidos, 10.6 = mutaciones e2e, 10.7 = verificacion.
+
+### Rama `feat/login-sso-wu05b` (tareas 10.1, 10.2 y 10.5)
+
+Commit de tests: `3df98096` (`test(auth): matriz e2e del login SSO, vinculo por sujeto y rechazos genericos`), 243 inserciones y 25 borrados en `backend/test/sso.e2e.spec.ts`.
+
+- El spec ahora sustituye `LOGGER` por un espia para comprobar que el motivo del rechazo (`SSO_RECHAZADO | proveedor=... | motivo=...`) solo sale por el log y nunca por la respuesta. MICROSOFT se habilita solo dentro de `conMicrosoft`, para no romper el caso de proveedor deshabilitado.
+- Usuario borrado (`deleted_at`) llega a `INACTIVO`, no a `SIN_USUARIO`: la busqueda por email insensible a mayusculas no filtra borrados.
+- El ambiguo se arma con dos filas cuyo email difiere solo en mayusculas (el `@unique` de `usuarios.email` distingue mayusculas).
+- "Solo hashes en `state_hash` y `navegador_hash`" ya lo cubria el test de `iniciar` de la WU-5a.
+
+Verificacion observada en la punta (backend/ salvo la ultima): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run test/sso.e2e.spec.ts` 18 tests en verde; `check-casts-en-specs.mjs` 617 (base 617).
