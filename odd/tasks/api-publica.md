@@ -63,7 +63,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 
 ## Estrategia de entrega
 - **Pronóstico:** unas 3.000 líneas en 10 tareas.
-- **Estrategia:** `ask-on-risk`; el dueño elige la forma de la cadena.
+- **Estrategia:** `ask-on-risk`, con cadena `feature-branch-chain` (elegida por el dueño el 2026-10-10). El tracker es `feat/api-publica` y cada tarea va en `feat/api-publica-tN`, apilada sobre la anterior. Todo local mientras dure la pausa de GitHub.
 
 ## Tareas
 - [ ] **T1 — Modelo en master** (~350): flag `Cliente.apiHabilitada`, marca de usuario de integración en `Usuario` y tabla de claves (prefijo, hash, permisos, nombre, creador, último uso, revocada). Migración con `rollback.sql`, puerto y repositorio, y tests de integración. Ruta: delegada.
@@ -84,4 +84,4 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
 - 2026-10-10: decisiones cerradas (`947d95af`). Documento creado en la rama local `feat/api-publica`, que sale de `docs/roadmap-decisiones-punto-8`.
 
 ## Próximo paso
-Elegir la forma de la cadena; después, T1.
+T1, en `feat/api-publica-t1`.
