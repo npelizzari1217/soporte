@@ -9,6 +9,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Post,
   UnprocessableEntityException,
   UseGuards,
@@ -90,7 +91,10 @@ export class ApiClavesController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async revocar(@CurrentUser() user: JwtPayload, @Param('id') id: string): Promise<void> {
+  async revocar(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<void> {
     const result = await this.revocarApiClaveUseCase.execute(clienteDe(user), id);
     if (result.isFail()) throw toHttpException(result.getError());
   }
