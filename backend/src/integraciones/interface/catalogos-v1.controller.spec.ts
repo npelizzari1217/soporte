@@ -6,11 +6,11 @@ import { AccionesGuard } from '../../auth/infrastructure/guards/acciones.guard';
 import { Result } from '../../shared/domain/result';
 import { ListarEstadosUseCase } from '../../tickets/application/use-cases/listar-estados.use-case';
 import { ListarPrioridadesUseCase } from '../../tickets/application/use-cases/listar-prioridades.use-case';
-import { ListarTiposTicketUseCase } from '../../tickets/application/use-cases/listar-tipos-ticket.use-case';
 import { EstadoEntity } from '../../tickets/domain/entities/estado.entity';
 import { PrioridadEntity } from '../../tickets/domain/entities/prioridad.entity';
 import { TipoTicketEntity } from '../../tickets/domain/entities/tipo-ticket.entity';
 import { ModuloTipoTicketInvalidoError } from '../../tickets/domain/errors/tickets.errors';
+import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiClaveGuard } from '../infrastructure/api-clave.guard';
 import { ApiV1ThrottlerGuard } from '../infrastructure/api-v1-throttler.guard';
 import { CatalogosV1Controller } from './catalogos-v1.controller';
@@ -51,7 +51,7 @@ async function armar(tiposFallan = false) {
   const modulo = await Test.createTestingModule({
     controllers: [CatalogosV1Controller],
     providers: [
-      { provide: ListarTiposTicketUseCase, useValue: { execute: tipos } },
+      { provide: TiposTicketV1Query, useValue: new TiposTicketV1Query({ execute: tipos }) },
       { provide: ListarPrioridadesUseCase, useValue: { execute: prioridades } },
       { provide: ListarEstadosUseCase, useValue: { execute: estados } },
     ],

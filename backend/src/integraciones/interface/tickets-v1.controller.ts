@@ -7,6 +7,7 @@ import { CrearTicketUseCase } from '../../tickets/application/use-cases/crear-ti
 import { ListarTicketsUseCase } from '../../tickets/application/use-cases/listar-tickets.use-case';
 import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtener-ticket.use-case';
 import { toHttpException } from '../../tickets/interface/controllers/tickets.controller';
+import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiV1 } from './api-v1.decorator';
 import {
   ComentarioV1,
@@ -33,6 +34,7 @@ export class TicketsV1Controller {
     private readonly crearTicket: CrearTicketUseCase,
     private readonly crearComentario: CrearComentarioUseCase,
     private readonly presenter: TicketsV1Presenter,
+    private readonly tiposV1: TiposTicketV1Query,
   ) {}
 
   /** Lista los tickets del cliente de la clave, paginados. Requiere `TICKETS:LECTURA`. */
@@ -86,11 +88,17 @@ export class TicketsV1Controller {
   /**
    * Crea un ticket a nombre del usuario de integracion (solicitante y autor). Requiere
    * `TICKETS:ALTAS`. 422 si tipo, prioridad o referencia no existen; 409 si no hay ciclo activo.
+   * El tipo tiene que ser uno de los que publica `GET /v1/catalogos` (activo, del modulo TICKETS):
+   * si no, 422 con el mismo mensaje sea inexistente, dado de baja o de otro modulo (T5e).
    */
   @Post()
   @RequiereAcciones('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(@CurrentUser() actor: JwtPayload, @Body() dto: CrearTicketV1Dto): Promise<TicketV1> {
+    const tipo = await this.tiposV1.validarParaAlta(dto.tipoId);
+    if (tipo.isFail()) {
+      throw toHttpException(tipo.getError());
+    }
     const result = await this.crearTicket.execute({
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,

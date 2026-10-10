@@ -47,6 +47,7 @@ import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
 } from '../shared/infrastructure/persistence/tenant-transaction-runner';
+import { TiposTicketV1Query } from './application/tipos-ticket-v1.query';
 import { IntegracionesModule } from './integraciones.module';
 import { CatalogosV1Controller } from './interface/catalogos-v1.controller';
 import { TicketsV1Controller } from './interface/tickets-v1.controller';
@@ -119,6 +120,12 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
       useFactory: (tipoTicketRepo: ITipoTicketRepository) =>
         new ListarTiposTicketUseCase(tipoTicketRepo),
       inject: [TIPO_TICKET_REPOSITORY],
+    },
+    // Fuente unica de los tipos `v1`: la lista el catalogo y la valida el alta (T5e).
+    {
+      provide: TiposTicketV1Query,
+      useFactory: (listarTipos: ListarTiposTicketUseCase) => new TiposTicketV1Query(listarTipos),
+      inject: [ListarTiposTicketUseCase],
     },
     {
       provide: ListarPrioridadesUseCase,

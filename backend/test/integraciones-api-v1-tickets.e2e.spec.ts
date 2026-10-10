@@ -279,6 +279,38 @@ describe('API v1 e2e — tickets', () => {
     expect(fila.primeraRespuestaAt).toBeNull();
   });
 
+  it('T5e: un tipo de otro modulo, uno dado de baja y uno inexistente dan el mismo 422 y no crean ticket', async () => {
+    const a = await crearEntorno(DB_A);
+    const clave = await emitirClave(a, TODOS);
+    const edilicia = await a.tenant.tipoTicket.findUniqueOrThrow({ where: { codigo: 'EDILICIA' } });
+    const baja = await a.tenant.tipoTicket.create({
+      data: {
+        codigo: `T5E_BAJA_${randomBytes(3).toString('hex')}`,
+        nombre: 'Tipo de tickets dado de baja',
+        modulo: 'TICKETS',
+        activo: false,
+        deletedAt: new Date(),
+      },
+    });
+
+    // La base del tenant es efimera y el codigo del tipo es unico por corrida: no hace falta borrarlo.
+    const respuestas: { status: number; data: { message: string } }[] = [];
+    for (const tipoId of [edilicia.id, baja.id, '01977a00-0000-7000-8000-00000000dead']) {
+      respuestas.push(
+        await llamar<{ message: string }>(clave, 'POST', '', {
+          titulo: 'Tipo fuera de la API',
+          tipoId,
+          prioridadId: a.prioridadId,
+        }),
+      );
+    }
+
+    expect(respuestas.map((r) => r.status)).toEqual([422, 422, 422]);
+    // El mensaje no revela si el id existe en otro modulo o esta dado de baja.
+    expect(new Set(respuestas.map((r) => r.data.message)).size).toBe(1);
+    expect(await a.tenant.ticket.count()).toBe(0);
+  });
+
   it('el detalle nunca incluye comentarios internos ni ids internos', async () => {
     const a = await crearEntorno(DB_A);
     const clave = await emitirClave(a, TODOS);

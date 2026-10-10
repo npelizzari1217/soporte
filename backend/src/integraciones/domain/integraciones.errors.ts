@@ -79,3 +79,15 @@ export class ApiClaveNoEncontradaError extends DomainError {
     super('Clave de API no encontrada.');
   }
 }
+
+/**
+ * El tipo del alta `v1` no es un tipo activo del modulo TICKETS (T5e). El mismo mensaje para un id
+ * inexistente, dado de baja o de otro modulo: no revela cual de los tres es.
+ */
+export class TipoTicketV1NoDisponibleError extends DomainError {
+  readonly code = 'API_TIPO_TICKET_NO_DISPONIBLE';
+
+  constructor() {
+    super('El tipo de ticket no existe o no esta disponible en la API.');
+  }
+}

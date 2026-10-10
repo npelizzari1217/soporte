@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtPayload } from '../../auth/domain/ports/i-token.service';
 import { AccionesGuard } from '../../auth/infrastructure/guards/acciones.guard';
@@ -10,6 +10,8 @@ import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtene
 import { OperacionTicketEntity } from '../../tickets/domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../tickets/domain/errors/tickets.errors';
+import { TipoTicketV1NoDisponibleError } from '../domain/integraciones.errors';
+import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiClaveGuard } from '../infrastructure/api-clave.guard';
 import { ApiV1ThrottlerGuard } from '../infrastructure/api-v1-throttler.guard';
 import { TicketsV1Controller } from './tickets-v1.controller';
@@ -46,7 +48,7 @@ function ticket(): TicketEntity {
   });
 }
 
-async function armar(encontrado = true) {
+async function armar(encontrado = true, tipoPublicado = true) {
   const listar = vi
     .fn()
     .mockResolvedValue(Result.ok({ items: [ticket()], total: 1, pagina: 1, porPagina: 20 }));
@@ -71,6 +73,11 @@ async function armar(encontrado = true) {
     ),
   );
   const presentar = vi.fn().mockResolvedValue([{ numero: 'SOP-2026-00001' }]);
+  const validarTipo = vi
+    .fn()
+    .mockResolvedValue(
+      tipoPublicado ? Result.ok(undefined) : Result.fail(new TipoTicketV1NoDisponibleError()),
+    );
   const modulo = await Test.createTestingModule({
     controllers: [TicketsV1Controller],
     providers: [
@@ -79,6 +86,7 @@ async function armar(encontrado = true) {
       { provide: ObtenerTicketUseCase, useValue: { execute: obtener } },
       { provide: CrearTicketUseCase, useValue: { execute: crear } },
       { provide: CrearComentarioUseCase, useValue: { execute: comentar } },
+      { provide: TiposTicketV1Query, useValue: { validarParaAlta: validarTipo } },
     ],
   })
     .overrideGuard(ApiClaveGuard)
@@ -88,7 +96,14 @@ async function armar(encontrado = true) {
     .overrideGuard(AccionesGuard)
     .useValue({})
     .compile();
-  return { controller: modulo.get(TicketsV1Controller), listar, obtener, crear, comentar };
+  return {
+    controller: modulo.get(TicketsV1Controller),
+    listar,
+    obtener,
+    crear,
+    comentar,
+    validarTipo,
+  };
 }
 
 describe('TicketsV1Controller (lectura)', () => {
@@ -152,6 +167,23 @@ describe('TicketsV1Controller (lectura)', () => {
       autorId: actor.sub,
       anio: new Date().getFullYear(),
     });
+  });
+
+  it('T5e: valida el tipo contra los publicados antes de crear', async () => {
+    const { controller, validarTipo } = await armar();
+
+    await controller.crear(actor, { titulo: 'T', tipoId: ID, prioridadId: ID });
+
+    expect(validarTipo).toHaveBeenCalledWith(ID);
+  });
+
+  it('T5e: un tipo no publicado es 422 y no llega al caso de uso de alta', async () => {
+    const { controller, crear } = await armar(true, false);
+
+    await expect(
+      controller.crear(actor, { titulo: 'T', tipoId: ID, prioridadId: ID }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(crear).not.toHaveBeenCalled();
   });
 
   it('el comentario es siempre publico, de autoria del actor y marcado como de integracion', async () => {
