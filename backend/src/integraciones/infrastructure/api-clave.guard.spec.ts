@@ -26,6 +26,7 @@ function armar(
     usuario?: 'ok' | 'ausente' | 'inactivo' | 'borrado';
     membresia?: boolean;
     claveConocida?: boolean;
+    rolCodigo?: string;
   } = {},
 ) {
   const cliente = ClienteEntity.create({
@@ -62,7 +63,7 @@ function armar(
   const membresia: MembresiaResuelta = {
     clienteId: cliente.id,
     clienteNombre: cliente.nombre,
-    rolCodigo: 'USUARIO',
+    rolCodigo: opciones.rolCodigo ?? 'USUARIO',
     clienteRequiere2fa: false,
   };
   const registrarUso = vi.fn().mockResolvedValue(undefined);
@@ -185,6 +186,16 @@ describe('ApiClaveGuard', () => {
         cliente_logo_v: null,
       });
       expect(pedido.apiClave).toEqual({ id: 'clave-1', prefijo: 'sop_clave-de' });
+    });
+
+    it('JD-2: el actor nunca hereda el rol de la membresia, aunque sea ADMINISTRADOR', async () => {
+      const { guard } = armar({ rolCodigo: 'ADMINISTRADOR', permisos: ['TICKETS:LECTURA'] });
+      const pedido = conClave();
+
+      await guard.canActivate(contexto(pedido));
+
+      expect(pedido.user?.rol).toBe('USUARIO');
+      expect(pedido.user?.rol).not.toBe('ADMINISTRADOR');
     });
 
     it('agrega TICKETS:VER_TODOS solo cuando la clave lleva TICKETS:LECTURA', async () => {

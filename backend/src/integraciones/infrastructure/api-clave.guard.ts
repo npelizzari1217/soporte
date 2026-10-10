@@ -13,7 +13,9 @@
  * Al autenticar, bindea `TenantContext` igual que `TenantGuard` (cliente en master +
  * `getTenantClient`) y deja en `request.user` un actor sintetico con forma de `JwtPayload`, de
  * modo que `AccionesGuard` y los casos de uso existentes lo traten como a cualquier usuario:
- * - `sub` = usuario de integracion; `rol` = el de su membresia (USUARIO); `modulos` = ['TICKETS'].
+ * - `sub` = usuario de integracion; `rol` = siempre `USUARIO`, nunca el de su membresia (un
+ *   ADMINISTRADOR pasa todo par valido en `puedeEjecutar`; la clave saltearia su subconjunto de
+ *   permisos si alguien cambia el rol del usuario de integracion); `modulos` = ['TICKETS'].
  * - `permisos` = los de la clave, mas `TICKETS:VER_TODOS` si lleva `TICKETS:LECTURA`: una clave
  *   de lectura ve todos los tickets del cliente, no solo los "propios" del usuario tecnico.
  * Tambien deja `request.apiClave = { id, prefijo }` para el limite por clave.
@@ -48,6 +50,8 @@ export const INTERVALO_USO_MS = 60_000;
 const LARGO_MAXIMO_CLAVE = 128;
 const PERMISO_LECTURA = 'TICKETS:LECTURA';
 const PERMISO_VER_TODOS = 'TICKETS:VER_TODOS';
+/** Rol fijo del actor sintetico: sin privilegio por rol, solo cuentan los permisos de la clave. */
+const ROL_ACTOR_API = 'USUARIO';
 
 /** Identidad de la clave que autentico el pedido (para el limite por clave y el uso). */
 export interface ApiClaveAutenticada {
@@ -113,7 +117,7 @@ export class ApiClaveGuard implements CanActivate {
       v: VERSION_PAYLOAD_JWT,
       sub: usuario.id,
       cliente_id: cliente.id,
-      rol: membresia.rolCodigo,
+      rol: ROL_ACTOR_API,
       permisos,
       is_global_admin: false,
       cliente_nombre: cliente.nombre,

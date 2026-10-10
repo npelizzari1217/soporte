@@ -370,6 +370,29 @@ describe('API v1 e2e — tickets', () => {
     expect((await llamar(soloLectura, 'GET', '')).status).toBe(200);
   });
 
+  it('JD-2: con la membresia de integracion en ADMINISTRADOR, una clave de solo lectura sigue recibiendo 403', async () => {
+    const a = await crearEntorno(DB_A);
+    const conAltas = await emitirClave(a, TODOS);
+    const soloLectura = await emitirClave(a, ['TICKETS:LECTURA']);
+    const creado = await crearTicket(a, conAltas);
+    // Lo que haria un ADMINISTRADOR con `PATCH /usuarios/:id/rol` sobre el usuario de integracion.
+    const adminRol = await master.role.create({
+      data: { codigo: 'ADMINISTRADOR', nombre: 'Administrador' },
+    });
+    await master.membresia.updateMany({
+      where: { usuarioId: a.usuarioId, clienteId: a.clienteId },
+      data: { rolId: adminRol.id },
+    });
+
+    expect((await crearTicket(a, soloLectura)).status).toBe(403);
+    const comentario = await llamar(soloLectura, 'POST', `/${creado.data.id}/comentarios`, {
+      texto: 'x',
+    });
+    expect(comentario.status).toBe(403);
+    expect(await a.tenant.ticket.count()).toBe(1);
+    expect(await a.tenant.operacionTicket.count({ where: { ticketId: creado.data.id } })).toBe(1);
+  });
+
   it('una clave revocada recibe 401', async () => {
     const a = await crearEntorno(DB_A);
     const revocada = await emitirClave(a, TODOS, true);
