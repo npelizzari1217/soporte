@@ -144,6 +144,7 @@ describe('ClientesController (T8.4)', () => {
         csatHabilitado: false,
         slug: null,
         formularioPublicoHabilitado: false,
+        apiHabilitada: false,
       });
       expect(crearClienteUseCase.execute).toHaveBeenCalledWith(
         {
@@ -221,9 +222,29 @@ describe('ClientesController (T8.4)', () => {
           csatHabilitado: false,
           slug: null,
           formularioPublicoHabilitado: false,
+          apiHabilitada: false,
           correo: { configurado: true, verificadoAt },
         },
       ]);
+    });
+
+    it('espeja apiHabilitada=true en el item del listado (api-publica, CA4)', async () => {
+      const { controller, listarClientesUseCase } = buildController();
+      const cliente = ClienteEntity.create({
+        nombre: CREATE_DTO.nombre,
+        razonSocial: null,
+        cuit: null,
+        dbName: 'soporte_deadbeef',
+        activo: true,
+      });
+      cliente.habilitarApi();
+      listarClientesUseCase.execute.mockResolvedValue(
+        Result.ok([{ cliente, correo: { configurado: false, verificadoAt: null } }]),
+      );
+
+      const [item] = await controller.listar();
+
+      expect(item.apiHabilitada).toBe(true);
     });
 
     it('[CRITICAL] el resumen de correo del listado NUNCA incluye la contraseña bajo ninguna clave', async () => {
