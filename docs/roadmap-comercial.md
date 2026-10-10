@@ -649,7 +649,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | **Entregado** — en `main` por el #472 (`20b320a4`), desplegado el 2026-10-07 |
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | Pendiente — decisiones cerradas el 2026-10-09: solo usuarios existentes, convive con la contraseña |
-| 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente |
+| 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | Pendiente — decisiones cerradas el 2026-10-10: primero la API (solo tickets), después los webhooks |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | **Entregado** — en `main` por el #490 (`776c6d69`), desplegado el 2026-10-09. Un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | Sin base desde el 2026-10-08: requiere decidir cómo se resuelve el cliente |
 | 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
@@ -1039,6 +1039,36 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
       cual sea el motivo (email inexistente o sin verificar, otra cuenta con el mismo
       email, ROOT, usuario inactivo o sin membresías). El motivo real queda solo en
       los logs del servidor, como hoy en el login con contraseña.
+- **Segunda etapa, punto 8 — API pública + webhooks** (decidido el 2026-10-10):
+  - **Se entrega en dos etapas: primero la API, después los webhooks.** Cada etapa se
+    cierra por separado.
+  - **Etapa 1, API:**
+    - Expone **solo tickets**: listar, ver, crear y comentar. Transicionar, asignar,
+      equipos y compras quedan para más adelante.
+    - Cada cliente tiene un **usuario de integración técnico**, con su membresía, que
+      figura como autor de lo que hace la API. No se cambia el modelo de tickets.
+    - Las claves son **por cliente** y están atadas a ese usuario. Cada clave lleva
+      permisos elegidos de un subconjunto: lectura, alta y comentario.
+    - **ROOT habilita la API por cliente**, como el formulario público. El
+      **ADMINISTRADOR** crea y revoca las claves desde una pantalla nueva,
+      "Integraciones", en el área de administración.
+    - La API entra por una **ruta propia del frontend, `/api/v1/*`**, que reenvía la
+      clave al backend. No se toca la configuración de IIS.
+    - Hay un **límite de pedidos por clave** (del orden de 60 por minuto).
+    - La documentación es **OpenAPI**, generada solo para las rutas de la API.
+    - Cada clave guarda su **último uso**, visible en la pantalla. No hay auditoría de
+      cada llamada en esta etapa.
+    - La clave se muestra **una sola vez** al crearla y se guarda hasheada.
+  - **Etapa 2, webhooks:**
+    - Eventos: ticket **creado**, **cambio de estado**, **asignado** y **comentado**
+      (solo comentarios públicos). Los vencimientos de SLA quedan para más adelante.
+    - Entrega **al menos una vez**, con reintentos: los avisos se encolan en la base
+      del cliente y un proceso periódico los reenvía hasta que el destino responde.
+    - Cada aviso lleva un **resumen corto** del ticket (identificador, número, estado,
+      tipo y fechas). El detalle se pide por la API.
+    - Se ve un **registro de entregas** en la pantalla de Integraciones.
+    - Los secretos de firma se guardan **cifrados**, con la misma clave y el mismo
+      procedimiento de rotación que las contraseñas de correo.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
