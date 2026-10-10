@@ -50,7 +50,7 @@ La competencia (GLPI 11, ManageEngine) ya trae API. Es el punto 8 de la segunda 
 
 ## Criterios de aceptación
 Salen de la decisión de producto, viñeta por viñeta.
-- **CA1:** la API expone solo tickets: listar, ver, crear y comentar. No hay rutas de transición, asignación, equipos ni compras.
+- **CA1:** la API expone solo tickets: listar, ver, crear y comentar. No hay rutas de transición, asignación, equipos ni compras. Ampliación aprobada por el dueño el 2026-10-10: un `GET /api/v1/catalogos` de solo lectura, porque sin él el alta no se puede usar (ver T5c).
 - **CA2:** cada cliente con API habilitada tiene un usuario de integración técnico, con su membresía, que figura como autor de lo que hace la API. El modelo de tickets no cambia. Ese usuario no puede entrar por login (ni contraseña ni SSO) y no aparece como persona en las listas de usuarios.
 - **CA3:** las claves son por cliente y están atadas a ese usuario. Cada clave lleva un subconjunto de permisos (lectura, alta, comentario), y la API rechaza lo que la clave no permite.
 - **CA4:** solo ROOT habilita o deshabilita la API de un cliente. Solo el ADMINISTRADOR (o ROOT) del cliente crea y revoca claves, desde la pantalla "Integraciones". Con la API deshabilitada, ninguna clave funciona.
@@ -71,6 +71,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
 - [x] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
 - [x] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
+- [x] **T5c — Catálogos `v1`** (~300, salió en 600): `GET /api/v1/catalogos` con tipos, prioridades y estados, para que el integrador descubra los ids que exige el alta. Aprobado por el dueño el 2026-10-10. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
@@ -130,8 +131,21 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - El detalle nunca trae comentarios internos (viven en `/timeline`, que v1 no expone), y el e2e lo prueba.
   - Verificación: lint y typecheck en 0 en cada punta; en `t5b`, 836/836; casts en 617. Control del orquestador: typecheck en 0 y e2e de tickets v1 6/6.
   - Cableado: `TicketsModule` no exporta `ListarTicketsUseCase` ni `CrearComentarioUseCase`, así que se arman con `useFactory` en `ApiV1Module`. Lo prolijo sería exportarlos desde `tickets.module.ts` (2 líneas, fuera de la superficie).
-  - **Abierto, decisión del dueño:** un integrador no puede descubrir los `tipoId` y `prioridadId` que exige el alta, porque v1 no expone catálogos.
+  - ~~**Abierto, decisión del dueño:** un integrador no puede descubrir los `tipoId` y `prioridadId` que exige el alta, porque v1 no expone catálogos.~~ Resuelto en T5c.
   - **Abierto, decisión del dueño:** un comentario por API sobre un ticket cuyo solicitante no es el usuario de integración cuenta como primera respuesta de SLA.
 
+- 2026-10-10: T5c hecha, en la rama `feat/api-publica-t5c` (sale de `t5b`):
+  - **Decisión del dueño:** se aprueba un endpoint de catálogos de solo lectura. Amplía el "solo tickets" de CA1, pero sirve al alta de tickets: sin él, `tipoId` y `prioridadId` no se pueden descubrir.
+  - `6a267340`, 289 líneas: `CatalogosV1Controller` (`@ApiV1('catalogos')`, `TICKETS:LECTURA`), DTOs y presentador `v1` propios, specs unitarios, y los tres casos de uso de listado armados con `useFactory` en `ApiV1Module` (`TicketsModule` no los exporta; no se tocó `src/tickets/`);
+  - `5c00cccc`, 312 líneas: e2e.
+  - Contrato:
+    - `{ tipos: [{id, codigo, nombre}], prioridades: [{id, codigo, nombre, orden}], estados: [{id, codigo, nombre, orden}] }`;
+    - tipos: solo los activos **del módulo `TICKETS`**. El actor de la clave tiene `modulos: ['TICKETS']`, así que un ticket de un tipo de otro módulo (por ejemplo `EDILICIA`) se crearía y la misma clave no lo podría listar;
+    - prioridades: solo las activas, ordenadas por `orden` (crece hacia la más urgente);
+    - estados: el catálogo fijo de 6, que no tiene altas ni bajas. Se lee con `findAllActive`, el único listado del puerto. `codigo` es el mismo valor que `TicketV1.estado`, así que no hace falta una marca de "final": `CERRADO` y `CANCELADO` lo dicen;
+    - `codigo` va porque es estable (el `nombre` lo edita el cliente). Quedan afuera color, SLA, módulo, `activo` y fechas.
+  - El e2e prueba: forma exacta, tipo y prioridad dados de baja excluidos, tipos de otro módulo excluidos, que los ids publicados sirven para crear un ticket, 401 sin clave y con clave inexistente, 403 sin `TICKETS:LECTURA`, y que una clave de A no ve ids ni tipos de B.
+  - Verificación (writer, en `t5c`): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/integraciones` 62/62; e2e de catálogos, tickets y auth v1 17/17; casts en 617.
+
 ## Próximo paso
-Resolver con el dueño los catálogos y la primera respuesta de SLA. Después, T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5b`.
+Resolver con el dueño la primera respuesta de SLA. Después, T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5c`.
