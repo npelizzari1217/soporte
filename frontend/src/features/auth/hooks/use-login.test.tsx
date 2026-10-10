@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { render, renderHook, screen, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { server } from "../../../../test/msw/server";
+import { StrictMode } from "react";
+import { MENSAJE_SSO_ERROR } from "../components/AvisoMotivo";
 import { MENSAJE_VENCIDO, mensajeDeErrorDeLogin, useLogin } from "./use-login";
 import { writeLastActivity } from "@/shared/auth/idle-storage";
 
@@ -555,5 +557,138 @@ describe("useLogin", () => {
     });
     await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"));
     expect(continuar).toEqual({ ticket: "tk-5" });
+  });
+
+  // Spec: sdd/login-sso — SL12, SL14 (efecto de montaje de `?sso=1`, ADR-9).
+  describe("retorno del login con proveedor externo (?sso=1)", () => {
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState");
+
+    function conBusqueda(search: string) {
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { href: `http://localhost:3000/login${search}`, pathname: "/login", search, assign: assignMock, replace: vi.fn() },
+      });
+    }
+
+    function Sonda() {
+      return <p data-testid="paso">{useLogin().paso}</p>;
+    }
+
+    beforeEach(() => {
+      replaceStateSpy.mockClear();
+      replaceStateSpy.mockImplementation(() => undefined);
+    });
+
+    it("sin ?sso=1 no llama a paso", async () => {
+      let llamadas = 0;
+      server.use(http.post("/api/auth/sso/paso", () => { llamadas += 1; return new HttpResponse(null, { status: 404 }); }));
+      conBusqueda("");
+
+      renderHook(() => useLogin(), { wrapper });
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(llamadas).toBe(0);
+      expect(replaceStateSpy).not.toHaveBeenCalled();
+    });
+
+    it("desafío 2FA → pasa al paso del código", async () => {
+      server.use(http.post("/api/auth/sso/paso", () => HttpResponse.json({ needs2fa: true, desafio: "ds-sso" })));
+      conBusqueda("?sso=1");
+
+      const { result } = renderHook(() => useLogin(), { wrapper });
+
+      await waitFor(() => expect(result.current.paso).toBe("codigo"));
+    });
+
+    it("enrolamiento obligatorio → pasa al enrolamiento y pide el secreto", async () => {
+      let iniciar: unknown = null;
+      server.use(
+        http.post("/api/auth/sso/paso", () => HttpResponse.json({ needsEnrolamiento2fa: true, desafio: "ds-en" })),
+        http.post("/api/auth/2fa/enrolamiento/iniciar", async ({ request }) => {
+          iniciar = await request.json();
+          return HttpResponse.json({ otpauthUri: "otpauth://totp/x?secret=ABC", claveManual: "ABC" });
+        }),
+      );
+      conBusqueda("?sso=1");
+
+      const { result } = renderHook(() => useLogin(), { wrapper });
+
+      await waitFor(() => expect(result.current.datosEnrolamiento).not.toBeNull());
+      expect(result.current.paso).toBe("enrolamiento");
+      expect(iniciar).toEqual({ desafio: "ds-en" });
+    });
+
+    it("ticket → continúa por login/continuar, reinicia la inactividad y respeta `siguiente`", async () => {
+      let continuar: unknown = null;
+      server.use(
+        http.post("/api/auth/sso/paso", () => HttpResponse.json({ ticket: "tk-sso" })),
+        http.post("/api/auth/login/continuar", async ({ request }) => {
+          continuar = await request.json();
+          return HttpResponse.json({ user: USER_OK });
+        }),
+      );
+      conBusqueda("?sso=1&siguiente=%2Fpedido-qr");
+
+      renderHook(() => useLogin(), { wrapper });
+
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/pedido-qr"));
+      expect(continuar).toEqual({ ticket: "tk-sso" });
+      expect(writeLastActivity).toHaveBeenCalledTimes(1);
+    });
+
+    it("bajo StrictMode llama a paso una sola vez", async () => {
+      let llamadas = 0;
+      server.use(
+        http.post("/api/auth/sso/paso", () => {
+          llamadas += 1;
+          return HttpResponse.json({ needs2fa: true, desafio: "ds-sso" });
+        }),
+      );
+      conBusqueda("?sso=1");
+
+      // StrictMode debe envolver al proveedor (no al revés) y montarse con `render`: así sí duplica los efectos.
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+      render(
+        <StrictMode>
+          <QueryClientProvider client={queryClient}>
+            <Sonda />
+          </QueryClientProvider>
+        </StrictMode>,
+      );
+
+      await waitFor(() => expect(screen.getByTestId("paso")).toHaveTextContent("codigo"));
+      // Margen para que una segunda llamada (sin la guarda) llegue a registrarse.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(llamadas).toBe(1);
+    });
+
+    it("404 → toast con el mensaje genérico y sigue en credenciales", async () => {
+      server.use(http.post("/api/auth/sso/paso", () => new HttpResponse(null, { status: 404 })));
+      conBusqueda("?sso=1");
+      const { toast } = await import("sonner");
+
+      const { result } = renderHook(() => useLogin(), { wrapper });
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_SSO_ERROR));
+      expect(result.current.paso).toBe("credenciales");
+    });
+
+    it("history.replaceState quita `sso` y conserva `siguiente`", async () => {
+      server.use(http.post("/api/auth/sso/paso", () => HttpResponse.json({ needs2fa: true, desafio: "ds" })));
+      conBusqueda("?sso=1&siguiente=%2Fpedido-qr");
+
+      renderHook(() => useLogin(), { wrapper });
+
+      await waitFor(() => expect(replaceStateSpy).toHaveBeenCalledWith(null, "", "/login?siguiente=%2Fpedido-qr"));
+    });
+
+    it("history.replaceState deja la ruta limpia cuando no había `siguiente`", async () => {
+      server.use(http.post("/api/auth/sso/paso", () => new HttpResponse(null, { status: 404 })));
+      conBusqueda("?sso=1");
+
+      renderHook(() => useLogin(), { wrapper });
+
+      await waitFor(() => expect(replaceStateSpy).toHaveBeenCalledWith(null, "", "/login"));
+    });
   });
 });
