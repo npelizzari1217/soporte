@@ -428,3 +428,15 @@ Base `feat/login-sso-wu08a2` (el target de tasks.md decia wu08a; corregido). Com
 - Verificacion (frontend/): `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/features/usuarios` 44 en verde (6 archivos); raiz `node scripts/check-casts-en-specs.mjs` 617 (base 617).
 
 Desviaciones del diseno: ninguna. Deuda de Ayuda: boton "Resetear vinculo SSO" (backend/ayuda no se toco).
+
+## Unidad 16 (WU-9) — rama `feat/login-sso-wu09` (tareas 16.1 a 16.6)
+
+Base `feat/login-sso-wu08b`. Commit de documentacion: `docs: variables SSO en el README y runbook de alta de proveedores, smoke y mitigacion`, 65 inserciones en 2 archivos (`README.md`, `DEPLOY-VPS-runbook.md`).
+
+- 16.1: una fila en la tabla de variables del README con las cuatro `SSO_*` (opcionales; proveedor habilitado solo con su par completo; URI derivada de `APP_BASE_URL`).
+- 16.2 a 16.4: seccion "Login con Google o Microsoft (SSO)" del runbook antes de "Cuando algo falla": Google Cloud Console, Entra, rotacion del secreto, smoke (`proveedores`, `Host` por IIS/ARR, `nssm get soporte-backend Application`, variable MACHINE `SSO_*`), mitigacion sin revert, migracion y rollback. El procedimiento del manifiesto de Entra y el `removeUnverifiedEmailClaim` quedan marcados **por confirmar en staging** (resultado a registrar en `verify-report.md`, V.1); no se inventa confirmacion.
+- 16.5: las notas de deploy se redactaron para agregarse al cuerpo del PR del tracker (#510); no se editó GitHub. Borrador fuera del repo, entregado al orquestador.
+- Deuda de Ayuda consolidada (escritura suspendida, `backend/ayuda` sin tocar): botones SSO del login; mensaje generico de falla (`MENSAJE_SSO_ERROR`); el login por SSO que continua con el 2FA o el selector de cliente; boton admin "Resetear vinculo SSO".
+- 16.6, verificacion final observada: frontend `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm test` 264 archivos y 2160 tests en verde; backend `pnpm lint` 0 errores y `pnpm typecheck` 0 errores; raiz `check-casts-en-specs.mjs` 617 (base 617); `check-roadmap-fresco.mjs` "El roadmap esta fresco" (el cierre del roadmap es V.2, no se toco); `rg "todo|TODO|FIXME" openspec/changes/login-sso` solo devuelve la palabra castellana "todo", sin pendientes de implementacion.
+
+Desviaciones del diseno: ninguna. Pendientes fuera de apply: V.1 (chequeo manual en staging) y V.2 (cierre del roadmap tras el deploy). Con esta unidad terminan las tareas de apply del ciclo: 16 unidades, listo para `sdd-verify`.
