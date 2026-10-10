@@ -17,7 +17,7 @@ Definir el vínculo entre un usuario y su cuenta puntual del proveedor: cómo se
 
 ### Requirement: SV1 Un vínculo por proveedor y por usuario; una cuenta del proveedor, un usuario
 
-El sistema DEBE guardar a lo sumo un vínculo por par (usuario, proveedor) y a lo sumo un vínculo por par (proveedor, sujeto). El vínculo DEBE guardar el proveedor, el sujeto, el email con que se vinculó (solo informativo) y la fecha. El proveedor DEBE estar restringido a `GOOGLE` o `MICROSOFT`. Borrar un usuario DEBE borrar sus vínculos. Estas restricciones DEBEN valer a nivel de base de datos.
+El sistema DEBE guardar a lo sumo un vínculo por par (usuario, proveedor) y a lo sumo un vínculo por par (proveedor, sujeto). El vínculo DEBE guardar el proveedor, el sujeto y la fecha. **Desviación declarada (2026-10-10, decisión del dueño):** el vínculo NO guarda el email con que se vinculó. Ese dato era solo informativo, ninguna pantalla lo lee y guardarlo sumaba un dato personal sin uso (ADR-4, `design.md:197`). Lo que se pierde es el rastro de con qué email se creó cada vínculo. El proveedor DEBE estar restringido a `GOOGLE` o `MICROSOFT`. Borrar un usuario DEBE borrar sus vínculos. Estas restricciones DEBEN valer a nivel de base de datos.
 
 #### Scenario: Segundo vínculo del mismo proveedor para el mismo usuario
 
