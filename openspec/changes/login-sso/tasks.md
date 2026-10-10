@@ -218,9 +218,9 @@ Rama `feat/login-sso-wu07b` → target `feat/login-sso-wu07a`. Requerimientos: S
 
 - [x] 13.1 Test `frontend/src/app/api/auth/sso/[proveedor]/callback/route.test.ts`: siempre borra `sso_st`; `error=access_denied` → 302 `/login` sin mensaje; cualquier otro `error`, falta de `code`, `state` o cookie, y respuesta no 2xx o error de red → `motivo=sso-error`; el `dispositivoConfiable` de la URL se ignora y se usa solo el de la cookie `td`; reenvía `x-soporte-ip-navegador`; éxito deja `sso_paso` httpOnly de 120 s con `{k,t}` (nunca un JWT), vuelve a fijar `td` si el backend lo renueva, y redirige a `/login?sso=1` con `destinoPosLogin` aplicado a `siguiente`, `Cache-Control: no-store` y `Referrer-Policy: no-referrer`. (SL13, SL14, SL10)
 - [x] 13.2 Crear `frontend/src/app/api/auth/sso/[proveedor]/callback/route.ts`. (SL13, SL14)
-- [ ] 13.3 Test `frontend/src/app/api/auth/sso/paso/route.test.ts`: POST lee, borra y valida la forma de `sso_paso`; devuelve `{needs2fa,desafio}`, `{needsEnrolamiento2fa,desafio}` o `{ticket}`; segunda lectura → 404; cookie ausente o con forma inválida → 404; un GET no consume la cookie. (SL14)
-- [ ] 13.4 Crear `frontend/src/app/api/auth/sso/paso/route.ts`. (SL14)
-- [ ] 13.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/app/api/auth/sso`; raíz `node scripts/check-casts-en-specs.mjs`.
+- [x] 13.3 Test `frontend/src/app/api/auth/sso/paso/route.test.ts`: POST lee, borra y valida la forma de `sso_paso`; devuelve `{needs2fa,desafio}`, `{needsEnrolamiento2fa,desafio}` o `{ticket}`; segunda lectura → 404; cookie ausente o con forma inválida → 404; un GET no consume la cookie. (SL14)
+- [x] 13.4 Crear `frontend/src/app/api/auth/sso/paso/route.ts`. (SL14)
+- [x] 13.5 Verificación: frontend `JWT_SECRET=dummy pnpm lint`, `pnpm type-check`, `pnpm vitest run src/app/api/auth/sso`; raíz `node scripts/check-casts-en-specs.mjs`.
 
 ## Unidad 14 (WU-8a) — Botones, efecto `?sso=1`, `AvisoMotivo` y `RUTAS_SIN_REFRESH` (~390 líneas)
 

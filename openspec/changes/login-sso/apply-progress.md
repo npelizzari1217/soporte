@@ -380,3 +380,15 @@ Base `feat/login-sso-wu07a`. La unidad se parte en dos ramas apiladas porque el 
 Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 103 en verde; `check-casts-en-specs.mjs` 617 (base 617).
 
 Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
+
+## Unidad 13 (WU-7b), segunda mitad — rama `feat/login-sso-wu07b2` (tareas 13.3 a 13.5)
+
+Base `feat/login-sso-wu07b`. Commit de codigo: `feat(frontend): ruta BFF paso que entrega una sola vez el resultado del login con proveedor externo`, 107 inserciones en 2 archivos.
+
+- `POST /api/auth/sso/paso`: lee `sso_paso`, la borra siempre (tambien ante forma invalida) y la valida con Zod (`k` en `2fa|enrol|ticket`, `t` no vacio; los campos extra no salen). Devuelve `{needs2fa:true,desafio}`, `{needsEnrolamiento2fa:true,desafio}` o `{ticket}`; cookie ausente o invalida → 404 sin cuerpo. Todas las respuestas llevan `Cache-Control: no-store`.
+- El modulo no exporta `GET`: un GET recibe 405 de Next y no toca la cookie (verificado en el test).
+- Para WU-8a: `/login?sso=1` debe llamar a `POST auth/sso/paso` una sola vez (la segunda lectura da 404), con `siguiente` leido de la URL; 404 → mensaje generico; el `ticket` va a `continuarMutation` y los otros dos a `alResponder`. `auth/sso/paso` debe entrar en `RUTAS_SIN_REFRESH`.
+
+Verificacion observada: `JWT_SECRET=dummy pnpm lint` 0 errores; `pnpm type-check` 0 errores; `pnpm vitest run src/app/api/auth/sso src/shared/auth` 114 en verde; `check-casts-en-specs.mjs` 617 (base 617).
+
+Desviaciones del diseno: ninguna. Ayuda: sin deuda (sin UI todavia).
