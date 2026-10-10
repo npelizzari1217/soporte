@@ -73,6 +73,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
 - [x] **T5c — Catálogos `v1`** (~300, salió en 600): `GET /api/v1/catalogos` con tipos, prioridades y estados, para que el integrador descubra los ids que exige el alta. Aprobado por el dueño el 2026-10-10. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [x] **T5d — El comentario por API no cuenta como primera respuesta** (~50): `CrearComentarioDto.autorEsIntegracion` (por defecto `false`) y `TicketsV1Controller` lo manda en `true`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
+- [x] **T5e — El alta `v1` rechaza tipos fuera de TICKETS** (~150, salió en 207): `POST /api/v1/tickets` responde 422 si `tipoId` no es un tipo activo del módulo `TICKETS`, el mismo conjunto que publica `GET /api/v1/catalogos`. Decisión del dueño del 2026-10-10, tratada como bugfix con TDD. Ruta: delegada (trigger de writer: 2 o más archivos no triviales).
 - [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
@@ -157,7 +158,18 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
     - GREEN: el spec del caso de uso 16/16, con el test existente "comentario público de un técnico registra la fecha" en verde (el camino humano no cambia); el e2e de tickets v1 7/7.
   - El e2e crea el ticket por API, pasa el solicitante a una persona y comenta por API: `tickets.primera_respuesta_at` queda en `NULL`.
   - Verificación (writer, en `t5d`): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run` del caso de uso, `src/tickets/interface` y `src/integraciones` 205/205; e2e de tickets v1 7/7; casts en 617.
-  - Hallazgo abierto: `POST /api/v1/tickets` acepta un `tipoId` de otro módulo (p. ej. EDILICIA); el ticket se crea y la misma clave no lo puede listar. Pendiente de decisión del dueño.
+  - ~~Hallazgo abierto: `POST /api/v1/tickets` acepta un `tipoId` de otro módulo (p. ej. EDILICIA); el ticket se crea y la misma clave no lo puede listar. Pendiente de decisión del dueño.~~ Resuelto por el dueño el 2026-10-10: 422 (T5e).
+
+- 2026-10-10: T5e hecha, en la rama `feat/api-publica-t5e` (sale de `t5d`):
+  - **Decisión del dueño:** el alta `v1` responde 422 cuando `tipoId` no es un tipo activo del módulo `TICKETS`, exactamente el conjunto que publica `GET /api/v1/catalogos`.
+  - `2e38c264`, 207 líneas (192+, 15−): `fix(integraciones)`. `TiposTicketV1Query` (`application/`) es la fuente única de los tipos `v1`: `listar()` alimenta el catálogo y `validarParaAlta(tipoId)` el alta, los dos sobre `ListarTiposTicketUseCase` con el módulo `TICKETS`. La constante del módulo salió del controller de catálogos. `TicketsV1Controller.crear` valida antes de llamar a `CrearTicketUseCase`. No se tocó `src/tickets/`.
+  - El error es `TipoTicketV1NoDisponibleError` (`API_TIPO_TICKET_NO_DISPONIBLE`), con el mismo mensaje para un id inexistente, dado de baja o de otro módulo. Cae en 422 por el caso por defecto de `toHttpException`.
+  - Hallazgo: el tipo dado de baja también se aceptaba, porque `CrearTicketUseCase` busca con `findById`, que no mira `activo`. La API interna sigue así; queda fuera del alcance de esta tarea.
+  - TDD:
+    - RED (e2e): `T5e: un tipo de otro modulo, uno dado de baja y uno inexistente dan el mismo 422 y no crean ticket` falló con `AssertionError: expected [ 201, 201, 422 ] to deeply equal [ 422, 422, 422 ]` (7/8).
+    - GREEN: el mismo e2e en verde, con el alta válida existente también en verde; e2e de tickets y catálogos v1 13/13.
+    - Los unitarios (`tipos-ticket-v1.query.spec.ts`, 4 casos, y 2 casos `T5e` en el spec del controller) se escribieron junto con la implementación: no tienen RED propio.
+  - Verificación (writer, en `t5e`): `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm vitest run src/integraciones` 68/68; e2e de tickets y catálogos v1 13/13; casts en 617.
 
 ## Próximo paso
-T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5d`.
+T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5e`.
