@@ -70,7 +70,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T2 — Habilitación por ROOT** (~350): `PATCH /clientes/:id/api`. Al habilitar, crea de forma idempotente el usuario de integración y su membresía. El login con contraseña y con SSO rechaza a ese usuario, y las listas de usuarios lo excluyen. Ruta: delegada.
 - [x] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
 - [x] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
-- [ ] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
+- [x] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
 - [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
 - [ ] **T7 — Ruta BFF `/api/v1/*`** (~200): reenvía la clave y la IP del que llama, sin cookies. Ruta: delegada.
 - [ ] **T8 — Diálogo de ROOT** (~250): habilitar o deshabilitar la API por cliente. Ruta: delegada.
@@ -115,6 +115,23 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - El orden es guard de clave, después throttler, después `AccionesGuard`. Un pedido sin autenticar no consume cupo.
   - Verificación: en `t4b`, lint y typecheck en 0, 69/69 y casts en 617. Control del orquestador en `t4`: typecheck y lint en 0, y `integraciones` 49/49.
   - Para T5: los controllers van dentro de `ApiV1Module`, con `@ApiV1('tickets')` y `@RequiereAcciones`, y el actor llega por `@CurrentUser()`. Un harness de test necesita `AuthModule`, `ApiV1Module` y `TenantScopeMiddleware`.
+- 2026-10-10: suite completa del backend en `t3c`: 689/691 archivos y 8318/8334 tests. Las 2 fallas (`pedido-publico-confirmar.e2e`, `feriados-cliente.e2e`) fueron contaminación: otra corrida de vitest de un writer, lanzada en paralelo, borró con su barrido de huérfanas las bases efímeras de esta. Corridos solos dan 21/21. Regla: la suite completa nunca se corre en paralelo con otro vitest del repo.
+- 2026-10-10: T5 hecha, en 2 ramas y 5 commits (1.112 líneas):
+  - `t5`:
+    - `968224f8`, 45 líneas: el checker excluye al usuario de integración como asignable (`estaActivoEnTenant`, `listarTecnicosAsignables`) y lo sigue aceptando como autor;
+    - `4c674d86`, 284 líneas: DTOs v1 y presentador;
+    - `8c981ddf`, 223 líneas: `GET /api/v1/tickets` y `GET /api/v1/tickets/:id`.
+  - `t5b`:
+    - `6a9add34`, 218 líneas: `POST /api/v1/tickets` y `POST /api/v1/tickets/:id/comentarios`. El comentario es siempre público: el whitelist descarta `esInterno`;
+    - `24cf7bc0`, 342 líneas: e2e.
+  - Contrato:
+    - `TicketV1 = {id, numero, titulo, descripcion, tipoId, estadoId, estado, prioridadId, ticketReferenciaId, solicitante{nombre,apellido}|null, asignado{nombre,apellido}|null, sla{estado,venceAt}, fechaCierre, createdAt, updatedAt}`, sin ids de usuarios de master;
+    - el alta toma `{titulo, descripcion?, tipoId, prioridadId, ticketReferenciaId?}`.
+  - El detalle nunca trae comentarios internos (viven en `/timeline`, que v1 no expone), y el e2e lo prueba.
+  - Verificación: lint y typecheck en 0 en cada punta; en `t5b`, 836/836; casts en 617. Control del orquestador: typecheck en 0 y e2e de tickets v1 6/6.
+  - Cableado: `TicketsModule` no exporta `ListarTicketsUseCase` ni `CrearComentarioUseCase`, así que se arman con `useFactory` en `ApiV1Module`. Lo prolijo sería exportarlos desde `tickets.module.ts` (2 líneas, fuera de la superficie).
+  - **Abierto, decisión del dueño:** un integrador no puede descubrir los `tipoId` y `prioridadId` que exige el alta, porque v1 no expone catálogos.
+  - **Abierto, decisión del dueño:** un comentario por API sobre un ticket cuyo solicitante no es el usuario de integración cuenta como primera respuesta de SLA.
 
 ## Próximo paso
-T5 (endpoints `v1` de tickets), en `feat/api-publica-t5`, que sale de `t4b`. Incluye que `usuario-master.checker.ts` acepte al usuario de integración como autor.
+Resolver con el dueño los catálogos y la primera respuesta de SLA. Después, T6 (OpenAPI), en `feat/api-publica-t6`, que sale de `t5b`.
