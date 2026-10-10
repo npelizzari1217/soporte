@@ -211,7 +211,7 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - API deshabilitada: el ADMINISTRADOR no tiene de dónde leerlo (el JWT no trae la marca y `/clientes/*` exige `GlobalAdminGuard`). El alta muestra el mensaje del 422 en un toast, y una nota en la página dice que ROOT tiene que habilitarla y da `/api/v1`, `X-Api-Key` y `/api/v1/openapi.json`.
   - Deuda de Ayuda, anotada en los dos commits.
   - Verificación (writer, sobre el cambio entero antes de partir): `pnpm lint` y `pnpm type-check` en 0; `integraciones`, `components/shell` y la página 60/60; `pnpm test` 2199/2199 en 268 archivos; casts en 617. Control del orquestador: `1ef870ea` solo, `pnpm type-check` en 0 y `src/features/integraciones` 5/5.
-  - **Abierto, decisión del dueño:** ¿el ADMINISTRADOR tiene que ver si la API está habilitada antes de intentar un alta? Requiere un cambio de backend (un `GET` de estado de solo lectura, o la marca en el JWT).
+  - ~~**Abierto, decisión del dueño:** ¿el ADMINISTRADOR tiene que ver si la API está habilitada antes de intentar un alta?~~ Resuelto por el dueño el 2026-10-10: queda como está en la etapa 1, con la nota de la página y el 422. Sin cambio de backend.
   - **Abierto, decisión del dueño:** los mensajes de los errores 422 llegan del backend sin tildes ("no esta habilitada") y se ven así en la UI.
 
 ## Próximo paso
