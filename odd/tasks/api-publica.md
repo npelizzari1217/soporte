@@ -68,7 +68,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 ## Tareas
 - [x] **T1 — Modelo en master** (~350): flag `Cliente.apiHabilitada`, marca de usuario de integración en `Usuario` y tabla de claves (prefijo, hash, permisos, nombre, creador, último uso, revocada). Migración con `rollback.sql`, puerto y repositorio, y tests de integración. Ruta: delegada.
 - [x] **T2 — Habilitación por ROOT** (~350): `PATCH /clientes/:id/api`. Al habilitar, crea de forma idempotente el usuario de integración y su membresía. El login con contraseña y con SSO rechaza a ese usuario, y las listas de usuarios lo excluyen. Ruta: delegada.
-- [ ] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
+- [x] **T3 — Claves para el ADMINISTRADOR** (~300): crear (devuelve la clave en claro una sola vez), listar y revocar, con `AdminClienteGuard` y validación del subconjunto de permisos. Ruta: delegada.
 - [ ] **T4 — Guard por clave y módulo `v1`** (~380): resuelve el hash de la clave a cliente activo con API habilitada y clave vigente. Abre el contexto de tenant y arma un actor sintético (el usuario de integración con los permisos de la clave). Actualiza el último uso y aplica el límite por clave. Ruta: delegada.
 - [ ] **T5 — Endpoints `v1` de tickets** (~380): listar, ver, crear y comentar (comentario público), reusando los casos de uso existentes, con e2e de aislamiento entre clientes. Ruta: delegada.
 - [ ] **T6 — OpenAPI** (~200): `@nestjs/swagger` solo para los controllers `v1`, con el JSON servido en una ruta `v1`. Ruta: delegada.
@@ -97,6 +97,15 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
   - El dueño amplió la superficie: membresías, `sso.errors.ts`.
   - Corrección: el writer dijo que el typecheck no cubre los specs, y es falso. `tsconfig.typecheck.json` incluye `src/**/*`, así que los specs de `src` están cubiertos y dan verde.
   - Pendiente para T5: `tickets/.../usuario-master.checker.ts` tiene que aceptar al usuario de integración como autor, y hay que revisar si aparece en los selectores de asignado.
+- 2026-10-10: T3 hecha, en 3 unidades apiladas (787 líneas):
+  - `t3` — `eb29509d`, 280 líneas: los errores de dominio y `CrearApiClaveUseCase` con su spec;
+  - `t3b` — `c73a7717`, 263 líneas: listar y revocar, `ApiClavesController` (`GET`, `POST` y `DELETE /integraciones/claves`, con `JwtAuthGuard`, `TenantGuard` y `AdminClienteGuard`), y el provider `API_CLAVE_REPOSITORY`, exportado;
+  - `t3c` — `93ae87d7`, 247 líneas: e2e con dos clientes, y `ParseUUIDPipe` en `DELETE :id`.
+  - Contrato para T9:
+    - `GET` → `[{id, nombre, prefijo, permisos, creadaAt, ultimoUsoAt, revocadaAt}]`, sin hash;
+    - `POST {nombre, permisos[]}` → 201 con `clave` en claro, la única vez. Responde 422 si la API está deshabilitada, si un permiso está fuera del subconjunto o si el nombre es inválido;
+    - `DELETE` → 204, idempotente, y 404 si la clave es de otro cliente o no existe.
+  - Verificación: lint y typecheck en 0 en cada punta; `integraciones` más los dos e2e, 45/45; casts en 617. Todos los `TRUNCATE usuarios` existentes usan `CASCADE`, así que `api_claves` no los rompe. La suite completa del backend se corre en segundo plano en `t3c`.
 
 ## Próximo paso
-T3 (claves para el ADMINISTRADOR), en `feat/api-publica-t3`, que sale de `t2d`.
+T4 (guard por clave y módulo `v1`), en `feat/api-publica-t4`, que sale de `t3c`. El guard verifica `revocadaAt`, `cliente.activo` y `cliente.apiHabilitada`, y responde el mismo 401 en todos los casos.
