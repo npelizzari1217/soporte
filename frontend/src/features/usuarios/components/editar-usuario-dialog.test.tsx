@@ -252,4 +252,52 @@ describe("EditarUsuarioDialog (spec §5, ADR-3 reset-de-contrasena-por-admin)", 
       );
     });
   });
+
+  describe("Resetear vínculo SSO (SV7, SV8)", () => {
+    it("aparece junto a Resetear 2FA, pide confirmación y llama a DELETE /usuarios/:id/sso", async () => {
+      const user = userEvent.setup();
+      let llamadas = 0;
+      server.use(
+        http.delete("/api/usuarios/u1/sso", () => {
+          llamadas += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      renderWithProviders(<EditarUsuarioDialog usuario={USUARIO} />, {
+        user: buildUser({ rol: "ADMINISTRADOR" }),
+      });
+      await user.click(screen.getByRole("button", { name: /editar/i }));
+      expect(await screen.findByRole("button", { name: /resetear 2fa/i })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /resetear vínculo sso/i }));
+
+      expect(await screen.findByText(/se cierran sus sesiones abiertas/i)).toBeInTheDocument();
+      expect(llamadas).toBe(0);
+      await user.click(screen.getByRole("button", { name: /^resetear$/i }));
+
+      await waitFor(() => expect(llamadas).toBe(1));
+      await waitFor(() =>
+        expect(toast.success).toHaveBeenCalledWith(expect.stringMatching(/vínculo sso reseteado/i)),
+      );
+    });
+
+    it("un 404 muestra un mensaje neutro sin revelar el motivo", async () => {
+      const user = userEvent.setup();
+      server.use(
+        http.delete("/api/usuarios/u1/sso", () =>
+          HttpResponse.json({ message: "Usuario no encontrado" }, { status: 404 }),
+        ),
+      );
+      renderWithProviders(<EditarUsuarioDialog usuario={USUARIO} />, {
+        user: buildUser({ rol: "ADMINISTRADOR" }),
+      });
+      await user.click(screen.getByRole("button", { name: /editar/i }));
+      await user.click(await screen.findByRole("button", { name: /resetear vínculo sso/i }));
+      await user.click(await screen.findByRole("button", { name: /^resetear$/i }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith("No se pudo resetear el vínculo SSO de este usuario."),
+      );
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+  });
 });
