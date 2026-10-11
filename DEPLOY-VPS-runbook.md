@@ -409,10 +409,18 @@ eso alcanza con:
 
 Si cambió el lockfile del **frontend**, su install hay que correrlo igual, aparte.
 
-**El arreglo de fondo**, que todavía no se hizo, es desinstalar ese pnpm 9 global
-(`npm rm -g pnpm`), así `pnpm` a secas cae en el shim de `corepack`. **El VPS es compartido con
-educandow**: antes de borrarlo, confirmar que ningún script ni servicio de educandow depende de
-`pnpm` 9. Es la misma regla que con el Node 22 de más arriba.
+**El arreglo de fondo (2026-10-11).** El `postinstall` del backend ya no llama a `pnpm`: corre
+los dos `prisma generate` directo (`backend/package.json`, con su guarda en
+`backend/scripts/postinstall.spec.ts`). Los binarios de `node_modules/.bin` están en el PATH de
+los scripts de ciclo de vida, así que da igual qué `pnpm` encuentre el PATH. A partir del primer
+deploy que incluya ese cambio, este fallo no debería repetirse; los pasos de arriba quedan para
+desplegar un commit anterior.
+
+**El pnpm 9 global NO se desinstala**: es de educandow. `educandow/deploy/deploy.ps1` (paso 2)
+usa `pnpm` a secas, exige la versión 9 y, si no la encuentra, la reinstala global con
+`npm install -g pnpm@9.15.4`. Borrarlo no arregla nada (el próximo deploy de educandow lo
+repone) y rompe el supuesto de ese script. El servicio `educandow-api` no lo usa en runtime
+(corre `C:\nodejs24\node.exe dist\main.js`). Verificado el 2026-10-11.
 
 **Un detalle del rollback en este camino.** Cuando el primer `deploy.ps1` aborta por el
 lockfile, el pull ya está hecho. La segunda corrida anota como punto de rollback el `HEAD` nuevo
