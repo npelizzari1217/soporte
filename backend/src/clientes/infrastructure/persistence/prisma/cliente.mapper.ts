@@ -26,6 +26,7 @@ export class ClienteMapper {
         slug: row.slug ?? null,
         formularioPublicoHabilitado: row.formularioPublicoHabilitado,
         slugCongeladoAt: row.slugCongeladoAt ?? null,
+        apiHabilitada: row.apiHabilitada,
       },
       row.id,
       row.createdAt,
@@ -46,6 +47,10 @@ export class ClienteMapper {
    * ADR-2): se escriben SOLO por los CAS de `IClienteRepository`. Si el upsert
    * los reescribiera, un `save()` con una entidad leida antes de emitir un QR
    * descongelaria el slug. `formularioPublicoHabilitado` si es espejo.
+   *
+   * `api_habilitada` es espejo (sdd/api-publica, T2): la escribe el caso de uso de ROOT por
+   * `save()`, y la entidad lo lleva con el valor real de la fila, asi que una edicion comercial
+   * lo reescribe igual que lo leyo.
    *
    * Las 3 columnas de logo NO se omiten (design.md D4, a diferencia de
    * `smtp_*`): el logo no tiene cifrado ni invariante todo-o-nada que
@@ -82,6 +87,7 @@ export class ClienteMapper {
       activo: entity.activo,
       csatHabilitado: entity.csatHabilitado,
       formularioPublicoHabilitado: entity.formularioPublicoHabilitado,
+      apiHabilitada: entity.apiHabilitada,
       logoStorageKey: entity.logoStorageKey,
       logoMimeType: entity.logoMimeType,
       logoUpdatedAt: entity.logoUpdatedAt,

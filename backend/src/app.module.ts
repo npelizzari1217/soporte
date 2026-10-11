@@ -21,6 +21,8 @@ import { CsatModule } from './csat/csat.module';
 import { PreventivoModule } from './preventivo/preventivo.module';
 import { RecuperacionPasswordModule } from './auth/recuperacion-password.module';
 import { FormularioPublicoModule } from './publico/formulario-publico.module';
+import { IntegracionesModule } from './integraciones/integraciones.module';
+import { ApiV1Module } from './integraciones/api-v1.module';
 import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware';
 
 /**
@@ -71,6 +73,8 @@ import { TenantScopeMiddleware } from './shared/tenancy/tenant-scope.middleware'
     PreventivoModule,
     RecuperacionPasswordModule,
     FormularioPublicoModule,
+    IntegracionesModule,
+    ApiV1Module,
   ],
   controllers: [],
   providers: [

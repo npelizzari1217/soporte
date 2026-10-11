@@ -23,6 +23,7 @@ export class UsuarioMapper {
         passwordHash: row.passwordHash,
         activo: row.activo,
         isGlobalAdmin: row.isGlobalAdmin,
+        esIntegracion: row.esIntegracion,
       },
       row.id,
       row.createdAt,
@@ -31,6 +32,10 @@ export class UsuarioMapper {
     );
   }
 
+  /**
+   * `esIntegracion` es espejo completo: la entidad lo lleva con el valor real de la fila, asi que
+   * el upsert nunca lo cambia por accidente y el alta del usuario tecnico lo persiste.
+   */
   static toPersistence(entity: UsuarioEntity): Omit<PrismaUsuario, 'createdAt' | 'updatedAt'> {
     return {
       id: entity.id,
@@ -40,6 +45,7 @@ export class UsuarioMapper {
       passwordHash: entity.passwordHash,
       activo: entity.activo,
       isGlobalAdmin: entity.isGlobalAdmin,
+      esIntegracion: entity.esIntegracion,
       deletedAt: entity.deletedAt,
     };
   }

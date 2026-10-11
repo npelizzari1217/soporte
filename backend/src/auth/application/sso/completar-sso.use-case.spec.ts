@@ -47,7 +47,9 @@ const TFA_ACTIVO: EstadoTfa = {
   pendienteCreadoAt: null,
 };
 
-const makeUsuario = (o: { activo?: boolean; root?: boolean; borrado?: boolean } = {}) => {
+const makeUsuario = (
+  o: { activo?: boolean; root?: boolean; borrado?: boolean; integracion?: boolean } = {},
+) => {
   const props = {
     email: EMAIL,
     nombre: 'Ana',
@@ -55,6 +57,7 @@ const makeUsuario = (o: { activo?: boolean; root?: boolean; borrado?: boolean } 
     passwordHash: 'h',
     activo: o.activo ?? true,
     isGlobalAdmin: o.root ?? false,
+    esIntegracion: o.integracion ?? false,
   };
   return o.borrado
     ? UsuarioEntity.reconstitute(props, 'u-1', new Date(), new Date(), new Date())
@@ -260,6 +263,17 @@ describe('CompletarSsoUseCase', () => {
     usuarios.findById.mockResolvedValue(makeUsuario({ root: true }));
     expect(await motivoDe()).toBe('ROOT');
     expect(membresias.findActivasByUsuario).not.toHaveBeenCalled();
+  });
+
+  it('usuario de integracion: INTEGRACION, tambien si ya estaba vinculado, y no mira membresias', async () => {
+    usuarios.findManyByEmailInsensitive.mockResolvedValue([makeUsuario({ integracion: true })]);
+    expect(await motivoDe()).toBe('INTEGRACION');
+
+    vinculos.buscarUsuarioPorSujeto.mockResolvedValue('u-1');
+    usuarios.findById.mockResolvedValue(makeUsuario({ integracion: true }));
+    expect(await motivoDe()).toBe('INTEGRACION');
+    expect(membresias.findActivasByUsuario).not.toHaveBeenCalled();
+    expect(vinculos.vincular).not.toHaveBeenCalled();
   });
 
   it('sin membresias activas: SIN_MEMBRESIA', async () => {

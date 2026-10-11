@@ -115,6 +115,7 @@ export class PrismaMembresiaRepository implements IMembresiaRepository {
       apellido: row.usuario.apellido,
       email: row.usuario.email,
       rolCodigo: row.rol.codigo,
+      esIntegracion: row.usuario.esIntegracion,
     }));
   }
 

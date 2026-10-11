@@ -6,10 +6,12 @@ import 'reflect-metadata';
 import './config/entorno';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { configurarOpenApiV1 } from './integraciones/interface/openapi-v1';
 
 /**
  * Arranca la aplicación NestJS: crea el `AppModule`, fija el prefijo global
- * `api` y escucha en el puerto configurado (o 3000 por defecto).
+ * `api`, publica el OpenAPI de la API `v1` y escucha en el puerto configurado
+ * (o 3000 por defecto).
  *
  * @returns No devuelve nada; el guard de entorno (`./config/entorno`) ya se
  *   evaluó al importarse, ANTES de esta función (ver comentario de import
@@ -18,6 +20,8 @@ import { AppModule } from './app.module';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
+  // OpenAPI de la API publica (api-publica, T6): solo las rutas `v1`, en `/api/v1/openapi.json`.
+  configurarOpenApiV1(app);
   await app.listen(process.env['PORT'] ?? 3000);
 }
 

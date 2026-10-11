@@ -119,6 +119,7 @@ export class CompletarSsoUseCase {
     }
     // Paso 6: ROOT se rechaza en cada login, tambien si ya estaba vinculado.
     if (usuario.isGlobalAdmin) this.rechazar(proveedor, 'ROOT', usuario.id);
+    if (usuario.esIntegracion) this.rechazar(proveedor, 'INTEGRACION', usuario.id);
 
     // Paso 7: sin membresias activas no hay a donde entrar.
     const membresias = await this.membresias.findActivasByUsuario(usuario.id);

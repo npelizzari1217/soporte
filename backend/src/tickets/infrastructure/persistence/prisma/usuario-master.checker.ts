@@ -54,6 +54,8 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
    * Usuario activo + no soft-deleted, con una membresía ACTIVA (y no
    * soft-deleted) en el cliente indicado. Usado para asignados: ni el
    * usuario ni su membresía en el tenant pueden estar desactivados.
+   * El usuario de integración de la API pública (`esIntegracion`) NO es asignable: es autor de
+   * lo que hace la API, nunca una persona que atiende (sdd/api-publica, CA2).
    */
   async estaActivoEnTenant(usuarioId: string, clienteId: string): Promise<boolean> {
     // El ROOT (is_global_admin) activo es elegible en cualquier tenant sin
@@ -63,6 +65,7 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
         id: usuarioId,
         activo: true,
         deletedAt: null,
+        esIntegracion: false,
         OR: [
           { isGlobalAdmin: true },
           { membresias: { some: { clienteId, activo: true, deletedAt: null } } },
@@ -147,6 +150,9 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
    * luego se intersecan con los usuarios activos que tienen membresía ACTIVA
    * con rol TECNICO o COLABORADOR en ese cliente.
    *
+   * Excluye al usuario de integración de la API pública (defensa en profundidad: sin celdas de
+   * matriz ni rol de técnico, hoy no entra igual).
+   *
    * Con `modulo === null` (tipo custom sin módulo) no hay elegibles por
    * catálogo → se retorna `[]` sin golpear la DB.
    */
@@ -173,6 +179,7 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
         id: { in: idsConModulo },
         activo: true,
         deletedAt: null,
+        esIntegracion: false,
         membresias: {
           some: {
             clienteId,

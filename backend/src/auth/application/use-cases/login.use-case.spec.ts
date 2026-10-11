@@ -58,6 +58,7 @@ const makeUsuario = (
     deletedAt: Date | null;
     isGlobalAdmin: boolean;
     email: string;
+    esIntegracion: boolean;
   }> = {},
 ): UsuarioEntity => {
   const u = UsuarioEntity.create({
@@ -67,6 +68,7 @@ const makeUsuario = (
     passwordHash: 'stored_hash',
     activo: overrides.activo ?? true,
     isGlobalAdmin: overrides.isGlobalAdmin ?? false,
+    esIntegracion: overrides.esIntegracion ?? false,
   });
   if (overrides.deletedAt) {
     (u as unknown as { _deletedAt: Date | null })._deletedAt = overrides.deletedAt;
@@ -255,6 +257,17 @@ describe('LoginUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(CredencialesInvalidasError);
       expect(hashProvider.verify).toHaveBeenCalledWith('secret', DUMMY_HASH);
+    });
+
+    it('usuario de integracion → CredencialesInvalidas generica aunque la contrasena coincida', async () => {
+      usuarioRepo.findByEmail.mockResolvedValue(makeUsuario({ esIntegracion: true }));
+      hashProvider.verify.mockResolvedValue(true);
+
+      const result = await useCase.execute({ email: 'user@test.com', password: 'secret' });
+
+      expect(result.getError()).toBeInstanceOf(CredencialesInvalidasError);
+      expect(hashProvider.verify).toHaveBeenCalledWith('secret', DUMMY_HASH);
+      expect(membresiaRepo.findActivasByUsuario).not.toHaveBeenCalled();
     });
 
     it('usuario soft-deleted → CredencialesInvalidas + verify(DUMMY_HASH)', async () => {

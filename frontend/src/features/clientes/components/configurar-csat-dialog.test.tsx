@@ -24,6 +24,7 @@ const CLIENTE_SIN_CSAT: Cliente = {
   csatHabilitado: false,
   slug: null,
   formularioPublicoHabilitado: false,
+  apiHabilitada: false,
 };
 
 describe("ConfigurarCsatDialog", () => {

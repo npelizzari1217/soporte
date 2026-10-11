@@ -146,6 +146,11 @@ model Cliente {
   passwordResetTokens PasswordResetToken[]
   pedidoPublicoTokens PedidoPublicoToken[]
 
+  /// API pública (sdd api-publica, T1): solo ROOT la habilita. Con `false` ninguna clave del
+  /// cliente funciona, aunque esté vigente.
+  apiHabilitada Boolean    @default(false) @map("api_habilitada")
+  apiClaves     ApiClave[]
+
   @@index([activo])
   @@map("clientes")
 }
@@ -206,6 +211,9 @@ model Usuario {
   /// vs ADMINISTRADOR al inicio de este archivo. Sembrado por el seed de
   /// bootstrap (ROOT_ADMIN_*) con is_global_admin = true.
   isGlobalAdmin Boolean   @default(false) @map("is_global_admin")
+  /// Usuario técnico de la API pública (uno por cliente con API habilitada). No es una persona:
+  /// no puede entrar por login y no aparece en las listas de usuarios (se aplica en T2).
+  esIntegracion Boolean   @default(false) @map("es_integracion")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
@@ -218,6 +226,8 @@ model Usuario {
   tfaDispositivos     TfaDispositivoConfiable[]
   authDesafios        AuthDesafio[]
   identidadesSso      UsuarioIdentidadSso[]
+  apiClavesActuando   ApiClave[] @relation("ApiClaveUsuario")
+  apiClavesCreadas    ApiClave[] @relation("ApiClaveCreadaPor")
 
   @@index([activo]) // el índice real en DB es parcial: WHERE deleted_at IS NULL — ver migration SQL
   @@map("usuarios")
@@ -645,4 +655,37 @@ model UsuarioIdentidadSso {
   @@unique([usuarioId, proveedor])
   @@unique([proveedor, subject])
   @@map("usuarios_identidades_sso")
+}
+
+// ─── API_CLAVES (claves de la API pública, sdd api-publica T1) ────────────────
+//
+// Solo se persiste el SHA-256 de la clave completa (`hash`), nunca la clave en claro, como
+// `pedido_publico_tokens`. `prefijo` son los primeros caracteres, visibles en la UI para que el
+// admin distinga una clave de otra; no alcanza para reconstruirla.
+//
+// FKs: `cliente_id` y `usuario_id` son ON DELETE CASCADE (una clave sin cliente o sin su usuario
+// de integración no sirve para nada y no debe quedar huérfana). `creada_por_id` es RESTRICT: conserva
+// quién emitió la clave y no se pierde en silencio al borrar a un administrador.
+// `permisos` es un subconjunto de TICKETS:LECTURA, TICKETS:ALTAS y TICKETS:COMENTAR (valida el dominio).
+
+model ApiClave {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clienteId   String    @map("cliente_id") @db.Uuid
+  usuarioId   String    @map("usuario_id") @db.Uuid
+  nombre      String    @db.VarChar(100)
+  prefijo     String    @unique @db.VarChar(20)
+  hash        String    @unique @db.Text
+  permisos    String[]
+  creadaPorId String    @map("creada_por_id") @db.Uuid
+  creadaAt    DateTime  @default(now()) @map("creada_at") @db.Timestamptz
+  ultimoUsoAt DateTime? @map("ultimo_uso_at") @db.Timestamptz
+  revocadaAt  DateTime? @map("revocada_at") @db.Timestamptz
+
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  usuario   Usuario @relation("ApiClaveUsuario", fields: [usuarioId], references: [id], onDelete: Cascade)
+  creadaPor Usuario @relation("ApiClaveCreadaPor", fields: [creadaPorId], references: [id], onDelete: Restrict)
+
+  @@index([clienteId])
+  @@index([usuarioId])
+  @@map("api_claves")
 }

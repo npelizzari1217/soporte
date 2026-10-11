@@ -397,6 +397,44 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
     });
   });
 
+  describe('usuario de integración de la API pública (sdd/api-publica, CA2)', () => {
+    async function crearIntegracion(suffix: string, rolCodigo: string) {
+      const cliente = await createCliente(suffix);
+      const role = await createRole(rolCodigo);
+      const usuario = await masterClient.usuario.create({
+        data: {
+          email: `integracion_${suffix}@integraciones.invalid`,
+          nombre: 'Integracion',
+          apellido: 'API',
+          passwordHash: 'hash-fake',
+          activo: true,
+          esIntegracion: true,
+        },
+      });
+      await createMembresia(usuario.id, cliente.id, role.id);
+      return { cliente, usuario };
+    }
+
+    it('es un autor/solicitante válido en su cliente (membresía USUARIO viva)', async () => {
+      const { cliente, usuario } = await crearIntegracion('integ-autor', 'USUARIO');
+
+      expect(await checker.existeEnTenant(usuario.id, cliente.id)).toBe(true);
+    });
+
+    it('NO es un asignado elegible aunque esté activo', async () => {
+      const { cliente, usuario } = await crearIntegracion('integ-asignado', 'USUARIO');
+
+      expect(await checker.estaActivoEnTenant(usuario.id, cliente.id)).toBe(false);
+    });
+
+    it('NO aparece entre los técnicos asignables, ni con rol TECNICO y celda del módulo', async () => {
+      const { cliente, usuario } = await crearIntegracion('integ-lista', 'TECNICO');
+      await createPermiso(usuario.id, cliente.id, 'EDILICIA', 'LECTURA');
+
+      expect(await checker.listarTecnicosAsignables(cliente.id, 'EDILICIA')).toEqual([]);
+    });
+  });
+
   describe('ROOT (is_global_admin) sin membresía es elegible en cualquier tenant', () => {
     it('existeEnTenant y estaActivoEnTenant → true para un root sin membresía en el cliente', async () => {
       const cliente = await createCliente('root-elegible');

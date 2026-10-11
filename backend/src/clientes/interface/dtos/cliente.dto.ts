@@ -122,6 +122,12 @@ export interface ClienteResponseDto {
   slug: string | null;
   /** Formulario publico habilitado (D12). Apagado por defecto. */
   formularioPublicoHabilitado: boolean;
+  /**
+   * API publica habilitada (api-publica, CA4). Apagada por defecto. Solo ROOT la cambia, con
+   * `PATCH /clientes/:id/api`; viaja en el listado para que el dialogo de ROOT arranque con el
+   * valor real.
+   */
+  apiHabilitada: boolean;
 }
 
 /**

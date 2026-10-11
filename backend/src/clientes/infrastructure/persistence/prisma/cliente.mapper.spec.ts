@@ -37,6 +37,7 @@ const filaConLogo: PrismaCliente = {
   smtpVerificacionError: null,
   csatHabilitado: false,
   requiere2fa: false,
+  apiHabilitada: false,
   logoStorageKey: 'clientes/cliente-id-1/uuid-1',
   logoMimeType: 'image/png',
   logoUpdatedAt: new Date('2026-09-20T12:00:00Z'),
@@ -154,5 +155,16 @@ describe('ClienteMapper — formulario publico (sdd/formulario-publico-qr, WU-1)
     // vieja no puede descongelar el slug.
     expect(persistido).not.toHaveProperty('slug');
     expect(persistido).not.toHaveProperty('slugCongeladoAt');
+  });
+});
+
+describe('ClienteMapper — API publica (sdd/api-publica, T2)', () => {
+  it('toDomain() hidrata el flag y toPersistence() lo espeja', () => {
+    const habilitada = ClienteMapper.toDomain({ ...filaConLogo, apiHabilitada: true });
+    expect(habilitada.apiHabilitada).toBe(true);
+    expect(ClienteMapper.toPersistence(habilitada).apiHabilitada).toBe(true);
+
+    const apagada = ClienteMapper.toDomain(filaConLogo);
+    expect(ClienteMapper.toPersistence(apagada).apiHabilitada).toBe(false);
   });
 });

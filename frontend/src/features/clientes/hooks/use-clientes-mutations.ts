@@ -8,8 +8,10 @@ import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import { validarLogoClienteCliente } from "../lib/validar-logo-cliente-cliente";
 import type {
   Cliente,
+  ClienteApiEstado,
   ClienteCorreo,
   ClienteLogoDto,
+  ConfigurarApiDto,
   ConfigurarCorreoDto,
   ConfigurarCsatDto,
   ConfigurarFormularioPublicoDto,
@@ -120,6 +122,24 @@ export function useConfigurarCsatCliente(clienteId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       notifySuccess("Configuración de encuesta de satisfacción guardada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Prende/apaga la API pública del cliente (`PATCH /clientes/:id/api`,
+ * api-publica T2/CA4). Solo ROOT. Apagarla conserva el usuario de integración
+ * y las claves; la respuesta trae solo el flag, así que se invalida el listado.
+ */
+export function useConfigurarApiCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: ConfigurarApiDto) =>
+      apiFetch<ClienteApiEstado>(`clientes/${clienteId}/api`, { method: "PATCH", json: dto }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      notifySuccess(data.apiHabilitada ? "API pública habilitada." : "API pública deshabilitada.");
     },
     onError: notifyError,
   });

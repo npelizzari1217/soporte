@@ -38,6 +38,8 @@ export interface MembresiaConUsuario {
   apellido: string;
   email: string;
   rolCodigo: string;
+  /** Usuario tecnico de la API publica: no es una persona y no se lista. */
+  esIntegracion: boolean;
 }
 
 /**

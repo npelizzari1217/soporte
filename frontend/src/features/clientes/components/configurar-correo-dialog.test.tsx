@@ -28,6 +28,7 @@ const CLIENTE: Cliente = {
   csatHabilitado: false,
   slug: null,
   formularioPublicoHabilitado: false,
+  apiHabilitada: false,
 };
 
 function buildCorreo(overrides: Partial<ClienteCorreo> = {}): ClienteCorreo {

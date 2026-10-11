@@ -358,4 +358,10 @@ describe('UsuarioEntity — topes de largo de la identidad', () => {
     expect(USUARIO_APELLIDO_MAX_LENGTH).toBe(100);
     expect(USUARIO_EMAIL_MAX_LENGTH).toBe(255);
   });
+
+  it('esIntegracion nace en false y se fija solo al crear', () => {
+    const datos = { email: 'a@x.com', nombre: 'A', apellido: 'B', passwordHash: 'h', activo: true };
+    expect(UsuarioEntity.create(datos).esIntegracion).toBe(false);
+    expect(UsuarioEntity.create({ ...datos, esIntegracion: true }).esIntegracion).toBe(true);
+  });
 });

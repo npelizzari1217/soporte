@@ -340,6 +340,16 @@ describe("middleware", () => {
     expect(re.test(ruta)).toBe(false);
   });
 
+  // API pública (CA5): el integrador no tiene sesión; el middleware no puede redirigirlo a /login
+  // ni agregar comportamiento de sesión. La exclusión de `api` ya la cubre.
+  it.each(["/api/v1", "/api/v1/tickets", "/api/v1/tickets/t1/comentarios", "/api/v1/openapi.json"])(
+    "matcher leaves the public API route %s out of the middleware",
+    (ruta) => {
+      const re = new RegExp(`^${config.matcher[0]}$`);
+      expect(re.test(ruta)).toBe(false);
+    },
+  );
+
   it.each(["/tickets", "/login", "/"])("matcher still intercepts %s", (ruta) => {
     const re = new RegExp(`^${config.matcher[0]}$`);
     expect(re.test(ruta)).toBe(true);

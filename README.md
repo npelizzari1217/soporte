@@ -159,6 +159,7 @@ Las variables marcadas **Requerida** se validan al arrancar (`backend/src/config
 | `PREVENTIVO_SWEEP_CRON` | Expresión cron del barrido de generación de mantenimiento preventivo (`PreventivoSweepScheduler`, módulo `preventivo/`). Default: todos los días a la 1am (`CronExpression.EVERY_DAY_AT_1AM`) si no está seteada. |
 | `APP_BASE_URL` | **Requerida — sin default.** URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
 | `SSO_GOOGLE_CLIENT_ID` / `SSO_GOOGLE_CLIENT_SECRET` / `SSO_MICROSOFT_CLIENT_ID` / `SSO_MICROSOFT_CLIENT_SECRET` | **Opcionales.** Credenciales de la app OAuth de cada proveedor para el login con Google o Microsoft. Un proveedor se habilita solo con su par completo (ID y secreto no vacíos); sin ninguna de las cuatro, `GET /api/auth/sso/proveedores` devuelve `{"proveedores":[]}`, no aparece ningún botón y el login con contraseña queda igual. La URI de redirección se deriva de `APP_BASE_URL`: `${APP_BASE_URL}/api/auth/sso/<google\|microsoft>/callback`. Alta de las apps y rotación del secreto: `DEPLOY-VPS-runbook.md`, sección "Login con Google o Microsoft (SSO)". |
+| `API_V1_RATE_LIMIT` | **Opcional.** Pedidos por minuto que acepta cada clave de la API pública (`/api/v1`). Default: `60`. Un valor que no sea un entero positivo usa el default. |
 | `PORT` / `NODE_ENV` | Configuración de la app. |
 
 ### Dependencias nuevas (módulo SLA, Fase 4)
@@ -263,6 +264,23 @@ Son dos figuras **distintas**, modeladas en capas distintas (ver comentarios en
 
 La regla "solo ROOT crea clientes/ciclos" se enforcea en la capa de **aplicación** (guards y
 use cases, Fase 1) — el schema solo modela el flag que esa autorización necesita.
+
+## API pública (v1)
+
+Permite que un cliente integre sus propios sistemas con claves **por cliente**. Expone solo
+tickets (listar, ver, crear y comentar en público) y un catálogo de solo lectura
+(`GET /api/v1/catalogos`: tipos, prioridades y estados) para descubrir los ids que pide el alta.
+
+| Tema | Cómo funciona |
+|---|---|
+| Habilitación | **ROOT** la habilita o deshabilita por cliente, con la acción "API" de Clientes. Con la API deshabilitada, ninguna clave funciona. |
+| Claves | El **ADMINISTRADOR** del cliente (o ROOT) las crea y revoca desde "Integraciones". Cada clave lleva un subconjunto de permisos: ver, crear y comentar tickets. Lo que hace la API queda a nombre de un usuario de integración técnico del cliente, que no puede iniciar sesión. |
+| Acceso | Base `/api/v1`, header `X-Api-Key`. Cualquier rechazo de autenticación da el mismo `401`. |
+| Contrato | OpenAPI en `GET /api/v1/openapi.json`, público y sin clave. No hay Swagger UI. |
+| Límite | Por clave: 60 pedidos por minuto, configurable con `API_V1_RATE_LIMIT`. Al pasarlo responde `429`. |
+| Guardado | La clave en claro se muestra **una sola vez** al crearla y se guarda como sha256: no se puede volver a ver. Cada clave registra su último uso. |
+
+Notas de deploy: `DEPLOY-VPS-runbook.md`, sección "API pública (v1)".
 
 ## Testing
 

@@ -12,6 +12,7 @@ export const MOTIVOS_SSO_RECHAZADO = [
   'AMBIGUO',
   'INACTIVO',
   'ROOT',
+  'INTEGRACION',
   'SIN_MEMBRESIA',
   'OTRA_CUENTA',
 ] as const;

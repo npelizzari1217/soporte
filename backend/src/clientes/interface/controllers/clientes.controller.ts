@@ -96,6 +96,7 @@ function toResponseDto(cliente: ClienteEntity): ClienteResponseDto {
     csatHabilitado: cliente.csatHabilitado,
     slug: cliente.slug,
     formularioPublicoHabilitado: cliente.formularioPublicoHabilitado,
+    apiHabilitada: cliente.apiHabilitada,
   };
 }
 
