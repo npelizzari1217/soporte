@@ -4,14 +4,16 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-09 contra el código de `main` (`776c6d69`),
+decisión.** Actualizado el 2026-10-11 contra el código de `main` (`1dcdcaa2`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
 semanal pasó a ser por cliente. Desde esa fecha entraron a `main` cinco ciclos del
 módulo de Insumos y Equipos, que no son puntos del roadmap: catálogo único de
 componentes, stock usado, seguimiento por número de serie, reporte de stock y baja
-de equipo completo (ver "El módulo de Insumos").
+de equipo completo (ver "El módulo de Insumos"). De la segunda etapa están
+entregados los puntos 0 a 7 y 9, y la etapa 1 (API) del punto 8 (ver "Segunda etapa
+— brechas frente a la competencia").
 
 > **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
 > puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
@@ -662,11 +664,13 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
 
 > Mismo criterio que "Decisiones de producto ya cerradas": cada viñeta entra a la
 > spec del ciclo como requerimiento con escenario, y al cerrar el punto declara
-> **Cumplida** o **Desviación** con su motivo.
+> **Cumplida** o **Desviación** con su motivo. Desde el 2026-10-10 el flujo es ODD y
+> ya no hay spec de ciclo: cada viñeta entra como criterio de aceptación al documento
+> de la feature (`odd/tasks/<feature>.md`), como en el punto 8.
 
 - **Segunda etapa, punto 1 — formulario público + QR** (decidido el 2026-10-03,
   ciclo `formulario-publico-qr`, exploración en
-  `openspec/changes/formulario-publico-qr/exploration.md`):
+  `openspec/changes/archive/2026-10-04-formulario-publico-qr/exploration.md`):
   - Puede pedir **cualquiera**, pero el ticket se crea recién cuando confirma un
     link de un solo uso que le llega por mail.
   - Quien pide sin cuenta es un **solicitante externo** guardado en la base del
@@ -815,7 +819,7 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - **Cumplida** (2026-10-07, cadena de PRs #437-#473 integrada por el #472,
     `20b320a4`, desplegada el mismo día con una migración master sin relleno).
     Todas las viñetas de abajo y las precisiones están implementadas, cada una como
-    requerimiento con escenario en `openspec/changes/verificacion-dos-pasos/specs/`;
+    requerimiento con escenario en `openspec/changes/archive/2026-10-08-verificacion-dos-pasos/specs/`;
     la verificación cerró en PASS WITH WARNINGS (61/61 requerimientos, 124/124
     escenarios). Probado en producción: el ROOT configuró su 2FA en el primer login y
     el límite de intentos registra la IP real del navegador. **Precisiones**: el
@@ -884,7 +888,7 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - **Cumplida** (2026-10-06, PRs #391-#422, merge `56341154`, desplegado el mismo
     día con 4 migraciones de tenant que no recalculan vencimientos ni cumplimientos).
     Todas las viñetas de abajo están implementadas, cada una como requerimiento con
-    escenario en `openspec/changes/sla-primera-respuesta-y-pausa/specs/`, y la
+    escenario en `openspec/changes/archive/2026-10-07-sla-primera-respuesta-y-pausa/specs/`, y la
     verificación cerró sin bloqueantes. **Precisión**: los tickets de la cohorte
     anterior al SLA hábil (`CORRIDO`, todos previos a este cambio) miden su tiempo
     activo y sus pausas en tiempo de pared, no en horas hábiles, igual que ya medían
@@ -950,7 +954,7 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     `776c6d69`, desplegada el mismo día con una migración tenant aditiva y sin
     relleno). Todas las viñetas de abajo y las precisiones están implementadas, cada
     una como requerimiento con escenario en
-    `openspec/changes/asignacion-automatica-por-tipo/specs/`; la verificación cerró en
+    `openspec/changes/archive/2026-10-09-asignacion-automatica-por-tipo/specs/`; la verificación cerró en
     PASS WITH WARNINGS (29/29 requerimientos, 95 escenarios: 86 cubiertos del todo y 9
     en parte). Probado en producción: una regla de prueba hizo nacer el ticket
     *Asignado* y el responsable recibió el mail. **Desviaciones acordadas**: la
@@ -1123,7 +1127,7 @@ cabeza de alguien deja de existir cuando esa persona no está.
 | **Los feriados sembrados llegan hasta 2029.** Hasta el 2026-09-29 llegaban hasta 2028; la migración `20260929120000_seed_feriados_2029` sumó 2029 con las mismas reglas (el 17/06, Güemes, cae domingo y queda afuera). El horario semanal y los feriados ya se configuran desde la pantalla: `feriados-configurables` (issue #216, `912140e`) agregó el ABM de feriados globales (`/admin/feriados-globales`, solo ROOT) y por cliente (`/feriados`), y `horario-laboral-por-cliente` agregó `/horario-laboral`. Las dos cosas están en producción desde el deploy del 2026-09-29 | Los nacionales de 2030 en adelante no existen hasta que un ROOT los cargue desde `/admin/feriados-globales` o una migración los siembre. Sin eso, a partir de 2030 el SLA hábil cuenta los feriados nacionales como días laborables |
 | **Los tiempos medios del dashboard recorren todo el historial en cada consulta.** `tiempoPromedioResolucionHoras` y `tiempoPromedioPrimeraRespuestaHoras` (`backend/src/dashboard/infrastructure/persistence/prisma/prisma-dashboard.repository.ts`) traen todos los tickets cerrados o respondidos del cliente y calculan las horas hábiles de cada uno, en memoria, con el horario y los feriados **actuales**. Medido el 2026-10-07 (seguimiento S4 del ciclo `sla-primera-respuesta-y-pausa`): 3.000 tickets con tramos de hasta 2 días, el tamaño del cliente más grande hoy, tardan ~21 ms; 30.000 con tramos de hasta 2 días, ~140 ms; 30.000 con tramos de hasta 30 días, ~900 ms. Se decidió no tocarlo todavía | El costo crece lineal con el historial y se paga por métrica en cada carga del dashboard. **Disparador**: cuando un cliente pase los ~15.000 tickets o el dashboard tarde más de medio segundo. **Arreglo previsto**: guardar la duración en horas hábiles al registrar la primera respuesta y al resolver, y promediar con `AVG` en SQL. Además corrige un efecto que hoy pasa sin que nadie lo note: cambiar el horario o los feriados de un cliente recalcula los promedios de todo su historial con el calendario nuevo |
 | ~~**El horario semanal es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) vive en la base **master** (`backend/prisma_master/schema.prisma`), sin columna de cliente.~~ | **RESUELTA** el 2026-09-29. Ciclo `horario-laboral-por-cliente`: `CalendarioLaboralDiaCliente` en la base de cada tenant (un intervalo por día, editable por ADMINISTRADOR o ROOT). El SLA hábil lee solo el horario del propio cliente, sin unión con master; la tabla master `calendario_laboral_dias` se dropeó el mismo día (`20260929100000_drop_calendario_laboral_dias`). |
-| **627 `as never`/`as any` en 116 specs**, congelados por un ratchet que **no frena ningún merge** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Igual subió**: el 2026-09-29 medía 759 en 136, porque no corre en ningún lado donde frene un merge. Las integraciones de la semana fueron merges locales, y el CI de GitHub Actions estaba caído desde el 2026-09-18 por falta de minutos. Ese mismo día se bajaron los 66 casts nuevos completando los mocks contra sus puertos, y volvió a 693 en 123. El CI volvió a correr el 2026-10-01, pero sobre el push a `main`: con integraciones locales detecta después de integrar, así que el ratchet se sigue corriendo a mano antes. Convertir los 627 a mocks completos sigue pendiente, pero ya no puede empeorar. El 2026-10-01 la línea base bajó de 693 en 123 a **666 en 121**, y después a **627 en 116** (`BASE_OCURRENCIAS` y `BASE_ARCHIVOS` en `scripts/check-casts-en-specs.mjs`, medido el 2026-10-03). **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
+| **617 `as never`/`as any` en 114 specs**, congelados por un ratchet que **no frena ningún merge** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Igual subió**: el 2026-09-29 medía 759 en 136, porque no corre en ningún lado donde frene un merge. Las integraciones de la semana fueron merges locales, y el CI de GitHub Actions estaba caído desde el 2026-09-18 por falta de minutos. Ese mismo día se bajaron los 66 casts nuevos completando los mocks contra sus puertos, y volvió a 693 en 123. El CI volvió a correr el 2026-10-01, pero sobre el push a `main`: con integraciones locales detecta después de integrar, así que el ratchet se sigue corriendo a mano antes. Convertir los 617 a mocks completos sigue pendiente, pero ya no puede empeorar. El 2026-10-01 la línea base bajó de 693 en 123 a **666 en 121**, después a **627 en 116** (medido el 2026-10-03) y el 2026-10-06 a **617 en 114** (`dc45c63b`; `BASE_OCURRENCIAS` y `BASE_ARCHIVOS` en `scripts/check-casts-en-specs.mjs`, medido de nuevo el 2026-10-11). **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
 | **El alta interna de tickets acepta tipos dados de baja.** `CrearTicketUseCase` busca el tipo con `findById`, que no mira `activo`. Hallazgo de la tarea T5e de la API pública (2026-10-10): la API v1 lo corrige con su propia validación (`TiposTicketV1Query`), pero el alta de la app quedó igual, fuera del alcance de esa tarea | Un tipo dado de baja todavía puede recibir tickets nuevos por la API interna. El arreglo natural es validar `activo` en el caso de uso, que comparten todos los canales de alta: hay que revisar cada uno antes de cambiarlo |
 | **`x-forwarded-for` pasa sin validar por el BFF.** La ruta `/api/v1/*` lo reenvía tal como llega, igual que `publico/` (T7 de la API pública) | Un cliente puede falsearlo. Hoy no afecta, porque el límite de la API es por clave y no por IP. Si algún día se audita o se limita por IP, IIS tiene que fijar el header |
 | **`TicketsModule` no exporta los casos de uso que usa la API v1.** `ListarTicketsUseCase`, `CrearComentarioUseCase` y los tres listados de catálogos se arman con `useFactory` dentro de `ApiV1Module` (T5 y T5c de la API pública) | Es cableado duplicado: un cambio en las dependencias de esos casos de uso hay que repetirlo en `ApiV1Module`. Lo prolijo es exportarlos desde `tickets.module.ts` |
@@ -1144,8 +1148,15 @@ cabeza de alguien deja de existir cuando esa persona no está.
 ### Deuda de Ayuda
 
 La escritura de artículos de `backend/ayuda/*.md` está en pausa desde el 2026-09-07
-(ver `CLAUDE.md`). Lo que queda por cubrir cuando se retome:
+(ver `CLAUDE.md`). Esta lista arranca con el punto 7 de la segunda etapa; la deuda
+de las entregas anteriores está anotada solo en los mensajes de sus commits
+("Deuda de Ayuda"). Lo que queda por cubrir cuando se retome:
 
+- **Login con Google o Microsoft (SSO)** (2026-10-10, anotada en los commits de la
+  cadena `feat/login-sso`):
+  - los botones de los proveedores en la pantalla de login y el mensaje genérico
+    cuando el SSO no deja entrar;
+  - el botón "Resetear vínculo SSO" de la administración de usuarios.
 - **API pública, etapa 1** (2026-10-10, anotada en los commits de T8 y T9):
   - el artículo de Clientes (ROOT) no tiene la acción "API";
   - falta un artículo nuevo para la pantalla "Integraciones" del ADMINISTRADOR.
