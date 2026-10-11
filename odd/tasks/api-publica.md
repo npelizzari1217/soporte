@@ -237,7 +237,7 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
     - vistos por un solo juez: JD-5 (un guardado viejo de cliente vuelve a habilitar la API), JD-6 (un segundo `ThrottlerModule` global) y JD-7 (dos habilitaciones a la vez dan un 500).
   - Pendientes para el dueño, fuera de esta feature:
     - `API_V1_RATE_LIMIT` falta en `backend/.env.example` (a Claude se le negó el acceso a ese archivo);
-    - `rollback.sql` deja a los usuarios de integración en `usuarios`;
+    - `rollback.sql` deja a los usuarios de integración en `usuarios`; resuelto el 2026-10-11 por decisión del dueño en `fix/rollback-api-publica-desactiva`: los desactiva (usuario y membresías) sin borrarlos;
     - el punto 7 (SSO) del roadmap todavía dice "Pendiente", aunque está desplegado;
     - el próximo deploy necesita la instalación manual del runbook ("4. Cambió un lockfile"), porque `@nestjs/swagger` cambió el lockfile.
 

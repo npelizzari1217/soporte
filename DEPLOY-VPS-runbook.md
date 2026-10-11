@@ -734,8 +734,9 @@ curl -s -o /dev/null -w "%{http_code}\n" https://soporte.sesitec.net/api/v1/tick
 Su `rollback.sql` es **destructivo**: borra todas las claves y las dos columnas, y los sistemas
 externos dejan de entrar. Se revierte **primero el código** y después se corre el `rollback.sql`
 contra master. El rollback no borra las filas de los usuarios de integración
-(`integracion+<clienteId>@integraciones.invalid`): sin la columna `es_integracion`, el código viejo
-los trata como usuarios comunes.
+(`integracion+<clienteId>@integraciones.invalid`): los **desactiva**, al usuario y a sus
+membresías, antes de quitar la columna `es_integracion`. Así sobreviven los nombres de autor de
+los tickets y comentarios que crearon en los tenants, y el código viejo no los deja entrar.
 
 Para cortar la API sin revert, alcanza con que ROOT la deshabilite en cada cliente: las claves
 dejan de funcionar en el acto y se conservan.
