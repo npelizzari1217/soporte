@@ -653,8 +653,13 @@ de `APP_BASE_URL`: `${APP_BASE_URL}/api/auth/sso/<google|microsoft>/callback`.
 
 ### Google Cloud Console
 
-1. Crear un cliente OAuth de tipo **Aplicación web**.
-2. Pantalla de consentimiento **publicada** (en modo prueba solo entran los usuarios de prueba).
+1. Crear un proyecto dedicado y, dentro, un cliente OAuth de tipo **Aplicación web**.
+2. Pantalla de consentimiento. Mientras está en modo **Testing** (prueba), Google solo deja pasar a
+   los **usuarios de prueba** cargados en la lista y a la **cuenta dueña del proyecto** (esa entra
+   aunque no figure en la lista); cualquier otra cuenta queda frenada en la pantalla de Google.
+   **Antes de habilitar Google para todos los clientes hay que publicarla** (completar el branding).
+   Si no se va a publicar, la alternativa es quitar las `SSO_GOOGLE_*` de `backend/.env` y
+   deshabilitar el proveedor.
 3. URIs de redirección autorizadas:
    - `https://soporte.sesitec.net/api/auth/sso/google/callback`
    - `http://localhost:<puerto>/api/auth/sso/google/callback` para desarrollo.
@@ -665,9 +670,12 @@ de `APP_BASE_URL`: `${APP_BASE_URL}/api/auth/sso/<google|microsoft>/callback`.
 1. `signInAudience = AzureADandPersonalMicrosoftAccount`.
 2. URI de redirección de tipo **Web**: `https://soporte.sesitec.net/api/auth/sso/microsoft/callback`.
 3. Claims opcionales `email` y `xms_edov` en el **ID token**. **Procedimiento del manifiesto por
-   confirmar en staging**: registrar el resultado en `openspec/changes/login-sso/verify-report.md`.
+   confirmar** con la primera prueba real de Microsoft (no hay staging: se prueba en producción, como
+   se hizo con Google). Cuando se confirme, registrar el resultado **en este runbook**: `openspec/` es
+   historia de solo lectura, y el verify original queda en
+   `openspec/changes/archive/2026-10-10-login-sso/verify-report.md`.
 4. `PATCH /applications/{id}/authenticationBehaviors` con `{"removeUnverifiedEmailClaim": true}`
-   (Microsoft Graph). **Por confirmar en staging**; registrar el resultado.
+   (Microsoft Graph). **Por confirmar**; registrar el resultado en este runbook.
 5. Cargar `SSO_MICROSOFT_CLIENT_ID` y `SSO_MICROSOFT_CLIENT_SECRET` en `backend/.env`.
 
 **El secreto de cliente vence como máximo a los 24 meses.** Dejar un recordatorio de calendario
@@ -680,12 +688,16 @@ mismo procedimiento sirve para Google.
 ```bash
 curl -s https://soporte.sesitec.net/api/auth/sso/proveedores
 # esperado con ambos pares cargados: {"proveedores":["google","microsoft"]}
+# esperado hoy (solo Google, 2026-10-11): {"proveedores":["google"]}
 # esperado sin variables SSO_*:      {"proveedores":[]}
 ```
 
-- **IIS/ARR debe conservar el `Host` original.** El BFF arma las redirecciones con
-  `request.url`: seguir `https://soporte.sesitec.net/api/auth/sso/google/iniciar` y comprobar que
-  la vuelta cae en `https://soporte.sesitec.net/login?...` y no en `localhost`.
+- **IIS/ARR debe conservar el `Host` original y no reescribir la ida al proveedor.** El BFF arma
+  las redirecciones con `request.url`: seguir `https://soporte.sesitec.net/api/auth/sso/google/iniciar`
+  y comprobar dos cosas. La ida tiene que llevar a `https://accounts.google.com/o/oauth2/v2/auth?...`,
+  **no** a `https://soporte.sesitec.net/o/oauth2/v2/auth?...` (si pasa eso, faltan las reglas de
+  salida de "IIS/ARR reescribe el `Location`", abajo). La vuelta tiene que caer en
+  `https://soporte.sesitec.net/login?...` y no en `localhost`.
 - `/api/auth/sso/*` debe llegar a Next sin cambios.
 - Registrar el binario de Node en uso: `nssm get soporte-backend Application`. Debe ser Node 22.12
   o superior (dependencia `jose`).
@@ -695,6 +707,81 @@ curl -s https://soporte.sesitec.net/api/auth/sso/proveedores
 ```powershell
 [Environment]::GetEnvironmentVariables('Machine').Keys | Where-Object { $_ -like 'SSO_*' }
 ```
+
+### IIS/ARR reescribe el `Location` hacia el proveedor
+
+**Bloqueante encontrado y corregido en la prueba del 2026-10-11.** El ARR de IIS del VPS tiene a
+nivel servidor `reverseRewriteHostInResponseHeaders=True` (con `preserveHostHeader=False`), y esa
+configuración la comparten los 6 sitios del VPS. ARR reescribe entonces el host de **todo** header
+`Location` de respuesta al host del sitio. La redirección de `iniciar` a
+`https://accounts.google.com/o/oauth2/v2/auth?...` salía como
+`https://soporte.sesitec.net/o/oauth2/v2/auth?...`, y el usuario rebotaba a `/login`.
+
+El ajuste global **no se puede apagar**: las redirecciones propias de Next en Soporte se arman como
+`http://localhost:3100` y dependen de ese reescrito, y los otros sitios lo comparten. La corrección
+son dos reglas de salida que devuelven el host del proveedor, en `C:\soporte\iis\web.config`.
+
+**Ese `web.config` no está versionado en el repo.** Un rebuild del VPS o recrear el sitio de IIS
+pierde estas reglas: hay que volver a aplicarlas. Respaldo previo al cambio:
+`C:\soporte-deploy\web.config.bak-20261011`. Las reglas van **dentro de la sección `<rewrite>`
+que ya existe**, como hermana de las reglas de entrada (`<rules>`), no en una sección `<rewrite>`
+nueva (IIS rechaza una sección duplicada):
+
+```xml
+<rewrite>
+  <rules>
+    <!-- reglas de entrada existentes: no se tocan -->
+  </rules>
+  <outboundRules>
+    <rule name="sso-google-location">
+      <match serverVariable="RESPONSE_Location"
+             pattern="^https?://soporte\.sesitec\.net/(o/oauth2/v2/auth(\?.*)?)$" />
+      <action type="Rewrite" value="https://accounts.google.com/{R:1}" />
+    </rule>
+    <rule name="sso-microsoft-location">
+      <match serverVariable="RESPONSE_Location"
+             pattern="^https?://soporte\.sesitec\.net/(common/oauth2/v2\.0/authorize(\?.*)?)$" />
+      <action type="Rewrite" value="https://login.microsoftonline.com/{R:1}" />
+    </rule>
+  </outboundRules>
+</rewrite>
+```
+
+La regla de Microsoft queda puesta aunque el proveedor siga sin configurar, para que su primera
+prueba no tropiece con lo mismo.
+
+Verificación después de aplicarlas (lo que se comprobó el 2026-10-11):
+
+```bash
+# la ida al proveedor: Location tiene que empezar con https://accounts.google.com/
+curl -s -o /dev/null -D - https://soporte.sesitec.net/api/auth/sso/google/iniciar | rg -i '^location'
+# el resto del sitio sigue igual
+curl -s -o /dev/null -w '%{http_code}\n' https://soporte.sesitec.net/login   # 200
+curl -s -o /dev/null -D - https://soporte.sesitec.net/ | rg -i '^(HTTP|location)'   # 307 a /login
+```
+
+### Resultado de la prueba en producción (2026-10-11)
+
+V.1 del verify, hecha **en producción** (no hay staging), **solo con Google**, con la pantalla de
+consentimiento en modo prueba y usuarios de prueba:
+
+| # | Caso | Resultado |
+|---|---|---|
+| 1 | Primer ingreso: crea el vínculo y entra directo (usuario con un solo cliente) | OK |
+| 2 | Segundo ingreso: se reconoce por el vínculo (subject), sin duplicarlo | OK |
+| 5 | Usuario de prueba con dos clientes: ve el selector después del SSO y entra al elegido | OK |
+| 6 | ROOT rechazado (log `SSO_RECHAZADO \| proveedor=GOOGLE \| motivo=ROOT`) | OK |
+| 7 | Email que no existe en Soporte: rechazado (`motivo=SIN_USUARIO`), sin vínculo | OK en el backend; el mensaje genérico en pantalla no se observó limpio (interfirió una sesión vieja con contraseña en el navegador) |
+| 8 | "Resetear vínculo SSO": borra el vínculo y revoca los refresh tokens; el siguiente ingreso por SSO revincula por email | OK |
+
+**Sobre el caso 8.** El reseteo revoca los refresh tokens en el acto, pero el navegador que ya
+estaba abierto sigue funcionando hasta que vence su access token: **hasta 15 minutos**
+(`expiresIn: '15m'` en `backend/src/auth/auth.module.ts`), y recién ahí va a `/login`. Es por
+diseño, el mismo mecanismo que "Resetear 2FA" y que la desactivación de un usuario.
+
+**No verificado en producción:** Microsoft (sin variables `SSO_MICROSOFT_*`: sigue deshabilitado y
+sin probar), el paso del 2FA propio después del SSO (ningún cliente lo exige hoy; la regla sigue
+vigente) y el mensaje genérico en pantalla del caso 7.
 
 ### Mitigación rápida sin revert
 

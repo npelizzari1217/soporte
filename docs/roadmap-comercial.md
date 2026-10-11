@@ -650,7 +650,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 4 | **Respuestas predefinidas** | El técnico no reescribe la misma respuesta cada vez | Baja · 1-2 días | **Entregado** — en `main` por los PRs #369-#375 (`ba083775`), desplegado el 2026-10-06 |
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | **Entregado** — en `main` por el #472 (`20b320a4`), desplegado el 2026-10-07 |
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
-| 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | **Entregado** — en `main` por el #510 (`c5e1ec0a`), desplegado el 2026-10-10. Los proveedores siguen sin habilitar en producción hasta la prueba con cuentas reales en staging |
+| 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | **Entregado** — en `main` por el #510 (`c5e1ec0a`), desplegado el 2026-10-10. Google habilitado en producción con la pantalla de consentimiento en modo prueba y verificado con cuentas reales el 2026-10-11 (V.1); Microsoft sigue sin configurar ni probar |
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | En curso — decisiones cerradas el 2026-10-10: primero la API (solo tickets), después los webhooks. **Etapa 1 (API) entregada**: en `main` por el merge local `068f53f1` de la cadena `feat/api-publica` (más el arreglo del rollback, `11bffe7a`), desplegada el 2026-10-11 por bundle, sin pasar por GitHub. Ningún cliente la tiene habilitada todavía. Etapa 2 (webhooks) pendiente |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | **Entregado** — en `main` por el #490 (`776c6d69`), desplegado el 2026-10-09. Un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | Sin base desde el 2026-10-08: requiere decidir cómo se resuelve el cliente |
@@ -1011,11 +1011,26 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     `openspec/changes/archive/2026-10-10-login-sso/specs/`; la verificación cerró en
     PASS WITH WARNINGS (33 requerimientos, 120 escenarios, cero sin test o fallando).
     Lo que queda afuera (alta automática, "solo SSO", auditoría) está declarado arriba.
-    **Pendiente antes de habilitar los proveedores en producción**: la prueba en
-    staging con una cuenta real de Google, una de trabajo de Microsoft y una personal
-    de Microsoft (V.1 del verify). Si las cuentas personales de Microsoft no emiten
-    los claims necesarios, quedan rechazadas por diseño y esta viñeta pasa a declarar
-    esa desviación.
+    **V.1 del verify (prueba con cuentas reales) hecha para Google el 2026-10-11,
+    en producción** (no hay staging), con la pantalla de consentimiento en modo
+    prueba. Pasaron: primer ingreso que crea el vínculo y entra directo con un solo
+    cliente; segundo ingreso reconocido por el vínculo, sin duplicarlo; usuario con
+    dos clientes que ve el selector después del SSO; ROOT rechazado; email que no
+    existe en Soporte rechazado sin crear vínculo; y "Resetear vínculo SSO", que
+    borra el vínculo y revoca los refresh tokens en el acto (el navegador abierto
+    sigue hasta que vence su access token, hasta 15 minutos, y el siguiente ingreso
+    por SSO revincula por email). La prueba encontró un bloqueante de
+    infraestructura, el reescrito de `Location` de IIS/ARR, corregido en el VPS y
+    documentado en `DEPLOY-VPS-runbook.md`. **No se verificó en producción**:
+    Microsoft (sin configurar: falta probar una cuenta de trabajo y una personal; si
+    las personales no emiten los claims necesarios, quedan rechazadas por diseño y
+    esta viñeta pasa a declarar esa desviación); el 2FA propio después del SSO
+    (ningún cliente lo exige hoy; la regla sigue vigente); y el mensaje genérico en
+    pantalla cuando el email no existe (el rechazo se vio en el log, pero una sesión
+    vieja con contraseña en el navegador interfirió). **Pendiente antes de abrir
+    Google a todos los clientes**: publicar la pantalla de consentimiento; mientras
+    siga en modo prueba solo entran los usuarios de prueba y la cuenta dueña del
+    proyecto.
   - Solo entran **usuarios que ya existen**, creados por un administrador como hoy.
     Se los reconoce por el **email verificado** que devuelve el proveedor; si ese
     email no está en el sistema, no entra. No hay alta automática.
