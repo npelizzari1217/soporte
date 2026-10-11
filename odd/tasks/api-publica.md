@@ -236,10 +236,15 @@ Por tarea: lint, typecheck y los tests del módulo. Al cierre: suites completas 
     - JD-4, confirmado como sugerencia: las notificaciones van a la dirección `.invalid`;
     - vistos por un solo juez: JD-5 (un guardado viejo de cliente vuelve a habilitar la API), JD-6 (un segundo `ThrottlerModule` global) y JD-7 (dos habilitaciones a la vez dan un 500).
   - Pendientes para el dueño, fuera de esta feature:
-    - `API_V1_RATE_LIMIT` falta en `backend/.env.example` (a Claude se le negó el acceso a ese archivo);
+    - `API_V1_RATE_LIMIT` falta en `backend/.env.example` (a Claude se le negó el acceso a ese archivo); resuelto el 2026-10-11: el dueño agregó la línea y quedó en `c7735139`;
     - `rollback.sql` deja a los usuarios de integración en `usuarios`; resuelto el 2026-10-11 por decisión del dueño en `fix/rollback-api-publica-desactiva`: los desactiva (usuario y membresías) sin borrarlos;
-    - el punto 7 (SSO) del roadmap todavía dice "Pendiente", aunque está desplegado;
-    - el próximo deploy necesita la instalación manual del runbook ("4. Cambió un lockfile"), porque `@nestjs/swagger` cambió el lockfile.
+    - el punto 7 (SSO) del roadmap todavía dice "Pendiente", aunque está desplegado; resuelto el 2026-10-11 en `42d6d73e`;
+    - el próximo deploy necesita la instalación manual del runbook ("4. Cambió un lockfile"), porque `@nestjs/swagger` cambió el lockfile; hecho en el deploy del 2026-10-11.
 
 ## Próximo paso
-Feature cerrada: T1 a T10 hechas, en ramas locales. Integrar la cadena a `main`, hacer el push y el deploy son decisiones del dueño, y nada sube a GitHub hasta nuevo aviso.
+Feature cerrada y desplegada.
+
+- 2026-10-11: la cadena entró a `main` por el merge local `--no-ff` `068f53f1`, después de volver a correr las compuertas del backend sobre la punta `c7735139` (lint y typecheck en 0, 8412/8412 tests en 702 archivos, casts en 617). Las 23 ramas `feat/api-publica-*` se borraron.
+- 2026-10-11: el arreglo del rollback entró a `main` en `11bffe7a`.
+- 2026-10-11: deploy por SSH de `504a3725` a `11bffe7a` con un `git bundle`, porque GitHub sigue en pausa. `predeploy-dump.ps1` verificó 9 bases (`C:\soporte\backups\utc-backfill-20261011-072726`). El install del backend sumó `@nestjs/swagger`; su `postinstall` falló por el pnpm 9 global del VPS, el caso que documenta el runbook, y se siguió como indica. `deploy.ps1 -RollbackCommit 504a3725` terminó en `DEPLOY OK` y aplicó `20261011120000_api_publica`. Smoke: `openapi.json` 200, `/api/v1/tickets` sin clave 401, `/login` 200.
+- El push a GitHub sigue pendiente, hasta que el dueño lo retome. Ningún cliente tiene la API habilitada todavía.
