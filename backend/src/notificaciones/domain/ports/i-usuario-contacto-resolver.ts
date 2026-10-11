@@ -15,14 +15,16 @@ export interface ContactoUsuario {
 export interface IUsuarioContactoResolver {
   /**
    * Resuelve el contacto (email, nombre) de un usuario por su UUID.
-   * Retorna `null` si el usuario no existe (soft-deleted incluido) — el
+   * Retorna `null` si el usuario no existe (soft-deleted incluido) o es el
+   * usuario de integración de la API, cuyo email no recibe correo (JD-4) — el
    * listener que llama a este método debe omitir el envío y loguear (N4).
    */
   resolverContacto(usuarioId: string): Promise<ContactoUsuario | null>;
 
   /**
    * Resuelve los ADMINISTRADORES activos del tenant (membresías activas con
-   * `rol.codigo='ADMINISTRADOR'`, usuario activo y no soft-deleted). Usado
+   * `rol.codigo='ADMINISTRADOR'`, usuario activo, no soft-deleted y que no
+   * sea de integración). Usado
    * por el listener de `sla.vencido` (S4, N3) para notificar al equipo de
    * gestión además del asignado. Retorna `[]` si no hay ninguno.
    */

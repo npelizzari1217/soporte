@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
 import { AuthModule } from '../auth/auth.module';
 import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarEstadosUseCase } from '../tickets/application/use-cases/listar-estados.use-case';
@@ -58,20 +58,24 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
  * ApiV1Module — host de los controllers de la API publica `v1` (sdd/api-publica, T4).
  *
  * Provee los guards de clave y de limite por clave. Los controllers `v1` se declaran aca y
- * usan `@ApiV1()`. El limite se lee al compilar el modulo (`API_V1_RATE_LIMIT`, 60 por defecto),
+ * usan `@ApiV1()`. El limite se lee al instanciar el modulo (`API_V1_RATE_LIMIT`, 60 por defecto),
  * con storage propio en memoria, independiente del de CSAT.
+ *
+ * Throttler: opciones y `ThrottlerStorage` LOCALES, sin `ThrottlerModule.forRoot*` (JD-6, misma
+ * convencion que `RecuperacionPasswordModule` y `FormularioPublicoModule`): `ThrottlerModule` es
+ * `@Global()` y `CsatModule` ya lo registra. Se exportan junto con el guard para que un modulo que
+ * importe este y declare su propio controller `@ApiV1()` use las mismas opciones y el mismo
+ * storage, es decir, el mismo cupo por clave.
  */
 @Module({
-  imports: [
-    AuthModule,
-    IntegracionesModule,
-    TicketsModule,
-    ThrottlerModule.forRootAsync({
-      useFactory: () => [{ limit: limiteApiV1(), ttl: API_V1_VENTANA_MS }],
-    }),
-  ],
+  imports: [AuthModule, IntegracionesModule, TicketsModule],
   controllers: [TicketsV1Controller, CatalogosV1Controller],
   providers: [
+    {
+      provide: getOptionsToken(),
+      useFactory: () => [{ limit: limiteApiV1(), ttl: API_V1_VENTANA_MS }],
+    },
+    { provide: ThrottlerStorage, useClass: ThrottlerStorageService },
     ApiClaveGuard,
     ApiV1ThrottlerGuard,
     TicketsV1Presenter,
@@ -147,6 +151,12 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
       inject: [ESTADO_REPOSITORY],
     },
   ],
-  exports: [ApiClaveGuard, ApiV1ThrottlerGuard, ThrottlerModule, IntegracionesModule],
+  exports: [
+    ApiClaveGuard,
+    ApiV1ThrottlerGuard,
+    getOptionsToken(),
+    ThrottlerStorage,
+    IntegracionesModule,
+  ],
 })
 export class ApiV1Module {}

@@ -25,10 +25,15 @@ export class PrismaUsuarioContactoResolver implements IUsuarioContactoResolver {
    * `deletedAt IS NULL` — mismo criterio que `existeEnTenant`
    * (`IUsuarioMasterChecker`): NO filtra por `activo`, un solicitante
    * inactivo sigue siendo un contacto válido para notificaciones.
+   *
+   * `esIntegracion = false` (JD-4 del judgment-day de la API pública): el
+   * usuario de integración es el solicitante de los tickets creados por la
+   * API, y su email (`@integraciones.invalid`) no recibe correo. Sin contacto
+   * el listener omite el envío.
    */
   async resolverContacto(usuarioId: string): Promise<ContactoUsuario | null> {
     const row = await this.masterClient.usuario.findFirst({
-      where: { id: usuarioId, deletedAt: null },
+      where: { id: usuarioId, deletedAt: null, esIntegracion: false },
       select: { email: true, nombre: true },
     });
     return row;
@@ -36,7 +41,8 @@ export class PrismaUsuarioContactoResolver implements IUsuarioContactoResolver {
 
   /**
    * Membresías ACTIVAS (no soft-deleted) con `rol.codigo='ADMINISTRADOR'`,
-   * de usuarios ACTIVOS y no soft-deleted, del cliente indicado.
+   * de usuarios ACTIVOS, no soft-deleted y que no sean de integración
+   * (JD-4), del cliente indicado.
    */
   async resolverAdministradores(clienteId: string): Promise<ContactoUsuario[]> {
     const rows = await this.masterClient.membresia.findMany({
@@ -45,7 +51,7 @@ export class PrismaUsuarioContactoResolver implements IUsuarioContactoResolver {
         activo: true,
         deletedAt: null,
         rol: { codigo: 'ADMINISTRADOR' },
-        usuario: { activo: true, deletedAt: null },
+        usuario: { activo: true, deletedAt: null, esIntegracion: false },
       },
       select: { usuario: { select: { email: true, nombre: true } } },
     });

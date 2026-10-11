@@ -17,7 +17,17 @@ import { CrearApiClaveUseCase } from './application/crear-api-clave.use-case';
 import { ListarApiClavesUseCase } from './application/listar-api-claves.use-case';
 import { RevocarApiClaveUseCase } from './application/revocar-api-clave.use-case';
 import { API_CLAVE_REPOSITORY, IApiClaveRepository } from './domain/api-clave-repository.port';
+import {
+  API_HABILITADA_REPOSITORY,
+  IApiHabilitadaRepository,
+} from './domain/api-habilitada-repository.port';
 import { PrismaApiClaveRepository } from './infrastructure/prisma-api-clave.repository';
+import {
+  USUARIO_INTEGRACION_REPOSITORY,
+  IUsuarioIntegracionRepository,
+} from './domain/usuario-integracion-repository.port';
+import { PrismaApiHabilitadaRepository } from './infrastructure/prisma-api-habilitada.repository';
+import { PrismaUsuarioIntegracionRepository } from './infrastructure/prisma-usuario-integracion.repository';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
 
@@ -30,6 +40,16 @@ import { ApiClavesController } from './interface/api-claves.controller';
     {
       provide: API_CLAVE_REPOSITORY,
       useFactory: (prisma: PrismaService) => new PrismaApiClaveRepository(prisma),
+      inject: [PrismaService],
+    },
+    {
+      provide: API_HABILITADA_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaApiHabilitadaRepository(prisma),
+      inject: [PrismaService],
+    },
+    {
+      provide: USUARIO_INTEGRACION_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaUsuarioIntegracionRepository(prisma),
       inject: [PrismaService],
     },
     {
@@ -55,22 +75,28 @@ import { ApiClavesController } from './interface/api-claves.controller';
       provide: ConfigurarApiClienteUseCase,
       useFactory: (
         clienteRepo: IClienteRepository,
+        apiHabilitadaRepo: IApiHabilitadaRepository,
         usuarioRepo: IUsuarioRepository,
         membresiaRepo: IMembresiaRepository,
+        usuarioIntegracionRepo: IUsuarioIntegracionRepository,
         roleRepo: IRoleRepository,
         hashProvider: IHashProvider,
       ) =>
         new ConfigurarApiClienteUseCase(
           clienteRepo,
+          apiHabilitadaRepo,
           usuarioRepo,
           membresiaRepo,
+          usuarioIntegracionRepo,
           roleRepo,
           hashProvider,
         ),
       inject: [
         CLIENTE_REPOSITORY,
+        API_HABILITADA_REPOSITORY,
         USUARIO_REPOSITORY,
         MEMBRESIA_REPOSITORY,
+        USUARIO_INTEGRACION_REPOSITORY,
         ROLE_REPOSITORY,
         HASH_PROVIDER,
       ],
