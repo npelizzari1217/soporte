@@ -17,7 +17,12 @@ import { CrearApiClaveUseCase } from './application/crear-api-clave.use-case';
 import { ListarApiClavesUseCase } from './application/listar-api-claves.use-case';
 import { RevocarApiClaveUseCase } from './application/revocar-api-clave.use-case';
 import { API_CLAVE_REPOSITORY, IApiClaveRepository } from './domain/api-clave-repository.port';
+import {
+  API_HABILITADA_REPOSITORY,
+  IApiHabilitadaRepository,
+} from './domain/api-habilitada-repository.port';
 import { PrismaApiClaveRepository } from './infrastructure/prisma-api-clave.repository';
+import { PrismaApiHabilitadaRepository } from './infrastructure/prisma-api-habilitada.repository';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
 
@@ -30,6 +35,11 @@ import { ApiClavesController } from './interface/api-claves.controller';
     {
       provide: API_CLAVE_REPOSITORY,
       useFactory: (prisma: PrismaService) => new PrismaApiClaveRepository(prisma),
+      inject: [PrismaService],
+    },
+    {
+      provide: API_HABILITADA_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaApiHabilitadaRepository(prisma),
       inject: [PrismaService],
     },
     {
@@ -55,6 +65,7 @@ import { ApiClavesController } from './interface/api-claves.controller';
       provide: ConfigurarApiClienteUseCase,
       useFactory: (
         clienteRepo: IClienteRepository,
+        apiHabilitadaRepo: IApiHabilitadaRepository,
         usuarioRepo: IUsuarioRepository,
         membresiaRepo: IMembresiaRepository,
         roleRepo: IRoleRepository,
@@ -62,6 +73,7 @@ import { ApiClavesController } from './interface/api-claves.controller';
       ) =>
         new ConfigurarApiClienteUseCase(
           clienteRepo,
+          apiHabilitadaRepo,
           usuarioRepo,
           membresiaRepo,
           roleRepo,
@@ -69,6 +81,7 @@ import { ApiClavesController } from './interface/api-claves.controller';
         ),
       inject: [
         CLIENTE_REPOSITORY,
+        API_HABILITADA_REPOSITORY,
         USUARIO_REPOSITORY,
         MEMBRESIA_REPOSITORY,
         ROLE_REPOSITORY,

@@ -159,12 +159,10 @@ describe('ClienteMapper — formulario publico (sdd/formulario-publico-qr, WU-1)
 });
 
 describe('ClienteMapper — API publica (sdd/api-publica, T2)', () => {
-  it('toDomain() hidrata el flag y toPersistence() lo espeja', () => {
+  it('toDomain() hidrata el flag y toPersistence() NO lo escribe (JD-5)', () => {
     const habilitada = ClienteMapper.toDomain({ ...filaConLogo, apiHabilitada: true });
     expect(habilitada.apiHabilitada).toBe(true);
-    expect(ClienteMapper.toPersistence(habilitada).apiHabilitada).toBe(true);
-
-    const apagada = ClienteMapper.toDomain(filaConLogo);
-    expect(ClienteMapper.toPersistence(apagada).apiHabilitada).toBe(false);
+    // Solo IApiHabilitadaRepository la escribe: un save() viejo no puede volver a prenderla.
+    expect(ClienteMapper.toPersistence(habilitada)).not.toHaveProperty('apiHabilitada');
   });
 });

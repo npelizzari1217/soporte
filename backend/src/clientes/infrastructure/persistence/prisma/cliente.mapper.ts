@@ -48,9 +48,10 @@ export class ClienteMapper {
    * los reescribiera, un `save()` con una entidad leida antes de emitir un QR
    * descongelaria el slug. `formularioPublicoHabilitado` si es espejo.
    *
-   * `api_habilitada` es espejo (sdd/api-publica, T2): la escribe el caso de uso de ROOT por
-   * `save()`, y la entidad lo lleva con el valor real de la fila, asi que una edicion comercial
-   * lo reescribe igual que lo leyo.
+   * `api_habilitada` tambien se omite (JD-5 del judgment-day de la API publica): la escribe SOLO
+   * `IApiHabilitadaRepository`, desde `ConfigurarApiClienteUseCase`. Si el upsert la reescribiera,
+   * un `save()` con una entidad leida antes de que ROOT apagara la API la volveria a prender. Un
+   * cliente nuevo nace con el default de la columna (`false`).
    *
    * Las 3 columnas de logo NO se omiten (design.md D4, a diferencia de
    * `smtp_*`): el logo no tiene cifrado ni invariante todo-o-nada que
@@ -77,6 +78,7 @@ export class ClienteMapper {
     | 'slug'
     | 'slugCongeladoAt'
     | 'requiere2fa'
+    | 'apiHabilitada'
   > {
     return {
       id: entity.id,
@@ -87,7 +89,6 @@ export class ClienteMapper {
       activo: entity.activo,
       csatHabilitado: entity.csatHabilitado,
       formularioPublicoHabilitado: entity.formularioPublicoHabilitado,
-      apiHabilitada: entity.apiHabilitada,
       logoStorageKey: entity.logoStorageKey,
       logoMimeType: entity.logoMimeType,
       logoUpdatedAt: entity.logoUpdatedAt,

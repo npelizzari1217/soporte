@@ -19,6 +19,8 @@ function armar(opciones: { conRol?: boolean } = {}) {
   });
   const usuarios = new Map<string, UsuarioEntity>();
   const membresias: MembresiaEntity[] = [];
+  /** Lo que el caso de uso escribio por `IApiHabilitadaRepository.fijar`, en orden. */
+  const flags: boolean[] = [];
   const rol = RoleEntity.create({
     codigo: ROL_INTEGRACION,
     nombre: 'Usuario',
@@ -29,7 +31,13 @@ function armar(opciones: { conRol?: boolean } = {}) {
   const useCase = new ConfigurarApiClienteUseCase(
     {
       findById: async (id) => (id === cliente.id ? cliente : null),
-      save: async () => undefined,
+    },
+    {
+      fijar: async (id, habilitada) => {
+        if (id !== cliente.id) return false;
+        flags.push(habilitada);
+        return true;
+      },
     },
     {
       findByEmail: async (email) => usuarios.get(email) ?? null,
@@ -51,19 +59,20 @@ function armar(opciones: { conRol?: boolean } = {}) {
     },
     { hash: async (plano) => `hash:${plano}` },
   );
-  return { cliente, usuarios, membresias, rol, useCase };
+  return { cliente, usuarios, membresias, rol, flags, useCase };
 }
 
 const ROOT = { isGlobalAdmin: true };
 
 describe('ConfigurarApiClienteUseCase', () => {
   it('habilitar prende el flag y crea una sola vez el usuario de integracion con su membresia', async () => {
-    const { cliente, usuarios, membresias, rol, useCase } = armar();
+    const { cliente, usuarios, membresias, rol, flags, useCase } = armar();
 
     const r = await useCase.execute({ clienteId: cliente.id, habilitada: true }, ROOT);
 
     expect(r.isOk()).toBe(true);
     expect(cliente.apiHabilitada).toBe(true);
+    expect(flags).toEqual([true]);
     expect(usuarios.size).toBe(1);
     const usuario = usuarios.get(emailIntegracion(cliente.id));
     expect(usuario?.esIntegracion).toBe(true);
@@ -82,12 +91,13 @@ describe('ConfigurarApiClienteUseCase', () => {
   });
 
   it('deshabilitar apaga el flag y conserva usuario y membresia', async () => {
-    const { cliente, usuarios, membresias, useCase } = armar();
+    const { cliente, usuarios, membresias, flags, useCase } = armar();
     await useCase.execute({ clienteId: cliente.id, habilitada: true }, ROOT);
 
     const r = await useCase.execute({ clienteId: cliente.id, habilitada: false }, ROOT);
 
     expect(r.getValue()).toEqual({ clienteId: cliente.id, apiHabilitada: false });
+    expect(flags).toEqual([true, false]);
     expect(usuarios.size).toBe(1);
     expect(membresias[0].activo).toBe(true);
   });
@@ -124,11 +134,12 @@ describe('ConfigurarApiClienteUseCase', () => {
   });
 
   it('sin el rol en el catalogo falla y deja la API apagada', async () => {
-    const { cliente, usuarios, useCase } = armar({ conRol: false });
+    const { cliente, usuarios, flags, useCase } = armar({ conRol: false });
     const r = await useCase.execute({ clienteId: cliente.id, habilitada: true }, ROOT);
 
     expect(r.getError().code).toBe('API_ROL_INTEGRACION_NO_ENCONTRADO');
     expect(cliente.apiHabilitada).toBe(false);
+    expect(flags).toEqual([]);
     expect(usuarios.size).toBe(0);
   });
 });

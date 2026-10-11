@@ -7,6 +7,7 @@ import { IMembresiaRepository } from '../../auth/domain/ports/i-membresia.reposi
 import { IRoleRepository } from '../../auth/domain/ports/i-role.repository';
 import { IHashProvider } from '../../auth/domain/ports/i-hash.provider';
 import { IClienteRepository } from '../../clientes/domain/ports/i-cliente.repository';
+import { IApiHabilitadaRepository } from '../domain/api-habilitada-repository.port';
 import {
   ClienteApiNoEncontradoError,
   EmailIntegracionOcupadoError,
@@ -50,10 +51,14 @@ export type ConfigurarApiClienteError =
  * activa, y recien al final prende el flag: si algo falla a mitad de camino la API sigue apagada
  * y reintentar completa lo que falto. Deshabilitar solo apaga el flag: el usuario y las claves se
  * conservan (T4 rechaza toda clave mientras el flag este en false).
+ *
+ * El flag se escribe con `apiHabilitadaRepo.fijar`, nunca con el `save()` general de clientes, que
+ * lo omite (JD-5): asi una entidad vieja guardada por otro caso de uso no lo pisa.
  */
 export class ConfigurarApiClienteUseCase {
   constructor(
-    private readonly clienteRepo: Pick<IClienteRepository, 'findById' | 'save'>,
+    private readonly clienteRepo: Pick<IClienteRepository, 'findById'>,
+    private readonly apiHabilitadaRepo: IApiHabilitadaRepository,
     private readonly usuarioRepo: Pick<IUsuarioRepository, 'findByEmail' | 'create'>,
     private readonly membresiaRepo: Pick<
       IMembresiaRepository,
@@ -79,7 +84,8 @@ export class ConfigurarApiClienteUseCase {
     } else {
       cliente.deshabilitarApi();
     }
-    await this.clienteRepo.save(cliente);
+    const fijado = await this.apiHabilitadaRepo.fijar(cliente.id, cliente.apiHabilitada);
+    if (!fijado) return Result.fail(new ClienteApiNoEncontradoError(command.clienteId));
 
     return Result.ok({ clienteId: cliente.id, apiHabilitada: cliente.apiHabilitada });
   }
