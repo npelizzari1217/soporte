@@ -45,7 +45,7 @@ JD-5 tiene impacto de seguridad. JD-4 ensucia el SMTP de cada cliente. JD-7 y JD
   - Desviación del criterio (declarada): el test "el límite de v1 no altera el de recuperación de contraseña" no se escribió como RED. `RecuperacionPasswordModule` ya usa opciones locales y `@Throttle` por ruta, así que ese test pasaría antes y después del cambio: no prueba el arreglo. En su lugar, `api-v1.module.spec.ts` fija la convención sobre la metadata de `@Module` (sin `ThrottlerModule` en imports ni exports; opciones y storage locales con `limit: limiteApiV1()`, `ttl: 60000`). El comportamiento lo cubren los e2e existentes, y el e2e de recuperación de contraseña se corrió igual.
   - RED: `api-v1.module.spec.ts` › "no importa ThrottlerModule (ni forRoot ni forRootAsync): no registra opciones globales" — `AssertionError: expected true to be false`; › "provee localmente las opciones del limite v1 y su propio ThrottlerStorage" — `AssertionError: expected undefined to be defined`.
   - GREEN: el spec 2/2. `pnpm vitest run src/integraciones`: 15 archivos, 83 tests verdes. e2e con límite (`integraciones-api-v1-auth` con el 429 y el cupo compartido JD-1, `-openapi`, `-tickets`, `-catalogos`, `recuperacion-password`, `csat`, los tres de `pedido-publico`): 9 archivos, 72 tests verdes. `pnpm lint` y `pnpm typecheck`: 0 errores (prettier normalizó dos archivos antes del lint).
-  - Commit: ver el commit `docs:` de cierre.
+  - Commit: `705e546c`.
 
 ## Verificación
 - Por tarea: el spec nuevo en RED antes del cambio y en GREEN después; `pnpm lint`, `pnpm typecheck` y los specs del módulo afectado.
