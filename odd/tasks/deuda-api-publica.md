@@ -61,5 +61,12 @@ Delegada: un writer por tarea, que implica 2 o más archivos no triviales (códi
 - 2026-10-11: T3 (JD-7) cerrada.
 - 2026-10-11: T4 (JD-6) cerrada. Las cuatro filas de deuda quedaron tachadas y RESUELTAS en el roadmap.
 
+- 2026-10-11: cierre verificado sobre `ce127e3c`:
+  - `pnpm lint`: 0 errores. `pnpm typecheck`: 0 errores.
+  - `node scripts/check-casts-en-specs.mjs` (desde la raíz): 617 en 114, igual a la base.
+  - `pnpm test`: 706 archivos, 8422 tests verdes. Los `FAIL orden-de-arranque.spec.ts` del log son los procesos hijos que `test/entorno-corte-arranque.spec.ts` hace fallar a propósito.
+  - `node scripts/check-roadmap-fresco.mjs`: fresco.
+  - Revisión del diff (`main..HEAD`, 17 archivos): sin secretos ni variables nuevas; los cambios se limitan a los cuatro hallazgos.
+
 ## Próximo paso
-Cierre: suite completa del backend y `node scripts/check-roadmap-fresco.mjs` (lo corre el orquestador); después, push y PR a decisión del dueño.
+Merge a `main` y deploy, a decisión del dueño. No hay migraciones.
