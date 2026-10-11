@@ -34,8 +34,12 @@ JD-5 tiene impacto de seguridad. JD-4 ensucia el SMTP de cada cliente. JD-7 y JD
   - Cambio: `esIntegracion: false` en `resolverContacto` y en `resolverAdministradores` (un usuario de integración nunca es ADMINISTRADOR hoy, pero el filtro cuesta lo mismo). Sin contacto, `ContactoSolicitanteResolverAdapter` devuelve `null` y el listener omite el envío.
   - RED: `prisma-usuario-contacto-resolver.integration.spec.ts` › "usuario de integracion de la API → null: no se notifica a `.invalid` (JD-4)" — `AssertionError: expected { …(2) } to be null`; › "excluye usuarios de integracion de la API (JD-4)" — `AssertionError: expected [ { …(2) } ] to deeply equal []`. 2 fallidos, 8 verdes.
   - GREEN: el mismo spec 10/10. `pnpm vitest run src/notificaciones`: 12 archivos, 128 tests verdes. `pnpm lint` y `pnpm typecheck`: 0 errores.
-  - Commit: ver T3 (se registra al inicio del commit siguiente).
-- [ ] **T3 — JD-7:** dos habilitaciones simultáneas no dan 500. Criterio: dos `execute` concurrentes del caso de uso terminan bien y dejan un solo usuario de integración. Ruta: delegada.
+  - Commit: `bfbe8b86`.
+- [x] **T3 — JD-7:** dos habilitaciones simultáneas no dan 500. Criterio: dos `execute` concurrentes del caso de uso terminan bien y dejan un solo usuario de integración. Ruta: delegada.
+  - Diseño: puerto `IUsuarioIntegracionRepository` (`integraciones/domain/usuario-integracion-repository.port.ts`) con `crearUsuarioSiNoExiste` y `crearMembresiaSiNoExiste`; el adaptador usa `createMany({ skipDuplicates: true })`, que es `INSERT ... ON CONFLICT DO NOTHING`. Después del insert el caso de uso relee el usuario por email y recién ahí controla `esIntegracion`. La membresía también necesitaba tolerancia: tiene `@@unique([usuarioId, clienteId, rolId])`, así que el segundo insert chocaba igual. Se descartó tocar `PrismaUsuarioRepository.create` (puerto compartido de auth, fuera del alcance) y una transacción amplia.
+  - RED: `configurar-api-cliente.integration.spec.ts` › "JD-7: dos habilitaciones simultaneas terminan bien y dejan un solo usuario de integracion" — `PrismaClientKnownRequestError: Unique constraint failed on the fields: (email)` en `usuario.upsert()`. Con un hash instantáneo en el test la carrera no se reproducía (las dos llamadas se serializaban); el fake de hash espera 50 ms, que modela la ventana real de argon2 entre `findByEmail` y `create`.
+  - GREEN: el spec 2/2, tres corridas seguidas. `pnpm vitest run src/integraciones`: 14 archivos, 81 tests verdes; e2e `integraciones-api-cliente` + `integraciones-claves`: 14/14. `pnpm lint` y `pnpm typecheck`: 0 errores.
+  - Commit: ver T4 (se registra al inicio del commit siguiente).
 - [ ] **T4 — JD-6:** `ApiV1Module` provee sus opciones y su almacenamiento localmente, sin un `ThrottlerModule` global, como `formulario-publico.module.ts`. Criterio: los e2e del límite v1 (60/min por clave, un solo cupo por clave) siguen verdes, y uno nuevo prueba que el límite de v1 no altera el de recuperación de contraseña. Ruta: delegada.
 
 ## Verificación
@@ -49,6 +53,7 @@ Delegada: un writer por tarea, que implica 2 o más archivos no triviales (códi
 - 2026-10-11: documento creado; rama `fix/deuda-api-publica` desde `main` `23b31110`.
 - 2026-10-11: T1 (JD-5) cerrada.
 - 2026-10-11: T2 (JD-4) cerrada.
+- 2026-10-11: T3 (JD-7) cerrada.
 
 ## Próximo paso
-T3 (JD-7).
+T4 (JD-6).

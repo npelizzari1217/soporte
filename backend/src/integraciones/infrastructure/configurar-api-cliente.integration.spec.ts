@@ -1,10 +1,10 @@
 /**
  * ConfigurarApiClienteUseCase con los repos Prisma reales sobre `soporte_master_test`. No trunca:
- * crea clientes propios con sufijo aleatorio y al final borra lo que creo (clientes, usuarios de
- * integracion; las membresias caen por cascada).
+ * crea clientes propios con sufijo aleatorio y al final borra lo que creo (membresias, clientes y
+ * usuarios de integracion, en ese orden: la FK de membresias no cascadea).
  *
  * Cubre la deuda del `judgment-day` de la API publica: JD-5 (un `save()` viejo no vuelve a
- * habilitar la API).
+ * habilitar la API) y JD-7 (dos habilitaciones simultaneas no dan 500).
  */
 import { randomBytes } from 'node:crypto';
 import { Pool } from 'pg';
@@ -15,6 +15,7 @@ import { PrismaUsuarioRepository } from '../../auth/infrastructure/persistence/p
 import { PrismaMembresiaRepository } from '../../auth/infrastructure/persistence/prisma/prisma-membresia.repository';
 import { PrismaRoleRepository } from '../../auth/infrastructure/persistence/prisma/prisma-role.repository';
 import { PrismaApiHabilitadaRepository } from './prisma-api-habilitada.repository';
+import { PrismaUsuarioIntegracionRepository } from './prisma-usuario-integracion.repository';
 import {
   ConfigurarApiClienteUseCase,
   ROL_INTEGRACION,
@@ -62,13 +63,21 @@ describe('ConfigurarApiClienteUseCase (integracion)', () => {
       new PrismaApiHabilitadaRepository(prismaService),
       new PrismaUsuarioRepository(prismaService),
       new PrismaMembresiaRepository(prismaService),
+      new PrismaUsuarioIntegracionRepository(prismaService),
       new PrismaRoleRepository(prismaService),
-      // Sin argon2: el secreto del usuario de integracion no se usa nunca.
-      { hash: async (plano) => `hash:${plano}` },
+      // Sin argon2, pero con su demora: entre `findByEmail` y `create` hay un hash de decenas de
+      // ms, y esa es la ventana donde dos habilitaciones simultaneas se cruzan (JD-7).
+      {
+        hash: async (plano) => {
+          await new Promise((r) => setTimeout(r, 50));
+          return `hash:${plano}`;
+        },
+      },
     );
   });
 
   afterAll(async () => {
+    await pool.query('DELETE FROM membresias WHERE cliente_id = ANY($1)', [clientes]);
     await pool.query('DELETE FROM clientes WHERE id = ANY($1)', [clientes]);
     await pool.query('DELETE FROM usuarios WHERE email = ANY($1)', [
       clientes.map(emailIntegracion),
@@ -90,5 +99,27 @@ describe('ConfigurarApiClienteUseCase (integracion)', () => {
 
     expect(await apiHabilitada(id)).toBe(false);
     expect((await clienteRepo.findById(id))!.nombre).toBe('Renombrado');
+  });
+
+  it('JD-7: dos habilitaciones simultaneas terminan bien y dejan un solo usuario de integracion', async () => {
+    const id = await crearCliente(false);
+
+    const [a, b] = await Promise.all([
+      useCase.execute({ clienteId: id, habilitada: true }, ROOT),
+      useCase.execute({ clienteId: id, habilitada: true }, ROOT),
+    ]);
+
+    expect(a.isOk()).toBe(true);
+    expect(b.isOk()).toBe(true);
+    expect(await apiHabilitada(id)).toBe(true);
+    const usuarios = await pool.query('SELECT id FROM usuarios WHERE email = $1', [
+      emailIntegracion(id),
+    ]);
+    expect(usuarios.rows).toHaveLength(1);
+    const membresias = await pool.query(
+      'SELECT activo FROM membresias WHERE usuario_id = $1 AND cliente_id = $2',
+      [usuarios.rows[0].id, id],
+    );
+    expect(membresias.rows).toEqual([{ activo: true }]);
   });
 });

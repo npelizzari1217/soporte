@@ -8,6 +8,7 @@ import { IRoleRepository } from '../../auth/domain/ports/i-role.repository';
 import { IHashProvider } from '../../auth/domain/ports/i-hash.provider';
 import { IClienteRepository } from '../../clientes/domain/ports/i-cliente.repository';
 import { IApiHabilitadaRepository } from '../domain/api-habilitada-repository.port';
+import { IUsuarioIntegracionRepository } from '../domain/usuario-integracion-repository.port';
 import {
   ClienteApiNoEncontradoError,
   EmailIntegracionOcupadoError,
@@ -54,16 +55,18 @@ export type ConfigurarApiClienteError =
  *
  * El flag se escribe con `apiHabilitadaRepo.fijar`, nunca con el `save()` general de clientes, que
  * lo omite (JD-5): asi una entidad vieja guardada por otro caso de uso no lo pisa.
+ *
+ * Dos habilitaciones simultaneas no se pisan (JD-7): el usuario y la membresia se insertan con
+ * `IUsuarioIntegracionRepository`, que no falla si el otro llego primero, y despues se relee el
+ * usuario que quedo con el email.
  */
 export class ConfigurarApiClienteUseCase {
   constructor(
     private readonly clienteRepo: Pick<IClienteRepository, 'findById'>,
     private readonly apiHabilitadaRepo: IApiHabilitadaRepository,
-    private readonly usuarioRepo: Pick<IUsuarioRepository, 'findByEmail' | 'create'>,
-    private readonly membresiaRepo: Pick<
-      IMembresiaRepository,
-      'findByUsuarioYCliente' | 'create' | 'save'
-    >,
+    private readonly usuarioRepo: Pick<IUsuarioRepository, 'findByEmail'>,
+    private readonly membresiaRepo: Pick<IMembresiaRepository, 'findByUsuarioYCliente' | 'save'>,
+    private readonly usuarioIntegracionRepo: IUsuarioIntegracionRepository,
     private readonly roleRepo: Pick<IRoleRepository, 'findByCodigo'>,
     private readonly hashProvider: Pick<IHashProvider, 'hash'>,
   ) {}
@@ -98,9 +101,8 @@ export class ConfigurarApiClienteUseCase {
 
     const email = emailIntegracion(clienteId);
     let usuario = await this.usuarioRepo.findByEmail(email);
-    if (usuario && !usuario.esIntegracion) return Result.fail(new EmailIntegracionOcupadoError());
     if (!usuario) {
-      usuario = UsuarioEntity.create({
+      const nuevo = UsuarioEntity.create({
         email,
         nombre: 'Integracion',
         apellido: 'API',
@@ -109,12 +111,16 @@ export class ConfigurarApiClienteUseCase {
         activo: true,
         esIntegracion: true,
       });
-      await this.usuarioRepo.create(usuario);
+      await this.usuarioIntegracionRepo.crearUsuarioSiNoExiste(nuevo);
+      // Si otra habilitacion gano el insert, el que vale es el suyo: se relee por email.
+      usuario = await this.usuarioRepo.findByEmail(email);
+      if (!usuario) throw new Error(`El usuario de integracion ${email} no quedo creado`);
     }
+    if (!usuario.esIntegracion) return Result.fail(new EmailIntegracionOcupadoError());
 
     const membresia = await this.membresiaRepo.findByUsuarioYCliente(usuario.id, clienteId);
     if (!membresia) {
-      await this.membresiaRepo.create(
+      await this.usuarioIntegracionRepo.crearMembresiaSiNoExiste(
         MembresiaEntity.create({ usuarioId: usuario.id, clienteId, rolId: rol.id, activo: true }),
       );
     } else if (!membresia.activo) {

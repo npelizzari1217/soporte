@@ -22,7 +22,12 @@ import {
   IApiHabilitadaRepository,
 } from './domain/api-habilitada-repository.port';
 import { PrismaApiClaveRepository } from './infrastructure/prisma-api-clave.repository';
+import {
+  USUARIO_INTEGRACION_REPOSITORY,
+  IUsuarioIntegracionRepository,
+} from './domain/usuario-integracion-repository.port';
 import { PrismaApiHabilitadaRepository } from './infrastructure/prisma-api-habilitada.repository';
+import { PrismaUsuarioIntegracionRepository } from './infrastructure/prisma-usuario-integracion.repository';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
 
@@ -40,6 +45,11 @@ import { ApiClavesController } from './interface/api-claves.controller';
     {
       provide: API_HABILITADA_REPOSITORY,
       useFactory: (prisma: PrismaService) => new PrismaApiHabilitadaRepository(prisma),
+      inject: [PrismaService],
+    },
+    {
+      provide: USUARIO_INTEGRACION_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaUsuarioIntegracionRepository(prisma),
       inject: [PrismaService],
     },
     {
@@ -68,6 +78,7 @@ import { ApiClavesController } from './interface/api-claves.controller';
         apiHabilitadaRepo: IApiHabilitadaRepository,
         usuarioRepo: IUsuarioRepository,
         membresiaRepo: IMembresiaRepository,
+        usuarioIntegracionRepo: IUsuarioIntegracionRepository,
         roleRepo: IRoleRepository,
         hashProvider: IHashProvider,
       ) =>
@@ -76,6 +87,7 @@ import { ApiClavesController } from './interface/api-claves.controller';
           apiHabilitadaRepo,
           usuarioRepo,
           membresiaRepo,
+          usuarioIntegracionRepo,
           roleRepo,
           hashProvider,
         ),
@@ -84,6 +96,7 @@ import { ApiClavesController } from './interface/api-claves.controller';
         API_HABILITADA_REPOSITORY,
         USUARIO_REPOSITORY,
         MEMBRESIA_REPOSITORY,
+        USUARIO_INTEGRACION_REPOSITORY,
         ROLE_REPOSITORY,
         HASH_PROVIDER,
       ],

@@ -41,17 +41,23 @@ function armar(opciones: { conRol?: boolean } = {}) {
     },
     {
       findByEmail: async (email) => usuarios.get(email) ?? null,
-      create: async (u) => {
-        usuarios.set(u.email, u);
-      },
     },
     {
       findByUsuarioYCliente: async (usuarioId, clienteId) =>
         membresias.find((m) => m.usuarioId === usuarioId && m.clienteId === clienteId) ?? null,
-      create: async (m) => {
-        membresias.push(m);
-      },
       save: async () => undefined,
+    },
+    {
+      // Insert-si-no-existe, como el adaptador real (ON CONFLICT DO NOTHING).
+      crearUsuarioSiNoExiste: async (u) => {
+        if (!usuarios.has(u.email)) usuarios.set(u.email, u);
+      },
+      crearMembresiaSiNoExiste: async (m) => {
+        const existe = membresias.some(
+          (x) => x.usuarioId === m.usuarioId && x.clienteId === m.clienteId && x.rolId === m.rolId,
+        );
+        if (!existe) membresias.push(m);
+      },
     },
     {
       findByCodigo: async (codigo) =>
