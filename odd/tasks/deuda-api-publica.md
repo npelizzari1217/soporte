@@ -39,8 +39,13 @@ JD-5 tiene impacto de seguridad. JD-4 ensucia el SMTP de cada cliente. JD-7 y JD
   - Diseño: puerto `IUsuarioIntegracionRepository` (`integraciones/domain/usuario-integracion-repository.port.ts`) con `crearUsuarioSiNoExiste` y `crearMembresiaSiNoExiste`; el adaptador usa `createMany({ skipDuplicates: true })`, que es `INSERT ... ON CONFLICT DO NOTHING`. Después del insert el caso de uso relee el usuario por email y recién ahí controla `esIntegracion`. La membresía también necesitaba tolerancia: tiene `@@unique([usuarioId, clienteId, rolId])`, así que el segundo insert chocaba igual. Se descartó tocar `PrismaUsuarioRepository.create` (puerto compartido de auth, fuera del alcance) y una transacción amplia.
   - RED: `configurar-api-cliente.integration.spec.ts` › "JD-7: dos habilitaciones simultaneas terminan bien y dejan un solo usuario de integracion" — `PrismaClientKnownRequestError: Unique constraint failed on the fields: (email)` en `usuario.upsert()`. Con un hash instantáneo en el test la carrera no se reproducía (las dos llamadas se serializaban); el fake de hash espera 50 ms, que modela la ventana real de argon2 entre `findByEmail` y `create`.
   - GREEN: el spec 2/2, tres corridas seguidas. `pnpm vitest run src/integraciones`: 14 archivos, 81 tests verdes; e2e `integraciones-api-cliente` + `integraciones-claves`: 14/14. `pnpm lint` y `pnpm typecheck`: 0 errores.
-  - Commit: ver T4 (se registra al inicio del commit siguiente).
-- [ ] **T4 — JD-6:** `ApiV1Module` provee sus opciones y su almacenamiento localmente, sin un `ThrottlerModule` global, como `formulario-publico.module.ts`. Criterio: los e2e del límite v1 (60/min por clave, un solo cupo por clave) siguen verdes, y uno nuevo prueba que el límite de v1 no altera el de recuperación de contraseña. Ruta: delegada.
+  - Commit: `6732f761`.
+- [x] **T4 — JD-6:** `ApiV1Module` provee sus opciones y su almacenamiento localmente, sin un `ThrottlerModule` global, como `formulario-publico.module.ts`. Criterio: los e2e del límite v1 (60/min por clave, un solo cupo por clave) siguen verdes, y uno nuevo prueba que el límite de v1 no altera el de recuperación de contraseña. Ruta: delegada.
+  - Cambio: `getOptionsToken()` (factory que lee `limiteApiV1()` al instanciar el módulo) y `{ provide: ThrottlerStorage, useClass: ThrottlerStorageService }` como providers locales; se exportan junto con `ApiV1ThrottlerGuard`, en lugar de `ThrottlerModule`, para que un módulo que importe `ApiV1Module` y declare su propio controller `@ApiV1()` (el `EcoController` del e2e de autenticación) use las mismas opciones y el mismo storage. `AppModule` no declara controllers, así que el export no alcanza a ningún otro guard. Orden de guards sin cambios (`@ApiV1()`: clave → límite → `AccionesGuard`).
+  - Desviación del criterio (declarada): el test "el límite de v1 no altera el de recuperación de contraseña" no se escribió como RED. `RecuperacionPasswordModule` ya usa opciones locales y `@Throttle` por ruta, así que ese test pasaría antes y después del cambio: no prueba el arreglo. En su lugar, `api-v1.module.spec.ts` fija la convención sobre la metadata de `@Module` (sin `ThrottlerModule` en imports ni exports; opciones y storage locales con `limit: limiteApiV1()`, `ttl: 60000`). El comportamiento lo cubren los e2e existentes, y el e2e de recuperación de contraseña se corrió igual.
+  - RED: `api-v1.module.spec.ts` › "no importa ThrottlerModule (ni forRoot ni forRootAsync): no registra opciones globales" — `AssertionError: expected true to be false`; › "provee localmente las opciones del limite v1 y su propio ThrottlerStorage" — `AssertionError: expected undefined to be defined`.
+  - GREEN: el spec 2/2. `pnpm vitest run src/integraciones`: 15 archivos, 83 tests verdes. e2e con límite (`integraciones-api-v1-auth` con el 429 y el cupo compartido JD-1, `-openapi`, `-tickets`, `-catalogos`, `recuperacion-password`, `csat`, los tres de `pedido-publico`): 9 archivos, 72 tests verdes. `pnpm lint` y `pnpm typecheck`: 0 errores (prettier normalizó dos archivos antes del lint).
+  - Commit: ver el commit `docs:` de cierre.
 
 ## Verificación
 - Por tarea: el spec nuevo en RED antes del cambio y en GREEN después; `pnpm lint`, `pnpm typecheck` y los specs del módulo afectado.
@@ -54,6 +59,7 @@ Delegada: un writer por tarea, que implica 2 o más archivos no triviales (códi
 - 2026-10-11: T1 (JD-5) cerrada.
 - 2026-10-11: T2 (JD-4) cerrada.
 - 2026-10-11: T3 (JD-7) cerrada.
+- 2026-10-11: T4 (JD-6) cerrada. Las cuatro filas de deuda quedaron tachadas y RESUELTAS en el roadmap.
 
 ## Próximo paso
-T4 (JD-6).
+Cierre: suite completa del backend y `node scripts/check-roadmap-fresco.mjs` (lo corre el orquestador); después, push y PR a decisión del dueño.
