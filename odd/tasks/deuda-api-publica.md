@@ -29,8 +29,12 @@ JD-5 tiene impacto de seguridad. JD-4 ensucia el SMTP de cada cliente. JD-7 y JD
   - Diseño: puerto satélite `IApiHabilitadaRepository` (`integraciones/domain/api-habilitada-repository.port.ts`) con un UPDATE dirigido, en vez de un método nuevo en `IClienteRepository`: agregarlo obligaba a tocar ~25 mocks de specs, varios fuera del módulo (csat, publico, auth). Mismo criterio que `IClienteEmailConfigRepository`. Un cliente nuevo nace con el default de la columna (`false`).
   - RED: `configurar-api-cliente.integration.spec.ts` › "JD-5: un save() con la entidad leida antes de deshabilitar no vuelve a habilitar la API" — `AssertionError: expected true to be false` en `expect(await apiHabilitada(id)).toBe(false)` después del `save()` viejo.
   - GREEN: el mismo spec pasa (1/1). `pnpm vitest run src/clientes src/integraciones`: 66 archivos, 485 tests verdes; e2e `integraciones-api-cliente` + `integraciones-claves`: 14/14. `pnpm lint` y `pnpm typecheck`: 0 errores.
-  - Commit: ver T2 (se registra al inicio del commit siguiente).
-- [ ] **T2 — JD-4:** el resolvedor de contactos de notificaciones excluye a los usuarios de integración. Criterio: un ticket cuyo solicitante es el usuario de integración no produce destinatario `.invalid`. Ruta: delegada.
+  - Commit: `7f7be5ef`.
+- [x] **T2 — JD-4:** el resolvedor de contactos de notificaciones excluye a los usuarios de integración. Criterio: un ticket cuyo solicitante es el usuario de integración no produce destinatario `.invalid`. Ruta: delegada.
+  - Cambio: `esIntegracion: false` en `resolverContacto` y en `resolverAdministradores` (un usuario de integración nunca es ADMINISTRADOR hoy, pero el filtro cuesta lo mismo). Sin contacto, `ContactoSolicitanteResolverAdapter` devuelve `null` y el listener omite el envío.
+  - RED: `prisma-usuario-contacto-resolver.integration.spec.ts` › "usuario de integracion de la API → null: no se notifica a `.invalid` (JD-4)" — `AssertionError: expected { …(2) } to be null`; › "excluye usuarios de integracion de la API (JD-4)" — `AssertionError: expected [ { …(2) } ] to deeply equal []`. 2 fallidos, 8 verdes.
+  - GREEN: el mismo spec 10/10. `pnpm vitest run src/notificaciones`: 12 archivos, 128 tests verdes. `pnpm lint` y `pnpm typecheck`: 0 errores.
+  - Commit: ver T3 (se registra al inicio del commit siguiente).
 - [ ] **T3 — JD-7:** dos habilitaciones simultáneas no dan 500. Criterio: dos `execute` concurrentes del caso de uso terminan bien y dejan un solo usuario de integración. Ruta: delegada.
 - [ ] **T4 — JD-6:** `ApiV1Module` provee sus opciones y su almacenamiento localmente, sin un `ThrottlerModule` global, como `formulario-publico.module.ts`. Criterio: los e2e del límite v1 (60/min por clave, un solo cupo por clave) siguen verdes, y uno nuevo prueba que el límite de v1 no altera el de recuperación de contraseña. Ruta: delegada.
 
@@ -44,6 +48,7 @@ Delegada: un writer por tarea, que implica 2 o más archivos no triviales (códi
 ## Progreso
 - 2026-10-11: documento creado; rama `fix/deuda-api-publica` desde `main` `23b31110`.
 - 2026-10-11: T1 (JD-5) cerrada.
+- 2026-10-11: T2 (JD-4) cerrada.
 
 ## Próximo paso
-T2 (JD-4).
+T3 (JD-7).

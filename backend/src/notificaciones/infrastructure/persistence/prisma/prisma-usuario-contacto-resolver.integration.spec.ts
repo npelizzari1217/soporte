@@ -54,6 +54,7 @@ describe('PrismaUsuarioContactoResolver — integration (N4)', () => {
     activo = true,
     deletedAt: Date | null = null,
     email?: string,
+    esIntegracion = false,
   ) {
     return masterClient.usuario.create({
       data: {
@@ -63,6 +64,7 @@ describe('PrismaUsuarioContactoResolver — integration (N4)', () => {
         passwordHash: 'hash-fake',
         activo,
         deletedAt,
+        esIntegracion,
       },
     });
   }
@@ -90,6 +92,20 @@ describe('PrismaUsuarioContactoResolver — integration (N4)', () => {
 
     it('usuario soft-deleted → null', async () => {
       const usuario = await createUsuario('contacto-deleted', true, new Date());
+
+      const contacto = await resolver.resolverContacto(usuario.id);
+
+      expect(contacto).toBeNull();
+    });
+
+    it('usuario de integracion de la API → null: no se notifica a `.invalid` (JD-4)', async () => {
+      const usuario = await createUsuario(
+        'contacto-integracion',
+        true,
+        null,
+        'integracion+abc@integraciones.invalid',
+        true,
+      );
 
       const contacto = await resolver.resolverContacto(usuario.id);
 
@@ -131,6 +147,23 @@ describe('PrismaUsuarioContactoResolver — integration (N4)', () => {
       const rolAdmin = await createRole('ADMINISTRADOR_USR_INACTIVO');
       const admin = await createUsuario('admin-usr-inactivo', false);
       await createMembresia(admin.id, cliente.id, rolAdmin.id, true);
+
+      const admins = await resolver.resolverAdministradores(cliente.id);
+
+      expect(admins).toEqual([]);
+    });
+
+    it('excluye usuarios de integracion de la API (JD-4)', async () => {
+      const cliente = await createCliente('admins-integracion');
+      const rolAdmin = await createRole('ADMINISTRADOR');
+      const integracion = await createUsuario(
+        'admin-integracion',
+        true,
+        null,
+        'integracion+def@integraciones.invalid',
+        true,
+      );
+      await createMembresia(integracion.id, cliente.id, rolAdmin.id, true);
 
       const admins = await resolver.resolverAdministradores(cliente.id);
 
