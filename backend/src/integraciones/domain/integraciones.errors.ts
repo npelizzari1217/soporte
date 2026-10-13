@@ -100,3 +100,33 @@ export class SecretoWebhookIndescifrableError extends DomainError {
     super('No se pudo descifrar el secreto del webhook.');
   }
 }
+
+/**
+ * La URL del destino de webhooks no pasa la validación sintáctica (odd/webhooks, CA8): no es HTTPS,
+ * lleva credenciales, es demasiado larga o apunta a una IP literal que no es pública.
+ */
+export class UrlWebhookInvalidaError extends DomainError {
+  readonly code = 'WEBHOOK_URL_INVALIDA';
+
+  constructor(motivo: string) {
+    super(`La URL del webhook no es válida: ${motivo}`);
+  }
+}
+
+/** El host del destino resuelve, en al menos una de sus respuestas, a una IP que no es pública. */
+export class DestinoWebhookNoPublicoError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_NO_PUBLICO';
+
+  constructor() {
+    super('El destino del webhook resuelve a una dirección que no es pública.');
+  }
+}
+
+/** El host del destino no resuelve a ninguna dirección. */
+export class DestinoWebhookIrresolubleError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_IRRESOLUBLE';
+
+  constructor() {
+    super('No se pudo resolver el host del destino del webhook.');
+  }
+}
