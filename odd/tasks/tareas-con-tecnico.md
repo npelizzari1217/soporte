@@ -1,0 +1,106 @@
+# Tareas con técnico y crédito por tarea (punto 12 de la segunda etapa)
+
+## Objetivo
+Que un ticket pueda repartirse en tareas, cada una con su técnico, y que el crédito de cada tarea sea de quien la completó, en cualquier tipo de ticket.
+
+## Problema
+- Hoy un ticket tiene un solo `asignadoId`, y todos los indicadores de técnicos se calculan sobre él: la carga del dashboard, el CSAT, la exportación y los mails de SLA. Por eso, si un técnico hizo el 60 % del trabajo y otro el 40 %, el crédito entero se lo lleva el último.
+- Solo Edilicia tiene subtareas (`SubtareaEdilicia`, colgada del satélite `TicketEdilicia`), y no llevan técnico.
+- Las subtareas guardan quién las completó (`completadaPorId`), pero nada lo lee.
+- `TicketEdilicia.personalAsignadoId` existe y nunca se usó.
+
+## Por qué
+Es el punto 12 del roadmap. Lo anticipó la decisión del punto 9: un problema con varios oficios o varios pasos necesita un técnico por tarea.
+
+## Decisión de producto citada
+`docs/roadmap-comercial.md`, sección "Decisiones de producto de la segunda etapa", viñeta **"Segunda etapa, punto 12 — tareas con técnico y crédito por tarea"**, decidida el 2026-10-13 (commit `8fe88835`). Cada viñeta es un criterio de aceptación más abajo.
+
+**Desviaciones declaradas de antemano:** ninguna.
+
+## Alcance
+- **Backend:**
+  - Tabla genérica de tareas en el inquilino, con la migración de los datos de `subtareas_edilicia`.
+  - Casos de uso y endpoints para crear, asignar técnico, completar, descompletar y borrar.
+  - Entradas en el historial.
+  - El avance generalizado.
+  - La métrica nueva del dashboard.
+  - El PDF.
+  - El retiro de la tabla vieja y de `personal_asignado_id`.
+- **Frontend:**
+  - Sección "Tareas" en el detalle del ticket, con el avance.
+  - El diálogo de Edilicia pasa a usar las tareas genéricas.
+  - El indicador nuevo en el dashboard.
+- **Docs:**
+  - Runbook, por la migración con datos.
+  - Corrección de los artículos de Ayuda que el cambio vuelve falsos.
+  - Deuda de Ayuda por lo nuevo.
+  - Declaración en el roadmap.
+
+## Fuera de alcance
+Lo declara la decisión:
+- mail o webhook al asignar o completar una tarea;
+- asignar tareas con la regla del punto 9;
+- reordenar tareas y editar su texto.
+
+Tampoco se cambian:
+- las métricas por ticket (carga, SLA, CSAT, exportación);
+- la máquina de estados (no hay bloqueo por tareas pendientes).
+
+## Restricciones
+- Arquitectura hexagonal: solo `infrastructure/` importa `@prisma/client`. Los errores de dominio van en `Result`.
+- Aislamiento entre inquilinos: las tareas viven en la base del inquilino, y un usuario de otro cliente nunca las ve ni las toca.
+- La migración de datos no pierde ninguna subtarea existente: se conservan descripción, estado, `completadaPorId`, `completadaEn`, orden y bajas lógicas. Lleva `rollback.sql`.
+- **Nada se sube a GitHub hasta nuevo aviso del dueño.** Commits y ramas quedan solo en local.
+- Las features no exigen TDD (`~/proyectos/CLAUDE.md` §6.1), pero cada unidad lleva sus tests. Los bugfixes sí van con TDD.
+- Ayuda en pausa: no se escriben artículos nuevos, pero **se corrige en la misma unidad todo artículo que el cambio vuelva falso**. Hoy aplica a `backend/ayuda/reparaciones-edilicias.md` (líneas 13-45) y `reparaciones-listado.md` (líneas 15-18).
+- Comandos:
+  - backend: `pnpm lint`, `pnpm typecheck`, `pnpm test`;
+  - frontend: `pnpm lint`, `pnpm type-check`, `pnpm test`;
+  - raíz: `node scripts/check-casts-en-specs.mjs`.
+- Todo spec que trunque `soporte_master_test` llama a `usarLockMasterTest()`.
+
+## Criterios de aceptación
+Salen de la decisión de producto, viñeta por viñeta.
+- **CA1 — Tareas en cualquier ticket:** cualquier tipo de ticket puede tener tareas, incluidos *Mantenimiento* y *Preventivo*. Las subtareas de Edilicia existentes aparecen como tareas de su ticket, con descripción, estado, quién y cuándo las completó, y la tabla vieja ya no existe.
+- **CA2 — El ticket conserva su responsable:** el `asignadoId` del ticket no cambia de significado, y cada tarea tiene un técnico opcional.
+- **CA3 — Quién gestiona:** solo el responsable del ticket, el ADMINISTRADOR o ROOT crean, asignan y borran tareas, con el permiso de modificación del módulo del tipo. El técnico de una tarea tiene que ser elegible según la regla del punto 9 (TÉCNICO o COLABORADOR con el módulo del tipo); si no lo es, se rechaza.
+- **CA4 — Completar y descompletar:** completan su técnico, el responsable o un administrador, y queda registrado quién y cuándo. Descompletar se permite a las mismas personas y limpia ese registro. No se puede reordenar ni editar el texto.
+- **CA5 — El cierre no se bloquea:** un ticket con tareas pendientes se puede resolver y cerrar igual que hoy.
+- **CA6 — Métrica nueva:** el dashboard muestra "tareas completadas por técnico" en el período, atribuidas a quien las completó. Las métricas por ticket no cambian.
+- **CA7 — Avance:** cualquier ticket con tareas muestra el porcentaje de tareas activas completadas.
+- **CA8 — Historial y PDF:** asignar y completar (y descompletar) una tarea queda en el historial del ticket, con su autor. El PDF del ticket imprime cada tarea con su técnico.
+- **CA9 — Retiro:** `TicketEdilicia.personalAsignadoId` ya no existe.
+- **Transversal:** todo queda aislado entre inquilinos, y ningún artículo de Ayuda describe un comportamiento que ya no existe.
+
+## Estrategia de entrega
+- **Pronóstico:** unas 3.500 líneas en 9 tareas. Por lo visto en webhooks, los tests pueden duplicarlo.
+- **Estrategia:** `ask-on-risk` con cadena `feature-branch-chain`, la que el dueño eligió para las features anteriores.
+  - El tracker es `feat/tareas-con-tecnico`, y cada tarea va en `feat/tareas-con-tecnico-tN`, apilada sobre la anterior.
+  - Todo queda local mientras dure la pausa de GitHub.
+- **Despliegue:** la migración de datos (T1) y el retiro de la tabla vieja (T8) van en migraciones separadas, y el retiro se despliega solo cuando ningún código lee la tabla vieja.
+
+## Tareas
+- [ ] **T1 — Modelo y migración de datos** (~400): tabla `tareas_ticket` en el inquilino, colgada de `tickets`. Columnas: descripción, orden, técnico opcional, completada, completadaEn, completadaPorId, timestamps y baja lógica. La migración copia `subtareas_edilicia` a la tabla nueva vía `ticket_edilicia.ticket_id`, conservando ids y datos, y lleva `rollback.sql`. Incluye la entidad, el puerto, el repositorio y los tests de integración, con uno que compruebe que la copia es completa. La tabla vieja **todavía no se borra**. Ruta: delegada (trigger de writer).
+- [ ] **T2 — Casos de uso** (~400): crear, asignar o quitar técnico (elegibilidad del punto 9), completar, descompletar y borrar, con las reglas de quién puede (CA3, CA4) y el permiso de modificación del módulo del tipo. Cada acción escribe su entrada en el historial (`OperacionTicket`). El cálculo de avance se generaliza a cualquier ticket. Ruta: delegada.
+- [ ] **T3 — Endpoints y Edilicia sobre la tabla nueva** (~350): endpoints genéricos bajo el ticket. Los endpoints y el listado de reparaciones pasan a leer y escribir la tabla nueva, sin cambiar lo que ve el usuario de Edilicia. Incluye un e2e de permisos y de aislamiento. Ruta: delegada.
+- [ ] **T4 — Métrica del dashboard** (~250): "tareas completadas por técnico" en el período, por `completadaPorId`, respetando los filtros y el alcance del TECNICO. Ruta: delegada.
+- [ ] **T5 — PDF** (~150): el PDF lee la tabla nueva e imprime cada tarea con su técnico y su estado. Ruta: delegada.
+- [ ] **T6 — Frontend: tareas en el ticket** (~400): sección "Tareas" en el detalle del ticket, con avance, alta, asignación con selector de técnicos elegibles, completar, descompletar y borrar. El diálogo de Edilicia pasa a usar lo mismo. Se corrigen `backend/ayuda/reparaciones-edilicias.md` y `reparaciones-listado.md` en la misma unidad. Ruta: delegada.
+- [ ] **T7 — Frontend: indicador del dashboard** (~200): muestra la métrica de T4. Ruta: delegada.
+- [ ] **T8 — Retiro** (~200): migración que borra `subtareas_edilicia` y `ticket_edilicia.personal_asignado_id`, con `rollback.sql`. También se borra el código viejo que ya no se usa. Ruta: delegada.
+- [ ] **T9 — Docs y cierre** (~150):
+  - runbook, con la migración con datos y el orden de despliegue de T1 y T8;
+  - deuda de Ayuda;
+  - declaración Cumplida o Desviación en el roadmap;
+  - suites completas;
+  - `judgment-day`, porque el cambio toca datos existentes y permisos.
+
+  Ruta: delegada para la verificación.
+
+## Verificación
+- **Por tarea:** lint, typecheck y los tests del módulo.
+- **Al cierre:** suites completas de backend y frontend, ratchet de casts, `check-roadmap-fresco` y `judgment-day`.
+- RDD está apagado.
+
+## Progreso
+- 2026-10-13: el dueño aprobó la decisión de producto; quedó en el roadmap en `8fe88835`. Se creó este documento. Próximo paso: T1.
