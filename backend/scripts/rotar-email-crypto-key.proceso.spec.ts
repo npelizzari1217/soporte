@@ -22,7 +22,7 @@ const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../prisma_master/migrations');
-const ULTIMA_CARPETA_PREVIA = '20261008120000_verificacion_dos_pasos';
+const ULTIMA_CARPETA_PREVIA = '20261013120000_webhooks';
 const EPHEMERAL_DB_NAME = `soporte_rotacion_proceso_${randomBytes(4).toString('hex')}_test`;
 const SCRIPT_PATH = path.resolve(__dirname, 'rotar-email-crypto-key.mjs');
 

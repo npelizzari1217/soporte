@@ -91,3 +91,12 @@ export class TipoTicketV1NoDisponibleError extends DomainError {
     super('El tipo de ticket no existe o no está disponible en la API.');
   }
 }
+
+/** El secreto del webhook no descifra: clave equivocada, payload roto o movido de cliente. */
+export class SecretoWebhookIndescifrableError extends DomainError {
+  readonly code = 'WEBHOOK_SECRETO_INDESCIFRABLE';
+
+  constructor() {
+    super('No se pudo descifrar el secreto del webhook.');
+  }
+}

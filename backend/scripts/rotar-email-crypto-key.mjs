@@ -1,8 +1,9 @@
 // Rotación de `EMAIL_CRYPTO_KEY`: re-cifra todos los secretos que protege esa
-// clave (lista `DESTINOS`: la contraseña SMTP de `clientes` y los secretos TOTP
-// activo y pendiente de `usuarios_tfa`) de una clave anterior (`OLD_KEY`) a una
-// nueva (`NEW_KEY`), preservando el formato `v1` de `AesGcmSecretCipher` sin
-// introducir keyring ni `kid`. Todos los destinos van en UNA sola transacción.
+// clave (lista `DESTINOS`: la contraseña SMTP de `clientes`, los secretos TOTP
+// activo y pendiente de `usuarios_tfa` y el secreto de `webhook_destinos`) de
+// una clave anterior (`OLD_KEY`) a una nueva (`NEW_KEY`), preservando el
+// formato `v1` de `AesGcmSecretCipher` sin introducir keyring ni `kid`.
+// Todos los destinos van en UNA sola transacción.
 //
 // Ref proposal/spec: sdd/rotacion-email-crypto-key. Ref design: ADR-1 a
 // ADR-5. Ref tasks: WU1 (1.3, 1.4) agregó validación y clasificación. WU2a
@@ -36,6 +37,12 @@ export const DESTINOS = [
     pk: 'usuario_id',
     columna: 'secreto_pendiente_cifrado',
     aad: (pk) => `tfa:${pk}`,
+  },
+  {
+    tabla: 'webhook_destinos',
+    pk: 'cliente_id',
+    columna: 'secreto_cifrado',
+    aad: (pk) => `webhook:${pk}`,
   },
 ];
 

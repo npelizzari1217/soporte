@@ -151,6 +151,9 @@ model Cliente {
   apiHabilitada Boolean    @default(false) @map("api_habilitada")
   apiClaves     ApiClave[]
 
+  /// Webhooks (odd/webhooks, T1): a lo sumo un destino por cliente.
+  webhookDestino WebhookDestino?
+
   @@index([activo])
   @@map("clientes")
 }
@@ -688,4 +691,29 @@ model ApiClave {
   @@index([clienteId])
   @@index([usuarioId])
   @@map("api_claves")
+}
+
+// ─── WEBHOOK_DESTINOS (destino de webhooks por cliente, odd/webhooks T1) ──────
+//
+// Un destino por cliente: `clienteId` es la clave primaria (1:1 con `clientes`). Vive en master,
+// como la contraseña SMTP, para que la rotación de `EMAIL_CRYPTO_KEY` lo re-cifre en la misma
+// transacción (`scripts/rotar-email-crypto-key.mjs`, lista `DESTINOS`).
+//
+// `secretoCifrado`: payload `v1:{iv}:{tag}:{ct}` de `AesGcmSecretCipher`, AAD `webhook:{clienteId}`
+// (`SecretoWebhookCifrado`). Nunca se persiste en claro.
+// `eventos`: subconjunto de `EVENTOS_WEBHOOK` (valida el dominio).
+// FK `cliente_id` ON DELETE CASCADE, como `api_claves`: el destino no sobrevive al cliente.
+
+model WebhookDestino {
+  clienteId      String   @id @map("cliente_id") @db.Uuid
+  url            String   @db.VarChar(2048)
+  eventos        String[]
+  secretoCifrado String   @map("secreto_cifrado") @db.Text
+  activo         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@map("webhook_destinos")
 }

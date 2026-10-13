@@ -16,6 +16,7 @@ import { ConfigurarApiClienteUseCase } from './application/configurar-api-client
 import { CrearApiClaveUseCase } from './application/crear-api-clave.use-case';
 import { ListarApiClavesUseCase } from './application/listar-api-claves.use-case';
 import { RevocarApiClaveUseCase } from './application/revocar-api-clave.use-case';
+import { SecretoWebhookCifrado } from './application/secreto-webhook-cifrado';
 import { API_CLAVE_REPOSITORY, IApiClaveRepository } from './domain/api-clave-repository.port';
 import {
   API_HABILITADA_REPOSITORY,
@@ -28,10 +29,15 @@ import {
 } from './domain/usuario-integracion-repository.port';
 import { PrismaApiHabilitadaRepository } from './infrastructure/prisma-api-habilitada.repository';
 import { PrismaUsuarioIntegracionRepository } from './infrastructure/prisma-usuario-integracion.repository';
+import { WEBHOOK_DESTINO_REPOSITORY } from './domain/webhook-destino-repository.port';
+import { PrismaWebhookDestinoRepository } from './infrastructure/prisma-webhook-destino.repository';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
 
-/** Modulo de la API publica (sdd/api-publica). T2: habilitacion por ROOT. T3: claves para el ADMINISTRADOR. */
+/**
+ * Modulo de la API publica (sdd/api-publica). T2: habilitacion por ROOT. T3: claves para el
+ * ADMINISTRADOR. Webhooks (odd/webhooks) T1: destino por cliente y cifrado de su secreto.
+ */
 @Module({
   imports: [AuthModule],
   controllers: [ApiClienteController, ApiClavesController],
@@ -47,6 +53,12 @@ import { ApiClavesController } from './interface/api-claves.controller';
       useFactory: (prisma: PrismaService) => new PrismaApiHabilitadaRepository(prisma),
       inject: [PrismaService],
     },
+    {
+      provide: WEBHOOK_DESTINO_REPOSITORY,
+      useFactory: (prisma: PrismaService) => new PrismaWebhookDestinoRepository(prisma),
+      inject: [PrismaService],
+    },
+    SecretoWebhookCifrado,
     {
       provide: USUARIO_INTEGRACION_REPOSITORY,
       useFactory: (prisma: PrismaService) => new PrismaUsuarioIntegracionRepository(prisma),
