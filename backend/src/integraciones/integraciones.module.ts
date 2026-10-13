@@ -57,17 +57,28 @@ import { PrismaWebhookEntregaRepository } from './infrastructure/prisma-webhook-
 import { WebhookEncoladoListener } from './infrastructure/webhook-encolado.listener';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
+import { WebhookController } from './interface/webhook.controller';
+import { ConsultarWebhookDestinoUseCase } from './application/consultar-webhook-destino.use-case';
+import { GuardarWebhookDestinoUseCase } from './application/guardar-webhook-destino.use-case';
+import { RegenerarSecretoWebhookUseCase } from './application/regenerar-secreto-webhook.use-case';
+import { ListarEntregasWebhookUseCase } from './application/listar-entregas-webhook.use-case';
+import {
+  BUSCAR_DIRECCIONES_WEBHOOK,
+  BuscarDirecciones,
+  buscarDireccionesPorDefecto,
+} from './domain/destino-webhook-seguro';
 
 /**
  * Modulo de la API publica (sdd/api-publica). T2: habilitacion por ROOT. T3: claves para el
  * ADMINISTRADOR. Webhooks (odd/webhooks) T1: destino por cliente y cifrado de su secreto. T2: cola
  * y registro de entregas en la base del inquilino. T4: el listener que encola los avisos de los
  * eventos de ticket (por eso importa `TicketsModule`). T5: el barrido que envía los avisos vencidos y purga
- * el registro (`TENANT_ENUMERATOR` viene de `SharedModule`, que es `@Global()`).
+ * el registro (`TENANT_ENUMERATOR` viene de `SharedModule`, que es `@Global()`). T6: los endpoints
+ * del ADMINISTRADOR; `BUSCAR_DIRECCIONES_WEBHOOK` deja reemplazar el DNS del guardado en los e2e.
  */
 @Module({
   imports: [AuthModule, TicketsModule],
-  controllers: [ApiClienteController, ApiClavesController],
+  controllers: [ApiClienteController, ApiClavesController, WebhookController],
   exports: [API_CLAVE_REPOSITORY],
   providers: [
     {
@@ -165,6 +176,43 @@ import { ApiClavesController } from './interface/api-claves.controller';
         EnviarWebhooksPendientesUseCase,
         LOGGER,
       ],
+    },
+    { provide: BUSCAR_DIRECCIONES_WEBHOOK, useValue: buscarDireccionesPorDefecto },
+    {
+      provide: ConsultarWebhookDestinoUseCase,
+      useFactory: (destinoRepo: IWebhookDestinoRepository) =>
+        new ConsultarWebhookDestinoUseCase(destinoRepo),
+      inject: [WEBHOOK_DESTINO_REPOSITORY],
+    },
+    {
+      provide: GuardarWebhookDestinoUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        destinoRepo: IWebhookDestinoRepository,
+        secretos: SecretoWebhookCifrado,
+        buscar: BuscarDirecciones,
+      ) => new GuardarWebhookDestinoUseCase(clienteRepo, destinoRepo, secretos, buscar),
+      inject: [
+        CLIENTE_REPOSITORY,
+        WEBHOOK_DESTINO_REPOSITORY,
+        SecretoWebhookCifrado,
+        BUSCAR_DIRECCIONES_WEBHOOK,
+      ],
+    },
+    {
+      provide: RegenerarSecretoWebhookUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        destinoRepo: IWebhookDestinoRepository,
+        secretos: SecretoWebhookCifrado,
+      ) => new RegenerarSecretoWebhookUseCase(clienteRepo, destinoRepo, secretos),
+      inject: [CLIENTE_REPOSITORY, WEBHOOK_DESTINO_REPOSITORY, SecretoWebhookCifrado],
+    },
+    {
+      provide: ListarEntregasWebhookUseCase,
+      useFactory: (entregaRepo: IWebhookEntregaRepository) =>
+        new ListarEntregasWebhookUseCase(entregaRepo),
+      inject: [WEBHOOK_ENTREGA_REPOSITORY],
     },
     {
       provide: USUARIO_INTEGRACION_REPOSITORY,

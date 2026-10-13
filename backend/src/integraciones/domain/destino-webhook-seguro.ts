@@ -128,8 +128,15 @@ export type BuscarDirecciones = (
 
 type ErrorDestino = DestinoWebhookNoPublicoError | DestinoWebhookIrresolubleError;
 
-const buscarDireccionesPorDefecto: BuscarDirecciones = (hostname, opciones) =>
+/** Resolución real con el DNS del sistema. */
+export const buscarDireccionesPorDefecto: BuscarDirecciones = (hostname, opciones) =>
   dnsLookup(hostname, opciones);
+
+/**
+ * Token de inyección de la `BuscarDirecciones` que usa el guardado del destino (T6). El módulo lo
+ * provee con `buscarDireccionesPorDefecto`; los e2e lo reemplazan para no depender del DNS real.
+ */
+export const BUSCAR_DIRECCIONES_WEBHOOK = Symbol('BuscarDireccionesWebhook');
 
 /**
  * Resuelve el host del destino y devuelve todas sus direcciones, o un error si alguna no es pública

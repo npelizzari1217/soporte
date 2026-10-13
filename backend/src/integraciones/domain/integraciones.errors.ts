@@ -130,3 +130,37 @@ export class DestinoWebhookIrresolubleError extends DomainError {
     super('No se pudo resolver el host del destino del webhook.');
   }
 }
+
+/** Los eventos del destino están vacíos o incluyen alguno fuera de `EVENTOS_WEBHOOK`. */
+export class EventosWebhookInvalidosError extends DomainError {
+  readonly code = 'WEBHOOK_EVENTOS_INVALIDOS';
+
+  constructor() {
+    super(
+      'El webhook necesita al menos un evento, y todos deben ser eventos de webhook conocidos.',
+    );
+  }
+}
+
+/**
+ * El host del destino no se admite al guardarlo: no resuelve, o resuelve a una dirección que no es
+ * pública (odd/webhooks, T6). Reemplaza a `DestinoWebhookNoPublicoError` y a
+ * `DestinoWebhookIrresolubleError` en la respuesta HTTP con un único mensaje, para que el formulario
+ * no sirva para sondear qué nombres de host internos existen.
+ */
+export class DestinoWebhookNoAdmitidoError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_NO_ADMITIDO';
+
+  constructor() {
+    super('No se puede usar ese destino: el host debe resolver solo a direcciones públicas.');
+  }
+}
+
+/** El cliente del actor no tiene un destino de webhooks configurado. */
+export class WebhookDestinoNoEncontradoError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_NO_ENCONTRADO';
+
+  constructor() {
+    super('El cliente no tiene un destino de webhooks configurado.');
+  }
+}
