@@ -124,7 +124,10 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
         .mockResolvedValue([{ id: 'tecnico-uuid', nombre: 'Ana', apellido: 'Gómez' }]),
     };
     const useCase = new ListarTecnicosElegiblesTareaUseCase(
-      { findById: vi.fn().mockResolvedValue(ticket) },
+      {
+        findById: vi.fn().mockResolvedValue(ticket),
+        esVisiblePara: vi.fn().mockResolvedValue(false),
+      },
       { findById: vi.fn().mockResolvedValue(tipo) },
       checker,
     );

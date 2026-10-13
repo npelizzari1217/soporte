@@ -3,7 +3,6 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import {
@@ -13,6 +12,7 @@ import {
   mapearErrorDeTarea,
   operacionDeTarea,
   resolverTipoOperacion,
+  TicketRepoDeTareas,
 } from '../services/tareas-ticket.reglas';
 
 export interface EliminarTareaDto {
@@ -29,7 +29,7 @@ export interface EliminarTareaDto {
  */
 export class EliminarTareaUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,

@@ -4,7 +4,6 @@ import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import {
@@ -12,6 +11,7 @@ import {
   autorizarGestion,
   operacionDeTarea,
   resolverTipoOperacion,
+  TicketRepoDeTareas,
 } from '../services/tareas-ticket.reglas';
 
 export interface CrearTareaTicketDto {
@@ -29,7 +29,7 @@ export interface CrearTareaTicketDto {
  */
 export class CrearTareaTicketUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket' | 'crear'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,

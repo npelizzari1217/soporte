@@ -25,6 +25,18 @@ import { ITicketRepository, TicketFiltros } from '../../../domain/ports/i-ticket
 import { TicketEntity } from '../../../domain/entities/ticket.entity';
 import { TicketMapper } from './ticket.mapper';
 
+/**
+ * Regla de visibilidad de un ticket para un actor sin `TICKETS:VER_TODOS`: lo solicitó, o es el
+ * técnico de una tarea activa del ticket (odd/tareas-con-tecnico, CA10). Única definición en SQL,
+ * compartida por el filtro `visiblePara` del listado y por `esVisiblePara`. El `EXISTS` sobre
+ * `tareas_ticket` usa el índice (`tecnico_id`, `deleted_at`, `ticket_id`).
+ */
+function whereVisiblePara(actorId: string): Prisma.TicketWhereInput {
+  return {
+    OR: [{ solicitanteId: actorId }, { tareas: { some: { tecnicoId: actorId, deletedAt: null } } }],
+  };
+}
+
 @Injectable()
 export class PrismaTicketRepository implements ITicketRepository {
   constructor(private readonly tenantContext: TenantContext) {}
@@ -130,8 +142,9 @@ export class PrismaTicketRepository implements ITicketRepository {
     if (filtros?.asignadoId) {
       where.asignadoId = filtros.asignadoId;
     }
-    if (filtros?.soloSolicitante) {
-      where.solicitanteId = filtros.soloSolicitante;
+    if (filtros?.visiblePara) {
+      // En un AND propio: `busqueda` usa el `OR` de la raíz.
+      where.AND = [whereVisiblePara(filtros.visiblePara)];
     }
     if (filtros?.cicloId) {
       where.cicloId = filtros.cicloId;
@@ -174,6 +187,13 @@ export class PrismaTicketRepository implements ITicketRepository {
    */
   async count(filtros?: TicketFiltros): Promise<number> {
     return this.client.ticket.count({ where: this.buildWhere(filtros) });
+  }
+
+  async esVisiblePara(ticketId: string, actorId: string): Promise<boolean> {
+    const visibles = await this.client.ticket.count({
+      where: { id: ticketId, ...whereVisiblePara(actorId) },
+    });
+    return visibles > 0;
   }
 
   async save(ticket: TicketEntity): Promise<void> {

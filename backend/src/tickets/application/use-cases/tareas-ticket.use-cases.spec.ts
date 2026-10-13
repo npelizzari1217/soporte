@@ -83,10 +83,18 @@ function armar() {
     [TICKET_ID, crearTicket(TICKET_ID)],
     [OTRO_TICKET_ID, crearTicket(OTRO_TICKET_ID)],
   ]);
-  const tareas = new Map<string, TareaTicketEntity>();
   const operaciones: OperacionTicketEntity[] = [];
 
-  const ticketRepo = { findById: async (id: string) => tickets.get(id) ?? null };
+  const tareas = new Map<string, TareaTicketEntity>();
+  const ticketRepo = {
+    findById: async (id: string) => tickets.get(id) ?? null,
+    // Espejo en memoria de `whereVisiblePara` (CA10): solicitante o técnico de una tarea activa.
+    esVisiblePara: async (ticketId: string, actorId: string) =>
+      tickets.get(ticketId)?.solicitanteId === actorId ||
+      [...tareas.values()].some(
+        (t) => t.ticketId === ticketId && t.tecnicoId === actorId && !t.isDeleted(),
+      ),
+  };
   const tipoTicketRepo = {
     findById: async (id: string) =>
       id === TIPO_ID
@@ -618,5 +626,74 @@ describe('ListarTareasTicketUseCase', () => {
     });
     expect(propio.isOk()).toBe(true);
     expect(errorDe(ajeno)).toBeInstanceOf(TicketNoEncontradoError);
+  });
+});
+
+describe('Visibilidad por tarea (CA10)', () => {
+  const tecnicoSinVerTodos = actor(TECNICO, { tienePermisoVerTodos: false });
+  const listarComo = (deps: ReturnType<typeof armar>) =>
+    deps.listar.execute({ ticketId: TICKET_ID, actorId: TECNICO, tienePermisoVerTodos: false });
+
+  it('el técnico de una tarea activa lista las tareas sin VER_TODOS ni ser el responsable', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    const result = await listarComo(deps);
+
+    expect(result.getValue().tareas.map((t) => t.id)).toEqual(['t1']);
+  });
+
+  it('una tarea en otro ticket no le da visibilidad sobre este', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { ticketId: OTRO_TICKET_ID, tecnicoId: TECNICO });
+
+    expect(errorDe(await listarComo(deps))).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  it('deja de verlo al quitarlo de la tarea', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+    await deps.asignar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      tecnicoId: null,
+      clienteId: CLIENTE_ID,
+      actor: ACTORES.responsable,
+    });
+
+    expect(errorDe(await listarComo(deps))).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  it('deja de verlo cuando la tarea se borra', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+    await deps.eliminar.execute({ ticketId: TICKET_ID, tareaId: 't1', actor: ACTORES.responsable });
+
+    expect(errorDe(await listarComo(deps))).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  it('ver el ticket no amplía lo que modifica: crear y borrar le dan 403, completar la suya sí', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    const crear = await deps.crear.execute({
+      ticketId: TICKET_ID,
+      actor: tecnicoSinVerTodos,
+      descripcion: 'Intrusa',
+    });
+    const borrar = await deps.eliminar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: tecnicoSinVerTodos,
+    });
+    const completar = await deps.completar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: tecnicoSinVerTodos,
+    });
+
+    expect(errorDe(crear)).toBeInstanceOf(TareaAccionNoPermitidaError);
+    expect(errorDe(borrar)).toBeInstanceOf(TareaAccionNoPermitidaError);
+    expect(completar.isOk()).toBe(true);
   });
 });

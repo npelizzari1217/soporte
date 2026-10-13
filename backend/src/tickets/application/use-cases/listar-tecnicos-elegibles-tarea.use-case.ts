@@ -1,8 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { ActorTarea, autorizarGestion } from '../services/tareas-ticket.reglas';
+import { ActorTarea, autorizarGestion, TicketRepoDeTareas } from '../services/tareas-ticket.reglas';
 import { TecnicoAsignable } from './listar-tecnicos-asignables.use-case';
 
 export interface ListarTecnicosElegiblesTareaDto {
@@ -24,7 +23,7 @@ export interface ListarTecnicosElegiblesTareaDto {
  */
 export class ListarTecnicosElegiblesTareaUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
   ) {}

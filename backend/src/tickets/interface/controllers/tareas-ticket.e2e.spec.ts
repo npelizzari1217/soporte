@@ -5,6 +5,8 @@
  * Cubre el CRUD, la matriz de permisos de la decisión del punto 12 (CA3, CA4) a nivel HTTP, el
  * 409 del doble completado, el 422 del técnico no elegible, el historial de cada acción y el
  * aislamiento entre clientes: un usuario del cliente B nunca ve ni toca las tareas del cliente A.
+ * T3b suma la visibilidad por tarea (CA10): el técnico de una tarea activa ve el ticket en el
+ * detalle, en el listado y en sus tareas, y deja de verlo al quitarlo o al borrar la tarea.
  *
  * Dos inquilinos efímeros (A y B), mismo patrón que `reparaciones.e2e.spec.ts`: provisión por
  * archivo, `usarLockMasterTest()` sobre la master de test compartida, y en el cierre
@@ -42,7 +44,11 @@ import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.pro
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { TareaTicketResponseDto, TareasTicketResponseDto } from '../dtos/tarea-ticket.dto';
-import { OperacionResponseDto } from '../dtos/ticket.dto';
+import {
+  ListTicketsResponseDto,
+  OperacionResponseDto,
+  TicketResponseDto,
+} from '../dtos/ticket.dto';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -288,7 +294,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       'Responsable',
     );
     const administrador = await actor(clienteA, 'ADMINISTRADOR', [], 'Admin');
-    // Sin VER_TODOS: no ve el ticket, pero completa la tarea que tiene asignada (CA4).
+    // Sin VER_TODOS: ve el ticket solo mientras tenga una tarea activa (CA10) y la completa (CA4).
     const tecnico = await actor(clienteA, 'TECNICO', ['TICKETS:LECTURA'], 'Tecnico');
     // Ve el ticket y tiene el permiso del módulo, pero no es el responsable (CA3).
     const otroTecnico = await actor(
@@ -537,9 +543,9 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
 
       expect((await http('POST', r.completar(tarea.id), tecnico.token)).status).toBe(200);
       expect((await http('POST', r.descompletar(tarea.id), tecnico.token)).status).toBe(200);
-      // No ve el ticket (sin VER_TODOS ni ser solicitante): gestionar le da 404, no 403.
-      expect((await http('DELETE', r.tarea(tarea.id), tecnico.token)).status).toBe(404);
-      expect((await http('GET', r.base, tecnico.token)).status).toBe(404);
+      // Ve el ticket por su tarea (CA10), pero no lo gestiona: 403.
+      expect((await http('DELETE', r.tarea(tarea.id), tecnico.token)).status).toBe(403);
+      expect((await http('GET', r.base, tecnico.token)).status).toBe(200);
     });
 
     it('el responsable sin el permiso de modificación del módulo no gestiona: 403', async () => {
@@ -594,6 +600,123 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       );
 
       expect(cruzada.status).toBe(404);
+    });
+  });
+
+  // ─── Visibilidad por tarea (CA10) ──────────────────────────────────────
+
+  describe('visibilidad por tarea (CA10)', () => {
+    async function ve(
+      ticketId: string,
+      token: string,
+    ): Promise<{ detalle: number; enLista: boolean }> {
+      const detalle = await http<TicketResponseDto>('GET', `${baseUrl}/tickets/${ticketId}`, token);
+      const lista = await http<ListTicketsResponseDto>(
+        'GET',
+        `${baseUrl}/tickets?porPagina=100`,
+        token,
+      );
+      expect(lista.status).toBe(200);
+      return { detalle: detalle.status, enLista: lista.data.items.some((t) => t.id === ticketId) };
+    }
+
+    /** Un ticket ajeno (ni solicitante ni responsable) con una tarea del técnico sin VER_TODOS. */
+    async function conTareaDelTecnico(previa?: Awaited<ReturnType<typeof escenario>>) {
+      const escena = previa ?? (await escenario());
+      const r = rutas(escena.ticketId);
+      const { data: tarea } = await http<TareaTicketResponseDto>(
+        'POST',
+        r.base,
+        escena.responsable.token,
+        { descripcion: 'Revisar el enchufe' },
+      );
+      const asignada = await http('PATCH', r.tecnico(tarea.id), escena.responsable.token, {
+        tecnicoId: escena.tecnico.id,
+      });
+      expect(asignada.status).toBe(200);
+      return { ...escena, r, tareaId: tarea.id };
+    }
+
+    it('sin tarea no lo ve; con una tarea activa lo ve en el detalle, en el listado y en sus tareas', async () => {
+      const previa = await escenario();
+      expect(await ve(previa.ticketId, previa.tecnico.token)).toEqual({
+        detalle: 404,
+        enLista: false,
+      });
+
+      const escena = await conTareaDelTecnico(previa);
+      expect(await ve(escena.ticketId, escena.tecnico.token)).toEqual({
+        detalle: 200,
+        enLista: true,
+      });
+      const tareas = await http<TareasTicketResponseDto>(
+        'GET',
+        escena.r.base,
+        escena.tecnico.token,
+      );
+      expect(tareas.status).toBe(200);
+      expect(tareas.data.items.map((t) => t.id)).toEqual([escena.tareaId]);
+      const timeline = await http(
+        'GET',
+        `${baseUrl}/tickets/${escena.ticketId}/timeline`,
+        escena.tecnico.token,
+      );
+      expect(timeline.status).toBe(200);
+    });
+
+    it('completa su tarea, pero no crea ni borra tareas ni transiciona el ticket', async () => {
+      const { tecnico, r, tareaId, ticketId } = await conTareaDelTecnico();
+
+      expect((await http('POST', r.completar(tareaId), tecnico.token)).status).toBe(200);
+      expect((await http('POST', r.base, tecnico.token, { descripcion: 'Intrusa' })).status).toBe(
+        403,
+      );
+      expect((await http('DELETE', r.tarea(tareaId), tecnico.token)).status).toBe(403);
+      const transicion = await http(
+        'PATCH',
+        `${baseUrl}/tickets/${ticketId}/estado`,
+        tecnico.token,
+        {
+          nuevoEstadoCodigo: 'EN_PROCESO',
+        },
+      );
+      expect(transicion.status).toBe(403);
+
+      const filas = await a.client.tareaTicket.findMany({ where: { ticketId, deletedAt: null } });
+      expect(filas.map((f) => f.id)).toEqual([tareaId]);
+      const ticket = await a.client.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+      expect(ticket.estadoId).toBe(a.estadoNuevoId);
+    });
+
+    it('al quitarlo de la tarea deja de verlo', async () => {
+      const { responsable, tecnico, r, tareaId, ticketId } = await conTareaDelTecnico();
+
+      await http('PATCH', r.tecnico(tareaId), responsable.token, { tecnicoId: null });
+
+      expect(await ve(ticketId, tecnico.token)).toEqual({ detalle: 404, enLista: false });
+      expect((await http('GET', r.base, tecnico.token)).status).toBe(404);
+    });
+
+    it('al borrar la tarea deja de verlo', async () => {
+      const { responsable, tecnico, r, tareaId, ticketId } = await conTareaDelTecnico();
+
+      expect((await http('DELETE', r.tarea(tareaId), responsable.token)).status).toBe(204);
+
+      expect(await ve(ticketId, tecnico.token)).toEqual({ detalle: 404, enLista: false });
+      expect((await http('GET', r.base, tecnico.token)).status).toBe(404);
+    });
+
+    it('aislamiento: un técnico del cliente B no ve el ticket del cliente A aunque una tarea lo nombre', async () => {
+      const { ticketId } = await escenario();
+      const clienteB = await crearCliente(TENANT_B);
+      const tecnicoB = await actor(clienteB, 'TECNICO', ['TICKETS:LECTURA']);
+      // Una fila de A que apunta al usuario de B: el scope por inquilino tiene que bastar.
+      await a.client.tareaTicket.create({
+        data: { ticketId, descripcion: 'Cruzada', tecnicoId: tecnicoB.id },
+      });
+
+      expect(await ve(ticketId, tecnicoB.token)).toEqual({ detalle: 404, enLista: false });
+      expect((await http('GET', rutas(ticketId).base, tecnicoB.token)).status).toBe(404);
     });
   });
 

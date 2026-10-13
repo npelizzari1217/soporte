@@ -4,7 +4,6 @@ import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import {
   ActorTarea,
@@ -15,6 +14,7 @@ import {
   puedeCompletarTarea,
   rechazar,
   resolverTipoOperacion,
+  TicketRepoDeTareas,
 } from '../services/tareas-ticket.reglas';
 
 export interface DescompletarTareaDto {
@@ -32,7 +32,7 @@ export interface DescompletarTareaDto {
  */
 export class DescompletarTareaUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
@@ -50,7 +50,7 @@ export class DescompletarTareaUseCase {
     const tarea = tareaResult.getValue();
 
     if (!puedeCompletarTarea(dto.actor, ticket, tarea)) {
-      return Result.fail(rechazar(ticket, dto.actor, 'descompletar'));
+      return Result.fail(await rechazar(this.ticketRepo, ticket, dto.actor, 'descompletar'));
     }
 
     const completadaPorAnteriorId = tarea.completadaPorId;

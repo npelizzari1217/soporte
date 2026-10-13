@@ -27,7 +27,7 @@ export interface TareasDelTicket {
  */
 export class ListarTareasTicketUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
   ) {}
 
@@ -35,7 +35,9 @@ export class ListarTareasTicketUseCase {
     const ticketResult = await cargarTicket(this.ticketRepo, dto.ticketId);
     if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
     const ticket = ticketResult.getValue();
-    if (!esTicketVisiblePara(ticket, dto.actorId, dto.tienePermisoVerTodos)) {
+    if (
+      !(await esTicketVisiblePara(this.ticketRepo, ticket, dto.actorId, dto.tienePermisoVerTodos))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

@@ -44,6 +44,12 @@ export interface ActorTarea {
   modulosConModificacion: readonly string[];
 }
 
+/**
+ * Lo que los casos de uso de tareas necesitan del repositorio de tickets: cargar el ticket y decidir
+ * si el actor lo ve (`esTicketVisiblePara`, CA10).
+ */
+export type TicketRepoDeTareas = Pick<ITicketRepository, 'findById' | 'esVisiblePara'>;
+
 /** Carga el ticket activo, o `TicketNoEncontradoError`. */
 export async function cargarTicket(
   ticketRepo: Pick<ITicketRepository, 'findById'>,
@@ -72,10 +78,16 @@ export async function cargarTareaDelTicket(
 
 /**
  * Rechazo de un actor sin permiso. Si ni siquiera ve el ticket, se responde como si no existiera
- * (mismo criterio que `ObtenerTicketUseCase`); si lo ve, es un 403.
+ * (mismo criterio que `ObtenerTicketUseCase`); si lo ve, es un 403. El técnico de una tarea activa
+ * ve el ticket (CA10), así que lo que no puede hacer le da 403.
  */
-export function rechazar(ticket: TicketEntity, actor: ActorTarea, accion: string): DomainError {
-  return esTicketVisiblePara(ticket, actor.id, actor.tienePermisoVerTodos)
+export async function rechazar(
+  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
+  ticket: TicketEntity,
+  actor: ActorTarea,
+  accion: string,
+): Promise<DomainError> {
+  return (await esTicketVisiblePara(ticketRepo, ticket, actor.id, actor.tienePermisoVerTodos))
     ? new TareaAccionNoPermitidaError(accion)
     : new TicketNoEncontradoError(ticket.id);
 }
@@ -101,7 +113,7 @@ export function puedeGestionarTareas(
  */
 export async function autorizarGestion(
   deps: {
-    ticketRepo: Pick<ITicketRepository, 'findById'>;
+    ticketRepo: TicketRepoDeTareas;
     tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>;
   },
   ticketId: string,
@@ -115,7 +127,7 @@ export async function autorizarGestion(
   const tipo = await deps.tipoTicketRepo.findById(ticket.tipoId);
   if (!tipo) return Result.fail(new TipoTicketNoEncontradoError(ticket.tipoId));
   if (!puedeGestionarTareas(actor, ticket, tipo.modulo)) {
-    return Result.fail(rechazar(ticket, actor, accion));
+    return Result.fail(await rechazar(deps.ticketRepo, ticket, actor, accion));
   }
   return Result.ok({ ticket, modulo: tipo.modulo });
 }

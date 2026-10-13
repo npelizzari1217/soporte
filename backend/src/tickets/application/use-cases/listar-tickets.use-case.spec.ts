@@ -83,23 +83,23 @@ describe('ListarTicketsUseCase', () => {
     expect(c.cicloClienteRepo.findActive).not.toHaveBeenCalled();
   });
 
-  it('actor SIN ticket:ver_todos → deriva soloSolicitante = actorId', async () => {
+  it('actor SIN ticket:ver_todos → deriva visiblePara = actorId', async () => {
     const c = makeCollaborators(CICLO);
 
     await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: false });
 
     expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ soloSolicitante: 'actor-uuid' }),
+      expect.objectContaining({ visiblePara: 'actor-uuid' }),
     );
   });
 
-  it('actor CON ticket:ver_todos → soloSolicitante queda undefined (ve todos)', async () => {
+  it('actor CON ticket:ver_todos → visiblePara queda undefined (ve todos)', async () => {
     const c = makeCollaborators(CICLO);
 
     await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
 
     expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ soloSolicitante: undefined }),
+      expect.objectContaining({ visiblePara: undefined }),
     );
   });
 
@@ -178,7 +178,7 @@ describe('ListarTicketsUseCase', () => {
       expect.objectContaining({
         busqueda: 'impresora',
         estadoId: 'estado-uuid',
-        soloSolicitante: 'actor-uuid',
+        visiblePara: 'actor-uuid',
       }),
     );
   });

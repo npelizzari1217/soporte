@@ -20,7 +20,7 @@ import { TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
 
 /**
- * Filtros de la exportación: los MISMOS del listado, menos `soloSolicitante`
+ * Filtros de la exportación: los MISMOS del listado, menos `visiblePara`
  * (lo deriva `ListarTicketsUseCase` del actor, T7) y la paginación. La
  * ausencia de `pagina`/`porPagina` está en el TIPO, no en un comentario:
  * exportar la página visible en vez del universo filtrado es el error que
@@ -29,7 +29,7 @@ import { ListarTicketsUseCase } from './listar-tickets.use-case';
  * Ref: sdd/exportar-listados-csv/design, decisión D3.
  */
 export interface ExportarTicketsDto {
-  filtros?: Omit<TicketFiltros, 'soloSolicitante' | 'limit' | 'offset'>;
+  filtros?: Omit<TicketFiltros, 'visiblePara' | 'limit' | 'offset'>;
   /** JWT.sub del actor — `ListarTicketsUseCase` lo usa para derivar el scope de filas (T6/T7). */
   actorId: string;
   /** `TICKETS:VER_TODOS` del actor. `false` → el listado compuesto se restringe a sus propios tickets. */
@@ -48,7 +48,7 @@ export type ExportarTicketsResult = ArchivoExport;
  * **Por qué compone `ListarTicketsUseCase` en vez de inyectar
  * `ITicketRepository`** (design D4): componer el listado YA RESUELTO es lo
  * que hace estructuralmente imposible entregar el tenant entero a un
- * requester sin `TICKETS:VER_TODOS` — el scope por fila (`soloSolicitante`),
+ * requester sin `TICKETS:VER_TODOS` — el scope por fila (`visiblePara`),
  * el ciclo efectivo (T7) y el gate de módulo (5.2 CAPA 2) los resuelve
  * `ListarTicketsUseCase`, no este caso de uso. Una implementación con su
  * propio `ITicketRepository` tendría que reimplementar (y podría olvidar)

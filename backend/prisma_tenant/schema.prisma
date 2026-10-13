@@ -433,6 +433,9 @@ model TareaTicket {
 
   @@index([ticketId, deletedAt, orden])
   @@index([completadaEn, completadaPorId])
+  // Visibilidad por tarea (CA10): el listado de tickets de un actor sin VER_TODOS filtra por un
+  // EXISTS sobre las tareas activas de las que es técnico.
+  @@index([tecnicoId, deletedAt, ticketId])
   @@map("tareas_ticket")
 }
 

@@ -5,7 +5,6 @@ import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tar
 import { TecnicoTareaNoElegibleError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
@@ -17,6 +16,7 @@ import {
   mapearErrorDeTarea,
   operacionDeTarea,
   resolverTipoOperacion,
+  TicketRepoDeTareas,
 } from '../services/tareas-ticket.reglas';
 
 export interface AsignarTecnicoTareaDto {
@@ -43,7 +43,7 @@ export interface AsignarTecnicoTareaDto {
  */
 export class AsignarTecnicoTareaUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,

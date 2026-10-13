@@ -140,7 +140,10 @@ interface Opciones {
 function armar(opciones: Opciones = {}) {
   const ticket = opciones.ticket ?? crearTicket();
   const operaciones = opciones.operaciones ?? OPERACIONES;
-  const ticketRepo = { findById: vi.fn().mockResolvedValue(ticket) };
+  const ticketRepo = {
+    findById: vi.fn().mockResolvedValue(ticket),
+    esVisiblePara: vi.fn().mockResolvedValue(false),
+  };
   // El repo devuelve TODO, como hace el real; el filtro de internas es del caso de uso.
   const operacionRepo = { listByTicket: vi.fn().mockResolvedValue(operaciones) };
   const obtener = new ObtenerTicketUseCase(ticketRepo);
@@ -272,7 +275,10 @@ describe('GenerarPdfTicketUseCase', () => {
       execute: vi.fn().mockResolvedValue(Result.ok(OPERACIONES)),
     };
     const conTimelineRoto = new GenerarPdfTicketUseCase(
-      new ObtenerTicketUseCase({ findById: vi.fn().mockResolvedValue(crearTicket()) }),
+      new ObtenerTicketUseCase({
+        findById: vi.fn().mockResolvedValue(crearTicket()),
+        esVisiblePara: vi.fn().mockResolvedValue(false),
+      }),
       timelineRoto,
       { findById: vi.fn().mockResolvedValue(ESTADO_PROCESO) },
       { findById: vi.fn().mockResolvedValue(PRIORIDAD) },
