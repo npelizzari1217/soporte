@@ -1,3 +1,5 @@
+import { calcularAvanceTareas } from '../../../tickets/domain/services/avance-tareas';
+
 /**
  * AvanceCalculator — función pura para calcular el porcentaje de avance
  * edilicio a partir de las subtareas de un `ticket_edilicia` (F3-E3, F3-E4).
@@ -10,6 +12,10 @@
  *
  * Sin estado interno, sin efectos secundarios, sin imports de Prisma ni
  * NestJS — dominio puro, testeable en unidad sin ningún mock.
+ *
+ * Desde odd/tareas-con-tecnico (T2) la fórmula vive en `calcularAvanceTareas`
+ * (`tickets/domain/services/avance-tareas.ts`), que sirve para cualquier
+ * ticket; este método delega para no cambiar a sus llamadores todavía.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E3, F3-E4. Ref design:
  * "Firmas TS clave" (AvanceCalculator). Tarea: T6.1, T6.2.
@@ -25,10 +31,6 @@ export class AvanceCalculator {
   static calcularDesdeSubtareas(
     subtareas: ReadonlyArray<{ completada: boolean; deletedAt: Date | null }>,
   ): number {
-    const activas = subtareas.filter((s) => s.deletedAt === null);
-    if (activas.length === 0) return 0;
-    const completadasActivas = activas.filter((s) => s.completada).length;
-    const porcentaje = (completadasActivas * 100.0) / activas.length;
-    return Math.round(porcentaje * 100) / 100;
+    return calcularAvanceTareas(subtareas).porcentaje;
   }
 }

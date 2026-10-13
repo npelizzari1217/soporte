@@ -2,7 +2,8 @@
  * PrismaTipoOperacionRepository — implementación del puerto ITipoOperacionRepository.
  *
  * Catálogo FIJO (5 códigos: CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO,
- * AVANCE_EDILICIO), sembrado en provisioning. Este repo es SOLO LECTURA.
+ * AVANCE_EDILICIO), sembrado en provisioning, más los 5 de tareas que suma la
+ * migración `20261013150000_tipos_operacion_tareas`. Este repo es SOLO LECTURA.
  *
  * Reglas:
  * - Obtiene el cliente vía TenantContext (nunca PrismaService directo).

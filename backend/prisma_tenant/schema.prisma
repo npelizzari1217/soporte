@@ -163,6 +163,8 @@ model Sector {
 //
 // Tipos de evento registrables en el timeline de un ticket.
 // Seeds: CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO, AVANCE_EDILICIO.
+// Migración 20261013150000_tipos_operacion_tareas: TAREA_CREADA, TAREA_ASIGNADA,
+// TAREA_COMPLETADA, TAREA_DESCOMPLETADA, TAREA_ELIMINADA.
 
 model TipoOperacion {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

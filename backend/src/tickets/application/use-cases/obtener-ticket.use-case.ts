@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { esTicketVisiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `ObtenerTicketUseCase`.
@@ -37,7 +38,7 @@ export class ObtenerTicketUseCase {
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
-    if (!dto.tienePermisoVerTodos && ticket.solicitanteId !== dto.actorId) {
+    if (!esTicketVisiblePara(ticket, dto.actorId, dto.tienePermisoVerTodos)) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
     return Result.ok(ticket);
