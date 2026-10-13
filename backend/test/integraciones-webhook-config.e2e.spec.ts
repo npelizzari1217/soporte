@@ -200,7 +200,7 @@ describe('Webhooks e2e — /integraciones/webhook (odd/webhooks T6)', () => {
           entregas.encolar({
             evento: 'TICKET_CREADO',
             ticketId: randomUUID(),
-            payload: { evento: 'ticket.creado', ticket: { numero: 100 + i } },
+            payload: { evento: 'ticket.creado', ticket: { numero: `SOP-2026-${String(100 + i).padStart(5, '0')}` } },
             proximoIntentoAt: new Date(),
           }),
       );
@@ -377,14 +377,14 @@ describe('Webhooks e2e — /integraciones/webhook (odd/webhooks T6)', () => {
     expect(primera.data).toMatchObject({ total: 5, pagina: 1, porPagina: 2 });
     const items = prop(primera.data, 'items');
     expect(items).toEqual([
-      expect.objectContaining({ id: ids[4], evento: 'ticket.creado', numero: 105 }),
-      expect.objectContaining({ id: ids[3], numero: 104 }),
+      expect.objectContaining({ id: ids[4], evento: 'ticket.creado', numero: 'SOP-2026-00105' }),
+      expect.objectContaining({ id: ids[3], numero: 'SOP-2026-00104' }),
     ]);
     expect(Array.isArray(items) ? items[0] : null).toEqual({
       id: ids[4],
       evento: 'ticket.creado',
       ticketId: expect.any(String),
-      numero: 105,
+      numero: 'SOP-2026-00105',
       estado: 'PENDIENTE',
       intentos: 0,
       ultimoCodigo: null,

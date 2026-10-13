@@ -12,8 +12,8 @@ export interface EntregaWebhookVista {
   /** Nombre externo del evento, el mismo que viaja en el aviso (`ticket.creado`, ...). */
   evento: string;
   ticketId: string;
-  /** Número del ticket tomado del cuerpo congelado; `null` si el cuerpo no lo trae. */
-  numero: number | null;
+  /** Número del ticket (`SOP-2026-00001`) tomado del cuerpo congelado; `null` si no lo trae. */
+  numero: string | null;
   estado: EstadoEntregaWebhook;
   intentos: number;
   ultimoCodigo: number | null;
@@ -31,11 +31,11 @@ export interface PaginaEntregasWebhookVista {
 }
 
 /** El número del ticket del cuerpo `{ ticket: { numero } }` que arma `EncolarWebhookUseCase`. */
-function numeroDelPayload(payload: Record<string, unknown>): number | null {
+function numeroDelPayload(payload: Record<string, unknown>): string | null {
   const ticket = payload.ticket;
   if (typeof ticket !== 'object' || ticket === null) return null;
   const numero: unknown = Reflect.get(ticket, 'numero');
-  return typeof numero === 'number' ? numero : null;
+  return typeof numero === 'string' && numero !== '' ? numero : null;
 }
 
 function vista(entrega: WebhookEntrega): EntregaWebhookVista {

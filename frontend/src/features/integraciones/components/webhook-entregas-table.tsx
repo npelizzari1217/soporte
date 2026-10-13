@@ -44,7 +44,7 @@ function Seguimiento({ entrega }: { entrega: EntregaWebhook }) {
 const columns: Column<EntregaWebhook>[] = [
   { key: "createdAt", header: "Fecha", render: (e) => formatearInstante(e.createdAt) },
   { key: "evento", header: "Evento", render: (e) => ETIQUETAS_EVENTO_EXTERNO_WEBHOOK[e.evento] ?? e.evento },
-  { key: "numero", header: "Ticket", render: (e) => (e.numero === null ? "—" : `#${e.numero}`) },
+  { key: "numero", header: "Ticket", render: (e) => (e.numero ?? "—") },
   {
     key: "estado",
     header: "Estado",

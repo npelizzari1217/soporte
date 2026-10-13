@@ -108,7 +108,7 @@ export const entregaWebhookSchema = z.object({
   id: z.string(),
   evento: z.string(),
   ticketId: z.string(),
-  numero: z.number().int().nullable(),
+  numero: z.string().nullable(),
   estado: z.enum(["PENDIENTE", "ENTREGADA", "FALLIDA"]),
   intentos: z.number().int(),
   ultimoCodigo: z.number().int().nullable(),

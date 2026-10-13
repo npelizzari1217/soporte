@@ -31,7 +31,7 @@ function entrega(over: Record<string, unknown>) {
     id: "e-1",
     evento: "ticket.creado",
     ticketId: "t-1",
-    numero: 42,
+    numero: "SOP-2026-00042",
     estado: "ENTREGADA",
     intentos: 1,
     ultimoCodigo: 200,
@@ -193,18 +193,18 @@ describe("WebhookSection", () => {
     mockConfig(CONFIGURADO);
     mockEntregas([
       entrega({}),
-      entrega({ id: "e-2", evento: "ticket.comentado", numero: 7, estado: "PENDIENTE", intentos: 2, ultimoCodigo: 503, ultimoError: "HTTP 503", proximoIntentoAt: "2026-10-13T12:20:00.000Z", entregadaAt: null }),
+      entrega({ id: "e-2", evento: "ticket.comentado", numero: "SOP-2026-00007", estado: "PENDIENTE", intentos: 2, ultimoCodigo: 503, ultimoError: "HTTP 503", proximoIntentoAt: "2026-10-13T12:20:00.000Z", entregadaAt: null }),
       entrega({ id: "e-3", evento: "ticket.asignado", numero: null, estado: "FALLIDA", intentos: 10, ultimoCodigo: null, ultimoError: "timeout", entregadaAt: null }),
     ]);
     renderSeccion();
 
-    const entregada = (await screen.findByText("#42")).closest("tr") as HTMLElement;
+    const entregada = (await screen.findByText("SOP-2026-00042")).closest("tr") as HTMLElement;
     expect(within(entregada).getByText("Ticket creado")).toBeInTheDocument();
     expect(within(entregada).getByText("Entregada")).toBeInTheDocument();
     expect(within(entregada).getByText("200")).toBeInTheDocument();
     expect(within(entregada).getByText(/^Entregada el \d{2}\/\d{2}\/2026/)).toBeInTheDocument();
 
-    const pendiente = screen.getByText("#7").closest("tr") as HTMLElement;
+    const pendiente = screen.getByText("SOP-2026-00007").closest("tr") as HTMLElement;
     expect(within(pendiente).getByText("Comentario público")).toBeInTheDocument();
     expect(within(pendiente).getByText("Pendiente")).toBeInTheDocument();
     expect(within(pendiente).getByText("HTTP 503")).toBeInTheDocument();
@@ -225,14 +225,14 @@ describe("WebhookSection", () => {
       http.get("/api/integraciones/webhook/entregas", ({ request }) => {
         const pagina = new URL(request.url).searchParams.get("pagina") ?? "";
         paginas.push(pagina);
-        return HttpResponse.json({ items: [entrega({ id: `e-${pagina}`, numero: Number(pagina) * 100 })], total: 45, pagina: Number(pagina), porPagina: 20 });
+        return HttpResponse.json({ items: [entrega({ id: `e-${pagina}`, numero: `SOP-2026-00${pagina}00` })], total: 45, pagina: Number(pagina), porPagina: 20 });
       }),
     );
     renderSeccion();
-    expect(await screen.findByText("#100")).toBeInTheDocument();
+    expect(await screen.findByText("SOP-2026-00100")).toBeInTheDocument();
     expect(screen.getByText("Página 1 de 3")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /siguiente/i }));
-    expect(await screen.findByText("#200")).toBeInTheDocument();
+    expect(await screen.findByText("SOP-2026-00200")).toBeInTheDocument();
     expect(screen.getByText("Página 2 de 3")).toBeInTheDocument();
     expect(paginas).toEqual(["1", "2"]);
   });

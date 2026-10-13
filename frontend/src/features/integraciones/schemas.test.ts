@@ -30,7 +30,7 @@ const ENTREGA = {
   id: "e-1",
   evento: "ticket.creado",
   ticketId: "t-1",
-  numero: 42,
+  numero: "SOP-2026-00042",
   estado: "PENDIENTE",
   intentos: 1,
   ultimoCodigo: 500,

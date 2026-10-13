@@ -141,7 +141,11 @@ describe('ListarEntregasWebhookUseCase', () => {
       listar: async (opciones) => {
         pedidos.push(opciones);
         return {
-          items: [entrega('e-1', { ticket: { id: 't-1', numero: 42 } }), entrega('e-2', {})],
+          items: [
+            entrega('e-1', { ticket: { id: 't-1', numero: 'SOP-2026-00042' } }),
+            entrega('e-2', {}),
+            entrega('e-3', { ticket: { id: 't-3', numero: '' } }),
+          ],
           total: 7,
         };
       },
@@ -155,7 +159,7 @@ describe('ListarEntregasWebhookUseCase', () => {
       id: 'e-1',
       evento: 'ticket.estado_cambiado',
       ticketId: 't-1',
-      numero: 42,
+      numero: 'SOP-2026-00042',
       estado: 'PENDIENTE',
       intentos: 2,
       ultimoCodigo: 500,
@@ -165,6 +169,7 @@ describe('ListarEntregasWebhookUseCase', () => {
       entregadaAt: null,
     });
     expect(pagina.items[1].numero).toBeNull();
+    expect(pagina.items[2].numero).toBeNull();
   });
 
   it('usa 1 y 20 por defecto, y acota porPagina a 100 y la página a 1 como mínimo', async () => {
