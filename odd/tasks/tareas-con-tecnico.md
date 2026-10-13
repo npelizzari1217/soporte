@@ -84,7 +84,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T1 — Modelo y migración de datos** (~400): tabla `tareas_ticket` en el inquilino, colgada de `tickets`. Columnas: descripción, orden, técnico opcional, completada, completadaEn, completadaPorId, timestamps y baja lógica. La migración copia `subtareas_edilicia` a la tabla nueva vía `ticket_edilicia.ticket_id`, conservando ids y datos, y lleva `rollback.sql`. Incluye la entidad, el puerto, el repositorio y los tests de integración, con uno que compruebe que la copia es completa. La tabla vieja **todavía no se borra**. Ruta: delegada (trigger de writer). Salió en 1205 líneas, commit `1d10a92e`.
 - [x] **T2 — Casos de uso** (~400): crear, asignar o quitar técnico (elegibilidad del punto 9), completar, descompletar y borrar, con las reglas de quién puede (CA3, CA4) y el permiso de modificación del módulo del tipo. Cada acción escribe su entrada en el historial (`OperacionTicket`). El cálculo de avance se generaliza a cualquier ticket. Ruta: delegada. Salió en 1644 líneas, commit `16dbd796`.
 - [x] **T3 — Endpoints y Edilicia sobre la tabla nueva** (~350): endpoints genéricos bajo el ticket. Los endpoints y el listado de reparaciones pasan a leer y escribir la tabla nueva, sin cambiar lo que ve el usuario de Edilicia. Incluye un e2e de permisos y de aislamiento. Ruta: delegada. Salió en 2465 líneas, commit `36e8a572`.
-- [ ] **T3b — Visibilidad por tarea** (~300; agregada el 2026-10-13 por la precisión del dueño): la regla de visibilidad del ticket (`visibilidad-ticket.ts`) y el filtro del listado de tickets suman "tiene una tarea activa asignada" (CA10). Lleva un e2e que prueba que el técnico ve el ticket y sus tareas, que lo deja de ver al quitarlo de la tarea, y el aislamiento entre clientes. Se corre después de la T4. Ruta: delegada.
+- [x] **T3b — Visibilidad por tarea** (~300; agregada el 2026-10-13 por la precisión del dueño): la regla de visibilidad del ticket (`visibilidad-ticket.ts`) y el filtro del listado de tickets suman "tiene una tarea activa asignada" (CA10). Lleva un e2e que prueba que el técnico ve el ticket y sus tareas, que lo deja de ver al quitarlo de la tarea, y el aislamiento entre clientes. Se corre después de la T4. Ruta: delegada. Salió en 578 líneas, commit `7255db23`.
 - [x] **T4 — Métrica del dashboard** (~250): "tareas completadas por técnico" en el período, por `completadaPorId`, respetando los filtros y el alcance del TECNICO. Ruta: delegada. Salió en 551 líneas, commit `65e304eb`.
 - [ ] **T5 — PDF** (~150): el PDF lee la tabla nueva e imprime cada tarea con su técnico y su estado. Ruta: delegada.
 - [ ] **T6 — Frontend: tareas en el ticket** (~400): sección "Tareas" en el detalle del ticket, con avance, alta, asignación con selector de técnicos elegibles, completar, descompletar y borrar. El diálogo de Edilicia pasa a usar lo mismo. Se corrigen `backend/ayuda/reparaciones-edilicias.md` y `reparaciones-listado.md` en la misma unidad. Ruta: delegada.
@@ -190,3 +190,30 @@ Salen de la decisión de producto, viñeta por viñeta.
     - `pnpm vitest run src/dashboard src/tickets/infrastructure`: 30 archivos y 261 tests en verde, incluida la integración nueva.
     - `check-casts-en-specs`: 617 en 114, igual que la base.
   - Próximo paso: T3b.
+- 2026-10-13: T3b cerrada en `7255db23` (rama `feat/tareas-con-tecnico-t3b`, apilada sobre T4). Salió en 578 líneas: unas 174 de código y migración y 404 de tests. Supera el presupuesto de ~300 por el e2e y la integración del filtro. Ruta: delegada.
+  - **Hallazgo:** la visibilidad sin `TICKETS:VER_TODOS` era "solicitante", no "responsable" (`solicitanteId`, no `asignadoId`). Los presets TECNICO y COLABORADOR incluyen `VER_TODOS`, así que CA10 solo cambia algo para quien tenga la matriz de permisos recortada.
+  - **Brecha previa, fuera de alcance:** un responsable sin `VER_TODOS` no ve su propio ticket. No se tocó; agregarlo es una decisión de producto.
+  - **Definición compartida:** `whereVisiblePara` en `PrismaTicketRepository` (solicitante, o técnico de una tarea con `deleted_at` nulo). La usan el filtro `visiblePara` del listado (antes `soloSolicitante`, en un `AND` propio para no pisar el `OR` de `busqueda`) e `ITicketRepository.esVisiblePara`. `esTicketVisiblePara` pasa a ser async: con `VER_TODOS` o siendo el solicitante resuelve sin consultar; si no, decide el repositorio.
+  - **Puntos extendidos:**
+    - detalle (`ObtenerTicketUseCase`), que también cubre el PDF y `GET /v1/tickets/:id`;
+    - listado (`ListarTicketsUseCase`), que también cubre `/tickets/export` y `GET /v1/tickets`;
+    - historial (`ListarTimelineUseCase`, que tenía su propia copia de la regla), y con él el historial del PDF;
+    - listado de tareas y el 404/403 de `rechazar` en las reglas de tareas: el técnico de una tarea ahora ve el ticket, así que lo que no puede hacer le da 403 y no 404. El e2e de T3 se ajustó a eso.
+  - **Puntos que no se tocaron:**
+    - escrituras (adjuntos, comentarios, transición, edición): CA10 es solo visibilidad. La transición nunca dependió de la visibilidad, solo de `TICKETS:TRANSICIONAR`.
+    - listados por módulo (`/reparaciones`, `/compras`, `/soporte/:ticketId`): solo exigen el permiso de lectura del módulo y no tienen restricción por usuario, así que no hay nada que extender.
+    - el filtro por módulo del listado de tickets sigue aplicando. Solo un técnico con el módulo del tipo puede tener una tarea (regla del punto 9), así que en la práctica no bloquea.
+  - **Índice:** migración `20261013160000_tareas_ticket_indice_tecnico`, (`tecnico_id`, `deleted_at`, `ticket_id`), con un `rollback.sql` re-ejecutable (probado dos veces dentro de una transacción). El `EXPLAIN` muestra que el `EXISTS` del listado se resuelve con un index-only scan sobre ese índice.
+  - **Entorno:** a `soporte_tenant_test` le faltaban las migraciones desde `20261013130000`; se aplicaron con `prisma migrate deploy`. Se borraron los fixtures `T5_TEST_*` que dejó una corrida fallida.
+  - **Tests:**
+    - `visibilidad-ticket.spec.ts` (nuevo);
+    - casos CA10 en los specs unitarios de tareas, detalle e historial;
+    - integración del filtro y de `esVisiblePara`: tarea borrada, tarea de otro técnico y combinación con `busqueda`;
+    - bloque CA10 en `tareas-ticket.e2e.spec.ts`: detalle, listado, tareas e historial; completa su tarea; 403 al crear, borrar y transicionar; deja de verlo al quitarlo y, por separado, al borrar la tarea; aislamiento con un técnico del cliente B.
+    - En `generar-pdf-ticket.use-case.spec.ts` (fuera de la superficie, autorizado por el coordinador) solo se agregó `esVisiblePara` a los dos mocks.
+  - **Verificación:**
+    - `pnpm lint`: 0 errores.
+    - `pnpm typecheck`: 0 errores.
+    - `pnpm vitest run src/tickets src/reparaciones src/ticket-pdf`: 109 archivos y 1110 tests en verde.
+    - `check-casts-en-specs`: 617 en 114, igual que la base.
+  - Próximo paso: T5.
