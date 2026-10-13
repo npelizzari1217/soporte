@@ -6,9 +6,9 @@
  *   POST   /reparaciones                                    → CrearTicketEdilicioUseCase [ticket:crear]
  *   GET    /reparaciones                                    → ListarReparacionesUseCase  (autenticado)
  *   GET    /reparaciones/export                              → ExportarReparacionesUseCase (`EDILICIA:LECTURA`, sdd/exportar-listados-csv)
- *   POST   /reparaciones/:reparacionId/subtareas             → CrearSubtareaUseCase       [subtarea:actualizar]
- *   POST   /reparaciones/subtareas/:subtareaId/completar     → CompletarSubtareaUseCase   [subtarea:actualizar]
- *   DELETE /reparaciones/subtareas/:subtareaId               → EliminarSubtareaUseCase    [subtarea:actualizar]
+ *   POST   /reparaciones/:reparacionId/subtareas             → CrearSubtareaSobreTareaUseCase      (regla en el caso de uso)
+ *   POST   /reparaciones/subtareas/:subtareaId/completar     → CompletarSubtareaSobreTareaUseCase  (regla en el caso de uso)
+ *   DELETE /reparaciones/subtareas/:subtareaId               → EliminarSubtareaSobreTareaUseCase   (regla en el caso de uso)
  *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioReparacionUseCase    [EDILICIA:ALTAS]
  *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [EDILICIA:LECTURA]
  *   POST   /reparaciones/:reparacionId/compras                → VincularCompraAReparacionUseCase   [EDILICIA:ALTAS + COMPRAS:LECTURA]
@@ -25,9 +25,13 @@
  *
  * `:reparacionId` = id del satélite `ticket_edilicia` (mismo criterio que
  * `:compraId` en `ComprasController`). Las rutas de subtareas usan
- * `:subtareaId` directamente (sin anidar bajo `:reparacionId`) porque
- * `CompletarSubtareaUseCase`/`EliminarSubtareaUseCase` resuelven el
- * `ticket_edilicia` internamente a partir de la subtarea.
+ * `:subtareaId` directamente (sin anidar bajo `:reparacionId`) porque el
+ * caso de uso resuelve el ticket a partir de la tarea.
+ *
+ * Subtareas (odd/tareas-con-tecnico, T3): las tres rutas leen y escriben
+ * `tareas_ticket` delegando en los casos de uso de tareas del ticket, con la
+ * misma respuesta de siempre para el frontend de Edilicia. **T8 las retira**,
+ * cuando T6 pase el diálogo a `/tickets/:id/tareas`.
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
  * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
@@ -42,6 +46,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -79,9 +84,13 @@ import {
 
 import { CrearTicketEdilicioUseCase } from '../../application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from '../../application/use-cases/listar-reparaciones.use-case';
-import { CrearSubtareaUseCase } from '../../application/use-cases/crear-subtarea.use-case';
-import { CompletarSubtareaUseCase } from '../../application/use-cases/completar-subtarea.use-case';
-import { EliminarSubtareaUseCase } from '../../application/use-cases/eliminar-subtarea.use-case';
+import {
+  CompletarSubtareaSobreTareaUseCase,
+  CrearSubtareaSobreTareaUseCase,
+  EliminarSubtareaSobreTareaUseCase,
+} from '../../application/use-cases/subtareas-sobre-tareas.use-cases';
+import { actorTareaDesdeJwt } from '../../../tickets/interface/actor-tarea';
+import { toHttpExceptionTareas } from '../../../tickets/interface/controllers/tareas-ticket.controller';
 import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
@@ -107,7 +116,7 @@ import {
   VincularCompraHttpDto,
   toComentarioReparacionResponseDto,
   toReparacionListItemResponseDto,
-  toSubtareaEdiliciaResponseDto,
+  toSubtareaEdiliciaResponseDtoDesdeTarea,
   toTicketEdiliciaResponseDto,
 } from '../dtos/reparaciones.dto';
 
@@ -123,7 +132,7 @@ import {
  */
 export function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException | ConflictException {
+): NotFoundException | UnprocessableEntityException | ConflictException | ForbiddenException {
   if (
     error instanceof TicketNoEncontradoError ||
     error instanceof TicketEdiliciaNoEncontradoError ||
@@ -151,9 +160,10 @@ export function toHttpException(
   ) {
     return new UnprocessableEntityException(error.message);
   }
-  // Deviación de diseño no mapeada explícitamente: 422 por defecto (nunca
-  // 500 silencioso para un DomainError, que por definición es un fallo esperado).
-  return new UnprocessableEntityException(error.message);
+  // Errores de las tareas del ticket (odd/tareas-con-tecnico, T3), que las rutas
+  // de subtareas devuelven al delegar: 403, 404, 409 y 422 con el mismo mapeo
+  // que `/tickets/:id/tareas`. Lo que ese mapeo no conoce cae en 422, igual que acá.
+  return toHttpExceptionTareas(error);
 }
 
 /**
@@ -177,9 +187,9 @@ export class ReparacionesController {
   constructor(
     private readonly crearTicketEdilicioUseCase: CrearTicketEdilicioUseCase,
     private readonly listarReparacionesUseCase: ListarReparacionesUseCase,
-    private readonly crearSubtareaUseCase: CrearSubtareaUseCase,
-    private readonly completarSubtareaUseCase: CompletarSubtareaUseCase,
-    private readonly eliminarSubtareaUseCase: EliminarSubtareaUseCase,
+    private readonly crearSubtareaUseCase: CrearSubtareaSobreTareaUseCase,
+    private readonly completarSubtareaUseCase: CompletarSubtareaSobreTareaUseCase,
+    private readonly eliminarSubtareaUseCase: EliminarSubtareaSobreTareaUseCase,
     private readonly crearComentarioUseCase: CrearComentarioReparacionUseCase,
     private readonly listarComentariosUseCase: ListarComentariosReparacionUseCase,
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
@@ -269,13 +279,28 @@ export class ReparacionesController {
     return entregarExport(res, formato, result.getValue());
   }
 
+  /*
+   * Rutas de subtareas — SE RETIRAN EN T8 (odd/tareas-con-tecnico). Siguen vivas
+   * solo para el diálogo de Edilicia actual, hasta que T6 lo pase a
+   * `/tickets/:id/tareas`. Leen y escriben `tareas_ticket` delegando en los casos
+   * de uso de tareas del ticket.
+   *
+   * Sin `@RequiereAcciones`: los permisos fijos que tenían (`EDILICIA:ALTAS`,
+   * `EDILICIA:MODIFICACION`, `EDILICIA:BORRADO`) contradicen la decisión del
+   * punto 12. Crear y borrar exigen ser el responsable del ticket, ADMINISTRADOR
+   * o ROOT, con `EDILICIA:MODIFICACION` (CA3), y `ALTAS`/`BORRADO` agregarían un
+   * requisito que la decisión no pide. Completar lo puede el técnico de la tarea
+   * sin `EDILICIA:MODIFICACION` (CA4), y ese permiso fijo se lo impediría. La
+   * regla la aplica el caso de uso, igual que en `/tickets/:id/tareas`.
+   */
+
   /**
    * POST /reparaciones/:reparacionId/subtareas
-   * Agrega una subtarea al checklist de avance (F3-E3).
-   * @throws 404 ticket_edilicia inexistente
+   * Agrega una subtarea al checklist de avance (F3-E3). El `orden` del body se
+   * ignora: la tarea va después de la última activa, como en `/tickets/:id/tareas`.
+   * @throws 403 sin permiso · 404 ticket_edilicia inexistente o ticket no visible
    */
   @Post(':reparacionId/subtareas')
-  @RequiereAcciones('EDILICIA:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crearSubtarea(
     @Param('reparacionId') reparacionId: string,
@@ -283,25 +308,24 @@ export class ReparacionesController {
     @CurrentUser() user: JwtPayload,
   ): Promise<SubtareaEdiliciaResponseDto> {
     const result = await this.crearSubtareaUseCase.execute({
-      ticketEdiliciaId: reparacionId,
+      reparacionId,
       descripcion: dto.descripcion,
-      orden: dto.orden,
-      autorId: user.sub,
+      actor: actorTareaDesdeJwt(user),
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toSubtareaEdiliciaResponseDto(result.getValue());
+    const { tarea, ticketEdiliciaId } = result.getValue();
+    return toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, ticketEdiliciaId);
   }
 
   /**
    * POST /reparaciones/subtareas/:subtareaId/completar
    * Marca la subtarea como completada (F3-E4). `completadaPorId` viene del JWT.
-   * @throws 404 subtarea inexistente
+   * @throws 403 sin permiso · 404 subtarea inexistente · 409 ya completada
    */
   @Post('subtareas/:subtareaId/completar')
-  @RequiereAcciones('EDILICIA:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async completarSubtarea(
     @Param('subtareaId') subtareaId: string,
@@ -309,28 +333,31 @@ export class ReparacionesController {
   ): Promise<SubtareaEdiliciaResponseDto> {
     const result = await this.completarSubtareaUseCase.execute({
       subtareaId,
-      completadaPorId: user.sub,
+      actor: actorTareaDesdeJwt(user),
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toSubtareaEdiliciaResponseDto(result.getValue());
+    const { tarea, ticketEdiliciaId } = result.getValue();
+    return toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, ticketEdiliciaId);
   }
 
   /**
    * DELETE /reparaciones/subtareas/:subtareaId
    * Baja lógica (soft delete) de una subtarea (F3-E5).
-   * @throws 404 subtarea inexistente
+   * @throws 403 sin permiso · 404 subtarea inexistente
    */
   @Delete('subtareas/:subtareaId')
-  @RequiereAcciones('EDILICIA:BORRADO')
   @HttpCode(HttpStatus.NO_CONTENT)
   async eliminarSubtarea(
     @Param('subtareaId') subtareaId: string,
     @CurrentUser() user: JwtPayload,
   ): Promise<void> {
-    const result = await this.eliminarSubtareaUseCase.execute({ subtareaId, autorId: user.sub });
+    const result = await this.eliminarSubtareaUseCase.execute({
+      subtareaId,
+      actor: actorTareaDesdeJwt(user),
+    });
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }

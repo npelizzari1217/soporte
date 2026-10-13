@@ -98,7 +98,7 @@ export class ExportarReparacionesUseCase {
         // decimal, dos decimales fijos, sin separador de miles — porque es
         // el que Excel en español necesita para leer la celda como número
         // y no como texto, y ese criterio es de LOCALIZACIÓN, no de moneda.
-        valor: (r) => decimalCelda(r.ticketEdilicia.porcentajeAvance),
+        valor: (r) => decimalCelda(r.porcentajeAvance),
       },
     ];
   }

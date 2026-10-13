@@ -13,13 +13,22 @@
  * Tarea: T8.6, T9.6.
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException, StreamableFile } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+  StreamableFile,
+} from '@nestjs/common';
 import { ReparacionesController, toHttpException } from './reparaciones.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
+import {
+  TareaAccionNoPermitidaError,
+  TareaYaCompletadaError,
+} from '../../../tickets/domain/errors/tareas.errors';
 import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import {
   SolicitanteInvalidoError,
@@ -33,6 +42,7 @@ import {
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
+import { CreateSubtareaHttpDto } from '../dtos/reparaciones.dto';
 
 const USER = payloadDeTest({
   sub: 'usuario-uuid',
@@ -41,6 +51,19 @@ const USER = payloadDeTest({
   permisos: ['ticket:crear', 'subtarea:actualizar'],
   cliente_nombre: 'Cliente Test',
 });
+
+/** Campos del shape de subtarea que espera `frontend/src/features/edilicia`. */
+const CAMPOS_SUBTAREA = [
+  'completada',
+  'completadaEn',
+  'completadaPorId',
+  'createdAt',
+  'descripcion',
+  'id',
+  'orden',
+  'ticketEdiliciaId',
+  'updatedAt',
+];
 
 function makeTicket(): TicketEntity {
   return TicketEntity.create(
@@ -186,6 +209,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
             ticket,
             ticketEdilicia,
             subtareas: [],
+            porcentajeAvance: 0,
             cantidadComentarios: 2,
             bloqueada: false,
             comprasQueBloquean: [],
@@ -202,15 +226,15 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(result[0].cantidadComentarios).toBe(2);
     });
 
-    it('embebe las subtareas activas del ticket_edilicia (item 1 — G7)', async () => {
+    it('embebe las subtareas activas, que ahora son las tareas del ticket, con su avance (odd/tareas-con-tecnico T3)', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
       const ticketEdilicia = TicketEdiliciaEntity.create(
         { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
-      const subtarea = SubtareaEdiliciaEntity.create(
-        { ticketEdiliciaId: 'edilicia-uuid', descripcion: 'Cambiar cañería', orden: 0 },
+      const tarea = TareaTicketEntity.crear(
+        { ticketId: ticket.id, descripcion: 'Cambiar cañería', orden: 0 },
         'subtarea-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
@@ -218,7 +242,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
           {
             ticket,
             ticketEdilicia,
-            subtareas: [subtarea],
+            subtareas: [tarea],
+            porcentajeAvance: 37.5,
             cantidadComentarios: 0,
             bloqueada: false,
             comprasQueBloquean: [],
@@ -228,9 +253,15 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       const result = await controller.listar();
 
+      expect(result[0].porcentajeAvance).toBe(37.5);
       expect(result[0].subtareas).toHaveLength(1);
-      expect(result[0].subtareas[0].id).toBe('subtarea-uuid');
-      expect(result[0].subtareas[0].descripcion).toBe('Cambiar cañería');
+      expect(Object.keys(result[0].subtareas[0]).sort()).toEqual(CAMPOS_SUBTAREA);
+      expect(result[0].subtareas[0]).toMatchObject({
+        id: 'subtarea-uuid',
+        ticketEdiliciaId: 'edilicia-uuid',
+        descripcion: 'Cambiar cañería',
+        completada: false,
+      });
     });
 
     it('declara @RequiereAcciones("EDILICIA:LECTURA") (WU-7.3: reemplaza el gate de módulo puro)', () => {
@@ -239,28 +270,44 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     });
   });
 
+  /*
+   * Rutas de subtareas (odd/tareas-con-tecnico, T3): delegan en los casos de uso de tareas del
+   * ticket con el `ActorTarea` del JWT, devuelven el shape viejo y ya no declaran permisos fijos.
+   * T8 las retira.
+   */
   describe('POST /reparaciones/:reparacionId/subtareas', () => {
-    it('crea la subtarea', async () => {
+    it('crea la subtarea delegando con el actor del JWT y devuelve el shape viejo', async () => {
       const { controller, crearSubtareaUseCase } = buildController();
-      const subtarea = SubtareaEdiliciaEntity.create(
-        { ticketEdiliciaId: 'edilicia-uuid', descripcion: 'Reparar cañería' },
+      const tarea = TareaTicketEntity.crear(
+        { ticketId: 'ticket-uuid', descripcion: 'Reparar cañería', orden: 2 },
         'subtarea-uuid',
       );
-      crearSubtareaUseCase.execute.mockResolvedValue(Result.ok(subtarea));
+      crearSubtareaUseCase.execute.mockResolvedValue(
+        Result.ok({ tarea, ticketEdiliciaId: 'edilicia-uuid' }),
+      );
 
       const result = await controller.crearSubtarea(
         'edilicia-uuid',
-        { descripcion: 'Reparar cañería' } as any,
+        { descripcion: 'Reparar cañería', orden: 9 } as any,
         USER,
       );
 
-      expect(result.id).toBe('subtarea-uuid');
-      expect(crearSubtareaUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ticketEdiliciaId: 'edilicia-uuid',
-          descripcion: 'Reparar cañería',
-        }),
-      );
+      expect(Object.keys(result).sort()).toEqual(CAMPOS_SUBTAREA);
+      expect(result).toMatchObject({
+        id: 'subtarea-uuid',
+        ticketEdiliciaId: 'edilicia-uuid',
+        orden: 2,
+      });
+      expect(crearSubtareaUseCase.execute).toHaveBeenCalledWith({
+        reparacionId: 'edilicia-uuid',
+        descripcion: 'Reparar cañería',
+        actor: {
+          id: 'usuario-uuid',
+          esAdministrador: false,
+          tienePermisoVerTodos: false,
+          modulosConModificacion: [],
+        },
+      });
     });
 
     it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
@@ -274,31 +321,45 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
-    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.crearSubtarea,
+    it('mapea TareaAccionNoPermitidaError → 403', async () => {
+      const { controller, crearSubtareaUseCase } = buildController();
+      crearSubtareaUseCase.execute.mockResolvedValue(
+        Result.fail(new TareaAccionNoPermitidaError('crear')),
       );
-      expect(permisos).toEqual(['EDILICIA:ALTAS']);
+
+      await expect(
+        controller.crearSubtarea(
+          'edilicia-uuid',
+          Object.assign(new CreateSubtareaHttpDto(), { descripcion: 'X' }),
+          USER,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
 
   describe('POST /reparaciones/subtareas/:subtareaId/completar', () => {
-    it('completa la subtarea', async () => {
+    it('completa la subtarea con el actor del JWT', async () => {
       const { controller, completarSubtareaUseCase } = buildController();
-      const subtarea = SubtareaEdiliciaEntity.create(
-        { ticketEdiliciaId: 'edilicia-uuid', descripcion: 'X' },
+      const tarea = TareaTicketEntity.crear(
+        { ticketId: 'ticket-uuid', descripcion: 'X', orden: 0 },
         'subtarea-uuid',
       );
-      subtarea.completar(USER.sub);
-      completarSubtareaUseCase.execute.mockResolvedValue(Result.ok(subtarea));
+      tarea.completar(USER.sub, new Date('2026-10-13T10:00:00Z'));
+      completarSubtareaUseCase.execute.mockResolvedValue(
+        Result.ok({ tarea, ticketEdiliciaId: 'edilicia-uuid' }),
+      );
 
       const result = await controller.completarSubtarea('subtarea-uuid', USER);
 
-      expect(result.completada).toBe(true);
+      expect(result).toMatchObject({
+        completada: true,
+        completadaPorId: 'usuario-uuid',
+        completadaEn: '2026-10-13T10:00:00.000Z',
+        ticketEdiliciaId: 'edilicia-uuid',
+      });
       expect(completarSubtareaUseCase.execute).toHaveBeenCalledWith({
         subtareaId: 'subtarea-uuid',
-        completadaPorId: 'usuario-uuid',
+        actor: expect.objectContaining({ id: 'usuario-uuid' }),
       });
     });
 
@@ -313,17 +374,20 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
     });
 
-    it('declara @RequiereAcciones("EDILICIA:MODIFICACION")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.completarSubtarea,
+    it('mapea TareaYaCompletadaError → 409', async () => {
+      const { controller, completarSubtareaUseCase } = buildController();
+      completarSubtareaUseCase.execute.mockResolvedValue(
+        Result.fail(new TareaYaCompletadaError('subtarea-uuid')),
       );
-      expect(permisos).toEqual(['EDILICIA:MODIFICACION']);
+
+      await expect(controller.completarSubtarea('subtarea-uuid', USER)).rejects.toMatchObject({
+        status: 409,
+      });
     });
   });
 
   describe('DELETE /reparaciones/subtareas/:subtareaId', () => {
-    it('elimina la subtarea', async () => {
+    it('elimina la subtarea con el actor del JWT', async () => {
       const { controller, eliminarSubtareaUseCase } = buildController();
       eliminarSubtareaUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
@@ -331,18 +395,19 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       expect(eliminarSubtareaUseCase.execute).toHaveBeenCalledWith({
         subtareaId: 'subtarea-uuid',
-        autorId: 'usuario-uuid',
+        actor: expect.objectContaining({ id: 'usuario-uuid' }),
       });
     });
-
-    it('declara @RequiereAcciones("EDILICIA:BORRADO")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.eliminarSubtarea,
-      );
-      expect(permisos).toEqual(['EDILICIA:BORRADO']);
-    });
   });
+
+  it.each(['crearSubtarea', 'completarSubtarea', 'eliminarSubtarea'] as const)(
+    '%s no declara @RequiereAcciones: la regla del punto 12 la aplica el caso de uso',
+    (metodo) => {
+      expect(Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype[metodo])).toBe(
+        undefined,
+      );
+    },
+  );
 
   describe('POST /reparaciones/:reparacionId/comentarios', () => {
     it('crea el comentario con el autorId del JWT y resuelve el nombre del autor', async () => {

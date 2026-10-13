@@ -1,11 +1,12 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
-import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
+import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
+import { calcularAvanceTareas } from '../../../tickets/domain/services/avance-tareas';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
-import { ISubtareaEdiliciaRepository } from '../../domain/ports/i-subtarea-edilicia.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { CompraVinculada, comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
 
@@ -13,8 +14,17 @@ import { CompraVinculada, comprasQueBloquean } from '../../domain/services/bloqu
 export interface ReparacionConTicket {
   ticket: TicketEntity;
   ticketEdilicia: TicketEdiliciaEntity;
-  /** Subtareas ACTIVAS del checklist (sdd/beta-frontend item 1 — G7, embebido). */
-  subtareas: SubtareaEdiliciaEntity[];
+  /**
+   * Subtareas ACTIVAS del checklist (sdd/beta-frontend item 1 — G7, embebido). Desde
+   * odd/tareas-con-tecnico (T3) son las tareas del ticket base (`tareas_ticket`).
+   */
+  subtareas: TareaTicketEntity[];
+  /**
+   * Avance calculado al leer, con `calcularAvanceTareas` sobre esas tareas (CA7). Reemplaza a la
+   * columna `ticket_edilicia.porcentaje_avance`, que ya nadie actualiza: las tareas se completan
+   * desde los casos de uso de tickets, que no conocen el satélite de Edilicia.
+   */
+  porcentajeAvance: number;
   /** Cantidad de comentarios de la reparación. Siempre un número: `0` cuando no tiene ninguno. */
   cantidadComentarios: number;
   /** `true` si tiene al menos una compra vinculada cuyo grupo derivado es `ACTIVAS` (WU3). */
@@ -49,10 +59,7 @@ export class ListarReparacionesUseCase {
   constructor(
     private readonly ediliciaRepo: Pick<ITicketEdiliciaRepository, 'findAll'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findByIds'>,
-    private readonly subtareaRepo: Pick<
-      ISubtareaEdiliciaRepository,
-      'findActiveByTicketEdiliciaIds'
-    >,
+    private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTickets'>,
     private readonly comentarioRepo: Pick<
       IComentarioReparacionRepository,
       'contarPorTicketEdilicia'
@@ -70,6 +77,7 @@ export class ListarReparacionesUseCase {
     }
 
     const ediliciaIds = satelites.map((satelite) => satelite.id);
+    const ticketIds = satelites.map((satelite) => satelite.ticketId);
 
     // Las cuatro, una sola vez y FUERA del loop: mover cualquiera adentro
     // devolvería el listado a una consulta por fila, que es justo lo que las
@@ -77,12 +85,12 @@ export class ListarReparacionesUseCase {
     // sí — ninguna necesita el resultado de las otras.
     const [
       ticketsPorId,
-      subtareasPorReparacion,
+      tareasPorTicket,
       comentariosPorReparacion,
       comprasVinculadasPorReparacion,
     ] = await Promise.all([
-      this.ticketRepo.findByIds(satelites.map((satelite) => satelite.ticketId)),
-      this.subtareaRepo.findActiveByTicketEdiliciaIds(ediliciaIds),
+      this.ticketRepo.findByIds(ticketIds),
+      this.tareaRepo.listarPorTickets(ticketIds),
       this.comentarioRepo.contarPorTicketEdilicia(ediliciaIds),
       this.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds(ediliciaIds),
     ]);
@@ -102,12 +110,14 @@ export class ListarReparacionesUseCase {
       // nunca `undefined` — mismo contrato que subtareas/comentarios.
       const vinculadas = comprasVinculadasPorReparacion.get(ticketEdilicia.id) ?? [];
       const bloqueantes = comprasQueBloquean(vinculadas);
+      // Sin tareas activas el lote no trae entrada: la ausencia es `[]`, nunca `undefined` — el
+      // consumidor itera esta lista sin chequear.
+      const tareas = tareasPorTicket.get(ticketEdilicia.ticketId) ?? [];
       items.push({
         ticket,
         ticketEdilicia,
-        // Sin subtareas activas el lote no trae entrada: la ausencia es `[]`,
-        // nunca `undefined` — el consumidor itera esta lista sin chequear.
-        subtareas: subtareasPorReparacion.get(ticketEdilicia.id) ?? [],
+        subtareas: tareas,
+        porcentajeAvance: calcularAvanceTareas(tareas).porcentaje,
         // Sin comentarios el `GROUP BY` no emite fila: la ausencia es `0`.
         cantidadComentarios: comentariosPorReparacion.get(ticketEdilicia.id) ?? 0,
         bloqueada: bloqueantes.length > 0,

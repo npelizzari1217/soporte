@@ -10,7 +10,7 @@
  */
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
-import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ListarReparacionesUseCase } from './listar-reparaciones.use-case';
 
@@ -31,8 +31,12 @@ function makeTicket(id: string): TicketEntity {
   );
 }
 
-function makeSubtarea(ticketEdiliciaId: string, descripcion: string): SubtareaEdiliciaEntity {
-  return SubtareaEdiliciaEntity.create({ ticketEdiliciaId, descripcion });
+/**
+ * Desde odd/tareas-con-tecnico (T3) las subtareas embebidas son las tareas del ticket base
+ * (`tareas_ticket`), pedidas por `ticket_id`.
+ */
+function makeSubtarea(ticketId: string, descripcion: string): TareaTicketEntity {
+  return TareaTicketEntity.crear({ ticketId, descripcion, orden: 0 });
 }
 
 describe('ListarReparacionesUseCase', () => {
@@ -40,9 +44,7 @@ describe('ListarReparacionesUseCase', () => {
     const ediliciaRepo = { findAll: vi.fn() };
     const ticketRepo = { findByIds: vi.fn().mockResolvedValue(new Map<string, TicketEntity>()) };
     const subtareaRepo = {
-      findActiveByTicketEdiliciaIds: vi
-        .fn()
-        .mockResolvedValue(new Map<string, SubtareaEdiliciaEntity[]>()),
+      listarPorTickets: vi.fn().mockResolvedValue(new Map<string, TareaTicketEntity[]>()),
     };
     const comentarioRepo = {
       contarPorTicketEdilicia: vi.fn().mockResolvedValue(new Map<string, number>()),
@@ -98,12 +100,10 @@ describe('ListarReparacionesUseCase', () => {
       'edilicia-uuid',
     );
     const ticket = makeTicket('ticket-uuid');
-    const subtarea = makeSubtarea('edilicia-uuid', 'Cambiar la junta');
+    const subtarea = makeSubtarea('ticket-uuid', 'Cambiar la junta');
     ediliciaRepo.findAll.mockResolvedValue([edilicia]);
     ticketRepo.findByIds.mockResolvedValue(new Map([['ticket-uuid', ticket]]));
-    subtareaRepo.findActiveByTicketEdiliciaIds.mockResolvedValue(
-      new Map([['edilicia-uuid', [subtarea]]]),
-    );
+    subtareaRepo.listarPorTickets.mockResolvedValue(new Map([['ticket-uuid', [subtarea]]]));
 
     const result = await useCase.execute();
 
@@ -129,9 +129,8 @@ describe('ListarReparacionesUseCase', () => {
       },
       {
         nombre: 'las subtareas',
-        doble: (deps: ReturnType<typeof conNSatelites>) =>
-          deps.subtareaRepo.findActiveByTicketEdiliciaIds,
-        idsEsperados: ['edilicia-uuid-0', 'edilicia-uuid-1', 'edilicia-uuid-2'],
+        doble: (deps: ReturnType<typeof conNSatelites>) => deps.subtareaRepo.listarPorTickets,
+        idsEsperados: ['ticket-uuid-0', 'ticket-uuid-1', 'ticket-uuid-2'],
       },
       {
         nombre: 'el conteo de comentarios',
@@ -180,7 +179,7 @@ describe('ListarReparacionesUseCase', () => {
 
       expect(result.getValue()).toEqual([]);
       expect(ticketRepo.findByIds).not.toHaveBeenCalled();
-      expect(subtareaRepo.findActiveByTicketEdiliciaIds).not.toHaveBeenCalled();
+      expect(subtareaRepo.listarPorTickets).not.toHaveBeenCalled();
       expect(comentarioRepo.contarPorTicketEdilicia).not.toHaveBeenCalled();
       expect(reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds).not.toHaveBeenCalled();
     });
@@ -218,9 +217,9 @@ describe('ListarReparacionesUseCase', () => {
           ['ticket-uuid-2', makeTicket('ticket-uuid-2')],
         ]),
       );
-      const subtareaDeLaPrimera = makeSubtarea('edilicia-uuid-0', 'Cambiar la junta');
-      deps.subtareaRepo.findActiveByTicketEdiliciaIds.mockResolvedValue(
-        new Map([['edilicia-uuid-0', [subtareaDeLaPrimera]]]),
+      const subtareaDeLaPrimera = makeSubtarea('ticket-uuid-0', 'Cambiar la junta');
+      deps.subtareaRepo.listarPorTickets.mockResolvedValue(
+        new Map([['ticket-uuid-0', [subtareaDeLaPrimera]]]),
       );
       deps.comentarioRepo.contarPorTicketEdilicia.mockResolvedValue(
         new Map([['edilicia-uuid-2', 4]]),
@@ -251,6 +250,22 @@ describe('ListarReparacionesUseCase', () => {
           cantidadComentarios: 4,
         },
       ]);
+    });
+
+    it('calcula el avance al leer sobre las tareas del ticket, no con la columna del satélite', async () => {
+      const deps = conNSatelites(2);
+      // La columna dice 80 en la primera: el listado la ignora, porque ya nadie la actualiza.
+      deps.satelites[0].actualizarAvance(80);
+      const hecha = makeSubtarea('ticket-uuid-0', 'Cambiar la junta');
+      hecha.completar('tecnico-uuid', new Date('2026-10-13T10:00:00Z'));
+      const pendiente = makeSubtarea('ticket-uuid-0', 'Pintar');
+      deps.subtareaRepo.listarPorTickets.mockResolvedValue(
+        new Map([['ticket-uuid-0', [hecha, pendiente]]]),
+      );
+
+      const items = (await deps.useCase.execute()).getValue();
+
+      expect(items.map((item) => item.porcentajeAvance)).toEqual([50, 0]);
     });
 
     it('omite satélites huérfanos (sin ticket base)', async () => {

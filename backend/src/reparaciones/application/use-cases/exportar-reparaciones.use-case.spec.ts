@@ -84,13 +84,13 @@ function crearReparacion(
     },
     id,
   );
-  if (overrides.porcentajeAvance !== undefined) {
-    ticketEdilicia.actualizarAvance(overrides.porcentajeAvance);
-  }
   return {
     ticket,
     ticketEdilicia,
     subtareas: [],
+    // Desde odd/tareas-con-tecnico (T3) el avance se calcula al leer y viaja en el ítem, no en
+    // la columna del satélite.
+    porcentajeAvance: overrides.porcentajeAvance ?? 0,
     cantidadComentarios: 0,
     bloqueada: false,
     comprasQueBloquean: [],
@@ -191,7 +191,7 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
    * puertos fake que cuentan sus propias invocaciones en un contador
    * COMPARTIDO. `cantidadReparaciones` controla el volumen de filas
    * devueltas por `findAll` — el resto de los puertos (`findByIds`,
-   * `findActiveByTicketEdiliciaIds`, `contarPorTicketEdilicia`,
+   * `listarPorTickets`, `contarPorTicketEdilicia`,
    * `findComprasVinculadasByTicketEdiliciaIds`) siempre se llaman UNA vez
    * cada uno, en lote, sin importar cuántos ids reciban.
    */
@@ -222,7 +222,7 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
       }),
     };
     const subtareaRepo = {
-      findActiveByTicketEdiliciaIds: vi.fn(async () => {
+      listarPorTickets: vi.fn(async () => {
         llamadas++;
         return new Map();
       }),

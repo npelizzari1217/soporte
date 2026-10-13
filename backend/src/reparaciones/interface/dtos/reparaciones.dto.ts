@@ -9,7 +9,16 @@
  * Tarea: T8.6, T9.6.
  */
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
@@ -27,6 +36,7 @@ import {
   ComentarioReparacionEntity,
 } from '../../domain/entities/comentario-reparacion.entity';
 import { ReparacionConTicket } from '../../application/use-cases/listar-reparaciones.use-case';
+import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
 
@@ -61,6 +71,9 @@ export class CreateTicketEdilicioHttpDto {
 export class CreateSubtareaHttpDto {
   @IsString()
   @MinLength(1)
+  // Al menos un carácter visible: la tarea genérica (odd/tareas-con-tecnico, T3) rechaza una
+  // descripción en blanco, y acá se corta como 400 en vez de llegar a la entidad.
+  @Matches(/\S/, { message: 'descripcion no puede estar vacía' })
   @MaxLength(SUBTAREA_DESCRIPCION_MAX_LENGTH)
   descripcion!: string;
 
@@ -173,7 +186,11 @@ export function toReparacionListItemResponseDto(
 ): ReparacionListItemResponseDto {
   return {
     ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia),
-    subtareas: item.subtareas.map(toSubtareaEdiliciaResponseDto),
+    // Calculado al leer sobre las tareas del ticket (odd/tareas-con-tecnico, T3), no la columna.
+    porcentajeAvance: item.porcentajeAvance,
+    subtareas: item.subtareas.map((tarea) =>
+      toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, item.ticketEdilicia.id),
+    ),
     cantidadComentarios: item.cantidadComentarios,
     bloqueada: item.bloqueada,
     comprasQueBloquean: item.comprasQueBloquean.map((compra) => ({
@@ -252,5 +269,28 @@ export function toComentarioReparacionResponseDto(
     autorNombre: autor?.nombre ?? null,
     autorApellido: autor?.apellido ?? null,
     createdAt: comentario.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Convierte una tarea del ticket al shape de subtarea que espera el frontend de Edilicia
+ * (odd/tareas-con-tecnico, T3). Mismos campos y mismo formato que `toSubtareaEdiliciaResponseDto`:
+ * la migración de T1 conservó los ids, y `ticketEdiliciaId` lo aporta quien llama. T8 lo retira
+ * junto con las rutas viejas.
+ */
+export function toSubtareaEdiliciaResponseDtoDesdeTarea(
+  tarea: TareaTicketEntity,
+  ticketEdiliciaId: string,
+): SubtareaEdiliciaResponseDto {
+  return {
+    id: tarea.id,
+    ticketEdiliciaId,
+    descripcion: tarea.descripcion,
+    completada: tarea.completada,
+    completadaEn: tarea.completadaEn ? tarea.completadaEn.toISOString() : null,
+    completadaPorId: tarea.completadaPorId,
+    orden: tarea.orden,
+    createdAt: tarea.createdAt.toISOString(),
+    updatedAt: tarea.updatedAt.toISOString(),
   };
 }
