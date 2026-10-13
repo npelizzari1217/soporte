@@ -5,7 +5,11 @@
 import type { LookupAddress } from 'node:dns';
 import { ClienteEntity } from '../../clientes/domain/entities/cliente.entity';
 import { BuscarDirecciones } from '../domain/destino-webhook-seguro';
-import { DatosWebhookDestino, WebhookDestino } from '../domain/webhook-destino';
+import {
+  ConfiguracionWebhookDestino,
+  DatosWebhookDestino,
+  WebhookDestino,
+} from '../domain/webhook-destino';
 import { GuardarWebhookDestinoUseCase } from './guardar-webhook-destino.use-case';
 
 const CLIENTE_ID = '0190a000-0000-7000-8000-00000000000a';
@@ -28,24 +32,42 @@ function cliente(apiHabilitada: boolean): ClienteEntity {
 interface Escenario {
   apiHabilitada?: boolean;
   existente?: WebhookDestino;
+  /** El destino no existe al leer, pero otra alta lo inserta antes del `crear` de este PUT. */
+  altaConcurrente?: WebhookDestino;
   buscar?: BuscarDirecciones;
 }
 
+/**
+ * Fake en memoria con la semántica del repositorio real: `crear` no pisa un destino existente y
+ * devuelve `null`; `actualizarConfiguracion` nunca toca el secreto.
+ */
 function armar(escenario: Escenario = {}) {
   let guardado: WebhookDestino | null = escenario.existente ?? null;
-  const guardados: DatosWebhookDestino[] = [];
+  const creados: DatosWebhookDestino[] = [];
+  const configuraciones: ConfiguracionWebhookDestino[] = [];
   const cifrados: string[] = [];
   const useCase = new GuardarWebhookDestinoUseCase(
     { findById: async () => cliente(escenario.apiHabilitada ?? true) },
     {
-      buscarPorCliente: async () => guardado,
-      guardar: async (datos) => {
-        guardados.push(datos);
+      buscarPorCliente: async () => {
+        const leido = guardado;
+        if (escenario.altaConcurrente) guardado = escenario.altaConcurrente;
+        return leido;
+      },
+      crear: async (datos) => {
+        creados.push(datos);
+        if (guardado) return null;
         guardado = {
           ...datos,
-          createdAt: guardado?.createdAt ?? new Date('2026-10-13T10:00:00Z'),
+          createdAt: new Date('2026-10-13T10:00:00Z'),
           updatedAt: new Date('2026-10-13T11:00:00Z'),
         };
+        return guardado;
+      },
+      actualizarConfiguracion: async (_clienteId, configuracion) => {
+        configuraciones.push(configuracion);
+        if (!guardado) return null;
+        guardado = { ...guardado, ...configuracion, updatedAt: new Date('2026-10-13T12:00:00Z') };
         return guardado;
       },
     },
@@ -57,7 +79,8 @@ function armar(escenario: Escenario = {}) {
     },
     escenario.buscar ?? (async () => [PUBLICA]),
   );
-  return { useCase, guardados, cifrados };
+  const guardados = () => [...creados, ...configuraciones];
+  return { useCase, creados, configuraciones, guardados, cifrados, almacenado: () => guardado };
 }
 
 const comando = (cambios: Partial<{ url: string; eventos: string[]; activo: boolean }> = {}) => ({
@@ -76,7 +99,7 @@ describe('GuardarWebhookDestinoUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError().code).toBe('API_NO_HABILITADA');
-    expect(guardados).toHaveLength(0);
+    expect(guardados()).toHaveLength(0);
   });
 
   it.each([
@@ -89,7 +112,7 @@ describe('GuardarWebhookDestinoUseCase', () => {
     const result = await useCase.execute(comando({ eventos }));
 
     expect(result.getError().code).toBe('WEBHOOK_EVENTOS_INVALIDOS');
-    expect(guardados).toHaveLength(0);
+    expect(guardados()).toHaveLength(0);
   });
 
   it('una URL sin HTTPS conserva su mensaje específico (WEBHOOK_URL_INVALIDA)', async () => {
@@ -99,7 +122,7 @@ describe('GuardarWebhookDestinoUseCase', () => {
 
     expect(result.getError().code).toBe('WEBHOOK_URL_INVALIDA');
     expect(result.getError().message).toContain('HTTPS');
-    expect(guardados).toHaveLength(0);
+    expect(guardados()).toHaveLength(0);
   });
 
   it('un host que resuelve a una IP privada y uno que no resuelve dan el MISMO error genérico', async () => {
@@ -124,12 +147,12 @@ describe('GuardarWebhookDestinoUseCase', () => {
     ]);
     expect(new Set(errores.map((e) => e.message)).size).toBe(1);
     expect(errores[0].message).not.toContain('ENOTFOUND');
-    expect(privado.guardados).toHaveLength(0);
-    expect(irresoluble.guardados).toHaveLength(0);
+    expect(privado.guardados()).toHaveLength(0);
+    expect(irresoluble.guardados()).toHaveLength(0);
   });
 
   it('al crear genera el secreto, guarda solo el cifrado y lo devuelve en claro una vez', async () => {
-    const { useCase, guardados, cifrados } = armar();
+    const { useCase, creados, configuraciones, cifrados } = armar();
 
     const result = await useCase.execute(
       comando({ eventos: ['TICKET_CREADO', 'TICKET_CREADO', 'TICKET_ASIGNADO'] }),
@@ -139,7 +162,8 @@ describe('GuardarWebhookDestinoUseCase', () => {
     const salida = result.getValue();
     expect(salida.secreto).toMatch(/^whsec_[A-Za-z0-9_-]{43}$/);
     expect(cifrados).toEqual([salida.secreto]);
-    expect(guardados).toEqual([
+    expect(configuraciones).toHaveLength(0);
+    expect(creados).toEqual([
       {
         clienteId: CLIENTE_ID,
         url: 'https://erp.example.com/webhooks',
@@ -169,7 +193,7 @@ describe('GuardarWebhookDestinoUseCase', () => {
       createdAt: new Date('2026-10-01T00:00:00Z'),
       updatedAt: new Date('2026-10-01T00:00:00Z'),
     };
-    const { useCase, guardados, cifrados } = armar({ existente });
+    const { useCase, creados, configuraciones, cifrados, almacenado } = armar({ existente });
 
     const result = await useCase.execute(
       comando({ url: '  https://Nuevo.Example.com/hook  ', activo: false }),
@@ -178,12 +202,63 @@ describe('GuardarWebhookDestinoUseCase', () => {
     const salida = result.getValue();
     expect(salida).not.toHaveProperty('secreto');
     expect(cifrados).toHaveLength(0);
-    expect(guardados[0]).toMatchObject({
-      url: 'https://nuevo.example.com/hook',
-      activo: false,
-      secretoCifrado: 'v1:iv:tag:ct',
-    });
+    expect(creados).toHaveLength(0);
+    expect(configuraciones).toEqual([
+      {
+        url: 'https://nuevo.example.com/hook',
+        eventos: ['TICKET_CREADO', 'TICKET_COMENTADO'],
+        activo: false,
+      },
+    ]);
+    expect(almacenado()?.secretoCifrado).toBe('v1:iv:tag:ct');
     expect(salida.creadoEn).toEqual(new Date('2026-10-01T00:00:00Z'));
     expect(JSON.stringify(salida)).not.toContain('v1:iv:tag:ct');
+  });
+
+  it('JD-2: si otra alta gana la carrera, no devuelve secreto, no pisa el guardado y actualiza la configuración', async () => {
+    const ganador: WebhookDestino = {
+      clienteId: CLIENTE_ID,
+      url: 'https://ganador.example.com/hook',
+      eventos: ['TICKET_ASIGNADO'],
+      secretoCifrado: 'v1:iv:tag:ganador',
+      activo: true,
+      createdAt: new Date('2026-10-13T09:00:00Z'),
+      updatedAt: new Date('2026-10-13T09:00:00Z'),
+    };
+    const { useCase, creados, configuraciones, almacenado } = armar({ altaConcurrente: ganador });
+
+    const result = await useCase.execute(comando());
+
+    expect(result.isOk()).toBe(true);
+    const salida = result.getValue();
+    expect(salida).not.toHaveProperty('secreto');
+    expect(creados).toHaveLength(1);
+    expect(configuraciones).toHaveLength(1);
+    expect(almacenado()).toMatchObject({
+      url: 'https://erp.example.com/webhooks',
+      eventos: ['TICKET_CREADO', 'TICKET_COMENTADO'],
+      secretoCifrado: 'v1:iv:tag:ganador',
+    });
+    expect(salida).toMatchObject({
+      url: 'https://erp.example.com/webhooks',
+      creadoEn: ganador.createdAt,
+    });
+  });
+
+  it('si el destino desaparece entre la lectura y la actualización falla con WEBHOOK_DESTINO_NO_ENCONTRADO', async () => {
+    const useCase = new GuardarWebhookDestinoUseCase(
+      { findById: async () => cliente(true) },
+      {
+        buscarPorCliente: async () => null,
+        crear: async () => null,
+        actualizarConfiguracion: async () => null,
+      },
+      { cifrar: () => 'cifrado' },
+      async () => [PUBLICA],
+    );
+
+    const result = await useCase.execute(comando());
+
+    expect(result.getError().code).toBe('WEBHOOK_DESTINO_NO_ENCONTRADO');
   });
 });

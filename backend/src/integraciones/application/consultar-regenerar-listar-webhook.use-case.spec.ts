@@ -3,7 +3,7 @@
  * CA6 y CA7). Fakes en memoria.
  */
 import { ClienteEntity } from '../../clientes/domain/entities/cliente.entity';
-import { DatosWebhookDestino, WebhookDestino } from '../domain/webhook-destino';
+import { WebhookDestino } from '../domain/webhook-destino';
 import { WebhookEntrega } from '../domain/webhook-entrega';
 import { ConsultarWebhookDestinoUseCase } from './consultar-webhook-destino.use-case';
 import { ListarEntregasWebhookUseCase } from './listar-entregas-webhook.use-case';
@@ -68,52 +68,44 @@ describe('ConsultarWebhookDestinoUseCase', () => {
 
 describe('RegenerarSecretoWebhookUseCase', () => {
   function armar(apiHabilitada: boolean, existente: WebhookDestino | null) {
-    const guardados: DatosWebhookDestino[] = [];
+    const secretosGuardados: string[] = [];
     const useCase = new RegenerarSecretoWebhookUseCase(
       { findById: async () => cliente(apiHabilitada) },
       {
-        buscarPorCliente: async () => existente,
-        guardar: async (datos) => {
-          guardados.push(datos);
-          return { ...DESTINO, ...datos };
+        actualizarSecreto: async (_clienteId, secretoCifrado) => {
+          if (!existente) return null;
+          secretosGuardados.push(secretoCifrado);
+          return { ...existente, secretoCifrado };
         },
       },
       { cifrar: (clienteId, secreto) => `cifrado:${clienteId}:${secreto}` },
     );
-    return { useCase, guardados };
+    return { useCase, secretosGuardados };
   }
 
   it('sin destino falla con WEBHOOK_DESTINO_NO_ENCONTRADO y no guarda nada', async () => {
-    const { useCase, guardados } = armar(true, null);
+    const { useCase, secretosGuardados } = armar(true, null);
 
     const result = await useCase.execute(CLIENTE_ID);
 
     expect(result.getError().code).toBe('WEBHOOK_DESTINO_NO_ENCONTRADO');
-    expect(guardados).toHaveLength(0);
+    expect(secretosGuardados).toHaveLength(0);
   });
 
   it('con la API deshabilitada falla con API_NO_HABILITADA', async () => {
-    const { useCase, guardados } = armar(false, DESTINO);
+    const { useCase, secretosGuardados } = armar(false, DESTINO);
 
     expect((await useCase.execute(CLIENTE_ID)).getError().code).toBe('API_NO_HABILITADA');
-    expect(guardados).toHaveLength(0);
+    expect(secretosGuardados).toHaveLength(0);
   });
 
-  it('genera un secreto nuevo, lo guarda cifrado y lo devuelve en claro; conserva el resto', async () => {
-    const { useCase, guardados } = armar(true, DESTINO);
+  it('genera un secreto nuevo, guarda solo su cifrado y lo devuelve en claro (JD-2: no reescribe la configuración)', async () => {
+    const { useCase, secretosGuardados } = armar(true, DESTINO);
 
     const { secreto } = (await useCase.execute(CLIENTE_ID)).getValue();
 
     expect(secreto).toMatch(/^whsec_/);
-    expect(guardados).toEqual([
-      {
-        clienteId: CLIENTE_ID,
-        url: DESTINO.url,
-        eventos: DESTINO.eventos,
-        activo: true,
-        secretoCifrado: `cifrado:${CLIENTE_ID}:${secreto}`,
-      },
-    ]);
+    expect(secretosGuardados).toEqual([`cifrado:${CLIENTE_ID}:${secreto}`]);
   });
 });
 

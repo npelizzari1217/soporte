@@ -24,7 +24,7 @@ export type RegenerarSecretoWebhookError = ApiNoHabilitadaError | WebhookDestino
 export class RegenerarSecretoWebhookUseCase {
   constructor(
     private readonly clientes: Pick<IClienteRepository, 'findById'>,
-    private readonly destinos: Pick<IWebhookDestinoRepository, 'buscarPorCliente' | 'guardar'>,
+    private readonly destinos: Pick<IWebhookDestinoRepository, 'actualizarSecreto'>,
     private readonly secretos: Pick<SecretoWebhookCifrado, 'cifrar'>,
   ) {}
 
@@ -37,21 +37,18 @@ export class RegenerarSecretoWebhookUseCase {
         new ApiNoHabilitadaError(),
       );
     }
-    const actual = await this.destinos.buscarPorCliente(clienteId);
-    if (!actual) {
+    // Un único UPDATE del secreto: no relee ni reescribe URL, eventos ni activo, así que tampoco
+    // pisa un PUT concurrente (JD-2).
+    const secreto = generarSecretoWebhook();
+    const actualizado = await this.destinos.actualizarSecreto(
+      clienteId,
+      this.secretos.cifrar(clienteId, secreto),
+    );
+    if (!actualizado) {
       return Result.fail<RegenerarSecretoWebhookOutput, RegenerarSecretoWebhookError>(
         new WebhookDestinoNoEncontradoError(),
       );
     }
-
-    const secreto = generarSecretoWebhook();
-    await this.destinos.guardar({
-      clienteId,
-      url: actual.url,
-      eventos: actual.eventos,
-      activo: actual.activo,
-      secretoCifrado: this.secretos.cifrar(clienteId, secreto),
-    });
     return Result.ok({ secreto });
   }
 }
