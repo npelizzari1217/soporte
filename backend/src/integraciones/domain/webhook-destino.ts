@@ -31,8 +31,11 @@ export interface WebhookDestino {
   updatedAt: Date;
 }
 
-/** Datos para crear o reemplazar el destino de un cliente. */
+/** Datos para crear el destino de un cliente. */
 export type DatosWebhookDestino = Pick<
   WebhookDestino,
   'clienteId' | 'url' | 'eventos' | 'secretoCifrado' | 'activo'
 >;
+
+/** Lo que un ADMINISTRADOR cambia de un destino existente: todo menos el secreto. */
+export type ConfiguracionWebhookDestino = Pick<WebhookDestino, 'url' | 'eventos' | 'activo'>;

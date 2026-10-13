@@ -11,6 +11,7 @@ import {
   DestinoWebhookNoAdmitidoError,
   EventosWebhookInvalidosError,
   UrlWebhookInvalidaError,
+  WebhookDestinoNoEncontradoError,
 } from '../domain/integraciones.errors';
 import { IWebhookDestinoRepository } from '../domain/webhook-destino-repository.port';
 import { esEventoWebhook, EventoWebhook } from '../domain/webhook-destino';
@@ -34,7 +35,8 @@ export type GuardarWebhookDestinoError =
   | ApiNoHabilitadaError
   | EventosWebhookInvalidosError
   | UrlWebhookInvalidaError
-  | DestinoWebhookNoAdmitidoError;
+  | DestinoWebhookNoAdmitidoError
+  | WebhookDestinoNoEncontradoError;
 
 /**
  * GuardarWebhookDestinoUseCase — crea o actualiza el destino de webhooks del cliente del actor
@@ -45,13 +47,19 @@ export type GuardarWebhookDestinoError =
  * 3. La URL pasa `validarUrlDestino` y después `resolverDestinoSeguro` (CA8). Los dos rechazos de
  *    DNS se informan como `DestinoWebhookNoAdmitidoError`, un único mensaje que no dice si el host
  *    no existe o si resuelve a una red interna. Se guarda la URL normalizada.
- * 4. La primera vez genera el secreto, lo guarda cifrado y lo devuelve en claro esa única vez. En
- *    una actualización conserva el payload cifrado tal cual y no lo devuelve.
+ * 4. Si el destino existe, actualiza solo URL, eventos y activo: nunca reescribe el secreto, así
+ *    que no deshace una regeneración ni una rotación de `EMAIL_CRYPTO_KEY` concurrentes (JD-2).
+ *    Si no existe, genera el secreto y lo crea cifrado. El secreto en claro se devuelve solo si el
+ *    insert de ESTA llamada ocurrió: si otra alta ganó la carrera, `crear` no pisa nada y se pasa a
+ *    actualizar la configuración, sin secreto en la respuesta.
  */
 export class GuardarWebhookDestinoUseCase {
   constructor(
     private readonly clientes: Pick<IClienteRepository, 'findById'>,
-    private readonly destinos: Pick<IWebhookDestinoRepository, 'buscarPorCliente' | 'guardar'>,
+    private readonly destinos: Pick<
+      IWebhookDestinoRepository,
+      'buscarPorCliente' | 'crear' | 'actualizarConfiguracion'
+    >,
     private readonly secretos: Pick<SecretoWebhookCifrado, 'cifrar'>,
     private readonly buscarDirecciones: BuscarDirecciones,
   ) {}
@@ -75,24 +83,24 @@ export class GuardarWebhookDestinoUseCase {
     const resuelto = await resolverDestinoSeguro(url.getValue().hostname, this.buscarDirecciones);
     if (resuelto.isFail()) return falla(new DestinoWebhookNoAdmitidoError());
 
-    const actual = await this.destinos.buscarPorCliente(command.clienteId);
-    let secreto: string | undefined;
-    let secretoCifrado: string;
-    if (actual) {
-      secretoCifrado = actual.secretoCifrado;
-    } else {
-      secreto = generarSecretoWebhook();
-      secretoCifrado = this.secretos.cifrar(command.clienteId, secreto);
+    const configuracion = { url: url.getValue().href, eventos, activo: command.activo };
+    if (!(await this.destinos.buscarPorCliente(command.clienteId))) {
+      const secreto = generarSecretoWebhook();
+      const creado = await this.destinos.crear({
+        clienteId: command.clienteId,
+        ...configuracion,
+        secretoCifrado: this.secretos.cifrar(command.clienteId, secreto),
+      });
+      if (creado) return Result.ok({ ...vistaWebhookDestino(creado), secreto });
     }
-    const guardado = await this.destinos.guardar({
-      clienteId: command.clienteId,
-      url: url.getValue().href,
-      eventos,
-      activo: command.activo,
-      secretoCifrado,
-    });
 
-    const vista = vistaWebhookDestino(guardado);
-    return Result.ok(secreto ? { ...vista, secreto } : vista);
+    // Existía, o una alta concurrente ganó la carrera. Solo puede faltar si el cliente se borró
+    // entre tanto (el destino cae en cascada): no hay a quién configurar.
+    const actualizado = await this.destinos.actualizarConfiguracion(
+      command.clienteId,
+      configuracion,
+    );
+    if (!actualizado) return falla(new WebhookDestinoNoEncontradoError());
+    return Result.ok(vistaWebhookDestino(actualizado));
   }
 }
