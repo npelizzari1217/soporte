@@ -14,6 +14,14 @@ import {
   FERIADOS_LABORALES_REPOSITORY,
   IFeriadosLaboralesRepository,
 } from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import {
+  ITareaTicketRepository,
+  TAREA_TICKET_REPOSITORY,
+} from '../tickets/domain/ports/i-tarea-ticket.repository';
+import {
+  IUsuarioMasterChecker,
+  USUARIO_MASTER_CHECKER,
+} from '../tickets/domain/ports/i-usuario-master.checker';
 import { TenantContext } from '../shared/tenancy/tenant-context';
 import { CsatLecturaModule } from '../csat/csat-lectura.module';
 import {
@@ -45,6 +53,8 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  * - sdd/sla-primera-respuesta-y-pausa: el repo recibe el calendario y los feriados del cliente
  *   (`CalendarioLaboralModule`, sin ciclo) para medir el tiempo medio de primera respuesta en horas
  *   hábiles.
+ * - odd/tareas-con-tecnico T4: la métrica de tareas completadas por técnico usa
+ *   TAREA_TICKET_REPOSITORY y USUARIO_MASTER_CHECKER, los dos exportados por `TicketsModule`.
  * - Importa `TicketsModule` (para CICLO_CLIENTE_REPOSITORY), `CsatLecturaModule`
  *   (para ENCUESTA_SATISFACCION_REPOSITORY) y `AuthModule` (guards del
  *   controller).
@@ -71,8 +81,23 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
         dashboardRepo: IDashboardRepository,
         cicloClienteRepo: ICicloClienteRepository,
         csatRepo: IEncuestaSatisfaccionRepository,
-      ) => new ObtenerMetricasUseCase(dashboardRepo, cicloClienteRepo, csatRepo),
-      inject: [DASHBOARD_REPOSITORY, CICLO_CLIENTE_REPOSITORY, ENCUESTA_SATISFACCION_REPOSITORY],
+        tareaRepo: ITareaTicketRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+      ) =>
+        new ObtenerMetricasUseCase(
+          dashboardRepo,
+          cicloClienteRepo,
+          csatRepo,
+          tareaRepo,
+          usuarioMasterChecker,
+        ),
+      inject: [
+        DASHBOARD_REPOSITORY,
+        CICLO_CLIENTE_REPOSITORY,
+        ENCUESTA_SATISFACCION_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        USUARIO_MASTER_CHECKER,
+      ],
     },
   ],
   exports: [DASHBOARD_REPOSITORY],
