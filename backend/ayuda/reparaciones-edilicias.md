@@ -119,12 +119,13 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 
 ## Quién puede hacer cada cosa
 
-| Acción | Permiso |
+| Acción | Quién puede |
 |---|---|
 | Ver la reparación, sus subtareas y sus comentarios | `EDILICIA:LECTURA` |
-| Agregar una subtarea, o publicar un comentario | `EDILICIA:ALTAS` |
-| Completar una subtarea | `EDILICIA:MODIFICACION` |
-| Eliminar una subtarea | `EDILICIA:BORRADO` |
+| Agregar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
+| Publicar un comentario | `EDILICIA:ALTAS` |
+| Completar una subtarea | El técnico de la subtarea, el responsable de la reparación, un ADMINISTRADOR o ROOT |
+| Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
 | Vincular una compra a una reparación | `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA` (las dos) |
 | Desvincular una compra de una reparación | `EDILICIA:BORRADO` |
 
