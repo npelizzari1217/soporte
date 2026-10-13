@@ -81,7 +81,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 
 ## Tareas
 - [x] **T1 — Modelo y migración de datos** (~400): tabla `tareas_ticket` en el inquilino, colgada de `tickets`. Columnas: descripción, orden, técnico opcional, completada, completadaEn, completadaPorId, timestamps y baja lógica. La migración copia `subtareas_edilicia` a la tabla nueva vía `ticket_edilicia.ticket_id`, conservando ids y datos, y lleva `rollback.sql`. Incluye la entidad, el puerto, el repositorio y los tests de integración, con uno que compruebe que la copia es completa. La tabla vieja **todavía no se borra**. Ruta: delegada (trigger de writer). Salió en 1205 líneas, commit `1d10a92e`.
-- [ ] **T2 — Casos de uso** (~400): crear, asignar o quitar técnico (elegibilidad del punto 9), completar, descompletar y borrar, con las reglas de quién puede (CA3, CA4) y el permiso de modificación del módulo del tipo. Cada acción escribe su entrada en el historial (`OperacionTicket`). El cálculo de avance se generaliza a cualquier ticket. Ruta: delegada.
+- [x] **T2 — Casos de uso** (~400): crear, asignar o quitar técnico (elegibilidad del punto 9), completar, descompletar y borrar, con las reglas de quién puede (CA3, CA4) y el permiso de modificación del módulo del tipo. Cada acción escribe su entrada en el historial (`OperacionTicket`). El cálculo de avance se generaliza a cualquier ticket. Ruta: delegada. Salió en 1644 líneas, commit `16dbd796`.
 - [ ] **T3 — Endpoints y Edilicia sobre la tabla nueva** (~350): endpoints genéricos bajo el ticket. Los endpoints y el listado de reparaciones pasan a leer y escribir la tabla nueva, sin cambiar lo que ve el usuario de Edilicia. Incluye un e2e de permisos y de aislamiento. Ruta: delegada.
 - [ ] **T4 — Métrica del dashboard** (~250): "tareas completadas por técnico" en el período, por `completadaPorId`, respetando los filtros y el alcance del TECNICO. Ruta: delegada.
 - [ ] **T5 — PDF** (~150): el PDF lee la tabla nueva e imprime cada tarea con su técnico y su estado. Ruta: delegada.
@@ -117,3 +117,24 @@ Salen de la decisión de producto, viñeta por viñeta.
     - `pnpm vitest run` con los 3 specs nuevos y `src/reparaciones`: 23 archivos y 197 tests en verde.
     - `check-casts-en-specs`: 617, igual que la base.
   - Próximo paso: T2.
+- 2026-10-13: T2 cerrada en `16dbd796` (rama `feat/tareas-con-tecnico-t2`, apilada sobre T1). Salió en 1644 líneas: unas 770 de código y migración y 876 de tests. Supera el presupuesto de ~400 por la matriz de actores de los tests. Ruta: delegada.
+  - **Casos de uso** (`backend/src/tickets/application/use-cases/`): `CrearTareaTicket`, `AsignarTecnicoTarea`, `CompletarTarea`, `DescompletarTarea`, `EliminarTarea` y `ListarTareasTicket`. Las reglas compartidas están en `application/services/tareas-ticket.reglas.ts`. Todavía no están registrados en `TicketsModule`: se cablean en T3 junto con el controller.
+  - **Permiso por módulo:** el código es `<MODULO>:MODIFICACION`, y los cuatro módulos de un tipo de ticket (TICKETS, COMPRAS, EDILICIA, EQUIPOS) lo declaran en `CATALOGO_MODULOS` (`shared/domain/acciones.ts`). Se chequea **en el caso de uso**, no en `AccionesGuard`, porque el módulo sale del tipo del ticket y `@RequiereAcciones` es metadata fija por ruta. El controller de T3 arma `ActorTarea`: `modulosConModificacion` con `puedeEjecutar(user, '<M>:MODIFICACION')` para cada módulo de `MODULOS`, `esAdministrador` con ROOT o ADMINISTRADOR, y `tienePermisoVerTodos`.
+  - **Quién puede:** crear, asignar y borrar lo hacen el responsable, ADMINISTRADOR o ROOT, y además con el permiso del módulo. Completar y descompletar lo hacen el técnico de la tarea, el responsable, ADMINISTRADOR o ROOT, sin permiso de módulo. Listar lo puede quien ve el ticket (`esTicketVisiblePara`, extraída de `ObtenerTicketUseCase` y reusada ahí). Un actor sin permiso que no ve el ticket recibe `TICKET_NO_ENCONTRADO`, no un 403.
+  - **Elegibilidad:** `evaluarResponsableRegla` (`application/services/elegibilidad-responsable-regla.ts`), que usa `listarTecnicosAsignables` de `usuario-master.checker.ts`. Es la misma regla del punto 9 y no se duplicó. ADMINISTRADOR y ROOT no son técnicos elegibles. Quitar el técnico no consulta master. Reasignar el mismo técnico no escribe historial.
+  - **Historial:** son filas del catálogo `tipo_operacion`, no un enum. Se agregaron `TAREA_CREADA`, `TAREA_ASIGNADA`, `TAREA_COMPLETADA`, `TAREA_DESCOMPLETADA` y `TAREA_ELIMINADA`; alta y baja también escriben historial, como hacían las subtareas con `AVANCE_EDILICIO`. Hizo falta la migración `20261013150000_tipos_operacion_tareas` (INSERT idempotente), con un `rollback.sql` re-ejecutable que borra primero esas operaciones. Cada entrada lleva como autor al actor, la descripción de la tarea como texto y `metadata.tarea_id`; la asignación suma el técnico anterior y el nuevo, y el descompletado, quién la había completado. Los lectores existentes no se rompen: el PDF filtra `COMENTARIO` y `CAMBIO_ESTADO`, y el reloj de SLA filtra `CAMBIO_ESTADO`.
+  - **Timeline para T6:** `frontend/src/features/tickets/components/ticket-timeline.tsx` (`TIPO_OPERACION_CONFIG`). Hoy muestra los tipos nuevos como "Operación", con el ícono genérico, más la descripción. T6 les agrega su etiqueta.
+  - **Errores** (`domain/errors/tareas.errors.ts`), para que T3 los mapee:
+    - `TAREA_NO_ENCONTRADA` → 404: la tarea no existe, está dada de baja o es de otro ticket.
+    - `TAREA_YA_COMPLETADA` y `TAREA_NO_COMPLETADA` → 409.
+    - `TAREA_ACCION_NO_PERMITIDA` → 403.
+    - `TECNICO_TAREA_NO_ELEGIBLE` → 422.
+    - `TICKET_NO_ENCONTRADO` → 404.
+  - **Avance:** la fórmula se generalizó en `tickets/domain/services/avance-tareas.ts` (`calcularAvanceTareas`, que devuelve total, completadas y porcentaje). `AvanceCalculator` de reparaciones delega en ella sin cambiar a sus llamadores.
+  - **Seeder pendiente:** `clientes/infrastructure/tenant-seeder.adapter.ts` no lista los tipos nuevos, porque está fuera del alcance de T2. No hace falta para que funcione, porque el alta de un cliente corre `migrate deploy`, pero su comentario quedó desactualizado.
+  - **Verificación:**
+    - `pnpm lint`: 0 errores.
+    - `pnpm typecheck`: 0 errores.
+    - `pnpm vitest run src/tickets src/reparaciones`: 102 archivos y 1030 tests en verde, incluida la integración de atomicidad.
+    - `check-casts-en-specs`: 617 en 114, igual que la base.
+  - Próximo paso: T3.
