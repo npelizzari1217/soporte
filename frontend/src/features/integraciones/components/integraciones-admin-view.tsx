@@ -4,7 +4,8 @@
  * IntegracionesAdminView — CONTAINER client component montado por
  * `/admin/integraciones` (api-publica, T9 / CA3, CA4, CA8, CA9). Lista las
  * claves de la API pública del cliente activo con su último uso, y permite
- * crearlas y revocarlas.
+ * crearlas y revocarlas. Debajo, la sección "Webhooks" (`WebhookSection`,
+ * webhooks T7).
  *
  * Gate `esAdminCliente` (ADMINISTRADOR-o-ROOT) — defensa en profundidad: el
  * backend re-valida con `AdminClienteGuard` en el GET, el POST y el DELETE.
@@ -34,6 +35,7 @@ import { ETIQUETAS_PERMISO_API } from "../schemas";
 import type { ApiClave } from "../types";
 import { ClaveCreadaDialog } from "./clave-creada-dialog";
 import { CrearApiClaveDialog } from "./crear-api-clave-dialog";
+import { WebhookSection } from "./webhook-section";
 
 function RevocarClaveButton({ clave }: { clave: ApiClave }) {
   const revocarMutation = useRevocarApiClave();
@@ -122,7 +124,7 @@ export function IntegracionesAdminView() {
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para administrar las integraciones." />}>
         <PageHeader
           title="Integraciones"
-          description="Claves de la API pública para que otros sistemas consulten, creen y comenten tickets."
+          description="Claves de la API pública para que otros sistemas consulten, creen y comenten tickets, y webhooks para avisarles cuando algo cambia."
           actions={<CrearApiClaveDialog onClaveCreada={setClaveNueva} />}
         />
         <p className="mb-4 text-xs text-muted-foreground">
@@ -132,6 +134,7 @@ export function IntegracionesAdminView() {
         </p>
         <ApiClavesTable />
         <ClaveCreadaDialog clave={claveNueva} onCerrar={() => setClaveNueva(null)} />
+        <WebhookSection />
       </SoloAdminCliente>
     </div>
   );
