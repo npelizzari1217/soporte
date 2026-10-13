@@ -430,9 +430,10 @@ de rollback es el commit que tenía producción **antes** del primer `deploy.ps1
 
 ### 5. Rotación de `EMAIL_CRYPTO_KEY` (`rotate-email-crypto-key.ps1`)
 
-Cifra en reposo la contraseña SMTP de cada cliente **y los secretos TOTP del 2FA**
-(`usuarios_tfa.secreto_cifrado` y `secreto_pendiente_cifrado`, AAD `tfa:{usuario_id}`). La
-rotación re-cifra los tres destinos en una sola transacción: si cualquiera no descifra, no se
+Cifra en reposo la contraseña SMTP de cada cliente, **los secretos TOTP del 2FA**
+(`usuarios_tfa.secreto_cifrado` y `secreto_pendiente_cifrado`, AAD `tfa:{usuario_id}`) **y el
+secreto de firma de los webhooks** (`webhook_destinos.secreto_cifrado`, AAD
+`webhook:{cliente_id}`). La rotación re-cifra los cuatro destinos en una sola transacción: si cualquiera no descifra, no se
 modifica ninguno, y `--verificar` también los recorre. Se genera **una sola vez** en el deploy
 (`deploy.ps1` paso 5b) y, si existe, no se toca — regenerarla a mano convierte toda credencial
 guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
@@ -835,6 +836,45 @@ los tickets y comentarios que crearon en los tenants, y el código viejo no los 
 
 Para cortar la API sin revert, alcanza con que ROOT la deshabilite en cada cliente: las claves
 dejan de funcionar en el acto y se conservan.
+
+## Webhooks
+
+Etapa 2 de la API pública. Entra sin efecto visible: ningún cliente tiene un destino configurado,
+y sin la API habilitada no se encola ni se envía nada. Qué cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migración master | `20261013120000_webhooks`, **aditiva**: la tabla `webhook_destinos` (un destino por cliente, con el secreto cifrado). Sin backfill ni seed. Entra por `migrate:master` dentro de la ventana de `predeploy-dump.ps1`. |
+| Migración tenant | `20261013130000_webhook_entregas`, **aditiva**: la tabla `webhook_entregas` (cola y registro de entregas) en cada base de inquilino. Entra por `migrate:tenants`. |
+| Variables nuevas | `WEBHOOK_SWEEP_CRON` en `backend/.env`, **opcional**: cron del barrido que envía y purga, default cada minuto. `WEBHOOK_SWEEP_HABILITADO`, **opcional**: con `false` el barrido no corre y no sale ningún aviso; ausente, queda encendido. |
+| Rotación de `EMAIL_CRYPTO_KEY` | `rotar-email-crypto-key.mjs` ahora re-cifra también `webhook_destinos.secreto_cifrado` (AAD `webhook:{cliente_id}`), en la misma transacción que el resto. Ver "5. Rotación de `EMAIL_CRYPTO_KEY`". |
+| Red | El VPS necesita **HTTPS saliente** (puerto 443) hacia los endpoints de los clientes. Un firewall que lo corte deja cada entrega en error de conexión o timeout, y a las 24 horas en FALLIDA. |
+| Dependencias | Ninguna: el envío usa `node:https`. El lockfile no cambia. |
+
+**Pendiente del dueño:** sumar `WEBHOOK_SWEEP_CRON` y `WEBHOOK_SWEEP_HABILITADO` a
+`backend/.env.example`. Los agentes no pueden leer ni editar archivos `.env*`.
+
+### Smoke posterior al deploy
+
+En el log de `soporte-backend` no tiene que aparecer `WEBHOOK_SWEEP_ERROR`. Con un cliente de
+prueba que tenga la API habilitada y un destino configurado, cambiar el estado de un ticket y
+revisar en "Integraciones" que la entrega pase a ENTREGADA en uno o dos minutos.
+
+### Migración y rollback
+
+Los dos `rollback.sql` son **destructivos** y re-ejecutables (`DROP TABLE IF EXISTS`). Se
+revierte **primero el código**:
+
+- el de master borra la configuración de todos los clientes, secretos incluidos: al volver a
+  migrar, cada ADMINISTRADOR configura el destino otra vez y entrega el secreto nuevo a su
+  integrador;
+- el de tenant se corre contra **cada** base de inquilino y borra la cola y el registro, con los
+  avisos pendientes.
+
+Para cortar los envíos sin revert, alcanza con `WEBHOOK_SWEEP_HABILITADO=false` en
+`backend/.env` y reiniciar `soporte-backend`. Los avisos se siguen encolando y salen al volver a
+encenderlo, salvo los de más de 30 días, que el primer barrido purga antes de enviar. Para un solo cliente alcanza con que
+su ADMINISTRADOR desactive el destino, o con que ROOT le deshabilite la API.
 
 ## Cuando algo falla
 
