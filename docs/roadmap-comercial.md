@@ -1172,6 +1172,9 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - asignar tareas con la regla del punto 9.
 
     `TicketEdilicia.personalAsignadoId`, que nunca se usó, se borra.
+  - **Precisión (2026-10-13):** el técnico de una tarea activa ve el ticket, en el
+    detalle y en su listado de tickets, aunque no sea el responsable ni tenga permiso
+    para ver todos. Sin esto, un técnico sin ese permiso no llega a su tarea.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
