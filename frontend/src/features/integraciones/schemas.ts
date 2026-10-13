@@ -54,3 +54,95 @@ export const crearApiClaveBodySchema = z.object({
     .max(LARGO_MAXIMO_NOMBRE_CLAVE, `El nombre admite hasta ${LARGO_MAXIMO_NOMBRE_CLAVE} caracteres.`),
   permisos: z.array(permisoApiSchema).min(1, "Elegí al menos un permiso."),
 });
+
+/*
+ * Webhooks (webhooks, T7): espejo de las vistas de `WebhookController`
+ * (`backend/src/integraciones/interface/webhook.controller.ts`). `eventos`
+ * viaja con los códigos internos; el registro de entregas, con el nombre externo.
+ */
+
+/** Espejo de los eventos suscribibles: los cuatro que acepta `PUT /integraciones/webhook` (CA1). */
+export const EVENTOS_WEBHOOK = ["TICKET_CREADO", "TICKET_ESTADO_CAMBIADO", "TICKET_ASIGNADO", "TICKET_COMENTADO"] as const;
+
+export const eventoWebhookSchema = z.enum(EVENTOS_WEBHOOK);
+
+export const ETIQUETAS_EVENTO_WEBHOOK: Record<(typeof EVENTOS_WEBHOOK)[number], string> = {
+  TICKET_CREADO: "Ticket creado",
+  TICKET_ESTADO_CAMBIADO: "Cambio de estado",
+  TICKET_ASIGNADO: "Ticket asignado",
+  TICKET_COMENTADO: "Comentario público",
+};
+
+/** Etiqueta del nombre externo que guarda cada entrega (`NOMBRE_EXTERNO_EVENTO_WEBHOOK`). */
+export const ETIQUETAS_EVENTO_EXTERNO_WEBHOOK: Record<string, string> = {
+  "ticket.creado": ETIQUETAS_EVENTO_WEBHOOK.TICKET_CREADO,
+  "ticket.estado_cambiado": ETIQUETAS_EVENTO_WEBHOOK.TICKET_ESTADO_CAMBIADO,
+  "ticket.asignado": ETIQUETAS_EVENTO_WEBHOOK.TICKET_ASIGNADO,
+  "ticket.comentado": ETIQUETAS_EVENTO_WEBHOOK.TICKET_COMENTADO,
+};
+
+/** Espejo del largo máximo de `validarUrlDestino`. */
+export const LARGO_MAXIMO_URL_WEBHOOK = 2048;
+
+/**
+ * Respuesta de `GET /integraciones/webhook`. Sin destino, `configurado` es
+ * `false` y el resto llega en `null`. Zod descarta las claves que no declara,
+ * así que un `secreto` que llegara por error nunca pasa de acá.
+ */
+export const webhookConfigSchema = z.object({
+  configurado: z.boolean(),
+  url: z.string().nullable(),
+  eventos: z.array(eventoWebhookSchema).nullable(),
+  activo: z.boolean().nullable(),
+  creadoEn: z.string().nullable(),
+  actualizadoEn: z.string().nullable(),
+});
+
+/** Respuesta de `PUT /integraciones/webhook`: la misma vista, con `secreto` SOLO cuando crea el destino. */
+export const webhookGuardadoSchema = webhookConfigSchema.extend({ secreto: z.string().min(1).optional() });
+
+/** Respuesta de `POST /integraciones/webhook/secreto`: el secreto nuevo en claro, una sola vez. */
+export const secretoWebhookSchema = z.object({ secreto: z.string().min(1) });
+
+export const entregaWebhookSchema = z.object({
+  id: z.string(),
+  evento: z.string(),
+  ticketId: z.string(),
+  numero: z.string().nullable(),
+  estado: z.enum(["PENDIENTE", "ENTREGADA", "FALLIDA"]),
+  intentos: z.number().int(),
+  ultimoCodigo: z.number().int().nullable(),
+  ultimoError: z.string().nullable(),
+  createdAt: z.string(),
+  proximoIntentoAt: z.string().nullable(),
+  entregadaAt: z.string().nullable(),
+});
+
+/** Respuesta de `GET /integraciones/webhook/entregas`, la más nueva primero. */
+export const entregasWebhookSchema = z.object({
+  items: z.array(entregaWebhookSchema),
+  total: z.number().int(),
+  pagina: z.number().int(),
+  porPagina: z.number().int(),
+});
+
+/** Body de `PUT /integraciones/webhook`. El backend re-valida la URL y además resuelve el host. */
+export const guardarWebhookBodySchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .min(1, "Ingresá la URL del webhook.")
+    .max(LARGO_MAXIMO_URL_WEBHOOK, `La URL admite hasta ${LARGO_MAXIMO_URL_WEBHOOK} caracteres.`)
+    .refine(esUrlHttps, "La URL tiene que empezar con https://."),
+  eventos: z.array(eventoWebhookSchema).min(1, "Elegí al menos un evento."),
+  activo: z.boolean(),
+});
+
+function esUrlHttps(valor: string): boolean {
+  if (valor.length === 0) return true; // ya lo informa `min(1)`
+  try {
+    return new URL(valor).protocol === "https:";
+  } catch {
+    return false;
+  }
+}

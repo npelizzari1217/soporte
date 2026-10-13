@@ -91,3 +91,76 @@ export class TipoTicketV1NoDisponibleError extends DomainError {
     super('El tipo de ticket no existe o no está disponible en la API.');
   }
 }
+
+/** El secreto del webhook no descifra: clave equivocada, payload roto o movido de cliente. */
+export class SecretoWebhookIndescifrableError extends DomainError {
+  readonly code = 'WEBHOOK_SECRETO_INDESCIFRABLE';
+
+  constructor() {
+    super('No se pudo descifrar el secreto del webhook.');
+  }
+}
+
+/**
+ * La URL del destino de webhooks no pasa la validación sintáctica (odd/webhooks, CA8): no es HTTPS,
+ * lleva credenciales, es demasiado larga o apunta a una IP literal que no es pública.
+ */
+export class UrlWebhookInvalidaError extends DomainError {
+  readonly code = 'WEBHOOK_URL_INVALIDA';
+
+  constructor(motivo: string) {
+    super(`La URL del webhook no es válida: ${motivo}`);
+  }
+}
+
+/** El host del destino resuelve, en al menos una de sus respuestas, a una IP que no es pública. */
+export class DestinoWebhookNoPublicoError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_NO_PUBLICO';
+
+  constructor() {
+    super('El destino del webhook resuelve a una dirección que no es pública.');
+  }
+}
+
+/** El host del destino no resuelve a ninguna dirección. */
+export class DestinoWebhookIrresolubleError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_IRRESOLUBLE';
+
+  constructor() {
+    super('No se pudo resolver el host del destino del webhook.');
+  }
+}
+
+/** Los eventos del destino están vacíos o incluyen alguno fuera de `EVENTOS_WEBHOOK`. */
+export class EventosWebhookInvalidosError extends DomainError {
+  readonly code = 'WEBHOOK_EVENTOS_INVALIDOS';
+
+  constructor() {
+    super(
+      'El webhook necesita al menos un evento, y todos deben ser eventos de webhook conocidos.',
+    );
+  }
+}
+
+/**
+ * El host del destino no se admite al guardarlo: no resuelve, o resuelve a una dirección que no es
+ * pública (odd/webhooks, T6). Reemplaza a `DestinoWebhookNoPublicoError` y a
+ * `DestinoWebhookIrresolubleError` en la respuesta HTTP con un único mensaje, para que el formulario
+ * no sirva para sondear qué nombres de host internos existen.
+ */
+export class DestinoWebhookNoAdmitidoError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_NO_ADMITIDO';
+
+  constructor() {
+    super('No se puede usar ese destino: el host debe resolver solo a direcciones públicas.');
+  }
+}
+
+/** El cliente del actor no tiene un destino de webhooks configurado. */
+export class WebhookDestinoNoEncontradoError extends DomainError {
+  readonly code = 'WEBHOOK_DESTINO_NO_ENCONTRADO';
+
+  constructor() {
+    super('El cliente no tiene un destino de webhooks configurado.');
+  }
+}

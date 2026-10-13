@@ -55,6 +55,13 @@ describe("IntegracionesAdminView", () => {
   beforeEach(() => {
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
+    // La sección Webhooks (webhooks T7) tiene sus propios tests: acá solo se la deja cargar.
+    server.use(
+      http.get("/api/integraciones/webhook", () =>
+        HttpResponse.json({ configurado: false, url: null, eventos: null, activo: null, creadoEn: null, actualizadoEn: null }),
+      ),
+      http.get("/api/integraciones/webhook/entregas", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 20 })),
+    );
   });
 
   it("un no administrador no ve la pantalla", async () => {
@@ -63,6 +70,14 @@ describe("IntegracionesAdminView", () => {
     expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
     expect(screen.queryByText("ERP")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /nueva clave/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Webhooks" })).not.toBeInTheDocument();
+  });
+
+  it("muestra la sección Webhooks debajo de las claves", async () => {
+    mockLista([clave({})]);
+    renderAdmin();
+    expect(await screen.findByRole("heading", { name: "Webhooks" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("URL de destino")).toBeInTheDocument();
   });
 
   it("ROOT sin rol de ADMINISTRADOR ve la pantalla", async () => {

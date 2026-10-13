@@ -29,9 +29,9 @@ const MASTER_TEST_URL =
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
 const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../prisma_master/migrations');
-// Reproducimos el schema hasta la migración de `usuarios_tfa` incluida (destinos
-// TOTP de la rotación), porque acá probamos la rotación, no las migraciones.
-const ULTIMA_CARPETA_PREVIA = '20261008120000_verificacion_dos_pasos';
+// Reproducimos el schema hasta la última migración que agrega un destino de la
+// rotación (`webhook_destinos`), porque acá probamos la rotación, no las migraciones.
+const ULTIMA_CARPETA_PREVIA = '20261013120000_webhooks';
 const EPHEMERAL_DB_NAME = `soporte_rotacion_email_${randomBytes(4).toString('hex')}_test`;
 
 const OLD_KEY_HEX = 'a'.repeat(64);
@@ -94,6 +94,30 @@ async function insertarUsuarioTfa(
      VALUES ($1, $2, CASE WHEN $2::text IS NULL THEN NULL ELSE now() END, $3, CASE WHEN $3::text IS NULL THEN NULL ELSE now() END, now())`,
     [id, activo, pendiente],
   );
+}
+
+/** Inserta el destino de webhooks del cliente `clienteId`, que ya debe existir. */
+async function insertarWebhook(
+  pool: InstanceType<typeof Pool>,
+  clienteId: string,
+  payload: string,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO webhook_destinos (cliente_id, url, eventos, secreto_cifrado, updated_at)
+     VALUES ($1, 'https://erp.example.com/hooks', ARRAY['TICKET_CREADO'], $2, now())`,
+    [clienteId, payload],
+  );
+}
+
+async function leerSecretoWebhook(
+  pool: InstanceType<typeof Pool>,
+  clienteId: string,
+): Promise<string> {
+  const { rows } = await pool.query(
+    `SELECT secreto_cifrado FROM webhook_destinos WHERE cliente_id = $1`,
+    [clienteId],
+  );
+  return rows[0].secreto_cifrado;
 }
 
 async function leerTfa(
@@ -432,6 +456,47 @@ describe('rotar-email-crypto-key — ejecutarRotacion() (WU2a, master)', () => {
       const resultado = await ejecutarVerificacion(pool, { verificarKeyBuf: newKeyBuf });
       expect(resultado.exitCode).toBe(3);
       expect((await leerTfa(pool, idUsuario)).secreto_pendiente_cifrado).toBe(pendienteAjeno);
+    });
+  });
+
+  describe('destino de webhooks (webhook_destinos)', () => {
+    it('re-cifra el secreto con la clave nueva y AAD webhook:{cliente_id}; segunda corrida no-op', async () => {
+      const idCliente = randomUUID();
+      await insertarCliente(
+        pool,
+        idCliente,
+        'webhook-rotar',
+        cifrarV1(oldKeyBuf, 'smtp', idCliente),
+      );
+      await insertarWebhook(pool, idCliente, cifrarV1(oldKeyBuf, 'whsec', `webhook:${idCliente}`));
+
+      const primera = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(primera).toMatchObject({ exitCode: 0, migradas: 2, yaMigradas: 0 });
+      const rotado = await leerSecretoWebhook(pool, idCliente);
+      expect(descifrarV1(newKeyBuf, rotado, `webhook:${idCliente}`)).toBe('whsec');
+      expect(() => descifrarV1(newKeyBuf, rotado, idCliente)).toThrow();
+
+      const segunda = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(segunda).toMatchObject({ exitCode: 0, migradas: 0, yaMigradas: 2 });
+      expect(await leerSecretoWebhook(pool, idCliente)).toBe(rotado);
+    });
+
+    it('un secreto de webhook cifrado con el AAD de otro cliente revierte TODO', async () => {
+      const idA = randomUUID();
+      const idB = randomUUID();
+      const smtpOriginal = cifrarV1(oldKeyBuf, 'smtp', idA);
+      const movido = cifrarV1(oldKeyBuf, 'whsec', `webhook:${idB}`);
+      await insertarCliente(pool, idA, 'webhook-movido', smtpOriginal);
+      await insertarWebhook(pool, idA, movido);
+
+      const resultado = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(resultado).toMatchObject({ exitCode: 3 });
+      expect(await leerSecretoWebhook(pool, idA)).toBe(movido);
+      const { rows } = await pool.query(
+        `SELECT smtp_password_cifrada FROM clientes WHERE id = $1`,
+        [idA],
+      );
+      expect(rows[0].smtp_password_cifrada).toBe(smtpOriginal);
     });
   });
 });

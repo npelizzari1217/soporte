@@ -1542,3 +1542,29 @@ model ReglaAsignacion {
 
   @@map("reglas_asignacion")
 }
+
+/// Cola y registro de avisos de webhook del cliente (odd/webhooks, T2). Una fila por aviso: su `id`
+/// es el id de entrega, que no cambia entre reintentos (el receptor lo usa para descartar
+/// duplicados). `payload` es el cuerpo exacto, congelado al encolar.
+/// `ticket_id` es una referencia blanda a `tickets.id`, sin FK: el registro es una bitácora de
+/// salida que se purga a los 30 días por su cuenta, y no debe ni frenar ni arrastrar el borrado de
+/// un ticket. El aviso ya lleva su copia del resumen del ticket en `payload`.
+/// `estado` admite PENDIENTE, ENTREGADA y FALLIDA (CHECK webhook_entregas_estado_check).
+model WebhookEntrega {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  evento           String    @db.VarChar(40)
+  ticketId         String    @map("ticket_id") @db.Uuid
+  payload          Json      @db.JsonB
+  estado           String    @default("PENDIENTE") @db.VarChar(16)
+  intentos         Int       @default(0)
+  proximoIntentoAt DateTime  @map("proximo_intento_at") @db.Timestamptz
+  ultimoCodigo     Int?      @map("ultimo_codigo")
+  ultimoError      String?   @map("ultimo_error") @db.VarChar(500)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  entregadaAt      DateTime? @map("entregada_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([estado, proximoIntentoAt])
+  @@index([createdAt])
+  @@map("webhook_entregas")
+}

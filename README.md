@@ -160,6 +160,8 @@ Las variables marcadas **Requerida** se validan al arrancar (`backend/src/config
 | `APP_BASE_URL` | **Requerida — sin default.** URL base pública de la app, usada para armar links en emails de notificación (ej. `${APP_BASE_URL}/tickets/:id`). Usada por las plantillas de email del módulo `notificaciones/` (PR-N). |
 | `SSO_GOOGLE_CLIENT_ID` / `SSO_GOOGLE_CLIENT_SECRET` / `SSO_MICROSOFT_CLIENT_ID` / `SSO_MICROSOFT_CLIENT_SECRET` | **Opcionales.** Credenciales de la app OAuth de cada proveedor para el login con Google o Microsoft. Un proveedor se habilita solo con su par completo (ID y secreto no vacíos); sin ninguna de las cuatro, `GET /api/auth/sso/proveedores` devuelve `{"proveedores":[]}`, no aparece ningún botón y el login con contraseña queda igual. La URI de redirección se deriva de `APP_BASE_URL`: `${APP_BASE_URL}/api/auth/sso/<google\|microsoft>/callback`. Alta de las apps y rotación del secreto: `DEPLOY-VPS-runbook.md`, sección "Login con Google o Microsoft (SSO)". |
 | `API_V1_RATE_LIMIT` | **Opcional.** Pedidos por minuto que acepta cada clave de la API pública (`/api/v1`). Default: `60`. Un valor que no sea un entero positivo usa el default. |
+| `WEBHOOK_SWEEP_CRON` | **Opcional.** Expresión cron del barrido que envía y purga los webhooks (`WebhookEnvioScheduler`, módulo `integraciones/`). Default: cada minuto (`CronExpression.EVERY_MINUTE`). |
+| `WEBHOOK_SWEEP_HABILITADO` | **Opcional.** Con `false` el barrido no corre: no sale ningún webhook y los avisos quedan pendientes. Cualquier otro valor, o ausente, lo deja encendido. La suite de tests lo apaga. |
 | `PORT` / `NODE_ENV` | Configuración de la app. |
 
 ### Dependencias nuevas (módulo SLA, Fase 4)
@@ -281,6 +283,83 @@ tickets (listar, ver, crear y comentar en público) y un catálogo de solo lectu
 | Guardado | La clave en claro se muestra **una sola vez** al crearla y se guarda como sha256: no se puede volver a ver. Cada clave registra su último uso. |
 
 Notas de deploy: `DEPLOY-VPS-runbook.md`, sección "API pública (v1)".
+
+### Webhooks
+
+Avisan al sistema del cliente cuando pasa algo con un ticket, sin que tenga que consultar la
+API. El **ADMINISTRADOR** (o ROOT) configura un único destino por cliente desde
+"Integraciones": la URL, los eventos que recibe y si está activo. Hace falta que ROOT haya
+habilitado la API.
+
+| Tema | Cómo funciona |
+|---|---|
+| Eventos | `ticket.creado`, `ticket.estado_cambiado`, `ticket.asignado` y `ticket.comentado` (solo comentarios públicos: un comentario interno no genera aviso). |
+| Pedido | `POST` a la URL configurada, con el cuerpo en JSON. |
+| Éxito | El receptor tiene que responder **2xx en 10 segundos o menos**. Cualquier otra respuesta, un timeout o un error de red es un intento fallido. Las redirecciones **no se siguen**: un 3xx cuenta como fallo. |
+| Destino | Solo **HTTPS** y solo direcciones **públicas**: se rechazan IPs privadas, loopback y link-local, tanto al guardar como en cada envío (el DNS se resuelve cada vez). |
+| Entrega | **Al menos una vez.** Un mismo aviso puede llegar más de una vez, siempre con el mismo `X-Soporte-Entrega`: el receptor descarta los duplicados por ese valor. |
+| Reintentos | Tras un fallo se reintenta a los 1 min, 5 min, 15 min, 30 min, 1 h, 2 h, 4 h, 8 h y 8 h: 10 intentos en unas 24 horas. Después la entrega queda **FALLIDA** y no se reintenta más. |
+| Pausa | Con la API deshabilitada o el destino inactivo no se encolan avisos nuevos, y los que ya estaban pendientes no se envían ni consumen intentos hasta que se reactiven. |
+| Registro | La pantalla "Integraciones" muestra cada entrega: evento, ticket, estado, intentos, último código o error y fechas. Se conservan 30 días. |
+| Secreto | `whsec_` seguido de 32 bytes en base64url. Se muestra **una sola vez**, al crear el destino o al regenerarlo; regenerarlo invalida el anterior. Se guarda cifrado. |
+
+**Cuerpo.** Es un resumen corto del ticket, sin título, descripción ni comentarios: el detalle se
+pide por la API v1 con el `id`.
+
+```json
+{
+  "evento": "ticket.estado_cambiado",
+  "ocurridoEn": "2026-10-13T14:05:12.345Z",
+  "ticket": {
+    "id": "6f1c2e0a-…",
+    "numero": "1234",
+    "estado": "ASIGNADO",
+    "tipo": "b7d9…",
+    "creadoEn": "2026-10-13T13:58:01.000Z",
+    "actualizadoEn": "2026-10-13T14:05:12.000Z"
+  }
+}
+```
+
+`estado` es el código del estado y `tipo` es el `tipoId` de la API v1; los dos se resuelven con
+`GET /api/v1/catalogos`. Las fechas van en ISO 8601, en UTC.
+
+**Encabezados.**
+
+| Encabezado | Valor |
+|---|---|
+| `X-Soporte-Firma` | HMAC-SHA256, en hexadecimal, de `<timestamp>.<cuerpo>`. |
+| `X-Soporte-Timestamp` | Segundos desde el epoch Unix, en el momento del envío. |
+| `X-Soporte-Evento` | El nombre del evento, igual que `evento` en el cuerpo. |
+| `X-Soporte-Entrega` | Id de la entrega. Es el mismo en todos los reintentos de un aviso. |
+| `Content-Type` | `application/json` |
+| `User-Agent` | `Soporte-Webhooks/1` |
+
+**Verificar la firma.** El receptor recalcula el HMAC-SHA256 en hexadecimal sobre
+`<X-Soporte-Timestamp>.<cuerpo crudo>`, con el secreto **completo** como clave (prefijo
+`whsec_` incluido). Hay que usar el cuerpo tal como llegó, antes de parsear el JSON, y comparar
+en tiempo constante. Se recomienda además rechazar un timestamp con más de 5 minutos de
+diferencia con el reloj propio, para descartar reenvíos de un aviso capturado.
+
+```js
+const crypto = require('node:crypto');
+
+// cuerpoCrudo: el body como Buffer o string, sin parsear (p. ej. express.raw({ type: 'application/json' })).
+function verificarWebhook(secreto, headers, cuerpoCrudo, toleranciaSeg = 300) {
+  const timestamp = headers['x-soporte-timestamp'];
+  const firma = headers['x-soporte-firma'] ?? '';
+  if (!timestamp || Math.abs(Date.now() / 1000 - Number(timestamp)) > toleranciaSeg) return false;
+  const esperada = crypto
+    .createHmac('sha256', secreto)
+    .update(`${timestamp}.${cuerpoCrudo}`)
+    .digest('hex');
+  const a = Buffer.from(firma, 'utf8');
+  const b = Buffer.from(esperada, 'utf8');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+Notas de deploy: `DEPLOY-VPS-runbook.md`, sección "Webhooks".
 
 ## Testing
 

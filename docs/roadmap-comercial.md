@@ -651,7 +651,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 5 | **Verificación en dos pasos (2FA)** | La exigen instituciones medianas; GLPI 11 ya la tiene | Media · 3-5 días | **Entregado** — en `main` por el #472 (`20b320a4`), desplegado el 2026-10-07 |
 | 6 | **SLA de primera respuesta y pausa del reloj** | Hoy "esperando al cliente" cuenta como tiempo de SLA. Toca el motor de horas hábiles y el dashboard | Media-Alta · 5-8 días | **Entregado** — en `main` por los PRs #391-#422 (`56341154`), desplegado el 2026-10-06 |
 | 7 | **Login con Google o Microsoft (SSO)** | Menos contraseñas, sobre todo en colegios con Google Workspace. Tiene que respetar el usuario global con varios clientes | Media · 4-6 días | **Entregado** — en `main` por el #510 (`c5e1ec0a`), desplegado el 2026-10-10. Google habilitado en producción con la pantalla de consentimiento en modo prueba y verificado con cuentas reales el 2026-10-11 (V.1); Microsoft sigue sin configurar ni probar |
-| 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | En curso — decisiones cerradas el 2026-10-10: primero la API (solo tickets), después los webhooks. **Etapa 1 (API) entregada**: en `main` por el merge local `068f53f1` de la cadena `feat/api-publica` (más el arreglo del rollback, `11bffe7a`), desplegada el 2026-10-11 por bundle, sin pasar por GitHub. Ningún cliente la tiene habilitada todavía. Etapa 2 (webhooks) pendiente |
+| 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | En curso — decisiones cerradas el 2026-10-10: primero la API (solo tickets), después los webhooks. **Etapa 1 (API) entregada**: en `main` por el merge local `068f53f1` de la cadena `feat/api-publica` (más el arreglo del rollback, `11bffe7a`), desplegada el 2026-10-11 por bundle, sin pasar por GitHub. Ningún cliente la tiene habilitada todavía. **Etapa 2 (webhooks) implementada** el 2026-10-13 en la cadena local `feat/webhooks` (documento `odd/tasks/webhooks.md`), pendiente de merge a `main` y de deploy |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | **Entregado** — en `main` por el #490 (`776c6d69`), desplegado el 2026-10-09. Un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | Sin base desde el 2026-10-08: requiere decidir cómo se resuelve el cliente |
 | 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
@@ -1123,6 +1123,24 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - Se ve un **registro de entregas** en la pantalla de Integraciones.
     - Los secretos de firma se guardan **cifrados**, con la misma clave y el mismo
       procedimiento de rotación que las contraseñas de correo.
+    - **Cumplida, con una desviación declarada de antemano** (2026-10-13, cadena local
+      `feat/webhooks`, sin merge a `main` ni deploy todavía, documento
+      `odd/tasks/webhooks.md`). Cada viñeta es un criterio de aceptación de ese
+      documento:
+      - Eventos (CA1): **Cumplida**. Solo creado, cambio de estado, asignado y
+        comentado público; un comentario interno no genera aviso y no hay eventos de
+        SLA.
+      - Entrega al menos una vez (CA2): **Desviación** (D1). Los reintentos se acotan
+        a unas 24 horas (10 intentos) y después la entrega queda FALLIDA, en vez de
+        seguir "hasta que el destino responde": reintentar para siempre a un destino
+        muerto llena la cola y no lo arregla. Nota D2: el aviso se encola después del
+        commit, así que si el proceso se cae entre el commit y el encolado ese aviso se
+        pierde; se acepta la ventana porque es muy chica y la API permite reconciliar.
+      - Resumen corto (CA3): **Cumplida**. Identificador, número, estado, tipo y
+        fechas, sin título, descripción ni comentarios.
+      - Registro de entregas en Integraciones (CA4): **Cumplida**.
+      - Secretos cifrados con `EMAIL_CRYPTO_KEY` y re-cifrados por
+        `rotar-email-crypto-key.mjs` (CA5): **Cumplida**.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
@@ -1175,6 +1193,12 @@ de las entregas anteriores está anotada solo en los mensajes de sus commits
 - **API pública, etapa 1** (2026-10-10, anotada en los commits de T8 y T9):
   - el artículo de Clientes (ROOT) no tiene la acción "API";
   - falta un artículo nuevo para la pantalla "Integraciones" del ADMINISTRADOR.
+- **Webhooks, etapa 2 de la API pública** (2026-10-13, anotada en los commits de T7 y
+  T8 de la cadena `feat/webhooks`):
+  - la sección "Webhooks" de la pantalla "Integraciones": destino, eventos, secreto
+    mostrado una sola vez, regenerar secreto y registro de entregas;
+  - qué es un webhook, cuándo se envía, los reintentos y qué hace el integrador con el
+    secreto.
 
 ## Nota
 
