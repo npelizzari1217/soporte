@@ -34,6 +34,8 @@ import {
   REGLA_ASIGNACION_REPOSITORY,
 } from './domain/ports/i-regla-asignacion.repository';
 import { ResolverAsignacionAutomatica } from './application/services/resolver-asignacion-automatica.service';
+import { TAREA_TICKET_REPOSITORY } from './domain/ports/i-tarea-ticket.repository';
+import { PrismaTareaTicketRepository } from './infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
 import {
   OPERACION_TICKET_REPOSITORY,
   IOperacionTicketRepository,
@@ -171,6 +173,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
     { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
     { provide: REGLA_ASIGNACION_REPOSITORY, useClass: PrismaReglaAsignacionRepository },
+    // odd/tareas-con-tecnico T1: tareas de cualquier tipo de ticket. Todavía sin consumidores.
+    { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
 
     {
       provide: NumeradorTicket,
@@ -567,6 +571,9 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     // módulos (Equipos, Reparaciones) y la pantalla de configuración.
     REGLA_ASIGNACION_REPOSITORY,
     ResolverAsignacionAutomatica,
+    // odd/tareas-con-tecnico: las tareas las leen también el listado de reparaciones, el dashboard
+    // y el PDF, que viven en otros módulos.
+    TAREA_TICKET_REPOSITORY,
     // sdd/preventivo WU-5 (5.1): CrearTicketUseCase exportado para que
     // GenerarPreventivosUseCase lo reuse en vez de reimplementar la sección
     // crítica de numeración (ADR-PV5) — mismo criterio que los tokens de

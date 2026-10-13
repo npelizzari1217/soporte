@@ -14,8 +14,8 @@
 //     soft delete: la baja es eliminación física (ON DELETE CASCADE / delete).
 //   - updatedAt gestionado por Prisma (@updatedAt) en entidades con soft delete.
 //   - Soft refs cross-DB: solicitante_id, asignado_id, autor_id, subido_por_id,
-//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id y
-//     completada_por_id
+//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id,
+//     completada_por_id y tecnico_id
 //     referencian filas de la DB master (usuarios / ciclos_vigentes).
 //     NO tienen FK real — una FK cross-DB es imposible en Postgres (cada
 //     tenant es una base de datos física distinta). La integridad se valida
@@ -336,6 +336,7 @@ model Ticket {
   ticketEdilicia        TicketEdilicia?
   ticketSoporte         TicketSoporte?
   encuestasSatisfaccion EncuestaSatisfaccion[]
+  tareas                TareaTicket[]
   /// Back-relation opcional: NO todo ticket nace de un plan preventivo — la
   /// mayoría son altas manuales. Posible gracias al UNIQUE sobre
   /// preventivo_generacion.ticket_id (sdd/preventivo, WU-2).
@@ -389,6 +390,48 @@ model EncuestaSatisfaccion {
 
   @@index([ticketId, respondidaEn(sort: Desc)], map: "encuestas_satisfaccion_ticket_id_respondida_en_idx")
   @@map("encuestas_satisfaccion")
+}
+
+// ─── TAREAS_TICKET (tareas con técnico, odd/tareas-con-tecnico T1) ────────────
+//
+// Tareas de cualquier tipo de ticket, cada una con un técnico opcional. El
+// crédito de una tarea es de quien la completó (`completada_por_id`), no del
+// responsable del ticket (`tickets.asignado_id`, que no cambia de significado).
+// Reemplaza a `subtareas_edilicia`: la migración 20261013140000 copia sus filas
+// conservando los ids; la tabla vieja se retira en una migración posterior.
+//
+// ticket_id: FK real con ON DELETE RESTRICT, igual que `operaciones_ticket` y
+//   `encuestas_satisfaccion`. Los tickets se dan de baja lógica, así que la FK no
+//   frena nada en el uso normal, y un borrado físico de un ticket no puede
+//   arrastrar en silencio el registro de quién hizo cada tarea.
+// tecnico_id y completada_por_id: soft refs → master.usuarios.id, sin FK.
+// CHECK tareas_ticket_completada_check — migration SQL: completada = true exige
+//   completada_en y completada_por_id; completada = false exige los dos en NULL.
+//   La entidad (`TareaTicketEntity`) sostiene el mismo invariante.
+// Índices: (ticket_id, deleted_at, orden) para el listado de un ticket;
+//   (completada_en, completada_por_id) para la métrica "tareas completadas por
+//   técnico" del dashboard: el rango de fechas es el predicado común a todos los
+//   alcances, y el técnico va segundo para agrupar o filtrar sin ir a la tabla.
+model TareaTicket {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId        String    @map("ticket_id") @db.Uuid
+  descripcion     String    @db.VarChar(255)
+  orden           Int       @default(0)
+  /// Soft ref → master.usuarios.id. NULL = tarea sin técnico.
+  tecnicoId       String?   @map("tecnico_id") @db.Uuid
+  completada      Boolean   @default(false)
+  completadaEn    DateTime? @map("completada_en") @db.Timestamptz
+  /// Soft ref → master.usuarios.id. Quién completó la tarea; NULL mientras está pendiente.
+  completadaPorId String?   @map("completada_por_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, deletedAt, orden])
+  @@index([completadaEn, completadaPorId])
+  @@map("tareas_ticket")
 }
 
 // ─── OPERACIONES_TICKET (timeline inmutable de eventos) ───────────────────────
