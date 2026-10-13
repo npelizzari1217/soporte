@@ -82,7 +82,7 @@ Salen de la decisión de producto (CA1 a CA5) y de los supuestos aprobados (CA6 
   - Todo es local mientras dure la pausa de GitHub.
 
 ## Tareas
-- [ ] **T1 — Configuración en master** (~350): modelo del destino por cliente (URL, eventos suscriptos, secreto cifrado, activo, fechas), migración con `rollback.sql`, puerto y repositorio, alta del secreto en `DESTINOS` de `rotar-email-crypto-key.mjs` y tests de integración. Ruta: delegada (trigger de writer).
+- [x] **T1 — Configuración en master** (~350): modelo del destino por cliente (URL, eventos suscriptos, secreto cifrado, activo, fechas), migración con `rollback.sql`, puerto y repositorio, alta del secreto en `DESTINOS` de `rotar-email-crypto-key.mjs` y tests de integración. Ruta: delegada (trigger de writer). Salió en 548 líneas, commit `336bc645`.
 - [ ] **T2 — Entregas en el inquilino** (~300): tabla de entregas (id, evento, ticket, payload, estado PENDIENTE/ENTREGADA/FALLIDA, intentos, próximo intento, último código, último error, fechas), migración con `rollback.sql`, puerto, repositorio y tests de integración. Ruta: delegada (trigger de writer).
 - [ ] **T3 — Dominio puro** (~250): la firma HMAC, la política de espera exponencial con su plazo de unas 24 h, y la validación de la URL (HTTPS y rechazo de IPs privadas, loopback y link-local). Tests unitarios. Ruta: delegada (trigger de writer).
 - [ ] **T4 — Listener que encola** (~300): escucha `ticket.creado`, `ticket.estado_cambiado`, `ticket.asignado` y `ticket.comentado`. Si la API está habilitada y el evento está suscripto, arma el resumen y encola. Incluye un test de aislamiento entre clientes. Ruta: delegada (trigger de writer).
@@ -105,3 +105,4 @@ Salen de la decisión de producto (CA1 a CA5) y de los supuestos aprobados (CA6 
 
 ## Progreso
 - 2026-10-13: el dueño aprobó los supuestos y se creó el documento. Próximo paso: T1.
+- 2026-10-13: T1 cerrada en `feat/webhooks-t1` (commit `336bc645`, 548 líneas: los tests de integración y de rotación pesan más de lo previsto). Tabla `webhook_destinos` con PK `cliente_id` y FK en cascada como `api_claves`; el secreto se cifra fuera del repositorio, en `SecretoWebhookCifrado` (AAD `webhook:{clienteId}`, mismo criterio que `SecretoTotpCifrado`), y la rotación lo re-cifra. Migración aplicada a `soporte_master` local y a `soporte_master_test`. Verificación: `pnpm lint` y `pnpm typecheck` en cero, `pnpm vitest run src/integraciones scripts/rotar-email-crypto-key` 22 archivos y 136 tests en verde, ratchet de casts en 617 (sin subir). Próximo paso: T2.
