@@ -80,7 +80,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - **Despliegue:** la migración de datos (T1) y el retiro de la tabla vieja (T8) van en migraciones separadas, y el retiro se despliega solo cuando ningún código lee la tabla vieja.
 
 ## Tareas
-- [ ] **T1 — Modelo y migración de datos** (~400): tabla `tareas_ticket` en el inquilino, colgada de `tickets`. Columnas: descripción, orden, técnico opcional, completada, completadaEn, completadaPorId, timestamps y baja lógica. La migración copia `subtareas_edilicia` a la tabla nueva vía `ticket_edilicia.ticket_id`, conservando ids y datos, y lleva `rollback.sql`. Incluye la entidad, el puerto, el repositorio y los tests de integración, con uno que compruebe que la copia es completa. La tabla vieja **todavía no se borra**. Ruta: delegada (trigger de writer).
+- [x] **T1 — Modelo y migración de datos** (~400): tabla `tareas_ticket` en el inquilino, colgada de `tickets`. Columnas: descripción, orden, técnico opcional, completada, completadaEn, completadaPorId, timestamps y baja lógica. La migración copia `subtareas_edilicia` a la tabla nueva vía `ticket_edilicia.ticket_id`, conservando ids y datos, y lleva `rollback.sql`. Incluye la entidad, el puerto, el repositorio y los tests de integración, con uno que compruebe que la copia es completa. La tabla vieja **todavía no se borra**. Ruta: delegada (trigger de writer). Salió en 1205 líneas, commit `1d10a92e`.
 - [ ] **T2 — Casos de uso** (~400): crear, asignar o quitar técnico (elegibilidad del punto 9), completar, descompletar y borrar, con las reglas de quién puede (CA3, CA4) y el permiso de modificación del módulo del tipo. Cada acción escribe su entrada en el historial (`OperacionTicket`). El cálculo de avance se generaliza a cualquier ticket. Ruta: delegada.
 - [ ] **T3 — Endpoints y Edilicia sobre la tabla nueva** (~350): endpoints genéricos bajo el ticket. Los endpoints y el listado de reparaciones pasan a leer y escribir la tabla nueva, sin cambiar lo que ve el usuario de Edilicia. Incluye un e2e de permisos y de aislamiento. Ruta: delegada.
 - [ ] **T4 — Métrica del dashboard** (~250): "tareas completadas por técnico" en el período, por `completadaPorId`, respetando los filtros y el alcance del TECNICO. Ruta: delegada.
@@ -104,3 +104,16 @@ Salen de la decisión de producto, viñeta por viñeta.
 
 ## Progreso
 - 2026-10-13: el dueño aprobó la decisión de producto; quedó en el roadmap en `8fe88835`. Se creó este documento. Próximo paso: T1.
+- 2026-10-13: T1 cerrada en `1d10a92e` (rama `feat/tareas-con-tecnico-t1`). Salió en 1205 líneas: unas 520 de código y migración y 680 de tests. Supera el presupuesto de ~400 por los tests de la copia y del repositorio. Ruta: delegada.
+  - **Ubicación:** en `tickets/`, no en un módulo `tareas/` nuevo. La tarea es hija del ticket, como las operaciones y los adjuntos, y T2 reusa el repositorio de tickets, el de operaciones y la elegibilidad que ya están en `TicketsModule`. `TAREA_TICKET_REPOSITORY` queda exportado, para el listado de reparaciones, el dashboard y el PDF.
+  - **onDelete:** `ticket_id` con `RESTRICT`, el mismo criterio que `operaciones_ticket` y `encuestas_satisfaccion`. Los tickets se borran de forma lógica; un borrado físico no puede llevarse puesto el registro de quién hizo cada tarea.
+  - **Índices:** (`ticket_id`, `deleted_at`, `orden`) para el listado, y (`completada_en`, `completada_por_id`) para la métrica de T4. El rango de fechas es el predicado común a todos los alcances, y el técnico va segundo para agrupar o filtrar sin ir a la tabla.
+  - **CHECK:** `tareas_ticket_completada_check`. Antes de agregarlo se verificó que los datos de `subtareas_edilicia` lo cumplen en las tres bases de inquilino locales: Demo Soporte, Rotair y `soporte_tenant_test`, con 0 violaciones. **Producción no se verificó**: si una fila lo viola, la migración falla entera y no aplica nada. El runbook de T9 tiene que incluir esa consulta antes del deploy.
+  - **Entidad:** `completar` falla si la tarea ya estaba completada, para no pisar el crédito. `descompletar` falla si estaba pendiente. Una tarea dada de baja ya no cambia. Todo eso vuelve en un `Result`.
+  - **Copia por inquilino** (con `pnpm migrate:tenants`): Demo Soporte, 2 viejas y 2 nuevas; Rotair, 0 y 0. La diferencia en SQL dio vacía.
+  - **Verificación:**
+    - `pnpm lint`: 0 errores.
+    - `pnpm typecheck`: 0 errores.
+    - `pnpm vitest run` con los 3 specs nuevos y `src/reparaciones`: 23 archivos y 197 tests en verde.
+    - `check-casts-en-specs`: 617, igual que la base.
+  - Próximo paso: T2.
