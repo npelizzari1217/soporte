@@ -11,7 +11,17 @@ import {
   CLIENTE_REPOSITORY,
   IClienteRepository,
 } from '../clientes/domain/ports/i-cliente.repository';
+import { ILogger, LOGGER } from '../shared/domain/ports/i-logger.port';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import { TenantContext } from '../shared/tenancy/tenant-context';
+import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
+import { ITicketRepository, TICKET_REPOSITORY } from '../tickets/domain/ports/i-ticket.repository';
+import {
+  ITipoTicketRepository,
+  TIPO_TICKET_REPOSITORY,
+} from '../tickets/domain/ports/i-tipo-ticket.repository';
+import { TicketsModule } from '../tickets/tickets.module';
+import { EncolarWebhookUseCase } from './application/encolar-webhook.use-case';
 import { ConfigurarApiClienteUseCase } from './application/configurar-api-cliente.use-case';
 import { CrearApiClaveUseCase } from './application/crear-api-clave.use-case';
 import { ListarApiClavesUseCase } from './application/listar-api-claves.use-case';
@@ -29,20 +39,28 @@ import {
 } from './domain/usuario-integracion-repository.port';
 import { PrismaApiHabilitadaRepository } from './infrastructure/prisma-api-habilitada.repository';
 import { PrismaUsuarioIntegracionRepository } from './infrastructure/prisma-usuario-integracion.repository';
-import { WEBHOOK_DESTINO_REPOSITORY } from './domain/webhook-destino-repository.port';
+import {
+  IWebhookDestinoRepository,
+  WEBHOOK_DESTINO_REPOSITORY,
+} from './domain/webhook-destino-repository.port';
 import { PrismaWebhookDestinoRepository } from './infrastructure/prisma-webhook-destino.repository';
-import { WEBHOOK_ENTREGA_REPOSITORY } from './domain/webhook-entrega-repository.port';
+import {
+  IWebhookEntregaRepository,
+  WEBHOOK_ENTREGA_REPOSITORY,
+} from './domain/webhook-entrega-repository.port';
 import { PrismaWebhookEntregaRepository } from './infrastructure/prisma-webhook-entrega.repository';
+import { WebhookEncoladoListener } from './infrastructure/webhook-encolado.listener';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
 
 /**
  * Modulo de la API publica (sdd/api-publica). T2: habilitacion por ROOT. T3: claves para el
  * ADMINISTRADOR. Webhooks (odd/webhooks) T1: destino por cliente y cifrado de su secreto. T2: cola
- * y registro de entregas en la base del inquilino.
+ * y registro de entregas en la base del inquilino. T4: el listener que encola los avisos de los
+ * eventos de ticket (por eso importa `TicketsModule`).
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, TicketsModule],
   controllers: [ApiClienteController, ApiClavesController],
   exports: [API_CLAVE_REPOSITORY],
   providers: [
@@ -64,6 +82,39 @@ import { ApiClavesController } from './interface/api-claves.controller';
     SecretoWebhookCifrado,
     // Cliente tenant vía TenantContext (SharedModule es @Global), como los repositorios de tickets.
     { provide: WEBHOOK_ENTREGA_REPOSITORY, useClass: PrismaWebhookEntregaRepository },
+    {
+      provide: EncolarWebhookUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        destinoRepo: IWebhookDestinoRepository,
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+        tipoRepo: ITipoTicketRepository,
+        entregaRepo: IWebhookEntregaRepository,
+      ) =>
+        new EncolarWebhookUseCase(
+          clienteRepo,
+          destinoRepo,
+          ticketRepo,
+          estadoRepo,
+          tipoRepo,
+          entregaRepo,
+        ),
+      inject: [
+        CLIENTE_REPOSITORY,
+        WEBHOOK_DESTINO_REPOSITORY,
+        TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        WEBHOOK_ENTREGA_REPOSITORY,
+      ],
+    },
+    {
+      provide: WebhookEncoladoListener,
+      useFactory: (encolar: EncolarWebhookUseCase, tenantContext: TenantContext, logger: ILogger) =>
+        new WebhookEncoladoListener(encolar, tenantContext, logger),
+      inject: [EncolarWebhookUseCase, TenantContext, LOGGER],
+    },
     {
       provide: USUARIO_INTEGRACION_REPOSITORY,
       useFactory: (prisma: PrismaService) => new PrismaUsuarioIntegracionRepository(prisma),
