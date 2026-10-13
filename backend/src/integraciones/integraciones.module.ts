@@ -31,12 +31,15 @@ import { PrismaApiHabilitadaRepository } from './infrastructure/prisma-api-habil
 import { PrismaUsuarioIntegracionRepository } from './infrastructure/prisma-usuario-integracion.repository';
 import { WEBHOOK_DESTINO_REPOSITORY } from './domain/webhook-destino-repository.port';
 import { PrismaWebhookDestinoRepository } from './infrastructure/prisma-webhook-destino.repository';
+import { WEBHOOK_ENTREGA_REPOSITORY } from './domain/webhook-entrega-repository.port';
+import { PrismaWebhookEntregaRepository } from './infrastructure/prisma-webhook-entrega.repository';
 import { ApiClienteController } from './interface/api-cliente.controller';
 import { ApiClavesController } from './interface/api-claves.controller';
 
 /**
  * Modulo de la API publica (sdd/api-publica). T2: habilitacion por ROOT. T3: claves para el
- * ADMINISTRADOR. Webhooks (odd/webhooks) T1: destino por cliente y cifrado de su secreto.
+ * ADMINISTRADOR. Webhooks (odd/webhooks) T1: destino por cliente y cifrado de su secreto. T2: cola
+ * y registro de entregas en la base del inquilino.
  */
 @Module({
   imports: [AuthModule],
@@ -59,6 +62,8 @@ import { ApiClavesController } from './interface/api-claves.controller';
       inject: [PrismaService],
     },
     SecretoWebhookCifrado,
+    // Cliente tenant vía TenantContext (SharedModule es @Global), como los repositorios de tickets.
+    { provide: WEBHOOK_ENTREGA_REPOSITORY, useClass: PrismaWebhookEntregaRepository },
     {
       provide: USUARIO_INTEGRACION_REPOSITORY,
       useFactory: (prisma: PrismaService) => new PrismaUsuarioIntegracionRepository(prisma),
