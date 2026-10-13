@@ -655,7 +655,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | **Entregado** — en `main` por el #490 (`776c6d69`), desplegado el 2026-10-09. Un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | Sin base desde el 2026-10-08: requiere decidir cómo se resuelve el cliente |
 | 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
-| 12 | **Tareas con técnico y crédito por tarea** | Sumado el 2026-10-08, al decidir el punto 9. Un ticket puede necesitar varios técnicos: uno empieza y otro termina, o hay varios oficios o pasos. Cada tarea del ticket lleva su técnico y el crédito va a quien la completó, no a quien cerró el ticket. Generaliza a todos los tipos las subtareas que hoy solo tiene Edilicia (`SubtareaEdilicia`, que guarda quién la completó pero no tiene responsable) | Media-Alta · 5-8 días (a refinar) | Pendiente — va después del punto 9 |
+| 12 | **Tareas con técnico y crédito por tarea** | Sumado el 2026-10-08, al decidir el punto 9. Un ticket puede necesitar varios técnicos: uno empieza y otro termina, o hay varios oficios o pasos. Cada tarea del ticket lleva su técnico y el crédito va a quien la completó, no a quien cerró el ticket. Generaliza a todos los tipos las subtareas que hoy solo tiene Edilicia (`SubtareaEdilicia`, que guarda quién la completó pero no tiene responsable) | Media-Alta · 5-8 días (a refinar) | En curso — decisiones cerradas el 2026-10-13 (ver "Decisiones de producto de la segunda etapa") |
 
 **Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
 licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
@@ -1141,6 +1141,37 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
       - Registro de entregas en Integraciones (CA4): **Cumplida**.
       - Secretos cifrados con `EMAIL_CRYPTO_KEY` y re-cifrados por
         `rotar-email-crypto-key.mjs` (CA5): **Cumplida**.
+- **Segunda etapa, punto 12 — tareas con técnico y crédito por tarea** (decidido el
+  2026-10-13):
+  - **Las tareas son de cualquier ticket.** Hay una tabla genérica de tareas colgada
+    del ticket, para todos los tipos, incluidos *Mantenimiento* y *Preventivo*. Las
+    subtareas de Edilicia se migran a esa tabla con sus datos (descripción, estado,
+    quién y cuándo la completó) y la tabla vieja se retira.
+  - **El ticket conserva su responsable.** El asignado del ticket sigue siendo el
+    responsable: coordina y cierra. Cada tarea puede tener su propio técnico, y ese
+    técnico es opcional.
+  - **Quién gestiona las tareas.** Crean, asignan y borran tareas el responsable del
+    ticket, el ADMINISTRADOR y ROOT, con el permiso de modificación del módulo del
+    tipo. El técnico de una tarea tiene que ser elegible con la misma regla del
+    punto 9: TÉCNICO o COLABORADOR con el módulo del tipo.
+  - **El crédito es de quien completa.** Completan una tarea su técnico, el
+    responsable o un administrador, y queda registrado quién la completó. Descompletar
+    se permite, a las mismas personas, para corregir un error. Reordenar y editar el
+    texto quedan afuera.
+  - **El cierre no se bloquea.** Un ticket se puede resolver con tareas pendientes,
+    igual que hoy.
+  - **Métricas.** El dashboard suma una métrica nueva, "tareas completadas por
+    técnico". Las métricas por ticket (carga, SLA, CSAT, exportación) siguen con el
+    responsable.
+  - **El avance se muestra en cualquier ticket con tareas**: el porcentaje de tareas
+    completadas.
+  - **Historial y PDF.** Asignar y completar una tarea queda en el historial del
+    ticket. El PDF imprime cada tarea con su técnico.
+  - **Afuera:**
+    - el mail o webhook al asignar o completar una tarea;
+    - asignar tareas con la regla del punto 9.
+
+    `TicketEdilicia.personalAsignadoId`, que nunca se usó, se borra.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
