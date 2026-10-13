@@ -21,3 +21,7 @@ import { URL_MASTER_TEST_POR_DEFECTO } from '../src/testing/lock-master-test';
 process.env.DATABASE_URL_MASTER ??= URL_MASTER_TEST_POR_DEFECTO;
 process.env.APP_BASE_URL ??= 'http://localhost:5173';
 process.env.JWT_SECRET ??= 'jwt-secret-de-test';
+
+// No es una variable requerida: apaga el `@Cron` del barrido de webhooks (odd/webhooks, T5). Un e2e
+// que levanta la app no debe enviar avisos reales ni consumir intentos de las entregas que verifica.
+process.env.WEBHOOK_SWEEP_HABILITADO ??= 'false';

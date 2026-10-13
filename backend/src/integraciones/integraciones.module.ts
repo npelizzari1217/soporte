@@ -14,6 +14,7 @@ import {
 import { ILogger, LOGGER } from '../shared/domain/ports/i-logger.port';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../shared/tenancy/tenant-context';
+import { ITenantEnumerator, TENANT_ENUMERATOR } from '../shared/domain/ports/i-tenant-enumerator';
 import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
 import { ITicketRepository, TICKET_REPOSITORY } from '../tickets/domain/ports/i-ticket.repository';
 import {
@@ -22,6 +23,10 @@ import {
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
 import { TicketsModule } from '../tickets/tickets.module';
 import { EncolarWebhookUseCase } from './application/encolar-webhook.use-case';
+import { EnviarWebhooksPendientesUseCase } from './application/enviar-webhooks-pendientes.use-case';
+import { CLIENTE_HTTP_WEBHOOK, IClienteHttpWebhook } from './domain/cliente-http-webhook.port';
+import { HttpsClienteWebhook } from './infrastructure/https-cliente-webhook.adapter';
+import { WebhookEnvioScheduler } from './infrastructure/webhook-envio.scheduler';
 import { ConfigurarApiClienteUseCase } from './application/configurar-api-cliente.use-case';
 import { CrearApiClaveUseCase } from './application/crear-api-clave.use-case';
 import { ListarApiClavesUseCase } from './application/listar-api-claves.use-case';
@@ -57,7 +62,8 @@ import { ApiClavesController } from './interface/api-claves.controller';
  * Modulo de la API publica (sdd/api-publica). T2: habilitacion por ROOT. T3: claves para el
  * ADMINISTRADOR. Webhooks (odd/webhooks) T1: destino por cliente y cifrado de su secreto. T2: cola
  * y registro de entregas en la base del inquilino. T4: el listener que encola los avisos de los
- * eventos de ticket (por eso importa `TicketsModule`).
+ * eventos de ticket (por eso importa `TicketsModule`). T5: el barrido que envía los avisos vencidos y purga
+ * el registro (`TENANT_ENUMERATOR` viene de `SharedModule`, que es `@Global()`).
  */
 @Module({
   imports: [AuthModule, TicketsModule],
@@ -114,6 +120,51 @@ import { ApiClavesController } from './interface/api-claves.controller';
       useFactory: (encolar: EncolarWebhookUseCase, tenantContext: TenantContext, logger: ILogger) =>
         new WebhookEncoladoListener(encolar, tenantContext, logger),
       inject: [EncolarWebhookUseCase, TenantContext, LOGGER],
+    },
+    { provide: CLIENTE_HTTP_WEBHOOK, useFactory: () => new HttpsClienteWebhook() },
+    {
+      provide: EnviarWebhooksPendientesUseCase,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        destinoRepo: IWebhookDestinoRepository,
+        secretos: SecretoWebhookCifrado,
+        entregaRepo: IWebhookEntregaRepository,
+        http: IClienteHttpWebhook,
+        logger: ILogger,
+      ) =>
+        new EnviarWebhooksPendientesUseCase(
+          clienteRepo,
+          destinoRepo,
+          secretos,
+          entregaRepo,
+          http,
+          logger,
+        ),
+      inject: [
+        CLIENTE_REPOSITORY,
+        WEBHOOK_DESTINO_REPOSITORY,
+        SecretoWebhookCifrado,
+        WEBHOOK_ENTREGA_REPOSITORY,
+        CLIENTE_HTTP_WEBHOOK,
+        LOGGER,
+      ],
+    },
+    {
+      provide: WebhookEnvioScheduler,
+      useFactory: (
+        tenantEnumerator: ITenantEnumerator,
+        tenantContext: TenantContext,
+        prisma: PrismaService,
+        enviar: EnviarWebhooksPendientesUseCase,
+        logger: ILogger,
+      ) => new WebhookEnvioScheduler(tenantEnumerator, tenantContext, prisma, enviar, logger),
+      inject: [
+        TENANT_ENUMERATOR,
+        TenantContext,
+        PrismaService,
+        EnviarWebhooksPendientesUseCase,
+        LOGGER,
+      ],
     },
     {
       provide: USUARIO_INTEGRACION_REPOSITORY,

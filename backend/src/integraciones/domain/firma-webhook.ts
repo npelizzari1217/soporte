@@ -7,7 +7,7 @@ import { createHmac, randomBytes } from 'node:crypto';
  * - `X-Soporte-Firma`: HMAC-SHA256 en hexadecimal (minúsculas) de `<timestamp>.<cuerpo>`, donde
  *   `<cuerpo>` es el cuerpo crudo tal como llegó, y la clave es el secreto completo, con su prefijo
  *   `whsec_`, en UTF-8.
- * - `X-Soporte-Evento`: el evento (`TICKET_CREADO`, ...).
+ * - `X-Soporte-Evento`: el nombre externo del evento (`ticket.creado`, ...), el mismo del cuerpo.
  * - `X-Soporte-Entrega`: id de entrega; se repite entre reintentos, para descartar duplicados.
  *
  * El receptor recalcula la firma, la compara en tiempo constante y descarta timestamps viejos.
