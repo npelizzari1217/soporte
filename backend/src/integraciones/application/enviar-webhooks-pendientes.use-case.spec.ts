@@ -2,7 +2,8 @@
  * Barrido de envío de webhooks (odd/webhooks, T5): la pausa no consume intentos (CA6), un 2xx
  * entrega, un no-2xx reprograma, el último intento deja FALLIDA (D1), un destino no público es un
  * fallo (CA8), la firma cubre el cuerpo exacto enviado (CA7), un secreto que no descifra no envía
- * nada, y la purga corre siempre (CA9).
+ * nada, y la purga corre siempre (CA9). JD-3 (T10): un destino muerto (timeout, error de conexión,
+ * DNS colgado o rechazado) corta el lote de ese barrido, y la resolución DNS tiene plazo.
  */
 import type { LookupAddress } from 'node:dns';
 import { ClienteEntity } from '../../clientes/domain/entities/cliente.entity';
@@ -10,6 +11,7 @@ import { Result } from '../../shared/domain/result';
 import { SolicitudWebhook, RespuestaWebhook } from '../domain/cliente-http-webhook.port';
 import { firmarWebhook } from '../domain/firma-webhook';
 import {
+  DestinoWebhookIrresolubleError,
   DestinoWebhookNoPublicoError,
   SecretoWebhookIndescifrableError,
 } from '../domain/integraciones.errors';
@@ -20,6 +22,7 @@ import {
   LOTE_ENVIO_WEBHOOK,
   ResolverDestino,
   RETENCION_ENTREGAS_WEBHOOK_MS,
+  TIMEOUT_DNS_WEBHOOK_MS,
   TIMEOUT_ENVIO_WEBHOOK_MS,
 } from './enviar-webhooks-pendientes.use-case';
 
@@ -91,6 +94,7 @@ function armar(escenario: Escenario = {}) {
   const tomas: Array<{ ahora: Date; limite: number }> = [];
   const enviadas: SolicitudWebhook[] = [];
   const errores: string[] = [];
+  const registros: string[] = [];
 
   const useCase = new EnviarWebhooksPendientesUseCase(
     { findById: async () => cliente(escenario.apiHabilitada ?? true) },
@@ -130,11 +134,11 @@ function armar(escenario: Escenario = {}) {
         );
       },
     },
-    { error: (mensaje) => errores.push(mensaje) },
+    { error: (mensaje) => errores.push(mensaje), log: (mensaje) => registros.push(mensaje) },
     escenario.resolver ?? (async () => Result.ok([PUBLICA])),
     () => AHORA,
   );
-  return { useCase, entregadas, fallos, purgas, tomas, enviadas, errores };
+  return { useCase, entregadas, fallos, purgas, tomas, enviadas, errores, registros };
 }
 
 describe('EnviarWebhooksPendientesUseCase (odd/webhooks T5)', () => {
@@ -289,10 +293,10 @@ describe('EnviarWebhooksPendientesUseCase (odd/webhooks T5)', () => {
     });
   });
 
-  it('procesa el lote en orden y cuenta entregadas y fallos', async () => {
-    const { useCase, enviadas, entregadas } = armar({
+  it('procesa el lote en orden y cuenta entregadas y fallos: un no-2xx no corta el lote', async () => {
+    const { useCase, enviadas, entregadas, fallos, registros } = armar({
       vencidas: [entrega({ id: 'a' }), entrega({ id: 'b' }), entrega({ id: 'c' })],
-      respuestas: [{ status: 200 }, { error: 'timeout' }, { status: 201 }],
+      respuestas: [{ status: 200 }, { status: 500 }, { status: 201 }],
     });
 
     const resultado = await useCase.ejecutar(CLIENTE_ID);
@@ -300,5 +304,129 @@ describe('EnviarWebhooksPendientesUseCase (odd/webhooks T5)', () => {
     expect(resultado).toEqual({ purgadas: 3, entregadas: 2, fallos: 1 });
     expect(enviadas.map((s) => s.headers['X-Soporte-Entrega'])).toEqual(['a', 'b', 'c']);
     expect(entregadas.map((e) => e.id)).toEqual(['a', 'c']);
+    expect(fallos.map((f) => f.id)).toEqual(['b']);
+    expect(registros).toEqual([]);
+  });
+
+  describe('JD-3: un destino muerto corta el lote de ese barrido', () => {
+    const lote = () => [entrega({ id: 'a' }), entrega({ id: 'b' }), entrega({ id: 'c' })];
+
+    it.each([
+      ['un timeout', { error: 'timeout' }],
+      ['un error de conexión', { error: 'error de conexión (ECONNREFUSED)' }],
+    ] as const)(
+      '%s registra el fallo y deja el resto PENDIENTE sin tocar',
+      async (_caso, respuesta) => {
+        const { useCase, enviadas, entregadas, fallos, registros } = armar({
+          vencidas: lote(),
+          respuestas: [respuesta, { status: 200 }, { status: 200 }],
+        });
+
+        const resultado = await useCase.ejecutar(CLIENTE_ID);
+
+        expect(enviadas.map((s) => s.headers['X-Soporte-Entrega'])).toEqual(['a']);
+        expect(entregadas).toEqual([]);
+        expect(fallos).toEqual([
+          {
+            id: 'a',
+            fallo: {
+              codigo: null,
+              error: respuesta.error,
+              proximoIntentoAt: new Date(AHORA.getTime() + 60_000),
+            },
+          },
+        ]);
+        expect(resultado).toEqual({
+          purgadas: 3,
+          entregadas: 0,
+          fallos: 1,
+          cortado: { motivo: respuesta.error, restantes: 2 },
+        });
+        expect(registros).toEqual([
+          `WEBHOOK_SWEEP_CORTE | cliente=${CLIENTE_ID} | motivo=${respuesta.error} | restantes=2`,
+        ]);
+      },
+    );
+
+    it.each([
+      ['no pública', new DestinoWebhookNoPublicoError()],
+      ['que no resuelve', new DestinoWebhookIrresolubleError()],
+    ])('un destino rechazado al resolver (%s) también corta el lote', async (_caso, error) => {
+      const { useCase, enviadas, fallos, registros } = armar({
+        vencidas: lote(),
+        resolver: async () => Result.fail(error),
+      });
+
+      const resultado = await useCase.ejecutar(CLIENTE_ID);
+
+      expect(enviadas).toEqual([]);
+      expect(fallos.map((f) => f.id)).toEqual(['a']);
+      expect(resultado).toMatchObject({ fallos: 1, cortado: { restantes: 2 } });
+      expect(registros).toHaveLength(1);
+    });
+
+    it('un corte después de entregas exitosas conserva lo entregado', async () => {
+      const { useCase, entregadas, fallos } = armar({
+        vencidas: lote(),
+        respuestas: [{ status: 204 }, { error: 'timeout' }, { status: 204 }],
+      });
+
+      const resultado = await useCase.ejecutar(CLIENTE_ID);
+
+      expect(entregadas.map((e) => e.id)).toEqual(['a']);
+      expect(fallos.map((f) => f.id)).toEqual(['b']);
+      expect(resultado).toEqual({
+        purgadas: 3,
+        entregadas: 1,
+        fallos: 1,
+        cortado: { motivo: 'timeout', restantes: 1 },
+      });
+    });
+  });
+
+  describe('JD-3: la resolución DNS tiene plazo', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('el plazo es de 5 s', () => {
+      expect(TIMEOUT_DNS_WEBHOOK_MS).toBe(5_000);
+    });
+
+    it('un DNS colgado cuenta como fallo al vencer el plazo y corta el lote', async () => {
+      vi.useFakeTimers();
+      const { useCase, enviadas, fallos, registros } = armar({
+        vencidas: [entrega({ id: 'a' }), entrega({ id: 'b' })],
+        resolver: () => new Promise(() => undefined),
+      });
+
+      const ejecucion = useCase.ejecutar(CLIENTE_ID);
+      await vi.advanceTimersByTimeAsync(5_000);
+      const resultado = await ejecucion;
+
+      expect(enviadas).toEqual([]);
+      expect(fallos).toEqual([
+        {
+          id: 'a',
+          fallo: {
+            codigo: null,
+            error: 'timeout DNS',
+            proximoIntentoAt: new Date(AHORA.getTime() + 60_000),
+          },
+        },
+      ]);
+      expect(resultado).toMatchObject({ cortado: { motivo: 'timeout DNS', restantes: 1 } });
+      expect(registros).toHaveLength(1);
+    });
+
+    it('una resolución a tiempo no deja el temporizador pendiente', async () => {
+      vi.useFakeTimers();
+      const { useCase, entregadas } = armar();
+
+      await useCase.ejecutar(CLIENTE_ID);
+
+      expect(entregadas).toHaveLength(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 });

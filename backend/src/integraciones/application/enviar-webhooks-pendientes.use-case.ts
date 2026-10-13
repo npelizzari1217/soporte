@@ -24,6 +24,9 @@ export const LOTE_ENVIO_WEBHOOK = 50;
 /** Plazo total de cada envío: cuenta como éxito un 2xx en 10 s o menos. */
 export const TIMEOUT_ENVIO_WEBHOOK_MS = 10_000;
 
+/** Plazo de la resolución DNS del destino en cada envío (JD-3): vencido, es un intento fallido. */
+export const TIMEOUT_DNS_WEBHOOK_MS = 5_000;
+
 /** Las entregas creadas hace más de 30 días se purgan, en cualquier estado (CA9). */
 export const RETENCION_ENTREGAS_WEBHOOK_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -33,9 +36,20 @@ export const USER_AGENT_WEBHOOK = 'Soporte-Webhooks/1';
 export type MotivoPausaWebhook =
   'API_DESHABILITADA' | 'SIN_DESTINO' | 'DESTINO_INACTIVO' | 'SECRETO_INDESCIFRABLE';
 
+/**
+ * Corte anticipado del lote (JD-3): el destino no respondió con un código HTTP, así que las
+ * `restantes` quedaron PENDIENTES, sin consumir intentos, para el próximo barrido.
+ */
+export interface CorteLoteWebhook {
+  motivo: string;
+  restantes: number;
+}
+
 export type ResultadoEnvioWebhooks =
   | { purgadas: number; pausado: MotivoPausaWebhook }
-  | { purgadas: number; entregadas: number; fallos: number };
+  | { purgadas: number; entregadas: number; fallos: number; cortado?: CorteLoteWebhook };
+
+type Intento = { status: number } | { error: string };
 
 /** Resolución y validación del host en cada envío; inyectable para los tests. */
 export type ResolverDestino = (hostname: string) => Promise<Result<LookupAddress[], DomainError>>;
@@ -51,6 +65,13 @@ export type ResolverDestino = (hostname: string) => Promise<Result<LookupAddress
  *    destino. Antes de cada envío vuelve a resolver el host y rechaza una IP no pública (CA8): ese
  *    rechazo cuenta como un intento fallido. Un 2xx la marca ENTREGADA; cualquier otra cosa (3xx
  *    incluido) la reprograma con `calcularProximoIntento`, o la deja FALLIDA si se agotó (D1).
+ * 4. Corte anticipado (JD-3): si un envío termina sin código HTTP (timeout, error de conexión, DNS
+ *    vencido o un destino rechazado al validar o resolver), ese intento se registra como fallido y
+ *    el resto del lote NO se procesa en este barrido: queda PENDIENTE, con sus intentos y su próximo
+ *    intento intactos. Todas esas causas dependen solo del destino, que es el mismo para todo el
+ *    lote, así que el resto fallaría igual y retendría el barrido de este inquilino hasta 10 s por
+ *    entrega. Un código HTTP que no es 2xx (3xx incluido) no corta: es una respuesta por entrega.
+ *    La resolución DNS tiene un plazo de `TIMEOUT_DNS_WEBHOOK_MS`.
  *
  * El cuerpo enviado es exactamente `JSON.stringify(payload)`, y la firma se calcula sobre ese mismo
  * texto (CA7). Los fallos de base de datos se propagan: el scheduler los aísla por inquilino.
@@ -65,7 +86,7 @@ export class EnviarWebhooksPendientesUseCase {
       'tomarVencidas' | 'marcarEntregada' | 'registrarFallo' | 'purgarAnterioresA'
     >,
     private readonly http: IClienteHttpWebhook,
-    private readonly logger: Pick<ILogger, 'error'>,
+    private readonly logger: Pick<ILogger, 'error' | 'log'>,
     private readonly resolver: ResolverDestino = (hostname) => resolverDestinoSeguro(hostname),
     private readonly ahora: () => Date = () => new Date(),
   ) {}
@@ -93,38 +114,51 @@ export class EnviarWebhooksPendientesUseCase {
     const vencidas = await this.entregas.tomarVencidas(inicio, LOTE_ENVIO_WEBHOOK);
     let entregadas = 0;
     let fallos = 0;
-    for (const entrega of vencidas) {
-      const entregada = await this.enviarUna(entrega, destino.url, secreto.getValue());
-      if (entregada) entregadas += 1;
-      else fallos += 1;
+    for (const [indice, entrega] of vencidas.entries()) {
+      const respuesta = await this.enviarUna(entrega, destino.url, secreto.getValue());
+      if ('status' in respuesta && esExito(respuesta.status)) {
+        entregadas += 1;
+        continue;
+      }
+      fallos += 1;
+      const restantes = vencidas.length - indice - 1;
+      if ('error' in respuesta && restantes > 0) {
+        // Sin URL ni secretos: el motivo es el error corto del adaptador o del dominio.
+        this.logger.log(
+          `WEBHOOK_SWEEP_CORTE | cliente=${clienteId} | motivo=${respuesta.error} | restantes=${restantes}`,
+        );
+        return {
+          purgadas,
+          entregadas,
+          fallos,
+          cortado: { motivo: respuesta.error, restantes },
+        };
+      }
     }
     return { purgadas, entregadas, fallos };
   }
 
-  /** Envía una entrega y registra el resultado. Devuelve `true` si el destino respondió 2xx. */
-  private async enviarUna(entrega: WebhookEntrega, url: string, secreto: string): Promise<boolean> {
+  /** Envía una entrega, registra el resultado y lo devuelve. */
+  private async enviarUna(entrega: WebhookEntrega, url: string, secreto: string): Promise<Intento> {
     const respuesta = await this.intentar(entrega, url, secreto);
     const ahora = this.ahora();
-    if ('status' in respuesta && respuesta.status >= 200 && respuesta.status < 300) {
+    if ('status' in respuesta && esExito(respuesta.status)) {
       await this.entregas.marcarEntregada(entrega.id, respuesta.status, ahora);
-      return true;
+      return respuesta;
     }
     await this.entregas.registrarFallo(entrega.id, {
       codigo: 'status' in respuesta ? respuesta.status : null,
       error: 'status' in respuesta ? `HTTP ${respuesta.status}` : respuesta.error,
       proximoIntentoAt: calcularProximoIntento(entrega.intentos + 1, ahora),
     });
-    return false;
+    return respuesta;
   }
 
-  private async intentar(
-    entrega: WebhookEntrega,
-    url: string,
-    secreto: string,
-  ): Promise<{ status: number } | { error: string }> {
+  private async intentar(entrega: WebhookEntrega, url: string, secreto: string): Promise<Intento> {
     const destino = validarUrlDestino(url);
     if (destino.isFail()) return { error: destino.getError().message };
-    const direcciones = await this.resolver(destino.getValue().hostname);
+    const direcciones = await this.resolverConPlazo(destino.getValue().hostname);
+    if (direcciones === null) return { error: 'timeout DNS' };
     if (direcciones.isFail()) return { error: direcciones.getError().message };
 
     const body = JSON.stringify(entrega.payload);
@@ -149,4 +183,26 @@ export class EnviarWebhooksPendientesUseCase {
       return { error: 'error inesperado al enviar' };
     }
   }
+
+  /**
+   * Resuelve el host con un plazo de `TIMEOUT_DNS_WEBHOOK_MS`; `null` si venció. La consulta
+   * vencida no se puede cancelar y termina sola en segundo plano; el temporizador sí se limpia.
+   */
+  private async resolverConPlazo(
+    hostname: string,
+  ): Promise<Result<LookupAddress[], DomainError> | null> {
+    let reloj: ReturnType<typeof setTimeout> | undefined;
+    const vencido = new Promise<null>((resolve) => {
+      reloj = setTimeout(() => resolve(null), TIMEOUT_DNS_WEBHOOK_MS);
+    });
+    try {
+      return await Promise.race([this.resolver(hostname), vencido]);
+    } finally {
+      clearTimeout(reloj);
+    }
+  }
+}
+
+function esExito(status: number): boolean {
+  return status >= 200 && status < 300;
 }

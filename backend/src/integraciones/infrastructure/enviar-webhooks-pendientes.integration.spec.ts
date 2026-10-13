@@ -130,7 +130,7 @@ describe('EnviarWebhooksPendientesUseCase (odd/webhooks T5, tenant efímero)', (
           return respuestas[solicitud.headers['X-Soporte-Entrega']] ?? { error: 'inesperada' };
         },
       },
-      { error: () => undefined },
+      { error: () => undefined, log: () => undefined },
       async () => Result.ok([{ address: '93.184.215.14', family: 4 }]),
       () => AHORA,
     );

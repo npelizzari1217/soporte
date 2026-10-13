@@ -1,7 +1,8 @@
 /**
  * Barrido de webhooks por inquilino (odd/webhooks, T5): bindea el `TenantContext` de cada
- * inquilino, aísla el fallo de uno y no arranca un barrido mientras el anterior sigue corriendo
- * (nota (c) de T5: `tomarVencidas` no reserva filas).
+ * inquilino, aísla el fallo de uno y no arranca el barrido de un inquilino mientras el suyo anterior
+ * sigue corriendo (nota (c) de T5: `tomarVencidas` no reserva filas). Desde JD-3 (T10) el candado
+ * es por inquilino: uno colgado no demora a los demás.
  */
 import { TenantContext } from '../../shared/tenancy/tenant-context';
 import { TenantActivo } from '../../shared/domain/ports/i-tenant-enumerator';
@@ -63,24 +64,75 @@ describe('WebhookEnvioScheduler (odd/webhooks T5)', () => {
     expect(errores).toEqual(['WEBHOOK_SWEEP_ERROR | tenant=soporte_a | error=se cayó la base']);
   });
 
-  it('no arranca un barrido mientras el anterior sigue corriendo, y libera el candado al terminar', async () => {
+  it('JD-3: un inquilino colgado no demora a los demás, ni en el mismo tick ni en el siguiente', async () => {
+    const terminados: string[] = [];
+    const { scheduler, vistos } = armar(async (clienteId) => {
+      if (clienteId === 'cliente-a') return new Promise<ResultadoEnvioWebhooks>(() => undefined);
+      terminados.push(clienteId);
+      return RESULTADO;
+    });
+
+    void scheduler.ejecutarBarrido();
+    await vi.waitFor(() => expect(terminados).toEqual(['cliente-b']), { timeout: 500 });
+
+    void scheduler.ejecutarBarrido();
+    await vi.waitFor(() => expect(terminados).toEqual(['cliente-b', 'cliente-b']), {
+      timeout: 500,
+    });
+    // El de A sigue en curso: el segundo tick no lo arranca de nuevo.
+    expect(vistos.map((v) => v.clienteId)).toEqual(['cliente-a', 'cliente-b', 'cliente-b']);
+  });
+
+  it('el candado es por inquilino: no arranca otro barrido del mismo mientras el suyo sigue, y lo libera al terminar', async () => {
     let liberar: () => void = () => undefined;
     const bloqueo = new Promise<void>((resolve) => {
       liberar = resolve;
     });
-    const { scheduler, enumeraciones } = armar(async () => {
-      await bloqueo;
+    const { scheduler, vistos } = armar(async (clienteId) => {
+      if (clienteId === 'cliente-a') await bloqueo;
       return RESULTADO;
     });
+    const corridasDe = (clienteId: string) =>
+      vistos.filter((v) => v.clienteId === clienteId).length;
 
     const primero = scheduler.ejecutarBarrido();
+    // Deja terminar el barrido de B (y liberar su candado); el de A sigue bloqueado.
+    await new Promise((resolve) => setImmediate(resolve));
     await scheduler.ejecutarBarrido();
-    expect(enumeraciones()).toBe(1);
+    expect(corridasDe('cliente-a')).toBe(1);
+    expect(corridasDe('cliente-b')).toBe(2);
 
     liberar();
     await primero;
     await scheduler.ejecutarBarrido();
-    expect(enumeraciones()).toBe(2);
+    expect(corridasDe('cliente-a')).toBe(2);
+    expect(corridasDe('cliente-b')).toBe(3);
+  });
+
+  it('libera el candado de un inquilino cuyo barrido falla, aunque falle antes de empezar', async () => {
+    const errores: string[] = [];
+    let clientesPedidos = 0;
+    const scheduler = new WebhookEnvioScheduler(
+      { listActiveTenants: async () => [TENANTS[0]] },
+      new TenantContext(),
+      {
+        getTenantClient: () => {
+          clientesPedidos += 1;
+          throw new Error('sin conexión');
+        },
+      },
+      { ejecutar: async () => RESULTADO },
+      { error: (mensaje) => errores.push(mensaje) },
+    );
+
+    await scheduler.ejecutarBarrido();
+    await scheduler.ejecutarBarrido();
+
+    expect(clientesPedidos).toBe(2);
+    expect(errores).toEqual([
+      'WEBHOOK_SWEEP_ERROR | tenant=soporte_a | error=sin conexión',
+      'WEBHOOK_SWEEP_ERROR | tenant=soporte_a | error=sin conexión',
+    ]);
   });
 
   it('libera el candado aunque la enumeración de inquilinos falle', async () => {
