@@ -1,13 +1,14 @@
 /**
- * [UNIT] `esTicketVisiblePara` (odd/tareas-con-tecnico, CA10): con VER_TODOS o siendo el
- * solicitante se resuelve sin consultar; en otro caso decide el repositorio, que agrega al técnico
- * de una tarea activa.
+ * [UNIT] `esTicketVisiblePara` (odd/tareas-con-tecnico, CA10; decisión del dueño del 2026-10-14
+ * sobre el responsable): con VER_TODOS, siendo el solicitante o siendo el responsable se resuelve
+ * sin consultar; en otro caso decide el repositorio, que agrega al técnico de una tarea activa.
  */
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { esTicketVisiblePara } from './visibilidad-ticket';
 
 const SOLICITANTE = 'usuario-solicitante';
 const TECNICO = 'usuario-tecnico';
+const RESPONSABLE = 'usuario-responsable';
 
 function ticket(): TicketEntity {
   return TicketEntity.create(
@@ -36,6 +37,14 @@ describe('esTicketVisiblePara', () => {
   it('el solicitante lo ve sin consultar el repositorio', async () => {
     const repo = { esVisiblePara: vi.fn() };
     expect(await esTicketVisiblePara(repo, ticket(), SOLICITANTE, false)).toBe(true);
+    expect(repo.esVisiblePara).not.toHaveBeenCalled();
+  });
+
+  it('el responsable lo ve sin VER_TODOS y sin consultar el repositorio', async () => {
+    const repo = { esVisiblePara: vi.fn() };
+    const asignado = ticket();
+    asignado.assignTo(RESPONSABLE);
+    expect(await esTicketVisiblePara(repo, asignado, RESPONSABLE, false)).toBe(true);
     expect(repo.esVisiblePara).not.toHaveBeenCalled();
   });
 
