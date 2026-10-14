@@ -4,7 +4,7 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-11 contra el código de `main` (`1dcdcaa2`),
+decisión.** Actualizado el 2026-10-14 contra el código de `main` (`7286b64f`),
 archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
@@ -12,8 +12,8 @@ semanal pasó a ser por cliente. Desde esa fecha entraron a `main` cinco ciclos 
 módulo de Insumos y Equipos, que no son puntos del roadmap: catálogo único de
 componentes, stock usado, seguimiento por número de serie, reporte de stock y baja
 de equipo completo (ver "El módulo de Insumos"). De la segunda etapa están
-entregados los puntos 0 a 7 y 9, y la etapa 1 (API) del punto 8 (ver "Segunda etapa
-— brechas frente a la competencia").
+entregados los puntos 0 a 9 y el 12 (ver "Segunda etapa — brechas frente a la
+competencia").
 
 > **Este documento estuvo desactualizado tres semanas.** Daba por pendientes los
 > puntos 2, 3 y 4 y por inexistente el cambio de contraseña, con las cuatro cosas
@@ -250,7 +250,7 @@ Para no re-litigarlas al empezar cada punto.
   2026-09-09) lo corrigió: existe `TIPO_CODIGO_PREVENTIVO`
   (`backend/src/tickets/domain/tipos-ticket.constants.ts`), el seeder lo siembra
   por tenant y `AplicarSlaUseCase` excluye **por tipo**
-  (`aplicar-sla.use-case.ts:166`), no por prioridad.
+  (`aplicar-sla.use-case.ts:102`), no por prioridad.
 - **Punto 5** — calendario **por cliente** con default 9-18 lun-vie; feriados
   nacionales AR precargados en el seed más excepciones por cliente; un ticket
   abierto fuera de horario arranca el reloj en la **próxima ventana hábil**.
@@ -354,7 +354,7 @@ CSV.
 
 > **Entregado** entre el 2026-08-22 (`d219b50`) y el 2026-09-04, tal como estaba
 > decidido. La relación N:N vive en `model ReparacionCompra`
-> (`backend/prisma_tenant/schema.prisma:503`), y "bloqueada" quedó como estado
+> (`backend/prisma_tenant/schema.prisma:618`), y "bloqueada" quedó como estado
 > **derivado**: `comprasQueBloquean()` en
 > `backend/src/reparaciones/domain/services/bloqueo-reparacion.ts:48` lo calcula
 > a demanda en vez de persistirlo. Los casos de uso de vincular y desvincular
@@ -418,7 +418,7 @@ y plantillas en `backend/src/notificaciones/`.
 > `TIPO_CODIGO_PREVENTIVO` en
 > `backend/src/tickets/domain/tipos-ticket.constants.ts`, el seeder de tenants lo
 > siembra, y `AplicarSlaUseCase` excluye **por tipo**
-> (`aplicar-sla.use-case.ts:166`) en vez de depender de la prioridad.
+> (`aplicar-sla.use-case.ts:102`) en vez de depender de la prioridad.
 >
 > **Este documento afirmó que la desviación seguía abierta hasta el 2026-09-23**,
 > dos semanas después de cerrada. Tercera afirmación vencida de la misma tanda
@@ -1124,7 +1124,7 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - Los secretos de firma se guardan **cifrados**, con la misma clave y el mismo
       procedimiento de rotación que las contraseñas de correo.
     - **Cumplida, con una desviación declarada de antemano** (2026-10-13, cadena local
-      `feat/webhooks`, sin merge a `main` ni deploy todavía, documento
+      `feat/webhooks` integrada a `main` en `c207e8a3` y desplegada el mismo día, documento
       `odd/tasks/webhooks.md`). Cada viñeta es un criterio de aceptación de ese
       documento:
       - Eventos (CA1): **Cumplida**. Solo creado, cambio de estado, asignado y
@@ -1175,8 +1175,8 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
   - **Precisión (2026-10-13):** el técnico de una tarea activa ve el ticket, en el
     detalle y en su listado de tickets, aunque no sea el responsable ni tenga permiso
     para ver todos. Sin esto, un técnico sin ese permiso no llega a su tarea.
-  - **Cumplida** (2026-10-14, cadena local `feat/tareas-con-tecnico`, sin merge a
-    `main` ni deploy todavía y antes del `judgment-day`, documento
+  - **Cumplida** (2026-10-14, cadena local `feat/tareas-con-tecnico` integrada a
+    `main` en `32037bdf` con el `judgment-day` aprobado y desplegada el mismo día, documento
     `odd/tasks/tareas-con-tecnico.md`). Cada viñeta es un criterio de aceptación de ese
     documento, y no hubo desviaciones declaradas de antemano:
     - Tareas de cualquier ticket (CA1): **Cumplida**. Tabla `tareas_ticket` para todos
@@ -1232,11 +1232,11 @@ cabeza de alguien deja de existir cuando esa persona no está.
 
 | Qué | Por qué importa |
 |---|---|
-| ~~**Regeneración reproducible del entorno**~~ — **RESUELTA** el 2026-09-29. La creación del contenedor está documentada desde el 2026-09-09: `README.md:282` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). El hueco de permisos del seed era menor de lo que decía esta fila. Al regenerar desde cero, cada usuario demo ya recibía su preset en el alta, por el fix W4 de `CrearUsuarioTenantUseCase`. Lo que fallaba era **re-correr** el seed: solo el técnico volvía a su preset, y COLABORADOR y USUARIO conservaban lo que alguien hubiera tocado a mano. Desde el 2026-09-29 se re-aplica a los tres, y `demo-seed.integration.spec.ts` prueba los dos casos | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
+| ~~**Regeneración reproducible del entorno**~~ — **RESUELTA** el 2026-09-29. La creación del contenedor está documentada desde el 2026-09-09: `README.md:381` trae el `docker run` completo y `pnpm entorno:verificar` / `pnpm entorno:regenerar` (`55be976`). El hueco de permisos del seed era menor de lo que decía esta fila. Al regenerar desde cero, cada usuario demo ya recibía su preset en el alta, por el fix W4 de `CrearUsuarioTenantUseCase`. Lo que fallaba era **re-correr** el seed: solo el técnico volvía a su preset, y COLABORADOR y USUARIO conservaban lo que alguien hubiera tocado a mano. Desde el 2026-09-29 se re-aplica a los tres, y `demo-seed.integration.spec.ts` prueba los dos casos | Es el cimiento del que cuelga toda la política de datos descartables. Destruir y regenerar sale más barato que migrar **solo si el generador está sano y regenerar es un comando**. Falló dos veces el 2026-08-21: el seed reproduciría el hueco de permisos, y al perderse la base local el README arranca en "cuando haya una instancia de Postgres disponible" — justo después del paso que faltaba |
 | **Los feriados sembrados llegan hasta 2029.** Hasta el 2026-09-29 llegaban hasta 2028; la migración `20260929120000_seed_feriados_2029` sumó 2029 con las mismas reglas (el 17/06, Güemes, cae domingo y queda afuera). El horario semanal y los feriados ya se configuran desde la pantalla: `feriados-configurables` (issue #216, `912140e`) agregó el ABM de feriados globales (`/admin/feriados-globales`, solo ROOT) y por cliente (`/feriados`), y `horario-laboral-por-cliente` agregó `/horario-laboral`. Las dos cosas están en producción desde el deploy del 2026-09-29 | Los nacionales de 2030 en adelante no existen hasta que un ROOT los cargue desde `/admin/feriados-globales` o una migración los siembre. Sin eso, a partir de 2030 el SLA hábil cuenta los feriados nacionales como días laborables |
 | **Los tiempos medios del dashboard recorren todo el historial en cada consulta.** `tiempoPromedioResolucionHoras` y `tiempoPromedioPrimeraRespuestaHoras` (`backend/src/dashboard/infrastructure/persistence/prisma/prisma-dashboard.repository.ts`) traen todos los tickets cerrados o respondidos del cliente y calculan las horas hábiles de cada uno, en memoria, con el horario y los feriados **actuales**. Medido el 2026-10-07 (seguimiento S4 del ciclo `sla-primera-respuesta-y-pausa`): 3.000 tickets con tramos de hasta 2 días, el tamaño del cliente más grande hoy, tardan ~21 ms; 30.000 con tramos de hasta 2 días, ~140 ms; 30.000 con tramos de hasta 30 días, ~900 ms. Se decidió no tocarlo todavía | El costo crece lineal con el historial y se paga por métrica en cada carga del dashboard. **Disparador**: cuando un cliente pase los ~15.000 tickets o el dashboard tarde más de medio segundo. **Arreglo previsto**: guardar la duración en horas hábiles al registrar la primera respuesta y al resolver, y promediar con `AVG` en SQL. Además corrige un efecto que hoy pasa sin que nadie lo note: cambiar el horario o los feriados de un cliente recalcula los promedios de todo su historial con el calendario nuevo |
 | ~~**El horario semanal es global, no por cliente.** `CalendarioLaboralDia` (clave: solo `dia_semana`) vive en la base **master** (`backend/prisma_master/schema.prisma`), sin columna de cliente.~~ | **RESUELTA** el 2026-09-29. Ciclo `horario-laboral-por-cliente`: `CalendarioLaboralDiaCliente` en la base de cada tenant (un intervalo por día, editable por ADMINISTRADOR o ROOT). El SLA hábil lee solo el horario del propio cliente, sin unión con master; la tabla master `calendario_laboral_dias` se dropeó el mismo día (`20260929100000_drop_calendario_laboral_dias`). |
-| **617 `as never`/`as any` en 114 specs**, congelados por un ratchet que **no frena ningún merge** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Igual subió**: el 2026-09-29 medía 759 en 136, porque no corre en ningún lado donde frene un merge. Las integraciones de la semana fueron merges locales, y el CI de GitHub Actions estaba caído desde el 2026-09-18 por falta de minutos. Ese mismo día se bajaron los 66 casts nuevos completando los mocks contra sus puertos, y volvió a 693 en 123. El CI volvió a correr el 2026-10-01, pero sobre el push a `main`: con integraciones locales detecta después de integrar, así que el ratchet se sigue corriendo a mano antes. Convertir los 617 a mocks completos sigue pendiente, pero ya no puede empeorar. El 2026-10-01 la línea base bajó de 693 en 123 a **666 en 121**, después a **627 en 116** (medido el 2026-10-03) y el 2026-10-06 a **617 en 114** (`dc45c63b`; `BASE_OCURRENCIAS` y `BASE_ARCHIVOS` en `scripts/check-casts-en-specs.mjs`, medido de nuevo el 2026-10-11). **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
+| **594 `as never`/`as any` en 111 specs**, congelados por un ratchet que **no frena ningún merge** | `scripts/check-casts-en-specs.mjs` (issue #212) se instaló el 2026-09-23 con base **693 en 123 archivos**, todos en `backend/`, y frontend en cero. Es un ratchet: falla si el número sube, y también si baja sin actualizar su línea base. **Igual subió**: el 2026-09-29 medía 759 en 136, porque no corre en ningún lado donde frene un merge. Las integraciones de la semana fueron merges locales, y el CI de GitHub Actions estaba caído desde el 2026-09-18 por falta de minutos. Ese mismo día se bajaron los 66 casts nuevos completando los mocks contra sus puertos, y volvió a 693 en 123. El CI volvió a correr el 2026-10-01, pero sobre el push a `main`: con integraciones locales detecta después de integrar, así que el ratchet se sigue corriendo a mano antes. Convertir los 594 a mocks completos sigue pendiente, pero ya no puede empeorar. El 2026-10-01 la línea base bajó de 693 en 123 a **666 en 121**, después a **627 en 116** (medido el 2026-10-03) y el 2026-10-06 a **617 en 114** (`dc45c63b`) y el 2026-10-14 a **594 en 111** (`dfed21b5`; `BASE_OCURRENCIAS` y `BASE_ARCHIVOS` en `scripts/check-casts-en-specs.mjs`, medido de nuevo el 2026-10-14). **Corrección de método**: la versión anterior de esta fila decía "eran 301 en 83 specs, hoy 672 en 121 — se duplicó en tres semanas". Los dos números medían cosas distintas: el 301 era **solo `as never`** y el 672 era **`as never` + `as any`**. El crecimiento real del combinado fue **527 → 693 en 33 días, +31%** — real y sostenido, pero no una duplicación. Un número mantenido a mano no solo envejece: puede nacer mal |
 | **El alta interna de tickets acepta tipos dados de baja.** `CrearTicketUseCase` busca el tipo con `findById`, que no mira `activo`. Hallazgo de la tarea T5e de la API pública (2026-10-10): la API v1 lo corrige con su propia validación (`TiposTicketV1Query`), pero el alta de la app quedó igual, fuera del alcance de esa tarea | Un tipo dado de baja todavía puede recibir tickets nuevos por la API interna. El arreglo natural es validar `activo` en el caso de uso, que comparten todos los canales de alta: hay que revisar cada uno antes de cambiarlo |
 | **`x-forwarded-for` pasa sin validar por el BFF.** La ruta `/api/v1/*` lo reenvía tal como llega, igual que `publico/` (T7 de la API pública) | Un cliente puede falsearlo. Hoy no afecta, porque el límite de la API es por clave y no por IP. Si algún día se audita o se limita por IP, IIS tiene que fijar el header |
 | **`TicketsModule` no exporta los casos de uso que usa la API v1.** `ListarTicketsUseCase`, `CrearComentarioUseCase` y los tres listados de catálogos se arman con `useFactory` dentro de `ApiV1Module` (T5 y T5c de la API pública) | Es cableado duplicado: un cambio en las dependencias de esos casos de uso hay que repetirlo en `ApiV1Module`. Lo prolijo es exportarlos desde `tickets.module.ts` |
@@ -1267,7 +1267,8 @@ de las entregas anteriores está anotada solo en los mensajes de sus commits
     cuando el SSO no deja entrar;
   - el botón "Resetear vínculo SSO" de la administración de usuarios.
 - **API pública, etapa 1** (2026-10-10, anotada en los commits de T8 y T9):
-  - el artículo de Clientes (ROOT) no tiene la acción "API";
+  - ningún artículo cubre la acción "API" de la pantalla Clientes (ROOT): no hay
+    artículo de esa pantalla;
   - falta un artículo nuevo para la pantalla "Integraciones" del ADMINISTRADOR.
 - **Webhooks, etapa 2 de la API pública** (2026-10-13, anotada en los commits de T7 y
   T8 de la cadena `feat/webhooks`):
