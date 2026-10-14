@@ -8,7 +8,6 @@
  * Los botones siguen `permisos-tareas.ts` (espejo de CA3/CA4); el backend sigue
  * siendo la autoridad y sus 403/404/409/422 llegan como toast (`notifyError`).
  */
-import type { ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type { QueryKey } from "@tanstack/react-query";
@@ -41,8 +40,6 @@ export interface TicketTareasProps {
   modulo: string | undefined;
   /** Queries extra que una mutación deja viejas (Edilicia: `["reparaciones"]`). */
   invalidarTambien?: readonly QueryKey[];
-  /** Qué mostrar si el listado falla (Edilicia: sus subtareas embebidas, de solo lectura). */
-  respaldoSiFalla?: ReactNode;
 }
 
 function nombreDe(id: string | null, nombre: string | null, apellido: string | null): string | null {
@@ -50,7 +47,7 @@ function nombreDe(id: string | null, nombre: string | null, apellido: string | n
   return nombre || apellido ? `${nombre ?? ""} ${apellido ?? ""}`.trim() : "Usuario";
 }
 
-export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien, respaldoSiFalla }: TicketTareasProps) {
+export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien }: TicketTareasProps) {
   const { user, can, esAdminCliente } = useSession();
   const actor: ActorTareasUi = {
     id: user?.sub ?? "",
@@ -78,7 +75,6 @@ export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien, r
 
   if (tareasQuery.isLoading) return <p className="text-sm text-muted-foreground">Cargando tareas…</p>;
   if (tareasQuery.isError || !tareasQuery.data) {
-    if (respaldoSiFalla) return <>{respaldoSiFalla}</>;
     return <p className="text-sm text-destructive">No se pudieron cargar las tareas.</p>;
   }
 

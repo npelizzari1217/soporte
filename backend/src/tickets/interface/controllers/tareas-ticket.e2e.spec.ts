@@ -257,13 +257,17 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
     return { id: usuario.id, token: data.accessToken };
   }
 
-  async function crearTicket(inquilino: Inquilino, asignadoId: string | null): Promise<string> {
+  async function crearTicket(
+    inquilino: Inquilino,
+    asignadoId: string | null,
+    modulo = 'TICKETS',
+  ): Promise<string> {
     const tipo = await inquilino.client.tipoTicket.create({
       data: {
         codigo: `TAR${randomBytes(3).toString('hex').toUpperCase()}`,
         nombre: 'Tareas E2E',
         activo: true,
-        modulo: 'TICKETS',
+        modulo,
       },
     });
     const ticket = await inquilino.client.ticket.create({
@@ -717,6 +721,96 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
 
       expect(await ve(ticketId, tecnicoB.token)).toEqual({ detalle: 404, enLista: false });
       expect((await http('GET', rutas(ticketId).base, tecnicoB.token)).status).toBe(404);
+    });
+  });
+
+  // ─── Listar sigue la lectura del módulo (T12, JD-W3) ───────────────────
+
+  describe('listar sigue el permiso de lectura del módulo del tipo (T12)', () => {
+    /** Un ticket del módulo dado, con una tarea que da de alta el administrador. */
+    async function ticketConTarea(
+      escena: Awaited<ReturnType<typeof escenario>>,
+      modulo: string,
+    ): Promise<{ ticketId: string; tareaId: string }> {
+      const ticketId = await crearTicket(a, escena.responsable.id, modulo);
+      const { status, data } = await http<TareaTicketResponseDto>(
+        'POST',
+        rutas(ticketId).base,
+        escena.administrador.token,
+        { descripcion: `Tarea de ${modulo}` },
+      );
+      expect(status).toBe(201);
+      return { ticketId, tareaId: data.id };
+    }
+
+    it('VER_TODOS sin TICKETS:LECTURA ve el ticket, pero no lista sus tareas: 403', async () => {
+      const escena = await escenario();
+      const { ticketId } = await ticketConTarea(escena, 'TICKETS');
+      const sinLectura = await actor(escena.clienteA, 'COLABORADOR', ['TICKETS:VER_TODOS']);
+
+      const res = await http<TareasTicketResponseDto>(
+        'GET',
+        rutas(ticketId).base,
+        sinLectura.token,
+      );
+
+      expect(res.status).toBe(403);
+      expect(res.data.items).toBeUndefined();
+    });
+
+    it('con TICKETS:LECTURA y VER_TODOS lista las tareas de un ticket de TICKETS', async () => {
+      const escena = await escenario();
+      const { ticketId, tareaId } = await ticketConTarea(escena, 'TICKETS');
+
+      const res = await http<TareasTicketResponseDto>(
+        'GET',
+        rutas(ticketId).base,
+        escena.otroTecnico.token,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.data.items.map((t) => t.id)).toEqual([tareaId]);
+    });
+
+    it('un lector de Edilicia sin ver el ticket lista las tareas de un ticket de Edilicia, pero no las de uno de TICKETS', async () => {
+      const escena = await escenario();
+      const edilicia = await ticketConTarea(escena, 'EDILICIA');
+      const soporte = await ticketConTarea(escena, 'TICKETS');
+      // Sin TICKETS:LECTURA ni VER_TODOS, y no es el solicitante: no ve ninguno de los dos.
+      const lector = await actor(escena.clienteA, 'COLABORADOR', ['EDILICIA:LECTURA']);
+      expect(
+        (await http('GET', `${baseUrl}/tickets/${edilicia.ticketId}`, lector.token)).status,
+      ).not.toBe(200);
+
+      const deEdilicia = await http<TareasTicketResponseDto>(
+        'GET',
+        rutas(edilicia.ticketId).base,
+        lector.token,
+      );
+      const deSoporte = await http('GET', rutas(soporte.ticketId).base, lector.token);
+
+      expect(deEdilicia.status).toBe(200);
+      expect(deEdilicia.data.items.map((t) => t.id)).toEqual([edilicia.tareaId]);
+      expect(deEdilicia.data.avance).toEqual({ total: 1, completadas: 0, porcentaje: 0 });
+      expect(deSoporte.status).toBe(404);
+    });
+
+    it('TICKETS:LECTURA y VER_TODOS sin EDILICIA:LECTURA no listan las tareas de un ticket de Edilicia: 403', async () => {
+      const escena = await escenario();
+      const { ticketId } = await ticketConTarea(escena, 'EDILICIA');
+
+      const res = await http('GET', rutas(ticketId).base, escena.otroTecnico.token);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('aislamiento: un lector de Edilicia del cliente B no lista las tareas de un ticket de Edilicia del cliente A', async () => {
+      const escena = await escenario();
+      const { ticketId } = await ticketConTarea(escena, 'EDILICIA');
+      const clienteB = await crearCliente(TENANT_B);
+      const lectorB = await actor(clienteB, 'COLABORADOR', ['EDILICIA:LECTURA']);
+
+      expect((await http('GET', rutas(ticketId).base, lectorB.token)).status).toBe(404);
     });
   });
 

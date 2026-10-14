@@ -64,7 +64,7 @@ import {
   IUsuarioMasterChecker,
   USUARIO_MASTER_CHECKER,
 } from '../../domain/ports/i-usuario-master.checker';
-import { actorTareaDesdeJwt } from '../actor-tarea';
+import { actorTareaDesdeJwt, modulosConLecturaDesdeJwt } from '../actor-tarea';
 import {
   AsignarTecnicoTareaBodyDto,
   CrearTareaTicketBodyDto,
@@ -128,8 +128,11 @@ export class TareasTicketController {
   }
 
   /**
-   * GET /tickets/:id/tareas — las ve quien ve el ticket (`TICKETS:VER_TODOS` o solicitante).
-   * @throws 404 ticket inexistente, de otro cliente o no visible para el actor
+   * GET /tickets/:id/tareas — las lista el técnico de una tarea activa (CA10) o quien tiene
+   * `<MODULO>:LECTURA` del módulo del tipo; en el módulo TICKETS, además, tiene que ver el ticket
+   * (T12). Sin `@RequiereAcciones`: el módulo sale del tipo del ticket y lo decide el caso de uso.
+   * @throws 403 ve el ticket pero no puede listar · 404 ticket inexistente, de otro cliente o no
+   *   visible para el actor
    */
   @Get(':id/tareas')
   async listar(
@@ -142,6 +145,7 @@ export class TareasTicketController {
         ticketId,
         actorId: actor.id,
         tienePermisoVerTodos: actor.tienePermisoVerTodos,
+        modulosConLectura: modulosConLecturaDesdeJwt(user),
       }),
     );
     return { items: await this.aDtos(tareas), avance };

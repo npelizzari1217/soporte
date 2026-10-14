@@ -27,6 +27,9 @@ import { ListarTareasTicketUseCase } from './listar-tareas-ticket.use-case';
 const TICKET_ID = 'ticket-1';
 const OTRO_TICKET_ID = 'ticket-2';
 const TIPO_ID = 'tipo-edilicia';
+/** Ticket de un tipo del módulo TICKETS (Soporte), para la regla de lectura de T12. */
+const SOPORTE_TICKET_ID = 'ticket-soporte';
+const TIPO_SOPORTE_ID = 'tipo-soporte';
 const CLIENTE_ID = 'cliente-1';
 const SOLICITANTE = 'usuario-solicitante';
 const RESPONSABLE = 'usuario-responsable';
@@ -59,13 +62,13 @@ const ACTORES = {
 };
 type NombreActor = keyof typeof ACTORES;
 
-function crearTicket(id: string): TicketEntity {
+function crearTicket(id: string, tipoId: string = TIPO_ID): TicketEntity {
   const ticket = TicketEntity.create(
     {
       numero: `ED-${id}`,
       titulo: 'Pérdida en el baño',
       descripcion: null,
-      tipoId: TIPO_ID,
+      tipoId,
       estadoId: 'estado-en-proceso',
       prioridadId: 'prioridad-media',
       cicloId: null,
@@ -82,6 +85,7 @@ function armar() {
   const tickets = new Map<string, TicketEntity>([
     [TICKET_ID, crearTicket(TICKET_ID)],
     [OTRO_TICKET_ID, crearTicket(OTRO_TICKET_ID)],
+    [SOPORTE_TICKET_ID, crearTicket(SOPORTE_TICKET_ID, TIPO_SOPORTE_ID)],
   ]);
   const operaciones: OperacionTicketEntity[] = [];
 
@@ -96,13 +100,21 @@ function armar() {
       ),
   };
   const tipoTicketRepo = {
-    findById: async (id: string) =>
-      id === TIPO_ID
-        ? TipoTicketEntity.create(
-            { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA', activo: true },
-            TIPO_ID,
-          )
-        : null,
+    findById: async (id: string) => {
+      if (id === TIPO_ID) {
+        return TipoTicketEntity.create(
+          { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA', activo: true },
+          TIPO_ID,
+        );
+      }
+      if (id === TIPO_SOPORTE_ID) {
+        return TipoTicketEntity.create(
+          { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+          TIPO_SOPORTE_ID,
+        );
+      }
+      return null;
+    },
   };
   const tareaRepo = {
     listarPorTicket: async (ticketId: string) =>
@@ -211,7 +223,7 @@ function armar() {
       txRunner,
       ahora,
     ),
-    listar: new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
+    listar: new ListarTareasTicketUseCase(ticketRepo, tipoTicketRepo, tareaRepo),
   };
 }
 
@@ -595,6 +607,7 @@ describe('ListarTareasTicketUseCase', () => {
       ticketId: TICKET_ID,
       actorId: TECNICO,
       tienePermisoVerTodos: true,
+      modulosConLectura: ['EDILICIA'],
     });
 
     const { tareas, avance } = result.getValue();
@@ -608,6 +621,7 @@ describe('ListarTareasTicketUseCase', () => {
       ticketId: TICKET_ID,
       actorId: TECNICO,
       tienePermisoVerTodos: true,
+      modulosConLectura: ['EDILICIA'],
     });
     expect(result.getValue()).toEqual({
       tareas: [],
@@ -615,27 +629,117 @@ describe('ListarTareasTicketUseCase', () => {
     });
   });
 
-  it('el solicitante las ve sin VER_TODOS; un ajeno sin VER_TODOS recibe 404', async () => {
+  it('en un ticket de TICKETS, el solicitante con TICKETS:LECTURA las ve sin VER_TODOS; un ajeno sin VER_TODOS recibe 404', async () => {
     const deps = armar();
     const propio = await deps.listar.execute({
-      ticketId: TICKET_ID,
+      ticketId: SOPORTE_TICKET_ID,
       actorId: SOLICITANTE,
       tienePermisoVerTodos: false,
+      modulosConLectura: ['TICKETS'],
     });
     const ajeno = await deps.listar.execute({
-      ticketId: TICKET_ID,
+      ticketId: SOPORTE_TICKET_ID,
       actorId: OTRO_TECNICO,
       tienePermisoVerTodos: false,
+      modulosConLectura: ['TICKETS'],
     });
     expect(propio.isOk()).toBe(true);
     expect(errorDe(ajeno)).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  describe('listar sigue el permiso de lectura del módulo del tipo (T12, JD-W3)', () => {
+    type Esperado = 'ok' | 403 | 404;
+    const listar = (
+      deps: ReturnType<typeof armar>,
+      ticketId: string,
+      actorId: string,
+      tienePermisoVerTodos: boolean,
+      modulosConLectura: string[],
+    ) => deps.listar.execute({ ticketId, actorId, tienePermisoVerTodos, modulosConLectura });
+    const comprobar = (result: Awaited<ReturnType<typeof listar>>, esperado: Esperado): void => {
+      if (esperado === 'ok') {
+        expect(result.getValue().tareas.map((t) => t.id)).toEqual(['t1']);
+      } else {
+        expect(errorDe(result)).toBeInstanceOf(
+          esperado === 403 ? TareaAccionNoPermitidaError : TicketNoEncontradoError,
+        );
+      }
+    };
+
+    it.each<[string, string, boolean, string[], Esperado]>([
+      [
+        'VER_TODOS sin TICKETS:LECTURA: ve el ticket, pero no lista (403)',
+        OTRO_TECNICO,
+        true,
+        [],
+        403,
+      ],
+      ['VER_TODOS con TICKETS:LECTURA', OTRO_TECNICO, true, ['TICKETS'], 'ok'],
+      ['TICKETS:LECTURA sin ver el ticket (404)', OTRO_TECNICO, false, ['TICKETS'], 404],
+      ['solicitante sin TICKETS:LECTURA (403)', SOLICITANTE, false, [], 403],
+      [
+        'EDILICIA:LECTURA no alcanza en un ticket de TICKETS',
+        OTRO_TECNICO,
+        true,
+        ['EDILICIA'],
+        403,
+      ],
+      ['sin permisos ni visibilidad (404)', OTRO_TECNICO, false, [], 404],
+    ])('ticket de TICKETS — %s', async (_caso, actorId, verTodos, lectura, esperado) => {
+      const deps = armar();
+      deps.sembrarTarea('t1', { ticketId: SOPORTE_TICKET_ID });
+
+      comprobar(await listar(deps, SOPORTE_TICKET_ID, actorId, verTodos, lectura), esperado);
+    });
+
+    it.each<[string, string, boolean, string[], Esperado]>([
+      ['EDILICIA:LECTURA sin ver el ticket: alcanza', OTRO_TECNICO, false, ['EDILICIA'], 'ok'],
+      ['EDILICIA:LECTURA con VER_TODOS', OTRO_TECNICO, true, ['EDILICIA'], 'ok'],
+      [
+        'TICKETS:LECTURA y VER_TODOS sin EDILICIA:LECTURA (403)',
+        OTRO_TECNICO,
+        true,
+        ['TICKETS'],
+        403,
+      ],
+      ['sin permisos ni visibilidad (404)', OTRO_TECNICO, false, [], 404],
+    ])('ticket de Edilicia — %s', async (_caso, actorId, verTodos, lectura, esperado) => {
+      const deps = armar();
+      deps.sembrarTarea('t1');
+
+      comprobar(await listar(deps, TICKET_ID, actorId, verTodos, lectura), esperado);
+    });
+
+    it.each([TICKET_ID, SOPORTE_TICKET_ID])(
+      'el técnico de una tarea activa lista sin permiso de lectura ni VER_TODOS (CA10) — %s',
+      async (ticketId) => {
+        const deps = armar();
+        deps.sembrarTarea('t1', { ticketId, tecnicoId: TECNICO });
+
+        comprobar(await listar(deps, ticketId, TECNICO, false, []), 'ok');
+      },
+    );
+
+    it('el técnico de una tarea BORRADA ya no lista sin permiso de lectura', async () => {
+      const deps = armar();
+      deps.sembrarTarea('t1', { tecnicoId: TECNICO }).eliminar(AHORA);
+
+      expect(errorDe(await listar(deps, TICKET_ID, TECNICO, false, []))).toBeInstanceOf(
+        TicketNoEncontradoError,
+      );
+    });
   });
 });
 
 describe('Visibilidad por tarea (CA10)', () => {
   const tecnicoSinVerTodos = actor(TECNICO, { tienePermisoVerTodos: false });
   const listarComo = (deps: ReturnType<typeof armar>) =>
-    deps.listar.execute({ ticketId: TICKET_ID, actorId: TECNICO, tienePermisoVerTodos: false });
+    deps.listar.execute({
+      ticketId: TICKET_ID,
+      actorId: TECNICO,
+      tienePermisoVerTodos: false,
+      modulosConLectura: [],
+    });
 
   it('el técnico de una tarea activa lista las tareas sin VER_TODOS ni ser el responsable', async () => {
     const deps = armar();

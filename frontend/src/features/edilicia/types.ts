@@ -3,10 +3,10 @@
  * (`backend/src/reparaciones/interface/dtos/reparaciones.dto.ts`).
  *
  * `GET /reparaciones` embebe `subtareas[]` por ítem. Desde
- * odd/tareas-con-tecnico (T6) `SubtareasDialog` lee las tareas del ticket por
- * `GET /tickets/:id/tareas` y usa las embebidas solo como respaldo de solo
- * lectura, si ese pedido falla. `porcentajeAvance` lo calcula el
- * backend al leer, sobre las tareas activas del ticket.
+ * odd/tareas-con-tecnico (T12) `SubtareasDialog` lee siempre las tareas del
+ * ticket por `GET /tickets/:id/tareas`, y el frontend ya no lee el contenido de
+ * las embebidas. `porcentajeAvance` lo calcula el backend al leer, sobre las
+ * tareas activas del ticket.
  */
 
 /** Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). `id` = id del satélite `ticket_edilicia`. */

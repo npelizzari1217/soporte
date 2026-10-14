@@ -24,7 +24,7 @@ import {
 } from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { ListarTecnicosElegiblesTareaUseCase } from '../../application/use-cases/listar-tecnicos-elegibles-tarea.use-case';
-import { actorTareaDesdeJwt } from '../actor-tarea';
+import { actorTareaDesdeJwt, modulosConLecturaDesdeJwt } from '../actor-tarea';
 import { TareasTicketController, toHttpExceptionTareas } from './tareas-ticket.controller';
 
 describe('actorTareaDesdeJwt', () => {
@@ -55,6 +55,26 @@ describe('actorTareaDesdeJwt', () => {
     expect(actor.esAdministrador).toBe(true);
     expect(actor.tienePermisoVerTodos).toBe(true);
     expect(actor.modulosConModificacion).toEqual(['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS']);
+  });
+});
+
+describe('modulosConLecturaDesdeJwt (T12)', () => {
+  it('sale de las celdas <MODULO>:LECTURA del actor; VER_TODOS no cuenta como lectura', () => {
+    const user = payloadDeTest({
+      sub: 'colaborador-uuid',
+      cliente_id: 'cliente-uuid',
+      rol: 'COLABORADOR',
+      permisos: ['EDILICIA:LECTURA', 'TICKETS:VER_TODOS', 'COMPRAS:MODIFICACION'],
+    });
+
+    expect(modulosConLecturaDesdeJwt(user)).toEqual(['EDILICIA']);
+  });
+
+  it.each([
+    ['ADMINISTRADOR', payloadDeTest({ rol: 'ADMINISTRADOR', cliente_id: 'cliente-uuid' })],
+    ['ROOT', payloadDeTest({ is_global_admin: true })],
+  ])('%s tiene LECTURA en los cuatro módulos', (_rol, user) => {
+    expect(modulosConLecturaDesdeJwt(user)).toEqual(['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS']);
   });
 });
 

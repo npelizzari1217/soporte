@@ -127,39 +127,38 @@ describe("SubtareasDialog — tareas genéricas del ticket", () => {
   });
 });
 
-describe("SubtareasDialog — lector de Edilicia que no ve el ticket", () => {
-  it("si GET /tickets/:id/tareas da 404, muestra de solo lectura las subtareas embebidas del listado", async () => {
+describe("SubtareasDialog — lector de Edilicia que no ve el ticket (T12)", () => {
+  it("con EDILICIA:LECTURA y sin TICKETS:LECTURA lista las tareas genéricas con su técnico, sin controles", async () => {
     const user = userEvent.setup();
     server.use(
       http.get(`/api/tickets/${TICKET_ID}/tareas`, () =>
-        HttpResponse.json({ statusCode: 404, message: "no", error: "Not Found" }, { status: 404 }),
+        HttpResponse.json({
+          items: [{ ...TAREA, tecnicoId: "u-tina", tecnicoNombre: "Tina", tecnicoApellido: "Técnica" }],
+          avance: { total: 1, completadas: 0, porcentaje: 0 },
+        }),
       ),
     );
-    renderWithProviders(
-      <SubtareasDialog
-        ticketId={TICKET_ID}
-        numero="EDI-0001"
-        trigger={<button>Ver subtareas</button>}
-        subtareas={[
-          {
-            id: "s1",
-            ticketEdiliciaId: "rep1",
-            descripcion: "Revisar cañería",
-            completada: false,
-            completadaEn: null,
-            completadaPorId: null,
-            orden: 1,
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-          },
-        ]}
-      />,
-      { user: buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }) },
-    );
+    renderDialog(buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }));
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
-    const lista = await screen.findByRole("list", { name: "Tareas (solo lectura)" });
-    expect(lista).toHaveTextContent("Revisar cañería");
+    await screen.findByText("Revisar cañería");
+    expect(screen.getByText("Técnico: Tina Técnica")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nueva tarea")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Completar" })).not.toBeInTheDocument();
+  });
+
+  it("si GET /tickets/:id/tareas falla, informa el error en vez de un checklist armado con otra fuente", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/tareas`, () =>
+        HttpResponse.json({ statusCode: 403, message: "no", error: "Forbidden" }, { status: 403 }),
+      ),
+    );
+    renderDialog(buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }));
+
+    await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
+    expect(await screen.findByText("No se pudieron cargar las tareas.")).toBeInTheDocument();
+    expect(screen.queryByText("Sin tareas todavía.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Tareas (solo lectura)" })).not.toBeInTheDocument();
   });
 });

@@ -1210,11 +1210,13 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - Precisión, el técnico de una tarea ve el ticket (CA10): **Cumplida**. Lo ve en el
       detalle, en el listado, en el historial y en sus tareas, y deja de verlo al
       quitarlo de la tarea o al borrarla.
-    - **Una decisión de implementación que la decisión no cubre**, y que no se cuenta
-      como desviación: quien ve el listado de reparaciones con `EDILICIA:LECTURA` pero
-      no ve el ticket recibe el checklist de solo lectura, sin el técnico. Conserva lo
-      que esa persona ya veía antes de este punto, sin mostrarle nada nuevo. Si el dueño
-      prefiere que listar tareas siga la visibilidad del módulo, es un cambio de backend.
+    - **Quién lista las tareas, una precisión que la decisión no cubría** (decidida por
+      el dueño el 2026-10-14, a partir del hallazgo JD-W3 del `judgment-day`): listar
+      tareas sigue el permiso de lectura del módulo del tipo. Las lista el técnico de una
+      tarea activa (CA10) o quien tiene `<MÓDULO>:LECTURA`; en el módulo TICKETS, además,
+      tiene que ver el ticket, como en `/tickets`. Así, quien ve el listado de reparaciones
+      con `EDILICIA:LECTURA` ve el checklist completo con el técnico de cada tarea, y el
+      checklist de solo lectura sin técnico que armaba el frontend se retiró.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de

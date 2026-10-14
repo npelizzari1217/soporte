@@ -45,8 +45,7 @@ reordenarlas. Si la descripción quedó mal, se elimina y se carga de nuevo.
 
 Quién ve cada botón depende de su relación con el ticket (ver "Quién puede
 hacer cada cosa" más abajo). Quien solo puede leer la reparación ve el
-checklist, sin botones. Si además no tiene acceso al ticket, ve solo la
-descripción de cada tarea y si está completada, sin el técnico.
+checklist completo, con el técnico de cada tarea, sin botones.
 
 Un punto importante: **llegar al 100% no cierra la reparación**. El avance y el
 estado del ticket son dos cosas separadas; el cambio de estado sigue siendo una

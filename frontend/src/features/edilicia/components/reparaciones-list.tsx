@@ -148,7 +148,6 @@ export function ReparacionesList() {
         <SubtareasDialog
           ticketId={row.ticketId}
           numero={row.numero}
-          subtareas={row.subtareas}
           trigger={
             <Button variant="outline" size="sm">
               Ver subtareas

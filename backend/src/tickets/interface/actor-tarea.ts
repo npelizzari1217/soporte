@@ -23,3 +23,12 @@ export function actorTareaDesdeJwt(user: JwtPayload): ActorTarea {
     ),
   };
 }
+
+/**
+ * Módulos de `MODULOS` en los que el actor tiene `<MODULO>:LECTURA`, con `puedeEjecutar` (ROOT y
+ * ADMINISTRADOR los tienen todos). Lo usa el listado de tareas, que sigue el permiso de lectura del
+ * módulo del tipo del ticket (odd/tareas-con-tecnico T12).
+ */
+export function modulosConLecturaDesdeJwt(user: JwtPayload): string[] {
+  return MODULOS.filter((modulo) => puedeEjecutar(user, `${modulo}:LECTURA`));
+}

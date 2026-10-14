@@ -385,13 +385,16 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
       inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, USUARIO_MASTER_CHECKER],
     },
     // odd/tareas-con-tecnico T3: casos de uso de tareas (T2), cableados con `TareasTicketController`.
-    // Crear, completar y eliminar se exportan para las rutas de subtareas de reparaciones, que
-    // delegan en ellos hasta que T8 las retire.
+    // Crear se exporta para el seed de demo (`prisma_master/seeds/demo-seed.ts`). Completar y
+    // eliminar se exportaban para las rutas de subtareas de reparaciones, que T8 retiró.
     {
       provide: ListarTareasTicketUseCase,
-      useFactory: (ticketRepo: ITicketRepository, tareaRepo: ITareaTicketRepository) =>
-        new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
-      inject: [TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+      ) => new ListarTareasTicketUseCase(ticketRepo, tipoTicketRepo, tareaRepo),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
     },
     {
       provide: ListarTecnicosElegiblesTareaUseCase,
