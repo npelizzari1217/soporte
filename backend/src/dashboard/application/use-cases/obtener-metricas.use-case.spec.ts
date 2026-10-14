@@ -261,15 +261,51 @@ describe('ObtenerMetricasUseCase', () => {
       return c;
     }
 
-    it('el período es el rango de fechas del ciclo, con fecha_fin incluida entera', async () => {
+    it('el período son los días argentinos del ciclo, con fecha_fin incluida entera', async () => {
       const c = conTareas();
 
       await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
 
+      // Medianoche argentina (UTC-3 fijo) = 03:00 UTC.
       expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith({
-        desde: new Date('2026-01-01T00:00:00.000Z'),
-        hasta: new Date('2027-01-01T00:00:00.000Z'),
+        desde: new Date('2026-01-01T03:00:00.000Z'),
+        hasta: new Date('2027-01-01T03:00:00.000Z'),
         completadaPorId: undefined,
+      });
+    });
+
+    describe('el día se corta en la medianoche argentina, no en la UTC (T11, JD-W2)', () => {
+      /**
+       * Repositorio que cuenta de verdad: cada usuario completó una tarea en el instante dado, y
+       * entra si cae en `[desde, hasta)`. El ciclo va del 2026-01-01 al 2026-12-31.
+       */
+      function conCompletadaEn(instante: string) {
+        const c = makeCollaborators(CICLO);
+        c.tareaRepo.contarCompletadasPorTecnico.mockImplementation(
+          async (filtro: { desde: Date; hasta: Date }) => {
+            const en = new Date(instante);
+            return en >= filtro.desde && en < filtro.hasta
+              ? [{ completadaPorId: ANA, completadas: 1 }]
+              : [];
+          },
+        );
+        return c;
+      }
+
+      it.each([
+        ['23:30 ART del último día del ciclo cuenta', '2027-01-01T02:30:00.000Z', 1],
+        ['00:30 ART del primer día del ciclo cuenta', '2026-01-01T03:30:00.000Z', 1],
+        ['23:30 ART del día anterior al inicio no cuenta', '2026-01-01T02:30:00.000Z', 0],
+        ['00:30 ART del día siguiente al fin no cuenta', '2027-01-01T03:30:00.000Z', 0],
+      ])('%s', async (_caso, instante, esperadas) => {
+        const c = conCompletadaEn(instante);
+
+        const result = await c.useCase.execute({
+          actorId: 'admin-uuid',
+          actorRol: 'ADMINISTRADOR',
+        });
+
+        expect(result.tareasCompletadasPorTecnico).toHaveLength(esperadas);
       });
     });
 
@@ -339,8 +375,8 @@ describe('ObtenerMetricasUseCase', () => {
       expect(c.cicloClienteRepo.findActive).not.toHaveBeenCalled();
       expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(
         expect.objectContaining({
-          desde: new Date('2025-03-01T00:00:00.000Z'),
-          hasta: new Date('2025-07-01T00:00:00.000Z'),
+          desde: new Date('2025-03-01T03:00:00.000Z'),
+          hasta: new Date('2025-07-01T03:00:00.000Z'),
         }),
       );
     });

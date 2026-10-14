@@ -156,16 +156,17 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
 
   beforeEach(limpiarFilas);
 
-  it('el período es [fecha_inicio, fecha_fin + 1 día) sobre completada_en, sin importar el ciclo del ticket', async () => {
+  it('el período son los días argentinos del ciclo sobre completada_en (corta a las 03:00 UTC), sin importar el ciclo del ticket', async () => {
     const octubre = await crearCiclo('2026-10-01', '2026-10-31');
     const anterior = await crearCiclo('2026-09-01', '2026-09-30');
     const ticket = await crearTicket(octubre);
     const ticketCicloAnterior = await crearTicket(anterior);
 
-    await tareaCompletada(ticket, TECNICO_X, '2026-10-01T00:00:00.000Z'); // borde inferior: entra
-    await tareaCompletada(ticket, TECNICO_X, '2026-10-31T23:59:59.999Z'); // último instante: entra
-    await tareaCompletada(ticket, TECNICO_X, '2026-11-01T00:00:00.000Z'); // borde superior: afuera
-    await tareaCompletada(ticket, TECNICO_X, '2026-09-30T23:59:59.999Z'); // antes: afuera
+    // Argentina es UTC-3 fijo: el día argentino 1/10 empieza a las 03:00 UTC (T11, JD-W2).
+    await tareaCompletada(ticket, TECNICO_X, '2026-10-01T03:00:00.000Z'); // 00:00 ART del 1/10: entra
+    await tareaCompletada(ticket, TECNICO_X, '2026-11-01T02:59:59.999Z'); // 23:59 ART del 31/10: entra
+    await tareaCompletada(ticket, TECNICO_X, '2026-11-01T03:00:00.000Z'); // 00:00 ART del 1/11: afuera
+    await tareaCompletada(ticket, TECNICO_X, '2026-10-01T02:59:59.999Z'); // 23:59 ART del 30/9: afuera
     // Ticket de otro ciclo, tarea completada en octubre: cuenta en octubre.
     await tareaCompletada(ticketCicloAnterior, TECNICO_Y, '2026-10-15T12:00:00.000Z');
 

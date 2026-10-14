@@ -4,6 +4,7 @@ import { IEncuestaSatisfaccionRepository } from '../../../csat/domain/ports/i-en
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import { medianocheArgentina } from '../../../shared/domain/zona-horaria-argentina';
 
 const ROL_TECNICO = 'TECNICO';
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
@@ -105,7 +106,8 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
  *   `cerradosConSla=0` (evita `NaN`/división por cero cuando no hay
  *   cerrados con SLA aplicable).
  * - Tareas completadas por técnico (odd/tareas-con-tecnico T4, CA6): el período es el rango de
- *   fechas del ciclo, `[fechaInicio, fechaFin + 1 día)` en UTC, aplicado a `completada_en` y no al
+ *   días del ciclo en hora argentina, de las 00:00 ART de `fechaInicio` a las 00:00 ART del día
+ *   siguiente a `fechaFin` (03:00 UTC, T11), aplicado a `completada_en` y no al
  *   ciclo del ticket: una tarea completada este ciclo sobre un ticket de un ciclo anterior cuenta
  *   en este. El alcance de TECNICO fija `completada_por_id = actorId`, el mismo criterio que
  *   `asignadoId` en las métricas por ticket. Las métricas por ticket no cambian.
@@ -202,9 +204,11 @@ export class ObtenerMetricasUseCase {
     if (!ciclo) return [];
 
     const grupos = await this.tareaRepo.contarCompletadasPorTecnico({
-      desde: ciclo.fechaInicio,
-      // `fecha_fin` es una fecha (sin hora) e incluye el día entero.
-      hasta: new Date(ciclo.fechaFin.getTime() + MS_POR_DIA),
+      // Las fechas del ciclo son días calendario argentinos (`@db.Date`), y `completada_en` es un
+      // instante: los bordes son la medianoche argentina, no la UTC (T11). `fecha_fin` incluye el
+      // día entero.
+      desde: medianocheArgentina(ciclo.fechaInicio),
+      hasta: medianocheArgentina(new Date(ciclo.fechaFin.getTime() + MS_POR_DIA)),
       completadaPorId,
     });
     if (grupos.length === 0) return [];

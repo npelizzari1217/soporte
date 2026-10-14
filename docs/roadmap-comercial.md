@@ -1194,9 +1194,11 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     - El cierre no se bloquea (CA5): **Cumplida**. La máquina de estados no cambió.
     - Métricas (CA6): **Cumplida**. El dashboard suma "Tareas completadas por técnico",
       atribuidas por `completada_por_id`, y las métricas por ticket no cambian (un test
-      compara el resto del payload antes y después). El período es el rango del ciclo,
-      `[fecha_inicio, fecha_fin + 1 día)` en UTC, evaluado sobre `completada_en`: queda
-      para el `judgment-day` si el corte en la medianoche UTC es el esperado.
+      compara el resto del payload antes y después). El período son los días argentinos
+      del ciclo, de las 00:00 ART de `fecha_inicio` a las 00:00 ART del día siguiente a
+      `fecha_fin` (03:00 UTC, porque Argentina es UTC-3 fijo), evaluado sobre
+      `completada_en`. El corte en la medianoche UTC original lo marcó el `judgment-day`
+      del 2026-10-14 (JD-W2) y se corrigió antes del merge.
     - Avance (CA7): **Cumplida**. Porcentaje de tareas activas completadas, en cualquier
       ticket con tareas, en Edilicia y en el PDF.
     - Historial y PDF (CA8): **Cumplida**. Asignar, completar y descompletar quedan en el
