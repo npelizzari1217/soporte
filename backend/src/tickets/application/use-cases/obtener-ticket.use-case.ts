@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { esTicketVisiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `ObtenerTicketUseCase`.
@@ -21,7 +22,8 @@ export interface ObtenerTicketDto {
  * ObtenerTicketUseCase — consulta de un ticket con scope por rol (T6).
  *
  * - `ticket:ver_todos` → puede ver cualquier ticket del tenant activo.
- * - Sin el permiso (USUARIO) → solo si es el solicitante; caso contrario
+ * - Sin el permiso → solo si es el solicitante o el técnico de una tarea
+ *   activa del ticket (`esTicketVisiblePara`, CA10); caso contrario
  *   `TicketNoEncontradoError` (404) — NO revela la existencia del ticket
  *   a un tercero ajeno (mismo patrón que un ticket de otro tenant, que ya
  *   es 404 porque `findById` está scopeado a `TenantContext`).
@@ -30,14 +32,16 @@ export interface ObtenerTicketDto {
  * Ref spec: sdd/tickets-core/spec T6, T23. Tarea: T6.3.
  */
 export class ObtenerTicketUseCase {
-  constructor(private readonly ticketRepo: Pick<ITicketRepository, 'findById'>) {}
+  constructor(private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>) {}
 
   async execute(dto: ObtenerTicketDto): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
-    if (!dto.tienePermisoVerTodos && ticket.solicitanteId !== dto.actorId) {
+    if (
+      !(await esTicketVisiblePara(this.ticketRepo, ticket, dto.actorId, dto.tienePermisoVerTodos))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
     return Result.ok(ticket);

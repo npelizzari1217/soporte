@@ -13,34 +13,47 @@ para cosas distintas: las **subtareas**, que miden el avance, y los
 ## Subtareas: el checklist que mueve el avance
 
 Cada fila del listado de reparaciones tiene un botón **Ver subtareas**. Ahí se
-carga la lista de pasos concretos del trabajo.
+carga la lista de pasos concretos del trabajo. Son las **tareas del ticket** de
+la reparación: las mismas que aparecen en la sección **Tareas** del detalle del
+ticket, así que lo que se haga en un lado se ve en el otro.
+
+Cada tarea muestra su descripción, su **técnico** (o *Sin técnico*), si está
+pendiente o completada y, si lo está, cuándo y quién la completó.
 
 El porcentaje de la columna **Avance** sale directamente de ese checklist:
 
-> avance = subtareas completadas ÷ subtareas totales × 100
+> avance = tareas completadas ÷ tareas activas × 100
 
 Se muestra con hasta dos decimales, así que una de tres da `33.33%`. Una
-reparación **sin subtareas queda en 0%**: el avance no se puede cargar a mano,
-solo se mueve cargando y completando subtareas. Las subtareas eliminadas no
+reparación **sin tareas queda en 0%**: el avance no se puede cargar a mano,
+solo se mueve cargando y completando tareas. Las tareas eliminadas no
 cuentan ni arriba ni abajo de la división.
 
-Lo que se puede hacer con una subtarea:
+Lo que se puede hacer con una tarea:
 
-1. **Agregarla**, escribiendo su descripción en el campo *Nueva subtarea*.
-2. **Completarla**, con el botón **Completar**. Una vez completada, el botón
-   desaparece: **no hay forma de descompletarla**.
-3. **Eliminarla**, con el ícono de borrar.
+1. **Agregarla**, escribiendo su descripción en el campo *Nueva tarea*.
+2. **Asignarle un técnico**, o quitárselo eligiendo *Sin técnico*. La lista
+   solo ofrece técnicos que pueden atender reparaciones edilicias.
+3. **Completarla**, con el botón **Completar**. Queda registrado quién la
+   completó y cuándo.
+4. **Descompletarla**, con el botón **Descompletar**, si se marcó por error.
+   Vuelve a pendiente y se borra el registro de quién la había completado.
+5. **Eliminarla**, con el ícono de borrar. El sistema pide confirmación antes.
 
-Lo que **no** se puede hacer: cambiarle el texto a una subtarea ya creada, ni
+Lo que **no** se puede hacer: cambiarle el texto a una tarea ya creada, ni
 reordenarlas. Si la descripción quedó mal, se elimina y se carga de nuevo.
+
+Quién ve cada botón depende de su relación con el ticket (ver "Quién puede
+hacer cada cosa" más abajo). Quien solo puede leer la reparación ve el
+checklist completo, con el técnico de cada tarea, sin botones.
 
 Un punto importante: **llegar al 100% no cierra la reparación**. El avance y el
 estado del ticket son dos cosas separadas; el cambio de estado sigue siendo una
 decisión de la persona.
 
-El porcentaje se recalcula solo: al completar una subtarea, y también al agregar
-o eliminar una. Tenga en cuenta que agregar una subtarea *baja* el avance, porque
-cambia el total sobre el que se calcula.
+El porcentaje se recalcula solo: al completar o descompletar una tarea, y
+también al agregar o eliminar una. Tenga en cuenta que agregar una tarea *baja*
+el avance, porque cambia el total sobre el que se calcula.
 
 ## Comentarios: por qué se está demorando
 
@@ -119,12 +132,14 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 
 ## Quién puede hacer cada cosa
 
-| Acción | Permiso |
+| Acción | Quién puede |
 |---|---|
 | Ver la reparación, sus subtareas y sus comentarios | `EDILICIA:LECTURA` |
-| Agregar una subtarea, o publicar un comentario | `EDILICIA:ALTAS` |
-| Completar una subtarea | `EDILICIA:MODIFICACION` |
-| Eliminar una subtarea | `EDILICIA:BORRADO` |
+| Agregar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
+| Asignar o quitar el técnico de una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
+| Publicar un comentario | `EDILICIA:ALTAS` |
+| Completar o descompletar una subtarea | El técnico de la subtarea, el responsable de la reparación, un ADMINISTRADOR o ROOT |
+| Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
 | Vincular una compra a una reparación | `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA` (las dos) |
 | Desvincular una compra de una reparación | `EDILICIA:BORRADO` |
 

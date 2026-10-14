@@ -30,6 +30,16 @@ export interface MetricasResponseDto {
   tiempoPromedioPrimeraRespuestaHoras: number | null;
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
+  /**
+   * Tareas completadas por técnico en el período del ciclo (odd/tareas-con-tecnico T4), atribuidas
+   * a quien las completó, en orden descendente. TECNICO recibe a lo sumo su propia fila.
+   */
+  tareasCompletadasPorTecnico: {
+    usuarioId: string;
+    nombre: string | null;
+    apellido: string | null;
+    completadas: number;
+  }[];
   /** KPI de satisfacción (WU9.1, ADR-C5). AUSENTE sin `CSAT:LECTURA`. */
   csatPromedio?: number | null;
   csatRespuestas?: number;

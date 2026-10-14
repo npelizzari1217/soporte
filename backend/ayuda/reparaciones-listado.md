@@ -12,9 +12,10 @@ Cada fila es una reparación edilicia, con **número, título, ubicación y
 avance**. El número identifica el ticket; el título resume el trabajo; la
 ubicación es el lugar físico donde ocurre (texto libre, puede estar vacía).
 
-El **avance** de cada fila sale del checklist de subtareas de esa reparación
-(`avance = subtareas completadas ÷ subtareas totales × 100`) — para el detalle
-de cómo se calcula, cómo se cargan las subtareas y cómo se dejan comentarios
+El **avance** de cada fila sale del checklist de subtareas (las tareas del
+ticket) de esa reparación (`avance = tareas completadas ÷ tareas activas × 100`;
+las eliminadas no cuentan) — para el detalle
+de cómo se calcula, cómo se cargan las tareas, quién puede completarlas y cómo se dejan comentarios
 sobre una reparación puntual, ver el artículo **"Subtareas y comentarios de
 una reparación edilicia"**. Este artículo es sobre el LISTADO de muchas
 reparaciones; el otro es sobre UNA reparación abierta.

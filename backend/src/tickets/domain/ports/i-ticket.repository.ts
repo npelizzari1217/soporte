@@ -5,7 +5,7 @@ import { TicketEntity } from '../entities/ticket.entity';
  * `ITicketRepository.findAll`. Omitir un campo = no filtrar por él.
  *
  * Ampliado respecto a la referencia probada (soporte1) con `estadoId`,
- * `asignadoId` y `soloSolicitante` (T7 — scope por rol y filtros de la
+ * `asignadoId` y `visiblePara` (T7 — scope por rol y filtros de la
  * lista de tickets).
  *
  * Ref spec: sdd/tickets-core/spec T7. Ref design: "Firmas TS clave".
@@ -28,12 +28,13 @@ export interface TicketFiltros {
    */
   busqueda?: string;
   /**
-   * UUID del solicitante al que se restringe el listado. Lo deriva
-   * `ListarTicketsUseCase` del actor cuando NO tiene `ticket:ver_todos`
-   * (T7). `undefined` = sin restricción de solicitante (requiere
-   * `ver_todos`).
+   * UUID del actor al que se restringe el listado: solo los tickets que ve sin
+   * `TICKETS:VER_TODOS`, es decir los que solicitó y aquellos donde es el técnico
+   * de una tarea activa (odd/tareas-con-tecnico, CA10). Es la misma regla que
+   * `esVisiblePara`. Lo deriva `ListarTicketsUseCase` del actor cuando NO tiene
+   * `ticket:ver_todos` (T7). `undefined` = sin restricción (requiere `ver_todos`).
    */
-  soloSolicitante?: string;
+  visiblePara?: string;
   /** Límite inferior del rango (inclusive), sobre created_at. */
   fechaDesde?: Date;
   /** Límite superior del rango (inclusive), sobre created_at. */
@@ -114,6 +115,15 @@ export interface ITicketRepository {
    * para metadata de paginación, T7).
    */
   count(filtros?: TicketFiltros): Promise<number>;
+
+  /**
+   * Visibilidad de un ticket para un actor SIN `TICKETS:VER_TODOS`: true si lo
+   * solicitó o si es el técnico de una tarea activa (no dada de baja) del ticket
+   * (odd/tareas-con-tecnico, CA10). Es la misma definición que el filtro
+   * `visiblePara` del listado. No mira permisos ni la baja lógica del ticket:
+   * eso lo resuelve el caller (`esTicketVisiblePara`).
+   */
+  esVisiblePara(ticketId: string, actorId: string): Promise<boolean>;
 
   /**
    * Persiste el ticket (upsert: crea si no existe, actualiza si existe).

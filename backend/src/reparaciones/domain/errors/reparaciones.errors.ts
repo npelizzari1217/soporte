@@ -28,21 +28,6 @@ export class TicketEdiliciaNoEncontradoError extends DomainError {
 }
 
 /**
- * SubtareaNoEncontradaError — la subtarea edilicia con el id indicado no
- * existe o fue eliminada (soft delete).
- * → HTTP 404 en la capa de presentación.
- *
- * Ref spec: F3-E4, F3-E5.
- */
-export class SubtareaNoEncontradaError extends DomainError {
-  readonly code = 'SUBTAREA_NO_ENCONTRADA';
-
-  constructor(subtareaId: string) {
-    super(`Subtarea edilicia con id "${subtareaId}" no encontrada o fue eliminada.`);
-  }
-}
-
-/**
  * ExportacionDemasiadoGrandeError — la exportación a CSV del listado de
  * reparaciones excedería el tope de filas (`TOPE_FILAS_EXPORT`, 5000).
  * → HTTP 422 en la capa de presentación.

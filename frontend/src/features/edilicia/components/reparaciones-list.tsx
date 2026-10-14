@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * ReparacionesList — tabla de reparaciones edilicias (T5.8). Avance visible
- * vía `porcentajeAvance` (persistido server-side, sobrevive al refresh —
- * a diferencia del checklist detallado de subtareas, ver `SubtareasDialog`).
+ * ReparacionesList — tabla de reparaciones edilicias (T5.8). El avance de la
+ * fila es `porcentajeAvance`, que el backend calcula al leer sobre las tareas
+ * activas del ticket (odd/tareas-con-tecnico, T3); las tareas en sí se
+ * gestionan en `SubtareasDialog`.
  */
 import { forwardRef, useMemo, useState, type ComponentPropsWithoutRef } from "react";
 import { useReparaciones } from "../hooks/use-reparaciones";
@@ -145,9 +146,8 @@ export function ReparacionesList() {
       header: "Subtareas",
       render: (row) => (
         <SubtareasDialog
-          reparacionId={row.id}
+          ticketId={row.ticketId}
           numero={row.numero}
-          subtareas={row.subtareas}
           trigger={
             <Button variant="outline" size="sm">
               Ver subtareas

@@ -63,8 +63,43 @@ function mockBackend() {
     // TICKET es de tipo SOPORTE (ti1) — el detalle consulta el equipo vinculado.
     // Default sin equipo asociado; los tests de la tarjeta lo sobreescriben.
     http.get(`/api/soporte/${TICKET_ID}`, () => HttpResponse.json({ equipo: null })),
+    http.get(`/api/tickets/${TICKET_ID}/tareas`, () =>
+      HttpResponse.json({
+        items: [
+          {
+            id: "ta1",
+            ticketId: TICKET_ID,
+            descripcion: "Cambiar el tóner",
+            orden: 1,
+            tecnicoId: null,
+            tecnicoNombre: null,
+            tecnicoApellido: null,
+            completada: false,
+            completadaEn: null,
+            completadaPorId: null,
+            completadaPorNombre: null,
+            completadaPorApellido: null,
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        avance: { total: 1, completadas: 0, porcentaje: 0 },
+      }),
+    ),
+    http.get(`/api/tickets/${TICKET_ID}/tareas/tecnicos-elegibles`, () => HttpResponse.json([])),
   );
 }
+
+describe("TicketDetailView — sección Tareas (odd/tareas-con-tecnico, T6)", () => {
+  beforeEach(() => mockBackend());
+
+  it("muestra las tareas del ticket con su avance, en cualquier tipo de ticket", async () => {
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+
+    expect(await screen.findByRole("heading", { name: "Tareas" })).toBeInTheDocument();
+    expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
+    expect(screen.getByText("0% · 0 de 1 completadas")).toBeInTheDocument();
+  });
+});
 
 describe("TicketDetailView — gating de acciones por permiso", () => {
   beforeEach(() => mockBackend());

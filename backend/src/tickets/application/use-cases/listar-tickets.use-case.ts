@@ -11,11 +11,11 @@ const POR_PAGINA_DEFAULT = 20;
 /**
  * DTO de entrada de `ListarTicketsUseCase`.
  *
- * `filtros` excluye `soloSolicitante`/`limit`/`offset` — esos tres los
+ * `filtros` excluye `visiblePara`/`limit`/`offset` — esos tres los
  * calcula el use case (scope de rol T6/T7 y paginación), nunca el caller.
  */
 export interface ListarTicketsDto {
-  filtros?: Omit<TicketFiltros, 'soloSolicitante' | 'limit' | 'offset'>;
+  filtros?: Omit<TicketFiltros, 'visiblePara' | 'limit' | 'offset'>;
   actorId: string;
   tienePermisoVerTodos: boolean;
   /** Página 1-indexed. Default 1. */
@@ -48,8 +48,9 @@ export interface ListarTicketsResult {
  *   explícito NI activo → `{ items: [], total: 0 }` (invariante "siempre
  *   por ciclo", nunca "todos").
  * - Scope de rol (T6): sin `ticket:ver_todos` se deriva
- *   `soloSolicitante = actorId`; con el permiso, `soloSolicitante`
- *   queda `undefined` (ve todos).
+ *   `visiblePara = actorId` (los que solicitó y los que tienen una tarea
+ *   activa suya, CA10); con el permiso, `visiblePara` queda `undefined`
+ *   (ve todos).
  * - Paginación (PR6): `pagina`/`porPagina` se traducen a `limit`/`offset`.
  *   `count()` se consulta con los MISMOS filtros pero SIN paginación, para
  *   que `total` refleje el universo completo, no la página actual.
@@ -95,11 +96,11 @@ export class ListarTicketsUseCase {
       return Result.ok({ items: [], total: 0, pagina, porPagina });
     }
 
-    const soloSolicitante = dto.tienePermisoVerTodos ? undefined : dto.actorId;
+    const visiblePara = dto.tienePermisoVerTodos ? undefined : dto.actorId;
     const filtrosBase: TicketFiltros = {
       ...dto.filtros,
       cicloId: cicloEfectivoId,
-      soloSolicitante,
+      visiblePara,
       tiposIds: tiposIdsEfectivos,
     };
 

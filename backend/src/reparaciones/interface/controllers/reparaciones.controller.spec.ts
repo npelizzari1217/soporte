@@ -19,7 +19,7 @@ import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { SubtareaEdiliciaEntity } from '../../domain/entities/subtarea-edilicia.entity';
+import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import {
   SolicitanteInvalidoError,
@@ -27,7 +27,6 @@ import {
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   TicketEdiliciaNoEncontradoError,
-  SubtareaNoEncontradaError,
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
 } from '../../domain/errors/reparaciones.errors';
@@ -41,6 +40,19 @@ const USER = payloadDeTest({
   permisos: ['ticket:crear', 'subtarea:actualizar'],
   cliente_nombre: 'Cliente Test',
 });
+
+/** Campos del shape de subtarea que espera `frontend/src/features/edilicia`. */
+const CAMPOS_SUBTAREA = [
+  'completada',
+  'completadaEn',
+  'completadaPorId',
+  'createdAt',
+  'descripcion',
+  'id',
+  'orden',
+  'ticketEdiliciaId',
+  'updatedAt',
+];
 
 function makeTicket(): TicketEntity {
   return TicketEntity.create(
@@ -63,9 +75,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   function buildController() {
     const crearTicketEdilicioUseCase = { execute: vi.fn() };
     const listarReparacionesUseCase = { execute: vi.fn() };
-    const crearSubtareaUseCase = { execute: vi.fn() };
-    const completarSubtareaUseCase = { execute: vi.fn() };
-    const eliminarSubtareaUseCase = { execute: vi.fn() };
     const crearComentarioUseCase = { execute: vi.fn() };
     const listarComentariosUseCase = { execute: vi.fn() };
     // Default: master no resuelve ningún nombre (usuario dado de baja) — los
@@ -80,9 +89,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     const controller = new ReparacionesController(
       crearTicketEdilicioUseCase as any,
       listarReparacionesUseCase as any,
-      crearSubtareaUseCase as any,
-      completarSubtareaUseCase as any,
-      eliminarSubtareaUseCase as any,
       crearComentarioUseCase as any,
       listarComentariosUseCase as any,
       usuarioMasterChecker as any,
@@ -95,9 +101,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       controller,
       crearTicketEdilicioUseCase,
       listarReparacionesUseCase,
-      crearSubtareaUseCase,
-      completarSubtareaUseCase,
-      eliminarSubtareaUseCase,
       crearComentarioUseCase,
       listarComentariosUseCase,
       usuarioMasterChecker,
@@ -129,6 +132,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       expect(result.id).toBe('edilicia-uuid');
       expect(result.numero).toBe('EDI-2026-00001');
+      // Una reparación recién creada no tiene tareas; `personalAsignadoId` se retiró en T8 (CA9).
+      expect(result.porcentajeAvance).toBe(0);
+      expect(result).not.toHaveProperty('personalAsignadoId');
       expect(crearTicketEdilicioUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           titulo: 'Reparar cañería',
@@ -186,6 +192,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
             ticket,
             ticketEdilicia,
             subtareas: [],
+            porcentajeAvance: 0,
             cantidadComentarios: 2,
             bloqueada: false,
             comprasQueBloquean: [],
@@ -202,15 +209,15 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(result[0].cantidadComentarios).toBe(2);
     });
 
-    it('embebe las subtareas activas del ticket_edilicia (item 1 — G7)', async () => {
+    it('embebe las subtareas activas, que ahora son las tareas del ticket, con su avance (odd/tareas-con-tecnico T3)', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
       const ticketEdilicia = TicketEdiliciaEntity.create(
         { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
-      const subtarea = SubtareaEdiliciaEntity.create(
-        { ticketEdiliciaId: 'edilicia-uuid', descripcion: 'Cambiar cañería', orden: 0 },
+      const tarea = TareaTicketEntity.crear(
+        { ticketId: ticket.id, descripcion: 'Cambiar cañería', orden: 0 },
         'subtarea-uuid',
       );
       listarReparacionesUseCase.execute.mockResolvedValue(
@@ -218,7 +225,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
           {
             ticket,
             ticketEdilicia,
-            subtareas: [subtarea],
+            subtareas: [tarea],
+            porcentajeAvance: 37.5,
             cantidadComentarios: 0,
             bloqueada: false,
             comprasQueBloquean: [],
@@ -228,9 +236,16 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       const result = await controller.listar();
 
+      expect(result[0].porcentajeAvance).toBe(37.5);
+      expect(result[0]).not.toHaveProperty('personalAsignadoId');
       expect(result[0].subtareas).toHaveLength(1);
-      expect(result[0].subtareas[0].id).toBe('subtarea-uuid');
-      expect(result[0].subtareas[0].descripcion).toBe('Cambiar cañería');
+      expect(Object.keys(result[0].subtareas[0]).sort()).toEqual(CAMPOS_SUBTAREA);
+      expect(result[0].subtareas[0]).toMatchObject({
+        id: 'subtarea-uuid',
+        ticketEdiliciaId: 'edilicia-uuid',
+        descripcion: 'Cambiar cañería',
+        completada: false,
+      });
     });
 
     it('declara @RequiereAcciones("EDILICIA:LECTURA") (WU-7.3: reemplaza el gate de módulo puro)', () => {
@@ -239,110 +254,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     });
   });
 
-  describe('POST /reparaciones/:reparacionId/subtareas', () => {
-    it('crea la subtarea', async () => {
-      const { controller, crearSubtareaUseCase } = buildController();
-      const subtarea = SubtareaEdiliciaEntity.create(
-        { ticketEdiliciaId: 'edilicia-uuid', descripcion: 'Reparar cañería' },
-        'subtarea-uuid',
-      );
-      crearSubtareaUseCase.execute.mockResolvedValue(Result.ok(subtarea));
-
-      const result = await controller.crearSubtarea(
-        'edilicia-uuid',
-        { descripcion: 'Reparar cañería' } as any,
-        USER,
-      );
-
-      expect(result.id).toBe('subtarea-uuid');
-      expect(crearSubtareaUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ticketEdiliciaId: 'edilicia-uuid',
-          descripcion: 'Reparar cañería',
-        }),
-      );
-    });
-
-    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
-      const { controller, crearSubtareaUseCase } = buildController();
-      crearSubtareaUseCase.execute.mockResolvedValue(
-        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
-      );
-
-      await expect(
-        controller.crearSubtarea('edilicia-uuid', { descripcion: 'X' } as any, USER),
-      ).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.crearSubtarea,
-      );
-      expect(permisos).toEqual(['EDILICIA:ALTAS']);
-    });
-  });
-
-  describe('POST /reparaciones/subtareas/:subtareaId/completar', () => {
-    it('completa la subtarea', async () => {
-      const { controller, completarSubtareaUseCase } = buildController();
-      const subtarea = SubtareaEdiliciaEntity.create(
-        { ticketEdiliciaId: 'edilicia-uuid', descripcion: 'X' },
-        'subtarea-uuid',
-      );
-      subtarea.completar(USER.sub);
-      completarSubtareaUseCase.execute.mockResolvedValue(Result.ok(subtarea));
-
-      const result = await controller.completarSubtarea('subtarea-uuid', USER);
-
-      expect(result.completada).toBe(true);
-      expect(completarSubtareaUseCase.execute).toHaveBeenCalledWith({
-        subtareaId: 'subtarea-uuid',
-        completadaPorId: 'usuario-uuid',
-      });
-    });
-
-    it('mapea SubtareaNoEncontradaError → 404', async () => {
-      const { controller, completarSubtareaUseCase } = buildController();
-      completarSubtareaUseCase.execute.mockResolvedValue(
-        Result.fail(new SubtareaNoEncontradaError('subtarea-uuid')),
-      );
-
-      await expect(controller.completarSubtarea('subtarea-uuid', USER)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
-    });
-
-    it('declara @RequiereAcciones("EDILICIA:MODIFICACION")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.completarSubtarea,
-      );
-      expect(permisos).toEqual(['EDILICIA:MODIFICACION']);
-    });
-  });
-
-  describe('DELETE /reparaciones/subtareas/:subtareaId', () => {
-    it('elimina la subtarea', async () => {
-      const { controller, eliminarSubtareaUseCase } = buildController();
-      eliminarSubtareaUseCase.execute.mockResolvedValue(Result.ok(undefined));
-
-      await controller.eliminarSubtarea('subtarea-uuid', USER);
-
-      expect(eliminarSubtareaUseCase.execute).toHaveBeenCalledWith({
-        subtareaId: 'subtarea-uuid',
-        autorId: 'usuario-uuid',
-      });
-    });
-
-    it('declara @RequiereAcciones("EDILICIA:BORRADO")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.eliminarSubtarea,
-      );
-      expect(permisos).toEqual(['EDILICIA:BORRADO']);
-    });
-  });
+  it.each(['crearSubtarea', 'completarSubtarea', 'eliminarSubtarea'])(
+    'ya no expone la ruta vieja %s (odd/tareas-con-tecnico T8): las tareas viven en /tickets/:id/tareas',
+    (metodo) => {
+      expect(metodo in ReparacionesController.prototype).toBe(false);
+    },
+  );
 
   describe('POST /reparaciones/:reparacionId/comentarios', () => {
     it('crea el comentario con el autorId del JWT y resuelve el nombre del autor', async () => {
@@ -552,9 +469,6 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const controller = new ReparacionesController(
       stub() as any, // crearTicketEdilicioUseCase
       stub() as any, // listarReparacionesUseCase
-      stub() as any, // crearSubtareaUseCase
-      stub() as any, // completarSubtareaUseCase
-      stub() as any, // eliminarSubtareaUseCase
       stub() as any, // crearComentarioUseCase
       stub() as any, // listarComentariosUseCase
       { resolverNombres: vi.fn() } as any, // usuarioMasterChecker
@@ -679,19 +593,14 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 5 clases de error (3 previas + CompraNoEncontradaError + VinculoNoEncontradoError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(5);
+  it('el catálogo tiene EXACTAMENTE 4 clases de error (SubtareaNoEncontradaError se retiró en odd/tareas-con-tecnico T8)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(4);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
     [
       'TicketEdiliciaNoEncontradoError',
       () => new ReparacionesErrors.TicketEdiliciaNoEncontradoError('edilicia-1'),
-      404,
-    ],
-    [
-      'SubtareaNoEncontradaError',
-      () => new ReparacionesErrors.SubtareaNoEncontradaError('subtarea-1'),
       404,
     ],
     [

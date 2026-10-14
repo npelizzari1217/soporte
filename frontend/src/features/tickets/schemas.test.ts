@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crearTicketSchema, editarTicketSchema } from "./schemas";
+import { crearTareaSchema, crearTicketSchema, editarTicketSchema, TAREA_DESCRIPCION_MAX_LENGTH } from "./schemas";
 import { crearReparacionSchema } from "@/features/edilicia/schemas";
 import { crearTicketSoporteSchema } from "@/features/equipos/schemas";
 import { TICKET_TITULO_MAX_LENGTH } from "@/shared/lib/limites-ticket";
@@ -36,5 +36,25 @@ describe.each([
   // caso, un schema que rechazara CUALQUIER título pasaría el test de arriba.
   it(`acepta un título de exactamente ${TICKET_TITULO_MAX_LENGTH} caracteres`, () => {
     expect(tieneErrorDeTitulo("A".repeat(TICKET_TITULO_MAX_LENGTH))).toBe(false);
+  });
+});
+
+/**
+ * Espejo de `CrearTareaTicketBodyDto` (odd/tareas-con-tecnico, T6): al menos un
+ * carácter visible (`/\S/`) y hasta 255, sobre el texto sin recortar.
+ */
+describe("crearTareaSchema", () => {
+  it.each([
+    ["vacía", "", false],
+    ["de puros espacios", "   ", false],
+    ["de un carácter visible", "x", true],
+    ["en el tope exacto", "a".repeat(TAREA_DESCRIPCION_MAX_LENGTH), true],
+    ["que pasa el tope", "a".repeat(TAREA_DESCRIPCION_MAX_LENGTH + 1), false],
+  ])("una descripción %s → válida=%s", (_caso, descripcion, valida) => {
+    expect(crearTareaSchema.safeParse({ descripcion }).success).toBe(valida);
+  });
+
+  it("el tope coincide con el ancho de la columna", () => {
+    expect(TAREA_DESCRIPCION_MAX_LENGTH).toBe(255);
   });
 });

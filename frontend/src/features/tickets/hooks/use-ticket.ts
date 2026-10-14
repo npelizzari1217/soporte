@@ -12,11 +12,12 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import type { OperacionTicket, Ticket } from "../types";
 
-export function useTicket(id: string) {
+/** `enabled: false` lo usa quien no siempre puede leer el ticket (el diálogo de Edilicia). */
+export function useTicket(id: string, enabled = true) {
   return useQuery({
     queryKey: ["ticket", id],
     queryFn: () => apiFetch<Ticket>(`tickets/${id}`),
-    enabled: !!id,
+    enabled: enabled && !!id,
   });
 }
 

@@ -3,6 +3,7 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { esTicketVisiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `ListarTimelineUseCase`.
@@ -26,7 +27,8 @@ export interface ListarTimelineDto {
  * Flujo:
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
  * 2. Reusa el MISMO scope de acceso que `ObtenerTicketUseCase` (T6): sin
- *    `ticket:ver_todos`, solo el solicitante puede ver el timeline —
+ *    `ticket:ver_todos`, solo el solicitante o el técnico de una tarea activa
+ *    (`esTicketVisiblePara`, CA10) puede ver el timeline —
  *    cualquier otro actor recibe 404 (no revela existencia). Deviación
  *    explícita: la spec T18 no lo pide literalmente, pero sin este gate un
  *    actor ajeno sin `ticket:ver_todos` podría leer el timeline PÚBLICO de
@@ -44,7 +46,7 @@ export interface ListarTimelineDto {
  */
 export class ListarTimelineUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'listByTicket'>,
   ) {}
 
@@ -53,7 +55,9 @@ export class ListarTimelineUseCase {
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
-    if (!dto.tienePermisoVerTodos && ticket.solicitanteId !== dto.actorId) {
+    if (
+      !(await esTicketVisiblePara(this.ticketRepo, ticket, dto.actorId, dto.tienePermisoVerTodos))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

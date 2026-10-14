@@ -27,6 +27,7 @@ export function vistaDePrueba(overrides: Partial<TicketPdfVista> = {}): TicketPd
       solucionAplicada: null,
     },
     edilicia: null,
+    tareas: null,
     historial: [
       {
         fecha: '19/08/2026 22:35',

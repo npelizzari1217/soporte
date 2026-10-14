@@ -25,8 +25,12 @@ function makeTicket(overrides: { solicitanteId?: string; id?: string } = {}): Ti
 }
 
 describe('ObtenerTicketUseCase', () => {
-  function makeUseCase(ticket: TicketEntity | null) {
-    const ticketRepo = { findById: vi.fn().mockResolvedValue(ticket) };
+  function makeUseCase(ticket: TicketEntity | null, tieneTareaActiva = false) {
+    const ticketRepo = {
+      findById: vi.fn().mockResolvedValue(ticket),
+      // CA10: el repositorio decide si el actor es técnico de una tarea activa del ticket.
+      esVisiblePara: vi.fn().mockResolvedValue(tieneTareaActiva),
+    };
     const useCase = new ObtenerTicketUseCase(ticketRepo as never);
     return { useCase, ticketRepo };
   }
@@ -153,5 +157,19 @@ describe('ObtenerTicketUseCase', () => {
     });
 
     expect(result.isOk()).toBe(true);
+  });
+
+  it('actor SIN ver_todos que es técnico de una tarea activa ve el ticket (CA10)', async () => {
+    const ticket = makeTicket({ solicitanteId: 'otro-usuario-uuid' });
+    const { useCase, ticketRepo } = makeUseCase(ticket, true);
+
+    const result = await useCase.execute({
+      ticketId: 'ticket-uuid',
+      actorId: 'tecnico-uuid',
+      tienePermisoVerTodos: false,
+    });
+
+    expect(result.getValue()).toBe(ticket);
+    expect(ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'tecnico-uuid');
   });
 });

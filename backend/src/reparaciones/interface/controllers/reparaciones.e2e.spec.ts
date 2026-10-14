@@ -18,6 +18,11 @@
  *
  * Ref spec: sdd/reparacion-bloqueada-por-compra/spec, capability "Vínculo
  * Reparación–Compra". Ref design: D4, D5, D7. Ref tasks: WU5.8, WU5.9.
+ *
+ * odd/tareas-con-tecnico: el listado embebe las tareas del ticket como
+ * `subtareas` y calcula el avance sobre ellas. T8 retiró las rutas viejas
+ * `/reparaciones/.../subtareas`, la tabla `subtareas_edilicia` y las columnas
+ * `personal_asignado_id` y `porcentaje_avance`.
  */
 import { randomBytes } from 'node:crypto';
 import {
@@ -442,6 +447,142 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       );
 
       expect(status).toBe(404);
+    });
+  });
+
+  // ─── Avance sobre tareas_ticket (odd/tareas-con-tecnico, T3 y T8) ────────
+
+  describe('el listado embebe las tareas del ticket y calcula el avance (odd/tareas-con-tecnico)', () => {
+    /** Campos del shape de subtarea que espera `frontend/src/features/edilicia`. */
+    const CAMPOS_SUBTAREA = [
+      'completada',
+      'completadaEn',
+      'completadaPorId',
+      'createdAt',
+      'descripcion',
+      'id',
+      'orden',
+      'ticketEdiliciaId',
+      'updatedAt',
+    ];
+
+    /** Reparación con su ticket base asignado a `asignadoId` (el responsable). */
+    async function crearReparacionAsignada(
+      asignadoId: string,
+    ): Promise<{ reparacionId: string; ticketId: string }> {
+      const ticket = await tenantClient.ticket.create({
+        data: {
+          numero: `EDI-T3-${randomBytes(4).toString('hex')}`,
+          titulo: 'Reparación con tareas',
+          tipoId: tipoEdiliciaId,
+          estadoId: estadoNuevoId,
+          prioridadId: prioridadMediaId,
+          cicloId: cicloActivoId,
+          solicitanteId: '00000000-0000-4000-8000-000000000ccc',
+          asignadoId,
+        },
+      });
+      const satelite = await tenantClient.ticketEdilicia.create({
+        data: { ticketId: ticket.id, ubicacion: 'Aula 3' },
+      });
+      return { reparacionId: satelite.id, ticketId: ticket.id };
+    }
+
+    async function filaDelListado(
+      token: string,
+      reparacionId: string,
+    ): Promise<ReparacionListItemResponseDto | undefined> {
+      const listado = await httpGet<ReparacionListItemResponseDto[]>(
+        `${baseUrl}/reparaciones`,
+        bearer(token),
+      );
+      expect(listado.status).toBe(200);
+      return listado.data.find((r) => r.id === reparacionId);
+    }
+
+    it('el avance del listado sigue a las tareas creadas, completadas y borradas en /tickets/:id/tareas', async () => {
+      const responsable = await crearActorConPermisos([
+        'EDILICIA:LECTURA',
+        'EDILICIA:MODIFICACION',
+        'TICKETS:VER_TODOS',
+      ]);
+      const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
+      const auth = bearer(responsable.accessToken);
+      const tareas = `${baseUrl}/tickets/${ticketId}/tareas`;
+
+      const vacia = await filaDelListado(responsable.accessToken, reparacionId);
+      expect(vacia?.porcentajeAvance).toBe(0);
+      expect(vacia?.subtareas).toEqual([]);
+      // CA9: el campo se retiró del contrato junto con la columna.
+      expect(vacia).not.toHaveProperty('personalAsignadoId');
+
+      const primera = await httpPost<{ id: string }>(
+        tareas,
+        { descripcion: 'Cambiar la junta' },
+        auth,
+      );
+      const segunda = await httpPost<{ id: string }>(tareas, { descripcion: 'Pintar' }, auth);
+      expect([primera.status, segunda.status]).toEqual([201, 201]);
+
+      const completar = await httpPost(`${tareas}/${primera.data.id}/completar`, {}, auth);
+      expect(completar.status).toBe(200);
+      const aMitad = await filaDelListado(responsable.accessToken, reparacionId);
+      expect(aMitad?.porcentajeAvance).toBe(50);
+      expect(aMitad?.subtareas).toHaveLength(2);
+      for (const subtarea of aMitad?.subtareas ?? []) {
+        expect(Object.keys(subtarea).sort()).toEqual(CAMPOS_SUBTAREA);
+      }
+      expect(aMitad?.subtareas.find((t) => t.id === primera.data.id)).toMatchObject({
+        completada: true,
+        completadaPorId: responsable.usuarioId,
+        ticketEdiliciaId: reparacionId,
+      });
+
+      await httpPost(`${tareas}/${segunda.data.id}/completar`, {}, auth);
+      expect((await filaDelListado(responsable.accessToken, reparacionId))?.porcentajeAvance).toBe(
+        100,
+      );
+
+      await httpPost(`${tareas}/${primera.data.id}/descompletar`, {}, auth);
+      expect((await filaDelListado(responsable.accessToken, reparacionId))?.porcentajeAvance).toBe(
+        50,
+      );
+
+      const baja = await httpDelete(`${tareas}/${primera.data.id}`, auth);
+      expect(baja.status).toBe(204);
+      const final = await filaDelListado(responsable.accessToken, reparacionId);
+      expect(final?.subtareas.map((t) => t.id)).toEqual([segunda.data.id]);
+      expect(final?.porcentajeAvance).toBe(100);
+    });
+
+    it('las rutas viejas de subtareas ya no existen (T8): 404 de Nest, sin tocar las tareas', async () => {
+      const responsable = await crearActorConPermisos([
+        'EDILICIA:LECTURA',
+        'EDILICIA:MODIFICACION',
+        'TICKETS:VER_TODOS',
+      ]);
+      const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
+      const auth = bearer(responsable.accessToken);
+      const tarea = await tenantClient.tareaTicket.create({
+        data: { ticketId, descripcion: 'Cambiar la junta' },
+      });
+
+      const crear = await httpPost(
+        `${baseUrl}/reparaciones/${reparacionId}/subtareas`,
+        { descripcion: 'X' },
+        auth,
+      );
+      const completar = await httpPost(
+        `${baseUrl}/reparaciones/subtareas/${tarea.id}/completar`,
+        {},
+        auth,
+      );
+      const borrar = await httpDelete(`${baseUrl}/reparaciones/subtareas/${tarea.id}`, auth);
+
+      expect([crear.status, completar.status, borrar.status]).toEqual([404, 404, 404]);
+      const filas = await tenantClient.tareaTicket.findMany({ where: { ticketId } });
+      expect(filas).toHaveLength(1);
+      expect(filas[0]).toMatchObject({ completada: false, deletedAt: null });
     });
   });
 

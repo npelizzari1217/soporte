@@ -8,7 +8,8 @@
  * `estados` de R19: 7 códigos finales (6 + ESPERANDO_CLIENTE), no 8; ampliado por Fase 3 ADR-5):
  * - Siembra `estados` (7: NUEVO, ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE, RESUELTO, CERRADO,
  *   CANCELADO), `prioridades` (4), `tipo_operacion` (5 de R19 —
- *   APROBACION/RECHAZO removidos en PR-1 de sdd/redisenio-modulo-compras),
+ *   APROBACION/RECHAZO removidos en PR-1 de sdd/redisenio-modulo-compras —
+ *   más los 5 TAREA_* de odd/tareas-con-tecnico),
  *   `tipos_ticket` base incl. MANTENIMIENTO y PREVENTIVO (4) — cada catálogo vía `createMany` con
  *   `skipDuplicates: true` (equivalente a `ON CONFLICT (codigo) DO NOTHING`,
  *   por eso correr el seed dos veces no duplica ni falla).
@@ -118,7 +119,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
-  it('siembra los 5 tipo_operacion de R19, sin APROBACION/RECHAZO (PR-1 compras)', async () => {
+  it('siembra los 5 tipo_operacion de R19 y los 5 de tareas, sin APROBACION/RECHAZO (PR-1 compras)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
     const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
@@ -132,6 +133,11 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
       'ASIGNACION',
       'ADJUNTO',
       'AVANCE_EDILICIO',
+      'TAREA_CREADA',
+      'TAREA_ASIGNADA',
+      'TAREA_COMPLETADA',
+      'TAREA_DESCOMPLETADA',
+      'TAREA_ELIMINADA',
     ]);
   });
 

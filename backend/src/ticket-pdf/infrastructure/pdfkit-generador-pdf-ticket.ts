@@ -83,21 +83,33 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
     if (vista.edilicia) {
       this.seccion(doc, 'Reparación');
       this.fila(doc, 'Ubicación', vista.edilicia.ubicacion);
-      this.fila(doc, 'Avance', `${Math.round(vista.edilicia.porcentajeAvance)}%`);
-      if (vista.edilicia.subtareas.length > 0) {
-        doc.moveDown(0.3);
-        for (const subtarea of vista.edilicia.subtareas) {
-          this.asegurarEspacio(doc, 16);
-          doc.font('Helvetica').fontSize(10).fillColor(COLOR_TEXTO);
-          doc.text(
-            `${subtarea.completada ? '[x]' : '[ ]'}  ${subtarea.descripcion}`,
-            MARGEN + 10,
-            doc.y,
-            {
-              width: ancho - 10,
-            },
-          );
-        }
+    }
+
+    if (vista.tareas) {
+      const { tareas } = vista;
+      this.seccion(doc, 'Tareas');
+      this.fila(
+        doc,
+        'Avance',
+        `${Math.round(tareas.porcentajeAvance)}% (${tareas.completadas} de ${tareas.total} completadas)`,
+      );
+      doc.moveDown(0.3);
+      for (const tarea of tareas.items) {
+        this.asegurarEspacio(doc, 30);
+        doc.font('Helvetica').fontSize(10).fillColor(COLOR_TEXTO);
+        doc.text(`${tarea.completada ? '[x]' : '[ ]'}  ${tarea.descripcion}`, MARGEN + 10, doc.y, {
+          width: ancho - 10,
+        });
+        const estado = tarea.completada
+          ? `Completada${tarea.completadaEn ? ` el ${tarea.completadaEn}` : ''}${
+              tarea.completadaPor ? ` por ${tarea.completadaPor}` : ''
+            }`
+          : 'Pendiente';
+        doc.fontSize(9).fillColor(COLOR_SUAVE);
+        doc.text(`Técnico: ${tarea.tecnico ?? 'Sin técnico'}  ·  ${estado}`, MARGEN + 26, doc.y, {
+          width: ancho - 26,
+        });
+        doc.moveDown(0.2);
       }
     }
 

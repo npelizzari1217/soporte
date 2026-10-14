@@ -14,8 +14,8 @@
 //     soft delete: la baja es eliminación física (ON DELETE CASCADE / delete).
 //   - updatedAt gestionado por Prisma (@updatedAt) en entidades con soft delete.
 //   - Soft refs cross-DB: solicitante_id, asignado_id, autor_id, subido_por_id,
-//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id y
-//     completada_por_id
+//     ciclo_vigente_id, aprobado_por_id, personal_asignado_id,
+//     completada_por_id y tecnico_id
 //     referencian filas de la DB master (usuarios / ciclos_vigentes).
 //     NO tienen FK real — una FK cross-DB es imposible en Postgres (cada
 //     tenant es una base de datos física distinta). La integridad se valida
@@ -163,6 +163,8 @@ model Sector {
 //
 // Tipos de evento registrables en el timeline de un ticket.
 // Seeds: CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO, AVANCE_EDILICIO.
+// Migración 20261013150000_tipos_operacion_tareas: TAREA_CREADA, TAREA_ASIGNADA,
+// TAREA_COMPLETADA, TAREA_DESCOMPLETADA, TAREA_ELIMINADA.
 
 model TipoOperacion {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -336,6 +338,7 @@ model Ticket {
   ticketEdilicia        TicketEdilicia?
   ticketSoporte         TicketSoporte?
   encuestasSatisfaccion EncuestaSatisfaccion[]
+  tareas                TareaTicket[]
   /// Back-relation opcional: NO todo ticket nace de un plan preventivo — la
   /// mayoría son altas manuales. Posible gracias al UNIQUE sobre
   /// preventivo_generacion.ticket_id (sdd/preventivo, WU-2).
@@ -389,6 +392,51 @@ model EncuestaSatisfaccion {
 
   @@index([ticketId, respondidaEn(sort: Desc)], map: "encuestas_satisfaccion_ticket_id_respondida_en_idx")
   @@map("encuestas_satisfaccion")
+}
+
+// ─── TAREAS_TICKET (tareas con técnico, odd/tareas-con-tecnico T1) ────────────
+//
+// Tareas de cualquier tipo de ticket, cada una con un técnico opcional. El
+// crédito de una tarea es de quien la completó (`completada_por_id`), no del
+// responsable del ticket (`tickets.asignado_id`, que no cambia de significado).
+// Reemplaza a `subtareas_edilicia`: la migración 20261013140000 copia sus filas
+// conservando los ids, y la 20261014120000 retira la tabla vieja (T8).
+//
+// ticket_id: FK real con ON DELETE RESTRICT, igual que `operaciones_ticket` y
+//   `encuestas_satisfaccion`. Los tickets se dan de baja lógica, así que la FK no
+//   frena nada en el uso normal, y un borrado físico de un ticket no puede
+//   arrastrar en silencio el registro de quién hizo cada tarea.
+// tecnico_id y completada_por_id: soft refs → master.usuarios.id, sin FK.
+// CHECK tareas_ticket_completada_check — migration SQL: completada = true exige
+//   completada_en y completada_por_id; completada = false exige los dos en NULL.
+//   La entidad (`TareaTicketEntity`) sostiene el mismo invariante.
+// Índices: (ticket_id, deleted_at, orden) para el listado de un ticket;
+//   (completada_en, completada_por_id) para la métrica "tareas completadas por
+//   técnico" del dashboard: el rango de fechas es el predicado común a todos los
+//   alcances, y el técnico va segundo para agrupar o filtrar sin ir a la tabla.
+model TareaTicket {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId        String    @map("ticket_id") @db.Uuid
+  descripcion     String    @db.VarChar(255)
+  orden           Int       @default(0)
+  /// Soft ref → master.usuarios.id. NULL = tarea sin técnico.
+  tecnicoId       String?   @map("tecnico_id") @db.Uuid
+  completada      Boolean   @default(false)
+  completadaEn    DateTime? @map("completada_en") @db.Timestamptz
+  /// Soft ref → master.usuarios.id. Quién completó la tarea; NULL mientras está pendiente.
+  completadaPorId String?   @map("completada_por_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+
+  @@index([ticketId, deletedAt, orden])
+  @@index([completadaEn, completadaPorId])
+  // Visibilidad por tarea (CA10): el listado de tickets de un actor sin VER_TODOS filtra por un
+  // EXISTS sobre las tareas activas de las que es técnico.
+  @@index([tecnicoId, deletedAt, ticketId])
+  @@map("tareas_ticket")
 }
 
 // ─── OPERACIONES_TICKET (timeline inmutable de eventos) ───────────────────────
@@ -502,44 +550,36 @@ model ArchivoOperacion {
 
 // ─── REPARACIONES EDILICIAS ────────────────────────────────────────────────────
 //
-// ticket_edilicia (satélite 1:1 con tickets), subtareas_edilicia (pasos de la
-// reparación).
+// ticket_edilicia (satélite 1:1 con tickets). Los pasos de la reparación son las
+// tareas del ticket base (`tareas_ticket`); `subtareas_edilicia`,
+// `personal_asignado_id` y `porcentaje_avance` se retiraron en la migración
+// 20261014120000 (odd/tareas-con-tecnico T8). El avance se calcula al leer.
 //
 // ticket_edilicia: satélite 1:1 de tickets con tipo.codigo='EDILICIA'.
 //   ubicacion: TEXTO LIBRE (VarChar 255). Antes era una FK a un catálogo
 //     `ubicaciones` (árbol), removido — módulo que no se usa (migración
 //     20260812160000_remover_ubicaciones, backfill del nombre a texto).
-//   personal_asignado_id: soft ref → master.usuarios.id (sin FK cross-DB).
-//   porcentaje_avance: NUMERIC(5,2), CHECK 0-100. Recalculado por la app.
-// subtareas_edilicia: pasos de la reparación.
-//   completada_por_id: soft ref → master.usuarios.id.
 // comentarios_reparacion: notas del operador sobre la reparación (ej. "falta
-//   el repuesto X"), a nivel de la REPARACIÓN y no de cada subtarea.
+//   el repuesto X"), a nivel de la REPARACIÓN y no de cada tarea.
 //   APPEND-ONLY: sin updated_at ni deleted_at (mismo criterio estructural que
 //   operaciones_compra, ADR-C4) — un comentario no se edita ni se borra.
 //   autor_id: soft ref → master.usuarios.id.
 //   CHECK (char_length(btrim(texto)) BETWEEN 1 AND 2000) — migration SQL.
 
 model TicketEdilicia {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketId           String    @unique @map("ticket_id") @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId  String    @unique @map("ticket_id") @db.Uuid
   /// Texto libre (ex-FK a catálogo `ubicaciones`, removido — ver migración 20260812160000).
-  ubicacion          String?   @db.VarChar(255)
-  /// Soft ref → master.usuarios.id. NULL hasta asignación de personal específico.
-  personalAsignadoId String?   @map("personal_asignado_id") @db.Uuid
-  /// CHECK (porcentaje_avance >= 0 AND porcentaje_avance <= 100) — migration SQL.
-  porcentajeAvance   Decimal   @default(0) @map("porcentaje_avance") @db.Decimal(5, 2)
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+  ubicacion String?   @db.VarChar(255)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
   ticket Ticket @relation(fields: [ticketId], references: [id])
 
-  subtareas         SubtareaEdilicia[]
   comentarios       ComentarioReparacion[]
   comprasVinculadas ReparacionCompra[]
 
-  @@index([porcentajeAvance])
   @@map("ticket_edilicia")
 }
 
@@ -588,25 +628,6 @@ model ReparacionCompra {
 
   @@unique([ticketEdiliciaId, compraId], map: "reparacion_compra_ticket_compra_key")
   @@map("reparacion_compra")
-}
-
-model SubtareaEdilicia {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketEdiliciaId String    @map("ticket_edilicia_id") @db.Uuid
-  descripcion      String    @db.VarChar(255)
-  completada       Boolean   @default(false)
-  completadaEn     DateTime? @map("completada_en") @db.Timestamptz
-  /// Soft ref → master.usuarios.id. NULL mientras no esté completada.
-  completadaPorId  String?   @map("completada_por_id") @db.Uuid
-  orden            Int       @default(0)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
-
-  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
-
-  @@index([ticketEdiliciaId])
-  @@map("subtareas_edilicia")
 }
 
 // ─── EQUIPOS INFORMÁTICOS ──────────────────────────────────────────────────────

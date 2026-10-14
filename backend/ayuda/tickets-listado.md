@@ -17,9 +17,10 @@ operaciones.
 
 **No todos ven los mismos tickets.** Si tu usuario no tiene el permiso para
 ver todos los tickets, el listado te muestra **únicamente los que vos
-creaste** — los de cualquier otra persona no aparecen, ni siquiera contando
-para la paginación. No es un filtro que se pueda cambiar desde la pantalla:
-lo decide el permiso de tu usuario.
+creaste y aquellos donde sos el técnico de una tarea** — los de cualquier
+otra persona no aparecen, ni siquiera contando para la paginación. Si te
+quitan de esa tarea, o la borran, el ticket deja de aparecer. No es un filtro
+que se pueda cambiar desde la pantalla: lo decide el permiso de tu usuario.
 
 Si en cambio tenés el permiso de ver todos los tickets (típico de técnicos y
 administradores), el listado muestra los de **todo el tenant**, y además se
@@ -28,7 +29,7 @@ habilita un filtro adicional para acotar por técnico asignado.
 Esto explica el reclamo más común sobre esta pantalla: "no veo un ticket que
 sé que existe". Antes de sospechar un error, confirmá si tu usuario tiene
 permiso para ver todos los tickets — si no lo tiene, es esperable que solo
-veas los propios.
+veas los propios y los de tus tareas.
 
 ## Los filtros
 

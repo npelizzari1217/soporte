@@ -61,7 +61,8 @@ function baseDto(overrides: Partial<ListarTimelineDto> = {}): ListarTimelineDto 
 
 describe('ListarTimelineUseCase', () => {
   function makeCollaborators() {
-    const ticketRepo = { findById: vi.fn() };
+    // `esVisiblePara` en false por defecto: sin tarea activa del actor (CA10).
+    const ticketRepo = { findById: vi.fn(), esVisiblePara: vi.fn().mockResolvedValue(false) };
     const operacionRepo = { listByTicket: vi.fn() };
 
     const useCase = new ListarTimelineUseCase(ticketRepo as never, operacionRepo as never);
@@ -140,6 +141,26 @@ describe('ListarTimelineUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
+  });
+
+  it('el técnico de una tarea activa ve el timeline público sin ver_todos (CA10)', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('otro-solicitante-uuid'));
+    c.ticketRepo.esVisiblePara.mockResolvedValue(true);
+    const publica = makeOperacion({ esInterno: false, id: 'op-1' });
+    const interna = makeOperacion({ esInterno: true, id: 'op-2' });
+    c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
+
+    const result = await c.useCase.execute(
+      baseDto({
+        actorId: 'tecnico-uuid',
+        tienePermisoVerTodos: false,
+        tienePermisoObservar: false,
+      }),
+    );
+
+    expect(result.getValue()).toEqual([publica]);
+    expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'tecnico-uuid');
   });
 
   it('actor con ticket:ver_todos pero SIN ticket:observar accede al timeline de un ticket ajeno, filtrando internas', async () => {

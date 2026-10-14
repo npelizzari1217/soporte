@@ -15,7 +15,8 @@ export interface TipoOperacionProps {
  * TipoOperacionEntity — entidad de dominio del catálogo FIJO de 5 tipos de
  * evento registrables en el timeline de un ticket (CAMBIO_ESTADO, COMENTARIO,
  * ASIGNACION, ADJUNTO, AVANCE_EDILICIO). Sembrado en provisioning por
- * `TenantSeederAdapter` (Fase 1).
+ * `TenantSeederAdapter` (Fase 1). La migración `20261013150000_tipos_operacion_tareas`
+ * suma los 5 de tareas (`TIPO_OPERACION_TAREA`, odd/tareas-con-tecnico).
  *
  * Ref spec: sdd/tickets-core/spec (Área A — Catálogos). Tarea: T2.1
  */

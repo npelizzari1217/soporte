@@ -43,11 +43,6 @@ import {
 } from './domain/ports/i-ticket-edilicia.repository';
 import { PrismaTicketEdiliciaRepository } from './infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
 import {
-  SUBTAREA_EDILICIA_REPOSITORY,
-  ISubtareaEdiliciaRepository,
-} from './domain/ports/i-subtarea-edilicia.repository';
-import { PrismaSubtareaEdiliciaRepository } from './infrastructure/persistence/prisma/prisma-subtarea-edilicia.repository';
-import {
   COMENTARIO_REPARACION_REPOSITORY,
   IComentarioReparacionRepository,
 } from './domain/ports/i-comentario-reparacion.repository';
@@ -61,9 +56,10 @@ import { PrismaReparacionCompraRepository } from './infrastructure/persistence/p
 import { ResolverAsignacionAutomatica } from '../tickets/application/services/resolver-asignacion-automatica.service';
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from './application/use-cases/listar-reparaciones.use-case';
-import { CrearSubtareaUseCase } from './application/use-cases/crear-subtarea.use-case';
-import { CompletarSubtareaUseCase } from './application/use-cases/completar-subtarea.use-case';
-import { EliminarSubtareaUseCase } from './application/use-cases/eliminar-subtarea.use-case';
+import {
+  ITareaTicketRepository,
+  TAREA_TICKET_REPOSITORY,
+} from '../tickets/domain/ports/i-tarea-ticket.repository';
 import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from './application/use-cases/exportar-reparaciones.use-case';
@@ -78,7 +74,9 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
  *
  * Flujo de reparaciones edilicias: ticket_edilicia (satélite 1:0..1 de
  * Ticket, con `ubicacion` como texto libre — ex-catálogo Ubicacion
- * removido), subtareas_edilicia (checklist de avance, `AvanceCalculator`).
+ * removido). El checklist de avance son las tareas del ticket base
+ * (`tareas_ticket`, de `TicketsModule`); `subtareas_edilicia` se retiró en
+ * odd/tareas-con-tecnico T8.
  *
  * Wiring (PR6-PR9, screaming module hexagonal — domain/ → application/ →
  * infrastructure/ → interface/):
@@ -92,7 +90,8 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
  *   puertos por token, igual que en `ComprasModule`.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`, sin
  *   necesidad de reimportarlo).
- * - `ReparacionesController` expone `POST/GET /reparaciones` + subtareas.
+ * - `ReparacionesController` expone `POST/GET /reparaciones`, comentarios y
+ *   compras vinculadas.
  * - `ComprasModule` (WU5, sdd/reparacion-bloqueada-por-compra, D7): se
  *   importa SOLO para reusar `COMPRA_REPOSITORY` (ya exportado por
  *   `ComprasModule`) en `VincularCompraAReparacionUseCase` — cero cambio de
@@ -111,7 +110,6 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
   controllers: [ReparacionesController],
   providers: [
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
-    { provide: SUBTAREA_EDILICIA_REPOSITORY, useClass: PrismaSubtareaEdiliciaRepository },
     { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
     { provide: REPARACION_COMPRA_REPOSITORY, useClass: PrismaReparacionCompraRepository },
 
@@ -176,95 +174,23 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       useFactory: (
         ediliciaRepo: ITicketEdiliciaRepository,
         ticketRepo: ITicketRepository,
-        subtareaRepo: ISubtareaEdiliciaRepository,
+        tareaRepo: ITareaTicketRepository,
         comentarioRepo: IComentarioReparacionRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
       ) =>
         new ListarReparacionesUseCase(
           ediliciaRepo,
           ticketRepo,
-          subtareaRepo,
+          tareaRepo,
           comentarioRepo,
           reparacionCompraRepo,
         ),
       inject: [
         TICKET_EDILICIA_REPOSITORY,
         TICKET_REPOSITORY,
-        SUBTAREA_EDILICIA_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
         COMENTARIO_REPARACION_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
-      ],
-    },
-    {
-      provide: CrearSubtareaUseCase,
-      useFactory: (
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        subtareaRepo: ISubtareaEdiliciaRepository,
-        operacionRepo: IOperacionTicketRepository,
-        tipoOperacionRepo: ITipoOperacionRepository,
-        txRunner: ITenantTransactionRunner,
-      ) =>
-        new CrearSubtareaUseCase(
-          ticketEdiliciaRepo,
-          subtareaRepo,
-          operacionRepo,
-          tipoOperacionRepo,
-          txRunner,
-        ),
-      inject: [
-        TICKET_EDILICIA_REPOSITORY,
-        SUBTAREA_EDILICIA_REPOSITORY,
-        OPERACION_TICKET_REPOSITORY,
-        TIPO_OPERACION_REPOSITORY,
-        TENANT_TX_RUNNER,
-      ],
-    },
-    {
-      provide: CompletarSubtareaUseCase,
-      useFactory: (
-        subtareaRepo: ISubtareaEdiliciaRepository,
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        operacionRepo: IOperacionTicketRepository,
-        tipoOperacionRepo: ITipoOperacionRepository,
-        txRunner: ITenantTransactionRunner,
-      ) =>
-        new CompletarSubtareaUseCase(
-          subtareaRepo,
-          ticketEdiliciaRepo,
-          operacionRepo,
-          tipoOperacionRepo,
-          txRunner,
-        ),
-      inject: [
-        SUBTAREA_EDILICIA_REPOSITORY,
-        TICKET_EDILICIA_REPOSITORY,
-        OPERACION_TICKET_REPOSITORY,
-        TIPO_OPERACION_REPOSITORY,
-        TENANT_TX_RUNNER,
-      ],
-    },
-    {
-      provide: EliminarSubtareaUseCase,
-      useFactory: (
-        subtareaRepo: ISubtareaEdiliciaRepository,
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        operacionRepo: IOperacionTicketRepository,
-        tipoOperacionRepo: ITipoOperacionRepository,
-        txRunner: ITenantTransactionRunner,
-      ) =>
-        new EliminarSubtareaUseCase(
-          subtareaRepo,
-          ticketEdiliciaRepo,
-          operacionRepo,
-          tipoOperacionRepo,
-          txRunner,
-        ),
-      inject: [
-        SUBTAREA_EDILICIA_REPOSITORY,
-        TICKET_EDILICIA_REPOSITORY,
-        OPERACION_TICKET_REPOSITORY,
-        TIPO_OPERACION_REPOSITORY,
-        TENANT_TX_RUNNER,
       ],
     },
     {
@@ -310,10 +236,6 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       inject: [REPARACION_COMPRA_REPOSITORY],
     },
   ],
-  exports: [
-    TICKET_EDILICIA_REPOSITORY,
-    SUBTAREA_EDILICIA_REPOSITORY,
-    COMENTARIO_REPARACION_REPOSITORY,
-  ],
+  exports: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
 })
 export class ReparacionesModule {}

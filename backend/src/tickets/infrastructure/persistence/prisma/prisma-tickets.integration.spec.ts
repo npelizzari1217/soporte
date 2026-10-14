@@ -196,6 +196,9 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
       });
       await tenantClient.archivo.deleteMany({ where: { id: { in: archivoIdsCreados } } });
     }
+    await tenantClient.tareaTicket.deleteMany({
+      where: { ticket: { tipoId: { in: [tipoSoporteId, tipoComprasId] } } },
+    });
     await tenantClient.operacionTicket.deleteMany({
       where: { ticket: { tipoId: { in: [tipoSoporteId, tipoComprasId] } } },
     });
@@ -460,24 +463,60 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
         });
       });
 
-      it('filtra por soloSolicitante (scope T6/T7 — USUARIO ve solo lo propio)', async () => {
+      it('filtra por visiblePara: lo que solicitó y donde es técnico de una tarea activa (CA10)', async () => {
+        const actorId = '01900000-0000-7000-8000-000000000101';
+        const termino = `visible-${randomBytes(4).toString('hex')}`;
         const propio = TicketEntity.create(
-          makeTicketProps({ solicitanteId: '01900000-0000-7000-8000-000000000101' }),
+          makeTicketProps({ solicitanteId: actorId, titulo: termino }),
         );
-        const ajeno = TicketEntity.create(
+        const conTarea = TicketEntity.create(
           makeTicketProps({ solicitanteId: '01900000-0000-7000-8000-000000000102' }),
+        );
+        const conTareaBorrada = TicketEntity.create(
+          makeTicketProps({ solicitanteId: '01900000-0000-7000-8000-000000000102' }),
+        );
+        const conTareaDeOtro = TicketEntity.create(
+          makeTicketProps({
+            solicitanteId: '01900000-0000-7000-8000-000000000102',
+            titulo: termino,
+          }),
         );
 
         await withTenant(async () => {
-          await ticketRepo.save(propio);
-          await ticketRepo.save(ajeno);
-
-          const result = await ticketRepo.findAll({
-            soloSolicitante: '01900000-0000-7000-8000-000000000101',
+          for (const t of [propio, conTarea, conTareaBorrada, conTareaDeOtro]) {
+            await ticketRepo.save(t);
+          }
+          await tenantClient.tareaTicket.createMany({
+            data: [
+              { ticketId: conTarea.id, descripcion: 'Activa', tecnicoId: actorId },
+              {
+                ticketId: conTareaBorrada.id,
+                descripcion: 'Borrada',
+                tecnicoId: actorId,
+                deletedAt: new Date(),
+              },
+              {
+                ticketId: conTareaDeOtro.id,
+                descripcion: 'De otro técnico',
+                tecnicoId: '01900000-0000-7000-8000-000000000103',
+              },
+            ],
           });
-          const ids = result.map((t) => t.id);
+
+          const ids = (await ticketRepo.findAll({ visiblePara: actorId })).map((t) => t.id);
           expect(ids).toContain(propio.id);
-          expect(ids).not.toContain(ajeno.id);
+          expect(ids).toContain(conTarea.id);
+          expect(ids).not.toContain(conTareaBorrada.id);
+          expect(ids).not.toContain(conTareaDeOtro.id);
+
+          // El OR de la visibilidad va en AND con el OR de `busqueda`, no lo pisa.
+          const conBusqueda = await ticketRepo.findAll({ visiblePara: actorId, busqueda: termino });
+          expect(conBusqueda.map((t) => t.id)).toEqual([propio.id]);
+
+          expect(await ticketRepo.esVisiblePara(propio.id, actorId)).toBe(true);
+          expect(await ticketRepo.esVisiblePara(conTarea.id, actorId)).toBe(true);
+          expect(await ticketRepo.esVisiblePara(conTareaBorrada.id, actorId)).toBe(false);
+          expect(await ticketRepo.esVisiblePara(conTareaDeOtro.id, actorId)).toBe(false);
         });
       });
 

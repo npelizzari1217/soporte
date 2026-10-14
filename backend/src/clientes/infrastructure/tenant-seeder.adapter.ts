@@ -9,8 +9,9 @@
  * - `estados` (7, FIJO — NO editable por el admin del tenant): NUEVO,
  *   ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE, RESUELTO, CERRADO, CANCELADO.
  * - `prioridades` (4, FIJO): BAJA, MEDIA, ALTA, CRITICA.
- * - `tipo_operacion` (5, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
- *   ADJUNTO, AVANCE_EDILICIO.
+ * - `tipo_operacion` (10, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
+ *   ADJUNTO, AVANCE_EDILICIO y los cinco TAREA_* de las tareas del ticket
+ *   (odd/tareas-con-tecnico).
  * - `tipos_ticket` (4, base EDITABLE por el admin del tenant — este seed
  *   solo garantiza el piso): SOPORTE, EDILICIA, MANTENIMIENTO (no-IT),
  *   PREVENTIVO (issue #135: código propio para que el barrido de
@@ -113,6 +114,13 @@ const PRIORIDADES = [
  * `operaciones` históricas referencian estos códigos por FK, así que
  * borrarlos de una DB existente rompería integridad referencial. Un tenant
  * nuevo nace sin ellos; uno viejo los conserva como catálogo inerte.
+ *
+ * Los cinco `TAREA_*` (odd/tareas-con-tecnico) los inserta también la
+ * migración 20261013150000_tipos_operacion_tareas, que corre antes que este
+ * seed; acá se listan para que el catálogo sembrado sea el completo
+ * (`skipDuplicates` hace que no choquen). `AVANCE_EDILICIO` ya no tiene
+ * productor (lo escribían las subtareas viejas), pero las operaciones
+ * históricas lo referencian por FK.
  */
 const TIPO_OPERACION = [
   { codigo: 'CAMBIO_ESTADO', nombre: 'Cambio de estado' },
@@ -120,6 +128,11 @@ const TIPO_OPERACION = [
   { codigo: 'ASIGNACION', nombre: 'Asignación' },
   { codigo: 'ADJUNTO', nombre: 'Adjunto' },
   { codigo: 'AVANCE_EDILICIO', nombre: 'Avance edilicio' },
+  { codigo: 'TAREA_CREADA', nombre: 'Tarea creada' },
+  { codigo: 'TAREA_ASIGNADA', nombre: 'Tarea asignada' },
+  { codigo: 'TAREA_COMPLETADA', nombre: 'Tarea completada' },
+  { codigo: 'TAREA_DESCOMPLETADA', nombre: 'Tarea descompletada' },
+  { codigo: 'TAREA_ELIMINADA', nombre: 'Tarea eliminada' },
 ];
 
 /**

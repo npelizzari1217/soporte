@@ -876,6 +876,182 @@ Para cortar los envíos sin revert, alcanza con `WEBHOOK_SWEEP_HABILITADO=false`
 encenderlo, salvo los de más de 30 días, que el primer barrido purga antes de enviar. Para un solo cliente alcanza con que
 su ADMINISTRADOR desactive el destino, o con que ROOT le deshabilite la API.
 
+## Tareas con técnico (punto 12)
+
+Documento de la feature: `odd/tasks/tareas-con-tecnico.md`. Las subtareas de Edilicia pasan a
+ser tareas genéricas del ticket (`tareas_ticket`), y la tabla vieja se retira **en el mismo
+release**. Es el primer deploy de este documento que **copia datos y después borra el
+origen**, así que el precheck no es opcional. Qué cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migraciones tenant | Cuatro, solo en las bases de inquilino, por `migrate:tenants` (ver la tabla siguiente). Master no cambia. |
+| Variables | Ninguna. |
+| Dependencias | Ninguna. El lockfile no cambia. |
+
+| Orden | Migración | Qué hace |
+|---|---|---|
+| 1 | `20261013140000_tareas_ticket` | Crea `tareas_ticket` con el CHECK `tareas_ticket_completada_check` y **copia** cada fila de `subtareas_edilicia` vía `ticket_edilicia.ticket_id`, con el mismo id, sin técnico y con las bajas lógicas. |
+| 2 | `20261013150000_tipos_operacion_tareas` | Suma los cinco `TAREA_*` al catálogo `tipo_operacion` (idempotente). |
+| 3 | `20261013160000_tareas_ticket_indice_tecnico` | Índice (`tecnico_id`, `deleted_at`, `ticket_id`) para la visibilidad por tarea. |
+| 4 | `20261014120000_retiro_subtareas_edilicia` | **Destructiva**: borra `subtareas_edilicia`, `ticket_edilicia.personal_asignado_id` y `ticket_edilicia.porcentaje_avance`. |
+
+**Un solo deploy las aplica todas, en orden de timestamp, base por base.** En cada base, Prisma
+aplica la 4 solo si la 1 ya quedó aplicada en esa misma base, así que la copia siempre ocurre
+antes del borrado. `migrate-tenants.js` recorre los inquilinos activos en orden de `db_name` y
+**corta en el primero que falla**: los anteriores ya quedaron con las cuatro migraciones, y los
+siguientes con ninguna.
+
+**¿Conviene partirlo en dos deploys, T1 en uno y T8 en otro?** Se puede, pero no aporta. Partirlo
+exige mergear a `main` primero la cadena hasta T7 y desplegarla, y recién después T8. La
+Estrategia de entrega pedía que el retiro saliera cuando ningún código leyera la tabla vieja, y
+eso ya se cumple en un solo deploy: el código de este release no lee ni escribe `subtareas_edilicia`
+ni las dos columnas. En un deploy intermedio, además, la tabla vieja tampoco recibiría escrituras:
+volver al código anterior desde ahí mostraría las subtareas como estaban antes del deploy, igual
+de desactualizadas que después del rollback de la 4. Partirlo solo gana un rollback sin
+`rollback.sql` durante el intervalo, a cambio de dos ventanas de servicio. Si igual se parte,
+**T8 nunca sale antes que T1**, y el código del deploy intermedio funciona con la tabla vieja
+presente.
+
+### Precheck de solo lectura: el CHECK de la copia
+
+Si **una sola** fila de `subtareas_edilicia` viola `tareas_ticket_completada_check`, el `INSERT`
+de la migración 1 falla en esa base: no aplica nada en ella, Prisma la deja marcada como fallida
+en `_prisma_migrations` y `migrate-tenants.js` corta el fan-out con los servicios detenidos. En
+las bases locales dio 0 violaciones (T1); **producción no se verificó**.
+
+Las bases se toman del registro, nunca se hardcodean (es el mismo conjunto que recorre
+`migrate-tenants.js`):
+
+```powershell
+& 'C:\Program Files\PostgreSQL\16\bin\psql.exe' $env:DATABASE_URL_MASTER -t -A -F '|' -c "SELECT nombre, db_name FROM clientes WHERE activo = true AND deleted_at IS NULL ORDER BY db_name;"
+```
+
+En **cada** base de esa lista (con `psql` contra la base del inquilino, nunca contra master),
+antes del deploy:
+
+```sql
+SELECT
+  count(*) FILTER (WHERE NOT (
+       (completada AND completada_en IS NOT NULL AND completada_por_id IS NOT NULL)
+    OR (NOT completada AND completada_en IS NULL AND completada_por_id IS NULL)
+  ))                                              AS violan_check,
+  count(*)                                        AS subtareas,
+  count(*) FILTER (WHERE completada)              AS completadas,
+  count(*) FILTER (WHERE deleted_at IS NOT NULL)  AS dadas_de_baja
+FROM subtareas_edilicia;
+```
+
+La condición es la del CHECK, negada. `completada` es `NOT NULL`, así que no hay un tercer valor
+que se escape.
+
+| Resultado | Qué hacer |
+|---|---|
+| `violan_check = 0` en **todas** las bases | Seguir. Anotar `subtareas`, `completadas` y `dadas_de_baja` por base: son la foto contra la que se compara después del deploy. |
+| `violan_check > 0` en alguna | **No desplegar.** Listar las filas con el `SELECT` siguiente y llevarlas al dueño: corregirlas es una decisión de datos (por ejemplo, una completada sin `completada_por_id` no tiene a quién atribuirse), no algo que el operador resuelva por su cuenta. Con las filas corregidas, se vuelve a correr el precheck. |
+| La consulta falla con `relation "subtareas_edilicia" does not exist` | **No desplegar.** La migración 1 también fallaría en esa base. Hay que entender por qué a esa base le falta la tabla antes de seguir. |
+
+```sql
+SELECT id, ticket_edilicia_id, completada, completada_en, completada_por_id
+FROM subtareas_edilicia
+WHERE NOT (
+     (completada AND completada_en IS NOT NULL AND completada_por_id IS NOT NULL)
+  OR (NOT completada AND completada_en IS NULL AND completada_por_id IS NULL)
+);
+```
+
+Con los servicios arriba, alguien puede cargar una subtarea entre el precheck y el deploy. Para
+que la foto sea exacta, se vuelve a correr la consulta después de `predeploy-dump.ps1`, con los
+servicios ya detenidos. Si en ese punto aparece una violación, no se corre `deploy.ps1`: se
+arrancan los servicios y se sigue la tabla de arriba.
+
+### Orden del deploy
+
+1. Precheck en todas las bases, en verde.
+2. `predeploy-dump.ps1`, en DryRun y en la corrida real (ver "Precondición operativa"). Es el
+   único rollback fiel: la migración 4 borra datos.
+3. Precheck otra vez, con los servicios detenidos: la foto definitiva.
+4. `deploy.ps1`.
+
+### Verificación posterior al deploy
+
+En cada base, antes de que alguien cargue tareas nuevas:
+
+```sql
+SELECT
+  count(*)                                         AS tareas_edilicia,
+  count(*) FILTER (WHERE t.completada)             AS completadas,
+  count(*) FILTER (WHERE t.deleted_at IS NOT NULL) AS dadas_de_baja,
+  count(*) FILTER (WHERE t.tecnico_id IS NOT NULL) AS con_tecnico
+FROM tareas_ticket t
+JOIN ticket_edilicia te ON te.ticket_id = t.ticket_id;
+```
+
+`tareas_edilicia`, `completadas` y `dadas_de_baja` tienen que coincidir con `subtareas`,
+`completadas` y `dadas_de_baja` de la foto del paso 3, y `con_tecnico` tiene que dar 0, porque
+las subtareas no tenían técnico. Si alguien ya cargó tareas, sumar
+`WHERE t.created_at < '<inicio del deploy>'`: las copiadas conservan su `created_at` original.
+Después, confirmar que las tres estructuras viejas ya no existen:
+
+```sql
+SELECT
+  to_regclass('subtareas_edilicia') IS NULL                       AS tabla_retirada,
+  NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'ticket_edilicia'
+                AND column_name IN ('personal_asignado_id', 'porcentaje_avance')) AS columnas_retiradas;
+```
+
+Smoke manual, con un usuario que tenga una reparación con subtareas:
+
+- el detalle del ticket muestra la sección **Tareas** con el avance (`<porcentaje>% · <completadas>
+  de <total> completadas`) y cada tarea con "Sin técnico";
+- en Edilicia, **Ver subtareas** muestra las mismas tareas, y la columna Avance del listado da el
+  porcentaje de tareas activas completadas;
+- el PDF del ticket imprime la sección "Tareas", con el técnico y el estado de cada una;
+- el dashboard muestra la tarjeta **Tareas completadas por técnico** (puede estar vacía si nadie
+  completó tareas en el ciclo);
+- en el log de `soporte-backend` no aparecen errores de Prisma sobre `subtareas_edilicia`,
+  `personal_asignado_id` ni `porcentaje_avance`.
+
+### Rollback
+
+**Primero los `rollback.sql`, después el código.** El cliente Prisma del código anterior lee
+`subtareas_edilicia` y las dos columnas, así que volver al código sin recrearlas da errores en
+Edilicia y en el PDF. El código de este release, en cambio, funciona con las estructuras viejas
+recreadas, porque Prisma ignora las tablas y columnas que no conoce. Por eso el orden es:
+
+1. En **cada** base de inquilino, los `rollback.sql` en orden inverso. Todos son re-ejecutables:
+   1. `20261014120000_retiro_subtareas_edilicia/rollback.sql`: recrea la tabla y las dos columnas
+      y las repuebla desde `tareas_ticket`. **Es el único imprescindible** para volver al código
+      anterior.
+   2. `20261013160000_tareas_ticket_indice_tecnico/rollback.sql`: borra el índice. Sin pérdida.
+   3. `20261013150000_tipos_operacion_tareas/rollback.sql`: borra del historial de cada ticket
+      las entradas de tareas, y después los cinco tipos.
+   4. `20261013140000_tareas_ticket/rollback.sql`: borra `tareas_ticket`.
+2. `git reset --hard <commit-de-rollback>` y `.\deploy.ps1` (ver "Cuando algo falla").
+
+Los pasos 1.2 a 1.4 son opcionales. El código anterior no lee `tareas_ticket` ni los tipos
+nuevos, y dejarlos conserva lo que el paso 1.1 no puede devolver. Si se corren, lo que solo vive
+en `tareas_ticket` se pierde para siempre, salvo restaurando el dump.
+
+**Qué no vuelve con el rollback:**
+
+- **las tareas de tickets que no son de Edilicia**: la tabla vieja no puede guardarlas, y quedan
+  solo en `tareas_ticket`;
+- **el técnico de cada tarea** (`tecnico_id`): la tabla vieja no tenía esa columna;
+- `personal_asignado_id` vuelve en NULL; nunca se usó, así que no hay dato que recuperar;
+- `porcentaje_avance` se recalcula con las tareas activas (misma fórmula que
+  `calcularAvanceTareas`), no se restaura el valor guardado;
+- con el paso 1.3, el historial de tareas de todos los tickets;
+- los `rollback.sql` no borran las filas de `_prisma_migrations`. Para volver a desplegar el
+  release después, hay que borrar a mano las filas de las migraciones revertidas, o Prisma las
+  da por aplicadas. Y lo que el código anterior haya escrito en `subtareas_edilicia` mientras
+  tanto no vuelve a copiarse solo: la migración 1 ya figura como aplicada, y aunque se la
+  reaplique, su `ON CONFLICT DO NOTHING` no actualiza las filas que ya existen.
+
+Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el dump de
+`predeploy-dump.ps1` (ver "Restore de datos"), y se pierde lo escrito después del deploy.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

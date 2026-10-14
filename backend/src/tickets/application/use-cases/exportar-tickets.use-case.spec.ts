@@ -6,7 +6,7 @@
  * - `ExportarTicketsUseCase` COMPONE `ListarTicketsUseCase` (no un
  *   `ITicketRepository` propio): el test de scope por fila usa la instancia
  *   REAL de `ListarTicketsUseCase` para probar que la restricción de rol
- *   (`soloSolicitante`, T7) se hereda estructuralmente, no por convención.
+ *   (`visiblePara`, T7) se hereda estructuralmente, no por convención.
  * - `fechaCierre` y `createdAt` son ambas `@db.Timestamptz` (instantes
  *   reales, sdd/corregir-fecha-cierre-tickets) — `diaArgentinoCsv` desplaza
  *   a hora de Argentina y trunca al día, `fechaHoraCsv` desplaza y muestra
@@ -231,15 +231,12 @@ describe('ExportarTicketsUseCase', () => {
 
     const ticketRepo = {
       findAll: vi.fn(async (filtros?: TicketFiltros) =>
-        todos.filter(
-          (t) => !filtros?.soloSolicitante || t.solicitanteId === filtros.soloSolicitante,
-        ),
+        todos.filter((t) => !filtros?.visiblePara || t.solicitanteId === filtros.visiblePara),
       ),
       count: vi.fn(
         async (filtros?: TicketFiltros) =>
-          todos.filter(
-            (t) => !filtros?.soloSolicitante || t.solicitanteId === filtros.soloSolicitante,
-          ).length,
+          todos.filter((t) => !filtros?.visiblePara || t.solicitanteId === filtros.visiblePara)
+            .length,
       ),
       findById: vi.fn(),
       findByIds: vi.fn(),

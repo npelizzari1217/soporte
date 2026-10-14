@@ -21,17 +21,25 @@ describe('ObtenerMetricasUseCase', () => {
       distribucionPorTipo: vi.fn().mockResolvedValue([{ tipoId: 'tipo-1', total: 8 }]),
       distribucionPorPrioridad: vi.fn().mockResolvedValue([{ prioridadId: 'prio-1', total: 8 }]),
     };
-    const cicloClienteRepo = { findActive: vi.fn().mockResolvedValue(cicloActivo) };
+    const cicloClienteRepo = {
+      findActive: vi.fn().mockResolvedValue(cicloActivo),
+      findById: vi.fn().mockResolvedValue(null),
+    };
     // Repo CSAT (WU9.1, ADR-C5): solo se consulta cuando el actor tiene CSAT:LECTURA.
     const csatRepo = {
       resumenPorScope: vi.fn().mockResolvedValue({ promedio: 4.5, respuestas: 10 }),
     };
+    // odd/tareas-con-tecnico T4: tareas completadas por técnico, con nombres de master.
+    const tareaRepo = { contarCompletadasPorTecnico: vi.fn().mockResolvedValue([]) };
+    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
     const useCase = new ObtenerMetricasUseCase(
       dashboardRepo as never,
       cicloClienteRepo as never,
       csatRepo as never,
+      tareaRepo,
+      usuarioMasterChecker,
     );
-    return { useCase, dashboardRepo, cicloClienteRepo, csatRepo };
+    return { useCase, dashboardRepo, cicloClienteRepo, csatRepo, tareaRepo, usuarioMasterChecker };
   }
 
   const CICLO = CicloClienteEntity.create(
@@ -116,26 +124,31 @@ describe('ObtenerMetricasUseCase', () => {
       tiempoPromedioPrimeraRespuestaHoras: null,
       distribucionPorTipo: [],
       distribucionPorPrioridad: [],
+      tareasCompletadasPorTecnico: [],
     });
     expect(c.dashboardRepo.conteoPorEstadoAgrupado).not.toHaveBeenCalled();
+    expect(c.tareaRepo.contarCompletadasPorTecnico).not.toHaveBeenCalled();
   });
+
+  /** Métricas por ticket del fixture, tal como salían antes de la T4. CA6: no cambian. */
+  const METRICAS_POR_TICKET = {
+    abiertos: 3,
+    cerrados: 5,
+    tiempoPromedioResolucionHoras: 12.5,
+    cargaPorAgente: [{ asignadoId: 'agente-1', abiertos: 2 }],
+    cumplimientoSla: { cerradosConSla: 4, cerradosATiempo: 3, porcentaje: 0.75 },
+    cumplimientoPrimeraRespuesta: { conMeta: 4, aTiempo: 2, porcentaje: 0.5 },
+    tiempoPromedioPrimeraRespuestaHoras: 1.25,
+    distribucionPorTipo: [{ tipoId: 'tipo-1', total: 8 }],
+    distribucionPorPrioridad: [{ prioridadId: 'prio-1', total: 8 }],
+  };
 
   it('arma el DTO de métricas con el % de cumplimiento SLA calculado', async () => {
     const c = makeCollaborators(CICLO);
 
     const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
 
-    expect(result).toEqual({
-      abiertos: 3,
-      cerrados: 5,
-      tiempoPromedioResolucionHoras: 12.5,
-      cargaPorAgente: [{ asignadoId: 'agente-1', abiertos: 2 }],
-      cumplimientoSla: { cerradosConSla: 4, cerradosATiempo: 3, porcentaje: 0.75 },
-      cumplimientoPrimeraRespuesta: { conMeta: 4, aTiempo: 2, porcentaje: 0.5 },
-      tiempoPromedioPrimeraRespuestaHoras: 1.25,
-      distribucionPorTipo: [{ tipoId: 'tipo-1', total: 8 }],
-      distribucionPorPrioridad: [{ prioridadId: 'prio-1', total: 8 }],
-    });
+    expect(result).toEqual({ ...METRICAS_POR_TICKET, tareasCompletadasPorTecnico: [] });
   });
 
   it('cumplimientoSla con cerradosConSla=0 ⇒ porcentaje null (evita división por cero)', async () => {
@@ -228,6 +241,170 @@ describe('ObtenerMetricasUseCase', () => {
       expect(result.csatPromedio).toBeNull();
       expect(result.csatRespuestas).toBe(0);
       expect(c.csatRepo.resumenPorScope).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('tareas completadas por técnico (odd/tareas-con-tecnico T4, CA6)', () => {
+    const ANA = 'tecnico-ana';
+    const BETO = 'tecnico-beto';
+    const GRUPOS = [
+      { completadaPorId: ANA, completadas: 5 },
+      { completadaPorId: BETO, completadas: 2 },
+    ];
+
+    function conTareas(grupos = GRUPOS) {
+      const c = makeCollaborators(CICLO);
+      c.tareaRepo.contarCompletadasPorTecnico.mockResolvedValue(grupos);
+      c.usuarioMasterChecker.resolverNombres.mockResolvedValue(
+        new Map([[ANA, { nombre: 'Ana', apellido: 'Paz' }]]),
+      );
+      return c;
+    }
+
+    it('el período son los días argentinos del ciclo, con fecha_fin incluida entera', async () => {
+      const c = conTareas();
+
+      await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+
+      // Medianoche argentina (UTC-3 fijo) = 03:00 UTC.
+      expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith({
+        desde: new Date('2026-01-01T03:00:00.000Z'),
+        hasta: new Date('2027-01-01T03:00:00.000Z'),
+        completadaPorId: undefined,
+      });
+    });
+
+    describe('el día se corta en la medianoche argentina, no en la UTC (T11, JD-W2)', () => {
+      /**
+       * Repositorio que cuenta de verdad: cada usuario completó una tarea en el instante dado, y
+       * entra si cae en `[desde, hasta)`. El ciclo va del 2026-01-01 al 2026-12-31.
+       */
+      function conCompletadaEn(instante: string) {
+        const c = makeCollaborators(CICLO);
+        c.tareaRepo.contarCompletadasPorTecnico.mockImplementation(
+          async (filtro: { desde: Date; hasta: Date }) => {
+            const en = new Date(instante);
+            return en >= filtro.desde && en < filtro.hasta
+              ? [{ completadaPorId: ANA, completadas: 1 }]
+              : [];
+          },
+        );
+        return c;
+      }
+
+      it.each([
+        ['23:30 ART del último día del ciclo cuenta', '2027-01-01T02:30:00.000Z', 1],
+        ['00:30 ART del primer día del ciclo cuenta', '2026-01-01T03:30:00.000Z', 1],
+        ['23:30 ART del día anterior al inicio no cuenta', '2026-01-01T02:30:00.000Z', 0],
+        ['00:30 ART del día siguiente al fin no cuenta', '2027-01-01T03:30:00.000Z', 0],
+      ])('%s', async (_caso, instante, esperadas) => {
+        const c = conCompletadaEn(instante);
+
+        const result = await c.useCase.execute({
+          actorId: 'admin-uuid',
+          actorRol: 'ADMINISTRADOR',
+        });
+
+        expect(result.tareasCompletadasPorTecnico).toHaveLength(esperadas);
+      });
+    });
+
+    it.each(['ADMINISTRADOR', 'ROOT', 'COLABORADOR'])(
+      '%s ve a todos los técnicos, en orden descendente y con su nombre',
+      async (rol) => {
+        const c = conTareas();
+
+        const result = await c.useCase.execute({ actorId: 'staff-uuid', actorRol: rol });
+
+        expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(
+          expect.objectContaining({ completadaPorId: undefined }),
+        );
+        expect(c.usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith([ANA, BETO]);
+        // BETO no está en master: la fila queda, con el nombre en null.
+        expect(result.tareasCompletadasPorTecnico).toEqual([
+          { usuarioId: ANA, nombre: 'Ana', apellido: 'Paz', completadas: 5 },
+          { usuarioId: BETO, nombre: null, apellido: null, completadas: 2 },
+        ]);
+      },
+    );
+
+    it('TECNICO solo pide su propia fila: completada_por_id = actorId', async () => {
+      const c = conTareas([{ completadaPorId: BETO, completadas: 2 }]);
+
+      const result = await c.useCase.execute({ actorId: BETO, actorRol: 'TECNICO' });
+
+      expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(
+        expect.objectContaining({ completadaPorId: BETO }),
+      );
+      expect(result.tareasCompletadasPorTecnico).toEqual([
+        { usuarioId: BETO, nombre: null, apellido: null, completadas: 2 },
+      ]);
+    });
+
+    it('período sin tareas completadas ⇒ lista vacía, sin consultar master', async () => {
+      const c = conTareas([]);
+
+      const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+
+      expect(result.tareasCompletadasPorTecnico).toEqual([]);
+      expect(c.usuarioMasterChecker.resolverNombres).not.toHaveBeenCalled();
+    });
+
+    it('con ciclo explícito usa las fechas de ese ciclo, no las del activo', async () => {
+      const c = conTareas();
+      c.cicloClienteRepo.findById.mockResolvedValue(
+        CicloClienteEntity.create(
+          {
+            cicloVigenteId: 'ciclo-vigente-uuid',
+            nombre: 'Ciclo 2025',
+            fechaInicio: new Date('2025-03-01'),
+            fechaFin: new Date('2025-06-30'),
+            activo: false,
+          },
+          'ciclo-historico-uuid',
+        ),
+      );
+
+      await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        cicloId: 'ciclo-historico-uuid',
+      });
+
+      expect(c.cicloClienteRepo.findById).toHaveBeenCalledWith('ciclo-historico-uuid');
+      expect(c.cicloClienteRepo.findActive).not.toHaveBeenCalled();
+      expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(
+        expect.objectContaining({
+          desde: new Date('2025-03-01T03:00:00.000Z'),
+          hasta: new Date('2025-07-01T03:00:00.000Z'),
+        }),
+      );
+    });
+
+    it('ciclo explícito inexistente ⇒ lista vacía, y las métricas por ticket se consultan igual', async () => {
+      const c = conTareas();
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        cicloId: 'ciclo-inexistente',
+      });
+
+      expect(result.tareasCompletadasPorTecnico).toEqual([]);
+      expect(c.tareaRepo.contarCompletadasPorTecnico).not.toHaveBeenCalled();
+      expect(c.dashboardRepo.conteoPorEstadoAgrupado).toHaveBeenCalled();
+    });
+
+    it('CA6: con tareas, las métricas por ticket del fixture quedan idénticas', async () => {
+      const c = conTareas();
+
+      const { tareasCompletadasPorTecnico, ...porTicket } = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+      });
+
+      expect(tareasCompletadasPorTecnico).toHaveLength(2);
+      expect(porTicket).toStrictEqual(METRICAS_POR_TICKET);
     });
   });
 });

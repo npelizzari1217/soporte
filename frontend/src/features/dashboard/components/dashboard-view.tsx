@@ -23,6 +23,7 @@ import {
   formatHoras,
   toPorcentaje,
   toTiempoPromedioChartData,
+  toTareasCompletadasChartData,
 } from "../lib/metricas-map";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -122,11 +123,15 @@ export function DashboardView() {
   const cumplimientoResolucion = toPorcentaje(metricas.cumplimientoSla.porcentaje);
   const cumplimientoPrimeraRespuesta = toPorcentaje(metricas.cumplimientoPrimeraRespuesta.porcentaje);
   const tiempoPrimeraRespuesta = formatHoras(metricas.tiempoPromedioPrimeraRespuestaHoras);
+  const tareasCompletadas = toTareasCompletadasChartData(metricas.tareasCompletadasPorTecnico);
+  // Una tarea de un ticket de otro ciclo cuenta en el período en que se
+  // completó (T4): puede haber tareas aunque el ciclo no tenga tickets.
   const sinDatos =
     metricas.abiertos === 0 &&
     metricas.cerrados === 0 &&
     metricas.distribucionPorTipo.length === 0 &&
-    metricas.distribucionPorPrioridad.length === 0;
+    metricas.distribucionPorPrioridad.length === 0 &&
+    tareasCompletadas.length === 0;
 
   return (
     <div>
@@ -177,6 +182,19 @@ export function DashboardView() {
                   title="Carga por agente"
                   data={toCargaPorAgenteChartData(metricas.cargaPorAgente, usuarioNombreMap)}
                 />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tareas completadas por técnico</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {tareasCompletadas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin tareas completadas en este ciclo.</p>
+              ) : (
+                <HBarChart title="Tareas completadas por técnico" data={tareasCompletadas} />
               )}
             </CardContent>
           </Card>

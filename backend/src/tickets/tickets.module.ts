@@ -35,6 +35,11 @@ import {
 } from './domain/ports/i-regla-asignacion.repository';
 import { ResolverAsignacionAutomatica } from './application/services/resolver-asignacion-automatica.service';
 import {
+  ITareaTicketRepository,
+  TAREA_TICKET_REPOSITORY,
+} from './domain/ports/i-tarea-ticket.repository';
+import { PrismaTareaTicketRepository } from './infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
+import {
   OPERACION_TICKET_REPOSITORY,
   IOperacionTicketRepository,
 } from './domain/ports/i-operacion-ticket.repository';
@@ -87,9 +92,17 @@ import { ListarPrioridadesUseCase } from './application/use-cases/listar-priorid
 import { ListarEstadosUseCase } from './application/use-cases/listar-estados.use-case';
 import { ListarTiposOperacionUseCase } from './application/use-cases/listar-tipos-operacion.use-case';
 import { ExportarTicketsUseCase } from './application/use-cases/exportar-tickets.use-case';
+import { CrearTareaTicketUseCase } from './application/use-cases/crear-tarea-ticket.use-case';
+import { AsignarTecnicoTareaUseCase } from './application/use-cases/asignar-tecnico-tarea.use-case';
+import { CompletarTareaUseCase } from './application/use-cases/completar-tarea.use-case';
+import { DescompletarTareaUseCase } from './application/use-cases/descompletar-tarea.use-case';
+import { EliminarTareaUseCase } from './application/use-cases/eliminar-tarea.use-case';
+import { ListarTareasTicketUseCase } from './application/use-cases/listar-tareas-ticket.use-case';
+import { ListarTecnicosElegiblesTareaUseCase } from './application/use-cases/listar-tecnicos-elegibles-tarea.use-case';
 import { TicketsController } from './interface/controllers/tickets.controller';
 import { AdjuntosController } from './interface/controllers/adjuntos.controller';
 import { CatalogosController } from './interface/controllers/catalogos.controller';
+import { TareasTicketController } from './interface/controllers/tareas-ticket.controller';
 
 /**
  * TicketsModule — módulo NestJS del dominio "tickets".
@@ -153,7 +166,7 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
  */
 @Module({
   imports: [AuthModule, CsatLecturaModule],
-  controllers: [TicketsController, AdjuntosController, CatalogosController],
+  controllers: [TicketsController, AdjuntosController, CatalogosController, TareasTicketController],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
     { provide: ESTADO_REPOSITORY, useClass: PrismaEstadoRepository },
@@ -171,6 +184,8 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
     { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
     { provide: REGLA_ASIGNACION_REPOSITORY, useClass: PrismaReglaAsignacionRepository },
+    // odd/tareas-con-tecnico: tareas de cualquier tipo de ticket.
+    { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
 
     {
       provide: NumeradorTicket,
@@ -368,6 +383,160 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
         usuarioMasterChecker: IUsuarioMasterChecker,
       ) => new ListarTecnicosAsignablesUseCase(ticketRepo, tipoTicketRepo, usuarioMasterChecker),
       inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, USUARIO_MASTER_CHECKER],
+    },
+    // odd/tareas-con-tecnico T3: casos de uso de tareas (T2), cableados con `TareasTicketController`.
+    // Crear se exporta para el seed de demo (`prisma_master/seeds/demo-seed.ts`). Completar y
+    // eliminar se exportaban para las rutas de subtareas de reparaciones, que T8 retiró.
+    {
+      provide: ListarTareasTicketUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+      ) => new ListarTareasTicketUseCase(ticketRepo, tipoTicketRepo, tareaRepo),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
+    },
+    {
+      provide: ListarTecnicosElegiblesTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+      ) =>
+        new ListarTecnicosElegiblesTareaUseCase(ticketRepo, tipoTicketRepo, usuarioMasterChecker),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, USUARIO_MASTER_CHECKER],
+    },
+    {
+      provide: CrearTareaTicketUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new CrearTareaTicketUseCase(
+          ticketRepo,
+          tipoTicketRepo,
+          tareaRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: AsignarTecnicoTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        usuarioMasterChecker: IUsuarioMasterChecker,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new AsignarTecnicoTareaUseCase(
+          ticketRepo,
+          tipoTicketRepo,
+          tareaRepo,
+          usuarioMasterChecker,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        USUARIO_MASTER_CHECKER,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: CompletarTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new CompletarTareaUseCase(
+          ticketRepo,
+          tareaRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: DescompletarTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new DescompletarTareaUseCase(
+          ticketRepo,
+          tareaRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: EliminarTareaUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new EliminarTareaUseCase(
+          ticketRepo,
+          tipoTicketRepo,
+          tareaRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
     },
     {
       provide: AsignarYPonerEnProcesoUseCase,
@@ -567,6 +736,14 @@ import { CatalogosController } from './interface/controllers/catalogos.controlle
     // módulos (Equipos, Reparaciones) y la pantalla de configuración.
     REGLA_ASIGNACION_REPOSITORY,
     ResolverAsignacionAutomatica,
+    // odd/tareas-con-tecnico: las tareas las leen también el listado de reparaciones, el dashboard
+    // y el PDF, que viven en otros módulos.
+    TAREA_TICKET_REPOSITORY,
+    // odd/tareas-con-tecnico T3: las rutas de subtareas de reparaciones delegan en estos tres hasta
+    // que T8 las retire.
+    CrearTareaTicketUseCase,
+    CompletarTareaUseCase,
+    EliminarTareaUseCase,
     // sdd/preventivo WU-5 (5.1): CrearTicketUseCase exportado para que
     // GenerarPreventivosUseCase lo reuse en vez de reimplementar la sección
     // crítica de numeración (ADR-PV5) — mismo criterio que los tokens de

@@ -1,8 +1,13 @@
 import { IDashboardRepository, MetricaFiltro } from '../../domain/ports/i-dashboard.repository';
 import { ICicloClienteRepository } from '../../../tickets/domain/ports/i-ciclo-cliente.repository';
 import { IEncuestaSatisfaccionRepository } from '../../../csat/domain/ports/i-encuesta-satisfaccion.repository';
+import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
+import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
+import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import { medianocheArgentina } from '../../../shared/domain/zona-horaria-argentina';
 
 const ROL_TECNICO = 'TECNICO';
+const MS_POR_DIA = 24 * 60 * 60 * 1000;
 
 /**
  * DTO de entrada de `ObtenerMetricasUseCase`. `actorRol` es el `rol` crudo
@@ -24,6 +29,18 @@ export interface ObtenerMetricasDto {
   tieneCsatLectura?: boolean;
 }
 
+/**
+ * Tareas completadas por un usuario en el período del dashboard (odd/tareas-con-tecnico T4, CA6).
+ * El crédito es de quien completó la tarea (`completada_por_id`), no del técnico asignado.
+ * `nombre` y `apellido` salen de master; `null` si el usuario ya no existe allí.
+ */
+export interface TareasCompletadasTecnico {
+  usuarioId: string;
+  nombre: string | null;
+  apellido: string | null;
+  completadas: number;
+}
+
 /** DTO de salida — snapshot de métricas del dashboard (D1). */
 export interface MetricasResult {
   abiertos: number;
@@ -42,6 +59,11 @@ export interface MetricasResult {
   tiempoPromedioPrimeraRespuestaHoras: number | null;
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
+  /**
+   * Tareas completadas por técnico en el período del ciclo, evaluado sobre `completada_en`, en
+   * orden descendente de cantidad. Con alcance de TECNICO, a lo sumo la fila propia.
+   */
+  tareasCompletadasPorTecnico: TareasCompletadasTecnico[];
   /**
    * KPI de satisfacción (WU9.1, ADR-C5). Presente SOLO si el actor tiene
    * `CSAT:LECTURA` — con `tieneCsatLectura=false` estas dos claves quedan
@@ -62,6 +84,7 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
   tiempoPromedioPrimeraRespuestaHoras: null,
   distribucionPorTipo: [],
   distribucionPorPrioridad: [],
+  tareasCompletadasPorTecnico: [],
 };
 
 /**
@@ -82,19 +105,28 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
  * - % de cumplimiento SLA: `cerradosATiempo / cerradosConSla`; `null` si
  *   `cerradosConSla=0` (evita `NaN`/división por cero cuando no hay
  *   cerrados con SLA aplicable).
+ * - Tareas completadas por técnico (odd/tareas-con-tecnico T4, CA6): el período es el rango de
+ *   días del ciclo en hora argentina, de las 00:00 ART de `fechaInicio` a las 00:00 ART del día
+ *   siguiente a `fechaFin` (03:00 UTC, T11), aplicado a `completada_en` y no al
+ *   ciclo del ticket: una tarea completada este ciclo sobre un ticket de un ciclo anterior cuenta
+ *   en este. El alcance de TECNICO fija `completada_por_id = actorId`, el mismo criterio que
+ *   `asignadoId` en las métricas por ticket. Las métricas por ticket no cambian.
  *
  * Ref spec: sdd/premium/spec D1, D2. Ref design: ADR-P5. Tarea: D2.
  */
 export class ObtenerMetricasUseCase {
   constructor(
     private readonly dashboardRepo: IDashboardRepository,
-    private readonly cicloClienteRepo: Pick<ICicloClienteRepository, 'findActive'>,
+    private readonly cicloClienteRepo: Pick<ICicloClienteRepository, 'findActive' | 'findById'>,
     private readonly csatRepo: Pick<IEncuestaSatisfaccionRepository, 'resumenPorScope'>,
+    private readonly tareaRepo: Pick<ITareaTicketRepository, 'contarCompletadasPorTecnico'>,
+    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'resolverNombres'>,
   ) {}
 
   async execute(dto: ObtenerMetricasDto): Promise<MetricasResult> {
     const tieneCsatLectura = dto.tieneCsatLectura ?? false;
-    const cicloEfectivoId = dto.cicloId ?? (await this.cicloClienteRepo.findActive())?.id;
+    const cicloActivo = dto.cicloId ? null : await this.cicloClienteRepo.findActive();
+    const cicloEfectivoId = dto.cicloId ?? cicloActivo?.id;
 
     if (!cicloEfectivoId) {
       return {
@@ -105,6 +137,10 @@ export class ObtenerMetricasUseCase {
 
     const asignadoId = dto.actorRol === ROL_TECNICO ? dto.actorId : undefined;
     const filtro: MetricaFiltro = { cicloId: cicloEfectivoId, asignadoId };
+    // El ciclo explícito se busca para conocer sus fechas; el activo ya se tiene.
+    const ciclo = dto.cicloId
+      ? this.cicloClienteRepo.findById(dto.cicloId)
+      : Promise.resolve(cicloActivo);
 
     const [
       conteo,
@@ -116,6 +152,7 @@ export class ObtenerMetricasUseCase {
       distribucionPorTipo,
       distribucionPorPrioridad,
       csat,
+      tareasCompletadasPorTecnico,
     ] = await Promise.all([
       this.dashboardRepo.conteoPorEstadoAgrupado(filtro),
       this.dashboardRepo.tiempoPromedioResolucionHoras(filtro),
@@ -128,6 +165,7 @@ export class ObtenerMetricasUseCase {
       // ADR-C5: solo se consulta el repo CSAT si el actor tiene el permiso —
       // evita el costo de la query cuando el dato ni siquiera se va a mostrar.
       tieneCsatLectura ? this.csatRepo.resumenPorScope(filtro) : Promise.resolve(null),
+      this.tareasCompletadasPorTecnico(ciclo, asignadoId),
     ]);
 
     return {
@@ -149,7 +187,44 @@ export class ObtenerMetricasUseCase {
       tiempoPromedioPrimeraRespuestaHoras: tiempoPrimeraRespuesta,
       distribucionPorTipo,
       distribucionPorPrioridad,
+      tareasCompletadasPorTecnico,
       ...(csat ? { csatPromedio: csat.promedio, csatRespuestas: csat.respuestas } : {}),
     };
+  }
+
+  /**
+   * Tareas completadas en el período del ciclo, con el nombre de cada usuario resuelto en un solo
+   * lote contra master. Un ciclo explícito inexistente da una lista vacía.
+   */
+  private async tareasCompletadasPorTecnico(
+    cicloPendiente: Promise<CicloClienteEntity | null>,
+    completadaPorId: string | undefined,
+  ): Promise<TareasCompletadasTecnico[]> {
+    const ciclo = await cicloPendiente;
+    if (!ciclo) return [];
+
+    const grupos = await this.tareaRepo.contarCompletadasPorTecnico({
+      // Las fechas del ciclo son días calendario argentinos (`@db.Date`), y `completada_en` es un
+      // instante: los bordes son la medianoche argentina, no la UTC (T11). `fecha_fin` incluye el
+      // día entero.
+      desde: medianocheArgentina(ciclo.fechaInicio),
+      hasta: medianocheArgentina(new Date(ciclo.fechaFin.getTime() + MS_POR_DIA)),
+      completadaPorId,
+    });
+    if (grupos.length === 0) return [];
+
+    const nombres = await this.usuarioMasterChecker.resolverNombres(
+      grupos.map((g) => g.completadaPorId),
+    );
+    // El repositorio ya devuelve el orden descendente; se conserva tal cual.
+    return grupos.map((g) => {
+      const usuario = nombres.get(g.completadaPorId);
+      return {
+        usuarioId: g.completadaPorId,
+        nombre: usuario?.nombre ?? null,
+        apellido: usuario?.apellido ?? null,
+        completadas: g.completadas,
+      };
+    });
   }
 }
