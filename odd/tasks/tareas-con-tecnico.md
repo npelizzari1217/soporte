@@ -94,7 +94,7 @@ Salen de la decisión de producto, viñeta por viñeta.
   - [x] runbook, con la migración con datos y el orden de despliegue de T1 y T8;
   - [x] deuda de Ayuda (ver "Deuda de Ayuda" más abajo);
   - [x] declaración Cumplida o Desviación en el roadmap;
-  - [ ] suites completas;
+  - [x] suites completas (backend 731 archivos y 8728 tests, frontend 273 y 2272, todo en verde sobre `ee1ebf27`);
   - [ ] `judgment-day`, porque el cambio toca datos existentes y permisos.
 
   Ruta: delegada para la verificación.
@@ -349,5 +349,5 @@ Artículos que el punto volvió falsos, corregidos:
     - backend: `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm test` 731 archivos y 8728 tests en verde (unos 26 minutos).
     - frontend: `pnpm lint` sin warnings ni errores; `pnpm type-check` 0 errores; `pnpm test` 273 archivos y 2272 tests en verde.
     - `node scripts/check-casts-en-specs.mjs`: 594 en 111, igual que la base.
-  - El ítem "suites completas" queda sin tildar para que lo cierre la verificación de cierre, aunque las suites ya dieron verde sobre este estado.
+  - El ítem "suites completas" lo tildó el coordinador con la evidencia de esta corrida.
   - Próximo paso: `judgment-day`.
