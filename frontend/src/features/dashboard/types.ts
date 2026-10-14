@@ -35,6 +35,15 @@ export interface MetricasDashboard {
   distribucionPorTipo: { tipoId: string; total: number }[];
   distribucionPorPrioridad: { prioridadId: string; total: number }[];
   /**
+   * Tareas completadas por técnico en el período del ciclo
+   * (odd/tareas-con-tecnico T4), atribuidas a quien las completó, en orden
+   * descendente de `completadas`. TECNICO recibe a lo sumo su propia fila.
+   * `nombre`/`apellido` son `null` si el usuario ya no está en master.
+   * Opcional porque un backend anterior a T4 no lo manda: la vista lo
+   * normaliza a `[]` con `toTareasCompletadasChartData`.
+   */
+  tareasCompletadasPorTecnico?: TareasCompletadasTecnico[];
+  /**
    * KPI de satisfacción (WU9.2, backend ADR-C5). AUSENTE (no `undefined`
    * explícito: la clave no viene) sin `CSAT:LECTURA` — el gateo real ya lo
    * hizo el backend; la UI ADEMÁS lo esconde tras `useCan("CSAT:LECTURA")`
@@ -42,6 +51,14 @@ export interface MetricasDashboard {
    */
   csatPromedio?: number | null;
   csatRespuestas?: number;
+}
+
+/** Una fila de `tareasCompletadasPorTecnico`. */
+export interface TareasCompletadasTecnico {
+  usuarioId: string;
+  nombre: string | null;
+  apellido: string | null;
+  completadas: number;
 }
 
 /** Un ciclo de gestión del tenant (espejo de `CicloResponseDto`). */

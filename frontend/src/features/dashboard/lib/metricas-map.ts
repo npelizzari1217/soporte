@@ -7,7 +7,7 @@
  * Ref spec: sdd/beta-frontend/spec R-M2. Tarea: T2.3, T2.4, T2.5.
  */
 import type { ChartDatum } from "@/shared/charts/bar-chart";
-import type { MetricasDashboard } from "../types";
+import type { MetricasDashboard, TareasCompletadasTecnico } from "../types";
 
 /** T2.3 — abiertos/cerrados como dos categorías del BarChart. */
 export function toAbiertosCerradosChartData(
@@ -43,6 +43,24 @@ export function toCargaPorAgenteChartData(
     label: usuarioNombreMap.get(item.asignadoId) ?? item.asignadoId,
     value: item.abiertos,
   }));
+}
+
+/** Etiqueta neutra para una fila cuyo usuario ya no está en master (nombre y apellido `null`). */
+export const NOMBRE_USUARIO_AUSENTE = "Usuario";
+
+/**
+ * odd/tareas-con-tecnico T7 — tareas completadas por técnico (HBarChart).
+ * El nombre viaja en la respuesta (T4), así que no hace falta el map de
+ * usuarios. Respeta el orden del backend (descendente por `completadas`).
+ * Un backend anterior a T4 omite el campo → `undefined` se trata como `[]`.
+ */
+export function toTareasCompletadasChartData(
+  filas: TareasCompletadasTecnico[] | undefined,
+): ChartDatum[] {
+  return (filas ?? []).map((fila) => {
+    const nombre = [fila.nombre, fila.apellido].filter((parte) => parte !== null && parte.trim() !== "").join(" ");
+    return { label: nombre || NOMBRE_USUARIO_AUSENTE, value: fila.completadas };
+  });
 }
 
 /**

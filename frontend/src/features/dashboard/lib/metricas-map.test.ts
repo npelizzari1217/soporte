@@ -6,6 +6,7 @@ import {
   toDistribucionChartData,
   formatHoras,
   toPorcentaje,
+  toTareasCompletadasChartData,
 } from "./metricas-map";
 
 describe("toAbiertosCerradosChartData", () => {
@@ -40,6 +41,36 @@ describe("toCargaPorAgenteChartData", () => {
     expect(toCargaPorAgenteChartData([{ asignadoId: "u-desconocido", abiertos: 1 }], usuarioNombreMap)).toEqual([
       { label: "u-desconocido", value: 1 },
     ]);
+  });
+});
+
+describe("toTareasCompletadasChartData", () => {
+  it("arma el nombre completo y respeta el orden del backend", () => {
+    expect(
+      toTareasCompletadasChartData([
+        { usuarioId: "u2", nombre: "Beto", apellido: "Ruiz", completadas: 5 },
+        { usuarioId: "u1", nombre: "Ana", apellido: "Gómez", completadas: 2 },
+      ]),
+    ).toEqual([
+      { label: "Beto Ruiz", value: 5 },
+      { label: "Ana Gómez", value: 2 },
+    ]);
+  });
+
+  it("usuario ausente de master (nombre y apellido null) → etiqueta neutra 'Usuario'", () => {
+    expect(
+      toTareasCompletadasChartData([{ usuarioId: "u-baja", nombre: null, apellido: null, completadas: 3 }]),
+    ).toEqual([{ label: "Usuario", value: 3 }]);
+  });
+
+  it("con solo una de las dos partes del nombre, usa la que hay", () => {
+    expect(
+      toTareasCompletadasChartData([{ usuarioId: "u1", nombre: "Ana", apellido: null, completadas: 1 }]),
+    ).toEqual([{ label: "Ana", value: 1 }]);
+  });
+
+  it("campo ausente (backend anterior a T4) → array vacío, no rompe", () => {
+    expect(toTareasCompletadasChartData(undefined)).toEqual([]);
   });
 });
 

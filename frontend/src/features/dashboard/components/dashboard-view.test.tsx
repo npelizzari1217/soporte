@@ -16,6 +16,10 @@ const METRICAS = {
   tiempoPromedioPrimeraRespuestaHoras: 1.25,
   distribucionPorTipo: [{ tipoId: "ti1", total: 5 }],
   distribucionPorPrioridad: [{ prioridadId: "p-alta", total: 3 }],
+  tareasCompletadasPorTecnico: [
+    { usuarioId: "u2", nombre: "Beto", apellido: "Ruiz", completadas: 4 },
+    { usuarioId: "u1", nombre: "Ana", apellido: "Gómez", completadas: 1 },
+  ],
 };
 
 const METRICAS_VACIAS = {
@@ -28,6 +32,7 @@ const METRICAS_VACIAS = {
   tiempoPromedioPrimeraRespuestaHoras: null,
   distribucionPorTipo: [],
   distribucionPorPrioridad: [],
+  tareasCompletadasPorTecnico: [],
 };
 
 function mockBackend(overrides: { metricas?: unknown } = {}) {
@@ -153,6 +158,73 @@ describe("DashboardView", () => {
 
     expect(await screen.findByText(/sin datos/i)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "Tickets abiertos / cerrados" })).not.toBeInTheDocument();
+  });
+
+  describe("Tareas completadas por técnico (odd/tareas-con-tecnico T7)", () => {
+    function filasTareas(): string[] {
+      const figura = screen.getByRole("img", { name: "Tareas completadas por técnico" });
+      const tabla = within(figura).getByRole("table", { hidden: true });
+      return within(tabla)
+        .getAllByRole("row", { hidden: true })
+        .slice(1)
+        .map((fila) => fila.textContent ?? "");
+    }
+
+    it("muestra cada técnico con su cantidad, en el orden que manda el backend", async () => {
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+      expect(filasTareas()).toEqual(["Beto Ruiz4", "Ana Gómez1"]);
+    });
+
+    it("el orden del backend se respeta aunque no sea alfabético ni ascendente", async () => {
+      mockBackend({
+        metricas: {
+          ...METRICAS,
+          tareasCompletadasPorTecnico: [
+            { usuarioId: "u3", nombre: "Zoe", apellido: "Paz", completadas: 9 },
+            { usuarioId: "u-baja", nombre: null, apellido: null, completadas: 6 },
+            { usuarioId: "u1", nombre: "Ana", apellido: "Gómez", completadas: 6 },
+          ],
+        },
+      });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+      expect(filasTareas()).toEqual(["Zoe Paz9", "Usuario6", "Ana Gómez6"]);
+    });
+
+    it("lista vacía → mensaje de vacío, sin gráfico", async () => {
+      mockBackend({ metricas: { ...METRICAS, tareasCompletadasPorTecnico: [] } });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+      expect(screen.getByText("Sin tareas completadas en este ciclo.")).toBeInTheDocument();
+      expect(screen.queryByRole("img", { name: "Tareas completadas por técnico" })).not.toBeInTheDocument();
+    });
+
+    it("un backend que omite el campo no rompe la vista: se lee como lista vacía", async () => {
+      const sinCampo: Record<string, unknown> = { ...METRICAS };
+      delete sinCampo.tareasCompletadasPorTecnico;
+      mockBackend({ metricas: sinCampo });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      await screen.findByRole("img", { name: "Tickets abiertos / cerrados" });
+      expect(screen.getByText("Sin tareas completadas en este ciclo.")).toBeInTheDocument();
+    });
+
+    it("un ciclo sin tickets pero con tareas completadas muestra el indicador, no el vacío general", async () => {
+      mockBackend({
+        metricas: {
+          ...METRICAS_VACIAS,
+          tareasCompletadasPorTecnico: [{ usuarioId: "u1", nombre: "Ana", apellido: "Gómez", completadas: 2 }],
+        },
+      });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      expect(await screen.findByRole("img", { name: "Tareas completadas por técnico" })).toBeInTheDocument();
+      expect(filasTareas()).toEqual(["Ana Gómez2"]);
+    });
   });
 
   // WU9.3: el KPI de CSAT viaja gateado desde el backend (ADR-C5); el
