@@ -86,7 +86,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T3 — Endpoints y Edilicia sobre la tabla nueva** (~350): endpoints genéricos bajo el ticket. Los endpoints y el listado de reparaciones pasan a leer y escribir la tabla nueva, sin cambiar lo que ve el usuario de Edilicia. Incluye un e2e de permisos y de aislamiento. Ruta: delegada. Salió en 2465 líneas, commit `36e8a572`.
 - [x] **T3b — Visibilidad por tarea** (~300; agregada el 2026-10-13 por la precisión del dueño): la regla de visibilidad del ticket (`visibilidad-ticket.ts`) y el filtro del listado de tickets suman "tiene una tarea activa asignada" (CA10). Lleva un e2e que prueba que el técnico ve el ticket y sus tareas, que lo deja de ver al quitarlo de la tarea, y el aislamiento entre clientes. Se corre después de la T4. Ruta: delegada. Salió en 578 líneas, commit `7255db23`.
 - [x] **T4 — Métrica del dashboard** (~250): "tareas completadas por técnico" en el período, por `completadaPorId`, respetando los filtros y el alcance del TECNICO. Ruta: delegada. Salió en 551 líneas, commit `65e304eb`.
-- [ ] **T5 — PDF** (~150): el PDF lee la tabla nueva e imprime cada tarea con su técnico y su estado. Ruta: delegada.
+- [x] **T5 — PDF** (~150): el PDF lee la tabla nueva e imprime cada tarea con su técnico y su estado. Ruta: delegada. Salió en 340 líneas, commit `0c642473`.
 - [ ] **T6 — Frontend: tareas en el ticket** (~400): sección "Tareas" en el detalle del ticket, con avance, alta, asignación con selector de técnicos elegibles, completar, descompletar y borrar. El diálogo de Edilicia pasa a usar lo mismo. Se corrigen `backend/ayuda/reparaciones-edilicias.md` y `reparaciones-listado.md` en la misma unidad. Ruta: delegada.
 - [ ] **T7 — Frontend: indicador del dashboard** (~200): muestra la métrica de T4. Ruta: delegada.
 - [ ] **T8 — Retiro** (~200): migración que borra `subtareas_edilicia` y `ticket_edilicia.personal_asignado_id`, con `rollback.sql`. También se borra el código viejo que ya no se usa. Ruta: delegada.
@@ -217,3 +217,22 @@ Salen de la decisión de producto, viñeta por viñeta.
     - `pnpm vitest run src/tickets src/reparaciones src/ticket-pdf`: 109 archivos y 1110 tests en verde.
     - `check-casts-en-specs`: 617 en 114, igual que la base.
   - Próximo paso: T5.
+- 2026-10-14: T5 cerrada en `0c642473` (rama `feat/tareas-con-tecnico-t5`, apilada sobre T3b). Salió en 340 líneas: unas 150 de código y 190 de tests. Supera el presupuesto de ~150 por los casos de tareas en los dos specs. Ruta: delegada.
+  - **Fuente:** `GenerarPdfTicketUseCase` lee `ITareaTicketRepository.listarPorTicket` (`TAREA_TICKET_REPOSITORY`, que ya exportaba `TicketsModule`), sobre el cliente del inquilino de `TenantContext`, como el resto del caso de uso. El avance sale de `calcularAvanceTareas`. Ya no se leen `subtareas_edilicia` ni `ticket_edilicia.porcentaje_avance`, y `TicketPdfModule` deja de inyectar `SUBTAREA_EDILICIA_REPOSITORY`.
+  - **Alcance:** la sección "Tareas" se imprime en cualquier tipo de ticket con al menos una tarea activa (CA1, CA7, CA8), no solo en Edilicia. Sin tareas activas no se imprime.
+  - **Vista:** `TicketPdfVista.tareas: TareasPdf | null`, con `porcentajeAvance`, `completadas`, `total` e `items` (descripción, técnico, completada, `completadaEn` y `completadaPor`). `EdiliciaPdf` queda con `ubicacion`: el avance y las subtareas se mudaron a `tareas`. Una reparación sin tareas ya no imprime "Avance 0%".
+  - **Cada tarea:** `[x]` o `[ ]` y la descripción, y debajo `Técnico: <nombre>` o `Sin técnico`, más `Pendiente` o `Completada el <fecha> por <nombre>`. Los nombres se resuelven en el mismo lote contra master que el resto del PDF; un id que ya no está en master se imprime "Usuario", para no confundirlo con una tarea sin técnico.
+  - **Defensa:** el caso de uso vuelve a filtrar las bajas lógicas y a ordenar por `orden`, aunque el repositorio ya lo hace.
+  - **Ayuda:** ningún artículo describe el contenido del PDF, así que ninguno queda falso y no hay deuda nueva.
+  - **Queda para T8:** el comentario de `ReparacionesModule` que dice que `SUBTAREA_EDILICIA_REPOSITORY` sigue exportado porque el PDF lo lee ya no es cierto; el export y su comentario se retiran con la tabla.
+  - **Tests:**
+    - `generar-pdf-ticket.use-case.spec.ts`: tareas por orden con técnico, sin técnico, completada (fecha y quién) y pendiente, con el avance calculado; tarea dada de baja excluida del listado y del avance; técnico ausente de master; sin tareas no hay sección; una reparación imprime la ubicación y el avance de las tareas, no el `porcentaje_avance` guardado.
+    - `pdfkit-generador-pdf-ticket.spec.ts`: la sección "Tareas" en un ticket de soporte (no edilicio), con "Sin técnico", "Pendiente" y "Completada el ... por ..."; la reparación con la ubicación; sin tareas no hay sección.
+    - No hay integración del PDF; la exclusión de bajas en la base la cubre la integración de `PrismaTareaTicketRepository` (T1).
+  - **Verificación:**
+    - `pnpm lint`: 0 errores.
+    - `pnpm typecheck`: 0 errores.
+    - `pnpm vitest run src/ticket-pdf`: 3 archivos y 31 tests en verde.
+    - `pnpm vitest run src/tickets`: 85 archivos y 899 tests en verde. La primera corrida dio 14 archivos de integración en rojo porque Postgres todavía no aceptaba conexiones (`ECONNREFUSED 127.0.0.1:5432`); al levantar, todo verde.
+    - `check-casts-en-specs`: 617 en 114, igual que la base.
+  - Próximo paso: T6.
