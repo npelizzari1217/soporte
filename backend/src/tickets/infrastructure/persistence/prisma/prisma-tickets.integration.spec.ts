@@ -520,6 +520,30 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
         });
       });
 
+      it('filtra por visiblePara: el responsable ve su ticket sin haberlo solicitado (decisión del 2026-10-14)', async () => {
+        const actorId = '01900000-0000-7000-8000-000000000111';
+        const asignadoAlActor = TicketEntity.create(
+          makeTicketProps({ solicitanteId: '01900000-0000-7000-8000-000000000112' }),
+        );
+        asignadoAlActor.assignTo(actorId);
+        const asignadoAOtro = TicketEntity.create(
+          makeTicketProps({ solicitanteId: '01900000-0000-7000-8000-000000000112' }),
+        );
+        asignadoAOtro.assignTo('01900000-0000-7000-8000-000000000113');
+
+        await withTenant(async () => {
+          await ticketRepo.save(asignadoAlActor);
+          await ticketRepo.save(asignadoAOtro);
+
+          const ids = (await ticketRepo.findAll({ visiblePara: actorId })).map((t) => t.id);
+          expect(ids).toContain(asignadoAlActor.id);
+          expect(ids).not.toContain(asignadoAOtro.id);
+
+          expect(await ticketRepo.esVisiblePara(asignadoAlActor.id, actorId)).toBe(true);
+          expect(await ticketRepo.esVisiblePara(asignadoAOtro.id, actorId)).toBe(false);
+        });
+      });
+
       it('filtra por cicloId', async () => {
         const conCiclo = TicketEntity.create(makeTicketProps({ cicloId: cicloActivoId }));
         const sinCiclo = TicketEntity.create(makeTicketProps({ cicloId: null }));

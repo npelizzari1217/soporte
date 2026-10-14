@@ -26,14 +26,19 @@ import { TicketEntity } from '../../../domain/entities/ticket.entity';
 import { TicketMapper } from './ticket.mapper';
 
 /**
- * Regla de visibilidad de un ticket para un actor sin `TICKETS:VER_TODOS`: lo solicitó, o es el
- * técnico de una tarea activa del ticket (odd/tareas-con-tecnico, CA10). Única definición en SQL,
+ * Regla de visibilidad de un ticket para un actor sin `TICKETS:VER_TODOS`: lo solicitó, es su
+ * responsable (decisión del dueño del 2026-10-14), o es el técnico de una tarea activa del ticket
+ * (odd/tareas-con-tecnico, CA10). Única definición en SQL,
  * compartida por el filtro `visiblePara` del listado y por `esVisiblePara`. El `EXISTS` sobre
  * `tareas_ticket` usa el índice (`tecnico_id`, `deleted_at`, `ticket_id`).
  */
 function whereVisiblePara(actorId: string): Prisma.TicketWhereInput {
   return {
-    OR: [{ solicitanteId: actorId }, { tareas: { some: { tecnicoId: actorId, deletedAt: null } } }],
+    OR: [
+      { solicitanteId: actorId },
+      { asignadoId: actorId },
+      { tareas: { some: { tecnicoId: actorId, deletedAt: null } } },
+    ],
   };
 }
 
