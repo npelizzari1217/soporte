@@ -419,4 +419,5 @@ Artículos que el punto volvió falsos, corregidos:
     - No se corrió la suite completa del backend (`pnpm test`).
   - Sin cambios visibles para el usuario: no suma deuda de Ayuda.
   - El espejo de Engram no se tocó: lo resincroniza el coordinador.
-  - Próximo paso: suite completa del backend; el re-judgment de este delta lo decide el dueño.
+  - **Suite completa** (coordinador, sobre `b51ab560`): backend `pnpm test`, 733 archivos y 8776 tests en verde, con salida 0. Los tres `FAIL orden-de-arranque.spec.ts` del log son el fixture de `test/fixtures/entorno/`, que `test/entorno-corte-arranque.spec.ts` corre en un proceso hijo esperando que falte una variable; no es una falla de la suite. Frontend `pnpm test`: 273 archivos y 2274 tests en verde.
+  - Próximo paso: merge y deploy, a decisión del dueño. El re-judgment del delta de T13 queda a su criterio.
