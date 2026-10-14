@@ -8,6 +8,8 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { TareaTicketEntity } from '../../../domain/entities/tarea-ticket.entity';
 import {
   CompletadasPorTecnico,
+  CondicionDeCompletado,
+  CondicionDeDescompletado,
   FiltroCompletadasPorTecnico,
   ITareaTicketRepository,
 } from '../../../domain/ports/i-tarea-ticket.repository';
@@ -60,9 +62,17 @@ export class PrismaTareaTicketRepository implements ITareaTicketRepository {
     await this.client.tareaTicket.create({ data: TareaTicketMapper.toPersistence(tarea) });
   }
 
-  async completarSiPendiente(tarea: TareaTicketEntity): Promise<boolean> {
+  async completarSiPendiente(
+    tarea: TareaTicketEntity,
+    condicion: CondicionDeCompletado = {},
+  ): Promise<boolean> {
     const { count } = await this.client.tareaTicket.updateMany({
-      where: { id: tarea.id, deletedAt: null, completada: false },
+      where: {
+        id: tarea.id,
+        deletedAt: null,
+        completada: false,
+        ...(condicion.tecnicoId !== undefined && { tecnicoId: condicion.tecnicoId }),
+      },
       data: {
         completada: tarea.completada,
         completadaEn: tarea.completadaEn,
@@ -72,9 +82,30 @@ export class PrismaTareaTicketRepository implements ITareaTicketRepository {
     return count === 1;
   }
 
-  async descompletarSiCompletada(tarea: TareaTicketEntity): Promise<boolean> {
+  /**
+   * `completadaEn` se compara contra el milisegundo leído, `[t, t + 1 ms)`: Postgres guarda
+   * microsegundos y Prisma los trunca al leer, así que una igualdad exacta nunca aplicaría sobre
+   * una fila escrita fuera de la aplicación.
+   */
+  async descompletarSiCompletada(
+    tarea: TareaTicketEntity,
+    condicion: CondicionDeDescompletado = {},
+  ): Promise<boolean> {
+    const { completadoLeido, tecnicoId } = condicion;
     const { count } = await this.client.tareaTicket.updateMany({
-      where: { id: tarea.id, deletedAt: null, completada: true },
+      where: {
+        id: tarea.id,
+        deletedAt: null,
+        completada: true,
+        ...(tecnicoId !== undefined && { tecnicoId }),
+        ...(completadoLeido !== undefined && {
+          completadaPorId: completadoLeido.completadaPorId,
+          completadaEn: {
+            gte: completadoLeido.completadaEn,
+            lt: new Date(completadoLeido.completadaEn.getTime() + 1),
+          },
+        }),
+      },
       data: {
         completada: tarea.completada,
         completadaEn: tarea.completadaEn,

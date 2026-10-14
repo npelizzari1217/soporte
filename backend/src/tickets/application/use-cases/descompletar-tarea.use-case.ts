@@ -2,7 +2,8 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
-import { TareaNoCompletadaError } from '../../domain/errors/tareas.errors';
+import { TareaNoCompletadaError, TareaYaCompletadaError } from '../../domain/errors/tareas.errors';
+import { CondicionDeDescompletado } from '../../domain/ports/i-tarea-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
@@ -10,6 +11,8 @@ import {
   ActorTarea,
   cargarTareaDelTicket,
   cargarTicket,
+  condicionDeTecnico,
+  errorDeCompletadoRechazado,
   errorDeEscrituraRechazada,
   mapearErrorDeTarea,
   operacionDeTarea,
@@ -33,6 +36,11 @@ export interface DescompletarTareaDto {
  * y completada (T10): si otra acción la descompletó o la borró después de cargarla, no escribe nada
  * y da el 409 o el 404 del estado actual. Escribe `TAREA_DESCOMPLETADA`, con quién la había
  * completado, en la misma transacción, solo si la tarea se escribió.
+ *
+ * La escritura exige además el completado que se leyó (T13, JD-S1): si en el medio alguien la
+ * descompletó y otro la volvió a completar, no borra esa completación nueva y da
+ * `TareaYaCompletadaError` (409). Si el actor puede solo por ser el técnico de la tarea, exige
+ * también que siga siéndolo (JD-S2): una reasignación en el medio da el rechazo de permiso.
  */
 export class DescompletarTareaUseCase {
   constructor(
@@ -61,6 +69,17 @@ export class DescompletarTareaUseCase {
     }
 
     const completadaPorAnteriorId = tarea.completadaPorId;
+    const completadaEnLeida = tarea.completadaEn;
+    const condicion: CondicionDeDescompletado = {
+      ...condicionDeTecnico(dto.actor, ticket, tarea),
+      ...(completadaPorAnteriorId !== null &&
+        completadaEnLeida !== null && {
+          completadoLeido: {
+            completadaPorId: completadaPorAnteriorId,
+            completadaEn: completadaEnLeida,
+          },
+        }),
+    };
     const cambio = tarea.descompletar(this.ahora());
     if (cambio.isFail()) return Result.fail(mapearErrorDeTarea(cambio.getError(), tarea.id));
 
@@ -76,7 +95,7 @@ export class DescompletarTareaUseCase {
     });
 
     const escrita = await this.txRunner.run(async () => {
-      if (!(await this.tareaRepo.descompletarSiCompletada(tarea))) return false;
+      if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) return false;
       await this.operacionRepo.save(operacion);
       return true;
     });
@@ -85,7 +104,18 @@ export class DescompletarTareaUseCase {
         await errorDeEscrituraRechazada(
           this.tareaRepo,
           tarea.id,
-          new TareaNoCompletadaError(tarea.id),
+          errorDeCompletadoRechazado(
+            this.ticketRepo,
+            ticket,
+            dto.actor,
+            'descompletar',
+            // Completada otra vez por un completado que el actor no vio (JD-S1): el 409 dice el
+            // estado real, que la tarea está completada, y el frontend refresca la lista.
+            (actual) =>
+              actual.completada
+                ? new TareaYaCompletadaError(tarea.id)
+                : new TareaNoCompletadaError(tarea.id),
+          ),
         ),
       );
     }

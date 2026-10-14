@@ -229,6 +229,67 @@ describe('PrismaTareaTicketRepository (T1, tenant efímero)', () => {
     expect(final.completada).toBe(false);
   });
 
+  it('las condiciones de T13 exigen el técnico y el completado leídos, también con completada_en en microsegundos', async () => {
+    const ticketId = await crearTicket();
+    const leer = async (id: string): Promise<TareaTicketEntity> => {
+      const tarea = await enTenant(() => repo.buscarPorId(id));
+      if (!tarea) throw new Error(`no existe la tarea ${id}`);
+      return tarea;
+    };
+    const ahora = new Date('2026-10-13T15:00:00Z');
+
+    // JD-S2: completar condicionado a un técnico que ya no es el de la tarea no aplica.
+    const deB = await crearTarea(ticketId, 'Asignada a B', 0);
+    const copiaDeB = await leer(deB.id);
+    copiaDeB.asignarTecnico(TECNICO_B, ahora);
+    await enTenant(() => repo.asignarTecnicoSiActiva(copiaDeB));
+    const completadoDeA = await leer(deB.id);
+    completadoDeA.completar(TECNICO_A, ahora);
+    await expect(
+      enTenant(() => repo.completarSiPendiente(completadoDeA, { tecnicoId: TECNICO_A })),
+    ).resolves.toBe(false);
+    await expect(
+      enTenant(() => repo.completarSiPendiente(completadoDeA, { tecnicoId: TECNICO_B })),
+    ).resolves.toBe(true);
+
+    // JD-S1: un completado escrito fuera de la aplicación, con microsegundos que el Date de JS
+    // no representa. El completado leído (truncado a milisegundos) tiene que seguir aplicando.
+    const migrada = await crearTarea(ticketId, 'Migrada', 1);
+    await client.$executeRaw`
+      UPDATE tareas_ticket
+      SET completada = true, completada_en = '2026-10-13 15:00:00.123456+00',
+          completada_por_id = ${TECNICO_A}::uuid
+      WHERE id = ${migrada.id}::uuid`;
+    const leida = await leer(migrada.id);
+    const completadoLeido = {
+      completadaPorId: leida.completadaPorId!,
+      completadaEn: leida.completadaEn!,
+    };
+    leida.descompletar(ahora);
+    await expect(
+      enTenant(() =>
+        repo.descompletarSiCompletada(leida, {
+          completadoLeido: { ...completadoLeido, completadaPorId: TECNICO_B },
+        }),
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      enTenant(() =>
+        repo.descompletarSiCompletada(leida, {
+          completadoLeido: {
+            ...completadoLeido,
+            completadaEn: new Date(completadoLeido.completadaEn.getTime() + 1),
+          },
+        }),
+      ),
+    ).resolves.toBe(false);
+    expect((await leer(migrada.id)).completada).toBe(true);
+    await expect(
+      enTenant(() => repo.descompletarSiCompletada(leida, { completadoLeido })),
+    ).resolves.toBe(true);
+    expect((await leer(migrada.id)).completada).toBe(false);
+  });
+
   it('contarCompletadasPorTecnico cuenta por quien completó, en [desde, hasta), sin bajas', async () => {
     const ciclo = await client.cicloCliente.create({
       data: {

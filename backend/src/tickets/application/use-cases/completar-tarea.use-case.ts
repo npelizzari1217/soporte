@@ -10,6 +10,8 @@ import {
   ActorTarea,
   cargarTareaDelTicket,
   cargarTicket,
+  condicionDeTecnico,
+  errorDeCompletadoRechazado,
   errorDeEscrituraRechazada,
   mapearErrorDeTarea,
   operacionDeTarea,
@@ -33,6 +35,10 @@ export interface CompletarTareaDto {
  * crédito. La escritura exige que la tarea siga activa y pendiente (T10): si otra acción la
  * completó o la borró después de cargarla, no escribe nada y da el 409 o el 404 del estado
  * actual. Escribe `TAREA_COMPLETADA` en la misma transacción, solo si la tarea se escribió.
+ *
+ * Si el actor puede solo por ser el técnico de la tarea, la escritura exige además que siga
+ * siéndolo (T13, JD-S2): si el responsable la reasignó en el medio, da el rechazo de permiso y no
+ * se queda con el crédito de una tarea que ya no es suya.
  */
 export class CompletarTareaUseCase {
   constructor(
@@ -60,6 +66,7 @@ export class CompletarTareaUseCase {
       return Result.fail(await rechazar(this.ticketRepo, ticket, dto.actor, 'completar'));
     }
 
+    const condicion = condicionDeTecnico(dto.actor, ticket, tarea);
     const cambio = tarea.completar(dto.actor.id, this.ahora());
     if (cambio.isFail()) return Result.fail(mapearErrorDeTarea(cambio.getError(), tarea.id));
 
@@ -74,7 +81,7 @@ export class CompletarTareaUseCase {
     });
 
     const escrita = await this.txRunner.run(async () => {
-      if (!(await this.tareaRepo.completarSiPendiente(tarea))) return false;
+      if (!(await this.tareaRepo.completarSiPendiente(tarea, condicion))) return false;
       await this.operacionRepo.save(operacion);
       return true;
     });
@@ -83,7 +90,13 @@ export class CompletarTareaUseCase {
         await errorDeEscrituraRechazada(
           this.tareaRepo,
           tarea.id,
-          new TareaYaCompletadaError(tarea.id),
+          errorDeCompletadoRechazado(
+            this.ticketRepo,
+            ticket,
+            dto.actor,
+            'completar',
+            () => new TareaYaCompletadaError(tarea.id),
+          ),
         ),
       );
     }

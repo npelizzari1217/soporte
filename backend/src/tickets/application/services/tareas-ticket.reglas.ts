@@ -12,7 +12,10 @@ import {
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
-import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
+import {
+  CondicionDeCompletado,
+  ITareaTicketRepository,
+} from '../../domain/ports/i-tarea-ticket.repository';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
@@ -132,15 +135,45 @@ export async function autorizarGestion(
   return Result.ok({ ticket, modulo: tipo.modulo });
 }
 
+/** De dónde sale el permiso de completar y descompletar una tarea (CA4). */
+export type BaseParaCompletar = 'ADMINISTRADOR' | 'RESPONSABLE' | 'TECNICO';
+
+/**
+ * CA4: completan y descompletan el ADMINISTRADOR o ROOT, el responsable del ticket y el técnico de
+ * la tarea, en ese orden de precedencia. Devuelve de cuál de los tres sale el permiso, o `null`.
+ */
+export function baseParaCompletarTarea(
+  actor: ActorTarea,
+  ticket: TicketEntity,
+  tarea: TareaTicketEntity,
+): BaseParaCompletar | null {
+  if (actor.esAdministrador) return 'ADMINISTRADOR';
+  if (ticket.asignadoId !== null && ticket.asignadoId === actor.id) return 'RESPONSABLE';
+  if (tarea.tecnicoId !== null && tarea.tecnicoId === actor.id) return 'TECNICO';
+  return null;
+}
+
 /** CA4: completan y descompletan el técnico de la tarea, el responsable, el ADMINISTRADOR o ROOT. */
 export function puedeCompletarTarea(
   actor: ActorTarea,
   ticket: TicketEntity,
   tarea: TareaTicketEntity,
 ): boolean {
-  if (actor.esAdministrador) return true;
-  if (ticket.asignadoId !== null && ticket.asignadoId === actor.id) return true;
-  return tarea.tecnicoId !== null && tarea.tecnicoId === actor.id;
+  return baseParaCompletarTarea(actor, ticket, tarea) !== null;
+}
+
+/**
+ * Condición de técnico de la escritura de completar o descompletar (T13, JD-S2). Si el actor tiene
+ * permiso SOLO por ser el técnico de la tarea, la escritura exige que siga siéndolo: una
+ * reasignación en el medio le quita el permiso con el que se lo autorizó. El responsable y el
+ * administrador no dependen del técnico, así que su escritura no lo condiciona.
+ */
+export function condicionDeTecnico(
+  actor: ActorTarea,
+  ticket: TicketEntity,
+  tarea: TareaTicketEntity,
+): CondicionDeCompletado {
+  return baseParaCompletarTarea(actor, ticket, tarea) === 'TECNICO' ? { tecnicoId: actor.id } : {};
 }
 
 /**
@@ -155,16 +188,36 @@ export function mapearErrorDeTarea(error: DomainError, tareaId: string): DomainE
  * Error de una escritura condicionada que no aplicó (T10, JD-W1): otra acción cambió la tarea
  * entre que el caso de uso la cargó y la escribió. Se relee para responder con el estado actual:
  * si ya no está activa, `TareaNoEncontradaError` (404), igual que si la baja hubiera llegado
- * antes; si sigue activa, `siSigueActiva`, el 409 de la operación (`TAREA_YA_COMPLETADA` o
- * `TAREA_NO_COMPLETADA`), para que el frontend refresque la lista.
+ * antes; si sigue activa, `siSigueActiva`. Puede ser el error de la operación (el 409 de
+ * completar o descompletar, para que el frontend refresque la lista) o una función que lo decide
+ * a partir de la tarea releída (T13: el permiso o el completado cambiaron).
  */
 export async function errorDeEscrituraRechazada(
   tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId'>,
   tareaId: string,
-  siSigueActiva: DomainError,
+  siSigueActiva: DomainError | ((actual: TareaTicketEntity) => Promise<DomainError>),
 ): Promise<DomainError> {
   const actual = await tareaRepo.buscarPorId(tareaId);
-  return actual && !actual.isDeleted() ? siSigueActiva : new TareaNoEncontradaError(tareaId);
+  if (!actual || actual.isDeleted()) return new TareaNoEncontradaError(tareaId);
+  return siSigueActiva instanceof DomainError ? siSigueActiva : siSigueActiva(actual);
+}
+
+/**
+ * Error de un completar o descompletar cuya escritura no aplicó (T13). Con la tarea ya releída y
+ * activa: si el actor perdió el permiso (le reasignaron la tarea, JD-S2), el rechazo de siempre
+ * (`rechazar`: 403, o 404 si ya no ve el ticket); si no, `porEstado`, el 409 del estado actual.
+ */
+export function errorDeCompletadoRechazado(
+  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
+  ticket: TicketEntity,
+  actor: ActorTarea,
+  accion: 'completar' | 'descompletar',
+  porEstado: (actual: TareaTicketEntity) => DomainError,
+): (actual: TareaTicketEntity) => Promise<DomainError> {
+  return async (actual) =>
+    puedeCompletarTarea(actor, ticket, actual)
+      ? porEstado(actual)
+      : rechazar(ticketRepo, ticket, actor, accion);
 }
 
 /**

@@ -463,11 +463,26 @@ describe('CompletarTareaUseCase', () => {
     const tarea = result.getValue();
     expect(tarea.completadaPorId).toBe(RESPONSABLE);
     expect(tarea.completadaEn).toEqual(AHORA);
-    expect(deps.tareaRepo.completarSiPendiente).toHaveBeenCalledWith(tarea);
+    expect(deps.tareaRepo.completarSiPendiente).toHaveBeenCalledWith(tarea, {});
     const [operacion] = deps.operaciones;
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_COMPLETADA');
     expect(operacion.autorId).toBe(RESPONSABLE);
     expect(operacion.metadata).toEqual({ tarea_id: 't1' });
+  });
+
+  // JD-S2 (T13): solo el permiso que sale de ser el técnico de la tarea condiciona la escritura a
+  // que la tarea siga siendo suya. El responsable y el administrador no dependen del técnico.
+  it.each<[NombreActor, Record<string, string>]>([
+    ['tecnicoDeLaTarea', { tecnicoId: TECNICO }],
+    ['responsable', {}],
+    ['administrador', {}],
+  ])('actor %s condiciona la escritura a %o', async (nombre, condicion) => {
+    const deps = armar();
+    const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    await deps.completar.execute({ ticketId: TICKET_ID, tareaId: 't1', actor: ACTORES[nombre] });
+
+    expect(deps.tareaRepo.completarSiPendiente).toHaveBeenCalledWith(tarea, condicion);
   });
 
   it('completar una tarea ya completada da TareaYaCompletadaError y conserva el crédito', async () => {
@@ -532,6 +547,24 @@ describe('DescompletarTareaUseCase', () => {
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_DESCOMPLETADA');
     expect(operacion.autorId).toBe(RESPONSABLE);
     expect(operacion.metadata).toEqual({ tarea_id: 't1', completada_por_anterior_id: TECNICO });
+  });
+
+  // JD-S1 y JD-S2 (T13): la escritura exige el completado que se leyó y, si el permiso sale solo
+  // de ser el técnico de la tarea, que la tarea siga siendo suya.
+  it.each<[NombreActor, Record<string, string>]>([
+    ['tecnicoDeLaTarea', { tecnicoId: TECNICO }],
+    ['responsable', {}],
+    ['administrador', {}],
+  ])('actor %s condiciona la escritura al completado leído y a %o', async (nombre, extra) => {
+    const deps = armar();
+    const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
+
+    await deps.descompletar.execute({ ticketId: TICKET_ID, tareaId: 't1', actor: ACTORES[nombre] });
+
+    expect(deps.tareaRepo.descompletarSiCompletada).toHaveBeenCalledWith(tarea, {
+      completadoLeido: { completadaPorId: TECNICO, completadaEn: AHORA },
+      ...extra,
+    });
   });
 
   it('descompletar una tarea pendiente da TareaNoCompletadaError', async () => {

@@ -1,6 +1,6 @@
 /**
  * [INTEGRATION] Actualizaciones perdidas en las tareas de un ticket (odd/tareas-con-tecnico T10,
- * JD-W1), contra Postgres REAL en una base de INQUILINO EFÍMERA, con los repositorios Prisma
+ * JD-W1, y T13, JD-S1 y JD-S2), contra Postgres REAL en una base de INQUILINO EFÍMERA, con los repositorios Prisma
  * reales.
  *
  * Los casos de uso cargan la tarea fuera de la transacción. Cada caso reproduce una carrera de
@@ -50,7 +50,7 @@ const actor = (id: string, esAdministrador = false): ActorTarea => ({
 const RESPONSABLE_ACTOR = actor(RESPONSABLE);
 const ADMIN_ACTOR = actor('01900000-0000-7000-8000-000000000305', true);
 
-describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10, tenant efímero)', () => {
+describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13, tenant efímero)', () => {
   const admin = new PostgresAdminService(MASTER_TEST_URL);
   let prismaService: PrismaService;
   let client: InstanceType<typeof TenantPrismaClient>;
@@ -315,6 +315,125 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10, tena
     const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: tarea.id } });
     expect(fila.completada).toBe(false);
     expect(await codigosDelHistorial()).toEqual(['TAREA_COMPLETADA', 'TAREA_DESCOMPLETADA']);
+  });
+
+  it('descompletar contra descompletar y volver a completar (ABA, JD-S1): da TAREA_YA_COMPLETADA y conserva el completado nuevo', async () => {
+    const tarea = await sembrarTarea(TECNICO_A);
+    await enTenant(() =>
+      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+    );
+    const repo = repoConCarrera(async () => {
+      const descompletado = await descompletar().execute({
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      });
+      const completado = await completar().execute({
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+      });
+      expect(descompletado.isOk() && completado.isOk()).toBe(true);
+    });
+
+    const result = await enTenant(() =>
+      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: ADMIN_ACTOR }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('TAREA_YA_COMPLETADA');
+    const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: tarea.id } });
+    expect(fila.completada).toBe(true);
+    expect(fila.completadaPorId).toBe(RESPONSABLE);
+    expect(fila.completadaEn).not.toBeNull();
+    expect(await codigosDelHistorial()).toEqual([
+      'TAREA_COMPLETADA',
+      'TAREA_DESCOMPLETADA',
+      'TAREA_COMPLETADA',
+    ]);
+  });
+
+  it('completar del técnico contra reasignar (JD-S2): da TAREA_ACCION_NO_PERMITIDA y la tarea sigue pendiente', async () => {
+    const tarea = await sembrarTarea(TECNICO_A);
+    const repo = repoConCarrera(() =>
+      asignar().execute({
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+        clienteId: CLIENTE_ID,
+        tecnicoId: TECNICO_B,
+      }),
+    );
+
+    const result = await enTenant(() =>
+      completar(repo).execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('TAREA_ACCION_NO_PERMITIDA');
+    const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: tarea.id } });
+    expect(fila.tecnicoId).toBe(TECNICO_B);
+    expect(fila.completada).toBe(false);
+    expect(fila.completadaPorId).toBeNull();
+    expect(await codigosDelHistorial()).toEqual(['TAREA_ASIGNADA']);
+  });
+
+  it('descompletar del técnico contra reasignar (JD-S2): da TAREA_ACCION_NO_PERMITIDA y conserva el completado', async () => {
+    const tarea = await sembrarTarea(TECNICO_A);
+    await enTenant(() =>
+      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+    );
+    const repo = repoConCarrera(() =>
+      asignar().execute({
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+        clienteId: CLIENTE_ID,
+        tecnicoId: TECNICO_B,
+      }),
+    );
+
+    const result = await enTenant(() =>
+      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError().code).toBe('TAREA_ACCION_NO_PERMITIDA');
+    const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: tarea.id } });
+    expect(fila.tecnicoId).toBe(TECNICO_B);
+    expect(fila.completada).toBe(true);
+    expect(fila.completadaPorId).toBe(TECNICO_A);
+    expect(await codigosDelHistorial()).toEqual(['TAREA_COMPLETADA', 'TAREA_ASIGNADA']);
+  });
+
+  it('descompletar del responsable contra reasignar: su permiso no depende del técnico y aplica', async () => {
+    const tarea = await sembrarTarea(TECNICO_A);
+    await enTenant(() =>
+      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+    );
+    const repo = repoConCarrera(() =>
+      asignar().execute({
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+        clienteId: CLIENTE_ID,
+        tecnicoId: TECNICO_B,
+      }),
+    );
+
+    const result = await enTenant(() =>
+      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: RESPONSABLE_ACTOR }),
+    );
+
+    expect(result.isOk()).toBe(true);
+    const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: tarea.id } });
+    expect(fila.tecnicoId).toBe(TECNICO_B);
+    expect(fila.completada).toBe(false);
+    expect(await codigosDelHistorial()).toEqual([
+      'TAREA_COMPLETADA',
+      'TAREA_ASIGNADA',
+      'TAREA_DESCOMPLETADA',
+    ]);
   });
 
   it('eliminar contra eliminar: la segunda baja da TAREA_NO_ENCONTRADA y no duplica historial', async () => {

@@ -20,6 +20,29 @@ export interface CompletadasPorTecnico {
 }
 
 /**
+ * Condición extra de la escritura de completar o descompletar (T13, JD-S2): la tarea tiene que
+ * seguir asignada a `tecnicoId`. La pone el caso de uso cuando el actor tiene permiso solo por ser
+ * el técnico de la tarea; sin `tecnicoId`, el técnico no condiciona.
+ */
+export interface CondicionDeCompletado {
+  tecnicoId?: string;
+}
+
+/**
+ * Condición extra de la escritura de descompletar (T13, JD-S1): además del técnico, la tarea tiene
+ * que seguir con el completado que el caso de uso leyó. Si en el medio alguien la descompletó y
+ * otro la volvió a completar, `completada` vuelve a ser `true` pero el completado es otro, y
+ * descompletarlo borraría una completación que el actor nunca vio.
+ *
+ * `completadaEn` es el instante leído, con la precisión de milisegundos de `Date`: la
+ * implementación lo compara contra el milisegundo entero, porque una fila escrita fuera de la
+ * aplicación puede tener microsegundos.
+ */
+export interface CondicionDeDescompletado extends CondicionDeCompletado {
+  completadoLeido?: { completadaPorId: string; completadaEn: Date };
+}
+
+/**
  * ITareaTicketRepository — puerto de persistencia de las tareas de un ticket. Sin imports de
  * Prisma ni NestJS: la implementación toma el cliente del inquilino de `TenantContext`.
  */
@@ -50,12 +73,21 @@ export interface ITareaTicketRepository {
 
   /**
    * Persiste el completado (`completada`, `completadaEn`, `completadaPorId`) solo si la tarea
-   * sigue activa y pendiente.
+   * sigue activa y pendiente, y además cumple `condicion` (T13).
    */
-  completarSiPendiente(tarea: TareaTicketEntity): Promise<boolean>;
+  completarSiPendiente(
+    tarea: TareaTicketEntity,
+    condicion?: CondicionDeCompletado,
+  ): Promise<boolean>;
 
-  /** Limpia el completado solo si la tarea sigue activa y completada. */
-  descompletarSiCompletada(tarea: TareaTicketEntity): Promise<boolean>;
+  /**
+   * Limpia el completado solo si la tarea sigue activa y completada, y además cumple `condicion`
+   * (T13).
+   */
+  descompletarSiCompletada(
+    tarea: TareaTicketEntity,
+    condicion?: CondicionDeDescompletado,
+  ): Promise<boolean>;
 
   /**
    * Persiste el técnico solo si la tarea sigue activa. No toca el completado: una asignación que
