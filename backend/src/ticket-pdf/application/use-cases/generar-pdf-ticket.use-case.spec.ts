@@ -8,7 +8,9 @@
  *   copia de ella;
  * - los comentarios INTERNOS nunca llegan al PDF, ni siquiera cuando el
  *   timeline devuelve las notas internas (actor con `TICKETS:OBSERVAR`);
- * - el logo solo se embebe si es png/jpeg: webp o sin logo → nombre en texto.
+ * - el logo solo se embebe si es png/jpeg: webp o sin logo → nombre en texto;
+ * - las tareas salen de `tareas_ticket` en cualquier tipo de ticket, y el avance se calcula sobre
+ *   ellas, no con `porcentaje_avance`.
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -25,7 +27,7 @@ import { ObtenerTicketUseCase } from '../../../tickets/application/use-cases/obt
 import { TicketSoporteEntity } from '../../../equipos/domain/entities/ticket-soporte.entity';
 import { EquipoInformaticoEntity } from '../../../equipos/domain/entities/equipo-informatico.entity';
 import { TicketEdiliciaEntity } from '../../../reparaciones/domain/entities/ticket-edilicia.entity';
-import { SubtareaEdiliciaEntity } from '../../../reparaciones/domain/entities/subtarea-edilicia.entity';
+import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { Result } from '../../../shared/domain/result';
 import { LogoClienteNoEncontradoError } from '../../../clientes/domain/errors/clientes.errors';
 import { PNG_1X1 } from '../../testing/pdf-vista.fixtures';
@@ -35,6 +37,7 @@ import { GenerarPdfTicketUseCase } from './generar-pdf-ticket.use-case';
 const SOLICITANTE = 'usr-solicitante';
 const OTRO = 'usr-otro';
 const TECNICO = 'usr-tecnico';
+const OTRO_TECNICO = 'usr-otro-tecnico';
 const AHORA = new Date('2026-08-20T14:00:00.000Z'); // 11:00 en Argentina
 
 const ESTADO_NUEVO = EstadoEntity.create(
@@ -128,13 +131,20 @@ const OPERACIONES = [
   operacion('o4', 'op-asignacion', { descripcion: 'Asignado a Ana' }),
 ];
 
+function tarea(id: string, orden: number, campos: { tecnicoId?: string | null } = {}) {
+  return TareaTicketEntity.crear(
+    { ticketId: 'ticket-1', descripcion: `Tarea ${id}`, orden, tecnicoId: campos.tecnicoId },
+    id,
+  );
+}
+
 interface Opciones {
   ticket?: TicketEntity;
   operaciones?: OperacionTicketEntity[];
   logo?: { buffer: Buffer; mimeType: string } | null;
   soporte?: TicketSoporteEntity | null;
   edilicia?: TicketEdiliciaEntity | null;
-  subtareas?: SubtareaEdiliciaEntity[];
+  tareas?: TareaTicketEntity[];
 }
 
 function armar(opciones: Opciones = {}) {
@@ -151,6 +161,7 @@ function armar(opciones: Opciones = {}) {
   const generador = {
     generar: vi.fn(async (_vista: TicketPdfVista) => Buffer.from('%PDF-fake')),
   };
+  const tareaRepo = { listarPorTicket: vi.fn().mockResolvedValue(opciones.tareas ?? []) };
   const solicitanteExterno = SolicitanteExternoEntity.create({
     nombre: 'Laura Externa',
     email: 'laura@example.com',
@@ -182,6 +193,7 @@ function armar(opciones: Opciones = {}) {
         new Map([
           [SOLICITANTE, { nombre: 'María', apellido: 'Gómez' }],
           [TECNICO, { nombre: 'Ana', apellido: 'Pérez' }],
+          [OTRO_TECNICO, { nombre: 'Juan', apellido: 'Díaz' }],
         ]),
       ),
     },
@@ -208,12 +220,12 @@ function armar(opciones: Opciones = {}) {
       ),
     },
     { findByTicketId: vi.fn().mockResolvedValue(opciones.edilicia ?? null) },
-    { findActiveByTicketEdiliciaId: vi.fn().mockResolvedValue(opciones.subtareas ?? []) },
+    { listarPorTicket: tareaRepo.listarPorTicket },
     verLogo,
     generador,
     () => AHORA,
   );
-  return { useCase, generador, verLogo, ticketRepo };
+  return { useCase, generador, verLogo, ticketRepo, tareaRepo };
 }
 
 /** Actor con `TICKETS:VER_TODOS` y `TICKETS:OBSERVAR` (ve las notas internas en pantalla). */
@@ -289,7 +301,7 @@ describe('GenerarPdfTicketUseCase', () => {
       { findByTicketId: vi.fn().mockResolvedValue(null) },
       { findById: vi.fn().mockResolvedValue(null) },
       { findByTicketId: vi.fn().mockResolvedValue(null) },
-      { findActiveByTicketEdiliciaId: vi.fn().mockResolvedValue([]) },
+      { listarPorTicket: vi.fn().mockResolvedValue([]) },
       { execute: vi.fn().mockResolvedValue(Result.fail(new LogoClienteNoEncontradoError('c1'))) },
       generador,
       () => AHORA,
@@ -412,45 +424,109 @@ describe('GenerarPdfTicketUseCase', () => {
       expect(vista.edilicia).toBeNull();
     });
 
-    it('edilicia: ubicación, avance y subtareas en orden', async () => {
+    it('edilicia: la ubicación, sin el porcentaje_avance congelado de la columna vieja', async () => {
       const edilicia = TicketEdiliciaEntity.reconstitute(
         {
           ticketId: 'ticket-1',
           ubicacion: 'Edificio Central',
           personalAsignadoId: null,
-          porcentajeAvance: 50,
+          porcentajeAvance: 80,
         },
         'te-1',
         AHORA,
         AHORA,
         null,
       );
-      const subtareas = [
-        SubtareaEdiliciaEntity.create({
-          ticketEdiliciaId: 'te-1',
-          descripcion: 'Segunda',
-          orden: 2,
-        }),
-        SubtareaEdiliciaEntity.create({
-          ticketEdiliciaId: 'te-1',
-          descripcion: 'Primera',
-          orden: 1,
-        }),
-      ];
-      const { useCase, generador } = armar({ edilicia, subtareas });
+      const { useCase, generador } = armar({ edilicia, tareas: [tarea('t1', 1)] });
 
       await useCase.execute(DTO_STAFF);
 
       const vista = generador.generar.mock.calls[0][0];
-      expect(vista.edilicia).toEqual({
-        ubicacion: 'Edificio Central',
+      expect(vista.edilicia).toEqual({ ubicacion: 'Edificio Central' });
+      expect(vista.tareas?.porcentajeAvance).toBe(0);
+      expect(vista.soporte).toBeNull();
+    });
+  });
+
+  describe('tareas (tareas_ticket, cualquier tipo de ticket)', () => {
+    it('imprime cada tarea activa por orden, con su técnico, su estado y el avance calculado', async () => {
+      const completada = tarea('t2', 2, { tecnicoId: TECNICO });
+      completada.completar(OTRO_TECNICO, new Date('2026-08-20T12:10:00.000Z'));
+      const { useCase, generador, tareaRepo } = armar({
+        tareas: [completada, tarea('t1', 1)],
+      });
+
+      await useCase.execute(DTO_STAFF);
+
+      expect(tareaRepo.listarPorTicket).toHaveBeenCalledWith('ticket-1');
+      const vista = generador.generar.mock.calls[0][0];
+      expect(vista.edilicia).toBeNull();
+      expect(vista.tareas).toEqual({
         porcentajeAvance: 50,
-        subtareas: [
-          { descripcion: 'Primera', completada: false },
-          { descripcion: 'Segunda', completada: false },
+        completadas: 1,
+        total: 2,
+        items: [
+          {
+            descripcion: 'Tarea t1',
+            tecnico: null,
+            completada: false,
+            completadaEn: null,
+            completadaPor: null,
+          },
+          {
+            descripcion: 'Tarea t2',
+            tecnico: 'Ana Pérez',
+            completada: true,
+            completadaEn: '20/08/2026 09:10',
+            completadaPor: 'Juan Díaz',
+          },
         ],
       });
-      expect(vista.soporte).toBeNull();
+    });
+
+    it('una tarea dada de baja no se imprime ni cuenta en el avance', async () => {
+      const borrada = TareaTicketEntity.reconstitute(
+        {
+          ticketId: 'ticket-1',
+          descripcion: 'Borrada',
+          orden: 2,
+          tecnicoId: null,
+          completada: false,
+          completadaEn: null,
+          completadaPorId: null,
+        },
+        't-borrada',
+        AHORA,
+        AHORA,
+        AHORA,
+      );
+      const hecha = tarea('t1', 1);
+      hecha.completar(TECNICO, AHORA);
+      const { useCase, generador } = armar({ tareas: [hecha, borrada] });
+
+      await useCase.execute(DTO_STAFF);
+
+      const { tareas } = generador.generar.mock.calls[0][0];
+      expect(tareas?.items.map((t) => t.descripcion)).toEqual(['Tarea t1']);
+      expect(tareas?.porcentajeAvance).toBe(100);
+    });
+
+    it('un técnico que ya no está en master queda como "Usuario", no como "sin técnico"', async () => {
+      const { useCase, generador } = armar({
+        tareas: [tarea('t1', 1, { tecnicoId: 'usr-borrado' })],
+      });
+
+      await useCase.execute(DTO_STAFF);
+
+      expect(generador.generar.mock.calls[0][0].tareas?.items[0].tecnico).toBe('Usuario');
+    });
+
+    it('sin tareas activas la sección no va', async () => {
+      const { useCase, generador } = armar();
+
+      await useCase.execute(DTO_STAFF);
+
+      expect(generador.generar.mock.calls[0][0].tareas).toBeNull();
     });
   });
 });

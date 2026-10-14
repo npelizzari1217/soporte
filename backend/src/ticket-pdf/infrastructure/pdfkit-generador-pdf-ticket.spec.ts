@@ -70,27 +70,58 @@ describe('PdfkitGeneradorPdfTicket', () => {
     expect(textoDePdf(pdf)).toContain('Colegio San Martín');
   });
 
-  it('un ticket edilicio imprime ubicación, avance y subtareas', async () => {
+  it('un ticket edilicio imprime la ubicación', async () => {
+    const texto = textoDePdf(
+      await generador.generar(
+        vistaDePrueba({ soporte: null, edilicia: { ubicacion: 'Edificio Central, planta baja' } }),
+      ),
+    );
+
+    expect(texto).toContain('Reparación');
+    expect(texto).toContain('Edificio Central, planta baja');
+  });
+
+  it('las tareas se imprimen con avance, técnico y estado, en un ticket que no es edilicio', async () => {
     const texto = textoDePdf(
       await generador.generar(
         vistaDePrueba({
-          soporte: null,
-          edilicia: {
-            ubicacion: 'Edificio Central, planta baja',
+          tareas: {
             porcentajeAvance: 50,
-            subtareas: [
-              { descripcion: 'Cambiar cañería', completada: true },
-              { descripcion: 'Pintar pared', completada: false },
+            completadas: 1,
+            total: 2,
+            items: [
+              {
+                descripcion: 'Cambiar cañería',
+                tecnico: 'Ana Pérez',
+                completada: true,
+                completadaEn: '20/08/2026 09:10',
+                completadaPor: 'Juan Díaz',
+              },
+              {
+                descripcion: 'Pintar pared',
+                tecnico: null,
+                completada: false,
+                completadaEn: null,
+                completadaPor: null,
+              },
             ],
           },
         }),
       ),
     );
 
-    expect(texto).toContain('Edificio Central, planta baja');
-    expect(texto).toContain('50%');
+    expect(texto).toContain('Tareas');
+    expect(texto).toContain('50% (1 de 2 completadas)');
     expect(texto).toContain('[x]  Cambiar cañería');
+    expect(texto).toContain('Técnico: Ana Pérez  ·  Completada el 20/08/2026 09:10 por Juan Díaz');
     expect(texto).toContain('[ ]  Pintar pared');
+    expect(texto).toContain('Técnico: Sin técnico  ·  Pendiente');
+  });
+
+  it('sin tareas no imprime la sección', async () => {
+    const texto = textoDePdf(await generador.generar(vistaDePrueba({ tareas: null })));
+
+    expect(texto).not.toContain('Avance');
   });
 
   it('el pie lleva la fecha de generación y "Página X de Y" en cada página', async () => {

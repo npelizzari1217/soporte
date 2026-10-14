@@ -12,10 +12,6 @@ import {
 } from '../equipos/domain/ports/i-ticket-soporte.repository';
 import { EquiposModule } from '../equipos/equipos.module';
 import {
-  ISubtareaEdiliciaRepository,
-  SUBTAREA_EDILICIA_REPOSITORY,
-} from '../reparaciones/domain/ports/i-subtarea-edilicia.repository';
-import {
   ITicketEdiliciaRepository,
   TICKET_EDILICIA_REPOSITORY,
 } from '../reparaciones/domain/ports/i-ticket-edilicia.repository';
@@ -31,6 +27,10 @@ import {
   ISolicitanteExternoRepository,
   SOLICITANTE_EXTERNO_REPOSITORY,
 } from '../tickets/domain/ports/i-solicitante-externo.repository';
+import {
+  ITareaTicketRepository,
+  TAREA_TICKET_REPOSITORY,
+} from '../tickets/domain/ports/i-tarea-ticket.repository';
 import {
   ITipoOperacionRepository,
   TIPO_OPERACION_REPOSITORY,
@@ -79,7 +79,7 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
         ticketSoporteRepo: ITicketSoporteRepository,
         equipoRepo: IEquipoInformaticoRepository,
         ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        subtareaRepo: ISubtareaEdiliciaRepository,
+        tareaRepo: ITareaTicketRepository,
         verLogoCliente: VerLogoClienteUseCase,
         generador: IGeneradorPdfTicket,
       ) =>
@@ -95,7 +95,7 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
           ticketSoporteRepo,
           equipoRepo,
           ticketEdiliciaRepo,
-          subtareaRepo,
+          tareaRepo,
           verLogoCliente,
           generador,
         ),
@@ -111,7 +111,7 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
         TICKET_SOPORTE_REPOSITORY,
         EQUIPO_INFORMATICO_REPOSITORY,
         TICKET_EDILICIA_REPOSITORY,
-        SUBTAREA_EDILICIA_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
         VerLogoClienteUseCase,
         GENERADOR_PDF_TICKET,
       ],

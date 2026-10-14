@@ -32,16 +32,31 @@ export interface SoportePdf {
   solucionAplicada: string | null;
 }
 
-export interface SubtareaPdf {
+/** Una tarea activa del ticket (`tareas_ticket`), con nombres y fechas ya resueltos. */
+export interface TareaPdf {
   descripcion: string;
+  /** Nombre del técnico de la tarea; `null` = la tarea no tiene técnico. */
+  tecnico: string | null;
   completada: boolean;
+  /** `dd/mm/aaaa hh:mm`, hora de Argentina; `null` si está pendiente. */
+  completadaEn: string | null;
+  /** Nombre de quien la completó; `null` si está pendiente. */
+  completadaPor: string | null;
 }
 
+/** Tareas de un ticket de cualquier tipo, con el avance calculado sobre ellas (CA7, CA8). */
+export interface TareasPdf {
+  /** Porcentaje de tareas activas completadas, 0–100. */
+  porcentajeAvance: number;
+  completadas: number;
+  total: number;
+  /** Tareas activas, por `orden`. */
+  items: TareaPdf[];
+}
+
+/** El avance y las tareas ya no viven acá: van en `TicketPdfVista.tareas`, para cualquier tipo. */
 export interface EdiliciaPdf {
   ubicacion: string | null;
-  /** Porcentaje de avance, 0–100. */
-  porcentajeAvance: number;
-  subtareas: SubtareaPdf[];
 }
 
 export interface TicketPdfVista {
@@ -67,6 +82,8 @@ export interface TicketPdfVista {
   soporte: SoportePdf | null;
   /** Presente solo en tickets edilicios (reparaciones). */
   edilicia: EdiliciaPdf | null;
+  /** Presente si el ticket tiene al menos una tarea activa, sea del tipo que sea. */
+  tareas: TareasPdf | null;
   historial: EventoHistorialPdf[];
   /** Instante de generación, `dd/mm/aaaa hh:mm` en hora de Argentina (pie de página). */
   generadoEl: string;
