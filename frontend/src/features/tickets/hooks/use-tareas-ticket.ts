@@ -19,7 +19,8 @@
  * Errores: el `message` de Nest para tareas lleva ids crudos ("La tarea
  * "<uuid>" ya está completada."), así que 403/404/409/422 se traducen a un
  * toast propio por código; el resto sigue `notifyError`. Un 404 o un 409 dicen
- * que la lista quedó vieja, así que también la refrescan.
+ * que la lista quedó vieja, y un 403 puede venir de una tarea que cambió de
+ * técnico en el medio (JD-S2), así que los tres también la refrescan.
  */
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
@@ -77,7 +78,7 @@ function useMutacionTarea<V, R>(
     onError: (error: unknown) => {
       const mensaje = error instanceof ApiError ? MENSAJES_ERROR_TAREA[error.statusCode] : undefined;
       if (!(error instanceof ApiError) || !mensaje) return notifyError(error);
-      if (error.statusCode === 404 || error.statusCode === 409) {
+      if (error.statusCode === 403 || error.statusCode === 404 || error.statusCode === 409) {
         queryClient.invalidateQueries({ queryKey: tareasTicketKey(ticketId) });
       }
       toast.error(mensaje);

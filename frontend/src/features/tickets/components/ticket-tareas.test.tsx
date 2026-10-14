@@ -238,6 +238,31 @@ describe("TicketTareas — mutaciones sobre las rutas genéricas", () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
   });
+
+  it("un 403 al completar refresca la lista: la tarea pudo haber cambiado de técnico (JD-S2)", async () => {
+    const user = userEvent.setup();
+    let pedidosDeLista = 0;
+    mockTareas();
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/tareas`, () => {
+        pedidosDeLista += 1;
+        return HttpResponse.json({
+          items: [PENDIENTE, COMPLETADA],
+          avance: { total: 2, completadas: 1, porcentaje: 50 },
+        });
+      }),
+      http.post(`/api/tickets/${TICKET_ID}/tareas/ta1/completar`, () =>
+        HttpResponse.json({ statusCode: 403, message: "x", error: "Forbidden" }, { status: 403 }),
+      ),
+    );
+    renderTareas();
+
+    await screen.findByText("Cambiar el disco");
+    const antes = pedidosDeLista;
+    await user.click(within(filaDe("Cambiar el disco")).getByRole("button", { name: "Completar" }));
+
+    await waitFor(() => expect(pedidosDeLista).toBeGreaterThan(antes));
+  });
 });
 
 describe("TicketTareas — botones por actor (CA3, CA4)", () => {
