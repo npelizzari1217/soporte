@@ -95,7 +95,7 @@ Salen de la decisión de producto, viñeta por viñeta.
   - [x] deuda de Ayuda (ver "Deuda de Ayuda" más abajo);
   - [x] declaración Cumplida o Desviación en el roadmap;
   - [x] suites completas (backend 731 archivos y 8728 tests, frontend 273 y 2272, todo en verde sobre `ee1ebf27`);
-  - [ ] `judgment-day`, porque el cambio toca datos existentes y permisos.
+  - [x] `judgment-day`, porque el cambio toca datos existentes y permisos. Veredicto: **APPROVED** (ronda 1 más re-judgment acotado de las correcciones T10-T12).
 
   Ruta: delegada para la verificación.
 - [x] **T10 — JD-W1: actualizaciones perdidas en las tareas** (bugfix, TDD): `PrismaTareaTicketRepository.guardar` es un `UPDATE ... WHERE id` incondicional que reescribe técnico, completado y baja desde una entidad leída fuera de la transacción. Completar contra eliminar revive una tarea borrada (y con ella la visibilidad CA10 de su técnico), asignar contra completar borra el completado, y dos completar concurrentes devuelven 200 los dos, escriben dos filas de historial y el segundo pisa el crédito. Arreglo: escritura condicionada al estado que validó el caso de uso (concurrencia optimista); si la condición falla, el caso de uso relee y devuelve el error de dominio que corresponde (`TAREA_YA_COMPLETADA`, `TAREA_NO_COMPLETADA` o `TAREA_NO_ENCONTRADA`), y el historial solo se escribe si la escritura condicionada tuvo éxito, en la misma transacción. Fuente: ledger del `judgment-day`, ronda 1, 2026-10-14, objetivo `1058a110...9caf30dd`, diff sha256 `701f5951…`, WARNING en el que coincidieron los dos jueces; el dueño decidió corregirlo antes del merge (2026-10-14). Ruta: delegada. Salió en 571 líneas (534 más y 37 menos), commit `5d844e83`. RED y GREEN en el Progreso del 2026-10-14.
@@ -390,3 +390,11 @@ Artículos que el punto volvió falsos, corregidos:
     - No se corrió la suite completa del backend (`pnpm test`).
   - El espejo de Engram no se tocó en esta tanda: lo resincroniza el coordinador.
   - Próximo paso: re-judgment acotado del `judgment-day` sobre `4d44eb6f..` (las tres correcciones).
+- 2026-10-14: re-judgment acotado del `judgment-day` sobre el delta de las correcciones (`9caf30dd..d16e3c60`, diff sha256 `bcf3e5cd…`), con los dos jueces a ciegas leyendo solo el ledger congelado y el delta. **Veredicto final: APPROVED.**
+  - **JD-W1, JD-W2 y JD-W3: resueltas**, según los dos jueces y con prueba en cada caso (escrituras condicionadas con `updateMany` y `count`, historial solo tras la escritura, bordes en la medianoche argentina, matriz de actores del listado y aislamiento entre clientes).
+  - Ningún CRITICAL, ni original ni causado por las correcciones.
+  - **Informativo, en el que coincidieron los dos (SUGGESTION):** `descompletarSiCompletada` condiciona solo en `completada = true`, no en `completadaPorId` ni en `completadaEn`. Queda una ventana ABA: si entre la lectura y la escritura alguien descompleta y otro vuelve a completar, el descompletado borra la completación nueva y el historial registra a quien completó antes. Hacen falta tres acciones dentro de la ventana de una sola request.
+  - **Sospecha de un solo juez (WARNING, previa a las correcciones):** `completarSiPendiente` no condiciona en el `tecnicoId` con el que se autorizó al actor. Si el responsable reasigna la tarea mientras el técnico anterior la está completando, el técnico desasignado se queda con el crédito.
+  - Los dos puntos informativos no se corrigen solos; quedan como deuda menor a decisión del dueño.
+  - Las suites completas del backend no se volvieron a correr después de T10-T12; antes del merge corresponde correrlas.
+  - Próximo paso: suite completa del backend, y después merge y deploy a decisión del dueño.
