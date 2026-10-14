@@ -1088,6 +1088,41 @@ git reset --hard <commit-de-rollback>
 > deja código viejo contra schema nuevo. Con migraciones aditivas suele andar; con una
 > destructiva, no. Mirá qué migró antes de decidir.
 
+### El `git pull` necesita GitHub, aunque el deploy vaya por bundle
+
+`deploy.ps1` siempre corre `git pull --ff-only origin main`. En el flujo por bundle (mientras
+GitHub está en pausa) ese pull no trae nada y responde "Already up to date", pero **igual tiene
+que llegar a GitHub**. Si el VPS no resuelve `github.com` o no lo alcanza, el script corta ahí.
+
+El 2026-10-14 pasó con un fallo de DNS pasajero: `ssh: Could not resolve hostname github.com`.
+Como `predeploy-dump.ps1` ya había detenido los servicios y `deploy.ps1` aborta sin
+levantarlos, producción dio 502 hasta que se levantaron a mano.
+
+Para que no se repita:
+
+1. **Antes de `predeploy-dump.ps1`**, confirmar que el VPS llega a GitHub:
+
+   ```powershell
+   cd C:\soporte
+   git ls-remote -q origin HEAD
+   ```
+
+   Si no devuelve un sha, no se arranca: se resuelve primero la red o el DNS
+   (`Resolve-DnsName github.com`).
+2. **Si el deploy aborta en el pull, o en cualquier paso anterior a los builds** (pasos 1 a 8
+   de "Qué hace, en orden"), los servicios corren los builds anteriores, que no se tocaron, y
+   el schema no cambió. Se levantan en el momento, sin esperar al diagnóstico:
+
+   ```powershell
+   Start-Service soporte-backend, soporte-frontend
+   ```
+
+   Con el sitio arriba se diagnostica. Para reintentar, se vuelve a correr
+   `predeploy-dump.ps1`, porque hubo escrituras mientras tanto, y después `deploy.ps1`.
+
+   Si abortó **durante o después de los builds**, esto no aplica: `dist/` o `.next/` pueden
+   haber quedado a medio escribir. Se sigue el rollback de arriba.
+
 ### Rollback del tracker `catalogo-unico-componentes`
 
 Revertir el código de este release **exige restaurar el dump de master y de cada tenant**, siempre
