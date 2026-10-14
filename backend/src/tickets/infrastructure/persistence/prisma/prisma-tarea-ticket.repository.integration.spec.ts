@@ -162,14 +162,15 @@ describe('PrismaTareaTicketRepository (T1, tenant efímero)', () => {
     await expect(enTenant(() => repo.listarPorTickets([]))).resolves.toEqual(new Map());
   });
 
-  it('guardar persiste técnico, completado, descompletado y baja lógica', async () => {
+  it('las escrituras condicionadas persisten técnico, completado, descompletado y baja lógica', async () => {
     const ticketId = await crearTicket();
     const tarea = await crearTarea(ticketId, 'Cambiar lámpara', 0);
     const ahora = new Date('2026-10-13T15:00:00Z');
 
     tarea.asignarTecnico(TECNICO_A, ahora);
+    await expect(enTenant(() => repo.asignarTecnicoSiActiva(tarea))).resolves.toBe(true);
     tarea.completar(TECNICO_B, ahora);
-    await enTenant(() => repo.guardar(tarea));
+    await expect(enTenant(() => repo.completarSiPendiente(tarea))).resolves.toBe(true);
     const completada = await enTenant(() => repo.buscarPorId(tarea.id));
     expect(completada!.tecnicoId).toBe(TECNICO_A);
     expect(completada!.completada).toBe(true);
@@ -177,13 +178,55 @@ describe('PrismaTareaTicketRepository (T1, tenant efímero)', () => {
     expect(completada!.completadaPorId).toBe(TECNICO_B);
 
     tarea.descompletar(ahora);
+    await expect(enTenant(() => repo.descompletarSiCompletada(tarea))).resolves.toBe(true);
     tarea.eliminar(ahora);
-    await enTenant(() => repo.guardar(tarea));
+    await expect(enTenant(() => repo.darDeBajaSiActiva(tarea))).resolves.toBe(true);
     const final = await enTenant(() => repo.buscarPorId(tarea.id));
     expect(final!.completada).toBe(false);
     expect(final!.completadaEn).toBeNull();
     expect(final!.completadaPorId).toBeNull();
     expect(final!.deletedAt).toEqual(ahora);
+  });
+
+  it('una escritura condicionada que no cumple su condición devuelve false y no escribe', async () => {
+    const ticketId = await crearTicket();
+    const leer = async (id: string): Promise<TareaTicketEntity> => {
+      const tarea = await enTenant(() => repo.buscarPorId(id));
+      if (!tarea) throw new Error(`no existe la tarea ${id}`);
+      return tarea;
+    };
+    const ahora = new Date('2026-10-13T15:00:00Z');
+
+    // Completada por debajo: un segundo completado no pisa el crédito.
+    const completada = await crearTarea(ticketId, 'Ya completada', 0);
+    const primera = await leer(completada.id);
+    primera.completar(TECNICO_A, ahora);
+    await enTenant(() => repo.completarSiPendiente(primera));
+    completada.completar(TECNICO_B, new Date('2026-10-13T16:00:00Z'));
+    await expect(enTenant(() => repo.completarSiPendiente(completada))).resolves.toBe(false);
+    expect((await leer(completada.id)).completadaPorId).toBe(TECNICO_A);
+
+    // Pendiente: descompletar no aplica.
+    const pendiente = await crearTarea(ticketId, 'Pendiente', 1);
+    const copia = await leer(pendiente.id);
+    copia.completar(TECNICO_A, ahora);
+    copia.descompletar(ahora);
+    await expect(enTenant(() => repo.descompletarSiCompletada(copia))).resolves.toBe(false);
+
+    // Dada de baja por debajo: ninguna escritura la revive ni la cambia.
+    const borrada = await crearTarea(ticketId, 'Borrada', 2);
+    const baja = await leer(borrada.id);
+    baja.eliminar(ahora);
+    await enTenant(() => repo.darDeBajaSiActiva(baja));
+    borrada.asignarTecnico(TECNICO_A, ahora);
+    await expect(enTenant(() => repo.asignarTecnicoSiActiva(borrada))).resolves.toBe(false);
+    borrada.completar(TECNICO_A, ahora);
+    await expect(enTenant(() => repo.completarSiPendiente(borrada))).resolves.toBe(false);
+    await expect(enTenant(() => repo.darDeBajaSiActiva(baja))).resolves.toBe(false);
+    const final = await leer(borrada.id);
+    expect(final.deletedAt).toEqual(ahora);
+    expect(final.tecnicoId).toBeNull();
+    expect(final.completada).toBe(false);
   });
 
   it('contarCompletadasPorTecnico cuenta por quien completó, en [desde, hasta), sin bajas', async () => {
@@ -207,7 +250,7 @@ describe('PrismaTareaTicketRepository (T1, tenant efímero)', () => {
     ): Promise<TareaTicketEntity> => {
       const t = await crearTarea(ticketId, `t-${en.toISOString()}`, 0, TECNICO_A);
       t.completar(por, en);
-      await enTenant(() => repo.guardar(t));
+      await enTenant(() => repo.completarSiPendiente(t));
       return t;
     };
     await completarEn(ticket, TECNICO_A, desde); // borde inferior: entra

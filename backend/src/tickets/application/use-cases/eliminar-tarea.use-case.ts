@@ -1,6 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
+import { TareaNoEncontradaError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
@@ -26,12 +27,15 @@ export interface EliminarTareaDto {
  * con quién la completó si lo estaba, y deja de contar para el avance. La baja queda en el
  * historial (`TAREA_ELIMINADA`), igual que la baja de una subtarea edilicia escribía
  * `AVANCE_EDILICIO`, en la misma transacción que la tarea.
+ *
+ * La escritura solo toca `deleted_at` y exige que la tarea siga activa (T10): una baja que corre a
+ * la par de un completado lo conserva, y una segunda baja da 404 sin duplicar el historial.
  */
 export class EliminarTareaUseCase {
   constructor(
     private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
-    private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
+    private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'darDeBajaSiActiva'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -60,10 +64,12 @@ export class EliminarTareaUseCase {
     );
     const operacion = operacionDeTarea({ tarea, tipoOperacionId, autorId: dto.actor.id });
 
-    await this.txRunner.run(async () => {
-      await this.tareaRepo.guardar(tarea);
+    const escrita = await this.txRunner.run(async () => {
+      if (!(await this.tareaRepo.darDeBajaSiActiva(tarea))) return false;
       await this.operacionRepo.save(operacion);
+      return true;
     });
+    if (!escrita) return Result.fail(new TareaNoEncontradaError(tarea.id));
 
     return Result.ok(undefined);
   }

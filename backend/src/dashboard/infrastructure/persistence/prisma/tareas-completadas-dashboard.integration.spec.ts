@@ -111,7 +111,7 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
     });
     await enTenant(() => tareaRepo.crear(tarea));
     expect(tarea.completar(por, new Date(en)).isOk()).toBe(true);
-    await enTenant(() => tareaRepo.guardar(tarea));
+    await enTenant(() => tareaRepo.completarSiPendiente(tarea));
     return tarea;
   }
 
@@ -214,7 +214,7 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
     ]);
 
     expect(descompletada.descompletar(new Date()).isOk()).toBe(true);
-    await enTenant(() => tareaRepo.guardar(descompletada));
+    await enTenant(() => tareaRepo.descompletarSiCompletada(descompletada));
 
     const despues = await metricas('admin', 'ADMINISTRADOR', ciclo);
     expect(despues.tareasCompletadasPorTecnico).toEqual([

@@ -2,7 +2,10 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
-import { TecnicoTareaNoElegibleError } from '../../domain/errors/tareas.errors';
+import {
+  TareaNoEncontradaError,
+  TecnicoTareaNoElegibleError,
+} from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
@@ -40,12 +43,19 @@ export interface AsignarTecnicoTareaDto {
  *
  * Reasignar el mismo técnico no cambia nada y no escribe historial. Cualquier otro cambio escribe
  * `TAREA_ASIGNADA` con el técnico anterior y el nuevo, en la misma transacción que la tarea.
+ *
+ * La escritura solo toca el técnico y exige que la tarea siga activa (T10): una asignación que
+ * corre a la par de un completado no lo borra, y una tarea borrada en el medio da 404 sin
+ * historial. Dos asignaciones a la par quedan con la última, como la asignación del responsable.
  */
 export class AsignarTecnicoTareaUseCase {
   constructor(
     private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
-    private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
+    private readonly tareaRepo: Pick<
+      ITareaTicketRepository,
+      'buscarPorId' | 'asignarTecnicoSiActiva'
+    >,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
@@ -94,10 +104,12 @@ export class AsignarTecnicoTareaUseCase {
       metadata: { tecnico_anterior_id: tecnicoAnteriorId, tecnico_nuevo_id: dto.tecnicoId },
     });
 
-    await this.txRunner.run(async () => {
-      await this.tareaRepo.guardar(tarea);
+    const escrita = await this.txRunner.run(async () => {
+      if (!(await this.tareaRepo.asignarTecnicoSiActiva(tarea))) return false;
       await this.operacionRepo.save(operacion);
+      return true;
     });
+    if (!escrita) return Result.fail(new TareaNoEncontradaError(tarea.id));
 
     return Result.ok(tarea);
   }

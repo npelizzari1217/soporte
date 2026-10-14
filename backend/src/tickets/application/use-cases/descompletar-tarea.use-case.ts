@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
+import { TareaNoCompletadaError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
@@ -9,6 +10,7 @@ import {
   ActorTarea,
   cargarTareaDelTicket,
   cargarTicket,
+  errorDeEscrituraRechazada,
   mapearErrorDeTarea,
   operacionDeTarea,
   puedeCompletarTarea,
@@ -27,13 +29,18 @@ export interface DescompletarTareaDto {
  * DescompletarTareaUseCase — vuelve una tarea a pendiente y limpia quién y cuándo la completó
  * (odd/tareas-con-tecnico, CA4, CA8). Lo pueden hacer las mismas personas que completan.
  *
- * Una tarea pendiente da `TareaNoCompletadaError` (409). Escribe `TAREA_DESCOMPLETADA`, con quién
- * la había completado, en la misma transacción que la tarea.
+ * Una tarea pendiente da `TareaNoCompletadaError` (409). La escritura exige que la tarea siga activa
+ * y completada (T10): si otra acción la descompletó o la borró después de cargarla, no escribe nada
+ * y da el 409 o el 404 del estado actual. Escribe `TAREA_DESCOMPLETADA`, con quién la había
+ * completado, en la misma transacción, solo si la tarea se escribió.
  */
 export class DescompletarTareaUseCase {
   constructor(
     private readonly ticketRepo: TicketRepoDeTareas,
-    private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
+    private readonly tareaRepo: Pick<
+      ITareaTicketRepository,
+      'buscarPorId' | 'descompletarSiCompletada'
+    >,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -68,10 +75,20 @@ export class DescompletarTareaUseCase {
       metadata: { completada_por_anterior_id: completadaPorAnteriorId },
     });
 
-    await this.txRunner.run(async () => {
-      await this.tareaRepo.guardar(tarea);
+    const escrita = await this.txRunner.run(async () => {
+      if (!(await this.tareaRepo.descompletarSiCompletada(tarea))) return false;
       await this.operacionRepo.save(operacion);
+      return true;
     });
+    if (!escrita) {
+      return Result.fail(
+        await errorDeEscrituraRechazada(
+          this.tareaRepo,
+          tarea.id,
+          new TareaNoCompletadaError(tarea.id),
+        ),
+      );
+    }
 
     return Result.ok(tarea);
   }

@@ -111,9 +111,12 @@ function armar() {
     crear: vi.fn(async (tarea: TareaTicketEntity) => {
       tareas.set(tarea.id, tarea);
     }),
-    guardar: vi.fn(async (tarea: TareaTicketEntity) => {
-      tareas.set(tarea.id, tarea);
-    }),
+    // El caso de uso muta la misma instancia que guarda el Map, así que la condición de las
+    // escrituras ya no se puede observar acá: la prueba la integración de concurrencia (T10).
+    completarSiPendiente: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    descompletarSiCompletada: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    asignarTecnicoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    darDeBajaSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
   };
   const operacionRepo = {
     save: vi.fn(async (operacion: OperacionTicketEntity) => {
@@ -344,7 +347,7 @@ describe('AsignarTecnicoTareaUseCase', () => {
 
     expect(result.getValue().tecnicoId).toBe(TECNICO);
     expect(deps.checker.listarTecnicosAsignables).toHaveBeenCalledWith(CLIENTE_ID, 'EDILICIA');
-    expect(deps.tareaRepo.guardar).toHaveBeenCalledTimes(1);
+    expect(deps.tareaRepo.asignarTecnicoSiActiva).toHaveBeenCalledTimes(1);
     const [operacion] = deps.operaciones;
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_ASIGNADA');
     expect(operacion.autorId).toBe(RESPONSABLE);
@@ -389,7 +392,7 @@ describe('AsignarTecnicoTareaUseCase', () => {
     const result = await asignar(deps, ACTORES.responsable, TECNICO);
 
     expect(result.isOk()).toBe(true);
-    expect(deps.tareaRepo.guardar).not.toHaveBeenCalled();
+    expect(deps.tareaRepo.asignarTecnicoSiActiva).not.toHaveBeenCalled();
     expect(deps.operaciones).toHaveLength(0);
   });
 
@@ -448,7 +451,7 @@ describe('CompletarTareaUseCase', () => {
     const tarea = result.getValue();
     expect(tarea.completadaPorId).toBe(RESPONSABLE);
     expect(tarea.completadaEn).toEqual(AHORA);
-    expect(deps.tareaRepo.guardar).toHaveBeenCalledWith(tarea);
+    expect(deps.tareaRepo.completarSiPendiente).toHaveBeenCalledWith(tarea);
     const [operacion] = deps.operaciones;
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_COMPLETADA');
     expect(operacion.autorId).toBe(RESPONSABLE);
@@ -560,7 +563,7 @@ describe('EliminarTareaUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(tarea.deletedAt).toEqual(AHORA);
     expect(tarea.completadaPorId).toBe(TECNICO);
-    expect(deps.tareaRepo.guardar).toHaveBeenCalledWith(tarea);
+    expect(deps.tareaRepo.darDeBajaSiActiva).toHaveBeenCalledWith(tarea);
     const [operacion] = deps.operaciones;
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_ELIMINADA');
     expect(operacion.metadata).toEqual({ tarea_id: 't1' });

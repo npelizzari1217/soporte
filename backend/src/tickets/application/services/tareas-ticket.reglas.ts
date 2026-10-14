@@ -152,6 +152,22 @@ export function mapearErrorDeTarea(error: DomainError, tareaId: string): DomainE
 }
 
 /**
+ * Error de una escritura condicionada que no aplicó (T10, JD-W1): otra acción cambió la tarea
+ * entre que el caso de uso la cargó y la escribió. Se relee para responder con el estado actual:
+ * si ya no está activa, `TareaNoEncontradaError` (404), igual que si la baja hubiera llegado
+ * antes; si sigue activa, `siSigueActiva`, el 409 de la operación (`TAREA_YA_COMPLETADA` o
+ * `TAREA_NO_COMPLETADA`), para que el frontend refresque la lista.
+ */
+export async function errorDeEscrituraRechazada(
+  tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId'>,
+  tareaId: string,
+  siSigueActiva: DomainError,
+): Promise<DomainError> {
+  const actual = await tareaRepo.buscarPorId(tareaId);
+  return actual && !actual.isDeleted() ? siSigueActiva : new TareaNoEncontradaError(tareaId);
+}
+
+/**
  * Resuelve el id del tipo de operación. El catálogo lo siembra una migración: si falta, es un
  * fallo de infraestructura y no un error del caller (mismo `throw` defensivo que
  * `AsignarTicketUseCase`).

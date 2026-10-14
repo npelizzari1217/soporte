@@ -60,18 +60,44 @@ export class PrismaTareaTicketRepository implements ITareaTicketRepository {
     await this.client.tareaTicket.create({ data: TareaTicketMapper.toPersistence(tarea) });
   }
 
-  /** Solo los campos que cambian después del alta; `ticketId`, `descripcion` y `orden` no se editan. */
-  async guardar(tarea: TareaTicketEntity): Promise<void> {
-    await this.client.tareaTicket.update({
-      where: { id: tarea.id },
+  async completarSiPendiente(tarea: TareaTicketEntity): Promise<boolean> {
+    const { count } = await this.client.tareaTicket.updateMany({
+      where: { id: tarea.id, deletedAt: null, completada: false },
       data: {
-        tecnicoId: tarea.tecnicoId,
         completada: tarea.completada,
         completadaEn: tarea.completadaEn,
         completadaPorId: tarea.completadaPorId,
-        deletedAt: tarea.deletedAt,
       },
     });
+    return count === 1;
+  }
+
+  async descompletarSiCompletada(tarea: TareaTicketEntity): Promise<boolean> {
+    const { count } = await this.client.tareaTicket.updateMany({
+      where: { id: tarea.id, deletedAt: null, completada: true },
+      data: {
+        completada: tarea.completada,
+        completadaEn: tarea.completadaEn,
+        completadaPorId: tarea.completadaPorId,
+      },
+    });
+    return count === 1;
+  }
+
+  async asignarTecnicoSiActiva(tarea: TareaTicketEntity): Promise<boolean> {
+    const { count } = await this.client.tareaTicket.updateMany({
+      where: { id: tarea.id, deletedAt: null },
+      data: { tecnicoId: tarea.tecnicoId },
+    });
+    return count === 1;
+  }
+
+  async darDeBajaSiActiva(tarea: TareaTicketEntity): Promise<boolean> {
+    const { count } = await this.client.tareaTicket.updateMany({
+      where: { id: tarea.id, deletedAt: null },
+      data: { deletedAt: tarea.deletedAt },
+    });
+    return count === 1;
   }
 
   async eliminar(id: string, ahora: Date): Promise<void> {

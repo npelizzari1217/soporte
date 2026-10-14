@@ -40,8 +40,31 @@ export interface ITareaTicketRepository {
   /** Inserta una tarea nueva. Falla si el id ya existe. */
   crear(tarea: TareaTicketEntity): Promise<void>;
 
-  /** Persiste los cambios de una tarea existente (técnico, completado, baja lógica). */
-  guardar(tarea: TareaTicketEntity): Promise<void>;
+  /*
+   * Escrituras condicionadas (T10, JD-W1). Los casos de uso cargan la tarea fuera de la
+   * transacción, así que cada escritura exige en el `WHERE` el estado que el caso de uso validó y
+   * escribe solo los campos de su operación. Devuelven `false` si la fila ya no cumple esa
+   * condición (otra acción la cambió en el medio) y en ese caso no escriben nada: el caso de uso
+   * relee la tarea y responde con el error de dominio del estado actual.
+   */
+
+  /**
+   * Persiste el completado (`completada`, `completadaEn`, `completadaPorId`) solo si la tarea
+   * sigue activa y pendiente.
+   */
+  completarSiPendiente(tarea: TareaTicketEntity): Promise<boolean>;
+
+  /** Limpia el completado solo si la tarea sigue activa y completada. */
+  descompletarSiCompletada(tarea: TareaTicketEntity): Promise<boolean>;
+
+  /**
+   * Persiste el técnico solo si la tarea sigue activa. No toca el completado: una asignación que
+   * corre a la par de un completado no lo borra.
+   */
+  asignarTecnicoSiActiva(tarea: TareaTicketEntity): Promise<boolean>;
+
+  /** Persiste la baja lógica solo si la tarea sigue activa. Conserva quién la completó. */
+  darDeBajaSiActiva(tarea: TareaTicketEntity): Promise<boolean>;
 
   /** Baja lógica por id: setea `deleted_at`. No borra la fila. */
   eliminar(id: string, ahora: Date): Promise<void>;

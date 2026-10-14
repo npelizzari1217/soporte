@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
+import { TareaYaCompletadaError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
@@ -9,6 +10,7 @@ import {
   ActorTarea,
   cargarTareaDelTicket,
   cargarTicket,
+  errorDeEscrituraRechazada,
   mapearErrorDeTarea,
   operacionDeTarea,
   puedeCompletarTarea,
@@ -28,12 +30,17 @@ export interface CompletarTareaDto {
  * CA8). El crédito es de quien completa: `completadaPorId` es el actor, no el técnico asignado.
  *
  * Una tarea ya completada da `TareaYaCompletadaError` (409): quien la completó primero conserva el
- * crédito. Escribe `TAREA_COMPLETADA` en la misma transacción que la tarea.
+ * crédito. La escritura exige que la tarea siga activa y pendiente (T10): si otra acción la
+ * completó o la borró después de cargarla, no escribe nada y da el 409 o el 404 del estado
+ * actual. Escribe `TAREA_COMPLETADA` en la misma transacción, solo si la tarea se escribió.
  */
 export class CompletarTareaUseCase {
   constructor(
     private readonly ticketRepo: TicketRepoDeTareas,
-    private readonly tareaRepo: Pick<ITareaTicketRepository, 'buscarPorId' | 'guardar'>,
+    private readonly tareaRepo: Pick<
+      ITareaTicketRepository,
+      'buscarPorId' | 'completarSiPendiente'
+    >,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -66,10 +73,20 @@ export class CompletarTareaUseCase {
       autorId: dto.actor.id,
     });
 
-    await this.txRunner.run(async () => {
-      await this.tareaRepo.guardar(tarea);
+    const escrita = await this.txRunner.run(async () => {
+      if (!(await this.tareaRepo.completarSiPendiente(tarea))) return false;
       await this.operacionRepo.save(operacion);
+      return true;
     });
+    if (!escrita) {
+      return Result.fail(
+        await errorDeEscrituraRechazada(
+          this.tareaRepo,
+          tarea.id,
+          new TareaYaCompletadaError(tarea.id),
+        ),
+      );
+    }
 
     return Result.ok(tarea);
   }
