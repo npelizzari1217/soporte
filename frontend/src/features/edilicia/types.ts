@@ -2,12 +2,11 @@
  * Tipos del dominio Edilicia — espejo de los DTOs reales del backend
  * (`backend/src/reparaciones/interface/dtos/reparaciones.dto.ts`).
  *
- * `GET /reparaciones` ahora embebe `subtareas[]` por ítem (item 1
- * backend-gaps — cierra G7): `ReparacionesList` pasa esa lista real como
- * dato inicial a `SubtareasDialog`, que la usa para sembrar su cache local
- * (`["subtareas", reparacionId]`) — las mutaciones (agregar/completar/
- * eliminar) siguen reflejándose ahí optimistamente. `porcentajeAvance` (en
- * el ticket edilicio) sigue siendo la fuente confiable de avance agregado.
+ * `GET /reparaciones` embebe `subtareas[]` por ítem. Desde
+ * odd/tareas-con-tecnico (T6) `SubtareasDialog` lee las tareas del ticket por
+ * `GET /tickets/:id/tareas` y usa las embebidas solo como respaldo de solo
+ * lectura, si ese pedido falla. `porcentajeAvance` lo calcula el
+ * backend al leer, sobre las tareas activas del ticket.
  */
 
 /** Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). `id` = id del satélite `ticket_edilicia`. */
@@ -70,11 +69,6 @@ export interface CrearTicketEdilicioDto {
   prioridadId: string;
   /** Texto libre, opcional. */
   ubicacion?: string | null;
-}
-
-export interface CreateSubtareaDto {
-  descripcion: string;
-  orden?: number;
 }
 
 /**

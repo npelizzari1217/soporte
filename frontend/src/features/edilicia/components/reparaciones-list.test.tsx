@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { ReparacionesList } from "./reparaciones-list";
-import type { ReparacionListItem, SubtareaEdilicia } from "../types";
+import type { ReparacionListItem } from "../types";
+import type { TareaTicket } from "@/features/tickets/types";
 
 function buildReparacion(overrides: Partial<ReparacionListItem> = {}): ReparacionListItem {
   return {
@@ -165,28 +166,33 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
   });
 });
 
-describe("ReparacionesList — el avance de la fila sigue a las subtareas", () => {
-  function subtarea(overrides: Partial<SubtareaEdilicia> = {}): SubtareaEdilicia {
+describe("ReparacionesList — el avance de la fila sigue a las tareas", () => {
+  function subtarea(overrides: Partial<TareaTicket> = {}): TareaTicket {
     return {
       id: "st1",
-      ticketEdiliciaId: "rep5",
+      ticketId: "tk5",
       descripcion: "Cerrar la llave de paso",
+      orden: 1,
+      tecnicoId: null,
+      tecnicoNombre: null,
+      tecnicoApellido: null,
       completada: true,
       completadaEn: "2026-08-19T10:00:00.000Z",
       completadaPorId: "u1",
-      orden: 1,
+      completadaPorNombre: "Juan",
+      completadaPorApellido: "Pérez",
       createdAt: "2026-08-19T09:00:00.000Z",
-      updatedAt: "2026-08-19T10:00:00.000Z",
       ...overrides,
     };
   }
 
   /**
-   * El porcentaje de avance viaja en el LISTADO, no en la query de subtareas.
-   * Agregar o eliminar una subtarea cambia el DENOMINADOR del cálculo, así que
+   * El porcentaje de avance viaja en el LISTADO, no en la query de tareas.
+   * Agregar o eliminar una tarea cambia el DENOMINADOR del cálculo, así que
    * si la mutación no invalida `["reparaciones"]` la fila muestra un avance
    * viejo hasta que alguien recarga — y la Ayuda llegó a documentar ese
-   * "actualice la página" como si fuera comportamiento esperado.
+   * "actualice la página" como si fuera comportamiento esperado. Desde T6 el
+   * diálogo pega en las rutas genéricas `/tickets/:ticketId/tareas`.
    *
    * Ojo con el modal abierto: Radix marca `aria-hidden` el resto del documento,
    * así que la fila desaparece del árbol de accesibilidad. Hay que cerrarlo
@@ -197,31 +203,37 @@ describe("ReparacionesList — el avance de la fila sigue a las subtareas", () =
     ["eliminar una subtarea lo sube", "eliminar"],
   ])("%s", async (_caso, accion) => {
     const completada = subtarea();
-    const pendiente = subtarea({ id: "st2", descripcion: "Cambiar la canilla", completada: false, completadaEn: null, completadaPorId: null, orden: 2 });
+    const pendiente = subtarea({ id: "st2", descripcion: "Cambiar la canilla", completada: false, completadaEn: null, completadaPorId: null, completadaPorNombre: null, completadaPorApellido: null, orden: 2 });
 
     // Estado del servidor: arranca según la acción a probar y cambia con ella.
-    let subtareas: SubtareaEdilicia[] = accion === "agregar" ? [completada] : [completada, pendiente];
-    const avance = () => Math.round((subtareas.filter((s) => s.completada).length / subtareas.length) * 100);
+    let tareas: TareaTicket[] = accion === "agregar" ? [completada] : [completada, pendiente];
+    const completadas = () => tareas.filter((t) => t.completada).length;
+    const avance = () => Math.round((completadas() / tareas.length) * 100);
 
     server.use(
       http.get("/api/reparaciones", () =>
         HttpResponse.json([
-          buildReparacion({ id: "rep5", numero: "EDI-0005", porcentajeAvance: avance(), subtareas }),
+          buildReparacion({ id: "rep5", ticketId: "tk5", numero: "EDI-0005", porcentajeAvance: avance() }),
         ]),
       ),
-      http.post("/api/reparaciones/rep5/subtareas", () => {
-        subtareas = [...subtareas, pendiente];
+      http.get("/api/tickets/tk5/tareas", () =>
+        HttpResponse.json({ items: tareas, avance: { total: tareas.length, completadas: completadas(), porcentaje: avance() } }),
+      ),
+      http.get("/api/tickets/tk5/tareas/tecnicos-elegibles", () => HttpResponse.json([])),
+      http.post("/api/tickets/tk5/tareas", () => {
+        tareas = [...tareas, pendiente];
         return HttpResponse.json(pendiente, { status: 201 });
       }),
-      http.delete("/api/reparaciones/subtareas/st2", () => {
-        subtareas = subtareas.filter((s) => s.id !== "st2");
+      http.delete("/api/tickets/tk5/tareas/st2", () => {
+        tareas = tareas.filter((t) => t.id !== "st2");
         return new HttpResponse(null, { status: 204 });
       }),
     );
 
+    // ADMINISTRADOR (el fixture base) con el permiso del módulo: gestiona sin ser el responsable.
     const user = userEvent.setup();
     renderWithProviders(<ReparacionesList />, {
-      user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:BORRADO"] }),
+      user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:MODIFICACION"] }),
     });
 
     await screen.findByText("EDI-0005");
@@ -232,12 +244,15 @@ describe("ReparacionesList — el avance de la fila sigue a las subtareas", () =
     const dialogo = await screen.findByRole("dialog");
 
     if (accion === "agregar") {
-      await user.type(within(dialogo).getByLabelText(/nueva subtarea/i), "Cambiar la canilla");
+      await user.type(await within(dialogo).findByLabelText("Nueva tarea"), "Cambiar la canilla");
       await user.click(within(dialogo).getByRole("button", { name: /^agregar$/i }));
+      await within(dialogo).findByText("Cambiar la canilla");
     } else {
       await user.click(
-        within(dialogo).getByRole("button", { name: `Eliminar subtarea ${pendiente.descripcion}` }),
+        await within(dialogo).findByRole("button", { name: `Eliminar tarea ${pendiente.descripcion}` }),
       );
+      await user.click(await screen.findByRole("button", { name: "Eliminar" }));
+      await waitFor(() => expect(within(dialogo).queryByText("Cambiar la canilla")).not.toBeInTheDocument());
     }
 
     await user.keyboard("{Escape}");

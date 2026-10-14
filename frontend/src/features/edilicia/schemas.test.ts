@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { crearReparacionSchema, crearSubtareaSchema } from "./schemas";
-import { SUBTAREA_DESCRIPCION_MAX_LENGTH, UBICACION_MAX_LENGTH } from "./limites";
+import { crearReparacionSchema } from "./schemas";
+import { UBICACION_MAX_LENGTH } from "./limites";
 
 /**
- * `ubicacion` y la `descripcion` de subtarea no las acotaba ninguna capa: el
+ * `ubicacion` no la acotaba ninguna capa: el
  * valor llegaba a Postgres y moría con 22001 (500 crudo). Cerrado el backend,
  * el front tiene que espejarlo o el usuario cambia un 500 por un 400 remoto,
  * que sigue perdiéndole lo tipeado.
@@ -37,30 +37,11 @@ describe("crearReparacionSchema — tope de ubicacion", () => {
   });
 });
 
-describe("crearSubtareaSchema — tope de descripcion", () => {
-  it("acepta una descripcion en el límite exacto", () => {
-    const r = crearSubtareaSchema.safeParse({ descripcion: largo(SUBTAREA_DESCRIPCION_MAX_LENGTH) });
-    expect(r.success).toBe(true);
-  });
-
-  it("rechaza una descripcion que pasa el tope", () => {
-    const r = crearSubtareaSchema.safeParse({
-      descripcion: largo(SUBTAREA_DESCRIPCION_MAX_LENGTH + 1),
-    });
-    expect(r.success).toBe(false);
-  });
-
-  it("sigue rechazando la descripcion vacía: el tope no reemplaza al mínimo", () => {
-    expect(crearSubtareaSchema.safeParse({ descripcion: "" }).success).toBe(false);
-  });
-});
-
 /**
  * Centinela de VALOR: los casos de arriba derivan sus largos de la constante,
  * así que verifican el cableado pero no el número. Esto lo clava contra el
- * ancho real de las dos columnas.
+ * ancho real de la columna.
  */
-it("los topes coinciden con el ancho de las columnas", () => {
+it("el tope coincide con el ancho de la columna", () => {
   expect(UBICACION_MAX_LENGTH).toBe(255);
-  expect(SUBTAREA_DESCRIPCION_MAX_LENGTH).toBe(255);
 });

@@ -215,3 +215,39 @@ export interface EquipoDeTicket {
 export interface EquipoDeTicketResponse {
   equipo: EquipoDeTicket | null;
 }
+
+// ─── Tareas del ticket (odd/tareas-con-tecnico, T6) ───
+
+/**
+ * Una tarea del ticket (espejo de `TareaTicketResponseDto`,
+ * `backend/src/tickets/interface/dtos/tarea-ticket.dto.ts`). Los nombres valen
+ * `null` si no hay usuario o el backend no lo pudo resolver contra master.
+ */
+export interface TareaTicket {
+  id: string;
+  ticketId: string;
+  descripcion: string;
+  orden: number;
+  tecnicoId: string | null;
+  tecnicoNombre: string | null;
+  tecnicoApellido: string | null;
+  completada: boolean;
+  completadaEn: string | null;
+  completadaPorId: string | null;
+  completadaPorNombre: string | null;
+  completadaPorApellido: string | null;
+  createdAt: string;
+}
+
+/** Avance sobre las tareas activas (espejo de `AvanceTareas` de `avance-tareas.ts`). */
+export interface AvanceTareas {
+  total: number;
+  completadas: number;
+  porcentaje: number;
+}
+
+/** Respuesta de `GET /tickets/:id/tareas`: tareas activas por `orden` y su avance. */
+export interface TareasTicketResponse {
+  items: TareaTicket[];
+  avance: AvanceTareas;
+}

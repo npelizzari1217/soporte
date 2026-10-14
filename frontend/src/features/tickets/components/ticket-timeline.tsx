@@ -7,7 +7,18 @@
  * NO re-filtra, solo renderiza lo recibido y marca visualmente las internas
  * que sí llegan (viewer autorizado).
  */
-import { MessageSquare, RefreshCw, UserCheck, Paperclip, HelpCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  HelpCircle,
+  ListPlus,
+  MessageSquare,
+  Paperclip,
+  RefreshCw,
+  Trash2,
+  Undo2,
+  UserCheck,
+  UserCog,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
 import type { OperacionTicket } from "../types";
@@ -17,6 +28,12 @@ const TIPO_OPERACION_CONFIG: Record<string, { label: string; icon: typeof Messag
   COMENTARIO: { label: "Comentario", icon: MessageSquare },
   ASIGNACION: { label: "Asignación", icon: UserCheck },
   ADJUNTO: { label: "Adjunto", icon: Paperclip },
+  // Tareas del ticket (odd/tareas-con-tecnico, T2/T6): la descripción trae el texto de la tarea.
+  TAREA_CREADA: { label: "Tarea agregada", icon: ListPlus },
+  TAREA_ASIGNADA: { label: "Técnico de tarea", icon: UserCog },
+  TAREA_COMPLETADA: { label: "Tarea completada", icon: CheckCircle2 },
+  TAREA_DESCOMPLETADA: { label: "Tarea descompletada", icon: Undo2 },
+  TAREA_ELIMINADA: { label: "Tarea eliminada", icon: Trash2 },
 };
 
 export interface TicketTimelineProps {

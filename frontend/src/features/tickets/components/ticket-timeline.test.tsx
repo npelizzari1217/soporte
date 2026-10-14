@@ -17,6 +17,11 @@ const TIPO_OPERACION_MAP = new Map<string, string>([
   ["op-comentario", "COMENTARIO"],
   ["op-asignacion", "ASIGNACION"],
   ["op-adjunto", "ADJUNTO"],
+  ["op-tarea-creada", "TAREA_CREADA"],
+  ["op-tarea-asignada", "TAREA_ASIGNADA"],
+  ["op-tarea-completada", "TAREA_COMPLETADA"],
+  ["op-tarea-descompletada", "TAREA_DESCOMPLETADA"],
+  ["op-tarea-eliminada", "TAREA_ELIMINADA"],
 ]);
 
 function buildOperacion(overrides: Partial<OperacionTicket>): OperacionTicket {
@@ -69,5 +74,23 @@ describe("TicketTimeline", () => {
       />,
     );
     expect(screen.queryByText(/interno/i)).not.toBeInTheDocument();
+  });
+
+  // odd/tareas-con-tecnico (T6): los tipos de operación de tareas tienen etiqueta propia, no "Operación".
+  it.each([
+    ["op-tarea-creada", "Tarea agregada"],
+    ["op-tarea-asignada", "Técnico de tarea"],
+    ["op-tarea-completada", "Tarea completada"],
+    ["op-tarea-descompletada", "Tarea descompletada"],
+    ["op-tarea-eliminada", "Tarea eliminada"],
+  ])("tipoOperacionId=%s → %s", (tipoOperacionId, etiqueta) => {
+    render(
+      <TicketTimeline
+        operaciones={[buildOperacion({ id: "x", tipoOperacionId, descripcion: "Cambiar el disco" })]}
+        tipoOperacionCodigoMap={TIPO_OPERACION_MAP}
+      />,
+    );
+    expect(screen.getByText(etiqueta)).toBeInTheDocument();
+    expect(screen.queryByText("Operación")).not.toBeInTheDocument();
   });
 });

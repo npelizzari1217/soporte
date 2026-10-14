@@ -35,6 +35,7 @@ import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
 import { TicketPdfButton } from "./ticket-pdf-button";
+import { TicketTareas } from "./ticket-tareas";
 
 /** Código del tipo de ticket que habilita la consulta del equipo vinculado (satélite `ticket_soporte`). */
 const TIPO_SOPORTE_CODIGO = "SOPORTE";
@@ -79,6 +80,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const tipoOperacionCodigoMap = useMemo(
     () => buildIdToCodigoMap(tiposOperacionQuery.data ?? []),
     [tiposOperacionQuery.data],
+  );
+  const tipoModuloMap = useMemo(
+    () => new Map((tiposQuery.data ?? []).map((tipo) => [tipo.id, tipo.modulo as string])),
+    [tiposQuery.data],
   );
   const tipoNombreMap = useMemo(
     () => new Map((tiposQuery.data ?? []).map((tipo) => [tipo.id, tipo.nombre])),
@@ -162,6 +167,12 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         </Can>
         <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />
       </div>
+
+      {/* Tareas en cualquier tipo de ticket (odd/tareas-con-tecnico, T6; CA1). */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Tareas</h2>
+        <TicketTareas ticketId={ticket.id} asignadoId={ticket.asignadoId} modulo={tipoModuloMap.get(ticket.tipoId)} />
+      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Actividad</h2>
