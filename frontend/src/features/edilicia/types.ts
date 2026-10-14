@@ -18,7 +18,6 @@ export interface TicketEdilicia {
   estadoId: string;
   /** Ubicación física de la reparación, texto libre (ex-catálogo Ubicacion removido). */
   ubicacion: string | null;
-  personalAsignadoId: string | null;
   porcentajeAvance: number;
   createdAt: string;
   updatedAt: string;

@@ -70,7 +70,8 @@ const CODIGO_CAMBIO_ESTADO = 'CAMBIO_ESTADO';
  *
  * Tareas (`tareas_ticket`): se imprimen en cualquier tipo de ticket que tenga
  * alguna activa, con su técnico y su estado, y el avance se calcula sobre ellas
- * (`calcularAvanceTareas`), no sobre la columna vieja `porcentaje_avance`.
+ * (`calcularAvanceTareas`). La columna vieja `porcentaje_avance` se retiró en
+ * odd/tareas-con-tecnico T8.
  *
  * Historial: solo comentarios PÚBLICOS y cambios de estado. Los internos se
  * excluyen dos veces: el timeline se pide sin `tienePermisoObservar` y,

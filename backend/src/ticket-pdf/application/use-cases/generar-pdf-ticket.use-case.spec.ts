@@ -10,7 +10,7 @@
  *   timeline devuelve las notas internas (actor con `TICKETS:OBSERVAR`);
  * - el logo solo se embebe si es png/jpeg: webp o sin logo → nombre en texto;
  * - las tareas salen de `tareas_ticket` en cualquier tipo de ticket, y el avance se calcula sobre
- *   ellas, no con `porcentaje_avance`.
+ *   ellas (la columna `porcentaje_avance` se retiró en T8).
  */
 import { describe, expect, it, vi } from 'vitest';
 
@@ -424,13 +424,11 @@ describe('GenerarPdfTicketUseCase', () => {
       expect(vista.edilicia).toBeNull();
     });
 
-    it('edilicia: la ubicación, sin el porcentaje_avance congelado de la columna vieja', async () => {
+    it('edilicia: la ubicación, y el avance sale de las tareas', async () => {
       const edilicia = TicketEdiliciaEntity.reconstitute(
         {
           ticketId: 'ticket-1',
           ubicacion: 'Edificio Central',
-          personalAsignadoId: null,
-          porcentajeAvance: 80,
         },
         'te-1',
         AHORA,

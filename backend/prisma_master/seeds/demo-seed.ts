@@ -18,7 +18,7 @@
  * 4. Datos de ejemplo en el tenant (~8 tickets variados, 2 compras con
  *    ítems (`CrearCompraUseCase`/`AgregarItemCompraUseCase`, PR-14 de
  *    sdd/redisenio-modulo-compras — el modelo `presupuesto` fue reemplazado
- *    por `ItemCompra`/`OperacionCompra`), 1 ticket edilicio con subtareas,
+ *    por `ItemCompra`/`OperacionCompra`), 1 ticket edilicio con 2 tareas,
  *    2 equipos con componentes + 1 ticket de soporte). La Ayuda NO se
  *    siembra: es única y global, y la mantiene el repositorio (`pnpm sync:ayuda`).
  *    Gateado por un único check (`ticket.count() === 0`) — si el tenant YA
@@ -102,7 +102,7 @@ import {
 } from '../../src/compras/application/use-cases/agregar-item-compra.use-case';
 
 import { CrearTicketEdilicioUseCase } from '../../src/reparaciones/application/use-cases/crear-ticket-edilicio.use-case';
-import { CrearSubtareaUseCase } from '../../src/reparaciones/application/use-cases/crear-subtarea.use-case';
+import { CrearTareaTicketUseCase } from '../../src/tickets/application/use-cases/crear-tarea-ticket.use-case';
 
 import { CrearEquipoUseCase } from '../../src/equipos/application/use-cases/crear-equipo.use-case';
 import { CrearInsumoUseCase } from '../../src/insumos/application/use-cases/crear-insumo.use-case';
@@ -430,7 +430,11 @@ async function crearTicketDemo(
   }
 }
 
-/** Crea 1 ticket edilicio (ubicación como texto libre) con 2 subtareas de ejemplo. */
+/**
+ * Crea 1 ticket edilicio (ubicación como texto libre) con 2 tareas de ejemplo. Desde
+ * odd/tareas-con-tecnico las subtareas son las tareas del ticket base; las da de alta el
+ * ADMINISTRADOR, que puede gestionarlas en cualquier ticket (CA3).
+ */
 async function crearEdiliciaDemo(
   app: INestApplicationContext,
   clienteId: string,
@@ -452,13 +456,19 @@ async function crearEdiliciaDemo(
   if (result.isFail()) {
     throw new Error(`[demo-seed] No se pudo crear el ticket edilicio demo: ${result.getError().message}`);
   }
-  const ticketEdiliciaId = result.getValue().ticketEdilicia.id;
+  const ticketId = result.getValue().ticket.id;
 
-  const crearSubtarea = app.get(CrearSubtareaUseCase);
+  const crearTarea = app.get(CrearTareaTicketUseCase);
+  const actor = {
+    id: usuarios.administrador,
+    esAdministrador: true,
+    tienePermisoVerTodos: true,
+    modulosConModificacion: ['EDILICIA'],
+  };
   for (const descripcion of ['Contactar plomero de confianza', 'Revisar impermeabilización del techo']) {
-    const r = await crearSubtarea.execute({ ticketEdiliciaId, descripcion, autorId: usuarios.tecnico });
+    const r = await crearTarea.execute({ ticketId, descripcion, actor });
     if (r.isFail()) {
-      throw new Error(`[demo-seed] No se pudo crear la subtarea edilicia demo: ${r.getError().message}`);
+      throw new Error(`[demo-seed] No se pudo crear la tarea edilicia demo: ${r.getError().message}`);
     }
   }
 }

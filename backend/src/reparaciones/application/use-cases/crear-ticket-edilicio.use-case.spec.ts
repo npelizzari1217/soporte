@@ -103,7 +103,6 @@ describe('CrearTicketEdilicioUseCase', () => {
     expect(ticket.numero).toBe('EDI-2026-00001');
     expect(ticketEdilicia.ticketId).toBe(ticket.id);
     expect(ticketEdilicia.ubicacion).toBe('Edificio Central');
-    expect(ticketEdilicia.porcentajeAvance).toBe(0);
     expect(ticketRepo.save).toHaveBeenCalledWith(ticket);
     expect(operacionRepo.save).toHaveBeenCalled();
     expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);

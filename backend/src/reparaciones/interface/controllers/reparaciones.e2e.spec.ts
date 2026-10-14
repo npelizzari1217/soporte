@@ -19,9 +19,10 @@
  * Ref spec: sdd/reparacion-bloqueada-por-compra/spec, capability "Vínculo
  * Reparación–Compra". Ref design: D4, D5, D7. Ref tasks: WU5.8, WU5.9.
  *
- * odd/tareas-con-tecnico (T3) suma las rutas viejas de subtareas: ahora leen y
- * escriben `tareas_ticket`, devuelven el mismo shape y aplican la regla del
- * punto 12. El listado calcula el avance sobre esas tareas.
+ * odd/tareas-con-tecnico: el listado embebe las tareas del ticket como
+ * `subtareas` y calcula el avance sobre ellas. T8 retiró las rutas viejas
+ * `/reparaciones/.../subtareas`, la tabla `subtareas_edilicia` y las columnas
+ * `personal_asignado_id` y `porcentaje_avance`.
  */
 import { randomBytes } from 'node:crypto';
 import {
@@ -88,20 +89,6 @@ async function httpGet<T = unknown>(
   const res = await fetch(url, {
     method: 'GET',
     headers: { Accept: 'application/json', ...headers },
-  });
-  const data = (await res.json().catch(() => null)) as T;
-  return { status: res.status, data };
-}
-
-async function httpPatch<T = unknown>(
-  url: string,
-  body: unknown,
-  headers: Headers = {},
-): Promise<{ status: number; data: T }> {
-  const res = await fetch(url, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
   });
   const data = (await res.json().catch(() => null)) as T;
   return { status: res.status, data };
@@ -463,9 +450,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     });
   });
 
-  // ─── Subtareas sobre tareas_ticket (odd/tareas-con-tecnico, T3) ─────────
+  // ─── Avance sobre tareas_ticket (odd/tareas-con-tecnico, T3 y T8) ────────
 
-  describe('rutas viejas de subtareas sobre tareas_ticket (odd/tareas-con-tecnico T3, se retiran en T8)', () => {
+  describe('el listado embebe las tareas del ticket y calcula el avance (odd/tareas-con-tecnico)', () => {
     /** Campos del shape de subtarea que espera `frontend/src/features/edilicia`. */
     const CAMPOS_SUBTAREA = [
       'completada',
@@ -478,14 +465,6 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       'ticketEdiliciaId',
       'updatedAt',
     ];
-
-    interface SubtareaHttp {
-      id: string;
-      ticketEdiliciaId: string;
-      descripcion: string;
-      completada: boolean;
-      completadaPorId: string | null;
-    }
 
     /** Reparación con su ticket base asignado a `asignadoId` (el responsable). */
     async function crearReparacionAsignada(
@@ -509,19 +488,6 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       return { reparacionId: satelite.id, ticketId: ticket.id };
     }
 
-    /** Técnico elegible para Edilicia: rol TECNICO con alguna celda del módulo EDILICIA. */
-    async function crearTecnicoEdilicia(
-      clienteId: string,
-      permisos: string[],
-    ): Promise<{ accessToken: string; usuarioId: string }> {
-      const role = await createRole('TECNICO');
-      const usuario = await createUsuario(randomBytes(3).toString('hex'));
-      await createMembresia(usuario.id, clienteId, role.id);
-      await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
-      const { accessToken } = await login(usuario.email);
-      return { accessToken, usuarioId: usuario.id };
-    }
-
     async function filaDelListado(
       token: string,
       reparacionId: string,
@@ -534,7 +500,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       return listado.data.find((r) => r.id === reparacionId);
     }
 
-    it('leen y escriben tareas_ticket con el shape de siempre, y el listado muestra el avance', async () => {
+    it('el avance del listado sigue a las tareas creadas, completadas y borradas en /tickets/:id/tareas', async () => {
       const responsable = await crearActorConPermisos([
         'EDILICIA:LECTURA',
         'EDILICIA:MODIFICACION',
@@ -542,39 +508,24 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       ]);
       const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
       const auth = bearer(responsable.accessToken);
+      const tareas = `${baseUrl}/tickets/${ticketId}/tareas`;
 
-      const primera = await httpPost<SubtareaHttp>(
-        `${baseUrl}/reparaciones/${reparacionId}/subtareas`,
+      const vacia = await filaDelListado(responsable.accessToken, reparacionId);
+      expect(vacia?.porcentajeAvance).toBe(0);
+      expect(vacia?.subtareas).toEqual([]);
+      // CA9: el campo se retiró del contrato junto con la columna.
+      expect(vacia).not.toHaveProperty('personalAsignadoId');
+
+      const primera = await httpPost<{ id: string }>(
+        tareas,
         { descripcion: 'Cambiar la junta' },
         auth,
       );
-      expect(primera.status).toBe(201);
-      expect(Object.keys(primera.data).sort()).toEqual(CAMPOS_SUBTAREA);
-      expect(primera.data).toMatchObject({
-        ticketEdiliciaId: reparacionId,
-        descripcion: 'Cambiar la junta',
-        completada: false,
-      });
-      const segunda = await httpPost<SubtareaHttp>(
-        `${baseUrl}/reparaciones/${reparacionId}/subtareas`,
-        { descripcion: 'Pintar' },
-        auth,
-      );
+      const segunda = await httpPost<{ id: string }>(tareas, { descripcion: 'Pintar' }, auth);
+      expect([primera.status, segunda.status]).toEqual([201, 201]);
 
-      // La escritura va a la tabla nueva, colgada del ticket base; la vieja no se toca.
-      const filas = await tenantClient.tareaTicket.findMany({ where: { ticketId } });
-      expect(filas.map((f) => f.id).sort()).toEqual([primera.data.id, segunda.data.id].sort());
-      expect(
-        await tenantClient.subtareaEdilicia.count({ where: { ticketEdiliciaId: reparacionId } }),
-      ).toBe(0);
-
-      // Completada por el endpoint NUEVO: el listado de Edilicia ya la cuenta.
-      const porNuevo = await httpPost(
-        `${baseUrl}/tickets/${ticketId}/tareas/${primera.data.id}/completar`,
-        {},
-        auth,
-      );
-      expect(porNuevo.status).toBe(200);
+      const completar = await httpPost(`${tareas}/${primera.data.id}/completar`, {}, auth);
+      expect(completar.status).toBe(200);
       const aMitad = await filaDelListado(responsable.accessToken, reparacionId);
       expect(aMitad?.porcentajeAvance).toBe(50);
       expect(aMitad?.subtareas).toHaveLength(2);
@@ -587,102 +538,51 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         ticketEdiliciaId: reparacionId,
       });
 
-      // Completada por la ruta VIEJA: mismo shape y mismo efecto.
-      const porViejo = await httpPost<SubtareaHttp>(
-        `${baseUrl}/reparaciones/subtareas/${segunda.data.id}/completar`,
-        {},
-        auth,
-      );
-      expect(porViejo.status).toBe(200);
-      expect(Object.keys(porViejo.data).sort()).toEqual(CAMPOS_SUBTAREA);
-      expect(porViejo.data).toMatchObject({
-        completada: true,
-        completadaPorId: responsable.usuarioId,
-      });
+      await httpPost(`${tareas}/${segunda.data.id}/completar`, {}, auth);
       expect((await filaDelListado(responsable.accessToken, reparacionId))?.porcentajeAvance).toBe(
         100,
       );
 
-      // Completar dos veces ya no pisa el crédito: 409.
-      const doble = await httpPost(
-        `${baseUrl}/reparaciones/subtareas/${segunda.data.id}/completar`,
-        {},
-        auth,
+      await httpPost(`${tareas}/${primera.data.id}/descompletar`, {}, auth);
+      expect((await filaDelListado(responsable.accessToken, reparacionId))?.porcentajeAvance).toBe(
+        50,
       );
-      expect(doble.status).toBe(409);
 
-      const baja = await httpDelete(`${baseUrl}/reparaciones/subtareas/${primera.data.id}`, auth);
+      const baja = await httpDelete(`${tareas}/${primera.data.id}`, auth);
       expect(baja.status).toBe(204);
-      const borrada = await tenantClient.tareaTicket.findUniqueOrThrow({
-        where: { id: primera.data.id },
-      });
-      expect(borrada.deletedAt).not.toBeNull();
       const final = await filaDelListado(responsable.accessToken, reparacionId);
       expect(final?.subtareas.map((t) => t.id)).toEqual([segunda.data.id]);
       expect(final?.porcentajeAvance).toBe(100);
-
-      // Una subtarea inexistente sigue siendo un 404.
-      const inexistente = await httpPost(
-        `${baseUrl}/reparaciones/subtareas/00000000-0000-4000-8000-000000000fff/completar`,
-        {},
-        auth,
-      );
-      expect(inexistente.status).toBe(404);
     });
 
-    it('aplican la regla del punto 12, no los permisos fijos de antes', async () => {
+    it('las rutas viejas de subtareas ya no existen (T8): 404 de Nest, sin tocar las tareas', async () => {
       const responsable = await crearActorConPermisos([
         'EDILICIA:LECTURA',
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const clienteId = responsable.clienteId;
       const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
-      const { data: subtarea } = await httpPost<SubtareaHttp>(
-        `${baseUrl}/reparaciones/${reparacionId}/subtareas`,
-        { descripcion: 'Cambiar la junta' },
-        bearer(responsable.accessToken),
-      );
+      const auth = bearer(responsable.accessToken);
+      const tarea = await tenantClient.tareaTicket.create({
+        data: { ticketId, descripcion: 'Cambiar la junta' },
+      });
 
-      // Antes bastaba EDILICIA:ALTAS para agregar; ahora tiene que ser el responsable (CA3).
-      const conAltas = await crearActorConPermisos(
-        ['EDILICIA:ALTAS', 'EDILICIA:LECTURA', 'TICKETS:VER_TODOS'],
-        clienteId,
-      );
-      const agregar = await httpPost(
+      const crear = await httpPost(
         `${baseUrl}/reparaciones/${reparacionId}/subtareas`,
         { descripcion: 'X' },
-        bearer(conAltas.accessToken),
+        auth,
       );
-      expect(agregar.status).toBe(403);
-
-      // Antes bastaba EDILICIA:MODIFICACION para completar; ahora no, si no es su tarea (CA4).
-      const conModificacion = await crearActorConPermisos(
-        ['EDILICIA:MODIFICACION', 'EDILICIA:LECTURA', 'TICKETS:VER_TODOS'],
-        clienteId,
-      );
-      const ajena = await httpPost(
-        `${baseUrl}/reparaciones/subtareas/${subtarea.id}/completar`,
+      const completar = await httpPost(
+        `${baseUrl}/reparaciones/subtareas/${tarea.id}/completar`,
         {},
-        bearer(conModificacion.accessToken),
+        auth,
       );
-      expect(ajena.status).toBe(403);
+      const borrar = await httpDelete(`${baseUrl}/reparaciones/subtareas/${tarea.id}`, auth);
 
-      // Y el técnico de la tarea completa sin EDILICIA:MODIFICACION.
-      const tecnico = await crearTecnicoEdilicia(clienteId, ['EDILICIA:LECTURA']);
-      const asignar = await httpPatch(
-        `${baseUrl}/tickets/${ticketId}/tareas/${subtarea.id}/tecnico`,
-        { tecnicoId: tecnico.usuarioId },
-        bearer(responsable.accessToken),
-      );
-      expect(asignar.status).toBe(200);
-      const propia = await httpPost<SubtareaHttp>(
-        `${baseUrl}/reparaciones/subtareas/${subtarea.id}/completar`,
-        {},
-        bearer(tecnico.accessToken),
-      );
-      expect(propia.status).toBe(200);
-      expect(propia.data.completadaPorId).toBe(tecnico.usuarioId);
+      expect([crear.status, completar.status, borrar.status]).toEqual([404, 404, 404]);
+      const filas = await tenantClient.tareaTicket.findMany({ where: { ticketId } });
+      expect(filas).toHaveLength(1);
+      expect(filas[0]).toMatchObject({ completada: false, deletedAt: null });
     });
   });
 

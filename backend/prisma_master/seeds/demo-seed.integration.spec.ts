@@ -172,7 +172,11 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
           ticketCountTrasPrimera = await tenantClient.ticket.count();
           expect(ticketCountTrasPrimera).toBeGreaterThanOrEqual(8);
           expect(await tenantClient.ticketEdilicia.count()).toBe(1);
-          expect(await tenantClient.subtareaEdilicia.count()).toBe(2);
+          // Las subtareas del ticket edilicio son tareas del ticket (odd/tareas-con-tecnico).
+          const edilicia = await tenantClient.ticketEdilicia.findFirstOrThrow();
+          expect(await tenantClient.tareaTicket.count({ where: { ticketId: edilicia.ticketId } })).toBe(
+            2,
+          );
           expect(await tenantClient.equipoInformatico.count()).toBe(2);
           expect(await tenantClient.componenteEquipo.count()).toBe(2);
           // Los componentes sembrados van vinculados a un insumo repuesto (RAM y SSD).

@@ -60,8 +60,8 @@ export interface CrearTicketEdilicioDto {
  *    (catálogos FIJOS, mismo criterio).
  * 5. **DENTRO de la transacción**: genera el `numero` (prefijo EDI, ADR-4,
  *    ya resuelto), crea `TicketEntity` + `OperacionTicketEntity` de
- *    apertura + `TicketEdiliciaEntity` satélite (porcentajeAvance=0,
- *    personalAsignadoId=null), y persiste las 3 entidades.
+ *    apertura + `TicketEdiliciaEntity` satélite, y persiste las 3
+ *    entidades.
  * 6. **POST-COMMIT** (`txRunner.alCommitear`, mismo criterio que
  *    `CrearTicketUseCase` — GATE G3/defecto #244): publica `TicketCreadoEvent`
  *    para que `AplicarSlaListener` calcule `sla_vence_at`. Un ticket edilicio

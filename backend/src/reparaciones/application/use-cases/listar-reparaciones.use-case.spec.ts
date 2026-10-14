@@ -252,10 +252,8 @@ describe('ListarReparacionesUseCase', () => {
       ]);
     });
 
-    it('calcula el avance al leer sobre las tareas del ticket, no con la columna del satélite', async () => {
+    it('calcula el avance al leer sobre las tareas del ticket', async () => {
       const deps = conNSatelites(2);
-      // La columna dice 80 en la primera: el listado la ignora, porque ya nadie la actualiza.
-      deps.satelites[0].actualizarAvance(80);
       const hecha = makeSubtarea('ticket-uuid-0', 'Cambiar la junta');
       hecha.completar('tecnico-uuid', new Date('2026-10-13T10:00:00Z'));
       const pendiente = makeSubtarea('ticket-uuid-0', 'Pintar');

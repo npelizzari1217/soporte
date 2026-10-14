@@ -28,7 +28,7 @@ export type ExportarReparacionesResult = ArchivoExport;
  * `ListarReparacionesUseCase` YA resuelve el N+1 que este listado tenía
  * (`1 + 2N` consultas fila por fila → 5 consultas constantes, batched:
  * `ediliciaRepo.findAll`, `ticketRepo.findByIds`,
- * `subtareaRepo.findActiveByTicketEdiliciaIds`,
+ * `tareaRepo.listarPorTickets`,
  * `comentarioRepo.contarPorTicketEdilicia`,
  * `reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds`). Escribir
  * el export de la forma "obvia" — traer las reparaciones y después, POR
@@ -89,7 +89,7 @@ export class ExportarReparacionesUseCase {
       { encabezado: 'Ubicación', valor: (r) => r.ticketEdilicia.ubicacion },
       {
         encabezado: 'Avance %',
-        // `porcentajeAvance` es un `Decimal(5,2)` — un PORCENTAJE, no un
+        // `porcentajeAvance` es un porcentaje con 2 decimales — no un
         // importe. Deliberadamente NO usa `montoCsv` (nombrada, documentada
         // y pensada para moneda): reusar una función de moneda para un
         // porcentaje mezclaría semánticas que hoy son distintas y podrían

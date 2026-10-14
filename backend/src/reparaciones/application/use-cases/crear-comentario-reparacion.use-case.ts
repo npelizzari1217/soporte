@@ -22,8 +22,7 @@ export interface CrearComentarioReparacionDto {
  * 1. Carga el `ticket_edilicia` → `TicketEdiliciaNoEncontradoError` si no
  *    existe o está eliminado.
  * 2. Crea la `ComentarioReparacionEntity` (recorta y valida el texto).
- * 3. Persiste (INSERT único — sin transacción, a diferencia de
- *    `CrearSubtareaUseCase`: no hay avance que recalcular ni operación de
+ * 3. Persiste (INSERT único — sin transacción: no hay operación de
  *    timeline que escribir junto, así que no hay nada que hacer atómico).
  *
  * Sin throw para fallos esperados — se modelan con `Result.fail()`.

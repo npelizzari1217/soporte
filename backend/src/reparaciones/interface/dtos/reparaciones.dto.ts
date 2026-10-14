@@ -9,16 +9,7 @@
  * Tarea: T8.6, T9.6.
  */
 import { Transform } from 'class-transformer';
-import {
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  MaxLength,
-  Min,
-  MinLength,
-} from 'class-validator';
+import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
@@ -27,10 +18,6 @@ import {
   TicketEdiliciaEntity,
   TICKET_EDILICIA_UBICACION_MAX_LENGTH,
 } from '../../domain/entities/ticket-edilicia.entity';
-import {
-  SubtareaEdiliciaEntity,
-  SUBTAREA_DESCRIPCION_MAX_LENGTH,
-} from '../../domain/entities/subtarea-edilicia.entity';
 import {
   COMENTARIO_TEXTO_MAX_LENGTH,
   ComentarioReparacionEntity,
@@ -67,22 +54,6 @@ export class CreateTicketEdilicioHttpDto {
   ubicacion?: string | null;
 }
 
-/** Body de `POST /reparaciones/:reparacionId/subtareas` (F3-E3). `autorId` viene del JWT. */
-export class CreateSubtareaHttpDto {
-  @IsString()
-  @MinLength(1)
-  // Al menos un carácter visible: la tarea genérica (odd/tareas-con-tecnico, T3) rechaza una
-  // descripción en blanco, y acá se corta como 400 en vez de llegar a la entidad.
-  @Matches(/\S/, { message: 'descripcion no puede estar vacía' })
-  @MaxLength(SUBTAREA_DESCRIPCION_MAX_LENGTH)
-  descripcion!: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  orden?: number;
-}
-
 /**
  * Body de `POST /reparaciones/:reparacionId/comentarios`. `autorId` viene del
  * JWT, nunca del cliente HTTP.
@@ -115,6 +86,8 @@ export class VincularCompraHttpDto {
 /**
  * Shape de respuesta unificado para un ticket edilicio (F3-E1).
  * `id` = `ticketEdilicia.id` (satélite); `ticketId` = id del `Ticket` base.
+ * `porcentajeAvance` se calcula sobre las tareas activas del ticket (odd/tareas-con-tecnico): ya no
+ * es una columna. `personalAsignadoId` se retiró en T8 (CA9).
  */
 export interface TicketEdiliciaConTicketResponseDto {
   id: string;
@@ -123,16 +96,19 @@ export interface TicketEdiliciaConTicketResponseDto {
   titulo: string;
   estadoId: string;
   ubicacion: string | null;
-  personalAsignadoId: string | null;
   porcentajeAvance: number;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Convierte `{ticket, ticketEdilicia}` al shape de respuesta unificado. */
+/**
+ * Convierte `{ticket, ticketEdilicia}` al shape de respuesta unificado. `porcentajeAvance` lo aporta
+ * quien llama; el default 0 es el de una reparación recién creada, que todavía no tiene tareas.
+ */
 export function toTicketEdiliciaResponseDto(
   ticket: TicketEntity,
   ticketEdilicia: TicketEdiliciaEntity,
+  porcentajeAvance = 0,
 ): TicketEdiliciaConTicketResponseDto {
   return {
     id: ticketEdilicia.id,
@@ -141,8 +117,7 @@ export function toTicketEdiliciaResponseDto(
     titulo: ticket.titulo,
     estadoId: ticket.estadoId,
     ubicacion: ticketEdilicia.ubicacion,
-    personalAsignadoId: ticketEdilicia.personalAsignadoId,
-    porcentajeAvance: ticketEdilicia.porcentajeAvance,
+    porcentajeAvance,
     createdAt: ticketEdilicia.createdAt.toISOString(),
     updatedAt: ticketEdilicia.updatedAt.toISOString(),
   };
@@ -185,9 +160,8 @@ export function toReparacionListItemResponseDto(
   item: ReparacionConTicket,
 ): ReparacionListItemResponseDto {
   return {
-    ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia),
-    // Calculado al leer sobre las tareas del ticket (odd/tareas-con-tecnico, T3), no la columna.
-    porcentajeAvance: item.porcentajeAvance,
+    // Calculado al leer sobre las tareas del ticket (odd/tareas-con-tecnico, T3).
+    ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia, item.porcentajeAvance),
     subtareas: item.subtareas.map((tarea) =>
       toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, item.ticketEdilicia.id),
     ),
@@ -200,7 +174,10 @@ export function toReparacionListItemResponseDto(
   };
 }
 
-/** Shape de respuesta de una subtarea edilicia. */
+/**
+ * Shape de respuesta de una subtarea edilicia, embebida en `GET /reparaciones`. Desde
+ * odd/tareas-con-tecnico es una tarea del ticket base con el id del satélite.
+ */
 export interface SubtareaEdiliciaResponseDto {
   id: string;
   ticketEdiliciaId: string;
@@ -211,23 +188,6 @@ export interface SubtareaEdiliciaResponseDto {
   orden: number;
   createdAt: string;
   updatedAt: string;
-}
-
-/** Convierte `SubtareaEdiliciaEntity` al shape de respuesta HTTP. */
-export function toSubtareaEdiliciaResponseDto(
-  subtarea: SubtareaEdiliciaEntity,
-): SubtareaEdiliciaResponseDto {
-  return {
-    id: subtarea.id,
-    ticketEdiliciaId: subtarea.ticketEdiliciaId,
-    descripcion: subtarea.descripcion,
-    completada: subtarea.completada,
-    completadaEn: subtarea.completadaEn ? subtarea.completadaEn.toISOString() : null,
-    completadaPorId: subtarea.completadaPorId,
-    orden: subtarea.orden,
-    createdAt: subtarea.createdAt.toISOString(),
-    updatedAt: subtarea.updatedAt.toISOString(),
-  };
 }
 
 /**
@@ -274,9 +234,9 @@ export function toComentarioReparacionResponseDto(
 
 /**
  * Convierte una tarea del ticket al shape de subtarea que espera el frontend de Edilicia
- * (odd/tareas-con-tecnico, T3). Mismos campos y mismo formato que `toSubtareaEdiliciaResponseDto`:
- * la migración de T1 conservó los ids, y `ticketEdiliciaId` lo aporta quien llama. T8 lo retira
- * junto con las rutas viejas.
+ * (odd/tareas-con-tecnico, T3): la migración de T1 conservó los ids, y `ticketEdiliciaId` lo aporta
+ * quien llama. Lo usa el listado: el respaldo de solo lectura del diálogo de Edilicia (T6) depende
+ * de estas `subtareas` embebidas.
  */
 export function toSubtareaEdiliciaResponseDtoDesdeTarea(
   tarea: TareaTicketEntity,

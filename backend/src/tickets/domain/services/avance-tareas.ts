@@ -5,8 +5,8 @@
  * cuentan las tareas activas (`deletedAt === null`), en el numerador y en el denominador. Sin
  * tareas activas el avance es 0.
  *
- * Función pura, sin Prisma ni NestJS. Es la generalización de `AvanceCalculator` de reparaciones,
- * que ahora delega acá.
+ * Función pura, sin Prisma ni NestJS. Generaliza el `AvanceCalculator` de reparaciones, que se
+ * retiró en T8: el listado de reparaciones y el PDF calculan con esta función.
  */
 export interface AvanceTareas {
   /** Tareas activas. */

@@ -13,9 +13,9 @@ import {
 export const TAREA_DESCRIPCION_MAX_LENGTH = 255;
 
 /**
- * Precondición de `descripcion`: no vacía y dentro del tope. `throw` plano, igual que en
- * `SubtareaEdiliciaEntity`: el DTO la valida en el borde, así que llegar acá con un valor inválido
- * es un error de programación. No se aplica en `reconstitute()`.
+ * Precondición de `descripcion`: no vacía y dentro del tope. `throw` plano: el DTO la valida en
+ * el borde, así que llegar acá con un valor inválido es un error de programación. No se aplica en
+ * `reconstitute()`.
  */
 function validarDescripcion(descripcion: string): void {
   if (descripcion.trim().length === 0) {

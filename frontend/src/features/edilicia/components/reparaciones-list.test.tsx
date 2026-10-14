@@ -16,7 +16,6 @@ function buildReparacion(overrides: Partial<ReparacionListItem> = {}): Reparacio
     titulo: "Reparar cañería",
     estadoId: "estado-nuevo",
     ubicacion: "Edificio Central",
-    personalAsignadoId: null,
     porcentajeAvance: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",

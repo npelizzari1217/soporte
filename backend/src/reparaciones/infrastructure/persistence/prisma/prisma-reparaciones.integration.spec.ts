@@ -1,6 +1,6 @@
 /**
- * T7.1, T7.3 [INTEGRATION][RED→GREEN] — PrismaTicketEdiliciaRepository,
- * PrismaSubtareaEdiliciaRepository (save / find / delete) contra Postgres
+ * T7.1, T7.3 [INTEGRATION][RED→GREEN] — PrismaTicketEdiliciaRepository y
+ * PrismaComentarioReparacionRepository contra Postgres
  * REAL (`soporte_tenant_test`). `ubicacion` es texto libre embebido en
  * `ticket_edilicia` (ex-catálogo Ubicacion/PrismaUbicacionRepository
  * removido).
@@ -21,12 +21,10 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 
 import { PrismaTicketRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTicketEdiliciaRepository } from './prisma-ticket-edilicia.repository';
-import { PrismaSubtareaEdiliciaRepository } from './prisma-subtarea-edilicia.repository';
 import { PrismaComentarioReparacionRepository } from './prisma-comentario-reparacion.repository';
 
 import { TicketEntity, TicketProps } from '../../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../../domain/entities/ticket-edilicia.entity';
-import { SubtareaEdiliciaEntity } from '../../../domain/entities/subtarea-edilicia.entity';
 import { ComentarioReparacionEntity } from '../../../domain/entities/comentario-reparacion.entity';
 
 const MASTER_TEST_URL =
@@ -43,7 +41,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
 
   let ticketRepo: PrismaTicketRepository;
   let ediliciaRepo: PrismaTicketEdiliciaRepository;
-  let subtareaRepo: PrismaSubtareaEdiliciaRepository;
   let comentarioRepo: PrismaComentarioReparacionRepository;
 
   let tipoEdiliciaId: string;
@@ -90,9 +87,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
         // Los comentarios van PRIMERO: su FK a ticket_edilicia es ON DELETE
         // RESTRICT, así que borrar el satélite antes falla.
         await tenantClient.comentarioReparacion.deleteMany({
-          where: { ticketEdilicia: { ticketId: { in: ids } } },
-        });
-        await tenantClient.subtareaEdilicia.deleteMany({
           where: { ticketEdilicia: { ticketId: { in: ids } } },
         });
         await tenantClient.ticketEdilicia.deleteMany({ where: { ticketId: { in: ids } } });
@@ -152,7 +146,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
 
     ticketRepo = new PrismaTicketRepository(tenantContext);
     ediliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
-    subtareaRepo = new PrismaSubtareaEdiliciaRepository(tenantContext);
     comentarioRepo = new PrismaComentarioReparacionRepository(tenantContext);
 
     // Arrancar en limpio: si una corrida anterior quedó a medias, sus filas
@@ -196,7 +189,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
         expect(found).not.toBeNull();
         expect(found!.ticketId).toBe(ticket.id);
         expect(found!.ubicacion).toBe('T7 Ubicacion Ticket');
-        expect(found!.porcentajeAvance).toBe(0);
       });
     });
 
@@ -210,135 +202,15 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
       });
     });
 
-    it('save() upsert — persiste actualizarAvance() y asignarPersonal()', async () => {
-      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Ticket 3');
-      edilicia.actualizarAvance(66.67);
-      edilicia.asignarPersonal(DUMMY_USUARIO_ID);
+    it('save() de un satélite existente es upsert: no duplica la fila ni pisa createdAt', async () => {
+      const { ticket, edilicia } = await crearTicketConSatelite('T7 Ubicacion Ticket 3');
 
       await withTenant(async () => {
+        const antes = await ediliciaRepo.findById(edilicia.id);
         await ediliciaRepo.save(edilicia);
-        const found = await ediliciaRepo.findById(edilicia.id);
-        expect(found!.porcentajeAvance).toBe(66.67);
-        expect(found!.personalAsignadoId).toBe(DUMMY_USUARIO_ID);
-      });
-    });
-  });
-
-  describe('PrismaSubtareaEdiliciaRepository', () => {
-    it('save() + findActiveByTicketEdiliciaId() excluye soft-deleted y ordena por orden', async () => {
-      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Subtareas');
-      const sub1 = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: edilicia.id,
-        descripcion: 'Subtarea 1',
-        orden: 1,
-      });
-      const sub2 = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: edilicia.id,
-        descripcion: 'Subtarea 2 (a borrar)',
-        orden: 2,
-      });
-
-      await withTenant(async () => {
-        await subtareaRepo.save(sub1);
-        await subtareaRepo.save(sub2);
-        await subtareaRepo.delete(sub2.id);
-
-        const activas = await subtareaRepo.findActiveByTicketEdiliciaId(edilicia.id);
-        expect(activas.map((s) => s.id)).toEqual([sub1.id]);
-
-        const borrada = await subtareaRepo.findById(sub2.id);
-        expect(borrada!.isDeleted()).toBe(true);
-      });
-    });
-
-    it('findActiveByTicketEdiliciaIds() agrupa por reparación preservando el orden y el filtro de activas', async () => {
-      const primera = await crearTicketConSatelite('T7 Ubicacion Subtareas Lote A');
-      const segunda = await crearTicketConSatelite('T7 Ubicacion Subtareas Lote B');
-      const sinSubtareas = await crearTicketConSatelite('T7 Ubicacion Subtareas Lote C');
-
-      // Mismo `orden` a propósito en las dos primeras: así el desempate por
-      // `created_at ASC` queda verificado y no tapado por el `orden`.
-      const segundaEnOrden = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: primera.edilicia.id,
-        descripcion: 'Empate de orden, creada después',
-        orden: 1,
-      });
-      Object.assign(segundaEnOrden, { _createdAt: new Date('2026-08-18T12:00:00.000Z') });
-      const primeraEnOrden = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: primera.edilicia.id,
-        descripcion: 'Empate de orden, creada antes',
-        orden: 1,
-      });
-      Object.assign(primeraEnOrden, { _createdAt: new Date('2026-08-18T09:00:00.000Z') });
-      const terceraEnOrden = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: primera.edilicia.id,
-        descripcion: 'Orden mayor, va última',
-        orden: 5,
-      });
-      const borrada = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: primera.edilicia.id,
-        descripcion: 'Soft-deleted, no debe volver',
-        orden: 0,
-      });
-      const deLaSegunda = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: segunda.edilicia.id,
-        descripcion: 'Subtarea de otra reparación',
-        orden: 1,
-      });
-
-      await withTenant(async () => {
-        // Insertadas fuera de orden: el orden lo tiene que poner la consulta,
-        // no la secuencia de inserts.
-        for (const subtarea of [
-          terceraEnOrden,
-          segundaEnOrden,
-          borrada,
-          primeraEnOrden,
-          deLaSegunda,
-        ]) {
-          await subtareaRepo.save(subtarea);
-        }
-        await subtareaRepo.delete(borrada.id);
-
-        const porReparacion = await subtareaRepo.findActiveByTicketEdiliciaIds([
-          primera.edilicia.id,
-          segunda.edilicia.id,
-          sinSubtareas.edilicia.id,
-        ]);
-
-        expect(porReparacion.get(primera.edilicia.id)?.map((s) => s.id)).toEqual([
-          primeraEnOrden.id,
-          segundaEnOrden.id,
-          terceraEnOrden.id,
-        ]);
-        expect(porReparacion.get(segunda.edilicia.id)?.map((s) => s.id)).toEqual([deLaSegunda.id]);
-        // Sin subtareas activas no hay entrada en el Map: el `[]` lo resuelve
-        // el consumidor, igual que el `0` del conteo de comentarios.
-        expect(porReparacion.has(sinSubtareas.edilicia.id)).toBe(false);
-      });
-    });
-
-    it('findActiveByTicketEdiliciaIds() con lista vacía devuelve un Map vacío sin consultar', async () => {
-      await withTenant(async () => {
-        expect(await subtareaRepo.findActiveByTicketEdiliciaIds([])).toEqual(new Map());
-      });
-    });
-
-    it('save() upsert — persiste completar()', async () => {
-      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Subtareas 2');
-      const sub = SubtareaEdiliciaEntity.create({
-        ticketEdiliciaId: edilicia.id,
-        descripcion: 'Subtarea a completar',
-      });
-
-      await withTenant(async () => {
-        await subtareaRepo.save(sub);
-        sub.completar(DUMMY_USUARIO_ID);
-        await subtareaRepo.save(sub);
-
-        const found = await subtareaRepo.findById(sub.id);
-        expect(found!.completada).toBe(true);
-        expect(found!.completadaPorId).toBe(DUMMY_USUARIO_ID);
+        const despues = await ediliciaRepo.findById(edilicia.id);
+        expect(despues!.createdAt).toEqual(antes!.createdAt);
+        expect(await tenantClient.ticketEdilicia.count({ where: { ticketId: ticket.id } })).toBe(1);
       });
     });
   });

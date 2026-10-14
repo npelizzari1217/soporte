@@ -33,11 +33,11 @@ function validarLargoUbicacion(ubicacion?: string | null): void {
 /**
  * TicketEdiliciaProps — shape de las propiedades del satélite de reparaciones
  * edilicias. Satélite 1:0..1 de `Ticket` (Fase 2) para tickets de tipo
- * EDILICIA. El porcentaje de avance se recalcula (`AvanceCalculator`) en
- * cada mutación de subtarea y se persiste.
+ * EDILICIA. Sin imports de Prisma ni NestJS — dominio puro.
  *
- * NORMALIZADO: guarda IDs (`personalAsignadoId` es soft ref cross-DB a
- * master.usuarios, sin FK). Sin imports de Prisma ni NestJS — dominio puro.
+ * El avance ya no vive acá: se calcula al leer sobre las tareas del ticket
+ * (`calcularAvanceTareas`). `personalAsignadoId` y `porcentajeAvance` se
+ * retiraron en odd/tareas-con-tecnico T8.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1, F3-E3, F3-E4. Ref design:
  * "Firmas TS clave" (TicketEdiliciaEntity). Tarea: T6.3.
@@ -47,21 +47,13 @@ export interface TicketEdiliciaProps {
   ticketId: string;
   /** Ubicación física donde ocurre la reparación (texto libre, opcional). */
   ubicacion: string | null;
-  /** Soft ref → master.usuarios.id. NULL hasta que se asigne personal específico. */
-  personalAsignadoId: string | null;
-  /** Porcentaje de avance derivado de las subtareas activas (0.00 - 100.00). */
-  porcentajeAvance: number;
 }
 
 /**
  * TicketEdiliciaEntity — satélite 1:0..1 del ticket para el flujo EDILICIA.
  *
  * Reglas de dominio (F3-E1):
- * - Al crear: porcentajeAvance = 0, personalAsignadoId = null.
- * - actualizarAvance(): recibe el nuevo porcentaje calculado por
- *   `AvanceCalculator` (llamado por `CrearSubtareaUseCase`/
- *   `CompletarSubtareaUseCase`/`EliminarSubtareaUseCase`).
- * - Completar la última subtarea (avance→100) NO transiciona el ticket a
+ * - Completar la última tarea (avance→100) NO transiciona el ticket a
  *   RESUELTO automáticamente (ADR-2, decisión deliberada — sin máquina
  *   custom que acople el core a este satélite).
  *
@@ -75,9 +67,8 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
 
   /**
    * Factory method para una nueva instancia de `ticket_edilicia`.
-   * `porcentajeAvance` comienza en 0; `personalAsignadoId` en `null`.
    *
-   * @param props Solo `ticketId`/`ubicacion` — el resto son invariantes de creación.
+   * @param props `ticketId` y `ubicacion` opcional.
    * @param id    UUID opcional. Si no se provee, se genera un UUIDv7 nuevo.
    */
   static create(
@@ -89,8 +80,6 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
       {
         ticketId: props.ticketId,
         ubicacion: props.ubicacion ?? null,
-        personalAsignadoId: null,
-        porcentajeAvance: 0,
       },
       id,
     );
@@ -120,38 +109,5 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
 
   get ubicacion(): string | null {
     return this.props.ubicacion;
-  }
-
-  get personalAsignadoId(): string | null {
-    return this.props.personalAsignadoId;
-  }
-
-  get porcentajeAvance(): number {
-    return this.props.porcentajeAvance;
-  }
-
-  // ─── Comportamiento de dominio ─────────────────────────────────────────
-
-  /**
-   * Actualiza el porcentaje de avance derivado de subtareas. Llamado por
-   * los use cases DESPUÉS de recalcular con `AvanceCalculator`.
-   *
-   * @param nuevoAvance Nuevo porcentaje calculado (0.00 - 100.00).
-   */
-  actualizarAvance(nuevoAvance: number): void {
-    this.props.porcentajeAvance = nuevoAvance;
-    this.touch();
-  }
-
-  /**
-   * Asigna (o desasigna, con `null`) el personal de mantenimiento ejecutor
-   * de la reparación. La validación de existencia cross-DB es
-   * responsabilidad del use case correspondiente.
-   *
-   * @param personalId UUID del usuario técnico de mantenimiento, o `null` para desasignar.
-   */
-  asignarPersonal(personalId: string | null): void {
-    this.props.personalAsignadoId = personalId;
-    this.touch();
   }
 }

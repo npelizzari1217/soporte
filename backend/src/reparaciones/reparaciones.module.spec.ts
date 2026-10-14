@@ -13,7 +13,6 @@ import { ReparacionesModule } from './reparaciones.module';
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_EDILICIA_REPOSITORY } from './domain/ports/i-ticket-edilicia.repository';
-import { SUBTAREA_EDILICIA_REPOSITORY } from './domain/ports/i-subtarea-edilicia.repository';
 import { COMENTARIO_REPARACION_REPOSITORY } from './domain/ports/i-comentario-reparacion.repository';
 import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
@@ -29,13 +28,17 @@ describe('ReparacionesModule wiring (T9.7)', () => {
     expect(imports).toContain(TicketsModule);
   });
 
-  it.each([
-    TICKET_EDILICIA_REPOSITORY,
-    SUBTAREA_EDILICIA_REPOSITORY,
-    COMENTARIO_REPARACION_REPOSITORY,
-  ])('%s está exportado', (token) => {
+  it.each([TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY])(
+    '%s está exportado',
+    (token) => {
+      const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
+      expect(exportsList).toContain(token);
+    },
+  );
+
+  it('ya no exporta el repositorio de subtareas (odd/tareas-con-tecnico T8)', () => {
     const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
-    expect(exportsList).toContain(token);
+    expect(exportsList).toHaveLength(2);
   });
 
   it.each([CrearComentarioReparacionUseCase, ListarComentariosReparacionUseCase])(
