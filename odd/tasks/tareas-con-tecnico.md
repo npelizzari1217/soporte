@@ -91,13 +91,36 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T7 — Frontend: indicador del dashboard** (~200): muestra la métrica de T4. Ruta: delegada. Salió en 161 líneas, commit `74ebc929`.
 - [x] **T8 — Retiro** (~200): migración que borra `subtareas_edilicia` y `ticket_edilicia.personal_asignado_id` (y, por decisión del dueño del 2026-10-14, `ticket_edilicia.porcentaje_avance`), con `rollback.sql`. También se borra el código viejo que ya no se usa. Ruta: delegada. Salió en 2914 líneas (486 más y 2428 menos), commit `8f169eb1`.
 - [ ] **T9 — Docs y cierre** (~150):
-  - runbook, con la migración con datos y el orden de despliegue de T1 y T8;
-  - deuda de Ayuda;
-  - declaración Cumplida o Desviación en el roadmap;
-  - suites completas;
-  - `judgment-day`, porque el cambio toca datos existentes y permisos.
+  - [x] runbook, con la migración con datos y el orden de despliegue de T1 y T8;
+  - [x] deuda de Ayuda (ver "Deuda de Ayuda" más abajo);
+  - [x] declaración Cumplida o Desviación en el roadmap;
+  - [ ] suites completas;
+  - [ ] `judgment-day`, porque el cambio toca datos existentes y permisos.
 
   Ruta: delegada para la verificación.
+
+## Deuda de Ayuda
+La escritura de artículos está en pausa (`CLAUDE.md`). Lo nuevo de este punto que no tiene
+artículo, reunido de los Progreso y de los commits de T3b, T6 y T7; la misma lista está en
+"Deuda de Ayuda" de `docs/roadmap-comercial.md`:
+- **La sección "Tareas" del detalle de un ticket de cualquier tipo** (T6): alta, técnico por
+  tarea con el selector de elegibles, completar y descompletar, borrar con confirmación, quién
+  ve cada botón y el avance. Hoy solo la describe, para Edilicia, `reparaciones-edilicias.md`.
+- **Las cinco entradas nuevas del historial** (T2 y T6): "Tarea agregada", "Técnico de tarea",
+  "Tarea completada", "Tarea descompletada" y "Tarea eliminada".
+- **El indicador "Tareas completadas por técnico" del dashboard** (T4 y T7): se atribuye a quien
+  completó, no al técnico asignado ni al responsable, y cuenta por la fecha de completado dentro
+  del ciclo, aunque el ticket sea de otro ciclo.
+- **La visibilidad por tarea** (T3b): el técnico de una tarea activa ve el ticket en el detalle,
+  en el historial y en sus tareas, aunque no tenga `TICKETS:VER_TODOS`. El listado ya lo dice
+  (ver abajo); falta el resto.
+
+Artículos que el punto volvió falsos, corregidos:
+- `reparaciones-edilicias.md` y `reparaciones-listado.md`, en T6 (y la tabla de permisos, en
+  `7299defb`).
+- `tickets-listado.md`, en T9: decía que sin permiso para ver todos el listado muestra
+  "únicamente los que vos creaste", y desde T3b también muestra los tickets donde el usuario es
+  el técnico de una tarea activa.
 
 ## Verificación
 - **Por tarea:** lint, typecheck y los tests del módulo.
@@ -308,3 +331,23 @@ Salen de la decisión de producto, viñeta por viñeta.
     - **Límites del rollback de T8:** solo vuelven las tareas de tickets con satélite de Edilicia; se pierde el técnico de cada tarea; `personal_asignado_id` vuelve en NULL (nunca se usó); `porcentaje_avance` se recalcula; no borra la fila de `_prisma_migrations`. Para volver al código de T7 hay que correr primero este rollback: el cliente Prisma de T7 lee las dos columnas.
   - **Cierre de los dos chequeos en rojo** (coordinador, commit `dfed21b5`): el spec de integración del seeder pasa a esperar los 10 `tipo_operacion` (los cinco de R19 más los cinco `TAREA_*`, que ahora también lista el seeder), y la base de `check-casts-en-specs.mjs` baja a 594 en 111. Verificación: `pnpm lint` (backend) en 0 errores; `pnpm vitest run src/reparaciones src/tickets src/ticket-pdf src/clientes`: 156 archivos y 1473 tests en verde; `node scripts/check-casts-en-specs.mjs`: 594 en 111, el ratchet se sostiene. La suite completa del backend se vuelve a correr en T9.
   - Próximo paso: T9.
+- 2026-10-14: docs de T9 en `feat/tareas-con-tecnico-t9` (apilada sobre T8). Ruta: delegada.
+  - **Runbook:** sección "Tareas con técnico (punto 12)" en `DEPLOY-VPS-runbook.md`, antes de "Cuando algo falla". Lleva:
+    - las cuatro migraciones tenant en orden (`20261013140000_tareas_ticket`, `20261013150000_tipos_operacion_tareas`, `20261013160000_tareas_ticket_indice_tecnico` y `20261014120000_retiro_subtareas_edilicia`), confirmadas contra `backend/prisma_tenant/migrations/`;
+    - que un solo deploy las aplica en orden base por base, así que la copia va antes del borrado, y que `migrate-tenants.js` corta en el primer inquilino que falla;
+    - por qué partir T1 y T8 en dos deploys se puede pero no aporta;
+    - el precheck de solo lectura por base, derivado del CHECK de la migración de T1 (violaciones más la foto de subtareas, completadas y bajas), qué hacer si alguna fila lo viola o si falta la tabla, y la repetición del precheck con los servicios detenidos después de `predeploy-dump.ps1`;
+    - la verificación posterior (conteos contra la foto, `con_tecnico = 0` y las estructuras retiradas) y el smoke del detalle, Edilicia, PDF y dashboard;
+    - el rollback (los `rollback.sql` en orden inverso, siendo el de T8 el único imprescindible, y después el código) con lo que no vuelve, incluidas las filas de `_prisma_migrations`.
+    - Las bases salen del registro de `clientes`, sin nombres hardcodeados.
+  - **Roadmap:** se siguió el precedente de webhooks (T8 de `odd/tasks/webhooks.md`). La fila del punto 12 queda "En curso", implementada en la cadena local y pendiente de `judgment-day`, merge y deploy: **no es HECHO** hasta el deploy. La decisión declara **Cumplida** en CA1 a CA10, sin desviaciones. Dos notas:
+    - el corte del período de la métrica en la medianoche UTC queda para el `judgment-day`;
+    - el checklist de solo lectura y sin técnico para un lector de Edilicia que no ve el ticket (T6) se declara como decisión de implementación que la decisión no cubre, no como desviación, porque conserva lo que ese lector ya veía y no le muestra nada nuevo.
+  - **Deuda de Ayuda:** reunida en la sección "Deuda de Ayuda" de este documento y en la del roadmap. **Ayuda falsa:** el grep de `subtarea`, `porcentaje`, `personal asignado`, `avance`, los permisos y la visibilidad encontró una afirmación vencida en `tickets-listado.md` ("únicamente los que vos creaste", falso desde T3b), y se corrigió. `reparaciones-edilicias.md` y `reparaciones-listado.md` siguen siendo verdaderas.
+  - **Verificación:**
+    - `node scripts/check-roadmap-fresco.mjs`: el roadmap está fresco (ancla `1dcdcaa2`, 45 commits de distancia).
+    - backend: `pnpm lint` 0 errores; `pnpm typecheck` 0 errores; `pnpm test` 731 archivos y 8728 tests en verde (unos 26 minutos).
+    - frontend: `pnpm lint` sin warnings ni errores; `pnpm type-check` 0 errores; `pnpm test` 273 archivos y 2272 tests en verde.
+    - `node scripts/check-casts-en-specs.mjs`: 594 en 111, igual que la base.
+  - El ítem "suites completas" queda sin tildar para que lo cierre la verificación de cierre, aunque las suites ya dieron verde sobre este estado.
+  - Próximo paso: `judgment-day`.
