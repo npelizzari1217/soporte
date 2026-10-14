@@ -88,7 +88,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T4 — Métrica del dashboard** (~250): "tareas completadas por técnico" en el período, por `completadaPorId`, respetando los filtros y el alcance del TECNICO. Ruta: delegada. Salió en 551 líneas, commit `65e304eb`.
 - [x] **T5 — PDF** (~150): el PDF lee la tabla nueva e imprime cada tarea con su técnico y su estado. Ruta: delegada. Salió en 340 líneas, commit `0c642473`.
 - [x] **T6 — Frontend: tareas en el ticket** (~400): sección "Tareas" en el detalle del ticket, con avance, alta, asignación con selector de técnicos elegibles, completar, descompletar y borrar. El diálogo de Edilicia pasa a usar lo mismo. Se corrigen `backend/ayuda/reparaciones-edilicias.md` y `reparaciones-listado.md` en la misma unidad. Ruta: delegada. Salió en 1511 líneas, commit `ac227605`.
-- [ ] **T7 — Frontend: indicador del dashboard** (~200): muestra la métrica de T4. Ruta: delegada.
+- [x] **T7 — Frontend: indicador del dashboard** (~200): muestra la métrica de T4. Ruta: delegada. Salió en 161 líneas, commit `74ebc929`.
 - [ ] **T8 — Retiro** (~200): migración que borra `subtareas_edilicia` y `ticket_edilicia.personal_asignado_id`, con `rollback.sql`. También se borra el código viejo que ya no se usa. Ruta: delegada.
 - [ ] **T9 — Docs y cierre** (~150):
   - runbook, con la migración con datos y el orden de despliegue de T1 y T8;
@@ -263,3 +263,19 @@ Salen de la decisión de producto, viñeta por viñeta.
     - `pnpm test`: 273 archivos y 2263 tests en verde.
     - `node scripts/check-casts-en-specs.mjs` (raíz): 617 en 114, igual que la base.
   - Próximo paso: T7.
+- 2026-10-14: T7 cerrada en `74ebc929` (rama `feat/tareas-con-tecnico-t7`, apilada sobre T6). Salió en 161 líneas: unas 58 de código y 103 de tests. Ruta: delegada.
+  - **Tarjeta:** "Tareas completadas por técnico" en `dashboard-view.tsx`, entre "Carga por agente" y "% Cumplimiento SLA", con el mismo `HBarChart` que la carga por agente. Vacío: "Sin tareas completadas en este ciclo.". Respeta el ciclo del filtro porque sale de la misma respuesta de `useMetricas(cicloId)`; el hook no cambió.
+  - **Tipo** (`types.ts`): `TareasCompletadasTecnico` y `tareasCompletadasPorTecnico?` en `MetricasDashboard`. Es opcional a propósito: un backend anterior a T4 no lo manda. El dashboard no valida la respuesta con Zod, así que no hay schema que tocar.
+  - **Mapeo** (`toTareasCompletadasChartData` en `lib/metricas-map.ts`): nombre y apellido unidos, salteando la parte que sea `null` o vacía; sin ninguna, la etiqueta neutra "Usuario" (`NOMBRE_USUARIO_AUSENTE`). `undefined` se lee como `[]`. Conserva el orden del backend; no reordena. No usa el map de `GET /usuarios`, porque el nombre ya viaja en la respuesta.
+  - **Decisión — vacío general del ciclo:** el `EmptyState` "Sin datos" del dashboard ahora también exige que no haya tareas completadas. T4 cuenta una tarea de un ticket de otro ciclo en el período en que se completó, así que un ciclo sin tickets puede tener tareas; antes el vacío general las habría escondido.
+  - **Pendiente menor:** `HBarChart` y su tabla accesible usan la etiqueta como `key` de React. Dos filas con la misma etiqueta (dos usuarios dados de baja, o dos técnicos homónimos) dan una advertencia de clave duplicada en consola; el render sale bien. Es igual en "Carga por agente" y está en `shared/charts`, fuera del alcance de T7.
+  - **Tests:**
+    - `metricas-map.test.ts`: nombre completo y orden del backend, usuario ausente → "Usuario", una sola parte del nombre, campo ausente → `[]`.
+    - `dashboard-view.test.tsx`: filas con su cantidad en el orden del backend, un orden no alfabético con un usuario ausente en el medio, lista vacía, campo omitido sin romper la vista, y un ciclo sin tickets con tareas que muestra el indicador en vez del vacío general.
+  - **Verificación** (desde `frontend/`):
+    - `pnpm lint`: sin warnings ni errores.
+    - `pnpm type-check`: 0 errores.
+    - `pnpm test`: 273 archivos y 2272 tests en verde.
+    - `node scripts/check-casts-en-specs.mjs` (raíz): 617 en 114, igual que la base.
+  - **Ayuda:** ningún artículo de `backend/ayuda/` enumera los indicadores del dashboard de forma exhaustiva, así que nada quedó falso. **Deuda de Ayuda:** el indicador de tareas completadas por técnico no tiene artículo. Quedó anotada en el commit.
+  - Próximo paso: T8.
