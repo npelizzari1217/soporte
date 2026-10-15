@@ -33,7 +33,15 @@ Cerrar los dos seguimientos que dejó `odd/tasks/deuda-tecnica-2026-10-15.md`:
     solo `!tipoTicket.activo` no alcanza, porque `desactivar()` también hace soft delete y
     `isDeleted()` lo sigue rechazando. Archivo restaurado con `git checkout`.
   - Verde tras restaurar: `tickets.e2e.spec.ts` 30/30.
-- [ ] **T2 — Constantes únicas** (refactor; la evidencia son los tests existentes en verde).
+  - Commit: `ceb07495`.
+- [x] **T2 — Constantes únicas** (refactor; la evidencia son los tests existentes en verde).
+  - `crear-ticket-soporte.use-case.ts` y `crear-ticket-edilicio.use-case.ts` importan la constante;
+    `tenant-seeder.adapter.ts` siembra `SOPORTE`/`EDILICIA` con las constantes (los `modulo:
+    'EDILICIA'` quedan: son módulo, no código de tipo).
+  - `pnpm vitest run src/preventivo src/equipos src/reparaciones src/clientes/infrastructure/tenant-seeder`:
+    93 archivos, 1156 tests en verde.
+  - `rg -n "'(SOPORTE|EDILICIA)'" backend/src --glob '!*.spec.ts'`: solo quedan comentarios, los
+    `modulo: 'EDILICIA'`/`MODULOS` y `tipos-ticket.constants.ts`.
 - [ ] **T3 — Cierre**: compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
 
 ## Ruta
@@ -43,6 +51,7 @@ Cerrar los dos seguimientos que dejó `odd/tasks/deuda-tecnica-2026-10-15.md`:
 ## Progreso
 - 2026-10-15: documento creado.
 - 2026-10-15: T1 hecha (ruta delegada).
+- 2026-10-15: T2 hecha (ruta delegada).
 
 ## Próximo paso
-T2.
+T3.

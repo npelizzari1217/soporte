@@ -15,11 +15,9 @@ import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-tick
 import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import { TIPO_CODIGO_EDILICIA } from '../../../tickets/domain/tipos-ticket.constants';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
-
-/** Código fijo del tipo de ticket resuelto por este use case (F3-E1). */
-const TIPO_CODIGO_EDILICIA = 'EDILICIA';
 
 /**
  * DTO de entrada de `CrearTicketEdilicioUseCase`.
