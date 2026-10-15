@@ -152,7 +152,16 @@ técnica conocida" (`docs/roadmap-comercial.md`).
   - Evidencia: `pnpm vitest run src/dashboard` → `Test Files 4 passed (4) · Tests 51 passed (51)`;
     frontend `pnpm vitest run src/features/dashboard` → `Test Files 3 passed (3) · Tests 31 passed (31)`;
     `pnpm typecheck` backend → sin errores; `eslint` frontend del feature → sin salida.
-- [ ] **T6 — Cierre**:
+- [x] **T6 — Cierre**: Ruta: delegada. Base: `e61f876a`.
+  - Hecho: fila de deuda RESUELTA y corregida (la resolución eran horas corridas); fila nueva de
+    `sla_cumplido` al reabrir desde CERRADO (`reloj-sla.ts:123-124`; hoy no se ve porque la reapertura
+    limpia `fecha_cierre`); sección "Tiempos hábiles del dashboard" en el runbook.
+  - Evidencia (2026-10-15): backend `pnpm lint` → sin errores; `pnpm typecheck` → sin errores;
+    `pnpm test` → `Test Files 740 passed (740) · Tests 8833 passed (8833)`; frontend `pnpm lint` → exit 0;
+    `pnpm type-check` → exit 0; `pnpm test` → `Test Files 273 passed (273) · Tests 2277 passed (2277)`;
+    `node scripts/check-roadmap-fresco.mjs` → `El roadmap esta fresco.`;
+    `node scripts/check-casts-en-specs.mjs` → `594 en 111 archivos (base: 594 en 111)`.
+  - Plan original:
   - roadmap: fila de la deuda RESUELTA, corrigiendo que la resolución era en horas corridas; fila
     nueva de deuda: al reabrir un ticket desde CERRADO, `sla_cumplido` del cierre anterior queda
     hasta el próximo RESUELTO (`reloj-sla.ts:115-116`);
@@ -173,6 +182,8 @@ en DryRun y luego real, antes de que alguien mire el dashboard.
 
 ## Progreso
 - 2026-10-15: exploración hecha, diseño aprobado por el dueño, documento creado.
+- 2026-10-15: T1-T6 hechas, una por commit, con las compuertas en verde.
 
 ## Próximo paso
-T1.
+Merge local a `main` (decisión del dueño), deploy según el runbook ("Tiempos hábiles del
+dashboard") y el script en ensayo y después con `--apply`.
