@@ -1,0 +1,92 @@
+# Deuda técnica del 2026-10-15: tipos de ticket, cableado de la API v1 y rollback de `api_publica`
+
+## Objetivo
+Saldar tres filas abiertas de "Deuda técnica conocida" (`docs/roadmap-comercial.md`, sección
+"Deuda técnica conocida"):
+
+1. El alta interna de tickets acepta tipos dados de baja.
+2. `TicketsModule` no exporta los casos de uso que usa la API v1.
+3. El rollback de `api_publica` no se puede re-correr (lo había dejado afuera
+   `odd/tasks/deuda-api-publica.md`, "Fuera de alcance").
+
+## Problema y porqué
+- `CrearTicketUseCase` (`backend/src/tickets/application/use-cases/crear-ticket.use-case.ts:114-118`)
+  busca el tipo con `findById`, que no filtra `deletedAt` ni `activo`. Desde la app
+  (`POST /tickets`) se pueden crear tickets con un tipo desactivado.
+- Por el mismo caso de uso pasa el generador de preventivos, que siempre usa el tipo fijo
+  `PREVENTIVO`. El QR, los equipos y Edilicia usan `SOPORTE` y `EDILICIA`. Hoy nada impide
+  desactivar o recodificar esos tipos: si pasara, el generador fallaría en cada pasada, y sin
+  avisar a nadie.
+- `ApiV1Module` arma de nuevo cinco casos de uso que `TicketsModule` ya provee con las mismas
+  dependencias: un cambio en ellas hay que repetirlo en los dos lados.
+- `prisma_master/migrations/20261011120000_api_publica/rollback.sql:14-16` hace dos `UPDATE`
+  sobre `es_integracion`, columna que el mismo archivo borra en `:17`. En la segunda corrida
+  falla con `column "es_integracion" does not exist`.
+
+## Decisión del dueño (2026-10-15)
+- Los tres tipos fijos del sistema (`PREVENTIVO`, `SOPORTE`, `EDILICIA`) **no se pueden
+  desactivar, ni siquiera ROOT**, y **su `codigo` no se puede cambiar**. El nombre sí.
+- El resto de los tipos lo siguen gestionando ROOT o el ADMINISTRADOR del cliente
+  (`AdminClienteGuard`, sin cambios). Se evaluó dejarlo solo a ROOT y se descartó.
+- "Dar de baja" sigue siendo una desactivación reversible (`activo=false` + `deletedAt`, se
+  reactiva con `PATCH tipos-ticket/:id/estado`).
+
+## Alcance
+- Backend: protección de los tipos fijos, rechazo de tipos inactivos en el alta, exports de
+  `TicketsModule`, rollback re-ejecutable.
+- Frontend: en la pantalla de tipos, los tres fijos no ofrecen desactivar ni editar el código.
+- Fuera de alcance: cambiar quién gestiona los tipos, las prioridades (mismo guard, otro tema),
+  y `findById` del repositorio (lo necesita la reactivación).
+
+## Criterios de aceptación
+- CA1: desactivar `PREVENTIVO`, `SOPORTE` o `EDILICIA` falla con un error de dominio, también
+  para ROOT. Desactivar y reactivar cualquier otro tipo sigue funcionando.
+- CA2: cambiar el `codigo` de un tipo fijo falla; cambiarle el nombre funciona.
+- CA3: `CrearTicketUseCase` rechaza un tipo desactivado con `TipoTicketNoEncontradoError`
+  (el mismo error que un tipo inexistente; 422). Un tipo activo sigue funcionando.
+- CA4: `ApiV1Module` ya no arma `ListarTicketsUseCase`, `CrearComentarioUseCase`,
+  `ListarTiposTicketUseCase`, `ListarPrioridadesUseCase` ni `ListarEstadosUseCase`: los toma
+  de `TicketsModule`. Los e2e de la API v1 siguen verdes.
+- CA5: correr `rollback.sql` de `api_publica` dos veces seguidas no falla, y deja el mismo
+  esquema que una sola corrida.
+
+## Precondición de deploy
+Antes de desplegar, consultar en cada tenant (solo lectura) si algún tipo fijo ya está
+desactivado. Si lo está, el generador de preventivos empezaría a fallar con CA3: hay que
+reactivarlo antes.
+
+## Tareas
+- [x] **T1 — Tipos fijos protegidos** (bugfix, TDD). CA1, CA2 + frontend.
+  - `TIPOS_TICKET_DEL_SISTEMA` en `tipos-ticket.constants.ts` (con `TIPO_CODIGO_SOPORTE` y
+    `TIPO_CODIGO_EDILICIA`), error `TipoTicketDelSistemaError` → 422 (rama por defecto de
+    los dos mapeadores). Reactivar un tipo fijo sigue permitido. Front: espejo en
+    `frontend/src/features/catalogos/tipos-del-sistema.ts`.
+  - RED (backend): `cambiar-estado-activo-…spec` y `editar-tipo-ticket…spec`, 6 casos
+    `it.each` → `AssertionError: expected false to be true` (`result.isFail()`).
+  - RED (front): `expected [ <button …(5)></button>, …(2) ] to have a length of 1 but got 3`
+    y `expect(element).toHaveAttribute("readonly")`.
+  - GREEN: backend 37/37 en los 3 specs tocados + `tickets.controller.spec` 58/58 (catálogo
+    de errores 25 → 26); unitarios de `src/tickets` 692/692; front `features/catalogos`
+    20/20. `eslint src/tickets`, `pnpm typecheck`, front `pnpm lint` y `type-check` limpios.
+  - Pendiente: integración/e2e de `src/tickets` no corrieron — Postgres caído
+    (`ECONNREFUSED 127.0.0.1:5432`, sin `docker` en WSL).
+  - Los literales `'SOPORTE'`/`'EDILICIA'` de `equipos/` y `reparaciones/` quedaron como
+    están: fuera de la superficie de esta tarea.
+- [ ] **T2 — El alta rechaza tipos inactivos** (bugfix, TDD). CA3. Depende de T1.
+- [ ] **T3 — `TicketsModule` exporta los casos de uso de la API v1** (refactor). CA4.
+- [ ] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5.
+- [ ] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
+  `pnpm test`; frontend `pnpm lint`, `pnpm type-check`, `pnpm test`), filas de la deuda en el
+  roadmap marcadas RESUELTA, `check-roadmap-fresco` en verde.
+
+## Ruta
+- Delegada: un escritor para T1-T4, porque toca más de dos archivos no triviales (disparador
+  de escritura). Cada tarea cierra con su commit en `fix/deuda-tecnica-2026-10-15`.
+- Revisión nativa RDD apagada (§6.2 de `~/proyectos/CLAUDE.md`).
+- Previsión: menos de 400 líneas en total; estrategia de entrega `single-pr`.
+
+## Progreso
+- 2026-10-15: exploración hecha, decisión del dueño registrada, documento creado.
+
+## Próximo paso
+T1.

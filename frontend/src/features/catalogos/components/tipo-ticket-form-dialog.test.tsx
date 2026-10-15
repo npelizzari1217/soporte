@@ -85,4 +85,25 @@ describe("TipoTicketFormDialog", () => {
 
     expect(screen.getByLabelText(/^módulo$/i)).toHaveValue("");
   });
+
+  it("al editar un tipo fijo del sistema, el código es de solo lectura; el nombre se edita", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(
+      <TipoTicketFormDialog tipo={buildTipo({ codigo: "PREVENTIVO" })} trigger={<button>Editar</button>} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(screen.getByLabelText(/^código$/i)).toHaveAttribute("readonly");
+    expect(screen.getByLabelText(/^nombre$/i)).not.toHaveAttribute("readonly");
+  });
+
+  it("al editar un tipo que no es del sistema, el código sigue editable", async () => {
+    const user = userEvent.setup();
+
+    renderWithProviders(<TipoTicketFormDialog tipo={buildTipo()} trigger={<button>Editar</button>} />);
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(screen.getByLabelText(/^código$/i)).not.toHaveAttribute("readonly");
+  });
 });

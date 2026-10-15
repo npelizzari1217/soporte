@@ -408,6 +408,22 @@ export class TipoTicketModuloNoCorrespondeError extends DomainError {
 }
 
 /**
+ * TipoTicketDelSistemaError — se intentó desactivar un tipo FIJO del sistema
+ * (`TIPOS_TICKET_DEL_SISTEMA`) o cambiarle el `codigo`. Hay flujos que lo
+ * resuelven por código (preventivo, QR, equipos, edilicia): sin él fallarían
+ * en silencio. Aplica también a ROOT. → HTTP 422 en la capa de presentación.
+ */
+export class TipoTicketDelSistemaError extends DomainError {
+  readonly code = 'TIPO_TICKET_DEL_SISTEMA';
+
+  constructor(codigo: string) {
+    super(
+      `El tipo de ticket "${codigo}" es del sistema: no se puede desactivar ni cambiar su código.`,
+    );
+  }
+}
+
+/**
  * ExportacionDemasiadoGrandeError — la exportación a CSV del listado de
  * tickets excedería el tope de filas (`TOPE_FILAS_EXPORT`, 5000).
  * → HTTP 422 en la capa de presentación.

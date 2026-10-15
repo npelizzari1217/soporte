@@ -11,7 +11,9 @@ import {
   TipoTicketNoEncontradoError,
   TipoTicketCodigoDuplicadoError,
   PrefijoTipoTicketColisionError,
+  TipoTicketDelSistemaError,
 } from '../../domain/errors/tickets.errors';
+import { TIPOS_TICKET_DEL_SISTEMA } from '../../domain/tipos-ticket.constants';
 
 describe('EditarTipoTicketUseCase', () => {
   function makeCollaborators(tipo: TipoTicketEntity | null, otros: TipoTicketEntity[] = []) {
@@ -113,4 +115,23 @@ describe('EditarTipoTicketUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().nombre).toBe('Soporte v2');
   });
+
+  // CA2 (odd/tasks/deuda-tecnica-2026-10-15.md): el código de un tipo fijo no cambia.
+  it.each(TIPOS_TICKET_DEL_SISTEMA)(
+    'cambiar el codigo del tipo fijo %s → TipoTicketDelSistemaError, sin persistir',
+    async (codigo) => {
+      const tipo = TipoTicketEntity.create(
+        { codigo, nombre: codigo, modulo: 'TICKETS', activo: true },
+        'id-1',
+      );
+      const c = makeCollaborators(tipo);
+
+      const result = await c.useCase.execute({ id: 'id-1', codigo: 'OTRO', nombre: 'Otro' });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TipoTicketDelSistemaError);
+      expect(tipo.codigo).toBe(codigo);
+      expect(c.tipoTicketRepo.save).not.toHaveBeenCalled();
+    },
+  );
 });

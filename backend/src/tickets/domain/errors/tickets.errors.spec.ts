@@ -29,6 +29,7 @@ import {
   TicketReferenciaInvalidaError,
   PrioridadNoEncontradaError,
   TipoTicketCodigoDuplicadoError,
+  TipoTicketDelSistemaError,
   PrefijoTipoTicketColisionError,
   PrioridadCodigoDuplicadaError,
 } from './tickets.errors';
@@ -39,6 +40,15 @@ describe('TipoTicketCodigoDuplicadoError (T11.1, PR11)', () => {
     expect(error.code).toBe('TIPO_TICKET_CODIGO_DUPLICADO');
     expect(error).toBeInstanceOf(DomainError);
     expect(error.message).toContain('SOPORTE');
+  });
+});
+
+describe('TipoTicketDelSistemaError (deuda-tecnica-2026-10-15, CA1/CA2)', () => {
+  it('expone code TIPO_TICKET_DEL_SISTEMA, es DomainError y nombra el código', () => {
+    const error = new TipoTicketDelSistemaError('PREVENTIVO');
+    expect(error.code).toBe('TIPO_TICKET_DEL_SISTEMA');
+    expect(error).toBeInstanceOf(DomainError);
+    expect(error.message).toContain('PREVENTIVO');
   });
 });
 
