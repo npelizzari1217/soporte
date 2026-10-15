@@ -78,8 +78,28 @@ puertos, y bajar la línea base del ratchet en cada tanda.
     `review_due` false (`under_budget`).
   - Quedan `as unknown as` fuera del ratchet en estos módulos (constructores en
     `auth.controller.spec.ts`, contextos en specs de guards).
-- [ ] **T5 — compras** (51).
-- [ ] **T6 — reparaciones y preventivo** (48 + 40).
+- [x] **T5 — compras** (51 → 0). Ruta: delegada (escritor único, junto con T6). Commit `43e4c14c`.
+  - 17 specs; ningún cast conservado. Base del ratchet 255/59 → **204/42**. Sin defectos destapados.
+  - `RegistrarOperacionCompra` es una clase concreta con campo privado: el doble conserva su
+    prototipo y tipa `registrar` como mock.
+  - Evidencia: `pnpm vitest run src/compras` → 47 archivos, 993 tests antes y después; mismos conteos;
+    lint y typecheck 0.
+  - Queda en `exportar-compras.use-case.spec.ts:73` un `vi.fn()` sin parámetro de tipo (no es cast).
+- [x] **T6 — reparaciones y preventivo** (48 + 40 → 0). Ruta: delegada (mismo escritor). Commit
+  `1276aefd`.
+  - 11 specs; ningún cast conservado. Base del ratchet 204/42 → **116/31**.
+  - Defectos destapados (arreglados solo en specs): compras vinculadas sin `cancelada` ni `items`;
+    resultados del controller sin `sectorNombre` (llegaba `undefined`; ahora `null`, el valor real sin
+    sector); tipo de ticket, compra y ticket como objetos sueltos en vez de `TipoTicketEntity`,
+    `CompraEntity` y `TicketEntity`; un `ops.find(...)` que seguía con `undefined`. En el spec del
+    barrido de preventivos el cliente falso ahora tiene el prototipo real y el valor esperado se arma
+    igual (`toEqual` distingue instancia de literal).
+  - Además se reemplazó un `as unknown as ListarReparacionesUseCase` en
+    `exportar-reparaciones.use-case.spec.ts` y se tiparon dobles que no tenían cast.
+  - Evidencia: `pnpm vitest run src/reparaciones src/preventivo` → 31 archivos, 277 tests antes y
+    después; mismos conteos; lint y typecheck 0; ratchet 116/31 (repetido por el padre); devolver
+    `{ id }` en el spec de vincular da 2 errores de tipos. RDD: `assess` → medium, `review_due` false
+    (`under_budget`).
 - [ ] **T7 — Cierre**: suite completa, roadmap, merge (decisión del dueño). Si la base no llegó a
   ~230, se decide con el dueño si sigue con insumos, csat, kb, notificaciones y shared (~100).
 
@@ -94,6 +114,7 @@ puertos, y bajar la línea base del ratchet en cada tanda.
 - 2026-10-16: T1 hecha (equipos, 491/100).
 - 2026-10-16: T2 hecha (tickets, 401/77).
 - 2026-10-16: T3 y T4 hechas (auth y clientes, 255/59).
+- 2026-10-16: T5 y T6 hechas (compras, reparaciones y preventivo, 116/31): la meta de ~230 se superó.
 
 ## Próximo paso
-T5 y T6.
+T7.
