@@ -133,7 +133,10 @@ de aceptación abajo.
   esta feature (`--base-ref 01b5a573 --committed-only`): el candidato desde `66865b6d` excedía el
   presupuesto de contexto del revisor.
 - 2026-10-16: `judgment-day` aprobado tras corregir JD-W1; T5 hecha.
+- 2026-10-16: revisión del diff completo (§4.2) limpia; merge local `ce9c337b`. Deploy autorizado por el
+  dueño: `predeploy-dump` (`utc-backfill-20261015-193350`), bundle y `deploy.ps1` → prod `ce9c337b`; la
+  migración quedó aplicada en los 9 tenants (verificado en `_prisma_migrations` y en las columnas).
+  Smoke: `/login` 200, `/api/v1/openapi.json` 200, `/api/v1/tickets` y `/api/tickets` sin sesión 401.
 
 ## Próximo paso
-Revisión del diff completo (§4.2) y merge a `main`, por decisión del dueño. Después, el deploy
-(lleva migración tenant: `predeploy-dump` antes).
+Ninguno: feature cerrada y desplegada. Queda la deuda de Ayuda anotada en el roadmap.
