@@ -4,9 +4,13 @@
 //
 // - `resolucion_habil_s` de los tickets en RESUELTO o CERRADO que siguen en NULL
 //   (sin reloj incorporado, cohorte CORRIDO o con pliegue pendiente): segundos hábiles
-//   desde `created_at` hasta el ÚLTIMO paso a RESUELTO del historial
-//   (`operaciones_ticket`, tipo CAMBIO_ESTADO). NO `fecha_cierre`: esa columna se pisa
-//   al pasar a CERRADO. Un ticket sin ese paso en el historial se saltea y se cuenta.
+//   desde `created_at` hasta el fin del tramo. Precedencia del fin:
+//   1. el ÚLTIMO paso a RESUELTO del historial (`operaciones_ticket`, tipo CAMBIO_ESTADO);
+//   2. si no hay ninguno, `fecha_cierre`, como APROXIMACIÓN (odd/backfill-resolucion-importados):
+//      los tickets importados no traen historial de estados. Mide hasta el cierre, no hasta
+//      la resolución (la columna se pisa al pasar a CERRADO), por eso solo entra sin paso a
+//      RESUELTO. Se cuentan aparte (`aproximados`).
+//   Un ticket sin paso a RESUELTO ni `fecha_cierre` se saltea y se cuenta.
 //   Estos valores no descuentan pausas: el historial previo al reloj no las tiene.
 // - `primera_respuesta_habil_s` de los tickets con `primera_respuesta_at` y sin el
 //   valor: segundos hábiles `created_at → primera_respuesta_at`.
@@ -20,7 +24,8 @@
 // primera respuesta escribieron en el medio nunca se pisa, y correrlo dos veces no
 // cambia nada. El de resolución re-evalúa además que el ticket siga en RESUELTO o
 // CERRADO y que no tenga un paso a RESUELTO posterior al leído: uno reabierto (o
-// reabierto y vuelto a resolver) entre la lectura y la escritura no recibe el valor.
+// reabierto y vuelto a resolver) entre la lectura y la escritura no recibe el valor. Uno
+// aproximado con `fecha_cierre` no lo recibe si apareció CUALQUIER paso a RESUELTO.
 //
 // El cálculo hábil y los mappers viven en TypeScript; este script corre en el VPS
 // después del build, así que se leen de `dist/` con `createRequire` (mismo criterio
@@ -69,6 +74,9 @@ const segundos = (ms) => Math.round(ms / 1000);
  * paso a RESUELTO posterior al leído (`v.fin_id`): si se reabrió y se volvió a resolver en el
  * medio, el valor calculado mide una resolución vieja y lo toma la corrida siguiente. Se
  * compara por id y en SQL porque `pg` devuelve el timestamptz sin los microsegundos.
+ * Una fila aproximada con `fecha_cierre` llega con `v.fin_id` NULL: el COALESCE a
+ * `-infinity` hace que CUALQUIER paso a RESUELTO bloquee la escritura (sin él, la
+ * comparación contra NULL daría NULL y el NOT EXISTS dejaría pasar el valor aproximado).
  */
 const SIGUE_RESUELTO = `AND EXISTS (
             SELECT 1 FROM "estados" e
@@ -79,8 +87,9 @@ const SIGUE_RESUELTO = `AND EXISTS (
               JOIN "estados" en ON en."id" = o."estado_nuevo_id"
              WHERE o."ticket_id" = t."id" AND o."deleted_at" IS NULL
                AND tp."codigo" = 'CAMBIO_ESTADO' AND en."codigo" = 'RESUELTO'
-               AND o."created_at" > (SELECT f."created_at" FROM "operaciones_ticket" f
-                                      WHERE f."id" = v.fin_id))`;
+               AND o."created_at" > COALESCE(
+                     (SELECT f."created_at" FROM "operaciones_ticket" f WHERE f."id" = v.fin_id),
+                     '-infinity'::timestamptz))`;
 
 /**
  * Escribe `columna` en lotes, solo donde sigue NULL (y, si se pasa, donde se cumple
@@ -112,7 +121,8 @@ async function escribirEnLotes(pool, columna, valores, condicion = '') {
  * @param p.calculo          instancia de `CalcularSlaHabilVenceService`.
  * @param p.mapper           `PrismaCalendarioLaboralMapper`.
  * @param p.aplicar          `false` = ensayo, no escribe.
- * @returns conteos por columna: `aActualizar`, `actualizados` y, en resolución, `salteados`.
+ * @returns conteos por columna: `aActualizar`, `actualizados` y, en resolución, `aproximados`
+ *          (cuántos de `aActualizar` usan `fecha_cierre`, contados al leer) y `salteados`.
  */
 export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, aplicar }) {
   const { rows: dias } = await pool.query(
@@ -127,7 +137,7 @@ export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, 
     segundos(calculo.msHabilesEntre(desde, hasta, calendario, feriados));
 
   const { rows: resueltos } = await pool.query(
-    `SELECT t."id", t."created_at", ult.fin, ult.fin_id
+    `SELECT t."id", t."created_at", t."fecha_cierre", ult.fin, ult.fin_id
        FROM "tickets" t
        JOIN "estados" e ON e."id" = t."estado_id"
        LEFT JOIN LATERAL (
@@ -144,9 +154,15 @@ export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, 
         AND t."resolucion_habil_s" IS NULL AND t."deleted_at" IS NULL
       ORDER BY t."id"`,
   );
+  // Fin del tramo: el último paso a RESUELTO; sin él, `fecha_cierre` (aproximado, `finId` NULL).
   const resolucion = resueltos
-    .filter((r) => r.fin !== null)
-    .map((r) => ({ id: r.id, s: habilS(r.created_at, r.fin), finId: r.fin_id }));
+    .filter((r) => r.fin !== null || r.fecha_cierre !== null)
+    .map((r) => ({
+      id: r.id,
+      s: habilS(r.created_at, r.fin ?? r.fecha_cierre),
+      finId: r.fin_id,
+      aproximado: r.fin === null,
+    }));
 
   const { rows: respondidos } = await pool.query(
     `SELECT "id", "created_at", "primera_respuesta_at"
@@ -166,6 +182,7 @@ export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, 
       actualizados: aplicar
         ? await escribirEnLotes(pool, 'resolucion_habil_s', resolucion, SIGUE_RESUELTO)
         : 0,
+      aproximados: resolucion.filter((x) => x.aproximado).length,
       salteados: resueltos.length - resolucion.length,
     },
     primeraRespuesta: {
@@ -183,7 +200,8 @@ export function formatearResultado(dbName, r, aplicar) {
   const n = (c) => (aplicar ? c.actualizados : c.aActualizar);
   return (
     `${PREFIJO} ${dbName}: resolucion ${hecho} ${n(r.resolucion)}, ` +
-    `salteados ${r.resolucion.salteados} (sin paso a RESUELTO en el historial) | ` +
+    `aproximados ${r.resolucion.aproximados} (con fecha_cierre, sin paso a RESUELTO), ` +
+    `salteados ${r.resolucion.salteados} (sin paso a RESUELTO ni fecha_cierre) | ` +
     `primera respuesta ${hecho} ${n(r.primeraRespuesta)}`
   );
 }
