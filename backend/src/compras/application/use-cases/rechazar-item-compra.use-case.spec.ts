@@ -27,6 +27,8 @@
  * remediación (compra cancelada en decisión por ítem).
  */
 import { RechazarItemCompraUseCase, RechazarItemCompraDto } from './rechazar-item-compra.use-case';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import {
@@ -93,19 +95,19 @@ function baseDto(overrides: Partial<RechazarItemCompraDto> = {}): RechazarItemCo
 describe('RechazarItemCompraUseCase', () => {
   function makeCollaborators() {
     const compraRepo = {
-      findByIdConItems: vi.fn(),
-      guardarItem: vi.fn().mockResolvedValue(undefined),
+      findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>(),
+      guardarItem: vi.fn<ICompraRepository['guardarItem']>().mockResolvedValue(undefined),
     };
-    const registrarOperacionCompra = { registrar: vi.fn().mockResolvedValue(undefined) };
+    const registrarOperacionCompra = {
+      registrar: vi.fn<RegistrarOperacionCompra['registrar']>().mockResolvedValue(undefined),
+    };
     // txRunner.run ejecuta el callback DIRECTAMENTE (sin Prisma real) — pero
-    // preserva la semántica "corre dentro de la tx" para los tests.
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // preserva la semántica "corre dentro de la tx" para los tests. Es un
+    // objeto real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner = { run: async <T>(fn: () => Promise<T>): Promise<T> => fn() };
+    vi.spyOn(txRunner, 'run');
 
-    const useCase = new RechazarItemCompraUseCase(
-      compraRepo as never,
-      registrarOperacionCompra as never,
-      txRunner as never,
-    );
+    const useCase = new RechazarItemCompraUseCase(compraRepo, registrarOperacionCompra, txRunner);
 
     return { useCase, compraRepo, registrarOperacionCompra, txRunner };
   }

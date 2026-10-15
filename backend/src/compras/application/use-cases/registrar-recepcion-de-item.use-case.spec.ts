@@ -48,7 +48,12 @@ import {
 } from '../../domain/errors/compras.errors';
 import { Result } from '../../../shared/domain/result';
 import { MovimientoInsumoEntity } from '../../../insumos/domain/entities/movimiento-insumo.entity';
-import { RegistrarEntradaInsumoDto } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import {
+  RegistrarEntradaInsumoDto,
+  RegistrarEntradaInsumoUseCase,
+} from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
 import { InsumoNoEncontradoError } from '../../../insumos/domain/errors/insumos.errors';
 import { SerialDuplicadoError } from '../../../insumos/domain/errors/unidades-insumo.errors';
 
@@ -116,10 +121,12 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
     entradaFalla: InsumoNoEncontradoError | SerialDuplicadoError | null = null,
   ) {
     const compraRepo = {
-      findByIdConItems: vi.fn().mockResolvedValue(compra),
-      guardarItem: vi.fn().mockResolvedValue(undefined),
+      findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>().mockResolvedValue(compra),
+      guardarItem: vi.fn<ICompraRepository['guardarItem']>().mockResolvedValue(undefined),
     };
-    const registrarOperacion = { registrar: vi.fn().mockResolvedValue(undefined) };
+    const registrarOperacion = {
+      registrar: vi.fn<RegistrarOperacionCompra['registrar']>().mockResolvedValue(undefined),
+    };
 
     // Colaborador CARGADO, no inerte: por defecto asienta un movimiento real
     // construido con el DTO que recibe. Sin esa capacidad, cada assert de "no
@@ -128,20 +135,22 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
     // devolvería — nunca lanza: la trampa de la unidad es justamente que este
     // colaborador NO lanza.
     const registrarEntradaInsumo = {
-      execute: vi.fn(async (dto: RegistrarEntradaInsumoDto) => {
-        if (entradaFalla !== null) {
-          return Result.fail(entradaFalla);
-        }
-        return MovimientoInsumoEntity.create({
-          insumoId: dto.insumoId,
-          tipo: 'ENTRADA',
-          condicion: dto.condicion ?? 'NUEVO',
-          cantidad: dto.cantidad,
-          usuarioId: dto.usuarioId,
-          motivo: dto.motivo,
-          itemCompraId: dto.itemCompraId,
-        });
-      }),
+      execute: vi.fn<RegistrarEntradaInsumoUseCase['execute']>(
+        async (dto: RegistrarEntradaInsumoDto) => {
+          if (entradaFalla !== null) {
+            return Result.fail(entradaFalla);
+          }
+          return MovimientoInsumoEntity.create({
+            insumoId: dto.insumoId,
+            tipo: 'ENTRADA',
+            condicion: dto.condicion ?? 'NUEVO',
+            cantidad: dto.cantidad,
+            usuarioId: dto.usuarioId,
+            motivo: dto.motivo,
+            itemCompraId: dto.itemCompraId,
+          });
+        },
+      ),
     };
 
     // Emula la semántica de Postgres: la transacción solo "comitea" si el
@@ -149,19 +158,21 @@ describe('RegistrarRecepcionDeItemUseCase', () => {
     // que es lo que distingue el mecanismo de la decisión 3 de un
     // `Result.fail` propagado en silencio.
     const estadoTx = { comiteado: false };
+    // Runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
     const txRunner = {
-      run: vi.fn(async (fn: () => Promise<unknown>) => {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => {
         const valor = await fn();
         estadoTx.comiteado = true;
         return valor;
-      }),
+      },
     };
+    vi.spyOn(txRunner, 'run');
 
     const useCase = new RegistrarRecepcionDeItemUseCase(
-      compraRepo as never,
-      registrarOperacion as never,
-      txRunner as never,
-      registrarEntradaInsumo as never,
+      compraRepo,
+      registrarOperacion,
+      txRunner,
+      registrarEntradaInsumo,
     );
 
     return {

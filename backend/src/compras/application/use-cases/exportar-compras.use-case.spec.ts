@@ -234,7 +234,7 @@ describe('ExportarComprasUseCase', () => {
       const { nombreArchivo } = (await new ExportarComprasUseCase(repo).execute({})).getValue();
 
       const nombreEsperadoPorHelper = armarExportCsv({
-        filas: [] as never[],
+        filas: [],
         total: 0,
         tope: TOPE_FILAS_EXPORT,
         columnas: [],

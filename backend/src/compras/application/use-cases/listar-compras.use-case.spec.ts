@@ -27,6 +27,7 @@ import { ListarComprasUseCase } from './listar-compras.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import { FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 
 const COMPRA_ID = 'compra-1';
 
@@ -76,9 +77,11 @@ function crearCompra(
 describe('ListarComprasUseCase', () => {
   function makeCollaborators() {
     const compraRepo = {
-      findPaginaConItems: vi.fn().mockResolvedValue({ compras: [], total: 0 }),
+      findPaginaConItems: vi
+        .fn<ICompraRepository['findPaginaConItems']>()
+        .mockResolvedValue({ compras: [], total: 0 }),
     };
-    const useCase = new ListarComprasUseCase(compraRepo as never);
+    const useCase = new ListarComprasUseCase(compraRepo);
     return { useCase, compraRepo };
   }
 

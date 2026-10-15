@@ -15,6 +15,11 @@
  * Ref design: ADR-C1, ADR-C2, ADR-C4. Tarea: PR-14.
  */
 import { AgregarItemCompraUseCase, AgregarItemCompraDto } from './agregar-item-compra.use-case';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
+import { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { CompraNoEncontradaError, CompraCanceladaError } from '../../domain/errors/compras.errors';
 import { InsumoEntity } from '../../../insumos/domain/entities/insumo.entity';
@@ -81,19 +86,28 @@ describe('AgregarItemCompraUseCase', () => {
     insumo: InsumoEntity | null = insumoDelCatalogo(),
   ) {
     const compraRepo = {
-      findByIdConItems: vi.fn().mockResolvedValue(compra),
-      guardar: vi.fn().mockResolvedValue(undefined),
-      guardarItem: vi.fn().mockResolvedValue(undefined),
+      findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>().mockResolvedValue(compra),
+      guardar: vi.fn<ICompraRepository['guardar']>().mockResolvedValue(undefined),
+      guardarItem: vi.fn<ICompraRepository['guardarItem']>().mockResolvedValue(undefined),
     };
-    const registrarOperacion = { registrar: vi.fn().mockResolvedValue(undefined) };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const insumoRepo = { findById: vi.fn().mockResolvedValue(insumo) };
+    const registrarOperacion = {
+      registrar: vi.fn<RegistrarOperacionCompra['registrar']>().mockResolvedValue(undefined),
+    };
+    // Runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: unstubbed('txRunner.alCommitear'),
+    };
+    vi.spyOn(txRunner, 'run');
+    const insumoRepo = {
+      findById: vi.fn<IInsumoRepository['findById']>().mockResolvedValue(insumo),
+    };
 
     const useCase = new AgregarItemCompraUseCase(
-      compraRepo as never,
-      insumoRepo as never,
-      registrarOperacion as never,
-      txRunner as never,
+      compraRepo,
+      insumoRepo,
+      registrarOperacion,
+      txRunner,
     );
 
     return { useCase, compraRepo, insumoRepo, registrarOperacion, txRunner };

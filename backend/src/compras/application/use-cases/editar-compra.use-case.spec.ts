@@ -22,6 +22,12 @@
  * este caso de uso NO re-implementa esa regla, sólo la invoca.
  */
 import { EditarCompraUseCase, EditarCompraDto } from './editar-compra.use-case';
+import type { Mock } from 'vitest';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { CompraEntity, CompraCreateProps } from '../../domain/entities/compra.entity';
 import { CompraAgregarItemProps } from '../../domain/entities/compra.entity';
 import {
@@ -66,19 +72,27 @@ function baseDto(overrides: Partial<EditarCompraDto> = {}): EditarCompraDto {
 describe('EditarCompraUseCase', () => {
   function makeCollaborators() {
     const compraRepo = {
-      findByIdConItems: vi.fn(),
-      guardar: vi.fn().mockResolvedValue(undefined),
+      findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>(),
+      guardar: vi.fn<ICompraRepository['guardar']>().mockResolvedValue(undefined),
     };
-    const sectorRepo = { findById: vi.fn() };
-    const registrarOperacion = { registrar: vi.fn().mockResolvedValue(undefined) };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const sectorRepo = { findById: vi.fn<ISectorRepository['findById']>() };
+    // `RegistrarOperacionCompra` es una clase concreta: el doble lleva su prototipo
+    // y `registrar` como mock tipado con su firma.
+    const registrarOperacion: RegistrarOperacionCompra & {
+      registrar: Mock<RegistrarOperacionCompra['registrar']>;
+    } = Object.create(RegistrarOperacionCompra.prototype, {
+      registrar: {
+        value: vi.fn<RegistrarOperacionCompra['registrar']>().mockResolvedValue(undefined),
+      },
+    });
+    // Runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: unstubbed('txRunner.alCommitear'),
+    };
+    vi.spyOn(txRunner, 'run');
 
-    const useCase = new EditarCompraUseCase(
-      compraRepo as never,
-      sectorRepo as never,
-      registrarOperacion as never,
-      txRunner as never,
-    );
+    const useCase = new EditarCompraUseCase(compraRepo, sectorRepo, registrarOperacion, txRunner);
 
     return { useCase, compraRepo, sectorRepo, registrarOperacion, txRunner };
   }
