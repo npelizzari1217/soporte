@@ -28,7 +28,20 @@ puertos, y bajar la línea base del ratchet en cada tanda.
   roadmap se actualiza con el número nuevo.
 
 ## Tareas (una tanda por módulo; conteo inicial entre paréntesis)
-- [ ] **T1 — equipos** (103).
+- [x] **T1 — equipos** (103 → 0). Ruta: delegada (escritor único). Commit `ccba3e5e`.
+  - 11 specs; ningún cast conservado. Base del ratchet 594/111 → **491/100**.
+  - Defectos de los specs que el tipado destapó (arreglados solo en specs): dobles que devolvían
+    objetos sueltos en vez de `TipoTicketEntity` / `InsumoEntity`; un `ops.find(...)` que seguía con
+    `undefined` pasó a un helper que falla si falta la operación; `controller.crear({} as any)` usa un
+    cuerpo válido (el caso de uso está mockeado).
+  - Patrones: `vi.fn<Puerto['metodo']>()` alcanza donde el caso de uso recibe `Pick<Puerto, ...>`;
+    `ITenantTransactionRunner.run` genérico → objeto real `run: async <T>(fn) => fn()` + `vi.spyOn`;
+    casos de uso concretos en controllers → `Object.create(Clase.prototype, { execute: ... })`; las
+    propiedades extra a propósito van en una variable (sin chequeo de exceso).
+  - Evidencia: `pnpm vitest run src/equipos` → 60 archivos, 869 tests antes y después; mismos conteos
+    de `expect(` e `it(` por archivo; lint y typecheck 0; ratchet 491/100 (repetido por el padre); un
+    spec descartable con un valor erróneo no compiló (los dobles chequean tipos). RDD: `assess` →
+    medium, `review_due` false (`under_budget`, 755 líneas).
 - [ ] **T2 — tickets** (90).
 - [ ] **T3 — auth** (84).
 - [ ] **T4 — clientes** (62).
@@ -45,6 +58,7 @@ puertos, y bajar la línea base del ratchet en cada tanda.
 
 ## Progreso
 - 2026-10-16: el dueño pidió seguir con el punto 5 (casts); documento creado.
+- 2026-10-16: T1 hecha (equipos, 491/100).
 
 ## Próximo paso
-T1.
+T2.
