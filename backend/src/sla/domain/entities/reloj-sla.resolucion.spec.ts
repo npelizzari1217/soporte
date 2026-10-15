@@ -94,6 +94,49 @@ describe('RelojSla.plegar — resolucionHabilS', () => {
     expect(r.resolucionHabilS).toBeNull();
   });
 
+  it('un ticket CORRIDO reabierto y resuelto de nuevo en el mismo pliegue queda null (JD-W4)', () => {
+    // El barrido recoge las dos transiciones juntas: el estado final es RESUELTO, pero el valor
+    // guardado (backfill) mide hasta la primera resolución y ya no vale.
+    const r = plegar(
+      { estadoCodigo: 'RESUELTO', slaRegla: 'CORRIDO', acumuladoS: 5 * H, correDesde: null },
+      [op('RESUELTO', 'EN_PROCESO', L(14, 9)), op('EN_PROCESO', 'RESUELTO', L(14, 11))],
+      corrido(),
+    );
+
+    expect(r.resolucionHabilS).toBeNull();
+  });
+
+  it('un ticket CORRIDO reabierto desde CERRADO y cerrado de nuevo en el mismo pliegue queda null', () => {
+    const r = plegar(
+      { estadoCodigo: 'CERRADO', slaRegla: 'CORRIDO', acumuladoS: 5 * H, correDesde: null },
+      [
+        op('CERRADO', 'EN_PROCESO', L(14, 9)),
+        op('EN_PROCESO', 'RESUELTO', L(14, 11)),
+        op('RESUELTO', 'CERRADO', L(14, 12)),
+      ],
+      corrido(),
+    );
+
+    expect(r.resolucionHabilS).toBeNull();
+  });
+
+  it('un ticket CORRIDO previo con una reapertura en su historial no toca el valor guardado', () => {
+    // El backfill ya midió con todo el historial (hasta el último RESUELTO): solo invalida una
+    // reapertura posterior al cursor.
+    const r = RelojSla.plegar({
+      fila: fila({ estadoCodigo: 'RESUELTO', slaRegla: 'CORRIDO', acumuladoS: null }),
+      medidor: corrido(),
+      historialSinSecuencia: [
+        op('EN_PROCESO', 'RESUELTO', L(11, 9)),
+        op('RESUELTO', 'EN_PROCESO', L(11, 10)),
+        op('EN_PROCESO', 'RESUELTO', L(11, 11)),
+      ],
+      transiciones: [],
+    });
+
+    expect(r.resolucionHabilS).toBeUndefined();
+  });
+
   it('sin meta (preventivo o slaActivo=false) igual se guarda: el reloj acumula sin meta', () => {
     const r = plegar({ estadoCodigo: 'RESUELTO', metaS: null }, [
       op('EN_PROCESO', 'RESUELTO', L(10, 13)),

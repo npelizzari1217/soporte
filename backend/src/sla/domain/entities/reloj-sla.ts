@@ -11,7 +11,8 @@
  * - Cada tramo se redondea a segundos con `Math.round(ms / 1000)`.
  * - `resolucionHabilS` (odd/promedios-dashboard-habiles) es el acumulado cuando el ticket está en
  *   RESUELTO o CERRADO con regla HABIL; `undefined` (no se toca) en RESUELTO o CERRADO con regla
- *   CORRIDO, porque ese acumulado no es tiempo hábil y el valor guardado lo pudo llenar el backfill; y
+ *   CORRIDO, porque ese acumulado no es tiempo hábil y el valor guardado lo pudo llenar el backfill
+ *   (`null` si entre las transiciones plegadas hubo una reapertura: ese valor ya no vale); y
  *   `null` en cualquier estado que no sea de resolución, sea cual sea la regla: reabrir lo borra y el
  *   próximo RESUELTO lo toma de nuevo.
  */
@@ -107,6 +108,14 @@ export class RelojSla {
     let tPrev: Date | null = correDesde;
 
     const ops = previo ? [...historialSinSecuencia, ...transiciones] : transiciones;
+    // Solo una reapertura posterior al cursor invalida el valor guardado: el backfill ya midió con
+    // todo el historial previo (JD-W4).
+    const reabrio = transiciones.some(
+      (op) =>
+        op.estadoAnteriorCodigo !== null &&
+        ESTADOS_RESOLUCION.has(op.estadoAnteriorCodigo) &&
+        !ESTADOS_RESOLUCION.has(op.estadoNuevoCodigo),
+    );
     for (const op of ops) {
       let t = op.createdAt;
       if (tPrev && tPrev > t) t = tPrev;
@@ -140,9 +149,16 @@ export class RelojSla {
     }
 
     // Se toma del estado actual, ya con el último tramo sumado. CORRIDO resuelto no lo toca: su
-    // acumulado no es tiempo hábil y el valor guardado (backfill) no se puede borrar.
+    // acumulado no es tiempo hábil y el valor guardado (backfill) no se puede borrar, salvo que el
+    // ticket se haya reabierto en este pliegue: entonces ese valor mide una resolución vieja.
     const resuelto = ESTADOS_RESOLUCION.has(fila.estadoCodigo);
-    const resolucionHabilS = !resuelto ? null : fila.slaRegla === 'HABIL' ? acumuladoS : undefined;
+    const resolucionHabilS = !resuelto
+      ? null
+      : fila.slaRegla === 'HABIL'
+        ? acumuladoS
+        : reabrio
+          ? null
+          : undefined;
     const resultado: RelojSlaResultado = {
       acumuladoS,
       resolucionHabilS,

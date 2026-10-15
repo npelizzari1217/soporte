@@ -213,6 +213,27 @@ técnica conocida" (`docs/roadmap-comercial.md`).
   - GREEN: `backfill-tiempos-habiles.integration.spec.ts` → 5 tests pasan.
 - Decisión del dueño (2026-10-15): las tres advertencias se corrigen antes del merge, con re-juicio
   acotado de `judgment-day` sobre el delta.
+- [x] **T10 — JD-W4: el pliegue detecta una reapertura entre transiciones pendientes.** Hallazgo de
+  los dos jueces en el re-juicio de T7-T9 (causado por T7): si la reapertura y la nueva resolución de
+  un ticket CORRIDO se pliegan en un solo pliegue (reloj pendiente que recoge el barrido), el pliegue
+  solo ve el estado final RESUELTO, devuelve `undefined` y sobrevive el valor viejo del backfill.
+  Cambio: si dentro de las operaciones plegadas hubo una reapertura, el pliegue devuelve `null`.
+  - Ruta: inline (bugfix acotado de `judgment-day`, un archivo de dominio). Commit previo: `35997e9f`.
+  - Archivo: `backend/src/sla/domain/entities/reloj-sla.ts` (`reabrio`: alguna transición posterior
+    al cursor sale de RESUELTO/CERRADO a un estado que no lo es; para CORRIDO resuelto da `null` en
+    vez de `undefined`). El historial sin secuencia de un previo no cuenta: el backfill ya midió con
+    todo el historial hasta el último RESUELTO.
+  - Tests: `reloj-sla.resolucion.spec.ts` — CORRIDO RESUELTO→EN_PROCESO→RESUELTO en un pliegue →
+    `null`; CORRIDO CERRADO→EN_PROCESO→RESUELTO→CERRADO → `null`; CORRIDO previo con reapertura solo
+    en el historial → `undefined`.
+  - RED: `AssertionError: expected undefined to be null` (2 tests).
+  - GREEN: `pnpm vitest run src/sla` → 19 archivos, 195 tests pasan.
+- [ ] **T11 — JD-S1: el script no escribe una resolución vieja.** Sugerencia de los dos jueces: si el
+  ticket se reabre y se vuelve a resolver entre la lectura y la escritura del script, se escribe con
+  el `fin` viejo. Cambio: el `UPDATE` exige además que no haya un pase a RESUELTO posterior al `fin`
+  leído.
+- Decisión del dueño (2026-10-15): W4 y S1 se corrigen como ronda 2 (la última que permite
+  `judgment-day`), con re-juicio acotado sobre el delta.
 
 ## Precondición de deploy
 Migración de tenant con backfill: `predeploy-dump.ps1` como siempre. Después del deploy, el script
