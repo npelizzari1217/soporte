@@ -4,6 +4,9 @@
  * ReparacionCreateDialog — crear un ticket edilicio (T5.8). Sin ruta
  * dedicada (ADR-1: solo `/edilicia`) — alta inline, mismo patrón que
  * `CompraCreateDialog` (B5).
+ *
+ * Suma el Sector opcional (odd/ubicacion-sector-ticket). La ubicación general
+ * del ticket NO va acá: Edilicia usa su propia «Ubicación» (CA2).
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -14,12 +17,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
+import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
 import { crearReparacionSchema, type CrearReparacionFormValues } from "../schemas";
 
 export function ReparacionCreateDialog() {
   const [open, setOpen] = useState(false);
   const prioridadesQuery = usePrioridades();
+  // El catálogo de sectores se pide recién al abrir el modal.
+  const sectoresQuery = useSectores(open);
   const crearMutation = useCrearReparacion();
 
   const {
@@ -36,6 +42,7 @@ export function ReparacionCreateDialog() {
         descripcion: values.descripcion || undefined,
         prioridadId: values.prioridadId,
         ubicacion: values.ubicacion || undefined,
+        sectorId: values.sectorId || undefined,
       },
       {
         onSuccess: () => {
@@ -117,6 +124,20 @@ export function ReparacionCreateDialog() {
                 {errors.prioridadId.message}
               </p>
             )}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label htmlFor="reparacion-sector" className="text-sm font-medium text-foreground">
+              Sector
+            </label>
+            <Select id="reparacion-sector" defaultValue="" {...register("sectorId")}>
+              <option value="">Sin sector</option>
+              {(sectoresQuery.data ?? []).map((sector) => (
+                <option key={sector.id} value={sector.id}>
+                  {sector.nombre}
+                </option>
+              ))}
+            </Select>
           </div>
 
           <div className="flex justify-end gap-2">

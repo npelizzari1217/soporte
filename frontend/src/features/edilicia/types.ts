@@ -18,6 +18,13 @@ export interface TicketEdilicia {
   estadoId: string;
   /** Ubicación física de la reparación, texto libre (ex-catálogo Ubicacion removido). */
   ubicacion: string | null;
+  /**
+   * Sector del ticket base (odd/ubicacion-sector-ticket). La ubicación general
+   * del ticket no viaja acá: Edilicia usa su propia `ubicacion`.
+   */
+  sectorId: string | null;
+  /** Nombre del sector, resuelto por el backend aunque esté desactivado. */
+  sectorNombre: string | null;
   porcentajeAvance: number;
   createdAt: string;
   updatedAt: string;
@@ -68,6 +75,8 @@ export interface CrearTicketEdilicioDto {
   prioridadId: string;
   /** Texto libre, opcional. */
   ubicacion?: string | null;
+  /** Sector del cliente, opcional (odd/ubicacion-sector-ticket). Sin la ubicación general. */
+  sectorId?: string | null;
 }
 
 /**

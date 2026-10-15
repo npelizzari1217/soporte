@@ -61,35 +61,36 @@ function AvanceCell({ porcentaje }: { porcentaje: number }) {
 }
 
 /**
- * Botón de la columna «Comentarios»: dispara el modal y lleva el conteo
- * colgado como badge.
+ * Botón de una columna de acción que lleva un conteo colgado como badge: el de
+ * «Comentarios» y el de «Subtareas» (odd/ubicacion-sector-ticket, CA5).
  *
  * `forwardRef` + spread de props NO son decorativos. `DialogTrigger asChild`
  * CLONA este elemento e inyecta en él su `onClick`, su `ref` y los `aria-*`
- * de estado. Si el componente se quedara sólo con `cantidad` y descartara el
- * resto, el click nunca llegaría al `<button>` y el modal no abriría jamás
- * (así se rompió: el de subtareas usa un `Button` pelado y por eso no sufría
- * el problema). Los tests de etiqueta no ven esto — hace falta uno que
- * CLIQUEE.
+ * de estado. Si el componente se quedara sólo con sus props propias y
+ * descartara el resto, el click nunca llegaría al `<button>` y el modal no
+ * abriría jamás (así se rompió el de comentarios la primera vez). Los tests de
+ * etiqueta no ven esto — hace falta uno que CLIQUEE.
  *
  * Accesibilidad: el badge va `aria-hidden` y el conteo se anuncia por el
  * `aria-label` del botón — un lector de pantalla leería si no un «3» suelto,
- * sin forma de saber que cuenta comentarios. Con cero comentarios no se
- * renderiza badge (la fila queda limpia) y el botón vuelve a su nombre
- * simple, sin un «(0 comentarios)» que no aporta nada.
+ * sin forma de saber qué cuenta. Con cero no se renderiza badge (la fila queda
+ * limpia) y el botón vuelve a su nombre simple, sin un «(0 …)» que no aporta
+ * nada.
  */
-const ComentariosTrigger = forwardRef<
+const ConteoTrigger = forwardRef<
   HTMLButtonElement,
-  ComponentPropsWithoutRef<typeof Button> & { cantidad: number }
->(({ cantidad, ...props }, ref) => {
-  const etiqueta =
-    cantidad === 0
-      ? "Ver comentarios"
-      : `Ver comentarios (${cantidad} ${cantidad === 1 ? "comentario" : "comentarios"})`;
+  ComponentPropsWithoutRef<typeof Button> & {
+    texto: string;
+    cantidad: number;
+    singular: string;
+    plural: string;
+  }
+>(({ texto, cantidad, singular, plural, ...props }, ref) => {
+  const etiqueta = cantidad === 0 ? texto : `${texto} (${cantidad} ${cantidad === 1 ? singular : plural})`;
 
   return (
     <Button ref={ref} variant="outline" size="sm" aria-label={etiqueta} {...props}>
-      Ver comentarios
+      {texto}
       {cantidad > 0 && (
         <Badge variant="secondary" aria-hidden="true">
           {cantidad}
@@ -98,7 +99,7 @@ const ComentariosTrigger = forwardRef<
     </Button>
   );
 });
-ComentariosTrigger.displayName = "ComentariosTrigger";
+ConteoTrigger.displayName = "ConteoTrigger";
 
 export function ReparacionesList() {
   const reparacionesQuery = useReparaciones();
@@ -113,6 +114,10 @@ export function ReparacionesList() {
     { key: "numero", header: "Número" },
     { key: "titulo", header: "Título" },
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
+    // Sector del ticket base (odd/ubicacion-sector-ticket, CA4), por el nombre
+    // que resuelve el backend aunque esté desactivado. La «Ubicación» de arriba
+    // es la propia de Edilicia, no la general del ticket.
+    { key: "sectorId", header: "Sector", render: (row) => row.sectorNombre ?? "—" },
     { key: "porcentajeAvance", header: "Avance", render: (row) => <AvanceCell porcentaje={row.porcentajeAvance} /> },
     {
       // Chip SIN número (decisión de producto #2440): responde "¿está
@@ -148,10 +153,15 @@ export function ReparacionesList() {
         <SubtareasDialog
           ticketId={row.ticketId}
           numero={row.numero}
+          // `subtareas` trae embebidas las tareas ACTIVAS del ticket: las mismas
+          // que lista el diálogo y sobre las que se calcula el avance (CA5).
           trigger={
-            <Button variant="outline" size="sm">
-              Ver subtareas
-            </Button>
+            <ConteoTrigger
+              texto="Ver subtareas"
+              cantidad={row.subtareas.length}
+              singular="subtarea"
+              plural="subtareas"
+            />
           }
         />
       ),
@@ -166,7 +176,14 @@ export function ReparacionesList() {
         <ComentariosDialog
           reparacionId={row.id}
           numero={row.numero}
-          trigger={<ComentariosTrigger cantidad={row.cantidadComentarios} />}
+          trigger={
+            <ConteoTrigger
+              texto="Ver comentarios"
+              cantidad={row.cantidadComentarios}
+              singular="comentario"
+              plural="comentarios"
+            />
+          }
         />
       ),
     },

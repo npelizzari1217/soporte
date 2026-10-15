@@ -18,6 +18,8 @@ export const crearReparacionSchema = z.object({
     .string()
     .max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH))
     .optional(),
+  /** `""` = sin sector (la opción vacía del select). */
+  sectorId: z.string().uuid().optional().or(z.literal("")),
 });
 export type CrearReparacionFormValues = z.infer<typeof crearReparacionSchema>;
 

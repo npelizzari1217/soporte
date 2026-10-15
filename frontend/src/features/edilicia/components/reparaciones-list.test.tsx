@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { ReparacionesList } from "./reparaciones-list";
-import type { ReparacionListItem } from "../types";
+import type { ReparacionListItem, SubtareaEdilicia } from "../types";
 import type { TareaTicket } from "@/features/tickets/types";
 
 function buildReparacion(overrides: Partial<ReparacionListItem> = {}): ReparacionListItem {
@@ -16,6 +16,8 @@ function buildReparacion(overrides: Partial<ReparacionListItem> = {}): Reparacio
     titulo: "Reparar cañería",
     estadoId: "estado-nuevo",
     ubicacion: "Edificio Central",
+    sectorId: null,
+    sectorNombre: null,
     porcentajeAvance: 0,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -73,7 +75,7 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
   });
 
   // El disparador de comentarios es un componente propio (lleva el badge del
-  // conteo), a diferencia del de subtareas que es un `Button` pelado.
+  // conteo), igual que el de subtareas desde odd/ubicacion-sector-ticket.
   // `DialogTrigger asChild` CLONA el hijo e inyecta `onClick` y el `ref`: si el
   // componente no hace spread de props ni reenvía el ref, el click se pierde y
   // el modal no abre nunca. Los tests de etiqueta no lo ven — pasaban en verde
@@ -162,6 +164,111 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
     expect(
       await screen.findByRole("button", { name: "Ver comentarios (1 comentario)" }),
     ).toBeInTheDocument();
+  });
+});
+
+/** Subtarea embebida mínima: el conteo del botón solo mira cuántas hay. */
+function buildSubtarea(id: string): SubtareaEdilicia {
+  return {
+    id,
+    ticketEdiliciaId: "rep1",
+    descripcion: `Tarea ${id}`,
+    completada: false,
+    completadaEn: null,
+    completadaPorId: null,
+    orden: 1,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+describe("ReparacionesList — cantidad de subtareas en el botón (odd/ubicacion-sector-ticket, CA5)", () => {
+  it("muestra la cantidad en un badge y la anuncia en el nombre accesible, en singular y plural", async () => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({
+            id: "rep1",
+            numero: "EDI-0001",
+            subtareas: [buildSubtarea("a"), buildSubtarea("b"), buildSubtarea("c")],
+          }),
+          buildReparacion({ id: "rep2", numero: "EDI-0002", subtareas: [buildSubtarea("d")] }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0001");
+
+    const fila = within(filaDe("EDI-0001"));
+    expect(fila.getByRole("button", { name: "Ver subtareas (3 subtareas)" })).toHaveTextContent("3");
+    expect(
+      within(filaDe("EDI-0002")).getByRole("button", { name: "Ver subtareas (1 subtarea)" }),
+    ).toBeInTheDocument();
+  });
+
+  it("sin subtareas no renderiza badge y el botón queda sin conteo", async () => {
+    server.use(
+      http.get("/api/reparaciones", () => HttpResponse.json([buildReparacion({ numero: "EDI-0003" })])),
+    );
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0003");
+    const boton = within(filaDe("EDI-0003")).getByRole("button", { name: "Ver subtareas" });
+    expect(boton).toHaveTextContent(/^Ver subtareas$/);
+  });
+
+  // Mismo riesgo que el de comentarios: un disparador propio que no reenvía ref
+  // ni props deja el modal sin abrir, y los tests de etiqueta no lo ven.
+  it("el botón con badge abre el modal de subtareas", async () => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({ id: "rep8", ticketId: "tk8", numero: "EDI-0008", subtareas: [buildSubtarea("a")] }),
+        ]),
+      ),
+      http.get("/api/tickets/tk8/tareas", () =>
+        HttpResponse.json({ items: [], avance: { total: 0, completadas: 0, porcentaje: 0 } }),
+      ),
+      http.get("/api/tickets/tk8/tareas/tecnicos-elegibles", () => HttpResponse.json([])),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0008");
+    await user.click(within(filaDe("EDI-0008")).getByRole("button", { name: "Ver subtareas (1 subtarea)" }));
+
+    const dialogo = await screen.findByRole("dialog");
+    expect(within(dialogo).getByText("Subtareas — EDI-0008")).toBeInTheDocument();
+  });
+});
+
+describe("ReparacionesList — columna Sector (odd/ubicacion-sector-ticket, CA4)", () => {
+  it("muestra el sector por su nombre, con guion cuando no hay, y conserva la ubicación propia", async () => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({ id: "rep1", numero: "EDI-0001", sectorId: "s1", sectorNombre: "Primaria" }),
+          buildReparacion({ id: "rep2", numero: "EDI-0002", ubicacion: null }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0001");
+    expect(screen.getByRole("columnheader", { name: "Sector" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Ubicación" })).toBeInTheDocument();
+
+    const conSector = within(filaDe("EDI-0001"));
+    expect(conSector.getByText("Primaria")).toBeInTheDocument();
+    expect(conSector.getByText("Edificio Central")).toBeInTheDocument();
+
+    // Sin ubicación propia ni sector: un guion por cada columna.
+    expect(within(filaDe("EDI-0002")).getAllByText("—")).toHaveLength(2);
   });
 });
 
