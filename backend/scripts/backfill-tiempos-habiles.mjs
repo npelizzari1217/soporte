@@ -19,7 +19,8 @@
 // `IS NULL` en la propia sentencia, así que un valor que el pliegue del reloj o la
 // primera respuesta escribieron en el medio nunca se pisa, y correrlo dos veces no
 // cambia nada. El de resolución re-evalúa además que el ticket siga en RESUELTO o
-// CERRADO: uno reabierto entre la lectura y la escritura no recibe el valor.
+// CERRADO y que no tenga un paso a RESUELTO posterior al leído: uno reabierto (o
+// reabierto y vuelto a resolver) entre la lectura y la escritura no recibe el valor.
 //
 // El cálculo hábil y los mappers viven en TypeScript; este script corre en el VPS
 // después del build, así que se leen de `dist/` con `createRequire` (mismo criterio
@@ -64,15 +65,27 @@ const segundos = (ms) => Math.round(ms / 1000);
 
 /**
  * Condición extra del UPDATE de resolución: el ticket sigue en RESUELTO o CERRADO en el
- * momento de escribir (mismo criterio que la lectura, por `estados.codigo`).
+ * momento de escribir (mismo criterio que la lectura, por `estados.codigo`), y no tiene un
+ * paso a RESUELTO posterior al leído (`v.fin_id`): si se reabrió y se volvió a resolver en el
+ * medio, el valor calculado mide una resolución vieja y lo toma la corrida siguiente. Se
+ * compara por id y en SQL porque `pg` devuelve el timestamptz sin los microsegundos.
  */
 const SIGUE_RESUELTO = `AND EXISTS (
             SELECT 1 FROM "estados" e
-             WHERE e."id" = t."estado_id" AND e."codigo" IN ('RESUELTO', 'CERRADO'))`;
+             WHERE e."id" = t."estado_id" AND e."codigo" IN ('RESUELTO', 'CERRADO'))
+          AND NOT EXISTS (
+            SELECT 1 FROM "operaciones_ticket" o
+              JOIN "tipo_operacion" tp ON tp."id" = o."tipo_operacion_id"
+              JOIN "estados" en ON en."id" = o."estado_nuevo_id"
+             WHERE o."ticket_id" = t."id" AND o."deleted_at" IS NULL
+               AND tp."codigo" = 'CAMBIO_ESTADO' AND en."codigo" = 'RESUELTO'
+               AND o."created_at" > (SELECT f."created_at" FROM "operaciones_ticket" f
+                                      WHERE f."id" = v.fin_id))`;
 
 /**
  * Escribe `columna` en lotes, solo donde sigue NULL (y, si se pasa, donde se cumple
- * `condicion`). Devuelve las filas escritas.
+ * `condicion`, que puede usar `v.fin_id`: la operación que se leyó como fin del tramo, o NULL).
+ * Devuelve las filas escritas.
  */
 async function escribirEnLotes(pool, columna, valores, condicion = '') {
   let escritos = 0;
@@ -81,9 +94,9 @@ async function escribirEnLotes(pool, columna, valores, condicion = '') {
     const r = await pool.query(
       `UPDATE "tickets" AS t
           SET "${columna}" = v.s
-         FROM unnest($1::uuid[], $2::int[]) AS v(id, s)
+         FROM unnest($1::uuid[], $2::int[], $3::uuid[]) AS v(id, s, fin_id)
         WHERE t."id" = v.id AND t."${columna}" IS NULL ${condicion}`,
-      [lote.map((x) => x.id), lote.map((x) => x.s)],
+      [lote.map((x) => x.id), lote.map((x) => x.s), lote.map((x) => x.finId ?? null)],
     );
     escritos += r.rowCount ?? 0;
   }
@@ -114,16 +127,18 @@ export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, 
     segundos(calculo.msHabilesEntre(desde, hasta, calendario, feriados));
 
   const { rows: resueltos } = await pool.query(
-    `SELECT t."id", t."created_at", ult.fin
+    `SELECT t."id", t."created_at", ult.fin, ult.fin_id
        FROM "tickets" t
        JOIN "estados" e ON e."id" = t."estado_id"
        LEFT JOIN LATERAL (
-         SELECT max(o."created_at") AS fin
+         SELECT o."created_at" AS fin, o."id" AS fin_id
            FROM "operaciones_ticket" o
            JOIN "tipo_operacion" tp ON tp."id" = o."tipo_operacion_id"
            JOIN "estados" en ON en."id" = o."estado_nuevo_id"
           WHERE o."ticket_id" = t."id" AND o."deleted_at" IS NULL
             AND tp."codigo" = 'CAMBIO_ESTADO' AND en."codigo" = 'RESUELTO'
+          ORDER BY o."created_at" DESC, o."id" DESC
+          LIMIT 1
        ) ult ON true
       WHERE e."codigo" IN ('RESUELTO', 'CERRADO')
         AND t."resolucion_habil_s" IS NULL AND t."deleted_at" IS NULL
@@ -131,7 +146,7 @@ export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, 
   );
   const resolucion = resueltos
     .filter((r) => r.fin !== null)
-    .map((r) => ({ id: r.id, s: habilS(r.created_at, r.fin) }));
+    .map((r) => ({ id: r.id, s: habilS(r.created_at, r.fin), finId: r.fin_id }));
 
   const { rows: respondidos } = await pool.query(
     `SELECT "id", "created_at", "primera_respuesta_at"

@@ -228,10 +228,23 @@ técnica conocida" (`docs/roadmap-comercial.md`).
     en el historial → `undefined`.
   - RED: `AssertionError: expected undefined to be null` (2 tests).
   - GREEN: `pnpm vitest run src/sla` → 19 archivos, 195 tests pasan.
-- [ ] **T11 — JD-S1: el script no escribe una resolución vieja.** Sugerencia de los dos jueces: si el
+- [x] **T11 — JD-S1: el script no escribe una resolución vieja.** Sugerencia de los dos jueces: si el
   ticket se reabre y se vuelve a resolver entre la lectura y la escritura del script, se escribe con
   el `fin` viejo. Cambio: el `UPDATE` exige además que no haya un pase a RESUELTO posterior al `fin`
   leído.
+  - Ruta: inline (bugfix acotado de `judgment-day`, el script y su spec). Commit previo: `4024bf5e`.
+  - Archivo: `backend/scripts/backfill-tiempos-habiles.mjs` — la lectura toma el último pase a
+    RESUELTO con su id (`ORDER BY created_at DESC, id DESC LIMIT 1` en vez de `max`); el `UPDATE`
+    recibe `fin_id` y `SIGUE_RESUELTO` exige además `NOT EXISTS` de un pase a RESUELTO con
+    `created_at` mayor que el de esa operación. La comparación es en SQL y por id porque `pg`
+    devuelve el `timestamptz` como `Date` sin los microsegundos que guarda `now()`: comparar contra
+    el `fin` leído haría que el script no escribiera nunca en prod (hallado al implementar).
+  - Tests: `backfill-tiempos-habiles.integration.spec.ts` — un pool envoltorio reabre y vuelve a
+    resolver el ticket antes del `UPDATE`: queda NULL y la corrida siguiente lo toma con el último
+    pase (10 h); y un pase a RESUELTO con microsegundos se escribe (3 h).
+  - RED: S1 `actualizados` 1 en vez de 0; microsegundos (con la primera versión, que comparaba contra
+    el `fin` leído) `actualizados` 0 en vez de 1.
+  - GREEN: `backfill-tiempos-habiles.integration.spec.ts` → 7 tests pasan; eslint y prettier limpios.
 - Decisión del dueño (2026-10-15): W4 y S1 se corrigen como ronda 2 (la última que permite
   `judgment-day`), con re-juicio acotado sobre el delta.
 

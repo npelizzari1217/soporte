@@ -254,6 +254,55 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
     expect((await columnas())['f-reabierto-en-carrera']).toEqual([null, null]);
   });
 
+  it('un ticket que se reabre y se resuelve de nuevo entre la lectura y la escritura no recibe la resolución vieja', async () => {
+    await ticket('g-re-resuelto-en-carrera', { estado: 'RESUELTO', creado: L(10, 9) });
+    await transicion('g-re-resuelto-en-carrera', 'EN_PROCESO', 'RESUELTO', L(10, 12));
+    // Se lee con fin = lunes 12:00; antes del UPDATE se reabre y se vuelve a resolver el martes.
+    // El estado sigue RESUELTO, pero el valor leído mide hasta la resolución vieja (JD-S1).
+    const pool = {
+      query: async (sql: string, params?: unknown[]) => {
+        if (sql.includes('SET "resolucion_habil_s"')) {
+          await transicion('g-re-resuelto-en-carrera', 'RESUELTO', 'EN_PROCESO', L(10, 15));
+          await transicion('g-re-resuelto-en-carrera', 'EN_PROCESO', 'RESUELTO', L(11, 10));
+        }
+        return client.query(sql, params);
+      },
+    };
+
+    const r = await backfillTenant({
+      pool,
+      feriadosGlobales: [FERIADO_GLOBAL],
+      calculo: new CalcularSlaHabilVenceService(),
+      mapper: PrismaCalendarioLaboralMapper,
+      aplicar: true,
+    });
+
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, salteados: 1 });
+    expect((await columnas())['g-re-resuelto-en-carrera']).toEqual([null, null]);
+
+    // La corrida siguiente lo toma con el último paso a RESUELTO: lunes 9 h + martes 1 h.
+    const siguiente = await correr(true);
+    expect(siguiente.resolucion).toEqual({ aActualizar: 1, actualizados: 1, salteados: 1 });
+    expect((await columnas())['g-re-resuelto-en-carrera']).toEqual([10 * H, null]);
+  });
+
+  it('un pase a RESUELTO con microsegundos (como los que guarda now()) se escribe igual', async () => {
+    await ticket('h-microsegundos', { estado: 'RESUELTO', creado: L(10, 9) });
+    await transicion('h-microsegundos', 'EN_PROCESO', 'RESUELTO', L(10, 12));
+    // `pg` devuelve el timestamptz como Date con milisegundos: el fin leído pierde los
+    // microsegundos y no puede compararse contra la fila original.
+    await client.query(
+      `UPDATE operaciones_ticket SET created_at = created_at + interval '123456 microseconds'
+        WHERE ticket_id = $1`,
+      [ids['h-microsegundos']],
+    );
+
+    const r = await correr(true);
+
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 1, salteados: 1 });
+    expect((await columnas())['h-microsegundos']).toEqual([3 * H, null]);
+  });
+
   it('parsearArgs: ensayo por defecto, --apply escribe, cualquier otro argumento aborta', () => {
     expect(parsearArgs([])).toEqual({ aplicar: false });
     expect(parsearArgs(['--apply'])).toEqual({ aplicar: true });
