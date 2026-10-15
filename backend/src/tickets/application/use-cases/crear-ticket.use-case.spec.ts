@@ -230,6 +230,39 @@ describe('CrearTicketUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
   });
 
+  // CA3 (odd/tasks/deuda-tecnica-2026-10-15.md): `findById` devuelve también
+  // los tipos dados de baja (la reactivación los necesita); el alta los filtra.
+  it.each([
+    [
+      'dado de baja (activo=false + deletedAt)',
+      () => {
+        const tipo = TipoTicketEntity.create(
+          { codigo: 'RRHH', nombre: 'RRHH', modulo: 'TICKETS', activo: true },
+          'tipo-rrhh-uuid',
+        );
+        tipo.desactivar();
+        return tipo;
+      },
+    ],
+    [
+      'con activo=false',
+      () =>
+        TipoTicketEntity.create(
+          { codigo: 'RRHH', nombre: 'RRHH', modulo: 'TICKETS', activo: false },
+          'tipo-rrhh-uuid',
+        ),
+    ],
+  ])('tipoId %s → TipoTicketNoEncontradoError (422), sin abrir la tx', async (_caso, tipo) => {
+    const c = makeCollaborators();
+    c.tipoTicketRepo.findById.mockResolvedValue(tipo());
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
+    expect(c.txRunner.run).not.toHaveBeenCalled();
+  });
+
   it('prioridadId inexistente en el catálogo del tenant → PrioridadNoEncontradaError (422)', async () => {
     const c = makeCollaborators();
     c.prioridadRepo.findById.mockResolvedValue(null);

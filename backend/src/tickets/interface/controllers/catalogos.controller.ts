@@ -87,7 +87,8 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
     return new NotFoundException(error.message);
   }
   // TipoTicketCodigoDuplicadoError, PrefijoTipoTicketColisionError,
-  // TipoTicketDesconocidoError, PrioridadCodigoDuplicadaError → 422.
+  // TipoTicketDesconocidoError, TipoTicketDelSistemaError,
+  // PrioridadCodigoDuplicadaError → 422.
   return new UnprocessableEntityException(error.message);
 }
 

@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select";
 import { MODULOS } from "@/shared/auth/modulo-access";
 import { useCrearTipoTicket, useEditarTipoTicket } from "../hooks/use-catalogo-mutations";
 import { tipoTicketSchema, type TipoTicketFormValues } from "../schemas";
+import { esTipoTicketDelSistema } from "../tipos-del-sistema";
 import type { TipoTicket } from "@/features/tickets/types";
 
 export interface TipoTicketFormDialogProps {
@@ -27,6 +28,8 @@ export interface TipoTicketFormDialogProps {
 export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProps) {
   const [open, setOpen] = useState(false);
   const isEdit = !!tipo;
+  // El código de un tipo fijo del sistema no cambia (el backend responde 422).
+  const codigoBloqueado = !!tipo && esTipoTicketDelSistema(tipo.codigo);
   const crearMutation = useCrearTipoTicket();
   const editarMutation = useEditarTipoTicket(tipo?.id ?? "");
   const mutation = isEdit ? editarMutation : crearMutation;
@@ -79,7 +82,12 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
             <label htmlFor="tipo-codigo" className="text-sm font-medium text-foreground">
               Código
             </label>
-            <Input id="tipo-codigo" error={!!errors.codigo} {...register("codigo")} />
+            <Input
+              id="tipo-codigo"
+              error={!!errors.codigo}
+              readOnly={codigoBloqueado}
+              {...register("codigo")}
+            />
             {errors.codigo && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.codigo.message}

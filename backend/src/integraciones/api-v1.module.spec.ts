@@ -12,10 +12,17 @@
 import { FactoryProvider, Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { ThrottlerModule, ThrottlerStorage, getOptionsToken } from '@nestjs/throttler';
+import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
+import { ListarEstadosUseCase } from '../tickets/application/use-cases/listar-estados.use-case';
+import { ListarPrioridadesUseCase } from '../tickets/application/use-cases/listar-prioridades.use-case';
+import { ListarTicketsUseCase } from '../tickets/application/use-cases/listar-tickets.use-case';
+import { ListarTiposTicketUseCase } from '../tickets/application/use-cases/listar-tipos-ticket.use-case';
+import { TicketsModule } from '../tickets/tickets.module';
 import { ApiV1Module } from './api-v1.module';
 import { API_V1_VENTANA_MS, limiteApiV1 } from './infrastructure/api-v1-throttler.guard';
 
-const metadata = <T>(clave: string): T[] => Reflect.getMetadata(clave, ApiV1Module) ?? [];
+const metadata = <T>(clave: string, modulo: object = ApiV1Module): T[] =>
+  Reflect.getMetadata(clave, modulo) ?? [];
 const token = (p: Provider): unknown => (typeof p === 'function' ? p : p.provide);
 
 describe('ApiV1Module — throttler local (JD-6)', () => {
@@ -34,4 +41,26 @@ describe('ApiV1Module — throttler local (JD-6)', () => {
     expect(opciones!.useFactory()).toEqual([{ limit: limiteApiV1(), ttl: API_V1_VENTANA_MS }]);
     expect(providers.some((p) => token(p) === ThrottlerStorage)).toBe(true);
   });
+});
+
+// odd/tasks/deuda-tecnica-2026-10-15.md, CA4: una sola fábrica por caso de uso, la de
+// `TicketsModule`. Si `ApiV1Module` volviera a armarlos, un cambio de dependencias habría que
+// repetirlo en los dos lados.
+describe('ApiV1Module — casos de uso de tickets tomados de TicketsModule (CA4)', () => {
+  const COMPARTIDOS = [
+    ListarTicketsUseCase,
+    CrearComentarioUseCase,
+    ListarTiposTicketUseCase,
+    ListarPrioridadesUseCase,
+    ListarEstadosUseCase,
+  ];
+
+  it.each(COMPARTIDOS.map((c) => [c.name, c] as const))(
+    '%s: lo exporta TicketsModule y ApiV1Module no lo provee',
+    (_nombre, casoDeUso) => {
+      expect(metadata<unknown>(MODULE_METADATA.EXPORTS, TicketsModule)).toContain(casoDeUso);
+      const providers = metadata<Provider>(MODULE_METADATA.PROVIDERS);
+      expect(providers.some((p) => token(p) === casoDeUso)).toBe(false);
+    },
+  );
 });

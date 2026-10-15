@@ -12,11 +12,11 @@ import { Modulo } from '../../../shared/domain/modulos';
 export interface ITipoTicketRepository {
   /**
    * Busca un tipo de ticket por su identificador técnico (UUID). Retorna
-   * null si no existe (incl. soft-deleted — no rompe tickets existentes,
-   * pero no es válido para NUEVAS altas, spec T2/T4).
-   *
-   * Usado por `CrearTicketUseCase` (PR6, T4) para validar `tipoId` y
-   * resolver el `codigo` que necesita `NumeradorTicket` (ADR-4).
+   * null solo si no existe: un tipo dado de baja (soft-deleted, `activo=false`)
+   * SÍ se devuelve, porque la reactivación (`CambiarEstadoActivoTipoTicketUseCase`)
+   * lo necesita. Quien no deba aceptarlo lo filtra: `CrearTicketUseCase` (PR6,
+   * T4) rechaza un tipo inactivo para NUEVAS altas (spec T2/T4) y además usa el
+   * `codigo` que necesita `NumeradorTicket` (ADR-4).
    */
   findById(id: string): Promise<TipoTicketEntity | null>;
 

@@ -164,4 +164,24 @@ describe("CatalogosAdminView", () => {
 
     await waitFor(() => expect(body).toEqual({ activo: false }));
   });
+
+  it("los tipos fijos del sistema no ofrecen «Dar de baja»; uno fijo ya dado de baja sí ofrece «Activar»", async () => {
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([
+          TIPO_INCIDENTE,
+          { ...TIPO_INCIDENTE, id: "t2", codigo: "PREVENTIVO", nombre: "Preventivo" },
+          { ...TIPO_INCIDENTE, id: "t3", codigo: "SOPORTE", nombre: "Soporte" },
+          { ...TIPO_INCIDENTE, id: "t4", codigo: "EDILICIA", nombre: "Edilicia", activo: false },
+        ]),
+      ),
+    );
+
+    renderWithProviders(<CatalogosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+    await screen.findByText("PREVENTIVO");
+
+    // Solo INCIDENTE se puede dar de baja; EDILICIA (fija y ya de baja) se puede reactivar.
+    expect(screen.getAllByRole("button", { name: "Dar de baja" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Activar" })).toHaveLength(1);
+  });
 });

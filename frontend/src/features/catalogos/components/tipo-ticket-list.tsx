@@ -5,6 +5,7 @@
  * detrás de `ConfirmDialog` (mismo primitivo que KB, B3) — dar de baja un
  * tipo no rompe tickets existentes (ver backend), pero sigue siendo una
  * acción con efecto visible en toda la app (deja de aparecer en selects).
+ * Los tipos fijos del sistema no ofrecen dar de baja; reactivarlos sí.
  */
 import { Plus } from "lucide-react";
 import { useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
@@ -15,6 +16,7 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { notifyError } from "@/shared/lib/toast";
 import { TipoTicketFormDialog } from "./tipo-ticket-form-dialog";
 import { useCambiarEstadoActivoTipoTicket } from "../hooks/use-catalogo-mutations";
+import { esTipoTicketDelSistema } from "../tipos-del-sistema";
 import type { TipoTicket } from "@/features/tickets/types";
 
 function EstadoActivoAction({ tipo }: { tipo: TipoTicket }) {
@@ -60,7 +62,7 @@ export function TipoTicketList() {
               </Button>
             }
           />
-          <EstadoActivoAction tipo={row} />
+          {(!row.activo || !esTipoTicketDelSistema(row.codigo)) && <EstadoActivoAction tipo={row} />}
         </div>
       ),
     },

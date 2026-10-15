@@ -756,8 +756,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 25 clases de error (24 previas + TicketCerradoNoReasignableError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(25);
+  it('el catálogo tiene EXACTAMENTE 26 clases de error (25 previas + TipoTicketDelSistemaError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(26);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -822,6 +822,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'TipoTicketCodigoDuplicadoError',
       () => new TicketsErrors.TipoTicketCodigoDuplicadoError('SOPORTE'),
+      422,
+    ],
+    [
+      'TipoTicketDelSistemaError',
+      () => new TicketsErrors.TipoTicketDelSistemaError('PREVENTIVO'),
       422,
     ],
     [
