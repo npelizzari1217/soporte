@@ -42,7 +42,22 @@ puertos, y bajar la línea base del ratchet en cada tanda.
     de `expect(` e `it(` por archivo; lint y typecheck 0; ratchet 491/100 (repetido por el padre); un
     spec descartable con un valor erróneo no compiló (los dobles chequean tipos). RDD: `assess` →
     medium, `review_due` false (`under_budget`, 755 líneas).
-- [ ] **T2 — tickets** (90).
+- [x] **T2 — tickets** (90 → 0). Ruta: delegada (escritor único). Commit `f803a4e9`.
+  - 23 specs; ningún cast conservado. Base del ratchet 491/100 → **401/77**.
+  - Defectos destapados (arreglados solo en specs): dobles con objetos sueltos en vez de
+    `TipoTicketEntity`/`EstadoEntity`; `modulo: 'SOPORTE'`, que no existe en `Modulo` (el tipo SOPORTE
+    es del módulo `TICKETS`; se corrigieron el tipo, los módulos autorizados y el
+    `toHaveBeenCalledWith` juntos); un doble de `ITicketRepository` sin `esVisiblePara`; dos lecturas
+    que seguían con `undefined` (`ops.find`, `mock.calls[0][0]`) pasaron a helpers que fallan; eventos
+    publicados que ahora se angostan con `instanceof`.
+  - Los métodos de un puerto completo que el test no usa van con `unstubbed(...)`
+    (`src/testing/mocks.ts`): fallan si producción empieza a llamarlos.
+  - Evidencia: `pnpm vitest run src/tickets` → 88 archivos, 988 tests antes y después; mismos conteos
+    de `it(`/`expect(`; lint y typecheck 0; ratchet 401/77 (repetido por el padre). RDD: `assess` →
+    medium, `review_due` false (`under_budget`).
+  - Fuera del ratchet (cuenta solo `as never`/`as any`): `tickets.controller.spec.ts` tiene 16
+    `as unknown as` y `exportar-tickets.use-case.spec.ts:104` uno. En todo el backend hay 168
+    `as unknown as` en specs (medido el 2026-10-16): se reporta al cierre como deuda aparte.
 - [ ] **T3 — auth** (84).
 - [ ] **T4 — clientes** (62).
 - [ ] **T5 — compras** (51).
@@ -59,6 +74,7 @@ puertos, y bajar la línea base del ratchet en cada tanda.
 ## Progreso
 - 2026-10-16: el dueño pidió seguir con el punto 5 (casts); documento creado.
 - 2026-10-16: T1 hecha (equipos, 491/100).
+- 2026-10-16: T2 hecha (tickets, 401/77).
 
 ## Próximo paso
-T2.
+T3 y T4.
