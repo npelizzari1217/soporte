@@ -56,8 +56,17 @@ tengan `resolucion_habil_s`, aproximada con las horas hábiles desde `created_at
     viola el CHECK); el rango más largo es de 362 días (la cota del cálculo es ~10 años). La mediana
     del intervalo corrido es 0 o 24 h según el tenant: los datos importados tienen precisión de día,
     así que la aproximación es gruesa.
-- [ ] **T2 — Cierre y corrida en prod**: compuertas del backend, merge (decisión del dueño), deploy
-  y el script en ensayo y con `--apply`.
+- [x] **T2 — Cierre y corrida en prod**: compuertas del backend, merge (decisión del dueño), deploy
+  y el script en ensayo y con `--apply`. Ruta: inline (estado git y operación remota).
+  - Revisión del diff completo (§4.2): solo script, spec, runbook y este documento; sin secretos ni
+    cambios ajenos. Merge local `--no-ff` a `main` como `2e3832bc` (árbol idéntico a `72cc8634`);
+    `check-roadmap-fresco` en verde.
+  - Prod (autorizado por el dueño, 2026-10-15): sin `deploy.ps1`, porque el script no se compila y la
+    app no cambia. Bundle `889d7e7a..main` (sha256 `b24648e47587f417…`) y `merge --ff-only` en el
+    VPS → `2e3832bc`.
+  - Ensayo: 5735 a actualizar, los 5735 aproximados, 0 salteados (343 + 2552 + 1158 + 1185 + 195 +
+    61 + 88 + 153 + 0 en los 9 tenants). `--apply`: 5735 actualizados, `exit=0`. Segunda corrida:
+    `resolucion actualizados 0` y `primera respuesta actualizados 0` en los 9 tenants (CA6).
 
 ## Ruta y entrega
 - RDD apagada. Feature: TDD no exigido, pero la tarea lleva sus tests.
@@ -66,6 +75,8 @@ tengan `resolucion_habil_s`, aproximada con las horas hábiles desde `created_at
 ## Progreso
 - 2026-10-15: documento creado tras la decisión del dueño.
 - 2026-10-15: T1 hecha.
+- 2026-10-15: T2 hecha: merge `2e3832bc` y backfill aplicado en prod.
 
 ## Próximo paso
-T2.
+Ninguno: feature cerrada. Deuda de Ayuda: ninguna (el cambio no altera lo que el usuario
+ve o hace, solo completa datos históricos del promedio).
