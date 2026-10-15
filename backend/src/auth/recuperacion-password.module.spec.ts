@@ -9,6 +9,8 @@ import { PASSWORD_RESET_TOKEN_REPOSITORY } from './domain/ports/i-password-reset
 import { SolicitarResetPasswordUseCase } from './application/use-cases/solicitar-reset-password.use-case';
 import { ConfirmarResetPasswordUseCase } from './application/use-cases/confirmar-reset-password.use-case';
 import { RecuperacionPasswordController } from './interface/controllers/recuperacion-password.controller';
+import { ThrottlerStorage } from '@nestjs/throttler';
+import { PostgresThrottlerStorage } from '../shared/infrastructure/throttler/postgres-throttler-storage';
 
 /**
  * recuperacion-password.module.spec.ts — compilación REAL del módulo
@@ -63,6 +65,20 @@ describe('RecuperacionPasswordModule — compilación real (WU-5b)', () => {
     expect(moduleRef.get(RecuperacionPasswordThrottlerGuard)).toBeDefined();
     expect(moduleRef.get(CORREO_DE_CLIENTE)).toBeDefined();
     expect(moduleRef.get(PASSWORD_RESET_TOKEN_REPOSITORY)).toBeDefined();
+
+    await moduleRef.close();
+  });
+
+  it('el guard cuenta en el storage de Postgres (odd/tasks/throttler-postgres.md, CA5)', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [SharedModule, RecuperacionPasswordModule],
+    }).compile();
+
+    const guard = moduleRef.get(RecuperacionPasswordThrottlerGuard);
+    const storage = moduleRef.get(ThrottlerStorage);
+    expect(storage).toBeInstanceOf(PostgresThrottlerStorage);
+    // `storageService` es `protected` en `ThrottlerGuard`: es el que usa el guard al limitar.
+    expect((guard as unknown as { storageService: unknown }).storageService).toBe(storage);
 
     await moduleRef.close();
   });

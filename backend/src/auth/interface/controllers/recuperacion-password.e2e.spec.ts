@@ -25,7 +25,8 @@
  * el tenant (`TenantContext.run` es solo `AsyncLocalStorage`, y
  * `EMAIL_SENDER` se overridea acá). `soporte_master_test` (COMPARTIDA) se
  * trunca en `beforeEach` — requiere `usarLockMasterTest()`. Emails/tokens
- * DISTINTOS por test: el storage del throttler vive mientras vive la app.
+ * DISTINTOS por test. El storage del throttler es `throttler_contadores`
+ * (master): sobrevive a la app, por eso el `beforeEach` también lo trunca.
  *
  * Ref spec: sdd/auth-reseteo-por-olvido/spec, Requirement "La solicitud de
  * reset devuelve una respuesta uniforme", "La solicitud no filtra
@@ -258,7 +259,7 @@ describe('POST /auth/forgot-password e2e (WU-7, 7.4)', () => {
     // `password_reset_tokens` tiene FK CASCADE a `usuarios` — el TRUNCATE de
     // `usuarios` la alcanza sin nombrarla, mismo criterio que `auth.e2e.spec.ts:207`.
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE membresias, refresh_tokens, usuarios, clientes, roles, usuario_cliente_permisos RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE membresias, refresh_tokens, usuarios, clientes, roles, usuario_cliente_permisos, throttler_contadores RESTART IDENTITY CASCADE',
     );
     fakeEmailSender.reset();
   });

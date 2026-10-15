@@ -4,8 +4,9 @@
  *
  * App real contra Postgres real y guards reales (throttler, tenant): dos tenants efímeros (A y B),
  * `soporte_master_test` truncada en `beforeEach`, `usarLockMasterTest()` y `EMAIL_SENDER` falso.
- * Los cupos del throttler viven en memoria de la app y se comparten entre tests: cada test usa
- * slugs y emails propios para no heredar el contador de otro.
+ * Los cupos del throttler viven en `throttler_contadores` (master) y sobreviven a la app: el
+ * `beforeEach` los vacía junto con `clientes`, así una corrida no hereda el contador de la anterior
+ * ni de otro spec. Igual cada test usa slugs y emails propios.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -138,7 +139,9 @@ describe('Formulario público e2e — POST solicitud (WU-13)', () => {
   }, 60_000);
 
   beforeEach(async () => {
-    await masterClient.$executeRawUnsafe('TRUNCATE TABLE clientes RESTART IDENTITY CASCADE');
+    await masterClient.$executeRawUnsafe(
+      'TRUNCATE TABLE clientes, throttler_contadores RESTART IDENTITY CASCADE',
+    );
     await tenantA.pedidoPublicoPendiente.deleteMany();
     await tenantB.pedidoPublicoPendiente.deleteMany();
     await tenantA.equipoInformatico.deleteMany();

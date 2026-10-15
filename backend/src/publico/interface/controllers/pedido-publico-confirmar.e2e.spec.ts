@@ -6,7 +6,8 @@
  * con el catálogo mínimo y un ciclo activo, `soporte_master_test` truncada en `beforeEach`,
  * `usarLockMasterTest()` y `EMAIL_SENDER` falso. Los tokens se siembran directo en master y el
  * pendiente en el tenant (el camino de `solicitud` ya lo cubre su propio e2e). Los cupos del
- * throttler viven en memoria y se comparten entre tests: cada test usa su propio token.
+ * throttler viven en `throttler_contadores` (master) y el `beforeEach` los vacía: no se heredan de
+ * otra corrida ni de otro spec. Igual cada test usa su propio token.
  */
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
@@ -170,7 +171,9 @@ describe('Formulario público e2e — POST confirmar (WU-15)', () => {
   }, 60_000);
 
   beforeEach(async () => {
-    await masterClient.$executeRawUnsafe('TRUNCATE TABLE clientes RESTART IDENTITY CASCADE');
+    await masterClient.$executeRawUnsafe(
+      'TRUNCATE TABLE clientes, throttler_contadores RESTART IDENTITY CASCADE',
+    );
     for (const tenant of [tenantA, tenantB]) {
       await limpiarTenant(tenant);
       await tenant.cicloCliente.deleteMany();

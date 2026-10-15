@@ -16,6 +16,8 @@
  * `tickets.e2e.spec.ts`), sembrada UNA vez en `beforeAll` y dropeada en
  * `afterAll`. `master.clientes`/`encuesta_tokens` (DB `soporte_master_test`,
  * COMPARTIDA) se truncan en `beforeEach` — requiere `usarLockMasterTest()`.
+ * También `throttler_contadores`: el cupo del throttler vive en master y
+ * sobrevive a la app, así que sin truncarlo se heredaría de otra corrida.
  *
  * Ref spec: sdd/csat/spec, Requirement "Validación del token en el endpoint
  * público", "Cliente inactivo o eliminado no acepta escrituras", "Registro
@@ -181,7 +183,7 @@ describe('CSAT e2e — endpoint público (7.5)', () => {
     // encuesta_tokens tiene FK a clientes — CASCADE arrastra ambas (mismo
     // patrón que prisma-encuesta-token.repository.integration.spec.ts).
     await masterClient.$executeRawUnsafe(
-      'TRUNCATE TABLE encuesta_tokens, clientes RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE encuesta_tokens, clientes, throttler_contadores RESTART IDENTITY CASCADE',
     );
   });
 

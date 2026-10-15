@@ -82,7 +82,21 @@ Los cuatro usan el `ThrottlerStorageService` en memoria de `@nestjs/throttler` 6
     `test/integraciones-webhooks-encolado.e2e.spec.ts` y `api-v1.module.spec.ts`, dos veces
     seguidas → 5 archivos, 32 tests verdes las dos veces; la tabla quedó con filas (el storage se
     usa de verdad). Las keys de v1 son ids de clave nuevos en cada corrida.
-- [ ] **T3 — CSAT, recuperación y formulario público usan el storage** (CA5, resto).
+  - Commit: `9147b8be`.
+- [x] **T3 — CSAT, recuperación y formulario público usan el storage** (CA5, resto).
+  - Archivos: `backend/src/csat/csat.module.ts` (`ThrottlerModule.forRootAsync` con `storage`; el
+    guard lee igual el objeto de opciones que el array: mismo límite, mismo mensaje),
+    `backend/src/auth/recuperacion-password.module.ts` y `backend/src/publico/formulario-publico.module.ts`
+    (`THROTTLER_STORAGE_POSTGRES`). Specs de módulo que fijan que el guard usa el storage de
+    Postgres: `csat.module.spec.ts` y `formulario-publico.module.spec.ts` (nuevos) y un caso en
+    `recuperacion-password.module.spec.ts`.
+  - E2e: con el storage persistente, los cupos sobreviven a la app y se comparten entre specs de
+    una misma corrida (`no-existe`, `sin-ip`, emails fijos). `csat.e2e`, `recuperacion-password.e2e`
+    y `pedido-publico-{solicitud,contexto,confirmar,flujo}.e2e` truncan `throttler_contadores` en su
+    `beforeEach`; `app-module.registro.e2e` lo trunca en su `beforeAll`. Comentarios de "viven en
+    memoria" corregidos.
+  - Evidencia: `pnpm vitest run` de esos 7 e2e más los 3 specs de módulo, dos veces seguidas →
+    10 archivos, 54 tests verdes las dos veces. El spec de CSAT falla con el `forRoot` anterior.
 - [ ] **T4 — Cierre**: fila de la deuda RESUELTA en el roadmap, nota de migración y rollback en
   `DEPLOY-VPS-runbook.md`, compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
 
@@ -100,6 +114,7 @@ anterior funciona con la tabla creada.
 - 2026-10-15: exploración hecha, decisión del dueño registrada, documento creado.
 - 2026-10-15: T1 hecha (ruta delegada, escritor único).
 - 2026-10-15: T2 hecha.
+- 2026-10-15: T3 hecha.
 
 ## Próximo paso
 T1.

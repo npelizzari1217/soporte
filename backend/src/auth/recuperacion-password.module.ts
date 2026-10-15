@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
+import { getOptionsToken } from '@nestjs/throttler';
+import { THROTTLER_STORAGE_POSTGRES } from '../shared/infrastructure/throttler/postgres-throttler-storage';
 import { AuthModule } from './auth.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
@@ -55,8 +56,8 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
  * `csat.e2e.spec.ts:91`), pero `main` no monta ninguna ruta nueva.
  *
  * Alcance de WU-4: `TAREAS_SEGUNDO_PLANO` (ADR-2) y el throttler guard
- * (ADR-3), con su propia `ThrottlerStorageService` en vez de un segundo
- * `ThrottlerModule.forRoot()` — ver `RecuperacionPasswordThrottlerGuard`.
+ * (ADR-3), con su propio `ThrottlerStorage` (hoy el de Postgres) en vez de un
+ * segundo `ThrottlerModule.forRoot()` — ver `RecuperacionPasswordThrottlerGuard`.
  *
  * Alcance de WU-7: `RecuperacionPasswordController` con
  * `POST /auth/forgot-password` (ADR-1, ADR-2, ADR-3).
@@ -116,7 +117,8 @@ import { RecuperacionPasswordController } from './interface/controllers/recupera
     // reales se fijan por ruta con `@Throttle` en el controller — este valor
     // es solo el fallback base.
     { provide: getOptionsToken(), useValue: [{ name: 'default', limit: 5, ttl: 900_000 }] },
-    { provide: ThrottlerStorage, useClass: ThrottlerStorageService },
+    // Storage en Postgres, compartido entre procesos (odd/tasks/throttler-postgres.md).
+    THROTTLER_STORAGE_POSTGRES,
     RecuperacionPasswordThrottlerGuard,
 
     // ─── WU-5b: CLIENTE_EMAIL_CONFIG_REPOSITORY local (ADR-4) ───────────────
