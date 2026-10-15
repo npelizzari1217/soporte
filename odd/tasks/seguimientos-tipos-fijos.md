@@ -42,7 +42,13 @@ Cerrar los dos seguimientos que dejó `odd/tasks/deuda-tecnica-2026-10-15.md`:
     93 archivos, 1156 tests en verde.
   - `rg -n "'(SOPORTE|EDILICIA)'" backend/src --glob '!*.spec.ts'`: solo quedan comentarios, los
     `modulo: 'EDILICIA'`/`MODULOS` y `tipos-ticket.constants.ts`.
-- [ ] **T3 — Cierre**: compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
+  - Commit: `e276e3ff`.
+- [x] **T3 — Cierre**: compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
+  - `pnpm lint`: exit 0, cero errores.
+  - `pnpm typecheck`: exit 0.
+  - `pnpm test`: exit 0, 733 archivos y 8796 tests en verde. Las tres líneas
+    `FAIL orden-de-arranque.spec.ts` del log son el fixture `test/fixtures/entorno/`, que otro spec
+    corre en un vitest hijo sin la variable requerida a propósito; no cuentan en el resumen.
 
 ## Ruta
 - Delegada: un escritor (lectura que prepara la escritura del e2e, más varios archivos).
@@ -52,6 +58,7 @@ Cerrar los dos seguimientos que dejó `odd/tasks/deuda-tecnica-2026-10-15.md`:
 - 2026-10-15: documento creado.
 - 2026-10-15: T1 hecha (ruta delegada).
 - 2026-10-15: T2 hecha (ruta delegada).
+- 2026-10-15: T3 hecha: compuertas del backend en verde. CA1 y CA2 cumplidos.
 
 ## Próximo paso
-T3.
+Revisión del dueño; push, PR y merge son decisión suya.
