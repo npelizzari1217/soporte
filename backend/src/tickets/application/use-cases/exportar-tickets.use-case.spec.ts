@@ -22,8 +22,11 @@ import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/tickets.errors';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
-import { TicketFiltros } from '../../domain/ports/i-ticket.repository';
+import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { unstubbed } from '../../../testing/mocks';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
+import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 
 const BOM = '﻿';
 
@@ -238,15 +241,16 @@ describe('ExportarTicketsUseCase', () => {
           todos.filter((t) => !filtros?.visiblePara || t.solicitanteId === filtros.visiblePara)
             .length,
       ),
-      findById: vi.fn(),
-      findByIds: vi.fn(),
-      findByNumero: vi.fn(),
-      findLastSecuencia: vi.fn(),
-      save: vi.fn(),
-      delete: vi.fn(),
+      findById: vi.fn<ITicketRepository['findById']>(),
+      findByIds: vi.fn<ITicketRepository['findByIds']>(),
+      findByNumero: vi.fn<ITicketRepository['findByNumero']>(),
+      findLastSecuencia: vi.fn<ITicketRepository['findLastSecuencia']>(),
+      save: vi.fn<ITicketRepository['save']>(),
+      delete: vi.fn<ITicketRepository['delete']>(),
+      esVisiblePara: unstubbed('esVisiblePara'),
     };
     const cicloClienteRepo = {
-      findActive: vi.fn().mockResolvedValue(
+      findActive: vi.fn<ICicloClienteRepository['findActive']>().mockResolvedValue(
         CicloClienteEntity.reconstitute(
           {
             cicloVigenteId: 'ciclo-vigente-1',
@@ -261,16 +265,24 @@ describe('ExportarTicketsUseCase', () => {
           null,
         ),
       ),
-      findById: vi.fn(),
-      findAll: vi.fn(),
-      save: vi.fn(),
+      findById: vi.fn<ICicloClienteRepository['findById']>(),
+      findAll: vi.fn<ICicloClienteRepository['findAll']>(),
+      save: vi.fn<ICicloClienteRepository['save']>(),
     };
-    const tipoTicketRepo = { findIdsByModulos: vi.fn() };
+    const tipoTicketRepo = {
+      findIdsByModulos: vi.fn<ITipoTicketRepository['findIdsByModulos']>(),
+      findById: unstubbed('findById'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+      save: unstubbed('save'),
+    };
 
     const listarTicketsUseCaseReal = new ListarTicketsUseCase(
-      ticketRepo as never,
-      cicloClienteRepo as never,
-      tipoTicketRepo as never,
+      ticketRepo,
+      cicloClienteRepo,
+      tipoTicketRepo,
     );
 
     const useCase = new ExportarTicketsUseCase(

@@ -14,6 +14,17 @@ import {
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { EstadoEntity } from '../../domain/entities/estado.entity';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
+import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
 import {
   AsignadoInvalidoError,
@@ -22,6 +33,14 @@ import {
   TransicionInvalidaError,
   TicketCerradoNoReasignableError,
 } from '../../domain/errors/tickets.errors';
+
+/** Estado del catálogo como entidad real, con el id fijo de `ESTADOS`. */
+function makeEstado(codigo: string): EstadoEntity {
+  return EstadoEntity.create(
+    { codigo, nombre: codigo, color: null, orden: 1, activo: true },
+    ESTADOS[codigo].id,
+  );
+}
 
 /** Catálogo fijo de estados code → { id, codigo } para los mocks del repo. */
 const ESTADOS: Record<string, { id: string; codigo: string }> = {
@@ -63,54 +82,89 @@ function baseDto(overrides: Partial<AsignarYPonerEnProcesoDto> = {}): AsignarYPo
 describe('AsignarYPonerEnProcesoUseCase', () => {
   function makeCollaborators() {
     const ticketRepo = {
-      findById: vi.fn(),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITicketRepository['findById']>(),
+      save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      findAll: unstubbed('findAll'),
+      count: unstubbed('count'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      delete: unstubbed('delete'),
     };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+      listByTicket: unstubbed('listByTicket'),
+      findById: unstubbed('findById'),
+    };
     const estadoRepo = {
-      findById: vi.fn((id: string) => {
+      findById: vi.fn<IEstadoRepository['findById']>(async (id) => {
         const estado = Object.values(ESTADOS).find((e) => e.id === id);
-        return Promise.resolve(estado ?? null);
+        return estado ? makeEstado(estado.codigo) : null;
       }),
-      findByCodigo: vi.fn((codigo: string) => Promise.resolve(ESTADOS[codigo] ?? null)),
+      findByCodigo: vi.fn<IEstadoRepository['findByCodigo']>(async (codigo) =>
+        ESTADOS[codigo] ? makeEstado(codigo) : null,
+      ),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
     const tipoTicketRepo = {
-      findById: vi.fn().mockResolvedValue({ codigo: 'SOPORTE', modulo: 'SOPORTE' }),
-      findIdByCodigo: vi.fn(async (codigo: string) =>
+      findById: vi
+        .fn<ITipoTicketRepository['findById']>()
+        .mockResolvedValue(
+          TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+            'tipo-soporte-uuid',
+          ),
+        ),
+      findIdByCodigo: vi.fn<ITipoTicketRepository['findIdByCodigo']>(async (codigo) =>
         codigo === 'SOPORTE' ? 'tipo-soporte-uuid' : null,
       ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+      findIdsByModulos: unstubbed('findIdsByModulos'),
+      save: unstubbed('save'),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn(async (codigo: string) =>
+      findIdByCodigo: vi.fn<ITipoOperacionRepository['findIdByCodigo']>(async (codigo) =>
         codigo === 'ASIGNACION' ? 'tipo-op-asignacion-uuid' : 'tipo-op-cambio-uuid',
       ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
     const usuarioMasterChecker = {
-      estaActivoEnTenant: vi.fn().mockResolvedValue(true),
+      estaActivoEnTenant: vi
+        .fn<IUsuarioMasterChecker['estaActivoEnTenant']>()
+        .mockResolvedValue(true),
       getAutorizacionModulos: vi
-        .fn()
-        .mockResolvedValue({ esAdminTotal: false, modulos: ['SOPORTE'] }),
+        .fn<IUsuarioMasterChecker['getAutorizacionModulos']>()
+        .mockResolvedValue({ esAdminTotal: false, modulos: ['TICKETS'] }),
     };
-    const stateMachineFactory = { resolve: vi.fn(() => new BaseTicketStateMachine()) };
+    const stateMachineFactory = {
+      resolve: vi.fn<TicketStateMachineFactory['resolve']>(() => new BaseTicketStateMachine()),
+    };
     // `alCommitear` encola: el test decide cuándo "comitea" corriendo la cola.
     const alCommitear: Array<() => void> = [];
-    const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => {
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: (fn: () => void) => {
         alCommitear.push(fn);
-      }),
+      },
     };
+    vi.spyOn(txRunner, 'run');
+    vi.spyOn(txRunner, 'alCommitear');
     const eventPublisher = { publish: vi.fn() } satisfies IDomainEventPublisher;
 
     const useCase = new AsignarYPonerEnProcesoUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      estadoRepo as never,
-      tipoTicketRepo as never,
-      tipoOperacionRepo as never,
-      usuarioMasterChecker as never,
-      stateMachineFactory as never,
-      txRunner as never,
+      ticketRepo,
+      operacionRepo,
+      estadoRepo,
+      tipoTicketRepo,
+      tipoOperacionRepo,
+      usuarioMasterChecker,
+      stateMachineFactory,
+      txRunner,
       eventPublisher,
     );
 

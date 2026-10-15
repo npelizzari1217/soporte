@@ -18,6 +18,13 @@
 import { AdjuntarArchivoUseCase, AdjuntarArchivoDto } from './adjuntar-archivo.use-case';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IFileStorage } from '../../../shared/domain/ports/i-file-storage';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
 import {
   TicketNoEncontradoError,
   ArchivoTamanoCeroError,
@@ -61,26 +68,37 @@ function baseDto(overrides: Partial<AdjuntarArchivoDto> = {}): AdjuntarArchivoDt
 
 describe('AdjuntarArchivoUseCase (T10.2)', () => {
   function makeCollaborators() {
-    const ticketRepo = { findById: vi.fn() };
-    const operacionRepo = { findById: vi.fn(), save: vi.fn().mockResolvedValue(undefined) };
+    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const operacionRepo = {
+      findById: vi.fn<IOperacionTicketRepository['findById']>(),
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+    };
     const archivoRepo = {
-      save: vi.fn().mockResolvedValue(undefined),
-      linkToTicket: vi.fn().mockResolvedValue(undefined),
-      linkToOperacion: vi.fn().mockResolvedValue(undefined),
+      save: vi.fn<IArchivoRepository['save']>().mockResolvedValue(undefined),
+      linkToTicket: vi.fn<IArchivoRepository['linkToTicket']>().mockResolvedValue(undefined),
+      linkToOperacion: vi.fn<IArchivoRepository['linkToOperacion']>().mockResolvedValue(undefined),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-adjunto-uuid'),
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-op-adjunto-uuid'),
     };
-    const fileStorage = { upload: vi.fn().mockResolvedValue('storage-key-confirmada') };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const fileStorage = {
+      upload: vi.fn<IFileStorage['upload']>().mockResolvedValue('storage-key-confirmada'),
+    };
+    const txRunnerReal: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: unstubbed('alCommitear'),
+    };
+    const txRunner = { run: vi.spyOn(txRunnerReal, 'run') };
 
     const useCase = new AdjuntarArchivoUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      archivoRepo as never,
-      tipoOperacionRepo as never,
-      fileStorage as never,
-      txRunner as never,
+      ticketRepo,
+      operacionRepo,
+      archivoRepo,
+      tipoOperacionRepo,
+      fileStorage,
+      txRunnerReal,
     );
 
     return {

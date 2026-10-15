@@ -6,6 +6,7 @@
 import { ObtenerTicketUseCase } from './obtener-ticket.use-case';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 
 function makeTicket(overrides: { solicitanteId?: string; id?: string } = {}): TicketEntity {
   return TicketEntity.create(
@@ -27,11 +28,13 @@ function makeTicket(overrides: { solicitanteId?: string; id?: string } = {}): Ti
 describe('ObtenerTicketUseCase', () => {
   function makeUseCase(ticket: TicketEntity | null, tieneTareaActiva = false) {
     const ticketRepo = {
-      findById: vi.fn().mockResolvedValue(ticket),
+      findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(ticket),
       // CA10: el repositorio decide si el actor es técnico de una tarea activa del ticket.
-      esVisiblePara: vi.fn().mockResolvedValue(tieneTareaActiva),
+      esVisiblePara: vi
+        .fn<ITicketRepository['esVisiblePara']>()
+        .mockResolvedValue(tieneTareaActiva),
     };
-    const useCase = new ObtenerTicketUseCase(ticketRepo as never);
+    const useCase = new ObtenerTicketUseCase(ticketRepo);
     return { useCase, ticketRepo };
   }
 

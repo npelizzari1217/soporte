@@ -11,14 +11,15 @@ import {
   TipoTicketNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
 import { TIPOS_TICKET_DEL_SISTEMA } from '../../domain/tipos-ticket.constants';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 
 describe('CambiarEstadoActivoTipoTicketUseCase', () => {
   function makeCollaborators(tipo: TipoTicketEntity | null) {
     const tipoTicketRepo = {
-      findById: vi.fn().mockResolvedValue(tipo),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(tipo),
+      save: vi.fn<ITipoTicketRepository['save']>().mockResolvedValue(undefined),
     };
-    const useCase = new CambiarEstadoActivoTipoTicketUseCase(tipoTicketRepo as never);
+    const useCase = new CambiarEstadoActivoTipoTicketUseCase(tipoTicketRepo);
     return { useCase, tipoTicketRepo };
   }
 

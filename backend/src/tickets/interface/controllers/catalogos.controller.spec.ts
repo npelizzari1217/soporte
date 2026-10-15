@@ -11,30 +11,51 @@ import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TipoOperacionEntity } from '../../domain/entities/tipo-operacion.entity';
+import type { Mock } from 'vitest';
+import { CrearTipoTicketUseCase } from '../../application/use-cases/crear-tipo-ticket.use-case';
+import { EditarTipoTicketUseCase } from '../../application/use-cases/editar-tipo-ticket.use-case';
+import { CambiarEstadoActivoTipoTicketUseCase } from '../../application/use-cases/cambiar-estado-activo-tipo-ticket.use-case';
+import { CrearPrioridadUseCase } from '../../application/use-cases/crear-prioridad.use-case';
+import { EditarPrioridadUseCase } from '../../application/use-cases/editar-prioridad.use-case';
+import { CambiarEstadoActivoPrioridadUseCase } from '../../application/use-cases/cambiar-estado-activo-prioridad.use-case';
+import { ListarTiposTicketUseCase } from '../../application/use-cases/listar-tipos-ticket.use-case';
+import { ListarPrioridadesUseCase } from '../../application/use-cases/listar-prioridades.use-case';
+import { ListarEstadosUseCase } from '../../application/use-cases/listar-estados.use-case';
+import { ListarTiposOperacionUseCase } from '../../application/use-cases/listar-tipos-operacion.use-case';
+
+/**
+ * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
+ * controller) y reemplaza `execute` por un mock tipado con su firma.
+ */
+function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Clase: {
+  prototype: T;
+}): T & { execute: Mock<T['execute']> } {
+  return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
+}
 
 function buildController() {
-  const crearTipoTicketUseCase = { execute: vi.fn() };
-  const editarTipoTicketUseCase = { execute: vi.fn() };
-  const cambiarEstadoActivoTipoTicketUseCase = { execute: vi.fn() };
-  const crearPrioridadUseCase = { execute: vi.fn() };
-  const editarPrioridadUseCase = { execute: vi.fn() };
-  const cambiarEstadoActivoPrioridadUseCase = { execute: vi.fn() };
-  const listarTiposTicketUseCase = { execute: vi.fn() };
-  const listarPrioridadesUseCase = { execute: vi.fn() };
-  const listarEstadosUseCase = { execute: vi.fn() };
-  const listarTiposOperacionUseCase = { execute: vi.fn() };
+  const crearTipoTicketUseCase = casoDeUsoDoble(CrearTipoTicketUseCase);
+  const editarTipoTicketUseCase = casoDeUsoDoble(EditarTipoTicketUseCase);
+  const cambiarEstadoActivoTipoTicketUseCase = casoDeUsoDoble(CambiarEstadoActivoTipoTicketUseCase);
+  const crearPrioridadUseCase = casoDeUsoDoble(CrearPrioridadUseCase);
+  const editarPrioridadUseCase = casoDeUsoDoble(EditarPrioridadUseCase);
+  const cambiarEstadoActivoPrioridadUseCase = casoDeUsoDoble(CambiarEstadoActivoPrioridadUseCase);
+  const listarTiposTicketUseCase = casoDeUsoDoble(ListarTiposTicketUseCase);
+  const listarPrioridadesUseCase = casoDeUsoDoble(ListarPrioridadesUseCase);
+  const listarEstadosUseCase = casoDeUsoDoble(ListarEstadosUseCase);
+  const listarTiposOperacionUseCase = casoDeUsoDoble(ListarTiposOperacionUseCase);
 
   const controller = new CatalogosController(
-    crearTipoTicketUseCase as any,
-    editarTipoTicketUseCase as any,
-    cambiarEstadoActivoTipoTicketUseCase as any,
-    crearPrioridadUseCase as any,
-    editarPrioridadUseCase as any,
-    cambiarEstadoActivoPrioridadUseCase as any,
-    listarTiposTicketUseCase as any,
-    listarPrioridadesUseCase as any,
-    listarEstadosUseCase as any,
-    listarTiposOperacionUseCase as any,
+    crearTipoTicketUseCase,
+    editarTipoTicketUseCase,
+    cambiarEstadoActivoTipoTicketUseCase,
+    crearPrioridadUseCase,
+    editarPrioridadUseCase,
+    cambiarEstadoActivoPrioridadUseCase,
+    listarTiposTicketUseCase,
+    listarPrioridadesUseCase,
+    listarEstadosUseCase,
+    listarTiposOperacionUseCase,
   );
 
   return {

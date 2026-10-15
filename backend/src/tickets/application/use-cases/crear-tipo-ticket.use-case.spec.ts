@@ -15,17 +15,22 @@ import {
   TipoTicketDesconocidoError,
   ModuloTipoTicketInvalidoError,
 } from '../../domain/errors/tickets.errors';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 
 describe('CrearTipoTicketUseCase', () => {
   function makeCollaborators(existentes: TipoTicketEntity[] = []) {
     const tipoTicketRepo = {
-      findByCodigo: vi.fn().mockImplementation(async (codigo: string) => {
-        return existentes.find((t) => t.codigo === codigo) ?? null;
-      }),
-      findAllActive: vi.fn().mockResolvedValue(existentes.filter((t) => !t.isDeleted())),
-      save: vi.fn().mockResolvedValue(undefined),
+      findByCodigo: vi
+        .fn<ITipoTicketRepository['findByCodigo']>()
+        .mockImplementation(async (codigo: string) => {
+          return existentes.find((t) => t.codigo === codigo) ?? null;
+        }),
+      findAllActive: vi
+        .fn<ITipoTicketRepository['findAllActive']>()
+        .mockResolvedValue(existentes.filter((t) => !t.isDeleted())),
+      save: vi.fn<ITipoTicketRepository['save']>().mockResolvedValue(undefined),
     };
-    const useCase = new CrearTipoTicketUseCase(tipoTicketRepo as never);
+    const useCase = new CrearTipoTicketUseCase(tipoTicketRepo);
     return { useCase, tipoTicketRepo };
   }
 

@@ -13,6 +13,8 @@ import { ListarTimelineUseCase, ListarTimelineDto } from './listar-timeline.use-
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 
 function makeTicket(solicitanteId = 'solicitante-uuid'): TicketEntity {
   return TicketEntity.create(
@@ -62,10 +64,13 @@ function baseDto(overrides: Partial<ListarTimelineDto> = {}): ListarTimelineDto 
 describe('ListarTimelineUseCase', () => {
   function makeCollaborators() {
     // `esVisiblePara` en false por defecto: sin tarea activa del actor (CA10).
-    const ticketRepo = { findById: vi.fn(), esVisiblePara: vi.fn().mockResolvedValue(false) };
-    const operacionRepo = { listByTicket: vi.fn() };
+    const ticketRepo = {
+      findById: vi.fn<ITicketRepository['findById']>(),
+      esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
+    };
+    const operacionRepo = { listByTicket: vi.fn<IOperacionTicketRepository['listByTicket']>() };
 
-    const useCase = new ListarTimelineUseCase(ticketRepo as never, operacionRepo as never);
+    const useCase = new ListarTimelineUseCase(ticketRepo, operacionRepo);
 
     return { useCase, ticketRepo, operacionRepo };
   }

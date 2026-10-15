@@ -6,14 +6,40 @@
  */
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
+import type { Mock } from 'vitest';
+import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
+import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { unstubbed } from '../../../testing/mocks';
+
+/** Filtros de la primera llamada a `findAll`; falla si no hubo llamada o vino sin filtros. */
+function filtrosDeLaPrimeraLlamada(findAll: Mock<ITicketRepository['findAll']>): TicketFiltros {
+  const filtros = findAll.mock.calls[0]?.[0];
+  if (!filtros) {
+    throw new Error('findAll no se llamó con filtros');
+  }
+  return filtros;
+}
 
 describe('ListarTicketsUseCase', () => {
   function makeCollaborators(cicloActivo: CicloClienteEntity | null) {
     const ticketRepo = {
-      findAll: vi.fn().mockResolvedValue([]),
-      count: vi.fn().mockResolvedValue(0),
+      findAll: vi.fn<ITicketRepository['findAll']>().mockResolvedValue([]),
+      count: vi.fn<ITicketRepository['count']>().mockResolvedValue(0),
+      findById: unstubbed('findById'),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      save: unstubbed('save'),
+      delete: unstubbed('delete'),
     };
-    const cicloClienteRepo = { findActive: vi.fn().mockResolvedValue(cicloActivo) };
+    const cicloClienteRepo = {
+      findActive: vi.fn<ICicloClienteRepository['findActive']>().mockResolvedValue(cicloActivo),
+      findById: unstubbed('findById'),
+      findAll: unstubbed('findAll'),
+      save: unstubbed('save'),
+    };
     // B2: el gate de módulo resuelve tipoIds por la columna `modulo`. El mock
     // mapea cada módulo a sus tipoIds del tenant (COMPRAS incluye un tipo CUSTOM;
     // EQUIPOS no tiene ningún tipo en este tenant).
@@ -24,15 +50,17 @@ describe('ListarTicketsUseCase', () => {
       EQUIPOS: [],
     };
     const tipoTicketRepo = {
-      findIdsByModulos: vi.fn(async (modulos: string[]) =>
+      findIdsByModulos: vi.fn<ITipoTicketRepository['findIdsByModulos']>(async (modulos) =>
         modulos.flatMap((m) => TIPOS_POR_MODULO[m] ?? []),
       ),
+      findById: unstubbed('findById'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+      save: unstubbed('save'),
     };
-    const useCase = new ListarTicketsUseCase(
-      ticketRepo as never,
-      cicloClienteRepo as never,
-      tipoTicketRepo as never,
-    );
+    const useCase = new ListarTicketsUseCase(ticketRepo, cicloClienteRepo, tipoTicketRepo);
     return { useCase, ticketRepo, cicloClienteRepo, tipoTicketRepo };
   }
 
@@ -188,7 +216,7 @@ describe('ListarTicketsUseCase', () => {
 
     await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
 
-    const filtrosRecibidos = c.ticketRepo.findAll.mock.calls[0][0];
+    const filtrosRecibidos = filtrosDeLaPrimeraLlamada(c.ticketRepo.findAll);
     expect(filtrosRecibidos.busqueda).toBeUndefined();
   });
 
@@ -203,7 +231,7 @@ describe('ListarTicketsUseCase', () => {
       });
 
       expect(c.tipoTicketRepo.findIdsByModulos).not.toHaveBeenCalled();
-      const filtrosRecibidos = c.ticketRepo.findAll.mock.calls[0][0];
+      const filtrosRecibidos = filtrosDeLaPrimeraLlamada(c.ticketRepo.findAll);
       expect(filtrosRecibidos.tiposIds).toBeUndefined();
     });
 
