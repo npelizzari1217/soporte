@@ -1104,8 +1104,12 @@ historial en cada carga: cada ticket guarda sus segundos hábiles y el dashboard
    node scripts\backfill-tiempos-habiles.mjs
    ```
 
-   Imprime una línea por tenant activo: cuántas resoluciones y primeras respuestas actualizaría, y
-   cuántos tickets saltea por no tener un paso a RESUELTO en el historial. Lee `dist/`, así que va
+   Imprime una línea por tenant activo: cuántas resoluciones y primeras respuestas actualizaría,
+   cuántas de esas resoluciones son aproximadas (`aproximados N`) y cuántos tickets saltea. Un
+   ticket sin paso a RESUELTO en el historial pero con `fecha_cierre` (los importados) se aproxima
+   con las horas hábiles `created_at → fecha_cierre`: mide hasta el cierre y no descuenta pausas
+   (`odd/tasks/backfill-resolucion-importados.md`). Solo se saltea el que no tiene ni paso a
+   RESUELTO ni `fecha_cierre`. Lee `dist/`, así que va
    **después** del build de `deploy.ps1`. Nunca imprime URLs ni claves.
 4. Si los conteos son razonables, la corrida real: `node scripts\backfill-tiempos-habiles.mjs --apply`.
    Una segunda corrida tiene que informar 0 actualizados. Si un tenant falla, el script sigue con

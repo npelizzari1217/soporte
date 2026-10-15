@@ -2,8 +2,9 @@
  * backfill-tiempos-habiles.integration.spec.ts — T4 de odd/promedios-dashboard-habiles (CA4).
  *
  * Contra Postgres REAL, en un tenant efímero propio con todas las migraciones: el ensayo no
- * escribe, `--apply` completa solo las NULL con el último paso a RESUELTO del historial (no
- * `fecha_cierre`) y los feriados de master + tenant, y una segunda corrida no cambia nada.
+ * escribe, `--apply` completa solo las NULL con el último paso a RESUELTO del historial (y,
+ * sin ninguno, con `fecha_cierre` como aproximación: odd/backfill-resolucion-importados) y
+ * los feriados de master + tenant, y una segunda corrida no cambia nada.
  * El cálculo y el mapper se pasan desde el código fuente: el script los toma de `dist/`.
  */
 import { randomBytes } from 'node:crypto';
@@ -55,6 +56,8 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
     p: {
       estado: string;
       creado: Date;
+      /** Por defecto, una muy posterior: si pisara al paso a RESUELTO, el valor no coincidiría. */
+      fechaCierre?: Date | null;
       resolucion?: number;
       primeraRespuestaAt?: Date;
       primeraRespuestaHabilS?: number;
@@ -75,8 +78,7 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
           estados[p.estado],
           prioridadId,
           p.creado,
-          // `fecha_cierre` muy posterior: si el script la usara, el valor no coincidiría.
-          new Date('2026-09-30T12:00:00.000Z'),
+          p.fechaCierre === undefined ? new Date('2026-09-30T12:00:00.000Z') : p.fechaCierre,
           p.resolucion ?? null,
           p.primeraRespuestaAt ?? null,
           p.primeraRespuestaHabilS ?? null,
@@ -147,7 +149,8 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
         .rows[0].id as string;
     }
 
-    // Reabierto y vuelto a resolver: cuenta el ÚLTIMO paso a RESUELTO (martes 11:00).
+    // Reabierto y vuelto a resolver: cuenta el ÚLTIMO paso a RESUELTO (martes 11:00), no la
+    // `fecha_cierre` del 30 de septiembre (CA2).
     await ticket('a-reabierto', {
       estado: 'CERRADO',
       creado: L(10, 9),
@@ -169,8 +172,14 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
       primeraRespuestaHabilS: 5,
     });
     await transicion('c-ya-guardado', 'EN_PROCESO', 'RESUELTO', L(10, 12));
-    // CERRADO sin paso a RESUELTO en el historial: se saltea.
-    await ticket('d-sin-historial', { estado: 'CERRADO', creado: L(10, 9) });
+    // CERRADO sin paso a RESUELTO en el historial (importado): se aproxima con `fecha_cierre` (CA1).
+    await ticket('d-sin-historial', {
+      estado: 'CERRADO',
+      creado: L(10, 9),
+      fechaCierre: L(11, 12),
+    });
+    // Sin paso a RESUELTO ni `fecha_cierre`: se saltea (CA3).
+    await ticket('i-sin-cierre', { estado: 'CERRADO', creado: L(10, 9), fechaCierre: null });
     // Abierto: no es resolución.
     await ticket('e-abierto', { estado: 'EN_PROCESO', creado: L(10, 9) });
   }, 60_000);
@@ -186,21 +195,22 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
     const r = await correr(false);
 
     expect(r).toEqual({
-      resolucion: { aActualizar: 2, actualizados: 0, salteados: 1 },
+      resolucion: { aActualizar: 3, actualizados: 0, aproximados: 1, salteados: 1 },
       primeraRespuesta: { aActualizar: 1, actualizados: 0 },
     });
     expect(await columnas()).toEqual(antes);
     expect(formatearResultado('soporte_x', r, false)).toBe(
-      '[backfill-tiempos-habiles] soporte_x: resolucion actualizaria 2, salteados 1 ' +
-        '(sin paso a RESUELTO en el historial) | primera respuesta actualizaria 1',
+      '[backfill-tiempos-habiles] soporte_x: resolucion actualizaria 3, ' +
+        'aproximados 1 (con fecha_cierre, sin paso a RESUELTO), ' +
+        'salteados 1 (sin paso a RESUELTO ni fecha_cierre) | primera respuesta actualizaria 1',
     );
   });
 
-  it('--apply completa solo las NULL, con el último paso a RESUELTO y los feriados de master y tenant', async () => {
+  it('--apply completa solo las NULL, con el último paso a RESUELTO (o fecha_cierre sin él) y los feriados de master y tenant', async () => {
     const r = await correr(true);
 
     expect(r).toEqual({
-      resolucion: { aActualizar: 2, actualizados: 2, salteados: 1 },
+      resolucion: { aActualizar: 3, actualizados: 3, aproximados: 1, salteados: 1 },
       primeraRespuesta: { aActualizar: 1, actualizados: 1 },
     });
     expect(await columnas()).toEqual({
@@ -209,9 +219,16 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
       // Jueves 9 h + martes 3 h: viernes y lunes son feriados.
       'b-feriados': [12 * H, null],
       'c-ya-guardado': [777, 5],
-      'd-sin-historial': [null, null],
+      // Aproximado con `fecha_cierre`: lunes 9 h + martes 3 h.
+      'd-sin-historial': [12 * H, null],
       'e-abierto': [null, null],
+      'i-sin-cierre': [null, null],
     });
+    expect(formatearResultado('soporte_x', r, true)).toBe(
+      '[backfill-tiempos-habiles] soporte_x: resolucion actualizados 3, ' +
+        'aproximados 1 (con fecha_cierre, sin paso a RESUELTO), ' +
+        'salteados 1 (sin paso a RESUELTO ni fecha_cierre) | primera respuesta actualizados 1',
+    );
   });
 
   it('una segunda corrida con --apply no cambia nada', async () => {
@@ -220,7 +237,7 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
     const r = await correr(true);
 
     expect(r).toEqual({
-      resolucion: { aActualizar: 0, actualizados: 0, salteados: 1 },
+      resolucion: { aActualizar: 0, actualizados: 0, aproximados: 0, salteados: 1 },
       primeraRespuesta: { aActualizar: 0, actualizados: 0 },
     });
     expect(await columnas()).toEqual(antes);
@@ -250,7 +267,7 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
       aplicar: true,
     });
 
-    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, salteados: 1 });
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, aproximados: 0, salteados: 1 });
     expect((await columnas())['f-reabierto-en-carrera']).toEqual([null, null]);
   });
 
@@ -277,12 +294,17 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
       aplicar: true,
     });
 
-    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, salteados: 1 });
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, aproximados: 0, salteados: 1 });
     expect((await columnas())['g-re-resuelto-en-carrera']).toEqual([null, null]);
 
     // La corrida siguiente lo toma con el último paso a RESUELTO: lunes 9 h + martes 1 h.
     const siguiente = await correr(true);
-    expect(siguiente.resolucion).toEqual({ aActualizar: 1, actualizados: 1, salteados: 1 });
+    expect(siguiente.resolucion).toEqual({
+      aActualizar: 1,
+      actualizados: 1,
+      aproximados: 0,
+      salteados: 1,
+    });
     expect((await columnas())['g-re-resuelto-en-carrera']).toEqual([10 * H, null]);
   });
 
@@ -299,8 +321,47 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
 
     const r = await correr(true);
 
-    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 1, salteados: 1 });
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 1, aproximados: 0, salteados: 1 });
     expect((await columnas())['h-microsegundos']).toEqual([3 * H, null]);
+  });
+
+  it('un ticket que se iba a aproximar y recibe un paso a RESUELTO antes de la escritura no recibe la aproximación', async () => {
+    await ticket('j-aproximado-en-carrera', {
+      estado: 'RESUELTO',
+      creado: L(10, 9),
+      fechaCierre: L(10, 15),
+    });
+    // Se lee sin paso a RESUELTO (fin = `fecha_cierre`, lunes 15:00); antes del UPDATE aparece
+    // un paso a RESUELTO del lunes 12:00. El valor aproximado ya no corresponde (CA5).
+    const pool = {
+      query: async (sql: string, params?: unknown[]) => {
+        if (sql.includes('SET "resolucion_habil_s"')) {
+          await transicion('j-aproximado-en-carrera', 'EN_PROCESO', 'RESUELTO', L(10, 12));
+        }
+        return client.query(sql, params);
+      },
+    };
+
+    const r = await backfillTenant({
+      pool,
+      feriadosGlobales: [FERIADO_GLOBAL],
+      calculo: new CalcularSlaHabilVenceService(),
+      mapper: PrismaCalendarioLaboralMapper,
+      aplicar: true,
+    });
+
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, aproximados: 1, salteados: 1 });
+    expect((await columnas())['j-aproximado-en-carrera']).toEqual([null, null]);
+
+    // La corrida siguiente lo toma con el paso a RESUELTO, no con `fecha_cierre`: lunes 3 h.
+    const siguiente = await correr(true);
+    expect(siguiente.resolucion).toEqual({
+      aActualizar: 1,
+      actualizados: 1,
+      aproximados: 0,
+      salteados: 1,
+    });
+    expect((await columnas())['j-aproximado-en-carrera']).toEqual([3 * H, null]);
   });
 
   it('parsearArgs: ensayo por defecto, --apply escribe, cualquier otro argumento aborta', () => {
