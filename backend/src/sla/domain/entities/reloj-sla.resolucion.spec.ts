@@ -62,7 +62,7 @@ describe('RelojSla.plegar — resolucionHabilS', () => {
     expect(r.resolucionHabilS).toBeNull();
   });
 
-  it('un ticket CORRIDO resuelto queda null: su acumulado no es tiempo hábil', () => {
+  it('un ticket CORRIDO resuelto no toca el valor guardado (undefined): su acumulado no es tiempo hábil', () => {
     const r = plegar(
       { estadoCodigo: 'RESUELTO', slaRegla: 'CORRIDO' },
       [op('EN_PROCESO', 'RESUELTO', L(11, 9))],
@@ -70,6 +70,27 @@ describe('RelojSla.plegar — resolucionHabilS', () => {
     );
 
     expect(r.acumuladoS).toBe(24 * H);
+    // El backfill pudo haberlo llenado: un pliegue posterior no lo puede borrar.
+    expect(r.resolucionHabilS).toBeUndefined();
+  });
+
+  it('un ticket CORRIDO cerrado tampoco toca el valor guardado', () => {
+    const r = plegar(
+      { estadoCodigo: 'CERRADO', slaRegla: 'CORRIDO', acumuladoS: 5 * H, correDesde: null },
+      [op('RESUELTO', 'CERRADO', L(14, 9))],
+      corrido(),
+    );
+
+    expect(r.resolucionHabilS).toBeUndefined();
+  });
+
+  it('un ticket CORRIDO reabierto queda null, igual que uno HABIL', () => {
+    const r = plegar(
+      { estadoCodigo: 'EN_PROCESO', slaRegla: 'CORRIDO', acumuladoS: 5 * H, correDesde: null },
+      [op('RESUELTO', 'EN_PROCESO', L(14, 9))],
+      corrido(),
+    );
+
     expect(r.resolucionHabilS).toBeNull();
   });
 

@@ -10,8 +10,10 @@
  * - El tiempo de cada transición se recorta a monótono: `t_i = max(created_at_i, t_{i-1}, corre_desde)`.
  * - Cada tramo se redondea a segundos con `Math.round(ms / 1000)`.
  * - `resolucionHabilS` (odd/promedios-dashboard-habiles) es el acumulado cuando el ticket está en
- *   RESUELTO o CERRADO con regla HABIL, y `null` en cualquier otro caso: reabrir lo borra y el próximo
- *   RESUELTO lo toma de nuevo.
+ *   RESUELTO o CERRADO con regla HABIL; `undefined` (no se toca) en RESUELTO o CERRADO con regla
+ *   CORRIDO, porque ese acumulado no es tiempo hábil y el valor guardado lo pudo llenar el backfill; y
+ *   `null` en cualquier estado que no sea de resolución, sea cual sea la regla: reabrir lo borra y el
+ *   próximo RESUELTO lo toma de nuevo.
  */
 import { ESTADOS_RELOJ_CORRE } from '../../../tickets/domain/state-machine/estados.constants';
 import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
@@ -48,8 +50,11 @@ export interface TransicionReloj {
 /** Estado nuevo del reloj. `slaVenceAt` es `undefined` cuando el pliegue no lo reescribe. */
 export interface RelojSlaResultado {
   readonly acumuladoS: number;
-  /** Tiempo hábil de resolución que guarda el ticket para el dashboard; `null` = sin dato. */
-  readonly resolucionHabilS: number | null;
+  /**
+   * Tiempo hábil de resolución que guarda el ticket para el dashboard: un número se escribe, `null`
+   * borra el valor (ticket no resuelto) y `undefined` lo deja como está (CORRIDO resuelto o cerrado).
+   */
+  readonly resolucionHabilS?: number | null;
   readonly metaS: number | null;
   readonly correDesde: Date | null;
   readonly cumplido: boolean | null;
@@ -134,9 +139,10 @@ export class RelojSla {
       correDesde = tPrev ?? fila.createdAt;
     }
 
-    // Se toma del estado actual, ya con el último tramo sumado. CORRIDO queda fuera: no es tiempo hábil.
-    const resolucionHabilS =
-      fila.slaRegla === 'HABIL' && ESTADOS_RESOLUCION.has(fila.estadoCodigo) ? acumuladoS : null;
+    // Se toma del estado actual, ya con el último tramo sumado. CORRIDO resuelto no lo toca: su
+    // acumulado no es tiempo hábil y el valor guardado (backfill) no se puede borrar.
+    const resuelto = ESTADOS_RESOLUCION.has(fila.estadoCodigo);
+    const resolucionHabilS = !resuelto ? null : fila.slaRegla === 'HABIL' ? acumuladoS : undefined;
     const resultado: RelojSlaResultado = {
       acumuladoS,
       resolucionHabilS,

@@ -170,6 +170,32 @@ técnica conocida" (`docs/roadmap-comercial.md`).
   - compuertas: backend `pnpm lint`, `pnpm typecheck`, `pnpm test`; frontend `pnpm lint`,
     `pnpm type-check`, `pnpm test`; `check-roadmap-fresco`, `check-casts-en-specs`.
 
+- [x] **T7 — JD-W1: el pliegue no borra el valor de un ticket CORRIDO resuelto.** Hallazgo de los dos
+  jueces de `judgment-day` (2026-10-15): el script completa `resolucion_habil_s` de tickets CORRIDO y
+  un pliegue posterior (AplicarSla al repriorizar un RESUELTO, o el barrido) lo pisa con NULL. Cambio:
+  para CORRIDO en RESUELTO/CERRADO el pliegue no escribe la columna (la deja como está); al reabrir
+  sigue poniendo NULL. Así una segunda corrida del script vuelve a dar 0.
+  - Ruta: inline (bugfix acotado de `judgment-day`, actor de corrección). Commit previo: `cdb877ae`.
+  - Archivos: `backend/src/sla/domain/entities/reloj-sla.ts` (`resolucionHabilS?: number | null`:
+    `undefined` = no tocar), `prisma-reloj-sla.repository.ts` (omite la columna si es `undefined`),
+    `i-reloj-sla.repository.ts` (doc). `conMeta` hace spread de la base y conserva la semántica.
+  - Tests: `reloj-sla.resolucion.spec.ts` (CORRIDO RESUELTO y CERRADO → `undefined`; CORRIDO reabierto
+    → `null`) y `prisma-reloj-sla.repository.integration.spec.ts` (valor 4000 guardado sobrevive a
+    `plegar` + `guardarSiVersion` de un CORRIDO RESUELTO y queda NULL al reabrir).
+  - RED: `AssertionError: expected null to be undefined` (dominio, 2 tests) y
+    `AssertionError: expected null to be 4000 // Object.is equality` (integración).
+  - GREEN: `pnpm vitest run src/sla` → 19 archivos, 192 tests pasan.
+- [ ] **T8 — JD-W2: un fallo del calendario no bloquea el comentario.** Hallazgo de los dos jueces
+  (A como sugerencia, B como advertencia): si la carga del calendario o de los feriados (master) o
+  `msHabilesEntre` fallan, el comentario se rechaza. Cambio: se loguea y se guarda la primera
+  respuesta con `primera_respuesta_habil_s` NULL.
+- [ ] **T9 — JD-W3: el script no escribe sobre un ticket reabierto.** Hallazgo del juez A: el `UPDATE`
+  por lotes solo revisa `IS NULL`; si el ticket se reabre entre la lectura y la escritura, queda con
+  tiempo de resolución estando abierto. Cambio: el `UPDATE` exige además que el estado siga siendo
+  RESUELTO o CERRADO.
+- Decisión del dueño (2026-10-15): las tres advertencias se corrigen antes del merge, con re-juicio
+  acotado de `judgment-day` sobre el delta.
+
 ## Precondición de deploy
 Migración de tenant con backfill: `predeploy-dump.ps1` como siempre. Después del deploy, el script
 en DryRun y luego real, antes de que alguien mire el dashboard.

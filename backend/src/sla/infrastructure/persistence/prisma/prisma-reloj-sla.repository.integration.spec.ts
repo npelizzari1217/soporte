@@ -8,6 +8,8 @@ import { PrismaService } from '../../../../shared/infrastructure/persistence/pri
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PrismaRelojSlaRepository } from './prisma-reloj-sla.repository';
+import { RelojSla } from '../../../domain/entities/reloj-sla';
+import { MedidorCorrido } from '../../../domain/services/medidor-corrido';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -62,6 +64,7 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     for (const [codigo, orden] of [
       ['EN_PROCESO', 30],
       ['ESPERANDO_CLIENTE', 35],
+      ['RESUELTO', 40],
     ] as const) {
       const previo = await client.estado.findUnique({ where: { codigo } });
       if (!previo) {
@@ -72,7 +75,7 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
       }
     }
     const filas = await client.estado.findMany({
-      where: { codigo: { in: ['EN_PROCESO', 'ESPERANDO_CLIENTE'] } },
+      where: { codigo: { in: ['EN_PROCESO', 'ESPERANDO_CLIENTE', 'RESUELTO'] } },
     });
     estados = Object.fromEntries(filas.map((e) => [e.codigo, e.id]));
     const tipoOp = await client.tipoOperacion.findUnique({ where: { codigo: 'CAMBIO_ESTADO' } });
@@ -96,7 +99,15 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
     await prismaService.onModuleDestroy();
   }, 30_000);
 
-  async function crearTicket(over: { deletedAt?: Date } = {}): Promise<string> {
+  async function crearTicket(
+    over: {
+      deletedAt?: Date;
+      estadoId?: string;
+      slaRegla?: string;
+      slaAcumuladoS?: number;
+      resolucionHabilS?: number;
+    } = {},
+  ): Promise<string> {
     contador += 1;
     return (
       await client.ticket.create({
@@ -231,6 +242,35 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
         correDesde: min(9),
       }),
     ).toBe(true);
+    expect(await resolucion()).toBeNull();
+  });
+
+  it('un pliegue CORRIDO en RESUELTO no borra el valor guardado (backfill); al reabrir queda null', async () => {
+    const id = await crearTicket({
+      estadoId: estados.RESUELTO,
+      slaRegla: 'CORRIDO',
+      slaAcumuladoS: 3600,
+      resolucionHabilS: 4000,
+    });
+    const resolucion = async () =>
+      (await client.ticket.findUniqueOrThrow({ where: { id } })).resolucionHabilS;
+    const plegarYGuardar = async () => {
+      const fila = await repo.leer(id);
+      if (!fila) throw new Error('ticket no leído');
+      const reloj = RelojSla.plegar({
+        fila,
+        medidor: new MedidorCorrido(),
+        historialSinSecuencia: [],
+        transiciones: await repo.transicionesDesde(id, fila.seqHasta),
+      });
+      return repo.guardarSiVersion(id, fila.version, reloj);
+    };
+
+    expect(await plegarYGuardar()).toBe(true);
+    expect(await resolucion()).toBe(4000);
+
+    await client.ticket.update({ where: { id }, data: { estadoId: estados.EN_PROCESO } });
+    expect(await plegarYGuardar()).toBe(true);
     expect(await resolucion()).toBeNull();
   });
 
