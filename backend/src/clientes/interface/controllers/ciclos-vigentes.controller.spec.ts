@@ -13,20 +13,36 @@ import {
   CicloVigenteInvalidDatesError,
   CicloVigenteNotFoundError,
 } from '../../domain/errors/clientes.errors';
+import type { Mock } from 'vitest';
+import { CrearCicloVigenteUseCase } from '../../application/use-cases/crear-ciclo-vigente.use-case';
+import { ListarCiclosVigentesUseCase } from '../../application/use-cases/listar-ciclos-vigentes.use-case';
+import { EditarCicloVigenteUseCase } from '../../application/use-cases/editar-ciclo-vigente.use-case';
+import { EliminarCicloVigenteUseCase } from '../../application/use-cases/eliminar-ciclo-vigente.use-case';
+import { ListarCiclosVigentesAdminUseCase } from '../../application/use-cases/listar-ciclos-vigentes-admin.use-case';
+
+/**
+ * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
+ * controller) y reemplaza `execute` por un mock tipado con su firma.
+ */
+function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Clase: {
+  prototype: T;
+}): T & { execute: Mock<T['execute']> } {
+  return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
+}
 
 describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => {
   function buildController() {
-    const crearCicloVigenteUseCase = { execute: vi.fn() };
-    const listarCiclosVigentesUseCase = { execute: vi.fn() };
-    const editarCicloVigenteUseCase = { execute: vi.fn() };
-    const eliminarCicloVigenteUseCase = { execute: vi.fn() };
-    const listarCiclosVigentesAdminUseCase = { execute: vi.fn() };
+    const crearCicloVigenteUseCase = casoDeUsoDoble(CrearCicloVigenteUseCase);
+    const listarCiclosVigentesUseCase = casoDeUsoDoble(ListarCiclosVigentesUseCase);
+    const editarCicloVigenteUseCase = casoDeUsoDoble(EditarCicloVigenteUseCase);
+    const eliminarCicloVigenteUseCase = casoDeUsoDoble(EliminarCicloVigenteUseCase);
+    const listarCiclosVigentesAdminUseCase = casoDeUsoDoble(ListarCiclosVigentesAdminUseCase);
     const controller = new CicloVigenteController(
-      crearCicloVigenteUseCase as any,
-      listarCiclosVigentesUseCase as any,
-      editarCicloVigenteUseCase as any,
-      eliminarCicloVigenteUseCase as any,
-      listarCiclosVigentesAdminUseCase as any,
+      crearCicloVigenteUseCase,
+      listarCiclosVigentesUseCase,
+      editarCicloVigenteUseCase,
+      eliminarCicloVigenteUseCase,
+      listarCiclosVigentesAdminUseCase,
     );
     return {
       controller,
@@ -53,7 +69,7 @@ describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => 
         nombre: 'Ciclo 2026',
         fechaInicio: '2026-01-01',
         fechaFin: '2026-12-31',
-      } as any);
+      });
 
       expect(result).toEqual({
         id: ciclo.id,
@@ -80,7 +96,7 @@ describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => 
           nombre: 'Ciclo inválido',
           fechaInicio: '2026-12-31',
           fechaFin: '2026-01-01',
-        } as any),
+        }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
@@ -125,7 +141,7 @@ describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => 
         nombre: 'Ciclo renombrado',
         fechaInicio: '2026-02-01',
         fechaFin: '2026-11-30',
-      } as any);
+      });
 
       expect(result).toEqual({
         id: ciclo.id,
@@ -152,7 +168,7 @@ describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => 
       });
       editarCicloVigenteUseCase.execute.mockResolvedValue(Result.ok(ciclo));
 
-      await controller.editar(ciclo.id, { nombre: 'Solo nombre' } as any);
+      await controller.editar(ciclo.id, { nombre: 'Solo nombre' });
 
       expect(editarCicloVigenteUseCase.execute).toHaveBeenCalledWith({
         cicloVigenteId: ciclo.id,
@@ -169,7 +185,7 @@ describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => 
       );
 
       await expect(
-        controller.editar('id-x', { fechaInicio: '2026-12-31', fechaFin: '2026-01-01' } as any),
+        controller.editar('id-x', { fechaInicio: '2026-12-31', fechaFin: '2026-01-01' }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
@@ -179,7 +195,7 @@ describe('CicloVigenteController (T9.3, item 4/G6, sdd/ciclos-abm-root)', () => 
         Result.fail(new CicloVigenteNotFoundError('id-x')),
       );
 
-      await expect(controller.editar('id-x', { nombre: 'X' } as any)).rejects.toBeInstanceOf(
+      await expect(controller.editar('id-x', { nombre: 'X' })).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });

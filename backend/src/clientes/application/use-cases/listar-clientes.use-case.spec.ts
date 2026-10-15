@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ListarClientesUseCase } from './listar-clientes.use-case';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import type { IClienteRepository } from '../../domain/ports/i-cliente.repository';
+import type { IClienteEmailConfigRepository } from '../../domain/ports/i-cliente-email-config.repository';
 
 function buildEmailConfigRepoMock(estado: { configurado: boolean; verificadoAt: Date | null }) {
   return {
-    findState: vi.fn().mockResolvedValue({
+    findState: vi.fn<IClienteEmailConfigRepository['findState']>().mockResolvedValue({
       configurado: estado.configurado,
       host: null,
       port: null,
@@ -26,10 +28,12 @@ describe('ListarClientesUseCase (G3, sdd/beta-frontend — ROOT)', () => {
       dbName: 'soporte_acme',
       activo: true,
     });
-    const clienteRepo = { findAll: vi.fn().mockResolvedValue([clienteA]) };
+    const clienteRepo = {
+      findAll: vi.fn<IClienteRepository['findAll']>().mockResolvedValue([clienteA]),
+    };
     const verificadoAt = new Date('2026-08-20T12:00:00Z');
     const emailConfigRepo = buildEmailConfigRepoMock({ configurado: true, verificadoAt });
-    const useCase = new ListarClientesUseCase(clienteRepo as never, emailConfigRepo);
+    const useCase = new ListarClientesUseCase(clienteRepo, emailConfigRepo);
 
     const result = await useCase.execute();
 
@@ -49,9 +53,11 @@ describe('ListarClientesUseCase (G3, sdd/beta-frontend — ROOT)', () => {
       dbName: 'soporte_acme',
       activo: true,
     });
-    const clienteRepo = { findAll: vi.fn().mockResolvedValue([clienteA]) };
+    const clienteRepo = {
+      findAll: vi.fn<IClienteRepository['findAll']>().mockResolvedValue([clienteA]),
+    };
     const emailConfigRepo = buildEmailConfigRepoMock({ configurado: false, verificadoAt: null });
-    const useCase = new ListarClientesUseCase(clienteRepo as never, emailConfigRepo);
+    const useCase = new ListarClientesUseCase(clienteRepo, emailConfigRepo);
 
     const result = await useCase.execute();
 

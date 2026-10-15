@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ListarCiclosUseCase } from './listar-ciclos.use-case';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
+import type { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 
 function buildCiclo(nombre: string, activo: boolean) {
   return CicloClienteEntity.create({
@@ -16,8 +17,10 @@ describe('ListarCiclosUseCase (G4, sdd/beta-frontend)', () => {
   it('retorna todos los ciclos del tenant + el id del ciclo vigente (activo=true)', async () => {
     const activo = buildCiclo('Ciclo 2026', true);
     const inactivo = buildCiclo('Ciclo 2025', false);
-    const cicloClienteRepo = { findAll: vi.fn().mockResolvedValue([activo, inactivo]) };
-    const useCase = new ListarCiclosUseCase(cicloClienteRepo as never);
+    const cicloClienteRepo = {
+      findAll: vi.fn<ICicloClienteRepository['findAll']>().mockResolvedValue([activo, inactivo]),
+    };
+    const useCase = new ListarCiclosUseCase(cicloClienteRepo);
 
     const result = await useCase.execute();
 
@@ -29,8 +32,10 @@ describe('ListarCiclosUseCase (G4, sdd/beta-frontend)', () => {
 
   it('cicloActivoId es null cuando ningún ciclo del tenant está activo', async () => {
     const inactivo = buildCiclo('Ciclo 2025', false);
-    const cicloClienteRepo = { findAll: vi.fn().mockResolvedValue([inactivo]) };
-    const useCase = new ListarCiclosUseCase(cicloClienteRepo as never);
+    const cicloClienteRepo = {
+      findAll: vi.fn<ICicloClienteRepository['findAll']>().mockResolvedValue([inactivo]),
+    };
+    const useCase = new ListarCiclosUseCase(cicloClienteRepo);
 
     const result = await useCase.execute();
 
@@ -38,8 +43,10 @@ describe('ListarCiclosUseCase (G4, sdd/beta-frontend)', () => {
   });
 
   it('retorna listas vacías cuando el tenant no adoptó ningún ciclo', async () => {
-    const cicloClienteRepo = { findAll: vi.fn().mockResolvedValue([]) };
-    const useCase = new ListarCiclosUseCase(cicloClienteRepo as never);
+    const cicloClienteRepo = {
+      findAll: vi.fn<ICicloClienteRepository['findAll']>().mockResolvedValue([]),
+    };
+    const useCase = new ListarCiclosUseCase(cicloClienteRepo);
 
     const result = await useCase.execute();
 

@@ -36,18 +36,39 @@ import {
 } from '../../domain/errors/clientes.errors';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
+import type { Mock } from 'vitest';
+import { CrearClienteUseCase } from '../../application/use-cases/crear-cliente.use-case';
+import { ListarClientesUseCase } from '../../application/use-cases/listar-clientes.use-case';
+import { EditarClienteUseCase } from '../../application/use-cases/editar-cliente.use-case';
+import { DesactivarClienteUseCase } from '../../application/use-cases/desactivar-cliente.use-case';
+import { ReactivarClienteUseCase } from '../../application/use-cases/reactivar-cliente.use-case';
+import { ConfigurarCorreoClienteUseCase } from '../../application/use-cases/configurar-correo-cliente.use-case';
+import { QuitarCorreoClienteUseCase } from '../../application/use-cases/quitar-correo-cliente.use-case';
+import { ProbarCorreoClienteUseCase } from '../../application/use-cases/probar-correo-cliente.use-case';
+import { VerCorreoClienteUseCase } from '../../application/use-cases/ver-correo-cliente.use-case';
+import { ConfigurarCsatClienteUseCase } from '../../application/use-cases/configurar-csat-cliente.use-case';
+
+/**
+ * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
+ * controller) y reemplaza `execute` por un mock tipado con su firma.
+ */
+function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Clase: {
+  prototype: T;
+}): T & { execute: Mock<T['execute']> } {
+  return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
+}
 
 function buildController() {
-  const crearClienteUseCase = { execute: vi.fn() };
-  const listarClientesUseCase = { execute: vi.fn() };
-  const editarClienteUseCase = { execute: vi.fn() };
-  const desactivarClienteUseCase = { execute: vi.fn() };
-  const reactivarClienteUseCase = { execute: vi.fn() };
-  const configurarCorreoClienteUseCase = { execute: vi.fn() };
-  const quitarCorreoClienteUseCase = { execute: vi.fn() };
-  const probarCorreoClienteUseCase = { execute: vi.fn() };
-  const verCorreoClienteUseCase = { execute: vi.fn() };
-  const configurarCsatClienteUseCase = { execute: vi.fn() };
+  const crearClienteUseCase = casoDeUsoDoble(CrearClienteUseCase);
+  const listarClientesUseCase = casoDeUsoDoble(ListarClientesUseCase);
+  const editarClienteUseCase = casoDeUsoDoble(EditarClienteUseCase);
+  const desactivarClienteUseCase = casoDeUsoDoble(DesactivarClienteUseCase);
+  const reactivarClienteUseCase = casoDeUsoDoble(ReactivarClienteUseCase);
+  const configurarCorreoClienteUseCase = casoDeUsoDoble(ConfigurarCorreoClienteUseCase);
+  const quitarCorreoClienteUseCase = casoDeUsoDoble(QuitarCorreoClienteUseCase);
+  const probarCorreoClienteUseCase = casoDeUsoDoble(ProbarCorreoClienteUseCase);
+  const verCorreoClienteUseCase = casoDeUsoDoble(VerCorreoClienteUseCase);
+  const configurarCsatClienteUseCase = casoDeUsoDoble(ConfigurarCsatClienteUseCase);
   // Instancia real con su puerto de repo doblado (sin cast): solo se espia `execute`.
   const configurarFormularioPublicoUseCase = new ConfigurarFormularioPublicoUseCase({
     findById: vi.fn(),
@@ -63,16 +84,16 @@ function buildController() {
   });
   const executeFormularioPublico = vi.spyOn(configurarFormularioPublicoUseCase, 'execute');
   const controller = new ClientesController(
-    crearClienteUseCase as any,
-    listarClientesUseCase as any,
-    editarClienteUseCase as any,
-    desactivarClienteUseCase as any,
-    reactivarClienteUseCase as any,
-    configurarCorreoClienteUseCase as any,
-    quitarCorreoClienteUseCase as any,
-    probarCorreoClienteUseCase as any,
-    verCorreoClienteUseCase as any,
-    configurarCsatClienteUseCase as any,
+    crearClienteUseCase,
+    listarClientesUseCase,
+    editarClienteUseCase,
+    desactivarClienteUseCase,
+    reactivarClienteUseCase,
+    configurarCorreoClienteUseCase,
+    quitarCorreoClienteUseCase,
+    probarCorreoClienteUseCase,
+    verCorreoClienteUseCase,
+    configurarCsatClienteUseCase,
     configurarFormularioPublicoUseCase,
   );
   return {
@@ -132,7 +153,7 @@ describe('ClientesController (T8.4)', () => {
       });
       crearClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
 
-      const result = await controller.create(ROOT_USER, CREATE_DTO as any);
+      const result = await controller.create(ROOT_USER, CREATE_DTO);
 
       expect(result).toEqual({
         id: cliente.id,
@@ -166,7 +187,7 @@ describe('ClientesController (T8.4)', () => {
         Result.fail(new OnlyRootCanCreateClienteError()),
       );
 
-      await expect(controller.create(ROOT_USER, CREATE_DTO as any)).rejects.toBeInstanceOf(
+      await expect(controller.create(ROOT_USER, CREATE_DTO)).rejects.toBeInstanceOf(
         ForbiddenException,
       );
     });
@@ -177,7 +198,7 @@ describe('ClientesController (T8.4)', () => {
         Result.fail(new AdminEmailYaRegistradoError(CREATE_DTO.adminEmail)),
       );
 
-      await expect(controller.create(ROOT_USER, CREATE_DTO as any)).rejects.toBeInstanceOf(
+      await expect(controller.create(ROOT_USER, CREATE_DTO)).rejects.toBeInstanceOf(
         ConflictException,
       );
     });
@@ -188,7 +209,7 @@ describe('ClientesController (T8.4)', () => {
         Result.fail(new AdministradorRoleNotFoundError()),
       );
 
-      await expect(controller.create(ROOT_USER, CREATE_DTO as any)).rejects.toBeInstanceOf(
+      await expect(controller.create(ROOT_USER, CREATE_DTO)).rejects.toBeInstanceOf(
         InternalServerErrorException,
       );
     });
@@ -286,7 +307,7 @@ describe('ClientesController (T8.4)', () => {
       const result = await controller.editar(cliente.id, {
         nombre: 'ACME Modificada',
         razonSocial: 'ACME Sociedad Anónima',
-      } as any);
+      });
 
       expect(result.id).toBe(cliente.id);
       expect(editarClienteUseCase.execute).toHaveBeenCalledWith({
@@ -303,9 +324,9 @@ describe('ClientesController (T8.4)', () => {
         Result.fail(new ClienteNoEncontradoError('id-inexistente')),
       );
 
-      await expect(
-        controller.editar('id-inexistente', { nombre: 'X' } as any),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.editar('id-inexistente', { nombre: 'X' })).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -398,7 +419,7 @@ describe('ClientesController (T8.4)', () => {
         secure: false,
         from: 'from@acme.com',
         password: 'super-secreta',
-      } as any);
+      });
 
       expect(Object.keys(result)).not.toContain('password');
       expect(JSON.stringify(result)).not.toContain('super-secreta');
@@ -424,7 +445,7 @@ describe('ClientesController (T8.4)', () => {
         user: 'u',
         secure: false,
         from: 'from@acme.com',
-      } as any);
+      });
 
       expect(configurarCorreoClienteUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-1',
@@ -450,7 +471,7 @@ describe('ClientesController (T8.4)', () => {
           user: 'u',
           secure: false,
           from: 'f',
-        } as any),
+        }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -467,7 +488,7 @@ describe('ClientesController (T8.4)', () => {
           user: 'u',
           secure: false,
           from: 'f',
-        } as any),
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -485,7 +506,7 @@ describe('ClientesController (T8.4)', () => {
           secure: false,
           from: 'f',
           password: 'x',
-        } as any),
+        }),
       ).rejects.toBeInstanceOf(ServiceUnavailableException);
     });
   });
@@ -530,7 +551,7 @@ describe('ClientesController (T8.4)', () => {
       cliente.configurarCsat(true);
       configurarCsatClienteUseCase.execute.mockResolvedValue(Result.ok(cliente));
 
-      const result = await controller.configurarCsat(cliente.id, { habilitado: true } as any);
+      const result = await controller.configurarCsat(cliente.id, { habilitado: true });
 
       expect(result.csatHabilitado).toBe(true);
       expect(configurarCsatClienteUseCase.execute).toHaveBeenCalledWith({
@@ -546,7 +567,7 @@ describe('ClientesController (T8.4)', () => {
       );
 
       await expect(
-        controller.configurarCsat('id-inexistente', { habilitado: true } as any),
+        controller.configurarCsat('id-inexistente', { habilitado: true }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
