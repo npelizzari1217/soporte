@@ -106,7 +106,20 @@ técnica conocida" (`docs/roadmap-comercial.md`).
     `DATABASE_URL_TENANT=…/soporte_tenant_test pnpm migrate:tenant`.
   - Evidencia: `pnpm vitest run src/sla …reloj-sla.integration… …marcador.integration…` →
     `Test Files 21 passed (21) · Tests 192 passed (192)`; `pnpm typecheck` → sin errores.
-- [ ] **T3 — Escritura de `primera_respuesta_habil_s`** (CA3).
+- [x] **T3 — Escritura de `primera_respuesta_habil_s`** (CA3). Ruta: delegada. Base: `8079f082`.
+  - Archivos: `crear-comentario.use-case.ts` (calcula `Math.round(msHabilesEntre(ticket.createdAt,
+    instante) / 1000)` antes de la tx), puerto y repo `registrarSiFalta(ticketId, instante, habilS)` (mismo
+    `UPDATE … WHERE primera_respuesta_at IS NULL`), `tickets.module.ts` (importa
+    `CalendarioLaboralModule`, que solo importa `AuthModule`: sin ciclo; inyecta
+    `CALENDARIO_LABORAL_SEMANAL_REPOSITORY` y `FERIADOS_LABORALES_REPOSITORY`, los mismos que usa el
+    dashboard), specs `crear-comentario.use-case.spec.ts` y `primera-respuesta.integration.spec.ts`.
+  - Decisión: el chequeo barato existe. El ticket ya leído trae `relojSla.primeraRespuestaAt`; el
+    calendario se carga solo si el comentario cuenta como primera respuesta Y esa fecha es null. Si otro
+    comentario gana la carrera, el UPDATE condicionado no escribe ni la fecha ni los segundos.
+  - Evidencia: `pnpm vitest run crear-comentario.use-case.spec.ts primera-respuesta.integration.spec.ts`
+    → `Test Files 2 passed (2) · Tests 27 passed (27)`; cableado: `sla-primera-respuesta.e2e`,
+    `tickets.e2e`, `integraciones-api-v1-tickets.e2e` → `Test Files 3 passed (3) · Tests 45 passed (45)`;
+    `pnpm typecheck` → sin errores.
 - [ ] **T4 — Script de backfill por tenant** (CA4).
 - [ ] **T5 — Dashboard con `AVG` y etiqueta del frontend** (CA5, CA6).
 - [ ] **T6 — Cierre**:

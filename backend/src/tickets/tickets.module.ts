@@ -103,6 +103,16 @@ import { TicketsController } from './interface/controllers/tickets.controller';
 import { AdjuntosController } from './interface/controllers/adjuntos.controller';
 import { CatalogosController } from './interface/controllers/catalogos.controller';
 import { TareasTicketController } from './interface/controllers/tareas-ticket.controller';
+import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
+import { CalcularSlaHabilVenceService } from '../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+import {
+  CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+  ICalendarioLaboralSemanalRepository,
+} from '../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
+import {
+  FERIADOS_LABORALES_REPOSITORY,
+  IFeriadosLaboralesRepository,
+} from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
 
 /**
  * TicketsModule — módulo NestJS del dominio "tickets".
@@ -142,7 +152,9 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
  *   `ListarTimelineUseCase` (T18, reusa `TICKET_REPOSITORY`/
  *   `OPERACION_TICKET_REPOSITORY`, sin providers nuevos). Endpoints
  *   `POST /tickets/:id/comentarios` y `GET /tickets/:id/timeline`
- *   (`TicketsController`).
+ *   (`TicketsController`). `CrearComentarioUseCase` importa además
+ *   `CalendarioLaboralModule` (que solo importa `AuthModule`: sin ciclo) para
+ *   guardar la primera respuesta en segundos hábiles (odd/promedios-dashboard-habiles).
  * - PR10 (Fase 2): `AdjuntarArchivoUseCase` (T20/T21/T22, reusa
  *   `ARCHIVO_REPOSITORY`/`TICKET_REPOSITORY`/`OPERACION_TICKET_REPOSITORY`/
  *   `TIPO_OPERACION_REPOSITORY` ya registrados desde PR2/PR5 + `FILE_STORAGE`
@@ -165,7 +177,7 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, CsatLecturaModule],
+  imports: [AuthModule, CsatLecturaModule, CalendarioLaboralModule],
   controllers: [TicketsController, AdjuntosController, CatalogosController, TareasTicketController],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
@@ -584,6 +596,8 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
         primeraRespuestaRepo: IPrimeraRespuestaWriteRepository,
+        calendarioRepo: ICalendarioLaboralSemanalRepository,
+        feriadosRepo: IFeriadosLaboralesRepository,
       ) =>
         new CrearComentarioUseCase(
           ticketRepo,
@@ -593,6 +607,9 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
           eventPublisher,
           txRunner,
           primeraRespuestaRepo,
+          new CalcularSlaHabilVenceService(),
+          calendarioRepo,
+          feriadosRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -602,6 +619,8 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
         PRIMERA_RESPUESTA_WRITE_REPOSITORY,
+        CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+        FERIADOS_LABORALES_REPOSITORY,
       ],
     },
     {

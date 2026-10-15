@@ -14,6 +14,10 @@ import { PrismaOperacionTicketRepository } from './prisma-operacion-ticket.repos
 import { PrismaEstadoRepository } from './prisma-estado.repository';
 import { PrismaTipoOperacionRepository } from './prisma-tipo-operacion.repository';
 import { PrismaPrimeraRespuestaWriteRepository } from './prisma-primera-respuesta-write.repository';
+import {
+  CalcularSlaHabilVenceService,
+  CalendarioLaboralSemanal,
+} from '../../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -22,6 +26,16 @@ const TENANT_TEST_DB_NAME = 'soporte_tenant_test';
 const SOLICITANTE = '01900000-0000-7000-8000-0000000000a1';
 const TECNICO = '01900000-0000-7000-8000-0000000000a2';
 const PREFIJO = 'WU6P';
+/** Calendario abierto las 24 h todos los días: el tiempo hábil coincide con el de pared. */
+const SIEMPRE_ABIERTO: CalendarioLaboralSemanal = [
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+  { aperturaMinuto: 0, cierreMinuto: 1440 },
+];
 
 describe('Primera respuesta — Integration (WU-6)', () => {
   let prismaService: PrismaService;
@@ -57,6 +71,9 @@ describe('Primera respuesta — Integration (WU-6)', () => {
       { publish: vi.fn() },
       new PrismaTenantTransactionRunner(tenantContext, { error: vi.fn() }),
       repo,
+      new CalcularSlaHabilVenceService(),
+      { obtener: async () => SIEMPRE_ABIERTO },
+      { obtener: async () => new Set<string>() },
     );
     await limpiar();
     const s = randomBytes(3).toString('hex');
@@ -95,9 +112,10 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     await prismaService.onModuleDestroy();
   }, 30_000);
 
-  async function crearTicket(): Promise<string> {
+  async function crearTicket(createdAt?: Date): Promise<string> {
     const t = await client.ticket.create({
       data: {
+        ...(createdAt ? { createdAt } : {}),
         numero: `${PREFIJO}-${randomBytes(3).toString('hex')}`,
         titulo: 'Ticket WU-6',
         tipoId,
@@ -116,6 +134,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
         primeraRespuestaAt: true,
         primeraRespuestaVenceAt: true,
         primeraRespuestaVencida: true,
+        primeraRespuestaHabilS: true,
       },
     });
 
@@ -133,6 +152,25 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     expect((await leer(id)).primeraRespuestaAt).toEqual(op.createdAt);
   });
 
+  it('guarda los segundos hábiles creación → primera respuesta, y un segundo comentario no los cambia', async () => {
+    const creado = new Date(Date.now() - 2 * 3_600_000);
+    const id = await crearTicket(creado);
+
+    const r = await useCase.execute({
+      ticketId: id,
+      texto: 'uno',
+      autorId: TECNICO,
+      esInterno: false,
+    });
+    const op = await client.operacionTicket.findUniqueOrThrow({ where: { id: r.getValue().id } });
+    const esperado = Math.round((op.createdAt.getTime() - creado.getTime()) / 1000);
+    expect(esperado).toBeGreaterThanOrEqual(2 * 3600);
+    expect((await leer(id)).primeraRespuestaHabilS).toBe(esperado);
+
+    await useCase.execute({ ticketId: id, texto: 'dos', autorId: TECNICO, esInterno: false });
+    expect((await leer(id)).primeraRespuestaHabilS).toBe(esperado);
+  });
+
   it('el interno y el público del solicitante no cuentan', async () => {
     const id = await crearTicket();
 
@@ -144,7 +182,10 @@ describe('Primera respuesta — Integration (WU-6)', () => {
       esInterno: false,
     });
 
-    expect((await leer(id)).primeraRespuestaAt).toBeNull();
+    expect(await leer(id)).toMatchObject({
+      primeraRespuestaAt: null,
+      primeraRespuestaHabilS: null,
+    });
   });
 
   it('un segundo comentario no cambia la fecha', async () => {
@@ -162,12 +203,18 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     const a = new Date('2026-10-01T12:00:00.000Z');
     const b = new Date('2026-10-01T12:00:05.000Z');
 
-    await Promise.all([repo.registrarSiFalta(id, a), repo.registrarSiFalta(id, b)]);
+    await Promise.all([repo.registrarSiFalta(id, a, 10), repo.registrarSiFalta(id, b, 20)]);
 
-    const ganadora = (await leer(id)).primeraRespuestaAt as Date;
-    expect([a.getTime(), b.getTime()]).toContain(ganadora.getTime());
-    await repo.registrarSiFalta(id, new Date('2026-10-02T00:00:00.000Z'));
-    expect((await leer(id)).primeraRespuestaAt).toEqual(ganadora);
+    const ganadora = await leer(id);
+    const fecha = ganadora.primeraRespuestaAt as Date;
+    expect([a.getTime(), b.getTime()]).toContain(fecha.getTime());
+    // Fecha y segundos hábiles viajan en el mismo UPDATE: nunca quedan de escritores distintos.
+    expect(ganadora.primeraRespuestaHabilS).toBe(fecha.getTime() === a.getTime() ? 10 : 20);
+    await repo.registrarSiFalta(id, new Date('2026-10-02T00:00:00.000Z'), 99);
+    expect(await leer(id)).toMatchObject({
+      primeraRespuestaAt: fecha,
+      primeraRespuestaHabilS: ganadora.primeraRespuestaHabilS,
+    });
   });
 
   it('borrar el comentario que registró la primera respuesta no cambia la fecha', async () => {
@@ -193,7 +240,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     const sinRespuesta = await crearTicket();
     const respondido = await crearTicket();
     const vence = new Date('2026-10-05T15:00:00.000Z');
-    await repo.registrarSiFalta(respondido, new Date('2026-10-01T12:00:00.000Z'));
+    await repo.registrarSiFalta(respondido, new Date('2026-10-01T12:00:00.000Z'), 0);
 
     await repo.fijarVencimientoSiSinRespuesta(sinRespuesta, vence);
     await repo.fijarVencimientoSiSinRespuesta(respondido, vence);
@@ -207,7 +254,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
   it('fijarVencimientoSiSinRespuesta rearma el aviso: primeraRespuestaVencida vuelve a false (solo sin respuesta)', async () => {
     const sinRespuesta = await crearTicket();
     const respondido = await crearTicket();
-    await repo.registrarSiFalta(respondido, new Date('2026-10-01T12:00:00.000Z'));
+    await repo.registrarSiFalta(respondido, new Date('2026-10-01T12:00:00.000Z'), 0);
     for (const id of [sinRespuesta, respondido]) {
       await client.ticket.update({ where: { id }, data: { primeraRespuestaVencida: true } });
     }
