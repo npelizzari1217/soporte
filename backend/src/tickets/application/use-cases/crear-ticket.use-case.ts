@@ -111,9 +111,11 @@ export class CrearTicketUseCase {
     }
     const cicloActivo = cicloResult.getValue();
 
-    // 3. tipoId debe existir en el catálogo del tenant (T4).
+    // 3. tipoId debe existir en el catálogo del tenant y estar ACTIVO (T4).
+    //    `findById` devuelve también los dados de baja (la reactivación los
+    //    necesita): para una alta nueva, uno inactivo es como inexistente.
     const tipoTicket = await this.tipoTicketRepo.findById(dto.tipoId);
-    if (!tipoTicket) {
+    if (!tipoTicket || tipoTicket.isDeleted() || !tipoTicket.activo) {
       return Result.fail(new TipoTicketNoEncontradoError(dto.tipoId));
     }
 

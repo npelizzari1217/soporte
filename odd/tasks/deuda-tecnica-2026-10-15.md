@@ -72,7 +72,18 @@ reactivarlo antes.
     (`ECONNREFUSED 127.0.0.1:5432`, sin `docker` en WSL).
   - Los literales `'SOPORTE'`/`'EDILICIA'` de `equipos/` y `reparaciones/` quedaron como
     están: fuera de la superficie de esta tarea.
-- [ ] **T2 — El alta rechaza tipos inactivos** (bugfix, TDD). CA3. Depende de T1.
+  - Commit: `3425ea81`.
+- [x] **T2 — El alta rechaza tipos inactivos** (bugfix, TDD). CA3. Depende de T1.
+  - `CrearTicketUseCase` rechaza `isDeleted() || !activo` con `TipoTicketNoEncontradoError`.
+    `findById` sin cambios; se corrigió el comentario del puerto, que decía que devolvía
+    null para los soft-deleted.
+  - RED: `crear-ticket.use-case.spec.ts`, 2 casos (`desactivar()` y `activo=false`) →
+    `AssertionError: expected false to be true` (`result.isFail()`).
+  - GREEN: 20/20 en el spec; unitarios del backend 6490 verdes, 4 rojos en 2 specs de
+    `scripts/` que necesitan Postgres (`ECONNREFUSED 127.0.0.1:5432`), ajenos al cambio.
+  - No se agregó el caso e2e en `tickets.e2e.spec.ts`: con la base caída no se podía
+    observar, y un e2e no corrido no es evidencia. Queda como seguimiento opcional.
+  - Specs de preventivo: pendientes de la base (integración/e2e); los unitarios están verdes.
 - [ ] **T3 — `TicketsModule` exporta los casos de uso de la API v1** (refactor). CA4.
 - [ ] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5.
 - [ ] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
