@@ -166,7 +166,13 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
       where: { id },
       data: { slaRelojVersion: 2, slaRelojPendiente: true },
     });
-    const reloj = { acumuladoS: 3600, metaS: 7200, correDesde: min(5), cumplido: null };
+    const reloj = {
+      acumuladoS: 3600,
+      resolucionHabilS: null,
+      metaS: 7200,
+      correDesde: min(5),
+      cumplido: null,
+    };
 
     expect(await repo.guardarSiVersion(id, 1, reloj)).toBe(false);
     let fila = await client.ticket.findUniqueOrThrow({ where: { id } });
@@ -190,12 +196,42 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
 
     await repo.guardarSiVersion(id, 0, {
       acumuladoS: 0,
+      resolucionHabilS: null,
       metaS: null,
       correDesde: null,
       cumplido: null,
     });
 
     expect((await client.ticket.findUniqueOrThrow({ where: { id } })).slaVenceAt).toEqual(min(99));
+  });
+
+  it('guardarSiVersion escribe resolucionHabilS en el mismo CAS, y un valor null la borra', async () => {
+    const id = await crearTicket();
+    const resuelto = {
+      acumuladoS: 5400,
+      resolucionHabilS: 5400,
+      metaS: 7200,
+      correDesde: null,
+      cumplido: true,
+    };
+    const resolucion = async () =>
+      (await client.ticket.findUniqueOrThrow({ where: { id } })).resolucionHabilS;
+
+    expect(await repo.guardarSiVersion(id, 1, resuelto)).toBe(false);
+    expect(await resolucion()).toBeNull();
+
+    expect(await repo.guardarSiVersion(id, 0, resuelto)).toBe(true);
+    expect(await resolucion()).toBe(5400);
+
+    // Reapertura: el pliegue devuelve null y la escritura lo borra.
+    expect(
+      await repo.guardarSiVersion(id, 0, {
+        ...resuelto,
+        resolucionHabilS: null,
+        correDesde: min(9),
+      }),
+    ).toBe(true);
+    expect(await resolucion()).toBeNull();
   });
 
   it('leer devuelve el reloj con el código del estado, y null para un borrado; findPendientes lista los pendientes', async () => {
@@ -218,7 +254,13 @@ describe('PrismaRelojSlaRepository — Integration (WU-3b)', () => {
   });
 
   describe('marca de meta pendiente (issue #429)', () => {
-    const reloj = { acumuladoS: 0, metaS: 7200, correDesde: min(5), cumplido: null };
+    const reloj = {
+      acumuladoS: 0,
+      resolucionHabilS: null,
+      metaS: 7200,
+      correDesde: min(5),
+      cumplido: null,
+    };
     const marca = async (id: string) =>
       (await client.ticket.findUniqueOrThrow({ where: { id } })).slaMetaPendiente;
 

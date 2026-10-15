@@ -125,6 +125,7 @@ describe('AplicarSlaUseCase', () => {
         1,
         {
           acumuladoS: 0,
+          resolucionHabilS: null,
           metaS: 8 * H,
           correDesde: L(10, 9),
           cumplido: null,
@@ -395,6 +396,14 @@ describe('AplicarSlaUseCase', () => {
 
       expect(c.escrito()).toMatchObject({ metaS: 12 * H, cumplido: true });
       expect(c.escrito().slaVenceAt).toBeUndefined();
+    });
+
+    it('repriorizar un RESUELTO no borra su tiempo de resolución guardado', async () => {
+      const c = montar({ fila: { ...resuelto, acumuladoS: 9 * H }, prioridad: prioridad(12) });
+
+      await c.useCase.alReprioritizar(DTO);
+
+      expect(c.escrito().resolucionHabilS).toBe(9 * H);
     });
 
     it('RESUELTO con 9 h sobre una meta de 8 h no cumple', async () => {

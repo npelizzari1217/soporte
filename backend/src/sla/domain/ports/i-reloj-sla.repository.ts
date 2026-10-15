@@ -16,7 +16,8 @@ export interface IRelojSlaRepository {
 
   /**
    * CAS: escribe el reloj solo si `sla_reloj_version` sigue siendo `version`; deja el cursor en
-   * `version` y limpia el pendiente. `false` si entró otra transición (0 filas afectadas).
+   * `version` y limpia el pendiente. `false` si entró otra transición (0 filas afectadas). En la misma
+   * escritura fija `resolucion_habil_s` desde el pliegue (null al reabrir): es su único escritor.
    *
    * Con `prioridadAplicadaId` (la escritura de `AplicarSla`, issue #429) el CAS exige además que esa
    * sea la prioridad vigente del ticket y, en la MISMA escritura, baja `sla_meta_pendiente`. Si

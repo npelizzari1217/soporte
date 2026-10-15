@@ -9,6 +9,9 @@
  *   `acumulado = 0`, `correDesde = createdAt` y `meta = entre(createdAt, slaVenceAt)`.
  * - El tiempo de cada transición se recorta a monótono: `t_i = max(created_at_i, t_{i-1}, corre_desde)`.
  * - Cada tramo se redondea a segundos con `Math.round(ms / 1000)`.
+ * - `resolucionHabilS` (odd/promedios-dashboard-habiles) es el acumulado cuando el ticket está en
+ *   RESUELTO o CERRADO con regla HABIL, y `null` en cualquier otro caso: reabrir lo borra y el próximo
+ *   RESUELTO lo toma de nuevo.
  */
 import { ESTADOS_RELOJ_CORRE } from '../../../tickets/domain/state-machine/estados.constants';
 import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
@@ -45,6 +48,8 @@ export interface TransicionReloj {
 /** Estado nuevo del reloj. `slaVenceAt` es `undefined` cuando el pliegue no lo reescribe. */
 export interface RelojSlaResultado {
   readonly acumuladoS: number;
+  /** Tiempo hábil de resolución que guarda el ticket para el dashboard; `null` = sin dato. */
+  readonly resolucionHabilS: number | null;
   readonly metaS: number | null;
   readonly correDesde: Date | null;
   readonly cumplido: boolean | null;
@@ -60,6 +65,9 @@ export interface PlegarParams {
 }
 
 const segundos = (ms: number): number => Math.round(ms / 1000);
+
+/** Estados en los que el acumulado ya es el tiempo de resolución (RESUELTO → CERRADO no lo mueve). */
+const ESTADOS_RESOLUCION: ReadonlySet<string> = new Set(['RESUELTO', 'CERRADO']);
 
 export class RelojSla {
   /** Elige el medidor por cohorte: `CORRIDO` mide tiempo de pared, el resto tiempo hábil. */
@@ -126,7 +134,16 @@ export class RelojSla {
       correDesde = tPrev ?? fila.createdAt;
     }
 
-    const resultado: RelojSlaResultado = { acumuladoS, metaS, correDesde, cumplido };
+    // Se toma del estado actual, ya con el último tramo sumado. CORRIDO queda fuera: no es tiempo hábil.
+    const resolucionHabilS =
+      fila.slaRegla === 'HABIL' && ESTADOS_RESOLUCION.has(fila.estadoCodigo) ? acumuladoS : null;
+    const resultado: RelojSlaResultado = {
+      acumuladoS,
+      resolucionHabilS,
+      metaS,
+      correDesde,
+      cumplido,
+    };
     if (!(correActual && reanudo && metaS !== null && correDesde)) return resultado;
 
     const slaVenceAt = RelojSla.vencimientoDerivado({

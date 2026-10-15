@@ -76,6 +76,7 @@ describe('ConsolidarRelojSlaUseCase + PrismaRelojSlaRepository — Integration (
     for (const [codigo, orden] of [
       ['EN_PROCESO', 30],
       ['ESPERANDO_CLIENTE', 35],
+      ['RESUELTO', 40],
     ] as const) {
       const previo = await client.estado.findUnique({ where: { codigo } });
       if (!previo) {
@@ -86,7 +87,7 @@ describe('ConsolidarRelojSlaUseCase + PrismaRelojSlaRepository — Integration (
       }
     }
     const filas = await client.estado.findMany({
-      where: { codigo: { in: ['EN_PROCESO', 'ESPERANDO_CLIENTE'] } },
+      where: { codigo: { in: ['EN_PROCESO', 'ESPERANDO_CLIENTE', 'RESUELTO'] } },
     });
     estados = Object.fromEntries(filas.map((e) => [e.codigo, e.id]));
     const tipoOp = await client.tipoOperacion.findUnique({ where: { codigo: 'CAMBIO_ESTADO' } });
@@ -182,5 +183,52 @@ describe('ConsolidarRelojSlaUseCase + PrismaRelojSlaRepository — Integration (
     expect(await uc.execute(id)).toBe('consolidado');
     const segunda = await client.ticket.findUniqueOrThrow({ where: { id } });
     expect({ ...segunda, updatedAt: null }).toEqual({ ...primera, updatedAt: null });
+  });
+
+  it('resolver guarda resolucion_habil_s con el último tramo; reabrir la borra (odd/promedios-dashboard-habiles)', async () => {
+    const ticket = await client.ticket.create({
+      data: {
+        numero: `${PREFIJO}-${randomBytes(3).toString('hex')}`,
+        titulo: 'Ticket resuelto',
+        tipoId,
+        estadoId: estados.RESUELTO,
+        prioridadId,
+        solicitanteId: USUARIO,
+        slaMetaS: 8 * 3600,
+        slaCorreDesde: INICIO,
+        slaRelojVersion: 1,
+        slaRelojPendiente: true,
+      },
+    });
+    const transicion = (anterior: string, nuevo: string, createdAt: Date, seq: number) =>
+      client.operacionTicket.create({
+        data: {
+          ticketId: ticket.id,
+          tipoOperacionId: tipoOpId,
+          autorId: USUARIO,
+          estadoAnteriorId: estados[anterior],
+          estadoNuevoId: estados[nuevo],
+          createdAt,
+          slaRelojSeq: seq,
+        },
+      });
+    await transicion('EN_PROCESO', 'RESUELTO', TRES_HORAS, 1);
+    const uc = crearUseCase();
+
+    expect(await uc.execute(ticket.id)).toBe('consolidado');
+    const resuelto = await client.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
+    expect(resuelto).toMatchObject({ slaAcumuladoS: 3 * 3600, resolucionHabilS: 3 * 3600 });
+
+    // Reapertura correctiva: el marcador sube la versión, marca pendiente y el estado vuelve a correr.
+    await transicion('RESUELTO', 'EN_PROCESO', new Date('2026-08-11T12:00:00.000Z'), 2);
+    await client.ticket.update({
+      where: { id: ticket.id },
+      data: { estadoId: estados.EN_PROCESO, slaRelojVersion: 2, slaRelojPendiente: true },
+    });
+
+    expect(await uc.execute(ticket.id)).toBe('consolidado');
+    const reabierto = await client.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
+    expect(reabierto.resolucionHabilS).toBeNull();
+    expect(reabierto.slaAcumuladoS).toBe(3 * 3600);
   });
 });

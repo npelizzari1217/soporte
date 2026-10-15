@@ -130,6 +130,7 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
         slaMetaS: reloj.metaS,
         slaCorreDesde: reloj.correDesde,
         slaCumplido: reloj.cumplido,
+        resolucionHabilS: reloj.resolucionHabilS,
         ...(reloj.slaVenceAt !== undefined ? { slaVenceAt: reloj.slaVenceAt } : {}),
         slaRelojSeqHasta: version,
         slaRelojPendiente: false,

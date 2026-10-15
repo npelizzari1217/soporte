@@ -93,7 +93,19 @@ técnica conocida" (`docs/roadmap-comercial.md`).
   - Evidencia: `pnpm vitest run tickets-tiempos-habiles… tickets-primera-respuesta… tickets-reloj-sla…` →
     `Test Files 3 passed (3) · Tests 21 passed (21)`; `ticket.mapper.spec.ts` → `9 passed`;
     `pnpm typecheck` → sin errores.
-- [ ] **T2 — Escritura de `resolucion_habil_s` en el pliegue del reloj** (CA2).
+- [x] **T2 — Escritura de `resolucion_habil_s` en el pliegue del reloj** (CA2). Ruta: delegada. Base: `77ee4430`.
+  - Archivos: `reloj-sla.ts` (`RelojSlaResultado.resolucionHabilS`: acumulado si el estado del ticket
+    es RESUELTO o CERRADO y la regla es HABIL; si no, null), `prisma-reloj-sla.repository.ts` (lo
+    escribe en el mismo `updateMany` del CAS), `i-reloj-sla.repository.ts` (doc), specs:
+    `reloj-sla.resolucion.spec.ts` (nuevo), `reloj-sla.meta.spec.ts`, `aplicar-sla.use-case.spec.ts`,
+    `prisma-reloj-sla.repository.integration.spec.ts`, `consolidar-reloj-sla.integration.spec.ts`.
+  - `conMeta` esparce el resultado del pliegue, así que `AplicarSla` conserva el valor. Repriorizar un
+    RESUELTO reescribe el mismo acumulado (RESUELTO no es terminal; CERRADO/CANCELADO se saltean): test
+    agregado.
+  - `soporte_tenant_test` no recibe migraciones sola: se aplicó con
+    `DATABASE_URL_TENANT=…/soporte_tenant_test pnpm migrate:tenant`.
+  - Evidencia: `pnpm vitest run src/sla …reloj-sla.integration… …marcador.integration…` →
+    `Test Files 21 passed (21) · Tests 192 passed (192)`; `pnpm typecheck` → sin errores.
 - [ ] **T3 — Escritura de `primera_respuesta_habil_s`** (CA3).
 - [ ] **T4 — Script de backfill por tenant** (CA4).
 - [ ] **T5 — Dashboard con `AVG` y etiqueta del frontend** (CA5, CA6).
