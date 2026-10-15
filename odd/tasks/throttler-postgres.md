@@ -97,8 +97,18 @@ Los cuatro usan el `ThrottlerStorageService` en memoria de `@nestjs/throttler` 6
     memoria" corregidos.
   - Evidencia: `pnpm vitest run` de esos 7 e2e más los 3 specs de módulo, dos veces seguidas →
     10 archivos, 54 tests verdes las dos veces. El spec de CSAT falla con el `forRoot` anterior.
-- [ ] **T4 — Cierre**: fila de la deuda RESUELTA en el roadmap, nota de migración y rollback en
+  - Commit: `bb7109d5`.
+  - Comentarios fuera del alcance autorizado que siguen diciendo "en memoria":
+    `backend/src/csat/infrastructure/guards/csat-throttler.guard.ts:18-20` y
+    `backend/src/publico/infrastructure/guards/pedido-publico-throttler.guard.ts:29,32,64`.
+- [x] **T4 — Cierre**: fila de la deuda RESUELTA en el roadmap, nota de migración y rollback en
   `DEPLOY-VPS-runbook.md`, compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
+  - Archivos: `docs/roadmap-comercial.md` (fila de deuda RESUELTA; la nota del punto del
+    formulario/QR que decía que un reinicio ponía los cupos en cero, corregida),
+    `DEPLOY-VPS-runbook.md` (sección "Límites de pedidos en Postgres").
+  - Evidencia: `node scripts/check-roadmap-fresco.mjs` → "El roadmap esta fresco."; `pnpm lint` →
+    exit 0; `pnpm typecheck` → exit 0; `pnpm test` → 738 archivos, 8810 tests verdes, exit 0;
+    `node scripts/check-casts-en-specs.mjs` → 594 casts en 111 archivos (base 594), no subieron.
 
 ## Precondición de deploy
 Trae una migración de master: `predeploy-dump.ps1` como siempre. Es aditiva, así que el código
@@ -115,6 +125,7 @@ anterior funciona con la tabla creada.
 - 2026-10-15: T1 hecha (ruta delegada, escritor único).
 - 2026-10-15: T2 hecha.
 - 2026-10-15: T3 hecha.
+- 2026-10-15: T4 hecha; feature cerrada.
 
 ## Próximo paso
-T1.
+Merge local de `feat/throttler-postgres` a `main` (decisión del dueño) y deploy con `predeploy-dump.ps1`.
