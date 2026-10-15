@@ -10,17 +10,13 @@
  *   `TransicionarEstadoUseCase`, T12 — es la señal de "ya resuelto/cerrado"
  *   independiente de si luego transicionó de RESUELTO→CERRADO).
  * - Deviación de bajo riesgo vs. el design ("$queryRaw tipado"): se usan
- *   `count`/`groupBy`/`findMany` tipados de Prisma en vez de SQL crudo —
+ *   `count`/`groupBy`/`aggregate` tipados de Prisma en vez de SQL crudo —
  *   mismo resultado, sin el riesgo de mantenimiento de SQL a mano y sin
- *   perder tipado (`any` prohibido). El promedio de resolución (horas) se
- *   calcula en memoria sobre las dos columnas (`createdAt`/`fechaCierre`)
- *   porque Prisma no expone aritmética de fechas portable sin `$queryRaw`.
- * - `tickets.fecha_cierre` es `@db.Timestamptz` (sdd/corregir-fecha-cierre-tickets,
- *   WU1) — guarda el instante real de cierre, igual que `createdAt`. La resta
- *   es una duración instante-a-instante genuina y NUNCA se clampea a cero: un
- *   resultado negativo solo puede significar datos corruptos (mal backfill,
- *   cierre anterior a la creación), y taparlo con `Math.max(0, ...)` lo
- *   disfrazaría de promedio plausible (design D4).
+ *   perder tipado (`any` prohibido).
+ * - Los dos tiempos medios (odd/promedios-dashboard-habiles) son un `AVG` en SQL
+ *   sobre segundos hábiles ya guardados por ticket (`resolucion_habil_s`,
+ *   `primera_respuesta_habil_s`): ninguna fila viaja a memoria y cambiar el
+ *   calendario no recalcula el historial.
  *
  * Tarea: D4.
  */
@@ -29,10 +25,6 @@ import { Prisma } from '.prisma/tenant';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { TIPO_CODIGO_PREVENTIVO } from '../../../../tickets/domain/tipos-ticket.constants';
-import { CalcularSlaHabilVenceService } from '../../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
-import { ICalendarioLaboralSemanalRepository } from '../../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
-import { IFeriadosLaboralesRepository } from '../../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
-import { promedioHorasHabiles } from '../../../domain/services/promedio-horas-habiles';
 import {
   CargaAgente,
   ConteoAbiertosCerrados,
@@ -44,17 +36,15 @@ import {
   MetricaFiltro,
 } from '../../../domain/ports/i-dashboard.repository';
 
-const MS_POR_HORA = 1000 * 60 * 60;
+const SEGUNDOS_POR_HORA = 3600;
+
+/** Promedio en horas de un `AVG` en segundos; `null` (sin filas) sigue siendo `null`, no 0 h. */
+const enHoras = (promedioS: number | null): number | null =>
+  promedioS === null ? null : promedioS / SEGUNDOS_POR_HORA;
 
 @Injectable()
 export class PrismaDashboardRepository implements IDashboardRepository {
-  private readonly calculo = new CalcularSlaHabilVenceService();
-
-  constructor(
-    private readonly tenantContext: TenantContext,
-    private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
-    private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
-  ) {}
+  constructor(private readonly tenantContext: TenantContext) {}
 
   private get client(): InstanceType<typeof TenantPrismaClient> {
     return this.tenantContext.getClient() as InstanceType<typeof TenantPrismaClient>;
@@ -78,23 +68,20 @@ export class PrismaDashboardRepository implements IDashboardRepository {
     return { abiertos, cerrados };
   }
 
+  /**
+   * `AVG(resolucion_habil_s)`: tiempo hábil sin pausas hasta RESUELTO. Un reabierto tiene la columna
+   * en NULL mientras no se vuelva a resolver y queda afuera. Sin preventivos.
+   */
   async tiempoPromedioResolucionHoras(filtro: MetricaFiltro): Promise<number | null> {
-    const rows = await this.client.ticket.findMany({
-      where: { ...this.buildWhere(filtro), fechaCierre: { not: null } },
-      select: { createdAt: true, fechaCierre: true },
+    const { _avg } = await this.client.ticket.aggregate({
+      where: {
+        ...this.buildWhere(filtro),
+        ...this.sinPreventivos,
+        resolucionHabilS: { not: null },
+      },
+      _avg: { resolucionHabilS: true },
     });
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const totalHoras = rows.reduce((acumulado, row) => {
-      // fechaCierre no es null acá (filtrado en el where), el `!` es seguro.
-      // Duración instante-a-instante real; sin clamp (ver comentario de clase).
-      const horas = (row.fechaCierre!.getTime() - row.createdAt.getTime()) / MS_POR_HORA;
-      return acumulado + horas;
-    }, 0);
-
-    return totalHoras / rows.length;
+    return enHoras(_avg.resolucionHabilS);
   }
 
   async cargaPorAgente(filtro: MetricaFiltro): Promise<CargaAgente[]> {
@@ -184,29 +171,17 @@ export class PrismaDashboardRepository implements IDashboardRepository {
     return { conMeta: total, aTiempo };
   }
 
+  /** `AVG(primera_respuesta_habil_s)`, guardado al registrarse la primera respuesta. Sin preventivos. */
   async tiempoPromedioPrimeraRespuestaHoras(filtro: MetricaFiltro): Promise<number | null> {
-    const filas = await this.client.ticket.findMany({
+    const { _avg } = await this.client.ticket.aggregate({
       where: {
         ...this.buildWhere(filtro),
         ...this.sinPreventivos,
-        primeraRespuestaAt: { not: null },
+        primeraRespuestaHabilS: { not: null },
       },
-      select: { createdAt: true, primeraRespuestaAt: true },
+      _avg: { primeraRespuestaHabilS: true },
     });
-    if (filas.length === 0) return null;
-
-    // Calendario y feriados una sola vez por consulta, no por fila.
-    const [calendario, feriados] = await Promise.all([
-      this.calendarioRepo.obtener(),
-      this.feriadosRepo.obtener(),
-    ]);
-    return promedioHorasHabiles(
-      // `primeraRespuestaAt` no es null acá (filtrado en el where).
-      filas.map((f) => ({ desde: f.createdAt, hasta: f.primeraRespuestaAt! })),
-      this.calculo,
-      calendario,
-      feriados,
-    );
+    return enHoras(_avg.primeraRespuestaHabilS);
   }
 
   async distribucionPorTipo(filtro: MetricaFiltro): Promise<DistribucionPorTipo[]> {

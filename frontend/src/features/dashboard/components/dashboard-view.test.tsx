@@ -70,7 +70,10 @@ describe("DashboardView", () => {
     expect(within(barFigure).getByText("Cerrados")).toBeInTheDocument();
     expect(within(barFigure).getByText("3")).toBeInTheDocument();
 
-    const lineFigure = screen.getByRole("img", { name: "Tiempo promedio de resolución (h)" });
+    expect(screen.getByText("Tiempo promedio de resolución (horas hábiles, sin pausas)")).toBeInTheDocument();
+    const lineFigure = screen.getByRole("img", {
+      name: "Tiempo promedio de resolución (horas hábiles, sin pausas)",
+    });
     expect(within(lineFigure).getByText("24")).toBeInTheDocument();
 
     const hbarFigure = screen.getByRole("img", { name: "Carga por agente" });

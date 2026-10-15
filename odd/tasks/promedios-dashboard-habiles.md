@@ -139,7 +139,19 @@ técnica conocida" (`docs/roadmap-comercial.md`).
     `ENSAYO …; 1 tenant(s) activo(s)` y `ERROR database "…" does not exist` para un registro huérfano de
     la base de test, `exit=1` (carga de `dist/` y manejo por tenant verificados); `--foo` →
     `argumento desconocido`, `exit=1`. `eslint` sobre los dos archivos → sin salida.
-- [ ] **T5 — Dashboard con `AVG` y etiqueta del frontend** (CA5, CA6).
+- [x] **T5 — Dashboard con `AVG` y etiqueta del frontend** (CA5, CA6). Ruta: delegada. Base: `8a651586`.
+  - Archivos: `prisma-dashboard.repository.ts` (los dos tiempos medios son `ticket.aggregate({ _avg })`
+    con `IS NOT NULL`, `sinPreventivos` en los dos y el mismo `buildWhere`; segundos / 3600 sin redondeo,
+    igual que antes; `null` sin filas), `i-dashboard.repository.ts` (doc), `dashboard.module.ts` (el
+    repo ya no recibe calendario ni feriados; se quita `CalendarioLaboralModule` de sus imports),
+    `promedio-horas-habiles.ts` y su spec BORRADOS (su único usuario era este repo),
+    `prisma-dashboard.integration.spec.ts`, `tareas-completadas-dashboard.integration.spec.ts`
+    (constructor), `frontend/…/dashboard-view.tsx` y su test (etiqueta nueva).
+  - Ayuda: ningún artículo describe cómo se miden los tiempos del dashboard;
+    `mantenimiento-preventivo.md:23-25` sigue siendo cierto. Deuda anotada en el commit.
+  - Evidencia: `pnpm vitest run src/dashboard` → `Test Files 4 passed (4) · Tests 51 passed (51)`;
+    frontend `pnpm vitest run src/features/dashboard` → `Test Files 3 passed (3) · Tests 31 passed (31)`;
+    `pnpm typecheck` backend → sin errores; `eslint` frontend del feature → sin salida.
 - [ ] **T6 — Cierre**:
   - roadmap: fila de la deuda RESUELTA, corrigiendo que la resolución era en horas corridas; fila
     nueva de deuda: al reabrir un ticket desde CERRADO, `sla_cumplido` del cierre anterior queda

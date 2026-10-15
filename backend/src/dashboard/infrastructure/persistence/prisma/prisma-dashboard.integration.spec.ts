@@ -14,6 +14,9 @@
  * (`dashboard-metricas-sla` R1, R2, R4, R5). Cada test usa su propio ciclo (`cicloNuevo`), así que los
  * conteos no se contaminan entre sí ni con el resto de la base compartida.
  *
+ * odd/promedios-dashboard-habiles T5: los dos tiempos medios promedian con `AVG` los segundos hábiles
+ * guardados por ticket (`resolucion_habil_s`, `primera_respuesta_habil_s`), no las fechas.
+ *
  * Ref spec: sdd/premium/spec D1. Ref design: "Archivos afectados" PR-D,
  * matriz de tests. Tarea: D3.
  */
@@ -21,7 +24,6 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { CalendarioLaboralSemanal } from '../../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 import { TIPO_CODIGO_PREVENTIVO } from '../../../../tickets/domain/tipos-ticket.constants';
 import { PrismaDashboardRepository } from './prisma-dashboard.repository';
 
@@ -36,15 +38,8 @@ const AGENTE_1_ID = '01900000-0000-7000-8000-000000000301';
 const AGENTE_2_ID = '01900000-0000-7000-8000-000000000302';
 
 const H = 3_600_000;
-const CALENDARIO_L_A_V_9_A_18: CalendarioLaboralSemanal = [
-  { aperturaMinuto: null, cierreMinuto: null },
-  { aperturaMinuto: 540, cierreMinuto: 1080 },
-  { aperturaMinuto: 540, cierreMinuto: 1080 },
-  { aperturaMinuto: 540, cierreMinuto: 1080 },
-  { aperturaMinuto: 540, cierreMinuto: 1080 },
-  { aperturaMinuto: 540, cierreMinuto: 1080 },
-  { aperturaMinuto: null, cierreMinuto: null },
-];
+/** Segundos por hora, para los valores de las columnas `*_habil_s`. */
+const HS = 3600;
 
 describe('PrismaDashboardRepository — Integration (PR-D)', () => {
   let prismaService: PrismaService;
@@ -63,7 +58,6 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
   let tipoPreventivoCreado = false;
   let estadoEsperaId: string;
   const ciclosWu8: string[] = [];
-  const obtenerCalendario = vi.fn(async () => CALENDARIO_L_A_V_9_A_18);
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
   let numeroCounter = 0;
@@ -93,6 +87,8 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     slaCumplido?: boolean | null;
     primeraRespuestaAt?: Date | null;
     primeraRespuestaVenceAt?: Date | null;
+    resolucionHabilS?: number | null;
+    primeraRespuestaHabilS?: number | null;
   }) {
     return tenantClient.ticket.create({
       data: {
@@ -117,6 +113,8 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
         ...(overrides.primeraRespuestaVenceAt !== undefined && {
           primeraRespuestaVenceAt: overrides.primeraRespuestaVenceAt,
         }),
+        resolucionHabilS: overrides.resolucionHabilS ?? null,
+        primeraRespuestaHabilS: overrides.primeraRespuestaHabilS ?? null,
       },
     });
   }
@@ -139,13 +137,7 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     prismaService = new PrismaService(MASTER_TEST_URL);
     tenantClient = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
     tenantContext = new TenantContext();
-    repo = new PrismaDashboardRepository(
-      tenantContext,
-      { obtener: obtenerCalendario },
-      {
-        obtener: async () => new Set<string>(),
-      },
-    );
+    repo = new PrismaDashboardRepository(tenantContext);
 
     const tipo = await tenantClient.tipoTicket.create({
       data: {
@@ -268,78 +260,61 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     });
   });
 
-  describe('tiempoPromedioResolucionHoras()', () => {
-    it('cierre el mismo día da una duración positiva correcta (09:39 → 16:07 ≈ 6.5h)', async () => {
-      // Reproduce el caso real que exponía el bug: `fechaCierre` ahora es
-      // `@db.Timestamptz` (WU1) y guarda el instante real de cierre, no un
-      // día truncado a medianoche UTC — la resta contra `createdAt` es una
-      // duración instante-a-instante genuina, nunca negativa.
-      const cicloMismoDia = await tenantClient.cicloCliente.create({
-        data: {
-          cicloVigenteId: DUMMY_SOLICITANTE_ID,
-          nombre: `D_TEST_CICLO_MISMO_DIA_${RUN_PREFIX}`,
-          fechaInicio: new Date('2026-01-01'),
-          fechaFin: new Date('2026-12-31'),
-          activo: false,
-        },
-      });
-
+  describe('tiempoPromedioResolucionHoras() — AVG de resolucion_habil_s', () => {
+    it('promedia el tiempo hábil guardado, no fechaCierre - createdAt, y deja afuera las filas sin dato', async () => {
+      const ciclo = await cicloNuevo();
+      const createdAt = new Date('2026-01-01T08:00:00Z');
       await withTenant(async () => {
+        // 24 h y 48 h de pared, pero 6 h y 9 h hábiles sin pausas: cuenta lo guardado.
         await crearTicket({
-          cicloId: cicloMismoDia.id,
-          createdAt: new Date('2026-08-07T09:39:55Z'),
-          fechaCierre: new Date('2026-08-07T16:07:00Z'),
+          cicloId: ciclo,
+          createdAt,
+          fechaCierre: new Date('2026-01-02T08:00:00Z'),
+          resolucionHabilS: 6 * HS,
+        });
+        await crearTicket({
+          cicloId: ciclo,
+          createdAt,
+          fechaCierre: new Date('2026-01-03T08:00:00Z'),
+          resolucionHabilS: 9 * HS,
+        });
+        // Cerrado sin el dato (reabierto o previo sin backfill): no entra, aunque tenga fechaCierre.
+        await crearTicket({
+          cicloId: ciclo,
+          createdAt,
+          fechaCierre: new Date('2026-01-10T08:00:00Z'),
+          resolucionHabilS: null,
         });
 
-        const promedio = await repo.tiempoPromedioResolucionHoras({ cicloId: cicloMismoDia.id });
-        expect(promedio).toBeCloseTo(6.45, 1);
-        expect(promedio).toBeGreaterThanOrEqual(0);
+        expect(await repo.tiempoPromedioResolucionHoras({ cicloId: ciclo })).toBe(7.5);
       });
-
-      await tenantClient.ticket.deleteMany({ where: { cicloId: cicloMismoDia.id } });
-      await tenantClient.cicloCliente.delete({ where: { id: cicloMismoDia.id } });
     });
 
-    it('promedia fechaCierre - createdAt (horas) sobre los cerrados del scope, nunca negativo', async () => {
-      const cicloAvg = await tenantClient.cicloCliente.create({
-        data: {
-          cicloVigenteId: DUMMY_SOLICITANTE_ID,
-          nombre: `D_TEST_CICLO_AVG_${RUN_PREFIX}`,
-          fechaInicio: new Date('2026-01-01'),
-          fechaFin: new Date('2026-12-31'),
-          activo: false,
-        },
-      });
-
-      // Instantes con hora real (no medianoche) — `fechaCierre` ya no trunca
-      // el time-of-day, así que el promedio en horas es exacto, no solo
-      // aproximado por redondeo de día.
+    it('respeta el filtro por responsable y por ciclo', async () => {
+      const ciclo = await cicloNuevo();
+      const otroCiclo = await cicloNuevo();
       await withTenant(async () => {
-        const createdAt = new Date('2026-01-01T08:00:00Z');
+        await crearTicket({ cicloId: ciclo, asignadoId: AGENTE_1_ID, resolucionHabilS: 2 * HS });
+        await crearTicket({ cicloId: ciclo, asignadoId: AGENTE_2_ID, resolucionHabilS: 10 * HS });
         await crearTicket({
-          cicloId: cicloAvg.id,
-          createdAt,
-          fechaCierre: new Date('2026-01-02T08:00:00Z'), // 24h
-        });
-        await crearTicket({
-          cicloId: cicloAvg.id,
-          createdAt,
-          fechaCierre: new Date('2026-01-03T08:00:00Z'), // 48h
+          cicloId: otroCiclo,
+          asignadoId: AGENTE_1_ID,
+          resolucionHabilS: 30 * HS,
         });
 
-        const promedio = await repo.tiempoPromedioResolucionHoras({ cicloId: cicloAvg.id });
-        expect(promedio).toBeCloseTo(36, 0);
-        expect(promedio).toBeGreaterThanOrEqual(0);
+        expect(await repo.tiempoPromedioResolucionHoras({ cicloId: ciclo })).toBe(6);
+        expect(
+          await repo.tiempoPromedioResolucionHoras({ cicloId: ciclo, asignadoId: AGENTE_1_ID }),
+        ).toBe(2);
       });
-
-      await tenantClient.ticket.deleteMany({ where: { cicloId: cicloAvg.id } });
-      await tenantClient.cicloCliente.delete({ where: { id: cicloAvg.id } });
     });
 
-    it('null cuando no hay ningún cerrado en el scope', async () => {
+    it('null cuando no hay ningún ticket con el dato en el scope', async () => {
+      const ciclo = await cicloNuevo();
       await withTenant(async () => {
-        const promedio = await repo.tiempoPromedioResolucionHoras({ cicloId: cicloOtroId });
-        expect(promedio).toBeNull();
+        await crearTicket({ cicloId: ciclo, fechaCierre: new Date(), resolucionHabilS: null });
+
+        expect(await repo.tiempoPromedioResolucionHoras({ cicloId: ciclo })).toBeNull();
       });
     });
   });
@@ -506,49 +481,52 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
       });
     });
 
-    it('el rellenado sin meta entra al tiempo medio, medido en horas hábiles con el calendario cargado una vez', async () => {
+    it('el tiempo medio es el AVG de primera_respuesta_habil_s, con meta o sin ella', async () => {
       const ciclo = await cicloNuevo();
-      obtenerCalendario.mockClear();
       await withTenant(async () => {
-        // Viernes 17:00 local (20:00Z) respondido el lunes 10:00 (2 h hábiles).
         const viernes17 = new Date('2026-08-07T20:00:00Z');
+        // Con meta: 2 h hábiles guardadas (viernes 17:00 → lunes 10:00, 65 h de pared).
         await crearTicket({
           cicloId: ciclo,
           createdAt: viernes17,
           primeraRespuestaVenceAt: new Date('2026-08-10T14:00:00Z'),
           primeraRespuestaAt: new Date('2026-08-10T13:00:00Z'),
+          primeraRespuestaHabilS: 2 * HS,
         });
-        // Sin meta (rellenado): viernes 17:00 respondido 17:30 (0,5 h hábiles).
+        // Sin meta (rellenado): 0,5 h hábiles guardadas.
         await crearTicket({
           cicloId: ciclo,
           createdAt: viernes17,
           primeraRespuestaAt: new Date('2026-08-07T20:30:00Z'),
+          primeraRespuestaHabilS: 0.5 * HS,
         });
-        // Sin respuesta: no entra al tiempo medio.
+        // Con respuesta pero sin el dato (previo sin backfill): no entra.
+        await crearTicket({
+          cicloId: ciclo,
+          createdAt: viernes17,
+          primeraRespuestaAt: new Date('2026-08-20T20:30:00Z'),
+        });
+        // Sin respuesta: no entra.
         await crearTicket({ cicloId: ciclo, createdAt: viernes17 });
 
-        const horas = await repo.tiempoPromedioPrimeraRespuestaHoras({ cicloId: ciclo });
-        expect(horas).toBeCloseTo(1.25, 10);
-        expect(obtenerCalendario).toHaveBeenCalledTimes(1);
+        expect(await repo.tiempoPromedioPrimeraRespuestaHoras({ cicloId: ciclo })).toBe(1.25);
       });
     });
 
-    it('sin datos el tiempo medio es null y no consulta el calendario', async () => {
+    it('sin datos el tiempo medio es null', async () => {
       const ciclo = await cicloNuevo();
-      obtenerCalendario.mockClear();
       await withTenant(async () => {
         expect(await repo.tiempoPromedioPrimeraRespuestaHoras({ cicloId: ciclo })).toBeNull();
         expect(await repo.cumplimientoPrimeraRespuesta({ cicloId: ciclo })).toEqual({
           conMeta: 0,
           aTiempo: 0,
         });
-        expect(obtenerCalendario).not.toHaveBeenCalled();
       });
     });
   });
 
   describe('preventivos excluidos (dashboard-metricas-sla R4)', () => {
-    it('un preventivo resuelto con respuesta de un técnico no altera ninguna de las tres métricas', async () => {
+    it('un preventivo resuelto con respuesta de un técnico no altera ninguna de las cuatro métricas', async () => {
       const ciclo = await cicloNuevo();
       const creado = new Date('2026-08-03T12:00:00Z');
       await withTenant(async () => {
@@ -561,14 +539,19 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
           slaCumplido: true,
           primeraRespuestaVenceAt: new Date(creado.getTime() + 2 * H),
           primeraRespuestaAt: new Date(creado.getTime() + 1 * H),
+          resolucionHabilS: 6 * HS,
+          primeraRespuestaHabilS: 1 * HS,
         });
         const medir = async () => ({
           resolucion: await repo.cumplimientoSla({ cicloId: ciclo }),
           primera: await repo.cumplimientoPrimeraRespuesta({ cicloId: ciclo }),
           tiempo: await repo.tiempoPromedioPrimeraRespuestaHoras({ cicloId: ciclo }),
+          tiempoResolucion: await repo.tiempoPromedioResolucionHoras({ cicloId: ciclo }),
         });
         const antes = await medir();
         expect(antes.resolucion).toEqual({ cerradosConSla: 1, cerradosATiempo: 1 });
+        expect(antes.tiempoResolucion).toBe(6);
+        expect(antes.tiempo).toBe(1);
 
         // Un preventivo que incumple todo: tarde, con meta y con comentario público de un técnico.
         await crearTicket({
@@ -581,6 +564,8 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
           slaCumplido: false,
           primeraRespuestaVenceAt: new Date(creado.getTime() + 2 * H),
           primeraRespuestaAt: new Date(creado.getTime() + 10 * H),
+          resolucionHabilS: 20 * HS,
+          primeraRespuestaHabilS: 10 * HS,
         });
 
         expect(await medir()).toEqual(antes);

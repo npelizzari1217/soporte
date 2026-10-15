@@ -156,14 +156,14 @@ export function DashboardView() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Tiempo promedio de resolución (h)</CardTitle>
+              <CardTitle>Tiempo promedio de resolución (horas hábiles, sin pausas)</CardTitle>
             </CardHeader>
             <CardContent>
               {metricas.tiempoPromedioResolucionHoras === null ? (
                 <p className="text-sm text-muted-foreground">Sin cierres con SLA en este ciclo todavía.</p>
               ) : (
                 <LineChart
-                  title="Tiempo promedio de resolución (h)"
+                  title="Tiempo promedio de resolución (horas hábiles, sin pausas)"
                   data={toTiempoPromedioChartData(metricas.tiempoPromedioResolucionHoras)}
                 />
               )}
