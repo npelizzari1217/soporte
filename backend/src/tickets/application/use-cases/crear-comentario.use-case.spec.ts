@@ -112,6 +112,7 @@ describe('CrearComentarioUseCase', () => {
     const primeraRespuestaRepo = { registrarSiFalta: vi.fn().mockResolvedValue(undefined) };
     const calendarioRepo = { obtener: vi.fn().mockResolvedValue(calendarioSemanal) };
     const feriadosRepo = { obtener: vi.fn().mockResolvedValue(new Set<string>()) };
+    const logger = { error: vi.fn() };
 
     const useCase = new CrearComentarioUseCase(
       ticketRepo as never,
@@ -124,6 +125,7 @@ describe('CrearComentarioUseCase', () => {
       new CalcularSlaHabilVenceService(),
       calendarioRepo,
       feriadosRepo,
+      logger,
     );
 
     return {
@@ -137,6 +139,7 @@ describe('CrearComentarioUseCase', () => {
       primeraRespuestaRepo,
       calendarioRepo,
       feriadosRepo,
+      logger,
     };
   }
 
@@ -367,6 +370,49 @@ describe('CrearComentarioUseCase', () => {
         const { c } = await comentarLunesAMartes(new Set(['2026-08-10']));
 
         expect(c.primeraRespuestaRepo.registrarSiFalta.mock.calls[0][2]).toBe(3 * H);
+      });
+
+      it('si el calendario no se puede cargar, el comentario igual se guarda con los segundos en null', async () => {
+        const c = makeCollaborators();
+        c.calendarioRepo.obtener.mockRejectedValue(new Error('master caído'));
+        c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+        const texto = 'Texto privado del comentario';
+
+        const result = await c.useCase.execute(baseDto({ esInterno: false, texto }));
+
+        expect(result.isOk()).toBe(true);
+        const operacion = result.getValue();
+        expect(c.operacionRepo.save).toHaveBeenCalledWith(operacion);
+        expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledWith(
+          'ticket-uuid',
+          operacion.createdAt,
+          null,
+        );
+        expect(c.logger.error).toHaveBeenCalledTimes(1);
+        const mensaje = String(c.logger.error.mock.calls[0][0]);
+        expect(mensaje).toContain('ticket-uuid');
+        expect(mensaje).toContain('master caído');
+        expect(mensaje).not.toContain(texto);
+      });
+
+      it('si msHabilesEntre lanza (guarda de rango), el comentario igual se guarda con null', async () => {
+        const c = makeCollaborators();
+        const espia = vi
+          .spyOn(CalcularSlaHabilVenceService.prototype, 'msHabilesEntre')
+          .mockImplementation(() => {
+            throw new Error('rango excedido');
+          });
+        c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+        try {
+          const result = await c.useCase.execute(baseDto({ esInterno: false }));
+
+          expect(result.isOk()).toBe(true);
+          expect(c.primeraRespuestaRepo.registrarSiFalta.mock.calls[0][2]).toBeNull();
+          expect(c.logger.error).toHaveBeenCalledTimes(1);
+        } finally {
+          espia.mockRestore();
+        }
       });
 
       it('si el ticket ya tiene primera respuesta no carga el calendario', async () => {

@@ -11,6 +11,7 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 import { ICalendarioLaboralSemanalRepository } from '../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
 import { IFeriadosLaboralesRepository } from '../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import {
   TicketNoEncontradoError,
   ComentarioNoPermitidoError,
@@ -79,7 +80,10 @@ export interface CrearComentarioDto {
  *    y solo si el comentario puede ser la primera respuesta (cuenta y el
  *    ticket leído todavía no la tiene): los demás comentarios no pagan esas
  *    lecturas. Si otro comentario la registró en el medio, el UPDATE
- *    condicionado no escribe nada.
+ *    condicionado no escribe nada. Si la carga del calendario o el cálculo
+ *    fallan, se loguea (sin el texto del comentario) y la primera respuesta
+ *    se registra igual, con `primera_respuesta_habil_s` NULL: el dato del
+ *    dashboard nunca rechaza el comentario.
  * 5. Si es PÚBLICO, publica `TicketComentadoEvent` (log-and-swallow, ADR-6
  *    — un fallo del publisher nunca revierte el comentario ya persistido).
  *    Los comentarios INTERNOS NUNCA emiten evento (T17 — no deben
@@ -104,6 +108,7 @@ export class CrearComentarioUseCase {
     private readonly calculoHabil: CalcularSlaHabilVenceService,
     private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
     private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
+    private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
   async execute(dto: CrearComentarioDto): Promise<Result<OperacionTicketEntity, DomainError>> {
@@ -148,7 +153,7 @@ export class CrearComentarioUseCase {
       !dto.esInterno && dto.autorId !== ticket.solicitanteId && dto.autorEsIntegracion !== true;
     const habilS =
       cuentaComoPrimeraRespuesta && !ticket.relojSla?.primeraRespuestaAt
-        ? await this.segundosHabiles(ticket.createdAt, operacion.createdAt)
+        ? await this.segundosHabiles(ticket.id, ticket.createdAt, operacion.createdAt)
         : null;
     await this.txRunner.run(async () => {
       await this.operacionRepo.save(operacion);
@@ -176,12 +181,26 @@ export class CrearComentarioUseCase {
 
     return Result.ok(operacion);
   }
-  /** Segundos hábiles entre dos instantes con el calendario y los feriados vigentes del tenant. */
-  private async segundosHabiles(desde: Date, hasta: Date): Promise<number> {
-    const [calendario, feriados] = await Promise.all([
-      this.calendarioRepo.obtener(),
-      this.feriadosRepo.obtener(),
-    ]);
-    return Math.round(this.calculoHabil.msHabilesEntre(desde, hasta, calendario, feriados) / 1000);
+  /**
+   * Segundos hábiles entre dos instantes con el calendario y los feriados vigentes del tenant, o
+   * `null` si no se pudieron calcular (lectura del master o guarda de rango): se loguea y sigue.
+   */
+  private async segundosHabiles(
+    ticketId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<number | null> {
+    try {
+      const [calendario, feriados] = await Promise.all([
+        this.calendarioRepo.obtener(),
+        this.feriadosRepo.obtener(),
+      ]);
+      return Math.round(
+        this.calculoHabil.msHabilesEntre(desde, hasta, calendario, feriados) / 1000,
+      );
+    } catch (error) {
+      this.logger.error(`PRIMERA_RESPUESTA_HABIL_FALLO | ticket=${ticketId} | ${String(error)}`);
+      return null;
+    }
   }
 }

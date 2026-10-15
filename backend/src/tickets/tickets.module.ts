@@ -598,6 +598,7 @@ import {
         primeraRespuestaRepo: IPrimeraRespuestaWriteRepository,
         calendarioRepo: ICalendarioLaboralSemanalRepository,
         feriadosRepo: IFeriadosLaboralesRepository,
+        logger: ILogger,
       ) =>
         new CrearComentarioUseCase(
           ticketRepo,
@@ -610,6 +611,7 @@ import {
           new CalcularSlaHabilVenceService(),
           calendarioRepo,
           feriadosRepo,
+          logger,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -621,6 +623,7 @@ import {
         PRIMERA_RESPUESTA_WRITE_REPOSITORY,
         CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
         FERIADOS_LABORALES_REPOSITORY,
+        LOGGER,
       ],
     },
     {

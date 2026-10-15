@@ -185,10 +185,19 @@ técnica conocida" (`docs/roadmap-comercial.md`).
   - RED: `AssertionError: expected null to be undefined` (dominio, 2 tests) y
     `AssertionError: expected null to be 4000 // Object.is equality` (integración).
   - GREEN: `pnpm vitest run src/sla` → 19 archivos, 192 tests pasan.
-- [ ] **T8 — JD-W2: un fallo del calendario no bloquea el comentario.** Hallazgo de los dos jueces
+- [x] **T8 — JD-W2: un fallo del calendario no bloquea el comentario.** Hallazgo de los dos jueces
   (A como sugerencia, B como advertencia): si la carga del calendario o de los feriados (master) o
   `msHabilesEntre` fallan, el comentario se rechaza. Cambio: se loguea y se guarda la primera
   respuesta con `primera_respuesta_habil_s` NULL.
+  - Ruta: inline (bugfix acotado de `judgment-day`). Commit previo: `12bb0a96`.
+  - Archivos: `crear-comentario.use-case.ts` (`segundosHabiles` atrapa el error, loguea
+    `PRIMERA_RESPUESTA_HABIL_FALLO | ticket=<id> | <error>` sin el texto y devuelve `null`; nuevo
+    parámetro `logger: Pick<ILogger, 'error'>`), `tickets.module.ts` (inyecta `LOGGER`),
+    `primera-respuesta.integration.spec.ts` (pasa el logger).
+  - Tests: `crear-comentario.use-case.spec.ts` — el calendario rechaza y `msHabilesEntre` lanza; en los
+    dos el comentario se guarda, `registrarSiFalta` recibe `null` y el log no lleva el texto.
+  - RED: `Error: master caído` y `Error: rango excedido` (2 tests fallan, el comentario se rechaza).
+  - GREEN: `crear-comentario.use-case.spec.ts` + `primera-respuesta.integration.spec.ts` → 29 tests pasan.
 - [ ] **T9 — JD-W3: el script no escribe sobre un ticket reabierto.** Hallazgo del juez A: el `UPDATE`
   por lotes solo revisa `IS NULL`; si el ticket se reabre entre la lectura y la escritura, queda con
   tiempo de resolución estando abierto. Cambio: el `UPDATE` exige además que el estado siga siendo

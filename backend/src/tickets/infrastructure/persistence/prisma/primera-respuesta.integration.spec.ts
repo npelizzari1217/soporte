@@ -74,6 +74,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
       new CalcularSlaHabilVenceService(),
       { obtener: async () => SIEMPRE_ABIERTO },
       { obtener: async () => new Set<string>() },
+      { error: vi.fn() },
     );
     await limpiar();
     const s = randomBytes(3).toString('hex');
