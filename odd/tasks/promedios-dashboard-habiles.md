@@ -261,6 +261,19 @@ en DryRun y luego real, antes de que alguien mire el dashboard.
 ## Progreso
 - 2026-10-15: exploración hecha, diseño aprobado por el dueño, documento creado.
 - 2026-10-15: T1-T6 hechas, una por commit, con las compuertas en verde.
+- 2026-10-15: `judgment-day` ronda 1 APPROVED (0 críticos) con W1-W3; corregidas como T7-T9 y
+  re-juicio acotado: resueltas, con W4 (advertencia de los dos jueces, causada por T7) y S1.
+- 2026-10-15: ronda 2 (la última) corrige W4 y S1 como T10-T11. Re-juicio acotado sobre
+  `35997e9f..37751cf7` (sha256 `6515a8bfd0e2a178`): los dos jueces dan W4 y S1 por resueltas, sin
+  hallazgos nuevos de severidad advertencia o mayor. **Veredicto final: APPROVED.** Quedan como
+  información, sin corregir: (a) sugerencia de un solo juez — si el script escribe el valor correcto
+  de un CORRIDO mientras está pendiente un pliegue que incluye una reapertura, ese pliegue lo deja
+  en NULL; falla del lado seguro (falta el valor, nunca queda uno falso) y una nueva corrida del
+  script lo repone; (b) bordes teóricos: dos pases a RESUELTO con el mismo `created_at`, y una
+  carrera dentro de una misma sentencia `UPDATE` bajo READ COMMITTED.
+- 2026-10-15: compuertas tras T10-T11 — backend `pnpm lint` exit 0, `pnpm typecheck` exit 0,
+  `pnpm test` 740 archivos y 8844 tests en verde (exit 0); `check-roadmap-fresco` fresco;
+  `check-casts-en-specs` 594 en 111 (base 594).
 
 ## Próximo paso
 Merge local a `main` (decisión del dueño), deploy según el runbook ("Tiempos hábiles del
