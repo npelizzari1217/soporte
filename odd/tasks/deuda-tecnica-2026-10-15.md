@@ -111,6 +111,7 @@ reactivarlo antes.
     primero con el `rollback.sql` de `HEAD~1` (RED) y después con el actual (GREEN).
   - Runbook (`DEPLOY-VPS-runbook.md`, "Migración y rollback" de la API pública) no dice que
     NO sea re-ejecutable: no hay nada que corregir.
+  - Commit: `4874ba00`.
 - [ ] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
   `pnpm test`; frontend `pnpm lint`, `pnpm type-check`, `pnpm test`), filas de la deuda en el
   roadmap marcadas RESUELTA, `check-roadmap-fresco` en verde.
@@ -123,6 +124,15 @@ reactivarlo antes.
 
 ## Progreso
 - 2026-10-15: exploración hecha, decisión del dueño registrada, documento creado.
+- 2026-10-15: T1-T3 cerradas, T4 commiteada con RED/GREEN pendientes de la base. Compuertas
+  con Postgres caído (`ECONNREFUSED 127.0.0.1:5432`):
+  - backend `pnpm lint`: 0 errores · `pnpm typecheck`: limpio · `pnpm test`: 6543 verdes,
+    75 rojos y 2177 saltados; todos los archivos rojos son `*.integration.spec.ts`,
+    `*.e2e.spec.ts` o los 2 specs de `scripts/` que usan la base (más la salida del fixture
+    `orden-de-arranque`, que falla a propósito dentro de otro spec).
+  - frontend `pnpm lint`: 0 · `pnpm type-check`: limpio · `pnpm test`: 2277/2277.
 
 ## Próximo paso
-T1.
+Levantar Postgres (`soporte-postgres-master`) y correr: el spec de T4 (RED con el
+`rollback.sql` de `4874ba00~1`, GREEN con el actual), los e2e de la API v1 y de webhooks (T3),
+los de preventivo y `tickets.e2e.spec.ts` (T1/T2), y `pnpm test` completo. Después, T5.
