@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
+import { ThrottlerStorage, getOptionsToken } from '@nestjs/throttler';
 import { AuthModule } from '../auth/auth.module';
+import { THROTTLER_STORAGE_POSTGRES } from '../shared/infrastructure/throttler/postgres-throttler-storage';
 import { ListarTiposTicketUseCase } from '../tickets/application/use-cases/listar-tipos-ticket.use-case';
 import { ITicketRepository, TICKET_REPOSITORY } from '../tickets/domain/ports/i-ticket.repository';
 import {
@@ -26,7 +27,8 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
  *
  * Provee los guards de clave y de limite por clave. Los controllers `v1` se declaran aca y
  * usan `@ApiV1()`. El limite se lee al instanciar el modulo (`API_V1_RATE_LIMIT`, 60 por defecto),
- * con storage propio en memoria, independiente del de CSAT.
+ * con storage propio en Postgres (`throttler_contadores`, compartido entre procesos), con keys
+ * independientes de las de CSAT.
  *
  * Throttler: opciones y `ThrottlerStorage` LOCALES, sin `ThrottlerModule.forRoot*` (JD-6, misma
  * convencion que `RecuperacionPasswordModule` y `FormularioPublicoModule`): `ThrottlerModule` es
@@ -42,7 +44,7 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
       provide: getOptionsToken(),
       useFactory: () => [{ limit: limiteApiV1(), ttl: API_V1_VENTANA_MS }],
     },
-    { provide: ThrottlerStorage, useClass: ThrottlerStorageService },
+    THROTTLER_STORAGE_POSTGRES,
     ApiClaveGuard,
     ApiV1ThrottlerGuard,
     TicketsV1Presenter,

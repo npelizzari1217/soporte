@@ -72,7 +72,16 @@ Los cuatro usan el `ThrottlerStorageService` en memoria de `@nestjs/throttler` 6
     migrada: cero líneas sobre `throttler_contadores`.
   - Evidencia: `pnpm vitest run src/shared/infrastructure/throttler/` → 3 archivos, 10 tests
     verdes. Mutaciones (borde `h > ahora` → `>=`; reinicio sin pedido) rompen el test de contrato.
-- [ ] **T2 — API v1 usa el storage** (CA5, parte v1).
+  - Commit: `094ed235`.
+- [x] **T2 — API v1 usa el storage** (CA5, parte v1).
+  - Archivos: `backend/src/integraciones/api-v1.module.ts` (provider `THROTTLER_STORAGE_POSTGRES`),
+    `api-v1.module.spec.ts` (fija que el storage es el de Postgres), comentario del guard, y
+    `backend/test/barrido-huerfanas.global-setup.mjs`: vacía `throttler_contadores` una vez por
+    corrida, junto con `auth_intentos_fallidos`.
+  - Evidencia: `pnpm vitest run` de `test/integraciones-api-v1-{auth,catalogos,tickets}.e2e.spec.ts`,
+    `test/integraciones-webhooks-encolado.e2e.spec.ts` y `api-v1.module.spec.ts`, dos veces
+    seguidas → 5 archivos, 32 tests verdes las dos veces; la tabla quedó con filas (el storage se
+    usa de verdad). Las keys de v1 son ids de clave nuevos en cada corrida.
 - [ ] **T3 — CSAT, recuperación y formulario público usan el storage** (CA5, resto).
 - [ ] **T4 — Cierre**: fila de la deuda RESUELTA en el roadmap, nota de migración y rollback en
   `DEPLOY-VPS-runbook.md`, compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
@@ -90,6 +99,7 @@ anterior funciona con la tabla creada.
 ## Progreso
 - 2026-10-15: exploración hecha, decisión del dueño registrada, documento creado.
 - 2026-10-15: T1 hecha (ruta delegada, escritor único).
+- 2026-10-15: T2 hecha.
 
 ## Próximo paso
 T1.

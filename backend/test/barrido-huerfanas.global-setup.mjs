@@ -65,17 +65,25 @@ async function tomarTurno(client, clave) {
 }
 
 /**
- * Vacia `auth_intentos_fallidos` de la master de test una vez por corrida (I8): el estado del
- * limitador sobrevive entre corridas y arrastraria bloqueos a los e2e que hacen login. Corre con
- * el turno tomado, asi que no pisa a una corrida viva. Nunca aborta la suite.
+ * Vacia las tablas de limitadores de la master de test una vez por corrida: su estado sobrevive
+ * entre corridas y arrastraria bloqueos a los e2e. `auth_intentos_fallidos` (I8) es el de 2FA/SSO;
+ * `throttler_contadores` (odd/tasks/throttler-postgres.md) el de los cuatro `ThrottlerGuard`, cuyos
+ * e2e repiten keys fijas entre corridas (un email, un slug, `sin-ip`). Corre con el turno tomado,
+ * asi que no pisa a una corrida viva. Cada tabla por separado; nunca aborta la suite.
  */
-async function vaciarIntentosFallidos(urlMaster) {
+async function vaciarLimitadores(urlMaster) {
   let client;
   try {
     client = await conectar(urlMaster);
-    await client.query('TRUNCATE auth_intentos_fallidos');
+    for (const tabla of ['auth_intentos_fallidos', 'throttler_contadores']) {
+      try {
+        await client.query(`TRUNCATE ${tabla}`);
+      } catch (error) {
+        console.warn(`${PREFIJO} No se pudo vaciar ${tabla}: ${error.message}`);
+      }
+    }
   } catch (error) {
-    console.warn(`${PREFIJO} No se pudo vaciar auth_intentos_fallidos: ${error.message}`);
+    console.warn(`${PREFIJO} No se pudo conectar para vaciar los limitadores: ${error.message}`);
   } finally {
     await client?.end();
   }
@@ -121,7 +129,7 @@ export default async function globalSetup() {
     }
 
     try {
-      await vaciarIntentosFallidos(urlMaster);
+      await vaciarLimitadores(urlMaster);
       const dbNamesRegistrados = await leerRegistroDeClientes(urlMaster);
       if (dbNamesRegistrados === null) return;
 

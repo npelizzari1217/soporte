@@ -6,7 +6,7 @@
  * autenticada (no deberia pasar) usa un tracker fijo en vez de abrir un cupo por IP.
  * El cupo es UNO por clave para toda la API `v1`: la key de storage no lleva clase ni handler (a
  * diferencia de `ThrottlerGuard`), asi que todas las rutas `v1` descuentan del mismo cupo.
- * Storage en memoria de un solo proceso, como el de CSAT: al escalar horizontal el limite se multiplica.
+ * Storage en Postgres (`PostgresThrottlerStorage`): el cupo es uno solo aunque corran varios procesos.
  */
 import { createHash } from 'node:crypto';
 import { ExecutionContext, Injectable } from '@nestjs/common';
