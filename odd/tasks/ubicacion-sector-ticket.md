@@ -119,7 +119,9 @@ de aceptación abajo.
     la descripción de los campos en los formularios y la cantidad del botón de subtareas.
 
 ## Ruta y entrega
-- RDD apagada. Feature: TDD no exigido; cada tarea lleva sus tests.
+- RDD: figuraba apagada al planificar; el 2026-10-16 figura encendida (global) y no pudo revisar
+  la feature por tamaño (ver T5). Feature: TDD no exigido; cada tarea lleva sus tests. El arreglo
+  JD-W1 es un bugfix y llevó TDD.
 - Ruta: T1 a T4 delegadas (escritor único, 2+ archivos no triviales); T5 inline.
 - Previsión: ~700-900 líneas; estrategia `ask-on-risk`. GitHub en pausa: un commit por tarea y merge
   local al final. Hay migración tenant: se ofrece `judgment-day` antes del merge.
