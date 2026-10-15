@@ -1,37 +1,12 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
 import { AuthModule } from '../auth/auth.module';
-import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
-import { ListarEstadosUseCase } from '../tickets/application/use-cases/listar-estados.use-case';
-import { ListarPrioridadesUseCase } from '../tickets/application/use-cases/listar-prioridades.use-case';
-import { ListarTicketsUseCase } from '../tickets/application/use-cases/listar-tickets.use-case';
 import { ListarTiposTicketUseCase } from '../tickets/application/use-cases/listar-tipos-ticket.use-case';
-import {
-  CICLO_CLIENTE_REPOSITORY,
-  ICicloClienteRepository,
-} from '../tickets/domain/ports/i-ciclo-cliente.repository';
-import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
-import {
-  IOperacionTicketRepository,
-  OPERACION_TICKET_REPOSITORY,
-} from '../tickets/domain/ports/i-operacion-ticket.repository';
-import {
-  IPrimeraRespuestaWriteRepository,
-  PRIMERA_RESPUESTA_WRITE_REPOSITORY,
-} from '../tickets/domain/ports/i-primera-respuesta-write.repository';
-import {
-  IPrioridadRepository,
-  PRIORIDAD_REPOSITORY,
-} from '../tickets/domain/ports/i-prioridad.repository';
 import { ITicketRepository, TICKET_REPOSITORY } from '../tickets/domain/ports/i-ticket.repository';
 import {
   ITipoTicketRepository,
   TIPO_TICKET_REPOSITORY,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
-import {
-  ITipoOperacionRepository,
-  TIPO_OPERACION_REPOSITORY,
-} from '../tickets/domain/ports/i-tipo-operacion.repository';
 import { TicketsModule } from '../tickets/tickets.module';
 import { ApiClaveGuard } from './infrastructure/api-clave.guard';
 import {
@@ -39,14 +14,6 @@ import {
   ApiV1ThrottlerGuard,
   limiteApiV1,
 } from './infrastructure/api-v1-throttler.guard';
-import {
-  DOMAIN_EVENT_PUBLISHER,
-  IDomainEventPublisher,
-} from '../shared/domain/ports/i-domain-event-publisher';
-import {
-  ITenantTransactionRunner,
-  TENANT_TX_RUNNER,
-} from '../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TicketsV1Query } from './application/tickets-v1.query';
 import { TiposTicketV1Query } from './application/tipos-ticket-v1.query';
 import { IntegracionesModule } from './integraciones.module';
@@ -79,54 +46,9 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
     ApiClaveGuard,
     ApiV1ThrottlerGuard,
     TicketsV1Presenter,
-    // TicketsModule no exporta estos casos de uso: se arman con los mismos repositorios que exporta.
-    {
-      provide: ListarTicketsUseCase,
-      useFactory: (
-        ticketRepo: ITicketRepository,
-        cicloRepo: ICicloClienteRepository,
-        tipoTicketRepo: ITipoTicketRepository,
-      ) => new ListarTicketsUseCase(ticketRepo, cicloRepo, tipoTicketRepo),
-      inject: [TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY, TIPO_TICKET_REPOSITORY],
-    },
-    {
-      provide: CrearComentarioUseCase,
-      useFactory: (
-        ticketRepo: ITicketRepository,
-        operacionRepo: IOperacionTicketRepository,
-        estadoRepo: IEstadoRepository,
-        tipoOperacionRepo: ITipoOperacionRepository,
-        eventPublisher: IDomainEventPublisher,
-        txRunner: ITenantTransactionRunner,
-        primeraRespuestaRepo: IPrimeraRespuestaWriteRepository,
-      ) =>
-        new CrearComentarioUseCase(
-          ticketRepo,
-          operacionRepo,
-          estadoRepo,
-          tipoOperacionRepo,
-          eventPublisher,
-          txRunner,
-          primeraRespuestaRepo,
-        ),
-      inject: [
-        TICKET_REPOSITORY,
-        OPERACION_TICKET_REPOSITORY,
-        ESTADO_REPOSITORY,
-        TIPO_OPERACION_REPOSITORY,
-        DOMAIN_EVENT_PUBLISHER,
-        TENANT_TX_RUNNER,
-        PRIMERA_RESPUESTA_WRITE_REPOSITORY,
-      ],
-    },
-    // Catalogos de `GET /v1/catalogos` (T5c): mismos casos de uso que la API interna.
-    {
-      provide: ListarTiposTicketUseCase,
-      useFactory: (tipoTicketRepo: ITipoTicketRepository) =>
-        new ListarTiposTicketUseCase(tipoTicketRepo),
-      inject: [TIPO_TICKET_REPOSITORY],
-    },
-    // Fuente unica de los tipos `v1`: la lista el catalogo y la valida el alta (T5e).
+    // Los casos de uso de tickets (listar, comentar y los catalogos de `GET /v1/catalogos`) los
+    // exporta TicketsModule. Fuente unica de los tipos `v1`: la lista el catalogo y la valida el
+    // alta (T5e).
     {
       provide: TiposTicketV1Query,
       useFactory: (listarTipos: ListarTiposTicketUseCase) => new TiposTicketV1Query(listarTipos),
@@ -138,17 +60,6 @@ import { TicketsV1Presenter } from './interface/tickets-v1.presenter';
       useFactory: (ticketRepo: ITicketRepository, tipoTicketRepo: ITipoTicketRepository) =>
         new TicketsV1Query(ticketRepo, tipoTicketRepo),
       inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
-    },
-    {
-      provide: ListarPrioridadesUseCase,
-      useFactory: (prioridadRepo: IPrioridadRepository) =>
-        new ListarPrioridadesUseCase(prioridadRepo),
-      inject: [PRIORIDAD_REPOSITORY],
-    },
-    {
-      provide: ListarEstadosUseCase,
-      useFactory: (estadoRepo: IEstadoRepository) => new ListarEstadosUseCase(estadoRepo),
-      inject: [ESTADO_REPOSITORY],
     },
   ],
   exports: [

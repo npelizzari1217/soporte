@@ -84,7 +84,18 @@ reactivarlo antes.
   - No se agregó el caso e2e en `tickets.e2e.spec.ts`: con la base caída no se podía
     observar, y un e2e no corrido no es evidencia. Queda como seguimiento opcional.
   - Specs de preventivo: pendientes de la base (integración/e2e); los unitarios están verdes.
-- [ ] **T3 — `TicketsModule` exporta los casos de uso de la API v1** (refactor). CA4.
+  - Commit: `0a744303`.
+- [x] **T3 — `TicketsModule` exporta los casos de uso de la API v1** (refactor). CA4.
+  - Las cinco fábricas eran idénticas (mismo constructor, mismos tokens, mismo orden). Se
+    exportan desde `TicketsModule` y se borraron de `ApiV1Module` con sus imports y el
+    comentario viejo. `TiposTicketV1Query` y `TicketsV1Query` siguen en `ApiV1Module`.
+  - Guardarraíl nuevo en `api-v1.module.spec.ts` (metadata de `@Module`, sin compilar):
+    antes del cambio, 5 rojos `expected false to be true`/`toContain`; después 7/7.
+  - DI sin base: un spec temporal (borrado, no commiteado) compiló
+    `Shared+Auth+Tickets+ApiV1` y resolvió los dos controllers `v1` → verde. Sin los exports
+    falla con `Nest can't resolve dependencies of the TiposTicketV1Query (?)`.
+  - Pendiente: `test/integraciones-api-v1-*.e2e.spec.ts` y
+    `test/integraciones-webhooks-encolado.e2e.spec.ts` no corrieron — Postgres caído.
 - [ ] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5.
 - [ ] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
   `pnpm test`; frontend `pnpm lint`, `pnpm type-check`, `pnpm test`), filas de la deuda en el

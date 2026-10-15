@@ -754,6 +754,13 @@ import { TareasTicketController } from './interface/controllers/tareas-ticket.co
     // reimplementarlos allá abriría la puerta a divergir de esa regla.
     ObtenerTicketUseCase,
     ListarTimelineUseCase,
+    // La API pública v1 (`ApiV1Module`) usa estos cinco tal cual: una sola fábrica,
+    // la de acá, así un cambio de dependencias no hay que repetirlo allá.
+    ListarTicketsUseCase,
+    CrearComentarioUseCase,
+    ListarTiposTicketUseCase,
+    ListarPrioridadesUseCase,
+    ListarEstadosUseCase,
   ],
 })
 export class TicketsModule {}
