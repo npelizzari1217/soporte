@@ -26,10 +26,10 @@ export const CONFIRMACION_THROTTLE_LIMIT = 5;
 /** Ventana del throttler `confirmacion`, en milisegundos (15 min). */
 export const CONFIRMACION_THROTTLE_TTL_MS = 15 * 60_000;
 
-/** Tope de caracteres del token en la clave: un body hostil no infla el storage en memoria. */
+/** Tope de caracteres del token en la clave: un body hostil no infla el storage. */
 const TOKEN_CLAVE_MAX = 256;
 
-/** Tope de caracteres del email en la clave: un body hostil no infla el storage en memoria. */
+/** Tope de caracteres del email en la clave: un body hostil no infla el storage. */
 const EMAIL_CLAVE_MAX = 320;
 
 function slugDe(req: Record<string, unknown>): string {
@@ -61,7 +61,7 @@ export function trackerCliente(req: Record<string, unknown>): string {
 
 /**
  * Tracker del throttler `confirmacion`: sha256 del token del body, para que el token crudo no viva
- * en el storage en memoria. Sin `x-forwarded-for` (falsificable): rotarlo no da cupo nuevo sobre
+ * en el storage. Sin `x-forwarded-for` (falsificable): rotarlo no da cupo nuevo sobre
  * el mismo token. Un body sin token comparte un contador.
  */
 export function trackerConfirmacion(req: Record<string, unknown>): string {

@@ -101,6 +101,7 @@ Los cuatro usan el `ThrottlerStorageService` en memoria de `@nestjs/throttler` 6
   - Comentarios fuera del alcance autorizado que siguen diciendo "en memoria":
     `backend/src/csat/infrastructure/guards/csat-throttler.guard.ts:18-20` y
     `backend/src/publico/infrastructure/guards/pedido-publico-throttler.guard.ts:29,32,64`.
+    Corregidos después del cierre, en un commit aparte (solo comentarios; eslint limpio).
 - [x] **T4 — Cierre**: fila de la deuda RESUELTA en el roadmap, nota de migración y rollback en
   `DEPLOY-VPS-runbook.md`, compuertas del backend (`pnpm lint`, `pnpm typecheck`, `pnpm test`).
   - Archivos: `docs/roadmap-comercial.md` (fila de deuda RESUELTA; la nota del punto del

@@ -15,11 +15,10 @@
  * design): evita que dos usuarios distintos compartan cupo entre sí, pero
  * NO es un control de seguridad por sí mismo.
  *
- * Storage en memoria de un solo proceso (`ThrottlerModule.forRoot`, sin
- * `APP_GUARD`) — se aplica SOLO a `EncuestaPublicaController` vía
- * `@UseGuards`, nunca global (design: "Deuda anotada: storage en memoria de
- * un proceso. Hoy corre una sola instancia; al escalar horizontal el
- * límite se multiplica").
+ * Storage compartido en Postgres (`ThrottlerModule.forRootAsync` con
+ * `PostgresThrottlerStorage`, sin `APP_GUARD`; odd/tasks/throttler-postgres.md)
+ * — se aplica SOLO a `EncuestaPublicaController` vía `@UseGuards`, nunca
+ * global. La cuenta sobrevive a reinicios y vale entre procesos.
  *
  * Ref design: ADR-C6. Tarea: 7.3.
  */
