@@ -1,12 +1,22 @@
 import { CrearPlanUseCase } from './crear-plan.use-case';
+import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
 import { ObjetivoInvalidoError } from '../../domain/errors/preventivo.errors';
 
 describe('CrearPlanUseCase (4.2)', () => {
   function buildUseCase() {
-    const planRepo = { guardar: vi.fn().mockResolvedValue(undefined) };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const planRepo = {
+      guardar: vi.fn<IPlanPreventivoRepository['guardar']>().mockResolvedValue(undefined),
+    };
+    // Runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: unstubbed('txRunner.alCommitear'),
+    };
+    vi.spyOn(txRunner, 'run');
     return {
-      useCase: new CrearPlanUseCase(planRepo, txRunner as never),
+      useCase: new CrearPlanUseCase(planRepo, txRunner),
       planRepo,
       txRunner,
     };

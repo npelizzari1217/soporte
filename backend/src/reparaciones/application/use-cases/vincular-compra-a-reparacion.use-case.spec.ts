@@ -10,21 +10,42 @@
  */
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { VincularCompraAReparacionUseCase } from './vincular-compra-a-reparacion.use-case';
+import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
+import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ICompraRepository } from '../../../compras/domain/ports/i-compra.repository';
+import { CompraEntity } from '../../../compras/domain/entities/compra.entity';
 import {
   TicketEdiliciaNoEncontradoError,
   CompraNoEncontradaError,
 } from '../../domain/errors/reparaciones.errors';
 
+/** Compra existente: el caso de uso solo verifica que exista, el contenido no importa. */
+function compraExistente(): CompraEntity {
+  return CompraEntity.create(
+    {
+      numero: 'COM-2026-00001',
+      fechaSolicitud: new Date('2026-08-01'),
+      motivo: 'Repuestos para la reparación',
+      descripcion: null,
+      solicitanteId: 'solicitante-uuid',
+      cicloId: 'ciclo-uuid',
+    },
+    'compra-uuid',
+  );
+}
+
 describe('VincularCompraAReparacionUseCase', () => {
   function buildDeps() {
-    const ticketEdiliciaRepo = { findById: vi.fn() };
-    const compraRepo = { findByIdConItems: vi.fn() };
-    const reparacionCompraRepo = { vincular: vi.fn().mockResolvedValue(undefined) };
+    const ticketEdiliciaRepo = { findById: vi.fn<ITicketEdiliciaRepository['findById']>() };
+    const compraRepo = { findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>() };
+    const reparacionCompraRepo = {
+      vincular: vi.fn<IReparacionCompraRepository['vincular']>().mockResolvedValue(undefined),
+    };
 
     const useCase = new VincularCompraAReparacionUseCase(
-      ticketEdiliciaRepo as any,
-      compraRepo as any,
-      reparacionCompraRepo as any,
+      ticketEdiliciaRepo,
+      compraRepo,
+      reparacionCompraRepo,
     );
 
     return { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo };
@@ -39,7 +60,7 @@ describe('VincularCompraAReparacionUseCase', () => {
       'edilicia-uuid',
     );
     ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);
-    compraRepo.findByIdConItems.mockResolvedValue({ id: 'compra-uuid' });
+    compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
 
     const result = await useCase.execute(baseDto);
 
@@ -54,7 +75,7 @@ describe('VincularCompraAReparacionUseCase', () => {
       'edilicia-uuid',
     );
     ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);
-    compraRepo.findByIdConItems.mockResolvedValue({ id: 'compra-uuid' });
+    compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
 
     const primero = await useCase.execute(baseDto);
     const segundo = await useCase.execute(baseDto);

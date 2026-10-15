@@ -17,7 +17,17 @@ import { GenerarPreventivosUseCase } from './generar-preventivos.use-case';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import { Result } from '../../../shared/domain/result';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
-import type { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import type { Mock } from 'vitest';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { CrearTicketUseCase } from '../../../tickets/application/use-cases/crear-ticket.use-case';
+import { IEquipoInformaticoRepository } from '../../../equipos/domain/ports/i-equipo-informatico.repository';
+import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
+import { IPreventivoGeneracionRepository } from '../../domain/ports/i-preventivo-generacion.repository';
+import { CalcularCicloService } from '../../domain/services/calcular-ciclo.service';
 import { EquipoInformaticoEntity } from '../../../equipos/domain/entities/equipo-informatico.entity';
 
 /** Props mínimas de `EquipoInformaticoEntity`, comunes a los tres constructores de fixture. */
@@ -64,13 +74,25 @@ function makeEquipoEliminado(id: string, nombre: string): EquipoInformaticoEntit
 }
 
 /**
- * Doble mínimo del ticket creado. Se tipa como `Pick` y NO se castea a
- * `TicketEntity`: el use case solo lee `.id`, así que decir la verdad sobre lo
- * que este objeto es sale gratis, y un `as unknown as` acá taparía el día que
- * la orquestación empiece a leer otro campo.
+ * Ticket creado por el doble de `CrearTicketUseCase`: una `TicketEntity` real,
+ * porque es lo que el puerto devuelve. El use case solo lee `.id`, pero un
+ * objeto suelto taparía el día que la orquestación empiece a leer otro campo.
  */
-function fakeTicket(id: string): Pick<TicketEntity, 'id'> {
-  return { id };
+function fakeTicket(id: string): TicketEntity {
+  return TicketEntity.create(
+    {
+      numero: 'SOP-2026-00001',
+      titulo: 'Ticket preventivo de test',
+      descripcion: null,
+      tipoId: 'tipo-preventivo-uuid',
+      estadoId: 'estado-uuid',
+      prioridadId: 'prioridad-uuid',
+      cicloId: null,
+      ticketReferenciaId: null,
+      solicitanteId: 'responsable-uuid',
+    },
+    id,
+  );
 }
 
 function makePlan(overrides: Partial<Parameters<typeof PlanPreventivoEntity.create>[0]> = {}) {
@@ -101,22 +123,42 @@ function resultadoConCandidato(candidato: Date, proximaEjecucionEn: Date) {
 describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
   function buildUseCase(
     plan: PlanPreventivoEntity | null,
-    equipoRepoOverride?: { findById: ReturnType<typeof vi.fn> },
+    equipoRepoOverride?: { findById: Mock<IEquipoInformaticoRepository['findById']> },
   ) {
     const planRepo = {
-      findVencibles: vi.fn().mockResolvedValue(plan ? [plan] : []),
-      actualizarProximaEjecucion: vi.fn().mockResolvedValue(undefined),
+      findVencibles: vi
+        .fn<IPlanPreventivoRepository['findVencibles']>()
+        .mockResolvedValue(plan ? [plan] : []),
+      actualizarProximaEjecucion: vi
+        .fn<IPlanPreventivoRepository['actualizarProximaEjecucion']>()
+        .mockResolvedValue(undefined),
     };
     const generacionRepo = {
-      reservar: vi.fn().mockResolvedValue('generacion-uuid'),
-      marcarGenerado: vi.fn().mockResolvedValue(undefined),
-      marcarSalteadoPendiente: vi.fn().mockResolvedValue(undefined),
-      registrarSalteadoAtraso: vi.fn().mockResolvedValue(undefined),
-      existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
+      reservar: vi
+        .fn<IPreventivoGeneracionRepository['reservar']>()
+        .mockResolvedValue('generacion-uuid'),
+      marcarGenerado: vi
+        .fn<IPreventivoGeneracionRepository['marcarGenerado']>()
+        .mockResolvedValue(undefined),
+      marcarSalteadoPendiente: vi
+        .fn<IPreventivoGeneracionRepository['marcarSalteadoPendiente']>()
+        .mockResolvedValue(undefined),
+      registrarSalteadoAtraso: vi
+        .fn<IPreventivoGeneracionRepository['registrarSalteadoAtraso']>()
+        .mockResolvedValue(undefined),
+      existeTicketAbiertoDelPlan: vi
+        .fn<IPreventivoGeneracionRepository['existeTicketAbiertoDelPlan']>()
+        .mockResolvedValue(false),
     };
-    const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid') };
+    const tipoTicketRepo = {
+      findIdByCodigo: vi
+        .fn<ITipoTicketRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-preventivo-uuid'),
+    };
     const crearTicketUseCase = {
-      execute: vi.fn().mockResolvedValue(Result.ok(fakeTicket('ticket-uuid'))),
+      execute: vi
+        .fn<CrearTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(fakeTicket('ticket-uuid'))),
     };
     // `alCommitear` del doble ejecuta la callback DE INMEDIATO (a diferencia
     // del runner real, que la encola hasta el commit) — acá no hay
@@ -124,33 +166,35 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     // la encola, no el timing del commit (ya cubierto en
     // tenant-transaction-runner.spec.ts).
     const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => fn()),
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: vi.fn<ITenantTransactionRunner['alCommitear']>((fn) => fn()),
     };
-    const calcularCiclo = { ciclosPendientes: vi.fn() };
-    const logger = { error: vi.fn() };
-    const eventPublisher = { publish: vi.fn() };
+    // `run` es genérico y un `vi.fn` lo perdería: espía sobre el método real.
+    vi.spyOn(txRunner, 'run');
+    const calcularCiclo = { ciclosPendientes: vi.fn<CalcularCicloService['ciclosPendientes']>() };
+    const logger = { error: vi.fn<ILogger['error']>() };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     // Por defecto resuelve al equipo del plan como vigente (WU-2): las
     // pruebas de 5.x que no versan sobre el objetivo no necesitan mockear
     // esto a mano.
     const equipoRepo = equipoRepoOverride ?? {
       findById: vi
-        .fn()
+        .fn<IEquipoInformaticoRepository['findById']>()
         .mockResolvedValue(
           plan?.equipoId ? makeEquipoVigente(plan.equipoId, 'Equipo Default') : null,
         ),
     };
 
     const useCase = new GenerarPreventivosUseCase(
-      planRepo as never,
-      generacionRepo as never,
-      tipoTicketRepo as never,
-      crearTicketUseCase as never,
-      txRunner as never,
-      calcularCiclo as never,
-      logger as never,
-      eventPublisher as never,
-      equipoRepo as never,
+      planRepo,
+      generacionRepo,
+      tipoTicketRepo,
+      crearTicketUseCase,
+      txRunner,
+      calcularCiclo,
+      logger,
+      eventPublisher,
+      equipoRepo,
     );
 
     return {
@@ -414,48 +458,70 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     ).getValue();
 
     const planRepo = {
-      findVencibles: vi.fn().mockResolvedValue([planRoto, planOk]),
-      actualizarProximaEjecucion: vi.fn().mockResolvedValue(undefined),
+      findVencibles: vi
+        .fn<IPlanPreventivoRepository['findVencibles']>()
+        .mockResolvedValue([planRoto, planOk]),
+      actualizarProximaEjecucion: vi
+        .fn<IPlanPreventivoRepository['actualizarProximaEjecucion']>()
+        .mockResolvedValue(undefined),
     };
     const generacionRepo = {
       reservar: vi
-        .fn()
+        .fn<IPreventivoGeneracionRepository['reservar']>()
         .mockRejectedValueOnce(new Error('DB caída'))
         .mockResolvedValueOnce('generacion-2-uuid'),
-      marcarGenerado: vi.fn().mockResolvedValue(undefined),
-      marcarSalteadoPendiente: vi.fn().mockResolvedValue(undefined),
-      registrarSalteadoAtraso: vi.fn().mockResolvedValue(undefined),
-      existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
+      marcarGenerado: vi
+        .fn<IPreventivoGeneracionRepository['marcarGenerado']>()
+        .mockResolvedValue(undefined),
+      marcarSalteadoPendiente: vi
+        .fn<IPreventivoGeneracionRepository['marcarSalteadoPendiente']>()
+        .mockResolvedValue(undefined),
+      registrarSalteadoAtraso: vi
+        .fn<IPreventivoGeneracionRepository['registrarSalteadoAtraso']>()
+        .mockResolvedValue(undefined),
+      existeTicketAbiertoDelPlan: vi
+        .fn<IPreventivoGeneracionRepository['existeTicketAbiertoDelPlan']>()
+        .mockResolvedValue(false),
     };
-    const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid') };
+    const tipoTicketRepo = {
+      findIdByCodigo: vi
+        .fn<ITipoTicketRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-preventivo-uuid'),
+    };
     const crearTicketUseCase = {
-      execute: vi.fn().mockResolvedValue(Result.ok(fakeTicket('ticket-2-uuid'))),
+      execute: vi
+        .fn<CrearTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(fakeTicket('ticket-2-uuid'))),
     };
     const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => fn()),
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: vi.fn<ITenantTransactionRunner['alCommitear']>((fn) => fn()),
     };
+    // `run` es genérico y un `vi.fn` lo perdería: espía sobre el método real.
+    vi.spyOn(txRunner, 'run');
     const calcularCiclo = {
       ciclosPendientes: vi
-        .fn()
+        .fn<CalcularCicloService['ciclosPendientes']>()
         .mockReturnValue(resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15'))),
     };
-    const logger = { error: vi.fn() };
-    const eventPublisher = { publish: vi.fn() };
+    const logger = { error: vi.fn<ILogger['error']>() };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     const equipoRepo = {
-      findById: vi.fn().mockResolvedValue(makeEquipoVigente('equipo-2-uuid', 'Equipo Sano')),
+      findById: vi
+        .fn<IEquipoInformaticoRepository['findById']>()
+        .mockResolvedValue(makeEquipoVigente('equipo-2-uuid', 'Equipo Sano')),
     };
 
     const useCase = new GenerarPreventivosUseCase(
-      planRepo as never,
-      generacionRepo as never,
-      tipoTicketRepo as never,
-      crearTicketUseCase as never,
-      txRunner as never,
-      calcularCiclo as never,
-      logger as never,
-      eventPublisher as never,
-      equipoRepo as never,
+      planRepo,
+      generacionRepo,
+      tipoTicketRepo,
+      crearTicketUseCase,
+      txRunner,
+      calcularCiclo,
+      logger,
+      eventPublisher,
+      equipoRepo,
     );
 
     await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();
@@ -478,7 +544,9 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     it('[OT-R1] equipo vigente → descripción antepone "Equipo: <nombre>"', async () => {
       const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
       const equipoRepo = {
-        findById: vi.fn().mockResolvedValue(makeEquipoVigente('equipo-uuid', 'Notebook Dell 5420')),
+        findById: vi
+          .fn<IEquipoInformaticoRepository['findById']>()
+          .mockResolvedValue(makeEquipoVigente('equipo-uuid', 'Notebook Dell 5420')),
       };
       const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
       calcularCiclo.ciclosPendientes.mockReturnValue(
@@ -506,7 +574,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
       const equipoRepo = {
         findById: vi
-          .fn()
+          .fn<IEquipoInformaticoRepository['findById']>()
           .mockResolvedValue(makeEquipoDadoDeBaja('equipo-uuid', 'Notebook Dell 5420')),
       };
       const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
@@ -528,7 +596,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
       const equipoRepo = {
         findById: vi
-          .fn()
+          .fn<IEquipoInformaticoRepository['findById']>()
           .mockResolvedValue(makeEquipoEliminado('equipo-uuid', 'Notebook Dell 5420')),
       };
       const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
@@ -549,7 +617,9 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
 
     it('[OT-R2] findById devuelve null (equipo inexistente) → descripción degrada distinto del caso "dado de baja" y genera igual', async () => {
       const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
-      const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
+      const equipoRepo = {
+        findById: vi.fn<IEquipoInformaticoRepository['findById']>().mockResolvedValue(null),
+      };
       const { useCase, crearTicketUseCase, calcularCiclo } = buildUseCase(plan, equipoRepo);
       calcularCiclo.ciclosPendientes.mockReturnValue(
         resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
@@ -568,7 +638,9 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     it('[OT-R2] findById lanza (equipo no consultable) → descripción degrada, loguea EQUIPO_NO_CONSULTABLE y NO aborta la generación', async () => {
       const plan = makePlan({ equipoId: 'equipo-uuid', instrucciones: 'Limpiar ventiladores' });
       const equipoRepo = {
-        findById: vi.fn().mockRejectedValue(new Error('timeout de conexión')),
+        findById: vi
+          .fn<IEquipoInformaticoRepository['findById']>()
+          .mockRejectedValue(new Error('timeout de conexión')),
       };
       const { useCase, crearTicketUseCase, calcularCiclo, logger, generacionRepo } = buildUseCase(
         plan,
@@ -625,51 +697,69 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       ).getValue();
 
       const planRepo = {
-        findVencibles: vi.fn().mockResolvedValue([planIrresoluble, planValido]),
-        actualizarProximaEjecucion: vi.fn().mockResolvedValue(undefined),
+        findVencibles: vi
+          .fn<IPlanPreventivoRepository['findVencibles']>()
+          .mockResolvedValue([planIrresoluble, planValido]),
+        actualizarProximaEjecucion: vi
+          .fn<IPlanPreventivoRepository['actualizarProximaEjecucion']>()
+          .mockResolvedValue(undefined),
       };
       const generacionRepo = {
         reservar: vi
-          .fn()
+          .fn<IPreventivoGeneracionRepository['reservar']>()
           .mockResolvedValueOnce('generacion-irresoluble-uuid')
           .mockResolvedValueOnce('generacion-valida-uuid'),
-        marcarGenerado: vi.fn().mockResolvedValue(undefined),
-        marcarSalteadoPendiente: vi.fn().mockResolvedValue(undefined),
-        registrarSalteadoAtraso: vi.fn().mockResolvedValue(undefined),
-        existeTicketAbiertoDelPlan: vi.fn().mockResolvedValue(false),
+        marcarGenerado: vi
+          .fn<IPreventivoGeneracionRepository['marcarGenerado']>()
+          .mockResolvedValue(undefined),
+        marcarSalteadoPendiente: vi
+          .fn<IPreventivoGeneracionRepository['marcarSalteadoPendiente']>()
+          .mockResolvedValue(undefined),
+        registrarSalteadoAtraso: vi
+          .fn<IPreventivoGeneracionRepository['registrarSalteadoAtraso']>()
+          .mockResolvedValue(undefined),
+        existeTicketAbiertoDelPlan: vi
+          .fn<IPreventivoGeneracionRepository['existeTicketAbiertoDelPlan']>()
+          .mockResolvedValue(false),
       };
       const tipoTicketRepo = {
-        findIdByCodigo: vi.fn().mockResolvedValue('tipo-preventivo-uuid'),
+        findIdByCodigo: vi
+          .fn<ITipoTicketRepository['findIdByCodigo']>()
+          .mockResolvedValue('tipo-preventivo-uuid'),
       };
       const crearTicketUseCase = {
         execute: vi
-          .fn()
+          .fn<CrearTicketUseCase['execute']>()
           .mockResolvedValueOnce(Result.ok(fakeTicket('ticket-irresoluble-uuid')))
           .mockResolvedValueOnce(Result.ok(fakeTicket('ticket-valido-uuid'))),
       };
       const txRunner = {
-        run: vi.fn((fn: () => Promise<unknown>) => fn()),
-        alCommitear: vi.fn((fn: () => void) => fn()),
+        run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+        alCommitear: vi.fn<ITenantTransactionRunner['alCommitear']>((fn) => fn()),
       };
+      // `run` es genérico y un `vi.fn` lo perdería: espía sobre el método real.
+      vi.spyOn(txRunner, 'run');
       const calcularCiclo = {
         ciclosPendientes: vi
-          .fn()
+          .fn<CalcularCicloService['ciclosPendientes']>()
           .mockReturnValue(resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15'))),
       };
-      const logger = { error: vi.fn() };
-      const eventPublisher = { publish: vi.fn() };
-      const equipoRepo = { findById: vi.fn().mockResolvedValue(null) };
+      const logger = { error: vi.fn<ILogger['error']>() };
+      const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
+      const equipoRepo = {
+        findById: vi.fn<IEquipoInformaticoRepository['findById']>().mockResolvedValue(null),
+      };
 
       const useCase = new GenerarPreventivosUseCase(
-        planRepo as never,
-        generacionRepo as never,
-        tipoTicketRepo as never,
-        crearTicketUseCase as never,
-        txRunner as never,
-        calcularCiclo as never,
-        logger as never,
-        eventPublisher as never,
-        equipoRepo as never,
+        planRepo,
+        generacionRepo,
+        tipoTicketRepo,
+        crearTicketUseCase,
+        txRunner,
+        calcularCiclo,
+        logger,
+        eventPublisher,
+        equipoRepo,
       );
 
       await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();

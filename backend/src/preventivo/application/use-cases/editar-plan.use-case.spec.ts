@@ -1,4 +1,7 @@
 import { EditarPlanUseCase } from './editar-plan.use-case';
+import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import {
   IntervaloInvalidoError,
@@ -30,13 +33,20 @@ function makePlan(overrides: Partial<Parameters<typeof PlanPreventivoEntity.crea
 describe('EditarPlanUseCase (4.2/4.3)', () => {
   function buildUseCase(plan: PlanPreventivoEntity | null) {
     const planRepo = {
-      buscarPorId: vi.fn().mockResolvedValue(plan),
-      guardar: vi.fn().mockResolvedValue(undefined),
-      actualizarProximaEjecucion: vi.fn().mockResolvedValue(undefined),
+      buscarPorId: vi.fn<IPlanPreventivoRepository['buscarPorId']>().mockResolvedValue(plan),
+      guardar: vi.fn<IPlanPreventivoRepository['guardar']>().mockResolvedValue(undefined),
+      actualizarProximaEjecucion: vi
+        .fn<IPlanPreventivoRepository['actualizarProximaEjecucion']>()
+        .mockResolvedValue(undefined),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // Runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: unstubbed('txRunner.alCommitear'),
+    };
+    vi.spyOn(txRunner, 'run');
     return {
-      useCase: new EditarPlanUseCase(planRepo, txRunner as never),
+      useCase: new EditarPlanUseCase(planRepo, txRunner),
       planRepo,
       txRunner,
     };

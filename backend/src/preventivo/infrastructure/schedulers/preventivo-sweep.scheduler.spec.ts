@@ -11,22 +11,37 @@
  */
 import { PreventivoSweepScheduler } from './preventivo-sweep.scheduler';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { ITenantEnumerator } from '../../../shared/domain/ports/i-tenant-enumerator';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
+import { GenerarPreventivosUseCase } from '../../application/use-cases/generar-preventivos.use-case';
+
+/**
+ * Cliente de tenant falso: lleva el prototipo del cliente real y queda marcado
+ * con su base, para reconocerlo en el contexto del tenant.
+ */
+function clienteFalso(dbName: string): InstanceType<typeof TenantPrismaClient> {
+  return Object.assign(Object.create(TenantPrismaClient.prototype), { __dbName: dbName });
+}
 
 describe('PreventivoSweepScheduler', () => {
   function makeCollaborators() {
-    const tenantEnumerator = { listActiveTenants: vi.fn() };
+    const tenantEnumerator = { listActiveTenants: vi.fn<ITenantEnumerator['listActiveTenants']>() };
     const tenantContext = new TenantContext();
     const prismaService = {
-      getTenantClient: vi.fn().mockImplementation((dbName: string) => ({ __dbName: dbName })),
+      getTenantClient: vi.fn<PrismaService['getTenantClient']>().mockImplementation(clienteFalso),
     };
-    const generarPreventivosUseCase = { execute: vi.fn().mockResolvedValue(undefined) };
-    const logger = { error: vi.fn() };
+    const generarPreventivosUseCase = {
+      execute: vi.fn<GenerarPreventivosUseCase['execute']>().mockResolvedValue(undefined),
+    };
+    const logger = { error: vi.fn<ILogger['error']>() };
 
     const scheduler = new PreventivoSweepScheduler(
-      tenantEnumerator as never,
+      tenantEnumerator,
       tenantContext,
-      prismaService as never,
-      generarPreventivosUseCase as never,
+      prismaService,
+      generarPreventivosUseCase,
       logger,
     );
 
@@ -69,7 +84,7 @@ describe('PreventivoSweepScheduler', () => {
     await c.scheduler.ejecutarBarrido();
 
     expect(ctxDentroDelRun).toEqual({
-      prismaClient: { __dbName: 'soporte_cliente_1' },
+      prismaClient: clienteFalso('soporte_cliente_1'),
       dbName: 'soporte_cliente_1',
       clienteId: 'cliente-1',
     });

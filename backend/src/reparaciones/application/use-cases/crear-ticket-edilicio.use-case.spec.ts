@@ -11,6 +11,21 @@ import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 import { CrearTicketEdilicioUseCase } from './crear-ticket-edilicio.use-case';
+import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
+import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { NumeradorTicket } from '../../../tickets/domain/services/numerador-ticket.service';
+import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import { ResolverAsignacionAutomatica } from '../../../tickets/application/services/resolver-asignacion-automatica.service';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
+import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
+import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
+import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import {
   SectorTicketInexistenteError,
   SolicitanteInvalidoError,
@@ -36,29 +51,68 @@ function makeCicloActivo(): CicloClienteEntity {
   );
 }
 
+/** Operación guardada con ese tipo; falla si no se guardó ninguna (en vez de seguir con `undefined`). */
+function operacionDelTipo(
+  ops: OperacionTicketEntity[],
+  tipoOperacionId: string,
+): OperacionTicketEntity {
+  const op = ops.find((o) => o.tipoOperacionId === tipoOperacionId);
+  if (!op) {
+    throw new Error(`No se guardó ninguna operación de tipo ${tipoOperacionId}`);
+  }
+  return op;
+}
+
 describe('CrearTicketEdilicioUseCase', () => {
   function buildDeps() {
-    const ticketRepo = { save: vi.fn() };
-    const operacionRepo = { save: vi.fn() };
-    const ticketEdiliciaRepo = { save: vi.fn() };
-    const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-uuid') };
+    const ticketRepo = { save: vi.fn<ITicketRepository['save']>() };
+    const operacionRepo = { save: vi.fn<IOperacionTicketRepository['save']>() };
+    const ticketEdiliciaRepo = { save: vi.fn<ITicketEdiliciaRepository['save']>() };
+    const estadoRepo = {
+      findIdByCodigo: vi
+        .fn<IEstadoRepository['findIdByCodigo']>()
+        .mockResolvedValue('estado-nuevo-uuid'),
+    };
     const tipoTicketRepo = {
-      findByCodigo: vi.fn().mockResolvedValue({ id: 'tipo-edilicia-uuid', codigo: 'EDILICIA' }),
+      findByCodigo: vi
+        .fn<ITipoTicketRepository['findByCodigo']>()
+        .mockResolvedValue(
+          TipoTicketEntity.create(
+            { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA', activo: true },
+            'tipo-edilicia-uuid',
+          ),
+        ),
     };
-    const tipoOperacionRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-operacion-uuid') };
-    const usuarioMasterChecker = { existeEnTenant: vi.fn().mockResolvedValue(true) };
-    const numerador = { generarNumero: vi.fn().mockResolvedValue(Result.ok('EDI-2026-00001')) };
+    const tipoOperacionRepo = {
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-operacion-uuid'),
+    };
+    const usuarioMasterChecker = {
+      existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
+    };
+    const numerador = {
+      generarNumero: vi
+        .fn<NumeradorTicket['generarNumero']>()
+        .mockResolvedValue(Result.ok('EDI-2026-00001')),
+    };
     const resolverCicloActivo = {
-      resolver: vi.fn().mockResolvedValue(Result.ok(makeCicloActivo())),
+      resolver: vi
+        .fn<ResolverCicloActivoParaCreacion['resolver']>()
+        .mockResolvedValue(Result.ok(makeCicloActivo())),
     };
-    const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
+    const resolverAsignacion = {
+      resolver: vi.fn<ResolverAsignacionAutomatica['resolver']>().mockResolvedValue(null),
+    };
+    // `run` es genérico y un `vi.fn` lo perdería: runner real con un espía encima.
     const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => fn()),
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: vi.fn<ITenantTransactionRunner['alCommitear']>((fn) => fn()),
     };
-    const eventPublisher = { publish: vi.fn() };
+    vi.spyOn(txRunner, 'run');
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     const sectorRepo = {
-      findById: vi.fn(async (id: string) =>
+      findById: vi.fn<ISectorRepository['findById']>(async (id) =>
         id === 'sector-uuid'
           ? SectorEntity.create(
               { codigo: 'MANT', nombre: 'Mantenimiento', activo: true },
@@ -69,18 +123,18 @@ describe('CrearTicketEdilicioUseCase', () => {
     };
 
     const useCase = new CrearTicketEdilicioUseCase(
-      ticketRepo as any,
-      operacionRepo as any,
-      ticketEdiliciaRepo as any,
-      estadoRepo as any,
-      tipoTicketRepo as any,
-      tipoOperacionRepo as any,
-      usuarioMasterChecker as any,
-      numerador as any,
-      resolverCicloActivo as any,
+      ticketRepo,
+      operacionRepo,
+      ticketEdiliciaRepo,
+      estadoRepo,
+      tipoTicketRepo,
+      tipoOperacionRepo,
+      usuarioMasterChecker,
+      numerador,
+      resolverCicloActivo,
       resolverAsignacion,
       eventPublisher,
-      txRunner as any,
+      txRunner,
       sectorRepo,
     );
 
@@ -185,6 +239,9 @@ describe('CrearTicketEdilicioUseCase', () => {
     expect(eventPublisher.publish).toHaveBeenCalledTimes(1);
     const evento = eventPublisher.publish.mock.calls[0][0];
     expect(evento).toBeInstanceOf(TicketCreadoEvent);
+    if (!(evento instanceof TicketCreadoEvent)) {
+      throw new Error('se esperaba un TicketCreadoEvent');
+    }
     expect(evento.ticketId).toBe(ticket.id);
     expect(evento.prioridadId).toBe(baseDto.prioridadId);
   });
@@ -220,8 +277,8 @@ describe('CrearTicketEdilicioUseCase', () => {
       );
       const ops = operacionRepo.save.mock.calls.map(([op]) => op);
       expect(ops).toHaveLength(2);
-      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-operacion-uuid');
-      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-uuid');
+      const apertura = operacionDelTipo(ops, 'tipo-operacion-uuid');
+      const asignacion = operacionDelTipo(ops, 'tipo-op-asignacion-uuid');
       expect(apertura.estadoAnteriorId).toBeNull();
       expect(apertura.estadoNuevoId).toBe('estado-asignado-uuid');
       expect(apertura.autorId).toBe('usuario-uuid');

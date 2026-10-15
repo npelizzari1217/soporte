@@ -32,6 +32,15 @@ import {
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
+import { unstubbed } from '../../../testing/mocks';
+import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import { CrearTicketEdilicioUseCase } from '../../application/use-cases/crear-ticket-edilicio.use-case';
+import { ListarReparacionesUseCase } from '../../application/use-cases/listar-reparaciones.use-case';
+import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
+import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
+import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
+import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
+import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
 
 const USER = payloadDeTest({
   sub: 'usuario-uuid',
@@ -71,30 +80,56 @@ function makeTicket(): TicketEntity {
   );
 }
 
+/**
+ * Doble de un caso de uso concreto: lleva el prototipo de la clase real y
+ * `execute` como mock tipado con su firma.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
+
+type Espiado<T extends { execute: (...args: never[]) => unknown }> = ReturnType<typeof espiado<T>>;
+
+/**
+ * Checker de master completo: el controller solo usa `resolverNombres`; el
+ * resto falla si producción empieza a llamarlo.
+ */
+function usuarioMasterCheckerFalso() {
+  return {
+    existeEnTenant: unstubbed('usuarioMasterChecker.existeEnTenant'),
+    estaActivoEnTenant: unstubbed('usuarioMasterChecker.estaActivoEnTenant'),
+    resolverNombres: vi.fn<IUsuarioMasterChecker['resolverNombres']>().mockResolvedValue(new Map()),
+    getAutorizacionModulos: unstubbed('usuarioMasterChecker.getAutorizacionModulos'),
+    listarTecnicosAsignables: unstubbed('usuarioMasterChecker.listarTecnicosAsignables'),
+  };
+}
+
 describe('ReparacionesController (T8.6, T9.6)', () => {
   function buildController() {
-    const crearTicketEdilicioUseCase = { execute: vi.fn() };
-    const listarReparacionesUseCase = { execute: vi.fn() };
-    const crearComentarioUseCase = { execute: vi.fn() };
-    const listarComentariosUseCase = { execute: vi.fn() };
+    const crearTicketEdilicioUseCase = espiado(CrearTicketEdilicioUseCase);
+    const listarReparacionesUseCase = espiado(ListarReparacionesUseCase);
+    const crearComentarioUseCase = espiado(CrearComentarioReparacionUseCase);
+    const listarComentariosUseCase = espiado(ListarComentariosReparacionUseCase);
     // Default: master no resuelve ningún nombre (usuario dado de baja) — los
     // tests que verifican el enriquecimiento lo sobrescriben.
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
-    const exportarReparacionesUseCase = { execute: vi.fn() };
+    const usuarioMasterChecker = usuarioMasterCheckerFalso();
+    const exportarReparacionesUseCase = espiado(ExportarReparacionesUseCase);
     // Agregados al final (WU5, mismo criterio que exportarReparacionesUseCase):
     // no reindexan los args posicionales anteriores.
-    const vincularCompraUseCase = { execute: vi.fn() };
-    const desvincularCompraUseCase = { execute: vi.fn() };
+    const vincularCompraUseCase = espiado(VincularCompraAReparacionUseCase);
+    const desvincularCompraUseCase = espiado(DesvincularCompraDeReparacionUseCase);
 
     const controller = new ReparacionesController(
-      crearTicketEdilicioUseCase as any,
-      listarReparacionesUseCase as any,
-      crearComentarioUseCase as any,
-      listarComentariosUseCase as any,
-      usuarioMasterChecker as any,
-      exportarReparacionesUseCase as any,
-      vincularCompraUseCase as any,
-      desvincularCompraUseCase as any,
+      crearTicketEdilicioUseCase.caso,
+      listarReparacionesUseCase.caso,
+      crearComentarioUseCase.caso,
+      listarComentariosUseCase.caso,
+      usuarioMasterChecker,
+      exportarReparacionesUseCase.caso,
+      vincularCompraUseCase.caso,
+      desvincularCompraUseCase.caso,
     );
 
     return {
@@ -118,7 +153,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
-      crearTicketEdilicioUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketEdilicia }));
+      crearTicketEdilicioUseCase.execute.mockResolvedValue(
+        Result.ok({ ticket, ticketEdilicia, sectorNombre: null }),
+      );
 
       const result = await controller.crear(
         {
@@ -126,7 +163,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
           descripcion: null,
           prioridadId: 'prioridad-uuid',
           ubicacion: 'Edificio Central',
-        } as any,
+        },
         USER,
       );
 
@@ -181,7 +218,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       await expect(
         controller.crear(
-          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacion: null } as any,
+          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacion: null },
           USER,
         ),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
@@ -193,7 +230,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       await expect(
         controller.crear(
-          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacion: null } as any,
+          { titulo: 'X', descripcion: null, prioridadId: 'p', ubicacion: null },
           USER,
         ),
       ).rejects.toMatchObject({ status: 409 });
@@ -265,6 +302,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
             cantidadComentarios: 0,
             bloqueada: false,
             comprasQueBloquean: [],
+            sectorNombre: null,
           },
         ]),
       );
@@ -314,7 +352,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
       const result = await controller.crearComentario(
         'edilicia-uuid',
-        { texto: 'Falta el repuesto X' } as any,
+        { texto: 'Falta el repuesto X' },
         USER,
       );
 
@@ -335,7 +373,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       await expect(
-        controller.crearComentario('edilicia-uuid', { texto: 'X' } as any, USER),
+        controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -413,7 +451,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, vincularCompraUseCase } = buildController();
       vincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
-      await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' } as any);
+      await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' });
 
       expect(vincularCompraUseCase.execute).toHaveBeenCalledWith({
         ticketEdiliciaId: 'edilicia-uuid',
@@ -428,7 +466,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       await expect(
-        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' } as any),
+        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -439,7 +477,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       await expect(
-        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' } as any),
+        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -496,20 +534,20 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
 describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/exportar-listados-csv)', () => {
   function buildController(overrides: {
-    exportarReparaciones?: { execute: ReturnType<typeof vi.fn> };
+    exportarReparaciones?: Espiado<ExportarReparacionesUseCase>;
   }) {
-    const stub = () => ({ execute: vi.fn() });
-    const exportarReparaciones = overrides.exportarReparaciones ?? stub();
+    const exportarReparaciones =
+      overrides.exportarReparaciones ?? espiado(ExportarReparacionesUseCase);
 
     const controller = new ReparacionesController(
-      stub() as any, // crearTicketEdilicioUseCase
-      stub() as any, // listarReparacionesUseCase
-      stub() as any, // crearComentarioUseCase
-      stub() as any, // listarComentariosUseCase
-      { resolverNombres: vi.fn() } as any, // usuarioMasterChecker
-      exportarReparaciones as any, // exportarReparacionesUseCase
-      stub() as any, // vincularCompraUseCase
-      stub() as any, // desvincularCompraUseCase
+      espiado(CrearTicketEdilicioUseCase).caso,
+      espiado(ListarReparacionesUseCase).caso,
+      espiado(CrearComentarioReparacionUseCase).caso,
+      espiado(ListarComentariosReparacionUseCase).caso,
+      usuarioMasterCheckerFalso(),
+      exportarReparaciones.caso,
+      espiado(VincularCompraAReparacionUseCase).caso,
+      espiado(DesvincularCompraDeReparacionUseCase).caso,
     );
     return { controller, exportarReparaciones };
   }
@@ -529,7 +567,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
   });
 
   it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
-    const exportarReparaciones = { execute: vi.fn() };
+    const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: 'Número;Título', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
     );
@@ -547,7 +585,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
   });
 
   it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
-    const exportarReparaciones = { execute: vi.fn() };
+    const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'reparaciones-2026-08-19.xlsx' }),
     );
@@ -568,7 +606,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
   });
 
   it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
-    const exportarReparaciones = { execute: vi.fn() };
+    const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: 'a;b', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
     );
@@ -583,7 +621,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
   });
 
   it('no recibe query ni filtros — llama a execute() solo con el formato', async () => {
-    const exportarReparaciones = { execute: vi.fn() };
+    const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
     );
@@ -595,7 +633,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
-    const exportarReparaciones = { execute: vi.fn() };
+    const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.fail(new ReparacionesErrors.ExportacionDemasiadoGrandeError(6000, 5000)),
     );
