@@ -109,10 +109,12 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const edicionPermitida = estadoCodigo ? puedeEditarDatos(estadoCodigo, isGlobalAdmin) : true;
   // La ubicación general no se muestra ni se carga en los tickets de Edilicia,
   // que tienen la suya propia (odd/ubicacion-sector-ticket, CA2). Mientras el
-  // catálogo de tipos no resolvió el módulo es desconocido y queda oculta: el
-  // PATCH la omite y el backend no la toca.
+  // catálogo de tipos no cargó (o falló) el módulo es desconocido y queda oculta:
+  // el PATCH la omite y el backend no la toca. Con el catálogo cargado, un tipo
+  // ausente es un tipo desactivado (el catálogo trae solo los activos) y se
+  // muestra (CA1): los tipos de Edilicia son del sistema y no se desactivan.
   const modulo = tipoModuloMap.get(ticket.tipoId);
-  const mostrarUbicacion = modulo !== undefined && modulo !== "EDILICIA";
+  const mostrarUbicacion = tiposQuery.isSuccess && modulo !== "EDILICIA";
 
   return (
     <div className="flex flex-col gap-6">

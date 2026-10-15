@@ -484,4 +484,34 @@ describe("TicketDetailView — ubicación y sector (odd/ubicacion-sector-ticket)
     expect(capturedBody).not.toHaveProperty("ubicacion");
     expect(capturedBody).toMatchObject({ sectorId: SECTOR_ID });
   });
+
+  // CA1: un tipo desactivado no viene en el catálogo de tipos activos, pero el
+  // ticket sigue aceptando ubicación (solo Edilicia la oculta, y sus tipos son
+  // del sistema y no se desactivan).
+  it("ticket con tipo desactivado (fuera del catálogo): muestra la ubicación en la cabecera y en el modal", async () => {
+    mockTicketConDatos("TICKETS");
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({
+          ...TICKET,
+          tipoId: "tipo-desactivado",
+          prioridadId: PRIORIDAD_UUID,
+          ubicacion: "Aula 3",
+          sectorId: SECTOR_ID,
+          sectorNombre: "Primaria",
+        }),
+      ),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
+    });
+
+    expect(await screen.findByText("Aula 3")).toBeInTheDocument();
+    expect(screen.getByText("Ubicación")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    expect(await screen.findByLabelText("Ubicación")).toHaveValue("Aula 3");
+  });
 });
