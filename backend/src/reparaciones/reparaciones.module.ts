@@ -182,6 +182,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         tareaRepo: ITareaTicketRepository,
         comentarioRepo: IComentarioReparacionRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
+        sectorRepo: ISectorRepository,
       ) =>
         new ListarReparacionesUseCase(
           ediliciaRepo,
@@ -189,6 +190,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
           tareaRepo,
           comentarioRepo,
           reparacionCompraRepo,
+          sectorRepo,
         ),
       inject: [
         TICKET_EDILICIA_REPOSITORY,
@@ -196,6 +198,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         TAREA_TICKET_REPOSITORY,
         COMENTARIO_REPARACION_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
+        SECTOR_REPOSITORY,
       ],
     },
     {

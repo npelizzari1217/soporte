@@ -122,6 +122,10 @@ import {
   SOLICITANTE_EXTERNO_REPOSITORY,
 } from '../../domain/ports/i-solicitante-externo.repository';
 import { ESTADO_REPOSITORY, IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import {
+  ISectorRepository,
+  SECTOR_REPOSITORY,
+} from '../../../sectores/domain/ports/i-sector.repository';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
@@ -208,6 +212,8 @@ export class TicketsController {
     @Inject(SOLICITANTE_EXTERNO_REPOSITORY)
     private readonly solicitanteExternoRepo: ISolicitanteExternoRepository,
     @Inject(ESTADO_REPOSITORY) private readonly estadoRepo: IEstadoRepository,
+    @Inject(SECTOR_REPOSITORY)
+    private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,
   ) {}
 
   /**
@@ -235,17 +241,22 @@ export class TicketsController {
   /**
    * Resuelve batch (sin N+1) los nombres de `solicitanteId`/`asignadoId` de
    * un lote de tickets y devuelve la proyección `NombresResueltos` de CADA
-   * ticket, indexada por `ticket.id` (sdd/beta-frontend item 2).
+   * ticket, indexada por `ticket.id` (sdd/beta-frontend item 2). También el
+   * nombre del sector (odd/ubicacion-sector-ticket), con una sola consulta.
    */
   private async resolverNombresPorTicket(
     tickets: Pick<
       TicketResponseDto,
-      'id' | 'solicitanteId' | 'solicitanteExternoId' | 'asignadoId'
+      'id' | 'solicitanteId' | 'solicitanteExternoId' | 'asignadoId' | 'sectorId'
     >[],
   ): Promise<Map<string, NombresResueltos>> {
     const idsUsuarios = new Set<string>();
     const idsExternos = new Set<string>();
+    const idsSectores = new Set<string>();
     for (const t of tickets) {
+      if (t.sectorId) {
+        idsSectores.add(t.sectorId);
+      }
       if (t.solicitanteId) {
         idsUsuarios.add(t.solicitanteId);
       }
@@ -256,9 +267,10 @@ export class TicketsController {
         idsUsuarios.add(t.asignadoId);
       }
     }
-    const [nombresPorUsuario, nombresExternos] = await Promise.all([
+    const [nombresPorUsuario, nombresExternos, nombresSectores] = await Promise.all([
       this.usuarioMasterChecker.resolverNombres([...idsUsuarios]),
       this.solicitanteExternoRepo.findNombres([...idsExternos]),
+      this.sectorRepo.findNombres([...idsSectores]),
     ]);
 
     const porTicket = new Map<string, NombresResueltos>();
@@ -266,10 +278,12 @@ export class TicketsController {
       const nombreExterno = t.solicitanteExternoId
         ? nombresExternos.get(t.solicitanteExternoId)
         : undefined;
+      const nombreSector = t.sectorId ? nombresSectores.get(t.sectorId) : undefined;
       porTicket.set(t.id, {
         solicitante: t.solicitanteId ? nombresPorUsuario.get(t.solicitanteId) : undefined,
         solicitanteExterno: nombreExterno === undefined ? undefined : { nombre: nombreExterno },
         asignado: t.asignadoId ? nombresPorUsuario.get(t.asignadoId) : undefined,
+        sector: nombreSector === undefined ? undefined : { nombre: nombreSector },
       });
     }
     return porTicket;

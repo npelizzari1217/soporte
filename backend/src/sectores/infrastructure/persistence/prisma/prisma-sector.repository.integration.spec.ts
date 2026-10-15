@@ -74,6 +74,25 @@ describe('PrismaSectorRepository — Integration (WU-05)', () => {
     expect(activos.some((s) => s.id === inactivo.id)).toBe(false);
   });
 
+  it('findNombres() resuelve en lote, incluye los desactivados y omite los inexistentes', async () => {
+    const activo = SectorEntity.create({ codigo: 'WU05_NOM_A', nombre: 'Activo', activo: true });
+    const inactivo = SectorEntity.create({ codigo: 'WU05_NOM_I', nombre: 'Viejo', activo: true });
+    inactivo.desactivar();
+    await repo.save(activo);
+    await repo.save(inactivo);
+    const inexistente = '00000000-0000-4000-8000-000000000000';
+
+    const nombres = await repo.findNombres([activo.id, inactivo.id, inexistente]);
+
+    expect(nombres).toEqual(
+      new Map([
+        [activo.id, 'Activo'],
+        [inactivo.id, 'Viejo'],
+      ]),
+    );
+    expect(await repo.findNombres([])).toEqual(new Map());
+  });
+
   it('save() en un sector existente actualiza sin pisar createdAt', async () => {
     const sector = SectorEntity.create({ codigo: 'WU05_UPD', nombre: 'Original', activo: true });
     await repo.save(sector);

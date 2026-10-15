@@ -9,6 +9,7 @@ import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { CompraVinculada, comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 
 /** Un ticket edilicio resuelto junto a su ticket base y subtareas (para listados). */
 export interface ReparacionConTicket {
@@ -31,6 +32,11 @@ export interface ReparacionConTicket {
   bloqueada: boolean;
   /** Compras vinculadas que HOY frenan la reparación. Ausencia de bloqueo = `[]`, nunca `undefined`. */
   comprasQueBloquean: CompraVinculada[];
+  /**
+   * Nombre del sector del ticket base (odd/ubicacion-sector-ticket), incluso si el sector está
+   * desactivado. `null` si el ticket no tiene sector.
+   */
+  sectorNombre: string | null;
 }
 
 /**
@@ -48,7 +54,9 @@ export interface ReparacionConTicket {
  *
  * COSTO EN CONSULTAS: CONSTANTE — 5 consultas para toda la página, sin
  * importar cuántas reparaciones haya (`findAll` + tickets base + subtareas +
- * conteo de comentarios + compras vinculadas). Las cuatro resoluciones por id
+ * conteo de comentarios + compras vinculadas), más UNA de nombres de sector si
+ * algún ticket tiene sector (odd/ubicacion-sector-ticket). Esa va en una
+ * segunda vuelta porque los ids salen de los tickets base. Las cuatro resoluciones por id
  * se piden POR LOTE y ANTES del loop; el loop sólo lee de los `Map` que
  * devuelven. Antes esto era un N+1 de `1 + 2N` consultas (ticket base y
  * subtareas fila por fila).
@@ -68,6 +76,7 @@ export class ListarReparacionesUseCase {
       IReparacionCompraRepository,
       'findComprasVinculadasByTicketEdiliciaIds'
     >,
+    private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,
   ) {}
 
   async execute(): Promise<Result<ReparacionConTicket[], DomainError>> {
@@ -94,6 +103,16 @@ export class ListarReparacionesUseCase {
       this.comentarioRepo.contarPorTicketEdilicia(ediliciaIds),
       this.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds(ediliciaIds),
     ]);
+
+    // Un solo lote con los sectores de todos los tickets base (odd/ubicacion-sector-ticket).
+    const idsSectores = new Set<string>();
+    for (const ticket of ticketsPorId.values()) {
+      if (ticket.sectorId) idsSectores.add(ticket.sectorId);
+    }
+    const nombresSectores =
+      idsSectores.size > 0
+        ? await this.sectorRepo.findNombres([...idsSectores])
+        : new Map<string, string>();
 
     const items: ReparacionConTicket[] = [];
 
@@ -122,6 +141,7 @@ export class ListarReparacionesUseCase {
         cantidadComentarios: comentariosPorReparacion.get(ticketEdilicia.id) ?? 0,
         bloqueada: bloqueantes.length > 0,
         comprasQueBloquean: [...bloqueantes],
+        sectorNombre: ticket.sectorId ? (nombresSectores.get(ticket.sectorId) ?? null) : null,
       });
     }
 

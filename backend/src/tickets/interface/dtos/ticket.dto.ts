@@ -240,6 +240,15 @@ export interface TicketResponseDto {
   /** `null` si `asignadoId` es `null`, o si el usuario no se pudo resolver. */
   asignadoNombre: string | null;
   asignadoApellido: string | null;
+  /** Ubicación general, texto libre (odd/ubicacion-sector-ticket). */
+  ubicacion: string | null;
+  /** Sector del cliente (odd/ubicacion-sector-ticket). */
+  sectorId: string | null;
+  /**
+   * Nombre del sector, resuelto en lote por el backend: `GET /sectores` trae solo los activos y un
+   * sector desactivado se vería vacío. `null` si el ticket no tiene sector o no se resolvió.
+   */
+  sectorNombre: string | null;
   /**
    * Teléfono del solicitante externo. Viaja SOLO en el detalle (`GET /tickets/:id`): el listado
    * no lo trae (ausente). En el detalle es `null` si no es externo o no cargó teléfono.
@@ -289,6 +298,8 @@ export interface NombresResueltos {
   /** Solicitante externo: solo tiene un nombre (sin apellido). */
   solicitanteExterno?: { nombre: string };
   asignado?: { nombre: string; apellido: string };
+  /** Sector del ticket (odd/ubicacion-sector-ticket), incluso si está desactivado. */
+  sector?: { nombre: string };
 }
 
 /** Response de `GET /tickets` — envoltorio con metadata de paginación (T7). */
@@ -347,6 +358,9 @@ export function toTicketResponseDto(
     solicitanteApellido: nombres?.solicitante?.apellido ?? null,
     asignadoNombre: nombres?.asignado?.nombre ?? null,
     asignadoApellido: nombres?.asignado?.apellido ?? null,
+    ubicacion: ticket.ubicacion,
+    sectorId: ticket.sectorId,
+    sectorNombre: nombres?.sector?.nombre ?? null,
     slaVenceAt: ticket.slaVenceAt ? ticket.slaVenceAt.toISOString() : null,
     vencido: ticket.vencido,
     sla: {

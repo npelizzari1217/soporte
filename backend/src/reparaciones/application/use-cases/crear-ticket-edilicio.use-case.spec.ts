@@ -143,6 +143,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       expect(ticket.sectorId).toBe('sector-uuid');
       expect(ticket.ubicacion).toBeNull();
       expect(ticketEdilicia.ubicacion).toBe('Edificio Central');
+      expect(result.getValue().sectorNombre).toBe('Mantenimiento');
     });
 
     it('sin sectorId no consulta el catalogo y el ticket queda sin sector', async () => {
@@ -151,6 +152,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       const result = await useCase.execute(baseDto);
 
       expect(result.getValue().ticket.sectorId).toBeNull();
+      expect(result.getValue().sectorNombre).toBeNull();
       expect(sectorRepo.findById).not.toHaveBeenCalled();
     });
 

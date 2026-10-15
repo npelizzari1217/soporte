@@ -209,8 +209,8 @@ export class ReparacionesController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    const { ticket, ticketEdilicia } = result.getValue();
-    return toTicketEdiliciaResponseDto(ticket, ticketEdilicia);
+    const { ticket, ticketEdilicia, sectorNombre } = result.getValue();
+    return toTicketEdiliciaResponseDto(ticket, ticketEdilicia, sectorNombre);
   }
 
   /**

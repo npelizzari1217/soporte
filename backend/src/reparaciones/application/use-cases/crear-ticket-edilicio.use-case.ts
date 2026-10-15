@@ -53,6 +53,16 @@ export interface CrearTicketEdilicioDto {
 }
 
 /**
+ * Resultado del alta: el ticket base, su satélite y el nombre del sector elegido (o `null` si no
+ * se eligió), ya conocido por la validación — así la respuesta del alta no necesita otra consulta.
+ */
+export interface TicketEdilicioCreado {
+  ticket: TicketEntity;
+  ticketEdilicia: TicketEdiliciaEntity;
+  sectorNombre: string | null;
+}
+
+/**
  * CrearTicketEdilicioUseCase — creación atómica de un ticket edilicio
  * (F3-E1, ADR-3).
  *
@@ -99,9 +109,7 @@ export class CrearTicketEdilicioUseCase {
     private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
   ) {}
 
-  async execute(
-    dto: CrearTicketEdilicioDto,
-  ): Promise<Result<{ ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity }, DomainError>> {
+  async execute(dto: CrearTicketEdilicioDto): Promise<Result<TicketEdilicioCreado, DomainError>> {
     // 1. Solicitante válido en el tenant (cross-DB, master.usuarios).
     const solicitanteValido = await this.usuarioMasterChecker.existeEnTenant(
       dto.solicitanteId,
@@ -119,11 +127,13 @@ export class CrearTicketEdilicioUseCase {
     const cicloActivo = cicloResult.getValue();
 
     // 2b. sectorId opcional: tiene que existir (un sector desactivado sigue siendo válido).
+    let sectorNombre: string | null = null;
     if (dto.sectorId) {
       const sector = await this.sectorRepo.findById(dto.sectorId);
       if (!sector) {
         return Result.fail(new SectorTicketInexistenteError(dto.sectorId));
       }
+      sectorNombre = sector.nombre;
     }
 
     // 3-4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
@@ -161,10 +171,7 @@ export class CrearTicketEdilicioUseCase {
         dto.anio,
       );
       if (numeroResult.isFail()) {
-        return Result.fail<
-          { ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity },
-          DomainError
-        >(numeroResult.getError());
+        return Result.fail<TicketEdilicioCreado, DomainError>(numeroResult.getError());
       }
 
       const ticket = TicketEntity.create({
@@ -205,12 +212,11 @@ export class CrearTicketEdilicioUseCase {
       }
       await this.ticketEdiliciaRepo.save(ticketEdilicia);
 
-      return Result.ok<{ ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity }, DomainError>(
-        {
-          ticket,
-          ticketEdilicia,
-        },
-      );
+      return Result.ok<TicketEdilicioCreado, DomainError>({
+        ticket,
+        ticketEdilicia,
+        sectorNombre,
+      });
     });
 
     // 6. DIFERIDO A POST-COMMIT vía `txRunner.alCommitear()` — mismo criterio

@@ -19,6 +19,8 @@ function ticket(): TicketEntity {
     solicitanteId: SOLICITANTE,
   });
   t.assignTo(ASIGNADO);
+  // Ubicacion y sector (odd/ubicacion-sector-ticket) no son parte del contrato v1.
+  t.actualizarDatos({ ubicacion: 'Aula interna', sectorId: 'sector-interno' });
   return t;
 }
 
@@ -85,7 +87,13 @@ describe('TicketsV1Presenter', () => {
       ].sort(),
     );
     const json = JSON.stringify(res);
-    for (const interno of [SOLICITANTE, ASIGNADO, 'ciclo-interno']) {
+    for (const interno of [
+      SOLICITANTE,
+      ASIGNADO,
+      'ciclo-interno',
+      'Aula interna',
+      'sector-interno',
+    ]) {
       expect(json).not.toContain(interno);
     }
   });

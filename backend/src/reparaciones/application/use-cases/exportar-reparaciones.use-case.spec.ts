@@ -94,6 +94,7 @@ function crearReparacion(
     cantidadComentarios: 0,
     bloqueada: false,
     comprasQueBloquean: [],
+    sectorNombre: null,
   };
 }
 
@@ -246,6 +247,13 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
       subtareaRepo as any,
       comentarioRepo as any,
       reparacionCompraRepo as any,
+      // Ningun ticket de este armado tiene sector: el listado no consulta nombres de sector.
+      {
+        findNombres: vi.fn(async () => {
+          llamadas++;
+          return new Map<string, string>();
+        }),
+      },
     );
 
     return { listarReparaciones, contadorDeLlamadas: () => llamadas };

@@ -104,6 +104,13 @@ export interface TicketEdiliciaConTicketResponseDto {
   titulo: string;
   estadoId: string;
   ubicacion: string | null;
+  /**
+   * Sector del ticket base (odd/ubicacion-sector-ticket). La Ubicación general del ticket no viaja
+   * acá: Edilicia usa su propia `ubicacion`.
+   */
+  sectorId: string | null;
+  /** Nombre del sector, resuelto por el backend (incluso si está desactivado). */
+  sectorNombre: string | null;
   porcentajeAvance: number;
   createdAt: string;
   updatedAt: string;
@@ -112,10 +119,12 @@ export interface TicketEdiliciaConTicketResponseDto {
 /**
  * Convierte `{ticket, ticketEdilicia}` al shape de respuesta unificado. `porcentajeAvance` lo aporta
  * quien llama; el default 0 es el de una reparación recién creada, que todavía no tiene tareas.
+ * `sectorNombre` también lo aporta quien llama, ya resuelto.
  */
 export function toTicketEdiliciaResponseDto(
   ticket: TicketEntity,
   ticketEdilicia: TicketEdiliciaEntity,
+  sectorNombre: string | null,
   porcentajeAvance = 0,
 ): TicketEdiliciaConTicketResponseDto {
   return {
@@ -125,6 +134,8 @@ export function toTicketEdiliciaResponseDto(
     titulo: ticket.titulo,
     estadoId: ticket.estadoId,
     ubicacion: ticketEdilicia.ubicacion,
+    sectorId: ticket.sectorId,
+    sectorNombre,
     porcentajeAvance,
     createdAt: ticketEdilicia.createdAt.toISOString(),
     updatedAt: ticketEdilicia.updatedAt.toISOString(),
@@ -169,7 +180,12 @@ export function toReparacionListItemResponseDto(
 ): ReparacionListItemResponseDto {
   return {
     // Calculado al leer sobre las tareas del ticket (odd/tareas-con-tecnico, T3).
-    ...toTicketEdiliciaResponseDto(item.ticket, item.ticketEdilicia, item.porcentajeAvance),
+    ...toTicketEdiliciaResponseDto(
+      item.ticket,
+      item.ticketEdilicia,
+      item.sectorNombre,
+      item.porcentajeAvance,
+    ),
     subtareas: item.subtareas.map((tarea) =>
       toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, item.ticketEdilicia.id),
     ),

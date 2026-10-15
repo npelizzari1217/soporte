@@ -14,6 +14,13 @@ export interface ISectorRepository {
   /** Retorna todos los sectores activos (no soft-deleted) del tenant. */
   findAllActive(): Promise<SectorEntity[]>;
 
+  /**
+   * Nombres de un lote de sectores, por id (odd/ubicacion-sector-ticket). Incluye los desactivados y
+   * los dados de baja: un ticket viejo con un sector desactivado sigue mostrando su nombre. Un id
+   * que no existe queda fuera del Map. Una sola consulta, sin N+1.
+   */
+  findNombres(ids: readonly string[]): Promise<Map<string, string>>;
+
   /** Upsert por id: INSERT si es nuevo, UPDATE si ya existe. */
   save(sector: SectorEntity): Promise<void>;
 }

@@ -36,6 +36,16 @@ export class PrismaSectorRepository implements ISectorRepository {
     return rows.map(SectorMapper.toDomain);
   }
 
+  /** Sin filtro por `activo` ni `deletedAt` a propósito: ver `ISectorRepository.findNombres`. */
+  async findNombres(ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.client.sector.findMany({
+      where: { id: { in: [...ids] } },
+      select: { id: true, nombre: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.nombre]));
+  }
+
   /** Upsert por id: INSERT si es nuevo, UPDATE si existe. Nunca pisa `createdAt` en el UPDATE. */
   async save(sector: SectorEntity): Promise<void> {
     const data = SectorMapper.toPersistence(sector);
