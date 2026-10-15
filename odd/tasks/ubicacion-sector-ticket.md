@@ -67,10 +67,27 @@ de aceptación abajo.
     src/tickets src/reparaciones src/integraciones src/sectores src/equipos/mantenimiento...` → 149
     archivos, 1469 tests pasan; otros 34 archivos (e2e de integraciones, smoke, compras, equipos,
     sla, preventivo) → 395 tests pasan; casts 594/111 (sin cambios). Suite completa: pendiente (T5).
-- [ ] **T3 — Frontend: tickets** (CA1, CA2, CA4). Tipos, alta y edición (Ubicación y Sector; la
-  Ubicación oculta en EDILICIA), columnas del listado y detalle; tests.
-- [ ] **T4 — Frontend: Edilicia** (CA2, CA4, CA5). Sector en el alta y en el listado, cantidad en el
-  botón de tareas; tests.
+- [x] **T3 — Frontend: tickets** (CA1, CA2, CA4). Tipos, alta y edición (Ubicación y Sector; la
+  Ubicación oculta en EDILICIA), columnas del listado y detalle; tests. Ruta: delegada (escritor
+  único). Commit `1a1f5715`.
+  - Alta: Ubicación (hasta 255) y Sector con "Sin sector"; los vacíos no viajan. Edición: vacío →
+    `null`; un sector desactivado sigue elegido como "<nombre> (dado de baja)" y se conserva al
+    guardar (`conValorFueraDeCatalogo` + `useReaplicarAlResolver`, como la prioridad).
+  - CA2: el encabezado del detalle y la edición ocultan Ubicación en EDILICIA (y mientras cargan los
+    tipos); la edición entonces no manda `ubicacion`. `mostrarUbicacion` es `false` por defecto.
+  - Listado: columnas Ubicación y Sector ("—" si falta), sin filtros nuevos.
+  - Dos aserciones existentes se acotaron (contaban todas las opciones del formulario y todos los "—"
+    del encabezado).
+- [x] **T4 — Frontend: Edilicia** (CA2, CA4, CA5). Sector en el alta y en el listado, cantidad en el
+  botón de tareas; tests. Ruta: delegada (mismo escritor). Commit `af14c519`.
+  - Alta de Edilicia con Sector opcional (sin la Ubicación general). Listado con columna Sector; la
+    Ubicación propia de Edilicia se mantiene.
+  - CA5: `ComentariosTrigger` pasó a `ConteoTrigger`, compartido por los dos botones. "Ver subtareas"
+    con badge y etiqueta accesible "(3 subtareas)" / "(1 subtarea)"; sin tareas, sin badge. Cuenta
+    `row.subtareas.length` (tareas activas que ya trae el backend). Se mantiene "subtareas", que es
+    como lo llama la pantalla de Edilicia (el detalle del ticket dice "Tareas").
+  - Evidencia T3+T4 (frontend): `pnpm lint` sin errores ni avisos; `pnpm type-check` 0 (repetido por
+    el padre); `pnpm test` → 274 archivos, 2297 tests pasan.
 - [ ] **T5 — Cierre**: compuertas completas, roadmap con **Cumplida** o **Desviación**, deuda de Ayuda.
 
 ## Ruta y entrega
@@ -82,6 +99,9 @@ de aceptación abajo.
 ## Progreso
 - 2026-10-15: decisión escrita en el roadmap y exploración hecha; documento creado.
 - 2026-10-15: T1 y T2 hechas (backend).
+- 2026-10-16: T3 y T4 hechas (frontend). RDD figura encendida (global); el dueño pidió revisar solo
+  esta feature (`--base-ref 01b5a573 --committed-only`): el candidato desde `66865b6d` excedía el
+  presupuesto de contexto del revisor.
 
 ## Próximo paso
-T3 y T4 (frontend).
+Revisión RDD de la feature y T5.
