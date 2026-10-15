@@ -38,13 +38,35 @@ de aceptación abajo.
 - Exportaciones CSV, PDF y webhooks no cambian (columnas fijas); no lo pide la decisión.
 
 ## Tareas
-- [ ] **T1 — Backend: modelo, alta y edición** (CA1, CA2, CA3). Migración tenant
+- [x] **T1 — Backend: modelo, alta y edición** (CA1, CA2, CA3). Migración tenant
   (`tickets.ubicacion` VarChar(255) y `tickets.sector_id` con FK y índice parcial, con
   `rollback.sql` idempotente), entidad, mapper, `CrearTicketUseCase` + `POST /tickets`,
   `EditarTicketUseCase` + `PATCH /tickets/:id`, `CrearTicketEdilicioUseCase` (solo sector), validación
-  del sector, tests; v1 y formulario público sin los campos.
-- [ ] **T2 — Backend: lectura** (CA1, CA4). `TicketResponseDto` y la respuesta de reparaciones con
-  `ubicacion`, `sectorId` y `sectorNombre` resueltos en lote; tests.
+  del sector, tests; v1 y formulario público sin los campos. Ruta: delegada (escritor único).
+  Commit `d1183d52`.
+  - Migración `20261015200000_ubicacion_sector_tickets` (FK `ON DELETE RESTRICT`, como compras);
+    spec de integración con el rollback corrido dos veces. Ubicación: tope de 255 en la entidad, sin
+    normalizar blancos (igual que la de Edilicia).
+  - Sector inexistente → `SectorTicketInexistenteError` (422). En la edición `null` limpia y omitido
+    no cambia. Edilicia acepta solo `sectorId`.
+  - API v1: un test prueba que el `ValidationPipe` (whitelist) descarta los dos campos y que el
+    controller no los pasa; otro, que la salida v1 no los expone.
+  - Precisión aceptada: en `CrearTicketUseCase` el repositorio de sectores es el último parámetro y
+    opcional (specs de integración lo arman a mano sin él); el módulo siempre lo inyecta y, si llega
+    un `sectorId` sin repositorio, falla cerrado con `throw`.
+  - Precisión aceptada: `PATCH /tickets/:id` no rechaza `ubicacion` en un ticket de Edilicia; la
+    regla de CA2 (no se carga) la cumple el frontend, que no muestra el campo para EDILICIA.
+- [x] **T2 — Backend: lectura** (CA1, CA4). `TicketResponseDto` y la respuesta de reparaciones con
+  `ubicacion`, `sectorId` y `sectorNombre` resueltos en lote; tests. Ruta: delegada (mismo
+  escritor). Commit `619415df`.
+  - `ISectorRepository.findNombres` (un lote, incluye sectores desactivados o borrados).
+    `GET /tickets` (listado y detalle) devuelve `ubicacion`, `sectorId` y `sectorNombre`; reparaciones
+    devuelve `sectorId` y `sectorNombre`, sin la ubicación general. El listado de reparaciones solo
+    consulta nombres si algún ticket tiene sector (el spec de exportación cuenta 5 consultas).
+  - Evidencia T1+T2: `pnpm lint` 0; `pnpm typecheck` 0 (repetido por el padre); `pnpm vitest run
+    src/tickets src/reparaciones src/integraciones src/sectores src/equipos/mantenimiento...` → 149
+    archivos, 1469 tests pasan; otros 34 archivos (e2e de integraciones, smoke, compras, equipos,
+    sla, preventivo) → 395 tests pasan; casts 594/111 (sin cambios). Suite completa: pendiente (T5).
 - [ ] **T3 — Frontend: tickets** (CA1, CA2, CA4). Tipos, alta y edición (Ubicación y Sector; la
   Ubicación oculta en EDILICIA), columnas del listado y detalle; tests.
 - [ ] **T4 — Frontend: Edilicia** (CA2, CA4, CA5). Sector en el alta y en el listado, cantidad en el
@@ -59,6 +81,7 @@ de aceptación abajo.
 
 ## Progreso
 - 2026-10-15: decisión escrita en el roadmap y exploración hecha; documento creado.
+- 2026-10-15: T1 y T2 hechas (backend).
 
 ## Próximo paso
-T1.
+T3 y T4 (frontend).
