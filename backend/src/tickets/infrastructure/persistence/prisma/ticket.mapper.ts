@@ -63,6 +63,8 @@ export class TicketMapper {
         slaVenceAt: row.slaVenceAt ?? null,
         vencido: row.vencido,
         fechaCierre: row.fechaCierre ?? null,
+        ubicacion: row.ubicacion ?? null,
+        sectorId: row.sectorId ?? null,
       },
       row.id,
       row.createdAt,
@@ -115,6 +117,8 @@ export class TicketMapper {
       slaVenceAt: entity.slaVenceAt,
       vencido: entity.vencido,
       fechaCierre: entity.fechaCierre,
+      ubicacion: entity.ubicacion,
+      sectorId: entity.sectorId,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

@@ -1,4 +1,4 @@
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { NotFoundException, UnprocessableEntityException, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtPayload } from '../../auth/domain/ports/i-token.service';
 import { AccionesGuard } from '../../auth/infrastructure/guards/acciones.guard';
@@ -17,6 +17,7 @@ import { ApiClaveGuard } from '../infrastructure/api-clave.guard';
 import { ApiV1ThrottlerGuard } from '../infrastructure/api-v1-throttler.guard';
 import { TicketsV1Controller } from './tickets-v1.controller';
 import { TicketsV1Presenter } from './tickets-v1.presenter';
+import { CrearTicketV1Dto } from './tickets-v1.dto';
 
 const ID = '01977a00-0000-7000-8000-0000000000cc';
 
@@ -173,6 +174,38 @@ describe('TicketsV1Controller (lectura)', () => {
       clienteId: 'c1',
       autorId: actor.sub,
       anio: new Date().getFullYear(),
+    });
+  });
+
+  describe('ubicacion y sector no entran por la API v1 (odd/ubicacion-sector-ticket, CA3)', () => {
+    const conCamposNuevos = {
+      titulo: 'T',
+      tipoId: ID,
+      prioridadId: ID,
+      ubicacion: 'Aula 3',
+      sectorId: ID,
+    };
+
+    it('el ValidationPipe global (whitelist) los descarta del body', async () => {
+      const pipe = new ValidationPipe({ whitelist: true, transform: true });
+
+      const dto: unknown = await pipe.transform(conCamposNuevos, {
+        type: 'body',
+        metatype: CrearTicketV1Dto,
+      });
+
+      expect(dto).not.toHaveProperty('ubicacion');
+      expect(dto).not.toHaveProperty('sectorId');
+    });
+
+    it('el mapeo explicito del controller no los pasa al caso de uso aunque lleguen', async () => {
+      const { controller, crear } = await armar();
+
+      await controller.crear(actor, conCamposNuevos);
+
+      const recibido: object = crear.mock.calls[0][0];
+      expect(recibido).not.toHaveProperty('ubicacion');
+      expect(recibido).not.toHaveProperty('sectorId');
     });
   });
 

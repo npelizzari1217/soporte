@@ -58,6 +58,19 @@ export interface Ticket {
    * (corregir-fecha-cierre-tickets).
    */
   fechaCierre: string | null;
+  /**
+   * Ubicación general, texto libre (odd/ubicacion-sector-ticket). En los tickets
+   * de Edilicia no se carga ni se muestra: Edilicia tiene su propia ubicación
+   * (`TicketEdilicia.ubicacion`).
+   */
+  ubicacion: string | null;
+  /** Sector del cliente (odd/ubicacion-sector-ticket); `null` = sin sector. */
+  sectorId: string | null;
+  /**
+   * Nombre del sector, resuelto por el backend aunque el sector esté
+   * desactivado (`GET /sectores` solo trae los activos). `null` = sin sector.
+   */
+  sectorNombre: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -122,12 +135,18 @@ export interface CrearTicketDto {
   tipoId: string;
   prioridadId: string;
   ticketReferenciaId?: string | null;
+  /** Texto libre, hasta 255 (odd/ubicacion-sector-ticket). */
+  ubicacion?: string | null;
+  sectorId?: string | null;
 }
 
+/** PATCH parcial: en `ubicacion` y `sectorId`, `null` limpia y ausente no toca. */
 export interface EditarTicketDto {
   titulo?: string;
   descripcion?: string | null;
   prioridadId?: string;
+  ubicacion?: string | null;
+  sectorId?: string | null;
 }
 
 export interface ComentarioDto {

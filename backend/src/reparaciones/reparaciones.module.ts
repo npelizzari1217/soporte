@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { TicketsModule } from '../tickets/tickets.module';
 import { ComprasModule } from '../compras/compras.module';
+import { SectoresModule } from '../sectores/sectores.module';
+import { ISectorRepository, SECTOR_REPOSITORY } from '../sectores/domain/ports/i-sector.repository';
 
 import { TICKET_REPOSITORY, ITicketRepository } from '../tickets/domain/ports/i-ticket.repository';
 import {
@@ -106,7 +108,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
   // descubierto por sdd/beta-frontend B6, T6.2) — TicketsModule NO
   // re-exporta AuthModule, así que los guards de ReparacionesController lo
   // necesitan importado acá explícitamente.
-  imports: [AuthModule, TicketsModule, ComprasModule],
+  imports: [AuthModule, TicketsModule, ComprasModule, SectoresModule],
   controllers: [ReparacionesController],
   providers: [
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
@@ -139,6 +141,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         resolverAsignacion: ResolverAsignacionAutomatica,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
+        sectorRepo: ISectorRepository,
       ) =>
         new CrearTicketEdilicioUseCase(
           ticketRepo,
@@ -153,6 +156,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
           resolverAsignacion,
           eventPublisher,
           txRunner,
+          sectorRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -167,6 +171,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         ResolverAsignacionAutomatica,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
+        SECTOR_REPOSITORY,
       ],
     },
     {
@@ -177,6 +182,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         tareaRepo: ITareaTicketRepository,
         comentarioRepo: IComentarioReparacionRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
+        sectorRepo: ISectorRepository,
       ) =>
         new ListarReparacionesUseCase(
           ediliciaRepo,
@@ -184,6 +190,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
           tareaRepo,
           comentarioRepo,
           reparacionCompraRepo,
+          sectorRepo,
         ),
       inject: [
         TICKET_EDILICIA_REPOSITORY,
@@ -191,6 +198,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         TAREA_TICKET_REPOSITORY,
         COMENTARIO_REPARACION_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
+        SECTOR_REPOSITORY,
       ],
     },
     {

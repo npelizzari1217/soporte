@@ -5,8 +5,10 @@ import { TicketReprioritizadoEvent } from '../../domain/events/ticket-reprioriti
 import {
   TicketNoEncontradoError,
   PrioridadNoEncontradaError,
+  SectorTicketInexistenteError,
   TicketBloqueadoParaEdicionError,
 } from '../../domain/errors/tickets.errors';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -24,6 +26,10 @@ export interface EditarTicketDto {
   titulo?: string;
   descripcion?: string | null;
   prioridadId?: string;
+  /** Ubicación general (odd/ubicacion-sector-ticket). `null` limpia; ausente no toca. */
+  ubicacion?: string | null;
+  /** Sector del cliente (odd/ubicacion-sector-ticket). `null` limpia; ausente no toca. */
+  sectorId?: string | null;
   /**
    * `true` si el actor es ROOT (`is_global_admin`). ROOT edita SIEMPRE,
    * incluso con el ticket EN_PROCESO o posterior. El resto solo puede editar
@@ -39,6 +45,9 @@ export interface EditarTicketDto {
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
  * 2. Si `prioridadId` viene definido, valida que exista en el catálogo del
  *    tenant → `PrioridadNoEncontradaError` (422) si no.
+ * 2b. Si `sectorId` viene con valor, valida que exista en el catálogo
+ *    → `SectorTicketInexistenteError` (422). No se exige activo: un ticket viejo
+ *    con un sector desactivado se sigue pudiendo editar (odd/ubicacion-sector-ticket).
  * 3. Aplica `TicketEntity.actualizarDatos()` (PATCH parcial — campos
  *    `undefined` no se tocan).
  * 4. Persiste.
@@ -47,7 +56,8 @@ export interface EditarTicketDto {
  * registra una operación de timeline ni usa `ITenantTransactionRunner`: la
  * spec T8 y la matriz de tests del design NO incluyen edición de datos
  * entre las mutaciones que requieren atomicidad con el timeline (T24 solo
- * lista crear/transicionar/asignar/adjuntar).
+ * lista crear/transicionar/asignar/adjuntar). Editar ubicación o sector
+ * tampoco deja entrada en el historial.
  *
  * Ref spec: sdd/tickets-core/spec T8. Tarea: T6.5.
  */
@@ -57,6 +67,7 @@ export class EditarTicketUseCase {
     private readonly prioridadRepo: IPrioridadRepository,
     private readonly estadoRepo: IEstadoRepository,
     private readonly eventPublisher: IDomainEventPublisher,
+    private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
   ) {}
 
   async execute(dto: EditarTicketDto): Promise<Result<TicketEntity, DomainError>> {
@@ -89,6 +100,13 @@ export class EditarTicketUseCase {
       }
     }
 
+    if (dto.sectorId) {
+      const sector = await this.sectorRepo.findById(dto.sectorId);
+      if (!sector) {
+        return Result.fail(new SectorTicketInexistenteError(dto.sectorId));
+      }
+    }
+
     // Fase 4 (S3, GATE G3): detecta el cambio REAL de prioridad ANTES de
     // mutar la entidad — necesario para no publicar el evento cuando el
     // caller reenvía la misma prioridadId (sin cambio efectivo).
@@ -98,6 +116,8 @@ export class EditarTicketUseCase {
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       prioridadId: dto.prioridadId,
+      ubicacion: dto.ubicacion,
+      sectorId: dto.sectorId,
     });
 
     await this.ticketRepo.save(ticket);

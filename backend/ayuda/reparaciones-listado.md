@@ -8,9 +8,10 @@ visibleParaSolicitante: false
 
 ## Qué muestra el listado
 
-Cada fila es una reparación edilicia, con **número, título, ubicación y
-avance**. El número identifica el ticket; el título resume el trabajo; la
-ubicación es el lugar físico donde ocurre (texto libre, puede estar vacía).
+Cada fila es una reparación edilicia, con **número, título, ubicación,
+sector y avance**. El número identifica el ticket; el título resume el trabajo; la
+ubicación es el lugar físico donde ocurre (texto libre, puede estar vacía); el
+sector es uno de los sectores cargados en el cliente (también puede estar vacío).
 
 El **avance** de cada fila sale del checklist de subtareas (las tareas del
 ticket) de esa reparación (`avance = tareas completadas ÷ tareas activas × 100`;

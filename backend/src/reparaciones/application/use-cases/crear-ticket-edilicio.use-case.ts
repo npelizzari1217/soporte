@@ -14,7 +14,11 @@ import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.reposi
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
-import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  SectorTicketInexistenteError,
+  SolicitanteInvalidoError,
+} from '../../../tickets/domain/errors/tickets.errors';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { TIPO_CODIGO_EDILICIA } from '../../../tickets/domain/tipos-ticket.constants';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
@@ -35,12 +39,27 @@ export interface CrearTicketEdilicioDto {
   titulo: string;
   descripcion?: string | null;
   prioridadId: string;
-  /** Ubicación física de la reparación, texto libre (opcional). */
+  /** Ubicación física de la reparación, texto libre (opcional). Va al satélite. */
   ubicacion?: string | null;
+  /**
+   * Sector del cliente (odd/ubicacion-sector-ticket). Va al ticket, como en cualquier otro módulo.
+   * La Ubicación general del ticket NO se carga en Edilicia: Edilicia usa su propia `ubicacion`.
+   */
+  sectorId?: string | null;
   solicitanteId: string;
   clienteId: string;
   autorId: string;
   anio: number;
+}
+
+/**
+ * Resultado del alta: el ticket base, su satélite y el nombre del sector elegido (o `null` si no
+ * se eligió), ya conocido por la validación — así la respuesta del alta no necesita otra consulta.
+ */
+export interface TicketEdilicioCreado {
+  ticket: TicketEntity;
+  ticketEdilicia: TicketEdiliciaEntity;
+  sectorNombre: string | null;
 }
 
 /**
@@ -52,6 +71,8 @@ export interface CrearTicketEdilicioDto {
  * libre, opcional — sin catálogo que validar, ex-Ubicacion removido):
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
+ * 2b. Si viene `sectorId`, valida que exista (no se exige activo) →
+ *    `SectorTicketInexistenteError` (odd/ubicacion-sector-ticket).
  * 3. Resuelve el tipo EDILICIA por código (catálogo FIJO — su ausencia es
  *    un fallo de infraestructura, `throw` defensivo).
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
@@ -85,11 +106,10 @@ export class CrearTicketEdilicioUseCase {
     private readonly resolverAsignacion: Pick<ResolverAsignacionAutomatica, 'resolver'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
   ) {}
 
-  async execute(
-    dto: CrearTicketEdilicioDto,
-  ): Promise<Result<{ ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity }, DomainError>> {
+  async execute(dto: CrearTicketEdilicioDto): Promise<Result<TicketEdilicioCreado, DomainError>> {
     // 1. Solicitante válido en el tenant (cross-DB, master.usuarios).
     const solicitanteValido = await this.usuarioMasterChecker.existeEnTenant(
       dto.solicitanteId,
@@ -105,6 +125,16 @@ export class CrearTicketEdilicioUseCase {
       return Result.fail(cicloResult.getError());
     }
     const cicloActivo = cicloResult.getValue();
+
+    // 2b. sectorId opcional: tiene que existir (un sector desactivado sigue siendo válido).
+    let sectorNombre: string | null = null;
+    if (dto.sectorId) {
+      const sector = await this.sectorRepo.findById(dto.sectorId);
+      if (!sector) {
+        return Result.fail(new SectorTicketInexistenteError(dto.sectorId));
+      }
+      sectorNombre = sector.nombre;
+    }
 
     // 3-4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
     //    es un bug de infraestructura, no un error del caller: throw defensivo.
@@ -141,10 +171,7 @@ export class CrearTicketEdilicioUseCase {
         dto.anio,
       );
       if (numeroResult.isFail()) {
-        return Result.fail<
-          { ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity },
-          DomainError
-        >(numeroResult.getError());
+        return Result.fail<TicketEdilicioCreado, DomainError>(numeroResult.getError());
       }
 
       const ticket = TicketEntity.create({
@@ -157,6 +184,8 @@ export class CrearTicketEdilicioUseCase {
         cicloId: cicloActivo.id,
         ticketReferenciaId: null,
         solicitanteId: dto.solicitanteId,
+        // La Ubicación general queda en null a propósito: Edilicia usa la del satélite.
+        sectorId: dto.sectorId ?? null,
       });
 
       // La regla asigna ANTES del primer `save()`: el ticket nace ASIGNADO.
@@ -183,12 +212,11 @@ export class CrearTicketEdilicioUseCase {
       }
       await this.ticketEdiliciaRepo.save(ticketEdilicia);
 
-      return Result.ok<{ ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity }, DomainError>(
-        {
-          ticket,
-          ticketEdilicia,
-        },
-      );
+      return Result.ok<TicketEdilicioCreado, DomainError>({
+        ticket,
+        ticketEdilicia,
+        sectorNombre,
+      });
     });
 
     // 6. DIFERIDO A POST-COMMIT vía `txRunner.alCommitear()` — mismo criterio

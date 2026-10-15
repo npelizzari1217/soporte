@@ -25,7 +25,8 @@ function ticket(estadoId: string) {
     asignadoId: "u-tecnico", solicitanteNombre: "Marina", solicitanteApellido: "Pérez",
     asignadoNombre: "Carlos", asignadoApellido: "Díaz", slaVenceAt: null, vencido: false,
     sla: { estado: "SIN_META", venceAt: null }, primeraRespuesta: { estado: "SIN_META", venceAt: null, at: null },
-    fechaCierre: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+    fechaCierre: null, ubicacion: null, sectorId: null, sectorNombre: null,
+    createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
   };
 }
 

@@ -37,6 +37,28 @@ function validarTitulo(titulo?: string): void {
 }
 
 /**
+ * Tope de largo de `ubicacion`, espejando `Ticket.ubicacion VarChar(255)`
+ * (`prisma_tenant/schema.prisma`). Mismo criterio que
+ * `TICKET_EDILICIA_UBICACION_MAX_LENGTH`: el dominio es la autoridad del
+ * límite y los DTOs lo importan de acá.
+ *
+ * `ubicacion` es texto libre y NO se normaliza en ningún borde (igual que la
+ * ubicación de Edilicia): el borde mide el mismo string que mide el dominio.
+ */
+export const TICKET_UBICACION_MAX_LENGTH = 255;
+
+/**
+ * Precondición de largo de `ubicacion`. Mismo criterio que `validarTitulo`:
+ * `throw` por violación de contrato del caller, y NO se aplica en
+ * `reconstitute()`.
+ */
+function validarUbicacion(ubicacion?: string | null): void {
+  if (ubicacion != null && ubicacion.length > TICKET_UBICACION_MAX_LENGTH) {
+    throw new Error(`TicketEntity: ubicacion excede ${TICKET_UBICACION_MAX_LENGTH} caracteres.`);
+  }
+}
+
+/**
  * TicketProps — shape completo de las propiedades de dominio del Ticket
  * (usado por getters y `reconstitute`). Sin imports de Prisma ni NestJS —
  * dominio puro.
@@ -80,6 +102,16 @@ export interface TicketProps {
   vencido: boolean;
   /** Fecha de cierre. Seteada por el use case al transicionar a RESUELTO/CERRADO (T12). */
   fechaCierre: Date | null;
+  /**
+   * Ubicación general, texto libre (odd/ubicacion-sector-ticket). Es otra cosa que la ubicación del
+   * satélite de Edilicia. Opcional en el tipo, como `solicitanteExternoId`; ausente equivale a `null`.
+   */
+  ubicacion?: string | null;
+  /**
+   * FK → sectores.id (odd/ubicacion-sector-ticket). Su existencia la valida el caso de uso; no se
+   * exige que el sector esté activo. Ausente equivale a `null`.
+   */
+  sectorId?: string | null;
 }
 
 /**
@@ -205,6 +237,7 @@ export class TicketEntity extends BaseEntity<TicketProps> {
    */
   static create(props: CrearTicketProps, id?: string): TicketEntity {
     validarTitulo(props.titulo);
+    validarUbicacion(props.ubicacion);
     validarSolicitante(props.solicitanteId, props.solicitanteExternoId ?? null);
     return new TicketEntity(
       { ...props, asignadoId: null, slaVenceAt: null, vencido: false, fechaCierre: null },
@@ -288,6 +321,14 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     return this.props.asignadoId;
   }
 
+  get ubicacion(): string | null {
+    return this.props.ubicacion ?? null;
+  }
+
+  get sectorId(): string | null {
+    return this.props.sectorId ?? null;
+  }
+
   get slaVenceAt(): Date | null {
     return this.props.slaVenceAt;
   }
@@ -352,21 +393,26 @@ export class TicketEntity extends BaseEntity<TicketProps> {
 
   /**
    * Actualiza los campos editables de datos del ticket (T8): `titulo`,
-   * `descripcion`, `prioridadId`. El `estado` NUNCA se muta por esta vía —
+   * `descripcion`, `prioridadId`, `ubicacion` y `sectorId`
+   * (odd/ubicacion-sector-ticket). El `estado` NUNCA se muta por esta vía —
    * es una transición (T9, `updateEstado`), no una edición de datos.
    *
-   * Campos `undefined` NO se tocan (PATCH semántico); `descripcion: null`
-   * limpia el valor explícitamente.
+   * Campos `undefined` NO se tocan (PATCH semántico); `null` en
+   * `descripcion`, `ubicacion` o `sectorId` limpia el valor explícitamente.
    *
    * Ref spec: sdd/tickets-core/spec T8. Tarea: T6.5.
-   * @throws Error si `titulo` excede `TICKET_TITULO_MAX_LENGTH`.
+   * @throws Error si `titulo` excede `TICKET_TITULO_MAX_LENGTH` o `ubicacion`
+   *         excede `TICKET_UBICACION_MAX_LENGTH`.
    */
   actualizarDatos(datos: {
     titulo?: string;
     descripcion?: string | null;
     prioridadId?: string;
+    ubicacion?: string | null;
+    sectorId?: string | null;
   }): void {
     validarTitulo(datos.titulo);
+    validarUbicacion(datos.ubicacion);
     if (datos.titulo !== undefined) {
       this.props.titulo = datos.titulo;
     }
@@ -375,6 +421,12 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     }
     if (datos.prioridadId !== undefined) {
       this.props.prioridadId = datos.prioridadId;
+    }
+    if (datos.ubicacion !== undefined) {
+      this.props.ubicacion = datos.ubicacion;
+    }
+    if (datos.sectorId !== undefined) {
+      this.props.sectorId = datos.sectorId;
     }
     this.touch();
   }

@@ -286,6 +286,44 @@ describe('TicketEntity', () => {
     });
   });
 
+  describe('ubicacion y sector (odd/ubicacion-sector-ticket)', () => {
+    it('create() sin los campos los deja en null', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+      expect(ticket.ubicacion).toBeNull();
+      expect(ticket.sectorId).toBeNull();
+    });
+
+    it('create() acepta ubicacion de 255 y rechaza la de 256', () => {
+      expect(() =>
+        TicketEntity.create({ ...baseCrearProps(), ubicacion: 'U'.repeat(255) }),
+      ).not.toThrow();
+      expect(() =>
+        TicketEntity.create({ ...baseCrearProps(), ubicacion: 'U'.repeat(256) }),
+      ).toThrow(/ubicacion/);
+    });
+
+    it('actualizarDatos() setea, conserva si se omite y limpia con null', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+
+      ticket.actualizarDatos({ ubicacion: 'Aula 2', sectorId: 'sector-uuid' });
+      expect(ticket.ubicacion).toBe('Aula 2');
+      expect(ticket.sectorId).toBe('sector-uuid');
+
+      ticket.actualizarDatos({ titulo: 'Otro' });
+      expect(ticket.ubicacion).toBe('Aula 2');
+      expect(ticket.sectorId).toBe('sector-uuid');
+
+      ticket.actualizarDatos({ ubicacion: null, sectorId: null });
+      expect(ticket.ubicacion).toBeNull();
+      expect(ticket.sectorId).toBeNull();
+    });
+
+    it('actualizarDatos() rechaza ubicacion de mas de 255', () => {
+      const ticket = TicketEntity.create(baseCrearProps());
+      expect(() => ticket.actualizarDatos({ ubicacion: 'U'.repeat(256) })).toThrow(/ubicacion/);
+    });
+  });
+
   describe('actualizarDatos()', () => {
     it('actualiza titulo, descripcion y prioridadId cuando vienen definidos', () => {
       const ticket = TicketEntity.create(baseCrearProps());

@@ -28,7 +28,9 @@ import {
   TicketReferenciaInvalidaError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
+  SectorTicketInexistenteError,
 } from '../../domain/errors/tickets.errors';
+import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 
 function baseDto(overrides: Partial<CrearTicketDto> = {}): CrearTicketDto {
   return {
@@ -117,6 +119,14 @@ describe('CrearTicketUseCase', () => {
     };
     const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
     const eventPublisher = { publish: vi.fn() };
+    // Un sector existente pero DESACTIVADO: el alta lo acepta igual (odd/ubicacion-sector-ticket).
+    const sectorRepo = {
+      findById: vi.fn(async (id: string) =>
+        id === 'sector-uuid'
+          ? SectorEntity.create({ codigo: 'COMP', nombre: 'Computacion', activo: false }, id)
+          : null,
+      ),
+    };
 
     const useCase = new CrearTicketUseCase(
       ticketRepo as never,
@@ -131,10 +141,12 @@ describe('CrearTicketUseCase', () => {
       resolverAsignacion,
       eventPublisher as never,
       txRunner as never,
+      sectorRepo,
     );
 
     return {
       useCase,
+      sectorRepo,
       ticketRepo,
       operacionRepo,
       estadoRepo,
@@ -171,6 +183,41 @@ describe('CrearTicketUseCase', () => {
     expect(operacionGuardada.estadoAnteriorId).toBeNull();
     expect(operacionGuardada.estadoNuevoId).toBe('estado-nuevo-uuid');
     expect(operacionGuardada.autorId).toBe('solicitante-uuid');
+  });
+
+  describe('ubicacion y sector (odd/ubicacion-sector-ticket)', () => {
+    it('sin los campos el ticket nace sin ubicacion ni sector y no consulta el catalogo', async () => {
+      const c = makeCollaborators();
+
+      const ticket = (await c.useCase.execute(baseDto())).getValue();
+
+      expect(ticket.ubicacion).toBeNull();
+      expect(ticket.sectorId).toBeNull();
+      expect(c.sectorRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('guarda ubicacion y un sector existente, aunque este desactivado', async () => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute(
+        baseDto({ ubicacion: 'Aula 3, primer piso', sectorId: 'sector-uuid' }),
+      );
+
+      const ticket = result.getValue();
+      expect(ticket.ubicacion).toBe('Aula 3, primer piso');
+      expect(ticket.sectorId).toBe('sector-uuid');
+      expect(c.ticketRepo.save).toHaveBeenCalledWith(ticket);
+    });
+
+    it('sector inexistente → SectorTicketInexistenteError, sin abrir la tx', async () => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute(baseDto({ sectorId: 'no-existe' }));
+
+      expect(result.getError()).toBeInstanceOf(SectorTicketInexistenteError);
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   it('SA10 (Fase 4, aditivo, GATE G3): publica TicketCreadoEvent POST-COMMIT con ticketId/prioridadId', async () => {

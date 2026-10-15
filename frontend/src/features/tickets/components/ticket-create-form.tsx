@@ -3,7 +3,8 @@
 /**
  * TicketCreateForm — PRESENTATIONAL. Form de creación (R-M1 / T1.8):
  * título/descripción/tipo/prioridad + referencia opcional ("Continúa de
- * #X"). Gate `ticket:crear` lo aplica el caller (`TicketCreateDialog`).
+ * #X"), más ubicación y sector opcionales (odd/ubicacion-sector-ticket). Gate
+ * `ticket:crear` lo aplica el caller (`TicketCreateDialog`).
  */
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,15 +14,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { crearTicketSchema, type CrearTicketFormValues } from "../schemas";
 import type { CrearTicketDto, Prioridad, TipoTicket } from "../types";
+import type { Sector } from "@/features/sectores/types";
 
 export interface TicketCreateFormProps {
   tipos: TipoTicket[];
   prioridades: Prioridad[];
+  /** Sectores activos del cliente, para el select opcional "Sector". */
+  sectores: Sector[];
   onSubmit: (dto: CrearTicketDto) => void;
   isSubmitting: boolean;
 }
 
-export function TicketCreateForm({ tipos, prioridades, onSubmit, isSubmitting }: TicketCreateFormProps) {
+export function TicketCreateForm({ tipos, prioridades, sectores, onSubmit, isSubmitting }: TicketCreateFormProps) {
   const {
     register,
     handleSubmit,
@@ -37,6 +41,9 @@ export function TicketCreateForm({ tipos, prioridades, onSubmit, isSubmitting }:
       tipoId: values.tipoId,
       prioridadId: values.prioridadId,
       ticketReferenciaId: values.ticketReferenciaId || undefined,
+      // Mismo criterio que la referencia: el campo vacío no viaja.
+      ubicacion: values.ubicacion || undefined,
+      sectorId: values.sectorId || undefined,
     });
   }
 
@@ -101,6 +108,32 @@ export function TicketCreateForm({ tipos, prioridades, onSubmit, isSubmitting }:
             {errors.prioridadId.message}
           </p>
         )}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="crear-ubicacion" className="text-sm font-medium text-foreground">
+          Ubicación
+        </label>
+        <Input id="crear-ubicacion" error={!!errors.ubicacion} {...register("ubicacion")} />
+        {errors.ubicacion && (
+          <p role="alert" className="text-sm text-destructive">
+            {errors.ubicacion.message}
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="crear-sector" className="text-sm font-medium text-foreground">
+          Sector
+        </label>
+        <Select id="crear-sector" defaultValue="" {...register("sectorId")}>
+          <option value="">Sin sector</option>
+          {sectores.map((sector) => (
+            <option key={sector.id} value={sector.id}>
+              {sector.nombre}
+            </option>
+          ))}
+        </Select>
       </div>
 
       <Button type="submit" isLoading={isSubmitting} className="self-start">

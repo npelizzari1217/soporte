@@ -146,6 +146,33 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
     });
 
+    it('con sector: lo pasa al caso de uso y responde sectorId y sectorNombre (odd/ubicacion-sector-ticket)', async () => {
+      const { controller, crearTicketEdilicioUseCase } = buildController();
+      const ticket = makeTicket();
+      ticket.actualizarDatos({ sectorId: 'sector-uuid' });
+      const ticketEdilicia = TicketEdiliciaEntity.create(
+        { ticketId: ticket.id, ubicacion: 'Patio' },
+        'edilicia-uuid',
+      );
+      crearTicketEdilicioUseCase.execute.mockResolvedValue(
+        Result.ok({ ticket, ticketEdilicia, sectorNombre: 'Mantenimiento' }),
+      );
+
+      const result = await controller.crear(
+        { titulo: 'Reparar', prioridadId: 'prioridad-uuid', sectorId: 'sector-uuid' },
+        USER,
+      );
+
+      expect(crearTicketEdilicioUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ sectorId: 'sector-uuid' }),
+      );
+      expect(result).toMatchObject({
+        ubicacion: 'Patio',
+        sectorId: 'sector-uuid',
+        sectorNombre: 'Mantenimiento',
+      });
+    });
+
     it('mapea SolicitanteInvalidoError → 422', async () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
@@ -182,6 +209,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('lista las reparaciones del tenant', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
+      // La Ubicacion general del ticket no viaja en Edilicia: se ve la del satelite.
+      ticket.actualizarDatos({ sectorId: 'sector-uuid', ubicacion: 'Ubicacion general' });
       const ticketEdilicia = TicketEdiliciaEntity.create(
         { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
@@ -196,6 +225,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
             cantidadComentarios: 2,
             bloqueada: false,
             comprasQueBloquean: [],
+            sectorNombre: 'Mantenimiento',
           },
         ]),
       );
@@ -207,6 +237,11 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(result[0].subtareas).toEqual([]);
       // El listado expone SÓLO el conteo — los comentarios tienen su GET propio.
       expect(result[0].cantidadComentarios).toBe(2);
+      expect(result[0]).toMatchObject({
+        ubicacion: 'Edificio Central',
+        sectorId: 'sector-uuid',
+        sectorNombre: 'Mantenimiento',
+      });
     });
 
     it('embebe las subtareas activas, que ahora son las tareas del ticket, con su avance (odd/tareas-con-tecnico T3)', async () => {

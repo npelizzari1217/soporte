@@ -312,6 +312,23 @@ export class TicketReferenciaInvalidaError extends DomainError {
 }
 
 /**
+ * SectorTicketInexistenteError — `sectorId` fue provisto en el alta o la
+ * edición de un ticket pero no corresponde a ningún sector del catálogo del
+ * tenant (odd/ubicacion-sector-ticket). Mismo criterio que
+ * `SectorInexistenteError` de compras: se valida existencia, no que el sector
+ * esté activo, y sin este guard el FK `tickets_sector_id_fkey` lo rechazaría
+ * como un 500 sin mapear.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class SectorTicketInexistenteError extends DomainError {
+  readonly code = 'SECTOR_INEXISTENTE';
+
+  constructor(sectorId: string) {
+    super(`El sector "${sectorId}" no existe en el catálogo del tenant.`);
+  }
+}
+
+/**
  * TipoTicketCodigoDuplicadoError — el `codigo` provisto al crear/editar un
  * `TipoTicket` ya existe en el tenant (incluso si el registro existente
  * está soft-deleted: `tipos_ticket.codigo` es UNIQUE a nivel de schema SIN

@@ -87,6 +87,9 @@ const USUARIO_SOPORTE: JwtPayload = payloadDeTest({
   modulos: ['SOPORTE'],
 });
 
+/** Firma de `ISectorRepository.findNombres`, para tipar su doble sin casts. */
+type FindNombresSector = (ids: readonly string[]) => Promise<Map<string, string>>;
+
 /** Doble de un use case: al controller sólo le interesa `execute`. */
 type MockUseCase = { execute: ReturnType<typeof vi.fn> };
 
@@ -108,6 +111,7 @@ type DependenciasControlador = {
     findNombres: ReturnType<typeof vi.fn>;
     findById: ReturnType<typeof vi.fn>;
   };
+  sectorRepo: { findNombres: ReturnType<typeof vi.fn<FindNombresSector>> };
 };
 
 type ControladorDeTest = DependenciasControlador & {
@@ -155,6 +159,9 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
       findNombres: vi.fn().mockResolvedValue(new Map()),
       findById: vi.fn().mockResolvedValue(null),
     },
+    sectorRepo: overrides.sectorRepo ?? {
+      findNombres: vi.fn<FindNombresSector>().mockResolvedValue(new Map()),
+    },
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
   // devuelve un Map vacío sin N+1.
@@ -176,6 +183,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     deps.obtenerCsatTicket as unknown as Ctor[12], // obtenerCsatTicketUseCase
     deps.solicitanteExternoRepo as unknown as Ctor[13], // solicitanteExternoRepo
     { findAllActive: vi.fn().mockResolvedValue([]) } as unknown as Ctor[14], // estadoRepo
+    deps.sectorRepo, // sectorRepo
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -347,6 +355,40 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     expect(editarTicket.execute).toHaveBeenCalledWith(
       expect.objectContaining({ actorEsRoot: false }),
     );
+  });
+
+  it('create: pasa ubicacion y sectorId del body; ausentes llegan como null', async () => {
+    const crearTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ crearTicket });
+    const body = { titulo: 'X', tipoId: 't1', prioridadId: 'p1' };
+
+    await controller.create(ADMINISTRADOR, { ...body, ubicacion: 'Aula 3', sectorId: 's1' });
+    await controller.create(ADMINISTRADOR, body);
+
+    expect(crearTicket.execute).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ ubicacion: 'Aula 3', sectorId: 's1' }),
+    );
+    expect(crearTicket.execute).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ ubicacion: null, sectorId: null }),
+    );
+  });
+
+  it('update: null en ubicacion/sectorId llega como null (limpia); omitidos llegan undefined', async () => {
+    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ editarTicket });
+
+    await controller.update(ADMINISTRADOR, 'ticket-1', { ubicacion: null, sectorId: null });
+    await controller.update(ADMINISTRADOR, 'ticket-1', { titulo: 'X' });
+
+    expect(editarTicket.execute.mock.calls[0][0]).toMatchObject({
+      ubicacion: null,
+      sectorId: null,
+    });
+    const segunda = editarTicket.execute.mock.calls[1][0];
+    expect(segunda.ubicacion).toBeUndefined();
+    expect(segunda.sectorId).toBeUndefined();
   });
 
   it('update: TicketBloqueadoParaEdicionError → 403 ForbiddenException', async () => {
@@ -743,6 +785,68 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
     expect(respuesta.solicitanteEsExterno).toBe(false);
     expect(solicitanteExternoRepo.findById).not.toHaveBeenCalled();
   });
+
+  describe('ubicacion y sector en la respuesta (odd/ubicacion-sector-ticket)', () => {
+    function conSector(id: string, sectorId: string | null, ubicacion: string | null) {
+      const t = ticketDe(id, { usuario: 'u-1' });
+      t.actualizarDatos({ sectorId, ubicacion });
+      return t;
+    }
+
+    it('listado: resuelve los nombres de sector en un solo lote y los expone con la ubicacion', async () => {
+      const items = [
+        conSector('t-1', 's-1', 'Aula 3'),
+        conSector('t-2', 's-1', null),
+        conSector('t-3', null, null),
+        conSector('t-4', 's-viejo', null),
+      ];
+      const listarTickets = {
+        execute: vi
+          .fn()
+          .mockResolvedValue(Result.ok({ items, total: 4, pagina: 1, porPagina: 20 })),
+      };
+      const sectorRepo = {
+        findNombres: vi.fn<FindNombresSector>().mockResolvedValue(
+          new Map([
+            ['s-1', 'Computacion'],
+            ['s-viejo', 'Sector desactivado'],
+          ]),
+        ),
+      };
+      const { controller } = buildController({ listarTickets, sectorRepo });
+
+      const { items: res } = await controller.findAll(LECTOR, {});
+
+      expect(res.map((r) => [r.ubicacion, r.sectorId, r.sectorNombre])).toEqual([
+        ['Aula 3', 's-1', 'Computacion'],
+        [null, 's-1', 'Computacion'],
+        [null, null, null],
+        [null, 's-viejo', 'Sector desactivado'],
+      ]);
+      expect(sectorRepo.findNombres).toHaveBeenCalledTimes(1);
+      expect(sectorRepo.findNombres).toHaveBeenCalledWith(['s-1', 's-viejo']);
+    });
+
+    it('detalle: trae ubicacion, sectorId y sectorNombre', async () => {
+      const obtenerTicket = {
+        execute: vi.fn().mockResolvedValue(Result.ok(conSector('t-1', 's-1', 'Patio'))),
+      };
+      const sectorRepo = {
+        findNombres: vi
+          .fn<FindNombresSector>()
+          .mockResolvedValue(new Map([['s-1', 'Mantenimiento']])),
+      };
+      const { controller } = buildController({ obtenerTicket, sectorRepo });
+
+      const respuesta = await controller.findOne(LECTOR, 't-1');
+
+      expect(respuesta).toMatchObject({
+        ubicacion: 'Patio',
+        sectorId: 's-1',
+        sectorNombre: 'Mantenimiento',
+      });
+    });
+  });
 });
 
 describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
@@ -756,8 +860,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 26 clases de error (25 previas + TipoTicketDelSistemaError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(26);
+  it('el catálogo tiene EXACTAMENTE 27 clases de error (26 previas + SectorTicketInexistenteError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(27);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -857,6 +961,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'SolicitanteExternoInvalidoError',
       () => new TicketsErrors.SolicitanteExternoInvalidoError('el nombre es obligatorio'),
+      422,
+    ],
+    [
+      'SectorTicketInexistenteError',
+      () => new TicketsErrors.SectorTicketInexistenteError('sector-x'),
       422,
     ],
   ];

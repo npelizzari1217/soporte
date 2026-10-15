@@ -57,15 +57,22 @@ describe('ListarReparacionesUseCase', () => {
         .fn()
         .mockResolvedValue(new Map<string, CompraVinculada[]>()),
     };
+    const sectorRepo = {
+      findNombres: vi
+        .fn<(ids: readonly string[]) => Promise<Map<string, string>>>()
+        .mockResolvedValue(new Map()),
+    };
     const useCase = new ListarReparacionesUseCase(
       ediliciaRepo as any,
       ticketRepo as any,
       subtareaRepo as any,
       comentarioRepo as any,
       reparacionCompraRepo as any,
+      sectorRepo,
     );
     return {
       useCase,
+      sectorRepo,
       ediliciaRepo,
       ticketRepo,
       subtareaRepo,
@@ -203,6 +210,32 @@ describe('ListarReparacionesUseCase', () => {
       // edilicia-uuid-1 no tiene entrada en el Map: ausencia = `[]`, nunca `undefined`.
       expect(items[1].bloqueada).toBe(false);
       expect(items[1].comprasQueBloquean).toEqual([]);
+    });
+  });
+
+  describe('sector del ticket base (odd/ubicacion-sector-ticket)', () => {
+    it('resuelve los nombres en UN lote con los ids distintos; sin sector queda null', async () => {
+      const deps = conNSatelites(3);
+      const tickets = ['ticket-uuid-0', 'ticket-uuid-1', 'ticket-uuid-2'].map(makeTicket);
+      tickets[0].actualizarDatos({ sectorId: 's-1' });
+      tickets[1].actualizarDatos({ sectorId: 's-1' });
+      deps.ticketRepo.findByIds.mockResolvedValue(new Map(tickets.map((t) => [t.id, t])));
+      deps.sectorRepo.findNombres.mockResolvedValue(new Map([['s-1', 'Mantenimiento']]));
+
+      const items = (await deps.useCase.execute()).getValue();
+
+      expect(items.map((i) => i.sectorNombre)).toEqual(['Mantenimiento', 'Mantenimiento', null]);
+      expect(deps.sectorRepo.findNombres).toHaveBeenCalledTimes(1);
+      expect(deps.sectorRepo.findNombres).toHaveBeenCalledWith(['s-1']);
+    });
+
+    it('si ningun ticket tiene sector no consulta el catalogo', async () => {
+      const deps = conNSatelites(2);
+
+      const items = (await deps.useCase.execute()).getValue();
+
+      expect(items.map((i) => i.sectorNombre)).toEqual([null, null]);
+      expect(deps.sectorRepo.findNombres).not.toHaveBeenCalled();
     });
   });
 

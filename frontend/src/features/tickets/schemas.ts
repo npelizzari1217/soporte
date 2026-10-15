@@ -10,6 +10,22 @@ import {
   MENSAJE_TITULO_DEMASIADO_LARGO,
 } from "@/shared/lib/limites-ticket";
 
+/**
+ * Tope de la ubicación general del ticket: espejo de `TICKET_UBICACION_MAX_LENGTH`
+ * (`ticket.entity.ts`, columna `VarChar(255)`). Vive en esta feature porque solo
+ * la escriben sus formularios; la ubicación de Edilicia es otra columna
+ * (`features/edilicia/limites.ts`).
+ */
+export const TICKET_UBICACION_MAX_LENGTH = 255;
+
+const ubicacionSchema = z
+  .string()
+  .max(TICKET_UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", TICKET_UBICACION_MAX_LENGTH))
+  .optional();
+
+/** `""` = sin sector (la opción vacía del select). */
+const sectorIdSchema = z.string().uuid().optional().or(z.literal(""));
+
 export const crearTicketSchema = z.object({
   titulo: z
     .string()
@@ -19,6 +35,8 @@ export const crearTicketSchema = z.object({
   tipoId: z.string().uuid("Elegí un tipo de ticket"),
   prioridadId: z.string().uuid("Elegí una prioridad"),
   ticketReferenciaId: z.string().uuid().optional().or(z.literal("")),
+  ubicacion: ubicacionSchema,
+  sectorId: sectorIdSchema,
 });
 export type CrearTicketFormValues = z.infer<typeof crearTicketSchema>;
 
@@ -29,6 +47,8 @@ export const editarTicketSchema = z.object({
     .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
   prioridadId: z.string().uuid("Elegí una prioridad"),
+  ubicacion: ubicacionSchema,
+  sectorId: sectorIdSchema,
 });
 export type EditarTicketFormValues = z.infer<typeof editarTicketSchema>;
 
