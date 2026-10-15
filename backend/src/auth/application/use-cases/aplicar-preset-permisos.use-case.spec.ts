@@ -1,14 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
 import { PresetRolNoDefinidoError } from '../../domain/errors/auth.errors';
+import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 
 describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario WU-7.4)', () => {
   it('sobrescribe la matriz del usuario con el preset EXACTO del rol', async () => {
     const permisosRepo = {
-      setPermisos: vi.fn().mockResolvedValue(undefined),
-      findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo as never);
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -28,10 +31,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
 
   it('rolCodigo sin preset definido: falla con PresetRolNoDefinidoError SIN tocar la matriz (fail explícito, nunca preset vacío en silencio)', async () => {
     const permisosRepo = {
-      setPermisos: vi.fn(),
-      findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>(),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo as never);
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -47,10 +52,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
 
   it('ADMINISTRADOR: aplica preset vacío (bypassea vía resolverScope, R2 — no necesita celdas)', async () => {
     const permisosRepo = {
-      setPermisos: vi.fn().mockResolvedValue(undefined),
-      findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo as never);
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -71,10 +78,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
    */
   it('[CRITICAL] W11: con sobrescribir=false y celdas existentes, NO toca la matriz', async () => {
     const permisosRepo = {
-      setPermisos: vi.fn(),
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>(),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo as never);
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
@@ -89,10 +98,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
 
   it('con sobrescribir=false y matriz VACÍA, sí siembra el preset (el alta genuina)', async () => {
     const permisosRepo = {
-      setPermisos: vi.fn().mockResolvedValue(undefined),
-      findByUsuarioYCliente: vi.fn().mockResolvedValue([]),
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo as never);
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
@@ -114,10 +125,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
    */
   it('[CRITICAL] con sobrescribir=false, un rol SIN preset falla igual aunque la matriz no esté vacía', async () => {
     const permisosRepo = {
-      setPermisos: vi.fn(),
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(['TICKETS:LECTURA']),
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>(),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(['TICKETS:LECTURA']),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo as never);
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',

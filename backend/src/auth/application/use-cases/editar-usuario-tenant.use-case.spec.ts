@@ -3,6 +3,8 @@ import { EditarUsuarioTenantUseCase } from './editar-usuario-tenant.use-case';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { MembresiaNoEncontradaError } from '../../domain/errors/auth.errors';
 import type { MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
+import type { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import type { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 
 function buildUsuario() {
   return UsuarioEntity.reconstitute(
@@ -31,13 +33,15 @@ describe('EditarUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fro
   it('edita nombre y apellido del usuario con membresía activa en este cliente', async () => {
     const usuario = buildUsuario();
     const usuarioRepo = {
-      findById: vi.fn().mockResolvedValue(usuario),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<IUsuarioRepository['findById']>().mockResolvedValue(usuario),
+      save: vi.fn<IUsuarioRepository['save']>().mockResolvedValue(undefined),
     };
     const membresiaRepo = {
-      findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(MEMBRESIA_ACTIVA),
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(MEMBRESIA_ACTIVA),
     };
-    const useCase = new EditarUsuarioTenantUseCase(usuarioRepo as never, membresiaRepo as never);
+    const useCase = new EditarUsuarioTenantUseCase(usuarioRepo, membresiaRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -59,11 +63,16 @@ describe('EditarUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fro
   });
 
   it('AISLAMIENTO: falla con MembresiaNoEncontradaError si no hay membresía activa en este cliente', async () => {
-    const usuarioRepo = { findById: vi.fn(), save: vi.fn() };
-    const membresiaRepo = {
-      findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(null),
+    const usuarioRepo = {
+      findById: vi.fn<IUsuarioRepository['findById']>(),
+      save: vi.fn<IUsuarioRepository['save']>(),
     };
-    const useCase = new EditarUsuarioTenantUseCase(usuarioRepo as never, membresiaRepo as never);
+    const membresiaRepo = {
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(null),
+    };
+    const useCase = new EditarUsuarioTenantUseCase(usuarioRepo, membresiaRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',

@@ -90,7 +90,7 @@ describe('AuthController (T6.5)', () => {
         Result.ok({ kind: 'tokens', accessToken: 'at', refreshToken: 'rt' }),
       );
 
-      const result = await controller.login({ email: 'a@a.com', password: 'pw' } as any, REQ);
+      const result = await controller.login({ email: 'a@a.com', password: 'pw' }, REQ);
 
       expect(result).toEqual({ accessToken: 'at', refreshToken: 'rt' });
       expect(loginUseCase.execute).toHaveBeenCalledWith({
@@ -105,7 +105,7 @@ describe('AuthController (T6.5)', () => {
       const membresias = [{ cliente_id: 'c1', nombre: 'C1', rol: 'TECNICO' }];
       loginUseCase.execute.mockResolvedValue(Result.ok({ kind: 'selection', membresias }));
 
-      const result = await controller.login({ email: 'a@a.com', password: 'pw' } as any, REQ);
+      const result = await controller.login({ email: 'a@a.com', password: 'pw' }, REQ);
 
       expect(result).toEqual({ needsClienteSelection: true, membresias });
     });
@@ -114,18 +114,18 @@ describe('AuthController (T6.5)', () => {
       const { controller, loginUseCase } = buildController();
       loginUseCase.execute.mockResolvedValue(Result.fail(new CredencialesInvalidasError()));
 
-      await expect(
-        controller.login({ email: 'a@a.com', password: 'bad' } as any, REQ),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(controller.login({ email: 'a@a.com', password: 'bad' }, REQ)).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('0 membresías activas → ForbiddenException', async () => {
       const { controller, loginUseCase } = buildController();
       loginUseCase.execute.mockResolvedValue(Result.fail(new SinMembresiaActivaError()));
 
-      await expect(
-        controller.login({ email: 'a@a.com', password: 'pw' } as any, REQ),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(controller.login({ email: 'a@a.com', password: 'pw' }, REQ)).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('clienteId no autorizado → ForbiddenException', async () => {
@@ -133,7 +133,7 @@ describe('AuthController (T6.5)', () => {
       loginUseCase.execute.mockResolvedValue(Result.fail(new ClienteNoAutorizadoError()));
 
       await expect(
-        controller.login({ email: 'a@a.com', password: 'pw', clienteId: 'x' } as any, REQ),
+        controller.login({ email: 'a@a.com', password: 'pw', clienteId: 'x' }, REQ),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -145,7 +145,7 @@ describe('AuthController (T6.5)', () => {
         Result.ok({ accessToken: 'at2', refreshToken: 'rt2' }),
       );
 
-      const result = await controller.refresh({ refreshToken: 'rt' } as any);
+      const result = await controller.refresh({ refreshToken: 'rt' });
 
       expect(result).toEqual({ accessToken: 'at2', refreshToken: 'rt2' });
       expect(refreshTokenUseCase.execute).toHaveBeenCalledWith({ rawToken: 'rt' });
@@ -159,7 +159,7 @@ describe('AuthController (T6.5)', () => {
       const { controller, refreshTokenUseCase } = buildController();
       refreshTokenUseCase.execute.mockResolvedValue(Result.fail(error));
 
-      await expect(controller.refresh({ refreshToken: 'x' } as any)).rejects.toThrow(
+      await expect(controller.refresh({ refreshToken: 'x' })).rejects.toThrow(
         UnauthorizedException,
       );
     });
@@ -168,9 +168,7 @@ describe('AuthController (T6.5)', () => {
       const { controller, refreshTokenUseCase } = buildController();
       refreshTokenUseCase.execute.mockResolvedValue(Result.fail(new ClienteNoAutorizadoError()));
 
-      await expect(controller.refresh({ refreshToken: 'x' } as any)).rejects.toThrow(
-        ForbiddenException,
-      );
+      await expect(controller.refresh({ refreshToken: 'x' })).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -179,7 +177,7 @@ describe('AuthController (T6.5)', () => {
       const { controller, logoutUseCase } = buildController();
       logoutUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
-      await controller.logout({ refreshToken: 'rt' } as any);
+      await controller.logout({ refreshToken: 'rt' });
 
       expect(logoutUseCase.execute).toHaveBeenCalledWith({ rawToken: 'rt' });
     });
@@ -188,9 +186,7 @@ describe('AuthController (T6.5)', () => {
       const { controller, logoutUseCase } = buildController();
       logoutUseCase.execute.mockResolvedValue(Result.fail(new TokenInvalidoError()));
 
-      await expect(controller.logout({ refreshToken: 'x' } as any)).rejects.toThrow(
-        UnauthorizedException,
-      );
+      await expect(controller.logout({ refreshToken: 'x' })).rejects.toThrow(UnauthorizedException);
     });
   });
 
@@ -210,7 +206,7 @@ describe('AuthController (T6.5)', () => {
       const { controller, switchTenantUseCase } = buildController();
       switchTenantUseCase.execute.mockResolvedValue(Result.ok({ accessToken: 'at3' }));
 
-      const result = await controller.switchTenant(ROOT_PAYLOAD, { clienteId: 'c1' } as any);
+      const result = await controller.switchTenant(ROOT_PAYLOAD, { clienteId: 'c1' });
 
       expect(result).toEqual({ accessToken: 'at3' });
       expect(switchTenantUseCase.execute).toHaveBeenCalledWith({
@@ -223,9 +219,9 @@ describe('AuthController (T6.5)', () => {
       const { controller, switchTenantUseCase } = buildController();
       switchTenantUseCase.execute.mockResolvedValue(Result.fail(new ClienteNoAutorizadoError()));
 
-      await expect(
-        controller.switchTenant(ROOT_PAYLOAD, { clienteId: 'c1' } as any),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(controller.switchTenant(ROOT_PAYLOAD, { clienteId: 'c1' })).rejects.toThrow(
+        ForbiddenException,
+      );
     });
   });
 

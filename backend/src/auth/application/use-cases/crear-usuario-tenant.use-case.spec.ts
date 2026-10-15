@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CrearUsuarioTenantUseCase } from './crear-usuario-tenant.use-case';
+import type { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+import type { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
+import type { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import type { IRoleRepository } from '../../domain/ports/i-role.repository';
+import type { IHashProvider } from '../../domain/ports/i-hash.provider';
 import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
 import { Result } from '../../../shared/domain/result';
@@ -27,35 +32,53 @@ function buildRole() {
   });
 }
 
-function buildDeps(overrides: Partial<Record<string, unknown>> = {}) {
-  const usuarioRepo = {
-    findByEmail: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue(undefined),
-    ...(overrides.usuarioRepo as object),
+function buildDefaults() {
+  return {
+    usuarioRepo: {
+      findByEmail: vi.fn<IUsuarioRepository['findByEmail']>().mockResolvedValue(null),
+      create: vi.fn<IUsuarioRepository['create']>().mockResolvedValue(undefined),
+    },
+    membresiaRepo: {
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(null),
+      create: vi.fn<IMembresiaRepository['create']>().mockResolvedValue(undefined),
+    },
+    roleRepo: {
+      findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(buildRole()),
+    },
+    hashProvider: {
+      hash: vi.fn<IHashProvider['hash']>().mockResolvedValue('hashed-password'),
+    },
+    aplicarPresetPermisosUseCase: {
+      execute: vi
+        .fn<AplicarPresetPermisosUseCase['execute']>()
+        .mockResolvedValue(Result.ok(undefined)),
+    },
   };
-  const membresiaRepo = {
-    findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(null),
-    create: vi.fn().mockResolvedValue(undefined),
-    ...(overrides.membresiaRepo as object),
-  };
-  const roleRepo = {
-    findByCodigo: vi.fn().mockResolvedValue(buildRole()),
-    ...(overrides.roleRepo as object),
-  };
-  const hashProvider = {
-    hash: vi.fn().mockResolvedValue('hashed-password'),
-    ...(overrides.hashProvider as object),
-  };
+}
+
+type Deps = ReturnType<typeof buildDefaults>;
+
+/** Cada override reemplaza solo los métodos que nombra; el resto queda con el default. */
+type Overrides = { [K in keyof Deps]?: Partial<Deps[K]> };
+
+function buildDeps(overrides: Overrides = {}) {
+  const defaults = buildDefaults();
+  const usuarioRepo = { ...defaults.usuarioRepo, ...overrides.usuarioRepo };
+  const membresiaRepo = { ...defaults.membresiaRepo, ...overrides.membresiaRepo };
+  const roleRepo = { ...defaults.roleRepo, ...overrides.roleRepo };
+  const hashProvider = { ...defaults.hashProvider, ...overrides.hashProvider };
   const aplicarPresetPermisosUseCase = {
-    execute: vi.fn().mockResolvedValue(Result.ok(undefined)),
-    ...(overrides.aplicarPresetPermisosUseCase as object),
+    ...defaults.aplicarPresetPermisosUseCase,
+    ...overrides.aplicarPresetPermisosUseCase,
   };
   const useCase = new CrearUsuarioTenantUseCase(
-    usuarioRepo as never,
-    membresiaRepo as never,
-    roleRepo as never,
-    hashProvider as never,
-    aplicarPresetPermisosUseCase as never,
+    usuarioRepo,
+    membresiaRepo,
+    roleRepo,
+    hashProvider,
+    aplicarPresetPermisosUseCase,
   );
   return {
     useCase,
@@ -71,6 +94,7 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
   it('crea un usuario global NUEVO + su membresía en el cliente del token', async () => {
     const { useCase, usuarioRepo, membresiaRepo, hashProvider, roleRepo } = buildDeps();
     const rol = await roleRepo.findByCodigo('TECNICO');
+    if (!rol) throw new Error('el doble de roleRepo tiene que devolver el rol');
 
     const result = await useCase.execute(DTO);
 
@@ -132,7 +156,9 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
   it('[CRITICAL] falla con PresetRolNoDefinidoError si el rol no tiene preset — la membresía YA quedó creada (mismo criterio que CambiarRolUsuarioTenantUseCase)', async () => {
     const { useCase, membresiaRepo } = buildDeps({
       aplicarPresetPermisosUseCase: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new PresetRolNoDefinidoError('TECNICO'))),
+        execute: vi
+          .fn<AplicarPresetPermisosUseCase['execute']>()
+          .mockResolvedValue(Result.fail(new PresetRolNoDefinidoError('TECNICO'))),
       },
     });
 
@@ -169,7 +195,9 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
     );
     const { useCase, usuarioRepo, membresiaRepo, hashProvider, aplicarPresetPermisosUseCase } =
       buildDeps({
-        usuarioRepo: { findByEmail: vi.fn().mockResolvedValue(existente) },
+        usuarioRepo: {
+          findByEmail: vi.fn<IUsuarioRepository['findByEmail']>().mockResolvedValue(existente),
+        },
       });
 
     const result = await useCase.execute(DTO);
@@ -197,7 +225,7 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
 
   it('falla con RolNoEncontradoError si el rolCodigo no existe en el catálogo', async () => {
     const { useCase, membresiaRepo } = buildDeps({
-      roleRepo: { findByCodigo: vi.fn().mockResolvedValue(null) },
+      roleRepo: { findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(null) },
     });
 
     const result = await useCase.execute(DTO);
@@ -223,14 +251,18 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
       null,
     );
     const { useCase, membresiaRepo } = buildDeps({
-      usuarioRepo: { findByEmail: vi.fn().mockResolvedValue(existente) },
+      usuarioRepo: {
+        findByEmail: vi.fn<IUsuarioRepository['findByEmail']>().mockResolvedValue(existente),
+      },
       membresiaRepo: {
-        findActivaByUsuarioYCliente: vi.fn().mockResolvedValue({
-          clienteId: DTO.clienteId,
-          clienteNombre: 'X',
-          rolCodigo: 'USUARIO',
-          permisos: [],
-        }),
+        findActivaByUsuarioYCliente: vi
+          .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+          .mockResolvedValue({
+            clienteId: DTO.clienteId,
+            clienteNombre: 'X',
+            rolCodigo: 'USUARIO',
+            clienteRequiere2fa: false,
+          }),
       },
     });
 

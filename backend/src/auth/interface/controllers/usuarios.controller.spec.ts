@@ -28,18 +28,42 @@ import {
   UsuarioNoDisponibleError,
 } from '../../domain/errors/auth.errors';
 import { JwtPayload } from '../../domain/ports/i-token.service';
+import type { MembresiaConUsuario } from '../../domain/ports/i-membresia.repository';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
+import type { Mock } from 'vitest';
+import { ListarUsuariosTenantUseCase } from '../../application/use-cases/listar-usuarios-tenant.use-case';
+import { CrearUsuarioTenantUseCase } from '../../application/use-cases/crear-usuario-tenant.use-case';
+import { CambiarRolUsuarioTenantUseCase } from '../../application/use-cases/cambiar-rol-usuario-tenant.use-case';
+import { DesactivarMembresiaUsuarioTenantUseCase } from '../../application/use-cases/desactivar-membresia-usuario-tenant.use-case';
+import { EditarUsuarioTenantUseCase } from '../../application/use-cases/editar-usuario-tenant.use-case';
+import { ResetearPasswordUsuarioTenantUseCase } from '../../application/use-cases/resetear-password-usuario-tenant.use-case';
+import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
+import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
+import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
+
+/**
+ * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
+ * controller) y reemplaza `execute` por un mock tipado con su firma.
+ */
+function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Clase: {
+  prototype: T;
+}): T & { execute: Mock<T['execute']> } {
+  return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
+}
 
 function buildController() {
-  const listarUsuariosTenantUseCase = { execute: vi.fn() };
-  const crearUsuarioTenantUseCase = { execute: vi.fn() };
-  const cambiarRolUsuarioTenantUseCase = { execute: vi.fn() };
-  const desactivarMembresiaUsuarioTenantUseCase = { execute: vi.fn() };
-  const editarUsuarioTenantUseCase = { execute: vi.fn() };
-  const resetearPasswordUsuarioTenantUseCase = { execute: vi.fn() };
-  const obtenerPermisosUsuarioTenantUseCase = { execute: vi.fn() };
-  const asignarPermisosUsuarioTenantUseCase = { execute: vi.fn() };
-  const aplicarPresetPermisosUseCase = { execute: vi.fn() };
+  const listarUsuariosTenantUseCase = casoDeUsoDoble(ListarUsuariosTenantUseCase);
+  const crearUsuarioTenantUseCase = casoDeUsoDoble(CrearUsuarioTenantUseCase);
+  const cambiarRolUsuarioTenantUseCase = casoDeUsoDoble(CambiarRolUsuarioTenantUseCase);
+  const desactivarMembresiaUsuarioTenantUseCase = casoDeUsoDoble(
+    DesactivarMembresiaUsuarioTenantUseCase,
+  );
+  const editarUsuarioTenantUseCase = casoDeUsoDoble(EditarUsuarioTenantUseCase);
+  const resetearPasswordUsuarioTenantUseCase = casoDeUsoDoble(ResetearPasswordUsuarioTenantUseCase);
+  const obtenerPermisosUsuarioTenantUseCase = casoDeUsoDoble(ObtenerPermisosUsuarioTenantUseCase);
+  const asignarPermisosUsuarioTenantUseCase = casoDeUsoDoble(AsignarPermisosUsuarioTenantUseCase);
+  const aplicarPresetPermisosUseCase = casoDeUsoDoble(AplicarPresetPermisosUseCase);
   // Caso de uso real armado con puertos tipados: tipado completo, sin casts.
   const resetearTfaUsuarioUseCase = new ResetearTfaUsuarioUseCase(
     { eliminarTodo: vi.fn() },
@@ -56,15 +80,15 @@ function buildController() {
     { log: vi.fn(), error: vi.fn() },
   );
   const controller = new UsuariosController(
-    listarUsuariosTenantUseCase as any,
-    crearUsuarioTenantUseCase as any,
-    cambiarRolUsuarioTenantUseCase as any,
-    desactivarMembresiaUsuarioTenantUseCase as any,
-    editarUsuarioTenantUseCase as any,
-    resetearPasswordUsuarioTenantUseCase as any,
-    obtenerPermisosUsuarioTenantUseCase as any,
-    asignarPermisosUsuarioTenantUseCase as any,
-    aplicarPresetPermisosUseCase as any,
+    listarUsuariosTenantUseCase,
+    crearUsuarioTenantUseCase,
+    cambiarRolUsuarioTenantUseCase,
+    desactivarMembresiaUsuarioTenantUseCase,
+    editarUsuarioTenantUseCase,
+    resetearPasswordUsuarioTenantUseCase,
+    obtenerPermisosUsuarioTenantUseCase,
+    asignarPermisosUsuarioTenantUseCase,
+    aplicarPresetPermisosUseCase,
     resetearTfaUsuarioUseCase,
     resetearVinculoSsoUseCase,
   );
@@ -93,13 +117,14 @@ function buildActor(overrides: Partial<JwtPayload> = {}): JwtPayload {
   });
 }
 
-const MEMBRESIA_ITEM = {
+const MEMBRESIA_ITEM: MembresiaConUsuario = {
   membresiaId: 'm1',
   usuarioId: 'u1',
   nombre: 'Ada',
   apellido: 'Tec',
   email: 'ada@test.com',
   rolCodigo: 'TECNICO',
+  esIntegracion: false,
 };
 
 describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §5)', () => {
@@ -207,7 +232,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       );
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
-      const result = await controller.crear(actor, DTO as any);
+      const result = await controller.crear(actor, DTO);
 
       expect(crearUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
@@ -231,7 +256,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       );
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
-      await expect(controller.crear(actor, DTO as any)).rejects.toBeInstanceOf(
+      await expect(controller.crear(actor, DTO)).rejects.toBeInstanceOf(
         UnprocessableEntityException,
       );
     });
@@ -243,7 +268,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       );
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
-      await expect(controller.crear(actor, DTO as any)).rejects.toBeInstanceOf(ConflictException);
+      await expect(controller.crear(actor, DTO)).rejects.toBeInstanceOf(ConflictException);
     });
   });
 
@@ -260,7 +285,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       cambiarRolUsuarioTenantUseCase.execute.mockResolvedValue(Result.ok(membresia));
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
-      await controller.cambiarRol(actor, 'usuario-1', { rolCodigo: 'ADMINISTRADOR' } as any);
+      await controller.cambiarRol(actor, 'usuario-1', { rolCodigo: 'ADMINISTRADOR' });
 
       expect(cambiarRolUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
@@ -285,7 +310,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       await controller.cambiarRol(actor, 'usuario-1', {
         rolCodigo: 'TECNICO',
         reaplicarPreset: true,
-      } as any);
+      });
 
       expect(cambiarRolUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
@@ -303,7 +328,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
       await expect(
-        controller.cambiarRol(actor, 'usuario-ajeno', { rolCodigo: 'TECNICO' } as any),
+        controller.cambiarRol(actor, 'usuario-ajeno', { rolCodigo: 'TECNICO' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
@@ -330,7 +355,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const result = await controller.editar(actor, 'usuario-1', {
         nombre: 'Ada',
         apellido: 'Lovelace',
-      } as any);
+      });
 
       expect(editarUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
@@ -349,7 +374,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ permisos: ['usuario:gestionar'] });
 
       await expect(
-        controller.editar(actor, 'usuario-ajeno', { nombre: 'X' } as any),
+        controller.editar(actor, 'usuario-ajeno', { nombre: 'X' }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
@@ -378,22 +403,18 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
     it('[R3] TECNICO sin esAdminDeCliente: el guard real rechaza con 403', () => {
       const guard = new AdminClienteGuard();
-      const context = {
-        switchToHttp: () => ({
-          getRequest: () => ({ user: buildActor({ rol: 'TECNICO', permisos: [] }) }),
-        }),
-      } as any;
+      const context = new ExecutionContextHost([
+        { user: buildActor({ rol: 'TECNICO', permisos: [] }) },
+      ]);
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
 
     it('[R3] SOLICITANTE sin esAdminDeCliente: el guard real rechaza con 403', () => {
       const guard = new AdminClienteGuard();
-      const context = {
-        switchToHttp: () => ({
-          getRequest: () => ({ user: buildActor({ rol: 'SOLICITANTE', permisos: [] }) }),
-        }),
-      } as any;
+      const context = new ExecutionContextHost([
+        { user: buildActor({ rol: 'SOLICITANTE', permisos: [] }) },
+      ]);
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
@@ -403,9 +424,13 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       resetearPasswordUsuarioTenantUseCase.execute.mockResolvedValue(Result.ok(undefined));
       const actor = buildActor({ rol: 'ADMINISTRADOR', cliente_id: 'cliente-token' });
       // El DTO no declara `clienteId` — el `whitelist: true` global lo
-      // descartaría si llegara. Este cast simula igual un valor colado para
-      // dejar constancia de que el controller lo ignora por completo.
-      const dtoConClienteIdColado = { password: 'contraseñaNueva123' } as any;
+      // descartaría si llegara. El literal va en una variable (sin chequeo de
+      // propiedades de más) para simular igual un valor colado y dejar
+      // constancia de que el controller lo ignora por completo.
+      const dtoConClienteIdColado = {
+        password: 'contraseñaNueva123',
+        clienteId: 'cliente-colado',
+      };
 
       await controller.resetearPassword(actor, 'usuario-1', dtoConClienteIdColado);
 
@@ -424,7 +449,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ rol: 'ADMINISTRADOR' });
 
       await expect(
-        controller.resetearPassword(actor, 'usuario-ajeno', { password: 'x'.repeat(8) } as any),
+        controller.resetearPassword(actor, 'usuario-ajeno', { password: 'x'.repeat(8) }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -436,7 +461,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ rol: 'ADMINISTRADOR' });
 
       await expect(
-        controller.resetearPassword(actor, 'usuario-1', { password: 'x'.repeat(8) } as any),
+        controller.resetearPassword(actor, 'usuario-1', { password: 'x'.repeat(8) }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
@@ -462,7 +487,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       const result = await controller.resetearPassword(actor, 'usuario-1', {
         password: 'x'.repeat(8),
-      } as any);
+      });
 
       expect(result).toBeUndefined();
     });
@@ -547,7 +572,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       const result = await controller.asignarPermisos(actor, 'usuario-1', {
         celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
-      } as any);
+      });
 
       expect(asignarPermisosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
@@ -568,7 +593,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
       await expect(
-        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['TICKETS:LECTURA'] } as any),
+        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['TICKETS:LECTURA'] }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
@@ -581,7 +606,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       const result = await controller.aplicarPresetPermisos(actor, 'usuario-1', {
         rolCodigo: 'TECNICO',
-      } as any);
+      });
 
       expect(aplicarPresetPermisosUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
@@ -602,7 +627,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       await expect(
         controller.aplicarPresetPermisos(actor, 'usuario-1', {
           rolCodigo: 'ROL_SIN_PRESET',
-        } as any),
+        }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
   });
