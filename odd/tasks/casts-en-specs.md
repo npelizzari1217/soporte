@@ -58,8 +58,26 @@ puertos, y bajar la línea base del ratchet en cada tanda.
   - Fuera del ratchet (cuenta solo `as never`/`as any`): `tickets.controller.spec.ts` tiene 16
     `as unknown as` y `exportar-tickets.use-case.spec.ts:104` uno. En todo el backend hay 168
     `as unknown as` en specs (medido el 2026-10-16): se reporta al cierre como deuda aparte.
-- [ ] **T3 — auth** (84).
-- [ ] **T4 — clientes** (62).
+- [x] **T3 — auth** (84 → 0). Ruta: delegada (escritor único, junto con T4). Commit `d13e5bcb`.
+  - 11 specs; ningún cast conservado. Base del ratchet 401/77 → **317/66**.
+  - Defectos destapados (arreglados solo en specs): fixtures de `MembresiaResuelta` con un campo
+    `permisos` obsoleto y sin `clienteRequiere2fa`; `MEMBRESIA_ITEM` sin `esIntegracion`; en
+    `crear-usuario`, `rol` podía ser null (guarda que falla). **De seguridad:** el test `[R2]` de
+    `usuarios.controller.spec.ts` decía mandar un `clienteId` colado en el body, pero el objeto nunca
+    lo tenía; ahora lleva `clienteId: 'cliente-colado'` y sigue exigiendo que el caso de uso reciba el
+    del JWT (el test quedó más fuerte).
+  - Guards probados con `ExecutionContextHost` real en vez de un contexto `as any`.
+  - Evidencia: `pnpm vitest run src/auth` → 98 archivos, 1158 tests antes y después; mismos conteos
+    de `it(`/`expect(`; lint y typecheck 0.
+- [x] **T4 — clientes** (62 → 0). Ruta: delegada (mismo escritor). Commit `5e6c7f0d`.
+  - 7 specs; ningún cast conservado. Base del ratchet 317/66 → **255/59**. Sin defectos destapados.
+  - `PrismaService` doblado con `Object.assign(Object.create(PrismaService.prototype), ...)`, como
+    `prisma-membresia.repository.spec.ts`.
+  - Evidencia: `pnpm vitest run src/clientes` → 52 archivos, 405 tests antes y después; mismos conteos;
+    lint y typecheck 0; ratchet 255/59 (repetido por el padre). RDD: `assess` → medium,
+    `review_due` false (`under_budget`).
+  - Quedan `as unknown as` fuera del ratchet en estos módulos (constructores en
+    `auth.controller.spec.ts`, contextos en specs de guards).
 - [ ] **T5 — compras** (51).
 - [ ] **T6 — reparaciones y preventivo** (48 + 40).
 - [ ] **T7 — Cierre**: suite completa, roadmap, merge (decisión del dueño). Si la base no llegó a
@@ -75,6 +93,7 @@ puertos, y bajar la línea base del ratchet en cada tanda.
 - 2026-10-16: el dueño pidió seguir con el punto 5 (casts); documento creado.
 - 2026-10-16: T1 hecha (equipos, 491/100).
 - 2026-10-16: T2 hecha (tickets, 401/77).
+- 2026-10-16: T3 y T4 hechas (auth y clientes, 255/59).
 
 ## Próximo paso
-T3 y T4.
+T5 y T6.
