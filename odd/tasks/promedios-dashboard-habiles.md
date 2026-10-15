@@ -198,10 +198,19 @@ técnica conocida" (`docs/roadmap-comercial.md`).
     dos el comentario se guarda, `registrarSiFalta` recibe `null` y el log no lleva el texto.
   - RED: `Error: master caído` y `Error: rango excedido` (2 tests fallan, el comentario se rechaza).
   - GREEN: `crear-comentario.use-case.spec.ts` + `primera-respuesta.integration.spec.ts` → 29 tests pasan.
-- [ ] **T9 — JD-W3: el script no escribe sobre un ticket reabierto.** Hallazgo del juez A: el `UPDATE`
+- [x] **T9 — JD-W3: el script no escribe sobre un ticket reabierto.** Hallazgo del juez A: el `UPDATE`
   por lotes solo revisa `IS NULL`; si el ticket se reabre entre la lectura y la escritura, queda con
   tiempo de resolución estando abierto. Cambio: el `UPDATE` exige además que el estado siga siendo
   RESUELTO o CERRADO.
+  - Ruta: inline (bugfix acotado de `judgment-day`). Commit previo: `f3f4c2c1`.
+  - Archivos: `backend/scripts/backfill-tiempos-habiles.mjs` (`escribirEnLotes` acepta una condición
+    extra; la de resolución exige `EXISTS` sobre `estados` con `codigo IN ('RESUELTO','CERRADO')`; la
+    de primera respuesta no cambia).
+  - Test: `backfill-tiempos-habiles.integration.spec.ts` — un pool envoltorio reabre el ticket justo
+    antes del `UPDATE` de resolución; el ticket queda en NULL y `actualizados` es 0.
+  - RED: `AssertionError: expected { aActualizar: 1, …(2) } to deeply equal { aActualizar: 1, …(2) }`
+    (`actualizados` 1 en vez de 0).
+  - GREEN: `backfill-tiempos-habiles.integration.spec.ts` → 5 tests pasan.
 - Decisión del dueño (2026-10-15): las tres advertencias se corrigen antes del merge, con re-juicio
   acotado de `judgment-day` sobre el delta.
 

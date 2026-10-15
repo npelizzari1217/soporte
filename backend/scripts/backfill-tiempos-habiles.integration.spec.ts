@@ -226,6 +226,34 @@ describe('backfill-tiempos-habiles — por tenant (tenant efímero)', () => {
     expect(await columnas()).toEqual(antes);
   });
 
+  it('un ticket que se reabre entre la lectura y la escritura no recibe tiempo de resolución', async () => {
+    await ticket('f-reabierto-en-carrera', { estado: 'RESUELTO', creado: L(10, 9) });
+    await transicion('f-reabierto-en-carrera', 'EN_PROCESO', 'RESUELTO', L(10, 12));
+    // El ticket se lee RESUELTO y alguien lo reabre justo antes del UPDATE por lotes.
+    const pool = {
+      query: async (sql: string, params?: unknown[]) => {
+        if (sql.includes('SET "resolucion_habil_s"')) {
+          await client.query(`UPDATE tickets SET estado_id = $1 WHERE id = $2`, [
+            estados.EN_PROCESO,
+            ids['f-reabierto-en-carrera'],
+          ]);
+        }
+        return client.query(sql, params);
+      },
+    };
+
+    const r = await backfillTenant({
+      pool,
+      feriadosGlobales: [FERIADO_GLOBAL],
+      calculo: new CalcularSlaHabilVenceService(),
+      mapper: PrismaCalendarioLaboralMapper,
+      aplicar: true,
+    });
+
+    expect(r.resolucion).toEqual({ aActualizar: 1, actualizados: 0, salteados: 1 });
+    expect((await columnas())['f-reabierto-en-carrera']).toEqual([null, null]);
+  });
+
   it('parsearArgs: ensayo por defecto, --apply escribe, cualquier otro argumento aborta', () => {
     expect(parsearArgs([])).toEqual({ aplicar: false });
     expect(parsearArgs(['--apply'])).toEqual({ aplicar: true });

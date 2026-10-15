@@ -18,7 +18,8 @@
 // Con `--apply` escribe. Idempotente POR CONSTRUCCIÓN: cada UPDATE re-evalúa
 // `IS NULL` en la propia sentencia, así que un valor que el pliegue del reloj o la
 // primera respuesta escribieron en el medio nunca se pisa, y correrlo dos veces no
-// cambia nada.
+// cambia nada. El de resolución re-evalúa además que el ticket siga en RESUELTO o
+// CERRADO: uno reabierto entre la lectura y la escritura no recibe el valor.
 //
 // El cálculo hábil y los mappers viven en TypeScript; este script corre en el VPS
 // después del build, así que se leen de `dist/` con `createRequire` (mismo criterio
@@ -61,8 +62,19 @@ export async function leerFeriadosGlobales(masterPool) {
 
 const segundos = (ms) => Math.round(ms / 1000);
 
-/** Escribe `columna` en lotes, solo donde sigue NULL. Devuelve las filas escritas. */
-async function escribirEnLotes(pool, columna, valores) {
+/**
+ * Condición extra del UPDATE de resolución: el ticket sigue en RESUELTO o CERRADO en el
+ * momento de escribir (mismo criterio que la lectura, por `estados.codigo`).
+ */
+const SIGUE_RESUELTO = `AND EXISTS (
+            SELECT 1 FROM "estados" e
+             WHERE e."id" = t."estado_id" AND e."codigo" IN ('RESUELTO', 'CERRADO'))`;
+
+/**
+ * Escribe `columna` en lotes, solo donde sigue NULL (y, si se pasa, donde se cumple
+ * `condicion`). Devuelve las filas escritas.
+ */
+async function escribirEnLotes(pool, columna, valores, condicion = '') {
   let escritos = 0;
   for (let i = 0; i < valores.length; i += LOTE) {
     const lote = valores.slice(i, i + LOTE);
@@ -70,7 +82,7 @@ async function escribirEnLotes(pool, columna, valores) {
       `UPDATE "tickets" AS t
           SET "${columna}" = v.s
          FROM unnest($1::uuid[], $2::int[]) AS v(id, s)
-        WHERE t."id" = v.id AND t."${columna}" IS NULL`,
+        WHERE t."id" = v.id AND t."${columna}" IS NULL ${condicion}`,
       [lote.map((x) => x.id), lote.map((x) => x.s)],
     );
     escritos += r.rowCount ?? 0;
@@ -136,7 +148,9 @@ export async function backfillTenant({ pool, feriadosGlobales, calculo, mapper, 
   return {
     resolucion: {
       aActualizar: resolucion.length,
-      actualizados: aplicar ? await escribirEnLotes(pool, 'resolucion_habil_s', resolucion) : 0,
+      actualizados: aplicar
+        ? await escribirEnLotes(pool, 'resolucion_habil_s', resolucion, SIGUE_RESUELTO)
+        : 0,
       salteados: resueltos.length - resolucion.length,
     },
     primeraRespuesta: {
