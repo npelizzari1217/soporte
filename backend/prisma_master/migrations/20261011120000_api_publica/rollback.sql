@@ -10,7 +10,11 @@
 -- columna `es_integracion`, que es la que los identifica.
 --
 -- El codigo que usa estas columnas y esta tabla debe estar revertido ANTES de correr este rollback.
+-- Se puede correr mas de una vez: los `IF EXISTS` lo hacen re-ejecutable, y el `ADD COLUMN IF NOT
+-- EXISTS` repone `es_integracion` (en `false`) si una corrida anterior ya la borro, para que los
+-- `UPDATE` que la leen no fallen. En esa segunda corrida no desactivan a nadie: ya se hizo.
 DROP TABLE IF EXISTS "api_claves";
+ALTER TABLE "usuarios" ADD COLUMN IF NOT EXISTS "es_integracion" BOOLEAN NOT NULL DEFAULT false;
 UPDATE "membresias" SET "activo" = false, "updated_at" = CURRENT_TIMESTAMP
   WHERE "usuario_id" IN (SELECT "id" FROM "usuarios" WHERE "es_integracion");
 UPDATE "usuarios" SET "activo" = false, "updated_at" = CURRENT_TIMESTAMP WHERE "es_integracion";

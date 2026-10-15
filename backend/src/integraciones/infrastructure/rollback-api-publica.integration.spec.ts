@@ -1,7 +1,9 @@
 /**
  * `rollback.sql` de la migracion `20261011120000_api_publica` contra `soporte_master_test`: los
  * usuarios de integracion quedan DESACTIVADOS (usuario y membresias), no borrados, y el resto de
- * los usuarios no se toca. Al final la base vuelve SIEMPRE al esquema migrado, porque es compartida.
+ * los usuarios no se toca. Se puede correr dos veces seguidas (CA5 de
+ * `odd/tasks/deuda-tecnica-2026-10-15.md`). Al final la base vuelve SIEMPRE al esquema migrado,
+ * porque es compartida.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -39,7 +41,7 @@ describe('rollback.sql de api_publica', () => {
     for (const sentencia of sentencias(archivo)) await pool.query(sentencia);
   };
 
-  const esquemaMigrado = async (): Promise<boolean> => {
+  const esquema = async (): Promise<{ tabla: boolean; usuario: boolean; cliente: boolean }> => {
     const r = await pool.query(
       `SELECT to_regclass('public.api_claves') IS NOT NULL AS tabla,
               EXISTS (SELECT 1 FROM information_schema.columns
@@ -47,8 +49,13 @@ describe('rollback.sql de api_publica', () => {
               EXISTS (SELECT 1 FROM information_schema.columns
                       WHERE table_name = 'clientes' AND column_name = 'api_habilitada') AS cliente`,
     );
-    const fila = r.rows[0];
-    return fila.tabla && fila.usuario && fila.cliente;
+    const { tabla, usuario, cliente } = r.rows[0];
+    return { tabla, usuario, cliente };
+  };
+
+  const esquemaMigrado = async (): Promise<boolean> => {
+    const { tabla, usuario, cliente } = await esquema();
+    return tabla && usuario && cliente;
   };
 
   // Desde cualquier estado parcial: deshace lo que quede y vuelve a migrar.
@@ -127,6 +134,22 @@ describe('rollback.sql de api_publica', () => {
       expect(await esquemaMigrado()).toBe(false);
       await ejecutar('migration.sql');
       expect(await esquemaMigrado()).toBe(true);
+    } finally {
+      await restaurarEsquema();
+    }
+  });
+
+  it('correrlo dos veces seguidas no falla y deja el mismo esquema y los mismos usuarios que una', async () => {
+    try {
+      await ejecutar('rollback.sql');
+      const esquemaUnaVez = await esquema();
+      const usuariosUnaVez = [await estado(integracionId), await estado(normalId)];
+
+      await expect(ejecutar('rollback.sql')).resolves.toBeUndefined();
+
+      expect(esquemaUnaVez).toEqual({ tabla: false, usuario: false, cliente: false });
+      expect(await esquema()).toEqual(esquemaUnaVez);
+      expect([await estado(integracionId), await estado(normalId)]).toEqual(usuariosUnaVez);
     } finally {
       await restaurarEsquema();
     }

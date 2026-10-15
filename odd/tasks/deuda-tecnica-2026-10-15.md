@@ -96,7 +96,21 @@ reactivarlo antes.
     falla con `Nest can't resolve dependencies of the TiposTicketV1Query (?)`.
   - Pendiente: `test/integraciones-api-v1-*.e2e.spec.ts` y
     `test/integraciones-webhooks-encolado.e2e.spec.ts` no corrieron — Postgres caído.
-- [ ] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5.
+  - Commit: `3e0a8732`.
+- [ ] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5. *Código
+  commiteado; RED y GREEN sin observar.*
+  - `rollback.sql`: `ALTER TABLE "usuarios" ADD COLUMN IF NOT EXISTS "es_integracion" ...`
+    antes de los `UPDATE`, con comentario de re-ejecutable (sin `DO $$`: el spec parte en `;`).
+  - Test nuevo en `rollback-api-publica.integration.spec.ts`: corre el rollback dos veces,
+    espera que la segunda resuelva y que esquema y usuarios queden igual que tras una.
+  - RED: **no observado**. El spec se salta entero (`Tests 3 skipped`) con
+    `connect ECONNREFUSED 127.0.0.1:5432`; no hay `docker` ni `psql` en WSL. Por lectura, la
+    segunda corrida del archivo viejo falla en el primer `UPDATE` con
+    `column "es_integracion" does not exist`, pero eso es razonamiento, no evidencia.
+  - GREEN: **pendiente**, mismo motivo. Queda abierta hasta correr el spec con la base arriba,
+    primero con el `rollback.sql` de `HEAD~1` (RED) y después con el actual (GREEN).
+  - Runbook (`DEPLOY-VPS-runbook.md`, "Migración y rollback" de la API pública) no dice que
+    NO sea re-ejecutable: no hay nada que corregir.
 - [ ] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
   `pnpm test`; frontend `pnpm lint`, `pnpm type-check`, `pnpm test`), filas de la deuda en el
   roadmap marcadas RESUELTA, `check-roadmap-fresco` en verde.
