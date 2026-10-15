@@ -135,7 +135,9 @@ describe('Formulario publico e2e — flujo completo solicitud -> confirmar (WU-1
   }, 60_000);
 
   beforeEach(async () => {
-    await masterClient.$executeRawUnsafe('TRUNCATE TABLE clientes RESTART IDENTITY CASCADE');
+    await masterClient.$executeRawUnsafe(
+      'TRUNCATE TABLE clientes, throttler_contadores RESTART IDENTITY CASCADE',
+    );
     await limpiarTenant();
     await tenant.cicloCliente.create({
       data: {

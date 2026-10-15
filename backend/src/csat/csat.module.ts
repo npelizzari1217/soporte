@@ -18,6 +18,7 @@ import { EMAIL_SENDER, IEmailSender } from '../shared/domain/ports/i-email-sende
 import { LOGGER, ILogger } from '../shared/domain/ports/i-logger.port';
 import { TenantContext } from '../shared/tenancy/tenant-context';
 import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import { PostgresThrottlerStorage } from '../shared/infrastructure/throttler/postgres-throttler-storage';
 
 import {
   ENCUESTA_TOKEN_REPOSITORY,
@@ -62,8 +63,8 @@ import {
  *   contacto cross-DB que el resto de las notificaciones).
  * - Importa `CsatLecturaModule` por `ENCUESTA_SATISFACCION_REPOSITORY`
  *   (`ResponderEncuestaUseCase` inserta la respuesta en el tenant).
- * - `ThrottlerModule.forRoot()` (ADR-C6): storage en memoria, propio de este
- *   módulo — SIN `APP_GUARD`, el guard se aplica SOLO en
+ * - `ThrottlerModule.forRootAsync()` (ADR-C6): storage en Postgres
+ *   (`PostgresThrottlerStorage`, compartido entre procesos; odd/tasks/throttler-postgres.md) — SIN `APP_GUARD`, el guard se aplica SOLO en
  *   `EncuestaPublicaController` vía `@UseGuards`.
  * - `TenantContext`/`LOGGER` son globales vía `SharedModule` — no hace
  *   falta reimportarlo.
@@ -82,7 +83,15 @@ import {
     TicketsModule,
     NotificacionesModule,
     CsatLecturaModule,
-    ThrottlerModule.forRoot([{ limit: CSAT_THROTTLE_LIMIT, ttl: CSAT_THROTTLE_TTL_MS }]),
+    // `PrismaService` y `LOGGER` vienen de `SharedModule` (`@Global()`). El objeto de opciones
+    // (en vez del array) es lo que deja pasar `storage`; el guard lo lee igual.
+    ThrottlerModule.forRootAsync({
+      inject: [PrismaService, LOGGER],
+      useFactory: (prismaService: PrismaService, logger: ILogger) => ({
+        throttlers: [{ limit: CSAT_THROTTLE_LIMIT, ttl: CSAT_THROTTLE_TTL_MS }],
+        storage: new PostgresThrottlerStorage(prismaService, logger),
+      }),
+    }),
   ],
   controllers: [EncuestaPublicaController],
   providers: [

@@ -626,6 +626,20 @@ model AuthIntentoFallido {
   @@map("auth_intentos_fallidos")
 }
 
+/// Contadores de los limitadores de pedidos (`@nestjs/throttler`), compartidos entre procesos.
+/// Una fila por key de storage; `vencimientos` guarda cuando vence cada pedido contado
+/// (odd/tasks/throttler-postgres.md). Se escribe solo con SQL crudo, en una sentencia.
+model ThrottlerContador {
+  clave          String     @id @db.Text
+  vencimientos   DateTime[] @default([]) @db.Timestamptz
+  expiraEn       DateTime   @map("expira_en") @db.Timestamptz
+  bloqueado      Boolean    @default(false)
+  bloqueadoHasta DateTime?  @map("bloqueado_hasta") @db.Timestamptz
+
+  @@index([expiraEn])
+  @@map("throttler_contadores")
+}
+
 /// Estado de un flujo SSO: de un solo uso (CAS sobre `usado_at`) y atado al navegador.
 /// Solo hashes de `state` y del `bindingToken`. CHECK de `proveedor` en la migracion.
 model SsoEstado {

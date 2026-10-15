@@ -1052,6 +1052,31 @@ en `tareas_ticket` se pierde para siempre, salvo restaurando el dump.
 Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el dump de
 `predeploy-dump.ps1` (ver "Restore de datos"), y se pierde lo escrito después del deploy.
 
+## Límites de pedidos en Postgres
+
+Los cuatro limitadores de pedidos (API v1, CSAT, recuperación de contraseña y formulario público)
+dejan de contar en la memoria del proceso y cuentan en master (`odd/tasks/throttler-postgres.md`).
+Los límites, las claves y las rutas no cambian. Qué cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migración master | `20261015120000_throttler_contadores`, **aditiva**: la tabla `throttler_contadores`. Sin backfill ni seed. Entra por `migrate:master` dentro de la ventana de `predeploy-dump.ps1`. El código anterior no la lee, así que convive con ella. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Efecto del deploy | Los cupos arrancan de cero, como en cualquier reinicio anterior. Desde ahí sobreviven a los reinicios. |
+
+### Smoke posterior al deploy
+
+En el log de `soporte-backend` no tiene que aparecer `THROTTLER_ERROR`. Si aparece, la consulta
+a la tabla falla y el limitador **deja pasar** los pedidos (fail-open, decisión del dueño): no
+corta el servicio, pero tampoco limita.
+
+### Migración y rollback
+
+Su `rollback.sql` **no es destructivo** para datos de negocio: borra solo los contadores, y es
+re-ejecutable (`DROP TABLE IF EXISTS`). Se revierte **primero el código** y después se corre el
+`rollback.sql` contra master. Al revés, el código nuevo pierde la tabla, cada pedido limitado
+loguea `THROTTLER_ERROR` y ningún límite se aplica hasta terminar el revert.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

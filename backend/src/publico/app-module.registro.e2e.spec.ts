@@ -4,11 +4,13 @@
  *
  * Arranca el `AppModule` REAL (sin harness): comprueba que el modulo no rompe el boot y que las
  * tres rutas publicas existen y responden sin sesion. Un slug inexistente da el 404 uniforme, asi
- * que no hace falta sembrar nada en master.
+ * que no hace falta sembrar nada en master. Sí vacía `throttler_contadores`: los cupos viven en
+ * master y otro spec de la corrida pudo dejar agotado el del slug `no-existe` (daría 429).
  */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AppModule } from '../app.module';
+import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import { usarLockMasterTest } from '../testing/lock-master-test';
 
 const MASTER_TEST_URL =
@@ -31,6 +33,10 @@ describe('AppModule con FormularioPublicoModule (WU-19)', () => {
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
+    await app
+      .get(PrismaService)
+      .getMasterClient()
+      .$executeRawUnsafe('TRUNCATE throttler_contadores');
     await app.listen(0);
     const port = (app.getHttpServer() as { address: () => { port: number } }).address().port;
     baseUrl = `http://localhost:${port}`;

@@ -12,6 +12,11 @@
 import { FactoryProvider, Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { ThrottlerModule, ThrottlerStorage, getOptionsToken } from '@nestjs/throttler';
+import type { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import {
+  PostgresThrottlerStorage,
+  THROTTLER_STORAGE_POSTGRES,
+} from '../shared/infrastructure/throttler/postgres-throttler-storage';
 import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarEstadosUseCase } from '../tickets/application/use-cases/listar-estados.use-case';
 import { ListarPrioridadesUseCase } from '../tickets/application/use-cases/listar-prioridades.use-case';
@@ -40,6 +45,17 @@ describe('ApiV1Module — throttler local (JD-6)', () => {
     // El limite se lee al instanciar el modulo, asi `API_V1_RATE_LIMIT` lo puede fijar el entorno.
     expect(opciones!.useFactory()).toEqual([{ limit: limiteApiV1(), ttl: API_V1_VENTANA_MS }]);
     expect(providers.some((p) => token(p) === ThrottlerStorage)).toBe(true);
+  });
+
+  it('el ThrottlerStorage es el de Postgres: el cupo por clave se comparte entre procesos', () => {
+    const providers = metadata<Provider>(MODULE_METADATA.PROVIDERS);
+    const storage = providers.filter((p) => token(p) === ThrottlerStorage);
+    expect(storage).toEqual([THROTTLER_STORAGE_POSTGRES]);
+    const fabrica = THROTTLER_STORAGE_POSTGRES as FactoryProvider;
+    const prisma = { getMasterClient: () => ({}) } as unknown as PrismaService;
+    expect(fabrica.useFactory(prisma, { log: vi.fn(), error: vi.fn() })).toBeInstanceOf(
+      PostgresThrottlerStorage,
+    );
   });
 });
 

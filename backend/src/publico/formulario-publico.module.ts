@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ThrottlerStorage, ThrottlerStorageService, getOptionsToken } from '@nestjs/throttler';
+import { getOptionsToken } from '@nestjs/throttler';
+import { THROTTLER_STORAGE_POSTGRES } from '../shared/infrastructure/throttler/postgres-throttler-storage';
 import { AuthModule } from '../auth/auth.module';
 import { EquiposModule } from '../equipos/equipos.module';
 import { CrearTicketSoporteUseCase } from '../equipos/application/use-cases/crear-ticket-soporte.use-case';
@@ -94,7 +95,8 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
  *   vencidos de cada tenant activo. `TENANT_ENUMERATOR` viene de `SharedModule` (`@Global()`) y
  *   `ScheduleModule.forRoot()` de `AppModule`.
  * - Throttler: opciones con nombre y `ThrottlerStorage` locales (no hay `forRoot` ni `APP_GUARD`).
- *   El guard se aplica por `@UseGuards` en el controller. El storage es memoria de un proceso.
+ *   El guard se aplica por `@UseGuards` en el controller. El storage es el de Postgres
+ *   (`throttler_contadores`), compartido entre procesos y persistente entre reinicios.
  *
  * Ref design: ADR-8, ADR-9. Tarea: 12.3, 13.3, 15.2.
  */
@@ -126,7 +128,7 @@ import { PedidoPublicoController } from './interface/controllers/pedido-publico.
         },
       ],
     },
-    { provide: ThrottlerStorage, useClass: ThrottlerStorageService },
+    THROTTLER_STORAGE_POSTGRES,
     PedidoPublicoThrottlerGuard,
 
     {
