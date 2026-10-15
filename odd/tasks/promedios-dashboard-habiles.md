@@ -120,7 +120,25 @@ técnica conocida" (`docs/roadmap-comercial.md`).
     → `Test Files 2 passed (2) · Tests 27 passed (27)`; cableado: `sla-primera-respuesta.e2e`,
     `tickets.e2e`, `integraciones-api-v1-tickets.e2e` → `Test Files 3 passed (3) · Tests 45 passed (45)`;
     `pnpm typecheck` → sin errores.
-- [ ] **T4 — Script de backfill por tenant** (CA4).
+- [x] **T4 — Script de backfill por tenant** (CA4). Ruta: delegada. Base: `ffa4f2dd`.
+  - Archivos: `backend/scripts/backfill-tiempos-habiles.mjs` (nuevo) y
+    `backend/scripts/backfill-tiempos-habiles.integration.spec.ts` (nuevo). El lint ya cubre
+    `scripts/**/*.mjs`: no hizo falta tocar `eslint.config.js`.
+  - Forma: `backfillTenant({ pool, feriadosGlobales, calculo, mapper, aplicar })` recibe todo por
+    parámetro (precedente `backfill-correo-clientes.mjs`); `main()` lista los tenants como
+    `migrate-tenants.js`, abre los pools con `conUtc` y toma de `dist/` el cálculo, el mapper y `conUtc`.
+    Los `@db.Date` se piden como `fecha::timestamp AT TIME ZONE 'UTC'` (lo que devuelve Prisma) para
+    que `PrismaCalendarioLaboralMapper` aplique su regla sin reimplementarla. Lotes de 500 con
+    `unnest`, cada UPDATE con `IS NULL`. Error en un tenant: se informa, sigue con el resto y sale 1.
+  - Hecho corregido: la tabla tenant es `feriados_cliente` (no `feriado_cliente`) y la de tipos es
+    `tipo_operacion`.
+  - Evidencia: `pnpm vitest run scripts/backfill-tiempos-habiles.integration.spec.ts` →
+    `Test Files 1 passed (1) · Tests 4 passed (4)` (ensayo no escribe; `--apply` da 11 h por el último
+    paso a RESUELTO y 12 h con feriado global + propio; segunda corrida 0). Con `dist/` recién
+    construido, `DATABASE_URL_MASTER=…/soporte_master_test node scripts/backfill-tiempos-habiles.mjs` →
+    `ENSAYO …; 1 tenant(s) activo(s)` y `ERROR database "…" does not exist` para un registro huérfano de
+    la base de test, `exit=1` (carga de `dist/` y manejo por tenant verificados); `--foo` →
+    `argumento desconocido`, `exit=1`. `eslint` sobre los dos archivos → sin salida.
 - [ ] **T5 — Dashboard con `AVG` y etiqueta del frontend** (CA5, CA6).
 - [ ] **T6 — Cierre**:
   - roadmap: fila de la deuda RESUELTA, corrigiendo que la resolución era en horas corridas; fila
