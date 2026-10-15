@@ -320,7 +320,13 @@ model Ticket {
   primeraRespuestaAt       DateTime? @map("primera_respuesta_at") @db.Timestamptz
   primeraRespuestaVenceAt  DateTime? @map("primera_respuesta_vence_at") @db.Timestamptz
   primeraRespuestaVencida  Boolean   @default(false) @map("primera_respuesta_vencida")
-  fechaCierre        DateTime? @map("fecha_cierre") @db.Timestamptz
+  /// Tiempos hábiles guardados para el dashboard (odd/promedios-dashboard-habiles), en segundos y
+  /// fijos con el calendario vigente al guardarse. Sin default: NULL = sin dato. CHECK >= 0.
+  /// `resolucionHabilS` lo escribe solo el pliegue del reloj (acumulado al llegar a RESUELTO, NULL al
+  /// reabrir); `primeraRespuestaHabilS`, el registro de la primera respuesta.
+  resolucionHabilS         Int?      @map("resolucion_habil_s")
+  primeraRespuestaHabilS   Int?      @map("primera_respuesta_habil_s")
+  fechaCierre       DateTime? @map("fecha_cierre") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz

@@ -46,8 +46,7 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
     [TECNICO_Y, { nombre: 'Yago', apellido: 'Sosa' }],
   ]);
   const useCase = new ObtenerMetricasUseCase(
-    // Sin primeras respuestas en el fixture, el calendario y los feriados no se consultan.
-    new PrismaDashboardRepository(tenantContext, { obtener: vi.fn() }, { obtener: vi.fn() }),
+    new PrismaDashboardRepository(tenantContext),
     new PrismaCicloClienteRepository(tenantContext),
     { resumenPorScope: async () => ({ promedio: null, respuestas: 0 }) },
     tareaRepo,

@@ -20,10 +20,10 @@ export class PrismaPrimeraRespuestaWriteRepository implements IPrimeraRespuestaW
     return this.tenantContext.getClient() as InstanceType<typeof TenantPrismaClient>;
   }
 
-  async registrarSiFalta(ticketId: string, instante: Date): Promise<void> {
+  async registrarSiFalta(ticketId: string, instante: Date, habilS: number | null): Promise<void> {
     await this.client.ticket.updateMany({
       where: { id: ticketId, primeraRespuestaAt: null },
-      data: { primeraRespuestaAt: instante },
+      data: { primeraRespuestaAt: instante, primeraRespuestaHabilS: habilS },
     });
   }
 

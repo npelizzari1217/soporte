@@ -1077,6 +1077,56 @@ re-ejecutable (`DROP TABLE IF EXISTS`). Se revierte **primero el código** y des
 `rollback.sql` contra master. Al revés, el código nuevo pierde la tabla, cada pedido limitado
 loguea `THROTTLER_ERROR` y ningún límite se aplica hasta terminar el revert.
 
+## Tiempos hábiles del dashboard
+
+Los dos tiempos medios del dashboard (resolución y primera respuesta) dejan de recorrer el
+historial en cada carga: cada ticket guarda sus segundos hábiles y el dashboard los promedia con
+`AVG` (`odd/tasks/promedios-dashboard-habiles.md`). Qué cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migración tenant | `20261015140000_tiempos_habiles_tickets`, **aditiva con backfill**: las columnas `resolucion_habil_s` y `primera_respuesta_habil_s` en `tickets`, y un `UPDATE` que copia el acumulado del reloj de SLA a `resolucion_habil_s` en los tickets HABIL ya resueltos o cerrados. Entra por `migrate:tenants`. |
+| Script posterior | `backend/scripts/backfill-tiempos-habiles.mjs`: completa lo que el reloj no sabe (tickets previos al reloj, cohorte CORRIDO) y todas las primeras respuestas, con el calendario actual de cada cliente. Ensayo por defecto; `--apply` escribe. Idempotente. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Efecto visible | El promedio de resolución **baja**: deja de contar noches, fines de semana y esperas del cliente, y saca los preventivos. La tarjeta dice "horas hábiles, sin pausas". |
+
+### Orden del deploy
+
+1. `predeploy-dump.ps1`, en DryRun y en la corrida real (ver "Precondición operativa"): la
+   migración escribe filas existentes.
+2. `deploy.ps1`.
+3. **Antes de que alguien mire el dashboard**, desde `C:\soporte\backend` y con Node 24 en el PATH
+   (ver "En el VPS hay DOS Node"), el script en ensayo:
+
+   ```powershell
+   $env:Path = "C:\nodejs24;" + $env:Path
+   cd C:\soporte\backend
+   node scripts\backfill-tiempos-habiles.mjs
+   ```
+
+   Imprime una línea por tenant activo: cuántas resoluciones y primeras respuestas actualizaría, y
+   cuántos tickets saltea por no tener un paso a RESUELTO en el historial. Lee `dist/`, así que va
+   **después** del build de `deploy.ps1`. Nunca imprime URLs ni claves.
+4. Si los conteos son razonables, la corrida real: `node scripts\backfill-tiempos-habiles.mjs --apply`.
+   Una segunda corrida tiene que informar 0 actualizados. Si un tenant falla, el script sigue con
+   los demás y sale con código 1; se puede volver a correr cuando se corrija.
+
+Hasta el paso 4, el dashboard promedia solo los tickets que ya tienen el dato: los que el `UPDATE`
+de la migración completó y los que se resuelvan o respondan después del deploy.
+
+### Rollback
+
+Su `rollback.sql` borra las dos columnas (y sus CHECK) y es re-ejecutable (`DROP ... IF EXISTS`).
+**Primero el código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee y
+escribe las columnas, y sin ellas falla toda lectura de tickets (el cliente Prisma del código
+nuevo las pide), además del dashboard, el pliegue del reloj y el registro de la primera respuesta. El código anterior no las conoce y convive con ellas, así que dejarlas puestas
+también es un rollback válido.
+
+Lo que se pierde al correr el `rollback.sql`: los valores guardados, que fijaban el calendario
+vigente al momento de cada resolución o respuesta. Volver a desplegar después exige borrar a mano
+la fila de la migración en `_prisma_migrations`, y el script recalcula con el calendario de ese
+momento. El rollback no borra esa fila.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

@@ -8,6 +8,10 @@ import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IPrimeraRespuestaWriteRepository } from '../../domain/ports/i-primera-respuesta-write.repository';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+import { ICalendarioLaboralSemanalRepository } from '../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
+import { IFeriadosLaboralesRepository } from '../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import {
   TicketNoEncontradoError,
   ComentarioNoPermitidoError,
@@ -70,6 +74,16 @@ export interface CrearComentarioDto {
  *    `registrarSiFalta` (`updateMany where primeraRespuestaAt: null`:
  *    idempotente y resistente a la concurrencia; ADR-6, sla-primera-respuesta
  *    R1). Un borrado posterior del comentario no recalcula esa fecha.
+ *    En la misma escritura guarda `primera_respuesta_habil_s`: los segundos
+ *    hábiles creación → comentario con el calendario vigente
+ *    (odd/promedios-dashboard-habiles). El calendario se carga ANTES de la tx
+ *    y solo si el comentario puede ser la primera respuesta (cuenta y el
+ *    ticket leído todavía no la tiene): los demás comentarios no pagan esas
+ *    lecturas. Si otro comentario la registró en el medio, el UPDATE
+ *    condicionado no escribe nada. Si la carga del calendario o el cálculo
+ *    fallan, se loguea (sin el texto del comentario) y la primera respuesta
+ *    se registra igual, con `primera_respuesta_habil_s` NULL: el dato del
+ *    dashboard nunca rechaza el comentario.
  * 5. Si es PÚBLICO, publica `TicketComentadoEvent` (log-and-swallow, ADR-6
  *    — un fallo del publisher nunca revierte el comentario ya persistido).
  *    Los comentarios INTERNOS NUNCA emiten evento (T17 — no deben
@@ -91,6 +105,10 @@ export class CrearComentarioUseCase {
       IPrimeraRespuestaWriteRepository,
       'registrarSiFalta'
     >,
+    private readonly calculoHabil: CalcularSlaHabilVenceService,
+    private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
+    private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
+    private readonly logger: Pick<ILogger, 'error'>,
   ) {}
 
   async execute(dto: CrearComentarioDto): Promise<Result<OperacionTicketEntity, DomainError>> {
@@ -133,10 +151,14 @@ export class CrearComentarioUseCase {
 
     const cuentaComoPrimeraRespuesta =
       !dto.esInterno && dto.autorId !== ticket.solicitanteId && dto.autorEsIntegracion !== true;
+    const habilS =
+      cuentaComoPrimeraRespuesta && !ticket.relojSla?.primeraRespuestaAt
+        ? await this.segundosHabiles(ticket.id, ticket.createdAt, operacion.createdAt)
+        : null;
     await this.txRunner.run(async () => {
       await this.operacionRepo.save(operacion);
       if (cuentaComoPrimeraRespuesta) {
-        await this.primeraRespuestaRepo.registrarSiFalta(ticket.id, operacion.createdAt);
+        await this.primeraRespuestaRepo.registrarSiFalta(ticket.id, operacion.createdAt, habilS);
       }
     });
 
@@ -158,5 +180,27 @@ export class CrearComentarioUseCase {
     }
 
     return Result.ok(operacion);
+  }
+  /**
+   * Segundos hábiles entre dos instantes con el calendario y los feriados vigentes del tenant, o
+   * `null` si no se pudieron calcular (lectura del master o guarda de rango): se loguea y sigue.
+   */
+  private async segundosHabiles(
+    ticketId: string,
+    desde: Date,
+    hasta: Date,
+  ): Promise<number | null> {
+    try {
+      const [calendario, feriados] = await Promise.all([
+        this.calendarioRepo.obtener(),
+        this.feriadosRepo.obtener(),
+      ]);
+      return Math.round(
+        this.calculoHabil.msHabilesEntre(desde, hasta, calendario, feriados) / 1000,
+      );
+    } catch (error) {
+      this.logger.error(`PRIMERA_RESPUESTA_HABIL_FALLO | ticket=${ticketId} | ${String(error)}`);
+      return null;
+    }
   }
 }

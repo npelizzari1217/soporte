@@ -5,15 +5,6 @@ import {
   CICLO_CLIENTE_REPOSITORY,
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
-import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
-import {
-  CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
-  ICalendarioLaboralSemanalRepository,
-} from '../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
-import {
-  FERIADOS_LABORALES_REPOSITORY,
-  IFeriadosLaboralesRepository,
-} from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
 import {
   ITareaTicketRepository,
   TAREA_TICKET_REPOSITORY,
@@ -50,9 +41,8 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  *   WU9.1 (ADR-C5): también recibe ENCUESTA_SATISFACCION_REPOSITORY de
  *   `CsatLecturaModule` para el KPI `csatPromedio`/`csatRespuestas`,
  *   gateado POR CAMPO dentro del propio use case — no acá.
- * - sdd/sla-primera-respuesta-y-pausa: el repo recibe el calendario y los feriados del cliente
- *   (`CalendarioLaboralModule`, sin ciclo) para medir el tiempo medio de primera respuesta en horas
- *   hábiles.
+ * - odd/promedios-dashboard-habiles: los tiempos medios promedian segundos hábiles ya guardados
+ *   por ticket, así que el repo ya no carga el calendario ni los feriados.
  * - odd/tareas-con-tecnico T4: la métrica de tareas completadas por técnico usa
  *   TAREA_TICKET_REPOSITORY y USUARIO_MASTER_CHECKER, los dos exportados por `TicketsModule`.
  * - Importa `TicketsModule` (para CICLO_CLIENTE_REPOSITORY), `CsatLecturaModule`
@@ -63,17 +53,13 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule, CsatLecturaModule, CalendarioLaboralModule],
+  imports: [AuthModule, TicketsModule, CsatLecturaModule],
   controllers: [DashboardController],
   providers: [
     {
       provide: DASHBOARD_REPOSITORY,
-      useFactory: (
-        tenantContext: TenantContext,
-        calendarioRepo: ICalendarioLaboralSemanalRepository,
-        feriadosRepo: IFeriadosLaboralesRepository,
-      ) => new PrismaDashboardRepository(tenantContext, calendarioRepo, feriadosRepo),
-      inject: [TenantContext, CALENDARIO_LABORAL_SEMANAL_REPOSITORY, FERIADOS_LABORALES_REPOSITORY],
+      useFactory: (tenantContext: TenantContext) => new PrismaDashboardRepository(tenantContext),
+      inject: [TenantContext],
     },
     {
       provide: ObtenerMetricasUseCase,

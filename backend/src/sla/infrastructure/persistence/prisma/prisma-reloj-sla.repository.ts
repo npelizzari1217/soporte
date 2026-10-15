@@ -130,6 +130,10 @@ export class PrismaRelojSlaRepository implements IRelojSlaRepository {
         slaMetaS: reloj.metaS,
         slaCorreDesde: reloj.correDesde,
         slaCumplido: reloj.cumplido,
+        // `undefined` (CORRIDO resuelto o cerrado) no se toca: conserva lo que guardó el backfill.
+        ...(reloj.resolucionHabilS !== undefined
+          ? { resolucionHabilS: reloj.resolucionHabilS }
+          : {}),
         ...(reloj.slaVenceAt !== undefined ? { slaVenceAt: reloj.slaVenceAt } : {}),
         slaRelojSeqHasta: version,
         slaRelojPendiente: false,

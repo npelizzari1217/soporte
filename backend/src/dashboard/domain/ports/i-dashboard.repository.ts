@@ -74,9 +74,9 @@ export interface IDashboardRepository {
   conteoPorEstadoAgrupado(filtro: MetricaFiltro): Promise<ConteoAbiertosCerrados>;
 
   /**
-   * Promedio en horas de `fechaCierre - createdAt` sobre los tickets
-   * cerrados del scope filtrado. `null` si no hay ningún cerrado (evita
-   * dividir por cero / NaN engañoso).
+   * Promedio en horas hábiles, sin pausas, del tiempo de resolución guardado por ticket
+   * (`resolucion_habil_s`, fijado al llegar a RESUELTO). Excluye preventivos y tickets sin el dato
+   * (reabiertos, previos sin backfill). `null` si no hay ninguno (evita un 0 h engañoso).
    */
   tiempoPromedioResolucionHoras(filtro: MetricaFiltro): Promise<number | null>;
 
@@ -94,9 +94,10 @@ export interface IDashboardRepository {
   cumplimientoPrimeraRespuesta(filtro: MetricaFiltro): Promise<CumplimientoPrimeraRespuestaCrudo>;
 
   /**
-   * Tiempo medio de primera respuesta en horas HÁBILES del calendario del cliente, entre la creación
-   * y la primera respuesta, sobre todos los tickets con respuesta (incluidos los rellenados sin
-   * meta). `null` si no hay ninguno. Excluye preventivos.
+   * Tiempo medio de primera respuesta en horas HÁBILES, entre la creación y la primera respuesta,
+   * sobre los tickets con el valor guardado (`primera_respuesta_habil_s`, fijo con el calendario
+   * vigente al registrarse; incluidos los rellenados sin meta). `null` si no hay ninguno. Excluye
+   * preventivos.
    */
   tiempoPromedioPrimeraRespuestaHoras(filtro: MetricaFiltro): Promise<number | null>;
 

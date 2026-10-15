@@ -9,6 +9,12 @@
  *   `acumulado = 0`, `correDesde = createdAt` y `meta = entre(createdAt, slaVenceAt)`.
  * - El tiempo de cada transición se recorta a monótono: `t_i = max(created_at_i, t_{i-1}, corre_desde)`.
  * - Cada tramo se redondea a segundos con `Math.round(ms / 1000)`.
+ * - `resolucionHabilS` (odd/promedios-dashboard-habiles) es el acumulado cuando el ticket está en
+ *   RESUELTO o CERRADO con regla HABIL; `undefined` (no se toca) en RESUELTO o CERRADO con regla
+ *   CORRIDO, porque ese acumulado no es tiempo hábil y el valor guardado lo pudo llenar el backfill
+ *   (`null` si entre las transiciones plegadas hubo una reapertura: ese valor ya no vale); y
+ *   `null` en cualquier estado que no sea de resolución, sea cual sea la regla: reabrir lo borra y el
+ *   próximo RESUELTO lo toma de nuevo.
  */
 import { ESTADOS_RELOJ_CORRE } from '../../../tickets/domain/state-machine/estados.constants';
 import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
@@ -45,6 +51,11 @@ export interface TransicionReloj {
 /** Estado nuevo del reloj. `slaVenceAt` es `undefined` cuando el pliegue no lo reescribe. */
 export interface RelojSlaResultado {
   readonly acumuladoS: number;
+  /**
+   * Tiempo hábil de resolución que guarda el ticket para el dashboard: un número se escribe, `null`
+   * borra el valor (ticket no resuelto) y `undefined` lo deja como está (CORRIDO resuelto o cerrado).
+   */
+  readonly resolucionHabilS?: number | null;
   readonly metaS: number | null;
   readonly correDesde: Date | null;
   readonly cumplido: boolean | null;
@@ -60,6 +71,9 @@ export interface PlegarParams {
 }
 
 const segundos = (ms: number): number => Math.round(ms / 1000);
+
+/** Estados en los que el acumulado ya es el tiempo de resolución (RESUELTO → CERRADO no lo mueve). */
+const ESTADOS_RESOLUCION: ReadonlySet<string> = new Set(['RESUELTO', 'CERRADO']);
 
 export class RelojSla {
   /** Elige el medidor por cohorte: `CORRIDO` mide tiempo de pared, el resto tiempo hábil. */
@@ -94,6 +108,14 @@ export class RelojSla {
     let tPrev: Date | null = correDesde;
 
     const ops = previo ? [...historialSinSecuencia, ...transiciones] : transiciones;
+    // Solo una reapertura posterior al cursor invalida el valor guardado: el backfill ya midió con
+    // todo el historial previo (JD-W4).
+    const reabrio = transiciones.some(
+      (op) =>
+        op.estadoAnteriorCodigo !== null &&
+        ESTADOS_RESOLUCION.has(op.estadoAnteriorCodigo) &&
+        !ESTADOS_RESOLUCION.has(op.estadoNuevoCodigo),
+    );
     for (const op of ops) {
       let t = op.createdAt;
       if (tPrev && tPrev > t) t = tPrev;
@@ -126,7 +148,24 @@ export class RelojSla {
       correDesde = tPrev ?? fila.createdAt;
     }
 
-    const resultado: RelojSlaResultado = { acumuladoS, metaS, correDesde, cumplido };
+    // Se toma del estado actual, ya con el último tramo sumado. CORRIDO resuelto no lo toca: su
+    // acumulado no es tiempo hábil y el valor guardado (backfill) no se puede borrar, salvo que el
+    // ticket se haya reabierto en este pliegue: entonces ese valor mide una resolución vieja.
+    const resuelto = ESTADOS_RESOLUCION.has(fila.estadoCodigo);
+    const resolucionHabilS = !resuelto
+      ? null
+      : fila.slaRegla === 'HABIL'
+        ? acumuladoS
+        : reabrio
+          ? null
+          : undefined;
+    const resultado: RelojSlaResultado = {
+      acumuladoS,
+      resolucionHabilS,
+      metaS,
+      correDesde,
+      cumplido,
+    };
     if (!(correActual && reanudo && metaS !== null && correDesde)) return resultado;
 
     const slaVenceAt = RelojSla.vencimientoDerivado({

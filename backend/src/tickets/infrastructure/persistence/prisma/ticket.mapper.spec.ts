@@ -38,6 +38,8 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     primeraRespuestaAt: null,
     primeraRespuestaVenceAt: null,
     primeraRespuestaVencida: false,
+    resolucionHabilS: null,
+    primeraRespuestaHabilS: null,
     fechaCierre: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),

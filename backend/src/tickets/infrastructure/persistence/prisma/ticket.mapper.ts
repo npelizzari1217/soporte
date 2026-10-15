@@ -25,8 +25,9 @@ function parseSlaRegla(value: string): SlaRegla {
 }
 
 /**
- * Columnas del reloj de SLA (M2) y de la primera respuesta (M4): las escriben `sla/`, el marcador y el
- * repo de primera respuesta con escrituras acotadas, nunca el upsert de la entidad. El `create` del repo fija `slaAcumuladoS` y `slaCorreDesde`.
+ * Columnas del reloj de SLA (M2), de la primera respuesta (M4) y los tiempos hábiles guardados del
+ * dashboard: las escriben `sla/`, el marcador y el repo de primera respuesta con escrituras acotadas,
+ * nunca el upsert de la entidad. El `create` del repo fija `slaAcumuladoS` y `slaCorreDesde`.
  */
 type ColumnasRelojSla =
   | 'slaAcumuladoS'
@@ -39,7 +40,9 @@ type ColumnasRelojSla =
   | 'slaCumplido'
   | 'primeraRespuestaAt'
   | 'primeraRespuestaVenceAt'
-  | 'primeraRespuestaVencida';
+  | 'primeraRespuestaVencida'
+  | 'primeraRespuestaHabilS'
+  | 'resolucionHabilS';
 
 export class TicketMapper {
   /** Convierte una fila de DB Prisma → TicketEntity de dominio. */

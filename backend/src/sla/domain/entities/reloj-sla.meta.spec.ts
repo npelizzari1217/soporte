@@ -7,6 +7,7 @@ import { H, L, corrido, habil } from './reloj-sla.fixtures';
 
 const base = (over: Partial<RelojSlaResultado> = {}): RelojSlaResultado => ({
   acumuladoS: 3 * H,
+  resolucionHabilS: null,
   metaS: null,
   correDesde: L(11, 9),
   cumplido: null,
@@ -101,6 +102,12 @@ describe('RelojSla.conMeta', () => {
     it('9 h sobre una meta de 8 h no cumple', () => {
       expect(resuelto(9 * H, 8 * H).cumplido).toBe(false);
     });
+  });
+
+  it.each([8 * H, null])('conserva el tiempo de resolución del pliegue (meta %s)', (metaS) => {
+    const r = conMeta(base({ resolucionHabilS: 3 * H, correDesde: null }), metaS, 'RESUELTO');
+
+    expect(r.resolucionHabilS).toBe(3 * H);
   });
 
   it('fuera de RESUELTO no inventa un cumplimiento', () => {

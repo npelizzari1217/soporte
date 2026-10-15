@@ -4,8 +4,11 @@
  * llevan la condición `primeraRespuestaAt: null`, así una respuesta ya registrada queda histórica.
  */
 export interface IPrimeraRespuestaWriteRepository {
-  /** Registra el instante solo si todavia no hay primera respuesta (idempotente y resistente a la concurrencia). */
-  registrarSiFalta(ticketId: string, instante: Date): Promise<void>;
+  /**
+   * Registra el instante y sus segundos hábiles desde la creación (`habilS`, `null` = sin dato) solo si
+   * todavía no hay primera respuesta (idempotente y resistente a la concurrencia).
+   */
+  registrarSiFalta(ticketId: string, instante: Date, habilS: number | null): Promise<void>;
 
   /**
    * Fija (o limpia con `null`) el vencimiento de primera respuesta, solo mientras el ticket no tenga

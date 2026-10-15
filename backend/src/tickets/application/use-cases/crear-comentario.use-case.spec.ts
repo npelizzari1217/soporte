@@ -9,6 +9,10 @@
  */
 import { CrearComentarioUseCase, CrearComentarioDto } from './crear-comentario.use-case';
 import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import {
+  CalcularSlaHabilVenceService,
+  CalendarioLaboralSemanal,
+} from '../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TicketComentadoEvent } from '../../domain/events/ticket-comentado.event';
@@ -58,6 +62,22 @@ function makeTicket(
   );
 }
 
+const H = 3600;
+const abierto = { aperturaMinuto: 540, cierreMinuto: 1080 };
+const cerrado = { aperturaMinuto: null, cierreMinuto: null };
+/** L-V 09:00-18:00 local, fin de semana cerrado. */
+const calendarioSemanal: CalendarioLaboralSemanal = [
+  cerrado,
+  abierto,
+  abierto,
+  abierto,
+  abierto,
+  abierto,
+  cerrado,
+];
+/** Instante local (UTC-3) de un día de agosto de 2026 (lunes = 10). */
+const L = (dia: number, hora: number): Date => new Date(Date.UTC(2026, 7, dia, hora + 3));
+
 function baseDto(overrides: Partial<CrearComentarioDto> = {}): CrearComentarioDto {
   return {
     ticketId: 'ticket-uuid',
@@ -90,6 +110,9 @@ describe('CrearComentarioUseCase', () => {
       alCommitear: vi.fn(),
     } satisfies ITenantTransactionRunner & { llamadas: number };
     const primeraRespuestaRepo = { registrarSiFalta: vi.fn().mockResolvedValue(undefined) };
+    const calendarioRepo = { obtener: vi.fn().mockResolvedValue(calendarioSemanal) };
+    const feriadosRepo = { obtener: vi.fn().mockResolvedValue(new Set<string>()) };
+    const logger = { error: vi.fn() };
 
     const useCase = new CrearComentarioUseCase(
       ticketRepo as never,
@@ -99,6 +122,10 @@ describe('CrearComentarioUseCase', () => {
       eventPublisher as never,
       txRunner,
       primeraRespuestaRepo,
+      new CalcularSlaHabilVenceService(),
+      calendarioRepo,
+      feriadosRepo,
+      logger,
     );
 
     return {
@@ -110,6 +137,9 @@ describe('CrearComentarioUseCase', () => {
       eventPublisher,
       txRunner,
       primeraRespuestaRepo,
+      calendarioRepo,
+      feriadosRepo,
+      logger,
     };
   }
 
@@ -225,6 +255,7 @@ describe('CrearComentarioUseCase', () => {
       expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledWith(
         'ticket-uuid',
         operacion.createdAt,
+        expect.any(Number),
       );
       expect(c.txRunner.llamadas).toBe(1);
     });
@@ -253,13 +284,15 @@ describe('CrearComentarioUseCase', () => {
       expect(orden).toEqual(['tx-inicio', 'save', 'registrar', 'tx-fin']);
     });
 
-    it('un comentario interno no la registra', async () => {
+    it('un comentario interno no la registra ni carga el calendario', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
 
       await c.useCase.execute(baseDto({ esInterno: true }));
 
       expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+      expect(c.calendarioRepo.obtener).not.toHaveBeenCalled();
+      expect(c.feriadosRepo.obtener).not.toHaveBeenCalled();
     });
 
     it('un comentario público del propio solicitante no la registra', async () => {
@@ -269,6 +302,7 @@ describe('CrearComentarioUseCase', () => {
       await c.useCase.execute(baseDto({ esInterno: false, autorId: 'solicitante-uuid' }));
 
       expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+      expect(c.calendarioRepo.obtener).not.toHaveBeenCalled();
       expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
     });
 
@@ -305,6 +339,125 @@ describe('CrearComentarioUseCase', () => {
 
       expect(c.txRunner.llamadas).toBe(0);
       expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+    });
+
+    describe('segundos hábiles (odd/promedios-dashboard-habiles)', () => {
+      beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+      afterEach(() => vi.useRealTimers());
+
+      /** Ticket creado el lunes 10 a las 09:00 y comentado el martes 11 a las 12:00. */
+      async function comentarLunesAMartes(feriados: Set<string>) {
+        const c = makeCollaborators();
+        c.feriadosRepo.obtener.mockResolvedValue(feriados);
+        vi.setSystemTime(L(10, 9));
+        c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+        vi.setSystemTime(L(11, 12));
+        const operacion = (await c.useCase.execute(baseDto({ esInterno: false }))).getValue();
+        return { c, operacion };
+      }
+
+      it('guarda las horas hábiles desde la creación: 9 h del lunes + 3 h del martes', async () => {
+        const { c, operacion } = await comentarLunesAMartes(new Set());
+
+        expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledWith(
+          'ticket-uuid',
+          operacion.createdAt,
+          12 * H,
+        );
+      });
+
+      it('un feriado no cuenta: con el lunes feriado quedan las 3 h del martes', async () => {
+        const { c } = await comentarLunesAMartes(new Set(['2026-08-10']));
+
+        expect(c.primeraRespuestaRepo.registrarSiFalta.mock.calls[0][2]).toBe(3 * H);
+      });
+
+      it('si el calendario no se puede cargar, el comentario igual se guarda con los segundos en null', async () => {
+        const c = makeCollaborators();
+        c.calendarioRepo.obtener.mockRejectedValue(new Error('master caído'));
+        c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+        const texto = 'Texto privado del comentario';
+
+        const result = await c.useCase.execute(baseDto({ esInterno: false, texto }));
+
+        expect(result.isOk()).toBe(true);
+        const operacion = result.getValue();
+        expect(c.operacionRepo.save).toHaveBeenCalledWith(operacion);
+        expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledWith(
+          'ticket-uuid',
+          operacion.createdAt,
+          null,
+        );
+        expect(c.logger.error).toHaveBeenCalledTimes(1);
+        const mensaje = String(c.logger.error.mock.calls[0][0]);
+        expect(mensaje).toContain('ticket-uuid');
+        expect(mensaje).toContain('master caído');
+        expect(mensaje).not.toContain(texto);
+      });
+
+      it('si msHabilesEntre lanza (guarda de rango), el comentario igual se guarda con null', async () => {
+        const c = makeCollaborators();
+        const espia = vi
+          .spyOn(CalcularSlaHabilVenceService.prototype, 'msHabilesEntre')
+          .mockImplementation(() => {
+            throw new Error('rango excedido');
+          });
+        c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+        try {
+          const result = await c.useCase.execute(baseDto({ esInterno: false }));
+
+          expect(result.isOk()).toBe(true);
+          expect(c.primeraRespuestaRepo.registrarSiFalta.mock.calls[0][2]).toBeNull();
+          expect(c.logger.error).toHaveBeenCalledTimes(1);
+        } finally {
+          espia.mockRestore();
+        }
+      });
+
+      it('si el ticket ya tiene primera respuesta no carga el calendario', async () => {
+        const c = makeCollaborators();
+        const nuevo = makeTicket('NUEVO');
+        const respondido = TicketEntity.reconstitute(
+          {
+            numero: nuevo.numero,
+            titulo: nuevo.titulo,
+            descripcion: null,
+            tipoId: nuevo.tipoId,
+            estadoId: nuevo.estadoId,
+            prioridadId: nuevo.prioridadId,
+            cicloId: null,
+            ticketReferenciaId: null,
+            solicitanteId: 'solicitante-uuid',
+            solicitanteExternoId: null,
+            asignadoId: null,
+            slaVenceAt: null,
+            vencido: false,
+            fechaCierre: null,
+          },
+          'ticket-uuid',
+          L(10, 9),
+          L(10, 9),
+          null,
+          'HABIL',
+          {
+            acumuladoS: 0,
+            metaS: null,
+            correDesde: L(10, 9),
+            seqHasta: 0,
+            version: 0,
+            pendiente: false,
+            cumplido: null,
+            primeraRespuestaAt: L(10, 10),
+          },
+        );
+        c.ticketRepo.findById.mockResolvedValue(respondido);
+
+        await c.useCase.execute(baseDto({ esInterno: false }));
+
+        expect(c.calendarioRepo.obtener).not.toHaveBeenCalled();
+        expect(c.primeraRespuestaRepo.registrarSiFalta.mock.calls[0][2]).toBeNull();
+      });
     });
   });
 });

@@ -195,9 +195,11 @@ describe('tickets — migracion M4 de la primera respuesta (WU-6, tenant efimero
 
   it('rollback.sql retira las 3 columnas y el indice, y M4 se puede reaplicar', async () => {
     await client.query(sql('rollback.sql'));
+    // `primera_respuesta_habil_s` es de otra migracion (20261015140000) y el rollback de M4 no la toca.
     const cols = await client.query(
       `SELECT column_name FROM information_schema.columns
-        WHERE table_name = 'tickets' AND column_name LIKE 'primera\\_respuesta%'`,
+        WHERE table_name = 'tickets' AND column_name LIKE 'primera\\_respuesta%'
+          AND column_name <> 'primera_respuesta_habil_s'`,
     );
     expect(cols.rows).toHaveLength(0);
     await client.query(sql('migration.sql'));
