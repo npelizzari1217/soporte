@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
 import { CrearEquipoUseCase } from './crear-equipo.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ModeloEquipoEntity } from '../../../insumos/domain/entities/modelo-equipo.entity';
@@ -7,6 +7,9 @@ import {
   ModeloEquipoInexistenteError,
   NumeroSerieDuplicadoError,
 } from '../../domain/errors/equipos.errors';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
+import type { LectorCatalogoModelos } from '../services/validar-modelo-equipo.service';
+import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 
 /**
  * T12.1 [U][RED] — CrearEquipoUseCase: numeroSerie duplicado →
@@ -17,23 +20,36 @@ import {
  * Ref spec: sdd/flujos-especializados/spec F3-Q1.
  */
 describe('CrearEquipoUseCase', () => {
-  function makeDeps(overrides: Partial<Record<string, unknown>> = {}) {
-    const equipoRepo = {
-      findByNumeroSerie: vi.fn().mockResolvedValue(null),
-      save: vi.fn().mockResolvedValue(undefined),
+  type EquipoRepoDoble = {
+    findByNumeroSerie: Mock<IEquipoInformaticoRepository['findByNumeroSerie']>;
+    save: Mock<IEquipoInformaticoRepository['save']>;
+  };
+
+  /** Runner que ejecuta la unidad de trabajo en línea, sin transacción real. */
+  function makeTxRunner(): ITenantTransactionRunner {
+    return {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: (fn: () => void) => fn(),
     };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
-    const modeloRepo = { findById: vi.fn().mockResolvedValue(null) };
-    return { equipoRepo, txRunner, modeloRepo, ...overrides };
+  }
+
+  function makeDeps(overrides: { equipoRepo?: EquipoRepoDoble } = {}) {
+    const equipoRepo: EquipoRepoDoble = overrides.equipoRepo ?? {
+      findByNumeroSerie: vi
+        .fn<IEquipoInformaticoRepository['findByNumeroSerie']>()
+        .mockResolvedValue(null),
+      save: vi.fn<IEquipoInformaticoRepository['save']>().mockResolvedValue(undefined),
+    };
+    const txRunner = makeTxRunner();
+    const modeloRepo = {
+      findById: vi.fn<LectorCatalogoModelos['findById']>().mockResolvedValue(null),
+    };
+    return { equipoRepo, txRunner, modeloRepo };
   }
 
   it('crea el equipo cuando numeroSerie es válido (o ausente)', async () => {
     const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      modeloRepo as never,
-    );
+    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
 
     const result = await useCase.execute({
       nombre: 'Notebook A',
@@ -64,15 +80,13 @@ describe('CrearEquipoUseCase', () => {
     });
     const { equipoRepo, txRunner, modeloRepo } = makeDeps({
       equipoRepo: {
-        findByNumeroSerie: vi.fn().mockResolvedValue(equipoExistente),
-        save: vi.fn(),
+        findByNumeroSerie: vi
+          .fn<IEquipoInformaticoRepository['findByNumeroSerie']>()
+          .mockResolvedValue(equipoExistente),
+        save: vi.fn<IEquipoInformaticoRepository['save']>(),
       },
     });
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      modeloRepo as never,
-    );
+    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
 
     const result = await useCase.execute({
       nombre: 'Notebook B',
@@ -90,11 +104,7 @@ describe('CrearEquipoUseCase', () => {
 
   it('crea el equipo (ubicacion es texto libre, no se valida)', async () => {
     const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      modeloRepo as never,
-    );
+    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
 
     const result = await useCase.execute({
       nombre: 'Notebook D',
@@ -114,11 +124,7 @@ describe('CrearEquipoUseCase', () => {
   /** El alta sin modelo de catálogo —el clon armado en casa— sigue siendo válida. */
   it('deja modeloEquipoId en null cuando el alta no lo trae', async () => {
     const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-    const useCase = new CrearEquipoUseCase(
-      equipoRepo as never,
-      txRunner as never,
-      modeloRepo as never,
-    );
+    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
 
     const result = await useCase.execute({
       nombre: 'Clon armado en casa',
@@ -148,12 +154,8 @@ describe('CrearEquipoUseCase', () => {
       );
     }
 
-    function ejecutar(modeloRepo: { findById: ReturnType<typeof vi.fn> }, equipoRepo: unknown) {
-      const useCase = new CrearEquipoUseCase(
-        equipoRepo as never,
-        { run: vi.fn((fn: () => Promise<unknown>) => fn()) } as never,
-        modeloRepo as never,
-      );
+    function ejecutar(modeloRepo: LectorCatalogoModelos, equipoRepo: EquipoRepoDoble) {
+      const useCase = new CrearEquipoUseCase(equipoRepo, makeTxRunner(), modeloRepo);
       return useCase.execute({
         nombre: 'Impresora del catálogo',
         numeroSerie: null,
@@ -171,7 +173,11 @@ describe('CrearEquipoUseCase', () => {
      */
     it('crea el equipo y le asigna el modelo cuando existe y está ACTIVO', async () => {
       const { equipoRepo } = makeDeps();
-      const modeloRepo = { findById: vi.fn().mockResolvedValue(modeloEnCatalogo(true)) };
+      const modeloRepo = {
+        findById: vi
+          .fn<LectorCatalogoModelos['findById']>()
+          .mockResolvedValue(modeloEnCatalogo(true)),
+      };
 
       const result = await ejecutar(modeloRepo, equipoRepo);
 
@@ -182,7 +188,9 @@ describe('CrearEquipoUseCase', () => {
 
     it('falla con ModeloEquipoInexistenteError cuando el id no está en el catálogo', async () => {
       const { equipoRepo } = makeDeps();
-      const modeloRepo = { findById: vi.fn().mockResolvedValue(null) };
+      const modeloRepo = {
+        findById: vi.fn<LectorCatalogoModelos['findById']>().mockResolvedValue(null),
+      };
 
       const result = await ejecutar(modeloRepo, equipoRepo);
 
@@ -201,7 +209,11 @@ describe('CrearEquipoUseCase', () => {
      */
     it('falla con ModeloEquipoDeshabilitadoError cuando el modelo existe pero está deshabilitado', async () => {
       const { equipoRepo } = makeDeps();
-      const modeloRepo = { findById: vi.fn().mockResolvedValue(modeloEnCatalogo(false)) };
+      const modeloRepo = {
+        findById: vi
+          .fn<LectorCatalogoModelos['findById']>()
+          .mockResolvedValue(modeloEnCatalogo(false)),
+      };
 
       const result = await ejecutar(modeloRepo, equipoRepo);
 
@@ -225,7 +237,9 @@ describe('CrearEquipoUseCase', () => {
         new Date(),
         new Date(),
       );
-      const modeloRepo = { findById: vi.fn().mockResolvedValue(modeloBorrado) };
+      const modeloRepo = {
+        findById: vi.fn<LectorCatalogoModelos['findById']>().mockResolvedValue(modeloBorrado),
+      };
 
       const result = await ejecutar(modeloRepo, equipoRepo);
 
@@ -237,11 +251,7 @@ describe('CrearEquipoUseCase', () => {
     /** El alta sin modelo no debe pagar un viaje al catálogo. */
     it('no consulta el catálogo cuando el alta no trae modeloEquipoId', async () => {
       const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-      const useCase = new CrearEquipoUseCase(
-        equipoRepo as never,
-        txRunner as never,
-        modeloRepo as never,
-      );
+      const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
 
       await useCase.execute({
         nombre: 'Clon armado en casa',

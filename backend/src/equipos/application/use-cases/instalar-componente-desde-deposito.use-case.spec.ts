@@ -12,6 +12,37 @@ import { txRunnerFake } from '../../../insumos/testing/tx-runner-fake';
 import { agregarComponenteSobreEquipoDadoDeBaja } from '../../testing/equipos-unit.fixtures';
 import { StockInsuficienteError } from '../../../insumos/domain/errors/insumos.errors';
 import { UnidadNoDisponibleError } from '../../../insumos/domain/errors/unidades-insumo.errors';
+import { unstubbed } from '../../../testing/mocks';
+import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import type { AgregarComponenteUseCase } from './agregar-componente.use-case';
+import type { RegistrarSalidaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-salida-insumo.use-case';
+import type { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
+import type { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
+
+type TxRunner = Pick<ITenantTransactionRunner, 'run'>;
+type AgregarComponente = Pick<AgregarComponenteUseCase, 'execute' | 'preparar'>;
+type RegistrarSalida = Pick<RegistrarSalidaInsumoUseCase, 'execute'>;
+type Operaciones = Pick<OperacionesUnidadInsumo, 'instalar'>;
+type ComponenteRepo = Pick<IComponenteEquipoRepository, 'save' | 'findById'>;
+
+/**
+ * Completa un doble parcial. Sin override va el doble por defecto; con override,
+ * lo que el test no provee queda `unstubbed` y falla fuerte si la producción lo llama.
+ * El override puede ser una instancia real (métodos en el prototipo): por eso se
+ * hereda de él en vez de esparcirlo, que copiaría solo sus propiedades propias.
+ */
+function completar<T extends object>(
+  parcial: Partial<T> | undefined,
+  porDefecto: T,
+  ausentes: T,
+): T {
+  if (parcial === undefined) return porDefecto;
+  const completo: T = Object.create(parcial);
+  for (const [clave, valor] of Object.entries(ausentes)) {
+    if (!(clave in parcial)) Object.defineProperty(completo, clave, { value: valor });
+  }
+  return completo;
+}
 
 /**
  * WU-4 (sdd/repuestos-instalar-desde-deposito, issue #153) —
@@ -53,23 +84,53 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
    * nada real — alcanza para probar la orquestación (orden de llamadas,
    * propagación del throw) sin un Postgres de verdad.
    */
-  function makeTxRunner() {
-    return { run: vi.fn((fn: () => unknown) => fn()) };
+  function makeTxRunner(): TxRunner {
+    const txRunner: TxRunner = { run: async <T>(fn: () => Promise<T>): Promise<T> => fn() };
+    vi.spyOn(txRunner, 'run');
+    return txRunner;
   }
 
   function makeUseCase(overrides: {
-    txRunner?: unknown;
-    agregarComponenteUseCase?: unknown;
-    registrarSalidaInsumoUseCase?: unknown;
-    operaciones?: unknown;
-    componenteRepo?: unknown;
+    txRunner?: TxRunner;
+    agregarComponenteUseCase?: Partial<AgregarComponente>;
+    registrarSalidaInsumoUseCase?: Partial<RegistrarSalida>;
+    operaciones?: Partial<Operaciones>;
+    componenteRepo?: Partial<ComponenteRepo>;
   }) {
     return new InstalarComponenteDesdeDepositoUseCase(
-      (overrides.txRunner ?? makeTxRunner()) as never,
-      (overrides.agregarComponenteUseCase ?? { execute: vi.fn() }) as never,
-      (overrides.registrarSalidaInsumoUseCase ?? { execute: vi.fn() }) as never,
-      (overrides.operaciones ?? { instalar: vi.fn() }) as never,
-      (overrides.componenteRepo ?? { save: vi.fn(), findById: vi.fn() }) as never,
+      overrides.txRunner ?? makeTxRunner(),
+      completar<AgregarComponente>(
+        overrides.agregarComponenteUseCase,
+        {
+          execute: vi.fn<AgregarComponente['execute']>(),
+          preparar: unstubbed('agregarComponenteUseCase.preparar'),
+        },
+        {
+          execute: unstubbed('agregarComponenteUseCase.execute'),
+          preparar: unstubbed('agregarComponenteUseCase.preparar'),
+        },
+      ),
+      completar<RegistrarSalida>(
+        overrides.registrarSalidaInsumoUseCase,
+        { execute: vi.fn<RegistrarSalida['execute']>() },
+        { execute: unstubbed('registrarSalidaInsumoUseCase.execute') },
+      ),
+      completar<Operaciones>(
+        overrides.operaciones,
+        { instalar: vi.fn<Operaciones['instalar']>() },
+        { instalar: unstubbed('operaciones.instalar') },
+      ),
+      completar<ComponenteRepo>(
+        overrides.componenteRepo,
+        {
+          save: vi.fn<ComponenteRepo['save']>(),
+          findById: vi.fn<ComponenteRepo['findById']>(),
+        },
+        {
+          save: unstubbed('componenteRepo.save'),
+          findById: unstubbed('componenteRepo.findById'),
+        },
+      ),
     );
   }
 
@@ -204,8 +265,8 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     const insumoId = 'insumo-uuid';
     const componente = makeComponente(insumoId);
     const error = new StockInsuficienteError(insumoId, 1, 0);
-    const runSpy = vi.fn(async (fn: () => Promise<unknown>) => fn());
-    const txRunner = { run: runSpy };
+    const txRunner: TxRunner = { run: async <T>(fn: () => Promise<T>): Promise<T> => fn() };
+    const runSpy = vi.spyOn(txRunner, 'run');
     const agregarComponenteUseCase = { execute: vi.fn().mockResolvedValue(Result.ok(componente)) };
     const registrarSalidaInsumoUseCase = {
       execute: vi.fn().mockResolvedValue(Result.fail(error)),
@@ -227,7 +288,7 @@ describe('InstalarComponenteDesdeDepositoUseCase', () => {
     // El callback pasado a run() tiene que HABER LANZADO — si no lanzara,
     // Postgres comitearía el componente sin la salida (S36). Se comprueba
     // llamando al callback capturado directamente.
-    const callback = runSpy.mock.calls[0][0] as () => Promise<unknown>;
+    const callback = runSpy.mock.calls[0][0];
     await expect(callback()).rejects.toThrow(/salida de stock/i);
   });
 

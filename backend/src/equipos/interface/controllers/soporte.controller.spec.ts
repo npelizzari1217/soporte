@@ -25,6 +25,21 @@ import {
 } from '../../../tickets/domain/errors/tickets.errors';
 import { ResolverQrAutenticadoUseCase } from '../../application/use-cases/resolver-qr-autenticado.use-case';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
+import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
+import { RegistrarSolucionUseCase } from '../../application/use-cases/registrar-solucion.use-case';
+import { ObtenerEquipoDeTicketUseCase } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
+
+/**
+ * Caso de uso sin construir, con `execute` reemplazado por un `vi.fn` tipado con
+ * la firma real de la clase. El controller solo llama a `execute`, así que
+ * alcanza con el prototipo; como un `vi.fn()` suelto, devuelve `undefined`
+ * hasta que el test lo programe.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 const USER = payloadDeTest({
   sub: 'usuario-uuid',
@@ -52,15 +67,18 @@ function makeTicket(): TicketEntity {
 }
 
 describe('SoporteController (T13.4)', () => {
+  /** Body completo: los casos de error dependen del use case, no del contenido. */
+  const DTO_VALIDO = { titulo: 'No tengo acceso a la VPN', prioridadId: 'prioridad-media-uuid' };
+
   function buildController() {
-    const crearTicketSoporteUseCase = { execute: vi.fn() };
-    const registrarSolucionUseCase = { execute: vi.fn() };
-    const obtenerEquipoDeTicketUseCase = { execute: vi.fn() };
+    const crearTicketSoporteUseCase = espiado(CrearTicketSoporteUseCase);
+    const registrarSolucionUseCase = espiado(RegistrarSolucionUseCase);
+    const obtenerEquipoDeTicketUseCase = espiado(ObtenerEquipoDeTicketUseCase);
 
     const controller = new SoporteController(
-      crearTicketSoporteUseCase as any,
-      registrarSolucionUseCase as any,
-      obtenerEquipoDeTicketUseCase as any,
+      crearTicketSoporteUseCase.caso,
+      registrarSolucionUseCase.caso,
+      obtenerEquipoDeTicketUseCase.caso,
       // Real y con repos vacíos: este spec no ejercita la ruta del QR (la cubre su e2e).
       new ResolverQrAutenticadoUseCase({ findById: vi.fn() }, { findByQrHash: vi.fn() }),
     );
@@ -84,7 +102,7 @@ describe('SoporteController (T13.4)', () => {
       crearTicketSoporteUseCase.execute.mockResolvedValue(Result.ok({ ticket, ticketSoporte }));
 
       const result = await controller.crear(
-        { titulo: 'No tengo acceso a la VPN', prioridadId: 'prioridad-media-uuid' } as any,
+        { titulo: 'No tengo acceso a la VPN', prioridadId: 'prioridad-media-uuid' },
         USER,
       );
 
@@ -102,7 +120,9 @@ describe('SoporteController (T13.4)', () => {
         Result.fail(new EquipoInvalidoError('equipo-invalido')),
       );
 
-      await expect(controller.crear({} as any, USER)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('solicitante inválido → 422', async () => {
@@ -111,7 +131,9 @@ describe('SoporteController (T13.4)', () => {
         Result.fail(new SolicitanteInvalidoError('usuario-uuid')),
       );
 
-      await expect(controller.crear({} as any, USER)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('sin ciclo activo → 409', async () => {
@@ -119,7 +141,7 @@ describe('SoporteController (T13.4)', () => {
       const { ConflictException } = await import('@nestjs/common');
       crearTicketSoporteUseCase.execute.mockResolvedValue(Result.fail(new SinCicloActivoError()));
 
-      await expect(controller.crear({} as any, USER)).rejects.toThrow(ConflictException);
+      await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(ConflictException);
     });
 
     it('declara @RequiereAcciones("TICKETS:ALTAS")', () => {
@@ -141,7 +163,7 @@ describe('SoporteController (T13.4)', () => {
 
       const result = await controller.registrarSolucion('ticket-uuid', {
         solucion: 'Se reinstaló el cliente VPN.',
-      } as any);
+      });
 
       expect(result.solucionAplicada).toBe('Se reinstaló el cliente VPN.');
     });
@@ -152,9 +174,9 @@ describe('SoporteController (T13.4)', () => {
         Result.fail(new TicketSoporteNoEncontradoError('no-existe')),
       );
 
-      await expect(
-        controller.registrarSolucion('no-existe', { solucion: 'X' } as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.registrarSolucion('no-existe', { solucion: 'X' })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('declara @RequiereAcciones("TICKETS:MODIFICACION")', () => {

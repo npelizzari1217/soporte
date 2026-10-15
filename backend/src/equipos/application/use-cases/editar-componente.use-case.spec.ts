@@ -112,14 +112,16 @@ describe('EditarComponenteUseCase', () => {
     const { useCase } = makeUseCase(componente);
 
     // El DTO de aplicación no los declara; un llamador que los cuele igual no
-    // puede modificar nada (ADR-2).
-    const result = await useCase.execute({
+    // puede modificar nada (ADR-2). Va en una variable y no en un literal en la
+    // llamada: así TypeScript acepta las propiedades de más sin un cast.
+    const dtoConSobrantes = {
       equipoId: 'equipo-1',
       componenteId: componente.id,
       descripcion: 'Nueva desc',
       tipoComponenteCodigo: 'CPU',
       insumoId: 'otro-insumo',
-    } as never);
+    };
+    const result = await useCase.execute(dtoConSobrantes);
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).not.toHaveProperty('tipoComponenteCodigo');

@@ -26,6 +26,17 @@ import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
+import { CrearEquipoUseCase } from '../../application/use-cases/crear-equipo.use-case';
+import { EditarEquipoUseCase } from '../../application/use-cases/editar-equipo.use-case';
+import { ObtenerEquipoUseCase } from '../../application/use-cases/obtener-equipo.use-case';
+import { ListarEquiposUseCase } from '../../application/use-cases/listar-equipos.use-case';
+import { EliminarEquipoUseCase } from '../../application/use-cases/eliminar-equipo.use-case';
+import { AgregarComponenteSinDescuentoUseCase } from '../../application/use-cases/agregar-componente-sin-descuento.use-case';
+import { EditarComponenteUseCase } from '../../application/use-cases/editar-componente.use-case';
+import { ReactivarComponenteUseCase } from '../../application/use-cases/reactivar-componente.use-case';
+import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equipos.use-case';
+import { InstalarComponenteDesdeDepositoUseCase } from '../../application/use-cases/instalar-componente-desde-deposito.use-case';
+import { RetirarComponenteUseCase } from '../../application/use-cases/retirar-componente.use-case';
 import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
 import { ResumenBajaEquipoUseCase } from '../../application/use-cases/resumen-baja-equipo.use-case';
 import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
@@ -56,6 +67,20 @@ import {
  * Dobles tipados de los casos de uso con `execute` espiado: se crean sobre el prototipo real (sin
  * ejecutar su constructor), así que el tipo es el de la clase y no hace falta ningún cast.
  */
+/**
+ * Caso de uso sin construir, con `execute` reemplazado por un `vi.fn` tipado con
+ * la firma real de la clase. El controller solo llama a `execute`, así que
+ * alcanza con el prototipo (mismo criterio que `darDeBajaEspiado`); como un
+ * `vi.fn()` suelto, devuelve `undefined` hasta que el test lo programe.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
+
+type Espiado<T extends { execute: (...args: never[]) => unknown }> = ReturnType<typeof espiado<T>>;
+
 function darDeBajaEspiado() {
   const caso: DarDeBajaEquipoUseCase = Object.create(DarDeBajaEquipoUseCase.prototype);
   return { caso, execute: vi.spyOn(caso, 'execute') };
@@ -97,34 +122,34 @@ function makeEquipo(): EquipoInformaticoEntity {
 
 describe('EquiposController (T12.6)', () => {
   function buildController() {
-    const crearEquipoUseCase = { execute: vi.fn() };
-    const editarEquipoUseCase = { execute: vi.fn() };
-    const obtenerEquipoUseCase = { execute: vi.fn() };
-    const listarEquiposUseCase = { execute: vi.fn() };
-    const eliminarEquipoUseCase = { execute: vi.fn() };
-    const agregarComponenteSinDescuentoUseCase = { execute: vi.fn() };
-    const editarComponenteUseCase = { execute: vi.fn() };
-    const reactivarComponenteUseCase = { execute: vi.fn() };
-    const exportarEquiposUseCase = { execute: vi.fn() };
-    const instalarComponenteDesdeDepositoUseCase = { execute: vi.fn() };
-    const retirarComponenteUseCase = { execute: vi.fn() };
+    const crearEquipoUseCase = espiado(CrearEquipoUseCase);
+    const editarEquipoUseCase = espiado(EditarEquipoUseCase);
+    const obtenerEquipoUseCase = espiado(ObtenerEquipoUseCase);
+    const listarEquiposUseCase = espiado(ListarEquiposUseCase);
+    const eliminarEquipoUseCase = espiado(EliminarEquipoUseCase);
+    const agregarComponenteSinDescuentoUseCase = espiado(AgregarComponenteSinDescuentoUseCase);
+    const editarComponenteUseCase = espiado(EditarComponenteUseCase);
+    const reactivarComponenteUseCase = espiado(ReactivarComponenteUseCase);
+    const exportarEquiposUseCase = espiado(ExportarEquiposUseCase);
+    const instalarComponenteDesdeDepositoUseCase = espiado(InstalarComponenteDesdeDepositoUseCase);
+    const retirarComponenteUseCase = espiado(RetirarComponenteUseCase);
     const darDeBaja = darDeBajaEspiado();
     const resumenBaja = resumenBajaEspiado();
     const emitirQr = emitirQrEspiado();
     const obtenerQr = obtenerQrEspiado();
 
     const controller = new EquiposController(
-      crearEquipoUseCase as any,
-      editarEquipoUseCase as any,
-      obtenerEquipoUseCase as any,
-      listarEquiposUseCase as any,
-      eliminarEquipoUseCase as any,
-      agregarComponenteSinDescuentoUseCase as any,
-      editarComponenteUseCase as any,
-      reactivarComponenteUseCase as any,
-      exportarEquiposUseCase as any,
-      instalarComponenteDesdeDepositoUseCase as any,
-      retirarComponenteUseCase as any,
+      crearEquipoUseCase.caso,
+      editarEquipoUseCase.caso,
+      obtenerEquipoUseCase.caso,
+      listarEquiposUseCase.caso,
+      eliminarEquipoUseCase.caso,
+      agregarComponenteSinDescuentoUseCase.caso,
+      editarComponenteUseCase.caso,
+      reactivarComponenteUseCase.caso,
+      exportarEquiposUseCase.caso,
+      instalarComponenteDesdeDepositoUseCase.caso,
+      retirarComponenteUseCase.caso,
       darDeBaja.caso,
       resumenBaja.caso,
       emitirQr.caso,
@@ -287,7 +312,7 @@ describe('EquiposController (T12.6)', () => {
       const result = await controller.crear({
         nombre: 'Notebook Test',
         numeroSerie: 'SN-001',
-      } as any);
+      });
 
       expect(result.id).toBe('equipo-uuid');
       expect(result.nombre).toBe('Notebook Test');
@@ -299,7 +324,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new NumeroSerieDuplicadoError('SN-001')),
       );
 
-      await expect(controller.crear({} as any)).rejects.toThrow(UnprocessableEntityException);
+      await expect(
+        controller.crear({ nombre: 'Notebook Test', numeroSerie: 'SN-001' }),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
 
     it('declara @RequiereAcciones("EQUIPOS:ALTAS")', () => {
@@ -387,7 +414,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, editarEquipoUseCase } = buildController();
       editarEquipoUseCase.execute.mockResolvedValue(Result.ok(makeEquipo()));
 
-      const result = await controller.editar('equipo-uuid', { nombre: 'Editado' } as any);
+      const result = await controller.editar('equipo-uuid', { nombre: 'Editado' });
       expect(result.id).toBe('equipo-uuid');
     });
 
@@ -412,7 +439,7 @@ describe('EquiposController (T12.6)', () => {
   });
 
   describe('POST /equipos/:id/componentes (un solo endpoint, ADR-1)', () => {
-    const actor = { sub: 'usuario-jwt-uuid' } as any;
+    const actor = payloadDeTest({ sub: 'usuario-jwt-uuid' });
     const insumoId = '33333333-3333-4333-8333-333333333333';
     const makeComponente = () =>
       ComponenteEquipoEntity.create({
@@ -431,11 +458,10 @@ describe('EquiposController (T12.6)', () => {
       } = buildController();
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
-      const result = await controller.agregarComponente(actor, 'equipo-uuid', {
-        insumoId,
-        // Un cliente que manda `usuarioId` igual: el handler nunca lo lee.
-        usuarioId: 'usuario-suplantado',
-      } as any);
+      // Un cliente que manda `usuarioId` igual: el handler nunca lo lee. Va en una
+      // variable para que TypeScript acepte la propiedad de más sin un cast.
+      const body = { insumoId, usuarioId: 'usuario-suplantado' };
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', body);
 
       expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith({
         equipoId: 'equipo-uuid',
@@ -457,7 +483,7 @@ describe('EquiposController (T12.6)', () => {
           Result.ok(makeComponente()),
         );
 
-        await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, condicion } as any);
+        await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, condicion });
 
         expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith(
           expect.objectContaining({ condicion }),
@@ -475,12 +501,12 @@ describe('EquiposController (T12.6)', () => {
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
       agregarComponenteSinDescuentoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
-      await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, unidadId } as any);
+      await controller.agregarComponente(actor, 'equipo-uuid', { insumoId, unidadId });
       await controller.agregarComponente(actor, 'equipo-uuid', {
         insumoId,
         unidadId,
         descontarStock: false,
-      } as any);
+      });
 
       expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ unidadId }),
@@ -502,7 +528,7 @@ describe('EquiposController (T12.6)', () => {
         insumoId,
         descontarStock: false,
         condicion: 'USADO',
-      } as any);
+      });
 
       expect(agregarComponenteSinDescuentoUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ condicion: 'USADO' }),
@@ -521,7 +547,7 @@ describe('EquiposController (T12.6)', () => {
       await controller.agregarComponente(actor, 'equipo-uuid', {
         insumoId,
         descontarStock: true,
-      } as any);
+      });
 
       expect(instalarComponenteDesdeDepositoUseCase.execute).toHaveBeenCalledTimes(1);
       expect(agregarComponenteSinDescuentoUseCase.execute).not.toHaveBeenCalled();
@@ -538,7 +564,7 @@ describe('EquiposController (T12.6)', () => {
       const result = await controller.agregarComponente(actor, 'equipo-uuid', {
         insumoId,
         descontarStock: false,
-      } as any);
+      });
 
       expect(agregarComponenteSinDescuentoUseCase.execute).toHaveBeenCalledWith({
         equipoId: 'equipo-uuid',
@@ -558,7 +584,7 @@ describe('EquiposController (T12.6)', () => {
       const { controller, instalarComponenteDesdeDepositoUseCase } = buildController();
       instalarComponenteDesdeDepositoUseCase.execute.mockResolvedValue(Result.ok(makeComponente()));
 
-      const result = await controller.agregarComponente(actor, 'equipo-uuid', { insumoId } as any);
+      const result = await controller.agregarComponente(actor, 'equipo-uuid', { insumoId });
 
       expect(result).not.toHaveProperty('tipoComponenteCodigo');
     });
@@ -569,9 +595,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new EquipoNoEncontradoError('no-existe')),
       );
 
-      await expect(
-        controller.agregarComponente(actor, 'no-existe', { insumoId } as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.agregarComponente(actor, 'no-existe', { insumoId })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('stock insuficiente → 422 (StockInsuficienteError cae en el default)', async () => {
@@ -581,7 +607,7 @@ describe('EquiposController (T12.6)', () => {
       );
 
       await expect(
-        controller.agregarComponente(actor, 'equipo-uuid', { insumoId } as any),
+        controller.agregarComponente(actor, 'equipo-uuid', { insumoId }),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -595,7 +621,7 @@ describe('EquiposController (T12.6)', () => {
         controller.agregarComponente(actor, 'equipo-uuid', {
           insumoId,
           descontarStock: false,
-        } as any),
+        }),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -605,12 +631,14 @@ describe('EquiposController (T12.6)', () => {
     });
 
     it('la ruta instalar-desde-deposito ya no existe en el controller', () => {
-      expect((EquiposController.prototype as any).instalarComponenteDesdeDeposito).toBeUndefined();
+      expect(
+        Reflect.get(EquiposController.prototype, 'instalarComponenteDesdeDeposito'),
+      ).toBeUndefined();
     });
   });
 
   describe('POST /equipos/:id/componentes/:componenteId/baja', () => {
-    const actor = { sub: 'usuario-jwt-uuid' } as any;
+    const actor = payloadDeTest({ sub: 'usuario-jwt-uuid' });
     const makeComponente = () =>
       ComponenteEquipoEntity.create({
         equipoId: 'equipo-uuid',
@@ -696,7 +724,7 @@ describe('EquiposController (T12.6)', () => {
 
       const result = await controller.editarComponente('equipo-uuid', 'componente-1', {
         descripcion: 'Editado',
-      } as any);
+      });
       expect(result.descripcion).toBe('Editado');
     });
 
@@ -711,11 +739,14 @@ describe('EquiposController (T12.6)', () => {
       }).getValue();
       editarComponenteUseCase.execute.mockResolvedValue(Result.ok(componente));
 
-      await controller.editarComponente('equipo-uuid', 'componente-1', {
+      // Body con propiedades de más: va en una variable para que TypeScript lo
+      // acepte sin un cast, igual que lo recibe el handler.
+      const body = {
         descripcion: 'Editado',
         tipoComponenteCodigo: 'CPU',
         insumoId: 'otro-insumo',
-      } as any);
+      };
+      await controller.editarComponente('equipo-uuid', 'componente-1', body);
 
       expect(editarComponenteUseCase.execute).toHaveBeenCalledWith({
         equipoId: 'equipo-uuid',
@@ -732,9 +763,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new ComponenteDadoDeBajaError('componente-1')),
       );
 
-      await expect(
-        controller.editarComponente('equipo-uuid', 'componente-1', {} as any),
-      ).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.editarComponente('equipo-uuid', 'componente-1', {})).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('componente inexistente → 404', async () => {
@@ -743,9 +774,9 @@ describe('EquiposController (T12.6)', () => {
         Result.fail(new ComponenteNoEncontradoError('no-existe')),
       );
 
-      await expect(
-        controller.editarComponente('equipo-uuid', 'no-existe', {} as any),
-      ).rejects.toThrow(NotFoundException);
+      await expect(controller.editarComponente('equipo-uuid', 'no-existe', {})).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
@@ -755,7 +786,7 @@ describe('EquiposController (T12.6)', () => {
   });
 
   describe('PATCH /equipos/:id/componentes/:componenteId/reactivar', () => {
-    const actor = { sub: 'usuario-jwt-uuid' } as any;
+    const actor = payloadDeTest({ sub: 'usuario-jwt-uuid' });
 
     it('pasa el usuario del JWT (firma el evento REACTIVACION de la unidad)', async () => {
       const { controller, reactivarComponenteUseCase } = buildController();
@@ -934,22 +965,21 @@ describe('EquiposController (T12.6)', () => {
 });
 
 describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-listados-csv)', () => {
-  function buildController(overrides: { exportarEquipos?: { execute: ReturnType<typeof vi.fn> } }) {
-    const stub = () => ({ execute: vi.fn() });
-    const exportarEquipos = overrides.exportarEquipos ?? stub();
+  function buildController(overrides: { exportarEquipos?: Espiado<ExportarEquiposUseCase> }) {
+    const exportarEquipos = overrides.exportarEquipos ?? espiado(ExportarEquiposUseCase);
 
     const controller = new EquiposController(
-      stub() as any, // crearEquipoUseCase
-      stub() as any, // editarEquipoUseCase
-      stub() as any, // obtenerEquipoUseCase
-      stub() as any, // listarEquiposUseCase
-      stub() as any, // eliminarEquipoUseCase
-      stub() as any, // agregarComponenteSinDescuentoUseCase
-      stub() as any, // editarComponenteUseCase
-      stub() as any, // reactivarComponenteUseCase
-      exportarEquipos as any, // exportarEquiposUseCase
-      stub() as any, // instalarComponenteDesdeDepositoUseCase
-      stub() as any, // retirarComponenteUseCase
+      espiado(CrearEquipoUseCase).caso, // crearEquipoUseCase
+      espiado(EditarEquipoUseCase).caso, // editarEquipoUseCase
+      espiado(ObtenerEquipoUseCase).caso, // obtenerEquipoUseCase
+      espiado(ListarEquiposUseCase).caso, // listarEquiposUseCase
+      espiado(EliminarEquipoUseCase).caso, // eliminarEquipoUseCase
+      espiado(AgregarComponenteSinDescuentoUseCase).caso, // agregarComponenteSinDescuentoUseCase
+      espiado(EditarComponenteUseCase).caso, // editarComponenteUseCase
+      espiado(ReactivarComponenteUseCase).caso, // reactivarComponenteUseCase
+      exportarEquipos.caso, // exportarEquiposUseCase
+      espiado(InstalarComponenteDesdeDepositoUseCase).caso, // instalarComponenteDesdeDepositoUseCase
+      espiado(RetirarComponenteUseCase).caso, // retirarComponenteUseCase
       darDeBajaEspiado().caso,
       resumenBajaEspiado().caso,
       emitirQrEspiado().caso,
@@ -973,7 +1003,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
   });
 
   it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
-    const exportarEquipos = { execute: vi.fn() };
+    const exportarEquipos = espiado(ExportarEquiposUseCase);
     exportarEquipos.execute.mockResolvedValue(
       Result.ok({ contenido: 'Nombre;Marca', nombreArchivo: 'equipos-2026-08-19.csv' }),
     );
@@ -991,7 +1021,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
   });
 
   it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
-    const exportarEquipos = { execute: vi.fn() };
+    const exportarEquipos = espiado(ExportarEquiposUseCase);
     exportarEquipos.execute.mockResolvedValue(
       Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'equipos-2026-08-19.xlsx' }),
     );
@@ -1012,7 +1042,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
   });
 
   it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
-    const exportarEquipos = { execute: vi.fn() };
+    const exportarEquipos = espiado(ExportarEquiposUseCase);
     exportarEquipos.execute.mockResolvedValue(
       Result.ok({ contenido: 'a;b', nombreArchivo: 'equipos-2026-08-19.csv' }),
     );
@@ -1027,7 +1057,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
   });
 
   it('por defecto pide solo los vigentes; incluirBajas=true se traduce a incluirDadosDeBaja', async () => {
-    const exportarEquipos = { execute: vi.fn() };
+    const exportarEquipos = espiado(ExportarEquiposUseCase);
     exportarEquipos.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'equipos-2026-08-19.csv' }),
     );
@@ -1045,7 +1075,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
-    const exportarEquipos = { execute: vi.fn() };
+    const exportarEquipos = espiado(ExportarEquiposUseCase);
     exportarEquipos.execute.mockResolvedValue(
       Result.fail(new EquiposErrors.ExportacionDemasiadoGrandeError(6000, 5000)),
     );

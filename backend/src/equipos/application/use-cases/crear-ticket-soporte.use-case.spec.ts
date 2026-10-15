@@ -9,6 +9,21 @@ import { AUTOR_FORMULARIO_PUBLICO } from '../../../tickets/domain/constants/form
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
 import { AUTOR_SISTEMA } from '../../../tickets/domain/constants/autor-sistema.constants';
+import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
+import type { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
+import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import type { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import type { NumeradorTicket } from '../../../tickets/domain/services/numerador-ticket.service';
+import type { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
+import type { ResolverAsignacionAutomatica } from '../../../tickets/application/services/resolver-asignacion-automatica.service';
+import type { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import type { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
+import type { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
+import type { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import type { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
+import type { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import type { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 
 /**
  * T13.1 [U][RED] — CrearTicketSoporteUseCase: base+satélite tx; equipoId
@@ -19,19 +34,48 @@ import { AUTOR_SISTEMA } from '../../../tickets/domain/constants/autor-sistema.c
  */
 describe('CrearTicketSoporteUseCase', () => {
   function makeDeps() {
-    const ticketRepo = { save: vi.fn().mockResolvedValue(undefined) };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
-    const ticketSoporteRepo = { save: vi.fn().mockResolvedValue(undefined) };
-    const equipoRepo = { bloquearParaOperarPiezas: vi.fn().mockResolvedValue(null) };
-    const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-id') };
-    const tipoTicketRepo = {
-      findByCodigo: vi.fn().mockResolvedValue({ id: 'tipo-soporte-id', codigo: 'SOPORTE' }),
+    const ticketRepo = { save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined) };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
     };
-    const tipoOperacionRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-apertura-id') };
-    const usuarioMasterChecker = { existeEnTenant: vi.fn().mockResolvedValue(true) };
-    const numerador = { generarNumero: vi.fn().mockResolvedValue(Result.ok('SOP-2026-00001')) };
+    const ticketSoporteRepo = {
+      save: vi.fn<ITicketSoporteRepository['save']>().mockResolvedValue(undefined),
+    };
+    const equipoRepo = {
+      bloquearParaOperarPiezas: vi
+        .fn<IEquipoInformaticoRepository['bloquearParaOperarPiezas']>()
+        .mockResolvedValue(null),
+    };
+    const estadoRepo = {
+      findIdByCodigo: vi
+        .fn<IEstadoRepository['findIdByCodigo']>()
+        .mockResolvedValue('estado-nuevo-id'),
+    };
+    const tipoTicketRepo = {
+      findByCodigo: vi
+        .fn<ITipoTicketRepository['findByCodigo']>()
+        .mockResolvedValue(
+          TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+            'tipo-soporte-id',
+          ),
+        ),
+    };
+    const tipoOperacionRepo = {
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-op-apertura-id'),
+    };
+    const usuarioMasterChecker = {
+      existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
+    };
+    const numerador = {
+      generarNumero: vi
+        .fn<NumeradorTicket['generarNumero']>()
+        .mockResolvedValue(Result.ok('SOP-2026-00001')),
+    };
     const resolverCicloActivo = {
-      resolver: vi.fn().mockResolvedValue(
+      resolver: vi.fn<ResolverCicloActivoParaCreacion['resolver']>().mockResolvedValue(
         Result.ok(
           CicloClienteEntity.create(
             {
@@ -46,12 +90,19 @@ describe('CrearTicketSoporteUseCase', () => {
         ),
       ),
     };
-    const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
-    const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => fn()),
+    const resolverAsignacion = {
+      resolver: vi.fn<ResolverAsignacionAutomatica['resolver']>().mockResolvedValue(null),
     };
-    const eventPublisher = { publish: vi.fn() };
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: (fn: () => void) => fn(),
+    };
+    // Espías sobre el runner real del spec: `run` es genérico y un `vi.fn` lo perdería.
+    const tx = {
+      run: vi.spyOn(txRunner, 'run'),
+      alCommitear: vi.spyOn(txRunner, 'alCommitear'),
+    };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     return {
       ticketRepo,
       operacionRepo,
@@ -66,7 +117,15 @@ describe('CrearTicketSoporteUseCase', () => {
       resolverAsignacion,
       eventPublisher,
       txRunner,
+      tx,
     };
+  }
+
+  /** Busca la operación de un tipo; falla si no se guardó, en vez de devolver `undefined`. */
+  function operacionDeTipo(ops: OperacionTicketEntity[], tipoOperacionId: string) {
+    const op = ops.find((o) => o.tipoOperacionId === tipoOperacionId);
+    if (!op) throw new Error(`no se guardó la operación ${tipoOperacionId}`);
+    return op;
   }
 
   function baseDto(overrides: Partial<Record<string, unknown>> = {}) {
@@ -86,19 +145,19 @@ describe('CrearTicketSoporteUseCase', () => {
 
   function buildUseCase(deps: ReturnType<typeof makeDeps>) {
     return new CrearTicketSoporteUseCase(
-      deps.ticketRepo as never,
-      deps.operacionRepo as never,
-      deps.ticketSoporteRepo as never,
-      deps.estadoRepo as never,
-      deps.tipoTicketRepo as never,
-      deps.tipoOperacionRepo as never,
-      deps.usuarioMasterChecker as never,
-      deps.numerador as never,
-      deps.resolverCicloActivo as never,
+      deps.ticketRepo,
+      deps.operacionRepo,
+      deps.ticketSoporteRepo,
+      deps.estadoRepo,
+      deps.tipoTicketRepo,
+      deps.tipoOperacionRepo,
+      deps.usuarioMasterChecker,
+      deps.numerador,
+      deps.resolverCicloActivo,
       deps.resolverAsignacion,
-      deps.equipoRepo as never,
+      deps.equipoRepo,
       deps.eventPublisher,
-      deps.txRunner as never,
+      deps.txRunner,
     );
   }
 
@@ -235,7 +294,7 @@ describe('CrearTicketSoporteUseCase', () => {
       },
       'equipo-1',
     );
-    deps.txRunner.run.mockImplementation(async (fn: () => Promise<unknown>) => {
+    deps.tx.run.mockImplementation(async <T>(fn: () => Promise<T>): Promise<T> => {
       orden.push('tx:inicio');
       return fn();
     });
@@ -283,7 +342,7 @@ describe('CrearTicketSoporteUseCase', () => {
 
     await useCase.execute(baseDto());
 
-    expect(deps.txRunner.run).toHaveBeenCalledTimes(1);
+    expect(deps.tx.run).toHaveBeenCalledTimes(1);
     expect(deps.ticketRepo.save).toHaveBeenCalledTimes(1);
     expect(deps.operacionRepo.save).toHaveBeenCalledTimes(1);
     expect(deps.ticketSoporteRepo.save).toHaveBeenCalledTimes(1);
@@ -299,6 +358,7 @@ describe('CrearTicketSoporteUseCase', () => {
     expect(deps.eventPublisher.publish).toHaveBeenCalledTimes(1);
     const evento = deps.eventPublisher.publish.mock.calls[0][0];
     expect(evento).toBeInstanceOf(TicketCreadoEvent);
+    if (!(evento instanceof TicketCreadoEvent)) throw new Error('se esperaba TicketCreadoEvent');
     expect(evento.ticketId).toBe(ticket.id);
     expect(evento.prioridadId).toBe('prioridad-media');
   });
@@ -403,7 +463,7 @@ describe('CrearTicketSoporteUseCase', () => {
     it('OMITIR sigue tomando el lock dentro de la transaccion y antes de numerar (S5)', async () => {
       const deps = makeDeps();
       const orden: string[] = [];
-      deps.txRunner.run.mockImplementation(async (fn: () => Promise<unknown>) => {
+      deps.tx.run.mockImplementation(async <T>(fn: () => Promise<T>): Promise<T> => {
         orden.push('tx:inicio');
         return fn();
       });
@@ -535,8 +595,8 @@ describe('CrearTicketSoporteUseCase', () => {
       );
       const ops = deps.operacionRepo.save.mock.calls.map(([op]) => op);
       expect(ops).toHaveLength(2);
-      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-op-apertura-id');
-      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-id');
+      const apertura = operacionDeTipo(ops, 'tipo-op-apertura-id');
+      const asignacion = operacionDeTipo(ops, 'tipo-op-asignacion-id');
       expect(apertura.estadoAnteriorId).toBeNull();
       expect(apertura.estadoNuevoId).toBe('estado-asignado-id');
       expect(apertura.autorId).toBe('usuario-1');
@@ -556,8 +616,8 @@ describe('CrearTicketSoporteUseCase', () => {
       );
 
       const ops = deps.operacionRepo.save.mock.calls.map(([op]) => op);
-      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-op-apertura-id');
-      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-id');
+      const apertura = operacionDeTipo(ops, 'tipo-op-apertura-id');
+      const asignacion = operacionDeTipo(ops, 'tipo-op-asignacion-id');
       expect(apertura.autorId).toBe(AUTOR_FORMULARIO_PUBLICO);
       expect(asignacion.autorId).toBe(AUTOR_SISTEMA);
     });
@@ -578,7 +638,7 @@ describe('CrearTicketSoporteUseCase', () => {
       const deps = makeDeps();
       deps.resolverAsignacion.resolver.mockResolvedValue(ASIGNACION);
       const cola: Array<() => void> = [];
-      deps.txRunner.alCommitear.mockImplementation((fn: () => void) => {
+      deps.tx.alCommitear.mockImplementation((fn: () => void) => {
         cola.push(fn);
       });
 
@@ -613,7 +673,7 @@ describe('CrearTicketSoporteUseCase', () => {
       deps.resolverAsignacion.resolver.mockRejectedValue(new Error('tenant caido'));
 
       await expect(buildUseCase(deps).execute(baseDto())).rejects.toThrow('tenant caido');
-      expect(deps.txRunner.run).not.toHaveBeenCalled();
+      expect(deps.tx.run).not.toHaveBeenCalled();
     });
   });
 });

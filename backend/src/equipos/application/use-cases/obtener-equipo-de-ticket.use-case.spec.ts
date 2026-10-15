@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { ObtenerEquipoDeTicketUseCase } from './obtener-equipo-de-ticket.use-case';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import type { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 
 /**
  * [U][RED→GREEN] — ObtenerEquipoDeTicketUseCase: resuelve el equipo
@@ -16,15 +18,16 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
     equipo?: EquipoInformaticoEntity | null;
   }) {
     const ticketSoporteRepo = {
-      findByTicketId: vi.fn().mockResolvedValue(overrides?.ticketSoporte ?? null),
+      findByTicketId: vi
+        .fn<ITicketSoporteRepository['findByTicketId']>()
+        .mockResolvedValue(overrides?.ticketSoporte ?? null),
     };
     const equipoRepo = {
-      findById: vi.fn().mockResolvedValue(overrides?.equipo ?? null),
+      findById: vi
+        .fn<IEquipoInformaticoRepository['findById']>()
+        .mockResolvedValue(overrides?.equipo ?? null),
     };
-    const useCase = new ObtenerEquipoDeTicketUseCase(
-      ticketSoporteRepo as never,
-      equipoRepo as never,
-    );
+    const useCase = new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo, equipoRepo);
     return { useCase, ticketSoporteRepo, equipoRepo };
   }
 

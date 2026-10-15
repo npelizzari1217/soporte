@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, type Mock } from 'vitest';
 import { AgregarComponenteSinDescuentoUseCase } from './agregar-componente-sin-descuento.use-case';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { UnidadInsumoEntity } from '../../../insumos/domain/entities/unidad-insumo.entity';
@@ -17,6 +17,14 @@ import { Result } from '../../../shared/domain/result';
 import { txRunnerFake } from '../../../insumos/testing/tx-runner-fake';
 import { unstubbed } from '../../../testing/mocks';
 import { agregarComponenteSobreEquipoDadoDeBaja } from '../../testing/equipos-unit.fixtures';
+import { InsumoEntity } from '../../../insumos/domain/entities/insumo.entity';
+import type { AgregarComponenteUseCase } from './agregar-componente.use-case';
+import type { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
+import type { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
+import type { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
+
+type Preparar = AgregarComponenteUseCase['preparar'];
+type AltaInstalada = OperacionesUnidadInsumo['altaInstalada'];
 
 /**
  * WU-10b (sdd/repuestos-numero-de-serie, D3) — alta sin descuento.
@@ -36,8 +44,8 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
   function armar(
     opts: {
       seguimiento?: 'SERIE' | 'NINGUNO';
-      altaInstalada?: ReturnType<typeof vi.fn>;
-      preparar?: ReturnType<typeof vi.fn>;
+      altaInstalada?: Mock<AltaInstalada>;
+      preparar?: Mock<Preparar>;
     } = {},
   ) {
     const componente = ComponenteEquipoEntity.create({
@@ -54,19 +62,31 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
       equipoId: dto.equipoId,
     }).getValue();
     const txRunner = txRunnerFake();
-    const preparar = opts.preparar ?? vi.fn().mockResolvedValue(Result.ok(componente));
-    const altaInstalada = opts.altaInstalada ?? vi.fn().mockResolvedValue(Result.ok(unidad));
-    const save = vi.fn().mockResolvedValue(undefined);
-    const findById = vi.fn().mockResolvedValue(null);
+    const preparar = opts.preparar ?? vi.fn<Preparar>().mockResolvedValue(Result.ok(componente));
+    const altaInstalada =
+      opts.altaInstalada ?? vi.fn<AltaInstalada>().mockResolvedValue(Result.ok(unidad));
+    const save = vi.fn<IComponenteEquipoRepository['save']>().mockResolvedValue(undefined);
+    const findById = vi.fn<IComponenteEquipoRepository['findById']>().mockResolvedValue(null);
+    const insumo = InsumoEntity.create({
+      codigo: 'REP-001',
+      nombre: 'Disco SSD',
+      familiaId: 'familia-1',
+      unidadMedidaId: 'unidad-medida-fixture',
+      stockMinimo: null,
+      activo: true,
+      codigosAlternativos: [],
+      compatibilidad: [],
+      seguimiento: opts.seguimiento ?? 'SERIE',
+    });
     const insumoRepo = {
-      findById: vi.fn().mockResolvedValue({ seguimiento: opts.seguimiento ?? 'SERIE' }),
+      findById: vi.fn<IInsumoRepository['findById']>().mockResolvedValue(insumo),
     };
     const useCase = new AgregarComponenteSinDescuentoUseCase(
       txRunner,
-      { preparar } as never,
-      insumoRepo as never,
-      { altaInstalada } as never,
-      { save, findById } as never,
+      { preparar },
+      insumoRepo,
+      { altaInstalada },
+      { save, findById },
     );
     return { useCase, componente, unidad, txRunner, preparar, altaInstalada, save };
   }
@@ -104,7 +124,9 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
   });
 
   it('SERIE sin serial: SerialRequeridoError y no se guarda nada', async () => {
-    const altaInstalada = vi.fn().mockResolvedValue(Result.fail(new SerialRequeridoError('falta')));
+    const altaInstalada = vi
+      .fn<AltaInstalada>()
+      .mockResolvedValue(Result.fail(new SerialRequeridoError('falta')));
     const { useCase, save } = armar({ altaInstalada });
 
     const result = await useCase.execute({ ...dto, numeroSerie: null });
@@ -117,7 +139,7 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
 
   it('SERIE con serial repetido (P2002 lanzado dentro de run): Result.fail SerialDuplicadoError y no se guarda el componente', async () => {
     const altaInstalada = vi
-      .fn()
+      .fn<AltaInstalada>()
       .mockRejectedValue(new FalloOperacionDeUnidad(new SerialDuplicadoError('SN-1')));
     const { useCase, save } = armar({ altaInstalada });
 
@@ -130,7 +152,7 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
 
   it('un Result.fail de altaInstalada se devuelve tal cual, sin guardar el componente', async () => {
     const altaInstalada = vi
-      .fn()
+      .fn<AltaInstalada>()
       .mockResolvedValue(Result.fail(new UnidadNoAdmitidaError('insumo-1')));
     const { useCase, save } = armar({ altaInstalada });
 
@@ -141,7 +163,7 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
   });
 
   it('lo que no es FalloOperacionDeUnidad sigue propagando', async () => {
-    const altaInstalada = vi.fn().mockRejectedValue(new Error('base caída'));
+    const altaInstalada = vi.fn<AltaInstalada>().mockRejectedValue(new Error('base caída'));
     const { useCase } = armar({ altaInstalada });
 
     await expect(useCase.execute(dto)).rejects.toThrow('base caída');
@@ -173,7 +195,7 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
 
   it('si preparar() falla, no se toca la unidad ni se guarda nada', async () => {
     const preparar = vi
-      .fn()
+      .fn<Preparar>()
       .mockResolvedValue(Result.fail(new EquipoNoEncontradoError('equipo-1')));
     const { useCase, altaInstalada, save } = armar({ preparar });
 
@@ -186,7 +208,7 @@ describe('AgregarComponenteSinDescuentoUseCase', () => {
 
   it('equipo dado de baja: EquipoDadoDeBajaError sin crear componente ni unidad (R11)', async () => {
     const { useCase: agregar, componenteRepo } = agregarComponenteSobreEquipoDadoDeBaja();
-    const operaciones = { altaInstalada: vi.fn() };
+    const operaciones = { altaInstalada: vi.fn<AltaInstalada>() };
     const useCase = new AgregarComponenteSinDescuentoUseCase(
       txRunnerFake(),
       agregar,
