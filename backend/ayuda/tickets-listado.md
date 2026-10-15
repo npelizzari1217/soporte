@@ -72,7 +72,8 @@ esquivar esa restricción.
 
 El archivo incluye, además de las columnas del listado, la **fecha de
 creación** y la **fecha de cierre** del ticket (esta última queda vacía si
-el ticket sigue abierto). Los textos del estado y de la prioridad salen
+el ticket sigue abierto). La **ubicación** y el **sector** se ven en
+pantalla pero no viajan en el archivo. Los textos del estado y de la prioridad salen
 igual que en pantalla, no como un código interno.
 
 ### "Hay demasiadas filas"
