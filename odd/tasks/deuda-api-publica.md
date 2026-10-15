@@ -15,7 +15,7 @@ JD-5 tiene impacto de seguridad. JD-4 ensucia el SMTP de cada cliente. JD-7 y JD
 
 ## Fuera de alcance (decisión del dueño, 2026-10-11)
 - El throttler en memoria por proceso: su disparador es escalar a más de un proceso, y hoy hay uno solo.
-- El rollback de `api_publica`, que no se puede re-correr después de una corrida completa.
+- El rollback de `api_publica`, que no se puede re-correr después de una corrida completa. **Resuelto** el 2026-10-15 en `odd/tasks/deuda-tecnica-2026-10-15.md` (T4).
 
 ## Restricciones
 - Son bugfixes: TDD obligatorio (RED observado, GREEN, REFACTOR), con la evidencia registrada acá (`~/proyectos/CLAUDE.md` §6.1).

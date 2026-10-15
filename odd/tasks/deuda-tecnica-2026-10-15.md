@@ -97,8 +97,11 @@ reactivarlo antes.
   - Pendiente: `test/integraciones-api-v1-*.e2e.spec.ts` y
     `test/integraciones-webhooks-encolado.e2e.spec.ts` no corrieron — Postgres caído.
   - Commit: `3e0a8732`.
-- [ ] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5. *Código
-  commiteado; RED y GREEN sin observar.*
+- [x] **T4 — Rollback de `api_publica` re-ejecutable** (bugfix, TDD). CA5.
+  - RED y GREEN observados el 2026-10-15, con Postgres arriba: con el `rollback.sql` de
+    `4874ba00~1` el caso nuevo falla con `Caused by: error: column "es_integracion" does not
+    exist` (`1 failed | 2 passed`); con el actual, `3 passed (3)`. Las notas de abajo son
+    del primer intento, con la base caída.
   - `rollback.sql`: `ALTER TABLE "usuarios" ADD COLUMN IF NOT EXISTS "es_integracion" ...`
     antes de los `UPDATE`, con comentario de re-ejecutable (sin `DO $$`: el spec parte en `;`).
   - Test nuevo en `rollback-api-publica.integration.spec.ts`: corre el rollback dos veces,
@@ -112,9 +115,18 @@ reactivarlo antes.
   - Runbook (`DEPLOY-VPS-runbook.md`, "Migración y rollback" de la API pública) no dice que
     NO sea re-ejecutable: no hay nada que corregir.
   - Commit: `4874ba00`.
-- [ ] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
+- [x] **T5 — Cierre**: compuertas completas (backend `pnpm lint`, `pnpm typecheck`,
   `pnpm test`; frontend `pnpm lint`, `pnpm type-check`, `pnpm test`), filas de la deuda en el
   roadmap marcadas RESUELTA, `check-roadmap-fresco` en verde.
+
+  - 2026-10-15, con Postgres arriba: backend `pnpm test` → `Test Files 733 passed (733)`,
+    `Tests 8795 passed (8795)`, exit 0 (los `FAIL orden-de-arranque.spec.ts` son el fixture que
+    falla a propósito dentro de otro spec). Incluye los e2e de la API v1, webhooks, preventivo y
+    tickets. Lint y typecheck del backend y las tres compuertas del frontend, verdes en la
+    corrida del escritor; el cierre solo agrega documentación.
+  - Roadmap: filas "El alta interna de tickets acepta tipos dados de baja" y "`TicketsModule`
+    no exporta…" marcadas RESUELTA; el rollback no tenía fila ahí, se anotó en
+    `odd/tasks/deuda-api-publica.md`. `check-roadmap-fresco`: "El roadmap esta fresco."
 
 ## Ruta
 - Delegada: un escritor para T1-T4, porque toca más de dos archivos no triviales (disparador
@@ -133,6 +145,5 @@ reactivarlo antes.
   - frontend `pnpm lint`: 0 · `pnpm type-check`: limpio · `pnpm test`: 2277/2277.
 
 ## Próximo paso
-Levantar Postgres (`soporte-postgres-master`) y correr: el spec de T4 (RED con el
-`rollback.sql` de `4874ba00~1`, GREEN con el actual), los e2e de la API v1 y de webhooks (T3),
-los de preventivo y `tickets.e2e.spec.ts` (T1/T2), y `pnpm test` completo. Después, T5.
+Merge a `main` (decisión del dueño). Antes del deploy, la precondición de arriba: ningún tipo
+fijo desactivado en ningún tenant.
