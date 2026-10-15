@@ -155,6 +155,7 @@ model Sector {
 
   compras     Compra[]
   movimientos MovimientoInsumo[]
+  tickets     Ticket[]
 
   @@map("sectores")
 }
@@ -327,6 +328,10 @@ model Ticket {
   resolucionHabilS         Int?      @map("resolucion_habil_s")
   primeraRespuestaHabilS   Int?      @map("primera_respuesta_habil_s")
   fechaCierre       DateTime? @map("fecha_cierre") @db.Timestamptz
+  /// Ubicacion y sector opcionales (odd/ubicacion-sector-ticket). `ubicacion` es texto libre y es
+  /// otra columna que `ticket_edilicia.ubicacion`. `sectorId`: FK RESTRICT → sectores.id.
+  ubicacion          String?   @db.VarChar(255)
+  sectorId           String?   @map("sector_id") @db.Uuid
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
@@ -337,6 +342,7 @@ model Ticket {
   ciclo            CicloCliente? @relation(fields: [cicloId], references: [id])
   ticketReferencia Ticket?       @relation("TicketContinuacion", fields: [ticketReferenciaId], references: [id])
   solicitanteExterno SolicitanteExterno? @relation(fields: [solicitanteExternoId], references: [id], onDelete: Restrict)
+  sector           Sector?       @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   ticketsDerivados Ticket[]      @relation("TicketContinuacion")
 
   operaciones           OperacionTicket[]
@@ -358,6 +364,7 @@ model Ticket {
   @@index([solicitanteId])
   @@index([solicitanteExternoId]) // partial WHERE solicitante_externo_id IS NOT NULL — ver migration SQL
   @@index([asignadoId]) // partial WHERE asignado_id IS NOT NULL — ver migration SQL
+  @@index([sectorId]) // partial WHERE sector_id IS NOT NULL — ver migration SQL
   @@index([createdAt])
   @@index([vencido])
   @@index([id], map: "tickets_sla_reloj_pendiente_idx") // partial WHERE sla_reloj_pendiente — ver migration SQL

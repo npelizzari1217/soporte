@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { SectoresModule } from '../sectores/sectores.module';
+import { ISectorRepository, SECTOR_REPOSITORY } from '../sectores/domain/ports/i-sector.repository';
 import {
   USUARIO_MASTER_CHECKER,
   IUsuarioMasterChecker,
@@ -177,7 +179,7 @@ import {
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, CsatLecturaModule, CalendarioLaboralModule],
+  imports: [AuthModule, CsatLecturaModule, CalendarioLaboralModule, SectoresModule],
   controllers: [TicketsController, AdjuntosController, CatalogosController, TareasTicketController],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
@@ -249,6 +251,7 @@ import {
         resolverAsignacion: ResolverAsignacionAutomatica,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
+        sectorRepo: ISectorRepository,
       ) =>
         new CrearTicketUseCase(
           ticketRepo,
@@ -263,6 +266,7 @@ import {
           resolverAsignacion,
           eventPublisher,
           txRunner,
+          sectorRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -277,6 +281,7 @@ import {
         ResolverAsignacionAutomatica,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
+        SECTOR_REPOSITORY,
       ],
     },
     {
@@ -300,8 +305,16 @@ import {
         prioridadRepo: IPrioridadRepository,
         estadoRepo: IEstadoRepository,
         eventPublisher: IDomainEventPublisher,
-      ) => new EditarTicketUseCase(ticketRepo, prioridadRepo, estadoRepo, eventPublisher),
-      inject: [TICKET_REPOSITORY, PRIORIDAD_REPOSITORY, ESTADO_REPOSITORY, DOMAIN_EVENT_PUBLISHER],
+        sectorRepo: ISectorRepository,
+      ) =>
+        new EditarTicketUseCase(ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo),
+      inject: [
+        TICKET_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
+        ESTADO_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
+        SECTOR_REPOSITORY,
+      ],
     },
     {
       provide: TicketStateMachineFactory,

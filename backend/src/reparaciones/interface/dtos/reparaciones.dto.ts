@@ -52,6 +52,14 @@ export class CreateTicketEdilicioHttpDto {
   @IsString()
   @MaxLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
+
+  /**
+   * Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. La
+   * Ubicación general del ticket no se acepta acá: Edilicia usa su propia `ubicacion`.
+   */
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string | null;
 }
 
 /**

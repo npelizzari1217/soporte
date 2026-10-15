@@ -24,7 +24,11 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { TICKET_TITULO_MAX_LENGTH, TicketEntity } from '../../domain/entities/ticket.entity';
+import {
+  TICKET_TITULO_MAX_LENGTH,
+  TICKET_UBICACION_MAX_LENGTH,
+  TicketEntity,
+} from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
 import {
@@ -55,6 +59,17 @@ export class CreateTicketDto {
   @IsOptional()
   @IsUUID()
   ticketReferenciaId?: string | null;
+
+  /** Ubicación general, texto libre (odd/ubicacion-sector-ticket). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(TICKET_UBICACION_MAX_LENGTH)
+  ubicacion?: string | null;
+
+  /** Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. */
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string | null;
 }
 
 /** Body de `PATCH /tickets/:id` (T8) — PATCH parcial, `estado` NUNCA se edita acá. */
@@ -72,6 +87,17 @@ export class EditTicketDto {
   @IsOptional()
   @IsUUID()
   prioridadId?: string;
+
+  /** Ubicación general (odd/ubicacion-sector-ticket). `null` limpia; ausente no toca. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(TICKET_UBICACION_MAX_LENGTH)
+  ubicacion?: string | null;
+
+  /** Sector del cliente (odd/ubicacion-sector-ticket). `null` limpia; ausente no toca. */
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string | null;
 }
 
 /** Body de `PATCH /tickets/:id/estado` (T9, T10, T12) — transición de estado. */

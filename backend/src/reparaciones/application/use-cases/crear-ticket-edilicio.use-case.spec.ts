@@ -11,7 +11,11 @@ import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 import { CrearTicketEdilicioUseCase } from './crear-ticket-edilicio.use-case';
-import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  SectorTicketInexistenteError,
+  SolicitanteInvalidoError,
+} from '../../../tickets/domain/errors/tickets.errors';
+import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
 import { AUTOR_SISTEMA } from '../../../tickets/domain/constants/autor-sistema.constants';
@@ -53,6 +57,16 @@ describe('CrearTicketEdilicioUseCase', () => {
       alCommitear: vi.fn((fn: () => void) => fn()),
     };
     const eventPublisher = { publish: vi.fn() };
+    const sectorRepo = {
+      findById: vi.fn(async (id: string) =>
+        id === 'sector-uuid'
+          ? SectorEntity.create(
+              { codigo: 'MANT', nombre: 'Mantenimiento', activo: true },
+              'sector-uuid',
+            )
+          : null,
+      ),
+    };
 
     const useCase = new CrearTicketEdilicioUseCase(
       ticketRepo as any,
@@ -67,10 +81,12 @@ describe('CrearTicketEdilicioUseCase', () => {
       resolverAsignacion,
       eventPublisher,
       txRunner as any,
+      sectorRepo,
     );
 
     return {
       useCase,
+      sectorRepo,
       ticketRepo,
       operacionRepo,
       ticketEdiliciaRepo,
@@ -115,6 +131,37 @@ describe('CrearTicketEdilicioUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().ticketEdilicia.ubicacion).toBeNull();
+  });
+
+  describe('sector (odd/ubicacion-sector-ticket)', () => {
+    it('guarda el sector en el ticket y deja la Ubicacion general en null', async () => {
+      const { useCase } = buildDeps();
+
+      const result = await useCase.execute({ ...baseDto, sectorId: 'sector-uuid' });
+
+      const { ticket, ticketEdilicia } = result.getValue();
+      expect(ticket.sectorId).toBe('sector-uuid');
+      expect(ticket.ubicacion).toBeNull();
+      expect(ticketEdilicia.ubicacion).toBe('Edificio Central');
+    });
+
+    it('sin sectorId no consulta el catalogo y el ticket queda sin sector', async () => {
+      const { useCase, sectorRepo } = buildDeps();
+
+      const result = await useCase.execute(baseDto);
+
+      expect(result.getValue().ticket.sectorId).toBeNull();
+      expect(sectorRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('sector inexistente → SectorTicketInexistenteError, sin persistir', async () => {
+      const { useCase, ticketRepo } = buildDeps();
+
+      const result = await useCase.execute({ ...baseDto, sectorId: 'no-existe' });
+
+      expect(result.getError()).toBeInstanceOf(SectorTicketInexistenteError);
+      expect(ticketRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   it('falla con SolicitanteInvalidoError si el solicitante no existe en el tenant', async () => {

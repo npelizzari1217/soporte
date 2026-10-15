@@ -168,6 +168,8 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
       resolver,
       publisher,
       txRunner,
+      // Este spec no versa sobre el sector: ningun alta lo manda.
+      { findById: async () => null },
     );
 
     const idDe = async <T extends { id: string }>(q: Promise<T>) => (await q).id;

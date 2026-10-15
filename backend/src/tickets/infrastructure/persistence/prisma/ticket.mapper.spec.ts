@@ -41,6 +41,8 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     resolucionHabilS: null,
     primeraRespuestaHabilS: null,
     fechaCierre: null,
+    ubicacion: null,
+    sectorId: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),
     deletedAt: null,
@@ -113,6 +115,21 @@ describe('TicketMapper', () => {
       expect(entity.asignadoId).toBe('usuario-asignado-id');
       expect(entity.fechaCierre?.toISOString()).toBe('2026-02-01T23:30:00.000Z');
       expect(entity.vencido).toBe(true);
+    });
+
+    it('ida y vuelta de ubicacion y sectorId (odd/ubicacion-sector-ticket)', () => {
+      const vacio = TicketMapper.toDomain(makeFakeRow());
+      expect(vacio.ubicacion).toBeNull();
+      expect(vacio.sectorId).toBeNull();
+
+      const row = makeFakeRow({ ubicacion: 'Aula 3', sectorId: 'sector-id' });
+      const entity = TicketMapper.toDomain(row);
+      expect(entity.ubicacion).toBe('Aula 3');
+      expect(entity.sectorId).toBe('sector-id');
+      expect(TicketMapper.toPersistence(entity)).toMatchObject({
+        ubicacion: 'Aula 3',
+        sectorId: 'sector-id',
+      });
     });
 
     /**

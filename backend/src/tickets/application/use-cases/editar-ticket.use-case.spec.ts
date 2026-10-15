@@ -13,7 +13,9 @@ import {
   TicketNoEncontradoError,
   PrioridadNoEncontradaError,
   TicketBloqueadoParaEdicionError,
+  SectorTicketInexistenteError,
 } from '../../domain/errors/tickets.errors';
+import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 
 /**
  * Estados de catálogo indexados por id — `estadoRepo.findById(ticket.estadoId)`
@@ -71,13 +73,22 @@ describe('EditarTicketUseCase', () => {
       findById: vi.fn((id: string) => Promise.resolve(ESTADOS[id] ?? null)),
     };
     const eventPublisher = { publish: vi.fn() };
+    // Sector existente pero DESACTIVADO: la edicion lo acepta igual (odd/ubicacion-sector-ticket).
+    const sectorRepo = {
+      findById: vi.fn(async (id: string) =>
+        id === 'sector-uuid'
+          ? SectorEntity.create({ codigo: 'COMP', nombre: 'Computacion', activo: false }, id)
+          : null,
+      ),
+    };
     const useCase = new EditarTicketUseCase(
       ticketRepo as never,
       prioridadRepo as never,
       estadoRepo as never,
       eventPublisher as never,
+      sectorRepo,
     );
-    return { useCase, ticketRepo, prioridadRepo, estadoRepo, eventPublisher };
+    return { useCase, ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo };
   }
 
   it('actualiza titulo/descripcion/prioridadId y persiste', async () => {
@@ -122,6 +133,68 @@ describe('EditarTicketUseCase', () => {
 
     expect(result.getValue().descripcion).toBe('Descripcion original');
     expect(result.getValue().prioridadId).toBe('prioridad-media-uuid');
+  });
+
+  describe('ubicacion y sector (odd/ubicacion-sector-ticket)', () => {
+    it('setea ubicacion y un sector existente aunque este desactivado', async () => {
+      const c = makeCollaborators(makeTicket());
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        ubicacion: 'Sala de profesores',
+        sectorId: 'sector-uuid',
+        actorEsRoot: false,
+      });
+
+      expect(result.getValue().ubicacion).toBe('Sala de profesores');
+      expect(result.getValue().sectorId).toBe('sector-uuid');
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('null limpia los dos campos sin consultar el catalogo', async () => {
+      const ticket = makeTicket();
+      ticket.actualizarDatos({ ubicacion: 'Aula 1', sectorId: 'sector-uuid' });
+      const c = makeCollaborators(ticket);
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        ubicacion: null,
+        sectorId: null,
+        actorEsRoot: false,
+      });
+
+      expect(result.getValue().ubicacion).toBeNull();
+      expect(result.getValue().sectorId).toBeNull();
+      expect(c.sectorRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('omitidos no se tocan', async () => {
+      const ticket = makeTicket();
+      ticket.actualizarDatos({ ubicacion: 'Aula 1', sectorId: 'sector-uuid' });
+      const c = makeCollaborators(ticket);
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Otro titulo',
+        actorEsRoot: false,
+      });
+
+      expect(result.getValue().ubicacion).toBe('Aula 1');
+      expect(result.getValue().sectorId).toBe('sector-uuid');
+    });
+
+    it('sector inexistente → SectorTicketInexistenteError (422), sin persistir', async () => {
+      const c = makeCollaborators(makeTicket());
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        sectorId: 'no-existe',
+        actorEsRoot: false,
+      });
+
+      expect(result.getError()).toBeInstanceOf(SectorTicketInexistenteError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
   });
 
   it('ticket inexistente → TicketNoEncontradoError (404)', async () => {

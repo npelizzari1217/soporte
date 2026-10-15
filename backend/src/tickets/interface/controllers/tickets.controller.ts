@@ -89,6 +89,7 @@ import {
   TipoTicketNoEncontradoError,
   PrioridadNoEncontradaError,
   TicketReferenciaInvalidaError,
+  SectorTicketInexistenteError,
   SolicitanteInvalidoError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
@@ -141,6 +142,7 @@ export function toHttpException(
     error instanceof TipoTicketNoEncontradoError ||
     error instanceof PrioridadNoEncontradaError ||
     error instanceof TicketReferenciaInvalidaError ||
+    error instanceof SectorTicketInexistenteError ||
     error instanceof SolicitanteInvalidoError ||
     error instanceof TipoTicketDesconocidoError ||
     error instanceof EstadoDestinoInvalidoError ||
@@ -295,7 +297,7 @@ export class TicketsController {
    * Crea un ticket nuevo. `solicitanteId`/`autorId` = JWT.sub (T4); el
    * `clienteId` del checker cross-DB es el `cliente_id` del JWT. `anio` lo
    * resuelve el servidor (año en curso), nunca el cliente HTTP.
-   * @throws 422 tipoId/prioridadId/ticketReferenciaId inválidos, o solicitante inválido
+   * @throws 422 tipoId/prioridadId/ticketReferenciaId/sectorId inválidos, o solicitante inválido
    * @throws 409 sin ciclo activo, o secuencia agotada
    */
   @Post()
@@ -311,6 +313,8 @@ export class TicketsController {
       tipoId: dto.tipoId,
       prioridadId: dto.prioridadId,
       ticketReferenciaId: dto.ticketReferenciaId ?? null,
+      ubicacion: dto.ubicacion ?? null,
+      sectorId: dto.sectorId ?? null,
       solicitanteId: user.sub,
       clienteId: user.cliente_id as string,
       autorId: user.sub,
@@ -484,7 +488,7 @@ export class TicketsController {
 
   /**
    * PATCH /tickets/:id
-   * Edita titulo/descripcion/prioridadId. El `estado` NUNCA se cambia por
+   * Edita titulo/descripcion/prioridadId/ubicacion/sectorId. El `estado` NUNCA se cambia por
    * esta vía (T9, endpoint dedicado en PR7). Regla de bloqueo por estado: una
    * vez que el ticket entra EN_PROCESO (o posterior), SOLO ROOT
    * (`is_global_admin`) puede editar; en NUEVO/ASIGNADO edita cualquier
@@ -492,7 +496,7 @@ export class TicketsController {
    * @throws 403 sin `TICKETS:MODIFICACION` (AccionesGuard), o ticket EN_PROCESO+
    *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
    * @throws 404 ticket inexistente/otro tenant
-   * @throws 422 prioridadId inexistente en el catálogo
+   * @throws 422 prioridadId o sectorId inexistente en el catálogo
    */
   @Patch(':id')
   @RequiereAcciones('TICKETS:MODIFICACION')
@@ -506,6 +510,8 @@ export class TicketsController {
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       prioridadId: dto.prioridadId,
+      ubicacion: dto.ubicacion,
+      sectorId: dto.sectorId,
       // ROOT edita SIEMPRE, incluso con el ticket EN_PROCESO o posterior.
       actorEsRoot: user.is_global_admin,
     });

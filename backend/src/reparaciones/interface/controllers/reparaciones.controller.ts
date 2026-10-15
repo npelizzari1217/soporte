@@ -65,6 +65,7 @@ import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 import {
   SolicitanteInvalidoError,
+  SectorTicketInexistenteError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
   TicketNoEncontradoError,
@@ -133,6 +134,8 @@ export function toHttpException(
   }
   if (
     error instanceof SolicitanteInvalidoError ||
+    // odd/ubicacion-sector-ticket: sector del alta inexistente.
+    error instanceof SectorTicketInexistenteError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
@@ -196,6 +199,7 @@ export class ReparacionesController {
       descripcion: dto.descripcion ?? null,
       prioridadId: dto.prioridadId,
       ubicacion: dto.ubicacion ?? null,
+      sectorId: dto.sectorId ?? null,
       solicitanteId: user.sub,
       clienteId: user.cliente_id as string,
       autorId: user.sub,

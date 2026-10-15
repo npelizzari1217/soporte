@@ -15,7 +15,9 @@ import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.reposito
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import {
+  SectorTicketInexistenteError,
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
   PrioridadNoEncontradaError,
@@ -42,6 +44,10 @@ export interface CrearTicketDto {
   tipoId: string;
   prioridadId: string;
   ticketReferenciaId?: string | null;
+  /** Ubicación general, texto libre (odd/ubicacion-sector-ticket). */
+  ubicacion?: string | null;
+  /** Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. */
+  sectorId?: string | null;
   solicitanteId: string;
   clienteId: string;
   autorId: string;
@@ -57,6 +63,8 @@ export interface CrearTicketDto {
  * 3. Valida que `tipoId` exista en el catálogo del tenant (T4).
  * 4. Valida que `prioridadId` exista en el catálogo del tenant (T4).
  * 5. Si viene `ticketReferenciaId`, valida que exista en el mismo tenant (T11).
+ * 5b. Si viene `sectorId`, valida que exista en el catálogo del tenant
+ *    (odd/ubicacion-sector-ticket; mismo criterio que compras: no se exige activo).
  * 6. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO (catálogos
  *    FIJOS garantizados por el seed de provisioning, ADR-1 — su ausencia es
  *    un fallo de infraestructura, no un error esperado del caller: `throw`).
@@ -92,6 +100,12 @@ export class CrearTicketUseCase {
     private readonly resolverAsignacion: Pick<ResolverAsignacionAutomatica, 'resolver'>,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: ITenantTransactionRunner,
+    /**
+     * Catálogo de sectores (odd/ubicacion-sector-ticket). Opcional SOLO para los armados manuales
+     * de tests que no versan sobre el sector; el módulo siempre lo inyecta. Sin él, un `sectorId`
+     * en el alta es un error de armado, no del caller: falla cerrado con `throw`.
+     */
+    private readonly sectorRepo?: Pick<ISectorRepository, 'findById'>,
   ) {}
 
   async execute(dto: CrearTicketDto): Promise<Result<TicketEntity, DomainError>> {
@@ -132,6 +146,20 @@ export class CrearTicketUseCase {
       const referenciado = await this.ticketRepo.findById(dto.ticketReferenciaId);
       if (!referenciado || referenciado.isDeleted()) {
         return Result.fail(new TicketReferenciaInvalidaError(dto.ticketReferenciaId));
+      }
+    }
+
+    // 5b. sectorId opcional: tiene que existir (un sector desactivado sigue siendo válido, igual
+    //     que en compras). Sin esto, el FK lo rechazaría como un 500 sin mapear.
+    if (dto.sectorId) {
+      if (!this.sectorRepo) {
+        throw new Error(
+          'CrearTicketUseCase: se recibió sectorId sin catálogo de sectores inyectado.',
+        );
+      }
+      const sector = await this.sectorRepo.findById(dto.sectorId);
+      if (!sector) {
+        return Result.fail(new SectorTicketInexistenteError(dto.sectorId));
       }
     }
 
@@ -177,6 +205,8 @@ export class CrearTicketUseCase {
         cicloId: cicloActivo.id,
         ticketReferenciaId: dto.ticketReferenciaId ?? null,
         solicitanteId: dto.solicitanteId,
+        ubicacion: dto.ubicacion ?? null,
+        sectorId: dto.sectorId ?? null,
       });
 
       // La regla asigna ANTES del primer `save()` (ADR-3): el ticket nace ASIGNADO.

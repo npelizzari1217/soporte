@@ -349,6 +349,40 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     );
   });
 
+  it('create: pasa ubicacion y sectorId del body; ausentes llegan como null', async () => {
+    const crearTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ crearTicket });
+    const body = { titulo: 'X', tipoId: 't1', prioridadId: 'p1' };
+
+    await controller.create(ADMINISTRADOR, { ...body, ubicacion: 'Aula 3', sectorId: 's1' });
+    await controller.create(ADMINISTRADOR, body);
+
+    expect(crearTicket.execute).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ ubicacion: 'Aula 3', sectorId: 's1' }),
+    );
+    expect(crearTicket.execute).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ ubicacion: null, sectorId: null }),
+    );
+  });
+
+  it('update: null en ubicacion/sectorId llega como null (limpia); omitidos llegan undefined', async () => {
+    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const { controller } = buildController({ editarTicket });
+
+    await controller.update(ADMINISTRADOR, 'ticket-1', { ubicacion: null, sectorId: null });
+    await controller.update(ADMINISTRADOR, 'ticket-1', { titulo: 'X' });
+
+    expect(editarTicket.execute.mock.calls[0][0]).toMatchObject({
+      ubicacion: null,
+      sectorId: null,
+    });
+    const segunda = editarTicket.execute.mock.calls[1][0];
+    expect(segunda.ubicacion).toBeUndefined();
+    expect(segunda.sectorId).toBeUndefined();
+  });
+
   it('update: TicketBloqueadoParaEdicionError → 403 ForbiddenException', async () => {
     const editarTicket = {
       execute: vi
@@ -756,8 +790,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 26 clases de error (25 previas + TipoTicketDelSistemaError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(26);
+  it('el catálogo tiene EXACTAMENTE 27 clases de error (26 previas + SectorTicketInexistenteError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(27);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -857,6 +891,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'SolicitanteExternoInvalidoError',
       () => new TicketsErrors.SolicitanteExternoInvalidoError('el nombre es obligatorio'),
+      422,
+    ],
+    [
+      'SectorTicketInexistenteError',
+      () => new TicketsErrors.SectorTicketInexistenteError('sector-x'),
       422,
     ],
   ];
