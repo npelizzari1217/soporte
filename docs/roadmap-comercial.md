@@ -1222,6 +1222,20 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
       tiene que ver el ticket, como en `/tickets`. Así, quien ve el listado de reparaciones
       con `EDILICIA:LECTURA` ve el checklist completo con el técnico de cada tarea, y el
       checklist de solo lectura sin técnico que armaba el frontend se retiró.
+- **Ubicación y sector en el ticket** (pedido fuera de los puntos; decisiones del dueño del
+  2026-10-15, feature `ubicacion-sector-ticket`, documento
+  `odd/tasks/ubicacion-sector-ticket.md`):
+  - Todo ticket suma dos campos **opcionales**: **Ubicación**, texto libre, y **Sector**,
+    elegido de un desplegable con los sectores cargados en el cliente.
+  - Edilicia **conserva su propia ubicación** (`ticket_edilicia.ubicacion`): la Ubicación
+    general es un campo aparte y en los tickets de Edilicia **se oculta**; ahí se ve solo
+    la de Edilicia. El Sector se ve también en Edilicia.
+  - Se cargan **solo desde la aplicación**: el formulario público y la API v1 no los
+    aceptan por ahora.
+  - Los listados de tickets y de Edilicia los muestran como ayuda al lector, **sin
+    filtros** nuevos.
+  - En Edilicia, el botón de las tareas (ex subtareas) muestra **cuántas hay**, igual
+    que el de comentarios.
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
