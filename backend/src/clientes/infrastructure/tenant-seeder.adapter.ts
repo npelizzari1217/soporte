@@ -70,7 +70,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { ITenantSeeder } from '../domain/ports/i-tenant-seeder.port';
 import { TenantPrismaClient } from '../../shared/infrastructure/persistence/prisma-clients';
 import { conUtc } from '../../shared/infrastructure/persistence/utc-connection-string';
-import { TIPO_CODIGO_PREVENTIVO } from '../../tickets/domain/tipos-ticket.constants';
+import {
+  TIPO_CODIGO_EDILICIA,
+  TIPO_CODIGO_PREVENTIVO,
+  TIPO_CODIGO_SOPORTE,
+} from '../../tickets/domain/tipos-ticket.constants';
 
 type TenantClient = InstanceType<typeof TenantPrismaClient>;
 
@@ -148,8 +152,8 @@ const TIPOS_TICKET = [
   // (numeración `SOP-...`, catálogo de tipos intacto). `modulo` es el eje de
   // autorización renombrado a 'TICKETS' — un tenant nuevo nace ya alineado
   // con el rename, sin esperar al backfill de un tenant migrado.
-  { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS' },
-  { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA' },
+  { codigo: TIPO_CODIGO_SOPORTE, nombre: 'Soporte', modulo: 'TICKETS' },
+  { codigo: TIPO_CODIGO_EDILICIA, nombre: 'Edilicia', modulo: 'EDILICIA' },
   { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA' },
   // issue #135: el preventivo tiene su propio tipo. Mapea al mismo módulo
   // que MANTENIMIENTO (el que reusaba antes) para no cambiar routing ni

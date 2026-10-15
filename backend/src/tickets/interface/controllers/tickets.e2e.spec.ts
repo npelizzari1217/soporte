@@ -1359,6 +1359,28 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       expect(prioridadEditada.data.orden).toBe(99);
     });
 
+    it('POST /tickets con un tipo_ticket desactivado → 422 y no crea el ticket', async () => {
+      const admin = await crearActorAdmin();
+      // Tipo no fijo: los fijos (SOPORTE, EDILICIA, PREVENTIVO) ya no se desactivan.
+      const tipoId = await createTipoTicketAislado('INACT');
+
+      const desactivado = await httpPatch<{ activo: boolean }>(
+        `${baseUrl}/catalogos/tipos-ticket/${tipoId}/estado`,
+        { activo: false },
+        bearer(admin.accessToken),
+      );
+      expect(desactivado.status).toBe(200);
+
+      const { status } = await httpPost(
+        `${baseUrl}/tickets`,
+        { titulo: 'Alta con tipo inactivo', tipoId, prioridadId: prioridadMediaId },
+        bearer(admin.accessToken),
+      );
+
+      expect(status).toBe(422);
+      expect(await tenantClient.ticket.count({ where: { tipoId } })).toBe(0);
+    });
+
     it('USUARIO sin catalogo:gestionar recibe 403 al intentar crear un tipo_ticket', async () => {
       const actor = await crearActorUsuario();
 

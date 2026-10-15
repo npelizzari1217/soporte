@@ -15,13 +15,11 @@ import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-tick
 import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import { TIPO_CODIGO_SOPORTE } from '../../../tickets/domain/tipos-ticket.constants';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
 import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { EquipoInvalidoError } from '../../domain/errors/equipos.errors';
-
-/** Código fijo del tipo de ticket resuelto por este use case (F3-Q4). */
-const TIPO_CODIGO_SOPORTE = 'SOPORTE';
 
 /**
  * DTO de entrada de `CrearTicketSoporteUseCase`.
