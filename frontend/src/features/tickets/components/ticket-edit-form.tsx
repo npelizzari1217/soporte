@@ -3,7 +3,8 @@
 /**
  * TicketEditForm — PRESENTATIONAL, gated por `ticket:editar` a nivel de
  * caller (`TicketDetailView` decide si montarlo, vía `<Can>`). Edita
- * titulo/descripcion/prioridadId — el `estado` NUNCA se edita acá (backend:
+ * titulo/descripcion/prioridadId, ubicación y sector
+ * (odd/ubicacion-sector-ticket) — el `estado` NUNCA se edita acá (backend:
  * `EditTicketDto` no acepta `estado`, endpoint dedicado).
  */
 import { useForm } from "react-hook-form";
@@ -15,7 +16,25 @@ import { Select } from "@/components/ui/select";
 import { conValorFueraDeCatalogo } from "@/shared/lib/opciones-catalogo";
 import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
 import { editarTicketSchema, type EditarTicketFormValues } from "../schemas";
-import type { Prioridad } from "../types";
+import type { EditarTicketDto, Prioridad } from "../types";
+import type { Sector } from "@/features/sectores/types";
+
+/**
+ * Arma el PATCH a partir del formulario. Un campo opcional vacío viaja como
+ * `null`, que en el backend LIMPIA el valor (omitido no lo tocaría y el
+ * usuario no podría borrarlo). La ubicación general no viaja cuando el campo
+ * está oculto (tickets de Edilicia, CA2): omitida, el backend no la toca.
+ */
+export function aEditarTicketDto(values: EditarTicketFormValues, mostrarUbicacion: boolean): EditarTicketDto {
+  const dto: EditarTicketDto = {
+    titulo: values.titulo,
+    descripcion: values.descripcion,
+    prioridadId: values.prioridadId,
+    sectorId: values.sectorId || null,
+  };
+  if (mostrarUbicacion) dto.ubicacion = values.ubicacion || null;
+  return dto;
+}
 
 export interface TicketEditFormProps {
   defaultValues: EditarTicketFormValues;
@@ -29,12 +48,38 @@ export interface TicketEditFormProps {
    * espejar TODAS las precondiciones, no algunas).
    */
   prioridades: Prioridad[] | undefined;
-  onSubmit: (values: EditarTicketFormValues) => void;
+  /**
+   * Sectores ACTIVOS del cliente. Mismo contrato que `prioridades`:
+   * `undefined` = el catálogo todavía no resolvió.
+   */
+  sectores?: Sector[] | undefined;
+  /**
+   * Nombre del sector vigente del ticket (`Ticket.sectorNombre`), resuelto por
+   * el backend aunque esté desactivado. Rotula la opción del sector vigente
+   * cuando el catálogo de activos no lo trae.
+   */
+  sectorNombre?: string | null;
+  /**
+   * `false` oculta la ubicación general (tickets de Edilicia, CA2) y la saca
+   * del PATCH. Por defecto `false`: el caller decide mostrarla cuando ya sabe
+   * que el ticket no es de Edilicia.
+   */
+  mostrarUbicacion?: boolean;
+  onSubmit: (dto: EditarTicketDto) => void;
   onCancel: () => void;
   isSubmitting: boolean;
 }
 
-export function TicketEditForm({ defaultValues, prioridades, onSubmit, onCancel, isSubmitting }: TicketEditFormProps) {
+export function TicketEditForm({
+  defaultValues,
+  prioridades,
+  sectores,
+  sectorNombre = null,
+  mostrarUbicacion = false,
+  onSubmit,
+  onCancel,
+  isSubmitting,
+}: TicketEditFormProps) {
   const {
     register,
     handleSubmit,
@@ -75,8 +120,25 @@ export function TicketEditForm({ defaultValues, prioridades, onSubmit, onCancel,
   // prioridad que el usuario acaba de elegir.
   useReaplicarAlResolver(true, prioridades !== undefined, "prioridadId", defaultValues.prioridadId, setValue);
 
+  // El sector sigue el mismo criterio: un ticket con un sector desactivado se
+  // puede seguir editando (el backend solo exige que exista), así que su opción
+  // se agrega con el nombre que resolvió el backend. Sin ella, guardar
+  // cambiaría el sector en silencio.
+  const sectorIdVigente = defaultValues.sectorId ?? "";
+  const opcionesSector = conValorFueraDeCatalogo(
+    sectores ?? [],
+    sectores !== undefined,
+    sectorIdVigente,
+    sectorNombre ? `${sectorNombre} (dado de baja)` : "Sector dado de baja",
+  );
+  useReaplicarAlResolver(true, sectores !== undefined, "sectorId", sectorIdVigente, setValue);
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
+    <form
+      onSubmit={handleSubmit((values) => onSubmit(aEditarTicketDto(values, mostrarUbicacion)))}
+      className="flex flex-col gap-3"
+      noValidate
+    >
       <div className="flex flex-col gap-1">
         <label htmlFor="edit-titulo" className="text-sm font-medium text-foreground">
           Título
@@ -97,6 +159,34 @@ export function TicketEditForm({ defaultValues, prioridades, onSubmit, onCancel,
         </label>
         <Select id="edit-prioridad" error={!!errors.prioridadId} {...register("prioridadId")}>
           {opcionesPrioridad.map((opcion) => (
+            <option key={opcion.id} value={opcion.id}>
+              {opcion.nombre}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      {mostrarUbicacion && (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="edit-ubicacion" className="text-sm font-medium text-foreground">
+            Ubicación
+          </label>
+          <Input id="edit-ubicacion" error={!!errors.ubicacion} {...register("ubicacion")} />
+          {errors.ubicacion && (
+            <p role="alert" className="text-sm text-destructive">
+              {errors.ubicacion.message}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-1">
+        <label htmlFor="edit-sector" className="text-sm font-medium text-foreground">
+          Sector
+        </label>
+        <Select id="edit-sector" {...register("sectorId")}>
+          <option value="">Sin sector</option>
+          {opcionesSector.map((opcion) => (
             <option key={opcion.id} value={opcion.id}>
               {opcion.nombre}
             </option>

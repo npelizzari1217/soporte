@@ -145,6 +145,10 @@ export function TicketsListView() {
           <span className="text-muted-foreground">Sin asignar</span>
         ),
     },
+    // odd/ubicacion-sector-ticket (CA4): sin filtros nuevos. El sector por el
+    // nombre que resuelve el backend, que incluye los desactivados.
+    { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
+    { key: "sectorId", header: "Sector", render: (row) => row.sectorNombre ?? "—" },
   ];
 
   return (

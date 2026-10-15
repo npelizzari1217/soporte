@@ -34,6 +34,9 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     sla: { estado: "SIN_SLA", venceAt: null },
     primeraRespuesta: { estado: "SIN_META", venceAt: null, at: null },
     fechaCierre: null,
+    ubicacion: null,
+    sectorId: null,
+    sectorNombre: null,
     createdAt: "2026-08-15T12:00:00.000Z",
     updatedAt: "2026-08-15T12:00:00.000Z",
     ...overrides,
@@ -53,7 +56,8 @@ describe("TicketHeader", () => {
     it("muestra el nombre del externo (no el guion) y el telefono cuando existe", () => {
       render(<TicketHeader tipoNombre="Incidente" ticket={buildTicket({ ...externo, solicitanteTelefono: "+54 11 5555-0000" })} />);
       expect(screen.getByText("Marta Externa")).toBeInTheDocument();
-      expect(screen.queryByText("—")).not.toBeInTheDocument();
+      // El guion del solicitante; el del Sector vacío no cuenta.
+      expect(screen.getByText("Solicitante").nextElementSibling).not.toHaveTextContent("—");
       expect(screen.getByText("Teléfono")).toBeInTheDocument();
       expect(screen.getByText("+54 11 5555-0000")).toBeInTheDocument();
     });
@@ -207,6 +211,35 @@ describe("TicketHeader", () => {
       render(<TicketHeader ticket={buildTicket()} puedeVerCsat />);
 
       expect(screen.queryByText(/Satisfacción:/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("ubicación y sector (odd/ubicacion-sector-ticket)", () => {
+    it("con mostrarUbicacion muestra la ubicación y el sector por su nombre", () => {
+      render(
+        <TicketHeader
+          ticket={buildTicket({ ubicacion: "Aula 12", sectorId: "s1", sectorNombre: "Primaria" })}
+          mostrarUbicacion
+        />,
+      );
+      expect(screen.getByText("Ubicación").nextElementSibling).toHaveTextContent("Aula 12");
+      expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("Primaria");
+    });
+
+    it("sin ubicación ni sector muestra el guion en los dos", () => {
+      render(<TicketHeader ticket={buildTicket()} mostrarUbicacion />);
+      expect(screen.getByText("Ubicación").nextElementSibling).toHaveTextContent("—");
+      expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("—");
+    });
+
+    // CA2: en los tickets de Edilicia la ubicación general no se muestra; el sector sí.
+    it("sin mostrarUbicacion (Edilicia) oculta la ubicación pero sigue mostrando el sector", () => {
+      render(
+        <TicketHeader ticket={buildTicket({ ubicacion: "Aula 12", sectorId: "s1", sectorNombre: "Primaria" })} />,
+      );
+      expect(screen.queryByText("Ubicación")).not.toBeInTheDocument();
+      expect(screen.queryByText("Aula 12")).not.toBeInTheDocument();
+      expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("Primaria");
     });
   });
 });

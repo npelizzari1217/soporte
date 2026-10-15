@@ -32,6 +32,9 @@ const TICKET = {
   sla: { estado: "VENCIDO", venceAt: "2020-01-01T00:00:00.000Z" },
   primeraRespuesta: { estado: "SIN_META", venceAt: null, at: null },
   fechaCierre: null,
+  ubicacion: null,
+  sectorId: null,
+  sectorNombre: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -387,5 +390,98 @@ describe("TicketDetailView — tarjeta de equipo en mantenimiento", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
     expect(soporteEndpointLlamado).toBe(false);
     expect(screen.queryByText(/equipo en mantenimiento/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("TicketDetailView — ubicación y sector (odd/ubicacion-sector-ticket)", () => {
+  const PRIORIDAD_UUID = "33333333-3333-3333-3333-333333333333";
+  const SECTOR_ID = "44444444-4444-4444-4444-444444444444";
+
+  function mockTicketConDatos(modulo: string) {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({
+          ...TICKET,
+          prioridadId: PRIORIDAD_UUID,
+          ubicacion: "Aula 12",
+          sectorId: SECTOR_ID,
+          sectorNombre: "Primaria",
+        }),
+      ),
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([{ id: "ti1", codigo: modulo, nombre: modulo, modulo, activo: true, createdAt: "", updatedAt: "" }]),
+      ),
+      http.get("/api/catalogos/prioridades", () =>
+        HttpResponse.json([{ id: PRIORIDAD_UUID, codigo: "ALTA", nombre: "Alta", color: null, orden: 3, activo: true, createdAt: "", updatedAt: "" }]),
+      ),
+      http.get("/api/sectores", () =>
+        HttpResponse.json([{ id: SECTOR_ID, codigo: "PRI", nombre: "Primaria", activo: true, createdAt: "", updatedAt: "" }]),
+      ),
+    );
+  }
+
+  beforeEach(() => mockBackend());
+
+  it("ticket de TICKETS: la cabecera muestra ubicación y sector, y el modal edita los dos", async () => {
+    mockTicketConDatos("TICKETS");
+    let capturedBody: unknown = null;
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(TICKET);
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
+    });
+
+    expect(await screen.findByText("Aula 12")).toBeInTheDocument();
+    expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("Primaria");
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    const ubicacionInput = await screen.findByLabelText("Ubicación");
+    expect(ubicacionInput).toHaveValue("Aula 12");
+    await waitFor(() => expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_ID));
+
+    await user.clear(ubicacionInput);
+    await user.type(ubicacionInput, "Aula 14");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturedBody).toMatchObject({ ubicacion: "Aula 14", sectorId: SECTOR_ID }));
+  });
+
+  // CA2: Edilicia tiene su propia ubicación; la general no se muestra ni se carga.
+  it("ticket de EDILICIA: oculta la ubicación general en la cabecera y en el modal, y el PATCH no la lleva", async () => {
+    mockTicketConDatos("EDILICIA");
+    let capturedBody: unknown = null;
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}`, async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json(TICKET);
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    await waitFor(() => expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("Primaria"));
+    expect(screen.queryByText("Ubicación")).not.toBeInTheDocument();
+    expect(screen.queryByText("Aula 12")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByLabelText("Título");
+    expect(screen.queryByLabelText("Ubicación")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_ID));
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).not.toHaveProperty("ubicacion");
+    expect(capturedBody).toMatchObject({ sectorId: SECTOR_ID });
   });
 });

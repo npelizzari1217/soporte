@@ -57,4 +57,44 @@ describe("TicketCreateDialog", () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/tickets/nuevo-ticket-id"));
     await waitFor(() => expect(screen.queryByLabelText("Título")).not.toBeInTheDocument());
   });
+
+  it("con ubicación y sector, POST /tickets los incluye; vacíos no viajan (odd/ubicacion-sector-ticket)", async () => {
+    const SECTOR_ID = "44444444-4444-4444-4444-444444444444";
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.get("/api/sectores", () =>
+        HttpResponse.json([{ id: SECTOR_ID, codigo: "PRI", nombre: "Primaria", activo: true, createdAt: "", updatedAt: "" }]),
+      ),
+      http.post("/api/tickets", async ({ request }) => {
+        bodies.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ id: `nuevo-${bodies.length}` }, { status: 201 });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketCreateDialog />, { user: buildUser({ permisos: ["TICKETS:ALTAS"] }) });
+
+    async function completarYCrear(extra: () => Promise<void>) {
+      await user.click(screen.getByRole("button", { name: /^nuevo ticket$/i }));
+      await user.type(await screen.findByLabelText("Título"), "Impresora rota");
+      await user.selectOptions(screen.getByLabelText("Tipo"), "11111111-1111-1111-1111-111111111111");
+      await user.selectOptions(screen.getByLabelText("Prioridad"), "22222222-2222-2222-2222-222222222222");
+      await extra();
+      await user.click(screen.getByRole("button", { name: /crear ticket/i }));
+      await waitFor(() => expect(screen.queryByLabelText("Título")).not.toBeInTheDocument());
+    }
+
+    await completarYCrear(async () => {
+      await user.type(screen.getByLabelText("Ubicación"), "Aula 12");
+      await screen.findByRole("option", { name: "Primaria" });
+      await user.selectOptions(screen.getByLabelText("Sector"), SECTOR_ID);
+    });
+    expect(bodies[0]).toMatchObject({ ubicacion: "Aula 12", sectorId: SECTOR_ID });
+
+    await completarYCrear(async () => {
+      expect(screen.getByLabelText("Sector")).toHaveValue("");
+    });
+    expect(bodies[1]).not.toHaveProperty("ubicacion");
+    expect(bodies[1]).not.toHaveProperty("sectorId");
+  });
 });

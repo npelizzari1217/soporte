@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TicketEditForm } from "./ticket-edit-form";
 import type { EditarTicketFormValues } from "../schemas";
 import type { Prioridad } from "../types";
+import type { Sector } from "@/features/sectores/types";
 
 /**
  * `editarTicketSchema.prioridadId` es `z.string().uuid()`: los ids de este
@@ -156,7 +157,9 @@ describe("TicketEditForm — prioridad dada de baja", () => {
     });
 
     expect(screen.queryByRole("option", { name: /dada de baja/i })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("option")).toHaveLength(PRIORIDADES_ACTIVAS.length);
+    expect(within(screen.getByLabelText(/prioridad/i)).getAllByRole("option")).toHaveLength(
+      PRIORIDADES_ACTIVAS.length,
+    );
   });
 
   it("el catálogo YA resolvió y está genuinamente vacío: la prioridad ausente sigue etiquetándose como dada de baja", () => {
@@ -196,5 +199,148 @@ describe("TicketEditForm — prioridad dada de baja", () => {
     expect(onSubmit.mock.calls[0][0]).toMatchObject({
       prioridadId: PRIORIDAD_BAJA_ID,
     });
+  });
+});
+
+// ─── Ubicación y sector (odd/ubicacion-sector-ticket) ───
+
+const SECTOR_PRIMARIA_ID = "44444444-4444-4444-4444-444444444444";
+const SECTOR_SECUNDARIA_ID = "55555555-5555-5555-5555-555555555555";
+/** Sector desactivado: el catálogo de activos no lo trae. */
+const SECTOR_VIEJO_ID = "66666666-6666-6666-6666-666666666666";
+
+function buildSector(id: string, nombre: string): Sector {
+  return { id, codigo: nombre.toUpperCase(), nombre, activo: true, createdAt: "", updatedAt: "" };
+}
+
+const SECTORES_ACTIVOS: Sector[] = [
+  buildSector(SECTOR_PRIMARIA_ID, "Primaria"),
+  buildSector(SECTOR_SECUNDARIA_ID, "Secundaria"),
+];
+
+function renderConSector(
+  props: {
+    defaultValues?: EditarTicketFormValues;
+    sectores?: Sector[];
+    sectorNombre?: string | null;
+    mostrarUbicacion?: boolean;
+  } = {},
+) {
+  const onSubmit = vi.fn();
+  render(
+    <TicketEditForm
+      defaultValues={props.defaultValues ?? buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID })}
+      prioridades={PRIORIDADES_ACTIVAS}
+      sectores={props.sectores ?? SECTORES_ACTIVOS}
+      sectorNombre={props.sectorNombre ?? null}
+      mostrarUbicacion={props.mostrarUbicacion ?? true}
+      onSubmit={onSubmit}
+      onCancel={vi.fn()}
+      isSubmitting={false}
+    />,
+  );
+  return { onSubmit };
+}
+
+describe("TicketEditForm — ubicación y sector", () => {
+  it("precarga ubicación y sector, y guardar sin tocarlos los manda tal cual", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderConSector({
+      defaultValues: buildDefaultValues({
+        prioridadId: PRIORIDAD_ALTA_ID,
+        ubicacion: "Aula 12",
+        sectorId: SECTOR_SECUNDARIA_ID,
+      }),
+    });
+
+    expect(screen.getByLabelText("Ubicación")).toHaveValue("Aula 12");
+    expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_SECUNDARIA_ID);
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ ubicacion: "Aula 12", sectorId: SECTOR_SECUNDARIA_ID });
+  });
+
+  // `null` limpia en el backend; omitido no tocaría nada y el usuario no podría borrarlos.
+  it("vaciar la ubicación y elegir «Sin sector» manda null en los dos", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderConSector({
+      defaultValues: buildDefaultValues({
+        prioridadId: PRIORIDAD_ALTA_ID,
+        ubicacion: "Aula 12",
+        sectorId: SECTOR_PRIMARIA_ID,
+      }),
+    });
+
+    await user.clear(screen.getByLabelText("Ubicación"));
+    await user.selectOptions(screen.getByLabelText("Sector"), "");
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ ubicacion: null, sectorId: null });
+  });
+
+  it("una ubicación de más de 255 caracteres no se manda", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderConSector();
+
+    await user.click(screen.getByLabelText("Ubicación"));
+    await user.paste("x".repeat(256));
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/ubicación/i);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  // Un ticket con un sector desactivado se sigue editando (el backend solo exige que exista).
+  it("un sector desactivado sigue seleccionado con su nombre y guardar lo conserva", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderConSector({
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID, sectorId: SECTOR_VIEJO_ID }),
+      sectorNombre: "Jardín",
+    });
+
+    expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_VIEJO_ID);
+    expect(screen.getByRole("option", { name: "Jardín (dado de baja)" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ sectorId: SECTOR_VIEJO_ID });
+  });
+
+  it("reaplica el sector del ticket cuando el catálogo llega tarde", async () => {
+    const props = {
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID, sectorId: SECTOR_SECUNDARIA_ID }),
+      prioridades: PRIORIDADES_ACTIVAS,
+      mostrarUbicacion: true,
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+      isSubmitting: false,
+    };
+    const { rerender } = render(<TicketEditForm {...props} sectores={undefined} />);
+
+    rerender(<TicketEditForm {...props} sectores={SECTORES_ACTIVOS} />);
+
+    await waitFor(() => expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_SECUNDARIA_ID));
+  });
+
+  // CA2: en Edilicia la ubicación general no se muestra ni viaja; el sector sí.
+  it("sin mostrarUbicacion no muestra el campo y el PATCH no lleva ubicación", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderConSector({
+      defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID, sectorId: SECTOR_PRIMARIA_ID }),
+      mostrarUbicacion: false,
+    });
+
+    expect(screen.queryByLabelText("Ubicación")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Sector")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty("ubicacion");
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ sectorId: SECTOR_PRIMARIA_ID });
   });
 });

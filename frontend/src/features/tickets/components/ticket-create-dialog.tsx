@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { useTiposTicket, usePrioridades } from "../hooks/use-catalogos";
 import { useCrearTicket } from "../hooks/use-ticket-mutations";
+import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { TicketCreateForm } from "./ticket-create-form";
 import type { CrearTicketDto } from "../types";
 
@@ -30,6 +31,8 @@ export function TicketCreateDialog() {
   // de COMPRAS/EDILICIA/EQUIPOS acá).
   const tiposQuery = useTiposTicket("TICKETS");
   const prioridadesQuery = usePrioridades();
+  // El catálogo de sectores se pide recién al abrir el modal.
+  const sectoresQuery = useSectores(open);
   const crearMutation = useCrearTicket();
 
   function handleSubmit(dto: CrearTicketDto) {
@@ -56,6 +59,7 @@ export function TicketCreateDialog() {
         <TicketCreateForm
           tipos={tiposQuery.data ?? []}
           prioridades={prioridadesQuery.data ?? []}
+          sectores={sectoresQuery.data ?? []}
           onSubmit={handleSubmit}
           isSubmitting={crearMutation.isPending}
         />

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -30,6 +30,9 @@ const TICKET = {
   solicitanteEsExterno: false,
   asignadoId: null,
   fechaCierre: null,
+  ubicacion: null,
+  sectorId: null,
+  sectorNombre: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -101,6 +104,32 @@ describe("TicketsListView", () => {
     renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
     expect(screen.getByText("Sin asignar")).toBeInTheDocument();
+  });
+
+  it("muestra las columnas Ubicación y Sector, con guion cuando no hay valor (odd/ubicacion-sector-ticket, CA4)", async () => {
+    server.use(
+      http.get("/api/tickets", () =>
+        HttpResponse.json({
+          items: [
+            { ...TICKET, id: "t1", titulo: "Con datos", ubicacion: "Aula 12", sectorId: "s1", sectorNombre: "Primaria" },
+            { ...TICKET, id: "t2", titulo: "Sin datos" },
+          ],
+          total: 2,
+          pagina: 1,
+          porPagina: 10,
+        }),
+      ),
+    );
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+    const conDatos = within((await screen.findByText("Con datos")).closest("tr") as HTMLElement);
+    expect(screen.getByRole("columnheader", { name: "Ubicación" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Sector" })).toBeInTheDocument();
+    expect(conDatos.getByText("Aula 12")).toBeInTheDocument();
+    expect(conDatos.getByText("Primaria")).toBeInTheDocument();
+
+    const sinDatos = within(screen.getByText("Sin datos").closest("tr") as HTMLElement);
+    expect(sinDatos.getAllByText("—")).toHaveLength(2);
   });
 
   it("click en una fila navega al detalle del ticket", async () => {

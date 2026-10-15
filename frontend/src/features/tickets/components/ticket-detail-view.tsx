@@ -107,6 +107,12 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // Bloqueo de edición por estado (mirror backend): una vez EN_PROCESO+, solo
   // ROOT edita. Si el estado aún no se resolvió (catálogo cargando), no bloquea.
   const edicionPermitida = estadoCodigo ? puedeEditarDatos(estadoCodigo, isGlobalAdmin) : true;
+  // La ubicación general no se muestra ni se carga en los tickets de Edilicia,
+  // que tienen la suya propia (odd/ubicacion-sector-ticket, CA2). Mientras el
+  // catálogo de tipos no resolvió el módulo es desconocido y queda oculta: el
+  // PATCH la omite y el backend no la toca.
+  const modulo = tipoModuloMap.get(ticket.tipoId);
+  const mostrarUbicacion = modulo !== undefined && modulo !== "EDILICIA";
 
   return (
     <div className="flex flex-col gap-6">
@@ -115,6 +121,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         estadoCodigo={estadoCodigo}
         prioridadCodigo={prioridadCodigoMap.get(ticket.prioridadId)}
         tipoNombre={tipoNombreMap.get(ticket.tipoId)}
+        mostrarUbicacion={mostrarUbicacion}
         puedeVerCsat={puedeVerCsat}
       />
 
@@ -151,12 +158,16 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                 titulo: ticket.titulo,
                 descripcion: ticket.descripcion ?? "",
                 prioridadId: ticket.prioridadId,
+                ubicacion: ticket.ubicacion ?? "",
+                sectorId: ticket.sectorId ?? "",
               }}
               // `undefined` mientras la query no resolvió (cargando o error):
               // `TicketEditForm` lo necesita para no etiquetar por error un
               // valor activo como "dado de baja" (ver JSDoc de la prop).
               prioridades={prioridadesQuery.data}
-              onSubmit={(values) => editarMutation.mutate(values)}
+              sectorNombre={ticket.sectorNombre}
+              mostrarUbicacion={mostrarUbicacion}
+              onSubmit={(dto) => editarMutation.mutate(dto)}
               isSubmitting={editarMutation.isPending}
             />
           ) : (
@@ -171,7 +182,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
       {/* Tareas en cualquier tipo de ticket (odd/tareas-con-tecnico, T6; CA1). */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-foreground">Tareas</h2>
-        <TicketTareas ticketId={ticket.id} asignadoId={ticket.asignadoId} modulo={tipoModuloMap.get(ticket.tipoId)} />
+        <TicketTareas ticketId={ticket.id} asignadoId={ticket.asignadoId} modulo={modulo} />
       </section>
 
       <section>
