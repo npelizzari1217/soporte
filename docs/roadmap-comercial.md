@@ -1236,6 +1236,16 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     filtros** nuevos.
   - En Edilicia, el botón de las tareas (ex subtareas) muestra **cuántas hay**, igual
     que el de comentarios.
+  **Cumplida** (2026-10-16, feature `ubicacion-sector-ticket`, `judgment-day` aprobado tras
+  corregir JD-W1): migración tenant `20261015200000_ubicacion_sector_tickets` (`tickets.ubicacion`
+  y `tickets.sector_id`), alta y edición por `POST`/`PATCH /tickets` y alta de Edilicia con solo
+  el sector; un sector inexistente da 422 y uno desactivado se conserva con su nombre. La
+  ubicación general se oculta en Edilicia (detalle y edición; un tipo desactivado de otro módulo
+  la sigue mostrando). La API v1 y el formulario público no aceptan los campos (tests). Los
+  listados muestran Ubicación y Sector (Edilicia, Sector y su propia ubicación) sin filtros, y el
+  botón "Ver subtareas" lleva la cantidad. Precisiones sin cambio de producto en el documento:
+  editar los campos no deja historial, como el resto de los datos; el diálogo de soporte desde
+  un equipo no los suma; el `PATCH` no rechaza `ubicacion` en Edilicia (lo evita la interfaz).
 
 **Calidad de la evidencia.** Lo de GLPI y los precios oficiales de Freshworks,
 Zendesk, Zoho y ManageEngine salen de fuente primaria. Los precios de los CMMS, de
@@ -1307,6 +1317,12 @@ de las entregas anteriores está anotada solo en los mensajes de sus commits
     cómo cuenta el ciclo;
   - que el técnico de una tarea ve el ticket aunque no tenga permiso para ver todos
     (el listado ya lo dice; falta el detalle y las tareas).
+- **Ubicación y sector en el ticket** (2026-10-16, anotada en los commits de la rama
+  `feat/ubicacion-sector-ticket` y en `odd/tasks/ubicacion-sector-ticket.md`; los listados ya
+  se corrigieron en `58c3c53b`):
+  - los campos Ubicación y Sector en el alta y la edición del ticket, y el Sector en el alta de
+    Edilicia (en Edilicia la ubicación general no aparece);
+  - la cantidad en el botón "Ver subtareas" del listado de Edilicia.
 
 ## Nota
 

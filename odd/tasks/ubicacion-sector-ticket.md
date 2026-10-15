@@ -88,7 +88,35 @@ de aceptación abajo.
     como lo llama la pantalla de Edilicia (el detalle del ticket dice "Tareas").
   - Evidencia T3+T4 (frontend): `pnpm lint` sin errores ni avisos; `pnpm type-check` 0 (repetido por
     el padre); `pnpm test` → 274 archivos, 2297 tests pasan.
-- [ ] **T5 — Cierre**: compuertas completas, roadmap con **Cumplida** o **Desviación**, deuda de Ayuda.
+- [x] **T5 — Cierre**: compuertas completas, roadmap con **Cumplida** o **Desviación**, deuda de Ayuda.
+  Ruta: inline (estado, compuertas y documentación).
+  - Revisión: RDD figura encendida (global), pero el candidato desde `01b5a573` (55 archivos, 2053
+    líneas) excedió el presupuesto de contexto del revisor nativo (`lens_context_budget_exceeded`,
+    sin autoridad creada). Por decisión del dueño se corrió `judgment-day` sobre
+    `01b5a573...a4063822` (diff sha256 `d78b1a32…`). Ronda 1: 0 CRITICAL.
+    - JD-W1 (WARNING, los dos jueces): el detalle ocultaba para siempre la ubicación de un ticket
+      cuyo tipo (no Edilicia) se desactivó, porque el catálogo de tipos solo trae los activos (contra
+      CA1). Corregido con TDD por pedido del dueño en `9449bf9a`: RED "Unable to find an element with
+      the text: Aula 3" (1 fallo, 17 pasan); GREEN con `mostrarUbicacion = tiposQuery.isSuccess &&
+      modulo !== "EDILICIA"` (los tipos de Edilicia son del sistema y no se desactivan); 211 tests de
+      tickets pasan, lint y type-check en 0.
+    - Re-juicio acotado: los dos jueces dan JD-W1 por resuelto, sin defectos causados por el arreglo.
+      **Veredicto: APPROVED.**
+    - Info, sin corregir: JD-S1 (un juez) — `@MaxLength` cuenta los pares sustitutos como un carácter
+      y la entidad usa `.length`: una ubicación de más de 255 unidades UTF-16 por API directa da 500
+      (mismo patrón previo que el título; la interfaz lo impide). Sugerencia del re-juicio (un juez):
+      con `isSuccess`, si falla un refresco en segundo plano del catálogo la ubicación se oculta hasta
+      el siguiente refresco bueno (falla cerrado; el `PATCH` la omite).
+  - Compuertas: backend `pnpm test` completo → 741 archivos, 8877 tests pasan (el `FAIL
+    orden-de-arranque.spec.ts` es el fixture intencional; corrido sobre `619415df`, el backend no
+    cambió después); frontend `pnpm test` completo → 274 archivos, 2297 tests (sobre `af14c519`) y
+    `src/features/tickets` → 211 tests tras el arreglo; lint y typecheck en 0 en los dos lados;
+    casts 594/111; `check-roadmap-fresco` en verde. `src/kb` → 79 tests.
+  - Roadmap: la viñeta declara **Cumplida** con sus precisiones; deuda de Ayuda anotada en la sección
+    "Deuda de Ayuda".
+  - Ayuda: dos artículos quedaban falsos y se corrigieron en `58c3c53b` (`tickets-listado.md`: el CSV
+    no trae las columnas nuevas; `reparaciones-listado.md`: la fila suma el sector). Queda como deuda
+    la descripción de los campos en los formularios y la cantidad del botón de subtareas.
 
 ## Ruta y entrega
 - RDD apagada. Feature: TDD no exigido; cada tarea lleva sus tests.
@@ -102,6 +130,8 @@ de aceptación abajo.
 - 2026-10-16: T3 y T4 hechas (frontend). RDD figura encendida (global); el dueño pidió revisar solo
   esta feature (`--base-ref 01b5a573 --committed-only`): el candidato desde `66865b6d` excedía el
   presupuesto de contexto del revisor.
+- 2026-10-16: `judgment-day` aprobado tras corregir JD-W1; T5 hecha.
 
 ## Próximo paso
-Revisión RDD de la feature y T5.
+Revisión del diff completo (§4.2) y merge a `main`, por decisión del dueño. Después, el deploy
+(lleva migración tenant: `predeploy-dump` antes).
