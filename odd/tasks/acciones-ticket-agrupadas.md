@@ -47,3 +47,5 @@ por grupo. Sin cambios de reglas: permisos, estados y validaciones siguen en el 
   modo (`key` por modo en el contenedor, con test RED→GREEN en el detalle) y S2 decía "Responsable"
   donde el nombre accesible es "Nuevo responsable". La del grupo Estado vacío no aplica: el grupo
   está gateado por permiso y en estado final muestra el aviso.
+- 2026-10-16, cierre: merge --no-ff a `main` (`b4f09ecb`), push y deploy en el VPS (DEPLOY OK, 9 tenants
+  migrados sin pendientes, smoke externo 200). Pendiente: el dueño valida la pantalla en producción.
