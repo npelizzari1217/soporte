@@ -90,7 +90,7 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
       esVisiblePara: unstubbed('esVisiblePara'),
-      bloquear: unstubbed('bloquear'),
+      bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
     };
     const operacionRepo = {
@@ -211,6 +211,41 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     // Segundo salto ASIGNADO→EN_PROCESO.
     expect(ops[2].estadoAnteriorId).toBe(ESTADOS.ASIGNADO.id);
     expect(ops[2].estadoNuevoId).toBe(ESTADOS.EN_PROCESO.id);
+  });
+
+  // odd/escrituras-manuales-con-lock (S4): la primera carga sirve para el 404 y master; dentro
+  // de la tx se bloquea la fila y se RELEE antes de escribir, así la decisión mira el estado vigente.
+  it('dentro de la transacción bloquea la fila y relee el ticket antes de escribir', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isOk()).toBe(true);
+    expect(c.ticketRepo.findById).toHaveBeenCalledTimes(2);
+    expect(c.ticketRepo.bloquear).toHaveBeenCalledWith('ticket-uuid');
+    const [ordenRun] = vi.mocked(c.txRunner.run).mock.invocationCallOrder;
+    const [ordenLock] = c.ticketRepo.bloquear.mock.invocationCallOrder;
+    const [, ordenRelectura] = c.ticketRepo.findById.mock.invocationCallOrder;
+    const [ordenSave] = c.ticketRepo.save.mock.invocationCallOrder;
+    expect(ordenRun).toBeLessThan(ordenLock);
+    expect(ordenLock).toBeLessThan(ordenRelectura);
+    expect(ordenRelectura).toBeLessThan(ordenSave);
+  });
+
+  it('si al releer con la fila bloqueada el ticket ya está CERRADO, rechaza sin escribir', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById
+      .mockResolvedValueOnce(makeTicket('NUEVO'))
+      .mockResolvedValueOnce(makeTicket('CERRADO'));
+
+    const result = await c.useCase.execute(baseDto());
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketCerradoNoReasignableError);
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
   });
 
   it('happy desde ASIGNADO: solo avanza →EN_PROCESO (1 ASIGNACION + 1 CAMBIO_ESTADO)', async () => {

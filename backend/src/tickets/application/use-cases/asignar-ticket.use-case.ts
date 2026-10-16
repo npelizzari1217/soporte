@@ -66,11 +66,16 @@ export interface AsignarTicketDto {
  *    (catálogo FIJO garantizado por el seed — su ausencia es un fallo de
  *    infraestructura, no un error del caller: `throw` defensivo, mismo
  *    patrón que `CrearTicketUseCase`/`TransicionarEstadoUseCase`).
- * 5. **DENTRO de la transacción** (`ITenantTransactionRunner.run`, T24):
- *    `ticket.assignTo(asignadoId)`, crea la operación `ASIGNACION` del
- *    timeline (sin `estadoAnterior`/`estadoNuevo` — no es un cambio de
- *    estado, T9/T12 siguen siendo el único camino para transicionar), y
- *    persiste ambos.
+ * 5. **DENTRO de la transacción** (`ITenantTransactionRunner.run`, T24), y en
+ *    este orden (odd/escrituras-manuales-con-lock, S3): bloquea la fila del
+ *    ticket, lo RELEE y vuelve a decidir "terminal" y "era NUEVO" sobre ese
+ *    estado vigente; recién entonces `ticket.assignTo(asignadoId)`, crea la
+ *    operación `ASIGNACION` del timeline (sin `estadoAnterior`/`estadoNuevo` —
+ *    no es un cambio de estado, T9/T12 siguen siendo el único camino para
+ *    transicionar), y persiste ambos. La lectura del paso 1 sirve para el 404,
+ *    el rechazo temprano del terminal y las consultas a master, que quedan
+ *    fuera de la transacción para no sostener el lock mientras se consulta
+ *    otra base.
  *
  * Un ticket en NUEVO pasa a ASIGNADO en la MISMA transacción (operación
  * `CAMBIO_ESTADO NUEVO → ASIGNADO` del actor, además de la `ASIGNACION`): un
@@ -147,61 +152,82 @@ export class AsignarTicketUseCase {
       );
     }
 
-    // M3: solo un ticket NUEVO pasa a ASIGNADO; los ids se resuelven antes de la tx.
-    const eraNuevo = estadoActual.codigo === 'NUEVO';
-    let estadoAsignadoId: string | null = null;
-    let tipoCambioEstadoId: string | null = null;
-    if (eraNuevo) {
-      estadoAsignadoId = await this.estadoRepo.findIdByCodigo('ASIGNADO');
-      tipoCambioEstadoId = await this.tipoOperacionRepo.findIdByCodigo('CAMBIO_ESTADO');
-      if (!estadoAsignadoId || !tipoCambioEstadoId) {
-        throw new Error(
-          'Catálogos inconsistentes: faltan el estado "ASIGNADO" o el tipo_operacion "CAMBIO_ESTADO" en el tenant activo.',
-        );
-      }
+    // M3: los ids de ASIGNADO y CAMBIO_ESTADO se resuelven antes de la tx; si el ticket sigue
+    // NUEVO al releerlo con la fila bloqueada, pasa a ASIGNADO.
+    const estadoAsignadoId = await this.estadoRepo.findIdByCodigo('ASIGNADO');
+    const tipoCambioEstadoId = await this.tipoOperacionRepo.findIdByCodigo('CAMBIO_ESTADO');
+    if (!estadoAsignadoId || !tipoCambioEstadoId) {
+      throw new Error(
+        'Catálogos inconsistentes: faltan el estado "ASIGNADO" o el tipo_operacion "CAMBIO_ESTADO" en el tenant activo.',
+      );
     }
-    const estadoAnteriorId = ticket.estadoId;
 
-    await this.txRunner.run(async () => {
-      ticket.assignTo(dto.asignadoId);
+    // Dentro de la tx, con la fila bloqueada ANTES de releer (odd/escrituras-manuales-con-lock, S3):
+    // el estado que decide "terminal" y "era NUEVO" es el actual, no el de la lectura de arriba, que
+    // sirvió para el 404, el tipo y las consultas a master. El guardado de la fila entera ya no
+    // puede pisar un estado que otro actor —o las tareas— acaba de dejar.
+    const escritura = await this.txRunner.run(
+      async (): Promise<Result<TicketEntity, DomainError>> => {
+        await this.ticketRepo.bloquear(dto.ticketId);
+        const ticket = await this.ticketRepo.findById(dto.ticketId);
+        if (!ticket || ticket.isDeleted()) {
+          return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+        }
+        const estadoVigente = await this.estadoRepo.findById(ticket.estadoId);
+        if (!estadoVigente) {
+          throw new Error(
+            `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
+          );
+        }
+        if (ESTADOS_TERMINALES.has(estadoVigente.codigo)) {
+          return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoVigente.codigo));
+        }
+        const eraNuevo = estadoVigente.codigo === 'NUEVO';
+        const estadoAnteriorId = ticket.estadoId;
 
-      const operacion = OperacionTicketEntity.create({
-        ticketId: ticket.id,
-        tipoOperacionId,
-        descripcion: null,
-        estadoAnteriorId: null,
-        estadoNuevoId: null,
-        autorId: dto.autorId,
-        esInterno: false,
-        metadata: null,
-      });
+        ticket.assignTo(dto.asignadoId);
 
-      await this.operacionRepo.save(operacion);
+        const operacion = OperacionTicketEntity.create({
+          ticketId: ticket.id,
+          tipoOperacionId,
+          descripcion: null,
+          estadoAnteriorId: null,
+          estadoNuevoId: null,
+          autorId: dto.autorId,
+          esInterno: false,
+          metadata: null,
+        });
 
-      if (estadoAsignadoId && tipoCambioEstadoId) {
-        ticket.updateEstado(estadoAsignadoId);
-        await this.operacionRepo.save(
-          OperacionTicketEntity.create({
-            ticketId: ticket.id,
-            tipoOperacionId: tipoCambioEstadoId,
-            descripcion: null,
-            estadoAnteriorId,
-            estadoNuevoId: estadoAsignadoId,
-            autorId: dto.autorId,
-            esInterno: false,
-            metadata: null,
-          }),
-        );
-      }
+        await this.operacionRepo.save(operacion);
 
-      await this.ticketRepo.save(ticket);
-    });
+        if (eraNuevo) {
+          ticket.updateEstado(estadoAsignadoId);
+          await this.operacionRepo.save(
+            OperacionTicketEntity.create({
+              ticketId: ticket.id,
+              tipoOperacionId: tipoCambioEstadoId,
+              descripcion: null,
+              estadoAnteriorId,
+              estadoNuevoId: estadoAsignadoId,
+              autorId: dto.autorId,
+              esInterno: false,
+              metadata: null,
+            }),
+          );
+        }
+
+        await this.ticketRepo.save(ticket);
+        return Result.ok(ticket);
+      },
+    );
+    if (escritura.isFail()) return Result.fail(escritura.getError());
+    const asignado = escritura.getValue();
 
     // N1: el evento sale recién al commit de la transacción más externa.
     this.txRunner.alCommitear(() => {
       this.eventPublisher.publish(
         new TicketAsignadoEvent({
-          ticketId: ticket.id,
+          ticketId: asignado.id,
           asignadoId: dto.asignadoId,
           origen: 'MANUAL',
           autorId: dto.autorId,
@@ -209,6 +235,6 @@ export class AsignarTicketUseCase {
       );
     });
 
-    return Result.ok(ticket);
+    return Result.ok(asignado);
   }
 }
