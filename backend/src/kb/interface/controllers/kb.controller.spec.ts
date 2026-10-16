@@ -27,33 +27,68 @@ import { GlobalAdminGuard } from '../../../auth/infrastructure/guards/global-adm
 import { Result } from '../../../shared/domain/result';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError, TituloVacioError } from '../../domain/errors/kb.errors';
+import type { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { CrearKbArticuloUseCase } from '../../application/use-cases/crear-kb-articulo.use-case';
+import { EditarKbArticuloUseCase } from '../../application/use-cases/editar-kb-articulo.use-case';
+import { CambiarVisibilidadKbArticuloUseCase } from '../../application/use-cases/cambiar-visibilidad-kb-articulo.use-case';
+import { EliminarKbArticuloUseCase } from '../../application/use-cases/eliminar-kb-articulo.use-case';
+import { ObtenerKbArticuloUseCase } from '../../application/use-cases/obtener-kb-articulo.use-case';
+import { ListarKbArticulosUseCase } from '../../application/use-cases/listar-kb-articulos.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
+
+/** Usuario autenticado tal como lo entrega `@CurrentUser()`. */
+function usuario(sub: string, permisos: string[]): JwtPayload {
+  return {
+    v: 2,
+    sub,
+    cliente_id: 'cliente-uuid',
+    rol: 'USUARIO',
+    permisos,
+    is_global_admin: false,
+    cliente_nombre: 'Cliente de prueba',
+    membresias: [],
+    modulos: [],
+    nombre: 'Nombre',
+    apellido: 'Apellido',
+    cliente_logo_v: null,
+  };
+}
 
 describe('KbController (K7)', () => {
   function buildController() {
-    const crearUseCase = { execute: vi.fn() };
-    const editarUseCase = { execute: vi.fn() };
-    const cambiarVisibilidadUseCase = { execute: vi.fn() };
-    const eliminarUseCase = { execute: vi.fn() };
-    const obtenerUseCase = { execute: vi.fn() };
-    const listarUseCase = { execute: vi.fn() };
+    const crear = espiado(CrearKbArticuloUseCase);
+    const editar = espiado(EditarKbArticuloUseCase);
+    const cambiarVisibilidad = espiado(CambiarVisibilidadKbArticuloUseCase);
+    const eliminar = espiado(EliminarKbArticuloUseCase);
+    const obtener = espiado(ObtenerKbArticuloUseCase);
+    const listar = espiado(ListarKbArticulosUseCase);
 
     const controller = new KbController(
-      crearUseCase as never,
-      editarUseCase as never,
-      cambiarVisibilidadUseCase as never,
-      eliminarUseCase as never,
-      obtenerUseCase as never,
-      listarUseCase as never,
+      crear.caso,
+      editar.caso,
+      cambiarVisibilidad.caso,
+      eliminar.caso,
+      obtener.caso,
+      listar.caso,
     );
 
     return {
       controller,
-      crearUseCase,
-      editarUseCase,
-      cambiarVisibilidadUseCase,
-      eliminarUseCase,
-      obtenerUseCase,
-      listarUseCase,
+      crearUseCase: crear,
+      editarUseCase: editar,
+      cambiarVisibilidadUseCase: cambiarVisibilidad,
+      eliminarUseCase: eliminar,
+      obtenerUseCase: obtener,
+      listarUseCase: listar,
     };
   }
 
@@ -131,7 +166,7 @@ describe('KbController (K7)', () => {
       const articulo = buildArticulo();
       crearUseCase.execute.mockResolvedValue(Result.ok(articulo));
 
-      await controller.create({ sub: 'actor-uuid', permisos: [] } as never, {
+      await controller.create(usuario('actor-uuid', []), {
         titulo: 'Título',
         contenido: 'Contenido',
       });
@@ -148,7 +183,7 @@ describe('KbController (K7)', () => {
       crearUseCase.execute.mockResolvedValue(Result.fail(new TituloVacioError()));
 
       await expect(
-        controller.create({ sub: 'actor-uuid', permisos: [] } as never, {
+        controller.create(usuario('actor-uuid', []), {
           titulo: '',
           contenido: 'x',
         }),
@@ -230,7 +265,7 @@ describe('KbController (K7)', () => {
       const articulo = buildArticulo({ visibleParaSolicitante: true });
       obtenerUseCase.execute.mockResolvedValue(Result.ok(articulo));
 
-      await controller.findOne({ sub: 'u', permisos: [] } as never, 'articulo-uuid');
+      await controller.findOne(usuario('u', []), 'articulo-uuid');
 
       expect(obtenerUseCase.execute).toHaveBeenCalledWith({
         id: 'articulo-uuid',
@@ -243,7 +278,7 @@ describe('KbController (K7)', () => {
       const articulo = buildArticulo();
       obtenerUseCase.execute.mockResolvedValue(Result.ok(articulo));
 
-      await controller.findOne({ sub: 't', permisos: ['KB:VER_TODOS'] } as never, 'articulo-uuid');
+      await controller.findOne(usuario('t', ['KB:VER_TODOS']), 'articulo-uuid');
 
       expect(obtenerUseCase.execute).toHaveBeenCalledWith({
         id: 'articulo-uuid',
@@ -257,9 +292,9 @@ describe('KbController (K7)', () => {
         Result.fail(new KbArticuloNoEncontradoError('inexistente')),
       );
 
-      await expect(
-        controller.findOne({ sub: 'u', permisos: [] } as never, 'inexistente'),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(controller.findOne(usuario('u', []), 'inexistente')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 
@@ -270,7 +305,7 @@ describe('KbController (K7)', () => {
       const { controller, listarUseCase } = buildController();
       listarUseCase.execute.mockResolvedValue({ items: [], total: 0 });
 
-      await controller.findAll({ sub: 'u', permisos: [] } as never, {});
+      await controller.findAll(usuario('u', []), {});
 
       expect(listarUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ tienePermisoVerTodos: false }),
@@ -282,10 +317,7 @@ describe('KbController (K7)', () => {
       const articulo = buildArticulo();
       listarUseCase.execute.mockResolvedValue({ items: [articulo], total: 1 });
 
-      const result = await controller.findAll(
-        { sub: 't', permisos: ['KB:VER_TODOS'] } as never,
-        {},
-      );
+      const result = await controller.findAll(usuario('t', ['KB:VER_TODOS']), {});
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);

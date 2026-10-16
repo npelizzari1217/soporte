@@ -16,6 +16,10 @@ import { RegistrarAjusteInsumoUseCase } from './registrar-ajuste-insumo.use-case
 import { RegistrarEntradaInsumoUseCase } from './registrar-entrada-insumo.use-case';
 import type { OperacionesUnidadInsumo } from '../services/operaciones-unidad-insumo.service';
 import { DevolverEntregaUseCase } from './devolver-entrega.use-case';
+import type { IInsumoRepository } from '../../domain/ports/i-insumo.repository';
+import type { IMovimientoInsumoRepository } from '../../domain/ports/i-movimiento-insumo.repository';
+import type { IUnidadInsumoRepository } from '../../domain/ports/i-unidad-insumo.repository';
+import { unstubbed } from '../../../testing/mocks';
 
 const ahora = new Date('2026-01-01T00:00:00Z');
 
@@ -76,13 +80,15 @@ function armar(
 ) {
   const insumo = opciones.insumo === undefined ? insumoVigente() : opciones.insumo;
   const insumoRepo = {
-    findById: vi.fn().mockResolvedValue(insumo),
+    findById: vi.fn<IInsumoRepository['findById']>().mockResolvedValue(insumo),
     leerSeguimientoParaMovimiento: vi
-      .fn()
+      .fn<IInsumoRepository['leerSeguimientoParaMovimiento']>()
       .mockResolvedValue(insumo ? (opciones.seguimiento ?? 'SERIE') : null),
   };
   const fila = opciones.unidadDeInsumo === null ? null : unidad(opciones.unidadDeInsumo);
-  const unidadRepo = { findById: vi.fn().mockResolvedValue(fila) };
+  const unidadRepo = {
+    findById: vi.fn<IUnidadInsumoRepository['findById']>().mockResolvedValue(fila),
+  };
   const familiaRepo = familiaRepoFake(opciones.familia);
   const tx = txRunnerFake();
   const devolverEntregas = vi.fn<OperacionesUnidadInsumo['devolverEntregas']>(
@@ -215,20 +221,39 @@ describe('DevolverEntregaUseCase', () => {
  */
 describe('la exención de G2 no la reciben la entrada ni el ajuste manuales', () => {
   const insumoRepo = (insumo: InsumoEntity) => ({
-    findById: vi.fn().mockResolvedValue(insumo),
-    leerSeguimientoParaMovimiento: vi.fn().mockResolvedValue('SERIE'),
+    findById: vi.fn<IInsumoRepository['findById']>().mockResolvedValue(insumo),
+    leerSeguimientoParaMovimiento: vi
+      .fn<IInsumoRepository['leerSeguimientoParaMovimiento']>()
+      .mockResolvedValue('SERIE'),
   });
-  const movimientoRepo = { insert: vi.fn(), lockAndSumByTipo: vi.fn() };
-  const operaciones = { ingresar: vi.fn(), devolverAlDeposito: vi.fn(), sacarDelDeposito: vi.fn() };
+  // Los dos casos rechazan antes de escribir: ninguna escritura ni operación de unidad corre.
+  const movimientoRepo: Pick<IMovimientoInsumoRepository, 'insert' | 'lockAndSumByTipo'> = {
+    insert: unstubbed('movimientoRepo.insert'),
+    lockAndSumByTipo: unstubbed('movimientoRepo.lockAndSumByTipo'),
+  };
+  const operaciones: Pick<
+    OperacionesUnidadInsumo,
+    | 'ingresar'
+    | 'devolverAlDeposito'
+    | 'devolverDesdeEquipo'
+    | 'serialesExistentes'
+    | 'sacarDelDeposito'
+  > = {
+    ingresar: unstubbed('operaciones.ingresar'),
+    devolverAlDeposito: unstubbed('operaciones.devolverAlDeposito'),
+    devolverDesdeEquipo: unstubbed('operaciones.devolverDesdeEquipo'),
+    serialesExistentes: unstubbed('operaciones.serialesExistentes'),
+    sacarDelDeposito: unstubbed('operaciones.sacarDelDeposito'),
+  };
 
   it('la entrada manual rechaza el insumo deshabilitado y USADO con la familia no vigente', async () => {
     const entrada = (insumo: InsumoEntity, familia: Parameters<typeof familiaRepoFake>[0]) =>
       new RegistrarEntradaInsumoUseCase(
-        insumoRepo(insumo) as never,
-        movimientoRepo as never,
+        insumoRepo(insumo),
+        movimientoRepo,
         familiaRepoFake(familia),
         txRunnerFake(),
-        operaciones as never,
+        operaciones,
       );
     const base = { insumoId: 'ins-1', cantidad: 1, usuarioId: 'usr-1' };
 
@@ -244,11 +269,11 @@ describe('la exención de G2 no la reciben la entrada ni el ajuste manuales', ()
 
   it('el ajuste positivo manual rechaza USADO con la familia no vigente', async () => {
     const ajuste = new RegistrarAjusteInsumoUseCase(
-      insumoRepo(insumoVigente()) as never,
-      movimientoRepo as never,
+      insumoRepo(insumoVigente()),
+      movimientoRepo,
       txRunnerFake(),
       familiaRepoFake({ dadaDeBaja: true }),
-      operaciones as never,
+      operaciones,
     );
 
     const r = await ajuste.execute({

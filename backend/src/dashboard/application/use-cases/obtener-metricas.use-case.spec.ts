@@ -8,34 +8,65 @@
  */
 import { ObtenerMetricasUseCase } from './obtener-metricas.use-case';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
+import type { IDashboardRepository } from '../../domain/ports/i-dashboard.repository';
+import type { ICicloClienteRepository } from '../../../tickets/domain/ports/i-ciclo-cliente.repository';
+import type { IEncuestaSatisfaccionRepository } from '../../../csat/domain/ports/i-encuesta-satisfaccion.repository';
+import type { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
+import type { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 
 describe('ObtenerMetricasUseCase', () => {
   function makeCollaborators(cicloActivo: CicloClienteEntity | null) {
     const dashboardRepo = {
-      conteoPorEstadoAgrupado: vi.fn().mockResolvedValue({ abiertos: 3, cerrados: 5 }),
-      tiempoPromedioResolucionHoras: vi.fn().mockResolvedValue(12.5),
-      cargaPorAgente: vi.fn().mockResolvedValue([{ asignadoId: 'agente-1', abiertos: 2 }]),
-      cumplimientoSla: vi.fn().mockResolvedValue({ cerradosConSla: 4, cerradosATiempo: 3 }),
-      cumplimientoPrimeraRespuesta: vi.fn().mockResolvedValue({ conMeta: 4, aTiempo: 2 }),
-      tiempoPromedioPrimeraRespuestaHoras: vi.fn().mockResolvedValue(1.25),
-      distribucionPorTipo: vi.fn().mockResolvedValue([{ tipoId: 'tipo-1', total: 8 }]),
-      distribucionPorPrioridad: vi.fn().mockResolvedValue([{ prioridadId: 'prio-1', total: 8 }]),
+      conteoPorEstadoAgrupado: vi
+        .fn<IDashboardRepository['conteoPorEstadoAgrupado']>()
+        .mockResolvedValue({ abiertos: 3, cerrados: 5 }),
+      tiempoPromedioResolucionHoras: vi
+        .fn<IDashboardRepository['tiempoPromedioResolucionHoras']>()
+        .mockResolvedValue(12.5),
+      cargaPorAgente: vi
+        .fn<IDashboardRepository['cargaPorAgente']>()
+        .mockResolvedValue([{ asignadoId: 'agente-1', abiertos: 2 }]),
+      cumplimientoSla: vi
+        .fn<IDashboardRepository['cumplimientoSla']>()
+        .mockResolvedValue({ cerradosConSla: 4, cerradosATiempo: 3 }),
+      cumplimientoPrimeraRespuesta: vi
+        .fn<IDashboardRepository['cumplimientoPrimeraRespuesta']>()
+        .mockResolvedValue({ conMeta: 4, aTiempo: 2 }),
+      tiempoPromedioPrimeraRespuestaHoras: vi
+        .fn<IDashboardRepository['tiempoPromedioPrimeraRespuestaHoras']>()
+        .mockResolvedValue(1.25),
+      distribucionPorTipo: vi
+        .fn<IDashboardRepository['distribucionPorTipo']>()
+        .mockResolvedValue([{ tipoId: 'tipo-1', total: 8 }]),
+      distribucionPorPrioridad: vi
+        .fn<IDashboardRepository['distribucionPorPrioridad']>()
+        .mockResolvedValue([{ prioridadId: 'prio-1', total: 8 }]),
     };
     const cicloClienteRepo = {
-      findActive: vi.fn().mockResolvedValue(cicloActivo),
-      findById: vi.fn().mockResolvedValue(null),
+      findActive: vi.fn<ICicloClienteRepository['findActive']>().mockResolvedValue(cicloActivo),
+      findById: vi.fn<ICicloClienteRepository['findById']>().mockResolvedValue(null),
     };
     // Repo CSAT (WU9.1, ADR-C5): solo se consulta cuando el actor tiene CSAT:LECTURA.
     const csatRepo = {
-      resumenPorScope: vi.fn().mockResolvedValue({ promedio: 4.5, respuestas: 10 }),
+      resumenPorScope: vi
+        .fn<IEncuestaSatisfaccionRepository['resumenPorScope']>()
+        .mockResolvedValue({ promedio: 4.5, respuestas: 10 }),
     };
     // odd/tareas-con-tecnico T4: tareas completadas por técnico, con nombres de master.
-    const tareaRepo = { contarCompletadasPorTecnico: vi.fn().mockResolvedValue([]) };
-    const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+    const tareaRepo = {
+      contarCompletadasPorTecnico: vi
+        .fn<ITareaTicketRepository['contarCompletadasPorTecnico']>()
+        .mockResolvedValue([]),
+    };
+    const usuarioMasterChecker = {
+      resolverNombres: vi
+        .fn<IUsuarioMasterChecker['resolverNombres']>()
+        .mockResolvedValue(new Map()),
+    };
     const useCase = new ObtenerMetricasUseCase(
-      dashboardRepo as never,
-      cicloClienteRepo as never,
-      csatRepo as never,
+      dashboardRepo,
+      cicloClienteRepo,
+      csatRepo,
       tareaRepo,
       usuarioMasterChecker,
     );

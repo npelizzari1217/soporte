@@ -5,6 +5,7 @@
  * Ref spec: sdd/premium/spec K1. Tarea: K3/K4.
  */
 import { EditarKbArticuloUseCase } from './editar-kb-articulo.use-case';
+import type { IKbArticuloRepository } from '../../domain/ports/i-kb-articulo.repository';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError, TituloVacioError } from '../../domain/errors/kb.errors';
 
@@ -23,8 +24,11 @@ function buildArticulo() {
 
 describe('EditarKbArticuloUseCase', () => {
   function buildUseCase(articulo: KbArticuloEntity | null) {
-    const repo = { findById: vi.fn().mockResolvedValue(articulo), save: vi.fn() };
-    const useCase = new EditarKbArticuloUseCase(repo as never);
+    const repo = {
+      findById: vi.fn<IKbArticuloRepository['findById']>().mockResolvedValue(articulo),
+      save: vi.fn<IKbArticuloRepository['save']>(),
+    };
+    const useCase = new EditarKbArticuloUseCase(repo);
     return { useCase, repo };
   }
 

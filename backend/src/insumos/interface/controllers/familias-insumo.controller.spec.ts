@@ -10,28 +10,41 @@ import {
   FamiliaInsumoNoEncontradaError,
   FamiliaInsumoCodigoDuplicadoError,
 } from '../../domain/errors/familias-insumo.errors';
+import { CrearFamiliaInsumoUseCase } from '../../application/use-cases/crear-familia-insumo.use-case';
+import { EditarFamiliaInsumoUseCase } from '../../application/use-cases/editar-familia-insumo.use-case';
+import { CambiarEstadoActivoFamiliaInsumoUseCase } from '../../application/use-cases/cambiar-estado-activo-familia-insumo.use-case';
+import { ListarFamiliasInsumoUseCase } from '../../application/use-cases/listar-familias-insumo.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 describe('FamiliasInsumoController', () => {
-  function buildController(overrides: Record<string, { execute: ReturnType<typeof vi.fn> }> = {}) {
-    const crearUseCase = overrides.crear ?? { execute: vi.fn() };
-    const editarUseCase = overrides.editar ?? { execute: vi.fn() };
-    const cambiarEstadoUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
-    const listarUseCase = overrides.listar ?? { execute: vi.fn() };
+  function buildController() {
+    const crearUseCase = espiado(CrearFamiliaInsumoUseCase);
+    const editarUseCase = espiado(EditarFamiliaInsumoUseCase);
+    const cambiarEstadoUseCase = espiado(CambiarEstadoActivoFamiliaInsumoUseCase);
+    const listarUseCase = espiado(ListarFamiliasInsumoUseCase);
 
     const controller = new FamiliasInsumoController(
-      crearUseCase as never,
-      editarUseCase as never,
-      cambiarEstadoUseCase as never,
-      listarUseCase as never,
+      crearUseCase.caso,
+      editarUseCase.caso,
+      cambiarEstadoUseCase.caso,
+      listarUseCase.caso,
     );
     return { controller, crearUseCase, editarUseCase, cambiarEstadoUseCase, listarUseCase };
   }
 
   it('GET /familias-insumo retorna el listado mapeado a DTO', async () => {
     const familia = FamiliaInsumoEntity.create({ codigo: 'A', nombre: 'A', activo: true });
-    const { controller } = buildController({
-      listar: { execute: vi.fn().mockResolvedValue([familia]) },
-    });
+    const { controller, listarUseCase } = buildController();
+    listarUseCase.execute.mockResolvedValue([familia]);
 
     const result = await controller.listar();
 
@@ -41,9 +54,8 @@ describe('FamiliasInsumoController', () => {
 
   it('POST /familias-insumo crea y retorna el DTO', async () => {
     const familia = FamiliaInsumoEntity.create({ codigo: 'A', nombre: 'A', activo: true });
-    const { controller } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(familia)) },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.ok(familia));
 
     const result = await controller.crear({ codigo: 'A', nombre: 'A' });
 
@@ -57,9 +69,8 @@ describe('FamiliasInsumoController', () => {
       activo: true,
       esRepuesto: true,
     });
-    const { controller, crearUseCase } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(familia)) },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.ok(familia));
 
     const result = await controller.crear({ codigo: 'CPU', nombre: 'CPU', esRepuesto: true });
 
@@ -72,11 +83,8 @@ describe('FamiliasInsumoController', () => {
   });
 
   it('POST /familias-insumo con codigo duplicado lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new FamiliaInsumoCodigoDuplicadoError('A'))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.fail(new FamiliaInsumoCodigoDuplicadoError('A')));
 
     await expect(controller.crear({ codigo: 'A', nombre: 'A' })).rejects.toBeInstanceOf(
       UnprocessableEntityException,
@@ -84,11 +92,10 @@ describe('FamiliasInsumoController', () => {
   });
 
   it('PATCH /familias-insumo/:id con id inexistente lanza 404', async () => {
-    const { controller } = buildController({
-      editar: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new FamiliaInsumoNoEncontradaError('id-x'))),
-      },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(
+      Result.fail(new FamiliaInsumoNoEncontradaError('id-x')),
+    );
 
     await expect(controller.editar('id-x', { nombre: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -98,9 +105,8 @@ describe('FamiliasInsumoController', () => {
   it('PATCH /familias-insumo/:id/estado desactiva', async () => {
     const familia = FamiliaInsumoEntity.create({ codigo: 'A', nombre: 'A', activo: true });
     familia.desactivar();
-    const { controller, cambiarEstadoUseCase } = buildController({
-      cambiarEstado: { execute: vi.fn().mockResolvedValue(Result.ok(familia)) },
-    });
+    const { controller, cambiarEstadoUseCase } = buildController();
+    cambiarEstadoUseCase.execute.mockResolvedValue(Result.ok(familia));
 
     const result = await controller.cambiarEstadoActivo('id-1', { activo: false });
 

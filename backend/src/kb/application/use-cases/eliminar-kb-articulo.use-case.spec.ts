@@ -4,6 +4,7 @@
  * Ref spec: sdd/premium/spec K1. Tarea: K3/K4.
  */
 import { EliminarKbArticuloUseCase } from './eliminar-kb-articulo.use-case';
+import type { IKbArticuloRepository } from '../../domain/ports/i-kb-articulo.repository';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError } from '../../domain/errors/kb.errors';
 
@@ -22,8 +23,11 @@ function buildArticulo() {
 
 describe('EliminarKbArticuloUseCase', () => {
   function buildUseCase(articulo: KbArticuloEntity | null) {
-    const repo = { findById: vi.fn().mockResolvedValue(articulo), softDelete: vi.fn() };
-    const useCase = new EliminarKbArticuloUseCase(repo as never);
+    const repo = {
+      findById: vi.fn<IKbArticuloRepository['findById']>().mockResolvedValue(articulo),
+      softDelete: vi.fn<IKbArticuloRepository['softDelete']>(),
+    };
+    const useCase = new EliminarKbArticuloUseCase(repo);
     return { useCase, repo };
   }
 

@@ -6,11 +6,15 @@
  * Ref spec: sdd/premium/spec K3. Ref design: ADR-P6. Tarea: K3/K4.
  */
 import { ListarKbArticulosUseCase } from './listar-kb-articulos.use-case';
+import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
+import type { IKbArticuloRepository } from '../../domain/ports/i-kb-articulo.repository';
 
 describe('ListarKbArticulosUseCase', () => {
   function buildUseCase() {
-    const repo = { findAll: vi.fn().mockResolvedValue({ items: [], total: 0 }) };
-    const useCase = new ListarKbArticulosUseCase(repo as never);
+    const repo = {
+      findAll: vi.fn<IKbArticuloRepository['findAll']>().mockResolvedValue({ items: [], total: 0 }),
+    };
+    const useCase = new ListarKbArticulosUseCase(repo);
     return { useCase, repo };
   }
 
@@ -61,7 +65,17 @@ describe('ListarKbArticulosUseCase', () => {
 
   it('retorna items + total del repo', async () => {
     const { useCase, repo } = buildUseCase();
-    repo.findAll.mockResolvedValue({ items: [{ id: 'a' }], total: 1 });
+    const articulo = KbArticuloEntity.create(
+      {
+        titulo: 'Título',
+        contenido: 'Contenido',
+        autorId: 'autor-uuid',
+        visibleParaSolicitante: true,
+        activo: true,
+      },
+      'a',
+    );
+    repo.findAll.mockResolvedValue({ items: [articulo], total: 1 });
 
     const result = await useCase.execute({ tienePermisoVerTodos: true });
 

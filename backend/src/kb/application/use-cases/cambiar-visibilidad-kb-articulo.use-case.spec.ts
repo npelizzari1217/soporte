@@ -5,6 +5,7 @@
  * Ref spec: sdd/premium/spec K2. Tarea: K3/K4.
  */
 import { CambiarVisibilidadKbArticuloUseCase } from './cambiar-visibilidad-kb-articulo.use-case';
+import type { IKbArticuloRepository } from '../../domain/ports/i-kb-articulo.repository';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError } from '../../domain/errors/kb.errors';
 
@@ -23,8 +24,11 @@ function buildArticulo() {
 
 describe('CambiarVisibilidadKbArticuloUseCase', () => {
   function buildUseCase(articulo: KbArticuloEntity | null) {
-    const repo = { findById: vi.fn().mockResolvedValue(articulo), save: vi.fn() };
-    const useCase = new CambiarVisibilidadKbArticuloUseCase(repo as never);
+    const repo = {
+      findById: vi.fn<IKbArticuloRepository['findById']>().mockResolvedValue(articulo),
+      save: vi.fn<IKbArticuloRepository['save']>(),
+    };
+    const useCase = new CambiarVisibilidadKbArticuloUseCase(repo);
     return { useCase, repo };
   }
 

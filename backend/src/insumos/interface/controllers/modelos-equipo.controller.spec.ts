@@ -11,21 +11,36 @@ import {
   ModeloEquipoNoEncontradoError,
   ModeloEquipoDuplicadoError,
 } from '../../domain/errors/modelos-equipo.errors';
+import { CrearModeloEquipoUseCase } from '../../application/use-cases/crear-modelo-equipo.use-case';
+import { EditarModeloEquipoUseCase } from '../../application/use-cases/editar-modelo-equipo.use-case';
+import { CambiarEstadoActivoModeloEquipoUseCase } from '../../application/use-cases/cambiar-estado-activo-modelo-equipo.use-case';
+import { ListarModelosEquipoUseCase } from '../../application/use-cases/listar-modelos-equipo.use-case';
+import { ListarInsumosPorModeloEquipoUseCase } from '../../application/use-cases/listar-insumos-por-modelo-equipo.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 describe('ModelosEquipoController', () => {
-  function buildController(overrides: Record<string, { execute: ReturnType<typeof vi.fn> }> = {}) {
-    const crearUseCase = overrides.crear ?? { execute: vi.fn() };
-    const editarUseCase = overrides.editar ?? { execute: vi.fn() };
-    const cambiarEstadoUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
-    const listarUseCase = overrides.listar ?? { execute: vi.fn() };
-    const listarInsumosUseCase = overrides.listarInsumos ?? { execute: vi.fn() };
+  function buildController() {
+    const crearUseCase = espiado(CrearModeloEquipoUseCase);
+    const editarUseCase = espiado(EditarModeloEquipoUseCase);
+    const cambiarEstadoUseCase = espiado(CambiarEstadoActivoModeloEquipoUseCase);
+    const listarUseCase = espiado(ListarModelosEquipoUseCase);
+    const listarInsumosUseCase = espiado(ListarInsumosPorModeloEquipoUseCase);
 
     const controller = new ModelosEquipoController(
-      crearUseCase as never,
-      editarUseCase as never,
-      cambiarEstadoUseCase as never,
-      listarUseCase as never,
-      listarInsumosUseCase as never,
+      crearUseCase.caso,
+      editarUseCase.caso,
+      cambiarEstadoUseCase.caso,
+      listarUseCase.caso,
+      listarInsumosUseCase.caso,
     );
     return {
       controller,
@@ -52,9 +67,8 @@ describe('ModelosEquipoController', () => {
 
   it('GET /modelos-equipo retorna el listado mapeado a DTO', async () => {
     const modelo = ModeloEquipoEntity.create({ marca: 'HP', modelo: 'M404', activo: true });
-    const { controller } = buildController({
-      listar: { execute: vi.fn().mockResolvedValue([modelo]) },
-    });
+    const { controller, listarUseCase } = buildController();
+    listarUseCase.execute.mockResolvedValue([modelo]);
 
     const result = await controller.listar();
 
@@ -70,9 +84,8 @@ describe('ModelosEquipoController', () => {
    */
   it('GET /modelos-equipo/:id/insumos retorna los insumos compatibles mapeados a DTO', async () => {
     const insumo = buildInsumo('TON-001', 'mod-1');
-    const { controller } = buildController({
-      listarInsumos: { execute: vi.fn().mockResolvedValue([insumo]) },
-    });
+    const { controller, listarInsumosUseCase } = buildController();
+    listarInsumosUseCase.execute.mockResolvedValue([insumo]);
 
     const result = await controller.listarInsumosCompatibles('mod-1');
 
@@ -83,9 +96,8 @@ describe('ModelosEquipoController', () => {
 
   /** Si el id se perdiera, la consulta devolvería el subconjunto equivocado. */
   it('GET /modelos-equipo/:id/insumos delega el id del modelo al caso de uso', async () => {
-    const { controller, listarInsumosUseCase } = buildController({
-      listarInsumos: { execute: vi.fn().mockResolvedValue([]) },
-    });
+    const { controller, listarInsumosUseCase } = buildController();
+    listarInsumosUseCase.execute.mockResolvedValue([]);
 
     await controller.listarInsumosCompatibles('mod-7');
 
@@ -94,9 +106,8 @@ describe('ModelosEquipoController', () => {
 
   it('POST /modelos-equipo crea y retorna el DTO', async () => {
     const modelo = ModeloEquipoEntity.create({ marca: 'HP', modelo: 'M404', activo: true });
-    const { controller } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(modelo)) },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.ok(modelo));
 
     const result = await controller.crear({ marca: 'HP', modelo: 'M404' });
 
@@ -104,13 +115,10 @@ describe('ModelosEquipoController', () => {
   });
 
   it('POST /modelos-equipo con par duplicado lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi
-          .fn()
-          .mockResolvedValue(Result.fail(new ModeloEquipoDuplicadoError('HP', 'M404'))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(
+      Result.fail(new ModeloEquipoDuplicadoError('HP', 'M404')),
+    );
 
     await expect(controller.crear({ marca: 'HP', modelo: 'M404' })).rejects.toBeInstanceOf(
       UnprocessableEntityException,
@@ -118,11 +126,8 @@ describe('ModelosEquipoController', () => {
   });
 
   it('PATCH /modelos-equipo/:id con id inexistente lanza 404', async () => {
-    const { controller } = buildController({
-      editar: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new ModeloEquipoNoEncontradoError('id-x'))),
-      },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(Result.fail(new ModeloEquipoNoEncontradoError('id-x')));
 
     await expect(controller.editar('id-x', { modelo: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -132,9 +137,8 @@ describe('ModelosEquipoController', () => {
   it('PATCH /modelos-equipo/:id/estado desactiva', async () => {
     const modelo = ModeloEquipoEntity.create({ marca: 'HP', modelo: 'M404', activo: true });
     modelo.desactivar();
-    const { controller, cambiarEstadoUseCase } = buildController({
-      cambiarEstado: { execute: vi.fn().mockResolvedValue(Result.ok(modelo)) },
-    });
+    const { controller, cambiarEstadoUseCase } = buildController();
+    cambiarEstadoUseCase.execute.mockResolvedValue(Result.ok(modelo));
 
     const result = await controller.cambiarEstadoActivo('id-1', { activo: false });
 

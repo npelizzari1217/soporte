@@ -7,6 +7,7 @@
  * Ref spec: sdd/premium/spec K3. Tarea: K3/K4.
  */
 import { ObtenerKbArticuloUseCase } from './obtener-kb-articulo.use-case';
+import type { IKbArticuloRepository } from '../../domain/ports/i-kb-articulo.repository';
 import { KbArticuloEntity } from '../../domain/entities/kb-articulo.entity';
 import { KbArticuloNoEncontradoError } from '../../domain/errors/kb.errors';
 
@@ -25,8 +26,10 @@ function buildArticulo(overrides: Partial<{ visibleParaSolicitante: boolean }> =
 
 describe('ObtenerKbArticuloUseCase', () => {
   function buildUseCase(articulo: KbArticuloEntity | null) {
-    const repo = { findById: vi.fn().mockResolvedValue(articulo) };
-    const useCase = new ObtenerKbArticuloUseCase(repo as never);
+    const repo = {
+      findById: vi.fn<IKbArticuloRepository['findById']>().mockResolvedValue(articulo),
+    };
+    const useCase = new ObtenerKbArticuloUseCase(repo);
     return { useCase, repo };
   }
 
