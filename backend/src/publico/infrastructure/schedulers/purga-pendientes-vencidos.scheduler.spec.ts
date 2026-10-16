@@ -11,8 +11,20 @@
 import { PurgaPendientesVencidosScheduler } from './purga-pendientes-vencidos.scheduler';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { ITenantEnumerator } from '../../../shared/domain/ports/i-tenant-enumerator';
 import { IPedidoPendienteRepository } from '../../domain/ports/i-pedido-pendiente.repository';
+
+/**
+ * Cliente tenant marcador: el scheduler solo lo reenvía a `TenantContext`. Se arma sobre el
+ * prototipo real, así que la expectativa también se arma con esta función (`toEqual` compara el
+ * prototipo).
+ */
+function marcadorTenant(dbName: string): ReturnType<PrismaService['getTenantClient']> {
+  return Object.create(TenantPrismaClient.prototype, {
+    __dbName: { value: dbName, enumerable: true },
+  });
+}
 
 describe('PurgaPendientesVencidosScheduler', () => {
   function makeCollaborators() {
@@ -22,12 +34,7 @@ describe('PurgaPendientesVencidosScheduler', () => {
     const tenantContext = new TenantContext();
     const prismaService = {
       // El scheduler solo reenvía el cliente a `TenantContext`: un marcador alcanza.
-      getTenantClient: vi
-        .fn<PrismaService['getTenantClient']>()
-        .mockImplementation(
-          (dbName: string) =>
-            ({ __dbName: dbName }) as unknown as ReturnType<PrismaService['getTenantClient']>,
-        ),
+      getTenantClient: vi.fn<PrismaService['getTenantClient']>().mockImplementation(marcadorTenant),
     };
     const pendienteRepo = {
       purgarVencidos: vi.fn<IPedidoPendienteRepository['purgarVencidos']>().mockResolvedValue(0),
@@ -117,7 +124,7 @@ describe('PurgaPendientesVencidosScheduler', () => {
     await c.scheduler.ejecutarBarrido();
 
     expect(ctxDentroDelRun).toEqual({
-      prismaClient: { __dbName: 'soporte_cliente_1' },
+      prismaClient: marcadorTenant('soporte_cliente_1'),
       dbName: 'soporte_cliente_1',
       clienteId: 'cliente-1',
     });

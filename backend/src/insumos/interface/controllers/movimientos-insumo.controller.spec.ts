@@ -21,7 +21,6 @@ import {
   MotivoAjusteRequeridoError,
   StockInsuficienteError,
 } from '../../domain/errors/insumos.errors';
-import { RegistrarMovimientoInsumoHttpDto } from '../dtos/movimientos-insumo.dto';
 import { RegistrarEntradaInsumoUseCase } from '../../application/use-cases/registrar-entrada-insumo.use-case';
 import { RegistrarSalidaInsumoUseCase } from '../../application/use-cases/registrar-salida-insumo.use-case';
 import { RegistrarAjusteInsumoUseCase } from '../../application/use-cases/registrar-ajuste-insumo.use-case';
@@ -158,10 +157,13 @@ describe('MovimientosInsumoController', () => {
       const movimiento = construirMovimiento('ENTRADA');
       const { controller, entradaUseCase } = buildController();
       entradaUseCase.executeTodos.mockResolvedValue(Result.ok([movimiento]));
+      // Sin anotar el tipo: el literal lleva un campo que el DTO no declara, y
+      // pasarlo por una variable lo admite sin cast (no aplica el chequeo de
+      // propiedades de más de un literal fresco).
       const bodySuplantado = {
         cantidad: 2,
         usuarioId: 'usuario-suplantado',
-      } as unknown as RegistrarMovimientoInsumoHttpDto;
+      };
 
       await controller.registrarEntrada(actor(), INSUMO_ID, bodySuplantado);
 
@@ -478,10 +480,12 @@ describe('MovimientosInsumoController', () => {
    * nunca corren. Mismo patrón que `insumos.controller.spec.ts`.
    */
   describe('RBAC — metadata de guards, por método, NUNCA a nivel de clase', () => {
-    function handlerDe(metodo: string): (...args: unknown[]) => unknown {
-      return MovimientosInsumoController.prototype[
-        metodo as keyof typeof MovimientosInsumoController.prototype
-      ] as unknown as (...args: unknown[]) => unknown;
+    function handlerDe(metodo: string): object {
+      const handler: unknown = Reflect.get(MovimientosInsumoController.prototype, metodo);
+      if (typeof handler !== 'function') {
+        throw new Error(`MovimientosInsumoController no tiene el método ${metodo}`);
+      }
+      return handler;
     }
 
     /**

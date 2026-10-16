@@ -37,6 +37,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { ComprasController, toHttpException } from './compras.controller';
 import {
   CantidadNoEnteraError,
@@ -84,7 +85,33 @@ import {
   SinCicloActivoError,
 } from '../../domain/errors/compras.errors';
 
-type Ctor = ConstructorParameters<typeof ComprasController>;
+import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
+import { AgregarItemCompraUseCase } from '../../application/use-cases/agregar-item-compra.use-case';
+import { EditarCompraUseCase } from '../../application/use-cases/editar-compra.use-case';
+import { EditarItemCompraUseCase } from '../../application/use-cases/editar-item-compra.use-case';
+import { EliminarItemCompraUseCase } from '../../application/use-cases/eliminar-item-compra.use-case';
+import { AprobarItemCompraUseCase } from '../../application/use-cases/aprobar-item-compra.use-case';
+import { RechazarItemCompraUseCase } from '../../application/use-cases/rechazar-item-compra.use-case';
+import { RegistrarOrdenDeItemUseCase } from '../../application/use-cases/registrar-orden-de-item.use-case';
+import { RegistrarRecepcionDeItemUseCase } from '../../application/use-cases/registrar-recepcion-de-item.use-case';
+import { RegistrarEntregaDeItemUseCase } from '../../application/use-cases/registrar-entrega-de-item.use-case';
+import { EditarFechaEtapaDeItemUseCase } from '../../application/use-cases/editar-fecha-etapa-de-item.use-case';
+import { CerrarItemConFaltanteUseCase } from '../../application/use-cases/cerrar-item-con-faltante.use-case';
+import { CancelarCompraUseCase } from '../../application/use-cases/cancelar-compra.use-case';
+import { ListarComprasUseCase } from '../../application/use-cases/listar-compras.use-case';
+import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
+import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
+import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 const USUARIO: JwtPayload = payloadDeTest({
   sub: 'usuario-1',
@@ -98,42 +125,42 @@ const USUARIO: JwtPayload = payloadDeTest({
 });
 
 function buildController() {
-  const crearCompraUseCase = { execute: vi.fn() };
-  const agregarItemCompraUseCase = { execute: vi.fn() };
-  const editarCompraUseCase = { execute: vi.fn() };
-  const editarItemCompraUseCase = { execute: vi.fn() };
-  const eliminarItemCompraUseCase = { execute: vi.fn() };
-  const aprobarItemCompraUseCase = { execute: vi.fn() };
-  const rechazarItemCompraUseCase = { execute: vi.fn() };
-  const registrarOrdenDeItemUseCase = { execute: vi.fn() };
-  const registrarRecepcionDeItemUseCase = { execute: vi.fn() };
-  const registrarEntregaDeItemUseCase = { execute: vi.fn() };
-  const editarFechaEtapaDeItemUseCase = { execute: vi.fn() };
-  const cerrarItemConFaltanteUseCase = { execute: vi.fn() };
-  const cancelarCompraUseCase = { execute: vi.fn() };
-  const listarComprasUseCase = { execute: vi.fn() };
-  const obtenerCompraUseCase = { execute: vi.fn() };
-  const listarOperacionesCompraUseCase = { execute: vi.fn() };
-  const exportarComprasUseCase = { execute: vi.fn() };
+  const crearCompraUseCase = espiado(CrearCompraUseCase);
+  const agregarItemCompraUseCase = espiado(AgregarItemCompraUseCase);
+  const editarCompraUseCase = espiado(EditarCompraUseCase);
+  const editarItemCompraUseCase = espiado(EditarItemCompraUseCase);
+  const eliminarItemCompraUseCase = espiado(EliminarItemCompraUseCase);
+  const aprobarItemCompraUseCase = espiado(AprobarItemCompraUseCase);
+  const rechazarItemCompraUseCase = espiado(RechazarItemCompraUseCase);
+  const registrarOrdenDeItemUseCase = espiado(RegistrarOrdenDeItemUseCase);
+  const registrarRecepcionDeItemUseCase = espiado(RegistrarRecepcionDeItemUseCase);
+  const registrarEntregaDeItemUseCase = espiado(RegistrarEntregaDeItemUseCase);
+  const editarFechaEtapaDeItemUseCase = espiado(EditarFechaEtapaDeItemUseCase);
+  const cerrarItemConFaltanteUseCase = espiado(CerrarItemConFaltanteUseCase);
+  const cancelarCompraUseCase = espiado(CancelarCompraUseCase);
+  const listarComprasUseCase = espiado(ListarComprasUseCase);
+  const obtenerCompraUseCase = espiado(ObtenerCompraUseCase);
+  const listarOperacionesCompraUseCase = espiado(ListarOperacionesCompraUseCase);
+  const exportarComprasUseCase = espiado(ExportarComprasUseCase);
 
   const controller = new ComprasController(
-    crearCompraUseCase as unknown as Ctor[0],
-    agregarItemCompraUseCase as unknown as Ctor[1],
-    editarCompraUseCase as unknown as Ctor[2],
-    editarItemCompraUseCase as unknown as Ctor[3],
-    eliminarItemCompraUseCase as unknown as Ctor[4],
-    aprobarItemCompraUseCase as unknown as Ctor[5],
-    rechazarItemCompraUseCase as unknown as Ctor[6],
-    registrarOrdenDeItemUseCase as unknown as Ctor[7],
-    registrarRecepcionDeItemUseCase as unknown as Ctor[8],
-    registrarEntregaDeItemUseCase as unknown as Ctor[9],
-    editarFechaEtapaDeItemUseCase as unknown as Ctor[10],
-    cerrarItemConFaltanteUseCase as unknown as Ctor[11],
-    cancelarCompraUseCase as unknown as Ctor[12],
-    listarComprasUseCase as unknown as Ctor[13],
-    obtenerCompraUseCase as unknown as Ctor[14],
-    listarOperacionesCompraUseCase as unknown as Ctor[15],
-    exportarComprasUseCase as unknown as Ctor[16],
+    crearCompraUseCase.caso,
+    agregarItemCompraUseCase.caso,
+    editarCompraUseCase.caso,
+    editarItemCompraUseCase.caso,
+    eliminarItemCompraUseCase.caso,
+    aprobarItemCompraUseCase.caso,
+    rechazarItemCompraUseCase.caso,
+    registrarOrdenDeItemUseCase.caso,
+    registrarRecepcionDeItemUseCase.caso,
+    registrarEntregaDeItemUseCase.caso,
+    editarFechaEtapaDeItemUseCase.caso,
+    cerrarItemConFaltanteUseCase.caso,
+    cancelarCompraUseCase.caso,
+    listarComprasUseCase.caso,
+    obtenerCompraUseCase.caso,
+    listarOperacionesCompraUseCase.caso,
+    exportarComprasUseCase.caso,
   );
 
   return {
@@ -1078,9 +1105,7 @@ describe('RBAC — metadata (§4.11, WU-7.3 sdd/matriz-permisos-por-usuario)', (
     ['obtener', ['COMPRAS:LECTURA']],
     ['listarOperaciones', ['COMPRAS:LECTURA']],
   ] as const)('%s requiere @RequiereAcciones(%s)', (metodo, codigos) => {
-    const handler = ComprasController.prototype[
-      metodo as keyof typeof ComprasController.prototype
-    ] as unknown as (...args: unknown[]) => unknown;
+    const handler: object = ComprasController.prototype[metodo];
     const meta = Reflect.getMetadata(ACCIONES_KEY, handler);
     expect(meta).toEqual(codigos);
   });
@@ -1090,15 +1115,16 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
   const reflector = new Reflector();
   const guard = new AccionesGuard(reflector);
 
+  /** Contexto real sobre `[{ user }]`, con la clase y el handler REALES del controller. */
   function buildContext(
-    handler: (...args: unknown[]) => unknown,
+    metodo: keyof ComprasController,
     user: JwtPayload | null,
   ): ExecutionContext {
-    return {
-      switchToHttp: () => ({ getRequest: () => ({ user }) }),
-      getHandler: () => handler,
-      getClass: () => ComprasController,
-    } as unknown as ExecutionContext;
+    return new ExecutionContextHost(
+      [{ user }],
+      ComprasController,
+      ComprasController.prototype[metodo],
+    );
   }
 
   /**
@@ -1150,20 +1176,14 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
   it.each(METODOS_GESTIONAR)(
     'S38: TECNICO (sin COMPRAS:ALTAS/MODIFICACION/BORRADO) recibe 403 en %s',
     (metodo) => {
-      const handler = ComprasController.prototype[metodo] as unknown as (
-        ...args: unknown[]
-      ) => unknown;
-      const context = buildContext(handler, TECNICO);
+      const context = buildContext(metodo, TECNICO);
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     },
   );
 
   it.each(METODOS_APROBAR)('S39: TECNICO (sin COMPRAS:APROBACION) recibe 403 en %s', (metodo) => {
-    const handler = ComprasController.prototype[metodo] as unknown as (
-      ...args: unknown[]
-    ) => unknown;
-    const context = buildContext(handler, TECNICO);
+    const context = buildContext(metodo, TECNICO);
 
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
   });
@@ -1175,10 +1195,7 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
         ...TECNICO,
         permisos: [...TECNICO.permisos, 'COMPRAS:MODIFICACION'],
       };
-      const handler = ComprasController.prototype[metodo] as unknown as (
-        ...args: unknown[]
-      ) => unknown;
-      const context = buildContext(handler, gestorSinAprobar);
+      const context = buildContext(metodo, gestorSinAprobar);
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     },
@@ -1192,10 +1209,7 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       rol: null,
       cliente_id: null,
     };
-    const context = buildContext(
-      ComprasController.prototype.crear as unknown as (...args: unknown[]) => unknown,
-      root,
-    );
+    const context = buildContext('crear', root);
 
     expect(guard.canActivate(context)).toBe(true);
   });
@@ -1208,10 +1222,7 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       rol: null,
       cliente_id: null,
     };
-    const context = buildContext(
-      ComprasController.prototype.aprobarItem as unknown as (...args: unknown[]) => unknown,
-      root,
-    );
+    const context = buildContext('aprobarItem', root);
 
     expect(guard.canActivate(context)).toBe(true);
   });
@@ -1223,21 +1234,7 @@ describe('RBAC — guard real: S38/S39/S11/S40 (§4.11, AccionesGuard + Reflecto
       permisos: [],
     };
 
-    expect(
-      guard.canActivate(
-        buildContext(
-          ComprasController.prototype.crear as unknown as (...args: unknown[]) => unknown,
-          admin,
-        ),
-      ),
-    ).toBe(true);
-    expect(
-      guard.canActivate(
-        buildContext(
-          ComprasController.prototype.aprobarItem as unknown as (...args: unknown[]) => unknown,
-          admin,
-        ),
-      ),
-    ).toBe(true);
+    expect(guard.canActivate(buildContext('crear', admin))).toBe(true);
+    expect(guard.canActivate(buildContext('aprobarItem', admin))).toBe(true);
   });
 });

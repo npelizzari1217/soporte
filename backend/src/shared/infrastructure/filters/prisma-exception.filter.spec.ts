@@ -9,7 +9,8 @@
  * alcanzables por HTTP (ADR-7 — el dominio los pre-chequea).
  */
 import { ArgumentsHost, HttpStatus } from '@nestjs/common';
-import { BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
+import { AbstractHttpAdapter, BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { esErrorPrismaConocido, PrismaExceptionFilter } from './prisma-exception.filter';
 import { ILogger } from '../../domain/ports/i-logger.port';
 
@@ -80,22 +81,18 @@ function crearErrorPrisma(code: string, message = MENSAJE_MULTILINEA_REAL): Erro
  * el CÓDIGO PROPIO del filtro para leer method/path, no `super.catch()`).
  */
 function crearAdapterHostMock(replySpy: ReturnType<typeof vi.fn>): HttpAdapterHost {
-  const httpAdapter = {
-    isHeadersSent: () => false,
-    reply: replySpy,
-  };
-  return { httpAdapter } as unknown as HttpAdapterHost;
+  const httpAdapter: AbstractHttpAdapter = Object.create(AbstractHttpAdapter.prototype, {
+    isHeadersSent: { value: () => false },
+    reply: { value: replySpy },
+  });
+  const host = new HttpAdapterHost();
+  host.httpAdapter = httpAdapter;
+  return host;
 }
 
-/** Mock mínimo de `ArgumentsHost`: `getArgByIndex(1)` (usa `super.catch()`) + `switchToHttp()` (usa el filtro). */
+/** `ArgumentsHost` real sobre `[request, response]`: `getArgByIndex(1)` (usa `super.catch()`) + `switchToHttp()` (usa el filtro). */
 function crearHostMock(request: { method: string; url: string }, response: object): ArgumentsHost {
-  return {
-    getArgByIndex: (index: number) => [request, response][index],
-    switchToHttp: () => ({
-      getRequest: () => request,
-      getResponse: () => response,
-    }),
-  } as unknown as ArgumentsHost;
+  return new ExecutionContextHost([request, response]);
 }
 
 describe('PrismaExceptionFilter — catch()', () => {

@@ -17,6 +17,7 @@
 import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarTicketsUseCase } from './exportar-tickets.use-case';
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
+import { Result } from '../../../shared/domain/result';
 import { TicketEntity, TicketProps } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
@@ -100,11 +101,13 @@ function crearUsuarioMasterChecker(
 
 /** `ListarTicketsUseCase` FAKE — controla `items`/`total` sin pasar por la máquina de scope real. */
 function crearListarTicketsFake(items: TicketEntity[], total = items.length) {
-  const execute = vi.fn().mockResolvedValue({
-    isFail: () => false,
-    getValue: () => ({ items, total, pagina: 1, porPagina: TOPE_FILAS_EXPORT }),
+  const execute = vi
+    .fn<ListarTicketsUseCase['execute']>()
+    .mockResolvedValue(Result.ok({ items, total, pagina: 1, porPagina: TOPE_FILAS_EXPORT }));
+  const caso: ListarTicketsUseCase = Object.create(ListarTicketsUseCase.prototype, {
+    execute: { value: execute },
   });
-  return { execute } as unknown as ListarTicketsUseCase;
+  return caso;
 }
 
 describe('ExportarTicketsUseCase', () => {

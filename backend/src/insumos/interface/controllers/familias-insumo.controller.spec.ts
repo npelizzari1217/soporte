@@ -127,9 +127,7 @@ describe('FamiliasInsumoController', () => {
       ['cambiarEstadoActivo', true],
       ['listar', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstarPresente) => {
-      const handler = FamiliasInsumoController.prototype[
-        metodo as keyof typeof FamiliasInsumoController.prototype
-      ] as unknown as (...args: unknown[]) => unknown;
+      const handler: object = FamiliasInsumoController.prototype[metodo];
       const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
 
       if (debeEstarPresente) {

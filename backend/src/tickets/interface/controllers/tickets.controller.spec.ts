@@ -11,6 +11,7 @@
  * inline deben honrar el MISMO criterio.
  */
 import 'reflect-metadata';
+import type { Mock } from 'vitest';
 import {
   ConflictException,
   ForbiddenException,
@@ -31,23 +32,42 @@ import {
   TicketBloqueadoParaEdicionError,
 } from '../../domain/errors/tickets.errors';
 import * as TicketsErrors from '../../domain/errors/tickets.errors';
-
-type Ctor = ConstructorParameters<typeof TicketsController>;
+import { CrearTicketUseCase } from '../../application/use-cases/crear-ticket.use-case';
+import { ObtenerTicketUseCase } from '../../application/use-cases/obtener-ticket.use-case';
+import { ListarTicketsUseCase } from '../../application/use-cases/listar-tickets.use-case';
+import { EditarTicketUseCase } from '../../application/use-cases/editar-ticket.use-case';
+import { TransicionarEstadoUseCase } from '../../application/use-cases/transicionar-estado.use-case';
+import { AsignarTicketUseCase } from '../../application/use-cases/asignar-ticket.use-case';
+import { CrearComentarioUseCase } from '../../application/use-cases/crear-comentario.use-case';
+import { ListarTimelineUseCase } from '../../application/use-cases/listar-timeline.use-case';
+import { ListarTecnicosAsignablesUseCase } from '../../application/use-cases/listar-tecnicos-asignables.use-case';
+import { AsignarYPonerEnProcesoUseCase } from '../../application/use-cases/asignar-y-poner-en-proceso.use-case';
+import { ExportarTicketsUseCase } from '../../application/use-cases/exportar-tickets.use-case';
+import { ObtenerCsatTicketUseCase } from '../../../csat/application/use-cases/obtener-csat-ticket.use-case';
+import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
+import { ISolicitanteExternoRepository } from '../../domain/ports/i-solicitante-externo.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { unstubbed } from '../../../testing/mocks';
 
 /** Operación de dominio mínima para alimentar `toOperacionResponseDto`. */
 function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
-  return {
-    id: 'op-1',
-    ticketId: 'ticket-1',
-    tipoOperacionId: 'tipo-op-comentario',
-    descripcion: 'Nota interna del ROOT',
-    estadoAnteriorId: null,
-    estadoNuevoId: null,
-    autorId: 'root-1',
-    esInterno,
-    metadata: null,
-    createdAt: new Date('2026-01-01T00:00:00.000Z'),
-  } as unknown as OperacionTicketEntity;
+  const createdAt = new Date('2026-01-01T00:00:00.000Z');
+  return OperacionTicketEntity.reconstitute(
+    {
+      ticketId: 'ticket-1',
+      tipoOperacionId: 'tipo-op-comentario',
+      descripcion: 'Nota interna del ROOT',
+      estadoAnteriorId: null,
+      estadoNuevoId: null,
+      autorId: 'root-1',
+      esInterno,
+      metadata: null,
+    },
+    'op-1',
+    createdAt,
+    createdAt,
+    null,
+  );
 }
 
 const ROOT: JwtPayload = payloadDeTest({
@@ -90,33 +110,46 @@ const USUARIO_SOPORTE: JwtPayload = payloadDeTest({
 /** Firma de `ISectorRepository.findNombres`, para tipar su doble sin casts. */
 type FindNombresSector = (ids: readonly string[]) => Promise<Map<string, string>>;
 
-/** Doble de un use case: al controller sólo le interesa `execute`. */
-type MockUseCase = { execute: ReturnType<typeof vi.fn> };
+/** Use case concreto: al controller sólo le interesa `execute`. */
+type UseCaseConExecute = { execute: (...args: never[]) => unknown };
+
+/** Doble de un use case: `execute` espiado y tipado contra la firma real. */
+type MockUseCase<T extends UseCaseConExecute> = { execute: Mock<T['execute']> };
+
+/** Doble vacío de un use case, con `execute` tipado y sin comportamiento. */
+function stub<T extends UseCaseConExecute>(): MockUseCase<T> {
+  return { execute: vi.fn<T['execute']>() };
+}
+
+/** Instancia real del prototipo del use case, con el `execute` espiado del doble. */
+function casoReal<T extends UseCaseConExecute>(Clase: { prototype: T }, doble: MockUseCase<T>): T {
+  return Object.create(Clase.prototype, { execute: { value: doble.execute } });
+}
 
 /** Las once dependencias-use-case del controller, con el nombre corto que usan los tests. */
 type DependenciasControlador = {
-  crearTicket: MockUseCase;
-  obtenerTicket: MockUseCase;
-  listarTickets: MockUseCase;
-  editarTicket: MockUseCase;
-  transicionar: MockUseCase;
-  asignarTicket: MockUseCase;
-  crearComentario: MockUseCase;
-  listarTimeline: MockUseCase;
-  listarTecnicos: MockUseCase;
-  asignarEnProceso: MockUseCase;
-  exportarTickets: MockUseCase;
-  obtenerCsatTicket: MockUseCase;
+  crearTicket: MockUseCase<CrearTicketUseCase>;
+  obtenerTicket: MockUseCase<ObtenerTicketUseCase>;
+  listarTickets: MockUseCase<ListarTicketsUseCase>;
+  editarTicket: MockUseCase<EditarTicketUseCase>;
+  transicionar: MockUseCase<TransicionarEstadoUseCase>;
+  asignarTicket: MockUseCase<AsignarTicketUseCase>;
+  crearComentario: MockUseCase<CrearComentarioUseCase>;
+  listarTimeline: MockUseCase<ListarTimelineUseCase>;
+  listarTecnicos: MockUseCase<ListarTecnicosAsignablesUseCase>;
+  asignarEnProceso: MockUseCase<AsignarYPonerEnProcesoUseCase>;
+  exportarTickets: MockUseCase<ExportarTicketsUseCase>;
+  obtenerCsatTicket: MockUseCase<ObtenerCsatTicketUseCase>;
   solicitanteExternoRepo: {
-    findNombres: ReturnType<typeof vi.fn>;
-    findById: ReturnType<typeof vi.fn>;
+    findNombres: Mock<ISolicitanteExternoRepository['findNombres']>;
+    findById: Mock<ISolicitanteExternoRepository['findById']>;
   };
   sectorRepo: { findNombres: ReturnType<typeof vi.fn<FindNombresSector>> };
 };
 
 type ControladorDeTest = DependenciasControlador & {
   controller: TicketsController;
-  usuarioMasterChecker: { resolverNombres: ReturnType<typeof vi.fn> };
+  usuarioMasterChecker: { resolverNombres: Mock<IUsuarioMasterChecker['resolverNombres']> };
 };
 
 /**
@@ -134,7 +167,6 @@ type ControladorDeTest = DependenciasControlador & {
  * desincronizarse por partes.
  */
 function buildController(overrides: Partial<DependenciasControlador> = {}): ControladorDeTest {
-  const stub = (): MockUseCase => ({ execute: vi.fn() });
   const deps: DependenciasControlador = {
     crearTicket: overrides.crearTicket ?? stub(),
     obtenerTicket: overrides.obtenerTicket ?? stub(),
@@ -142,7 +174,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     // tests ejercitan SIN pisar su use case, y necesita un `Result` real.
     listarTickets: overrides.listarTickets ?? {
       execute: vi
-        .fn()
+        .fn<ListarTicketsUseCase['execute']>()
         .mockResolvedValue(Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 })),
     },
     editarTicket: overrides.editarTicket ?? stub(),
@@ -154,10 +186,14 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     asignarEnProceso: overrides.asignarEnProceso ?? stub(),
     exportarTickets: overrides.exportarTickets ?? stub(),
     // WU9.2: default sin dato CSAT — la mayoría de los tests no ejercitan findOne.
-    obtenerCsatTicket: overrides.obtenerCsatTicket ?? { execute: vi.fn().mockResolvedValue(null) },
+    obtenerCsatTicket: overrides.obtenerCsatTicket ?? {
+      execute: vi.fn<ObtenerCsatTicketUseCase['execute']>().mockResolvedValue(null),
+    },
     solicitanteExternoRepo: overrides.solicitanteExternoRepo ?? {
-      findNombres: vi.fn().mockResolvedValue(new Map()),
-      findById: vi.fn().mockResolvedValue(null),
+      findNombres: vi
+        .fn<ISolicitanteExternoRepository['findNombres']>()
+        .mockResolvedValue(new Map()),
+      findById: vi.fn<ISolicitanteExternoRepository['findById']>().mockResolvedValue(null),
     },
     sectorRepo: overrides.sectorRepo ?? {
       findNombres: vi.fn<FindNombresSector>().mockResolvedValue(new Map()),
@@ -165,32 +201,57 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
   // devuelve un Map vacío sin N+1.
-  const usuarioMasterChecker = { resolverNombres: vi.fn().mockResolvedValue(new Map()) };
+  const usuarioMasterChecker = {
+    resolverNombres: vi.fn<IUsuarioMasterChecker['resolverNombres']>().mockResolvedValue(new Map()),
+  };
+
+  const usuarioMasterCheckerReal: IUsuarioMasterChecker = {
+    existeEnTenant: unstubbed('existeEnTenant'),
+    estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
+    getAutorizacionModulos: unstubbed('getAutorizacionModulos'),
+    listarTecnicosAsignables: unstubbed('listarTecnicosAsignables'),
+    resolverNombres: usuarioMasterChecker.resolverNombres,
+  };
+  const solicitanteExternoRepo: ISolicitanteExternoRepository = {
+    save: unstubbed('save'),
+    findById: deps.solicitanteExternoRepo.findById,
+    findNombres: deps.solicitanteExternoRepo.findNombres,
+  };
+  const estadoRepo: IEstadoRepository = {
+    findById: unstubbed('findById'),
+    findByCodigo: unstubbed('findByCodigo'),
+    findIdByCodigo: unstubbed('findIdByCodigo'),
+    findAllActive: vi.fn<IEstadoRepository['findAllActive']>().mockResolvedValue([]),
+  };
 
   const controller = new TicketsController(
-    deps.crearTicket as unknown as Ctor[0], // crearTicketUseCase
-    deps.obtenerTicket as unknown as Ctor[1], // obtenerTicketUseCase
-    deps.listarTickets as unknown as Ctor[2], // listarTicketsUseCase
-    deps.editarTicket as unknown as Ctor[3], // editarTicketUseCase
-    deps.transicionar as unknown as Ctor[4], // transicionarEstadoUseCase
-    deps.asignarTicket as unknown as Ctor[5], // asignarTicketUseCase
-    deps.crearComentario as unknown as Ctor[6], // crearComentarioUseCase
-    deps.listarTimeline as unknown as Ctor[7], // listarTimelineUseCase
-    usuarioMasterChecker as unknown as Ctor[8], // usuarioMasterChecker
-    deps.listarTecnicos as unknown as Ctor[9], // listarTecnicosAsignablesUseCase
-    deps.asignarEnProceso as unknown as Ctor[10], // asignarYPonerEnProcesoUseCase
-    deps.exportarTickets as unknown as Ctor[11], // exportarTicketsUseCase
-    deps.obtenerCsatTicket as unknown as Ctor[12], // obtenerCsatTicketUseCase
-    deps.solicitanteExternoRepo as unknown as Ctor[13], // solicitanteExternoRepo
-    { findAllActive: vi.fn().mockResolvedValue([]) } as unknown as Ctor[14], // estadoRepo
-    deps.sectorRepo, // sectorRepo
+    casoReal(CrearTicketUseCase, deps.crearTicket),
+    casoReal(ObtenerTicketUseCase, deps.obtenerTicket),
+    casoReal(ListarTicketsUseCase, deps.listarTickets),
+    casoReal(EditarTicketUseCase, deps.editarTicket),
+    casoReal(TransicionarEstadoUseCase, deps.transicionar),
+    casoReal(AsignarTicketUseCase, deps.asignarTicket),
+    casoReal(CrearComentarioUseCase, deps.crearComentario),
+    casoReal(ListarTimelineUseCase, deps.listarTimeline),
+    usuarioMasterCheckerReal,
+    casoReal(ListarTecnicosAsignablesUseCase, deps.listarTecnicos),
+    casoReal(AsignarYPonerEnProcesoUseCase, deps.asignarEnProceso),
+    casoReal(ExportarTicketsUseCase, deps.exportarTickets),
+    casoReal(ObtenerCsatTicketUseCase, deps.obtenerCsatTicket),
+    solicitanteExternoRepo,
+    estadoRepo,
+    deps.sectorRepo,
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
 
 describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-fix)', () => {
   it('ROOT con permisos=[] PUEDE crear un comentario interno (no 403) y lo delega con esInterno=true', async () => {
-    const crearComentario = { execute: vi.fn().mockResolvedValue(Result.ok(fakeOperacion(true))) };
+    const crearComentario = {
+      execute: vi
+        .fn<CrearComentarioUseCase['execute']>()
+        .mockResolvedValue(Result.ok(fakeOperacion(true))),
+    };
     const { controller } = buildController({ crearComentario });
 
     const res = await controller.comentar(ROOT, 'ticket-1', {
@@ -205,7 +266,7 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
   });
 
   it('preserva el guard: NO-ROOT sin ticket:observar recibe 403 al comentar interno', async () => {
-    const crearComentario = { execute: vi.fn() };
+    const crearComentario = { execute: vi.fn<CrearComentarioUseCase['execute']>() };
     const { controller } = buildController({ crearComentario });
 
     await expect(
@@ -218,7 +279,9 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
   });
 
   it('ROOT ve TODO el scope: timeline se invoca con ver_todos y observar en true', async () => {
-    const listarTimeline = { execute: vi.fn().mockResolvedValue(Result.ok([])) };
+    const listarTimeline = {
+      execute: vi.fn<ListarTimelineUseCase['execute']>().mockResolvedValue(Result.ok([])),
+    };
     const { controller } = buildController({ listarTimeline });
 
     await controller.timeline(ROOT, 'ticket-1');
@@ -264,7 +327,11 @@ describe('TicketsController.findAll — gate de módulo (5.2 CAPA 2)', () => {
 describe('TicketsController — asignación unificada (asignables + asignar-en-proceso)', () => {
   it('GET :id/asignables → delega con el clienteId del JWT y devuelve la lista de técnicos', async () => {
     const tecnicos = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];
-    const listarTecnicos = { execute: vi.fn().mockResolvedValue(Result.ok(tecnicos)) };
+    const listarTecnicos = {
+      execute: vi
+        .fn<ListarTecnicosAsignablesUseCase['execute']>()
+        .mockResolvedValue(Result.ok(tecnicos)),
+    };
     const { controller } = buildController({ listarTecnicos });
 
     const res = await controller.asignables(USUARIO_SOPORTE, 'ticket-1');
@@ -278,7 +345,9 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
 
   it('GET :id/asignables → ticket inexistente propaga 404', async () => {
     const listarTecnicos = {
-      execute: vi.fn().mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-x'))),
+      execute: vi
+        .fn<ListarTecnicosAsignablesUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-x'))),
     };
     const { controller } = buildController({ listarTecnicos });
 
@@ -303,7 +372,11 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
       'ticket-1',
     );
     ticket.assignTo('agente-1');
-    const asignarEnProceso = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const asignarEnProceso = {
+      execute: vi
+        .fn<AsignarYPonerEnProcesoUseCase['execute']>()
+        .mockResolvedValue(Result.ok(ticket)),
+    };
     const { controller } = buildController({ asignarEnProceso });
 
     await controller.asignarEnProceso(USUARIO_SOPORTE, 'ticket-1', { asignadoId: 'agente-1' });
@@ -336,7 +409,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   }
 
   it('update: ROOT → delega con actorEsRoot=true', async () => {
-    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const editarTicket = {
+      execute: vi
+        .fn<EditarTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ editarTicket });
 
     await controller.update(ROOT, 'ticket-1', { titulo: 'X' });
@@ -347,7 +424,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   });
 
   it('update: ADMINISTRADOR (no-ROOT) → delega con actorEsRoot=false', async () => {
-    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const editarTicket = {
+      execute: vi
+        .fn<EditarTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ editarTicket });
 
     await controller.update(ADMINISTRADOR, 'ticket-1', { titulo: 'X' });
@@ -358,7 +439,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   });
 
   it('create: pasa ubicacion y sectorId del body; ausentes llegan como null', async () => {
-    const crearTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const crearTicket = {
+      execute: vi
+        .fn<CrearTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ crearTicket });
     const body = { titulo: 'X', tipoId: 't1', prioridadId: 'p1' };
 
@@ -376,7 +461,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   });
 
   it('update: null en ubicacion/sectorId llega como null (limpia); omitidos llegan undefined', async () => {
-    const editarTicket = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const editarTicket = {
+      execute: vi
+        .fn<EditarTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ editarTicket });
 
     await controller.update(ADMINISTRADOR, 'ticket-1', { ubicacion: null, sectorId: null });
@@ -394,7 +483,7 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   it('update: TicketBloqueadoParaEdicionError → 403 ForbiddenException', async () => {
     const editarTicket = {
       execute: vi
-        .fn()
+        .fn<EditarTicketUseCase['execute']>()
         .mockResolvedValue(Result.fail(new TicketBloqueadoParaEdicionError('EN_PROCESO'))),
     };
     const { controller } = buildController({ editarTicket });
@@ -405,7 +494,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   });
 
   it('transicionarEstado: ROOT → actorEsCorrector=true', async () => {
-    const transicionar = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const transicionar = {
+      execute: vi
+        .fn<TransicionarEstadoUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ transicionar });
 
     await controller.transicionarEstado(ROOT, 'ticket-1', { nuevoEstadoCodigo: 'ASIGNADO' });
@@ -416,7 +509,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   });
 
   it('transicionarEstado: ADMINISTRADOR → actorEsCorrector=true', async () => {
-    const transicionar = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const transicionar = {
+      execute: vi
+        .fn<TransicionarEstadoUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ transicionar });
 
     await controller.transicionarEstado(ADMINISTRADOR, 'ticket-1', {
@@ -429,7 +526,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
   });
 
   it('transicionarEstado: rol no-ADMINISTRADOR/no-ROOT → actorEsCorrector=false (solo arcos normales)', async () => {
-    const transicionar = { execute: vi.fn().mockResolvedValue(Result.ok(makeTicketEntity())) };
+    const transicionar = {
+      execute: vi
+        .fn<TransicionarEstadoUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
     const { controller } = buildController({ transicionar });
 
     await controller.transicionarEstado(USUARIO_SOPORTE, 'ticket-1', {
@@ -453,7 +554,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   }
 
   it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: 'Número;Título', nombreArchivo: 'tickets-2026-08-19.csv' }),
     );
@@ -471,7 +572,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   });
 
   it('con ?formato=xlsx entrega un StreamableFile con el content-type y el nombre de xlsx; el use case recibe el formato', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: Buffer.from('PK'), nombreArchivo: 'tickets-2026-08-19.xlsx' }),
     );
@@ -492,7 +593,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   });
 
   it('sin ?formato sigue entregando CSV (default), el use case recibe csv', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: 'a;b', nombreArchivo: 'tickets-2026-08-19.csv' }),
     );
@@ -507,7 +608,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   });
 
   it('deriva el scope de filas del actor (TICKETS:VER_TODOS), NUNCA del query — sin el permiso, exporta acotado al actor', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
     );
@@ -522,7 +623,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   });
 
   it('ADMINISTRADOR → pasa modulosPermitidos=null (mismo gate de módulo que findAll)', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
     );
@@ -537,7 +638,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   });
 
   it('traduce los filtros de query a filtros del DTO, sin paginación', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
     );
@@ -560,7 +661,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
-    const exportarTickets = { execute: vi.fn() };
+    const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.fail(new TicketsErrors.ExportacionDemasiadoGrandeError(6000, 5000)),
     );
@@ -615,9 +716,13 @@ describe('TicketsController.findOne — CSAT en el detalle (WU9.2, ADR-C5)', () 
 
   it('con CSAT:LECTURA y el ticket asignado al actor, delega ticketId/asignadoId/actorRol y arma la respuesta con puntaje/comentario', async () => {
     const ticket = makeTicketAsignado('tecnico-1');
-    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerTicket = {
+      execute: vi.fn<ObtenerTicketUseCase['execute']>().mockResolvedValue(Result.ok(ticket)),
+    };
     const obtenerCsatTicket = {
-      execute: vi.fn().mockResolvedValue({ puntaje: 5, comentario: 'Todo perfecto' }),
+      execute: vi
+        .fn<ObtenerCsatTicketUseCase['execute']>()
+        .mockResolvedValue({ puntaje: 5, comentario: 'Todo perfecto' }),
     };
     const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
 
@@ -636,8 +741,12 @@ describe('TicketsController.findOne — CSAT en el detalle (WU9.2, ADR-C5)', () 
 
   it('cuando el use case de CSAT devuelve null (sin permiso o TECNICO ajeno), la respuesta NO trae csatPuntaje/csatComentario', async () => {
     const ticket = makeTicketAsignado('otro-tecnico');
-    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
-    const obtenerCsatTicket = { execute: vi.fn().mockResolvedValue(null) };
+    const obtenerTicket = {
+      execute: vi.fn<ObtenerTicketUseCase['execute']>().mockResolvedValue(Result.ok(ticket)),
+    };
+    const obtenerCsatTicket = {
+      execute: vi.fn<ObtenerCsatTicketUseCase['execute']>().mockResolvedValue(null),
+    };
     const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
 
     const respuesta = await controller.findOne(TECNICO_ASIGNADO, 'ticket-csat-1');
@@ -663,8 +772,12 @@ describe('TicketsController.findOne — CSAT en el detalle (WU9.2, ADR-C5)', () 
       modulos: ['SOPORTE'],
     });
     const ticket = makeTicketAsignado('tecnico-1');
-    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
-    const obtenerCsatTicket = { execute: vi.fn().mockResolvedValue(null) };
+    const obtenerTicket = {
+      execute: vi.fn<ObtenerTicketUseCase['execute']>().mockResolvedValue(Result.ok(ticket)),
+    };
+    const obtenerCsatTicket = {
+      execute: vi.fn<ObtenerCsatTicketUseCase['execute']>().mockResolvedValue(null),
+    };
     const { controller } = buildController({ obtenerTicket, obtenerCsatTicket });
 
     await controller.findOne(TECNICO_SIN_CSAT, 'ticket-csat-1');
@@ -715,11 +828,15 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
   it('listado con externo y registrado mezclados: nombra a cada uno y NO trae el telefono', async () => {
     const items = [ticketDe('t-ext', { externo: 'ext-1' }), ticketDe('t-reg', { usuario: 'u-1' })];
     const listarTickets = {
-      execute: vi.fn().mockResolvedValue(Result.ok({ items, total: 2, pagina: 1, porPagina: 20 })),
+      execute: vi
+        .fn<ListarTicketsUseCase['execute']>()
+        .mockResolvedValue(Result.ok({ items, total: 2, pagina: 1, porPagina: 20 })),
     };
     const solicitanteExternoRepo = {
-      findNombres: vi.fn().mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
-      findById: vi.fn(),
+      findNombres: vi
+        .fn<ISolicitanteExternoRepository['findNombres']>()
+        .mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
+      findById: vi.fn<ISolicitanteExternoRepository['findById']>(),
     };
     const { controller, usuarioMasterChecker } = buildController({
       listarTickets,
@@ -747,10 +864,16 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
 
   it('detalle de un ticket externo: trae nombre y telefono', async () => {
     const ticket = ticketDe('t-ext', { externo: 'ext-1' });
-    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerTicket = {
+      execute: vi.fn<ObtenerTicketUseCase['execute']>().mockResolvedValue(Result.ok(ticket)),
+    };
     const solicitanteExternoRepo = {
-      findNombres: vi.fn().mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
-      findById: vi.fn().mockResolvedValue(externo('Marta Externa', '+54 11 5555-0000')),
+      findNombres: vi
+        .fn<ISolicitanteExternoRepository['findNombres']>()
+        .mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
+      findById: vi
+        .fn<ISolicitanteExternoRepository['findById']>()
+        .mockResolvedValue(externo('Marta Externa', '+54 11 5555-0000')),
     };
     const { controller } = buildController({ obtenerTicket, solicitanteExternoRepo });
 
@@ -762,10 +885,16 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
 
   it('detalle de un externo sin telefono: solicitanteTelefono es null', async () => {
     const ticket = ticketDe('t-ext', { externo: 'ext-1' });
-    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerTicket = {
+      execute: vi.fn<ObtenerTicketUseCase['execute']>().mockResolvedValue(Result.ok(ticket)),
+    };
     const solicitanteExternoRepo = {
-      findNombres: vi.fn().mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
-      findById: vi.fn().mockResolvedValue(externo('Marta Externa', null)),
+      findNombres: vi
+        .fn<ISolicitanteExternoRepository['findNombres']>()
+        .mockResolvedValue(new Map([['ext-1', 'Marta Externa']])),
+      findById: vi
+        .fn<ISolicitanteExternoRepository['findById']>()
+        .mockResolvedValue(externo('Marta Externa', null)),
     };
     const { controller } = buildController({ obtenerTicket, solicitanteExternoRepo });
 
@@ -776,7 +905,9 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
 
   it('detalle de un ticket de usuario registrado: no consulta al externo y el telefono es null', async () => {
     const ticket = ticketDe('t-reg', { usuario: 'u-1' });
-    const obtenerTicket = { execute: vi.fn().mockResolvedValue(Result.ok(ticket)) };
+    const obtenerTicket = {
+      execute: vi.fn<ObtenerTicketUseCase['execute']>().mockResolvedValue(Result.ok(ticket)),
+    };
     const { controller, solicitanteExternoRepo } = buildController({ obtenerTicket });
 
     const respuesta = await controller.findOne(LECTOR, 't-reg');
@@ -802,7 +933,7 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
       ];
       const listarTickets = {
         execute: vi
-          .fn()
+          .fn<ListarTicketsUseCase['execute']>()
           .mockResolvedValue(Result.ok({ items, total: 4, pagina: 1, porPagina: 20 })),
       };
       const sectorRepo = {
@@ -829,7 +960,9 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
 
     it('detalle: trae ubicacion, sectorId y sectorNombre', async () => {
       const obtenerTicket = {
-        execute: vi.fn().mockResolvedValue(Result.ok(conSector('t-1', 's-1', 'Patio'))),
+        execute: vi
+          .fn<ObtenerTicketUseCase['execute']>()
+          .mockResolvedValue(Result.ok(conSector('t-1', 's-1', 'Patio'))),
       };
       const sectorRepo = {
         findNombres: vi

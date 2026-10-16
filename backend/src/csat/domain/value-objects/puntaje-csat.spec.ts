@@ -33,6 +33,7 @@ describe('PuntajeCsat.create()', () => {
   });
 
   it('rechaza "3" como string (tipo incorrecto)', () => {
+    // Cast deliberado: el test pasa a propósito un string donde el tipo pide number.
     const result = PuntajeCsat.create('3' as unknown as number);
     expect(result.isFail()).toBe(true);
   });

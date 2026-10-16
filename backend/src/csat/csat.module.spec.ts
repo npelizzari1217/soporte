@@ -28,7 +28,7 @@ describe('CsatModule — throttler', () => {
     });
     const guard = await moduleRef.resolve(CsatThrottlerGuard);
     // `storageService` es `protected` en `ThrottlerGuard`: es el que usa el guard al limitar.
-    expect((guard as unknown as { storageService: unknown }).storageService).toBe(storage);
+    expect(guard['storageService']).toBe(storage);
 
     await moduleRef.close();
   });

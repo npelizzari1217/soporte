@@ -134,9 +134,9 @@ describe('PrismaMovimientoInsumoRepository.sumByTipoDeInsumos — Integration', 
   it('con lista vacía devuelve un mapa vacío sin ir a la base', async () => {
     const groupBy = vi.fn();
     const clienteEspia = { movimientoInsumo: { groupBy } };
-    const repoEspia = new PrismaMovimientoInsumoRepository({
-      getClient: () => clienteEspia,
-    } as unknown as TenantContext);
+    const contextoEspia = new TenantContext();
+    vi.spyOn(contextoEspia, 'getClient').mockReturnValue(clienteEspia);
+    const repoEspia = new PrismaMovimientoInsumoRepository(contextoEspia);
 
     const mapa = await repoEspia.sumByTipoDeInsumos([]);
 
@@ -146,9 +146,9 @@ describe('PrismaMovimientoInsumoRepository.sumByTipoDeInsumos — Integration', 
 
   it('resuelve con UNA sola consulta agregada para N insumos', async () => {
     const groupBy = vi.fn().mockResolvedValue([]);
-    const repoEspia = new PrismaMovimientoInsumoRepository({
-      getClient: () => ({ movimientoInsumo: { groupBy } }),
-    } as unknown as TenantContext);
+    const contextoEspia = new TenantContext();
+    vi.spyOn(contextoEspia, 'getClient').mockReturnValue({ movimientoInsumo: { groupBy } });
+    const repoEspia = new PrismaMovimientoInsumoRepository(contextoEspia);
 
     await repoEspia.sumByTipoDeInsumos([insumoA, insumoB, insumoSinMovimientos]);
 
