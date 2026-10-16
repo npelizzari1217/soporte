@@ -66,3 +66,8 @@ Continúa `odd/tasks/casts-en-specs-2.md`.
   --committed-only` → medium, `review_due` false (`under_budget`). El dueño pidió "cuando pase la
   suite, mergealo a main": merge local a `main`. Deuda aparte: el helper `espiado` repetido en los
   specs de controllers; el ancla vencida de `check-roadmap-fresco`.
+- 2026-10-16, vuelta final (`f3775a5f`, rama `refactor/ultimos-casts-en-specs`): los 9 S2a/S2b de
+  `backend/src` más el de `importacion-legacy` se reescribieron sin cast: `@ts-expect-error` sobre
+  la línea inválida (S2a) y `not.toHaveProperty` (S2b). Ratchet a 0 en 0; roadmap actualizado.
+  Evidencia: 8 specs, 233 tests en verde; typecheck y lint 0; `assess --base-ref 93b41476
+  --committed-only` → medium, `review_due` false. Merge a `main` pendiente de decisión del dueño.
