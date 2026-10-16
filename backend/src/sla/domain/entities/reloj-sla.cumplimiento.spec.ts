@@ -68,6 +68,22 @@ describe('RelojSla.plegar', () => {
       expect(r.cumplido).toBeNull();
     });
 
+    it('la reapertura desde CERRADO también limpia el cumplimiento (salto correctivo)', () => {
+      const r = RelojSla.plegar({
+        fila: fila({
+          estadoCodigo: 'EN_PROCESO',
+          acumuladoS: 7 * H,
+          correDesde: null,
+          cumplido: false,
+        }),
+        medidor: habil(),
+        historialSinSecuencia: [],
+        transiciones: [op('CERRADO', 'EN_PROCESO', L(14, 9))],
+      });
+
+      expect(r.cumplido).toBeNull();
+    });
+
     it('CERRADO no cambia el cumplimiento', () => {
       const r = resolver({ acumuladoS: 5 * H, correDesde: null, cumplido: true }, [
         op('RESUELTO', 'CERRADO', L(17, 9)),
