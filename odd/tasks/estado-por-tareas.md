@@ -68,3 +68,14 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
   aviso al pie de "Tareas"; 2 tests nuevos (RED→GREEN con el código de producción stasheado). Roadmap:
   decisión registrada como desviación acordada de CA5 del punto 12, `check-roadmap-fresco` pasa; deuda
   de Ayuda anotada. Frontend: lint 0, tsc 0, 214 tests de tickets.
+- 2026-10-16, T4 commit `8de5da47`.
+- 2026-10-16, verificación independiente (`gentle-ai-verify`, S1-S8): S1-S7 PASS con evidencia por
+  línea; S8 FAIL por `backend/ayuda/reparaciones-edilicias.md`, que afirmaba "llegar al 100% no cierra
+  la reparación". Corregido en `35f8d29d` (un artículo que un cambio vuelve falso se corrige aunque la
+  Ayuda esté en pausa). Sin casts, `any`, `!` ni catch vacíos en el diff.
+- Advertencias del verificador, no causadas por este cambio y sin resolver (decisión del dueño):
+  - A1: `TransicionarEstadoUseCase`, editar y asignar cargan el ticket fuera de la transacción y no
+    toman el lock; una escritura manual con lectura vieja puede pisar un estado que las tareas acaban
+    de poner. Ya pasaba entre dos escrituras manuales; ahora es más probable. Arreglo posible:
+    bloquear y releer dentro de la transacción en esas tres escrituras.
+  - A2: agregar o borrar tareas no mueve el estado (fuera del alcance pedido).
