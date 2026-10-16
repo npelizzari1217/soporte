@@ -41,6 +41,7 @@ import { ListarComentariosReparacionUseCase } from '../../application/use-cases/
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
 import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
+import { espiado, type Espiado } from '../../../shared/test-helpers/espiado';
 
 const USER = payloadDeTest({
   sub: 'usuario-uuid',
@@ -79,18 +80,6 @@ function makeTicket(): TicketEntity {
     'ticket-uuid',
   );
 }
-
-/**
- * Doble de un caso de uso concreto: lleva el prototipo de la clase real y
- * `execute` como mock tipado con su firma.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
-
-type Espiado<T extends { execute: (...args: never[]) => unknown }> = ReturnType<typeof espiado<T>>;
 
 /**
  * Checker de master completo: el controller solo usa `resolverNombres`; el

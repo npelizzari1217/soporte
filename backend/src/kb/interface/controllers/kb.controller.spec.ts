@@ -34,16 +34,7 @@ import { CambiarVisibilidadKbArticuloUseCase } from '../../application/use-cases
 import { EliminarKbArticuloUseCase } from '../../application/use-cases/eliminar-kb-articulo.use-case';
 import { ObtenerKbArticuloUseCase } from '../../application/use-cases/obtener-kb-articulo.use-case';
 import { ListarKbArticulosUseCase } from '../../application/use-cases/listar-kb-articulos.use-case';
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 /** Usuario autenticado tal como lo entrega `@CurrentUser()`. */
 function usuario(sub: string, permisos: string[]): JwtPayload {

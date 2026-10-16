@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
@@ -16,16 +16,7 @@ import { EditarModeloEquipoUseCase } from '../../application/use-cases/editar-mo
 import { CambiarEstadoActivoModeloEquipoUseCase } from '../../application/use-cases/cambiar-estado-activo-modelo-equipo.use-case';
 import { ListarModelosEquipoUseCase } from '../../application/use-cases/listar-modelos-equipo.use-case';
 import { ListarInsumosPorModeloEquipoUseCase } from '../../application/use-cases/listar-insumos-por-modelo-equipo.use-case';
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 describe('ModelosEquipoController', () => {
   function buildController() {

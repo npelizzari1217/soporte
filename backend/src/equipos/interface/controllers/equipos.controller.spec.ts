@@ -62,25 +62,12 @@ import {
   UnidadDelComponenteNoDisponibleError as UnidadDelComponenteDeInsumosError,
   SerialRequeridoError,
 } from '../../../insumos/domain/errors/unidades-insumo.errors';
+import { espiado, type Espiado } from '../../../shared/test-helpers/espiado';
 
 /*
  * Dobles tipados de los casos de uso con `execute` espiado: se crean sobre el prototipo real (sin
  * ejecutar su constructor), así que el tipo es el de la clase y no hace falta ningún cast.
  */
-/**
- * Caso de uso sin construir, con `execute` reemplazado por un `vi.fn` tipado con
- * la firma real de la clase. El controller solo llama a `execute`, así que
- * alcanza con el prototipo (mismo criterio que `darDeBajaEspiado`); como un
- * `vi.fn()` suelto, devuelve `undefined` hasta que el test lo programe.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
-
-type Espiado<T extends { execute: (...args: never[]) => unknown }> = ReturnType<typeof espiado<T>>;
-
 function darDeBajaEspiado() {
   const caso: DarDeBajaEquipoUseCase = Object.create(DarDeBajaEquipoUseCase.prototype);
   return { caso, execute: vi.spyOn(caso, 'execute') };

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
@@ -24,16 +24,7 @@ import { EditarInsumoUseCase } from '../../application/use-cases/editar-insumo.u
 import { CambiarEstadoActivoInsumoUseCase } from '../../application/use-cases/cambiar-estado-activo-insumo.use-case';
 import { ListarInsumosUseCase } from '../../application/use-cases/listar-insumos.use-case';
 import { CambiarSeguimientoInsumoUseCase } from '../../application/use-cases/cambiar-seguimiento-insumo.use-case';
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 const FAMILIA_ID = '11111111-1111-4111-8111-111111111111';
 const UNIDAD_ID = '22222222-2222-4222-8222-222222222222';

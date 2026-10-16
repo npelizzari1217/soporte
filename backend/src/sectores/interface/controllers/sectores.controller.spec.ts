@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
@@ -14,16 +14,7 @@ import { CrearSectorUseCase } from '../../application/use-cases/crear-sector.use
 import { EditarSectorUseCase } from '../../application/use-cases/editar-sector.use-case';
 import { CambiarEstadoActivoSectorUseCase } from '../../application/use-cases/cambiar-estado-activo-sector.use-case';
 import { ListarSectoresUseCase } from '../../application/use-cases/listar-sectores.use-case';
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 describe('SectoresController (WU-07)', () => {
   function buildController() {

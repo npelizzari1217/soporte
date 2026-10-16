@@ -29,6 +29,7 @@ import {
   ListarMovimientosInsumoResult,
   ListarMovimientosInsumoUseCase,
 } from '../../application/use-cases/listar-movimientos-insumo.use-case';
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 const INSUMO_ID = '11111111-1111-4111-8111-111111111111';
 const USUARIO_ID = '22222222-2222-4222-8222-222222222222';
@@ -64,16 +65,6 @@ function construirMovimiento(tipo: TipoMovimientoInsumo, cantidad = 2): Movimien
     equipoId: null,
     sectorId: null,
   }).getValue();
-}
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
 }
 
 /** Igual que `espiado`, para los use cases que también exponen `executeTodos`. */
