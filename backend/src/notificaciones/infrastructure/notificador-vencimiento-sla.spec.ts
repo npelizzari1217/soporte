@@ -12,6 +12,11 @@
 import { NotificadorVencimientoSla } from './notificador-vencimiento-sla';
 import { templateSlaVencido } from '../domain/templates/email-templates';
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
+import { ITicketRepository } from '../../tickets/domain/ports/i-ticket.repository';
+import { IUsuarioContactoResolver } from '../domain/ports/i-usuario-contacto-resolver';
+import { IEmailSender } from '../../shared/domain/ports/i-email-sender';
+import { TenantContext } from '../../shared/tenancy/tenant-context';
+import { ILogger } from '../../shared/domain/ports/i-logger.port';
 
 function makeTicket(asignadoId: string | null) {
   const ticket = TicketEntity.create(
@@ -36,19 +41,26 @@ function makeTicket(asignadoId: string | null) {
 
 describe('NotificadorVencimientoSla', () => {
   function makeListener(clienteId: string | null = 'cliente-uuid') {
-    const ticketRepo = { findById: vi.fn() };
-    const contactoResolver = { resolverContacto: vi.fn(), resolverAdministradores: vi.fn() };
-    const emailSender = { send: vi.fn().mockResolvedValue(undefined) };
-    const tenantContext = {
-      get: vi.fn().mockReturnValue(clienteId !== null ? { clienteId } : undefined),
+    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const contactoResolver = {
+      resolverContacto: vi.fn<IUsuarioContactoResolver['resolverContacto']>(),
+      resolverAdministradores: vi.fn<IUsuarioContactoResolver['resolverAdministradores']>(),
     };
-    const logger = { error: vi.fn() };
+    const emailSender = { send: vi.fn<IEmailSender['send']>().mockResolvedValue(undefined) };
+    const tenantContext = {
+      get: vi
+        .fn<TenantContext['get']>()
+        .mockReturnValue(
+          clienteId !== null ? { prismaClient: null, dbName: 'tenant_test', clienteId } : undefined,
+        ),
+    };
+    const logger = { error: vi.fn<ILogger['error']>() };
     const listener = new NotificadorVencimientoSla(
-      ticketRepo as never,
-      contactoResolver as never,
-      emailSender as never,
-      tenantContext as never,
-      logger as never,
+      ticketRepo,
+      contactoResolver,
+      emailSender,
+      tenantContext,
+      logger,
     );
     return { listener, ticketRepo, contactoResolver, emailSender, tenantContext, logger };
   }

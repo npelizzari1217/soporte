@@ -8,11 +8,28 @@
  * del ticket". Ref design: ADR-C5, ADR-C8. Tarea: 9.2.
  */
 import { ObtenerCsatTicketUseCase } from './obtener-csat-ticket.use-case';
+import { EncuestaSatisfaccionEntity } from '../../domain/entities/encuesta-satisfaccion.entity';
+import { IEncuestaSatisfaccionRepository } from '../../domain/ports/i-encuesta-satisfaccion.repository';
+
+const FECHA = new Date('2026-01-01T00:00:00Z');
 
 describe('ObtenerCsatTicketUseCase', () => {
   function makeUseCase(respuesta: { puntaje: number; comentario: string | null } | null) {
-    const encuestaRepo = { ultimaDeTicket: vi.fn().mockResolvedValue(respuesta) };
-    const useCase = new ObtenerCsatTicketUseCase(encuestaRepo as never);
+    const entidad = respuesta
+      ? EncuestaSatisfaccionEntity.reconstitute(
+          { ticketId: 'ticket-1', tokenId: 'token-1', respondidaEn: FECHA, ...respuesta },
+          'respuesta-1',
+          FECHA,
+          FECHA,
+          null,
+        )
+      : null;
+    const encuestaRepo = {
+      ultimaDeTicket: vi
+        .fn<IEncuestaSatisfaccionRepository['ultimaDeTicket']>()
+        .mockResolvedValue(entidad),
+    };
+    const useCase = new ObtenerCsatTicketUseCase(encuestaRepo);
     return { useCase, encuestaRepo };
   }
 

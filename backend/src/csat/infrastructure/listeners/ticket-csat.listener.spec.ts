@@ -15,6 +15,12 @@ import { TicketCsatListener } from './ticket-csat.listener';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEstadoCambiadoEvent } from '../../../tickets/domain/events/ticket-estado-cambiado.event';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
+import { IContactoSolicitanteResolver } from '../../../notificaciones/domain/ports/i-contacto-solicitante-resolver';
+import { EmitirEncuestaUseCase } from '../../application/use-cases/emitir-encuesta.use-case';
+import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 
 const CLIENTE_ID = '01977a00-0000-7000-8000-0000000000c1';
 const TICKET_ID = 'ticket-uuid';
@@ -60,26 +66,40 @@ function makeEvent(estadoNuevoCodigo: string): TicketEstadoCambiadoEvent {
 }
 
 function makeListener(clienteCsatHabilitado = true) {
-  const ticketRepo = { findById: vi.fn().mockResolvedValue(makeTicket()) };
-  const clienteRepo = { findById: vi.fn().mockResolvedValue(makeCliente(clienteCsatHabilitado)) };
+  const ticketRepo = {
+    findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(makeTicket()),
+  };
+  const clienteRepo = {
+    findById: vi
+      .fn<IClienteRepository['findById']>()
+      .mockResolvedValue(makeCliente(clienteCsatHabilitado)),
+  };
   const contactoResolver = {
-    resolver: vi.fn().mockResolvedValue({
+    resolver: vi.fn<IContactoSolicitanteResolver['resolver']>().mockResolvedValue({
       email: 'solicitante@dominio.com',
       nombre: 'Solicitante',
       esExterno: false,
     }),
   };
-  const emitirEncuestaUseCase = { ejecutar: vi.fn().mockResolvedValue(undefined) };
-  const tenantContext = { get: vi.fn().mockReturnValue({ clienteId: CLIENTE_ID }) };
-  const logger = { error: vi.fn() };
+  const emitirEncuestaUseCase = {
+    ejecutar: vi.fn<EmitirEncuestaUseCase['ejecutar']>().mockResolvedValue(undefined),
+  };
+  const tenantContext = {
+    get: vi.fn<TenantContext['get']>().mockReturnValue({
+      prismaClient: null,
+      dbName: 'test_csat_listener',
+      clienteId: CLIENTE_ID,
+    }),
+  };
+  const logger = { error: vi.fn<ILogger['error']>() };
 
   const listener = new TicketCsatListener(
-    ticketRepo as never,
-    clienteRepo as never,
-    contactoResolver as never,
-    emitirEncuestaUseCase as never,
-    tenantContext as never,
-    logger as never,
+    ticketRepo,
+    clienteRepo,
+    contactoResolver,
+    emitirEncuestaUseCase,
+    tenantContext,
+    logger,
   );
 
   return { listener, ticketRepo, clienteRepo, contactoResolver, emitirEncuestaUseCase, logger };

@@ -15,6 +15,11 @@ import { ResponderEncuestaUseCase } from './responder-encuesta.use-case';
 import { EncuestaLinkInvalidoError, PuntajeInvalidoError } from '../../domain/errors/csat.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { Result } from '../../../shared/domain/result';
+import { ResolverEncuestaTokenService } from '../services/resolver-encuesta-token.service';
+import { IEncuestaTokenRepository } from '../../domain/ports/i-encuesta-token.repository';
+import { IEncuestaSatisfaccionRepository } from '../../domain/ports/i-encuesta-satisfaccion.repository';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { unstubbed } from '../../../testing/mocks';
 
 const TICKET_ID = '01977a00-0000-7000-8000-0000000000t1';
 const TOKEN_ID = '01977a00-0000-7000-8000-0000000000d1';
@@ -37,38 +42,54 @@ function makeTicket(numero = 'SOP-2026-00042'): TicketEntity {
   );
 }
 
-function makeFakeResolver(okValue: boolean) {
-  return {
-    resolver: vi
-      .fn()
-      .mockResolvedValue(
-        okValue
-          ? Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID })
-          : Result.fail(new EncuestaLinkInvalidoError()),
-      ),
-  };
+function makeFakeResolver(okValue: boolean): ResolverEncuestaTokenService {
+  return Object.create(ResolverEncuestaTokenService.prototype, {
+    resolver: {
+      value: vi
+        .fn<ResolverEncuestaTokenService['resolver']>()
+        .mockResolvedValue(
+          okValue
+            ? Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID })
+            : Result.fail(new EncuestaLinkInvalidoError()),
+        ),
+    },
+  });
 }
 
 function makeFakeTokenRepo(marcarUsadoResultado = true) {
   return {
-    findByHash: vi.fn(),
-    save: vi.fn(),
-    revocarVigentesDeTicket: vi.fn(),
-    marcarUsadoSiNoUsado: vi.fn().mockResolvedValue(marcarUsadoResultado),
-    liberarUso: vi.fn().mockResolvedValue(undefined),
-  };
+    findByHash: unstubbed('findByHash'),
+    save: unstubbed('save'),
+    revocarVigentesDeTicket: unstubbed('revocarVigentesDeTicket'),
+    marcarUsadoSiNoUsado: vi
+      .fn<IEncuestaTokenRepository['marcarUsadoSiNoUsado']>()
+      .mockResolvedValue(marcarUsadoResultado),
+    liberarUso: vi.fn<IEncuestaTokenRepository['liberarUso']>().mockResolvedValue(undefined),
+  } satisfies IEncuestaTokenRepository;
 }
 
-function makeFakeSatisfaccionRepo(guardarImpl?: (respuesta: unknown) => Promise<void>) {
+function makeFakeSatisfaccionRepo(guardarImpl?: IEncuestaSatisfaccionRepository['guardar']) {
   return {
-    guardar: vi.fn(guardarImpl ?? (() => Promise.resolve())),
-    ultimaDeTicket: vi.fn(),
-    resumenPorScope: vi.fn(),
-  };
+    guardar: vi.fn<IEncuestaSatisfaccionRepository['guardar']>(
+      guardarImpl ?? (() => Promise.resolve()),
+    ),
+    ultimaDeTicket: unstubbed('ultimaDeTicket'),
+    resumenPorScope: unstubbed('resumenPorScope'),
+  } satisfies IEncuestaSatisfaccionRepository;
 }
 
 function makeFakeTicketRepo(ticket: TicketEntity | null) {
-  return { findById: vi.fn().mockResolvedValue(ticket) };
+  return {
+    findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(ticket),
+    findByIds: unstubbed('findByIds'),
+    findByNumero: unstubbed('findByNumero'),
+    findLastSecuencia: unstubbed('findLastSecuencia'),
+    findAll: unstubbed('findAll'),
+    count: unstubbed('count'),
+    esVisiblePara: unstubbed('esVisiblePara'),
+    save: unstubbed('save'),
+    delete: unstubbed('delete'),
+  } satisfies ITicketRepository;
 }
 
 function buildUseCase(
@@ -84,12 +105,7 @@ function buildUseCase(
   const satisfaccionRepo = overrides.satisfaccionRepo ?? makeFakeSatisfaccionRepo();
   const ticketRepo = overrides.ticketRepo ?? makeFakeTicketRepo(makeTicket());
 
-  const useCase = new ResponderEncuestaUseCase(
-    resolver as never,
-    tokenRepo as never,
-    satisfaccionRepo as never,
-    ticketRepo as never,
-  );
+  const useCase = new ResponderEncuestaUseCase(resolver, tokenRepo, satisfaccionRepo, ticketRepo);
   return { useCase, resolver, tokenRepo, satisfaccionRepo, ticketRepo };
 }
 
@@ -170,8 +186,7 @@ describe('ResponderEncuestaUseCase', () => {
     expect(resultado.getValue()).toEqual({ numero: 'SOP-2026-00042' });
     expect(tokenRepo.marcarUsadoSiNoUsado).toHaveBeenCalledWith(TOKEN_ID);
     expect(satisfaccionRepo.guardar).toHaveBeenCalledTimes(1);
-    const respuestaGuardada = satisfaccionRepo.guardar.mock.calls[0]?.[0] as
-      { puntaje: number; comentario: string | null; tokenId: string } | undefined;
+    const respuestaGuardada = satisfaccionRepo.guardar.mock.calls[0]?.[0];
     expect(respuestaGuardada?.puntaje).toBe(4);
     expect(respuestaGuardada?.comentario).toBe('Todo bien');
     expect(respuestaGuardada?.tokenId).toBe(TOKEN_ID);

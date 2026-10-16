@@ -6,8 +6,15 @@
  * Ref design: sdd/configuracion-correo-por-cliente D2, D3.
  * Ref tasks: WU5 5.5.
  */
-import { TenantAwareEmailSender } from './tenant-aware-email-sender';
-import { ClienteEmailConfigForSend } from '../../../clientes/domain/ports/i-cliente-email-config.repository';
+import { SmtpEmailSenderFactory, TenantAwareEmailSender } from './tenant-aware-email-sender';
+import {
+  ClienteEmailConfigForSend,
+  IClienteEmailConfigRepository,
+} from '../../../clientes/domain/ports/i-cliente-email-config.repository';
+import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { TenantContext, TenantContextData } from '../../../shared/tenancy/tenant-context';
+import { unstubbed } from '../../../testing/mocks';
 
 function makeConfig(overrides: Partial<ClienteEmailConfigForSend> = {}): ClienteEmailConfigForSend {
   return {
@@ -22,21 +29,34 @@ function makeConfig(overrides: Partial<ClienteEmailConfigForSend> = {}): Cliente
   };
 }
 
-function makeHarness(clienteId: string | null = 'cliente-uuid') {
-  const tenantContext = {
-    get: vi.fn().mockReturnValue(clienteId !== null ? { clienteId } : undefined),
-  };
-  const emailConfigRepo = { findForSend: vi.fn() };
-  const logger = { log: vi.fn() };
-  const fakeSend = vi.fn().mockResolvedValue(undefined);
-  const createSender = vi.fn().mockImplementation(() => ({ send: fakeSend }));
+function contextoDe(clienteId: string): TenantContextData {
+  return { prismaClient: null, dbName: `tenant_${clienteId}`, clienteId };
+}
 
-  const sender = new TenantAwareEmailSender(
-    tenantContext as never,
-    emailConfigRepo as never,
-    logger,
-    createSender,
+function makeEmailConfigRepo() {
+  return {
+    findForSend: vi.fn<IClienteEmailConfigRepository['findForSend']>(),
+    findState: unstubbed('findState'),
+    save: unstubbed('save'),
+    saveVerificationOutcome: unstubbed('saveVerificationOutcome'),
+    clear: unstubbed('clear'),
+  } satisfies IClienteEmailConfigRepository;
+}
+
+function makeHarness(clienteId: string | null = 'cliente-uuid') {
+  // TenantContext real (tiene estado privado): solo `get()` se reemplaza.
+  const tenantContext = new TenantContext();
+  vi.spyOn(tenantContext, 'get').mockReturnValue(
+    clienteId !== null ? contextoDe(clienteId) : undefined,
   );
+  const emailConfigRepo = makeEmailConfigRepo();
+  const logger = { log: vi.fn<ILogger['log']>() };
+  const fakeSend = vi.fn<IEmailSender['send']>().mockResolvedValue(undefined);
+  const createSender = vi
+    .fn<SmtpEmailSenderFactory>()
+    .mockImplementation(() => ({ send: fakeSend }));
+
+  const sender = new TenantAwareEmailSender(tenantContext, emailConfigRepo, logger, createSender);
 
   return { sender, tenantContext, emailConfigRepo, logger, createSender, fakeSend };
 }
@@ -191,16 +211,14 @@ describe('TenantAwareEmailSender', () => {
 
   it('dos clientes distintos nunca comparten transporter cacheado', async () => {
     const { emailConfigRepo, createSender } = makeHarness();
-    const tenantContext = {
-      get: vi
-        .fn()
-        .mockReturnValueOnce({ clienteId: 'cliente-a' })
-        .mockReturnValueOnce({ clienteId: 'cliente-b' }),
-    };
+    const tenantContext = new TenantContext();
+    vi.spyOn(tenantContext, 'get')
+      .mockReturnValueOnce(contextoDe('cliente-a'))
+      .mockReturnValueOnce(contextoDe('cliente-b'));
     const senderMultiTenant = new TenantAwareEmailSender(
-      tenantContext as never,
-      emailConfigRepo as never,
-      { log: vi.fn() },
+      tenantContext,
+      emailConfigRepo,
+      { log: vi.fn<ILogger['log']>() },
       createSender,
     );
     emailConfigRepo.findForSend.mockResolvedValue(makeConfig({ configRevision: 500 }));
