@@ -134,7 +134,13 @@ export class RelojSla {
 
       if (op.estadoNuevoCodigo === 'RESUELTO') {
         cumplido = metaS === null ? null : acumuladoS <= metaS;
-      } else if (correNuevo && op.estadoAnteriorCodigo === 'RESUELTO') {
+      } else if (
+        correNuevo &&
+        op.estadoAnteriorCodigo !== null &&
+        ESTADOS_RESOLUCION.has(op.estadoAnteriorCodigo)
+      ) {
+        // Reapertura desde RESUELTO o desde CERRADO (salto correctivo): el cumplimiento medía la
+        // resolución vieja y el reloj vuelve a correr, así que no puede quedar fijado.
         cumplido = null;
       }
     }
