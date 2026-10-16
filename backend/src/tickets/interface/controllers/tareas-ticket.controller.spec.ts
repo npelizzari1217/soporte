@@ -147,6 +147,7 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
       {
         findById: vi.fn().mockResolvedValue(ticket),
         esVisiblePara: vi.fn().mockResolvedValue(false),
+        bloquear: vi.fn().mockResolvedValue(undefined),
       },
       { findById: vi.fn().mockResolvedValue(tipo) },
       checker,

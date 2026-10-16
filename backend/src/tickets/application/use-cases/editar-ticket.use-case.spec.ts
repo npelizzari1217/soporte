@@ -69,6 +69,7 @@ describe('EditarTicketUseCase', () => {
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
       esVisiblePara: unstubbed('esVisiblePara'),
+      bloquear: unstubbed('bloquear'),
       delete: unstubbed('delete'),
     };
     const prioridadRepo = {

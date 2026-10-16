@@ -31,6 +31,7 @@ describe('ListarTicketsUseCase', () => {
       findByNumero: unstubbed('findByNumero'),
       findLastSecuencia: unstubbed('findLastSecuencia'),
       esVisiblePara: unstubbed('esVisiblePara'),
+      bloquear: unstubbed('bloquear'),
       save: unstubbed('save'),
       delete: unstubbed('delete'),
     };

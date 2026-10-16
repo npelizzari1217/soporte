@@ -16,6 +16,7 @@ import {
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { EventoTarea } from '../../domain/policies/estado-por-tareas.policy';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
@@ -90,8 +91,13 @@ function armar() {
   const operaciones: OperacionTicketEntity[] = [];
 
   const tareas = new Map<string, TareaTicketEntity>();
+  /** Orden de las llamadas dentro de la transacción (odd/estado-por-tareas, S5-S6). */
+  const secuencia: string[] = [];
   const ticketRepo = {
     findById: async (id: string) => tickets.get(id) ?? null,
+    bloquear: vi.fn(async (id: string) => {
+      secuencia.push(`bloquear:${id}`);
+    }),
     // Espejo en memoria de `whereVisiblePara` (CA10): solicitante o técnico de una tarea activa.
     esVisiblePara: async (ticketId: string, actorId: string) =>
       tickets.get(ticketId)?.solicitanteId === actorId ||
@@ -125,8 +131,14 @@ function armar() {
     }),
     // El caso de uso muta la misma instancia que guarda el Map, así que la condición de las
     // escrituras ya no se puede observar acá: la prueba la integración de concurrencia (T10).
-    completarSiPendiente: vi.fn(async (_tarea: TareaTicketEntity) => true),
-    descompletarSiCompletada: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    completarSiPendiente: vi.fn(async (_tarea: TareaTicketEntity) => {
+      secuencia.push('completarSiPendiente');
+      return true;
+    }),
+    descompletarSiCompletada: vi.fn(async (_tarea: TareaTicketEntity) => {
+      secuencia.push('descompletarSiCompletada');
+      return true;
+    }),
     asignarTecnicoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
     darDeBajaSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
   };
@@ -136,7 +148,26 @@ function armar() {
     }),
   };
   const tipoOperacionRepo = { findIdByCodigo: async (codigo: string) => `tipo-op-${codigo}` };
-  const txRunner = { run: <T>(fn: () => Promise<T>): Promise<T> => fn() };
+  let enTransaccion = false;
+  const txRunner = {
+    run: async <T>(fn: () => Promise<T>): Promise<T> => {
+      enTransaccion = true;
+      try {
+        return await fn();
+      } finally {
+        enTransaccion = false;
+      }
+    },
+  };
+  // Doble de `AvanzarEstadoPorTareasService`: registra con qué y si corrió dentro de la transacción.
+  const avanzarEstado = {
+    aplicar: vi.fn(async (evento: EventoTarea, ticketId: string, autorId: string) => {
+      secuencia.push(
+        `aplicar:${evento}:${ticketId}:${autorId}:${enTransaccion ? 'en-tx' : 'fuera'}`,
+      );
+      return tickets.get(ticketId) ?? null;
+    }),
+  };
   const checker = {
     listarTecnicosAsignables: vi.fn(async (_clienteId: string, modulo: string | null) =>
       modulo === 'EDILICIA'
@@ -180,6 +211,9 @@ function armar() {
     checker,
     tareaRepo,
     operacionRepo,
+    ticketRepo,
+    avanzarEstado,
+    secuencia,
     crear: new CrearTareaTicketUseCase(
       ticketRepo,
       tipoTicketRepo,
@@ -204,6 +238,7 @@ function armar() {
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      avanzarEstado,
       ahora,
     ),
     descompletar: new DescompletarTareaUseCase(
@@ -212,6 +247,7 @@ function armar() {
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      avanzarEstado,
       ahora,
     ),
     eliminar: new EliminarTareaUseCase(
@@ -485,6 +521,40 @@ describe('CompletarTareaUseCase', () => {
     expect(deps.tareaRepo.completarSiPendiente).toHaveBeenCalledWith(tarea, condicion);
   });
 
+  // odd/estado-por-tareas (S5-S6): el lock del ticket va ANTES de escribir la tarea, y el avance de
+  // estado corre después, dentro de la misma transacción, con el actor como autor.
+  it('bloquea el ticket antes de escribir y aplica el avance de estado dentro de la transacción', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    await deps.completar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES.tecnicoDeLaTarea,
+    });
+
+    expect(deps.secuencia).toEqual([
+      `bloquear:${TICKET_ID}`,
+      'completarSiPendiente',
+      `aplicar:COMPLETAR:${TICKET_ID}:${TECNICO}:en-tx`,
+    ]);
+  });
+
+  it('si la escritura de la tarea no aplica, no avanza el estado del ticket', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+    deps.tareaRepo.completarSiPendiente.mockResolvedValueOnce(false);
+
+    const result = await deps.completar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES.administrador,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+  });
+
   it('completar una tarea ya completada da TareaYaCompletadaError y conserva el crédito', async () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
@@ -565,6 +635,38 @@ describe('DescompletarTareaUseCase', () => {
       completadoLeido: { completadaPorId: TECNICO, completadaEn: AHORA },
       ...extra,
     });
+  });
+
+  it('bloquea el ticket antes de escribir y aplica DESCOMPLETAR dentro de la transacción', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
+
+    await deps.descompletar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES.responsable,
+    });
+
+    expect(deps.secuencia).toEqual([
+      `bloquear:${TICKET_ID}`,
+      'descompletarSiCompletada',
+      `aplicar:DESCOMPLETAR:${TICKET_ID}:${RESPONSABLE}:en-tx`,
+    ]);
+  });
+
+  it('si la escritura de la tarea no aplica, no toca el estado del ticket', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
+    deps.tareaRepo.descompletarSiCompletada.mockResolvedValueOnce(false);
+
+    const result = await deps.descompletar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES.administrador,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
   });
 
   it('descompletar una tarea pendiente da TareaNoCompletadaError', async () => {

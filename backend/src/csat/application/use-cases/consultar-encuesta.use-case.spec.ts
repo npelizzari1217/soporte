@@ -61,6 +61,7 @@ function makeFakeTicketRepo(ticket: TicketEntity | null) {
     findAll: unstubbed('findAll'),
     count: unstubbed('count'),
     esVisiblePara: unstubbed('esVisiblePara'),
+    bloquear: unstubbed('bloquear'),
     save: unstubbed('save'),
     delete: unstubbed('delete'),
   } satisfies ITicketRepository;

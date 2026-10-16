@@ -73,8 +73,19 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
       txRunner,
     );
 
+  // El avance de estado por tareas (odd/estado-por-tareas) se prueba en su propio spec de
+  // integración; acá un doble inerte deja la prueba de atomicidad tarea + historial como estaba.
+  const sinAvanceDeEstado = { aplicar: async () => null };
+
   const completarUseCase = (repoOperaciones: Pick<PrismaOperacionTicketRepository, 'save'>) =>
-    new CompletarTareaUseCase(ticketRepo, tareaRepo, repoOperaciones, tipoOperacionRepo, txRunner);
+    new CompletarTareaUseCase(
+      ticketRepo,
+      tareaRepo,
+      repoOperaciones,
+      tipoOperacionRepo,
+      txRunner,
+      sinAvanceDeEstado,
+    );
 
   async function sembrarTarea(): Promise<TareaTicketEntity> {
     const tarea = TareaTicketEntity.crear({

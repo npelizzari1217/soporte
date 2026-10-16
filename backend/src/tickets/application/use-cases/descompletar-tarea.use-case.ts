@@ -21,6 +21,7 @@ import {
   resolverTipoOperacion,
   TicketRepoDeTareas,
 } from '../services/tareas-ticket.reglas';
+import { AvanzarEstadoPorTareasService } from '../services/avanzar-estado-por-tareas.service';
 
 export interface DescompletarTareaDto {
   ticketId: string;
@@ -41,6 +42,10 @@ export interface DescompletarTareaDto {
  * descompletó y otro la volvió a completar, no borra esa completación nueva y da
  * `TareaYaCompletadaError` (409). Si el actor puede solo por ser el técnico de la tarea, exige
  * también que siga siéndolo (JD-S2): una reasignación en el medio da el rechazo de permiso.
+ *
+ * El estado del ticket sigue a sus tareas (odd/estado-por-tareas, S4-S6): en la misma transacción,
+ * con la fila del ticket bloqueada ANTES de escribir la tarea, `AvanzarEstadoPorTareasService`
+ * devuelve un ticket RESUELTO a EN_PROCESO.
  */
 export class DescompletarTareaUseCase {
   constructor(
@@ -52,6 +57,7 @@ export class DescompletarTareaUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly avanzarEstado: Pick<AvanzarEstadoPorTareasService, 'aplicar'>,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -95,8 +101,10 @@ export class DescompletarTareaUseCase {
     });
 
     const escrita = await this.txRunner.run(async () => {
+      await this.ticketRepo.bloquear(ticket.id);
       if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) return false;
       await this.operacionRepo.save(operacion);
+      await this.avanzarEstado.aplicar('DESCOMPLETAR', ticket.id, dto.actor.id);
       return true;
     });
     if (!escrita) {

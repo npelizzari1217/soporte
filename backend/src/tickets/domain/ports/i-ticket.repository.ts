@@ -126,6 +126,15 @@ export interface ITicketRepository {
   esVisiblePara(ticketId: string, actorId: string): Promise<boolean>;
 
   /**
+   * Toma el lock de fila del ticket hasta el fin de la transacción activa (odd/estado-por-tareas,
+   * S6). Serializa a quienes cambian las tareas de un mismo ticket, para que "¿quedan tareas
+   * pendientes?" se evalúe sobre lo que el otro ya escribió. Solo tiene sentido dentro de
+   * `ITenantTransactionRunner.run`; fuera de una transacción el lock se libera enseguida y no
+   * protege nada. Un id inexistente no falla: no hay fila que bloquear.
+   */
+  bloquear(id: string): Promise<void>;
+
+  /**
    * Persiste el ticket (upsert: crea si no existe, actualiza si existe).
    * El repositorio decide INSERT vs UPDATE según el id.
    */
