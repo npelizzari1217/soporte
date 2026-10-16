@@ -100,8 +100,15 @@ puertos, y bajar la línea base del ratchet en cada tanda.
     después; mismos conteos; lint y typecheck 0; ratchet 116/31 (repetido por el padre); devolver
     `{ id }` en el spec de vincular da 2 errores de tipos. RDD: `assess` → medium, `review_due` false
     (`under_budget`).
-- [ ] **T7 — Cierre**: suite completa, roadmap, merge (decisión del dueño). Si la base no llegó a
+- [x] **T7 — Cierre**: suite completa, roadmap, merge (decisión del dueño). Si la base no llegó a
   ~230, se decide con el dueño si sigue con insumos, csat, kb, notificaciones y shared (~100).
+  Ruta: inline.
+  - CA4: base **116/31** (meta ~230 superada). Suite completa del backend sobre `cc5bc6c9` → 741
+    archivos, 8877 tests pasan, los mismos que antes de la rama (el `FAIL orden-de-arranque.spec.ts`
+    es el fixture intencional); lint y typecheck 0; `check-roadmap-fresco` en verde.
+  - Roadmap: la fila de deuda técnica dice 116 en 31 y anota los 168 `as unknown as` que el ratchet no
+    cuenta (`cc5bc6c9`).
+  - Merge: pendiente de la decisión del dueño.
 
 ## Ruta y entrega
 - Ruta: T1 a T6 delegadas (escritor único por tanda, muchos archivos no triviales); T7 inline.
@@ -115,6 +122,8 @@ puertos, y bajar la línea base del ratchet en cada tanda.
 - 2026-10-16: T2 hecha (tickets, 401/77).
 - 2026-10-16: T3 y T4 hechas (auth y clientes, 255/59).
 - 2026-10-16: T5 y T6 hechas (compras, reparaciones y preventivo, 116/31): la meta de ~230 se superó.
+- 2026-10-16: T7 hecha: suite completa en verde (741/8877).
 
 ## Próximo paso
-T7.
+Revisión del diff completo (§4.2) y merge a `main`, por decisión del dueño. Sin deploy: solo cambian
+specs, el script del ratchet y documentación.
