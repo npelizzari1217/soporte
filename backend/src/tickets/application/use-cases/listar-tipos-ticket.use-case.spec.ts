@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ListarTiposTicketUseCase } from './listar-tipos-ticket.use-case';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { unstubbed } from '../../../testing/mocks';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 
 describe('ListarTiposTicketUseCase', () => {
   it('retorna los tipos de ticket activos del catálogo (G1, sdd/beta-frontend)', async () => {
@@ -11,8 +13,11 @@ describe('ListarTiposTicketUseCase', () => {
       new Date(),
       null,
     );
-    const tipoTicketRepo = { findAllActive: vi.fn().mockResolvedValue([tipo]) };
-    const useCase = new ListarTiposTicketUseCase(tipoTicketRepo as never);
+    const tipoTicketRepo = {
+      findAllActive: vi.fn<ITipoTicketRepository['findAllActive']>().mockResolvedValue([tipo]),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+    };
+    const useCase = new ListarTiposTicketUseCase(tipoTicketRepo);
 
     const result = await useCase.execute();
 
@@ -22,8 +27,11 @@ describe('ListarTiposTicketUseCase', () => {
   });
 
   it('retorna [] cuando el catálogo no tiene tipos activos', async () => {
-    const tipoTicketRepo = { findAllActive: vi.fn().mockResolvedValue([]) };
-    const useCase = new ListarTiposTicketUseCase(tipoTicketRepo as never);
+    const tipoTicketRepo = {
+      findAllActive: vi.fn<ITipoTicketRepository['findAllActive']>().mockResolvedValue([]),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+    };
+    const useCase = new ListarTiposTicketUseCase(tipoTicketRepo);
 
     const result = await useCase.execute();
 

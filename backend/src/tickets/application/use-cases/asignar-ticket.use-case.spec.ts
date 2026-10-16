@@ -9,6 +9,14 @@
  */
 import { AsignarTicketUseCase, AsignarTicketDto } from './asignar-ticket.use-case';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
@@ -67,37 +75,61 @@ function baseDto(overrides: Partial<AsignarTicketDto> = {}): AsignarTicketDto {
 describe('AsignarTicketUseCase', () => {
   function makeCollaborators() {
     const ticketRepo = {
-      findById: vi.fn(),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITicketRepository['findById']>(),
+      save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      findAll: unstubbed('findAll'),
+      count: unstubbed('count'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      delete: unstubbed('delete'),
     };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+      listByTicket: unstubbed('listByTicket'),
+      findById: unstubbed('findById'),
+    };
     const usuarioMasterChecker = {
-      existeEnTenant: vi.fn(),
-      estaActivoEnTenant: vi.fn().mockResolvedValue(true),
-      // Por defecto: usuario normal CON el módulo SOPORTE (elegible para el
+      existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>(),
+      estaActivoEnTenant: vi
+        .fn<IUsuarioMasterChecker['estaActivoEnTenant']>()
+        .mockResolvedValue(true),
+      // Por defecto: usuario normal CON el módulo TICKETS (elegible para el
       // ticket de tipo SOPORTE que arma makeTicket).
       getAutorizacionModulos: vi
-        .fn()
-        .mockResolvedValue({ esAdminTotal: false, modulos: ['SOPORTE'] }),
+        .fn<IUsuarioMasterChecker['getAutorizacionModulos']>()
+        .mockResolvedValue({ esAdminTotal: false, modulos: ['TICKETS'] }),
     };
-    // El tipo del ticket (tipo-soporte-uuid) pertenece al módulo SOPORTE (B2:
+    // El tipo del ticket (tipo-soporte-uuid) pertenece al módulo TICKETS (B2:
     // la elegibilidad lee la columna `modulo` vía findById, no deriva por codigo).
     const tipoTicketRepo = {
-      findById: vi.fn().mockResolvedValue({ codigo: 'SOPORTE', modulo: 'SOPORTE' }),
+      findById: vi
+        .fn<ITipoTicketRepository['findById']>()
+        .mockResolvedValue(
+          TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+            'tipo-soporte-uuid',
+          ),
+        ),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn(async (codigo: string) =>
+      findIdByCodigo: vi.fn<ITipoOperacionRepository['findIdByCodigo']>(async (codigo) =>
         codigo === 'CAMBIO_ESTADO' ? 'tipo-op-cambio-uuid' : 'tipo-op-asignacion-uuid',
       ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
     // `alCommitear` encola: el test decide cuándo "comitea" corriendo la cola.
     const alCommitear: Array<() => void> = [];
-    const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => {
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: (fn: () => void) => {
         alCommitear.push(fn);
-      }),
+      },
     };
+    vi.spyOn(txRunner, 'run');
+    vi.spyOn(txRunner, 'alCommitear');
     const estadoRepo = {
       findById: vi.fn(async (id: string) => {
         const codigo = Object.keys(ESTADO_IDS).find((c) => ESTADO_IDS[c] === id);
@@ -110,12 +142,12 @@ describe('AsignarTicketUseCase', () => {
     const eventPublisher = { publish: vi.fn() } satisfies IDomainEventPublisher;
 
     const useCase = new AsignarTicketUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      usuarioMasterChecker as never,
-      tipoTicketRepo as never,
-      tipoOperacionRepo as never,
-      txRunner as never,
+      ticketRepo,
+      operacionRepo,
+      usuarioMasterChecker,
+      tipoTicketRepo,
+      tipoOperacionRepo,
+      txRunner,
       estadoRepo,
       eventPublisher,
     );
@@ -205,7 +237,7 @@ describe('AsignarTicketUseCase', () => {
   it('asignado normal SIN el módulo del tipo del ticket → AsignadoNoElegibleError (422), sin tx', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    // Tiene COMPRAS, pero el ticket es de tipo SOPORTE → no elegible.
+    // Tiene COMPRAS, pero el tipo SOPORTE del ticket es del módulo TICKETS → no elegible.
     c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
       esAdminTotal: false,
       modulos: ['COMPRAS'],
@@ -238,7 +270,7 @@ describe('AsignarTicketUseCase', () => {
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
     c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
       esAdminTotal: false,
-      modulos: ['SOPORTE'],
+      modulos: ['TICKETS'],
     });
 
     const result = await c.useCase.execute(baseDto());

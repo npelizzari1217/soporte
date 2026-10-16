@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { RegistrarSolucionUseCase } from './registrar-solucion.use-case';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { TicketSoporteNoEncontradoError } from '../../domain/errors/equipos.errors';
+import type { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
 
 /**
  * T13.3 [U][RED→GREEN] — RegistrarSolucionUseCase: setea solucion_aplicada.
@@ -16,10 +17,12 @@ describe('RegistrarSolucionUseCase', () => {
       descripcionProblema: 'Sin acceso a la VPN',
     });
     const ticketSoporteRepo = {
-      findByTicketId: vi.fn().mockResolvedValue(ticketSoporte),
-      save: vi.fn(),
+      findByTicketId: vi
+        .fn<ITicketSoporteRepository['findByTicketId']>()
+        .mockResolvedValue(ticketSoporte),
+      save: vi.fn<ITicketSoporteRepository['save']>(),
     };
-    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo as never);
+    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo);
 
     const result = await useCase.execute({
       ticketId: 'ticket-1',
@@ -32,8 +35,11 @@ describe('RegistrarSolucionUseCase', () => {
   });
 
   it('falla con TicketSoporteNoEncontradoError si el satélite no existe', async () => {
-    const ticketSoporteRepo = { findByTicketId: vi.fn().mockResolvedValue(null), save: vi.fn() };
-    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo as never);
+    const ticketSoporteRepo = {
+      findByTicketId: vi.fn<ITicketSoporteRepository['findByTicketId']>().mockResolvedValue(null),
+      save: vi.fn<ITicketSoporteRepository['save']>(),
+    };
+    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo);
 
     const result = await useCase.execute({ ticketId: 'no-existe', solucion: 'X' });
 

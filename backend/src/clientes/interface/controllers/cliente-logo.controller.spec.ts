@@ -31,18 +31,32 @@ import {
   LogoClienteNoEncontradoError,
 } from '../../domain/errors/clientes.errors';
 import { ClienteEntity } from '../../domain/entities/cliente.entity';
+import type { Mock } from 'vitest';
+import { ConfigurarLogoClienteUseCase } from '../../application/use-cases/configurar-logo-cliente.use-case';
+import { QuitarLogoClienteUseCase } from '../../application/use-cases/quitar-logo-cliente.use-case';
+import { VerLogoClienteUseCase } from '../../application/use-cases/ver-logo-cliente.use-case';
 
 const CLIENTE_A = '11111111-1111-1111-1111-111111111111';
 const CLIENTE_B = '22222222-2222-2222-2222-222222222222';
 
+/**
+ * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
+ * controller) y reemplaza `execute` por un mock tipado con su firma.
+ */
+function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Clase: {
+  prototype: T;
+}): T & { execute: Mock<T['execute']> } {
+  return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
+}
+
 function buildController() {
-  const configurarLogoClienteUseCase = { execute: vi.fn() };
-  const quitarLogoClienteUseCase = { execute: vi.fn() };
-  const verLogoClienteUseCase = { execute: vi.fn() };
+  const configurarLogoClienteUseCase = casoDeUsoDoble(ConfigurarLogoClienteUseCase);
+  const quitarLogoClienteUseCase = casoDeUsoDoble(QuitarLogoClienteUseCase);
+  const verLogoClienteUseCase = casoDeUsoDoble(VerLogoClienteUseCase);
   const controller = new ClienteLogoController(
-    configurarLogoClienteUseCase as any,
-    quitarLogoClienteUseCase as any,
-    verLogoClienteUseCase as any,
+    configurarLogoClienteUseCase,
+    quitarLogoClienteUseCase,
+    verLogoClienteUseCase,
   );
   return {
     controller,
@@ -70,7 +84,7 @@ function usuarioDe(clienteId: string | null, isGlobalAdmin = false): JwtPayload 
 }
 
 function buildResSpy() {
-  return { setHeader: vi.fn() };
+  return { setHeader: vi.fn<(nombre: string, valor: string) => void>() };
 }
 
 /**
@@ -93,7 +107,7 @@ describe('ClienteLogoController (2.5)', () => {
       const { controller, verLogoClienteUseCase } = buildController();
       const user = usuarioDe(CLIENTE_A);
 
-      await expect(controller.ver(user, CLIENTE_B, buildResSpy() as any)).rejects.toBeInstanceOf(
+      await expect(controller.ver(user, CLIENTE_B, buildResSpy())).rejects.toBeInstanceOf(
         ForbiddenException,
       );
       expect(verLogoClienteUseCase.execute).not.toHaveBeenCalled();
@@ -106,7 +120,7 @@ describe('ClienteLogoController (2.5)', () => {
       verLogoClienteUseCase.execute.mockResolvedValue(Result.ok({ buffer, mimeType: 'image/png' }));
       const res = buildResSpy();
 
-      const body = await controller.ver(user, CLIENTE_A, res as any);
+      const body = await controller.ver(user, CLIENTE_A, res);
 
       expect(body).toBeInstanceOf(StreamableFile);
       expect(await leerStreamable(body)).toEqual(buffer);
@@ -124,7 +138,7 @@ describe('ClienteLogoController (2.5)', () => {
         Result.ok({ buffer, mimeType: 'image/webp' }),
       );
 
-      const body = await controller.ver(root, CLIENTE_B, buildResSpy() as any);
+      const body = await controller.ver(root, CLIENTE_B, buildResSpy());
 
       expect(body).toBeInstanceOf(StreamableFile);
       expect(await leerStreamable(body)).toEqual(buffer);
@@ -138,7 +152,7 @@ describe('ClienteLogoController (2.5)', () => {
         Result.fail(new ClienteNoEncontradoError(CLIENTE_B)),
       );
 
-      await expect(controller.ver(root, CLIENTE_B, buildResSpy() as any)).rejects.toBeInstanceOf(
+      await expect(controller.ver(root, CLIENTE_B, buildResSpy())).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
@@ -150,7 +164,7 @@ describe('ClienteLogoController (2.5)', () => {
         Result.fail(new LogoClienteNoEncontradoError(CLIENTE_A)),
       );
 
-      await expect(controller.ver(user, CLIENTE_A, buildResSpy() as any)).rejects.toBeInstanceOf(
+      await expect(controller.ver(user, CLIENTE_A, buildResSpy())).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });

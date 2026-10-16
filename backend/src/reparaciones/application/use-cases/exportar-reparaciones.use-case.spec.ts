@@ -29,10 +29,17 @@
 import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarReparacionesUseCase } from './exportar-reparaciones.use-case';
 import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparaciones.use-case';
+import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
+import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
+import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/reparaciones.errors';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
+import { Result } from '../../../shared/domain/result';
 
 const BOM = '﻿';
 
@@ -99,12 +106,14 @@ function crearReparacion(
 }
 
 /** `ListarReparacionesUseCase` FAKE — controla la lista sin pasar por el repositorio real. */
-function crearListarReparacionesFake(reparaciones: ReparacionConTicket[]) {
-  const execute = vi.fn().mockResolvedValue({
-    isFail: () => false,
-    getValue: () => reparaciones,
-  });
-  return { execute } as unknown as ListarReparacionesUseCase;
+function crearListarReparacionesFake(
+  reparaciones: ReparacionConTicket[],
+): Pick<ListarReparacionesUseCase, 'execute'> {
+  return {
+    execute: vi
+      .fn<ListarReparacionesUseCase['execute']>()
+      .mockResolvedValue(Result.ok(reparaciones)),
+  };
 }
 
 describe('ExportarReparacionesUseCase', () => {
@@ -207,13 +216,13 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     );
 
     const ediliciaRepo = {
-      findAll: vi.fn(async () => {
+      findAll: vi.fn<ITicketEdiliciaRepository['findAll']>(async () => {
         llamadas++;
         return satelites;
       }),
     };
     const ticketRepo = {
-      findByIds: vi.fn(async (ids: string[]) => {
+      findByIds: vi.fn<ITicketRepository['findByIds']>(async (ids) => {
         llamadas++;
         const mapa = new Map<string, TicketEntity>();
         for (const id of ids) {
@@ -223,33 +232,37 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
       }),
     };
     const subtareaRepo = {
-      listarPorTickets: vi.fn(async () => {
+      listarPorTickets: vi.fn<ITareaTicketRepository['listarPorTickets']>(async () => {
         llamadas++;
         return new Map();
       }),
     };
     const comentarioRepo = {
-      contarPorTicketEdilicia: vi.fn(async () => {
-        llamadas++;
-        return new Map();
-      }),
+      contarPorTicketEdilicia: vi.fn<IComentarioReparacionRepository['contarPorTicketEdilicia']>(
+        async () => {
+          llamadas++;
+          return new Map();
+        },
+      ),
     };
     const reparacionCompraRepo = {
-      findComprasVinculadasByTicketEdiliciaIds: vi.fn(async () => {
+      findComprasVinculadasByTicketEdiliciaIds: vi.fn<
+        IReparacionCompraRepository['findComprasVinculadasByTicketEdiliciaIds']
+      >(async () => {
         llamadas++;
         return new Map();
       }),
     };
 
     const listarReparaciones = new ListarReparacionesUseCase(
-      ediliciaRepo as any,
-      ticketRepo as any,
-      subtareaRepo as any,
-      comentarioRepo as any,
-      reparacionCompraRepo as any,
+      ediliciaRepo,
+      ticketRepo,
+      subtareaRepo,
+      comentarioRepo,
+      reparacionCompraRepo,
       // Ningun ticket de este armado tiene sector: el listado no consulta nombres de sector.
       {
-        findNombres: vi.fn(async () => {
+        findNombres: vi.fn<ISectorRepository['findNombres']>(async () => {
           llamadas++;
           return new Map<string, string>();
         }),

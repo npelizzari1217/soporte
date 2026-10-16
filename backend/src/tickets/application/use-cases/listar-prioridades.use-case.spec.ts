@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ListarPrioridadesUseCase } from './listar-prioridades.use-case';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
+import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 
 describe('ListarPrioridadesUseCase', () => {
   it('retorna las prioridades activas del catálogo, ordenadas por el repo (G1, sdd/beta-frontend)', async () => {
@@ -11,8 +12,10 @@ describe('ListarPrioridadesUseCase', () => {
       new Date(),
       null,
     );
-    const prioridadRepo = { findAllActive: vi.fn().mockResolvedValue([prioridad]) };
-    const useCase = new ListarPrioridadesUseCase(prioridadRepo as never);
+    const prioridadRepo = {
+      findAllActive: vi.fn<IPrioridadRepository['findAllActive']>().mockResolvedValue([prioridad]),
+    };
+    const useCase = new ListarPrioridadesUseCase(prioridadRepo);
 
     const result = await useCase.execute();
 

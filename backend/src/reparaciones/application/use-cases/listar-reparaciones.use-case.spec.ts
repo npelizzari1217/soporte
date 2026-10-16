@@ -13,6 +13,12 @@ import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ListarReparacionesUseCase } from './listar-reparaciones.use-case';
+import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
+import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
+import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 
 function makeTicket(id: string): TicketEntity {
   return TicketEntity.create(
@@ -41,33 +47,39 @@ function makeSubtarea(ticketId: string, descripcion: string): TareaTicketEntity 
 
 describe('ListarReparacionesUseCase', () => {
   function buildDeps() {
-    const ediliciaRepo = { findAll: vi.fn() };
-    const ticketRepo = { findByIds: vi.fn().mockResolvedValue(new Map<string, TicketEntity>()) };
+    const ediliciaRepo = { findAll: vi.fn<ITicketEdiliciaRepository['findAll']>() };
+    const ticketRepo = {
+      findByIds: vi
+        .fn<ITicketRepository['findByIds']>()
+        .mockResolvedValue(new Map<string, TicketEntity>()),
+    };
     const subtareaRepo = {
-      listarPorTickets: vi.fn().mockResolvedValue(new Map<string, TareaTicketEntity[]>()),
+      listarPorTickets: vi
+        .fn<ITareaTicketRepository['listarPorTickets']>()
+        .mockResolvedValue(new Map<string, TareaTicketEntity[]>()),
     };
     const comentarioRepo = {
-      contarPorTicketEdilicia: vi.fn().mockResolvedValue(new Map<string, number>()),
+      contarPorTicketEdilicia: vi
+        .fn<IComentarioReparacionRepository['contarPorTicketEdilicia']>()
+        .mockResolvedValue(new Map<string, number>()),
     };
     // Quinto doble, WU3: por defecto ninguna reparación tiene compras
     // vinculadas — el Map vacío es el mismo contrato de ausencia que ya usan
     // subtareas/comentarios (ausencia = `[]`, nunca `undefined`).
     const reparacionCompraRepo = {
       findComprasVinculadasByTicketEdiliciaIds: vi
-        .fn()
+        .fn<IReparacionCompraRepository['findComprasVinculadasByTicketEdiliciaIds']>()
         .mockResolvedValue(new Map<string, CompraVinculada[]>()),
     };
     const sectorRepo = {
-      findNombres: vi
-        .fn<(ids: readonly string[]) => Promise<Map<string, string>>>()
-        .mockResolvedValue(new Map()),
+      findNombres: vi.fn<ISectorRepository['findNombres']>().mockResolvedValue(new Map()),
     };
     const useCase = new ListarReparacionesUseCase(
-      ediliciaRepo as any,
-      ticketRepo as any,
-      subtareaRepo as any,
-      comentarioRepo as any,
-      reparacionCompraRepo as any,
+      ediliciaRepo,
+      ticketRepo,
+      subtareaRepo,
+      comentarioRepo,
+      reparacionCompraRepo,
       sectorRepo,
     );
     return {

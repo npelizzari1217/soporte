@@ -21,6 +21,15 @@ import {
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { IRelojSlaMarcador } from '../../domain/ports/i-reloj-sla-marcador';
+import { unstubbed } from '../../../testing/mocks';
 
 const ESTADOS: Record<string, EstadoEntity> = {
   NUEVO: EstadoEntity.create(
@@ -89,55 +98,84 @@ function baseDto(overrides: Partial<TransicionarEstadoDto> = {}): TransicionarEs
 describe('TransicionarEstadoUseCase', () => {
   function makeCollaborators() {
     const ticketRepo = {
-      findById: vi.fn(),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITicketRepository['findById']>(),
+      save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      findAll: unstubbed('findAll'),
+      count: unstubbed('count'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      delete: unstubbed('delete'),
     };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+      listByTicket: unstubbed('listByTicket'),
+      findById: unstubbed('findById'),
+    };
     const estadoRepo = {
-      findByCodigo: vi.fn((codigo: string) => Promise.resolve(ESTADOS[codigo] ?? null)),
-      findById: vi.fn((id: string) =>
+      findByCodigo: vi.fn<IEstadoRepository['findByCodigo']>((codigo) =>
+        Promise.resolve(ESTADOS[codigo] ?? null),
+      ),
+      findById: vi.fn<IEstadoRepository['findById']>((id) =>
         Promise.resolve(Object.values(ESTADOS).find((e) => e.id === id) ?? null),
       ),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
     const tipoTicketRepo = {
       findById: vi
-        .fn()
+        .fn<ITipoTicketRepository['findById']>()
         .mockResolvedValue(
           TipoTicketEntity.create(
             { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
             'tipo-soporte-uuid',
           ),
         ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+      findIdsByModulos: unstubbed('findIdsByModulos'),
+      save: unstubbed('save'),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-cambio-estado-uuid'),
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-op-cambio-estado-uuid'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
     const stateMachineFactory = new TicketStateMachineFactory();
-    const eventPublisher = { publish: vi.fn() };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     // txRunner.run ejecuta el callback DIRECTAMENTE (sin Prisma real) — pero
     // preserva la semántica "corre dentro de la tx" para los tests.
-    const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
       // Como el runner real: el callback post-commit corre protegido, un error no sube a la tx.
-      alCommitear: vi.fn((fn: () => void) => {
+      alCommitear: (fn: () => void) => {
         try {
           fn();
         } catch {
           /* swallow */
         }
-      }),
+      },
     };
-    const relojMarcador = { marcar: vi.fn().mockResolvedValue(undefined) };
+    vi.spyOn(txRunner, 'run');
+    vi.spyOn(txRunner, 'alCommitear');
+    const relojMarcador = {
+      marcar: vi.fn<IRelojSlaMarcador['marcar']>().mockResolvedValue(undefined),
+    };
 
     const useCase = new TransicionarEstadoUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      estadoRepo as never,
-      tipoTicketRepo as never,
-      tipoOperacionRepo as never,
+      ticketRepo,
+      operacionRepo,
+      estadoRepo,
+      tipoTicketRepo,
+      tipoOperacionRepo,
       stateMachineFactory,
-      eventPublisher as never,
-      txRunner as never,
+      eventPublisher,
+      txRunner,
       relojMarcador,
     );
 

@@ -13,8 +13,12 @@
 import { CrearTicketUseCase, CrearTicketDto } from './crear-ticket.use-case';
 import { Result } from '../../../shared/domain/result';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
-import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import {
+  ITenantTransactionRunner,
+  PrismaTenantTransactionRunner,
+} from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
@@ -31,6 +35,30 @@ import {
   SectorTicketInexistenteError,
 } from '../../domain/errors/tickets.errors';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
+import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
+import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
+import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { unstubbed } from '../../../testing/mocks';
+
+/** Operación guardada con ese tipo; falla si no se guardó ninguna (en vez de seguir con `undefined`). */
+function operacionDelTipo(
+  ops: OperacionTicketEntity[],
+  tipoOperacionId: string,
+): OperacionTicketEntity {
+  const op = ops.find((o) => o.tipoOperacionId === tipoOperacionId);
+  if (!op) {
+    throw new Error(`No se guardó ninguna operación de tipo ${tipoOperacionId}`);
+  }
+  return op;
+}
 
 function baseDto(overrides: Partial<CrearTicketDto> = {}): CrearTicketDto {
   return {
@@ -50,38 +78,80 @@ function baseDto(overrides: Partial<CrearTicketDto> = {}): CrearTicketDto {
 describe('CrearTicketUseCase', () => {
   function makeCollaborators() {
     const ticketRepo = {
-      findById: vi.fn(),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITicketRepository['findById']>(),
+      save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      findAll: unstubbed('findAll'),
+      count: unstubbed('count'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      delete: unstubbed('delete'),
     };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
-    const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-uuid') };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+      listByTicket: unstubbed('listByTicket'),
+      findById: unstubbed('findById'),
+    };
+    const estadoRepo = {
+      findIdByCodigo: vi
+        .fn<IEstadoRepository['findIdByCodigo']>()
+        .mockResolvedValue('estado-nuevo-uuid'),
+      findById: unstubbed('findById'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+    };
     const tipoTicketRepo = {
       findById: vi
-        .fn()
+        .fn<ITipoTicketRepository['findById']>()
         .mockResolvedValue(
           TipoTicketEntity.create(
             { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
             'tipo-soporte-uuid',
           ),
         ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+      findIdsByModulos: unstubbed('findIdsByModulos'),
+      save: unstubbed('save'),
     };
     const prioridadRepo = {
       findById: vi
-        .fn()
+        .fn<IPrioridadRepository['findById']>()
         .mockResolvedValue(
           PrioridadEntity.create(
             { codigo: 'MEDIA', nombre: 'Media', color: null, orden: 2, activo: true },
             'prioridad-media-uuid',
           ),
         ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      save: unstubbed('save'),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-cambio-estado-uuid'),
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-op-cambio-estado-uuid'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
-    const usuarioMasterChecker = { existeEnTenant: vi.fn().mockResolvedValue(true) };
-    const numerador = { generarNumero: vi.fn().mockResolvedValue(Result.ok('SOP-2026-00001')) };
+    const usuarioMasterChecker = {
+      existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
+      estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
+      resolverNombres: unstubbed('resolverNombres'),
+      getAutorizacionModulos: unstubbed('getAutorizacionModulos'),
+      listarTecnicosAsignables: unstubbed('listarTecnicosAsignables'),
+    };
+    const numerador = {
+      generarNumero: vi
+        .fn<NumeradorTicket['generarNumero']>()
+        .mockResolvedValue(Result.ok('SOP-2026-00001')),
+    };
     const resolverCicloActivo = {
-      resolver: vi.fn().mockResolvedValue(
+      resolver: vi.fn<ResolverCicloActivoParaCreacion['resolver']>().mockResolvedValue(
         Result.ok(
           CicloClienteEntity.create(
             {
@@ -107,8 +177,8 @@ describe('CrearTicketUseCase', () => {
     // NO envuelve el callback en su propio try/catch, así que el mock que lo
     // simula tiene que hacerlo para no romper el contrato con un fake ciego.
     const txRunner = {
-      run: vi.fn((fn: () => Promise<unknown>) => fn()),
-      alCommitear: vi.fn((fn: () => void) => {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: vi.fn<ITenantTransactionRunner['alCommitear']>((fn) => {
         try {
           fn();
         } catch {
@@ -117,8 +187,11 @@ describe('CrearTicketUseCase', () => {
         }
       }),
     };
-    const resolverAsignacion = { resolver: vi.fn().mockResolvedValue(null) };
-    const eventPublisher = { publish: vi.fn() };
+    vi.spyOn(txRunner, 'run');
+    const resolverAsignacion = {
+      resolver: vi.fn<ResolverAsignacionAutomatica['resolver']>().mockResolvedValue(null),
+    };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     // Un sector existente pero DESACTIVADO: el alta lo acepta igual (odd/ubicacion-sector-ticket).
     const sectorRepo = {
       findById: vi.fn(async (id: string) =>
@@ -129,18 +202,18 @@ describe('CrearTicketUseCase', () => {
     };
 
     const useCase = new CrearTicketUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      estadoRepo as never,
-      tipoTicketRepo as never,
-      prioridadRepo as never,
-      tipoOperacionRepo as never,
-      usuarioMasterChecker as never,
-      numerador as never,
-      resolverCicloActivo as never,
+      ticketRepo,
+      operacionRepo,
+      estadoRepo,
+      tipoTicketRepo,
+      prioridadRepo,
+      tipoOperacionRepo,
+      usuarioMasterChecker,
+      numerador,
+      resolverCicloActivo,
       resolverAsignacion,
-      eventPublisher as never,
-      txRunner as never,
+      eventPublisher,
+      txRunner,
       sectorRepo,
     );
 
@@ -229,6 +302,9 @@ describe('CrearTicketUseCase', () => {
     expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
     const evento = c.eventPublisher.publish.mock.calls[0][0];
     expect(evento).toBeInstanceOf(TicketCreadoEvent);
+    if (!(evento instanceof TicketCreadoEvent)) {
+      throw new Error('se esperaba un TicketCreadoEvent');
+    }
     expect(evento.ticketId).toBe(ticket.id);
     expect(evento.prioridadId).toBe('prioridad-media-uuid');
   });
@@ -416,8 +492,8 @@ describe('CrearTicketUseCase', () => {
       );
       const ops = c.operacionRepo.save.mock.calls.map(([op]) => op);
       expect(ops).toHaveLength(2);
-      const apertura = ops.find((o) => o.tipoOperacionId === 'tipo-op-cambio-estado-uuid');
-      const asignacion = ops.find((o) => o.tipoOperacionId === 'tipo-op-asignacion-uuid');
+      const apertura = operacionDelTipo(ops, 'tipo-op-cambio-estado-uuid');
+      const asignacion = operacionDelTipo(ops, 'tipo-op-asignacion-uuid');
       expect(apertura.estadoAnteriorId).toBeNull();
       expect(apertura.estadoNuevoId).toBe('estado-asignado-uuid');
       expect(apertura.autorId).toBe('solicitante-uuid');
@@ -502,38 +578,80 @@ describe('CrearTicketUseCase', () => {
 describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (runner real)', () => {
   function makeCollaboradoresConRunnerReal() {
     const ticketRepo = {
-      findById: vi.fn(),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITicketRepository['findById']>(),
+      save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      findAll: unstubbed('findAll'),
+      count: unstubbed('count'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      delete: unstubbed('delete'),
     };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
-    const estadoRepo = { findIdByCodigo: vi.fn().mockResolvedValue('estado-nuevo-uuid') };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+      listByTicket: unstubbed('listByTicket'),
+      findById: unstubbed('findById'),
+    };
+    const estadoRepo = {
+      findIdByCodigo: vi
+        .fn<IEstadoRepository['findIdByCodigo']>()
+        .mockResolvedValue('estado-nuevo-uuid'),
+      findById: unstubbed('findById'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+    };
     const tipoTicketRepo = {
       findById: vi
-        .fn()
+        .fn<ITipoTicketRepository['findById']>()
         .mockResolvedValue(
           TipoTicketEntity.create(
             { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
             'tipo-soporte-uuid',
           ),
         ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
+      findIdsByModulos: unstubbed('findIdsByModulos'),
+      save: unstubbed('save'),
     };
     const prioridadRepo = {
       findById: vi
-        .fn()
+        .fn<IPrioridadRepository['findById']>()
         .mockResolvedValue(
           PrioridadEntity.create(
             { codigo: 'MEDIA', nombre: 'Media', color: null, orden: 2, activo: true },
             'prioridad-media-uuid',
           ),
         ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      save: unstubbed('save'),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-cambio-estado-uuid'),
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-op-cambio-estado-uuid'),
+      findByCodigo: unstubbed('findByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
-    const usuarioMasterChecker = { existeEnTenant: vi.fn().mockResolvedValue(true) };
-    const numerador = { generarNumero: vi.fn().mockResolvedValue(Result.ok('SOP-2026-00001')) };
+    const usuarioMasterChecker = {
+      existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
+      estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
+      resolverNombres: unstubbed('resolverNombres'),
+      getAutorizacionModulos: unstubbed('getAutorizacionModulos'),
+      listarTecnicosAsignables: unstubbed('listarTecnicosAsignables'),
+    };
+    const numerador = {
+      generarNumero: vi
+        .fn<NumeradorTicket['generarNumero']>()
+        .mockResolvedValue(Result.ok('SOP-2026-00001')),
+    };
     const resolverCicloActivo = {
-      resolver: vi.fn().mockResolvedValue(
+      resolver: vi.fn<ResolverCicloActivoParaCreacion['resolver']>().mockResolvedValue(
         Result.ok(
           CicloClienteEntity.create(
             {
@@ -548,23 +666,23 @@ describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (run
         ),
       ),
     };
-    const eventPublisher = { publish: vi.fn() };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
 
     const tenantContext = new TenantContext();
     const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => {} });
 
     const useCase = new CrearTicketUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      estadoRepo as never,
-      tipoTicketRepo as never,
-      prioridadRepo as never,
-      tipoOperacionRepo as never,
-      usuarioMasterChecker as never,
-      numerador as never,
-      resolverCicloActivo as never,
-      { resolver: vi.fn().mockResolvedValue(null) },
-      eventPublisher as never,
+      ticketRepo,
+      operacionRepo,
+      estadoRepo,
+      tipoTicketRepo,
+      prioridadRepo,
+      tipoOperacionRepo,
+      usuarioMasterChecker,
+      numerador,
+      resolverCicloActivo,
+      { resolver: vi.fn<ResolverAsignacionAutomatica['resolver']>().mockResolvedValue(null) },
+      eventPublisher,
       txRunner,
     );
 

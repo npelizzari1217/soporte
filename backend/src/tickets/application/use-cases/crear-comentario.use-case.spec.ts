@@ -20,6 +20,11 @@ import {
   TicketNoEncontradoError,
   ComentarioNoPermitidoError,
 } from '../../domain/errors/tickets.errors';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 
 const ESTADOS: Record<string, EstadoEntity> = {
   NUEVO: EstadoEntity.create(
@@ -90,17 +95,21 @@ function baseDto(overrides: Partial<CrearComentarioDto> = {}): CrearComentarioDt
 
 describe('CrearComentarioUseCase', () => {
   function makeCollaborators() {
-    const ticketRepo = { findById: vi.fn() };
-    const operacionRepo = { save: vi.fn().mockResolvedValue(undefined) };
+    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const operacionRepo = {
+      save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
+    };
     const estadoRepo = {
-      findById: vi.fn((id: string) =>
+      findById: vi.fn<IEstadoRepository['findById']>((id) =>
         Promise.resolve(Object.values(ESTADOS).find((e) => e.id === id) ?? null),
       ),
     };
     const tipoOperacionRepo = {
-      findIdByCodigo: vi.fn().mockResolvedValue('tipo-op-comentario-uuid'),
+      findIdByCodigo: vi
+        .fn<ITipoOperacionRepository['findIdByCodigo']>()
+        .mockResolvedValue('tipo-op-comentario-uuid'),
     };
-    const eventPublisher = { publish: vi.fn() };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     const txRunner = {
       llamadas: 0,
       async run<T>(fn: () => Promise<T>): Promise<T> {
@@ -115,11 +124,11 @@ describe('CrearComentarioUseCase', () => {
     const logger = { error: vi.fn() };
 
     const useCase = new CrearComentarioUseCase(
-      ticketRepo as never,
-      operacionRepo as never,
-      estadoRepo as never,
-      tipoOperacionRepo as never,
-      eventPublisher as never,
+      ticketRepo,
+      operacionRepo,
+      estadoRepo,
+      tipoOperacionRepo,
+      eventPublisher,
       txRunner,
       primeraRespuestaRepo,
       new CalcularSlaHabilVenceService(),

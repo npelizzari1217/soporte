@@ -9,6 +9,7 @@ import {
   PrioridadNoEncontradaError,
   PrioridadCodigoDuplicadaError,
 } from '../../domain/errors/tickets.errors';
+import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 
 function make(codigo: string, id: string): PrioridadEntity {
   return PrioridadEntity.create(
@@ -21,13 +22,15 @@ describe('EditarPrioridadUseCase', () => {
   function makeCollaborators(prioridad: PrioridadEntity | null, otras: PrioridadEntity[] = []) {
     const todas = prioridad ? [prioridad, ...otras] : otras;
     const prioridadRepo = {
-      findById: vi.fn().mockResolvedValue(prioridad),
-      findByCodigo: vi.fn().mockImplementation(async (codigo: string) => {
-        return todas.find((p) => p.codigo === codigo) ?? null;
-      }),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<IPrioridadRepository['findById']>().mockResolvedValue(prioridad),
+      findByCodigo: vi
+        .fn<IPrioridadRepository['findByCodigo']>()
+        .mockImplementation(async (codigo: string) => {
+          return todas.find((p) => p.codigo === codigo) ?? null;
+        }),
+      save: vi.fn<IPrioridadRepository['save']>().mockResolvedValue(undefined),
     };
-    const useCase = new EditarPrioridadUseCase(prioridadRepo as never);
+    const useCase = new EditarPrioridadUseCase(prioridadRepo);
     return { useCase, prioridadRepo };
   }
 

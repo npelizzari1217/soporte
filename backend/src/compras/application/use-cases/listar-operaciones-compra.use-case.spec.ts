@@ -16,7 +16,11 @@
 import { ListarOperacionesCompraUseCase } from './listar-operaciones-compra.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { CompraNoEncontradaError } from '../../domain/errors/compras.errors';
-import { OperacionCompra } from '../../domain/ports/i-operacion-compra.repository';
+import {
+  IOperacionCompraRepository,
+  OperacionCompra,
+} from '../../domain/ports/i-operacion-compra.repository';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 
 const COMPRA_ID = 'compra-1';
 
@@ -59,9 +63,11 @@ function crearOperacion(overrides: Partial<OperacionCompra> = {}): OperacionComp
 
 describe('ListarOperacionesCompraUseCase', () => {
   function makeCollaborators() {
-    const compraRepo = { findByIdConItems: vi.fn() };
-    const operacionRepo = { listarPorCompra: vi.fn().mockResolvedValue([]) };
-    const useCase = new ListarOperacionesCompraUseCase(compraRepo as never, operacionRepo as never);
+    const compraRepo = { findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>() };
+    const operacionRepo = {
+      listarPorCompra: vi.fn<IOperacionCompraRepository['listarPorCompra']>().mockResolvedValue([]),
+    };
+    const useCase = new ListarOperacionesCompraUseCase(compraRepo, operacionRepo);
     return { useCase, compraRepo, operacionRepo };
   }
 

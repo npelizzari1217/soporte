@@ -5,6 +5,8 @@ import {
   EditarFechaEtapaDeItemUseCase,
   EditarFechaEtapaDeItemDto,
 } from './editar-fecha-etapa-de-item.use-case';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity } from '../../domain/entities/item-compra.entity';
 import {
@@ -60,17 +62,17 @@ function baseDto(
 describe('EditarFechaEtapaDeItemUseCase', () => {
   function makeCollaborators(compra: CompraEntity | null) {
     const compraRepo = {
-      findByIdConItems: vi.fn().mockResolvedValue(compra),
-      guardarItem: vi.fn().mockResolvedValue(undefined),
+      findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>().mockResolvedValue(compra),
+      guardarItem: vi.fn<ICompraRepository['guardarItem']>().mockResolvedValue(undefined),
     };
-    const registrarOperacion = { registrar: vi.fn().mockResolvedValue(undefined) };
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    const registrarOperacion = {
+      registrar: vi.fn<RegistrarOperacionCompra['registrar']>().mockResolvedValue(undefined),
+    };
+    // Runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner = { run: async <T>(fn: () => Promise<T>): Promise<T> => fn() };
+    vi.spyOn(txRunner, 'run');
 
-    const useCase = new EditarFechaEtapaDeItemUseCase(
-      compraRepo as never,
-      registrarOperacion as never,
-      txRunner as never,
-    );
+    const useCase = new EditarFechaEtapaDeItemUseCase(compraRepo, registrarOperacion, txRunner);
 
     return { useCase, compraRepo, registrarOperacion, txRunner };
   }

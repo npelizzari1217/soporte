@@ -3,6 +3,9 @@ import { ObtenerEquipoUseCase } from './obtener-equipo.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { EquipoNoEncontradoError } from '../../domain/errors/equipos.errors';
+import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
+import type { IComponenteEquipoRepository } from '../../domain/ports/i-componente-equipo.repository';
+import type { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
 
 /**
  * sdd/catalogo-unico-componentes (ADR-6): `ObtenerEquipoUseCase` resuelve
@@ -38,14 +41,18 @@ describe('ObtenerEquipoUseCase', () => {
   }
 
   function makeUseCase(overrides: {
-    equipoRepo?: unknown;
-    componenteRepo?: unknown;
-    insumoRepo?: unknown;
+    equipoRepo?: Pick<IEquipoInformaticoRepository, 'findById'>;
+    componenteRepo?: Pick<IComponenteEquipoRepository, 'findAllByEquipoId'>;
+    insumoRepo?: Pick<IInsumoRepository, 'findFamiliasDeInsumos'>;
   }) {
     return new ObtenerEquipoUseCase(
-      (overrides.equipoRepo ?? { findById: vi.fn() }) as never,
-      (overrides.componenteRepo ?? { findAllByEquipoId: vi.fn() }) as never,
-      (overrides.insumoRepo ?? { findFamiliasDeInsumos: vi.fn() }) as never,
+      overrides.equipoRepo ?? { findById: vi.fn<IEquipoInformaticoRepository['findById']>() },
+      overrides.componenteRepo ?? {
+        findAllByEquipoId: vi.fn<IComponenteEquipoRepository['findAllByEquipoId']>(),
+      },
+      overrides.insumoRepo ?? {
+        findFamiliasDeInsumos: vi.fn<IInsumoRepository['findFamiliasDeInsumos']>(),
+      },
     );
   }
 

@@ -8,15 +8,23 @@
  */
 import { DesvincularCompraDeReparacionUseCase } from './desvincular-compra-de-reparacion.use-case';
 import { VinculoNoEncontradoError } from '../../domain/errors/reparaciones.errors';
+import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
+
+/** Compra vinculada completa; el caso de uso solo mira `compraId`. */
+function vinculada(compraId: string, numero: string): CompraVinculada {
+  return { compraId, numero, cancelada: false, items: [] };
+}
 
 describe('DesvincularCompraDeReparacionUseCase', () => {
   function buildDeps() {
     const reparacionCompraRepo = {
-      findComprasVinculadasByTicketEdiliciaIds: vi.fn(),
-      desvincular: vi.fn().mockResolvedValue(undefined),
+      findComprasVinculadasByTicketEdiliciaIds:
+        vi.fn<IReparacionCompraRepository['findComprasVinculadasByTicketEdiliciaIds']>(),
+      desvincular: vi.fn<IReparacionCompraRepository['desvincular']>().mockResolvedValue(undefined),
     };
 
-    const useCase = new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo as any);
+    const useCase = new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo);
 
     return { useCase, reparacionCompraRepo };
   }
@@ -26,7 +34,7 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
   it('desvincula (hard delete real) cuando el vínculo existe', async () => {
     const { useCase, reparacionCompraRepo } = buildDeps();
     reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds.mockResolvedValue(
-      new Map([['edilicia-uuid', [{ compraId: 'compra-uuid', numero: 'COM-2026-00001' }]]]),
+      new Map([['edilicia-uuid', [vinculada('compra-uuid', 'COM-2026-00001')]]]),
     );
 
     const result = await useCase.execute(baseDto);
@@ -49,7 +57,7 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
   it('rechaza con 404 cuando la reparación tiene otras compras vinculadas pero no esta', async () => {
     const { useCase, reparacionCompraRepo } = buildDeps();
     reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds.mockResolvedValue(
-      new Map([['edilicia-uuid', [{ compraId: 'otra-compra-uuid', numero: 'COM-2026-00002' }]]]),
+      new Map([['edilicia-uuid', [vinculada('otra-compra-uuid', 'COM-2026-00002')]]]),
     );
 
     const result = await useCase.execute(baseDto);

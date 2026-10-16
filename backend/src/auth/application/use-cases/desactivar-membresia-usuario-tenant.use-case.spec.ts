@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { DesactivarMembresiaUsuarioTenantUseCase } from './desactivar-membresia-usuario-tenant.use-case';
 import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import { MembresiaNoEncontradaError } from '../../domain/errors/auth.errors';
+import type { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 
 function buildMembresia(activo = true) {
   return MembresiaEntity.reconstitute(
@@ -17,10 +18,12 @@ describe('DesactivarMembresiaUsuarioTenantUseCase (gestión mínima de usuarios,
   it('desactiva la membresía del usuario en este cliente (no borra el usuario global)', async () => {
     const membresia = buildMembresia(true);
     const membresiaRepo = {
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(membresia),
-      save: vi.fn().mockResolvedValue(undefined),
+      findByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(membresia),
+      save: vi.fn<IMembresiaRepository['save']>().mockResolvedValue(undefined),
     };
-    const useCase = new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo as never);
+    const useCase = new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo);
 
     const result = await useCase.execute({ clienteId: 'cliente-token', usuarioId: 'usuario-1' });
 
@@ -31,10 +34,12 @@ describe('DesactivarMembresiaUsuarioTenantUseCase (gestión mínima de usuarios,
 
   it('AISLAMIENTO: falla con MembresiaNoEncontradaError si la membresía no existe en este cliente', async () => {
     const membresiaRepo = {
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(null),
-      save: vi.fn(),
+      findByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(null),
+      save: vi.fn<IMembresiaRepository['save']>(),
     };
-    const useCase = new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo as never);
+    const useCase = new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -49,10 +54,12 @@ describe('DesactivarMembresiaUsuarioTenantUseCase (gestión mínima de usuarios,
   it('es idempotente: desactivar una membresía ya inactiva no lanza', async () => {
     const membresia = buildMembresia(false);
     const membresiaRepo = {
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(membresia),
-      save: vi.fn().mockResolvedValue(undefined),
+      findByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(membresia),
+      save: vi.fn<IMembresiaRepository['save']>().mockResolvedValue(undefined),
     };
-    const useCase = new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo as never);
+    const useCase = new DesactivarMembresiaUsuarioTenantUseCase(membresiaRepo);
 
     const result = await useCase.execute({ clienteId: 'cliente-token', usuarioId: 'usuario-1' });
 

@@ -14,6 +14,11 @@ import { PreventivoController, toHttpException } from './preventivo.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
+import { CrearPlanUseCase } from '../../application/use-cases/crear-plan.use-case';
+import { EditarPlanUseCase } from '../../application/use-cases/editar-plan.use-case';
+import { ListarPlanesUseCase } from '../../application/use-cases/listar-planes.use-case';
+import { DarDeBajaPlanUseCase } from '../../application/use-cases/dar-de-baja-plan.use-case';
+import { ListarGeneracionesPlanUseCase } from '../../application/use-cases/listar-generaciones-plan.use-case';
 import {
   ObjetivoInvalidoError,
   PlanNoEncontradoError,
@@ -38,29 +43,49 @@ function makePlan(): PlanPreventivoEntity {
   ).getValue();
 }
 
+/**
+ * Doble de un caso de uso concreto: lleva el prototipo de la clase real y
+ * `execute` como mock tipado con su firma.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
+
+/** Body completo: el caso de error depende del use case (mockeado), no del contenido. */
+const DTO_CREAR_VALIDO = {
+  titulo: 'Plan test',
+  prioridadId: 'prioridad-uuid',
+  responsableId: 'responsable-uuid',
+  intervaloValor: 1,
+  intervaloUnidad: 'MESES' as const,
+  fechaInicio: '2026-01-01',
+};
+
 describe('PreventivoController (4.4)', () => {
   function buildController() {
-    const crearPlanUseCase = { execute: vi.fn() };
-    const editarPlanUseCase = { execute: vi.fn() };
-    const listarPlanesUseCase = { execute: vi.fn() };
-    const darDeBajaPlanUseCase = { execute: vi.fn() };
-    const listarGeneracionesPlanUseCase = { execute: vi.fn() };
+    const crearPlan = espiado(CrearPlanUseCase);
+    const editarPlan = espiado(EditarPlanUseCase);
+    const listarPlanes = espiado(ListarPlanesUseCase);
+    const darDeBajaPlan = espiado(DarDeBajaPlanUseCase);
+    const listarGeneracionesPlan = espiado(ListarGeneracionesPlanUseCase);
 
     const controller = new PreventivoController(
-      crearPlanUseCase as any,
-      editarPlanUseCase as any,
-      listarPlanesUseCase as any,
-      darDeBajaPlanUseCase as any,
-      listarGeneracionesPlanUseCase as any,
+      crearPlan.caso,
+      editarPlan.caso,
+      listarPlanes.caso,
+      darDeBajaPlan.caso,
+      listarGeneracionesPlan.caso,
     );
 
     return {
       controller,
-      crearPlanUseCase,
-      editarPlanUseCase,
-      listarPlanesUseCase,
-      darDeBajaPlanUseCase,
-      listarGeneracionesPlanUseCase,
+      crearPlanUseCase: crearPlan,
+      editarPlanUseCase: editarPlan,
+      listarPlanesUseCase: listarPlanes,
+      darDeBajaPlanUseCase: darDeBajaPlan,
+      listarGeneracionesPlanUseCase: listarGeneracionesPlan,
     };
   }
 
@@ -76,7 +101,7 @@ describe('PreventivoController (4.4)', () => {
         intervaloValor: 1,
         intervaloUnidad: 'MESES',
         fechaInicio: '2026-01-01',
-      } as any);
+      });
 
       expect(result.id).toBe('plan-uuid');
       expect(result.titulo).toBe('Plan test');
@@ -88,7 +113,9 @@ describe('PreventivoController (4.4)', () => {
         Result.fail(new ObjetivoInvalidoError(true, true)),
       );
 
-      await expect(controller.crear({} as any)).rejects.toThrow(UnprocessableEntityException);
+      await expect(controller.crear(DTO_CREAR_VALIDO)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('declara @RequiereAcciones("PREVENTIVO:ALTAS")', () => {
@@ -137,7 +164,7 @@ describe('PreventivoController (4.4)', () => {
       const { controller, editarPlanUseCase } = buildController();
       editarPlanUseCase.execute.mockResolvedValue(Result.fail(new PlanNoEncontradoError('x')));
 
-      await expect(controller.editar('x', {} as any)).rejects.toThrow(NotFoundException);
+      await expect(controller.editar('x', {})).rejects.toThrow(NotFoundException);
     });
 
     it('declara @RequiereAcciones("PREVENTIVO:MODIFICACION")', () => {

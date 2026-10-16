@@ -7,14 +7,15 @@
 import { CambiarEstadoActivoPrioridadUseCase } from './cambiar-estado-activo-prioridad.use-case';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { PrioridadNoEncontradaError } from '../../domain/errors/tickets.errors';
+import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 
 describe('CambiarEstadoActivoPrioridadUseCase', () => {
   function makeCollaborators(prioridad: PrioridadEntity | null) {
     const prioridadRepo = {
-      findById: vi.fn().mockResolvedValue(prioridad),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<IPrioridadRepository['findById']>().mockResolvedValue(prioridad),
+      save: vi.fn<IPrioridadRepository['save']>().mockResolvedValue(undefined),
     };
-    const useCase = new CambiarEstadoActivoPrioridadUseCase(prioridadRepo as never);
+    const useCase = new CambiarEstadoActivoPrioridadUseCase(prioridadRepo);
     return { useCase, prioridadRepo };
   }
 

@@ -19,11 +19,18 @@ import 'reflect-metadata';
 import { RolesController } from './roles.controller';
 import { ACCIONES_KEY } from '../../infrastructure/guards/decorators';
 import { RoleEntity } from '../../domain/entities/role.entity';
+import { ListarRolesUseCase } from '../../application/use-cases/listar-roles.use-case';
+import type { Mock } from 'vitest';
 
 describe('RolesController (item 3)', () => {
   function buildController() {
-    const listarRolesUseCase = { execute: vi.fn() };
-    const controller = new RolesController(listarRolesUseCase as never);
+    // Doble con el prototipo de la clase real y `execute` como mock tipado con su firma.
+    const listarRolesUseCase: ListarRolesUseCase & {
+      execute: Mock<ListarRolesUseCase['execute']>;
+    } = Object.create(ListarRolesUseCase.prototype, {
+      execute: { value: vi.fn<ListarRolesUseCase['execute']>() },
+    });
+    const controller = new RolesController(listarRolesUseCase);
     return { controller, listarRolesUseCase };
   }
 

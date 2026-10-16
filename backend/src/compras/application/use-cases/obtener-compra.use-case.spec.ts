@@ -17,6 +17,7 @@ import { ObtenerCompraUseCase } from './obtener-compra.use-case';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import { CompraNoEncontradaError } from '../../domain/errors/compras.errors';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { InsumoEntity } from '../../../insumos/domain/entities/insumo.entity';
 import type { SeguimientoInsumo } from '../../../insumos/domain/entities/unidad-insumo.entity';
 import type { IInsumoRepository } from '../../../insumos/domain/ports/i-insumo.repository';
@@ -84,9 +85,9 @@ function crearCompra(
 
 describe('ObtenerCompraUseCase', () => {
   function makeCollaborators() {
-    const compraRepo = { findByIdConItems: vi.fn() };
+    const compraRepo = { findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>() };
     const insumoRepo = { findById: vi.fn<IInsumoRepository['findById']>() };
-    const useCase = new ObtenerCompraUseCase(compraRepo as never, insumoRepo);
+    const useCase = new ObtenerCompraUseCase(compraRepo, insumoRepo);
     return { useCase, compraRepo, insumoRepo };
   }
 

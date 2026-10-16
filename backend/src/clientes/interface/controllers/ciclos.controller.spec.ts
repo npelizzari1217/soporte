@@ -15,18 +15,33 @@ import {
   CicloOverlapError,
   CicloVigenteNotFoundError,
 } from '../../domain/errors/clientes.errors';
+import type { Mock } from 'vitest';
+import { ElegirCicloTenantUseCase } from '../../application/use-cases/elegir-ciclo-tenant.use-case';
+import { ActivarCicloUseCase } from '../../application/use-cases/activar-ciclo.use-case';
+import { DesactivarCicloUseCase } from '../../application/use-cases/desactivar-ciclo.use-case';
+import { ListarCiclosUseCase } from '../../application/use-cases/listar-ciclos.use-case';
+
+/**
+ * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
+ * controller) y reemplaza `execute` por un mock tipado con su firma.
+ */
+function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Clase: {
+  prototype: T;
+}): T & { execute: Mock<T['execute']> } {
+  return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
+}
 
 describe('CiclosController (T9.7)', () => {
   function buildController() {
-    const elegirCicloTenantUseCase = { execute: vi.fn() };
-    const activarCicloUseCase = { execute: vi.fn() };
-    const desactivarCicloUseCase = { execute: vi.fn() };
-    const listarCiclosUseCase = { execute: vi.fn() };
+    const elegirCicloTenantUseCase = casoDeUsoDoble(ElegirCicloTenantUseCase);
+    const activarCicloUseCase = casoDeUsoDoble(ActivarCicloUseCase);
+    const desactivarCicloUseCase = casoDeUsoDoble(DesactivarCicloUseCase);
+    const listarCiclosUseCase = casoDeUsoDoble(ListarCiclosUseCase);
     const controller = new CiclosController(
-      elegirCicloTenantUseCase as any,
-      activarCicloUseCase as any,
-      desactivarCicloUseCase as any,
-      listarCiclosUseCase as any,
+      elegirCicloTenantUseCase,
+      activarCicloUseCase,
+      desactivarCicloUseCase,
+      listarCiclosUseCase,
     );
     return {
       controller,
@@ -50,7 +65,7 @@ describe('CiclosController (T9.7)', () => {
       const { controller, elegirCicloTenantUseCase } = buildController();
       elegirCicloTenantUseCase.execute.mockResolvedValue(Result.ok(cicloAdoptado));
 
-      const result = await controller.create({ cicloVigenteId: 'master-1' } as any);
+      const result = await controller.create({ cicloVigenteId: 'master-1' });
 
       expect(result).toEqual({
         id: cicloAdoptado.id,
@@ -69,7 +84,7 @@ describe('CiclosController (T9.7)', () => {
         Result.fail(new CicloVigenteNotFoundError('master-1')),
       );
 
-      await expect(controller.create({ cicloVigenteId: 'master-1' } as any)).rejects.toBeInstanceOf(
+      await expect(controller.create({ cicloVigenteId: 'master-1' })).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });
@@ -78,7 +93,7 @@ describe('CiclosController (T9.7)', () => {
       const { controller, elegirCicloTenantUseCase } = buildController();
       elegirCicloTenantUseCase.execute.mockResolvedValue(Result.fail(new CicloOverlapError()));
 
-      await expect(controller.create({ cicloVigenteId: 'master-1' } as any)).rejects.toBeInstanceOf(
+      await expect(controller.create({ cicloVigenteId: 'master-1' })).rejects.toBeInstanceOf(
         ConflictException,
       );
     });

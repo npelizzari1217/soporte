@@ -9,7 +9,12 @@
  */
 import { ListarTecnicosAsignablesUseCase } from './listar-tecnicos-asignables.use-case';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { Modulo } from '../../../shared/domain/modulos';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 
 function makeTicket(tipoId = 'tipo-soporte-uuid'): TicketEntity {
   return TicketEntity.create(
@@ -29,21 +34,31 @@ function makeTicket(tipoId = 'tipo-soporte-uuid'): TicketEntity {
 }
 
 describe('ListarTecnicosAsignablesUseCase', () => {
-  function makeCollaborators(modulo = 'SOPORTE') {
-    const ticketRepo = { findById: vi.fn() };
-    const tipoTicketRepo = { findById: vi.fn().mockResolvedValue({ codigo: 'ANY', modulo }) };
-    const usuarioMasterChecker = { listarTecnicosAsignables: vi.fn().mockResolvedValue([]) };
+  function makeCollaborators(modulo: Modulo = 'TICKETS') {
+    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const tipoTicket = TipoTicketEntity.create(
+      { codigo: 'ANY', nombre: 'Any', modulo, activo: true },
+      'tipo-uuid',
+    );
+    const tipoTicketRepo = {
+      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(tipoTicket),
+    };
+    const usuarioMasterChecker = {
+      listarTecnicosAsignables: vi
+        .fn<IUsuarioMasterChecker['listarTecnicosAsignables']>()
+        .mockResolvedValue([]),
+    };
 
     const useCase = new ListarTecnicosAsignablesUseCase(
-      ticketRepo as never,
-      tipoTicketRepo as never,
-      usuarioMasterChecker as never,
+      ticketRepo,
+      tipoTicketRepo,
+      usuarioMasterChecker,
     );
     return { useCase, ticketRepo, tipoTicketRepo, usuarioMasterChecker };
   }
 
   it('happy: lee el módulo del tipo (columna) y devuelve los técnicos del checker', async () => {
-    const c = makeCollaborators('SOPORTE');
+    const c = makeCollaborators('TICKETS');
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
     const tecnicos = [
       { id: 'tec-1', nombre: 'Ana', apellido: 'García' },
@@ -57,7 +72,7 @@ describe('ListarTecnicosAsignablesUseCase', () => {
     expect(result.getValue()).toEqual(tecnicos);
     expect(c.usuarioMasterChecker.listarTecnicosAsignables).toHaveBeenCalledWith(
       'cliente-uuid',
-      'SOPORTE',
+      'TICKETS',
     );
   });
 

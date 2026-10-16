@@ -4,26 +4,32 @@ import {
   CeldaPermisoInvalidaError,
   MembresiaNoEncontradaError,
 } from '../../domain/errors/auth.errors';
+import type {
+  IMembresiaRepository,
+  MembresiaResuelta,
+} from '../../domain/ports/i-membresia.repository';
+import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 
-function buildMembresiaResuelta() {
+function buildMembresiaResuelta(): MembresiaResuelta {
   return {
     clienteId: 'cliente-token',
     clienteNombre: 'Cliente Token',
     rolCodigo: 'TECNICO',
-    permisos: [],
+    clienteRequiere2fa: false,
   };
 }
 
 describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-permisos-por-usuario WU-7.4)', () => {
   it('reemplaza el set completo de celdas y lo retorna', async () => {
     const membresiaRepo = {
-      findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(buildMembresiaResuelta()),
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(buildMembresiaResuelta()),
     };
-    const permisosRepo = { setPermisos: vi.fn().mockResolvedValue(undefined) };
-    const useCase = new AsignarPermisosUsuarioTenantUseCase(
-      permisosRepo as never,
-      membresiaRepo as never,
-    );
+    const permisosRepo = {
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+    };
+    const useCase = new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -41,13 +47,12 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
 
   it('DEFENSA EN PROFUNDIDAD: falla con CeldaPermisoInvalidaError si algún código no está en PARES_VALIDOS', async () => {
     const membresiaRepo = {
-      findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(buildMembresiaResuelta()),
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(buildMembresiaResuelta()),
     };
-    const permisosRepo = { setPermisos: vi.fn() };
-    const useCase = new AsignarPermisosUsuarioTenantUseCase(
-      permisosRepo as never,
-      membresiaRepo as never,
-    );
+    const permisosRepo = { setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>() };
+    const useCase = new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -62,12 +67,13 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
   });
 
   it('AISLAMIENTO: falla con MembresiaNoEncontradaError si no hay membresía activa en este cliente', async () => {
-    const membresiaRepo = { findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(null) };
-    const permisosRepo = { setPermisos: vi.fn() };
-    const useCase = new AsignarPermisosUsuarioTenantUseCase(
-      permisosRepo as never,
-      membresiaRepo as never,
-    );
+    const membresiaRepo = {
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(null),
+    };
+    const permisosRepo = { setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>() };
+    const useCase = new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',

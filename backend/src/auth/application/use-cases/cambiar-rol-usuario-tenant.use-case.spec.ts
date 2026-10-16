@@ -8,6 +8,9 @@ import {
   RolNoEncontradoError,
 } from '../../domain/errors/auth.errors';
 import { Result } from '../../../shared/domain/result';
+import type { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
+import type { IRoleRepository } from '../../domain/ports/i-role.repository';
+import type { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
 
 function buildMembresia() {
   return MembresiaEntity.reconstitute(
@@ -31,15 +34,23 @@ function buildUseCaseConAplicarPreset(
     permisos: [],
   });
   const membresiaRepo = {
-    findByUsuarioYCliente: vi.fn().mockResolvedValue(membresia),
-    save: vi.fn().mockResolvedValue(undefined),
+    findByUsuarioYCliente: vi
+      .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+      .mockResolvedValue(membresia),
+    save: vi.fn<IMembresiaRepository['save']>().mockResolvedValue(undefined),
   };
-  const roleRepo = { findByCodigo: vi.fn().mockResolvedValue(rolNuevo) };
-  const aplicarPresetPermisosUseCase = { execute: vi.fn().mockResolvedValue(aplicarPresetResult) };
+  const roleRepo = {
+    findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(rolNuevo),
+  };
+  const aplicarPresetPermisosUseCase = {
+    execute: vi
+      .fn<AplicarPresetPermisosUseCase['execute']>()
+      .mockResolvedValue(aplicarPresetResult),
+  };
   const useCase = new CambiarRolUsuarioTenantUseCase(
-    membresiaRepo as never,
-    roleRepo as never,
-    aplicarPresetPermisosUseCase as never,
+    membresiaRepo,
+    roleRepo,
+    aplicarPresetPermisosUseCase,
   );
   return { useCase, membresia, membresiaRepo, roleRepo, aplicarPresetPermisosUseCase };
 }
@@ -54,15 +65,21 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
       permisos: [],
     });
     const membresiaRepo = {
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(membresia),
-      save: vi.fn().mockResolvedValue(undefined),
+      findByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(membresia),
+      save: vi.fn<IMembresiaRepository['save']>().mockResolvedValue(undefined),
     };
-    const roleRepo = { findByCodigo: vi.fn().mockResolvedValue(rolNuevo) };
-    const aplicarPresetPermisosUseCase = { execute: vi.fn() };
+    const roleRepo = {
+      findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(rolNuevo),
+    };
+    const aplicarPresetPermisosUseCase = {
+      execute: vi.fn<AplicarPresetPermisosUseCase['execute']>(),
+    };
     const useCase = new CambiarRolUsuarioTenantUseCase(
-      membresiaRepo as never,
-      roleRepo as never,
-      aplicarPresetPermisosUseCase as never,
+      membresiaRepo,
+      roleRepo,
+      aplicarPresetPermisosUseCase,
     );
 
     const result = await useCase.execute({
@@ -81,11 +98,13 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
 
   it('AISLAMIENTO: falla con MembresiaNoEncontradaError si la membresía no existe en este cliente', async () => {
     const membresiaRepo = {
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(null),
-      save: vi.fn(),
+      findByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(null),
+      save: vi.fn<IMembresiaRepository['save']>(),
     };
     const roleRepo = {
-      findByCodigo: vi.fn().mockResolvedValue(
+      findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(
         RoleEntity.create({
           codigo: 'TECNICO',
           nombre: 'Técnico',
@@ -94,11 +113,13 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
         }),
       ),
     };
-    const aplicarPresetPermisosUseCase = { execute: vi.fn() };
+    const aplicarPresetPermisosUseCase = {
+      execute: vi.fn<AplicarPresetPermisosUseCase['execute']>(),
+    };
     const useCase = new CambiarRolUsuarioTenantUseCase(
-      membresiaRepo as never,
-      roleRepo as never,
-      aplicarPresetPermisosUseCase as never,
+      membresiaRepo,
+      roleRepo,
+      aplicarPresetPermisosUseCase,
     );
 
     const result = await useCase.execute({
@@ -113,13 +134,20 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
   });
 
   it('falla con RolNoEncontradoError si el rolCodigo no existe en el catálogo', async () => {
-    const membresiaRepo = { findByUsuarioYCliente: vi.fn(), save: vi.fn() };
-    const roleRepo = { findByCodigo: vi.fn().mockResolvedValue(null) };
-    const aplicarPresetPermisosUseCase = { execute: vi.fn() };
+    const membresiaRepo = {
+      findByUsuarioYCliente: vi.fn<IMembresiaRepository['findByUsuarioYCliente']>(),
+      save: vi.fn<IMembresiaRepository['save']>(),
+    };
+    const roleRepo = {
+      findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(null),
+    };
+    const aplicarPresetPermisosUseCase = {
+      execute: vi.fn<AplicarPresetPermisosUseCase['execute']>(),
+    };
     const useCase = new CambiarRolUsuarioTenantUseCase(
-      membresiaRepo as never,
-      roleRepo as never,
-      aplicarPresetPermisosUseCase as never,
+      membresiaRepo,
+      roleRepo,
+      aplicarPresetPermisosUseCase,
     );
 
     const result = await useCase.execute({

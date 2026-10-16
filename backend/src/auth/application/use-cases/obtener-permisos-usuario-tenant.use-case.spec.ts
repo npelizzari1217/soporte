@@ -1,28 +1,34 @@
 import { describe, it, expect, vi } from 'vitest';
 import { ObtenerPermisosUsuarioTenantUseCase } from './obtener-permisos-usuario-tenant.use-case';
 import { MembresiaNoEncontradaError } from '../../domain/errors/auth.errors';
+import type {
+  IMembresiaRepository,
+  MembresiaResuelta,
+} from '../../domain/ports/i-membresia.repository';
+import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 
-function buildMembresiaResuelta(rolCodigo: string) {
+function buildMembresiaResuelta(rolCodigo: string): MembresiaResuelta {
   return {
     clienteId: 'cliente-token',
     clienteNombre: 'Cliente Token',
     rolCodigo,
-    permisos: [],
+    clienteRequiere2fa: false,
   };
 }
 
 describe('ObtenerPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-permisos-por-usuario WU-7.4)', () => {
   it('usuario NO administrador: retorna las celdas de la matriz y esAdministrador=false', async () => {
     const membresiaRepo = {
-      findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(buildMembresiaResuelta('TECNICO')),
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(buildMembresiaResuelta('TECNICO')),
     };
     const permisosRepo = {
-      findByUsuarioYCliente: vi.fn().mockResolvedValue(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
+      findByUsuarioYCliente: vi
+        .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+        .mockResolvedValue(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
     };
-    const useCase = new ObtenerPermisosUsuarioTenantUseCase(
-      membresiaRepo as never,
-      permisosRepo as never,
-    );
+    const useCase = new ObtenerPermisosUsuarioTenantUseCase(membresiaRepo, permisosRepo);
 
     const result = await useCase.execute({ clienteId: 'cliente-token', usuarioId: 'usuario-1' });
 
@@ -40,11 +46,10 @@ describe('ObtenerPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
         .fn()
         .mockResolvedValue(buildMembresiaResuelta('ADMINISTRADOR')),
     };
-    const permisosRepo = { findByUsuarioYCliente: vi.fn() };
-    const useCase = new ObtenerPermisosUsuarioTenantUseCase(
-      membresiaRepo as never,
-      permisosRepo as never,
-    );
+    const permisosRepo = {
+      findByUsuarioYCliente: vi.fn<IMatrizPermisosRepository['findByUsuarioYCliente']>(),
+    };
+    const useCase = new ObtenerPermisosUsuarioTenantUseCase(membresiaRepo, permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -57,12 +62,15 @@ describe('ObtenerPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
   });
 
   it('AISLAMIENTO: falla con MembresiaNoEncontradaError si no hay membresía activa en este cliente', async () => {
-    const membresiaRepo = { findActivaByUsuarioYCliente: vi.fn().mockResolvedValue(null) };
-    const permisosRepo = { findByUsuarioYCliente: vi.fn() };
-    const useCase = new ObtenerPermisosUsuarioTenantUseCase(
-      membresiaRepo as never,
-      permisosRepo as never,
-    );
+    const membresiaRepo = {
+      findActivaByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
+        .mockResolvedValue(null),
+    };
+    const permisosRepo = {
+      findByUsuarioYCliente: vi.fn<IMatrizPermisosRepository['findByUsuarioYCliente']>(),
+    };
+    const useCase = new ObtenerPermisosUsuarioTenantUseCase(membresiaRepo, permisosRepo);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',

@@ -16,6 +16,11 @@ import {
   SectorTicketInexistenteError,
 } from '../../domain/errors/tickets.errors';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
+import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
+import { unstubbed } from '../../../testing/mocks';
 
 /**
  * Estados de catálogo indexados por id — `estadoRepo.findById(ticket.estadoId)`
@@ -56,23 +61,37 @@ function makeTicket(estadoId = 'estado-nuevo-uuid'): TicketEntity {
 describe('EditarTicketUseCase', () => {
   function makeCollaborators(ticket: TicketEntity | null) {
     const ticketRepo = {
-      findById: vi.fn().mockResolvedValue(ticket),
-      save: vi.fn().mockResolvedValue(undefined),
+      findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(ticket),
+      save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
+      findByIds: unstubbed('findByIds'),
+      findByNumero: unstubbed('findByNumero'),
+      findLastSecuencia: unstubbed('findLastSecuencia'),
+      findAll: unstubbed('findAll'),
+      count: unstubbed('count'),
+      esVisiblePara: unstubbed('esVisiblePara'),
+      delete: unstubbed('delete'),
     };
     const prioridadRepo = {
       findById: vi
-        .fn()
+        .fn<IPrioridadRepository['findById']>()
         .mockResolvedValue(
           PrioridadEntity.create(
             { codigo: 'ALTA', nombre: 'Alta', color: null, orden: 3, activo: true },
             'prioridad-alta-uuid',
           ),
         ),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
+      save: unstubbed('save'),
     };
     const estadoRepo = {
-      findById: vi.fn((id: string) => Promise.resolve(ESTADOS[id] ?? null)),
+      findById: vi.fn<IEstadoRepository['findById']>((id) => Promise.resolve(ESTADOS[id] ?? null)),
+      findByCodigo: unstubbed('findByCodigo'),
+      findIdByCodigo: unstubbed('findIdByCodigo'),
+      findAllActive: unstubbed('findAllActive'),
     };
-    const eventPublisher = { publish: vi.fn() };
+    const eventPublisher = { publish: vi.fn<IDomainEventPublisher['publish']>() };
     // Sector existente pero DESACTIVADO: la edicion lo acepta igual (odd/ubicacion-sector-ticket).
     const sectorRepo = {
       findById: vi.fn(async (id: string) =>
@@ -82,10 +101,10 @@ describe('EditarTicketUseCase', () => {
       ),
     };
     const useCase = new EditarTicketUseCase(
-      ticketRepo as never,
-      prioridadRepo as never,
-      estadoRepo as never,
-      eventPublisher as never,
+      ticketRepo,
+      prioridadRepo,
+      estadoRepo,
+      eventPublisher,
       sectorRepo,
     );
     return { useCase, ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo };
@@ -252,6 +271,9 @@ describe('EditarTicketUseCase', () => {
     expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
     const evento = c.eventPublisher.publish.mock.calls[0][0];
     expect(evento).toBeInstanceOf(TicketReprioritizadoEvent);
+    if (!(evento instanceof TicketReprioritizadoEvent)) {
+      throw new Error('se esperaba un TicketReprioritizadoEvent');
+    }
     expect(evento.ticketId).toBe('ticket-uuid');
     expect(evento.prioridadId).toBe('prioridad-alta-uuid');
   });

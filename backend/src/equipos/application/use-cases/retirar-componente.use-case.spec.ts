@@ -3,6 +3,12 @@ import { RetirarComponenteUseCase } from './retirar-componente.use-case';
 import { ComponenteEquipoEntity } from '../../domain/entities/componente-equipo.entity';
 import { MovimientoInsumoEntity } from '../../../insumos/domain/entities/movimiento-insumo.entity';
 import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
+import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import type { RegistrarEntradaInsumoUseCase } from '../../../insumos/application/use-cases/registrar-entrada-insumo.use-case';
+import type { OperacionesUnidadInsumo } from '../../../insumos/application/services/operaciones-unidad-insumo.service';
+
+type RegistrarDevolucion = RegistrarEntradaInsumoUseCase['registrarDevolucionDeComponente'];
+type DescartarInstaladas = OperacionesUnidadInsumo['descartarInstaladas'];
 import { Result } from '../../../shared/domain/result';
 import {
   ComponenteDadoDeBajaError,
@@ -50,10 +56,18 @@ describe('RetirarComponenteUseCase', () => {
   /** Runner fake: ejecuta el callback y deja propagar la excepcion, como el real al revertir. */
   function makeSetup(
     componente: ComponenteEquipoEntity | null,
-    opciones: { entrada?: unknown; marcado?: boolean; descarte?: unknown } = {},
+    opciones: {
+      entrada?: Awaited<ReturnType<RegistrarDevolucion>>;
+      marcado?: boolean;
+      descarte?: Awaited<ReturnType<DescartarInstaladas>>;
+    } = {},
   ) {
     const orden: string[] = [];
-    const txRunner = { run: vi.fn((fn: () => unknown) => fn()) };
+    const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+    };
+    // Espía sobre el runner real: `run` es genérico y un `vi.fn` tipado lo perdería.
+    const run = vi.spyOn(txRunner, 'run');
     const componenteRepo = {
       findById: vi.fn().mockResolvedValue(componente),
       retirar: vi.fn(async () => {
@@ -80,13 +94,21 @@ describe('RetirarComponenteUseCase', () => {
       }),
     };
     const useCase = new RetirarComponenteUseCase(
-      txRunner as never,
+      txRunner,
       equipoRepo,
-      componenteRepo as never,
-      registrarEntrada as never,
-      operaciones as never,
+      componenteRepo,
+      registrarEntrada,
+      operaciones,
     );
-    return { useCase, txRunner, equipoRepo, componenteRepo, registrarEntrada, operaciones, orden };
+    return {
+      useCase,
+      txRunner: { run },
+      equipoRepo,
+      componenteRepo,
+      registrarEntrada,
+      operaciones,
+      orden,
+    };
   }
 
   const dto = (componenteId: string, extra: Record<string, unknown> = {}) => ({

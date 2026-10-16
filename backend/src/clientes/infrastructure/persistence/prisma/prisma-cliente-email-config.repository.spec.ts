@@ -11,6 +11,7 @@
  */
 import { PrismaClienteEmailConfigRepository } from './prisma-cliente-email-config.repository';
 import { AesGcmSecretCipher } from '../../../../shared/infrastructure/crypto/aes-gcm-secret-cipher';
+import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 
 const VALID_KEY_HEX = 'b'.repeat(64);
 const CLIENTE_ID = 'cliente-1';
@@ -21,7 +22,11 @@ function makePrismaService(overrides: {
 }) {
   const findUnique = overrides.findUnique ?? vi.fn();
   const update = overrides.update ?? vi.fn().mockResolvedValue(undefined);
-  const prismaService = { getMasterClient: () => ({ cliente: { findUnique, update } }) };
+  // Doble con el prototipo del servicio real (así encaja en el constructor del repositorio):
+  // solo `getMasterClient` devuelve el delegado `cliente` mockeado.
+  const prismaService: PrismaService = Object.assign(Object.create(PrismaService.prototype), {
+    getMasterClient: () => ({ cliente: { findUnique, update } }),
+  });
   return { prismaService, findUnique, update };
 }
 
@@ -46,10 +51,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
       });
       const findUnique = vi.fn().mockImplementation(() => Promise.resolve(storedRow));
       const { prismaService } = makePrismaService({ findUnique, update });
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       await repo.save(CLIENTE_ID, {
         host: 'smtp.ejemplo.com',
@@ -79,10 +81,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
       });
       const findUnique = vi.fn().mockImplementation(() => Promise.resolve(storedRow));
       const { prismaService } = makePrismaService({ findUnique, update });
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       await repo.save(CLIENTE_ID, {
         host: 'smtp.ejemplo.com',
@@ -98,10 +97,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
 
     it('findForSend() retorna null si el cliente no tiene configuración', async () => {
       const { prismaService } = makePrismaService({ findUnique: vi.fn().mockResolvedValue(null) });
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       expect(await repo.findForSend(CLIENTE_ID)).toBeNull();
     });
@@ -121,10 +117,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
           smtpVerificacionError: null,
         }),
       });
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       const state = await repo.findState(CLIENTE_ID);
 
@@ -147,10 +140,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
           smtpVerificacionError: null,
         }),
       });
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       expect((await repo.findState(CLIENTE_ID)).configurado).toBe(false);
     });
@@ -159,10 +149,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
   describe('saveVerificationOutcome()', () => {
     it('en éxito, setea smtpVerificadoAt y limpia el error', async () => {
       const { prismaService, update } = makePrismaService({});
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       await repo.saveVerificationOutcome(CLIENTE_ID, { ok: true, motivo: null });
 
@@ -174,10 +161,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
 
     it('en fallo, solo escribe el motivo saneado — no toca smtpConfigUpdatedAt', async () => {
       const { prismaService, update } = makePrismaService({});
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       await repo.saveVerificationOutcome(CLIENTE_ID, {
         ok: false,
@@ -195,10 +179,7 @@ describe('PrismaClienteEmailConfigRepository', () => {
   describe('clear()', () => {
     it('limpia las 9 columnas SMTP', async () => {
       const { prismaService, update } = makePrismaService({});
-      const repo = new PrismaClienteEmailConfigRepository(
-        prismaService as never,
-        new AesGcmSecretCipher(),
-      );
+      const repo = new PrismaClienteEmailConfigRepository(prismaService, new AesGcmSecretCipher());
 
       await repo.clear(CLIENTE_ID);
 

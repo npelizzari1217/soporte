@@ -13,6 +13,13 @@
  * Ref design: ADR-C2, ADR-C4, ADR-C5. Tarea: PR-14.
  */
 import { CrearCompraUseCase, CrearCompraDto } from './crear-compra.use-case';
+import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { NumeradorCompra } from '../../domain/services/numerador-compra';
+import { ResolverCicloActivoCompra } from '../services/resolver-ciclo-activo-compra.service';
+import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
+import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { unstubbed } from '../../../testing/mocks';
 import { Result } from '../../../shared/domain/result';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
@@ -36,10 +43,16 @@ function baseDto(overrides: Partial<CrearCompraDto> = {}): CrearCompraDto {
 
 describe('CrearCompraUseCase', () => {
   function makeCollaborators() {
-    const compraRepo = { guardar: vi.fn().mockResolvedValue(undefined) };
-    const numerador = { generarNumero: vi.fn().mockResolvedValue(Result.ok('COM-2026-00001')) };
+    const compraRepo = {
+      guardar: vi.fn<ICompraRepository['guardar']>().mockResolvedValue(undefined),
+    };
+    const numerador = {
+      generarNumero: vi
+        .fn<NumeradorCompra['generarNumero']>()
+        .mockResolvedValue(Result.ok('COM-2026-00001')),
+    };
     const resolverCicloActivo = {
-      resolver: vi.fn().mockResolvedValue(
+      resolver: vi.fn<ResolverCicloActivoCompra['resolver']>().mockResolvedValue(
         Result.ok(
           CicloClienteEntity.create(
             {
@@ -54,28 +67,35 @@ describe('CrearCompraUseCase', () => {
         ),
       ),
     };
-    const registrarOperacion = { registrar: vi.fn().mockResolvedValue(undefined) };
+    const registrarOperacion = {
+      registrar: vi.fn<RegistrarOperacionCompra['registrar']>().mockResolvedValue(undefined),
+    };
     // txRunner.run ejecuta el callback DIRECTAMENTE (sin Prisma real) — pero
-    // preserva la semántica "corre dentro de la tx" para los tests.
-    const txRunner = { run: vi.fn((fn: () => Promise<unknown>) => fn()) };
+    // preserva la semántica "corre dentro de la tx" para los tests. Es un
+    // runner real con un espía encima: `run` es genérico y un `vi.fn` lo perdería.
+    const txRunner: ITenantTransactionRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+      alCommitear: unstubbed('txRunner.alCommitear'),
+    };
+    vi.spyOn(txRunner, 'run');
     // Fix post-verify W6: por default resuelve CUALQUIER sectorId a un
     // sector real — los tests que quieren "sector inexistente" pisan el
     // mock a `null` explícitamente.
     const sectorRepo = {
       findById: vi
-        .fn()
+        .fn<ISectorRepository['findById']>()
         .mockResolvedValue(
           SectorEntity.create({ codigo: 'A', nombre: 'A', activo: true }, 'sector-1'),
         ),
     };
 
     const useCase = new CrearCompraUseCase(
-      compraRepo as never,
-      numerador as never,
-      resolverCicloActivo as never,
-      sectorRepo as never,
-      registrarOperacion as never,
-      txRunner as never,
+      compraRepo,
+      numerador,
+      resolverCicloActivo,
+      sectorRepo,
+      registrarOperacion,
+      txRunner,
     );
 
     return {
