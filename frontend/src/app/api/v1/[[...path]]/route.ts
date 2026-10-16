@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ipDelNavegador } from "@/shared/auth/sesion-bff";
 
 /**
  * BFF de la API pública — `/api/v1/{...path}` → `${BACKEND_URL}/v1/{path}` (CA5).
@@ -11,9 +12,13 @@ import { NextRequest, NextResponse } from "next/server";
  * - La credencial es la clave del integrador (`x-api-key`), no la sesión. NUNCA se reenvían
  *   `authorization` ni `cookie`: un navegador con sesión abierta no puede convertir su cookie en
  *   credencial de la API. Los headers salientes se arman desde cero, por allowlist.
- * - `x-forwarded-for` se reenvía siempre: el que llama no tiene sesión. Mismo criterio que
- *   `publico/` en el genérico; sin `trust proxy` en el backend sigue siendo falsificable, y el
- *   throttler v1 cuenta por clave, no por IP (`ApiV1ThrottlerGuard`).
+ * - `x-forwarded-for` se reenvía siempre, porque el que llama no tiene sesión, pero solo la
+ *   entrada que agrega IIS/ARR (la más a la derecha, validada como IP por `ipDelNavegador`):
+ *   lo que el cliente mande a la izquierda se descarta. Mismo criterio que `publico/` en el
+ *   genérico y que el BFF de sesión. El throttler v1 cuenta por clave, no por IP
+ *   (`ApiV1ThrottlerGuard`), así que hoy es defensa en profundidad, no un control.
+ *   Sin un proxy delante (desarrollo local) la última entrada es la del cliente: ahí no
+ *   hay nada que confiar, y el valor solo sirve como etiqueta.
  * - Los segmentos se validan y se re-codifican: `..`, `.`, vacíos o con `/` o `\` (p. ej.
  *   `%2e%2e` o `%2F`, que Next entrega decodificados) responden 400. Sin esto, `new URL`
  *   resolvería `v1/../clientes` a una ruta del backend fuera de `v1`.
@@ -53,8 +58,8 @@ async function proxy(request: NextRequest, params: RouteParams["params"]): Promi
   const headers = new Headers();
   const apiKey = request.headers.get("x-api-key");
   if (apiKey) headers.set("x-api-key", apiKey);
-  const xff = request.headers.get("x-forwarded-for");
-  if (xff) headers.set("x-forwarded-for", xff);
+  const ip = ipDelNavegador(request);
+  if (ip) headers.set("x-forwarded-for", ip);
 
   let body: ArrayBuffer | undefined;
   const method = request.method;

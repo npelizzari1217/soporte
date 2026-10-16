@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
+import { ipDelNavegador } from "@/shared/auth/sesion-bff";
 
 /**
  * Generic BFF proxy — `/api/{...path}` → `${BACKEND_URL}/{path}`.
@@ -41,8 +42,10 @@ import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
  * ahí, y ensanchar el reenvío a rutas autenticadas no aporta nada (el actor
  * ya está identificado por su sesión). El endpoint público de la encuesta es
  * el único caso donde no hay sesión y el throttler necesita un discriminador
- * por IP+token (`CsatThrottlerGuard`). Sin `trust proxy` en el backend: este
- * header sigue siendo falsificable, no es control de seguridad.
+ * por IP+token (`CsatThrottlerGuard`). Se reenvía solo la entrada que agrega
+ * IIS/ARR (la más a la derecha, validada como IP por `ipDelNavegador`); lo que
+ * el navegador mande a la izquierda se descarta, igual que en el BFF de sesión.
+ * Sin eso, un cliente elegía la IP con la que el throttler lo contaba.
  */
 interface RouteParams {
   params: Promise<{ path: string[] }>;
@@ -59,8 +62,8 @@ async function proxy(request: NextRequest, params: Promise<{ path: string[] }>):
   if (at) headers.set("authorization", `Bearer ${at}`);
 
   if (path[0] === "publico") {
-    const xff = request.headers.get("x-forwarded-for");
-    if (xff) headers.set("x-forwarded-for", xff);
+    const ip = ipDelNavegador(request);
+    if (ip) headers.set("x-forwarded-for", ip);
   }
 
   let body: BodyInit | undefined;
