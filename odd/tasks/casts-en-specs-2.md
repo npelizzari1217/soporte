@@ -24,12 +24,42 @@ sus puertos, y bajar la base del ratchet. Continúa `odd/tasks/casts-en-specs.md
 - CA4: al cierre, la suite completa del backend pasa y la fila del roadmap se actualiza.
 
 ## Tareas
-- [ ] **T1 — insumos, kb, sectores y dashboard** (29 + 19 + 4 + 4 = 56 → 0). Ruta: delegada (escritor
-  A, en paralelo con T2: superficies disjuntas, muchos archivos no triviales).
-- [ ] **T2 — csat, notificaciones, shared, sla y el `vi.fn()` de compras** (19 + 18 + 13 + 5 = 55 → 0).
-  Ruta: delegada (escritor B, en paralelo con T1).
-- [ ] **T3 — Cierre**: base del ratchet (la edita el padre), suite completa, roadmap, merge (decisión
+- [x] **T1 — insumos, kb, sectores y dashboard** (56 → 0). Ruta: delegada (escritor A, en paralelo con
+  T2: superficies disjuntas, muchos archivos no triviales). Commit `3b7b6681`.
+  - 16 specs; ningún cast conservado. Controllers de insumos y sectores: `buildController()` con
+    casos de uso del prototipo real (`espiado`) y `execute.mockResolvedValue` por test; kb con un
+    helper `usuario(sub, permisos): JwtPayload` completo.
+  - Defectos destapados (arreglados solo en specs): el test de stock de
+    `movimientos-insumo.controller.spec.ts` no tenía `admiteUsadoEnReingreso`, `seguimiento` ni
+    `pendientesDeSerie` en el fixture, y `toEqual` ignora los `undefined`: esos campos nunca se
+    verificaban; ahora sí. `listar-kb-articulos` devolvía `{ id }` en vez de `KbArticuloEntity`.
+  - Evidencia: `pnpm vitest run src/insumos src/kb src/sectores src/dashboard` → 129 archivos, 2069
+    tests antes y después; mismos conteos de `it(`/`expect(` por archivo; lint y typecheck 0.
+- [x] **T2 — csat, notificaciones, shared, sla y el `vi.fn()` de compras** (55 → 0). Ruta: delegada
+  (escritor B, en paralelo con T1). Commit `c37075da`.
+  - 16 specs; ningún cast conservado (los de `tenant-context.spec.ts` no probaban entrada inválida:
+    `prismaClient` es `unknown`). `TenantContext` real con `vi.spyOn` en `get`/`bind`; el guard del
+    throttler con `ThrottlerStorage` tipado y `Reflector` real; `exportar-compras` con
+    `vi.fn<ICompraRepository['findPaginaConItems']>()`.
+  - Defectos destapados (arreglados solo en specs): `obtener-csat-ticket` devolvía un objeto suelto en
+    vez de `EncuestaSatisfaccionEntity`; cuatro dobles de `TenantContext.get()` devolvían solo
+    `{ clienteId }`; en `sla-sweep.scheduler` el cliente falso tiene el prototipo real y el esperado
+    se arma con la misma fábrica.
+  - Evidencia: `pnpm vitest run src/csat src/notificaciones src/shared src/sla <exportar-compras>` → 76
+    archivos, 719 tests antes y después; mismos conteos; lint y typecheck 0.
+  - Los dos escritores corrieron prettier sobre archivos del otro (solo formato); `prettier --check`
+    sobre los 32 archivos, limpio.
+- [x] **T3 — Cierre**: base del ratchet (la edita el padre), suite completa, roadmap, merge (decisión
   del dueño). Ruta: inline.
+  - Ratchet: base 116/31 → **0/0** (`8cb43761`); el script da "0 en 0 archivos (base: 0 en 0)".
+  - Roadmap: la fila de deuda dice 0 y anota los `as unknown as` que quedan (166 en 60 specs).
+  - Lint y typecheck 0; `check-roadmap-fresco` en verde. RDD: `assess --base-ref f394daa0
+    --committed-only` → medium, `review_due` false (`under_budget`).
+  - Deuda menor: el helper `espiado` está copiado en 11 specs de controllers (4 de la primera vuelta);
+    se puede llevar a `src/testing/mocks.ts`.
+  - Suite completa del backend: 741 archivos, 8877 tests, todos en verde (exit 0).
+  - Diff contra `main` revisado (§4.2): solo specs, script del ratchet, roadmap y este documento; sin
+    `.only`/`.skip`, secretos ni código de producción.
 
 ## Ruta y entrega
 - Refactor de tests: sin TDD (no hay bugfix); la verificación es que los specs sigan pasando.
@@ -39,6 +69,10 @@ sus puertos, y bajar la base del ratchet. Continúa `odd/tasks/casts-en-specs.md
 
 ## Progreso
 - 2026-10-16: documento creado; rama `refactor/casts-en-specs-2` desde `main` `261aeb6b`.
+- 2026-10-16: T1 y T2 hechas; ratchet en 0/0.
+- 2026-10-16: suite completa en verde; el dueño pidió "cuando pase la suite, mergealo a main". Merge
+  local a `main`.
 
 ## Próximo paso
-T1 y T2 en paralelo.
+Ninguno en esta feature. Deuda aparte: los 166 `as unknown as` en 60 specs y el helper `espiado`
+repetido.
