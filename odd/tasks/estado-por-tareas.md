@@ -37,16 +37,16 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
   corrige; deuda de Ayuda anotada.
 
 ## Tasks
-- [ ] T1 (S1-S4): política pura `tickets/domain/policies/estado-por-tareas.policy.ts`: dado estado
+- [x] T1 (S1-S4): política pura `tickets/domain/policies/estado-por-tareas.policy.ts`: dado estado
   actual, evento (completar/descompletar) y si quedan pendientes, devuelve los arcos a recorrer y si hay
   que asignar. Tests unitarios.
-- [ ] T2 (S2-S5): `ITicketRepository.bloquear(id)` (Prisma, `SELECT ... FOR UPDATE`), servicio de
+- [x] T2 (S2-S5): `ITicketRepository.bloquear(id)` (Prisma, `SELECT ... FOR UPDATE`), servicio de
   aplicación `AvanzarEstadoPorTareasService` que recorre los arcos dentro de la tx (asignación,
   CAMBIO_ESTADO, fecha_cierre, reloj, eventos post-commit), cableado en `CompletarTareaUseCase` y
   `DescompletarTareaUseCase`, módulo y fixtures. Tests unitarios.
-- [ ] T3 (S5-S6): integración en tenant efímero: últimas dos tareas en carrera → un solo RESUELTO;
+- [x] T3 (S5-S6): integración en tenant efímero: últimas dos tareas en carrera → un solo RESUELTO;
   descompletar en RESUELTO → EN_PROCESO; fallo del cambio de estado deshace la tarea.
-- [ ] T4 (S7-S8): frontend (invalidación del ticket, aviso en "Tareas", tests), roadmap, comentario de
+- [x] T4 (S7-S8): frontend (invalidación del ticket, aviso en "Tareas", tests), roadmap, comentario de
   la entidad, deuda de Ayuda.
 
 ## Log
@@ -56,3 +56,15 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
 - L2 (2026-10-16, dueño), respuestas al cuestionario: alcance → "Todos los tipos con tareas"; en NUEVO
   sin responsable → "Quien completa pasa a ser responsable"; descompletar en RESUELTO → "Vuelve a
   EN_PROCESO".
+- 2026-10-16, T1 (`09899d5f`): `estado-por-tareas.policy.ts`, 25 tests, RED→GREEN.
+- 2026-10-16, T2 (`b88f8270`): `ITicketRepository.bloquear` (`FOR NO KEY UPDATE`),
+  `AvanzarEstadoPorTareasService` (19 tests), cableado en completar/descompletar (4 tests nuevos: lock
+  antes de escribir, servicio dentro de la tx, no corre si la escritura no aplica), módulo, fixtures de
+  11 specs (`bloquear` en los dobles de `ITicketRepository`), comentario de `TicketEdiliciaEntity`.
+  Backend: lint 0, typecheck 0, 762 tests unitarios de tickets.
+- 2026-10-16, T3 (`f3f699ef`): `estado-por-tareas.integration.spec.ts`, 4 tests en tenant efímero; la
+  carrera de las dos últimas tareas corre con `Promise.all` real y deja un solo CAMBIO_ESTADO a RESUELTO.
+- 2026-10-16, T4: `useCompletarTarea`/`useDescompletarTarea` invalidan `["ticket", id]` y `["tickets"]`;
+  aviso al pie de "Tareas"; 2 tests nuevos (RED→GREEN con el código de producción stasheado). Roadmap:
+  decisión registrada como desviación acordada de CA5 del punto 12, `check-roadmap-fresco` pasa; deuda
+  de Ayuda anotada. Frontend: lint 0, tsc 0, 214 tests de tickets.

@@ -107,6 +107,12 @@ export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien }:
       ) : (
         <p className="text-sm text-muted-foreground">Sin tareas todavía.</p>
       )}
+      {avance.total > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Completar tareas mueve el ticket: a «En proceso» con la primera y a «Resuelto» con la última.
+          Descompletar una tarea de un ticket resuelto lo devuelve a «En proceso».
+        </p>
+      )}
 
       <ul className="flex flex-col gap-2">
         {items.map((tarea) => {

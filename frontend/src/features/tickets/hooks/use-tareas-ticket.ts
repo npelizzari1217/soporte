@@ -109,13 +109,25 @@ export function useAsignarTecnicoTarea(ticketId: string, opciones: OpcionesMutac
   );
 }
 
+/**
+ * Completar y descompletar mueven el estado del ticket (odd/estado-por-tareas): a EN_PROCESO con la
+ * primera, a RESUELTO con la última, de vuelta a EN_PROCESO al descompletar en RESUELTO, y pueden
+ * asignarlo a quien completa. Por eso, además de las tareas, quedan viejos el detalle del ticket
+ * (`["ticket", id]`, que también cubre su historial) y los listados (`["tickets"]`).
+ */
+function conEstadoDelTicket(ticketId: string, opciones: OpcionesMutacionTareas): OpcionesMutacionTareas {
+  return {
+    invalidarTambien: [["ticket", ticketId], ["tickets"], ...(opciones.invalidarTambien ?? [])],
+  };
+}
+
 export function useCompletarTarea(ticketId: string, opciones: OpcionesMutacionTareas = {}) {
   return useMutacionTarea(
     ticketId,
     (tareaId: string) =>
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas/${tareaId}/completar`, { method: "POST" }),
     "Tarea completada.",
-    opciones,
+    conEstadoDelTicket(ticketId, opciones),
   );
 }
 
@@ -125,7 +137,7 @@ export function useDescompletarTarea(ticketId: string, opciones: OpcionesMutacio
     (tareaId: string) =>
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas/${tareaId}/descompletar`, { method: "POST" }),
     "La tarea volvió a pendiente.",
-    opciones,
+    conEstadoDelTicket(ticketId, opciones),
   );
 }
 

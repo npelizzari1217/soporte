@@ -1203,6 +1203,9 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
       técnico, el responsable o un administrador; queda registrado quién y cuándo, y
       descompletar lo limpia. No se puede reordenar ni editar el texto.
     - El cierre no se bloquea (CA5): **Cumplida**. La máquina de estados no cambió.
+      *Ampliada el 2026-10-16* (ver "El estado del ticket sigue a sus tareas", más abajo):
+      resolver con tareas pendientes sigue permitido, pero ahora completar tareas también
+      mueve el estado solo.
     - Métricas (CA6): **Cumplida**. El dashboard suma "Tareas completadas por técnico",
       atribuidas por `completada_por_id`, y las métricas por ticket no cambian (un test
       compara el resto del payload antes y después). El período son los días argentinos
@@ -1228,6 +1231,25 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
       tiene que ver el ticket, como en `/tickets`. Así, quien ve el listado de reparaciones
       con `EDILICIA:LECTURA` ve el checklist completo con el técnico de cada tarea, y el
       checklist de solo lectura sin técnico que armaba el frontend se retiró.
+- **El estado del ticket sigue a sus tareas** (pedido fuera de los puntos; decisiones del dueño
+  del 2026-10-16, feature `estado-por-tareas`, documento `odd/tasks/estado-por-tareas.md`).
+  Revierte de forma acordada el ADR-2 del flujo de Edilicia ("completar la última tarea NO
+  resuelve el ticket"), que el punto 12 había conservado en CA5:
+  - **Aplica a todos los tipos de ticket con tareas**, no solo a Edilicia: las tareas son
+    genéricas desde el punto 12.
+  - **Completar una tarea pone el ticket En proceso.** Si estaba Nuevo recorre Asignado y En
+    proceso; si estaba Asignado, pasa a En proceso. Si estaba Nuevo **sin responsable, quien
+    completa pasa a ser el responsable**, con su entrada de asignación en el historial.
+  - **Completar la última tarea pendiente pone el ticket Resuelto**, desde Nuevo, Asignado, En
+    proceso o Esperando cliente, con lo mismo que la resolución manual: fecha de cierre, historial
+    por cada paso, reloj de SLA y la notificación de resuelto.
+  - **Descompletar una tarea de un ticket Resuelto lo devuelve a En proceso**, haya sido resuelto
+    por tareas o a mano (no se guarda de dónde vino la resolución).
+  - Las transiciones automáticas no piden los permisos de transicionar ni de asignar: alcanza con
+    poder completar la tarea. Van en la misma transacción que la tarea, y dos completados a la
+    vez de las últimas tareas resuelven el ticket una sola vez.
+  - **Cumplida** (2026-10-16, rama `feat/estado-por-tareas`). Cada viñeta es un criterio de
+    aceptación del documento, sin desviaciones declaradas.
 - **Ubicación y sector en el ticket** (pedido fuera de los puntos; decisiones del dueño del
   2026-10-15, feature `ubicacion-sector-ticket`, documento
   `odd/tasks/ubicacion-sector-ticket.md`):
@@ -1329,6 +1351,11 @@ de las entregas anteriores está anotada solo en los mensajes de sus commits
   - los campos Ubicación y Sector en el alta y la edición del ticket, y el Sector en el alta de
     Edilicia (en Edilicia la ubicación general no aparece);
   - la cantidad en el botón "Ver subtareas" del listado de Edilicia.
+- **El estado del ticket sigue a sus tareas** (2026-10-16, anotada en los commits de la rama
+  `feat/estado-por-tareas` y en `odd/tasks/estado-por-tareas.md`):
+  - que completar una tarea pone el ticket En proceso (y lo asigna a quien completa si estaba
+    Nuevo sin responsable), que completar la última lo pone Resuelto, y que descompletar en
+    Resuelto lo devuelve a En proceso; el aviso al pie de la sección "Tareas" lo adelanta.
 
 ## Nota
 
