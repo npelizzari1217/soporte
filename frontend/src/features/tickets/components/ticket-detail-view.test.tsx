@@ -131,9 +131,9 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
     // Control unificado "Asignar y poner en proceso" (visible en NUEVO/ASIGNADO con ticket:asignar).
     if (esperados.asignar) {
-      expect(screen.getByRole("combobox", { name: /asignar responsable/i })).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: /^responsable$/i })).toBeInTheDocument();
     } else {
-      expect(screen.queryByRole("combobox", { name: /asignar responsable/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: /^responsable$/i })).not.toBeInTheDocument();
     }
 
     if (esperados.editar) {
@@ -223,7 +223,7 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     });
 
     await screen.findByText("Impresora rota");
-    await user.selectOptions(screen.getByRole("combobox", { name: /asignar responsable/i }), "u-tecnico-2");
+    await user.selectOptions(screen.getByRole("combobox", { name: /^responsable$/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
 
     await waitFor(() => expect(capturedBody).toEqual({ asignadoId: "u-tecnico-2" }));

@@ -29,8 +29,7 @@ import { TicketHeader } from "./ticket-header";
 import { TicketTimeline } from "./ticket-timeline";
 import { TicketCommentForm } from "./ticket-comment-form";
 import { TicketTransitionControl } from "./ticket-transition-control";
-import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-control";
-import { TicketReasignarControl } from "./ticket-reasignar-control";
+import { TicketResponsableControl } from "./ticket-responsable-control";
 import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
@@ -132,18 +131,13 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        {estadoCodigo && puedeAsignarYPonerEnProceso(estadoCodigo) && (
-          <TicketAsignarEnProcesoControl
-            tecnicos={tecnicosQuery.data ?? []}
-            onAsignar={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
-            isSubmitting={asignarEnProcesoMutation.isPending}
-          />
-        )}
         {estadoCodigo && puedeReasignar(estadoCodigo) && (
-          <TicketReasignarControl
+          <TicketResponsableControl
             tecnicos={tecnicosQuery.data ?? []}
+            modo={puedeAsignarYPonerEnProceso(estadoCodigo) ? "arranque" : "cambio"}
+            onAsignarEnProceso={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
             onReasignar={(asignadoId) => reasignarMutation.mutate({ asignadoId })}
-            isSubmitting={reasignarMutation.isPending}
+            isSubmitting={asignarEnProcesoMutation.isPending || reasignarMutation.isPending}
           />
         )}
         {estadoCodigo && (
