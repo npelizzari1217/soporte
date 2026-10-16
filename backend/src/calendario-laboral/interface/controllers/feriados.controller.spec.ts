@@ -26,13 +26,13 @@ const GUARDS_KEY = '__guards__';
 
 type Handler = (...args: never[]) => unknown;
 
-function guardsDe(handler: Handler): unknown[] {
+function guardsDe(handler: object): unknown[] {
   return (Reflect.getMetadata(GUARDS_KEY, handler) as unknown[] | undefined) ?? [];
 }
 
 describe('FeriadosController — guards (D5/D6, spec "ROOT-only writes, backend-enforced")', () => {
   it('[CRITICAL] a nivel de clase declara únicamente JwtAuthGuard (lectura abierta a cualquier autenticado)', () => {
-    expect(guardsDe(FeriadosController as unknown as Handler)).toEqual([JwtAuthGuard]);
+    expect(guardsDe(FeriadosController)).toEqual([JwtAuthGuard]);
   });
 
   it('[CRITICAL] GET /feriados NO declara GlobalAdminGuard por método (lectura para cualquier autenticado)', () => {

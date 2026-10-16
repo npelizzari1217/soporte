@@ -78,7 +78,8 @@ describe('RecuperacionPasswordModule — compilación real (WU-5b)', () => {
     const storage = moduleRef.get(ThrottlerStorage);
     expect(storage).toBeInstanceOf(PostgresThrottlerStorage);
     // `storageService` es `protected` en `ThrottlerGuard`: es el que usa el guard al limitar.
-    expect((guard as unknown as { storageService: unknown }).storageService).toBe(storage);
+    // El acceso por corchetes lo alcanza sin cast y conserva su tipo.
+    expect(guard['storageService']).toBe(storage);
 
     await moduleRef.close();
   });

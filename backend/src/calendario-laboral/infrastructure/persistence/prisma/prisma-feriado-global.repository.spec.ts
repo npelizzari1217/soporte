@@ -37,12 +37,12 @@ function makePrismaService(client: {
   const update = client.update ?? vi.fn();
   const del = client.delete ?? vi.fn();
   // PrismaService es una clase concreta con estado privado (pool de conexión
-  // real, `PrismaPg`) — no hay forma de satisfacerla estructuralmente con un
-  // fake. El único método que este repositorio usa es `getMasterClient()`; el
-  // resto de la superficie de PrismaService nunca se ejercita.
-  const prismaService = {
+  // real, `PrismaPg`): se parte de su prototipo y se pisa el único método que
+  // este repositorio usa, `getMasterClient()`; el resto de la superficie de
+  // PrismaService nunca se ejercita.
+  const prismaService: PrismaService = Object.assign(Object.create(PrismaService.prototype), {
     getMasterClient: () => ({ feriado: { findMany, findUnique, create, update, delete: del } }),
-  } as unknown as PrismaService;
+  });
   return { prismaService, findMany, findUnique, create, update, delete: del };
 }
 

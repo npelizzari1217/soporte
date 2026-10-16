@@ -17,7 +17,8 @@ class FakeEvent implements DomainEvent {
 describe('EventEmitter2DomainEventPublisher', () => {
   describe('publish()', () => {
     it('delega en emitter.emit(event.name, event)', () => {
-      const emitter = { emit: vi.fn() } as unknown as EventEmitter2;
+      const emitter = new EventEmitter2();
+      vi.spyOn(emitter, 'emit').mockReturnValue(true);
       const publisher = new EventEmitter2DomainEventPublisher(emitter);
       const event = new FakeEvent();
 
@@ -28,7 +29,8 @@ describe('EventEmitter2DomainEventPublisher', () => {
     });
 
     it('retorna void sincrónicamente (no usa emitAsync)', () => {
-      const emitter = { emit: vi.fn() } as unknown as EventEmitter2;
+      const emitter = new EventEmitter2();
+      vi.spyOn(emitter, 'emit').mockReturnValue(true);
       const publisher = new EventEmitter2DomainEventPublisher(emitter);
 
       const result = publisher.publish(new FakeEvent());
@@ -37,11 +39,10 @@ describe('EventEmitter2DomainEventPublisher', () => {
     });
 
     it('no lanza si el emitter lanza — aislado del caller (log-and-swallow, ADR-6)', () => {
-      const emitter = {
-        emit: vi.fn(() => {
-          throw new Error('listener explotó');
-        }),
-      } as unknown as EventEmitter2;
+      const emitter = new EventEmitter2();
+      vi.spyOn(emitter, 'emit').mockImplementation(() => {
+        throw new Error('listener explotó');
+      });
       const publisher = new EventEmitter2DomainEventPublisher(emitter);
 
       expect(() => publisher.publish(new FakeEvent())).not.toThrow();

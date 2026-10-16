@@ -404,9 +404,7 @@ describe('InsumosController', () => {
       ['cambiarSeguimiento', true],
       ['listar', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstarPresente) => {
-      const handler = InsumosController.prototype[
-        metodo as keyof typeof InsumosController.prototype
-      ] as unknown as (...args: unknown[]) => unknown;
+      const handler: object = InsumosController.prototype[metodo];
       const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
 
       if (debeEstarPresente) {

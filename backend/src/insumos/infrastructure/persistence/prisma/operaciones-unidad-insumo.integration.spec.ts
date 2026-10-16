@@ -45,10 +45,16 @@ function instrumentarConcurrenciaDelPool(pool: Pool): { max: () => number; reini
   let activas = 0;
   let maxObservado = 0;
   const connectOriginal = pool.connect.bind(pool);
-  type Cb = (err: Error | undefined, client: PoolClient, release: (r?: unknown) => void) => void;
-  const connectInstrumentado = (callback?: Cb): Promise<PoolClient> | void => {
-    if (callback) return (connectOriginal as unknown as (cb: Cb) => void)(callback);
-    return (connectOriginal as () => Promise<PoolClient>)().then((client) => {
+  type Cb = (
+    err: Error | undefined,
+    client: PoolClient | undefined,
+    release: (r?: unknown) => void,
+  ) => void;
+  function connectInstrumentado(): Promise<PoolClient>;
+  function connectInstrumentado(callback: Cb): void;
+  function connectInstrumentado(callback?: Cb): Promise<PoolClient> | void {
+    if (callback) return connectOriginal(callback);
+    return connectOriginal().then((client) => {
       activas += 1;
       maxObservado = Math.max(maxObservado, activas);
       const releaseOriginal = client.release.bind(client);
@@ -58,8 +64,8 @@ function instrumentarConcurrenciaDelPool(pool: Pool): { max: () => number; reini
       }) as typeof client.release;
       return client;
     });
-  };
-  pool.connect = connectInstrumentado as unknown as typeof pool.connect;
+  }
+  pool.connect = connectInstrumentado;
   return {
     max: () => maxObservado,
     reiniciar: () => {

@@ -27,24 +27,26 @@
  *   garantía por conexión de WU1 ya cubre el 100% del tráfico), solo
  *   emitir un WARNING. Cualquier OTRO error del ALTER DATABASE sí propaga.
  */
-import { Pool } from 'pg';
 import { PostgresAdminService } from './postgres-admin.service';
 import { InvalidDatabaseNameError } from '../domain/errors/clientes.errors';
 
-vi.mock('pg', () => {
+// El doble de `Pool` se crea con `vi.hoisted` para que el test lo tenga como `Mock` sin
+// castear el `Pool` importado de `pg`.
+const { PoolMock } = vi.hoisted(() => {
   const query = vi.fn();
   const end = vi.fn();
   // `function` (no arrow) — vitest exige un constructor real para que `new Pool(...)` funcione.
   const PoolMock = vi.fn().mockImplementation(function PoolStub() {
     return { query, end };
   });
-  return { Pool: PoolMock };
+  return { PoolMock };
 });
+
+vi.mock('pg', () => ({ Pool: PoolMock }));
 
 const MASTER_URL = 'postgresql://soporte:soporte@localhost:5432/soporte_master';
 
 function lastPoolInstance(): { query: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> } {
-  const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
   const calls = PoolMock.mock.results;
   return calls[calls.length - 1]!.value;
 }
@@ -60,7 +62,6 @@ describe('PostgresAdminService (T7.1, unit — stub de pg.Pool)', () => {
 
     await service.createDatabase('soporte_prov_demo_test');
 
-    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
     const usedUrl = PoolMock.mock.calls[0]![0].connectionString as string;
     expect(new URL(usedUrl).pathname).toBe('/postgres');
   });
@@ -119,14 +120,12 @@ describe('PostgresAdminService (T7.1, unit — stub de pg.Pool)', () => {
       await expect(service.createDatabase(badName)).rejects.toBeInstanceOf(
         InvalidDatabaseNameError,
       );
-      const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
       expect(PoolMock).not.toHaveBeenCalled();
     },
   );
 
   it('[FIX] createDatabase: cierra el Pool aunque la query falle', async () => {
     const service = new PostgresAdminService(MASTER_URL);
-    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
     const query = vi.fn().mockRejectedValue(new Error('DB ya existe'));
     const end = vi.fn();
     PoolMock.mockImplementationOnce(function PoolStub() {
@@ -167,14 +166,12 @@ describe('PostgresAdminService (T7.1, unit — stub de pg.Pool)', () => {
 
     await service.createDatabase('soporte_prov_demo_test');
 
-    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
     const usedUrl = PoolMock.mock.calls[0]![0].connectionString as string;
     expect(new URL(usedUrl).searchParams.get('options')).toBe('-c TimeZone=UTC');
   });
 
   it('[CRITICAL] createDatabase: ALTER DATABASE con insufficient_privilege (42501) NO propaga — solo WARNING (WU2, ADR-1)', async () => {
     const service = new PostgresAdminService(MASTER_URL);
-    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
     const insufficientPrivilegeError = Object.assign(
       new Error('must be owner of database soporte_prov_demo_test'),
       { code: '42501' },
@@ -198,7 +195,6 @@ describe('PostgresAdminService (T7.1, unit — stub de pg.Pool)', () => {
 
   it('[CRITICAL] createDatabase: ALTER DATABASE con otro error (no insufficient_privilege) SÍ propaga (WU2, ADR-1)', async () => {
     const service = new PostgresAdminService(MASTER_URL);
-    const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
     const otroError = new Error('conexión perdida');
     const query = vi.fn().mockResolvedValueOnce({ rowCount: 0 }).mockRejectedValueOnce(otroError);
     const end = vi.fn();
@@ -215,7 +211,6 @@ describe('PostgresAdminService (T7.1, unit — stub de pg.Pool)', () => {
 
 /** Configura el stub de `pg.Pool` para que la próxima instancia resuelva `query` en éxito. */
 function lastPoolInstanceSetOk(queryResult: { rowCount: number } = { rowCount: 0 }): void {
-  const PoolMock = Pool as unknown as ReturnType<typeof vi.fn>;
   const query = vi.fn().mockResolvedValue(queryResult);
   const end = vi.fn();
   PoolMock.mockImplementationOnce(function PoolStub() {

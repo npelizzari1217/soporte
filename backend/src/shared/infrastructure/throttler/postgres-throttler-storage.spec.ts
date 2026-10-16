@@ -3,14 +3,16 @@
  * base: el cliente master es un doble que rechaza. Decision del dueno (2026-10-15): con la base
  * caida el limitador deja pasar y lo deja en el log.
  */
-import type { PrismaService } from '../persistence/prisma.service';
+import { PrismaService } from '../persistence/prisma.service';
 import { PostgresThrottlerStorage, REGISTRO_SIN_LIMITE } from './postgres-throttler-storage';
 
 const KEY = 'a3f1c9e0d2b4clave-secreta-en-claro';
 
 function armar(cliente: { $queryRaw: unknown; $executeRaw: unknown }) {
   const logger = { log: vi.fn(), error: vi.fn() };
-  const prisma = { getMasterClient: () => cliente } as unknown as PrismaService;
+  const prisma: PrismaService = Object.assign(Object.create(PrismaService.prototype), {
+    getMasterClient: () => cliente,
+  });
   return { storage: new PostgresThrottlerStorage(prisma, logger), logger };
 }
 
@@ -62,7 +64,9 @@ describe('PostgresThrottlerStorage sin base', () => {
         ]),
       $executeRaw: executeRaw,
     };
-    const prisma = { getMasterClient: () => cliente } as unknown as PrismaService;
+    const prisma: PrismaService = Object.assign(Object.create(PrismaService.prototype), {
+      getMasterClient: () => cliente,
+    });
     const storage = new PostgresThrottlerStorage(
       prisma,
       { log: vi.fn(), error: vi.fn() },

@@ -79,6 +79,7 @@ describe('puedeEjecutar', () => {
   });
 
   it('fail-closed (S5): permisos undefined no crashea, deniega', () => {
+    // Entrada inválida a propósito: payload legacy sin `permisos`, que el tipo no admite.
     const actor = {
       is_global_admin: false,
       rol: 'TECNICO',

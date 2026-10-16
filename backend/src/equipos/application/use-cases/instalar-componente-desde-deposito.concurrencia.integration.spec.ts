@@ -60,17 +60,18 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
   let maxObservado = 0;
   const connectOriginal = pool.connect.bind(pool);
 
-  type ConnectCallback = (
-    err: Error | undefined,
-    client: PoolClient,
-    release: (release?: unknown) => void,
-  ) => void;
+  /** Firma de la variante callback de `Pool.connect()`, tal cual la declara `@types/pg`. */
+  type ConnectCallback = Parameters<typeof connectOriginal>[0];
 
-  const connectInstrumentado = (callback?: ConnectCallback): Promise<PoolClient> | void => {
+  // Mismas dos sobrecargas que `Pool.connect()`: así la función se asigna a `pool.connect`
+  // sin castear. La variante callback se delega intacta.
+  function connectInstrumentado(): Promise<PoolClient>;
+  function connectInstrumentado(callback: ConnectCallback): void;
+  function connectInstrumentado(callback?: ConnectCallback): Promise<PoolClient> | void {
     if (callback) {
-      return (connectOriginal as unknown as (cb: ConnectCallback) => void)(callback);
+      return connectOriginal(callback);
     }
-    return (connectOriginal as () => Promise<PoolClient>)().then((client) => {
+    return connectOriginal().then((client) => {
       conexionesActivas += 1;
       maxObservado = Math.max(maxObservado, conexionesActivas);
       const releaseOriginal = client.release.bind(client);
@@ -80,9 +81,9 @@ function instrumentarConcurrenciaDelPool(pool: Pool): () => number {
       }) as typeof client.release;
       return client;
     });
-  };
+  }
 
-  pool.connect = connectInstrumentado as unknown as typeof pool.connect;
+  pool.connect = connectInstrumentado;
   return () => maxObservado;
 }
 

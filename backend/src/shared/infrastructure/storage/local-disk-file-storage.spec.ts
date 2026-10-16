@@ -58,7 +58,7 @@ describe('LocalDiskFileStorage', () => {
     it('devuelve el Buffer del archivo existente en {baseDir}/{key}', async () => {
       const key = 'clientes/abc-123/logo.png';
       const buffer = Buffer.from('contenido-fake');
-      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(buffer);
+      vi.mocked(fs.promises.readFile).mockResolvedValueOnce(buffer);
 
       const result = await storage.retrieve(key);
 
@@ -70,14 +70,14 @@ describe('LocalDiskFileStorage', () => {
 
     it('devuelve null si el archivo no existe (ENOENT), sin lanzar', async () => {
       const enoent = Object.assign(new Error('no existe'), { code: 'ENOENT' });
-      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(enoent);
+      vi.mocked(fs.promises.readFile).mockRejectedValueOnce(enoent);
 
       await expect(storage.retrieve('clientes/x/logo.png')).resolves.toBeNull();
     });
 
     it('propaga errores que no sean ENOENT', async () => {
       const boom = Object.assign(new Error('disco lleno'), { code: 'EIO' });
-      (fs.promises.readFile as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(boom);
+      vi.mocked(fs.promises.readFile).mockRejectedValueOnce(boom);
 
       await expect(storage.retrieve('clientes/x/logo.png')).rejects.toThrow('disco lleno');
     });
@@ -96,14 +96,14 @@ describe('LocalDiskFileStorage', () => {
 
     it('es idempotente: si el archivo no existe (ENOENT) no lanza', async () => {
       const enoent = Object.assign(new Error('no existe'), { code: 'ENOENT' });
-      (fs.promises.unlink as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(enoent);
+      vi.mocked(fs.promises.unlink).mockRejectedValueOnce(enoent);
 
       await expect(storage.delete('tickets/x/y.pdf')).resolves.toBeUndefined();
     });
 
     it('propaga errores que no sean ENOENT', async () => {
       const boom = Object.assign(new Error('disco lleno'), { code: 'ENOSPC' });
-      (fs.promises.unlink as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(boom);
+      vi.mocked(fs.promises.unlink).mockRejectedValueOnce(boom);
 
       await expect(storage.delete('tickets/x/y.pdf')).rejects.toThrow('disco lleno');
     });

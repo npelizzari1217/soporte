@@ -9,16 +9,13 @@
  */
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { AccionesGuard } from './acciones.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
-  return {
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-    getHandler: () => ({}),
-    getClass: () => ({}),
-  } as unknown as ExecutionContext;
+  return new ExecutionContextHost([{ user }]);
 }
 
 const BASE_PAYLOAD: JwtPayload = payloadDeTest({
@@ -31,7 +28,8 @@ const BASE_PAYLOAD: JwtPayload = payloadDeTest({
 });
 
 function buildGuard(requiredCodigos: string[] | null): AccionesGuard {
-  const reflector = { getAllAndOverride: () => requiredCodigos } as unknown as Reflector;
+  const reflector = new Reflector();
+  vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue(requiredCodigos);
   return new AccionesGuard(reflector);
 }
 
@@ -95,6 +93,7 @@ describe('AccionesGuard — paso 5: AND de permisos, mensaje exacto', () => {
 
   it('caso permisos undefined (payload legacy) → deniega sin crashear (S5, fail-closed)', () => {
     const guard = buildGuard(['TICKETS:ALTAS']);
+    // Entrada inválida a propósito: payload legacy sin `permisos`, que JwtPayload no admite.
     const actor = { ...BASE_PAYLOAD, permisos: undefined } as unknown as JwtPayload;
     expect(() => guard.canActivate(buildContext(actor))).toThrow(ForbiddenException);
   });

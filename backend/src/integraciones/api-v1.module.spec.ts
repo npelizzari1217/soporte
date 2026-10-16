@@ -12,7 +12,7 @@
 import { FactoryProvider, Provider } from '@nestjs/common';
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { ThrottlerModule, ThrottlerStorage, getOptionsToken } from '@nestjs/throttler';
-import type { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
+import { PrismaService } from '../shared/infrastructure/persistence/prisma.service';
 import {
   PostgresThrottlerStorage,
   THROTTLER_STORAGE_POSTGRES,
@@ -52,7 +52,7 @@ describe('ApiV1Module — throttler local (JD-6)', () => {
     const storage = providers.filter((p) => token(p) === ThrottlerStorage);
     expect(storage).toEqual([THROTTLER_STORAGE_POSTGRES]);
     const fabrica = THROTTLER_STORAGE_POSTGRES as FactoryProvider;
-    const prisma = { getMasterClient: () => ({}) } as unknown as PrismaService;
+    const prisma: PrismaService = Object.create(PrismaService.prototype);
     expect(fabrica.useFactory(prisma, { log: vi.fn(), error: vi.fn() })).toBeInstanceOf(
       PostgresThrottlerStorage,
     );

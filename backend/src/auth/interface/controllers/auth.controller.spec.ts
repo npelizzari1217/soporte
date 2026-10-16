@@ -15,6 +15,12 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { AuthController } from './auth.controller';
+import { LoginUseCase } from '../../application/use-cases/login.use-case';
+import { RefreshTokenUseCase } from '../../application/use-cases/refresh-token.use-case';
+import { LogoutUseCase } from '../../application/use-cases/logout.use-case';
+import { LogoutAllUseCase } from '../../application/use-cases/logout-all.use-case';
+import { SwitchTenantUseCase } from '../../application/use-cases/switch-tenant.use-case';
+import { CambiarPasswordUseCase } from '../../application/use-cases/cambiar-password.use-case';
 import { DomainError, Result } from '../../../shared/domain/result';
 import {
   ClienteNoAutorizadoError,
@@ -44,45 +50,52 @@ const ROOT_PAYLOAD: JwtPayload = payloadDeTest({
   cliente_nombre: null,
 });
 
-type Ctor = ConstructorParameters<typeof AuthController>;
-/** Doble de un use case: al controller sólo le interesa `execute`. */
-type MockUseCase = { execute: ReturnType<typeof vi.fn> };
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso. Al controller sólo le
+ * interesa `execute`.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
+
+function buildController() {
+  const loginUseCase = espiado(LoginUseCase);
+  const refreshTokenUseCase = espiado(RefreshTokenUseCase);
+  const logoutUseCase = espiado(LogoutUseCase);
+  const logoutAllUseCase = espiado(LogoutAllUseCase);
+  const switchTenantUseCase = espiado(SwitchTenantUseCase);
+  const cambiarPasswordUseCase = espiado(CambiarPasswordUseCase);
+  // `log()` nunca se ejercita desde este controller — solo `error()` (el
+  // fallback ruidoso de `toHttpException`, D4). Un stub mudo taparía que
+  // producción empiece a llamarlo.
+  const logger: ILogger = { error: vi.fn(), log: unstubbed('ILogger.log') };
+
+  const controller = new AuthController(
+    loginUseCase.caso,
+    refreshTokenUseCase.caso,
+    logoutUseCase.caso,
+    logoutAllUseCase.caso,
+    switchTenantUseCase.caso,
+    cambiarPasswordUseCase.caso,
+    logger,
+  );
+
+  return {
+    controller,
+    loginUseCase,
+    refreshTokenUseCase,
+    logoutUseCase,
+    logoutAllUseCase,
+    switchTenantUseCase,
+    cambiarPasswordUseCase,
+    logger,
+  };
+}
 
 describe('AuthController (T6.5)', () => {
-  function buildController() {
-    const loginUseCase: MockUseCase = { execute: vi.fn() };
-    const refreshTokenUseCase: MockUseCase = { execute: vi.fn() };
-    const logoutUseCase: MockUseCase = { execute: vi.fn() };
-    const logoutAllUseCase: MockUseCase = { execute: vi.fn() };
-    const switchTenantUseCase: MockUseCase = { execute: vi.fn() };
-    const cambiarPasswordUseCase: MockUseCase = { execute: vi.fn() };
-    // `log()` nunca se ejercita desde este controller — solo `error()` (el
-    // fallback ruidoso de `toHttpException`, D4). Un stub mudo taparía que
-    // producción empiece a llamarlo.
-    const logger: ILogger = { error: vi.fn(), log: unstubbed('ILogger.log') };
-
-    const controller = new AuthController(
-      loginUseCase as unknown as Ctor[0],
-      refreshTokenUseCase as unknown as Ctor[1],
-      logoutUseCase as unknown as Ctor[2],
-      logoutAllUseCase as unknown as Ctor[3],
-      switchTenantUseCase as unknown as Ctor[4],
-      cambiarPasswordUseCase as unknown as Ctor[5],
-      logger as unknown as Ctor[6],
-    );
-
-    return {
-      controller,
-      loginUseCase,
-      refreshTokenUseCase,
-      logoutUseCase,
-      logoutAllUseCase,
-      switchTenantUseCase,
-      cambiarPasswordUseCase,
-      logger,
-    };
-  }
-
   describe('POST /auth/login', () => {
     it('credenciales válidas, 1 membresía → 200 { accessToken, refreshToken }', async () => {
       const { controller, loginUseCase } = buildController();
@@ -103,11 +116,17 @@ describe('AuthController (T6.5)', () => {
     it('>1 membresías sin clienteId → 200 { needsClienteSelection: true, membresias }', async () => {
       const { controller, loginUseCase } = buildController();
       const membresias = [{ cliente_id: 'c1', nombre: 'C1', rol: 'TECNICO' }];
-      loginUseCase.execute.mockResolvedValue(Result.ok({ kind: 'selection', membresias }));
+      loginUseCase.execute.mockResolvedValue(
+        Result.ok({ kind: 'selection', membresias, ticket: 'ticket-seleccion' }),
+      );
 
       const result = await controller.login({ email: 'a@a.com', password: 'pw' }, REQ);
 
-      expect(result).toEqual({ needsClienteSelection: true, membresias });
+      expect(result).toEqual({
+        needsClienteSelection: true,
+        membresias,
+        ticket: 'ticket-seleccion',
+      });
     });
 
     it('credenciales inválidas → UnauthorizedException', async () => {
@@ -324,33 +343,10 @@ describe('AuthController (T6.5)', () => {
 // puede alterar flujos del frontend de formas no obvias. Quedan anotados
 // como hallazgo, a resolver en un trabajo aparte.
 describe('AuthController.toHttpException — catálogo de errores → HTTP (spec guardián)', () => {
-  type ControllerConToHttpException = {
-    toHttpException(error: DomainError): { getStatus(): number };
-  };
-
+  // `toHttpException` es `private`: el acceso por índice lo alcanza con su tipo real, sin cast.
   function statusDe(error: DomainError): number {
-    const { controller } = (() => {
-      const loginUseCase: MockUseCase = { execute: vi.fn() };
-      const refreshTokenUseCase: MockUseCase = { execute: vi.fn() };
-      const logoutUseCase: MockUseCase = { execute: vi.fn() };
-      const logoutAllUseCase: MockUseCase = { execute: vi.fn() };
-      const switchTenantUseCase: MockUseCase = { execute: vi.fn() };
-      const cambiarPasswordUseCase: MockUseCase = { execute: vi.fn() };
-      const logger: ILogger = { error: vi.fn(), log: unstubbed('ILogger.log') };
-      const controller = new AuthController(
-        loginUseCase as unknown as Ctor[0],
-        refreshTokenUseCase as unknown as Ctor[1],
-        logoutUseCase as unknown as Ctor[2],
-        logoutAllUseCase as unknown as Ctor[3],
-        switchTenantUseCase as unknown as Ctor[4],
-        cambiarPasswordUseCase as unknown as Ctor[5],
-        logger as unknown as Ctor[6],
-      );
-      return { controller };
-    })();
-    return (controller as unknown as ControllerConToHttpException)
-      .toHttpException(error)
-      .getStatus();
+    const { controller } = buildController();
+    return controller['toHttpException'](error).getStatus();
   }
 
   /** Clases de error exportadas por `auth.errors.ts` — el número de la verdad, no un literal a mano. */
@@ -415,26 +411,9 @@ describe('AuthController.toHttpException — catálogo de errores → HTTP (spec
       }
     }
 
-    const loginUseCase: MockUseCase = { execute: vi.fn() };
-    const refreshTokenUseCase: MockUseCase = { execute: vi.fn() };
-    const logoutUseCase: MockUseCase = { execute: vi.fn() };
-    const logoutAllUseCase: MockUseCase = { execute: vi.fn() };
-    const switchTenantUseCase: MockUseCase = { execute: vi.fn() };
-    const cambiarPasswordUseCase: MockUseCase = { execute: vi.fn() };
-    const logger: ILogger = { error: vi.fn(), log: unstubbed('ILogger.log') };
-    const controller = new AuthController(
-      loginUseCase as unknown as Ctor[0],
-      refreshTokenUseCase as unknown as Ctor[1],
-      logoutUseCase as unknown as Ctor[2],
-      logoutAllUseCase as unknown as Ctor[3],
-      switchTenantUseCase as unknown as Ctor[4],
-      cambiarPasswordUseCase as unknown as Ctor[5],
-      logger as unknown as Ctor[6],
-    );
+    const { controller, logger } = buildController();
 
-    const status = (controller as unknown as ControllerConToHttpException)
-      .toHttpException(new ErrorDeDominioFicticioParaTest())
-      .getStatus();
+    const status = controller['toHttpException'](new ErrorDeDominioFicticioParaTest()).getStatus();
 
     expect(status).toBe(401);
     expect(logger.error).toHaveBeenCalledTimes(1);

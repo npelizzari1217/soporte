@@ -157,9 +157,9 @@ describe('PrismaUnidadInsumoRepository.contarEnDepositoPorCondicionDeInsumos —
 
   it('con lista vacía devuelve un mapa vacío sin ir a la base', async () => {
     const groupBy = vi.fn();
-    const repoEspia = new PrismaUnidadInsumoRepository({
-      getClient: () => ({ unidadInsumo: { groupBy } }),
-    } as unknown as TenantContext);
+    const contextoEspia = new TenantContext();
+    vi.spyOn(contextoEspia, 'getClient').mockReturnValue({ unidadInsumo: { groupBy } });
+    const repoEspia = new PrismaUnidadInsumoRepository(contextoEspia);
 
     const mapa = await repoEspia.contarEnDepositoPorCondicionDeInsumos([]);
 
@@ -169,9 +169,9 @@ describe('PrismaUnidadInsumoRepository.contarEnDepositoPorCondicionDeInsumos —
 
   it('resuelve con UNA sola consulta agregada para N insumos', async () => {
     const groupBy = vi.fn().mockResolvedValue([]);
-    const repoEspia = new PrismaUnidadInsumoRepository({
-      getClient: () => ({ unidadInsumo: { groupBy } }),
-    } as unknown as TenantContext);
+    const contextoEspia = new TenantContext();
+    vi.spyOn(contextoEspia, 'getClient').mockReturnValue({ unidadInsumo: { groupBy } });
+    const repoEspia = new PrismaUnidadInsumoRepository(contextoEspia);
 
     await repoEspia.contarEnDepositoPorCondicionDeInsumos([insumoA, insumoB, insumoSinUnidades]);
 

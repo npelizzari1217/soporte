@@ -94,18 +94,20 @@ function instrumentPoolConcurrency(pool: Pool): () => number {
 
   type ConnectCallback = (
     err: Error | undefined,
-    client: PoolClient,
+    client: PoolClient | undefined,
     release: (release?: unknown) => void,
   ) => void;
 
-  const connectInstrumentado = (callback?: ConnectCallback): Promise<PoolClient> | void => {
+  function connectInstrumentado(): Promise<PoolClient>;
+  function connectInstrumentado(callback: ConnectCallback): void;
+  function connectInstrumentado(callback?: ConnectCallback): Promise<PoolClient> | void {
     if (callback) {
       // Variante callback (pool.query() interno) — pass-through SIN instrumentar.
-      return (originalConnect as unknown as (cb: ConnectCallback) => void)(callback);
+      return originalConnect(callback);
     }
     // Variante Promise (PrismaPgAdapter.startTransaction()) — la única que
     // nos interesa medir: una transacción = una conexión checked-out.
-    return (originalConnect as () => Promise<PoolClient>)().then((client) => {
+    return originalConnect().then((client) => {
       conexionesActivas += 1;
       maxObservado = Math.max(maxObservado, conexionesActivas);
 
@@ -117,9 +119,9 @@ function instrumentPoolConcurrency(pool: Pool): () => number {
 
       return client;
     });
-  };
+  }
 
-  pool.connect = connectInstrumentado as unknown as typeof pool.connect;
+  pool.connect = connectInstrumentado;
   return () => maxObservado;
 }
 

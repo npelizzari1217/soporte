@@ -23,24 +23,28 @@ import { ConfirmarResetPasswordUseCase } from '../../application/use-cases/confi
 import { Result } from '../../../shared/domain/result';
 import { ResetLinkInvalidoError } from '../../domain/errors/recuperacion-password.errors';
 
-type Ctor = ConstructorParameters<typeof RecuperacionPasswordController>;
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `ejecutar`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { ejecutar: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const ejecutar = vi.fn<T['ejecutar']>();
+  const caso: T = Object.create(Clase.prototype, { ejecutar: { value: ejecutar } });
+  return { caso, ejecutar };
+}
 
 describe('RecuperacionPasswordController — POST /auth/forgot-password (7.3)', () => {
   function buildController() {
-    const ejecutar = vi.fn().mockResolvedValue(undefined);
-    const solicitar = { ejecutar } as unknown as SolicitarResetPasswordUseCase;
+    const { caso: solicitar, ejecutar } = espiado(SolicitarResetPasswordUseCase);
+    ejecutar.mockResolvedValue(undefined);
 
-    const lanzar = vi.fn();
+    const lanzar = vi.fn<ITareasSegundoPlano['lanzar']>();
     const tareas: ITareasSegundoPlano = { lanzar };
 
-    const ejecutarConfirmar = vi.fn().mockResolvedValue(Result.ok(undefined));
-    const confirmar = { ejecutar: ejecutarConfirmar } as unknown as ConfirmarResetPasswordUseCase;
+    const { caso: confirmar, ejecutar: ejecutarConfirmar } = espiado(ConfirmarResetPasswordUseCase);
+    ejecutarConfirmar.mockResolvedValue(Result.ok(undefined));
 
-    const controller = new RecuperacionPasswordController(
-      tareas as unknown as Ctor[0],
-      solicitar as unknown as Ctor[1],
-      confirmar as unknown as Ctor[2],
-    );
+    const controller = new RecuperacionPasswordController(tareas, solicitar, confirmar);
 
     return { controller, lanzar, ejecutar, ejecutarConfirmar };
   }
@@ -74,20 +78,15 @@ describe('RecuperacionPasswordController — POST /auth/forgot-password (7.3)', 
 
 describe('RecuperacionPasswordController — POST /auth/reset-password (8.2)', () => {
   function buildController() {
-    const ejecutar = vi.fn().mockResolvedValue(undefined);
-    const solicitar = { ejecutar } as unknown as SolicitarResetPasswordUseCase;
+    const { caso: solicitar, ejecutar } = espiado(SolicitarResetPasswordUseCase);
+    ejecutar.mockResolvedValue(undefined);
 
-    const lanzar = vi.fn();
+    const lanzar = vi.fn<ITareasSegundoPlano['lanzar']>();
     const tareas: ITareasSegundoPlano = { lanzar };
 
-    const ejecutarConfirmar = vi.fn();
-    const confirmar = { ejecutar: ejecutarConfirmar } as unknown as ConfirmarResetPasswordUseCase;
+    const { caso: confirmar, ejecutar: ejecutarConfirmar } = espiado(ConfirmarResetPasswordUseCase);
 
-    const controller = new RecuperacionPasswordController(
-      tareas as unknown as Ctor[0],
-      solicitar as unknown as Ctor[1],
-      confirmar as unknown as Ctor[2],
-    );
+    const controller = new RecuperacionPasswordController(tareas, solicitar, confirmar);
 
     return { controller, ejecutarConfirmar };
   }

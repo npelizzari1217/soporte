@@ -5,14 +5,13 @@
  * NUNCA se deriva del rol ADMINISTRADOR de una membresía (ortogonalidad, R14).
  */
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { GlobalAdminGuard } from './global-admin.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
-  return {
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-  } as unknown as ExecutionContext;
+  return new ExecutionContextHost([{ user }]);
 }
 
 function buildPayload(overrides: Partial<JwtPayload> = {}): JwtPayload {

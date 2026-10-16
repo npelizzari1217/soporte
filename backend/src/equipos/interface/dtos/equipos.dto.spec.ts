@@ -272,6 +272,7 @@ describe('EditarComponenteHttpDto — el tipo y el repuesto no se editan', () =>
     const errores = await validate(dto, { whitelist: true });
 
     expect(errores).toHaveLength(0);
+    // Cast conservado: lee propiedades que el DTO no declara, para probar que el whitelist las borró.
     const plano = dto as unknown as Record<string, unknown>;
     expect(plano.tipoComponenteCodigo).toBeUndefined();
     expect(plano.insumoId).toBeUndefined();
@@ -347,6 +348,7 @@ describe('CreateComponenteHttpDto — contrato del alta única', () => {
     const errores = await validate(dto, { whitelist: true });
 
     expect(errores).toHaveLength(0);
+    // Cast conservado: lee una propiedad que el DTO no declara, para probar que el whitelist la borró.
     expect(
       (dto as unknown as { tipoComponenteCodigo?: string }).tipoComponenteCodigo,
     ).toBeUndefined();

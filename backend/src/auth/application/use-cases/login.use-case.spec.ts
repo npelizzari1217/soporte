@@ -71,7 +71,7 @@ const makeUsuario = (
     esIntegracion: overrides.esIntegracion ?? false,
   });
   if (overrides.deletedAt) {
-    (u as unknown as { _deletedAt: Date | null })._deletedAt = overrides.deletedAt;
+    u._deletedAt = overrides.deletedAt;
   }
   return u;
 };

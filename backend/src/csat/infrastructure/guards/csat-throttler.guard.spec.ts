@@ -20,11 +20,12 @@ function buildGuard(): CsatThrottlerGuard {
   return new CsatThrottlerGuard([], storage, new Reflector());
 }
 
-/** Acceso al método `protected` desde el test — mismo criterio que otros specs de guards del repo. */
+/**
+ * Acceso al método `protected` desde el test. La notación de corchetes con un literal es el escape
+ * que TypeScript admite para miembros `protected`/`private`, y conserva la firma tipada.
+ */
 function getTracker(guard: CsatThrottlerGuard, req: Record<string, unknown>): Promise<string> {
-  return (
-    guard as unknown as { getTracker: (req: Record<string, unknown>) => Promise<string> }
-  ).getTracker(req);
+  return guard['getTracker'](req);
 }
 
 describe('CsatThrottlerGuard.getTracker()', () => {

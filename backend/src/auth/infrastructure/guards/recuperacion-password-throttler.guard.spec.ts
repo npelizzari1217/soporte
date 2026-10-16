@@ -10,19 +10,20 @@ import { unstubbed } from '../../../testing/mocks';
  * su interfaz real y `Reflector` se instancia real — no hace falta ningún
  * cast.
  */
-function buildGuard(): RecuperacionPasswordThrottlerGuard {
-  const storage: ThrottlerStorage = { increment: unstubbed('increment') };
-  return new RecuperacionPasswordThrottlerGuard([], storage, new Reflector());
+/** Subclase de test que expone el `getTracker()` `protected`, sin castear el guard. */
+class GuardConTrackerExpuesto extends RecuperacionPasswordThrottlerGuard {
+  trackerDe(req: Record<string, unknown>): Promise<string> {
+    return this.getTracker(req);
+  }
 }
 
-/** Acceso al método `protected` desde el test — mismo criterio que `csat-throttler.guard.spec.ts`. */
-function getTracker(
-  guard: RecuperacionPasswordThrottlerGuard,
-  req: Record<string, unknown>,
-): Promise<string> {
-  return (
-    guard as unknown as { getTracker: (req: Record<string, unknown>) => Promise<string> }
-  ).getTracker(req);
+function buildGuard(): GuardConTrackerExpuesto {
+  const storage: ThrottlerStorage = { increment: unstubbed('increment') };
+  return new GuardConTrackerExpuesto([], storage, new Reflector());
+}
+
+function getTracker(guard: GuardConTrackerExpuesto, req: Record<string, unknown>): Promise<string> {
+  return guard.trackerDe(req);
 }
 
 describe('RecuperacionPasswordThrottlerGuard.getTracker() (ADR-3)', () => {

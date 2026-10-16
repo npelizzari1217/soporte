@@ -159,7 +159,11 @@ describe('PrismaSsoEstadoRepository', () => {
             ? () => Promise.reject(new Error('purga caida'))
             : Reflect.get(target, prop, receiver),
       });
-      const servicio = { getMasterClient: () => cliente } as unknown as PrismaService;
+      const servicio: PrismaService = Object.create(PrismaService.prototype, {
+        getMasterClient: {
+          value: vi.fn<PrismaService['getMasterClient']>().mockReturnValue(cliente),
+        },
+      });
       const reloj2 = reloj + 10 * 60 * MINUTO;
       const repoConFallo = new PrismaSsoEstadoRepository(servicio, () => reloj2);
       const estado = nuevo();

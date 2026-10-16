@@ -160,9 +160,7 @@ describe('ModelosEquipoController', () => {
       ['listar', false],
       ['listarInsumosCompatibles', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstarPresente) => {
-      const handler = ModelosEquipoController.prototype[
-        metodo as keyof typeof ModelosEquipoController.prototype
-      ] as unknown as (...args: unknown[]) => unknown;
+      const handler: object = ModelosEquipoController.prototype[metodo];
       const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
 
       if (debeEstarPresente) {

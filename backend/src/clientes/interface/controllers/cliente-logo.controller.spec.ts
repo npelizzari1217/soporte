@@ -264,8 +264,8 @@ describe('ClienteLogoController (2.5)', () => {
    * `e4c8257`). Sin el `?? []`, esta aserción no muerde.
    */
   describe('RBAC — metadata de guards, por ruta', () => {
-    function handlerDe(metodo: 'subir' | 'quitar' | 'ver'): (...args: unknown[]) => unknown {
-      return ClienteLogoController.prototype[metodo] as unknown as (...args: unknown[]) => unknown;
+    function handlerDe(metodo: 'subir' | 'quitar' | 'ver'): object {
+      return ClienteLogoController.prototype[metodo];
     }
 
     it('subir (POST) declara JwtAuthGuard y GlobalAdminGuard — exclusivo ROOT', () => {

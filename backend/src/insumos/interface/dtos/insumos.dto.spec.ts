@@ -99,12 +99,12 @@ describe('CreateInsumoDto', () => {
     // Antes de validar, class-transformer todavía copió la clave cruda: la
     // prueba real está en lo que pasa DESPUÉS, no en que el borde ya la haya
     // filtrado por su cuenta.
-    expect((dto as unknown as { codigo?: string }).codigo).toBe('CUALQUIERA');
+    expect(dto).toHaveProperty('codigo', 'CUALQUIERA');
 
     const errores = await validate(dto, { whitelist: true });
 
     expect(errores).toHaveLength(0);
-    expect((dto as unknown as { codigo?: string }).codigo).toBeUndefined();
+    expect(dto).not.toHaveProperty('codigo');
   });
 
   /**
@@ -516,12 +516,12 @@ describe('EditInsumoDto — PATCH parcial', () => {
   it('un codigo en el PATCH NO sobrevive al ValidationPipe — whitelist lo descarta en silencio', async () => {
     const dto = plainToInstance(EditInsumoDto, { nombre: 'Renombrado', codigo: 'TON-999' });
 
-    expect((dto as unknown as { codigo?: string }).codigo).toBe('TON-999');
+    expect(dto).toHaveProperty('codigo', 'TON-999');
 
     const errores = await validate(dto, { whitelist: true });
 
     expect(errores).toHaveLength(0);
-    expect((dto as unknown as { codigo?: string }).codigo).toBeUndefined();
+    expect(dto).not.toHaveProperty('codigo');
   });
 
   /**

@@ -133,9 +133,7 @@ describe('UnidadesMedidaController', () => {
       ['cambiarEstadoActivo', true],
       ['listar', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstarPresente) => {
-      const handler = UnidadesMedidaController.prototype[
-        metodo as keyof typeof UnidadesMedidaController.prototype
-      ] as unknown as (...args: unknown[]) => unknown;
+      const handler: object = UnidadesMedidaController.prototype[metodo];
       const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
 
       if (debeEstarPresente) {

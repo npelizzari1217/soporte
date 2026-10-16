@@ -14,6 +14,7 @@
  * 401 (#2218). Un 403 pasa de largo sin recuperación.
  */
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ITokenService, JwtPayload, VERSION_PAYLOAD_JWT } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
@@ -26,11 +27,7 @@ function buildContext(headers: Record<string, string>): {
     headers,
     user: null,
   };
-  const context = {
-    switchToHttp: () => ({
-      getRequest: () => request,
-    }),
-  } as unknown as ExecutionContext;
+  const context = new ExecutionContextHost([request]);
   return { context, request };
 }
 
