@@ -133,7 +133,10 @@ describe('PrismaCalendarioLaboralSemanalRepository — Integration (WU-3, sdd/ho
           // delegado `upsert` DEL CLIENTE TRANSACCIONAL que Prisma le pasa al
           // callback — nunca el `tenantClient` de afuera, que las próximas
           // aserciones (`repo.obtener()`) siguen necesitando intacto.
-          const transaccionMockeada = (async (fn: (tx: any) => Promise<unknown>) =>
+          // `$transaction` está sobrecargado (array e interactiva): con el
+          // parámetro y el retorno en `any` una sola implementación satisface
+          // las dos firmas, sin castear la función.
+          const transaccionMockeada = async (fn: any): Promise<any> =>
             transaccionOriginal(async (tx: any) => {
               const upsertOriginal = tx.calendarioLaboralDiaCliente.upsert.bind(
                 tx.calendarioLaboralDiaCliente,
@@ -156,7 +159,7 @@ describe('PrismaCalendarioLaboralSemanalRepository — Integration (WU-3, sdd/ho
                 return upsertOriginal(args);
               });
               return fn(tx);
-            })) as unknown as typeof tenantClient.$transaction;
+            });
 
           const txSpy = vi
             .spyOn(tenantClient, '$transaction')

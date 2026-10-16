@@ -23,6 +23,7 @@ import { ListarEquiposUseCase } from './listar-equipos.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/equipos.errors';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
+import { Result } from '../../../shared/domain/result';
 
 const BOM = '﻿';
 
@@ -69,12 +70,9 @@ function crearEquipo(
 }
 
 /** `ListarEquiposUseCase` FAKE — controla la lista sin pasar por el repositorio real. */
-function crearListarEquiposFake(equipos: EquipoInformaticoEntity[]) {
-  const execute = vi.fn().mockResolvedValue({
-    isFail: () => false,
-    getValue: () => equipos,
-  });
-  return { execute } as unknown as ListarEquiposUseCase;
+function crearListarEquiposFake(equipos: EquipoInformaticoEntity[]): ListarEquiposUseCase {
+  const execute = vi.fn<ListarEquiposUseCase['execute']>().mockResolvedValue(Result.ok(equipos));
+  return Object.create(ListarEquiposUseCase.prototype, { execute: { value: execute } });
 }
 
 describe('ExportarEquiposUseCase', () => {

@@ -98,11 +98,13 @@ describe('UsuarioEntity', () => {
 
     it('NO expone clienteId (identidad global, R3/ADR-1)', () => {
       const usuario = makeUsuario();
+      // Cast conservado: lee una propiedad que el tipo no declara, para probar que no existe.
       expect((usuario as unknown as Record<string, unknown>).clienteId).toBeUndefined();
     });
 
     it('NO expone roles propios (el rol vive en la membresía, ADR-1)', () => {
       const usuario = makeUsuario();
+      // Cast conservado: lee una propiedad que el tipo no declara, para probar que no existe.
       expect((usuario as unknown as Record<string, unknown>).roles).toBeUndefined();
     });
   });

@@ -10,6 +10,7 @@
  * (re-emisión de token) es el ÚNICO mecanismo de salto de tenant.
  */
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { TenantGuard } from './tenant.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
@@ -19,9 +20,7 @@ import { PrismaService } from '../../../shared/infrastructure/persistence/prisma
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
-  return {
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-  } as unknown as ExecutionContext;
+  return new ExecutionContextHost([{ user }]);
 }
 
 function buildPayload(overrides: Partial<JwtPayload> = {}): JwtPayload {
@@ -49,10 +48,16 @@ describe('TenantGuard (R12)', () => {
       save: vi.fn(),
       delete: vi.fn(),
     };
-    const tenantClientStub = { __marker: 'tenant-prisma-client' };
-    const prismaService = {
-      getTenantClient: vi.fn().mockReturnValue(tenantClientStub),
-    } as unknown as PrismaService;
+    // Marcador opaco: el guard solo lo pasa a `TenantContext.bind()`, nunca lo usa.
+    const tenantClientStub: ReturnType<PrismaService['getTenantClient']> = Object.create(null, {
+      __marker: { value: 'tenant-prisma-client', enumerable: true },
+    });
+    const getTenantClient = vi
+      .fn<PrismaService['getTenantClient']>()
+      .mockReturnValue(tenantClientStub);
+    const prismaService: PrismaService = Object.create(PrismaService.prototype, {
+      getTenantClient: { value: getTenantClient },
+    });
     const tenantContext = new TenantContext();
     const guard = new TenantGuard(clienteRepo, prismaService, tenantContext);
     return { guard, clienteRepo, prismaService, tenantContext, tenantClientStub };

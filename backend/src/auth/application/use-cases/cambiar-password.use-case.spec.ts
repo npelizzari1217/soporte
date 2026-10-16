@@ -51,7 +51,7 @@ const makeUsuario = (
     activo: overrides.activo ?? true,
   });
   if (overrides.deletedAt) {
-    (u as unknown as { _deletedAt: Date | null })._deletedAt = overrides.deletedAt;
+    u._deletedAt = overrides.deletedAt;
   }
   return u;
 };

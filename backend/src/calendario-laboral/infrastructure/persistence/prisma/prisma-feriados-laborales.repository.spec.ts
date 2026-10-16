@@ -20,10 +20,12 @@ function filaFeriado(fecha: string) {
 }
 
 // PrismaService es una clase concreta con estado privado (pool de conexión
-// real) — no hay forma de satisfacerla estructuralmente con un fake. El
-// único método que este repositorio usa es `getMasterClient()`.
+// real): se parte de su prototipo y se pisa el único método que este
+// repositorio usa, `getMasterClient()`.
 function makePrismaService(findMany: ReturnType<typeof vi.fn>): PrismaService {
-  return { getMasterClient: () => ({ feriado: { findMany } }) } as unknown as PrismaService;
+  return Object.assign(Object.create(PrismaService.prototype), {
+    getMasterClient: () => ({ feriado: { findMany } }),
+  });
 }
 
 /** `TenantContextData` mínimo para bindear un scope de test — `dbName`/`clienteId` no se ejercitan acá. */

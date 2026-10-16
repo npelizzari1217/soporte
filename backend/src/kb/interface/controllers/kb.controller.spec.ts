@@ -110,7 +110,7 @@ describe('KbController (K7)', () => {
 
   type Handler = (...args: never[]) => unknown;
 
-  function guardsDe(handler: Handler): unknown[] {
+  function guardsDe(handler: object): unknown[] {
     return (Reflect.getMetadata(GUARDS_KEY, handler) as unknown[] | undefined) ?? [];
   }
 
@@ -155,7 +155,7 @@ describe('KbController (K7)', () => {
   // un ROOT sin cliente seleccionado sin poder mantenerla. Que TenantGuard NO
   // esté es una decisión, no un olvido — este assert la sostiene.
   it('[CRITICAL] el controller NO aplica TenantGuard: solo JwtAuthGuard + AccionesGuard', () => {
-    expect(guardsDe(KbController as unknown as Handler)).toEqual([JwtAuthGuard, AccionesGuard]);
+    expect(guardsDe(KbController)).toEqual([JwtAuthGuard, AccionesGuard]);
   });
 
   // ─── POST /kb ───────────────────────────────────────────────────────────

@@ -22,16 +22,13 @@ const GUARDS_KEY = '__guards__';
 
 type Handler = (...args: never[]) => unknown;
 
-function guardsDe(handler: Handler): unknown[] {
+function guardsDe(handler: object): unknown[] {
   return (Reflect.getMetadata(GUARDS_KEY, handler) as unknown[] | undefined) ?? [];
 }
 
 describe('FeriadosClienteController — guards (D5/D6, spec "Per-client admin manages its own holidays; other roles read")', () => {
   it('[CRITICAL] a nivel de clase declara JwtAuthGuard y TenantGuard (lectura abierta a cualquier autenticado del tenant)', () => {
-    expect(guardsDe(FeriadosClienteController as unknown as Handler)).toEqual([
-      JwtAuthGuard,
-      TenantGuard,
-    ]);
+    expect(guardsDe(FeriadosClienteController)).toEqual([JwtAuthGuard, TenantGuard]);
   });
 
   it('[CRITICAL] GET /feriados-cliente NO declara AdminClienteGuard por método (lectura para cualquier autenticado del tenant)', () => {

@@ -115,9 +115,11 @@ function makePostgresAdmin(): IPostgresAdminPort {
 }
 
 function makeProvisionar(): ProvisionarTenantDatabaseUseCase {
-  return {
-    provision: vi.fn().mockResolvedValue(undefined),
-  } as unknown as ProvisionarTenantDatabaseUseCase;
+  return Object.create(ProvisionarTenantDatabaseUseCase.prototype, {
+    provision: {
+      value: vi.fn<ProvisionarTenantDatabaseUseCase['provision']>().mockResolvedValue(undefined),
+    },
+  });
 }
 
 const VALID_DTO = {

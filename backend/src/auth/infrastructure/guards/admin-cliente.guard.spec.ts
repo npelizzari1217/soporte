@@ -7,14 +7,13 @@
  * ningún controller (eso es WU-7.3).
  */
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host';
 import { AdminClienteGuard } from './admin-cliente.guard';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
 
 function buildContext(user: JwtPayload | null): ExecutionContext {
-  return {
-    switchToHttp: () => ({ getRequest: () => ({ user }) }),
-  } as unknown as ExecutionContext;
+  return new ExecutionContextHost([{ user }]);
 }
 
 function buildPayload(overrides: Partial<JwtPayload> = {}): JwtPayload {

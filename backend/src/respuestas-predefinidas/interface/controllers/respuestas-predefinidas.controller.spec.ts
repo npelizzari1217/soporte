@@ -88,9 +88,7 @@ describe('RespuestasPredefinidasController', () => {
       ['cambiarEstadoActivo', true],
       ['listar', false],
     ] as const)('%s → AdminClienteGuard presente: %s', (metodo, debeEstar) => {
-      const handler = RespuestasPredefinidasController.prototype[metodo] as unknown as (
-        ...args: unknown[]
-      ) => unknown;
+      const handler = RespuestasPredefinidasController.prototype[metodo];
       const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
 
       if (debeEstar) {
