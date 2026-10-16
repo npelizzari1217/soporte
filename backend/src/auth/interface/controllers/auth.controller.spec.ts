@@ -40,6 +40,7 @@ import { JwtPayload } from '../../domain/ports/i-token.service';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { payloadDeTest } from '../../test-helpers/payload-de-test';
 import { unstubbed } from '../../../testing/mocks';
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 const ROOT_PAYLOAD: JwtPayload = payloadDeTest({
   sub: 'usuario-1',
@@ -49,17 +50,6 @@ const ROOT_PAYLOAD: JwtPayload = payloadDeTest({
   is_global_admin: true,
   cliente_nombre: null,
 });
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso. Al controller sólo le
- * interesa `execute`.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
 
 function buildController() {
   const loginUseCase = espiado(LoginUseCase);

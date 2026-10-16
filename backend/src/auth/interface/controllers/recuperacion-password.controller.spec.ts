@@ -22,16 +22,7 @@ import { SolicitarResetPasswordUseCase } from '../../application/use-cases/solic
 import { ConfirmarResetPasswordUseCase } from '../../application/use-cases/confirmar-reset-password.use-case';
 import { Result } from '../../../shared/domain/result';
 import { ResetLinkInvalidoError } from '../../domain/errors/recuperacion-password.errors';
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `ejecutar`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { ejecutar: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const ejecutar = vi.fn<T['ejecutar']>();
-  const caso: T = Object.create(Clase.prototype, { ejecutar: { value: ejecutar } });
-  return { caso, ejecutar };
-}
+import { espiadoEjecutar as espiado } from '../../../shared/test-helpers/espiado';
 
 describe('RecuperacionPasswordController — POST /auth/forgot-password (7.3)', () => {
   function buildController() {

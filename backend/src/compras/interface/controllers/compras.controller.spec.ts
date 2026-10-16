@@ -102,16 +102,7 @@ import { ListarComprasUseCase } from '../../application/use-cases/listar-compras
 import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra.use-case';
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
-
-/**
- * Doble de un use case concreto: instancia real del prototipo con `execute`
- * espiado y tipado contra la firma del caso de uso.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 const USUARIO: JwtPayload = payloadDeTest({
   sub: 'usuario-1',

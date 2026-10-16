@@ -23,6 +23,7 @@ import {
   ObjetivoInvalidoError,
   PlanNoEncontradoError,
 } from '../../domain/errors/preventivo.errors';
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 function makePlan(): PlanPreventivoEntity {
   return PlanPreventivoEntity.create(
@@ -41,16 +42,6 @@ function makePlan(): PlanPreventivoEntity {
     },
     'plan-uuid',
   ).getValue();
-}
-
-/**
- * Doble de un caso de uso concreto: lleva el prototipo de la clase real y
- * `execute` como mock tipado con su firma.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
 }
 
 /** Body completo: el caso de error depende del use case (mockeado), no del contenido. */

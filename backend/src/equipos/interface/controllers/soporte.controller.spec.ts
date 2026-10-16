@@ -28,18 +28,7 @@ import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
 import { RegistrarSolucionUseCase } from '../../application/use-cases/registrar-solucion.use-case';
 import { ObtenerEquipoDeTicketUseCase } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
-
-/**
- * Caso de uso sin construir, con `execute` reemplazado por un `vi.fn` tipado con
- * la firma real de la clase. El controller solo llama a `execute`, así que
- * alcanza con el prototipo; como un `vi.fn()` suelto, devuelve `undefined`
- * hasta que el test lo programe.
- */
-function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
-  const execute = vi.fn<T['execute']>();
-  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
-  return { caso, execute };
-}
+import { espiado } from '../../../shared/test-helpers/espiado';
 
 const USER = payloadDeTest({
   sub: 'usuario-uuid',
