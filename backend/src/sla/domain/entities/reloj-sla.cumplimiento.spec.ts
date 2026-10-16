@@ -84,6 +84,25 @@ describe('RelojSla.plegar', () => {
       expect(r.cumplido).toBeNull();
     });
 
+    it.each(['NUEVO', 'ASIGNADO', 'EN_PROCESO'])(
+      'la reapertura desde CERRADO hacia %s limpia también un cumplimiento true',
+      (destino) => {
+        const r = RelojSla.plegar({
+          fila: fila({
+            estadoCodigo: destino,
+            acumuladoS: 7 * H,
+            correDesde: null,
+            cumplido: true,
+          }),
+          medidor: habil(),
+          historialSinSecuencia: [],
+          transiciones: [op('CERRADO', destino, L(14, 9))],
+        });
+
+        expect(r.cumplido).toBeNull();
+      },
+    );
+
     it('CERRADO no cambia el cumplimiento', () => {
       const r = resolver({ acumuladoS: 5 * H, correDesde: null, cumplido: true }, [
         op('RESUELTO', 'CERRADO', L(17, 9)),
