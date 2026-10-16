@@ -229,6 +229,33 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     await waitFor(() => expect(capturedBody).toEqual({ asignadoId: "u-tecnico-2" }));
   });
 
+  it("tras «Asignar y poner en proceso» el control pasa a «Cambiar responsable» con la elección vacía", async () => {
+    let enProceso = false;
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json(enProceso ? { ...TICKET, estadoId: "e-en-proceso", asignadoId: "u-tecnico-2" } : TICKET),
+      ),
+      http.patch(`/api/tickets/${TICKET_ID}/asignar-en-proceso`, () => {
+        enProceso = true;
+        return HttpResponse.json({ ...TICKET, estadoId: "e-en-proceso", asignadoId: "u-tecnico-2" });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
+    await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
+
+    const cambiar = await screen.findByRole("button", { name: /cambiar responsable/i });
+    // La elección anterior no se arrastra al modo nuevo: el botón arranca deshabilitado.
+    expect(screen.getByRole("combobox", { name: /nuevo responsable/i })).toHaveValue("");
+    expect(cambiar).toBeDisabled();
+  });
+
   it("transicionar posterior (EN_PROCESO→RESUELTO) → PATCH /tickets/:id/estado con el código elegido", async () => {
     let capturedBody: unknown = null;
     server.use(

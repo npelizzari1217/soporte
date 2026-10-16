@@ -13,7 +13,7 @@ por grupo. Sin cambios de reglas: permisos, estados y validaciones siguen en el 
   exige TICKETS:ASIGNAR). Decisión del dueño: "un solo boton". Si en NUEVO/ASIGNADO el usuario tiene
   ASIGNAR pero no TRANSICIONAR, se ofrece "Cambiar responsable" (lo que hoy ya puede hacer).
 - S2. Cada desplegable lleva una etiqueta visible (`<label htmlFor>`), no solo `aria-label`, y una
-  línea de ayuda cuando el efecto no es obvio. Nombres accesibles: "Responsable", "Nuevo estado",
+  línea de ayuda cuando el efecto no es obvio. Nombres accesibles: "Nuevo responsable", "Nuevo estado",
   "Corregir estado".
 - S3. Grupos dentro de una tarjeta "Acciones": "Responsable", "Estado" (con el subgrupo "Corregir
   estado" solo para ROOT/ADMINISTRADOR, visualmente distinto y con su ayuda) y "Ticket" (Editar,
@@ -42,3 +42,8 @@ por grupo. Sin cambios de reglas: permisos, estados y validaciones siguen en el 
   monta si el usuario puede hacer algo en él), sección "Nuevo comentario". Tres tests nuevos en el
   detalle. Frontend completo: 273 archivos, 2304 tests; lint y tsc 0. La Ayuda no describe estos
   controles: no hay artículo que corregir.
+- 2026-10-16, revisión nativa (`review-0cbdb4381c8c6173`, readability + reliability): aprobada con cinco
+  observaciones informativas. Dos se tomaron: la elección de responsable se arrastraba al cambiar de
+  modo (`key` por modo en el contenedor, con test RED→GREEN en el detalle) y S2 decía "Responsable"
+  donde el nombre accesible es "Nuevo responsable". La del grupo Estado vacío no aplica: el grupo
+  está gateado por permiso y en estado final muestra el aviso.

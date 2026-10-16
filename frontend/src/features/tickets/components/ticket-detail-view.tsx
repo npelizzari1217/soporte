@@ -144,6 +144,9 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           {puedeAsignar && estadoCodigo && puedeReasignar(estadoCodigo) && (
             <GrupoAccion titulo="Responsable">
               <TicketResponsableControl
+                // `key` por modo: al pasar de arranque a cambio el control se remonta y la
+                // elección anterior no se arrastra al botón nuevo.
+                key={puedeAsignarYPonerEnProceso(estadoCodigo) ? "arranque" : "cambio"}
                 tecnicos={tecnicosQuery.data ?? []}
                 modo={puedeAsignarYPonerEnProceso(estadoCodigo) ? "arranque" : "cambio"}
                 onAsignarEnProceso={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
