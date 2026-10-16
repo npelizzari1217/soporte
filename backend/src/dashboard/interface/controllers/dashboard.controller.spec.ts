@@ -15,13 +15,19 @@ import { DashboardController } from './dashboard.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
-import { MetricasResult } from '../../application/use-cases/obtener-metricas.use-case';
+import {
+  MetricasResult,
+  ObtenerMetricasUseCase,
+} from '../../application/use-cases/obtener-metricas.use-case';
 
 describe('DashboardController (D5)', () => {
   function buildController() {
-    const obtenerMetricasUseCase = { execute: vi.fn() };
-    const controller = new DashboardController(obtenerMetricasUseCase as never);
-    return { controller, obtenerMetricasUseCase };
+    const execute = vi.fn<ObtenerMetricasUseCase['execute']>();
+    const caso: ObtenerMetricasUseCase = Object.create(ObtenerMetricasUseCase.prototype, {
+      execute: { value: execute },
+    });
+    const controller = new DashboardController(caso);
+    return { controller, obtenerMetricasUseCase: { execute } };
   }
 
   function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {

@@ -5,12 +5,13 @@
  * Ref spec: sdd/premium/spec K1. Tarea: K3/K4.
  */
 import { CrearKbArticuloUseCase } from './crear-kb-articulo.use-case';
+import type { IKbArticuloRepository } from '../../domain/ports/i-kb-articulo.repository';
 import { TituloVacioError, ContenidoVacioError } from '../../domain/errors/kb.errors';
 
 describe('CrearKbArticuloUseCase', () => {
   function buildUseCase() {
-    const repo = { save: vi.fn() };
-    const useCase = new CrearKbArticuloUseCase(repo as never);
+    const repo = { save: vi.fn<IKbArticuloRepository['save']>() };
+    const useCase = new CrearKbArticuloUseCase(repo);
     return { useCase, repo };
   }
 

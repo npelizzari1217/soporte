@@ -19,7 +19,7 @@ import { ExportarComprasUseCase, TOPE_FILAS_EXPORT } from './exportar-compras.us
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/compras.errors';
 import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
-import { CompraListFiltros } from '../../domain/ports/i-compra.repository';
+import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { armarExportCsv } from '../../../shared/application/armar-export-csv';
 
 const BOM = '﻿';
@@ -70,7 +70,9 @@ function crearCompra(
 }
 
 function crearRepo(compras: CompraEntity[], total = compras.length) {
-  const findPaginaConItems = vi.fn().mockResolvedValue({ compras, total });
+  const findPaginaConItems = vi
+    .fn<ICompraRepository['findPaginaConItems']>()
+    .mockResolvedValue({ compras, total });
   return { repo: { findPaginaConItems }, findPaginaConItems };
 }
 

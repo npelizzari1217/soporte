@@ -20,6 +20,9 @@ import { EncuestaLinkInvalidoError } from '../../domain/errors/csat.errors';
 import { ClienteEntity, ClienteProps } from '../../../clientes/domain/entities/cliente.entity';
 import { IEncuestaTokenRepository } from '../../domain/ports/i-encuesta-token.repository';
 import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.repository';
+import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { unstubbed } from '../../../testing/mocks';
 
 const RAW_TOKEN = 'raw-token-de-prueba';
 const TOKEN_HASH = crypto.createHash('sha256').update(RAW_TOKEN).digest('hex');
@@ -80,36 +83,46 @@ function makeCliente(
 /** Fake IEncuestaTokenRepository — `findByHash` devuelve un valor fijo inyectado por test. */
 function makeFakeTokenRepo(token: EncuestaTokenEntity | null): IEncuestaTokenRepository {
   return {
-    findByHash: vi.fn().mockResolvedValue(token),
-    save: vi.fn(),
-    revocarVigentesDeTicket: vi.fn(),
-    marcarUsadoSiNoUsado: vi.fn(),
-    liberarUso: vi.fn(),
+    findByHash: vi.fn<IEncuestaTokenRepository['findByHash']>().mockResolvedValue(token),
+    save: unstubbed('save'),
+    revocarVigentesDeTicket: unstubbed('revocarVigentesDeTicket'),
+    marcarUsadoSiNoUsado: unstubbed('marcarUsadoSiNoUsado'),
+    liberarUso: unstubbed('liberarUso'),
   };
 }
 
 /** Fake IClienteRepository — `findById` es un vi.fn() configurable por test. */
-function makeFakeClienteRepo(cliente: ClienteEntity | null): IClienteRepository {
+function makeFakeClienteRepo(cliente: ClienteEntity | null) {
   return {
-    findById: vi.fn().mockResolvedValue(cliente),
-    findByDbName: vi.fn(),
-    findBySlug: vi.fn(),
-    congelarSlug: vi.fn(),
-    fijarRequiere2fa: vi.fn(),
-    obtenerRequiere2fa: vi.fn(),
-    cambiarSlugSiNoCongelado: vi.fn(),
-    findAll: vi.fn(),
-    save: vi.fn(),
-    delete: vi.fn(),
-  };
+    findById: vi.fn<IClienteRepository['findById']>().mockResolvedValue(cliente),
+    findByDbName: unstubbed('findByDbName'),
+    findBySlug: unstubbed('findBySlug'),
+    congelarSlug: unstubbed('congelarSlug'),
+    fijarRequiere2fa: unstubbed('fijarRequiere2fa'),
+    obtenerRequiere2fa: unstubbed('obtenerRequiere2fa'),
+    cambiarSlugSiNoCongelado: unstubbed('cambiarSlugSiNoCongelado'),
+    findAll: unstubbed('findAll'),
+    save: unstubbed('save'),
+    delete: unstubbed('delete'),
+  } satisfies IClienteRepository;
 }
 
-function makeFakePrismaService(): { getTenantClient: ReturnType<typeof vi.fn> } {
-  return { getTenantClient: vi.fn().mockReturnValue({ marker: 'tenant-client-stub' }) };
+/**
+ * PrismaService con el prototipo real: `getTenantClient` es un doble tipado que
+ * no abre ningún pool. El cliente que devuelve solo viaja hasta `bind()`, que
+ * también es un doble, así que ningún test lo usa.
+ */
+function makeFakePrismaService(): PrismaService {
+  return Object.create(PrismaService.prototype, {
+    getTenantClient: { value: vi.fn<PrismaService['getTenantClient']>() },
+  });
 }
 
-function makeFakeTenantContext(): { bind: ReturnType<typeof vi.fn> } {
-  return { bind: vi.fn() };
+/** TenantContext real con `bind` espiado: no muta el scope asíncrono del test. */
+function makeFakeTenantContext(): TenantContext {
+  const tenantContext = new TenantContext();
+  vi.spyOn(tenantContext, 'bind').mockImplementation(() => undefined);
+  return tenantContext;
 }
 
 function buildService(
@@ -121,8 +134,8 @@ function buildService(
   const service = new ResolverEncuestaTokenService(
     tokenRepo,
     clienteRepo,
-    prismaService as never,
-    tenantContext as never,
+    prismaService,
+    tenantContext,
   );
   return { service, prismaService, tenantContext };
 }

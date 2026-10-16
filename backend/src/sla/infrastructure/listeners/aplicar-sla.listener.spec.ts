@@ -11,18 +11,20 @@
 import { AplicarSlaListener } from './aplicar-sla.listener';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketReprioritizadoEvent } from '../../../tickets/domain/events/ticket-reprioritizado.event';
+import { AplicarSlaUseCase } from '../../application/use-cases/aplicar-sla.use-case';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 
 describe('AplicarSlaListener', () => {
   function makeListener() {
     const aplicarSlaUseCase = {
-      alCrear: vi.fn().mockResolvedValue(undefined),
-      alReprioritizar: vi.fn().mockResolvedValue(undefined),
+      alCrear: vi.fn<AplicarSlaUseCase['alCrear']>().mockResolvedValue(undefined),
+      alReprioritizar: vi.fn<AplicarSlaUseCase['alReprioritizar']>().mockResolvedValue(undefined),
     };
     const logger = {
-      log: vi.fn(),
-      error: vi.fn(),
+      log: vi.fn<ILogger['log']>(),
+      error: vi.fn<ILogger['error']>(),
     };
-    const listener = new AplicarSlaListener(aplicarSlaUseCase as never, logger);
+    const listener = new AplicarSlaListener(aplicarSlaUseCase, logger);
     return { listener, aplicarSlaUseCase, logger };
   }
 

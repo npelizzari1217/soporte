@@ -11,28 +11,41 @@ import {
   UnidadMedidaCodigoDuplicadoError,
   UnidadMedidaEnUsoPorSerieError,
 } from '../../domain/errors/unidades-medida.errors';
+import { CrearUnidadMedidaUseCase } from '../../application/use-cases/crear-unidad-medida.use-case';
+import { EditarUnidadMedidaUseCase } from '../../application/use-cases/editar-unidad-medida.use-case';
+import { CambiarEstadoActivoUnidadMedidaUseCase } from '../../application/use-cases/cambiar-estado-activo-unidad-medida.use-case';
+import { ListarUnidadesMedidaUseCase } from '../../application/use-cases/listar-unidades-medida.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 describe('UnidadesMedidaController', () => {
-  function buildController(overrides: Record<string, { execute: ReturnType<typeof vi.fn> }> = {}) {
-    const crearUseCase = overrides.crear ?? { execute: vi.fn() };
-    const editarUseCase = overrides.editar ?? { execute: vi.fn() };
-    const cambiarEstadoUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
-    const listarUseCase = overrides.listar ?? { execute: vi.fn() };
+  function buildController() {
+    const crearUseCase = espiado(CrearUnidadMedidaUseCase);
+    const editarUseCase = espiado(EditarUnidadMedidaUseCase);
+    const cambiarEstadoUseCase = espiado(CambiarEstadoActivoUnidadMedidaUseCase);
+    const listarUseCase = espiado(ListarUnidadesMedidaUseCase);
 
     const controller = new UnidadesMedidaController(
-      crearUseCase as never,
-      editarUseCase as never,
-      cambiarEstadoUseCase as never,
-      listarUseCase as never,
+      crearUseCase.caso,
+      editarUseCase.caso,
+      cambiarEstadoUseCase.caso,
+      listarUseCase.caso,
     );
     return { controller, crearUseCase, editarUseCase, cambiarEstadoUseCase, listarUseCase };
   }
 
   it('GET /unidades-medida retorna el listado mapeado a DTO', async () => {
     const unidad = UnidadMedidaEntity.create({ codigo: 'A', nombre: 'A', activo: true });
-    const { controller } = buildController({
-      listar: { execute: vi.fn().mockResolvedValue([unidad]) },
-    });
+    const { controller, listarUseCase } = buildController();
+    listarUseCase.execute.mockResolvedValue([unidad]);
 
     const result = await controller.listar();
 
@@ -42,9 +55,8 @@ describe('UnidadesMedidaController', () => {
 
   it('POST /unidades-medida crea y retorna el DTO', async () => {
     const unidad = UnidadMedidaEntity.create({ codigo: 'A', nombre: 'A', activo: true });
-    const { controller } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(unidad)) },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.ok(unidad));
 
     const result = await controller.crear({ codigo: 'A', nombre: 'A' });
 
@@ -52,11 +64,8 @@ describe('UnidadesMedidaController', () => {
   });
 
   it('POST /unidades-medida con codigo duplicado lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new UnidadMedidaCodigoDuplicadoError('A'))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.fail(new UnidadMedidaCodigoDuplicadoError('A')));
 
     await expect(controller.crear({ codigo: 'A', nombre: 'A' })).rejects.toBeInstanceOf(
       UnprocessableEntityException,
@@ -70,9 +79,8 @@ describe('UnidadesMedidaController', () => {
       activo: true,
       entera: true,
     });
-    const { controller, editarUseCase } = buildController({
-      editar: { execute: vi.fn().mockResolvedValue(Result.ok(unidad)) },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(Result.ok(unidad));
 
     const result = await controller.editar('id-1', { entera: true });
 
@@ -81,11 +89,10 @@ describe('UnidadesMedidaController', () => {
   });
 
   it('PATCH /unidades-medida/:id desmarcando una unidad usada por un insumo SERIE lanza 422', async () => {
-    const { controller } = buildController({
-      editar: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new UnidadMedidaEnUsoPorSerieError('id-1'))),
-      },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(
+      Result.fail(new UnidadMedidaEnUsoPorSerieError('id-1')),
+    );
 
     await expect(controller.editar('id-1', { entera: false })).rejects.toBeInstanceOf(
       UnprocessableEntityException,
@@ -93,11 +100,8 @@ describe('UnidadesMedidaController', () => {
   });
 
   it('PATCH /unidades-medida/:id con id inexistente lanza 404', async () => {
-    const { controller } = buildController({
-      editar: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new UnidadMedidaNoEncontradaError('id-x'))),
-      },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(Result.fail(new UnidadMedidaNoEncontradaError('id-x')));
 
     await expect(controller.editar('id-x', { nombre: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -107,9 +111,8 @@ describe('UnidadesMedidaController', () => {
   it('PATCH /unidades-medida/:id/estado desactiva', async () => {
     const unidad = UnidadMedidaEntity.create({ codigo: 'A', nombre: 'A', activo: true });
     unidad.desactivar();
-    const { controller, cambiarEstadoUseCase } = buildController({
-      cambiarEstado: { execute: vi.fn().mockResolvedValue(Result.ok(unidad)) },
-    });
+    const { controller, cambiarEstadoUseCase } = buildController();
+    cambiarEstadoUseCase.execute.mockResolvedValue(Result.ok(unidad));
 
     const result = await controller.cambiarEstadoActivo('id-1', { activo: false });
 

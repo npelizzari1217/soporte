@@ -10,19 +10,33 @@ import {
   SectorNoEncontradoError,
   SectorCodigoDuplicadoError,
 } from '../../domain/errors/sectores.errors';
+import { CrearSectorUseCase } from '../../application/use-cases/crear-sector.use-case';
+import { EditarSectorUseCase } from '../../application/use-cases/editar-sector.use-case';
+import { CambiarEstadoActivoSectorUseCase } from '../../application/use-cases/cambiar-estado-activo-sector.use-case';
+import { ListarSectoresUseCase } from '../../application/use-cases/listar-sectores.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 describe('SectoresController (WU-07)', () => {
-  function buildController(overrides: Record<string, { execute: ReturnType<typeof vi.fn> }> = {}) {
-    const crearSectorUseCase = overrides.crear ?? { execute: vi.fn() };
-    const editarSectorUseCase = overrides.editar ?? { execute: vi.fn() };
-    const cambiarEstadoActivoSectorUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
-    const listarSectoresUseCase = overrides.listar ?? { execute: vi.fn() };
+  function buildController() {
+    const crearSectorUseCase = espiado(CrearSectorUseCase);
+    const editarSectorUseCase = espiado(EditarSectorUseCase);
+    const cambiarEstadoActivoSectorUseCase = espiado(CambiarEstadoActivoSectorUseCase);
+    const listarSectoresUseCase = espiado(ListarSectoresUseCase);
 
     const controller = new SectoresController(
-      crearSectorUseCase as any,
-      editarSectorUseCase as any,
-      cambiarEstadoActivoSectorUseCase as any,
-      listarSectoresUseCase as any,
+      crearSectorUseCase.caso,
+      editarSectorUseCase.caso,
+      cambiarEstadoActivoSectorUseCase.caso,
+      listarSectoresUseCase.caso,
     );
     return {
       controller,
@@ -35,9 +49,8 @@ describe('SectoresController (WU-07)', () => {
 
   it('GET /sectores retorna el listado mapeado a DTO', async () => {
     const sector = SectorEntity.create({ codigo: 'A', nombre: 'A', activo: true });
-    const { controller } = buildController({
-      listar: { execute: vi.fn().mockResolvedValue([sector]) },
-    });
+    const { controller, listarSectoresUseCase } = buildController();
+    listarSectoresUseCase.execute.mockResolvedValue([sector]);
 
     const result = await controller.listar();
 
@@ -47,9 +60,8 @@ describe('SectoresController (WU-07)', () => {
 
   it('POST /sectores crea y retorna el DTO', async () => {
     const sector = SectorEntity.create({ codigo: 'A', nombre: 'A', activo: true });
-    const { controller } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(sector)) },
-    });
+    const { controller, crearSectorUseCase } = buildController();
+    crearSectorUseCase.execute.mockResolvedValue(Result.ok(sector));
 
     const result = await controller.crear({ codigo: 'A', nombre: 'A' });
 
@@ -57,11 +69,8 @@ describe('SectoresController (WU-07)', () => {
   });
 
   it('POST /sectores con codigo duplicado lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new SectorCodigoDuplicadoError('A'))),
-      },
-    });
+    const { controller, crearSectorUseCase } = buildController();
+    crearSectorUseCase.execute.mockResolvedValue(Result.fail(new SectorCodigoDuplicadoError('A')));
 
     await expect(controller.crear({ codigo: 'A', nombre: 'A' })).rejects.toBeInstanceOf(
       UnprocessableEntityException,
@@ -69,11 +78,8 @@ describe('SectoresController (WU-07)', () => {
   });
 
   it('PATCH /sectores/:id con id inexistente lanza 404', async () => {
-    const { controller } = buildController({
-      editar: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new SectorNoEncontradoError('id-x'))),
-      },
-    });
+    const { controller, editarSectorUseCase } = buildController();
+    editarSectorUseCase.execute.mockResolvedValue(Result.fail(new SectorNoEncontradoError('id-x')));
 
     await expect(controller.editar('id-x', { nombre: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -83,9 +89,8 @@ describe('SectoresController (WU-07)', () => {
   it('PATCH /sectores/:id/estado desactiva', async () => {
     const sector = SectorEntity.create({ codigo: 'A', nombre: 'A', activo: true });
     sector.desactivar();
-    const { controller, cambiarEstadoActivoSectorUseCase } = buildController({
-      cambiarEstado: { execute: vi.fn().mockResolvedValue(Result.ok(sector)) },
-    });
+    const { controller, cambiarEstadoActivoSectorUseCase } = buildController();
+    cambiarEstadoActivoSectorUseCase.execute.mockResolvedValue(Result.ok(sector));
 
     const result = await controller.cambiarEstadoActivo('id-1', { activo: false });
 

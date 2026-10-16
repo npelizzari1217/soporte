@@ -19,6 +19,21 @@ import {
   InsumoNoEncontradoError,
   SecuenciaCodigoInsumoAgotadaError,
 } from '../../domain/errors/insumos.errors';
+import { CrearInsumoUseCase } from '../../application/use-cases/crear-insumo.use-case';
+import { EditarInsumoUseCase } from '../../application/use-cases/editar-insumo.use-case';
+import { CambiarEstadoActivoInsumoUseCase } from '../../application/use-cases/cambiar-estado-activo-insumo.use-case';
+import { ListarInsumosUseCase } from '../../application/use-cases/listar-insumos.use-case';
+import { CambiarSeguimientoInsumoUseCase } from '../../application/use-cases/cambiar-seguimiento-insumo.use-case';
+
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
 
 const FAMILIA_ID = '11111111-1111-4111-8111-111111111111';
 const UNIDAD_ID = '22222222-2222-4222-8222-222222222222';
@@ -41,19 +56,19 @@ function construirInsumo(
 }
 
 describe('InsumosController', () => {
-  function buildController(overrides: Record<string, { execute: ReturnType<typeof vi.fn> }> = {}) {
-    const crearUseCase = overrides.crear ?? { execute: vi.fn() };
-    const editarUseCase = overrides.editar ?? { execute: vi.fn() };
-    const cambiarEstadoUseCase = overrides.cambiarEstado ?? { execute: vi.fn() };
-    const listarUseCase = overrides.listar ?? { execute: vi.fn() };
-    const cambiarSeguimientoUseCase = overrides.cambiarSeguimiento ?? { execute: vi.fn() };
+  function buildController() {
+    const crearUseCase = espiado(CrearInsumoUseCase);
+    const editarUseCase = espiado(EditarInsumoUseCase);
+    const cambiarEstadoUseCase = espiado(CambiarEstadoActivoInsumoUseCase);
+    const listarUseCase = espiado(ListarInsumosUseCase);
+    const cambiarSeguimientoUseCase = espiado(CambiarSeguimientoInsumoUseCase);
 
     const controller = new InsumosController(
-      crearUseCase as never,
-      editarUseCase as never,
-      cambiarEstadoUseCase as never,
-      listarUseCase as never,
-      cambiarSeguimientoUseCase as never,
+      crearUseCase.caso,
+      editarUseCase.caso,
+      cambiarEstadoUseCase.caso,
+      listarUseCase.caso,
+      cambiarSeguimientoUseCase.caso,
     );
     return {
       controller,
@@ -67,9 +82,8 @@ describe('InsumosController', () => {
 
   it('GET /insumos retorna el listado mapeado a DTO, con los códigos alternativos', async () => {
     const insumo = construirInsumo();
-    const { controller } = buildController({
-      listar: { execute: vi.fn().mockResolvedValue([insumo]) },
-    });
+    const { controller, listarUseCase } = buildController();
+    listarUseCase.execute.mockResolvedValue([insumo]);
 
     const result = await controller.listar({});
 
@@ -87,8 +101,8 @@ describe('InsumosController', () => {
    * (o SIEMPRE `true`) pasaría cualquiera de los dos primeros por separado.
    */
   it('GET /insumos con esRepuesto=true delega exactamente ese valor al caso de uso', async () => {
-    const listar = { execute: vi.fn().mockResolvedValue([]) };
-    const { controller } = buildController({ listar });
+    const { controller, listarUseCase: listar } = buildController();
+    listar.execute.mockResolvedValue([]);
 
     await controller.listar({ esRepuesto: true });
 
@@ -96,8 +110,8 @@ describe('InsumosController', () => {
   });
 
   it('GET /insumos con esRepuesto=false delega exactamente ese valor al caso de uso', async () => {
-    const listar = { execute: vi.fn().mockResolvedValue([]) };
-    const { controller } = buildController({ listar });
+    const { controller, listarUseCase: listar } = buildController();
+    listar.execute.mockResolvedValue([]);
 
     await controller.listar({ esRepuesto: false });
 
@@ -105,8 +119,8 @@ describe('InsumosController', () => {
   });
 
   it('GET /insumos sin esRepuesto delega undefined (sin filtrar) al caso de uso', async () => {
-    const listar = { execute: vi.fn().mockResolvedValue([]) };
-    const { controller } = buildController({ listar });
+    const { controller, listarUseCase: listar } = buildController();
+    listar.execute.mockResolvedValue([]);
 
     await controller.listar({});
 
@@ -120,8 +134,8 @@ describe('InsumosController', () => {
    * `true` (o SIEMPRE `false`) pasaría el caso `true` por separado.
    */
   it('GET /insumos con soloVinculables=true delega exactamente ese valor al caso de uso', async () => {
-    const listar = { execute: vi.fn().mockResolvedValue([]) };
-    const { controller } = buildController({ listar });
+    const { controller, listarUseCase: listar } = buildController();
+    listar.execute.mockResolvedValue([]);
 
     await controller.listar({ soloVinculables: true });
 
@@ -129,8 +143,8 @@ describe('InsumosController', () => {
   });
 
   it('GET /insumos con soloVinculables=false delega exactamente ese valor al caso de uso', async () => {
-    const listar = { execute: vi.fn().mockResolvedValue([]) };
-    const { controller } = buildController({ listar });
+    const { controller, listarUseCase: listar } = buildController();
+    listar.execute.mockResolvedValue([]);
 
     await controller.listar({ soloVinculables: false });
 
@@ -138,8 +152,8 @@ describe('InsumosController', () => {
   });
 
   it('GET /insumos sin soloVinculables delega undefined (sin filtrar) al caso de uso', async () => {
-    const listar = { execute: vi.fn().mockResolvedValue([]) };
-    const { controller } = buildController({ listar });
+    const { controller, listarUseCase: listar } = buildController();
+    listar.execute.mockResolvedValue([]);
 
     await controller.listar({});
 
@@ -148,9 +162,8 @@ describe('InsumosController', () => {
 
   it('POST /insumos crea y retorna el DTO', async () => {
     const insumo = construirInsumo({ stockMinimo: 5.5 });
-    const { controller, crearUseCase } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.ok(insumo));
 
     const result = await controller.crear({
       nombre: 'Tóner negro',
@@ -177,9 +190,8 @@ describe('InsumosController', () => {
    */
   it('POST /insumos sin codigo lo pasa ausente al use case (autogeneración)', async () => {
     const insumo = construirInsumo({ codigo: 'INS-0001' });
-    const { controller, crearUseCase } = buildController({
-      crear: { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.ok(insumo));
 
     const result = await controller.crear({
       nombre: 'Tóner negro',
@@ -193,7 +205,7 @@ describe('InsumosController', () => {
       familiaId: FAMILIA_ID,
       unidadMedidaId: UNIDAD_ID,
     });
-    const dtoEnviado = crearUseCase.execute.mock.calls[0]![0] as Record<string, unknown>;
+    const dtoEnviado: object = crearUseCase.execute.mock.calls[0]![0];
     expect(dtoEnviado).not.toHaveProperty('codigo');
   });
 
@@ -204,13 +216,10 @@ describe('InsumosController', () => {
    * `tickets` y `compras`.
    */
   it('POST /insumos con la serie de códigos agotada lanza 409', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi
-          .fn()
-          .mockResolvedValue(Result.fail(new SecuenciaCodigoInsumoAgotadaError('INS'))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(
+      Result.fail(new SecuenciaCodigoInsumoAgotadaError('INS')),
+    );
 
     await expect(
       controller.crear({
@@ -224,8 +233,8 @@ describe('InsumosController', () => {
   describe('PATCH /insumos/:id/seguimiento', () => {
     it('delega id y seguimiento al caso de uso y devuelve el insumo con su seguimiento', async () => {
       const insumo = construirInsumo();
-      const cambiarSeguimiento = { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) };
-      const { controller } = buildController({ cambiarSeguimiento });
+      const { controller, cambiarSeguimientoUseCase: cambiarSeguimiento } = buildController();
+      cambiarSeguimiento.execute.mockResolvedValue(Result.ok(insumo));
 
       const result = await controller.cambiarSeguimiento('id-1', { seguimiento: 'SERIE' });
 
@@ -250,9 +259,8 @@ describe('InsumosController', () => {
       ],
       ['InsumoNoEncontradoError', new InsumoNoEncontradoError('id-1'), NotFoundException],
     ])('%s se mapea a su status HTTP', async (_nombre, error, esperada) => {
-      const { controller } = buildController({
-        cambiarSeguimiento: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, cambiarSeguimientoUseCase } = buildController();
+      cambiarSeguimientoUseCase.execute.mockResolvedValue(Result.fail(error));
 
       await expect(
         controller.cambiarSeguimiento('id-1', { seguimiento: 'SERIE' }),
@@ -261,11 +269,8 @@ describe('InsumosController', () => {
   });
 
   it('POST /insumos con unidad no entera y SERIE lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new UnidadMedidaNoEnteraError(UNIDAD_ID))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.fail(new UnidadMedidaNoEnteraError(UNIDAD_ID)));
 
     await expect(
       controller.crear({
@@ -286,11 +291,8 @@ describe('InsumosController', () => {
    * por ejemplo).
    */
   it('POST /insumos con código duplicado lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new InsumoCodigoDuplicadoError('TON-001'))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(Result.fail(new InsumoCodigoDuplicadoError('TON-001')));
 
     await expect(
       controller.crear({
@@ -307,13 +309,10 @@ describe('InsumosController', () => {
    * problema que no está.
    */
   it('POST /insumos con familia deshabilitada lanza 422, no 404', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi
-          .fn()
-          .mockResolvedValue(Result.fail(new FamiliaInsumoDeshabilitadaError(FAMILIA_ID))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(
+      Result.fail(new FamiliaInsumoDeshabilitadaError(FAMILIA_ID)),
+    );
 
     await expect(
       controller.crear({
@@ -325,13 +324,10 @@ describe('InsumosController', () => {
   });
 
   it('POST /insumos con código alternativo duplicado lanza 422', async () => {
-    const { controller } = buildController({
-      crear: {
-        execute: vi
-          .fn()
-          .mockResolvedValue(Result.fail(new CodigoAlternativoDuplicadoError('CE285A', 'HP'))),
-      },
-    });
+    const { controller, crearUseCase } = buildController();
+    crearUseCase.execute.mockResolvedValue(
+      Result.fail(new CodigoAlternativoDuplicadoError('CE285A', 'HP')),
+    );
 
     await expect(
       controller.crear({
@@ -344,11 +340,8 @@ describe('InsumosController', () => {
   });
 
   it('PATCH /insumos/:id con id inexistente lanza 404', async () => {
-    const { controller } = buildController({
-      editar: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new InsumoNoEncontradoError('id-x'))),
-      },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(Result.fail(new InsumoNoEncontradoError('id-x')));
 
     await expect(controller.editar('id-x', { nombre: 'X' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -362,9 +355,8 @@ describe('InsumosController', () => {
    */
   it('PATCH /insumos/:id reenvía el id de la ruta junto con el body', async () => {
     const insumo = construirInsumo();
-    const { controller, editarUseCase } = buildController({
-      editar: { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) },
-    });
+    const { controller, editarUseCase } = buildController();
+    editarUseCase.execute.mockResolvedValue(Result.ok(insumo));
 
     await controller.editar('id-1', { nombre: 'Renombrado', codigosAlternativos: [] });
 
@@ -378,9 +370,8 @@ describe('InsumosController', () => {
   it('PATCH /insumos/:id/estado desactiva', async () => {
     const insumo = construirInsumo();
     insumo.desactivar();
-    const { controller, cambiarEstadoUseCase } = buildController({
-      cambiarEstado: { execute: vi.fn().mockResolvedValue(Result.ok(insumo)) },
-    });
+    const { controller, cambiarEstadoUseCase } = buildController();
+    cambiarEstadoUseCase.execute.mockResolvedValue(Result.ok(insumo));
 
     const result = await controller.cambiarEstadoActivo('id-1', { activo: false });
 
@@ -389,11 +380,10 @@ describe('InsumosController', () => {
   });
 
   it('PATCH /insumos/:id/estado con id inexistente lanza 404', async () => {
-    const { controller } = buildController({
-      cambiarEstado: {
-        execute: vi.fn().mockResolvedValue(Result.fail(new InsumoNoEncontradoError('id-x'))),
-      },
-    });
+    const { controller, cambiarEstadoUseCase } = buildController();
+    cambiarEstadoUseCase.execute.mockResolvedValue(
+      Result.fail(new InsumoNoEncontradoError('id-x')),
+    );
 
     await expect(controller.cambiarEstadoActivo('id-x', { activo: false })).rejects.toBeInstanceOf(
       NotFoundException,

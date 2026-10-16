@@ -9,10 +9,15 @@
  *
  * Ref design: ADR-C6. Tarea: 7.3.
  */
+import { Reflector } from '@nestjs/core';
+import { ThrottlerStorage } from '@nestjs/throttler';
 import { CsatThrottlerGuard } from './csat-throttler.guard';
+import { unstubbed } from '../../../testing/mocks';
 
+/** Opciones vacías, storage completo contra su interfaz y `Reflector` real: `getTracker()` no usa ninguno. */
 function buildGuard(): CsatThrottlerGuard {
-  return new CsatThrottlerGuard({} as never, {} as never, {} as never);
+  const storage: ThrottlerStorage = { increment: unstubbed('increment') };
+  return new CsatThrottlerGuard([], storage, new Reflector());
 }
 
 /** Acceso al método `protected` desde el test — mismo criterio que otros specs de guards del repo. */

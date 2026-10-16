@@ -130,15 +130,15 @@ describe('PrismaService (factory multi-tenant)', () => {
 
   describe('onModuleDestroy()', () => {
     it('should disconnect master client on destroy', async () => {
-      const masterClient = service.getMasterClient() as any;
+      const masterClient = service.getMasterClient();
       await service.onModuleDestroy();
 
       expect(masterClient.$disconnect).toHaveBeenCalled();
     });
 
     it('should disconnect all cached tenant clients on destroy', async () => {
-      const tenantA = service.getTenantClient('tenant_a') as any;
-      const tenantB = service.getTenantClient('tenant_b') as any;
+      const tenantA = service.getTenantClient('tenant_a');
+      const tenantB = service.getTenantClient('tenant_b');
 
       await service.onModuleDestroy();
 

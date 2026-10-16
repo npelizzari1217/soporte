@@ -14,6 +14,12 @@ import { ConsultarEncuestaUseCase } from './consultar-encuesta.use-case';
 import { EncuestaLinkInvalidoError } from '../../domain/errors/csat.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { Result } from '../../../shared/domain/result';
+import {
+  EncuestaTokenResuelto,
+  ResolverEncuestaTokenService,
+} from '../services/resolver-encuesta-token.service';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { unstubbed } from '../../../testing/mocks';
 
 const TICKET_ID = '01977a00-0000-7000-8000-0000000000t1';
 const TOKEN_ID = '01977a00-0000-7000-8000-0000000000d1';
@@ -36,19 +42,35 @@ function makeTicket(numero = 'SOP-2026-00042'): TicketEntity {
   );
 }
 
-function makeFakeResolver(result: Result<never, never> | Result<never, EncuestaLinkInvalidoError>) {
-  return { resolver: vi.fn().mockResolvedValue(result) };
+function makeFakeResolver(
+  result: Result<EncuestaTokenResuelto, EncuestaLinkInvalidoError>,
+): ResolverEncuestaTokenService {
+  return Object.create(ResolverEncuestaTokenService.prototype, {
+    resolver: {
+      value: vi.fn<ResolverEncuestaTokenService['resolver']>().mockResolvedValue(result),
+    },
+  });
 }
 
 function makeFakeTicketRepo(ticket: TicketEntity | null) {
-  return { findById: vi.fn().mockResolvedValue(ticket) };
+  return {
+    findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(ticket),
+    findByIds: unstubbed('findByIds'),
+    findByNumero: unstubbed('findByNumero'),
+    findLastSecuencia: unstubbed('findLastSecuencia'),
+    findAll: unstubbed('findAll'),
+    count: unstubbed('count'),
+    esVisiblePara: unstubbed('esVisiblePara'),
+    save: unstubbed('save'),
+    delete: unstubbed('delete'),
+  } satisfies ITicketRepository;
 }
 
 describe('ConsultarEncuestaUseCase', () => {
   it('token inválido: propaga el MISMO EncuestaLinkInvalidoError y no consulta el repo de tickets', async () => {
     const resolver = makeFakeResolver(Result.fail(new EncuestaLinkInvalidoError()));
     const ticketRepo = makeFakeTicketRepo(null);
-    const useCase = new ConsultarEncuestaUseCase(resolver as never, ticketRepo as never);
+    const useCase = new ConsultarEncuestaUseCase(resolver, ticketRepo);
 
     const resultado = await useCase.ejecutar('token-crudo');
 
@@ -59,10 +81,10 @@ describe('ConsultarEncuestaUseCase', () => {
 
   it('ticket inexistente (soft ref roto): mismo rechazo genérico', async () => {
     const resolver = makeFakeResolver(
-      Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID }) as never,
+      Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID }),
     );
     const ticketRepo = makeFakeTicketRepo(null);
-    const useCase = new ConsultarEncuestaUseCase(resolver as never, ticketRepo as never);
+    const useCase = new ConsultarEncuestaUseCase(resolver, ticketRepo);
 
     const resultado = await useCase.ejecutar('token-crudo');
 
@@ -72,10 +94,10 @@ describe('ConsultarEncuestaUseCase', () => {
 
   it('camino válido: devuelve ÚNICAMENTE el número — sin título ni descripción', async () => {
     const resolver = makeFakeResolver(
-      Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID }) as never,
+      Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID }),
     );
     const ticketRepo = makeFakeTicketRepo(makeTicket('SOP-2026-00042'));
-    const useCase = new ConsultarEncuestaUseCase(resolver as never, ticketRepo as never);
+    const useCase = new ConsultarEncuestaUseCase(resolver, ticketRepo);
 
     const resultado = await useCase.ejecutar('token-crudo');
 

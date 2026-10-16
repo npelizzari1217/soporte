@@ -12,23 +12,41 @@
  */
 import { SlaSweepScheduler } from './sla-sweep.scheduler';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
+import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
+import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
+import { ITenantEnumerator } from '../../../shared/domain/ports/i-tenant-enumerator';
+import { MarcarVencidosUseCase } from '../../application/use-cases/marcar-vencidos.use-case';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { unstubbed } from '../../../testing/mocks';
+
+/**
+ * Cliente de tenant marcado con su base: prototipo real de `TenantPrismaClient`
+ * (no abre conexión) y una única propiedad propia que el test compara.
+ */
+function clienteDeTenant(dbName: string): InstanceType<typeof TenantPrismaClient> {
+  return Object.assign(Object.create(TenantPrismaClient.prototype), { __dbName: dbName });
+}
 
 describe('SlaSweepScheduler', () => {
   function makeCollaborators() {
-    const tenantEnumerator = { listActiveTenants: vi.fn() };
+    const tenantEnumerator = { listActiveTenants: vi.fn<ITenantEnumerator['listActiveTenants']>() };
     const tenantContext = new TenantContext();
     const prismaService = {
-      getTenantClient: vi.fn().mockImplementation((dbName: string) => ({ __dbName: dbName })),
+      getTenantClient: vi
+        .fn<PrismaService['getTenantClient']>()
+        .mockImplementation(clienteDeTenant),
     };
-    const marcarVencidosUseCase = { execute: vi.fn().mockResolvedValue(0) };
-    const logger = { log: vi.fn() };
+    const marcarVencidosUseCase = {
+      execute: vi.fn<MarcarVencidosUseCase['execute']>().mockResolvedValue(0),
+    };
+    const logger = { log: vi.fn<ILogger['log']>(), error: unstubbed('error') } satisfies ILogger;
 
     const scheduler = new SlaSweepScheduler(
-      tenantEnumerator as never,
+      tenantEnumerator,
       tenantContext,
-      prismaService as never,
-      marcarVencidosUseCase as never,
-      logger as never,
+      prismaService,
+      marcarVencidosUseCase,
+      logger,
     );
 
     return {
@@ -69,7 +87,7 @@ describe('SlaSweepScheduler', () => {
     await c.scheduler.ejecutarBarrido();
 
     expect(ctxDentroDelRun).toEqual({
-      prismaClient: { __dbName: 'soporte_cliente_1' },
+      prismaClient: clienteDeTenant('soporte_cliente_1'),
       dbName: 'soporte_cliente_1',
       clienteId: 'cliente-1',
     });

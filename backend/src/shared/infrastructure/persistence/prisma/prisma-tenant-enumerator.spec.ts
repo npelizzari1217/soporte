@@ -5,21 +5,24 @@
  * Ref spec: sdd/premium/spec S5. Tarea: SB5/SB6.
  */
 import { PrismaTenantEnumerator } from './prisma-tenant-enumerator';
+import { PrismaService } from '../prisma.service';
 
 describe('PrismaTenantEnumerator', () => {
   type FilaCliente = { id: string; dbName: string; activo?: boolean; deletedAt?: Date | null };
 
   function makePrismaService(rows: FilaCliente[]) {
-    const findMany = vi.fn().mockResolvedValue(rows);
-    const prismaService = {
+    const findMany = vi.fn<(args: unknown) => Promise<FilaCliente[]>>().mockResolvedValue(rows);
+    // Prototipo real de PrismaService (mismo criterio que prisma-membresia.repository.spec.ts):
+    // solo `getMasterClient` se reemplaza, por el delegate mínimo que usa el enumerador.
+    const prismaService: PrismaService = Object.assign(Object.create(PrismaService.prototype), {
       getMasterClient: () => ({ cliente: { findMany } }),
-    };
+    });
     return { prismaService, findMany };
   }
 
   function makeEnumerator(rows: FilaCliente[]) {
     const { prismaService, findMany } = makePrismaService(rows);
-    return { enumerator: new PrismaTenantEnumerator(prismaService as never), findMany };
+    return { enumerator: new PrismaTenantEnumerator(prismaService), findMany };
   }
 
   it('[CRITICAL] retorna clienteId/dbName de los clientes ACTIVOS, no soft-deleted', async () => {

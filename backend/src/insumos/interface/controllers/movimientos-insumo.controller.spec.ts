@@ -22,7 +22,14 @@ import {
   StockInsuficienteError,
 } from '../../domain/errors/insumos.errors';
 import { RegistrarMovimientoInsumoHttpDto } from '../dtos/movimientos-insumo.dto';
-import { ListarMovimientosInsumoResult } from '../../application/use-cases/listar-movimientos-insumo.use-case';
+import { RegistrarEntradaInsumoUseCase } from '../../application/use-cases/registrar-entrada-insumo.use-case';
+import { RegistrarSalidaInsumoUseCase } from '../../application/use-cases/registrar-salida-insumo.use-case';
+import { RegistrarAjusteInsumoUseCase } from '../../application/use-cases/registrar-ajuste-insumo.use-case';
+import { ConsultarStockInsumoUseCase } from '../../application/use-cases/consultar-stock-insumo.use-case';
+import {
+  ListarMovimientosInsumoResult,
+  ListarMovimientosInsumoUseCase,
+} from '../../application/use-cases/listar-movimientos-insumo.use-case';
 
 const INSUMO_ID = '11111111-1111-4111-8111-111111111111';
 const USUARIO_ID = '22222222-2222-4222-8222-222222222222';
@@ -60,32 +67,46 @@ function construirMovimiento(tipo: TipoMovimientoInsumo, cantidad = 2): Movimien
   }).getValue();
 }
 
-type UseCaseDoble = {
-  execute?: ReturnType<typeof vi.fn>;
-  executeTodos?: ReturnType<typeof vi.fn>;
-};
+/**
+ * Doble de un use case concreto: instancia real del prototipo con `execute`
+ * espiado y tipado contra la firma del caso de uso.
+ */
+function espiado<T extends { execute: (...args: never[]) => unknown }>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const caso: T = Object.create(Clase.prototype, { execute: { value: execute } });
+  return { caso, execute };
+}
+
+/** Igual que `espiado`, para los use cases que también exponen `executeTodos`. */
+function espiadoConTodos<
+  T extends {
+    execute: (...args: never[]) => unknown;
+    executeTodos: (...args: never[]) => unknown;
+  },
+>(Clase: { prototype: T }) {
+  const execute = vi.fn<T['execute']>();
+  const executeTodos = vi.fn<T['executeTodos']>();
+  const caso: T = Object.create(Clase.prototype, {
+    execute: { value: execute },
+    executeTodos: { value: executeTodos },
+  });
+  return { caso, execute, executeTodos };
+}
 
 describe('MovimientosInsumoController', () => {
-  function buildController(overrides: Partial<Record<string, UseCaseDoble>> = {}): {
-    controller: MovimientosInsumoController;
-    entradaUseCase: UseCaseDoble;
-    salidaUseCase: UseCaseDoble;
-    ajusteUseCase: UseCaseDoble;
-    stockUseCase: UseCaseDoble;
-    listarUseCase: UseCaseDoble;
-  } {
-    const entradaUseCase = overrides.entrada ?? { execute: vi.fn(), executeTodos: vi.fn() };
-    const salidaUseCase = overrides.salida ?? { execute: vi.fn() };
-    const ajusteUseCase = overrides.ajuste ?? { execute: vi.fn(), executeTodos: vi.fn() };
-    const stockUseCase = overrides.stock ?? { execute: vi.fn() };
-    const listarUseCase = overrides.listar ?? { execute: vi.fn() };
+  function buildController() {
+    const entradaUseCase = espiadoConTodos(RegistrarEntradaInsumoUseCase);
+    const salidaUseCase = espiado(RegistrarSalidaInsumoUseCase);
+    const ajusteUseCase = espiadoConTodos(RegistrarAjusteInsumoUseCase);
+    const stockUseCase = espiado(ConsultarStockInsumoUseCase);
+    const listarUseCase = espiado(ListarMovimientosInsumoUseCase);
 
     const controller = new MovimientosInsumoController(
-      entradaUseCase as never,
-      salidaUseCase as never,
-      ajusteUseCase as never,
-      stockUseCase as never,
-      listarUseCase as never,
+      entradaUseCase.caso,
+      salidaUseCase.caso,
+      ajusteUseCase.caso,
+      stockUseCase.caso,
+      listarUseCase.caso,
     );
     return {
       controller,
@@ -100,9 +121,8 @@ describe('MovimientosInsumoController', () => {
   describe('POST /insumos/:insumoId/movimientos/entrada', () => {
     it('registra la entrada y devuelve el asiento mapeado', async () => {
       const movimiento = construirMovimiento('ENTRADA', 7);
-      const { controller, entradaUseCase } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.ok([movimiento]));
 
       const respuesta = await controller.registrarEntrada(actor(), INSUMO_ID, {
         cantidad: 7,
@@ -136,9 +156,8 @@ describe('MovimientosInsumoController', () => {
      */
     it('estampa el usuarioId del JWT e ignora el que venga en el body', async () => {
       const movimiento = construirMovimiento('ENTRADA');
-      const { controller, entradaUseCase } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.ok([movimiento]));
       const bodySuplantado = {
         cantidad: 2,
         usuarioId: 'usuario-suplantado',
@@ -161,9 +180,8 @@ describe('MovimientosInsumoController', () => {
      */
     it('con el insumo deshabilitado lanza 422 y no 404, con el mensaje del dominio', async () => {
       const error = new InsumoDeshabilitadoError(INSUMO_ID);
-      const { controller } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller
         .registrarEntrada(actor(), INSUMO_ID, { cantidad: 2 })
@@ -176,9 +194,8 @@ describe('MovimientosInsumoController', () => {
 
     it('con el insumo inexistente lanza 404: es el recurso de la URL', async () => {
       const error = new InsumoNoEncontradoError(INSUMO_ID);
-      const { controller } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller
         .registrarEntrada(actor(), INSUMO_ID, { cantidad: 2 })
@@ -192,11 +209,10 @@ describe('MovimientosInsumoController', () => {
   describe('condicion — se reenvía a las tres rutas y USADO no admitido es 422', () => {
     it('reenvía la condición de la entrada, la salida y el ajuste', async () => {
       const movimiento = construirMovimiento('ENTRADA');
-      const { controller, entradaUseCase, salidaUseCase, ajusteUseCase } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
-        salida: { execute: vi.fn().mockResolvedValue(Result.ok(movimiento)) },
-        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
-      });
+      const { controller, entradaUseCase, salidaUseCase, ajusteUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.ok([movimiento]));
+      salidaUseCase.execute.mockResolvedValue(Result.ok(movimiento));
+      ajusteUseCase.executeTodos.mockResolvedValue(Result.ok([movimiento]));
 
       await controller.registrarEntrada(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' });
       await controller.registrarSalida(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' });
@@ -217,23 +233,19 @@ describe('MovimientosInsumoController', () => {
     });
 
     it('sin condición en el body no inventa un default: lo resuelve el caso de uso', async () => {
-      const { controller, entradaUseCase } = buildController({
-        entrada: {
-          executeTodos: vi.fn().mockResolvedValue(Result.ok([construirMovimiento('ENTRADA')])),
-        },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.ok([construirMovimiento('ENTRADA')]));
 
       await controller.registrarEntrada(actor(), INSUMO_ID, { cantidad: 1 });
 
-      const [args] = entradaUseCase.executeTodos!.mock.calls[0] as [{ condicion?: string }];
+      const [args] = entradaUseCase.executeTodos.mock.calls[0] as [{ condicion?: string }];
       expect(args.condicion).toBeUndefined();
     });
 
     it('CondicionUsadoNoAdmitidaError sale como 422 con el mensaje del dominio', async () => {
       const error = new CondicionUsadoNoAdmitidaError(INSUMO_ID);
-      const { controller } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller
         .registrarEntrada(actor(), INSUMO_ID, { cantidad: 1, condicion: 'USADO' })
@@ -247,9 +259,8 @@ describe('MovimientosInsumoController', () => {
   describe('POST /insumos/:insumoId/movimientos/salida', () => {
     it('registra la salida con el usuarioId del JWT', async () => {
       const movimiento = construirMovimiento('SALIDA', 3);
-      const { controller, salidaUseCase } = buildController({
-        salida: { execute: vi.fn().mockResolvedValue(Result.ok(movimiento)) },
-      });
+      const { controller, salidaUseCase } = buildController();
+      salidaUseCase.execute.mockResolvedValue(Result.ok(movimiento));
 
       const respuesta = await controller.registrarSalida(actor(), INSUMO_ID, { cantidad: 3 });
 
@@ -272,9 +283,8 @@ describe('MovimientosInsumoController', () => {
      */
     it('con stock insuficiente lanza 422 y no 500, con los dos números del dominio', async () => {
       const error = new StockInsuficienteError(INSUMO_ID, 10, 4);
-      const { controller } = buildController({
-        salida: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, salidaUseCase } = buildController();
+      salidaUseCase.execute.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller
         .registrarSalida(actor(), INSUMO_ID, { cantidad: 10 })
@@ -289,9 +299,8 @@ describe('MovimientosInsumoController', () => {
   describe('POST /insumos/:insumoId/movimientos/ajuste', () => {
     it('reenvía la dirección del ajuste que viene en el body', async () => {
       const movimiento = construirMovimiento('AJUSTE_NEGATIVO', 3);
-      const { controller, ajusteUseCase } = buildController({
-        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.ok([movimiento])) },
-      });
+      const { controller, ajusteUseCase } = buildController();
+      ajusteUseCase.executeTodos.mockResolvedValue(Result.ok([movimiento]));
 
       const respuesta = await controller.registrarAjuste(actor(), INSUMO_ID, {
         tipo: 'AJUSTE_NEGATIVO',
@@ -319,9 +328,8 @@ describe('MovimientosInsumoController', () => {
      */
     it('con el motivo vacío lanza 422 y no 500, con el tipo exacto en el mensaje', async () => {
       const error = new MotivoAjusteRequeridoError(INSUMO_ID, 'AJUSTE_NEGATIVO');
-      const { controller } = buildController({
-        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, ajusteUseCase } = buildController();
+      ajusteUseCase.executeTodos.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller
         .registrarAjuste(actor(), INSUMO_ID, { tipo: 'AJUSTE_NEGATIVO', cantidad: 3 })
@@ -334,9 +342,8 @@ describe('MovimientosInsumoController', () => {
 
     it('con stock insuficiente en un ajuste negativo lanza 422', async () => {
       const error = new StockInsuficienteError(INSUMO_ID, 10, 1);
-      const { controller } = buildController({
-        ajuste: { executeTodos: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, ajusteUseCase } = buildController();
+      ajusteUseCase.executeTodos.mockResolvedValue(Result.fail(error));
 
       await expect(
         controller.registrarAjuste(actor(), INSUMO_ID, {
@@ -350,20 +357,20 @@ describe('MovimientosInsumoController', () => {
 
   describe('GET /insumos/:insumoId/stock', () => {
     it('devuelve el saldo con su punto de reposición y el estado ya resuelto', async () => {
-      const { controller, stockUseCase } = buildController({
-        stock: {
-          execute: vi.fn().mockResolvedValue(
-            Result.ok({
-              insumoId: INSUMO_ID,
-              stock: 2,
-              saldos: { NUEVO: 2, USADO: 0 },
-              admiteUsado: false,
-              stockMinimo: 10,
-              estadoReposicion: 'BAJO_MINIMO',
-            }),
-          ),
-        },
-      });
+      const { controller, stockUseCase } = buildController();
+      stockUseCase.execute.mockResolvedValue(
+        Result.ok({
+          insumoId: INSUMO_ID,
+          stock: 2,
+          saldos: { NUEVO: 2, USADO: 0 },
+          admiteUsado: false,
+          admiteUsadoEnReingreso: false,
+          stockMinimo: 10,
+          estadoReposicion: 'BAJO_MINIMO',
+          seguimiento: 'NINGUNO',
+          pendientesDeSerie: 0,
+        }),
+      );
 
       const respuesta = await controller.consultarStock(INSUMO_ID);
 
@@ -372,17 +379,19 @@ describe('MovimientosInsumoController', () => {
         stock: 2,
         saldos: { NUEVO: 2, USADO: 0 },
         admiteUsado: false,
+        admiteUsadoEnReingreso: false,
         stockMinimo: 10,
         estadoReposicion: 'BAJO_MINIMO',
+        seguimiento: 'NINGUNO',
+        pendientesDeSerie: 0,
       });
       expect(stockUseCase.execute).toHaveBeenCalledWith(INSUMO_ID);
     });
 
     it('con el insumo inexistente lanza 404', async () => {
       const error = new InsumoNoEncontradoError(INSUMO_ID);
-      const { controller } = buildController({
-        stock: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, stockUseCase } = buildController();
+      stockUseCase.execute.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller.consultarStock(INSUMO_ID).catch((e: unknown) => e);
 
@@ -403,9 +412,8 @@ describe('MovimientosInsumoController', () => {
     }
 
     it('delega en el caso de uso con el insumoId y la ventana pedida', async () => {
-      const { controller, listarUseCase } = buildController({
-        listar: { execute: vi.fn().mockResolvedValue(Result.ok(paginaDeMovimientos())) },
-      });
+      const { controller, listarUseCase } = buildController();
+      listarUseCase.execute.mockResolvedValue(Result.ok(paginaDeMovimientos()));
 
       await controller.listarMovimientos(INSUMO_ID, { pagina: 2, porPagina: 10 });
 
@@ -421,9 +429,8 @@ describe('MovimientosInsumoController', () => {
      * la misma regla.
      */
     it('con la query vacía no inventa defaults: los resuelve el caso de uso', async () => {
-      const { controller, listarUseCase } = buildController({
-        listar: { execute: vi.fn().mockResolvedValue(Result.ok(paginaDeMovimientos())) },
-      });
+      const { controller, listarUseCase } = buildController();
+      listarUseCase.execute.mockResolvedValue(Result.ok(paginaDeMovimientos()));
 
       await controller.listarMovimientos(INSUMO_ID, {});
 
@@ -440,9 +447,8 @@ describe('MovimientosInsumoController', () => {
      */
     it('mapea la página con la ventana efectiva y el total del universo', async () => {
       const pagina = paginaDeMovimientos();
-      const { controller } = buildController({
-        listar: { execute: vi.fn().mockResolvedValue(Result.ok(pagina)) },
-      });
+      const { controller, listarUseCase } = buildController();
+      listarUseCase.execute.mockResolvedValue(Result.ok(pagina));
 
       const respuesta = await controller.listarMovimientos(INSUMO_ID, { pagina: 2, porPagina: 10 });
 
@@ -455,9 +461,8 @@ describe('MovimientosInsumoController', () => {
 
     it('con el insumo inexistente lanza 404: es el recurso de la URL', async () => {
       const error = new InsumoNoEncontradoError(INSUMO_ID);
-      const { controller } = buildController({
-        listar: { execute: vi.fn().mockResolvedValue(Result.fail(error)) },
-      });
+      const { controller, listarUseCase } = buildController();
+      listarUseCase.execute.mockResolvedValue(Result.fail(error));
 
       const lanzado = await controller.listarMovimientos(INSUMO_ID, {}).catch((e: unknown) => e);
 
@@ -549,9 +554,8 @@ describe('MovimientosInsumoController', () => {
     it('la entrada reenvía los seriales y responde TODOS los movimientos', async () => {
       const a = construirMovimiento('ENTRADA', 1);
       const b = construirMovimiento('ENTRADA', 1);
-      const { controller, entradaUseCase } = buildController({
-        entrada: { executeTodos: vi.fn().mockResolvedValue(Result.ok([a, b])) },
-      });
+      const { controller, entradaUseCase } = buildController();
+      entradaUseCase.executeTodos.mockResolvedValue(Result.ok([a, b]));
 
       const respuesta = await controller.registrarEntrada(actor(), INSUMO_ID, {
         cantidad: 2,
@@ -577,11 +581,8 @@ describe('MovimientosInsumoController', () => {
     });
 
     it('la salida reenvía el unidadId y rechaza seriales con 422', async () => {
-      const { controller, salidaUseCase } = buildController({
-        salida: {
-          execute: vi.fn().mockResolvedValue(Result.ok(construirMovimiento('SALIDA', 1))),
-        },
-      });
+      const { controller, salidaUseCase } = buildController();
+      salidaUseCase.execute.mockResolvedValue(Result.ok(construirMovimiento('SALIDA', 1)));
 
       await controller.registrarSalida(actor(), INSUMO_ID, { cantidad: 1, unidadId: EQUIPO_ID });
       expect(salidaUseCase.execute).toHaveBeenCalledWith(
@@ -595,13 +596,10 @@ describe('MovimientosInsumoController', () => {
     });
 
     it('el ajuste reenvía seriales y unidadId', async () => {
-      const { controller, ajusteUseCase } = buildController({
-        ajuste: {
-          executeTodos: vi
-            .fn()
-            .mockResolvedValue(Result.ok([construirMovimiento('AJUSTE_NEGATIVO', 1)])),
-        },
-      });
+      const { controller, ajusteUseCase } = buildController();
+      ajusteUseCase.executeTodos.mockResolvedValue(
+        Result.ok([construirMovimiento('AJUSTE_NEGATIVO', 1)]),
+      );
 
       await controller.registrarAjuste(actor(), INSUMO_ID, {
         tipo: 'AJUSTE_NEGATIVO',

@@ -25,7 +25,7 @@ describe('TenantContext', () => {
 
   describe('run() + get()', () => {
     it('should store and retrieve context within the same run() scope', async () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
       const ctx: TenantContextData = {
         prismaClient: mockClient,
         dbName: 'cliente_acme',
@@ -48,8 +48,8 @@ describe('TenantContext', () => {
     });
 
     it('should isolate contexts between concurrent run() calls', async () => {
-      const mockClientA = makeMockClient() as any;
-      const mockClientB = makeMockClient() as any;
+      const mockClientA = makeMockClient();
+      const mockClientB = makeMockClient();
 
       const ctxA: TenantContextData = {
         prismaClient: mockClientA,
@@ -79,7 +79,7 @@ describe('TenantContext', () => {
     });
 
     it('should not leak context after run() completes', async () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
       const ctx: TenantContextData = {
         prismaClient: mockClient,
         dbName: 'temporal_db',
@@ -96,7 +96,7 @@ describe('TenantContext', () => {
 
   describe('getClient()', () => {
     it('should return the prismaClient from the active context', async () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
       const ctx: TenantContextData = {
         prismaClient: mockClient,
         dbName: 'my_db',
@@ -118,7 +118,7 @@ describe('TenantContext', () => {
 
   describe('bind()', () => {
     it('setea el contexto en el scope asíncrono actual (get() retorna el ctx)', () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
       const ctx: TenantContextData = {
         prismaClient: mockClient,
         dbName: 'bind_test_db',
@@ -131,7 +131,7 @@ describe('TenantContext', () => {
     });
 
     it('permite a getClient() retornar el cliente del scope actual después de bind()', () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
       tenantContext.bind({
         prismaClient: mockClient,
         dbName: 'bind_test_db',
@@ -148,7 +148,7 @@ describe('TenantContext', () => {
     // middleware (TenantScopeMiddleware) crea un store mutable, y bind() lo
     // MUTA para que el controller/repos (mismo scope async) lo vean.
     it('antes de bind() el scope existe pero get() es undefined; tras bind() get() retorna el ctx (store mutado)', () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
       const ctx: TenantContextData = {
         prismaClient: mockClient,
         dbName: 'prod_path_db',
@@ -169,7 +169,7 @@ describe('TenantContext', () => {
     });
 
     it('no filtra el contexto fuera del scope de initScope()', () => {
-      const mockClient = makeMockClient() as any;
+      const mockClient = makeMockClient();
 
       tenantContext.initScope(() => {
         tenantContext.bind({

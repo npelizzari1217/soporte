@@ -11,6 +11,10 @@ import { TicketNotificacionListener } from './ticket-notificacion.listener';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEstadoCambiadoEvent } from '../../../tickets/domain/events/ticket-estado-cambiado.event';
 import { TicketComentadoEvent } from '../../../tickets/domain/events/ticket-comentado.event';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { IContactoSolicitanteResolver } from '../../domain/ports/i-contacto-solicitante-resolver';
+import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
+import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 
 function makeTicket() {
   return TicketEntity.create(
@@ -49,15 +53,15 @@ function makeTicketExterno() {
 
 describe('TicketNotificacionListener', () => {
   function makeListener() {
-    const ticketRepo = { findById: vi.fn() };
-    const contactoResolver = { resolver: vi.fn() };
-    const emailSender = { send: vi.fn().mockResolvedValue(undefined) };
-    const logger = { error: vi.fn() };
+    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const contactoResolver = { resolver: vi.fn<IContactoSolicitanteResolver['resolver']>() };
+    const emailSender = { send: vi.fn<IEmailSender['send']>().mockResolvedValue(undefined) };
+    const logger = { error: vi.fn<ILogger['error']>() };
     const listener = new TicketNotificacionListener(
-      ticketRepo as never,
-      contactoResolver as never,
-      emailSender as never,
-      logger as never,
+      ticketRepo,
+      contactoResolver,
+      emailSender,
+      logger,
     );
     return { listener, ticketRepo, contactoResolver, emailSender, logger };
   }
