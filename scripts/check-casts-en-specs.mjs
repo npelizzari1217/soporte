@@ -35,15 +35,15 @@ import { join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 /**
- * Linea base: el conteo del 2026-10-16, ya con `as unknown as`, medido por este
+ * Linea base: cero desde el 2026-10-16, ya con `as unknown as`, medido por este
  * mismo script.
  *
  * Se baja cuando un cambio convierte casts a mocks completos. Se sube SOLO con
  * una justificacion escrita en el PR — y si hace falta subirla seguido, el que
  * esta mal es el criterio, no el numero.
  */
-const BASE_OCURRENCIAS = 9;
-const BASE_ARCHIVOS = 7;
+const BASE_OCURRENCIAS = 0;
+const BASE_ARCHIVOS = 0;
 
 /**
  * Se ratchetean las DOS cifras. Solo el total dejaria pasar que la deuda se
@@ -54,9 +54,9 @@ const BASE_ARCHIVOS = 7;
 /**
  * `as unknown as T` es la misma elusion con otra forma: compila contra cualquier
  * tipo y apaga el chequeo igual que `as never`. Se cuenta desde el 2026-10-16
- * (`odd/tasks/unknown-casts-en-specs.md`). Los que quedan en la base prueban a
- * proposito una entrada invalida o la ausencia de una propiedad, y cada uno lleva
- * su motivo en un comentario.
+ * (`odd/tasks/unknown-casts-en-specs.md`). Los ultimos nueve probaban a proposito
+ * una entrada invalida o la ausencia de una propiedad: hoy eso se escribe con
+ * `@ts-expect-error` sobre la linea invalida y con `not.toHaveProperty`, sin cast.
  */
 const CAST = /\bas\s+(never|any)\b|\bas\s+unknown\s+as\b/g;
 const ES_SPEC = /\.(spec|test)\.tsx?$/;

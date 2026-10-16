@@ -93,8 +93,8 @@ describe('AccionesGuard — paso 5: AND de permisos, mensaje exacto', () => {
 
   it('caso permisos undefined (payload legacy) → deniega sin crashear (S5, fail-closed)', () => {
     const guard = buildGuard(['TICKETS:ALTAS']);
-    // Entrada inválida a propósito: payload legacy sin `permisos`, que JwtPayload no admite.
-    const actor = { ...BASE_PAYLOAD, permisos: undefined } as unknown as JwtPayload;
+    // @ts-expect-error payload legacy sin `permisos`, a propósito (entrada inválida)
+    const actor: JwtPayload = { ...BASE_PAYLOAD, permisos: undefined };
     expect(() => guard.canActivate(buildContext(actor))).toThrow(ForbiddenException);
   });
 });

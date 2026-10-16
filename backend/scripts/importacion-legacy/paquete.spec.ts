@@ -29,8 +29,8 @@ describe('validarPaquete', () => {
   it('apellido presente pero no texto → rechaza; ausente → acepta (paquetes anteriores)', () => {
     const errores = erroresDe(
       mutado((p) => {
-        // Cast deliberado: el test arma a propósito un apellido que no es texto (entrada inválida).
-        (p.usuarios[0] as unknown as { apellido: unknown }).apellido = 42;
+        // @ts-expect-error apellido que no es texto, a propósito (entrada inválida)
+        p.usuarios[0].apellido = 42;
       }),
     );
     expect(errores).toEqual(['usuarios[0].apellido: no es texto']);

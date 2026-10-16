@@ -79,12 +79,12 @@ describe('puedeEjecutar', () => {
   });
 
   it('fail-closed (S5): permisos undefined no crashea, deniega', () => {
-    // Entrada inválida a propósito: payload legacy sin `permisos`, que el tipo no admite.
-    const actor = {
+    const actor: ActorAccionesTest = {
       is_global_admin: false,
       rol: 'TECNICO',
+      // @ts-expect-error payload legacy sin `permisos`, a propósito (entrada inválida)
       permisos: undefined,
-    } as unknown as ActorAccionesTest;
+    };
     expect(puedeEjecutar(actor, 'TICKETS:ALTAS')).toBe(false);
   });
 });
