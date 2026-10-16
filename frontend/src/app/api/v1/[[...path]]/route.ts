@@ -17,8 +17,8 @@ import { ipDelNavegador } from "@/shared/auth/sesion-bff";
  *   lo que el cliente mande a la izquierda se descarta. Mismo criterio que `publico/` en el
  *   genérico y que el BFF de sesión. El throttler v1 cuenta por clave, no por IP
  *   (`ApiV1ThrottlerGuard`), así que hoy es defensa en profundidad, no un control.
- *   En desarrollo local, sin proxy delante, el header no viaja: la única entrada sería la
- *   del cliente.
+ *   Sin un proxy delante (desarrollo local) la última entrada es la del cliente: ahí no
+ *   hay nada que confiar, y el valor solo sirve como etiqueta.
  * - Los segmentos se validan y se re-codifican: `..`, `.`, vacíos o con `/` o `\` (p. ej.
  *   `%2e%2e` o `%2F`, que Next entrega decodificados) responden 400. Sin esto, `new URL`
  *   resolvería `v1/../clientes` a una ruta del backend fuera de `v1`.

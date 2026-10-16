@@ -60,6 +60,23 @@ describe("/api/v1/[[...path]] BFF de la API pública", () => {
     expect(captured?.get("x-forwarded-for")).toBe("203.0.113.5");
   });
 
+  it("le quita el puerto que agrega ARR a la entrada reenviada", async () => {
+    let captured: Headers | undefined;
+    server.use(
+      http.get(`${BACKEND}/v1/tickets`, ({ request }) => {
+        captured = request.headers;
+        return HttpResponse.json({ items: [], total: 0 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/v1/tickets", {
+      headers: { "x-api-key": "sop_abc123", "x-forwarded-for": "6.6.6.6, 1.2.3.4:56789" },
+    });
+    await GET(req, params(["tickets"]));
+
+    expect(captured?.get("x-forwarded-for")).toBe("1.2.3.4");
+  });
+
   it("no reenvía x-forwarded-for cuando su última entrada no es una IP", async () => {
     let captured: Headers | undefined;
     server.use(

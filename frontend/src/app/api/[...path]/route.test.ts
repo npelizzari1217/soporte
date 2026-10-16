@@ -113,6 +113,23 @@ describe("/api/[...path] generic BFF proxy", () => {
     expect(capturedXff).toBeNull();
   });
 
+  it("GET: for publico/ drops x-forwarded-for when the last entry is empty (trailing comma)", async () => {
+    let capturedXff: string | null = "unset";
+    server.use(
+      http.get(`${BACKEND}/publico/csat/abc`, ({ request }) => {
+        capturedXff = request.headers.get("x-forwarded-for");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/publico/csat/abc", {
+      headers: { "x-forwarded-for": "203.0.113.5, " },
+    });
+    await GET(req, { params: Promise.resolve({ path: ["publico", "csat", "abc"] }) });
+
+    expect(capturedXff).toBeNull();
+  });
+
   it("GET: does NOT forward x-forwarded-for outside the publico/ prefix (scope must stay narrow)", async () => {
     let capturedXff: string | null | undefined;
     server.use(
