@@ -307,14 +307,23 @@ import {
         estadoRepo: IEstadoRepository,
         eventPublisher: IDomainEventPublisher,
         sectorRepo: ISectorRepository,
+        txRunner: ITenantTransactionRunner,
       ) =>
-        new EditarTicketUseCase(ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo),
+        new EditarTicketUseCase(
+          ticketRepo,
+          prioridadRepo,
+          estadoRepo,
+          eventPublisher,
+          sectorRepo,
+          txRunner,
+        ),
       inject: [
         TICKET_REPOSITORY,
         PRIORIDAD_REPOSITORY,
         ESTADO_REPOSITORY,
         DOMAIN_EVENT_PUBLISHER,
         SECTOR_REPOSITORY,
+        TENANT_TX_RUNNER,
       ],
     },
     {
