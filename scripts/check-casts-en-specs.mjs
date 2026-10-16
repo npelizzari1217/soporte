@@ -35,15 +35,15 @@ import { join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 /**
- * Linea base: el conteo del 2026-10-01 sobre `main` (`84342b18`), medido por este
+ * Linea base: el conteo del 2026-10-16, ya con `as unknown as`, medido por este
  * mismo script.
  *
  * Se baja cuando un cambio convierte casts a mocks completos. Se sube SOLO con
  * una justificacion escrita en el PR — y si hace falta subirla seguido, el que
  * esta mal es el criterio, no el numero.
  */
-const BASE_OCURRENCIAS = 0;
-const BASE_ARCHIVOS = 0;
+const BASE_OCURRENCIAS = 9;
+const BASE_ARCHIVOS = 7;
 
 /**
  * Se ratchetean las DOS cifras. Solo el total dejaria pasar que la deuda se
@@ -51,7 +51,14 @@ const BASE_ARCHIVOS = 0;
  * Ninguno de los dos movimientos la reduce.
  */
 
-const CAST = /\bas\s+(never|any)\b/g;
+/**
+ * `as unknown as T` es la misma elusion con otra forma: compila contra cualquier
+ * tipo y apaga el chequeo igual que `as never`. Se cuenta desde el 2026-10-16
+ * (`odd/tasks/unknown-casts-en-specs.md`). Los que quedan en la base prueban a
+ * proposito una entrada invalida o la ausencia de una propiedad, y cada uno lleva
+ * su motivo en un comentario.
+ */
+const CAST = /\bas\s+(never|any)\b|\bas\s+unknown\s+as\b/g;
 const ES_SPEC = /\.(spec|test)\.tsx?$/;
 
 const raiz = process.argv[2] ?? process.cwd();
@@ -152,8 +159,8 @@ if (ocurrencias > BASE_OCURRENCIAS || archivos > BASE_ARCHIVOS) {
     '\n  La salida NO es agregar el cast: es completar el mock contra su interfaz real.\n' +
       '  `backend/src/testing/mocks.ts` exporta `unstubbed(nombre)` para los metodos que el\n' +
       '  test no ejercita — fallan ruidoso en vez de devolver `undefined` en silencio.\n' +
-      '  Un `as never` apaga el chequeo entero: el test sigue verde aunque al puerto le\n' +
-      '  agreguen un metodo o le cambien una firma.',
+      '  Un `as never` o un `as unknown as` apaga el chequeo entero: el test sigue verde\n' +
+      '  aunque al puerto le agreguen un metodo o le cambien una firma.',
   );
   process.exit(1);
 }
