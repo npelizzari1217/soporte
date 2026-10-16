@@ -83,5 +83,8 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
   `tareas-ticket.e2e.spec.ts` "completa su tarea, pero no ... transiciona el ticket", que consagraba la
   conducta vieja. Ajustado a la regla nueva (RESUELTO con fecha de cierre, responsable intacto, PATCH
   manual sigue en 403); 22/22 en verde aislado.
-- Pendiente del dueño: (1) mover `frontend/Codigos locales.txt` fuera del repo para poder lanzar la
-  revisión nativa RDD; (2) decidir sobre A1.
+- 2026-10-17, revisión nativa RDD (`review-35c2ed2c1bea26d8`, riesgo medio, lentes risk + reliability,
+  rango `main..HEAD` commiteado): aprobada y acusada. Tres observaciones informativas, ninguna abre
+  corrección: la misma A1 (escrituras manuales sin lock), y que la guarda `if (!permitido) break` del
+  servicio no tiene test (hoy inalcanzable con el grafo base). Pendiente del dueño: decidir sobre A1,
+  merge y deploy.
