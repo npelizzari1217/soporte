@@ -107,7 +107,7 @@ la pantalla "Horario laboral".
 |---|---|
 | Repo en el VPS | `C:\soporte` |
 | Servicios (NSSM) | `soporte-backend`, `soporte-frontend` |
-| Puertos internos | backend **3101**, frontend **3100** |
+| Puertos internos | backend **3101**, frontend **3100**. Solo accesibles desde la propia máquina: el firewall del VPS los tiene cerrados hacia afuera (verificado el 2026-10-16 desde internet, con el 443 abierto como control). Tiene que seguir así: los guards del backend confían en `x-forwarded-for` desde cualquier origen, y el BFF es quien lo sanea; con el 3101 expuesto, un cliente podría saltear ese saneo |
 | Node | `C:\nodejs24\node.exe` (v24) — **hay un segundo Node en el PATH**, ver abajo |
 | Rama | `main` (el script aborta si estás en otra) |
 | Package manager | `corepack pnpm` — **pnpm 11.18.0**, fijado en `packageManager` de los dos `package.json` |
