@@ -79,3 +79,9 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
     de poner. Ya pasaba entre dos escrituras manuales; ahora es más probable. Arreglo posible:
     bloquear y releer dentro de la transacción en esas tres escrituras.
   - A2: agregar o borrar tareas no mueve el estado (fuera del alcance pedido).
+- 2026-10-16, suite completa backend: 745 archivos, 8935 tests; el único rojo era el e2e
+  `tareas-ticket.e2e.spec.ts` "completa su tarea, pero no ... transiciona el ticket", que consagraba la
+  conducta vieja. Ajustado a la regla nueva (RESUELTO con fecha de cierre, responsable intacto, PATCH
+  manual sigue en 403); 22/22 en verde aislado.
+- Pendiente del dueño: (1) mover `frontend/Codigos locales.txt` fuera del repo para poder lanzar la
+  revisión nativa RDD; (2) decidir sobre A1.
