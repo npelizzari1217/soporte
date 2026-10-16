@@ -108,7 +108,9 @@ puertos, y bajar la línea base del ratchet en cada tanda.
     es el fixture intencional); lint y typecheck 0; `check-roadmap-fresco` en verde.
   - Roadmap: la fila de deuda técnica dice 116 en 31 y anota los 168 `as unknown as` que el ratchet no
     cuenta (`cc5bc6c9`).
-  - Merge: pendiente de la decisión del dueño.
+  - Merge: revisión del diff completo (§4.2) limpia (83 archivos: 80 specs, el ratchet, el roadmap y
+    este documento; sin producción, secretos ni código muerto; mismos conteos de `it(`/`expect(` por
+    archivo). Merge local `--no-ff` a `main` como `e48d13c1`, autorizado por el dueño.
 
 ## Ruta y entrega
 - Ruta: T1 a T6 delegadas (escritor único por tanda, muchos archivos no triviales); T7 inline.
@@ -123,7 +125,9 @@ puertos, y bajar la línea base del ratchet en cada tanda.
 - 2026-10-16: T3 y T4 hechas (auth y clientes, 255/59).
 - 2026-10-16: T5 y T6 hechas (compras, reparaciones y preventivo, 116/31): la meta de ~230 se superó.
 - 2026-10-16: T7 hecha: suite completa en verde (741/8877).
+- 2026-10-16: diff revisado y merge local `e48d13c1`.
 
 ## Próximo paso
-Revisión del diff completo (§4.2) y merge a `main`, por decisión del dueño. Sin deploy: solo cambian
-specs, el script del ratchet y documentación.
+Ninguno: feature cerrada (sin deploy: no cambia producción). Deuda que sigue: 116 casts en 31 specs
+(insumos, csat, kb, notificaciones, shared y otros), 168 `as unknown as` fuera del ratchet y un
+`vi.fn()` sin tipar en `exportar-compras.use-case.spec.ts:73`.
