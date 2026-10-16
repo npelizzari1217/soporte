@@ -10,9 +10,10 @@ import { TicketDetailView } from "./ticket-detail-view";
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 /**
- * Montaje del control de reasignación en el detalle (M2, M4, M5): visible
- * mientras el ticket no sea terminal, convive con "Asignar y poner en proceso"
- * en NUEVO/ASIGNADO, usa PATCH /tickets/:id/asignar y muestra el 422.
+ * Montaje del control de responsable en el detalle (odd/tasks/acciones-ticket-agrupadas, S1):
+ * un solo desplegable "Responsable" mientras el ticket no sea terminal. En NUEVO/ASIGNADO el
+ * botón es "Asignar y poner en proceso"; en los demás, "Cambiar responsable" (PATCH
+ * /tickets/:id/asignar), que además muestra el 422.
  */
 const TICKET_ID = "t1";
 const PERMISOS = ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"];
@@ -60,20 +61,23 @@ function mockBackend(estadoId: string) {
 describe("TicketDetailView — control de reasignación", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each(["NUEVO", "ASIGNADO"])("en %s convive con «Asignar y poner en proceso»", async (codigo) => {
+  it.each(["NUEVO", "ASIGNADO"])("en %s hay un solo desplegable de responsable y el botón es «Asignar y poner en proceso»", async (codigo) => {
     mockBackend(`e-${codigo}`);
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
     await screen.findByText("Impresora rota");
-    expect(await screen.findByRole("combobox", { name: /cambiar responsable/i })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /^asignar responsable$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox", { name: /responsable/i })).toHaveLength(1);
+    expect(screen.getByRole("button", { name: /asignar y poner en proceso/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /cambiar responsable/i })).not.toBeInTheDocument();
   });
 
-  it("en EN_PROCESO se ofrece solo la reasignación", async () => {
+  it("en EN_PROCESO el botón es «Cambiar responsable»", async () => {
     mockBackend("e-EN_PROCESO");
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
     await screen.findByText("Impresora rota");
-    expect(await screen.findByRole("combobox", { name: /cambiar responsable/i })).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /^asignar responsable$/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cambiar responsable/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /asignar y poner en proceso/i })).not.toBeInTheDocument();
   });
 
   it.each(["CERRADO", "CANCELADO"])("en %s no se muestra", async (codigo) => {
@@ -81,14 +85,14 @@ describe("TicketDetailView — control de reasignación", () => {
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
     await screen.findByText("Impresora rota");
     await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
-    expect(screen.queryByRole("combobox", { name: /cambiar responsable/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
   });
 
   it("sin TICKETS:ASIGNAR no se muestra", async () => {
     mockBackend("e-EN_PROCESO");
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
     await screen.findByText("Impresora rota");
-    expect(screen.queryByRole("combobox", { name: /cambiar responsable/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
   });
 
   it("reasignar manda PATCH /tickets/:id/asignar con el elegido", async () => {
@@ -102,8 +106,8 @@ describe("TicketDetailView — control de reasignación", () => {
       }),
     );
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
-    await user.selectOptions(await screen.findByRole("combobox", { name: /cambiar responsable/i }), "u-tecnico-2");
-    await user.click(screen.getByRole("button", { name: /^reasignar$/i }));
+    await user.selectOptions(await screen.findByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
+    await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
     await waitFor(() => expect(body).toEqual({ asignadoId: "u-tecnico-2" }));
   });
 
@@ -116,8 +120,8 @@ describe("TicketDetailView — control de reasignación", () => {
       ),
     );
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
-    await user.selectOptions(await screen.findByRole("combobox", { name: /cambiar responsable/i }), "u-tecnico-2");
-    await user.click(screen.getByRole("button", { name: /^reasignar$/i }));
+    await user.selectOptions(await screen.findByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
+    await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("El ticket ya no se puede reasignar."));
   });
 });

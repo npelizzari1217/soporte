@@ -97,7 +97,7 @@ const ESTADOS_TERMINALES: TicketEstadoCodigo[] = ["CERRADO", "CANCELADO"];
 /**
  * True si el ticket todavía admite la reasignación simple: cualquier estado
  * salvo los terminales (complemento de `ESTADOS_TERMINALES`). Gatea el montaje
- * de `TicketReasignarControl`. UI-only — el backend responde 422 en terminales.
+ * de `TicketResponsableControl`. UI-only — el backend responde 422 en terminales.
  */
 export function puedeReasignar(estadoActualCodigo: string): boolean {
   return !ESTADOS_TERMINALES.includes(estadoActualCodigo as TicketEstadoCodigo);

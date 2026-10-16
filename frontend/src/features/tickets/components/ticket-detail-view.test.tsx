@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -131,9 +131,9 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
     // Control unificado "Asignar y poner en proceso" (visible en NUEVO/ASIGNADO con ticket:asignar).
     if (esperados.asignar) {
-      expect(screen.getByRole("combobox", { name: /asignar responsable/i })).toBeInTheDocument();
+      expect(screen.getByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
     } else {
-      expect(screen.queryByRole("combobox", { name: /asignar responsable/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
     }
 
     if (esperados.editar) {
@@ -223,10 +223,37 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     });
 
     await screen.findByText("Impresora rota");
-    await user.selectOptions(screen.getByRole("combobox", { name: /asignar responsable/i }), "u-tecnico-2");
+    await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
 
     await waitFor(() => expect(capturedBody).toEqual({ asignadoId: "u-tecnico-2" }));
+  });
+
+  it("tras «Asignar y poner en proceso» el control pasa a «Cambiar responsable» con la elección vacía", async () => {
+    let enProceso = false;
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json(enProceso ? { ...TICKET, estadoId: "e-en-proceso", asignadoId: "u-tecnico-2" } : TICKET),
+      ),
+      http.patch(`/api/tickets/${TICKET_ID}/asignar-en-proceso`, () => {
+        enProceso = true;
+        return HttpResponse.json({ ...TICKET, estadoId: "e-en-proceso", asignadoId: "u-tecnico-2" });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"] }),
+    });
+
+    await screen.findByText("Impresora rota");
+    await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
+    await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
+
+    const cambiar = await screen.findByRole("button", { name: /cambiar responsable/i });
+    // La elección anterior no se arrastra al modo nuevo: el botón arranca deshabilitado.
+    expect(screen.getByRole("combobox", { name: /nuevo responsable/i })).toHaveValue("");
+    expect(cambiar).toBeDisabled();
   });
 
   it("transicionar posterior (EN_PROCESO→RESUELTO) → PATCH /tickets/:id/estado con el código elegido", async () => {
@@ -513,5 +540,58 @@ describe("TicketDetailView — ubicación y sector (odd/ubicacion-sector-ticket)
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
     expect(await screen.findByLabelText("Ubicación")).toHaveValue("Aula 3");
+  });
+});
+
+describe("TicketDetailView — tarjeta «Acciones» agrupada (odd/tasks/acciones-ticket-agrupadas, S2 y S3)", () => {
+  beforeEach(() => mockBackend());
+
+  it("con todos los permisos: tres grupos titulados, cada desplegable con etiqueta visible y un solo botón por grupo", async () => {
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR", "TICKETS:MODIFICACION"] }),
+    });
+    await screen.findByText("Impresora rota");
+
+    const acciones = screen.getByRole("region", { name: /acciones/i });
+    expect(within(acciones).getByRole("heading", { name: /^responsable$/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("heading", { name: /^estado$/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("heading", { name: /^ticket$/i })).toBeInTheDocument();
+
+    // Las etiquetas son texto visible, no solo aria-label.
+    expect(within(acciones).getByText("Nuevo responsable")).toBeInTheDocument();
+    expect(within(acciones).getByText("Nuevo estado")).toBeInTheDocument();
+    expect(within(acciones).getByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("combobox", { name: /nuevo estado/i })).toBeInTheDocument();
+
+    // El usuario de prueba es corrector: también ve «Corregir estado», con su propia etiqueta.
+    expect(within(acciones).getByText("Corregir estado")).toBeInTheDocument();
+    expect(within(acciones).getByRole("combobox", { name: /corregir estado/i })).toBeInTheDocument();
+
+    // Un botón de confirmación por desplegable, y los de ticket aparte.
+    expect(within(acciones).getAllByRole("combobox")).toHaveLength(3);
+    expect(within(acciones).getByRole("button", { name: /^corregir$/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("button", { name: /asignar y poner en proceso/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("button", { name: /^confirmar$/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("button", { name: /^editar$/i })).toBeInTheDocument();
+    expect(within(acciones).getByRole("button", { name: /descargar pdf/i })).toBeInTheDocument();
+  });
+
+  it("sin permisos de asignar ni transicionar: no quedan grupos vacíos, solo «Ticket»", async () => {
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+    await screen.findByText("Impresora rota");
+
+    const acciones = screen.getByRole("region", { name: /acciones/i });
+    expect(within(acciones).queryByRole("heading", { name: /^responsable$/i })).not.toBeInTheDocument();
+    expect(within(acciones).queryByRole("heading", { name: /^estado$/i })).not.toBeInTheDocument();
+    expect(within(acciones).getByRole("heading", { name: /^ticket$/i })).toBeInTheDocument();
+    expect(within(acciones).queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("el comentario y el adjunto viven bajo la sección «Nuevo comentario»", async () => {
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
+    });
+    await screen.findByText("Impresora rota");
+    expect(screen.getByRole("heading", { name: /nuevo comentario/i })).toBeInTheDocument();
   });
 });

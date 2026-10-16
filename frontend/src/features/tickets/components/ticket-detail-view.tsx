@@ -5,7 +5,7 @@
  * (ADR-1). Orquesta detalle + timeline + acciones gateadas por permiso
  * (R-M1 / T1.6-T1.13).
  */
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
 import { useTiposTicket, usePrioridades, useEstados, useTiposOperacion } from "../hooks/use-catalogos";
 import { useTecnicosAsignables } from "../hooks/use-tecnicos-asignables";
@@ -29,8 +29,7 @@ import { TicketHeader } from "./ticket-header";
 import { TicketTimeline } from "./ticket-timeline";
 import { TicketCommentForm } from "./ticket-comment-form";
 import { TicketTransitionControl } from "./ticket-transition-control";
-import { TicketAsignarEnProcesoControl } from "./ticket-asignar-en-proceso-control";
-import { TicketReasignarControl } from "./ticket-reasignar-control";
+import { TicketResponsableControl } from "./ticket-responsable-control";
 import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
@@ -52,6 +51,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const estadosQuery = useEstados();
   const tiposOperacionQuery = useTiposOperacion();
   const puedeAsignar = useCan("TICKETS:ASIGNAR");
+  const puedeTransicionar = useCan("TICKETS:TRANSICIONAR");
   // WU9.3: el backend ya gatea csatPuntaje/csatComentario por payload
   // (ADR-C5); esta bandera es defensa en profundidad del lado UI.
   const puedeVerCsat = useCan("CSAT:LECTURA");
@@ -131,55 +131,72 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         <TicketEquipoMantenimientoCard equipo={equipoDeTicketQuery.data.equipo} />
       )}
 
-      <div className="flex flex-wrap items-center gap-3">
-        {estadoCodigo && puedeAsignarYPonerEnProceso(estadoCodigo) && (
-          <TicketAsignarEnProcesoControl
-            tecnicos={tecnicosQuery.data ?? []}
-            onAsignar={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
-            isSubmitting={asignarEnProcesoMutation.isPending}
-          />
-        )}
-        {estadoCodigo && puedeReasignar(estadoCodigo) && (
-          <TicketReasignarControl
-            tecnicos={tecnicosQuery.data ?? []}
-            onReasignar={(asignadoId) => reasignarMutation.mutate({ asignadoId })}
-            isSubmitting={reasignarMutation.isPending}
-          />
-        )}
-        {estadoCodigo && (
-          <TicketTransitionControl
-            estadoActualCodigo={estadoCodigo}
-            onTransicionar={(nuevoEstadoCodigo) => transicionarMutation.mutate({ nuevoEstadoCodigo })}
-            isSubmitting={transicionarMutation.isPending}
-          />
-        )}
-        <Can permiso="TICKETS:MODIFICACION">
-          {edicionPermitida ? (
-            <TicketEditDialog
-              defaultValues={{
-                titulo: ticket.titulo,
-                descripcion: ticket.descripcion ?? "",
-                prioridadId: ticket.prioridadId,
-                ubicacion: ticket.ubicacion ?? "",
-                sectorId: ticket.sectorId ?? "",
-              }}
-              // `undefined` mientras la query no resolvió (cargando o error):
-              // `TicketEditForm` lo necesita para no etiquetar por error un
-              // valor activo como "dado de baja" (ver JSDoc de la prop).
-              prioridades={prioridadesQuery.data}
-              sectorNombre={ticket.sectorNombre}
-              mostrarUbicacion={mostrarUbicacion}
-              onSubmit={(dto) => editarMutation.mutate(dto)}
-              isSubmitting={editarMutation.isPending}
-            />
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              En proceso: solo ROOT puede editar.
-            </span>
+      {/*
+       * Acciones agrupadas (odd/tasks/acciones-ticket-agrupadas, S3): cada grupo tiene título,
+       * y dentro cada control lleva su etiqueta y su botón. Un grupo solo se monta si el usuario
+       * puede hacer algo en él; el gateo fino sigue dentro de cada control.
+       */}
+      <section aria-labelledby="acciones-titulo" className="rounded-lg border border-border bg-card p-6">
+        <h2 id="acciones-titulo" className="mb-4 text-sm font-semibold text-foreground">
+          Acciones
+        </h2>
+        <div className="grid gap-6 md:grid-cols-2">
+          {puedeAsignar && estadoCodigo && puedeReasignar(estadoCodigo) && (
+            <GrupoAccion titulo="Responsable">
+              <TicketResponsableControl
+                // `key` por modo: al pasar de arranque a cambio el control se remonta y la
+                // elección anterior no se arrastra al botón nuevo.
+                key={puedeAsignarYPonerEnProceso(estadoCodigo) ? "arranque" : "cambio"}
+                tecnicos={tecnicosQuery.data ?? []}
+                modo={puedeAsignarYPonerEnProceso(estadoCodigo) ? "arranque" : "cambio"}
+                onAsignarEnProceso={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
+                onReasignar={(asignadoId) => reasignarMutation.mutate({ asignadoId })}
+                isSubmitting={asignarEnProcesoMutation.isPending || reasignarMutation.isPending}
+              />
+            </GrupoAccion>
           )}
-        </Can>
-        <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />
-      </div>
+          {puedeTransicionar && estadoCodigo && (
+            <GrupoAccion titulo="Estado">
+              <TicketTransitionControl
+                estadoActualCodigo={estadoCodigo}
+                onTransicionar={(nuevoEstadoCodigo) => transicionarMutation.mutate({ nuevoEstadoCodigo })}
+                isSubmitting={transicionarMutation.isPending}
+              />
+            </GrupoAccion>
+          )}
+          <GrupoAccion titulo="Ticket">
+            <div className="flex flex-wrap items-center gap-2">
+              <Can permiso="TICKETS:MODIFICACION">
+                {edicionPermitida ? (
+                  <TicketEditDialog
+                    defaultValues={{
+                      titulo: ticket.titulo,
+                      descripcion: ticket.descripcion ?? "",
+                      prioridadId: ticket.prioridadId,
+                      ubicacion: ticket.ubicacion ?? "",
+                      sectorId: ticket.sectorId ?? "",
+                    }}
+                    // `undefined` mientras la query no resolvió (cargando o error):
+                    // `TicketEditForm` lo necesita para no etiquetar por error un
+                    // valor activo como "dado de baja" (ver JSDoc de la prop).
+                    prioridades={prioridadesQuery.data}
+                    sectorNombre={ticket.sectorNombre}
+                    mostrarUbicacion={mostrarUbicacion}
+                    onSubmit={(dto) => editarMutation.mutate(dto)}
+                    isSubmitting={editarMutation.isPending}
+                  />
+                ) : null}
+              </Can>
+              <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />
+            </div>
+            <Can permiso="TICKETS:MODIFICACION">
+              {!edicionPermitida && (
+                <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>
+              )}
+            </Can>
+          </GrupoAccion>
+        </div>
+      </section>
 
       {/* Tareas en cualquier tipo de ticket (odd/tareas-con-tecnico, T6; CA1). */}
       <section>
@@ -196,17 +213,30 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         )}
       </section>
 
-      <Can permiso="TICKETS:COMENTAR">
-        <TicketCommentForm
-          onSubmit={(values) => comentarMutation.mutate(values)}
-          isSubmitting={comentarMutation.isPending}
-        />
-      </Can>
+      <section className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold text-foreground">Nuevo comentario</h2>
+        <Can permiso="TICKETS:COMENTAR">
+          <TicketCommentForm
+            onSubmit={(values) => comentarMutation.mutate(values)}
+            isSubmitting={comentarMutation.isPending}
+          />
+        </Can>
 
-      <TicketAttachmentUpload
-        onUpload={(file) => adjuntarMutation.mutate(file)}
-        isUploading={adjuntarMutation.isPending}
-      />
+        <TicketAttachmentUpload
+          onUpload={(file) => adjuntarMutation.mutate(file)}
+          isUploading={adjuntarMutation.isPending}
+        />
+      </section>
+    </div>
+  );
+}
+
+/** Un grupo de la tarjeta "Acciones": título corto y, debajo, el control con su etiqueta y su botón. */
+function GrupoAccion({ titulo, children }: { titulo: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{titulo}</h3>
+      {children}
     </div>
   );
 }
