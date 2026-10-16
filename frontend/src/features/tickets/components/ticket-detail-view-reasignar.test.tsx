@@ -65,7 +65,7 @@ describe("TicketDetailView — control de reasignación", () => {
     mockBackend(`e-${codigo}`);
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
     await screen.findByText("Impresora rota");
-    expect(await screen.findByRole("combobox", { name: /^responsable$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
     expect(screen.getAllByRole("combobox", { name: /responsable/i })).toHaveLength(1);
     expect(screen.getByRole("button", { name: /asignar y poner en proceso/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /cambiar responsable/i })).not.toBeInTheDocument();
@@ -75,7 +75,7 @@ describe("TicketDetailView — control de reasignación", () => {
     mockBackend("e-EN_PROCESO");
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
     await screen.findByText("Impresora rota");
-    expect(await screen.findByRole("combobox", { name: /^responsable$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cambiar responsable/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /asignar y poner en proceso/i })).not.toBeInTheDocument();
   });
@@ -85,14 +85,14 @@ describe("TicketDetailView — control de reasignación", () => {
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
     await screen.findByText("Impresora rota");
     await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
-    expect(screen.queryByRole("combobox", { name: /^responsable$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
   });
 
   it("sin TICKETS:ASIGNAR no se muestra", async () => {
     mockBackend("e-EN_PROCESO");
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
     await screen.findByText("Impresora rota");
-    expect(screen.queryByRole("combobox", { name: /^responsable$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
   });
 
   it("reasignar manda PATCH /tickets/:id/asignar con el elegido", async () => {
@@ -106,7 +106,7 @@ describe("TicketDetailView — control de reasignación", () => {
       }),
     );
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
-    await user.selectOptions(await screen.findByRole("combobox", { name: /^responsable$/i }), "u-tecnico-2");
+    await user.selectOptions(await screen.findByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
     await waitFor(() => expect(body).toEqual({ asignadoId: "u-tecnico-2" }));
   });
@@ -120,7 +120,7 @@ describe("TicketDetailView — control de reasignación", () => {
       ),
     );
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
-    await user.selectOptions(await screen.findByRole("combobox", { name: /^responsable$/i }), "u-tecnico-2");
+    await user.selectOptions(await screen.findByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("El ticket ya no se puede reasignar."));
   });

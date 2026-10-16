@@ -30,10 +30,10 @@ describe("TicketResponsableControl", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("el desplegable lleva la etiqueta visible «Responsable» y lista los candidatos recibidos", () => {
+  it("el desplegable lleva la etiqueta visible «Nuevo responsable» y lista los candidatos recibidos", () => {
     render("cambio", ["TICKETS:ASIGNAR"]);
-    const combo = screen.getByRole("combobox", { name: /^responsable$/i });
-    expect(screen.getByText("Responsable")).toBeInTheDocument();
+    const combo = screen.getByRole("combobox", { name: /nuevo responsable/i });
+    expect(screen.getByText("Nuevo responsable")).toBeInTheDocument();
     expect(combo).toHaveTextContent("Ana García");
     expect(combo).toHaveTextContent("Beto López");
   });
@@ -44,7 +44,7 @@ describe("TicketResponsableControl", () => {
 
     expect(screen.getAllByRole("combobox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /cambiar responsable/i })).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: /^responsable$/i }), "tec-2");
+    await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "tec-2");
     await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
 
     expect(handlers.arranque).toHaveBeenCalledWith("tec-2");
@@ -56,7 +56,7 @@ describe("TicketResponsableControl", () => {
     const handlers = render("arranque", ["TICKETS:ASIGNAR"]);
 
     expect(screen.queryByRole("button", { name: /asignar y poner en proceso/i })).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: /^responsable$/i }), "tec-1");
+    await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "tec-1");
     await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
 
     expect(handlers.cambio).toHaveBeenCalledWith("tec-1");
@@ -68,7 +68,7 @@ describe("TicketResponsableControl", () => {
     const handlers = render("cambio", ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"]);
 
     expect(screen.queryByRole("button", { name: /asignar y poner en proceso/i })).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: /^responsable$/i }), "tec-2");
+    await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "tec-2");
     await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
 
     expect(handlers.cambio).toHaveBeenCalledWith("tec-2");

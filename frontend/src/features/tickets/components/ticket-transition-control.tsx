@@ -11,9 +11,14 @@
  * ADEMÁS una sección "Corregir estado" que ofrece cualquier estado NO terminal
  * (volver atrás/corregir/reabrir), salteando el grafo. El backend revalida el
  * grafo + el salto correctivo (ADR-3) — esto es UX, no la barrera.
+ *
+ * Cada desplegable lleva su etiqueta visible y una línea de ayuda
+ * (odd/tasks/acciones-ticket-agrupadas, S2): antes solo tenían `aria-label`, y en
+ * pantalla no se distinguía qué botón actuaba sobre qué lista.
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
@@ -50,6 +55,8 @@ export function TicketTransitionControl({
 
   const [destino, setDestino] = useState<string>(opciones[0] ?? "");
   const [destinoCorrectivo, setDestinoCorrectivo] = useState<string>(correctivos[0] ?? "");
+  const destinoId = useId();
+  const correctivoId = useId();
 
   if (!puedeTransicionar) return null;
 
@@ -59,40 +66,42 @@ export function TicketTransitionControl({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {opciones.length > 0 && (
-        <div className="flex items-center gap-2">
-          <Select
-            aria-label="Nuevo estado"
-            value={destino}
-            onChange={(e) => setDestino(e.target.value)}
-            disabled={isSubmitting}
-          >
-            {opciones.map((codigo) => (
-              <option key={codigo} value={codigo}>
-                {ESTADO_LABEL[codigo]}
-              </option>
-            ))}
-          </Select>
-          <Button
-            type="button"
-            size="sm"
-            isLoading={isSubmitting}
-            onClick={() => destino && onTransicionar(destino)}
-          >
-            Confirmar
-          </Button>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor={destinoId}>Nuevo estado</Label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Select
+              id={destinoId}
+              value={destino}
+              onChange={(e) => setDestino(e.target.value)}
+              disabled={isSubmitting}
+            >
+              {opciones.map((codigo) => (
+                <option key={codigo} value={codigo}>
+                  {ESTADO_LABEL[codigo]}
+                </option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              isLoading={isSubmitting}
+              onClick={() => destino && onTransicionar(destino)}
+            >
+              Confirmar
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">Avanza el ticket al estado elegido.</p>
         </div>
       )}
 
       {correctivos.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-muted-foreground">
-            Corregir estado (ROOT/Administrador)
-          </span>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 rounded-md border border-dashed border-border p-3">
+          <Label htmlFor={correctivoId}>Corregir estado</Label>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Select
-              aria-label="Corregir estado"
+              id={correctivoId}
               value={destinoCorrectivo}
               onChange={(e) => setDestinoCorrectivo(e.target.value)}
               disabled={isSubmitting}
@@ -113,6 +122,9 @@ export function TicketTransitionControl({
               Corregir
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            Salta el flujo normal para volver atrás o reabrir. Solo ROOT y administradores.
+          </p>
         </div>
       )}
     </div>

@@ -22,10 +22,10 @@ por grupo. Sin cambios de reglas: permisos, estados y validaciones siguen en el 
 - S4. Comentario y adjunto siguen al final, en su propia sección "Nuevo comentario".
 
 ## Tasks
-- [ ] T1 (S1, S2): `TicketResponsableControl` reemplaza a `TicketAsignarEnProcesoControl` y
+- [x] T1 (S1, S2): `TicketResponsableControl` reemplaza a `TicketAsignarEnProcesoControl` y
   `TicketReasignarControl`; tests propios y ajuste de los del detalle. Commit en
   `feat/acciones-ticket-agrupadas`.
-- [ ] T2 (S2, S3, S4): etiquetas en `TicketTransitionControl`, tarjeta "Acciones" con grupos en
+- [x] T2 (S2, S3, S4): etiquetas en `TicketTransitionControl`, tarjeta "Acciones" con grupos en
   `TicketDetailView`, sección de comentario. Tests ajustados. Commit.
 
 ## Log
@@ -35,3 +35,10 @@ por grupo. Sin cambios de reglas: permisos, estados y validaciones siguen en el 
   que propones?"
 - L2 (2026-10-16, dueño), ante la pregunta "¿un solo botón según el estado, o los dos botones bajo
   el mismo desplegable?": "un solo boton".
+- 2026-10-16, T1 (`a06234c5`): `TicketResponsableControl` reemplaza a los dos controles; 6 tests propios,
+  los del detalle ajustados al nombre accesible "Responsable". Frontend: 208 tests del módulo, lint y tsc 0.
+- 2026-10-16, T2: etiquetas visibles y ayuda en `TicketTransitionControl` (el salto correctivo en un
+  recuadro punteado), tarjeta "Acciones" con los grupos Responsable, Estado y Ticket (un grupo solo se
+  monta si el usuario puede hacer algo en él), sección "Nuevo comentario". Tres tests nuevos en el
+  detalle. Frontend completo: 273 archivos, 2304 tests; lint y tsc 0. La Ayuda no describe estos
+  controles: no hay artículo que corregir.

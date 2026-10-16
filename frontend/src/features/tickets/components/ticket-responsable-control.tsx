@@ -53,7 +53,7 @@ export function TicketResponsableControl({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={selectId}>Responsable</Label>
+      <Label htmlFor={selectId}>Nuevo responsable</Label>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Select
           id={selectId}
