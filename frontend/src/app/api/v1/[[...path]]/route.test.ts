@@ -43,6 +43,40 @@ describe("/api/v1/[[...path]] BFF de la API pública", () => {
     expect(await res.json()).toEqual({ items: [], total: 0 });
   });
 
+  it("reenvía solo la entrada más a la derecha de x-forwarded-for (la que agrega IIS/ARR)", async () => {
+    let captured: Headers | undefined;
+    server.use(
+      http.get(`${BACKEND}/v1/tickets`, ({ request }) => {
+        captured = request.headers;
+        return HttpResponse.json({ items: [], total: 0 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/v1/tickets", {
+      headers: { "x-api-key": "sop_abc123", "x-forwarded-for": "10.0.0.1, 203.0.113.5" },
+    });
+    await GET(req, params(["tickets"]));
+
+    expect(captured?.get("x-forwarded-for")).toBe("203.0.113.5");
+  });
+
+  it("no reenvía x-forwarded-for cuando su última entrada no es una IP", async () => {
+    let captured: Headers | undefined;
+    server.use(
+      http.get(`${BACKEND}/v1/tickets`, ({ request }) => {
+        captured = request.headers;
+        return HttpResponse.json({ items: [], total: 0 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/v1/tickets", {
+      headers: { "x-api-key": "sop_abc123", "x-forwarded-for": "inventada" },
+    });
+    await GET(req, params(["tickets"]));
+
+    expect(captured?.has("x-forwarded-for")).toBe(false);
+  });
+
   it("NUNCA reenvía cookie ni authorization, aunque el pedido traiga una sesión abierta", async () => {
     let captured: Headers | undefined;
     server.use(

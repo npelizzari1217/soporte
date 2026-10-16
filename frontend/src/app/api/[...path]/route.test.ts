@@ -79,6 +79,40 @@ describe("/api/[...path] generic BFF proxy", () => {
     expect(capturedXff).toBe("203.0.113.5");
   });
 
+  it("GET: for publico/ forwards only the rightmost x-forwarded-for entry (the one IIS/ARR appends)", async () => {
+    let capturedXff: string | null = null;
+    server.use(
+      http.get(`${BACKEND}/publico/csat/abc`, ({ request }) => {
+        capturedXff = request.headers.get("x-forwarded-for");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/publico/csat/abc", {
+      headers: { "x-forwarded-for": "10.0.0.1, 203.0.113.5" },
+    });
+    await GET(req, { params: Promise.resolve({ path: ["publico", "csat", "abc"] }) });
+
+    expect(capturedXff).toBe("203.0.113.5");
+  });
+
+  it("GET: for publico/ drops x-forwarded-for when its last entry is not an IP", async () => {
+    let capturedXff: string | null = "unset";
+    server.use(
+      http.get(`${BACKEND}/publico/csat/abc`, ({ request }) => {
+        capturedXff = request.headers.get("x-forwarded-for");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/publico/csat/abc", {
+      headers: { "x-forwarded-for": "inventada" },
+    });
+    await GET(req, { params: Promise.resolve({ path: ["publico", "csat", "abc"] }) });
+
+    expect(capturedXff).toBeNull();
+  });
+
   it("GET: does NOT forward x-forwarded-for outside the publico/ prefix (scope must stay narrow)", async () => {
     let capturedXff: string | null | undefined;
     server.use(
