@@ -194,8 +194,8 @@ describe('RefreshTokenUseCase', () => {
 
   describe('Rechazo si rawToken ausente o vacío', () => {
     it('retorna TokenInvalido sin crashear', async () => {
-      // Entrada inválida a propósito: un llamador que saltea la validación del DTO.
-      const dto: RefreshTokenDto = { rawToken: undefined as unknown as string };
+      // @ts-expect-error un llamador que saltea la validación del DTO, a propósito (entrada inválida)
+      const dto: RefreshTokenDto = { rawToken: undefined };
 
       const result = await useCase.execute(dto);
 

@@ -147,8 +147,8 @@ describe('AgregarComponenteUseCase', () => {
 
     // Un llamador que salte la validación del borde (insumoId vacío o ausente).
     const vacio = await useCase.execute({ equipoId, insumoId: '' });
-    // Cast conservado: entrada inválida a propósito (insumoId ausente, que el tipo no admite).
-    const ausente = await useCase.execute({ equipoId, insumoId: undefined as unknown as string });
+    // @ts-expect-error insumoId ausente, a propósito (entrada inválida)
+    const ausente = await useCase.execute({ equipoId, insumoId: undefined });
 
     expect(vacio.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
     expect(ausente.getError()).toBeInstanceOf(InsumoRepuestoInexistenteError);
