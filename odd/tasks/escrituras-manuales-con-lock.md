@@ -32,11 +32,19 @@ tareas). Rama apilada sobre `feat/estado-por-tareas` (usa `ITicketRepository.blo
   antes de validar. El resto de su cobertura no cambia.
 
 ## Tasks
-- [ ] T1 (S1, S6): `TransicionarEstadoUseCase` + spec.
-- [ ] T2 (S2, S6): `EditarTicketUseCase` + spec + módulo.
-- [ ] T3 (S3, S4, S6): `AsignarTicketUseCase`, `AsignarYPonerEnProcesoUseCase` + specs.
-- [ ] T4 (S5): `escrituras-manuales-con-lock.integration.spec.ts`.
+- [x] T1 (S1, S6): `TransicionarEstadoUseCase` + spec.
+- [x] T2 (S2, S6): `EditarTicketUseCase` + spec + módulo.
+- [x] T3 (S3, S4, S6): `AsignarTicketUseCase`, `AsignarYPonerEnProcesoUseCase` + specs.
+- [x] T4 (S5): `escrituras-manuales-con-lock.integration.spec.ts`.
 
 ## Log
 - L1 (2026-10-17, dueño), ante las tres opciones (A: bloquear y releer en las escrituras manuales;
   B: guardado condicional con 409; C: deuda): "hagamos A".
+- 2026-10-17, T1 (`5ced429d`): transicionar; 28 tests (2 nuevos: orden lock→carga, destino inválido
+  sin abrir tx). T2 (`f4da08a7`): editar con runner inyectado; 19 tests. T3 (`f98a20ca`): asignar y
+  asignar-en-proceso; 33 tests (por cada uno: orden lock→relectura→save, y rechazo si al releer ya está
+  CERRADO). Typecheck 0 en cada paso.
+- 2026-10-17, T4: `escrituras-manuales-con-lock.integration.spec.ts`, 4 tests. El "por debajo" se
+  engancha en `findById` para asignar y asignar-en-proceso (lectura previa a la tx) y en `bloquear` para
+  transicionar y editar (ya no leen nada antes del lock), siempre en una transacción propia. RED
+  observado con el `asignar-ticket.use-case.ts` anterior: pisaba el RESUELTO.
