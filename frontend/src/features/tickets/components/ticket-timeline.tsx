@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * TicketTimeline — lista cronológica de operaciones del ticket (R-M1 / T1.7:
+ * TicketTimeline — línea de tiempo del ticket, de lo más nuevo a lo más viejo (R-M1 / T1.7:
  * CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO). El backend YA filtra las
  * operaciones internas para actores sin `ticket:observar` — este componente
  * NO re-filtra, solo renderiza lo recibido y marca visualmente las internas
@@ -46,9 +46,15 @@ export function TicketTimeline({ operaciones, tipoOperacionCodigoMap }: TicketTi
     return <p className="text-sm text-muted-foreground">Sin actividad todavía.</p>;
   }
 
+  // Lo más nuevo arriba (odd/detalle-ticket-legible, S2): el backend manda ascendente y acá se
+  // ordena por instante, sin confiar en el orden de llegada.
+  const ordenadas = [...operaciones].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+
   return (
     <ol className="flex flex-col gap-4">
-      {operaciones.map((operacion) => {
+      {ordenadas.map((operacion) => {
         const codigo = tipoOperacionCodigoMap.get(operacion.tipoOperacionId);
         const config = (codigo && TIPO_OPERACION_CONFIG[codigo]) || { label: "Operación", icon: HelpCircle };
         const Icon = config.icon;
