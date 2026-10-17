@@ -80,3 +80,9 @@ Ver sigue funcionando igual.
   "y comentarios" (los comentarios internos del ticket siguen permitidos). Advisoria aceptada sin
   cambio: `verificar()` corre antes de la transacción; una carrera con el cierre del ticket en el mismo
   instante podría colar una escritura (ventana mínima, mismo patrón que la autorización).
+- 2026-10-17, merge y deploy: merge local `d68c5abc` (sin PR). CI: `gates`, `gates-backend` y
+  `gates-frontend` verdes. Deploy por SSH: dump verificado `utc-backfill-20261017-121436` (10 bases),
+  `DEPLOY OK (d68c5abc)`, rollback `11647cf2`. Sin migraciones ni cambios de deps. Smoke: front 307,
+  `POST /api/tickets/:id/tareas` 401 sin token y 404 en ruta inventada, backend arrancado 12:17:05,
+  cero errores en los logs de servicio tras el arranque.
+
