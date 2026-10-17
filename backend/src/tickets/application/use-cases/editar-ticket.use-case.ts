@@ -1,4 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketReprioritizadoEvent } from '../../domain/events/ticket-reprioritizado.event';
@@ -68,9 +69,54 @@ export class EditarTicketUseCase {
     private readonly estadoRepo: IEstadoRepository,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
+    private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
   ) {}
 
   async execute(dto: EditarTicketDto): Promise<Result<TicketEntity, DomainError>> {
+    if (dto.prioridadId !== undefined) {
+      const prioridad = await this.prioridadRepo.findById(dto.prioridadId);
+      if (!prioridad) {
+        return Result.fail(new PrioridadNoEncontradaError(dto.prioridadId));
+      }
+    }
+
+    if (dto.sectorId) {
+      const sector = await this.sectorRepo.findById(dto.sectorId);
+      if (!sector) {
+        return Result.fail(new SectorTicketInexistenteError(dto.sectorId));
+      }
+    }
+
+    // La carga, la regla de bloqueo por estado y el guardado van juntos dentro de la transacción,
+    // con la fila bloqueada antes de cargar (odd/escrituras-manuales-con-lock, S2): la regla se
+    // evalúa sobre el estado que otro actor —o las tareas— acaba de dejar, no sobre una lectura
+    // vieja que el guardado de la fila entera pisaría.
+    const edicion = await this.txRunner.run(() => this.editarBloqueado(dto));
+    if (edicion.isFail()) return Result.fail(edicion.getError());
+    const { ticket, cambioPrioridad } = edicion.getValue();
+
+    // POST-COMMIT (Fase 4, S3 — GATE G3, aditivo): publica
+    // TicketReprioritizadoEvent para que el módulo SLA recalcule
+    // sla_vence_at (AplicarSlaUseCase) desde el createdAt ORIGINAL del
+    // ticket (ancla fija). Mismo criterio ADR-6: log-and-swallow.
+    if (cambioPrioridad) {
+      try {
+        this.eventPublisher.publish(
+          new TicketReprioritizadoEvent({ ticketId: ticket.id, prioridadId: ticket.prioridadId }),
+        );
+      } catch {
+        // log-and-swallow (ADR-6).
+      }
+    }
+
+    return Result.ok(ticket);
+  }
+
+  /** Lock, carga, regla de bloqueo por estado, mutación y guardado, dentro de la transacción. */
+  private async editarBloqueado(
+    dto: EditarTicketDto,
+  ): Promise<Result<{ ticket: TicketEntity; cambioPrioridad: boolean }, DomainError>> {
+    await this.ticketRepo.bloquear(dto.ticketId);
     const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
@@ -93,20 +139,6 @@ export class EditarTicketUseCase {
       }
     }
 
-    if (dto.prioridadId !== undefined) {
-      const prioridad = await this.prioridadRepo.findById(dto.prioridadId);
-      if (!prioridad) {
-        return Result.fail(new PrioridadNoEncontradaError(dto.prioridadId));
-      }
-    }
-
-    if (dto.sectorId) {
-      const sector = await this.sectorRepo.findById(dto.sectorId);
-      if (!sector) {
-        return Result.fail(new SectorTicketInexistenteError(dto.sectorId));
-      }
-    }
-
     // Fase 4 (S3, GATE G3): detecta el cambio REAL de prioridad ANTES de
     // mutar la entidad — necesario para no publicar el evento cuando el
     // caller reenvía la misma prioridadId (sin cambio efectivo).
@@ -121,21 +153,6 @@ export class EditarTicketUseCase {
     });
 
     await this.ticketRepo.save(ticket);
-
-    // POST-COMMIT (Fase 4, S3 — GATE G3, aditivo): publica
-    // TicketReprioritizadoEvent para que el módulo SLA recalcule
-    // sla_vence_at (AplicarSlaUseCase) desde el createdAt ORIGINAL del
-    // ticket (ancla fija). Mismo criterio ADR-6: log-and-swallow.
-    if (cambioPrioridad) {
-      try {
-        this.eventPublisher.publish(
-          new TicketReprioritizadoEvent({ ticketId: ticket.id, prioridadId: ticket.prioridadId }),
-        );
-      } catch {
-        // log-and-swallow (ADR-6).
-      }
-    }
-
-    return Result.ok(ticket);
+    return Result.ok({ ticket, cambioPrioridad });
   }
 }

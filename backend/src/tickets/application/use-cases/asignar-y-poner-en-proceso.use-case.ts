@@ -75,9 +75,12 @@ interface PasoTransicion {
  *    EN_PROCESO por arcos válidos (RESUELTO) →
  *    `TransicionInvalidaError` (422), SIN mutar nada. Cada arco se valida con
  *    la entidad (`canTransitionTo`) Y la máquina de estados (`puedeTransicionar`).
- * 5. En UNA transacción (`ITenantTransactionRunner`): `assignTo` + operación
- *    ASIGNACION, luego por cada arco `updateEstado` + operación CAMBIO_ESTADO,
- *    y persiste el ticket una vez.
+ * 5. En UNA transacción (`ITenantTransactionRunner`), con la fila del ticket
+ *    bloqueada ANTES de releerlo (odd/escrituras-manuales-con-lock, S4): vuelve
+ *    a decidir "terminal" y el camino de arcos sobre el estado vigente, y recién
+ *    entonces `assignTo` + operación ASIGNACION, por cada arco `updateEstado` +
+ *    operación CAMBIO_ESTADO, y persiste el ticket una vez. Las consultas a
+ *    master quedan fuera, para no sostener el lock mientras se consulta otra base.
  *
  * Un ticket en CERRADO/CANCELADO se rechaza con `TicketCerradoNoReasignableError`
  * (422) antes de consultar a master. Tras el commit publica `ticket.asignado`
@@ -157,7 +160,6 @@ export class AsignarYPonerEnProcesoUseCase {
     if (pasosResult.isFail()) {
       return Result.fail(pasosResult.getError());
     }
-    const pasos = pasosResult.getValue();
 
     const tipoOpAsignacionId = await this.tipoOperacionRepo.findIdByCodigo('ASIGNACION');
     if (!tipoOpAsignacionId) {
@@ -172,47 +174,76 @@ export class AsignarYPonerEnProcesoUseCase {
       );
     }
 
-    await this.txRunner.run(async () => {
-      // 1) Asignación + operación ASIGNACION (sin estados: no es un cambio de estado).
-      ticket.assignTo(dto.asignadoId);
-      await this.operacionRepo.save(
-        OperacionTicketEntity.create({
-          ticketId: ticket.id,
-          tipoOperacionId: tipoOpAsignacionId,
-          descripcion: null,
-          estadoAnteriorId: null,
-          estadoNuevoId: null,
-          autorId: dto.autorId,
-          esInterno: false,
-          metadata: null,
-        }),
-      );
+    // Dentro de la tx, con la fila bloqueada ANTES de releer (odd/escrituras-manuales-con-lock, S4):
+    // el camino de arcos se vuelve a resolver sobre el estado vigente. El de arriba sirvió para
+    // rechazar temprano, sin abrir la transacción; este es el que se escribe.
+    const escritura = await this.txRunner.run(
+      async (): Promise<Result<TicketEntity, DomainError>> => {
+        await this.ticketRepo.bloquear(dto.ticketId);
+        const ticket = await this.ticketRepo.findById(dto.ticketId);
+        if (!ticket || ticket.isDeleted()) {
+          return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+        }
+        const estadoVigente = await this.estadoRepo.findById(ticket.estadoId);
+        if (!estadoVigente) {
+          throw new Error(
+            `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
+          );
+        }
+        if (ESTADOS_TERMINALES.has(estadoVigente.codigo)) {
+          return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoVigente.codigo));
+        }
+        const pasosVigentes = await this.resolverPasosHastaEnProceso(
+          ticket,
+          estadoVigente,
+          tipoTicket.codigo,
+        );
+        if (pasosVigentes.isFail()) return Result.fail(pasosVigentes.getError());
 
-      // 2) Avance de estado arco por arco + operación CAMBIO_ESTADO por cada uno.
-      for (const paso of pasos) {
-        ticket.updateEstado(paso.estadoNuevo.id);
+        // 1) Asignación + operación ASIGNACION (sin estados: no es un cambio de estado).
+        ticket.assignTo(dto.asignadoId);
         await this.operacionRepo.save(
           OperacionTicketEntity.create({
             ticketId: ticket.id,
-            tipoOperacionId: tipoOpCambioEstadoId,
+            tipoOperacionId: tipoOpAsignacionId,
             descripcion: null,
-            estadoAnteriorId: paso.estadoAnteriorId,
-            estadoNuevoId: paso.estadoNuevo.id,
+            estadoAnteriorId: null,
+            estadoNuevoId: null,
             autorId: dto.autorId,
             esInterno: false,
             metadata: null,
           }),
         );
-      }
 
-      await this.ticketRepo.save(ticket);
-    });
+        // 2) Avance de estado arco por arco + operación CAMBIO_ESTADO por cada uno.
+        for (const paso of pasosVigentes.getValue()) {
+          ticket.updateEstado(paso.estadoNuevo.id);
+          await this.operacionRepo.save(
+            OperacionTicketEntity.create({
+              ticketId: ticket.id,
+              tipoOperacionId: tipoOpCambioEstadoId,
+              descripcion: null,
+              estadoAnteriorId: paso.estadoAnteriorId,
+              estadoNuevoId: paso.estadoNuevo.id,
+              autorId: dto.autorId,
+              esInterno: false,
+              metadata: null,
+            }),
+          );
+        }
+
+        await this.ticketRepo.save(ticket);
+        return Result.ok(ticket);
+      },
+    );
+    if (escritura.isFail()) return Result.fail(escritura.getError());
+    const asignado = escritura.getValue();
 
     // N1: el evento sale recién al commit de la transacción más externa.
     this.txRunner.alCommitear(() => {
       this.eventPublisher.publish(
         new TicketAsignadoEvent({
-          ticketId: ticket.id,
+          ticketId: asignado.id,
           asignadoId: dto.asignadoId,
           origen: 'MANUAL',
           autorId: dto.autorId,
@@ -220,7 +251,7 @@ export class AsignarYPonerEnProcesoUseCase {
       );
     });
 
-    return Result.ok(ticket);
+    return Result.ok(asignado);
   }
 
   /**

@@ -4,6 +4,7 @@
  *
  * Ref spec: sdd/tickets-core/spec T8. Tarea: T6.5.
  */
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { EditarTicketUseCase } from './editar-ticket.use-case';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
@@ -69,7 +70,7 @@ describe('EditarTicketUseCase', () => {
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
       esVisiblePara: unstubbed('esVisiblePara'),
-      bloquear: unstubbed('bloquear'),
+      bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
     };
     const prioridadRepo = {
@@ -101,14 +102,19 @@ describe('EditarTicketUseCase', () => {
           : null,
       ),
     };
+    const txRunner: Pick<ITenantTransactionRunner, 'run'> = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
+    };
+    vi.spyOn(txRunner, 'run');
     const useCase = new EditarTicketUseCase(
       ticketRepo,
       prioridadRepo,
       estadoRepo,
       eventPublisher,
       sectorRepo,
+      txRunner,
     );
-    return { useCase, ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo };
+    return { useCase, ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo, txRunner };
   }
 
   it('actualiza titulo/descripcion/prioridadId y persiste', async () => {
@@ -215,6 +221,26 @@ describe('EditarTicketUseCase', () => {
       expect(result.getError()).toBeInstanceOf(SectorTicketInexistenteError);
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
+  });
+
+  // odd/escrituras-manuales-con-lock (S2): lock dentro de la tx, antes de cargar; el guardado
+  // también adentro.
+  it('bloquea la fila dentro de la transacción, recién después carga el ticket y guarda adentro', async () => {
+    const c = makeCollaborators(makeTicket());
+
+    await c.useCase.execute({
+      ticketId: 'ticket-uuid',
+      titulo: 'Nuevo titulo',
+      actorEsRoot: false,
+    });
+
+    expect(c.txRunner.run).toHaveBeenCalledTimes(1);
+    expect(c.ticketRepo.bloquear).toHaveBeenCalledWith('ticket-uuid');
+    const [ordenRun] = vi.mocked(c.txRunner.run).mock.invocationCallOrder;
+    const [ordenLock] = c.ticketRepo.bloquear.mock.invocationCallOrder;
+    const [ordenCarga] = c.ticketRepo.findById.mock.invocationCallOrder;
+    expect(ordenRun).toBeLessThan(ordenLock);
+    expect(ordenLock).toBeLessThan(ordenCarga);
   });
 
   it('ticket inexistente → TicketNoEncontradoError (404)', async () => {

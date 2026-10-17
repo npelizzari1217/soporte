@@ -106,7 +106,7 @@ describe('TransicionarEstadoUseCase', () => {
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
       esVisiblePara: unstubbed('esVisiblePara'),
-      bloquear: unstubbed('bloquear'),
+      bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
     };
     const operacionRepo = {
@@ -408,7 +408,34 @@ describe('TransicionarEstadoUseCase', () => {
     expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
   });
 
-  it('ticket inexistente → TicketNoEncontradoError (404), sin tocar la tx', async () => {
+  // odd/escrituras-manuales-con-lock (S1): el lock va ANTES de cargar el ticket y dentro de la tx,
+  // así la validación mira el estado que otro actor acaba de dejar, no una lectura vieja.
+  it('bloquea la fila del ticket dentro de la transacción y recién después lo carga', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+    await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'ASIGNADO' }));
+
+    expect(c.txRunner.run).toHaveBeenCalledTimes(1);
+    expect(c.ticketRepo.bloquear).toHaveBeenCalledWith('ticket-uuid');
+    const [ordenRun] = vi.mocked(c.txRunner.run).mock.invocationCallOrder;
+    const [ordenLock] = c.ticketRepo.bloquear.mock.invocationCallOrder;
+    const [ordenCarga] = c.ticketRepo.findById.mock.invocationCallOrder;
+    expect(ordenRun).toBeLessThan(ordenLock);
+    expect(ordenLock).toBeLessThan(ordenCarga);
+  });
+
+  it('un estado destino inexistente se rechaza antes de abrir la transacción', async () => {
+    const c = makeCollaborators();
+
+    const result = await c.useCase.execute(baseDto({ nuevoEstadoCodigo: 'NO_EXISTE' }));
+
+    expect(result.isFail()).toBe(true);
+    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.ticketRepo.bloquear).not.toHaveBeenCalled();
+  });
+
+  it('ticket inexistente → TicketNoEncontradoError (404), sin escribir', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(null);
 
@@ -416,7 +443,7 @@ describe('TransicionarEstadoUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
-    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
   it('ticket soft-deleted → TicketNoEncontradoError (404)', async () => {
@@ -439,7 +466,7 @@ describe('TransicionarEstadoUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(EstadoDestinoInvalidoError);
-    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
   it('T9: arco inválido (NUEVO→CERRADO, no es un arco del grafo) → TransicionInvalidaError (422), sin mutar ni tocar la tx', async () => {
@@ -452,7 +479,6 @@ describe('TransicionarEstadoUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
     expect(ticket.estadoId).toBe('estado-nuevo-uuid'); // sin mutar
-    expect(c.txRunner.run).not.toHaveBeenCalled();
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
     expect(c.operacionRepo.save).not.toHaveBeenCalled();
   });
@@ -467,7 +493,7 @@ describe('TransicionarEstadoUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
     expect(ticket.estadoId).toBe('estado-cerrado-uuid');
-    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
   it('T7.4/T11: rechazo de reapertura — transición desde CANCELADO → TransicionInvalidaError (422), sin mutar', async () => {
@@ -480,7 +506,7 @@ describe('TransicionarEstadoUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
     expect(ticket.estadoId).toBe('estado-cancelado-uuid');
-    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
   // ─── Reloj de SLA: marcador y evento (sla-reloj-activo R1) ───────────────
@@ -592,7 +618,7 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
       expect(ticket.estadoId).toBe('estado-nuevo-uuid');
-      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
 
     it.each(['NUEVO', 'ASIGNADO', 'RESUELTO'] as const)(
@@ -609,7 +635,7 @@ describe('TransicionarEstadoUseCase', () => {
         expect(result.isFail()).toBe(true);
         expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
         expect(ticket.estadoId).toBe(ESTADOS[origen].id);
-        expect(c.txRunner.run).not.toHaveBeenCalled();
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
       },
     );
 
@@ -638,7 +664,7 @@ describe('TransicionarEstadoUseCase', () => {
 
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
-      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
 
     it('NO-corrector: intento del mismo salto (EN_PROCESO→ASIGNADO) → TransicionInvalidaError', async () => {
@@ -653,7 +679,7 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
       expect(ticket.estadoId).toBe('estado-en-proceso-uuid');
-      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
   });
 });
