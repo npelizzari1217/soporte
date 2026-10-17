@@ -71,3 +71,9 @@ arriba de la lista, y cada tarjeta lleva en modo claro un fondo pastel propio. E
   compuertas en verde. Backend: lint 0, typecheck 0, tests 747 archivos / 8967 pasan. Frontend: lint 0,
   type-check 0, tests 274 archivos / 2323 pasan. Los `CORREO_CLIENTE_ERROR` en el log son el adapter
   de correo fallando a propósito en sus specs, no un fallo. Pendiente del dueño: push, PR y merge.
+- 2026-10-17, merge y deploy: merge local `42459def` (sin PR, como las tres features anteriores). CI:
+  `gates` y `gates-frontend` verdes; `gates-backend` venía rojo desde el 2026-10-16 por `@scarf/scarf`
+  con pnpm 11 (fix aparte, merge `11647cf2`, CI verde). Deploy por SSH sobre `11647cf2`: dump
+  verificado `utc-backfill-20261017-095230` (10 bases), `DEPLOY OK`, rollback `ad8d3854`. Sin
+  migraciones ni cambios de deps. Smoke: front 307, `PATCH /api/reparaciones/:id` 401 sin token y 404
+  en ruta inventada, cero errores en los logs de servicio tras el arranque.
