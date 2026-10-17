@@ -5,6 +5,7 @@ import { TareaNoEncontradaError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import {
   ActorTarea,
@@ -39,6 +40,7 @@ export class EliminarTareaUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -50,10 +52,14 @@ export class EliminarTareaUseCase {
       'borrar',
     );
     if (gestion.isFail()) return Result.fail(gestion.getError());
+    const { ticket } = gestion.getValue();
 
     const tareaResult = await cargarTareaDelTicket(this.tareaRepo, dto.ticketId, dto.tareaId);
     if (tareaResult.isFail()) return Result.fail(tareaResult.getError());
     const tarea = tareaResult.getValue();
+
+    const editable = await this.verificadorEditable.verificar(ticket);
+    if (editable.isFail()) return Result.fail(editable.getError());
 
     const baja = tarea.eliminar(this.ahora());
     if (baja.isFail()) return Result.fail(mapearErrorDeTarea(baja.getError(), tarea.id));

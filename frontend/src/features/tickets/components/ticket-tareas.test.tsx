@@ -347,3 +347,37 @@ describe("TicketTareas — botones por actor (CA3, CA4)", () => {
     expect(visibles).toEqual(botones);
   });
 });
+
+describe("TicketTareas — solo lectura (odd/ticket-cerrado-solo-lectura, S4)", () => {
+  it("con motivo, el responsable con permiso ve la lista y el motivo, pero ningún control", async () => {
+    mockTareas();
+    renderWithProviders(
+      <TicketTareas
+        ticketId={TICKET_ID}
+        asignadoId={RESPONSABLE}
+        modulo="TICKETS"
+        motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
+      />,
+      { user: responsable },
+    );
+    await screen.findByText("Cambiar el disco");
+
+    expect(screen.getByRole("note")).toHaveTextContent("El ticket está cerrado");
+    expect(screen.queryByLabelText("Nueva tarea")).toBeNull();
+    expect(screen.queryByLabelText("Técnico de la tarea Cambiar el disco")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Eliminar tarea Cambiar el disco" })).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^(Completar|Descompletar)$/ })).toHaveLength(0);
+  });
+
+  it("sin motivo (null) todo sigue como antes", async () => {
+    mockTareas();
+    renderWithProviders(
+      <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} modulo="TICKETS" motivoSoloLectura={null} />,
+      { user: responsable },
+    );
+    await screen.findByText("Cambiar el disco");
+
+    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByLabelText("Nueva tarea")).toBeInTheDocument();
+  });
+});

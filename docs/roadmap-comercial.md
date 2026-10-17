@@ -1265,6 +1265,22 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     sector. Endpoint nuevo `PATCH /reparaciones/:id` con `EDILICIA:MODIFICACION`.
   - **Cumplida** (2026-10-17, rama `feat/detalle-ticket-legible`). Cada viñeta es un criterio de
     aceptación del documento, sin desviaciones declaradas.
+- **Ticket cerrado, cancelado o bloqueado: tareas y comentarios de solo lectura** (pedido fuera
+  de los puntos; decisiones del dueño del 2026-10-17, feature `ticket-cerrado-solo-lectura`,
+  documento `odd/tasks/ticket-cerrado-solo-lectura.md`):
+  - **Las tareas de cualquier ticket** (Soporte y Edilicia) dejan de modificarse cuando el ticket
+    está **Cerrado** o **Cancelado**: ni crear, ni completar, ni descompletar, ni eliminar, ni
+    asignar técnico, para nadie (ROOT incluido). **Resuelto no bloquea**: descompletar una tarea
+    de un ticket resuelto lo devuelve a En proceso, y eso tiene que seguir pudiéndose.
+  - En Edilicia, una reparación **bloqueada** por una compra en curso tampoco acepta cambios en
+    sus tareas, y **los comentarios de la reparación** siguen la misma regla (cerrado, cancelado o
+    bloqueada). Ver siempre se puede: listas y conteos siguen igual.
+  - El backend rechaza con 422 y el motivo; la pantalla oculta los controles y muestra el motivo
+    en el diálogo de subtareas, en el de comentarios y en el detalle del ticket.
+  - **Cumplida** (2026-10-17, rama `feat/ticket-cerrado-solo-lectura`). Cada viñeta es un criterio
+    de aceptación del documento, sin desviaciones declaradas. Deuda de Ayuda:
+    `reparaciones-edilicias.md` no menciona que en esos estados no se agregan subtareas ni
+    comentarios (queda incompleto, no falso).
 - **Ubicación y sector en el ticket** (pedido fuera de los puntos; decisiones del dueño del
   2026-10-15, feature `ubicacion-sector-ticket`, documento
   `odd/tasks/ubicacion-sector-ticket.md`):

@@ -37,6 +37,11 @@ export interface ComentariosDialogProps {
   reparacionId: string;
   trigger: ReactNode;
   numero: string;
+  /**
+   * Con motivo, no se pueden agregar comentarios (odd/ticket-cerrado-solo-lectura, S5): se oculta
+   * el formulario y se muestra el motivo. La lista sigue. El backend es la autoridad.
+   */
+  motivoSoloLectura?: string | null;
 }
 
 /**
@@ -50,7 +55,7 @@ function nombreAutor(comentario: ComentarioReparacion): string {
   return completo.length > 0 ? completo : comentario.autorId;
 }
 
-export function ComentariosDialog({ reparacionId, trigger, numero }: ComentariosDialogProps) {
+export function ComentariosDialog({ reparacionId, trigger, numero, motivoSoloLectura = null }: ComentariosDialogProps) {
   const [open, setOpen] = useState(false);
   const comentariosQuery = useComentariosReparacion(reparacionId, open);
   const crearMutation = useCrearComentarioReparacion(reparacionId);
@@ -108,7 +113,13 @@ export function ComentariosDialog({ reparacionId, trigger, numero }: Comentarios
           </ul>
         )}
 
+        {motivoSoloLectura !== null && (
+          <p role="note" className="text-sm text-muted-foreground">
+            {motivoSoloLectura}
+          </p>
+        )}
         <Can permiso="EDILICIA:ALTAS">
+          {motivoSoloLectura === null && (
           <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-2" noValidate>
             <label htmlFor="comentario-texto" className="text-xs font-medium text-foreground">
               Nuevo comentario
@@ -118,6 +129,7 @@ export function ComentariosDialog({ reparacionId, trigger, numero }: Comentarios
               Comentar
             </Button>
           </form>
+          )}
         </Can>
       </DialogContent>
     </Dialog>

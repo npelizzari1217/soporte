@@ -606,3 +606,31 @@ describe("TicketDetailView — tarjeta «Acciones» agrupada (odd/tasks/acciones
     expect(formulario.compareDocumentPosition(linea) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe("TicketDetailView — tareas de solo lectura con el ticket cerrado (odd/ticket-cerrado-solo-lectura, S4)", () => {
+  beforeEach(() => mockBackend());
+  const responsable = buildUser({ rol: "ADMINISTRADOR", permisos: ["SOPORTE:MODIFICACION"] });
+
+  it("CERRADO: muestra el motivo y oculta el alta de tareas", async () => {
+    server.use(
+      http.get("/api/catalogos/estados", () =>
+        HttpResponse.json([{ id: "e-cerrado", codigo: "CERRADO", nombre: "Cerrado", color: null, orden: 50, activo: true }]),
+      ),
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-cerrado" })),
+    );
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: responsable });
+
+    expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
+    expect(await screen.findByRole("note")).toHaveTextContent(/cerrado/);
+    expect(screen.queryByLabelText("Nueva tarea")).toBeNull();
+  });
+
+  it("RESUELTO: sin motivo y con el alta de tareas disponible", async () => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-resuelto" })));
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: responsable });
+
+    expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
+    expect(screen.queryByRole("note")).toBeNull();
+  });
+});

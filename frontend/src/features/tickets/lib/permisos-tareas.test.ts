@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { puedeCompletarTareaUi, puedeGestionarTareasUi, type ActorTareasUi } from "./permisos-tareas";
+import { motivoTareasSoloLectura, puedeCompletarTareaUi, puedeGestionarTareasUi, type ActorTareasUi } from "./permisos-tareas";
 
 /**
  * La matriz con responsable conocido la cubre `ticket-tareas.test.tsx`. Acá va
@@ -25,5 +25,29 @@ describe("permisos-tareas — responsable desconocido", () => {
     expect(puedeGestionarTareasUi(conModulo, "otro")).toBe(false);
     expect(puedeCompletarTareaUi(conModulo, "otro", null)).toBe(false);
     expect(puedeCompletarTareaUi(conModulo, null, null)).toBe(false);
+  });
+});
+
+describe("motivoTareasSoloLectura (odd/ticket-cerrado-solo-lectura, S4)", () => {
+  it("CERRADO y CANCELADO bloquean con su motivo, aunque no esté bloqueada por compra", () => {
+    expect(motivoTareasSoloLectura("CERRADO", false)).toBe(
+      "El ticket está cerrado: sus tareas ya no se modifican.",
+    );
+    expect(motivoTareasSoloLectura("CANCELADO", false)).toBe(
+      "El ticket está cancelado: sus tareas ya no se modifican.",
+    );
+  });
+
+  it("bloqueada por compra bloquea en cualquier estado no terminal, y el estado terminal manda antes", () => {
+    expect(motivoTareasSoloLectura("EN_PROCESO", true)).toBe(
+      "La reparación está bloqueada por una compra en curso: sus tareas ya no se modifican.",
+    );
+    expect(motivoTareasSoloLectura("CERRADO", true)).toMatch(/cerrado/);
+  });
+
+  it("RESUELTO, los demás estados y el catálogo sin resolver no bloquean", () => {
+    expect(motivoTareasSoloLectura("RESUELTO", false)).toBeNull();
+    expect(motivoTareasSoloLectura("NUEVO", false)).toBeNull();
+    expect(motivoTareasSoloLectura(undefined, false)).toBeNull();
   });
 });

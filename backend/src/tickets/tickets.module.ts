@@ -8,6 +8,10 @@ import {
 } from './domain/ports/i-usuario-master.checker';
 import { UsuarioMasterChecker } from './infrastructure/persistence/prisma/usuario-master.checker';
 import { ESTADO_REPOSITORY, IEstadoRepository } from './domain/ports/i-estado.repository';
+import {
+  BLOQUEO_TICKET_REPOSITORY,
+  IBloqueoTicketRepository,
+} from './domain/ports/i-bloqueo-ticket.repository';
 import { PrismaEstadoRepository } from './infrastructure/persistence/prisma/prisma-estado.repository';
 import { PRIORIDAD_REPOSITORY, IPrioridadRepository } from './domain/ports/i-prioridad.repository';
 import { PrismaPrioridadRepository } from './infrastructure/persistence/prisma/prisma-prioridad.repository';
@@ -41,6 +45,7 @@ import {
   TAREA_TICKET_REPOSITORY,
 } from './domain/ports/i-tarea-ticket.repository';
 import { PrismaTareaTicketRepository } from './infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
+import { PrismaBloqueoTicketRepository } from './infrastructure/persistence/prisma/prisma-bloqueo-ticket.repository';
 import {
   OPERACION_TICKET_REPOSITORY,
   IOperacionTicketRepository,
@@ -98,6 +103,7 @@ import { CrearTareaTicketUseCase } from './application/use-cases/crear-tarea-tic
 import { AsignarTecnicoTareaUseCase } from './application/use-cases/asignar-tecnico-tarea.use-case';
 import { CompletarTareaUseCase } from './application/use-cases/completar-tarea.use-case';
 import { AvanzarEstadoPorTareasService } from './application/services/avanzar-estado-por-tareas.service';
+import { VerificadorTicketEditable } from './application/services/ticket-editable-para-tareas';
 import { DescompletarTareaUseCase } from './application/use-cases/descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './application/use-cases/eliminar-tarea.use-case';
 import { ListarTareasTicketUseCase } from './application/use-cases/listar-tareas-ticket.use-case';
@@ -201,6 +207,14 @@ import {
     { provide: REGLA_ASIGNACION_REPOSITORY, useClass: PrismaReglaAsignacionRepository },
     // odd/tareas-con-tecnico: tareas de cualquier tipo de ticket.
     { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
+    // odd/ticket-cerrado-solo-lectura: tareas de solo lectura en CERRADO/CANCELADO o bloqueada por compra.
+    { provide: BLOQUEO_TICKET_REPOSITORY, useClass: PrismaBloqueoTicketRepository },
+    {
+      provide: VerificadorTicketEditable,
+      useFactory: (estadoRepo: IEstadoRepository, bloqueoRepo: IBloqueoTicketRepository) =>
+        new VerificadorTicketEditable(estadoRepo, bloqueoRepo),
+      inject: [ESTADO_REPOSITORY, BLOQUEO_TICKET_REPOSITORY],
+    },
 
     {
       provide: NumeradorTicket,
@@ -450,6 +464,7 @@ import {
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
+        verificadorEditable: VerificadorTicketEditable,
       ) =>
         new CrearTareaTicketUseCase(
           ticketRepo,
@@ -458,6 +473,7 @@ import {
           operacionRepo,
           tipoOperacionRepo,
           txRunner,
+          verificadorEditable,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -466,6 +482,7 @@ import {
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
+        VerificadorTicketEditable,
       ],
     },
     {
@@ -478,6 +495,7 @@ import {
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
+        verificadorEditable: VerificadorTicketEditable,
       ) =>
         new AsignarTecnicoTareaUseCase(
           ticketRepo,
@@ -487,6 +505,7 @@ import {
           operacionRepo,
           tipoOperacionRepo,
           txRunner,
+          verificadorEditable,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -496,6 +515,7 @@ import {
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
+        VerificadorTicketEditable,
       ],
     },
     {
@@ -547,6 +567,7 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
         avanzarEstado: AvanzarEstadoPorTareasService,
+        verificadorEditable: VerificadorTicketEditable,
       ) =>
         new CompletarTareaUseCase(
           ticketRepo,
@@ -555,6 +576,7 @@ import {
           tipoOperacionRepo,
           txRunner,
           avanzarEstado,
+          verificadorEditable,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -563,6 +585,7 @@ import {
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
         AvanzarEstadoPorTareasService,
+        VerificadorTicketEditable,
       ],
     },
     {
@@ -574,6 +597,7 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
         avanzarEstado: AvanzarEstadoPorTareasService,
+        verificadorEditable: VerificadorTicketEditable,
       ) =>
         new DescompletarTareaUseCase(
           ticketRepo,
@@ -582,6 +606,7 @@ import {
           tipoOperacionRepo,
           txRunner,
           avanzarEstado,
+          verificadorEditable,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -590,6 +615,7 @@ import {
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
         AvanzarEstadoPorTareasService,
+        VerificadorTicketEditable,
       ],
     },
     {
@@ -601,6 +627,7 @@ import {
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
+        verificadorEditable: VerificadorTicketEditable,
       ) =>
         new EliminarTareaUseCase(
           ticketRepo,
@@ -609,6 +636,7 @@ import {
           operacionRepo,
           tipoOperacionRepo,
           txRunner,
+          verificadorEditable,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -617,6 +645,7 @@ import {
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
+        VerificadorTicketEditable,
       ],
     },
     {
@@ -814,6 +843,8 @@ import {
   exports: [
     USUARIO_MASTER_CHECKER,
     ESTADO_REPOSITORY,
+    // odd/ticket-cerrado-solo-lectura: la misma regla frena los comentarios de reparación.
+    VerificadorTicketEditable,
     PRIORIDAD_REPOSITORY,
     TIPO_TICKET_REPOSITORY,
     TIPO_OPERACION_REPOSITORY,

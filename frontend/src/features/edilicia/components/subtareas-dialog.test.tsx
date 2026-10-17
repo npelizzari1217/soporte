@@ -61,7 +61,13 @@ function mockBackend({ asignadoId = "u-responsable" }: { asignadoId?: string | n
 
 function renderDialog(user = buildUser()) {
   return renderWithProviders(
-    <SubtareasDialog ticketId={TICKET_ID} numero="EDI-0001" trigger={<button>Ver subtareas</button>} />,
+    <SubtareasDialog
+      ticketId={TICKET_ID}
+      numero="EDI-0001"
+      trigger={<button>Ver subtareas</button>}
+      estadoCodigo="EN_PROCESO"
+      bloqueada={false}
+    />,
     { user },
   );
 }

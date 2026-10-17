@@ -40,6 +40,12 @@ export interface TicketTareasProps {
   modulo: string | undefined;
   /** Queries extra que una mutación deja viejas (Edilicia: `["reparaciones"]`). */
   invalidarTambien?: readonly QueryKey[];
+  /**
+   * Con motivo, las tareas son de solo lectura (odd/ticket-cerrado-solo-lectura, S4): se ocultan
+   * el alta, el técnico, completar/descompletar y eliminar, y se muestra el motivo. La lista sigue.
+   * Lo calcula `motivoTareasSoloLectura`; el backend es la autoridad.
+   */
+  motivoSoloLectura?: string | null;
 }
 
 function nombreDe(id: string | null, nombre: string | null, apellido: string | null): string | null {
@@ -47,7 +53,13 @@ function nombreDe(id: string | null, nombre: string | null, apellido: string | n
   return nombre || apellido ? `${nombre ?? ""} ${apellido ?? ""}`.trim() : "Usuario";
 }
 
-export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien }: TicketTareasProps) {
+export function TicketTareas({
+  ticketId,
+  asignadoId,
+  modulo,
+  invalidarTambien,
+  motivoSoloLectura = null,
+}: TicketTareasProps) {
   const { user, can, esAdminCliente } = useSession();
   const actor: ActorTareasUi = {
     id: user?.sub ?? "",
@@ -55,7 +67,8 @@ export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien }:
     // Sin módulo resuelto no se esconde nada: decide el backend.
     tieneModificacionDelModulo: modulo === undefined || can(`${modulo}:MODIFICACION`),
   };
-  const puedeGestionar = !!user && puedeGestionarTareasUi(actor, asignadoId);
+  const soloLectura = motivoSoloLectura !== null;
+  const puedeGestionar = !soloLectura && !!user && puedeGestionarTareasUi(actor, asignadoId);
 
   const tareasQuery = useTareasTicket(ticketId);
   const elegiblesQuery = useTecnicosElegiblesTarea(ticketId, puedeGestionar);
@@ -95,6 +108,11 @@ export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien }:
 
   return (
     <div className="flex flex-col gap-3">
+      {soloLectura && (
+        <p role="note" className="text-sm text-muted-foreground">
+          {motivoSoloLectura}
+        </p>
+      )}
       {avance.total > 0 ? (
         <div className="flex items-center gap-2" aria-label="Avance de las tareas">
           <div className="h-2 w-32 overflow-hidden rounded-full bg-muted">
@@ -118,7 +136,7 @@ export function TicketTareas({ ticketId, asignadoId, modulo, invalidarTambien }:
         {items.map((tarea) => {
           const tecnico = nombreDe(tarea.tecnicoId, tarea.tecnicoNombre, tarea.tecnicoApellido);
           const completadaPor = nombreDe(tarea.completadaPorId, tarea.completadaPorNombre, tarea.completadaPorApellido);
-          const puedeCompletar = !!user && puedeCompletarTareaUi(actor, asignadoId, tarea.tecnicoId);
+          const puedeCompletar = !soloLectura && !!user && puedeCompletarTareaUi(actor, asignadoId, tarea.tecnicoId);
           return (
             <li key={tarea.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-2">
               <div className="flex items-start gap-2">

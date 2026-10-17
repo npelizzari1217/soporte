@@ -8,16 +8,19 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { EstadoEntity } from '../../domain/entities/estado.entity';
 import {
   TareaAccionNoPermitidaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
+  TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { EventoTarea } from '../../domain/policies/estado-por-tareas.policy';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
+import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { CrearTareaTicketUseCase } from './crear-tarea-ticket.use-case';
@@ -122,6 +125,35 @@ function armar() {
       return null;
     },
   };
+  // odd/ticket-cerrado-solo-lectura: el código del estado de cada ticket (por defecto EN_PROCESO) y
+  // qué tickets tienen una reparación bloqueada por una compra activa.
+  const estadoDe = new Map<string, string>();
+  const bloqueados = new Set<string>();
+  const estadoRepo = {
+    findById: async (id: string) =>
+      EstadoEntity.create(
+        {
+          codigo: estadoDe.get(id) ?? 'EN_PROCESO',
+          nombre: id,
+          color: null,
+          orden: 1,
+          activo: true,
+        },
+        id,
+      ),
+  };
+  const bloqueoRepo = {
+    estaBloqueadoPorCompra: vi.fn(async (ticketId: string) => bloqueados.has(ticketId)),
+  };
+  const verificadorEditable = new VerificadorTicketEditable(estadoRepo, bloqueoRepo);
+  /** Deja al ticket en ese estado: el id del estado pasa a ser su propio código. */
+  function ponerEstado(ticketId: string, codigo: string): void {
+    const ticket = tickets.get(ticketId);
+    if (!ticket) throw new Error(`no existe ${ticketId}`);
+    ticket.updateEstado(`estado-${codigo}`);
+    estadoDe.set(`estado-${codigo}`, codigo);
+  }
+
   const tareaRepo = {
     listarPorTicket: async (ticketId: string) =>
       [...tareas.values()].filter((t) => t.ticketId === ticketId && !t.isDeleted()),
@@ -214,6 +246,9 @@ function armar() {
     ticketRepo,
     avanzarEstado,
     secuencia,
+    bloqueados,
+    bloqueoRepo,
+    ponerEstado,
     crear: new CrearTareaTicketUseCase(
       ticketRepo,
       tipoTicketRepo,
@@ -221,6 +256,7 @@ function armar() {
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      verificadorEditable,
     ),
     asignar: new AsignarTecnicoTareaUseCase(
       ticketRepo,
@@ -230,6 +266,7 @@ function armar() {
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      verificadorEditable,
       ahora,
     ),
     completar: new CompletarTareaUseCase(
@@ -239,6 +276,7 @@ function armar() {
       tipoOperacionRepo,
       txRunner,
       avanzarEstado,
+      verificadorEditable,
       ahora,
     ),
     descompletar: new DescompletarTareaUseCase(
@@ -248,6 +286,7 @@ function armar() {
       tipoOperacionRepo,
       txRunner,
       avanzarEstado,
+      verificadorEditable,
       ahora,
     ),
     eliminar: new EliminarTareaUseCase(
@@ -257,6 +296,7 @@ function armar() {
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      verificadorEditable,
       ahora,
     ),
     listar: new ListarTareasTicketUseCase(ticketRepo, tipoTicketRepo, tareaRepo),
@@ -937,5 +977,134 @@ describe('Visibilidad por tarea (CA10)', () => {
     expect(errorDe(crear)).toBeInstanceOf(TareaAccionNoPermitidaError);
     expect(errorDe(borrar)).toBeInstanceOf(TareaAccionNoPermitidaError);
     expect(completar.isOk()).toBe(true);
+  });
+});
+
+describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectura (odd/ticket-cerrado-solo-lectura, S1-S2)', () => {
+  type Accion = 'crear' | 'asignar' | 'completar' | 'descompletar' | 'eliminar';
+  const ACCIONES: Accion[] = ['crear', 'asignar', 'completar', 'descompletar', 'eliminar'];
+
+  /** Ejecuta la acción como administrador (pasa cualquier autorización) sobre una tarea sembrada. */
+  async function ejecutar(
+    deps: ReturnType<typeof armar>,
+    accion: Accion,
+    actor: ActorTarea = ACTORES.administrador,
+  ): Promise<Result<unknown, DomainError>> {
+    const base = { ticketId: TICKET_ID, actor };
+    switch (accion) {
+      case 'crear':
+        return deps.crear.execute({ ...base, descripcion: 'Nueva' });
+      case 'asignar':
+        return deps.asignar.execute({
+          ...base,
+          tareaId: 'pendiente',
+          tecnicoId: TECNICO,
+          clienteId: CLIENTE_ID,
+        });
+      case 'completar':
+        return deps.completar.execute({ ...base, tareaId: 'pendiente' });
+      case 'descompletar':
+        return deps.descompletar.execute({ ...base, tareaId: 'hecha' });
+      case 'eliminar':
+        return deps.eliminar.execute({ ...base, tareaId: 'pendiente' });
+    }
+  }
+
+  function armarConTareas(): ReturnType<typeof armar> {
+    const deps = armar();
+    deps.sembrarTarea('pendiente', { tecnicoId: TECNICO, orden: 0 });
+    deps.sembrarTarea('hecha', { tecnicoId: TECNICO, completada: true, orden: 1 });
+    return deps;
+  }
+
+  const CASOS: [string, (deps: ReturnType<typeof armar>) => void, string, string][] = [
+    [
+      'CERRADO',
+      (d) => d.ponerEstado(TICKET_ID, 'CERRADO'),
+      'cerrado',
+      'El ticket está cerrado y no acepta cambios en sus tareas.',
+    ],
+    [
+      'CANCELADO',
+      (d) => d.ponerEstado(TICKET_ID, 'CANCELADO'),
+      'cancelado',
+      'El ticket está cancelado y no acepta cambios en sus tareas.',
+    ],
+    [
+      'bloqueado por una compra activa',
+      (d) => d.bloqueados.add(TICKET_ID),
+      'bloqueado',
+      'La reparación está bloqueada por una compra en curso y no acepta cambios en sus tareas.',
+    ],
+  ];
+
+  describe.each(CASOS)('ticket %s', (_nombre, preparar, motivo, mensaje) => {
+    it.each(ACCIONES)('%s da TareaTicketNoEditableError y no escribe nada', async (accion) => {
+      const deps = armarConTareas();
+      preparar(deps);
+      const antes = [...deps.tareas.values()].map((t) => ({
+        id: t.id,
+        completada: t.completada,
+        tecnicoId: t.tecnicoId,
+        eliminada: t.isDeleted(),
+      }));
+
+      const result = await ejecutar(deps, accion);
+
+      const error = errorDe(result);
+      expect(error).toBeInstanceOf(TareaTicketNoEditableError);
+      expect(error.message).toBe(mensaje);
+      expect((error as TareaTicketNoEditableError).motivo).toBe(motivo);
+      expect(deps.operaciones).toHaveLength(0);
+      expect(
+        [...deps.tareas.values()].map((t) => ({
+          id: t.id,
+          completada: t.completada,
+          tecnicoId: t.tecnicoId,
+          eliminada: t.isDeleted(),
+        })),
+      ).toEqual(antes);
+    });
+  });
+
+  it('en RESUELTO todo sigue permitido: descompletar lo devuelve a EN_PROCESO (odd/estado-por-tareas)', async () => {
+    const deps = armarConTareas();
+    deps.ponerEstado(TICKET_ID, 'RESUELTO');
+
+    for (const accion of ACCIONES) {
+      expect((await ejecutar(deps, accion)).isOk(), accion).toBe(true);
+    }
+  });
+
+  it('el estado terminal manda antes que el bloqueo por compra, y sin estado terminal consulta el bloqueo', async () => {
+    const deps = armarConTareas();
+    deps.ponerEstado(TICKET_ID, 'CERRADO');
+    deps.bloqueados.add(TICKET_ID);
+
+    expect((errorDe(await ejecutar(deps, 'crear')) as TareaTicketNoEditableError).motivo).toBe(
+      'cerrado',
+    );
+    expect(deps.bloqueoRepo.estaBloqueadoPorCompra).not.toHaveBeenCalled();
+
+    deps.ponerEstado(TICKET_ID, 'EN_PROCESO');
+    expect((errorDe(await ejecutar(deps, 'crear')) as TareaTicketNoEditableError).motivo).toBe(
+      'bloqueado',
+    );
+    expect(deps.bloqueoRepo.estaBloqueadoPorCompra).toHaveBeenCalledWith(TICKET_ID);
+  });
+
+  it('la autorización del actor sigue mandando antes: un ajeno recibe 404/403, no 422', async () => {
+    const deps = armarConTareas();
+    deps.ponerEstado(TICKET_ID, 'CERRADO');
+
+    expect(errorDe(await ejecutar(deps, 'crear', ACTORES.ajenoSinVerTodos))).toBeInstanceOf(
+      TicketNoEncontradoError,
+    );
+    expect(errorDe(await ejecutar(deps, 'crear', ACTORES.solicitante))).toBeInstanceOf(
+      TareaAccionNoPermitidaError,
+    );
+    expect(errorDe(await ejecutar(deps, 'completar', ACTORES.otroTecnico))).toBeInstanceOf(
+      TareaAccionNoPermitidaError,
+    );
   });
 });

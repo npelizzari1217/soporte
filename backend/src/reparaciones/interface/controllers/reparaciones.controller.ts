@@ -92,6 +92,7 @@ import {
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
   ReparacionNoEditableError,
+  ComentarioReparacionNoPermitidoError,
 } from '../../domain/errors/reparaciones.errors';
 
 import {
@@ -146,7 +147,8 @@ export function toHttpException(
     // línea en uno conocido.
     error instanceof ExportacionDemasiadoGrandeError ||
     // odd/detalle-ticket-legible (S5): la reparación ya se empezó a trabajar o está bloqueada.
-    error instanceof ReparacionNoEditableError
+    error instanceof ReparacionNoEditableError ||
+    error instanceof ComentarioReparacionNoPermitidoError
   ) {
     return new UnprocessableEntityException(error.message);
   }

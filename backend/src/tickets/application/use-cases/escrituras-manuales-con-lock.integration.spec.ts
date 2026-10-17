@@ -40,6 +40,10 @@ import { AsignarYPonerEnProcesoUseCase } from './asignar-y-poner-en-proceso.use-
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { EditarTicketUseCase } from './editar-ticket.use-case';
 import { TransicionarEstadoUseCase } from './transicionar-estado.use-case';
+import { Result } from '../../../shared/domain/result';
+
+// odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
+const siempreEditable = { verificar: async () => Result.ok(undefined) };
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -117,6 +121,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
     tipoOperacionRepo,
     txRunner,
     avanzarEstado,
+    siempreEditable,
   );
 
   /**

@@ -6,6 +6,7 @@ import { TareaYaCompletadaError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import {
   ActorTarea,
   cargarTareaDelTicket,
@@ -57,6 +58,7 @@ export class CompletarTareaUseCase {
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly avanzarEstado: Pick<AvanzarEstadoPorTareasService, 'aplicar'>,
+    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -72,6 +74,8 @@ export class CompletarTareaUseCase {
     if (!puedeCompletarTarea(dto.actor, ticket, tarea)) {
       return Result.fail(await rechazar(this.ticketRepo, ticket, dto.actor, 'completar'));
     }
+    const editable = await this.verificadorEditable.verificar(ticket);
+    if (editable.isFail()) return Result.fail(editable.getError());
 
     const condicion = condicionDeTecnico(dto.actor, ticket, tarea);
     const cambio = tarea.completar(dto.actor.id, this.ahora());

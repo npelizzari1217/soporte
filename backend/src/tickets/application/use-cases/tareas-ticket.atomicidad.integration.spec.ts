@@ -24,6 +24,10 @@ import { PrismaTipoTicketRepository } from '../../infrastructure/persistence/pri
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { CrearTareaTicketUseCase } from './crear-tarea-ticket.use-case';
+import { Result } from '../../../shared/domain/result';
+
+// odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
+const siempreEditable = { verificar: async () => Result.ok(undefined) };
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -71,6 +75,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
       repoOperaciones,
       tipoOperacionRepo,
       txRunner,
+      siempreEditable,
     );
 
   // El avance de estado por tareas (odd/estado-por-tareas) se prueba en su propio spec de
@@ -85,6 +90,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
       tipoOperacionRepo,
       txRunner,
       sinAvanceDeEstado,
+      siempreEditable,
     );
 
   async function sembrarTarea(): Promise<TareaTicketEntity> {

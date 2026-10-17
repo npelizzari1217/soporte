@@ -592,3 +592,146 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
     expect(await screen.findByText("Reparar la cañería del baño")).toBeInTheDocument();
   });
 });
+
+describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y comentarios de solo lectura (odd/ticket-cerrado-solo-lectura)", () => {
+  function mockEstadosYTareas() {
+    server.use(
+      http.get("/api/catalogos/estados", () =>
+        HttpResponse.json([
+          {
+            id: "estado-nuevo",
+            codigo: "NUEVO",
+            nombre: "Nuevo",
+            color: null,
+            orden: 1,
+            activo: true,
+          },
+          {
+            id: "estado-cerrado",
+            codigo: "CERRADO",
+            nombre: "Cerrado",
+            color: null,
+            orden: 50,
+            activo: true,
+          },
+        ]),
+      ),
+      http.get("/api/tickets/:id/tareas", () =>
+        HttpResponse.json({
+          items: [],
+          avance: { total: 0, completadas: 0, porcentaje: 0 },
+        }),
+      ),
+      http.get("/api/tickets/:id", () =>
+        HttpResponse.json({}, { status: 403 }),
+      ),
+      http.get("/api/reparaciones/:id/comentarios", () =>
+        HttpResponse.json([]),
+      ),
+    );
+  }
+  const admin = buildUser({
+    rol: "ADMINISTRADOR",
+    permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:MODIFICACION"],
+  });
+
+  it.each([
+    ["cerrada", { estadoId: "estado-cerrado", bloqueada: false }, /cerrado/],
+    [
+      "bloqueada por una compra",
+      {
+        estadoId: "estado-nuevo",
+        bloqueada: true,
+        comprasQueBloquean: [{ id: "c1", numero: "COM-1" }],
+      },
+      /bloqueada por una compra/,
+    ],
+  ])(
+    "en una reparación %s, el diálogo de subtareas no deja agregar y el de comentarios no deja comentar",
+    async (_caso, fila, motivo) => {
+      const user = userEvent.setup();
+      mockEstadosYTareas();
+      server.use(
+        http.get("/api/reparaciones", () =>
+          HttpResponse.json([
+            buildReparacion({
+              id: "rep1",
+              ticketId: "tk1",
+              numero: "EDI-0001",
+              ...fila,
+            }),
+          ]),
+        ),
+      );
+      renderWithProviders(<ReparacionesList />, { user: admin });
+      await screen.findByText("EDI-0001");
+
+      await user.click(
+        within(filaDe("EDI-0001")).getByRole("button", {
+          name: /ver subtareas/i,
+        }),
+      );
+      const subtareas = await screen.findByRole("dialog");
+      expect(await within(subtareas).findByRole("note")).toHaveTextContent(
+        motivo,
+      );
+      expect(within(subtareas).queryByLabelText("Nueva tarea")).toBeNull();
+      await user.keyboard("{Escape}");
+
+      await user.click(
+        within(filaDe("EDI-0001")).getByRole("button", {
+          name: /ver comentarios/i,
+        }),
+      );
+      const comentarios = await screen.findByRole("dialog");
+      expect(await within(comentarios).findByRole("note")).toHaveTextContent(
+        motivo,
+      );
+      expect(
+        within(comentarios).queryByLabelText(/nuevo comentario/i),
+      ).toBeNull();
+    },
+  );
+
+  it("en una reparación abierta y no bloqueada, los dos diálogos siguen dejando agregar", async () => {
+    const user = userEvent.setup();
+    mockEstadosYTareas();
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({
+            id: "rep1",
+            ticketId: "tk1",
+            numero: "EDI-0001",
+            estadoId: "estado-nuevo",
+          }),
+        ]),
+      ),
+    );
+    renderWithProviders(<ReparacionesList />, { user: admin });
+    await screen.findByText("EDI-0001");
+
+    await user.click(
+      within(filaDe("EDI-0001")).getByRole("button", {
+        name: /ver subtareas/i,
+      }),
+    );
+    const subtareas = await screen.findByRole("dialog");
+    expect(
+      await within(subtareas).findByLabelText("Nueva tarea"),
+    ).toBeInTheDocument();
+    expect(within(subtareas).queryByRole("note")).toBeNull();
+    await user.keyboard("{Escape}");
+
+    await user.click(
+      within(filaDe("EDI-0001")).getByRole("button", {
+        name: /ver comentarios/i,
+      }),
+    );
+    const comentarios = await screen.findByRole("dialog");
+    expect(
+      await within(comentarios).findByLabelText(/nuevo comentario/i),
+    ).toBeInTheDocument();
+    expect(within(comentarios).queryByRole("note")).toBeNull();
+  });
+});

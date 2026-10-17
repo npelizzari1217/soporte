@@ -6,6 +6,7 @@ import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticke
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import {
   ActorTarea,
   autorizarGestion,
@@ -35,6 +36,7 @@ export class CrearTareaTicketUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
   ) {}
 
   async execute(dto: CrearTareaTicketDto): Promise<Result<TareaTicketEntity, DomainError>> {
@@ -46,6 +48,9 @@ export class CrearTareaTicketUseCase {
     );
     if (gestion.isFail()) return Result.fail(gestion.getError());
     const { ticket } = gestion.getValue();
+
+    const editable = await this.verificadorEditable.verificar(ticket);
+    if (editable.isFail()) return Result.fail(editable.getError());
 
     const activas = await this.tareaRepo.listarPorTicket(ticket.id);
     const orden = activas.length === 0 ? 0 : Math.max(...activas.map((t) => t.orden)) + 1;

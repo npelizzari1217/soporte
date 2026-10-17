@@ -56,6 +56,7 @@ import {
   TareaAccionNoPermitidaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
+  TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
@@ -91,7 +92,7 @@ export function toHttpExceptionTareas(
   if (error instanceof TareaAccionNoPermitidaError) {
     return new ForbiddenException(error.message);
   }
-  if (error instanceof TecnicoTareaNoElegibleError) {
+  if (error instanceof TecnicoTareaNoElegibleError || error instanceof TareaTicketNoEditableError) {
     return new UnprocessableEntityException(error.message);
   }
   return toHttpException(error);

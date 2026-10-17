@@ -145,3 +145,32 @@ describe("ComentariosDialog", () => {
     expect(posteos).toBe(0);
   });
 });
+
+describe("ComentariosDialog — solo lectura (odd/ticket-cerrado-solo-lectura, S5)", () => {
+  it("con motivo muestra la lista y el motivo, y oculta el formulario aunque tenga EDILICIA:ALTAS", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/reparaciones/rep1/comentarios", () =>
+        HttpResponse.json([comentario({ texto: "Falta el repuesto X" })]),
+      ),
+    );
+
+    renderWithProviders(
+      <ComentariosDialog
+        reparacionId="rep1"
+        numero="EDI-0001"
+        trigger={<button>Ver comentarios</button>}
+        motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
+      />,
+      { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) },
+    );
+
+    await user.click(screen.getByRole("button", { name: /ver comentarios/i }));
+    expect(await screen.findByText("Falta el repuesto X")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "El ticket está cerrado",
+    );
+    expect(screen.queryByLabelText(/nuevo comentario/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^comentar$/i })).toBeNull();
+  });
+});

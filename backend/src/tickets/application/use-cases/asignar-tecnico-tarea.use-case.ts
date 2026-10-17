@@ -9,6 +9,7 @@ import {
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { evaluarResponsableRegla } from '../services/elegibilidad-responsable-regla';
@@ -60,6 +61,7 @@ export class AsignarTecnicoTareaUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -71,11 +73,14 @@ export class AsignarTecnicoTareaUseCase {
       'asignar',
     );
     if (gestion.isFail()) return Result.fail(gestion.getError());
-    const { modulo } = gestion.getValue();
+    const { ticket, modulo } = gestion.getValue();
 
     const tareaResult = await cargarTareaDelTicket(this.tareaRepo, dto.ticketId, dto.tareaId);
     if (tareaResult.isFail()) return Result.fail(tareaResult.getError());
     const tarea = tareaResult.getValue();
+
+    const editable = await this.verificadorEditable.verificar(ticket);
+    if (editable.isFail()) return Result.fail(editable.getError());
 
     if (dto.tecnicoId !== null) {
       const elegible = await evaluarResponsableRegla(
