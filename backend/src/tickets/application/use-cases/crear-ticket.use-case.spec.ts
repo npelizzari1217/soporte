@@ -86,6 +86,7 @@ describe('CrearTicketUseCase', () => {
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
       esVisiblePara: unstubbed('esVisiblePara'),
+      bloquear: unstubbed('bloquear'),
       delete: unstubbed('delete'),
     };
     const operacionRepo = {
@@ -586,6 +587,7 @@ describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (run
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
       esVisiblePara: unstubbed('esVisiblePara'),
+      bloquear: unstubbed('bloquear'),
       delete: unstubbed('delete'),
     };
     const operacionRepo = {

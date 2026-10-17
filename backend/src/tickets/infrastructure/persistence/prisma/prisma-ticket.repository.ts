@@ -194,6 +194,16 @@ export class PrismaTicketRepository implements ITicketRepository {
     return this.client.ticket.count({ where: this.buildWhere(filtros) });
   }
 
+  /**
+   * `FOR NO KEY UPDATE`, no `FOR UPDATE`: alcanza para serializar a quienes actualizan la fila y no
+   * bloquea los INSERT de `operaciones_ticket` o `tareas_ticket` de otras transacciones que solo
+   * referencian al ticket por FK (mismo criterio que equipos, ADR-2). El id es un uuid: un valor
+   * que no lo es daría error de cast, y acá solo llegan ids de tickets ya cargados.
+   */
+  async bloquear(id: string): Promise<void> {
+    await this.client.$executeRaw`SELECT id FROM tickets WHERE id = ${id}::uuid FOR NO KEY UPDATE`;
+  }
+
   async esVisiblePara(ticketId: string, actorId: string): Promise<boolean> {
     const visibles = await this.client.ticket.count({
       where: { id: ticketId, ...whereVisiblePara(actorId) },

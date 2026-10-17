@@ -20,6 +20,7 @@ import {
   resolverTipoOperacion,
   TicketRepoDeTareas,
 } from '../services/tareas-ticket.reglas';
+import { AvanzarEstadoPorTareasService } from '../services/avanzar-estado-por-tareas.service';
 
 export interface CompletarTareaDto {
   ticketId: string;
@@ -39,6 +40,11 @@ export interface CompletarTareaDto {
  * Si el actor puede solo por ser el técnico de la tarea, la escritura exige además que siga
  * siéndolo (T13, JD-S2): si el responsable la reasignó en el medio, da el rechazo de permiso y no
  * se queda con el crédito de una tarea que ya no es suya.
+ *
+ * El estado del ticket sigue a sus tareas (odd/estado-por-tareas, S2-S6): en la misma transacción,
+ * con la fila del ticket bloqueada ANTES de escribir la tarea, `AvanzarEstadoPorTareasService` lo
+ * pone EN_PROCESO (y lo asigna a quien completa si estaba NUEVO sin responsable) o RESUELTO si era la
+ * última pendiente. No pide permisos de transición ni de asignación: alcanza con poder completar.
  */
 export class CompletarTareaUseCase {
   constructor(
@@ -50,6 +56,7 @@ export class CompletarTareaUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly avanzarEstado: Pick<AvanzarEstadoPorTareasService, 'aplicar'>,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -81,8 +88,10 @@ export class CompletarTareaUseCase {
     });
 
     const escrita = await this.txRunner.run(async () => {
+      await this.ticketRepo.bloquear(ticket.id);
       if (!(await this.tareaRepo.completarSiPendiente(tarea, condicion))) return false;
       await this.operacionRepo.save(operacion);
+      await this.avanzarEstado.aplicar('COMPLETAR', ticket.id, dto.actor.id);
       return true;
     });
     if (!escrita) {

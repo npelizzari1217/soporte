@@ -94,10 +94,28 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     });
   }
 
+  // El avance de estado por tareas (odd/estado-por-tareas) tiene su propio spec de integración;
+  // un doble inerte deja estas carreras de tarea contra tarea como estaban.
+  const sinAvanceDeEstado = { aplicar: async () => null };
+
   const completar = (repo = tareaRepo) =>
-    new CompletarTareaUseCase(ticketRepo, repo, operacionRepo, tipoOperacionRepo, txRunner);
+    new CompletarTareaUseCase(
+      ticketRepo,
+      repo,
+      operacionRepo,
+      tipoOperacionRepo,
+      txRunner,
+      sinAvanceDeEstado,
+    );
   const descompletar = (repo = tareaRepo) =>
-    new DescompletarTareaUseCase(ticketRepo, repo, operacionRepo, tipoOperacionRepo, txRunner);
+    new DescompletarTareaUseCase(
+      ticketRepo,
+      repo,
+      operacionRepo,
+      tipoOperacionRepo,
+      txRunner,
+      sinAvanceDeEstado,
+    );
   const eliminar = (repo = tareaRepo) =>
     new EliminarTareaUseCase(
       ticketRepo,

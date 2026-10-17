@@ -668,7 +668,9 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       expect(timeline.status).toBe(200);
     });
 
-    it('completa su tarea, pero no crea ni borra tareas ni transiciona el ticket', async () => {
+    // odd/estado-por-tareas: completar la única tarea resuelve el ticket solo, aunque el técnico no
+    // tenga permiso para transicionarlo a mano. El responsable no cambia porque ya lo tenía.
+    it('completa su tarea (y el ticket se resuelve solo), pero no crea ni borra tareas ni lo transiciona a mano', async () => {
       const { tecnico, r, tareaId, ticketId } = await conTareaDelTecnico();
 
       expect((await http('POST', r.completar(tareaId), tecnico.token)).status).toBe(200);
@@ -688,8 +690,13 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
 
       const filas = await a.client.tareaTicket.findMany({ where: { ticketId, deletedAt: null } });
       expect(filas.map((f) => f.id)).toEqual([tareaId]);
-      const ticket = await a.client.ticket.findUniqueOrThrow({ where: { id: ticketId } });
-      expect(ticket.estadoId).toBe(a.estadoNuevoId);
+      const ticket = await a.client.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        include: { estado: true },
+      });
+      expect(ticket.estado.codigo).toBe('RESUELTO');
+      expect(ticket.fechaCierre).not.toBeNull();
+      expect(ticket.asignadoId).not.toBe(tecnico.id);
     });
 
     it('al quitarlo de la tarea deja de verlo', async () => {

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { TicketTareas } from "./ticket-tareas";
+import { useTicket } from "../hooks/use-ticket";
 import type { TareaTicket } from "../types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -94,6 +95,13 @@ describe("TicketTareas — listado y avance", () => {
     expect(within(completada).getByText("Técnico: Ana García")).toBeInTheDocument();
     expect(within(completada).getByText("Completada")).toBeInTheDocument();
     expect(within(completada).getByText(/^Completada el .+ por Ana García$/)).toBeInTheDocument();
+  });
+
+  it("con tareas avisa que completarlas mueve el estado del ticket", async () => {
+    mockTareas();
+    renderTareas();
+
+    expect(await screen.findByText(/Completar tareas mueve el ticket/)).toBeInTheDocument();
   });
 
   it("sin tareas muestra el vacío y no un avance de 0 %", async () => {
@@ -191,6 +199,39 @@ describe("TicketTareas — mutaciones sobre las rutas genéricas", () => {
     await user.click(within(filaDe("Reinstalar el sistema")).getByRole("button", { name: "Descompletar" }));
 
     await waitFor(() => expect(rutas).toEqual(["ta1/completar", "ta2/descompletar"]));
+  });
+
+  // odd/estado-por-tareas (S7): completar mueve el estado del ticket en el backend, así que el
+  // detalle se vuelve a pedir sin recargar la página.
+  it("completar vuelve a pedir el detalle del ticket, porque su estado pudo cambiar", async () => {
+    const user = userEvent.setup();
+    let lecturasDelTicket = 0;
+    mockTareas();
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => {
+        lecturasDelTicket += 1;
+        return HttpResponse.json({ id: TICKET_ID });
+      }),
+      http.post(`/api/tickets/${TICKET_ID}/tareas/:tareaId/completar`, () => HttpResponse.json(COMPLETADA)),
+    );
+    function DetalleConTareas() {
+      const ticketQuery = useTicket(TICKET_ID);
+      return (
+        <>
+          <span>{ticketQuery.data ? "ticket cargado" : "ticket cargando"}</span>
+          <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} modulo="TICKETS" />
+        </>
+      );
+    }
+    renderWithProviders(<DetalleConTareas />, { user: responsable });
+
+    await screen.findByText("ticket cargado");
+    await screen.findByText("Cambiar el disco");
+    expect(lecturasDelTicket).toBe(1);
+
+    await user.click(within(filaDe("Cambiar el disco")).getByRole("button", { name: "Completar" }));
+
+    await waitFor(() => expect(lecturasDelTicket).toBe(2));
   });
 
   it("eliminar pide confirmación y recién entonces hace DELETE", async () => {

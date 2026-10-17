@@ -53,9 +53,11 @@ export interface TicketEdiliciaProps {
  * TicketEdiliciaEntity — satélite 1:0..1 del ticket para el flujo EDILICIA.
  *
  * Reglas de dominio (F3-E1):
- * - Completar la última tarea (avance→100) NO transiciona el ticket a
- *   RESUELTO automáticamente (ADR-2, decisión deliberada — sin máquina
- *   custom que acople el core a este satélite).
+ * - Este satélite no decide el estado del ticket. El ADR-2 original ("completar la
+ *   última tarea NO resuelve el ticket") quedó revertido el 2026-10-16 por decisión
+ *   del dueño (odd/estado-por-tareas): ahora el estado sigue a las tareas, para todo
+ *   tipo de ticket, desde el núcleo de tickets (`estado-por-tareas.policy.ts`), sin
+ *   acoplar el core a este satélite.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1, F3-E3, F3-E4. Ref design:
  * ADR-2, "Firmas TS clave" (TicketEdiliciaEntity). Tarea: T6.3.

@@ -48,10 +48,11 @@ export interface ActorTarea {
 }
 
 /**
- * Lo que los casos de uso de tareas necesitan del repositorio de tickets: cargar el ticket y decidir
- * si el actor lo ve (`esTicketVisiblePara`, CA10).
+ * Lo que los casos de uso de tareas necesitan del repositorio de tickets: cargar el ticket, decidir
+ * si el actor lo ve (`esTicketVisiblePara`, CA10) y bloquear su fila mientras cambian una tarea
+ * (odd/estado-por-tareas, S6).
  */
-export type TicketRepoDeTareas = Pick<ITicketRepository, 'findById' | 'esVisiblePara'>;
+export type TicketRepoDeTareas = Pick<ITicketRepository, 'findById' | 'esVisiblePara' | 'bloquear'>;
 
 /** Carga el ticket activo, o `TicketNoEncontradoError`. */
 export async function cargarTicket(

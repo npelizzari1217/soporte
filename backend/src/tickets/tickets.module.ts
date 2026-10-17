@@ -97,6 +97,7 @@ import { ExportarTicketsUseCase } from './application/use-cases/exportar-tickets
 import { CrearTareaTicketUseCase } from './application/use-cases/crear-tarea-ticket.use-case';
 import { AsignarTecnicoTareaUseCase } from './application/use-cases/asignar-tecnico-tarea.use-case';
 import { CompletarTareaUseCase } from './application/use-cases/completar-tarea.use-case';
+import { AvanzarEstadoPorTareasService } from './application/services/avanzar-estado-por-tareas.service';
 import { DescompletarTareaUseCase } from './application/use-cases/descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './application/use-cases/eliminar-tarea.use-case';
 import { ListarTareasTicketUseCase } from './application/use-cases/listar-tareas-ticket.use-case';
@@ -489,6 +490,46 @@ import {
       ],
     },
     {
+      // odd/estado-por-tareas: el estado del ticket sigue a sus tareas, dentro de la tx de la tarea.
+      provide: AvanzarEstadoPorTareasService,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        estadoRepo: IEstadoRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        stateMachineFactory: TicketStateMachineFactory,
+        relojMarcador: IRelojSlaMarcador,
+        eventPublisher: IDomainEventPublisher,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new AvanzarEstadoPorTareasService(
+          ticketRepo,
+          tareaRepo,
+          operacionRepo,
+          estadoRepo,
+          tipoTicketRepo,
+          tipoOperacionRepo,
+          stateMachineFactory,
+          relojMarcador,
+          eventPublisher,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TicketStateMachineFactory,
+        RELOJ_SLA_MARCADOR,
+        DOMAIN_EVENT_PUBLISHER,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
       provide: CompletarTareaUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
@@ -496,6 +537,7 @@ import {
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
+        avanzarEstado: AvanzarEstadoPorTareasService,
       ) =>
         new CompletarTareaUseCase(
           ticketRepo,
@@ -503,6 +545,7 @@ import {
           operacionRepo,
           tipoOperacionRepo,
           txRunner,
+          avanzarEstado,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -510,6 +553,7 @@ import {
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
+        AvanzarEstadoPorTareasService,
       ],
     },
     {
@@ -520,6 +564,7 @@ import {
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
+        avanzarEstado: AvanzarEstadoPorTareasService,
       ) =>
         new DescompletarTareaUseCase(
           ticketRepo,
@@ -527,6 +572,7 @@ import {
           operacionRepo,
           tipoOperacionRepo,
           txRunner,
+          avanzarEstado,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -534,6 +580,7 @@ import {
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
+        AvanzarEstadoPorTareasService,
       ],
     },
     {

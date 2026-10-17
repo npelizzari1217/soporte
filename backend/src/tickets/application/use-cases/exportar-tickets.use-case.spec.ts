@@ -251,6 +251,7 @@ describe('ExportarTicketsUseCase', () => {
       save: vi.fn<ITicketRepository['save']>(),
       delete: vi.fn<ITicketRepository['delete']>(),
       esVisiblePara: unstubbed('esVisiblePara'),
+      bloquear: unstubbed('bloquear'),
     };
     const cicloClienteRepo = {
       findActive: vi.fn<ICicloClienteRepository['findActive']>().mockResolvedValue(
