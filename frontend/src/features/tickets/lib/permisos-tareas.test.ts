@@ -31,16 +31,16 @@ describe("permisos-tareas — responsable desconocido", () => {
 describe("motivoTareasSoloLectura (odd/ticket-cerrado-solo-lectura, S4)", () => {
   it("CERRADO y CANCELADO bloquean con su motivo, aunque no esté bloqueada por compra", () => {
     expect(motivoTareasSoloLectura("CERRADO", false)).toBe(
-      "El ticket está cerrado: sus tareas y comentarios ya no se modifican.",
+      "El ticket está cerrado: sus tareas ya no se modifican.",
     );
     expect(motivoTareasSoloLectura("CANCELADO", false)).toBe(
-      "El ticket está cancelado: sus tareas y comentarios ya no se modifican.",
+      "El ticket está cancelado: sus tareas ya no se modifican.",
     );
   });
 
   it("bloqueada por compra bloquea en cualquier estado no terminal, y el estado terminal manda antes", () => {
     expect(motivoTareasSoloLectura("EN_PROCESO", true)).toBe(
-      "La reparación está bloqueada por una compra en curso: sus tareas y comentarios ya no se modifican.",
+      "La reparación está bloqueada por una compra en curso: sus tareas ya no se modifican.",
     );
     expect(motivoTareasSoloLectura("CERRADO", true)).toMatch(/cerrado/);
   });

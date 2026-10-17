@@ -160,7 +160,7 @@ describe("ComentariosDialog — solo lectura (odd/ticket-cerrado-solo-lectura, S
         reparacionId="rep1"
         numero="EDI-0001"
         trigger={<button>Ver comentarios</button>}
-        motivoSoloLectura="El ticket está cerrado: sus tareas y comentarios ya no se modifican."
+        motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
       />,
       { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) },
     );

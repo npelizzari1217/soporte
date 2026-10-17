@@ -356,7 +356,7 @@ describe("TicketTareas — solo lectura (odd/ticket-cerrado-solo-lectura, S4)", 
         ticketId={TICKET_ID}
         asignadoId={RESPONSABLE}
         modulo="TICKETS"
-        motivoSoloLectura="El ticket está cerrado: sus tareas y comentarios ya no se modifican."
+        motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
       />,
       { user: responsable },
     );
