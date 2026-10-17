@@ -36,12 +36,12 @@ arriba de la lista, y cada tarjeta lleva en modo claro un fondo pastel propio. E
   Ayuda anotada.
 
 ## Tasks
-- [ ] T1 (S4, S5): backend: `EditarReparacionUseCase`, error, DTO, ruta, módulo; tests unitarios, spec
+- [x] T1 (S4, S5): backend: `EditarReparacionUseCase`, error, DTO, ruta, módulo; tests unitarios, spec
   del controller y e2e de autorización/regla.
-- [ ] T2 (S1, S2, S3): frontend detalle: tarjetas, orden inverso, formulario arriba, tokens pastel;
+- [x] T2 (S1, S2, S3): frontend detalle: tarjetas, orden inverso, formulario arriba, tokens pastel;
   tests.
-- [ ] T3 (S6): frontend Edilicia: `ReparacionEditDialog`, hook, schema, regla en UI; tests.
-- [ ] T4 (S7): roadmap, Ayuda, deuda.
+- [x] T3 (S6): frontend Edilicia: `ReparacionEditDialog`, hook, schema, regla en UI; tests.
+- [x] T4 (S7): roadmap, Ayuda, deuda.
 
 ## Log
 - L1 (2026-10-17, dueño): "Perfecto funciono. Ahora al ver como queda la edicion del tiquet, siento
@@ -54,3 +54,16 @@ arriba de la lista, y cada tarjeta lleva en modo claro un fondo pastel propio. E
 - L2 (2026-10-17, dueño), cuestionario: orden → "Toda la Actividad, lo más nuevo arriba"; "no se haya
   comenzado a trabajar" → "Nuevo o Asignado, sin tareas completadas"; campos → "Título, descripción,
   ubicación, prioridad y sector".
+- 2026-10-17, T1 (`c5c5ca8f`): `EditarReparacionUseCase` (12 tests), `ReparacionNoEditableError` (422),
+  `EditarReparacionHttpDto`, `PATCH /reparaciones/:id` con `EDILICIA:MODIFICACION`, módulo; controller
+  spec (44) con el catálogo cerrado de errores en 5; e2e: edita con permiso y deja de poder al completar
+  una tarea; 403 sin permiso. `TicketEdiliciaEntity.actualizarUbicacion`.
+- 2026-10-17, T2 (`eff6f3bb`): tokens `--seccion-acciones/tareas/actividad` (pastel en `:root`, `--card`
+  en `.dark`), tarjetas Tareas y Actividad, formulario y adjunto arriba de la línea de tiempo, orden
+  inverso en `TicketTimeline` (ordena por `createdAt`). 2 tests RED→GREEN. Frontend: lint 0, tsc 0.
+- 2026-10-17, T3 (`f59c8da4`): el listado trae `descripcion` y `prioridadId` (aditivo, para precargar);
+  `puedeEditarReparacionUi` (7 tests), `useEditarReparacion`, `editarReparacionSchema`,
+  `ReparacionEditDialog`, columna "Editar" gateada por `Can`. 4 tests en el listado, uno hace el PATCH
+  completo y verifica el refresco.
+- 2026-10-17, T4: roadmap (decisión + deuda de Ayuda). Ningún artículo de Ayuda quedó falso: el de
+  reparaciones no afirmaba que no se pudiera editar; la columna nueva queda como deuda anotada.
