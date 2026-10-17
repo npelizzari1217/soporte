@@ -19,6 +19,7 @@ import {
   TareaAccionNoPermitidaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
+  TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
@@ -88,6 +89,11 @@ describe('toHttpExceptionTareas', () => {
     [
       'TECNICO_TAREA_NO_ELEGIBLE',
       new TecnicoTareaNoElegibleError('u'),
+      UnprocessableEntityException,
+    ],
+    [
+      'TAREA_TICKET_NO_EDITABLE',
+      new TareaTicketNoEditableError('cerrado'),
       UnprocessableEntityException,
     ],
   ])('%s → %s', (_codigo, error, esperado) => {

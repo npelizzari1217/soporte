@@ -66,3 +66,23 @@ export class TecnicoTareaNoElegibleError extends DomainError {
     super(`El usuario "${tecnicoId}" no puede ser técnico de una tarea de este ticket.`);
   }
 }
+
+/** Por qué un ticket no acepta cambios en sus tareas (odd/ticket-cerrado-solo-lectura, S1-S2). */
+export type MotivoTicketNoEditable = 'cerrado' | 'cancelado' | 'bloqueado';
+
+/**
+ * El ticket está CERRADO o CANCELADO, o su reparación está bloqueada por una compra en curso:
+ * sus tareas son de solo lectura (ni crear, completar, descompletar, eliminar ni asignar
+ * técnico), para cualquier actor. → HTTP 422.
+ */
+export class TareaTicketNoEditableError extends DomainError {
+  readonly code = 'TAREA_TICKET_NO_EDITABLE';
+
+  constructor(readonly motivo: MotivoTicketNoEditable) {
+    super(
+      motivo === 'bloqueado'
+        ? 'La reparación está bloqueada por una compra en curso y no acepta cambios en sus tareas.'
+        : `El ticket está ${motivo} y no acepta cambios en sus tareas.`,
+    );
+  }
+}

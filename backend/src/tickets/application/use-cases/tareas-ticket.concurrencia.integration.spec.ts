@@ -29,6 +29,10 @@ import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './eliminar-tarea.use-case';
+import { Result } from '../../../shared/domain/result';
+
+// odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
+const siempreEditable = { verificar: async () => Result.ok(undefined) };
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -106,6 +110,7 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       tipoOperacionRepo,
       txRunner,
       sinAvanceDeEstado,
+      siempreEditable,
     );
   const descompletar = (repo = tareaRepo) =>
     new DescompletarTareaUseCase(
@@ -115,6 +120,7 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       tipoOperacionRepo,
       txRunner,
       sinAvanceDeEstado,
+      siempreEditable,
     );
   const eliminar = (repo = tareaRepo) =>
     new EliminarTareaUseCase(
@@ -124,6 +130,7 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      siempreEditable,
     );
   const asignar = (repo = tareaRepo) =>
     new AsignarTecnicoTareaUseCase(
@@ -134,6 +141,7 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
+      siempreEditable,
     );
 
   async function sembrarTarea(tecnicoId: string | null = TECNICO_A): Promise<TareaTicketEntity> {

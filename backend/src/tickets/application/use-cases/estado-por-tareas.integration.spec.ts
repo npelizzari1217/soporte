@@ -33,6 +33,10 @@ import { AvanzarEstadoPorTareasService } from '../services/avanzar-estado-por-ta
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
+import { Result } from '../../../shared/domain/result';
+
+// odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
+const siempreEditable = { verificar: async () => Result.ok(undefined) };
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -105,6 +109,7 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
       tipoOperacionRepo,
       txRunner,
       avance,
+      siempreEditable,
     );
   const descompletar = () =>
     new DescompletarTareaUseCase(
@@ -114,6 +119,7 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
       tipoOperacionRepo,
       txRunner,
       servicio(),
+      siempreEditable,
     );
 
   const enTenant = <T>(fn: () => Promise<T>): Promise<T> =>
