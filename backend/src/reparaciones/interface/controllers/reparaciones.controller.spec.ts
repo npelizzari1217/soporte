@@ -29,6 +29,7 @@ import {
   TicketEdiliciaNoEncontradoError,
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
+  ReparacionNoEditableError,
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -41,6 +42,7 @@ import { ListarComentariosReparacionUseCase } from '../../application/use-cases/
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
 import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
+import { EditarReparacionUseCase } from '../../application/use-cases/editar-reparacion.use-case';
 import { espiado, type Espiado } from '../../../shared/test-helpers/espiado';
 
 const USER = payloadDeTest({
@@ -109,6 +111,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     // no reindexan los args posicionales anteriores.
     const vincularCompraUseCase = espiado(VincularCompraAReparacionUseCase);
     const desvincularCompraUseCase = espiado(DesvincularCompraDeReparacionUseCase);
+    const editarReparacionUseCase = espiado(EditarReparacionUseCase);
 
     const controller = new ReparacionesController(
       crearTicketEdilicioUseCase.caso,
@@ -119,6 +122,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       exportarReparacionesUseCase.caso,
       vincularCompraUseCase.caso,
       desvincularCompraUseCase.caso,
+      editarReparacionUseCase.caso,
     );
 
     return {
@@ -131,6 +135,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       exportarReparacionesUseCase,
       vincularCompraUseCase,
       desvincularCompraUseCase,
+      editarReparacionUseCase,
     };
   }
 
@@ -483,6 +488,100 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     });
   });
 
+  describe('PATCH /reparaciones/:reparacionId (odd/detalle-ticket-legible, S4-S5)', () => {
+    const ticket = TicketEntity.create(
+      {
+        numero: 'EDI-2026-000001',
+        titulo: 'Titulo nuevo',
+        descripcion: null,
+        tipoId: 'tipo-edilicia',
+        estadoId: 'estado-nuevo',
+        prioridadId: 'prioridad-media',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'usuario-uuid',
+      },
+      'ticket-uuid',
+    );
+    const satelite = TicketEdiliciaEntity.create(
+      { ticketId: 'ticket-uuid', ubicacion: 'Aula 3' },
+      'edilicia-uuid',
+    );
+
+    it('pasa los campos del body y actorEsRoot al caso de uso y responde el shape unificado', async () => {
+      const { controller, editarReparacionUseCase } = buildController();
+      editarReparacionUseCase.execute.mockResolvedValue(
+        Result.ok({ ticket, ticketEdilicia: satelite, sectorNombre: 'Secundario' }),
+      );
+
+      const respuesta = await controller.editar(
+        'edilicia-uuid',
+        { titulo: 'Titulo nuevo', ubicacion: 'Aula 3', sectorId: 'sector-uuid' },
+        USER,
+      );
+
+      expect(editarReparacionUseCase.execute).toHaveBeenCalledWith({
+        reparacionId: 'edilicia-uuid',
+        titulo: 'Titulo nuevo',
+        descripcion: undefined,
+        prioridadId: undefined,
+        ubicacion: 'Aula 3',
+        sectorId: 'sector-uuid',
+        actorEsRoot: false,
+      });
+      expect(respuesta).toMatchObject({
+        id: 'edilicia-uuid',
+        ticketId: 'ticket-uuid',
+        titulo: 'Titulo nuevo',
+        ubicacion: 'Aula 3',
+        sectorNombre: 'Secundario',
+      });
+    });
+
+    it('ROOT viaja como actorEsRoot: true', async () => {
+      const { controller, editarReparacionUseCase } = buildController();
+      editarReparacionUseCase.execute.mockResolvedValue(
+        Result.ok({ ticket, ticketEdilicia: satelite, sectorNombre: null }),
+      );
+
+      await controller.editar(
+        'edilicia-uuid',
+        {},
+        payloadDeTest({ ...USER, is_global_admin: true }),
+      );
+
+      expect(editarReparacionUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ actorEsRoot: true }),
+      );
+    });
+
+    it.each<[string, () => DomainError, number]>([
+      ['TicketEdiliciaNoEncontradoError', () => new TicketEdiliciaNoEncontradoError('x'), 404],
+      [
+        'ReparacionNoEditableError EN_PROCESO',
+        () => new ReparacionNoEditableError('EN_PROCESO'),
+        422,
+      ],
+      [
+        'ReparacionNoEditableError BLOQUEADA',
+        () => new ReparacionNoEditableError('BLOQUEADA'),
+        422,
+      ],
+    ])('mapea %s → HTTP %i', async (_nombre, error, http) => {
+      const { controller, editarReparacionUseCase } = buildController();
+      editarReparacionUseCase.execute.mockResolvedValue(Result.fail(error()));
+
+      await expect(controller.editar('edilicia-uuid', {}, USER)).rejects.toMatchObject({
+        status: http,
+      });
+    });
+
+    it('declara @RequiereAcciones("EDILICIA:MODIFICACION")', () => {
+      const permisos = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.editar);
+      expect(permisos).toEqual(['EDILICIA:MODIFICACION']);
+    });
+  });
+
   describe('DELETE /reparaciones/:reparacionId/compras/:compraId', () => {
     it('desvincula la compra de la reparación', async () => {
       const { controller, desvincularCompraUseCase } = buildController();
@@ -537,6 +636,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
       exportarReparaciones.caso,
       espiado(VincularCompraAReparacionUseCase).caso,
       espiado(DesvincularCompraDeReparacionUseCase).caso,
+      espiado(EditarReparacionUseCase).caso,
     );
     return { controller, exportarReparaciones };
   }
@@ -655,8 +755,8 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 4 clases de error (SubtareaNoEncontradaError se retiró en odd/tareas-con-tecnico T8)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(4);
+  it('el catálogo tiene EXACTAMENTE 5 clases de error (ReparacionNoEditableError se sumó en odd/detalle-ticket-legible)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(5);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -682,6 +782,12 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
       'VinculoNoEncontradoError',
       () => new ReparacionesErrors.VinculoNoEncontradoError('edilicia-1', 'compra-1'),
       404,
+    ],
+    // odd/detalle-ticket-legible (S5): la reparación ya se empezó a trabajar o está bloqueada.
+    [
+      'ReparacionNoEditableError',
+      () => new ReparacionesErrors.ReparacionNoEditableError('BLOQUEADA'),
+      422,
     ],
   ];
 

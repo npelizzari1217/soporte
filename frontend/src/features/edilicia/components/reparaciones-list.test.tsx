@@ -14,6 +14,8 @@ function buildReparacion(overrides: Partial<ReparacionListItem> = {}): Reparacio
     ticketId: "tk1",
     numero: "EDI-0001",
     titulo: "Reparar cañería",
+    descripcion: null,
+    prioridadId: "prioridad-media",
     estadoId: "estado-nuevo",
     ubicacion: "Edificio Central",
     sectorId: null,
@@ -441,5 +443,152 @@ describe("ReparacionesList — chip y filtro de bloqueo por compra", () => {
     await screen.findByText("EDI-0001");
     await screen.findByText("EDI-0002");
     expect(llamadasAlServidor).toBe(1);
+  });
+});
+
+describe("ReparacionesList — editar una reparación no empezada (odd/detalle-ticket-legible, S6)", () => {
+  // El schema exige UUID en la prioridad: ids reales, no de fantasía.
+  const PRIORIDAD_MEDIA = "11111111-1111-4111-8111-111111111111";
+  const PRIORIDAD_ALTA = "22222222-2222-4222-8222-222222222222";
+  function mockCatalogos() {
+    server.use(
+      http.get("/api/catalogos/estados", () =>
+        HttpResponse.json([
+          { id: "estado-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true },
+          { id: "estado-en-proceso", codigo: "EN_PROCESO", nombre: "En proceso", color: null, orden: 3, activo: true },
+        ]),
+      ),
+      http.get("/api/catalogos/prioridades", () =>
+        HttpResponse.json([
+          { id: PRIORIDAD_MEDIA, codigo: "MEDIA", nombre: "Media", color: null, orden: 2, activo: true },
+          { id: PRIORIDAD_ALTA, codigo: "ALTA", nombre: "Alta", color: null, orden: 3, activo: true },
+        ]),
+      ),
+      http.get("/api/sectores", () => HttpResponse.json([])),
+    );
+  }
+
+  it("sin EDILICIA:MODIFICACION no hay botón Editar", async () => {
+    mockCatalogos();
+    server.use(http.get("/api/reparaciones", () => HttpResponse.json([buildReparacion({ numero: "EDI-0010" })])));
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0010");
+    expect(screen.queryByRole("button", { name: /editar EDI-0010/i })).not.toBeInTheDocument();
+  });
+
+  it("con permiso: habilitado en NUEVO sin tareas completadas; deshabilitado con motivo en proceso, con tarea completada o bloqueada", async () => {
+    mockCatalogos();
+    const tareaHecha: SubtareaEdilicia = {
+      id: "st1",
+      ticketEdiliciaId: "rep-tarea",
+      descripcion: "Hecha",
+      completada: true,
+      completadaEn: "2026-01-02T00:00:00.000Z",
+      completadaPorId: "u1",
+      orden: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+    };
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({ id: "rep-ok", numero: "EDI-0020" }),
+          buildReparacion({ id: "rep-proceso", numero: "EDI-0021", estadoId: "estado-en-proceso" }),
+          buildReparacion({ id: "rep-tarea", numero: "EDI-0022", subtareas: [tareaHecha] }),
+          buildReparacion({ id: "rep-bloq", numero: "EDI-0023", bloqueada: true }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<ReparacionesList />, {
+      user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:MODIFICACION"] }),
+    });
+
+    await screen.findByText("EDI-0020");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Editar EDI-0020" })).toBeEnabled());
+    const enProceso = screen.getByRole("button", { name: "Editar EDI-0021" });
+    expect(enProceso).toBeDisabled();
+    expect(within(filaDe("EDI-0021")).getByText(/ya está en proceso/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Editar EDI-0022" })).toBeDisabled();
+    expect(within(filaDe("EDI-0022")).getByText(/tareas completadas/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Editar EDI-0023" })).toBeDisabled();
+    expect(within(filaDe("EDI-0023")).getByText(/bloqueada por una compra/i)).toBeInTheDocument();
+  });
+
+  it("ROOT edita una reparación en proceso, pero no una bloqueada", async () => {
+    mockCatalogos();
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({ id: "rep-proceso", numero: "EDI-0031", estadoId: "estado-en-proceso" }),
+          buildReparacion({ id: "rep-bloq", numero: "EDI-0032", bloqueada: true }),
+        ]),
+      ),
+    );
+
+    renderWithProviders(<ReparacionesList />, {
+      user: buildUser({ is_global_admin: true, permisos: ["EDILICIA:LECTURA", "EDILICIA:MODIFICACION"] }),
+    });
+
+    await screen.findByText("EDI-0031");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Editar EDI-0031" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Editar EDI-0032" })).toBeDisabled();
+  });
+
+  it("el diálogo precarga la fila y hace PATCH /reparaciones/:id con los cinco campos; el listado se refresca", async () => {
+    const user = userEvent.setup();
+    mockCatalogos();
+    let titulo = "Reparar cañería";
+    let bodyRecibido: unknown = null;
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([
+          buildReparacion({
+            id: "rep-ok",
+            numero: "EDI-0040",
+            titulo,
+            descripcion: "Gotea",
+            ubicacion: "Aula 1",
+            prioridadId: PRIORIDAD_MEDIA,
+          }),
+        ]),
+      ),
+      http.patch("/api/reparaciones/rep-ok", async ({ request }) => {
+        bodyRecibido = await request.json();
+        titulo = "Reparar la cañería del baño";
+        return HttpResponse.json({});
+      }),
+    );
+
+    renderWithProviders(<ReparacionesList />, {
+      user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:MODIFICACION"] }),
+    });
+
+    await screen.findByText("EDI-0040");
+    await user.click(await screen.findByRole("button", { name: "Editar EDI-0040" }));
+    const dialogo = await screen.findByRole("dialog");
+    const campoTitulo = within(dialogo).getByLabelText("Título");
+    expect(campoTitulo).toHaveValue("Reparar cañería");
+    expect(within(dialogo).getByLabelText("Descripción")).toHaveValue("Gotea");
+    expect(within(dialogo).getByLabelText("Ubicación")).toHaveValue("Aula 1");
+    expect(within(dialogo).getByLabelText("Prioridad")).toHaveValue(PRIORIDAD_MEDIA);
+
+    await user.clear(campoTitulo);
+    await user.type(campoTitulo, "Reparar la cañería del baño");
+    await user.selectOptions(within(dialogo).getByLabelText("Prioridad"), PRIORIDAD_ALTA);
+    await user.click(within(dialogo).getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() =>
+      expect(bodyRecibido).toEqual({
+        titulo: "Reparar la cañería del baño",
+        descripcion: "Gotea",
+        prioridadId: PRIORIDAD_ALTA,
+        ubicacion: "Aula 1",
+        sectorId: null,
+      }),
+    );
+    expect(await screen.findByText("Reparar la cañería del baño")).toBeInTheDocument();
   });
 });

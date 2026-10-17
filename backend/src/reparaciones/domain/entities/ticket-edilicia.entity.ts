@@ -103,6 +103,18 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
     return entity;
   }
 
+  /**
+   * Cambia la ubicación (odd/detalle-ticket-legible, S4). Misma precondición de largo que `create`:
+   * un exceso es un error del caller, no del dominio.
+   *
+   * @param ubicacion Texto libre o `null` para limpiarla.
+   */
+  actualizarUbicacion(ubicacion: string | null): void {
+    validarLargoUbicacion(ubicacion);
+    this.props.ubicacion = ubicacion;
+    this.touch();
+  }
+
   // ─── Getters ─────────────────────────────────────────────────────────────
 
   get ticketId(): string {

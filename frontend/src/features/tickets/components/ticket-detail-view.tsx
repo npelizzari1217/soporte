@@ -136,7 +136,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
        * y dentro cada control lleva su etiqueta y su botón. Un grupo solo se monta si el usuario
        * puede hacer algo en él; el gateo fino sigue dentro de cada control.
        */}
-      <section aria-labelledby="acciones-titulo" className="rounded-lg border border-border bg-card p-6">
+      <section
+        aria-labelledby="acciones-titulo"
+        className="rounded-lg border border-border bg-seccion-acciones p-6"
+      >
         <h2 id="acciones-titulo" className="mb-4 text-sm font-semibold text-foreground">
           Acciones
         </h2>
@@ -198,34 +201,51 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         </div>
       </section>
 
-      {/* Tareas en cualquier tipo de ticket (odd/tareas-con-tecnico, T6; CA1). */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Tareas</h2>
+      {/*
+       * Tareas y Actividad son tarjetas como Acciones, cada una con su fondo (odd/detalle-ticket-legible,
+       * S1, S3). Tareas en cualquier tipo de ticket (odd/tareas-con-tecnico, T6; CA1).
+       */}
+      <section
+        aria-labelledby="tareas-titulo"
+        className="rounded-lg border border-border bg-seccion-tareas p-6"
+      >
+        <h2 id="tareas-titulo" className="mb-4 text-sm font-semibold text-foreground">
+          Tareas
+        </h2>
         <TicketTareas ticketId={ticket.id} asignadoId={ticket.asignadoId} modulo={modulo} />
       </section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Actividad</h2>
-        {timelineQuery.isLoading ? (
-          <DetailSkeleton />
-        ) : (
-          <TicketTimeline operaciones={timelineQuery.data ?? []} tipoOperacionCodigoMap={tipoOperacionCodigoMap} />
-        )}
-      </section>
-
-      <section className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-foreground">Nuevo comentario</h2>
+      {/*
+       * Actividad: el formulario de comentario y el adjunto van ARRIBA de la línea de tiempo, que se
+       * muestra de lo más nuevo a lo más viejo (S2): se escribe donde se lee lo último.
+       */}
+      <section
+        aria-labelledby="actividad-titulo"
+        className="flex flex-col gap-4 rounded-lg border border-border bg-seccion-actividad p-6"
+      >
+        <h2 id="actividad-titulo" className="text-sm font-semibold text-foreground">
+          Actividad
+        </h2>
         <Can permiso="TICKETS:COMENTAR">
           <TicketCommentForm
             onSubmit={(values) => comentarMutation.mutate(values)}
             isSubmitting={comentarMutation.isPending}
           />
         </Can>
-
         <TicketAttachmentUpload
           onUpload={(file) => adjuntarMutation.mutate(file)}
           isUploading={adjuntarMutation.isPending}
         />
+        <div className="border-t border-border pt-4">
+          {timelineQuery.isLoading ? (
+            <DetailSkeleton />
+          ) : (
+            <TicketTimeline
+              operaciones={timelineQuery.data ?? []}
+              tipoOperacionCodigoMap={tipoOperacionCodigoMap}
+            />
+          )}
+        </div>
       </section>
     </div>
   );

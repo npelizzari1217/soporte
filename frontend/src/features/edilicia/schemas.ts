@@ -23,6 +23,10 @@ export const crearReparacionSchema = z.object({
 });
 export type CrearReparacionFormValues = z.infer<typeof crearReparacionSchema>;
 
+/** Mismos campos y topes que el alta: espejo de `EditarReparacionHttpDto` (odd/detalle-ticket-legible). */
+export const editarReparacionSchema = crearReparacionSchema;
+export type EditarReparacionFormValues = z.infer<typeof editarReparacionSchema>;
+
 /** Espeja `CreateComentarioReparacionHttpDto`: recorta primero, después valida (un texto de puros espacios no es un comentario). */
 export const COMENTARIO_TEXTO_MAX_LENGTH = 2000;
 export const crearComentarioSchema = z.object({

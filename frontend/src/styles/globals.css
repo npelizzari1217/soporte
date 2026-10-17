@@ -54,6 +54,11 @@
   --color-warning-light:          var(--warning-light);
   --color-info:                   var(--info);
   --color-info-foreground:        var(--info-foreground);
+
+  /* Fondos de las tarjetas del detalle del ticket (odd/detalle-ticket-legible, S3). */
+  --color-seccion-acciones:       var(--seccion-acciones);
+  --color-seccion-tareas:         var(--seccion-tareas);
+  --color-seccion-actividad:      var(--seccion-actividad);
   --color-info-light:             var(--info-light);
 
   /* Elevación: reasigna la escala de sombra de Tailwind (shadow-sm/md/lg/xl)
@@ -128,6 +133,13 @@
      Vive separado de --primary porque el primary "claro" de fondo no es el
      mismo tono que el primary de acción (botones, ring, etc.). */
   --login-gradient-accent: #dbeafe;
+
+  /* Tarjetas del detalle del ticket (odd/detalle-ticket-legible, S3): un pastel distinto por
+     sección para reconocerlas de un vistazo, solo en modo claro. Contraste del texto
+     (#1e293b) sobre cada fondo > 12:1; el gris de apoyo (#64748b) > 4.5:1 en los tres. */
+  --seccion-acciones:  #eff6ff; /* azul (blue-50) */
+  --seccion-tareas:    #f0fdf4; /* verde (green-50) */
+  --seccion-actividad: #fffbeb; /* ámbar (amber-50) */
 }
 
 /* ── DARK ────────────────────────────────────────────────────────────────── */
@@ -137,6 +149,11 @@
 
   --card:                   #1e293b;
   --card-foreground:        #e2e8f0;
+
+  /* En modo oscuro las tarjetas del detalle no se tiñen: el pastel es solo de día. */
+  --seccion-acciones:  var(--card);
+  --seccion-tareas:    var(--card);
+  --seccion-actividad: var(--card);
 
   /* Primary en dark es un indigo CLARO (#818cf8) — por eso el foreground es
      oscuro (#0f172a), no blanco. Contraste verificado: ~6:1 (AA para texto

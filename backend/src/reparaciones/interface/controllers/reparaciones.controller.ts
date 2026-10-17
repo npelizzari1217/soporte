@@ -46,6 +46,7 @@ import {
   Inject,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -83,12 +84,14 @@ import { ListarComentariosReparacionUseCase } from '../../application/use-cases/
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
 import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
+import { EditarReparacionUseCase } from '../../application/use-cases/editar-reparacion.use-case';
 
 import {
   TicketEdiliciaNoEncontradoError,
   ExportacionDemasiadoGrandeError,
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
+  ReparacionNoEditableError,
 } from '../../domain/errors/reparaciones.errors';
 
 import {
@@ -98,6 +101,7 @@ import {
   ReparacionListItemResponseDto,
   TicketEdiliciaConTicketResponseDto,
   VincularCompraHttpDto,
+  EditarReparacionHttpDto,
   toComentarioReparacionResponseDto,
   toReparacionListItemResponseDto,
   toTicketEdiliciaResponseDto,
@@ -140,7 +144,9 @@ export function toHttpException(
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
     // línea en uno conocido.
-    error instanceof ExportacionDemasiadoGrandeError
+    error instanceof ExportacionDemasiadoGrandeError ||
+    // odd/detalle-ticket-legible (S5): la reparación ya se empezó a trabajar o está bloqueada.
+    error instanceof ReparacionNoEditableError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -178,6 +184,8 @@ export class ReparacionesController {
     // WU5 (sdd/reparacion-bloqueada-por-compra) — mismo criterio, al final.
     private readonly vincularCompraUseCase: VincularCompraAReparacionUseCase,
     private readonly desvincularCompraUseCase: DesvincularCompraDeReparacionUseCase,
+    // odd/detalle-ticket-legible — mismo criterio, al final.
+    private readonly editarReparacionUseCase: EditarReparacionUseCase,
   ) {}
 
   /**
@@ -265,6 +273,39 @@ export class ReparacionesController {
    * expediente de la reparación.
    * @throws 404 ticket_edilicia inexistente
    */
+  /**
+   * PATCH /reparaciones/:reparacionId
+   * Edita una reparación que todavía no se empezó a trabajar (odd/detalle-ticket-legible, S4-S5):
+   * título, descripción, prioridad y sector del ticket base, y la ubicación propia de Edilicia. ROOT
+   * salta la regla de "no empezada"; el bloqueo por compra no lo salta nadie. Declarada después de
+   * `GET /reparaciones/export` por el orden de matching de Nest.
+   *
+   * @throws 404 reparación o ticket inexistente
+   * @throws 422 ya en proceso, con tareas completadas, bloqueada, prioridad o sector inexistente
+   */
+  @Patch(':reparacionId')
+  @RequiereAcciones('EDILICIA:MODIFICACION')
+  async editar(
+    @Param('reparacionId') reparacionId: string,
+    @Body() dto: EditarReparacionHttpDto,
+    @CurrentUser() user: JwtPayload,
+  ): Promise<TicketEdiliciaConTicketResponseDto> {
+    const result = await this.editarReparacionUseCase.execute({
+      reparacionId,
+      titulo: dto.titulo,
+      descripcion: dto.descripcion,
+      prioridadId: dto.prioridadId,
+      ubicacion: dto.ubicacion,
+      sectorId: dto.sectorId,
+      actorEsRoot: user.is_global_admin === true,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const { ticket, ticketEdilicia, sectorNombre } = result.getValue();
+    return toTicketEdiliciaResponseDto(ticket, ticketEdilicia, sectorNombre);
+  }
+
   @Post(':reparacionId/comentarios')
   @RequiereAcciones('EDILICIA:ALTAS')
   @HttpCode(HttpStatus.CREATED)

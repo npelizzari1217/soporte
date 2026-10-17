@@ -587,11 +587,22 @@ describe("TicketDetailView — tarjeta «Acciones» agrupada (odd/tasks/acciones
     expect(within(acciones).queryByRole("combobox")).not.toBeInTheDocument();
   });
 
-  it("el comentario y el adjunto viven bajo la sección «Nuevo comentario»", async () => {
+  // odd/detalle-ticket-legible (S1, S2): Tareas y Actividad son tarjetas tituladas, y el formulario
+  // de comentario vive dentro de Actividad, arriba de la lista.
+  it("Tareas y Actividad son tarjetas, y el comentario y el adjunto viven dentro de «Actividad», arriba de la lista", async () => {
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, {
       user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
     });
     await screen.findByText("Impresora rota");
-    expect(screen.getByRole("heading", { name: /nuevo comentario/i })).toBeInTheDocument();
+
+    const tareas = screen.getByRole("region", { name: /^tareas$/i });
+    const actividad = screen.getByRole("region", { name: /^actividad$/i });
+    expect(tareas).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /nuevo comentario/i })).not.toBeInTheDocument();
+
+    const formulario = within(actividad).getByRole("textbox", { name: /comentario/i });
+    const linea = within(actividad).getByText(/sin actividad todavía/i);
+    // El formulario precede a la línea de tiempo en el DOM: lo nuevo arriba, y se escribe arriba.
+    expect(formulario.compareDocumentPosition(linea) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

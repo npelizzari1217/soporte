@@ -82,6 +82,20 @@ async function httpPost<T = unknown>(
   return { status: res.status, data };
 }
 
+async function httpPatch<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
 async function httpGet<T = unknown>(
   url: string,
   headers: Headers = {},
@@ -553,6 +567,62 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       const final = await filaDelListado(responsable.accessToken, reparacionId);
       expect(final?.subtareas.map((t) => t.id)).toEqual([segunda.data.id]);
       expect(final?.porcentajeAvance).toBe(100);
+    });
+
+    // odd/detalle-ticket-legible (S4-S5): editar una reparación que no se empezó a trabajar.
+    it('PATCH /reparaciones/:id edita título y ubicación con EDILICIA:MODIFICACION, y deja de poder al completar una tarea', async () => {
+      const responsable = await crearActorConPermisos([
+        'EDILICIA:LECTURA',
+        'EDILICIA:MODIFICACION',
+        'TICKETS:VER_TODOS',
+      ]);
+      const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
+      const auth = bearer(responsable.accessToken);
+
+      const editada = await httpPatch<ReparacionListItemResponseDto>(
+        `${baseUrl}/reparaciones/${reparacionId}`,
+        { titulo: 'Titulo corregido', ubicacion: 'Aula 7' },
+        auth,
+      );
+      expect(editada.status).toBe(200);
+      expect(editada.data).toMatchObject({
+        id: reparacionId,
+        titulo: 'Titulo corregido',
+        ubicacion: 'Aula 7',
+      });
+      const fila = await filaDelListado(responsable.accessToken, reparacionId);
+      expect(fila).toMatchObject({ titulo: 'Titulo corregido', ubicacion: 'Aula 7' });
+
+      const tareas = `${baseUrl}/tickets/${ticketId}/tareas`;
+      const tarea = await httpPost<{ id: string }>(tareas, { descripcion: 'Arrancar' }, auth);
+      expect((await httpPost(`${tareas}/${tarea.data.id}/completar`, {}, auth)).status).toBe(200);
+
+      const yaEmpezada = await httpPatch<{ message: string }>(
+        `${baseUrl}/reparaciones/${reparacionId}`,
+        { titulo: 'Otro' },
+        auth,
+      );
+      expect(yaEmpezada.status).toBe(422);
+      expect(yaEmpezada.data.message).toMatch(/solo ROOT/);
+      expect((await filaDelListado(responsable.accessToken, reparacionId))?.titulo).toBe(
+        'Titulo corregido',
+      );
+    });
+
+    it('PATCH /reparaciones/:id sin EDILICIA:MODIFICACION → 403, y la reparación no cambia', async () => {
+      const lector = await crearActorConPermisos(['EDILICIA:LECTURA']);
+      const { reparacionId } = await crearReparacionAsignada(lector.usuarioId);
+
+      const r = await httpPatch(
+        `${baseUrl}/reparaciones/${reparacionId}`,
+        { titulo: 'No deberia' },
+        bearer(lector.accessToken),
+      );
+
+      expect(r.status).toBe(403);
+      expect((await filaDelListado(lector.accessToken, reparacionId))?.titulo).toBe(
+        'Reparación con tareas',
+      );
     });
 
     it('las rutas viejas de subtareas ya no existen (T8): 404 de Nest, sin tocar las tareas', async () => {

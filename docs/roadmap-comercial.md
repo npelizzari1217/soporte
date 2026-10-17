@@ -1250,6 +1250,21 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     vez de las últimas tareas resuelven el ticket una sola vez.
   - **Cumplida** (2026-10-16, rama `feat/estado-por-tareas`). Cada viñeta es un criterio de
     aceptación del documento, sin desviaciones declaradas.
+- **Detalle del ticket legible y edición de reparaciones** (pedido fuera de los puntos; decisiones
+  del dueño del 2026-10-17, feature `detalle-ticket-legible`, documento
+  `odd/tasks/detalle-ticket-legible.md`):
+  - **Tareas y Actividad son tarjetas** con título, como Acciones, y en modo claro cada tarjeta
+    tiene un fondo pastel distinto (azul, verde, ámbar); en modo oscuro no se tiñen.
+  - **La Actividad entera se muestra de lo más nuevo a lo más viejo**, y el formulario de
+    comentario y el adjunto viven arriba de la línea de tiempo, dentro de Actividad. La sección
+    "Nuevo comentario" desaparece.
+  - **Edilicia permite editar una reparación que no se empezó a trabajar**: estado Nuevo o
+    Asignado y sin tareas completadas. Fuera de eso, solo ROOT. Una reparación **bloqueada** por
+    una compra en curso no la edita nadie, ROOT incluido. Se editan título, descripción, la
+    ubicación propia de Edilicia (que hasta ahora no se editaba desde ningún lado), prioridad y
+    sector. Endpoint nuevo `PATCH /reparaciones/:id` con `EDILICIA:MODIFICACION`.
+  - **Cumplida** (2026-10-17, rama `feat/detalle-ticket-legible`). Cada viñeta es un criterio de
+    aceptación del documento, sin desviaciones declaradas.
 - **Ubicación y sector en el ticket** (pedido fuera de los puntos; decisiones del dueño del
   2026-10-15, feature `ubicacion-sector-ticket`, documento
   `odd/tasks/ubicacion-sector-ticket.md`):
@@ -1351,6 +1366,14 @@ de las entregas anteriores está anotada solo en los mensajes de sus commits
   - los campos Ubicación y Sector en el alta y la edición del ticket, y el Sector en el alta de
     Edilicia (en Edilicia la ubicación general no aparece);
   - la cantidad en el botón "Ver subtareas" del listado de Edilicia.
+- **Detalle del ticket legible y edición de reparaciones** (2026-10-17, anotada en los commits de
+  la rama `feat/detalle-ticket-legible` y en `odd/tasks/detalle-ticket-legible.md`):
+  - el detalle del ticket: Tareas y Actividad como tarjetas, la Actividad de lo más nuevo a lo más
+    viejo, y el comentario y el adjunto arriba de la línea de tiempo (ya no existe la sección
+    "Nuevo comentario");
+  - la columna "Editar" del listado de reparaciones (`reparaciones-listado.md` enumera las
+    columnas sin ella): qué campos edita, cuándo se habilita (Nuevo o Asignado, sin tareas
+    completadas), que ROOT puede igual y que una reparación bloqueada no se edita.
 - **El estado del ticket sigue a sus tareas** (2026-10-16, anotada en los commits de la rama
   `feat/estado-por-tareas` y en `odd/tasks/estado-por-tareas.md`):
   - que completar una tarea pone el ticket En proceso (y lo asigna a quien completa si estaba
