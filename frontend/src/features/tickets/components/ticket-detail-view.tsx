@@ -20,6 +20,7 @@ import {
 } from "../hooks/use-ticket-mutations";
 import { buildIdToCodigoMap } from "../lib/catalog-map";
 import { puedeAsignarYPonerEnProceso, puedeEditarDatos, puedeReasignar } from "../lib/estado-transitions";
+import { motivoTareasSoloLectura } from "../lib/permisos-tareas";
 import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
 import { DetailSkeleton } from "@/components/shared/skeletons";
@@ -212,7 +213,13 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         <h2 id="tareas-titulo" className="mb-4 text-sm font-semibold text-foreground">
           Tareas
         </h2>
-        <TicketTareas ticketId={ticket.id} asignadoId={ticket.asignadoId} modulo={modulo} />
+        <TicketTareas
+          ticketId={ticket.id}
+          asignadoId={ticket.asignadoId}
+          modulo={modulo}
+          // El detalle no conoce el bloqueo por compra (es de Edilicia): solo el estado.
+          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, false)}
+        />
       </section>
 
       {/*

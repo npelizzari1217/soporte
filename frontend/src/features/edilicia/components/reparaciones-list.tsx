@@ -24,6 +24,7 @@ import { useEstados } from "@/features/tickets/hooks/use-catalogos";
 import { buildIdToCodigoMap } from "@/features/tickets/lib/catalog-map";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
+import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
 import type { ReparacionListItem } from "../types";
 
@@ -177,6 +178,8 @@ export function ReparacionesList() {
         <SubtareasDialog
           ticketId={row.ticketId}
           numero={row.numero}
+          estadoCodigo={estadoCodigoMap.get(row.estadoId)}
+          bloqueada={row.bloqueada}
           // `subtareas` trae embebidas las tareas ACTIVAS del ticket: las mismas
           // que lista el diálogo y sobre las que se calcula el avance (CA5).
           trigger={
@@ -200,6 +203,7 @@ export function ReparacionesList() {
         <ComentariosDialog
           reparacionId={row.id}
           numero={row.numero}
+          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigoMap.get(row.estadoId), row.bloqueada)}
           trigger={
             <ConteoTrigger
               texto="Ver comentarios"

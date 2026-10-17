@@ -23,6 +23,7 @@
 import { useState, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useCan } from "@/shared/hooks/use-can";
+import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { useTicket } from "@/features/tickets/hooks/use-ticket";
 import { TicketTareas } from "@/features/tickets/components/ticket-tareas";
 
@@ -32,9 +33,13 @@ export interface SubtareasDialogProps {
   ticketId: string;
   trigger: ReactNode;
   numero: string;
+  /** Código del estado del ticket; `undefined` mientras el catálogo no resolvió. */
+  estadoCodigo: string | undefined;
+  /** `bloqueada` de la fila del listado (compra activa vinculada). */
+  bloqueada: boolean;
 }
 
-export function SubtareasDialog({ ticketId, trigger, numero }: SubtareasDialogProps) {
+export function SubtareasDialog({ ticketId, trigger, numero, estadoCodigo, bloqueada }: SubtareasDialogProps) {
   const [open, setOpen] = useState(false);
   const puedeLeerTicket = useCan("TICKETS:LECTURA");
   const ticketQuery = useTicket(ticketId, open && puedeLeerTicket);
@@ -52,6 +57,7 @@ export function SubtareasDialog({ ticketId, trigger, numero }: SubtareasDialogPr
           asignadoId={asignadoId}
           modulo="EDILICIA"
           invalidarTambien={INVALIDAR_LISTADO}
+          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueada)}
         />
       </DialogContent>
     </Dialog>

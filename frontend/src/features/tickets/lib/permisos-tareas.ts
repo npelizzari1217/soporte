@@ -37,3 +37,22 @@ export function puedeCompletarTareaUi(
   if (asignadoId === undefined) return actor.tieneModificacionDelModulo;
   return asignadoId !== null && asignadoId === actor.id;
 }
+
+/**
+ * Por qué las tareas (y los comentarios de reparación) del ticket son de solo lectura
+ * (odd/ticket-cerrado-solo-lectura, S4). Espeja `VerificadorTicketEditable` del backend:
+ * CERRADO, CANCELADO o reparación bloqueada por una compra activa. RESUELTO no bloquea.
+ *
+ * `estadoCodigo: undefined` es "catálogo todavía no resuelto": no se esconde nada y decide el
+ * backend. `bloqueada` solo lo conoce el listado de Edilicia; el detalle del ticket pasa `false`.
+ *
+ * @returns El motivo para mostrar, o `null` si se puede editar.
+ */
+export function motivoTareasSoloLectura(estadoCodigo: string | undefined, bloqueada: boolean): string | null {
+  if (estadoCodigo === "CERRADO") return "El ticket está cerrado: sus tareas y comentarios ya no se modifican.";
+  if (estadoCodigo === "CANCELADO") return "El ticket está cancelado: sus tareas y comentarios ya no se modifican.";
+  if (bloqueada) {
+    return "La reparación está bloqueada por una compra en curso: sus tareas y comentarios ya no se modifican.";
+  }
+  return null;
+}
