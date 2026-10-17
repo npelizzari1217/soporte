@@ -55,3 +55,6 @@ tareas). Rama apilada sobre `feat/estado-por-tareas` (usa `ITicketRepository.blo
   informativas: las validaciones de catálogo de editar y la resolución de ids de asignar quedan antes
   de la tx (deliberado: no dependen del ticket), y un assert duplicado en el spec de transicionar,
   corregido en este commit.
+
+- 2026-10-17, en producción: merge --no-ff a `main` (`ad8d3854`), push y deploy en el VPS (DEPLOY OK, 9 tenants
+  sin migraciones pendientes, smoke externo 200). Rollback documentado por el script: `b4f09ecb`.

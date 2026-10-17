@@ -88,3 +88,6 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
   corrección: la misma A1 (escrituras manuales sin lock), y que la guarda `if (!permitido) break` del
   servicio no tiene test (hoy inalcanzable con el grafo base). Pendiente del dueño: decidir sobre A1,
   merge y deploy.
+
+- 2026-10-17, en producción: merge --no-ff a `main` (`ad8d3854`), push y deploy en el VPS (DEPLOY OK, 9 tenants
+  sin migraciones pendientes, smoke externo 200). Rollback documentado por el script: `b4f09ecb`.
