@@ -15,6 +15,9 @@ export interface TicketEdilicia {
   ticketId: string;
   numero: string;
   titulo: string;
+  /** Descripción y prioridad del ticket base, para precargar la edición (odd/detalle-ticket-legible). */
+  descripcion: string | null;
+  prioridadId: string;
   estadoId: string;
   /** Ubicación física de la reparación, texto libre (ex-catálogo Ubicacion removido). */
   ubicacion: string | null;
@@ -67,6 +70,16 @@ export interface SubtareaEdilicia {
   orden: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Body de `PATCH /reparaciones/:id` (odd/detalle-ticket-legible): ausente no toca, `null` limpia. */
+export interface EditarReparacionDto {
+  titulo?: string;
+  descripcion?: string | null;
+  prioridadId?: string;
+  /** Ubicación propia de Edilicia. */
+  ubicacion?: string | null;
+  sectorId?: string | null;
 }
 
 export interface CrearTicketEdilicioDto {

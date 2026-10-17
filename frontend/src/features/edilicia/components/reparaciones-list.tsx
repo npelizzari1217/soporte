@@ -18,6 +18,10 @@ import { Can } from "@/components/shared/can";
 import { notifyError } from "@/shared/lib/toast";
 import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
+import { ReparacionEditDialog } from "./reparacion-edit-dialog";
+import { useSession } from "@/shared/hooks/use-session";
+import { useEstados } from "@/features/tickets/hooks/use-catalogos";
+import { buildIdToCodigoMap } from "@/features/tickets/lib/catalog-map";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
@@ -104,6 +108,10 @@ ConteoTrigger.displayName = "ConteoTrigger";
 export function ReparacionesList() {
   const reparacionesQuery = useReparaciones();
   const [filtroBloqueo, setFiltroBloqueo] = useState<FiltroBloqueo>("TODAS");
+  const { isGlobalAdmin } = useSession();
+  // El código del estado decide si la reparación "se empezó a trabajar" (odd/detalle-ticket-legible).
+  const estadosQuery = useEstados();
+  const estadoCodigoMap = useMemo(() => buildIdToCodigoMap(estadosQuery.data ?? []), [estadosQuery.data]);
 
   const datosFiltrados = useMemo(
     () => filtrarPorBloqueo(reparacionesQuery.data ?? [], filtroBloqueo),
@@ -141,6 +149,22 @@ export function ReparacionesList() {
             }
           />
         </div>
+      ),
+    },
+    {
+      // Editar una reparación no empezada (odd/detalle-ticket-legible, S6). El botón se gatea por
+      // `EDILICIA:MODIFICACION` acá y por la regla de estado/tareas/bloqueo dentro del diálogo.
+      // `key` es solo el slot de la columna: `descripcion` no se muestra en ninguna otra.
+      key: "descripcion",
+      header: "Editar",
+      render: (row) => (
+        <Can permiso="EDILICIA:MODIFICACION">
+          <ReparacionEditDialog
+            reparacion={row}
+            estadoCodigo={estadoCodigoMap.get(row.estadoId)}
+            esRoot={isGlobalAdmin}
+          />
+        </Can>
       ),
     },
     {

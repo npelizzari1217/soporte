@@ -132,6 +132,9 @@ export interface TicketEdiliciaConTicketResponseDto {
   ticketId: string;
   numero: string;
   titulo: string;
+  /** Descripción y prioridad del ticket base: las precarga el diálogo de edición (odd/detalle-ticket-legible). */
+  descripcion: string | null;
+  prioridadId: string;
   estadoId: string;
   ubicacion: string | null;
   /**
@@ -162,6 +165,8 @@ export function toTicketEdiliciaResponseDto(
     ticketId: ticket.id,
     numero: ticket.numero,
     titulo: ticket.titulo,
+    descripcion: ticket.descripcion,
+    prioridadId: ticket.prioridadId,
     estadoId: ticket.estadoId,
     ubicacion: ticketEdilicia.ubicacion,
     sectorId: ticket.sectorId,
