@@ -33,7 +33,7 @@ Ver sigue funcionando igual.
 
 ## Tasks
 - [x] T1 (S1, S2): backend tareas: error, puerto + repo Prisma, regla compartida en
-  `tareas-ticket.reglas.ts`, los 5 casos de uso, módulo, mapeo 422; tests unitarios de los 5 casos
+  `ticket-editable-para-tareas.ts`, los 5 casos de uso, módulo, mapeo 422; tests unitarios de los 5 casos
   (CERRADO, CANCELADO, bloqueada, RESUELTO permitido), spec del repo, controller spec.
 - [x] T2 (S3): backend comentarios de reparación: error, caso de uso, módulo, mapeo; tests.
 - [x] T3 (S4, S5): frontend: helper, `TicketTareas`, detalle, `SubtareasDialog`, `ComentariosDialog`,
@@ -74,3 +74,9 @@ Ver sigue funcionando igual.
   `feat/ticket-cerrado-solo-lectura`. Backend: lint 0, typecheck 0, ratchet de casts sostenido, tests
   748 archivos / 8996 pasan. Frontend: lint 0, type-check 0, tests 274 archivos / 2332 pasan.
   Pendiente del dueño: merge a main y deploy.
+- 2026-10-17, verificación independiente (gentle-ai-verify): S1-S6 cumplidos, sin bloqueantes. Assess
+  nativo: riesgo medio, `reviewDue: false` (bajo presupuesto), sin revisión nativa. Advisorias cerradas en
+  `e42a8f7b`: test del cableado del detalle (mutación a `null` → rojo) y la nota del detalle ya no dice
+  "y comentarios" (los comentarios internos del ticket siguen permitidos). Advisoria aceptada sin
+  cambio: `verificar()` corre antes de la transacción; una carrera con el cierre del ticket en el mismo
+  instante podría colar una escritura (ventana mínima, mismo patrón que la autorización).
