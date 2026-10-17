@@ -80,6 +80,36 @@ export class CreateComentarioReparacionHttpDto {
 }
 
 /**
+ * Body de `PATCH /reparaciones/:reparacionId` (odd/detalle-ticket-legible, S4). Todo opcional: un
+ * campo ausente no se toca y `null` limpia. `ubicacion` es la propia de Edilicia. Mismos topes que
+ * el alta: `@MaxLength` espeja el CHECK de DB y la precondición de la entidad.
+ */
+export class EditarReparacionHttpDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(TICKET_TITULO_MAX_LENGTH)
+  titulo?: string;
+
+  @IsOptional()
+  @IsString()
+  descripcion?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  prioridadId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH)
+  ubicacion?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  sectorId?: string | null;
+}
+
+/**
  * Body de `POST /reparaciones/:reparacionId/compras` (WU5,
  * sdd/reparacion-bloqueada-por-compra). Vincula una compra existente del
  * mismo tenant a la reparación de la ruta.

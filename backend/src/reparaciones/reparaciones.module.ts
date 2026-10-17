@@ -67,6 +67,11 @@ import { ListarComentariosReparacionUseCase } from './application/use-cases/list
 import { ExportarReparacionesUseCase } from './application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from './application/use-cases/vincular-compra-a-reparacion.use-case';
 import { DesvincularCompraDeReparacionUseCase } from './application/use-cases/desvincular-compra-de-reparacion.use-case';
+import { EditarReparacionUseCase } from './application/use-cases/editar-reparacion.use-case';
+import {
+  IPrioridadRepository,
+  PRIORIDAD_REPOSITORY,
+} from '../tickets/domain/ports/i-prioridad.repository';
 
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 
@@ -236,6 +241,43 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       ) =>
         new VincularCompraAReparacionUseCase(ticketEdiliciaRepo, compraRepo, reparacionCompraRepo),
       inject: [TICKET_EDILICIA_REPOSITORY, COMPRA_REPOSITORY, REPARACION_COMPRA_REPOSITORY],
+    },
+    {
+      // odd/detalle-ticket-legible (S4-S5): edición de una reparación no empezada.
+      provide: EditarReparacionUseCase,
+      useFactory: (
+        ticketEdiliciaRepo: ITicketEdiliciaRepository,
+        ticketRepo: ITicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        reparacionCompraRepo: IReparacionCompraRepository,
+        estadoRepo: IEstadoRepository,
+        prioridadRepo: IPrioridadRepository,
+        sectorRepo: ISectorRepository,
+        eventPublisher: IDomainEventPublisher,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new EditarReparacionUseCase(
+          ticketEdiliciaRepo,
+          ticketRepo,
+          tareaRepo,
+          reparacionCompraRepo,
+          estadoRepo,
+          prioridadRepo,
+          sectorRepo,
+          eventPublisher,
+          txRunner,
+        ),
+      inject: [
+        TICKET_EDILICIA_REPOSITORY,
+        TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        REPARACION_COMPRA_REPOSITORY,
+        ESTADO_REPOSITORY,
+        PRIORIDAD_REPOSITORY,
+        SECTOR_REPOSITORY,
+        DOMAIN_EVENT_PUBLISHER,
+        TENANT_TX_RUNNER,
+      ],
     },
     {
       provide: DesvincularCompraDeReparacionUseCase,

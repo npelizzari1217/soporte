@@ -89,3 +89,25 @@ export class VinculoNoEncontradoError extends DomainError {
     );
   }
 }
+
+/** Por qué una reparación no se puede editar (odd/detalle-ticket-legible, S5). */
+export type MotivoReparacionNoEditable = 'EN_PROCESO' | 'TAREAS_COMPLETADAS' | 'BLOQUEADA';
+
+/**
+ * ReparacionNoEditableError — la reparación ya se empezó a trabajar (salió de NUEVO/ASIGNADO o tiene
+ * una tarea completada) y el actor no es ROOT, o está bloqueada por una compra activa (eso no lo
+ * salta nadie). → HTTP 422 en la capa de presentación.
+ */
+export class ReparacionNoEditableError extends DomainError {
+  readonly code = 'REPARACION_NO_EDITABLE';
+
+  constructor(readonly motivo: MotivoReparacionNoEditable) {
+    super(
+      motivo === 'BLOQUEADA'
+        ? 'La reparación está bloqueada por una compra en curso y no se puede editar.'
+        : motivo === 'TAREAS_COMPLETADAS'
+          ? 'La reparación ya tiene tareas completadas: solo ROOT puede editarla.'
+          : 'La reparación ya está en proceso: solo ROOT puede editarla.',
+    );
+  }
+}

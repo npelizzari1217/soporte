@@ -1,0 +1,56 @@
+# Detalle del ticket legible y edición de reparaciones en Edilicia (2026-10-17)
+
+El detalle del ticket se lee mal: las secciones no se distinguen. Tareas y Actividad pasan a tarjetas
+como la de Acciones, la Actividad se invierte (lo más nuevo arriba) con el formulario de comentario
+arriba de la lista, y cada tarjeta lleva en modo claro un fondo pastel propio. En Edilicia aparece
+"Editar" para una reparación que todavía no se empezó a trabajar y no está bloqueada; hoy no existe
+(la ubicación propia de Edilicia no se edita desde ningún lado).
+
+## Specs
+- S1. Tarjetas. Tareas, Actividad y Nuevo comentario se muestran cada una dentro de una tarjeta con
+  título, igual que Acciones (`<section>` con borde, fondo y padding). L1: "las tareas necesitaría
+  entrar dentro de una etiqueta al igual que los comentarios".
+- S2. Orden de la Actividad: toda la línea de tiempo (comentarios, cambios de estado, asignaciones,
+  tareas, adjuntos) se muestra de la más nueva a la más vieja (decisión L2: "Toda la Actividad, lo más
+  nuevo arriba"). El formulario "Nuevo comentario" y la carga de adjuntos van arriba de la lista, dentro
+  de la misma tarjeta "Actividad". El backend sigue devolviendo ascendente; invierte el frontend.
+- S3. Colores en modo claro: cada tarjeta tiene un fondo pastel distinto (Acciones, Tareas, Actividad),
+  definidos como tokens CSS en `styles/globals.css` solo para `:root`; en modo oscuro las tres usan el
+  fondo de tarjeta de siempre. L1: "A cada etiqueta en modo día, le colocaría un color de fondo
+  distinto en tonos suaves y pastel". El texto conserva contraste AA sobre el pastel.
+- S4. Backend: `PATCH /reparaciones/:reparacionId` (`EDILICIA:MODIFICACION`) edita título, descripción,
+  ubicación de Edilicia, prioridad y sector (decisión L2). Caso de uso `EditarReparacionUseCase`: con la
+  fila del ticket bloqueada y releída dentro de la transacción (como las demás escrituras manuales),
+  actualiza `tickets` y `ticket_edilicia` juntos, con operación en el historial si cambia la prioridad
+  (mismo evento `ticket.reprioritizado` que editar el ticket).
+- S5. Regla "no se empezó a trabajar" (decisión L2: "Nuevo o Asignado, sin tareas completadas"): se
+  edita si el estado es NUEVO o ASIGNADO y ninguna tarea activa está completada. Fuera de eso, solo
+  ROOT. Una reparación **bloqueada** (con una compra activa vinculada) no se edita, ni siquiera ROOT
+  (L1: "o que no este bloqueada"). Rechazo: `ReparacionNoEditableError` → 422 con el motivo
+  ("en proceso", "con tareas completadas" o "bloqueada por una compra").
+- S6. Frontend Edilicia: botón "Editar" en cada fila del listado que abre un diálogo con los cinco
+  campos precargados. Cuando la regla de S5 no se cumple, el botón se muestra deshabilitado con el motivo
+  visible; el backend sigue siendo la autoridad. Al guardar, el listado se refresca.
+- S7. Documentación: roadmap (decisión fuera de los puntos), artículos de Ayuda que el cambio vuelve
+  falsos (`reparaciones-edilicias.md`, `reparaciones-listado.md` si describen que no se edita), deuda de
+  Ayuda anotada.
+
+## Tasks
+- [ ] T1 (S4, S5): backend: `EditarReparacionUseCase`, error, DTO, ruta, módulo; tests unitarios, spec
+  del controller y e2e de autorización/regla.
+- [ ] T2 (S1, S2, S3): frontend detalle: tarjetas, orden inverso, formulario arriba, tokens pastel;
+  tests.
+- [ ] T3 (S6): frontend Edilicia: `ReparacionEditDialog`, hook, schema, regla en UI; tests.
+- [ ] T4 (S7): roadmap, Ayuda, deuda.
+
+## Log
+- L1 (2026-10-17, dueño): "Perfecto funciono. Ahora al ver como queda la edicion del tiquet, siento
+  que no esta prolijo y qu cuesta leer los sctores que tiene, las tareas necesitaria entar dentro de
+  una etiqueta al igual que los comentarios; los comentarios los ordenaria por fecha+hora en forma
+  inversa para ver mas arriba las ultimas noticias.A cada etiqueta en modo dia, le colocaría un color
+  de fondo distinto en tonos suaves y pastel para que sea mas facil reconocerlo.En Edilicia permitiría
+  editar una reparacion siempre y cuando aún no se haya comenzado a trabajar sobre ella o que no este
+  bloqueada.Pregunta cualquir duda que tengas"
+- L2 (2026-10-17, dueño), cuestionario: orden → "Toda la Actividad, lo más nuevo arriba"; "no se haya
+  comenzado a trabajar" → "Nuevo o Asignado, sin tareas completadas"; campos → "Título, descripción,
+  ubicación, prioridad y sector".
