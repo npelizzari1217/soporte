@@ -29,6 +29,7 @@ import {
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
 import { NumeradorTicket } from '../tickets/domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
+import { VerificadorTicketEditable } from '../tickets/application/services/ticket-editable-para-tareas';
 import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
@@ -211,8 +212,21 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       useFactory: (
         ticketEdiliciaRepo: ITicketEdiliciaRepository,
         comentarioRepo: IComentarioReparacionRepository,
-      ) => new CrearComentarioReparacionUseCase(ticketEdiliciaRepo, comentarioRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
+        ticketRepo: ITicketRepository,
+        verificadorEditable: VerificadorTicketEditable,
+      ) =>
+        new CrearComentarioReparacionUseCase(
+          ticketEdiliciaRepo,
+          comentarioRepo,
+          ticketRepo,
+          verificadorEditable,
+        ),
+      inject: [
+        TICKET_EDILICIA_REPOSITORY,
+        COMENTARIO_REPARACION_REPOSITORY,
+        TICKET_REPOSITORY,
+        VerificadorTicketEditable,
+      ],
     },
     {
       provide: ListarComentariosReparacionUseCase,

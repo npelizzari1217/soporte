@@ -1,8 +1,15 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
+import { TareaTicketNoEditableError } from '../../../tickets/domain/errors/tareas.errors';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { VerificadorTicketEditable } from '../../../tickets/application/services/ticket-editable-para-tareas';
 import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
-import { TicketEdiliciaNoEncontradoError } from '../../domain/errors/reparaciones.errors';
+import {
+  ComentarioReparacionNoPermitidoError,
+  TicketEdiliciaNoEncontradoError,
+} from '../../domain/errors/reparaciones.errors';
 
 /** DTO de entrada para crear un comentario de reparación. */
 export interface CrearComentarioReparacionDto {
@@ -21,8 +28,12 @@ export interface CrearComentarioReparacionDto {
  * Flujo:
  * 1. Carga el `ticket_edilicia` → `TicketEdiliciaNoEncontradoError` si no
  *    existe o está eliminado.
- * 2. Crea la `ComentarioReparacionEntity` (recorta y valida el texto).
- * 3. Persiste (INSERT único — sin transacción: no hay operación de
+ * 2. Carga su ticket y aplica la MISMA regla que las tareas
+ *    (odd/ticket-cerrado-solo-lectura, S3): CERRADO, CANCELADO o bloqueada
+ *    por una compra → `ComentarioReparacionNoPermitidoError` (422). Listar
+ *    no pasa por acá: ver sigue permitido.
+ * 3. Crea la `ComentarioReparacionEntity` (recorta y valida el texto).
+ * 4. Persiste (INSERT único — sin transacción: no hay operación de
  *    timeline que escribir junto, así que no hay nada que hacer atómico).
  *
  * Sin throw para fallos esperados — se modelan con `Result.fail()`.
@@ -31,6 +42,8 @@ export class CrearComentarioReparacionUseCase {
   constructor(
     private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById'>,
     private readonly comentarioRepo: Pick<IComentarioReparacionRepository, 'crear'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
   ) {}
 
   async execute(
@@ -39,6 +52,20 @@ export class CrearComentarioReparacionUseCase {
     const ticketEdilicia = await this.ticketEdiliciaRepo.findById(dto.ticketEdiliciaId);
     if (!ticketEdilicia || ticketEdilicia.isDeleted()) {
       return Result.fail(new TicketEdiliciaNoEncontradoError(dto.ticketEdiliciaId));
+    }
+
+    const ticket = await this.ticketRepo.findById(ticketEdilicia.ticketId);
+    if (!ticket || ticket.isDeleted()) {
+      return Result.fail(new TicketNoEncontradoError(ticketEdilicia.ticketId));
+    }
+    const editable = await this.verificadorEditable.verificar(ticket);
+    if (editable.isFail()) {
+      const error = editable.getError();
+      return Result.fail(
+        error instanceof TareaTicketNoEditableError
+          ? new ComentarioReparacionNoPermitidoError(error.motivo)
+          : error,
+      );
     }
 
     const comentario = ComentarioReparacionEntity.create({

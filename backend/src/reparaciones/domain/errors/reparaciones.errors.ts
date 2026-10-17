@@ -111,3 +111,20 @@ export class ReparacionNoEditableError extends DomainError {
     );
   }
 }
+
+/**
+ * La reparación no acepta comentarios nuevos (odd/ticket-cerrado-solo-lectura, S3): su ticket
+ * está CERRADO o CANCELADO, o está bloqueada por una compra en curso. Leer sigue permitido.
+ * → HTTP 422.
+ */
+export class ComentarioReparacionNoPermitidoError extends DomainError {
+  readonly code = 'COMENTARIO_REPARACION_NO_PERMITIDO';
+
+  constructor(readonly motivo: 'cerrado' | 'cancelado' | 'bloqueado') {
+    super(
+      motivo === 'bloqueado'
+        ? 'La reparación está bloqueada por una compra en curso y no acepta comentarios nuevos.'
+        : `El ticket está ${motivo} y no acepta comentarios nuevos.`,
+    );
+  }
+}

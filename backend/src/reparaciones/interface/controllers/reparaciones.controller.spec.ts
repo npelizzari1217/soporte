@@ -30,6 +30,7 @@ import {
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
   ReparacionNoEditableError,
+  ComentarioReparacionNoPermitidoError,
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -369,6 +370,20 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       await expect(
         controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('mapea ComentarioReparacionNoPermitidoError → 422 con el motivo (odd/ticket-cerrado-solo-lectura)', async () => {
+      const { controller, crearComentarioUseCase } = buildController();
+      crearComentarioUseCase.execute.mockResolvedValue(
+        Result.fail(new ComentarioReparacionNoPermitidoError('cerrado')),
+      );
+
+      await expect(
+        controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
+      ).rejects.toMatchObject({
+        status: 422,
+        message: 'El ticket está cerrado y no acepta comentarios nuevos.',
+      });
     });
 
     it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
@@ -755,8 +770,8 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 5 clases de error (ReparacionNoEditableError se sumó en odd/detalle-ticket-legible)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(5);
+  it('el catálogo tiene EXACTAMENTE 6 clases de error (ComentarioReparacionNoPermitidoError se sumó en odd/ticket-cerrado-solo-lectura)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(6);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -787,6 +802,12 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     [
       'ReparacionNoEditableError',
       () => new ReparacionesErrors.ReparacionNoEditableError('BLOQUEADA'),
+      422,
+    ],
+    // odd/ticket-cerrado-solo-lectura (S3): el ticket está cerrado/cancelado o la reparación bloqueada.
+    [
+      'ComentarioReparacionNoPermitidoError',
+      () => new ReparacionesErrors.ComentarioReparacionNoPermitidoError('bloqueado'),
       422,
     ],
   ];
