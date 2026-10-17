@@ -48,3 +48,10 @@ tareas). Rama apilada sobre `feat/estado-por-tareas` (usa `ITicketRepository.blo
   engancha en `findById` para asignar y asignar-en-proceso (lectura previa a la tx) y en `bloquear` para
   transicionar y editar (ya no leen nada antes del lock), siempre en una transacción propia. RED
   observado con el `asignar-ticket.use-case.ts` anterior: pisaba el RESUELTO.
+- 2026-10-17, cierre: suite completa backend 746 archivos, 8946 tests, lint 0. El verificador
+  independiente (`gentle-ai-verify`) no arrancó (puente al modelo sin respuesta, 4 min): se reporta no
+  disponible, sin reintento. Revisión nativa RDD (`review-e3ea24ee306bfe28`, riesgo medio, risk +
+  reliability, rango `feat/estado-por-tareas..HEAD`): aprobada y acusada, tres observaciones
+  informativas: las validaciones de catálogo de editar y la resolución de ids de asignar quedan antes
+  de la tx (deliberado: no dependen del ticket), y un assert duplicado en el spec de transicionar,
+  corregido en este commit.

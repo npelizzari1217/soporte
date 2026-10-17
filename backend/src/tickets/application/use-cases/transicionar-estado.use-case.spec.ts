@@ -480,7 +480,6 @@ describe('TransicionarEstadoUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
     expect(ticket.estadoId).toBe('estado-nuevo-uuid'); // sin mutar
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
-    expect(c.ticketRepo.save).not.toHaveBeenCalled();
     expect(c.operacionRepo.save).not.toHaveBeenCalled();
   });
 
