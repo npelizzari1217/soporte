@@ -67,3 +67,7 @@ arriba de la lista, y cada tarjeta lleva en modo claro un fondo pastel propio. E
   completo y verifica el refresco.
 - 2026-10-17, T4: roadmap (decisión + deuda de Ayuda). Ningún artículo de Ayuda quedó falso: el de
   reparaciones no afirmaba que no se pudiera editar; la columna nueva queda como deuda anotada.
+- 2026-10-17, cierre (sobre `09bd799c`, tras un cuelgue de Pi que interrumpió la verificación): las seis
+  compuertas en verde. Backend: lint 0, typecheck 0, tests 747 archivos / 8967 pasan. Frontend: lint 0,
+  type-check 0, tests 274 archivos / 2323 pasan. Los `CORREO_CLIENTE_ERROR` en el log son el adapter
+  de correo fallando a propósito en sus specs, no un fallo. Pendiente del dueño: push, PR y merge.
