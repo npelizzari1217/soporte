@@ -2,7 +2,9 @@ import { beforeEach, describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { NextRequest } from "next/server";
-import { GET, POST, PATCH, DELETE } from "./route";
+import * as route from "./route";
+
+const { GET, POST, PATCH, DELETE } = route;
 
 /**
  * Generic BFF proxy — `/api/{...path}` forwards authenticated requests to
@@ -188,6 +190,36 @@ describe("/api/[...path] generic BFF proxy", () => {
 
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual({ statusCode: 422, message: "Transición inválida" });
+  });
+
+  // Regresión: el handler exportaba GET/POST/PATCH/DELETE pero no PUT, así que Next
+  // respondía 405 por su cuenta y los cuatro PUT de la app (reglas de asignación,
+  // política 2FA, horario laboral y webhook) nunca llegaban al backend.
+  it("PUT: forwards the JSON body with the bearer and returns the backend response (reglas-asignacion, politica-2fa, horario-laboral, webhook)", async () => {
+    let capturedAuth: string | null = null;
+    let capturedBody: unknown = null;
+    server.use(
+      http.put(`${BACKEND}/reglas-asignacion/tipo-1`, async ({ request }) => {
+        capturedAuth = request.headers.get("authorization");
+        capturedBody = await request.json();
+        return HttpResponse.json({ tipoId: "tipo-1", responsableId: "user-1", estado: "VALIDA" }, { status: 200 });
+      }),
+    );
+
+    const req = new NextRequest("http://localhost/api/reglas-asignacion/tipo-1", {
+      method: "PUT",
+      headers: { cookie: "at=token123", "content-type": "application/json" },
+      body: JSON.stringify({ responsableId: "user-1" }),
+    });
+    expect(typeof route.PUT).toBe("function");
+    const res = await route.PUT(req, {
+      params: Promise.resolve({ path: ["reglas-asignacion", "tipo-1"] }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ tipoId: "tipo-1", responsableId: "user-1", estado: "VALIDA" });
+    expect(capturedAuth).toBe("Bearer token123");
+    expect(capturedBody).toEqual({ responsableId: "user-1" });
   });
 
   it("DELETE: backend 204 No Content → proxy returns 204 without attempting a JSON parse", async () => {

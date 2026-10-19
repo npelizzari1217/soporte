@@ -121,6 +121,12 @@ export async function POST(request: NextRequest, { params }: RouteParams): Promi
   return proxy(request, params);
 }
 
+// Sin este export, Next responde 405 por su cuenta y el PUT nunca llega al backend:
+// reglas de asignacion, politica 2FA, horario laboral y webhook quedaban rotos en prod.
+export async function PUT(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
+  return proxy(request, params);
+}
+
 export async function PATCH(request: NextRequest, { params }: RouteParams): Promise<NextResponse> {
   return proxy(request, params);
 }
