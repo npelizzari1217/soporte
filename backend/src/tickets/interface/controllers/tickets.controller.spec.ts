@@ -30,6 +30,7 @@ import { SolicitanteExternoEntity } from '../../domain/entities/solicitante-exte
 import {
   TicketNoEncontradoError,
   TicketBloqueadoParaEdicionError,
+  TipoTicketNoPermitidoEnAltaError,
 } from '../../domain/errors/tickets.errors';
 import * as TicketsErrors from '../../domain/errors/tickets.errors';
 import { CrearTicketUseCase } from '../../application/use-cases/crear-ticket.use-case';
@@ -457,6 +458,31 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     expect(crearTicket.execute).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ ubicacion: null, sectorId: null }),
+    );
+  });
+
+  it('create: exige tipos del módulo TICKETS y responde 422 a un tipo de otro módulo (S3)', async () => {
+    const crearTicket = {
+      execute: vi
+        .fn<CrearTicketUseCase['execute']>()
+        .mockResolvedValue(
+          Result.fail(new TipoTicketNoPermitidoEnAltaError('MANTENIMIENTO', 'TICKETS')),
+        ),
+    };
+    const { controller } = buildController({ crearTicket });
+
+    const promesa = controller.create(ADMINISTRADOR, {
+      titulo: 'X',
+      tipoId: 't1',
+      prioridadId: 'p1',
+    });
+
+    await expect(promesa).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(promesa).rejects.toThrow(
+      'El tipo de ticket "MANTENIMIENTO" no se puede usar en el alta del módulo TICKETS.',
+    );
+    expect(crearTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ moduloRequerido: 'TICKETS' }),
     );
   });
 
@@ -993,8 +1019,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 27 clases de error (26 previas + SectorTicketInexistenteError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(27);
+  it('el catálogo tiene EXACTAMENTE 28 clases de error (27 previas + TipoTicketNoPermitidoEnAltaError)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(28);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -1099,6 +1125,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'SectorTicketInexistenteError',
       () => new TicketsErrors.SectorTicketInexistenteError('sector-x'),
+      422,
+    ],
+    [
+      'TipoTicketNoPermitidoEnAltaError',
+      () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('MANTENIMIENTO', 'TICKETS'),
       422,
     ],
   ];

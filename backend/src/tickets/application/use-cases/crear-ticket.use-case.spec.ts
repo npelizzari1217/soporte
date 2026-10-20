@@ -33,6 +33,7 @@ import {
   SinCicloActivoError,
   SecuenciaAgotadaError,
   SectorTicketInexistenteError,
+  TipoTicketNoPermitidoEnAltaError,
 } from '../../domain/errors/tickets.errors';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -385,6 +386,45 @@ describe('CrearTicketUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
     expect(c.txRunner.run).not.toHaveBeenCalled();
+  });
+
+  describe('moduloRequerido (S3, odd/tasks/tipos-ticket-por-modulo.md)', () => {
+    const tipoEdilicia = () =>
+      TipoTicketEntity.create(
+        { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA', activo: true },
+        'tipo-soporte-uuid',
+      );
+
+    it('tipo de otro módulo → TipoTicketNoPermitidoEnAltaError (422), sin abrir la tx', async () => {
+      const c = makeCollaborators();
+      c.tipoTicketRepo.findById.mockResolvedValue(tipoEdilicia());
+
+      const result = await c.useCase.execute(baseDto({ moduloRequerido: 'TICKETS' }));
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TipoTicketNoPermitidoEnAltaError);
+      expect(result.getError().message).toBe(
+        'El tipo de ticket "MANTENIMIENTO" no se puede usar en el alta del módulo TICKETS.',
+      );
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('tipo del módulo requerido → crea el ticket', async () => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute(baseDto({ moduloRequerido: 'TICKETS' }));
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('sin moduloRequerido (preventivo, API de integraciones) acepta un tipo de cualquier módulo', async () => {
+      const c = makeCollaborators();
+      c.tipoTicketRepo.findById.mockResolvedValue(tipoEdilicia());
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.isOk()).toBe(true);
+    });
   });
 
   it('prioridadId inexistente en el catálogo del tenant → PrioridadNoEncontradaError (422)', async () => {

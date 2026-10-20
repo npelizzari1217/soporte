@@ -51,6 +51,21 @@ export class TipoTicketNoEncontradoError extends DomainError {
 }
 
 /**
+ * TipoTicketNoPermitidoEnAltaError — el tipo existe y está activo, pero el alta que lo recibe no
+ * lo admite: es de otro módulo, o es un tipo reservado a otro flujo (PREVENTIVO lo genera solo
+ * el barrido). → HTTP 422 en la capa de presentación.
+ */
+export class TipoTicketNoPermitidoEnAltaError extends DomainError {
+  readonly code = 'TIPO_TICKET_NO_PERMITIDO_EN_ALTA';
+
+  constructor(tipoCodigo: string, moduloAlta: string) {
+    super(
+      `El tipo de ticket "${tipoCodigo}" no se puede usar en el alta del módulo ${moduloAlta}.`,
+    );
+  }
+}
+
+/**
  * EstadoDestinoInvalidoError — el `nuevoEstadoCodigo` recibido en una
  * transición no existe en el catálogo de estados del tenant (6 códigos
  * fijos, ADR-1).
