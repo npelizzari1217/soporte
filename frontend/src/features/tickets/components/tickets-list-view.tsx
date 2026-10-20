@@ -38,6 +38,8 @@ import { Select } from "@/components/ui/select";
 import { TicketCreateDialog } from "./ticket-create-dialog";
 import { ExportarTicketsButton } from "./exportar-tickets-button";
 import { StatusBadge, etiquetaOpcionEstado, type TicketEstado } from "@/components/ui/status-badge";
+import { Ticket as TicketIcon } from "lucide-react";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
@@ -120,8 +122,20 @@ export function TicketsListView() {
   const estadoCodigoMap = useMemo(() => buildIdToCodigoMap(estadosQuery.data ?? []), [estadosQuery.data]);
 
   const columns: Column<Ticket>[] = [
-    { key: "numero", header: "Número" },
-    { key: "titulo", header: "Título" },
+    {
+      key: "titulo",
+      header: "Ticket",
+      // Título como dato principal y, debajo, número y alta: lo que se busca
+      // primero se lee primero, sin perder la referencia que se dicta por teléfono.
+      render: (row) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-semibold text-foreground">{row.titulo}</span>
+          <span className="text-xs text-muted-foreground">
+            {row.numero} · {formatearInstante(row.createdAt)}
+          </span>
+        </div>
+      ),
+    },
     {
       key: "estadoId",
       header: "Estado",
@@ -140,7 +154,15 @@ export function TicketsListView() {
       // removido del tenant); en ambos casos mostramos "Sin asignar".
       render: (row) =>
         row.asignadoId && row.asignadoNombre ? (
-          `${row.asignadoNombre} ${row.asignadoApellido ?? ""}`.trim()
+          <span className="flex items-center gap-2">
+            <span
+              aria-hidden="true"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+            >
+              {iniciales(row.asignadoNombre, row.asignadoApellido)}
+            </span>
+            <span>{`${row.asignadoNombre} ${row.asignadoApellido ?? ""}`.trim()}</span>
+          </span>
         ) : (
           <span className="text-muted-foreground">Sin asignar</span>
         ),
@@ -155,6 +177,8 @@ export function TicketsListView() {
     <div>
       <PageHeader
         title="Tickets"
+        icon={TicketIcon}
+        description="Pedidos de soporte del ciclo, con su estado y responsable"
         actions={
           <>
             {/*
@@ -172,6 +196,7 @@ export function TicketsListView() {
       />
 
       <FilterBar
+        variante="tarjeta"
         searchPlaceholder="Buscar por título o descripción…"
         searchValue={filtros.busqueda ?? ""}
         onSearchChange={(value) => updateFiltros({ busqueda: value })}
@@ -282,6 +307,7 @@ export function TicketsListView() {
           emptyDescription="Todavía no hay tickets registrados."
           hayFiltrosActivos={hayFiltrosActivos}
           onLimpiarFiltros={limpiarFiltros}
+          variante="tarjeta"
         />
       </div>
 
@@ -295,4 +321,9 @@ export function TicketsListView() {
       )}
     </div>
   );
+}
+
+/** Iniciales del responsable para el avatar; el nombre completo va al lado. */
+function iniciales(nombre: string, apellido: string | null | undefined): string {
+  return `${nombre.charAt(0)}${apellido?.charAt(0) ?? ""}`.toUpperCase();
 }
