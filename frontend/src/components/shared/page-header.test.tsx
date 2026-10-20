@@ -30,4 +30,9 @@ describe("PageHeader", () => {
     const { container } = render(<PageHeader title="Tickets" />);
     expect(container.querySelector("svg")).not.toBeInTheDocument();
   });
+
+  it("without icon → keeps the original heading size", () => {
+    render(<PageHeader title="Tickets" />);
+    expect(screen.getByRole("heading", { name: "Tickets" })).toHaveClass("text-2xl", "font-semibold");
+  });
 });

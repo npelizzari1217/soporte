@@ -97,8 +97,9 @@ describe("TicketsListView", () => {
           items: [
             { ...TICKET, id: "t1", titulo: "Con técnico", asignadoId: "u9", asignadoNombre: "Ana", asignadoApellido: "Pérez" },
             { ...TICKET, id: "t2", titulo: "Sin técnico", asignadoId: null },
+            { ...TICKET, id: "t3", titulo: "Solo nombre", asignadoId: "u8", asignadoNombre: "beto", asignadoApellido: null },
           ],
-          total: 2,
+          total: 3,
           pagina: 1,
           porPagina: 10,
         }),
@@ -107,6 +108,9 @@ describe("TicketsListView", () => {
     renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
     expect(screen.getByText("AP")).toBeInTheDocument();
+    // Sin apellido, el avatar lleva solo la inicial del nombre.
+    expect(screen.getByText("beto")).toBeInTheDocument();
+    expect(screen.getByText("B")).toBeInTheDocument();
     expect(screen.getByText("Sin asignar")).toBeInTheDocument();
   });
 

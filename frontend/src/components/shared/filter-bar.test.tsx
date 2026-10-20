@@ -70,4 +70,12 @@ describe("FilterBar", () => {
     );
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
   });
+
+  it("por defecto conserva la barra plana; tarjeta solo si se pide", () => {
+    const { container, rerender } = render(<FilterBar />);
+    expect(container.firstElementChild).toHaveClass("rounded-lg", "px-3", "py-2");
+    expect(container.firstElementChild).not.toHaveClass("rounded-2xl", "shadow-sm");
+    rerender(<FilterBar variante="tarjeta" />);
+    expect(container.firstElementChild).toHaveClass("rounded-2xl", "shadow-sm");
+  });
 });
