@@ -8,8 +8,18 @@
  *
  * Tarea: T8.6, T9.6.
  */
-import { Transform } from 'class-transformer';
-import { IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import {
   TICKET_TITULO_MAX_LENGTH,
   TicketEntity,
@@ -22,7 +32,11 @@ import {
   COMENTARIO_TEXTO_MAX_LENGTH,
   ComentarioReparacionEntity,
 } from '../../domain/entities/comentario-reparacion.entity';
-import { ReparacionConTicket } from '../../application/use-cases/listar-reparaciones.use-case';
+import {
+  FILTROS_BLOQUEO,
+  FiltroBloqueo,
+  ReparacionConTicket,
+} from '../../application/use-cases/listar-reparaciones.use-case';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
@@ -201,6 +215,37 @@ export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketRe
   bloqueada: boolean;
   /** Compras que frenan la reparación. `[]` cuando no está bloqueada. */
   comprasQueBloquean: CompraQueBloqueaResponseDto[];
+}
+
+/**
+ * Query params de `GET /reparaciones` (odd/reparaciones-paginadas, S1): mismos
+ * topes de paginación que `GET /tickets`, más el filtro de bloqueo.
+ */
+export class ListReparacionesQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  pagina?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  porPagina?: number;
+
+  @IsOptional()
+  @IsIn(FILTROS_BLOQUEO)
+  bloqueo?: FiltroBloqueo;
+}
+
+/** Response de `GET /reparaciones`: una página y su metadata (forma de `ListTicketsResponseDto`). */
+export interface ListReparacionesResponseDto {
+  items: ReparacionListItemResponseDto[];
+  total: number;
+  pagina: number;
+  porPagina: number;
 }
 
 /** Identidad mínima de una compra que bloquea, para el chip del listado. */

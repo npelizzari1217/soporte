@@ -39,6 +39,25 @@ export interface ReparacionConTicket {
   sectorNombre: string | null;
 }
 
+/** Filtro de bloqueo del listado paginado (odd/reparaciones-paginadas, S1). */
+export const FILTROS_BLOQUEO = ['TODAS', 'BLOQUEADAS', 'NO_BLOQUEADAS'] as const;
+export type FiltroBloqueo = (typeof FILTROS_BLOQUEO)[number];
+
+/** Pedido de una página del listado. */
+export interface PedidoPaginaReparaciones {
+  pagina: number;
+  porPagina: number;
+  bloqueo: FiltroBloqueo;
+}
+
+/** Una página del listado, con el total de las que cumplen el filtro. */
+export interface PaginaReparaciones {
+  items: ReparacionConTicket[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+}
+
 /**
  * ListarReparacionesUseCase — caso de uso de consulta para los tickets
  * edilicios del tenant (F3-E1).
@@ -59,7 +78,8 @@ export interface ReparacionConTicket {
  * segunda vuelta porque los ids salen de los tickets base. Las cuatro resoluciones por id
  * se piden POR LOTE y ANTES del loop; el loop sólo lee de los `Map` que
  * devuelven. Antes esto era un N+1 de `1 + 2N` consultas (ticket base y
- * subtareas fila por fila).
+ * subtareas fila por fila). El listado paginado aplica esto solo a la página
+ * y, con filtro de bloqueo, suma UNA consulta de compras vinculadas sobre todas.
  *
  * Tarea: T8.5, WU3 (sdd/reparacion-bloqueada-por-compra).
  */
@@ -79,10 +99,63 @@ export class ListarReparacionesUseCase {
     private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,
   ) {}
 
+  /**
+   * Listado COMPLETO, hidratado. Lo usa la exportación, que siempre trae todas
+   * las reparaciones (odd/reparaciones-paginadas, S4).
+   *
+   * @returns Todas las reparaciones del tenant, la más reciente primero.
+   */
   async execute(): Promise<Result<ReparacionConTicket[], DomainError>> {
     const satelites = await this.ediliciaRepo.findAll();
+    return Result.ok(await this.hidratar(satelites));
+  }
+
+  /**
+   * Una página del listado (odd/reparaciones-paginadas, S1-S3).
+   *
+   * Los satélites son filas livianas y se traen todos para poder ordenar,
+   * contar y filtrar; lo caro —ticket base, tareas, comentarios, compras y
+   * sectores— se resuelve solo para la página. El bloqueo no es una columna:
+   * se deriva de las compras vinculadas, así que con un filtro de bloqueo se
+   * consulta el vínculo de todas ANTES de cortar; filtrar después de paginar
+   * dejaría páginas cortas y un `total` falso.
+   *
+   * `total` cuenta satélites, así que un huérfano sin ticket base (no debería
+   * existir) suma al total aunque no aparezca en su página.
+   *
+   * @param pedido Página, tamaño y filtro de bloqueo.
+   * @returns La página pedida y el total de reparaciones que cumplen el filtro.
+   */
+  async executePaginado(
+    pedido: PedidoPaginaReparaciones,
+  ): Promise<Result<PaginaReparaciones, DomainError>> {
+    const { pagina, porPagina, bloqueo } = pedido;
+    const satelites = await this.ediliciaRepo.findAll();
+
+    let candidatos = satelites;
+    if (bloqueo !== 'TODAS' && satelites.length > 0) {
+      const vinculadas = await this.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds(
+        satelites.map((satelite) => satelite.id),
+      );
+      const quiereBloqueadas = bloqueo === 'BLOQUEADAS';
+      candidatos = satelites.filter(
+        (satelite) =>
+          comprasQueBloquean(vinculadas.get(satelite.id) ?? []).length > 0 === quiereBloqueadas,
+      );
+    }
+
+    const desde = (pagina - 1) * porPagina;
+    const items = await this.hidratar(candidatos.slice(desde, desde + porPagina));
+    return Result.ok({ items, total: candidatos.length, pagina, porPagina });
+  }
+
+  /**
+   * Resuelve ticket base, tareas, comentarios, compras y sector de los
+   * satélites dados, en el orden recibido y salteando huérfanos.
+   */
+  private async hidratar(satelites: TicketEdiliciaEntity[]): Promise<ReparacionConTicket[]> {
     if (satelites.length === 0) {
-      return Result.ok([]);
+      return [];
     }
 
     const ediliciaIds = satelites.map((satelite) => satelite.id);
@@ -116,8 +189,8 @@ export class ListarReparacionesUseCase {
 
     const items: ReparacionConTicket[] = [];
 
-    // El orden del resultado es el de `findAll`: se recorren los satélites,
-    // no las claves de los Map.
+    // El orden del resultado es el de los satélites recibidos: se recorren
+    // ellos, no las claves de los Map.
     for (const ticketEdilicia of satelites) {
       const ticket = ticketsPorId.get(ticketEdilicia.ticketId);
       // Satélite huérfano: sin ticket base no hay item, igual que cuando esto
@@ -145,6 +218,6 @@ export class ListarReparacionesUseCase {
       });
     }
 
-    return Result.ok(items);
+    return items;
   }
 }

@@ -99,7 +99,8 @@ import {
   ComentarioReparacionResponseDto,
   CreateComentarioReparacionHttpDto,
   CreateTicketEdilicioHttpDto,
-  ReparacionListItemResponseDto,
+  ListReparacionesQueryDto,
+  ListReparacionesResponseDto,
   TicketEdiliciaConTicketResponseDto,
   VincularCompraHttpDto,
   EditarReparacionHttpDto,
@@ -107,6 +108,9 @@ import {
   toReparacionListItemResponseDto,
   toTicketEdiliciaResponseDto,
 } from '../dtos/reparaciones.dto';
+
+/** Tamaño de página por defecto del listado, el mismo que `GET /tickets`. */
+const POR_PAGINA_DEFAULT = 20;
 
 /**
  * Mapea un `DomainError` de los use cases de reparaciones a la
@@ -225,13 +229,23 @@ export class ReparacionesController {
 
   /**
    * GET /reparaciones
-   * Lista los tickets edilicios del tenant (ticket base + satélite + ubicación).
+   * Una página de los tickets edilicios del tenant (ticket base + satélite +
+   * ubicación), la más reciente primero (odd/reparaciones-paginadas).
+   *
+   * @param query `pagina` (default 1), `porPagina` (default 20, máx. 100) y
+   *   `bloqueo` (default `TODAS`).
+   * @returns La página y su metadata, con la forma de `GET /tickets`.
    */
   @Get()
   @RequiereAcciones('EDILICIA:LECTURA')
-  async listar(): Promise<ReparacionListItemResponseDto[]> {
-    const result = await this.listarReparacionesUseCase.execute();
-    return result.getValue().map(toReparacionListItemResponseDto);
+  async listar(@Query() query: ListReparacionesQueryDto): Promise<ListReparacionesResponseDto> {
+    const result = await this.listarReparacionesUseCase.executePaginado({
+      pagina: query.pagina ?? 1,
+      porPagina: query.porPagina ?? POR_PAGINA_DEFAULT,
+      bloqueo: query.bloqueo ?? 'TODAS',
+    });
+    const pagina = result.getValue();
+    return { ...pagina, items: pagina.items.map(toReparacionListItemResponseDto) };
   }
 
   /**

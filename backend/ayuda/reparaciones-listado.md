@@ -42,14 +42,26 @@ cambia por estar bloqueada o no.
 ## Filtro por bloqueo
 
 Arriba del listado hay un selector **Bloqueo** con tres opciones: **Todas**,
-**Bloqueadas** y **No bloqueadas**. Elegir una opción distinta de "Todas"
-oculta las filas que no corresponden — es instantáneo, porque filtra sobre
-los datos que ya están cargados en la pantalla, sin volver a pedirle nada al
-servidor.
+**Bloqueadas** y **No bloqueadas**. Al elegir una opción distinta de "Todas",
+el listado se vuelve a pedir al servidor con ese filtro y muestra solo las
+reparaciones que corresponden, en todas las páginas. Cambiar el filtro vuelve
+a la primera página.
 
-Si necesitás encontrar una reparación puntual por otro dato (número, título,
-ubicación), seguí usando la búsqueda del navegador (Ctrl+F) sobre la tabla
-cargada.
+## Páginas
+
+El listado muestra **10 reparaciones por página**, la más reciente primero.
+Debajo de la tabla se indica en qué página se está ("Página 1 de 4") y los
+botones **Anterior** y **Siguiente** permiten recorrer el resto.
+
+La página y el filtro quedan en la dirección del navegador: al recargar, al
+volver atrás o al compartir el enlace se ve la misma página con el mismo
+filtro. Si una página queda vacía (por ejemplo, un enlace viejo a una página
+que ya no existe), el listado ofrece **Limpiar filtros** para volver al
+comienzo.
+
+La búsqueda del navegador (Ctrl+F) solo encuentra lo que está en la página
+visible. Para buscar una reparación puntual en todo el listado conviene
+exportarlo a Excel (ver abajo) y buscar en el archivo.
 
 ## Exportar a Excel
 

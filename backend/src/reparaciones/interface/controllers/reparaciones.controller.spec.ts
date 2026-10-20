@@ -37,7 +37,10 @@ import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { unstubbed } from '../../../testing/mocks';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { CrearTicketEdilicioUseCase } from '../../application/use-cases/crear-ticket-edilicio.use-case';
-import { ListarReparacionesUseCase } from '../../application/use-cases/listar-reparaciones.use-case';
+import {
+  ListarReparacionesUseCase,
+  type ReparacionConTicket,
+} from '../../application/use-cases/listar-reparaciones.use-case';
 import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
@@ -238,6 +241,34 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   });
 
   describe('GET /reparaciones', () => {
+    /** Envuelve los items en la forma de página que devuelve el caso de uso. */
+    function pagina(items: ReparacionConTicket[]) {
+      return { items, total: items.length, pagina: 1, porPagina: 20 };
+    }
+
+    it('pide la página con los defaults (1, 20, TODAS) y devuelve items mapeados con la metadata', async () => {
+      const { controller, listarReparacionesUseCase } = buildController();
+      const spy = vi
+        .spyOn(listarReparacionesUseCase.caso, 'executePaginado')
+        .mockResolvedValue(Result.ok({ items: [], total: 57, pagina: 1, porPagina: 20 }));
+
+      const respuesta = await controller.listar({});
+
+      expect(spy).toHaveBeenCalledWith({ pagina: 1, porPagina: 20, bloqueo: 'TODAS' });
+      expect(respuesta).toEqual({ items: [], total: 57, pagina: 1, porPagina: 20 });
+    });
+
+    it('pasa al caso de uso la página, el tamaño y el filtro de la query', async () => {
+      const { controller, listarReparacionesUseCase } = buildController();
+      const spy = vi
+        .spyOn(listarReparacionesUseCase.caso, 'executePaginado')
+        .mockResolvedValue(Result.ok({ items: [], total: 0, pagina: 3, porPagina: 5 }));
+
+      await controller.listar({ pagina: 3, porPagina: 5, bloqueo: 'BLOQUEADAS' });
+
+      expect(spy).toHaveBeenCalledWith({ pagina: 3, porPagina: 5, bloqueo: 'BLOQUEADAS' });
+    });
+
     it('lista las reparaciones del tenant', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
@@ -247,22 +278,24 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         { ticketId: ticket.id, ubicacion: 'Edificio Central' },
         'edilicia-uuid',
       );
-      listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([
-          {
-            ticket,
-            ticketEdilicia,
-            subtareas: [],
-            porcentajeAvance: 0,
-            cantidadComentarios: 2,
-            bloqueada: false,
-            comprasQueBloquean: [],
-            sectorNombre: 'Mantenimiento',
-          },
-        ]),
+      vi.spyOn(listarReparacionesUseCase.caso, 'executePaginado').mockResolvedValue(
+        Result.ok(
+          pagina([
+            {
+              ticket,
+              ticketEdilicia,
+              subtareas: [],
+              porcentajeAvance: 0,
+              cantidadComentarios: 2,
+              bloqueada: false,
+              comprasQueBloquean: [],
+              sectorNombre: 'Mantenimiento',
+            },
+          ]),
+        ),
       );
 
-      const result = await controller.listar();
+      const { items: result } = await controller.listar({});
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('edilicia-uuid');
@@ -287,22 +320,24 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         { ticketId: ticket.id, descripcion: 'Cambiar cañería', orden: 0 },
         'subtarea-uuid',
       );
-      listarReparacionesUseCase.execute.mockResolvedValue(
-        Result.ok([
-          {
-            ticket,
-            ticketEdilicia,
-            subtareas: [tarea],
-            porcentajeAvance: 37.5,
-            cantidadComentarios: 0,
-            bloqueada: false,
-            comprasQueBloquean: [],
-            sectorNombre: null,
-          },
-        ]),
+      vi.spyOn(listarReparacionesUseCase.caso, 'executePaginado').mockResolvedValue(
+        Result.ok(
+          pagina([
+            {
+              ticket,
+              ticketEdilicia,
+              subtareas: [tarea],
+              porcentajeAvance: 37.5,
+              cantidadComentarios: 0,
+              bloqueada: false,
+              comprasQueBloquean: [],
+              sectorNombre: null,
+            },
+          ]),
+        ),
       );
 
-      const result = await controller.listar();
+      const { items: result } = await controller.listar({});
 
       expect(result[0].porcentajeAvance).toBe(37.5);
       expect(result[0]).not.toHaveProperty('personalAsignadoId');

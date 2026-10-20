@@ -7,6 +7,11 @@ import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
 
+/** Envuelve filas en la página que devuelve `GET /reparaciones` (odd/reparaciones-paginadas). */
+function paginaDe<T>(items: T[]) {
+  return { items, total: items.length, pagina: 1, porPagina: 10 };
+}
+
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 function mockComprasActivas() {
@@ -117,7 +122,7 @@ describe("VincularCompraDialog", () => {
         bodyRecibido = await request.json();
         return new HttpResponse(null, { status: 201 });
       }),
-      http.get("/api/reparaciones", () => HttpResponse.json([])),
+      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([]))),
     );
     const user = userEvent.setup();
 
@@ -148,7 +153,7 @@ describe("VincularCompraDialog", () => {
         compraIdBorrada = "compra1";
         return new HttpResponse(null, { status: 204 });
       }),
-      http.get("/api/reparaciones", () => HttpResponse.json([])),
+      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([]))),
     );
     const user = userEvent.setup();
 

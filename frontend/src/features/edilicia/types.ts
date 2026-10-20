@@ -128,3 +128,21 @@ export interface ComentarioReparacion {
 export interface CrearComentarioReparacionDto {
   texto: string;
 }
+
+/** Filtro de bloqueo del listado; lo resuelve el servidor (odd/reparaciones-paginadas). */
+export type FiltroBloqueo = "TODAS" | "BLOQUEADAS" | "NO_BLOQUEADAS";
+
+/** Filtros de `GET /reparaciones`, espejo de la URL del listado. */
+export interface ReparacionesFiltros {
+  pagina: number;
+  porPagina: number;
+  bloqueo?: FiltroBloqueo;
+}
+
+/** Response de `GET /reparaciones`: una página y su metadata (misma forma que tickets). */
+export interface ListReparacionesResponse {
+  items: ReparacionListItem[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+}

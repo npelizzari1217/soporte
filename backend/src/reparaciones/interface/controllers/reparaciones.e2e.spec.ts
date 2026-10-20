@@ -54,7 +54,10 @@ import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity'
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
-import { ReparacionListItemResponseDto } from '../dtos/reparaciones.dto';
+import {
+  ListReparacionesResponseDto,
+  ReparacionListItemResponseDto,
+} from '../dtos/reparaciones.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 
 const MASTER_TEST_URL =
@@ -388,13 +391,40 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       );
       expect(vincular.status).toBe(201);
 
-      const listado = await httpGet<ReparacionListItemResponseDto[]>(
+      const listado = await httpGet<ListReparacionesResponseDto>(
         `${baseUrl}/reparaciones`,
         bearer(actor.accessToken),
       );
-      const fila = listado.data.find((r) => r.id === reparacionId);
+      const fila = listado.data.items.find((r) => r.id === reparacionId);
       expect(fila?.bloqueada).toBe(true);
       expect(fila?.comprasQueBloquean.map((c) => c.id)).toContain(compraId);
+
+      // El filtro de bloqueo se resuelve en el servidor (odd/reparaciones-paginadas, S1-S3):
+      // la reparación aparece con BLOQUEADAS y no con NO_BLOQUEADAS, y el total acompaña.
+      const bloqueadas = await httpGet<ListReparacionesResponseDto>(
+        `${baseUrl}/reparaciones?bloqueo=BLOQUEADAS&porPagina=100`,
+        bearer(actor.accessToken),
+      );
+      const libres = await httpGet<ListReparacionesResponseDto>(
+        `${baseUrl}/reparaciones?bloqueo=NO_BLOQUEADAS&porPagina=100`,
+        bearer(actor.accessToken),
+      );
+      expect(bloqueadas.data.items.map((r) => r.id)).toContain(reparacionId);
+      expect(bloqueadas.data.items.every((r) => r.bloqueada)).toBe(true);
+      expect(bloqueadas.data.total).toBe(bloqueadas.data.items.length);
+      expect(libres.data.items.map((r) => r.id)).not.toContain(reparacionId);
+      expect(bloqueadas.data.total + libres.data.total).toBe(listado.data.total);
+    });
+
+    it('GET /reparaciones rechaza con 400 una paginación o un filtro inválidos (odd/reparaciones-paginadas, S1)', async () => {
+      const actor = await crearActorConPermisos(['EDILICIA:LECTURA']);
+      for (const query of ['porPagina=101', 'pagina=0', 'bloqueo=ALGUNAS']) {
+        const respuesta = await httpGet<unknown>(
+          `${baseUrl}/reparaciones?${query}`,
+          bearer(actor.accessToken),
+        );
+        expect(respuesta.status).toBe(400);
+      }
     });
 
     it('404 CompraNoEncontradaError: compraId inexistente, con ambos permisos', async () => {
@@ -506,12 +536,12 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       token: string,
       reparacionId: string,
     ): Promise<ReparacionListItemResponseDto | undefined> {
-      const listado = await httpGet<ReparacionListItemResponseDto[]>(
-        `${baseUrl}/reparaciones`,
+      const listado = await httpGet<ListReparacionesResponseDto>(
+        `${baseUrl}/reparaciones?porPagina=100`,
         bearer(token),
       );
       expect(listado.status).toBe(200);
-      return listado.data.find((r) => r.id === reparacionId);
+      return listado.data.items.find((r) => r.id === reparacionId);
     }
 
     it('el avance del listado sigue a las tareas creadas, completadas y borradas en /tickets/:id/tareas', async () => {

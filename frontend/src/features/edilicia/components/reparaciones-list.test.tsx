@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -7,6 +7,25 @@ import { renderWithProviders, buildUser } from "../../../../test/render-with-pro
 import { ReparacionesList } from "./reparaciones-list";
 import type { ReparacionListItem, SubtareaEdilicia } from "../types";
 import type { TareaTicket } from "@/features/tickets/types";
+
+// El listado lee página y filtro de la URL (odd/reparaciones-paginadas).
+const replaceMock = vi.fn();
+let currentSearch = "";
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: replaceMock }),
+  usePathname: () => "/edilicia",
+  useSearchParams: () => new URLSearchParams(currentSearch),
+}));
+
+beforeEach(() => {
+  currentSearch = "";
+  replaceMock.mockClear();
+});
+
+/** Envuelve filas en la página que devuelve `GET /reparaciones` (odd/reparaciones-paginadas). */
+function paginaDe<T>(items: T[]) {
+  return { items, total: items.length, pagina: 1, porPagina: 10 };
+}
 
 function buildReparacion(overrides: Partial<ReparacionListItem> = {}): ReparacionListItem {
   return {
@@ -40,10 +59,10 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
   it("muestra el conteo en un badge y lo anuncia en el nombre accesible del botón", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep1", numero: "EDI-0001", cantidadComentarios: 3 }),
           buildReparacion({ id: "rep2", numero: "EDI-0002", cantidadComentarios: 1 }),
-        ]),
+        ])),
       ),
     );
 
@@ -63,7 +82,7 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
   it("sin comentarios no renderiza badge y el botón queda sin conteo", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([buildReparacion({ numero: "EDI-0003", cantidadComentarios: 0 })]),
+        HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0003", cantidadComentarios: 0 })])),
       ),
     );
 
@@ -88,7 +107,7 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
   ])("el boton abre el modal (%s)", async (_caso, cantidadComentarios, nombreAccesible) => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([buildReparacion({ id: "rep9", numero: "EDI-0009", cantidadComentarios })]),
+        HttpResponse.json(paginaDe([buildReparacion({ id: "rep9", numero: "EDI-0009", cantidadComentarios })])),
       ),
       http.get("/api/reparaciones/rep9/comentarios", () => HttpResponse.json([])),
     );
@@ -125,9 +144,9 @@ describe("ReparacionesList — indicador de comentarios por fila", () => {
     };
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep7", numero: "EDI-0007", cantidadComentarios: comentarios }),
-        ]),
+        ])),
       ),
       http.get("/api/reparaciones/rep7/comentarios", () =>
         HttpResponse.json(comentarios === 0 ? [] : [nuevo]),
@@ -188,14 +207,14 @@ describe("ReparacionesList — cantidad de subtareas en el botón (odd/ubicacion
   it("muestra la cantidad en un badge y la anuncia en el nombre accesible, en singular y plural", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({
             id: "rep1",
             numero: "EDI-0001",
             subtareas: [buildSubtarea("a"), buildSubtarea("b"), buildSubtarea("c")],
           }),
           buildReparacion({ id: "rep2", numero: "EDI-0002", subtareas: [buildSubtarea("d")] }),
-        ]),
+        ])),
       ),
     );
 
@@ -212,7 +231,7 @@ describe("ReparacionesList — cantidad de subtareas en el botón (odd/ubicacion
 
   it("sin subtareas no renderiza badge y el botón queda sin conteo", async () => {
     server.use(
-      http.get("/api/reparaciones", () => HttpResponse.json([buildReparacion({ numero: "EDI-0003" })])),
+      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0003" })]))),
     );
 
     renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
@@ -227,9 +246,9 @@ describe("ReparacionesList — cantidad de subtareas en el botón (odd/ubicacion
   it("el botón con badge abre el modal de subtareas", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep8", ticketId: "tk8", numero: "EDI-0008", subtareas: [buildSubtarea("a")] }),
-        ]),
+        ])),
       ),
       http.get("/api/tickets/tk8/tareas", () =>
         HttpResponse.json({ items: [], avance: { total: 0, completadas: 0, porcentaje: 0 } }),
@@ -252,10 +271,10 @@ describe("ReparacionesList — columna Sector (odd/ubicacion-sector-ticket, CA4)
   it("muestra el sector por su nombre, con guion cuando no hay, y conserva la ubicación propia", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep1", numero: "EDI-0001", sectorId: "s1", sectorNombre: "Primaria" }),
           buildReparacion({ id: "rep2", numero: "EDI-0002", ubicacion: null }),
-        ]),
+        ])),
       ),
     );
 
@@ -320,9 +339,9 @@ describe("ReparacionesList — el avance de la fila sigue a las tareas", () => {
 
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep5", ticketId: "tk5", numero: "EDI-0005", porcentajeAvance: avance() }),
-        ]),
+        ])),
       ),
       http.get("/api/tickets/tk5/tareas", () =>
         HttpResponse.json({ items: tareas, avance: { total: tareas.length, completadas: completadas(), porcentaje: avance() } }),
@@ -375,7 +394,7 @@ describe("ReparacionesList — chip y filtro de bloqueo por compra", () => {
   it("muestra el chip «Bloqueada» sin número cuando bloqueada es true, y no lo muestra cuando es false", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({
             id: "rep1",
             numero: "EDI-0001",
@@ -386,7 +405,7 @@ describe("ReparacionesList — chip y filtro de bloqueo por compra", () => {
             ],
           }),
           buildReparacion({ id: "rep2", numero: "EDI-0002", bloqueada: false, comprasQueBloquean: [] }),
-        ]),
+        ])),
       ),
     );
 
@@ -404,45 +423,99 @@ describe("ReparacionesList — chip y filtro de bloqueo por compra", () => {
     expect(filaLibre.queryByText("Bloqueada")).not.toBeInTheDocument();
   });
 
-  it("el filtro Bloqueadas/No bloqueadas oculta filas en el cliente SIN volver a consultar al servidor", async () => {
-    let llamadasAlServidor = 0;
+  it("el filtro de bloqueo se pide al servidor: lo lee de la URL y lo manda en la consulta", async () => {
+    const consultas: URLSearchParams[] = [];
     server.use(
-      http.get("/api/reparaciones", () => {
-        llamadasAlServidor += 1;
-        return HttpResponse.json([
-          buildReparacion({
-            id: "rep1",
-            numero: "EDI-0001",
-            bloqueada: true,
-            comprasQueBloquean: [{ id: "compra1", numero: "COM-0001" }],
-          }),
-          buildReparacion({ id: "rep2", numero: "EDI-0002", bloqueada: false, comprasQueBloquean: [] }),
-        ]);
+      http.get("/api/reparaciones", ({ request }) => {
+        consultas.push(new URL(request.url).searchParams);
+        return HttpResponse.json(
+          paginaDe([
+            buildReparacion({
+              id: "rep1",
+              numero: "EDI-0001",
+              bloqueada: true,
+              comprasQueBloquean: [{ id: "compra1", numero: "COM-0001" }],
+            }),
+          ]),
+        );
       }),
     );
+    currentSearch = "bloqueo=BLOQUEADAS&pagina=2";
 
-    const user = userEvent.setup();
     renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
 
     await screen.findByText("EDI-0001");
-    await screen.findByText("EDI-0002");
-    expect(llamadasAlServidor).toBe(1);
+    expect(consultas.at(-1)?.get("bloqueo")).toBe("BLOQUEADAS");
+    expect(consultas.at(-1)?.get("pagina")).toBe("2");
+    expect(consultas.at(-1)?.get("porPagina")).toBe("10");
+    expect(screen.getByLabelText(/bloqueo/i)).toHaveValue("BLOQUEADAS");
+  });
 
-    await user.selectOptions(screen.getByLabelText(/bloqueo/i), "BLOQUEADAS");
-    await screen.findByText("EDI-0001");
-    expect(screen.queryByText("EDI-0002")).not.toBeInTheDocument();
-    // El filtro es client-side (D8): cambiar de opción no dispara un nuevo fetch.
-    expect(llamadasAlServidor).toBe(1);
+  it("sin filtro no manda bloqueo, y un valor desconocido en la URL cuenta como Todas", async () => {
+    const consultas: URLSearchParams[] = [];
+    server.use(
+      http.get("/api/reparaciones", ({ request }) => {
+        consultas.push(new URL(request.url).searchParams);
+        return HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0002" })]));
+      }),
+    );
+    currentSearch = "bloqueo=CUALQUIERA";
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0002");
+    expect(consultas.at(-1)?.has("bloqueo")).toBe(false);
+    expect(consultas.at(-1)?.get("pagina")).toBe("1");
+    expect(screen.getByLabelText(/bloqueo/i)).toHaveValue("TODAS");
+  });
+
+  it("cambiar el filtro lo guarda en la URL y vuelve a la página 1; Todas lo saca de la URL", async () => {
+    server.use(http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0003" })]))));
+    currentSearch = "pagina=3";
+    const user = userEvent.setup();
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+    await screen.findByText("EDI-0003");
 
     await user.selectOptions(screen.getByLabelText(/bloqueo/i), "NO_BLOQUEADAS");
-    await screen.findByText("EDI-0002");
-    expect(screen.queryByText("EDI-0001")).not.toBeInTheDocument();
-    expect(llamadasAlServidor).toBe(1);
+    expect(replaceMock).toHaveBeenLastCalledWith("/edilicia?pagina=1&bloqueo=NO_BLOQUEADAS");
 
+    currentSearch = "bloqueo=NO_BLOQUEADAS&pagina=1";
     await user.selectOptions(screen.getByLabelText(/bloqueo/i), "TODAS");
-    await screen.findByText("EDI-0001");
-    await screen.findByText("EDI-0002");
-    expect(llamadasAlServidor).toBe(1);
+    expect(replaceMock).toHaveBeenLastCalledWith("/edilicia?pagina=1");
+  });
+});
+
+describe("ReparacionesList — paginación en el servidor (odd/reparaciones-paginadas)", () => {
+  it("muestra el paginador con el total del servidor y Siguiente lleva a la página siguiente", async () => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json({ items: [buildReparacion({ numero: "EDI-0011" })], total: 25, pagina: 1, porPagina: 10 }),
+      ),
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0011");
+    expect(screen.getByText("Página 1 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /anterior/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(replaceMock).toHaveBeenLastCalledWith("/edilicia?pagina=2");
+  });
+
+  it("una página vacía fuera de rango ofrece limpiar filtros en vez de parecer que no hay datos", async () => {
+    server.use(
+      http.get("/api/reparaciones", () => HttpResponse.json({ items: [], total: 5, pagina: 4, porPagina: 10 })),
+    );
+    currentSearch = "pagina=4";
+    const user = userEvent.setup();
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await user.click(await screen.findByRole("button", { name: /limpiar filtros/i }));
+    expect(replaceMock).toHaveBeenLastCalledWith("/edilicia");
   });
 });
 
@@ -470,7 +543,7 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
 
   it("sin EDILICIA:MODIFICACION no hay botón Editar", async () => {
     mockCatalogos();
-    server.use(http.get("/api/reparaciones", () => HttpResponse.json([buildReparacion({ numero: "EDI-0010" })])));
+    server.use(http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0010" })]))));
 
     renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
 
@@ -493,12 +566,12 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
     };
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep-ok", numero: "EDI-0020" }),
           buildReparacion({ id: "rep-proceso", numero: "EDI-0021", estadoId: "estado-en-proceso" }),
           buildReparacion({ id: "rep-tarea", numero: "EDI-0022", subtareas: [tareaHecha] }),
           buildReparacion({ id: "rep-bloq", numero: "EDI-0023", bloqueada: true }),
-        ]),
+        ])),
       ),
     );
 
@@ -521,10 +594,10 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
     mockCatalogos();
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({ id: "rep-proceso", numero: "EDI-0031", estadoId: "estado-en-proceso" }),
           buildReparacion({ id: "rep-bloq", numero: "EDI-0032", bloqueada: true }),
-        ]),
+        ])),
       ),
     );
 
@@ -544,7 +617,7 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
     let bodyRecibido: unknown = null;
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({
             id: "rep-ok",
             numero: "EDI-0040",
@@ -553,7 +626,7 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
             ubicacion: "Aula 1",
             prioridadId: PRIORIDAD_MEDIA,
           }),
-        ]),
+        ])),
       ),
       http.patch("/api/reparaciones/rep-ok", async ({ request }) => {
         bodyRecibido = await request.json();
@@ -653,14 +726,14 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
       mockEstadosYTareas();
       server.use(
         http.get("/api/reparaciones", () =>
-          HttpResponse.json([
+          HttpResponse.json(paginaDe([
             buildReparacion({
               id: "rep1",
               ticketId: "tk1",
               numero: "EDI-0001",
               ...fila,
             }),
-          ]),
+          ])),
         ),
       );
       renderWithProviders(<ReparacionesList />, { user: admin });
@@ -698,14 +771,14 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
     mockEstadosYTareas();
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([
+        HttpResponse.json(paginaDe([
           buildReparacion({
             id: "rep1",
             ticketId: "tk1",
             numero: "EDI-0001",
             estadoId: "estado-nuevo",
           }),
-        ]),
+        ])),
       ),
     );
     renderWithProviders(<ReparacionesList />, { user: admin });
@@ -740,7 +813,7 @@ describe("ReparacionesList — fecha de alta bajo el número", () => {
   it("muestra debajo del número la fecha y hora en que se creó el pedido", async () => {
     server.use(
       http.get("/api/reparaciones", () =>
-        HttpResponse.json([buildReparacion({ numero: "EDI-0010", createdAt: "2026-03-15T15:30:00.000Z" })]),
+        HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0010", createdAt: "2026-03-15T15:30:00.000Z" })])),
       ),
     );
 
