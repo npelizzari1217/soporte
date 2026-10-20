@@ -1,11 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
-import { StatusBadge } from "./status-badge";
+import { StatusBadge, etiquetaOpcionEstado } from "./status-badge";
 
 describe("StatusBadge", () => {
-  it("NUEVO → renders label 'Nuevo' with the default (primary) variant styling", () => {
+  it("NUEVO → renders the reinforced label '✨ Nuevo!!'", () => {
     render(<StatusBadge estado="NUEVO" />);
-    expect(screen.getByText("Nuevo")).toBeInTheDocument();
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("✨ Nuevo!!");
   });
 
   it("RESUELTO → renders label 'Resuelto'", () => {
@@ -34,5 +34,28 @@ describe("StatusBadge", () => {
       return text;
     });
     expect(new Set(labels).size).toBe(estados.length);
+  });
+
+  it("every workflow estado carries its own color class, with a dark-mode pair", () => {
+    const estados = ["NUEVO", "ASIGNADO", "EN_PROCESO", "ESPERANDO_CLIENTE", "RESUELTO", "CERRADO", "CANCELADO"] as const;
+    const fondos = estados.map((estado) => {
+      const { unmount } = render(<StatusBadge estado={estado} />);
+      const clases = screen.getByTestId("status-badge").className;
+      unmount();
+      expect(clases).toMatch(/dark:bg-/);
+      return clases.match(/(?:^| )bg-(\w+)-/)?.[1];
+    });
+    expect(new Set(fondos).size).toBe(estados.length);
+  });
+});
+
+describe("etiquetaOpcionEstado", () => {
+  it("prefixes the color emoji to known estados", () => {
+    expect(etiquetaOpcionEstado("NUEVO")).toBe("🔵 Nuevo");
+    expect(etiquetaOpcionEstado("CANCELADO")).toBe("🔴 Cancelado");
+  });
+
+  it("falls back to the given text for an unknown code", () => {
+    expect(etiquetaOpcionEstado("OTRO", "Otro estado")).toBe("Otro estado");
   });
 });

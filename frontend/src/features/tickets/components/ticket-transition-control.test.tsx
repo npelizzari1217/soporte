@@ -19,7 +19,7 @@ describe("TicketTransitionControl", () => {
       { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Cancelado"]);
+    expect(options).toEqual(["🔴 Cancelado"]);
   });
 
   it("TECNICO, estado ASIGNADO → el arco EN_PROCESO lo cubre el control unificado; manual ofrece SOLO [CANCELADO]", () => {
@@ -28,7 +28,7 @@ describe("TicketTransitionControl", () => {
       { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Cancelado"]);
+    expect(options).toEqual(["🔴 Cancelado"]);
   });
 
   it("TECNICO, estado EN_PROCESO → ofrece EXACTAMENTE [ESPERANDO_CLIENTE, RESUELTO, CANCELADO]", () => {
@@ -37,7 +37,7 @@ describe("TicketTransitionControl", () => {
       { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["Esperando al cliente", "Resuelto", "Cancelado"]);
+    expect(options).toEqual(["🟡 Esperando al cliente", "🟢 Resuelto", "🔴 Cancelado"]);
   });
 
   it("TECNICO, estado ESPERANDO_CLIENTE → ofrece [EN_PROCESO, RESUELTO, CANCELADO]", () => {
@@ -46,7 +46,7 @@ describe("TicketTransitionControl", () => {
       { user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:TRANSICIONAR"] }) },
     );
     const options = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(options).toEqual(["En proceso", "Resuelto", "Cancelado"]);
+    expect(options).toEqual(["🟠 En proceso", "🟢 Resuelto", "🔴 Cancelado"]);
   });
 
   it("TECNICO, estado terminal (CERRADO, sin reapertura) → NO ofrece ningún select, muestra mensaje de estado final", () => {
@@ -83,7 +83,7 @@ describe("TicketTransitionControl — salto correctivo (ROOT/ADMINISTRADOR)", ()
     const opciones = within(correctivo)
       .getAllByRole("option")
       .map((o) => o.textContent);
-    expect(opciones).toEqual(["Nuevo", "Asignado", "Resuelto"]);
+    expect(opciones).toEqual(["🔵 Nuevo", "🟣 Asignado", "🟢 Resuelto"]);
   });
 
   it("ROOT, estado terminal CERRADO → puede reabrir vía 'Corregir estado' (todos los no terminales)", () => {
@@ -95,7 +95,7 @@ describe("TicketTransitionControl — salto correctivo (ROOT/ADMINISTRADOR)", ()
     const opciones = within(correctivo)
       .getAllByRole("option")
       .map((o) => o.textContent);
-    expect(opciones).toEqual(["Nuevo", "Asignado", "En proceso", "Resuelto"]);
+    expect(opciones).toEqual(["🔵 Nuevo", "🟣 Asignado", "🟠 En proceso", "🟢 Resuelto"]);
   });
 
   it("corrector: elegir un destino correctivo y confirmar → llama onTransicionar con ese código", async () => {

@@ -20,20 +20,10 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { etiquetaOpcionEstado } from "@/components/ui/status-badge";
 import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
 import { getEstadosCorrectivos, getManualNextStates } from "../lib/estado-transitions";
-import type { TicketEstadoCodigo } from "../types";
-
-const ESTADO_LABEL: Record<TicketEstadoCodigo, string> = {
-  NUEVO: "Nuevo",
-  ASIGNADO: "Asignado",
-  EN_PROCESO: "En proceso",
-  ESPERANDO_CLIENTE: "Esperando al cliente",
-  RESUELTO: "Resuelto",
-  CERRADO: "Cerrado",
-  CANCELADO: "Cancelado",
-};
 
 export interface TicketTransitionControlProps {
   estadoActualCodigo: string;
@@ -79,7 +69,7 @@ export function TicketTransitionControl({
             >
               {opciones.map((codigo) => (
                 <option key={codigo} value={codigo}>
-                  {ESTADO_LABEL[codigo]}
+                  {etiquetaOpcionEstado(codigo)}
                 </option>
               ))}
             </Select>
@@ -108,7 +98,7 @@ export function TicketTransitionControl({
             >
               {correctivos.map((codigo) => (
                 <option key={codigo} value={codigo}>
-                  {ESTADO_LABEL[codigo]}
+                  {etiquetaOpcionEstado(codigo)}
                 </option>
               ))}
             </Select>
