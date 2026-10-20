@@ -13,6 +13,8 @@
  */
 
 import Link from "next/link";
+import { useState } from "react";
+import { Eye, EyeOff, KeyRound, Mail } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,7 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
     handleSubmit,
     formState: { errors },
   } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+  const [verPassword, setVerPassword] = useState(false);
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
@@ -37,15 +40,22 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
         <label htmlFor="email" className="text-sm font-medium text-foreground">
           Email
         </label>
-        <Input
-          id="email"
-          type="email"
-          autoComplete="email"
-          disabled={isLoading}
-          placeholder="tu@email.com"
-          error={!!errors.email}
-          {...register("email")}
-        />
+        <div className="relative">
+          <Mail
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            disabled={isLoading}
+            placeholder="nombre@empresa.com"
+            error={!!errors.email}
+            className="h-11 pl-10"
+            {...register("email")}
+          />
+        </div>
         {errors.email && (
           <p role="alert" className="text-sm text-destructive">
             {errors.email.message}
@@ -57,15 +67,33 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
         <label htmlFor="password" className="text-sm font-medium text-foreground">
           Contraseña
         </label>
-        <Input
-          id="password"
-          type="password"
-          autoComplete="current-password"
-          disabled={isLoading}
-          placeholder="••••••••"
-          error={!!errors.password}
-          {...register("password")}
-        />
+        <div className="relative">
+          <KeyRound
+            aria-hidden
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            id="password"
+            type={verPassword ? "text" : "password"}
+            autoComplete="current-password"
+            disabled={isLoading}
+            placeholder="Su contraseña"
+            error={!!errors.password}
+            className="h-11 pl-10 pr-10"
+            {...register("password")}
+          />
+          {/* Permite revisar lo tipeado antes de enviar; no altera el valor del campo. */}
+          <button
+            type="button"
+            onClick={() => setVerPassword((visible) => !visible)}
+            aria-label={verPassword ? "Ocultar la clave" : "Mostrar la clave"}
+            aria-pressed={verPassword}
+            disabled={isLoading}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+          >
+            {verPassword ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
+          </button>
+        </div>
         {errors.password && (
           <p role="alert" className="text-sm text-destructive">
             {errors.password.message}
@@ -79,7 +107,11 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
         </Link>
       </div>
 
-      <Button type="submit" isLoading={isLoading} className="w-full">
+      <Button
+        type="submit"
+        isLoading={isLoading}
+        className="mt-2 h-11 w-full rounded-full bg-gradient-to-r from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-600/25 hover:from-blue-600 hover:to-blue-800"
+      >
         Iniciar sesión
       </Button>
     </form>
