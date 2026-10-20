@@ -22,6 +22,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
+import { useSession } from "@/shared/hooks/use-session";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
 // Mismo hook que usa el dashboard (`features/dashboard/hooks/use-ciclos.ts`)
@@ -83,6 +84,10 @@ export function TicketsListView() {
     (filtros.pagina ?? 1) > 1;
 
   const tiposQuery = useTiposTicket();
+  const { canModulo } = useSession();
+  // El listado ya trae solo tickets de los módulos del usuario: ofrecer un tipo de otro módulo
+  // sería un filtro que nunca devuelve filas. ROOT y ADMINISTRADOR tienen todos los módulos.
+  const tiposVisibles = (tiposQuery.data ?? []).filter((tipo) => canModulo(tipo.modulo));
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const usuariosQuery = useUsuariosAsignables();
@@ -256,7 +261,7 @@ export function TicketsListView() {
             onChange={(e) => updateFiltros({ tipo: e.target.value || undefined })}
           >
             <option value="">Todos los tipos</option>
-            {(tiposQuery.data ?? []).map((tipo) => (
+            {tiposVisibles.map((tipo) => (
               <option key={tipo.id} value={tipo.id}>
                 {tipo.nombre}
               </option>

@@ -299,4 +299,32 @@ describe("TicketsListView", () => {
     expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
     expect(within(select).queryByRole("option", { name: "Admin Jefe" })).not.toBeInTheDocument();
   });
+
+  describe("filtro de tipo acotado a los módulos del usuario (S1)", () => {
+    const TIPOS = [
+      { id: "ti1", codigo: "SOPORTE", nombre: "Soporte", modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" },
+      { id: "ti2", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+      { id: "ti3", codigo: "MANTENIMIENTO", nombre: "Mantenimiento", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+    ];
+
+    beforeEach(() => {
+      server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)));
+    });
+
+    it("un técnico con solo TICKETS ve únicamente los tipos de ese módulo", async () => {
+      renderWithProviders(<TicketsListView />, { user: buildUser({ modulos: ["TICKETS"] }) });
+      const select = await screen.findByLabelText("Tipo");
+      expect(await within(select).findByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      expect(within(select).queryByRole("option", { name: "Edilicia" })).not.toBeInTheDocument();
+      expect(within(select).queryByRole("option", { name: "Mantenimiento" })).not.toBeInTheDocument();
+    });
+
+    it("ROOT ve los tipos de todos los módulos", async () => {
+      renderWithProviders(<TicketsListView />, { user: buildUser({ is_global_admin: true }) });
+      const select = await screen.findByLabelText("Tipo");
+      expect(await within(select).findByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      expect(within(select).getByRole("option", { name: "Edilicia" })).toBeInTheDocument();
+      expect(within(select).getByRole("option", { name: "Mantenimiento" })).toBeInTheDocument();
+    });
+  });
 });
