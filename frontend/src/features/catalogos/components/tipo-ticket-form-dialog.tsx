@@ -14,10 +14,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { MODULOS } from "@/shared/auth/modulo-access";
 import { useCrearTipoTicket, useEditarTipoTicket } from "../hooks/use-catalogo-mutations";
 import { tipoTicketSchema, type TipoTicketFormValues } from "../schemas";
-import { esTipoTicketDelSistema } from "../tipos-del-sistema";
+import { esTipoTicketDelSistema, MODULOS_CON_ALTA_DE_TIPO } from "../tipos-del-sistema";
 import type { TipoTicket } from "@/features/tickets/types";
 
 export interface TipoTicketFormDialogProps {
@@ -42,6 +41,13 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
   // falta RHF adopta el valor actual del <select> en vez de limpiarlo — acá
   // es el único de los cuatro diálogos con un <Select> de valor no
   // controlado (D1b).
+  // Un tipo que ya es de COMPRAS o EQUIPOS conserva su módulo como opción: sin ella el <select>
+  // caería a otra y el guardado lo movería de módulo sin que nadie lo eligiera.
+  const modulosOfrecidos =
+    tipo && !MODULOS_CON_ALTA_DE_TIPO.includes(tipo.modulo)
+      ? [...MODULOS_CON_ALTA_DE_TIPO, tipo.modulo]
+      : MODULOS_CON_ALTA_DE_TIPO;
+
   const valoresVigentes: DefaultValues<TipoTicketFormValues> = tipo
     ? { codigo: tipo.codigo, nombre: tipo.nombre, modulo: tipo.modulo }
     : { codigo: "", nombre: "", modulo: "" as TipoTicketFormValues["modulo"] };
@@ -119,7 +125,7 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
               <option value="" disabled>
                 Elegí un módulo
               </option>
-              {MODULOS.map((modulo) => (
+              {modulosOfrecidos.map((modulo) => (
                 <option key={modulo} value={modulo}>
                   {modulo}
                 </option>

@@ -78,7 +78,7 @@ describe("TipoTicketFormDialog", () => {
     renderWithProviders(<TipoTicketFormDialog trigger={<button>Nuevo</button>} />);
 
     await user.click(screen.getByRole("button", { name: "Nuevo" }));
-    await user.selectOptions(screen.getByLabelText(/^módulo$/i), "COMPRAS");
+    await user.selectOptions(screen.getByLabelText(/^módulo$/i), "EDILICIA");
     await user.click(screen.getByRole("button", { name: /cerrar/i }));
 
     await user.click(screen.getByRole("button", { name: "Nuevo" }));
@@ -105,5 +105,33 @@ describe("TipoTicketFormDialog", () => {
     await user.click(screen.getByRole("button", { name: "Editar" }));
 
     expect(screen.getByLabelText(/^código$/i)).not.toHaveAttribute("readonly");
+  });
+
+  describe("módulos ofrecidos (S4, odd/tasks/tipos-ticket-por-modulo.md)", () => {
+    const opcionesDeModulo = () =>
+      Array.from((screen.getByLabelText(/^módulo$/i) as HTMLSelectElement).options)
+        .filter((opcion) => opcion.value !== "")
+        .map((opcion) => opcion.value);
+
+    it("de alta, solo ofrece los módulos con un alta que permite elegir el tipo", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<TipoTicketFormDialog trigger={<button>Nuevo</button>} />);
+
+      await user.click(screen.getByRole("button", { name: "Nuevo" }));
+
+      expect(opcionesDeModulo()).toEqual(["TICKETS", "EDILICIA"]);
+    });
+
+    it("al editar un tipo de COMPRAS conserva su módulo como opción vigente, sin sumar EQUIPOS", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(
+        <TipoTicketFormDialog tipo={buildTipo({ modulo: "COMPRAS" })} trigger={<button>Editar</button>} />,
+      );
+
+      await user.click(screen.getByRole("button", { name: "Editar" }));
+
+      expect(screen.getByLabelText(/^módulo$/i)).toHaveValue("COMPRAS");
+      expect(opcionesDeModulo()).toEqual(["TICKETS", "EDILICIA", "COMPRAS"]);
+    });
   });
 });

@@ -496,3 +496,19 @@ export class SolicitanteExternoInvalidoError extends DomainError {
     super(`Solicitante externo inválido: ${motivo}`);
   }
 }
+
+/**
+ * ModuloSinAltaDeTipoError — se intenta crear un tipo de ticket, o moverlo, a un módulo cuyas altas
+ * no permiten elegir el tipo (odd/tasks/tipos-ticket-por-modulo.md, S4). Ese tipo existiría en el
+ * catálogo sin que ninguna pantalla pudiera usarlo. → HTTP 422 en la capa de presentación.
+ */
+export class ModuloSinAltaDeTipoError extends DomainError {
+  readonly code = 'MODULO_SIN_ALTA_DE_TIPO';
+
+  constructor(modulo: string) {
+    super(
+      `Un tipo de ticket del módulo ${modulo} no se podría usar: ` +
+        'solo los módulos TICKETS y EDILICIA tienen un alta que permite elegir el tipo.',
+    );
+  }
+}

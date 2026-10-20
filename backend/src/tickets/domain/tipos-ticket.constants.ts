@@ -31,3 +31,15 @@ export const TIPOS_TICKET_DEL_SISTEMA: readonly string[] = [
 export function esTipoTicketDelSistema(codigo: string): boolean {
   return TIPOS_TICKET_DEL_SISTEMA.includes(codigo);
 }
+
+/**
+ * Módulos cuyas altas permiten elegir el tipo de ticket: `POST /tickets` (TICKETS) y
+ * `POST /reparaciones` (EDILICIA). Compras no crea tickets con tipo y Equipos usa siempre SOPORTE,
+ * así que un tipo de esos módulos no se podría usar (odd/tasks/tipos-ticket-por-modulo.md, S4).
+ * El front espeja esta lista.
+ */
+export const MODULOS_CON_ALTA_DE_TIPO: readonly string[] = ['TICKETS', 'EDILICIA'];
+
+export function moduloTieneAltaDeTipo(modulo: string): boolean {
+  return MODULOS_CON_ALTA_DE_TIPO.includes(modulo);
+}

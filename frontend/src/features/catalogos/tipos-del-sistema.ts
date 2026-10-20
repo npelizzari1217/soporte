@@ -10,3 +10,10 @@ export const TIPOS_TICKET_DEL_SISTEMA: readonly string[] = ["PREVENTIVO", "SOPOR
 export function esTipoTicketDelSistema(codigo: string): boolean {
   return TIPOS_TICKET_DEL_SISTEMA.includes(codigo);
 }
+
+/**
+ * Módulos cuyas altas permiten elegir el tipo de ticket — espejo de `MODULOS_CON_ALTA_DE_TIPO`
+ * (`backend/src/tickets/domain/tipos-ticket.constants.ts`). Un tipo de otro módulo no se podría
+ * usar, así que el ABM solo ofrece estos (odd/tasks/tipos-ticket-por-modulo.md, S4).
+ */
+export const MODULOS_CON_ALTA_DE_TIPO: readonly string[] = ["TICKETS", "EDILICIA"];

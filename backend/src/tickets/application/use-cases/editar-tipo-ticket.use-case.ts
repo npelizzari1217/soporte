@@ -6,10 +6,11 @@ import {
   PrefijoTipoTicketColisionError,
   TipoTicketDesconocidoError,
   ModuloTipoTicketInvalidoError,
+  ModuloSinAltaDeTipoError,
   TipoTicketDelSistemaError,
 } from '../../domain/errors/tickets.errors';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { esTipoTicketDelSistema } from '../../domain/tipos-ticket.constants';
+import { esTipoTicketDelSistema, moduloTieneAltaDeTipo } from '../../domain/tipos-ticket.constants';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
 import { esModuloValido, Modulo } from '../../../shared/domain/modulos';
 
@@ -50,6 +51,14 @@ export class EditarTipoTicketUseCase {
 
     if (dto.modulo !== undefined && !esModuloValido(dto.modulo)) {
       return Result.fail(new ModuloTipoTicketInvalidoError(dto.modulo));
+    }
+    // Solo se valida un CAMBIO de módulo: un tipo que ya es de COMPRAS o EQUIPOS sigue editable.
+    if (
+      dto.modulo !== undefined &&
+      dto.modulo !== tipo.modulo &&
+      !moduloTieneAltaDeTipo(dto.modulo)
+    ) {
+      return Result.fail(new ModuloSinAltaDeTipoError(dto.modulo));
     }
 
     if (dto.codigo !== undefined && dto.codigo !== tipo.codigo) {
