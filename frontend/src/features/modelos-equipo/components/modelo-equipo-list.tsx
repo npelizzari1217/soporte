@@ -82,7 +82,7 @@ export function ModeloEquipoList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={modelosQuery.data ?? []}
         getRowKey={(row) => row.id}

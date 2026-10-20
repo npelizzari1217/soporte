@@ -41,7 +41,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { Plus } from "lucide-react";
+import { Plus, PartyPopper } from "lucide-react";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { notifyError } from "@/shared/lib/toast";
 import { OrigenFeriadoBadge } from "./origen-feriado-badge";
@@ -148,7 +148,7 @@ export function FeriadosListView() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={PartyPopper}
         title="Feriados"
         description="Feriados nacionales y del cliente que aplican al cálculo de vencimientos SLA hábiles."
         actions={
@@ -198,7 +198,7 @@ export function FeriadosListView() {
           onDiaLibre={esAdminCliente ? setFechaCreacion : undefined}
         />
       ) : (
-        <DataTable
+        <DataTable variante="tarjeta"
           columns={columnas}
           data={filas}
           getRowKey={(row) => row.id}

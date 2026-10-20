@@ -85,7 +85,7 @@ export function RespuestaPredefinidaList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={respuestasQuery.data ?? []}
         getRowKey={(row) => row.id}

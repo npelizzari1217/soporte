@@ -161,7 +161,7 @@ export function PlanPreventivoDetailView({ planId }: PlanPreventivoDetailViewPro
 
         <div className="flex flex-col gap-2">
           <h2 className="text-lg font-medium text-foreground">Generaciones</h2>
-          <DataTable
+          <DataTable variante="tarjeta"
             columns={columns}
             data={generacionesQuery.data ?? []}
             getRowKey={(row) => row.id}

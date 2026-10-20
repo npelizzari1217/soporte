@@ -22,7 +22,7 @@
  * instancia controlada sin `trigger` propio), igual que `FeriadosListView`.
  */
 import { useState, type ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { Plus, PartyPopper } from "lucide-react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useFeriadosGlobales } from "../hooks/use-feriados-globales";
 import {
@@ -151,7 +151,7 @@ function FeriadosGlobalesAdminContent() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={PartyPopper}
         title="Feriados nacionales"
         description="Lista maestra de feriados nacionales (solo ROOT). Se usan en el cálculo de vencimientos SLA hábiles de todos los clientes."
         actions={
@@ -196,7 +196,7 @@ function FeriadosGlobalesAdminContent() {
       ) : vista === "almanaque" ? (
         <AlmanaqueFeriados feriados={filasAlmanaque} renderAcciones={renderAccionesAlmanaque} onDiaLibre={setFechaCreacion} />
       ) : (
-        <DataTable
+        <DataTable variante="tarjeta"
           columns={columns}
           data={feriados}
           getRowKey={(row) => row.id}

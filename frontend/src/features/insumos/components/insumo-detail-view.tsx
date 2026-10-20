@@ -496,7 +496,7 @@ export function InsumoDetailView({ insumoId, seccion = "insumos" }: InsumoDetail
 
     return (
       <>
-        <DataTable
+        <DataTable variante="tarjeta"
           columns={columnas}
           data={movimientosQuery.data?.items ?? []}
           getRowKey={(fila) => fila.id}

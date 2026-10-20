@@ -80,7 +80,7 @@ export function TipoTicketList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={tiposQuery.data ?? []}
         getRowKey={(row) => row.id}

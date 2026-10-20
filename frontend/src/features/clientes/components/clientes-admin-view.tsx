@@ -19,6 +19,7 @@ import { notifyError } from "@/shared/lib/toast";
 import { CrearClienteDialog } from "./crear-cliente-dialog";
 import { ClienteAcciones } from "./cliente-acciones";
 import type { ClienteListItem } from "../types";
+import { Building2 } from "lucide-react";
 
 export function ClientesAdminView() {
   const { isGlobalAdmin } = useSession();
@@ -68,12 +69,12 @@ function ClientesAdminContent() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={Building2}
         title="Clientes"
         description="Tenants de la plataforma (solo ROOT)."
         actions={<CrearClienteDialog />}
       />
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={clientesQuery.data ?? []}
         getRowKey={(row) => row.id}

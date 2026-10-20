@@ -91,7 +91,7 @@ export function PrioridadList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={prioridadesQuery.data ?? []}
         getRowKey={(row) => row.id}

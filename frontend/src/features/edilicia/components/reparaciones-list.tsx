@@ -27,6 +27,7 @@ import { ComentariosDialog } from "./comentarios-dialog";
 import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
 import type { ReparacionListItem } from "../types";
+import { Wrench } from "lucide-react";
 
 /**
  * Filtro de bloqueo del listado (sdd/reparacion-bloqueada-por-compra, WU4).
@@ -219,7 +220,7 @@ export function ReparacionesList() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={Wrench}
         title="Reparaciones"
         actions={
           <>
@@ -261,7 +262,7 @@ export function ReparacionesList() {
           </>
         }
       />
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={datosFiltrados}
         getRowKey={(row) => row.id}

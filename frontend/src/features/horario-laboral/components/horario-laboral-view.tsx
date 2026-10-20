@@ -46,6 +46,7 @@ import { useHorarioLaboral } from "../hooks/use-horario-laboral";
 import { useGuardarHorarioLaboral } from "../hooks/use-guardar-horario-laboral";
 import { HorarioLaboralForm } from "./horario-laboral-form";
 import type { HorarioLaboralDto } from "../types";
+import { Clock } from "lucide-react";
 
 /** Mismo criterio de normalización que `notifyError`: mensaje de dominio o fallback genérico. */
 function mensajeErrorGuardado(error: unknown): string {
@@ -84,7 +85,7 @@ export function HorarioLaboralView() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={Clock}
         title="Horario laboral"
         description="Ventana horaria semanal usada para calcular los vencimientos de SLA hábiles."
       />

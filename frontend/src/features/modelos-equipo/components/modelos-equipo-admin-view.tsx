@@ -16,13 +16,14 @@ import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { ModeloEquipoList } from "./modelo-equipo-list";
+import { Monitor } from "lucide-react";
 
 export function ModelosEquipoAdminView() {
   return (
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar los modelos de equipo." />}>
-        <PageHeader title="Modelos de equipo" description="Catálogo de modelos de equipo, transversal a los equipos." />
+        <PageHeader icon={Monitor} title="Modelos de equipo" description="Catálogo de modelos de equipo, transversal a los equipos." />
         <ModeloEquipoList />
       </SoloAdminCliente>
     </div>

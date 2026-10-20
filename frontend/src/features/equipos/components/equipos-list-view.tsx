@@ -42,6 +42,7 @@ import {
 } from "@/features/insumos/lib/nombre-de-catalogo";
 import type { Equipo } from "../types";
 import type { ModeloEquipo } from "@/features/modelos-equipo/types";
+import { Monitor } from "lucide-react";
 
 /**
  * Resuelve el texto de la celda `Marca` (ADR-2/ADR-3 del design de
@@ -98,7 +99,7 @@ export function EquiposListView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
+      <PageHeader icon={Monitor}
         title="Equipos IT"
         actions={
           <>
@@ -142,7 +143,7 @@ export function EquiposListView() {
               <EquipoCreateDialog />
             </Can>
           </div>
-          <DataTable
+          <DataTable variante="tarjeta"
             columns={columns}
             data={equiposQuery.data ?? []}
             getRowKey={(row) => row.id}

@@ -81,7 +81,7 @@ export function SectorList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={sectoresQuery.data ?? []}
         getRowKey={(row) => row.id}
