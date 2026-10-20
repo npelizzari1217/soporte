@@ -7,6 +7,11 @@ import { renderWithProviders, buildUser } from "../../../../test/render-with-pro
 import { SubtareasDialog } from "./subtareas-dialog";
 import type { TareaTicket } from "@/features/tickets/types";
 
+/** Envuelve filas en la página que devuelve `GET /reparaciones` (odd/reparaciones-paginadas). */
+function paginaDe<T>(items: T[]) {
+  return { items, total: items.length, pagina: 1, porPagina: 10 };
+}
+
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 /**
@@ -50,7 +55,7 @@ function mockBackend({ asignadoId = "u-responsable" }: { asignadoId?: string | n
       tareas = [...tareas, nueva];
       return HttpResponse.json(nueva, { status: 201 });
     }),
-    http.get("/api/reparaciones", () => HttpResponse.json([])),
+    http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([]))),
     http.all("/api/reparaciones/*", ({ request }) => {
       rutasViejas.push(`${request.method} ${new URL(request.url).pathname}`);
       return HttpResponse.json({}, { status: 500 });

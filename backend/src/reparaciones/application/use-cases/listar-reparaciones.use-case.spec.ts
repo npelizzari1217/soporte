@@ -326,3 +326,138 @@ describe('ListarReparacionesUseCase', () => {
     });
   });
 });
+
+describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)', () => {
+  function armar(cantidad: number, bloqueadas: number[] = []) {
+    const satelites = Array.from({ length: cantidad }, (_, i) =>
+      TicketEdiliciaEntity.create({ ticketId: `t-${i}`, ubicacion: null }, `e-${i}`),
+    );
+    const ediliciaRepo = {
+      findAll: vi.fn<ITicketEdiliciaRepository['findAll']>().mockResolvedValue(satelites),
+    };
+    const ticketRepo = {
+      findByIds: vi
+        .fn<ITicketRepository['findByIds']>()
+        .mockImplementation(async (ids) => new Map(ids.map((id) => [id, makeTicket(id)]))),
+    };
+    const tareaRepo = {
+      listarPorTickets: vi
+        .fn<ITareaTicketRepository['listarPorTickets']>()
+        .mockResolvedValue(new Map()),
+    };
+    const comentarioRepo = {
+      contarPorTicketEdilicia: vi
+        .fn<IComentarioReparacionRepository['contarPorTicketEdilicia']>()
+        .mockResolvedValue(new Map()),
+    };
+    // Sin ítems cargados y sin cancelar, la compra deriva a PENDIENTE (grupo ACTIVAS) y bloquea.
+    const compraActiva: CompraVinculada = {
+      compraId: 'compra-1',
+      numero: 'COMP-2026-00001',
+      cancelada: false,
+      items: [],
+    };
+    const reparacionCompraRepo = {
+      findComprasVinculadasByTicketEdiliciaIds: vi
+        .fn<IReparacionCompraRepository['findComprasVinculadasByTicketEdiliciaIds']>()
+        .mockImplementation(
+          async (ids) =>
+            new Map(
+              ids
+                .filter((id) => bloqueadas.includes(Number(id.split('-')[1])))
+                .map((id) => [id, [compraActiva]]),
+            ),
+        ),
+    };
+    const sectorRepo = {
+      findNombres: vi.fn<ISectorRepository['findNombres']>().mockResolvedValue(new Map()),
+    };
+    const useCase = new ListarReparacionesUseCase(
+      ediliciaRepo,
+      ticketRepo,
+      tareaRepo,
+      comentarioRepo,
+      reparacionCompraRepo,
+      sectorRepo,
+    );
+    return { useCase, ticketRepo, tareaRepo };
+  }
+
+  it('devuelve solo la página pedida, en el orden de findAll, con el total de todas', async () => {
+    const { useCase } = armar(25);
+
+    const pagina = (
+      await useCase.executePaginado({ pagina: 2, porPagina: 10, bloqueo: 'TODAS' })
+    ).getValue();
+
+    expect(pagina.total).toBe(25);
+    expect(pagina.pagina).toBe(2);
+    expect(pagina.porPagina).toBe(10);
+    expect(pagina.items.map((item) => item.ticketEdilicia.id)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `e-${i + 10}`),
+    );
+  });
+
+  it('la última página trae el resto, y una página fuera de rango viene vacía con el total real', async () => {
+    const { useCase } = armar(25);
+
+    const ultima = (
+      await useCase.executePaginado({ pagina: 3, porPagina: 10, bloqueo: 'TODAS' })
+    ).getValue();
+    const fuera = (
+      await useCase.executePaginado({ pagina: 9, porPagina: 10, bloqueo: 'TODAS' })
+    ).getValue();
+
+    expect(ultima.items.map((item) => item.ticketEdilicia.id)).toEqual([
+      'e-20',
+      'e-21',
+      'e-22',
+      'e-23',
+      'e-24',
+    ]);
+    expect(fuera.items).toEqual([]);
+    expect(fuera.total).toBe(25);
+  });
+
+  it('hidrata solo las reparaciones de la página, no todas', async () => {
+    const { useCase, ticketRepo, tareaRepo } = armar(25);
+
+    await useCase.executePaginado({ pagina: 1, porPagina: 10, bloqueo: 'TODAS' });
+
+    expect(ticketRepo.findByIds).toHaveBeenCalledTimes(1);
+    expect(ticketRepo.findByIds.mock.calls[0][0]).toHaveLength(10);
+    expect(tareaRepo.listarPorTickets.mock.calls[0][0]).toHaveLength(10);
+  });
+
+  it('filtra por bloqueo sobre TODAS antes de paginar: total y páginas cuentan solo las que cumplen', async () => {
+    // Bloqueadas repartidas en distintas "páginas" del listado sin filtrar.
+    const { useCase } = armar(25, [1, 12, 13, 24]);
+
+    const bloqueadas = (
+      await useCase.executePaginado({ pagina: 1, porPagina: 3, bloqueo: 'BLOQUEADAS' })
+    ).getValue();
+    const segunda = (
+      await useCase.executePaginado({ pagina: 2, porPagina: 3, bloqueo: 'BLOQUEADAS' })
+    ).getValue();
+    const libres = (
+      await useCase.executePaginado({ pagina: 1, porPagina: 50, bloqueo: 'NO_BLOQUEADAS' })
+    ).getValue();
+
+    expect(bloqueadas.total).toBe(4);
+    expect(bloqueadas.items.map((item) => item.ticketEdilicia.id)).toEqual(['e-1', 'e-12', 'e-13']);
+    expect(bloqueadas.items.every((item) => item.bloqueada)).toBe(true);
+    expect(segunda.items.map((item) => item.ticketEdilicia.id)).toEqual(['e-24']);
+    expect(libres.total).toBe(21);
+    expect(libres.items.some((item) => item.bloqueada)).toBe(false);
+  });
+
+  it('sin reparaciones devuelve página vacía con total 0', async () => {
+    const { useCase } = armar(0);
+
+    const pagina = (
+      await useCase.executePaginado({ pagina: 1, porPagina: 20, bloqueo: 'BLOQUEADAS' })
+    ).getValue();
+
+    expect(pagina).toEqual({ items: [], total: 0, pagina: 1, porPagina: 20 });
+  });
+});

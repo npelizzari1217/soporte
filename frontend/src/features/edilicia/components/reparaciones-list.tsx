@@ -6,7 +6,8 @@
  * activas del ticket (odd/tareas-con-tecnico, T3); las tareas en sí se
  * gestionan en `SubtareasDialog`.
  */
-import { forwardRef, useMemo, useState, type ComponentPropsWithoutRef } from "react";
+import { forwardRef, useMemo, type ComponentPropsWithoutRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useReparaciones } from "../hooks/use-reparaciones";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -26,34 +27,29 @@ import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
 import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
-import type { ReparacionListItem } from "../types";
+import type { FiltroBloqueo, ReparacionListItem, ReparacionesFiltros } from "../types";
+import { Pagination } from "@/components/shared/pagination";
+import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { Wrench } from "lucide-react";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
 
 /**
- * Filtro de bloqueo del listado (sdd/reparacion-bloqueada-por-compra, WU4).
- *
- * CLIENT-SIDE, a propósito (D8 del design): el backend ya manda el tenant
- * entero en `GET /reparaciones` (sin paginación), así que filtrar en el
- * servidor no ahorraría una sola fila transferida — solo agregaría un
- * parámetro que después "justificaría" paginar, algo que el proposal
- * descartó. Por eso se resuelve con `useMemo` sobre `reparacionesQuery.data`
- * y NUNCA se pasa a `useReparaciones()`.
+ * Filtro de bloqueo del listado. Lo resuelve el SERVIDOR desde que el listado
+ * se pagina (odd/reparaciones-paginadas): filtrar en el cliente solo vería la
+ * página cargada. Vive en la URL junto con la página.
  */
-type FiltroBloqueo = "TODAS" | "BLOQUEADAS" | "NO_BLOQUEADAS";
-
 const OPCIONES_FILTRO_BLOQUEO: ReadonlyArray<{ valor: FiltroBloqueo; etiqueta: string }> = [
   { valor: "TODAS", etiqueta: "Todas" },
   { valor: "BLOQUEADAS", etiqueta: "Bloqueadas" },
   { valor: "NO_BLOQUEADAS", etiqueta: "No bloqueadas" },
 ];
 
-function filtrarPorBloqueo(
-  datos: ReparacionListItem[],
-  filtro: FiltroBloqueo,
-): ReparacionListItem[] {
-  if (filtro === "TODAS") return datos;
-  return datos.filter((row) => (filtro === "BLOQUEADAS" ? row.bloqueada : !row.bloqueada));
+/** Tamaño de página del listado, el mismo que Tickets. */
+const PAGE_SIZE = 10;
+
+/** Lee el filtro de la URL; un valor desconocido cuenta como "Todas". */
+function leerFiltroBloqueo(valor: string | null): FiltroBloqueo {
+  return OPCIONES_FILTRO_BLOQUEO.some((opcion) => opcion.valor === valor) ? (valor as FiltroBloqueo) : "TODAS";
 }
 
 function AvanceCell({ porcentaje }: { porcentaje: number }) {
@@ -109,17 +105,22 @@ const ConteoTrigger = forwardRef<
 ConteoTrigger.displayName = "ConteoTrigger";
 
 export function ReparacionesList() {
-  const reparacionesQuery = useReparaciones();
-  const [filtroBloqueo, setFiltroBloqueo] = useState<FiltroBloqueo>("TODAS");
+  const searchParams = useSearchParams();
+  const { updateFiltros, irAPagina, limpiarFiltros } = useUrlFilters<ReparacionesFiltros>("pagina");
+  const filtroBloqueo = leerFiltroBloqueo(searchParams.get("bloqueo"));
+  const pagina = Number(searchParams.get("pagina") ?? "1");
+  const reparacionesQuery = useReparaciones({ pagina, porPagina: PAGE_SIZE, bloqueo: filtroBloqueo });
   const { isGlobalAdmin } = useSession();
   // El código del estado decide si la reparación "se empezó a trabajar" (odd/detalle-ticket-legible).
   const estadosQuery = useEstados();
   const estadoCodigoMap = useMemo(() => buildIdToCodigoMap(estadosQuery.data ?? []), [estadosQuery.data]);
 
-  const datosFiltrados = useMemo(
-    () => filtrarPorBloqueo(reparacionesQuery.data ?? [], filtroBloqueo),
-    [reparacionesQuery.data, filtroBloqueo],
-  );
+  /**
+   * La página cuenta como filtro cuando es mayor a 1, igual que en Tickets: una
+   * `pagina` vieja en la URL puede dejar el listado vacío, y ese vacío tiene que
+   * ofrecer «Limpiar filtros» en vez de parecer que no hay datos.
+   */
+  const hayFiltrosActivos = filtroBloqueo !== "TODAS" || pagina > 1;
 
   const columns: Column<ReparacionListItem>[] = [
     {
@@ -242,7 +243,9 @@ export function ReparacionesList() {
                 id="filtro-bloqueo-reparaciones"
                 className="w-40"
                 value={filtroBloqueo}
-                onChange={(e) => setFiltroBloqueo(e.target.value as FiltroBloqueo)}
+                onChange={(e) =>
+                  updateFiltros({ bloqueo: e.target.value === "TODAS" ? undefined : leerFiltroBloqueo(e.target.value) })
+                }
               >
                 {OPCIONES_FILTRO_BLOQUEO.map((opcion) => (
                   <option key={opcion.valor} value={opcion.valor}>
@@ -258,11 +261,10 @@ export function ReparacionesList() {
               `<Can permiso="EDILICIA:LECTURA">` por afuera de este
               componente — este `PageHeader` ya vive adentro de ese gate, así
               que un `<Can>` acá adentro sería redundante y quedaría
-              desincronizado si el gate exterior cambia. El filtro de bloqueo
-              NO se le pasa a este botón (D8/spec): la exportación siempre
-              trae TODAS las reparaciones del tenant, sin importar lo que se
-              vea filtrado en pantalla — mismo `useReparaciones()` sin
-              filtros de arriba, la exportación no sabe que el filtro existe.
+              desincronizado si el gate exterior cambia. Ni el filtro de bloqueo
+              ni la página se le pasan a este botón (D8/spec): la exportación
+              siempre trae TODAS las reparaciones del tenant, sin importar lo
+              que se vea en pantalla.
             */}
             <ExportarCsvButton
               recurso="reparaciones"
@@ -276,16 +278,24 @@ export function ReparacionesList() {
       />
       <DataTable variante="tarjeta"
         columns={columns}
-        data={datosFiltrados}
+        data={reparacionesQuery.data?.items ?? []}
         getRowKey={(row) => row.id}
         isLoading={reparacionesQuery.isLoading}
         error={reparacionesQuery.isError ? "No se pudieron cargar las reparaciones." : undefined}
         onRetry={() => reparacionesQuery.refetch().catch(notifyError)}
         emptyTitle="Sin reparaciones"
         emptyDescription="Creá la primera con «Nueva reparación»."
-        hayFiltrosActivos={filtroBloqueo !== "TODAS"}
-        onLimpiarFiltros={filtroBloqueo !== "TODAS" ? () => setFiltroBloqueo("TODAS") : undefined}
+        hayFiltrosActivos={hayFiltrosActivos}
+        onLimpiarFiltros={limpiarFiltros}
       />
+      {reparacionesQuery.data && (
+        <Pagination
+          page={reparacionesQuery.data.pagina}
+          pageSize={reparacionesQuery.data.porPagina}
+          total={reparacionesQuery.data.total}
+          onPageChange={irAPagina}
+        />
+      )}
     </div>
   );
 }
