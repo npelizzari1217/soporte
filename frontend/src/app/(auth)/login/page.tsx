@@ -13,6 +13,7 @@
  */
 
 import { Suspense } from "react";
+import Image from "next/image";
 import { LifeBuoy } from "lucide-react";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 import { DesafioTfaForm } from "@/features/auth/components/desafio-tfa-form";
@@ -103,26 +104,29 @@ export default function LoginPage() {
 }
 
 /**
- * Panel decorativo de la derecha (solo en pantallas anchas). Va en azul en los
- * dos temas: es el bloque de marca y no depende del fondo de la página. Los
- * anillos son CSS puro, sin imágenes que descargar.
+ * Panel de la derecha (solo en pantallas anchas): foto de fondo con un degradé
+ * oscuro en la parte de abajo, que es lo que mantiene legibles la marca y la
+ * frase sobre cualquier zona de la foto, en los dos temas. La foto es
+ * decorativa: el panel entero va `aria-hidden`.
  */
 function PanelMarca() {
   return (
     <aside
       aria-hidden
-      className="relative hidden overflow-hidden rounded-3xl bg-blue-600 lg:flex lg:w-1/2 lg:flex-col lg:justify-end lg:p-12 dark:bg-blue-700"
+      className="relative hidden overflow-hidden rounded-3xl bg-slate-900 lg:flex lg:w-1/2 lg:flex-col lg:justify-end lg:p-12"
     >
-      <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:16px_16px]" />
-      <div className="absolute -right-24 top-16 size-96 rounded-full bg-[conic-gradient(from_200deg,#1e3a8a,#60a5fa,#f0abfc,#67e8f9,#1d4ed8,#1e3a8a)] p-16 opacity-90 shadow-2xl blur-[1px]">
-        <div className="size-full rounded-full bg-blue-600 dark:bg-blue-700" />
-      </div>
-      <div className="absolute -left-20 top-24 size-56 rounded-full bg-[conic-gradient(from_20deg,#1d4ed8,#a5f3fc,#f0abfc,#3b82f6,#1d4ed8)] p-10 opacity-80 blur-[1px]">
-        <div className="size-full rounded-full bg-blue-600 dark:bg-blue-700" />
-      </div>
+      <Image
+        src="/login/panel-soporte.png"
+        alt=""
+        fill
+        priority
+        sizes="50vw"
+        className="object-cover object-[70%_center]"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
       <div className="relative">
         <div className="mb-4 flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-lg bg-white/15">
+          <span className="flex size-10 items-center justify-center rounded-lg bg-white/15 backdrop-blur">
             <LifeBuoy className="size-6 text-white" />
           </span>
           <span className="text-2xl font-semibold text-white">Soporte</span>
