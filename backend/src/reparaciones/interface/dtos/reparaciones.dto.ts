@@ -217,7 +217,6 @@ export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketRe
   comprasQueBloquean: CompraQueBloqueaResponseDto[];
 }
 
-/** Identidad mínima de una compra que bloquea, para el chip del listado. */
 /**
  * Query params de `GET /reparaciones` (odd/reparaciones-paginadas, S1): mismos
  * topes de paginación que `GET /tickets`, más el filtro de bloqueo.
@@ -249,6 +248,7 @@ export interface ListReparacionesResponseDto {
   porPagina: number;
 }
 
+/** Identidad mínima de una compra que bloquea, para el chip del listado. */
 export interface CompraQueBloqueaResponseDto {
   id: string;
   numero: string;

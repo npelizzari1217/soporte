@@ -380,7 +380,7 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
       reparacionCompraRepo,
       sectorRepo,
     );
-    return { useCase, ticketRepo, tareaRepo };
+    return { useCase, ticketRepo, tareaRepo, reparacionCompraRepo };
   }
 
   it('devuelve solo la página pedida, en el orden de findAll, con el total de todas', async () => {
@@ -459,5 +459,41 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
     ).getValue();
 
     expect(pagina).toEqual({ items: [], total: 0, pagina: 1, porPagina: 20 });
+  });
+
+  it('un huérfano sin ticket base cuenta en el total pero no aparece en su página (comportamiento documentado)', async () => {
+    const { useCase, ticketRepo } = armar(3);
+    ticketRepo.findByIds.mockImplementation(
+      async (ids) => new Map(ids.filter((id) => id !== 't-1').map((id) => [id, makeTicket(id)])),
+    );
+
+    const pagina = (
+      await useCase.executePaginado({ pagina: 1, porPagina: 10, bloqueo: 'TODAS' })
+    ).getValue();
+
+    expect(pagina.total).toBe(3);
+    expect(pagina.items.map((item) => item.ticketEdilicia.id)).toEqual(['e-0', 'e-2']);
+  });
+
+  it('con filtro, una página fuera de rango viene vacía con el total filtrado', async () => {
+    const { useCase } = armar(5, [0]);
+
+    const pagina = (
+      await useCase.executePaginado({ pagina: 2, porPagina: 10, bloqueo: 'BLOQUEADAS' })
+    ).getValue();
+
+    expect(pagina.items).toEqual([]);
+    expect(pagina.total).toBe(1);
+  });
+
+  it('sin filtro de bloqueo, las compras vinculadas se consultan una sola vez y solo para la página', async () => {
+    const { useCase, reparacionCompraRepo } = armar(25);
+
+    await useCase.executePaginado({ pagina: 1, porPagina: 10, bloqueo: 'TODAS' });
+
+    expect(reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds).toHaveBeenCalledTimes(1);
+    expect(
+      reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds.mock.calls[0][0],
+    ).toHaveLength(10);
   });
 });

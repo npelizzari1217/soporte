@@ -23,10 +23,10 @@ el mismo contrato que `GET /tickets`, y el filtro de bloqueo pasa al servidor.
 
 ## Tasks
 - T1 [S1-S4] backend: caso de uso paginado + DTO de query + controller + tests. Hecho: 188 tests del
-  módulo (unit + e2e HTTP), tsc y lint en verde. commit: junto con T2 (ver L3).
+  módulo (unit + e2e HTTP), tsc y lint en verde. commit: 08789721 (junto con T2, ver L3).
 - T2 [S5-S6] frontend: hook paginado, filtro de bloqueo en URL, paginador + tests. Hecho: 63 tests de
   Edilicia, tsc y lint en verde; S6 cubierto por "comentar actualiza el contador de la fila sin
-  recargar" (invalida el prefijo `["reparaciones"]`). commit: — (pendiente de suites completas)
+  recargar" (invalida el prefijo `["reparaciones"]`). commit: 08789721
 
 ## Log
 - L1 (pedido original): "El listado de edilicia al igual que el de ticket tenemos que paginarlo ya que
@@ -45,3 +45,9 @@ el mismo contrato que `GET /tickets`, y el filtro de bloqueo pasa al servidor.
   viejo "el filtro oculta filas en el cliente SIN volver a consultar" fijaba el comportamiento
   reemplazado y se sustituyó por tests del filtro en el servidor y en la URL. Tamaño de página del
   front: 10, como Tickets (el default del servidor queda en 20, como `GET /tickets`).
+- L5 (verificación independiente): PASS en S1-S6. Bloqueante fuera de specs: el artículo de Ayuda
+  `backend/ayuda/reparaciones-listado.md` quedó falso (decía que el filtro no consulta al servidor y
+  no mencionaba páginas); se corrige porque una Ayuda que miente se arregla aunque la escritura esté
+  suspendida. Se suman tests de regresión (huérfano en el total, filtro + página fuera de rango,
+  compras consultadas solo para la página sin filtro) y se reubica un JSDoc del DTO. Suites completas
+  previas: front 2355, back 9012 en verde.
