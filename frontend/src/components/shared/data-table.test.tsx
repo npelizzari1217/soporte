@@ -140,4 +140,25 @@ describe("DataTable", () => {
       expect(screen.queryByRole("button", { name: /limpiar filtros/i })).not.toBeInTheDocument();
     });
   });
+
+  describe("variante", () => {
+    it("tarjeta → monta la tabla dentro de la tarjeta, con las mismas filas", () => {
+      render(<DataTable columns={columns} data={rows} getRowKey={(r) => r.id} variante="tarjeta" />);
+      const tarjeta = screen.getByTestId("data-table-tarjeta");
+      expect(tarjeta).toContainElement(screen.getByRole("table"));
+      expect(screen.getAllByRole("row")).toHaveLength(3);
+    });
+
+    it("por defecto (plana) → no hay tarjeta: los demás módulos no cambian", () => {
+      render(<DataTable columns={columns} data={rows} getRowKey={(r) => r.id} />);
+      expect(screen.queryByTestId("data-table-tarjeta")).not.toBeInTheDocument();
+      expect(screen.getByRole("table")).toBeInTheDocument();
+    });
+
+    it("tarjeta con lista vacía → muestra el estado vacío, no una tarjeta vacía", () => {
+      render(<DataTable columns={columns} data={[]} getRowKey={(r) => r.id} variante="tarjeta" emptyTitle="Sin tickets" />);
+      expect(screen.getByText("Sin tickets")).toBeInTheDocument();
+      expect(screen.queryByTestId("data-table-tarjeta")).not.toBeInTheDocument();
+    });
+  });
 });

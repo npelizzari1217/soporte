@@ -36,6 +36,13 @@ export interface Column<T> {
 }
 
 export interface DataTableProps<T> {
+  /**
+   * Presentación del listado. `"tarjeta"` lo monta en una tarjeta con
+   * cabecera en versalitas y filas más aireadas; `"plana"` es la tabla de
+   * siempre. Es opt-in para que cada módulo adopte el estilo nuevo cuando se
+   * revise, sin cambiar de golpe los que no.
+   */
+  variante?: "plana" | "tarjeta";
   columns: Column<T>[];
   data: T[];
   getRowKey: (row: T) => string;
@@ -92,6 +99,7 @@ export function DataTable<T>({
   onRowClick,
   hayFiltrosActivos = false,
   onLimpiarFiltros,
+  variante = "plana",
 }: DataTableProps<T>) {
   if (isLoading) {
     return <TableSkeleton rows={5} columns={columns.length} />;
@@ -116,14 +124,18 @@ export function DataTable<T>({
     return <EmptyState icon={Inbox} title={emptyTitle} description={emptyDescription} />;
   }
 
-  const cellPadding = density === "compact" ? "py-1.5" : "py-3";
+  const enTarjeta = variante === "tarjeta";
+  const cellPadding = density === "compact" ? "py-1.5" : enTarjeta ? "py-4" : "py-3";
 
-  return (
+  const tabla = (
     <Table>
-      <TableHeader>
-        <TableRow>
+      <TableHeader className={enTarjeta ? "bg-muted/40" : undefined}>
+        <TableRow className={enTarjeta ? "hover:bg-transparent" : undefined}>
           {columns.map((column) => (
-            <TableHead key={column.key}>
+            <TableHead
+              key={column.key}
+              className={enTarjeta ? "h-10 text-[11px] font-semibold uppercase tracking-wider" : undefined}
+            >
               {column.sortable ? (
                 <button
                   type="button"
@@ -156,5 +168,12 @@ export function DataTable<T>({
         ))}
       </TableBody>
     </Table>
+  );
+
+  if (!enTarjeta) return tabla;
+  return (
+    <div data-testid="data-table-tarjeta" className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      {tabla}
+    </div>
   );
 }

@@ -75,6 +75,13 @@ const ESTADO_CONFIG: Record<TicketEstado, EstadoConfig> = {
   },
 };
 
+/**
+ * Forma de "pastilla" compartida por los badges de estado y prioridad: borde
+ * completo, mayúsculas chicas con aire entre letras. Solo cambia la forma; el
+ * texto que lee el lector de pantalla sigue siendo la etiqueta original.
+ */
+export const PASTILLA = "rounded-full px-2.5 text-[11px] font-semibold uppercase tracking-wide";
+
 function esTicketEstado(codigo: string): codigo is TicketEstado {
   return Object.prototype.hasOwnProperty.call(ESTADO_CONFIG, codigo);
 }
@@ -99,7 +106,7 @@ export interface StatusBadgeProps {
 export function StatusBadge({ estado }: StatusBadgeProps) {
   const config = ESTADO_CONFIG[estado];
   return (
-    <Badge data-testid="status-badge" variant="outline" className={cn(config.className)}>
+    <Badge data-testid="status-badge" variant="outline" className={cn(PASTILLA, config.className)}>
       {config.badgeLabel}
     </Badge>
   );

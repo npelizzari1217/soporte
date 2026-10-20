@@ -86,6 +86,8 @@ describe("TicketsListView", () => {
     expect(screen.getByTestId("status-badge")).toHaveTextContent("✨ Nuevo!!");
     expect(screen.getByTestId("priority-badge")).toHaveTextContent("Alta");
     expect(await screen.findByRole("option", { name: "🔵 Nuevo" })).toBeInTheDocument();
+    // Debajo del título van el número y la fecha de alta.
+    expect(screen.getByText(/^SOP-2026-0001 · \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/)).toBeInTheDocument();
   });
 
   it("muestra el técnico asignado cuando el ticket lo tiene, y «Sin asignar» cuando no", async () => {
@@ -104,6 +106,7 @@ describe("TicketsListView", () => {
     );
     renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
+    expect(screen.getByText("AP")).toBeInTheDocument();
     expect(screen.getByText("Sin asignar")).toBeInTheDocument();
   });
 

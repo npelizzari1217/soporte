@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { Ticket } from "lucide-react";
 import { PageHeader } from "./page-header";
 
 describe("PageHeader", () => {
@@ -17,5 +18,16 @@ describe("PageHeader", () => {
   it("without description → does not render an empty description paragraph", () => {
     const { container } = render(<PageHeader title="Tickets" />);
     expect(container.querySelectorAll("p")).toHaveLength(0);
+  });
+
+  it("with icon → renders the icon (decorative) next to the heading", () => {
+    const { container } = render(<PageHeader title="Tickets" icon={Ticket} />);
+    expect(screen.getByRole("heading", { name: "Tickets" })).toBeInTheDocument();
+    expect(container.querySelector("svg[aria-hidden='true']")).toBeInTheDocument();
+  });
+
+  it("without icon → no icon is rendered", () => {
+    const { container } = render(<PageHeader title="Tickets" />);
+    expect(container.querySelector("svg")).not.toBeInTheDocument();
   });
 });

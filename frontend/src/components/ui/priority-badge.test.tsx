@@ -17,4 +17,16 @@ describe("PriorityBadge", () => {
     render(<PriorityBadge prioridad="URGENTE_VIP" />);
     expect(screen.getByText("URGENTE_VIP")).toBeInTheDocument();
   });
+
+  it("each known priority gets its own color, and unknown codes a neutral one", () => {
+    const fondo = (codigo: string) => {
+      const { unmount } = render(<PriorityBadge prioridad={codigo} />);
+      const clases = screen.getByTestId("priority-badge").className;
+      unmount();
+      return clases.match(/(?:^| )bg-(\w+)-/)?.[1] ?? "neutra";
+    };
+    const fondos = ["BAJA", "MEDIA", "ALTA", "OTRA"].map(fondo);
+    expect(new Set(fondos).size).toBe(4);
+    expect(fondo("OTRA")).toBe("neutra");
+  });
 });
