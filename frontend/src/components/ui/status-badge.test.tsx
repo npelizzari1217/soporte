@@ -59,3 +59,14 @@ describe("etiquetaOpcionEstado", () => {
     expect(etiquetaOpcionEstado("OTRO", "Otro estado")).toBe("Otro estado");
   });
 });
+
+describe("ancho uniforme", () => {
+  it("reserves the 'En proceso' width with a hidden reference, keeping the visible label", () => {
+    render(<StatusBadge estado="ASIGNADO" />);
+    const badge = screen.getByTestId("status-badge");
+    const referencia = badge.querySelector("[aria-hidden='true']");
+    expect(referencia).toHaveTextContent("En proceso");
+    expect(referencia).toHaveClass("invisible");
+    expect(screen.getByText("Asignado")).toBeVisible();
+  });
+});

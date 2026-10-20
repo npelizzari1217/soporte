@@ -1,5 +1,5 @@
 import { Badge } from "./badge";
-import { PASTILLA } from "./status-badge";
+import { PASTILLA, contenidoAnchoUniforme } from "./status-badge";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,7 +42,7 @@ export function PriorityBadge({ prioridad }: PriorityBadgeProps) {
   const config = KNOWN_PRIORIDAD_CONFIG[prioridad.toUpperCase()];
   return (
     <Badge data-testid="priority-badge" variant="outline" className={cn(PASTILLA, config?.className ?? NEUTRA)}>
-      {config?.label ?? prioridad}
+      {contenidoAnchoUniforme(config?.label ?? prioridad, KNOWN_PRIORIDAD_CONFIG.MEDIA.label)}
     </Badge>
   );
 }

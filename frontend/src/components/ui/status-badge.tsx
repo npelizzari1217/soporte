@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { Badge } from "./badge";
 import { cn } from "@/lib/utils";
 
@@ -99,6 +100,28 @@ export function etiquetaOpcionEstado(codigo: string, fallback?: string): string 
   return `${config.emoji} ${config.label}`;
 }
 
+/**
+ * Contenido con ancho mínimo uniforme: el texto de referencia ocupa la misma
+ * celda de grilla pero invisible, así la pastilla mide al menos lo que mide
+ * esa referencia y todas las de un mismo tipo quedan parejas en una columna.
+ * Una etiqueta más larga que la referencia crece en vez de cortarse. La
+ * referencia va `aria-hidden`, así que el lector de pantalla no la anuncia.
+ *
+ * @param texto Etiqueta visible.
+ * @param referencia Etiqueta que fija el ancho mínimo.
+ * @returns El contenido para dentro del `Badge`.
+ */
+export function contenidoAnchoUniforme(texto: string, referencia: string): React.ReactNode {
+  return (
+    <span className="inline-grid justify-items-center">
+      <span aria-hidden="true" className="invisible col-start-1 row-start-1">
+        {referencia}
+      </span>
+      <span className="col-start-1 row-start-1">{texto}</span>
+    </span>
+  );
+}
+
 export interface StatusBadgeProps {
   estado: TicketEstado;
 }
@@ -107,7 +130,7 @@ export function StatusBadge({ estado }: StatusBadgeProps) {
   const config = ESTADO_CONFIG[estado];
   return (
     <Badge data-testid="status-badge" variant="outline" className={cn(PASTILLA, config.className)}>
-      {config.badgeLabel}
+      {contenidoAnchoUniforme(config.badgeLabel, ESTADO_CONFIG.EN_PROCESO.label)}
     </Badge>
   );
 }
