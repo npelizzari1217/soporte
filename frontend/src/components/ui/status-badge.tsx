@@ -31,7 +31,7 @@ const ESTADO_CONFIG: Record<TicketEstado, EstadoConfig> = {
     label: "Nuevo",
     badgeLabel: "✨ Nuevo!!",
     emoji: "🔵",
-    className: "border-transparent bg-blue-600 text-white font-semibold dark:bg-blue-500 dark:text-white",
+    className: "border-transparent bg-blue-600 text-white font-semibold dark:bg-blue-600 dark:text-white",
   },
   ASIGNADO: {
     label: "Asignado",

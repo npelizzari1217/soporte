@@ -83,8 +83,9 @@ describe("TicketsListView", () => {
   it("resuelve estadoId/prioridadId a códigos vía catálogos y los renderiza como badges (G1)", async () => {
     renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
     expect(await screen.findByText("Impresora rota")).toBeInTheDocument();
-    expect(screen.getByTestId("status-badge")).toHaveTextContent("Nuevo");
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("✨ Nuevo!!");
     expect(screen.getByTestId("priority-badge")).toHaveTextContent("Alta");
+    expect(await screen.findByRole("option", { name: "🔵 Nuevo" })).toBeInTheDocument();
   });
 
   it("muestra el técnico asignado cuando el ticket lo tiene, y «Sin asignar» cuando no", async () => {
