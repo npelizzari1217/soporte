@@ -81,12 +81,12 @@ export interface TicketEdilicioCreado {
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
  * 2b. Si viene `sectorId`, valida que exista (no se exige activo) →
  *    `SectorTicketInexistenteError` (odd/ubicacion-sector-ticket).
- * 3. Resuelve el tipo EDILICIA por código (catálogo FIJO — su ausencia es
- *    un fallo de infraestructura, `throw` defensivo).
+ * 3. Resuelve el tipo: el elegido en `tipoId` (validado por `resolverTipo`) o, sin él, EDILICIA
+ *    por código (catálogo FIJO — su ausencia es un fallo de infraestructura, `throw` defensivo).
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
  *    (catálogos FIJOS, mismo criterio).
- * 5. **DENTRO de la transacción**: genera el `numero` (prefijo EDI, ADR-4,
- *    ya resuelto), crea `TicketEntity` + `OperacionTicketEntity` de
+ * 5. **DENTRO de la transacción**: genera el `numero` con el prefijo del tipo resuelto (EDI
+ *    para EDILICIA, ADR-4), crea `TicketEntity` + `OperacionTicketEntity` de
  *    apertura + `TicketEdiliciaEntity` satélite, y persiste las 3
  *    entidades.
  * 6. **POST-COMMIT** (`txRunner.alCommitear`, mismo criterio que
@@ -149,7 +149,7 @@ export class CrearTicketEdilicioUseCase {
     if (tipoResult.isFail()) {
       return Result.fail(tipoResult.getError());
     }
-    const tipoEdilicia = tipoResult.getValue();
+    const tipo = tipoResult.getValue();
 
     // 4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
     //    es un bug de infraestructura, no un error del caller: throw defensivo.
@@ -170,15 +170,11 @@ export class CrearTicketEdilicioUseCase {
     //    persistencia atómica de ticket + operación + satélite.
     // Regla de asignación del tipo: sin regla o regla rota → null y el alta sigue como siempre;
     // un fallo de consulta del tenant se propaga (ver el resolver). Resuelve fuera de la tx.
-    const asignacion = await this.resolverAsignacion.resolver(tipoEdilicia, dto.clienteId);
+    const asignacion = await this.resolverAsignacion.resolver(tipo, dto.clienteId);
     const estadoInicialId = asignacion?.estadoAsignadoId ?? estadoNuevoId;
 
     const resultado = await this.txRunner.run(async () => {
-      const numeroResult = await this.numerador.generarNumero(
-        tipoEdilicia.id,
-        tipoEdilicia.codigo,
-        dto.anio,
-      );
+      const numeroResult = await this.numerador.generarNumero(tipo.id, tipo.codigo, dto.anio);
       if (numeroResult.isFail()) {
         return Result.fail<TicketEdilicioCreado, DomainError>(numeroResult.getError());
       }
@@ -187,7 +183,7 @@ export class CrearTicketEdilicioUseCase {
         numero: numeroResult.getValue(),
         titulo: dto.titulo,
         descripcion: dto.descripcion ?? null,
-        tipoId: tipoEdilicia.id,
+        tipoId: tipo.id,
         estadoId: estadoInicialId,
         prioridadId: dto.prioridadId,
         cicloId: cicloActivo.id,
@@ -203,7 +199,7 @@ export class CrearTicketEdilicioUseCase {
       // La apertura conserva el autor del dto; la ASIGNACION es de AUTOR_SISTEMA.
       const operaciones = operacionesDeApertura({
         ticketId: ticket.id,
-        tipoId: tipoEdilicia.id,
+        tipoId: tipo.id,
         estadoInicialId,
         tipoOperacionAperturaId,
         autorId: dto.autorId,
