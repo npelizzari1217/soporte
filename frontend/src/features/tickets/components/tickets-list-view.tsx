@@ -37,7 +37,7 @@ import { Can } from "@/components/shared/can";
 import { Select } from "@/components/ui/select";
 import { TicketCreateDialog } from "./ticket-create-dialog";
 import { ExportarTicketsButton } from "./exportar-tickets-button";
-import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
+import { StatusBadge, etiquetaOpcionEstado, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
@@ -206,7 +206,7 @@ export function TicketsListView() {
             <option value="">Todos los estados</option>
             {(estadosQuery.data ?? []).map((estado) => (
               <option key={estado.id} value={estado.id}>
-                {estado.nombre}
+                {etiquetaOpcionEstado(estado.codigo, estado.nombre)}
               </option>
             ))}
           </Select>
