@@ -44,6 +44,9 @@ import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
 
+/** Roles que pueden ser responsables de un ticket (espejo del backend). */
+const ROLES_ASIGNABLES: ReadonlySet<string> = new Set(["TECNICO", "COLABORADOR"]);
+
 const PAGE_SIZE = 10;
 
 export function TicketsListView() {
@@ -83,6 +86,12 @@ export function TicketsListView() {
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const usuariosQuery = useUsuariosAsignables();
+  // `GET /usuarios` trae todo el tenant, pero un ticket solo puede quedar asignado a un
+  // agente: mismo criterio que `ListarTecnicosAsignablesUseCase` del backend.
+  const agentes = useMemo(
+    () => (usuariosQuery.data ?? []).filter((usuario) => ROLES_ASIGNABLES.has(usuario.rol)),
+    [usuariosQuery.data],
+  );
   const ciclosQuery = useCiclos();
 
   const ciclos = useMemo(() => ciclosQuery.data?.ciclos ?? [], [ciclosQuery.data]);
@@ -284,7 +293,7 @@ export function TicketsListView() {
               onChange={(e) => updateFiltros({ asignado: e.target.value || undefined })}
             >
               <option value="">Cualquier asignado</option>
-              {(usuariosQuery.data ?? []).map((usuario) => (
+              {agentes.map((usuario) => (
                 <option key={usuario.id} value={usuario.id}>
                   {usuario.nombre} {usuario.apellido}
                 </option>
