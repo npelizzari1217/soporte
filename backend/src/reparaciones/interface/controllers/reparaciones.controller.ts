@@ -66,6 +66,8 @@ import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 import {
   SolicitanteInvalidoError,
+  TipoTicketNoEncontradoError,
+  TipoTicketNoPermitidoEnAltaError,
   SectorTicketInexistenteError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
@@ -145,6 +147,9 @@ export function toHttpException(
     error instanceof SolicitanteInvalidoError ||
     // odd/ubicacion-sector-ticket: sector del alta inexistente.
     error instanceof SectorTicketInexistenteError ||
+    // odd/tasks/tipos-ticket-por-modulo.md (S2): tipo elegido inexistente, inactivo o no admitido.
+    error instanceof TipoTicketNoEncontradoError ||
+    error instanceof TipoTicketNoPermitidoEnAltaError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
     // en 422 por el default, pero se lista explícito como los demás — el
     // default existe para el error que NADIE mapeó, no para ahorrarse una
@@ -212,6 +217,7 @@ export class ReparacionesController {
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? null,
       prioridadId: dto.prioridadId,
+      tipoId: dto.tipoId ?? null,
       ubicacion: dto.ubicacion ?? null,
       sectorId: dto.sectorId ?? null,
       solicitanteId: user.sub,

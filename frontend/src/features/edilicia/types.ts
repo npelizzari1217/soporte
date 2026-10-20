@@ -86,6 +86,8 @@ export interface CrearTicketEdilicioDto {
   titulo: string;
   descripcion?: string | null;
   prioridadId: string;
+  /** Tipo de ticket del módulo EDILICIA; ausente = EDILICIA (odd/tasks/tipos-ticket-por-modulo.md). */
+  tipoId?: string | null;
   /** Texto libre, opcional. */
   ubicacion?: string | null;
   /** Sector del cliente, opcional (odd/ubicacion-sector-ticket). Sin la ubicación general. */

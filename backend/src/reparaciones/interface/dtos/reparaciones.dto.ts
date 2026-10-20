@@ -61,6 +61,14 @@ export class CreateTicketEdilicioHttpDto {
   @IsUUID()
   prioridadId!: string;
 
+  /**
+   * Tipo de ticket elegido (odd/tasks/tipos-ticket-por-modulo.md, S2). Ausente = EDILICIA. El caso
+   * de uso valida que sea un tipo activo del módulo EDILICIA distinto de PREVENTIVO.
+   */
+  @IsOptional()
+  @IsUUID()
+  tipoId?: string | null;
+
   /** Ubicación física de la reparación, texto libre (opcional). */
   @IsOptional()
   @IsString()

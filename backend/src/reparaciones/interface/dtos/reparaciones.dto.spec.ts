@@ -76,6 +76,32 @@ describe('CreateTicketEdilicioHttpDto — tope de ubicacion', () => {
   });
 });
 
+describe('CreateTicketEdilicioHttpDto — tipoId opcional (S2, odd/tasks/tipos-ticket-por-modulo.md)', () => {
+  const BASE = {
+    titulo: 'Filtración en el baño',
+    prioridadId: '9f1a0b2c-3d4e-4f50-8a61-72b83c94d5e6',
+  };
+
+  it('acepta el alta sin tipoId', async () => {
+    const dto = plainToInstance(CreateTicketEdilicioHttpDto, BASE);
+    expect((await validate(dto)).some((e) => e.property === 'tipoId')).toBe(false);
+  });
+
+  it('acepta un tipoId UUID', async () => {
+    const dto = plainToInstance(CreateTicketEdilicioHttpDto, {
+      ...BASE,
+      tipoId: '1a2b3c4d-5e6f-4a70-8b81-92c03d14e5f6',
+    });
+    expect((await validate(dto)).some((e) => e.property === 'tipoId')).toBe(false);
+  });
+
+  it('rechaza un tipoId que no es UUID', async () => {
+    const dto = plainToInstance(CreateTicketEdilicioHttpDto, { ...BASE, tipoId: 'MANTENIMIENTO' });
+    const error = (await validate(dto)).find((e) => e.property === 'tipoId');
+    expect(error?.constraints).toHaveProperty('isUuid');
+  });
+});
+
 describe('ListReparacionesQueryDto — paginación y filtro de bloqueo (odd/reparaciones-paginadas, S1)', () => {
   async function errores(query: Record<string, string>) {
     const dto = plainToInstance(ListReparacionesQueryDto, query);

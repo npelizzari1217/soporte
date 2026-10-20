@@ -29,6 +29,8 @@ import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.
 import {
   SectorTicketInexistenteError,
   SolicitanteInvalidoError,
+  TipoTicketNoEncontradoError,
+  TipoTicketNoPermitidoEnAltaError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
@@ -63,6 +65,17 @@ function operacionDelTipo(
   return op;
 }
 
+const tipo = (codigo: string, modulo: 'EDILICIA' | 'TICKETS', activo = true): TipoTicketEntity =>
+  TipoTicketEntity.create({ codigo, nombre: codigo, modulo, activo }, `tipo-${codigo}`);
+
+/** Catálogo del tenant para `findById`: un tipo elegible y uno por cada causa de rechazo. */
+const TIPOS_POR_ID: Record<string, TipoTicketEntity> = {
+  'tipo-MANTENIMIENTO': tipo('MANTENIMIENTO', 'EDILICIA'),
+  'tipo-PREVENTIVO': tipo('PREVENTIVO', 'EDILICIA'),
+  'tipo-SOPORTE': tipo('SOPORTE', 'TICKETS'),
+  'tipo-PINTURA': tipo('PINTURA', 'EDILICIA', false),
+};
+
 describe('CrearTicketEdilicioUseCase', () => {
   function buildDeps() {
     const ticketRepo = { save: vi.fn<ITicketRepository['save']>() };
@@ -82,6 +95,7 @@ describe('CrearTicketEdilicioUseCase', () => {
             'tipo-edilicia-uuid',
           ),
         ),
+      findById: vi.fn<ITipoTicketRepository['findById']>(async (id) => TIPOS_POR_ID[id] ?? null),
     };
     const tipoOperacionRepo = {
       findIdByCodigo: vi
@@ -140,6 +154,7 @@ describe('CrearTicketEdilicioUseCase', () => {
 
     return {
       useCase,
+      numerador,
       sectorRepo,
       ticketRepo,
       operacionRepo,
@@ -148,6 +163,7 @@ describe('CrearTicketEdilicioUseCase', () => {
       eventPublisher,
       resolverAsignacion,
       txRunner,
+      tipoTicketRepo,
     };
   }
 
@@ -216,6 +232,65 @@ describe('CrearTicketEdilicioUseCase', () => {
       const result = await useCase.execute({ ...baseDto, sectorId: 'no-existe' });
 
       expect(result.getError()).toBeInstanceOf(SectorTicketInexistenteError);
+      expect(ticketRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('tipo elegido (S2, odd/tasks/tipos-ticket-por-modulo.md)', () => {
+    it('sin tipoId usa EDILICIA, como siempre', async () => {
+      const { useCase, tipoTicketRepo } = buildDeps();
+
+      const result = await useCase.execute(baseDto);
+
+      expect(result.getValue().ticket.tipoId).toBe('tipo-edilicia-uuid');
+      expect(tipoTicketRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('con un tipo activo de EDILICIA crea el ticket de ese tipo, numerado por su código', async () => {
+      const { useCase, numerador, ticketEdiliciaRepo } = buildDeps();
+
+      const result = await useCase.execute({ ...baseDto, tipoId: 'tipo-MANTENIMIENTO' });
+
+      expect(result.isOk()).toBe(true);
+      const { ticket, ticketEdilicia } = result.getValue();
+      expect(ticket.tipoId).toBe('tipo-MANTENIMIENTO');
+      expect(numerador.generarNumero).toHaveBeenCalledWith(
+        'tipo-MANTENIMIENTO',
+        'MANTENIMIENTO',
+        2026,
+      );
+      expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);
+    });
+
+    it.each([
+      ['de otro módulo', 'tipo-SOPORTE', 'SOPORTE'],
+      ['reservado al barrido preventivo', 'tipo-PREVENTIVO', 'PREVENTIVO'],
+    ])(
+      'tipo %s → TipoTicketNoPermitidoEnAltaError, sin persistir',
+      async (_caso, tipoId, codigo) => {
+        const { useCase, ticketRepo, txRunner } = buildDeps();
+
+        const result = await useCase.execute({ ...baseDto, tipoId });
+
+        expect(result.getError()).toBeInstanceOf(TipoTicketNoPermitidoEnAltaError);
+        expect(result.getError().message).toBe(
+          `El tipo de ticket "${codigo}" no se puede usar en el alta del módulo EDILICIA.`,
+        );
+        expect(txRunner.run).not.toHaveBeenCalled();
+        expect(ticketRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['inexistente', 'no-existe'],
+      ['inactivo', 'tipo-PINTURA'],
+    ])('tipo %s → TipoTicketNoEncontradoError, sin persistir', async (_caso, tipoId) => {
+      const { useCase, ticketRepo, txRunner } = buildDeps();
+
+      const result = await useCase.execute({ ...baseDto, tipoId });
+
+      expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
+      expect(txRunner.run).not.toHaveBeenCalled();
       expect(ticketRepo.save).not.toHaveBeenCalled();
     });
   });
