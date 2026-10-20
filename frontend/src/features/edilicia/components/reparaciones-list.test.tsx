@@ -735,3 +735,21 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
     expect(within(comentarios).queryByRole("note")).toBeNull();
   });
 });
+
+describe("ReparacionesList — fecha de alta bajo el número", () => {
+  it("muestra debajo del número la fecha y hora en que se creó el pedido", async () => {
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json([buildReparacion({ numero: "EDI-0010", createdAt: "2026-03-15T15:30:00.000Z" })]),
+      ),
+    );
+
+    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+
+    await screen.findByText("EDI-0010");
+
+    const celdaNumero = screen.getByText("EDI-0010").closest("td") as HTMLElement;
+    expect(within(celdaNumero).getByText(/^15\/03\/2026 \d{2}:\d{2}$/)).toBeInTheDocument();
+  });
+});
+

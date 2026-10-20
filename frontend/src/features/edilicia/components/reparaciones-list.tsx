@@ -28,6 +28,7 @@ import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas"
 import { VincularCompraDialog } from "./vincular-compra-dialog";
 import type { ReparacionListItem } from "../types";
 import { Wrench } from "lucide-react";
+import { formatearInstante } from "@/shared/lib/formato-fecha";
 
 /**
  * Filtro de bloqueo del listado (sdd/reparacion-bloqueada-por-compra, WU4).
@@ -121,7 +122,18 @@ export function ReparacionesList() {
   );
 
   const columns: Column<ReparacionListItem>[] = [
-    { key: "numero", header: "Número" },
+    {
+      key: "numero",
+      header: "Número",
+      // Debajo del número, cuándo se creó el pedido: da la antigüedad sin
+      // tener que abrir la reparación.
+      render: (row) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium text-foreground">{row.numero}</span>
+          <span className="text-xs text-muted-foreground">{formatearInstante(row.createdAt)}</span>
+        </div>
+      ),
+    },
     { key: "titulo", header: "Título" },
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     // Sector del ticket base (odd/ubicacion-sector-ticket, CA4), por el nombre
