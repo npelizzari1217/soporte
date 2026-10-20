@@ -190,7 +190,7 @@ export function UnidadesInsumoSection({ insumoId }: UnidadesInsumoSectionProps) 
           </Select>
         </div>
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columnas}
         data={visibles}
         getRowKey={(fila) => fila.id}

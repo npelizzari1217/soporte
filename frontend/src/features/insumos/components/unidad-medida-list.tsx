@@ -86,7 +86,7 @@ export function UnidadMedidaList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={unidadesQuery.data ?? []}
         getRowKey={(row) => row.id}

@@ -36,7 +36,7 @@ function CiclosAdminContent() {
 
   return (
     <div>
-      <PageHeader title="Ciclos" description="Ciclos de gestión adoptados por el tenant." />
+      <PageHeader icon={CalendarRange} title="Ciclos" description="Ciclos de gestión adoptados por el tenant." />
 
       <div className="mb-4">
         <AdoptarCicloDialog />

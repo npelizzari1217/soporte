@@ -62,7 +62,7 @@ export function WebhookEntregasTable() {
 
   return (
     <div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={query.data?.items ?? []}
         getRowKey={(e) => e.id}

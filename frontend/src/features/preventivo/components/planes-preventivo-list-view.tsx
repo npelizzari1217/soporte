@@ -22,6 +22,7 @@ import { badgeVariantDeResultado, etiquetaResultado } from "../lib/resultado-gen
 import { objetivoLabel, unidadIntervaloLabel } from "../lib/plan-labels";
 import type { PlanPreventivo, PreventivoGeneracion } from "../types";
 import type { UseQueryResult } from "@tanstack/react-query";
+import { ClipboardCheck } from "lucide-react";
 
 /** Etiqueta de cadencia del plan ("Cada N día(s)/mes(es)"). */
 function cadenciaLabel(plan: PlanPreventivo): string {
@@ -131,7 +132,7 @@ export function PlanesPreventivoListView() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Mantenimiento preventivo" />
+      <PageHeader icon={ClipboardCheck} title="Mantenimiento preventivo" />
       <Can
         permiso="PREVENTIVO:LECTURA"
         fallback={<ErrorState message="No tenés permiso para ver los planes de mantenimiento preventivo." />}
@@ -142,7 +143,7 @@ export function PlanesPreventivoListView() {
               <PlanPreventivoCreateDialog />
             </Can>
           </div>
-          <DataTable
+          <DataTable variante="tarjeta"
             columns={columns}
             data={planes}
             getRowKey={(row) => row.id}

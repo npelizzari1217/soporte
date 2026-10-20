@@ -41,7 +41,7 @@
  * La ficha (`InsumoDetailView`) es una sola vista montada en las dos rutas;
  * adapta su copy a la familia del ítem, así que no se duplica.
  */
-import { Plus } from "lucide-react";
+import { Plus, Cog, Package } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useInsumos } from "../hooks/use-insumos";
@@ -135,7 +135,7 @@ export function CatalogoInsumosListView({
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={tituloSeccion} />
+      <PageHeader title={tituloSeccion} icon={esRepuesto ? Cog : Package} />
       <Can
         permiso="INSUMOS:LECTURA"
         fallback={<ErrorState message={`No tiene permiso para ver el catálogo de ${tituloMinuscula}.`} />}
@@ -164,7 +164,7 @@ export function CatalogoInsumosListView({
               />
             </SoloAdminCliente>
           </div>
-          <DataTable
+          <DataTable variante="tarjeta"
             columns={columns}
             data={insumosQuery.data ?? []}
             getRowKey={(row) => row.id}

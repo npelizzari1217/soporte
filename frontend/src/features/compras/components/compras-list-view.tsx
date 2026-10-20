@@ -67,6 +67,7 @@ import { ExportarComprasButton } from "./exportar-compras-button";
 import { formatearTotalesPorMoneda } from "../lib/formatear-totales";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import type { CompraListItem, ComprasFiltros, FiltroEstadoCompra } from "../types";
+import { ShoppingCart } from "lucide-react";
 
 const PAGE_SIZE = 10;
 
@@ -164,7 +165,7 @@ export function ComprasListView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PageHeader icon={ShoppingCart}
         title="Compras"
         description="Solicitudes de compra del ciclo activo"
         actions={
@@ -240,7 +241,7 @@ export function ComprasListView() {
         </div>
       </FilterBar>
 
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={comprasQuery.data?.items ?? []}
         getRowKey={(row) => row.id}

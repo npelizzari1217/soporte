@@ -27,6 +27,7 @@ import { notifyError } from "@/shared/lib/toast";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
 import { KbArticleCreateDialog } from "./kb-article-create-dialog";
 import type { KbArticulo, KbFiltros } from "../types";
+import { BookOpen } from "lucide-react";
 
 const PAGE_SIZE = 10;
 
@@ -72,7 +73,7 @@ export function KbListView() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={BookOpen}
         title={ETIQUETAS_MODULOS.KB}
         actions={
           <SoloRoot>
@@ -81,14 +82,14 @@ export function KbListView() {
         }
       />
 
-      <FilterBar
+      <FilterBar variante="tarjeta"
         searchPlaceholder="Buscar por título…"
         searchValue={filtros.busqueda ?? ""}
         onSearchChange={(value) => updateFiltros({ busqueda: value })}
       />
 
       <div className="mt-4">
-        <DataTable
+        <DataTable variante="tarjeta"
           columns={columns}
           data={kbQuery.data?.items ?? []}
           getRowKey={(row) => row.id}

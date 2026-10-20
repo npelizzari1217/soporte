@@ -19,13 +19,14 @@ import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { FamiliaInsumoList } from "./familia-insumo-list";
+import { FolderTree } from "lucide-react";
 
 export function InsumosCatalogosAdminView() {
   return (
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar los catálogos de insumos." />}>
-        <PageHeader title="Familia de Catálogos" description="Familias del catálogo, de consumibles y de repuestos." />
+        <PageHeader icon={FolderTree} title="Familia de Catálogos" description="Familias del catálogo, de consumibles y de repuestos." />
         <FamiliaInsumoList />
       </SoloAdminCliente>
     </div>

@@ -17,6 +17,7 @@ import { TipoTicketList } from "./tipo-ticket-list";
 import { PrioridadList } from "./prioridad-list";
 import { SectorList } from "@/features/sectores/components/sector-list";
 import { RespuestaPredefinidaList } from "@/features/respuestas-predefinidas/components/respuesta-predefinida-list";
+import { Settings } from "lucide-react";
 
 /**
  * WU-31 (`compras-tres-etapas-y-sectores` R10): agrega el tab "Sectores" al
@@ -32,7 +33,7 @@ export function CatalogosAdminView() {
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar catálogos." />}>
-        <PageHeader title="Catálogos" description="Tipos de ticket, prioridades, sectores y respuestas predefinidas del tenant." />
+        <PageHeader icon={Settings} title="Catálogos" description="Tipos de ticket, prioridades, sectores y respuestas predefinidas del tenant." />
         <Tabs defaultValue="tipos">
           <TabsList>
             <TabsTrigger value="tipos">Tipos de ticket</TabsTrigger>

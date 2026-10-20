@@ -95,7 +95,7 @@ export function FamiliaInsumoList() {
           }
         />
       </div>
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={familiasQuery.data ?? []}
         getRowKey={(row) => row.id}

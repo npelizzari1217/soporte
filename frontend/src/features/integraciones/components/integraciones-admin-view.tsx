@@ -36,6 +36,7 @@ import type { ApiClave } from "../types";
 import { ClaveCreadaDialog } from "./clave-creada-dialog";
 import { CrearApiClaveDialog } from "./crear-api-clave-dialog";
 import { WebhookSection } from "./webhook-section";
+import { Plug } from "lucide-react";
 
 function RevocarClaveButton({ clave }: { clave: ApiClave }) {
   const revocarMutation = useRevocarApiClave();
@@ -102,7 +103,7 @@ function ApiClavesTable() {
   ];
 
   return (
-    <DataTable
+    <DataTable variante="tarjeta"
       columns={columns}
       data={query.data ?? []}
       getRowKey={(c) => c.id}
@@ -122,7 +123,7 @@ export function IntegracionesAdminView() {
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para administrar las integraciones." />}>
-        <PageHeader
+        <PageHeader icon={Plug}
           title="Integraciones"
           description="Claves de la API pública para que otros sistemas consulten, creen y comenten tickets, y webhooks para avisarles cuando algo cambia."
           actions={<CrearApiClaveDialog onClaveCreada={setClaveNueva} />}

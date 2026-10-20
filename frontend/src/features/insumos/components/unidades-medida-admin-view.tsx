@@ -25,13 +25,14 @@ import { ErrorState } from "@/components/shared/error-state";
 import { PageHeader } from "@/components/shared/page-header";
 import { AdminNav } from "@/components/shell/admin-nav";
 import { UnidadMedidaList } from "./unidad-medida-list";
+import { Ruler } from "lucide-react";
 
 export function UnidadesMedidaAdminView() {
   return (
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar las unidades de medida." />}>
-        <PageHeader title="Unidades" description="Catálogo de unidades de medida, transversal a los insumos." />
+        <PageHeader icon={Ruler} title="Unidades" description="Catálogo de unidades de medida, transversal a los insumos." />
         <UnidadMedidaList />
       </SoloAdminCliente>
     </div>

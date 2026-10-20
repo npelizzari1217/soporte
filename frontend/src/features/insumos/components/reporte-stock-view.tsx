@@ -37,6 +37,7 @@ import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { notifyError } from "@/shared/lib/toast";
 import { cn } from "@/lib/utils";
+import { BarChart3 } from "lucide-react";
 
 const SIN_VALOR = "—";
 
@@ -139,7 +140,7 @@ export function ReporteStockView() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
+      <PageHeader icon={BarChart3}
         title="Reporte de stock"
         description={
           reporteQuery.data
@@ -205,7 +206,7 @@ export function ReporteStockView() {
         </label>
       </FilterBar>
 
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={COLUMNAS}
         data={filas}
         getRowKey={(row) => row.insumoId}

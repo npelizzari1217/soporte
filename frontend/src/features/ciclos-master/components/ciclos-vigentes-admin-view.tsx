@@ -10,7 +10,7 @@
  * `/admin/ciclos` (`features/ciclos`, adopción/activación por el admin del
  * cliente) — este es el catálogo, no la adopción.
  */
-import { Plus } from "lucide-react";
+import { Plus, CalendarRange } from "lucide-react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useCiclosVigentesAdmin } from "../hooks/use-ciclos-vigentes-admin";
 import { useEliminarCicloVigente } from "../hooks/use-ciclos-vigentes-admin-mutations";
@@ -95,7 +95,7 @@ function CiclosVigentesAdminContent() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={CalendarRange}
         title="Ciclos"
         description="Catálogo maestro de ciclos lectivos (solo ROOT). Cada cliente elige y activa un ciclo de este catálogo desde Admin > Ciclos."
         actions={
@@ -109,7 +109,7 @@ function CiclosVigentesAdminContent() {
           />
         }
       />
-      <DataTable
+      <DataTable variante="tarjeta"
         columns={columns}
         data={ciclos}
         getRowKey={(row) => row.id}

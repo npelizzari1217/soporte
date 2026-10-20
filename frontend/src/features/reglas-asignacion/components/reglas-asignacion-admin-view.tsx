@@ -23,6 +23,7 @@ import { notifyError } from "@/shared/lib/toast";
 import { useConfigurarReglaAsignacion } from "../hooks/use-configurar-regla-asignacion";
 import { useReglasAsignacion } from "../hooks/use-reglas-asignacion";
 import type { CandidatoRegla, ReglaAsignacionFila } from "../types";
+import { Shuffle } from "lucide-react";
 
 const AYUDA_ESTADO: Record<ReglaAsignacionFila["estado"], { etiqueta: string; variant: "outline" | "success" | "destructive"; ayuda: string }> = {
   SIN_REGLA: { etiqueta: "Sin regla", variant: "outline", ayuda: "Los tickets de este tipo nacen sin asignar." },
@@ -111,7 +112,7 @@ function ReglasAsignacionTable() {
   ];
 
   return (
-    <DataTable
+    <DataTable variante="tarjeta"
       columns={columns}
       data={query.data?.reglas ?? []}
       getRowKey={(fila) => fila.tipoId}
@@ -129,7 +130,7 @@ export function ReglasAsignacionAdminView() {
     <div>
       <AdminNav />
       <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para configurar la asignación automática." />}>
-        <PageHeader
+        <PageHeader icon={Shuffle}
           title="Asignación automática"
           description="Elegí quién recibe los tickets nuevos de cada tipo. Sin responsable, el ticket nace sin asignar."
         />

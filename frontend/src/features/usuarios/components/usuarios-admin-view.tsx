@@ -63,7 +63,7 @@ function UsuariosAdminContent() {
 
   return (
     <div>
-      <PageHeader
+      <PageHeader icon={Users}
         title="Usuarios y membresías"
         description="Usuarios con membresía activa en este tenant."
         actions={<CrearUsuarioDialog />}
@@ -72,7 +72,7 @@ function UsuariosAdminContent() {
       <PoliticaTfaCard />
 
       {usuariosQuery.isLoading || usuariosQuery.isError ? (
-        <DataTable
+        <DataTable variante="tarjeta"
           columns={columns}
           data={[]}
           getRowKey={(row) => row.id}
@@ -83,7 +83,7 @@ function UsuariosAdminContent() {
       ) : (usuariosQuery.data?.length ?? 0) === 0 ? (
         <EmptyState icon={Users} title="Sin usuarios" description="Todavía no hay usuarios con membresía en este tenant." />
       ) : (
-        <DataTable columns={columns} data={usuariosQuery.data ?? []} getRowKey={(row) => row.id} />
+        <DataTable variante="tarjeta" columns={columns} data={usuariosQuery.data ?? []} getRowKey={(row) => row.id} />
       )}
     </div>
   );
