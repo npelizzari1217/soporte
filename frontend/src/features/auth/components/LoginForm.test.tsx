@@ -54,4 +54,27 @@ describe("LoginForm", () => {
     expect(screen.getByLabelText(/contraseña/i)).toBeDisabled();
     expect(screen.getByRole("button", { name: /iniciar sesión/i })).toBeDisabled();
   });
+
+  it("el botón del ojo alterna la clave entre oculta y visible sin perder lo tipeado", async () => {
+    const user = userEvent.setup();
+    render(<LoginForm onSubmit={vi.fn()} isLoading={false} />);
+    const password = screen.getByLabelText("Contraseña");
+    await user.type(password, "secret123");
+    expect(password).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: "Mostrar la clave" }));
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("secret123");
+
+    await user.click(screen.getByRole("button", { name: "Ocultar la clave" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
+  it("el botón del ojo no envía el formulario", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<LoginForm onSubmit={onSubmit} isLoading={false} />);
+    await user.click(screen.getByRole("button", { name: "Mostrar la clave" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
