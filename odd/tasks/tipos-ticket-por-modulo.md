@@ -57,3 +57,18 @@ el alta de su módulo y que cada usuario vea solo los tipos de sus módulos.
   porque el barrido preventivo (`PREVENTIVO`, módulo EDILICIA) y la API de integraciones v1 reusan
   el caso de uso. La API de integraciones queda sin restricción de módulo a propósito: es un
   contrato externo.
+- **L7** (TDD de los bugfixes, §6.1): RED observado antes de cada fix y GREEN después.
+  `6baf546d` (S0): el test nuevo de `tickets-list-view.test.tsx` falló porque el combo mostraba
+  "Juan Final" (rol USUARIO). `06e2bab6` (S1): falló el caso del técnico con solo TICKETS, que
+  veía los tipos de EDILICIA; el caso ROOT pasaba ya. `e5d2ca98` (S3): falló "tipo de otro
+  módulo" porque el alta aceptaba MANTENIMIENTO; los casos de compatibilidad pasaban ya. El
+  verificador independiente reprodujo los mismos RED aplicando los tests nuevos sobre `main`.
+- **L8** (verificación independiente, `gentle-ai-verify`): S0–S4 PASS, sin bloqueantes. Corregidos
+  los comentarios vencidos que señaló en `crear-ticket-edilicio` y `crear-ticket-soporte`.
+  Queda como nota, no corregido: con una URL vieja que trae `?tipo=` de otro módulo o `?asignado=`
+  de un usuario final, el listado filtra igual pero el select muestra la opción vacía. Durante
+  la verificación, corepack descargó pnpm del registro en la copia temporal del verificador.
+- **L9** (Ayuda, escritura suspendida): `backend/ayuda/tickets-listado.md:45` ("Tipo — según el
+  catálogo del tenant") quedó incompleto: el filtro ofrece solo los tipos de los módulos del
+  usuario, y el de asignado solo agentes. Lo mismo para el selector de tipo del alta edilicia y
+  los módulos admitidos en Catálogos (ya anotados en `184f7447` y `b4376fbc`).
