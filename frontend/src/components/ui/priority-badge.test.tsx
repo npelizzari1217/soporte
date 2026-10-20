@@ -30,3 +30,12 @@ describe("PriorityBadge", () => {
     expect(fondo("OTRA")).toBe("neutra");
   });
 });
+
+describe("uniform width", () => {
+  it("reserves the 'Media' width with a hidden reference, also for unknown codes", () => {
+    render(<PriorityBadge prioridad="URGENTE_VIP" />);
+    const referencia = screen.getByTestId("priority-badge").querySelector("[aria-hidden='true']");
+    expect(referencia).toHaveTextContent("Media");
+    expect(screen.getByText("URGENTE_VIP")).toBeInTheDocument();
+  });
+});
