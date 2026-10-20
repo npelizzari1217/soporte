@@ -1,3 +1,4 @@
+import { moduloTieneAltaDeTipo } from '../../domain/tipos-ticket.constants';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import {
@@ -5,6 +6,7 @@ import {
   PrefijoTipoTicketColisionError,
   TipoTicketDesconocidoError,
   ModuloTipoTicketInvalidoError,
+  ModuloSinAltaDeTipoError,
 } from '../../domain/errors/tickets.errors';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
@@ -49,6 +51,9 @@ export class CrearTipoTicketUseCase {
   async execute(dto: CrearTipoTicketDto): Promise<Result<TipoTicketEntity, DomainError>> {
     if (!esModuloValido(dto.modulo)) {
       return Result.fail(new ModuloTipoTicketInvalidoError(dto.modulo));
+    }
+    if (!moduloTieneAltaDeTipo(dto.modulo)) {
+      return Result.fail(new ModuloSinAltaDeTipoError(dto.modulo));
     }
 
     const existente = await this.tipoTicketRepo.findByCodigo(dto.codigo);

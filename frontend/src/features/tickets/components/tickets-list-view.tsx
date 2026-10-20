@@ -22,6 +22,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
+import { useSession } from "@/shared/hooks/use-session";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
 // Mismo hook que usa el dashboard (`features/dashboard/hooks/use-ciclos.ts`)
@@ -43,6 +44,9 @@ import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
+
+/** Roles que pueden ser responsables de un ticket (espejo del backend). */
+const ROLES_ASIGNABLES: ReadonlySet<string> = new Set(["TECNICO", "COLABORADOR"]);
 
 const PAGE_SIZE = 10;
 
@@ -80,9 +84,19 @@ export function TicketsListView() {
     (filtros.pagina ?? 1) > 1;
 
   const tiposQuery = useTiposTicket();
+  const { canModulo } = useSession();
+  // El listado ya trae solo tickets de los módulos del usuario: ofrecer un tipo de otro módulo
+  // sería un filtro que nunca devuelve filas. ROOT y ADMINISTRADOR tienen todos los módulos.
+  const tiposVisibles = (tiposQuery.data ?? []).filter((tipo) => canModulo(tipo.modulo));
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const usuariosQuery = useUsuariosAsignables();
+  // `GET /usuarios` trae todo el tenant, pero un ticket solo puede quedar asignado a un
+  // agente: mismo criterio que `ListarTecnicosAsignablesUseCase` del backend.
+  const agentes = useMemo(
+    () => (usuariosQuery.data ?? []).filter((usuario) => ROLES_ASIGNABLES.has(usuario.rol)),
+    [usuariosQuery.data],
+  );
   const ciclosQuery = useCiclos();
 
   const ciclos = useMemo(() => ciclosQuery.data?.ciclos ?? [], [ciclosQuery.data]);
@@ -247,7 +261,7 @@ export function TicketsListView() {
             onChange={(e) => updateFiltros({ tipo: e.target.value || undefined })}
           >
             <option value="">Todos los tipos</option>
-            {(tiposQuery.data ?? []).map((tipo) => (
+            {tiposVisibles.map((tipo) => (
               <option key={tipo.id} value={tipo.id}>
                 {tipo.nombre}
               </option>
@@ -284,7 +298,7 @@ export function TicketsListView() {
               onChange={(e) => updateFiltros({ asignado: e.target.value || undefined })}
             >
               <option value="">Cualquier asignado</option>
-              {(usuariosQuery.data ?? []).map((usuario) => (
+              {agentes.map((usuario) => (
                 <option key={usuario.id} value={usuario.id}>
                   {usuario.nombre} {usuario.apellido}
                 </option>

@@ -24,8 +24,8 @@ import { EquipoInvalidoError } from '../../domain/errors/equipos.errors';
 /**
  * DTO de entrada de `CrearTicketSoporteUseCase`.
  *
- * NO recibe `tipoId` (mismo criterio que `CrearTicketCompraDto`/
- * `CrearTicketEdilicioDto`): el tipo se resuelve internamente por código
+ * NO recibe `tipoId` (mismo criterio que `CrearTicketCompraDto`): el tipo se resuelve
+ * internamente por código
  * ('SOPORTE', catálogo FIJO sembrado en Fase 1). `equipoId` es OPCIONAL
  * (F3-Q4): `null`/ausente = ticket de soporte sin equipo asociado (ej. red,
  * accesos).

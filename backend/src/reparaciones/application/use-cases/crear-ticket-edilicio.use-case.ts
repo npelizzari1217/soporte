@@ -17,18 +17,24 @@ import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-m
 import {
   SectorTicketInexistenteError,
   SolicitanteInvalidoError,
+  TipoTicketNoEncontradoError,
+  TipoTicketNoPermitidoEnAltaError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
-import { TIPO_CODIGO_EDILICIA } from '../../../tickets/domain/tipos-ticket.constants';
+import {
+  TIPO_CODIGO_EDILICIA,
+  TIPO_CODIGO_PREVENTIVO,
+} from '../../../tickets/domain/tipos-ticket.constants';
+import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 
 /**
  * DTO de entrada de `CrearTicketEdilicioUseCase`.
  *
- * NO recibe `tipoId` (mismo criterio que `CrearTicketCompraDto`): el tipo se
- * resuelve internamente por código ('EDILICIA', catálogo FIJO sembrado en
- * Fase 1) — este use case SIEMPRE crea tickets edilicios.
+ * `tipoId` es opcional: sin él, el tipo es 'EDILICIA' (catálogo FIJO sembrado en Fase 1). Con
+ * él, tiene que ser un tipo ACTIVO del módulo EDILICIA que no sea PREVENTIVO, que lo genera solo el
+ * barrido (odd/tasks/tipos-ticket-por-modulo.md, S2).
  *
  * `solicitanteId`/`autorId` = JWT.sub. `anio` lo resuelve el controller
  * (server-side, nunca el cliente HTTP).
@@ -39,6 +45,8 @@ export interface CrearTicketEdilicioDto {
   titulo: string;
   descripcion?: string | null;
   prioridadId: string;
+  /** Tipo elegido en el alta; ausente o `null` = EDILICIA. */
+  tipoId?: string | null;
   /** Ubicación física de la reparación, texto libre (opcional). Va al satélite. */
   ubicacion?: string | null;
   /**
@@ -73,12 +81,12 @@ export interface TicketEdilicioCreado {
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
  * 2b. Si viene `sectorId`, valida que exista (no se exige activo) →
  *    `SectorTicketInexistenteError` (odd/ubicacion-sector-ticket).
- * 3. Resuelve el tipo EDILICIA por código (catálogo FIJO — su ausencia es
- *    un fallo de infraestructura, `throw` defensivo).
+ * 3. Resuelve el tipo: el elegido en `tipoId` (validado por `resolverTipo`) o, sin él, EDILICIA
+ *    por código (catálogo FIJO — su ausencia es un fallo de infraestructura, `throw` defensivo).
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
  *    (catálogos FIJOS, mismo criterio).
- * 5. **DENTRO de la transacción**: genera el `numero` (prefijo EDI, ADR-4,
- *    ya resuelto), crea `TicketEntity` + `OperacionTicketEntity` de
+ * 5. **DENTRO de la transacción**: genera el `numero` con el prefijo del tipo resuelto (EDI
+ *    para EDILICIA, ADR-4), crea `TicketEntity` + `OperacionTicketEntity` de
  *    apertura + `TicketEdiliciaEntity` satélite, y persiste las 3
  *    entidades.
  * 6. **POST-COMMIT** (`txRunner.alCommitear`, mismo criterio que
@@ -98,7 +106,7 @@ export class CrearTicketEdilicioUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'save'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findIdByCodigo'>,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findByCodigo'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findByCodigo' | 'findById'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'existeEnTenant'>,
     private readonly numerador: Pick<NumeradorTicket, 'generarNumero'>,
@@ -136,14 +144,15 @@ export class CrearTicketEdilicioUseCase {
       sectorNombre = sector.nombre;
     }
 
-    // 3-4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
-    //    es un bug de infraestructura, no un error del caller: throw defensivo.
-    const tipoEdilicia = await this.tipoTicketRepo.findByCodigo(TIPO_CODIGO_EDILICIA);
-    if (!tipoEdilicia) {
-      throw new Error(
-        `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_EDILICIA}" en el tenant activo.`,
-      );
+    // 3. Tipo elegido, o EDILICIA por defecto.
+    const tipoResult = await this.resolverTipo(dto.tipoId ?? null);
+    if (tipoResult.isFail()) {
+      return Result.fail(tipoResult.getError());
     }
+    const tipo = tipoResult.getValue();
+
+    // 4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
+    //    es un bug de infraestructura, no un error del caller: throw defensivo.
     const estadoNuevoId = await this.estadoRepo.findIdByCodigo('NUEVO');
     if (!estadoNuevoId) {
       throw new Error(
@@ -161,15 +170,11 @@ export class CrearTicketEdilicioUseCase {
     //    persistencia atómica de ticket + operación + satélite.
     // Regla de asignación del tipo: sin regla o regla rota → null y el alta sigue como siempre;
     // un fallo de consulta del tenant se propaga (ver el resolver). Resuelve fuera de la tx.
-    const asignacion = await this.resolverAsignacion.resolver(tipoEdilicia, dto.clienteId);
+    const asignacion = await this.resolverAsignacion.resolver(tipo, dto.clienteId);
     const estadoInicialId = asignacion?.estadoAsignadoId ?? estadoNuevoId;
 
     const resultado = await this.txRunner.run(async () => {
-      const numeroResult = await this.numerador.generarNumero(
-        tipoEdilicia.id,
-        tipoEdilicia.codigo,
-        dto.anio,
-      );
+      const numeroResult = await this.numerador.generarNumero(tipo.id, tipo.codigo, dto.anio);
       if (numeroResult.isFail()) {
         return Result.fail<TicketEdilicioCreado, DomainError>(numeroResult.getError());
       }
@@ -178,7 +183,7 @@ export class CrearTicketEdilicioUseCase {
         numero: numeroResult.getValue(),
         titulo: dto.titulo,
         descripcion: dto.descripcion ?? null,
-        tipoId: tipoEdilicia.id,
+        tipoId: tipo.id,
         estadoId: estadoInicialId,
         prioridadId: dto.prioridadId,
         cicloId: cicloActivo.id,
@@ -194,7 +199,7 @@ export class CrearTicketEdilicioUseCase {
       // La apertura conserva el autor del dto; la ASIGNACION es de AUTOR_SISTEMA.
       const operaciones = operacionesDeApertura({
         ticketId: ticket.id,
-        tipoId: tipoEdilicia.id,
+        tipoId: tipo.id,
         estadoInicialId,
         tipoOperacionAperturaId,
         autorId: dto.autorId,
@@ -252,5 +257,33 @@ export class CrearTicketEdilicioUseCase {
     }
 
     return resultado;
+  }
+
+  /**
+   * Resuelve el tipo del alta. Sin `tipoId`, EDILICIA: su ausencia es un bug de infraestructura y
+   * va como throw defensivo. Con `tipoId`, valida que el alta edilicia lo admita.
+   */
+  private async resolverTipo(
+    tipoId: string | null,
+  ): Promise<Result<TipoTicketEntity, DomainError>> {
+    if (tipoId === null) {
+      const tipoEdilicia = await this.tipoTicketRepo.findByCodigo(TIPO_CODIGO_EDILICIA);
+      if (!tipoEdilicia) {
+        throw new Error(
+          `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_EDILICIA}" en el tenant activo.`,
+        );
+      }
+      return Result.ok(tipoEdilicia);
+    }
+
+    // `findById` devuelve también los dados de baja: para un alta, uno inactivo es inexistente.
+    const tipo = await this.tipoTicketRepo.findById(tipoId);
+    if (!tipo || tipo.isDeleted() || !tipo.activo) {
+      return Result.fail(new TipoTicketNoEncontradoError(tipoId));
+    }
+    if (tipo.modulo !== 'EDILICIA' || tipo.codigo === TIPO_CODIGO_PREVENTIVO) {
+      return Result.fail(new TipoTicketNoPermitidoEnAltaError(tipo.codigo, 'EDILICIA'));
+    }
+    return Result.ok(tipo);
   }
 }

@@ -87,6 +87,7 @@ import {
 import {
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
+  TipoTicketNoPermitidoEnAltaError,
   PrioridadNoEncontradaError,
   TicketReferenciaInvalidaError,
   SectorTicketInexistenteError,
@@ -144,6 +145,7 @@ export function toHttpException(
   }
   if (
     error instanceof TipoTicketNoEncontradoError ||
+    error instanceof TipoTicketNoPermitidoEnAltaError ||
     error instanceof PrioridadNoEncontradaError ||
     error instanceof TicketReferenciaInvalidaError ||
     error instanceof SectorTicketInexistenteError ||
@@ -333,6 +335,8 @@ export class TicketsController {
       clienteId: user.cliente_id as string,
       autorId: user.sub,
       anio: new Date().getFullYear(),
+      // Esta alta es la del soporte general: los tipos de otros módulos tienen su alta propia.
+      moduloRequerido: 'TICKETS',
     });
 
     if (result.isFail()) {

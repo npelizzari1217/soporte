@@ -279,4 +279,52 @@ describe("TicketsListView", () => {
       expect(select.value).toBe("c-2026");
     });
   });
+
+  it("el filtro de asignado ofrece solo agentes (TECNICO/COLABORADOR), nunca usuarios finales", async () => {
+    server.use(
+      http.get("/api/usuarios", () =>
+        HttpResponse.json([
+          { id: "u1", nombre: "Ana", apellido: "Pérez", rol: "TECNICO" },
+          { id: "u2", nombre: "Carla", apellido: "Gómez", rol: "COLABORADOR" },
+          { id: "u3", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
+          { id: "u4", nombre: "Admin", apellido: "Jefe", rol: "ADMINISTRADOR" },
+        ]),
+      ),
+    );
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+    const select = await screen.findByLabelText("Asignado");
+    expect(await within(select).findByRole("option", { name: "Ana Pérez" })).toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: "Carla Gómez" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Admin Jefe" })).not.toBeInTheDocument();
+  });
+
+  describe("filtro de tipo acotado a los módulos del usuario (S1)", () => {
+    const TIPOS = [
+      { id: "ti1", codigo: "SOPORTE", nombre: "Soporte", modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" },
+      { id: "ti2", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+      { id: "ti3", codigo: "MANTENIMIENTO", nombre: "Mantenimiento", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+    ];
+
+    beforeEach(() => {
+      server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)));
+    });
+
+    it("un técnico con solo TICKETS ve únicamente los tipos de ese módulo", async () => {
+      renderWithProviders(<TicketsListView />, { user: buildUser({ modulos: ["TICKETS"] }) });
+      const select = await screen.findByLabelText("Tipo");
+      expect(await within(select).findByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      expect(within(select).queryByRole("option", { name: "Edilicia" })).not.toBeInTheDocument();
+      expect(within(select).queryByRole("option", { name: "Mantenimiento" })).not.toBeInTheDocument();
+    });
+
+    it("ROOT ve los tipos de todos los módulos", async () => {
+      renderWithProviders(<TicketsListView />, { user: buildUser({ is_global_admin: true }) });
+      const select = await screen.findByLabelText("Tipo");
+      expect(await within(select).findByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      expect(within(select).getByRole("option", { name: "Edilicia" })).toBeInTheDocument();
+      expect(within(select).getByRole("option", { name: "Mantenimiento" })).toBeInTheDocument();
+    });
+  });
 });

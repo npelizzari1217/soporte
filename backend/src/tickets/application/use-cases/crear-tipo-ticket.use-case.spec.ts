@@ -14,6 +14,7 @@ import {
   PrefijoTipoTicketColisionError,
   TipoTicketDesconocidoError,
   ModuloTipoTicketInvalidoError,
+  ModuloSinAltaDeTipoError,
 } from '../../domain/errors/tickets.errors';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 
@@ -65,6 +66,39 @@ describe('CrearTipoTicketUseCase', () => {
     expect(result.getError()).toBeInstanceOf(ModuloTipoTicketInvalidoError);
     expect(c.tipoTicketRepo.findByCodigo).not.toHaveBeenCalled();
     expect(c.tipoTicketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it.each(['COMPRAS', 'EQUIPOS'])(
+    'modulo %s, sin alta con tipo elegible → ModuloSinAltaDeTipoError (422), sin tocar el repo (S4)',
+    async (modulo) => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute({
+        codigo: 'RRHH',
+        nombre: 'Recursos Humanos',
+        modulo,
+      });
+
+      expect(result.getError()).toBeInstanceOf(ModuloSinAltaDeTipoError);
+      expect(result.getError().message).toBe(
+        `Un tipo de ticket del módulo ${modulo} no se podría usar: solo los módulos TICKETS y EDILICIA tienen un alta que permite elegir el tipo.`,
+      );
+      expect(c.tipoTicketRepo.findByCodigo).not.toHaveBeenCalled();
+      expect(c.tipoTicketRepo.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('modulo EDILICIA → crea el tipo (S4)', async () => {
+    const c = makeCollaborators();
+
+    const result = await c.useCase.execute({
+      codigo: 'PINTURA',
+      nombre: 'Pintura',
+      modulo: 'EDILICIA',
+    });
+
+    expect(result.getValue().modulo).toBe('EDILICIA');
+    expect(c.tipoTicketRepo.save).toHaveBeenCalled();
   });
 
   it('codigo ya existente (activo o soft-deleted) → TipoTicketCodigoDuplicadoError (422), sin persistir', async () => {

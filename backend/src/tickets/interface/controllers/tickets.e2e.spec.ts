@@ -731,11 +731,14 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       });
       const tipoId = tipoEquipos.id;
 
+      // El alta genérica solo admite tipos de TICKETS (odd/tasks/tipos-ticket-por-modulo.md, S3):
+      // se crea con Soporte y se pasa al tipo EQUIPOS por Prisma, que es lo que este test mira.
       const created = await httpPost<TicketResponseDto>(
         `${baseUrl}/tickets`,
-        { titulo: 'Ticket a asignar', tipoId, prioridadId: prioridadMediaId },
+        { titulo: 'Ticket a asignar', tipoId: tipoSoporteId, prioridadId: prioridadMediaId },
         bearer(loginUsuario.accessToken),
       );
+      await tenantClient.ticket.update({ where: { id: created.data.id }, data: { tipoId } });
 
       // USUARIO (solicitante, sin ticket:asignar) → 403.
       const denegado = await httpPatch(

@@ -51,6 +51,21 @@ export class TipoTicketNoEncontradoError extends DomainError {
 }
 
 /**
+ * TipoTicketNoPermitidoEnAltaError — el tipo existe y está activo, pero el alta que lo recibe no
+ * lo admite: es de otro módulo, o es un tipo reservado a otro flujo (PREVENTIVO lo genera solo
+ * el barrido). → HTTP 422 en la capa de presentación.
+ */
+export class TipoTicketNoPermitidoEnAltaError extends DomainError {
+  readonly code = 'TIPO_TICKET_NO_PERMITIDO_EN_ALTA';
+
+  constructor(tipoCodigo: string, moduloAlta: string) {
+    super(
+      `El tipo de ticket "${tipoCodigo}" no se puede usar en el alta del módulo ${moduloAlta}.`,
+    );
+  }
+}
+
+/**
  * EstadoDestinoInvalidoError — el `nuevoEstadoCodigo` recibido en una
  * transición no existe en el catálogo de estados del tenant (6 códigos
  * fijos, ADR-1).
@@ -479,5 +494,21 @@ export class SolicitanteExternoInvalidoError extends DomainError {
 
   constructor(motivo: string) {
     super(`Solicitante externo inválido: ${motivo}`);
+  }
+}
+
+/**
+ * ModuloSinAltaDeTipoError — se intenta crear un tipo de ticket, o moverlo, a un módulo cuyas altas
+ * no permiten elegir el tipo (odd/tasks/tipos-ticket-por-modulo.md, S4). Ese tipo existiría en el
+ * catálogo sin que ninguna pantalla pudiera usarlo. → HTTP 422 en la capa de presentación.
+ */
+export class ModuloSinAltaDeTipoError extends DomainError {
+  readonly code = 'MODULO_SIN_ALTA_DE_TIPO';
+
+  constructor(modulo: string) {
+    super(
+      `Un tipo de ticket del módulo ${modulo} no se podría usar: ` +
+        'solo los módulos TICKETS y EDILICIA tienen un alta que permite elegir el tipo.',
+    );
   }
 }

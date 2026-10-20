@@ -1,4 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { Modulo } from '../../../shared/domain/modulos';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
@@ -20,6 +21,7 @@ import {
   SectorTicketInexistenteError,
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
+  TipoTicketNoPermitidoEnAltaError,
   PrioridadNoEncontradaError,
   TicketReferenciaInvalidaError,
 } from '../../domain/errors/tickets.errors';
@@ -52,6 +54,13 @@ export interface CrearTicketDto {
   clienteId: string;
   autorId: string;
   anio: number;
+  /**
+   * Módulo al que debe pertenecer el tipo. Lo fija el alta genérica (`POST /tickets`, solo
+   * `TICKETS`). Ausente, acepta cualquier módulo: el barrido preventivo crea tickets
+   * `PREVENTIVO` (módulo EDILICIA) por este mismo caso de uso, y la API de integraciones no
+   * restringe el tipo.
+   */
+  moduloRequerido?: Modulo;
 }
 
 /**
@@ -131,6 +140,11 @@ export class CrearTicketUseCase {
     const tipoTicket = await this.tipoTicketRepo.findById(dto.tipoId);
     if (!tipoTicket || tipoTicket.isDeleted() || !tipoTicket.activo) {
       return Result.fail(new TipoTicketNoEncontradoError(dto.tipoId));
+    }
+    if (dto.moduloRequerido && tipoTicket.modulo !== dto.moduloRequerido) {
+      return Result.fail(
+        new TipoTicketNoPermitidoEnAltaError(tipoTicket.codigo, dto.moduloRequerido),
+      );
     }
 
     // 4. prioridadId debe existir en el catálogo del tenant (T4).

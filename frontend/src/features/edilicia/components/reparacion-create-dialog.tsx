@@ -7,6 +7,11 @@
  *
  * Suma el Sector opcional (odd/ubicacion-sector-ticket). La ubicación general
  * del ticket NO va acá: Edilicia usa su propia «Ubicación» (CA2).
+ *
+ * Tipo (odd/tasks/tipos-ticket-por-modulo.md, S2): los tipos activos del módulo EDILICIA salvo
+ * PREVENTIVO, que lo genera solo el barrido. La opción vacía es EDILICIA y no manda `tipoId`, así
+ * el valor por defecto no depende de que el catálogo ya haya cargado. Sin otros tipos elegibles,
+ * el selector no se muestra.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -16,16 +21,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
-import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
+import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
 import { crearReparacionSchema, type CrearReparacionFormValues } from "../schemas";
+
+const TIPO_CODIGO_EDILICIA = "EDILICIA";
+/** Lo genera solo el barrido preventivo: no se elige en un alta. */
+const TIPO_CODIGO_PREVENTIVO = "PREVENTIVO";
 
 export function ReparacionCreateDialog() {
   const [open, setOpen] = useState(false);
   const prioridadesQuery = usePrioridades();
   // El catálogo de sectores se pide recién al abrir el modal.
   const sectoresQuery = useSectores(open);
+  const tiposQuery = useTiposTicket(TIPO_CODIGO_EDILICIA);
+  const tipos = tiposQuery.data ?? [];
+  const tipoPorDefecto = tipos.find((tipo) => tipo.codigo === TIPO_CODIGO_EDILICIA);
+  const tiposAlternativos = tipos.filter(
+    (tipo) => tipo.codigo !== TIPO_CODIGO_EDILICIA && tipo.codigo !== TIPO_CODIGO_PREVENTIVO,
+  );
   const crearMutation = useCrearReparacion();
 
   const {
@@ -41,6 +56,7 @@ export function ReparacionCreateDialog() {
         titulo: values.titulo,
         descripcion: values.descripcion || undefined,
         prioridadId: values.prioridadId,
+        tipoId: values.tipoId || undefined,
         ubicacion: values.ubicacion || undefined,
         sectorId: values.sectorId || undefined,
       },
@@ -80,6 +96,22 @@ export function ReparacionCreateDialog() {
               </p>
             )}
           </div>
+
+          {tiposAlternativos.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="reparacion-tipo" className="text-sm font-medium text-foreground">
+                Tipo
+              </label>
+              <Select id="reparacion-tipo" defaultValue="" {...register("tipoId")}>
+                <option value="">{tipoPorDefecto?.nombre ?? "Edilicia"}</option>
+                {tiposAlternativos.map((tipo) => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           <div className="flex flex-col gap-1">
             <label htmlFor="reparacion-descripcion" className="text-sm font-medium text-foreground">

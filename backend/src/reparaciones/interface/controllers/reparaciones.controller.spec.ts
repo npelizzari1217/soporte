@@ -23,6 +23,8 @@ import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket
 import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import {
   SolicitanteInvalidoError,
+  TipoTicketNoEncontradoError,
+  TipoTicketNoPermitidoEnAltaError,
   SinCicloActivoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
@@ -206,6 +208,50 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         sectorId: 'sector-uuid',
         sectorNombre: 'Mantenimiento',
       });
+    });
+
+    it('pasa el tipoId elegido al caso de uso, y null si no viene (S2)', async () => {
+      const { controller, crearTicketEdilicioUseCase } = buildController();
+      const ticket = makeTicket();
+      const ticketEdilicia = TicketEdiliciaEntity.create(
+        { ticketId: ticket.id, ubicacion: null },
+        'edilicia-uuid',
+      );
+      crearTicketEdilicioUseCase.execute.mockResolvedValue(
+        Result.ok({ ticket, ticketEdilicia, sectorNombre: null }),
+      );
+
+      await controller.crear({ titulo: 'X', prioridadId: 'p', tipoId: 'tipo-uuid' }, USER);
+      await controller.crear({ titulo: 'X', prioridadId: 'p' }, USER);
+
+      expect(crearTicketEdilicioUseCase.execute).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ tipoId: 'tipo-uuid' }),
+      );
+      expect(crearTicketEdilicioUseCase.execute).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ tipoId: null }),
+      );
+    });
+
+    it('mapea TipoTicketNoPermitidoEnAltaError y TipoTicketNoEncontradoError → 422 (S2)', async () => {
+      const { controller, crearTicketEdilicioUseCase } = buildController();
+      crearTicketEdilicioUseCase.execute
+        .mockResolvedValueOnce(
+          Result.fail(new TipoTicketNoPermitidoEnAltaError('PREVENTIVO', 'EDILICIA')),
+        )
+        .mockResolvedValueOnce(Result.fail(new TipoTicketNoEncontradoError('tipo-uuid')));
+
+      await expect(
+        controller.crear({ titulo: 'X', prioridadId: 'p', tipoId: 'tipo-uuid' }, USER),
+      ).rejects.toThrow(
+        new UnprocessableEntityException(
+          'El tipo de ticket "PREVENTIVO" no se puede usar en el alta del módulo EDILICIA.',
+        ),
+      );
+      await expect(
+        controller.crear({ titulo: 'X', prioridadId: 'p', tipoId: 'tipo-uuid' }, USER),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('mapea SolicitanteInvalidoError → 422', async () => {

@@ -12,6 +12,7 @@ import {
   TipoTicketCodigoDuplicadoError,
   PrefijoTipoTicketColisionError,
   TipoTicketDelSistemaError,
+  ModuloSinAltaDeTipoError,
 } from '../../domain/errors/tickets.errors';
 import { TIPOS_TICKET_DEL_SISTEMA } from '../../domain/tipos-ticket.constants';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
@@ -61,6 +62,45 @@ describe('EditarTipoTicketUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().codigo).toBe('RECURSOS');
+  });
+
+  describe('módulo (S4)', () => {
+    const tipoDe = (modulo: 'TICKETS' | 'COMPRAS') =>
+      TipoTicketEntity.create({ codigo: 'RRHH', nombre: 'RRHH', modulo, activo: true }, 'id-1');
+
+    it('cambiar a un módulo sin alta con tipo elegible → ModuloSinAltaDeTipoError, sin persistir', async () => {
+      const tipo = tipoDe('TICKETS');
+      const c = makeCollaborators(tipo);
+
+      const result = await c.useCase.execute({ id: 'id-1', modulo: 'COMPRAS' });
+
+      expect(result.getError()).toBeInstanceOf(ModuloSinAltaDeTipoError);
+      expect(tipo.modulo).toBe('TICKETS');
+      expect(c.tipoTicketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('cambiar a EDILICIA → actualiza el módulo', async () => {
+      const c = makeCollaborators(tipoDe('TICKETS'));
+
+      const result = await c.useCase.execute({ id: 'id-1', modulo: 'EDILICIA' });
+
+      expect(result.getValue().modulo).toBe('EDILICIA');
+      expect(c.tipoTicketRepo.save).toHaveBeenCalled();
+    });
+
+    it('un tipo que ya es de COMPRAS se sigue editando si conserva el módulo', async () => {
+      const c = makeCollaborators(tipoDe('COMPRAS'));
+
+      const result = await c.useCase.execute({
+        id: 'id-1',
+        nombre: 'Recursos Humanos',
+        modulo: 'COMPRAS',
+      });
+
+      expect(result.getValue().nombre).toBe('Recursos Humanos');
+      expect(result.getValue().modulo).toBe('COMPRAS');
+      expect(c.tipoTicketRepo.save).toHaveBeenCalled();
+    });
   });
 
   it('tipo inexistente → TipoTicketNoEncontradoError (404)', async () => {
