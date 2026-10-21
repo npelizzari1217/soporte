@@ -465,12 +465,9 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: RegistrarSolucionUseCase,
-      useFactory: (
-        ticketSoporteRepo: ITicketSoporteRepository,
-        ticketRepo: ITicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
-      ) => new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo, tipoTicketRepo),
-      inject: [TICKET_SOPORTE_REPOSITORY, TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
+      useFactory: (ticketSoporteRepo: ITicketSoporteRepository, ticketRepo: ITicketRepository) =>
+        new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo),
+      inject: [TICKET_SOPORTE_REPOSITORY, TICKET_REPOSITORY],
     },
     {
       provide: ObtenerEquipoDeTicketUseCase,
@@ -478,15 +475,8 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         ticketSoporteRepo: ITicketSoporteRepository,
         equipoRepo: IEquipoInformaticoRepository,
         ticketRepo: ITicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
-      ) =>
-        new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo, equipoRepo, ticketRepo, tipoTicketRepo),
-      inject: [
-        TICKET_SOPORTE_REPOSITORY,
-        EQUIPO_INFORMATICO_REPOSITORY,
-        TICKET_REPOSITORY,
-        TIPO_TICKET_REPOSITORY,
-      ],
+      ) => new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo, equipoRepo, ticketRepo),
+      inject: [TICKET_SOPORTE_REPOSITORY, EQUIPO_INFORMATICO_REPOSITORY, TICKET_REPOSITORY],
     },
     {
       // Compone `ListarEquiposUseCase` (design D4, sdd/exportar-listados-csv)

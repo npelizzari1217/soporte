@@ -82,6 +82,7 @@ import type {
 } from '../../../tickets/interface/dtos/ticket.dto';
 import type { KbArticuloResponseDto } from '../../../kb/interface/dtos/kb-articulo.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -447,6 +448,9 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    // Las operaciones por id de un ticket deciden con los permisos por tipo del tenant: los mismos
+    // que estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
   }
@@ -504,6 +508,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       data: { usuarioId: usuario.id, clienteId, rolId: role.id, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, usuarioId: usuario.id };
   }
@@ -797,7 +802,9 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
         'TICKETS:ALTAS',
         'TICKETS:COMENTAR',
       ]);
+      // Con LECTURA: sin Ver sobre el tipo no ve el ticket y su comentario interno no existiría.
       const observador = await agregarActorAlCliente(solicitante.clienteId, [
+        'TICKETS:LECTURA',
         'TICKETS:VER_TODOS',
         'TICKETS:OBSERVAR',
         'TICKETS:COMENTAR',
@@ -809,11 +816,13 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
         { texto: 'Comentario público', esInterno: false },
         bearer(solicitante.accessToken),
       );
-      await httpPost(
+      const interno = await httpPost(
         `${baseUrl}/tickets/${ticket.id}/comentarios`,
         { texto: 'Comentario interno', esInterno: true },
         bearer(observador.accessToken),
       );
+      // El fixture tiene que contener la interna que el solicitante no debe ver.
+      expect(interno.status).toBe(201);
 
       const { status, data } = await httpGet<OperacionResponseDto[]>(
         `${baseUrl}/tickets/${ticket.id}/timeline`,

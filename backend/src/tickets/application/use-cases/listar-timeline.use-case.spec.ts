@@ -2,10 +2,11 @@
  * T9.3 [UNIT] — RED→GREEN: `ListarTimelineUseCase`.
  *
  * Todos los puertos mockeados (`vi.fn`) — sin DB. Cubre T18 (filtro de
- * visibilidad por `es_interno`: sin `ticket:observar` excluye internas, con
- * él incluye todo) y reusa el mismo scope de acceso que `ObtenerTicketUseCase`
- * (T6) — un actor sin `ticket:ver_todos` y ajeno al ticket recibe 404, para
- * no filtrar el timeline (ni siquiera el público) a un tercero sin acceso.
+ * visibilidad por `es_interno`: sin `OBSERVAR` sobre el tipo del ticket excluye
+ * internas, con él incluye todo) y reusa el mismo scope de acceso que
+ * `ObtenerTicketUseCase` (T6) — un actor sin `VER_TODOS` sobre el tipo y ajeno
+ * al ticket recibe 404, para no filtrar el timeline (ni siquiera el público) a
+ * un tercero sin acceso.
  *
  * Ref spec: sdd/tickets-core/spec T18, T6. Tarea: T9.3.
  */
@@ -15,7 +16,10 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
-import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+
+const TIPO = 'tipo-soporte-uuid';
 
 function makeTicket(solicitanteId = 'solicitante-uuid'): TicketEntity {
   return TicketEntity.create(
@@ -52,15 +56,12 @@ function makeOperacion(
   );
 }
 
-function baseDto(overrides: Partial<ListarTimelineDto> = {}): ListarTimelineDto {
-  return {
-    ticketId: 'ticket-uuid',
-    actorId: 'solicitante-uuid',
-    tienePermisoVerTodos: false,
-    tienePermisoObservar: false,
-    modulosPermitidos: null,
-    ...overrides,
-  };
+/** DTO de un actor con `acciones` sobre el tipo del ticket (por defecto, solo `LECTURA`). */
+function baseDto(
+  actorId = 'solicitante-uuid',
+  acciones: readonly AccionTipoTicket[] = ['LECTURA'],
+): ListarTimelineDto {
+  return { ticketId: 'ticket-uuid', ...alcancePorTipo(actorId, { [TIPO]: acciones }) };
 }
 
 describe('ListarTimelineUseCase', () => {
@@ -72,23 +73,12 @@ describe('ListarTimelineUseCase', () => {
     };
     const operacionRepo = { listByTicket: vi.fn<IOperacionTicketRepository['listByTicket']>() };
 
-    const tipoTicketRepo = {
-      findById: vi
-        .fn()
-        .mockResolvedValue(
-          TipoTicketEntity.create(
-            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
-            'tipo-uuid',
-          ),
-        ),
-    };
+    const useCase = new ListarTimelineUseCase(ticketRepo, operacionRepo);
 
-    const useCase = new ListarTimelineUseCase(ticketRepo, operacionRepo, tipoTicketRepo);
-
-    return { useCase, ticketRepo, operacionRepo, tipoTicketRepo };
+    return { useCase, ticketRepo, operacionRepo };
   }
 
-  it('T18: actor CON ticket:observar ve el timeline completo (públicas + internas), en orden cronológico', async () => {
+  it('T18: actor CON OBSERVAR sobre el tipo ve el timeline completo (públicas + internas), en orden cronológico', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
     const publica = makeOperacion({ esInterno: false, id: 'op-1' });
@@ -96,27 +86,21 @@ describe('ListarTimelineUseCase', () => {
     c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
 
     const result = await c.useCase.execute(
-      baseDto({ actorId: 'tecnico-uuid', tienePermisoVerTodos: true, tienePermisoObservar: true }),
+      baseDto('tecnico-uuid', ['LECTURA', 'VER_TODOS', 'OBSERVAR']),
     );
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).toEqual([publica, interna]);
   });
 
-  it('T18: actor SIN ticket:observar (solicitante) NUNCA ve operaciones es_interno=true', async () => {
+  it('T18: actor SIN OBSERVAR sobre el tipo (solicitante) NUNCA ve operaciones es_interno=true', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
     const publica = makeOperacion({ esInterno: false, id: 'op-1' });
     const interna = makeOperacion({ esInterno: true, id: 'op-2' });
     c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
 
-    const result = await c.useCase.execute(
-      baseDto({
-        actorId: 'solicitante-uuid',
-        tienePermisoVerTodos: false,
-        tienePermisoObservar: false,
-      }),
-    );
+    const result = await c.useCase.execute(baseDto('solicitante-uuid'));
 
     expect(result.isOk()).toBe(true);
     const timeline = result.getValue();
@@ -148,13 +132,11 @@ describe('ListarTimelineUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
   });
 
-  it('T6-reuse: actor ajeno sin ticket:ver_todos → TicketNoEncontradoError (404), no revela ni el timeline público', async () => {
+  it('T6-reuse: actor ajeno sin VER_TODOS → TicketNoEncontradoError (404), no revela ni el timeline público', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('otro-solicitante-uuid'));
 
-    const result = await c.useCase.execute(
-      baseDto({ actorId: 'tercero-uuid', tienePermisoVerTodos: false }),
-    );
+    const result = await c.useCase.execute(baseDto('tercero-uuid'));
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
@@ -169,31 +151,19 @@ describe('ListarTimelineUseCase', () => {
     const interna = makeOperacion({ esInterno: true, id: 'op-2' });
     c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
 
-    const result = await c.useCase.execute(
-      baseDto({
-        actorId: 'tecnico-uuid',
-        tienePermisoVerTodos: false,
-        tienePermisoObservar: false,
-      }),
-    );
+    const result = await c.useCase.execute(baseDto('tecnico-uuid'));
 
     expect(result.getValue()).toEqual([publica]);
     expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'tecnico-uuid');
   });
 
-  it('actor con ticket:ver_todos pero SIN ticket:observar accede al timeline de un ticket ajeno, filtrando internas', async () => {
+  it('actor con VER_TODOS pero SIN OBSERVAR accede al timeline de un ticket ajeno, filtrando internas', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('otro-solicitante-uuid'));
     const publica = makeOperacion({ esInterno: false, id: 'op-1' });
     c.operacionRepo.listByTicket.mockResolvedValue([publica]);
 
-    const result = await c.useCase.execute(
-      baseDto({
-        actorId: 'colaborador-uuid',
-        tienePermisoVerTodos: true,
-        tienePermisoObservar: false,
-      }),
-    );
+    const result = await c.useCase.execute(baseDto('colaborador-uuid', ['LECTURA', 'VER_TODOS']));
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).toEqual([publica]);
@@ -207,7 +177,7 @@ describe('ListarTimelineUseCase', () => {
           numero: 'SOP-2026-00002',
           titulo: 'Pedido del formulario publico',
           descripcion: null,
-          tipoId: 'tipo-uuid',
+          tipoId: TIPO,
           estadoId: 'estado-uuid',
           prioridadId: 'prioridad-uuid',
           cicloId: null,
@@ -219,41 +189,72 @@ describe('ListarTimelineUseCase', () => {
       ),
     );
 
-    const result = await c.useCase.execute(
-      baseDto({ actorId: 'tercero-uuid', tienePermisoVerTodos: false }),
-    );
+    const result = await c.useCase.execute(baseDto('tercero-uuid'));
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
   });
 
-  it('S0: un ticket de un tipo de otro módulo es 404 aunque el actor sea el solicitante y tenga VER_TODOS', async () => {
-    const c = makeCollaborators();
-    c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
-    c.tipoTicketRepo.findById.mockResolvedValue(
-      TipoTicketEntity.create(
-        { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA', activo: true },
-        'tipo-uuid',
-      ),
-    );
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, D5 c)', () => {
+    it('un ticket de un tipo sin LECTURA es 404 aunque el actor sea el solicitante', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
 
-    const result = await c.useCase.execute(
-      baseDto({ tienePermisoVerTodos: true, modulosPermitidos: ['TICKETS'] }),
-    );
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        ...alcancePorTipo('solicitante-uuid', {
+          'otro-tipo': ['LECTURA', 'VER_TODOS', 'OBSERVAR'],
+        }),
+      });
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
-    expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
-  });
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
+    });
 
-  it('S0: un ticket de un tipo de sus módulos muestra el timeline', async () => {
-    const c = makeCollaborators();
-    c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
-    c.operacionRepo.listByTicket.mockResolvedValue([]);
+    it('OBSERVAR sobre OTRO tipo no muestra las internas de este', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
+      const publica = makeOperacion({ esInterno: false, id: 'op-1' });
+      const interna = makeOperacion({ esInterno: true, id: 'op-2' });
+      c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
 
-    const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        ...alcancePorTipo('solicitante-uuid', { [TIPO]: ['LECTURA'], 'otro-tipo': ['OBSERVAR'] }),
+      });
 
-    expect(result.isOk()).toBe(true);
+      expect(result.getValue()).toEqual([publica]);
+    });
+
+    it('ROOT o ADMINISTRADOR (sin restricción) ve el timeline completo', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('otro-solicitante-uuid'));
+      const publica = makeOperacion({ esInterno: false, id: 'op-1' });
+      const interna = makeOperacion({ esInterno: true, id: 'op-2' });
+      c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        ...alcanceSinRestriccion('admin-uuid'),
+      });
+
+      expect(result.getValue()).toEqual([publica, interna]);
+    });
+
+    it('`soloPublicas` excluye las internas aun con OBSERVAR (el PDF)', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
+      const publica = makeOperacion({ esInterno: false, id: 'op-1' });
+      const interna = makeOperacion({ esInterno: true, id: 'op-2' });
+      c.operacionRepo.listByTicket.mockResolvedValue([publica, interna]);
+
+      const result = await c.useCase.execute({
+        ...baseDto('solicitante-uuid', ['LECTURA', 'OBSERVAR']),
+        soloPublicas: true,
+      });
+
+      expect(result.getValue()).toEqual([publica]);
+    });
   });
 });

@@ -28,6 +28,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -44,9 +45,10 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
-import { alcanceTicketDesdeJwt } from '../../../tickets/interface/alcance-ticket';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { DomainError } from '../../../shared/domain/result';
 import {
+  AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
   TipoTicketNoEncontradoError,
   PrioridadNoEncontradaError,
@@ -83,7 +85,10 @@ import {
 /** Mapea un `DomainError` de los use cases de soporte a la `HttpException` correspondiente. */
 function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException | ConflictException {
+): NotFoundException | UnprocessableEntityException | ConflictException | ForbiddenException {
+  if (error instanceof AccionSobreTipoNoPermitidaError) {
+    return new ForbiddenException(error.message);
+  }
   if (
     error instanceof TicketNoEncontradoError ||
     error instanceof TicketSoporteNoEncontradoError ||
@@ -115,6 +120,7 @@ export class SoporteController {
     private readonly registrarSolucionUseCase: RegistrarSolucionUseCase,
     private readonly obtenerEquipoDeTicketUseCase: ObtenerEquipoDeTicketUseCase,
     private readonly resolverQrAutenticadoUseCase: ResolverQrAutenticadoUseCase,
+    private readonly alcances: CargadorAlcanceTicket,
   ) {}
 
   /**
@@ -154,8 +160,9 @@ export class SoporteController {
   /**
    * POST /soporte/:id/solucion
    * Registra la solución aplicada — `:id` = id del `Ticket` base.
-   * @throws 404 ticket inexistente o que el actor no ve (módulo del tipo o fila,
-   *   odd/permisos-por-tipo-ticket S0), o ticket_soporte inexistente
+   * @throws 403 ve el ticket sin `MODIFICACION` sobre su tipo (odd/permisos-por-tipo-ticket D5 c)
+   * @throws 404 ticket inexistente o que el actor no ve (`LECTURA` sobre el tipo o fila,
+   *   odd/permisos-por-tipo-ticket S3), o ticket_soporte inexistente
    */
   @Post(':id/solucion')
   @RequiereAcciones('TICKETS:MODIFICACION')
@@ -168,7 +175,7 @@ export class SoporteController {
     const result = await this.registrarSolucionUseCase.execute({
       ticketId: id,
       solucion: dto.solucion,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -210,8 +217,8 @@ export class SoporteController {
    * tiene satélite `ticket_soporte` o no tiene equipo asociado — nunca 404).
    * Usado por el frontend para resaltar el "equipo en mantenimiento" en el
    * detalle del ticket.
-   * @throws 404 ticket inexistente o no accesible para el actor (módulo del tipo o visibilidad
-   *   de fila, odd/permisos-por-tipo-ticket S0)
+   * @throws 404 ticket inexistente o no accesible para el actor (`LECTURA` sobre el tipo o
+   *   visibilidad de fila, odd/permisos-por-tipo-ticket S3)
    */
   @Get(':ticketId')
   @RequiereAcciones('TICKETS:LECTURA')
@@ -221,7 +228,7 @@ export class SoporteController {
   ): Promise<EquipoDeTicketResponseDto> {
     const result = await this.obtenerEquipoDeTicketUseCase.execute({
       ticketId,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());

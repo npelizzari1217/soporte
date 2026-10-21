@@ -11,18 +11,17 @@ import { ListarTecnicosAsignablesUseCase } from './listar-tecnicos-asignables.us
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { Modulo } from '../../../shared/domain/modulos';
-import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { AlcanceActorTicket } from '../services/visibilidad-ticket';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 
 /** Actor que ve cualquier ticket: los casos del universo de técnicos no dependen del acceso. */
-const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
-  actorId: 'asignador-uuid',
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
-};
+const ALCANCE_SIN_RESTRICCION = alcanceSinRestriccion('asignador-uuid');
 
 function makeTicket(tipoId = 'tipo-soporte-uuid'): TicketEntity {
   return TicketEntity.create(
@@ -129,19 +128,51 @@ describe('ListarTecnicosAsignablesUseCase', () => {
     expect(c.usuarioMasterChecker.listarTecnicosAsignables).not.toHaveBeenCalled();
   });
 
-  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS; no consulta técnicos', async () => {
-      const c = makeCollaborators('EDILICIA');
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
+    // Mismo usuario: Soporte con Ver y Asignar, Mantenimiento solo con Ver, Electricidad sin nada.
+    const alcance = alcancePorTipo('solicitante-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR'],
+      'tipo-mantenimiento-uuid': ['LECTURA'],
+    });
+
+    it('un ticket de un tipo con ASIGNAR lista los técnicos', async () => {
+      const c = makeCollaborators('TICKETS');
       c.ticketRepo.findById.mockResolvedValue(makeTicket());
 
       const result = await c.useCase.execute({
         ticketId: 'ticket-uuid',
         clienteId: 'cliente-uuid',
-        ...ALCANCE_SIN_RESTRICCION,
-        modulosPermitidos: ['TICKETS'],
+        ...alcance,
       });
 
-      expect(result.isFail()).toBe(true);
+      expect(result.isOk()).toBe(true);
+      expect(c.usuarioMasterChecker.listarTecnicosAsignables).toHaveBeenCalledTimes(1);
+    });
+
+    it('un ticket de un tipo con solo LECTURA es 403; no consulta técnicos', async () => {
+      const c = makeCollaborators('TICKETS');
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('tipo-mantenimiento-uuid'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        clienteId: 'cliente-uuid',
+        ...alcance,
+      });
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(c.usuarioMasterChecker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo sin LECTURA es 404; no consulta técnicos', async () => {
+      const c = makeCollaborators('TICKETS');
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('tipo-electricidad-uuid'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        clienteId: 'cliente-uuid',
+        ...alcance,
+      });
+
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.usuarioMasterChecker.listarTecnicosAsignables).not.toHaveBeenCalled();
     });
@@ -153,36 +184,17 @@ describe('ListarTecnicosAsignablesUseCase', () => {
       const result = await c.useCase.execute({
         ticketId: 'ticket-uuid',
         clienteId: 'cliente-uuid',
-        actorId: 'asignador-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: ['TICKETS'],
+        ...alcancePorTipo('asignador-uuid', { 'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR'] }),
       });
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'asignador-uuid');
       expect(c.usuarioMasterChecker.listarTecnicosAsignables).not.toHaveBeenCalled();
     });
 
-    it('un ticket de un tipo de sus módulos que el actor ve lista los técnicos', async () => {
-      const c = makeCollaborators('TICKETS');
-      c.ticketRepo.findById.mockResolvedValue(makeTicket());
-
-      const result = await c.useCase.execute({
-        ticketId: 'ticket-uuid',
-        clienteId: 'cliente-uuid',
-        actorId: 'solicitante-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: ['TICKETS'],
-      });
-
-      expect(result.isOk()).toBe(true);
-      expect(c.usuarioMasterChecker.listarTecnicosAsignables).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) lista los técnicos de un tipo de cualquier módulo', async () => {
+    it('sin restricción (ROOT o ADMINISTRADOR) lista los técnicos de un tipo sin filas', async () => {
       const c = makeCollaborators('EDILICIA');
-      c.ticketRepo.findById.mockResolvedValue(makeTicket());
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('tipo-electricidad-uuid'));
 
       const result = await c.useCase.execute({
         ticketId: 'ticket-uuid',

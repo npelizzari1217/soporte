@@ -21,8 +21,7 @@ import { AlcanceActorTicket } from '../services/visibilidad-ticket';
 /** Actor que ve cualquier ticket: estos casos prueban el reloj de SLA, no el acceso (odd/permisos-por-tipo-ticket). */
 const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
   actorId: 'dummy-actor',
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
+  permisosPorTipo: null,
 };
 
 const MASTER_TEST_URL =

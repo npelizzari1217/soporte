@@ -25,9 +25,10 @@ import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.check
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { unstubbed } from '../../../testing/mocks';
-import { Modulo } from '../../../shared/domain/modulos';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 import {
+  AccionSobreTipoNoPermitidaError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TicketNoEncontradoError,
@@ -53,13 +54,16 @@ const ESTADOS: Record<string, { id: string; codigo: string }> = {
   CANCELADO: { id: 'estado-cancelado-uuid', codigo: 'CANCELADO' },
 };
 
-function makeTicket(estadoCodigo: keyof typeof ESTADOS): TicketEntity {
+function makeTicket(
+  estadoCodigo: keyof typeof ESTADOS,
+  tipoId = 'tipo-soporte-uuid',
+): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Ticket de prueba',
       descripcion: null,
-      tipoId: 'tipo-soporte-uuid',
+      tipoId,
       estadoId: ESTADOS[estadoCodigo].id,
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
@@ -77,18 +81,9 @@ function baseDto(overrides: Partial<AsignarYPonerEnProcesoDto> = {}): AsignarYPo
     autorId: 'asignador-uuid',
     clienteId: 'cliente-uuid',
     // Ve cualquier ticket: los casos del flujo combinado no dependen del acceso.
-    actorId: 'asignador-uuid',
-    tienePermisoVerTodos: true,
-    modulosPermitidos: null,
+    ...alcanceSinRestriccion('asignador-uuid'),
     ...overrides,
   };
-}
-
-function makeTipo(modulo: Modulo): TipoTicketEntity {
-  return TipoTicketEntity.create(
-    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
-    'tipo-soporte-uuid',
-  );
 }
 
 describe('AsignarYPonerEnProcesoUseCase', () => {
@@ -373,20 +368,47 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
   });
 
-  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS; no se escribe nada', async () => {
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
+    // Mismo usuario: Soporte con Ver, Asignar y Estado; Mantenimiento con Ver y Asignar (sin
+    // Estado); Electricidad sin nada.
+    const alcance = alcancePorTipo('solicitante-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR', 'TRANSICIONAR'],
+      'tipo-mantenimiento-uuid': ['LECTURA', 'ASIGNAR'],
+    });
+
+    it('asigna y pone en proceso un ticket de un tipo con ASIGNAR y TRANSICIONAR', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute(baseDto(alcance));
 
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('un ticket de un tipo con ASIGNAR pero sin TRANSICIONAR es 403; no se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-mantenimiento-uuid'));
+
+      const result = await c.useCase.execute(baseDto(alcance));
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toContain('"TRANSICIONAR"');
       expect(c.txRunner.run).not.toHaveBeenCalled();
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
       expect(c.operacionRepo.save).not.toHaveBeenCalled();
       expect(c.alCommitear).toHaveLength(0);
+    });
+
+    it('un ticket de un tipo sin LECTURA es 404; no se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-electricidad-uuid'));
+
+      const result = await c.useCase.execute(baseDto(alcance));
+
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
 
     it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404', async () => {
@@ -394,42 +416,28 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
 
       const result = await c.useCase.execute(
-        baseDto({ tienePermisoVerTodos: false, modulosPermitidos: ['TICKETS'] }),
+        baseDto(
+          alcancePorTipo('asignador-uuid', {
+            'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR', 'TRANSICIONAR'],
+          }),
+        ),
       );
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'asignador-uuid');
       expect(c.txRunner.run).not.toHaveBeenCalled();
     });
 
-    it('un ticket de un tipo de sus módulos que el actor ve se asigna y pasa a EN_PROCESO', async () => {
+    it('sin restricción (ROOT o ADMINISTRADOR) pasa el acceso en un tipo sin filas', async () => {
       const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-
-      const result = await c.useCase.execute(
-        baseDto({
-          actorId: 'solicitante-uuid',
-          tienePermisoVerTodos: false,
-          modulosPermitidos: ['TICKETS'],
-        }),
-      );
-
-      expect(result.isOk()).toBe(true);
-      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) pasa el acceso en un tipo de cualquier módulo', async () => {
-      const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-electricidad-uuid'));
       // El asignado es ROOT/ADMINISTRADOR: elegible para un tipo de cualquier módulo.
       c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
         esAdminTotal: true,
         modulos: [],
       });
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
+      const result = await c.useCase.execute(baseDto(alcanceSinRestriccion('asignador-uuid')));
 
       expect(result.isOk()).toBe(true);
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);

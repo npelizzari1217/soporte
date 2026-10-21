@@ -9,7 +9,11 @@
  * Ref spec: sdd/flujos-especializados/spec F3-Q4, F3-Q5. Tarea: T13.4.
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { SoporteController } from './soporte.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
@@ -20,10 +24,13 @@ import {
   TicketSoporteNoEncontradoError,
 } from '../../domain/errors/equipos.errors';
 import {
+  AccionSobreTipoNoPermitidaError,
   SolicitanteInvalidoError,
   SinCicloActivoError,
   TicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import { ResolverQrAutenticadoUseCase } from '../../application/use-cases/resolver-qr-autenticado.use-case';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
@@ -71,6 +78,16 @@ describe('SoporteController (T13.4)', () => {
       obtenerEquipoDeTicketUseCase.caso,
       // Real y con repos vacíos: este spec no ejercita la ruta del QR (la cubre su e2e).
       new ResolverQrAutenticadoUseCase({ findById: vi.fn() }, { findByQrHash: vi.fn() }),
+      // Permisos por tipo del usuario, en la tabla del tenant (odd/permisos-por-tipo-ticket, D5 a).
+      new CargadorAlcanceTicket(
+        new PermisosTipoTicketEnMemoria(
+          [],
+          [
+            { usuarioId: 'usuario-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' },
+            { usuarioId: 'usuario-uuid', tipoId: 'tipo-soporte-uuid', accion: 'MODIFICACION' },
+          ],
+        ),
+      ),
     );
 
     return {
@@ -162,8 +179,7 @@ describe('SoporteController (T13.4)', () => {
         ticketId: 'ticket-uuid',
         solucion: 'Se reinstaló el cliente VPN.',
         actorId: 'usuario-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: [],
+        permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
       });
     });
 
@@ -189,6 +205,17 @@ describe('SoporteController (T13.4)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('lo ve sin MODIFICACION sobre su tipo → 403', async () => {
+      const { controller, registrarSolucionUseCase } = buildController();
+      registrarSolucionUseCase.execute.mockResolvedValue(
+        Result.fail(new AccionSobreTipoNoPermitidaError('MODIFICACION')),
+      );
+
+      await expect(
+        controller.registrarSolucion('ticket-uuid', { solucion: 'X' }, USER),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
     it('declara @RequiereAcciones("TICKETS:MODIFICACION")', () => {
       const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.registrarSolucion);
       expect(meta).toEqual(['TICKETS:MODIFICACION']);
@@ -210,8 +237,7 @@ describe('SoporteController (T13.4)', () => {
       expect(obtenerEquipoDeTicketUseCase.execute).toHaveBeenCalledWith({
         ticketId: 'ticket-1',
         actorId: 'usuario-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: [],
+        permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
       });
     });
 

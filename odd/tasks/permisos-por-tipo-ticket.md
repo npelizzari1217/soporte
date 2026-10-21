@@ -96,8 +96,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `deploy.ps1` — (este commit)
 - [x] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
   plantilla escriben las filas por tipo — (este commit)
-- [ ] T5a — S1-S3, S6, D5 a-c — worker — alcance por tipo cargado por request y punto único
-  (`esTicketAccesiblePara` + acción); lecturas y escrituras por id del ticket — (pendiente)
+- [x] T5a — S1-S3, S6, D5 a-c — worker — alcance por tipo cargado por request y punto único
+  (`esTicketAccesiblePara` + acción); lecturas y escrituras por id del ticket — (este commit)
 - [ ] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
   creación por tipo, reparaciones y dashboard — (pendiente)
 - [ ] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (pendiente)
@@ -238,4 +238,13 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   pide reaplicar la plantilla). Con `sobrescribir: false` el tenant solo se escribe si master
   sembró la plantilla y el usuario no tenía filas: nunca da por tipo un acceso que la matriz no
   tiene. El importador legacy también siembra filas. 2537 tests en verde, e2e incluidos.
+- **L26** (T5a) — `AlcanceActorTicket` pasa a `{ actorId, permisosPorTipo }` (`null` para ROOT y
+  ADMINISTRADOR), cargado por request por `CargadorAlcanceTicket` (`tickets/interface/alcance-ticket.ts`).
+  Ver: `LECTURA` sobre el tipo y (`VER_TODOS` sobre el tipo o regla de fila). 404 si no ve; 403
+  `AccionSobreTipoNoPermitidaError` si ve y le falta la acción. Acciones por operación según
+  D5 (c); el timeline muestra internas con `OBSERVAR` sobre el tipo y el PDF pide solo públicas.
+  La API v1 recibe acciones fijas sobre los tipos de TICKETS, equivalentes a lo que la clave podía
+  hacer (T5c lo revisa). 3959 tests en verde, e2e incluidos (S2 con filas reales). Cambios de
+  conducta: los flags del JWT ya no deciden estas operaciones; un usuario sin filas no ve nada por
+  id hasta que corra el backfill de T4b (por eso T4-T8 salen en un solo deploy, L20).
 

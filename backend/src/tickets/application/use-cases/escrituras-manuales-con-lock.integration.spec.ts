@@ -46,8 +46,7 @@ import { AlcanceActorTicket } from '../services/visibilidad-ticket';
 /** Actor que ve cualquier ticket: estos casos prueban el lock, no el acceso (odd/permisos-por-tipo-ticket). */
 const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
   actorId: 'responsable-lock',
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
+  permisosPorTipo: null,
 };
 
 // odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
@@ -75,13 +74,8 @@ const ESTADOS = [
 ];
 const TIPOS_OPERACION = ['ASIGNACION', 'CAMBIO_ESTADO'];
 
-const tecnico: ActorTarea = {
-  id: TECNICO,
-  esAdministrador: false,
-  tienePermisoVerTodos: true,
-  modulosConModificacion: ['TICKETS'],
-  modulosPermitidos: ['TICKETS'],
-};
+/** Sin restricción por tipo: completa por ser el técnico de la tarea; acá se prueba el lock. */
+const tecnico: ActorTarea = { id: TECNICO, esAdministrador: false, permisosPorTipo: null };
 
 describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant efímero)', () => {
   const admin = new PostgresAdminService(MASTER_TEST_URL);
@@ -125,7 +119,6 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
   );
   const completar = new CompletarTareaUseCase(
     ticketRepo,
-    tipoTicketRepo,
     tareaRepo,
     operacionRepo,
     tipoOperacionRepo,
@@ -322,7 +315,6 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
       eventPublisher,
       sectorRepo,
       txRunner,
-      tipoTicketRepo,
     );
 
     const resultado = await enTenant(() =>

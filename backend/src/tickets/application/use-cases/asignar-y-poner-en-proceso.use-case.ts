@@ -14,7 +14,7 @@ import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-eve
 import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -37,7 +37,7 @@ const ESTADO_EN_PROCESO = 'EN_PROCESO';
 
 /**
  * DTO de entrada de `AsignarYPonerEnProcesoUseCase`. El alcance del actor (`AlcanceActorTicket`)
- * lo arma el controller desde el JWT (odd/permisos-por-tipo-ticket, S0).
+ * lo carga la capa de interface (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface AsignarYPonerEnProcesoDto extends AlcanceActorTicket {
   ticketId: string;
@@ -69,7 +69,8 @@ interface PasoTransicion {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe/está soft-deleted o el actor no lo ve
- *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
+ *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
+ *    si lo ve sin `ASIGNAR` y `TRANSICIONAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
@@ -111,18 +112,15 @@ export class AsignarYPonerEnProcesoUseCase {
   ) {}
 
   async execute(dto: AsignarYPonerEnProcesoDto): Promise<Result<TicketEntity, DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
+    const ticketResult = await cargarTicketParaOperar(
+      this.ticketRepo,
+      dto.ticketId,
+      dto,
+      'ASIGNAR',
+      'TRANSICIONAR',
+    );
+    if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
+    const ticket = ticketResult.getValue();
 
     // Catálogos FIJOS (ADR-1): su ausencia es un bug de infraestructura → throw
     // defensivo (mismo patrón que TransicionarEstadoUseCase).

@@ -60,13 +60,8 @@ const ESTADOS = [
 ];
 const TIPOS_OPERACION = ['ASIGNACION', 'CAMBIO_ESTADO'];
 
-const actor = (id: string): ActorTarea => ({
-  id,
-  esAdministrador: false,
-  tienePermisoVerTodos: true,
-  modulosConModificacion: ['TICKETS'],
-  modulosPermitidos: ['TICKETS'],
-});
+/** Sin restricción por tipo: estos casos prueban el estado por tareas, no el acceso. */
+const actor = (id: string): ActorTarea => ({ id, esAdministrador: false, permisosPorTipo: null });
 
 describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () => {
   const admin = new PostgresAdminService(MASTER_TEST_URL);
@@ -105,7 +100,6 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
   const completar = (avance = servicio()) =>
     new CompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,
@@ -116,7 +110,6 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
   const descompletar = () =>
     new DescompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,

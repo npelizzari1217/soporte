@@ -44,6 +44,7 @@ import { CodigoAccion } from '../../../shared/domain/acciones';
 import { EMAIL_SENDER, EmailMessage } from '../../../shared/domain/ports/i-email-sender';
 import { TicketResponseDto } from '../dtos/ticket.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -207,6 +208,12 @@ describe('Mail de asignación e2e (WU-6: N1, N2, N6)', () => {
       data: { usuarioId: usuario.id, clienteId, rolId, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, clienteId, ['TICKETS:LECTURA', ...celdas]);
+    // Las operaciones por id deciden con los permisos por tipo del tenant: los mismos que la
+    // matriz por módulo, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    await sembrarPermisosPorTipoE2e(
+      tenantClient,
+      new Map([[usuario.id, ['TICKETS:LECTURA', ...celdas]]]),
+    );
     const login = await http<{ accessToken: string }>('POST', `${baseUrl}/auth/login`, {
       email: usuario.email,
       password: PLAINTEXT_PASSWORD,

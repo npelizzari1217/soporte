@@ -42,6 +42,7 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../test-helpers/permisos-por-tipo-e2e';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { TareaTicketResponseDto, TareasTicketResponseDto } from '../dtos/tarea-ticket.dto';
 import {
@@ -196,12 +197,29 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
   }, 60_000);
 
   const roles = new Map<string, RoleEntity>();
+  /** Inquilino de cada cliente creado en el test. */
+  const inquilinoDeCliente = new Map<string, Inquilino>();
+  /**
+   * Celdas master de cada usuario, por inquilino (odd/permisos-por-tipo-ticket, T5a): las rutas de
+   * tareas deciden con los permisos por tipo del tenant, que se siembran con la traducción de L11
+   * al crear el actor y cada tipo (`sembrarPermisosPorTipoE2e`).
+   */
+  const celdasPorInquilino = new Map<string, Map<string, string[]>>();
+
+  async function sembrarPermisos(inquilino: Inquilino): Promise<void> {
+    await sembrarPermisosPorTipoE2e(
+      inquilino.client,
+      celdasPorInquilino.get(inquilino.dbName) ?? new Map<string, string[]>(),
+    );
+  }
 
   beforeEach(async () => {
     await masterClient.$executeRawUnsafe(
       'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
     roles.clear();
+    inquilinoDeCliente.clear();
+    celdasPorInquilino.clear();
   });
 
   // ─── Fixtures ──────────────────────────────────────────────────────────
@@ -215,6 +233,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       activo: true,
     });
     await clienteRepo.save(cliente);
+    inquilinoDeCliente.set(cliente.id, dbName === TENANT_A ? a : b);
     return cliente.id;
   }
 
@@ -250,6 +269,12 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       data: { usuarioId: usuario.id, clienteId, rolId: role.id, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    const inquilino = inquilinoDeCliente.get(clienteId);
+    if (!inquilino) throw new Error(`Cliente ${clienteId} sin inquilino en el fixture`);
+    const celdas = celdasPorInquilino.get(inquilino.dbName) ?? new Map<string, string[]>();
+    celdas.set(usuario.id, permisos);
+    celdasPorInquilino.set(inquilino.dbName, celdas);
+    await sembrarPermisos(inquilino);
     const { data } = await http<{ accessToken: string }>('POST', `${baseUrl}/auth/login`, '', {
       email: usuario.email,
       password: PLAINTEXT_PASSWORD,
@@ -270,6 +295,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
         modulo,
       },
     });
+    await sembrarPermisos(inquilino);
     const ticket = await inquilino.client.ticket.create({
       data: {
         numero: `TAR-${randomBytes(4).toString('hex')}`,
@@ -731,9 +757,9 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
     });
   });
 
-  // ─── Listar sigue la lectura del módulo (T12, JD-W3) ───────────────────
+  // ─── Listar exige ver el ticket (T12, JD-W3; permisos por tipo, S3) ──────
 
-  describe('listar sigue el permiso de lectura del módulo del tipo (T12)', () => {
+  describe('listar exige ver el ticket: LECTURA sobre su tipo (T12, odd/permisos-por-tipo-ticket S3)', () => {
     /** Un ticket del módulo dado, con una tarea que da de alta el administrador. */
     async function ticketConTarea(
       escena: Awaited<ReturnType<typeof escenario>>,
@@ -750,7 +776,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       return { ticketId, tareaId: data.id };
     }
 
-    it('VER_TODOS sin TICKETS:LECTURA ve el ticket, pero no lista sus tareas: 403', async () => {
+    it('VER_TODOS sin LECTURA sobre el tipo no ve el ticket: listar sus tareas es 404 (odd/permisos-por-tipo-ticket, S3)', async () => {
       const escena = await escenario();
       const { ticketId } = await ticketConTarea(escena, 'TICKETS');
       const sinLectura = await actor(escena.clienteA, 'COLABORADOR', ['TICKETS:VER_TODOS']);
@@ -761,7 +787,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
         sinLectura.token,
       );
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
       expect(res.data.items).toBeUndefined();
     });
 
@@ -779,11 +805,12 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       expect(res.data.items.map((t) => t.id)).toEqual([tareaId]);
     });
 
-    it('un lector de Edilicia sin ver el ticket lista las tareas de un ticket de Edilicia, pero no las de uno de TICKETS', async () => {
+    it('un lector de Edilicia lista las tareas de un ticket de Edilicia, pero no las de uno de TICKETS', async () => {
       const escena = await escenario();
       const edilicia = await ticketConTarea(escena, 'EDILICIA');
       const soporte = await ticketConTarea(escena, 'TICKETS');
-      // Sin TICKETS:LECTURA ni VER_TODOS, y no es el solicitante: no ve ninguno de los dos.
+      // `EDILICIA:LECTURA` da Ver y Ver todos sobre los tipos de Edilicia (L11) y nada sobre los de
+      // TICKETS. El detalle sigue cerrado por la compuerta de ruta (`TICKETS:LECTURA`).
       const lector = await actor(escena.clienteA, 'COLABORADOR', ['EDILICIA:LECTURA']);
       expect(
         (await http('GET', `${baseUrl}/tickets/${edilicia.ticketId}`, lector.token)).status,
@@ -816,7 +843,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       expect(await a.client.tareaTicket.count({ where: { ticketId, descripcion: 'X' } })).toBe(0);
     });
 
-    it('con el módulo EDILICIA y VER_TODOS pero sin EDILICIA:LECTURA no lista las tareas de un ticket de Edilicia: 403', async () => {
+    it('con EDILICIA:ALTAS pero sin EDILICIA:LECTURA no ve el ticket de Edilicia: listar sus tareas es 404 (S3)', async () => {
       const escena = await escenario();
       const { ticketId } = await ticketConTarea(escena, 'EDILICIA');
       const sinLectura = await actor(escena.clienteA, 'TECNICO', [
@@ -827,7 +854,7 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
 
       const res = await http('GET', rutas(ticketId).base, sinLectura.token);
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(404);
     });
 
     it('aislamiento: un lector de Edilicia del cliente B no lista las tareas de un ticket de Edilicia del cliente A', async () => {

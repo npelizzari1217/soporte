@@ -31,26 +31,49 @@ import {
   TicketV1,
 } from './tickets-v1.dto';
 import { TicketsV1Presenter } from './tickets-v1.presenter';
-import { alcanceTicketDesdeJwt } from '../../tickets/interface/alcance-ticket';
 import { AlcanceActorTicket } from '../../tickets/application/services/visibilidad-ticket';
-import { MODULO_API_V1 } from '../application/tipos-ticket-v1.query';
+import { AccionTipoTicket } from '../../tickets/domain/permisos-tipo-ticket';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 
 /**
- * Alcance con el que comenta la clave (odd/permisos-por-tipo-ticket, S0): cualquier ticket del
- * modulo de la API v1, sin restriccion de fila. Antes de S0 `TICKETS:COMENTAR` alcanzaba para
- * comentar cualquier ticket del cliente; `ApiClaveGuard` solo agrega `VER_TODOS` cuando la clave
- * tambien tiene `TICKETS:LECTURA`, asi que el alcance del JWT dejaria a una clave de solo
- * comentario limitada a los tickets que pidio el usuario de integracion. El modulo sigue acotado:
- * un ticket de otro modulo es 404, igual que en el resto de v1.
+ * Alcance por tipo de la clave (odd/permisos-por-tipo-ticket, D5 f). La clave no tiene filas en
+ * `permisos_tipo_ticket`: se le conceden las `acciones` sobre cada tipo del modulo de v1, que es lo
+ * que la clave podia hacer antes de los permisos por tipo. Un tipo de otro modulo queda sin
+ * acciones, asi que su ticket sigue siendo 404. Traducir las celdas de la clave por la tabla de L11
+ * es la tarea T5c.
  *
  * @param actor Actor sintetico de la clave.
- * @returns Alcance sin restriccion de fila y limitado al modulo de v1.
+ * @param tiposV1 Ids de los tipos del modulo de v1.
+ * @param acciones Acciones que la clave tiene sobre cada uno.
+ * @returns El alcance de la clave.
  */
-function alcanceComentarioV1(actor: JwtPayload): AlcanceActorTicket {
-  return { actorId: actor.sub, tienePermisoVerTodos: true, modulosPermitidos: [MODULO_API_V1] };
+function alcanceV1(
+  actor: JwtPayload,
+  tiposV1: readonly string[],
+  acciones: readonly AccionTipoTicket[],
+): AlcanceActorTicket {
+  return {
+    actorId: actor.sub,
+    permisosPorTipo: new Map(tiposV1.map((tipoId) => [tipoId, new Set(acciones)])),
+  };
 }
+
+/**
+ * Ver un ticket: `LECTURA` (la ruta ya la exige) y `VER_TODOS` si la clave lo tiene; sin el, la
+ * regla de fila del usuario de integracion, igual que antes de los permisos por tipo.
+ */
+function accionesDeLecturaV1(actor: JwtPayload): AccionTipoTicket[] {
+  return puedeEjecutar(actor, ACCION_VER_TODOS) ? ['LECTURA', 'VER_TODOS'] : ['LECTURA'];
+}
+
+/**
+ * Comentar (odd/permisos-por-tipo-ticket, S0): cualquier ticket del modulo de v1, sin restriccion
+ * de fila. `ApiClaveGuard` solo agrega `VER_TODOS` cuando la clave tambien tiene `TICKETS:LECTURA`,
+ * asi que la regla de fila dejaria a una clave de solo comentario limitada a los tickets que pidio
+ * el usuario de integracion.
+ */
+const ACCIONES_COMENTARIO_V1: readonly AccionTipoTicket[] = ['LECTURA', 'VER_TODOS', 'COMENTAR'];
 
 /** Path param `id` documentado como uuid: `ParseUUIDPipe` responde 400 a cualquier otra cosa. */
 const ParamIdTicket = (): MethodDecorator =>
@@ -136,7 +159,7 @@ export class TicketsV1Controller {
     }
     const result = await this.obtenerTicket.execute({
       ticketId: id,
-      ...alcanceTicketDesdeJwt(actor),
+      ...alcanceV1(actor, await this.ticketsV1.tiposDeV1(), accionesDeLecturaV1(actor)),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -203,7 +226,7 @@ export class TicketsV1Controller {
   /**
    * Agrega un comentario PUBLICO a un ticket del cliente de la clave. Requiere `TICKETS:COMENTAR`.
    * Nunca es interno: la API no tiene forma de pedirlo. Alcanza a cualquier ticket del modulo
-   * TICKETS del cliente, lo haya pedido o no el usuario de integracion (`alcanceComentarioV1`); 404
+   * TICKETS del cliente, lo haya pedido o no el usuario de integracion (`ACCIONES_COMENTARIO_V1`); 404
    * si el ticket no es del cliente o es de otro modulo, antes de escribir nada. El autor
    * es el usuario de integracion, que habla por el cliente: el comentario no cuenta como primera
    * respuesta de SLA (`autorEsIntegracion`, T5d).
@@ -246,7 +269,7 @@ export class TicketsV1Controller {
       autorId: actor.sub,
       esInterno: false,
       autorEsIntegracion: true,
-      ...alcanceComentarioV1(actor),
+      ...alcanceV1(actor, await this.ticketsV1.tiposDeV1(), ACCIONES_COMENTARIO_V1),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());

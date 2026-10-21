@@ -41,6 +41,7 @@ import {
 } from './domain/ports/i-regla-asignacion.repository';
 import { PrismaPermisoTipoTicketRepository } from './infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
 import { PERMISO_TIPO_TICKET_REPOSITORY } from './domain/ports/i-permiso-tipo-ticket.repository';
+import { CargadorAlcanceTicket } from './interface/alcance-ticket';
 import { ResolverAsignacionAutomatica } from './application/services/resolver-asignacion-automatica.service';
 import {
   ITareaTicketRepository,
@@ -209,6 +210,8 @@ import {
     { provide: REGLA_ASIGNACION_REPOSITORY, useClass: PrismaReglaAsignacionRepository },
     // odd/permisos-por-tipo-ticket (T4a): permisos por tipo y acción, locales al tenant.
     { provide: PERMISO_TIPO_TICKET_REPOSITORY, useClass: PrismaPermisoTipoTicketRepository },
+    // odd/permisos-por-tipo-ticket (T5a): alcance por tipo del actor, cargado por request.
+    CargadorAlcanceTicket,
     // odd/tareas-con-tecnico: tareas de cualquier tipo de ticket.
     { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
     // odd/ticket-cerrado-solo-lectura: tareas de solo lectura en CERRADO/CANCELADO o bloqueada por compra.
@@ -305,9 +308,8 @@ import {
     },
     {
       provide: ObtenerTicketUseCase,
-      useFactory: (ticketRepo: ITicketRepository, tipoTicketRepo: ITipoTicketRepository) =>
-        new ObtenerTicketUseCase(ticketRepo, tipoTicketRepo),
-      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
+      useFactory: (ticketRepo: ITicketRepository) => new ObtenerTicketUseCase(ticketRepo),
+      inject: [TICKET_REPOSITORY],
     },
     {
       provide: ListarTicketsUseCase,
@@ -327,7 +329,6 @@ import {
         eventPublisher: IDomainEventPublisher,
         sectorRepo: ISectorRepository,
         txRunner: ITenantTransactionRunner,
-        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new EditarTicketUseCase(
           ticketRepo,
@@ -336,7 +337,6 @@ import {
           eventPublisher,
           sectorRepo,
           txRunner,
-          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -345,7 +345,6 @@ import {
         DOMAIN_EVENT_PUBLISHER,
         SECTOR_REPOSITORY,
         TENANT_TX_RUNNER,
-        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -446,12 +445,9 @@ import {
     // eliminar se exportaban para las rutas de subtareas de reparaciones, que T8 retiró.
     {
       provide: ListarTareasTicketUseCase,
-      useFactory: (
-        ticketRepo: ITicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
-        tareaRepo: ITareaTicketRepository,
-      ) => new ListarTareasTicketUseCase(ticketRepo, tipoTicketRepo, tareaRepo),
-      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
+      useFactory: (ticketRepo: ITicketRepository, tareaRepo: ITareaTicketRepository) =>
+        new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
+      inject: [TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
     },
     {
       provide: ListarTecnicosElegiblesTareaUseCase,
@@ -570,7 +566,6 @@ import {
       provide: CompletarTareaUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
@@ -580,7 +575,6 @@ import {
       ) =>
         new CompletarTareaUseCase(
           ticketRepo,
-          tipoTicketRepo,
           tareaRepo,
           operacionRepo,
           tipoOperacionRepo,
@@ -590,7 +584,6 @@ import {
         ),
       inject: [
         TICKET_REPOSITORY,
-        TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
@@ -603,7 +596,6 @@ import {
       provide: DescompletarTareaUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
@@ -613,7 +605,6 @@ import {
       ) =>
         new DescompletarTareaUseCase(
           ticketRepo,
-          tipoTicketRepo,
           tareaRepo,
           operacionRepo,
           tipoOperacionRepo,
@@ -623,7 +614,6 @@ import {
         ),
       inject: [
         TICKET_REPOSITORY,
-        TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
@@ -711,7 +701,6 @@ import {
         calendarioRepo: ICalendarioLaboralSemanalRepository,
         feriadosRepo: IFeriadosLaboralesRepository,
         logger: ILogger,
-        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new CrearComentarioUseCase(
           ticketRepo,
@@ -725,7 +714,6 @@ import {
           calendarioRepo,
           feriadosRepo,
           logger,
-          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -738,17 +726,13 @@ import {
         CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
         FERIADOS_LABORALES_REPOSITORY,
         LOGGER,
-        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
       provide: ListarTimelineUseCase,
-      useFactory: (
-        ticketRepo: ITicketRepository,
-        operacionRepo: IOperacionTicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
-      ) => new ListarTimelineUseCase(ticketRepo, operacionRepo, tipoTicketRepo),
-      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
+      useFactory: (ticketRepo: ITicketRepository, operacionRepo: IOperacionTicketRepository) =>
+        new ListarTimelineUseCase(ticketRepo, operacionRepo),
+      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY],
     },
     {
       provide: AdjuntarArchivoUseCase,
@@ -759,7 +743,6 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         fileStorage: IFileStorage,
         txRunner: ITenantTransactionRunner,
-        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new AdjuntarArchivoUseCase(
           ticketRepo,
@@ -768,7 +751,6 @@ import {
           tipoOperacionRepo,
           fileStorage,
           txRunner,
-          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -777,7 +759,6 @@ import {
         TIPO_OPERACION_REPOSITORY,
         FILE_STORAGE,
         TENANT_TX_RUNNER,
-        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -865,6 +846,9 @@ import {
   ],
   exports: [
     USUARIO_MASTER_CHECKER,
+    // odd/permisos-por-tipo-ticket (T5a): las operaciones por id de Equipos, el PDF y la API v1
+    // cargan el alcance por tipo con el mismo cargador.
+    CargadorAlcanceTicket,
     ESTADO_REPOSITORY,
     // odd/ticket-cerrado-solo-lectura: la misma regla frena los comentarios de reparación.
     VerificadorTicketEditable,

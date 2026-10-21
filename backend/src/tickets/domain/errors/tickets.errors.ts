@@ -17,6 +17,21 @@ export class TicketNoEncontradoError extends DomainError {
 }
 
 /**
+ * AccionSobreTipoNoPermitidaError — el actor ve el ticket (tiene `LECTURA` sobre su tipo y pasa la
+ * regla de fila) pero no tiene, sobre ese tipo, la acción que pide la operación
+ * (odd/permisos-por-tipo-ticket, S6, D5 c). Un ticket que no ve es `TicketNoEncontradoError`.
+ * → HTTP 403 en la capa de presentación.
+ */
+export class AccionSobreTipoNoPermitidaError extends DomainError {
+  readonly code = 'ACCION_SOBRE_TIPO_NO_PERMITIDA';
+
+  /** @param accion Acción faltante, o las alternativas unidas con "o". */
+  constructor(accion: string) {
+    super(`El usuario no tiene el permiso "${accion}" sobre el tipo de este ticket.`);
+  }
+}
+
+/**
  * TicketBloqueadoParaEdicionError — el ticket ya entró EN_PROCESO (o un
  * estado posterior: RESUELTO/CERRADO/CANCELADO) y el actor NO es ROOT
  * (`is_global_admin`). Una vez fuera de NUEVO/ASIGNADO, la edición de datos

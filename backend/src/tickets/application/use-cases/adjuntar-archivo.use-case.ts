@@ -8,9 +8,8 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `AdjuntarArchivoUseCase`.
@@ -23,11 +22,9 @@ import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilid
  *   `archivos_operacion`) — el ticket dueño se resuelve vía
  *   `operacionRepo.findById` (deviation de PR10, ver `IOperacionTicketRepository`).
  *
- * El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el JWT
- * (`alcanceTicketDesdeJwt`): adjuntar exige poder ver el ticket, con el mismo criterio que el
- * listado y el detalle (odd/permisos-por-tipo-ticket, S0). Reemplaza la regla ADR-2 (solicitante,
- * `VER_TODOS` o `MODIFICACION`): `MODIFICACION` sin ver el ticket ya no alcanza, y el responsable o
- * el técnico de una tarea activa sí adjuntan.
+ * El alcance del actor (`AlcanceActorTicket`) lo carga la capa de interface: adjuntar exige ver el
+ * ticket, con el mismo criterio que el detalle, y además `ALTAS` o `MODIFICACION` sobre su tipo
+ * (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface AdjuntarArchivoDto extends AlcanceActorTicket {
   ticketId?: string;
@@ -47,11 +44,12 @@ export interface AdjuntarArchivoDto extends AlcanceActorTicket {
  * 1. Resuelve el ticket "dueño": directo (`ticketId`) o vía la operación
  *    (`operacionId` → `operacion.ticketId`). Si el ticket o la operación no
  *    existen (o están soft-deleted) → `TicketNoEncontradoError` (404).
- * 2. Verifica acceso al ticket con el punto único `esTicketAccesiblePara`
- *    (odd/permisos-por-tipo-ticket S0): módulo del tipo entre los del actor y
- *    visibilidad de fila (`VER_TODOS`, solicitante, responsable o técnico de
- *    una tarea activa). Sin acceso → `TicketNoEncontradoError` (404 — mismo
- *    criterio de "no revela existencia" que T6/T18, no 403).
+ * 2. Verifica acceso al ticket con el punto único `puedeOperarTicket`
+ *    (odd/permisos-por-tipo-ticket D5 c): `LECTURA` sobre el tipo y fila
+ *    (`VER_TODOS` sobre el tipo, solicitante, responsable o técnico de una
+ *    tarea activa). Sin acceso → `TicketNoEncontradoError` (404 — mismo
+ *    criterio de "no revela existencia" que T6/T18). Si lo ve sin `ALTAS` ni
+ *    `MODIFICACION` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  * 3. Pre-genera un UUIDv7 para el archivo y construye la storage key
  *    determinística (ADR-7): `tickets/{ticketId}/{archivoId}` si se adjunta
  *    directo al ticket, `operaciones/{operacionId}/{archivoId}` si se
@@ -86,7 +84,6 @@ export class AdjuntarArchivoUseCase {
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly fileStorage: Pick<IFileStorage, 'upload'>,
     private readonly txRunner: ITenantTransactionRunner,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: AdjuntarArchivoDto): Promise<Result<ArchivoEntity, DomainError>> {
@@ -102,21 +99,11 @@ export class AdjuntarArchivoUseCase {
       ticketId = dto.ticketId as string;
     }
 
-    const ticket = await this.ticketRepo.findById(ticketId);
-    if (!ticket || ticket.isDeleted()) {
-      return Result.fail(new TicketNoEncontradoError(ticketId));
-    }
-
     // Lo que el actor no ve tampoco recibe adjuntos: 404, no revela existencia (S0, T6/T18).
-    if (
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(ticketId));
-    }
+    const acceso = await cargarTicketParaOperar(this.ticketRepo, ticketId, dto, {
+      algunaDe: ['ALTAS', 'MODIFICACION'],
+    });
+    if (acceso.isFail()) return Result.fail(acceso.getError());
 
     const archivoId = uuidv7();
     const storageKey = dto.operacionId

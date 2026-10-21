@@ -67,6 +67,8 @@ import {
   TicketResponseDto,
 } from '../dtos/ticket.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
+import { sembrarPermisosPorTipoE2e } from '../../test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -182,6 +184,41 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
    * cero cambios en los `it()` individuales.
    */
   const permisosPorRolId = new Map<string, string[]>();
+
+  /**
+   * Celdas master de cada usuario del test (odd/permisos-por-tipo-ticket, T5a): las operaciones por
+   * id deciden con los permisos por tipo del tenant, así que `createMembresia` y
+   * `createTipoTicketAislado` los siembran con la traducción de L11 (`sembrarPermisosPorTipoE2e`).
+   */
+  const celdasPorUsuario = new Map<string, CodigoAccion[]>();
+
+  /** Reemplaza las celdas master del usuario y vuelve a sembrar sus permisos por tipo. */
+  async function otorgarCeldas(
+    usuarioId: string,
+    clienteId: string,
+    celdas: CodigoAccion[],
+  ): Promise<void> {
+    await permisosRepo.setPermisos(usuarioId, clienteId, celdas);
+    celdasPorUsuario.set(usuarioId, celdas);
+    await sembrarPermisosPorTipoE2e(tenantClient, celdasPorUsuario);
+  }
+
+  /**
+   * Fija las filas por tipo del usuario en la tabla del tenant, sin pasar por las celdas master: así
+   * se configura un acceso que la matriz por módulo no puede expresar (S2).
+   */
+  async function fijarPermisosPorTipo(
+    usuarioId: string,
+    permisos: Record<string, readonly AccionTipoTicket[]>,
+  ): Promise<void> {
+    celdasPorUsuario.delete(usuarioId);
+    await tenantClient.permisoTipoTicket.deleteMany({ where: { usuarioId } });
+    await tenantClient.permisoTipoTicket.createMany({
+      data: Object.entries(permisos).flatMap(([tipoId, acciones]) =>
+        acciones.map((accion) => ({ usuarioId, tipoId, accion })),
+      ),
+    });
+  }
 
   /** Mapeo permiso viejo → celdas nuevas (R7, mismo mapeo que el backfill SQL). */
   function mapearPermisosViejos(permisosViejos: string[]): CodigoAccion[] {
@@ -301,6 +338,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
     );
     permisosPorRolId.clear();
+    celdasPorUsuario.clear();
   });
 
   // ─── Fixtures (master) ────────────────────────────────────────────────
@@ -362,7 +400,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     // 'ADMINISTRADOR', resolverScope bypassea TODO igual (R2) — sembrar acá
     // es inofensivo (no se lee) pero se hace igual por uniformidad.
     const permisosViejos = permisosPorRolId.get(rolId) ?? [];
-    await permisosRepo.setPermisos(usuarioId, clienteId, mapearPermisosViejos(permisosViejos));
+    await otorgarCeldas(usuarioId, clienteId, mapearPermisosViejos(permisosViejos));
   }
 
   async function login(email: string): Promise<{ accessToken: string }> {
@@ -383,6 +421,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         modulo: 'TICKETS',
       },
     });
+    await sembrarPermisosPorTipoE2e(tenantClient, celdasPorUsuario);
     return tipo.id;
   }
 
@@ -561,6 +600,161 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   });
 
   // ─── T8 — Edición: permisos por rol ───────────────────────────────────────
+
+  describe('permisos por tipo de ticket (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
+    /** Ids de los tipos sembrados, por código. */
+    async function tiposSembrados(): Promise<Record<string, string>> {
+      const tipos = await tenantClient.tipoTicket.findMany({
+        where: { codigo: { in: ['SOPORTE', 'EDILICIA', 'MANTENIMIENTO', 'PREVENTIVO'] } },
+      });
+      return Object.fromEntries(tipos.map((t) => [t.codigo, t.id]));
+    }
+
+    /**
+     * Un ticket NUEVO del solicitante, del tipo dado. Se inserta por Prisma: el alta genérica solo
+     * admite tipos de TICKETS, y lo que este bloque mira es el acceso por id, no el alta.
+     */
+    async function ticketDeTipo(
+      solicitanteId: string,
+      tipoId: string,
+      titulo: string,
+    ): Promise<string> {
+      const ticket = await tenantClient.ticket.create({
+        data: {
+          numero: `PTT-${randomBytes(4).toString('hex')}`,
+          titulo,
+          tipoId,
+          estadoId: estadoNuevoId,
+          prioridadId: prioridadMediaId,
+          cicloId: cicloActivoId,
+          solicitanteId,
+        },
+      });
+      return ticket.id;
+    }
+
+    async function tituloEnBase(ticketId: string): Promise<string | undefined> {
+      return (await tenantClient.ticket.findUnique({ where: { id: ticketId } }))?.titulo;
+    }
+
+    it('S2: el mismo técnico ve Mantenimiento sin modificarlo y modifica Soporte y Edilicia; sin Ver en Preventivo, 404', async () => {
+      const cliente = await createClienteTenant();
+      const roleUsuario = await createRoleConPermisos('USUARIO', ['ticket:crear']);
+      // Las celdas de módulo pasan las compuertas de ruta; el acceso por ticket lo deciden las filas.
+      const roleTecnico = await createRoleConPermisos('TECNICO', [
+        'ticket:ver_todos',
+        'ticket:editar',
+      ]);
+      const usuario = await createUsuario(`usr-${randomBytes(2).toString('hex')}`);
+      const tecnico = await createUsuario(`tec-${randomBytes(2).toString('hex')}`);
+      await createMembresia(usuario.id, cliente.id, roleUsuario.id);
+      await createMembresia(tecnico.id, cliente.id, roleTecnico.id);
+      const tipos = await tiposSembrados();
+      await fijarPermisosPorTipo(tecnico.id, {
+        [tipos.SOPORTE]: ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+        [tipos.EDILICIA]: ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+        [tipos.MANTENIMIENTO]: ['LECTURA', 'VER_TODOS'],
+      });
+      const { accessToken: tokenTecnico } = await login(tecnico.email);
+
+      const soporte = await ticketDeTipo(usuario.id, tipos.SOPORTE, 'Soporte original');
+      const edilicia = await ticketDeTipo(usuario.id, tipos.EDILICIA, 'Edilicia original');
+      const mantenimiento = await ticketDeTipo(
+        usuario.id,
+        tipos.MANTENIMIENTO,
+        'Mantenimiento original',
+      );
+      const preventivo = await ticketDeTipo(usuario.id, tipos.PREVENTIVO, 'Preventivo original');
+
+      // Modifica Soporte y Edilicia.
+      for (const id of [soporte, edilicia]) {
+        const editado = await httpPatch<TicketResponseDto>(
+          `${baseUrl}/tickets/${id}`,
+          { titulo: 'Editado por el técnico' },
+          bearer(tokenTecnico),
+        );
+        expect(editado.status).toBe(200);
+        expect(await tituloEnBase(id)).toBe('Editado por el técnico');
+      }
+
+      // Ve Mantenimiento, pero no lo modifica: 403 y el título no cambia.
+      const visto = await httpGet<TicketResponseDto>(
+        `${baseUrl}/tickets/${mantenimiento}`,
+        bearer(tokenTecnico),
+      );
+      expect(visto.status).toBe(200);
+      expect(visto.data.titulo).toBe('Mantenimiento original');
+      const rechazado = await httpPatch<{ message: string }>(
+        `${baseUrl}/tickets/${mantenimiento}`,
+        { titulo: 'Intento' },
+        bearer(tokenTecnico),
+      );
+      expect(rechazado.status).toBe(403);
+      expect(rechazado.data.message).toBe(
+        'El usuario no tiene el permiso "MODIFICACION" sobre el tipo de este ticket.',
+      );
+      expect(await tituloEnBase(mantenimiento)).toBe('Mantenimiento original');
+
+      // Sin Ver en Preventivo: ni lo ve ni lo modifica, como si no existiera.
+      const noVisto = await httpGet(`${baseUrl}/tickets/${preventivo}`, bearer(tokenTecnico));
+      expect(noVisto.status).toBe(404);
+      const noEditado = await httpPatch(
+        `${baseUrl}/tickets/${preventivo}`,
+        { titulo: 'Intento' },
+        bearer(tokenTecnico),
+      );
+      expect(noEditado.status).toBe(404);
+      expect(await tituloEnBase(preventivo)).toBe('Preventivo original');
+    });
+
+    it('VER_TODOS sobre un tipo amplía las filas solo de ese tipo; ADMINISTRADOR ve y edita cualquier tipo', async () => {
+      const cliente = await createClienteTenant();
+      const roleUsuario = await createRoleConPermisos('USUARIO', ['ticket:crear']);
+      const roleTecnico = await createRoleConPermisos('TECNICO', ['ticket:ver_todos']);
+      const roleAdmin = await createRoleConPermisos('ADMINISTRADOR', []);
+      const usuario = await createUsuario(`usr-${randomBytes(2).toString('hex')}`);
+      const tecnico = await createUsuario(`tec-${randomBytes(2).toString('hex')}`);
+      const admin = await createUsuario(`adm-${randomBytes(2).toString('hex')}`);
+      await createMembresia(usuario.id, cliente.id, roleUsuario.id);
+      await createMembresia(tecnico.id, cliente.id, roleTecnico.id);
+      await createMembresia(admin.id, cliente.id, roleAdmin.id);
+      const tipos = await tiposSembrados();
+      await fijarPermisosPorTipo(tecnico.id, {
+        [tipos.SOPORTE]: ['LECTURA', 'VER_TODOS'],
+        [tipos.MANTENIMIENTO]: ['LECTURA'],
+      });
+      // El ADMINISTRADOR no tiene filas: no las necesita (sin restricción).
+      await fijarPermisosPorTipo(admin.id, {});
+      const { accessToken: tokenTecnico } = await login(tecnico.email);
+      const { accessToken: tokenAdmin } = await login(admin.email);
+
+      const soporte = await ticketDeTipo(usuario.id, tipos.SOPORTE, 'Soporte ajeno');
+      const mantenimiento = await ticketDeTipo(
+        usuario.id,
+        tipos.MANTENIMIENTO,
+        'Mantenimiento ajeno',
+      );
+      const preventivo = await ticketDeTipo(usuario.id, tipos.PREVENTIVO, 'Preventivo ajeno');
+
+      expect((await httpGet(`${baseUrl}/tickets/${soporte}`, bearer(tokenTecnico))).status).toBe(
+        200,
+      );
+      expect(
+        (await httpGet(`${baseUrl}/tickets/${mantenimiento}`, bearer(tokenTecnico))).status,
+      ).toBe(404);
+
+      expect((await httpGet(`${baseUrl}/tickets/${preventivo}`, bearer(tokenAdmin))).status).toBe(
+        200,
+      );
+      const editado = await httpPatch(
+        `${baseUrl}/tickets/${preventivo}`,
+        { titulo: 'Editado por el administrador' },
+        bearer(tokenAdmin),
+      );
+      expect(editado.status).toBe(200);
+      expect(await tituloEnBase(preventivo)).toBe('Editado por el administrador');
+    });
+  });
 
   describe('PATCH /tickets/:id (T8 — permisos por rol)', () => {
     it('USUARIO crea un ticket pero NO puede editarlo (403); TECNICO con ticket:editar SÍ puede', async () => {
@@ -759,9 +953,10 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       const sinAsignar = await tenantClient.ticket.findUnique({ where: { id: created.data.id } });
       expect(sinAsignar?.asignadoId).toBeNull();
 
-      // Con una celda de EQUIPOS el técnico accede. Los permisos se leen al emitir el token, así
-      // que hace falta un login nuevo.
-      await permisosRepo.setPermisos(tecnico.id, cliente.id, [
+      // Con una celda de EQUIPOS el técnico accede: la traducción de L11 le da las acciones de
+      // TICKETS sobre el tipo de EQUIPOS. Las celdas se leen al emitir el token, así que hace falta
+      // un login nuevo.
+      await otorgarCeldas(tecnico.id, cliente.id, [
         ...mapearPermisosViejos(permisosPorRolId.get(roleTecnico.id) ?? []),
         'EQUIPOS:LECTURA',
       ]);

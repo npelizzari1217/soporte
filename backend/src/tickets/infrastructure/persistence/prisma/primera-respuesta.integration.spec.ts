@@ -13,7 +13,6 @@ import { PrismaTicketRepository } from './prisma-ticket.repository';
 import { PrismaOperacionTicketRepository } from './prisma-operacion-ticket.repository';
 import { PrismaEstadoRepository } from './prisma-estado.repository';
 import { PrismaTipoOperacionRepository } from './prisma-tipo-operacion.repository';
-import { PrismaTipoTicketRepository } from './prisma-tipo-ticket.repository';
 import { AlcanceActorTicket } from '../../../application/services/visibilidad-ticket';
 import { PrismaPrimeraRespuestaWriteRepository } from './prisma-primera-respuesta-write.repository';
 import {
@@ -24,8 +23,7 @@ import {
 /** Actor que ve cualquier ticket: estos casos prueban la primera respuesta, no el acceso (odd/permisos-por-tipo-ticket). */
 const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
   actorId: 'tecnico-wu6p',
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
+  permisosPorTipo: null,
 };
 
 const MASTER_TEST_URL =
@@ -84,7 +82,6 @@ describe('Primera respuesta — Integration (WU-6)', () => {
       { obtener: async () => SIEMPRE_ABIERTO },
       { obtener: async () => new Set<string>() },
       { error: vi.fn() },
-      new PrismaTipoTicketRepository(tenantContext),
     );
     await limpiar();
     const s = randomBytes(3).toString('hex');

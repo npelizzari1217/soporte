@@ -1,20 +1,22 @@
+import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../domain/errors/tickets.errors';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 
 /**
- * Regla de visibilidad de un ticket (T6, extendida por odd/tareas-con-tecnico CA10): con
- * `TICKETS:VER_TODOS` el actor ve cualquier ticket del inquilino; sin el permiso, los que solicitó,
+ * Regla de fila de un ticket (T6, extendida por odd/tareas-con-tecnico CA10): con `VER_TODOS` sobre
+ * el tipo del ticket el actor ve cualquier ticket de ese tipo; sin el permiso, los que solicitó,
  * los que tiene asignados como responsable (decisión del dueño del 2026-10-14) y aquellos donde es
  * el técnico de una tarea activa. Al quitarlo de la tarea, o al borrarla, deja de verlo, salvo que
  * lo vea por otro de esos motivos.
  *
- * La comparten `ObtenerTicketUseCase`, `ListarTimelineUseCase` y los casos de uso de tareas, para
- * que ver el historial o las tareas pida lo mismo que ver el ticket. El listado aplica la misma
- * regla en SQL con el filtro `visiblePara` (`ITicketRepository.esVisiblePara` comparte esa
- * definición). Solo decide qué se ve; las escrituras sobre un ticket existente la exigen a través
- * de `esTicketAccesiblePara` (lo que no se ve tampoco se modifica), y cada acción conserva además su
- * propio permiso.
+ * Se aplica a través de `esTicketAccesiblePara`, que antes exige `LECTURA` sobre el tipo. El
+ * listado aplica la misma regla en SQL con el filtro `visiblePara` (`ITicketRepository.esVisiblePara`
+ * comparte esa definición).
  */
 export async function esTicketVisiblePara(
   ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
@@ -29,68 +31,133 @@ export async function esTicketVisiblePara(
 }
 
 /**
- * Lo que el actor puede ver de los tickets, tal como lo arma el controller desde el JWT.
- * `modulosPermitidos` en `null` es "sin restricción de módulo" (ROOT y ADMINISTRADOR), el mismo
- * criterio que aplica el listado (`ListarTicketsUseCase`).
+ * Acciones del actor por id de tipo de ticket (odd/permisos-por-tipo-ticket, D5 a). Un tipo
+ * ausente no concede ninguna acción.
+ */
+export type PermisosPorTipo = ReadonlyMap<string, ReadonlySet<AccionTipoTicket>>;
+
+/**
+ * Lo que el actor puede hacer con los tickets (odd/permisos-por-tipo-ticket, D5 a). La capa de
+ * interface lo carga por request de la tabla `permisos_tipo_ticket` del tenant. `permisosPorTipo`
+ * en `null` es "sin restricción" (ROOT y ADMINISTRADOR).
  */
 export interface AlcanceActorTicket {
   actorId: string;
-  tienePermisoVerTodos: boolean;
-  modulosPermitidos: readonly string[] | null;
-}
-
-/** Repositorios que necesita `esTicketAccesiblePara`. */
-export interface RepositoriosDeAcceso {
-  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>;
-  tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>;
+  permisosPorTipo: PermisosPorTipo | null;
 }
 
 /**
- * Regla de módulo de un ticket existente (odd/permisos-por-tipo-ticket, S0, D2): el módulo del
- * tipo del ticket tiene que estar entre los del actor. `modulosPermitidos` en `null` es "sin
- * restricción de módulo" (ROOT y ADMINISTRADOR) y no consulta el tipo. Un tipo inexistente se
- * trata como no permitido. Vive acá para que `esTicketAccesiblePara` y los casos de uso con una
- * regla de acción propia (tareas, `cargarTicketDelModulo`) apliquen el mismo criterio de módulo.
- *
- * @param tipoTicketRepo Repositorio de tipos, para resolver el módulo del tipo del ticket.
- * @param ticket Ticket ya leído.
- * @param modulosPermitidos Módulos del actor, o `null` sin restricción.
- * @returns `true` si el módulo del tipo del ticket está permitido.
+ * Lo que exige una operación sobre el tipo del ticket: una acción, o alguna de varias
+ * (`algunaDe`, por ejemplo adjuntar con `ALTAS` o `MODIFICACION`).
  */
-export async function esModuloDelTipoPermitido(
-  tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
-  ticket: TicketEntity,
-  modulosPermitidos: readonly string[] | null,
-): Promise<boolean> {
-  if (modulosPermitidos === null) return true;
-  const tipo = await tipoTicketRepo.findById(ticket.tipoId);
-  return !!tipo && modulosPermitidos.includes(tipo.modulo);
+export type RequisitoDeAccion =
+  AccionTipoTicket | { readonly algunaDe: readonly AccionTipoTicket[] };
+
+/**
+ * ¿El actor tiene la acción sobre el tipo? Sin restricción (`null`), siempre.
+ *
+ * @param alcance Alcance del actor.
+ * @param tipoId Id del tipo de ticket.
+ * @param accion Acción buscada.
+ * @returns `true` si la acción está concedida sobre ese tipo.
+ */
+export function tieneAccionSobreTipo(
+  alcance: AlcanceActorTicket,
+  tipoId: string,
+  accion: AccionTipoTicket,
+): boolean {
+  if (alcance.permisosPorTipo === null) return true;
+  return alcance.permisosPorTipo.get(tipoId)?.has(accion) === true;
 }
 
 /**
- * Punto único de acceso a un ticket existente (odd/permisos-por-tipo-ticket, S0, D2): el módulo
- * del tipo del ticket tiene que estar entre los del actor, y además rige `esTicketVisiblePara`.
- * Es el mismo criterio que el listado, que filtra por `findIdsByModulos`. Sin esto, un ticket que
- * el listado oculta se veía, editaba o comentaba igual por id. Un tipo inexistente se trata como no
- * accesible. Lo usan las lecturas y las escrituras con actor humano; los flujos de sistema no (D3).
+ * Punto único de visibilidad de un ticket existente (odd/permisos-por-tipo-ticket, S3, D2, D5 b):
+ * `LECTURA` sobre el tipo del ticket, y además `VER_TODOS` sobre ese tipo o la regla de fila
+ * (`esTicketVisiblePara`). Sin `LECTURA` no lo ve nadie, ni su responsable ni el técnico de una de
+ * sus tareas (S3). Lo usan las lecturas y las escrituras con actor humano; los flujos de sistema no
+ * (D3).
  *
- * @param repos Repositorios del ticket y de tipos.
+ * @param ticketRepo Repositorio de tickets, para la regla de fila.
  * @param ticket Ticket ya leído.
- * @param alcance Alcance del actor, armado desde el JWT.
- * @returns `true` si el actor puede ver (y por lo tanto operar) el ticket.
+ * @param alcance Alcance del actor.
+ * @returns `true` si el actor ve el ticket.
  */
 export async function esTicketAccesiblePara(
-  repos: RepositoriosDeAcceso,
+  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
   ticket: TicketEntity,
   alcance: AlcanceActorTicket,
 ): Promise<boolean> {
-  if (!(await esModuloDelTipoPermitido(repos.tipoTicketRepo, ticket, alcance.modulosPermitidos))) {
-    return false;
-  }
+  if (alcance.permisosPorTipo === null) return true;
+  if (!tieneAccionSobreTipo(alcance, ticket.tipoId, 'LECTURA')) return false;
   return esTicketVisiblePara(
-    repos.ticketRepo,
+    ticketRepo,
     ticket,
     alcance.actorId,
-    alcance.tienePermisoVerTodos,
+    tieneAccionSobreTipo(alcance, ticket.tipoId, 'VER_TODOS'),
   );
+}
+
+/** El primer requisito que el actor no cumple sobre el tipo, como texto; `null` si los cumple. */
+function requisitoFaltante(
+  alcance: AlcanceActorTicket,
+  tipoId: string,
+  requisitos: readonly RequisitoDeAccion[],
+): string | null {
+  for (const requisito of requisitos) {
+    const alternativas = typeof requisito === 'string' ? [requisito] : requisito.algunaDe;
+    if (!alternativas.some((accion) => tieneAccionSobreTipo(alcance, tipoId, accion))) {
+      return alternativas.join(' o ');
+    }
+  }
+  return null;
+}
+
+/**
+ * Decide si el actor puede hacer una operación sobre un ticket existente
+ * (odd/permisos-por-tipo-ticket, S6, D2, D5 c): si no lo ve (`esTicketAccesiblePara`),
+ * `TicketNoEncontradoError` (404), sin revelar que existe; si lo ve y le falta alguno de los
+ * requisitos sobre el tipo de ESE ticket, `AccionSobreTipoNoPermitidaError` (403). Sin restricción
+ * (ROOT y ADMINISTRADOR), siempre ok.
+ *
+ * @param ticketRepo Repositorio de tickets, para la regla de fila.
+ * @param ticket Ticket ya leído.
+ * @param alcance Alcance del actor.
+ * @param requisitos Acciones que exige la operación, todas; cada `algunaDe` con una alcanza.
+ * @returns Ok, o el 404 o el 403 que corresponde.
+ */
+export async function puedeOperarTicket(
+  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
+  ticket: TicketEntity,
+  alcance: AlcanceActorTicket,
+  ...requisitos: RequisitoDeAccion[]
+): Promise<Result<void, DomainError>> {
+  if (!(await esTicketAccesiblePara(ticketRepo, ticket, alcance))) {
+    return Result.fail(new TicketNoEncontradoError(ticket.id));
+  }
+  const faltante = requisitoFaltante(alcance, ticket.tipoId, requisitos);
+  return faltante === null
+    ? Result.ok(undefined)
+    : Result.fail(new AccionSobreTipoNoPermitidaError(faltante));
+}
+
+/**
+ * Carga un ticket activo y aplica `puedeOperarTicket`. Uno inexistente o dado de baja es el mismo
+ * `TicketNoEncontradoError` que uno que el actor no ve.
+ *
+ * @param ticketRepo Repositorio de tickets.
+ * @param ticketId Id del ticket.
+ * @param alcance Alcance del actor.
+ * @param requisitos Acciones que exige la operación (ver `puedeOperarTicket`).
+ * @returns El ticket, o el 404 o el 403 que corresponde.
+ */
+export async function cargarTicketParaOperar(
+  ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
+  ticketId: string,
+  alcance: AlcanceActorTicket,
+  ...requisitos: RequisitoDeAccion[]
+): Promise<Result<TicketEntity, DomainError>> {
+  const ticket = await ticketRepo.findById(ticketId);
+  if (!ticket || ticket.isDeleted()) return Result.fail(new TicketNoEncontradoError(ticketId));
+  const acceso = await puedeOperarTicket(ticketRepo, ticket, alcance, ...requisitos);
+  return acceso.isFail() ? Result.fail(acceso.getError()) : Result.ok(ticket);
 }

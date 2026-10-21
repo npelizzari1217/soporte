@@ -84,6 +84,7 @@ async function armar(encontrado = true, tipoPublicado = true, deV1 = true) {
     .fn()
     .mockResolvedValue(deV1 ? Result.ok(undefined) : Result.fail(new TicketNoEncontradoError(ID)));
   const validarReferencia = vi.fn().mockResolvedValue(Result.ok(undefined));
+  const tiposDeV1 = vi.fn().mockResolvedValue(['tipo-1', 'tipo-2']);
   const modulo = await Test.createTestingModule({
     controllers: [TicketsV1Controller],
     providers: [
@@ -93,7 +94,10 @@ async function armar(encontrado = true, tipoPublicado = true, deV1 = true) {
       { provide: CrearTicketUseCase, useValue: { execute: crear } },
       { provide: CrearComentarioUseCase, useValue: { execute: comentar } },
       { provide: TiposTicketV1Query, useValue: { validarParaAlta: validarTipo } },
-      { provide: TicketsV1Query, useValue: { validarExistente, validarReferencia } },
+      {
+        provide: TicketsV1Query,
+        useValue: { validarExistente, validarReferencia, tiposDeV1 },
+      },
     ],
   })
     .overrideGuard(ApiClaveGuard)
@@ -145,13 +149,32 @@ describe('TicketsV1Controller (lectura)', () => {
 
     const res = await controller.ver(actor, ID);
 
+    // La clave no tiene filas por tipo: ve los tipos de v1 con LECTURA y, si la clave lo tiene,
+    // VER_TODOS (odd/permisos-por-tipo-ticket, D5 f; la traducción por L11 es T5c).
     expect(obtener).toHaveBeenCalledWith({
       ticketId: ID,
       actorId: actor.sub,
-      tienePermisoVerTodos: true,
-      modulosPermitidos: ['TICKETS'],
+      permisosPorTipo: new Map([
+        ['tipo-1', new Set(['LECTURA', 'VER_TODOS'])],
+        ['tipo-2', new Set(['LECTURA', 'VER_TODOS'])],
+      ]),
     });
     expect(res).toEqual({ numero: 'SOP-2026-00001' });
+  });
+
+  it('sin VER_TODOS en la clave, el detalle lleva solo LECTURA sobre los tipos de v1', async () => {
+    const { controller, obtener } = await armar();
+
+    await controller.ver({ ...actor, permisos: ['TICKETS:LECTURA'] }, ID);
+
+    expect(obtener).toHaveBeenCalledWith({
+      ticketId: ID,
+      actorId: actor.sub,
+      permisosPorTipo: new Map([
+        ['tipo-1', new Set(['LECTURA'])],
+        ['tipo-2', new Set(['LECTURA'])],
+      ]),
+    });
   });
 
   it('un ticket inexistente o de otro cliente es 404', async () => {
@@ -239,8 +262,10 @@ describe('TicketsV1Controller (lectura)', () => {
       esInterno: false,
       autorEsIntegracion: true,
       actorId: actor.sub,
-      tienePermisoVerTodos: true,
-      modulosPermitidos: ['TICKETS'],
+      permisosPorTipo: new Map([
+        ['tipo-1', new Set(['LECTURA', 'VER_TODOS', 'COMENTAR'])],
+        ['tipo-2', new Set(['LECTURA', 'VER_TODOS', 'COMENTAR'])],
+      ]),
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
   });

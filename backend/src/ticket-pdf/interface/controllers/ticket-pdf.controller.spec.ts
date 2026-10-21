@@ -6,7 +6,8 @@
  * Los tres guards del controller se reemplazan por un doble que fija
  * `request.user`: su lógica ya tiene sus propios specs. Lo que SÍ se fija
  * acá es la metadata de permisos (`TICKETS:LECTURA`) y qué recibe el caso de
- * uso — en particular que `TICKETS:OBSERVAR` no cambia nada.
+ * uso — los permisos por tipo de la tabla del tenant, no las celdas del JWT
+ * (odd/permisos-por-tipo-ticket, D5 a) — y el 403 sin `IMPRESION`.
  */
 import { CanActivate, ExecutionContext, INestApplication, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -18,7 +19,13 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { Result } from '../../../shared/domain/result';
-import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../../tickets/domain/errors/tickets.errors';
+import { PERMISO_TIPO_TICKET_REPOSITORY } from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import { GenerarPdfTicketUseCase } from '../../application/use-cases/generar-pdf-ticket.use-case';
 import { TicketPdfController } from './ticket-pdf.controller';
 
@@ -52,9 +59,22 @@ const guardDeUsuario: CanActivate = {
 
 const generar = { execute: vi.fn() };
 
+/** `user-1` ve e imprime el tipo `tipo-1` (fila de la tabla del tenant). */
+const permisosPorTipo = new PermisosTipoTicketEnMemoria(
+  [],
+  [
+    { usuarioId: 'user-1', tipoId: 'tipo-1', accion: 'LECTURA' },
+    { usuarioId: 'user-1', tipoId: 'tipo-1', accion: 'IMPRESION' },
+  ],
+);
+
 @Module({
   controllers: [TicketPdfController],
-  providers: [{ provide: GenerarPdfTicketUseCase, useValue: generar }],
+  providers: [
+    { provide: GenerarPdfTicketUseCase, useValue: generar },
+    { provide: PERMISO_TIPO_TICKET_REPOSITORY, useValue: permisosPorTipo },
+    CargadorAlcanceTicket,
+  ],
 })
 class Harness {}
 
@@ -119,37 +139,29 @@ describe('TicketPdfController — GET /tickets/:id/pdf', () => {
     expect(res.headers.get('content-type')).not.toContain('application/pdf');
   });
 
-  it('pasa id, actor, VER_TODOS, módulos y cliente del JWT al caso de uso', async () => {
+  it('un ticket que el actor ve sin IMPRESION sobre su tipo es 403, sin cuerpo de PDF', async () => {
+    generar.execute.mockResolvedValue(
+      Result.fail(new AccionSobreTipoNoPermitidaError('IMPRESION')),
+    );
+
+    const res = await fetch(`${baseUrl}/tickets/t-1/pdf`);
+
+    expect(res.status).toBe(403);
+    expect(res.headers.get('content-type')).not.toContain('application/pdf');
+  });
+
+  it('pasa id, actor, permisos por tipo y cliente al caso de uso; las celdas del JWT no cuentan', async () => {
     generar.execute.mockResolvedValue(Result.ok({ buffer: PDF, nombreArchivo: 'ticket-x.pdf' }));
-    actual = usuario(['TICKETS:VER_TODOS']);
+    actual = usuario(['TICKETS:VER_TODOS', 'TICKETS:OBSERVAR']);
 
     await fetch(`${baseUrl}/tickets/t-9/pdf`);
 
     expect(generar.execute).toHaveBeenCalledWith({
       ticketId: 't-9',
       actorId: 'user-1',
-      tienePermisoVerTodos: true,
-      // Los módulos del JWT acotan el alcance, igual que en el detalle (odd/permisos-por-tipo-ticket, S0).
-      modulosPermitidos: [],
+      permisosPorTipo: new Map([['tipo-1', new Set(['LECTURA', 'IMPRESION'])]]),
       clienteId: 'cliente-1',
       clienteNombre: 'Colegio San Martín',
     });
-  });
-
-  it('TICKETS:OBSERVAR no cambia nada: el caso de uso no recibe ningún flag de observar', async () => {
-    generar.execute.mockResolvedValue(Result.ok({ buffer: PDF, nombreArchivo: 'ticket-x.pdf' }));
-    actual = usuario(['TICKETS:VER_TODOS', 'TICKETS:OBSERVAR']);
-
-    await fetch(`${baseUrl}/tickets/t-9/pdf`);
-
-    const dto: object = generar.execute.mock.calls[0][0];
-    expect(Object.keys(dto).sort()).toEqual([
-      'actorId',
-      'clienteId',
-      'clienteNombre',
-      'modulosPermitidos',
-      'ticketId',
-      'tienePermisoVerTodos',
-    ]);
   });
 });

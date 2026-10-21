@@ -2,16 +2,14 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
 import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
-import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
-import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
 import {
   AlcanceActorTicket,
-  esTicketAccesiblePara,
+  cargarTicketParaOperar,
 } from '../../../tickets/application/services/visibilidad-ticket';
 
 /**
  * DTO de entrada para resolver el equipo vinculado a un ticket de soporte. El alcance del actor
- * lo arma el controller desde el JWT (`alcanceTicketDesdeJwt`).
+ * lo carga la capa de interface por request.
  */
 export interface ObtenerEquipoDeTicketDto extends AlcanceActorTicket {
   ticketId: string;
@@ -44,33 +42,22 @@ export interface EquipoDeTicketResultado {
  * errores — el consumidor HTTP simplemente no muestra la tarjeta de equipo.
  *
  * Antes de mirar el satélite, el ticket base tiene que existir y ser accesible para el actor
- * (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila, odd/permisos-por-tipo-ticket
- * S0). Si no, `TicketNoEncontradoError` (404): el mismo criterio que el detalle del ticket, para
- * no revelar el equipo de un ticket que el actor no ve.
+ * (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila, odd/permisos-por-tipo-ticket S3). Si
+ * no, `TicketNoEncontradoError` (404): el mismo criterio que el detalle del ticket, para no revelar
+ * el equipo de un ticket que el actor no ve.
  */
 export class ObtenerEquipoDeTicketUseCase {
   constructor(
     private readonly ticketSoporteRepo: Pick<ITicketSoporteRepository, 'findByTicketId'>,
     private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(
     dto: ObtenerEquipoDeTicketDto,
   ): Promise<Result<EquipoDeTicketResultado, DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
+    const acceso = await cargarTicketParaOperar(this.ticketRepo, dto.ticketId, dto, 'LECTURA');
+    if (acceso.isFail()) return Result.fail(acceso.getError());
 
     const ticketSoporte = await this.ticketSoporteRepo.findByTicketId(dto.ticketId);
     if (!ticketSoporte || !ticketSoporte.equipoId) {

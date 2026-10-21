@@ -5,10 +5,10 @@
  * - adjuntar directo a un ticket (`archivos_ticket`) y a una operación
  *   existente (`archivos_operacion`, resolviendo el ticket dueño vía
  *   `operacionRepo.findById`);
- * - acceso al ticket por `esTicketAccesiblePara` (módulo del tipo y visibilidad de fila,
- *   odd/permisos-por-tipo-ticket S0) — sin acceso → 404 (mismo criterio de "no revela
- *   existencia" que `ObtenerTicketUseCase`/`ListarTimelineUseCase`, T6/T18). `MODIFICACION`
- *   ya no es una entrada: su e2e está en `tickets.e2e.spec.ts`;
+ * - acceso al ticket por `puedeOperarTicket` (`LECTURA` sobre el tipo y fila, más `ALTAS` o
+ *   `MODIFICACION` sobre el tipo, odd/permisos-por-tipo-ticket D5 c) — sin ver el ticket → 404
+ *   (mismo criterio de "no revela existencia" que `ObtenerTicketUseCase`/`ListarTimelineUseCase`,
+ *   T6/T18); viéndolo sin ninguna de las dos acciones → 403;
  * - upload a `IFileStorage` ANTES de la tx (ADR-7) — `archivos` + join +
  *   operación ADJUNTO del timeline DENTRO de la misma tx (T22, T24);
  * - revalidación defensiva de `tamanoBytes > 0` (T21, `ArchivoEntity.create`).
@@ -23,31 +23,33 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
-import { Modulo } from '../../../shared/domain/modulos';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 import { IFileStorage } from '../../../shared/domain/ports/i-file-storage';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { unstubbed } from '../../../testing/mocks';
 import {
+  AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
   ArchivoTamanoCeroError,
 } from '../../domain/errors/tickets.errors';
 
-function makeTipo(modulo: Modulo): TipoTicketEntity {
-  return TipoTicketEntity.create(
-    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
-    'tipo-soporte-uuid',
-  );
+const TIPO = 'tipo-soporte-uuid';
+
+/** Alcance del actor del test con `acciones` sobre el tipo del ticket. */
+function alcanceCon(...acciones: AccionTipoTicket[]) {
+  return alcancePorTipo('actor-uuid', { [TIPO]: acciones });
 }
 
-function makeTicket(overrides: Partial<{ solicitanteId: string; deleted: boolean }> = {}) {
+function makeTicket(
+  overrides: Partial<{ solicitanteId: string; deleted: boolean; tipoId: string }> = {},
+) {
   const ticket = TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Ticket de prueba',
       descripcion: null,
-      tipoId: 'tipo-soporte-uuid',
+      tipoId: overrides.tipoId ?? TIPO,
       estadoId: 'estado-nuevo-uuid',
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
@@ -70,9 +72,7 @@ function baseDto(overrides: Partial<AdjuntarArchivoDto> = {}): AdjuntarArchivoDt
     tamanoBytes: BigInt(1024),
     buffer: Buffer.from('contenido-binario'),
     subidoPorId: 'actor-uuid',
-    actorId: 'actor-uuid',
-    tienePermisoVerTodos: false,
-    modulosPermitidos: null,
+    ...alcanceCon('LECTURA', 'ALTAS'),
     ...overrides,
   };
 }
@@ -105,9 +105,6 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       alCommitear: unstubbed('alCommitear'),
     };
     const txRunner = { run: vi.spyOn(txRunnerReal, 'run') };
-    const tipoTicketRepo = {
-      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(makeTipo('TICKETS')),
-    };
 
     const useCase = new AdjuntarArchivoUseCase(
       ticketRepo,
@@ -116,7 +113,6 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       tipoOperacionRepo,
       fileStorage,
       txRunnerReal,
-      tipoTicketRepo,
     );
 
     return {
@@ -127,7 +123,6 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       tipoOperacionRepo,
       fileStorage,
       txRunner,
-      tipoTicketRepo,
     };
   }
 
@@ -243,7 +238,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
 
-    const result = await c.useCase.execute(baseDto({ tienePermisoVerTodos: false }));
+    const result = await c.useCase.execute(baseDto());
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
@@ -254,7 +249,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
 
-    const result = await c.useCase.execute(baseDto({ tienePermisoVerTodos: true }));
+    const result = await c.useCase.execute(baseDto(alcanceCon('LECTURA', 'VER_TODOS', 'ALTAS')));
 
     expect(result.isOk()).toBe(true);
   });
@@ -287,7 +282,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
           numero: 'SOP-2026-00002',
           titulo: 'Pedido del formulario publico',
           descripcion: null,
-          tipoId: 'tipo-uuid',
+          tipoId: TIPO,
           estadoId: 'estado-uuid',
           prioridadId: 'prioridad-uuid',
           cicloId: null,
@@ -299,21 +294,21 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       ),
     );
 
-    const result = await c.useCase.execute(baseDto({ tienePermisoVerTodos: false }));
+    const result = await c.useCase.execute(baseDto());
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.fileStorage.upload).not.toHaveBeenCalled();
   });
 
-  describe('acceso por el punto único esTicketAccesiblePara (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('el responsable del ticket, sin VER_TODOS ni MODIFICACION, adjunta', async () => {
+  describe('acceso por el punto único (odd/permisos-por-tipo-ticket, S0, D5 c)', () => {
+    it('el responsable del ticket, sin VER_TODOS, adjunta', async () => {
       const c = makeCollaborators();
       const ticket = makeTicket({ solicitanteId: 'otro-usuario-uuid' });
       ticket.assignTo('actor-uuid');
       c.ticketRepo.findById.mockResolvedValue(ticket);
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute(baseDto());
 
       expect(result.isOk()).toBe(true);
       expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
@@ -341,11 +336,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       c.ticketRepo.esVisiblePara.mockResolvedValue(true);
 
       const result = await c.useCase.execute(
-        baseDto({
-          ticketId: undefined,
-          operacionId: 'operacion-uuid',
-          modulosPermitidos: ['TICKETS'],
-        }),
+        baseDto({ ticketId: undefined, operacionId: 'operacion-uuid' }),
       );
 
       expect(result.isOk()).toBe(true);
@@ -353,39 +344,62 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       expect(c.archivoRepo.linkToOperacion).toHaveBeenCalledTimes(1);
     });
 
-    it('el solicitante, sin VER_TODOS ni MODIFICACION, adjunta', async () => {
+    it('el solicitante, sin VER_TODOS, adjunta', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute(baseDto());
 
       expect(result.isOk()).toBe(true);
       expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 
-  describe('módulo del tipo (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor sea su solicitante y tenga VER_TODOS; no sube ni persiste nada', async () => {
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, D5 c)', () => {
+    it.each<AccionTipoTicket>(['ALTAS', 'MODIFICACION'])(
+      'con LECTURA y %s sobre el tipo adjunta',
+      async (accion) => {
+        const c = makeCollaborators();
+        c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+
+        const result = await c.useCase.execute(baseDto(alcanceCon('LECTURA', accion)));
+
+        expect(result.isOk()).toBe(true);
+        expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('con solo LECTURA sobre el tipo es 403; no sube ni persiste nada', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
 
-      const result = await c.useCase.execute(
-        baseDto({
-          tienePermisoVerTodos: true,
-          modulosPermitidos: ['TICKETS'],
-        }),
+      const result = await c.useCase.execute(baseDto(alcanceCon('LECTURA')));
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toBe(
+        'El usuario no tiene el permiso "ALTAS o MODIFICACION" sobre el tipo de este ticket.',
       );
-
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.fileStorage.upload).not.toHaveBeenCalled();
       expect(c.txRunner.run).not.toHaveBeenCalled();
       expect(c.archivoRepo.save).not.toHaveBeenCalled();
       expect(c.operacionRepo.save).not.toHaveBeenCalled();
     });
 
-    it('adjuntar a una operación de un ticket de otro módulo también es 404', async () => {
+    it('un ticket de un tipo sin LECTURA es 404 aunque el actor sea su solicitante; no sube ni persiste nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket({ solicitanteId: 'actor-uuid', tipoId: 'tipo-electricidad-uuid' }),
+      );
+
+      const result = await c.useCase.execute(baseDto());
+
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.fileStorage.upload).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.archivoRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('adjuntar a una operación de un ticket de un tipo sin LECTURA también es 404', async () => {
       const c = makeCollaborators();
       c.operacionRepo.findById.mockResolvedValue(
         OperacionTicketEntity.create(
@@ -402,50 +416,36 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
           'operacion-uuid',
         ),
       );
-      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
-
-      const result = await c.useCase.execute(
-        baseDto({
-          ticketId: undefined,
-          operacionId: 'operacion-uuid',
-          modulosPermitidos: ['TICKETS'],
-        }),
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket({ solicitanteId: 'actor-uuid', tipoId: 'tipo-electricidad-uuid' }),
       );
 
-      expect(result.isFail()).toBe(true);
+      const result = await c.useCase.execute(
+        baseDto({ ticketId: undefined, operacionId: 'operacion-uuid' }),
+      );
+
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.fileStorage.upload).not.toHaveBeenCalled();
       expect(c.txRunner.run).not.toHaveBeenCalled();
     });
 
-    it('un ticket de un tipo de sus módulos se adjunta', async () => {
+    it('sin restricción (ROOT o ADMINISTRADOR) adjunta en un tipo sin filas', async () => {
       const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket({ solicitanteId: 'otro-usuario-uuid', tipoId: 'tipo-electricidad-uuid' }),
+      );
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
-
-      expect(result.isOk()).toBe(true);
-      expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) adjunta en un tipo de cualquier módulo', async () => {
-      const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
-
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
+      const result = await c.useCase.execute(baseDto(alcanceSinRestriccion('actor-uuid')));
 
       expect(result.isOk()).toBe(true);
     });
 
-    it('el módulo no reemplaza la regla de fila: un tipo de sus módulos que el actor no ve sigue siendo 404', async () => {
+    it('la acción no reemplaza la regla de fila: con ALTAS sobre el tipo, un ticket que no ve sigue siendo 404', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute(baseDto());
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.fileStorage.upload).not.toHaveBeenCalled();
     });

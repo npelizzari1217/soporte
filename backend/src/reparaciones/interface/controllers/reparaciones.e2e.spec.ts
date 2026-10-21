@@ -59,6 +59,7 @@ import {
   ReparacionListItemResponseDto,
 } from '../dtos/reparaciones.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -307,6 +308,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, clienteId, role.id);
     await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    // Las rutas de tareas del ticket deciden con los permisos por tipo del tenant: los mismos que
+    // estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId, usuarioId: usuario.id };
   }

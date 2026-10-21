@@ -37,12 +37,11 @@ const DB = `soporte_tareas_atomicidad_${randomBytes(4).toString('hex')}_test`;
 const SOLICITANTE = '01900000-0000-7000-8000-000000000201';
 const RESPONSABLE = '01900000-0000-7000-8000-000000000202';
 
+/** Sin restricción por tipo: estos casos prueban la atomicidad, no el acceso. */
 const RESPONSABLE_ACTOR: ActorTarea = {
   id: RESPONSABLE,
   esAdministrador: false,
-  tienePermisoVerTodos: true,
-  modulosConModificacion: ['EDILICIA'],
-  modulosPermitidos: ['EDILICIA'],
+  permisosPorTipo: null,
 };
 
 describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant efímero)', () => {
@@ -86,7 +85,6 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
   const completarUseCase = (repoOperaciones: Pick<PrismaOperacionTicketRepository, 'save'>) =>
     new CompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       tareaRepo,
       repoOperaciones,
       tipoOperacionRepo,

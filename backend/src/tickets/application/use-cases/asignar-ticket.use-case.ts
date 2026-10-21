@@ -12,7 +12,7 @@ import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-eve
 import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -35,8 +35,8 @@ import {
  * - `autorId`: `sub` del JWT del actor que ejecuta la acción (quien tiene
  *   `ticket:asignar`, verificado por `PermissionsGuard` en la capa de
  *   interface) — se registra como autor de la operación de timeline.
- * - El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el
- *   JWT: lo que el actor no ve, tampoco lo asigna (odd/permisos-por-tipo-ticket, S0).
+ * - El alcance del actor (`AlcanceActorTicket`) lo carga la capa de interface: lo que
+ *   el actor no ve, tampoco lo asigna (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface AsignarTicketDto extends AlcanceActorTicket {
   ticketId: string;
@@ -51,7 +51,8 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe, está soft-deleted o el actor no lo ve
- *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
+ *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
+ *    si lo ve sin `ASIGNAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  *    Si está en un estado final (CERRADO/CANCELADO) → `TicketCerradoNoReasignableError`
  *    (422), antes de consultar a master. RESUELTO sí se reasigna.
  * 2. Valida que el asignado existe en `master.usuarios` con `activo=true` y
@@ -107,18 +108,14 @@ export class AsignarTicketUseCase {
   ) {}
 
   async execute(dto: AsignarTicketDto): Promise<Result<TicketEntity, DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
+    const ticketResult = await cargarTicketParaOperar(
+      this.ticketRepo,
+      dto.ticketId,
+      dto,
+      'ASIGNAR',
+    );
+    if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
+    const ticket = ticketResult.getValue();
 
     // M1: terminal antes de las validaciones del asignado (determinista, sin master).
     const estadoActual = await this.estadoRepo.findById(ticket.estadoId);

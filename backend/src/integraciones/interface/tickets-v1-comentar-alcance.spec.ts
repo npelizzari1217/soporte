@@ -117,7 +117,6 @@ async function armar() {
     { obtener: vi.fn().mockResolvedValue([]) },
     { obtener: vi.fn().mockResolvedValue(new Set<string>()) },
     { error: vi.fn() },
-    tipoTicketRepo,
   );
   const modulo = await Test.createTestingModule({
     controllers: [TicketsV1Controller],
