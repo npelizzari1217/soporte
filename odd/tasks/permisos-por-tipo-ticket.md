@@ -66,8 +66,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `GET /soporte/:id` por el punto único — `c381c6ee`, `eedfbb6c`
 - [x] T2 — S0 — worker — etapa 0, escrituras: editar, estado, asignar, asignables,
   asignar-en-proceso, comentar (incl. API v1), `/soporte` solución por el punto único — `eedfbb6c`
-- [ ] T3 — S0 — inline — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
-  menú con `TICKETS:LECTURA`, inicio según el menú (L16) — (en curso)
+- [x] T3 — S0 — inline — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
+  menú con `TICKETS:LECTURA`, inicio según el menú (L16) — `3bdf4627`
 - [ ] T4 — S1, S7, D1 — writer — etapa 1: tabla tipo × acción, migración aditiva, plantillas de
   rol por tipo — (pendiente)
 - [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
@@ -137,8 +137,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   también queda para T5.
 - **L15** (evidencia T1-T2) — TDD: RED por la razón correcta en cada caso de uso (un ticket de un
   tipo de otro módulo devolvía el ticket, o 422 `AsignadoNoElegible` que revelaba su existencia);
-  GREEN con 1712 tests unitarios, `tsc` y ESLint en cero. Los `*.integration.spec.ts` y `*.e2e.spec.ts`
-  no corren sin Postgres: quedan para el CI. `TransicionarEstadoUseCase` recibe `alcance` obligatorio
+  GREEN con 1712 tests unitarios, `tsc` y ESLint en cero. (Corregido en L17: los e2e sí corren con
+  el Postgres local cuando está levantado.) `TransicionarEstadoUseCase` recibe `alcance` obligatorio
   y anulable; `null` solo lo pasa el flujo de sistema `ReanudarPorComentarioListener` (D3).
   Cambios de conducta: un TECNICO o COLABORADOR sin VER_TODOS (no solicitante, no responsable, sin
   tarea) ya no edita, transiciona, asigna ni comenta un ticket por id — 404; los presets de rol
@@ -148,3 +148,11 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - **L16** (decisión T3) — El gate de módulo en `/tickets` hacía que `/` (que redirigía siempre a
   `/tickets`) entrara en ciclo para un usuario sin el módulo TICKETS. El inicio pasa a elegir el
   primer área que el menú le muestra al usuario, con la Ayuda (`/kb`) como destino siempre válido.
+- **L17** (verificación independiente de la etapa 0) — PASS en las 7 partes de S0 (lecturas,
+  escrituras sin efectos al rechazar, D3, punto único, front, inventario, calidad de tests), con
+  dos bloqueantes: dos e2e desactualizados por el cambio de conducta (`resolver-qr-autenticado`
+  esperaba 200 `{equipo: null}`; `tickets.e2e` asignaba un ticket EQUIPOS con un técnico sin ese
+  módulo). Corregidos en `9ace5477`: 188 archivos y 2305 tests de
+  tickets, equipos, integraciones y ticket-pdf en verde, e2e incluidos. Advertencias para T5:
+  `rechazar` de tareas distingue 403/404 solo por fila; editar valida catálogos antes del acceso.
+
