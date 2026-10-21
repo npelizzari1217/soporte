@@ -19,7 +19,7 @@
  * dashboard.
  */
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { useSession } from "@/shared/hooks/use-session";
@@ -98,6 +98,23 @@ export function TicketsListView() {
     [usuariosQuery.data],
   );
   const ciclosQuery = useCiclos();
+
+  // Un `?tipo=` o `?asignado=` que el select no ofrece (link viejo, tipo de otro módulo,
+  // usuario final) filtra igual pero el select lo muestra vacío: se saca de la URL. Solo
+  // con el catálogo ya resuelto; cargando o caído, la ausencia no prueba nada.
+  const tipoFueraDeCatalogo =
+    Boolean(filtros.tipo) && tiposQuery.isSuccess && !tiposVisibles.some((tipo) => tipo.id === filtros.tipo);
+  const asignadoFueraDeCatalogo =
+    Boolean(filtros.asignado) &&
+    usuariosQuery.isSuccess &&
+    !agentes.some((usuario) => usuario.id === filtros.asignado);
+  useEffect(() => {
+    if (!tipoFueraDeCatalogo && !asignadoFueraDeCatalogo) return;
+    updateFiltros({
+      ...(tipoFueraDeCatalogo ? { tipo: undefined } : {}),
+      ...(asignadoFueraDeCatalogo ? { asignado: undefined } : {}),
+    });
+  }, [tipoFueraDeCatalogo, asignadoFueraDeCatalogo, updateFiltros]);
 
   const ciclos = useMemo(() => ciclosQuery.data?.ciclos ?? [], [ciclosQuery.data]);
   const cicloActivoId = ciclosQuery.data?.cicloActivoId ?? null;
