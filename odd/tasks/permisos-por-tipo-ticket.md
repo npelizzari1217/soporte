@@ -75,8 +75,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   menú con `TICKETS:LECTURA`, inicio según el menú (L16) — `3bdf4627`
 - [x] T4a — S1, D1, D4 — worker — tabla tenant `permisos_tipo_ticket` con CHECK derivado,
   vocabulario de acciones y traducción L11 en el dominio, repositorio — (este commit)
-- [ ] T4b — S7, L21 — worker — script de backfill idempotente (dry-run / `--apply`) y paso en
-  `deploy.ps1` — (pendiente)
+- [x] T4b — S7, L21 — worker — script de backfill idempotente (dry-run / `--apply`) y paso en
+  `deploy.ps1` — (este commit)
 - [ ] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
   plantilla escriben las filas por tipo — (pendiente)
 - [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
@@ -202,4 +202,11 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   si el usuario tiene alguna celda de ese módulo: desde la etapa 0, sin ella el ticket no se ve, y
   la migración no puede dar acceso que hoy no existe (S7). Lo detectó el worker de T4a; tests
   RED→GREEN en `permisos-tipo-ticket.spec.ts`. Migración: `20261021120000_permisos_tipo_ticket`.
+- **L24** (T4b) — `scripts/backfill-permisos-tipo-ticket.mjs` reusa la traducción compilada de
+  `dist/` (D4). Incluye los tipos dados de baja: sus tickets siguen visibles hoy y un tipo
+  reactivado volvería cerrado (S7). Guard por tenant: con filas ya cargadas, `--apply` lo omite
+  salvo `--force`; el `INSERT` repite el chequeo con `NOT EXISTS`. Paso 8c de `deploy.ps1`.
+  Deuda: un tenant que quede con la tabla vacía se volvería a llenar en el deploy siguiente; el
+  paso 8c se retira apenas se verifique el primer deploy (runbook). 7 tests de integración; dos
+  mutaciones del script los ponen en rojo.
 
