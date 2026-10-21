@@ -62,12 +62,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 
 - [x] T0 — D1, D2, D3 — explore + inline — validar el diseño: lugar de guardado, resolución por
   request, inventario completo de llamadores del punto único — (este commit)
-- [ ] T1 — S0 — writer — etapa 0, lecturas: detalle, timeline, PDF, adjuntos y `GET /soporte/:id`
-  por el punto único — (pendiente)
-- [ ] T2 — S0 — writer — etapa 0, escrituras: editar, estado, asignar, comentar, `/soporte`
-  solución por el punto único — (pendiente)
-- [ ] T3 — S0 — writer — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
-  menú con `TICKETS:LECTURA` (el scope de reparaciones pasa a T5, L14) — (pendiente)
+- [x] T1 — S0 — inline + worker — etapa 0, lecturas: detalle, timeline, PDF, API v1, adjuntos y
+  `GET /soporte/:id` por el punto único — `c381c6ee`, `eedfbb6c`
+- [x] T2 — S0 — worker — etapa 0, escrituras: editar, estado, asignar, asignables,
+  asignar-en-proceso, comentar (incl. API v1), `/soporte` solución por el punto único — `eedfbb6c`
+- [ ] T3 — S0 — inline — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
+  menú con `TICKETS:LECTURA`, inicio según el menú (L16) — (en curso)
 - [ ] T4 — S1, S7, D1 — writer — etapa 1: tabla tipo × acción, migración aditiva, plantillas de
   rol por tipo — (pendiente)
 - [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
@@ -135,3 +135,16 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   S7 preserva "Edilicia lectura = ver todos" y la ruta ya exige `EDILICIA:*`, así que el módulo
   del tipo siempre coincide. Su scope real llega con tipo × acción (T5). El dashboard (agregados)
   también queda para T5.
+- **L15** (evidencia T1-T2) — TDD: RED por la razón correcta en cada caso de uso (un ticket de un
+  tipo de otro módulo devolvía el ticket, o 422 `AsignadoNoElegible` que revelaba su existencia);
+  GREEN con 1712 tests unitarios, `tsc` y ESLint en cero. Los `*.integration.spec.ts` y `*.e2e.spec.ts`
+  no corren sin Postgres: quedan para el CI. `TransicionarEstadoUseCase` recibe `alcance` obligatorio
+  y anulable; `null` solo lo pasa el flujo de sistema `ReanudarPorComentarioListener` (D3).
+  Cambios de conducta: un TECNICO o COLABORADOR sin VER_TODOS (no solicitante, no responsable, sin
+  tarea) ya no edita, transiciona, asigna ni comenta un ticket por id — 404; los presets de rol
+  TECNICO y COLABORADOR traen VER_TODOS, así que afecta solo a configuraciones a medida.
+  `GET /soporte/:id` de un ticket inexistente pasa de 200 `{equipo: null}` a 404. Adjuntos conserva
+  su regla ADR-2 (solicitante, VER_TODOS o MODIFICACION) más el módulo: queda para revisar en T5.
+- **L16** (decisión T3) — El gate de módulo en `/tickets` hacía que `/` (que redirigía siempre a
+  `/tickets`) entrara en ciclo para un usuario sin el módulo TICKETS. El inicio pasa a elegir el
+  primer área que el menú le muestra al usuario, con la Ayuda (`/kb`) como destino siempre válido.

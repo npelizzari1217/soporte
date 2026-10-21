@@ -23,7 +23,9 @@ function makeUser(overrides: Partial<JwtPayload> = {}): JwtPayload {
 // (esAdminCliente), no por permiso de la matriz.
 describe("nav-config", () => {
   it("USUARIO (sin TICKETS:VER_TODOS) → ve Tickets pero NO ve Dashboard", () => {
-    const user = makeUser({ permisos: ["TICKETS:ALTAS", "TICKETS:COMENTAR"] });
+    const user = makeUser({
+      permisos: ["TICKETS:LECTURA", "TICKETS:ALTAS", "TICKETS:COMENTAR"],
+    });
     const items = visibleNavItems(user);
     const hrefs = items.map((i) => i.href);
     expect(hrefs).toContain("/tickets");
@@ -95,6 +97,11 @@ describe("nav-config", () => {
     const user = makeUser({ permisos: ["COMPRAS:LECTURA"] });
     const items = visibleNavItems(user);
     expect(items.map((i) => i.href)).toContain("/compras");
+  });
+
+  it("sin TICKETS:LECTURA → NO ve /tickets: el listado la exige (odd/permisos-por-tipo-ticket, S0)", () => {
+    const user = makeUser({ permisos: ["TICKETS:ALTAS", "TICKETS:COMENTAR"] });
+    expect(visibleNavItems(user).map((i) => i.href)).not.toContain("/tickets");
   });
 
   it("sin COMPRAS:LECTURA → NO ve /compras", () => {
@@ -204,12 +211,23 @@ describe("nav-config", () => {
 
   it("null user (no logueado) → no revienta, devuelve solo ítems públicos (ninguno gated)", () => {
     const items = visibleNavItems(null);
-    expect(items.every((i) => i.href !== "/dashboard" && i.href !== "/admin/clientes")).toBe(true);
+    expect(
+      items.every(
+        (i) => i.href !== "/dashboard" && i.href !== "/admin/clientes",
+      ),
+    ).toBe(true);
   });
 
   it("NAV_ITEMS declara al menos Tickets, Dashboard, KB y Admin", () => {
     const hrefs = NAV_ITEMS.map((i) => i.href);
-    expect(hrefs).toEqual(expect.arrayContaining(["/tickets", "/dashboard", "/kb", "/admin/catalogos"]));
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/tickets",
+        "/dashboard",
+        "/kb",
+        "/admin/catalogos",
+      ]),
+    );
   });
 
   describe("visibleNavSections", () => {
@@ -219,7 +237,11 @@ describe("nav-config", () => {
       const rootSection = sections.find((s) => s.title === "ROOT");
       expect(rootSection).toBeDefined();
       expect(rootSection?.items.map((i) => i.href)).toEqual(
-        expect.arrayContaining(["/admin/clientes", "/ciclos", "/admin/feriados-globales"]),
+        expect.arrayContaining([
+          "/admin/clientes",
+          "/ciclos",
+          "/admin/feriados-globales",
+        ]),
       );
     });
 
@@ -228,11 +250,17 @@ describe("nav-config", () => {
       const sections = visibleNavSections(user);
       expect(sections.find((s) => s.title === "ROOT")).toBeUndefined();
       const defaultSection = sections.find((s) => s.title === null);
-      expect(defaultSection?.items.map((i) => i.href)).toContain("/admin/catalogos");
+      expect(defaultSection?.items.map((i) => i.href)).toContain(
+        "/admin/catalogos",
+      );
     });
 
     it("usuario plano (TECNICO, sin permisos) → no ve la sección 'ROOT' ni Admin", () => {
-      const user = makeUser({ rol: "TECNICO", permisos: [], is_global_admin: false });
+      const user = makeUser({
+        rol: "TECNICO",
+        permisos: [],
+        is_global_admin: false,
+      });
       const sections = visibleNavSections(user);
       expect(sections.find((s) => s.title === "ROOT")).toBeUndefined();
       const allHrefs = sections.flatMap((s) => s.items.map((i) => i.href));
