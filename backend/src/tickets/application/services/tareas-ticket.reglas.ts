@@ -19,7 +19,12 @@ import {
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { esTicketVisiblePara } from './visibilidad-ticket';
+import {
+  AlcanceActorTicket,
+  esModuloDelTipoPermitido,
+  esTicketAccesiblePara,
+  RepositoriosDeAcceso,
+} from './visibilidad-ticket';
 
 /**
  * Reglas compartidas por los casos de uso de tareas de un ticket (odd/tareas-con-tecnico, T2).
@@ -45,11 +50,31 @@ export interface ActorTarea {
    * ticket (TICKETS, COMPRAS, EDILICIA, EQUIPOS) declaran `MODIFICACION` en `CATALOGO_MODULOS`.
    */
   modulosConModificacion: readonly string[];
+  /**
+   * Módulos del actor (`modulosPermitidosDesdeJwt`), o `null` sin restricción (ROOT y
+   * ADMINISTRADOR). Un ticket de un tipo de otro módulo es 404 en toda operación de tareas, igual
+   * que en el detalle (odd/permisos-por-tipo-ticket, S0).
+   */
+  modulosPermitidos: readonly string[] | null;
+}
+
+/**
+ * Alcance del actor para el punto único de acceso a un ticket (`esTicketAccesiblePara`).
+ *
+ * @param actor Actor de la acción sobre tareas.
+ * @returns Id, `VER_TODOS` y módulos permitidos del actor.
+ */
+export function alcanceDeActorTarea(actor: ActorTarea): AlcanceActorTicket {
+  return {
+    actorId: actor.id,
+    tienePermisoVerTodos: actor.tienePermisoVerTodos,
+    modulosPermitidos: actor.modulosPermitidos,
+  };
 }
 
 /**
  * Lo que los casos de uso de tareas necesitan del repositorio de tickets: cargar el ticket, decidir
- * si el actor lo ve (`esTicketVisiblePara`, CA10) y bloquear su fila mientras cambian una tarea
+ * si el actor lo ve (`esTicketAccesiblePara`, CA10) y bloquear su fila mientras cambian una tarea
  * (odd/estado-por-tareas, S6).
  */
 export type TicketRepoDeTareas = Pick<ITicketRepository, 'findById' | 'esVisiblePara' | 'bloquear'>;
@@ -61,6 +86,34 @@ export async function cargarTicket(
 ): Promise<Result<TicketEntity, DomainError>> {
   const ticket = await ticketRepo.findById(ticketId);
   if (!ticket || ticket.isDeleted()) return Result.fail(new TicketNoEncontradoError(ticketId));
+  return Result.ok(ticket);
+}
+
+/**
+ * Carga el ticket activo y exige que el módulo de su tipo esté entre los del actor
+ * (`esModuloDelTipoPermitido`, odd/permisos-por-tipo-ticket S0). Un ticket de otro módulo da el
+ * mismo `TicketNoEncontradoError` que uno inexistente: ni siquiera el técnico de una de sus tareas
+ * confirma que existe. La regla de fila y la de cada acción se aplican después.
+ *
+ * @param repos Repositorios del ticket y de tipos.
+ * @param ticketId Id del ticket.
+ * @param modulosPermitidos Módulos del actor, o `null` sin restricción.
+ * @returns El ticket, o `TicketNoEncontradoError`.
+ */
+export async function cargarTicketDelModulo(
+  repos: {
+    ticketRepo: Pick<ITicketRepository, 'findById'>;
+    tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>;
+  },
+  ticketId: string,
+  modulosPermitidos: readonly string[] | null,
+): Promise<Result<TicketEntity, DomainError>> {
+  const ticketResult = await cargarTicket(repos.ticketRepo, ticketId);
+  if (ticketResult.isFail()) return ticketResult;
+  const ticket = ticketResult.getValue();
+  if (!(await esModuloDelTipoPermitido(repos.tipoTicketRepo, ticket, modulosPermitidos))) {
+    return Result.fail(new TicketNoEncontradoError(ticketId));
+  }
   return Result.ok(ticket);
 }
 
@@ -81,17 +134,18 @@ export async function cargarTareaDelTicket(
 }
 
 /**
- * Rechazo de un actor sin permiso. Si ni siquiera ve el ticket, se responde como si no existiera
- * (mismo criterio que `ObtenerTicketUseCase`); si lo ve, es un 403. El técnico de una tarea activa
- * ve el ticket (CA10), así que lo que no puede hacer le da 403.
+ * Rechazo de un actor sin permiso. Si no accede al ticket (`esTicketAccesiblePara`: módulo del tipo
+ * y visibilidad de fila, odd/permisos-por-tipo-ticket S0), se responde como si no existiera (mismo
+ * criterio que `ObtenerTicketUseCase`); si accede, es un 403. El técnico de una tarea activa ve el
+ * ticket (CA10), así que lo que no puede hacer le da 403.
  */
 export async function rechazar(
-  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
+  repos: RepositoriosDeAcceso,
   ticket: TicketEntity,
   actor: ActorTarea,
   accion: string,
 ): Promise<DomainError> {
-  return (await esTicketVisiblePara(ticketRepo, ticket, actor.id, actor.tienePermisoVerTodos))
+  return (await esTicketAccesiblePara(repos, ticket, alcanceDeActorTarea(actor)))
     ? new TareaAccionNoPermitidaError(accion)
     : new TicketNoEncontradoError(ticket.id);
 }
@@ -112,8 +166,9 @@ export function puedeGestionarTareas(
 }
 
 /**
- * Carga el ticket y su tipo, y aplica `puedeGestionarTareas`. Devuelve el ticket y el módulo del
- * tipo, que la asignación necesita para la elegibilidad del técnico.
+ * Carga el ticket (404 si su tipo es de un módulo ajeno, `cargarTicketDelModulo`) y su tipo, y
+ * aplica `puedeGestionarTareas`. Devuelve el ticket y el módulo del tipo, que la asignación
+ * necesita para la elegibilidad del técnico.
  */
 export async function autorizarGestion(
   deps: {
@@ -124,14 +179,14 @@ export async function autorizarGestion(
   actor: ActorTarea,
   accion: string,
 ): Promise<Result<{ ticket: TicketEntity; modulo: string }, DomainError>> {
-  const ticketResult = await cargarTicket(deps.ticketRepo, ticketId);
+  const ticketResult = await cargarTicketDelModulo(deps, ticketId, actor.modulosPermitidos);
   if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
   const ticket = ticketResult.getValue();
 
   const tipo = await deps.tipoTicketRepo.findById(ticket.tipoId);
   if (!tipo) return Result.fail(new TipoTicketNoEncontradoError(ticket.tipoId));
   if (!puedeGestionarTareas(actor, ticket, tipo.modulo)) {
-    return Result.fail(await rechazar(deps.ticketRepo, ticket, actor, accion));
+    return Result.fail(await rechazar(deps, ticket, actor, accion));
   }
   return Result.ok({ ticket, modulo: tipo.modulo });
 }
@@ -209,7 +264,7 @@ export async function errorDeEscrituraRechazada(
  * (`rechazar`: 403, o 404 si ya no ve el ticket); si no, `porEstado`, el 409 del estado actual.
  */
 export function errorDeCompletadoRechazado(
-  ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
+  repos: RepositoriosDeAcceso,
   ticket: TicketEntity,
   actor: ActorTarea,
   accion: 'completar' | 'descompletar',
@@ -218,7 +273,7 @@ export function errorDeCompletadoRechazado(
   return async (actual) =>
     puedeCompletarTarea(actor, ticket, actual)
       ? porEstado(actual)
-      : rechazar(ticketRepo, ticket, actor, accion);
+      : rechazar(repos, ticket, actor, accion);
 }
 
 /**

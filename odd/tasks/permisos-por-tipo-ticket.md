@@ -156,3 +156,20 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   tickets, equipos, integraciones y ticket-pdf en verde, e2e incluidos. Advertencias para T5:
   `rechazar` de tareas distingue 403/404 solo por fila; editar valida catálogos antes del acceso.
 
+- **L18** (judgment-day sobre la etapa 0, dueño: "si") — La revisión nativa RDD no entró en el
+  presupuesto del revisor (`lens_context_budget_exceeded`, 53 archivos); por `proyectos/CLAUDE.md`
+  §6.2 la reemplazó judgment-day. JUDGMENT: APPROVED, sin hallazgos críticos. Tres advertencias
+  corregidas por decisión del dueño ("si"), con TDD y verificación independiente PASS:
+  `75015d60` la clave de API v1 con solo `TICKETS:COMENTAR` vuelve a comentar en todo el módulo
+  TICKETS (la regla de fila la había roto); `32c38b4a` adjuntos decide con `esTicketAccesiblePara`
+  (antes: solicitante, VER_TODOS o MODIFICACION, sin fila); `9ba5749f` las rutas de tareas responden
+  404 en un ticket de un módulo ajeno (antes 403, que confirmaba su existencia). Deuda anotada, sin
+  corregir: asignar y asignar-en-proceso chequean el acceso antes del lock y no después; el 404 de
+  `POST /operaciones/:id/adjuntos` sobre un ticket ajeno nombra el id del ticket.
+- **L19** (suite completa del backend, con Postgres) — 749 archivos: 747 en verde y 2 rotos por la
+  etapa 0, fuera de `src/` y por eso fuera del typecheck (`tsconfig` incluye solo `src/**`):
+  `test/integraciones-webhooks-encolado.e2e.spec.ts` y `prisma_master/seeds/demo-seed.ts` (seed de
+  demo, no del deploy) llamaban a los casos de uso sin el alcance nuevo. Corregidos pasando el
+  alcance sin restricción del flujo de sistema (D3); los dos pasan. Lección: un cambio de contrato
+  de un caso de uso se busca también en `test/`, `prisma_master/` y `scripts/`, no solo en `src/`.
+

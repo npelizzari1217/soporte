@@ -566,6 +566,7 @@ import {
       provide: CompletarTareaUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
@@ -575,6 +576,7 @@ import {
       ) =>
         new CompletarTareaUseCase(
           ticketRepo,
+          tipoTicketRepo,
           tareaRepo,
           operacionRepo,
           tipoOperacionRepo,
@@ -584,6 +586,7 @@ import {
         ),
       inject: [
         TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
@@ -596,6 +599,7 @@ import {
       provide: DescompletarTareaUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
@@ -605,6 +609,7 @@ import {
       ) =>
         new DescompletarTareaUseCase(
           ticketRepo,
+          tipoTicketRepo,
           tareaRepo,
           operacionRepo,
           tipoOperacionRepo,
@@ -614,6 +619,7 @@ import {
         ),
       inject: [
         TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,

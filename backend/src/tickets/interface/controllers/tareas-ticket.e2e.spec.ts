@@ -802,11 +802,30 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       expect(deSoporte.status).toBe(404);
     });
 
-    it('TICKETS:LECTURA y VER_TODOS sin EDILICIA:LECTURA no listan las tareas de un ticket de Edilicia: 403', async () => {
+    it('TICKETS:LECTURA y VER_TODOS sin el módulo EDILICIA: el ticket de Edilicia no existe para él, 404 (odd/permisos-por-tipo-ticket, S0)', async () => {
       const escena = await escenario();
       const { ticketId } = await ticketConTarea(escena, 'EDILICIA');
 
       const res = await http('GET', rutas(ticketId).base, escena.otroTecnico.token);
+      const creada = await http('POST', rutas(ticketId).base, escena.otroTecnico.token, {
+        descripcion: 'X',
+      });
+
+      expect(res.status).toBe(404);
+      expect(creada.status).toBe(404);
+      expect(await a.client.tareaTicket.count({ where: { ticketId, descripcion: 'X' } })).toBe(0);
+    });
+
+    it('con el módulo EDILICIA y VER_TODOS pero sin EDILICIA:LECTURA no lista las tareas de un ticket de Edilicia: 403', async () => {
+      const escena = await escenario();
+      const { ticketId } = await ticketConTarea(escena, 'EDILICIA');
+      const sinLectura = await actor(escena.clienteA, 'TECNICO', [
+        'TICKETS:LECTURA',
+        'TICKETS:VER_TODOS',
+        'EDILICIA:ALTAS',
+      ]);
+
+      const res = await http('GET', rutas(ticketId).base, sinLectura.token);
 
       expect(res.status).toBe(403);
     });

@@ -36,6 +36,7 @@ describe('actorTareaDesdeJwt', () => {
         cliente_id: 'cliente-uuid',
         rol: 'TECNICO',
         permisos: ['EDILICIA:MODIFICACION', 'TICKETS:LECTURA', 'TICKETS:VER_TODOS'],
+        modulos: ['EDILICIA', 'TICKETS'],
       }),
     );
 
@@ -44,6 +45,7 @@ describe('actorTareaDesdeJwt', () => {
       esAdministrador: false,
       tienePermisoVerTodos: true,
       modulosConModificacion: ['EDILICIA'],
+      modulosPermitidos: ['EDILICIA', 'TICKETS'],
     });
   });
 
@@ -56,6 +58,7 @@ describe('actorTareaDesdeJwt', () => {
     expect(actor.esAdministrador).toBe(true);
     expect(actor.tienePermisoVerTodos).toBe(true);
     expect(actor.modulosConModificacion).toEqual(['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS']);
+    expect(actor.modulosPermitidos).toBeNull();
   });
 });
 
@@ -172,6 +175,7 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
         esAdministrador: false,
         tienePermisoVerTodos: true,
         modulosConModificacion: ['EDILICIA'],
+        modulosPermitidos: ['EDILICIA'],
       },
     });
 
@@ -190,6 +194,7 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
         esAdministrador: false,
         tienePermisoVerTodos: true,
         modulosConModificacion: ['EDILICIA'],
+        modulosPermitidos: ['EDILICIA'],
       },
     });
 

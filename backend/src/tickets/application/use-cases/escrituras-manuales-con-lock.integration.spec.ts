@@ -80,6 +80,7 @@ const tecnico: ActorTarea = {
   esAdministrador: false,
   tienePermisoVerTodos: true,
   modulosConModificacion: ['TICKETS'],
+  modulosPermitidos: ['TICKETS'],
 };
 
 describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant efímero)', () => {
@@ -124,6 +125,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
   );
   const completar = new CompletarTareaUseCase(
     ticketRepo,
+    tipoTicketRepo,
     tareaRepo,
     operacionRepo,
     tipoOperacionRepo,

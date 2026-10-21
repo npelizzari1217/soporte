@@ -406,6 +406,10 @@ async function crearTicketDemo(
       asignadoId: spec.asignarAId,
       clienteId,
       autorId: spec.asignarAId,
+      // El seed actúa como sistema: sin restricción de módulo ni de fila (odd/permisos-por-tipo-ticket, D3).
+      actorId: spec.asignarAId,
+      tienePermisoVerTodos: true,
+      modulosPermitidos: null,
     });
     if (r.isFail()) {
       throw new Error(`[demo-seed] No se pudo asignar el ticket demo "${spec.titulo}": ${r.getError().message}`);
@@ -420,6 +424,8 @@ async function crearTicketDemo(
         nuevoEstadoCodigo,
         autorId: spec.asignarAId ?? spec.solicitanteId,
         actorEsCorrector: false,
+        // Flujo de sistema, sin actor HTTP: no aplica el chequeo de acceso (D3).
+        alcance: null,
       });
       if (r.isFail()) {
         throw new Error(
@@ -464,6 +470,7 @@ async function crearEdiliciaDemo(
     esAdministrador: true,
     tienePermisoVerTodos: true,
     modulosConModificacion: ['EDILICIA'],
+    modulosPermitidos: null,
   };
   for (const descripcion of ['Contactar plomero de confianza', 'Revisar impermeabilización del techo']) {
     const r = await crearTarea.execute({ ticketId, descripcion, actor });

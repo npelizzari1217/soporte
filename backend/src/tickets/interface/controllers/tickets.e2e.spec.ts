@@ -1276,6 +1276,70 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       expect(status).toBe(404);
     });
 
+    it('S0: MODIFICACION sin VER_TODOS no alcanza para adjuntar a un ticket que el actor no ve → 404 y no persiste nada', async () => {
+      const cliente = await createClienteTenant();
+      const roleSolicitante = await createRoleConPermisos('USUARIO', [
+        'ticket:crear',
+        'ticket:comentar',
+      ]);
+      const roleEditor = await createRoleConPermisos('TECNICO', ['ticket:crear', 'ticket:editar']);
+      const solicitante = await createUsuario(`s-${randomBytes(2).toString('hex')}`);
+      const editor = await createUsuario(`e-${randomBytes(2).toString('hex')}`);
+      await createMembresia(solicitante.id, cliente.id, roleSolicitante.id);
+      await createMembresia(editor.id, cliente.id, roleEditor.id);
+      const loginSolicitante = await login(solicitante.email);
+      const loginEditor = await login(editor.email);
+      const tipoId = await createTipoTicketAislado('AJMOD');
+
+      const created = await httpPost<TicketResponseDto>(
+        `${baseUrl}/tickets`,
+        { titulo: 'Ticket ajeno al editor', tipoId, prioridadId: prioridadMediaId },
+        bearer(loginSolicitante.accessToken),
+      );
+      const comentario = await httpPost<OperacionResponseDto>(
+        `${baseUrl}/tickets/${created.data.id}/comentarios`,
+        { texto: 'Comentario del solicitante' },
+        bearer(loginSolicitante.accessToken),
+      );
+
+      const aTicket = await httpPostMultipart(
+        `${baseUrl}/tickets/${created.data.id}/adjuntos`,
+        Buffer.from('x'),
+        'x.pdf',
+        'application/pdf',
+        bearer(loginEditor.accessToken),
+      );
+      const aOperacion = await httpPostMultipart(
+        `${baseUrl}/operaciones/${comentario.data.id}/adjuntos`,
+        Buffer.from('x'),
+        'x.pdf',
+        'application/pdf',
+        bearer(loginEditor.accessToken),
+      );
+
+      expect(aTicket.status).toBe(404);
+      expect(aOperacion.status).toBe(404);
+      expect(await tenantClient.archivoTicket.count({ where: { ticketId: created.data.id } })).toBe(
+        0,
+      );
+      expect(
+        await tenantClient.archivoOperacion.count({ where: { operacionId: comentario.data.id } }),
+      ).toBe(0);
+      expect(await tenantClient.archivo.count({ where: { subidoPorId: editor.id } })).toBe(0);
+      expect(fs.existsSync(path.join(storageDir, 'tickets', created.data.id))).toBe(false);
+      expect(fs.existsSync(path.join(storageDir, 'operaciones', comentario.data.id))).toBe(false);
+
+      // Caso hermano: el solicitante del mismo ticket sigue adjuntando.
+      const propio = await httpPostMultipart(
+        `${baseUrl}/tickets/${created.data.id}/adjuntos`,
+        Buffer.from('y'),
+        'y.pdf',
+        'application/pdf',
+        bearer(loginSolicitante.accessToken),
+      );
+      expect(propio.status).toBe(201);
+    });
+
     it('T22: adjunta a una operación existente (comentario) — join en `archivos_operacion`, y registra una operación ADJUNTO nueva adicional en el timeline', async () => {
       const actor = await crearActorUsuario();
       const tipoId = await createTipoTicketAislado('AJOPX');

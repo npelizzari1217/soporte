@@ -9,7 +9,7 @@ import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.reposi
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { AvanceTareas, calcularAvanceTareas } from '../../domain/services/avance-tareas';
-import { cargarTicket } from '../services/tareas-ticket.reglas';
+import { cargarTicketDelModulo } from '../services/tareas-ticket.reglas';
 import { esTicketVisiblePara } from '../services/visibilidad-ticket';
 
 /** Módulo de los tickets de soporte: su lectura, además, exige ver el ticket. */
@@ -25,6 +25,11 @@ export interface ListarTareasTicketDto {
    * `puedeEjecutar` (ROOT y ADMINISTRADOR los tienen todos), igual que `modulosConModificacion`.
    */
   modulosConLectura: readonly string[];
+  /**
+   * Módulos del actor (`modulosPermitidosDesdeJwt`), o `null` sin restricción (ROOT y
+   * ADMINISTRADOR): un ticket de un tipo de otro módulo es 404 (odd/permisos-por-tipo-ticket, S0).
+   */
+  modulosPermitidos: readonly string[] | null;
 }
 
 export interface TareasDelTicket {
@@ -38,6 +43,8 @@ export interface TareasDelTicket {
  * CA7).
  *
  * Quién lista (decisión del dueño del 2026-10-14, T12): el permiso de lectura del módulo del tipo.
+ * - Antes que nada, el módulo del tipo tiene que estar entre los del actor
+ *   (odd/permisos-por-tipo-ticket, S0): si no, 404 para todos, técnico de la tarea incluido.
  * - El técnico de una tarea activa del ticket, siempre (CA10).
  * - Si no, quien tiene `<MODULO>:LECTURA` del módulo del tipo. En el módulo TICKETS además tiene
  *   que ver el ticket (`esTicketVisiblePara`), igual que el listado y el detalle de `/tickets`. En
@@ -53,7 +60,11 @@ export class ListarTareasTicketUseCase {
   ) {}
 
   async execute(dto: ListarTareasTicketDto): Promise<Result<TareasDelTicket, DomainError>> {
-    const ticketResult = await cargarTicket(this.ticketRepo, dto.ticketId);
+    const ticketResult = await cargarTicketDelModulo(
+      { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+      dto.ticketId,
+      dto.modulosPermitidos,
+    );
     if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
     const ticket = ticketResult.getValue();
 

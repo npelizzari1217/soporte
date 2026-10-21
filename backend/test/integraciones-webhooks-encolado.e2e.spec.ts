@@ -273,6 +273,10 @@ describe('Webhooks e2e — encolado por eventos de ticket (odd/webhooks T4)', ()
           texto: 'Nota interna',
           autorId: a.usuarioId,
           esInterno: true,
+          // Llamada directa al caso de uso, sin restricción de módulo ni de fila.
+          actorId: a.usuarioId,
+          tienePermisoVerTodos: true,
+          modulosPermitidos: null,
         }),
     );
     expect(interno.isOk()).toBe(true);

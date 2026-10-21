@@ -5,14 +5,15 @@
  * - adjuntar directo a un ticket (`archivos_ticket`) y a una operación
  *   existente (`archivos_operacion`, resolviendo el ticket dueño vía
  *   `operacionRepo.findById`);
- * - acceso al ticket (solicitante, `ticket:ver_todos` o `ticket:editar` —
- *   ADR-2, sin permiso RBAC dedicado) — sin acceso → 404 (mismo criterio de
- *   "no revela existencia" que `ObtenerTicketUseCase`/`ListarTimelineUseCase`, T6/T18);
+ * - acceso al ticket por `esTicketAccesiblePara` (módulo del tipo y visibilidad de fila,
+ *   odd/permisos-por-tipo-ticket S0) — sin acceso → 404 (mismo criterio de "no revela
+ *   existencia" que `ObtenerTicketUseCase`/`ListarTimelineUseCase`, T6/T18). `MODIFICACION`
+ *   ya no es una entrada: su e2e está en `tickets.e2e.spec.ts`;
  * - upload a `IFileStorage` ANTES de la tx (ADR-7) — `archivos` + join +
  *   operación ADJUNTO del timeline DENTRO de la misma tx (T22, T24);
  * - revalidación defensiva de `tamanoBytes > 0` (T21, `ArchivoEntity.create`).
  *
- * Ref spec: sdd/tickets-core/spec T20, T21, T22. Ref design: ADR-2, ADR-7.
+ * Ref spec: sdd/tickets-core/spec T20, T21, T22. Ref design: ADR-7.
  * Tarea: T10.2.
  */
 import { AdjuntarArchivoUseCase, AdjuntarArchivoDto } from './adjuntar-archivo.use-case';
@@ -71,7 +72,6 @@ function baseDto(overrides: Partial<AdjuntarArchivoDto> = {}): AdjuntarArchivoDt
     subidoPorId: 'actor-uuid',
     actorId: 'actor-uuid',
     tienePermisoVerTodos: false,
-    tienePermisoEditar: false,
     modulosPermitidos: null,
     ...overrides,
   };
@@ -79,7 +79,10 @@ function baseDto(overrides: Partial<AdjuntarArchivoDto> = {}): AdjuntarArchivoDt
 
 describe('AdjuntarArchivoUseCase (T10.2)', () => {
   function makeCollaborators() {
-    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const ticketRepo = {
+      findById: vi.fn<ITicketRepository['findById']>(),
+      esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
+    };
     const operacionRepo = {
       findById: vi.fn<IOperacionTicketRepository['findById']>(),
       save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
@@ -236,33 +239,22 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
     expect(c.ticketRepo.findById).not.toHaveBeenCalled();
   });
 
-  it('ADR-2: actor NI es solicitante NI tiene ticket:ver_todos/ticket:editar → 404 (no revela existencia)', async () => {
+  it('actor que no ve el ticket (ni solicitante, ni responsable, ni técnico, sin VER_TODOS) → 404 (no revela existencia)', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
 
-    const result = await c.useCase.execute(
-      baseDto({ tienePermisoVerTodos: false, tienePermisoEditar: false }),
-    );
+    const result = await c.useCase.execute(baseDto({ tienePermisoVerTodos: false }));
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.fileStorage.upload).not.toHaveBeenCalled();
   });
 
-  it('ADR-2: actor SIN ser solicitante pero CON ticket:ver_todos → acceso permitido', async () => {
+  it('actor SIN ser solicitante pero CON VER_TODOS → acceso permitido', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
 
     const result = await c.useCase.execute(baseDto({ tienePermisoVerTodos: true }));
-
-    expect(result.isOk()).toBe(true);
-  });
-
-  it('ADR-2: actor SIN ser solicitante pero CON ticket:editar → acceso permitido', async () => {
-    const c = makeCollaborators();
-    c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
-
-    const result = await c.useCase.execute(baseDto({ tienePermisoEditar: true }));
 
     expect(result.isOk()).toBe(true);
   });
@@ -287,7 +279,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
     await expect(c.useCase.execute(baseDto())).rejects.toThrow(/ADJUNTO/);
   });
 
-  it('ticket de solicitante externo (solicitanteId null): sin ver_todos ni editar → 404 y no sube nada', async () => {
+  it('ticket de solicitante externo (solicitanteId null): sin VER_TODOS → 404 y no sube nada', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(
       TicketEntity.create(
@@ -307,17 +299,73 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       ),
     );
 
-    const result = await c.useCase.execute(
-      baseDto({ tienePermisoVerTodos: false, tienePermisoEditar: false }),
-    );
+    const result = await c.useCase.execute(baseDto({ tienePermisoVerTodos: false }));
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.fileStorage.upload).not.toHaveBeenCalled();
   });
 
+  describe('acceso por el punto único esTicketAccesiblePara (odd/permisos-por-tipo-ticket, S0)', () => {
+    it('el responsable del ticket, sin VER_TODOS ni MODIFICACION, adjunta', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket({ solicitanteId: 'otro-usuario-uuid' });
+      ticket.assignTo('actor-uuid');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
+      expect(c.archivoRepo.linkToTicket).toHaveBeenCalledWith(result.getValue().id, 'ticket-uuid');
+    });
+
+    it('el técnico de una tarea activa (visible por fila), sin VER_TODOS, adjunta a una operación del ticket', async () => {
+      const c = makeCollaborators();
+      c.operacionRepo.findById.mockResolvedValue(
+        OperacionTicketEntity.create(
+          {
+            ticketId: 'ticket-uuid',
+            tipoOperacionId: 'tipo-op-comentario-uuid',
+            descripcion: 'Comentario original',
+            estadoAnteriorId: null,
+            estadoNuevoId: null,
+            autorId: 'otro-usuario-uuid',
+            esInterno: false,
+            metadata: null,
+          },
+          'operacion-uuid',
+        ),
+      );
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
+      c.ticketRepo.esVisiblePara.mockResolvedValue(true);
+
+      const result = await c.useCase.execute(
+        baseDto({
+          ticketId: undefined,
+          operacionId: 'operacion-uuid',
+          modulosPermitidos: ['TICKETS'],
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'actor-uuid');
+      expect(c.archivoRepo.linkToOperacion).toHaveBeenCalledTimes(1);
+    });
+
+    it('el solicitante, sin VER_TODOS ni MODIFICACION, adjunta', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('módulo del tipo (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor sea su solicitante y tenga VER_TODOS y MODIFICACION; no sube ni persiste nada', async () => {
+    it('un ticket de un tipo de otro módulo es 404 aunque el actor sea su solicitante y tenga VER_TODOS; no sube ni persiste nada', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
       c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
@@ -325,7 +373,6 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       const result = await c.useCase.execute(
         baseDto({
           tienePermisoVerTodos: true,
-          tienePermisoEditar: true,
           modulosPermitidos: ['TICKETS'],
         }),
       );
@@ -392,7 +439,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it('el módulo no reemplaza la regla ADR-2: un tipo de sus módulos sin ser solicitante ni tener VER_TODOS/MODIFICACION sigue siendo 404', async () => {
+    it('el módulo no reemplaza la regla de fila: un tipo de sus módulos que el actor no ve sigue siendo 404', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
 
