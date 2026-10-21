@@ -5,6 +5,12 @@ import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-clien
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { medianocheArgentina } from '../../../shared/domain/zona-horaria-argentina';
+import { AlcanceListadoTickets } from '../../../tickets/domain/ports/i-ticket.repository';
+import {
+  AlcanceActorTicket,
+  alcanceDeListado,
+  alcanceListadoVacio,
+} from '../../../tickets/application/services/visibilidad-ticket';
 
 const ROL_TECNICO = 'TECNICO';
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
@@ -27,6 +33,11 @@ export interface ObtenerMetricasDto {
   /** Ciclo explícito (histórico). Sin valor → se resuelve el ciclo ACTIVO. */
   cicloId?: string;
   tieneCsatLectura?: boolean;
+  /**
+   * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 e): las métricas agregan solo los
+   * tickets que el actor ve. `permisosPorTipo: null` = sin restricción (ROOT y ADMINISTRADOR).
+   */
+  alcance: AlcanceActorTicket;
 }
 
 /**
@@ -98,10 +109,16 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
  * - Scope de rol (D2, ADR-P5): `actorRol === 'TECNICO'` fuerza
  *   `asignadoId = actorId` en TODAS las métricas (incluida `cargaPorAgente`,
  *   que naturalmente retorna como máximo una fila — la propia).
- *   ADMINISTRADOR/COLABORADOR ven el tenant completo (`asignadoId`
- *   undefined). El gate de acceso (excluir USUARIO) es responsabilidad del
- *   controller/guard (`ticket:ver_todos`, D3) — este use case asume que el
- *   actor ya pasó ese gate.
+ *   ADMINISTRADOR/COLABORADOR no fijan `asignadoId`. El gate de acceso
+ *   (`DASHBOARD:LECTURA`) es responsabilidad del controller/guard — este use
+ *   case asume que el actor ya pasó ese gate.
+ * - Alcance por tipo (odd/permisos-por-tipo-ticket, S6, D5 e): TODAS las
+ *   métricas —por ticket, CSAT y tareas completadas— agregan solo los tickets
+ *   que el actor ve, con la misma regla que el listado (`alcanceDeListado`).
+ *   Se combina en AND con el scope de TECNICO: un TECNICO ve las métricas de
+ *   los tickets que tiene asignados Y que son de tipos con `LECTURA` (por ser
+ *   el responsable, la regla de fila ya los cubre). Sin ningún tipo con
+ *   `LECTURA` → métricas vacías, sin consultar.
  * - % de cumplimiento SLA: `cerradosATiempo / cerradosConSla`; `null` si
  *   `cerradosConSla=0` (evita `NaN`/división por cero cuando no hay
  *   cerrados con SLA aplicable).
@@ -125,18 +142,28 @@ export class ObtenerMetricasUseCase {
 
   async execute(dto: ObtenerMetricasDto): Promise<MetricasResult> {
     const tieneCsatLectura = dto.tieneCsatLectura ?? false;
+    const vacias: MetricasResult = {
+      ...METRICAS_VACIAS_BASE,
+      ...(tieneCsatLectura ? { csatPromedio: null, csatRespuestas: 0 } : {}),
+    };
+    const alcance = alcanceDeListado(dto.alcance);
+    if (alcanceListadoVacio(alcance)) {
+      return vacias;
+    }
+
     const cicloActivo = dto.cicloId ? null : await this.cicloClienteRepo.findActive();
     const cicloEfectivoId = dto.cicloId ?? cicloActivo?.id;
 
     if (!cicloEfectivoId) {
-      return {
-        ...METRICAS_VACIAS_BASE,
-        ...(tieneCsatLectura ? { csatPromedio: null, csatRespuestas: 0 } : {}),
-      };
+      return vacias;
     }
 
     const asignadoId = dto.actorRol === ROL_TECNICO ? dto.actorId : undefined;
-    const filtro: MetricaFiltro = { cicloId: cicloEfectivoId, asignadoId };
+    const filtro: MetricaFiltro = {
+      cicloId: cicloEfectivoId,
+      asignadoId,
+      ...(alcance && { alcance }),
+    };
     // El ciclo explícito se busca para conocer sus fechas; el activo ya se tiene.
     const ciclo = dto.cicloId
       ? this.cicloClienteRepo.findById(dto.cicloId)
@@ -165,7 +192,7 @@ export class ObtenerMetricasUseCase {
       // ADR-C5: solo se consulta el repo CSAT si el actor tiene el permiso —
       // evita el costo de la query cuando el dato ni siquiera se va a mostrar.
       tieneCsatLectura ? this.csatRepo.resumenPorScope(filtro) : Promise.resolve(null),
-      this.tareasCompletadasPorTecnico(ciclo, asignadoId),
+      this.tareasCompletadasPorTecnico(ciclo, asignadoId, alcance),
     ]);
 
     return {
@@ -199,6 +226,7 @@ export class ObtenerMetricasUseCase {
   private async tareasCompletadasPorTecnico(
     cicloPendiente: Promise<CicloClienteEntity | null>,
     completadaPorId: string | undefined,
+    alcance: AlcanceListadoTickets | null,
   ): Promise<TareasCompletadasTecnico[]> {
     const ciclo = await cicloPendiente;
     if (!ciclo) return [];
@@ -210,6 +238,7 @@ export class ObtenerMetricasUseCase {
       desde: medianocheArgentina(ciclo.fechaInicio),
       hasta: medianocheArgentina(new Date(ciclo.fechaFin.getTime() + MS_POR_DIA)),
       completadaPorId,
+      ...(alcance && { alcance }),
     });
     if (grupos.length === 0) return [];
 

@@ -10,24 +10,12 @@ import {
 import { actorTareaDesdeAlcance } from './actor-tarea';
 
 /**
- * Módulos que acotan los tickets que ve el actor en el listado y la exportación. ROOT y
- * ADMINISTRADOR ven los tipos de todos los módulos (incluidos los propios del tenant): `null`
- * significa "sin restricción". Las operaciones sobre un ticket existente ya no lo usan: deciden con
- * `CargadorAlcanceTicket` (odd/permisos-por-tipo-ticket, D5 a).
- *
- * @param user JWT del actor.
- * @returns Los módulos del JWT, o `null` para ROOT y ADMINISTRADOR.
- */
-export function modulosPermitidosDesdeJwt(user: JwtPayload): string[] | null {
-  return user.is_global_admin || user.rol === 'ADMINISTRADOR' ? null : user.modulos;
-}
-
-/**
  * Carga, por request, el `AlcanceActorTicket` con el que la capa de aplicación decide qué ve y qué
  * hace el actor sobre un ticket existente (odd/permisos-por-tipo-ticket, D1, D5 a). Los permisos
  * por tipo viven en la tabla `permisos_tipo_ticket` del tenant y no viajan en el JWT: se leen con
- * una consulta indexada por usuario, del tenant que `TenantGuard` ya dejó ligado. Las celdas
- * `TICKETS:*` del JWT no deciden nada acá.
+ * una consulta indexada por usuario, del tenant que `TenantGuard` ya dejó ligado. Lo usan las
+ * operaciones por id, el alta, los listados y las métricas (D5 c-e). Las celdas `TICKETS:*` del
+ * JWT no deciden nada acá.
  */
 @Injectable()
 export class CargadorAlcanceTicket {

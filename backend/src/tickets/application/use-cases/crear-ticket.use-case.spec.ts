@@ -34,6 +34,7 @@ import {
   SecuenciaAgotadaError,
   SectorTicketInexistenteError,
   TipoTicketNoPermitidoEnAltaError,
+  AccionSobreTipoNoPermitidaError,
 } from '../../domain/errors/tickets.errors';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -48,6 +49,7 @@ import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-acti
 import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { unstubbed } from '../../../testing/mocks';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 
 /** Operación guardada con ese tipo; falla si no se guardó ninguna (en vez de seguir con `undefined`). */
 function operacionDelTipo(
@@ -72,6 +74,8 @@ function baseDto(overrides: Partial<CrearTicketDto> = {}): CrearTicketDto {
     clienteId: 'cliente-uuid',
     autorId: 'solicitante-uuid',
     anio: 2026,
+    // Flujo de sistema (D3) por defecto: los tests de permisos lo reemplazan.
+    alcance: null,
     ...overrides,
   };
 }
@@ -424,6 +428,79 @@ describe('CrearTicketUseCase', () => {
       const result = await c.useCase.execute(baseDto());
 
       expect(result.isOk()).toBe(true);
+    });
+  });
+
+  describe('ALTAS sobre el tipo elegido (odd/permisos-por-tipo-ticket, S6, D5 c)', () => {
+    it('con ALTAS sobre el tipo → crea el ticket', async () => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute(
+        baseDto({
+          alcance: alcancePorTipo('solicitante-uuid', { 'tipo-soporte-uuid': ['ALTAS'] }),
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      [
+        'sin ALTAS sobre el tipo, con LECTURA y MODIFICACION',
+        { 'tipo-soporte-uuid': ['LECTURA', 'MODIFICACION'] },
+      ],
+      ['con ALTAS solo sobre OTRO tipo', { 'tipo-otro-uuid': ['LECTURA', 'ALTAS'] }],
+      ['sin ninguna fila por tipo', {}],
+    ] as const)(
+      '%s → AccionSobreTipoNoPermitidaError (403), sin abrir la tx ni guardar nada',
+      async (_caso, permisos) => {
+        const c = makeCollaborators();
+
+        const result = await c.useCase.execute(
+          baseDto({ alcance: alcancePorTipo('solicitante-uuid', permisos) }),
+        );
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+        expect(result.getError().message).toBe(
+          'El usuario no tiene el permiso "ALTAS" sobre el tipo de este ticket.',
+        );
+        expect(c.txRunner.run).not.toHaveBeenCalled();
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
+        expect(c.operacionRepo.save).not.toHaveBeenCalled();
+        expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+      },
+    );
+
+    it('ROOT y ADMINISTRADOR (sin restricción) → crea sin filas por tipo', async () => {
+      const c = makeCollaborators();
+
+      const result = await c.useCase.execute(
+        baseDto({ alcance: alcanceSinRestriccion('solicitante-uuid') }),
+      );
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('un tipo de otro módulo en el alta genérica sigue siendo 422 aunque tenga ALTAS sobre él', async () => {
+      const c = makeCollaborators();
+      c.tipoTicketRepo.findById.mockResolvedValue(
+        TipoTicketEntity.create(
+          { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA', activo: true },
+          'tipo-soporte-uuid',
+        ),
+      );
+
+      const result = await c.useCase.execute(
+        baseDto({
+          moduloRequerido: 'TICKETS',
+          alcance: alcancePorTipo('solicitante-uuid', { 'tipo-soporte-uuid': ['ALTAS'] }),
+        }),
+      );
+
+      expect(result.getError()).toBeInstanceOf(TipoTicketNoPermitidoEnAltaError);
+      expect(c.txRunner.run).not.toHaveBeenCalled();
     });
   });
 

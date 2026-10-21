@@ -31,6 +31,7 @@ import { PrismaArchivoRepository } from './prisma-archivo.repository';
 import { PrismaCicloClienteRepository } from './prisma-ciclo-cliente.repository';
 
 import { TicketEntity, TicketProps } from '../../../domain/entities/ticket.entity';
+import { AlcanceListadoTickets } from '../../../domain/ports/i-ticket.repository';
 import {
   OperacionTicketEntity,
   OperacionTicketProps,
@@ -122,6 +123,11 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
       { prismaClient: tenantClient, dbName: TENANT_TEST_DB_NAME, clienteId: CLIENTE_ID },
       fn,
     );
+  }
+
+  /** Alcance con LECTURA sin VER_TODOS sobre los tipos de esta suite: solo la regla de fila. */
+  function porFila(actorId: string): AlcanceListadoTickets {
+    return { actorId, tiposVerTodos: [], tiposPorFila: [tipoSoporteId, tipoComprasId] };
   }
 
   beforeAll(async () => {
@@ -463,7 +469,7 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
         });
       });
 
-      it('filtra por visiblePara: lo que solicitó y donde es técnico de una tarea activa (CA10)', async () => {
+      it('regla de fila del alcance: lo que solicitó y donde es técnico de una tarea activa (CA10)', async () => {
         const actorId = '01900000-0000-7000-8000-000000000101';
         const termino = `visible-${randomBytes(4).toString('hex')}`;
         const propio = TicketEntity.create(
@@ -503,14 +509,15 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
             ],
           });
 
-          const ids = (await ticketRepo.findAll({ visiblePara: actorId })).map((t) => t.id);
+          const alcance = porFila(actorId);
+          const ids = (await ticketRepo.findAll({ alcance })).map((t) => t.id);
           expect(ids).toContain(propio.id);
           expect(ids).toContain(conTarea.id);
           expect(ids).not.toContain(conTareaBorrada.id);
           expect(ids).not.toContain(conTareaDeOtro.id);
 
           // El OR de la visibilidad va en AND con el OR de `busqueda`, no lo pisa.
-          const conBusqueda = await ticketRepo.findAll({ visiblePara: actorId, busqueda: termino });
+          const conBusqueda = await ticketRepo.findAll({ alcance, busqueda: termino });
           expect(conBusqueda.map((t) => t.id)).toEqual([propio.id]);
 
           expect(await ticketRepo.esVisiblePara(propio.id, actorId)).toBe(true);
@@ -520,7 +527,7 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
         });
       });
 
-      it('filtra por visiblePara: el responsable ve su ticket sin haberlo solicitado (decisión del 2026-10-14)', async () => {
+      it('regla de fila del alcance: el responsable ve su ticket sin haberlo solicitado (decisión del 2026-10-14)', async () => {
         const actorId = '01900000-0000-7000-8000-000000000111';
         const asignadoAlActor = TicketEntity.create(
           makeTicketProps({ solicitanteId: '01900000-0000-7000-8000-000000000112' }),
@@ -535,13 +542,84 @@ describe('Tickets Persistence Repos — Integration (PR5)', () => {
           await ticketRepo.save(asignadoAlActor);
           await ticketRepo.save(asignadoAOtro);
 
-          const ids = (await ticketRepo.findAll({ visiblePara: actorId })).map((t) => t.id);
+          const ids = (await ticketRepo.findAll({ alcance: porFila(actorId) })).map((t) => t.id);
           expect(ids).toContain(asignadoAlActor.id);
           expect(ids).not.toContain(asignadoAOtro.id);
 
           expect(await ticketRepo.esVisiblePara(asignadoAlActor.id, actorId)).toBe(true);
           expect(await ticketRepo.esVisiblePara(asignadoAOtro.id, actorId)).toBe(false);
         });
+      });
+
+      it('alcance por tipo (permisos-por-tipo D5 e): VER_TODOS en un tipo, fila en otro, sin LECTURA afuera; el total acompaña', async () => {
+        const actorId = '01900000-0000-7000-8000-000000000121';
+        const otro = '01900000-0000-7000-8000-000000000122';
+        const termino = `alcance-${randomBytes(4).toString('hex')}`;
+        const tipoSinLectura = await tenantClient.tipoTicket.create({
+          data: {
+            codigo: `T5_TEST_SINLEC_${randomBytes(3).toString('hex')}`,
+            activo: true,
+            nombre: 'Sin lectura',
+            modulo: 'SOPORTE',
+          },
+        });
+        const deTipo = (tipoId: string, solicitanteId: string): TicketEntity =>
+          TicketEntity.create(makeTicketProps({ tipoId, solicitanteId, titulo: termino }));
+        const verTodosAjeno1 = deTipo(tipoSoporteId, otro);
+        const verTodosAjeno2 = deTipo(tipoSoporteId, otro);
+        const filaPropio = deTipo(tipoComprasId, actorId);
+        const filaAjeno = deTipo(tipoComprasId, otro);
+        const sinLecturaPropio = deTipo(tipoSinLectura.id, actorId);
+        const alcance: AlcanceListadoTickets = {
+          actorId,
+          tiposVerTodos: [tipoSoporteId],
+          tiposPorFila: [tipoComprasId],
+        };
+
+        try {
+          await withTenant(async () => {
+            for (const t of [
+              verTodosAjeno1,
+              verTodosAjeno2,
+              filaPropio,
+              filaAjeno,
+              sinLecturaPropio,
+            ]) {
+              await ticketRepo.save(t);
+            }
+
+            const ids = (await ticketRepo.findAll({ alcance, busqueda: termino })).map((t) => t.id);
+            expect(new Set(ids)).toEqual(
+              new Set([verTodosAjeno1.id, verTodosAjeno2.id, filaPropio.id]),
+            );
+            expect(await ticketRepo.count({ alcance, busqueda: termino })).toBe(3);
+
+            // El alcance va en la misma consulta que pagina: la página se corta sobre las filas
+            // visibles y el total no cuenta las que el actor no ve.
+            const pagina = await ticketRepo.findAll({
+              alcance,
+              busqueda: termino,
+              limit: 2,
+              offset: 2,
+            });
+            expect(pagina).toHaveLength(1);
+
+            // El filtro de tipo del caller va en AND: pedir el tipo sin LECTURA no lo agrega.
+            const pedido = { alcance, busqueda: termino, tiposIds: [tipoSinLectura.id] };
+            expect(await ticketRepo.findAll(pedido)).toEqual([]);
+            expect(await ticketRepo.count(pedido)).toBe(0);
+
+            // Sin tipos en el alcance no entra nada.
+            const vacio = { actorId, tiposVerTodos: [], tiposPorFila: [] };
+            expect(await ticketRepo.count({ alcance: vacio, busqueda: termino })).toBe(0);
+
+            // Sin alcance (ROOT y ADMINISTRADOR) entran los cinco.
+            expect(await ticketRepo.count({ busqueda: termino })).toBe(5);
+          });
+        } finally {
+          await tenantClient.ticket.deleteMany({ where: { tipoId: tipoSinLectura.id } });
+          await tenantClient.tipoTicket.delete({ where: { id: tipoSinLectura.id } });
+        }
       });
 
       it('filtra por cicloId', async () => {

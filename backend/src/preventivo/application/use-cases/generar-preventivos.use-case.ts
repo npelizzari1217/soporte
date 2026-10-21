@@ -207,6 +207,9 @@ export class GenerarPreventivosUseCase {
         clienteId,
         autorId: plan.responsableId,
         anio,
+        // Flujo de sistema sin actor humano: no exige ALTAS sobre el tipo PREVENTIVO
+        // (odd/permisos-por-tipo-ticket, D3).
+        alcance: null,
       });
 
       if (ticketResult.isFail()) {

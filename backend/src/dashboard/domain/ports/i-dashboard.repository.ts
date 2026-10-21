@@ -1,13 +1,18 @@
+import { AlcanceListadoTickets } from '../../../tickets/domain/ports/i-ticket.repository';
+
 /**
  * MetricaFiltro — filtro combinable (AND) para todas las agregaciones de
  * `IDashboardRepository` (D1). `cicloId` lo resuelve siempre el use case
  * (ciclo explícito o el ACTIVO por default, mismo criterio que
  * `ListarTicketsUseCase`, T7); `asignadoId` lo fuerza el use case a
  * `actor.sub` cuando el rol es TECNICO (D2) — `undefined` = todo el tenant.
+ * `alcance` acota a los tickets que el actor ve, con la misma regla que el
+ * listado (odd/permisos-por-tipo-ticket, D5 e) — `undefined` = sin restricción.
  */
 export interface MetricaFiltro {
   cicloId?: string;
   asignadoId?: string;
+  alcance?: AlcanceListadoTickets;
 }
 
 /** Conteo de tickets abiertos (`fechaCierre IS NULL`) vs cerrados (`fechaCierre IS NOT NULL`). */

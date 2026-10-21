@@ -23,6 +23,8 @@ import {
   MetricasResult,
   ObtenerMetricasUseCase,
 } from '../../../application/use-cases/obtener-metricas.use-case';
+import { AlcanceActorTicket } from '../../../../tickets/application/services/visibilidad-ticket';
+import { alcancePorTipo } from '../../../../tickets/test-helpers/alcance-ticket';
 import { PrismaDashboardRepository } from './prisma-dashboard.repository';
 
 const MASTER_TEST_URL =
@@ -63,8 +65,14 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
   const enTenant = <T>(fn: () => Promise<T>): Promise<T> =>
     tenantContext.run({ prismaClient: client, dbName: DB, clienteId: 'cliente-dashboard' }, fn);
 
-  const metricas = (actorId: string, actorRol: string, cicloId: string): Promise<MetricasResult> =>
-    enTenant(() => useCase.execute({ actorId, actorRol, cicloId }));
+  /** Por defecto sin restricción por tipo (ROOT y ADMINISTRADOR), salvo en los tests de alcance. */
+  const metricas = (
+    actorId: string,
+    actorRol: string,
+    cicloId: string,
+    alcance: AlcanceActorTicket = { actorId, permisosPorTipo: null },
+  ): Promise<MetricasResult> =>
+    enTenant(() => useCase.execute({ actorId, actorRol, cicloId, alcance }));
 
   async function crearCiclo(fechaInicio: string, fechaFin: string): Promise<string> {
     const ciclo = await client.cicloCliente.create({
@@ -79,13 +87,17 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
     return ciclo.id;
   }
 
-  async function crearTicket(cicloId: string | null, asignadoId: string | null = null) {
+  async function crearTicket(
+    cicloId: string | null,
+    asignadoId: string | null = null,
+    tipo: string = tipoId,
+  ) {
     numero += 1;
     const ticket = await client.ticket.create({
       data: {
         numero: `DT-${numero}`,
         titulo: 'Ticket con tareas del dashboard',
-        tipoId,
+        tipoId: tipo,
         estadoId,
         prioridadId,
         solicitanteId: SOLICITANTE,
@@ -263,5 +275,63 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
       { asignadoId: TECNICO_X, abiertos: 1 },
       { asignadoId: TECNICO_Y, abiertos: 1 },
     ]);
+  });
+
+  it('alcance por tipo (odd/permisos-por-tipo-ticket, D5 e): métricas por ticket y tareas agregan solo lo que el actor ve', async () => {
+    const ciclo = await crearCiclo('2026-10-01', '2026-10-31');
+    const otroTipo = (
+      await client.tipoTicket.create({
+        data: {
+          codigo: `T-DASH-SINLEC-${randomBytes(3).toString('hex')}`,
+          nombre: 'Sin lectura',
+          modulo: 'TICKETS',
+        },
+      })
+    ).id;
+    try {
+      // X es responsable de `propio`: lo ve por la regla de fila. `ajeno` es de Y. `sinLectura`
+      // es de X pero de un tipo sin LECTURA: no lo ve nadie con este alcance (S3).
+      const propio = await crearTicket(ciclo, TECNICO_X);
+      const ajeno = await crearTicket(ciclo, TECNICO_Y);
+      const sinLectura = await crearTicket(ciclo, TECNICO_X, otroTipo);
+      await tareaCompletada(propio, TECNICO_X, '2026-10-05T10:00:00.000Z');
+      await tareaCompletada(ajeno, TECNICO_Y, '2026-10-06T10:00:00.000Z');
+      await tareaCompletada(sinLectura, TECNICO_X, '2026-10-07T10:00:00.000Z');
+
+      const porFila = await metricas(
+        TECNICO_X,
+        'COLABORADOR',
+        ciclo,
+        alcancePorTipo(TECNICO_X, { [tipoId]: ['LECTURA'], [otroTipo]: ['VER_TODOS'] }),
+      );
+      expect(porFila.abiertos).toBe(1);
+      expect(porFila.cargaPorAgente).toEqual([{ asignadoId: TECNICO_X, abiertos: 1 }]);
+      expect(porFila.distribucionPorTipo).toEqual([{ tipoId, total: 1 }]);
+      expect(porFila.tareasCompletadasPorTecnico).toEqual([
+        { usuarioId: TECNICO_X, nombre: 'Xenia', apellido: 'Ruiz', completadas: 1 },
+      ]);
+
+      // Con VER_TODOS sobre el tipo entra también el ajeno; el tipo sin LECTURA sigue afuera.
+      const verTodos = await metricas(
+        TECNICO_X,
+        'COLABORADOR',
+        ciclo,
+        alcancePorTipo(TECNICO_X, { [tipoId]: ['LECTURA', 'VER_TODOS'] }),
+      );
+      expect(verTodos.abiertos).toBe(2);
+      expect(verTodos.distribucionPorTipo).toEqual([{ tipoId, total: 2 }]);
+      expect(verTodos.tareasCompletadasPorTecnico.map((f) => [f.usuarioId, f.completadas])).toEqual(
+        [
+          [TECNICO_X, 1],
+          [TECNICO_Y, 1],
+        ],
+      );
+
+      // Sin restricción (ADMINISTRADOR) entran los tres.
+      expect((await metricas('admin', 'ADMINISTRADOR', ciclo)).abiertos).toBe(3);
+    } finally {
+      await limpiarFilas();
+      await client.tipoTicket.delete({ where: { id: otroTipo } });
+    }
   });
 });

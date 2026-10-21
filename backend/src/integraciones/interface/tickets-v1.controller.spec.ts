@@ -126,9 +126,15 @@ describe('TicketsV1Controller (lectura)', () => {
 
     expect(listar).toHaveBeenCalledWith(
       expect.objectContaining({
-        actorId: actor.sub,
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['TICKETS'],
+        // Los tipos de v1 con LECTURA y, si la clave lo tiene, VER_TODOS: el mismo alcance que el
+        // detalle (odd/permisos-por-tipo-ticket, D5 e-f).
+        alcance: {
+          actorId: actor.sub,
+          permisosPorTipo: new Map([
+            ['tipo-1', new Set(['LECTURA', 'VER_TODOS'])],
+            ['tipo-2', new Set(['LECTURA', 'VER_TODOS'])],
+          ]),
+        },
         pagina: 2,
         filtros: expect.objectContaining({ estadoId: ID, busqueda: 'imprime' }),
       }),
@@ -198,6 +204,8 @@ describe('TicketsV1Controller (lectura)', () => {
       clienteId: 'c1',
       autorId: actor.sub,
       anio: new Date().getFullYear(),
+      // Sin filas por tipo: el alta de v1 la deciden la ruta y el catalogo de v1 (D5 f).
+      alcance: null,
     });
   });
 

@@ -1,12 +1,28 @@
 import { TicketEntity } from '../entities/ticket.entity';
 
 /**
+ * Alcance por tipo de un listado o de un agregado de tickets (odd/permisos-por-tipo-ticket, D5 e),
+ * ya resuelto por la capa de aplicación (`alcanceDeListado`). Entra un ticket de un tipo de
+ * `tiposVerTodos`, o uno de un tipo de `tiposPorFila` que cumple la regla de fila de `actorId` (la
+ * misma que `esVisiblePara`: lo solicitó, es su responsable o es el técnico de una tarea activa). Un
+ * tipo que no figura en ninguna de las dos listas no entra. Lo aplica la base, en la misma consulta
+ * que pagina, cuenta o agrega: nunca se filtra en memoria.
+ */
+export interface AlcanceListadoTickets {
+  actorId: string;
+  /** Tipos con `LECTURA` y `VER_TODOS`: todas sus filas. */
+  tiposVerTodos: readonly string[];
+  /** Tipos con `LECTURA` sin `VER_TODOS`: solo las filas que cumplen la regla de fila. */
+  tiposPorFila: readonly string[];
+}
+
+/**
  * TicketFiltros — filtros opcionales combinables (AND) para
  * `ITicketRepository.findAll`. Omitir un campo = no filtrar por él.
  *
  * Ampliado respecto a la referencia probada (soporte1) con `estadoId`,
- * `asignadoId` y `visiblePara` (T7 — scope por rol y filtros de la
- * lista de tickets).
+ * `asignadoId` y `alcance` (scope por tipo y filtros de la lista de
+ * tickets).
  *
  * Ref spec: sdd/tickets-core/spec T7. Ref design: "Firmas TS clave".
  * Tarea: T3.7.
@@ -28,13 +44,11 @@ export interface TicketFiltros {
    */
   busqueda?: string;
   /**
-   * UUID del actor al que se restringe el listado: solo los tickets que ve sin
-   * `TICKETS:VER_TODOS`, es decir los que solicitó y aquellos donde es el técnico
-   * de una tarea activa (odd/tareas-con-tecnico, CA10). Es la misma regla que
-   * `esVisiblePara`. Lo deriva `ListarTicketsUseCase` del actor cuando NO tiene
-   * `ticket:ver_todos` (T7). `undefined` = sin restricción (requiere `ver_todos`).
+   * Alcance por tipo del actor (odd/permisos-por-tipo-ticket, D5 e). Lo deriva
+   * `ListarTicketsUseCase` de los permisos por tipo del actor, nunca el caller HTTP.
+   * `undefined` = sin restricción (ROOT y ADMINISTRADOR).
    */
-  visiblePara?: string;
+  alcance?: AlcanceListadoTickets;
   /** Límite inferior del rango (inclusive), sobre created_at. */
   fechaDesde?: Date;
   /** Límite superior del rango (inclusive), sobre created_at. */
@@ -117,10 +131,10 @@ export interface ITicketRepository {
   count(filtros?: TicketFiltros): Promise<number>;
 
   /**
-   * Visibilidad de un ticket para un actor SIN `TICKETS:VER_TODOS`: true si lo
+   * Visibilidad de un ticket para un actor SIN `VER_TODOS` sobre su tipo: true si lo
    * solicitó o si es el técnico de una tarea activa (no dada de baja) del ticket
-   * (odd/tareas-con-tecnico, CA10). Es la misma definición que el filtro
-   * `visiblePara` del listado. No mira permisos ni la baja lógica del ticket:
+   * (odd/tareas-con-tecnico, CA10). Es la misma definición que la regla de fila
+   * del filtro `alcance` del listado. No mira permisos ni la baja lógica del ticket:
    * eso lo resuelve el caller (`esTicketVisiblePara`).
    */
   esVisiblePara(ticketId: string, actorId: string): Promise<boolean>;

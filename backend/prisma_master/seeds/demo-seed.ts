@@ -421,6 +421,8 @@ async function crearTicketDemo(
     clienteId,
     autorId: spec.solicitanteId,
     anio,
+    // El seed actúa como sistema: no exige ALTAS sobre el tipo (odd/permisos-por-tipo-ticket, D3).
+    alcance: null,
   };
   const result = await crearTicket.execute(dto);
   if (result.isFail()) {
@@ -490,6 +492,8 @@ async function crearEdiliciaDemo(
     clienteId,
     autorId: usuarios.usuario,
     anio,
+    // El seed actúa como sistema (D3).
+    alcance: null,
   });
   if (result.isFail()) {
     throw new Error(

@@ -16,6 +16,8 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { ITicketEdiliciaRepository } from '../../../domain/ports/i-ticket-edilicia.repository';
 import { TicketEdiliciaEntity } from '../../../domain/entities/ticket-edilicia.entity';
 import { TicketEdiliciaMapper } from './ticket-edilicia.mapper';
+import { AlcanceListadoTickets } from '../../../../tickets/domain/ports/i-ticket.repository';
+import { whereAlcanceListado } from '../../../../tickets/infrastructure/persistence/prisma/alcance-listado.prisma';
 
 @Injectable()
 export class PrismaTicketEdiliciaRepository implements ITicketEdiliciaRepository {
@@ -35,9 +37,13 @@ export class PrismaTicketEdiliciaRepository implements ITicketEdiliciaRepository
     return row ? TicketEdiliciaMapper.toDomain(row) : null;
   }
 
-  async findAll(): Promise<TicketEdiliciaEntity[]> {
+  async findAll(alcance: AlcanceListadoTickets | null): Promise<TicketEdiliciaEntity[]> {
     const rows = await this.client.ticketEdilicia.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        // El alcance se mide sobre el ticket base, con la misma regla que el listado de tickets.
+        ...(alcance !== null && { ticket: whereAlcanceListado(alcance) }),
+      },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map(TicketEdiliciaMapper.toDomain);

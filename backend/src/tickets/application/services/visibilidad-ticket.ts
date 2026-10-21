@@ -5,7 +5,7 @@ import {
   TicketNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
-import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
+import { AlcanceListadoTickets, ITicketRepository } from '../../domain/ports/i-ticket.repository';
 
 /**
  * Regla de fila de un ticket (T6, extendida por odd/tareas-con-tecnico CA10): con `VER_TODOS` sobre
@@ -14,9 +14,9 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
  * el técnico de una tarea activa. Al quitarlo de la tarea, o al borrarla, deja de verlo, salvo que
  * lo vea por otro de esos motivos.
  *
- * Se aplica a través de `esTicketAccesiblePara`, que antes exige `LECTURA` sobre el tipo. El
- * listado aplica la misma regla en SQL con el filtro `visiblePara` (`ITicketRepository.esVisiblePara`
- * comparte esa definición).
+ * Se aplica a través de `esTicketAccesiblePara`, que antes exige `LECTURA` sobre el tipo. Los
+ * listados y agregados aplican la misma regla en SQL con el filtro `alcance` (`alcanceDeListado`;
+ * `ITicketRepository.esVisiblePara` comparte esa definición).
  */
 export async function esTicketVisiblePara(
   ticketRepo: Pick<ITicketRepository, 'esVisiblePara'>,
@@ -71,6 +71,27 @@ export function tieneAccionSobreTipo(
 }
 
 /**
+ * Exige una acción sobre un tipo cuando todavía no hay ticket: el alta de un ticket de ese tipo
+ * (odd/permisos-por-tipo-ticket, S6, D5 c: crear exige `ALTAS` sobre el tipo elegido). Sin actor
+ * (`null`: barrido preventivo, API v1, formulario público) no se exige nada (D3).
+ *
+ * @param alcance Alcance del actor, o `null` en un flujo sin actor humano.
+ * @param tipoId Id del tipo de ticket.
+ * @param accion Acción exigida.
+ * @returns Ok, o `AccionSobreTipoNoPermitidaError` (403).
+ */
+export function exigirAccionSobreTipo(
+  alcance: AlcanceActorTicket | null,
+  tipoId: string,
+  accion: AccionTipoTicket,
+): Result<void, DomainError> {
+  if (alcance === null || tieneAccionSobreTipo(alcance, tipoId, accion)) {
+    return Result.ok(undefined);
+  }
+  return Result.fail(new AccionSobreTipoNoPermitidaError(accion));
+}
+
+/**
  * Punto único de visibilidad de un ticket existente (odd/permisos-por-tipo-ticket, S3, D2, D5 b):
  * `LECTURA` sobre el tipo del ticket, y además `VER_TODOS` sobre ese tipo o la regla de fila
  * (`esTicketVisiblePara`). Sin `LECTURA` no lo ve nadie, ni su responsable ni el técnico de una de
@@ -94,6 +115,47 @@ export async function esTicketAccesiblePara(
     ticket,
     alcance.actorId,
     tieneAccionSobreTipo(alcance, ticket.tipoId, 'VER_TODOS'),
+  );
+}
+
+/**
+ * Filtro de listado del actor (odd/permisos-por-tipo-ticket, S6, D5 e), la versión por conjunto de
+ * `esTicketAccesiblePara`: los tipos con `LECTURA`, separados en los que tienen `VER_TODOS` (todas
+ * sus filas) y los que no (solo la regla de fila). Con `tiposSolicitados` (el filtro de tipo del
+ * caller) se queda con la intersección: pedir un tipo nunca amplía el alcance. Lo usan el listado y
+ * la exportación de tickets, el de reparaciones y las métricas del dashboard.
+ *
+ * @param alcance Alcance del actor.
+ * @param tiposSolicitados Tipos pedidos por el caller; ausente o vacío, todos.
+ * @returns El filtro para el repositorio, o `null` sin restricción (ROOT y ADMINISTRADOR).
+ */
+export function alcanceDeListado(
+  alcance: AlcanceActorTicket,
+  tiposSolicitados?: readonly string[],
+): AlcanceListadoTickets | null {
+  if (alcance.permisosPorTipo === null) return null;
+  const pedidos =
+    tiposSolicitados !== undefined && tiposSolicitados.length > 0
+      ? new Set(tiposSolicitados)
+      : null;
+  const tiposVerTodos: string[] = [];
+  const tiposPorFila: string[] = [];
+  for (const [tipoId, acciones] of alcance.permisosPorTipo) {
+    if (!acciones.has('LECTURA') || (pedidos !== null && !pedidos.has(tipoId))) continue;
+    (acciones.has('VER_TODOS') ? tiposVerTodos : tiposPorFila).push(tipoId);
+  }
+  return { actorId: alcance.actorId, tiposVerTodos, tiposPorFila };
+}
+
+/**
+ * ¿El filtro no deja entrar ningún tipo? Permite cortar sin consultar la base.
+ *
+ * @param alcance Filtro de listado, o `null` sin restricción.
+ * @returns `true` si ningún ticket puede entrar.
+ */
+export function alcanceListadoVacio(alcance: AlcanceListadoTickets | null): boolean {
+  return (
+    alcance !== null && alcance.tiposVerTodos.length === 0 && alcance.tiposPorFila.length === 0
   );
 }
 

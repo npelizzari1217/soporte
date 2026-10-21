@@ -6,7 +6,9 @@
  * `soporte_master_test` truncada en `beforeEach` y `usarLockMasterTest()`. Un actor por test:
  * dos clientes con el mismo `dbName` violan el UNIQUE de `clientes.db_name`. Cubre 401/403, el
  * orden de rutas (`/soporte/qr` no llega a `:ticketId`), el slug de otra organización y el
- * token de un equipo dado de baja.
+ * token de un equipo dado de baja. Desde odd/permisos-por-tipo-ticket (T5b) el 403 lo decide
+ * `ALTAS` sobre el tipo SOPORTE, no la celda `TICKETS:ALTAS`: los actores reciben las filas por
+ * tipo que les dan sus celdas (L11), salvo el que prueba la fila sin la celda.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -37,6 +39,8 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -83,6 +87,7 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
   let permisosRepo: PrismaMatrizPermisosRepository;
   let hashProvider: Argon2HashProvider;
   const admin = new PostgresAdminService(MASTER_TEST_URL);
+  let tipoSoporteId: string;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -94,6 +99,12 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     prismaService = new PrismaService(MASTER_TEST_URL);
     masterClient = prismaService.getMasterClient();
     tenantClient = prismaService.getTenantClient(TENANT_DB_NAME);
+    // El tenant se migra sin sembrar: el tipo SOPORTE, sobre el que se decide `ALTAS`, va acá.
+    tipoSoporteId = (
+      await tenantClient.tipoTicket.create({
+        data: { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS' },
+      })
+    ).id;
     clienteRepo = new PrismaClienteRepository(prismaService);
     usuarioRepo = new PrismaUsuarioRepository(prismaService);
     permisosRepo = new PrismaMatrizPermisosRepository(prismaService);
@@ -137,9 +148,15 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     await tenantClient.equipoInformatico.deleteMany();
   });
 
+  /**
+   * @param permisos Celdas de la matriz master.
+   * @param slug Slug del cliente.
+   * @param filasSoporte Acciones por tipo sobre SOPORTE; sin ellas, las que dan las celdas (L11).
+   */
   async function crearActor(
     permisos: string[],
     slug: string | null,
+    filasSoporte?: AccionTipoTicket[],
   ): Promise<{ accessToken: string; clienteId: string }> {
     const cliente = ClienteEntity.create({
       nombre: `E2E Resolver QR ${randomBytes(3).toString('hex')}`,
@@ -176,6 +193,17 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    if (filasSoporte === undefined) {
+      await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
+    } else {
+      await tenantClient.permisoTipoTicket.createMany({
+        data: filasSoporte.map((accion) => ({
+          usuarioId: usuario.id,
+          tipoId: tipoSoporteId,
+          accion,
+        })),
+      });
+    }
     const login = await fetch(`${baseUrl}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,7 +231,7 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     expect(r.status).toBe(401);
   });
 
-  it('sin TICKETS:ALTAS responde 403 aunque tenga TICKETS:LECTURA', async () => {
+  it('sin ALTAS sobre SOPORTE responde 403 aunque lo vea (TICKETS:LECTURA)', async () => {
     const actor = await crearActor(['TICKETS:LECTURA'], 'acme');
     const token = nuevoToken();
     await crearEquipo(token);
@@ -213,9 +241,28 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     expect(r.status).toBe(403);
   });
 
+  it('la celda TICKETS:ALTAS sin la fila por tipo responde 403; la fila ALTAS sin la celda resuelve el equipo', async () => {
+    const soloCelda = await crearActor(['TICKETS:ALTAS'], 'acme', []);
+    const token = nuevoToken();
+    const equipoId = await crearEquipo(token, { nombre: 'PC-Por-Tipo' });
+
+    const conCelda = await get(`${baseUrl}/soporte/qr?c=acme&e=${token}`, soloCelda.accessToken);
+    expect(conCelda.status).toBe(403);
+    expect(JSON.stringify(conCelda.data)).not.toContain('PC-Por-Tipo');
+
+    // Un actor por cliente (UNIQUE de `clientes.db_name`): se limpia master antes del segundo.
+    await masterClient.$executeRawUnsafe(
+      'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles RESTART IDENTITY CASCADE',
+    );
+    const soloFila = await crearActor([], 'acme', ['ALTAS']);
+    const conFila = await get(`${baseUrl}/soporte/qr?c=acme&e=${token}`, soloFila.accessToken);
+    expect(conFila.status).toBe(200);
+    expect(conFila.data).toEqual({ equipo: { id: equipoId, nombre: 'PC-Por-Tipo' } });
+  });
+
   it('orden de rutas: /soporte/qr llega al handler del QR y no a :ticketId', async () => {
-    // Con solo ALTAS, si Express lo matcheara como `ticketId = 'qr'` la respuesta sería 403
-    // (`:ticketId` exige TICKETS:LECTURA); acá responde el handler del QR con el equipo.
+    // Con solo ALTAS, si Express lo matcheara como `ticketId = 'qr'` la respuesta sería un 404
+    // (no hay ticket con ese id); acá responde el handler del QR con el equipo.
     const solo = await crearActor(['TICKETS:ALTAS'], 'acme');
     const token = nuevoToken();
     const equipoId = await crearEquipo(token, { nombre: 'PC-Recepcion' });

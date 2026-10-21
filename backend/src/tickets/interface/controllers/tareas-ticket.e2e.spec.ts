@@ -810,11 +810,19 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       const edilicia = await ticketConTarea(escena, 'EDILICIA');
       const soporte = await ticketConTarea(escena, 'TICKETS');
       // `EDILICIA:LECTURA` da Ver y Ver todos sobre los tipos de Edilicia (L11) y nada sobre los de
-      // TICKETS. El detalle sigue cerrado por la compuerta de ruta (`TICKETS:LECTURA`).
+      // TICKETS. Desde T5b (D5 d) la ruta del detalle ya no exige la celda `TICKETS:LECTURA`: el
+      // lector ve el detalle del ticket de Edilicia y no el de TICKETS, igual que sus tareas.
       const lector = await actor(escena.clienteA, 'COLABORADOR', ['EDILICIA:LECTURA']);
+      const detalleEdilicia = await http<{ id: string }>(
+        'GET',
+        `${baseUrl}/tickets/${edilicia.ticketId}`,
+        lector.token,
+      );
+      expect(detalleEdilicia.status).toBe(200);
+      expect(detalleEdilicia.data.id).toBe(edilicia.ticketId);
       expect(
-        (await http('GET', `${baseUrl}/tickets/${edilicia.ticketId}`, lector.token)).status,
-      ).not.toBe(200);
+        (await http('GET', `${baseUrl}/tickets/${soporte.ticketId}`, lector.token)).status,
+      ).toBe(404);
 
       const deEdilicia = await http<TareasTicketResponseDto>(
         'GET',

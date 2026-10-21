@@ -15,6 +15,14 @@
  * escritura dejó de abrir nada. El criterio de prueba cambia con eso — el test
  * que lo demuestra siembra esa celda y espera 403 IGUAL.
  *
+ * Las rutas de tickets salieron de `TABLA_RUTAS` y viven en
+ * `TABLA_RUTAS_TICKETS` (odd/permisos-por-tipo-ticket, T5b, D5 d): ya no las
+ * decide una celda `TICKETS:*` en `AccionesGuard`, sino el caso de uso con los
+ * permisos por tipo del actor. El criterio de prueba cambia con eso, y cada
+ * ruta se prueba de los dos lados con asserts de contenido: sin filas por tipo
+ * (con la celda vieja o sin ella) el caso de uso no deja ver ni escribir nada;
+ * con la acción por tipo y SIN ninguna celda `TICKETS:*`, la operación ocurre.
+ *
  * Paths LITERALES hardcodeados en `TABLA_RUTAS`, NUNCA importados de los
  * controllers (mismo criterio que `compras.e2e.spec.ts`: si se importaran del
  * mismo lugar que los define, un rename movería el test junto con el código y
@@ -42,6 +50,9 @@
  * S28-S33.
  */
 import { randomBytes } from 'node:crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   INestApplication,
   MiddlewareConsumer,
@@ -83,6 +94,7 @@ import type {
 import type { KbArticuloResponseDto } from '../../../kb/interface/dtos/kb-articulo.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -147,6 +159,22 @@ async function httpDelete<T = unknown>(
   return { status: res.status, data };
 }
 
+/** POST multipart/form-data con un único archivo en el campo `archivo` (rutas de adjuntos). */
+async function httpPostMultipart<T = unknown>(
+  url: string,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  const form = new FormData();
+  form.append(
+    'archivo',
+    new Blob([Uint8Array.from(Buffer.from('adjunto-e2e-por-tipo'))], { type: 'image/png' }),
+    'evidencia.png',
+  );
+  const res = await fetch(url, { method: 'POST', headers, body: form });
+  const data = (await res.json().catch(() => null)) as T;
+  return { status: res.status, data };
+}
+
 function bearer(token: string): Headers {
   return { Authorization: `Bearer ${token}` };
 }
@@ -178,31 +206,236 @@ interface RutaEsperada {
 }
 
 const TABLA_RUTAS: RutaEsperada[] = [
-  // C5 (fix post-verify 2da pasada) — las 3 rutas GET que C1 gateó no tenían
-  // NI UN test que las atara: borrar los decoradores dejaba la suite entera en
-  // verde y el sistema volvía al estado que la 1ra pasada marcó CRITICAL (celda
-  // sembrada y dibujada en la grilla que no gobierna nada). El unit del guard
-  // prueba que el guard funciona, NO que el decorador esté puesto.
-  { metodo: 'GET', path: '/tickets', acciones: ['TICKETS:LECTURA'] },
-  { metodo: 'GET', path: `/tickets/${ID}`, acciones: ['TICKETS:LECTURA'] },
-  { metodo: 'GET', path: `/tickets/${ID}/timeline`, acciones: ['TICKETS:LECTURA'] },
-  { metodo: 'POST', path: '/tickets', acciones: ['TICKETS:ALTAS'] },
-  { metodo: 'PATCH', path: `/tickets/${ID}`, acciones: ['TICKETS:MODIFICACION'] },
-  { metodo: 'PATCH', path: `/tickets/${ID}/estado`, acciones: ['TICKETS:TRANSICIONAR'] },
-  { metodo: 'PATCH', path: `/tickets/${ID}/asignar`, acciones: ['TICKETS:ASIGNAR'] },
-  {
-    metodo: 'PATCH',
-    path: `/tickets/${ID}/asignar-en-proceso`,
-    acciones: ['TICKETS:ASIGNAR', 'TICKETS:TRANSICIONAR'],
-  },
-  { metodo: 'POST', path: `/tickets/${ID}/comentarios`, acciones: ['TICKETS:COMENTAR'] },
-  { metodo: 'POST', path: `/tickets/${ID}/adjuntos`, acciones: ['TICKETS:ALTAS'] },
-  { metodo: 'POST', path: `/operaciones/${ID}/adjuntos`, acciones: ['TICKETS:ALTAS'] },
+  // Las 11 rutas de tickets y adjuntos ya NO están acá: las decide el caso de uso con los
+  // permisos por tipo, no `AccionesGuard`. Viven en `TABLA_RUTAS_TICKETS`.
   // Las 4 escrituras de KB ya NO están acá: la Ayuda es única y global, y
   // escribirla pasó a ser exclusivo de ROOT. Viven en `TABLA_RUTAS_ROOT`.
   { metodo: 'GET', path: '/kb', acciones: ['KB:LECTURA'] },
   { metodo: 'GET', path: `/kb/${ID}`, acciones: ['KB:LECTURA'] },
   { metodo: 'GET', path: '/dashboard/metricas', acciones: ['DASHBOARD:LECTURA'] },
+];
+
+/** Ids del ticket del fixture y de su operación de apertura, para armar el path. */
+interface IdsFixture {
+  ticketId: string;
+  operacionId: string;
+}
+
+/**
+ * Una ruta de tickets (odd/permisos-por-tipo-ticket, T5b, D5 d): ya no la decide una celda en
+ * `AccionesGuard`, sino el caso de uso con los permisos por tipo.
+ *
+ * - `celdaVieja`: la celda de módulo que la ruta exigía hasta T5a. Se siembra en el lado
+ *   negativo para probar que ya no concede nada sin la fila por tipo.
+ * - `acciones`: las acciones por tipo que la operación exige sobre el tipo del ticket, además
+ *   de `LECTURA` y `VER_TODOS` (las que dejan ver un ticket ajeno).
+ * - `sinFilas`: lo que responde el caso de uso a un actor sin filas por tipo.
+ * - `efecto`: el assert de contenido del lado positivo, contra la respuesta y la base.
+ */
+interface RutaTicketPorTipo {
+  metodo: Metodo;
+  path: (ids: IdsFixture) => string;
+  celdaVieja: CodigoAccion;
+  acciones: AccionTipoTicket[];
+  cuerpo?: (ctx: ContextoCuerpo) => unknown;
+  multipart?: true;
+  sinFilas: 404 | 403 | 'LISTA_VACIA';
+  status: 200 | 201;
+  efecto: (
+    data: unknown,
+    ids: IdsFixture,
+    tenant: InstanceType<typeof TenantPrismaClient>,
+    asignableId: string,
+  ) => Promise<void>;
+}
+
+/** Lo que el cuerpo de una ruta puede necesitar del fixture. */
+interface ContextoCuerpo {
+  asignableId: string;
+  tipoId: string;
+  prioridadId: string;
+}
+
+/** Los `id` de una lista JSON de objetos, o falla el test si no lo es. */
+function idsDe(lista: unknown): string[] {
+  if (!Array.isArray(lista)) throw new Error(`No es una lista: ${JSON.stringify(lista)}`);
+  return lista.map(idDe);
+}
+
+/** Los `id` de los `items` de una página JSON, o falla el test si no la es. */
+function idsDeItems(pagina: unknown): string[] {
+  if (typeof pagina !== 'object' || pagina === null || !('items' in pagina)) {
+    throw new Error(`No es una página: ${JSON.stringify(pagina)}`);
+  }
+  return idsDe(pagina.items);
+}
+
+/** Código del estado actual del ticket, leído de la base. */
+async function codigoEstado(
+  tenant: InstanceType<typeof TenantPrismaClient>,
+  ticketId: string,
+): Promise<string> {
+  const ticket = await tenant.ticket.findUniqueOrThrow({
+    where: { id: ticketId },
+    select: { estado: { select: { codigo: true } } },
+  });
+  return ticket.estado.codigo;
+}
+
+/** `id` de una respuesta JSON, o falla el test si no lo trae. */
+function idDe(data: unknown): string {
+  if (typeof data === 'object' && data !== null && 'id' in data && typeof data.id === 'string') {
+    return data.id;
+  }
+  throw new Error(`La respuesta no trae un id: ${JSON.stringify(data)}`);
+}
+
+const TABLA_RUTAS_TICKETS: RutaTicketPorTipo[] = [
+  {
+    metodo: 'GET',
+    path: () => '/tickets',
+    celdaVieja: 'TICKETS:LECTURA',
+    acciones: [],
+    sinFilas: 'LISTA_VACIA',
+    status: 200,
+    efecto: async (data, ids) => {
+      expect(idsDeItems(data)).toContain(ids.ticketId);
+    },
+  },
+  {
+    metodo: 'GET',
+    path: ({ ticketId }) => `/tickets/${ticketId}`,
+    celdaVieja: 'TICKETS:LECTURA',
+    acciones: [],
+    sinFilas: 404,
+    status: 200,
+    efecto: async (data, ids) => {
+      expect(idDe(data)).toBe(ids.ticketId);
+    },
+  },
+  {
+    metodo: 'GET',
+    path: ({ ticketId }) => `/tickets/${ticketId}/timeline`,
+    celdaVieja: 'TICKETS:LECTURA',
+    acciones: [],
+    sinFilas: 404,
+    status: 200,
+    efecto: async (data, ids) => {
+      expect(idsDe(data)).toContain(ids.operacionId);
+    },
+  },
+  {
+    metodo: 'POST',
+    path: () => '/tickets',
+    celdaVieja: 'TICKETS:ALTAS',
+    acciones: ['ALTAS'],
+    cuerpo: ({ tipoId, prioridadId }) => ({ titulo: 'Alta por tipo E2E', tipoId, prioridadId }),
+    sinFilas: 403,
+    status: 201,
+    efecto: async (data, _ids, tenant) => {
+      const creado = await tenant.ticket.findUnique({ where: { id: idDe(data) } });
+      expect(creado?.titulo).toBe('Alta por tipo E2E');
+    },
+  },
+  {
+    metodo: 'PATCH',
+    path: ({ ticketId }) => `/tickets/${ticketId}`,
+    celdaVieja: 'TICKETS:MODIFICACION',
+    acciones: ['MODIFICACION'],
+    cuerpo: () => ({ titulo: 'Editado por tipo E2E' }),
+    sinFilas: 404,
+    status: 200,
+    efecto: async (_data, ids, tenant) => {
+      const ticket = await tenant.ticket.findUniqueOrThrow({ where: { id: ids.ticketId } });
+      expect(ticket.titulo).toBe('Editado por tipo E2E');
+    },
+  },
+  {
+    metodo: 'PATCH',
+    path: ({ ticketId }) => `/tickets/${ticketId}/estado`,
+    celdaVieja: 'TICKETS:TRANSICIONAR',
+    acciones: ['TRANSICIONAR'],
+    cuerpo: () => ({ nuevoEstadoCodigo: 'ASIGNADO' }),
+    sinFilas: 404,
+    status: 200,
+    efecto: async (_data, ids, tenant) => {
+      expect(await codigoEstado(tenant, ids.ticketId)).toBe('ASIGNADO');
+    },
+  },
+  {
+    metodo: 'PATCH',
+    path: ({ ticketId }) => `/tickets/${ticketId}/asignar`,
+    celdaVieja: 'TICKETS:ASIGNAR',
+    acciones: ['ASIGNAR'],
+    cuerpo: ({ asignableId }) => ({ asignadoId: asignableId }),
+    sinFilas: 404,
+    status: 200,
+    efecto: async (_data, ids, tenant, asignableId) => {
+      const ticket = await tenant.ticket.findUniqueOrThrow({ where: { id: ids.ticketId } });
+      expect(ticket.asignadoId).toBe(asignableId);
+    },
+  },
+  {
+    metodo: 'PATCH',
+    path: ({ ticketId }) => `/tickets/${ticketId}/asignar-en-proceso`,
+    celdaVieja: 'TICKETS:ASIGNAR',
+    acciones: ['ASIGNAR', 'TRANSICIONAR'],
+    cuerpo: ({ asignableId }) => ({ asignadoId: asignableId }),
+    sinFilas: 404,
+    status: 200,
+    efecto: async (_data, ids, tenant, asignableId) => {
+      const ticket = await tenant.ticket.findUniqueOrThrow({ where: { id: ids.ticketId } });
+      expect(ticket.asignadoId).toBe(asignableId);
+      expect(await codigoEstado(tenant, ids.ticketId)).toBe('EN_PROCESO');
+    },
+  },
+  {
+    metodo: 'POST',
+    path: ({ ticketId }) => `/tickets/${ticketId}/comentarios`,
+    celdaVieja: 'TICKETS:COMENTAR',
+    acciones: ['COMENTAR'],
+    cuerpo: () => ({ texto: 'Comentario por tipo E2E' }),
+    sinFilas: 404,
+    status: 201,
+    efecto: async (_data, ids, tenant) => {
+      const comentarios = await tenant.operacionTicket.count({
+        where: { ticketId: ids.ticketId, descripcion: 'Comentario por tipo E2E' },
+      });
+      expect(comentarios).toBe(1);
+    },
+  },
+  {
+    metodo: 'POST',
+    path: ({ ticketId }) => `/tickets/${ticketId}/adjuntos`,
+    celdaVieja: 'TICKETS:ALTAS',
+    acciones: ['ALTAS'],
+    multipart: true,
+    sinFilas: 404,
+    status: 201,
+    efecto: async (data, ids, tenant) => {
+      const join = await tenant.archivoTicket.findUnique({
+        where: { archivoId_ticketId: { archivoId: idDe(data), ticketId: ids.ticketId } },
+      });
+      expect(join).not.toBeNull();
+    },
+  },
+  {
+    metodo: 'POST',
+    path: ({ operacionId }) => `/operaciones/${operacionId}/adjuntos`,
+    celdaVieja: 'TICKETS:ALTAS',
+    acciones: ['ALTAS'],
+    multipart: true,
+    sinFilas: 404,
+    status: 201,
+    efecto: async (data, ids, tenant) => {
+      const join = await tenant.archivoOperacion.findUnique({
+        where: {
+          archivoId_operacionId: { archivoId: idDe(data), operacionId: ids.operacionId },
+        },
+      });
+      expect(join).not.toBeNull();
+    },
+  },
 ];
 
 /**
@@ -261,9 +494,6 @@ const TABLA_RUTAS_ADMIN: RutaAdminEsperada[] = [
   { metodo: 'POST', path: `/usuarios/${ID}/permisos/aplicar-preset` },
 ];
 
-/** Rutas donde vale la pena ejercitar "actor CON la acción → NO 403" (sin multipart). */
-const RUTAS_SIN_MULTIPART = TABLA_RUTAS.filter((r) => !r.path.includes('/adjuntos'));
-
 // Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
 usarLockMasterTest();
 
@@ -273,6 +503,8 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
 
   let prismaService: PrismaService;
   let emailKeyOriginal: string | undefined;
+  let storageDirOriginal: string | undefined;
+  let storageDir: string;
   let masterClient: InstanceType<typeof MasterPrismaClient>;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let clienteRepo: PrismaClienteRepository;
@@ -292,6 +524,11 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     }
     emailKeyOriginal = process.env.EMAIL_CRYPTO_KEY;
     process.env.EMAIL_CRYPTO_KEY = 'f'.repeat(64);
+    // Los adjuntos de `TABLA_RUTAS_TICKETS` escriben el binario a disco: un directorio temporal
+    // propio, que `SharedModule` lee al instanciar el storage (mismo criterio que tickets.e2e).
+    storageDirOriginal = process.env.STORAGE_DIR;
+    storageDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'soporte-autoriz-e2e-storage-'));
+    process.env.STORAGE_DIR = storageDir;
 
     await admin.createDatabase(TENANT_DB_NAME);
     await new TenantMigrationRunnerAdapter(MASTER_TEST_URL).run(TENANT_DB_NAME);
@@ -341,6 +578,9 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
   afterAll(async () => {
     if (emailKeyOriginal === undefined) delete process.env.EMAIL_CRYPTO_KEY;
     else process.env.EMAIL_CRYPTO_KEY = emailKeyOriginal;
+    if (storageDirOriginal === undefined) delete process.env.STORAGE_DIR;
+    else process.env.STORAGE_DIR = storageDirOriginal;
+    if (storageDir) await fs.promises.rm(storageDir, { recursive: true, force: true });
     try {
       await app?.close();
     } catch {
@@ -513,6 +753,83 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     return { accessToken, usuarioId: usuario.id };
   }
 
+  /**
+   * Actor NUEVO en un cliente existente con celdas y filas por tipo independientes
+   * (odd/permisos-por-tipo-ticket, T5b): `celdas` va a la matriz master, `filas` a la tabla del
+   * tenant sobre el tipo SOPORTE. A diferencia de `agregarActorAlCliente`, las filas NO salen de
+   * las celdas: así se prueban por separado.
+   */
+  async function crearActorPorTipo(
+    clienteId: string,
+    celdas: CodigoAccion[],
+    filas: AccionTipoTicket[],
+  ): Promise<{ accessToken: string; usuarioId: string }> {
+    const role = await crearRoleVacio();
+    const usuario = await crearUsuario();
+    await masterClient.membresia.create({
+      data: { usuarioId: usuario.id, clienteId, rolId: role.id, activo: true },
+    });
+    await permisosRepo.setPermisos(usuario.id, clienteId, celdas);
+    if (filas.length > 0) {
+      await tenantClient.permisoTipoTicket.createMany({
+        data: filas.map((accion) => ({ usuarioId: usuario.id, tipoId: tipoSoporteId, accion })),
+      });
+    }
+    const { accessToken } = await login(usuario.email);
+    return { accessToken, usuarioId: usuario.id };
+  }
+
+  /**
+   * Ticket SOPORTE de un ADMINISTRADOR (sin restricción por tipo), ajeno al actor que se prueba,
+   * con su operación de apertura. El ADMINISTRADOR es además un asignado elegible.
+   */
+  async function fixtureTicketAjeno(): Promise<{
+    ids: IdsFixture;
+    clienteId: string;
+    asignableId: string;
+  }> {
+    const duenio = await crearActorAdministrador();
+    const ticket = await crearTicket(duenio.accessToken, { titulo: 'Ticket ajeno E2E' });
+    const apertura = await tenantClient.operacionTicket.findFirstOrThrow({
+      where: { ticketId: ticket.id },
+    });
+    return {
+      ids: { ticketId: ticket.id, operacionId: apertura.id },
+      clienteId: duenio.clienteId,
+      asignableId: duenio.usuarioId,
+    };
+  }
+
+  /** Lo que una escritura rechazada no puede haber cambiado. */
+  async function fotoDelTicket(ids: IdsFixture): Promise<unknown> {
+    const ticket = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ids.ticketId } });
+    return {
+      ticket,
+      operaciones: await tenantClient.operacionTicket.count({ where: { ticketId: ids.ticketId } }),
+      adjuntosTicket: await tenantClient.archivoTicket.count({ where: { ticketId: ids.ticketId } }),
+      adjuntosOperacion: await tenantClient.archivoOperacion.count({
+        where: { operacionId: ids.operacionId },
+      }),
+      altas: await tenantClient.ticket.count({ where: { titulo: 'Alta por tipo E2E' } }),
+    };
+  }
+
+  /** Llama la ruta de la tabla con su cuerpo (JSON o multipart). */
+  async function llamarRutaTicket(
+    ruta: RutaTicketPorTipo,
+    ids: IdsFixture,
+    asignableId: string,
+    token: string,
+  ): Promise<{ status: number; data: unknown }> {
+    const url = `${baseUrl}${ruta.path(ids)}`;
+    if (ruta.multipart) return httpPostMultipart(url, bearer(token));
+    const cuerpo =
+      ruta.cuerpo?.({ asignableId, tipoId: tipoSoporteId, prioridadId: prioridadMediaId }) ?? {};
+    if (ruta.metodo === 'GET') return httpGet(url, bearer(token));
+    if (ruta.metodo === 'PATCH') return httpPatch(url, cuerpo, bearer(token));
+    return httpPost(url, cuerpo, bearer(token));
+  }
+
   async function callMethod(
     metodo: Metodo,
     path: string,
@@ -582,13 +899,76 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
   // ─── G2 — Gate real: CON la acción exacta → NO 403 (el gate se abre) ─────
 
   describe('AccionesGuard real por ruta: actor CON la acción exacta → NO 403 (G2)', () => {
-    it.each(RUTAS_SIN_MULTIPART)(
+    it.each(TABLA_RUTAS)(
       '$metodo $path con $acciones sembradas → status distinto de 401/403 (el gate se abrió)',
       async ({ metodo, path, acciones }) => {
         const actor = await crearActorConPermisos(acciones);
         const { status } = await callMethod(metodo, path, actor.accessToken);
         expect(status).not.toBe(401);
         expect(status).not.toBe(403);
+      },
+    );
+  });
+
+  // ─── Rutas de tickets: deciden los permisos por tipo, no AccionesGuard (T5b, D5 d) ──
+
+  describe('Rutas de tickets (odd/permisos-por-tipo-ticket, D5 d): existen y exigen sesión', () => {
+    it.each(TABLA_RUTAS_TICKETS)(
+      '$metodo de la ruta con $celdaVieja: sin Bearer → 401 (NUNCA 404 de routing)',
+      async (ruta) => {
+        const ids = { ticketId: ID, operacionId: ID };
+        const { status } = await callMethod(ruta.metodo, ruta.path(ids));
+        expect(status).toBe(401);
+      },
+    );
+  });
+
+  describe('Rutas de tickets: actor SIN filas por tipo no ve ni escribe nada, tenga o no la celda vieja', () => {
+    const casos = TABLA_RUTAS_TICKETS.flatMap((ruta) => [
+      { ...ruta, conCelda: true },
+      { ...ruta, conCelda: false },
+    ]);
+
+    it.each(casos)(
+      '$metodo con $celdaVieja (celda sembrada: $conCelda) y sin filas → $sinFilas, sin cambios en la base',
+      async (ruta) => {
+        const { ids, clienteId, asignableId } = await fixtureTicketAjeno();
+        const actor = await crearActorPorTipo(
+          clienteId,
+          ruta.conCelda ? [ruta.celdaVieja] : [],
+          [],
+        );
+        const antes = await fotoDelTicket(ids);
+
+        const { status, data } = await llamarRutaTicket(ruta, ids, asignableId, actor.accessToken);
+
+        if (ruta.sinFilas === 'LISTA_VACIA') {
+          // El fixture tiene un ticket que el actor no tiene que ver.
+          expect(status).toBe(200);
+          expect(data).toMatchObject({ items: [], total: 0 });
+        } else {
+          expect(status).toBe(ruta.sinFilas);
+        }
+        expect(await fotoDelTicket(ids)).toEqual(antes);
+      },
+    );
+  });
+
+  describe('Rutas de tickets: actor CON la acción por tipo y SIN ninguna celda TICKETS:* → la operación ocurre', () => {
+    it.each(TABLA_RUTAS_TICKETS)(
+      '$metodo (antes $celdaVieja) con LECTURA, VER_TODOS y $acciones sobre el tipo → $status con su efecto',
+      async (ruta) => {
+        const { ids, clienteId, asignableId } = await fixtureTicketAjeno();
+        const actor = await crearActorPorTipo(
+          clienteId,
+          [],
+          ['LECTURA', 'VER_TODOS', ...ruta.acciones],
+        );
+
+        const { status, data } = await llamarRutaTicket(ruta, ids, asignableId, actor.accessToken);
+
+        expect(status).toBe(ruta.status);
+        await ruta.efecto(data, ids, tenantClient, asignableId);
       },
     );
   });

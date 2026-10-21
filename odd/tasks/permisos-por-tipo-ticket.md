@@ -98,8 +98,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   plantilla escriben las filas por tipo — (este commit)
 - [x] T5a — S1-S3, S6, D5 a-c — worker — alcance por tipo cargado por request y punto único
   (`esTicketAccesiblePara` + acción); lecturas y escrituras por id del ticket — (este commit)
-- [ ] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
-  creación por tipo, reparaciones y dashboard — (pendiente)
+- [x] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
+  creación por tipo, reparaciones y dashboard — (este commit)
 - [ ] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (pendiente)
 - [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
 - [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
@@ -247,4 +247,13 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   hacer (T5c lo revisa). 3959 tests en verde, e2e incluidos (S2 con filas reales). Cambios de
   conducta: los flags del JWT ya no deciden estas operaciones; un usuario sin filas no ve nada por
   id hasta que corra el backfill de T4b (por eso T4-T8 salen en un solo deploy, L20).
+- **L27** (T5b; el primer worker cortó por límite de sesión y el segundo retomó su trabajo parcial) —
+  Se quitaron los `@RequiereAcciones('TICKETS:*'|'EDILICIA:*')` de las rutas de tickets, adjuntos,
+  soporte, PDF y reparaciones; quedan `COMPRAS:LECTURA` (vincular compra), `EDILICIA:BORRADO`
+  (desvincular, L21), `DASHBOARD:LECTURA`, `EQUIPOS:*`, `PREVENTIVO:*` y los de la API v1 (T5c).
+  Listados, exportación, reparaciones, tareas, dashboard y CSAT filtran en SQL con el mismo alcance
+  (`alcance-listado.prisma.ts`: tipos con VER_TODOS, o tipos con LECTURA más regla de fila). Alta:
+  `ALTAS` sobre el tipo, 403 antes de abrir la transacción; `alcance: null` para flujos de sistema
+  (barrido preventivo, API v1, seed). El dashboard combina el alcance con el filtro de TECNICO.
+  Dueño aprobó tocar CSAT y `autorizacion.e2e.spec.ts`. 346 archivos y 4114 tests en verde.
 

@@ -7,6 +7,14 @@ import { QrDeOtraOrganizacionError } from '../../domain/errors/equipos.errors';
 import { equipoDadoDeBaja, equipoVigente } from '../../testing/equipos-unit.fixtures';
 import { hashTokenQr } from './emitir-qr-equipo.use-case';
 import { ResolverQrAutenticadoUseCase } from './resolver-qr-autenticado.use-case';
+import { AccionSobreTipoNoPermitidaError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
+
+/** Con ALTAS sobre el tipo SOPORTE: lo que exige el alta que sigue al escaneo. */
+const CON_ALTAS = alcancePorTipo('u1', { 'tipo-soporte-id': ['ALTAS'] });
 
 function cliente(over: { slug?: string | null; activo?: boolean } = {}): ClienteEntity {
   return ClienteEntity.create({
@@ -30,10 +38,12 @@ function setup(
       .fn()
       .mockResolvedValue(over.equipo === undefined ? equipoVigente() : over.equipo),
   };
+  const tipoTicketRepo = { findIdByCodigo: vi.fn().mockResolvedValue('tipo-soporte-id') };
   return {
-    useCase: new ResolverQrAutenticadoUseCase(clienteRepo, equipoRepo),
+    useCase: new ResolverQrAutenticadoUseCase(clienteRepo, equipoRepo, tipoTicketRepo),
     clienteRepo,
     equipoRepo,
+    tipoTicketRepo,
   };
 }
 
@@ -42,7 +52,12 @@ const TOKEN = 'tokenDeVeintidosChars_';
 describe('ResolverQrAutenticadoUseCase', () => {
   it('slug de la sesión y token vigente: devuelve el equipo del tenant', async () => {
     const { useCase, equipoRepo, clienteRepo } = setup();
-    const r = await useCase.execute({ clienteId: 'c1', slug: 'acme', token: TOKEN });
+    const r = await useCase.execute({
+      clienteId: 'c1',
+      slug: 'acme',
+      token: TOKEN,
+      alcance: CON_ALTAS,
+    });
 
     expect(r.isOk()).toBe(true);
     expect(r.getValue().equipo).toEqual({ id: expect.any(String), nombre: expect.any(String) });
@@ -52,7 +67,12 @@ describe('ResolverQrAutenticadoUseCase', () => {
 
   it('un slug distinto al del cliente de la sesión da 404 y no busca el token', async () => {
     const { useCase, equipoRepo } = setup();
-    const r = await useCase.execute({ clienteId: 'c1', slug: 'otro', token: TOKEN });
+    const r = await useCase.execute({
+      clienteId: 'c1',
+      slug: 'otro',
+      token: TOKEN,
+      alcance: CON_ALTAS,
+    });
 
     expect(r.isFail()).toBe(true);
     expect(r.getError()).toBeInstanceOf(QrDeOtraOrganizacionError);
@@ -66,7 +86,13 @@ describe('ResolverQrAutenticadoUseCase', () => {
     ['cliente sin slug', {}, { cliente: cliente({ slug: null }) }],
   ])('%s: mismo 404', async (_n, cmd, over) => {
     const { useCase, equipoRepo } = setup(over);
-    const r = await useCase.execute({ clienteId: 'c1', slug: 'acme', token: TOKEN, ...cmd });
+    const r = await useCase.execute({
+      clienteId: 'c1',
+      slug: 'acme',
+      token: TOKEN,
+      alcance: CON_ALTAS,
+      ...cmd,
+    });
 
     expect(r.isFail()).toBe(true);
     expect(equipoRepo.findByQrHash).not.toHaveBeenCalled();
@@ -80,9 +106,41 @@ describe('ResolverQrAutenticadoUseCase', () => {
     ['token demasiado largo', {}, 'x'.repeat(129)],
   ])('%s: equipo null', async (_n, over, token) => {
     const { useCase } = setup(over);
-    const r = await useCase.execute({ clienteId: 'c1', slug: 'acme', token });
+    const r = await useCase.execute({ clienteId: 'c1', slug: 'acme', token, alcance: CON_ALTAS });
 
     expect(r.isOk()).toBe(true);
     expect(r.getValue().equipo).toBeNull();
+  });
+
+  describe('ALTAS sobre el tipo SOPORTE (odd/permisos-por-tipo-ticket, S6, D5 d)', () => {
+    it('sin ALTAS sobre SOPORTE (aunque la tenga sobre otro tipo) → 403, sin resolver el equipo', async () => {
+      const { useCase, equipoRepo } = setup();
+      const r = await useCase.execute({
+        clienteId: 'c1',
+        slug: 'acme',
+        token: TOKEN,
+        alcance: alcancePorTipo('u1', {
+          'tipo-soporte-id': ['LECTURA'],
+          'tipo-otro-id': ['ALTAS'],
+        }),
+      });
+
+      expect(r.isFail()).toBe(true);
+      expect(r.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(equipoRepo.findByQrHash).not.toHaveBeenCalled();
+    });
+
+    it('ROOT y ADMINISTRADOR (sin restricción) → resuelve el equipo sin consultar el tipo', async () => {
+      const { useCase, tipoTicketRepo } = setup();
+      const r = await useCase.execute({
+        clienteId: 'c1',
+        slug: 'acme',
+        token: TOKEN,
+        alcance: alcanceSinRestriccion('u1'),
+      });
+
+      expect(r.getValue().equipo).not.toBeNull();
+      expect(tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
+    });
   });
 });

@@ -8,6 +8,10 @@ import { NumeradorTicket } from '../../../tickets/domain/services/numerador-tick
 import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
 import { ResolverAsignacionAutomatica } from '../../../tickets/application/services/resolver-asignacion-automatica.service';
 import { operacionesDeApertura } from '../../../tickets/application/services/operaciones-apertura';
+import {
+  AlcanceActorTicket,
+  exigirAccionSobreTipo,
+} from '../../../tickets/application/services/visibilidad-ticket';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
@@ -51,6 +55,13 @@ export interface CrearTicketSoporteDto {
   clienteId: string;
   autorId: string;
   anio: number;
+  /**
+   * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, S6, D5 c): el alta exige `ALTAS`
+   * sobre el tipo SOPORTE. Opcional, y no obligatorio-anulable como en `CrearTicketDto`, porque el
+   * formulario público (solicitante externo, sin actor humano) también crea por acá y no se chequea
+   * (D3). `POST /soporte` siempre lo pasa.
+   */
+  alcance?: AlcanceActorTicket;
 }
 
 /**
@@ -67,7 +78,8 @@ export interface CrearTicketSoporteDto {
  *    ausente, el ticket se crea igual (F3-Q4, soporte de red/accesos sin
  *    equipo) — SIN consultar el repo de equipos.
  * 4. Resuelve el tipo SOPORTE por código (catálogo FIJO — su ausencia es un
- *    fallo de infraestructura, `throw` defensivo).
+ *    fallo de infraestructura, `throw` defensivo) y exige `ALTAS` sobre él al
+ *    actor, si lo hay (odd/permisos-por-tipo-ticket, D5 c): 403 sin escribir.
  * 5. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO.
  * 6. **DENTRO de la transacción**: genera el `numero` (prefijo SOP, ADR-4),
  *    crea `TicketEntity` + `OperacionTicketEntity` de apertura +
@@ -140,6 +152,10 @@ export class CrearTicketSoporteUseCase {
       throw new Error(
         `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_SOPORTE}" en el tenant activo.`,
       );
+    }
+    const permitido = exigirAccionSobreTipo(dto.alcance ?? null, tipoSoporte.id, 'ALTAS');
+    if (permitido.isFail()) {
+      return Result.fail(permitido.getError());
     }
     const estadoNuevoId = await this.estadoRepo.findIdByCodigo('NUEVO');
     if (!estadoNuevoId) {

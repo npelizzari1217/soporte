@@ -934,13 +934,15 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       await tenantClient.ticket.update({ where: { id: created.data.id }, data: { tipoId } });
 
-      // USUARIO (solicitante, sin ticket:asignar) → 403.
+      // USUARIO (solicitante, sin ticket:asignar ni filas sobre el tipo EQUIPOS): desde T5b ya no lo
+      // corta la celda TICKETS:ASIGNAR en la ruta (D5 d) sino el caso de uso, y como no ve el tipo
+      // del ticket responde 404 (S3: ser el solicitante no alcanza sin LECTURA sobre el tipo).
       const denegado = await httpPatch(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },
         bearer(loginUsuario.accessToken),
       );
-      expect(denegado.status).toBe(403);
+      expect(denegado.status).toBe(404);
 
       // TECNICO con ticket:asignar pero SIN el módulo EQUIPOS del tipo: no accede al ticket, así
       // que es 404 y no se asigna nada (odd/permisos-por-tipo-ticket, S0).

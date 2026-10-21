@@ -1,9 +1,12 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { esModuloValido } from '../../../shared/domain/modulos';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import {
+  AlcanceActorTicket,
+  alcanceDeListado,
+  alcanceListadoVacio,
+} from '../services/visibilidad-ticket';
 
 const PAGINA_DEFAULT = 1;
 const POR_PAGINA_DEFAULT = 20;
@@ -11,24 +14,20 @@ const POR_PAGINA_DEFAULT = 20;
 /**
  * DTO de entrada de `ListarTicketsUseCase`.
  *
- * `filtros` excluye `visiblePara`/`limit`/`offset` — esos tres los
- * calcula el use case (scope de rol T6/T7 y paginación), nunca el caller.
+ * `filtros` excluye `alcance`/`limit`/`offset`: esos tres los calcula el use case (alcance por
+ * tipo y paginación), nunca el caller.
  */
 export interface ListarTicketsDto {
-  filtros?: Omit<TicketFiltros, 'visiblePara' | 'limit' | 'offset'>;
-  actorId: string;
-  tienePermisoVerTodos: boolean;
+  filtros?: Omit<TicketFiltros, 'alcance' | 'limit' | 'offset'>;
+  /**
+   * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 e). Lo carga la capa de
+   * interface por request; `permisosPorTipo: null` = sin restricción (ROOT y ADMINISTRADOR).
+   */
+  alcance: AlcanceActorTicket;
   /** Página 1-indexed. Default 1. */
   pagina?: number;
   /** Tamaño de página. Default 20. */
   porPagina?: number;
-  /**
-   * Módulos funcionales asignados al usuario para restringir los tipos de
-   * ticket visibles (feature 5.2 CAPA 2). `null` = SIN restricción de módulo
-   * (ROOT/ADMINISTRADOR — ven todos los tipos, incluidos los custom del
-   * tenant). El controller resuelve este valor: nunca es el caller HTTP.
-   */
-  modulosPermitidos?: string[] | null;
 }
 
 /** Resultado paginado de `ListarTicketsUseCase`. */
@@ -41,26 +40,21 @@ export interface ListarTicketsResult {
 
 /**
  * ListarTicketsUseCase — listado de tickets del tenant con filtros
- * combinables, scope por rol y ciclo efectivo (T7).
+ * combinables, alcance por tipo y ciclo efectivo (T7).
  *
  * - Ciclo efectivo: `filtros.cicloId` explícito (histórico) tiene prioridad;
  *   si no viene, se resuelve el ciclo ACTIVO del tenant. Sin cicloId
  *   explícito NI activo → `{ items: [], total: 0 }` (invariante "siempre
  *   por ciclo", nunca "todos").
- * - Scope de rol (T6): sin `ticket:ver_todos` se deriva
- *   `visiblePara = actorId` (los que solicitó y los que tienen una tarea
- *   activa suya, CA10); con el permiso, `visiblePara` queda `undefined`
- *   (ve todos).
+ * - Alcance por tipo (odd/permisos-por-tipo-ticket, S6, D5 e): entran solo los
+ *   tipos con `LECTURA`; en los que además tienen `VER_TODOS`, todas sus filas, y
+ *   en el resto, la regla de fila (`alcanceDeListado`). `filtros.tiposIds` se
+ *   intersecta con esos tipos: pedir un tipo nunca amplía el alcance. Sin ningún
+ *   tipo en el alcance → `{ items: [], total: 0 }` sin consultar la base. La
+ *   base aplica el alcance en la misma consulta que pagina y cuenta.
  * - Paginación (PR6): `pagina`/`porPagina` se traducen a `limit`/`offset`.
  *   `count()` se consulta con los MISMOS filtros pero SIN paginación, para
  *   que `total` refleje el universo completo, no la página actual.
- * - Gate de módulo (5.2 CAPA 2): si `dto.modulosPermitidos !== null`, se
- *   resuelven los `tipoId` cuyo `modulo` (columna de `tipos_ticket`, B2) esté
- *   entre los módulos del usuario — incluidos los tipos CUSTOM del tenant y los
- *   de módulo EQUIPOS — y se INTERSECTAN con `filtros.tiposIds` (nunca se
- *   permite ver un tipo fuera de los módulos del usuario). Conjunto permitido
- *   vacío → `{ items: [], total: 0 }`. `null` = sin restricción
- *   (ROOT/ADMINISTRADOR).
  *
  * Ref spec: sdd/tickets-core/spec T6, T7. Tarea: T6.4.
  */
@@ -68,40 +62,32 @@ export class ListarTicketsUseCase {
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly cicloClienteRepo: ICicloClienteRepository,
-    private readonly tipoTicketRepo: ITipoTicketRepository,
   ) {}
 
   async execute(dto: ListarTicketsDto): Promise<Result<ListarTicketsResult, DomainError>> {
     const pagina = dto.pagina ?? PAGINA_DEFAULT;
     const porPagina = dto.porPagina ?? POR_PAGINA_DEFAULT;
+    const vacio = Result.ok<ListarTicketsResult, DomainError>({
+      items: [],
+      total: 0,
+      pagina,
+      porPagina,
+    });
 
-    // Gate de módulo (5.2 CAPA 2): resuelve los tipoId visibles según los
-    // módulos del usuario ANTES de tocar el repo de tickets. `null` = sin
-    // restricción (ROOT/ADMINISTRADOR). Conjunto vacío → corta con lista vacía.
-    const tiposIdsPorModulo = await this.resolverTiposPorModulo(dto.modulosPermitidos);
-    if (tiposIdsPorModulo !== null && tiposIdsPorModulo.length === 0) {
-      return Result.ok({ items: [], total: 0, pagina, porPagina });
+    const alcance = alcanceDeListado(dto.alcance, dto.filtros?.tiposIds);
+    if (alcanceListadoVacio(alcance)) {
+      return vacio;
     }
 
     const cicloEfectivoId = dto.filtros?.cicloId ?? (await this.cicloClienteRepo.findActive())?.id;
-
     if (!cicloEfectivoId) {
-      return Result.ok({ items: [], total: 0, pagina, porPagina });
+      return vacio;
     }
 
-    // Intersección con el filtro `tiposIds` pedido por el caller: nunca se
-    // amplía el scope de módulo. Sin filtro pedido → se usan los del módulo.
-    const tiposIdsEfectivos = this.intersectarTipos(dto.filtros?.tiposIds, tiposIdsPorModulo);
-    if (tiposIdsEfectivos !== undefined && tiposIdsEfectivos.length === 0) {
-      return Result.ok({ items: [], total: 0, pagina, porPagina });
-    }
-
-    const visiblePara = dto.tienePermisoVerTodos ? undefined : dto.actorId;
     const filtrosBase: TicketFiltros = {
       ...dto.filtros,
       cicloId: cicloEfectivoId,
-      visiblePara,
-      tiposIds: tiposIdsEfectivos,
+      alcance: alcance ?? undefined,
     };
 
     const [items, total] = await Promise.all([
@@ -114,42 +100,5 @@ export class ListarTicketsUseCase {
     ]);
 
     return Result.ok({ items, total, pagina, porPagina });
-  }
-
-  /**
-   * Resuelve los `tipoId` visibles del tenant a partir de los módulos permitidos
-   * del usuario, leyendo la columna `modulo` de `tipos_ticket` (B2). `null`
-   * (sin restricción) → devuelve `null`. Incluye tipos CUSTOM y de cualquier
-   * módulo (EQUIPOS entre ellos); los strings que no son módulos válidos se
-   * descartan. El resultado puede ser un array vacío (ningún tipo de esos
-   * módulos en el tenant → usuario sin tipos visibles).
-   */
-  private async resolverTiposPorModulo(
-    modulosPermitidos: string[] | null | undefined,
-  ): Promise<string[] | null> {
-    if (modulosPermitidos === null || modulosPermitidos === undefined) {
-      return null;
-    }
-
-    const modulos = modulosPermitidos.filter(esModuloValido);
-    return this.tipoTicketRepo.findIdsByModulos(modulos);
-  }
-
-  /**
-   * Intersecta el filtro `tiposIds` pedido por el caller con los tipos
-   * permitidos por módulo. `permitidosPorModulo === null` → no hay gate de
-   * módulo, se respeta el filtro del caller tal cual (o `undefined` = todos).
-   */
-  private intersectarTipos(
-    tiposIdsSolicitados: string[] | undefined,
-    permitidosPorModulo: string[] | null,
-  ): string[] | undefined {
-    if (permitidosPorModulo === null) {
-      return tiposIdsSolicitados;
-    }
-    if (tiposIdsSolicitados === undefined || tiposIdsSolicitados.length === 0) {
-      return permitidosPorModulo;
-    }
-    return permitidosPorModulo.filter((id) => tiposIdsSolicitados.includes(id));
   }
 }

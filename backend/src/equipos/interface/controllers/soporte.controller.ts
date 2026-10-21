@@ -2,25 +2,24 @@
  * SoporteController — entry point HTTP del flujo de tickets de soporte IT
  * (F3-Q4, F3-Q5).
  *
- * Rutas:
- *   POST /soporte                  → CrearTicketSoporteUseCase       [ticket:crear]
- *   POST /soporte/:id/solucion     → RegistrarSolucionUseCase        [ticket:editar]
- *   GET  /soporte/qr?c=&e=         → ResolverQrAutenticadoUseCase    [TICKETS:ALTAS]
+ * Rutas (entre corchetes, lo que exige el caso de uso sobre el tipo, D5 c):
+ *   POST /soporte                  → CrearTicketSoporteUseCase       [ALTAS sobre SOPORTE]
+ *   POST /soporte/:id/solucion     → RegistrarSolucionUseCase        [MODIFICACION sobre su tipo]
+ *   GET  /soporte/qr?c=&e=         → ResolverQrAutenticadoUseCase    [ALTAS sobre SOPORTE]
  *                                    (DEBE declararse antes de `:ticketId`)
- *   GET  /soporte/:ticketId        → ObtenerEquipoDeTicketUseCase    (sin permiso extra,
- *                                    igual criterio que `TicketsController.findOne`,
- *                                    incluido el acceso al ticket base)
+ *   GET  /soporte/:ticketId        → ObtenerEquipoDeTicketUseCase    [ver el ticket base, igual
+ *                                    criterio que `TicketsController.findOne`]
  *
  * `:id` = id del `Ticket` BASE (mismo criterio que las rutas de aprobar/
  * rechazar de `ComprasController`: los use cases de este módulo reciben
  * `ticketId`, no el id del satélite).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
- * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('SOPORTE')` de clase).
- * `@Controller('soporte')` y el `codigo='SOPORTE'` del catálogo de tipos
- * quedan INTACTOS (WU-7.2, R8) — solo el EJE de módulo se renombra a
- * TICKETS (R5-a: `GET /:ticketId` gatea por TICKETS:LECTURA, no EQUIPOS).
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario). Ninguna ruta
+ * declara `@RequiereAcciones` (odd/permisos-por-tipo-ticket, D5 d): las celdas
+ * `TICKETS:*` ya no deciden; lo hacen los casos de uso con los permisos por
+ * tipo que carga `CargadorAlcanceTicket` (403 sin la acción, 404 si no ve el
+ * ticket).
  *
  * Tarea: T13.4.
  */
@@ -43,7 +42,7 @@ import {
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
-import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { CurrentUser } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { DomainError } from '../../../shared/domain/result';
@@ -128,11 +127,11 @@ export class SoporteController {
    * Crea un ticket de soporte (ticket base + satélite `ticket_soporte`,
    * ADR-3). `equipoId` es OPCIONAL. `solicitanteId`/`autorId` = JWT.sub;
    * `anio` lo resuelve el servidor.
+   * @throws 403 sin `ALTAS` sobre el tipo SOPORTE (odd/permisos-por-tipo-ticket, D5 c)
    * @throws 409 sin ciclo activo
    * @throws 422 solicitante/equipo inválido
    */
   @Post()
-  @RequiereAcciones('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(
     @Body() dto: CreateTicketSoporteHttpDto,
@@ -148,6 +147,7 @@ export class SoporteController {
       clienteId: user.cliente_id as string,
       autorId: user.sub,
       anio: new Date().getFullYear(),
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
@@ -165,7 +165,6 @@ export class SoporteController {
    *   odd/permisos-por-tipo-ticket S3), o ticket_soporte inexistente
    */
   @Post(':id/solucion')
-  @RequiereAcciones('TICKETS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async registrarSolucion(
     @Param('id') id: string,
@@ -191,10 +190,10 @@ export class SoporteController {
    *
    * IMPORTANTE: va ANTES de `@Get(':ticketId')`; si no, Express matchea `/soporte/qr` como
    * `ticketId = 'qr'`.
+   * @throws 403 sin `ALTAS` sobre el tipo SOPORTE: el escaneo es el primer paso de esa alta
    * @throws 404 el slug no es el del cliente de la sesión
    */
   @Get('qr')
-  @RequiereAcciones('TICKETS:ALTAS')
   async resolverQr(
     @Query('c') slug: unknown,
     @Query('e') token: unknown,
@@ -204,6 +203,7 @@ export class SoporteController {
       clienteId: user.cliente_id as string,
       slug,
       token,
+      alcance: await this.alcances.cargar(user),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -221,7 +221,6 @@ export class SoporteController {
    *   visibilidad de fila, odd/permisos-por-tipo-ticket S3)
    */
   @Get(':ticketId')
-  @RequiereAcciones('TICKETS:LECTURA')
   async obtenerEquipoDeTicket(
     @Param('ticketId') ticketId: string,
     @CurrentUser() user: JwtPayload,

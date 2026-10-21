@@ -10,6 +10,8 @@ import {
 } from '../../domain/errors/tickets.errors';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 import {
+  alcanceDeListado,
+  alcanceListadoVacio,
   esTicketAccesiblePara,
   esTicketVisiblePara,
   puedeOperarTicket,
@@ -207,6 +209,47 @@ describe('permisos por tipo del ticket', () => {
       expect(tieneAccionSobreTipo(alcanceSinRestriccion(TECNICO), ELECTRICIDAD, 'OBSERVAR')).toBe(
         true,
       );
+    });
+  });
+
+  describe('alcanceDeListado (D5 e)', () => {
+    const conVerTodos = alcancePorTipo(TECNICO, {
+      [SOPORTE]: ['LECTURA', 'VER_TODOS'],
+      [MANTENIMIENTO]: ['LECTURA', 'MODIFICACION'],
+      // VER_TODOS sin LECTURA no deja entrar el tipo, igual que por id.
+      [ELECTRICIDAD]: ['VER_TODOS', 'MODIFICACION'],
+    });
+
+    it('separa los tipos con LECTURA en VER_TODOS y regla de fila; sin LECTURA, afuera', () => {
+      expect(alcanceDeListado(conVerTodos)).toEqual({
+        actorId: TECNICO,
+        tiposVerTodos: [SOPORTE],
+        tiposPorFila: [MANTENIMIENTO],
+      });
+    });
+
+    it('intersecta con los tipos pedidos: pedir un tipo sin LECTURA no lo agrega', () => {
+      expect(alcanceDeListado(conVerTodos, [MANTENIMIENTO, ELECTRICIDAD])).toEqual({
+        actorId: TECNICO,
+        tiposVerTodos: [],
+        tiposPorFila: [MANTENIMIENTO],
+      });
+      const vacio = alcanceDeListado(conVerTodos, [ELECTRICIDAD]);
+      expect(alcanceListadoVacio(vacio)).toBe(true);
+    });
+
+    it('un pedido vacío es "todos los tipos", no ninguno', () => {
+      expect(alcanceDeListado(conVerTodos, [])).toEqual(alcanceDeListado(conVerTodos));
+      expect(alcanceListadoVacio(alcanceDeListado(conVerTodos, []))).toBe(false);
+    });
+
+    it('ROOT y ADMINISTRADOR: sin restricción (null), aunque pidan tipos', () => {
+      expect(alcanceDeListado(alcanceSinRestriccion(TECNICO), [SOPORTE])).toBeNull();
+      expect(alcanceListadoVacio(null)).toBe(false);
+    });
+
+    it('un usuario sin filas no ve ningún tipo', () => {
+      expect(alcanceListadoVacio(alcanceDeListado(alcancePorTipo(TECNICO, {})))).toBe(true);
     });
   });
 });

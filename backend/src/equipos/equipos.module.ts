@@ -219,9 +219,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     {
       // sdd/formulario-publico-qr (WU-17): camino autenticado del QR (D3). Solo lee.
       provide: ResolverQrAutenticadoUseCase,
-      useFactory: (clienteRepo: IClienteRepository, equipoRepo: IEquipoInformaticoRepository) =>
-        new ResolverQrAutenticadoUseCase(clienteRepo, equipoRepo),
-      inject: [CLIENTE_REPOSITORY, EQUIPO_INFORMATICO_REPOSITORY],
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        equipoRepo: IEquipoInformaticoRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new ResolverQrAutenticadoUseCase(clienteRepo, equipoRepo, tipoTicketRepo),
+      inject: [CLIENTE_REPOSITORY, EQUIPO_INFORMATICO_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: ListarEquiposUseCase,

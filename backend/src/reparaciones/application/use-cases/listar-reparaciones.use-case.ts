@@ -10,6 +10,11 @@ import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-com
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { CompraVinculada, comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
+import {
+  AlcanceActorTicket,
+  alcanceDeListado,
+  alcanceListadoVacio,
+} from '../../../tickets/application/services/visibilidad-ticket';
 
 /** Un ticket edilicio resuelto junto a su ticket base y subtareas (para listados). */
 export interface ReparacionConTicket {
@@ -48,6 +53,8 @@ export interface PedidoPaginaReparaciones {
   pagina: number;
   porPagina: number;
   bloqueo: FiltroBloqueo;
+  /** Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 e). */
+  alcance: AlcanceActorTicket;
 }
 
 /** Una página del listado, con el total de las que cumplen el filtro. */
@@ -62,8 +69,8 @@ export interface PaginaReparaciones {
  * ListarReparacionesUseCase — caso de uso de consulta para los tickets
  * edilicios del tenant (F3-E1).
  *
- * Obtiene todos los `TicketEdiliciaEntity` activos y resuelve el `Ticket`
- * base y las subtareas de cada uno (join en memoria — mismo patrón que
+ * Obtiene los `TicketEdiliciaEntity` activos que el actor puede ver y resuelve
+ * el `Ticket` base y las subtareas de cada uno (join en memoria — mismo patrón que
  * `ListarComprasUseCase`, T4.5). `ubicacion` viaja embebida como texto libre
  * en el propio `TicketEdiliciaEntity` (ex-catálogo Ubicacion removido — no
  * requiere resolución aparte). Embeber subtareas (item 1, G7) evita depender
@@ -80,6 +87,12 @@ export interface PaginaReparaciones {
  * devuelven. Antes esto era un N+1 de `1 + 2N` consultas (ticket base y
  * subtareas fila por fila). El listado paginado aplica esto solo a la página
  * y, con filtro de bloqueo, suma UNA consulta de compras vinculadas sobre todas.
+ *
+ * Alcance (odd/permisos-por-tipo-ticket, S6, D5 e): entran solo las
+ * reparaciones cuyo ticket base es de un tipo con `LECTURA`; en los tipos sin
+ * `VER_TODOS`, solo las que cumplen la regla de fila. Lo filtra la base en
+ * `findAll`, antes de contar y paginar. Sin ningún tipo con `LECTURA` no se
+ * consulta nada. Hasta los permisos por tipo, este listado no tenía scope (L14).
  *
  * Tarea: T8.5, WU3 (sdd/reparacion-bloqueada-por-compra).
  */
@@ -101,12 +114,13 @@ export class ListarReparacionesUseCase {
 
   /**
    * Listado COMPLETO, hidratado. Lo usa la exportación, que siempre trae todas
-   * las reparaciones (odd/reparaciones-paginadas, S4).
+   * las reparaciones que el actor ve (odd/reparaciones-paginadas, S4).
    *
-   * @returns Todas las reparaciones del tenant, la más reciente primero.
+   * @param alcance Permisos por tipo del actor.
+   * @returns Las reparaciones visibles, la más reciente primero.
    */
-  async execute(): Promise<Result<ReparacionConTicket[], DomainError>> {
-    const satelites = await this.ediliciaRepo.findAll();
+  async execute(alcance: AlcanceActorTicket): Promise<Result<ReparacionConTicket[], DomainError>> {
+    const satelites = await this.satelitesVisibles(alcance);
     return Result.ok(await this.hidratar(satelites));
   }
 
@@ -123,14 +137,14 @@ export class ListarReparacionesUseCase {
    * `total` cuenta satélites, así que un huérfano sin ticket base (no debería
    * existir) suma al total aunque no aparezca en su página.
    *
-   * @param pedido Página, tamaño y filtro de bloqueo.
+   * @param pedido Página, tamaño, filtro de bloqueo y alcance del actor.
    * @returns La página pedida y el total de reparaciones que cumplen el filtro.
    */
   async executePaginado(
     pedido: PedidoPaginaReparaciones,
   ): Promise<Result<PaginaReparaciones, DomainError>> {
     const { pagina, porPagina, bloqueo } = pedido;
-    const satelites = await this.ediliciaRepo.findAll();
+    const satelites = await this.satelitesVisibles(pedido.alcance);
 
     let candidatos = satelites;
     if (bloqueo !== 'TODAS' && satelites.length > 0) {
@@ -147,6 +161,13 @@ export class ListarReparacionesUseCase {
     const desde = (pagina - 1) * porPagina;
     const items = await this.hidratar(candidatos.slice(desde, desde + porPagina));
     return Result.ok({ items, total: candidatos.length, pagina, porPagina });
+  }
+
+  /** Satélites cuyo ticket base el actor ve; sin ningún tipo con `LECTURA`, ninguno y sin consultar. */
+  private async satelitesVisibles(alcance: AlcanceActorTicket): Promise<TicketEdiliciaEntity[]> {
+    const filtro = alcanceDeListado(alcance);
+    if (alcanceListadoVacio(filtro)) return [];
+    return this.ediliciaRepo.findAll(filtro);
   }
 
   /**

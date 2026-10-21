@@ -37,6 +37,7 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -211,7 +212,9 @@ describe('Equipos e2e — baja de equipo completo (WU-12)', () => {
     ).id;
     tipoSoporteId = (
       await tenantClient.tipoTicket.create({
-        data: { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'SOPORTE' },
+        // Módulo TICKETS, como en producción (el módulo SOPORTE no existe desde WU-8): el alta
+        // exige ALTAS sobre este tipo, que la traducción de L11 saca de las celdas TICKETS:*.
+        data: { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS' },
       })
     ).id;
     await tenantClient.tipoOperacion.create({
@@ -317,6 +320,9 @@ describe('Equipos e2e — baja de equipo completo (WU-12)', () => {
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
     await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    // El alta de un ticket decide con los permisos por tipo del tenant: los mismos que estas
+    // celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5b).
+    await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { data } = await http<{ accessToken: string }>(
       'POST',
       `${baseUrl}/auth/login`,

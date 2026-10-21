@@ -1,6 +1,6 @@
 /**
  * T6.4 [UNIT] — RED→GREEN: `ListarTicketsUseCase` (T7 — filtros + scope +
- * ciclo efectivo + paginación).
+ * ciclo efectivo + paginación; odd/permisos-por-tipo-ticket D5 e — alcance por tipo).
  *
  * Ref spec: sdd/tickets-core/spec T7. Tarea: T6.4.
  */
@@ -9,8 +9,8 @@ import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import type { Mock } from 'vitest';
 import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { unstubbed } from '../../../testing/mocks';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 
 /** Filtros de la primera llamada a `findAll`; falla si no hubo llamada o vino sin filtros. */
 function filtrosDeLaPrimeraLlamada(findAll: Mock<ITicketRepository['findAll']>): TicketFiltros {
@@ -20,6 +20,13 @@ function filtrosDeLaPrimeraLlamada(findAll: Mock<ITicketRepository['findAll']>):
   }
   return filtros;
 }
+
+const ACTOR = 'actor-uuid';
+const SOPORTE = 'tipo-soporte-id';
+const MANTENIMIENTO = 'tipo-mantenimiento-id';
+const ELECTRICIDAD = 'tipo-electricidad-id';
+/** Ve todo (ROOT y ADMINISTRADOR): sin restricción por tipo. */
+const SIN_RESTRICCION = alcanceSinRestriccion(ACTOR);
 
 describe('ListarTicketsUseCase', () => {
   function makeCollaborators(cicloActivo: CicloClienteEntity | null) {
@@ -41,28 +48,8 @@ describe('ListarTicketsUseCase', () => {
       findAll: unstubbed('findAll'),
       save: unstubbed('save'),
     };
-    // B2: el gate de módulo resuelve tipoIds por la columna `modulo`. El mock
-    // mapea cada módulo a sus tipoIds del tenant (COMPRAS incluye un tipo CUSTOM;
-    // EQUIPOS no tiene ningún tipo en este tenant).
-    const TIPOS_POR_MODULO: Record<string, string[]> = {
-      TICKETS: ['tipo-TICKETS-id'],
-      COMPRAS: ['tipo-COMPRAS-id', 'tipo-COMPRAS_GENERALES-id'],
-      EDILICIA: ['tipo-EDILICIA-id'],
-      EQUIPOS: [],
-    };
-    const tipoTicketRepo = {
-      findIdsByModulos: vi.fn<ITipoTicketRepository['findIdsByModulos']>(async (modulos) =>
-        modulos.flatMap((m) => TIPOS_POR_MODULO[m] ?? []),
-      ),
-      findById: unstubbed('findById'),
-      findByCodigo: unstubbed('findByCodigo'),
-      findIdByCodigo: unstubbed('findIdByCodigo'),
-      findAllActive: unstubbed('findAllActive'),
-      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
-      save: unstubbed('save'),
-    };
-    const useCase = new ListarTicketsUseCase(ticketRepo, cicloClienteRepo, tipoTicketRepo);
-    return { useCase, ticketRepo, cicloClienteRepo, tipoTicketRepo };
+    const useCase = new ListarTicketsUseCase(ticketRepo, cicloClienteRepo);
+    return { useCase, ticketRepo, cicloClienteRepo };
   }
 
   const CICLO = CicloClienteEntity.create(
@@ -79,7 +66,7 @@ describe('ListarTicketsUseCase', () => {
   it('sin cicloId explícito y CON ciclo activo → usa el ciclo activo como default', async () => {
     const c = makeCollaborators(CICLO);
 
-    await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
+    await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
       expect.objectContaining({ cicloId: 'ciclo-activo-uuid' }),
@@ -89,7 +76,7 @@ describe('ListarTicketsUseCase', () => {
   it('sin cicloId explícito y SIN ciclo activo → lista vacía, sin consultar el repo', async () => {
     const c = makeCollaborators(null);
 
-    const result = await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().items).toEqual([]);
@@ -101,8 +88,7 @@ describe('ListarTicketsUseCase', () => {
     const c = makeCollaborators(CICLO);
 
     await c.useCase.execute({
-      actorId: 'actor-uuid',
-      tienePermisoVerTodos: true,
+      alcance: SIN_RESTRICCION,
       filtros: { cicloId: 'ciclo-historico-uuid' },
     });
 
@@ -112,34 +98,13 @@ describe('ListarTicketsUseCase', () => {
     expect(c.cicloClienteRepo.findActive).not.toHaveBeenCalled();
   });
 
-  it('actor SIN ticket:ver_todos → deriva visiblePara = actorId', async () => {
-    const c = makeCollaborators(CICLO);
-
-    await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: false });
-
-    expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ visiblePara: 'actor-uuid' }),
-    );
-  });
-
-  it('actor CON ticket:ver_todos → visiblePara queda undefined (ve todos)', async () => {
-    const c = makeCollaborators(CICLO);
-
-    await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
-
-    expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ visiblePara: undefined }),
-    );
-  });
-
   it('propaga filtros combinables (estado/tipo/prioridad/asignado/fecha)', async () => {
     const c = makeCollaborators(CICLO);
     const fechaDesde = new Date('2026-01-01');
     const fechaHasta = new Date('2026-06-30');
 
     await c.useCase.execute({
-      actorId: 'actor-uuid',
-      tienePermisoVerTodos: true,
+      alcance: SIN_RESTRICCION,
       filtros: {
         estadoId: 'estado-uuid',
         tiposIds: ['tipo-uuid'],
@@ -167,8 +132,7 @@ describe('ListarTicketsUseCase', () => {
     c.ticketRepo.count.mockResolvedValue(45);
 
     const result = await c.useCase.execute({
-      actorId: 'actor-uuid',
-      tienePermisoVerTodos: true,
+      alcance: SIN_RESTRICCION,
       pagina: 3,
       porPagina: 10,
     });
@@ -187,19 +151,18 @@ describe('ListarTicketsUseCase', () => {
   it('paginación por default: pagina=1, porPagina=20', async () => {
     const c = makeCollaborators(CICLO);
 
-    await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
+    await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 20, offset: 0 }),
     );
   });
 
-  it('B1/B2: propaga busqueda combinada con los filtros existentes y el scope de solicitante', async () => {
+  it('B1/B2: propaga busqueda combinada con los filtros existentes y el alcance del actor', async () => {
     const c = makeCollaborators(CICLO);
 
     await c.useCase.execute({
-      actorId: 'actor-uuid',
-      tienePermisoVerTodos: false,
+      alcance: alcancePorTipo(ACTOR, { [SOPORTE]: ['LECTURA'] }),
       filtros: { busqueda: 'impresora', estadoId: 'estado-uuid' },
     });
 
@@ -207,7 +170,7 @@ describe('ListarTicketsUseCase', () => {
       expect.objectContaining({
         busqueda: 'impresora',
         estadoId: 'estado-uuid',
-        visiblePara: 'actor-uuid',
+        alcance: { actorId: ACTOR, tiposVerTodos: [], tiposPorFila: [SOPORTE] },
       }),
     );
   });
@@ -215,87 +178,88 @@ describe('ListarTicketsUseCase', () => {
   it('B1/B2: busqueda ausente no filtra por texto (queda undefined)', async () => {
     const c = makeCollaborators(CICLO);
 
-    await c.useCase.execute({ actorId: 'actor-uuid', tienePermisoVerTodos: true });
+    await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     const filtrosRecibidos = filtrosDeLaPrimeraLlamada(c.ticketRepo.findAll);
     expect(filtrosRecibidos.busqueda).toBeUndefined();
   });
 
-  describe('gate de módulo (5.2 CAPA 2)', () => {
-    it('modulosPermitidos=null (ROOT/ADMINISTRADOR) → no filtra por tipo', async () => {
+  describe('alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
+    it('ROOT y ADMINISTRADOR (sin restricción): ni alcance ni tipos forzados', async () => {
       const c = makeCollaborators(CICLO);
 
-      await c.useCase.execute({
-        actorId: 'actor-uuid',
-        tienePermisoVerTodos: true,
-        modulosPermitidos: null,
-      });
+      await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
-      expect(c.tipoTicketRepo.findIdsByModulos).not.toHaveBeenCalled();
-      const filtrosRecibidos = filtrosDeLaPrimeraLlamada(c.ticketRepo.findAll);
-      expect(filtrosRecibidos.tiposIds).toBeUndefined();
+      const filtros = filtrosDeLaPrimeraLlamada(c.ticketRepo.findAll);
+      expect(filtros.alcance).toBeUndefined();
+      expect(filtros.tiposIds).toBeUndefined();
     });
 
-    it("modulosPermitidos=['TICKETS'] → filtra a los tipoIds del módulo TICKETS", async () => {
+    it('solo los tipos con LECTURA; VER_TODOS en un tipo, regla de fila en el otro; findAll y count con el mismo alcance', async () => {
+      const c = makeCollaborators(CICLO);
+      c.ticketRepo.count.mockResolvedValue(7);
+
+      const result = await c.useCase.execute({
+        alcance: alcancePorTipo(ACTOR, {
+          [SOPORTE]: ['LECTURA', 'VER_TODOS'],
+          [MANTENIMIENTO]: ['LECTURA', 'MODIFICACION'],
+          // Sin LECTURA el tipo no entra, aunque tenga otras acciones.
+          [ELECTRICIDAD]: ['VER_TODOS', 'MODIFICACION'],
+        }),
+      });
+
+      const esperado = { actorId: ACTOR, tiposVerTodos: [SOPORTE], tiposPorFila: [MANTENIMIENTO] };
+      expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ alcance: esperado }),
+      );
+      expect(c.ticketRepo.count).toHaveBeenCalledWith(
+        expect.objectContaining({ alcance: esperado }),
+      );
+      expect(result.getValue().total).toBe(7);
+    });
+
+    it('el tipo pedido por el caller se intersecta con los tipos con LECTURA (nunca amplía el alcance)', async () => {
       const c = makeCollaborators(CICLO);
 
       await c.useCase.execute({
-        actorId: 'actor-uuid',
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['TICKETS'],
+        alcance: alcancePorTipo(ACTOR, {
+          [SOPORTE]: ['LECTURA', 'VER_TODOS'],
+          [MANTENIMIENTO]: ['LECTURA'],
+        }),
+        filtros: { tiposIds: [MANTENIMIENTO] },
       });
 
-      expect(c.tipoTicketRepo.findIdsByModulos).toHaveBeenCalledWith(['TICKETS']);
       expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ tiposIds: ['tipo-TICKETS-id'] }),
+        expect.objectContaining({
+          tiposIds: [MANTENIMIENTO],
+          alcance: { actorId: ACTOR, tiposVerTodos: [], tiposPorFila: [MANTENIMIENTO] },
+        }),
       );
     });
 
-    it("B2: modulosPermitidos=['COMPRAS'] incluye los tipos CUSTOM del módulo (antes se perdían)", async () => {
-      const c = makeCollaborators(CICLO);
-
-      await c.useCase.execute({
-        actorId: 'actor-uuid',
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['COMPRAS'],
-      });
-
-      // El tipo custom COMPRAS_GENERALES entra en el gate porque su columna
-      // modulo=COMPRAS; con la convención vieja por codigo quedaba afuera.
-      expect(c.ticketRepo.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ tiposIds: ['tipo-COMPRAS-id', 'tipo-COMPRAS_GENERALES-id'] }),
-      );
-    });
-
-    it("modulosPermitidos=['EQUIPOS'] sin tipos de ese módulo en el tenant → items vacío, sin tocar el repo de tickets", async () => {
+    it('pedir un tipo sin LECTURA → lista vacía con total 0, sin consultar la base', async () => {
       const c = makeCollaborators(CICLO);
 
       const result = await c.useCase.execute({
-        actorId: 'actor-uuid',
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['EQUIPOS'],
+        alcance: alcancePorTipo(ACTOR, {
+          [SOPORTE]: ['LECTURA', 'VER_TODOS'],
+          [ELECTRICIDAD]: ['VER_TODOS'],
+        }),
+        filtros: { tiposIds: [ELECTRICIDAD] },
       });
 
-      expect(result.isOk()).toBe(true);
+      expect(result.getValue()).toEqual({ items: [], total: 0, pagina: 1, porPagina: 20 });
+      expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
+      expect(c.ticketRepo.count).not.toHaveBeenCalled();
+    });
+
+    it('un usuario sin filas por tipo no ve nada, aunque tenga ciclo activo', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({ alcance: alcancePorTipo(ACTOR, {}) });
+
       expect(result.getValue().items).toEqual([]);
       expect(result.getValue().total).toBe(0);
-      expect(c.tipoTicketRepo.findIdsByModulos).toHaveBeenCalledWith(['EQUIPOS']);
-      expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
-    });
-
-    it('intersecta el tipo pedido por el caller con los tipos del módulo (nunca amplía el scope)', async () => {
-      const c = makeCollaborators(CICLO);
-
-      // Usuario con TICKETS (→ tipo-TICKETS-id) pide explícitamente un tipo
-      // fuera de su módulo → intersección vacía → items vacío.
-      const result = await c.useCase.execute({
-        actorId: 'actor-uuid',
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['TICKETS'],
-        filtros: { tiposIds: ['tipo-COMPRAS-id'] },
-      });
-
-      expect(result.getValue().items).toEqual([]);
       expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
     });
   });

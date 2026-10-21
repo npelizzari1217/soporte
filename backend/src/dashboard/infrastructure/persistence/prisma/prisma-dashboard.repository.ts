@@ -25,6 +25,7 @@ import { Prisma } from '.prisma/tenant';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { TIPO_CODIGO_PREVENTIVO } from '../../../../tickets/domain/tipos-ticket.constants';
+import { whereAlcanceListado } from '../../../../tickets/infrastructure/persistence/prisma/alcance-listado.prisma';
 import {
   CargaAgente,
   ConteoAbiertosCerrados,
@@ -50,12 +51,17 @@ export class PrismaDashboardRepository implements IDashboardRepository {
     return this.tenantContext.getClient() as InstanceType<typeof TenantPrismaClient>;
   }
 
-  /** Cláusula `where` base combinable (AND): ciclo + asignado (D2), excluye soft-deleted. */
+  /**
+   * Cláusula `where` base combinable (AND): ciclo + asignado (D2) + alcance por tipo del actor
+   * (odd/permisos-por-tipo-ticket, D5 e), excluye soft-deleted. El alcance va en un `AND` propio:
+   * `cumplimientoPrimeraRespuesta` usa el `OR` de la raíz.
+   */
   private buildWhere(filtro: MetricaFiltro): Prisma.TicketWhereInput {
     return {
       deletedAt: null,
       ...(filtro.cicloId && { cicloId: filtro.cicloId }),
       ...(filtro.asignadoId && { asignadoId: filtro.asignadoId }),
+      ...(filtro.alcance && { AND: [whereAlcanceListado(filtro.alcance)] }),
     };
   }
 

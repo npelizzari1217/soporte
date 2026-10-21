@@ -15,7 +15,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { SoporteController } from './soporte.controller';
-import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
 import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
@@ -77,7 +77,11 @@ describe('SoporteController (T13.4)', () => {
       registrarSolucionUseCase.caso,
       obtenerEquipoDeTicketUseCase.caso,
       // Real y con repos vacíos: este spec no ejercita la ruta del QR (la cubre su e2e).
-      new ResolverQrAutenticadoUseCase({ findById: vi.fn() }, { findByQrHash: vi.fn() }),
+      new ResolverQrAutenticadoUseCase(
+        { findById: vi.fn() },
+        { findByQrHash: vi.fn() },
+        { findIdByCodigo: vi.fn() },
+      ),
       // Permisos por tipo del usuario, en la tabla del tenant (odd/permisos-por-tipo-ticket, D5 a).
       new CargadorAlcanceTicket(
         new PermisosTipoTicketEnMemoria(
@@ -117,8 +121,25 @@ describe('SoporteController (T13.4)', () => {
       expect(result.ticketId).toBe('ticket-uuid');
       expect(result.numero).toBe('SOP-2026-00001');
       expect(crearTicketSoporteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ solicitanteId: 'usuario-uuid', autorId: 'usuario-uuid' }),
+        expect.objectContaining({
+          solicitanteId: 'usuario-uuid',
+          autorId: 'usuario-uuid',
+          // ALTAS sobre SOPORTE la decide el caso de uso con estos permisos por tipo (D5 c).
+          alcance: {
+            actorId: 'usuario-uuid',
+            permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
+          },
+        }),
       );
+    });
+
+    it('sin ALTAS sobre SOPORTE → 403', async () => {
+      const { controller, crearTicketSoporteUseCase } = buildController();
+      crearTicketSoporteUseCase.execute.mockResolvedValue(
+        Result.fail(new AccionSobreTipoNoPermitidaError('ALTAS')),
+      );
+
+      await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(ForbiddenException);
     });
 
     it('equipo inválido → 422', async () => {
@@ -149,11 +170,6 @@ describe('SoporteController (T13.4)', () => {
       crearTicketSoporteUseCase.execute.mockResolvedValue(Result.fail(new SinCicloActivoError()));
 
       await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(ConflictException);
-    });
-
-    it('declara @RequiereAcciones("TICKETS:ALTAS")', () => {
-      const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.crear);
-      expect(meta).toEqual(['TICKETS:ALTAS']);
     });
   });
 
@@ -215,11 +231,6 @@ describe('SoporteController (T13.4)', () => {
         controller.registrarSolucion('ticket-uuid', { solucion: 'X' }, USER),
       ).rejects.toThrow(ForbiddenException);
     });
-
-    it('declara @RequiereAcciones("TICKETS:MODIFICACION")', () => {
-      const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.registrarSolucion);
-      expect(meta).toEqual(['TICKETS:MODIFICACION']);
-    });
   });
 
   describe('GET /soporte/:ticketId', () => {
@@ -260,13 +271,14 @@ describe('SoporteController (T13.4)', () => {
         NotFoundException,
       );
     });
+  });
 
-    it('declara @RequiereAcciones("TICKETS:LECTURA") (R5-a: gatea por TICKETS, no EQUIPOS)', () => {
-      const meta = Reflect.getMetadata(
-        ACCIONES_KEY,
-        SoporteController.prototype.obtenerEquipoDeTicket,
-      );
-      expect(meta).toEqual(['TICKETS:LECTURA']);
+  describe('sin @RequiereAcciones de módulo (odd/permisos-por-tipo-ticket, D5 d)', () => {
+    it('ninguna de sus 4 rutas exige una celda: deciden los casos de uso por tipo', () => {
+      const rutas = accionesPorRuta(SoporteController);
+
+      expect(rutas.size).toBe(4);
+      expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
     });
   });
 });

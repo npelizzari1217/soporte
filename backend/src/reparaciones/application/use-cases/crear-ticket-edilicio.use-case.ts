@@ -8,6 +8,10 @@ import { NumeradorTicket } from '../../../tickets/domain/services/numerador-tick
 import { ResolverCicloActivoParaCreacion } from '../../../tickets/application/services/resolver-ciclo-activo.service';
 import { ResolverAsignacionAutomatica } from '../../../tickets/application/services/resolver-asignacion-automatica.service';
 import { operacionesDeApertura } from '../../../tickets/application/services/operaciones-apertura';
+import {
+  AlcanceActorTicket,
+  exigirAccionSobreTipo,
+} from '../../../tickets/application/services/visibilidad-ticket';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../../tickets/domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
@@ -58,6 +62,11 @@ export interface CrearTicketEdilicioDto {
   clienteId: string;
   autorId: string;
   anio: number;
+  /**
+   * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, S6, D5 c): el alta exige `ALTAS`
+   * sobre el tipo resultante (el elegido o EDILICIA). `null` solo en un flujo sin actor humano (D3).
+   */
+  alcance: AlcanceActorTicket | null;
 }
 
 /**
@@ -83,6 +92,7 @@ export interface TicketEdilicioCreado {
  *    `SectorTicketInexistenteError` (odd/ubicacion-sector-ticket).
  * 3. Resuelve el tipo: el elegido en `tipoId` (validado por `resolverTipo`) o, sin él, EDILICIA
  *    por código (catálogo FIJO — su ausencia es un fallo de infraestructura, `throw` defensivo).
+ *    Exige `ALTAS` sobre el tipo resuelto (odd/permisos-por-tipo-ticket, D5 c): 403 sin escribir.
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
  *    (catálogos FIJOS, mismo criterio).
  * 5. **DENTRO de la transacción**: genera el `numero` con el prefijo del tipo resuelto (EDI
@@ -150,6 +160,10 @@ export class CrearTicketEdilicioUseCase {
       return Result.fail(tipoResult.getError());
     }
     const tipo = tipoResult.getValue();
+    const permitido = exigirAccionSobreTipo(dto.alcance, tipo.id, 'ALTAS');
+    if (permitido.isFail()) {
+      return Result.fail(permitido.getError());
+    }
 
     // 4. Catálogos FIJOS garantizados por el seed (Fase 1) — su ausencia
     //    es un bug de infraestructura, no un error del caller: throw defensivo.

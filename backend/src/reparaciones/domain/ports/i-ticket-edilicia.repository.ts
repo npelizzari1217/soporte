@@ -1,4 +1,5 @@
 import { TicketEdiliciaEntity } from '../entities/ticket-edilicia.entity';
+import { AlcanceListadoTickets } from '../../../tickets/domain/ports/i-ticket.repository';
 
 /**
  * ITicketEdiliciaRepository — puerto de persistencia para el satélite
@@ -26,10 +27,12 @@ export interface ITicketEdiliciaRepository {
   findById(id: string): Promise<TicketEdiliciaEntity | null>;
 
   /**
-   * Retorna todos los `ticket_edilicia` del tenant activo, ordenados por
-   * `created_at DESC`. Excluye soft-deleted.
+   * Retorna los `ticket_edilicia` del tenant activo cuyo ticket base entra en el alcance del actor
+   * (odd/permisos-por-tipo-ticket, D5 e: tipos con `LECTURA`, y por la regla de fila salvo en los
+   * de `VER_TODOS`), ordenados por `created_at DESC`. Excluye soft-deleted. El alcance lo aplica la
+   * base en la misma consulta. `null` = sin restricción (ROOT y ADMINISTRADOR).
    */
-  findAll(): Promise<TicketEdiliciaEntity[]>;
+  findAll(alcance: AlcanceListadoTickets | null): Promise<TicketEdiliciaEntity[]>;
 
   /**
    * Persiste el `ticket_edilicia` (upsert: crea si no existe, actualiza si

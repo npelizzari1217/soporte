@@ -11,11 +11,11 @@
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard` (WU-7.3,
  * sdd/matriz-permisos-por-usuario — mismo patrón que `TicketsController`),
- * con `@RequiereAcciones('TICKETS:ALTAS')` en las dos rutas (R5): subir un
- * adjunto es un alta. El acceso al ticket/operación DUEÑO se resuelve DENTRO
- * de `AdjuntarArchivoUseCase` con el alcance por tipo que carga
+ * sin `@RequiereAcciones` (odd/permisos-por-tipo-ticket, D5 d): la celda
+ * `TICKETS:ALTAS` ya no decide. El acceso al ticket/operación DUEÑO se resuelve
+ * DENTRO de `AdjuntarArchivoUseCase` con el alcance por tipo que carga
  * `CargadorAlcanceTicket`: ver el ticket, como en el detalle, y además `ALTAS`
- * o `MODIFICACION` sobre su tipo (odd/permisos-por-tipo-ticket, D5 c).
+ * o `MODIFICACION` sobre su tipo (D5 c).
  *
  * `FileInterceptor('archivo')` sin `storage` explícito → multer usa
  * `memoryStorage` por default (el binario llega en `file.buffer`, NUNCA se
@@ -42,7 +42,7 @@ import { toHttpException } from './tickets.controller';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
-import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { CurrentUser } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { CargadorAlcanceTicket } from '../alcance-ticket';
 
@@ -62,7 +62,6 @@ export class AdjuntosController {
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
    */
   @Post('tickets/:id/adjuntos')
-  @RequiereAcciones('TICKETS:ALTAS')
   @UseInterceptors(FileInterceptor('archivo'))
   async adjuntarATicket(
     @CurrentUser() user: JwtPayload,
@@ -98,7 +97,6 @@ export class AdjuntosController {
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
    */
   @Post('operaciones/:id/adjuntos')
-  @RequiereAcciones('TICKETS:ALTAS')
   @UseInterceptors(FileInterceptor('archivo'))
   async adjuntarAOperacion(
     @CurrentUser() user: JwtPayload,

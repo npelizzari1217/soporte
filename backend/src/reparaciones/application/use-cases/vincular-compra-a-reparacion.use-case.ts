@@ -2,10 +2,10 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ICompraRepository } from '../../../compras/domain/ports/i-compra.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
-import {
-  TicketEdiliciaNoEncontradoError,
-  CompraNoEncontradaError,
-} from '../../domain/errors/reparaciones.errors';
+import { CompraNoEncontradaError } from '../../domain/errors/reparaciones.errors';
+import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { cargarReparacionParaOperar } from '../services/acceso-reparacion';
 
 /** DTO de entrada para vincular una compra a una reparación. */
 export interface VincularCompraAReparacionDto {
@@ -13,6 +13,8 @@ export interface VincularCompraAReparacionDto {
   ticketEdiliciaId: string;
   /** UUID de la compra a vincular. */
   compraId: string;
+  /** Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 c). */
+  alcance: AlcanceActorTicket;
 }
 
 /**
@@ -22,7 +24,10 @@ export interface VincularCompraAReparacionDto {
  *
  * Flujo:
  * 1. Verifica que la reparación (`ticket_edilicia`) exista → 404
- *    (`TicketEdiliciaNoEncontradoError`) si no existe o está eliminada.
+ *    (`TicketEdiliciaNoEncontradoError`) si no existe o está eliminada, o si el
+ *    actor no ve su ticket base; y que tenga `ALTAS` sobre el tipo de ese ticket
+ *    → 403 (odd/permisos-por-tipo-ticket, D5 c; es lo que daba `EDILICIA:ALTAS`).
+ *    `COMPRAS:LECTURA` lo sigue exigiendo la ruta: es un permiso de otro módulo.
  * 2. Verifica que la compra exista (D7: vía `ICompraRepository.findByIdConItems`,
  *    puerto de OTRO módulo, importado por token — sin cambiar su firma) → 404
  *    (`CompraNoEncontradaError`) si `findByIdConItems` devuelve `null`.
@@ -41,12 +46,19 @@ export class VincularCompraAReparacionUseCase {
     private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById'>,
     private readonly compraRepo: Pick<ICompraRepository, 'findByIdConItems'>,
     private readonly reparacionCompraRepo: Pick<IReparacionCompraRepository, 'vincular'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
   ) {}
 
   async execute(dto: VincularCompraAReparacionDto): Promise<Result<void, DomainError>> {
-    const ticketEdilicia = await this.ticketEdiliciaRepo.findById(dto.ticketEdiliciaId);
-    if (!ticketEdilicia || ticketEdilicia.isDeleted()) {
-      return Result.fail(new TicketEdiliciaNoEncontradoError(dto.ticketEdiliciaId));
+    const acceso = await cargarReparacionParaOperar(
+      this.ticketEdiliciaRepo,
+      this.ticketRepo,
+      dto.ticketEdiliciaId,
+      dto.alcance,
+      'ALTAS',
+    );
+    if (acceso.isFail()) {
+      return Result.fail(acceso.getError());
     }
 
     const compra = await this.compraRepo.findByIdConItems(dto.compraId);

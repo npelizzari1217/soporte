@@ -107,10 +107,8 @@ describe('TicketPdfController — GET /tickets/:id/pdf', () => {
     actual = usuario([]);
   });
 
-  it('declara @RequiereAcciones("TICKETS:LECTURA"), la misma acción que el detalle', () => {
-    expect(Reflect.getMetadata(ACCIONES_KEY, TicketPdfController.prototype.pdf)).toEqual([
-      'TICKETS:LECTURA',
-    ]);
+  it('no declara @RequiereAcciones: decide IMPRESION sobre el tipo, no la celda TICKETS:LECTURA (D5 d)', () => {
+    expect(Reflect.getMetadata(ACCIONES_KEY, TicketPdfController.prototype.pdf)).toBeUndefined();
   });
 
   it('entrega los bytes EXACTOS del PDF (no JSON) con content-type, nombre y header de CORS', async () => {

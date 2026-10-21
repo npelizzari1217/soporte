@@ -20,7 +20,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { TicketsController, toHttpException } from './tickets.controller';
-import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { DomainError, Result } from '../../../shared/domain/result';
@@ -322,34 +322,33 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
   });
 });
 
-describe('TicketsController.findAll — gate de módulo (5.2 CAPA 2)', () => {
-  it('ADMINISTRADOR → pasa modulosPermitidos=null (sin restricción de módulo)', async () => {
+describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
+  it('usuario común → pasa los permisos por tipo de la tabla del tenant, no las celdas del JWT', async () => {
     const { controller, listarTickets } = buildController();
 
-    await controller.findAll(ADMINISTRADOR, {});
+    await controller.findAll(USUARIO_SOPORTE, { tipo: 'ti1' });
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: null }),
+      expect.objectContaining({
+        alcance: {
+          actorId: 'usr-2',
+          permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+        },
+        filtros: expect.objectContaining({ tiposIds: ['ti1'] }),
+      }),
     );
   });
 
-  it("usuario normal con modulos=['SOPORTE'] → pasa modulosPermitidos=['SOPORTE']", async () => {
+  it.each([
+    ['ADMINISTRADOR', ADMINISTRADOR],
+    ['ROOT', ROOT],
+  ])('%s → sin restricción por tipo (permisosPorTipo null)', async (_rol, actor) => {
     const { controller, listarTickets } = buildController();
 
-    await controller.findAll(USUARIO_SOPORTE, {});
+    await controller.findAll(actor, {});
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: ['SOPORTE'] }),
-    );
-  });
-
-  it('ROOT → pasa modulosPermitidos=null (bypass por is_global_admin)', async () => {
-    const { controller, listarTickets } = buildController();
-
-    await controller.findAll(ROOT, {});
-
-    expect(listarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: null }),
+      expect.objectContaining({ alcance: { actorId: actor.sub, permisosPorTipo: null } }),
     );
   });
 });
@@ -626,6 +625,32 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     );
   });
 
+  it('create: delega con el alcance por tipo del actor; sin ALTAS sobre el tipo responde 403', async () => {
+    const crearTicket = {
+      execute: vi
+        .fn<CrearTicketUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketsErrors.AccionSobreTipoNoPermitidaError('ALTAS'))),
+    };
+    const { controller } = buildController({ crearTicket });
+
+    const promesa = controller.create(USUARIO_SOPORTE, {
+      titulo: 'X',
+      tipoId: 'ti1',
+      prioridadId: 'p1',
+    });
+
+    await expect(promesa).rejects.toBeInstanceOf(ForbiddenException);
+    expect(crearTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipoId: 'ti1',
+        alcance: {
+          actorId: 'usr-2',
+          permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+        },
+      }),
+    );
+  });
+
   it('create: exige tipos del módulo TICKETS y responde 422 a un tipo de otro módulo (S3)', async () => {
     const crearTicket = {
       execute: vi
@@ -798,7 +823,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
   });
 
-  it('deriva el scope de filas del actor (TICKETS:VER_TODOS), NUNCA del query — sin el permiso, exporta acotado al actor', async () => {
+  it('deriva el alcance de los permisos por tipo del actor, NUNCA del query', async () => {
     const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
@@ -808,12 +833,17 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     await controller.exportar(USUARIO_SOPORTE, {}, respuestaFalsa().res);
 
     expect(exportarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ actorId: 'usr-2', tienePermisoVerTodos: false }),
+      expect.objectContaining({
+        alcance: {
+          actorId: 'usr-2',
+          permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+        },
+      }),
       'csv',
     );
   });
 
-  it('ADMINISTRADOR → pasa modulosPermitidos=null (mismo gate de módulo que findAll)', async () => {
+  it('ADMINISTRADOR → sin restricción por tipo (mismo alcance que findAll)', async () => {
     const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
@@ -823,7 +853,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     await controller.exportar(ADMINISTRADOR, {}, respuestaFalsa().res);
 
     expect(exportarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: null }),
+      expect.objectContaining({ alcance: { actorId: 'admin-1', permisosPorTipo: null } }),
       'csv',
     );
   });
@@ -864,15 +894,19 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     );
     expect(headers.size).toBe(0);
   });
+});
 
-  /**
-   * Regresión del gap CRITICAL de sdd-verify: el decorador ya estaba presente
-   * en la ruta, pero ningún test lo ejercía — borrarlo no rompía nada acá.
-   * Mismo patrón que equipos/reparaciones (`ACCIONES_KEY` vía `Reflect.getMetadata`).
-   */
-  it('declara @RequiereAcciones("TICKETS:LECTURA")', () => {
-    const meta = Reflect.getMetadata(ACCIONES_KEY, TicketsController.prototype.exportar);
-    expect(meta).toEqual(['TICKETS:LECTURA']);
+/**
+ * odd/permisos-por-tipo-ticket, D5 d: ninguna ruta del controller exige una celda de módulo
+ * (`TICKETS:*`): deciden los casos de uso con los permisos por tipo. Se recorren TODOS los métodos
+ * con ruta, así que una ruta nueva con `@RequiereAcciones` de módulo también pone esto en rojo.
+ */
+describe('TicketsController — sin @RequiereAcciones de módulo (D5 d)', () => {
+  it('ninguna de sus 11 rutas exige una celda: deciden los casos de uso por tipo', () => {
+    const rutas = accionesPorRuta(TicketsController);
+
+    expect(rutas.size).toBe(11);
+    expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
   });
 });
 

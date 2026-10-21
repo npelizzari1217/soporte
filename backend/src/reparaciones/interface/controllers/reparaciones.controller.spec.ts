@@ -13,15 +13,23 @@
  * Tarea: T8.6, T9.6.
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException, StreamableFile } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+  StreamableFile,
+} from '@nestjs/common';
 import { ReparacionesController, toHttpException } from './reparaciones.controller';
-import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import {
+  AccionSobreTipoNoPermitidaError,
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
   TipoTicketNoPermitidoEnAltaError,
@@ -58,6 +66,28 @@ const USER = payloadDeTest({
   permisos: ['ticket:crear', 'subtarea:actualizar'],
   cliente_nombre: 'Cliente Test',
 });
+
+/**
+ * Permisos por tipo de `usuario-uuid` en la tabla del tenant (odd/permisos-por-tipo-ticket, D5 a):
+ * ve y modifica el tipo EDILICIA. El controller los carga y los pasa; deciden los casos de uso.
+ */
+const ALCANCE_USER = {
+  actorId: 'usuario-uuid',
+  permisosPorTipo: new Map([['tipo-edilicia-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
+};
+
+/** Cargador real sobre la tabla en memoria con las filas de `ALCANCE_USER`. */
+function cargadorDeAlcance(): CargadorAlcanceTicket {
+  return new CargadorAlcanceTicket(
+    new PermisosTipoTicketEnMemoria(
+      [],
+      [
+        { usuarioId: 'usuario-uuid', tipoId: 'tipo-edilicia-uuid', accion: 'LECTURA' },
+        { usuarioId: 'usuario-uuid', tipoId: 'tipo-edilicia-uuid', accion: 'MODIFICACION' },
+      ],
+    ),
+  );
+}
 
 /** Campos del shape de subtarea que espera `frontend/src/features/edilicia`. */
 const CAMPOS_SUBTAREA = [
@@ -129,6 +159,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       vincularCompraUseCase.caso,
       desvincularCompraUseCase.caso,
       editarReparacionUseCase.caso,
+      cargadorDeAlcance(),
     );
 
     return {
@@ -279,11 +310,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ),
       ).rejects.toMatchObject({ status: 409 });
     });
-
-    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
-      const permisos = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.crear);
-      expect(permisos).toEqual(['EDILICIA:ALTAS']);
-    });
   });
 
   describe('GET /reparaciones', () => {
@@ -298,9 +324,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         .spyOn(listarReparacionesUseCase.caso, 'executePaginado')
         .mockResolvedValue(Result.ok({ items: [], total: 57, pagina: 1, porPagina: 20 }));
 
-      const respuesta = await controller.listar({});
+      const respuesta = await controller.listar(USER, {});
 
-      expect(spy).toHaveBeenCalledWith({ pagina: 1, porPagina: 20, bloqueo: 'TODAS' });
+      expect(spy).toHaveBeenCalledWith({
+        pagina: 1,
+        porPagina: 20,
+        bloqueo: 'TODAS',
+        alcance: ALCANCE_USER,
+      });
       expect(respuesta).toEqual({ items: [], total: 57, pagina: 1, porPagina: 20 });
     });
 
@@ -310,9 +341,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         .spyOn(listarReparacionesUseCase.caso, 'executePaginado')
         .mockResolvedValue(Result.ok({ items: [], total: 0, pagina: 3, porPagina: 5 }));
 
-      await controller.listar({ pagina: 3, porPagina: 5, bloqueo: 'BLOQUEADAS' });
+      await controller.listar(USER, { pagina: 3, porPagina: 5, bloqueo: 'BLOQUEADAS' });
 
-      expect(spy).toHaveBeenCalledWith({ pagina: 3, porPagina: 5, bloqueo: 'BLOQUEADAS' });
+      expect(spy).toHaveBeenCalledWith({
+        pagina: 3,
+        porPagina: 5,
+        bloqueo: 'BLOQUEADAS',
+        alcance: ALCANCE_USER,
+      });
     });
 
     it('lista las reparaciones del tenant', async () => {
@@ -341,7 +377,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ),
       );
 
-      const { items: result } = await controller.listar({});
+      const { items: result } = await controller.listar(USER, {});
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('edilicia-uuid');
@@ -383,7 +419,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ),
       );
 
-      const { items: result } = await controller.listar({});
+      const { items: result } = await controller.listar(USER, {});
 
       expect(result[0].porcentajeAvance).toBe(37.5);
       expect(result[0]).not.toHaveProperty('personalAsignadoId');
@@ -395,11 +431,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         descripcion: 'Cambiar cañería',
         completada: false,
       });
-    });
-
-    it('declara @RequiereAcciones("EDILICIA:LECTURA") (WU-7.3: reemplaza el gate de módulo puro)', () => {
-      const permisos = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.listar);
-      expect(permisos).toEqual(['EDILICIA:LECTURA']);
     });
   });
 
@@ -439,6 +470,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ticketEdiliciaId: 'edilicia-uuid',
         texto: 'Falta el repuesto X',
         autorId: 'usuario-uuid',
+        alcance: ALCANCE_USER,
       });
     });
 
@@ -466,14 +498,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         message: 'El ticket está cerrado y no acepta comentarios nuevos.',
       });
     });
-
-    it('declara @RequiereAcciones("EDILICIA:ALTAS")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.crearComentario,
-      );
-      expect(permisos).toEqual(['EDILICIA:ALTAS']);
-    });
   });
 
   describe('GET /reparaciones/:reparacionId/comentarios', () => {
@@ -490,7 +514,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         new Map([['usuario-uuid', { nombre: 'Ana', apellido: 'Gómez' }]]),
       );
 
-      const result = await controller.listarComentarios('edilicia-uuid');
+      const result = await controller.listarComentarios('edilicia-uuid', USER);
 
       expect(result.map((c) => c.id)).toEqual(['c2', 'c1']);
       expect(result.every((c) => c.autorNombre === 'Ana')).toBe(true);
@@ -509,7 +533,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ]),
       );
 
-      const result = await controller.listarComentarios('edilicia-uuid');
+      const result = await controller.listarComentarios('edilicia-uuid', USER);
 
       expect(result[0].autorId).toBe('baja-uuid');
       expect(result[0].autorNombre).toBeNull();
@@ -522,17 +546,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
       );
 
-      await expect(controller.listarComentarios('edilicia-uuid')).rejects.toBeInstanceOf(
+      await expect(controller.listarComentarios('edilicia-uuid', USER)).rejects.toBeInstanceOf(
         NotFoundException,
       );
-    });
-
-    it('declara @RequiereAcciones("EDILICIA:LECTURA")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.listarComentarios,
-      );
-      expect(permisos).toEqual(['EDILICIA:LECTURA']);
     });
   });
 
@@ -541,11 +557,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, vincularCompraUseCase } = buildController();
       vincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
-      await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' });
+      await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER);
 
       expect(vincularCompraUseCase.execute).toHaveBeenCalledWith({
         ticketEdiliciaId: 'edilicia-uuid',
         compraId: 'compra-uuid',
+        alcance: ALCANCE_USER,
       });
     });
 
@@ -556,7 +573,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       await expect(
-        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }),
+        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
 
@@ -567,20 +584,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       await expect(
-        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }),
+        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER),
       ).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    // WU5.9: decorador COMPLETO — decisión de producto #2435, R3 (AND). El
-    // test de autorización real por HTTP (`reparaciones.e2e.spec.ts`, WU5.8)
-    // demostró que con UN solo argumento un actor con SOLO EDILICIA:ALTAS
-    // pasaba y recibía 201/404, nunca 403.
-    it('declara @RequiereAcciones("EDILICIA:ALTAS", "COMPRAS:LECTURA")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.vincularCompra,
-      );
-      expect(permisos).toEqual(['EDILICIA:ALTAS', 'COMPRAS:LECTURA']);
     });
   });
 
@@ -624,6 +629,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ubicacion: 'Aula 3',
         sectorId: 'sector-uuid',
         actorEsRoot: false,
+        alcance: ALCANCE_USER,
       });
       expect(respuesta).toMatchObject({
         id: 'edilicia-uuid',
@@ -671,11 +677,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         status: http,
       });
     });
-
-    it('declara @RequiereAcciones("EDILICIA:MODIFICACION")', () => {
-      const permisos = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.editar);
-      expect(permisos).toEqual(['EDILICIA:MODIFICACION']);
-    });
   });
 
   describe('DELETE /reparaciones/:reparacionId/compras/:compraId', () => {
@@ -683,11 +684,12 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, desvincularCompraUseCase } = buildController();
       desvincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
-      await controller.desvincularCompra('edilicia-uuid', 'compra-uuid');
+      await controller.desvincularCompra('edilicia-uuid', 'compra-uuid', USER);
 
       expect(desvincularCompraUseCase.execute).toHaveBeenCalledWith({
         ticketEdiliciaId: 'edilicia-uuid',
         compraId: 'compra-uuid',
+        alcance: ALCANCE_USER,
       });
     });
 
@@ -698,20 +700,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       await expect(
-        controller.desvincularCompra('edilicia-uuid', 'compra-uuid'),
+        controller.desvincularCompra('edilicia-uuid', 'compra-uuid', USER),
       ).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    // Desvincular NO exige COMPRAS:LECTURA (ver design + tasks, WU5, "Por qué
-    // desvincular NO tiene el mismo problema"): el `numero` que ve quien
-    // desvincula sale de `comprasQueBloquean[]` en `GET /reparaciones`
-    // (EDILICIA:LECTURA), no de `GET /compras`.
-    it('declara @RequiereAcciones("EDILICIA:BORRADO")', () => {
-      const permisos = Reflect.getMetadata(
-        ACCIONES_KEY,
-        ReparacionesController.prototype.desvincularCompra,
-      );
-      expect(permisos).toEqual(['EDILICIA:BORRADO']);
     });
   });
 });
@@ -733,6 +723,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
       espiado(VincularCompraAReparacionUseCase).caso,
       espiado(DesvincularCompraDeReparacionUseCase).caso,
       espiado(EditarReparacionUseCase).caso,
+      cargadorDeAlcance(),
     );
     return { controller, exportarReparaciones };
   }
@@ -746,11 +737,6 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     };
   }
 
-  it('declara @RequiereAcciones("EDILICIA:LECTURA")', () => {
-    const meta = Reflect.getMetadata(ACCIONES_KEY, ReparacionesController.prototype.exportar);
-    expect(meta).toEqual(['EDILICIA:LECTURA']);
-  });
-
   it('entrega el CSV como descarga, con el nombre que resolvió el use case', async () => {
     const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
@@ -759,7 +745,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(res);
+    const salida = await controller.exportar(USER, res);
 
     expect(salida).toBe('Número;Título');
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
@@ -777,10 +763,10 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(res, 'xlsx');
+    const salida = await controller.exportar(USER, res, 'xlsx');
 
     expect(salida).toBeInstanceOf(StreamableFile);
-    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith('xlsx');
+    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith(ALCANCE_USER, 'xlsx');
     expect(headers.get('Content-Type')).toBe(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
@@ -798,23 +784,23 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(res);
+    const salida = await controller.exportar(USER, res);
 
     expect(salida).toBe('a;b');
-    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith('csv');
+    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith(ALCANCE_USER, 'csv');
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
   });
 
-  it('no recibe query ni filtros — llama a execute() solo con el formato', async () => {
+  it('no recibe query ni filtros — llama a execute() solo con el alcance del actor y el formato', async () => {
     const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
     );
     const { controller } = buildController({ exportarReparaciones });
 
-    await controller.exportar(respuestaFalsa().res);
+    await controller.exportar(USER, respuestaFalsa().res);
 
-    expect(exportarReparaciones.execute).toHaveBeenCalledWith('csv');
+    expect(exportarReparaciones.execute).toHaveBeenCalledWith(ALCANCE_USER, 'csv');
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
@@ -825,7 +811,9 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    await expect(controller.exportar(res)).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(controller.exportar(USER, res)).rejects.toBeInstanceOf(
+      UnprocessableEntityException,
+    );
     expect(headers.size).toBe(0);
   });
 });
@@ -910,5 +898,72 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     } else {
       expect(excepcion).toBeInstanceOf(UnprocessableEntityException);
     }
+  });
+});
+
+describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ticket, D5 c-e)', () => {
+  function armar() {
+    const crearTicketEdilicio = espiado(CrearTicketEdilicioUseCase);
+    const crearComentario = espiado(CrearComentarioReparacionUseCase);
+    const editar = espiado(EditarReparacionUseCase);
+    const controller = new ReparacionesController(
+      crearTicketEdilicio.caso,
+      espiado(ListarReparacionesUseCase).caso,
+      crearComentario.caso,
+      espiado(ListarComentariosReparacionUseCase).caso,
+      usuarioMasterCheckerFalso(),
+      espiado(ExportarReparacionesUseCase).caso,
+      espiado(VincularCompraAReparacionUseCase).caso,
+      espiado(DesvincularCompraDeReparacionUseCase).caso,
+      editar.caso,
+      cargadorDeAlcance(),
+    );
+    return { controller, crearTicketEdilicio, crearComentario, editar };
+  }
+
+  /**
+   * Las celdas `EDILICIA:*` dejan de decidir (D5 d). Quedan solo las de otro módulo:
+   * `COMPRAS:LECTURA` al vincular (el selector lee `GET /compras`) y `EDILICIA:BORRADO` al
+   * desvincular, que sigue siendo permiso del módulo y no entra a la tabla por tipo (L21).
+   */
+  it('solo vincular y desvincular compra declaran @RequiereAcciones, y ninguna celda EDILICIA de tickets', () => {
+    const rutas = accionesPorRuta(ReparacionesController);
+
+    expect(rutas.size).toBe(8);
+    expect(Object.fromEntries([...rutas].filter(([, acciones]) => acciones.length > 0))).toEqual({
+      vincularCompra: ['COMPRAS:LECTURA'],
+      desvincularCompra: ['EDILICIA:BORRADO'],
+    });
+  });
+
+  it('POST /reparaciones pasa el alcance; sin ALTAS sobre el tipo resultante responde 403', async () => {
+    const { controller, crearTicketEdilicio } = armar();
+    crearTicketEdilicio.execute.mockResolvedValue(
+      Result.fail(new AccionSobreTipoNoPermitidaError('ALTAS')),
+    );
+
+    await expect(controller.crear({ titulo: 'X', prioridadId: 'p' }, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(crearTicketEdilicio.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ tipoId: null, alcance: ALCANCE_USER }),
+    );
+  });
+
+  it('una reparación que el actor ve sin la acción sobre su tipo llega como 403 (editar y comentar)', async () => {
+    const { controller, crearComentario, editar } = armar();
+    crearComentario.execute.mockResolvedValue(
+      Result.fail(new AccionSobreTipoNoPermitidaError('ALTAS o COMENTAR')),
+    );
+    editar.execute.mockResolvedValue(
+      Result.fail(new AccionSobreTipoNoPermitidaError('MODIFICACION')),
+    );
+
+    await expect(
+      controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(controller.editar('edilicia-uuid', {}, USER)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
   });
 });

@@ -73,6 +73,8 @@ describe('CrearTicketUseCase con regla de asignación — integración (A1, A3, 
         clienteId: CLIENTE_ID,
         autorId: SOLICITANTE,
         anio: 2026,
+        // Esta suite prueba la regla de asignación, no los permisos por tipo.
+        alcance: null,
       }),
     );
 

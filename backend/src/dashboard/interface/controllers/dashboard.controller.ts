@@ -7,10 +7,12 @@
  *
  * Gateo (D3): TODA la ruta exige `DASHBOARD:LECTURA` (WU-7.3, renombrado
  * desde `ticket:ver_todos`) — lo comparten COLABORADOR/TECNICO/ADMINISTRADOR,
- * USUARIO queda excluido (403). El scope self (TECNICO, D2) vs. global
- * (ADMINISTRADOR/COLABORADOR) se resuelve DENTRO del use case a partir de
- * `actorRol` — el controller solo traduce HTTP ↔ use case, sin lógica de
- * negocio.
+ * USUARIO queda excluido (403). Es una celda del módulo Dashboard, que no es
+ * de tickets: se conserva (odd/permisos-por-tipo-ticket, S5). El scope self
+ * (TECNICO, D2) se resuelve DENTRO del use case a partir de `actorRol`, y el
+ * alcance por tipo (D5 e) con los permisos por tipo que carga
+ * `CargadorAlcanceTicket` — el controller solo traduce HTTP ↔ use case, sin
+ * lógica de negocio.
  *
  * Ref spec: sdd/premium/spec D1, D2, D3. Tarea: D5/D6.
  */
@@ -27,6 +29,7 @@ import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guar
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { puedeEjecutar } from '../../../auth/domain/permisos.util';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 
 /** WU9.1 (ADR-C5): gateo del KPI de satisfacción POR CAMPO, no por decorador. */
 const ACCION_CSAT_LECTURA = 'CSAT:LECTURA';
@@ -35,7 +38,10 @@ const ACCION_CSAT_LECTURA = 'CSAT:LECTURA';
 @RequiereAcciones('DASHBOARD:LECTURA')
 @Controller('dashboard')
 export class DashboardController {
-  constructor(private readonly obtenerMetricasUseCase: ObtenerMetricasUseCase) {}
+  constructor(
+    private readonly obtenerMetricasUseCase: ObtenerMetricasUseCase,
+    private readonly alcances: CargadorAlcanceTicket,
+  ) {}
 
   /**
    * GET /dashboard/metricas
@@ -56,6 +62,7 @@ export class DashboardController {
       actorRol: user.rol,
       cicloId: query.ciclo,
       tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
+      alcance: await this.alcances.cargar(user),
     });
     return toMetricasResponseDto(metricas);
   }

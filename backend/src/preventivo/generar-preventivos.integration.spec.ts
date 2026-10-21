@@ -411,6 +411,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
         clienteId: CLIENTE_ID,
         autorId: DUMMY_RESPONSABLE_ID,
         anio: mediaNoche.getUTCFullYear(),
+        alcance: null,
       }),
     );
     const ticketAbierto = ticketAbiertoResult.getValue();

@@ -269,6 +269,7 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
         ...base(`CAN edilicia ${++contador}`),
         solicitanteId: SOLICITANTE,
         autorId: SOLICITANTE,
+        alcance: null,
       }),
     );
 
@@ -308,6 +309,7 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
         tipoId: ids.soporte,
         solicitanteId: SOLICITANTE,
         autorId: SOLICITANTE,
+        alcance: null,
       }),
     );
 

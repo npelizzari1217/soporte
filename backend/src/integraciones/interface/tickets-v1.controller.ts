@@ -111,9 +111,9 @@ export class TicketsV1Controller {
     @Query() query: ListarTicketsV1QueryDto,
   ): Promise<ListaTicketsV1> {
     const result = await this.listarTickets.execute({
-      actorId: actor.sub,
-      tienePermisoVerTodos: puedeEjecutar(actor, ACCION_VER_TODOS),
-      modulosPermitidos: actor.modulos,
+      // Los tipos del modulo de v1 con LECTURA, y VER_TODOS si la clave lo tiene: el mismo alcance
+      // que antes daban `modulosPermitidos` y `tienePermisoVerTodos` (D5 e, f).
+      alcance: alcanceV1(actor, await this.ticketsV1.tiposDeV1(), accionesDeLecturaV1(actor)),
       pagina: query.pagina,
       porPagina: query.porPagina,
       filtros: {
@@ -215,6 +215,9 @@ export class TicketsV1Controller {
       clienteId: actor.cliente_id as string,
       autorId: actor.sub,
       anio: new Date().getFullYear(),
+      // La clave no tiene filas por tipo: su alta la deciden `TICKETS:ALTAS` de la ruta y el tipo
+      // del catalogo de v1 (`validarParaAlta`), igual que antes (D3, D5 f; lo revisa T5c).
+      alcance: null,
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());

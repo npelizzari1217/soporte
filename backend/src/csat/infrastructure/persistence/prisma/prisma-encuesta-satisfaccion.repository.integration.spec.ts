@@ -207,5 +207,58 @@ describe('PrismaEncuestaSatisfaccionRepository — Integration (5.3)', () => {
         expect(resumenDeA.promedio).toBe(3);
       });
     });
+
+    it('aplica el alcance por tipo del actor (odd/permisos-por-tipo-ticket, D5 e): VER_TODOS en un tipo, regla de fila en otro', async () => {
+      const actor = randomUUID();
+      const otro = randomUUID();
+      const tipoVerTodos = await tenantClient.tipoTicket.create({
+        data: {
+          codigo: `CS5_ALC_${randomBytes(3).toString('hex')}`,
+          nombre: 'Tipo con VER_TODOS',
+          activo: true,
+          modulo: 'SOPORTE',
+        },
+      });
+      try {
+        // Del tipo por fila: el del actor (es su responsable) entra; el de otro, no.
+        const propio = await createTestTicket(actor);
+        const ajeno = await createTestTicket(otro);
+        // Del tipo con VER_TODOS entra aunque sea de otro.
+        const deVerTodos = await tenantClient.ticket.create({
+          data: {
+            numero: nextNumero(),
+            titulo: 'Ticket de test 5.3 (VER_TODOS)',
+            tipoId: tipoVerTodos.id,
+            estadoId,
+            prioridadId,
+            solicitanteId: DUMMY_USUARIO_ID,
+            asignadoId: otro,
+          },
+        });
+
+        await withTenant(async () => {
+          await repo.guardar(makeRespuesta(propio, 2, new Date()));
+          await repo.guardar(makeRespuesta(ajeno, 1, new Date()));
+          await repo.guardar(makeRespuesta(deVerTodos.id, 5, new Date()));
+
+          const resumen = await repo.resumenPorScope({
+            alcance: { actorId: actor, tiposVerTodos: [tipoVerTodos.id], tiposPorFila: [tipoId] },
+          });
+          expect(resumen).toEqual({ promedio: 3.5, respuestas: 2 });
+
+          // Sin LECTURA sobre el tipo de VER_TODOS y fuera de la regla de fila: nada.
+          const sinTipo = await repo.resumenPorScope({
+            alcance: { actorId: actor, tiposVerTodos: [], tiposPorFila: [tipoVerTodos.id] },
+          });
+          expect(sinTipo).toEqual({ promedio: null, respuestas: 0 });
+        });
+      } finally {
+        await tenantClient.encuestaSatisfaccion.deleteMany({
+          where: { ticket: { tipoId: tipoVerTodos.id } },
+        });
+        await tenantClient.ticket.deleteMany({ where: { tipoId: tipoVerTodos.id } });
+        await tenantClient.tipoTicket.delete({ where: { id: tipoVerTodos.id } });
+      }
+    });
   });
 });
