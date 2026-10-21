@@ -10,7 +10,7 @@ import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
-import { esModuloDelTipoPermitido } from '../services/visibilidad-ticket';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `AdjuntarArchivoUseCase`.
@@ -23,17 +23,13 @@ import { esModuloDelTipoPermitido } from '../services/visibilidad-ticket';
  *   `archivos_operacion`) — el ticket dueño se resuelve vía
  *   `operacionRepo.findById` (deviation de PR10, ver `IOperacionTicketRepository`).
  *
- * `tienePermisoVerTodos`/`tienePermisoEditar` los calcula el controller a
- * partir de `user.permisos.includes(...)` (mismo patrón que
- * `ObtenerTicketUseCase`/`ListarTimelineUseCase`) — usados para el chequeo
- * de acceso ADR-2 ("Adjuntar: acceso al ticket — solicitante O
- * ticket:ver_todos/ticket:editar —, sin permiso dedicado").
- *
- * `modulosPermitidos` acota además por el módulo del tipo del ticket, con el mismo criterio que
- * el listado y el detalle (odd/permisos-por-tipo-ticket, S0); `null` es sin restricción (ROOT y
- * ADMINISTRADOR).
+ * El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el JWT
+ * (`alcanceTicketDesdeJwt`): adjuntar exige poder ver el ticket, con el mismo criterio que el
+ * listado y el detalle (odd/permisos-por-tipo-ticket, S0). Reemplaza la regla ADR-2 (solicitante,
+ * `VER_TODOS` o `MODIFICACION`): `MODIFICACION` sin ver el ticket ya no alcanza, y el responsable o
+ * el técnico de una tarea activa sí adjuntan.
  */
-export interface AdjuntarArchivoDto {
+export interface AdjuntarArchivoDto extends AlcanceActorTicket {
   ticketId?: string;
   operacionId?: string;
   nombreOriginal: string;
@@ -41,10 +37,6 @@ export interface AdjuntarArchivoDto {
   tamanoBytes: bigint;
   buffer: Buffer;
   subidoPorId: string;
-  actorId: string;
-  tienePermisoVerTodos: boolean;
-  tienePermisoEditar: boolean;
-  modulosPermitidos: readonly string[] | null;
 }
 
 /**
@@ -55,12 +47,11 @@ export interface AdjuntarArchivoDto {
  * 1. Resuelve el ticket "dueño": directo (`ticketId`) o vía la operación
  *    (`operacionId` → `operacion.ticketId`). Si el ticket o la operación no
  *    existen (o están soft-deleted) → `TicketNoEncontradoError` (404).
- * 2. Verifica acceso al ticket (ADR-2, sin permiso RBAC dedicado): el actor
- *    debe ser el `solicitanteId`, o tener `ticket:ver_todos`/`ticket:editar`.
- *    Sin acceso → `TicketNoEncontradoError` (404 — mismo criterio de "no
- *    revela existencia" que T6/T18, no 403). El módulo del tipo del ticket
- *    también tiene que estar entre los del actor (`esModuloDelTipoPermitido`,
- *    odd/permisos-por-tipo-ticket S0); si no, también 404.
+ * 2. Verifica acceso al ticket con el punto único `esTicketAccesiblePara`
+ *    (odd/permisos-por-tipo-ticket S0): módulo del tipo entre los del actor y
+ *    visibilidad de fila (`VER_TODOS`, solicitante, responsable o técnico de
+ *    una tarea activa). Sin acceso → `TicketNoEncontradoError` (404 — mismo
+ *    criterio de "no revela existencia" que T6/T18, no 403).
  * 3. Pre-genera un UUIDv7 para el archivo y construye la storage key
  *    determinística (ADR-7): `tickets/{ticketId}/{archivoId}` si se adjunta
  *    directo al ticket, `operaciones/{operacionId}/{archivoId}` si se
@@ -81,12 +72,12 @@ export interface AdjuntarArchivoDto {
  * infraestructura usan `throw` defensivo (mismo patrón que
  * `CrearTicketUseCase`/`TransicionarEstadoUseCase`/`AsignarTicketUseCase`).
  *
- * Ref spec: sdd/tickets-core/spec T20, T21, T22. Ref design: ADR-2, ADR-7.
+ * Ref spec: sdd/tickets-core/spec T20, T21, T22. Ref design: ADR-7.
  * Tarea: T10.2.
  */
 export class AdjuntarArchivoUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'findById' | 'save'>,
     private readonly archivoRepo: Pick<
       IArchivoRepository,
@@ -116,14 +107,13 @@ export class AdjuntarArchivoUseCase {
       return Result.fail(new TicketNoEncontradoError(ticketId));
     }
 
-    // ADR-2: acceso al ticket (solicitante, o ticket:ver_todos/ticket:editar
-    // — sin permiso RBAC dedicado). Sin acceso → 404 (no revela existencia,
-    // mismo criterio que ObtenerTicketUseCase/ListarTimelineUseCase, T6/T18).
-    const tieneAcceso =
-      ticket.solicitanteId === dto.actorId || dto.tienePermisoVerTodos || dto.tienePermisoEditar;
+    // Lo que el actor no ve tampoco recibe adjuntos: 404, no revela existencia (S0, T6/T18).
     if (
-      !tieneAcceso ||
-      !(await esModuloDelTipoPermitido(this.tipoTicketRepo, ticket, dto.modulosPermitidos))
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
     ) {
       return Result.fail(new TicketNoEncontradoError(ticketId));
     }

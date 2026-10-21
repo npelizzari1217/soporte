@@ -12,12 +12,10 @@
  * Guards: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard` (WU-7.3,
  * sdd/matriz-permisos-por-usuario — mismo patrón que `TicketsController`),
  * con `@RequiereAcciones('TICKETS:ALTAS')` en las dos rutas (R5): subir un
- * adjunto es un alta. El acceso al ticket/operación DUEÑO (solicitante, o
- * `TICKETS:VER_TODOS`/`TICKETS:MODIFICACION`) se resuelve DENTRO de
- * `AdjuntarArchivoUseCase` (mismo criterio que el scope de
- * `TICKETS:VER_TODOS` en `TicketsController.findAll`/`findOne`, R11), junto
- * con el módulo del tipo del ticket (`modulosPermitidosDesdeJwt`,
- * odd/permisos-por-tipo-ticket S0).
+ * adjunto es un alta. El acceso al ticket/operación DUEÑO se resuelve DENTRO
+ * de `AdjuntarArchivoUseCase` con el alcance del JWT (`alcanceTicketDesdeJwt`):
+ * el mismo criterio de fila y de módulo del tipo que el listado y el detalle
+ * (odd/permisos-por-tipo-ticket S0).
  *
  * `FileInterceptor('archivo')` sin `storage` explícito → multer usa
  * `memoryStorage` por default (el binario llega en `file.buffer`, NUNCA se
@@ -46,11 +44,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
-import { puedeEjecutar } from '../../../auth/domain/permisos.util';
-import { modulosPermitidosDesdeJwt } from '../alcance-ticket';
-
-const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
-const ACCION_MODIFICACION = 'TICKETS:MODIFICACION';
+import { alcanceTicketDesdeJwt } from '../alcance-ticket';
 
 @UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
 @Controller()
@@ -60,7 +54,7 @@ export class AdjuntosController {
   /**
    * POST /tickets/:id/adjuntos
    * Sube un adjunto y lo vincula directo al ticket (`archivos_ticket`, T22).
-   * @throws 404 ticket inexistente/otro tenant, o actor sin acceso (ADR-2)
+   * @throws 404 ticket inexistente/otro tenant, o actor que no ve el ticket (S0)
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
    */
   @Post('tickets/:id/adjuntos')
@@ -81,10 +75,7 @@ export class AdjuntosController {
       tamanoBytes: BigInt(archivo.size),
       buffer: archivo.buffer,
       subidoPorId: user.sub,
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
-      tienePermisoEditar: puedeEjecutar(user, ACCION_MODIFICACION),
-      modulosPermitidos: modulosPermitidosDesdeJwt(user),
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -98,7 +89,7 @@ export class AdjuntosController {
    * Sube un adjunto y lo vincula a una operación EXISTENTE del timeline
    * (`archivos_operacion`, T22). El acceso se valida contra el ticket
    * DUEÑO de la operación (resuelto internamente por el use case).
-   * @throws 404 operación inexistente, ticket inexistente/otro tenant, o actor sin acceso (ADR-2)
+   * @throws 404 operación inexistente, ticket inexistente/otro tenant, o actor que no ve el ticket (S0)
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
    */
   @Post('operaciones/:id/adjuntos')
@@ -119,10 +110,7 @@ export class AdjuntosController {
       tamanoBytes: BigInt(archivo.size),
       buffer: archivo.buffer,
       subidoPorId: user.sub,
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
-      tienePermisoEditar: puedeEjecutar(user, ACCION_MODIFICACION),
-      modulosPermitidos: modulosPermitidosDesdeJwt(user),
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
