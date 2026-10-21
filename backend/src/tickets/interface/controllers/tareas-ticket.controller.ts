@@ -15,7 +15,8 @@
  * la tarea) y del módulo de su tipo (`<MODULO>:MODIFICACION`), que se conocen recién al cargarlo.
  * Lo decide el caso de uso (`tareas-ticket.reglas.ts`), con el `ActorTarea` que arma
  * `actorTareaDesdeJwt`. Un permiso fijo por ruta, como `TICKETS:LECTURA`, dejaría afuera al
- * técnico de Edilicia que la decisión de producto deja completar su tarea.
+ * técnico de Edilicia que la decisión de producto deja completar su tarea. Un ticket de un tipo
+ * de un módulo que el actor no tiene es 404 en todas las rutas (odd/permisos-por-tipo-ticket, S0).
  *
  * Errores: el cuerpo es el de Nest (`{ statusCode, message, error }`), igual que el resto de
  * `TicketsController`; no hay códigos de error en la respuesta.
@@ -132,8 +133,8 @@ export class TareasTicketController {
    * GET /tickets/:id/tareas — las lista el técnico de una tarea activa (CA10) o quien tiene
    * `<MODULO>:LECTURA` del módulo del tipo; en el módulo TICKETS, además, tiene que ver el ticket
    * (T12). Sin `@RequiereAcciones`: el módulo sale del tipo del ticket y lo decide el caso de uso.
-   * @throws 403 ve el ticket pero no puede listar · 404 ticket inexistente, de otro cliente o no
-   *   visible para el actor
+   * @throws 403 ve el ticket pero no puede listar · 404 ticket inexistente, de otro cliente, de un
+   *   módulo ajeno o no visible para el actor
    */
   @Get(':id/tareas')
   async listar(
@@ -147,6 +148,7 @@ export class TareasTicketController {
         actorId: actor.id,
         tienePermisoVerTodos: actor.tienePermisoVerTodos,
         modulosConLectura: modulosConLecturaDesdeJwt(user),
+        modulosPermitidos: actor.modulosPermitidos,
       }),
     );
     return { items: await this.aDtos(tareas), avance };

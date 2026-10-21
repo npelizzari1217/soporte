@@ -50,7 +50,7 @@ export interface RepositoriosDeAcceso {
  * tipo del ticket tiene que estar entre los del actor. `modulosPermitidos` en `null` es "sin
  * restricción de módulo" (ROOT y ADMINISTRADOR) y no consulta el tipo. Un tipo inexistente se
  * trata como no permitido. Vive acá para que `esTicketAccesiblePara` y los casos de uso con una
- * regla de fila propia (adjuntos, ADR-2) apliquen el mismo criterio de módulo.
+ * regla de acción propia (tareas, `cargarTicketDelModulo`) apliquen el mismo criterio de módulo.
  *
  * @param tipoTicketRepo Repositorio de tipos, para resolver el módulo del tipo del ticket.
  * @param ticket Ticket ya leído.

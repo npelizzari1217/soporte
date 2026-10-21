@@ -50,6 +50,8 @@ function actor(id: string, extra: Partial<ActorTarea> = {}): ActorTarea {
     esAdministrador: false,
     tienePermisoVerTodos: true,
     modulosConModificacion: ['EDILICIA'],
+    // Tiene los módulos de los dos tipos del fixture; los casos de S0 lo acotan.
+    modulosPermitidos: TODOS,
     ...extra,
   };
 }
@@ -57,8 +59,16 @@ function actor(id: string, extra: Partial<ActorTarea> = {}): ActorTarea {
 const ACTORES = {
   responsable: actor(RESPONSABLE),
   responsableSinModificacion: actor(RESPONSABLE, { modulosConModificacion: ['TICKETS'] }),
-  administrador: actor(ADMIN, { esAdministrador: true, modulosConModificacion: TODOS }),
-  administradorSinModificacion: actor(ADMIN, { esAdministrador: true, modulosConModificacion: [] }),
+  administrador: actor(ADMIN, {
+    esAdministrador: true,
+    modulosConModificacion: TODOS,
+    modulosPermitidos: null,
+  }),
+  administradorSinModificacion: actor(ADMIN, {
+    esAdministrador: true,
+    modulosConModificacion: [],
+    modulosPermitidos: null,
+  }),
   tecnicoDeLaTarea: actor(TECNICO),
   otroTecnico: actor(OTRO_TECNICO),
   ajenoSinVerTodos: actor(OTRO_TECNICO, { tienePermisoVerTodos: false }),
@@ -271,6 +281,7 @@ function armar() {
     ),
     completar: new CompletarTareaUseCase(
       ticketRepo,
+      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,
@@ -281,6 +292,7 @@ function armar() {
     ),
     descompletar: new DescompletarTareaUseCase(
       ticketRepo,
+      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,
@@ -783,6 +795,7 @@ describe('ListarTareasTicketUseCase', () => {
       actorId: TECNICO,
       tienePermisoVerTodos: true,
       modulosConLectura: ['EDILICIA'],
+      modulosPermitidos: TODOS,
     });
 
     const { tareas, avance } = result.getValue();
@@ -797,6 +810,7 @@ describe('ListarTareasTicketUseCase', () => {
       actorId: TECNICO,
       tienePermisoVerTodos: true,
       modulosConLectura: ['EDILICIA'],
+      modulosPermitidos: TODOS,
     });
     expect(result.getValue()).toEqual({
       tareas: [],
@@ -811,12 +825,14 @@ describe('ListarTareasTicketUseCase', () => {
       actorId: SOLICITANTE,
       tienePermisoVerTodos: false,
       modulosConLectura: ['TICKETS'],
+      modulosPermitidos: TODOS,
     });
     const ajeno = await deps.listar.execute({
       ticketId: SOPORTE_TICKET_ID,
       actorId: OTRO_TECNICO,
       tienePermisoVerTodos: false,
       modulosConLectura: ['TICKETS'],
+      modulosPermitidos: TODOS,
     });
     expect(propio.isOk()).toBe(true);
     expect(errorDe(ajeno)).toBeInstanceOf(TicketNoEncontradoError);
@@ -830,7 +846,14 @@ describe('ListarTareasTicketUseCase', () => {
       actorId: string,
       tienePermisoVerTodos: boolean,
       modulosConLectura: string[],
-    ) => deps.listar.execute({ ticketId, actorId, tienePermisoVerTodos, modulosConLectura });
+    ) =>
+      deps.listar.execute({
+        ticketId,
+        actorId,
+        tienePermisoVerTodos,
+        modulosConLectura,
+        modulosPermitidos: TODOS,
+      });
     const comprobar = (result: Awaited<ReturnType<typeof listar>>, esperado: Esperado): void => {
       if (esperado === 'ok') {
         expect(result.getValue().tareas.map((t) => t.id)).toEqual(['t1']);
@@ -914,6 +937,7 @@ describe('Visibilidad por tarea (CA10)', () => {
       actorId: TECNICO,
       tienePermisoVerTodos: false,
       modulosConLectura: [],
+      modulosPermitidos: TODOS,
     });
 
   it('el técnico de una tarea activa lista las tareas sin VER_TODOS ni ser el responsable', async () => {
@@ -1106,5 +1130,150 @@ describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectu
     expect(errorDe(await ejecutar(deps, 'completar', ACTORES.otroTecnico))).toBeInstanceOf(
       TareaAccionNoPermitidaError,
     );
+  });
+});
+
+describe('módulo del tipo del ticket (odd/permisos-por-tipo-ticket, S0)', () => {
+  /** Ve todos los tickets y modifica en TICKETS, pero no tiene el módulo EDILICIA. */
+  const sinEdilicia = actor(OTRO_TECNICO, {
+    modulosConModificacion: ['TICKETS'],
+    modulosPermitidos: ['TICKETS'],
+  });
+  /** El técnico de la tarea, al que le quitaron el módulo EDILICIA. */
+  const tecnicoSinEdilicia = actor(TECNICO, { modulosPermitidos: ['TICKETS'] });
+
+  it('listar las tareas de un ticket de Edilicia sin el módulo EDILICIA es 404, aunque tenga VER_TODOS', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1');
+
+    const result = await deps.listar.execute({
+      ticketId: TICKET_ID,
+      actorId: OTRO_TECNICO,
+      tienePermisoVerTodos: true,
+      modulosConLectura: ['TICKETS'],
+      modulosPermitidos: ['TICKETS'],
+    });
+
+    expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  it('el técnico de una tarea de un ticket de un módulo que ya no tiene no la lista: 404', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    const result = await deps.listar.execute({
+      ticketId: TICKET_ID,
+      actorId: TECNICO,
+      tienePermisoVerTodos: true,
+      modulosConLectura: ['TICKETS'],
+      modulosPermitidos: ['TICKETS'],
+    });
+
+    expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
+  });
+
+  it('crear una tarea en un ticket de Edilicia sin el módulo es 404 y no escribe nada', async () => {
+    const deps = armar();
+
+    const result = await deps.crear.execute({
+      ticketId: TICKET_ID,
+      actor: sinEdilicia,
+      descripcion: 'Cambiar el flotante',
+    });
+
+    expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(deps.tareas.size).toBe(0);
+    expect(deps.tareaRepo.crear).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('asignar y borrar en un ticket de Edilicia sin el módulo son 404 y no escriben nada', async () => {
+    const deps = armar();
+    const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    const asignado = await deps.asignar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: sinEdilicia,
+      clienteId: CLIENTE_ID,
+      tecnicoId: OTRO_TECNICO,
+    });
+    const borrado = await deps.eliminar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: sinEdilicia,
+    });
+
+    expect(errorDe(asignado)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(errorDe(borrado)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(tarea.tecnicoId).toBe(TECNICO);
+    expect(tarea.isDeleted()).toBe(false);
+    expect(deps.tareaRepo.asignarTecnicoSiActiva).not.toHaveBeenCalled();
+    expect(deps.tareaRepo.darDeBajaSiActiva).not.toHaveBeenCalled();
+    expect(deps.checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('el técnico de la tarea sin el módulo del tipo no la completa ni la descompleta: 404 sin escribir', async () => {
+    const deps = armar();
+    const pendiente = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+    const completada = deps.sembrarTarea('t2', { tecnicoId: TECNICO, completada: true });
+
+    const completar = await deps.completar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: tecnicoSinEdilicia,
+    });
+    const descompletar = await deps.descompletar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't2',
+      actor: tecnicoSinEdilicia,
+    });
+
+    expect(errorDe(completar)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(errorDe(descompletar)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(pendiente.completada).toBe(false);
+    expect(completada.completada).toBe(true);
+    expect(deps.tareaRepo.completarSiPendiente).not.toHaveBeenCalled();
+    expect(deps.tareaRepo.descompletarSiCompletada).not.toHaveBeenCalled();
+    expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('caso hermano: con el módulo del tipo y sin permiso de gestión sigue siendo 403', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1');
+    const conEdiliciaSinGestion = actor(OTRO_TECNICO, { modulosPermitidos: ['EDILICIA'] });
+
+    const creado = await deps.crear.execute({
+      ticketId: TICKET_ID,
+      actor: conEdiliciaSinGestion,
+      descripcion: 'x',
+    });
+    const listado = await deps.listar.execute({
+      ticketId: TICKET_ID,
+      actorId: OTRO_TECNICO,
+      tienePermisoVerTodos: true,
+      modulosConLectura: [],
+      modulosPermitidos: ['EDILICIA'],
+    });
+
+    expect(errorDe(creado)).toBeInstanceOf(TareaAccionNoPermitidaError);
+    expect(errorDe(listado)).toBeInstanceOf(TareaAccionNoPermitidaError);
+    expect(deps.tareas.size).toBe(1);
+  });
+
+  it('caso hermano: el técnico de la tarea con el módulo del tipo la sigue completando', async () => {
+    const deps = armar();
+    const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+    const result = await deps.completar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: actor(TECNICO, { modulosPermitidos: ['EDILICIA'] }),
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(tarea.completada).toBe(true);
   });
 });

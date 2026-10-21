@@ -2,6 +2,7 @@ import { JwtPayload } from '../../auth/domain/ports/i-token.service';
 import { esAdminDeCliente, puedeEjecutar } from '../../auth/domain/permisos.util';
 import { MODULOS } from '../../shared/domain/modulos';
 import { ActorTarea } from '../application/services/tareas-ticket.reglas';
+import { modulosPermitidosDesdeJwt } from './alcance-ticket';
 
 /**
  * Arma el `ActorTarea` de los casos de uso de tareas a partir del JWT (odd/tareas-con-tecnico, T3).
@@ -12,6 +13,11 @@ import { ActorTarea } from '../application/services/tareas-ticket.reglas';
  * - `tienePermisoVerTodos`: `TICKETS:VER_TODOS`, igual que el detalle del ticket.
  * - `modulosConModificacion`: los módulos de `MODULOS` en los que el actor tiene
  *   `<MODULO>:MODIFICACION`, con `puedeEjecutar`.
+ * - `modulosPermitidos`: los módulos del JWT (`modulosPermitidosDesdeJwt`), `null` para ROOT y
+ *   ADMINISTRADOR; un ticket de un tipo de otro módulo es 404 (odd/permisos-por-tipo-ticket, S0).
+ *
+ * @param user JWT del actor.
+ * @returns El actor de los casos de uso de tareas.
  */
 export function actorTareaDesdeJwt(user: JwtPayload): ActorTarea {
   return {
@@ -21,6 +27,7 @@ export function actorTareaDesdeJwt(user: JwtPayload): ActorTarea {
     modulosConModificacion: MODULOS.filter((modulo) =>
       puedeEjecutar(user, `${modulo}:MODIFICACION`),
     ),
+    modulosPermitidos: modulosPermitidosDesdeJwt(user),
   };
 }
 

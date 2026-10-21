@@ -65,6 +65,7 @@ const actor = (id: string): ActorTarea => ({
   esAdministrador: false,
   tienePermisoVerTodos: true,
   modulosConModificacion: ['TICKETS'],
+  modulosPermitidos: ['TICKETS'],
 });
 
 describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () => {
@@ -104,6 +105,7 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
   const completar = (avance = servicio()) =>
     new CompletarTareaUseCase(
       ticketRepo,
+      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,
@@ -114,6 +116,7 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
   const descompletar = () =>
     new DescompletarTareaUseCase(
       ticketRepo,
+      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,

@@ -42,6 +42,7 @@ const RESPONSABLE_ACTOR: ActorTarea = {
   esAdministrador: false,
   tienePermisoVerTodos: true,
   modulosConModificacion: ['EDILICIA'],
+  modulosPermitidos: ['EDILICIA'],
 };
 
 describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant efímero)', () => {
@@ -85,6 +86,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
   const completarUseCase = (repoOperaciones: Pick<PrismaOperacionTicketRepository, 'save'>) =>
     new CompletarTareaUseCase(
       ticketRepo,
+      tipoTicketRepo,
       tareaRepo,
       repoOperaciones,
       tipoOperacionRepo,
