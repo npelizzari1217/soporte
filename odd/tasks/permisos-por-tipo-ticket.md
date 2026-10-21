@@ -63,6 +63,23 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `OBSERVAR`, `IMPRESION`, `BORRADO`) para no inventar una segunda lengua de permisos. La traducción
   de L11 vive una sola vez en el dominio y la usan el backfill, las plantillas de rol y los tests.
 
+- **D5 (diseño de T5)** — (a) Los permisos por tipo del actor se leen por request de la tabla del
+  tenant (`listarPorUsuario`, una consulta indexada) y viajan en `AlcanceActorTicket` como
+  `permisosPorTipo: Map<tipoId, Set<AccionTipoTicket>> | null` (`null` = ROOT y ADMINISTRADOR, sin
+  restricción); reemplaza a `modulosPermitidos` y a `tienePermisoVerTodos`. (b) Ver un ticket:
+  `LECTURA` sobre su tipo, y además `VER_TODOS` sobre su tipo o la regla de fila
+  (`esTicketVisiblePara`). (c) Cada operación exige además su acción sobre el tipo de ESE ticket:
+  editar `MODIFICACION`, estado `TRANSICIONAR`, asignar `ASIGNAR`, comentar `COMENTAR`, comentario
+  interno `OBSERVAR`, PDF `IMPRESION`, adjuntar `ALTAS` o `MODIFICACION` (hoy pide `TICKETS:ALTAS`),
+  crear `ALTAS` sobre el tipo elegido, tareas `MODIFICACION`/`LECTURA` sobre el tipo. 404 si no lo
+  ve; 403 si lo ve y le falta la acción. (d) Los decoradores `@RequiereAcciones('TICKETS:*')` y
+  `EDILICIA:*` de rutas de tickets dejan de decidir: desde T7 esas celdas dejan de editarse. La ruta
+  exige solo autenticación y tenant; decide el caso de uso. (e) Listados y exportaciones filtran
+  por tipos con `LECTURA`, y por fila salvo en los tipos con `VER_TODOS`. (f) La clave de API v1 no
+  tiene filas por tipo: su alcance se arma con las celdas de la clave traducidas por L11 sobre los
+  tipos del módulo TICKETS. (g) Elegibilidad del asignado (`usuario-master.checker.ts`): tener
+  `LECTURA` sobre el tipo del ticket. (h) Los flujos de sistema siguen sin chequeo (D3).
+
 ## Tasks
 
 - [x] T0 — D1, D2, D3 — explore + inline — validar el diseño: lugar de guardado, resolución por
@@ -79,7 +96,11 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `deploy.ps1` — (este commit)
 - [x] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
   plantilla escriben las filas por tipo — (este commit)
-- [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
+- [ ] T5a — S1-S3, S6, D5 a-c — worker — alcance por tipo cargado por request y punto único
+  (`esTicketAccesiblePara` + acción); lecturas y escrituras por id del ticket — (pendiente)
+- [ ] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
+  creación por tipo, reparaciones y dashboard — (pendiente)
+- [ ] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (pendiente)
 - [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
 - [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (pendiente)
