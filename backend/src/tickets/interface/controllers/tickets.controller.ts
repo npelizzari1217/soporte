@@ -127,6 +127,7 @@ import {
   ISectorRepository,
   SECTOR_REPOSITORY,
 } from '../../../sectores/domain/ports/i-sector.repository';
+import { alcanceTicketDesdeJwt, modulosPermitidosDesdeJwt } from '../alcance-ticket';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
@@ -363,8 +364,7 @@ export class TicketsController {
   ): Promise<ListTicketsResponseDto> {
     // Gate de módulo (5.2 CAPA 2): ROOT y ADMINISTRADOR ven todos los tipos
     // (incl. custom del tenant); el resto sólo los tipos de sus módulos.
-    const sinRestriccionModulo = user.is_global_admin || user.rol === 'ADMINISTRADOR';
-    const modulosPermitidos = sinRestriccionModulo ? null : user.modulos;
+    const modulosPermitidos = modulosPermitidosDesdeJwt(user);
 
     const result = await this.listarTicketsUseCase.execute({
       actorId: user.sub,
@@ -433,8 +433,7 @@ export class TicketsController {
     @Res({ passthrough: true }) res: RespuestaConHeaders,
     @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
   ): Promise<string | StreamableFile> {
-    const sinRestriccionModulo = user.is_global_admin || user.rol === 'ADMINISTRADOR';
-    const modulosPermitidos = sinRestriccionModulo ? null : user.modulos;
+    const modulosPermitidos = modulosPermitidosDesdeJwt(user);
 
     const result = await this.exportarTicketsUseCase.execute(
       {
@@ -479,8 +478,7 @@ export class TicketsController {
   ): Promise<TicketResponseDto> {
     const result = await this.obtenerTicketUseCase.execute({
       ticketId: id,
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -746,8 +744,7 @@ export class TicketsController {
   ): Promise<OperacionResponseDto[]> {
     const result = await this.listarTimelineUseCase.execute({
       ticketId: id,
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      ...alcanceTicketDesdeJwt(user),
       tienePermisoObservar: puedeEjecutar(user, ACCION_OBSERVAR),
     });
 

@@ -119,7 +119,7 @@ describe('TicketPdfController — GET /tickets/:id/pdf', () => {
     expect(res.headers.get('content-type')).not.toContain('application/pdf');
   });
 
-  it('pasa id, actor, VER_TODOS y cliente del JWT al caso de uso', async () => {
+  it('pasa id, actor, VER_TODOS, módulos y cliente del JWT al caso de uso', async () => {
     generar.execute.mockResolvedValue(Result.ok({ buffer: PDF, nombreArchivo: 'ticket-x.pdf' }));
     actual = usuario(['TICKETS:VER_TODOS']);
 
@@ -129,6 +129,8 @@ describe('TicketPdfController — GET /tickets/:id/pdf', () => {
       ticketId: 't-9',
       actorId: 'user-1',
       tienePermisoVerTodos: true,
+      // Los módulos del JWT acotan el alcance, igual que en el detalle (odd/permisos-por-tipo-ticket, S0).
+      modulosPermitidos: [],
       clienteId: 'cliente-1',
       clienteNombre: 'Colegio San Martín',
     });
@@ -145,6 +147,7 @@ describe('TicketPdfController — GET /tickets/:id/pdf', () => {
       'actorId',
       'clienteId',
       'clienteNombre',
+      'modulosPermitidos',
       'ticketId',
       'tienePermisoVerTodos',
     ]);

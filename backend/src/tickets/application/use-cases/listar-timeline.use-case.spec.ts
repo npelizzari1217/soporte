@@ -15,6 +15,7 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 
 function makeTicket(solicitanteId = 'solicitante-uuid'): TicketEntity {
   return TicketEntity.create(
@@ -57,6 +58,7 @@ function baseDto(overrides: Partial<ListarTimelineDto> = {}): ListarTimelineDto 
     actorId: 'solicitante-uuid',
     tienePermisoVerTodos: false,
     tienePermisoObservar: false,
+    modulosPermitidos: null,
     ...overrides,
   };
 }
@@ -70,9 +72,20 @@ describe('ListarTimelineUseCase', () => {
     };
     const operacionRepo = { listByTicket: vi.fn<IOperacionTicketRepository['listByTicket']>() };
 
-    const useCase = new ListarTimelineUseCase(ticketRepo, operacionRepo);
+    const tipoTicketRepo = {
+      findById: vi
+        .fn()
+        .mockResolvedValue(
+          TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+            'tipo-uuid',
+          ),
+        ),
+    };
 
-    return { useCase, ticketRepo, operacionRepo };
+    const useCase = new ListarTimelineUseCase(ticketRepo, operacionRepo, tipoTicketRepo);
+
+    return { useCase, ticketRepo, operacionRepo, tipoTicketRepo };
   }
 
   it('T18: actor CON ticket:observar ve el timeline completo (públicas + internas), en orden cronológico', async () => {
@@ -213,5 +226,34 @@ describe('ListarTimelineUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
+  });
+
+  it('S0: un ticket de un tipo de otro módulo es 404 aunque el actor sea el solicitante y tenga VER_TODOS', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
+    c.tipoTicketRepo.findById.mockResolvedValue(
+      TipoTicketEntity.create(
+        { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA', activo: true },
+        'tipo-uuid',
+      ),
+    );
+
+    const result = await c.useCase.execute(
+      baseDto({ tienePermisoVerTodos: true, modulosPermitidos: ['TICKETS'] }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+    expect(c.operacionRepo.listByTicket).not.toHaveBeenCalled();
+  });
+
+  it('S0: un ticket de un tipo de sus módulos muestra el timeline', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('solicitante-uuid'));
+    c.operacionRepo.listByTicket.mockResolvedValue([]);
+
+    const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+
+    expect(result.isOk()).toBe(true);
   });
 });

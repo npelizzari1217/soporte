@@ -3,7 +3,8 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
-import { esTicketVisiblePara } from '../services/visibilidad-ticket';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `ListarTimelineUseCase`.
@@ -13,10 +14,8 @@ import { esTicketVisiblePara } from '../services/visibilidad-ticket';
  * el JWT, solo el resultado booleano de la política (mismo patrón que
  * `ObtenerTicketUseCase`/`ListarTicketsUseCase`, T6/T7).
  */
-export interface ListarTimelineDto {
+export interface ListarTimelineDto extends AlcanceActorTicket {
   ticketId: string;
-  actorId: string;
-  tienePermisoVerTodos: boolean;
   tienePermisoObservar: boolean;
 }
 
@@ -48,6 +47,7 @@ export class ListarTimelineUseCase {
   constructor(
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'listByTicket'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: ListarTimelineDto): Promise<Result<OperacionTicketEntity[], DomainError>> {
@@ -56,7 +56,11 @@ export class ListarTimelineUseCase {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
     if (
-      !(await esTicketVisiblePara(this.ticketRepo, ticket, dto.actorId, dto.tienePermisoVerTodos))
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
     ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }

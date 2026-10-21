@@ -301,8 +301,9 @@ import {
     },
     {
       provide: ObtenerTicketUseCase,
-      useFactory: (ticketRepo: ITicketRepository) => new ObtenerTicketUseCase(ticketRepo),
-      inject: [TICKET_REPOSITORY],
+      useFactory: (ticketRepo: ITicketRepository, tipoTicketRepo: ITipoTicketRepository) =>
+        new ObtenerTicketUseCase(ticketRepo, tipoTicketRepo),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: ListarTicketsUseCase,
@@ -726,9 +727,12 @@ import {
     },
     {
       provide: ListarTimelineUseCase,
-      useFactory: (ticketRepo: ITicketRepository, operacionRepo: IOperacionTicketRepository) =>
-        new ListarTimelineUseCase(ticketRepo, operacionRepo),
-      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY],
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new ListarTimelineUseCase(ticketRepo, operacionRepo, tipoTicketRepo),
+      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: AdjuntarArchivoUseCase,

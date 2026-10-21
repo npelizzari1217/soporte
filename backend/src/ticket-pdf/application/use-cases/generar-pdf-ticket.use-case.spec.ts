@@ -156,8 +156,10 @@ function armar(opciones: Opciones = {}) {
   };
   // El repo devuelve TODO, como hace el real; el filtro de internas es del caso de uso.
   const operacionRepo = { listByTicket: vi.fn().mockResolvedValue(operaciones) };
-  const obtener = new ObtenerTicketUseCase(ticketRepo);
-  const timeline = new ListarTimelineUseCase(ticketRepo, operacionRepo);
+  // Los DTO van sin restricción de módulo: el repo de tipos de la lectura no se consulta.
+  const tiposDeLectura = { findById: vi.fn() };
+  const obtener = new ObtenerTicketUseCase(ticketRepo, tiposDeLectura);
+  const timeline = new ListarTimelineUseCase(ticketRepo, operacionRepo, tiposDeLectura);
   const generador = {
     generar: vi.fn(async (_vista: TicketPdfVista) => Buffer.from('%PDF-fake')),
   };
@@ -233,6 +235,7 @@ const DTO_STAFF = {
   ticketId: 'ticket-1',
   actorId: TECNICO,
   tienePermisoVerTodos: true,
+  modulosPermitidos: null,
   clienteId: 'cliente-1',
   clienteNombre: 'Colegio San Martín',
 };
@@ -287,10 +290,13 @@ describe('GenerarPdfTicketUseCase', () => {
       execute: vi.fn().mockResolvedValue(Result.ok(OPERACIONES)),
     };
     const conTimelineRoto = new GenerarPdfTicketUseCase(
-      new ObtenerTicketUseCase({
-        findById: vi.fn().mockResolvedValue(crearTicket()),
-        esVisiblePara: vi.fn().mockResolvedValue(false),
-      }),
+      new ObtenerTicketUseCase(
+        {
+          findById: vi.fn().mockResolvedValue(crearTicket()),
+          esVisiblePara: vi.fn().mockResolvedValue(false),
+        },
+        { findById: vi.fn() },
+      ),
       timelineRoto,
       { findById: vi.fn().mockResolvedValue(ESTADO_PROCESO) },
       { findById: vi.fn().mockResolvedValue(PRIORIDAD) },
@@ -324,6 +330,7 @@ describe('GenerarPdfTicketUseCase', () => {
         ...DTO_STAFF,
         actorId: SOLICITANTE,
         tienePermisoVerTodos: false,
+        modulosPermitidos: null,
       });
 
       expect(result.isOk()).toBe(true);
@@ -336,6 +343,7 @@ describe('GenerarPdfTicketUseCase', () => {
         ...DTO_STAFF,
         actorId: OTRO,
         tienePermisoVerTodos: false,
+        modulosPermitidos: null,
       });
 
       expect(result.isFail()).toBe(true);

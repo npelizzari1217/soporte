@@ -31,6 +31,7 @@ import {
   TicketV1,
 } from './tickets-v1.dto';
 import { TicketsV1Presenter } from './tickets-v1.presenter';
+import { alcanceTicketDesdeJwt } from '../../tickets/interface/alcance-ticket';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 
@@ -118,8 +119,7 @@ export class TicketsV1Controller {
     }
     const result = await this.obtenerTicket.execute({
       ticketId: id,
-      actorId: actor.sub,
-      tienePermisoVerTodos: puedeEjecutar(actor, ACCION_VER_TODOS),
+      ...alcanceTicketDesdeJwt(actor),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());

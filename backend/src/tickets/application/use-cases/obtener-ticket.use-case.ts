@@ -2,7 +2,8 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
-import { esTicketVisiblePara } from '../services/visibilidad-ticket';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `ObtenerTicketUseCase`.
@@ -12,10 +13,8 @@ import { esTicketVisiblePara } from '../services/visibilidad-ticket';
  * R11) — la capa de aplicación no conoce el JWT, solo el resultado booleano
  * de la política (T6).
  */
-export interface ObtenerTicketDto {
+export interface ObtenerTicketDto extends AlcanceActorTicket {
   ticketId: string;
-  actorId: string;
-  tienePermisoVerTodos: boolean;
 }
 
 /**
@@ -27,12 +26,17 @@ export interface ObtenerTicketDto {
  *   `TicketNoEncontradoError` (404) — NO revela la existencia del ticket
  *   a un tercero ajeno (mismo patrón que un ticket de otro tenant, que ya
  *   es 404 porque `findById` está scopeado a `TenantContext`).
+ * - Un ticket de un tipo de un módulo ajeno al actor también es 404, aunque lo haya solicitado
+ *   (`esTicketAccesiblePara`, odd/permisos-por-tipo-ticket S0).
  * - Un ticket soft-deleted se trata como inexistente.
  *
  * Ref spec: sdd/tickets-core/spec T6, T23. Tarea: T6.3.
  */
 export class ObtenerTicketUseCase {
-  constructor(private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>) {}
+  constructor(
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
+  ) {}
 
   async execute(dto: ObtenerTicketDto): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
@@ -40,7 +44,11 @@ export class ObtenerTicketUseCase {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
     if (
-      !(await esTicketVisiblePara(this.ticketRepo, ticket, dto.actorId, dto.tienePermisoVerTodos))
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
     ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
