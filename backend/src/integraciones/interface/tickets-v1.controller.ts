@@ -32,8 +32,25 @@ import {
 } from './tickets-v1.dto';
 import { TicketsV1Presenter } from './tickets-v1.presenter';
 import { alcanceTicketDesdeJwt } from '../../tickets/interface/alcance-ticket';
+import { AlcanceActorTicket } from '../../tickets/application/services/visibilidad-ticket';
+import { MODULO_API_V1 } from '../application/tipos-ticket-v1.query';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
+
+/**
+ * Alcance con el que comenta la clave (odd/permisos-por-tipo-ticket, S0): cualquier ticket del
+ * modulo de la API v1, sin restriccion de fila. Antes de S0 `TICKETS:COMENTAR` alcanzaba para
+ * comentar cualquier ticket del cliente; `ApiClaveGuard` solo agrega `VER_TODOS` cuando la clave
+ * tambien tiene `TICKETS:LECTURA`, asi que el alcance del JWT dejaria a una clave de solo
+ * comentario limitada a los tickets que pidio el usuario de integracion. El modulo sigue acotado:
+ * un ticket de otro modulo es 404, igual que en el resto de v1.
+ *
+ * @param actor Actor sintetico de la clave.
+ * @returns Alcance sin restriccion de fila y limitado al modulo de v1.
+ */
+function alcanceComentarioV1(actor: JwtPayload): AlcanceActorTicket {
+  return { actorId: actor.sub, tienePermisoVerTodos: true, modulosPermitidos: [MODULO_API_V1] };
+}
 
 /** Path param `id` documentado como uuid: `ParseUUIDPipe` responde 400 a cualquier otra cosa. */
 const ParamIdTicket = (): MethodDecorator =>
@@ -185,8 +202,9 @@ export class TicketsV1Controller {
 
   /**
    * Agrega un comentario PUBLICO a un ticket del cliente de la clave. Requiere `TICKETS:COMENTAR`.
-   * Nunca es interno: la API no tiene forma de pedirlo. 404 si el ticket no es del cliente o es de
-   * otro modulo, antes de escribir nada. El autor
+   * Nunca es interno: la API no tiene forma de pedirlo. Alcanza a cualquier ticket del modulo
+   * TICKETS del cliente, lo haya pedido o no el usuario de integracion (`alcanceComentarioV1`); 404
+   * si el ticket no es del cliente o es de otro modulo, antes de escribir nada. El autor
    * es el usuario de integracion, que habla por el cliente: el comentario no cuenta como primera
    * respuesta de SLA (`autorEsIntegracion`, T5d).
    */
@@ -228,7 +246,7 @@ export class TicketsV1Controller {
       autorId: actor.sub,
       esInterno: false,
       autorEsIntegracion: true,
-      ...alcanceTicketDesdeJwt(actor),
+      ...alcanceComentarioV1(actor),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
