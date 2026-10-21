@@ -149,6 +149,7 @@ describe('TicketsV1Controller (lectura)', () => {
       ticketId: ID,
       actorId: actor.sub,
       tienePermisoVerTodos: true,
+      modulosPermitidos: ['TICKETS'],
     });
     expect(res).toEqual({ numero: 'SOP-2026-00001' });
   });
@@ -237,6 +238,9 @@ describe('TicketsV1Controller (lectura)', () => {
       autorId: actor.sub,
       esInterno: false,
       autorEsIntegracion: true,
+      actorId: actor.sub,
+      tienePermisoVerTodos: true,
+      modulosPermitidos: ['TICKETS'],
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
   });

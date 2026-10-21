@@ -226,7 +226,7 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     expect(r.data).toEqual({ equipo: { id: equipoId, nombre: 'PC-Recepcion' } });
   });
 
-  it('GET /soporte/:ticketId sigue llegando a su handler (equipo null, nunca 404)', async () => {
+  it('GET /soporte/:ticketId sigue llegando a su handler: un ticket inexistente es 404 de ticket, no de QR', async () => {
     const actor = await crearActor(['TICKETS:LECTURA', 'TICKETS:ALTAS'], 'acme');
 
     const r = await get(
@@ -234,8 +234,10 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
       actor.accessToken,
     );
 
-    expect(r.status).toBe(200);
-    expect(r.data).toEqual({ equipo: null });
+    // Desde odd/permisos-por-tipo-ticket (S0) el handler valida el acceso al ticket base: un id
+    // inexistente ya no responde 200 `{ equipo: null }`, que servía para sondear qué tickets existen.
+    expect(r.status).toBe(404);
+    expect(r.data).toMatchObject({ message: expect.stringContaining('no encontrado') });
   });
 
   it('un slug que no es el de la sesión responde 404 y no revela el equipo', async () => {

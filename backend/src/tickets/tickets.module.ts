@@ -301,8 +301,9 @@ import {
     },
     {
       provide: ObtenerTicketUseCase,
-      useFactory: (ticketRepo: ITicketRepository) => new ObtenerTicketUseCase(ticketRepo),
-      inject: [TICKET_REPOSITORY],
+      useFactory: (ticketRepo: ITicketRepository, tipoTicketRepo: ITipoTicketRepository) =>
+        new ObtenerTicketUseCase(ticketRepo, tipoTicketRepo),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: ListarTicketsUseCase,
@@ -322,6 +323,7 @@ import {
         eventPublisher: IDomainEventPublisher,
         sectorRepo: ISectorRepository,
         txRunner: ITenantTransactionRunner,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new EditarTicketUseCase(
           ticketRepo,
@@ -330,6 +332,7 @@ import {
           eventPublisher,
           sectorRepo,
           txRunner,
+          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -338,6 +341,7 @@ import {
         DOMAIN_EVENT_PUBLISHER,
         SECTOR_REPOSITORY,
         TENANT_TX_RUNNER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -697,6 +701,7 @@ import {
         calendarioRepo: ICalendarioLaboralSemanalRepository,
         feriadosRepo: IFeriadosLaboralesRepository,
         logger: ILogger,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new CrearComentarioUseCase(
           ticketRepo,
@@ -710,6 +715,7 @@ import {
           calendarioRepo,
           feriadosRepo,
           logger,
+          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -722,13 +728,17 @@ import {
         CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
         FERIADOS_LABORALES_REPOSITORY,
         LOGGER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
       provide: ListarTimelineUseCase,
-      useFactory: (ticketRepo: ITicketRepository, operacionRepo: IOperacionTicketRepository) =>
-        new ListarTimelineUseCase(ticketRepo, operacionRepo),
-      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY],
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new ListarTimelineUseCase(ticketRepo, operacionRepo, tipoTicketRepo),
+      inject: [TICKET_REPOSITORY, OPERACION_TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY],
     },
     {
       provide: AdjuntarArchivoUseCase,
@@ -739,6 +749,7 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         fileStorage: IFileStorage,
         txRunner: ITenantTransactionRunner,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new AdjuntarArchivoUseCase(
           ticketRepo,
@@ -747,6 +758,7 @@ import {
           tipoOperacionRepo,
           fileStorage,
           txRunner,
+          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -755,6 +767,7 @@ import {
         TIPO_OPERACION_REPOSITORY,
         FILE_STORAGE,
         TENANT_TX_RUNNER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {

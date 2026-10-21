@@ -25,6 +25,7 @@ import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.check
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { unstubbed } from '../../../testing/mocks';
+import { Modulo } from '../../../shared/domain/modulos';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
 import {
   AsignadoInvalidoError,
@@ -75,8 +76,19 @@ function baseDto(overrides: Partial<AsignarYPonerEnProcesoDto> = {}): AsignarYPo
     asignadoId: 'agente-uuid',
     autorId: 'asignador-uuid',
     clienteId: 'cliente-uuid',
+    // Ve cualquier ticket: los casos del flujo combinado no dependen del acceso.
+    actorId: 'asignador-uuid',
+    tienePermisoVerTodos: true,
+    modulosPermitidos: null,
     ...overrides,
   };
+}
+
+function makeTipo(modulo: Modulo): TipoTicketEntity {
+  return TipoTicketEntity.create(
+    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
+    'tipo-soporte-uuid',
+  );
 }
 
 describe('AsignarYPonerEnProcesoUseCase', () => {
@@ -89,7 +101,7 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       findLastSecuencia: unstubbed('findLastSecuencia'),
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
-      esVisiblePara: unstubbed('esVisiblePara'),
+      esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
       bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
     };
@@ -359,5 +371,68 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     await c.useCase.execute(baseDto());
 
     expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
+  });
+
+  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
+    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS; no se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.alCommitear).toHaveLength(0);
+    });
+
+    it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({ tienePermisoVerTodos: false, modulosPermitidos: ['TICKETS'] }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'asignador-uuid');
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo de sus módulos que el actor ve se asigna y pasa a EN_PROCESO', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          actorId: 'solicitante-uuid',
+          tienePermisoVerTodos: false,
+          modulosPermitidos: ['TICKETS'],
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin restricción de módulo (ROOT o ADMINISTRADOR) pasa el acceso en un tipo de cualquier módulo', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+      // El asignado es ROOT/ADMINISTRADOR: elegible para un tipo de cualquier módulo.
+      c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
+        esAdminTotal: true,
+        modulos: [],
+      });
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
   });
 });

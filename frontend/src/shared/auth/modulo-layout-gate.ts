@@ -17,24 +17,33 @@ import { tieneModulo } from "@/shared/auth/modulo-access";
  * (`user = null`), NO redirige — deja pasar y delega en el gate client-side,
  * para no expulsar a un usuario con access token vencido pero refresh vivo.
  *
- * @param modulo  Código del módulo requerido (COMPRAS/EDILICIA/EQUIPOS).
+ * @param modulo  Código del módulo requerido (TICKETS, COMPRAS, EDILICIA, EQUIPOS, INSUMOS, PREVENTIVO…).
  */
 export async function moduloLayoutGate(modulo: string): Promise<void> {
-  const cookieStore = await cookies();
-  const at = cookieStore.get(cookieName(COOKIE_AT))?.value;
-
-  let user: JwtPayload | null = null;
-  if (at) {
-    try {
-      user = decodeJwtPayload(at);
-    } catch {
-      user = null;
-    }
-  }
+  const user = await usuarioDeLaCookie();
 
   // Solo redirige cuando el token es legible Y el usuario NO tiene el módulo.
   // Token ausente/ilegible (user=null) → refresh tolerante: pasa al gate client-side.
   if (user && !tieneModulo(user, modulo)) {
     redirect("/");
+  }
+}
+
+/**
+ * Usuario del access token de la cookie `at`, decodificado sin verificar firma (la autoridad es
+ * el backend). `null` si la cookie falta o no se puede leer: quien llama decide qué hacer en ese
+ * caso, normalmente dejar pasar por el refresh tolerante (R26).
+ *
+ * @returns El payload del JWT, o `null`.
+ */
+export async function usuarioDeLaCookie(): Promise<JwtPayload | null> {
+  const cookieStore = await cookies();
+  const at = cookieStore.get(cookieName(COOKIE_AT))?.value;
+  if (!at) return null;
+  try {
+    return decodeJwtPayload(at);
+  } catch {
+    // Token ilegible: se trata como ausente, igual que una cookie vencida.
+    return null;
   }
 }

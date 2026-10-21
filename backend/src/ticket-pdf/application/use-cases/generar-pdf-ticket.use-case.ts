@@ -16,6 +16,7 @@ import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-m
 import { ListarTimelineUseCase } from '../../../tickets/application/use-cases/listar-timeline.use-case';
 import { ObtenerTicketUseCase } from '../../../tickets/application/use-cases/obtener-ticket.use-case';
 import { IGeneradorPdfTicket } from '../../domain/ports/i-generador-pdf-ticket';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import {
   EventoHistorialPdf,
   LogoPdf,
@@ -31,11 +32,9 @@ import {
  * `TICKETS:OBSERVAR` en pantalla. Que el campo no exista impide que un
  * caller lo active por error.
  */
-export interface GenerarPdfTicketDto {
+/** El alcance del actor (`AlcanceActorTicket`) es el mismo que el de `GET /tickets/:id`. */
+export interface GenerarPdfTicketDto extends AlcanceActorTicket {
   ticketId: string;
-  actorId: string;
-  /** `TICKETS:VER_TODOS` del actor: mismo scope de acceso que `GET /tickets/:id`. */
-  tienePermisoVerTodos: boolean;
   /** `cliente_id` del JWT, para resolver el logo. */
   clienteId: string;
   /** `cliente_nombre` del JWT: se imprime si no hay logo embebible. */
@@ -102,6 +101,7 @@ export class GenerarPdfTicketUseCase {
       ticketId: dto.ticketId,
       actorId: dto.actorId,
       tienePermisoVerTodos: dto.tienePermisoVerTodos,
+      modulosPermitidos: dto.modulosPermitidos,
     });
     if (ticketResult.isFail()) {
       return Result.fail(ticketResult.getError());
@@ -112,6 +112,7 @@ export class GenerarPdfTicketUseCase {
       ticketId: dto.ticketId,
       actorId: dto.actorId,
       tienePermisoVerTodos: dto.tienePermisoVerTodos,
+      modulosPermitidos: dto.modulosPermitidos,
       // Fijo en false: el PDF nunca incluye notas internas (ver docblock del DTO).
       tienePermisoObservar: false,
     });

@@ -18,7 +18,6 @@
  * como JSON (ver el comentario largo de `ClienteLogoController.ver`).
  */
 import { Controller, Get, Param, Res, StreamableFile, UseGuards } from '@nestjs/common';
-import { puedeEjecutar } from '../../../auth/domain/permisos.util';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
@@ -26,8 +25,7 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { toHttpException } from '../../../tickets/interface/controllers/tickets.controller';
 import { GenerarPdfTicketUseCase } from '../../application/use-cases/generar-pdf-ticket.use-case';
-
-const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
+import { alcanceTicketDesdeJwt } from '../../../tickets/interface/alcance-ticket';
 
 /** Lo único que este controller necesita de la respuesta HTTP: escribir headers. */
 interface RespuestaConHeaders {
@@ -53,8 +51,7 @@ export class TicketPdfController {
   ): Promise<StreamableFile> {
     const result = await this.generarPdfTicketUseCase.execute({
       ticketId: id,
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
+      ...alcanceTicketDesdeJwt(user),
       // `TenantGuard` garantiza un tenant resuelto: el token MASTER no llega acá.
       clienteId: user.cliente_id ?? '',
       clienteNombre: user.cliente_nombre ?? '',

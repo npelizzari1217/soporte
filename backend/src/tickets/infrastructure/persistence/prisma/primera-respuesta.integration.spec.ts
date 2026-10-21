@@ -13,11 +13,20 @@ import { PrismaTicketRepository } from './prisma-ticket.repository';
 import { PrismaOperacionTicketRepository } from './prisma-operacion-ticket.repository';
 import { PrismaEstadoRepository } from './prisma-estado.repository';
 import { PrismaTipoOperacionRepository } from './prisma-tipo-operacion.repository';
+import { PrismaTipoTicketRepository } from './prisma-tipo-ticket.repository';
+import { AlcanceActorTicket } from '../../../application/services/visibilidad-ticket';
 import { PrismaPrimeraRespuestaWriteRepository } from './prisma-primera-respuesta-write.repository';
 import {
   CalcularSlaHabilVenceService,
   CalendarioLaboralSemanal,
 } from '../../../../calendario-laboral/domain/services/calcular-sla-habil-vence.service';
+
+/** Actor que ve cualquier ticket: estos casos prueban la primera respuesta, no el acceso (odd/permisos-por-tipo-ticket). */
+const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
+  actorId: 'tecnico-wu6p',
+  tienePermisoVerTodos: true,
+  modulosPermitidos: null,
+};
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -75,6 +84,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
       { obtener: async () => SIEMPRE_ABIERTO },
       { obtener: async () => new Set<string>() },
       { error: vi.fn() },
+      new PrismaTipoTicketRepository(tenantContext),
     );
     await limpiar();
     const s = randomBytes(3).toString('hex');
@@ -143,6 +153,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     const id = await crearTicket();
 
     const r = await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: id,
       texto: 'Hola',
       autorId: TECNICO,
@@ -158,6 +169,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     const id = await crearTicket(creado);
 
     const r = await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: id,
       texto: 'uno',
       autorId: TECNICO,
@@ -168,15 +180,28 @@ describe('Primera respuesta — Integration (WU-6)', () => {
     expect(esperado).toBeGreaterThanOrEqual(2 * 3600);
     expect((await leer(id)).primeraRespuestaHabilS).toBe(esperado);
 
-    await useCase.execute({ ticketId: id, texto: 'dos', autorId: TECNICO, esInterno: false });
+    await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
+      ticketId: id,
+      texto: 'dos',
+      autorId: TECNICO,
+      esInterno: false,
+    });
     expect((await leer(id)).primeraRespuestaHabilS).toBe(esperado);
   });
 
   it('el interno y el público del solicitante no cuentan', async () => {
     const id = await crearTicket();
 
-    await useCase.execute({ ticketId: id, texto: 'nota', autorId: TECNICO, esInterno: true });
     await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
+      ticketId: id,
+      texto: 'nota',
+      autorId: TECNICO,
+      esInterno: true,
+    });
+    await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: id,
       texto: 'consulta',
       autorId: SOLICITANTE,
@@ -191,10 +216,22 @@ describe('Primera respuesta — Integration (WU-6)', () => {
 
   it('un segundo comentario no cambia la fecha', async () => {
     const id = await crearTicket();
-    await useCase.execute({ ticketId: id, texto: 'uno', autorId: TECNICO, esInterno: false });
+    await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
+      ticketId: id,
+      texto: 'uno',
+      autorId: TECNICO,
+      esInterno: false,
+    });
     const primera = (await leer(id)).primeraRespuestaAt;
 
-    await useCase.execute({ ticketId: id, texto: 'dos', autorId: TECNICO, esInterno: false });
+    await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
+      ticketId: id,
+      texto: 'dos',
+      autorId: TECNICO,
+      esInterno: false,
+    });
 
     expect((await leer(id)).primeraRespuestaAt).toEqual(primera);
   });
@@ -221,6 +258,7 @@ describe('Primera respuesta — Integration (WU-6)', () => {
   it('borrar el comentario que registró la primera respuesta no cambia la fecha', async () => {
     const id = await crearTicket();
     const r = await useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: id,
       texto: 'uno',
       autorId: TECNICO,

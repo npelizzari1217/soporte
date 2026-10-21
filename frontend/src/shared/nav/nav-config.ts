@@ -63,7 +63,8 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/tickets",
     label: ETIQUETAS_MODULOS.TICKETS,
     icon: Ticket,
-    visible: () => true,
+    // Mismo permiso que exige `GET /tickets`: sin él, el ítem llevaba a un listado que da 403.
+    visible: (can) => can("TICKETS:LECTURA"),
   },
   {
     href: "/dashboard",
@@ -198,14 +199,20 @@ const ROOT_SECTION_ITEMS: NavItem[] = [
  */
 export const NAV_SECTIONS: NavSection[] = [
   { title: null, items: DEFAULT_SECTION_ITEMS },
-  { title: "ROOT", visible: (isGlobalAdmin) => isGlobalAdmin, items: ROOT_SECTION_ITEMS },
+  {
+    title: "ROOT",
+    visible: (isGlobalAdmin) => isGlobalAdmin,
+    items: ROOT_SECTION_ITEMS,
+  },
 ];
 
 /**
  * NAV_ITEMS — vista plana de `NAV_SECTIONS`, para consumidores que no
  * necesitan la agrupación (ej. `Breadcrumbs`, que solo busca por `href`).
  */
-export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((section) => section.items);
+export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap(
+  (section) => section.items,
+);
 
 /**
  * Filters `NAV_SECTIONS` for a given (possibly null/unauthenticated) user.
@@ -218,17 +225,22 @@ export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap((section) => section.it
  */
 export function visibleNavSections(user: JwtPayload | null): NavSection[] {
   const isGlobalAdmin = user?.is_global_admin ?? false;
-  const can = (permiso: string): boolean => isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
+  const can = (permiso: string): boolean =>
+    isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
   const canModulo = (modulo: string): boolean =>
     isGlobalAdmin || (user?.modulos?.includes(modulo) ?? false);
   // ADR-P5: mismo criterio que `useSession().esAdminCliente`, derivado acá
   // porque esta función no es un hook (consume el payload directo).
   const esAdminCliente = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
 
-  return NAV_SECTIONS.filter((section) => section.visible?.(isGlobalAdmin) ?? true)
+  return NAV_SECTIONS.filter(
+    (section) => section.visible?.(isGlobalAdmin) ?? true,
+  )
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => item.visible(can, isGlobalAdmin, canModulo, esAdminCliente)),
+      items: section.items.filter((item) =>
+        item.visible(can, isGlobalAdmin, canModulo, esAdminCliente),
+      ),
     }))
     .filter((section) => section.items.length > 0);
 }

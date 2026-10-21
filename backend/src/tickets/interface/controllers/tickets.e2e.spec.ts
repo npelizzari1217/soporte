@@ -748,12 +748,31 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(denegado.status).toBe(403);
 
+      // TECNICO con ticket:asignar pero SIN el módulo EQUIPOS del tipo: no accede al ticket, así
+      // que es 404 y no se asigna nada (odd/permisos-por-tipo-ticket, S0).
+      const sinModulo = await httpPatch(
+        `${baseUrl}/tickets/${created.data.id}/asignar`,
+        { asignadoId: agente.id },
+        bearer(loginTecnico.accessToken),
+      );
+      expect(sinModulo.status).toBe(404);
+      const sinAsignar = await tenantClient.ticket.findUnique({ where: { id: created.data.id } });
+      expect(sinAsignar?.asignadoId).toBeNull();
+
+      // Con una celda de EQUIPOS el técnico accede. Los permisos se leen al emitir el token, así
+      // que hace falta un login nuevo.
+      await permisosRepo.setPermisos(tecnico.id, cliente.id, [
+        ...mapearPermisosViejos(permisosPorRolId.get(roleTecnico.id) ?? []),
+        'EQUIPOS:LECTURA',
+      ]);
+      const loginTecnicoConEquipos = await login(tecnico.email);
+
       // TECNICO con ticket:asignar, pero el agente aún NO tiene ninguna
       // acción de EQUIPOS en la matriz → 422.
       const noElegible = await httpPatch(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },
-        bearer(loginTecnico.accessToken),
+        bearer(loginTecnicoConEquipos.accessToken),
       );
       expect(noElegible.status).toBe(422);
 
@@ -766,7 +785,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       const permitido = await httpPatch<TicketResponseDto>(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },
-        bearer(loginTecnico.accessToken),
+        bearer(loginTecnicoConEquipos.accessToken),
       );
       expect(permitido.status).toBe(200);
       expect(permitido.data.asignadoId).toBe(agente.id);

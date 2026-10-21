@@ -25,7 +25,7 @@ const usuario: JwtPayload = {
   sub: "1",
   cliente_id: "c1",
   rol: "USUARIO",
-  permisos: ["TICKETS:ALTAS", "TICKETS:COMENTAR"],
+  permisos: ["TICKETS:LECTURA", "TICKETS:ALTAS", "TICKETS:COMENTAR"],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],

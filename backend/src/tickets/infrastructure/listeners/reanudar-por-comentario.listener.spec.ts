@@ -51,6 +51,7 @@ describe('ReanudarPorComentarioListener', () => {
       nuevoEstadoCodigo: 'EN_PROCESO',
       autorId: 'solicitante-uuid',
       actorEsCorrector: false,
+      alcance: null,
     });
   });
 

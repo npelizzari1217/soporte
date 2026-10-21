@@ -22,6 +22,9 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { Modulo } from '../../../shared/domain/modulos';
 import { IFileStorage } from '../../../shared/domain/ports/i-file-storage';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { unstubbed } from '../../../testing/mocks';
@@ -29,6 +32,13 @@ import {
   TicketNoEncontradoError,
   ArchivoTamanoCeroError,
 } from '../../domain/errors/tickets.errors';
+
+function makeTipo(modulo: Modulo): TipoTicketEntity {
+  return TipoTicketEntity.create(
+    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
+    'tipo-soporte-uuid',
+  );
+}
 
 function makeTicket(overrides: Partial<{ solicitanteId: string; deleted: boolean }> = {}) {
   const ticket = TicketEntity.create(
@@ -62,6 +72,7 @@ function baseDto(overrides: Partial<AdjuntarArchivoDto> = {}): AdjuntarArchivoDt
     actorId: 'actor-uuid',
     tienePermisoVerTodos: false,
     tienePermisoEditar: false,
+    modulosPermitidos: null,
     ...overrides,
   };
 }
@@ -91,6 +102,9 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       alCommitear: unstubbed('alCommitear'),
     };
     const txRunner = { run: vi.spyOn(txRunnerReal, 'run') };
+    const tipoTicketRepo = {
+      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(makeTipo('TICKETS')),
+    };
 
     const useCase = new AdjuntarArchivoUseCase(
       ticketRepo,
@@ -99,6 +113,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       tipoOperacionRepo,
       fileStorage,
       txRunnerReal,
+      tipoTicketRepo,
     );
 
     return {
@@ -109,6 +124,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       tipoOperacionRepo,
       fileStorage,
       txRunner,
+      tipoTicketRepo,
     };
   }
 
@@ -298,5 +314,93 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.fileStorage.upload).not.toHaveBeenCalled();
+  });
+
+  describe('módulo del tipo (odd/permisos-por-tipo-ticket, S0)', () => {
+    it('un ticket de un tipo de otro módulo es 404 aunque el actor sea su solicitante y tenga VER_TODOS y MODIFICACION; no sube ni persiste nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          tienePermisoVerTodos: true,
+          tienePermisoEditar: true,
+          modulosPermitidos: ['TICKETS'],
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.fileStorage.upload).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.archivoRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('adjuntar a una operación de un ticket de otro módulo también es 404', async () => {
+      const c = makeCollaborators();
+      c.operacionRepo.findById.mockResolvedValue(
+        OperacionTicketEntity.create(
+          {
+            ticketId: 'ticket-uuid',
+            tipoOperacionId: 'tipo-op-comentario-uuid',
+            descripcion: 'Comentario original',
+            estadoAnteriorId: null,
+            estadoNuevoId: null,
+            autorId: 'actor-uuid',
+            esInterno: false,
+            metadata: null,
+          },
+          'operacion-uuid',
+        ),
+      );
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          ticketId: undefined,
+          operacionId: 'operacion-uuid',
+          modulosPermitidos: ['TICKETS'],
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.fileStorage.upload).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo de sus módulos se adjunta', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.archivoRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin restricción de módulo (ROOT o ADMINISTRADOR) adjunta en un tipo de cualquier módulo', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'actor-uuid' }));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('el módulo no reemplaza la regla ADR-2: un tipo de sus módulos sin ser solicitante ni tener VER_TODOS/MODIFICACION sigue siendo 404', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ solicitanteId: 'otro-usuario-uuid' }));
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.fileStorage.upload).not.toHaveBeenCalled();
+    });
   });
 });

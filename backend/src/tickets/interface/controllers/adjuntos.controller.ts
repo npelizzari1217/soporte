@@ -15,7 +15,9 @@
  * adjunto es un alta. El acceso al ticket/operación DUEÑO (solicitante, o
  * `TICKETS:VER_TODOS`/`TICKETS:MODIFICACION`) se resuelve DENTRO de
  * `AdjuntarArchivoUseCase` (mismo criterio que el scope de
- * `TICKETS:VER_TODOS` en `TicketsController.findAll`/`findOne`, R11).
+ * `TICKETS:VER_TODOS` en `TicketsController.findAll`/`findOne`, R11), junto
+ * con el módulo del tipo del ticket (`modulosPermitidosDesdeJwt`,
+ * odd/permisos-por-tipo-ticket S0).
  *
  * `FileInterceptor('archivo')` sin `storage` explícito → multer usa
  * `memoryStorage` por default (el binario llega en `file.buffer`, NUNCA se
@@ -45,6 +47,7 @@ import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guar
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { puedeEjecutar } from '../../../auth/domain/permisos.util';
+import { modulosPermitidosDesdeJwt } from '../alcance-ticket';
 
 const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
 const ACCION_MODIFICACION = 'TICKETS:MODIFICACION';
@@ -81,6 +84,7 @@ export class AdjuntosController {
       actorId: user.sub,
       tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
       tienePermisoEditar: puedeEjecutar(user, ACCION_MODIFICACION),
+      modulosPermitidos: modulosPermitidosDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -118,6 +122,7 @@ export class AdjuntosController {
       actorId: user.sub,
       tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
       tienePermisoEditar: puedeEjecutar(user, ACCION_MODIFICACION),
+      modulosPermitidos: modulosPermitidosDesdeJwt(user),
     });
 
     if (result.isFail()) {

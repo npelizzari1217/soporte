@@ -22,6 +22,7 @@ import {
 import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
+  TicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { ResolverQrAutenticadoUseCase } from '../../application/use-cases/resolver-qr-autenticado.use-case';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -150,11 +151,20 @@ describe('SoporteController (T13.4)', () => {
       ticketSoporte.registrarSolucion('Se reinstaló el cliente VPN.');
       registrarSolucionUseCase.execute.mockResolvedValue(Result.ok(ticketSoporte));
 
-      const result = await controller.registrarSolucion('ticket-uuid', {
-        solucion: 'Se reinstaló el cliente VPN.',
-      });
+      const result = await controller.registrarSolucion(
+        'ticket-uuid',
+        { solucion: 'Se reinstaló el cliente VPN.' },
+        USER,
+      );
 
       expect(result.solucionAplicada).toBe('Se reinstaló el cliente VPN.');
+      expect(registrarSolucionUseCase.execute).toHaveBeenCalledWith({
+        ticketId: 'ticket-uuid',
+        solucion: 'Se reinstaló el cliente VPN.',
+        actorId: 'usuario-uuid',
+        tienePermisoVerTodos: false,
+        modulosPermitidos: [],
+      });
     });
 
     it('ticket_soporte inexistente → 404', async () => {
@@ -163,9 +173,20 @@ describe('SoporteController (T13.4)', () => {
         Result.fail(new TicketSoporteNoEncontradoError('no-existe')),
       );
 
-      await expect(controller.registrarSolucion('no-existe', { solucion: 'X' })).rejects.toThrow(
-        NotFoundException,
+      await expect(
+        controller.registrarSolucion('no-existe', { solucion: 'X' }, USER),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('ticket no accesible para el actor → 404', async () => {
+      const { controller, registrarSolucionUseCase } = buildController();
+      registrarSolucionUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketNoEncontradoError('ticket-uuid')),
       );
+
+      await expect(
+        controller.registrarSolucion('ticket-uuid', { solucion: 'X' }, USER),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('declara @RequiereAcciones("TICKETS:MODIFICACION")', () => {
@@ -181,21 +202,37 @@ describe('SoporteController (T13.4)', () => {
         Result.ok({ equipo: { id: 'equipo-1', nombre: 'Notebook Dell', numeroSerie: 'SN-123' } }),
       );
 
-      const result = await controller.obtenerEquipoDeTicket('ticket-1');
+      const result = await controller.obtenerEquipoDeTicket('ticket-1', USER);
 
       expect(result).toEqual({
         equipo: { id: 'equipo-1', nombre: 'Notebook Dell', numeroSerie: 'SN-123' },
       });
-      expect(obtenerEquipoDeTicketUseCase.execute).toHaveBeenCalledWith({ ticketId: 'ticket-1' });
+      expect(obtenerEquipoDeTicketUseCase.execute).toHaveBeenCalledWith({
+        ticketId: 'ticket-1',
+        actorId: 'usuario-uuid',
+        tienePermisoVerTodos: false,
+        modulosPermitidos: [],
+      });
     });
 
     it('retorna equipo:null cuando el ticket no tiene equipo asociado', async () => {
       const { controller, obtenerEquipoDeTicketUseCase } = buildController();
       obtenerEquipoDeTicketUseCase.execute.mockResolvedValue(Result.ok({ equipo: null }));
 
-      const result = await controller.obtenerEquipoDeTicket('ticket-1');
+      const result = await controller.obtenerEquipoDeTicket('ticket-1', USER);
 
       expect(result).toEqual({ equipo: null });
+    });
+
+    it('ticket no accesible para el actor → 404', async () => {
+      const { controller, obtenerEquipoDeTicketUseCase } = buildController();
+      obtenerEquipoDeTicketUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketNoEncontradoError('ticket-1')),
+      );
+
+      await expect(controller.obtenerEquipoDeTicket('ticket-1', USER)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('declara @RequiereAcciones("TICKETS:LECTURA") (R5-a: gatea por TICKETS, no EQUIPOS)', () => {
