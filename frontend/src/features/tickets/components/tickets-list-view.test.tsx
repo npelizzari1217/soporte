@@ -361,10 +361,20 @@ describe("TicketsListView", () => {
     });
 
     it("quita de la URL un `asignado` que no es agente", async () => {
-      currentSearch = "asignado=u3";
+      currentSearch = "asignado=u3&estado=e-nuevo";
       renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
       await waitFor(() => expect(ultimaUrlReemplazada()).not.toBeNull());
       expect(ultimaUrlReemplazada()?.get("asignado")).toBeNull();
+      expect(ultimaUrlReemplazada()?.get("estado")).toBe("e-nuevo");
+    });
+
+    it("no toca la URL si el catálogo de usuarios falla, aunque el asignado sea válido", async () => {
+      server.use(http.get("/api/usuarios", () => HttpResponse.json({}, { status: 500 })));
+      currentSearch = "asignado=u1";
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await screen.findByText("Impresora rota");
+      await new Promise((resolver) => setTimeout(resolver, 50));
+      expect(replaceMock).not.toHaveBeenCalled();
     });
 
     it("no toca la URL cuando `tipo` y `asignado` están en el catálogo visible", async () => {
