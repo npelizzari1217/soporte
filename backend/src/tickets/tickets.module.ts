@@ -39,6 +39,8 @@ import {
   IReglaAsignacionRepository,
   REGLA_ASIGNACION_REPOSITORY,
 } from './domain/ports/i-regla-asignacion.repository';
+import { PrismaPermisoTipoTicketRepository } from './infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
+import { PERMISO_TIPO_TICKET_REPOSITORY } from './domain/ports/i-permiso-tipo-ticket.repository';
 import { ResolverAsignacionAutomatica } from './application/services/resolver-asignacion-automatica.service';
 import {
   ITareaTicketRepository,
@@ -205,6 +207,8 @@ import {
     { provide: CICLO_CLIENTE_REPOSITORY, useClass: PrismaCicloClienteRepository },
     { provide: SOLICITANTE_EXTERNO_REPOSITORY, useClass: PrismaSolicitanteExternoRepository },
     { provide: REGLA_ASIGNACION_REPOSITORY, useClass: PrismaReglaAsignacionRepository },
+    // odd/permisos-por-tipo-ticket (T4a): permisos por tipo y acción, locales al tenant.
+    { provide: PERMISO_TIPO_TICKET_REPOSITORY, useClass: PrismaPermisoTipoTicketRepository },
     // odd/tareas-con-tecnico: tareas de cualquier tipo de ticket.
     { provide: TAREA_TICKET_REPOSITORY, useClass: PrismaTareaTicketRepository },
     // odd/ticket-cerrado-solo-lectura: tareas de solo lectura en CERRADO/CANCELADO o bloqueada por compra.

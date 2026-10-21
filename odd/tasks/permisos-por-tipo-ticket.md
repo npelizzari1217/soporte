@@ -73,8 +73,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   asignar-en-proceso, comentar (incl. API v1), `/soporte` solución por el punto único — `eedfbb6c`
 - [x] T3 — S0 — inline — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
   menú con `TICKETS:LECTURA`, inicio según el menú (L16) — `3bdf4627`
-- [ ] T4a — S1, D1, D4 — worker — tabla tenant `permisos_tipo_ticket` con CHECK derivado,
-  vocabulario de acciones y traducción L11 en el dominio, repositorio — (pendiente)
+- [x] T4a — S1, D1, D4 — worker — tabla tenant `permisos_tipo_ticket` con CHECK derivado,
+  vocabulario de acciones y traducción L11 en el dominio, repositorio — (este commit)
 - [ ] T4b — S7, L21 — worker — script de backfill idempotente (dry-run / `--apply`) y paso en
   `deploy.ps1` — (pendiente)
 - [ ] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
@@ -198,4 +198,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   aplicar plantilla, crear usuario y cambiar rol; también `importacion-legacy/master.ts:194-207` y
   el seed de demo. Lector extra a migrar en T5: `usuario-master.checker.ts:132,167` (elegibilidad
   del asignado). La tabla vieja `usuario_tipos_ticket` se borró en `20260810120000`.
+- **L23** (corrección de L21, T4a) — Un tipo de COMPRAS o EQUIPOS toma las celdas de TICKETS solo
+  si el usuario tiene alguna celda de ese módulo: desde la etapa 0, sin ella el ticket no se ve, y
+  la migración no puede dar acceso que hoy no existe (S7). Lo detectó el worker de T4a; tests
+  RED→GREEN en `permisos-tipo-ticket.spec.ts`. Migración: `20261021120000_permisos_tipo_ticket`.
 

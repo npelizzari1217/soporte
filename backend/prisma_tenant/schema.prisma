@@ -130,8 +130,9 @@ model TipoTicket {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  tickets         Ticket[]
-  reglaAsignacion ReglaAsignacion?
+  tickets            Ticket[]
+  reglaAsignacion    ReglaAsignacion?
+  permisosTipoTicket PermisoTipoTicket[]
 
   @@index([modulo, activo])
   @@map("tipos_ticket")
@@ -1575,6 +1576,23 @@ model ReglaAsignacion {
   tipo TipoTicket @relation(fields: [tipoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("reglas_asignacion")
+}
+
+/// Permiso por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, S1, D1): una fila por terna
+/// (usuario, tipo, acción) concedida; sin fila = sin la acción. `usuarioId` es soft ref a
+/// master.usuarios (sin FK, cross-DB). `accion` admite los valores de `ACCIONES_TIPO_TICKET`
+/// (CHECK permisos_tipo_ticket_accion_check, solo en la migración SQL).
+model PermisoTipoTicket {
+  usuarioId String   @map("usuario_id") @db.Uuid
+  tipoId    String   @map("tipo_id") @db.Uuid
+  accion    String   @db.VarChar(30)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  tipo TipoTicket @relation(fields: [tipoId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([usuarioId, tipoId, accion])
+  @@index([usuarioId])
+  @@map("permisos_tipo_ticket")
 }
 
 /// Cola y registro de avisos de webhook del cliente (odd/webhooks, T2). Una fila por aviso: su `id`
