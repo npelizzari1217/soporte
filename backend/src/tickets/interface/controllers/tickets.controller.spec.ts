@@ -340,6 +340,9 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
     expect(listarTecnicos.execute).toHaveBeenCalledWith({
       ticketId: 'ticket-1',
       clienteId: 'cliente-1',
+      actorId: 'usr-2',
+      tienePermisoVerTodos: false,
+      modulosPermitidos: ['SOPORTE'],
     });
     expect(res).toEqual(tecnicos);
   });
@@ -387,7 +390,128 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
       asignadoId: 'agente-1',
       autorId: 'usr-2',
       clienteId: 'cliente-1',
+      actorId: 'usr-2',
+      tienePermisoVerTodos: false,
+      modulosPermitidos: ['SOPORTE'],
     });
+  });
+});
+
+describe('TicketsController — alcance del actor en las escrituras (odd/permisos-por-tipo-ticket, S0)', () => {
+  /** Alcance que arma `alcanceTicketDesdeJwt(USUARIO_SOPORTE)`: sin VER_TODOS, acotado a SOPORTE. */
+  const ALCANCE_USUARIO_SOPORTE = {
+    actorId: 'usr-2',
+    tienePermisoVerTodos: false,
+    modulosPermitidos: ['SOPORTE'],
+  };
+
+  function makeTicketEntity(): TicketEntity {
+    return TicketEntity.create(
+      {
+        numero: 'SOP-2026-0001',
+        titulo: 'Ticket',
+        descripcion: null,
+        tipoId: 'ti1',
+        estadoId: 'e-nuevo',
+        prioridadId: 'p1',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'u-sol',
+      },
+      'ticket-1',
+    );
+  }
+
+  it('update delega con el alcance del JWT', async () => {
+    const editarTicket = {
+      execute: vi
+        .fn<EditarTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
+    const { controller } = buildController({ editarTicket });
+
+    await controller.update(USUARIO_SOPORTE, 'ticket-1', { titulo: 'X' });
+
+    expect(editarTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining(ALCANCE_USUARIO_SOPORTE),
+    );
+  });
+
+  it('transicionarEstado delega con el alcance del JWT (nunca null: null es solo para sistema)', async () => {
+    const transicionar = {
+      execute: vi
+        .fn<TransicionarEstadoUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
+    const { controller } = buildController({ transicionar });
+
+    await controller.transicionarEstado(USUARIO_SOPORTE, 'ticket-1', {
+      nuevoEstadoCodigo: 'ASIGNADO',
+    });
+
+    expect(transicionar.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ alcance: ALCANCE_USUARIO_SOPORTE }),
+    );
+  });
+
+  it('transicionarEstado de ROOT delega sin restricción de módulo', async () => {
+    const transicionar = {
+      execute: vi
+        .fn<TransicionarEstadoUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
+    const { controller } = buildController({ transicionar });
+
+    await controller.transicionarEstado(ROOT, 'ticket-1', { nuevoEstadoCodigo: 'ASIGNADO' });
+
+    expect(transicionar.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        alcance: expect.objectContaining({ actorId: 'root-1', modulosPermitidos: null }),
+      }),
+    );
+  });
+
+  it('asignar delega con el alcance del JWT', async () => {
+    const asignarTicket = {
+      execute: vi
+        .fn<AsignarTicketUseCase['execute']>()
+        .mockResolvedValue(Result.ok(makeTicketEntity())),
+    };
+    const { controller } = buildController({ asignarTicket });
+
+    await controller.asignar(USUARIO_SOPORTE, 'ticket-1', { asignadoId: 'agente-1' });
+
+    expect(asignarTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining(ALCANCE_USUARIO_SOPORTE),
+    );
+  });
+
+  it('comentar delega con el alcance del JWT', async () => {
+    const crearComentario = {
+      execute: vi
+        .fn<CrearComentarioUseCase['execute']>()
+        .mockResolvedValue(Result.ok(fakeOperacion(false))),
+    };
+    const { controller } = buildController({ crearComentario });
+
+    await controller.comentar(USUARIO_SOPORTE, 'ticket-1', { texto: 'Hola' });
+
+    expect(crearComentario.execute).toHaveBeenCalledWith(
+      expect.objectContaining(ALCANCE_USUARIO_SOPORTE),
+    );
+  });
+
+  it('un ticket que el actor no ve llega como 404 en las escrituras', async () => {
+    const editarTicket = {
+      execute: vi
+        .fn<EditarTicketUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-1'))),
+    };
+    const { controller } = buildController({ editarTicket });
+
+    await expect(
+      controller.update(USUARIO_SOPORTE, 'ticket-1', { titulo: 'X' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 

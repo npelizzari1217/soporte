@@ -238,6 +238,9 @@ describe('TicketsV1Controller (lectura)', () => {
       autorId: actor.sub,
       esInterno: false,
       autorEsIntegracion: true,
+      actorId: actor.sub,
+      tienePermisoVerTodos: true,
+      modulosPermitidos: ['TICKETS'],
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
   });

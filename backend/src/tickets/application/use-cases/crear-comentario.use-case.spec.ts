@@ -25,6 +25,9 @@ import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticke
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { Modulo } from '../../../shared/domain/modulos';
 
 const ESTADOS: Record<string, EstadoEntity> = {
   NUEVO: EstadoEntity.create(
@@ -89,13 +92,30 @@ function baseDto(overrides: Partial<CrearComentarioDto> = {}): CrearComentarioDt
     texto: 'Un comentario de prueba',
     autorId: 'autor-uuid',
     esInterno: false,
+    // Ve cualquier ticket: los casos del comentario no dependen del acceso.
+    actorId: 'autor-uuid',
+    tienePermisoVerTodos: true,
+    modulosPermitidos: null,
     ...overrides,
   };
 }
 
+function makeTipo(modulo: Modulo): TipoTicketEntity {
+  return TipoTicketEntity.create(
+    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
+    'tipo-soporte-uuid',
+  );
+}
+
 describe('CrearComentarioUseCase', () => {
   function makeCollaborators() {
-    const ticketRepo = { findById: vi.fn<ITicketRepository['findById']>() };
+    const ticketRepo = {
+      findById: vi.fn<ITicketRepository['findById']>(),
+      esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
+    };
+    const tipoTicketRepo = {
+      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(makeTipo('TICKETS')),
+    };
     const operacionRepo = {
       save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
     };
@@ -135,10 +155,12 @@ describe('CrearComentarioUseCase', () => {
       calendarioRepo,
       feriadosRepo,
       logger,
+      tipoTicketRepo,
     );
 
     return {
       useCase,
+      tipoTicketRepo,
       ticketRepo,
       operacionRepo,
       estadoRepo,
@@ -467,6 +489,71 @@ describe('CrearComentarioUseCase', () => {
         expect(c.calendarioRepo.obtener).not.toHaveBeenCalled();
         expect(c.primeraRespuestaRepo.registrarSiFalta.mock.calls[0][2]).toBeNull();
       });
+    });
+  });
+
+  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
+    it('un ticket de un tipo de otro módulo es 404 aunque el autor sea el solicitante y tenga VER_TODOS; no se escribe ni se publica nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          autorId: 'solicitante-uuid',
+          actorId: 'solicitante-uuid',
+          modulosPermitidos: ['TICKETS'],
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.txRunner.llamadas).toBe(0);
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404 y no se escribe', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({ esInterno: true, tienePermisoVerTodos: false, modulosPermitidos: ['TICKETS'] }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'autor-uuid');
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo de sus módulos que el actor ve se comenta', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          autorId: 'solicitante-uuid',
+          actorId: 'solicitante-uuid',
+          tienePermisoVerTodos: false,
+          modulosPermitidos: ['TICKETS'],
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin restricción de módulo (ROOT o ADMINISTRADOR) comenta un tipo de cualquier módulo', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -8,7 +8,9 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { esModuloDelTipoPermitido } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `AdjuntarArchivoUseCase`.
@@ -26,6 +28,10 @@ import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
  * `ObtenerTicketUseCase`/`ListarTimelineUseCase`) — usados para el chequeo
  * de acceso ADR-2 ("Adjuntar: acceso al ticket — solicitante O
  * ticket:ver_todos/ticket:editar —, sin permiso dedicado").
+ *
+ * `modulosPermitidos` acota además por el módulo del tipo del ticket, con el mismo criterio que
+ * el listado y el detalle (odd/permisos-por-tipo-ticket, S0); `null` es sin restricción (ROOT y
+ * ADMINISTRADOR).
  */
 export interface AdjuntarArchivoDto {
   ticketId?: string;
@@ -38,6 +44,7 @@ export interface AdjuntarArchivoDto {
   actorId: string;
   tienePermisoVerTodos: boolean;
   tienePermisoEditar: boolean;
+  modulosPermitidos: readonly string[] | null;
 }
 
 /**
@@ -51,7 +58,9 @@ export interface AdjuntarArchivoDto {
  * 2. Verifica acceso al ticket (ADR-2, sin permiso RBAC dedicado): el actor
  *    debe ser el `solicitanteId`, o tener `ticket:ver_todos`/`ticket:editar`.
  *    Sin acceso → `TicketNoEncontradoError` (404 — mismo criterio de "no
- *    revela existencia" que T6/T18, no 403).
+ *    revela existencia" que T6/T18, no 403). El módulo del tipo del ticket
+ *    también tiene que estar entre los del actor (`esModuloDelTipoPermitido`,
+ *    odd/permisos-por-tipo-ticket S0); si no, también 404.
  * 3. Pre-genera un UUIDv7 para el archivo y construye la storage key
  *    determinística (ADR-7): `tickets/{ticketId}/{archivoId}` si se adjunta
  *    directo al ticket, `operaciones/{operacionId}/{archivoId}` si se
@@ -86,6 +95,7 @@ export class AdjuntarArchivoUseCase {
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly fileStorage: Pick<IFileStorage, 'upload'>,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: AdjuntarArchivoDto): Promise<Result<ArchivoEntity, DomainError>> {
@@ -111,7 +121,10 @@ export class AdjuntarArchivoUseCase {
     // mismo criterio que ObtenerTicketUseCase/ListarTimelineUseCase, T6/T18).
     const tieneAcceso =
       ticket.solicitanteId === dto.actorId || dto.tienePermisoVerTodos || dto.tienePermisoEditar;
-    if (!tieneAcceso) {
+    if (
+      !tieneAcceso ||
+      !(await esModuloDelTipoPermitido(this.tipoTicketRepo, ticket, dto.modulosPermitidos))
+    ) {
       return Result.fail(new TicketNoEncontradoError(ticketId));
     }
 

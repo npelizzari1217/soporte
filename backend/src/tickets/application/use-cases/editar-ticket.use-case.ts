@@ -13,7 +13,9 @@ import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repos
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ESTADOS_PRE_PROCESO } from '../../domain/state-machine/estados.constants';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `EditarTicketUseCase` (T8 — PATCH semántico).
@@ -21,8 +23,11 @@ import { ESTADOS_PRE_PROCESO } from '../../domain/state-machine/estados.constant
  * `tipoId` está deliberadamente EXCLUIDO (no forma parte del contrato de
  * edición de datos — spec T8 solo menciona titulo/descripcion/prioridadId).
  * `estado` NUNCA se edita por esta vía — es una transición (T9, PR7).
+ *
+ * El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el JWT: lo que el actor
+ * no ve, tampoco lo edita (odd/permisos-por-tipo-ticket, S0).
  */
-export interface EditarTicketDto {
+export interface EditarTicketDto extends AlcanceActorTicket {
   ticketId: string;
   titulo?: string;
   descripcion?: string | null;
@@ -44,6 +49,8 @@ export interface EditarTicketDto {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
+ *    Si el actor no lo ve (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) →
+ *    también 404, antes de la regla de bloqueo y sin escribir nada.
  * 2. Si `prioridadId` viene definido, valida que exista en el catálogo del
  *    tenant → `PrioridadNoEncontradaError` (422) si no.
  * 2b. Si `sectorId` viene con valor, valida que exista en el catálogo
@@ -70,6 +77,7 @@ export class EditarTicketUseCase {
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: EditarTicketDto): Promise<Result<TicketEntity, DomainError>> {
@@ -118,7 +126,15 @@ export class EditarTicketUseCase {
   ): Promise<Result<{ ticket: TicketEntity; cambioPrioridad: boolean }, DomainError>> {
     await this.ticketRepo.bloquear(dto.ticketId);
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket || ticket.isDeleted()) {
+    if (
+      !ticket ||
+      ticket.isDeleted() ||
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

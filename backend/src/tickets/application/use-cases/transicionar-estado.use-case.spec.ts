@@ -28,6 +28,8 @@ import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.reposito
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import { AlcanceActorTicket } from '../services/visibilidad-ticket';
+import { Modulo } from '../../../shared/domain/modulos';
 import { IRelojSlaMarcador } from '../../domain/ports/i-reloj-sla-marcador';
 import { unstubbed } from '../../../testing/mocks';
 
@@ -85,12 +87,27 @@ function makeTicket(estadoCodigo: keyof typeof ESTADOS): TicketEntity {
   );
 }
 
+/** Actor que ve cualquier ticket: los casos del grafo de estados no dependen del acceso. */
+const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
+  actorId: 'tecnico-uuid',
+  tienePermisoVerTodos: true,
+  modulosPermitidos: null,
+};
+
+function makeTipo(modulo: Modulo): TipoTicketEntity {
+  return TipoTicketEntity.create(
+    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
+    'tipo-soporte-uuid',
+  );
+}
+
 function baseDto(overrides: Partial<TransicionarEstadoDto> = {}): TransicionarEstadoDto {
   return {
     ticketId: 'ticket-uuid',
     nuevoEstadoCodigo: 'ASIGNADO',
     autorId: 'tecnico-uuid',
     actorEsCorrector: false,
+    alcance: ALCANCE_SIN_RESTRICCION,
     ...overrides,
   };
 }
@@ -105,7 +122,7 @@ describe('TransicionarEstadoUseCase', () => {
       findLastSecuencia: unstubbed('findLastSecuencia'),
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
-      esVisiblePara: unstubbed('esVisiblePara'),
+      esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
       bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
     };
@@ -680,6 +697,90 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
       expect(ticket.estadoId).toBe('estado-en-proceso-uuid');
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
+    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS y sea corrector; no se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          actorEsCorrector: true,
+          alcance: { ...ALCANCE_SIN_RESTRICCION, modulosPermitidos: ['TICKETS'] },
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.relojMarcador.marcar).not.toHaveBeenCalled();
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404 y no se escribe', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          alcance: {
+            actorId: 'tecnico-uuid',
+            tienePermisoVerTodos: false,
+            modulosPermitidos: ['TICKETS'],
+          },
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'tecnico-uuid');
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo de sus módulos que el actor ve transiciona', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          alcance: {
+            actorId: 'solicitante-uuid',
+            tienePermisoVerTodos: false,
+            modulosPermitidos: ['TICKETS'],
+          },
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin restricción de módulo (ROOT o ADMINISTRADOR) transiciona un tipo de cualquier módulo', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(baseDto({ alcance: ALCANCE_SIN_RESTRICCION }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('un flujo de sistema (alcance null, D3) transiciona sin chequear acceso', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute(baseDto({ alcance: null }));
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.esVisiblePara).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 });

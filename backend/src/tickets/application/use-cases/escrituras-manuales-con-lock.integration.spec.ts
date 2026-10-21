@@ -41,6 +41,14 @@ import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { EditarTicketUseCase } from './editar-ticket.use-case';
 import { TransicionarEstadoUseCase } from './transicionar-estado.use-case';
 import { Result } from '../../../shared/domain/result';
+import { AlcanceActorTicket } from '../services/visibilidad-ticket';
+
+/** Actor que ve cualquier ticket: estos casos prueban el lock, no el acceso (odd/permisos-por-tipo-ticket). */
+const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
+  actorId: 'responsable-lock',
+  tienePermisoVerTodos: true,
+  modulosPermitidos: null,
+};
 
 // odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
 const siempreEditable = { verificar: async () => Result.ok(undefined) };
@@ -291,6 +299,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
         nuevoEstadoCodigo: 'ESPERANDO_CLIENTE',
         autorId: RESPONSABLE,
         actorEsCorrector: false,
+        alcance: ALCANCE_SIN_RESTRICCION,
       }),
     );
 
@@ -311,10 +320,16 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
       eventPublisher,
       sectorRepo,
       txRunner,
+      tipoTicketRepo,
     );
 
     const resultado = await enTenant(() =>
-      useCase.execute({ ticketId, titulo: 'Titulo pisado', actorEsRoot: false }),
+      useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId,
+        titulo: 'Titulo pisado',
+        actorEsRoot: false,
+      }),
     );
 
     expect(resultado.isFail()).toBe(true);
@@ -338,7 +353,13 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
     );
 
     const resultado = await enTenant(() =>
-      useCase.execute({ ticketId, asignadoId: OTRO, clienteId: CLIENTE_ID, autorId: RESPONSABLE }),
+      useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId,
+        asignadoId: OTRO,
+        clienteId: CLIENTE_ID,
+        autorId: RESPONSABLE,
+      }),
     );
 
     expect(resultado.isOk()).toBe(true);
@@ -365,7 +386,13 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
     );
 
     const resultado = await enTenant(() =>
-      useCase.execute({ ticketId, asignadoId: OTRO, autorId: RESPONSABLE, clienteId: CLIENTE_ID }),
+      useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId,
+        asignadoId: OTRO,
+        autorId: RESPONSABLE,
+        clienteId: CLIENTE_ID,
+      }),
     );
 
     expect(resultado.isFail()).toBe(true);

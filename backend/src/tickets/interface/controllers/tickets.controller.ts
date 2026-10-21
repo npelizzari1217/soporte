@@ -511,7 +511,7 @@ export class TicketsController {
    * TECNICO+ (`TICKETS:MODIFICACION`).
    * @throws 403 sin `TICKETS:MODIFICACION` (AccionesGuard), o ticket EN_PROCESO+
    *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
-   * @throws 404 ticket inexistente/otro tenant
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
    * @throws 422 prioridadId o sectorId inexistente en el catálogo
    */
   @Patch(':id')
@@ -530,6 +530,7 @@ export class TicketsController {
       sectorId: dto.sectorId,
       // ROOT edita SIEMPRE, incluso con el ticket EN_PROCESO o posterior.
       actorEsRoot: user.is_global_admin,
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -554,7 +555,7 @@ export class TicketsController {
    * grafo (volver atrás/corregir, incluso reabrir desde CERRADO/CANCELADO).
    * Para LLEGAR a un estado terminal se usan los arcos normales.
    * @throws 403 sin `ticket:transicionar`
-   * @throws 404 ticket inexistente/otro tenant
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
    * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, o transición
    *             inválida (arco no válido y sin salto correctivo aplicable)
    */
@@ -572,6 +573,7 @@ export class TicketsController {
       // Salto correctivo: ROOT (flag ortogonal) o ADMINISTRADOR del cliente
       // pueden mover el ticket a cualquier estado NO terminal salteando el grafo.
       actorEsCorrector: user.is_global_admin || user.rol === 'ADMINISTRADOR',
+      alcance: alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -595,7 +597,7 @@ export class TicketsController {
    * (elegibilidad por el módulo del catálogo del tipo) — la elegibilidad es
    * ortogonal al permiso del actor (T15).
    * @throws 403 sin `ticket:asignar`
-   * @throws 404 ticket inexistente/otro tenant
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),
    *             o ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`)
    */
@@ -611,6 +613,7 @@ export class TicketsController {
       asignadoId: dto.asignadoId,
       clienteId: user.cliente_id as string,
       autorId: user.sub,
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -632,7 +635,7 @@ export class TicketsController {
    * custom (sin módulo) devuelve `[]`.
    * Requiere `ticket:asignar`. `clienteId` = `cliente_id` del JWT.
    * @throws 403 sin `ticket:asignar`
-   * @throws 404 ticket inexistente/otro tenant
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
    */
   @Get(':id/asignables')
   @RequiereAcciones('TICKETS:ASIGNAR')
@@ -643,6 +646,7 @@ export class TicketsController {
     const result = await this.listarTecnicosAsignablesUseCase.execute({
       ticketId: id,
       clienteId: user.cliente_id as string,
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -659,7 +663,7 @@ export class TicketsController {
    * `ticket:asignar` y `ticket:transicionar`. `asignadoId` en el body;
    * `clienteId`/`autorId` del JWT.
    * @throws 403 sin `ticket:asignar` o `ticket:transicionar`
-   * @throws 404 ticket inexistente/otro tenant
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
    * @throws 422 asignado inválido/no elegible, ticket CERRADO/CANCELADO
    *             (`TicketCerradoNoReasignableError`), o el estado actual no
    *             puede llegar a EN_PROCESO (RESUELTO)
@@ -676,6 +680,7 @@ export class TicketsController {
       asignadoId: dto.asignadoId,
       autorId: user.sub,
       clienteId: user.cliente_id as string,
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -697,7 +702,7 @@ export class TicketsController {
    * `AccionesGuard` (metadata fija por ruta) — mismo criterio que el
    * scope de `TICKETS:VER_TODOS` resuelto inline en `findAll`/`findOne`.
    * @throws 403 sin `TICKETS:COMENTAR`, o `esInterno=true` sin `TICKETS:OBSERVAR`
-   * @throws 404 ticket inexistente/otro tenant
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
    * @throws 422 ticket en estado terminal (solo comentarios públicos, T16)
    */
   @Post(':id/comentarios')
@@ -720,6 +725,7 @@ export class TicketsController {
       texto: dto.texto,
       autorId: user.sub,
       esInterno,
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {

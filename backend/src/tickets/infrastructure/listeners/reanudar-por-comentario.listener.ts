@@ -44,6 +44,9 @@ export class ReanudarPorComentarioListener {
         nuevoEstadoCodigo: 'EN_PROCESO',
         autorId: event.autorId,
         actorEsCorrector: false,
+        // Flujo de sistema (odd/permisos-por-tipo-ticket, D3): el comentario que lo dispara ya pasó
+        // por el control de acceso de su propio endpoint.
+        alcance: null,
       });
       if (resultado.isFail()) {
         this.logger.error(

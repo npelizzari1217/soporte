@@ -228,6 +228,7 @@ export class TicketsV1Controller {
       autorId: actor.sub,
       esInterno: false,
       autorEsIntegracion: true,
+      ...alcanceTicketDesdeJwt(actor),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());

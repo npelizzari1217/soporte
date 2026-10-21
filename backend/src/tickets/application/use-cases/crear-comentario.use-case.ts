@@ -16,6 +16,8 @@ import {
   TicketNoEncontradoError,
   ComentarioNoPermitidoError,
 } from '../../domain/errors/tickets.errors';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 
 /**
  * Estados en los que un ticket YA NO acepta nuevos comentarios PÚBLICOS
@@ -35,8 +37,11 @@ const ESTADOS_SIN_COMENTARIOS_PUBLICOS = new Set<string>(['RESUELTO', 'CERRADO',
  * `CrearComentarioDto` propuesto — no hay validación cross-DB al comentar
  * (a diferencia de `CrearTicketUseCase`/`SolicitanteInvalido`), mismo
  * criterio que la deviación ya documentada en `TransicionarEstadoDto` (PR7).
+ *
+ * El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el JWT (o desde la clave
+ * de la API pública): lo que el actor no ve, tampoco lo comenta (odd/permisos-por-tipo-ticket, S0).
  */
-export interface CrearComentarioDto {
+export interface CrearComentarioDto extends AlcanceActorTicket {
   ticketId: string;
   texto: string;
   autorId: string;
@@ -54,7 +59,8 @@ export interface CrearComentarioDto {
  * timeline de un ticket (T16, T17).
  *
  * Flujo:
- * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
+ * 1. Carga el ticket. Si no existe, está soft-deleted o el actor no lo ve
+ *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
  * 2. Si el comentario es PÚBLICO (`esInterno=false`, T16): resuelve el
  *    código semántico del estado ACTUAL (`estadoRepo.findById`, catálogo
  *    fijo — su ausencia es un fallo de infraestructura, `throw`
@@ -95,7 +101,7 @@ export interface CrearComentarioDto {
  */
 export class CrearComentarioUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
@@ -109,11 +115,20 @@ export class CrearComentarioUseCase {
     private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
     private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
     private readonly logger: Pick<ILogger, 'error'>,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: CrearComentarioDto): Promise<Result<OperacionTicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket || ticket.isDeleted()) {
+    if (
+      !ticket ||
+      ticket.isDeleted() ||
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

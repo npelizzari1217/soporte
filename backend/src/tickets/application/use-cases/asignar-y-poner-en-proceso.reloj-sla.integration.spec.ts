@@ -16,6 +16,14 @@ import { PrismaOperacionTicketRepository } from '../../infrastructure/persistenc
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { AsignarYPonerEnProcesoUseCase } from './asignar-y-poner-en-proceso.use-case';
+import { AlcanceActorTicket } from '../services/visibilidad-ticket';
+
+/** Actor que ve cualquier ticket: estos casos prueban el reloj de SLA, no el acceso (odd/permisos-por-tipo-ticket). */
+const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
+  actorId: 'dummy-actor',
+  tienePermisoVerTodos: true,
+  modulosPermitidos: null,
+};
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -116,6 +124,7 @@ describe('AsignarYPonerEnProceso no marca el reloj de SLA (WU-3a.4)', () => {
           asignadoId: DUMMY_USUARIO_ID,
           autorId: DUMMY_USUARIO_ID,
           clienteId: 'wu3a',
+          ...ALCANCE_SIN_RESTRICCION,
         }),
       );
       expect(result.isOk()).toBe(true);

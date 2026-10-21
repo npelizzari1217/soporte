@@ -14,6 +14,7 @@ import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-eve
 import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -34,8 +35,11 @@ const CAMINO_HASTA_EN_PROCESO = ['NUEVO', 'ASIGNADO', 'EN_PROCESO'] as const;
 /** Estado destino del flujo combinado. */
 const ESTADO_EN_PROCESO = 'EN_PROCESO';
 
-/** DTO de entrada de `AsignarYPonerEnProcesoUseCase`. */
-export interface AsignarYPonerEnProcesoDto {
+/**
+ * DTO de entrada de `AsignarYPonerEnProcesoUseCase`. El alcance del actor (`AlcanceActorTicket`)
+ * lo arma el controller desde el JWT (odd/permisos-por-tipo-ticket, S0).
+ */
+export interface AsignarYPonerEnProcesoDto extends AlcanceActorTicket {
   ticketId: string;
   asignadoId: string;
   autorId: string;
@@ -64,7 +68,8 @@ interface PasoTransicion {
  * tipo, operaciones de timeline por cada arco).
  *
  * Flujo:
- * 1. Carga el ticket. Si no existe/está soft-deleted → `TicketNoEncontradoError` (404).
+ * 1. Carga el ticket. Si no existe/está soft-deleted o el actor no lo ve
+ *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
  *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
@@ -107,7 +112,15 @@ export class AsignarYPonerEnProcesoUseCase {
 
   async execute(dto: AsignarYPonerEnProcesoDto): Promise<Result<TicketEntity, DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket || ticket.isDeleted()) {
+    if (
+      !ticket ||
+      ticket.isDeleted() ||
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

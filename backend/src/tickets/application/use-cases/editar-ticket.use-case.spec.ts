@@ -22,6 +22,24 @@ import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository'
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { unstubbed } from '../../../testing/mocks';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
+import { AlcanceActorTicket } from '../services/visibilidad-ticket';
+import { Modulo } from '../../../shared/domain/modulos';
+
+/** Actor que ve cualquier ticket: los casos de la regla de edición no dependen del acceso. */
+const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
+  actorId: 'editor-uuid',
+  tienePermisoVerTodos: true,
+  modulosPermitidos: null,
+};
+
+function makeTipo(modulo: Modulo): TipoTicketEntity {
+  return TipoTicketEntity.create(
+    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
+    'tipo-uuid',
+  );
+}
 
 /**
  * Estados de catálogo indexados por id — `estadoRepo.findById(ticket.estadoId)`
@@ -69,7 +87,7 @@ describe('EditarTicketUseCase', () => {
       findLastSecuencia: unstubbed('findLastSecuencia'),
       findAll: unstubbed('findAll'),
       count: unstubbed('count'),
-      esVisiblePara: unstubbed('esVisiblePara'),
+      esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
       bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
     };
@@ -106,6 +124,9 @@ describe('EditarTicketUseCase', () => {
       run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
     };
     vi.spyOn(txRunner, 'run');
+    const tipoTicketRepo = {
+      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(makeTipo('TICKETS')),
+    };
     const useCase = new EditarTicketUseCase(
       ticketRepo,
       prioridadRepo,
@@ -113,14 +134,25 @@ describe('EditarTicketUseCase', () => {
       eventPublisher,
       sectorRepo,
       txRunner,
+      tipoTicketRepo,
     );
-    return { useCase, ticketRepo, prioridadRepo, estadoRepo, eventPublisher, sectorRepo, txRunner };
+    return {
+      useCase,
+      ticketRepo,
+      prioridadRepo,
+      estadoRepo,
+      eventPublisher,
+      sectorRepo,
+      txRunner,
+      tipoTicketRepo,
+    };
   }
 
   it('actualiza titulo/descripcion/prioridadId y persiste', async () => {
     const c = makeCollaborators(makeTicket());
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       titulo: 'Nuevo titulo',
       descripcion: 'Nueva descripcion',
@@ -140,6 +172,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(makeTicket());
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       titulo: 'X',
       actorEsRoot: false,
@@ -152,6 +185,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(makeTicket());
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       titulo: 'Solo titulo',
       actorEsRoot: false,
@@ -166,6 +200,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(makeTicket());
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         ubicacion: 'Sala de profesores',
         sectorId: 'sector-uuid',
@@ -183,6 +218,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(ticket);
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         ubicacion: null,
         sectorId: null,
@@ -200,6 +236,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(ticket);
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         titulo: 'Otro titulo',
         actorEsRoot: false,
@@ -213,6 +250,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(makeTicket());
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         sectorId: 'no-existe',
         actorEsRoot: false,
@@ -229,6 +267,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(makeTicket());
 
     await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       titulo: 'Nuevo titulo',
       actorEsRoot: false,
@@ -247,6 +286,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(null);
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'no-existe',
       titulo: 'X',
       actorEsRoot: false,
@@ -262,6 +302,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(ticket);
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       titulo: 'X',
       actorEsRoot: false,
@@ -276,6 +317,7 @@ describe('EditarTicketUseCase', () => {
     c.prioridadRepo.findById.mockResolvedValue(null);
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       prioridadId: 'no-existe',
       actorEsRoot: false,
@@ -290,6 +332,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(makeTicket());
 
     await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       prioridadId: 'prioridad-alta-uuid',
       actorEsRoot: false,
@@ -309,6 +352,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(makeTicket());
 
     await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       titulo: 'Solo titulo',
       actorEsRoot: false,
@@ -321,6 +365,7 @@ describe('EditarTicketUseCase', () => {
     const c = makeCollaborators(makeTicket());
 
     await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       prioridadId: 'prioridad-media-uuid',
       actorEsRoot: false,
@@ -336,6 +381,7 @@ describe('EditarTicketUseCase', () => {
     });
 
     const result = await c.useCase.execute({
+      ...ALCANCE_SIN_RESTRICCION,
       ticketId: 'ticket-uuid',
       prioridadId: 'prioridad-alta-uuid',
       actorEsRoot: false,
@@ -351,6 +397,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(makeTicket('estado-en-proceso-uuid'));
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         titulo: 'Intento de edición',
         actorEsRoot: false,
@@ -365,6 +412,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(makeTicket('estado-en-proceso-uuid'));
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         titulo: 'Editado por ROOT',
         actorEsRoot: true,
@@ -379,6 +427,7 @@ describe('EditarTicketUseCase', () => {
       const c = makeCollaborators(makeTicket('estado-asignado-uuid'));
 
       const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
         ticketId: 'ticket-uuid',
         titulo: 'Editado en ASIGNADO',
         actorEsRoot: false,
@@ -392,9 +441,85 @@ describe('EditarTicketUseCase', () => {
     it('ROOT NO consulta el estado (bypass temprano, sin costo de findById)', async () => {
       const c = makeCollaborators(makeTicket('estado-en-proceso-uuid'));
 
-      await c.useCase.execute({ ticketId: 'ticket-uuid', titulo: 'X', actorEsRoot: true });
+      await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        titulo: 'X',
+        actorEsRoot: true,
+      });
 
       expect(c.estadoRepo.findById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
+    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS, y no se guarda nada', async () => {
+      const c = makeCollaborators(makeTicket());
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento ajeno',
+        prioridadId: 'prioridad-alta-uuid',
+        actorEsRoot: false,
+        actorId: 'editor-uuid',
+        tienePermisoVerTodos: true,
+        modulosPermitidos: ['TICKETS'],
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404 y no se guarda', async () => {
+      const c = makeCollaborators(makeTicket());
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento ajeno',
+        actorEsRoot: false,
+        actorId: 'editor-uuid',
+        tienePermisoVerTodos: false,
+        modulosPermitidos: ['TICKETS'],
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'editor-uuid');
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo de sus módulos que el actor ve se edita', async () => {
+      const c = makeCollaborators(makeTicket());
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Editado',
+        actorEsRoot: false,
+        actorId: 'solicitante-uuid',
+        tienePermisoVerTodos: false,
+        modulosPermitidos: ['TICKETS'],
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin restricción de módulo (ROOT o ADMINISTRADOR) edita un tipo de cualquier módulo', async () => {
+      const c = makeCollaborators(makeTicket());
+      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Editado',
+        actorEsRoot: false,
+        ...ALCANCE_SIN_RESTRICCION,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 });

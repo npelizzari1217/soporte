@@ -3,9 +3,13 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 
-/** DTO de entrada de `ListarTecnicosAsignablesUseCase`. */
-export interface ListarTecnicosAsignablesDto {
+/**
+ * DTO de entrada de `ListarTecnicosAsignablesUseCase`. El alcance del actor (`AlcanceActorTicket`)
+ * lo arma el controller desde el JWT (odd/permisos-por-tipo-ticket, S0).
+ */
+export interface ListarTecnicosAsignablesDto extends AlcanceActorTicket {
   ticketId: string;
   clienteId: string;
 }
@@ -29,7 +33,8 @@ export interface TecnicoAsignable {
  * proceso".
  *
  * Flujo:
- * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
+ * 1. Carga el ticket. Si no existe, está soft-deleted o el actor no lo ve
+ *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
  * 2. Carga el tipo del ticket (`tipoTicketRepo.findById(ticket.tipoId)`) y lee su
  *    `modulo` directo de la columna (B2, fuente de verdad). Antes se derivaba por
  *    convención de `codigo`, lo que dejaba a los tipos CUSTOM sin módulo (`null`)
@@ -40,7 +45,7 @@ export interface TecnicoAsignable {
  */
 export class ListarTecnicosAsignablesUseCase {
   constructor(
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
   ) {}
@@ -49,7 +54,15 @@ export class ListarTecnicosAsignablesUseCase {
     dto: ListarTecnicosAsignablesDto,
   ): Promise<Result<TecnicoAsignable[], DomainError>> {
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket || ticket.isDeleted()) {
+    if (
+      !ticket ||
+      ticket.isDeleted() ||
+      !(await esTicketAccesiblePara(
+        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+        ticket,
+        dto,
+      ))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 

@@ -323,6 +323,7 @@ import {
         eventPublisher: IDomainEventPublisher,
         sectorRepo: ISectorRepository,
         txRunner: ITenantTransactionRunner,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new EditarTicketUseCase(
           ticketRepo,
@@ -331,6 +332,7 @@ import {
           eventPublisher,
           sectorRepo,
           txRunner,
+          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -339,6 +341,7 @@ import {
         DOMAIN_EVENT_PUBLISHER,
         SECTOR_REPOSITORY,
         TENANT_TX_RUNNER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -698,6 +701,7 @@ import {
         calendarioRepo: ICalendarioLaboralSemanalRepository,
         feriadosRepo: IFeriadosLaboralesRepository,
         logger: ILogger,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new CrearComentarioUseCase(
           ticketRepo,
@@ -711,6 +715,7 @@ import {
           calendarioRepo,
           feriadosRepo,
           logger,
+          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -723,6 +728,7 @@ import {
         CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
         FERIADOS_LABORALES_REPOSITORY,
         LOGGER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -743,6 +749,7 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         fileStorage: IFileStorage,
         txRunner: ITenantTransactionRunner,
+        tipoTicketRepo: ITipoTicketRepository,
       ) =>
         new AdjuntarArchivoUseCase(
           ticketRepo,
@@ -751,6 +758,7 @@ import {
           tipoOperacionRepo,
           fileStorage,
           txRunner,
+          tipoTicketRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -759,6 +767,7 @@ import {
         TIPO_OPERACION_REPOSITORY,
         FILE_STORAGE,
         TENANT_TX_RUNNER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {

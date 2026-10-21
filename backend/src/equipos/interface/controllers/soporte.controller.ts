@@ -8,7 +8,8 @@
  *   GET  /soporte/qr?c=&e=         → ResolverQrAutenticadoUseCase    [TICKETS:ALTAS]
  *                                    (DEBE declararse antes de `:ticketId`)
  *   GET  /soporte/:ticketId        → ObtenerEquipoDeTicketUseCase    (sin permiso extra,
- *                                    igual criterio que `TicketsController.findOne`)
+ *                                    igual criterio que `TicketsController.findOne`,
+ *                                    incluido el acceso al ticket base)
  *
  * `:id` = id del `Ticket` BASE (mismo criterio que las rutas de aprobar/
  * rechazar de `ComprasController`: los use cases de este módulo reciben
@@ -43,6 +44,7 @@ import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
+import { alcanceTicketDesdeJwt } from '../../../tickets/interface/alcance-ticket';
 import { DomainError } from '../../../shared/domain/result';
 import {
   TicketNoEncontradoError,
@@ -152,7 +154,8 @@ export class SoporteController {
   /**
    * POST /soporte/:id/solucion
    * Registra la solución aplicada — `:id` = id del `Ticket` base.
-   * @throws 404 ticket_soporte inexistente
+   * @throws 404 ticket inexistente o que el actor no ve (módulo del tipo o fila,
+   *   odd/permisos-por-tipo-ticket S0), o ticket_soporte inexistente
    */
   @Post(':id/solucion')
   @RequiereAcciones('TICKETS:MODIFICACION')
@@ -160,10 +163,12 @@ export class SoporteController {
   async registrarSolucion(
     @Param('id') id: string,
     @Body() dto: RegistrarSolucionHttpDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<TicketSoporteResponseDto> {
     const result = await this.registrarSolucionUseCase.execute({
       ticketId: id,
       solucion: dto.solucion,
+      ...alcanceTicketDesdeJwt(user),
     });
 
     if (result.isFail()) {
@@ -205,13 +210,19 @@ export class SoporteController {
    * tiene satélite `ticket_soporte` o no tiene equipo asociado — nunca 404).
    * Usado por el frontend para resaltar el "equipo en mantenimiento" en el
    * detalle del ticket.
+   * @throws 404 ticket inexistente o no accesible para el actor (módulo del tipo o visibilidad
+   *   de fila, odd/permisos-por-tipo-ticket S0)
    */
   @Get(':ticketId')
   @RequiereAcciones('TICKETS:LECTURA')
   async obtenerEquipoDeTicket(
     @Param('ticketId') ticketId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<EquipoDeTicketResponseDto> {
-    const result = await this.obtenerEquipoDeTicketUseCase.execute({ ticketId });
+    const result = await this.obtenerEquipoDeTicketUseCase.execute({
+      ticketId,
+      ...alcanceTicketDesdeJwt(user),
+    });
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }

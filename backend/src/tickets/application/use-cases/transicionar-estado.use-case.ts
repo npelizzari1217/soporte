@@ -19,6 +19,7 @@ import {
   EstadoDestinoInvalidoError,
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
+import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
 import {
   afectaRelojSla,
   ESTADOS_NO_DESTINO_CORRECTIVO,
@@ -58,6 +59,13 @@ export interface TransicionarEstadoDto {
    * un estado terminal (CERRADO/CANCELADO): para eso están los arcos normales.
    */
   actorEsCorrector: boolean;
+  /**
+   * Alcance del actor humano (odd/permisos-por-tipo-ticket, S0): si no ve el ticket (módulo del
+   * tipo o visibilidad de fila), la transición es 404. `null` SOLO para los flujos de sistema que
+   * comparten este caso de uso sin un actor que decida (D3: hoy `ReanudarPorComentarioListener`).
+   * Es obligatorio y no opcional para que cada llamador nuevo tenga que elegir de forma explícita.
+   */
+  alcance: AlcanceActorTicket | null;
 }
 
 /**
@@ -70,8 +78,9 @@ export interface TransicionarEstadoDto {
  *    No depende del ticket, así que va antes de la transacción.
  * 2. **DENTRO de la transacción** (`ITenantTransactionRunner.run`), y en este
  *    orden (odd/escrituras-manuales-con-lock, S1): bloquea la fila del ticket
- *    (`ITicketRepository.bloquear`), recién entonces lo carga —si no existe o
- *    está soft-deleted → `TicketNoEncontradoError` (404)— y resuelve el
+ *    (`ITicketRepository.bloquear`), recién entonces lo carga —si no existe,
+ *    está soft-deleted o el actor no lo ve (`dto.alcance`) →
+ *    `TicketNoEncontradoError` (404)— y resuelve el
  *    código del estado ACTUAL (`estadoRepo.findById`, catálogo fijo — su
  *    ausencia es un fallo de infraestructura, `throw` defensivo) y el del
  *    tipo de ticket (`tipoTicketRepo.findById`, para resolver la máquina de
@@ -155,7 +164,16 @@ export class TransicionarEstadoUseCase {
   ): Promise<Result<{ ticket: TicketEntity; estadoAnteriorCodigo: string }, DomainError>> {
     await this.ticketRepo.bloquear(dto.ticketId);
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (!ticket || ticket.isDeleted()) {
+    if (
+      !ticket ||
+      ticket.isDeleted() ||
+      (dto.alcance !== null &&
+        !(await esTicketAccesiblePara(
+          { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+          ticket,
+          dto.alcance,
+        )))
+    ) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
 
