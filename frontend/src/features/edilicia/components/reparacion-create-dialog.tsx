@@ -25,10 +25,7 @@ import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-cat
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
 import { crearReparacionSchema, type CrearReparacionFormValues } from "../schemas";
-
-const TIPO_CODIGO_EDILICIA = "EDILICIA";
-/** Lo genera solo el barrido preventivo: no se elige en un alta. */
-const TIPO_CODIGO_PREVENTIVO = "PREVENTIVO";
+import { TIPO_CODIGO_EDILICIA, TIPO_CODIGO_PREVENTIVO } from "@/features/catalogos/tipos-del-sistema";
 
 export function ReparacionCreateDialog() {
   const [open, setOpen] = useState(false);
@@ -39,6 +36,7 @@ export function ReparacionCreateDialog() {
   const tipos = tiposQuery.data ?? [];
   const tipoPorDefecto = tipos.find((tipo) => tipo.codigo === TIPO_CODIGO_EDILICIA);
   const tiposAlternativos = tipos.filter(
+    // PREVENTIVO lo genera solo el barrido preventivo: no se elige en un alta.
     (tipo) => tipo.codigo !== TIPO_CODIGO_EDILICIA && tipo.codigo !== TIPO_CODIGO_PREVENTIVO,
   );
   const crearMutation = useCrearReparacion();

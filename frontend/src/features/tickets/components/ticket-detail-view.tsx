@@ -36,9 +36,7 @@ import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
 import { TicketPdfButton } from "./ticket-pdf-button";
 import { TicketTareas } from "./ticket-tareas";
-
-/** Código del tipo de ticket que habilita la consulta del equipo vinculado (satélite `ticket_soporte`). */
-const TIPO_SOPORTE_CODIGO = "SOPORTE";
+import { TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
 
 export interface TicketDetailViewProps {
   ticketId: string;
@@ -63,7 +61,8 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // (los demás tipos no tienen satélite `ticket_soporte`, GET /soporte/:ticketId no aplica).
   const tipoCodigoMap = useMemo(() => buildIdToCodigoMap(tiposQuery.data ?? []), [tiposQuery.data]);
   const tipoCodigo = ticketQuery.data ? tipoCodigoMap.get(ticketQuery.data.tipoId) : undefined;
-  const esTicketSoporte = tipoCodigo === TIPO_SOPORTE_CODIGO;
+  // Solo el tipo SOPORTE habilita la consulta del equipo vinculado (satélite `ticket_soporte`).
+  const esTicketSoporte = tipoCodigo === TIPO_CODIGO_SOPORTE;
   const equipoDeTicketQuery = useEquipoDeTicket(ticketId, esTicketSoporte);
 
   const comentarMutation = useComentar(ticketId);
