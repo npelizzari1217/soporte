@@ -1072,6 +1072,42 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       expect(data.every((item) => !('email' in item))).toBe(true);
     });
 
+    it('GET /usuarios lo abre VER_TODOS sobre un tipo, no las celdas: 200 con los miembros activos y sin el dado de baja (T6)', async () => {
+      const base = await crearActorConPermisos([]);
+      const supervisor = await crearActorPorTipo(base.clienteId, [], ['LECTURA', 'VER_TODOS']);
+      // Celdas de módulo sin filas por tipo: desde T6 no abren la lista.
+      const soloCeldas = await crearActorPorTipo(
+        base.clienteId,
+        ['TICKETS:ASIGNAR', 'TICKETS:VER_TODOS'],
+        [],
+      );
+      const dadoDeBaja = await agregarActorAlCliente(base.clienteId, []);
+      await masterClient.membresia.updateMany({
+        where: { usuarioId: dadoDeBaja.usuarioId, clienteId: base.clienteId },
+        data: { activo: false },
+      });
+
+      const lista = await httpGet<{ id: string; email?: string }[]>(
+        `${baseUrl}/usuarios`,
+        bearer(supervisor.accessToken),
+      );
+      expect(lista.status).toBe(200);
+      expect(lista.data.map((u) => u.id).sort()).toEqual(
+        [base.usuarioId, supervisor.usuarioId, soloCeldas.usuarioId].sort(),
+      );
+      expect(lista.data.map((u) => u.id)).not.toContain(dadoDeBaja.usuarioId);
+      expect(lista.data.every((item) => !('email' in item))).toBe(true);
+
+      const rechazado = await httpGet<{ message: string }>(
+        `${baseUrl}/usuarios`,
+        bearer(soloCeldas.accessToken),
+      );
+      expect(rechazado.status).toBe(403);
+      expect(rechazado.data.message).toBe(
+        'Acceso denegado: se requiere ASIGNAR o VER_TODOS sobre algún tipo de ticket',
+      );
+    });
+
     it('POST /usuarios con el mismo token de TECNICO → 403 (ADMIN-o-ROOT exclusivo, R4)', async () => {
       const actor = await crearActorConPermisos(['TICKETS:ASIGNAR']);
       const { status } = await httpPost(

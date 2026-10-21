@@ -4,8 +4,9 @@
  * TicketCreateDialog — modal para crear un ticket general (R-M1 / T1.8),
  * abierto desde el botón "Nuevo ticket" de la lista universal `/tickets`
  * (conversión a modal, feat/ui-premium-educandow — antes ruta dedicada
- * `/tickets/nuevo`, revisión de ADR-1). Gate `ticket:crear` lo aplica el
- * caller (`TicketsListView`, vía `<Can>`).
+ * `/tickets/nuevo`, revisión de ADR-1). El caller (`TicketsListView`) lo
+ * muestra a quien tiene `ALTAS` en algún tipo de TICKETS, y el selector ofrece
+ * solo esos tipos (odd/permisos-por-tipo-ticket, S6).
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { useTiposTicket, usePrioridades } from "../hooks/use-catalogos";
 import { useCrearTicket } from "../hooks/use-ticket-mutations";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { TicketCreateForm } from "./ticket-create-form";
 import type { CrearTicketDto } from "../types";
 
@@ -30,10 +32,16 @@ export function TicketCreateDialog() {
   // respetar la separación estricta por módulo (no permitir elegir un tipo
   // de COMPRAS/EDILICIA/EQUIPOS acá).
   const tiposQuery = useTiposTicket("TICKETS");
+  // Solo los tipos con Crear: el backend responde 403 al alta de cualquier otro (S6).
+  const tiposConAlta = usePermisosPorTipo().tiposCon(tiposQuery.data ?? [], "ALTAS");
   const prioridadesQuery = usePrioridades();
   // El catálogo de sectores se pide recién al abrir el modal.
   const sectoresQuery = useSectores(open);
   const crearMutation = useCrearTicket();
+
+  // `ALTAS` en algún tipo de TICKETS puede ser solo sobre un tipo dado de baja, que el catálogo no
+  // trae: sin un tipo elegible el botón abriría un formulario imposible de enviar.
+  if (tiposQuery.isSuccess && tiposConAlta.length === 0) return null;
 
   function handleSubmit(dto: CrearTicketDto) {
     crearMutation.mutate(dto, {
@@ -57,7 +65,7 @@ export function TicketCreateDialog() {
           <DialogTitle>Nuevo ticket</DialogTitle>
         </DialogHeader>
         <TicketCreateForm
-          tipos={tiposQuery.data ?? []}
+          tipos={tiposConAlta}
           prioridades={prioridadesQuery.data ?? []}
           sectores={sectoresQuery.data ?? []}
           onSubmit={handleSubmit}

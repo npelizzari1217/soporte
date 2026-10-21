@@ -220,7 +220,7 @@ export function InsumoDetailView({ insumoId, seccion = "insumos" }: InsumoDetail
   });
   /**
    * Los nombres de quienes firmaron los asientos. Es un dato ACCESORIO: el
-   * endpoint exige `TICKETS:ASIGNAR`, `TICKETS:VER_TODOS` o ser
+   * endpoint exige `ASIGNAR` o `VER_TODOS` sobre algún tipo de ticket, o ser
    * ADMINISTRADOR/ROOT, así que un técnico con solo `INSUMOS:LECTURA` recibe
    * 403 acá. Ese 403 se queda en la columna —`nombreDeUsuario` lo traduce a una
    * etiqueta— y NO se conecta a `notifyError` ni a un reintento: la bitácora se

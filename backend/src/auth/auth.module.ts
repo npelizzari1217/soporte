@@ -147,6 +147,7 @@ import {
 import { PermisosPorTipoDeClienteAdapter } from './infrastructure/permisos/permisos-por-tipo-de-cliente.adapter';
 import { AplicarPlantillaPermisosTipoTicket } from '../tickets/application/services/aplicar-plantilla-permisos-tipo-ticket.service';
 import { PrismaPermisoTipoTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
+import { CargadorAlcanceTicket } from '../tickets/interface/alcance-ticket';
 import { TenantContext } from '../shared/tenancy/tenant-context';
 
 // ─── Guards ──────────────────────────────────────────────────────────────────
@@ -549,6 +550,14 @@ import { RolesController } from './interface/controllers/roles.controller';
           ),
         ),
       inject: [CLIENTE_REPOSITORY, PrismaService, TenantContext],
+    },
+    // `GET /usuarios` decide su acceso con los permisos por tipo del actor (odd/permisos-por-tipo-ticket,
+    // T6). Mismo motivo que arriba: no se inyecta desde TicketsModule (ciclo).
+    {
+      provide: CargadorAlcanceTicket,
+      useFactory: (tenantContext: TenantContext) =>
+        new CargadorAlcanceTicket(new PrismaPermisoTipoTicketRepository(tenantContext)),
+      inject: [TenantContext],
     },
     {
       provide: AplicarPresetPermisosUseCase,

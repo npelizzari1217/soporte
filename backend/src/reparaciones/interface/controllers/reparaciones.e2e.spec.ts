@@ -424,6 +424,8 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       const fila = listado.data.items.find((r) => r.id === reparacionId);
       expect(fila?.bloqueada).toBe(true);
       expect(fila?.comprasQueBloquean.map((c) => c.id)).toContain(compraId);
+      // El tipo del ticket base viaja en la fila: el frontend gatea sus acciones por tipo (T6).
+      expect(fila?.tipoId).toBe(tipoEdiliciaId);
 
       // El filtro de bloqueo se resuelve en el servidor (odd/reparaciones-paginadas, S1-S3):
       // la reparación aparece con BLOQUEADAS y no con NO_BLOQUEADAS, y el total acompaña.

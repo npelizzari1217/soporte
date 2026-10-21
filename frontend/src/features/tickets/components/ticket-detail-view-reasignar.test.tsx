@@ -4,8 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
-import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { buildUser } from "../../../../test/render-with-providers";
 import { TicketDetailView } from "./ticket-detail-view";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -16,7 +17,10 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
  * /tickets/:id/asignar), que además muestra el 422.
  */
 const TICKET_ID = "t1";
-const PERMISOS = ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"];
+/** ASIGNAR y TRANSICIONAR sobre el tipo del ticket (odd/permisos-por-tipo-ticket, S6). */
+const PERMISOS = permisosDeTest({ ti1: ["LECTURA", "ASIGNAR", "TRANSICIONAR"] });
+// Las celdas del JWT ya no deciden: el técnico de prueba no trae ninguna.
+const TECNICO = buildUser({ rol: "TECNICO", permisos: [] });
 
 function ticket(estadoId: string) {
   return {
@@ -63,7 +67,7 @@ describe("TicketDetailView — control de reasignación", () => {
 
   it.each(["NUEVO", "ASIGNADO"])("en %s hay un solo desplegable de responsable y el botón es «Asignar y poner en proceso»", async (codigo) => {
     mockBackend(`e-${codigo}`);
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
     await screen.findByText("Impresora rota");
     expect(await screen.findByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
     expect(screen.getAllByRole("combobox", { name: /responsable/i })).toHaveLength(1);
@@ -73,7 +77,7 @@ describe("TicketDetailView — control de reasignación", () => {
 
   it("en EN_PROCESO el botón es «Cambiar responsable»", async () => {
     mockBackend("e-EN_PROCESO");
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
     await screen.findByText("Impresora rota");
     expect(await screen.findByRole("combobox", { name: /nuevo responsable/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cambiar responsable/i })).toBeInTheDocument();
@@ -82,15 +86,18 @@ describe("TicketDetailView — control de reasignación", () => {
 
   it.each(["CERRADO", "CANCELADO"])("en %s no se muestra", async (codigo) => {
     mockBackend(`e-${codigo}`);
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
     await screen.findByText("Impresora rota");
     await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
     expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
   });
 
-  it("sin TICKETS:ASIGNAR no se muestra", async () => {
+  it("sin ASIGNAR sobre el tipo no se muestra, aunque tenga la celda TICKETS:ASIGNAR", async () => {
     mockBackend("e-EN_PROCESO");
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"] }),
+      permisos: permisosDeTest({ ti1: ["LECTURA", "TRANSICIONAR"] }),
+    });
     await screen.findByText("Impresora rota");
     expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).not.toBeInTheDocument();
   });
@@ -105,7 +112,8 @@ describe("TicketDetailView — control de reasignación", () => {
         return HttpResponse.json(ticket("e-EN_PROCESO"));
       }),
     );
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
+    await screen.findByRole("option", { name: "Ana García" });
     await user.selectOptions(await screen.findByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
     await waitFor(() => expect(body).toEqual({ asignadoId: "u-tecnico-2" }));
@@ -119,7 +127,8 @@ describe("TicketDetailView — control de reasignación", () => {
         HttpResponse.json({ statusCode: 422, message: "El ticket ya no se puede reasignar." }, { status: 422 }),
       ),
     );
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: PERMISOS }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
+    await screen.findByRole("option", { name: "Ana García" });
     await user.selectOptions(await screen.findByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /cambiar responsable/i }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("El ticket ya no se puede reasignar."));

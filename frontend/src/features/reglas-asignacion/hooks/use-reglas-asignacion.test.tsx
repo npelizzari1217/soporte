@@ -37,7 +37,7 @@ describe("hooks de reglas de asignación", () => {
 
   it("useReglasAsignacion lee GET /reglas-asignacion y valida la forma", async () => {
     server.use(
-      http.get("/api/reglas-asignacion", () => HttpResponse.json({ reglas: [FILA], candidatosPorModulo: {} })),
+      http.get("/api/reglas-asignacion", () => HttpResponse.json({ reglas: [FILA], candidatosPorTipo: {} })),
     );
     const { result } = renderHook(() => useReglasAsignacion(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -56,7 +56,7 @@ describe("hooks de reglas de asignación", () => {
     server.use(
       http.get("/api/reglas-asignacion", () => {
         lecturas += 1;
-        return HttpResponse.json({ reglas: [FILA], candidatosPorModulo: {} });
+        return HttpResponse.json({ reglas: [FILA], candidatosPorTipo: {} });
       }),
       http.put("/api/reglas-asignacion/t-1", async ({ request }) => {
         body = await request.json();
@@ -80,7 +80,7 @@ describe("hooks de reglas de asignación", () => {
     server.use(
       http.get("/api/reglas-asignacion", () => {
         lecturas += 1;
-        return HttpResponse.json({ reglas: [FILA], candidatosPorModulo: {} });
+        return HttpResponse.json({ reglas: [FILA], candidatosPorTipo: {} });
       }),
       http.put("/api/reglas-asignacion/t-1", () =>
         HttpResponse.json({ statusCode: 422, message: "El responsable no es elegible." }, { status: 422 }),

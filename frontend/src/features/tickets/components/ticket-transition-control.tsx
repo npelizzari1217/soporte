@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * TicketTransitionControl — PRESENTATIONAL, gated por `TICKETS:TRANSICIONAR`
- * (TECNICO+). Ofrece los destinos MANUALES desde el estado actual
+ * TicketTransitionControl — PRESENTATIONAL, gated por `puedeTransicionar`:
+ * `TRANSICIONAR` sobre el tipo del ticket, que decide el contenedor
+ * (odd/permisos-por-tipo-ticket, S6). Ofrece los destinos MANUALES desde el estado actual
  * (`getManualNextStates`): el grafo válido MENOS los arcos de arranque
  * (NUEVO→ASIGNADO, ASIGNADO→EN_PROCESO) que ahora cubre el control unificado
  * "Asignar y poner en proceso" — así no quedan dos caminos al mismo destino.
@@ -21,7 +22,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { etiquetaOpcionEstado } from "@/components/ui/status-badge";
-import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
 import { getEstadosCorrectivos, getManualNextStates } from "../lib/estado-transitions";
 
@@ -29,14 +29,16 @@ export interface TicketTransitionControlProps {
   estadoActualCodigo: string;
   onTransicionar: (nuevoEstadoCodigo: string) => void;
   isSubmitting: boolean;
+  /** `TRANSICIONAR` sobre el tipo del ticket. */
+  puedeTransicionar: boolean;
 }
 
 export function TicketTransitionControl({
   estadoActualCodigo,
   onTransicionar,
   isSubmitting,
+  puedeTransicionar,
 }: TicketTransitionControlProps) {
-  const puedeTransicionar = useCan("TICKETS:TRANSICIONAR");
   const { user, isGlobalAdmin } = useSession();
   const esCorrector = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
 

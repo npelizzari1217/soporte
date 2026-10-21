@@ -22,7 +22,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
-import { useSession } from "@/shared/hooks/use-session";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
 // Mismo hook que usa el dashboard (`features/dashboard/hooks/use-ciclos.ts`)
@@ -34,7 +34,6 @@ import { DataTable, type Column } from "@/components/shared/data-table";
 import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
-import { Can } from "@/components/shared/can";
 import { Select } from "@/components/ui/select";
 import { TicketCreateDialog } from "./ticket-create-dialog";
 import { ExportarTicketsButton } from "./exportar-tickets-button";
@@ -84,10 +83,15 @@ export function TicketsListView() {
     (filtros.pagina ?? 1) > 1;
 
   const tiposQuery = useTiposTicket();
-  const { canModulo } = useSession();
-  // El listado ya trae solo tickets de los módulos del usuario: ofrecer un tipo de otro módulo
-  // sería un filtro que nunca devuelve filas. ROOT y ADMINISTRADOR tienen todos los módulos.
-  const tiposVisibles = (tiposQuery.data ?? []).filter((tipo) => canModulo(tipo.modulo));
+  const permisosPorTipo = usePermisosPorTipo();
+  // El listado trae solo tickets de los tipos con LECTURA (odd/permisos-por-tipo-ticket, D5 e):
+  // ofrecer otro tipo sería un filtro que nunca devuelve filas. ROOT y ADMINISTRADOR los ven todos.
+  const tiposVisibles = permisosPorTipo.tiposCon(tiposQuery.data ?? [], "LECTURA");
+  // El alta de este listado es la de soporte general: solo tipos de TICKETS (`moduloRequerido`).
+  const puedeCrear = permisosPorTipo.puedeEnModulo("TICKETS", "ALTAS");
+  // Con VER_TODOS en algún tipo, el listado trae filas de otros usuarios y filtrar por responsable
+  // tiene sentido; sin él, el backend devuelve solo las propias (regla de fila).
+  const puedeFiltrarPorAsignado = permisosPorTipo.puedeEnAlgunTipo("VER_TODOS");
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const usuariosQuery = useUsuariosAsignables();
@@ -202,9 +206,7 @@ export function TicketsListView() {
               lo mismo.
             */}
             <ExportarTicketsButton filtros={filtrosEfectivos} />
-            <Can permiso="TICKETS:ALTAS">
-              <TicketCreateDialog />
-            </Can>
+            {puedeCrear && <TicketCreateDialog />}
           </>
         }
       />
@@ -287,7 +289,7 @@ export function TicketsListView() {
           </Select>
         </div>
 
-        <Can permiso="TICKETS:VER_TODOS">
+        {puedeFiltrarPorAsignado && (
           <div className="flex flex-col gap-1">
             <label htmlFor="filtro-asignado" className="sr-only">
               Asignado
@@ -305,7 +307,7 @@ export function TicketsListView() {
               ))}
             </Select>
           </div>
-        </Can>
+        )}
       </FilterBar>
 
       <div className="mt-4">

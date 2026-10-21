@@ -51,6 +51,7 @@ import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { unstubbed } from '../../../testing/mocks';
 import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
 import { CargadorAlcanceTicket } from '../alcance-ticket';
+import { ObtenerPermisosPorTipoUseCase } from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
 
 /** Operación de dominio mínima para alimentar `toOperacionResponseDto`. */
 function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
@@ -256,6 +257,9 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     estadoRepo,
     deps.sectorRepo,
     new CargadorAlcanceTicket(new PermisosTipoTicketEnMemoria([], PERMISOS_POR_TIPO)),
+    new ObtenerPermisosPorTipoUseCase(
+      new PermisosTipoTicketEnMemoria([{ id: 'ti1', modulo: 'TICKETS' }]),
+    ),
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -902,11 +906,40 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
  * con ruta, así que una ruta nueva con `@RequiereAcciones` de módulo también pone esto en rojo.
  */
 describe('TicketsController — sin @RequiereAcciones de módulo (D5 d)', () => {
-  it('ninguna de sus 11 rutas exige una celda: deciden los casos de uso por tipo', () => {
+  it('ninguna de sus 12 rutas exige una celda: deciden los casos de uso por tipo', () => {
     const rutas = accionesPorRuta(TicketsController);
 
-    expect(rutas.size).toBe(11);
+    expect(rutas.size).toBe(12);
     expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
+  });
+});
+
+describe('TicketsController.permisosPorTipo — GET /tickets/permisos-por-tipo (T6, S6)', () => {
+  it('usuario común → sus acciones por tipo de la tabla del tenant y la unión por módulo', async () => {
+    const { controller } = buildController();
+
+    await expect(controller.permisosPorTipo(USUARIO_SIN_OBSERVAR)).resolves.toEqual({
+      sinRestriccion: false,
+      porTipo: { ti1: ['LECTURA', 'COMENTAR'] },
+      porModulo: { TICKETS: ['LECTURA', 'COMENTAR'] },
+    });
+  });
+
+  it('ROOT sin membresía → sin restricción, aunque no tenga celdas ni filas', async () => {
+    const { controller } = buildController();
+
+    await expect(controller.permisosPorTipo(ROOT)).resolves.toEqual({
+      sinRestriccion: true,
+      porTipo: {},
+      porModulo: {},
+    });
+  });
+
+  it('se declara antes de GET /tickets/:id, para que `permisos-por-tipo` no se lea como un id', () => {
+    const metodos = Object.getOwnPropertyNames(TicketsController.prototype);
+
+    expect(metodos.indexOf('permisosPorTipo')).toBeGreaterThan(-1);
+    expect(metodos.indexOf('permisosPorTipo')).toBeLessThan(metodos.indexOf('findOne'));
   });
 });
 

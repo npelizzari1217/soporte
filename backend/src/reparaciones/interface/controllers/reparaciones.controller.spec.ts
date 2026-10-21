@@ -388,6 +388,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         ubicacion: 'Edificio Central',
         sectorId: 'sector-uuid',
         sectorNombre: 'Mantenimiento',
+        // El frontend gatea cada fila por el tipo del ticket base (odd/permisos-por-tipo-ticket, T6).
+        tipoId: 'tipo-edilicia-uuid',
       });
     });
 
@@ -634,6 +636,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(respuesta).toMatchObject({
         id: 'edilicia-uuid',
         ticketId: 'ticket-uuid',
+        tipoId: 'tipo-edilicia',
         titulo: 'Titulo nuevo',
         ubicacion: 'Aula 3',
         sectorNombre: 'Secundario',

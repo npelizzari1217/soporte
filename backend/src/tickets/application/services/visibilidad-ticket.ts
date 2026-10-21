@@ -71,6 +71,25 @@ export function tieneAccionSobreTipo(
 }
 
 /**
+ * ¿El actor tiene alguna de las acciones sobre algún tipo? Decide accesos que no son de un ticket
+ * en particular, como la lista de usuarios para asignar o filtrar por responsable
+ * (odd/permisos-por-tipo-ticket, T6). Sin restricción (`null`), siempre.
+ *
+ * @param alcance Alcance del actor.
+ * @param acciones Acciones buscadas; basta una.
+ * @returns `true` si algún tipo tiene alguna de las acciones.
+ */
+export function tieneAccionEnAlgunTipo(
+  alcance: Pick<AlcanceActorTicket, 'permisosPorTipo'>,
+  acciones: readonly AccionTipoTicket[],
+): boolean {
+  if (alcance.permisosPorTipo === null) return true;
+  return [...alcance.permisosPorTipo.values()].some((concedidas) =>
+    acciones.some((accion) => concedidas.has(accion)),
+  );
+}
+
+/**
  * Exige una acción sobre un tipo cuando todavía no hay ticket: el alta de un ticket de ese tipo
  * (odd/permisos-por-tipo-ticket, S6, D5 c: crear exige `ALTAS` sobre el tipo elegido). Sin actor
  * (`null`: barrido preventivo, API v1, formulario público) no se exige nada (D3).

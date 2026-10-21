@@ -13,6 +13,8 @@
 export interface TicketEdilicia {
   id: string;
   ticketId: string;
+  /** Tipo del ticket base: decide qué acciones se ofrecen en la fila (odd/permisos-por-tipo-ticket, S6). */
+  tipoId: string;
   numero: string;
   titulo: string;
   /** Descripción y prioridad del ticket base, para precargar la edición (odd/detalle-ticket-legible). */
@@ -96,10 +98,10 @@ export interface CrearTicketEdilicioDto {
 
 /**
  * Body de `POST /reparaciones/:reparacionId/compras` (`VincularCompraHttpDto`,
- * sdd/reparacion-bloqueada-por-compra WU6). El backend exige, ADEMÁS del
- * permiso implícito en la ruta, `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA`
- * (`@RequiereAcciones` con los dos argumentos, WU5) — el diálogo del frontend
- * gatea la EXPERIENCIA con `<Can>`, nunca la autorización real.
+ * sdd/reparacion-bloqueada-por-compra WU6). El backend exige `COMPRAS:LECTURA`
+ * en la ruta **y** `ALTAS` sobre el tipo de la reparación en el caso de uso
+ * (odd/permisos-por-tipo-ticket, D5 c) — el diálogo del frontend gatea la
+ * EXPERIENCIA, nunca la autorización real.
  */
 export interface VincularCompraDto {
   compraId: string;

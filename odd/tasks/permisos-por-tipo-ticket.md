@@ -101,7 +101,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
   creación por tipo, reparaciones y dashboard — (este commit)
 - [x] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (este commit)
-- [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
+- [x] T6 — S6 — worker — etapa 1, front: botones, alta y filtros según acciones por tipo — (este commit)
 - [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (pendiente)
 - [ ] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (pendiente)
@@ -265,4 +265,18 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   asignables, tareas, asignación automática y reglas de asignación, que suman `candidatosPorTipo`
   (`candidatosPorModulo` = unión, hasta T6). Suite completa del backend: 760 archivos, 9326 tests en
   verde, typecheck y lint en cero. Deuda: índice por `tipo_id` en `permisos_tipo_ticket`.
+- **L29** (verificación independiente de T5c) — PASS sin bloqueantes: 328 tests unitarios, tres
+  mutaciones detectadas, la clave de API v1 no concede acciones fuera de `PERMISOS_API` (tests
+  agregados en el commit anterior a este).
+- **L30** (T6; dueño aprobó sumar `tipoId` a `GET /reparaciones` y abrir `GET /usuarios` por tipo) —
+  `GET /tickets/permisos-por-tipo` devuelve `{ sinRestriccion, porTipo, porModulo }`. El servidor
+  de Next lee esos permisos con la cookie (`permisosPorTipoDelServidor`) y `tiposLayoutGate`
+  protege `/tickets` y `/edilicia`: redirige solo si sabe que no hay LECTURA en ningún tipo del
+  módulo; sin datos deja pasar. El inicio usa la misma regla (sin ciclos). Cada botón del detalle,
+  del listado, de reparaciones (por el tipo de la fila) y de equipos usa la acción sobre el tipo.
+  Reglas de asignación usan `candidatosPorTipo`. `GET /usuarios` abre con ASIGNAR o VER_TODOS en
+  algún tipo (RED 5/5 → GREEN). Front: lint 0, tsc 0, 279 archivos y 2415 tests; 31 tests que
+  fijaban celdas JWT reescritos con dos tipos. Back: tsc 0, 1251 + 1424 tests. Deuda: el alta de
+  reparación asume EDILICIA mientras carga el catálogo (403 si no tiene ALTAS ahí).
+  Ayuda (suspendida): menú, botones y filtros dependen ahora de los permisos por tipo.
 

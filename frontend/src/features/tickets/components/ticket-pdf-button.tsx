@@ -3,10 +3,10 @@
 /**
  * TicketPdfButton — "Descargar PDF" de la ficha del ticket.
  *
- * Sin gate de permiso propio: `GET /tickets/:id/pdf` exige la misma acción y
- * el mismo scope de filas que el detalle, así que quien llegó a ver esta
- * pantalla ya puede pedirlo. El PDF nunca incluye comentarios internos,
- * aunque la pantalla se los muestre a quien tiene `TICKETS:OBSERVAR`.
+ * El contenedor lo monta solo con `IMPRESION` sobre el tipo del ticket: es lo
+ * que exige `GET /tickets/:id/pdf` además de ver el ticket
+ * (odd/permisos-por-tipo-ticket, D5 c). El PDF nunca incluye comentarios
+ * internos, aunque la pantalla se los muestre a quien tiene `OBSERVAR`.
  */
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";

@@ -3,10 +3,9 @@
 /**
  * EquiposListView — CONTAINER montado por `/equipos` (T5.12, migrado en
  * WU-7.6 — `sdd/matriz-permisos-por-usuario`). "Nuevo ticket de soporte" se
- * muestra a quien tenga `TICKETS:ALTAS` Y el módulo TICKETS (el endpoint
- * POST /soporte exige `@RequiereAcciones('TICKETS:ALTAS')`, WU-7.3): sin el
- * módulo, el botón daba 403 al enviar. Independiente del inventario de
- * equipos.
+ * muestra a quien tenga `ALTAS` sobre el tipo SOPORTE, que es lo que exige
+ * POST /soporte (odd/permisos-por-tipo-ticket, D5 c): sin esa acción, el botón
+ * daba 403 al enviar. Independiente del inventario de equipos.
  *
  * DEVIACIÓN vs. el mapeo mecánico del design (`equipos-list-view.tsx:55 →
  * EQUIPOS:ALTAS`): el gate de ACCESO a la vista pasa a `EQUIPOS:LECTURA`,
@@ -23,7 +22,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEquipos, queryStringEquipos } from "../hooks/use-equipos";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useSession } from "@/shared/hooks/use-session";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
+import { useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
@@ -70,6 +70,9 @@ function marcaDeEquipo(row: Equipo, catalogo: EstadoCatalogo<ModeloEquipo>): str
   }
 }
 
+/** Código del tipo que crea `POST /soporte`. */
+const TIPO_SOPORTE_CODIGO = "SOPORTE";
+
 export function EquiposListView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -79,7 +82,11 @@ export function EquiposListView() {
   const incluirBajas = searchParams.get("incluirBajas") === "true";
   const equiposQuery = useEquipos(true, { incluirBajas });
   const modelosQuery = useModelosEquipo();
-  const { canModulo } = useSession();
+  // POST /soporte siempre crea un ticket del tipo SOPORTE: el botón pide ALTAS sobre ese tipo.
+  const tiposTicketsQuery = useTiposTicket("TICKETS");
+  const tipoSoporte = (tiposTicketsQuery.data ?? []).find((tipo) => tipo.codigo === TIPO_SOPORTE_CODIGO);
+  const { puedeEnTipo } = usePermisosPorTipo();
+  const puedeCrearSoporte = tipoSoporte !== undefined && puedeEnTipo(tipoSoporte.id, "ALTAS");
 
   const columns: Column<Equipo>[] = [
     { key: "nombre", header: "Nombre" },
@@ -116,11 +123,7 @@ export function EquiposListView() {
                 queryString={queryStringEquipos({ incluirBajas })}
               />
             </Can>
-            {canModulo("TICKETS") ? (
-              <Can permiso="TICKETS:ALTAS">
-                <TicketSoporteCreateDialog />
-              </Can>
-            ) : undefined}
+            {puedeCrearSoporte ? <TicketSoporteCreateDialog /> : undefined}
           </>
         }
       />

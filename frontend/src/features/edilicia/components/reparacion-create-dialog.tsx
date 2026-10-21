@@ -9,9 +9,12 @@
  * del ticket NO va acá: Edilicia usa su propia «Ubicación» (CA2).
  *
  * Tipo (odd/tasks/tipos-ticket-por-modulo.md, S2): los tipos activos del módulo EDILICIA salvo
- * PREVENTIVO, que lo genera solo el barrido. La opción vacía es EDILICIA y no manda `tipoId`, así
- * el valor por defecto no depende de que el catálogo ya haya cargado. Sin otros tipos elegibles,
- * el selector no se muestra.
+ * PREVENTIVO, que lo genera solo el barrido, y de esos solo los que tienen `ALTAS` para el usuario
+ * (odd/permisos-por-tipo-ticket, S6): el backend responde 403 al alta de cualquier otro. La opción
+ * vacía es EDILICIA y no manda `tipoId`, así el valor por defecto no depende de que el catálogo ya
+ * haya cargado; se ofrece solo con `ALTAS` sobre EDILICIA. Sin ella, elegir un tipo es obligatorio.
+ * Con EDILICIA permitido y sin otros tipos elegibles, el selector no se muestra. Con el catálogo
+ * cargado y ningún tipo elegible, el botón no se muestra.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -24,6 +27,7 @@ import { Select } from "@/components/ui/select";
 import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { crearReparacionSchema, type CrearReparacionFormValues } from "../schemas";
 
 const TIPO_CODIGO_EDILICIA = "EDILICIA";
@@ -36,21 +40,33 @@ export function ReparacionCreateDialog() {
   // El catálogo de sectores se pide recién al abrir el modal.
   const sectoresQuery = useSectores(open);
   const tiposQuery = useTiposTicket(TIPO_CODIGO_EDILICIA);
-  const tipos = tiposQuery.data ?? [];
-  const tipoPorDefecto = tipos.find((tipo) => tipo.codigo === TIPO_CODIGO_EDILICIA);
-  const tiposAlternativos = tipos.filter(
-    (tipo) => tipo.codigo !== TIPO_CODIGO_EDILICIA && tipo.codigo !== TIPO_CODIGO_PREVENTIVO,
+  const { tiposCon } = usePermisosPorTipo();
+  const tiposConAlta = tiposCon(
+    (tiposQuery.data ?? []).filter((tipo) => tipo.codigo !== TIPO_CODIGO_PREVENTIVO),
+    "ALTAS",
   );
+  const tipoPorDefecto = tiposConAlta.find((tipo) => tipo.codigo === TIPO_CODIGO_EDILICIA);
+  const tiposAlternativos = tiposConAlta.filter((tipo) => tipo.codigo !== TIPO_CODIGO_EDILICIA);
+  // Mientras el catálogo carga se asume EDILICIA, como el backend sin `tipoId`: decide él.
+  const ofreceEdiliciaPorDefecto = !tiposQuery.isSuccess || tipoPorDefecto !== undefined;
   const crearMutation = useCrearReparacion();
 
   const {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm<CrearReparacionFormValues>({ resolver: zodResolver(crearReparacionSchema) });
 
+  if (tiposQuery.isSuccess && tiposConAlta.length === 0) return null;
+
   function submit(values: CrearReparacionFormValues) {
+    // Sin `tipoId` el backend crea EDILICIA: sin ALTAS sobre ese tipo, sería un 403 seguro.
+    if (!values.tipoId && !ofreceEdiliciaPorDefecto) {
+      setError("tipoId", { message: "Elegí un tipo" });
+      return;
+    }
     crearMutation.mutate(
       {
         titulo: values.titulo,
@@ -97,19 +113,30 @@ export function ReparacionCreateDialog() {
             )}
           </div>
 
-          {tiposAlternativos.length > 0 && (
+          {(tiposAlternativos.length > 0 || !ofreceEdiliciaPorDefecto) && (
             <div className="flex flex-col gap-1">
               <label htmlFor="reparacion-tipo" className="text-sm font-medium text-foreground">
                 Tipo
               </label>
-              <Select id="reparacion-tipo" defaultValue="" {...register("tipoId")}>
-                <option value="">{tipoPorDefecto?.nombre ?? "Edilicia"}</option>
+              <Select id="reparacion-tipo" error={!!errors.tipoId} defaultValue="" {...register("tipoId")}>
+                {ofreceEdiliciaPorDefecto ? (
+                  <option value="">{tipoPorDefecto?.nombre ?? "Edilicia"}</option>
+                ) : (
+                  <option value="" disabled>
+                    Elegí un tipo
+                  </option>
+                )}
                 {tiposAlternativos.map((tipo) => (
                   <option key={tipo.id} value={tipo.id}>
                     {tipo.nombre}
                   </option>
                 ))}
               </Select>
+              {errors.tipoId && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.tipoId.message}
+                </p>
+              )}
             </div>
           )}
 

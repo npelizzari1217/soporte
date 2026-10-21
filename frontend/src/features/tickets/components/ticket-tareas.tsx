@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useSession } from "@/shared/hooks/use-session";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { formatearInstante } from "@/shared/lib/formato-fecha";
 import {
   useAsignarTecnicoTarea,
@@ -36,8 +37,8 @@ export interface TicketTareasProps {
   ticketId: string;
   /** Responsable del ticket; `undefined` si no se lo pudo leer (ver `permisos-tareas.ts`). */
   asignadoId: string | null | undefined;
-  /** Módulo del tipo del ticket; `undefined` mientras el catálogo no resolvió. */
-  modulo: string | undefined;
+  /** Tipo del ticket: los botones de gestión exigen `MODIFICACION` sobre él (odd/permisos-por-tipo-ticket). */
+  tipoId: string;
   /** Queries extra que una mutación deja viejas (Edilicia: `["reparaciones"]`). */
   invalidarTambien?: readonly QueryKey[];
   /**
@@ -56,16 +57,16 @@ function nombreDe(id: string | null, nombre: string | null, apellido: string | n
 export function TicketTareas({
   ticketId,
   asignadoId,
-  modulo,
+  tipoId,
   invalidarTambien,
   motivoSoloLectura = null,
 }: TicketTareasProps) {
-  const { user, can, esAdminCliente } = useSession();
+  const { user, esAdminCliente } = useSession();
+  const { puedeEnTipo } = usePermisosPorTipo();
   const actor: ActorTareasUi = {
     id: user?.sub ?? "",
     esAdministrador: esAdminCliente,
-    // Sin módulo resuelto no se esconde nada: decide el backend.
-    tieneModificacionDelModulo: modulo === undefined || can(`${modulo}:MODIFICACION`),
+    tieneModificacionDelTipo: puedeEnTipo(tipoId, "MODIFICACION"),
   };
   const soloLectura = motivoSoloLectura !== null;
   const puedeGestionar = !soloLectura && !!user && puedeGestionarTareasUi(actor, asignadoId);

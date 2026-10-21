@@ -8,7 +8,11 @@
  *    UI-only hydration (`cliente_nombre`, `membresias`, `permisos` for display).
  * 3. Passes `initialUser` to `<Providers>` so SessionContext hydrates on first
  *    render with no FOUC.
- * 4. Renders `<AppShell>` — role-based sidebar (nav-config.ts) + the existing
+ * 4. Lee del backend los permisos por tipo de la sesión
+ *    (`permisosPorTipoDelServidor`, odd/permisos-por-tipo-ticket T6), para que
+ *    el menú y los gates de tickets se pinten sin un viaje extra desde el
+ *    cliente. `null` si no se pueden leer: el hook del cliente los pide solo.
+ * 5. Renders `<AppShell>` — role-based sidebar (nav-config.ts) + the existing
  *    `<DashboardHeader>` (tenant switcher + theme toggle + logout) +
  *    breadcrumbs, wrapping `{children}` (Fase 5 Beta, R-M0).
  *
@@ -24,6 +28,7 @@ import { Providers } from "@/shared/providers/providers";
 import { AppShell } from "@/components/shell/app-shell";
 import { cookieName, COOKIE_AT } from "@/shared/auth/cookies";
 import { decodeJwtPayload, type JwtPayload } from "@/shared/api/types";
+import { permisosPorTipoDelServidor } from "@/shared/auth/permisos-por-tipo-servidor";
 
 export default async function DashboardLayout({
   children,
@@ -45,8 +50,10 @@ export default async function DashboardLayout({
     }
   }
 
+  const initialPermisosPorTipo = initialUser ? await permisosPorTipoDelServidor() : null;
+
   return (
-    <Providers initialUser={initialUser}>
+    <Providers initialUser={initialUser} initialPermisosPorTipo={initialPermisosPorTipo}>
       <AppShell>{children}</AppShell>
     </Providers>
   );

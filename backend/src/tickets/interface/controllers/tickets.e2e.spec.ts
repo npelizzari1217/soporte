@@ -754,6 +754,43 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       expect(editado.status).toBe(200);
       expect(await tituloEnBase(preventivo)).toBe('Editado por el administrador');
     });
+
+    it('GET /tickets/permisos-por-tipo devuelve las filas de la sesión por tipo y por módulo, sin caer en /tickets/:id (T6)', async () => {
+      const cliente = await createClienteTenant();
+      // Sin celdas de módulo: el resumen sale solo de las filas por tipo del tenant.
+      const roleTecnico = await createRoleConPermisos('TECNICO', []);
+      const roleAdmin = await createRoleConPermisos('ADMINISTRADOR', []);
+      const tecnico = await createUsuario(`tec-${randomBytes(2).toString('hex')}`);
+      const admin = await createUsuario(`adm-${randomBytes(2).toString('hex')}`);
+      await createMembresia(tecnico.id, cliente.id, roleTecnico.id);
+      await createMembresia(admin.id, cliente.id, roleAdmin.id);
+      const tipos = await tiposSembrados();
+      await fijarPermisosPorTipo(tecnico.id, {
+        [tipos.SOPORTE]: ['ALTAS', 'LECTURA'],
+        [tipos.MANTENIMIENTO]: ['LECTURA', 'MODIFICACION'],
+      });
+      await fijarPermisosPorTipo(admin.id, {});
+      const { accessToken: tokenTecnico } = await login(tecnico.email);
+      const { accessToken: tokenAdmin } = await login(admin.email);
+
+      const delTecnico = await httpGet(
+        `${baseUrl}/tickets/permisos-por-tipo`,
+        bearer(tokenTecnico),
+      );
+      expect(delTecnico.status).toBe(200);
+      expect(delTecnico.data).toEqual({
+        sinRestriccion: false,
+        porTipo: {
+          [tipos.SOPORTE]: ['LECTURA', 'ALTAS'],
+          [tipos.MANTENIMIENTO]: ['LECTURA', 'MODIFICACION'],
+        },
+        porModulo: { TICKETS: ['LECTURA', 'ALTAS'], EDILICIA: ['LECTURA', 'MODIFICACION'] },
+      });
+
+      const delAdmin = await httpGet(`${baseUrl}/tickets/permisos-por-tipo`, bearer(tokenAdmin));
+      expect(delAdmin.status).toBe(200);
+      expect(delAdmin.data).toEqual({ sinRestriccion: true, porTipo: {}, porModulo: {} });
+    });
   });
 
   describe('PATCH /tickets/:id (T8 — permisos por rol)', () => {

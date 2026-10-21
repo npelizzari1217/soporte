@@ -7,6 +7,7 @@
  *   POST   /tickets            → CrearTicketUseCase (`ALTAS` sobre el tipo elegido)
  *   GET    /tickets            → ListarTicketsUseCase (tipos con `LECTURA`; fila sin `VER_TODOS`)
  *   GET    /tickets/export     → ExportarTicketsUseCase (mismo alcance que el listado)
+ *   GET    /tickets/permisos-por-tipo → ObtenerPermisosPorTipoUseCase (acciones de la sesión)
  *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila)
  *   PATCH  /tickets/:id        → EditarTicketUseCase (`MODIFICACION` sobre su tipo)
  *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`TRANSICIONAR` sobre su tipo)
@@ -127,6 +128,10 @@ import {
   SECTOR_REPOSITORY,
 } from '../../../sectores/domain/ports/i-sector.repository';
 import { CargadorAlcanceTicket } from '../alcance-ticket';
+import {
+  ObtenerPermisosPorTipoUseCase,
+  PermisosPorTipoSesion,
+} from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
 
 /** WU9.2 (ADR-C5): gateo del puntaje/comentario CSAT POR CAMPO, no por decorador. */
 const ACCION_CSAT_LECTURA = 'CSAT:LECTURA';
@@ -218,6 +223,7 @@ export class TicketsController {
     @Inject(SECTOR_REPOSITORY)
     private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,
     private readonly alcances: CargadorAlcanceTicket,
+    private readonly obtenerPermisosPorTipoUseCase: ObtenerPermisosPorTipoUseCase,
   ) {}
 
   /**
@@ -446,6 +452,17 @@ export class TicketsController {
       throw toHttpException(result.getError());
     }
     return entregarExport(res, formato, result.getValue());
+  }
+
+  /**
+   * GET /tickets/permisos-por-tipo
+   * Acciones por tipo de la sesión, para que el frontend oculte botones y arme sus selectores
+   * (odd/permisos-por-tipo-ticket, S6). Es comodidad de UI: cada operación la vuelve a decidir el
+   * caso de uso. Va declarada ANTES de `GET /tickets/:id` por el mismo motivo que `export`.
+   */
+  @Get('permisos-por-tipo')
+  async permisosPorTipo(@CurrentUser() user: JwtPayload): Promise<PermisosPorTipoSesion> {
+    return this.obtenerPermisosPorTipoUseCase.execute(await this.alcances.cargar(user));
   }
 
   /**

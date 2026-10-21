@@ -94,6 +94,7 @@ import { AsignarYPonerEnProcesoUseCase } from './application/use-cases/asignar-y
 import { ListarTecnicosAsignablesUseCase } from './application/use-cases/listar-tecnicos-asignables.use-case';
 import { CrearComentarioUseCase } from './application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from './application/use-cases/listar-timeline.use-case';
+import { ObtenerPermisosPorTipoUseCase } from './application/use-cases/obtener-permisos-por-tipo.use-case';
 import { AdjuntarArchivoUseCase } from './application/use-cases/adjuntar-archivo.use-case';
 import { CrearTipoTicketUseCase } from './application/use-cases/crear-tipo-ticket.use-case';
 import { EditarTipoTicketUseCase } from './application/use-cases/editar-tipo-ticket.use-case';
@@ -737,6 +738,13 @@ import {
         FERIADOS_LABORALES_REPOSITORY,
         LOGGER,
       ],
+    },
+    // odd/permisos-por-tipo-ticket (T6): acciones por tipo de la sesión, para el frontend.
+    {
+      provide: ObtenerPermisosPorTipoUseCase,
+      useFactory: (permisos: IPermisoTipoTicketRepository) =>
+        new ObtenerPermisosPorTipoUseCase(permisos),
+      inject: [PERMISO_TIPO_TICKET_REPOSITORY],
     },
     {
       provide: ListarTimelineUseCase,

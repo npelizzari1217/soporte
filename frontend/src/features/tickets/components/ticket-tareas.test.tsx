@@ -4,7 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
-import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { buildUser } from "../../../../test/render-with-providers";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
+import type { PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
 import { TicketTareas } from "./ticket-tareas";
 import { useTicket } from "../hooks/use-ticket";
 import type { TareaTicket } from "../types";
@@ -12,6 +14,11 @@ import type { TareaTicket } from "../types";
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const TICKET_ID = "t1";
+/** Tipo del ticket: gestionar tareas exige MODIFICACION sobre él (odd/permisos-por-tipo-ticket). */
+const TIPO = "tipo-soporte";
+const OTRO_TIPO = "tipo-mantenimiento";
+const CON_MODIFICACION = permisosDeTest({ [TIPO]: ["LECTURA", "MODIFICACION"], [OTRO_TIPO]: ["LECTURA"] });
+const SIN_MODIFICACION = permisosDeTest({ [TIPO]: ["LECTURA"] });
 const RESPONSABLE = "u-responsable";
 const TECNICO = "u-tecnico";
 
@@ -68,12 +75,18 @@ function mockTareas(items: TareaTicket[] = [PENDIENTE, COMPLETADA]) {
   );
 }
 
-/** Responsable del ticket, TECNICO, con el permiso de modificación del módulo. */
-const responsable = buildUser({ sub: RESPONSABLE, rol: "TECNICO", permisos: ["TICKETS:MODIFICACION"] });
+/** Responsable del ticket, TECNICO; con `CON_MODIFICACION`, modifica el tipo del ticket. */
+const responsable = buildUser({ sub: RESPONSABLE, rol: "TECNICO", permisos: [] });
 
-function renderTareas(user = responsable, asignadoId: string | null | undefined = RESPONSABLE) {
-  return renderWithProviders(<TicketTareas ticketId={TICKET_ID} asignadoId={asignadoId} modulo="TICKETS" />, {
+function renderTareas(
+  user = responsable,
+  asignadoId: string | null | undefined = RESPONSABLE,
+  permisos: PermisosPorTipo = CON_MODIFICACION,
+  tipoId = TIPO,
+) {
+  return renderConPermisos(<TicketTareas ticketId={TICKET_ID} asignadoId={asignadoId} tipoId={tipoId} />, {
     user,
+    permisos,
   });
 }
 
@@ -219,11 +232,11 @@ describe("TicketTareas — mutaciones sobre las rutas genéricas", () => {
       return (
         <>
           <span>{ticketQuery.data ? "ticket cargado" : "ticket cargando"}</span>
-          <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} modulo="TICKETS" />
+          <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} />
         </>
       );
     }
-    renderWithProviders(<DetalleConTareas />, { user: responsable });
+    renderConPermisos(<DetalleConTareas />, { user: responsable, permisos: CON_MODIFICACION });
 
     await screen.findByText("ticket cargado");
     await screen.findByText("Cambiar el disco");
@@ -308,34 +321,38 @@ describe("TicketTareas — mutaciones sobre las rutas genéricas", () => {
 
 describe("TicketTareas — botones por actor (CA3, CA4)", () => {
   it.each([
-    ["el responsable con el permiso del módulo", responsable, true, ["Completar", "Descompletar"]],
+    ["el responsable con MODIFICACION sobre el tipo", responsable, CON_MODIFICACION, true, ["Completar", "Descompletar"]],
     [
       "un ADMINISTRADOR que no es el responsable",
-      buildUser({ sub: "u-admin", rol: "ADMINISTRADOR", permisos: ["TICKETS:MODIFICACION"] }),
+      buildUser({ sub: "u-admin", rol: "ADMINISTRADOR", permisos: [] }),
+      permisosDeTest({}),
       true,
       ["Completar", "Descompletar"],
     ],
     [
       "el técnico de una tarea: solo completa la suya",
-      buildUser({ sub: TECNICO, rol: "TECNICO", permisos: ["TICKETS:MODIFICACION"] }),
+      buildUser({ sub: TECNICO, rol: "TECNICO", permisos: [] }),
+      CON_MODIFICACION,
       false,
       ["Descompletar"],
     ],
     [
-      "el responsable sin el permiso del módulo: completa pero no gestiona",
-      buildUser({ sub: RESPONSABLE, rol: "TECNICO", permisos: [] }),
+      "el responsable sin MODIFICACION sobre el tipo: completa pero no gestiona, aunque tenga la celda del JWT",
+      buildUser({ sub: RESPONSABLE, rol: "TECNICO", permisos: ["TICKETS:MODIFICACION"] }),
+      SIN_MODIFICACION,
       false,
       ["Completar", "Descompletar"],
     ],
     [
-      "un usuario ajeno, aunque tenga el permiso del módulo",
-      buildUser({ sub: "u-otro", rol: "TECNICO", permisos: ["TICKETS:MODIFICACION"] }),
+      "un usuario ajeno, aunque tenga MODIFICACION sobre el tipo",
+      buildUser({ sub: "u-otro", rol: "TECNICO", permisos: [] }),
+      CON_MODIFICACION,
       false,
       [],
     ],
-  ])("%s", async (_caso, usuario, gestiona, botones) => {
+  ])("%s", async (_caso, usuario, permisos, gestiona, botones) => {
     mockTareas();
-    renderTareas(usuario);
+    renderTareas(usuario, RESPONSABLE, permisos);
     await screen.findByText("Cambiar el disco");
 
     expect(screen.queryByLabelText("Nueva tarea") !== null).toBe(gestiona);
@@ -348,17 +365,34 @@ describe("TicketTareas — botones por actor (CA3, CA4)", () => {
   });
 });
 
+describe("TicketTareas — MODIFICACION sobre el tipo del ticket (odd/permisos-por-tipo-ticket, S6)", () => {
+  it("el mismo responsable gestiona en el tipo con MODIFICACION y no en el que solo lee", async () => {
+    mockTareas();
+    const enTipoConModificacion = renderTareas(responsable, RESPONSABLE, CON_MODIFICACION, TIPO);
+    await screen.findByText("Cambiar el disco");
+    expect(screen.getByLabelText("Nueva tarea")).toBeInTheDocument();
+    enTipoConModificacion.unmount();
+
+    renderTareas(responsable, RESPONSABLE, CON_MODIFICACION, OTRO_TIPO);
+    await screen.findByText("Cambiar el disco");
+    expect(screen.queryByLabelText("Nueva tarea")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Eliminar tarea Cambiar el disco" })).toBeNull();
+    // Completar no depende del tipo: el responsable sigue completando (CA4).
+    expect(within(filaDe("Cambiar el disco")).getByRole("button", { name: "Completar" })).toBeInTheDocument();
+  });
+});
+
 describe("TicketTareas — solo lectura (odd/ticket-cerrado-solo-lectura, S4)", () => {
   it("con motivo, el responsable con permiso ve la lista y el motivo, pero ningún control", async () => {
     mockTareas();
-    renderWithProviders(
+    renderConPermisos(
       <TicketTareas
         ticketId={TICKET_ID}
         asignadoId={RESPONSABLE}
-        modulo="TICKETS"
+        tipoId={TIPO}
         motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
       />,
-      { user: responsable },
+      { user: responsable, permisos: CON_MODIFICACION },
     );
     await screen.findByText("Cambiar el disco");
 
@@ -371,9 +405,9 @@ describe("TicketTareas — solo lectura (odd/ticket-cerrado-solo-lectura, S4)", 
 
   it("sin motivo (null) todo sigue como antes", async () => {
     mockTareas();
-    renderWithProviders(
-      <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} modulo="TICKETS" motivoSoloLectura={null} />,
-      { user: responsable },
+    renderConPermisos(
+      <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} motivoSoloLectura={null} />,
+      { user: responsable, permisos: CON_MODIFICACION },
     );
     await screen.findByText("Cambiar el disco");
 

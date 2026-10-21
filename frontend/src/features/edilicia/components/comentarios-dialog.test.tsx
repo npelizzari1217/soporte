@@ -36,7 +36,7 @@ describe("ComentariosDialog", () => {
     );
 
     renderWithProviders(
-      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} />,
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar={false} />,
       { user: buildUser({ permisos: [] }) },
     );
 
@@ -54,7 +54,7 @@ describe("ComentariosDialog", () => {
     // regresión de zona horaria (ver `ticket-header` en este cambio).
     // `2026-08-18T10:00:00.000Z` = 07:00 con el TZ de la suite (UTC-3).
     expect(screen.getAllByText("18/08/2026 07:00")).toHaveLength(2);
-    // Solo lectura: sin EDILICIA:ALTAS no aparece el form.
+    // Solo lectura: sin ALTAS ni COMENTAR sobre el tipo no aparece el form.
     expect(screen.queryByLabelText(/nuevo comentario/i)).not.toBeInTheDocument();
   });
 
@@ -63,7 +63,7 @@ describe("ComentariosDialog", () => {
     server.use(http.get("/api/reparaciones/rep1/comentarios", () => HttpResponse.json([])));
 
     renderWithProviders(
-      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} />,
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar={false} />,
       { user: buildUser({ permisos: [] }) },
     );
 
@@ -79,7 +79,7 @@ describe("ComentariosDialog", () => {
     );
 
     renderWithProviders(
-      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} />,
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar={false} />,
       { user: buildUser({ permisos: [] }) },
     );
 
@@ -88,7 +88,7 @@ describe("ComentariosDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/no se pudieron cargar los comentarios/i);
   });
 
-  it("con EDILICIA:ALTAS postea el comentario e invalida la lista (el nuevo aparece)", async () => {
+  it("pudiendo comentar en el tipo, postea el comentario e invalida la lista (el nuevo aparece)", async () => {
     const user = userEvent.setup();
     let posteado: unknown = null;
     let getsServidos = 0;
@@ -105,8 +105,8 @@ describe("ComentariosDialog", () => {
     );
 
     renderWithProviders(
-      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} />,
-      { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) },
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar />,
+      { user: buildUser({ permisos: [] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /ver comentarios/i }));
@@ -133,8 +133,8 @@ describe("ComentariosDialog", () => {
     );
 
     renderWithProviders(
-      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} />,
-      { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) },
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar />,
+      { user: buildUser({ permisos: [] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /ver comentarios/i }));
@@ -147,7 +147,7 @@ describe("ComentariosDialog", () => {
 });
 
 describe("ComentariosDialog — solo lectura (odd/ticket-cerrado-solo-lectura, S5)", () => {
-  it("con motivo muestra la lista y el motivo, y oculta el formulario aunque tenga EDILICIA:ALTAS", async () => {
+  it("con motivo muestra la lista y el motivo, y oculta el formulario aunque pueda comentar en el tipo", async () => {
     const user = userEvent.setup();
     server.use(
       http.get("/api/reparaciones/rep1/comentarios", () =>
@@ -160,9 +160,10 @@ describe("ComentariosDialog — solo lectura (odd/ticket-cerrado-solo-lectura, S
         reparacionId="rep1"
         numero="EDI-0001"
         trigger={<button>Ver comentarios</button>}
+        puedeComentar
         motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
       />,
-      { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) },
+      { user: buildUser({ permisos: [] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /ver comentarios/i }));

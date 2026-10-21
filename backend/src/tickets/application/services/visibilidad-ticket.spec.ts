@@ -15,6 +15,7 @@ import {
   esTicketAccesiblePara,
   esTicketVisiblePara,
   puedeOperarTicket,
+  tieneAccionEnAlgunTipo,
   tieneAccionSobreTipo,
 } from './visibilidad-ticket';
 
@@ -251,5 +252,28 @@ describe('permisos por tipo del ticket', () => {
     it('un usuario sin filas no ve ningún tipo', () => {
       expect(alcanceListadoVacio(alcanceDeListado(alcancePorTipo(TECNICO, {})))).toBe(true);
     });
+  });
+});
+
+describe('tieneAccionEnAlgunTipo (odd/permisos-por-tipo-ticket, T6)', () => {
+  const alcance = alcancePorTipo(TECNICO, {
+    'tipo-soporte': ['LECTURA'],
+    'tipo-mantenimiento': ['LECTURA', 'VER_TODOS'],
+  });
+
+  it('basta una de las acciones en uno de los tipos', () => {
+    expect(tieneAccionEnAlgunTipo(alcance, ['ASIGNAR', 'VER_TODOS'])).toBe(true);
+  });
+
+  it('sin ninguna de las acciones en ningún tipo, false', () => {
+    expect(tieneAccionEnAlgunTipo(alcance, ['ASIGNAR'])).toBe(false);
+  });
+
+  it('un usuario sin filas no tiene ninguna acción', () => {
+    expect(tieneAccionEnAlgunTipo(alcancePorTipo(TECNICO, {}), ['LECTURA'])).toBe(false);
+  });
+
+  it('sin restricción (ROOT y ADMINISTRADOR), siempre', () => {
+    expect(tieneAccionEnAlgunTipo(alcanceSinRestriccion(TECNICO), ['ASIGNAR'])).toBe(true);
   });
 });

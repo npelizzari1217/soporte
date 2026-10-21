@@ -3,7 +3,7 @@
  * tenant (sdd/beta-frontend/spec §5, desbloquea Fase 5 Beta frontend).
  *
  * Rutas (WU-7.3/7.4/7.6, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R6/R10):
- *   GET    /usuarios                          → ListarUsuariosTenantUseCase   (TICKETS:ASIGNAR | TICKETS:VER_TODOS | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
+ *   GET    /usuarios                          → ListarUsuariosTenantUseCase   (ASIGNAR | VER_TODOS sobre algún tipo de ticket | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
  *   POST   /usuarios                          → CrearUsuarioTenantUseCase     [AdminClienteGuard]
  *   PATCH  /usuarios/:id/rol                  → CambiarRolUsuarioTenantUseCase [AdminClienteGuard] (R6: `reaplicarPreset` opcional)
  *   PATCH  /usuarios/:id                      → EditarUsuarioTenantUseCase      [AdminClienteGuard]
@@ -20,13 +20,14 @@
  * los endpoints de gestión — reemplaza `PermissionsGuard`+`@RequirePermissions`.
  *
  * `GET /usuarios` NO usa `AdminClienteGuard` a nivel de clase porque su regla
- * es OR, no un simple admin-o-root (R4-excepción, S25): `TICKETS:ASIGNAR` O
- * `TICKETS:VER_TODOS` O ser ADMINISTRADOR/ROOT habilitan la lista básica
- * (selector de asignación / vista admin) — evaluado con `puedeEjecutarAlguna`,
- * que YA embebe el bypass de ROOT/ADMINISTRADOR (ADR-P11: `puedeEjecutar`
- * bypassea antes de mirar `permisos`). El `email` es el dato sensible (R10)
+ * es OR, no un simple admin-o-root (R4-excepción, S25): `ASIGNAR` O `VER_TODOS`
+ * sobre algún tipo de ticket O ser ADMINISTRADOR/ROOT habilitan la lista básica
+ * (selector de asignación, filtro "Asignado" del listado / vista admin). Desde
+ * odd/permisos-por-tipo-ticket (T6) lo deciden los permisos por tipo del tenant,
+ * cargados por request con `CargadorAlcanceTicket` (que ya deja sin restricción a
+ * ROOT y ADMINISTRADOR); las celdas `TICKETS:*` del JWT no. El `email` es el dato sensible (R10)
  * — se omite salvo que el actor sea ADMINISTRADOR o ROOT, INDEPENDIENTE de la
- * regla OR de acceso (`esAdminDeCliente`, no `puedeEjecutarAlguna`).
+ * regla OR de acceso (`esAdminDeCliente`, no los permisos por tipo).
  *
  * ABM viejo RETIRADO (WU-7.6, cierre de la deviation declarada en la tanda
  * anterior): `GET/PATCH /usuarios/:id/modulos`, `ObtenerModulosUsuarioTenantUseCase`,
@@ -101,16 +102,19 @@ import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
 import { AdminClienteGuard } from '../../infrastructure/guards/admin-cliente.guard';
 import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
-import { puedeEjecutarAlguna, esAdminDeCliente } from '../../domain/permisos.util';
+import { esAdminDeCliente } from '../../domain/permisos.util';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { tieneAccionEnAlgunTipo } from '../../../tickets/application/services/visibilidad-ticket';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 import { CATALOGO_MODULOS, CodigoAccion } from '../../../shared/domain/acciones';
 import { DomainError } from '../../../shared/domain/result';
 
 /**
- * Acciones que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND —
- * R4-excepción, S25). `puedeEjecutarAlguna` ya bypassea ROOT/ADMINISTRADOR
- * por construcción (ADR-P11): no hace falta un chequeo admin separado acá.
+ * Acciones por tipo que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND —
+ * R4-excepción, S25), en cualquier tipo. El alcance de ROOT/ADMINISTRADOR llega sin
+ * restricción, así que no hace falta un chequeo admin separado acá.
  */
-const ACCIONES_LISTA_BASICA = ['TICKETS:ASIGNAR', 'TICKETS:VER_TODOS'];
+const ACCIONES_LISTA_BASICA: readonly AccionTipoTicket[] = ['ASIGNAR', 'VER_TODOS'];
 
 function toListaResponseDto(
   item: MembresiaConUsuario,
@@ -180,24 +184,25 @@ export class UsuariosController {
     private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
     private readonly resetearTfaUsuarioUseCase: ResetearTfaUsuarioUseCase,
     private readonly resetearVinculoSsoUseCase: ResetearVinculoSsoUseCase,
+    private readonly alcances: CargadorAlcanceTicket,
   ) {}
 
   /**
    * GET /usuarios
    * Lista los usuarios con membresía ACTIVA en el cliente del token.
-   * @throws 403 si el actor no tiene `TICKETS:ASIGNAR`, `TICKETS:VER_TODOS`
+   * @throws 403 si el actor no tiene `ASIGNAR` ni `VER_TODOS` sobre ningún tipo
    *             NI es ADMINISTRADOR/ROOT (R4-excepción, S25)
    */
   @Get()
   async listar(@CurrentUser() actor: JwtPayload): Promise<UsuarioTenantResponseDto[]> {
-    const tieneAccesoBasico = puedeEjecutarAlguna(actor, ACCIONES_LISTA_BASICA);
-    if (!tieneAccesoBasico) {
+    const alcance = await this.alcances.cargar(actor);
+    if (!tieneAccionEnAlgunTipo(alcance, ACCIONES_LISTA_BASICA)) {
       throw new ForbiddenException(
-        `Acceso denegado: se requiere alguno de [${ACCIONES_LISTA_BASICA.join(', ')}]`,
+        'Acceso denegado: se requiere ASIGNAR o VER_TODOS sobre algún tipo de ticket',
       );
     }
     // R10: el email es INDEPENDIENTE de la regla OR de arriba. Un TECNICO con
-    // TICKETS:ASIGNAR entra a la lista pero NUNCA recibe email — solo
+    // ASIGNAR sobre un tipo entra a la lista pero NUNCA recibe email — solo
     // ADMINISTRADOR/ROOT lo ven.
     const incluirEmail = esAdminDeCliente(actor);
 

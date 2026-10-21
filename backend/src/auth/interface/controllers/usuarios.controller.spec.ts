@@ -43,6 +43,21 @@ import { ResetearPasswordUsuarioTenantUseCase } from '../../application/use-case
 import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
+
+/**
+ * Permisos por tipo de la tabla del tenant (odd/permisos-por-tipo-ticket, T6): deciden el acceso a
+ * `GET /usuarios`. `asignador` asigna en un tipo, `supervisor` ve todos en otro, `lector` solo lee.
+ */
+const PERMISOS_POR_TIPO = [
+  { usuarioId: 'asignador', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+  { usuarioId: 'asignador', tipoId: 'tipo-soporte', accion: 'ASIGNAR' },
+  { usuarioId: 'supervisor', tipoId: 'tipo-mantenimiento', accion: 'LECTURA' },
+  { usuarioId: 'supervisor', tipoId: 'tipo-mantenimiento', accion: 'VER_TODOS' },
+  { usuarioId: 'lector', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+  { usuarioId: 'lector', tipoId: 'tipo-mantenimiento', accion: 'ALTAS' },
+] as const;
 
 /**
  * Caso de uso doble: hereda el prototipo de la clase real (así encaja en el constructor del
@@ -93,6 +108,7 @@ function buildController() {
     aplicarPresetPermisosUseCase,
     resetearTfaUsuarioUseCase,
     resetearVinculoSsoUseCase,
+    new CargadorAlcanceTicket(new PermisosTipoTicketEnMemoria([], PERMISOS_POR_TIPO)),
   );
   return {
     controller,
@@ -131,10 +147,10 @@ const MEMBRESIA_ITEM: MembresiaConUsuario = {
 
 describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §5)', () => {
   describe('GET /usuarios', () => {
-    it('con TICKETS:ASIGNAR retorna la lista SIN email (dato sensible, R10)', async () => {
+    it('con ASIGNAR sobre algún tipo (sin celdas TICKETS:*) retorna la lista SIN email (R10, T6)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
-      const actor = buildActor({ permisos: ['TICKETS:ASIGNAR'] });
+      const actor = buildActor({ sub: 'asignador', permisos: [] });
 
       const result = await controller.listar(actor);
 
@@ -145,14 +161,25 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       expect(result[0]).not.toHaveProperty('email');
     });
 
-    it('con TICKETS:VER_TODOS retorna la lista SIN email', async () => {
+    it('con VER_TODOS sobre algún tipo retorna la lista SIN email (filtro "Asignado" del listado, T6)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
-      const actor = buildActor({ permisos: ['TICKETS:VER_TODOS'] });
+      const actor = buildActor({ sub: 'supervisor', permisos: [] });
 
       const result = await controller.listar(actor);
 
-      expect(result[0]).not.toHaveProperty('email');
+      expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
+    });
+
+    it('las celdas TICKETS:ASIGNAR/VER_TODOS del JWT ya no abren la lista sin filas por tipo → 403 (T6)', async () => {
+      const { controller, listarUsuariosTenantUseCase } = buildController();
+      const actor = buildActor({
+        sub: 'sin-filas',
+        permisos: ['TICKETS:ASIGNAR', 'TICKETS:VER_TODOS'],
+      });
+
+      await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
     });
 
     it('ADMINISTRADOR retorna la lista CON email (R10 — independiente de la regla OR de acceso)', async () => {
@@ -167,21 +194,24 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       ]);
     });
 
-    it('TECNICO con TICKETS:ASIGNAR (no ADMINISTRADOR, no ROOT) NUNCA recibe email aunque entre a la lista (R10)', async () => {
+    it('TECNICO con ASIGNAR sobre un tipo (no ADMINISTRADOR, no ROOT) NUNCA recibe email aunque entre a la lista (R10)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
-      const actor = buildActor({ rol: 'TECNICO', permisos: ['TICKETS:ASIGNAR'] });
+      const actor = buildActor({ sub: 'asignador', rol: 'TECNICO', permisos: [] });
 
       const result = await controller.listar(actor);
 
       expect('email' in result[0]).toBe(false);
     });
 
-    it('sin TICKETS:ASIGNAR, TICKETS:VER_TODOS ni ser admin → 403 ForbiddenException (R4-excepción, S25)', async () => {
+    it('sin ASIGNAR ni VER_TODOS en ningún tipo, ni ser admin → 403 ForbiddenException (R4-excepción, S25)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
-      const actor = buildActor({ permisos: ['TICKETS:ALTAS'] });
+      // Lee y crea en dos tipos: ninguna de esas acciones abre la lista.
+      const actor = buildActor({ sub: 'lector', permisos: ['TICKETS:ALTAS'] });
 
-      await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(controller.listar(actor)).rejects.toThrow(
+        'Acceso denegado: se requiere ASIGNAR o VER_TODOS sobre algún tipo de ticket',
+      );
       expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
     });
 

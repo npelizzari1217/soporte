@@ -4,6 +4,12 @@
  * TicketDetailView — CONTAINER client component montado por `/tickets/:id`
  * (ADR-1). Orquesta detalle + timeline + acciones gateadas por permiso
  * (R-M1 / T1.6-T1.13).
+ *
+ * Cada acción se ofrece según la acción concedida sobre el TIPO de este ticket
+ * (odd/permisos-por-tipo-ticket, S6, D5 c), la misma que exige el backend:
+ * Editar `MODIFICACION`, Estado `TRANSICIONAR`, Responsable `ASIGNAR`,
+ * comentar `COMENTAR`, comentario interno `OBSERVAR`, PDF `IMPRESION`, adjuntar
+ * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`.
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -23,9 +29,10 @@ import { puedeAsignarYPonerEnProceso, puedeEditarDatos, puedeReasignar } from ".
 import { motivoTareasSoloLectura } from "../lib/permisos-tareas";
 import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
+import type { AccionTipoTicket } from "@/shared/auth/permisos-por-tipo";
 import { DetailSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
-import { Can } from "@/components/shared/can";
 import { TicketHeader } from "./ticket-header";
 import { TicketTimeline } from "./ticket-timeline";
 import { TicketCommentForm } from "./ticket-comment-form";
@@ -51,8 +58,14 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const tiposOperacionQuery = useTiposOperacion();
-  const puedeAsignar = useCan("TICKETS:ASIGNAR");
-  const puedeTransicionar = useCan("TICKETS:TRANSICIONAR");
+  const { puedeEnTipo } = usePermisosPorTipo();
+  // Sin ticket todavía no hay tipo: nada se ofrece hasta saberlo.
+  const tipoId = ticketQuery.data?.tipoId;
+  const puede = (accion: AccionTipoTicket): boolean =>
+    tipoId !== undefined && puedeEnTipo(tipoId, accion);
+  const puedeAsignar = puede("ASIGNAR");
+  const puedeTransicionar = puede("TRANSICIONAR");
+  const puedeModificar = puede("MODIFICACION");
   // WU9.3: el backend ya gatea csatPuntaje/csatComentario por payload
   // (ADR-C5); esta bandera es defensa en profundidad del lado UI.
   const puedeVerCsat = useCan("CSAT:LECTURA");
@@ -156,6 +169,8 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                 onAsignarEnProceso={(asignadoId) => asignarEnProcesoMutation.mutate({ asignadoId })}
                 onReasignar={(asignadoId) => reasignarMutation.mutate({ asignadoId })}
                 isSubmitting={asignarEnProcesoMutation.isPending || reasignarMutation.isPending}
+                puedeAsignar={puedeAsignar}
+                puedeTransicionar={puedeTransicionar}
               />
             </GrupoAccion>
           )}
@@ -165,39 +180,36 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                 estadoActualCodigo={estadoCodigo}
                 onTransicionar={(nuevoEstadoCodigo) => transicionarMutation.mutate({ nuevoEstadoCodigo })}
                 isSubmitting={transicionarMutation.isPending}
+                puedeTransicionar={puedeTransicionar}
               />
             </GrupoAccion>
           )}
           <GrupoAccion titulo="Ticket">
             <div className="flex flex-wrap items-center gap-2">
-              <Can permiso="TICKETS:MODIFICACION">
-                {edicionPermitida ? (
-                  <TicketEditDialog
-                    defaultValues={{
-                      titulo: ticket.titulo,
-                      descripcion: ticket.descripcion ?? "",
-                      prioridadId: ticket.prioridadId,
-                      ubicacion: ticket.ubicacion ?? "",
-                      sectorId: ticket.sectorId ?? "",
-                    }}
-                    // `undefined` mientras la query no resolvió (cargando o error):
-                    // `TicketEditForm` lo necesita para no etiquetar por error un
-                    // valor activo como "dado de baja" (ver JSDoc de la prop).
-                    prioridades={prioridadesQuery.data}
-                    sectorNombre={ticket.sectorNombre}
-                    mostrarUbicacion={mostrarUbicacion}
-                    onSubmit={(dto) => editarMutation.mutate(dto)}
-                    isSubmitting={editarMutation.isPending}
-                  />
-                ) : null}
-              </Can>
-              <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />
+              {puedeModificar && edicionPermitida ? (
+                <TicketEditDialog
+                  defaultValues={{
+                    titulo: ticket.titulo,
+                    descripcion: ticket.descripcion ?? "",
+                    prioridadId: ticket.prioridadId,
+                    ubicacion: ticket.ubicacion ?? "",
+                    sectorId: ticket.sectorId ?? "",
+                  }}
+                  // `undefined` mientras la query no resolvió (cargando o error):
+                  // `TicketEditForm` lo necesita para no etiquetar por error un
+                  // valor activo como "dado de baja" (ver JSDoc de la prop).
+                  prioridades={prioridadesQuery.data}
+                  sectorNombre={ticket.sectorNombre}
+                  mostrarUbicacion={mostrarUbicacion}
+                  onSubmit={(dto) => editarMutation.mutate(dto)}
+                  isSubmitting={editarMutation.isPending}
+                />
+              ) : null}
+              {puede("IMPRESION") && <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />}
             </div>
-            <Can permiso="TICKETS:MODIFICACION">
-              {!edicionPermitida && (
-                <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>
-              )}
-            </Can>
+            {puedeModificar && !edicionPermitida && (
+              <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>
+            )}
           </GrupoAccion>
         </div>
       </section>
@@ -216,7 +228,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         <TicketTareas
           ticketId={ticket.id}
           asignadoId={ticket.asignadoId}
-          modulo={modulo}
+          tipoId={ticket.tipoId}
           // El detalle no conoce el bloqueo por compra (es de Edilicia): solo el estado.
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, false)}
         />
@@ -233,16 +245,19 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         <h2 id="actividad-titulo" className="text-sm font-semibold text-foreground">
           Actividad
         </h2>
-        <Can permiso="TICKETS:COMENTAR">
+        {puede("COMENTAR") && (
           <TicketCommentForm
             onSubmit={(values) => comentarMutation.mutate(values)}
             isSubmitting={comentarMutation.isPending}
+            puedeObservar={puede("OBSERVAR")}
           />
-        </Can>
-        <TicketAttachmentUpload
-          onUpload={(file) => adjuntarMutation.mutate(file)}
-          isUploading={adjuntarMutation.isPending}
-        />
+        )}
+        {(puede("ALTAS") || puedeModificar) && (
+          <TicketAttachmentUpload
+            onUpload={(file) => adjuntarMutation.mutate(file)}
+            isUploading={adjuntarMutation.isPending}
+          />
+        )}
         <div className="border-t border-border pt-4">
           {timelineQuery.isLoading ? (
             <DetailSkeleton />

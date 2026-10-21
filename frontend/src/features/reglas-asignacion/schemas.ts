@@ -28,9 +28,14 @@ export const candidatoReglaSchema = z.object({
   apellido: z.string(),
 });
 
+/**
+ * Candidatos por tipo (odd/permisos-por-tipo-ticket, D5 g): solo quien tiene `LECTURA` sobre ESE
+ * tipo puede recibirlo. La unión por módulo que el backend todavía manda ofrecería a alguien que no
+ * atiende el tipo, y el `PUT` la rechazaría: no se lee.
+ */
 export const reglasAsignacionVistaSchema = z.object({
   reglas: z.array(reglaAsignacionFilaSchema),
-  candidatosPorModulo: z.record(z.string(), z.array(candidatoReglaSchema)),
+  candidatosPorTipo: z.record(z.string(), z.array(candidatoReglaSchema)),
 });
 
 /** Body de `PUT /reglas-asignacion/:tipoId`; `null` quita la regla del tipo. */

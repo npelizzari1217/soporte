@@ -10,9 +10,10 @@
  * error y vacío usando las primitivas compartidas (ADR-8), en vez de sembrar
  * un cache local desde un array embebido.
  *
- * Gate por acción: agregar comentario = `EDILICIA:ALTAS` (mismo permiso que
- * agregar una subtarea). Leer no lleva gate en el cliente: si el usuario pudo
- * cargar la reparación, el backend ya lo autorizó con `EDILICIA:LECTURA`.
+ * Gate por acción: agregar comentario = `ALTAS` o `COMENTAR` sobre el tipo de
+ * la reparación (`puedeComentar`, lo decide el contenedor; odd/permisos-por-tipo-ticket,
+ * D5 c). Leer no lleva gate en el cliente: si el usuario pudo cargar la
+ * reparación, el backend ya lo autorizó con `LECTURA` sobre su tipo.
  *
  * Append-only: no hay editar ni eliminar, ni acá ni en el backend.
  */
@@ -23,7 +24,6 @@ import { MessageSquare } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Can } from "@/components/shared/can";
 import { TableSkeleton } from "@/components/shared/skeletons";
 import { ErrorState } from "@/components/shared/error-state";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -37,6 +37,8 @@ export interface ComentariosDialogProps {
   reparacionId: string;
   trigger: ReactNode;
   numero: string;
+  /** `ALTAS` o `COMENTAR` sobre el tipo del ticket de la reparación. */
+  puedeComentar: boolean;
   /**
    * Con motivo, no se pueden agregar comentarios (odd/ticket-cerrado-solo-lectura, S5): se oculta
    * el formulario y se muestra el motivo. La lista sigue. El backend es la autoridad.
@@ -55,7 +57,13 @@ function nombreAutor(comentario: ComentarioReparacion): string {
   return completo.length > 0 ? completo : comentario.autorId;
 }
 
-export function ComentariosDialog({ reparacionId, trigger, numero, motivoSoloLectura = null }: ComentariosDialogProps) {
+export function ComentariosDialog({
+  reparacionId,
+  trigger,
+  numero,
+  puedeComentar,
+  motivoSoloLectura = null,
+}: ComentariosDialogProps) {
   const [open, setOpen] = useState(false);
   const comentariosQuery = useComentariosReparacion(reparacionId, open);
   const crearMutation = useCrearComentarioReparacion(reparacionId);
@@ -118,8 +126,7 @@ export function ComentariosDialog({ reparacionId, trigger, numero, motivoSoloLec
             {motivoSoloLectura}
           </p>
         )}
-        <Can permiso="EDILICIA:ALTAS">
-          {motivoSoloLectura === null && (
+        {puedeComentar && motivoSoloLectura === null && (
           <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-2" noValidate>
             <label htmlFor="comentario-texto" className="text-xs font-medium text-foreground">
               Nuevo comentario
@@ -129,8 +136,7 @@ export function ComentariosDialog({ reparacionId, trigger, numero, motivoSoloLec
               Comentar
             </Button>
           </form>
-          )}
-        </Can>
+        )}
       </DialogContent>
     </Dialog>
   );

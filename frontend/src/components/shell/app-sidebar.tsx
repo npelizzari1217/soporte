@@ -24,6 +24,7 @@ import { Building2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/shared/hooks/use-session";
 import { visibleNavSections } from "@/shared/nav/nav-config";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { tipoUsuario } from "@/shared/auth/tipo-usuario";
 import type { JwtPayload } from "@/shared/api/types";
 
@@ -100,7 +101,9 @@ export function AppSidebar() {
   const { user } = useSession();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const sections = visibleNavSections(user);
+  // Tickets y Edilicia dependen de los permisos por tipo (odd/permisos-por-tipo-ticket, S5).
+  const { permisos: permisosPorTipo } = usePermisosPorTipo();
+  const sections = visibleNavSections(user, permisosPorTipo);
 
   return (
     <nav
