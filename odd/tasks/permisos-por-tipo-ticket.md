@@ -58,6 +58,11 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   visible para el actor (fila o módulo del tipo); 403 si es visible pero la acción no está
   permitida. ROOT y ADMINISTRADOR (`modulosPermitidos = null`) no se filtran por módulo.
 
+- **D4 (L20-L22)** — Vocabulario por tipo: se reusan los códigos del catálogo actual
+  (`LECTURA`, `VER_TODOS`, `ALTAS`, `MODIFICACION`, `TRANSICIONAR`, `ASIGNAR`, `COMENTAR`,
+  `OBSERVAR`, `IMPRESION`, `BORRADO`) para no inventar una segunda lengua de permisos. La traducción
+  de L11 vive una sola vez en el dominio y la usan el backfill, las plantillas de rol y los tests.
+
 ## Tasks
 
 - [x] T0 — D1, D2, D3 — explore + inline — validar el diseño: lugar de guardado, resolución por
@@ -68,8 +73,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   asignar-en-proceso, comentar (incl. API v1), `/soporte` solución por el punto único — `eedfbb6c`
 - [x] T3 — S0 — inline — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
   menú con `TICKETS:LECTURA`, inicio según el menú (L16) — `3bdf4627`
-- [ ] T4 — S1, S7, D1 — writer — etapa 1: tabla tipo × acción, migración aditiva, plantillas de
-  rol por tipo — (pendiente)
+- [ ] T4a — S1, D1, D4 — worker — tabla tenant `permisos_tipo_ticket` con CHECK derivado,
+  vocabulario de acciones y traducción L11 en el dominio, repositorio — (pendiente)
+- [ ] T4b — S7, L21 — worker — script de backfill idempotente (dry-run / `--apply`) y paso en
+  `deploy.ps1` — (pendiente)
+- [ ] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
+  plantilla escriben las filas por tipo — (pendiente)
 - [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
 - [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
 - [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
@@ -172,4 +181,21 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   demo, no del deploy) llamaban a los casos de uso sin el alcance nuevo. Corregidos pasando el
   alcance sin restricción del flujo de sistema (D3); los dos pasan. Lección: un cambio de contrato
   de un caso de uso se busca también en `test/`, `prisma_master/` y `scripts/`, no solo en `src/`.
+- **L20** (dueño, "si") — Entrega A: T4 a T8 salen en un solo deploy, para que la grilla vieja y
+  la nueva cambien juntas y no haya una ventana con un control que no tiene efecto. Sin
+  sincronización entre master y tenant durante la transición.
+- **L21** (decisiones por defecto aceptadas con el "si") — `EDILICIA:BORRADO` (desvincular compra)
+  sigue siendo permiso del módulo, no entra a la tabla por tipo. Los tipos con módulo COMPRAS o
+  EQUIPOS, si existen, se migran con la regla de TICKETS. Las membresías desactivadas también se
+  migran.
+- **L22** (evidencia, exploración T4) — Plantilla de tabla: `ReglaAsignacion`
+  (`prisma_tenant/schema.prisma:1568-1577`, migración `20261009120000_reglas_asignacion` con
+  `rollback.sql`). CHECK derivado de `as const` con test contra `pg_get_constraintdef`:
+  `tickets-sla-regla.integration.spec.ts:145-160`. Backfill con dry-run/`--apply` e idempotente:
+  `scripts/backfill-tiempos-habiles.mjs` (lee `dist/` con `createRequire`); paso en deploy: 8b de
+  `deploy.ps1` (`backfill-correo-clientes.mjs`), ASCII sin BOM. Escritores de la matriz master:
+  `setPermisos` (`prisma-matriz-permisos.repository.ts:36-53`), llamado por asignar permisos,
+  aplicar plantilla, crear usuario y cambiar rol; también `importacion-legacy/master.ts:194-207` y
+  el seed de demo. Lector extra a migrar en T5: `usuario-master.checker.ts:132,167` (elegibilidad
+  del asignado). La tabla vieja `usuario_tipos_ticket` se borró en `20260810120000`.
 
