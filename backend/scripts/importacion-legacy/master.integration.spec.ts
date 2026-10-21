@@ -19,6 +19,7 @@ import {
   resolverCliente,
   type ClienteDestino,
 } from './master';
+import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
 import { fechaDia } from './paquete';
 import { paqueteSintetico } from './paquete-sintetico.fixture';
 import { planificarCiclos, planificarUsuarios } from './plan';
@@ -128,6 +129,26 @@ describe('importacion legacy — lado master (integración)', () => {
       membresiasAgregadas: 3,
       vigentesCreados: 1,
     });
+    // T4c: cada preset sembrado viaja al lado tenant para sus filas por tipo de ticket.
+    expect(resultado.plantillasSembradas).toHaveLength(3);
+    expect(resultado.plantillasSembradas).toContainEqual({
+      usuarioId: existente.id,
+      celdas: PRESETS_ROL['USUARIO'],
+    });
+  });
+
+  it('T4c: un usuario que ya tenía celdas en el cliente no reporta plantilla sembrada', async () => {
+    const existente = await master.usuario.findUniqueOrThrow({
+      where: { email: 'existente@legacy.test' },
+    });
+    await master.usuarioClientePermiso.create({
+      data: { usuarioId: existente.id, clienteId: cliente.id, modulo: 'KB', accion: 'LECTURA' },
+    });
+
+    const { resultado } = await correr();
+
+    expect(resultado.plantillasSembradas.map((p) => p.usuarioId)).not.toContain(existente.id);
+    expect(resultado.plantillasSembradas).toHaveLength(2);
   });
 
   it('[CRITICAL] usuario nuevo se crea activo, con el rol del paquete y SIN acceso: ninguna contraseña valida', async () => {
@@ -181,6 +202,7 @@ describe('importacion legacy — lado master (integración)', () => {
       usuariosCreados: 0,
       membresiasAgregadas: 0,
       vigentesCreados: 0,
+      plantillasSembradas: [],
     });
     expect(usuarios.plan.every((p) => p.accion === 'reusar' && p.membresia === 'activa')).toBe(
       true,

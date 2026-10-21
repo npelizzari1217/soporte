@@ -11,6 +11,7 @@ import {
   ConflictException,
   ForbiddenException,
   HttpStatus,
+  InternalServerErrorException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -23,6 +24,7 @@ import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  PermisosPorTipoNoAplicadosError,
   PresetRolNoDefinidoError,
   RolNoEncontradoError,
   UsuarioNoDisponibleError,
@@ -629,6 +631,20 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
           rolCodigo: 'ROL_SIN_PRESET',
         }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('T4c: si fallan los permisos por tipo, 500 con el mensaje que dice cómo completarlos', async () => {
+      const { controller, aplicarPresetPermisosUseCase } = buildController();
+      const error = new PermisosPorTipoNoAplicadosError(new Error('base caída'));
+      aplicarPresetPermisosUseCase.execute.mockResolvedValue(Result.fail(error));
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      const rechazo = controller.aplicarPresetPermisos(actor, 'usuario-1', {
+        rolCodigo: 'TECNICO',
+      });
+
+      await expect(rechazo).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(rechazo).rejects.toThrow(error.message);
     });
   });
 });

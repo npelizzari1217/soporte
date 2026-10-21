@@ -5,12 +5,11 @@ import { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import { IRoleRepository } from '../../domain/ports/i-role.repository';
 import { IHashProvider } from '../../domain/ports/i-hash.provider';
+import { MembresiaYaActivaError, RolNoEncontradoError } from '../../domain/errors/auth.errors';
 import {
-  MembresiaYaActivaError,
-  PresetRolNoDefinidoError,
-  RolNoEncontradoError,
-} from '../../domain/errors/auth.errors';
-import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+  AplicarPresetPermisosError,
+  AplicarPresetPermisosUseCase,
+} from './aplicar-preset-permisos.use-case';
 
 /**
  * Input de `CrearUsuarioTenantUseCase`. `clienteId` es OBLIGATORIO y SIEMPRE
@@ -35,7 +34,7 @@ export interface CrearUsuarioTenantOutput {
 }
 
 export type CrearUsuarioTenantError =
-  RolNoEncontradoError | MembresiaYaActivaError | PresetRolNoDefinidoError;
+  RolNoEncontradoError | MembresiaYaActivaError | AplicarPresetPermisosError;
 
 /**
  * CrearUsuarioTenantUseCase — alta de usuario del tenant (gestión mínima de
@@ -70,6 +69,9 @@ export type CrearUsuarioTenantError =
  *    sin preset en el catálogo), la membresía YA quedó creada y persistida —
  *    deliberado, mismo criterio que `CambiarRolUsuarioTenantUseCase`: el
  *    ADMINISTRADOR puede reintentar solo `POST /usuarios/:id/permisos/aplicar-preset`.
+ *    El mismo reintento repara `PermisosPorTipoNoAplicadosError`
+ *    (odd/tasks/permisos-por-tipo-ticket.md, T4c): la matriz de master quedó
+ *    sembrada y faltan las filas por tipo del tenant.
  *
  * Límite conocido (documentado, no resuelto — mismo criterio que
  * `CrearClienteUseCase`): si `usuarioRepo.create` tiene éxito pero

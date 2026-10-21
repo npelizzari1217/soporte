@@ -42,6 +42,7 @@ describe('importar (integración: master de test + tenant efímero)', () => {
 
   afterAll(async () => {
     const tenant = prisma?.getTenantClient(DB);
+    await tenant?.permisoTipoTicket.deleteMany();
     await tenant?.operacionTicket.deleteMany();
     await tenant?.ticketSoporte.deleteMany();
     await tenant?.ticket.deleteMany();
@@ -56,6 +57,7 @@ describe('importar (integración: master de test + tenant efímero)', () => {
     await master.$executeRawUnsafe(
       'TRUNCATE TABLE membresias, refresh_tokens, usuario_cliente_permisos, usuarios, clientes, roles, ciclos_vigentes, encuesta_tokens RESTART IDENTITY CASCADE',
     );
+    await tenant.permisoTipoTicket.deleteMany();
     await tenant.operacionTicket.deleteMany();
     await tenant.ticketSoporte.deleteMany();
     await tenant.ticket.deleteMany();
@@ -96,6 +98,7 @@ describe('importar (integración: master de test + tenant efímero)', () => {
       ciclos: await tenant.cicloCliente.count(),
       tickets: await tenant.ticket.count(),
       operaciones: await tenant.operacionTicket.count(),
+      permisosPorTipo: await tenant.permisoTipoTicket.count(),
     };
   }
 
@@ -137,6 +140,16 @@ describe('importar (integración: master de test + tenant efímero)', () => {
     expect(await tenant.encuestaSatisfaccion.count()).toBe(0);
     expect(await prisma.getMasterClient().encuestaToken.count()).toBe(0);
     expect(createTransport).not.toHaveBeenCalled();
+    // T4c: los 3 usuarios con plantilla sembrada en master reciben sus filas por tipo de ticket.
+    const conPermisosPorTipo = await tenant.permisoTipoTicket.findMany({
+      distinct: ['usuarioId'],
+      select: { usuarioId: true },
+    });
+    expect(new Set(conPermisosPorTipo.map((f) => f.usuarioId))).toEqual(
+      new Set(r.master?.plantillasSembradas.map((p) => p.usuarioId)),
+    );
+    expect(conPermisosPorTipo).toHaveLength(3);
+    expect(r.tenant?.permisosPorTipoInsertados).toBe(await tenant.permisoTipoTicket.count());
   });
 
   it('[CRITICAL] segundo --aplicar no inserta nada', async () => {

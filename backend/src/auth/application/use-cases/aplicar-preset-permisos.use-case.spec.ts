@@ -1,7 +1,42 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
-import { PresetRolNoDefinidoError } from '../../domain/errors/auth.errors';
+import {
+  PermisosPorTipoNoAplicadosError,
+  PresetRolNoDefinidoError,
+} from '../../domain/errors/auth.errors';
 import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
+import type { IPermisosPorTipoDeCliente } from '../../domain/ports/i-permisos-por-tipo-de-cliente.port';
+import { permisosPorTipoEnMemoria } from '../../test-helpers/permisos-por-tipo-en-memoria';
+
+/** Matriz master simulada: devuelve `celdasActuales` y registra cada `setPermisos`. */
+function matrizCon(celdasActuales: string[] = []) {
+  return {
+    setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+    findByUsuarioYCliente: vi
+      .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+      .mockResolvedValue(celdasActuales),
+  };
+}
+
+/** Filas por tipo de un TECNICO sobre `TIPOS_DE_PRUEBA`, por la traducción de L11. */
+const FILAS_TECNICO = [
+  'tipo-soporte:LECTURA',
+  'tipo-soporte:VER_TODOS',
+  'tipo-soporte:ALTAS',
+  'tipo-soporte:MODIFICACION',
+  'tipo-soporte:TRANSICIONAR',
+  'tipo-soporte:ASIGNAR',
+  'tipo-soporte:COMENTAR',
+  'tipo-soporte:OBSERVAR',
+  'tipo-soporte:IMPRESION',
+  'tipo-mantenimiento:LECTURA',
+  'tipo-mantenimiento:VER_TODOS',
+  'tipo-mantenimiento:ALTAS',
+  'tipo-mantenimiento:MODIFICACION',
+  'tipo-mantenimiento:TRANSICIONAR',
+  'tipo-mantenimiento:COMENTAR',
+  'tipo-mantenimiento:IMPRESION',
+].sort();
 
 describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario WU-7.4)', () => {
   it('sobrescribe la matriz del usuario con el preset EXACTO del rol', async () => {
@@ -11,7 +46,10 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
+    const useCase = new AplicarPresetPermisosUseCase(
+      permisosRepo,
+      permisosPorTipoEnMemoria().puerto,
+    );
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -36,7 +74,10 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
+    const useCase = new AplicarPresetPermisosUseCase(
+      permisosRepo,
+      permisosPorTipoEnMemoria().puerto,
+    );
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -57,7 +98,10 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
+    const useCase = new AplicarPresetPermisosUseCase(
+      permisosRepo,
+      permisosPorTipoEnMemoria().puerto,
+    );
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -83,7 +127,10 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
+    const useCase = new AplicarPresetPermisosUseCase(
+      permisosRepo,
+      permisosPorTipoEnMemoria().puerto,
+    );
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
@@ -103,7 +150,10 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
+    const useCase = new AplicarPresetPermisosUseCase(
+      permisosRepo,
+      permisosPorTipoEnMemoria().puerto,
+    );
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
@@ -130,7 +180,10 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue(['TICKETS:LECTURA']),
     };
-    const useCase = new AplicarPresetPermisosUseCase(permisosRepo);
+    const useCase = new AplicarPresetPermisosUseCase(
+      permisosRepo,
+      permisosPorTipoEnMemoria().puerto,
+    );
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
@@ -141,5 +194,172 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
 
     expect(result.isFail()).toBe(true);
     expect(permisosRepo.setPermisos).not.toHaveBeenCalled();
+  });
+
+  describe('permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c)', () => {
+    it('TECNICO: escribe sus acciones en cada tipo de TICKETS y EDILICIA del tenant del cliente', async () => {
+      const permisosRepo = matrizCon();
+      const porTipo = permisosPorTipoEnMemoria();
+      const useCase = new AplicarPresetPermisosUseCase(permisosRepo, porTipo.puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        sobrescribir: false,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(FILAS_TECNICO);
+      expect(porTipo.clientes).toEqual(['cliente-token']);
+    });
+
+    it('USUARIO: ver, crear y comentar en TICKETS sin ver todos; ver todos en EDILICIA', async () => {
+      const porTipo = permisosPorTipoEnMemoria();
+      const useCase = new AplicarPresetPermisosUseCase(matrizCon(), porTipo.puerto);
+
+      await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'USUARIO',
+        sobrescribir: true,
+      });
+
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(
+        [
+          'tipo-soporte:LECTURA',
+          'tipo-soporte:ALTAS',
+          'tipo-soporte:COMENTAR',
+          'tipo-soporte:IMPRESION',
+          'tipo-mantenimiento:LECTURA',
+          'tipo-mantenimiento:VER_TODOS',
+          'tipo-mantenimiento:ALTAS',
+          'tipo-mantenimiento:IMPRESION',
+        ].sort(),
+      );
+    });
+
+    it('sobrescribir=true reemplaza las filas por tipo existentes, sin fusionar', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'BORRADO' },
+      ]);
+      const useCase = new AplicarPresetPermisosUseCase(
+        matrizCon(['TICKETS:LECTURA']),
+        porTipo.puerto,
+      );
+
+      await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        sobrescribir: true,
+      });
+
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(FILAS_TECNICO);
+    });
+
+    it('sobrescribir=false con filas por tipo existentes no las toca, aunque la matriz esté vacía', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+      ]);
+      const permisosRepo = matrizCon();
+      const useCase = new AplicarPresetPermisosUseCase(permisosRepo, porTipo.puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        sobrescribir: false,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(permisosRepo.setPermisos).toHaveBeenCalledTimes(1);
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(['tipo-soporte:LECTURA']);
+    });
+
+    it('sobrescribir=false con matriz existente no escribe filas por tipo (no concede lo que la matriz no tiene)', async () => {
+      const porTipo = permisosPorTipoEnMemoria();
+      const useCase = new AplicarPresetPermisosUseCase(
+        matrizCon(['COMPRAS:LECTURA']),
+        porTipo.puerto,
+      );
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        sobrescribir: false,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual([]);
+      expect(porTipo.clientes).toEqual([]);
+    });
+
+    it('ADMINISTRADOR: no escribe filas por tipo, y con sobrescribir=true borra las previas', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+      ]);
+      const useCase = new AplicarPresetPermisosUseCase(matrizCon(), porTipo.puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'ADMINISTRADOR',
+        sobrescribir: true,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual([]);
+    });
+
+    it('un rol sin preset no toca las filas por tipo', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+      ]);
+      const useCase = new AplicarPresetPermisosUseCase(matrizCon(), porTipo.puerto);
+
+      await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'ROL_SIN_PRESET',
+        sobrescribir: true,
+      });
+
+      expect(porTipo.clientes).toEqual([]);
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(['tipo-soporte:LECTURA']);
+    });
+
+    /**
+     * Master y tenant son bases distintas, sin transacción común. Master se escribe primero; si el
+     * tenant falla, el error tiene que llegar al administrador, no perderse.
+     */
+    it('si falla el tenant: la matriz ya quedó guardada y devuelve PermisosPorTipoNoAplicadosError', async () => {
+      const permisosRepo = matrizCon();
+      const caida = new Error('conexión rechazada');
+      const puerto: IPermisosPorTipoDeCliente = {
+        aplicarPlantilla: vi
+          .fn<IPermisosPorTipoDeCliente['aplicarPlantilla']>()
+          .mockRejectedValue(caida),
+      };
+      const useCase = new AplicarPresetPermisosUseCase(permisosRepo, puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        sobrescribir: true,
+      });
+
+      expect(result.isFail()).toBe(true);
+      const error = result.getError();
+      expect(error).toBeInstanceOf(PermisosPorTipoNoAplicadosError);
+      expect(error.message).toContain('Vuelva a aplicar la plantilla del rol');
+      expect(error instanceof PermisosPorTipoNoAplicadosError && error.causa).toBe(caida);
+      expect(permisosRepo.setPermisos).toHaveBeenCalledTimes(1);
+      expect(permisosRepo.setPermisos.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(puerto.aplicarPlantilla).mock.invocationCallOrder[0],
+      );
+    });
   });
 });

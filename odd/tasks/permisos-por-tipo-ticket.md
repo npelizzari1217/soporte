@@ -77,8 +77,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   vocabulario de acciones y traducción L11 en el dominio, repositorio — (este commit)
 - [x] T4b — S7, L21 — worker — script de backfill idempotente (dry-run / `--apply`) y paso en
   `deploy.ps1` — (este commit)
-- [ ] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
-  plantilla escriben las filas por tipo — (pendiente)
+- [x] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
+  plantilla escriben las filas por tipo — (este commit)
 - [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
 - [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
 - [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
@@ -209,4 +209,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   Deuda: un tenant que quede con la tabla vacía se volvería a llenar en el deploy siguiente; el
   paso 8c se retira apenas se verifique el primer deploy (runbook). 7 tests de integración; dos
   mutaciones del script los ponen en rojo.
+- **L25** (T4c) — Los tres caminos (alta de usuario, aplicar plantilla, cambio de rol con
+  reaplicar) pasan por `AplicarPresetPermisosUseCase`, que ahora escribe también las filas por tipo
+  con la misma plantilla. El tenant se resuelve por `clienteId` en un adaptador de infraestructura
+  con su propio `tenantContext.run` (el seed de demo llama sin contexto). Orden: master primero,
+  tenant después; si el tenant falla, error explícito (`PermisosPorTipoNoAplicadosError`, 500 que
+  pide reaplicar la plantilla). Con `sobrescribir: false` el tenant solo se escribe si master
+  sembró la plantilla y el usuario no tenía filas: nunca da por tipo un acceso que la matriz no
+  tiene. El importador legacy también siembra filas. 2537 tests en verde, e2e incluidos.
 

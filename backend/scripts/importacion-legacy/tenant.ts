@@ -10,6 +10,8 @@
 import { uuidv7 } from 'uuidv7';
 import type { Prisma } from '.prisma/tenant';
 import type { TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
+import { filasDeTiposDesdeCeldas } from '../../src/tickets/domain/permisos-tipo-ticket';
+import type { PlantillaSembrada } from './master';
 import { fechaDia, type PaqueteLegacy, type TicketPaquete } from './paquete';
 import { comentariosDeTicket, separarTickets, type CicloExistente, type PlanCiclo } from './plan';
 
@@ -102,6 +104,8 @@ export interface EntradaTenant {
   vigenteIdPorLegacy: Map<string, string>;
   usuarioIdPorLegacy: Map<string, string>;
   catalogos: CatalogosTenant;
+  /** Plantillas que el lado master sembró en esta corrida; reciben sus filas por tipo. */
+  plantillasSembradas: PlantillaSembrada[];
 }
 
 export interface ResultadoTenant {
@@ -109,6 +113,8 @@ export interface ResultadoTenant {
   ticketsInsertados: number;
   comentariosInsertados: number;
   yaExistian: string[];
+  /** Filas de `permisos_tipo_ticket` insertadas. */
+  permisosPorTipoInsertados: number;
 }
 
 const exigir = <T>(valor: T | undefined | null, que: string): T => {
@@ -152,16 +158,40 @@ export async function aplicarTenant(tenant: Tenant, e: EntradaTenant): Promise<R
       await tx.ticketSoporte.createMany({ data: filas.soporte });
       await tx.ticketEdilicia.createMany({ data: filas.edilicia });
       await tx.operacionTicket.createMany({ data: filas.comentarios });
+      const permisosPorTipoInsertados = await sembrarPermisosPorTipo(tx, e.plantillasSembradas);
 
       return {
         ciclosCreados,
         ticketsInsertados: filas.tickets.length,
         comentariosInsertados: filas.comentarios.length,
         yaExistian,
+        permisosPorTipoInsertados,
       };
     },
     { timeout: 120_000, maxWait: 10_000 },
   );
+}
+
+/**
+ * Filas por tipo de ticket de cada plantilla sembrada en master, como hace el alta normal
+ * (`AplicarPresetPermisosUseCase` con `sobrescribir: false`, odd/tasks/permisos-por-tipo-ticket.md,
+ * T4c): todos los tipos, dados de baja incluidos (L24), y solo si el usuario no tiene ninguna fila
+ * todavía, para no fusionar con permisos ajustados a mano.
+ */
+async function sembrarPermisosPorTipo(
+  tx: Tx,
+  plantillas: readonly PlantillaSembrada[],
+): Promise<number> {
+  if (plantillas.length === 0) return 0;
+  const tipos = await tx.tipoTicket.findMany({ select: { id: true, modulo: true } });
+  let insertadas = 0;
+  for (const { usuarioId, celdas } of plantillas) {
+    if ((await tx.permisoTipoTicket.count({ where: { usuarioId } })) > 0) continue;
+    const data = filasDeTiposDesdeCeldas(celdas, tipos).map((f) => ({ usuarioId, ...f }));
+    if (data.length === 0) continue;
+    insertadas += (await tx.permisoTipoTicket.createMany({ data })).count;
+  }
+  return insertadas;
 }
 
 /**

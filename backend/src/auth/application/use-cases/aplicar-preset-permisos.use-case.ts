@@ -1,6 +1,10 @@
 import { Result } from '../../../shared/domain/result';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
-import { PresetRolNoDefinidoError } from '../../domain/errors/auth.errors';
+import { IPermisosPorTipoDeCliente } from '../../domain/ports/i-permisos-por-tipo-de-cliente.port';
+import {
+  PermisosPorTipoNoAplicadosError,
+  PresetRolNoDefinidoError,
+} from '../../domain/errors/auth.errors';
 import { obtenerPresetDeRol } from '../../domain/presets-rol';
 
 /**
@@ -34,7 +38,7 @@ export interface AplicarPresetPermisosInput {
   sobrescribir: boolean;
 }
 
-export type AplicarPresetPermisosError = PresetRolNoDefinidoError;
+export type AplicarPresetPermisosError = PresetRolNoDefinidoError | PermisosPorTipoNoAplicadosError;
 
 /**
  * AplicarPresetPermisosUseCase — `POST /usuarios/:id/permisos/aplicar-preset`
@@ -53,6 +57,15 @@ export type AplicarPresetPermisosError = PresetRolNoDefinidoError;
  * NUNCA sobrescribe con un set vacío en silencio — eso borraría la matriz de
  * cualquiera al que se le aplicara por error.
  *
+ * Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c): la misma plantilla
+ * se escribe también en la tabla por tipo del tenant, con la traducción de L11. Master y tenant
+ * son bases distintas y no hay transacción común, así que el orden es deliberado: primero master
+ * (la fuente que lee hoy el JWT) y después el tenant. Si el tenant falla, la matriz ya quedó
+ * guardada y se devuelve `PermisosPorTipoNoAplicadosError`, que explica cómo completarlo:
+ * volver a aplicar la plantilla reescribe las dos. Con `sobrescribir: false` la escritura por
+ * tipo sigue a la de master: si master conservó la matriz existente, el tenant tampoco se toca,
+ * para no conceder por tipo lo que la matriz del usuario no tiene.
+ *
  * Ref spec: sdd/matriz-permisos-por-usuario/spec R6, R7. Ref design: ADR-P9.
  */
 export class AplicarPresetPermisosUseCase {
@@ -61,6 +74,7 @@ export class AplicarPresetPermisosUseCase {
       IMatrizPermisosRepository,
       'setPermisos' | 'findByUsuarioYCliente'
     >,
+    private readonly permisosPorTipo: Pick<IPermisosPorTipoDeCliente, 'aplicarPlantilla'>,
   ) {}
 
   async execute(
@@ -84,7 +98,19 @@ export class AplicarPresetPermisosUseCase {
       }
     }
 
-    await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, presetResult.getValue());
+    const celdas = presetResult.getValue();
+    await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, celdas);
+
+    try {
+      await this.permisosPorTipo.aplicarPlantilla({
+        clienteId: input.clienteId,
+        usuarioId: input.usuarioId,
+        celdas,
+        sobrescribir: input.sobrescribir,
+      });
+    } catch (error) {
+      return Result.fail(new PermisosPorTipoNoAplicadosError(error));
+    }
 
     return Result.ok(undefined);
   }

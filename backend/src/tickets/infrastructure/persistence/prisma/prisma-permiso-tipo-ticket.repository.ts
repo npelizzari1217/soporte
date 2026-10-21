@@ -7,7 +7,11 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { ACCIONES_TIPO_TICKET, AccionTipoTicket } from '../../../domain/permisos-tipo-ticket';
+import {
+  ACCIONES_TIPO_TICKET,
+  AccionTipoTicket,
+  TipoTicketConModulo,
+} from '../../../domain/permisos-tipo-ticket';
 import {
   IPermisoTipoTicketRepository,
   PermisoTipoTicketFila,
@@ -75,5 +79,10 @@ export class PrismaPermisoTipoTicketRepository implements IPermisoTipoTicketRepo
       skipDuplicates: true,
     });
     return count;
+  }
+
+  async listarTipos(): Promise<TipoTicketConModulo[]> {
+    // Sin filtro de `deletedAt`: los tipos dados de baja también reciben permisos (L24).
+    return this.client.tipoTicket.findMany({ select: { id: true, modulo: true } });
   }
 }

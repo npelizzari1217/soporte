@@ -313,8 +313,8 @@ describe('AuthController (T6.5)', () => {
 
 // ─── toHttpException — spec guardián (sdd/cambio-de-contrasena, design D4) ──
 //
-// Hoy `toHttpException` mapea explícitamente 9 de los 16 exports de
-// `auth.errors.ts`; los otros 7 caen en el fallback 401 genérico. Esta tabla
+// Hoy `toHttpException` mapea explícitamente 9 de los 17 exports de
+// `auth.errors.ts`; los otros 8 caen en el fallback 401 genérico. Esta tabla
 // es TOTAL sobre TODOS los exports actuales: un error nuevo sin entrada en
 // TABLA rompe el primer test (longitud) antes de llegar a ejecutarse nada
 // más — así es imposible que un error nuevo se pierda en el fallback sin que
@@ -345,8 +345,8 @@ describe('AuthController.toHttpException — catálogo de errores → HTTP (spec
   ) as (new (...args: never[]) => DomainError)[];
   const CLASES_POR_NOMBRE = new Map(CLASES_DE_ERROR.map((clase) => [clase.name, clase]));
 
-  it('el catálogo tiene EXACTAMENTE 16 clases de error', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(16);
+  it('el catálogo tiene EXACTAMENTE 17 clases de error', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(17);
   });
 
   const TABLA: Array<[string, 401 | 403 | 422]> = [
@@ -371,6 +371,9 @@ describe('AuthController.toHttpException — catálogo de errores → HTTP (spec
     ['CeldaPermisoInvalidaError', 401],
     // Congelado HOY en 401 — DEBERÍA ser 422 (gap de configuración, no de auth).
     ['PresetRolNoDefinidoError', 401],
+    // Fallback 401: este controller nunca lo recibe. Solo lo devuelven los casos de uso de
+    // `/usuarios`, cuyo controller lo mapea a 500 (odd/tasks/permisos-por-tipo-ticket.md, T4c).
+    ['PermisosPorTipoNoAplicadosError', 401],
     // Nuevos de sdd/cambio-de-contrasena (WU2) — mapeo propio, no fallback.
     ['UsuarioNoDisponibleError', 403],
     ['PasswordActualIncorrectaError', 422],

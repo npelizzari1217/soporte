@@ -58,6 +58,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  InternalServerErrorException,
   NotFoundException,
   Param,
   Patch,
@@ -93,6 +94,7 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  PermisosPorTipoNoAplicadosError,
 } from '../../domain/errors/auth.errors';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
@@ -142,7 +144,16 @@ function toMembresiaResponseDto(
 /** Mapea un `DomainError` de gestión de usuarios a la `HttpException` correspondiente. */
 function toHttpException(
   error: DomainError,
-): NotFoundException | ConflictException | UnprocessableEntityException {
+):
+  | NotFoundException
+  | ConflictException
+  | UnprocessableEntityException
+  | InternalServerErrorException {
+  // Falla de la base del tenant después de guardar la matriz: el mensaje dice qué quedó guardado
+  // y cómo completarlo (odd/tasks/permisos-por-tipo-ticket.md, T4c).
+  if (error instanceof PermisosPorTipoNoAplicadosError) {
+    return new InternalServerErrorException(error.message, { cause: error.causa });
+  }
   if (error instanceof MembresiaNoEncontradaError) {
     return new NotFoundException(error.message);
   }

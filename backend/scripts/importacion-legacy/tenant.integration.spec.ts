@@ -10,6 +10,8 @@ import { TenantSeederAdapter } from '../../src/clientes/infrastructure/tenant-se
 import { PrismaService } from '../../src/shared/infrastructure/persistence/prisma.service';
 import type { TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import { URL_MASTER_TEST_POR_DEFECTO } from '../../src/testing/lock-master-test';
+import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
+import type { PlantillaSembrada } from './master';
 import { fechaDia } from './paquete';
 import { paqueteSintetico } from './paquete-sintetico.fixture';
 import { planificarCiclos } from './plan';
@@ -43,6 +45,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
 
   afterAll(async () => {
     // Orden de higiene: filas → desconectar → DROP (al revés el DROP falla en silencio).
+    await tenant?.permisoTipoTicket.deleteMany();
     await tenant?.operacionTicket.deleteMany();
     await tenant?.ticketSoporte.deleteMany();
     await tenant?.ticket.deleteMany();
@@ -52,6 +55,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
   }, 60_000);
 
   beforeEach(async () => {
+    await tenant.permisoTipoTicket.deleteMany();
     await tenant.operacionTicket.deleteMany();
     await tenant.ticketSoporte.deleteMany();
     await tenant.ticket.deleteMany();
@@ -68,7 +72,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
     activo2026 = fila.id;
   });
 
-  async function correr(usuarios = USUARIOS) {
+  async function correr(usuarios = USUARIOS, plantillasSembradas: PlantillaSembrada[] = []) {
     const paquete = paqueteSintetico();
     const estado = await leerTenant(tenant, paquete);
     const entrada: EntradaTenant = {
@@ -77,6 +81,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
       vigenteIdPorLegacy: VIGENTES,
       usuarioIdPorLegacy: usuarios,
       catalogos: estado.catalogos,
+      plantillasSembradas,
     };
     return { estado, resultado: await aplicarTenant(tenant, entrada) };
   }
@@ -148,6 +153,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
       ticketsInsertados: 0,
       comentariosInsertados: 0,
       yaExistian: ['ANT-1', 'ANT-2'],
+      permisosPorTipoInsertados: 0,
     });
     expect([
       await tenant.ticket.count(),
@@ -158,9 +164,66 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
 
   it('[CRITICAL] un fallo a mitad de camino revierte TODO el paquete (ni ciclos ni tickets)', async () => {
     const incompleto = new Map([...USUARIOS].filter(([id]) => id !== '12'));
+    const plantillas = [{ usuarioId: USUARIOS.get('11')!, celdas: PRESETS_ROL['TECNICO'] }];
 
-    await expect(correr(incompleto)).rejects.toThrow(/usuario legacy 12/);
+    await expect(correr(incompleto, plantillas)).rejects.toThrow(/usuario legacy 12/);
 
-    expect([await tenant.ticket.count(), await tenant.cicloCliente.count()]).toEqual([0, 1]);
+    expect([
+      await tenant.ticket.count(),
+      await tenant.cicloCliente.count(),
+      await tenant.permisoTipoTicket.count(),
+    ]).toEqual([0, 1, 0]);
+  });
+
+  describe('permisos por tipo de ticket de las plantillas sembradas (T4c)', () => {
+    const TECNICO = USUARIOS.get('11')!;
+    const SIN_PLANTILLA = USUARIOS.get('10')!;
+
+    async function filasDe(usuarioId: string): Promise<string[]> {
+      const filas = await tenant.permisoTipoTicket.findMany({ where: { usuarioId } });
+      return filas.map((f) => `${f.tipoId}:${f.accion}`).sort();
+    }
+
+    it('cada plantilla sembrada en master da sus filas en todos los tipos, dados de baja incluidos', async () => {
+      const soporte = await tenant.tipoTicket.findUniqueOrThrow({ where: { codigo: 'SOPORTE' } });
+      const baja = await tenant.tipoTicket.create({
+        data: {
+          codigo: `BAJA_${randomBytes(3).toString('hex')}`,
+          nombre: 'Dado de baja',
+          modulo: 'TICKETS',
+          activo: false,
+          deletedAt: new Date(),
+        },
+      });
+
+      try {
+        const { resultado } = await correr(USUARIOS, [
+          { usuarioId: TECNICO, celdas: PRESETS_ROL['TECNICO'] },
+        ]);
+
+        const filas = await filasDe(TECNICO);
+        expect(filas).toContain(`${soporte.id}:ASIGNAR`);
+        expect(filas).toContain(`${baja.id}:LECTURA`);
+        expect(filas.some((f) => f.endsWith(':BORRADO'))).toBe(false);
+        expect(resultado.permisosPorTipoInsertados).toBe(filas.length);
+        expect(await filasDe(SIN_PLANTILLA)).toEqual([]);
+      } finally {
+        await tenant.tipoTicket.delete({ where: { id: baja.id } });
+      }
+    });
+
+    it('un usuario que ya tiene filas por tipo no se toca (no fusiona)', async () => {
+      const soporte = await tenant.tipoTicket.findUniqueOrThrow({ where: { codigo: 'SOPORTE' } });
+      await tenant.permisoTipoTicket.create({
+        data: { usuarioId: TECNICO, tipoId: soporte.id, accion: 'LECTURA' },
+      });
+
+      const { resultado } = await correr(USUARIOS, [
+        { usuarioId: TECNICO, celdas: PRESETS_ROL['TECNICO'] },
+      ]);
+
+      expect(await filasDe(TECNICO)).toEqual([`${soporte.id}:LECTURA`]);
+      expect(resultado.permisosPorTipoInsertados).toBe(0);
+    });
   });
 });

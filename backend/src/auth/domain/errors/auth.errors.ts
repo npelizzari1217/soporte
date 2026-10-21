@@ -203,6 +203,28 @@ export class PresetRolNoDefinidoError extends DomainError {
 }
 
 /**
+ * PermisosPorTipoNoAplicadosError — la plantilla del rol se guardó en la matriz de master, pero
+ * no se pudieron escribir los permisos por tipo de ticket en la base del tenant
+ * (odd/tasks/permisos-por-tipo-ticket.md, T4c). Son dos bases sin transacción común: master se
+ * escribe primero, así que el estado que queda es "matriz al día, filas por tipo viejas o
+ * ausentes", y se repara volviendo a aplicar la plantilla (`POST /usuarios/:id/permisos/aplicar-preset`),
+ * que reescribe las dos.
+ * → HTTP 500 en la capa de presentación, con este mensaje: el fallo es de infraestructura, pero
+ * el administrador tiene que saber qué quedó guardado y cómo completarlo.
+ */
+export class PermisosPorTipoNoAplicadosError extends DomainError {
+  readonly code = 'AUTH_PERMISOS_POR_TIPO_NO_APLICADOS';
+
+  /** @param causa Error original de la escritura en el tenant, para el log. */
+  constructor(readonly causa: unknown) {
+    super(
+      'Se guardó la matriz de permisos, pero no se pudieron guardar los permisos por tipo de ' +
+        'ticket. Vuelva a aplicar la plantilla del rol para completarlos.',
+    );
+  }
+}
+
+/**
  * UsuarioNoDisponibleError — el usuario del token (`actor.sub`) no existe, está
  * inactivo o fue soft-deleted (`CambiarPasswordUseCase`, sdd/cambio-de-contrasena
  * D3). `JwtAuthGuard` nunca consulta la DB: una cuenta suspendida sigue llegando

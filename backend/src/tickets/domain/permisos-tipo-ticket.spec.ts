@@ -3,6 +3,7 @@ import {
   ACCIONES_TIPO_TICKET,
   AccionTipoTicket,
   accionesDeTipoDesdeCeldas,
+  filasDeTiposDesdeCeldas,
 } from './permisos-tipo-ticket';
 
 /** El resultado como lista ordenada, para comparar sin depender del orden de inserción. */
@@ -156,5 +157,31 @@ describe('accionesDeTipoDesdeCeldas — bordes', () => {
     expect(ordenadas(acciones)).toEqual(
       ['COMENTAR', 'IMPRESION', 'LECTURA', 'MODIFICACION', 'TRANSICIONAR', 'VER_TODOS'].sort(),
     );
+  });
+});
+
+describe('filasDeTiposDesdeCeldas — plantilla de rol sobre todos los tipos (T4c)', () => {
+  const tipos = [
+    { id: 'tipo-soporte', modulo: 'TICKETS' },
+    { id: 'tipo-mantenimiento', modulo: 'EDILICIA' },
+  ];
+
+  it('traduce las celdas por el módulo de cada tipo, una fila por par (tipo, acción)', () => {
+    const filas = filasDeTiposDesdeCeldas(['TICKETS:LECTURA', 'EDILICIA:MODIFICACION'], tipos);
+
+    expect(filas.map((f) => `${f.tipoId}:${f.accion}`).sort()).toEqual(
+      [
+        'tipo-soporte:LECTURA',
+        'tipo-soporte:IMPRESION',
+        'tipo-mantenimiento:MODIFICACION',
+        'tipo-mantenimiento:TRANSICIONAR',
+        'tipo-mantenimiento:COMENTAR',
+      ].sort(),
+    );
+  });
+
+  it('sin celdas de tickets (la plantilla de ADMINISTRADOR) no produce filas', () => {
+    expect(filasDeTiposDesdeCeldas([], tipos)).toEqual([]);
+    expect(filasDeTiposDesdeCeldas(['KB:LECTURA', 'COMPRAS:LECTURA'], [tipos[1]])).toEqual([]);
   });
 });

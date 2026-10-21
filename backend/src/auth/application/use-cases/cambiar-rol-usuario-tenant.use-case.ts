@@ -2,12 +2,11 @@ import { Result } from '../../../shared/domain/result';
 import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import { IRoleRepository } from '../../domain/ports/i-role.repository';
+import { MembresiaNoEncontradaError, RolNoEncontradoError } from '../../domain/errors/auth.errors';
 import {
-  MembresiaNoEncontradaError,
-  PresetRolNoDefinidoError,
-  RolNoEncontradoError,
-} from '../../domain/errors/auth.errors';
-import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+  AplicarPresetPermisosError,
+  AplicarPresetPermisosUseCase,
+} from './aplicar-preset-permisos.use-case';
 
 /**
  * Input de `CambiarRolUsuarioTenantUseCase`. `clienteId` es OBLIGATORIO y
@@ -32,7 +31,7 @@ export interface CambiarRolUsuarioTenantInput {
 }
 
 export type CambiarRolUsuarioTenantError =
-  RolNoEncontradoError | MembresiaNoEncontradaError | PresetRolNoDefinidoError;
+  RolNoEncontradoError | MembresiaNoEncontradaError | AplicarPresetPermisosError;
 
 /**
  * CambiarRolUsuarioTenantUseCase — `PATCH /usuarios/:id/rol` (gestión mínima
@@ -52,7 +51,9 @@ export type CambiarRolUsuarioTenantError =
  * (`PresetRolNoDefinidoError`), el rol YA quedó cambiado y persistido —
  * deliberado: el fallo del preset no debe revertir el cambio de rol, que es
  * la operación principal del endpoint; el ADMINISTRADOR reintenta solo la
- * aplicación del preset.
+ * aplicación del preset. Lo mismo vale para `PermisosPorTipoNoAplicadosError`
+ * (odd/tasks/permisos-por-tipo-ticket.md, T4c): el rol y la matriz quedaron
+ * guardados y faltan las filas por tipo del tenant.
  *
  * Ref spec: sdd/beta-frontend/spec §5; sdd/matriz-permisos-por-usuario/spec
  * R6, S13, S14. Ref design: ADR-P9 §"aislamiento de R6".

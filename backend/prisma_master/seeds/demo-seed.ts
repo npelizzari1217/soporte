@@ -271,6 +271,10 @@ async function provisionUsuarioTenant(
  *
  * `AplicarPresetPermisosUseCase.setPermisos` es reemplazo atomico e
  * idempotente (ADR-P3): un re-run no duplica ni acumula.
+ *
+ * El mismo caso de uso reemplaza tambien las filas por tipo de ticket del
+ * tenant demo (odd/tasks/permisos-por-tipo-ticket.md, T4c): resuelve la base
+ * por `clienteId`, asi que no hace falta bindear un `TenantContext` aca.
  */
 async function aplicarPresetsPermisos(
   app: INestApplicationContext,

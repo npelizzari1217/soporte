@@ -140,6 +140,14 @@ import { IRefreshTokenRepository } from './domain/ports/i-refresh-token.reposito
 import { IClienteRepository } from '../clientes/domain/ports/i-cliente.repository';
 import { IHashProvider } from './domain/ports/i-hash.provider';
 import { IRoleRepository } from './domain/ports/i-role.repository';
+import {
+  IPermisosPorTipoDeCliente,
+  PERMISOS_POR_TIPO_DE_CLIENTE,
+} from './domain/ports/i-permisos-por-tipo-de-cliente.port';
+import { PermisosPorTipoDeClienteAdapter } from './infrastructure/permisos/permisos-por-tipo-de-cliente.adapter';
+import { AplicarPlantillaPermisosTipoTicket } from '../tickets/application/services/aplicar-plantilla-permisos-tipo-ticket.service';
+import { PrismaPermisoTipoTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
+import { TenantContext } from '../shared/tenancy/tenant-context';
 
 // ─── Guards ──────────────────────────────────────────────────────────────────
 import { JwtAuthGuard } from './infrastructure/guards/jwt-auth.guard';
@@ -522,11 +530,33 @@ import { RolesController } from './interface/controllers/roles.controller';
       inject: [ROLE_REPOSITORY],
     },
     // ─── ABM de la matriz de permisos (WU-7.4, sdd/matriz-permisos-por-usuario, ADR-P9/ADR-P10) ─
+    // Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c): se instancian
+    // acá y no se inyectan desde TicketsModule porque este importa AuthModule (ciclo). El
+    // adaptador resuelve el tenant por `clienteId`, sin depender del contexto del request.
+    {
+      provide: PERMISOS_POR_TIPO_DE_CLIENTE,
+      useFactory: (
+        clienteRepo: IClienteRepository,
+        prismaService: PrismaService,
+        tenantContext: TenantContext,
+      ) =>
+        new PermisosPorTipoDeClienteAdapter(
+          clienteRepo,
+          prismaService,
+          tenantContext,
+          new AplicarPlantillaPermisosTipoTicket(
+            new PrismaPermisoTipoTicketRepository(tenantContext),
+          ),
+        ),
+      inject: [CLIENTE_REPOSITORY, PrismaService, TenantContext],
+    },
     {
       provide: AplicarPresetPermisosUseCase,
-      useFactory: (permisosRepo: IMatrizPermisosRepository) =>
-        new AplicarPresetPermisosUseCase(permisosRepo),
-      inject: [MATRIZ_PERMISOS_REPOSITORY],
+      useFactory: (
+        permisosRepo: IMatrizPermisosRepository,
+        permisosPorTipo: IPermisosPorTipoDeCliente,
+      ) => new AplicarPresetPermisosUseCase(permisosRepo, permisosPorTipo),
+      inject: [MATRIZ_PERMISOS_REPOSITORY, PERMISOS_POR_TIPO_DE_CLIENTE],
     },
     {
       provide: ObtenerPermisosUsuarioTenantUseCase,

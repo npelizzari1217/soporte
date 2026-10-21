@@ -103,3 +103,29 @@ export function accionesDeTipoDesdeCeldas(
   if (acciones.has('LECTURA')) acciones.add('IMPRESION');
   return acciones;
 }
+
+/** Un tipo de ticket como destino de permisos: su id y el módulo del que toma las celdas. */
+export interface TipoTicketConModulo {
+  id: string;
+  modulo: string;
+}
+
+/**
+ * Traduce un conjunto de celdas master (por ejemplo, la plantilla de un rol) a las filas por tipo
+ * de todos los tipos dados, con la tabla de L11 de `accionesDeTipoDesdeCeldas`.
+ *
+ * @param celdas Celdas de la matriz master, como códigos `MODULO:ACCION`.
+ * @param tipos Tipos de ticket del tenant que reciben permisos.
+ * @returns Pares (tipo, acción) concedidos; vacío si las celdas no conceden nada sobre tickets.
+ */
+export function filasDeTiposDesdeCeldas(
+  celdas: readonly string[],
+  tipos: readonly TipoTicketConModulo[],
+): { tipoId: string; accion: AccionTipoTicket }[] {
+  return tipos.flatMap((tipo) =>
+    [...accionesDeTipoDesdeCeldas(celdas, tipo.modulo)].map((accion) => ({
+      tipoId: tipo.id,
+      accion,
+    })),
+  );
+}
