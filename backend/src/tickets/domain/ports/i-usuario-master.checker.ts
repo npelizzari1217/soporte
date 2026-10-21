@@ -71,61 +71,38 @@ export interface IUsuarioMasterChecker {
   resolverNombres(usuarioIds: string[]): Promise<Map<string, { nombre: string; apellido: string }>>;
 
   /**
-   * Resuelve la autorización por MÓDULO de un usuario en un cliente, para la
-   * elegibilidad de asignación (feature: elegibilidad por catálogo). Espeja el
-   * criterio de `resolverScope`: ROOT (`is_global_admin`) y ADMINISTRADOR
-   * (membresía activa con rol `ADMINISTRADOR` en el cliente) ven TODOS los
-   * módulos (`esAdminTotal = true`); el resto, solo los módulos con AL MENOS
-   * UNA acción otorgada en la matriz `usuario_cliente_permisos` (R9,
-   * sdd/matriz-permisos-por-usuario — migrado de `usuario_cliente_modulos`,
-   * mismo umbral que la derivación de `modulos` en el JWT del actor).
+   * Indica si el usuario ve todo en el cliente: ROOT (`is_global_admin`) o una membresía activa
+   * con rol `ADMINISTRADOR`. Es el mismo criterio de `resolverScope` para el actor, aplicado a OTRO
+   * usuario (el destinatario de una asignación). No lee ninguna tabla de permisos: la elegibilidad
+   * por tipo vive en el tenant (odd/permisos-por-tipo-ticket, D5 g).
    *
    * @param usuarioId UUID del usuario (asignado).
    * @param clienteId UUID del cliente activo.
-   * @returns `esAdminTotal` (ve todo) y `modulos` (códigos con al menos una
-   *          acción otorgada; ignorado por el caller si `esAdminTotal`).
+   * @returns `true` si es ROOT o ADMINISTRADOR del cliente.
    */
-  getAutorizacionModulos(
-    usuarioId: string,
-    clienteId: string,
-  ): Promise<{ esAdminTotal: boolean; modulos: string[] }>;
+  esAdminTotalEnTenant(usuarioId: string, clienteId: string): Promise<boolean>;
 
   /**
-   * Lista los AGENTES (rol `TECNICO` o `COLABORADOR` — ambos cumplen
-   * funciones de técnico, decisión de negocio 2026-08-20) elegibles para
-   * atender un ticket de un módulo dado, en un cliente. Un agente es elegible
-   * si cumple TODAS estas condiciones:
+   * De entre `usuarioIds`, los AGENTES del cliente (rol `TECNICO` o `COLABORADOR`: ambos cumplen
+   * funciones de técnico, decisión de negocio 2026-08-20). Un agente cumple TODAS estas
+   * condiciones:
    * - usuario `activo=true` y no soft-deleted en `master.usuarios`;
-   * - tiene una membresía ACTIVA (`activo=true`, `deletedAt IS NULL`) con rol
-   *   `codigo` `TECNICO` o `COLABORADOR` en el cliente indicado;
-   * - tiene AL MENOS UNA acción otorgada en el `modulo` pedido, en la matriz
-   *   `usuario_cliente_permisos` (usuarioId + clienteId + modulo, R9,
-   *   sdd/matriz-permisos-por-usuario — migrado de `usuario_cliente_modulos`).
+   * - no es el usuario de integración de la API pública;
+   * - tiene una membresía ACTIVA (`activo=true`, `deletedAt IS NULL`) con rol `codigo` `TECNICO` o
+   *   `COLABORADOR` en el cliente indicado.
    *
-   * Alimenta el combo del control unificado "Asignar y poner en proceso": a
-   * diferencia de `getAutorizacionModulos` (que resuelve la elegibilidad de UN
-   * asignado concreto y bypassa a ROOT/ADMINISTRADOR), este método devuelve
-   * exclusivamente el universo de TÉCNICOS/COLABORADORES por módulo — el
-   * criterio de armado de la lista, no el de validación de una asignación
-   * puntual. Nombres de símbolos (`TecnicoAsignable`, `listarTecnicosAsignables`)
-   * se mantienen sin renombrar: el alcance de un rename cruza back+front (5+
-   * archivos, incluida una key de wire/hook), desproporcionado para una
-   * ampliación de filtro; este JSDoc es la fuente de verdad del universo real.
-   *
-   * Este mismo universo define quién puede ser responsable de una regla de asignación
-   * automática por tipo (`evaluarResponsableRegla`): ADMINISTRADOR y ROOT quedan fuera.
+   * Solo identidad, rol y membresía: qué tipos atiende cada uno lo decide la tabla
+   * `permisos_tipo_ticket` del tenant, que arma `usuarioIds` (`ElegibilidadAsignado`,
+   * odd/permisos-por-tipo-ticket, D5 g). ADMINISTRADOR y ROOT quedan fuera: no son técnicos de una
+   * tarea ni responsables de una regla de asignación automática.
    *
    * @param clienteId UUID del cliente activo (TenantContext.clienteId).
-   * @param modulo Código del módulo del tipo del ticket (ver `modulos.ts`), o
-   *               `null` si el ticket es de un tipo custom sin módulo. Con
-   *               `null` NO hay agentes elegibles por catálogo → `[]`.
-   * @returns Lista de agentes `{ id, nombre, apellido }` (vacía si `modulo`
-   *          es `null` o no hay técnicos/colaboradores con ese módulo en el
-   *          cliente).
+   * @param usuarioIds Candidatos; sin candidatos no consulta la base.
+   * @returns Los agentes `{ id, nombre, apellido }`, ordenados por apellido y nombre.
    */
-  listarTecnicosAsignables(
+  listarAgentes(
     clienteId: string,
-    modulo: string | null,
+    usuarioIds: readonly string[],
   ): Promise<{ id: string; nombre: string; apellido: string }[]>;
 }
 

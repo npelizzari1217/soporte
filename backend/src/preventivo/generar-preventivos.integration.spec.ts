@@ -48,6 +48,8 @@ import { NumeradorTicket } from '../tickets/domain/services/numerador-ticket.ser
 import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
 import { PrismaReglaAsignacionRepository } from '../tickets/infrastructure/persistence/prisma/prisma-regla-asignacion.repository';
 import { ResolverAsignacionAutomatica } from '../tickets/application/services/resolver-asignacion-automatica.service';
+import { ElegibilidadAsignado } from '../tickets/application/services/elegibilidad-asignado';
+import { PrismaPermisoTipoTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
 import { IUsuarioMasterChecker } from '../tickets/domain/ports/i-usuario-master.checker';
 
@@ -96,9 +98,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
   let reglaRepo: PrismaReglaAsignacionRepository;
   let usuarioMasterChecker: IUsuarioMasterChecker & {
     existeEnTenant: ReturnType<typeof vi.fn<(u: string, c: string) => Promise<boolean>>>;
-    listarTecnicosAsignables: ReturnType<
-      typeof vi.fn<IUsuarioMasterChecker['listarTecnicosAsignables']>
-    >;
+    listarAgentes: ReturnType<typeof vi.fn<IUsuarioMasterChecker['listarAgentes']>>;
   };
   let logger: {
     error: ReturnType<typeof vi.fn<(mensaje: string) => void>>;
@@ -180,10 +180,8 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
         .fn<(u: string, c: string) => Promise<boolean>>()
         .mockResolvedValue(true),
       resolverNombres: vi.fn().mockResolvedValue(new Map()),
-      getAutorizacionModulos: vi.fn().mockResolvedValue({ esAdminTotal: false, modulos: [] }),
-      listarTecnicosAsignables: vi
-        .fn<IUsuarioMasterChecker['listarTecnicosAsignables']>()
-        .mockResolvedValue([]),
+      esAdminTotalEnTenant: vi.fn().mockResolvedValue(false),
+      listarAgentes: vi.fn<IUsuarioMasterChecker['listarAgentes']>().mockResolvedValue([]),
     };
 
     reglaRepo = new PrismaReglaAsignacionRepository(tenantContext);
@@ -202,7 +200,11 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       new ResolverCicloActivoParaCreacion(cicloRepo),
       new ResolverAsignacionAutomatica(
         reglaRepo,
-        usuarioMasterChecker,
+        // Elegibilidad real: la LECTURA sobre el tipo se lee del tenant, dentro de la tx del plan.
+        new ElegibilidadAsignado(
+          usuarioMasterChecker,
+          new PrismaPermisoTipoTicketRepository(tenantContext),
+        ),
         estadoRepo,
         tipoOperacionRepo,
         logger,
@@ -258,7 +260,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
 
   afterEach(async () => {
     usuarioMasterChecker.existeEnTenant.mockReset().mockResolvedValue(true);
-    usuarioMasterChecker.listarTecnicosAsignables.mockReset().mockResolvedValue([]);
+    usuarioMasterChecker.listarAgentes.mockReset().mockResolvedValue([]);
     logger.error.mockReset();
     logger.log.mockReset();
     eventPublisher.publicados.length = 0;
@@ -465,7 +467,12 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       await withTenant(() =>
         reglaRepo.fijar(tipoPreventivoId, RESPONSABLE_REGLA_ID, DUMMY_RESPONSABLE_ID),
       );
-      usuarioMasterChecker.listarTecnicosAsignables.mockResolvedValue([
+      // El responsable atiende el tipo del preventivo (odd/permisos-por-tipo-ticket, D5 g).
+      await tenantClient.permisoTipoTicket.createMany({
+        data: [{ usuarioId: RESPONSABLE_REGLA_ID, tipoId: tipoPreventivoId, accion: 'LECTURA' }],
+        skipDuplicates: true,
+      });
+      usuarioMasterChecker.listarAgentes.mockResolvedValue([
         { id: RESPONSABLE_REGLA_ID, nombre: 'Tina', apellido: 'Tecnica' },
       ]);
     }
@@ -494,7 +501,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
 
     it('un fallo del maestro al evaluar la regla no aborta el plan: el ticket nace NUEVO y sin asignar', async () => {
       await conRegla();
-      usuarioMasterChecker.listarTecnicosAsignables.mockRejectedValue(new Error('master caido'));
+      usuarioMasterChecker.listarAgentes.mockRejectedValue(new Error('master caido'));
       const plan = await crearPlan();
 
       await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));

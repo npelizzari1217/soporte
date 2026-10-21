@@ -65,11 +65,10 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   const operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
   const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
-  const usuarioMasterChecker = {
-    listarTecnicosAsignables: async () => [
-      { id: TECNICO_A, nombre: 'Ana', apellido: 'Técnica' },
-      { id: TECNICO_B, nombre: 'Beto', apellido: 'Técnico' },
-    ],
+  // La elegibilidad no es lo que se prueba acá: los dos técnicos del spec son elegibles.
+  const elegibilidad = {
+    esAgenteDeTipo: async (usuarioId: string): Promise<boolean> =>
+      [TECNICO_A, TECNICO_B].includes(usuarioId),
   };
   let ticketId: string;
 
@@ -137,7 +136,7 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       ticketRepo,
       tipoTicketRepo,
       repo,
-      usuarioMasterChecker,
+      elegibilidad,
       operacionRepo,
       tipoOperacionRepo,
       txRunner,

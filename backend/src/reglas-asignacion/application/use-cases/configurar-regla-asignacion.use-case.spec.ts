@@ -1,10 +1,16 @@
 /**
  * [UNIT] ConfigurarReglaAsignacionUseCase — R1, R2, R3 (sdd/asignacion-automatica-por-tipo).
  *
+ * Elegibilidad por tipo (odd/permisos-por-tipo-ticket, D5 g): `ElegibilidadAsignado` real sobre
+ * dobles en memoria.
+ *
  * Mutación documentada: saltear la revalidación de elegibilidad antes de `fijar` pone en rojo los
  * casos 422 (el ADMINISTRADOR, el de otro cliente y el dado de baja quedarían guardados).
  */
+import { ElegibilidadAsignado } from '../../../tickets/application/services/elegibilidad-asignado';
 import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
+import { MasterAgentesEnMemoria } from '../../../tickets/test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import {
   ResponsableReglaNoElegibleError,
   TipoTicketNoConfigurableError,
@@ -26,14 +32,31 @@ function tipoActivo(): TipoTicketEntity {
 function armar(tipo: TipoTicketEntity | null = tipoActivo()) {
   const fijar = vi.fn().mockResolvedValue(undefined);
   const quitar = vi.fn().mockResolvedValue(undefined);
-  // El universo no incluye al ADMINISTRADOR, al de otro cliente, al sin módulo ni al dado de baja.
-  const listarTecnicosAsignables = vi
-    .fn()
-    .mockResolvedValue([{ id: 'u-tina', nombre: 'Tina', apellido: 'Tecnica' }]);
+  // Solo Tina es agente con LECTURA sobre el tipo. El ADMINISTRADOR tiene la fila pero no es agente;
+  // el de la celda del módulo es agente sin la fila; el de otro tipo tiene la fila de otro tipo; el
+  // de otro cliente y el dado de baja no figuran en master como agentes del cliente.
+  const master = new MasterAgentesEnMemoria();
+  master.agregar({ id: 'u-tina', rol: 'TECNICO', celdas: [], nombre: 'Tina', apellido: 'Tecnica' });
+  master.agregar({ id: 'u-admin-cliente', rol: 'ADMINISTRADOR', celdas: [] });
+  master.agregar({ id: 'u-con-celda', rol: 'TECNICO', celdas: ['TICKETS:LECTURA'] });
+  master.agregar({ id: 'u-otro-tipo', rol: 'TECNICO', celdas: [] });
+  const permisos = new PermisosTipoTicketEnMemoria(
+    [],
+    ['u-tina', 'u-admin-cliente', 'u-otro-cliente', 'u-dado-de-baja'].map((usuarioId) => ({
+      usuarioId,
+      tipoId: 'tipo-1',
+      accion: 'LECTURA' as const,
+    })),
+  );
+  void permisos.agregarSiFaltan([
+    { usuarioId: 'u-otro-tipo', tipoId: 'tipo-2', accion: 'LECTURA' },
+    { usuarioId: 'u-con-celda', tipoId: 'tipo-1', accion: 'MODIFICACION' },
+  ]);
+  const listarAgentes = vi.spyOn(master, 'listarAgentes');
   const useCase = new ConfigurarReglaAsignacionUseCase(
     { findById: vi.fn().mockResolvedValue(tipo) },
     { fijar, quitar },
-    { listarTecnicosAsignables },
+    new ElegibilidadAsignado(master, permisos),
   );
   const dto = (responsableId: string | null) => ({
     tipoId: 'tipo-1',
@@ -41,12 +64,12 @@ function armar(tipo: TipoTicketEntity | null = tipoActivo()) {
     clienteId: CLIENTE,
     actorId: ACTOR,
   });
-  return { useCase, fijar, quitar, listarTecnicosAsignables, dto };
+  return { useCase, fijar, quitar, listarAgentes, dto };
 }
 
 describe('ConfigurarReglaAsignacionUseCase', () => {
   it('null quita la regla del tipo y devuelve SIN_REGLA, sin consultar a master', async () => {
-    const { useCase, quitar, fijar, listarTecnicosAsignables, dto } = armar();
+    const { useCase, quitar, fijar, listarAgentes, dto } = armar();
 
     const result = await useCase.execute(dto(null));
 
@@ -58,11 +81,11 @@ describe('ConfigurarReglaAsignacionUseCase', () => {
     });
     expect(quitar).toHaveBeenCalledWith('tipo-1');
     expect(fijar).not.toHaveBeenCalled();
-    expect(listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(listarAgentes).not.toHaveBeenCalled();
   });
 
   it('un responsable elegible se fija con el actor como actualizado_por', async () => {
-    const { useCase, fijar, listarTecnicosAsignables, dto } = armar();
+    const { useCase, fijar, dto } = armar();
 
     const result = await useCase.execute(dto('u-tina'));
 
@@ -71,11 +94,10 @@ describe('ConfigurarReglaAsignacionUseCase', () => {
       responsableNombre: 'Tina Tecnica',
       estado: 'VALIDA',
     });
-    expect(listarTecnicosAsignables).toHaveBeenCalledWith(CLIENTE, 'TICKETS');
     expect(fijar).toHaveBeenCalledWith('tipo-1', 'u-tina', ACTOR);
   });
 
-  it.each(['u-admin-cliente', 'u-otro-cliente', 'u-sin-modulo', 'u-dado-de-baja'])(
+  it.each(['u-admin-cliente', 'u-otro-cliente', 'u-con-celda', 'u-otro-tipo', 'u-dado-de-baja'])(
     'el responsable %s no esta en el universo: ResponsableReglaNoElegibleError sin escribir',
     async (responsableId) => {
       const { useCase, fijar, quitar, dto } = armar();
@@ -111,8 +133,8 @@ describe('ConfigurarReglaAsignacionUseCase', () => {
   });
 
   it('un fallo de master se propaga (no se degrada) y no escribe', async () => {
-    const { useCase, fijar, listarTecnicosAsignables, dto } = armar();
-    listarTecnicosAsignables.mockRejectedValue(new MasterCaidoError('master caido'));
+    const { useCase, fijar, listarAgentes, dto } = armar();
+    listarAgentes.mockRejectedValue(new MasterCaidoError('master caido'));
 
     await expect(useCase.execute(dto('u-tina'))).rejects.toBeInstanceOf(MasterCaidoError);
     expect(fijar).not.toHaveBeenCalled();

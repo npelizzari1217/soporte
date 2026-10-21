@@ -30,6 +30,9 @@ import {
 } from '../../domain/errors/tickets.errors';
 import { ListarTecnicosElegiblesTareaUseCase } from '../../application/use-cases/listar-tecnicos-elegibles-tarea.use-case';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../../application/services/elegibilidad-asignado';
 import { actorTareaDesdeAlcance } from '../actor-tarea';
 import { TareasTicketController, toHttpExceptionTareas } from './tareas-ticket.controller';
 
@@ -137,11 +140,24 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
   );
 
   function armar() {
-    const checker = {
-      listarTecnicosAsignables: vi
-        .fn()
-        .mockResolvedValue([{ id: 'tecnico-uuid', nombre: 'Ana', apellido: 'Gómez' }]),
-    };
+    // Ana tiene LECTURA sobre el tipo de Edilicia; Beto solo la celda del módulo, que no cuenta.
+    const master = new MasterAgentesEnMemoria();
+    master.agregar({
+      id: 'tecnico-uuid',
+      rol: 'TECNICO',
+      celdas: [],
+      nombre: 'Ana',
+      apellido: 'Gómez',
+    });
+    master.agregar({ id: 'beto-uuid', rol: 'TECNICO', celdas: ['EDILICIA:LECTURA'] });
+    const elegibilidad = new ElegibilidadAsignado(
+      master,
+      new PermisosTipoTicketEnMemoria(
+        [],
+        [{ usuarioId: 'tecnico-uuid', tipoId: 'tipo-edilicia', accion: 'LECTURA' }],
+      ),
+    );
+    const listarAgentesDeTipo = vi.spyOn(elegibilidad, 'listarAgentesDeTipo');
     const useCase = new ListarTecnicosElegiblesTareaUseCase(
       {
         findById: vi.fn().mockResolvedValue(ticket),
@@ -149,15 +165,15 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
         bloquear: vi.fn().mockResolvedValue(undefined),
       },
       { findById: vi.fn().mockResolvedValue(tipo) },
-      checker,
+      elegibilidad,
     );
-    return { useCase, checker };
+    return { useCase, listarAgentesDeTipo };
   }
 
   const PERMISOS = { 'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'] } as const;
 
-  it('el responsable con MODIFICACION sobre el tipo recibe los elegibles del módulo del tipo', async () => {
-    const { useCase, checker } = armar();
+  it('el responsable con MODIFICACION sobre el tipo recibe los elegibles del tipo', async () => {
+    const { useCase, listarAgentesDeTipo } = armar();
 
     const result = await useCase.execute({
       ticketId: 'ticket-uuid',
@@ -170,11 +186,11 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
     });
 
     expect(result.getValue()).toEqual([{ id: 'tecnico-uuid', nombre: 'Ana', apellido: 'Gómez' }]);
-    expect(checker.listarTecnicosAsignables).toHaveBeenCalledWith('cliente-uuid', 'EDILICIA');
+    expect(listarAgentesDeTipo).toHaveBeenCalledWith('cliente-uuid', 'tipo-edilicia');
   });
 
-  it('quien no puede asignar recibe el rechazo y master no se consulta', async () => {
-    const { useCase, checker } = armar();
+  it('quien no puede asignar recibe el rechazo y la elegibilidad no se consulta', async () => {
+    const { useCase, listarAgentesDeTipo } = armar();
 
     const result = await useCase.execute({
       ticketId: 'ticket-uuid',
@@ -187,6 +203,6 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
     });
 
     expect(result.getError()).toBeInstanceOf(TareaAccionNoPermitidaError);
-    expect(checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(listarAgentesDeTipo).not.toHaveBeenCalled();
   });
 });

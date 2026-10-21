@@ -53,7 +53,7 @@ export class ReglasAsignacionController {
   ) {}
 
   /**
-   * GET /reglas-asignacion — una fila por tipo activo y los candidatos por módulo.
+   * GET /reglas-asignacion — una fila por tipo activo y los candidatos por tipo y por módulo.
    *
    * @throws 403 sin rol ADMINISTRADOR ni ROOT
    */

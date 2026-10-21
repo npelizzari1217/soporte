@@ -887,7 +887,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   // ─── T14/T15 — Asignación manual (PR8) ─────────────────────────────────────
 
   describe('PATCH /tickets/:id/asignar (T14, T15)', () => {
-    it('TECNICO con ticket:asignar asigna a un agente elegible (módulo del catálogo); USUARIO sin el permiso recibe 403', async () => {
+    it('TECNICO con ticket:asignar asigna a un agente elegible (LECTURA sobre el tipo); USUARIO sin el permiso recibe 404', async () => {
       const cliente = await createClienteTenant();
       const roleUsuario = await createRoleConPermisos('USUARIO', [
         'ticket:crear',
@@ -973,12 +973,24 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       );
       expect(noElegible.status).toBe(422);
 
-      // Habilita al agente otorgándole una celda de EQUIPOS en la matriz
-      // nueva (WU-7.5: el checker de elegibilidad ya lee
-      // `usuario_cliente_permisos`, no la tabla vieja `usuario_cliente_modulos`).
+      // La celda de EQUIPOS en la matriz master ya no lo vuelve elegible: la elegibilidad es la
+      // LECTURA sobre el tipo del ticket en el tenant (odd/permisos-por-tipo-ticket, D5 g).
       await permisosRepo.setPermisos(agente.id, cliente.id, ['EQUIPOS:LECTURA']);
+      const conCeldaSinFila = await httpPatch(
+        `${baseUrl}/tickets/${created.data.id}/asignar`,
+        { asignadoId: agente.id },
+        bearer(loginTecnicoConEquipos.accessToken),
+      );
+      expect(conCeldaSinFila.status).toBe(422);
+      const todaviaSinAsignar = await tenantClient.ticket.findUnique({
+        where: { id: created.data.id },
+      });
+      expect(todaviaSinAsignar?.asignadoId).toBeNull();
 
-      // TECNICO con ticket:asignar + agente con el módulo → asignación válida.
+      // Habilita al agente con LECTURA sobre el tipo del ticket.
+      await fijarPermisosPorTipo(agente.id, { [tipoId]: ['LECTURA'] });
+
+      // TECNICO con ticket:asignar + agente con LECTURA sobre el tipo → asignación válida.
       const permitido = await httpPatch<TicketResponseDto>(
         `${baseUrl}/tickets/${created.data.id}/asignar`,
         { asignadoId: agente.id },

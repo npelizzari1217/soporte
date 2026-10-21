@@ -20,6 +20,9 @@ import {
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { alcancePorTipo } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { EventoTarea } from '../../domain/policies/estado-por-tareas.policy';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
@@ -219,16 +222,28 @@ function armar() {
       return tickets.get(ticketId) ?? null;
     }),
   };
-  const checker = {
-    listarTecnicosAsignables: vi.fn(async (_clienteId: string, modulo: string | null) =>
-      modulo === 'EDILICIA'
-        ? [
-            { id: TECNICO, nombre: 'Tina', apellido: 'Técnica' },
-            { id: OTRO_TECNICO, nombre: 'Otto', apellido: 'Técnico' },
-          ]
-        : [],
+  // Elegibilidad real (odd/permisos-por-tipo-ticket, D5 g): Tina y Otto son técnicos con LECTURA
+  // sobre el tipo de Edilicia; Sofi atiende solo Soporte; Celia tiene la celda del módulo EDILICIA
+  // sin fila del tipo; el ADMINISTRADOR tiene la fila pero no es agente.
+  const master = new MasterAgentesEnMemoria();
+  master.agregar({ id: TECNICO, rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: OTRO_TECNICO, rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: 'usuario-solo-soporte', rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: 'usuario-con-celda', rol: 'TECNICO', celdas: ['EDILICIA:LECTURA'] });
+  master.agregar({ id: ADMIN, rol: 'ADMINISTRADOR', celdas: [] });
+  const elegibilidad = new ElegibilidadAsignado(
+    master,
+    new PermisosTipoTicketEnMemoria(
+      [],
+      [
+        { usuarioId: TECNICO, tipoId: TIPO_ID, accion: 'LECTURA' },
+        { usuarioId: OTRO_TECNICO, tipoId: TIPO_ID, accion: 'LECTURA' },
+        { usuarioId: 'usuario-solo-soporte', tipoId: TIPO_SOPORTE_ID, accion: 'LECTURA' },
+        { usuarioId: ADMIN, tipoId: TIPO_ID, accion: 'LECTURA' },
+      ],
     ),
-  };
+  );
+  const esAgenteDeTipo = vi.spyOn(elegibilidad, 'esAgenteDeTipo');
   const ahora = () => AHORA;
 
   function sembrarTarea(
@@ -259,7 +274,7 @@ function armar() {
     tareas,
     operaciones,
     sembrarTarea,
-    checker,
+    esAgenteDeTipo,
     tareaRepo,
     operacionRepo,
     ticketRepo,
@@ -281,7 +296,7 @@ function armar() {
       ticketRepo,
       tipoTicketRepo,
       tareaRepo,
-      checker,
+      elegibilidad,
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
@@ -453,7 +468,7 @@ describe('AsignarTecnicoTareaUseCase', () => {
     const result = await asignar(deps, ACTORES.responsable, TECNICO);
 
     expect(result.getValue().tecnicoId).toBe(TECNICO);
-    expect(deps.checker.listarTecnicosAsignables).toHaveBeenCalledWith(CLIENTE_ID, 'EDILICIA');
+    expect(deps.esAgenteDeTipo).toHaveBeenCalledWith(TECNICO, CLIENTE_ID, TIPO_ID);
     expect(deps.tareaRepo.asignarTecnicoSiActiva).toHaveBeenCalledTimes(1);
     const [operacion] = deps.operaciones;
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_ASIGNADA');
@@ -465,14 +480,14 @@ describe('AsignarTecnicoTareaUseCase', () => {
     });
   });
 
-  it('quitar el técnico no consulta master y deja registro del retiro', async () => {
+  it('quitar el técnico no consulta la elegibilidad y deja registro del retiro', async () => {
     const deps = armar();
     deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     const result = await asignar(deps, ACTORES.administrador, null);
 
     expect(result.getValue().tecnicoId).toBeNull();
-    expect(deps.checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(deps.esAgenteDeTipo).not.toHaveBeenCalled();
     expect(deps.operaciones[0].metadata).toEqual({
       tarea_id: 't1',
       tecnico_anterior_id: TECNICO,
@@ -480,11 +495,17 @@ describe('AsignarTecnicoTareaUseCase', () => {
     });
   });
 
-  it('rechaza un técnico no elegible (ADMINISTRADOR o sin el módulo) con TecnicoTareaNoElegibleError', async () => {
+  it('rechaza un técnico no elegible (ADMINISTRADOR, sin LECTURA sobre el tipo o de otro tipo) con TecnicoTareaNoElegibleError', async () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1');
 
-    for (const tecnicoId of [ADMIN, RESPONSABLE, 'usuario-sin-modulo']) {
+    for (const tecnicoId of [
+      ADMIN,
+      RESPONSABLE,
+      'usuario-con-celda',
+      'usuario-solo-soporte',
+      'usuario-inexistente',
+    ]) {
       const result = await asignar(deps, ACTORES.administrador, tecnicoId);
       expect(errorDe(result)).toBeInstanceOf(TecnicoTareaNoElegibleError);
     }
@@ -1154,7 +1175,7 @@ describe('permisos por tipo del ticket (odd/permisos-por-tipo-ticket, S2, S3)', 
     expect(tarea.isDeleted()).toBe(false);
     expect(deps.tareaRepo.asignarTecnicoSiActiva).not.toHaveBeenCalled();
     expect(deps.tareaRepo.darDeBajaSiActiva).not.toHaveBeenCalled();
-    expect(deps.checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(deps.esAgenteDeTipo).not.toHaveBeenCalled();
     expect(deps.operaciones).toHaveLength(0);
   });
 

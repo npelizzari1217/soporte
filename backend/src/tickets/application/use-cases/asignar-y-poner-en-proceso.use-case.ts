@@ -13,7 +13,7 @@ import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-sta
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
-import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import {
   TicketNoEncontradoError,
@@ -61,8 +61,8 @@ interface PasoTransicion {
  * asignación manual de un técnico y el avance del ticket hasta EN_PROCESO
  * (rediseño de la asignación: un solo botón "Asignar y poner en proceso").
  *
- * Reusa la MISMA validación de elegibilidad por módulo que
- * `AsignarTicketUseCase` (`esAsignadoElegiblePorModulo`) — mismos errores
+ * Reusa la MISMA validación de elegibilidad por tipo que
+ * `AsignarTicketUseCase` (`ElegibilidadAsignado.esAsignableATipo`) — mismos errores
  * (`AsignadoInvalidoError`/`AsignadoNoElegibleError`) — y el MISMO mecanismo de
  * transición que `TransicionarEstadoUseCase` (entidad + máquina de estados por
  * tipo, operaciones de timeline por cada arco).
@@ -74,7 +74,8 @@ interface PasoTransicion {
  *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
- * 3. Valida elegibilidad por módulo del tipo → `AsignadoNoElegibleError` (422).
+ * 3. Valida elegibilidad por tipo (`LECTURA` sobre el tipo del ticket, o ROOT/ADMINISTRADOR) →
+ *    `AsignadoNoElegibleError` (422).
  * 4. Calcula el camino de arcos desde el estado actual hasta EN_PROCESO
  *    (NUEVO→ASIGNADO→EN_PROCESO; desde ASIGNADO solo →EN_PROCESO; ya en
  *    EN_PROCESO no avanza, solo asigna). Si el estado actual NO puede llegar a
@@ -102,10 +103,8 @@ export class AsignarYPonerEnProcesoUseCase {
     private readonly estadoRepo: IEstadoRepository,
     private readonly tipoTicketRepo: ITipoTicketRepository,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
-    private readonly usuarioMasterChecker: Pick<
-      IUsuarioMasterChecker,
-      'estaActivoEnTenant' | 'getAutorizacionModulos'
-    >,
+    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'estaActivoEnTenant'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAsignableATipo'>,
     private readonly stateMachineFactory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly eventPublisher: IDomainEventPublisher,
@@ -143,12 +142,10 @@ export class AsignarYPonerEnProcesoUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    const esElegible = await esAsignadoElegiblePorModulo(
+    const esElegible = await this.elegibilidad.esAsignableATipo(
       dto.asignadoId,
       dto.clienteId,
       ticket.tipoId,
-      this.usuarioMasterChecker,
-      this.tipoTicketRepo,
     );
     if (!esElegible) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));

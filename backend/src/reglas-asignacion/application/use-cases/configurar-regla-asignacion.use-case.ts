@@ -1,7 +1,7 @@
 import { Result } from '../../../shared/domain/result';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { IReglaAsignacionRepository } from '../../../tickets/domain/ports/i-regla-asignacion.repository';
-import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import { ElegibilidadAsignado } from '../../../tickets/application/services/elegibilidad-asignado';
 import { esResponsableElegible } from '../../../tickets/application/services/elegibilidad-responsable-regla';
 import { ReglaAsignacionFila } from '../../domain/estado-regla-asignacion';
 import {
@@ -20,8 +20,10 @@ export interface ConfigurarReglaAsignacionDto {
 
 /**
  * ConfigurarReglaAsignacionUseCase — fija, reemplaza o quita la regla de un tipo (R1, R3).
- * Revalida en el servidor la elegibilidad del responsable con el criterio compartido del alta;
- * un fallo del maestro se propaga (500 honesto): una escritura de configuración no se degrada.
+ * Revalida en el servidor la elegibilidad del responsable con el criterio compartido del alta
+ * (TECNICO o COLABORADOR con `LECTURA` sobre el tipo, `ElegibilidadAsignado`,
+ * odd/permisos-por-tipo-ticket, D5 g); un fallo del maestro se propaga (500 honesto): una
+ * escritura de configuración no se degrada.
  *
  * Ref spec: reglas-asignacion R1, R2, R3. Ref design: ADR-9.
  */
@@ -29,7 +31,7 @@ export class ConfigurarReglaAsignacionUseCase {
   constructor(
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly reglaRepo: Pick<IReglaAsignacionRepository, 'fijar' | 'quitar'>,
-    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'listarAgentesDeTipo'>,
   ) {}
 
   async execute(
@@ -58,10 +60,7 @@ export class ConfigurarReglaAsignacionUseCase {
       });
     }
 
-    const candidatos = await this.usuarioMasterChecker.listarTecnicosAsignables(
-      dto.clienteId,
-      tipo.modulo,
-    );
+    const candidatos = await this.elegibilidad.listarAgentesDeTipo(dto.clienteId, tipo.id);
     const candidato = candidatos.find((c) => c.id === dto.responsableId);
     if (!candidato || !esResponsableElegible(dto.responsableId, candidatos)) {
       return Result.fail(new ResponsableReglaNoElegibleError(dto.responsableId, tipo.id));

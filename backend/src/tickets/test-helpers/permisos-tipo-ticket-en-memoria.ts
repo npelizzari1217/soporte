@@ -31,12 +31,28 @@ export class PermisosTipoTicketEnMemoria implements IPermisoTipoTicketRepository
    */
   filasDe(usuarioId: string): string[] {
     const porTipo = this.porUsuario.get(usuarioId) ?? new Map<string, Set<AccionTipoTicket>>();
-    return [...porTipo].flatMap(([tipoId, acciones]) => [...acciones].map((a) => `${tipoId}:${a}`)).sort();
+    return [...porTipo]
+      .flatMap(([tipoId, acciones]) => [...acciones].map((a) => `${tipoId}:${a}`))
+      .sort();
   }
 
   async listarPorUsuario(usuarioId: string): Promise<Map<string, Set<AccionTipoTicket>>> {
     const porTipo = this.porUsuario.get(usuarioId) ?? new Map<string, Set<AccionTipoTicket>>();
     return new Map([...porTipo].map(([tipoId, acciones]) => [tipoId, new Set(acciones)]));
+  }
+
+  async listarUsuariosConAccion(
+    tipoIds: readonly string[],
+    accion: AccionTipoTicket,
+  ): Promise<Map<string, string[]>> {
+    const porTipo = new Map<string, string[]>();
+    for (const [usuarioId, acciones] of this.porUsuario) {
+      for (const [tipoId, concedidas] of acciones) {
+        if (!tipoIds.includes(tipoId) || !concedidas.has(accion)) continue;
+        porTipo.set(tipoId, [...(porTipo.get(tipoId) ?? []), usuarioId]);
+      }
+    }
+    return porTipo;
   }
 
   async reemplazarDeUsuario(

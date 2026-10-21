@@ -25,6 +25,19 @@ export interface IPermisoTipoTicketRepository {
   listarPorUsuario(usuarioId: string): Promise<Map<string, Set<AccionTipoTicket>>>;
 
   /**
+   * Usuarios que tienen `accion` sobre cada tipo, en una sola consulta (elegibilidad del asignado,
+   * odd/permisos-por-tipo-ticket, D5 g).
+   *
+   * @param tipoIds Tipos a consultar; sin tipos no consulta la base.
+   * @param accion Acción concedida que se busca.
+   * @returns Mapa `tipoId` → ids de usuario; un tipo sin filas no aparece en el mapa.
+   */
+  listarUsuariosConAccion(
+    tipoIds: readonly string[],
+    accion: AccionTipoTicket,
+  ): Promise<Map<string, string[]>>;
+
+  /**
    * Reemplaza todas las filas del usuario por `filas`, de forma atómica: o quedan las nuevas,
    * o quedan las anteriores. Con `filas` vacío, el usuario queda sin permisos por tipo.
    *

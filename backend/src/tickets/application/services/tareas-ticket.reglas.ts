@@ -132,8 +132,8 @@ export function puedeGestionarTareas(actor: ActorTarea, ticket: TicketEntity): b
 
 /**
  * Carga el ticket (404 si el actor no lo ve, `cargarTicketVisible`) y su tipo, y aplica
- * `puedeGestionarTareas`. Devuelve el ticket y el módulo del tipo, que la asignación necesita para
- * la elegibilidad del técnico.
+ * `puedeGestionarTareas`. Devuelve el ticket; la elegibilidad del técnico se decide por su tipo
+ * (`ElegibilidadAsignado`, odd/permisos-por-tipo-ticket, D5 g).
  */
 export async function autorizarGestion(
   deps: {
@@ -143,7 +143,7 @@ export async function autorizarGestion(
   ticketId: string,
   actor: ActorTarea,
   accion: string,
-): Promise<Result<{ ticket: TicketEntity; modulo: string }, DomainError>> {
+): Promise<Result<{ ticket: TicketEntity }, DomainError>> {
   const ticketResult = await cargarTicketVisible(deps.ticketRepo, ticketId, actor);
   if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
   const ticket = ticketResult.getValue();
@@ -153,7 +153,7 @@ export async function autorizarGestion(
   if (!puedeGestionarTareas(actor, ticket)) {
     return Result.fail(await rechazar(deps.ticketRepo, ticket, actor, accion));
   }
-  return Result.ok({ ticket, modulo: tipo.modulo });
+  return Result.ok({ ticket });
 }
 
 /** De dónde sale el permiso de completar y descompletar una tarea (CA4). */

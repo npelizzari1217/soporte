@@ -17,7 +17,7 @@ export interface ReglaAsignacionFila {
   estado: EstadoReglaAsignacion;
 }
 
-/** Candidato válido para ser responsable de una regla (TECNICO o COLABORADOR con el módulo). */
+/** Candidato válido para ser responsable de una regla (TECNICO o COLABORADOR con `LECTURA` sobre el tipo). */
 export interface CandidatoRegla {
   id: string;
   nombre: string;

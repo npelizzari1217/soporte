@@ -51,6 +51,22 @@ export class PrismaPermisoTipoTicketRepository implements IPermisoTipoTicketRepo
     return porTipo;
   }
 
+  async listarUsuariosConAccion(
+    tipoIds: readonly string[],
+    accion: AccionTipoTicket,
+  ): Promise<Map<string, string[]>> {
+    const porTipo = new Map<string, string[]>();
+    if (tipoIds.length === 0) return porTipo;
+    const filas = await this.client.permisoTipoTicket.findMany({
+      where: { tipoId: { in: [...tipoIds] }, accion },
+      select: { tipoId: true, usuarioId: true },
+    });
+    for (const { tipoId, usuarioId } of filas) {
+      porTipo.set(tipoId, [...(porTipo.get(tipoId) ?? []), usuarioId]);
+    }
+    return porTipo;
+  }
+
   async reemplazarDeUsuario(
     usuarioId: string,
     filas: readonly Omit<PermisoTipoTicketFila, 'usuarioId'>[],

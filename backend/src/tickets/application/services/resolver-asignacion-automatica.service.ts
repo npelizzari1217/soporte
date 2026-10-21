@@ -3,8 +3,7 @@ import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IReglaAsignacionRepository } from '../../domain/ports/i-regla-asignacion.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
-import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { evaluarResponsableRegla } from './elegibilidad-responsable-regla';
+import { ElegibilidadAsignado } from './elegibilidad-asignado';
 
 /** Qué debe escribir el alta cuando la regla del tipo asigna: responsable y ids de catálogo. */
 export interface AsignacionAutomatica {
@@ -18,19 +17,23 @@ export interface AsignacionAutomatica {
  * asignado por la regla de su tipo. Su salida es "asignación o nada": nunca devuelve
  * `Result.fail`, porque un problema de configuración jamás debe impedir pedir ayuda.
  *
- * Qué se traga y qué se propaga:
- * - Errores del MAESTRO (`listarTecnicosAsignables`): se degradan a `null` con un log enmascarado
- *   (solo el nombre de la clase del error). Van por otra conexión; no contaminan la transacción.
- * - Errores del TENANT (`findByTipoId`, catálogos): se propagan. En el preventivo el alta corre
- *   dentro de la transacción por plan; una consulta fallida la deja abortada en Postgres, y
- *   tragarla escondería la causa real detrás de "current transaction is aborted".
+ * El responsable tiene que seguir siendo elegible con la regla de `ElegibilidadAsignado`: TECNICO o
+ * COLABORADOR con `LECTURA` sobre el tipo (odd/permisos-por-tipo-ticket, D5 g), la misma con la
+ * que la pantalla de reglas calcula VALIDA/ROTA y rechaza una regla nueva. Se evalúa en sus dos
+ * partes por separado para tratar distinto el fallo de cada base:
+ * - Errores del MAESTRO (`esAgente`): se degradan a `null` con un log enmascarado (solo el nombre
+ *   de la clase del error). Van por otra conexión; no contaminan la transacción.
+ * - Errores del TENANT (`findByTipoId`, `tieneLecturaSobreTipo`, catálogos): se propagan. En el
+ *   preventivo el alta corre dentro de la transacción por plan; una consulta fallida la deja
+ *   abortada en Postgres, y tragarla escondería la causa real detrás de "current transaction is
+ *   aborted".
  *
  * Ref design: sdd/asignacion-automatica-por-tipo ADR-2.
  */
 export class ResolverAsignacionAutomatica {
   constructor(
     private readonly reglaRepo: Pick<IReglaAsignacionRepository, 'findByTipoId'>,
-    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'tieneLecturaSobreTipo' | 'esAgente'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findIdByCodigo'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly logger: ILogger,
@@ -43,20 +46,18 @@ export class ResolverAsignacionAutomatica {
     const regla = await this.reglaRepo.findByTipoId(tipo.id);
     if (!regla) return null;
 
-    let elegible: boolean;
-    try {
-      elegible = await evaluarResponsableRegla(
-        regla.responsableId,
-        clienteId,
-        tipo.modulo,
-        this.usuarioMasterChecker,
-      );
-    } catch (error) {
-      const nombreError = error instanceof Error ? error.constructor.name : 'desconocido';
-      this.logger.error(
-        `ASIGNACION_AUTOMATICA_DEGRADADA | tipoId=${tipo.id} | error=${nombreError}`,
-      );
-      return null;
+    // Las dos partes de `esAgenteDeTipo`: primero el tenant (propaga), después master (degrada).
+    let elegible = await this.elegibilidad.tieneLecturaSobreTipo(regla.responsableId, tipo.id);
+    if (elegible) {
+      try {
+        elegible = await this.elegibilidad.esAgente(regla.responsableId, clienteId);
+      } catch (error) {
+        const nombreError = error instanceof Error ? error.constructor.name : 'desconocido';
+        this.logger.error(
+          `ASIGNACION_AUTOMATICA_DEGRADADA | tipoId=${tipo.id} | error=${nombreError}`,
+        );
+        return null;
+      }
     }
     if (!elegible) {
       this.logger.log(

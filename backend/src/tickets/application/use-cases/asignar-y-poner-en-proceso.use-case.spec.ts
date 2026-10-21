@@ -5,7 +5,8 @@
  * (`BaseTicketStateMachine`) para validar los arcos igual que en producción.
  * Cubre: happy desde NUEVO (asigna + 2 saltos hasta EN_PROCESO con ops de
  * timeline), happy desde ASIGNADO (1 salto), asignado no elegible → falla sin
- * tx, y estado terminal (RESUELTO) → TransicionInvalida sin tx.
+ * tx, y estado terminal (RESUELTO) → TransicionInvalida sin tx. La elegibilidad
+ * es la real (`ElegibilidadAsignado`, `LECTURA` sobre el tipo) sobre dobles en memoria.
  */
 import {
   AsignarYPonerEnProcesoUseCase,
@@ -27,6 +28,9 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { unstubbed } from '../../../testing/mocks';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import {
   AccionSobreTipoNoPermitidaError,
   AsignadoInvalidoError,
@@ -145,10 +149,15 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       estaActivoEnTenant: vi
         .fn<IUsuarioMasterChecker['estaActivoEnTenant']>()
         .mockResolvedValue(true),
-      getAutorizacionModulos: vi
-        .fn<IUsuarioMasterChecker['getAutorizacionModulos']>()
-        .mockResolvedValue({ esAdminTotal: false, modulos: ['TICKETS'] }),
     };
+    // Por defecto: un TECNICO con LECTURA sobre el tipo SOPORTE del ticket.
+    const masterAgentes = new MasterAgentesEnMemoria();
+    masterAgentes.agregar({ id: 'agente-uuid', rol: 'TECNICO', celdas: [] });
+    const permisosTipo = new PermisosTipoTicketEnMemoria(
+      [],
+      [{ usuarioId: 'agente-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' }],
+    );
+    const elegibilidad = new ElegibilidadAsignado(masterAgentes, permisosTipo);
     const stateMachineFactory = {
       resolve: vi.fn<TicketStateMachineFactory['resolve']>(() => new BaseTicketStateMachine()),
     };
@@ -171,6 +180,7 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       tipoTicketRepo,
       tipoOperacionRepo,
       usuarioMasterChecker,
+      elegibilidad,
       stateMachineFactory,
       txRunner,
       eventPublisher,
@@ -184,6 +194,8 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       tipoTicketRepo,
       tipoOperacionRepo,
       usuarioMasterChecker,
+      masterAgentes,
+      permisosTipo,
       stateMachineFactory,
       txRunner,
       eventPublisher,
@@ -281,13 +293,12 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('asignado normal SIN el módulo del tipo → AsignadoNoElegibleError, sin tx', async () => {
+  it('asignado sin LECTURA sobre el tipo del ticket (sí sobre otro) → AsignadoNoElegibleError, sin tx', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: false,
-      modulos: ['COMPRAS'],
-    });
+    await c.permisosTipo.reemplazarDeUsuario('agente-uuid', [
+      { tipoId: 'tipo-mantenimiento-uuid', accion: 'LECTURA' },
+    ]);
 
     const result = await c.useCase.execute(baseDto());
 
@@ -431,13 +442,12 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     it('sin restricción (ROOT o ADMINISTRADOR) pasa el acceso en un tipo sin filas', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-electricidad-uuid'));
-      // El asignado es ROOT/ADMINISTRADOR: elegible para un tipo de cualquier módulo.
-      c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-        esAdminTotal: true,
-        modulos: [],
-      });
+      // El asignado es ADMINISTRADOR: elegible para un tipo sin filas.
+      c.masterAgentes.agregar({ id: 'admin-uuid', rol: 'ADMINISTRADOR', celdas: [] });
 
-      const result = await c.useCase.execute(baseDto(alcanceSinRestriccion('asignador-uuid')));
+      const result = await c.useCase.execute(
+        baseDto({ ...alcanceSinRestriccion('asignador-uuid'), asignadoId: 'admin-uuid' }),
+      );
 
       expect(result.isOk()).toBe(true);
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);

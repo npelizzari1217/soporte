@@ -100,7 +100,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   (`esTicketAccesiblePara` + acción); lecturas y escrituras por id del ticket — (este commit)
 - [x] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
   creación por tipo, reparaciones y dashboard — (este commit)
-- [ ] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (pendiente)
+- [x] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (este commit)
 - [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
 - [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (pendiente)
@@ -256,4 +256,13 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `ALTAS` sobre el tipo, 403 antes de abrir la transacción; `alcance: null` para flujos de sistema
   (barrido preventivo, API v1, seed). El dashboard combina el alcance con el filtro de TECNICO.
   Dueño aprobó tocar CSAT y `autorizacion.e2e.spec.ts`. 346 archivos y 4114 tests en verde.
+- **L28** (T5c; dueño aprobó extender a reglas de asignación) — API v1: el alcance de la clave sale
+  de sus celdas traducidas con `accionesDeTipoDesdeCeldas` sobre los tipos de TICKETS
+  (`integraciones/domain/alcance-clave-api.ts`); COMENTAR suma LECTURA y VER_TODOS (L18). Los
+  decoradores `TICKETS:*` de la v1 quedan: las celdas de la clave son un modelo propio. Elegibilidad
+  del asignado: servicio único `ElegibilidadAsignado` (ADMIN/ROOT, o TECNICO/COLABORADOR con LECTURA
+  sobre el tipo); el checker de master solo da identidad, rol y membresía. Lo usan asignar,
+  asignables, tareas, asignación automática y reglas de asignación, que suman `candidatosPorTipo`
+  (`candidatosPorModulo` = unión, hasta T6). Suite completa del backend: 760 archivos, 9326 tests en
+  verde, typecheck y lint en cero. Deuda: índice por `tipo_id` en `permisos_tipo_ticket`.
 

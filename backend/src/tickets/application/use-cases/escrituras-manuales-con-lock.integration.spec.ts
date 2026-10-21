@@ -94,10 +94,9 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
   const eventPublisher = { publish: (_e: DomainEvent) => undefined };
   const stateMachineFactory = new TicketStateMachineFactory();
-  const usuarioMasterChecker = {
-    estaActivoEnTenant: async () => true,
-    getAutorizacionModulos: async () => ({ esAdminTotal: true, modulos: [] as string[] }),
-  };
+  const usuarioMasterChecker = { estaActivoEnTenant: async () => true };
+  // La elegibilidad no es lo que se prueba acá: el asignado es elegible.
+  const elegibilidad = { esAsignableATipo: async () => true };
   const estadoIds = new Map<string, string>();
   let tipoId: string;
   let prioridadId: string;
@@ -339,7 +338,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
       repoConCarrera('findById', resolverPorDebajo(ticketId, tareaId)),
       operacionRepo,
       usuarioMasterChecker,
-      tipoTicketRepo,
+      elegibilidad,
       tipoOperacionRepo,
       txRunner,
       estadoRepo,
@@ -374,6 +373,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
       tipoTicketRepo,
       tipoOperacionRepo,
       usuarioMasterChecker,
+      elegibilidad,
       stateMachineFactory,
       txRunner,
       eventPublisher,

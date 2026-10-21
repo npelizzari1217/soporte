@@ -147,6 +147,30 @@ describe('PrismaPermisoTipoTicketRepository (T4a, tenant efímero)', () => {
     );
   });
 
+  it('listarUsuariosConAccion agrupa por tipo los usuarios con esa acción, solo de los tipos pedidos', async () => {
+    const soporte = await crearTipo('T-SOPORTE');
+    const mantenimiento = await crearTipo('T-MANT');
+    const electricidad = await crearTipo('T-ELEC');
+    await enTenant(() =>
+      repo.agregarSiFaltan([
+        { usuarioId: USUARIO_1, tipoId: soporte, accion: 'LECTURA' },
+        { usuarioId: USUARIO_2, tipoId: soporte, accion: 'LECTURA' },
+        { usuarioId: USUARIO_2, tipoId: mantenimiento, accion: 'MODIFICACION' },
+        { usuarioId: USUARIO_1, tipoId: electricidad, accion: 'LECTURA' },
+      ]),
+    );
+
+    const porTipo = await enTenant(() =>
+      repo.listarUsuariosConAccion([soporte, mantenimiento], 'LECTURA'),
+    );
+
+    expect([...porTipo.keys()]).toEqual([soporte]);
+    expect(porTipo.get(soporte)?.sort()).toEqual([USUARIO_1, USUARIO_2].sort());
+    await expect(enTenant(() => repo.listarUsuariosConAccion([], 'LECTURA'))).resolves.toEqual(
+      new Map(),
+    );
+  });
+
   it('reemplazarDeUsuario deja exactamente las filas nuevas y no toca a otros usuarios', async () => {
     const tipoA = await crearTipo('T-A');
     const tipoB = await crearTipo('T-B');

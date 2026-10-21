@@ -218,8 +218,9 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
     });
   });
 
-  // ─── getAutorizacionModulos (R9, WU-7.5 — migrado de usuario_cliente_modulos
-  // a la matriz usuario_cliente_permisos) ─────────────────────────────────
+  // ─── esAdminTotalEnTenant / listarAgentes (odd/permisos-por-tipo-ticket, D5 g) ──
+  // Solo identidad, rol y membresía: las celdas de la matriz por módulo NO deciden. Se siembran a
+  // propósito para que un regreso al criterio por módulo ponga estos casos en rojo.
 
   async function createPermiso(
     usuarioId: string,
@@ -232,44 +233,30 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
     });
   }
 
-  describe('getAutorizacionModulos() — lee la matriz, no usuario_cliente_modulos (R9, S20-S21)', () => {
-    it('S20: usuario con celdas en TICKETS y EQUIPOS (una sola acción cada una) → modulos deduplicados por MÓDULO, no por acción', async () => {
-      const cliente = await createCliente('auth-modulos-1');
-      const role = await createRole('AUTH_MODULOS_TECNICO_1');
-      const usuario = await createUsuario('auth-modulos-1');
-      await createMembresia(usuario.id, cliente.id, role.id);
-      await createPermiso(usuario.id, cliente.id, 'TICKETS', 'LECTURA');
-      await createPermiso(usuario.id, cliente.id, 'EQUIPOS', 'ALTAS');
-      // Ruido: otro cliente NO debe filtrarse (aislamiento).
-      const otroCliente = await createCliente('auth-modulos-1-otro');
-      await createPermiso(usuario.id, otroCliente.id, 'KB', 'LECTURA');
-
-      const result = await checker.getAutorizacionModulos(usuario.id, cliente.id);
-
-      expect(result.esAdminTotal).toBe(false);
-      expect(result.modulos.sort()).toEqual(['EQUIPOS', 'TICKETS']);
+  async function createUsuarioNombrado(email: string, nombre: string, apellido: string) {
+    return masterClient.usuario.create({
+      data: { email, nombre, apellido, passwordHash: 'hash-fake', activo: true },
     });
+  }
 
-    it('S21: ADMINISTRADOR con CERO filas propias en la matriz → esAdminTotal=true, modulos=[] (el backfill no le crea filas)', async () => {
-      const cliente = await createCliente('auth-modulos-admin');
+  describe('esAdminTotalEnTenant() — ROOT o ADMINISTRADOR, sin leer la matriz', () => {
+    it('ADMINISTRADOR con CERO celdas en la matriz → true', async () => {
+      const cliente = await createCliente('admin-total-admin');
       const role = await createRole('ADMINISTRADOR');
-      const usuario = await createUsuario('auth-modulos-admin');
+      const usuario = await createUsuario('admin-total-admin');
       await createMembresia(usuario.id, cliente.id, role.id);
-      // A propósito: CERO filas en usuario_cliente_permisos para este usuario.
 
-      const result = await checker.getAutorizacionModulos(usuario.id, cliente.id);
-
-      expect(result).toEqual({ esAdminTotal: true, modulos: [] });
+      expect(await checker.esAdminTotalEnTenant(usuario.id, cliente.id)).toBe(true);
     });
 
-    it('ROOT (is_global_admin) → esAdminTotal=true sin consultar la matriz, aunque tenga membresía no-ADMINISTRADOR', async () => {
-      const cliente = await createCliente('auth-modulos-root');
-      const role = await createRole('AUTH_MODULOS_ROOT_ROLE');
+    it('ROOT (is_global_admin) → true aunque su membresía no sea ADMINISTRADOR', async () => {
+      const cliente = await createCliente('admin-total-root');
+      const role = await createRole('ADMIN_TOTAL_ROOT_ROLE');
       const root = await masterClient.usuario.create({
         data: {
-          email: 'checker_root_modulos@integration.test',
+          email: 'checker_root_admin_total@integration.test',
           nombre: 'Root',
-          apellido: 'Modulos',
+          apellido: 'Total',
           passwordHash: 'hash-fake',
           activo: true,
           isGlobalAdmin: true,
@@ -277,121 +264,116 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       });
       await createMembresia(root.id, cliente.id, role.id);
 
-      const result = await checker.getAutorizacionModulos(root.id, cliente.id);
-
-      expect(result).toEqual({ esAdminTotal: true, modulos: [] });
+      expect(await checker.esAdminTotalEnTenant(root.id, cliente.id)).toBe(true);
     });
 
-    it('usuario sin ninguna fila en la matriz (ni admin) → esAdminTotal=false, modulos=[] (fail-closed, sin crash)', async () => {
-      const cliente = await createCliente('auth-modulos-vacio');
-      const role = await createRole('AUTH_MODULOS_SIN_FILAS');
-      const usuario = await createUsuario('auth-modulos-vacio');
+    it('TECNICO con celdas en TICKETS y EDILICIA → false: las celdas no lo hacen administrador', async () => {
+      const cliente = await createCliente('admin-total-tecnico');
+      const role = await createRole('TECNICO');
+      const usuario = await createUsuario('admin-total-tecnico');
       await createMembresia(usuario.id, cliente.id, role.id);
+      await createPermiso(usuario.id, cliente.id, 'TICKETS', 'LECTURA');
+      await createPermiso(usuario.id, cliente.id, 'EDILICIA', 'LECTURA');
 
-      const result = await checker.getAutorizacionModulos(usuario.id, cliente.id);
+      expect(await checker.esAdminTotalEnTenant(usuario.id, cliente.id)).toBe(false);
+    });
 
-      expect(result).toEqual({ esAdminTotal: false, modulos: [] });
+    it('ADMINISTRADOR de OTRO cliente o con la membresía inactiva → false', async () => {
+      const cliente = await createCliente('admin-total-aislado');
+      const otroCliente = await createCliente('admin-total-aislado-otro');
+      const role = await createRole('ADMINISTRADOR');
+      const deOtro = await createUsuario('admin-total-de-otro');
+      const inactivo = await createUsuario('admin-total-inactivo');
+      await createMembresia(deOtro.id, otroCliente.id, role.id);
+      await createMembresia(inactivo.id, cliente.id, role.id, false);
+
+      expect(await checker.esAdminTotalEnTenant(deOtro.id, cliente.id)).toBe(false);
+      expect(await checker.esAdminTotalEnTenant(inactivo.id, cliente.id)).toBe(false);
     });
   });
 
-  // ─── listarTecnicosAsignables (R9, WU-7.5 — migrado a la matriz) ─────────
-
-  describe('listarTecnicosAsignables() — filtra por AL MENOS UNA acción en el módulo (R9, S22-S23)', () => {
-    it('S22: dos TECNICOs, solo uno con una celda del módulo pedido → la lista incluye solo al que tiene el módulo', async () => {
-      const cliente = await createCliente('tecnicos-asignables-1');
+  describe('listarAgentes() — TECNICO o COLABORADOR activos de entre los candidatos', () => {
+    it('incluye a un TECNICO sin ninguna celda y excluye a uno con celdas que no es candidato', async () => {
+      const cliente = await createCliente('agentes-1');
       const role = await createRole('TECNICO');
-      const conModulo = await masterClient.usuario.create({
-        data: {
-          email: 'con_modulo@integration.test',
-          nombre: 'Con',
-          apellido: 'Modulo',
-          passwordHash: 'hash-fake',
-          activo: true,
-        },
-      });
-      const sinModulo = await masterClient.usuario.create({
-        data: {
-          email: 'sin_modulo@integration.test',
-          nombre: 'Sin',
-          apellido: 'Modulo',
-          passwordHash: 'hash-fake',
-          activo: true,
-        },
-      });
-      await createMembresia(conModulo.id, cliente.id, role.id);
-      await createMembresia(sinModulo.id, cliente.id, role.id);
-      // "Al menos una acción" alcanza: LECTURA sola habilita, no hace falta ALTAS/MODIFICACION.
-      await createPermiso(conModulo.id, cliente.id, 'EDILICIA', 'LECTURA');
+      const sinCeldas = await createUsuarioNombrado(
+        'agente_sin_celdas@integration.test',
+        'Sin',
+        'Celdas',
+      );
+      const conCeldas = await createUsuarioNombrado(
+        'agente_con_celdas@integration.test',
+        'Con',
+        'Celdas',
+      );
+      await createMembresia(sinCeldas.id, cliente.id, role.id);
+      await createMembresia(conCeldas.id, cliente.id, role.id);
+      await createPermiso(conCeldas.id, cliente.id, 'EDILICIA', 'LECTURA');
 
-      const result = await checker.listarTecnicosAsignables(cliente.id, 'EDILICIA');
+      const result = await checker.listarAgentes(cliente.id, [sinCeldas.id]);
 
-      expect(result.map((r) => r.id)).toEqual([conModulo.id]);
+      expect(result).toEqual([{ id: sinCeldas.id, nombre: 'Sin', apellido: 'Celdas' }]);
     });
 
-    it('S23: modulo === null → [] SIN consultar la matriz (corte temprano preservado)', async () => {
-      const cliente = await createCliente('tecnicos-asignables-null');
+    it('sin candidatos → [] sin consultar', async () => {
+      const cliente = await createCliente('agentes-vacio');
 
-      const result = await checker.listarTecnicosAsignables(cliente.id, null);
-
-      expect(result).toEqual([]);
+      expect(await checker.listarAgentes(cliente.id, [])).toEqual([]);
     });
 
-    it('técnico con el módulo pero membresía INACTIVA → excluido (mismo criterio que hoy)', async () => {
-      const cliente = await createCliente('tecnicos-asignables-inactivo');
+    it('ordena por apellido y nombre', async () => {
+      const cliente = await createCliente('agentes-orden');
       const role = await createRole('TECNICO');
-      const usuario = await masterClient.usuario.create({
-        data: {
-          email: 'tecnico_inactivo@integration.test',
-          nombre: 'Tecnico',
-          apellido: 'Inactivo',
-          passwordHash: 'hash-fake',
-          activo: true,
-        },
-      });
-      await createMembresia(usuario.id, cliente.id, role.id, false);
-      await createPermiso(usuario.id, cliente.id, 'EQUIPOS', 'LECTURA');
+      const zeta = await createUsuarioNombrado('agente_zeta@integration.test', 'Ana', 'Zeta');
+      const alfa = await createUsuarioNombrado('agente_alfa@integration.test', 'Bruno', 'Alfa');
+      await createMembresia(zeta.id, cliente.id, role.id);
+      await createMembresia(alfa.id, cliente.id, role.id);
 
-      const result = await checker.listarTecnicosAsignables(cliente.id, 'EQUIPOS');
+      const result = await checker.listarAgentes(cliente.id, [zeta.id, alfa.id]);
 
-      expect(result).toEqual([]);
+      expect(result.map((r) => r.id)).toEqual([alfa.id, zeta.id]);
     });
 
-    it('usuario con el módulo pero con rol USUARIO (ni TECNICO ni COLABORADOR) en ese cliente → excluido', async () => {
-      const cliente = await createCliente('tecnicos-asignables-no-tecnico');
-      const roleNoAsignable = await createRole('USUARIO');
-      const usuario = await masterClient.usuario.create({
-        data: {
-          email: 'no_tecnico@integration.test',
-          nombre: 'No',
-          apellido: 'Tecnico',
-          passwordHash: 'hash-fake',
-          activo: true,
-        },
-      });
-      await createMembresia(usuario.id, cliente.id, roleNoAsignable.id);
-      await createPermiso(usuario.id, cliente.id, 'EQUIPOS', 'LECTURA');
+    it('técnico con membresía INACTIVA, o activa en OTRO cliente → excluido', async () => {
+      const cliente = await createCliente('agentes-inactivo');
+      const otroCliente = await createCliente('agentes-inactivo-otro');
+      const role = await createRole('TECNICO');
+      const inactivo = await createUsuario('agente-inactivo');
+      const deOtro = await createUsuario('agente-de-otro');
+      await createMembresia(inactivo.id, cliente.id, role.id, false);
+      await createMembresia(deOtro.id, otroCliente.id, role.id);
 
-      const result = await checker.listarTecnicosAsignables(cliente.id, 'EQUIPOS');
-
-      expect(result).toEqual([]);
+      expect(await checker.listarAgentes(cliente.id, [inactivo.id, deOtro.id])).toEqual([]);
     });
 
-    it('COLABORADOR con el módulo y membresía activa → incluido (los colaboradores cumplen funciones de técnico)', async () => {
-      const cliente = await createCliente('tecnicos-asignables-colaborador');
+    it('usuario inactivo o soft-deleted → excluido', async () => {
+      const cliente = await createCliente('agentes-usuario-inactivo');
+      const role = await createRole('TECNICO');
+      const inactivo = await createUsuario('agente-usuario-inactivo', false);
+      const borrado = await createUsuario('agente-usuario-borrado', true, new Date());
+      await createMembresia(inactivo.id, cliente.id, role.id);
+      await createMembresia(borrado.id, cliente.id, role.id);
+
+      expect(await checker.listarAgentes(cliente.id, [inactivo.id, borrado.id])).toEqual([]);
+    });
+
+    it('rol USUARIO o ADMINISTRADOR → excluido; COLABORADOR → incluido', async () => {
+      const cliente = await createCliente('agentes-roles');
+      const roleUsuario = await createRole('USUARIO');
+      const roleAdmin = await createRole('ADMINISTRADOR');
       const roleColaborador = await createRole('COLABORADOR');
-      const colaborador = await masterClient.usuario.create({
-        data: {
-          email: 'colaborador_asignable@integration.test',
-          nombre: 'Cole',
-          apellido: 'Aborador',
-          passwordHash: 'hash-fake',
-          activo: true,
-        },
-      });
+      const usuario = await createUsuario('agente-rol-usuario');
+      const admin = await createUsuario('agente-rol-admin');
+      const colaborador = await createUsuario('agente-rol-colaborador');
+      await createMembresia(usuario.id, cliente.id, roleUsuario.id);
+      await createMembresia(admin.id, cliente.id, roleAdmin.id);
       await createMembresia(colaborador.id, cliente.id, roleColaborador.id);
-      await createPermiso(colaborador.id, cliente.id, 'EQUIPOS', 'LECTURA');
 
-      const result = await checker.listarTecnicosAsignables(cliente.id, 'EQUIPOS');
+      const result = await checker.listarAgentes(cliente.id, [
+        usuario.id,
+        admin.id,
+        colaborador.id,
+      ]);
 
       expect(result.map((r) => r.id)).toEqual([colaborador.id]);
     });
@@ -427,11 +409,10 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       expect(await checker.estaActivoEnTenant(usuario.id, cliente.id)).toBe(false);
     });
 
-    it('NO aparece entre los técnicos asignables, ni con rol TECNICO y celda del módulo', async () => {
+    it('NO es un agente aunque tenga rol TECNICO y sea candidato', async () => {
       const { cliente, usuario } = await crearIntegracion('integ-lista', 'TECNICO');
-      await createPermiso(usuario.id, cliente.id, 'EDILICIA', 'LECTURA');
 
-      expect(await checker.listarTecnicosAsignables(cliente.id, 'EDILICIA')).toEqual([]);
+      expect(await checker.listarAgentes(cliente.id, [usuario.id])).toEqual([]);
     });
   });
 

@@ -40,9 +40,13 @@ import {
   REGLA_ASIGNACION_REPOSITORY,
 } from './domain/ports/i-regla-asignacion.repository';
 import { PrismaPermisoTipoTicketRepository } from './infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
-import { PERMISO_TIPO_TICKET_REPOSITORY } from './domain/ports/i-permiso-tipo-ticket.repository';
+import {
+  IPermisoTipoTicketRepository,
+  PERMISO_TIPO_TICKET_REPOSITORY,
+} from './domain/ports/i-permiso-tipo-ticket.repository';
 import { CargadorAlcanceTicket } from './interface/alcance-ticket';
 import { ResolverAsignacionAutomatica } from './application/services/resolver-asignacion-automatica.service';
+import { ElegibilidadAsignado } from './application/services/elegibilidad-asignado';
 import {
   ITareaTicketRepository,
   TAREA_TICKET_REPOSITORY,
@@ -234,25 +238,35 @@ import {
         new ResolverCicloActivoParaCreacion(cicloRepo),
       inject: [CICLO_CLIENTE_REPOSITORY],
     },
+    // odd/permisos-por-tipo-ticket (D5 g): única regla de quién puede recibir un ticket o una tarea
+    // de un tipo; master aporta rol y membresía, el tenant la LECTURA sobre el tipo.
+    {
+      provide: ElegibilidadAsignado,
+      useFactory: (
+        usuarioMasterChecker: IUsuarioMasterChecker,
+        permisos: IPermisoTipoTicketRepository,
+      ) => new ElegibilidadAsignado(usuarioMasterChecker, permisos),
+      inject: [USUARIO_MASTER_CHECKER, PERMISO_TIPO_TICKET_REPOSITORY],
+    },
     {
       provide: ResolverAsignacionAutomatica,
       useFactory: (
         reglaRepo: IReglaAsignacionRepository,
-        usuarioMasterChecker: IUsuarioMasterChecker,
+        elegibilidad: ElegibilidadAsignado,
         estadoRepo: IEstadoRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         logger: ILogger,
       ) =>
         new ResolverAsignacionAutomatica(
           reglaRepo,
-          usuarioMasterChecker,
+          elegibilidad,
           estadoRepo,
           tipoOperacionRepo,
           logger,
         ),
       inject: [
         REGLA_ASIGNACION_REPOSITORY,
-        USUARIO_MASTER_CHECKER,
+        ElegibilidadAsignado,
         ESTADO_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         LOGGER,
@@ -401,7 +415,7 @@ import {
         ticketRepo: ITicketRepository,
         operacionRepo: IOperacionTicketRepository,
         usuarioMasterChecker: IUsuarioMasterChecker,
-        tipoTicketRepo: ITipoTicketRepository,
+        elegibilidad: ElegibilidadAsignado,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
         estadoRepo: IEstadoRepository,
@@ -411,7 +425,7 @@ import {
           ticketRepo,
           operacionRepo,
           usuarioMasterChecker,
-          tipoTicketRepo,
+          elegibilidad,
           tipoOperacionRepo,
           txRunner,
           estadoRepo,
@@ -421,7 +435,7 @@ import {
         TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
         USUARIO_MASTER_CHECKER,
-        TIPO_TICKET_REPOSITORY,
+        ElegibilidadAsignado,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
         ESTADO_REPOSITORY,
@@ -430,12 +444,9 @@ import {
     },
     {
       provide: ListarTecnicosAsignablesUseCase,
-      useFactory: (
-        ticketRepo: ITicketRepository,
-        tipoTicketRepo: ITipoTicketRepository,
-        usuarioMasterChecker: IUsuarioMasterChecker,
-      ) => new ListarTecnicosAsignablesUseCase(ticketRepo, tipoTicketRepo, usuarioMasterChecker),
-      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, USUARIO_MASTER_CHECKER],
+      useFactory: (ticketRepo: ITicketRepository, elegibilidad: ElegibilidadAsignado) =>
+        new ListarTecnicosAsignablesUseCase(ticketRepo, elegibilidad),
+      inject: [TICKET_REPOSITORY, ElegibilidadAsignado],
     },
     // odd/tareas-con-tecnico T3: casos de uso de tareas (T2), cableados con `TareasTicketController`.
     // Crear se exporta para el seed de demo (`prisma_master/seeds/demo-seed.ts`). Completar y
@@ -451,10 +462,9 @@ import {
       useFactory: (
         ticketRepo: ITicketRepository,
         tipoTicketRepo: ITipoTicketRepository,
-        usuarioMasterChecker: IUsuarioMasterChecker,
-      ) =>
-        new ListarTecnicosElegiblesTareaUseCase(ticketRepo, tipoTicketRepo, usuarioMasterChecker),
-      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, USUARIO_MASTER_CHECKER],
+        elegibilidad: ElegibilidadAsignado,
+      ) => new ListarTecnicosElegiblesTareaUseCase(ticketRepo, tipoTicketRepo, elegibilidad),
+      inject: [TICKET_REPOSITORY, TIPO_TICKET_REPOSITORY, ElegibilidadAsignado],
     },
     {
       provide: CrearTareaTicketUseCase,
@@ -492,7 +502,7 @@ import {
         ticketRepo: ITicketRepository,
         tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
-        usuarioMasterChecker: IUsuarioMasterChecker,
+        elegibilidad: ElegibilidadAsignado,
         operacionRepo: IOperacionTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         txRunner: ITenantTransactionRunner,
@@ -502,7 +512,7 @@ import {
           ticketRepo,
           tipoTicketRepo,
           tareaRepo,
-          usuarioMasterChecker,
+          elegibilidad,
           operacionRepo,
           tipoOperacionRepo,
           txRunner,
@@ -512,7 +522,7 @@ import {
         TICKET_REPOSITORY,
         TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
-        USUARIO_MASTER_CHECKER,
+        ElegibilidadAsignado,
         OPERACION_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         TENANT_TX_RUNNER,
@@ -658,6 +668,7 @@ import {
         tipoTicketRepo: ITipoTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
         usuarioMasterChecker: IUsuarioMasterChecker,
+        elegibilidad: ElegibilidadAsignado,
         stateMachineFactory: TicketStateMachineFactory,
         txRunner: ITenantTransactionRunner,
         eventPublisher: IDomainEventPublisher,
@@ -669,6 +680,7 @@ import {
           tipoTicketRepo,
           tipoOperacionRepo,
           usuarioMasterChecker,
+          elegibilidad,
           stateMachineFactory,
           txRunner,
           eventPublisher,
@@ -680,6 +692,7 @@ import {
         TIPO_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
         USUARIO_MASTER_CHECKER,
+        ElegibilidadAsignado,
         TicketStateMachineFactory,
         TENANT_TX_RUNNER,
         DOMAIN_EVENT_PUBLISHER,
@@ -862,6 +875,9 @@ import {
     // módulos (Equipos, Reparaciones) y la pantalla de configuración.
     REGLA_ASIGNACION_REPOSITORY,
     ResolverAsignacionAutomatica,
+    // odd/permisos-por-tipo-ticket (D5 g): la pantalla de reglas valida el responsable con la misma
+    // elegibilidad que el alta.
+    ElegibilidadAsignado,
     // odd/tareas-con-tecnico: las tareas las leen también el listado de reparaciones, el dashboard
     // y el PDF, que viven en otros módulos.
     TAREA_TICKET_REPOSITORY,

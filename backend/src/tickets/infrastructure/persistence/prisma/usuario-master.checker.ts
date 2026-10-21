@@ -14,13 +14,13 @@ import { IUsuarioMasterChecker } from '../../../domain/ports/i-usuario-master.ch
  * resuelve con un JOIN a `membresias` filtrado por `clienteId` (ver JSDoc del
  * puerto para el detalle de la adaptación al schema real).
  *
- * `getAutorizacionModulos`/`listarTecnicosAsignables` (elegibilidad del
- * ASIGNADO) leen la matriz `usuario_cliente_permisos`, no
- * `usuario_cliente_modulos` (R9, WU-7.5, sdd/matriz-permisos-por-usuario) —
- * resuelven los módulos de OTRO usuario (el destinatario de una asignación),
- * fuera del alcance de `resolverScope` (que solo cubre el eje del ACTOR).
+ * `esAdminTotalEnTenant`/`listarAgentes` (elegibilidad del ASIGNADO) leen solo
+ * identidad, rol y membresía: ninguna tabla de permisos. Qué tipos de ticket
+ * atiende cada usuario lo decide `permisos_tipo_ticket` en el tenant
+ * (odd/permisos-por-tipo-ticket, D5 g; antes, las celdas por módulo de
+ * `usuario_cliente_permisos`).
  *
- * Ref design: ADR-8. Ref spec: T14, T15; sdd/matriz-permisos-por-usuario/spec R9.
+ * Ref design: ADR-8. Ref spec: T14, T15.
  */
 @Injectable()
 export class UsuarioMasterChecker implements IUsuarioMasterChecker {
@@ -93,90 +93,40 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
     return new Map(rows.map((row) => [row.id, { nombre: row.nombre, apellido: row.apellido }]));
   }
 
-  /**
-   * ROOT o ADMINISTRADOR (membresía activa con rol `ADMINISTRADOR` en el
-   * cliente) → `esAdminTotal = true`. El resto → `modulos` con AL MENOS UNA
-   * acción otorgada en la matriz `usuario_cliente_permisos` (R9, WU-7.5 —
-   * migrado de `usuario_cliente_modulos`; mismo umbral que `resolverScope`
-   * usa para derivar `modulos` del actor: no se exige una acción específica,
-   * `LECTURA` sola ya alcanza, porque todo módulo la declara).
-   *
-   * `esAdminTotal` NO cambió: sigue sin leer ninguna tabla de módulos, solo
-   * `usuario.isGlobalAdmin` y la membresía con rol `ADMINISTRADOR`.
-   */
-  async getAutorizacionModulos(
-    usuarioId: string,
-    clienteId: string,
-  ): Promise<{ esAdminTotal: boolean; modulos: string[] }> {
-    const usuario = await this.masterClient.usuario.findFirst({
-      where: { id: usuarioId, deletedAt: null },
-      select: { isGlobalAdmin: true },
+  /** ROOT o membresía activa con rol `ADMINISTRADOR`; ver el JSDoc del puerto. */
+  async esAdminTotalEnTenant(usuarioId: string, clienteId: string): Promise<boolean> {
+    const row = await this.masterClient.usuario.findFirst({
+      where: {
+        id: usuarioId,
+        deletedAt: null,
+        OR: [
+          { isGlobalAdmin: true },
+          {
+            membresias: {
+              some: { clienteId, activo: true, deletedAt: null, rol: { codigo: 'ADMINISTRADOR' } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
     });
-
-    const esAdmin =
-      (await this.masterClient.membresia.findFirst({
-        where: {
-          usuarioId,
-          clienteId,
-          activo: true,
-          deletedAt: null,
-          rol: { codigo: 'ADMINISTRADOR' },
-        },
-        select: { id: true },
-      })) !== null;
-
-    if (usuario?.isGlobalAdmin || esAdmin) {
-      return { esAdminTotal: true, modulos: [] };
-    }
-
-    const rows = await this.masterClient.usuarioClientePermiso.findMany({
-      where: { usuarioId, clienteId },
-      select: { modulo: true },
-      distinct: ['modulo'],
-    });
-    return { esAdminTotal: false, modulos: rows.map((r) => r.modulo) };
+    return row !== null;
   }
 
   /**
-   * Agentes elegibles por módulo en un cliente (rol `TECNICO` o
-   * `COLABORADOR`: ambos cumplen funciones de técnico y pueden atender
-   * tickets — decisión de negocio 2026-08-20, antes solo `TECNICO`). Dos
-   * consultas (no N+1): `usuario_cliente_permisos` NO tiene `@relation` a
-   * `Usuario` (soft ref cross-DB), así que no se puede filtrar el módulo con
-   * un `some` anidado en `usuario.findMany`. Se resuelven primero los
-   * `usuarioId` con AL MENOS UNA acción otorgada en el módulo pedido (R9,
-   * WU-7.5 — migrado de `usuario_cliente_modulos`, `distinct` evita
-   * duplicados cuando el usuario tiene varias acciones del mismo módulo) y
-   * luego se intersecan con los usuarios activos que tienen membresía ACTIVA
-   * con rol TECNICO o COLABORADOR en ese cliente.
-   *
-   * Excluye al usuario de integración de la API pública (defensa en profundidad: sin celdas de
-   * matriz ni rol de técnico, hoy no entra igual).
-   *
-   * Con `modulo === null` (tipo custom sin módulo) no hay elegibles por
-   * catálogo → se retorna `[]` sin golpear la DB.
+   * Una sola consulta con `id IN (...)`; ver el JSDoc del puerto. Excluye al usuario de
+   * integración de la API pública (defensa en profundidad: sin rol de técnico, hoy no entra igual).
    */
-  async listarTecnicosAsignables(
+  async listarAgentes(
     clienteId: string,
-    modulo: string | null,
+    usuarioIds: readonly string[],
   ): Promise<{ id: string; nombre: string; apellido: string }[]> {
-    if (modulo === null) {
+    if (usuarioIds.length === 0) {
       return [];
     }
-
-    const conModulo = await this.masterClient.usuarioClientePermiso.findMany({
-      where: { clienteId, modulo },
-      select: { usuarioId: true },
-      distinct: ['usuarioId'],
-    });
-    const idsConModulo = conModulo.map((r) => r.usuarioId);
-    if (idsConModulo.length === 0) {
-      return [];
-    }
-
     const rows = await this.masterClient.usuario.findMany({
       where: {
-        id: { in: idsConModulo },
+        id: { in: [...usuarioIds] },
         activo: true,
         deletedAt: null,
         esIntegracion: false,
