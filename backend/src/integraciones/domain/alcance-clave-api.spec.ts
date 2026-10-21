@@ -80,3 +80,31 @@ describe('accionesDeClaveApiParaComentar', () => {
     expect(accionesDeClaveApiParaComentar(['TICKETS:COMENTAR'], 'EDILICIA')).toEqual(new Set());
   });
 });
+
+describe('alcance de la clave de API v1 — sin acciones fuera de PERMISOS_API', () => {
+  it.each([
+    [['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:ALTAS', 'TICKETS:COMENTAR']],
+    [['TICKETS:COMENTAR']],
+  ])('ninguna clave concede acciones fuera de PERMISOS_API: %j', (celdas: string[]) => {
+    for (const acciones of [
+      accionesDeClaveApi(celdas, 'TICKETS'),
+      accionesDeClaveApiParaComentar(celdas, 'TICKETS'),
+    ]) {
+      for (const prohibida of [
+        'MODIFICACION',
+        'TRANSICIONAR',
+        'ASIGNAR',
+        'OBSERVAR',
+        'BORRADO',
+      ] as const) {
+        expect(acciones.has(prohibida)).toBe(false);
+      }
+    }
+  });
+
+  it('una clave de lectura sin COMENTAR no se amplía al comentar', () => {
+    expect(accionesDeClaveApiParaComentar(['TICKETS:LECTURA'], 'TICKETS')).toEqual(
+      new Set(['LECTURA', 'IMPRESION']),
+    );
+  });
+});
