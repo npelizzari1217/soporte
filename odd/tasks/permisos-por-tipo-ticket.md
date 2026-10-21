@@ -44,7 +44,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 
 ## Diseño
 
-- **D1 (propuesta, se valida en T0)** — Los pares (usuario, tipo, acción) se guardan en la base del
+- **D1 (validado en T0, L13)** — Los pares (usuario, tipo, acción) se guardan en la base del
   tenant, junto a `tipos_ticket`, con FK al tipo: los tipos viven en el tenant y la base master no
   puede referenciarlos. No viajan en el JWT: su tamaño crecería con cada tipo y quedarían viejos
   hasta el refresh (hoy ya pasa con las celdas, relevamiento L5). Se resuelven por request.
@@ -52,17 +52,22 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   de listado. La etapa 0 lo implementa por módulo del tipo; la etapa 1 cambia su fuente a tipo ×
   acción sin tocar los llamadores. Antecedente: `tareas-ticket.reglas.ts`, el único lugar que hoy
   ya razona por el módulo del tipo.
+- **D3** — El punto único vive en la capa de aplicación (casos de uso), nunca en el repositorio:
+  los procesos de sistema (SLA, avance por tareas, listeners, barrido preventivo) leen tickets por
+  el repositorio y no tienen actor. Respuesta: 404 `TicketNoEncontradoError` si el ticket no es
+  visible para el actor (fila o módulo del tipo); 403 si es visible pero la acción no está
+  permitida. ROOT y ADMINISTRADOR (`modulosPermitidos = null`) no se filtran por módulo.
 
 ## Tasks
 
-- [ ] T0 — D1, D2 — explore + inline — validar el diseño: lugar de guardado, resolución por
-  request, inventario completo de llamadores del punto único — (doc)
+- [x] T0 — D1, D2, D3 — explore + inline — validar el diseño: lugar de guardado, resolución por
+  request, inventario completo de llamadores del punto único — (este commit)
 - [ ] T1 — S0 — writer — etapa 0, lecturas: detalle, timeline, PDF, adjuntos y `GET /soporte/:id`
   por el punto único — (pendiente)
 - [ ] T2 — S0 — writer — etapa 0, escrituras: editar, estado, asignar, comentar, `/soporte`
   solución por el punto único — (pendiente)
-- [ ] T3 — S0 — writer — etapa 0, Edilicia: listado y export de reparaciones con scope; front:
-  gate de ruta en `/tickets` y `/tickets/[id]`, ítem de menú — (pendiente)
+- [ ] T3 — S0 — writer — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
+  menú con `TICKETS:LECTURA` (el scope de reparaciones pasa a T5, L14) — (pendiente)
 - [ ] T4 — S1, S7, D1 — writer — etapa 1: tabla tipo × acción, migración aditiva, plantillas de
   rol por tipo — (pendiente)
 - [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
@@ -116,3 +121,17 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `EDILICIA:ALTAS` → Crear; `EDILICIA:MODIFICACION` → Modificar, Estado y Comentar. Imprimir a
   quien tenga Ver. Borrar vacío. Cada tipo toma las celdas del módulo de su `modulo`.
 - **L12** (dueño) — "si" (arrancar el documento de la feature).
+- **L13** (evidencia T0) — `TenantGuard` liga el cliente Prisma del tenant en un AsyncLocalStorage
+  (`tenant.guard.ts:65-72`, `tenant-context.ts:68`), con pool por base. `usuario_id` sin FK a
+  master ya es convención (`tickets.solicitante_id`, `tareas_ticket.tecnico_id`). El backfill de
+  S7 necesita leer master y escribir cada tenant: patrón `PrismaTenantEnumerator` +
+  `tenantContext.run` (`purga-pendientes-vencidos.scheduler.ts:65-67`). Inventario de huecos de
+  S0: sin módulo — detalle, timeline, PDF, `GET /api/v1/tickets/:id`; regla propia — adjuntos
+  (`adjuntar-archivo.use-case.ts:104-117`); sin fila ni módulo — `PATCH /tickets/:id`, estado,
+  asignar, asignables, asignar-en-proceso, comentarios, `/soporte/:id/solucion`,
+  `GET /soporte/:ticketId`. La clave de API v1 actúa con `modulos: ['TICKETS']`
+  (`api-clave.guard.ts:114-125`).
+- **L14** (decisión) — El listado de reparaciones sin filtro de fila no es hueco en la etapa 0:
+  S7 preserva "Edilicia lectura = ver todos" y la ruta ya exige `EDILICIA:*`, así que el módulo
+  del tipo siempre coincide. Su scope real llega con tipo × acción (T5). El dashboard (agregados)
+  también queda para T5.
