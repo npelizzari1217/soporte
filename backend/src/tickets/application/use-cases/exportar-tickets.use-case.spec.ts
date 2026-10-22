@@ -279,6 +279,8 @@ describe('ExportarTicketsUseCase', () => {
       findLastSecuencia: vi.fn<ITicketRepository['findLastSecuencia']>(),
       save: vi.fn<ITicketRepository['save']>(),
       delete: vi.fn<ITicketRepository['delete']>(),
+      borrarSiActivo: vi.fn<ITicketRepository['borrarSiActivo']>(),
+      recuperarSiBorrado: vi.fn<ITicketRepository['recuperarSiBorrado']>(),
       esVisiblePara: unstubbed('esVisiblePara'),
       bloquear: unstubbed('bloquear'),
     };

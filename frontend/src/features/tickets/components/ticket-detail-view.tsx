@@ -9,7 +9,9 @@
  * (odd/permisos-por-tipo-ticket, S6, D5 c), la misma que exige el backend:
  * Editar `MODIFICACION`, Estado `TRANSICIONAR`, Responsable `ASIGNAR`,
  * comentar `COMENTAR`, comentario interno `OBSERVAR`, PDF `IMPRESION`, adjuntar
- * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`.
+ * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`, Borrar `BORRADO`
+ * (S8, en cualquier estado: las tareas pendientes y las compras las frena el backend;
+ * un ticket PREVENTIVO no se borra, L45).
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -42,8 +44,9 @@ import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
 import { TicketPdfButton } from "./ticket-pdf-button";
+import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
-import { TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
+import { TIPO_CODIGO_PREVENTIVO, TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
 
 export interface TicketDetailViewProps {
   ticketId: string;
@@ -128,6 +131,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // muestra (CA1): los tipos de Edilicia son del sistema y no se desactivan.
   const modulo = tipoModuloMap.get(ticket.tipoId);
   const mostrarUbicacion = tiposQuery.isSuccess && modulo !== "EDILICIA";
+  // Un ticket PREVENTIVO no se borra (L45: el backend responde 422). Con el catálogo sin resolver
+  // no se sabe si lo es, y "Borrar" queda oculto; resuelto, un tipo ausente es uno desactivado, que
+  // no puede ser PREVENTIVO (los tipos del sistema no se desactivan).
+  const ofrecerBorrar = puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO;
 
   return (
     <div className="flex flex-col gap-6">
@@ -205,6 +212,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                 />
               ) : null}
               {puede("IMPRESION") && <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />}
+              {ofrecerBorrar && <TicketBorrarButton ticketId={ticket.id} numero={ticket.numero} />}
             </div>
             {puedeModificar && !edicionPermitida && (
               <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>

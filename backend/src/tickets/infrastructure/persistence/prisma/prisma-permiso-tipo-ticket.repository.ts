@@ -9,7 +9,6 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import {
   ACCIONES_TIPO_TICKET,
-  ACCIONES_TIPO_TICKET_CONCEDIBLES,
   AccionTipoTicket,
   TipoTicketConModulo,
 } from '../../../domain/permisos-tipo-ticket';
@@ -102,13 +101,12 @@ export class PrismaPermisoTipoTicketRepository implements IPermisoTipoTicketRepo
   async copiarDeTipo(origenId: string, destinoId: string): Promise<number> {
     // Un solo INSERT ... SELECT: la copia no pasa por memoria y, con el cliente del contexto, corre
     // dentro de la transacción del alta del tipo cuando la hay. Se copian solo las filas válidas
-    // (W2): las de quien tiene Ver sobre el origen (S3) y solo acciones concedibles (sin BORRADO).
+    // (W2): las de quien tiene Ver sobre el origen (S3). BORRADO se copia como las demás (S8).
     return this.client.$executeRaw`
       INSERT INTO "permisos_tipo_ticket" ("usuario_id", "tipo_id", "accion")
       SELECT o."usuario_id", ${destinoId}::uuid, o."accion"
         FROM "permisos_tipo_ticket" o
        WHERE o."tipo_id" = ${origenId}::uuid
-         AND o."accion" = ANY(${[...ACCIONES_TIPO_TICKET_CONCEDIBLES]}::text[])
          AND EXISTS (
                SELECT 1
                  FROM "permisos_tipo_ticket" v

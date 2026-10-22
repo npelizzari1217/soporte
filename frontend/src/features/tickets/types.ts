@@ -74,6 +74,11 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   /**
+   * Instante del borrado lógico (odd/permisos-por-tipo-ticket, S8); `null` en un ticket activo.
+   * Solo llega con valor en el filtro "Borrados", exclusivo de ADMINISTRADOR y ROOT.
+   */
+  borradoEn: string | null;
+  /**
    * Puntaje (1-5) y comentario de la última respuesta CSAT (WU9.3, backend
    * ADR-C5/ADR-C8). AUSENTES sin `CSAT:LECTURA`, o si el TECNICO no tuvo el
    * ticket asignado — el gateo real ya lo hizo el backend; la UI ADEMÁS lo
@@ -100,6 +105,11 @@ export interface TicketsFiltros {
   fechaDesde?: string;
   fechaHasta?: string;
   busqueda?: string;
+  /**
+   * `true`: solo los tickets borrados (S8). Exclusivo de ADMINISTRADOR y ROOT: el backend responde
+   * 403 a cualquier otro, así que la pantalla no lo manda si el usuario no lo es.
+   */
+  borrados?: boolean;
   pagina?: number;
   porPagina?: number;
 }

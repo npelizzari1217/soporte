@@ -58,6 +58,11 @@ export interface TicketFiltros {
    * explícito (histórico) o el ciclo ACTIVO por default (T7).
    */
   cicloId?: string;
+  /**
+   * `true`: solo los tickets dados de baja (filtro "Borrados", odd/permisos-por-tipo-ticket S8);
+   * ausente o `false`: solo los activos. Quién puede pedirlo lo decide `ListarTicketsUseCase`.
+   */
+  borrados?: boolean;
   /** Paginación: cantidad máxima de filas a retornar. `undefined` = sin límite. */
   limit?: number;
   /** Paginación: cantidad de filas a saltear. `undefined` = 0. */
@@ -118,7 +123,7 @@ export interface ITicketRepository {
   /**
    * Retorna los tickets del tenant activo que cumplen los filtros
    * combinables (AND), ordenados por `created_at DESC`. Excluye
-   * soft-deleted. `filtros.limit`/`filtros.offset` aplican paginación
+   * soft-deleted, salvo con `filtros.borrados`, que trae solo esos. `filtros.limit`/`filtros.offset` aplican paginación
    * (T7 — `ListarTicketsUseCase`).
    */
   findAll(filtros?: TicketFiltros): Promise<TicketEntity[]>;
@@ -158,6 +163,21 @@ export interface ITicketRepository {
    * Baja lógica: setea `deleted_at`. NO elimina la fila.
    */
   delete(id: string): Promise<void>;
+
+  /**
+   * Borrado lógico condicionado (odd/permisos-por-tipo-ticket, S8): setea `deleted_at = ahora` solo
+   * si el ticket sigue activo. No toca ninguna otra columna, así que el estado y el resto de los
+   * datos quedan como estaban. `false` si no había un ticket activo con ese id (otro lo borró en el
+   * medio): el caso de uso responde 404 sin escribir el historial dos veces.
+   */
+  borrarSiActivo(id: string, ahora: Date): Promise<boolean>;
+
+  /**
+   * Recuperación de un ticket borrado (S8): limpia `deleted_at` solo si estaba dado de baja. El
+   * ticket vuelve con el estado que tenía, porque el borrado no lo cambió. `false` si no había un
+   * ticket borrado con ese id.
+   */
+  recuperarSiBorrado(id: string, ahora: Date): Promise<boolean>;
 }
 
 /** Token de inyección de dependencias para ITicketRepository en NestJS. */

@@ -307,7 +307,7 @@ describe('CrearTipoTicketUseCase', () => {
       );
     });
 
-    it('W2: no propaga al tipo nuevo las filas de quien no tiene Ver en el origen (S3) ni BORRADO', async () => {
+    it('W2: no propaga al tipo nuevo las filas de quien no tiene Ver en el origen (S3); Borrar sí (S8)', async () => {
       const soporte = tipo('SOPORTE', 'TICKETS');
       const c = makeCollaborators(
         [soporte],
@@ -327,9 +327,9 @@ describe('CrearTipoTicketUseCase', () => {
       });
 
       const nuevoId = result.getValue().id;
-      expect(c.permisos.filasDe(USUARIO_1).filter((f) => f.startsWith(nuevoId))).toEqual([
-        `${nuevoId}:LECTURA`,
-      ]);
+      expect(c.permisos.filasDe(USUARIO_1).filter((f) => f.startsWith(nuevoId))).toEqual(
+        [`${nuevoId}:BORRADO`, `${nuevoId}:LECTURA`].sort(),
+      );
       expect(c.permisos.filasDe(USUARIO_2)).toEqual([`${soporte.id}:COMENTAR`]);
     });
 

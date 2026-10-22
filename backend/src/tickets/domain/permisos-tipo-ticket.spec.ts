@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCIONES_TIPO_TICKET,
-  ACCIONES_TIPO_TICKET_CONCEDIBLES,
   AccionTipoTicket,
   accionesDeTipoDesdeCeldas,
   celdaReemplazadaPorTipo,
@@ -235,10 +234,10 @@ describe('filasDeTiposDesdeCeldas — plantilla de rol sobre todos los tipos (T4
 });
 
 describe('problemaDeFilaDeTipo (T7, S3)', () => {
-  it('una fila vacía o con Ver y cualquier otra acción concedible es válida', () => {
+  it('una fila vacía, o con Ver y cualquier otra acción del vocabulario, es válida', () => {
     expect(problemaDeFilaDeTipo([])).toBeNull();
     expect(problemaDeFilaDeTipo(['LECTURA'])).toBeNull();
-    expect(problemaDeFilaDeTipo([...ACCIONES_TIPO_TICKET_CONCEDIBLES])).toBeNull();
+    expect(problemaDeFilaDeTipo([...ACCIONES_TIPO_TICKET])).toBeNull();
   });
 
   it('sin Ver no se concede ninguna otra acción, tampoco Ver todos ni Imprimir', () => {
@@ -252,12 +251,9 @@ describe('problemaDeFilaDeTipo (T7, S3)', () => {
     });
   });
 
-  it('BORRADO no se concede: borrar tickets todavía no existe (S8)', () => {
-    expect(ACCIONES_TIPO_TICKET_CONCEDIBLES).not.toContain('BORRADO');
-    expect(problemaDeFilaDeTipo(['LECTURA', 'BORRADO'])).toEqual({
-      tipo: 'no-concedible',
-      acciones: ['BORRADO'],
-    });
+  it('BORRADO se concede con Ver (S8), y sin Ver no, como cualquier otra acción (S3)', () => {
+    expect(problemaDeFilaDeTipo(['LECTURA', 'BORRADO'])).toBeNull();
+    expect(problemaDeFilaDeTipo(['BORRADO'])).toEqual({ tipo: 'sin-ver', acciones: ['BORRADO'] });
   });
 
   it('una acción fuera del vocabulario se informa antes que las demás reglas', () => {

@@ -9,7 +9,8 @@
  * - Siembra `estados` (7: NUEVO, ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE, RESUELTO, CERRADO,
  *   CANCELADO), `prioridades` (4), `tipo_operacion` (5 de R19 —
  *   APROBACION/RECHAZO removidos en PR-1 de sdd/redisenio-modulo-compras —
- *   más los 5 TAREA_* de odd/tareas-con-tecnico),
+ *   más los 5 TAREA_* de odd/tareas-con-tecnico y los 2 TICKET_* del borrado lógico de
+ *   odd/permisos-por-tipo-ticket, S8),
  *   `tipos_ticket` base incl. MANTENIMIENTO y PREVENTIVO (4) — cada catálogo vía `createMany` con
  *   `skipDuplicates: true` (equivalente a `ON CONFLICT (codigo) DO NOTHING`,
  *   por eso correr el seed dos veces no duplica ni falla).
@@ -119,7 +120,7 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
     ]);
   });
 
-  it('siembra los 5 tipo_operacion de R19 y los 5 de tareas, sin APROBACION/RECHAZO (PR-1 compras)', async () => {
+  it('siembra los 5 tipo_operacion de R19, los 5 de tareas y los 2 del borrado, sin APROBACION/RECHAZO (PR-1 compras)', async () => {
     const client = makeFakeClient();
     const createClient = vi.fn().mockReturnValue({ client, pool: makeFakePool() });
     const adapter = new TenantSeederAdapter(MASTER_URL, createClient);
@@ -138,6 +139,8 @@ describe('TenantSeederAdapter (T7.4, unit — createClient mockeado)', () => {
       'TAREA_COMPLETADA',
       'TAREA_DESCOMPLETADA',
       'TAREA_ELIMINADA',
+      'TICKET_BORRADO',
+      'TICKET_RECUPERADO',
     ]);
   });
 

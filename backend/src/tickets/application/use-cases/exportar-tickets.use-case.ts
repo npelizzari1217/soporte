@@ -27,10 +27,13 @@ import { AlcanceActorTicket } from '../services/visibilidad-ticket';
  * exportar la página visible en vez del universo filtrado es el error que
  * vuelve inútil a esta función.
  *
+ * Sin `borrados`: la exportación trae solo tickets activos, para todos los
+ * actores (odd/permisos-por-tipo-ticket, S8).
+ *
  * Ref: sdd/exportar-listados-csv/design, decisión D3.
  */
 export interface ExportarTicketsDto {
-  filtros?: Omit<TicketFiltros, 'alcance' | 'limit' | 'offset'>;
+  filtros?: Omit<TicketFiltros, 'alcance' | 'limit' | 'offset' | 'borrados'>;
   /**
    * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 e): `ListarTicketsUseCase` los
    * traduce al alcance del listado. `permisosPorTipo: null` = sin restricción (ROOT y ADMINISTRADOR).

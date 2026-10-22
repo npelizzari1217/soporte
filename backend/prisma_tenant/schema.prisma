@@ -167,6 +167,7 @@ model Sector {
 // Seeds: CAMBIO_ESTADO, COMENTARIO, ASIGNACION, ADJUNTO, AVANCE_EDILICIO.
 // Migración 20261013150000_tipos_operacion_tareas: TAREA_CREADA, TAREA_ASIGNADA,
 // TAREA_COMPLETADA, TAREA_DESCOMPLETADA, TAREA_ELIMINADA.
+// Migración 20261022120000_tipos_operacion_borrado: TICKET_BORRADO, TICKET_RECUPERADO.
 
 model TipoOperacion {
   id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

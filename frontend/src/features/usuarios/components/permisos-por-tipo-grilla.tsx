@@ -9,8 +9,7 @@
  *   fila guardada antes de esta regla puede traer acciones sin Ver: esas casillas se pueden
  *   destildar (quitar nunca viola la regla, conceder sí) y `Guardar` queda deshabilitado hasta
  *   corregirla, porque el backend la rechazaría.
- * - Borrar no tiene columna: borrar un ticket todavía no existe (S8) y el backend no lo concede.
- *   Ofrecerlo, aunque sea deshabilitado, sería mostrar un control sin operación detrás.
+ * - Borrar es una columna más (S8): como cualquier otra acción, se concede solo con Ver.
  * - "Aplicar plantilla del rol" carga en la fila lo que la plantilla del rol da sobre ese tipo. Lo
  *   calcula el backend (D4); acá solo se copia a la fila y se guarda con `Guardar`.
  * - "Copiar permisos de otro usuario" reemplaza en el servidor todas las filas, previa
@@ -38,7 +37,7 @@ import {
 import { useUsuariosTenant } from "../hooks/use-usuarios-tenant";
 import type { UsuarioTenant } from "../types";
 
-/** Columnas de la grilla, en el orden de S1. Sin Borrar: ver el comentario del archivo. */
+/** Columnas de la grilla, en el orden de S1. */
 export const COLUMNAS_POR_TIPO: readonly { accion: AccionTipoTicket; etiqueta: string }[] = [
   { accion: "LECTURA", etiqueta: "Ver" },
   { accion: "VER_TODOS", etiqueta: "Ver todos" },
@@ -49,6 +48,7 @@ export const COLUMNAS_POR_TIPO: readonly { accion: AccionTipoTicket; etiqueta: s
   { accion: "COMENTAR", etiqueta: "Comentar" },
   { accion: "OBSERVAR", etiqueta: "Comentario interno" },
   { accion: "IMPRESION", etiqueta: "Imprimir" },
+  { accion: "BORRADO", etiqueta: "Borrar" },
 ];
 
 /** Acciones por tipo de la grilla en edición. */
@@ -232,8 +232,7 @@ export function PermisosPorTipoGrilla({ usuario }: PermisosPorTipoGrillaProps) {
           </table>
         )}
         <p className="text-xs text-muted-foreground">
-          Sin Ver, el resto de la fila queda deshabilitado. Borrar tickets todavía no existe, así
-          que no se puede conceder.
+          Sin Ver, el resto de la fila queda deshabilitado.
         </p>
         {haySinVer && (
           <p role="alert" className="text-xs text-destructive">

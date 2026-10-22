@@ -147,8 +147,9 @@ export class PermisosPorTipoUsuarioTenantUseCase {
    * permisos de otro usuario", S5).
    *
    * Las filas copiadas pasan por la misma validación que el reemplazo total (W2): un origen con una
-   * fila sin Ver (el backfill puede dejarlas, L34) o con BORRADO se rechaza con el mismo 422, que
-   * nombra el tipo, en vez de propagar un estado que el PUT no aceptaría.
+   * fila sin Ver (el backfill puede dejarlas, L34) se rechaza con el mismo 422, que nombra el tipo,
+   * en vez de propagar un estado que el PUT no aceptaría. BORRADO se copia como cualquier otra
+   * acción (S8).
    *
    * @param input Cliente, usuario editado y usuario de origen.
    * @returns Los permisos guardados; 404 si alguno no tiene membresía activa en el cliente; 422 si
@@ -264,12 +265,6 @@ export class PermisosPorTipoUsuarioTenantUseCase {
       if (problema?.tipo === 'desconocida') {
         return new PermisosPorTipoInvalidosError(
           `Acción desconocida en el tipo «${tipo.nombre}»: ${problema.acciones.join(', ')}.`,
-        );
-      }
-      if (problema?.tipo === 'no-concedible') {
-        return new PermisosPorTipoInvalidosError(
-          `No se puede conceder ${problema.acciones.join(', ')} en el tipo «${tipo.nombre}»: ` +
-            'borrar tickets todavía no existe.',
         );
       }
       if (problema?.tipo === 'sin-ver') {

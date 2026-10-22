@@ -52,9 +52,10 @@ export class ConsultarEncuestaUseCase {
     }
 
     const ticket = await this.ticketRepo.findById(resuelto.getValue().ticketId);
-    if (!ticket) {
-      // Soft ref roto (no debería pasar en operación normal): mismo rechazo
-      // genérico, nunca una fuga adicional de información al caller anónimo.
+    if (!ticket || ticket.isDeleted()) {
+      // Soft ref roto (no debería pasar en operación normal) o ticket borrado
+      // (odd/permisos-por-tipo-ticket, S8): mismo rechazo genérico, nunca una
+      // fuga adicional de información al caller anónimo.
       return Result.fail(new EncuestaLinkInvalidoError());
     }
 

@@ -17,11 +17,18 @@
  * ciclos pasados quedaban invisibles porque acá nunca se mandaba ese param —
  * ahora hay un select que lo agrega, con el mismo `useCiclos` que usa el
  * dashboard.
+ *
+ * Filtro "Borrados" (odd/permisos-por-tipo-ticket, S8): solo para ADMINISTRADOR y
+ * ROOT, que son los únicos a quienes el backend se los lista. Muestra solo los
+ * tickets borrados, marcados, con la acción "Recuperar"; sin detalle (el detalle
+ * de un borrado es 404) ni exportación (exporta solo activos).
  */
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
+import { useSession } from "@/shared/hooks/use-session";
+import { useRecuperarTicket } from "../hooks/use-ticket-mutations";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { puedeVerListaDeUsuarios } from "@/shared/auth/permisos-por-tipo";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
@@ -36,6 +43,8 @@ import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
 import { PageHeader } from "@/components/shared/page-header";
 import { Select } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { TicketCreateDialog } from "./ticket-create-dialog";
 import { ExportarTicketsButton } from "./exportar-tickets-button";
 import { StatusBadge, etiquetaOpcionEstado, type TicketEstado } from "@/components/ui/status-badge";
@@ -54,6 +63,11 @@ export function TicketsListView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { updateFiltros, irAPagina, limpiarFiltros } = useUrlFilters<TicketsFiltros>("pagina");
+  const { user, isLoading: sesionCargando, esAdminCliente } = useSession();
+  const recuperar = useRecuperarTicket();
+  // `?borrados=true` vale solo para ADMINISTRADOR y ROOT: a cualquier otro el backend le responde
+  // 403, así que ni se manda (y se saca de la URL más abajo).
+  const borrados = esAdminCliente && searchParams.get("borrados") === "true";
 
   const filtros: TicketsFiltros = useMemo(
     () => ({
@@ -63,10 +77,11 @@ export function TicketsListView() {
       asignado: searchParams.get("asignado") ?? undefined,
       ciclo: searchParams.get("ciclo") ?? undefined,
       busqueda: searchParams.get("busqueda") ?? undefined,
+      borrados: borrados ? true : undefined,
       pagina: Number(searchParams.get("pagina") ?? "1"),
       porPagina: PAGE_SIZE,
     }),
-    [searchParams],
+    [searchParams, borrados],
   );
 
   /**
@@ -81,6 +96,7 @@ export function TicketsListView() {
     Boolean(filtros.asignado) ||
     Boolean(filtros.ciclo) ||
     Boolean(filtros.busqueda) ||
+    Boolean(filtros.borrados) ||
     (filtros.pagina ?? 1) > 1;
 
   const tiposQuery = useTiposTicket();
@@ -113,13 +129,18 @@ export function TicketsListView() {
     Boolean(filtros.asignado) &&
     usuariosQuery.isSuccess &&
     !agentes.some((usuario) => usuario.id === filtros.asignado);
+  // Un `?borrados=` en la URL de quien no es administrador (link compartido) tampoco se ofrece:
+  // solo con la sesión ya resuelta, porque mientras carga todavía no se sabe quién es.
+  const borradosNoPermitido =
+    searchParams.has("borrados") && !sesionCargando && user !== null && !esAdminCliente;
   useEffect(() => {
-    if (!tipoFueraDeCatalogo && !asignadoFueraDeCatalogo) return;
+    if (!tipoFueraDeCatalogo && !asignadoFueraDeCatalogo && !borradosNoPermitido) return;
     updateFiltros({
       ...(tipoFueraDeCatalogo ? { tipo: undefined } : {}),
       ...(asignadoFueraDeCatalogo ? { asignado: undefined } : {}),
+      ...(borradosNoPermitido ? { borrados: undefined } : {}),
     });
-  }, [tipoFueraDeCatalogo, asignadoFueraDeCatalogo, updateFiltros]);
+  }, [tipoFueraDeCatalogo, asignadoFueraDeCatalogo, borradosNoPermitido, updateFiltros]);
 
   const ciclos = useMemo(() => ciclosQuery.data?.ciclos ?? [], [ciclosQuery.data]);
   const cicloActivoId = ciclosQuery.data?.cicloActivoId ?? null;
@@ -165,7 +186,10 @@ export function TicketsListView() {
       // primero se lee primero, sin perder la referencia que se dicta por teléfono.
       render: (row) => (
         <div className="flex flex-col gap-0.5">
-          <span className="font-semibold text-foreground">{row.titulo}</span>
+          <span className="flex items-center gap-2 font-semibold text-foreground">
+            {row.titulo}
+            {row.borradoEn && <Badge variant="outline">Borrado</Badge>}
+          </span>
           <span className="text-xs text-muted-foreground">
             {row.numero} · {formatearInstante(row.createdAt)}
           </span>
@@ -207,6 +231,35 @@ export function TicketsListView() {
     // nombre que resuelve el backend, que incluye los desactivados.
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     { key: "sectorId", header: "Sector", render: (row) => row.sectorNombre ?? "—" },
+    ...(borrados
+      ? [
+          {
+            key: "borradoEn",
+            header: "Borrado",
+            render: (row: Ticket) => (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {row.borradoEn ? formatearInstante(row.borradoEn) : "—"}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  aria-label={`Recuperar ${row.numero}`}
+                  isLoading={recuperar.isPending && recuperar.variables === row.id}
+                  disabled={recuperar.isPending}
+                  onClick={(evento) => {
+                    evento.stopPropagation();
+                    recuperar.mutate(row.id);
+                  }}
+                >
+                  Recuperar
+                </Button>
+              </div>
+            ),
+          } satisfies Column<Ticket>,
+        ]
+      : []),
   ];
 
   return (
@@ -223,7 +276,8 @@ export function TicketsListView() {
               activo): es lo que garantiza que el CSV y la pantalla cuenten
               lo mismo.
             */}
-            <ExportarTicketsButton filtros={filtrosEfectivos} />
+            {/* La exportación trae solo activos: con "Borrados" no coincidiría con la pantalla. */}
+            {!borrados && <ExportarTicketsButton filtros={filtrosEfectivos} />}
             {puedeCrear && <TicketCreateDialog />}
           </>
         }
@@ -307,6 +361,22 @@ export function TicketsListView() {
           </Select>
         </div>
 
+        {esAdminCliente && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="filtro-borrados" className="sr-only">
+              Borrados
+            </label>
+            <Select
+              id="filtro-borrados"
+              value={borrados ? "true" : ""}
+              onChange={(e) => updateFiltros({ borrados: e.target.value === "true" ? true : undefined })}
+            >
+              <option value="">Tickets activos</option>
+              <option value="true">Borrados</option>
+            </Select>
+          </div>
+        )}
+
         {puedeFiltrarPorAsignado && (
           <div className="flex flex-col gap-1">
             <label htmlFor="filtro-asignado" className="sr-only">
@@ -336,7 +406,8 @@ export function TicketsListView() {
           isLoading={ticketsQuery.isLoading}
           error={ticketsQuery.isError ? "No se pudieron cargar los tickets." : undefined}
           onRetry={() => ticketsQuery.refetch().catch(notifyError)}
-          onRowClick={(row) => router.push(`/tickets/${row.id}`)}
+          // El detalle de un ticket borrado es 404: en "Borrados" la fila no navega.
+          onRowClick={borrados ? undefined : (row) => router.push(`/tickets/${row.id}`)}
           emptyTitle="Sin tickets"
           emptyDescription="Todavía no hay tickets registrados."
           hayFiltrosActivos={hayFiltrosActivos}

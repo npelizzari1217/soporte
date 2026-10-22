@@ -37,29 +37,19 @@ export function esAccionTipoTicket(valor: string): valor is AccionTipoTicket {
 }
 
 /**
- * Acciones que un administrador puede conceder desde Permisos (S5). `BORRADO` queda afuera: borrar
- * un ticket todavía no existe (S8, T10) y conceder un permiso sin operación detrás sería un control
- * sin efecto. Cuando exista el borrado, se suma acá.
- */
-export const ACCIONES_TIPO_TICKET_CONCEDIBLES: readonly AccionTipoTicket[] =
-  ACCIONES_TIPO_TICKET.filter((accion) => accion !== 'BORRADO');
-
-/**
  * Motivo por el que una fila (las acciones de un usuario sobre un tipo) no se puede guardar, o
- * `null` si es válida. Sin Ver, el resto de la fila queda deshabilitado (S3): ninguna otra acción
- * se concede sin `LECTURA`.
+ * `null` si es válida. Todas las acciones del vocabulario se conceden desde Permisos (S5), Borrar
+ * incluida desde que existe el borrado (S8). Sin Ver, el resto de la fila queda deshabilitado (S3):
+ * ninguna otra acción se concede sin `LECTURA`.
  *
  * @param acciones Acciones pedidas para el tipo.
  * @returns Las acciones que no se pueden conceder y por qué, o `null`.
  */
 export function problemaDeFilaDeTipo(
   acciones: readonly string[],
-): { tipo: 'desconocida' | 'no-concedible' | 'sin-ver'; acciones: string[] } | null {
+): { tipo: 'desconocida' | 'sin-ver'; acciones: string[] } | null {
   const desconocidas = acciones.filter((accion) => !esAccionTipoTicket(accion));
   if (desconocidas.length > 0) return { tipo: 'desconocida', acciones: desconocidas };
-  const concedibles: readonly string[] = ACCIONES_TIPO_TICKET_CONCEDIBLES;
-  const noConcedibles = acciones.filter((accion) => !concedibles.includes(accion));
-  if (noConcedibles.length > 0) return { tipo: 'no-concedible', acciones: noConcedibles };
   if (acciones.length > 0 && !acciones.includes('LECTURA')) {
     return { tipo: 'sin-ver', acciones: [...acciones] };
   }

@@ -7,7 +7,9 @@
  * - Mapea Prisma rows ↔ TicketEntity vía TicketMapper.
  * - save() es un upsert por id (INSERT si nuevo, UPDATE si existe); nunca
  *   pisa `createdAt` en el UPDATE.
- * - delete() es soft delete: setea deleted_at = now().
+ * - delete() es soft delete: setea deleted_at = now(). borrarSiActivo() y
+ *   recuperarSiBorrado() son sus versiones condicionadas (S8 de
+ *   odd/permisos-por-tipo-ticket): solo tocan deleted_at/updated_at.
  * - findLastSecuencia() (ADR-5): parsea la secuencia del campo `numero`
  *   (formato `{PREFIJO}-{AÑO}-{SEQ5}`) para el (tipoId, año) dados, bajo un
  *   advisory lock transaccional de Postgres (`pg_advisory_xact_lock`)
@@ -117,7 +119,9 @@ export class PrismaTicketRepository implements ITicketRepository {
    * `titulo`/`descripcion`, combinado en AND con el resto de los filtros.
    */
   private buildWhere(filtros?: TicketFiltros): Prisma.TicketWhereInput {
-    const where: Prisma.TicketWhereInput = { deletedAt: null };
+    const where: Prisma.TicketWhereInput = {
+      deletedAt: filtros?.borrados === true ? { not: null } : null,
+    };
 
     if (filtros?.estadoId) {
       where.estadoId = filtros.estadoId;
@@ -232,5 +236,23 @@ export class PrismaTicketRepository implements ITicketRepository {
       where: { id },
       data: { deletedAt: new Date() },
     });
+  }
+
+  async borrarSiActivo(id: string, ahora: Date): Promise<boolean> {
+    // `updateMany` y no `update`: la condición sobre `deleted_at` va en el mismo WHERE, y una fila
+    // que ya no la cumple da `count = 0` en vez de una excepción.
+    const { count } = await this.client.ticket.updateMany({
+      where: { id, deletedAt: null },
+      data: { deletedAt: ahora, updatedAt: ahora },
+    });
+    return count === 1;
+  }
+
+  async recuperarSiBorrado(id: string, ahora: Date): Promise<boolean> {
+    const { count } = await this.client.ticket.updateMany({
+      where: { id, deletedAt: { not: null } },
+      data: { deletedAt: null, updatedAt: ahora },
+    });
+    return count === 1;
   }
 }

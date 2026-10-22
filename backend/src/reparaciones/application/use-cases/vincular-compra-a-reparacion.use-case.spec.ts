@@ -20,7 +20,10 @@ import {
 } from '../../domain/errors/reparaciones.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
-import { AccionSobreTipoNoPermitidaError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
   alcanceSinRestriccion,
@@ -67,9 +70,26 @@ describe('VincularCompraAReparacionUseCase', () => {
       vincular: vi.fn<IReparacionCompraRepository['vincular']>().mockResolvedValue(undefined),
     };
 
+    let enTransaccion = false;
     const ticketRepo = {
       findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(ticketBase()),
       esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
+      bloquear: vi.fn<ITicketRepository['bloquear']>(async () => {
+        expect(enTransaccion).toBe(true);
+      }),
+    };
+    reparacionCompraRepo.vincular.mockImplementation(async () => {
+      expect(enTransaccion).toBe(true);
+    });
+    const txRunner = {
+      run: async <T>(fn: () => Promise<T>): Promise<T> => {
+        enTransaccion = true;
+        try {
+          return await fn();
+        } finally {
+          enTransaccion = false;
+        }
+      },
     };
 
     const useCase = new VincularCompraAReparacionUseCase(
@@ -77,9 +97,10 @@ describe('VincularCompraAReparacionUseCase', () => {
       compraRepo,
       reparacionCompraRepo,
       ticketRepo,
+      txRunner,
     );
 
-    return { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo };
+    return { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo, ticketRepo };
   }
 
   const baseDto = {
@@ -132,6 +153,27 @@ describe('VincularCompraAReparacionUseCase', () => {
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
     expect(compraRepo.findByIdConItems).not.toHaveBeenCalled();
+    expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
+  });
+
+  it('un ticket base borrado entre la carga y el lock da 404 y no vincula (odd/permisos-por-tipo-ticket, L45)', async () => {
+    const { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo, ticketRepo } =
+      buildDeps();
+    ticketEdiliciaRepo.findById.mockResolvedValue(
+      TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid', ubicacion: null }, 'edilicia-uuid'),
+    );
+    compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
+    // Otra transacción borra el ticket y hace commit mientras este caso de uso espera el lock.
+    ticketRepo.bloquear.mockImplementationOnce(async () => {
+      const borrado = ticketBase();
+      borrado.softDelete(new Date('2026-10-22T15:00:00Z'));
+      ticketRepo.findById.mockResolvedValue(borrado);
+    });
+
+    const result = await useCase.execute(baseDto);
+
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+    expect(ticketRepo.bloquear).toHaveBeenCalledWith('ticket-uuid');
     expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
   });
 

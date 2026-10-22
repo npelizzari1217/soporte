@@ -70,7 +70,7 @@ export interface IPermisoTipoTicketRepository {
   /**
    * Da a cada usuario sobre `destinoId` las mismas acciones que tiene sobre `origenId` (alta de un
    * tipo con "Copiar permisos de", S4). Solo se copian filas válidas (W2): las de quien tiene Ver
-   * sobre el origen (S3) y solo acciones concedibles, sin BORRADO; una fila sin Ver, como las que
+   * sobre el origen (S3), BORRADO incluida (S8); una fila sin Ver, como las que
    * puede dejar el backfill (L34), no se propaga. Las filas que ya existan en el destino se
    * conservan. No abre transacción propia: participa de la que esté en curso, para que el alta del
    * tipo y la copia se confirmen o se reviertan juntas.

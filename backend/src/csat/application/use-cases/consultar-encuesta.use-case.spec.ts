@@ -64,6 +64,8 @@ function makeFakeTicketRepo(ticket: TicketEntity | null) {
     bloquear: unstubbed('bloquear'),
     save: unstubbed('save'),
     delete: unstubbed('delete'),
+    borrarSiActivo: unstubbed('borrarSiActivo'),
+    recuperarSiBorrado: unstubbed('recuperarSiBorrado'),
   } satisfies ITicketRepository;
 }
 
@@ -86,6 +88,20 @@ describe('ConsultarEncuestaUseCase', () => {
     );
     const ticketRepo = makeFakeTicketRepo(null);
     const useCase = new ConsultarEncuestaUseCase(resolver, ticketRepo);
+
+    const resultado = await useCase.ejecutar('token-crudo');
+
+    expect(resultado.isFail()).toBe(true);
+    expect(resultado.getError()).toBeInstanceOf(EncuestaLinkInvalidoError);
+  });
+
+  it('ticket borrado (odd/permisos-por-tipo-ticket, S8): mismo rechazo genérico, sin el número', async () => {
+    const resolver = makeFakeResolver(
+      Result.ok({ tokenId: TOKEN_ID, ticketId: TICKET_ID, clienteId: CLIENTE_ID }),
+    );
+    const borrado = makeTicket('SOP-2026-00042');
+    borrado.softDelete(new Date('2026-10-22T12:00:00Z'));
+    const useCase = new ConsultarEncuestaUseCase(resolver, makeFakeTicketRepo(borrado));
 
     const resultado = await useCase.ejecutar('token-crudo');
 

@@ -103,6 +103,8 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
       bloquear: vi.fn<ITicketRepository['bloquear']>().mockResolvedValue(undefined),
       delete: unstubbed('delete'),
+      borrarSiActivo: unstubbed('borrarSiActivo'),
+      recuperarSiBorrado: unstubbed('recuperarSiBorrado'),
     };
     const operacionRepo = {
       save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),

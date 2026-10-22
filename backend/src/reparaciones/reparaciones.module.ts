@@ -254,18 +254,21 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         compraRepo: ICompraRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
         ticketRepo: ITicketRepository,
+        txRunner: ITenantTransactionRunner,
       ) =>
         new VincularCompraAReparacionUseCase(
           ticketEdiliciaRepo,
           compraRepo,
           reparacionCompraRepo,
           ticketRepo,
+          txRunner,
         ),
       inject: [
         TICKET_EDILICIA_REPOSITORY,
         COMPRA_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
         TICKET_REPOSITORY,
+        TENANT_TX_RUNNER,
       ],
     },
     {

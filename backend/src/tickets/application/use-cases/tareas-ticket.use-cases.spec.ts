@@ -269,11 +269,26 @@ function armar() {
     return tarea;
   }
 
+  /**
+   * Carrera con un borrado (odd/permisos-por-tipo-ticket, L45): otra transacción borra el ticket y
+   * hace commit mientras el caso de uso espera el lock. El ticket que ya cargó sigue activo; solo
+   * una relectura después del lock ve el borrado.
+   */
+  function borrarAlBloquear(ticketId: string): void {
+    ticketRepo.bloquear.mockImplementationOnce(async (id: string) => {
+      secuencia.push(`bloquear:${id}`);
+      const borrado = crearTicket(ticketId);
+      borrado.softDelete(AHORA);
+      tickets.set(ticketId, borrado);
+    });
+  }
+
   return {
     tickets,
     tareas,
     operaciones,
     sembrarTarea,
+    borrarAlBloquear,
     esAgenteDeTipo,
     tareaRepo,
     operacionRepo,
@@ -439,6 +454,22 @@ describe('CrearTareaTicketUseCase', () => {
       });
       expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
     }
+  });
+
+  it('un ticket borrado entre la carga y el lock da 404 y no escribe la tarea ni el historial (L45)', async () => {
+    const deps = armar();
+    deps.borrarAlBloquear(TICKET_ID);
+
+    const result = await deps.crear.execute({
+      ticketId: TICKET_ID,
+      actor: ACTORES.responsable,
+      descripcion: 'Cambiar el flotante',
+    });
+
+    expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(deps.secuencia).toEqual([`bloquear:${TICKET_ID}`]);
+    expect(deps.tareas.size).toBe(0);
+    expect(deps.operaciones).toHaveLength(0);
   });
 });
 
@@ -746,6 +777,24 @@ describe('DescompletarTareaUseCase', () => {
     });
 
     expect(result.isFail()).toBe(true);
+    expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+  });
+
+  it('un ticket borrado entre la carga y el lock da 404 y no escribe nada (L45)', async () => {
+    const deps = armar();
+    deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
+    deps.borrarAlBloquear(TICKET_ID);
+
+    const result = await deps.descompletar.execute({
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES.responsable,
+    });
+
+    expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
+    expect(deps.secuencia).toEqual([`bloquear:${TICKET_ID}`]);
+    expect(deps.tareaRepo.descompletarSiCompletada).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
     expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
   });
 

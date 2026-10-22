@@ -3,6 +3,7 @@ import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { CodigoOperacionTarea } from '../../domain/constants/tipos-operacion-tarea.constants';
+import { CodigoOperacionBorrado } from '../../domain/constants/tipos-operacion-borrado.constants';
 import {
   TareaAccionNoPermitidaError,
   TareaEliminadaError,
@@ -244,11 +245,17 @@ export function errorDeCompletadoRechazado(
 /**
  * Resuelve el id del tipo de operación. El catálogo lo siembra una migración: si falta, es un
  * fallo de infraestructura y no un error del caller (mismo `throw` defensivo que
- * `AsignarTicketUseCase`).
+ * `AsignarTicketUseCase`). Lo usan también el borrado y la recuperación de un ticket
+ * (odd/permisos-por-tipo-ticket, S8), cuyos códigos siembra otra migración.
+ *
+ * @param tipoOperacionRepo Catálogo de tipos de operación.
+ * @param codigo Código sembrado por migración.
+ * @returns El id del tipo de operación.
+ * @throws Error si el catálogo del tenant no tiene el código.
  */
 export async function resolverTipoOperacion(
   tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
-  codigo: CodigoOperacionTarea,
+  codigo: CodigoOperacionTarea | CodigoOperacionBorrado,
 ): Promise<string> {
   const id = await tipoOperacionRepo.findIdByCodigo(codigo);
   if (!id) {

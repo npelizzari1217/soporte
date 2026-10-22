@@ -38,10 +38,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   solo Ver; Ver todos sale de `TICKETS:VER_TODOS` (L35). Imprimir se da a quien tenga Ver. Borrar arranca
   vacío. ADMINISTRADOR y ROOT no cambian. La migración es aditiva: los permisos `TICKETS:*` y
   `EDILICIA:*` de tickets se retiran recién en una etapa posterior, verificado el modelo nuevo.
-- **S8** — Borrar ticket no existe hoy (no hay endpoint). Es funcionalidad nueva y va en una etapa
-  propia, con sus decisiones abiertas: borrado lógico o físico, y qué pasa con tareas, adjuntos y
-  compras vinculadas.
-
+- **S8** — Borrar ticket (L39-L41): borrado lógico (`deleted_at`), con la acción `BORRADO` sobre el
+  tipo del ticket, en cualquier estado salvo que tenga tareas activas o compras vinculadas (error
+  que dice qué resolver). Adjuntos, comentarios e historial quedan con el ticket. Solo ADMINISTRADOR
+  y ROOT ven los borrados (filtro "Borrados" del listado) y los recuperan; vuelven al mismo estado.
+  Borrado y recuperación quedan en el historial con quién y cuándo. La grilla por tipo ofrece la
+  columna Borrar.
 ## Diseño
 
 - **D1 (validado en T0, L13)** — Los pares (usuario, tipo, acción) se guardan en la base del
@@ -107,7 +109,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
 - [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
   producción — (pendiente)
-- [ ] T10 — S8 — bloqueada: borrar ticket, espera las decisiones de S8 — (pendiente)
+- [x] T10 — S8 — worker — borrar y recuperar ticket (backend, front, grilla) — (este commit)
 
 ## Log
 
@@ -339,3 +341,36 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   tareas activas o compras vinculadas; en ese caso el backend responde con un error que dice qué
   resolver antes. Adjuntos, comentarios e historial no frenan: quedan con el ticket oculto y
   vuelven si se recupera.
+- **L41** (T10, dueño: "si") — Recuperar: solo ADMINISTRADOR y ROOT ven y recuperan los borrados,
+  desde un filtro "Borrados" del listado; el ticket vuelve al estado que tenía. Borrado y
+  recuperación quedan en el historial con autor y fecha. Rama `feat/borrar-ticket`.
+
+- **L42** (T10) — `DELETE /tickets/:id` (BORRADO sobre el tipo; 422 con tareas pendientes, es decir
+  activas y no completadas, o con compras vinculadas no borradas) y `POST /tickets/:id/recuperar`
+  (solo ADMINISTRADOR y ROOT). `GET /tickets?borrados=true` lista los borrados y da 403 a quien no es
+  administrador. Migración `20261022120000_tipos_operacion_borrado` (TICKET_BORRADO y
+  TICKET_RECUPERADO). Se corrigieron dos lectores que no filtraban los borrados: `/reparaciones` y el
+  enlace de la encuesta CSAT. La grilla por tipo acepta BORRADO con Ver; las plantillas nunca lo
+  dan. Back: 3378 tests; front: 2457. Deuda: crear una tarea no toma el lock del ticket, así que una
+  tarea creada en el mismo instante que el borrado puede colarse. Ayuda (suspendida): botón Borrar,
+  filtro Borrados con Recuperar, columna Borrar y entradas del historial.
+- **L43** (verificación independiente de T10) — PASS en las 8 cláusulas de S8, sin bloqueantes (80
+  tests unitarios). Notas: copiar de otro tipo ahora copia BORRADO, lo que corrige la redacción
+  "sin BORRADO" de L36 (W2 copia lo que el PUT aceptaría, y el PUT ya acepta BORRADO con Ver). La
+  deuda de L42 se amplía: descompletar una tarea tampoco relee si el ticket fue borrado. Los avisos
+  por correo no miran `isDeleted()`; solo afecta un evento emitido justo antes del borrado. El SLA
+  sigue corriendo mientras el ticket está borrado. Pendiente de confirmar por el dueño: "tareas
+  activas" se leyó como "activas y no completadas".
+- **L44** (dueño) — "si significa eso": "tareas activas" son las no completadas; una tarea
+  completada no frena el borrado.
+- **L45** (judgment-day de T10: APPROVED sin críticos; dueño: "si" a corregir) — (1) Crear tarea,
+  descompletar tarea y vincular compra toman el lock del ticket y releen que no esté borrado, para
+  que no se cuelen contra un borrado concurrente. (2) El rollback de la migración no borra las
+  entradas TICKET_BORRADO/TICKET_RECUPERADO del historial. (3) Los tickets de tipo PREVENTIVO no se
+  pueden borrar (422): son de sistema y el barrido abriría otro del mismo plan. (4) Las entradas de
+  borrado y recuperación son internas (visibles con OBSERVAR). (5) Al borrar, el front descarta la
+  caché del detalle. Más el test unitario del seeder (12 tipos de operación).
+- **L46** (cierre de T10) — Correcciones de L45 en `97f404ed`, con TDD y prueba de concurrencia real
+  en Postgres. Suite completa: backend 768 archivos y 9496 tests, frontend 281 archivos y 2462
+  tests, lint y typecheck en cero. Rama `feat/borrar-ticket` lista para mergear; el deploy trae la
+  migración `20261022120000_tipos_operacion_borrado`, así que va con dump previo.

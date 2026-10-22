@@ -126,3 +126,41 @@ export function useSubirAdjunto(id: string) {
     onError: notifyError,
   });
 }
+
+/**
+ * Borrado lógico del ticket (`DELETE /tickets/:id`, odd/permisos-por-tipo-ticket S8). Invalida la
+ * lista y descarta de la caché el detalle y todo lo que cuelga de él (timeline incluido, L45): el
+ * detalle de un ticket borrado responde 404, y una caché que sobreviviera lo mostraría al volver.
+ * Quien borra navega fuera de él (ver `TicketBorrarButton`) en vez de volver a pedirlo. Un 422
+ * (tareas pendientes, compras vinculadas o ticket PREVENTIVO) llega al usuario por `notifyError`
+ * con el mensaje del backend, que dice qué resolver.
+ */
+export function useBorrarTicket(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<void>(`tickets/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      // Por prefijo: `["ticket", id]` también alcanza a `["ticket", id, "timeline"]`.
+      queryClient.removeQueries({ queryKey: ["ticket", id] });
+      queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      notifySuccess("Ticket borrado.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Recupera un ticket borrado (`POST /tickets/:id/recuperar`, S8), exclusivo de ADMINISTRADOR y
+ * ROOT. Invalida la lista (sale de "Borrados" y vuelve a la de activos) y el detalle.
+ */
+export function useRecuperarTicket() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiFetch<Ticket>(`tickets/${id}/recuperar`, { method: "POST" }),
+    onSuccess: (_ticket, id) => {
+      invalidateTicketAndList(queryClient, id);
+      notifySuccess("Ticket recuperado.");
+    },
+    onError: notifyError,
+  });
+}

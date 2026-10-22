@@ -29,7 +29,8 @@ export interface ITicketEdiliciaRepository {
   /**
    * Retorna los `ticket_edilicia` del tenant activo cuyo ticket base entra en el alcance del actor
    * (odd/permisos-por-tipo-ticket, D5 e: tipos con `LECTURA`, y por la regla de fila salvo en los
-   * de `VER_TODOS`), ordenados por `created_at DESC`. Excluye soft-deleted. El alcance lo aplica la
+   * de `VER_TODOS`), ordenados por `created_at DESC`. Excluye los soft-deleted, y también los de un
+   * ticket base borrado (odd/permisos-por-tipo-ticket, S8). El alcance lo aplica la
    * base en la misma consulta. `null` = sin restricción (ROOT y ADMINISTRADOR).
    */
   findAll(alcance: AlcanceListadoTickets | null): Promise<TicketEdiliciaEntity[]>;
