@@ -374,3 +374,9 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   en Postgres. Suite completa: backend 768 archivos y 9496 tests, frontend 281 archivos y 2462
   tests, lint y typecheck en cero. Rama `feat/borrar-ticket` lista para mergear; el deploy trae la
   migración `20261022120000_tipos_operacion_borrado`, así que va con dump previo.
+- **L47** (deploy de T10, dueño: "si") — `main` en `25887476` (T10 y `fix/filtros-url-fuera-de-catalogo`),
+  desplegado 2026-10-22. Dump verificado en `C:\soporte\backups\utc-backfill-20261022-124547`.
+  Migración aplicada en los 9 tenants. El paso 8c omitió los 9 tenants, como corresponde; uno ya
+  tenía 346 filas contra 400 calculadas, o sea que un administrador ya editó permisos por tipo y el
+  guard los respetó. Smoke interno OK; externo: `/login` 200, `DELETE /api/tickets/:id` sin token
+  401. Rollback de código: volver el VPS a `4e801ba1` y correr `deploy.ps1`.
