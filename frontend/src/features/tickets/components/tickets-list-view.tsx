@@ -23,6 +23,7 @@ import { useMemo } from "react";
 import { useTickets } from "../hooks/use-tickets";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
+import { puedeVerListaDeUsuarios } from "@/shared/auth/permisos-por-tipo";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
 import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
 // Mismo hook que usa el dashboard (`features/dashboard/hooks/use-ciclos.ts`)
@@ -89,9 +90,9 @@ export function TicketsListView() {
   const tiposVisibles = permisosPorTipo.tiposCon(tiposQuery.data ?? [], "LECTURA");
   // El alta de este listado es la de soporte general: solo tipos de TICKETS (`moduloRequerido`).
   const puedeCrear = permisosPorTipo.puedeEnModulo("TICKETS", "ALTAS");
-  // Con VER_TODOS en algún tipo, el listado trae filas de otros usuarios y filtrar por responsable
-  // tiene sentido; sin él, el backend devuelve solo las propias (regla de fila).
-  const puedeFiltrarPorAsignado = permisosPorTipo.puedeEnAlgunTipo("VER_TODOS");
+  // Las opciones del filtro salen de `GET /usuarios`: se ofrece con la misma regla con la que el
+  // backend abre esa lista (S7).
+  const puedeFiltrarPorAsignado = puedeVerListaDeUsuarios(permisosPorTipo.permisos);
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
   const usuariosQuery = useUsuariosAsignables();

@@ -109,6 +109,18 @@ const ORIGEN_POR_MODULO_DEL_TIPO: Readonly<Record<string, ModuloOrigen>> = {
 };
 
 /**
+ * ¿El tipo toma sus acciones de las celdas `TICKETS:*`? Es así para los tipos de TICKETS, COMPRAS y
+ * EQUIPOS (L21). Permite reconstruir qué celda originó una acción: un `VER_TODOS` sobre estos tipos
+ * viene de `TICKETS:VER_TODOS`; sobre uno de EDILICIA, de `EDILICIA:LECTURA` (L11).
+ *
+ * @param moduloDelTipo Valor de `tipos_ticket.modulo` del tipo.
+ * @returns `true` si el origen de sus acciones son las celdas de TICKETS.
+ */
+export function tomaCeldasDeTickets(moduloDelTipo: string): boolean {
+  return ORIGEN_POR_MODULO_DEL_TIPO[moduloDelTipo] === 'TICKETS';
+}
+
+/**
  * Traduce las celdas master de un usuario a las acciones que tiene sobre un tipo de ticket,
  * según la tabla de L11. Es la única implementación de esa tabla: la usan el backfill, las
  * plantillas de rol y los tests (D4).

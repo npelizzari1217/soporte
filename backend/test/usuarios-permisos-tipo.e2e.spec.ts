@@ -246,6 +246,35 @@ describe('Plantillas de rol por tipo de ticket por los endpoints de /usuarios (T
     expect(await filasDe(usuarioId)).toEqual([]);
   });
 
+  /** `GET /usuarios` con el token del usuario creado por `crearUsuarioPorEndpoint(etiqueta)`. */
+  async function listarUsuariosComo(etiqueta: string): Promise<number> {
+    const login = await fetch(`${baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: `permtipo-${etiqueta}-${SUFIJO}@test.local`, password: PASSWORD }),
+    });
+    const { accessToken } = (await login.json()) as { accessToken: string };
+    const res = await fetch(`${baseUrl}/usuarios`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return res.status;
+  }
+
+  // S7: el acceso a `GET /usuarios` no cambia con la migración. Antes exigía `TICKETS:ASIGNAR` o
+  // `TICKETS:VER_TODOS`; la plantilla USUARIO no tiene ninguna, aunque su `EDILICIA:LECTURA` se
+  // traduzca a VER_TODOS sobre los tipos de Edilicia (L11).
+  it('GET /usuarios con las filas de la plantilla USUARIO → 403, con las de TECNICO → 200 (S7)', async () => {
+    const usuarioId = await crearUsuarioPorEndpoint('lista-usuario', 'USUARIO');
+    await crearUsuarioPorEndpoint('lista-tecnico', 'TECNICO');
+    // Precondición del caso: el USUARIO tiene VER_TODOS en Edilicia y no en Tickets.
+    const filas = await filasDe(usuarioId);
+    expect(filas).toContain(`${tipoEdiliciaId}:VER_TODOS`);
+    expect(filas).not.toContain(`${tipoSoporteId}:VER_TODOS`);
+
+    expect(await listarUsuariosComo('lista-usuario')).toBe(403);
+    expect(await listarUsuariosComo('lista-tecnico')).toBe(200);
+  });
+
   it('PATCH /usuarios/:id/rol sin reaplicarPreset no toca las filas por tipo', async () => {
     const usuarioId = await crearUsuarioPorEndpoint('sinpreset', 'TECNICO');
     const antes = await filasDe(usuarioId);

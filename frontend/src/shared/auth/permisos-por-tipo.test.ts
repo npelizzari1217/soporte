@@ -6,6 +6,7 @@ import {
   puedeEnAlgunTipo,
   puedeEnModulo,
   puedeEnTipo,
+  puedeVerListaDeUsuarios,
   tiposCon,
   type PermisosPorTipo,
 } from "./permisos-por-tipo";
@@ -69,5 +70,19 @@ describe("permisos por tipo de la sesión (odd/permisos-por-tipo-ticket, T6)", (
     expect(
       permisosPorTipoSchema.safeParse({ ...PERMISOS, porTipo: { soporte: ["BORRAR_TODO"] } }).success,
     ).toBe(false);
+  });
+
+  it("puedeVerListaDeUsuarios: sin restricción siempre; sin datos nunca; VER_TODOS de Edilicia no cuenta (S7)", () => {
+    expect(puedeVerListaDeUsuarios(PERMISOS_SIN_RESTRICCION)).toBe(true);
+    expect(puedeVerListaDeUsuarios(null)).toBe(false);
+    const soloEdilicia: PermisosPorTipo = {
+      sinRestriccion: false,
+      porTipo: { edilicia: ["LECTURA", "VER_TODOS"] },
+      porModulo: { EDILICIA: ["LECTURA", "VER_TODOS"] },
+    };
+    expect(puedeVerListaDeUsuarios(soloEdilicia)).toBe(false);
+    expect(
+      puedeVerListaDeUsuarios({ ...soloEdilicia, porModulo: { TICKETS: ["LECTURA", "VER_TODOS"] } }),
+    ).toBe(true);
   });
 });

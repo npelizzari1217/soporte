@@ -106,6 +106,28 @@ export function puedeEnAlgunTipo(
 }
 
 /**
+ * Módulos cuyos tipos toman sus acciones de las celdas `TICKETS:*` (L21). Espejo de
+ * `tomaCeldasDeTickets` (`backend/src/tickets/domain/permisos-tipo-ticket.ts`).
+ */
+export const MODULOS_CON_CELDAS_DE_TICKETS: readonly string[] = ["TICKETS", "COMPRAS", "EQUIPOS"];
+
+/**
+ * ¿La sesión puede leer la lista de usuarios (`GET /usuarios`), para asignar o filtrar por
+ * responsable? Espejo de `puedeVerListaDeUsuarios` del backend (S7): `ASIGNAR` sobre algún tipo, o
+ * `VER_TODOS` sobre un tipo de `MODULOS_CON_CELDAS_DE_TICKETS`. Un `VER_TODOS` de Edilicia no cuenta:
+ * viene de `EDILICIA:LECTURA` (L11), que no abría la lista.
+ *
+ * @param permisos Permisos de la sesión, o `null` si no se conocen.
+ * @returns `true` si el backend le devuelve la lista.
+ */
+export function puedeVerListaDeUsuarios(permisos: PermisosPorTipo | null): boolean {
+  return (
+    puedeEnAlgunTipo(permisos, "ASIGNAR") ||
+    MODULOS_CON_CELDAS_DE_TICKETS.some((modulo) => puedeEnModulo(permisos, modulo, "VER_TODOS"))
+  );
+}
+
+/**
  * Los tipos del catálogo sobre los que la sesión tiene `accion`, en el orden recibido.
  *
  * @param permisos Permisos de la sesión, o `null` si no se conocen.

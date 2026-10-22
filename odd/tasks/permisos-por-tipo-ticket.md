@@ -295,3 +295,10 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   con "Ninguno (cerrado)" por defecto, filtrado por módulo, solo en el alta. Back: 1405 tests;
   front: 2434. Ayuda (suspendida): campo "Copiar permisos de" en el alta de tipo.
 
+- **L33** (verificación independiente de la etapa 1) — PASS en S1-S6, orden del deploy y ps1 ASCII.
+  Bloqueante B1 (S7): `GET /usuarios` abría con VER_TODOS en cualquier tipo y la plantilla USUARIO
+  recibe VER_TODOS en los tipos de Edilicia por L11: todo USUARIO pasaba a ver la lista de
+  usuarios. Corregido con TDD (RED: e2e "plantilla USUARIO → 403" daba 200): abre con ASIGNAR en
+  algún tipo o VER_TODOS en un tipo que toma celdas de TICKETS (TICKETS, COMPRAS, EQUIPOS), igual
+  que `TICKETS:ASIGNAR`/`TICKETS:VER_TODOS` antes. Front espejado. Pendiente decisión del dueño:
+  matrices a mano con celdas de Edilicia sin `EDILICIA:LECTURA` pierden acceso el día del deploy.

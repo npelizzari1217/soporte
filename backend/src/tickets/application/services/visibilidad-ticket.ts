@@ -4,7 +4,8 @@ import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
-import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
+import { AccionTipoTicket, tomaCeldasDeTickets } from '../../domain/permisos-tipo-ticket';
+import { IPermisoTipoTicketRepository } from '../../domain/ports/i-permiso-tipo-ticket.repository';
 import { AlcanceListadoTickets, ITicketRepository } from '../../domain/ports/i-ticket.repository';
 
 /**
@@ -87,6 +88,35 @@ export function tieneAccionEnAlgunTipo(
   return [...alcance.permisosPorTipo.values()].some((concedidas) =>
     acciones.some((accion) => concedidas.has(accion)),
   );
+}
+
+/**
+ * ¿El actor puede leer la lista básica de usuarios del tenant (`GET /usuarios`), con la que asigna o
+ * filtra por responsable? Reproduce la regla anterior a la etapa 1 (`TICKETS:ASIGNAR` o
+ * `TICKETS:VER_TODOS`) sobre los permisos por tipo, para que la migración no cambie el acceso (S7):
+ * `ASIGNAR` sobre cualquier tipo (ninguna celda de EDILICIA se traduce a `ASIGNAR`, L11), o
+ * `VER_TODOS` sobre un tipo que toma las celdas de TICKETS (`tomaCeldasDeTickets`). Un `VER_TODOS`
+ * de EDILICIA no cuenta: viene de `EDILICIA:LECTURA`, que no abría la lista. Sin restricción
+ * (`null`, ROOT y ADMINISTRADOR), siempre.
+ *
+ * @param alcance Alcance del actor.
+ * @param tipos Origen del módulo de cada tipo; solo se consulta si hace falta.
+ * @returns `true` si el actor puede leer la lista.
+ */
+export async function puedeVerListaDeUsuarios(
+  alcance: Pick<AlcanceActorTicket, 'permisosPorTipo'>,
+  tipos: Pick<IPermisoTipoTicketRepository, 'listarTipos'>,
+): Promise<boolean> {
+  if (tieneAccionEnAlgunTipo(alcance, ['ASIGNAR'])) return true;
+  const conVerTodos = [...(alcance.permisosPorTipo ?? [])]
+    .filter(([, acciones]) => acciones.has('VER_TODOS'))
+    .map(([tipoId]) => tipoId);
+  if (conVerTodos.length === 0) return false;
+  const moduloDe = new Map((await tipos.listarTipos()).map((t) => [t.id, t.modulo]));
+  return conVerTodos.some((tipoId) => {
+    const modulo = moduloDe.get(tipoId);
+    return modulo !== undefined && tomaCeldasDeTickets(modulo);
+  });
 }
 
 /**

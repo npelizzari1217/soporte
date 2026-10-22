@@ -147,6 +147,7 @@ import {
 import { PermisosPorTipoDeClienteAdapter } from './infrastructure/permisos/permisos-por-tipo-de-cliente.adapter';
 import { AplicarPlantillaPermisosTipoTicket } from '../tickets/application/services/aplicar-plantilla-permisos-tipo-ticket.service';
 import { PrismaPermisoTipoTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
+import { PERMISO_TIPO_TICKET_REPOSITORY } from '../tickets/domain/ports/i-permiso-tipo-ticket.repository';
 import { CargadorAlcanceTicket } from '../tickets/interface/alcance-ticket';
 import { PermisosPorTipoUsuarioTenantUseCase } from './application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
 import { TenantContext } from '../shared/tenancy/tenant-context';
@@ -558,6 +559,13 @@ import { RolesController } from './interface/controllers/roles.controller';
       provide: CargadorAlcanceTicket,
       useFactory: (tenantContext: TenantContext) =>
         new CargadorAlcanceTicket(new PrismaPermisoTipoTicketRepository(tenantContext)),
+      inject: [TenantContext],
+    },
+    // `GET /usuarios` lee el módulo de cada tipo para decidir si un VER_TODOS abre la lista (S7).
+    {
+      provide: PERMISO_TIPO_TICKET_REPOSITORY,
+      useFactory: (tenantContext: TenantContext) =>
+        new PrismaPermisoTipoTicketRepository(tenantContext),
       inject: [TenantContext],
     },
     {

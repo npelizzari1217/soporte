@@ -46,10 +46,14 @@ import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplica
 import { PermisosPorTipoUsuarioTenantUseCase } from '../../application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
+import { filasDeTiposDesdeCeldas } from '../../../tickets/domain/permisos-tipo-ticket';
+import type { PermisoTipoTicketFila } from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
+import { PRESETS_ROL } from '../../domain/presets-rol';
 
 /**
  * Permisos por tipo de la tabla del tenant (odd/permisos-por-tipo-ticket, T6): deciden el acceso a
- * `GET /usuarios`. `asignador` asigna en un tipo, `supervisor` ve todos en otro, `lector` solo lee.
+ * `GET /usuarios`. `asignador` asigna en un tipo de TICKETS, `supervisor` ve todos en uno de
+ * EDILICIA, `lector` solo lee.
  */
 const PERMISOS_POR_TIPO = [
   { usuarioId: 'asignador', tipoId: 'tipo-soporte', accion: 'LECTURA' },
@@ -70,7 +74,39 @@ function casoDeUsoDoble<T extends { execute: (...args: never[]) => unknown }>(Cl
   return Object.create(Clase.prototype, { execute: { value: vi.fn<T['execute']>() } });
 }
 
-function buildController() {
+/**
+ * Tipos del sondeo de la verificación independiente (S7): uno de TICKETS y uno de EDILICIA, más uno
+ * de COMPRAS y uno de EQUIPOS, que toman las celdas de TICKETS (L21, L23).
+ */
+const TIPOS_SONDEO = [
+  { id: 't1', modulo: 'TICKETS' },
+  { id: 'e1', modulo: 'EDILICIA' },
+  { id: 'c1', modulo: 'COMPRAS' },
+  { id: 'q1', modulo: 'EQUIPOS' },
+] as const;
+
+/** Filas por tipo que el backfill (S7) le deja a `usuarioId` con la plantilla de `rol`. */
+function filasDelPreset(
+  usuarioId: string,
+  rol: string,
+  tipos: readonly { id: string; modulo: string }[],
+): PermisoTipoTicketFila[] {
+  const celdas = PRESETS_ROL[rol];
+  if (celdas === undefined) throw new Error(`Rol sin plantilla: ${rol}`);
+  return filasDeTiposDesdeCeldas(celdas, tipos).map((fila) => ({ usuarioId, ...fila }));
+}
+
+function permisosTipoPorDefecto(): PermisosTipoTicketEnMemoria {
+  return new PermisosTipoTicketEnMemoria(
+    [
+      { id: 'tipo-soporte', modulo: 'TICKETS', nombre: 'Soporte' },
+      { id: 'tipo-mantenimiento', modulo: 'EDILICIA', nombre: 'Mantenimiento' },
+    ],
+    PERMISOS_POR_TIPO,
+  );
+}
+
+function buildController(permisosTipo: PermisosTipoTicketEnMemoria = permisosTipoPorDefecto()) {
   const listarUsuariosTenantUseCase = casoDeUsoDoble(ListarUsuariosTenantUseCase);
   const crearUsuarioTenantUseCase = casoDeUsoDoble(CrearUsuarioTenantUseCase);
   const cambiarRolUsuarioTenantUseCase = casoDeUsoDoble(CambiarRolUsuarioTenantUseCase);
@@ -84,13 +120,6 @@ function buildController() {
   const aplicarPresetPermisosUseCase = casoDeUsoDoble(AplicarPresetPermisosUseCase);
   // Grilla por tipo (T7): caso de uso real sobre el doble en memoria, con los usuarios de
   // `PERMISOS_POR_TIPO` como TECNICO del cliente del token y `jefa` como ADMINISTRADOR.
-  const permisosTipo = new PermisosTipoTicketEnMemoria(
-    [
-      { id: 'tipo-soporte', modulo: 'TICKETS', nombre: 'Soporte' },
-      { id: 'tipo-mantenimiento', modulo: 'EDILICIA', nombre: 'Mantenimiento' },
-    ],
-    PERMISOS_POR_TIPO,
-  );
   const rolesDelCliente: Record<string, string> = {
     asignador: 'TECNICO',
     supervisor: 'TECNICO',
@@ -137,6 +166,7 @@ function buildController() {
     resetearTfaUsuarioUseCase,
     resetearVinculoSsoUseCase,
     new CargadorAlcanceTicket(permisosTipo),
+    permisosTipo,
   );
   return {
     controller,
@@ -190,10 +220,85 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       expect(result[0]).not.toHaveProperty('email');
     });
 
-    it('con VER_TODOS sobre algún tipo retorna la lista SIN email (filtro "Asignado" del listado, T6)', async () => {
-      const { controller, listarUsuariosTenantUseCase } = buildController();
+    it('con VER_TODOS sobre un tipo de TICKETS retorna la lista SIN email (filtro "Asignado" del listado, T6)', async () => {
+      const permisosTipo = new PermisosTipoTicketEnMemoria(TIPOS_SONDEO, [
+        { usuarioId: 'supervisor-soporte', tipoId: 't1', accion: 'LECTURA' },
+        { usuarioId: 'supervisor-soporte', tipoId: 't1', accion: 'VER_TODOS' },
+      ]);
+      const { controller, listarUsuariosTenantUseCase } = buildController(permisosTipo);
       listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
+      const actor = buildActor({ sub: 'supervisor-soporte', permisos: [] });
+
+      const result = await controller.listar(actor);
+
+      expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
+    });
+
+    // Regresión (S7): `EDILICIA:LECTURA` se traduce también a VER_TODOS (L11), y antes de la etapa 1
+    // esa celda no abría la lista. Un VER_TODOS de Edilicia no la abre.
+    it('con VER_TODOS solo sobre un tipo de EDILICIA → 403 (S7, L11)', async () => {
+      const { controller, listarUsuariosTenantUseCase } = buildController();
       const actor = buildActor({ sub: 'supervisor', permisos: [] });
+
+      await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('con ASIGNAR sobre un tipo de EDILICIA retorna la lista (ASIGNAR abre en cualquier módulo)', async () => {
+      const permisosTipo = new PermisosTipoTicketEnMemoria(TIPOS_SONDEO, [
+        { usuarioId: 'asignador-edilicia', tipoId: 'e1', accion: 'LECTURA' },
+        { usuarioId: 'asignador-edilicia', tipoId: 'e1', accion: 'ASIGNAR' },
+      ]);
+      const { controller, listarUsuariosTenantUseCase } = buildController(permisosTipo);
+      listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
+      const actor = buildActor({ sub: 'asignador-edilicia', permisos: [] });
+
+      const result = await controller.listar(actor);
+
+      expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
+    });
+
+    // Un tipo de COMPRAS o EQUIPOS toma las celdas de TICKETS (L21, L23): su VER_TODOS viene de
+    // `TICKETS:VER_TODOS`, que antes de la etapa 1 abría la lista.
+    it.each(['c1', 'q1'])(
+      'con VER_TODOS sobre un tipo que toma las celdas de TICKETS (%s) retorna la lista (L21)',
+      async (tipoId) => {
+        const permisosTipo = new PermisosTipoTicketEnMemoria(TIPOS_SONDEO, [
+          { usuarioId: 'supervisor-modulo', tipoId, accion: 'LECTURA' },
+          { usuarioId: 'supervisor-modulo', tipoId, accion: 'VER_TODOS' },
+        ]);
+        const { controller, listarUsuariosTenantUseCase } = buildController(permisosTipo);
+        listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
+        const actor = buildActor({ sub: 'supervisor-modulo', permisos: [] });
+
+        const result = await controller.listar(actor);
+
+        expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
+      },
+    );
+
+    // Sondeo de la verificación independiente (S7): con la plantilla USUARIO migrada, el acceso no
+    // cambia el día del deploy. Antes exigía `TICKETS:ASIGNAR` o `TICKETS:VER_TODOS`.
+    it('USUARIO con las filas que le deja el backfill sobre un tipo de TICKETS y uno de EDILICIA → 403 (S7)', async () => {
+      const permisosTipo = new PermisosTipoTicketEnMemoria(
+        TIPOS_SONDEO,
+        filasDelPreset('usuario-migrado', 'USUARIO', TIPOS_SONDEO.slice(0, 2)),
+      );
+      const { controller, listarUsuariosTenantUseCase } = buildController(permisosTipo);
+      const actor = buildActor({ sub: 'usuario-migrado', rol: 'USUARIO', permisos: [] });
+
+      await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it('TECNICO con las filas que le deja el backfill → lista SIN email (S7)', async () => {
+      const permisosTipo = new PermisosTipoTicketEnMemoria(
+        TIPOS_SONDEO,
+        filasDelPreset('tecnico-migrado', 'TECNICO', TIPOS_SONDEO.slice(0, 2)),
+      );
+      const { controller, listarUsuariosTenantUseCase } = buildController(permisosTipo);
+      listarUsuariosTenantUseCase.execute.mockResolvedValue(Result.ok([MEMBRESIA_ITEM]));
+      const actor = buildActor({ sub: 'tecnico-migrado', rol: 'TECNICO', permisos: [] });
 
       const result = await controller.listar(actor);
 
@@ -239,7 +344,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ sub: 'lector', permisos: ['TICKETS:ALTAS'] });
 
       await expect(controller.listar(actor)).rejects.toThrow(
-        'Acceso denegado: se requiere ASIGNAR o VER_TODOS sobre algún tipo de ticket',
+        'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un tipo de Tickets, Compras o Equipos',
       );
       expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
     });

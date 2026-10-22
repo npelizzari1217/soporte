@@ -1126,7 +1126,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       );
       expect(rechazado.status).toBe(403);
       expect(rechazado.data.message).toBe(
-        'Acceso denegado: se requiere ASIGNAR o VER_TODOS sobre algún tipo de ticket',
+        'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un tipo de Tickets, Compras o Equipos',
       );
     });
 

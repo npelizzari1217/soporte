@@ -62,6 +62,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
   InternalServerErrorException,
   NotFoundException,
   Param,
@@ -113,17 +114,13 @@ import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
 import { esAdminDeCliente } from '../../domain/permisos.util';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
-import { tieneAccionEnAlgunTipo } from '../../../tickets/application/services/visibilidad-ticket';
-import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
+import { puedeVerListaDeUsuarios } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  IPermisoTipoTicketRepository,
+  PERMISO_TIPO_TICKET_REPOSITORY,
+} from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
 import { CATALOGO_MODULOS, CodigoAccion } from '../../../shared/domain/acciones';
 import { DomainError } from '../../../shared/domain/result';
-
-/**
- * Acciones por tipo que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND —
- * R4-excepción, S25), en cualquier tipo. El alcance de ROOT/ADMINISTRADOR llega sin
- * restricción, así que no hace falta un chequeo admin separado acá.
- */
-const ACCIONES_LISTA_BASICA: readonly AccionTipoTicket[] = ['ASIGNAR', 'VER_TODOS'];
 
 function toListaResponseDto(
   item: MembresiaConUsuario,
@@ -196,20 +193,23 @@ export class UsuariosController {
     private readonly resetearTfaUsuarioUseCase: ResetearTfaUsuarioUseCase,
     private readonly resetearVinculoSsoUseCase: ResetearVinculoSsoUseCase,
     private readonly alcances: CargadorAlcanceTicket,
+    @Inject(PERMISO_TIPO_TICKET_REPOSITORY)
+    private readonly tiposDePermisos: Pick<IPermisoTipoTicketRepository, 'listarTipos'>,
   ) {}
 
   /**
    * GET /usuarios
    * Lista los usuarios con membresía ACTIVA en el cliente del token.
-   * @throws 403 si el actor no tiene `ASIGNAR` ni `VER_TODOS` sobre ningún tipo
-   *             NI es ADMINISTRADOR/ROOT (R4-excepción, S25)
+   * @throws 403 si el actor no es ADMINISTRADOR/ROOT, no tiene `ASIGNAR` sobre ningún tipo ni
+   *             `VER_TODOS` sobre un tipo que tome las celdas de TICKETS (R4-excepción, S25;
+   *             `puedeVerListaDeUsuarios`, S7)
    */
   @Get()
   async listar(@CurrentUser() actor: JwtPayload): Promise<UsuarioTenantResponseDto[]> {
     const alcance = await this.alcances.cargar(actor);
-    if (!tieneAccionEnAlgunTipo(alcance, ACCIONES_LISTA_BASICA)) {
+    if (!(await puedeVerListaDeUsuarios(alcance, this.tiposDePermisos))) {
       throw new ForbiddenException(
-        'Acceso denegado: se requiere ASIGNAR o VER_TODOS sobre algún tipo de ticket',
+        'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un tipo de Tickets, Compras o Equipos',
       );
     }
     // R10: el email es INDEPENDIENTE de la regla OR de arriba. Un TECNICO con
