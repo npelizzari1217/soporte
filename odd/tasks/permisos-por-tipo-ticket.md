@@ -302,3 +302,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   algún tipo o VER_TODOS en un tipo que toma celdas de TICKETS (TICKETS, COMPRAS, EQUIPOS), igual
   que `TICKETS:ASIGNAR`/`TICKETS:VER_TODOS` antes. Front espejado. Pendiente decisión del dueño:
   matrices a mano con celdas de Edilicia sin `EDILICIA:LECTURA` pierden acceso el día del deploy.
+- **L34** (dueño) — "No, la migracion no le da ver. Si se llegara a necesitar luego se le asignara
+  el ver al usuario". Se mantiene L11 tal cual: una matriz a mano con celdas de Edilicia sin
+  `EDILICIA:LECTURA` queda sin acceso tras el deploy y el administrador asigna Ver desde la grilla.
+  Las filas sin Ver que deje el backfill se muestran con aviso y la grilla obliga a corregirlas.
