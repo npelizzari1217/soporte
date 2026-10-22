@@ -370,3 +370,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   pueden borrar (422): son de sistema y el barrido abriría otro del mismo plan. (4) Las entradas de
   borrado y recuperación son internas (visibles con OBSERVAR). (5) Al borrar, el front descarta la
   caché del detalle. Más el test unitario del seeder (12 tipos de operación).
+- **L46** (cierre de T10) — Correcciones de L45 en `97f404ed`, con TDD y prueba de concurrencia real
+  en Postgres. Suite completa: backend 768 archivos y 9496 tests, frontend 281 archivos y 2462
+  tests, lint y typecheck en cero. Rama `feat/borrar-ticket` lista para mergear; el deploy trae la
+  migración `20261022120000_tipos_operacion_borrado`, así que va con dump previo.
