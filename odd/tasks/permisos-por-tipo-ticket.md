@@ -327,3 +327,9 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   tres advertencias corregidas en L36). Suite completa sobre `9b29cf2a`: backend 763 archivos y
   9454 tests, frontend 280 archivos y 2440 tests, lint y typecheck en cero en los dos.
   Pendiente para el deploy: `predeploy-dump.ps1` (hay migración tenant y backfill, paso 8c).
+- **L38** (deploy de la etapa 1, dueño: "si") — `main` en `4e801ba1`, desplegado 2026-10-22. Dump
+  verificado de las 10 bases en `C:\soporte\backups\utc-backfill-20261022-094136`. Backfill (8c):
+  9 tenants, 109 usuarios, 2735 filas calculadas e insertadas (cada tenant con todas sus filas).
+  Servicios Running, smoke interno OK; externo: `/login` 200, `/api/tickets/permisos-por-tipo`
+  sin token 401. Rollback de código: volver el VPS a `ae15ca7a` y correr `deploy.ps1`; de datos:
+  restaurar el dump. T9 (retirar celdas viejas y el paso 8c) queda para cuando se verifique en uso.
