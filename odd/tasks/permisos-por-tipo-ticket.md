@@ -361,3 +361,5 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   por correo no miran `isDeleted()`; solo afecta un evento emitido justo antes del borrado. El SLA
   sigue corriendo mientras el ticket está borrado. Pendiente de confirmar por el dueño: "tareas
   activas" se leyó como "activas y no completadas".
+- **L44** (dueño) — "si significa eso": "tareas activas" son las no completadas; una tarea
+  completada no frena el borrado.
