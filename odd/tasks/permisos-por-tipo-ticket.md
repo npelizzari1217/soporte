@@ -102,8 +102,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   creación por tipo, reparaciones y dashboard — (este commit)
 - [x] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (este commit)
 - [x] T6 — S6 — worker — etapa 1, front: botones, alta y filtros según acciones por tipo — (este commit)
-- [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
-  usuario — (pendiente)
+- [x] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
+  usuario — (este commit)
 - [ ] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (pendiente)
 - [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
   producción — (pendiente)
@@ -279,4 +279,14 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   fijaban celdas JWT reescritos con dos tipos. Back: tsc 0, 1251 + 1424 tests. Deuda: el alta de
   reparación asume EDILICIA mientras carga el catálogo (403 si no tiene ALTAS ahí).
   Ayuda (suspendida): menú, botones y filtros dependen ahora de los permisos por tipo.
+- **L31** (T7; el primer worker cortó por límite de sesión y el segundo retomó su trabajo) —
+  `GET/PUT usuarios/:id/permisos-por-tipo` y `POST .../copiar-de/:origenId`, solo administrador.
+  El PUT rechaza con 422 una acción sin Ver (S3), una acción desconocida, BORRADO o un tipo
+  inexistente; ROOT y ADMINISTRADOR devuelven `sinRestriccion` sin filas. La plantilla del rol por
+  fila la calcula el backend con `accionesDeTipoDesdeCeldas` (D4). Borrar no se ofrece: no existe
+  la operación (S8). La grilla de módulos deja de mostrar `TICKETS:*` y Edilicia Ver, Crear y
+  Modificar; `PATCH usuarios/:id/permisos` conserva esas celdas viejas e ignora las que llegan
+  (sin 422, para no romper a quien reenvía lo que leyó; se retiran en T9). El usuario ve el cambio
+  en su próximo request sin refrescar el token (e2e). Back: 2639 tests; front: lint 0, tsc 0,
+  2428 tests. Ayuda (suspendida): pestaña "Tipos de ticket" en Permisos.
 

@@ -43,6 +43,7 @@ import { ResetearPasswordUsuarioTenantUseCase } from '../../application/use-case
 import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases/obtener-permisos-usuario-tenant.use-case';
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
+import { PermisosPorTipoUsuarioTenantUseCase } from '../../application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 
@@ -81,6 +82,32 @@ function buildController() {
   const obtenerPermisosUsuarioTenantUseCase = casoDeUsoDoble(ObtenerPermisosUsuarioTenantUseCase);
   const asignarPermisosUsuarioTenantUseCase = casoDeUsoDoble(AsignarPermisosUsuarioTenantUseCase);
   const aplicarPresetPermisosUseCase = casoDeUsoDoble(AplicarPresetPermisosUseCase);
+  // Grilla por tipo (T7): caso de uso real sobre el doble en memoria, con los usuarios de
+  // `PERMISOS_POR_TIPO` como TECNICO del cliente del token y `jefa` como ADMINISTRADOR.
+  const permisosTipo = new PermisosTipoTicketEnMemoria(
+    [
+      { id: 'tipo-soporte', modulo: 'TICKETS', nombre: 'Soporte' },
+      { id: 'tipo-mantenimiento', modulo: 'EDILICIA', nombre: 'Mantenimiento' },
+    ],
+    PERMISOS_POR_TIPO,
+  );
+  const rolesDelCliente: Record<string, string> = {
+    asignador: 'TECNICO',
+    supervisor: 'TECNICO',
+    lector: 'TECNICO',
+    jefa: 'ADMINISTRADOR',
+  };
+  const permisosPorTipoUseCase = new PermisosPorTipoUsuarioTenantUseCase(
+    {
+      findActivaByUsuarioYCliente: async (usuarioId, clienteId) => {
+        const rolCodigo = rolesDelCliente[usuarioId];
+        if (clienteId !== 'cliente-token' || rolCodigo === undefined) return null;
+        return { clienteId, clienteNombre: 'Cliente', rolCodigo, clienteRequiere2fa: false };
+      },
+    },
+    { findById: async () => null },
+    permisosTipo,
+  );
   // Caso de uso real armado con puertos tipados: tipado completo, sin casts.
   const resetearTfaUsuarioUseCase = new ResetearTfaUsuarioUseCase(
     { eliminarTodo: vi.fn() },
@@ -106,9 +133,10 @@ function buildController() {
     obtenerPermisosUsuarioTenantUseCase,
     asignarPermisosUsuarioTenantUseCase,
     aplicarPresetPermisosUseCase,
+    permisosPorTipoUseCase,
     resetearTfaUsuarioUseCase,
     resetearVinculoSsoUseCase,
-    new CargadorAlcanceTicket(new PermisosTipoTicketEnMemoria([], PERMISOS_POR_TIPO)),
+    new CargadorAlcanceTicket(permisosTipo),
   );
   return {
     controller,
@@ -121,6 +149,7 @@ function buildController() {
     obtenerPermisosUsuarioTenantUseCase,
     asignarPermisosUsuarioTenantUseCase,
     aplicarPresetPermisosUseCase,
+    permisosTipo,
   };
 }
 
@@ -675,6 +704,120 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
 
       await expect(rechazo).rejects.toBeInstanceOf(InternalServerErrorException);
       await expect(rechazo).rejects.toThrow(error.message);
+    });
+  });
+
+  describe('permisos por tipo de ticket (odd/permisos-por-tipo-ticket, T7, S5)', () => {
+    const actor = buildActor({ rol: 'ADMINISTRADOR' });
+
+    it.each([
+      'obtenerPermisosPorTipo',
+      'reemplazarPermisosPorTipo',
+      'copiarPermisosPorTipo',
+    ] as const)('%s exige AdminClienteGuard en la ruta', (metodo) => {
+      const guards = (Reflect.getMetadata(GUARDS_METADATA, UsuariosController.prototype[metodo]) ??
+        []) as unknown[];
+      expect(guards).toContain(AdminClienteGuard);
+    });
+
+    it('copiar responde 200, no el 201 por defecto de POST', () => {
+      expect(
+        Reflect.getMetadata(HTTP_CODE_METADATA, UsuariosController.prototype.copiarPermisosPorTipo),
+      ).toBe(HttpStatus.OK);
+    });
+
+    it('GET devuelve una fila por tipo con las acciones del usuario y la plantilla del rol', async () => {
+      const { controller } = buildController();
+
+      const result = await controller.obtenerPermisosPorTipo(actor, 'asignador');
+
+      expect(result.sinRestriccion).toBe(false);
+      expect(result.tipos.map((t) => [t.nombre, t.acciones])).toEqual([
+        ['Mantenimiento', []],
+        ['Soporte', ['LECTURA', 'ASIGNAR']],
+      ]);
+    });
+
+    it('GET de un ADMINISTRADOR: sin restricción y sin filas', async () => {
+      const { controller } = buildController();
+
+      await expect(controller.obtenerPermisosPorTipo(actor, 'jefa')).resolves.toMatchObject({
+        sinRestriccion: true,
+        tipos: [],
+      });
+    });
+
+    it('GET de un usuario de otro cliente: 404', async () => {
+      const { controller } = buildController();
+
+      await expect(controller.obtenerPermisosPorTipo(actor, 'ajeno')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('PUT reemplaza las filas y devuelve el estado guardado', async () => {
+      const { controller, permisosTipo } = buildController();
+
+      const result = await controller.reemplazarPermisosPorTipo(actor, 'lector', {
+        tipos: [{ tipoId: 'tipo-mantenimiento', acciones: ['LECTURA', 'MODIFICACION'] }],
+      });
+
+      expect(permisosTipo.filasDe('lector')).toEqual([
+        'tipo-mantenimiento:LECTURA',
+        'tipo-mantenimiento:MODIFICACION',
+      ]);
+      expect(result.tipos.find((t) => t.tipoId === 'tipo-mantenimiento')?.acciones).toEqual([
+        'LECTURA',
+        'MODIFICACION',
+      ]);
+    });
+
+    it('PUT con una acción sin Ver: 422 con el mensaje del dominio y sin cambios', async () => {
+      const { controller, permisosTipo } = buildController();
+
+      const rechazo = controller.reemplazarPermisosPorTipo(actor, 'lector', {
+        tipos: [{ tipoId: 'tipo-soporte', acciones: ['VER_TODOS'] }],
+      });
+
+      await expect(rechazo).rejects.toBeInstanceOf(UnprocessableEntityException);
+      await expect(rechazo).rejects.toThrow(
+        'Sin Ver no se puede conceder ninguna otra acción en el tipo «Soporte» (se pidió VER_TODOS).',
+      );
+      expect(permisosTipo.filasDe('lector')).toEqual([
+        'tipo-mantenimiento:ALTAS',
+        'tipo-soporte:LECTURA',
+      ]);
+    });
+
+    it('PUT sobre un ADMINISTRADOR: 422', async () => {
+      const { controller } = buildController();
+
+      await expect(
+        controller.reemplazarPermisosPorTipo(actor, 'jefa', { tipos: [] }),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    });
+
+    it('copiar reemplaza las filas del destino por las del origen', async () => {
+      const { controller, permisosTipo } = buildController();
+
+      await controller.copiarPermisosPorTipo(actor, 'lector', 'supervisor');
+
+      expect(permisosTipo.filasDe('lector')).toEqual([
+        'tipo-mantenimiento:LECTURA',
+        'tipo-mantenimiento:VER_TODOS',
+      ]);
+    });
+
+    it('copiar desde un usuario de otro cliente: 404 sin cambios', async () => {
+      const { controller, permisosTipo } = buildController();
+
+      await expect(
+        controller.copiarPermisosPorTipo(actor, 'lector', 'ajeno'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(permisosTipo.filasDe('lector')).toEqual([
+        'tipo-mantenimiento:ALTAS',
+        'tipo-soporte:LECTURA',
+      ]);
     });
   });
 });

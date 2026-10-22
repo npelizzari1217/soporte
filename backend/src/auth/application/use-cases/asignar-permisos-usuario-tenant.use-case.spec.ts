@@ -20,29 +20,98 @@ function buildMembresiaResuelta(): MembresiaResuelta {
 }
 
 describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-permisos-por-usuario WU-7.4)', () => {
-  it('reemplaza el set completo de celdas y lo retorna', async () => {
-    const membresiaRepo = {
+  /** Matriz en memoria de un usuario: se afirma sobre el estado final, no sobre las llamadas. */
+  function matrizEnMemoria(iniciales: string[] = []): {
+    repo: Pick<IMatrizPermisosRepository, 'setPermisos' | 'findByUsuarioYCliente'>;
+    celdas: () => string[];
+  } {
+    let guardadas = [...iniciales];
+    return {
+      repo: {
+        setPermisos: vi.fn(async (_u: string, _c: string, celdas: readonly string[]) => {
+          guardadas = [...celdas];
+        }),
+        findByUsuarioYCliente: vi.fn(async () => [...guardadas]),
+      },
+      celdas: () => [...guardadas].sort(),
+    };
+  }
+
+  function membresiaActiva(): Pick<IMembresiaRepository, 'findActivaByUsuarioYCliente'> {
+    return {
       findActivaByUsuarioYCliente: vi
         .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
         .mockResolvedValue(buildMembresiaResuelta()),
     };
-    const permisosRepo = {
-      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
-    };
-    const useCase = new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo);
+  }
+
+  it('reemplaza el set completo de celdas y lo retorna', async () => {
+    const matriz = matrizEnMemoria(['COMPRAS:LECTURA', 'KB:LECTURA']);
+    const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
       usuarioId: 'usuario-1',
-      celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+      celdas: ['COMPRAS:ALTAS', 'EDILICIA:BORRADO'],
     });
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue()).toEqual(['TICKETS:LECTURA', 'TICKETS:ALTAS']);
-    expect(permisosRepo.setPermisos).toHaveBeenCalledWith('usuario-1', 'cliente-token', [
-      'TICKETS:LECTURA',
-      'TICKETS:ALTAS',
-    ]);
+    expect(result.getValue()).toEqual(['COMPRAS:ALTAS', 'EDILICIA:BORRADO']);
+    expect(matriz.celdas()).toEqual(['COMPRAS:ALTAS', 'EDILICIA:BORRADO']);
+  });
+
+  describe('celdas reemplazadas por los permisos por tipo (odd/permisos-por-tipo-ticket, T7, D5 d)', () => {
+    it('conserva las celdas TICKETS:* y EDILICIA:LECTURA|ALTAS|MODIFICACION guardadas aunque el pedido no las traiga', async () => {
+      const matriz = matrizEnMemoria([
+        'TICKETS:LECTURA',
+        'TICKETS:VER_TODOS',
+        'EDILICIA:LECTURA',
+        'EDILICIA:MODIFICACION',
+        'EDILICIA:BORRADO',
+        'COMPRAS:LECTURA',
+      ]);
+      const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        celdas: ['KB:LECTURA'],
+      });
+
+      const esperadas = [
+        'EDILICIA:LECTURA',
+        'EDILICIA:MODIFICACION',
+        'KB:LECTURA',
+        'TICKETS:LECTURA',
+        'TICKETS:VER_TODOS',
+      ];
+      expect(matriz.celdas()).toEqual(esperadas);
+      expect([...result.getValue()].sort()).toEqual(esperadas);
+    });
+
+    it('ignora las celdas reemplazadas que el pedido agrega: no concede TICKETS:* ni EDILICIA:ALTAS nuevas', async () => {
+      const matriz = matrizEnMemoria(['COMPRAS:LECTURA']);
+      const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        celdas: ['TICKETS:LECTURA', 'TICKETS:ASIGNAR', 'EDILICIA:ALTAS', 'COMPRAS:LECTURA'],
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(matriz.celdas()).toEqual(['COMPRAS:LECTURA']);
+      expect(result.getValue()).toEqual(['COMPRAS:LECTURA']);
+    });
+
+    it('EDILICIA:BORRADO (desvincular compra, L21) sigue editándose: se quita si el pedido no la trae', async () => {
+      const matriz = matrizEnMemoria(['EDILICIA:BORRADO', 'EDILICIA:LECTURA']);
+      const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
+
+      await useCase.execute({ clienteId: 'cliente-token', usuarioId: 'usuario-1', celdas: [] });
+
+      expect(matriz.celdas()).toEqual(['EDILICIA:LECTURA']);
+    });
   });
 
   it('DEFENSA EN PROFUNDIDAD: falla con CeldaPermisoInvalidaError si algún código no está en PARES_VALIDOS', async () => {
@@ -51,7 +120,10 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
         .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
         .mockResolvedValue(buildMembresiaResuelta()),
     };
-    const permisosRepo = { setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>() };
+    const permisosRepo = {
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>(),
+      findByUsuarioYCliente: vi.fn<IMatrizPermisosRepository['findByUsuarioYCliente']>(),
+    };
     const useCase = new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo);
 
     const result = await useCase.execute({
@@ -72,7 +144,10 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
         .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
         .mockResolvedValue(null),
     };
-    const permisosRepo = { setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>() };
+    const permisosRepo = {
+      setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>(),
+      findByUsuarioYCliente: vi.fn<IMatrizPermisosRepository['findByUsuarioYCliente']>(),
+    };
     const useCase = new AsignarPermisosUsuarioTenantUseCase(permisosRepo, membresiaRepo);
 
     const result = await useCase.execute({

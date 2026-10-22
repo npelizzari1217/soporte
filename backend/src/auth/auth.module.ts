@@ -148,6 +148,7 @@ import { PermisosPorTipoDeClienteAdapter } from './infrastructure/permisos/permi
 import { AplicarPlantillaPermisosTipoTicket } from '../tickets/application/services/aplicar-plantilla-permisos-tipo-ticket.service';
 import { PrismaPermisoTipoTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
 import { CargadorAlcanceTicket } from '../tickets/interface/alcance-ticket';
+import { PermisosPorTipoUsuarioTenantUseCase } from './application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
 import { TenantContext } from '../shared/tenancy/tenant-context';
 
 // ─── Guards ──────────────────────────────────────────────────────────────────
@@ -572,6 +573,22 @@ import { RolesController } from './interface/controllers/roles.controller';
       useFactory: (membresiaRepo: IMembresiaRepository, permisosRepo: IMatrizPermisosRepository) =>
         new ObtenerPermisosUsuarioTenantUseCase(membresiaRepo, permisosRepo),
       inject: [MEMBRESIA_REPOSITORY, MATRIZ_PERMISOS_REPOSITORY],
+    },
+    // Grilla por tipo de Permisos (odd/permisos-por-tipo-ticket, T7). Lee y escribe el tenant que
+    // `TenantGuard` dejó ligado; mismo motivo que arriba para no inyectar desde TicketsModule.
+    {
+      provide: PermisosPorTipoUsuarioTenantUseCase,
+      useFactory: (
+        membresiaRepo: IMembresiaRepository,
+        usuarioRepo: IUsuarioRepository,
+        tenantContext: TenantContext,
+      ) =>
+        new PermisosPorTipoUsuarioTenantUseCase(
+          membresiaRepo,
+          usuarioRepo,
+          new PrismaPermisoTipoTicketRepository(tenantContext),
+        ),
+      inject: [MEMBRESIA_REPOSITORY, USUARIO_REPOSITORY, TenantContext],
     },
     {
       provide: AsignarPermisosUsuarioTenantUseCase,

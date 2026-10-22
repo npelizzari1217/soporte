@@ -225,6 +225,42 @@ export class PermisosPorTipoNoAplicadosError extends DomainError {
 }
 
 /**
+ * PermisosPorTipoInvalidosError — el reemplazo de los permisos por tipo de ticket de un usuario
+ * (`PUT /usuarios/:id/permisos-por-tipo`, odd/tasks/permisos-por-tipo-ticket.md, T7) trae algo que
+ * no se puede guardar: una acción fuera del vocabulario, una acción que todavía no se concede, un
+ * tipo que no existe en el tenant, un tipo repetido, o acciones sin Ver (S3). El mensaje nombra el
+ * tipo y las acciones.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class PermisosPorTipoInvalidosError extends DomainError {
+  readonly code = 'AUTH_PERMISOS_POR_TIPO_INVALIDOS';
+
+  /** @param mensaje Qué fila o valor no se puede guardar y por qué. */
+  constructor(mensaje: string) {
+    super(mensaje);
+  }
+}
+
+/**
+ * PermisosPorTipoSinRestriccionError — el usuario es ROOT o ADMINISTRADOR: opera todos los tipos
+ * sin filas, así que sus permisos por tipo no se editan ni sirven de origen para copiar
+ * (odd/tasks/permisos-por-tipo-ticket.md, T7).
+ * → HTTP 422 en la capa de presentación.
+ */
+export class PermisosPorTipoSinRestriccionError extends DomainError {
+  readonly code = 'AUTH_PERMISOS_POR_TIPO_SIN_RESTRICCION';
+
+  /** @param papel Si el administrador es el usuario editado o el usuario del que se copia. */
+  constructor(papel: 'destino' | 'origen') {
+    super(
+      papel === 'destino'
+        ? 'El usuario es administrador: opera todos los tipos de ticket y sus permisos por tipo no se editan.'
+        : 'El usuario de origen es administrador: no tiene permisos por tipo para copiar.',
+    );
+  }
+}
+
+/**
  * UsuarioNoDisponibleError — el usuario del token (`actor.sub`) no existe, está
  * inactivo o fue soft-deleted (`CambiarPasswordUseCase`, sdd/cambio-de-contrasena
  * D3). `JwtAuthGuard` nunca consulta la DB: una cuenta suspendida sigue llegando

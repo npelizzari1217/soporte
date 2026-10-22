@@ -25,6 +25,47 @@ export const ACCIONES_TIPO_TICKET = [
 /** Código de una acción concedible sobre un tipo de ticket. */
 export type AccionTipoTicket = (typeof ACCIONES_TIPO_TICKET)[number];
 
+/**
+ * ¿El valor es una acción del vocabulario?
+ *
+ * @param valor Texto recibido (por ejemplo, del cuerpo de un request).
+ * @returns `true` si es un `AccionTipoTicket`.
+ */
+export function esAccionTipoTicket(valor: string): valor is AccionTipoTicket {
+  const vocabulario: readonly string[] = ACCIONES_TIPO_TICKET;
+  return vocabulario.includes(valor);
+}
+
+/**
+ * Acciones que un administrador puede conceder desde Permisos (S5). `BORRADO` queda afuera: borrar
+ * un ticket todavía no existe (S8, T10) y conceder un permiso sin operación detrás sería un control
+ * sin efecto. Cuando exista el borrado, se suma acá.
+ */
+export const ACCIONES_TIPO_TICKET_CONCEDIBLES: readonly AccionTipoTicket[] =
+  ACCIONES_TIPO_TICKET.filter((accion) => accion !== 'BORRADO');
+
+/**
+ * Motivo por el que una fila (las acciones de un usuario sobre un tipo) no se puede guardar, o
+ * `null` si es válida. Sin Ver, el resto de la fila queda deshabilitado (S3): ninguna otra acción
+ * se concede sin `LECTURA`.
+ *
+ * @param acciones Acciones pedidas para el tipo.
+ * @returns Las acciones que no se pueden conceder y por qué, o `null`.
+ */
+export function problemaDeFilaDeTipo(
+  acciones: readonly string[],
+): { tipo: 'desconocida' | 'no-concedible' | 'sin-ver'; acciones: string[] } | null {
+  const desconocidas = acciones.filter((accion) => !esAccionTipoTicket(accion));
+  if (desconocidas.length > 0) return { tipo: 'desconocida', acciones: desconocidas };
+  const concedibles: readonly string[] = ACCIONES_TIPO_TICKET_CONCEDIBLES;
+  const noConcedibles = acciones.filter((accion) => !concedibles.includes(accion));
+  if (noConcedibles.length > 0) return { tipo: 'no-concedible', acciones: noConcedibles };
+  if (acciones.length > 0 && !acciones.includes('LECTURA')) {
+    return { tipo: 'sin-ver', acciones: [...acciones] };
+  }
+  return null;
+}
+
 /** Módulo master cuyas celdas se leen para traducir a acciones por tipo. */
 type ModuloOrigen = 'TICKETS' | 'EDILICIA';
 
@@ -102,6 +143,21 @@ export function accionesDeTipoDesdeCeldas(
 
   if (acciones.has('LECTURA')) acciones.add('IMPRESION');
   return acciones;
+}
+
+/**
+ * ¿La celda master ya no decide nada porque pasó a la tabla por tipo? Son las celdas que traduce
+ * L11: todas las de TICKETS y `EDILICIA:LECTURA`, `ALTAS` y `MODIFICACION`. `EDILICIA:BORRADO`
+ * (desvincular compra) sigue siendo del módulo (L21). Desde T7 la grilla de módulos deja de
+ * editarlas (D5 d); se retiran de la base en T9.
+ *
+ * @param celda Código `MODULO:ACCION`.
+ * @returns `true` si la celda la reemplazan los permisos por tipo.
+ */
+export function celdaReemplazadaPorTipo(celda: string): boolean {
+  const [modulo, accion] = celda.split(':');
+  if (modulo !== 'TICKETS' && modulo !== 'EDILICIA') return false;
+  return accion !== undefined && Object.keys(TRADUCCION_L11[modulo]).includes(accion);
 }
 
 /** Un tipo de ticket como destino de permisos: su id y el módulo del que toma las celdas. */

@@ -264,6 +264,26 @@ describe('PrismaPermisoTipoTicketRepository (T4a, tenant efímero)', () => {
     );
   });
 
+  it('listarTiposConDetalle ordena por nombre y marca inactivos a los desactivados y a los dados de baja (S5, L24)', async () => {
+    const soporte = await client.tipoTicket.create({
+      data: { codigo: 'SOP', nombre: 'Soporte', modulo: 'TICKETS' },
+    });
+    const baja = await client.tipoTicket.create({
+      data: { codigo: 'BAJA', nombre: 'Antiguo', modulo: 'EDILICIA', deletedAt: new Date() },
+    });
+    const desactivado = await client.tipoTicket.create({
+      data: { codigo: 'DES', nombre: 'Mantenimiento', modulo: 'EDILICIA', activo: false },
+    });
+
+    const tipos = await enTenant(() => repo.listarTiposConDetalle());
+
+    expect(tipos).toEqual([
+      { id: baja.id, nombre: 'Antiguo', modulo: 'EDILICIA', activo: false },
+      { id: desactivado.id, nombre: 'Mantenimiento', modulo: 'EDILICIA', activo: false },
+      { id: soporte.id, nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+    ]);
+  });
+
   it('al borrar el tipo se borran sus permisos (ON DELETE CASCADE)', async () => {
     const borrado = await crearTipo('T-BORRADO');
     const queda = await crearTipo('T-QUEDA');

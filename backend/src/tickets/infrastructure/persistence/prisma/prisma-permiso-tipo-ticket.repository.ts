@@ -15,6 +15,7 @@ import {
 import {
   IPermisoTipoTicketRepository,
   PermisoTipoTicketFila,
+  TipoTicketDePermisos,
 } from '../../../domain/ports/i-permiso-tipo-ticket.repository';
 
 type TenantClient = InstanceType<typeof TenantPrismaClient>;
@@ -100,5 +101,19 @@ export class PrismaPermisoTipoTicketRepository implements IPermisoTipoTicketRepo
   async listarTipos(): Promise<TipoTicketConModulo[]> {
     // Sin filtro de `deletedAt`: los tipos dados de baja también reciben permisos (L24).
     return this.client.tipoTicket.findMany({ select: { id: true, modulo: true } });
+  }
+
+  async listarTiposConDetalle(): Promise<TipoTicketDePermisos[]> {
+    // Mismo universo que `listarTipos` (L24): un tipo dado de baja figura como inactivo.
+    const tipos = await this.client.tipoTicket.findMany({
+      select: { id: true, modulo: true, nombre: true, activo: true, deletedAt: true },
+      orderBy: [{ nombre: 'asc' }, { id: 'asc' }],
+    });
+    return tipos.map(({ id, modulo, nombre, activo, deletedAt }) => ({
+      id,
+      modulo,
+      nombre,
+      activo: activo && deletedAt === null,
+    }));
   }
 }

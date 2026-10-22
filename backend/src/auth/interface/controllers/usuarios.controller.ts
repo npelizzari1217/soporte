@@ -14,6 +14,9 @@
  *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
  *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
  *   POST   /usuarios/:id/permisos/aplicar-preset → AplicarPresetPermisosUseCase [AdminClienteGuard] (ADR-P9)
+ *   GET    /usuarios/:id/permisos-por-tipo    → PermisosPorTipoUsuarioTenantUseCase [AdminClienteGuard] (odd/permisos-por-tipo-ticket, T7)
+ *   PUT    /usuarios/:id/permisos-por-tipo    → PermisosPorTipoUsuarioTenantUseCase [AdminClienteGuard] (reemplazo total)
+ *   POST   /usuarios/:id/permisos-por-tipo/copiar-de/:origenId → PermisosPorTipoUsuarioTenantUseCase [AdminClienteGuard]
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controller (requieren JWT
  * válido y `cliente_id` resuelto). `AdminClienteGuard` POR MÉTODO (ADR-P5) en
@@ -64,6 +67,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -79,12 +83,17 @@ import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
 import {
+  PermisosPorTipoDeUsuario,
+  PermisosPorTipoUsuarioTenantUseCase,
+} from '../../application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
+import {
   AplicarPresetPermisosDto,
   AsignarPermisosDto,
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
   EditarUsuarioDto,
   PermisosUsuarioTenantResponseDto,
+  ReemplazarPermisosPorTipoDto,
   ResetearPasswordUsuarioDto,
   UsuarioTenantMembresiaResponseDto,
   UsuarioTenantResponseDto,
@@ -164,7 +173,8 @@ function toHttpException(
   if (error instanceof MembresiaYaActivaError) {
     return new ConflictException(error.message);
   }
-  // RolNoEncontradoError, CeldaPermisoInvalidaError, PresetRolNoDefinidoError:
+  // RolNoEncontradoError, CeldaPermisoInvalidaError, PresetRolNoDefinidoError,
+  // PermisosPorTipoInvalidosError, PermisosPorTipoSinRestriccionError:
   // input inválido del actor o gap de configuración del código → 422.
   return new UnprocessableEntityException(error.message);
 }
@@ -182,6 +192,7 @@ export class UsuariosController {
     private readonly obtenerPermisosUsuarioTenantUseCase: ObtenerPermisosUsuarioTenantUseCase,
     private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
     private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+    private readonly permisosPorTipoUseCase: PermisosPorTipoUsuarioTenantUseCase,
     private readonly resetearTfaUsuarioUseCase: ResetearTfaUsuarioUseCase,
     private readonly resetearVinculoSsoUseCase: ResetearVinculoSsoUseCase,
     private readonly alcances: CargadorAlcanceTicket,
@@ -506,5 +517,82 @@ export class UsuariosController {
       throw toHttpException(result.getError());
     }
     return { usuarioId, rolCodigo: dto.rolCodigo };
+  }
+
+  // ─── Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T7, S5) ──────────
+
+  /**
+   * GET /usuarios/:id/permisos-por-tipo
+   * Una fila por tipo de ticket del tenant con las acciones del usuario `:id` y la plantilla de su
+   * rol para esa fila. ROOT y ADMINISTRADOR vuelven con `sinRestriccion: true` y sin filas.
+   * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
+   */
+  @Get(':id/permisos-por-tipo')
+  @UseGuards(AdminClienteGuard)
+  async obtenerPermisosPorTipo(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+  ): Promise<PermisosPorTipoDeUsuario> {
+    const result = await this.permisosPorTipoUseCase.obtener({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
+   * PUT /usuarios/:id/permisos-por-tipo
+   * Reemplaza TODAS las filas por tipo del usuario `:id` (no fusiona). El usuario las ve en su
+   * próximo request, sin refrescar la sesión (D1).
+   * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
+   * @throws 422 si el usuario es ROOT o ADMINISTRADOR, si un tipo no existe o se repite, si una
+   *             acción no está en el vocabulario o no se concede (BORRADO, S8), o si una fila
+   *             concede algo sin Ver (S3)
+   */
+  @Put(':id/permisos-por-tipo')
+  @UseGuards(AdminClienteGuard)
+  async reemplazarPermisosPorTipo(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: ReemplazarPermisosPorTipoDto,
+  ): Promise<PermisosPorTipoDeUsuario> {
+    const result = await this.permisosPorTipoUseCase.reemplazar({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      tipos: dto.tipos.map(({ tipoId, acciones }) => ({ tipoId, acciones })),
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
+   * POST /usuarios/:id/permisos-por-tipo/copiar-de/:origenId
+   * Reemplaza TODAS las filas por tipo del usuario `:id` por las del usuario `:origenId`, ambos del
+   * cliente del token ("Copiar permisos de otro usuario", S5).
+   * @throws 404 si alguno de los dos no tiene membresía ACTIVA en este cliente
+   * @throws 422 si son el mismo usuario o alguno es ROOT o ADMINISTRADOR
+   */
+  @Post(':id/permisos-por-tipo/copiar-de/:origenId')
+  @UseGuards(AdminClienteGuard)
+  @HttpCode(HttpStatus.OK)
+  async copiarPermisosPorTipo(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Param('origenId') origenId: string,
+  ): Promise<PermisosPorTipoDeUsuario> {
+    const result = await this.permisosPorTipoUseCase.copiarDe({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      origenId,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
   }
 }

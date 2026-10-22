@@ -133,18 +133,35 @@ async function httpGet<T = unknown>(
   return { status: res.status, data };
 }
 
-async function httpPatch<T = unknown>(
+async function httpConCuerpo<T = unknown>(
+  method: 'PATCH' | 'PUT',
   url: string,
   body: unknown,
   headers: Headers = {},
 ): Promise<{ status: number; data: T }> {
   const res = await fetch(url, {
-    method: 'PATCH',
+    method,
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify(body),
   });
   const data = (await res.json().catch(() => null)) as T;
   return { status: res.status, data };
+}
+
+async function httpPatch<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  return httpConCuerpo<T>('PATCH', url, body, headers);
+}
+
+async function httpPut<T = unknown>(
+  url: string,
+  body: unknown,
+  headers: Headers = {},
+): Promise<{ status: number; data: T }> {
+  return httpConCuerpo<T>('PUT', url, body, headers);
 }
 
 async function httpDelete<T = unknown>(
@@ -190,7 +207,7 @@ class TestHarnessModule implements NestModule {
 
 const ID = '00000000-0000-4000-8000-000000000001';
 
-type Metodo = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Metodo = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
 /**
  * WU-7.7 — rutas de los CUATRO controllers que antes de este cambio no
@@ -492,6 +509,10 @@ const TABLA_RUTAS_ADMIN: RutaAdminEsperada[] = [
   { metodo: 'GET', path: `/usuarios/${ID}/permisos` },
   { metodo: 'PATCH', path: `/usuarios/${ID}/permisos` },
   { metodo: 'POST', path: `/usuarios/${ID}/permisos/aplicar-preset` },
+  // permisos por tipo de ticket (odd/permisos-por-tipo-ticket, T7) — 3
+  { metodo: 'GET', path: `/usuarios/${ID}/permisos-por-tipo` },
+  { metodo: 'PUT', path: `/usuarios/${ID}/permisos-por-tipo` },
+  { metodo: 'POST', path: `/usuarios/${ID}/permisos-por-tipo/copiar-de/${ID}` },
 ];
 
 // Turno exclusivo sobre la master de test compartida — ver src/testing/lock-master-test.ts.
@@ -840,6 +861,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     if (metodo === 'GET') return httpGet(url, headers);
     if (metodo === 'DELETE') return httpDelete(url, headers);
     if (metodo === 'PATCH') return httpPatch(url, {}, headers);
+    if (metodo === 'PUT') return httpPut(url, {}, headers);
     return httpPost(url, {}, headers);
   }
 
@@ -1261,6 +1283,140 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
       );
 
       expect(status).toBe(404);
+    });
+  });
+
+  // ─── Permisos por tipo desde Admin → Usuarios (odd/permisos-por-tipo-ticket, T7, S5) ──────
+
+  describe('Permisos por tipo desde Admin → Usuarios (T7, S5)', () => {
+    /** Filas del usuario en la tabla del tenant, leídas sin pasar por la API. */
+    async function filasEnLaBase(usuarioId: string): Promise<string[]> {
+      const filas = await tenantClient.permisoTipoTicket.findMany({ where: { usuarioId } });
+      return filas
+        .map((f) => `${f.tipoId === tipoSoporteId ? 'SOPORTE' : f.tipoId}:${f.accion}`)
+        .sort();
+    }
+
+    interface RespuestaPorTipo {
+      sinRestriccion: boolean;
+      tipos: { tipoId: string; nombre: string; acciones: string[]; plantilla: string[] | null }[];
+    }
+
+    it('GET devuelve la fila de cada tipo con las acciones del usuario; un ROOT del cliente vuelve sin restricción', async () => {
+      const adminCliente = await crearActorAdministrador();
+      const tecnico = await crearActorPorTipo(adminCliente.clienteId, [], ['LECTURA', 'COMENTAR']);
+      const root = await crearUsuario(true);
+      const rolRoot = await crearRoleVacio();
+      await masterClient.membresia.create({
+        data: {
+          usuarioId: root.id,
+          clienteId: adminCliente.clienteId,
+          rolId: rolRoot.id,
+          activo: true,
+        },
+      });
+
+      const { status, data } = await httpGet<RespuestaPorTipo>(
+        `${baseUrl}/usuarios/${tecnico.usuarioId}/permisos-por-tipo`,
+        bearer(adminCliente.accessToken),
+      );
+      const deRoot = await httpGet<RespuestaPorTipo>(
+        `${baseUrl}/usuarios/${root.id}/permisos-por-tipo`,
+        bearer(adminCliente.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.sinRestriccion).toBe(false);
+      // El rol del fixture no tiene plantilla definida: `plantilla` viaja en null, no vacía.
+      expect(data.tipos.find((t) => t.tipoId === tipoSoporteId)).toMatchObject({
+        acciones: ['LECTURA', 'COMENTAR'],
+        plantilla: null,
+      });
+      expect(deRoot.status).toBe(200);
+      expect(deRoot.data).toMatchObject({ sinRestriccion: true, tipos: [] });
+    });
+
+    it('el próximo request del usuario ya ve lo que el administrador guardó, con el mismo token (D1)', async () => {
+      const adminCliente = await crearActorAdministrador();
+      const tecnico = await crearActorPorTipo(adminCliente.clienteId, [], []);
+      const antes = await httpGet(`${baseUrl}/usuarios`, bearer(tecnico.accessToken));
+
+      const guardado = await httpPut<RespuestaPorTipo>(
+        `${baseUrl}/usuarios/${tecnico.usuarioId}/permisos-por-tipo`,
+        { tipos: [{ tipoId: tipoSoporteId, acciones: ['LECTURA', 'ASIGNAR'] }] },
+        bearer(adminCliente.accessToken),
+      );
+      const despues = await httpGet(`${baseUrl}/usuarios`, bearer(tecnico.accessToken));
+
+      expect(antes.status).toBe(403);
+      expect(guardado.status).toBe(200);
+      expect(guardado.data.tipos.find((t) => t.tipoId === tipoSoporteId)?.acciones).toEqual([
+        'LECTURA',
+        'ASIGNAR',
+      ]);
+      await expect(filasEnLaBase(tecnico.usuarioId)).resolves.toEqual([
+        'SOPORTE:ASIGNAR',
+        'SOPORTE:LECTURA',
+      ]);
+      expect(despues.status).toBe(200);
+    });
+
+    it('PUT con una acción sin Ver: 422 con el mensaje en español y las filas sin tocar (S3)', async () => {
+      const adminCliente = await crearActorAdministrador();
+      const tecnico = await crearActorPorTipo(adminCliente.clienteId, [], ['LECTURA']);
+      const { nombre } = await tenantClient.tipoTicket.findUniqueOrThrow({
+        where: { id: tipoSoporteId },
+      });
+
+      const { status, data } = await httpPut<{ message: string }>(
+        `${baseUrl}/usuarios/${tecnico.usuarioId}/permisos-por-tipo`,
+        { tipos: [{ tipoId: tipoSoporteId, acciones: ['VER_TODOS', 'MODIFICACION'] }] },
+        bearer(adminCliente.accessToken),
+      );
+
+      expect(status).toBe(422);
+      expect(data.message).toBe(
+        `Sin Ver no se puede conceder ninguna otra acción en el tipo «${nombre}» (se pidió VER_TODOS, MODIFICACION).`,
+      );
+      await expect(filasEnLaBase(tecnico.usuarioId)).resolves.toEqual(['SOPORTE:LECTURA']);
+    });
+
+    it('PUT sobre un ADMINISTRADOR: 422; un usuario sin membresía en el cliente: 404', async () => {
+      const adminCliente = await crearActorAdministrador();
+      // Una sola base de tenant por suite (db_name único): el ajeno es un usuario sin membresía acá.
+      const ajeno = { usuarioId: (await crearUsuario()).id };
+
+      const sobreAdmin = await httpPut(
+        `${baseUrl}/usuarios/${adminCliente.usuarioId}/permisos-por-tipo`,
+        { tipos: [] },
+        bearer(adminCliente.accessToken),
+      );
+      const sobreAjeno = await httpPut(
+        `${baseUrl}/usuarios/${ajeno.usuarioId}/permisos-por-tipo`,
+        { tipos: [] },
+        bearer(adminCliente.accessToken),
+      );
+
+      expect(sobreAdmin.status).toBe(422);
+      expect(sobreAjeno.status).toBe(404);
+    });
+
+    it('copiar reemplaza las filas del destino por las del origen', async () => {
+      const adminCliente = await crearActorAdministrador();
+      const origen = await crearActorPorTipo(adminCliente.clienteId, [], ['LECTURA', 'VER_TODOS']);
+      const destino = await crearActorPorTipo(adminCliente.clienteId, [], ['LECTURA', 'ALTAS']);
+
+      const { status } = await httpPost(
+        `${baseUrl}/usuarios/${destino.usuarioId}/permisos-por-tipo/copiar-de/${origen.usuarioId}`,
+        {},
+        bearer(adminCliente.accessToken),
+      );
+
+      expect(status).toBe(200);
+      await expect(filasEnLaBase(destino.usuarioId)).resolves.toEqual([
+        'SOPORTE:LECTURA',
+        'SOPORTE:VER_TODOS',
+      ]);
     });
   });
 });

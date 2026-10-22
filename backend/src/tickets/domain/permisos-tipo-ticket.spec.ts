@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCIONES_TIPO_TICKET,
+  ACCIONES_TIPO_TICKET_CONCEDIBLES,
   AccionTipoTicket,
   accionesDeTipoDesdeCeldas,
+  celdaReemplazadaPorTipo,
   filasDeTiposDesdeCeldas,
+  problemaDeFilaDeTipo,
 } from './permisos-tipo-ticket';
+import { PARES_VALIDOS } from '../../shared/domain/acciones';
 
 /** El resultado como lista ordenada, para comparar sin depender del orden de inserción. */
 function ordenadas(acciones: ReadonlySet<AccionTipoTicket>): AccionTipoTicket[] {
@@ -183,5 +187,65 @@ describe('filasDeTiposDesdeCeldas — plantilla de rol sobre todos los tipos (T4
   it('sin celdas de tickets (la plantilla de ADMINISTRADOR) no produce filas', () => {
     expect(filasDeTiposDesdeCeldas([], tipos)).toEqual([]);
     expect(filasDeTiposDesdeCeldas(['KB:LECTURA', 'COMPRAS:LECTURA'], [tipos[1]])).toEqual([]);
+  });
+});
+
+describe('problemaDeFilaDeTipo (T7, S3)', () => {
+  it('una fila vacía o con Ver y cualquier otra acción concedible es válida', () => {
+    expect(problemaDeFilaDeTipo([])).toBeNull();
+    expect(problemaDeFilaDeTipo(['LECTURA'])).toBeNull();
+    expect(problemaDeFilaDeTipo([...ACCIONES_TIPO_TICKET_CONCEDIBLES])).toBeNull();
+  });
+
+  it('sin Ver no se concede ninguna otra acción, tampoco Ver todos ni Imprimir', () => {
+    expect(problemaDeFilaDeTipo(['VER_TODOS'])).toEqual({
+      tipo: 'sin-ver',
+      acciones: ['VER_TODOS'],
+    });
+    expect(problemaDeFilaDeTipo(['IMPRESION', 'ALTAS'])).toEqual({
+      tipo: 'sin-ver',
+      acciones: ['IMPRESION', 'ALTAS'],
+    });
+  });
+
+  it('BORRADO no se concede: borrar tickets todavía no existe (S8)', () => {
+    expect(ACCIONES_TIPO_TICKET_CONCEDIBLES).not.toContain('BORRADO');
+    expect(problemaDeFilaDeTipo(['LECTURA', 'BORRADO'])).toEqual({
+      tipo: 'no-concedible',
+      acciones: ['BORRADO'],
+    });
+  });
+
+  it('una acción fuera del vocabulario se informa antes que las demás reglas', () => {
+    expect(problemaDeFilaDeTipo(['APROBACION', 'BORRADO'])).toEqual({
+      tipo: 'desconocida',
+      acciones: ['APROBACION'],
+    });
+  });
+});
+
+describe('celdaReemplazadaPorTipo (T7, D5 d)', () => {
+  it('son exactamente las celdas de TICKETS y EDILICIA:LECTURA|ALTAS|MODIFICACION del catálogo', () => {
+    expect(PARES_VALIDOS.filter(celdaReemplazadaPorTipo).sort()).toEqual(
+      [
+        'TICKETS:LECTURA',
+        'TICKETS:ALTAS',
+        'TICKETS:MODIFICACION',
+        'TICKETS:VER_TODOS',
+        'TICKETS:ASIGNAR',
+        'TICKETS:TRANSICIONAR',
+        'TICKETS:OBSERVAR',
+        'TICKETS:COMENTAR',
+        'EDILICIA:LECTURA',
+        'EDILICIA:ALTAS',
+        'EDILICIA:MODIFICACION',
+      ].sort(),
+    );
+  });
+
+  it('EDILICIA:BORRADO (desvincular compra, L21) y los módulos sin tickets siguen siendo del módulo', () => {
+    expect(celdaReemplazadaPorTipo('EDILICIA:BORRADO')).toBe(false);
+    expect(celdaReemplazadaPorTipo('COMPRAS:LECTURA')).toBe(false);
+    expect(celdaReemplazadaPorTipo('TICKETS:toString')).toBe(false);
   });
 });

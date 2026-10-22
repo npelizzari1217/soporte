@@ -2,7 +2,12 @@ import { AccionTipoTicket, TipoTicketConModulo } from '../domain/permisos-tipo-t
 import {
   IPermisoTipoTicketRepository,
   PermisoTipoTicketFila,
+  TipoTicketDePermisos,
 } from '../domain/ports/i-permiso-tipo-ticket.repository';
+
+/** Tipo del doble: el nombre y el estado son opcionales (por defecto, el id y activo). */
+export type TipoDePrueba = TipoTicketConModulo &
+  Partial<Pick<TipoTicketDePermisos, 'nombre' | 'activo'>>;
 
 /**
  * Doble en memoria de `IPermisoTipoTicketRepository` para tests unitarios: guarda las acciones
@@ -17,7 +22,7 @@ export class PermisosTipoTicketEnMemoria implements IPermisoTipoTicketRepository
    * @param iniciales Filas ya existentes antes del test.
    */
   constructor(
-    private readonly tipos: readonly TipoTicketConModulo[],
+    private readonly tipos: readonly TipoDePrueba[],
     iniciales: readonly PermisoTipoTicketFila[] = [],
   ) {
     for (const fila of iniciales) this.agregar(fila);
@@ -68,7 +73,18 @@ export class PermisosTipoTicketEnMemoria implements IPermisoTipoTicketRepository
   }
 
   async listarTipos(): Promise<TipoTicketConModulo[]> {
-    return this.tipos.map((tipo) => ({ ...tipo }));
+    return this.tipos.map(({ id, modulo }) => ({ id, modulo }));
+  }
+
+  async listarTiposConDetalle(): Promise<TipoTicketDePermisos[]> {
+    return this.tipos
+      .map(({ id, modulo, nombre, activo }) => ({
+        id,
+        modulo,
+        nombre: nombre ?? id,
+        activo: activo ?? true,
+      }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre));
   }
 
   /** Agrega la terna; devuelve `false` si ya existía. */

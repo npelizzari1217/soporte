@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import { notifyError, notifySuccess } from "@/shared/lib/toast";
 import type { CodigoAccion } from "@/shared/auth/acciones";
+import { clavePermisosPorTipoUsuario } from "./use-permisos-por-tipo-usuario";
 
 export interface PermisosUsuarioTenant {
   celdas: CodigoAccion[];
@@ -55,6 +56,10 @@ export function useAsignarPermisos(usuarioId: string) {
  * `rolCodigo` SOBRE la matriz del usuario (ADR-P9, sobrescribe). Acción
  * independiente de `PATCH /usuarios/:id/rol` — "copiar plantilla" desde la
  * grilla, con confirmación explícita en el caller (pisa ediciones manuales).
+ *
+ * El backend reescribe también las filas por tipo (odd/permisos-por-tipo-ticket, T4c), así que se
+ * invalida su query: si no, la pestaña "Tipos de ticket", que sigue montada, guardaría encima de la
+ * plantilla las filas de antes.
  */
 export function useAplicarPresetPermisos(usuarioId: string) {
   const queryClient = useQueryClient();
@@ -67,6 +72,7 @@ export function useAplicarPresetPermisos(usuarioId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["usuarios"] });
       queryClient.invalidateQueries({ queryKey: ["usuario-permisos", usuarioId] });
+      queryClient.invalidateQueries({ queryKey: clavePermisosPorTipoUsuario(usuarioId) });
       notifySuccess("Plantilla aplicada.");
     },
     onError: notifyError,

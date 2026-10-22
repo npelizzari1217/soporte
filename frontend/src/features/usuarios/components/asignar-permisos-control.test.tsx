@@ -31,7 +31,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     server.use(
       http.get("/api/usuarios/u1/permisos", () => {
         gets += 1;
-        return HttpResponse.json({ celdas: ["TICKETS:LECTURA"], esAdministrador: false });
+        return HttpResponse.json({ celdas: ["KB:LECTURA"], esAdministrador: false });
       }),
       http.patch("/api/usuarios/u1/permisos", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
@@ -49,8 +49,8 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
 
     await user.click(screen.getByRole("button", { name: /permisos/i }));
 
-    const ticketsLectura = await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
-    await waitFor(() => expect(ticketsLectura).toBeChecked());
+    const kbLectura = await screen.findByRole("checkbox", { name: "KB:LECTURA" });
+    await waitFor(() => expect(kbLectura).toBeChecked());
     expect(screen.getByRole("checkbox", { name: "COMPRAS:LECTURA" })).not.toBeChecked();
 
     await user.click(screen.getByRole("checkbox", { name: "COMPRAS:LECTURA" }));
@@ -58,7 +58,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
 
     await waitFor(() =>
       expect(capturedBody.celdas).toEqual(
-        expect.arrayContaining(["TICKETS:LECTURA", "COMPRAS:LECTURA"]),
+        expect.arrayContaining(["KB:LECTURA", "COMPRAS:LECTURA"]),
       ),
     );
   });
@@ -79,7 +79,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
       user: buildUser({ rol: "ADMINISTRADOR" }),
     });
     await user.click(screen.getByRole("button", { name: /permisos/i }));
-    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+    await screen.findByRole("checkbox", { name: "COMPRAS:LECTURA" });
 
     const dialogo = screen.getByRole("dialog", { name: `Permisos de ${USUARIO_TECNICO.nombre}` });
     const zonaModulos = screen.getByTestId("permisos-modulos");
@@ -107,16 +107,16 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
       user: buildUser({ rol: "ADMINISTRADOR" }),
     });
     await user.click(screen.getByRole("button", { name: /permisos/i }));
-    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+    await screen.findByRole("checkbox", { name: "COMPRAS:LECTURA" });
 
     const zonaModulos = within(screen.getByTestId("permisos-modulos"));
     // Mismo nombre que en el menú lateral: "KB" no le dice nada a nadie.
     expect(zonaModulos.getByText("Ayuda")).toBeInTheDocument();
-    expect(zonaModulos.getByText("Tickets")).toBeInTheDocument();
+    expect(zonaModulos.getByText("Edilicia")).toBeInTheDocument();
     // Los códigos crudos ya no se muestran como encabezado (siguen viajando en
     // el `aria-label` de cada checkbox, que no es texto del DOM).
     expect(zonaModulos.queryByText("KB")).not.toBeInTheDocument();
-    expect(zonaModulos.queryByText("TICKETS")).not.toBeInTheDocument();
+    expect(zonaModulos.queryByText("EDILICIA")).not.toBeInTheDocument();
     // Las ACCIONES no cambian: se siguen mostrando con su código.
     expect(zonaModulos.getAllByText("LECTURA").length).toBeGreaterThan(0);
   });
@@ -140,7 +140,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     });
     await user.click(screen.getByRole("button", { name: /permisos/i }));
 
-    await user.click(await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" }));
+    await user.click(await screen.findByRole("checkbox", { name: "KB:LECTURA" }));
     await user.click(screen.getByRole("checkbox", { name: "COMPRAS:ALTAS" }));
     expect(patches).toBe(0);
 
@@ -160,11 +160,74 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
       user: buildUser({ rol: "ADMINISTRADOR" }),
     });
     await user.click(screen.getByRole("button", { name: /permisos/i }));
-    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+    await screen.findByRole("checkbox", { name: "COMPRAS:LECTURA" });
 
-    expect(screen.getByRole("checkbox", { name: "TICKETS:IMPRESION" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "EDILICIA:IMPRESION" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "DASHBOARD:APROBACION" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "COMPRAS:APROBACION" })).not.toBeDisabled();
+  });
+
+  it("no ofrece las celdas que pasaron a los permisos por tipo: TICKETS y Edilicia ver, crear y modificar (T7, D5 d)", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.get("/api/usuarios/u1/permisos", () =>
+        HttpResponse.json({ celdas: [], esAdministrador: false }),
+      ),
+    );
+
+    renderWithProviders(<AsignarPermisosControl usuario={USUARIO_TECNICO} />, {
+      user: buildUser({ rol: "ADMINISTRADOR" }),
+    });
+    await user.click(screen.getByRole("button", { name: /permisos/i }));
+    await screen.findByRole("checkbox", { name: "COMPRAS:LECTURA" });
+
+    const zonaModulos = within(screen.getByTestId("permisos-modulos"));
+    for (const celda of [
+      "TICKETS:LECTURA",
+      "TICKETS:VER_TODOS",
+      "TICKETS:ASIGNAR",
+      "EDILICIA:LECTURA",
+      "EDILICIA:ALTAS",
+      "EDILICIA:MODIFICACION",
+    ]) {
+      expect(zonaModulos.queryByRole("checkbox", { name: celda })).not.toBeInTheDocument();
+    }
+    // Sin ninguna celda editable, el módulo TICKETS desaparece de la grilla.
+    expect(zonaModulos.queryByText("Tickets")).not.toBeInTheDocument();
+    // Desvincular compra (L21) y los módulos sin tickets siguen acá.
+    expect(zonaModulos.getByRole("checkbox", { name: "EDILICIA:BORRADO" })).toBeEnabled();
+    expect(zonaModulos.getByRole("checkbox", { name: "INSUMOS:AJUSTAR" })).toBeEnabled();
+    expect(zonaModulos.getByText(/se configuran por tipo/i)).toBeInTheDocument();
+  });
+
+  it("Guardar reenvía sin cambios las celdas ocultas que el usuario ya tenía", async () => {
+    const user = userEvent.setup();
+    let capturedBody: { celdas?: string[] } = {};
+    server.use(
+      http.get("/api/usuarios/u1/permisos", () =>
+        HttpResponse.json({
+          celdas: ["TICKETS:LECTURA", "EDILICIA:ALTAS", "EDILICIA:BORRADO"],
+          esAdministrador: false,
+        }),
+      ),
+      http.patch("/api/usuarios/u1/permisos", async ({ request }) => {
+        capturedBody = (await request.json()) as { celdas: string[] };
+        return HttpResponse.json({ usuarioId: "u1", celdas: capturedBody.celdas });
+      }),
+    );
+
+    renderWithProviders(<AsignarPermisosControl usuario={USUARIO_TECNICO} />, {
+      user: buildUser({ rol: "ADMINISTRADOR" }),
+    });
+    await user.click(screen.getByRole("button", { name: /permisos/i }));
+    const borrado = await screen.findByRole("checkbox", { name: "EDILICIA:BORRADO" });
+    await waitFor(() => expect(borrado).toBeChecked());
+
+    await user.click(borrado);
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+    await waitFor(() => expect(capturedBody.celdas).toBeDefined());
+    expect([...(capturedBody.celdas ?? [])].sort()).toEqual(["EDILICIA:ALTAS", "TICKETS:LECTURA"]);
   });
 
   it("para un ADMINISTRADOR deshabilita la edición y muestra la nota (grilla tildada completa, R2)", async () => {
@@ -232,7 +295,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
     const user = userEvent.setup();
     let presetBody: Record<string, unknown> | null = null;
     mockPermisos({
-      celdasIniciales: ["TICKETS:LECTURA"],
+      celdasIniciales: ["KB:LECTURA"],
       celdasTrasPreset: ["COMPRAS:LECTURA"],
       onPreset: (body) => (presetBody = body),
     });
@@ -242,7 +305,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /permisos/i }));
-    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+    await screen.findByRole("checkbox", { name: "KB:LECTURA" });
 
     await user.click(screen.getByRole("button", { name: /reaplicar plantilla/i }));
 
@@ -258,7 +321,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
     const user = userEvent.setup();
     let posts = 0;
     mockPermisos({
-      celdasIniciales: ["TICKETS:LECTURA"],
+      celdasIniciales: ["KB:LECTURA"],
       celdasTrasPreset: ["COMPRAS:LECTURA"],
       onPreset: () => (posts += 1),
     });
@@ -268,7 +331,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /permisos/i }));
-    await screen.findByRole("checkbox", { name: "TICKETS:LECTURA" });
+    await screen.findByRole("checkbox", { name: "KB:LECTURA" });
 
     await user.click(screen.getByRole("button", { name: /reaplicar plantilla/i }));
     const confirmacion = await screen.findByRole("alertdialog");
@@ -285,7 +348,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
     const user = userEvent.setup();
     let patchBody: Record<string, unknown> | null = null;
     mockPermisos({
-      celdasIniciales: ["TICKETS:LECTURA"],
+      celdasIniciales: ["KB:LECTURA"],
       celdasTrasPreset: ["COMPRAS:LECTURA", "COMPRAS:ALTAS"],
       onPatch: (body) => (patchBody = body),
     });
@@ -296,7 +359,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
 
     await user.click(screen.getByRole("button", { name: /permisos/i }));
     await waitFor(() =>
-      expect(screen.getByRole("checkbox", { name: "TICKETS:LECTURA" })).toBeChecked(),
+      expect(screen.getByRole("checkbox", { name: "KB:LECTURA" })).toBeChecked(),
     );
 
     await user.click(screen.getByRole("button", { name: /reaplicar plantilla/i }));
@@ -308,7 +371,7 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
       expect(screen.getByRole("checkbox", { name: "COMPRAS:LECTURA" })).toBeChecked(),
     );
     expect(screen.getByRole("checkbox", { name: "COMPRAS:ALTAS" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "TICKETS:LECTURA" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "KB:LECTURA" })).not.toBeChecked();
 
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
@@ -316,6 +379,6 @@ describe("AsignarPermisosControl — reaplicar la plantilla del rol", () => {
     expect(patchBody!.celdas).toEqual(
       expect.arrayContaining(["COMPRAS:LECTURA", "COMPRAS:ALTAS"]),
     );
-    expect(patchBody!.celdas).not.toContain("TICKETS:LECTURA");
+    expect(patchBody!.celdas).not.toContain("KB:LECTURA");
   });
 });

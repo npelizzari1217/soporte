@@ -11,6 +11,15 @@ export interface PermisoTipoTicketFila {
 }
 
 /**
+ * Un tipo de ticket como fila de la grilla de Permisos (S5): además del módulo, el nombre que ve el
+ * administrador y si está activo. `activo` es `false` para un tipo desactivado o dado de baja.
+ */
+export interface TipoTicketDePermisos extends TipoTicketConModulo {
+  nombre: string;
+  activo: boolean;
+}
+
+/**
  * IPermisoTipoTicketRepository — puerto de persistencia de los permisos por tipo de ticket,
  * locales al tenant (odd/tasks/permisos-por-tipo-ticket.md, D1). Sin imports de Prisma ni
  * NestJS: la implementación toma el cliente de `TenantContext`.
@@ -66,6 +75,15 @@ export interface IPermisoTipoTicketRepository {
    * @returns Id y módulo de cada tipo, dados de baja incluidos.
    */
   listarTipos(): Promise<TipoTicketConModulo[]>;
+
+  /**
+   * Los mismos tipos que `listarTipos`, con nombre y estado, ordenados por nombre: las filas de la
+   * grilla de Permisos (S5). Los dados de baja se incluyen porque sus filas siguen decidiendo
+   * (L24) y un reemplazo total sin ellas las borraría.
+   *
+   * @returns Id, módulo, nombre y si está activo de cada tipo, dados de baja incluidos.
+   */
+  listarTiposConDetalle(): Promise<TipoTicketDePermisos[]>;
 }
 
 /** Token de inyección de dependencias para IPermisoTipoTicketRepository en NestJS. */
