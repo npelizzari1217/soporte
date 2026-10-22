@@ -781,9 +781,12 @@ import {
     },
     {
       provide: CrearTipoTicketUseCase,
-      useFactory: (tipoTicketRepo: ITipoTicketRepository) =>
-        new CrearTipoTicketUseCase(tipoTicketRepo),
-      inject: [TIPO_TICKET_REPOSITORY],
+      useFactory: (
+        tipoTicketRepo: ITipoTicketRepository,
+        permisos: IPermisoTipoTicketRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new CrearTipoTicketUseCase(tipoTicketRepo, permisos, txRunner),
+      inject: [TIPO_TICKET_REPOSITORY, PERMISO_TIPO_TICKET_REPOSITORY, TENANT_TX_RUNNER],
     },
     {
       provide: EditarTipoTicketUseCase,

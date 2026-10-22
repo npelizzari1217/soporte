@@ -104,7 +104,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T6 — S6 — worker — etapa 1, front: botones, alta y filtros según acciones por tipo — (este commit)
 - [x] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (este commit)
-- [ ] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (pendiente)
+- [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
 - [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
   producción — (pendiente)
 - [ ] T10 — S8 — bloqueada: borrar ticket, espera las decisiones de S8 — (pendiente)
@@ -289,4 +289,9 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   (sin 422, para no romper a quien reenvía lo que leyó; se retiran en T9). El usuario ve el cambio
   en su próximo request sin refrescar el token (e2e). Back: 2639 tests; front: lint 0, tsc 0,
   2428 tests. Ayuda (suspendida): pestaña "Tipos de ticket" en Permisos.
+- **L32** (T8) — `POST /catalogos/tipos-ticket` acepta `copiarPermisosDeTipoId`; sin él el tipo
+  nace cerrado. Con él, alta y copia van en la misma transacción (`INSERT ... SELECT`). El tipo
+  origen tiene que existir y ser del mismo módulo (422 si no). Formulario: "Copiar permisos de",
+  con "Ninguno (cerrado)" por defecto, filtrado por módulo, solo en el alta. Back: 1405 tests;
+  front: 2434. Ayuda (suspendida): campo "Copiar permisos de" en el alta de tipo.
 

@@ -1746,6 +1746,143 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       expect(status).toBe(422);
       expect(data.message).toContain('SOP');
     });
+
+    describe('tipo nuevo cerrado y "Copiar permisos de" (odd/permisos-por-tipo-ticket, T8, S4)', () => {
+      /** Admin, técnico con Ver y Ver todos solo en SOPORTE, y un solicitante, todos del mismo cliente. */
+      async function escenario(): Promise<{
+        tokenAdmin: string;
+        tokenTecnico: string;
+        tecnicoId: string;
+        solicitanteId: string;
+      }> {
+        const cliente = await createClienteTenant();
+        const roleAdmin = await createRoleConPermisos('ADMINISTRADOR', ['catalogo:gestionar']);
+        const roleTecnico = await createRoleConPermisos('TECNICO', ['ticket:ver_todos']);
+        const roleUsuario = await createRoleConPermisos('USUARIO', ['ticket:crear']);
+        const admin = await createUsuario(`s4-adm-${randomBytes(2).toString('hex')}`);
+        const tecnico = await createUsuario(`s4-tec-${randomBytes(2).toString('hex')}`);
+        const solicitante = await createUsuario(`s4-usr-${randomBytes(2).toString('hex')}`);
+        await createMembresia(admin.id, cliente.id, roleAdmin.id);
+        await createMembresia(tecnico.id, cliente.id, roleTecnico.id);
+        await createMembresia(solicitante.id, cliente.id, roleUsuario.id);
+        // Desde acá nada vuelve a sembrar filas: los tipos creados por el endpoint quedan como los
+        // deja el alta, sin el relleno del fixture (`sembrarPermisosPorTipoE2e`).
+        await fijarPermisosPorTipo(tecnico.id, { [tipoSoporteId]: ['LECTURA', 'VER_TODOS'] });
+        return {
+          tokenAdmin: (await login(admin.email)).accessToken,
+          tokenTecnico: (await login(tecnico.email)).accessToken,
+          tecnicoId: tecnico.id,
+          solicitanteId: solicitante.id,
+        };
+      }
+
+      /** Ticket ajeno al técnico, del tipo dado, insertado por Prisma: se mira el acceso por id. */
+      async function ticketDeTipo(solicitanteId: string, tipoId: string): Promise<string> {
+        const ticket = await tenantClient.ticket.create({
+          data: {
+            numero: `S4-${randomBytes(4).toString('hex')}`,
+            titulo: 'Ticket del tipo nuevo',
+            tipoId,
+            estadoId: estadoNuevoId,
+            prioridadId: prioridadMediaId,
+            cicloId: cicloActivoId,
+            solicitanteId,
+          },
+        });
+        return ticket.id;
+      }
+
+      it('con copia desde SOPORTE, quien tiene filas en SOPORTE ve un ticket del tipo nuevo', async () => {
+        const e = await escenario();
+
+        const creado = await httpPost<{ id: string }>(
+          `${baseUrl}/catalogos/tipos-ticket`,
+          {
+            codigo: `ZCP${randomBytes(2).toString('hex').toUpperCase()}`,
+            nombre: 'Con copia',
+            modulo: 'TICKETS',
+            copiarPermisosDeTipoId: tipoSoporteId,
+          },
+          bearer(e.tokenAdmin),
+        );
+        expect(creado.status).toBe(201);
+
+        const filas = await tenantClient.permisoTipoTicket.findMany({
+          where: { usuarioId: e.tecnicoId, tipoId: creado.data.id },
+        });
+        expect(filas.map((f) => f.accion).sort()).toEqual(['LECTURA', 'VER_TODOS']);
+        const ticketId = await ticketDeTipo(e.solicitanteId, creado.data.id);
+        const visto = await httpGet<TicketResponseDto>(
+          `${baseUrl}/tickets/${ticketId}`,
+          bearer(e.tokenTecnico),
+        );
+        expect(visto.status).toBe(200);
+        expect(visto.data.id).toBe(ticketId);
+      });
+
+      it('sin copia, el tipo nace cerrado: el técnico recibe 404 y el ADMINISTRADOR lo ve', async () => {
+        const e = await escenario();
+
+        const creado = await httpPost<{ id: string }>(
+          `${baseUrl}/catalogos/tipos-ticket`,
+          {
+            codigo: `ZCE${randomBytes(2).toString('hex').toUpperCase()}`,
+            nombre: 'Cerrado',
+            modulo: 'TICKETS',
+          },
+          bearer(e.tokenAdmin),
+        );
+        expect(creado.status).toBe(201);
+
+        expect(
+          await tenantClient.permisoTipoTicket.count({ where: { tipoId: creado.data.id } }),
+        ).toBe(0);
+        const ticketId = await ticketDeTipo(e.solicitanteId, creado.data.id);
+        expect(
+          (await httpGet(`${baseUrl}/tickets/${ticketId}`, bearer(e.tokenTecnico))).status,
+        ).toBe(404);
+        const delAdmin = await httpGet<TicketResponseDto>(
+          `${baseUrl}/tickets/${ticketId}`,
+          bearer(e.tokenAdmin),
+        );
+        expect(delAdmin.status).toBe(200);
+        expect(delAdmin.data.id).toBe(ticketId);
+      });
+
+      it('copiar de un tipo de otro módulo → 422 y el tipo no se crea', async () => {
+        const e = await escenario();
+        const edilicia = await tenantClient.tipoTicket.findUniqueOrThrow({
+          where: { codigo: 'EDILICIA' },
+        });
+        const codigo = `ZXM${randomBytes(2).toString('hex').toUpperCase()}`;
+
+        const { status, data } = await httpPost<{ message: string }>(
+          `${baseUrl}/catalogos/tipos-ticket`,
+          { codigo, nombre: 'Otro módulo', modulo: 'TICKETS', copiarPermisosDeTipoId: edilicia.id },
+          bearer(e.tokenAdmin),
+        );
+
+        expect(status).toBe(422);
+        expect(data.message).toBe(
+          'Los permisos solo se copian de un tipo del mismo módulo: el tipo elegido es de EDILICIA y el nuevo es de TICKETS.',
+        );
+        expect(await tenantClient.tipoTicket.count({ where: { codigo } })).toBe(0);
+      });
+
+      it('copiarPermisosDeTipoId que no es un uuid → 400 y el tipo no se crea', async () => {
+        const e = await escenario();
+        const codigo = `ZXI${randomBytes(2).toString('hex').toUpperCase()}`;
+
+        const { status } = await httpPost(
+          `${baseUrl}/catalogos/tipos-ticket`,
+          { codigo, nombre: 'Id inválido', modulo: 'TICKETS', copiarPermisosDeTipoId: 'soporte' },
+          bearer(e.tokenAdmin),
+        );
+
+        expect(status).toBe(400);
+        expect(await tenantClient.tipoTicket.count({ where: { codigo } })).toBe(0);
+      });
+    });
   });
 
   // ─── Sanity ───────────────────────────────────────────────────────────────

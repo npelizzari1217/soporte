@@ -72,6 +72,17 @@ export class PermisosTipoTicketEnMemoria implements IPermisoTipoTicketRepository
     return filas.filter((fila) => this.agregar(fila)).length;
   }
 
+  async copiarDeTipo(origenId: string, destinoId: string): Promise<number> {
+    const filas = [...this.porUsuario].flatMap(([usuarioId, porTipo]) =>
+      [...(porTipo.get(origenId) ?? [])].map((accion) => ({
+        usuarioId,
+        tipoId: destinoId,
+        accion,
+      })),
+    );
+    return filas.filter((fila) => this.agregar(fila)).length;
+  }
+
   async listarTipos(): Promise<TipoTicketConModulo[]> {
     return this.tipos.map(({ id, modulo }) => ({ id, modulo }));
   }

@@ -88,7 +88,8 @@ function toHttpException(error: DomainError): NotFoundException | UnprocessableE
   }
   // TipoTicketCodigoDuplicadoError, PrefijoTipoTicketColisionError,
   // TipoTicketDesconocidoError, TipoTicketDelSistemaError,
-  // PrioridadCodigoDuplicadaError → 422.
+  // PrioridadCodigoDuplicadaError, TipoOrigenPermisosNoEncontradoError,
+  // TipoOrigenPermisosDeOtroModuloError → 422.
   return new UnprocessableEntityException(error.message);
 }
 
@@ -154,9 +155,11 @@ export class CatalogosController {
   // ─── tipos-ticket ────────────────────────────────────────────────────────
 
   /**
-   * POST /catalogos/tipos-ticket
+   * POST /catalogos/tipos-ticket — el tipo nace cerrado salvo que `copiarPermisosDeTipoId` pida
+   * copiar los permisos por usuario de otro tipo del mismo módulo (odd/permisos-por-tipo-ticket, S4).
    * @throws 403 sin `catalogo:gestionar`
-   * @throws 422 codigo duplicado, codigo degenerado, o prefijo derivado (ADR-4) en colisión
+   * @throws 422 codigo duplicado, codigo degenerado, prefijo derivado (ADR-4) en colisión, o tipo
+   *   de origen de los permisos inexistente o de otro módulo
    */
   @Post('tipos-ticket')
   @UseGuards(AdminClienteGuard)

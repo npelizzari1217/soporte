@@ -527,3 +527,32 @@ export class ModuloSinAltaDeTipoError extends DomainError {
     );
   }
 }
+
+/**
+ * TipoOrigenPermisosNoEncontradoError — el alta de un tipo pide copiar los permisos de un tipo que
+ * no existe en el tenant (odd/tasks/permisos-por-tipo-ticket.md, S4). Es un dato inválido del
+ * formulario, no un recurso de la ruta: → HTTP 422 en la capa de presentación.
+ */
+export class TipoOrigenPermisosNoEncontradoError extends DomainError {
+  readonly code = 'TIPO_ORIGEN_PERMISOS_NO_ENCONTRADO';
+
+  constructor(tipoId: string) {
+    super(`No existe el tipo de ticket "${tipoId}" del que se pidieron copiar los permisos.`);
+  }
+}
+
+/**
+ * TipoOrigenPermisosDeOtroModuloError — el alta de un tipo pide copiar los permisos de un tipo de
+ * otro módulo (odd/tasks/permisos-por-tipo-ticket.md, S4). Copiar el acceso a Edilicia sobre un tipo
+ * de Tickets daría acceso a quien nunca lo tuvo en ese módulo. → HTTP 422.
+ */
+export class TipoOrigenPermisosDeOtroModuloError extends DomainError {
+  readonly code = 'TIPO_ORIGEN_PERMISOS_DE_OTRO_MODULO';
+
+  constructor(moduloOrigen: string, moduloNuevo: string) {
+    super(
+      'Los permisos solo se copian de un tipo del mismo módulo: ' +
+        `el tipo elegido es de ${moduloOrigen} y el nuevo es de ${moduloNuevo}.`,
+    );
+  }
+}

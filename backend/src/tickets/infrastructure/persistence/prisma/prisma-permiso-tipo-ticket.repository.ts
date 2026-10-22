@@ -98,6 +98,17 @@ export class PrismaPermisoTipoTicketRepository implements IPermisoTipoTicketRepo
     return count;
   }
 
+  async copiarDeTipo(origenId: string, destinoId: string): Promise<number> {
+    // Un solo INSERT ... SELECT: la copia no pasa por memoria y, con el cliente del contexto, corre
+    // dentro de la transacción del alta del tipo cuando la hay.
+    return this.client.$executeRaw`
+      INSERT INTO "permisos_tipo_ticket" ("usuario_id", "tipo_id", "accion")
+      SELECT "usuario_id", ${destinoId}::uuid, "accion"
+        FROM "permisos_tipo_ticket"
+       WHERE "tipo_id" = ${origenId}::uuid
+      ON CONFLICT DO NOTHING`;
+  }
+
   async listarTipos(): Promise<TipoTicketConModulo[]> {
     // Sin filtro de `deletedAt`: los tipos dados de baja también reciben permisos (L24).
     return this.client.tipoTicket.findMany({ select: { id: true, modulo: true } });

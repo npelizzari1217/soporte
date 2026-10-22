@@ -7,8 +7,12 @@ import {
   TipoTicketDesconocidoError,
   ModuloTipoTicketInvalidoError,
   ModuloSinAltaDeTipoError,
+  TipoOrigenPermisosNoEncontradoError,
+  TipoOrigenPermisosDeOtroModuloError,
 } from '../../domain/errors/tickets.errors';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { IPermisoTipoTicketRepository } from '../../domain/ports/i-permiso-tipo-ticket.repository';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
 import { esModuloValido } from '../../../shared/domain/modulos';
 
@@ -18,6 +22,11 @@ export interface CrearTipoTicketDto {
   nombre: string;
   /** Módulo funcional dueño del tipo (B2, requerido — separación estricta). */
   modulo: string;
+  /**
+   * Tipo existente, del mismo módulo, cuyos permisos por usuario recibe el tipo nuevo
+   * (odd/tasks/permisos-por-tipo-ticket.md, S4). Ausente o `null`: el tipo nace cerrado.
+   */
+  copiarPermisosDeTipoId?: string | null;
 }
 
 /**
@@ -36,7 +45,11 @@ export interface CrearTipoTicketDto {
  *    aceptado en design ADR-4 (colisión de prefijo → violaría el UNIQUE de
  *    `tickets.numero` recién en tiempo de uso real, ya visto como bug real
  *    en e2e de PR8/PR9/PR10).
- * 4. Crea la entidad (`activo=true`) y persiste.
+ * 4. Si se pide copiar permisos, valida que el tipo de origen exista y sea del mismo módulo → 422
+ *    (odd/tasks/permisos-por-tipo-ticket.md, S4).
+ * 5. Crea la entidad (`activo=true`) y, en la MISMA transacción, copia las filas por tipo del
+ *    origen: si la copia falla, el tipo no queda creado. Sin origen, el tipo nace cerrado: nadie
+ *    salvo ADMINISTRADOR y ROOT lo ve hasta que se le asignen permisos.
  *
  * Ref spec: sdd/tickets-core/spec T2, T5. Ref design: ADR-4. Tarea: T11.1.
  */
@@ -44,8 +57,10 @@ export class CrearTipoTicketUseCase {
   constructor(
     private readonly tipoTicketRepo: Pick<
       ITipoTicketRepository,
-      'findByCodigo' | 'findAllActive' | 'save'
+      'findByCodigo' | 'findById' | 'findAllActive' | 'save'
     >,
+    private readonly permisosRepo: Pick<IPermisoTipoTicketRepository, 'copiarDeTipo'>,
+    private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
   ) {}
 
   async execute(dto: CrearTipoTicketDto): Promise<Result<TipoTicketEntity, DomainError>> {
@@ -74,13 +89,29 @@ export class CrearTipoTicketUseCase {
       );
     }
 
+    const origenId = dto.copiarPermisosDeTipoId ?? null;
+    if (origenId !== null) {
+      const origen = await this.tipoTicketRepo.findById(origenId);
+      if (!origen) {
+        return Result.fail(new TipoOrigenPermisosNoEncontradoError(origenId));
+      }
+      if (origen.modulo !== dto.modulo) {
+        return Result.fail(new TipoOrigenPermisosDeOtroModuloError(origen.modulo, dto.modulo));
+      }
+    }
+
     const tipo = TipoTicketEntity.create({
       codigo: dto.codigo,
       nombre: dto.nombre,
       modulo: dto.modulo,
       activo: true,
     });
-    await this.tipoTicketRepo.save(tipo);
+    await this.txRunner.run(async () => {
+      await this.tipoTicketRepo.save(tipo);
+      if (origenId !== null) {
+        await this.permisosRepo.copiarDeTipo(origenId, tipo.id);
+      }
+    });
 
     return Result.ok(tipo);
   }

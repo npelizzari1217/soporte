@@ -11,6 +11,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Min,
   MinLength,
@@ -44,6 +45,14 @@ export class CreateTipoTicketDto {
   /** Módulo funcional dueño del tipo (B2, requerido — separación estricta). */
   @IsIn(MODULOS_VALIDOS, { message: 'modulo debe ser uno de: TICKETS, COMPRAS, EDILICIA, EQUIPOS' })
   modulo!: string;
+
+  /**
+   * Tipo existente, del mismo módulo, cuyos permisos por usuario recibe el tipo nuevo
+   * (odd/tasks/permisos-por-tipo-ticket.md, S4). Ausente o `null`: el tipo nace cerrado.
+   */
+  @IsOptional()
+  @IsUUID()
+  copiarPermisosDeTipoId?: string | null;
 }
 
 /** Body de `PATCH /catalogos/tipos-ticket/:id` (T2) — PATCH parcial. */

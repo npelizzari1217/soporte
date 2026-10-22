@@ -68,6 +68,18 @@ export interface IPermisoTipoTicketRepository {
   agregarSiFaltan(filas: readonly PermisoTipoTicketFila[]): Promise<number>;
 
   /**
+   * Da a cada usuario sobre `destinoId` las mismas acciones que tiene sobre `origenId` (alta de un
+   * tipo con "Copiar permisos de", S4). Las filas que ya existan en el destino se conservan. No abre
+   * transacción propia: participa de la que esté en curso, para que el alta del tipo y la copia
+   * se confirmen o se reviertan juntas.
+   *
+   * @param origenId Tipo cuyas filas se copian.
+   * @param destinoId Tipo que recibe las filas.
+   * @returns Cantidad de filas insertadas en el destino.
+   */
+  copiarDeTipo(origenId: string, destinoId: string): Promise<number>;
+
+  /**
    * Todos los tipos de ticket del tenant que reciben permisos, con su módulo. Incluye los dados
    * de baja, con el mismo criterio que el backfill (L24): sus tickets siguen visibles y un tipo
    * reactivado no debe volver cerrado.

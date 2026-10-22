@@ -18,6 +18,9 @@ export const tipoTicketSchema = z.object({
   // B2: el módulo es requerido — reusa `MODULOS` (única fuente de verdad,
   // `shared/auth/modulo-access`). El placeholder "" del select cae acá.
   modulo: z.enum(MODULOS, { errorMap: () => ({ message: "El módulo es requerido" }) }),
+  // Solo en el alta (S4, odd/tasks/permisos-por-tipo-ticket.md): "" = "Ninguno", el tipo nace
+  // cerrado. Espejo del `@IsUUID()` opcional de `CreateTipoTicketDto`.
+  copiarPermisosDeTipoId: z.string().uuid().optional().or(z.literal("")),
 });
 export type TipoTicketFormValues = z.infer<typeof tipoTicketSchema>;
 

@@ -15,6 +15,11 @@ export interface CreateTipoTicketDto {
   nombre: string;
   /** B2: módulo funcional dueño del tipo. Requerido por el backend. */
   modulo: Modulo;
+  /**
+   * Tipo del mismo módulo cuyos permisos por usuario recibe el tipo nuevo (S4). Ausente: el tipo
+   * nace cerrado.
+   */
+  copiarPermisosDeTipoId?: string;
 }
 
 export interface EditTipoTicketDto {

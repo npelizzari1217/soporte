@@ -245,6 +245,44 @@ describe('PrismaPermisoTipoTicketRepository (T4a, tenant efímero)', () => {
     await expect(enTenant(() => repo.agregarSiFaltan([]))).resolves.toBe(0);
   });
 
+  it('copiarDeTipo replica en el destino las filas de cada usuario sobre el origen, sin tocar otros tipos ni pisar las existentes (S4)', async () => {
+    const origen = await crearTipo('T-ORIGEN');
+    const otro = await crearTipo('T-OTRO');
+    const destino = await crearTipo('T-DESTINO');
+    await enTenant(() =>
+      repo.agregarSiFaltan([
+        { usuarioId: USUARIO_1, tipoId: origen, accion: 'LECTURA' },
+        { usuarioId: USUARIO_1, tipoId: origen, accion: 'MODIFICACION' },
+        { usuarioId: USUARIO_2, tipoId: origen, accion: 'LECTURA' },
+        { usuarioId: USUARIO_2, tipoId: otro, accion: 'ASIGNAR' },
+        // Ya existe en el destino: se conserva y no cuenta como insertada.
+        { usuarioId: USUARIO_1, tipoId: destino, accion: 'LECTURA' },
+      ]),
+    );
+
+    await expect(enTenant(() => repo.copiarDeTipo(origen, destino))).resolves.toBe(2);
+
+    await expect(filasDe(USUARIO_1)).resolves.toEqual(
+      [
+        `${origen}:LECTURA`,
+        `${origen}:MODIFICACION`,
+        `${destino}:LECTURA`,
+        `${destino}:MODIFICACION`,
+      ].sort(),
+    );
+    await expect(filasDe(USUARIO_2)).resolves.toEqual(
+      [`${origen}:LECTURA`, `${otro}:ASIGNAR`, `${destino}:LECTURA`].sort(),
+    );
+  });
+
+  it('copiarDeTipo desde un tipo sin filas no inserta nada', async () => {
+    const origen = await crearTipo('T-VACIO');
+    const destino = await crearTipo('T-DEST2');
+
+    await expect(enTenant(() => repo.copiarDeTipo(origen, destino))).resolves.toBe(0);
+    expect(await client.permisoTipoTicket.count()).toBe(0);
+  });
+
   it('listarTipos devuelve todos los tipos con su módulo, dados de baja incluidos (L24)', async () => {
     const activo = await crearTipo('ACTIVO');
     const baja = await client.tipoTicket.create({
