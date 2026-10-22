@@ -354,3 +354,10 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   dan. Back: 3378 tests; front: 2457. Deuda: crear una tarea no toma el lock del ticket, así que una
   tarea creada en el mismo instante que el borrado puede colarse. Ayuda (suspendida): botón Borrar,
   filtro Borrados con Recuperar, columna Borrar y entradas del historial.
+- **L43** (verificación independiente de T10) — PASS en las 8 cláusulas de S8, sin bloqueantes (80
+  tests unitarios). Notas: copiar de otro tipo ahora copia BORRADO, lo que corrige la redacción
+  "sin BORRADO" de L36 (W2 copia lo que el PUT aceptaría, y el PUT ya acepta BORRADO con Ver). La
+  deuda de L42 se amplía: descompletar una tarea tampoco relee si el ticket fue borrado. Los avisos
+  por correo no miran `isDeleted()`; solo afecta un evento emitido justo antes del borrado. El SLA
+  sigue corriendo mientras el ticket está borrado. Pendiente de confirmar por el dueño: "tareas
+  activas" se leyó como "activas y no completadas".
