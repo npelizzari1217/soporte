@@ -29,7 +29,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   ticket" con una fila por tipo y una columna por acción, más "Aplicar plantilla del rol a la fila"
   y "Copiar permisos de otro usuario". Los módulos que no son tickets (Compras, Equipos, Insumos,
   Dashboard, KB) siguen en la grilla actual. El acceso al menú de un módulo con tickets se deriva
-  de tener Ver en algún tipo de ese módulo (L9: "si, asi me cierra").
+  de tener Ver en algún tipo de ese módulo (L9: "si, asi me cierra"), salvo "Tickets", que aparece
+  con Ver en algún tipo de cualquier módulo y lista todos los tipos con Ver (L48).
 - **S6** — Lo hace cumplir el backend: cada operación verifica la acción sobre el tipo de ESE
   ticket (403 si falta) y los listados y exportaciones traen solo tipos con Ver. El frontend oculta
   los botones y en "Nuevo ticket" ofrece solo los tipos con Crear; es comodidad, no control.
@@ -380,3 +381,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   tenía 346 filas contra 400 calculadas, o sea que un administrador ya editó permisos por tipo y el
   guard los respetó. Smoke interno OK; externo: `/login` 200, `DELETE /api/tickets/:id` sin token
   401. Rollback de código: volver el VPS a `4e801ba1` y correr `deploy.ps1`.
+
+- **L48** (menú Tickets, dueño) — "Si a un usuario le desabilito soporte o preventivo para que no lo
+  lea, me saca el item Ticket del menu principal y deberia quedar porque tiene habilitado edilicia y
+  mantenimiento que generan tickets tambien." / "Quiero que Tickes muestre todos los tiquets que ese
+  usuario puede ver, porque edilicia me muestra las tareas y los comentarios pero los ticket pueden
+  servir para guiar al usuario y saber el estado de lo pedido". Cambia S5 solo para "Tickets": menú,
+  gate de `/tickets` e inicio pasan a Ver en algún tipo de cualquier módulo. El backend ya listaba
+  todos los tipos con Ver; "Nuevo ticket" sigue ofreciendo solo tipos de TICKETS. Rama
+  `feat/menu-tickets-todos-los-tipos`.

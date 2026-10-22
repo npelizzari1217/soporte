@@ -112,7 +112,7 @@ describe("nav-config", () => {
     expect(hrefs).not.toContain("/edilicia");
   });
 
-  it("Tickets y Edilicia se muestran por separado según LECTURA en algún tipo de cada módulo (S5)", () => {
+  it("LECTURA solo en un tipo de EDILICIA → ve Edilicia y también Tickets, que lista todos los tipos con Ver (S5)", () => {
     const user = makeUser({ permisos: [] });
     const permisos = permisosDeTest(
       { "tipo-soporte": ["ALTAS"], "tipo-mantenimiento": ["LECTURA"] },
@@ -120,7 +120,18 @@ describe("nav-config", () => {
     );
     const hrefs = visibleNavItems(user, permisos).map((i) => i.href);
     expect(hrefs).toContain("/edilicia");
-    expect(hrefs).not.toContain("/tickets");
+    expect(hrefs).toContain("/tickets");
+  });
+
+  it("LECTURA solo en un tipo de TICKETS → ve Tickets y no Edilicia (S5)", () => {
+    const user = makeUser({ permisos: [] });
+    const permisos = permisosDeTest(
+      { "tipo-soporte": ["LECTURA"], "tipo-mantenimiento": ["ALTAS"] },
+      { "tipo-soporte": "TICKETS", "tipo-mantenimiento": "EDILICIA" },
+    );
+    const hrefs = visibleNavItems(user, permisos).map((i) => i.href);
+    expect(hrefs).toContain("/tickets");
+    expect(hrefs).not.toContain("/edilicia");
   });
 
   it("sin permisos por tipo conocidos (null) no muestra Tickets ni Edilicia, salvo a ADMINISTRADOR y ROOT", () => {

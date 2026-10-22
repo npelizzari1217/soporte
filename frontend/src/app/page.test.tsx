@@ -58,10 +58,10 @@ describe('Home ("/") — inicio según el menú del usuario (odd/permisos-por-ti
     expect(await destino()).toBe("/tickets");
   });
 
-  it("sin Tickets y con Edilicia va a /edilicia, no a /tickets (que lo devolvería acá en ciclo)", async () => {
+  it("con LECTURA solo en un tipo de EDILICIA va a /tickets, que lista todos los tipos con Ver (S5, L48)", async () => {
     usuarioActual = usuario({ permisos: [], modulos: [] });
     permisosActuales = permisosDeTest({ "tipo-mantenimiento": ["LECTURA"] }, MODULO_DE);
-    expect(await destino()).toBe("/edilicia");
+    expect(await destino()).toBe("/tickets");
   });
 
   it("con la celda TICKETS:LECTURA pero sin LECTURA en ningún tipo no va a /tickets (su gate lo devolvería acá)", async () => {
