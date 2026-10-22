@@ -553,8 +553,8 @@ export class UsuariosController {
    * próximo request, sin refrescar la sesión (D1).
    * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
    * @throws 422 si el usuario es ROOT o ADMINISTRADOR, si un tipo no existe o se repite, si una
-   *             acción no está en el vocabulario o no se concede (BORRADO, S8), o si una fila
-   *             concede algo sin Ver (S3)
+   *             acción no está en el vocabulario, o si una fila concede algo sin Ver (S3).
+   *             BORRADO se concede como las demás desde que existe el borrado (S8)
    */
   @Put(':id/permisos-por-tipo')
   @UseGuards(AdminClienteGuard)

@@ -11,7 +11,7 @@
  *
  * Tarea: T6.6 (PR6 — TicketsController + DTOs)
  */
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -162,6 +162,14 @@ export class ListTicketsQueryDto {
   @MinLength(1)
   busqueda?: string;
 
+  /**
+   * `?borrados=true`: solo los tickets borrados (odd/permisos-por-tipo-ticket, S8), exclusivo de
+   * ADMINISTRADOR y ROOT (403 para el resto). Cualquier otro valor se lee como `false`.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => value === true || value === 'true')
+  borrados?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -279,6 +287,11 @@ export interface TicketResponseDto {
   createdAt: string;
   updatedAt: string;
   /**
+   * Instante del borrado lógico (odd/permisos-por-tipo-ticket, S8); `null` en un ticket activo. Solo
+   * llega con valor en el filtro "Borrados" del listado, que es exclusivo de ADMINISTRADOR y ROOT.
+   */
+  borradoEn: string | null;
+  /**
    * Puntaje (1-5) y comentario de la última respuesta CSAT (WU9.2,
    * ADR-C5/ADR-C8). AUSENTES sin `CSAT:LECTURA`, o si el TECNICO no tuvo el
    * ticket asignado, o si el ticket no tiene ninguna respuesta registrada.
@@ -380,6 +393,7 @@ export function toTicketResponseDto(
     fechaCierre: ticket.fechaCierre ? ticket.fechaCierre.toISOString() : null,
     createdAt: ticket.createdAt.toISOString(),
     updatedAt: ticket.updatedAt.toISOString(),
+    borradoEn: ticket.deletedAt ? ticket.deletedAt.toISOString() : null,
     ...(solicitanteTelefono !== undefined ? { solicitanteTelefono } : {}),
     ...(csat ? { csatPuntaje: csat.puntaje, csatComentario: csat.comentario } : {}),
   };

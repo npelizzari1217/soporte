@@ -67,7 +67,9 @@ export class ResponderEncuestaUseCase {
     const { tokenId, ticketId } = resuelto.getValue();
 
     const ticket = await this.ticketRepo.findById(ticketId);
-    if (!ticket) {
+    // Un ticket borrado (odd/permisos-por-tipo-ticket, S8) no recibe respuestas: el link deja de
+    // valer igual que uno inexistente, y el token no se consume.
+    if (!ticket || ticket.isDeleted()) {
       return Result.fail(new EncuestaLinkInvalidoError());
     }
 

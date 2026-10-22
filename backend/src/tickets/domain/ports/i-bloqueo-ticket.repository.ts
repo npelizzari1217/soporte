@@ -12,6 +12,13 @@ export interface IBloqueoTicketRepository {
    * reparación, o con compras solo completadas o canceladas, nunca está bloqueado.
    */
   estaBloqueadoPorCompra(ticketId: string): Promise<boolean>;
+
+  /**
+   * Números de las compras vinculadas a la reparación del ticket, en cualquier estado, salvo las
+   * dadas de baja (odd/permisos-por-tipo-ticket, S8: frenan el borrado del ticket). Vacío si el
+   * ticket no tiene reparación o no tiene compras vinculadas.
+   */
+  comprasVinculadas(ticketId: string): Promise<string[]>;
 }
 
 export const BLOQUEO_TICKET_REPOSITORY = Symbol('BLOQUEO_TICKET_REPOSITORY');

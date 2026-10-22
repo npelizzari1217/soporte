@@ -13,8 +13,9 @@
  * Contrato verificado (R19, ampliado Fase 3 ADR-5/F3-S1; WU-1
  * sdd/repuestos-familias; issue #155):
  * - Tras `seed()`, la DB tenant tiene 7 estados / 4 prioridades /
- *   10 tipo_operacion (los 5 de R19, con APROBACION/RECHAZO removidos en PR-1 de
- *   sdd/redisenio-modulo-compras, más los 5 TAREA_* del punto 12) / 4 tipos_ticket / 11 familias_insumo de
+ *   12 tipo_operacion (los 5 de R19, con APROBACION/RECHAZO removidos en PR-1 de
+ *   sdd/redisenio-modulo-compras, más los 5 TAREA_* del punto 12 y los 2 TICKET_* del
+ *   borrado lógico, odd/permisos-por-tipo-ticket S8) / 4 tipos_ticket / 11 familias_insumo de
  *   repuesto / 4 unidades_medida (issue #155) persistidos con los códigos
  *   exactos. `tipos_componente` YA NO se siembra por tenant (PR4b,
  *   sdd/tipos-componente-master — catálogo GLOBAL en MASTER).
@@ -146,7 +147,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
     expect(prioridades.every((p) => p.slaActivo)).toBe(true);
 
     const tipoOperacion = await verifyClient.tipoOperacion.findMany({ orderBy: { nombre: 'asc' } });
-    expect(tipoOperacion).toHaveLength(10);
+    expect(tipoOperacion).toHaveLength(12);
     expect(tipoOperacion.map((t) => t.codigo).sort()).toEqual(
       [
         'CAMBIO_ESTADO',
@@ -159,6 +160,8 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
         'TAREA_COMPLETADA',
         'TAREA_DESCOMPLETADA',
         'TAREA_ELIMINADA',
+        'TICKET_BORRADO',
+        'TICKET_RECUPERADO',
       ].sort(),
     );
 
@@ -211,7 +214,7 @@ describe('TenantSeederAdapter (T7.4, integración — Postgres real, DB efímera
 
     expect(estados).toHaveLength(7);
     expect(prioridades).toHaveLength(4);
-    expect(tipoOperacion).toHaveLength(10);
+    expect(tipoOperacion).toHaveLength(12);
     expect(tiposTicket).toHaveLength(4);
     expect(familias).toHaveLength(11);
     expect(unidades).toHaveLength(4); // issue #155

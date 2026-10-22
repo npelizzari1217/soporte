@@ -9,7 +9,8 @@
  * (odd/permisos-por-tipo-ticket, S6, D5 c), la misma que exige el backend:
  * Editar `MODIFICACION`, Estado `TRANSICIONAR`, Responsable `ASIGNAR`,
  * comentar `COMENTAR`, comentario interno `OBSERVAR`, PDF `IMPRESION`, adjuntar
- * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`.
+ * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`, Borrar `BORRADO`
+ * (S8, en cualquier estado: las tareas pendientes y las compras las frena el backend).
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -42,6 +43,7 @@ import { TicketEditDialog } from "./ticket-edit-dialog";
 import { TicketAttachmentUpload } from "./ticket-attachment-upload";
 import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-card";
 import { TicketPdfButton } from "./ticket-pdf-button";
+import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
 import { TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
 
@@ -205,6 +207,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                 />
               ) : null}
               {puede("IMPRESION") && <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />}
+              {puede("BORRADO") && <TicketBorrarButton ticketId={ticket.id} numero={ticket.numero} />}
             </div>
             {puedeModificar && !edicionPermitida && (
               <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>

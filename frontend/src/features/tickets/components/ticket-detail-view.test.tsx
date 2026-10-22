@@ -8,6 +8,9 @@ import { TicketDetailView } from "./ticket-detail-view";
 import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 import type { AccionTipoTicket } from "@/shared/auth/permisos-por-tipo";
 
+// "Borrar" (S8) navega al listado al terminar: el resto del detalle no usa el router.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+
 /**
  * Un TECNICO cuyas acciones salen de sus filas por tipo (odd/permisos-por-tipo-ticket, S6). Trae
  * TODAS las celdas TICKETS:* del JWT a propósito: ya no deciden ningún control del detalle.
@@ -743,5 +746,26 @@ describe("TicketDetailView — tareas de solo lectura con el ticket cerrado (odd
     expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
     expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
     expect(screen.queryByRole("note")).toBeNull();
+  });
+});
+
+describe("TicketDetailView — «Borrar» según el tipo del ticket (odd/permisos-por-tipo-ticket, S8)", () => {
+  beforeEach(() => mockBackend());
+
+  it("con BORRADO sobre el tipo del ticket se ofrece «Borrar», en cualquier estado", async () => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("BORRADO") });
+    await screen.findByText("Impresora rota");
+
+    expect(screen.getByRole("button", { name: "Borrar" })).toBeInTheDocument();
+  });
+
+  it("con BORRADO solo sobre otro tipo, no se ofrece (S2)", async () => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: TECNICO,
+      permisos: permisosDeTest({ ti1: ["LECTURA", "MODIFICACION"], ti2: ["LECTURA", "BORRADO"] }),
+    });
+    await screen.findByText("Impresora rota");
+
+    expect(screen.queryByRole("button", { name: "Borrar" })).not.toBeInTheDocument();
   });
 });

@@ -556,3 +556,48 @@ export class TipoOrigenPermisosDeOtroModuloError extends DomainError {
     );
   }
 }
+
+/**
+ * TicketConPendientesNoBorrableError — el ticket todavía tiene trabajo abierto que se perdería de
+ * vista al ocultarlo (odd/tasks/permisos-por-tipo-ticket.md, S8, L40): tareas pendientes (activas y
+ * sin completar) o compras vinculadas a su reparación. El mensaje nombra qué resolver antes de
+ * borrar. → HTTP 422.
+ */
+export class TicketConPendientesNoBorrableError extends DomainError {
+  readonly code = 'TICKET_CON_PENDIENTES_NO_BORRABLE';
+
+  /**
+   * @param tareasPendientes Cantidad de tareas activas sin completar.
+   * @param comprasVinculadas Números de las compras vinculadas a la reparación del ticket.
+   */
+  constructor(tareasPendientes: number, comprasVinculadas: readonly string[]) {
+    const pendientes: string[] = [];
+    if (tareasPendientes > 0) {
+      pendientes.push(
+        tareasPendientes === 1
+          ? 'completar o eliminar su tarea pendiente'
+          : `completar o eliminar sus ${tareasPendientes} tareas pendientes`,
+      );
+    }
+    if (comprasVinculadas.length > 0) {
+      pendientes.push(
+        `desvincular de la reparación ${
+          comprasVinculadas.length === 1 ? 'la compra' : 'las compras'
+        } ${comprasVinculadas.join(', ')}`,
+      );
+    }
+    super(`No se puede borrar el ticket: antes hay que ${pendientes.join(' y ')}.`);
+  }
+}
+
+/**
+ * TicketsBorradosSoloAdministradorError — ver o recuperar tickets borrados es exclusivo de
+ * ADMINISTRADOR y ROOT (odd/tasks/permisos-por-tipo-ticket.md, S8, L41). → HTTP 403.
+ */
+export class TicketsBorradosSoloAdministradorError extends DomainError {
+  readonly code = 'TICKETS_BORRADOS_SOLO_ADMINISTRADOR';
+
+  constructor() {
+    super('Solo un administrador puede ver o recuperar tickets borrados.');
+  }
+}

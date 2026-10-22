@@ -2,6 +2,7 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
+import { TicketsBorradosSoloAdministradorError } from '../../domain/errors/tickets.errors';
 import {
   AlcanceActorTicket,
   alcanceDeListado,
@@ -52,6 +53,11 @@ export interface ListarTicketsResult {
  *   intersecta con esos tipos: pedir un tipo nunca amplía el alcance. Sin ningún
  *   tipo en el alcance → `{ items: [], total: 0 }` sin consultar la base. La
  *   base aplica el alcance en la misma consulta que pagina y cuenta.
+ * - Borrados (odd/permisos-por-tipo-ticket, S8): `filtros.borrados` trae solo los
+ *   tickets dados de baja, y solo lo pueden pedir ADMINISTRADOR y ROOT (alcance sin
+ *   restricción); para cualquier otro actor es 403
+ *   (`TicketsBorradosSoloAdministradorError`), en vez de ignorarlo y devolver otra
+ *   lista que la pedida.
  * - Paginación (PR6): `pagina`/`porPagina` se traducen a `limit`/`offset`.
  *   `count()` se consulta con los MISMOS filtros pero SIN paginación, para
  *   que `total` refleje el universo completo, no la página actual.
@@ -73,6 +79,10 @@ export class ListarTicketsUseCase {
       pagina,
       porPagina,
     });
+
+    if (dto.filtros?.borrados === true && dto.alcance.permisosPorTipo !== null) {
+      return Result.fail(new TicketsBorradosSoloAdministradorError());
+    }
 
     const alcance = alcanceDeListado(dto.alcance, dto.filtros?.tiposIds);
     if (alcanceListadoVacio(alcance)) {

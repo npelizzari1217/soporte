@@ -275,7 +275,7 @@ describe('PrismaPermisoTipoTicketRepository (T4a, tenant efímero)', () => {
     );
   });
 
-  it('W2: copiarDeTipo no propaga filas de quien no tiene Ver en el origen (S3) ni BORRADO (S8)', async () => {
+  it('W2: copiarDeTipo no propaga filas de quien no tiene Ver en el origen (S3); BORRADO sí (S8)', async () => {
     const origen = await crearTipo('T-ORIG-W2');
     const destino = await crearTipo('T-DEST-W2');
     await enTenant(() =>
@@ -288,13 +288,14 @@ describe('PrismaPermisoTipoTicketRepository (T4a, tenant efímero)', () => {
       ]),
     );
 
-    await expect(enTenant(() => repo.copiarDeTipo(origen, destino))).resolves.toBe(2);
+    await expect(enTenant(() => repo.copiarDeTipo(origen, destino))).resolves.toBe(3);
 
     await expect(filasDe(USUARIO_1)).resolves.toEqual(
       [
         `${origen}:BORRADO`,
         `${origen}:COMENTAR`,
         `${origen}:LECTURA`,
+        `${destino}:BORRADO`,
         `${destino}:COMENTAR`,
         `${destino}:LECTURA`,
       ].sort(),

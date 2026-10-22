@@ -132,7 +132,7 @@ function renderControl() {
 }
 
 describe("PermisosPorTipoGrilla (odd/permisos-por-tipo-ticket, T7, S5)", () => {
-  it("muestra una fila por tipo con las acciones del servidor, sin columna Borrar", async () => {
+  it("muestra una fila por tipo con las acciones del servidor, con la columna Borrar (S8)", async () => {
     const user = userEvent.setup();
     simularServidor();
     renderControl();
@@ -157,9 +157,10 @@ describe("PermisosPorTipoGrilla (odd/permisos-por-tipo-ticket, T7, S5)", () => {
       "Comentar",
       "Comentario interno",
       "Imprimir",
+      "Borrar",
       "Plantilla",
     ]);
-    expect(screen.queryByRole("checkbox", { name: /Borrar/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Soporte: Borrar" })).not.toBeChecked();
     // Un tipo inactivo sigue en la grilla: sus filas deciden (L24).
     expect(within(screen.getByRole("row", { name: /Viejo/ })).getByText("Inactivo")).toBeVisible();
   });
@@ -185,6 +186,56 @@ describe("PermisosPorTipoGrilla (odd/permisos-por-tipo-ticket, T7, S5)", () => {
     await user.click(soporteVer);
     expect(screen.getByRole("checkbox", { name: "Soporte: Crear" })).toBeEnabled();
     expect(screen.getByRole("checkbox", { name: "Soporte: Crear" })).not.toBeChecked();
+  });
+
+  it("Borrar se tilda solo con Ver, y Guardar lo manda (S3, S8)", async () => {
+    const user = userEvent.setup();
+    const registro = simularServidor();
+    renderControl();
+
+    const soporteVer = await abrirTiposDeTicket(user);
+    await waitFor(() => expect(soporteVer).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "Mantenimiento: Borrar" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Soporte: Borrar" })).toBeEnabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "Soporte: Borrar" }));
+    await user.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(registro.puts).toHaveLength(1));
+    expect(registro.puts[0]).toEqual({
+      tipos: [
+        { tipoId: "t-mant", acciones: [] },
+        { tipoId: "t-sop", acciones: ["LECTURA", "ALTAS", "BORRADO"] },
+        { tipoId: "t-viejo", acciones: [] },
+      ],
+    });
+  });
+
+  it("destildar Ver también quita Borrar de la fila (S3)", async () => {
+    const user = userEvent.setup();
+    simularServidor(
+      estado({
+        tipos: [
+          {
+            tipoId: "t-sop",
+            nombre: "Soporte",
+            modulo: "TICKETS",
+            activo: true,
+            acciones: ["LECTURA", "BORRADO"],
+            plantilla: null,
+          },
+        ],
+      }),
+    );
+    renderControl();
+
+    const soporteVer = await abrirTiposDeTicket(user);
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Soporte: Borrar" })).toBeChecked());
+
+    await user.click(soporteVer);
+
+    expect(screen.getByRole("checkbox", { name: "Soporte: Borrar" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Soporte: Borrar" })).toBeDisabled();
   });
 
   it("Guardar manda el reemplazo total con todos los tipos, incluidos los que quedan vacíos", async () => {

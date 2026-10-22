@@ -87,6 +87,8 @@ import { TicketStateMachineFactory } from './domain/state-machine/ticket-state-m
 import { CrearTicketUseCase } from './application/use-cases/crear-ticket.use-case';
 import { ObtenerTicketUseCase } from './application/use-cases/obtener-ticket.use-case';
 import { ListarTicketsUseCase } from './application/use-cases/listar-tickets.use-case';
+import { BorrarTicketUseCase } from './application/use-cases/borrar-ticket.use-case';
+import { RecuperarTicketUseCase } from './application/use-cases/recuperar-ticket.use-case';
 import { EditarTicketUseCase } from './application/use-cases/editar-ticket.use-case';
 import { TransicionarEstadoUseCase } from './application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from './application/use-cases/asignar-ticket.use-case';
@@ -331,6 +333,49 @@ import {
       useFactory: (ticketRepo: ITicketRepository, cicloRepo: ICicloClienteRepository) =>
         new ListarTicketsUseCase(ticketRepo, cicloRepo),
       inject: [TICKET_REPOSITORY, CICLO_CLIENTE_REPOSITORY],
+    },
+    // odd/permisos-por-tipo-ticket (S8): borrado lógico y recuperación de un ticket.
+    {
+      provide: BorrarTicketUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        tareaRepo: ITareaTicketRepository,
+        bloqueoRepo: IBloqueoTicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) =>
+        new BorrarTicketUseCase(
+          ticketRepo,
+          tareaRepo,
+          bloqueoRepo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        TAREA_TICKET_REPOSITORY,
+        BLOQUEO_TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
+    },
+    {
+      provide: RecuperarTicketUseCase,
+      useFactory: (
+        ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
+        txRunner: ITenantTransactionRunner,
+      ) => new RecuperarTicketUseCase(ticketRepo, operacionRepo, tipoOperacionRepo, txRunner),
+      inject: [
+        TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
+        TENANT_TX_RUNNER,
+      ],
     },
     {
       provide: EditarTicketUseCase,

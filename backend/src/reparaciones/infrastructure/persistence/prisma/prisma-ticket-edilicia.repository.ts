@@ -41,8 +41,10 @@ export class PrismaTicketEdiliciaRepository implements ITicketEdiliciaRepository
     const rows = await this.client.ticketEdilicia.findMany({
       where: {
         deletedAt: null,
-        // El alcance se mide sobre el ticket base, con la misma regla que el listado de tickets.
-        ...(alcance !== null && { ticket: whereAlcanceListado(alcance) }),
+        // Un ticket base borrado (odd/permisos-por-tipo-ticket, S8) saca a su reparación del
+        // listado. El alcance se mide sobre el ticket base, con la misma regla que el listado de
+        // tickets.
+        ticket: { deletedAt: null, ...(alcance !== null && whereAlcanceListado(alcance)) },
       },
       orderBy: { createdAt: 'desc' },
     });

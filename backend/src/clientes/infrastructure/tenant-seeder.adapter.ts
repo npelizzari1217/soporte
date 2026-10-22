@@ -9,9 +9,10 @@
  * - `estados` (7, FIJO — NO editable por el admin del tenant): NUEVO,
  *   ASIGNADO, EN_PROCESO, ESPERANDO_CLIENTE, RESUELTO, CERRADO, CANCELADO.
  * - `prioridades` (4, FIJO): BAJA, MEDIA, ALTA, CRITICA.
- * - `tipo_operacion` (10, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
- *   ADJUNTO, AVANCE_EDILICIO y los cinco TAREA_* de las tareas del ticket
- *   (odd/tareas-con-tecnico).
+ * - `tipo_operacion` (12, FIJO): CAMBIO_ESTADO, COMENTARIO, ASIGNACION,
+ *   ADJUNTO, AVANCE_EDILICIO, los cinco TAREA_* de las tareas del ticket
+ *   (odd/tareas-con-tecnico) y TICKET_BORRADO / TICKET_RECUPERADO del
+ *   borrado lógico (odd/permisos-por-tipo-ticket, S8).
  * - `tipos_ticket` (4, base EDITABLE por el admin del tenant — este seed
  *   solo garantiza el piso): SOPORTE, EDILICIA, MANTENIMIENTO (no-IT),
  *   PREVENTIVO (issue #135: código propio para que el barrido de
@@ -137,6 +138,8 @@ const TIPO_OPERACION = [
   { codigo: 'TAREA_COMPLETADA', nombre: 'Tarea completada' },
   { codigo: 'TAREA_DESCOMPLETADA', nombre: 'Tarea descompletada' },
   { codigo: 'TAREA_ELIMINADA', nombre: 'Tarea eliminada' },
+  { codigo: 'TICKET_BORRADO', nombre: 'Ticket borrado' },
+  { codigo: 'TICKET_RECUPERADO', nombre: 'Ticket recuperado' },
 ];
 
 /**

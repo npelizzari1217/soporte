@@ -109,7 +109,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
 - [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
   producción — (pendiente)
-- [ ] T10 — S8 — worker — borrar y recuperar ticket (backend, front, grilla) — (en curso)
+- [x] T10 — S8 — worker — borrar y recuperar ticket (backend, front, grilla) — (este commit)
 
 ## Log
 
@@ -345,3 +345,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   desde un filtro "Borrados" del listado; el ticket vuelve al estado que tenía. Borrado y
   recuperación quedan en el historial con autor y fecha. Rama `feat/borrar-ticket`.
 
+- **L42** (T10) — `DELETE /tickets/:id` (BORRADO sobre el tipo; 422 con tareas pendientes, es decir
+  activas y no completadas, o con compras vinculadas no borradas) y `POST /tickets/:id/recuperar`
+  (solo ADMINISTRADOR y ROOT). `GET /tickets?borrados=true` lista los borrados y da 403 a quien no es
+  administrador. Migración `20261022120000_tipos_operacion_borrado` (TICKET_BORRADO y
+  TICKET_RECUPERADO). Se corrigieron dos lectores que no filtraban los borrados: `/reparaciones` y el
+  enlace de la encuesta CSAT. La grilla por tipo acepta BORRADO con Ver; las plantillas nunca lo
+  dan. Back: 3378 tests; front: 2457. Deuda: crear una tarea no toma el lock del ticket, así que una
+  tarea creada en el mismo instante que el borrado puede colarse. Ayuda (suspendida): botón Borrar,
+  filtro Borrados con Recuperar, columna Borrar y entradas del historial.

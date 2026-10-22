@@ -11,6 +11,7 @@ import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.re
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
 import { unstubbed } from '../../../testing/mocks';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { TicketsBorradosSoloAdministradorError } from '../../domain/errors/tickets.errors';
 
 /** Filtros de la primera llamada a `findAll`; falla si no hubo llamada o vino sin filtros. */
 function filtrosDeLaPrimeraLlamada(findAll: Mock<ITicketRepository['findAll']>): TicketFiltros {
@@ -41,6 +42,8 @@ describe('ListarTicketsUseCase', () => {
       bloquear: unstubbed('bloquear'),
       save: unstubbed('save'),
       delete: unstubbed('delete'),
+      borrarSiActivo: unstubbed('borrarSiActivo'),
+      recuperarSiBorrado: unstubbed('recuperarSiBorrado'),
     };
     const cicloClienteRepo = {
       findActive: vi.fn<ICicloClienteRepository['findActive']>().mockResolvedValue(cicloActivo),
@@ -96,6 +99,49 @@ describe('ListarTicketsUseCase', () => {
       expect.objectContaining({ cicloId: 'ciclo-historico-uuid' }),
     );
     expect(c.cicloClienteRepo.findActive).not.toHaveBeenCalled();
+  });
+
+  describe('filtro "Borrados" (odd/permisos-por-tipo-ticket, S8)', () => {
+    it('ADMINISTRADOR o ROOT: llega al repositorio con el mismo ciclo y paginación', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        alcance: SIN_RESTRICCION,
+        filtros: { borrados: true },
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(filtrosDeLaPrimeraLlamada(c.ticketRepo.findAll)).toMatchObject({
+        borrados: true,
+        cicloId: 'ciclo-activo-uuid',
+      });
+      expect(c.ticketRepo.count).toHaveBeenCalledWith(expect.objectContaining({ borrados: true }));
+    });
+
+    it('cualquier otro actor: 403 sin consultar, aunque tenga Ver todos y Borrar', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        alcance: alcancePorTipo(ACTOR, { [SOPORTE]: ['LECTURA', 'VER_TODOS', 'BORRADO'] }),
+        filtros: { borrados: true },
+      });
+
+      expect(result.getError()).toBeInstanceOf(TicketsBorradosSoloAdministradorError);
+      expect(c.ticketRepo.findAll).not.toHaveBeenCalled();
+      expect(c.ticketRepo.count).not.toHaveBeenCalled();
+    });
+
+    it('borrados: false no es el filtro: cualquier actor lista los activos', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        alcance: alcancePorTipo(ACTOR, { [SOPORTE]: ['LECTURA'] }),
+        filtros: { borrados: false },
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.findAll).toHaveBeenCalled();
+    });
   });
 
   it('propaga filtros combinables (estado/tipo/prioridad/asignado/fecha)', async () => {

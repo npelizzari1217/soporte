@@ -93,6 +93,8 @@ describe('CrearTicketUseCase', () => {
       esVisiblePara: unstubbed('esVisiblePara'),
       bloquear: unstubbed('bloquear'),
       delete: unstubbed('delete'),
+      borrarSiActivo: unstubbed('borrarSiActivo'),
+      recuperarSiBorrado: unstubbed('recuperarSiBorrado'),
     };
     const operacionRepo = {
       save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),
@@ -706,6 +708,8 @@ describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (run
       esVisiblePara: unstubbed('esVisiblePara'),
       bloquear: unstubbed('bloquear'),
       delete: unstubbed('delete'),
+      borrarSiActivo: unstubbed('borrarSiActivo'),
+      recuperarSiBorrado: unstubbed('recuperarSiBorrado'),
     };
     const operacionRepo = {
       save: vi.fn<IOperacionTicketRepository['save']>().mockResolvedValue(undefined),

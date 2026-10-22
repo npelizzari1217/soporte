@@ -52,6 +52,8 @@ import { unstubbed } from '../../../testing/mocks';
 import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
 import { CargadorAlcanceTicket } from '../alcance-ticket';
 import { ObtenerPermisosPorTipoUseCase } from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
+import { BorrarTicketUseCase } from '../../application/use-cases/borrar-ticket.use-case';
+import { RecuperarTicketUseCase } from '../../application/use-cases/recuperar-ticket.use-case';
 
 /** Operación de dominio mínima para alimentar `toOperacionResponseDto`. */
 function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
@@ -155,6 +157,8 @@ type DependenciasControlador = {
   asignarEnProceso: MockUseCase<AsignarYPonerEnProcesoUseCase>;
   exportarTickets: MockUseCase<ExportarTicketsUseCase>;
   obtenerCsatTicket: MockUseCase<ObtenerCsatTicketUseCase>;
+  borrarTicket: MockUseCase<BorrarTicketUseCase>;
+  recuperarTicket: MockUseCase<RecuperarTicketUseCase>;
   solicitanteExternoRepo: {
     findNombres: Mock<ISolicitanteExternoRepository['findNombres']>;
     findById: Mock<ISolicitanteExternoRepository['findById']>;
@@ -204,6 +208,8 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     obtenerCsatTicket: overrides.obtenerCsatTicket ?? {
       execute: vi.fn<ObtenerCsatTicketUseCase['execute']>().mockResolvedValue(null),
     },
+    borrarTicket: overrides.borrarTicket ?? stub(),
+    recuperarTicket: overrides.recuperarTicket ?? stub(),
     solicitanteExternoRepo: overrides.solicitanteExternoRepo ?? {
       findNombres: vi
         .fn<ISolicitanteExternoRepository['findNombres']>()
@@ -260,6 +266,8 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     new ObtenerPermisosPorTipoUseCase(
       new PermisosTipoTicketEnMemoria([{ id: 'ti1', modulo: 'TICKETS' }]),
     ),
+    casoReal(BorrarTicketUseCase, deps.borrarTicket),
+    casoReal(RecuperarTicketUseCase, deps.recuperarTicket),
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -906,10 +914,10 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
  * con ruta, así que una ruta nueva con `@RequiereAcciones` de módulo también pone esto en rojo.
  */
 describe('TicketsController — sin @RequiereAcciones de módulo (D5 d)', () => {
-  it('ninguna de sus 12 rutas exige una celda: deciden los casos de uso por tipo', () => {
+  it('ninguna de sus 14 rutas exige una celda: deciden los casos de uso por tipo', () => {
     const rutas = accionesPorRuta(TicketsController);
 
-    expect(rutas.size).toBe(12);
+    expect(rutas.size).toBe(14);
     expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
   });
 });
@@ -1251,8 +1259,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 32 clases de error (30 previas + las dos del tipo de origen de permisos, S4)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(32);
+  it('el catálogo tiene EXACTAMENTE 34 clases de error (32 previas + las dos del borrado, S8)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(34);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -1379,6 +1387,16 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       'TipoOrigenPermisosDeOtroModuloError',
       () => new TicketsErrors.TipoOrigenPermisosDeOtroModuloError('EDILICIA', 'TICKETS'),
       422,
+    ],
+    [
+      'TicketConPendientesNoBorrableError',
+      () => new TicketsErrors.TicketConPendientesNoBorrableError(1, []),
+      422,
+    ],
+    [
+      'TicketsBorradosSoloAdministradorError',
+      () => new TicketsErrors.TicketsBorradosSoloAdministradorError(),
+      403,
     ],
   ];
 

@@ -90,6 +90,8 @@ function makeFakeTicketRepo(ticket: TicketEntity | null) {
     bloquear: unstubbed('bloquear'),
     save: unstubbed('save'),
     delete: unstubbed('delete'),
+    borrarSiActivo: unstubbed('borrarSiActivo'),
+    recuperarSiBorrado: unstubbed('recuperarSiBorrado'),
   } satisfies ITicketRepository;
 }
 
@@ -171,6 +173,21 @@ describe('ResponderEncuestaUseCase', () => {
 
     expect(resultado.isFail()).toBe(true);
     expect(resultado.getError()).toBeInstanceOf(EncuestaLinkInvalidoError);
+    expect(satisfaccionRepo.guardar).not.toHaveBeenCalled();
+  });
+
+  it('ticket borrado (odd/permisos-por-tipo-ticket, S8): rechazo genérico, sin consumir el token ni guardar', async () => {
+    const borrado = makeTicket();
+    borrado.softDelete(new Date('2026-10-22T12:00:00Z'));
+    const { useCase, tokenRepo, satisfaccionRepo } = buildUseCase({
+      ticketRepo: makeFakeTicketRepo(borrado),
+    });
+
+    const resultado = await useCase.ejecutar({ rawToken: 'x', puntaje: 5, comentario: null });
+
+    expect(resultado.isFail()).toBe(true);
+    expect(resultado.getError()).toBeInstanceOf(EncuestaLinkInvalidoError);
+    expect(tokenRepo.marcarUsadoSiNoUsado).not.toHaveBeenCalled();
     expect(satisfaccionRepo.guardar).not.toHaveBeenCalled();
   });
 

@@ -166,6 +166,27 @@ describe('PermisosPorTipoUsuarioTenantUseCase (odd/permisos-por-tipo-ticket, T7,
       expect(soporte?.acciones).toEqual(['LECTURA', 'VER_TODOS', 'MODIFICACION']);
     });
 
+    it('concede Borrar con Ver en un tipo y no en otro (S2, S8)', async () => {
+      const { useCase, repo } = armar({ ana: { rol: 'TECNICO' } }, []);
+
+      const result = await useCase.reemplazar({
+        clienteId: CLIENTE,
+        usuarioId: 'ana',
+        tipos: [
+          { tipoId: 'tipo-soporte', acciones: ['LECTURA', 'BORRADO'] },
+          { tipoId: 'tipo-mant', acciones: ['LECTURA'] },
+        ],
+      });
+
+      expect(repo.filasDe('ana')).toEqual([
+        'tipo-mant:LECTURA',
+        'tipo-soporte:BORRADO',
+        'tipo-soporte:LECTURA',
+      ]);
+      const soporte = result.getValue().tipos.find((t) => t.tipoId === 'tipo-soporte');
+      expect(soporte?.acciones).toEqual(['LECTURA', 'BORRADO']);
+    });
+
     it('acepta una fila vacía y un tipo dado de baja', async () => {
       const { useCase, repo } = armar({ ana: { rol: 'TECNICO' } }, [
         { usuarioId: 'ana', tipoId: 'tipo-soporte', accion: 'LECTURA' },
@@ -199,10 +220,10 @@ describe('PermisosPorTipoUsuarioTenantUseCase (odd/permisos-por-tipo-ticket, T7,
           'Sin Ver no se puede conceder ninguna otra acción en el tipo «Mantenimiento» (se pidió VER_TODOS).',
       },
       {
-        caso: 'BORRADO, que todavía no existe (S8)',
-        tipos: [{ tipoId: 'tipo-soporte', acciones: ['LECTURA', 'BORRADO'] }],
+        caso: 'Borrar sin Ver (S3, S8)',
+        tipos: [{ tipoId: 'tipo-soporte', acciones: ['BORRADO'] }],
         mensaje:
-          'No se puede conceder BORRADO en el tipo «Soporte»: borrar tickets todavía no existe.',
+          'Sin Ver no se puede conceder ninguna otra acción en el tipo «Soporte» (se pidió BORRADO).',
       },
       {
         caso: 'una acción fuera del vocabulario',
@@ -288,6 +309,17 @@ describe('PermisosPorTipoUsuarioTenantUseCase (odd/permisos-por-tipo-ticket, T7,
       expect(result.getValue().rolCodigo).toBe('USUARIO');
     });
 
+    it('copia Borrar junto con Ver (S8)', async () => {
+      const { useCase, repo } = armar({ ana: { rol: 'USUARIO' }, beto: { rol: 'TECNICO' } }, [
+        { usuarioId: 'beto', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+        { usuarioId: 'beto', tipoId: 'tipo-soporte', accion: 'BORRADO' },
+      ]);
+
+      await useCase.copiarDe({ clienteId: CLIENTE, usuarioId: 'ana', origenId: 'beto' });
+
+      expect(repo.filasDe('ana')).toEqual(['tipo-soporte:BORRADO', 'tipo-soporte:LECTURA']);
+    });
+
     it('un origen sin filas deja al destino sin filas', async () => {
       const { useCase, repo } = armar({ ana: { rol: 'USUARIO' }, beto: { rol: 'TECNICO' } }, [
         { usuarioId: 'ana', tipoId: 'tipo-mant', accion: 'LECTURA' },
@@ -353,13 +385,10 @@ describe('PermisosPorTipoUsuarioTenantUseCase (odd/permisos-por-tipo-ticket, T7,
           'Sin Ver no se puede conceder ninguna otra acción en el tipo «Mantenimiento» (se pidió COMENTAR).',
       },
       {
-        caso: 'BORRADO, que todavía no existe (S8)',
-        filasOrigen: [
-          { tipoId: 'tipo-soporte', accion: 'LECTURA' },
-          { tipoId: 'tipo-soporte', accion: 'BORRADO' },
-        ],
+        caso: 'Borrar sin Ver (S3, S8)',
+        filasOrigen: [{ tipoId: 'tipo-soporte', accion: 'BORRADO' }],
         mensaje:
-          'No se puede conceder BORRADO en el tipo «Soporte»: borrar tickets todavía no existe.',
+          'Sin Ver no se puede conceder ninguna otra acción en el tipo «Soporte» (se pidió BORRADO).',
       },
     ] as const)(
       'W2: un origen con $caso se rechaza con el 422 del PUT, sin tocar al destino',

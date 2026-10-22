@@ -12,6 +12,8 @@
  *   PATCH  /tickets/:id        → EditarTicketUseCase (`MODIFICACION` sobre su tipo)
  *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`TRANSICIONAR` sobre su tipo)
  *   PATCH  /tickets/:id/asignar → AsignarTicketUseCase (`ASIGNAR` sobre su tipo)
+ *   DELETE /tickets/:id        → BorrarTicketUseCase (`BORRADO` sobre su tipo; borrado lógico)
+ *   POST   /tickets/:id/recuperar → RecuperarTicketUseCase (solo ADMINISTRADOR y ROOT)
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard`.
  * Ninguna ruta declara `@RequiereAcciones` (odd/permisos-por-tipo-ticket, D5 d):
@@ -34,6 +36,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -56,6 +59,8 @@ import { ParseFormatoExportPipe } from '../../../shared/interface/export/formato
 import { CrearTicketUseCase } from '../../application/use-cases/crear-ticket.use-case';
 import { ObtenerTicketUseCase } from '../../application/use-cases/obtener-ticket.use-case';
 import { ListarTicketsUseCase } from '../../application/use-cases/listar-tickets.use-case';
+import { BorrarTicketUseCase } from '../../application/use-cases/borrar-ticket.use-case';
+import { RecuperarTicketUseCase } from '../../application/use-cases/recuperar-ticket.use-case';
 import { EditarTicketUseCase } from '../../application/use-cases/editar-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../application/use-cases/asignar-ticket.use-case';
@@ -106,6 +111,8 @@ import {
   AccionSobreTipoNoPermitidaError,
   SolicitanteExternoInvalidoError,
   ExportacionDemasiadoGrandeError,
+  TicketConPendientesNoBorrableError,
+  TicketsBorradosSoloAdministradorError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -145,7 +152,8 @@ export function toHttpException(
   }
   if (
     error instanceof TicketBloqueadoParaEdicionError ||
-    error instanceof AccionSobreTipoNoPermitidaError
+    error instanceof AccionSobreTipoNoPermitidaError ||
+    error instanceof TicketsBorradosSoloAdministradorError
   ) {
     return new ForbiddenException(error.message);
   }
@@ -171,7 +179,9 @@ export function toHttpException(
     // línea en uno conocido.
     error instanceof ExportacionDemasiadoGrandeError ||
     // Formulario público (sdd/formulario-publico-qr, WU-6): datos del externo inválidos.
-    error instanceof SolicitanteExternoInvalidoError
+    error instanceof SolicitanteExternoInvalidoError ||
+    // Borrado (odd/permisos-por-tipo-ticket, S8): tareas pendientes o compras vinculadas.
+    error instanceof TicketConPendientesNoBorrableError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -224,6 +234,8 @@ export class TicketsController {
     private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,
     private readonly alcances: CargadorAlcanceTicket,
     private readonly obtenerPermisosPorTipoUseCase: ObtenerPermisosPorTipoUseCase,
+    private readonly borrarTicketUseCase: BorrarTicketUseCase,
+    private readonly recuperarTicketUseCase: RecuperarTicketUseCase,
   ) {}
 
   /**
@@ -362,6 +374,8 @@ export class TicketsController {
    * alcance sale de los permisos por tipo del actor (odd/permisos-por-tipo-ticket,
    * D5 e): solo los tipos con `LECTURA`, todas sus filas con `VER_TODOS` y si no
    * la regla de fila. Sin ningún tipo con `LECTURA`, la lista llega vacía (200).
+   * `?borrados=true` trae solo los borrados (S8), con `borradoEn`.
+   * @throws 403 `?borrados=true` pedido por quien no es ADMINISTRADOR ni ROOT
    */
   @Get()
   async findAll(
@@ -381,6 +395,7 @@ export class TicketsController {
         fechaDesde: query.fechaDesde ? new Date(query.fechaDesde) : undefined,
         fechaHasta: query.fechaHasta ? new Date(query.fechaHasta) : undefined,
         busqueda: query.busqueda,
+        borrados: query.borrados,
       },
     });
 
@@ -546,6 +561,52 @@ export class TicketsController {
       ticketEditado.id,
     );
     return this.aDto(ticketEditado, nombresEditado);
+  }
+
+  /**
+   * DELETE /tickets/:id
+   * Borrado lógico (odd/permisos-por-tipo-ticket, S8): el ticket deja de aparecer en listados,
+   * detalle, exportaciones y métricas, y queda en la base con su estado, adjuntos, comentarios e
+   * historial. El borrado queda en el historial con autor y fecha.
+   * @throws 403 sin `BORRADO` sobre el tipo del ticket
+   * @throws 404 ticket inexistente, ya borrado, o que el actor no ve (`LECTURA` sobre el tipo o fila)
+   * @throws 422 el ticket tiene tareas pendientes o compras vinculadas (el mensaje dice cuáles)
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async borrar(@CurrentUser() user: JwtPayload, @Param('id') id: string): Promise<void> {
+    const result = await this.borrarTicketUseCase.execute({
+      ticketId: id,
+      ...(await this.alcances.cargar(user)),
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+  }
+
+  /**
+   * POST /tickets/:id/recuperar
+   * Deshace el borrado lógico (odd/permisos-por-tipo-ticket, S8): el ticket vuelve con el estado
+   * que tenía, y la recuperación queda en el historial con autor y fecha.
+   * @throws 403 el actor no es ADMINISTRADOR ni ROOT
+   * @throws 404 ticket inexistente o que no está borrado
+   */
+  @Post(':id/recuperar')
+  @HttpCode(HttpStatus.OK)
+  async recuperar(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ): Promise<TicketResponseDto> {
+    const result = await this.recuperarTicketUseCase.execute({
+      ticketId: id,
+      ...(await this.alcances.cargar(user)),
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    const ticket = result.getValue();
+    const nombres = (await this.resolverNombresPorTicket([ticket])).get(ticket.id);
+    return this.aDto(ticket, nombres);
   }
 
   /**

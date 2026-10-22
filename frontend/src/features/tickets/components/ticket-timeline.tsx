@@ -8,6 +8,8 @@
  * que sí llegan (viewer autorizado).
  */
 import {
+  ArchiveRestore,
+  ArchiveX,
   CheckCircle2,
   HelpCircle,
   ListPlus,
@@ -34,6 +36,10 @@ const TIPO_OPERACION_CONFIG: Record<string, { label: string; icon: typeof Messag
   TAREA_COMPLETADA: { label: "Tarea completada", icon: CheckCircle2 },
   TAREA_DESCOMPLETADA: { label: "Tarea descompletada", icon: Undo2 },
   TAREA_ELIMINADA: { label: "Tarea eliminada", icon: Trash2 },
+  // Borrado lógico y recuperación (odd/permisos-por-tipo-ticket, S8). Se muestran con su fecha; el
+  // autor queda en la entrada (`autorId`), igual que en las demás operaciones.
+  TICKET_BORRADO: { label: "Ticket borrado", icon: ArchiveX },
+  TICKET_RECUPERADO: { label: "Ticket recuperado", icon: ArchiveRestore },
 };
 
 export interface TicketTimelineProps {

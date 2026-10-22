@@ -28,4 +28,13 @@ export class PrismaBloqueoTicketRepository implements IBloqueoTicketRepository {
     const vinculadas = rows.map((row) => ReparacionCompraMapper.toCompraVinculada(row));
     return comprasQueBloquean(vinculadas).length > 0;
   }
+
+  async comprasVinculadas(ticketId: string): Promise<string[]> {
+    const rows = await this.client.reparacionCompra.findMany({
+      where: { ticketEdilicia: { ticketId }, compra: { deletedAt: null } },
+      select: { compra: { select: { numero: true } } },
+      orderBy: { compra: { numero: 'asc' } },
+    });
+    return rows.map((row) => row.compra.numero);
+  }
 }

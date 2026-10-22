@@ -494,4 +494,88 @@ describe("TicketsListView", () => {
       expect(replaceMock).not.toHaveBeenCalled();
     });
   });
+
+  describe("filtro «Borrados» (odd/permisos-por-tipo-ticket, S8)", () => {
+    const ADMIN = buildUser({ rol: "ADMINISTRADOR" });
+    const BORRADO = { ...TICKET, id: "t-b", titulo: "Ticket borrado", borradoEn: "2026-10-20T13:00:00.000Z" };
+
+    /** Registra la URL de cada `GET /tickets` y responde con `items`. */
+    function registrarListado(items: unknown[]) {
+      const urls: URL[] = [];
+      server.use(
+        http.get("/api/tickets", ({ request }) => {
+          urls.push(new URL(request.url));
+          return HttpResponse.json({ items, total: items.length, pagina: 1, porPagina: 10 });
+        }),
+      );
+      return urls;
+    }
+
+    it("ADMINISTRADOR lo ve; elegirlo pone `borrados=true` en la URL y vuelve a la página 1", async () => {
+      const user = userEvent.setup();
+      renderWithProviders(<TicketsListView />, { user: ADMIN });
+      await screen.findByText("Impresora rota");
+
+      await user.selectOptions(screen.getByLabelText("Borrados"), "true");
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = new URLSearchParams((replaceMock.mock.calls.at(-1)?.[0] as string).split("?")[1]);
+      expect(params.get("borrados")).toBe("true");
+      expect(params.get("pagina")).toBe("1");
+    });
+
+    it("con el filtro, pide solo borrados, marca cada fila, no navega al detalle ni exporta, y «Recuperar» la recupera", async () => {
+      const user = userEvent.setup();
+      currentSearch = "borrados=true";
+      const urls = registrarListado([BORRADO]);
+      const recuperados: string[] = [];
+      server.use(
+        http.post("/api/tickets/:id/recuperar", ({ params }) => {
+          recuperados.push(String(params.id));
+          return HttpResponse.json({ ...BORRADO, borradoEn: null });
+        }),
+      );
+      renderWithProviders(<TicketsListView />, { user: ADMIN });
+
+      const fila = (await screen.findByText("Ticket borrado")).closest("tr") as HTMLElement;
+      expect(urls.at(-1)?.searchParams.get("borrados")).toBe("true");
+      expect(within(fila).getByText("Borrado")).toBeInTheDocument();
+      expect(screen.getByLabelText<HTMLSelectElement>("Borrados").value).toBe("true");
+      expect(screen.queryByRole("button", { name: /^exportar$/i })).not.toBeInTheDocument();
+
+      await user.click(fila);
+      expect(pushMock).not.toHaveBeenCalled();
+
+      await user.click(within(fila).getByRole("button", { name: "Recuperar SOP-2026-0001" }));
+      await waitFor(() => expect(recuperados).toEqual(["t-b"]));
+      expect(pushMock).not.toHaveBeenCalled();
+    });
+
+    it("sin el filtro no manda `borrados` y la fila de un ticket activo no se marca", async () => {
+      const urls = registrarListado([TICKET]);
+      renderWithProviders(<TicketsListView />, { user: ADMIN });
+
+      const fila = (await screen.findByText("Impresora rota")).closest("tr") as HTMLElement;
+      expect(urls.at(-1)?.searchParams.has("borrados")).toBe(false);
+      expect(within(fila).queryByText("Borrado")).not.toBeInTheDocument();
+      expect(within(fila).queryByRole("button", { name: /Recuperar/ })).not.toBeInTheDocument();
+    });
+
+    it("quien no es administrador no ve el filtro; un `borrados=true` en la URL no se manda y se quita", async () => {
+      currentSearch = "borrados=true&estado=e-nuevo";
+      const urls = registrarListado([TICKET]);
+      renderConPermisos(<TicketsListView />, {
+        user: TECNICO,
+        permisos: permisosDeTest({ ti1: ["LECTURA", "VER_TODOS", "BORRADO"] }),
+      });
+      await screen.findByText("Impresora rota");
+
+      expect(screen.queryByLabelText("Borrados")).not.toBeInTheDocument();
+      expect(urls.every((url) => !url.searchParams.has("borrados"))).toBe(true);
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = new URLSearchParams((replaceMock.mock.calls.at(-1)?.[0] as string).split("?")[1]);
+      expect(params.has("borrados")).toBe(false);
+      expect(params.get("estado")).toBe("e-nuevo");
+    });
+  });
 });
