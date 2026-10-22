@@ -10,14 +10,17 @@ import {
   AccionSobreTipoNoPermitidaError,
   TicketConPendientesNoBorrableError,
   TicketNoEncontradoError,
+  TicketPreventivoNoBorrableError,
 } from '../../domain/errors/tickets.errors';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { TIPO_CODIGO_PREVENTIVO } from '../../domain/tipos-ticket.constants';
 import { BorrarTicketUseCase } from './borrar-ticket.use-case';
 
 const AHORA = new Date('2026-10-22T15:00:00Z');
 const SOPORTE = 'tipo-soporte';
 const MANTENIMIENTO = 'tipo-mantenimiento';
+const PREVENTIVO = 'tipo-preventivo';
 const ACTOR = 'usr-actor';
 
 function ticket(id: string, tipoId: string, solicitanteId = 'usr-otro'): TicketEntity {
@@ -42,7 +45,11 @@ function escenario(
   opciones: { tareas?: TareaTicketEntity[]; compras?: Record<string, string[]> } = {},
 ) {
   const tickets = new Map(
-    [ticket('t-soporte', SOPORTE), ticket('t-mant', MANTENIMIENTO)].map((t) => [t.id, t]),
+    [
+      ticket('t-soporte', SOPORTE),
+      ticket('t-mant', MANTENIMIENTO),
+      ticket('t-prev', PREVENTIVO),
+    ].map((t) => [t.id, t]),
   );
   const tareas = opciones.tareas ?? [];
   const compras = opciones.compras ?? {};
@@ -62,8 +69,17 @@ function escenario(
       return true;
     },
   };
+  const codigosDeTipo: Record<string, string> = {
+    [SOPORTE]: 'SOPORTE',
+    [MANTENIMIENTO]: 'MANTENIMIENTO',
+    [PREVENTIVO]: TIPO_CODIGO_PREVENTIVO,
+  };
   const useCase = new BorrarTicketUseCase(
     ticketRepo,
+    {
+      findIdByCodigo: async (codigo: string) =>
+        Object.keys(codigosDeTipo).find((id) => codigosDeTipo[id] === codigo) ?? null,
+    },
     {
       listarPorTicket: async (ticketId: string) =>
         tareas.filter((t) => t.ticketId === ticketId && !t.isDeleted()),
@@ -113,7 +129,8 @@ describe('BorrarTicketUseCase', () => {
       ticketId: 't-soporte',
       tipoOperacionId: 'tipo-op-TICKET_BORRADO',
       autorId: ACTOR,
-      esInterno: false,
+      // Interna (L45): visible solo con OBSERVAR sobre el tipo.
+      esInterno: true,
     });
   });
 
@@ -210,6 +227,40 @@ describe('BorrarTicketUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(tickets.get('t-soporte')?.isDeleted()).toBe(true);
+  });
+
+  it('un ticket PREVENTIVO no se borra: 422 que dice por qué, y nada cambia (L45)', async () => {
+    const { useCase, tickets, operaciones } = escenario();
+
+    const result = await useCase.execute({
+      ticketId: 't-prev',
+      ...alcancePorTipo(ACTOR, { [PREVENTIVO]: ['LECTURA', 'VER_TODOS', 'BORRADO'] }),
+    });
+
+    expect(result.getError()).toBeInstanceOf(TicketPreventivoNoBorrableError);
+    expect(result.getError().message).toBe(
+      'No se puede borrar un ticket de mantenimiento preventivo: lo genera el sistema a partir ' +
+        'de su plan.',
+    );
+    expect(tickets.get('t-prev')?.isDeleted()).toBe(false);
+    expect(operaciones).toEqual([]);
+  });
+
+  it('el PREVENTIVO tampoco lo borra un administrador; sin Borrar sobre el tipo, manda el 403', async () => {
+    const { useCase, tickets } = escenario();
+
+    const admin = await useCase.execute({
+      ticketId: 't-prev',
+      ...alcanceSinRestriccion('usr-admin'),
+    });
+    const sinBorrar = await useCase.execute({
+      ticketId: 't-prev',
+      ...alcancePorTipo(ACTOR, { [PREVENTIVO]: ['LECTURA', 'VER_TODOS'] }),
+    });
+
+    expect(admin.getError()).toBeInstanceOf(TicketPreventivoNoBorrableError);
+    expect(sinBorrar.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+    expect(tickets.get('t-prev')?.isDeleted()).toBe(false);
   });
 
   it('un ticket ya borrado es 404 y no duplica el historial', async () => {

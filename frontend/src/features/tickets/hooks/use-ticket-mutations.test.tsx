@@ -7,6 +7,7 @@ import { server } from "../../../../test/msw/server";
 import {
   useAsignarEnProceso,
   useAsignarTicket,
+  useBorrarTicket,
   useComentar,
   useCrearTicket,
   useTransicionarEstado,
@@ -111,5 +112,43 @@ describe("Tickets mutations — invalidación de cache (ADR-2)", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(invalidatedQueryKeys(invalidateSpy)).toEqual([["tickets"]]);
+  });
+
+  // odd/permisos-por-tipo-ticket, L45: el detalle de un ticket borrado responde 404. Si su caché
+  // sobrevive, volver a él (atrás del navegador, un enlace) muestra el ticket como si existiera.
+  it("borrar ticket → descarta de la caché su detalle y su timeline, e invalida la lista", async () => {
+    server.use(http.delete(`/api/tickets/${TICKET_ID}`, () => new HttpResponse(null, { status: 204 })));
+    queryClient.setQueryData(["ticket", TICKET_ID], { id: TICKET_ID });
+    queryClient.setQueryData(["ticket", TICKET_ID, "timeline"], []);
+    queryClient.setQueryData(["ticket", "t2"], { id: "t2" });
+    queryClient.setQueryData(["ticket", "t2", "timeline"], []);
+    const { result } = renderHook(() => useBorrarTicket(TICKET_ID), { wrapper: wrapper(queryClient) });
+
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryCache().find({ queryKey: ["ticket", TICKET_ID], exact: true })).toBeUndefined();
+    expect(
+      queryClient.getQueryCache().find({ queryKey: ["ticket", TICKET_ID, "timeline"], exact: true }),
+    ).toBeUndefined();
+    // Los otros tickets no se tocan.
+    expect(queryClient.getQueryData(["ticket", "t2"])).toEqual({ id: "t2" });
+    expect(queryClient.getQueryData(["ticket", "t2", "timeline"])).toEqual([]);
+    expect(invalidatedQueryKeys(invalidateSpy)).toContainEqual(["tickets"]);
+  });
+
+  it("borrar ticket con error → el detalle sigue en la caché", async () => {
+    server.use(
+      http.delete(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ statusCode: 422, message: "No se puede borrar" }, { status: 422 }),
+      ),
+    );
+    queryClient.setQueryData(["ticket", TICKET_ID], { id: TICKET_ID });
+    const { result } = renderHook(() => useBorrarTicket(TICKET_ID), { wrapper: wrapper(queryClient) });
+
+    result.current.mutate();
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(queryClient.getQueryData(["ticket", TICKET_ID])).toEqual({ id: TICKET_ID });
   });
 });

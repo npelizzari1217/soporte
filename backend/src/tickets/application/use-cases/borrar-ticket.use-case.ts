@@ -5,12 +5,15 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import {
   TicketConPendientesNoBorrableError,
   TicketNoEncontradoError,
+  TicketPreventivoNoBorrableError,
 } from '../../domain/errors/tickets.errors';
 import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
+import { TIPO_CODIGO_PREVENTIVO } from '../../domain/tipos-ticket.constants';
 import { resolverTipoOperacion } from '../services/tareas-ticket.reglas';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 
@@ -28,10 +31,13 @@ export interface BorrarTicketDto extends AlcanceActorTicket {
  * - Se borra en cualquier estado, salvo que tenga tareas pendientes (activas y sin completar) o
  *   compras vinculadas a su reparación: 422 que nombra qué resolver (L40). Las tareas completadas,
  *   los adjuntos, los comentarios y el historial no frenan: quedan con el ticket.
+ * - Un ticket de tipo PREVENTIVO no se borra, ni siquiera un administrador: 422 (L45). Lo genera el
+ *   barrido a partir de un plan, y borrarlo haría que el barrido abra otro del mismo plan. Se
+ *   evalúa después del acceso: sin `BORRADO` sobre el tipo, manda el 403.
  * - Solo se escribe `deleted_at`: el estado y el resto de los datos no cambian, y por eso la
  *   recuperación lo devuelve tal cual estaba.
  * - El borrado queda en el historial (`TICKET_BORRADO`, con autor y fecha), en la misma
- *   transacción. Los chequeos corren dentro de ella, después de tomar el lock del ticket, para
+ *   transacción, como entrada interna: la ve quien tiene `OBSERVAR` sobre el tipo (L45). Los chequeos corren dentro de ella, después de tomar el lock del ticket, para
  *   evaluar lo que ya escribió quien lo tenía.
  */
 export class BorrarTicketUseCase {
@@ -40,6 +46,7 @@ export class BorrarTicketUseCase {
       ITicketRepository,
       'findById' | 'esVisiblePara' | 'bloquear' | 'borrarSiActivo'
     >,
+    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
     private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'comprasVinculadas'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
@@ -50,12 +57,16 @@ export class BorrarTicketUseCase {
 
   /**
    * @param dto Ticket y alcance del actor.
-   * @returns Ok; 404 si no lo ve o ya está borrado; 403 sin `BORRADO`; 422 con pendientes.
+   * @returns Ok; 404 si no lo ve o ya está borrado; 403 sin `BORRADO`; 422 si es PREVENTIVO o
+   *   tiene pendientes.
    */
   async execute(dto: BorrarTicketDto): Promise<Result<void, DomainError>> {
     const cargado = await cargarTicketParaOperar(this.ticketRepo, dto.ticketId, dto, 'BORRADO');
     if (cargado.isFail()) return Result.fail(cargado.getError());
     const ticket = cargado.getValue();
+    if (ticket.tipoId === (await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO))) {
+      return Result.fail(new TicketPreventivoNoBorrableError());
+    }
 
     const tipoOperacionId = await resolverTipoOperacion(
       this.tipoOperacionRepo,
@@ -85,7 +96,7 @@ export class BorrarTicketUseCase {
           estadoAnteriorId: null,
           estadoNuevoId: null,
           autorId: dto.actorId,
-          esInterno: false,
+          esInterno: true,
           metadata: null,
         }),
       );

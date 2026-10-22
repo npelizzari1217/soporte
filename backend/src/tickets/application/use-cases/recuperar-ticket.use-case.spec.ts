@@ -73,7 +73,8 @@ describe('RecuperarTicketUseCase', () => {
       ticketId: 't-borrado',
       tipoOperacionId: 'tipo-op-TICKET_RECUPERADO',
       autorId: 'usr-admin',
-      esInterno: false,
+      // Interna (L45): visible solo con OBSERVAR sobre el tipo.
+      esInterno: true,
     });
   });
 

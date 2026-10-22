@@ -1,9 +1,12 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ICompraRepository } from '../../../compras/domain/ports/i-compra.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { CompraNoEncontradaError } from '../../domain/errors/reparaciones.errors';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
+import { bloquearTicketActivo } from '../../../tickets/application/services/bloquear-ticket-activo';
 import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import { cargarReparacionParaOperar } from '../services/acceso-reparacion';
 
@@ -35,6 +38,12 @@ export interface VincularCompraAReparacionDto {
  *    que es IDEMPOTENTE por construcción (D4: `ON CONFLICT DO NOTHING` sobre
  *    la UNIQUE de `reparacion_compra`) — este caso de uso NO hace
  *    check-then-insert propio, delega la idempotencia al repositorio.
+ * 4. El INSERT corre en una transacción que toma el lock del ticket base y lo
+ *    relee (odd/permisos-por-tipo-ticket, L45): si se borró después de
+ *    cargarlo → 404 (`TicketNoEncontradoError`, como un ticket base ya
+ *    borrado en el paso 1) y no vincula. El borrado toma el mismo lock y
+ *    rechaza un ticket con compras vinculadas: sin el lock, un vínculo creado
+ *    a la par quedaría colgado de un ticket borrado.
  *
  * Sin throw para fallos esperados — se modelan con `Result.fail()`.
  *
@@ -46,7 +55,8 @@ export class VincularCompraAReparacionUseCase {
     private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById'>,
     private readonly compraRepo: Pick<ICompraRepository, 'findByIdConItems'>,
     private readonly reparacionCompraRepo: Pick<IReparacionCompraRepository, 'vincular'>,
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
+    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara' | 'bloquear'>,
+    private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
   ) {}
 
   async execute(dto: VincularCompraAReparacionDto): Promise<Result<void, DomainError>> {
@@ -66,7 +76,13 @@ export class VincularCompraAReparacionUseCase {
       return Result.fail(new CompraNoEncontradaError(dto.compraId));
     }
 
-    await this.reparacionCompraRepo.vincular(dto.ticketEdiliciaId, dto.compraId);
+    const { ticket } = acceso.getValue();
+    const vinculada = await this.txRunner.run(async () => {
+      if (!(await bloquearTicketActivo(this.ticketRepo, ticket.id))) return false;
+      await this.reparacionCompraRepo.vincular(dto.ticketEdiliciaId, dto.compraId);
+      return true;
+    });
+    if (!vinculada) return Result.fail(new TicketNoEncontradoError(ticket.id));
 
     return Result.ok(undefined);
   }

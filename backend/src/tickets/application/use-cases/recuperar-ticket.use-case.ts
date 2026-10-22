@@ -27,7 +27,8 @@ export interface RecuperarTicketDto extends AlcanceActorTicket {
  * - 404 si el ticket no existe o no está borrado.
  * - Limpia `deleted_at` y nada más: el ticket vuelve con el estado y los datos que tenía.
  * - La recuperación queda en el historial (`TICKET_RECUPERADO`, con autor y fecha), en la misma
- *   transacción.
+ *   transacción, como entrada interna: la ve quien tiene `OBSERVAR` sobre el tipo
+ *   (odd/tasks/permisos-por-tipo-ticket.md, L45).
  */
 export class RecuperarTicketUseCase {
   constructor(
@@ -66,7 +67,7 @@ export class RecuperarTicketUseCase {
           estadoAnteriorId: null,
           estadoNuevoId: null,
           autorId: dto.actorId,
-          esInterno: false,
+          esInterno: true,
           metadata: null,
         }),
       );

@@ -3,10 +3,12 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { TareaNoCompletadaError, TareaYaCompletadaError } from '../../domain/errors/tareas.errors';
+import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { CondicionDeDescompletado } from '../../domain/ports/i-tarea-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { bloquearTicketActivo } from '../services/bloquear-ticket-activo';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import {
   ActorTarea,
@@ -47,6 +49,10 @@ export interface DescompletarTareaDto {
  * El estado del ticket sigue a sus tareas (odd/estado-por-tareas, S4-S6): en la misma transacción,
  * con la fila del ticket bloqueada ANTES de escribir la tarea, `AvanzarEstadoPorTareasService`
  * devuelve un ticket RESUELTO a EN_PROCESO.
+ *
+ * Con el lock tomado relee el ticket (odd/permisos-por-tipo-ticket, L45): si se borró después de
+ * cargarlo, da `TicketNoEncontradoError` (404) y no escribe nada. Sin eso, la tarea volvería a
+ * pendiente en un ticket borrado, que el borrado no habría dejado pasar.
  */
 export class DescompletarTareaUseCase {
   constructor(
@@ -104,14 +110,19 @@ export class DescompletarTareaUseCase {
       metadata: { completada_por_anterior_id: completadaPorAnteriorId },
     });
 
-    const escrita = await this.txRunner.run(async () => {
-      await this.ticketRepo.bloquear(ticket.id);
-      if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) return false;
-      await this.operacionRepo.save(operacion);
-      await this.avanzarEstado.aplicar('DESCOMPLETAR', ticket.id, dto.actor.id);
-      return true;
-    });
-    if (!escrita) {
+    const escritura = await this.txRunner.run(
+      async (): Promise<'escrita' | 'rechazada' | 'ticket-borrado'> => {
+        if (!(await bloquearTicketActivo(this.ticketRepo, ticket.id))) return 'ticket-borrado';
+        if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) return 'rechazada';
+        await this.operacionRepo.save(operacion);
+        await this.avanzarEstado.aplicar('DESCOMPLETAR', ticket.id, dto.actor.id);
+        return 'escrita';
+      },
+    );
+    if (escritura === 'ticket-borrado') {
+      return Result.fail(new TicketNoEncontradoError(ticket.id));
+    }
+    if (escritura === 'rechazada') {
       return Result.fail(
         await errorDeEscrituraRechazada(
           this.tareaRepo,

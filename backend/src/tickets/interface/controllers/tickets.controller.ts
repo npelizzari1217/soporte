@@ -112,6 +112,7 @@ import {
   SolicitanteExternoInvalidoError,
   ExportacionDemasiadoGrandeError,
   TicketConPendientesNoBorrableError,
+  TicketPreventivoNoBorrableError,
   TicketsBorradosSoloAdministradorError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
@@ -180,8 +181,10 @@ export function toHttpException(
     error instanceof ExportacionDemasiadoGrandeError ||
     // Formulario público (sdd/formulario-publico-qr, WU-6): datos del externo inválidos.
     error instanceof SolicitanteExternoInvalidoError ||
-    // Borrado (odd/permisos-por-tipo-ticket, S8): tareas pendientes o compras vinculadas.
-    error instanceof TicketConPendientesNoBorrableError
+    // Borrado (odd/permisos-por-tipo-ticket, S8): tareas pendientes o compras vinculadas, o un
+    // ticket PREVENTIVO (L45).
+    error instanceof TicketConPendientesNoBorrableError ||
+    error instanceof TicketPreventivoNoBorrableError
   ) {
     return new UnprocessableEntityException(error.message);
   }

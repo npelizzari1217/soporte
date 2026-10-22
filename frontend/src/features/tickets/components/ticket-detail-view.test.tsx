@@ -756,7 +756,45 @@ describe("TicketDetailView — «Borrar» según el tipo del ticket (odd/permiso
     renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("BORRADO") });
     await screen.findByText("Impresora rota");
 
-    expect(screen.getByRole("button", { name: "Borrar" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Borrar" })).toBeInTheDocument();
+  });
+
+  it("un ticket PREVENTIVO no ofrece «Borrar» aunque tenga BORRADO sobre el tipo (L45)", async () => {
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([
+          { id: "ti1", codigo: "PREVENTIVO", nombre: "Preventivo", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("BORRADO") });
+    await screen.findByText("Impresora rota");
+    // El tipo ya se resolvió: la cabecera muestra su nombre.
+    expect(await screen.findByText("Preventivo")).toBeInTheDocument();
+
+    expect(screen.queryByRole("button", { name: "Borrar" })).not.toBeInTheDocument();
+  });
+
+  it("caso hermano: un tipo desactivado (fuera del catálogo de activos) no es PREVENTIVO y ofrece «Borrar»", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, tipoId: "tipo-desactivado" })),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: TECNICO,
+      permisos: permisosDeTest({ "tipo-desactivado": ["LECTURA", "BORRADO"] }),
+    });
+    await screen.findByText("Impresora rota");
+
+    expect(await screen.findByRole("button", { name: "Borrar" })).toBeInTheDocument();
+  });
+
+  it("sin el catálogo de tipos no se sabe si es PREVENTIVO: no ofrece «Borrar»", async () => {
+    server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json({ message: "falla" }, { status: 500 })));
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("BORRADO") });
+    await screen.findByText("Impresora rota");
+    await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
+
+    expect(screen.queryByRole("button", { name: "Borrar" })).not.toBeInTheDocument();
   });
 
   it("con BORRADO solo sobre otro tipo, no se ofrece (S2)", async () => {

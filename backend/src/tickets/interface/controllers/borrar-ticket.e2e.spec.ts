@@ -179,6 +179,23 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     });
   }
 
+  /** Entradas de borrado y recuperación que el timeline le muestra a `token`, como [código, autor]. */
+  async function entradasDeBorrado(ticketId: string, token: string): Promise<string[][]> {
+    const tipos = await tenant.tipoOperacion.findMany({
+      where: { codigo: { in: ['TICKET_BORRADO', 'TICKET_RECUPERADO'] } },
+    });
+    const codigoDe = new Map(tipos.map((t) => [t.id, t.codigo]));
+    const timeline = await http<OperacionResponseDto[]>(
+      'GET',
+      `/tickets/${ticketId}/timeline`,
+      token,
+    );
+    expect(timeline.status).toBe(200);
+    return timeline.body
+      .filter((op) => codigoDe.has(op.tipoOperacionId))
+      .map((op) => [codigoDe.get(op.tipoOperacionId) ?? '', op.autorId]);
+  }
+
   async function idsDelListado(token: string, query: string): Promise<string[]> {
     const { status, body } = await http<ListTicketsResponseDto>(
       'GET',
@@ -450,27 +467,66 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     expect((await http('GET', `/tickets/${ticket.id}`, tokenTecnico)).status).toBe(200);
 
     // Historial: borrado por el técnico, recuperado por el administrador, en ese orden.
-    const tipos = await tenant.tipoOperacion.findMany({
-      where: { codigo: { in: ['TICKET_BORRADO', 'TICKET_RECUPERADO'] } },
-    });
-    const codigoDe = new Map(tipos.map((t) => [t.id, t.codigo]));
-    const timeline = await http<OperacionResponseDto[]>(
-      'GET',
-      `/tickets/${ticket.id}/timeline`,
-      tokenTecnico,
-    );
-    expect(timeline.status).toBe(200);
-    expect(
-      timeline.body
-        .filter((op) => codigoDe.has(op.tipoOperacionId))
-        .map((op) => [codigoDe.get(op.tipoOperacionId), op.autorId]),
-    ).toEqual([
+    expect(await entradasDeBorrado(ticket.id, tokenAdmin)).toEqual([
       ['TICKET_BORRADO', tecnicoId],
       ['TICKET_RECUPERADO', adminId],
     ]);
 
     // Recuperar algo que no está borrado: 404.
     expect((await http('POST', `/tickets/${ticket.id}/recuperar`, tokenAdmin)).status).toBe(404);
+  });
+
+  it('las entradas de borrado y recuperación son internas: el solicitante sin OBSERVAR no las ve, con OBSERVAR sí (L45)', async () => {
+    // El técnico abre el ticket: lo ve por ser su solicitante, sin Ver todos.
+    await fijarFilasTecnico({ [tipoConBorrar]: ['LECTURA', 'ALTAS'] });
+    const alta = await http<TicketResponseDto>('POST', '/tickets', tokenTecnico, {
+      titulo: `Propio ${SUFIJO}`,
+      tipoId: tipoConBorrar,
+      prioridadId,
+    });
+    expect(alta.status).toBe(201);
+    expect(alta.body.solicitanteId).toBe(tecnicoId);
+    expect((await http('DELETE', `/tickets/${alta.body.id}`, tokenAdmin)).status).toBe(204);
+    expect((await http('POST', `/tickets/${alta.body.id}/recuperar`, tokenAdmin)).status).toBe(200);
+
+    expect(await entradasDeBorrado(alta.body.id, tokenTecnico)).toEqual([]);
+
+    await fijarFilasTecnico({ [tipoConBorrar]: ['LECTURA', 'ALTAS', 'OBSERVAR'] });
+    expect(await entradasDeBorrado(alta.body.id, tokenTecnico)).toEqual([
+      ['TICKET_BORRADO', adminId],
+      ['TICKET_RECUPERADO', adminId],
+    ]);
+  });
+
+  it('un ticket PREVENTIVO no se borra, ni siquiera el administrador: 422 y nada cambia (L45)', async () => {
+    const tipoPreventivo = await tenant.tipoTicket.findUniqueOrThrow({
+      where: { codigo: 'PREVENTIVO' },
+    });
+    const estado = await tenant.estado.findUniqueOrThrow({ where: { codigo: 'NUEVO' } });
+    const preventivo = await tenant.ticket.create({
+      data: {
+        numero: `PRV-${SUFIJO}`,
+        titulo: `Preventivo ${SUFIJO}`,
+        tipoId: tipoPreventivo.id,
+        estadoId: estado.id,
+        prioridadId,
+        solicitanteId: adminId,
+      },
+    });
+
+    const { status, body } = await http<{ message: string }>(
+      'DELETE',
+      `/tickets/${preventivo.id}`,
+      tokenAdmin,
+    );
+
+    expect(status).toBe(422);
+    expect(body.message).toBe(
+      'No se puede borrar un ticket de mantenimiento preventivo: lo genera el sistema a partir ' +
+        'de su plan.',
+    );
+    expect(await deletedAtDe(preventivo.id)).toBeNull();
+    expect(await operacionesDe(preventivo.id, 'TICKET_BORRADO')).toEqual([]);
   });
 
   it('PUT permisos-por-tipo acepta Borrar con Ver y lo rechaza sin Ver; concedido, el usuario borra en el próximo request', async () => {

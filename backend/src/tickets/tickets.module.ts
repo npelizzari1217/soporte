@@ -339,6 +339,7 @@ import {
       provide: BorrarTicketUseCase,
       useFactory: (
         ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
         bloqueoRepo: IBloqueoTicketRepository,
         operacionRepo: IOperacionTicketRepository,
@@ -347,6 +348,7 @@ import {
       ) =>
         new BorrarTicketUseCase(
           ticketRepo,
+          tipoTicketRepo,
           tareaRepo,
           bloqueoRepo,
           operacionRepo,
@@ -355,6 +357,7 @@ import {
         ),
       inject: [
         TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         BLOQUEO_TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
