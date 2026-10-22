@@ -333,3 +333,5 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   Servicios Running, smoke interno OK; externo: `/login` 200, `/api/tickets/permisos-por-tipo`
   sin token 401. Rollback de código: volver el VPS a `ae15ca7a` y correr `deploy.ps1`; de datos:
   restaurar el dump. T9 (retirar celdas viejas y el paso 8c) queda para cuando se verifique en uso.
+- **L39** (T10, dueño) — "borrado logico". Borrar un ticket marca `deleted_at`; el ticket queda en
+  la base, recuperable y auditable.
