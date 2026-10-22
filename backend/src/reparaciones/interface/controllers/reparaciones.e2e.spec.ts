@@ -384,8 +384,12 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       ).toBe(0);
     });
 
-    it('actor con COMPRAS:LECTURA que ve la reparación (EDILICIA:LECTURA) pero sin ALTAS sobre su tipo → 403 y no vincula', async () => {
-      const actor = await crearActorConPermisos(['COMPRAS:LECTURA', 'EDILICIA:LECTURA']);
+    it('actor con COMPRAS:LECTURA que ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) pero sin ALTAS sobre su tipo → 403 y no vincula', async () => {
+      const actor = await crearActorConPermisos([
+        'COMPRAS:LECTURA',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
 
@@ -406,6 +410,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:ALTAS',
         'COMPRAS:LECTURA',
         'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
       ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
@@ -499,6 +504,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:ALTAS',
         'COMPRAS:LECTURA',
         'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
       ]);
       const reparacionId = await crearReparacion();
 
@@ -516,13 +522,15 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
   describe('DELETE /reparaciones/:reparacionId/compras/:compraId — NO exige COMPRAS:LECTURA', () => {
     // `EDILICIA:BORRADO` sigue siendo el permiso de la ruta (L21); el caso de uso exige además ver
-    // la reparación (odd/permisos-por-tipo-ticket, D5 b), que acá da `EDILICIA:LECTURA` por L11.
+    // la reparación ajena (odd/permisos-por-tipo-ticket, D5 b): `EDILICIA:LECTURA` da Ver y
+    // `TICKETS:VER_TODOS` da Ver todos sobre los tipos de Edilicia (L35).
     it('actor con EDILICIA:BORRADO que ve la reparación desvincula (204) sin COMPRAS:LECTURA (ver design/tasks)', async () => {
-      // Vincula quien ve la reparación (EDILICIA:LECTURA) y tiene ALTAS sobre su tipo.
+      // Vincula quien ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) y tiene ALTAS sobre su tipo.
       const actorConAmbos = await crearActorConPermisos([
         'EDILICIA:ALTAS',
         'COMPRAS:LECTURA',
         'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
       ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
@@ -533,7 +541,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       );
 
       const actor = await crearActorConPermisos(
-        ['EDILICIA:BORRADO', 'EDILICIA:LECTURA'],
+        ['EDILICIA:BORRADO', 'EDILICIA:LECTURA', 'TICKETS:VER_TODOS'],
         actorConAmbos.clienteId,
       );
       const { status } = await httpDelete(
@@ -548,11 +556,12 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     });
 
     it('actor con SOLO EDILICIA:BORRADO, que no ve la reparación → 404 y el vínculo sigue', async () => {
-      // Vincula quien ve la reparación (EDILICIA:LECTURA) y tiene ALTAS sobre su tipo.
+      // Vincula quien ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) y tiene ALTAS sobre su tipo.
       const actorConAmbos = await crearActorConPermisos([
         'EDILICIA:ALTAS',
         'COMPRAS:LECTURA',
         'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
       ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
@@ -575,11 +584,12 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     });
 
     it('actor sin EDILICIA:BORRADO → 403', async () => {
-      // Vincula quien ve la reparación (EDILICIA:LECTURA) y tiene ALTAS sobre su tipo.
+      // Vincula quien ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) y tiene ALTAS sobre su tipo.
       const actorConAmbos = await crearActorConPermisos([
         'EDILICIA:ALTAS',
         'COMPRAS:LECTURA',
         'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
       ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
@@ -599,7 +609,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     });
 
     it('404 VinculoNoEncontradoError: vínculo inexistente, con EDILICIA:BORRADO y viendo la reparación', async () => {
-      const actor = await crearActorConPermisos(['EDILICIA:BORRADO', 'EDILICIA:LECTURA']);
+      const actor = await crearActorConPermisos([
+        'EDILICIA:BORRADO',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
 
