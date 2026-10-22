@@ -19,20 +19,32 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
-import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
+import {
+  usePrioridades,
+  useTiposTicket,
+} from "@/features/tickets/hooks/use-catalogos";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
-import { crearReparacionSchema, type CrearReparacionFormValues } from "../schemas";
-
-const TIPO_CODIGO_EDILICIA = "EDILICIA";
-/** Lo genera solo el barrido preventivo: no se elige en un alta. */
-const TIPO_CODIGO_PREVENTIVO = "PREVENTIVO";
+import {
+  crearReparacionSchema,
+  type CrearReparacionFormValues,
+} from "../schemas";
+import {
+  TIPO_CODIGO_EDILICIA,
+  TIPO_CODIGO_PREVENTIVO,
+} from "@/features/catalogos/tipos-del-sistema";
 
 export function ReparacionCreateDialog() {
   const [open, setOpen] = useState(false);
@@ -42,13 +54,20 @@ export function ReparacionCreateDialog() {
   const tiposQuery = useTiposTicket(TIPO_CODIGO_EDILICIA);
   const { tiposCon } = usePermisosPorTipo();
   const tiposConAlta = tiposCon(
-    (tiposQuery.data ?? []).filter((tipo) => tipo.codigo !== TIPO_CODIGO_PREVENTIVO),
+    (tiposQuery.data ?? []).filter(
+      (tipo) => tipo.codigo !== TIPO_CODIGO_PREVENTIVO,
+    ),
     "ALTAS",
   );
-  const tipoPorDefecto = tiposConAlta.find((tipo) => tipo.codigo === TIPO_CODIGO_EDILICIA);
-  const tiposAlternativos = tiposConAlta.filter((tipo) => tipo.codigo !== TIPO_CODIGO_EDILICIA);
+  const tipoPorDefecto = tiposConAlta.find(
+    (tipo) => tipo.codigo === TIPO_CODIGO_EDILICIA,
+  );
+  const tiposAlternativos = tiposConAlta.filter(
+    (tipo) => tipo.codigo !== TIPO_CODIGO_EDILICIA,
+  );
   // Mientras el catálogo carga se asume EDILICIA, como el backend sin `tipoId`: decide él.
-  const ofreceEdiliciaPorDefecto = !tiposQuery.isSuccess || tipoPorDefecto !== undefined;
+  const ofreceEdiliciaPorDefecto =
+    !tiposQuery.isSuccess || tipoPorDefecto !== undefined;
   const crearMutation = useCrearReparacion();
 
   const {
@@ -57,7 +76,9 @@ export function ReparacionCreateDialog() {
     reset,
     setError,
     formState: { errors },
-  } = useForm<CrearReparacionFormValues>({ resolver: zodResolver(crearReparacionSchema) });
+  } = useForm<CrearReparacionFormValues>({
+    resolver: zodResolver(crearReparacionSchema),
+  });
 
   if (tiposQuery.isSuccess && tiposConAlta.length === 0) return null;
 
@@ -100,12 +121,23 @@ export function ReparacionCreateDialog() {
         <DialogHeader>
           <DialogTitle>Nueva reparación</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
+        <form
+          onSubmit={handleSubmit(submit)}
+          className="flex flex-col gap-4"
+          noValidate
+        >
           <div className="flex flex-col gap-1">
-            <label htmlFor="reparacion-titulo" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="reparacion-titulo"
+              className="text-sm font-medium text-foreground"
+            >
               Título
             </label>
-            <Input id="reparacion-titulo" error={!!errors.titulo} {...register("titulo")} />
+            <Input
+              id="reparacion-titulo"
+              error={!!errors.titulo}
+              {...register("titulo")}
+            />
             {errors.titulo && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.titulo.message}
@@ -115,12 +147,22 @@ export function ReparacionCreateDialog() {
 
           {(tiposAlternativos.length > 0 || !ofreceEdiliciaPorDefecto) && (
             <div className="flex flex-col gap-1">
-              <label htmlFor="reparacion-tipo" className="text-sm font-medium text-foreground">
+              <label
+                htmlFor="reparacion-tipo"
+                className="text-sm font-medium text-foreground"
+              >
                 Tipo
               </label>
-              <Select id="reparacion-tipo" error={!!errors.tipoId} defaultValue="" {...register("tipoId")}>
+              <Select
+                id="reparacion-tipo"
+                error={!!errors.tipoId}
+                defaultValue=""
+                {...register("tipoId")}
+              >
                 {ofreceEdiliciaPorDefecto ? (
-                  <option value="">{tipoPorDefecto?.nombre ?? "Edilicia"}</option>
+                  <option value="">
+                    {tipoPorDefecto?.nombre ?? "Edilicia"}
+                  </option>
                 ) : (
                   <option value="" disabled>
                     Elegí un tipo
@@ -141,17 +183,30 @@ export function ReparacionCreateDialog() {
           )}
 
           <div className="flex flex-col gap-1">
-            <label htmlFor="reparacion-descripcion" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="reparacion-descripcion"
+              className="text-sm font-medium text-foreground"
+            >
               Descripción
             </label>
-            <Textarea id="reparacion-descripcion" {...register("descripcion")} />
+            <Textarea
+              id="reparacion-descripcion"
+              {...register("descripcion")}
+            />
           </div>
 
           <div className="flex flex-col gap-1">
-            <label htmlFor="reparacion-ubicacion" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="reparacion-ubicacion"
+              className="text-sm font-medium text-foreground"
+            >
               Ubicación
             </label>
-            <Input id="reparacion-ubicacion" error={!!errors.ubicacion} {...register("ubicacion")} />
+            <Input
+              id="reparacion-ubicacion"
+              error={!!errors.ubicacion}
+              {...register("ubicacion")}
+            />
             {errors.ubicacion && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.ubicacion.message}
@@ -160,7 +215,10 @@ export function ReparacionCreateDialog() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label htmlFor="reparacion-prioridad" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="reparacion-prioridad"
+              className="text-sm font-medium text-foreground"
+            >
               Prioridad
             </label>
             <Select
@@ -186,10 +244,17 @@ export function ReparacionCreateDialog() {
           </div>
 
           <div className="flex flex-col gap-1">
-            <label htmlFor="reparacion-sector" className="text-sm font-medium text-foreground">
+            <label
+              htmlFor="reparacion-sector"
+              className="text-sm font-medium text-foreground"
+            >
               Sector
             </label>
-            <Select id="reparacion-sector" defaultValue="" {...register("sectorId")}>
+            <Select
+              id="reparacion-sector"
+              defaultValue=""
+              {...register("sectorId")}
+            >
               <option value="">Sin sector</option>
               {(sectoresQuery.data ?? []).map((sector) => (
                 <option key={sector.id} value={sector.id}>

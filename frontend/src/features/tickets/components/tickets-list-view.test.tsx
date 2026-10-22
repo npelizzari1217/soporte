@@ -419,4 +419,79 @@ describe("TicketsListView", () => {
       expect(within(select).getByRole("option", { name: "Mantenimiento" })).toBeInTheDocument();
     });
   });
+
+  describe("filtros de la URL fuera del catálogo visible", () => {
+    const TIPOS = [
+      { id: "ti1", codigo: "SOPORTE", nombre: "Soporte", modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" },
+      { id: "ti2", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+    ];
+    const USUARIOS = [
+      { id: "u1", nombre: "Ana", apellido: "Pérez", rol: "TECNICO" },
+      { id: "u3", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
+    ];
+
+    beforeEach(() => {
+      server.use(
+        http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)),
+        http.get("/api/usuarios", () => HttpResponse.json(USUARIOS)),
+      );
+    });
+
+    /** Último `router.replace` como searchParams, o `null` si no hubo ninguno. */
+    function ultimaUrlReemplazada(): URLSearchParams | null {
+      const llamada = replaceMock.mock.calls.at(-1)?.[0] as string | undefined;
+      return llamada === undefined ? null : new URLSearchParams(llamada.split("?")[1] ?? "");
+    }
+
+    it("quita de la URL un `tipo` sin LECTURA para el usuario, y conserva el resto", async () => {
+      currentSearch = "tipo=ti2&estado=e-nuevo";
+      // Solo ve Soporte: Edilicia (ti2) no está entre los tipos con LECTURA.
+      renderConPermisos(<TicketsListView />, {
+        user: TECNICO,
+        permisos: permisosDeTest({ ti1: ["LECTURA"] }),
+      });
+      await waitFor(() => expect(ultimaUrlReemplazada()).not.toBeNull());
+      const params = ultimaUrlReemplazada();
+      expect(params?.get("tipo")).toBeNull();
+      expect(params?.get("estado")).toBe("e-nuevo");
+    });
+
+    it("quita de la URL un `asignado` que no es agente", async () => {
+      currentSearch = "asignado=u3&estado=e-nuevo";
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await waitFor(() => expect(ultimaUrlReemplazada()).not.toBeNull());
+      expect(ultimaUrlReemplazada()?.get("asignado")).toBeNull();
+      expect(ultimaUrlReemplazada()?.get("estado")).toBe("e-nuevo");
+    });
+
+    it("no toca la URL si el catálogo de usuarios falla, aunque el asignado sea válido", async () => {
+      server.use(http.get("/api/usuarios", () => HttpResponse.json({}, { status: 500 })));
+      currentSearch = "asignado=u1";
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+      await screen.findByText("Impresora rota");
+      await new Promise((resolver) => setTimeout(resolver, 50));
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    it("no toca la URL cuando `tipo` y `asignado` están en el catálogo visible", async () => {
+      currentSearch = "tipo=ti1&asignado=u1";
+      renderWithProviders(<TicketsListView />, {
+        user: buildUser({ modulos: ["TICKETS"], permisos: ["TICKETS:VER_TODOS"] }),
+      });
+      const select = await screen.findByLabelText("Asignado");
+      await within(select).findByRole("option", { name: "Ana Pérez" });
+      expect(screen.getByLabelText<HTMLSelectElement>("Tipo").value).toBe("ti1");
+      expect(select).toHaveValue("u1");
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+
+    it("no toca la URL si el catálogo de tipos falla: la ausencia no prueba nada", async () => {
+      server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json({}, { status: 500 })));
+      currentSearch = "tipo=ti2";
+      renderWithProviders(<TicketsListView />, { user: buildUser({ modulos: ["TICKETS"] }) });
+      await screen.findByText("Impresora rota");
+      await new Promise((resolver) => setTimeout(resolver, 50));
+      expect(replaceMock).not.toHaveBeenCalled();
+    });
+  });
 });

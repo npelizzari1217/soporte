@@ -34,7 +34,10 @@ import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { EquipoCreateDialog } from "./equipo-create-dialog";
 import { TicketSoporteCreateDialog } from "./ticket-soporte-create-dialog";
 import { useModelosEquipo } from "@/features/modelos-equipo/hooks/use-modelos-equipo";
-import { resolverDeCatalogo, type EstadoCatalogo } from "@/features/insumos/lib/resolucion-de-catalogo";
+import {
+  resolverDeCatalogo,
+  type EstadoCatalogo,
+} from "@/features/insumos/lib/resolucion-de-catalogo";
 import {
   ETIQUETA_CATALOGO_CARGANDO,
   ETIQUETA_CATALOGO_NO_DISPONIBLE,
@@ -43,6 +46,7 @@ import {
 import type { Equipo } from "../types";
 import type { ModeloEquipo } from "@/features/modelos-equipo/types";
 import { Monitor } from "lucide-react";
+import { TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
 
 /**
  * Resuelve el texto de la celda `Marca` (ADR-2/ADR-3 del design de
@@ -51,7 +55,10 @@ import { Monitor } from "lucide-react";
  * reusa `nombreDeCatalogo()`: exige entradas `{id, nombre}` y `ModeloEquipo`
  * es `{id, marca, modelo}`.
  */
-function marcaDeEquipo(row: Equipo, catalogo: EstadoCatalogo<ModeloEquipo>): string {
+function marcaDeEquipo(
+  row: Equipo,
+  catalogo: EstadoCatalogo<ModeloEquipo>,
+): string {
   if (!row.modeloEquipoId) return row.marca ?? "—";
 
   const resolucion = resolverDeCatalogo(row.modeloEquipoId, catalogo);
@@ -71,12 +78,13 @@ function marcaDeEquipo(row: Equipo, catalogo: EstadoCatalogo<ModeloEquipo>): str
 }
 
 /** Código del tipo que crea `POST /soporte`. */
-const TIPO_SOPORTE_CODIGO = "SOPORTE";
-
 export function EquiposListView() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { updateFiltros } = useUrlFilters<{ incluirBajas: string; pagina: string }>("pagina");
+  const { updateFiltros } = useUrlFilters<{
+    incluirBajas: string;
+    pagina: string;
+  }>("pagina");
   // La URL es la fuente de verdad (deep-link y back/forward). Apagado por
   // defecto: solo `?incluirBajas=true` lo enciende.
   const incluirBajas = searchParams.get("incluirBajas") === "true";
@@ -84,9 +92,12 @@ export function EquiposListView() {
   const modelosQuery = useModelosEquipo();
   // POST /soporte siempre crea un ticket del tipo SOPORTE: el botón pide ALTAS sobre ese tipo.
   const tiposTicketsQuery = useTiposTicket("TICKETS");
-  const tipoSoporte = (tiposTicketsQuery.data ?? []).find((tipo) => tipo.codigo === TIPO_SOPORTE_CODIGO);
+  const tipoSoporte = (tiposTicketsQuery.data ?? []).find(
+    (tipo) => tipo.codigo === TIPO_CODIGO_SOPORTE,
+  );
   const { puedeEnTipo } = usePermisosPorTipo();
-  const puedeCrearSoporte = tipoSoporte !== undefined && puedeEnTipo(tipoSoporte.id, "ALTAS");
+  const puedeCrearSoporte =
+    tipoSoporte !== undefined && puedeEnTipo(tipoSoporte.id, "ALTAS");
 
   const columns: Column<Equipo>[] = [
     { key: "nombre", header: "Nombre" },
@@ -94,19 +105,32 @@ export function EquiposListView() {
       key: "marca",
       header: "Marca",
       render: (row) =>
-        marcaDeEquipo(row, { entradas: modelosQuery.data, cargando: modelosQuery.isLoading }),
+        marcaDeEquipo(row, {
+          entradas: modelosQuery.data,
+          cargando: modelosQuery.isLoading,
+        }),
     },
-    { key: "numeroSerie", header: "N.º de serie", render: (row) => row.numeroSerie ?? "—" },
+    {
+      key: "numeroSerie",
+      header: "N.º de serie",
+      render: (row) => row.numeroSerie ?? "—",
+    },
     {
       key: "activo",
       header: "Estado",
-      render: (row) => (row.activo ? <Badge variant="success">Activo</Badge> : <Badge variant="outline">Baja</Badge>),
+      render: (row) =>
+        row.activo ? (
+          <Badge variant="success">Activo</Badge>
+        ) : (
+          <Badge variant="outline">Baja</Badge>
+        ),
     },
   ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader icon={Monitor}
+      <PageHeader
+        icon={Monitor}
         title="Equipos IT"
         actions={
           <>
@@ -129,7 +153,9 @@ export function EquiposListView() {
       />
       <Can
         permiso="EQUIPOS:LECTURA"
-        fallback={<ErrorState message="No tenés permiso para ver el inventario de equipos." />}
+        fallback={
+          <ErrorState message="No tenés permiso para ver el inventario de equipos." />
+        }
       >
         <div>
           <div className="mb-3 flex items-center justify-between gap-4">
@@ -137,7 +163,10 @@ export function EquiposListView() {
               <Checkbox
                 checked={incluirBajas}
                 onCheckedChange={(checked) =>
-                  updateFiltros({ incluirBajas: checked === true ? "true" : "" }, { resetPage: false })
+                  updateFiltros(
+                    { incluirBajas: checked === true ? "true" : "" },
+                    { resetPage: false },
+                  )
                 }
               />
               Mostrar equipos dados de baja
@@ -146,12 +175,17 @@ export function EquiposListView() {
               <EquipoCreateDialog />
             </Can>
           </div>
-          <DataTable variante="tarjeta"
+          <DataTable
+            variante="tarjeta"
             columns={columns}
             data={equiposQuery.data ?? []}
             getRowKey={(row) => row.id}
             isLoading={equiposQuery.isLoading}
-            error={equiposQuery.isError ? "No se pudieron cargar los equipos." : undefined}
+            error={
+              equiposQuery.isError
+                ? "No se pudieron cargar los equipos."
+                : undefined
+            }
             onRetry={() => equiposQuery.refetch().catch(notifyError)}
             onRowClick={(row) => router.push(`/equipos/${row.id}`)}
             emptyTitle="Sin equipos"
