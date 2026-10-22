@@ -233,8 +233,9 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       useFactory: (
         ticketEdiliciaRepo: ITicketEdiliciaRepository,
         comentarioRepo: IComentarioReparacionRepository,
-      ) => new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
+        ticketRepo: ITicketRepository,
+      ) => new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo, ticketRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY, TICKET_REPOSITORY],
     },
     {
       // Compone `ListarReparacionesUseCase` (design D4, sdd/exportar-listados-csv)
@@ -252,9 +253,20 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         ticketEdiliciaRepo: ITicketEdiliciaRepository,
         compraRepo: ICompraRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
+        ticketRepo: ITicketRepository,
       ) =>
-        new VincularCompraAReparacionUseCase(ticketEdiliciaRepo, compraRepo, reparacionCompraRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY, COMPRA_REPOSITORY, REPARACION_COMPRA_REPOSITORY],
+        new VincularCompraAReparacionUseCase(
+          ticketEdiliciaRepo,
+          compraRepo,
+          reparacionCompraRepo,
+          ticketRepo,
+        ),
+      inject: [
+        TICKET_EDILICIA_REPOSITORY,
+        COMPRA_REPOSITORY,
+        REPARACION_COMPRA_REPOSITORY,
+        TICKET_REPOSITORY,
+      ],
     },
     {
       // odd/detalle-ticket-legible (S4-S5): edición de una reparación no empezada.
@@ -295,9 +307,17 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
     },
     {
       provide: DesvincularCompraDeReparacionUseCase,
-      useFactory: (reparacionCompraRepo: IReparacionCompraRepository) =>
-        new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo),
-      inject: [REPARACION_COMPRA_REPOSITORY],
+      useFactory: (
+        reparacionCompraRepo: IReparacionCompraRepository,
+        ticketEdiliciaRepo: ITicketEdiliciaRepository,
+        ticketRepo: ITicketRepository,
+      ) =>
+        new DesvincularCompraDeReparacionUseCase(
+          reparacionCompraRepo,
+          ticketEdiliciaRepo,
+          ticketRepo,
+        ),
+      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_EDILICIA_REPOSITORY, TICKET_REPOSITORY],
     },
   ],
   exports: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],

@@ -2,23 +2,25 @@
  * ReparacionesController — entry point HTTP del módulo `reparaciones/`
  * (F3-E1, F3-E3, F3-E4, F3-E5).
  *
- * Rutas:
- *   POST   /reparaciones                                    → CrearTicketEdilicioUseCase [ticket:crear]
- *   GET    /reparaciones                                    → ListarReparacionesUseCase  (autenticado)
- *   GET    /reparaciones/export                              → ExportarReparacionesUseCase (`EDILICIA:LECTURA`, sdd/exportar-listados-csv)
- *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioReparacionUseCase    [EDILICIA:ALTAS]
- *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [EDILICIA:LECTURA]
- *   POST   /reparaciones/:reparacionId/compras                → VincularCompraAReparacionUseCase   [EDILICIA:ALTAS + COMPRAS:LECTURA]
- *   DELETE /reparaciones/:reparacionId/compras/:compraId       → DesvincularCompraDeReparacionUseCase [EDILICIA:BORRADO]
+ * Rutas (entre corchetes, lo que exige el caso de uso sobre el tipo del ticket base, D5 c):
+ *   POST   /reparaciones                                    → CrearTicketEdilicioUseCase [ALTAS sobre el tipo resultante]
+ *   GET    /reparaciones                                    → ListarReparacionesUseCase  [tipos con LECTURA; fila sin VER_TODOS]
+ *   GET    /reparaciones/export                              → ExportarReparacionesUseCase [mismo alcance que el listado]
+ *   PATCH  /reparaciones/:reparacionId                       → EditarReparacionUseCase    [MODIFICACION]
+ *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioReparacionUseCase    [ALTAS o COMENTAR]
+ *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [LECTURA]
+ *   POST   /reparaciones/:reparacionId/compras                → VincularCompraAReparacionUseCase   [ALTAS] + ruta COMPRAS:LECTURA
+ *   DELETE /reparaciones/:reparacionId/compras/:compraId       → DesvincularCompraDeReparacionUseCase [LECTURA] + ruta EDILICIA:BORRADO
  *
- * Vincular una compra exige DOS acciones (decisión de producto #2435,
- * sdd/reparacion-bloqueada-por-compra WU5): el selector del diálogo del
- * frontend consume `GET /compras` (`COMPRAS:LECTURA`), y esa exigencia se
- * sostiene acá en el `AccionesGuard` — no solo en que la interfaz esconda el
- * selector. Un cliente HTTP directo con `EDILICIA:ALTAS` y sin
- * `COMPRAS:LECTURA` recibe 403. Desvincular NO repite el segundo permiso:
- * el `numero` que ve quien desvincula sale de `comprasQueBloquean[]` en
- * `GET /reparaciones` (`EDILICIA:LECTURA`), no de `GET /compras`.
+ * Las celdas `EDILICIA:*` de la matriz dejaron de decidir las operaciones sobre
+ * tickets (odd/permisos-por-tipo-ticket, D5 d): cada caso de uso exige su acción
+ * sobre el tipo del ticket base (403 si falta) y responde 404 si el actor no lo
+ * ve. Quedan dos `@RequiereAcciones`, ambos de permisos que no son por tipo:
+ * `COMPRAS:LECTURA` al vincular, porque el selector del diálogo consume
+ * `GET /compras` (decisión de producto #2435: un cliente HTTP directo sin esa
+ * celda recibe 403), y `EDILICIA:BORRADO` al desvincular, que sigue siendo un
+ * permiso del módulo (L21). Desvincular no repite `COMPRAS:LECTURA`: el `numero`
+ * que ve quien desvincula sale de `comprasQueBloquean[]` en `GET /reparaciones`.
  *
  * `:reparacionId` = id del satélite `ticket_edilicia` (mismo criterio que
  * `:compraId` en `ComprasController`).
@@ -28,10 +30,8 @@
  * `/reparaciones/.../subtareas`; `GET /reparaciones` las sigue embebiendo.
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
- * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('EDILICIA')` de clase).
- * `GET /reparaciones` declara `@RequiereAcciones('EDILICIA:LECTURA')`
- * (reemplaza el gate de módulo puro de hoy, R7).
+ * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario). Los permisos por
+ * tipo del actor los carga `CargadorAlcanceTicket` por request.
  *
  * Tarea: T8.6, T9.6.
  */
@@ -40,6 +40,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -72,7 +73,9 @@ import {
   SinCicloActivoError,
   SecuenciaAgotadaError,
   TicketNoEncontradoError,
+  AccionSobreTipoNoPermitidaError,
 } from '../../../tickets/domain/errors/tickets.errors';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 
 import {
   USUARIO_MASTER_CHECKER,
@@ -126,7 +129,11 @@ const POR_PAGINA_DEFAULT = 20;
  */
 export function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException | ConflictException {
+): NotFoundException | UnprocessableEntityException | ConflictException | ForbiddenException {
+  // odd/permisos-por-tipo-ticket (D5 c): ve la reparación pero le falta la acción sobre el tipo.
+  if (error instanceof AccionSobreTipoNoPermitidaError) {
+    return new ForbiddenException(error.message);
+  }
   if (
     error instanceof TicketNoEncontradoError ||
     error instanceof TicketEdiliciaNoEncontradoError ||
@@ -197,17 +204,19 @@ export class ReparacionesController {
     private readonly desvincularCompraUseCase: DesvincularCompraDeReparacionUseCase,
     // odd/detalle-ticket-legible — mismo criterio, al final.
     private readonly editarReparacionUseCase: EditarReparacionUseCase,
+    // odd/permisos-por-tipo-ticket (D5 a) — mismo criterio, al final.
+    private readonly alcances: CargadorAlcanceTicket,
   ) {}
 
   /**
    * POST /reparaciones
    * Crea un ticket edilicio (ticket base + satélite `ticket_edilicia`, ADR-3).
    * `solicitanteId`/`autorId` = JWT.sub; `anio` lo resuelve el servidor.
+   * @throws 403 sin `ALTAS` sobre el tipo resultante (el elegido o EDILICIA)
    * @throws 409 sin ciclo activo
    * @throws 422 solicitante inválido
    */
   @Post()
-  @RequiereAcciones('EDILICIA:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crear(
     @Body() dto: CreateTicketEdilicioHttpDto,
@@ -224,6 +233,7 @@ export class ReparacionesController {
       clienteId: user.cliente_id as string,
       autorId: user.sub,
       anio: new Date().getFullYear(),
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
@@ -235,20 +245,25 @@ export class ReparacionesController {
 
   /**
    * GET /reparaciones
-   * Una página de los tickets edilicios del tenant (ticket base + satélite +
-   * ubicación), la más reciente primero (odd/reparaciones-paginadas).
+   * Una página de los tickets edilicios que el actor ve (ticket base + satélite +
+   * ubicación), la más reciente primero (odd/reparaciones-paginadas). Solo tipos
+   * con `LECTURA`; sin `VER_TODOS` sobre el tipo, la regla de fila
+   * (odd/permisos-por-tipo-ticket, D5 e).
    *
    * @param query `pagina` (default 1), `porPagina` (default 20, máx. 100) y
    *   `bloqueo` (default `TODAS`).
    * @returns La página y su metadata, con la forma de `GET /tickets`.
    */
   @Get()
-  @RequiereAcciones('EDILICIA:LECTURA')
-  async listar(@Query() query: ListReparacionesQueryDto): Promise<ListReparacionesResponseDto> {
+  async listar(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListReparacionesQueryDto,
+  ): Promise<ListReparacionesResponseDto> {
     const result = await this.listarReparacionesUseCase.executePaginado({
       pagina: query.pagina ?? 1,
       porPagina: query.porPagina ?? POR_PAGINA_DEFAULT,
       bloqueo: query.bloqueo ?? 'TODAS',
+      alcance: await this.alcances.cargar(user),
     });
     const pagina = result.getValue();
     return { ...pagina, items: pagina.items.map(toReparacionListItemResponseDto) };
@@ -256,8 +271,8 @@ export class ReparacionesController {
 
   /**
    * GET /reparaciones/export
-   * Exporta a CSV el listado COMPLETO de reparaciones edilicias del tenant
-   * (sdd/exportar-listados-csv) — sin filtros, por diseño (spec, capability
+   * Exporta a CSV el listado COMPLETO de reparaciones edilicias que el actor ve
+   * (sdd/exportar-listados-csv; mismo alcance que el listado, D5 e) — sin filtros, por diseño (spec, capability
    * exportacion-reparaciones): cualquier query string que llegue se ignora.
    *
    * **Reparaciones NO tiene hoy ninguna ruta `GET /reparaciones/:id`** (a
@@ -270,17 +285,20 @@ export class ReparacionesController {
    * declaración, y `:reparacionId` también matchearía la palabra literal
    * `export`).
    *
-   * Gateada por `EDILICIA:LECTURA`, la misma acción que el listado.
+   * Mismo alcance por tipo que el listado.
    *
    * @throws 422 la exportación supera el tope de filas (no hay filtros que acotar)
    */
   @Get('export')
-  @RequiereAcciones('EDILICIA:LECTURA')
   async exportar(
+    @CurrentUser() user: JwtPayload,
     @Res({ passthrough: true }) res: RespuestaConHeaders,
     @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
   ): Promise<string | StreamableFile> {
-    const result = await this.exportarReparacionesUseCase.execute(formato);
+    const result = await this.exportarReparacionesUseCase.execute(
+      await this.alcances.cargar(user),
+      formato,
+    );
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -291,9 +309,10 @@ export class ReparacionesController {
   /**
    * POST /reparaciones/:reparacionId/comentarios
    * Asienta una nota sobre la reparación (ej. por qué se está demorando).
-   * `autorId` viene del JWT. Exige `EDILICIA:ALTAS`: sumar información al
-   * expediente de la reparación.
-   * @throws 404 ticket_edilicia inexistente
+   * `autorId` viene del JWT. Exige `ALTAS` o `COMENTAR` sobre el tipo del
+   * ticket base (odd/permisos-por-tipo-ticket, D5 c).
+   * @throws 403 sin `ALTAS` ni `COMENTAR` sobre el tipo
+   * @throws 404 ticket_edilicia inexistente o que el actor no ve
    */
   /**
    * PATCH /reparaciones/:reparacionId
@@ -302,11 +321,11 @@ export class ReparacionesController {
    * salta la regla de "no empezada"; el bloqueo por compra no lo salta nadie. Declarada después de
    * `GET /reparaciones/export` por el orden de matching de Nest.
    *
-   * @throws 404 reparación o ticket inexistente
+   * @throws 403 sin `MODIFICACION` sobre el tipo del ticket base
+   * @throws 404 reparación o ticket inexistente, o que el actor no ve
    * @throws 422 ya en proceso, con tareas completadas, bloqueada, prioridad o sector inexistente
    */
   @Patch(':reparacionId')
-  @RequiereAcciones('EDILICIA:MODIFICACION')
   async editar(
     @Param('reparacionId') reparacionId: string,
     @Body() dto: EditarReparacionHttpDto,
@@ -320,6 +339,7 @@ export class ReparacionesController {
       ubicacion: dto.ubicacion,
       sectorId: dto.sectorId,
       actorEsRoot: user.is_global_admin === true,
+      alcance: await this.alcances.cargar(user),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -329,7 +349,6 @@ export class ReparacionesController {
   }
 
   @Post(':reparacionId/comentarios')
-  @RequiereAcciones('EDILICIA:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async crearComentario(
     @Param('reparacionId') reparacionId: string,
@@ -340,6 +359,7 @@ export class ReparacionesController {
       ticketEdiliciaId: reparacionId,
       texto: dto.texto,
       autorId: user.sub,
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
@@ -355,22 +375,25 @@ export class ReparacionesController {
    * GET /reparaciones/:reparacionId/comentarios
    * Lista los comentarios de la reparación, MÁS NUEVO PRIMERO.
    *
-   * `EDILICIA:LECTURA` y no `EDILICIA:ALTAS`: leer es leer — es el mismo gate
-   * que `GET /reparaciones`, que ya expone la reparación entera. Los
-   * comentarios no tienen flag de visibilidad (a diferencia de
-   * `operaciones_ticket.es_interno`): quien puede ver la reparación, los ve.
+   * Exige ver el ticket base (`LECTURA` sobre su tipo y regla de fila,
+   * odd/permisos-por-tipo-ticket D5 b): leer es leer. Los comentarios no tienen
+   * flag de visibilidad (a diferencia de `operaciones_ticket.es_interno`): quien
+   * puede ver la reparación, los ve.
    *
    * Los nombres de los autores se resuelven en UN batch cross-DB
    * (`resolverNombres`, sin N+1) — `autor_id` es soft ref a `master.usuarios`
    * y no hay JOIN posible entre las dos bases.
-   * @throws 404 ticket_edilicia inexistente
+   * @throws 404 ticket_edilicia inexistente o que el actor no ve
    */
   @Get(':reparacionId/comentarios')
-  @RequiereAcciones('EDILICIA:LECTURA')
   async listarComentarios(
     @Param('reparacionId') reparacionId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<ComentarioReparacionResponseDto[]> {
-    const result = await this.listarComentariosUseCase.execute(reparacionId);
+    const result = await this.listarComentariosUseCase.execute(
+      reparacionId,
+      await this.alcances.cargar(user),
+    );
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -391,24 +414,26 @@ export class ReparacionesController {
    * IDEMPOTENTE (D4): vincular el mismo par dos veces no crea una segunda
    * fila ni falla.
    *
-   * `@RequiereAcciones('EDILICIA:ALTAS', 'COMPRAS:LECTURA')` — AND (R3,
-   * decisión de producto #2435, WU5.9): el segundo argumento cierra el
-   * agujero que demostró el test de autorización real por HTTP de WU5.8
-   * (con un solo argumento, un actor con SOLO `EDILICIA:ALTAS` pasaba y
-   * recibía 201/404, nunca 403). El candado vive acá, en el `AccionesGuard`
-   * del backend, no en que el frontend esconda el selector de compras.
-   * @throws 404 reparación o compra inexistente
+   * `@RequiereAcciones('COMPRAS:LECTURA')` (decisión de producto #2435,
+   * WU5.9): el selector de compras consume `GET /compras`, y el candado vive
+   * acá, en el `AccionesGuard` del backend, no en que el frontend esconda el
+   * selector. `ALTAS` sobre el tipo del ticket base lo exige el caso de uso
+   * (odd/permisos-por-tipo-ticket, D5 c; antes era la celda `EDILICIA:ALTAS`).
+   * @throws 403 sin `COMPRAS:LECTURA`, o sin `ALTAS` sobre el tipo
+   * @throws 404 reparación o compra inexistente, o reparación que el actor no ve
    */
   @Post(':reparacionId/compras')
-  @RequiereAcciones('EDILICIA:ALTAS', 'COMPRAS:LECTURA')
+  @RequiereAcciones('COMPRAS:LECTURA')
   @HttpCode(HttpStatus.CREATED)
   async vincularCompra(
     @Param('reparacionId') reparacionId: string,
     @Body() dto: VincularCompraHttpDto,
+    @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     const result = await this.vincularCompraUseCase.execute({
       ticketEdiliciaId: reparacionId,
       compraId: dto.compraId,
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
@@ -420,11 +445,12 @@ export class ReparacionesController {
    * DELETE /reparaciones/:reparacionId/compras/:compraId
    * Desvincula (HARD DELETE real, D5) una compra de la reparación.
    *
-   * Solo `EDILICIA:BORRADO` — sin `COMPRAS:LECTURA`: el `numero` que ve
-   * quien desvincula sale de `comprasQueBloquean[]` en `GET /reparaciones`
-   * (`EDILICIA:LECTURA`), no de `GET /compras`. No navega el universo de
-   * compras, opera sobre un vínculo que ya es visible.
-   * @throws 404 vínculo inexistente
+   * `EDILICIA:BORRADO` sigue siendo permiso del módulo (L21), sin acción por
+   * tipo; el caso de uso exige además ver el ticket base (D5 b). Sin
+   * `COMPRAS:LECTURA`: el `numero` que ve quien desvincula sale de
+   * `comprasQueBloquean[]` en `GET /reparaciones`, no de `GET /compras`. No
+   * navega el universo de compras, opera sobre un vínculo que ya es visible.
+   * @throws 404 vínculo inexistente, o reparación que el actor no ve
    */
   @Delete(':reparacionId/compras/:compraId')
   @RequiereAcciones('EDILICIA:BORRADO')
@@ -432,10 +458,12 @@ export class ReparacionesController {
   async desvincularCompra(
     @Param('reparacionId') reparacionId: string,
     @Param('compraId') compraId: string,
+    @CurrentUser() user: JwtPayload,
   ): Promise<void> {
     const result = await this.desvincularCompraUseCase.execute({
       ticketEdiliciaId: reparacionId,
       compraId,
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {

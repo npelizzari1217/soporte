@@ -10,7 +10,15 @@ import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.enti
 import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
 import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
-import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../../tickets/domain/errors/tickets.errors';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
 import { TareaTicketNoEditableError } from '../../../tickets/domain/errors/tareas.errors';
 import {
   ComentarioReparacionNoPermitidoError,
@@ -21,6 +29,8 @@ import { ListarComentariosReparacionUseCase } from './listar-comentarios-reparac
 
 const REPARACION_ID = 'edilicia-uuid';
 const AUTOR_ID = 'autor-uuid';
+/** ROOT y ADMINISTRADOR: los tests que no versan sobre permisos por tipo. */
+const SIN_RESTRICCION = alcanceSinRestriccion(AUTOR_ID);
 
 function reparacionActiva(): TicketEdiliciaEntity {
   return TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid', ubicacion: null }, REPARACION_ID);
@@ -47,7 +57,11 @@ function ticketActivo(): TicketEntity {
 function armarCrear(encontrado: TicketEdiliciaEntity | null = reparacionActiva()) {
   const ticketEdiliciaRepo = { findById: vi.fn().mockResolvedValue(encontrado) };
   const comentarioRepo = { crear: vi.fn().mockResolvedValue(undefined) };
-  const ticketRepo = { findById: vi.fn().mockResolvedValue(ticketActivo()) };
+  const ticketRepo = {
+    findById: vi.fn().mockResolvedValue(ticketActivo()),
+    // El autor no solicitó el ticket ni es su responsable ni técnico de una tarea.
+    esVisiblePara: vi.fn().mockResolvedValue(false),
+  };
   const verificador = { verificar: vi.fn().mockResolvedValue(Result.ok(undefined)) };
   const useCase = new CrearComentarioReparacionUseCase(
     ticketEdiliciaRepo,
@@ -72,6 +86,7 @@ describe('CrearComentarioReparacionUseCase', () => {
       ticketEdiliciaId: REPARACION_ID,
       texto: '  Falta el repuesto X  ',
       autorId: AUTOR_ID,
+      alcance: SIN_RESTRICCION,
     });
 
     expect(result.isOk()).toBe(true);
@@ -92,6 +107,7 @@ describe('CrearComentarioReparacionUseCase', () => {
       ticketEdiliciaId: REPARACION_ID,
       texto: 'Falta el repuesto X',
       autorId: AUTOR_ID,
+      alcance: SIN_RESTRICCION,
     });
 
     expect(result.isFail()).toBe(true);
@@ -102,7 +118,12 @@ describe('CrearComentarioReparacionUseCase', () => {
 });
 
 describe('CrearComentarioReparacionUseCase — ticket cerrado, cancelado o bloqueado (odd/ticket-cerrado-solo-lectura, S3)', () => {
-  const DTO = { ticketEdiliciaId: REPARACION_ID, texto: 'Falta el repuesto X', autorId: AUTOR_ID };
+  const DTO = {
+    ticketEdiliciaId: REPARACION_ID,
+    texto: 'Falta el repuesto X',
+    autorId: AUTOR_ID,
+    alcance: SIN_RESTRICCION,
+  };
 
   it.each([
     ['cerrado', 'El ticket está cerrado y no acepta comentarios nuevos.'],
@@ -153,20 +174,103 @@ describe('CrearComentarioReparacionUseCase — ticket cerrado, cancelado o bloqu
   });
 });
 
+describe('CrearComentarioReparacionUseCase — permisos por tipo del ticket base (odd/permisos-por-tipo-ticket, D5 c)', () => {
+  const dto = (alcance: AlcanceActorTicket) => ({
+    ticketEdiliciaId: REPARACION_ID,
+    texto: 'Falta el repuesto X',
+    autorId: AUTOR_ID,
+    alcance,
+  });
+
+  it.each([
+    ['sin LECTURA sobre el tipo', { 'tipo-edilicia': ['ALTAS', 'COMENTAR'] }],
+    [
+      'con LECTURA sin VER_TODOS y fuera de la regla de fila',
+      { 'tipo-edilicia': ['LECTURA', 'COMENTAR'] },
+    ],
+  ] as const)(
+    '%s → TicketEdiliciaNoEncontradoError (404, no revela el ticket), sin escribir',
+    async (_caso, permisos) => {
+      const { useCase, comentarioRepo, verificador } = armarCrear();
+
+      const result = await useCase.execute(dto(alcancePorTipo(AUTOR_ID, permisos)));
+
+      expect(result.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+      expect(result.getError().message).toContain(REPARACION_ID);
+      expect(verificador.verificar).not.toHaveBeenCalled();
+      expect(comentarioRepo.crear).not.toHaveBeenCalled();
+    },
+  );
+
+  it('lo ve sin ALTAS ni COMENTAR sobre el tipo → 403, sin escribir', async () => {
+    const { useCase, comentarioRepo } = armarCrear();
+
+    const result = await useCase.execute(
+      dto(alcancePorTipo(AUTOR_ID, { 'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'] })),
+    );
+
+    expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+    expect(result.getError().message).toBe(
+      'El usuario no tiene el permiso "ALTAS o COMENTAR" sobre el tipo de este ticket.',
+    );
+    expect(comentarioRepo.crear).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['ALTAS (lo que hoy da EDILICIA:ALTAS)', 'ALTAS'],
+    ['COMENTAR', 'COMENTAR'],
+  ] as const)('lo ve con %s sobre el tipo → persiste', async (_caso, accion) => {
+    const { useCase, comentarioRepo } = armarCrear();
+
+    const result = await useCase.execute(
+      dto(alcancePorTipo(AUTOR_ID, { 'tipo-edilicia': ['LECTURA', 'VER_TODOS', accion] })),
+    );
+
+    expect(result.isOk()).toBe(true);
+    expect(comentarioRepo.crear).toHaveBeenCalledTimes(1);
+  });
+
+  it('por la regla de fila (es el solicitante) con COMENTAR → persiste', async () => {
+    const { useCase, comentarioRepo, ticketRepo } = armarCrear();
+    ticketRepo.esVisiblePara.mockResolvedValue(true);
+
+    const result = await useCase.execute(
+      dto(alcancePorTipo(AUTOR_ID, { 'tipo-edilicia': ['LECTURA', 'COMENTAR'] })),
+    );
+
+    expect(result.isOk()).toBe(true);
+    expect(comentarioRepo.crear).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ListarComentariosReparacionUseCase', () => {
-  it('devuelve los comentarios de la reparación', async () => {
+  /** Deps con la reparación y su ticket base; el autor no está en la regla de fila. */
+  function armarListar(encontrado: TicketEdiliciaEntity | null = reparacionActiva()) {
     const comentario = ComentarioReparacionEntity.create({
       ticketEdiliciaId: REPARACION_ID,
       texto: 'Falta el repuesto X',
       autorId: AUTOR_ID,
     });
-    const ticketEdiliciaRepo = { findById: vi.fn().mockResolvedValue(reparacionActiva()) };
+    const ticketEdiliciaRepo = { findById: vi.fn().mockResolvedValue(encontrado) };
     const comentarioRepo = {
       listarPorTicketEdilicia: vi.fn().mockResolvedValue([comentario]),
     };
-    const useCase = new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo);
+    const ticketRepo = {
+      findById: vi.fn().mockResolvedValue(ticketActivo()),
+      esVisiblePara: vi.fn().mockResolvedValue(false),
+    };
+    const useCase = new ListarComentariosReparacionUseCase(
+      ticketEdiliciaRepo,
+      comentarioRepo,
+      ticketRepo,
+    );
+    return { useCase, comentarioRepo, comentario };
+  }
 
-    const result = await useCase.execute(REPARACION_ID);
+  it('devuelve los comentarios de la reparación', async () => {
+    const { useCase, comentarioRepo, comentario } = armarListar();
+
+    const result = await useCase.execute(REPARACION_ID, SIN_RESTRICCION);
 
     expect(result.getValue()).toEqual([comentario]);
     expect(comentarioRepo.listarPorTicketEdilicia).toHaveBeenCalledWith(REPARACION_ID);
@@ -176,15 +280,36 @@ describe('ListarComentariosReparacionUseCase', () => {
     ['la reparación no existe', null],
     ['la reparación está eliminada', reparacionEliminada()],
   ])('falla con TicketEdiliciaNoEncontradoError cuando %s', async (_label, encontrado) => {
-    const ticketEdiliciaRepo = { findById: vi.fn().mockResolvedValue(encontrado) };
-    const comentarioRepo = { listarPorTicketEdilicia: vi.fn() };
-    const useCase = new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo);
+    const { useCase, comentarioRepo } = armarListar(encontrado);
 
-    const result = await useCase.execute(REPARACION_ID);
+    const result = await useCase.execute(REPARACION_ID, SIN_RESTRICCION);
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
     // Un id inválido no se disfraza de listado vacío.
     expect(comentarioRepo.listarPorTicketEdilicia).not.toHaveBeenCalled();
+  });
+
+  it('sin LECTURA sobre el tipo del ticket base → el mismo 404, sin leer los comentarios', async () => {
+    const { useCase, comentarioRepo } = armarListar();
+
+    const result = await useCase.execute(
+      REPARACION_ID,
+      alcancePorTipo(AUTOR_ID, { 'tipo-otro': ['LECTURA', 'VER_TODOS'] }),
+    );
+
+    expect(result.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+    expect(comentarioRepo.listarPorTicketEdilicia).not.toHaveBeenCalled();
+  });
+
+  it('con LECTURA y VER_TODOS sobre el tipo → devuelve los comentarios', async () => {
+    const { useCase, comentario } = armarListar();
+
+    const result = await useCase.execute(
+      REPARACION_ID,
+      alcancePorTipo(AUTOR_ID, { 'tipo-edilicia': ['LECTURA', 'VER_TODOS'] }),
+    );
+
+    expect(result.getValue()).toEqual([comentario]);
   });
 });

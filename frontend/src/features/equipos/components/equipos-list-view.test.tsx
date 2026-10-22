@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { EquiposListView } from "./equipos-list-view";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 import type { Equipo } from "../types";
 import type { ModeloEquipo } from "@/features/modelos-equipo/types";
 
@@ -31,23 +32,48 @@ function mockEquipos() {
 
 describe("EquiposListView — gate del botón «Nuevo ticket de soporte»", () => {
   const BOTON = /nuevo ticket de soporte/i;
-
-  it("con TICKETS:ALTAS pero SIN módulo TICKETS → el botón NO se muestra", async () => {
-    // El endpoint POST /soporte exige @RequiereAcciones('TICKETS:ALTAS') (WU-7.3);
-    // sin el módulo, el botón daba 403 al enviar. Debe ocultarse (regresión del LEAK).
-    mockEquipos();
-    renderWithProviders(<EquiposListView />, {
-      user: buildUser({ permisos: ["TICKETS:ALTAS"], modulos: ["EQUIPOS"] }),
-    });
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: BOTON })).not.toBeInTheDocument(),
+  const tipo = (id: string, codigo: string) => ({
+    id,
+    codigo,
+    nombre: codigo,
+    modulo: "TICKETS",
+    activo: true,
+    createdAt: "",
+    updatedAt: "",
+  });
+  /** POST /soporte crea siempre un ticket SOPORTE: el botón pide ALTAS sobre ese tipo. */
+  function mockTipos(): { servido: () => boolean } {
+    let servido = false;
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () => {
+        servido = true;
+        return HttpResponse.json([tipo("tipo-soporte", "SOPORTE"), tipo("tipo-redes", "REDES")]);
+      }),
     );
+    return { servido: () => servido };
+  }
+  // Las celdas del JWT ya no deciden (odd/permisos-por-tipo-ticket, D5 c).
+  const tecnico = buildUser({ rol: "TECNICO", permisos: ["TICKETS:ALTAS"], modulos: ["EQUIPOS", "TICKETS"] });
+
+  it("con ALTAS en otro tipo de TICKETS pero no en SOPORTE → el botón NO se muestra", async () => {
+    mockEquipos();
+    const catalogo = mockTipos();
+    renderConPermisos(<EquiposListView />, {
+      user: tecnico,
+      permisos: permisosDeTest({ "tipo-soporte": ["LECTURA"], "tipo-redes": ["LECTURA", "ALTAS"] }),
+    });
+    // Sin el catálogo resuelto el botón tampoco se mostraría: el assert recién vale después.
+    await waitFor(() => expect(catalogo.servido()).toBe(true));
+    await new Promise((resolver) => setTimeout(resolver, 50));
+    expect(screen.queryByRole("button", { name: BOTON })).not.toBeInTheDocument();
   });
 
-  it("con TICKETS:ALTAS Y módulo TICKETS → el botón se muestra", async () => {
+  it("con ALTAS sobre SOPORTE → el botón se muestra, sin la celda TICKETS:ALTAS", async () => {
     mockEquipos();
-    renderWithProviders(<EquiposListView />, {
-      user: buildUser({ permisos: ["TICKETS:ALTAS"], modulos: ["EQUIPOS", "TICKETS"] }),
+    mockTipos();
+    renderConPermisos(<EquiposListView />, {
+      user: buildUser({ rol: "TECNICO", permisos: [], modulos: [] }),
+      permisos: permisosDeTest({ "tipo-soporte": ["LECTURA", "ALTAS"] }),
     });
     expect(await screen.findByRole("button", { name: BOTON })).toBeInTheDocument();
   });

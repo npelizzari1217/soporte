@@ -1,7 +1,9 @@
 /**
  * reglas-asignacion.e2e.spec.ts — e2e real de `ReglasAsignacionController`:
  * HTTP → guards → casos de uso → Prisma REAL (tenant efímero) y master de test real
- * (usuarios, membresías y matriz de permisos sembrados de verdad).
+ * (usuarios, membresías y matriz de permisos sembrados de verdad). La elegibilidad del responsable
+ * sale de las filas por tipo del tenant (odd/permisos-por-tipo-ticket, D5 g); las celdas por módulo
+ * de master se siembran igual, para probar que ya no deciden.
  *
  * `usarLockMasterTest()` porque el spec escribe usuarios y membresías en
  * `soporte_master_test`. Higiene: borra sus filas de master → `app.close()` → `dropDatabase`.
@@ -95,7 +97,9 @@ describe('ReglasAsignacionController e2e', () => {
   const rolIds: Record<string, string> = {};
 
   let tipoEquiposId: string;
+  let tipoTicketsId: string;
   let tecnicoId: string;
+  let tecnicoSoloCeldaId: string;
   let colaboradorId: string;
   let administradorUsuarioId: string;
   let tecnicoSinModuloId: string;
@@ -145,6 +149,7 @@ describe('ReglasAsignacionController e2e', () => {
     colaboradorId = await sembrarUsuario('COLABORADOR', 'Colaborador', ['EQUIPOS:LECTURA']);
     administradorUsuarioId = await sembrarUsuario('ADMINISTRADOR', 'Admin', ['EQUIPOS:LECTURA']);
     tecnicoSinModuloId = await sembrarUsuario('TECNICO', 'SinModulo', ['TICKETS:LECTURA']);
+    tecnicoSoloCeldaId = await sembrarUsuario('TECNICO', 'SoloCelda', ['EQUIPOS:LECTURA']);
 
     tipoEquiposId = (
       await tenantClient.tipoTicket.create({
@@ -152,8 +157,20 @@ describe('ReglasAsignacionController e2e', () => {
       })
     ).id;
     // Segundo módulo: el GET agrupa los candidatos por cada módulo con tipos activos.
-    await tenantClient.tipoTicket.create({
-      data: { codigo: `RT${SUFIJO}`, nombre: 'Tipo tickets', activo: true, modulo: 'TICKETS' },
+    tipoTicketsId = (
+      await tenantClient.tipoTicket.create({
+        data: { codigo: `RT${SUFIJO}`, nombre: 'Tipo tickets', activo: true, modulo: 'TICKETS' },
+      })
+    ).id;
+    // Filas por tipo: el ADMINISTRADOR también tiene LECTURA (no es agente); SoloCelda no tiene
+    // ninguna, aunque su celda EQUIPOS:LECTURA de master lo habría hecho candidato antes.
+    await tenantClient.permisoTipoTicket.createMany({
+      data: [
+        { usuarioId: tecnicoId, tipoId: tipoEquiposId, accion: 'LECTURA' },
+        { usuarioId: colaboradorId, tipoId: tipoEquiposId, accion: 'LECTURA' },
+        { usuarioId: administradorUsuarioId, tipoId: tipoEquiposId, accion: 'LECTURA' },
+        { usuarioId: tecnicoSinModuloId, tipoId: tipoTicketsId, accion: 'LECTURA' },
+      ],
     });
   }, 90_000);
 
@@ -239,7 +256,7 @@ describe('ReglasAsignacionController e2e', () => {
     expect(res.status).toBe(200);
   });
 
-  it('GET: tipo sin regla → SIN_REGLA y candidatos solo TECNICO/COLABORADOR con el módulo', async () => {
+  it('GET: tipo sin regla → SIN_REGLA y candidatos solo TECNICO/COLABORADOR con LECTURA sobre el tipo', async () => {
     const { status, data } = await listar();
     expect(status).toBe(200);
     expect(filaDe(data, tipoEquiposId)).toMatchObject({
@@ -250,7 +267,10 @@ describe('ReglasAsignacionController e2e', () => {
     const idsEquipos = data.candidatosPorModulo['EQUIPOS'].map((c) => c.id).sort();
     expect(idsEquipos).toEqual([tecnicoId, colaboradorId].sort());
     expect(idsEquipos).not.toContain(administradorUsuarioId);
+    expect(idsEquipos).not.toContain(tecnicoSoloCeldaId);
     expect(data.candidatosPorModulo['TICKETS'].map((c) => c.id)).toEqual([tecnicoSinModuloId]);
+    expect(data.candidatosPorTipo[tipoEquiposId].map((c) => c.id).sort()).toEqual(idsEquipos);
+    expect(data.candidatosPorTipo[tipoTicketsId].map((c) => c.id)).toEqual([tecnicoSinModuloId]);
   });
 
   it('PUT fija, reemplaza y quita la regla; el GET refleja VALIDA', async () => {
@@ -277,15 +297,19 @@ describe('ReglasAsignacionController e2e', () => {
     expect(await tenantClient.reglaAsignacion.count({ where: { tipoId: tipoEquiposId } })).toBe(0);
   });
 
-  it('GET: regla cuyo responsable perdió el módulo del tipo → ROTA con su nombre', async () => {
+  it('GET: regla cuyo responsable perdió la LECTURA sobre el tipo → ROTA con su nombre, aunque conserve la celda del módulo', async () => {
     expect((await fijar(tipoEquiposId, tecnicoId)).status).toBe(200);
-    await permisosRepo.setPermisos(tecnicoId, cliente.id, ['TICKETS:LECTURA']);
+    await tenantClient.permisoTipoTicket.deleteMany({
+      where: { usuarioId: tecnicoId, tipoId: tipoEquiposId },
+    });
 
     const fila = filaDe((await listar()).data, tipoEquiposId);
     expect(fila).toMatchObject({ estado: 'ROTA', responsableId: tecnicoId });
     expect(fila?.responsableNombre).toContain('Tecnico');
 
-    await permisosRepo.setPermisos(tecnicoId, cliente.id, ['EQUIPOS:LECTURA']);
+    await tenantClient.permisoTipoTicket.create({
+      data: { usuarioId: tecnicoId, tipoId: tipoEquiposId, accion: 'LECTURA' },
+    });
     expect((await fijar(tipoEquiposId, null)).status).toBe(200);
   });
 
@@ -331,7 +355,12 @@ describe('ReglasAsignacionController e2e', () => {
   it('[CRITICAL] PUT con un responsable no elegible → 422 y la regla anterior queda intacta', async () => {
     expect((await fijar(tipoEquiposId, tecnicoId)).status).toBe(200);
 
-    const inelegibles = [administradorUsuarioId, tecnicoSinModuloId, randomUUID()];
+    const inelegibles = [
+      administradorUsuarioId,
+      tecnicoSinModuloId,
+      tecnicoSoloCeldaId,
+      randomUUID(),
+    ];
     for (const responsableId of inelegibles) {
       const res = await fijar(tipoEquiposId, responsableId);
       expect(res.status).toBe(422);

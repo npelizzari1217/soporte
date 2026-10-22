@@ -18,6 +18,11 @@ import {
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
+import { alcancePorTipo } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { EventoTarea } from '../../domain/policies/estado-por-tareas.policy';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
@@ -42,38 +47,45 @@ const OTRO_TECNICO = 'usuario-otro-tecnico';
 const ADMIN = 'usuario-admin';
 const AHORA = new Date('2026-10-13T12:00:00Z');
 
-const TODOS = ['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS'];
+/** Acciones por id de tipo, como las carga la capa de interface (odd/permisos-por-tipo-ticket). */
+type Permisos = Readonly<Record<string, readonly AccionTipoTicket[]>>;
 
-function actor(id: string, extra: Partial<ActorTarea> = {}): ActorTarea {
-  return {
-    id,
-    esAdministrador: false,
-    tienePermisoVerTodos: true,
-    modulosConModificacion: ['EDILICIA'],
-    // Tiene los módulos de los dos tipos del fixture; los casos de S0 lo acotan.
-    modulosPermitidos: TODOS,
-    ...extra,
-  };
+const VER: readonly AccionTipoTicket[] = ['LECTURA', 'VER_TODOS'];
+/** Ve los dos tipos del fixture y modifica solo Edilicia; los casos por tipo lo acotan. */
+const PERMISOS_BASE: Permisos = {
+  [TIPO_ID]: [...VER, 'MODIFICACION'],
+  [TIPO_SOPORTE_ID]: VER,
+};
+
+function actor(
+  id: string,
+  permisos: Permisos = PERMISOS_BASE,
+  esAdministrador = false,
+): ActorTarea {
+  return { id, esAdministrador, permisosPorTipo: alcancePorTipo(id, permisos).permisosPorTipo };
+}
+
+/** DTO de listado de un actor con `permisos` por tipo. */
+function listado(ticketId: string, actorId: string, permisos: Permisos) {
+  return { ticketId, ...alcancePorTipo(actorId, permisos) };
 }
 
 const ACTORES = {
   responsable: actor(RESPONSABLE),
-  responsableSinModificacion: actor(RESPONSABLE, { modulosConModificacion: ['TICKETS'] }),
-  administrador: actor(ADMIN, {
-    esAdministrador: true,
-    modulosConModificacion: TODOS,
-    modulosPermitidos: null,
+  responsableSinModificacion: actor(RESPONSABLE, {
+    [TIPO_ID]: VER,
+    [TIPO_SOPORTE_ID]: [...VER, 'MODIFICACION'],
   }),
-  administradorSinModificacion: actor(ADMIN, {
-    esAdministrador: true,
-    modulosConModificacion: [],
-    modulosPermitidos: null,
-  }),
+  administrador: { id: ADMIN, esAdministrador: true, permisosPorTipo: null },
+  administradorSinModificacion: actor(ADMIN, { [TIPO_ID]: VER, [TIPO_SOPORTE_ID]: VER }, true),
   tecnicoDeLaTarea: actor(TECNICO),
   otroTecnico: actor(OTRO_TECNICO),
-  ajenoSinVerTodos: actor(OTRO_TECNICO, { tienePermisoVerTodos: false }),
-  solicitante: actor(SOLICITANTE, { tienePermisoVerTodos: false, modulosConModificacion: [] }),
-};
+  ajenoSinVerTodos: actor(OTRO_TECNICO, {
+    [TIPO_ID]: ['LECTURA', 'MODIFICACION'],
+    [TIPO_SOPORTE_ID]: ['LECTURA'],
+  }),
+  solicitante: actor(SOLICITANTE, { [TIPO_ID]: ['LECTURA'], [TIPO_SOPORTE_ID]: ['LECTURA'] }),
+} satisfies Record<string, ActorTarea>;
 type NombreActor = keyof typeof ACTORES;
 
 function crearTicket(id: string, tipoId: string = TIPO_ID): TicketEntity {
@@ -210,16 +222,28 @@ function armar() {
       return tickets.get(ticketId) ?? null;
     }),
   };
-  const checker = {
-    listarTecnicosAsignables: vi.fn(async (_clienteId: string, modulo: string | null) =>
-      modulo === 'EDILICIA'
-        ? [
-            { id: TECNICO, nombre: 'Tina', apellido: 'Técnica' },
-            { id: OTRO_TECNICO, nombre: 'Otto', apellido: 'Técnico' },
-          ]
-        : [],
+  // Elegibilidad real (odd/permisos-por-tipo-ticket, D5 g): Tina y Otto son técnicos con LECTURA
+  // sobre el tipo de Edilicia; Sofi atiende solo Soporte; Celia tiene la celda del módulo EDILICIA
+  // sin fila del tipo; el ADMINISTRADOR tiene la fila pero no es agente.
+  const master = new MasterAgentesEnMemoria();
+  master.agregar({ id: TECNICO, rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: OTRO_TECNICO, rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: 'usuario-solo-soporte', rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: 'usuario-con-celda', rol: 'TECNICO', celdas: ['EDILICIA:LECTURA'] });
+  master.agregar({ id: ADMIN, rol: 'ADMINISTRADOR', celdas: [] });
+  const elegibilidad = new ElegibilidadAsignado(
+    master,
+    new PermisosTipoTicketEnMemoria(
+      [],
+      [
+        { usuarioId: TECNICO, tipoId: TIPO_ID, accion: 'LECTURA' },
+        { usuarioId: OTRO_TECNICO, tipoId: TIPO_ID, accion: 'LECTURA' },
+        { usuarioId: 'usuario-solo-soporte', tipoId: TIPO_SOPORTE_ID, accion: 'LECTURA' },
+        { usuarioId: ADMIN, tipoId: TIPO_ID, accion: 'LECTURA' },
+      ],
     ),
-  };
+  );
+  const esAgenteDeTipo = vi.spyOn(elegibilidad, 'esAgenteDeTipo');
   const ahora = () => AHORA;
 
   function sembrarTarea(
@@ -250,7 +274,7 @@ function armar() {
     tareas,
     operaciones,
     sembrarTarea,
-    checker,
+    esAgenteDeTipo,
     tareaRepo,
     operacionRepo,
     ticketRepo,
@@ -272,7 +296,7 @@ function armar() {
       ticketRepo,
       tipoTicketRepo,
       tareaRepo,
-      checker,
+      elegibilidad,
       operacionRepo,
       tipoOperacionRepo,
       txRunner,
@@ -281,7 +305,6 @@ function armar() {
     ),
     completar: new CompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,
@@ -292,7 +315,6 @@ function armar() {
     ),
     descompletar: new DescompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       tareaRepo,
       operacionRepo,
       tipoOperacionRepo,
@@ -311,7 +333,7 @@ function armar() {
       verificadorEditable,
       ahora,
     ),
-    listar: new ListarTareasTicketUseCase(ticketRepo, tipoTicketRepo, tareaRepo),
+    listar: new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
   };
 }
 
@@ -446,7 +468,7 @@ describe('AsignarTecnicoTareaUseCase', () => {
     const result = await asignar(deps, ACTORES.responsable, TECNICO);
 
     expect(result.getValue().tecnicoId).toBe(TECNICO);
-    expect(deps.checker.listarTecnicosAsignables).toHaveBeenCalledWith(CLIENTE_ID, 'EDILICIA');
+    expect(deps.esAgenteDeTipo).toHaveBeenCalledWith(TECNICO, CLIENTE_ID, TIPO_ID);
     expect(deps.tareaRepo.asignarTecnicoSiActiva).toHaveBeenCalledTimes(1);
     const [operacion] = deps.operaciones;
     expect(operacion.tipoOperacionId).toBe('tipo-op-TAREA_ASIGNADA');
@@ -458,14 +480,14 @@ describe('AsignarTecnicoTareaUseCase', () => {
     });
   });
 
-  it('quitar el técnico no consulta master y deja registro del retiro', async () => {
+  it('quitar el técnico no consulta la elegibilidad y deja registro del retiro', async () => {
     const deps = armar();
     deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     const result = await asignar(deps, ACTORES.administrador, null);
 
     expect(result.getValue().tecnicoId).toBeNull();
-    expect(deps.checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(deps.esAgenteDeTipo).not.toHaveBeenCalled();
     expect(deps.operaciones[0].metadata).toEqual({
       tarea_id: 't1',
       tecnico_anterior_id: TECNICO,
@@ -473,11 +495,17 @@ describe('AsignarTecnicoTareaUseCase', () => {
     });
   });
 
-  it('rechaza un técnico no elegible (ADMINISTRADOR o sin el módulo) con TecnicoTareaNoElegibleError', async () => {
+  it('rechaza un técnico no elegible (ADMINISTRADOR, sin LECTURA sobre el tipo o de otro tipo) con TecnicoTareaNoElegibleError', async () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1');
 
-    for (const tecnicoId of [ADMIN, RESPONSABLE, 'usuario-sin-modulo']) {
+    for (const tecnicoId of [
+      ADMIN,
+      RESPONSABLE,
+      'usuario-con-celda',
+      'usuario-solo-soporte',
+      'usuario-inexistente',
+    ]) {
       const result = await asignar(deps, ACTORES.administrador, tecnicoId);
       expect(errorDe(result)).toBeInstanceOf(TecnicoTareaNoElegibleError);
     }
@@ -790,13 +818,7 @@ describe('ListarTareasTicketUseCase', () => {
     deps.sembrarTarea('t4', { completada: true }).eliminar(AHORA);
     deps.sembrarTarea('ajena', { ticketId: OTRO_TICKET_ID, completada: true });
 
-    const result = await deps.listar.execute({
-      ticketId: TICKET_ID,
-      actorId: TECNICO,
-      tienePermisoVerTodos: true,
-      modulosConLectura: ['EDILICIA'],
-      modulosPermitidos: TODOS,
-    });
+    const result = await deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_ID]: VER }));
 
     const { tareas, avance } = result.getValue();
     expect(tareas.map((t) => t.id)).toEqual(['t1', 't2', 't3']);
@@ -805,140 +827,102 @@ describe('ListarTareasTicketUseCase', () => {
 
   it('un ticket sin tareas tiene avance 0', async () => {
     const deps = armar();
-    const result = await deps.listar.execute({
-      ticketId: TICKET_ID,
-      actorId: TECNICO,
-      tienePermisoVerTodos: true,
-      modulosConLectura: ['EDILICIA'],
-      modulosPermitidos: TODOS,
-    });
+    const result = await deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_ID]: VER }));
     expect(result.getValue()).toEqual({
       tareas: [],
       avance: { total: 0, completadas: 0, porcentaje: 0 },
     });
   });
 
-  it('en un ticket de TICKETS, el solicitante con TICKETS:LECTURA las ve sin VER_TODOS; un ajeno sin VER_TODOS recibe 404', async () => {
+  it('el solicitante con LECTURA sobre el tipo las ve sin VER_TODOS; un ajeno sin VER_TODOS recibe 404', async () => {
     const deps = armar();
-    const propio = await deps.listar.execute({
-      ticketId: SOPORTE_TICKET_ID,
-      actorId: SOLICITANTE,
-      tienePermisoVerTodos: false,
-      modulosConLectura: ['TICKETS'],
-      modulosPermitidos: TODOS,
-    });
-    const ajeno = await deps.listar.execute({
-      ticketId: SOPORTE_TICKET_ID,
-      actorId: OTRO_TECNICO,
-      tienePermisoVerTodos: false,
-      modulosConLectura: ['TICKETS'],
-      modulosPermitidos: TODOS,
-    });
+    const soloLectura = { [TIPO_SOPORTE_ID]: ['LECTURA'] } as const;
+    const propio = await deps.listar.execute(listado(SOPORTE_TICKET_ID, SOLICITANTE, soloLectura));
+    const ajeno = await deps.listar.execute(listado(SOPORTE_TICKET_ID, OTRO_TECNICO, soloLectura));
     expect(propio.isOk()).toBe(true);
     expect(errorDe(ajeno)).toBeInstanceOf(TicketNoEncontradoError);
   });
 
-  describe('listar sigue el permiso de lectura del módulo del tipo (T12, JD-W3)', () => {
-    type Esperado = 'ok' | 403 | 404;
-    const listar = (
-      deps: ReturnType<typeof armar>,
-      ticketId: string,
-      actorId: string,
-      tienePermisoVerTodos: boolean,
-      modulosConLectura: string[],
-    ) =>
-      deps.listar.execute({
-        ticketId,
-        actorId,
-        tienePermisoVerTodos,
-        modulosConLectura,
-        modulosPermitidos: TODOS,
-      });
-    const comprobar = (result: Awaited<ReturnType<typeof listar>>, esperado: Esperado): void => {
+  describe('listar exige ver el ticket: LECTURA sobre su tipo y fila (odd/permisos-por-tipo-ticket, S3)', () => {
+    type Esperado = 'ok' | 404;
+    const comprobar = (
+      result: Awaited<ReturnType<ReturnType<typeof armar>['listar']['execute']>>,
+      esperado: Esperado,
+    ): void => {
       if (esperado === 'ok') {
         expect(result.getValue().tareas.map((t) => t.id)).toEqual(['t1']);
       } else {
-        expect(errorDe(result)).toBeInstanceOf(
-          esperado === 403 ? TareaAccionNoPermitidaError : TicketNoEncontradoError,
-        );
+        expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
       }
     };
 
-    it.each<[string, string, boolean, string[], Esperado]>([
+    it.each<[string, string, Permisos, Esperado]>([
+      ['LECTURA y VER_TODOS sobre el tipo', OTRO_TECNICO, { [TIPO_SOPORTE_ID]: VER }, 'ok'],
       [
-        'VER_TODOS sin TICKETS:LECTURA: ve el ticket, pero no lista (403)',
+        'VER_TODOS sin LECTURA sobre el tipo (404)',
         OTRO_TECNICO,
-        true,
-        [],
-        403,
+        { [TIPO_SOPORTE_ID]: ['VER_TODOS'] },
+        404,
       ],
-      ['VER_TODOS con TICKETS:LECTURA', OTRO_TECNICO, true, ['TICKETS'], 'ok'],
-      ['TICKETS:LECTURA sin ver el ticket (404)', OTRO_TECNICO, false, ['TICKETS'], 404],
-      ['solicitante sin TICKETS:LECTURA (403)', SOLICITANTE, false, [], 403],
       [
-        'EDILICIA:LECTURA no alcanza en un ticket de TICKETS',
+        'LECTURA sin ver el ticket por fila (404)',
         OTRO_TECNICO,
-        true,
-        ['EDILICIA'],
-        403,
+        { [TIPO_SOPORTE_ID]: ['LECTURA'] },
+        404,
       ],
-      ['sin permisos ni visibilidad (404)', OTRO_TECNICO, false, [], 404],
-    ])('ticket de TICKETS — %s', async (_caso, actorId, verTodos, lectura, esperado) => {
+      ['solicitante con LECTURA', SOLICITANTE, { [TIPO_SOPORTE_ID]: ['LECTURA'] }, 'ok'],
+      ['solicitante sin LECTURA sobre el tipo (404)', SOLICITANTE, { [TIPO_ID]: VER }, 404],
+      [
+        'LECTURA y VER_TODOS sobre OTRO tipo no alcanzan (404)',
+        OTRO_TECNICO,
+        { [TIPO_ID]: VER },
+        404,
+      ],
+      ['sin permisos (404)', OTRO_TECNICO, {}, 404],
+    ])('ticket de Soporte — %s', async (_caso, actorId, permisos, esperado) => {
       const deps = armar();
       deps.sembrarTarea('t1', { ticketId: SOPORTE_TICKET_ID });
 
-      comprobar(await listar(deps, SOPORTE_TICKET_ID, actorId, verTodos, lectura), esperado);
-    });
-
-    it.each<[string, string, boolean, string[], Esperado]>([
-      ['EDILICIA:LECTURA sin ver el ticket: alcanza', OTRO_TECNICO, false, ['EDILICIA'], 'ok'],
-      ['EDILICIA:LECTURA con VER_TODOS', OTRO_TECNICO, true, ['EDILICIA'], 'ok'],
-      [
-        'TICKETS:LECTURA y VER_TODOS sin EDILICIA:LECTURA (403)',
-        OTRO_TECNICO,
-        true,
-        ['TICKETS'],
-        403,
-      ],
-      ['sin permisos ni visibilidad (404)', OTRO_TECNICO, false, [], 404],
-    ])('ticket de Edilicia — %s', async (_caso, actorId, verTodos, lectura, esperado) => {
-      const deps = armar();
-      deps.sembrarTarea('t1');
-
-      comprobar(await listar(deps, TICKET_ID, actorId, verTodos, lectura), esperado);
+      comprobar(await deps.listar.execute(listado(SOPORTE_TICKET_ID, actorId, permisos)), esperado);
     });
 
     it.each([TICKET_ID, SOPORTE_TICKET_ID])(
-      'el técnico de una tarea activa lista sin permiso de lectura ni VER_TODOS (CA10) — %s',
+      'el técnico de una tarea activa lista con LECTURA y sin VER_TODOS (CA10) — %s',
       async (ticketId) => {
         const deps = armar();
         deps.sembrarTarea('t1', { ticketId, tecnicoId: TECNICO });
+        const soloLectura = { [TIPO_ID]: ['LECTURA'], [TIPO_SOPORTE_ID]: ['LECTURA'] } as const;
 
-        comprobar(await listar(deps, ticketId, TECNICO, false, []), 'ok');
+        comprobar(await deps.listar.execute(listado(ticketId, TECNICO, soloLectura)), 'ok');
       },
     );
 
-    it('el técnico de una tarea BORRADA ya no lista sin permiso de lectura', async () => {
+    it('el técnico de una tarea activa SIN LECTURA sobre el tipo no lista: 404 (S3)', async () => {
+      const deps = armar();
+      deps.sembrarTarea('t1', { tecnicoId: TECNICO });
+
+      comprobar(
+        await deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_SOPORTE_ID]: VER })),
+        404,
+      );
+    });
+
+    it('el técnico de una tarea BORRADA ya no lista sin VER_TODOS', async () => {
       const deps = armar();
       deps.sembrarTarea('t1', { tecnicoId: TECNICO }).eliminar(AHORA);
 
-      expect(errorDe(await listar(deps, TICKET_ID, TECNICO, false, []))).toBeInstanceOf(
-        TicketNoEncontradoError,
+      comprobar(
+        await deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_ID]: ['LECTURA'] })),
+        404,
       );
     });
   });
 });
 
 describe('Visibilidad por tarea (CA10)', () => {
-  const tecnicoSinVerTodos = actor(TECNICO, { tienePermisoVerTodos: false });
+  const tecnicoSinVerTodos = actor(TECNICO, { [TIPO_ID]: ['LECTURA', 'MODIFICACION'] });
   const listarComo = (deps: ReturnType<typeof armar>) =>
-    deps.listar.execute({
-      ticketId: TICKET_ID,
-      actorId: TECNICO,
-      tienePermisoVerTodos: false,
-      modulosConLectura: [],
-      modulosPermitidos: TODOS,
-    });
+    deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_ID]: ['LECTURA'] }));
 
   it('el técnico de una tarea activa lista las tareas sin VER_TODOS ni ser el responsable', async () => {
     const deps = armar();
@@ -1133,51 +1117,32 @@ describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectu
   });
 });
 
-describe('módulo del tipo del ticket (odd/permisos-por-tipo-ticket, S0)', () => {
-  /** Ve todos los tickets y modifica en TICKETS, pero no tiene el módulo EDILICIA. */
-  const sinEdilicia = actor(OTRO_TECNICO, {
-    modulosConModificacion: ['TICKETS'],
-    modulosPermitidos: ['TICKETS'],
+describe('permisos por tipo del ticket (odd/permisos-por-tipo-ticket, S2, S3)', () => {
+  /** Ve y modifica Soporte; de Edilicia tiene VER_TODOS pero no LECTURA, así que no la ve. */
+  const sinLecturaEdilicia = actor(OTRO_TECNICO, {
+    [TIPO_ID]: ['VER_TODOS', 'MODIFICACION'],
+    [TIPO_SOPORTE_ID]: [...VER, 'MODIFICACION'],
   });
-  /** El técnico de la tarea, al que le quitaron el módulo EDILICIA. */
-  const tecnicoSinEdilicia = actor(TECNICO, { modulosPermitidos: ['TICKETS'] });
+  /** El técnico de la tarea, sin LECTURA sobre el tipo Edilicia. */
+  const tecnicoSinLectura = actor(TECNICO, { [TIPO_SOPORTE_ID]: VER });
 
-  it('listar las tareas de un ticket de Edilicia sin el módulo EDILICIA es 404, aunque tenga VER_TODOS', async () => {
+  it('listar las tareas de un ticket de un tipo sin LECTURA es 404, aunque tenga VER_TODOS sobre él', async () => {
     const deps = armar();
     deps.sembrarTarea('t1');
 
-    const result = await deps.listar.execute({
-      ticketId: TICKET_ID,
-      actorId: OTRO_TECNICO,
-      tienePermisoVerTodos: true,
-      modulosConLectura: ['TICKETS'],
-      modulosPermitidos: ['TICKETS'],
-    });
+    const result = await deps.listar.execute(
+      listado(TICKET_ID, OTRO_TECNICO, { [TIPO_ID]: ['VER_TODOS'], [TIPO_SOPORTE_ID]: VER }),
+    );
 
     expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
   });
 
-  it('el técnico de una tarea de un ticket de un módulo que ya no tiene no la lista: 404', async () => {
-    const deps = armar();
-    deps.sembrarTarea('t1', { tecnicoId: TECNICO });
-
-    const result = await deps.listar.execute({
-      ticketId: TICKET_ID,
-      actorId: TECNICO,
-      tienePermisoVerTodos: true,
-      modulosConLectura: ['TICKETS'],
-      modulosPermitidos: ['TICKETS'],
-    });
-
-    expect(errorDe(result)).toBeInstanceOf(TicketNoEncontradoError);
-  });
-
-  it('crear una tarea en un ticket de Edilicia sin el módulo es 404 y no escribe nada', async () => {
+  it('crear una tarea en un ticket de un tipo sin LECTURA es 404 y no escribe nada', async () => {
     const deps = armar();
 
     const result = await deps.crear.execute({
       ticketId: TICKET_ID,
-      actor: sinEdilicia,
+      actor: sinLecturaEdilicia,
       descripcion: 'Cambiar el flotante',
     });
 
@@ -1187,21 +1152,21 @@ describe('módulo del tipo del ticket (odd/permisos-por-tipo-ticket, S0)', () =>
     expect(deps.operaciones).toHaveLength(0);
   });
 
-  it('asignar y borrar en un ticket de Edilicia sin el módulo son 404 y no escriben nada', async () => {
+  it('asignar y borrar en un ticket de un tipo sin LECTURA son 404 y no escriben nada', async () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     const asignado = await deps.asignar.execute({
       ticketId: TICKET_ID,
       tareaId: 't1',
-      actor: sinEdilicia,
+      actor: sinLecturaEdilicia,
       clienteId: CLIENTE_ID,
       tecnicoId: OTRO_TECNICO,
     });
     const borrado = await deps.eliminar.execute({
       ticketId: TICKET_ID,
       tareaId: 't1',
-      actor: sinEdilicia,
+      actor: sinLecturaEdilicia,
     });
 
     expect(errorDe(asignado)).toBeInstanceOf(TicketNoEncontradoError);
@@ -1210,11 +1175,11 @@ describe('módulo del tipo del ticket (odd/permisos-por-tipo-ticket, S0)', () =>
     expect(tarea.isDeleted()).toBe(false);
     expect(deps.tareaRepo.asignarTecnicoSiActiva).not.toHaveBeenCalled();
     expect(deps.tareaRepo.darDeBajaSiActiva).not.toHaveBeenCalled();
-    expect(deps.checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(deps.esAgenteDeTipo).not.toHaveBeenCalled();
     expect(deps.operaciones).toHaveLength(0);
   });
 
-  it('el técnico de la tarea sin el módulo del tipo no la completa ni la descompleta: 404 sin escribir', async () => {
+  it('el técnico de la tarea sin LECTURA sobre el tipo no la completa ni la descompleta: 404 sin escribir (S3)', async () => {
     const deps = armar();
     const pendiente = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
     const completada = deps.sembrarTarea('t2', { tecnicoId: TECNICO, completada: true });
@@ -1222,12 +1187,12 @@ describe('módulo del tipo del ticket (odd/permisos-por-tipo-ticket, S0)', () =>
     const completar = await deps.completar.execute({
       ticketId: TICKET_ID,
       tareaId: 't1',
-      actor: tecnicoSinEdilicia,
+      actor: tecnicoSinLectura,
     });
     const descompletar = await deps.descompletar.execute({
       ticketId: TICKET_ID,
       tareaId: 't2',
-      actor: tecnicoSinEdilicia,
+      actor: tecnicoSinLectura,
     });
 
     expect(errorDe(completar)).toBeInstanceOf(TicketNoEncontradoError);
@@ -1240,37 +1205,35 @@ describe('módulo del tipo del ticket (odd/permisos-por-tipo-ticket, S0)', () =>
     expect(deps.operaciones).toHaveLength(0);
   });
 
-  it('caso hermano: con el módulo del tipo y sin permiso de gestión sigue siendo 403', async () => {
+  it('el mismo responsable gestiona las tareas del tipo con MODIFICACION y recibe 403 en el que solo ve (S2)', async () => {
     const deps = armar();
-    deps.sembrarTarea('t1');
-    const conEdiliciaSinGestion = actor(OTRO_TECNICO, { modulosPermitidos: ['EDILICIA'] });
+    // Ve los dos tipos; modifica Soporte, no Edilicia.
+    const responsable = ACTORES.responsableSinModificacion;
 
-    const creado = await deps.crear.execute({
-      ticketId: TICKET_ID,
-      actor: conEdiliciaSinGestion,
-      descripcion: 'x',
+    const enSoporte = await deps.crear.execute({
+      ticketId: SOPORTE_TICKET_ID,
+      actor: responsable,
+      descripcion: 'Reinstalar el driver',
     });
-    const listado = await deps.listar.execute({
+    const enEdilicia = await deps.crear.execute({
       ticketId: TICKET_ID,
-      actorId: OTRO_TECNICO,
-      tienePermisoVerTodos: true,
-      modulosConLectura: [],
-      modulosPermitidos: ['EDILICIA'],
+      actor: responsable,
+      descripcion: 'Cambiar el flotante',
     });
 
-    expect(errorDe(creado)).toBeInstanceOf(TareaAccionNoPermitidaError);
-    expect(errorDe(listado)).toBeInstanceOf(TareaAccionNoPermitidaError);
-    expect(deps.tareas.size).toBe(1);
+    expect(enSoporte.getValue().ticketId).toBe(SOPORTE_TICKET_ID);
+    expect(errorDe(enEdilicia)).toBeInstanceOf(TareaAccionNoPermitidaError);
+    expect([...deps.tareas.values()].map((t) => t.ticketId)).toEqual([SOPORTE_TICKET_ID]);
   });
 
-  it('caso hermano: el técnico de la tarea con el módulo del tipo la sigue completando', async () => {
+  it('caso hermano: el técnico de la tarea con LECTURA sobre el tipo la sigue completando', async () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     const result = await deps.completar.execute({
       ticketId: TICKET_ID,
       tareaId: 't1',
-      actor: actor(TECNICO, { modulosPermitidos: ['EDILICIA'] }),
+      actor: actor(TECNICO, { [TIPO_ID]: ['LECTURA'] }),
     });
 
     expect(result.isOk()).toBe(true);

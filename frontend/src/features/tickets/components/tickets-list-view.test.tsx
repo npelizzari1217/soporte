@@ -5,6 +5,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { TicketsListView } from "./tickets-list-view";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
+import type { PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
+
+/** Las celdas del JWT ya no deciden (odd/permisos-por-tipo-ticket, S6): el técnico las trae a propósito. */
+const TECNICO = buildUser({ rol: "TECNICO", permisos: ["TICKETS:ALTAS", "TICKETS:VER_TODOS"], modulos: ["TICKETS"] });
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
@@ -162,11 +167,16 @@ describe("TicketsListView", () => {
     expect(params.get("pagina")).toBe("1");
   });
 
-  it.each([
-    ["con TICKETS:ALTAS", ["TICKETS:ALTAS"], true],
-    ["sin TICKETS:ALTAS", [], false],
+  it.each<[string, PermisosPorTipo, boolean]>([
+    ["con ALTAS en un tipo de TICKETS", permisosDeTest({ ti1: ["LECTURA", "ALTAS"] }, { ti1: "TICKETS" }), true],
+    [
+      "con ALTAS solo en un tipo de EDILICIA (tiene su alta propia)",
+      permisosDeTest({ ti1: ["LECTURA"], ti2: ["LECTURA", "ALTAS"] }, { ti1: "TICKETS", ti2: "EDILICIA" }),
+      false,
+    ],
+    ["con la celda TICKETS:ALTAS pero sin ALTAS en ningún tipo", permisosDeTest({ ti1: ["LECTURA"] }, { ti1: "TICKETS" }), false],
   ])("botón «Nuevo ticket» — %s", async (_label, permisos, shouldShow) => {
-    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos }) });
+    renderConPermisos(<TicketsListView />, { user: TECNICO, permisos });
     await screen.findByText("Impresora rota");
     const button = screen.queryByRole("button", { name: /nuevo ticket/i });
     if (shouldShow) {
@@ -300,7 +310,85 @@ describe("TicketsListView", () => {
     expect(within(select).queryByRole("option", { name: "Admin Jefe" })).not.toBeInTheDocument();
   });
 
-  describe("filtro de tipo acotado a los módulos del usuario (S1)", () => {
+  describe("filtro «Asignado» con la regla de GET /usuarios (odd/permisos-por-tipo-ticket, T6, S7)", () => {
+    it("con VER_TODOS en un tipo de TICKETS se muestra, sin la celda TICKETS:VER_TODOS", async () => {
+      renderConPermisos(<TicketsListView />, {
+        user: buildUser({ rol: "TECNICO", permisos: [] }),
+        permisos: permisosDeTest(
+          { ti1: ["LECTURA"], ti2: ["LECTURA", "VER_TODOS"] },
+          { ti1: "TICKETS", ti2: "TICKETS" },
+        ),
+      });
+      expect(await screen.findByLabelText("Asignado")).toBeInTheDocument();
+    });
+
+    // Regresión (S7): la plantilla USUARIO migrada tiene VER_TODOS en Edilicia (L11), y antes de la
+    // etapa 1 no veía el filtro.
+    it("con las acciones de la plantilla USUARIO migrada no se muestra: su VER_TODOS es de Edilicia", async () => {
+      renderConPermisos(<TicketsListView />, {
+        user: buildUser({ rol: "USUARIO", permisos: [] }),
+        permisos: permisosDeTest(
+          {
+            ti1: ["LECTURA", "ALTAS", "COMENTAR", "IMPRESION"],
+            ti2: ["LECTURA", "VER_TODOS", "ALTAS", "IMPRESION"],
+          },
+          { ti1: "TICKETS", ti2: "EDILICIA" },
+        ),
+      });
+      await screen.findByText("Impresora rota");
+      expect(screen.queryByLabelText("Asignado")).not.toBeInTheDocument();
+    });
+
+    it("con las acciones de la plantilla TECNICO migrada se muestra", async () => {
+      renderConPermisos(<TicketsListView />, {
+        user: buildUser({ rol: "TECNICO", permisos: [] }),
+        permisos: permisosDeTest(
+          {
+            ti1: ["LECTURA", "VER_TODOS", "ALTAS", "MODIFICACION", "TRANSICIONAR", "ASIGNAR", "COMENTAR", "OBSERVAR", "IMPRESION"],
+            ti2: ["LECTURA", "VER_TODOS", "ALTAS", "MODIFICACION", "TRANSICIONAR", "COMENTAR", "IMPRESION"],
+          },
+          { ti1: "TICKETS", ti2: "EDILICIA" },
+        ),
+      });
+      expect(await screen.findByLabelText("Asignado")).toBeInTheDocument();
+    });
+
+    it("con ASIGNAR en un tipo de EDILICIA se muestra: ASIGNAR abre en cualquier módulo", async () => {
+      renderConPermisos(<TicketsListView />, {
+        user: buildUser({ rol: "TECNICO", permisos: [] }),
+        permisos: permisosDeTest(
+          { ti1: ["LECTURA"], ti2: ["LECTURA", "ASIGNAR"] },
+          { ti1: "TICKETS", ti2: "EDILICIA" },
+        ),
+      });
+      expect(await screen.findByLabelText("Asignado")).toBeInTheDocument();
+    });
+
+    it.each(["COMPRAS", "EQUIPOS"])(
+      "con VER_TODOS en un tipo de %s se muestra: toma las celdas de TICKETS (L21)",
+      async (modulo) => {
+        renderConPermisos(<TicketsListView />, {
+          user: buildUser({ rol: "TECNICO", permisos: [] }),
+          permisos: permisosDeTest(
+            { ti1: ["LECTURA"], ti2: ["LECTURA", "VER_TODOS"] },
+            { ti1: "TICKETS", ti2: modulo },
+          ),
+        });
+        expect(await screen.findByLabelText("Asignado")).toBeInTheDocument();
+      },
+    );
+
+    it("sin VER_TODOS en ningún tipo no se muestra: el listado trae solo las filas propias", async () => {
+      renderConPermisos(<TicketsListView />, {
+        user: TECNICO,
+        permisos: permisosDeTest({ ti1: ["LECTURA", "ALTAS"] }),
+      });
+      await screen.findByText("Impresora rota");
+      expect(screen.queryByLabelText("Asignado")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("filtro de tipo acotado a los tipos con LECTURA (odd/permisos-por-tipo-ticket, D5 e)", () => {
     const TIPOS = [
       { id: "ti1", codigo: "SOPORTE", nombre: "Soporte", modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" },
       { id: "ti2", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
@@ -311,12 +399,16 @@ describe("TicketsListView", () => {
       server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)));
     });
 
-    it("un técnico con solo TICKETS ve únicamente los tipos de ese módulo", async () => {
-      renderWithProviders(<TicketsListView />, { user: buildUser({ modulos: ["TICKETS"] }) });
+    it("un técnico ve únicamente los tipos con LECTURA, de cualquier módulo, y no el resto del módulo", async () => {
+      renderConPermisos(<TicketsListView />, {
+        user: TECNICO,
+        // Lee Soporte y Mantenimiento; de Edilicia solo crea, sin ver.
+        permisos: permisosDeTest({ ti1: ["LECTURA"], ti2: ["ALTAS"], ti3: ["LECTURA"] }),
+      });
       const select = await screen.findByLabelText("Tipo");
       expect(await within(select).findByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      expect(within(select).getByRole("option", { name: "Mantenimiento" })).toBeInTheDocument();
       expect(within(select).queryByRole("option", { name: "Edilicia" })).not.toBeInTheDocument();
-      expect(within(select).queryByRole("option", { name: "Mantenimiento" })).not.toBeInTheDocument();
     });
 
     it("ROOT ve los tipos de todos los módulos", async () => {

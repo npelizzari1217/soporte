@@ -15,12 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
-import { Can } from "@/components/shared/can";
 import { notifyError } from "@/shared/lib/toast";
 import { ExportarCsvButton } from "@/shared/components/exportar-csv-button";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
 import { ReparacionEditDialog } from "./reparacion-edit-dialog";
 import { useSession } from "@/shared/hooks/use-session";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { useEstados } from "@/features/tickets/hooks/use-catalogos";
 import { buildIdToCodigoMap } from "@/features/tickets/lib/catalog-map";
 import { SubtareasDialog } from "./subtareas-dialog";
@@ -111,6 +111,8 @@ export function ReparacionesList() {
   const pagina = Number(searchParams.get("pagina") ?? "1");
   const reparacionesQuery = useReparaciones({ pagina, porPagina: PAGE_SIZE, bloqueo: filtroBloqueo });
   const { isGlobalAdmin } = useSession();
+  // Las acciones de cada fila van sobre el tipo de SU ticket (odd/permisos-por-tipo-ticket, S6).
+  const { puedeEnTipo, puedeEnModulo } = usePermisosPorTipo();
   // El código del estado decide si la reparación "se empezó a trabajar" (odd/detalle-ticket-legible).
   const estadosQuery = useEstados();
   const estadoCodigoMap = useMemo(() => buildIdToCodigoMap(estadosQuery.data ?? []), [estadosQuery.data]);
@@ -145,9 +147,9 @@ export function ReparacionesList() {
     {
       // Chip SIN número (decisión de producto #2440): responde "¿está
       // trabado?" de un vistazo. El botón «Gestionar compras» abre el panel
-      // de vínculo/desvínculo (WU6) — gateado por `EDILICIA:ALTAS` DENTRO de
-      // `VincularCompraDialog`, no acá: verlo o no depende de ese permiso,
-      // no del `bloqueada` de la fila.
+      // de vínculo/desvínculo (WU6) — gateado DENTRO de `VincularCompraDialog`
+      // (`ALTAS` sobre el tipo de la fila para vincular), no acá: verlo o no
+      // depende de ese permiso, no del `bloqueada` de la fila.
       key: "bloqueada",
       header: "Bloqueo",
       render: (row) => (
@@ -157,6 +159,7 @@ export function ReparacionesList() {
             reparacionId={row.id}
             numero={row.numero}
             comprasQueBloquean={row.comprasQueBloquean}
+            puedeVincularEnTipo={puedeEnTipo(row.tipoId, "ALTAS")}
             trigger={
               <Button variant="outline" size="sm">
                 Gestionar compras
@@ -168,19 +171,19 @@ export function ReparacionesList() {
     },
     {
       // Editar una reparación no empezada (odd/detalle-ticket-legible, S6). El botón se gatea por
-      // `EDILICIA:MODIFICACION` acá y por la regla de estado/tareas/bloqueo dentro del diálogo.
+      // `MODIFICACION` sobre el tipo de la fila acá y por la regla de estado/tareas/bloqueo dentro
+      // del diálogo.
       // `key` es solo el slot de la columna: `descripcion` no se muestra en ninguna otra.
       key: "descripcion",
       header: "Editar",
-      render: (row) => (
-        <Can permiso="EDILICIA:MODIFICACION">
+      render: (row) =>
+        puedeEnTipo(row.tipoId, "MODIFICACION") ? (
           <ReparacionEditDialog
             reparacion={row}
             estadoCodigo={estadoCodigoMap.get(row.estadoId)}
             esRoot={isGlobalAdmin}
           />
-        </Can>
-      ),
+        ) : null,
     },
     {
       // `key` es el slot de la columna (React key + fallback de render), no
@@ -191,6 +194,7 @@ export function ReparacionesList() {
       render: (row) => (
         <SubtareasDialog
           ticketId={row.ticketId}
+          tipoId={row.tipoId}
           numero={row.numero}
           estadoCodigo={estadoCodigoMap.get(row.estadoId)}
           bloqueada={row.bloqueada}
@@ -217,6 +221,8 @@ export function ReparacionesList() {
         <ComentariosDialog
           reparacionId={row.id}
           numero={row.numero}
+          // Comentar una reparación pide `ALTAS` o `COMENTAR` sobre su tipo, como el backend.
+          puedeComentar={puedeEnTipo(row.tipoId, "ALTAS") || puedeEnTipo(row.tipoId, "COMENTAR")}
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigoMap.get(row.estadoId), row.bloqueada)}
           trigger={
             <ConteoTrigger
@@ -258,21 +264,20 @@ export function ReparacionesList() {
               Sin `Can` propio a propósito (sdd/exportar-listados-csv,
               capability exportacion-reparaciones): a diferencia de
               `EquiposListView`, `EdiliciaView` gatea la vista ENTERA con
-              `<Can permiso="EDILICIA:LECTURA">` por afuera de este
+              `LECTURA` sobre algún tipo de EDILICIA por afuera de este
               componente — este `PageHeader` ya vive adentro de ese gate, así
               que un `<Can>` acá adentro sería redundante y quedaría
               desincronizado si el gate exterior cambia. Ni el filtro de bloqueo
               ni la página se le pasan a este botón (D8/spec): la exportación
-              siempre trae TODAS las reparaciones del tenant, sin importar lo
-              que se vea en pantalla.
+              siempre trae TODAS las reparaciones que el usuario puede ver (el
+              backend aplica sus permisos por tipo), sin importar el filtro ni
+              la página que se vean en pantalla.
             */}
             <ExportarCsvButton
               recurso="reparaciones"
               nombrePorDefecto="reparaciones.csv"
             />
-            <Can permiso="EDILICIA:ALTAS">
-              <ReparacionCreateDialog />
-            </Can>
+            {puedeEnModulo("EDILICIA", "ALTAS") && <ReparacionCreateDialog />}
           </>
         }
       />

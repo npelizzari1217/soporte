@@ -103,7 +103,8 @@ function ReglasAsignacionTable() {
       render: (fila) => (
         <ReglaSelect
           fila={fila}
-          candidatos={query.data?.candidatosPorModulo[fila.modulo] ?? []}
+          // Los candidatos de ESTE tipo, no los del módulo (odd/permisos-por-tipo-ticket, D5 g).
+          candidatos={query.data?.candidatosPorTipo[fila.tipoId] ?? []}
           deshabilitada={enCurso === fila.tipoId}
           onChange={(responsableId) => mutation.mutate({ tipoId: fila.tipoId, responsableId })}
         />

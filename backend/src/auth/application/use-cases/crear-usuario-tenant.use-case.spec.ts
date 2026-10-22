@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CrearUsuarioTenantUseCase } from './crear-usuario-tenant.use-case';
-import type { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
+import type { IPermisosPorTipoDeCliente } from '../../domain/ports/i-permisos-por-tipo-de-cliente.port';
+import { permisosPorTipoEnMemoria } from '../../test-helpers/permisos-por-tipo-en-memoria';
 import type { IUsuarioRepository } from '../../domain/ports/i-usuario.repository';
 import type { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import type { IRoleRepository } from '../../domain/ports/i-role.repository';
@@ -11,6 +14,7 @@ import { Result } from '../../../shared/domain/result';
 import {
   RolNoEncontradoError,
   MembresiaYaActivaError,
+  PermisosPorTipoNoAplicadosError,
   PresetRolNoDefinidoError,
 } from '../../domain/errors/auth.errors';
 
@@ -271,5 +275,99 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(MembresiaYaActivaError);
     expect(membresiaRepo.create).not.toHaveBeenCalled();
+  });
+
+  /**
+   * T4c (odd/tasks/permisos-por-tipo-ticket.md): el alta escribe también las filas por tipo de
+   * la plantilla. Se arma con el `AplicarPresetPermisosUseCase` real y el servicio real de la
+   * plantilla sobre un repositorio en memoria, para afirmar sobre las filas que quedan.
+   */
+  describe('permisos por tipo de ticket (T4c)', () => {
+    function conPresetReal(celdasMaster: string[], puerto: IPermisosPorTipoDeCliente) {
+      const matriz = {
+        setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+        findByUsuarioYCliente: vi
+          .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+          .mockResolvedValue(celdasMaster),
+      };
+      const aplicarPreset = new AplicarPresetPermisosUseCase(matriz, puerto);
+      // `buildDeps` mezcla los overrides con spread, que no copia métodos de prototipo.
+      const deps = buildDeps({
+        aplicarPresetPermisosUseCase: {
+          execute: vi.fn((input) => aplicarPreset.execute(input)),
+        },
+      });
+      return { ...deps, matriz };
+    }
+
+    it('el alta de un TECNICO deja sus filas por tipo en TICKETS y EDILICIA, en el tenant del token', async () => {
+      const porTipo = permisosPorTipoEnMemoria();
+      const { useCase } = conPresetReal([], porTipo.puerto);
+
+      const result = await useCase.execute(DTO);
+
+      expect(result.isOk()).toBe(true);
+      const usuarioId = result.getValue().usuario.id;
+      const filas = porTipo.repo.filasDe(usuarioId);
+      expect(filas).toContain('tipo-soporte:ASIGNAR');
+      expect(filas).toContain('tipo-mantenimiento:TRANSICIONAR');
+      expect(filas).not.toContain('tipo-soporte:BORRADO');
+      expect(porTipo.clientes).toEqual([DTO.clienteId]);
+    });
+
+    it('el alta de un ADMINISTRADOR no escribe filas por tipo', async () => {
+      const porTipo = permisosPorTipoEnMemoria();
+      const { useCase, roleRepo } = conPresetReal([], porTipo.puerto);
+      roleRepo.findByCodigo.mockResolvedValue(
+        RoleEntity.create({
+          codigo: 'ADMINISTRADOR',
+          nombre: 'Admin',
+          descripcion: null,
+          permisos: [],
+        }),
+      );
+
+      const result = await useCase.execute({ ...DTO, rolCodigo: 'ADMINISTRADOR' });
+
+      expect(result.isOk()).toBe(true);
+      expect(porTipo.repo.filasDe(result.getValue().usuario.id)).toEqual([]);
+    });
+
+    it('el re-alta con filas por tipo existentes no las pisa (sobrescribir=false)', async () => {
+      const existente = UsuarioEntity.create({
+        email: DTO.email,
+        nombre: 'Ya',
+        apellido: 'Existia',
+        passwordHash: 'hash',
+        activo: true,
+        isGlobalAdmin: false,
+      });
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: existente.id, tipoId: 'tipo-soporte', accion: 'LECTURA' },
+      ]);
+      const { useCase, usuarioRepo } = conPresetReal([], porTipo.puerto);
+      usuarioRepo.findByEmail.mockResolvedValue(existente);
+
+      const result = await useCase.execute(DTO);
+
+      expect(result.isOk()).toBe(true);
+      expect(porTipo.repo.filasDe(existente.id)).toEqual(['tipo-soporte:LECTURA']);
+    });
+
+    it('si falla el tenant: la membresía queda, la matriz NO se toca (W1) y el error llega al llamador', async () => {
+      const puerto: IPermisosPorTipoDeCliente = {
+        aplicarPlantilla: vi
+          .fn<IPermisosPorTipoDeCliente['aplicarPlantilla']>()
+          .mockRejectedValue(new Error('base del tenant caída')),
+      };
+      const { useCase, membresiaRepo, matriz } = conPresetReal([], puerto);
+
+      const result = await useCase.execute(DTO);
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(PermisosPorTipoNoAplicadosError);
+      expect(membresiaRepo.create).toHaveBeenCalledOnce();
+      expect(matriz.setPermisos).not.toHaveBeenCalled();
+    });
   });
 });

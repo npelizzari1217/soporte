@@ -1,28 +1,31 @@
 /**
  * [UNIT] — `AsignarTicketUseCase`.
  *
- * Todos los puertos mockeados (`vi.fn`) — sin DB. Cubre asignación manual
- * válida (asignado activo+en tenant, ELEGIBLE POR MÓDULO/CATÁLOGO, operación
- * ASIGNACION en la misma tx) y la regla de elegibilidad por módulo: ROOT/
- * ADMINISTRADOR pueden todo; un usuario normal solo si tiene el módulo que
- * mapea al tipo del ticket; sin él → 422 (ortogonal al permiso del asignador).
+ * Puertos mockeados (`vi.fn`) o en memoria — sin DB. Cubre asignación manual
+ * válida (asignado activo+en tenant, ELEGIBLE POR TIPO, operación ASIGNACION en
+ * la misma tx) y la regla de elegibilidad por tipo (odd/permisos-por-tipo-ticket,
+ * D5 g), con `ElegibilidadAsignado` real: ROOT/ADMINISTRADOR pueden todo; el
+ * resto solo con `LECTURA` sobre el tipo del ticket; sin ella → 422 (ortogonal
+ * al permiso del asignador). Las celdas por módulo de master no cuentan.
  */
 import { AsignarTicketUseCase, AsignarTicketDto } from './asignar-ticket.use-case';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { unstubbed } from '../../../testing/mocks';
-import { Modulo } from '../../../shared/domain/modulos';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import {
+  AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
@@ -41,14 +44,18 @@ const ESTADO_IDS: Record<string, string> = {
 };
 
 function makeTicket(
-  overrides: Partial<{ asignadoId: string | null; estado: keyof typeof ESTADO_IDS }> = {},
+  overrides: Partial<{
+    asignadoId: string | null;
+    estado: keyof typeof ESTADO_IDS;
+    tipoId: string;
+  }> = {},
 ): TicketEntity {
   const ticket = TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Ticket de prueba',
       descripcion: null,
-      tipoId: 'tipo-soporte-uuid',
+      tipoId: overrides.tipoId ?? 'tipo-soporte-uuid',
       estadoId: ESTADO_IDS[overrides.estado ?? 'NUEVO'],
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
@@ -70,18 +77,9 @@ function baseDto(overrides: Partial<AsignarTicketDto> = {}): AsignarTicketDto {
     clienteId: 'cliente-uuid',
     autorId: 'asignador-uuid',
     // Ve cualquier ticket: los casos de asignación no dependen del acceso.
-    actorId: 'asignador-uuid',
-    tienePermisoVerTodos: true,
-    modulosPermitidos: null,
+    ...alcanceSinRestriccion('asignador-uuid'),
     ...overrides,
   };
-}
-
-function makeTipo(modulo: Modulo): TipoTicketEntity {
-  return TipoTicketEntity.create(
-    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
-    'tipo-soporte-uuid',
-  );
 }
 
 describe('AsignarTicketUseCase', () => {
@@ -104,28 +102,21 @@ describe('AsignarTicketUseCase', () => {
       findById: unstubbed('findById'),
     };
     const usuarioMasterChecker = {
-      existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>(),
       estaActivoEnTenant: vi
         .fn<IUsuarioMasterChecker['estaActivoEnTenant']>()
         .mockResolvedValue(true),
-      // Por defecto: usuario normal CON el módulo TICKETS (elegible para el
-      // ticket de tipo SOPORTE que arma makeTicket).
-      getAutorizacionModulos: vi
-        .fn<IUsuarioMasterChecker['getAutorizacionModulos']>()
-        .mockResolvedValue({ esAdminTotal: false, modulos: ['TICKETS'] }),
     };
-    // El tipo del ticket (tipo-soporte-uuid) pertenece al módulo TICKETS (B2:
-    // la elegibilidad lee la columna `modulo` vía findById, no deriva por codigo).
-    const tipoTicketRepo = {
-      findById: vi
-        .fn<ITipoTicketRepository['findById']>()
-        .mockResolvedValue(
-          TipoTicketEntity.create(
-            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
-            'tipo-soporte-uuid',
-          ),
-        ),
-    };
+    // Por defecto: un TECNICO con LECTURA sobre el tipo del ticket que arma makeTicket. Sus celdas
+    // por módulo están a propósito: no deciden nada.
+    const masterAgentes = new MasterAgentesEnMemoria();
+    masterAgentes.agregar({ id: 'agente-uuid', rol: 'TECNICO', celdas: ['TICKETS:LECTURA'] });
+    const permisosTipo = new PermisosTipoTicketEnMemoria(
+      [],
+      [{ usuarioId: 'agente-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' }],
+    );
+    const elegibilidad = new ElegibilidadAsignado(masterAgentes, permisosTipo);
+    const esAsignableATipo = vi.spyOn(elegibilidad, 'esAsignableATipo');
+    const listarPermisosPorUsuario = vi.spyOn(permisosTipo, 'listarPorUsuario');
     const tipoOperacionRepo = {
       findIdByCodigo: vi.fn<ITipoOperacionRepository['findIdByCodigo']>(async (codigo) =>
         codigo === 'CAMBIO_ESTADO' ? 'tipo-op-cambio-uuid' : 'tipo-op-asignacion-uuid',
@@ -158,7 +149,7 @@ describe('AsignarTicketUseCase', () => {
       ticketRepo,
       operacionRepo,
       usuarioMasterChecker,
-      tipoTicketRepo,
+      elegibilidad,
       tipoOperacionRepo,
       txRunner,
       estadoRepo,
@@ -170,7 +161,10 @@ describe('AsignarTicketUseCase', () => {
       ticketRepo,
       operacionRepo,
       usuarioMasterChecker,
-      tipoTicketRepo,
+      masterAgentes,
+      permisosTipo,
+      esAsignableATipo,
+      listarPermisosPorUsuario,
       tipoOperacionRepo,
       txRunner,
       estadoRepo,
@@ -238,6 +232,9 @@ describe('AsignarTicketUseCase', () => {
   it('T14: reasignación — cambia el asignado_id existente por uno nuevo', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket({ asignadoId: 'agente-anterior-uuid' }));
+    await c.permisosTipo.agregarSiFaltan([
+      { usuarioId: 'agente-nuevo-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' },
+    ]);
 
     const result = await c.useCase.execute(baseDto({ asignadoId: 'agente-nuevo-uuid' }));
 
@@ -278,18 +275,17 @@ describe('AsignarTicketUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(AsignadoInvalidoError);
-    expect(c.usuarioMasterChecker.getAutorizacionModulos).not.toHaveBeenCalled();
+    expect(c.esAsignableATipo).not.toHaveBeenCalled();
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('asignado normal SIN el módulo del tipo del ticket → AsignadoNoElegibleError (422), sin tx', async () => {
+  it('asignado con la celda del módulo y LECTURA sobre OTRO tipo, sin fila del tipo del ticket → AsignadoNoElegibleError (422), sin tx', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    // Tiene COMPRAS, pero el tipo SOPORTE del ticket es del módulo TICKETS → no elegible.
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: false,
-      modulos: ['COMPRAS'],
-    });
+    await c.permisosTipo.reemplazarDeUsuario('agente-uuid', [
+      { tipoId: 'tipo-mantenimiento-uuid', accion: 'LECTURA' },
+      { tipoId: 'tipo-soporte-uuid', accion: 'MODIFICACION' },
+    ]);
 
     const result = await c.useCase.execute(baseDto());
 
@@ -299,13 +295,10 @@ describe('AsignarTicketUseCase', () => {
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
-  it('asignado normal sin ningún módulo → AsignadoNoElegibleError (422)', async () => {
+  it('asignado sin ninguna fila por tipo → AsignadoNoElegibleError (422)', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: false,
-      modulos: [],
-    });
+    await c.permisosTipo.reemplazarDeUsuario('agente-uuid', []);
 
     const result = await c.useCase.execute(baseDto());
 
@@ -313,38 +306,32 @@ describe('AsignarTicketUseCase', () => {
     expect(result.getError()).toBeInstanceOf(AsignadoNoElegibleError);
   });
 
-  it('CORE: un técnico CON el módulo del catálogo puede ser asignado/tomar el ticket', async () => {
+  it('CORE: un técnico con LECTURA sobre el tipo del ticket puede ser asignado/tomar el ticket', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: false,
-      modulos: ['TICKETS'],
-    });
 
     const result = await c.useCase.execute(baseDto());
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().asignadoId).toBe('agente-uuid');
-    // La elegibilidad se resuelve para el asignado en el cliente del ticket.
-    expect(c.usuarioMasterChecker.getAutorizacionModulos).toHaveBeenCalledWith(
+    // La elegibilidad se resuelve para el asignado, en el cliente y sobre el tipo del ticket.
+    expect(c.esAsignableATipo).toHaveBeenCalledWith(
       'agente-uuid',
       'cliente-uuid',
+      'tipo-soporte-uuid',
     );
   });
 
-  it('ROOT/ADMINISTRADOR (esAdminTotal) es elegible aunque no tenga módulos cargados', async () => {
+  it('ROOT/ADMINISTRADOR es elegible aunque no tenga filas por tipo', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: true,
-      modulos: [],
-    });
+    c.masterAgentes.agregar({ id: 'admin-uuid', rol: 'ADMINISTRADOR', celdas: [] });
 
-    const result = await c.useCase.execute(baseDto());
+    const result = await c.useCase.execute(baseDto({ asignadoId: 'admin-uuid' }));
 
     expect(result.isOk()).toBe(true);
-    // No necesita cargar el tipo por módulo cuando ve todo (short-circuit esAdminTotal).
-    expect(c.tipoTicketRepo.findById).not.toHaveBeenCalled();
+    // No lee la tabla por tipo cuando ve todo (short-circuit del administrador).
+    expect(c.listarPermisosPorUsuario).not.toHaveBeenCalled();
   });
 
   it.each(['CERRADO', 'CANCELADO'])(
@@ -422,10 +409,7 @@ describe('AsignarTicketUseCase', () => {
   it('destinatario no elegible en un NUEVO conserva su error y no publica', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: false,
-      modulos: ['COMPRAS'],
-    });
+    await c.permisosTipo.reemplazarDeUsuario('agente-uuid', []);
 
     const result = await c.useCase.execute(baseDto());
 
@@ -435,6 +419,9 @@ describe('AsignarTicketUseCase', () => {
 
   it('autoasignación (asignado = actor) sigue permitida', async () => {
     const c = makeCollaborators();
+    await c.permisosTipo.agregarSiFaltan([
+      { usuarioId: 'asignador-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' },
+    ]);
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
 
     const result = await c.useCase.execute(
@@ -445,20 +432,47 @@ describe('AsignarTicketUseCase', () => {
     expect(result.getValue().asignadoId).toBe('asignador-uuid');
   });
 
-  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS; no se asigna ni se escribe nada', async () => {
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
+    // Mismo usuario: Soporte con Ver y Asignar, Mantenimiento solo con Ver, Electricidad sin nada.
+    const alcance = alcancePorTipo('solicitante-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR'],
+      'tipo-mantenimiento-uuid': ['LECTURA'],
+    });
+
+    it('asigna un ticket de un tipo con ASIGNAR', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket());
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute(baseDto(alcance));
 
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(result.getValue().asignadoId).toBe('agente-uuid');
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('un ticket de un tipo con solo LECTURA es 403; no se asigna ni se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ tipoId: 'tipo-mantenimiento-uuid' }));
+
+      const result = await c.useCase.execute(baseDto(alcance));
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toContain('"ASIGNAR"');
       expect(c.txRunner.run).not.toHaveBeenCalled();
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
       expect(c.operacionRepo.save).not.toHaveBeenCalled();
       expect(c.alCommitear).toHaveLength(0);
+    });
+
+    it('un ticket de un tipo sin LECTURA es 404, sin consultar master ni escribir', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ tipoId: 'tipo-electricidad-uuid' }));
+
+      const result = await c.useCase.execute(baseDto(alcance));
+
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
 
     it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404', async () => {
@@ -466,43 +480,24 @@ describe('AsignarTicketUseCase', () => {
       c.ticketRepo.findById.mockResolvedValue(makeTicket());
 
       const result = await c.useCase.execute(
-        baseDto({ tienePermisoVerTodos: false, modulosPermitidos: ['TICKETS'] }),
+        baseDto(alcancePorTipo('asignador-uuid', { 'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR'] })),
       );
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'asignador-uuid');
       expect(c.txRunner.run).not.toHaveBeenCalled();
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
 
-    it('un ticket de un tipo de sus módulos que el actor ve se asigna', async () => {
+    it('sin restricción (ROOT o ADMINISTRADOR) pasa el acceso en un tipo sin filas', async () => {
       const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket());
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ tipoId: 'tipo-electricidad-uuid' }));
+      // El asignado es ROOT: elegible para un tipo sin filas.
+      c.masterAgentes.agregar({ id: 'root-uuid', rol: 'ROOT', celdas: [] });
 
       const result = await c.useCase.execute(
-        baseDto({
-          actorId: 'solicitante-uuid',
-          tienePermisoVerTodos: false,
-          modulosPermitidos: ['TICKETS'],
-        }),
+        baseDto({ ...alcanceSinRestriccion('asignador-uuid'), asignadoId: 'root-uuid' }),
       );
-
-      expect(result.isOk()).toBe(true);
-      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) pasa el acceso en un tipo de cualquier módulo', async () => {
-      const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket());
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
-      // El asignado es ROOT/ADMINISTRADOR: elegible para un tipo de cualquier módulo.
-      c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-        esAdminTotal: true,
-        modulos: [],
-      });
-
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
 
       expect(result.isOk()).toBe(true);
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);

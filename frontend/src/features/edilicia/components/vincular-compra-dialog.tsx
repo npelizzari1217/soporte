@@ -10,11 +10,12 @@
  * IMPORTANTE — qué NO hace este componente: los dos `<Can>` de abajo son
  * controles de EXPERIENCIA (ocultan botones a quien no va a poder usarlos),
  * nunca de seguridad. La autorización real la sostiene el backend:
- * - Vincular exige `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA`, las dos, vía
- *   `@RequiereAcciones` en el controller (WU5.9) — verificado por un test de
- *   autorización HTTP real que probó que sin ese candado server-side un
- *   actor con solo `EDILICIA:ALTAS` vinculaba con éxito (201, no 403).
- * - Desvincular exige `EDILICIA:BORRADO` en el mismo guard (WU5.6).
+ * - Vincular exige `COMPRAS:LECTURA` en la ruta (`@RequiereAcciones`, WU5.9)
+ *   **y** `ALTAS` sobre el tipo de la reparación en el caso de uso
+ *   (odd/permisos-por-tipo-ticket, D5 c). El formulario espeja las dos: el
+ *   contenedor pasa `puedeVincularEnTipo` y acá se suma la celda de Compras.
+ * - Desvincular exige `EDILICIA:BORRADO` en la ruta (WU5.6): es permiso del
+ *   módulo, no por tipo (L21).
  * Un `curl` directo sin el `<Can>` (que no existe fuera del navegador) sigue
  * recibiendo 403 si le falta el permiso: la interfaz nunca es el único
  * candado.
@@ -23,7 +24,6 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Can } from "@/components/shared/can";
 import { useCan } from "@/shared/hooks/use-can";
 import { useCompras } from "@/features/compras/hooks/use-compras";
 import { useDesvincularCompra, useVincularCompra } from "../hooks/use-reparacion-compra-mutations";
@@ -33,10 +33,18 @@ export interface VincularCompraDialogProps {
   numero: string;
   /** Subset mínimo (`id`+`numero`) de las compras que HOY frenan la reparación — sale de `ReparacionListItem.comprasQueBloquean`. */
   comprasQueBloquean: { id: string; numero: string }[];
+  /** `ALTAS` sobre el tipo del ticket de la reparación (odd/permisos-por-tipo-ticket, D5 c). */
+  puedeVincularEnTipo: boolean;
   trigger: ReactNode;
 }
 
-export function VincularCompraDialog({ reparacionId, numero, comprasQueBloquean, trigger }: VincularCompraDialogProps) {
+export function VincularCompraDialog({
+  reparacionId,
+  numero,
+  comprasQueBloquean,
+  puedeVincularEnTipo,
+  trigger,
+}: VincularCompraDialogProps) {
   const [open, setOpen] = useState(false);
   const [compraSeleccionada, setCompraSeleccionada] = useState("");
 
@@ -58,19 +66,20 @@ export function VincularCompraDialog({ reparacionId, numero, comprasQueBloquean,
   }
 
   // Hooks, no condicionales: se evalúan siempre y se combinan abajo.
-  const puedeVincular = useCan("EDILICIA:ALTAS");
+  const puedeLeerCompras = useCan("COMPRAS:LECTURA");
+  const puedeVincular = puedeVincularEnTipo && puedeLeerCompras;
   const puedeDesvincular = useCan("EDILICIA:BORRADO");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* El panel se abre con EDILICIA:ALTAS O con EDILICIA:BORRADO, no solo
-          con la primera. Cada acción de adentro tiene su propio gate, así que
+      {/* El panel se abre pudiendo vincular O con EDILICIA:BORRADO, no solo
+          con lo primero. Cada acción de adentro tiene su propio gate, así que
           abrir no habilita nada: quien solo puede desvincular entra, ve las
           compras vinculadas y su botón Desvincular, y no ve el formulario de
           vincular. Gatear el trigger solo por ALTAS dejaba a ese usuario
           viendo el chip «Bloqueada» sin ninguna forma de sacarlo, aunque el
           backend le permite el DELETE. El chip sigue visible para cualquiera
-          con EDILICIA:LECTURA. */}
+          que vea la fila. */}
       {(puedeVincular || puedeDesvincular) && (
         <DialogTrigger asChild>{trigger}</DialogTrigger>
       )}
@@ -89,7 +98,7 @@ export function VincularCompraDialog({ reparacionId, numero, comprasQueBloquean,
               className="flex items-center justify-between gap-2 rounded-lg border border-border p-2"
             >
               <span className="text-sm text-foreground">{compra.numero}</span>
-              <Can permiso="EDILICIA:BORRADO">
+              {puedeDesvincular && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -99,12 +108,12 @@ export function VincularCompraDialog({ reparacionId, numero, comprasQueBloquean,
                 >
                   Desvincular
                 </Button>
-              </Can>
+              )}
             </li>
           ))}
         </ul>
 
-        <Can permiso="EDILICIA:ALTAS">
+        {puedeVincular && (
           <form onSubmit={submit} className="flex items-end gap-2" noValidate>
             <div className="flex flex-1 flex-col gap-1">
               <label htmlFor="compra-a-vincular" className="text-xs font-medium text-foreground">
@@ -127,7 +136,7 @@ export function VincularCompraDialog({ reparacionId, numero, comprasQueBloquean,
               Vincular
             </Button>
           </form>
-        </Can>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -7,7 +7,9 @@
  *   así que un solicitante ajeno obtiene 404 por la misma regla, no por una
  *   copia de ella;
  * - los comentarios INTERNOS nunca llegan al PDF, ni siquiera cuando el
- *   timeline devuelve las notas internas (actor con `TICKETS:OBSERVAR`);
+ *   timeline devuelve las notas internas (actor con `OBSERVAR` sobre el tipo);
+ * - imprimir exige `IMPRESION` sobre el tipo del ticket: sin ella, 403 aunque lo vea
+ *   (odd/permisos-por-tipo-ticket, D5 c);
  * - el logo solo se embebe si es png/jpeg: webp o sin logo → nombre en texto;
  * - las tareas salen de `tareas_ticket` en cualquier tipo de ticket, y el avance se calcula sobre
  *   ellas (la columna `porcentaje_avance` se retiró en T8).
@@ -21,7 +23,12 @@ import { SolicitanteExternoEntity } from '../../../tickets/domain/entities/solic
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TipoOperacionEntity } from '../../../tickets/domain/entities/tipo-operacion.entity';
 import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
-import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../../tickets/domain/errors/tickets.errors';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
+import { alcancePorTipo } from '../../../tickets/test-helpers/alcance-ticket';
 import { ListarTimelineUseCase } from '../../../tickets/application/use-cases/listar-timeline.use-case';
 import { ObtenerTicketUseCase } from '../../../tickets/application/use-cases/obtener-ticket.use-case';
 import { TicketSoporteEntity } from '../../../equipos/domain/entities/ticket-soporte.entity';
@@ -156,10 +163,8 @@ function armar(opciones: Opciones = {}) {
   };
   // El repo devuelve TODO, como hace el real; el filtro de internas es del caso de uso.
   const operacionRepo = { listByTicket: vi.fn().mockResolvedValue(operaciones) };
-  // Los DTO van sin restricción de módulo: el repo de tipos de la lectura no se consulta.
-  const tiposDeLectura = { findById: vi.fn() };
-  const obtener = new ObtenerTicketUseCase(ticketRepo, tiposDeLectura);
-  const timeline = new ListarTimelineUseCase(ticketRepo, operacionRepo, tiposDeLectura);
+  const obtener = new ObtenerTicketUseCase(ticketRepo);
+  const timeline = new ListarTimelineUseCase(ticketRepo, operacionRepo);
   const generador = {
     generar: vi.fn(async (_vista: TicketPdfVista) => Buffer.from('%PDF-fake')),
   };
@@ -230,15 +235,21 @@ function armar(opciones: Opciones = {}) {
   return { useCase, generador, verLogo, ticketRepo, tareaRepo };
 }
 
-/** Actor con `TICKETS:VER_TODOS` y `TICKETS:OBSERVAR` (ve las notas internas en pantalla). */
-const DTO_STAFF = {
-  ticketId: 'ticket-1',
-  actorId: TECNICO,
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
-  clienteId: 'cliente-1',
-  clienteNombre: 'Colegio San Martín',
-};
+/** Acciones del staff sobre el tipo del ticket: ve todo, ve las notas internas e imprime. */
+const ACCIONES_STAFF: AccionTipoTicket[] = ['LECTURA', 'VER_TODOS', 'OBSERVAR', 'IMPRESION'];
+
+/** DTO de un actor con `acciones` sobre el tipo del ticket. */
+function dtoDe(actorId: string, acciones: readonly AccionTipoTicket[]) {
+  return {
+    ticketId: 'ticket-1',
+    ...alcancePorTipo(actorId, { 'tipo-1': acciones }),
+    clienteId: 'cliente-1',
+    clienteNombre: 'Colegio San Martín',
+  };
+}
+
+/** Actor con `VER_TODOS`, `OBSERVAR` e `IMPRESION` sobre el tipo (ve las notas internas en pantalla). */
+const DTO_STAFF = dtoDe(TECNICO, ACCIONES_STAFF);
 
 describe('GenerarPdfTicketUseCase', () => {
   it('arma la vista con los datos del ticket, nombres resueltos y fechas en hora de Argentina', async () => {
@@ -281,7 +292,7 @@ describe('GenerarPdfTicketUseCase', () => {
     expect(JSON.stringify(historial)).not.toContain('INTERNA');
   });
 
-  it('pide el timeline SIN permiso de observar y además descarta las internas por su cuenta (defensa en profundidad)', async () => {
+  it('pide el timeline solo con las públicas y además descarta las internas por su cuenta (defensa en profundidad)', async () => {
     const generador = {
       generar: vi.fn(async (_vista: TicketPdfVista) => Buffer.from('%PDF-fake')),
     };
@@ -290,13 +301,10 @@ describe('GenerarPdfTicketUseCase', () => {
       execute: vi.fn().mockResolvedValue(Result.ok(OPERACIONES)),
     };
     const conTimelineRoto = new GenerarPdfTicketUseCase(
-      new ObtenerTicketUseCase(
-        {
-          findById: vi.fn().mockResolvedValue(crearTicket()),
-          esVisiblePara: vi.fn().mockResolvedValue(false),
-        },
-        { findById: vi.fn() },
-      ),
+      new ObtenerTicketUseCase({
+        findById: vi.fn().mockResolvedValue(crearTicket()),
+        esVisiblePara: vi.fn().mockResolvedValue(false),
+      }),
       timelineRoto,
       { findById: vi.fn().mockResolvedValue(ESTADO_PROCESO) },
       { findById: vi.fn().mockResolvedValue(PRIORIDAD) },
@@ -316,7 +324,7 @@ describe('GenerarPdfTicketUseCase', () => {
     await conTimelineRoto.execute(DTO_STAFF);
 
     expect(timelineRoto.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ tienePermisoObservar: false }),
+      expect.objectContaining({ soloPublicas: true }),
     );
     const { historial } = generador.generar.mock.calls[0][0];
     expect(historial.map((e) => e.texto)).not.toContain('Nota INTERNA secreta');
@@ -326,12 +334,7 @@ describe('GenerarPdfTicketUseCase', () => {
     it('el solicitante obtiene su propio ticket sin VER_TODOS', async () => {
       const { useCase } = armar();
 
-      const result = await useCase.execute({
-        ...DTO_STAFF,
-        actorId: SOLICITANTE,
-        tienePermisoVerTodos: false,
-        modulosPermitidos: null,
-      });
+      const result = await useCase.execute(dtoDe(SOLICITANTE, ['LECTURA', 'IMPRESION']));
 
       expect(result.isOk()).toBe(true);
     });
@@ -339,14 +342,31 @@ describe('GenerarPdfTicketUseCase', () => {
     it('un usuario ajeno sin VER_TODOS recibe TicketNoEncontradoError y no se genera nada', async () => {
       const { useCase, generador } = armar();
 
-      const result = await useCase.execute({
-        ...DTO_STAFF,
-        actorId: OTRO,
-        tienePermisoVerTodos: false,
-        modulosPermitidos: null,
-      });
+      const result = await useCase.execute(dtoDe(OTRO, ['LECTURA', 'IMPRESION']));
 
       expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(generador.generar).not.toHaveBeenCalled();
+    });
+
+    it('quien ve el ticket pero no tiene IMPRESION sobre su tipo recibe 403 y no se genera nada', async () => {
+      const { useCase, generador } = armar();
+
+      const result = await useCase.execute(dtoDe(TECNICO, ['LECTURA', 'VER_TODOS', 'OBSERVAR']));
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toContain('"IMPRESION"');
+      expect(generador.generar).not.toHaveBeenCalled();
+    });
+
+    it('IMPRESION sobre otro tipo no alcanza; sin LECTURA sobre el del ticket es 404', async () => {
+      const { useCase, generador } = armar();
+
+      const result = await useCase.execute({
+        ...DTO_STAFF,
+        ...alcancePorTipo(SOLICITANTE, { 'otro-tipo': ACCIONES_STAFF }),
+      });
+
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(generador.generar).not.toHaveBeenCalled();
     });

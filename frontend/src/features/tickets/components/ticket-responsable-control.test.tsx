@@ -10,7 +10,14 @@ const TECNICOS: TecnicoAsignable[] = [
   { id: "tec-2", nombre: "Beto", apellido: "López" },
 ];
 
-function render(modo: ModoResponsable, permisos: string[], handlers = { arranque: vi.fn(), cambio: vi.fn() }) {
+/** Acciones sobre el tipo del ticket que decide el contenedor (odd/permisos-por-tipo-ticket, S6). */
+type AccionResponsable = "ASIGNAR" | "TRANSICIONAR";
+
+function render(
+  modo: ModoResponsable,
+  acciones: AccionResponsable[],
+  handlers = { arranque: vi.fn(), cambio: vi.fn() },
+) {
   renderWithProviders(
     <TicketResponsableControl
       tecnicos={TECNICOS}
@@ -18,20 +25,22 @@ function render(modo: ModoResponsable, permisos: string[], handlers = { arranque
       onAsignarEnProceso={handlers.arranque}
       onReasignar={handlers.cambio}
       isSubmitting={false}
+      puedeAsignar={acciones.includes("ASIGNAR")}
+      puedeTransicionar={acciones.includes("TRANSICIONAR")}
     />,
-    { user: buildUser({ permisos }) },
+    { user: buildUser({ permisos: [] }) },
   );
   return handlers;
 }
 
 describe("TicketResponsableControl", () => {
-  it("sin TICKETS:ASIGNAR no renderiza nada, en ningún modo", () => {
-    render("arranque", ["TICKETS:TRANSICIONAR"]);
+  it("sin ASIGNAR sobre el tipo no renderiza nada, en ningún modo", () => {
+    render("arranque", ["TRANSICIONAR"]);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("el desplegable lleva la etiqueta visible «Nuevo responsable» y lista los candidatos recibidos", () => {
-    render("cambio", ["TICKETS:ASIGNAR"]);
+    render("cambio", ["ASIGNAR"]);
     const combo = screen.getByRole("combobox", { name: /nuevo responsable/i });
     expect(screen.getByText("Nuevo responsable")).toBeInTheDocument();
     expect(combo).toHaveTextContent("Ana García");
@@ -40,7 +49,7 @@ describe("TicketResponsableControl", () => {
 
   it("arranque con ASIGNAR y TRANSICIONAR → un solo botón «Asignar y poner en proceso» que llama onAsignarEnProceso", async () => {
     const user = userEvent.setup();
-    const handlers = render("arranque", ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"]);
+    const handlers = render("arranque", ["ASIGNAR", "TRANSICIONAR"]);
 
     expect(screen.getAllByRole("combobox")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /cambiar responsable/i })).not.toBeInTheDocument();
@@ -53,7 +62,7 @@ describe("TicketResponsableControl", () => {
 
   it("arranque con ASIGNAR pero sin TRANSICIONAR → cae a «Cambiar responsable» (lo que ya podía hacer)", async () => {
     const user = userEvent.setup();
-    const handlers = render("arranque", ["TICKETS:ASIGNAR"]);
+    const handlers = render("arranque", ["ASIGNAR"]);
 
     expect(screen.queryByRole("button", { name: /asignar y poner en proceso/i })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "tec-1");
@@ -65,7 +74,7 @@ describe("TicketResponsableControl", () => {
 
   it("cambio → «Cambiar responsable» llama onReasignar y no toca el arranque", async () => {
     const user = userEvent.setup();
-    const handlers = render("cambio", ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"]);
+    const handlers = render("cambio", ["ASIGNAR", "TRANSICIONAR"]);
 
     expect(screen.queryByRole("button", { name: /asignar y poner en proceso/i })).not.toBeInTheDocument();
     await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "tec-2");
@@ -76,7 +85,7 @@ describe("TicketResponsableControl", () => {
   });
 
   it("sin elección el botón queda deshabilitado", () => {
-    render("arranque", ["TICKETS:ASIGNAR", "TICKETS:TRANSICIONAR"]);
+    render("arranque", ["ASIGNAR", "TRANSICIONAR"]);
     expect(screen.getByRole("button", { name: /asignar y poner en proceso/i })).toBeDisabled();
   });
 });

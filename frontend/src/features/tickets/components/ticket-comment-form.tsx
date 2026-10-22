@@ -2,9 +2,10 @@
 
 /**
  * TicketCommentForm — PRESENTATIONAL. El toggle "comentario interno" solo
- * se RENDERIZA con `TICKETS:OBSERVAR` (ADR-4: gate en cliente, el backend
- * además lo re-valida — `TicketsController.comentar` devuelve 403 si
- * `esInterno=true` sin el permiso). Sin el permiso, `esInterno` siempre
+ * se RENDERIZA con `puedeObservar`: `OBSERVAR` sobre el tipo del ticket, que
+ * decide el contenedor (odd/permisos-por-tipo-ticket, S6). Es gate en cliente:
+ * el backend además lo re-valida y devuelve 403 si `esInterno=true` sin el
+ * permiso. Sin el permiso, `esInterno` siempre
  * viaja `false` — nunca puede enviarse `true` por accidente porque el
  * control ni existe en el DOM.
  *
@@ -20,16 +21,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select } from "@/components/ui/select";
 import { useRespuestasPredefinidas } from "@/features/respuestas-predefinidas/hooks/use-respuestas-predefinidas";
-import { useCan } from "@/shared/hooks/use-can";
 import { comentarioSchema, type ComentarioFormValues } from "../schemas";
 
 export interface TicketCommentFormProps {
   onSubmit: (values: ComentarioFormValues) => void;
   isSubmitting: boolean;
+  /** `OBSERVAR` sobre el tipo del ticket: habilita el comentario interno. */
+  puedeObservar: boolean;
 }
 
-export function TicketCommentForm({ onSubmit, isSubmitting }: TicketCommentFormProps) {
-  const puedeObservar = useCan("TICKETS:OBSERVAR");
+export function TicketCommentForm({ onSubmit, isSubmitting, puedeObservar }: TicketCommentFormProps) {
   const {
     register,
     handleSubmit,

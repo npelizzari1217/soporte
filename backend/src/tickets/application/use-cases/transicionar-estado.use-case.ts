@@ -19,7 +19,7 @@ import {
   EstadoDestinoInvalidoError,
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { AlcanceActorTicket, puedeOperarTicket } from '../services/visibilidad-ticket';
 import {
   afectaRelojSla,
   ESTADOS_NO_DESTINO_CORRECTIVO,
@@ -60,8 +60,9 @@ export interface TransicionarEstadoDto {
    */
   actorEsCorrector: boolean;
   /**
-   * Alcance del actor humano (odd/permisos-por-tipo-ticket, S0): si no ve el ticket (módulo del
-   * tipo o visibilidad de fila), la transición es 404. `null` SOLO para los flujos de sistema que
+   * Alcance del actor humano (odd/permisos-por-tipo-ticket, D5 c): si no ve el ticket (`LECTURA`
+   * sobre el tipo y fila), la transición es 404; si lo ve sin `TRANSICIONAR` sobre el tipo, 403.
+   * `null` SOLO para los flujos de sistema que
    * comparten este caso de uso sin un actor que decida (D3: hoy `ReanudarPorComentarioListener`).
    * Es obligatorio y no opcional para que cada llamador nuevo tenga que elegir de forma explícita.
    */
@@ -80,7 +81,8 @@ export interface TransicionarEstadoDto {
  *    orden (odd/escrituras-manuales-con-lock, S1): bloquea la fila del ticket
  *    (`ITicketRepository.bloquear`), recién entonces lo carga —si no existe,
  *    está soft-deleted o el actor no lo ve (`dto.alcance`) →
- *    `TicketNoEncontradoError` (404)— y resuelve el
+ *    `TicketNoEncontradoError` (404); si lo ve sin `TRANSICIONAR` sobre el tipo →
+ *    `AccionSobreTipoNoPermitidaError` (403)— y resuelve el
  *    código del estado ACTUAL (`estadoRepo.findById`, catálogo fijo — su
  *    ausencia es un fallo de infraestructura, `throw` defensivo) y el del
  *    tipo de ticket (`tipoTicketRepo.findById`, para resolver la máquina de
@@ -164,17 +166,12 @@ export class TransicionarEstadoUseCase {
   ): Promise<Result<{ ticket: TicketEntity; estadoAnteriorCodigo: string }, DomainError>> {
     await this.ticketRepo.bloquear(dto.ticketId);
     const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      (dto.alcance !== null &&
-        !(await esTicketAccesiblePara(
-          { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-          ticket,
-          dto.alcance,
-        )))
-    ) {
+    if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+    }
+    if (dto.alcance !== null) {
+      const acceso = await puedeOperarTicket(this.ticketRepo, ticket, dto.alcance, 'TRANSICIONAR');
+      if (acceso.isFail()) return Result.fail(acceso.getError());
     }
 
     // Catálogos FIJOS garantizados por el seed (ADR-1) — su ausencia es un

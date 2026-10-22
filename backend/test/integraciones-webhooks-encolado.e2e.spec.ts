@@ -232,7 +232,8 @@ describe('Webhooks e2e — encolado por eventos de ticket (odd/webhooks T4)', ()
     return { id: campo(data, 'id'), numero: campo(data, 'numero') };
   }
 
-  const contar = (e: Entorno, evento: string) => e.tenant.webhookEntrega.count({ where: { evento } });
+  const contar = (e: Entorno, evento: string) =>
+    e.tenant.webhookEntrega.count({ where: { evento } });
 
   it('el evento de un ticket de A se encola solo en la base de A, con los datos de A', async () => {
     const a = await crearEntorno(DB_A);
@@ -273,10 +274,9 @@ describe('Webhooks e2e — encolado por eventos de ticket (odd/webhooks T4)', ()
           texto: 'Nota interna',
           autorId: a.usuarioId,
           esInterno: true,
-          // Llamada directa al caso de uso, sin restricción de módulo ni de fila.
+          // Llamada directa al caso de uso, sin restricción por tipo ni de fila.
           actorId: a.usuarioId,
-          tienePermisoVerTodos: true,
-          modulosPermitidos: null,
+          permisosPorTipo: null,
         }),
     );
     expect(interno.isOk()).toBe(true);

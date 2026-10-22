@@ -12,12 +12,9 @@ import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain
 import { ICalendarioLaboralSemanalRepository } from '../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
 import { IFeriadosLaboralesRepository } from '../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
-import {
-  TicketNoEncontradoError,
-  ComentarioNoPermitidoError,
-} from '../../domain/errors/tickets.errors';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { ComentarioNoPermitidoError } from '../../domain/errors/tickets.errors';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 
 /**
  * Estados en los que un ticket YA NO acepta nuevos comentarios PÚBLICOS
@@ -38,8 +35,9 @@ const ESTADOS_SIN_COMENTARIOS_PUBLICOS = new Set<string>(['RESUELTO', 'CERRADO',
  * (a diferencia de `CrearTicketUseCase`/`SolicitanteInvalido`), mismo
  * criterio que la deviación ya documentada en `TransicionarEstadoDto` (PR7).
  *
- * El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el JWT (o desde la clave
- * de la API pública): lo que el actor no ve, tampoco lo comenta (odd/permisos-por-tipo-ticket, S0).
+ * El alcance del actor (`AlcanceActorTicket`) lo carga la capa de interface (o lo arma desde la
+ * clave de la API pública): lo que el actor no ve, tampoco lo comenta, y comentar exige `COMENTAR`
+ * sobre el tipo del ticket, más `OBSERVAR` si es interno (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface CrearComentarioDto extends AlcanceActorTicket {
   ticketId: string;
@@ -60,7 +58,9 @@ export interface CrearComentarioDto extends AlcanceActorTicket {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe, está soft-deleted o el actor no lo ve
- *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
+ *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
+ *    si lo ve sin `COMENTAR` (o sin `OBSERVAR`, si es interno) sobre el tipo →
+ *    `AccionSobreTipoNoPermitidaError` (403).
  * 2. Si el comentario es PÚBLICO (`esInterno=false`, T16): resuelve el
  *    código semántico del estado ACTUAL (`estadoRepo.findById`, catálogo
  *    fijo — su ausencia es un fallo de infraestructura, `throw`
@@ -115,22 +115,18 @@ export class CrearComentarioUseCase {
     private readonly calendarioRepo: Pick<ICalendarioLaboralSemanalRepository, 'obtener'>,
     private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
     private readonly logger: Pick<ILogger, 'error'>,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: CrearComentarioDto): Promise<Result<OperacionTicketEntity, DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
+    const requisitos: AccionTipoTicket[] = dto.esInterno ? ['COMENTAR', 'OBSERVAR'] : ['COMENTAR'];
+    const ticketResult = await cargarTicketParaOperar(
+      this.ticketRepo,
+      dto.ticketId,
+      dto,
+      ...requisitos,
+    );
+    if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
+    const ticket = ticketResult.getValue();
 
     if (!dto.esInterno) {
       // Catálogo FIJO garantizado por el seed (ADR-1) — su ausencia es un

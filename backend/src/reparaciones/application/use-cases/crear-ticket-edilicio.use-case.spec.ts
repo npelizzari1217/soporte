@@ -31,7 +31,12 @@ import {
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
   TipoTicketNoPermitidoEnAltaError,
+  AccionSobreTipoNoPermitidaError,
 } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
@@ -176,6 +181,8 @@ describe('CrearTicketEdilicioUseCase', () => {
     clienteId: 'cliente-uuid',
     autorId: 'usuario-uuid',
     anio: 2026,
+    // Sin restricción por defecto: los tests de permisos por tipo lo reemplazan.
+    alcance: alcanceSinRestriccion('usuario-uuid'),
   };
 
   it('crea ticket base + satélite ticket_edilicia en una transacción, numero EDI-', async () => {
@@ -292,6 +299,66 @@ describe('CrearTicketEdilicioUseCase', () => {
       expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
       expect(txRunner.run).not.toHaveBeenCalled();
       expect(ticketRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ALTAS sobre el tipo resultante (odd/permisos-por-tipo-ticket, S6, D5 c)', () => {
+    it('sin tipoId: exige ALTAS sobre EDILICIA y con ella crea', async () => {
+      const { useCase, ticketRepo } = buildDeps();
+
+      const result = await useCase.execute({
+        ...baseDto,
+        alcance: alcancePorTipo('usuario-uuid', { 'tipo-edilicia-uuid': ['ALTAS'] }),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('con tipoId elegido: ALTAS sobre ESE tipo; tenerla sobre EDILICIA no alcanza → 403 sin persistir', async () => {
+      const { useCase, ticketRepo, ticketEdiliciaRepo, txRunner } = buildDeps();
+
+      const result = await useCase.execute({
+        ...baseDto,
+        tipoId: 'tipo-MANTENIMIENTO',
+        alcance: alcancePorTipo('usuario-uuid', {
+          'tipo-edilicia-uuid': ['ALTAS'],
+          'tipo-MANTENIMIENTO': ['LECTURA', 'MODIFICACION'],
+        }),
+      });
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toBe(
+        'El usuario no tiene el permiso "ALTAS" sobre el tipo de este ticket.',
+      );
+      expect(txRunner.run).not.toHaveBeenCalled();
+      expect(ticketRepo.save).not.toHaveBeenCalled();
+      expect(ticketEdiliciaRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sin tipoId y sin ALTAS sobre EDILICIA → 403 sin persistir', async () => {
+      const { useCase, ticketRepo, txRunner } = buildDeps();
+
+      const result = await useCase.execute({
+        ...baseDto,
+        alcance: alcancePorTipo('usuario-uuid', { 'tipo-MANTENIMIENTO': ['ALTAS'] }),
+      });
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(txRunner.run).not.toHaveBeenCalled();
+      expect(ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('con ALTAS sobre el tipo elegido → crea el ticket de ese tipo', async () => {
+      const { useCase } = buildDeps();
+
+      const result = await useCase.execute({
+        ...baseDto,
+        tipoId: 'tipo-MANTENIMIENTO',
+        alcance: alcancePorTipo('usuario-uuid', { 'tipo-MANTENIMIENTO': ['ALTAS'] }),
+      });
+
+      expect(result.getValue().ticket.tipoId).toBe('tipo-MANTENIMIENTO');
     });
   });
 

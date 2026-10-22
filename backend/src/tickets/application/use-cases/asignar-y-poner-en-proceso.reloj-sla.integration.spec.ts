@@ -21,8 +21,7 @@ import { AlcanceActorTicket } from '../services/visibilidad-ticket';
 /** Actor que ve cualquier ticket: estos casos prueban el reloj de SLA, no el acceso (odd/permisos-por-tipo-ticket). */
 const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
   actorId: 'dummy-actor',
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
+  permisosPorTipo: null,
 };
 
 const MASTER_TEST_URL =
@@ -108,10 +107,9 @@ describe('AsignarYPonerEnProceso no marca el reloj de SLA (WU-3a.4)', () => {
       new PrismaEstadoRepository(tenantContext),
       new PrismaTipoTicketRepository(tenantContext),
       new PrismaTipoOperacionRepository(tenantContext),
-      {
-        estaActivoEnTenant: async () => true,
-        getAutorizacionModulos: async () => ({ esAdminTotal: true, modulos: [] }),
-      },
+      { estaActivoEnTenant: async () => true },
+      // La elegibilidad no es lo que se prueba acá: el asignado es elegible.
+      { esAsignableATipo: async () => true },
       new TicketStateMachineFactory(),
       txRunner,
       { publish: () => {} },

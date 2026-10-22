@@ -22,6 +22,8 @@ import {
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { puedeOperarReparacion } from '../services/acceso-reparacion';
 
 /** Entrada de `EditarReparacionUseCase`. Un campo ausente no se toca; `null` limpia. */
 export interface EditarReparacionDto {
@@ -34,6 +36,8 @@ export interface EditarReparacionDto {
   sectorId?: string | null;
   /** ROOT (`is_global_admin`): salta la regla "no se empezó a trabajar", nunca el bloqueo por compra. */
   actorEsRoot: boolean;
+  /** Permisos por tipo del actor: exige ver el ticket base y `MODIFICACION` sobre su tipo (D5 c). */
+  alcance: AlcanceActorTicket;
 }
 
 export interface ReparacionEditada {
@@ -55,14 +59,19 @@ export interface ReparacionEditada {
  *    sector desactivado sigue siendo válido, como al editar el ticket).
  * 2. Dentro de la transacción, con la fila del ticket bloqueada ANTES de leer
  *    (odd/escrituras-manuales-con-lock): carga satélite y ticket, evalúa la regla sobre el estado
- *    vigente y las tareas actuales, muta las dos entidades y las guarda juntas.
+ *    vigente y las tareas actuales, muta las dos entidades y las guarda juntas. Con la fila ya
+ *    bloqueada exige además ver el ticket base (404 si no) y `MODIFICACION` sobre su tipo (403;
+ *    odd/permisos-por-tipo-ticket, D5 c), así que una reasignación concurrente no cambia la decisión.
  * 3. Post-commit: si cambió la prioridad, publica `TicketReprioritizadoEvent` (el módulo SLA recalcula
  *    el vencimiento), igual que `EditarTicketUseCase`.
  */
 export class EditarReparacionUseCase {
   constructor(
     private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById' | 'save'>,
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'bloquear' | 'save'>,
+    private readonly ticketRepo: Pick<
+      ITicketRepository,
+      'findById' | 'bloquear' | 'save' | 'esVisiblePara'
+    >,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
     private readonly reparacionCompraRepo: Pick<
       IReparacionCompraRepository,
@@ -126,6 +135,16 @@ export class EditarReparacionUseCase {
     const ticket = await this.ticketRepo.findById(satelite.ticketId);
     if (!ticket || ticket.isDeleted()) {
       return Result.fail(new TicketNoEncontradoError(satelite.ticketId));
+    }
+    const acceso = await puedeOperarReparacion(
+      this.ticketRepo,
+      ticket,
+      dto.reparacionId,
+      dto.alcance,
+      'MODIFICACION',
+    );
+    if (acceso.isFail()) {
+      return Result.fail(acceso.getError());
     }
 
     // El bloqueo por compra no lo salta nadie: se evalúa antes que la regla de ROOT.

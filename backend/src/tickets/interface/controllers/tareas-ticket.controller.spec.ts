@@ -1,5 +1,6 @@
 /**
- * TareasTicketController (odd/tareas-con-tecnico, T3) — unit: el `ActorTarea` que arma el JWT, el
+ * TareasTicketController (odd/tareas-con-tecnico, T3) — unit: el `ActorTarea` que arma la capa de
+ * interface (JWT más permisos por tipo, odd/permisos-por-tipo-ticket D5 a), el
  * mapeo de errores a HTTP y la proyección con nombres. El HTTP real, con guards y base, lo prueba
  * `tareas-ticket.e2e.spec.ts`.
  */
@@ -23,14 +24,24 @@ import {
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
-import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  TicketNoEncontradoError,
+} from '../../domain/errors/tickets.errors';
 import { ListarTecnicosElegiblesTareaUseCase } from '../../application/use-cases/listar-tecnicos-elegibles-tarea.use-case';
-import { actorTareaDesdeJwt, modulosConLecturaDesdeJwt } from '../actor-tarea';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../../application/services/elegibilidad-asignado';
+import { actorTareaDesdeAlcance } from '../actor-tarea';
 import { TareasTicketController, toHttpExceptionTareas } from './tareas-ticket.controller';
 
-describe('actorTareaDesdeJwt', () => {
-  it('TECNICO: los módulos con MODIFICACION salen de sus celdas, sin ser administrador', () => {
-    const actor = actorTareaDesdeJwt(
+describe('actorTareaDesdeAlcance', () => {
+  it('TECNICO: los permisos por tipo salen del alcance cargado, sin ser administrador; las celdas del JWT no cuentan', () => {
+    const alcance = alcancePorTipo('tecnico-uuid', {
+      'tipo-edilicia': ['LECTURA', 'MODIFICACION'],
+    });
+    const actor = actorTareaDesdeAlcance(
       payloadDeTest({
         sub: 'tecnico-uuid',
         cliente_id: 'cliente-uuid',
@@ -38,47 +49,24 @@ describe('actorTareaDesdeJwt', () => {
         permisos: ['EDILICIA:MODIFICACION', 'TICKETS:LECTURA', 'TICKETS:VER_TODOS'],
         modulos: ['EDILICIA', 'TICKETS'],
       }),
+      alcance,
     );
 
     expect(actor).toEqual({
       id: 'tecnico-uuid',
       esAdministrador: false,
-      tienePermisoVerTodos: true,
-      modulosConModificacion: ['EDILICIA'],
-      modulosPermitidos: ['EDILICIA', 'TICKETS'],
+      permisosPorTipo: alcance.permisosPorTipo,
     });
   });
 
   it.each([
     ['ADMINISTRADOR', payloadDeTest({ rol: 'ADMINISTRADOR', cliente_id: 'cliente-uuid' })],
     ['ROOT', payloadDeTest({ is_global_admin: true })],
-  ])('%s es administrador y tiene MODIFICACION en los cuatro módulos', (_rol, user) => {
-    const actor = actorTareaDesdeJwt(user);
+  ])('%s es administrador y queda sin restricción por tipo', (_rol, user) => {
+    const actor = actorTareaDesdeAlcance(user, alcanceSinRestriccion(user.sub));
 
     expect(actor.esAdministrador).toBe(true);
-    expect(actor.tienePermisoVerTodos).toBe(true);
-    expect(actor.modulosConModificacion).toEqual(['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS']);
-    expect(actor.modulosPermitidos).toBeNull();
-  });
-});
-
-describe('modulosConLecturaDesdeJwt (T12)', () => {
-  it('sale de las celdas <MODULO>:LECTURA del actor; VER_TODOS no cuenta como lectura', () => {
-    const user = payloadDeTest({
-      sub: 'colaborador-uuid',
-      cliente_id: 'cliente-uuid',
-      rol: 'COLABORADOR',
-      permisos: ['EDILICIA:LECTURA', 'TICKETS:VER_TODOS', 'COMPRAS:MODIFICACION'],
-    });
-
-    expect(modulosConLecturaDesdeJwt(user)).toEqual(['EDILICIA']);
-  });
-
-  it.each([
-    ['ADMINISTRADOR', payloadDeTest({ rol: 'ADMINISTRADOR', cliente_id: 'cliente-uuid' })],
-    ['ROOT', payloadDeTest({ is_global_admin: true })],
-  ])('%s tiene LECTURA en los cuatro módulos', (_rol, user) => {
-    expect(modulosConLecturaDesdeJwt(user)).toEqual(['TICKETS', 'COMPRAS', 'EDILICIA', 'EQUIPOS']);
+    expect(actor.permisosPorTipo).toBeNull();
   });
 });
 
@@ -89,6 +77,11 @@ describe('toHttpExceptionTareas', () => {
     ['TAREA_YA_COMPLETADA', new TareaYaCompletadaError('t'), ConflictException],
     ['TAREA_NO_COMPLETADA', new TareaNoCompletadaError('t'), ConflictException],
     ['TAREA_ACCION_NO_PERMITIDA', new TareaAccionNoPermitidaError('crear'), ForbiddenException],
+    [
+      'ACCION_SOBRE_TIPO_NO_PERMITIDA',
+      new AccionSobreTipoNoPermitidaError('MODIFICACION'),
+      ForbiddenException,
+    ],
     [
       'TECNICO_TAREA_NO_ELEGIBLE',
       new TecnicoTareaNoElegibleError('u'),
@@ -147,11 +140,24 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
   );
 
   function armar() {
-    const checker = {
-      listarTecnicosAsignables: vi
-        .fn()
-        .mockResolvedValue([{ id: 'tecnico-uuid', nombre: 'Ana', apellido: 'Gómez' }]),
-    };
+    // Ana tiene LECTURA sobre el tipo de Edilicia; Beto solo la celda del módulo, que no cuenta.
+    const master = new MasterAgentesEnMemoria();
+    master.agregar({
+      id: 'tecnico-uuid',
+      rol: 'TECNICO',
+      celdas: [],
+      nombre: 'Ana',
+      apellido: 'Gómez',
+    });
+    master.agregar({ id: 'beto-uuid', rol: 'TECNICO', celdas: ['EDILICIA:LECTURA'] });
+    const elegibilidad = new ElegibilidadAsignado(
+      master,
+      new PermisosTipoTicketEnMemoria(
+        [],
+        [{ usuarioId: 'tecnico-uuid', tipoId: 'tipo-edilicia', accion: 'LECTURA' }],
+      ),
+    );
+    const listarAgentesDeTipo = vi.spyOn(elegibilidad, 'listarAgentesDeTipo');
     const useCase = new ListarTecnicosElegiblesTareaUseCase(
       {
         findById: vi.fn().mockResolvedValue(ticket),
@@ -159,13 +165,15 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
         bloquear: vi.fn().mockResolvedValue(undefined),
       },
       { findById: vi.fn().mockResolvedValue(tipo) },
-      checker,
+      elegibilidad,
     );
-    return { useCase, checker };
+    return { useCase, listarAgentesDeTipo };
   }
 
-  it('el responsable con el permiso del módulo recibe los elegibles del módulo del tipo', async () => {
-    const { useCase, checker } = armar();
+  const PERMISOS = { 'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'] } as const;
+
+  it('el responsable con MODIFICACION sobre el tipo recibe los elegibles del tipo', async () => {
+    const { useCase, listarAgentesDeTipo } = armar();
 
     const result = await useCase.execute({
       ticketId: 'ticket-uuid',
@@ -173,18 +181,16 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
       actor: {
         id: 'responsable-uuid',
         esAdministrador: false,
-        tienePermisoVerTodos: true,
-        modulosConModificacion: ['EDILICIA'],
-        modulosPermitidos: ['EDILICIA'],
+        permisosPorTipo: alcancePorTipo('responsable-uuid', PERMISOS).permisosPorTipo,
       },
     });
 
     expect(result.getValue()).toEqual([{ id: 'tecnico-uuid', nombre: 'Ana', apellido: 'Gómez' }]);
-    expect(checker.listarTecnicosAsignables).toHaveBeenCalledWith('cliente-uuid', 'EDILICIA');
+    expect(listarAgentesDeTipo).toHaveBeenCalledWith('cliente-uuid', 'tipo-edilicia');
   });
 
-  it('quien no puede asignar recibe el rechazo y master no se consulta', async () => {
-    const { useCase, checker } = armar();
+  it('quien no puede asignar recibe el rechazo y la elegibilidad no se consulta', async () => {
+    const { useCase, listarAgentesDeTipo } = armar();
 
     const result = await useCase.execute({
       ticketId: 'ticket-uuid',
@@ -192,13 +198,11 @@ describe('ListarTecnicosElegiblesTareaUseCase', () => {
       actor: {
         id: 'otro-uuid',
         esAdministrador: false,
-        tienePermisoVerTodos: true,
-        modulosConModificacion: ['EDILICIA'],
-        modulosPermitidos: ['EDILICIA'],
+        permisosPorTipo: alcancePorTipo('otro-uuid', PERMISOS).permisosPorTipo,
       },
     });
 
     expect(result.getError()).toBeInstanceOf(TareaAccionNoPermitidaError);
-    expect(checker.listarTecnicosAsignables).not.toHaveBeenCalled();
+    expect(listarAgentesDeTipo).not.toHaveBeenCalled();
   });
 });

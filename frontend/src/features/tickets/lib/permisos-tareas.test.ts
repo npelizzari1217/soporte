@@ -4,27 +4,28 @@ import { motivoTareasSoloLectura, puedeCompletarTareaUi, puedeGestionarTareasUi,
 /**
  * La matriz con responsable conocido la cubre `ticket-tareas.test.tsx`. Acá va
  * el caso que solo existe en el front: el responsable desconocido (`undefined`),
- * que es lo que ve el diálogo de Edilicia sin `TICKETS:LECTURA`.
+ * que es lo que ve el diálogo de Edilicia mientras el ticket carga o si su
+ * lectura falla.
  */
-const conModulo: ActorTareasUi = { id: "u1", esAdministrador: false, tieneModificacionDelModulo: true };
-const sinModulo: ActorTareasUi = { ...conModulo, tieneModificacionDelModulo: false };
+const conTipo: ActorTareasUi = { id: "u1", esAdministrador: false, tieneModificacionDelTipo: true };
+const sinTipo: ActorTareasUi = { ...conTipo, tieneModificacionDelTipo: false };
 
 describe("permisos-tareas — responsable desconocido", () => {
-  it("gestiona quien tiene el permiso del módulo, porque podría ser el responsable", () => {
-    expect(puedeGestionarTareasUi(conModulo, undefined)).toBe(true);
-    expect(puedeGestionarTareasUi(sinModulo, undefined)).toBe(false);
+  it("gestiona quien tiene MODIFICACION sobre el tipo, porque podría ser el responsable", () => {
+    expect(puedeGestionarTareasUi(conTipo, undefined)).toBe(true);
+    expect(puedeGestionarTareasUi(sinTipo, undefined)).toBe(false);
   });
 
-  it("completa quien tiene el permiso del módulo o es el técnico de la tarea", () => {
-    expect(puedeCompletarTareaUi(conModulo, undefined, null)).toBe(true);
-    expect(puedeCompletarTareaUi(sinModulo, undefined, null)).toBe(false);
-    expect(puedeCompletarTareaUi(sinModulo, undefined, "u1")).toBe(true);
+  it("completa quien tiene MODIFICACION sobre el tipo o es el técnico de la tarea", () => {
+    expect(puedeCompletarTareaUi(conTipo, undefined, null)).toBe(true);
+    expect(puedeCompletarTareaUi(sinTipo, undefined, null)).toBe(false);
+    expect(puedeCompletarTareaUi(sinTipo, undefined, "u1")).toBe(true);
   });
 
-  it("con el responsable conocido, el permiso del módulo solo no alcanza", () => {
-    expect(puedeGestionarTareasUi(conModulo, "otro")).toBe(false);
-    expect(puedeCompletarTareaUi(conModulo, "otro", null)).toBe(false);
-    expect(puedeCompletarTareaUi(conModulo, null, null)).toBe(false);
+  it("con el responsable conocido, MODIFICACION sobre el tipo solo no alcanza", () => {
+    expect(puedeGestionarTareasUi(conTipo, "otro")).toBe(false);
+    expect(puedeCompletarTareaUi(conTipo, "otro", null)).toBe(false);
+    expect(puedeCompletarTareaUi(conTipo, null, null)).toBe(false);
   });
 });
 

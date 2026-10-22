@@ -5,20 +5,21 @@ import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatic
 import type { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
 import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
-import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
 import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
 import type { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
-import type { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import type { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
-import type { Modulo } from '../../../shared/domain/modulos';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
 
-function makeTicket(solicitanteId = 'actor-1'): TicketEntity {
+function makeTicket(solicitanteId = 'actor-1', tipoId = 'tipo-soporte'): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'No prende',
       descripcion: null,
-      tipoId: 'tipo-soporte',
+      tipoId,
       estadoId: 'estado-nuevo',
       prioridadId: 'prioridad-media',
       cicloId: 'ciclo-1',
@@ -29,21 +30,9 @@ function makeTicket(solicitanteId = 'actor-1'): TicketEntity {
   );
 }
 
-function makeTipo(modulo: Modulo): TipoTicketEntity {
-  return TipoTicketEntity.create(
-    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
-    'tipo-soporte',
-  );
-}
-
-/** Alcance del solicitante del ticket, sin restricción de módulo. */
-function alcance(overrides: Partial<AlcanceActorTicket> = {}): AlcanceActorTicket {
-  return {
-    actorId: 'actor-1',
-    tienePermisoVerTodos: false,
-    modulosPermitidos: null,
-    ...overrides,
-  };
+/** Alcance del solicitante del ticket, con solo `LECTURA` sobre el tipo Soporte. */
+function alcance(): AlcanceActorTicket {
+  return alcancePorTipo('actor-1', { 'tipo-soporte': ['LECTURA'] });
 }
 
 /**
@@ -75,16 +64,8 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
         .mockResolvedValue(overrides?.ticket === undefined ? makeTicket() : overrides.ticket),
       esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
     };
-    const tipoTicketRepo = {
-      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(makeTipo('TICKETS')),
-    };
-    const useCase = new ObtenerEquipoDeTicketUseCase(
-      ticketSoporteRepo,
-      equipoRepo,
-      ticketRepo,
-      tipoTicketRepo,
-    );
-    return { useCase, ticketSoporteRepo, equipoRepo, ticketRepo, tipoTicketRepo };
+    const useCase = new ObtenerEquipoDeTicketUseCase(ticketSoporteRepo, equipoRepo, ticketRepo);
+    return { useCase, ticketSoporteRepo, equipoRepo, ticketRepo };
   }
 
   it('retorna el equipo cuando el satélite tiene equipoId', async () => {
@@ -146,7 +127,7 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
     expect(result.getValue().equipo).toBeNull();
   });
 
-  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3)', () => {
     const ticketSoporteConEquipo = (): TicketSoporteEntity =>
       TicketSoporteEntity.create({
         ticketId: 'ticket-1',
@@ -154,18 +135,20 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
         descripcionProblema: 'No prende',
       });
 
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor sea su solicitante y tenga VER_TODOS', async () => {
-      const { useCase, tipoTicketRepo, ticketSoporteRepo, equipoRepo } = makeUseCase({
+    it('un ticket de un tipo sin LECTURA es 404 aunque el actor sea su solicitante', async () => {
+      const { useCase, ticketSoporteRepo, equipoRepo } = makeUseCase({
         ticketSoporte: ticketSoporteConEquipo(),
+        ticket: makeTicket('actor-1', 'tipo-mantenimiento'),
       });
-      tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
 
       const result = await useCase.execute({
         ticketId: 'ticket-1',
-        ...alcance({ tienePermisoVerTodos: true, modulosPermitidos: ['TICKETS'] }),
+        ...alcancePorTipo('actor-1', {
+          'tipo-soporte': ['LECTURA', 'VER_TODOS'],
+          'tipo-mantenimiento': ['VER_TODOS', 'MODIFICACION'],
+        }),
       });
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(ticketSoporteRepo.findByTicketId).not.toHaveBeenCalled();
       expect(equipoRepo.findById).not.toHaveBeenCalled();
@@ -177,12 +160,8 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
         ticket: makeTicket('otro-usuario'),
       });
 
-      const result = await useCase.execute({
-        ticketId: 'ticket-1',
-        ...alcance({ modulosPermitidos: ['TICKETS'] }),
-      });
+      const result = await useCase.execute({ ticketId: 'ticket-1', ...alcance() });
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(ticketSoporteRepo.findByTicketId).not.toHaveBeenCalled();
     });
@@ -192,29 +171,27 @@ describe('ObtenerEquipoDeTicketUseCase', () => {
 
       const result = await useCase.execute({ ticketId: 'no-existe', ...alcance() });
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     });
 
-    it('un ticket de un tipo de sus módulos resuelve el equipo', async () => {
+    it('con solo LECTURA sobre el tipo resuelve el equipo', async () => {
       const { useCase, equipoRepo } = makeUseCase({ ticketSoporte: ticketSoporteConEquipo() });
 
-      const result = await useCase.execute({
-        ticketId: 'ticket-1',
-        ...alcance({ modulosPermitidos: ['TICKETS'] }),
-      });
+      const result = await useCase.execute({ ticketId: 'ticket-1', ...alcance() });
 
       expect(result.isOk()).toBe(true);
       expect(equipoRepo.findById).toHaveBeenCalledWith('equipo-1');
     });
 
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) resuelve el equipo de un tipo de cualquier módulo', async () => {
-      const { useCase, tipoTicketRepo } = makeUseCase({ ticketSoporte: ticketSoporteConEquipo() });
-      tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+    it('sin restricción (ROOT o ADMINISTRADOR) resuelve el equipo de un tipo sin filas', async () => {
+      const { useCase } = makeUseCase({
+        ticketSoporte: ticketSoporteConEquipo(),
+        ticket: makeTicket('otro-usuario', 'tipo-mantenimiento'),
+      });
 
       const result = await useCase.execute({
         ticketId: 'ticket-1',
-        ...alcance({ tienePermisoVerTodos: true, modulosPermitidos: null }),
+        ...alcanceSinRestriccion('actor-1'),
       });
 
       expect(result.isOk()).toBe(true);

@@ -4,13 +4,17 @@ import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import { RoleEntity } from '../../domain/entities/role.entity';
 import {
   MembresiaNoEncontradaError,
+  PermisosPorTipoNoAplicadosError,
   PresetRolNoDefinidoError,
   RolNoEncontradoError,
 } from '../../domain/errors/auth.errors';
 import { Result } from '../../../shared/domain/result';
 import type { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import type { IRoleRepository } from '../../domain/ports/i-role.repository';
-import type { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
+import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
+import type { IPermisosPorTipoDeCliente } from '../../domain/ports/i-permisos-por-tipo-de-cliente.port';
+import { permisosPorTipoEnMemoria } from '../../test-helpers/permisos-por-tipo-en-memoria';
 
 function buildMembresia() {
   return MembresiaEntity.reconstitute(
@@ -225,5 +229,100 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
 
     expect(result.isOk()).toBe(true);
     expect(aplicarPresetPermisosUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  /**
+   * T4c (odd/tasks/permisos-por-tipo-ticket.md): con `reaplicarPreset`, el cambio de rol reemplaza
+   * también las filas por tipo. Se arma con el `AplicarPresetPermisosUseCase` real y el servicio
+   * real de la plantilla sobre un repositorio en memoria.
+   */
+  describe('permisos por tipo de ticket (T4c)', () => {
+    function conPresetReal(puerto: IPermisosPorTipoDeCliente) {
+      const matriz = {
+        setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
+        findByUsuarioYCliente: vi
+          .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
+          .mockResolvedValue(['TICKETS:ALTAS']),
+      };
+      const membresiaRepo = {
+        findByUsuarioYCliente: vi
+          .fn<IMembresiaRepository['findByUsuarioYCliente']>()
+          .mockResolvedValue(buildMembresia()),
+        save: vi.fn<IMembresiaRepository['save']>().mockResolvedValue(undefined),
+      };
+      const roleRepo = {
+        findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(
+          RoleEntity.create({
+            codigo: 'TECNICO',
+            nombre: 'Técnico',
+            descripcion: null,
+            permisos: [],
+          }),
+        ),
+      };
+      const useCase = new CambiarRolUsuarioTenantUseCase(
+        membresiaRepo,
+        roleRepo,
+        new AplicarPresetPermisosUseCase(matriz, puerto),
+      );
+      return { useCase, membresiaRepo, matriz };
+    }
+
+    it('con reaplicarPreset: true reemplaza las filas por tipo por las del rol destino', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'BORRADO' },
+      ]);
+      const { useCase } = conPresetReal(porTipo.puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        reaplicarPreset: true,
+      });
+
+      expect(result.isOk()).toBe(true);
+      const filas = porTipo.repo.filasDe('usuario-1');
+      expect(filas).not.toContain('tipo-soporte:BORRADO');
+      expect(filas).toContain('tipo-soporte:ASIGNAR');
+      expect(filas).toContain('tipo-mantenimiento:MODIFICACION');
+      expect(porTipo.clientes).toEqual(['cliente-token']);
+    });
+
+    it('sin reaplicarPreset no toca las filas por tipo', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'BORRADO' },
+      ]);
+      const { useCase } = conPresetReal(porTipo.puerto);
+
+      await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+      });
+
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(['tipo-soporte:BORRADO']);
+    });
+
+    it('si falla el tenant: el rol queda cambiado, la matriz NO se toca (W1) y el error llega al llamador', async () => {
+      const puerto: IPermisosPorTipoDeCliente = {
+        aplicarPlantilla: vi
+          .fn<IPermisosPorTipoDeCliente['aplicarPlantilla']>()
+          .mockRejectedValue(new Error('base del tenant caída')),
+      };
+      const { useCase, membresiaRepo, matriz } = conPresetReal(puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        reaplicarPreset: true,
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(PermisosPorTipoNoAplicadosError);
+      expect(membresiaRepo.save).toHaveBeenCalledOnce();
+      expect(matriz.setPermisos).not.toHaveBeenCalled();
+    });
   });
 });

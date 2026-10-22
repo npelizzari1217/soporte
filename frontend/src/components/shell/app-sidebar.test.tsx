@@ -2,30 +2,48 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppSidebar } from "./app-sidebar";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionContext } from "@/shared/providers/session-provider";
 import type { JwtPayload } from "@/shared/api/types";
+import type { PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
+import { server } from "../../../test/msw/server";
+import { handlerPermisosPorTipo, permisosDeTest } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/tickets",
 }));
 
-function sessionTree(user: JwtPayload | null) {
+/** LECTURA sobre un tipo de TICKETS: lo que muestra el ítem "Tickets" (odd/permisos-por-tipo-ticket, S5). */
+const LEE_SOPORTE = permisosDeTest({ "tipo-soporte": ["LECTURA"] }, { "tipo-soporte": "TICKETS" });
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+/**
+ * El sidebar con los permisos por tipo hidratados como los deja el layout del servidor; con
+ * `permisos` en `null` no hay hidratación y el hook los pide al backend.
+ */
+function sessionTree(user: JwtPayload | null, permisos: PermisosPorTipo | null = LEE_SOPORTE) {
+  const permisosPorTipoIniciales = user && permisos ? { user, permisos } : null;
   return (
-    <SessionContext.Provider value={{ user, isLoading: false, setUser: () => {} }}>
-      <AppSidebar />
-    </SessionContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <SessionContext.Provider value={{ user, isLoading: false, setUser: () => {}, permisosPorTipoIniciales }}>
+        <AppSidebar />
+      </SessionContext.Provider>
+    </QueryClientProvider>
   );
 }
 
-function renderWithUser(user: JwtPayload | null) {
-  return render(sessionTree(user));
+function renderWithUser(user: JwtPayload | null, permisos: PermisosPorTipo | null = LEE_SOPORTE) {
+  queryClient.clear();
+  return render(sessionTree(user, permisos));
 }
 
 const usuario: JwtPayload = {
   sub: "1",
   cliente_id: "c1",
   rol: "USUARIO",
-  permisos: ["TICKETS:LECTURA", "TICKETS:ALTAS", "TICKETS:COMENTAR"],
+  // Celdas del JWT a propósito vacías: el ítem "Tickets" lo decide LECTURA sobre un tipo.
+  permisos: [],
   is_global_admin: false,
   cliente_nombre: "Cliente Uno",
   membresias: [],
@@ -71,6 +89,29 @@ describe("AppSidebar", () => {
     renderWithUser(administrador);
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /admin/i })).toBeInTheDocument();
+  });
+
+  it("con la celda TICKETS:LECTURA pero sin LECTURA en ningún tipo → NO ve Tickets (S5)", () => {
+    renderWithUser(
+      { ...usuario, permisos: ["TICKETS:LECTURA"] },
+      permisosDeTest({ "tipo-soporte": ["ALTAS"] }, { "tipo-soporte": "TICKETS" }),
+    );
+    expect(screen.queryByRole("link", { name: /tickets/i })).not.toBeInTheDocument();
+  });
+
+  it("LECTURA en un tipo de EDILICIA y en ninguno de TICKETS → ve Edilicia y no Tickets (S5)", () => {
+    renderWithUser(
+      usuario,
+      permisosDeTest({ "tipo-mantenimiento": ["LECTURA"] }, { "tipo-mantenimiento": "EDILICIA" }),
+    );
+    expect(screen.getByRole("link", { name: /edilicia/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /tickets/i })).not.toBeInTheDocument();
+  });
+
+  it("sin hidratación del servidor, el ítem aparece cuando llegan los permisos del backend", async () => {
+    server.use(handlerPermisosPorTipo(LEE_SOPORTE));
+    renderWithUser(usuario, null);
+    expect(await screen.findByRole("link", { name: /tickets/i })).toBeInTheDocument();
   });
 
   it("ruta activa (/tickets) → el link correspondiente tiene aria-current='page'", () => {

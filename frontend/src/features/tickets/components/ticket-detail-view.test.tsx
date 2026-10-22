@@ -5,6 +5,30 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { TicketDetailView } from "./ticket-detail-view";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
+import type { AccionTipoTicket } from "@/shared/auth/permisos-por-tipo";
+
+/**
+ * Un TECNICO cuyas acciones salen de sus filas por tipo (odd/permisos-por-tipo-ticket, S6). Trae
+ * TODAS las celdas TICKETS:* del JWT a propósito: ya no deciden ningún control del detalle.
+ */
+const TECNICO = buildUser({
+  sub: "u-otro",
+  rol: "TECNICO",
+  permisos: [
+    "TICKETS:LECTURA",
+    "TICKETS:MODIFICACION",
+    "TICKETS:TRANSICIONAR",
+    "TICKETS:ASIGNAR",
+    "TICKETS:COMENTAR",
+    "TICKETS:OBSERVAR",
+  ],
+});
+
+/** Las acciones del técnico sobre el tipo `ti1` del ticket de prueba. */
+function enTi1(...acciones: AccionTipoTicket[]) {
+  return permisosDeTest({ ti1: ["LECTURA", ...acciones] });
+}
 
 const TICKET_ID = "t1";
 
@@ -109,17 +133,17 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
 
   it.each([
     {
-      rol: "ADMINISTRADOR",
-      permisos: ["TICKETS:MODIFICACION", "TICKETS:TRANSICIONAR", "TICKETS:ASIGNAR", "TICKETS:COMENTAR"],
+      caso: "con MODIFICACION, TRANSICIONAR y ASIGNAR sobre el tipo",
+      permisos: enTi1("MODIFICACION", "TRANSICIONAR", "ASIGNAR", "COMENTAR"),
       esperados: { transicionar: true, asignar: true, editar: true },
     },
     {
-      rol: "USUARIO",
-      permisos: ["TICKETS:COMENTAR"],
+      caso: "con solo COMENTAR sobre el tipo, aunque tenga las celdas del JWT",
+      permisos: enTi1("COMENTAR"),
       esperados: { transicionar: false, asignar: false, editar: false },
     },
-  ])("$rol → controles visibles según permisos reales", async ({ permisos, esperados }) => {
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos }) });
+  ])("$caso → controles visibles según permisos reales", async ({ permisos, esperados }) => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos });
 
     await screen.findByText("Impresora rota");
 
@@ -143,7 +167,7 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     }
   });
 
-  it("«Descargar PDF» es visible para quien solo puede ver el ticket y pide GET /tickets/:id/pdf", async () => {
+  it("«Descargar PDF» es visible con IMPRESION sobre el tipo, sin otra acción, y pide GET /tickets/:id/pdf", async () => {
     let pdfPedido = false;
     URL.createObjectURL = vi.fn(() => "blob:mock");
     URL.revokeObjectURL = vi.fn();
@@ -157,8 +181,8 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
       }),
     );
 
-    // Sin ningún permiso de acción: el botón no está gateado.
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+    // Solo ver e imprimir: el PDF pide IMPRESION sobre el tipo, nada más (D5 c).
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("IMPRESION") });
     await screen.findByText("Impresora rota");
 
     await userEvent.setup().click(screen.getByRole("button", { name: /descargar pdf/i }));
@@ -223,6 +247,8 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     });
 
     await screen.findByText("Impresora rota");
+    // Los candidatos se piden con el tipo del ticket ya resuelto (ASIGNAR sobre ESE tipo).
+    await screen.findByRole("option", { name: "Ana García" });
     await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
 
@@ -247,6 +273,8 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     });
 
     await screen.findByText("Impresora rota");
+    // Los candidatos se piden con el tipo del ticket ya resuelto (ASIGNAR sobre ESE tipo).
+    await screen.findByRole("option", { name: "Ana García" });
     await user.selectOptions(screen.getByRole("combobox", { name: /nuevo responsable/i }), "u-tecnico-2");
     await user.click(screen.getByRole("button", { name: /asignar y poner en proceso/i }));
 
@@ -290,6 +318,89 @@ describe("TicketDetailView — gating de acciones por permiso", () => {
     expect(screen.queryByText("u-solicitante")).not.toBeInTheDocument();
     expect(screen.queryByText("u-tecnico")).not.toBeInTheDocument();
     expect(screen.getByText(/vencido/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * odd/permisos-por-tipo-ticket (S2, S6): el mismo usuario, dos tickets de tipos distintos. Cada
+ * control se decide por la acción sobre el tipo de ESE ticket: visible en uno, oculto en el otro.
+ */
+describe("TicketDetailView — acciones según el tipo del ticket (odd/permisos-por-tipo-ticket, S6)", () => {
+  beforeEach(() => mockBackend());
+
+  const TODAS: AccionTipoTicket[] = [
+    "LECTURA",
+    "MODIFICACION",
+    "TRANSICIONAR",
+    "ASIGNAR",
+    "COMENTAR",
+    "OBSERVAR",
+    "IMPRESION",
+    "ALTAS",
+  ];
+  // Opera todo en Soporte (ti1); en Redes (ti2) solo lee.
+  const PERMISOS = permisosDeTest({ ti1: TODAS, ti2: ["LECTURA"] });
+
+  function controles() {
+    return {
+      editar: screen.queryByRole("button", { name: /^editar$/i }),
+      estado: screen.queryByRole("combobox", { name: /nuevo estado/i }),
+      responsable: screen.queryByRole("combobox", { name: /nuevo responsable/i }),
+      comentar: screen.queryByRole("textbox", { name: "Comentario" }),
+      interno: screen.queryByRole("checkbox", { name: /interno/i }),
+      pdf: screen.queryByRole("button", { name: /descargar pdf/i }),
+      adjuntar: screen.queryByText(/adjuntar archivo/i),
+      nuevaTarea: screen.queryByLabelText("Nueva tarea"),
+    };
+  }
+
+  it("en el tipo con todas las acciones, cada control se muestra", async () => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, asignadoId: "u-otro" })));
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
+    await screen.findByText("Impresora rota");
+    await screen.findByLabelText("Nueva tarea");
+
+    for (const [nombre, control] of Object.entries(controles())) {
+      expect(control, nombre).not.toBeNull();
+    }
+  });
+
+  it("en el tipo que solo lee, ningún control de acción se muestra, aunque el JWT traiga las celdas", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ ...TICKET, tipoId: "ti2", asignadoId: "u-otro" }),
+      ),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: PERMISOS });
+    await screen.findByText("Impresora rota");
+    // Responsable del ticket: completa sus tareas (CA4), así que la lista ya está pintada.
+    await screen.findByRole("button", { name: "Completar" });
+
+    for (const [nombre, control] of Object.entries(controles())) {
+      expect(control, nombre).toBeNull();
+    }
+  });
+
+  it("COMENTAR sin OBSERVAR: comenta, pero sin el toggle de comentario interno", async () => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("COMENTAR") });
+    await screen.findByText("Impresora rota");
+
+    expect(screen.getByRole("textbox", { name: "Comentario" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /interno/i })).not.toBeInTheDocument();
+  });
+
+  it("adjuntar se ofrece con ALTAS o con MODIFICACION sobre el tipo", async () => {
+    const conAltas = renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
+      user: TECNICO,
+      permisos: enTi1("ALTAS"),
+    });
+    await screen.findByText("Impresora rota");
+    expect(screen.getByText(/adjuntar archivo/i)).toBeInTheDocument();
+    conAltas.unmount();
+
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("MODIFICACION") });
+    await screen.findByText("Impresora rota");
+    expect(screen.getByText(/adjuntar archivo/i)).toBeInTheDocument();
   });
 });
 
@@ -577,7 +688,7 @@ describe("TicketDetailView — tarjeta «Acciones» agrupada (odd/tasks/acciones
   });
 
   it("sin permisos de asignar ni transicionar: no quedan grupos vacíos, solo «Ticket»", async () => {
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1() });
     await screen.findByText("Impresora rota");
 
     const acciones = screen.getByRole("region", { name: /acciones/i });

@@ -4,7 +4,14 @@ import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-clien
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { EquipoInvalidoError } from '../../domain/errors/equipos.errors';
 import { Result } from '../../../shared/domain/result';
-import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  AccionSobreTipoNoPermitidaError,
+  SolicitanteInvalidoError,
+} from '../../../tickets/domain/errors/tickets.errors';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
 import { AUTOR_FORMULARIO_PUBLICO } from '../../../tickets/domain/constants/formulario-publico.constants';
 import { TicketCreadoEvent } from '../../../tickets/domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../../tickets/domain/events/ticket-asignado.event';
@@ -504,6 +511,52 @@ describe('CrearTicketSoporteUseCase', () => {
       const result = await useCase.execute(baseDto({ equipoId: 'no-existe' }));
 
       expect(result.getError()).toBeInstanceOf(EquipoInvalidoError);
+    });
+  });
+
+  describe('ALTAS sobre el tipo SOPORTE (odd/permisos-por-tipo-ticket, S6, D5 c)', () => {
+    it('con ALTAS sobre SOPORTE → crea', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ alcance: alcancePorTipo('usuario-1', { 'tipo-soporte-id': ['ALTAS'] }) }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(deps.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('sin ALTAS sobre SOPORTE (aunque la tenga sobre otro tipo) → 403, sin abrir la tx ni escribir', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({
+          equipoId: 'equipo-1',
+          alcance: alcancePorTipo('usuario-1', {
+            'tipo-soporte-id': ['LECTURA', 'MODIFICACION'],
+            'tipo-otro-id': ['ALTAS'],
+          }),
+        }),
+      );
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(deps.txRunner.run).not.toHaveBeenCalled();
+      expect(deps.equipoRepo.bloquearParaOperarPiezas).not.toHaveBeenCalled();
+      expect(deps.ticketRepo.save).not.toHaveBeenCalled();
+      expect(deps.ticketSoporteRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('ROOT y ADMINISTRADOR (sin restricción) → crea', async () => {
+      const deps = makeDeps();
+      const useCase = buildUseCase(deps);
+
+      const result = await useCase.execute(
+        baseDto({ alcance: alcanceSinRestriccion('usuario-1') }),
+      );
+
+      expect(result.isOk()).toBe(true);
     });
   });
 

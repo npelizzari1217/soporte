@@ -17,6 +17,21 @@ export class TicketNoEncontradoError extends DomainError {
 }
 
 /**
+ * AccionSobreTipoNoPermitidaError — el actor ve el ticket (tiene `LECTURA` sobre su tipo y pasa la
+ * regla de fila) pero no tiene, sobre ese tipo, la acción que pide la operación
+ * (odd/permisos-por-tipo-ticket, S6, D5 c). Un ticket que no ve es `TicketNoEncontradoError`.
+ * → HTTP 403 en la capa de presentación.
+ */
+export class AccionSobreTipoNoPermitidaError extends DomainError {
+  readonly code = 'ACCION_SOBRE_TIPO_NO_PERMITIDA';
+
+  /** @param accion Acción faltante, o las alternativas unidas con "o". */
+  constructor(accion: string) {
+    super(`El usuario no tiene el permiso "${accion}" sobre el tipo de este ticket.`);
+  }
+}
+
+/**
  * TicketBloqueadoParaEdicionError — el ticket ya entró EN_PROCESO (o un
  * estado posterior: RESUELTO/CERRADO/CANCELADO) y el actor NO es ROOT
  * (`is_global_admin`). Una vez fuera de NUEVO/ASIGNADO, la edición de datos
@@ -509,6 +524,35 @@ export class ModuloSinAltaDeTipoError extends DomainError {
     super(
       `Un tipo de ticket del módulo ${modulo} no se podría usar: ` +
         'solo los módulos TICKETS y EDILICIA tienen un alta que permite elegir el tipo.',
+    );
+  }
+}
+
+/**
+ * TipoOrigenPermisosNoEncontradoError — el alta de un tipo pide copiar los permisos de un tipo que
+ * no existe en el tenant (odd/tasks/permisos-por-tipo-ticket.md, S4). Es un dato inválido del
+ * formulario, no un recurso de la ruta: → HTTP 422 en la capa de presentación.
+ */
+export class TipoOrigenPermisosNoEncontradoError extends DomainError {
+  readonly code = 'TIPO_ORIGEN_PERMISOS_NO_ENCONTRADO';
+
+  constructor(tipoId: string) {
+    super(`No existe el tipo de ticket "${tipoId}" del que se pidieron copiar los permisos.`);
+  }
+}
+
+/**
+ * TipoOrigenPermisosDeOtroModuloError — el alta de un tipo pide copiar los permisos de un tipo de
+ * otro módulo (odd/tasks/permisos-por-tipo-ticket.md, S4). Copiar el acceso a Edilicia sobre un tipo
+ * de Tickets daría acceso a quien nunca lo tuvo en ese módulo. → HTTP 422.
+ */
+export class TipoOrigenPermisosDeOtroModuloError extends DomainError {
+  readonly code = 'TIPO_ORIGEN_PERMISOS_DE_OTRO_MODULO';
+
+  constructor(moduloOrigen: string, moduloNuevo: string) {
+    super(
+      'Los permisos solo se copian de un tipo del mismo módulo: ' +
+        `el tipo elegido es de ${moduloOrigen} y el nuevo es de ${moduloNuevo}.`,
     );
   }
 }

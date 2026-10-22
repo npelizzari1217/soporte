@@ -13,7 +13,7 @@
  * Responsable: reusa `useUsuariosAsignables` (mismo `GET /usuarios` que
  * "Asignar ticket") — no hay endpoint propio de preventivo para listar
  * usuarios (fuera de alcance de este WU, "consumo, no API nueva"). Gate real:
- * `TICKETS:ASIGNAR`/`TICKETS:VER_TODOS`/ADMINISTRADOR en el backend — un
+ * `ASIGNAR`/`VER_TODOS` sobre algún tipo de ticket, o ADMINISTRADOR, en el backend — un
  * actor con SOLO `PREVENTIVO:ALTAS` puede no ver responsables (ver reporte).
  *
  * Las tres queries que alimentan selects (`equiposQuery`, `prioridadesQuery`,

@@ -22,12 +22,20 @@ describe("schemas de reglas de asignación", () => {
     expect([...ESTADOS_REGLA_ASIGNACION]).toEqual(["SIN_REGLA", "VALIDA", "ROTA"]);
   });
 
-  it("acepta la vista completa con filas y candidatos por módulo", () => {
+  it("acepta la vista completa con filas y candidatos por tipo", () => {
+    const vista = {
+      reglas: [FILA],
+      candidatosPorTipo: { [FILA.tipoId]: [{ id: "u-1", nombre: "Ana", apellido: "Gómez" }] },
+    };
+    expect(reglasAsignacionVistaSchema.safeParse(vista).success).toBe(true);
+  });
+
+  it("rechaza la vista sin candidatos por tipo: la unión por módulo sola no alcanza", () => {
     const vista = {
       reglas: [FILA],
       candidatosPorModulo: { SOPORTE: [{ id: "u-1", nombre: "Ana", apellido: "Gómez" }] },
     };
-    expect(reglasAsignacionVistaSchema.safeParse(vista).success).toBe(true);
+    expect(reglasAsignacionVistaSchema.safeParse(vista).success).toBe(false);
   });
 
   it("rechaza un estado que el backend no emite", () => {

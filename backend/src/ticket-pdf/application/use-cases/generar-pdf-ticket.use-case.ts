@@ -16,7 +16,11 @@ import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-m
 import { ListarTimelineUseCase } from '../../../tickets/application/use-cases/listar-timeline.use-case';
 import { ObtenerTicketUseCase } from '../../../tickets/application/use-cases/obtener-ticket.use-case';
 import { IGeneradorPdfTicket } from '../../domain/ports/i-generador-pdf-ticket';
-import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  AlcanceActorTicket,
+  tieneAccionSobreTipo,
+} from '../../../tickets/application/services/visibilidad-ticket';
+import { AccionSobreTipoNoPermitidaError } from '../../../tickets/domain/errors/tickets.errors';
 import {
   EventoHistorialPdf,
   LogoPdf,
@@ -26,13 +30,11 @@ import {
 } from '../../domain/ticket-pdf-vista';
 
 /**
- * Entrada de `GenerarPdfTicketUseCase`. NO lleva `tienePermisoObservar`, y
- * es a propósito: el PDF es un documento que se descarga y se reenvía, así
- * que NUNCA incluye comentarios internos, ni siquiera para quien tiene
- * `TICKETS:OBSERVAR` en pantalla. Que el campo no exista impide que un
- * caller lo active por error.
+ * Entrada de `GenerarPdfTicketUseCase`. El alcance del actor (`AlcanceActorTicket`) es el mismo que
+ * el de `GET /tickets/:id`. El PDF es un documento que se descarga y se reenvía, así que NUNCA
+ * incluye comentarios internos, ni siquiera para quien tiene `OBSERVAR` sobre el tipo: el timeline
+ * se pide siempre con `soloPublicas`.
  */
-/** El alcance del actor (`AlcanceActorTicket`) es el mismo que el de `GET /tickets/:id`. */
 export interface GenerarPdfTicketDto extends AlcanceActorTicket {
   ticketId: string;
   /** `cliente_id` del JWT, para resolver el logo. */
@@ -60,8 +62,9 @@ const CODIGO_CAMBIO_ESTADO = 'CAMBIO_ESTADO';
  * ticket y se la entrega al generador.
  *
  * El acceso lo deciden `ObtenerTicketUseCase` y `ListarTimelineUseCase`
- * (reusados, no reimplementados): sin `TICKETS:VER_TODOS` solo el solicitante
- * obtiene su ticket y cualquier otro recibe 404, igual que en el detalle.
+ * (reusados, no reimplementados): quien no ve el ticket recibe 404, igual que en
+ * el detalle. Quien lo ve sin `IMPRESION` sobre su tipo recibe
+ * `AccionSobreTipoNoPermitidaError` (403, odd/permisos-por-tipo-ticket D5 c).
  *
  * Cubre tickets de soporte y edilicios con la misma ruta: la reparación ES un
  * ticket con satélite `TicketEdilicia`, así que `/tickets/:id` ya la sirve;
@@ -73,9 +76,9 @@ const CODIGO_CAMBIO_ESTADO = 'CAMBIO_ESTADO';
  * odd/tareas-con-tecnico T8.
  *
  * Historial: solo comentarios PÚBLICOS y cambios de estado. Los internos se
- * excluyen dos veces: el timeline se pide sin `tienePermisoObservar` y,
- * además, se descartan acá todos los `esInterno` (defensa en profundidad,
- * por si alguien cambia el filtro de aguas arriba).
+ * excluyen dos veces: el timeline se pide con `soloPublicas` y, además, se
+ * descartan acá todos los `esInterno` (defensa en profundidad, por si alguien
+ * cambia el filtro de aguas arriba).
  */
 export class GenerarPdfTicketUseCase {
   constructor(
@@ -97,24 +100,24 @@ export class GenerarPdfTicketUseCase {
   ) {}
 
   async execute(dto: GenerarPdfTicketDto): Promise<Result<GenerarPdfTicketResult, DomainError>> {
-    const ticketResult = await this.obtenerTicket.execute({
-      ticketId: dto.ticketId,
+    const alcance: AlcanceActorTicket = {
       actorId: dto.actorId,
-      tienePermisoVerTodos: dto.tienePermisoVerTodos,
-      modulosPermitidos: dto.modulosPermitidos,
-    });
+      permisosPorTipo: dto.permisosPorTipo,
+    };
+    const ticketResult = await this.obtenerTicket.execute({ ticketId: dto.ticketId, ...alcance });
     if (ticketResult.isFail()) {
       return Result.fail(ticketResult.getError());
     }
     const ticket = ticketResult.getValue();
+    if (!tieneAccionSobreTipo(alcance, ticket.tipoId, 'IMPRESION')) {
+      return Result.fail(new AccionSobreTipoNoPermitidaError('IMPRESION'));
+    }
 
     const timelineResult = await this.listarTimeline.execute({
       ticketId: dto.ticketId,
-      actorId: dto.actorId,
-      tienePermisoVerTodos: dto.tienePermisoVerTodos,
-      modulosPermitidos: dto.modulosPermitidos,
-      // Fijo en false: el PDF nunca incluye notas internas (ver docblock del DTO).
-      tienePermisoObservar: false,
+      ...alcance,
+      // Fijo: el PDF nunca incluye notas internas (ver docblock del DTO).
+      soloPublicas: true,
     });
     if (timelineResult.isFail()) {
       return Result.fail(timelineResult.getError());

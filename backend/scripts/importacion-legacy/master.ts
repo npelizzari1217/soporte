@@ -103,12 +103,23 @@ export async function leerRoles(master: Master): Promise<Map<string, string>> {
   return new Map(roles.map((r) => [r.codigo, r.id]));
 }
 
+/** Plantilla de rol sembrada en la matriz de un usuario durante esta corrida. */
+export interface PlantillaSembrada {
+  usuarioId: string;
+  celdas: readonly string[];
+}
+
 export interface ResultadoMaster {
   usuarioIdPorLegacy: Map<string, string>;
   vigenteIdPorLegacy: Map<string, string>;
   usuariosCreados: number;
   membresiasAgregadas: number;
   vigentesCreados: number;
+  /**
+   * Usuarios a los que esta corrida les sembró la plantilla en la matriz: el lado tenant les
+   * escribe las mismas filas por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c).
+   */
+  plantillasSembradas: PlantillaSembrada[];
 }
 
 export async function aplicarMaster(
@@ -125,6 +136,7 @@ export async function aplicarMaster(
     usuariosCreados: 0,
     membresiasAgregadas: 0,
     vigentesCreados: 0,
+    plantillasSembradas: [],
   };
   const nombrePorLegacy = new Map(usuarios.map((u) => [String(u.legacyId), u.nombre]));
   const apellidoPorLegacy = new Map(usuarios.map((u) => [String(u.legacyId), u.apellido ?? '']));
@@ -151,7 +163,8 @@ export async function aplicarMaster(
     if (usuarioId === null) throw new Error(`usuario legacy ${p.legacyId} sin id resuelto`);
     r.usuarioIdPorLegacy.set(p.legacyId, usuarioId);
     if (p.membresia === 'agregar') {
-      await agregarMembresia(master, usuarioId, cliente.id, p.rol, roles);
+      const celdas = await agregarMembresia(master, usuarioId, cliente.id, p.rol, roles);
+      if (celdas !== null) r.plantillasSembradas.push({ usuarioId, celdas });
       r.membresiasAgregadas += 1;
     }
   }
@@ -181,6 +194,9 @@ export async function aplicarMaster(
  * celda en este cliente, el preset del rol — lo mismo que hace el alta normal
  * (`CrearUsuarioTenantUseCase` con `sobrescribir: false`). Sin el preset, el
  * día que se le dé acceso quedaría con 403 en todo.
+ *
+ * @returns Las celdas sembradas, o `null` si el usuario ya tenía celdas y no
+ *   se tocó la matriz.
  */
 async function agregarMembresia(
   master: Master,
@@ -188,7 +204,7 @@ async function agregarMembresia(
   clienteId: string,
   rolCodigo: string,
   roles: Map<string, string>,
-): Promise<void> {
+): Promise<readonly string[] | null> {
   const rolId = roles.get(rolCodigo);
   if (rolId === undefined) throw new Error(`rol ${rolCodigo} inexistente en master`);
   await master.membresia.upsert({
@@ -197,7 +213,7 @@ async function agregarMembresia(
     create: { usuarioId, clienteId, rolId, activo: true },
   });
   const celdas = await master.usuarioClientePermiso.count({ where: { usuarioId, clienteId } });
-  if (celdas > 0) return;
+  if (celdas > 0) return null;
   const preset = obtenerPresetDeRol(rolCodigo).getOrThrow();
   await master.usuarioClientePermiso.createMany({
     data: preset.map((codigo) => {
@@ -206,4 +222,5 @@ async function agregarMembresia(
     }),
     skipDuplicates: true,
   });
+  return preset;
 }

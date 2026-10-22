@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 import { ReparacionesList } from "./reparaciones-list";
 import type { ReparacionListItem, SubtareaEdilicia } from "../types";
 import type { TareaTicket } from "@/features/tickets/types";
@@ -31,6 +32,7 @@ function buildReparacion(overrides: Partial<ReparacionListItem> = {}): Reparacio
   return {
     id: "rep1",
     ticketId: "tk1",
+    tipoId: "tipo-edilicia",
     numero: "EDI-0001",
     titulo: "Reparar cañería",
     descripcion: null,
@@ -541,11 +543,14 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
     );
   }
 
-  it("sin EDILICIA:MODIFICACION no hay botón Editar", async () => {
+  it("sin MODIFICACION sobre el tipo de la fila no hay botón Editar, aunque tenga la celda EDILICIA:MODIFICACION", async () => {
     mockCatalogos();
     server.use(http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([buildReparacion({ numero: "EDI-0010" })]))));
 
-    renderWithProviders(<ReparacionesList />, { user: buildUser({ permisos: ["EDILICIA:LECTURA"] }) });
+    renderConPermisos(<ReparacionesList />, {
+      user: buildUser({ rol: "TECNICO", permisos: ["EDILICIA:LECTURA", "EDILICIA:MODIFICACION"] }),
+      permisos: permisosDeTest({ "tipo-edilicia": ["LECTURA"] }, { "tipo-edilicia": "EDILICIA" }),
+    });
 
     await screen.findByText("EDI-0010");
     expect(screen.queryByRole("button", { name: /editar EDI-0010/i })).not.toBeInTheDocument();
@@ -806,6 +811,85 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
       await within(comentarios).findByLabelText(/nuevo comentario/i),
     ).toBeInTheDocument();
     expect(within(comentarios).queryByRole("note")).toBeNull();
+  });
+});
+
+describe("ReparacionesList — acciones según el tipo de cada fila (odd/permisos-por-tipo-ticket, S6)", () => {
+  const TECNICO = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: ["COMPRAS:LECTURA"] });
+  // Modifica, comenta y crea en Edilicia; en Mantenimiento solo lee.
+  const PERMISOS = permisosDeTest(
+    {
+      "tipo-edilicia": ["LECTURA", "ALTAS", "MODIFICACION", "COMENTAR"],
+      "tipo-mantenimiento": ["LECTURA"],
+    },
+    { "tipo-edilicia": "EDILICIA", "tipo-mantenimiento": "EDILICIA" },
+  );
+
+  function mockListado() {
+    server.use(
+      http.get("/api/catalogos/estados", () =>
+        HttpResponse.json([{ id: "estado-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true }]),
+      ),
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json(paginaDe([
+          buildReparacion({ id: "rep-e", ticketId: "tk-e", numero: "EDI-0100", tipoId: "tipo-edilicia" }),
+          buildReparacion({ id: "rep-m", ticketId: "tk-m", numero: "EDI-0101", tipoId: "tipo-mantenimiento" }),
+        ])),
+      ),
+      http.get("/api/reparaciones/:id/comentarios", () => HttpResponse.json([])),
+      http.get("/api/compras", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 })),
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([
+          { id: "tipo-edilicia", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+          { id: "tipo-mantenimiento", codigo: "MANTENIMIENTO", nombre: "Mantenimiento", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+    );
+  }
+
+  it("Editar y Gestionar compras se ofrecen en la fila del tipo con la acción y no en la otra", async () => {
+    mockListado();
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+
+    await screen.findByText("EDI-0100");
+    expect(within(filaDe("EDI-0100")).getByRole("button", { name: "Editar EDI-0100" })).toBeInTheDocument();
+    expect(within(filaDe("EDI-0101")).queryByRole("button", { name: /editar/i })).toBeNull();
+    // Vincular pide ALTAS sobre el tipo (y COMPRAS:LECTURA, que tiene).
+    expect(within(filaDe("EDI-0100")).getByRole("button", { name: "Gestionar compras" })).toBeInTheDocument();
+    expect(within(filaDe("EDI-0101")).queryByRole("button", { name: "Gestionar compras" })).toBeNull();
+  });
+
+  it("el formulario de comentario aparece en la fila del tipo con COMENTAR y no en la que solo lee", async () => {
+    const user = userEvent.setup();
+    mockListado();
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+    await screen.findByText("EDI-0100");
+
+    await user.click(within(filaDe("EDI-0100")).getByRole("button", { name: /ver comentarios/i }));
+    expect(await within(await screen.findByRole("dialog")).findByLabelText(/nuevo comentario/i)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    await user.click(within(filaDe("EDI-0101")).getByRole("button", { name: /ver comentarios/i }));
+    const soloLectura = await screen.findByRole("dialog");
+    expect(await within(soloLectura).findByText(/sin comentarios/i)).toBeInTheDocument();
+    expect(within(soloLectura).queryByLabelText(/nuevo comentario/i)).toBeNull();
+  });
+
+  it("«Nueva reparación» se muestra con ALTAS en algún tipo de EDILICIA, y no sin él", async () => {
+    mockListado();
+    const conAlta = renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+    await screen.findByText("EDI-0100");
+    expect(screen.getByRole("button", { name: "Nueva reparación" })).toBeInTheDocument();
+    conAlta.unmount();
+
+    renderConPermisos(<ReparacionesList />, {
+      // La celda EDILICIA:ALTAS del JWT ya no alcanza.
+      user: buildUser({ rol: "TECNICO", permisos: ["EDILICIA:ALTAS"] }),
+      permisos: permisosDeTest({ "tipo-edilicia": ["LECTURA"] }, { "tipo-edilicia": "EDILICIA" }),
+    });
+    await screen.findByText("EDI-0100");
+    expect(screen.queryByRole("button", { name: "Nueva reparación" })).toBeNull();
   });
 });
 

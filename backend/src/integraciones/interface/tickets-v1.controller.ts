@@ -11,7 +11,6 @@ import {
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { CurrentUser, RequiereAcciones } from '../../auth/infrastructure/guards/decorators';
-import { puedeEjecutar } from '../../auth/domain/permisos.util';
 import { JwtPayload } from '../../auth/domain/ports/i-token.service';
 import { CrearComentarioUseCase } from '../../tickets/application/use-cases/crear-comentario.use-case';
 import { CrearTicketUseCase } from '../../tickets/application/use-cases/crear-ticket.use-case';
@@ -19,7 +18,7 @@ import { ListarTicketsUseCase } from '../../tickets/application/use-cases/listar
 import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtener-ticket.use-case';
 import { toHttpException } from '../../tickets/interface/controllers/tickets.controller';
 import { TicketsV1Query } from '../application/tickets-v1.query';
-import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
+import { MODULO_API_V1, TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
 import { ApiV1 } from './api-v1.decorator';
 import { ErrorV1 } from './error-v1.dto';
 import {
@@ -31,25 +30,34 @@ import {
   TicketV1,
 } from './tickets-v1.dto';
 import { TicketsV1Presenter } from './tickets-v1.presenter';
-import { alcanceTicketDesdeJwt } from '../../tickets/interface/alcance-ticket';
 import { AlcanceActorTicket } from '../../tickets/application/services/visibilidad-ticket';
-import { MODULO_API_V1 } from '../application/tipos-ticket-v1.query';
-
-const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
+import { AccionTipoTicket } from '../../tickets/domain/permisos-tipo-ticket';
+import { accionesDeClaveApi, accionesDeClaveApiParaComentar } from '../domain/alcance-clave-api';
 
 /**
- * Alcance con el que comenta la clave (odd/permisos-por-tipo-ticket, S0): cualquier ticket del
- * modulo de la API v1, sin restriccion de fila. Antes de S0 `TICKETS:COMENTAR` alcanzaba para
- * comentar cualquier ticket del cliente; `ApiClaveGuard` solo agrega `VER_TODOS` cuando la clave
- * tambien tiene `TICKETS:LECTURA`, asi que el alcance del JWT dejaria a una clave de solo
- * comentario limitada a los tickets que pidio el usuario de integracion. El modulo sigue acotado:
- * un ticket de otro modulo es 404, igual que en el resto de v1.
+ * Alcance por tipo de la clave (odd/permisos-por-tipo-ticket, D4, D5 f). La clave no tiene filas en
+ * `permisos_tipo_ticket`: cada tipo del modulo de v1 recibe las `acciones` que salen de traducir
+ * las celdas de la clave (`accionesDeClaveApi`). Un tipo de otro modulo queda fuera del mapa, asi
+ * que su ticket sigue siendo 404.
+ *
+ * Los `@RequiereAcciones('TICKETS:*')` de estas rutas se quedan: las celdas de la clave son su
+ * modelo de permisos propio (`PERMISOS_API`), no la matriz de usuarios que D5 d dejo de consultar,
+ * y la ruta responde 403 a una clave sin la celda antes de llegar al caso de uso.
  *
  * @param actor Actor sintetico de la clave.
- * @returns Alcance sin restriccion de fila y limitado al modulo de v1.
+ * @param tiposV1 Ids de los tipos del modulo de v1.
+ * @param acciones Acciones que la clave tiene sobre cada uno.
+ * @returns El alcance de la clave.
  */
-function alcanceComentarioV1(actor: JwtPayload): AlcanceActorTicket {
-  return { actorId: actor.sub, tienePermisoVerTodos: true, modulosPermitidos: [MODULO_API_V1] };
+function alcanceV1(
+  actor: JwtPayload,
+  tiposV1: readonly string[],
+  acciones: ReadonlySet<AccionTipoTicket>,
+): AlcanceActorTicket {
+  return {
+    actorId: actor.sub,
+    permisosPorTipo: new Map(tiposV1.map((tipoId) => [tipoId, new Set(acciones)])),
+  };
 }
 
 /** Path param `id` documentado como uuid: `ParseUUIDPipe` responde 400 a cualquier otra cosa. */
@@ -88,9 +96,8 @@ export class TicketsV1Controller {
     @Query() query: ListarTicketsV1QueryDto,
   ): Promise<ListaTicketsV1> {
     const result = await this.listarTickets.execute({
-      actorId: actor.sub,
-      tienePermisoVerTodos: puedeEjecutar(actor, ACCION_VER_TODOS),
-      modulosPermitidos: actor.modulos,
+      // Una clave de lectura trae `VER_TODOS` del guard: ve todos los tickets de los tipos de v1.
+      alcance: await this.alcanceDeLaClave(actor),
       pagina: query.pagina,
       porPagina: query.porPagina,
       filtros: {
@@ -136,7 +143,7 @@ export class TicketsV1Controller {
     }
     const result = await this.obtenerTicket.execute({
       ticketId: id,
-      ...alcanceTicketDesdeJwt(actor),
+      ...(await this.alcanceDeLaClave(actor)),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -192,6 +199,9 @@ export class TicketsV1Controller {
       clienteId: actor.cliente_id as string,
       autorId: actor.sub,
       anio: new Date().getFullYear(),
+      // `TICKETS:ALTAS` de la clave traducida a `ALTAS` sobre los tipos de v1: el caso de uso la
+      // exige sobre el tipo elegido, como en cualquier alta (D5 c, f).
+      alcance: await this.alcanceDeLaClave(actor),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -203,7 +213,8 @@ export class TicketsV1Controller {
   /**
    * Agrega un comentario PUBLICO a un ticket del cliente de la clave. Requiere `TICKETS:COMENTAR`.
    * Nunca es interno: la API no tiene forma de pedirlo. Alcanza a cualquier ticket del modulo
-   * TICKETS del cliente, lo haya pedido o no el usuario de integracion (`alcanceComentarioV1`); 404
+   * TICKETS del cliente, lo haya pedido o no el usuario de integracion
+   * (`accionesDeClaveApiParaComentar`); 404
    * si el ticket no es del cliente o es de otro modulo, antes de escribir nada. El autor
    * es el usuario de integracion, que habla por el cliente: el comentario no cuenta como primera
    * respuesta de SLA (`autorEsIntegracion`, T5d).
@@ -246,7 +257,7 @@ export class TicketsV1Controller {
       autorId: actor.sub,
       esInterno: false,
       autorEsIntegracion: true,
-      ...alcanceComentarioV1(actor),
+      ...(await this.alcanceDeLaClave(actor, accionesDeClaveApiParaComentar)),
     });
     if (result.isFail()) {
       throw toHttpException(result.getError());
@@ -259,5 +270,26 @@ export class TicketsV1Controller {
       esInterno: false,
       createdAt: operacion.createdAt.toISOString(),
     };
+  }
+
+  /**
+   * Alcance de la clave sobre los tipos de v1, con sus celdas traducidas por `traducir`.
+   *
+   * @param actor Actor sintetico de la clave.
+   * @param traducir Traduccion de las celdas a acciones de un tipo; por defecto, la de L11.
+   * @returns El alcance de la clave.
+   */
+  private async alcanceDeLaClave(
+    actor: JwtPayload,
+    traducir: (
+      permisos: readonly string[],
+      modulo: string,
+    ) => Set<AccionTipoTicket> = accionesDeClaveApi,
+  ): Promise<AlcanceActorTicket> {
+    return alcanceV1(
+      actor,
+      await this.ticketsV1.tiposDeV1(),
+      traducir(actor.permisos, MODULO_API_V1),
+    );
   }
 }

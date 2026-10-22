@@ -7,10 +7,13 @@
  *
  * - `arranque` (NUEVO/ASIGNADO): "Asignar y poner en proceso" asigna al elegido Y avanza el ticket
  *   hasta EN_PROCESO en una sola acción (`PATCH /tickets/:id/asignar-en-proceso`). Exige
- *   TICKETS:ASIGNAR y TICKETS:TRANSICIONAR, como el endpoint. Si falta TRANSICIONAR, cae al modo
- *   `cambio`: lo que ese usuario ya podía hacer.
+ *   ASIGNAR y TRANSICIONAR sobre el tipo del ticket, como el endpoint. Si falta TRANSICIONAR, cae
+ *   al modo `cambio`: lo que ese usuario ya podía hacer.
  * - `cambio` (cualquier otro estado no terminal): "Cambiar responsable" reasigna sin tocar el
- *   estado (`PATCH /tickets/:id/asignar`). Exige TICKETS:ASIGNAR.
+ *   estado (`PATCH /tickets/:id/asignar`). Exige ASIGNAR sobre el tipo.
+ *
+ * Las dos acciones las decide el contenedor sobre el tipo del ticket (odd/permisos-por-tipo-ticket,
+ * S6) y llegan como props.
  *
  * Reemplaza a los dos controles anteriores, que en NUEVO/ASIGNADO mostraban la misma lista de
  * responsables dos veces, cada una con su botón. El copy dice "responsable" y no "técnico": el
@@ -20,7 +23,6 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
-import { useCan } from "@/shared/hooks/use-can";
 import type { TecnicoAsignable } from "../types";
 
 export type ModoResponsable = "arranque" | "cambio";
@@ -32,6 +34,10 @@ export interface TicketResponsableControlProps {
   onAsignarEnProceso: (asignadoId: string) => void;
   onReasignar: (asignadoId: string) => void;
   isSubmitting: boolean;
+  /** `ASIGNAR` sobre el tipo del ticket. */
+  puedeAsignar: boolean;
+  /** `TRANSICIONAR` sobre el tipo del ticket. */
+  puedeTransicionar: boolean;
 }
 
 export function TicketResponsableControl({
@@ -40,9 +46,9 @@ export function TicketResponsableControl({
   onAsignarEnProceso,
   onReasignar,
   isSubmitting,
+  puedeAsignar,
+  puedeTransicionar,
 }: TicketResponsableControlProps) {
-  const puedeAsignar = useCan("TICKETS:ASIGNAR");
-  const puedeTransicionar = useCan("TICKETS:TRANSICIONAR");
   const [seleccionado, setSeleccionado] = useState("");
   const selectId = useId();
 

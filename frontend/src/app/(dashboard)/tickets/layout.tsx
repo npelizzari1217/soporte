@@ -1,14 +1,14 @@
 /**
- * TicketsLayout — Server Component: gate REAL del área `/tickets/*` por MÓDULO (5.2 CAPA 3),
- * listado y detalle por id incluidos. El sidebar ya oculta el ítem "Tickets" a quien no tiene
- * `TICKETS:LECTURA`, pero eso es solo UI; esta capa impide el acceso por URL directa
- * (odd/permisos-por-tipo-ticket, S0). Ver `moduloLayoutGate` para el refresh tolerante (R26).
+ * TicketsLayout — Server Component: gate REAL del área `/tickets/*`, listado y detalle por id
+ * incluidos. Entra quien tiene `LECTURA` sobre algún tipo de TICKETS (odd/permisos-por-tipo-ticket,
+ * S5, T6), el mismo predicado que el ítem "Tickets" del menú; el sidebar lo oculta, pero eso es solo
+ * UI y esta capa impide el acceso por URL directa. Ver `tiposLayoutGate` para el refresh tolerante.
  */
-import { moduloLayoutGate } from "@/shared/auth/modulo-layout-gate";
+import { tiposLayoutGate } from "@/shared/auth/tipos-layout-gate";
 
 export default async function TicketsLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  await moduloLayoutGate("TICKETS");
+  await tiposLayoutGate("TICKETS");
   return <>{children}</>;
 }

@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { ReparacionCreateDialog } from "./reparacion-create-dialog";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 
 const PRIORIDAD_ID = "22222222-2222-2222-2222-222222222222";
 const SECTOR_ID = "44444444-4444-4444-4444-444444444444";
@@ -174,5 +175,68 @@ describe("ReparacionCreateDialog — tipo", () => {
     await abrirYCompletar(user);
     await waitFor(() => expect(moduloPedido).toBe("EDILICIA"));
     expect(screen.queryByLabelText("Tipo")).not.toBeInTheDocument();
+  });
+
+  describe("solo los tipos con ALTAS para el usuario (odd/permisos-por-tipo-ticket, S6)", () => {
+    const TIPO_EDILICIA_ID = "11111111-1111-4111-8111-111111111111";
+    const TIPO_PREVENTIVO_ID = "66666666-6666-4666-8666-666666666666";
+    const TIPOS = [
+      tipo(TIPO_EDILICIA_ID, "EDILICIA", "Edilicia"),
+      tipo(TIPO_MANTENIMIENTO_ID, "MANTENIMIENTO", "Mantenimiento"),
+      tipo(TIPO_PREVENTIVO_ID, "PREVENTIVO", "Preventivo"),
+    ];
+    // La celda EDILICIA:ALTAS del JWT ya no decide: lo hacen las filas por tipo.
+    const tecnico = buildUser({ rol: "TECNICO", permisos: ["EDILICIA:ALTAS"] });
+
+    it("con ALTAS solo en Mantenimiento, no ofrece Edilicia por defecto y exige elegir un tipo", async () => {
+      mockBackend(TIPOS);
+      const user = userEvent.setup();
+      renderConPermisos(<ReparacionCreateDialog />, {
+        user: tecnico,
+        permisos: permisosDeTest({ [TIPO_EDILICIA_ID]: ["LECTURA"], [TIPO_MANTENIMIENTO_ID]: ["LECTURA", "ALTAS"] }),
+      });
+
+      await abrirYCompletar(user);
+      await screen.findByRole("option", { name: "Mantenimiento" });
+      expect(screen.queryByRole("option", { name: "Edilicia" })).not.toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Elegí un tipo" })).toBeDisabled();
+
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+      expect(await screen.findByText("Elegí un tipo", { selector: "p" })).toBeInTheDocument();
+      expect(bodies).toHaveLength(0);
+
+      await user.selectOptions(screen.getByLabelText("Tipo"), TIPO_MANTENIMIENTO_ID);
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).toMatchObject({ tipoId: TIPO_MANTENIMIENTO_ID });
+    });
+
+    it("con ALTAS solo en Edilicia, no muestra el selector y crea Edilicia sin tipoId", async () => {
+      mockBackend(TIPOS);
+      const user = userEvent.setup();
+      renderConPermisos(<ReparacionCreateDialog />, {
+        user: tecnico,
+        permisos: permisosDeTest({ [TIPO_EDILICIA_ID]: ["LECTURA", "ALTAS"], [TIPO_MANTENIMIENTO_ID]: ["LECTURA"] }),
+      });
+
+      await abrirYCompletar(user);
+      await waitFor(() => expect(moduloPedido).toBe("EDILICIA"));
+      expect(screen.queryByLabelText("Tipo")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).not.toHaveProperty("tipoId");
+    });
+
+    it("con ALTAS solo en Preventivo (que no se elige en un alta), no muestra el botón", async () => {
+      mockBackend(TIPOS);
+      renderConPermisos(<ReparacionCreateDialog />, {
+        user: tecnico,
+        permisos: permisosDeTest({ [TIPO_PREVENTIVO_ID]: ["LECTURA", "ALTAS"] }),
+      });
+
+      await waitFor(() => expect(moduloPedido).toBe("EDILICIA"));
+      await waitFor(() => expect(screen.queryByRole("button", { name: /nueva reparación/i })).toBeNull());
+    });
   });
 });

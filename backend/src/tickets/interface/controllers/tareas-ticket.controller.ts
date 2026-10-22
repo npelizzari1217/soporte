@@ -12,11 +12,10 @@
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard`, como `TicketsController`. Ninguna
  * ruta declara `@RequiereAcciones`: quién puede depende del ticket (su responsable, el técnico de
- * la tarea) y del módulo de su tipo (`<MODULO>:MODIFICACION`), que se conocen recién al cargarlo.
- * Lo decide el caso de uso (`tareas-ticket.reglas.ts`), con el `ActorTarea` que arma
- * `actorTareaDesdeJwt`. Un permiso fijo por ruta, como `TICKETS:LECTURA`, dejaría afuera al
- * técnico de Edilicia que la decisión de producto deja completar su tarea. Un ticket de un tipo
- * de un módulo que el actor no tiene es 404 en todas las rutas (odd/permisos-por-tipo-ticket, S0).
+ * la tarea) y de los permisos sobre su tipo (`LECTURA`, `MODIFICACION`), que se conocen recién al
+ * cargarlo. Lo decide el caso de uso (`tareas-ticket.reglas.ts`), con el `ActorTarea` que arma
+ * `CargadorAlcanceTicket` por request. Un ticket de un tipo sin `LECTURA` es 404 en todas las
+ * rutas (odd/permisos-por-tipo-ticket, S3).
  *
  * Errores: el cuerpo es el de Nest (`{ statusCode, message, error }`), igual que el resto de
  * `TicketsController`; no hay códigos de error en la respuesta.
@@ -66,7 +65,7 @@ import {
   IUsuarioMasterChecker,
   USUARIO_MASTER_CHECKER,
 } from '../../domain/ports/i-usuario-master.checker';
-import { actorTareaDesdeJwt, modulosConLecturaDesdeJwt } from '../actor-tarea';
+import { CargadorAlcanceTicket } from '../alcance-ticket';
 import {
   AsignarTecnicoTareaBodyDto,
   CrearTareaTicketBodyDto,
@@ -116,6 +115,7 @@ export class TareasTicketController {
     private readonly descompletarTarea: DescompletarTareaUseCase,
     private readonly eliminarTarea: EliminarTareaUseCase,
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
+    private readonly alcances: CargadorAlcanceTicket,
   ) {}
 
   /** Nombres del técnico y de quien completó, en un solo batch cross-DB (sin N+1). */
@@ -130,33 +130,25 @@ export class TareasTicketController {
   }
 
   /**
-   * GET /tickets/:id/tareas — las lista el técnico de una tarea activa (CA10) o quien tiene
-   * `<MODULO>:LECTURA` del módulo del tipo; en el módulo TICKETS, además, tiene que ver el ticket
-   * (T12). Sin `@RequiereAcciones`: el módulo sale del tipo del ticket y lo decide el caso de uso.
-   * @throws 403 ve el ticket pero no puede listar · 404 ticket inexistente, de otro cliente, de un
-   *   módulo ajeno o no visible para el actor
+   * GET /tickets/:id/tareas — las lista quien ve el ticket: `LECTURA` sobre su tipo y, sin
+   * `VER_TODOS` sobre ese tipo, el solicitante, el responsable o el técnico de una tarea activa
+   * (CA10, odd/permisos-por-tipo-ticket S3). Lo decide el caso de uso.
+   * @throws 404 ticket inexistente, de otro cliente o no visible para el actor
    */
   @Get(':id/tareas')
   async listar(
     @CurrentUser() user: JwtPayload,
     @Param('id') ticketId: string,
   ): Promise<TareasTicketResponseDto> {
-    const actor = actorTareaDesdeJwt(user);
     const { tareas, avance } = valorOExcepcion(
-      await this.listarTareas.execute({
-        ticketId,
-        actorId: actor.id,
-        tienePermisoVerTodos: actor.tienePermisoVerTodos,
-        modulosConLectura: modulosConLecturaDesdeJwt(user),
-        modulosPermitidos: actor.modulosPermitidos,
-      }),
+      await this.listarTareas.execute({ ticketId, ...(await this.alcances.cargar(user)) }),
     );
     return { items: await this.aDtos(tareas), avance };
   }
 
   /**
    * GET /tickets/:id/tareas/tecnicos-elegibles — selector de técnico de una tarea. Lo pide quien
-   * puede asignar (responsable, ADMINISTRADOR o ROOT con el permiso del módulo).
+   * puede asignar (responsable, ADMINISTRADOR o ROOT con `MODIFICACION` sobre el tipo).
    * @throws 403 ve el ticket pero no puede asignar · 404 ticket inexistente o no visible
    */
   @Get(':id/tareas/tecnicos-elegibles')
@@ -167,7 +159,7 @@ export class TareasTicketController {
     return valorOExcepcion(
       await this.listarTecnicosElegibles.execute({
         ticketId,
-        actor: actorTareaDesdeJwt(user),
+        actor: await this.alcances.cargarActorTarea(user),
         clienteId: user.cliente_id as string,
       }),
     );
@@ -187,7 +179,7 @@ export class TareasTicketController {
     const tarea = valorOExcepcion(
       await this.crearTarea.execute({
         ticketId,
-        actor: actorTareaDesdeJwt(user),
+        actor: await this.alcances.cargarActorTarea(user),
         descripcion: body.descripcion,
       }),
     );
@@ -209,7 +201,7 @@ export class TareasTicketController {
       await this.asignarTecnico.execute({
         ticketId,
         tareaId,
-        actor: actorTareaDesdeJwt(user),
+        actor: await this.alcances.cargarActorTarea(user),
         clienteId: user.cliente_id as string,
         tecnicoId: body.tecnicoId,
       }),
@@ -229,7 +221,11 @@ export class TareasTicketController {
     @Param('tareaId') tareaId: string,
   ): Promise<TareaTicketResponseDto> {
     const tarea = valorOExcepcion(
-      await this.completarTarea.execute({ ticketId, tareaId, actor: actorTareaDesdeJwt(user) }),
+      await this.completarTarea.execute({
+        ticketId,
+        tareaId,
+        actor: await this.alcances.cargarActorTarea(user),
+      }),
     );
     return this.aDto(tarea);
   }
@@ -246,7 +242,11 @@ export class TareasTicketController {
     @Param('tareaId') tareaId: string,
   ): Promise<TareaTicketResponseDto> {
     const tarea = valorOExcepcion(
-      await this.descompletarTarea.execute({ ticketId, tareaId, actor: actorTareaDesdeJwt(user) }),
+      await this.descompletarTarea.execute({
+        ticketId,
+        tareaId,
+        actor: await this.alcances.cargarActorTarea(user),
+      }),
     );
     return this.aDto(tarea);
   }
@@ -263,7 +263,11 @@ export class TareasTicketController {
     @Param('tareaId') tareaId: string,
   ): Promise<void> {
     valorOExcepcion(
-      await this.eliminarTarea.execute({ ticketId, tareaId, actor: actorTareaDesdeJwt(user) }),
+      await this.eliminarTarea.execute({
+        ticketId,
+        tareaId,
+        actor: await this.alcances.cargarActorTarea(user),
+      }),
     );
   }
 }

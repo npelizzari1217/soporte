@@ -1,13 +1,11 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { AgenteAsignable, ElegibilidadAsignado } from '../services/elegibilidad-asignado';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `ListarTecnicosAsignablesUseCase`. El alcance del actor (`AlcanceActorTicket`)
- * lo arma el controller desde el JWT (odd/permisos-por-tipo-ticket, S0).
+ * lo carga la capa de interface (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface ListarTecnicosAsignablesDto extends AlcanceActorTicket {
   ticketId: string;
@@ -17,14 +15,10 @@ export interface ListarTecnicosAsignablesDto extends AlcanceActorTicket {
 /**
  * Agente (rol TECNICO o COLABORADOR) elegible para el combo de asignación
  * (proyección mínima de presentación). El nombre `TecnicoAsignable` se
- * mantiene sin renombrar aunque el universo ya incluye COLABORADOR — ver
- * JSDoc de `listarTecnicosAsignables` en `IUsuarioMasterChecker`.
+ * mantiene sin renombrar aunque el universo ya incluye COLABORADOR: el
+ * renombre cruza back y front.
  */
-export interface TecnicoAsignable {
-  id: string;
-  nombre: string;
-  apellido: string;
-}
+export type TecnicoAsignable = AgenteAsignable;
 
 /**
  * ListarTecnicosAsignablesUseCase — arma el universo de AGENTES (TÉCNICOS y
@@ -34,52 +28,32 @@ export interface TecnicoAsignable {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe, está soft-deleted o el actor no lo ve
- *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
- * 2. Carga el tipo del ticket (`tipoTicketRepo.findById(ticket.tipoId)`) y lee su
- *    `modulo` directo de la columna (B2, fuente de verdad). Antes se derivaba por
- *    convención de `codigo`, lo que dejaba a los tipos CUSTOM sin módulo (`null`)
- *    y por ende sin técnicos asignables; ahora todo tipo tiene un módulo real.
- * 3. Delega en `usuarioMasterChecker.listarTecnicosAsignables(clienteId, modulo)`.
+ *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
+ *    si lo ve sin `ASIGNAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
+ * 2. Delega en `ElegibilidadAsignado.listarAgentesDeTipo(clienteId, tipoId)`: TECNICO o
+ *    COLABORADOR con `LECTURA` sobre el tipo del ticket (odd/permisos-por-tipo-ticket, D5 g).
  *
  * Solo LECTURA: no muta ni abre transacción. Sin throw para fallos esperados.
  */
 export class ListarTecnicosAsignablesUseCase {
   constructor(
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
-    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'listarAgentesDeTipo'>,
   ) {}
 
   async execute(
     dto: ListarTecnicosAsignablesDto,
   ): Promise<Result<TecnicoAsignable[], DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
-
-    // Catálogo de tipos: la ausencia del tipo de un ticket vivo es una
-    // inconsistencia de infraestructura, no un error del caller (throw
-    // defensivo, mismo patrón que TransicionarEstadoUseCase).
-    const tipoTicket = await this.tipoTicketRepo.findById(ticket.tipoId);
-    if (!tipoTicket) {
-      throw new Error(
-        `Catálogo de tipos de ticket inconsistente: no existe el tipo con id "${ticket.tipoId}" en el tenant activo.`,
-      );
-    }
-
-    const tecnicos = await this.usuarioMasterChecker.listarTecnicosAsignables(
-      dto.clienteId,
-      tipoTicket.modulo,
+    const ticketResult = await cargarTicketParaOperar(
+      this.ticketRepo,
+      dto.ticketId,
+      dto,
+      'ASIGNAR',
     );
+    if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
+    const ticket = ticketResult.getValue();
+
+    const tecnicos = await this.elegibilidad.listarAgentesDeTipo(dto.clienteId, ticket.tipoId);
     return Result.ok(tecnicos);
   }
 }

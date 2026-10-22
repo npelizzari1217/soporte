@@ -1,3 +1,4 @@
+import { AlcanceListadoTickets } from './i-ticket.repository';
 import { TareaTicketEntity } from '../entities/tarea-ticket.entity';
 
 /**
@@ -11,6 +12,11 @@ export interface FiltroCompletadasPorTecnico {
   hasta: Date;
   cicloId?: string;
   completadaPorId?: string;
+  /**
+   * Solo tareas de tickets que el actor ve (odd/permisos-por-tipo-ticket, D5 e), con la misma regla
+   * que el listado. Ausente = sin restricción (ROOT y ADMINISTRADOR).
+   */
+  alcance?: AlcanceListadoTickets;
 }
 
 /** Cantidad de tareas completadas por un usuario en el período. */

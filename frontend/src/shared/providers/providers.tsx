@@ -30,17 +30,20 @@ import { QueryProvider } from "./query-provider";
 import { SessionProvider } from "./session-provider";
 import { ThemeProvider } from "./theme-provider";
 import type { JwtPayload } from "@/shared/api/types";
+import type { PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
 
 interface ProvidersProps {
   children: React.ReactNode;
   initialUser?: JwtPayload | null;
+  /** Permisos por tipo leídos en el servidor (odd/permisos-por-tipo-ticket, T6). */
+  initialPermisosPorTipo?: PermisosPorTipo | null;
 }
 
-export function Providers({ children, initialUser }: ProvidersProps) {
+export function Providers({ children, initialUser, initialPermisosPorTipo }: ProvidersProps) {
   return (
     <ThemeProvider>
       <QueryProvider>
-        <SessionProvider initialUser={initialUser}>
+        <SessionProvider initialUser={initialUser} initialPermisosPorTipo={initialPermisosPorTipo}>
           <IdleTimeoutProvider>{children}</IdleTimeoutProvider>
         </SessionProvider>
       </QueryProvider>

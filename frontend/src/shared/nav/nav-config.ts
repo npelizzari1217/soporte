@@ -17,13 +17,15 @@ import {
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
+import { puedeEnModulo, type PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
 
 /**
  * nav-config — single source of truth for the sidebar navigation (ADR-4).
  *
  * Each item declares WHO can see it via `visible(can, isGlobalAdmin,
- * canModulo, esAdminCliente)`, driven by la matriz de permisos
- * (`sdd/matriz-permisos-por-usuario`). The sidebar (and any other consumer)
+ * canModulo, esAdminCliente, leeTiposDe)`, driven by la matriz de permisos
+ * (`sdd/matriz-permisos-por-usuario`) y, para las áreas de tickets, por los
+ * permisos por tipo (`leeTiposDe`, odd/permisos-por-tipo-ticket, S5). The sidebar (and any other consumer)
  * filters `NAV_ITEMS` through this predicate — no duplicated gating logic
  * elsewhere. Gating here is UI-only; the backend remains the real authority
  * (ADR-4).
@@ -37,6 +39,7 @@ export interface NavItem {
     isGlobalAdmin: boolean,
     canModulo: (modulo: string) => boolean,
     esAdminCliente: boolean,
+    leeTiposDe: (modulo: string) => boolean,
   ) => boolean;
 }
 
@@ -63,8 +66,9 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/tickets",
     label: ETIQUETAS_MODULOS.TICKETS,
     icon: Ticket,
-    // Mismo permiso que exige `GET /tickets`: sin él, el ítem llevaba a un listado que da 403.
-    visible: (can) => can("TICKETS:LECTURA"),
+    // LECTURA sobre algún tipo de TICKETS (odd/permisos-por-tipo-ticket, S5): mismo predicado que
+    // el gate de `/tickets` y que el inicio. La celda `TICKETS:LECTURA` ya no decide el listado.
+    visible: (_can, _iga, _canModulo, _esAdminCliente, leeTiposDe) => leeTiposDe("TICKETS"),
   },
   {
     href: "/dashboard",
@@ -100,7 +104,8 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/edilicia",
     label: ETIQUETAS_MODULOS.EDILICIA,
     icon: Wrench,
-    visible: (can) => can("EDILICIA:LECTURA"),
+    // Mismo criterio que Tickets: LECTURA sobre algún tipo de EDILICIA, como el gate de `/edilicia`.
+    visible: (_can, _iga, _canModulo, _esAdminCliente, leeTiposDe) => leeTiposDe("EDILICIA"),
   },
   {
     href: "/equipos",
@@ -222,8 +227,14 @@ export const NAV_ITEMS: NavItem[] = NAV_SECTIONS.flatMap(
  * Drops sections whose section-level `visible` is false, AND sections left
  * with zero items after the item-level filter (avoids rendering an empty
  * header).
+ *
+ * `permisosPorTipo` son los de `GET /tickets/permisos-por-tipo`; `null` mientras no se conocen,
+ * y entonces las áreas de tickets quedan ocultas (salvo ROOT/ADMINISTRADOR, sin restricción).
  */
-export function visibleNavSections(user: JwtPayload | null): NavSection[] {
+export function visibleNavSections(
+  user: JwtPayload | null,
+  permisosPorTipo: PermisosPorTipo | null,
+): NavSection[] {
   const isGlobalAdmin = user?.is_global_admin ?? false;
   const can = (permiso: string): boolean =>
     isGlobalAdmin || (user?.permisos.includes(permiso) ?? false);
@@ -232,6 +243,9 @@ export function visibleNavSections(user: JwtPayload | null): NavSection[] {
   // ADR-P5: mismo criterio que `useSession().esAdminCliente`, derivado acá
   // porque esta función no es un hook (consume el payload directo).
   const esAdminCliente = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
+  // El backend no restringe por tipo a ROOT ni a ADMINISTRADOR (`esAdminDeCliente`).
+  const leeTiposDe = (modulo: string): boolean =>
+    user !== null && (esAdminCliente || puedeEnModulo(permisosPorTipo, modulo, "LECTURA"));
 
   return NAV_SECTIONS.filter(
     (section) => section.visible?.(isGlobalAdmin) ?? true,
@@ -239,7 +253,7 @@ export function visibleNavSections(user: JwtPayload | null): NavSection[] {
     .map((section) => ({
       ...section,
       items: section.items.filter((item) =>
-        item.visible(can, isGlobalAdmin, canModulo, esAdminCliente),
+        item.visible(can, isGlobalAdmin, canModulo, esAdminCliente, leeTiposDe),
       ),
     }))
     .filter((section) => section.items.length > 0);
@@ -250,6 +264,9 @@ export function visibleNavSections(user: JwtPayload | null): NavSection[] {
  * Vista plana de `visibleNavSections` — se mantiene por compatibilidad con
  * consumidores/tests que no necesitan la agrupación por sección.
  */
-export function visibleNavItems(user: JwtPayload | null): NavItem[] {
-  return visibleNavSections(user).flatMap((section) => section.items);
+export function visibleNavItems(
+  user: JwtPayload | null,
+  permisosPorTipo: PermisosPorTipo | null,
+): NavItem[] {
+  return visibleNavSections(user, permisosPorTipo).flatMap((section) => section.items);
 }

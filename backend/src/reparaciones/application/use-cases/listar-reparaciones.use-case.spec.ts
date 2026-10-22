@@ -19,6 +19,13 @@ import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ti
 import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
+
+/** ROOT y ADMINISTRADOR: los tests que no versan sobre el alcance por tipo. */
+const SIN_RESTRICCION = alcanceSinRestriccion('actor-uuid');
 
 function makeTicket(id: string): TicketEntity {
   return TicketEntity.create(
@@ -124,7 +131,7 @@ describe('ListarReparacionesUseCase', () => {
     ticketRepo.findByIds.mockResolvedValue(new Map([['ticket-uuid', ticket]]));
     subtareaRepo.listarPorTickets.mockResolvedValue(new Map([['ticket-uuid', [subtarea]]]));
 
-    const result = await useCase.execute();
+    const result = await useCase.execute(SIN_RESTRICCION);
 
     expect(result.isOk()).toBe(true);
     const items = result.getValue();
@@ -176,7 +183,7 @@ describe('ListarReparacionesUseCase', () => {
       async ({ doble, idsEsperados }) => {
         const deps = conNSatelites(3);
 
-        await deps.useCase.execute();
+        await deps.useCase.execute(SIN_RESTRICCION);
 
         expect(doble(deps)).toHaveBeenCalledTimes(1);
         expect(doble(deps)).toHaveBeenCalledWith(idsEsperados);
@@ -194,7 +201,7 @@ describe('ListarReparacionesUseCase', () => {
       } = buildDeps();
       ediliciaRepo.findAll.mockResolvedValue([]);
 
-      const result = await useCase.execute();
+      const result = await useCase.execute(SIN_RESTRICCION);
 
       expect(result.getValue()).toEqual([]);
       expect(ticketRepo.findByIds).not.toHaveBeenCalled();
@@ -215,7 +222,7 @@ describe('ListarReparacionesUseCase', () => {
         new Map([['edilicia-uuid-0', [compraActiva]]]),
       );
 
-      const items = (await deps.useCase.execute()).getValue();
+      const items = (await deps.useCase.execute(SIN_RESTRICCION)).getValue();
 
       expect(items[0].bloqueada).toBe(true);
       expect(items[0].comprasQueBloquean).toEqual([compraActiva]);
@@ -234,7 +241,7 @@ describe('ListarReparacionesUseCase', () => {
       deps.ticketRepo.findByIds.mockResolvedValue(new Map(tickets.map((t) => [t.id, t])));
       deps.sectorRepo.findNombres.mockResolvedValue(new Map([['s-1', 'Mantenimiento']]));
 
-      const items = (await deps.useCase.execute()).getValue();
+      const items = (await deps.useCase.execute(SIN_RESTRICCION)).getValue();
 
       expect(items.map((i) => i.sectorNombre)).toEqual(['Mantenimiento', 'Mantenimiento', null]);
       expect(deps.sectorRepo.findNombres).toHaveBeenCalledTimes(1);
@@ -244,7 +251,7 @@ describe('ListarReparacionesUseCase', () => {
     it('si ningun ticket tiene sector no consulta el catalogo', async () => {
       const deps = conNSatelites(2);
 
-      const items = (await deps.useCase.execute()).getValue();
+      const items = (await deps.useCase.execute(SIN_RESTRICCION)).getValue();
 
       expect(items.map((i) => i.sectorNombre)).toEqual([null, null]);
       expect(deps.sectorRepo.findNombres).not.toHaveBeenCalled();
@@ -270,7 +277,7 @@ describe('ListarReparacionesUseCase', () => {
         new Map([['edilicia-uuid-2', 4]]),
       );
 
-      const items = (await deps.useCase.execute()).getValue();
+      const items = (await deps.useCase.execute(SIN_RESTRICCION)).getValue();
 
       expect(
         items.map((item) => ({
@@ -306,7 +313,7 @@ describe('ListarReparacionesUseCase', () => {
         new Map([['ticket-uuid-0', [hecha, pendiente]]]),
       );
 
-      const items = (await deps.useCase.execute()).getValue();
+      const items = (await deps.useCase.execute(SIN_RESTRICCION)).getValue();
 
       expect(items.map((item) => item.porcentajeAvance)).toEqual([50, 0]);
     });
@@ -319,7 +326,7 @@ describe('ListarReparacionesUseCase', () => {
       );
       ediliciaRepo.findAll.mockResolvedValue([edilicia]);
 
-      const result = await useCase.execute();
+      const result = await useCase.execute(SIN_RESTRICCION);
 
       expect(result.isOk()).toBe(true);
       expect(result.getValue()).toEqual([]);
@@ -380,14 +387,87 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
       reparacionCompraRepo,
       sectorRepo,
     );
-    return { useCase, ticketRepo, tareaRepo, reparacionCompraRepo };
+    return { useCase, ediliciaRepo, ticketRepo, tareaRepo, reparacionCompraRepo };
   }
+
+  describe('alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
+    it('pide a la base solo los tipos con LECTURA, separados por VER_TODOS (el total sale de esas filas)', async () => {
+      const { useCase, ediliciaRepo } = armar(3);
+
+      const pagina = (
+        await useCase.executePaginado({
+          pagina: 1,
+          porPagina: 10,
+          bloqueo: 'TODAS',
+          alcance: alcancePorTipo('actor-uuid', {
+            'tipo-edilicia': ['LECTURA', 'VER_TODOS'],
+            'tipo-mantenimiento': ['LECTURA'],
+            'tipo-electricidad': ['ALTAS', 'VER_TODOS'],
+          }),
+        })
+      ).getValue();
+
+      expect(ediliciaRepo.findAll).toHaveBeenCalledWith({
+        actorId: 'actor-uuid',
+        tiposVerTodos: ['tipo-edilicia'],
+        tiposPorFila: ['tipo-mantenimiento'],
+      });
+      expect(pagina.total).toBe(3);
+    });
+
+    it('ROOT y ADMINISTRADOR: sin alcance (null), todas las reparaciones', async () => {
+      const { useCase, ediliciaRepo } = armar(2);
+
+      await useCase.executePaginado({
+        pagina: 1,
+        porPagina: 10,
+        bloqueo: 'TODAS',
+        alcance: SIN_RESTRICCION,
+      });
+
+      expect(ediliciaRepo.findAll).toHaveBeenCalledWith(null);
+    });
+
+    it('sin ningún tipo con LECTURA: página vacía con total 0, sin consultar la base', async () => {
+      const { useCase, ediliciaRepo, ticketRepo } = armar(4);
+
+      const pagina = (
+        await useCase.executePaginado({
+          pagina: 1,
+          porPagina: 10,
+          bloqueo: 'TODAS',
+          alcance: alcancePorTipo('actor-uuid', { 'tipo-edilicia': ['ALTAS'] }),
+        })
+      ).getValue();
+
+      expect(pagina).toEqual({ items: [], total: 0, pagina: 1, porPagina: 10 });
+      expect(ediliciaRepo.findAll).not.toHaveBeenCalled();
+      expect(ticketRepo.findByIds).not.toHaveBeenCalled();
+    });
+
+    it('el listado completo (exportación) aplica el mismo alcance', async () => {
+      const { useCase, ediliciaRepo } = armar(1);
+
+      await useCase.execute(alcancePorTipo('actor-uuid', { 'tipo-edilicia': ['LECTURA'] }));
+
+      expect(ediliciaRepo.findAll).toHaveBeenCalledWith({
+        actorId: 'actor-uuid',
+        tiposVerTodos: [],
+        tiposPorFila: ['tipo-edilicia'],
+      });
+    });
+  });
 
   it('devuelve solo la página pedida, en el orden de findAll, con el total de todas', async () => {
     const { useCase } = armar(25);
 
     const pagina = (
-      await useCase.executePaginado({ pagina: 2, porPagina: 10, bloqueo: 'TODAS' })
+      await useCase.executePaginado({
+        pagina: 2,
+        porPagina: 10,
+        bloqueo: 'TODAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(pagina.total).toBe(25);
@@ -402,10 +482,20 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
     const { useCase } = armar(25);
 
     const ultima = (
-      await useCase.executePaginado({ pagina: 3, porPagina: 10, bloqueo: 'TODAS' })
+      await useCase.executePaginado({
+        pagina: 3,
+        porPagina: 10,
+        bloqueo: 'TODAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
     const fuera = (
-      await useCase.executePaginado({ pagina: 9, porPagina: 10, bloqueo: 'TODAS' })
+      await useCase.executePaginado({
+        pagina: 9,
+        porPagina: 10,
+        bloqueo: 'TODAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(ultima.items.map((item) => item.ticketEdilicia.id)).toEqual([
@@ -422,7 +512,12 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
   it('hidrata solo las reparaciones de la página, no todas', async () => {
     const { useCase, ticketRepo, tareaRepo } = armar(25);
 
-    await useCase.executePaginado({ pagina: 1, porPagina: 10, bloqueo: 'TODAS' });
+    await useCase.executePaginado({
+      pagina: 1,
+      porPagina: 10,
+      bloqueo: 'TODAS',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(ticketRepo.findByIds).toHaveBeenCalledTimes(1);
     expect(ticketRepo.findByIds.mock.calls[0][0]).toHaveLength(10);
@@ -434,13 +529,28 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
     const { useCase } = armar(25, [1, 12, 13, 24]);
 
     const bloqueadas = (
-      await useCase.executePaginado({ pagina: 1, porPagina: 3, bloqueo: 'BLOQUEADAS' })
+      await useCase.executePaginado({
+        pagina: 1,
+        porPagina: 3,
+        bloqueo: 'BLOQUEADAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
     const segunda = (
-      await useCase.executePaginado({ pagina: 2, porPagina: 3, bloqueo: 'BLOQUEADAS' })
+      await useCase.executePaginado({
+        pagina: 2,
+        porPagina: 3,
+        bloqueo: 'BLOQUEADAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
     const libres = (
-      await useCase.executePaginado({ pagina: 1, porPagina: 50, bloqueo: 'NO_BLOQUEADAS' })
+      await useCase.executePaginado({
+        pagina: 1,
+        porPagina: 50,
+        bloqueo: 'NO_BLOQUEADAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(bloqueadas.total).toBe(4);
@@ -455,7 +565,12 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
     const { useCase } = armar(0);
 
     const pagina = (
-      await useCase.executePaginado({ pagina: 1, porPagina: 20, bloqueo: 'BLOQUEADAS' })
+      await useCase.executePaginado({
+        pagina: 1,
+        porPagina: 20,
+        bloqueo: 'BLOQUEADAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(pagina).toEqual({ items: [], total: 0, pagina: 1, porPagina: 20 });
@@ -468,7 +583,12 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
     );
 
     const pagina = (
-      await useCase.executePaginado({ pagina: 1, porPagina: 10, bloqueo: 'TODAS' })
+      await useCase.executePaginado({
+        pagina: 1,
+        porPagina: 10,
+        bloqueo: 'TODAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(pagina.total).toBe(3);
@@ -479,7 +599,12 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
     const { useCase } = armar(5, [0]);
 
     const pagina = (
-      await useCase.executePaginado({ pagina: 2, porPagina: 10, bloqueo: 'BLOQUEADAS' })
+      await useCase.executePaginado({
+        pagina: 2,
+        porPagina: 10,
+        bloqueo: 'BLOQUEADAS',
+        alcance: SIN_RESTRICCION,
+      })
     ).getValue();
 
     expect(pagina.items).toEqual([]);
@@ -489,7 +614,12 @@ describe('ListarReparacionesUseCase.executePaginado (odd/reparaciones-paginadas)
   it('sin filtro de bloqueo, las compras vinculadas se consultan una sola vez y solo para la página', async () => {
     const { useCase, reparacionCompraRepo } = armar(25);
 
-    await useCase.executePaginado({ pagina: 1, porPagina: 10, bloqueo: 'TODAS' });
+    await useCase.executePaginado({
+      pagina: 1,
+      porPagina: 10,
+      bloqueo: 'TODAS',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds).toHaveBeenCalledTimes(1);
     expect(

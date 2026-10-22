@@ -17,9 +17,10 @@
  *   input y otro número con otro. La igualdad ENTRE dos volúmenes distintos
  *   es lo único que prueba "constante", y sobrevive a un refactor legítimo
  *   del número base de consultas.
- * - Sin filtros: `execute()` no recibe parámetros — `ListarReparacionesUseCase`
- *   tampoco (spec, capability exportacion-reparaciones: "No filter
- *   parameters are accepted").
+ * - Sin filtros: `execute()` recibe solo el alcance del actor y lo pasa tal
+ *   cual a `ListarReparacionesUseCase` (spec, capability
+ *   exportacion-reparaciones: "No filter parameters are accepted";
+ *   odd/permisos-por-tipo-ticket D5 e: el alcance no es un filtro, es scope).
  * - Columnas fijas y en orden: Número, Título, Ubicación, Avance %.
  * - El tope de filas corta con un error de dominio, sin truncar en silencio.
  *   `total` es `items.length` (D4: mismo residual aceptado que equipos — no
@@ -28,6 +29,13 @@
  */
 import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarReparacionesUseCase } from './exportar-reparaciones.use-case';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
+
+/** ROOT y ADMINISTRADOR: los tests que no versan sobre el alcance. */
+const SIN_RESTRICCION = alcanceSinRestriccion('actor-uuid');
 import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparaciones.use-case';
 import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
@@ -138,7 +146,7 @@ describe('ExportarReparacionesUseCase', () => {
     );
     const useCase = new ExportarReparacionesUseCase(crearListarReparacionesFake([r1, r2]));
 
-    const result = await useCase.execute();
+    const result = await useCase.execute(SIN_RESTRICCION);
 
     expect(result.isFail()).toBe(false);
     const filas = lineas(result.getValue().contenido);
@@ -148,13 +156,14 @@ describe('ExportarReparacionesUseCase', () => {
     expect(filas[2]).toBe('EDI-2026-00002;Pintar fachada;;100,00');
   });
 
-  it('sin filtros: execute() no recibe parámetros ni se los pasa a ListarReparacionesUseCase', async () => {
+  it('sin filtros: pasa a ListarReparacionesUseCase solo el alcance por tipo del actor', async () => {
     const listarReparaciones = crearListarReparacionesFake([]);
     const useCase = new ExportarReparacionesUseCase(listarReparaciones);
+    const alcance = alcancePorTipo('actor-uuid', { 'tipo-edilicia': ['LECTURA'] });
 
-    await useCase.execute();
+    await useCase.execute(alcance);
 
-    expect(listarReparaciones.execute).toHaveBeenCalledWith();
+    expect(listarReparaciones.execute).toHaveBeenCalledWith(alcance);
   });
 
   it('tope de filas: total === TOPE arma el archivo; total === TOPE + 1 falla y NO arma contenido', async () => {
@@ -164,12 +173,12 @@ describe('ExportarReparacionesUseCase', () => {
 
     const okResult = await new ExportarReparacionesUseCase(
       crearListarReparacionesFake(listaEnElTope),
-    ).execute();
+    ).execute(SIN_RESTRICCION);
     expect(okResult.isFail()).toBe(false);
 
     const failResult = await new ExportarReparacionesUseCase(
       crearListarReparacionesFake(listaSobreElTope),
-    ).execute();
+    ).execute(SIN_RESTRICCION);
     expect(failResult.isFail()).toBe(true);
     expect(failResult.getError()).toBeInstanceOf(ExportacionDemasiadoGrandeError);
     expect(failResult.getError().message).not.toContain('filtros');
@@ -180,7 +189,7 @@ describe('ExportarReparacionesUseCase', () => {
     const reparacion = crearReparacion({ titulo: '=HYPERLINK("http://evil","clic")' });
     const useCase = new ExportarReparacionesUseCase(crearListarReparacionesFake([reparacion]));
 
-    const result = await useCase.execute();
+    const result = await useCase.execute(SIN_RESTRICCION);
 
     const [, fila] = lineas(result.getValue().contenido);
     expect(fila).toContain("'=HYPERLINK");
@@ -189,7 +198,7 @@ describe('ExportarReparacionesUseCase', () => {
   it('nombra el archivo con la fecha de exportación', async () => {
     const useCase = new ExportarReparacionesUseCase(crearListarReparacionesFake([]));
 
-    const { nombreArchivo } = (await useCase.execute()).getValue();
+    const { nombreArchivo } = (await useCase.execute(SIN_RESTRICCION)).getValue();
 
     expect(nombreArchivo).toMatch(/^reparaciones-\d{4}-\d{2}-\d{2}\.csv$/);
   });
@@ -276,13 +285,13 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     const con1Fila = crearListarReparacionesRealConContador(1);
     const resultadoCon1Fila = await new ExportarReparacionesUseCase(
       con1Fila.listarReparaciones,
-    ).execute();
+    ).execute(SIN_RESTRICCION);
     const consultasCon1Fila = con1Fila.contadorDeLlamadas();
 
     const con50Filas = crearListarReparacionesRealConContador(50);
     const resultadoCon50Filas = await new ExportarReparacionesUseCase(
       con50Filas.listarReparaciones,
-    ).execute();
+    ).execute(SIN_RESTRICCION);
     const consultasCon50Filas = con50Filas.contadorDeLlamadas();
 
     expect(resultadoCon1Fila.isFail()).toBe(false);
@@ -306,7 +315,7 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     );
     const useCase = new ExportarReparacionesUseCase(crearListarReparacionesFake([r1]));
 
-    const result = await useCase.execute('xlsx');
+    const result = await useCase.execute(SIN_RESTRICCION, 'xlsx');
 
     const hoja = (await leerXlsx(result.getValue().contenido)).worksheets[0];
     expect(hoja.getRow(2).getCell(1).value).toBe('EDI-2026-00001');

@@ -33,6 +33,7 @@ import { MasterPrismaClient, TenantPrismaClient } from '../../src/shared/infrast
 import { POSTGRES_ADMIN_PORT, IPostgresAdminPort } from '../../src/clientes/domain/ports/i-postgres-admin.port';
 
 import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
+import { filasDeTiposDesdeCeldas } from '../../src/tickets/domain/permisos-tipo-ticket';
 
 import { runDemoSeed, DEFAULT_DEMO_SEED_PASSWORD } from './demo-seed';
 
@@ -218,12 +219,29 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
         expect(await permisosDe(usuarioId, primera.clienteId), rol).toEqual([...PRESETS_ROL[rol]].sort());
       }
 
+      // Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c): cada rol con
+      // preset recibe en el tenant las filas que su plantilla da sobre cada tipo, y el
+      // ADMINISTRADOR ninguna (su plantilla es vacía).
+      const esperadasPorTipo = await filasPorTipoEsperadas(primera.dbName);
+      for (const [rol, usuarioId] of Object.entries(idsConPreset)) {
+        expect(await filasPorTipoDe(primera.dbName, usuarioId), `${rol} por tipo`).toEqual(
+          esperadasPorTipo(rol),
+        );
+      }
+      expect(
+        (await filasPorTipoDe(primera.dbName, primera.usuarios.tecnico)).some((f) =>
+          f.endsWith(':ASIGNAR'),
+        ),
+      ).toBe(true);
+      expect(await filasPorTipoDe(primera.dbName, primera.usuarios.administrador)).toEqual([]);
+
       // Alguien toca la matriz a mano entre corridas: la segunda corrida
       // tiene que devolver a CADA rol a su preset (estado conocido y
       // deterministico), no solo al tecnico.
       await masterClient.usuarioClientePermiso.deleteMany({
         where: { clienteId: primera.clienteId, usuarioId: { in: Object.values(idsConPreset) } },
       });
+      await borrarFilasPorTipo(primera.dbName, Object.values(idsConPreset));
 
       // ── Segunda corrida (idempotente) ────────────────────────────────
       const segunda = await runDemoSeed(app, {
@@ -245,6 +263,9 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
         expect(await permisosDe(usuarioId, primera.clienteId), `${rol} tras re-correr el seed`).toEqual(
           [...PRESETS_ROL[rol]].sort(),
         );
+        expect(await filasPorTipoDe(primera.dbName, usuarioId), `${rol} por tipo tras re-correr`).toEqual(
+          esperadasPorTipo(rol),
+        );
       }
 
       const { client: tenantClient2, pool: pool2 } = await openTenantClient(primera.dbName);
@@ -260,6 +281,43 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
     },
     120_000,
   );
+
+  /** Filas por tipo del usuario en el tenant, como `tipoId:ACCION` ordenadas. */
+  async function filasPorTipoDe(dbName: string, usuarioId: string): Promise<string[]> {
+    const { client, pool } = await openTenantClient(dbName);
+    try {
+      const filas = await client.permisoTipoTicket.findMany({ where: { usuarioId } });
+      return filas.map((f) => `${f.tipoId}:${f.accion}`).sort();
+    } finally {
+      await client.$disconnect();
+      await pool.end();
+    }
+  }
+
+  /** Filas por tipo que da la plantilla de cada rol sobre todos los tipos del tenant. */
+  async function filasPorTipoEsperadas(dbName: string): Promise<(rol: string) => string[]> {
+    const { client, pool } = await openTenantClient(dbName);
+    try {
+      const tipos = await client.tipoTicket.findMany({ select: { id: true, modulo: true } });
+      return (rol) =>
+        filasDeTiposDesdeCeldas(PRESETS_ROL[rol], tipos)
+          .map((f) => `${f.tipoId}:${f.accion}`)
+          .sort();
+    } finally {
+      await client.$disconnect();
+      await pool.end();
+    }
+  }
+
+  async function borrarFilasPorTipo(dbName: string, usuarioIds: string[]): Promise<void> {
+    const { client, pool } = await openTenantClient(dbName);
+    try {
+      await client.permisoTipoTicket.deleteMany({ where: { usuarioId: { in: usuarioIds } } });
+    } finally {
+      await client.$disconnect();
+      await pool.end();
+    }
+  }
 
   /** Permisos del usuario en ese cliente, como `MODULO:ACCION` ordenados. */
   async function permisosDe(usuarioId: string, clienteId: string): Promise<string[]> {

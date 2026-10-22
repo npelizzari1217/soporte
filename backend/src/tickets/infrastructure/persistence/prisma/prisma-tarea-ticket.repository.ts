@@ -14,6 +14,7 @@ import {
   ITareaTicketRepository,
 } from '../../../domain/ports/i-tarea-ticket.repository';
 import { TareaTicketMapper } from './tarea-ticket.mapper';
+import { whereAlcanceListado } from './alcance-listado.prisma';
 
 const ORDEN_LISTADO = [{ orden: 'asc' as const }, { createdAt: 'asc' as const }];
 
@@ -148,6 +149,8 @@ export class PrismaTareaTicketRepository implements ITareaTicketRepository {
         ticket: {
           deletedAt: null,
           ...(filtro.cicloId !== undefined && { cicloId: filtro.cicloId }),
+          // Mismo alcance por tipo que el resto del dashboard (odd/permisos-por-tipo-ticket, D5 e).
+          ...(filtro.alcance !== undefined && { AND: [whereAlcanceListado(filtro.alcance)] }),
         },
       },
       _count: { _all: true },

@@ -45,9 +45,10 @@ describe("VincularCompraDialog", () => {
         reparacionId="rep1"
         numero="EDI-0001"
         comprasQueBloquean={[]}
+        puedeVincularEnTipo
         trigger={<button>Gestionar compras</button>}
       />,
-      { user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:LECTURA"] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
@@ -58,15 +59,18 @@ describe("VincularCompraDialog", () => {
     expect(within(selector).getByRole("option", { name: "COM-0002" })).toBeInTheDocument();
   });
 
-  // El panel se abre con CUALQUIERA de los dos permisos: cada acción de adentro
+  // El panel se abre pudiendo vincular O desvincular: cada acción de adentro
   // tiene su propio gate, así que abrir no habilita nada. Gatearlo solo por
-  // ALTAS dejaba a quien únicamente puede desvincular viendo el chip
+  // vincular dejaba a quien únicamente puede desvincular viendo el chip
   // «Bloqueada» sin forma de sacarlo, aunque el backend le permite el DELETE.
-  it.each([
-    ["con EDILICIA:ALTAS", ["EDILICIA:LECTURA", "EDILICIA:ALTAS"], true],
-    ["con solo EDILICIA:BORRADO", ["EDILICIA:LECTURA", "EDILICIA:BORRADO"], true],
-    ["sin ALTAS ni BORRADO", ["EDILICIA:LECTURA"], false],
-  ])("el botón de abrir el panel se muestra con EDILICIA:ALTAS O con EDILICIA:BORRADO — %s", async (_label, permisos, shouldShow) => {
+  // Vincular espeja las DOS precondiciones del backend: ALTAS sobre el tipo de
+  // la reparación (odd/permisos-por-tipo-ticket) y la celda COMPRAS:LECTURA.
+  it.each<[string, boolean, string[], boolean]>([
+    ["con ALTAS sobre el tipo y COMPRAS:LECTURA", true, ["COMPRAS:LECTURA"], true],
+    ["con solo EDILICIA:BORRADO", false, ["EDILICIA:BORRADO"], true],
+    ["con ALTAS sobre el tipo pero sin COMPRAS:LECTURA", true, [], false],
+    ["sin ALTAS sobre el tipo, aunque tenga las celdas EDILICIA:ALTAS y COMPRAS:LECTURA", false, ["EDILICIA:ALTAS", "COMPRAS:LECTURA"], false],
+  ])("el botón de abrir el panel se muestra pudiendo vincular O con EDILICIA:BORRADO — %s", async (_label, puedeVincularEnTipo, permisos, shouldShow) => {
     server.use(mockComprasActivas());
 
     renderWithProviders(
@@ -74,6 +78,7 @@ describe("VincularCompraDialog", () => {
         reparacionId="rep1"
         numero="EDI-0001"
         comprasQueBloquean={[]}
+        puedeVincularEnTipo={puedeVincularEnTipo}
         trigger={<button>Gestionar compras</button>}
       />,
       { user: buildUser({ permisos }) },
@@ -87,9 +92,9 @@ describe("VincularCompraDialog", () => {
   });
 
   it.each([
-    ["con EDILICIA:BORRADO", ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:BORRADO"], true],
-    ["sin EDILICIA:BORRADO", ["EDILICIA:LECTURA", "EDILICIA:ALTAS"], false],
-  ])("la acción de desvincular respeta <Can permiso=\"EDILICIA:BORRADO\"> — %s", async (_label, permisos, shouldShow) => {
+    ["con EDILICIA:BORRADO", ["COMPRAS:LECTURA", "EDILICIA:BORRADO"], true],
+    ["sin EDILICIA:BORRADO", ["COMPRAS:LECTURA"], false],
+  ])("la acción de desvincular respeta la celda EDILICIA:BORRADO del módulo (L21) — %s", async (_label, permisos, shouldShow) => {
     server.use(mockComprasActivas());
     const user = userEvent.setup();
 
@@ -98,6 +103,7 @@ describe("VincularCompraDialog", () => {
         reparacionId="rep1"
         numero="EDI-0001"
         comprasQueBloquean={[{ id: "compra1", numero: "COM-0001" }]}
+        puedeVincularEnTipo
         trigger={<button>Gestionar compras</button>}
       />,
       { user: buildUser({ permisos }) },
@@ -131,9 +137,10 @@ describe("VincularCompraDialog", () => {
         reparacionId="rep1"
         numero="EDI-0001"
         comprasQueBloquean={[]}
+        puedeVincularEnTipo
         trigger={<button>Gestionar compras</button>}
       />,
-      { user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:LECTURA"] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
@@ -162,9 +169,10 @@ describe("VincularCompraDialog", () => {
         reparacionId="rep1"
         numero="EDI-0001"
         comprasQueBloquean={[{ id: "compra1", numero: "COM-0001" }]}
+        puedeVincularEnTipo
         trigger={<button>Gestionar compras</button>}
       />,
-      { user: buildUser({ permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:BORRADO"] }) },
+      { user: buildUser({ permisos: ["COMPRAS:LECTURA", "EDILICIA:BORRADO"] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /gestionar compras/i }));

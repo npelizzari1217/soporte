@@ -59,6 +59,7 @@ import {
   ReparacionListItemResponseDto,
 } from '../dtos/reparaciones.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -307,6 +308,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, clienteId, role.id);
     await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    // Las rutas de tareas del ticket deciden con los permisos por tipo del tenant: los mismos que
+    // estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId, usuarioId: usuario.id };
   }
@@ -361,7 +365,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(status).toBe(403);
     });
 
-    it('actor con SOLO COMPRAS:LECTURA (sin EDILICIA:ALTAS) → 403', async () => {
+    // Desde odd/permisos-por-tipo-ticket (T5b) la parte de Edilicia la decide el caso de uso con
+    // los permisos por tipo del ticket base: sin verlo, 404; viéndolo sin ALTAS, 403.
+    it('actor con SOLO COMPRAS:LECTURA (sin filas por tipo de Edilicia) → 404 de la reparación y no vincula', async () => {
       const actor = await crearActorConPermisos(['COMPRAS:LECTURA']);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
@@ -372,7 +378,31 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         bearer(actor.accessToken),
       );
 
+      expect(status).toBe(404);
+      expect(
+        await tenantClient.reparacionCompra.count({ where: { ticketEdiliciaId: reparacionId } }),
+      ).toBe(0);
+    });
+
+    it('actor con COMPRAS:LECTURA que ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) pero sin ALTAS sobre su tipo → 403 y no vincula', async () => {
+      const actor = await crearActorConPermisos([
+        'COMPRAS:LECTURA',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
+      const reparacionId = await crearReparacion();
+      const compraId = await crearCompra();
+
+      const { status } = await httpPost(
+        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        { compraId },
+        bearer(actor.accessToken),
+      );
+
       expect(status).toBe(403);
+      expect(
+        await tenantClient.reparacionCompra.count({ where: { ticketEdiliciaId: reparacionId } }),
+      ).toBe(0);
     });
 
     it('actor con AMBOS EDILICIA:ALTAS y COMPRAS:LECTURA → 201 y la compra aparece en comprasQueBloquean del listado', async () => {
@@ -380,6 +410,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:ALTAS',
         'COMPRAS:LECTURA',
         'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
       ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
@@ -398,6 +429,8 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       const fila = listado.data.items.find((r) => r.id === reparacionId);
       expect(fila?.bloqueada).toBe(true);
       expect(fila?.comprasQueBloquean.map((c) => c.id)).toContain(compraId);
+      // El tipo del ticket base viaja en la fila: el frontend gatea sus acciones por tipo (T6).
+      expect(fila?.tipoId).toBe(tipoEdiliciaId);
 
       // El filtro de bloqueo se resuelve en el servidor (odd/reparaciones-paginadas, S1-S3):
       // la reparación aparece con BLOQUEADAS y no con NO_BLOQUEADAS, y el total acompaña.
@@ -416,6 +449,45 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(bloqueadas.data.total + libres.data.total).toBe(listado.data.total);
     });
 
+    it('GET /reparaciones lista solo lo que el actor ve (odd/permisos-por-tipo-ticket, D5 e): sin VER_TODOS, sus reparaciones; la celda sin filas, nada', async () => {
+      const actor = await crearActorConPermisos([]);
+      await tenantClient.permisoTipoTicket.create({
+        data: { usuarioId: actor.usuarioId, tipoId: tipoEdiliciaId, accion: 'LECTURA' },
+      });
+      const propia = await crearReparacion();
+      const ajena = await crearReparacion();
+      const satelite = await tenantClient.ticketEdilicia.findUniqueOrThrow({
+        where: { id: propia },
+      });
+      await tenantClient.ticket.update({
+        where: { id: satelite.ticketId },
+        data: { asignadoId: actor.usuarioId },
+      });
+
+      const conFila = await httpGet<ListReparacionesResponseDto>(
+        `${baseUrl}/reparaciones?porPagina=100`,
+        bearer(actor.accessToken),
+      );
+      expect(conFila.status).toBe(200);
+      expect(conFila.data.items.map((r) => r.id)).toEqual([propia]);
+      expect(conFila.data.total).toBe(1);
+      expect(conFila.data.items.map((r) => r.id)).not.toContain(ajena);
+
+      // La celda EDILICIA:LECTURA sin filas por tipo ya no abre el listado.
+      const soloCelda = await crearActorConPermisos([], actor.clienteId);
+      await permisosRepo.setPermisos(soloCelda.usuarioId, actor.clienteId, ['EDILICIA:LECTURA']);
+      const { accessToken } = await login(
+        (await masterClient.usuario.findUniqueOrThrow({ where: { id: soloCelda.usuarioId } }))
+          .email,
+      );
+      const sinFilas = await httpGet<ListReparacionesResponseDto>(
+        `${baseUrl}/reparaciones`,
+        bearer(accessToken),
+      );
+      expect(sinFilas.status).toBe(200);
+      expect(sinFilas.data).toMatchObject({ items: [], total: 0 });
+    });
+
     it('GET /reparaciones rechaza con 400 una paginación o un filtro inválidos (odd/reparaciones-paginadas, S1)', async () => {
       const actor = await crearActorConPermisos(['EDILICIA:LECTURA']);
       for (const query of ['porPagina=101', 'pagina=0', 'bloqueo=ALGUNAS']) {
@@ -427,23 +499,70 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       }
     });
 
-    it('404 CompraNoEncontradaError: compraId inexistente, con ambos permisos', async () => {
-      const actor = await crearActorConPermisos(['EDILICIA:ALTAS', 'COMPRAS:LECTURA']);
+    it('404 CompraNoEncontradaError: compraId inexistente, con ambos permisos y viendo la reparación', async () => {
+      const actor = await crearActorConPermisos([
+        'EDILICIA:ALTAS',
+        'COMPRAS:LECTURA',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const reparacionId = await crearReparacion();
 
-      const { status } = await httpPost(
+      const { status, data } = await httpPost(
         `${baseUrl}/reparaciones/${reparacionId}/compras`,
         { compraId: '00000000-0000-4000-8000-000000000fff' },
         bearer(actor.accessToken),
       );
 
+      // El 404 tiene que ser el de la compra, no el de una reparación que el actor no ve.
       expect(status).toBe(404);
+      expect(JSON.stringify(data)).toContain('00000000-0000-4000-8000-000000000fff');
     });
   });
 
   describe('DELETE /reparaciones/:reparacionId/compras/:compraId — NO exige COMPRAS:LECTURA', () => {
-    it('actor con SOLO EDILICIA:BORRADO desvincula (204) — el segundo permiso no aplica acá (ver design/tasks)', async () => {
-      const actorConAmbos = await crearActorConPermisos(['EDILICIA:ALTAS', 'COMPRAS:LECTURA']);
+    // `EDILICIA:BORRADO` sigue siendo el permiso de la ruta (L21); el caso de uso exige además ver
+    // la reparación ajena (odd/permisos-por-tipo-ticket, D5 b): `EDILICIA:LECTURA` da Ver y
+    // `TICKETS:VER_TODOS` da Ver todos sobre los tipos de Edilicia (L35).
+    it('actor con EDILICIA:BORRADO que ve la reparación desvincula (204) sin COMPRAS:LECTURA (ver design/tasks)', async () => {
+      // Vincula quien ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) y tiene ALTAS sobre su tipo.
+      const actorConAmbos = await crearActorConPermisos([
+        'EDILICIA:ALTAS',
+        'COMPRAS:LECTURA',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
+      const reparacionId = await crearReparacion();
+      const compraId = await crearCompra();
+      await httpPost(
+        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        { compraId },
+        bearer(actorConAmbos.accessToken),
+      );
+
+      const actor = await crearActorConPermisos(
+        ['EDILICIA:BORRADO', 'EDILICIA:LECTURA', 'TICKETS:VER_TODOS'],
+        actorConAmbos.clienteId,
+      );
+      const { status } = await httpDelete(
+        `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(204);
+      expect(
+        await tenantClient.reparacionCompra.count({ where: { ticketEdiliciaId: reparacionId } }),
+      ).toBe(0);
+    });
+
+    it('actor con SOLO EDILICIA:BORRADO, que no ve la reparación → 404 y el vínculo sigue', async () => {
+      // Vincula quien ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) y tiene ALTAS sobre su tipo.
+      const actorConAmbos = await crearActorConPermisos([
+        'EDILICIA:ALTAS',
+        'COMPRAS:LECTURA',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
       await httpPost(
@@ -458,11 +577,20 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         bearer(actor.accessToken),
       );
 
-      expect(status).toBe(204);
+      expect(status).toBe(404);
+      expect(
+        await tenantClient.reparacionCompra.count({ where: { ticketEdiliciaId: reparacionId } }),
+      ).toBe(1);
     });
 
     it('actor sin EDILICIA:BORRADO → 403', async () => {
-      const actorConAmbos = await crearActorConPermisos(['EDILICIA:ALTAS', 'COMPRAS:LECTURA']);
+      // Vincula quien ve la reparación (EDILICIA:LECTURA y TICKETS:VER_TODOS, L35) y tiene ALTAS sobre su tipo.
+      const actorConAmbos = await crearActorConPermisos([
+        'EDILICIA:ALTAS',
+        'COMPRAS:LECTURA',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
       await httpPost(
@@ -480,17 +608,23 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(status).toBe(403);
     });
 
-    it('404 VinculoNoEncontradoError: vínculo inexistente, con EDILICIA:BORRADO', async () => {
-      const actor = await crearActorConPermisos(['EDILICIA:BORRADO']);
+    it('404 VinculoNoEncontradoError: vínculo inexistente, con EDILICIA:BORRADO y viendo la reparación', async () => {
+      const actor = await crearActorConPermisos([
+        'EDILICIA:BORRADO',
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const reparacionId = await crearReparacion();
       const compraId = await crearCompra();
 
-      const { status } = await httpDelete(
+      const { status, data } = await httpDelete(
         `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
         bearer(actor.accessToken),
       );
 
+      // El 404 tiene que ser el del vínculo, no el de una reparación que el actor no ve.
       expect(status).toBe(404);
+      expect(JSON.stringify(data)).toContain('No existe un vínculo');
     });
   });
 

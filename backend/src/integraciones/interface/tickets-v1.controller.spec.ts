@@ -10,6 +10,7 @@ import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtene
 import { OperacionTicketEntity } from '../../tickets/domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../tickets/domain/errors/tickets.errors';
+import { accionesDeTipoDesdeCeldas } from '../../tickets/domain/permisos-tipo-ticket';
 import { TipoTicketV1NoDisponibleError } from '../domain/integraciones.errors';
 import { TicketsV1Query } from '../application/tickets-v1.query';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
@@ -35,6 +36,12 @@ const actor: JwtPayload = {
   apellido: 'API',
   cliente_logo_v: null,
 };
+
+/** Clave con solo alta. */
+const actorDeAlta: JwtPayload = { ...actor, permisos: ['TICKETS:ALTAS'] };
+
+/** Clave con solo comentario: el guard no le agrega VER_TODOS. */
+const actorDeComentario: JwtPayload = { ...actor, permisos: ['TICKETS:COMENTAR'] };
 
 function ticket(): TicketEntity {
   return TicketEntity.create({
@@ -84,6 +91,7 @@ async function armar(encontrado = true, tipoPublicado = true, deV1 = true) {
     .fn()
     .mockResolvedValue(deV1 ? Result.ok(undefined) : Result.fail(new TicketNoEncontradoError(ID)));
   const validarReferencia = vi.fn().mockResolvedValue(Result.ok(undefined));
+  const tiposDeV1 = vi.fn().mockResolvedValue(['tipo-1', 'tipo-2']);
   const modulo = await Test.createTestingModule({
     controllers: [TicketsV1Controller],
     providers: [
@@ -93,7 +101,10 @@ async function armar(encontrado = true, tipoPublicado = true, deV1 = true) {
       { provide: CrearTicketUseCase, useValue: { execute: crear } },
       { provide: CrearComentarioUseCase, useValue: { execute: comentar } },
       { provide: TiposTicketV1Query, useValue: { validarParaAlta: validarTipo } },
-      { provide: TicketsV1Query, useValue: { validarExistente, validarReferencia } },
+      {
+        provide: TicketsV1Query,
+        useValue: { validarExistente, validarReferencia, tiposDeV1 },
+      },
     ],
   })
     .overrideGuard(ApiClaveGuard)
@@ -122,9 +133,15 @@ describe('TicketsV1Controller (lectura)', () => {
 
     expect(listar).toHaveBeenCalledWith(
       expect.objectContaining({
-        actorId: actor.sub,
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['TICKETS'],
+        // Las celdas de la clave traducidas por L11 sobre cada tipo de v1 (odd/permisos-por-tipo-ticket,
+        // D4, D5 f): lectura con ver todos da también imprimir.
+        alcance: {
+          actorId: actor.sub,
+          permisosPorTipo: new Map([
+            ['tipo-1', new Set(['LECTURA', 'VER_TODOS', 'IMPRESION'])],
+            ['tipo-2', new Set(['LECTURA', 'VER_TODOS', 'IMPRESION'])],
+          ]),
+        },
         pagina: 2,
         filtros: expect.objectContaining({ estadoId: ID, busqueda: 'imprime' }),
       }),
@@ -145,13 +162,34 @@ describe('TicketsV1Controller (lectura)', () => {
 
     const res = await controller.ver(actor, ID);
 
+    // La clave no tiene filas por tipo: sus celdas traducidas por L11 sobre cada tipo de v1, con la
+    // misma función que el backfill y las plantillas (odd/permisos-por-tipo-ticket, D4, D5 f).
+    const acciones = accionesDeTipoDesdeCeldas(actor.permisos, 'TICKETS');
+    expect(acciones).toEqual(new Set(['LECTURA', 'VER_TODOS', 'IMPRESION']));
     expect(obtener).toHaveBeenCalledWith({
       ticketId: ID,
       actorId: actor.sub,
-      tienePermisoVerTodos: true,
-      modulosPermitidos: ['TICKETS'],
+      permisosPorTipo: new Map([
+        ['tipo-1', acciones],
+        ['tipo-2', acciones],
+      ]),
     });
     expect(res).toEqual({ numero: 'SOP-2026-00001' });
+  });
+
+  it('sin VER_TODOS en la clave, el detalle lleva LECTURA sin VER_TODOS sobre los tipos de v1', async () => {
+    const { controller, obtener } = await armar();
+
+    await controller.ver({ ...actor, permisos: ['TICKETS:LECTURA'] }, ID);
+
+    expect(obtener).toHaveBeenCalledWith({
+      ticketId: ID,
+      actorId: actor.sub,
+      permisosPorTipo: new Map([
+        ['tipo-1', new Set(['LECTURA', 'IMPRESION'])],
+        ['tipo-2', new Set(['LECTURA', 'IMPRESION'])],
+      ]),
+    });
   });
 
   it('un ticket inexistente o de otro cliente es 404', async () => {
@@ -163,7 +201,7 @@ describe('TicketsV1Controller (lectura)', () => {
   it('crea el ticket a nombre del actor (solicitante y autor) con el anio del servidor', async () => {
     const { controller, crear } = await armar();
 
-    await controller.crear(actor, { titulo: 'T', tipoId: ID, prioridadId: ID });
+    await controller.crear(actorDeAlta, { titulo: 'T', tipoId: ID, prioridadId: ID });
 
     expect(crear).toHaveBeenCalledWith({
       titulo: 'T',
@@ -175,6 +213,15 @@ describe('TicketsV1Controller (lectura)', () => {
       clienteId: 'c1',
       autorId: actor.sub,
       anio: new Date().getFullYear(),
+      // La celda de alta de la clave, traducida por L11 sobre cada tipo de v1 (D5 f): el caso de uso
+      // exige ALTAS sobre el tipo elegido, como cualquier alta.
+      alcance: {
+        actorId: actor.sub,
+        permisosPorTipo: new Map([
+          ['tipo-1', new Set(['ALTAS'])],
+          ['tipo-2', new Set(['ALTAS'])],
+        ]),
+      },
     });
   });
 
@@ -230,8 +277,10 @@ describe('TicketsV1Controller (lectura)', () => {
   it('el comentario es siempre publico, de autoria del actor y marcado como de integracion', async () => {
     const { controller, comentar } = await armar();
 
-    const res = await controller.comentar(actor, ID, { texto: 'hola' });
+    const res = await controller.comentar(actorDeComentario, ID, { texto: 'hola' });
 
+    // Solo COMENTAR traduce a COMENTAR; la ampliación explícita de v1 le suma ver todos los tickets
+    // del tipo para poder comentarlos (L18).
     expect(comentar).toHaveBeenCalledWith({
       ticketId: ID,
       texto: 'hola',
@@ -239,8 +288,10 @@ describe('TicketsV1Controller (lectura)', () => {
       esInterno: false,
       autorEsIntegracion: true,
       actorId: actor.sub,
-      tienePermisoVerTodos: true,
-      modulosPermitidos: ['TICKETS'],
+      permisosPorTipo: new Map([
+        ['tipo-1', new Set(['COMENTAR', 'LECTURA', 'VER_TODOS'])],
+        ['tipo-2', new Set(['COMENTAR', 'LECTURA', 'VER_TODOS'])],
+      ]),
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
   });

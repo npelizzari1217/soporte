@@ -6,9 +6,10 @@
  * Es solo experiencia: el backend decide, y un 403 suyo llega como toast.
  *
  * `asignadoId: undefined` significa "responsable desconocido": el diálogo de
- * Edilicia no siempre puede leer el ticket (`GET /tickets/:id` exige
- * `TICKETS:LECTURA`). En ese caso se muestra el botón a quien podría ser el
- * responsable —quien tiene el permiso del módulo— y el backend corta al resto.
+ * Edilicia no siempre puede leer el ticket (`GET /tickets/:id` puede fallar o
+ * estar cargando). En ese caso se muestra el botón a quien podría ser el
+ * responsable —quien tiene `MODIFICACION` sobre el tipo— y el backend corta al
+ * resto.
  */
 
 export interface ActorTareasUi {
@@ -16,14 +17,14 @@ export interface ActorTareasUi {
   id: string;
   /** ROOT o ADMINISTRADOR del cliente activo (`useSession().esAdminCliente`). */
   esAdministrador: boolean;
-  /** `<MODULO>:MODIFICACION` del módulo del tipo del ticket. */
-  tieneModificacionDelModulo: boolean;
+  /** `MODIFICACION` sobre el tipo del ticket (odd/permisos-por-tipo-ticket, D5 c). */
+  tieneModificacionDelTipo: boolean;
 }
 
-/** CA3: crear, asignar y borrar — responsable, ADMINISTRADOR o ROOT, con el permiso del módulo. */
+/** CA3: crear, asignar y borrar — responsable, ADMINISTRADOR o ROOT, con `MODIFICACION` sobre el tipo. */
 export function puedeGestionarTareasUi(actor: ActorTareasUi, asignadoId: string | null | undefined): boolean {
   const puedeSerResponsable = asignadoId === undefined || asignadoId === actor.id;
-  return (actor.esAdministrador || puedeSerResponsable) && actor.tieneModificacionDelModulo;
+  return (actor.esAdministrador || puedeSerResponsable) && actor.tieneModificacionDelTipo;
 }
 
 /** CA4: completar y descompletar — técnico de la tarea, responsable, ADMINISTRADOR o ROOT. */
@@ -34,7 +35,7 @@ export function puedeCompletarTareaUi(
 ): boolean {
   if (actor.esAdministrador) return true;
   if (tecnicoId !== null && tecnicoId === actor.id) return true;
-  if (asignadoId === undefined) return actor.tieneModificacionDelModulo;
+  if (asignadoId === undefined) return actor.tieneModificacionDelTipo;
   return asignadoId !== null && asignadoId === actor.id;
 }
 

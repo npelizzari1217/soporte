@@ -152,6 +152,11 @@ export class VincularCompraHttpDto {
 export interface TicketEdiliciaConTicketResponseDto {
   id: string;
   ticketId: string;
+  /**
+   * Tipo del ticket base: el frontend decide con él qué acciones ofrece en cada fila, porque los
+   * permisos son por tipo (odd/permisos-por-tipo-ticket, S6, T6).
+   */
+  tipoId: string;
   numero: string;
   titulo: string;
   /** Descripción y prioridad del ticket base: las precarga el diálogo de edición (odd/detalle-ticket-legible). */
@@ -185,6 +190,7 @@ export function toTicketEdiliciaResponseDto(
   return {
     id: ticketEdilicia.id,
     ticketId: ticket.id,
+    tipoId: ticket.tipoId,
     numero: ticket.numero,
     titulo: ticket.titulo,
     descripcion: ticket.descripcion,

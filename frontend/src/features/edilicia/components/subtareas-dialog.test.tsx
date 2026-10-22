@@ -3,7 +3,9 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
-import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { buildUser } from "../../../../test/render-with-providers";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
+import type { PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
 import { SubtareasDialog } from "./subtareas-dialog";
 import type { TareaTicket } from "@/features/tickets/types";
 
@@ -20,6 +22,9 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
  * `/reparaciones/.../subtareas`, y sus botones siguen CA3/CA4.
  */
 const TICKET_ID = "tk1";
+/** Tipo del ticket de la reparación: gestionar tareas exige MODIFICACION sobre él. */
+const TIPO = "tipo-mantenimiento";
+const MODIFICA_EL_TIPO = permisosDeTest({ [TIPO]: ["LECTURA", "MODIFICACION"] });
 
 const TAREA: TareaTicket = {
   id: "ta1",
@@ -64,16 +69,17 @@ function mockBackend({ asignadoId = "u-responsable" }: { asignadoId?: string | n
   return { rutasViejas };
 }
 
-function renderDialog(user = buildUser()) {
-  return renderWithProviders(
+function renderDialog(user = buildUser(), permisos: PermisosPorTipo = MODIFICA_EL_TIPO) {
+  return renderConPermisos(
     <SubtareasDialog
       ticketId={TICKET_ID}
+      tipoId={TIPO}
       numero="EDI-0001"
       trigger={<button>Ver subtareas</button>}
       estadoCodigo="EN_PROCESO"
       bloqueada={false}
     />,
-    { user },
+    { user, permisos },
   );
 }
 
@@ -81,9 +87,7 @@ describe("SubtareasDialog — tareas genéricas del ticket", () => {
   it("lista las tareas del ticket y agrega por POST /tickets/:id/tareas, sin tocar las rutas viejas", async () => {
     const user = userEvent.setup();
     const { rutasViejas } = mockBackend();
-    renderDialog(
-      buildUser({ sub: "u-responsable", rol: "TECNICO", permisos: ["TICKETS:LECTURA", "EDILICIA:MODIFICACION"] }),
-    );
+    renderDialog(buildUser({ sub: "u-responsable", rol: "TECNICO", permisos: [] }));
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
     expect(await screen.findByText(/subtareas — edi-0001/i)).toBeInTheDocument();
@@ -105,6 +109,7 @@ describe("SubtareasDialog — tareas genéricas del ticket", () => {
         rol: "TECNICO",
         permisos: ["TICKETS:LECTURA", "EDILICIA:ALTAS", "EDILICIA:MODIFICACION", "EDILICIA:BORRADO"],
       }),
+      permisosDeTest({ [TIPO]: ["LECTURA", "ALTAS", "MODIFICACION", "BORRADO"] }),
     );
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
@@ -115,10 +120,11 @@ describe("SubtareasDialog — tareas genéricas del ticket", () => {
     expect(screen.queryByRole("button", { name: /eliminar tarea/i })).not.toBeInTheDocument();
   });
 
-  it("sin TICKETS:LECTURA el responsable es desconocido: con EDILICIA:MODIFICACION ve los controles y decide el backend", async () => {
+  it("si el ticket no se puede leer el responsable es desconocido: con MODIFICACION sobre el tipo ve los controles y decide el backend", async () => {
     const user = userEvent.setup();
     mockBackend();
-    renderDialog(buildUser({ sub: "u-x", rol: "TECNICO", permisos: ["EDILICIA:MODIFICACION"] }));
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({}, { status: 500 })));
+    renderDialog(buildUser({ sub: "u-x", rol: "TECNICO", permisos: [] }));
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
     await screen.findByText("Revisar cañería");
@@ -126,10 +132,27 @@ describe("SubtareasDialog — tareas genéricas del ticket", () => {
     expect(screen.getByRole("button", { name: "Completar" })).toBeInTheDocument();
   });
 
-  it("un TECNICO sin el permiso del módulo, que no es técnico de la tarea, solo lee", async () => {
+  it("el responsable con MODIFICACION en OTRO tipo, pero no en el de la reparación, no gestiona", async () => {
     const user = userEvent.setup();
     mockBackend();
-    renderDialog(buildUser({ sub: "u-x", rol: "TECNICO", permisos: [] }));
+    renderDialog(
+      buildUser({ sub: "u-responsable", rol: "TECNICO", permisos: ["EDILICIA:MODIFICACION"] }),
+      permisosDeTest({ [TIPO]: ["LECTURA"], "tipo-edilicia": ["LECTURA", "MODIFICACION"] }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
+    await screen.findByText("Revisar cañería");
+    // Responsable: completa (CA4), pero sin MODIFICACION sobre este tipo no agrega ni borra (CA3).
+    expect(await screen.findByRole("button", { name: "Completar" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nueva tarea")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /eliminar tarea/i })).not.toBeInTheDocument();
+  });
+
+  it("un TECNICO sin MODIFICACION sobre el tipo, que no es técnico de la tarea, solo lee", async () => {
+    const user = userEvent.setup();
+    mockBackend();
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({}, { status: 500 })));
+    renderDialog(buildUser({ sub: "u-x", rol: "TECNICO", permisos: [] }), permisosDeTest({ [TIPO]: ["LECTURA"] }));
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
     await screen.findByText("Revisar cañería");
@@ -138,8 +161,8 @@ describe("SubtareasDialog — tareas genéricas del ticket", () => {
   });
 });
 
-describe("SubtareasDialog — lector de Edilicia que no ve el ticket (T12)", () => {
-  it("con EDILICIA:LECTURA y sin TICKETS:LECTURA lista las tareas genéricas con su técnico, sin controles", async () => {
+describe("SubtareasDialog — lector del tipo de la reparación (T12)", () => {
+  it("con solo LECTURA sobre el tipo lista las tareas genéricas con su técnico, sin controles", async () => {
     const user = userEvent.setup();
     server.use(
       http.get(`/api/tickets/${TICKET_ID}/tareas`, () =>
@@ -149,7 +172,10 @@ describe("SubtareasDialog — lector de Edilicia que no ve el ticket (T12)", () 
         }),
       ),
     );
-    renderDialog(buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }));
+    renderDialog(
+      buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }),
+      permisosDeTest({ [TIPO]: ["LECTURA"] }),
+    );
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
     await screen.findByText("Revisar cañería");
@@ -165,7 +191,10 @@ describe("SubtareasDialog — lector de Edilicia que no ve el ticket (T12)", () 
         HttpResponse.json({ statusCode: 403, message: "no", error: "Forbidden" }, { status: 403 }),
       ),
     );
-    renderDialog(buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }));
+    renderDialog(
+      buildUser({ sub: "u-x", rol: "USUARIO", permisos: ["EDILICIA:LECTURA"] }),
+      permisosDeTest({ [TIPO]: ["LECTURA"] }),
+    );
 
     await user.click(screen.getByRole("button", { name: /ver subtareas/i }));
     expect(await screen.findByText("No se pudieron cargar las tareas.")).toBeInTheDocument();

@@ -7,12 +7,16 @@
  * el dominio no puedan divergir en silencio — que es lo que había pasado: la
  * edición acotaba a 100 y el alta no acotaba nada.
  */
+// `@Type` de class-transformer (cuerpo de `PUT /usuarios/:id/permisos-por-tipo`) lee la metadata
+// al decorar: en la app la carga Nest; acá, el import.
+import 'reflect-metadata';
 import { describe, expect, it } from 'vitest';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import {
   CreateUsuarioTenantDto,
   EditarUsuarioDto,
+  ReemplazarPermisosPorTipoDto,
   ResetearPasswordUsuarioDto,
 } from './usuario-tenant.dto';
 import {
@@ -147,5 +151,33 @@ describe('ResetearPasswordUsuarioDto — largo mínimo de la contraseña', () =>
   it('rechaza una contraseña vacía', async () => {
     const dto = plainToInstance(ResetearPasswordUsuarioDto, { password: '' });
     expect(await validate(dto)).not.toHaveLength(0);
+  });
+});
+
+describe('ReemplazarPermisosPorTipoDto (odd/permisos-por-tipo-ticket, T7)', () => {
+  /** Valida el cuerpo como lo haría el `ValidationPipe` global (whitelist + transform). */
+  async function errores(cuerpo: unknown): Promise<number> {
+    const dto = plainToInstance(ReemplazarPermisosPorTipoDto, cuerpo);
+    return (await validate(dto, { whitelist: true })).length;
+  }
+
+  it('acepta filas con su tipo y acciones; el vocabulario lo valida el caso de uso (422)', async () => {
+    expect(await errores({ tipos: [{ tipoId: 't1', acciones: ['LECTURA', 'NO_EXISTE'] }] })).toBe(
+      0,
+    );
+    expect(await errores({ tipos: [] })).toBe(0);
+  });
+
+  it.each([
+    { caso: 'sin tipos', cuerpo: {} },
+    { caso: 'tipos que no es lista', cuerpo: { tipos: 'LECTURA' } },
+    { caso: 'una fila sin tipoId', cuerpo: { tipos: [{ acciones: ['LECTURA'] }] } },
+    { caso: 'acciones que no son texto', cuerpo: { tipos: [{ tipoId: 't1', acciones: [1] }] } },
+    {
+      caso: 'una acción repetida en la fila',
+      cuerpo: { tipos: [{ tipoId: 't1', acciones: ['LECTURA', 'LECTURA'] }] },
+    },
+  ])('rechaza $caso (400)', async ({ cuerpo }) => {
+    expect(await errores(cuerpo)).toBeGreaterThan(0);
   });
 });

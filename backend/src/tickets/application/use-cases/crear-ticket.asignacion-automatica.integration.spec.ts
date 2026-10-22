@@ -3,7 +3,8 @@
  * migrada y sembrada). sdd/asignacion-automatica-por-tipo: A1 (nace ASIGNADO), A3 (bitácora del
  * sistema), A7 (atómica con el alta), A9 (el SLA no cambia), N1 (el evento sale después del commit).
  *
- * `listarTecnicosAsignables` es un doble: este spec no puebla master. Solo se borra la regla creada.
+ * Master es un doble (`listarAgentes`): este spec no puebla master; la LECTURA del responsable sobre
+ * el tipo sí sale de la tabla real del tenant. Solo se borra la regla creada.
  */
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
@@ -31,6 +32,8 @@ import { ESTADOS_RELOJ_CORRE } from '../../domain/state-machine/estados.constant
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
 import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
+import { PrismaPermisoTipoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
 import { CrearTicketUseCase } from './crear-ticket.use-case';
 
 const MASTER_TEST_URL =
@@ -73,6 +76,8 @@ describe('CrearTicketUseCase con regla de asignación — integración (A1, A3, 
         clienteId: CLIENTE_ID,
         autorId: SOLICITANTE,
         anio: 2026,
+        // Esta suite prueba la regla de asignación, no los permisos por tipo.
+        alcance: null,
       }),
     );
 
@@ -94,9 +99,17 @@ describe('CrearTicketUseCase con regla de asignación — integración (A1, A3, 
       existeEnTenant: async () => true,
       estaActivoEnTenant: async () => true,
       resolverNombres: async () => new Map(),
-      getAutorizacionModulos: async () => ({ esAdminTotal: false, modulos: [] }),
-      listarTecnicosAsignables: async () => [{ id: RESPONSABLE, nombre: 'Tina', apellido: 'T' }],
+      esAdminTotalEnTenant: async () => false,
+      listarAgentes: async (_clienteId, usuarioIds) =>
+        usuarioIds.includes(RESPONSABLE)
+          ? [{ id: RESPONSABLE, nombre: 'Tina', apellido: 'T' }]
+          : [],
     };
+    // Elegibilidad real: la LECTURA del responsable sobre el tipo sale de la tabla del tenant.
+    const elegibilidad = new ElegibilidadAsignado(
+      checker,
+      new PrismaPermisoTipoTicketRepository(tenantContext),
+    );
     useCase = new CrearTicketUseCase(
       ticketRepo,
       operacionRepo,
@@ -107,7 +120,7 @@ describe('CrearTicketUseCase con regla de asignación — integración (A1, A3, 
       checker,
       new NumeradorTicket(ticketRepo),
       new ResolverCicloActivoParaCreacion(new PrismaCicloClienteRepository(tenantContext)),
-      new ResolverAsignacionAutomatica(reglaRepo, checker, estadoRepo, tipoOperacionRepo, {
+      new ResolverAsignacionAutomatica(reglaRepo, elegibilidad, estadoRepo, tipoOperacionRepo, {
         log: () => {},
         error: () => {},
       }),
@@ -127,6 +140,10 @@ describe('CrearTicketUseCase con regla de asignación — integración (A1, A3, 
         client.tipoOperacion.findUniqueOrThrow({ where: { codigo: 'ASIGNACION' } }),
       ),
     };
+    // El responsable de la regla atiende Soporte (odd/permisos-por-tipo-ticket, D5 g).
+    await client.permisoTipoTicket.create({
+      data: { usuarioId: RESPONSABLE, tipoId: ids.tipo, accion: 'LECTURA' },
+    });
     await client.cicloCliente.create({
       data: {
         cicloVigenteId: '01900000-0000-7000-8000-000000000001',

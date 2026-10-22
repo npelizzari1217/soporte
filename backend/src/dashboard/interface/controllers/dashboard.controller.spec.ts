@@ -19,6 +19,8 @@ import {
   MetricasResult,
   ObtenerMetricasUseCase,
 } from '../../application/use-cases/obtener-metricas.use-case';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 
 describe('DashboardController (D5)', () => {
   function buildController() {
@@ -26,7 +28,14 @@ describe('DashboardController (D5)', () => {
     const caso: ObtenerMetricasUseCase = Object.create(ObtenerMetricasUseCase.prototype, {
       execute: { value: execute },
     });
-    const controller = new DashboardController(caso);
+    // `tecnico-uuid` ve el tipo `tipo-1` en la tabla del tenant (odd/permisos-por-tipo-ticket, D5 a).
+    const alcances = new CargadorAlcanceTicket(
+      new PermisosTipoTicketEnMemoria(
+        [],
+        [{ usuarioId: 'tecnico-uuid', tipoId: 'tipo-1', accion: 'LECTURA' }],
+      ),
+    );
+    const controller = new DashboardController(caso, alcances);
     return { controller, obtenerMetricasUseCase: { execute } };
   }
 
@@ -76,6 +85,8 @@ describe('DashboardController (D5)', () => {
         cicloId: 'ciclo-uuid',
         // ADMINISTRADOR bypassea CUALQUIER código válido del catálogo (puedeEjecutar).
         tieneCsatLectura: true,
+        // ADMINISTRADOR: sin restricción por tipo.
+        alcance: { actorId: 'admin-uuid', permisosPorTipo: null },
       });
     });
 
@@ -91,6 +102,11 @@ describe('DashboardController (D5)', () => {
         cicloId: undefined,
         // TECNICO sin la celda 'CSAT:LECTURA' en `permisos` (default de makeUser).
         tieneCsatLectura: false,
+        // Sus permisos por tipo, de la tabla del tenant: las métricas agregan solo lo que ve (D5 e).
+        alcance: {
+          actorId: 'tecnico-uuid',
+          permisosPorTipo: new Map([['tipo-1', new Set(['LECTURA'])]]),
+        },
       });
     });
 

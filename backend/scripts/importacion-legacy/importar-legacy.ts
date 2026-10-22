@@ -128,10 +128,12 @@ export async function importar(
     vigenteIdPorLegacy: rm.vigenteIdPorLegacy,
     usuarioIdPorLegacy: rm.usuarioIdPorLegacy,
     catalogos: estadoTenant.catalogos,
+    plantillasSembradas: rm.plantillasSembradas,
   });
   log(
     `Tenant: ${rt.ciclosCreados} ciclo(s) del cliente creado(s) inactivo(s), ${rt.ticketsInsertados} ticket(s) ` +
-      `insertado(s), ${rt.comentariosInsertados} comentario(s) insertado(s), ${rt.yaExistian.length} ya existia(n)`,
+      `insertado(s), ${rt.comentariosInsertados} comentario(s) insertado(s), ${rt.yaExistian.length} ya existia(n), ` +
+      `${rt.permisosPorTipoInsertados} permiso(s) por tipo de ticket insertado(s)`,
   );
   return { conflictos, master: rm, tenant: rt };
 }

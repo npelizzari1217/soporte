@@ -5,7 +5,8 @@
  *
  * Camino D3: un usuario con sesión escaneó el QR de un equipo. El backend compara el slug con el
  * de la sesión (404 si es de otra organización, sin revelar nada) y resuelve el token en el
- * tenant de la sesión: `{ equipo: {id, nombre} | null }`. Requiere `TICKETS:ALTAS` (403 si falta).
+ * tenant de la sesión: `{ equipo: {id, nombre} | null }`. Requiere `ALTAS` sobre el tipo SOPORTE (403 si falta,
+ * odd/permisos-por-tipo-ticket).
  */
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";

@@ -45,12 +45,11 @@ const RESPONSABLE = '01900000-0000-7000-8000-000000000302';
 const TECNICO_A = '01900000-0000-7000-8000-000000000303';
 const TECNICO_B = '01900000-0000-7000-8000-000000000304';
 
+/** Sin restricción por tipo: estos casos prueban la concurrencia, no el acceso. */
 const actor = (id: string, esAdministrador = false): ActorTarea => ({
   id,
   esAdministrador,
-  tienePermisoVerTodos: true,
-  modulosConModificacion: ['TICKETS'],
-  modulosPermitidos: esAdministrador ? null : ['TICKETS'],
+  permisosPorTipo: null,
 });
 const RESPONSABLE_ACTOR = actor(RESPONSABLE);
 const ADMIN_ACTOR = actor('01900000-0000-7000-8000-000000000305', true);
@@ -66,11 +65,10 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   const operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
   const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
-  const usuarioMasterChecker = {
-    listarTecnicosAsignables: async () => [
-      { id: TECNICO_A, nombre: 'Ana', apellido: 'Técnica' },
-      { id: TECNICO_B, nombre: 'Beto', apellido: 'Técnico' },
-    ],
+  // La elegibilidad no es lo que se prueba acá: los dos técnicos del spec son elegibles.
+  const elegibilidad = {
+    esAgenteDeTipo: async (usuarioId: string): Promise<boolean> =>
+      [TECNICO_A, TECNICO_B].includes(usuarioId),
   };
   let ticketId: string;
 
@@ -106,7 +104,6 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   const completar = (repo = tareaRepo) =>
     new CompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       repo,
       operacionRepo,
       tipoOperacionRepo,
@@ -117,7 +114,6 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   const descompletar = (repo = tareaRepo) =>
     new DescompletarTareaUseCase(
       ticketRepo,
-      tipoTicketRepo,
       repo,
       operacionRepo,
       tipoOperacionRepo,
@@ -140,7 +136,7 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       ticketRepo,
       tipoTicketRepo,
       repo,
-      usuarioMasterChecker,
+      elegibilidad,
       operacionRepo,
       tipoOperacionRepo,
       txRunner,

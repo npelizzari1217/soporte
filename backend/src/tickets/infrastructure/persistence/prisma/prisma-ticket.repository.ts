@@ -24,23 +24,7 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { ITicketRepository, TicketFiltros } from '../../../domain/ports/i-ticket.repository';
 import { TicketEntity } from '../../../domain/entities/ticket.entity';
 import { TicketMapper } from './ticket.mapper';
-
-/**
- * Regla de visibilidad de un ticket para un actor sin `TICKETS:VER_TODOS`: lo solicitó, es su
- * responsable (decisión del dueño del 2026-10-14), o es el técnico de una tarea activa del ticket
- * (odd/tareas-con-tecnico, CA10). Única definición en SQL,
- * compartida por el filtro `visiblePara` del listado y por `esVisiblePara`. El `EXISTS` sobre
- * `tareas_ticket` usa el índice (`tecnico_id`, `deleted_at`, `ticket_id`).
- */
-function whereVisiblePara(actorId: string): Prisma.TicketWhereInput {
-  return {
-    OR: [
-      { solicitanteId: actorId },
-      { asignadoId: actorId },
-      { tareas: { some: { tecnicoId: actorId, deletedAt: null } } },
-    ],
-  };
-}
+import { whereAlcanceListado, whereVisiblePara } from './alcance-listado.prisma';
 
 @Injectable()
 export class PrismaTicketRepository implements ITicketRepository {
@@ -147,9 +131,9 @@ export class PrismaTicketRepository implements ITicketRepository {
     if (filtros?.asignadoId) {
       where.asignadoId = filtros.asignadoId;
     }
-    if (filtros?.visiblePara) {
+    if (filtros?.alcance) {
       // En un AND propio: `busqueda` usa el `OR` de la raíz.
-      where.AND = [whereVisiblePara(filtros.visiblePara)];
+      where.AND = [whereAlcanceListado(filtros.alcance)];
     }
     if (filtros?.cicloId) {
       where.cicloId = filtros.cicloId;

@@ -9,6 +9,7 @@ import { NumeradorTicket } from '../../domain/services/numerador-ticket.service'
 import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
 import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
 import { operacionesDeApertura } from '../services/operaciones-apertura';
+import { AlcanceActorTicket, exigirAccionSobreTipo } from '../services/visibilidad-ticket';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -61,6 +62,12 @@ export interface CrearTicketDto {
    * restringe el tipo.
    */
   moduloRequerido?: Modulo;
+  /**
+   * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, S6, D5 c): el alta exige `ALTAS`
+   * sobre el tipo elegido. `null` en los flujos sin actor humano (barrido preventivo, API v1), que
+   * no se chequean (D3). Obligatorio para que ningún caller nuevo quede sin chequeo por omisión.
+   */
+  alcance: AlcanceActorTicket | null;
 }
 
 /**
@@ -70,6 +77,8 @@ export interface CrearTicketDto {
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller, T4).
  * 3. Valida que `tipoId` exista en el catálogo del tenant (T4).
+ * 3b. Exige `ALTAS` sobre ese tipo al actor (`dto.alcance`; odd/permisos-por-tipo-ticket, D5 c):
+ *    sin la acción, 403 antes de escribir nada.
  * 4. Valida que `prioridadId` exista en el catálogo del tenant (T4).
  * 5. Si viene `ticketReferenciaId`, valida que exista en el mismo tenant (T11).
  * 5b. Si viene `sectorId`, valida que exista en el catálogo del tenant
@@ -145,6 +154,12 @@ export class CrearTicketUseCase {
       return Result.fail(
         new TipoTicketNoPermitidoEnAltaError(tipoTicket.codigo, dto.moduloRequerido),
       );
+    }
+
+    // 3b. ALTAS sobre el tipo elegido (D5 c). Antes de la transacción: un rechazo no escribe nada.
+    const permitido = exigirAccionSobreTipo(dto.alcance, tipoTicket.id, 'ALTAS');
+    if (permitido.isFail()) {
+      return Result.fail(permitido.getError());
     }
 
     // 4. prioridadId debe existir en el catálogo del tenant (T4).

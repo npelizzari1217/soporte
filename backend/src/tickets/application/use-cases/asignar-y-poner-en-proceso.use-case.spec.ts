@@ -5,7 +5,8 @@
  * (`BaseTicketStateMachine`) para validar los arcos igual que en producción.
  * Cubre: happy desde NUEVO (asigna + 2 saltos hasta EN_PROCESO con ops de
  * timeline), happy desde ASIGNADO (1 salto), asignado no elegible → falla sin
- * tx, y estado terminal (RESUELTO) → TransicionInvalida sin tx.
+ * tx, y estado terminal (RESUELTO) → TransicionInvalida sin tx. La elegibilidad
+ * es la real (`ElegibilidadAsignado`, `LECTURA` sobre el tipo) sobre dobles en memoria.
  */
 import {
   AsignarYPonerEnProcesoUseCase,
@@ -25,9 +26,13 @@ import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.check
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { unstubbed } from '../../../testing/mocks';
-import { Modulo } from '../../../shared/domain/modulos';
 import { BaseTicketStateMachine } from '../../domain/state-machine/base-ticket-state-machine';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import {
+  AccionSobreTipoNoPermitidaError,
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TicketNoEncontradoError,
@@ -53,13 +58,16 @@ const ESTADOS: Record<string, { id: string; codigo: string }> = {
   CANCELADO: { id: 'estado-cancelado-uuid', codigo: 'CANCELADO' },
 };
 
-function makeTicket(estadoCodigo: keyof typeof ESTADOS): TicketEntity {
+function makeTicket(
+  estadoCodigo: keyof typeof ESTADOS,
+  tipoId = 'tipo-soporte-uuid',
+): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Ticket de prueba',
       descripcion: null,
-      tipoId: 'tipo-soporte-uuid',
+      tipoId,
       estadoId: ESTADOS[estadoCodigo].id,
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
@@ -77,18 +85,9 @@ function baseDto(overrides: Partial<AsignarYPonerEnProcesoDto> = {}): AsignarYPo
     autorId: 'asignador-uuid',
     clienteId: 'cliente-uuid',
     // Ve cualquier ticket: los casos del flujo combinado no dependen del acceso.
-    actorId: 'asignador-uuid',
-    tienePermisoVerTodos: true,
-    modulosPermitidos: null,
+    ...alcanceSinRestriccion('asignador-uuid'),
     ...overrides,
   };
-}
-
-function makeTipo(modulo: Modulo): TipoTicketEntity {
-  return TipoTicketEntity.create(
-    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
-    'tipo-soporte-uuid',
-  );
 }
 
 describe('AsignarYPonerEnProcesoUseCase', () => {
@@ -150,10 +149,15 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       estaActivoEnTenant: vi
         .fn<IUsuarioMasterChecker['estaActivoEnTenant']>()
         .mockResolvedValue(true),
-      getAutorizacionModulos: vi
-        .fn<IUsuarioMasterChecker['getAutorizacionModulos']>()
-        .mockResolvedValue({ esAdminTotal: false, modulos: ['TICKETS'] }),
     };
+    // Por defecto: un TECNICO con LECTURA sobre el tipo SOPORTE del ticket.
+    const masterAgentes = new MasterAgentesEnMemoria();
+    masterAgentes.agregar({ id: 'agente-uuid', rol: 'TECNICO', celdas: [] });
+    const permisosTipo = new PermisosTipoTicketEnMemoria(
+      [],
+      [{ usuarioId: 'agente-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' }],
+    );
+    const elegibilidad = new ElegibilidadAsignado(masterAgentes, permisosTipo);
     const stateMachineFactory = {
       resolve: vi.fn<TicketStateMachineFactory['resolve']>(() => new BaseTicketStateMachine()),
     };
@@ -176,6 +180,7 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       tipoTicketRepo,
       tipoOperacionRepo,
       usuarioMasterChecker,
+      elegibilidad,
       stateMachineFactory,
       txRunner,
       eventPublisher,
@@ -189,6 +194,8 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       tipoTicketRepo,
       tipoOperacionRepo,
       usuarioMasterChecker,
+      masterAgentes,
+      permisosTipo,
       stateMachineFactory,
       txRunner,
       eventPublisher,
@@ -286,13 +293,12 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('asignado normal SIN el módulo del tipo → AsignadoNoElegibleError, sin tx', async () => {
+  it('asignado sin LECTURA sobre el tipo del ticket (sí sobre otro) → AsignadoNoElegibleError, sin tx', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-    c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-      esAdminTotal: false,
-      modulos: ['COMPRAS'],
-    });
+    await c.permisosTipo.reemplazarDeUsuario('agente-uuid', [
+      { tipoId: 'tipo-mantenimiento-uuid', accion: 'LECTURA' },
+    ]);
 
     const result = await c.useCase.execute(baseDto());
 
@@ -373,20 +379,47 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     expect(c.txRunner.alCommitear).not.toHaveBeenCalled();
   });
 
-  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS; no se escribe nada', async () => {
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
+    // Mismo usuario: Soporte con Ver, Asignar y Estado; Mantenimiento con Ver y Asignar (sin
+    // Estado); Electricidad sin nada.
+    const alcance = alcancePorTipo('solicitante-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR', 'TRANSICIONAR'],
+      'tipo-mantenimiento-uuid': ['LECTURA', 'ASIGNAR'],
+    });
+
+    it('asigna y pone en proceso un ticket de un tipo con ASIGNAR y TRANSICIONAR', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
 
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: ['TICKETS'] }));
+      const result = await c.useCase.execute(baseDto(alcance));
 
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(result.isOk()).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('un ticket de un tipo con ASIGNAR pero sin TRANSICIONAR es 403; no se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-mantenimiento-uuid'));
+
+      const result = await c.useCase.execute(baseDto(alcance));
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toContain('"TRANSICIONAR"');
       expect(c.txRunner.run).not.toHaveBeenCalled();
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
       expect(c.operacionRepo.save).not.toHaveBeenCalled();
       expect(c.alCommitear).toHaveLength(0);
+    });
+
+    it('un ticket de un tipo sin LECTURA es 404; no se escribe nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-electricidad-uuid'));
+
+      const result = await c.useCase.execute(baseDto(alcance));
+
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
     });
 
     it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404', async () => {
@@ -394,42 +427,27 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
       c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
 
       const result = await c.useCase.execute(
-        baseDto({ tienePermisoVerTodos: false, modulosPermitidos: ['TICKETS'] }),
+        baseDto(
+          alcancePorTipo('asignador-uuid', {
+            'tipo-soporte-uuid': ['LECTURA', 'ASIGNAR', 'TRANSICIONAR'],
+          }),
+        ),
       );
 
-      expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'asignador-uuid');
       expect(c.txRunner.run).not.toHaveBeenCalled();
     });
 
-    it('un ticket de un tipo de sus módulos que el actor ve se asigna y pasa a EN_PROCESO', async () => {
+    it('sin restricción (ROOT o ADMINISTRADOR) pasa el acceso en un tipo sin filas', async () => {
       const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO', 'tipo-electricidad-uuid'));
+      // El asignado es ADMINISTRADOR: elegible para un tipo sin filas.
+      c.masterAgentes.agregar({ id: 'admin-uuid', rol: 'ADMINISTRADOR', celdas: [] });
 
       const result = await c.useCase.execute(
-        baseDto({
-          actorId: 'solicitante-uuid',
-          tienePermisoVerTodos: false,
-          modulosPermitidos: ['TICKETS'],
-        }),
+        baseDto({ ...alcanceSinRestriccion('asignador-uuid'), asignadoId: 'admin-uuid' }),
       );
-
-      expect(result.isOk()).toBe(true);
-      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) pasa el acceso en un tipo de cualquier módulo', async () => {
-      const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket('NUEVO'));
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
-      // El asignado es ROOT/ADMINISTRADOR: elegible para un tipo de cualquier módulo.
-      c.usuarioMasterChecker.getAutorizacionModulos.mockResolvedValue({
-        esAdminTotal: true,
-        modulos: [],
-      });
-
-      const result = await c.useCase.execute(baseDto({ modulosPermitidos: null }));
 
       expect(result.isOk()).toBe(true);
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);

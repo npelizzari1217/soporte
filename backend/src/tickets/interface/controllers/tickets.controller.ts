@@ -4,27 +4,26 @@
  * T14/T15 — PR8).
  *
  * Rutas:
- *   POST   /tickets            → CrearTicketUseCase (`ticket:crear`, USUARIO+)
- *   GET    /tickets            → ListarTicketsUseCase (cualquier tenant autenticado; scope T6)
- *   GET    /tickets/export     → ExportarTicketsUseCase (`TICKETS:LECTURA`, sdd/exportar-listados-csv)
- *   GET    /tickets/:id        → ObtenerTicketUseCase (cualquier tenant autenticado; scope T6)
- *   PATCH  /tickets/:id        → EditarTicketUseCase (`ticket:editar`, TECNICO+)
- *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`ticket:transicionar`, TECNICO+)
- *   PATCH  /tickets/:id/asignar → AsignarTicketUseCase (`ticket:asignar`, TECNICO+)
+ *   POST   /tickets            → CrearTicketUseCase (`ALTAS` sobre el tipo elegido)
+ *   GET    /tickets            → ListarTicketsUseCase (tipos con `LECTURA`; fila sin `VER_TODOS`)
+ *   GET    /tickets/export     → ExportarTicketsUseCase (mismo alcance que el listado)
+ *   GET    /tickets/permisos-por-tipo → ObtenerPermisosPorTipoUseCase (acciones de la sesión)
+ *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila)
+ *   PATCH  /tickets/:id        → EditarTicketUseCase (`MODIFICACION` sobre su tipo)
+ *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`TRANSICIONAR` sobre su tipo)
+ *   PATCH  /tickets/:id/asignar → AsignarTicketUseCase (`ASIGNAR` sobre su tipo)
  *
- * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
- * `PermissionsGuard`+`ModulosGuard`) — los dos primeros SIEMPRE aplican
- * (requieren JWT válido + tenant resuelto); `AccionesGuard` solo actúa
- * cuando el endpoint tiene `@RequiereAcciones(...)` (sin metadata →
- * pass-through). Los endpoints GET declaran `@RequiereAcciones('TICKETS:LECTURA')`
- * (corrección post-verify, sdd/matriz-permisos-por-usuario R5): el backfill
- * le da esa celda a TODA membresía activa (regla universal, R7), así que
- * nadie pierde acceso hoy, pero a partir de ahora la casilla de la grilla del
- * ABM gobierna algo real. El scope de FILAS (propios vs. todos) sigue
- * resolviéndose DENTRO del use case según si el actor tiene
- * `TICKETS:VER_TODOS` (T6/T7, R11) — eso NO cambió, sigue sin ser un 403
- * binario.
+ * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard`.
+ * Ninguna ruta declara `@RequiereAcciones` (odd/permisos-por-tipo-ticket, D5 d):
+ * la ruta exige solo autenticación y tenant, y `AccionesGuard` queda como
+ * pass-through. Todo lo demás lo deciden los casos de uso con los permisos por
+ * tipo del actor (D5 a-c, e), que `CargadorAlcanceTicket` lee por request de la
+ * base del tenant: el listado y la exportación traen solo los tipos con
+ * `LECTURA` (todas las filas con `VER_TODOS`, si no la regla de fila); el alta
+ * exige `ALTAS` sobre el tipo elegido (403); una operación sobre un ticket
+ * existente responde 404 si el actor no lo ve y 403 si le falta la acción sobre
+ * su tipo. Las celdas `TICKETS:*` del JWT no entran en ninguna de esas
+ * decisiones.
  *
  * El controller no tiene lógica de negocio: solo traduce HTTP ↔ use case y
  * mapea `DomainError` → `HttpException` (presentación).
@@ -104,13 +103,14 @@ import {
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   TicketBloqueadoParaEdicionError,
+  AccionSobreTipoNoPermitidaError,
   SolicitanteExternoInvalidoError,
   ExportacionDemasiadoGrandeError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
-import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { CurrentUser } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { puedeEjecutar } from '../../../auth/domain/permisos.util';
 import { DomainError } from '../../../shared/domain/result';
@@ -127,10 +127,12 @@ import {
   ISectorRepository,
   SECTOR_REPOSITORY,
 } from '../../../sectores/domain/ports/i-sector.repository';
-import { alcanceTicketDesdeJwt, modulosPermitidosDesdeJwt } from '../alcance-ticket';
+import { CargadorAlcanceTicket } from '../alcance-ticket';
+import {
+  ObtenerPermisosPorTipoUseCase,
+  PermisosPorTipoSesion,
+} from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
 
-const ACCION_VER_TODOS = 'TICKETS:VER_TODOS';
-const ACCION_OBSERVAR = 'TICKETS:OBSERVAR';
 /** WU9.2 (ADR-C5): gateo del puntaje/comentario CSAT POR CAMPO, no por decorador. */
 const ACCION_CSAT_LECTURA = 'CSAT:LECTURA';
 
@@ -141,7 +143,10 @@ export function toHttpException(
   if (error instanceof TicketNoEncontradoError) {
     return new NotFoundException(error.message);
   }
-  if (error instanceof TicketBloqueadoParaEdicionError) {
+  if (
+    error instanceof TicketBloqueadoParaEdicionError ||
+    error instanceof AccionSobreTipoNoPermitidaError
+  ) {
     return new ForbiddenException(error.message);
   }
   if (
@@ -217,6 +222,8 @@ export class TicketsController {
     @Inject(ESTADO_REPOSITORY) private readonly estadoRepo: IEstadoRepository,
     @Inject(SECTOR_REPOSITORY)
     private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,
+    private readonly alcances: CargadorAlcanceTicket,
+    private readonly obtenerPermisosPorTipoUseCase: ObtenerPermisosPorTipoUseCase,
   ) {}
 
   /**
@@ -314,11 +321,11 @@ export class TicketsController {
    * Crea un ticket nuevo. `solicitanteId`/`autorId` = JWT.sub (T4); el
    * `clienteId` del checker cross-DB es el `cliente_id` del JWT. `anio` lo
    * resuelve el servidor (año en curso), nunca el cliente HTTP.
+   * @throws 403 sin `ALTAS` sobre el tipo elegido (odd/permisos-por-tipo-ticket, D5 c)
    * @throws 422 tipoId/prioridadId/ticketReferenciaId/sectorId inválidos, o solicitante inválido
    * @throws 409 sin ciclo activo, o secuencia agotada
    */
   @Post()
-  @RequiereAcciones('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   async create(
     @CurrentUser() user: JwtPayload,
@@ -338,6 +345,7 @@ export class TicketsController {
       anio: new Date().getFullYear(),
       // Esta alta es la del soporte general: los tipos de otros módulos tienen su alta propia.
       moduloRequerido: 'TICKETS',
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
@@ -351,25 +359,17 @@ export class TicketsController {
   /**
    * GET /tickets
    * Lista tickets del tenant con filtros combinables + paginación (T7). El
-   * scope (propios vs. todos) se deriva del permiso `TICKETS:VER_TODOS` del
-   * actor — esa celda NO se requiere para poder listar (lista sus propios
-   * tickets si no la tiene). `TICKETS:LECTURA` sí se requiere para poder
-   * entrar al listado (corrección post-verify, R5).
+   * alcance sale de los permisos por tipo del actor (odd/permisos-por-tipo-ticket,
+   * D5 e): solo los tipos con `LECTURA`, todas sus filas con `VER_TODOS` y si no
+   * la regla de fila. Sin ningún tipo con `LECTURA`, la lista llega vacía (200).
    */
   @Get()
-  @RequiereAcciones('TICKETS:LECTURA')
   async findAll(
     @CurrentUser() user: JwtPayload,
     @Query() query: ListTicketsQueryDto,
   ): Promise<ListTicketsResponseDto> {
-    // Gate de módulo (5.2 CAPA 2): ROOT y ADMINISTRADOR ven todos los tipos
-    // (incl. custom del tenant); el resto sólo los tipos de sus módulos.
-    const modulosPermitidos = modulosPermitidosDesdeJwt(user);
-
     const result = await this.listarTicketsUseCase.execute({
-      actorId: user.sub,
-      tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
-      modulosPermitidos,
+      alcance: await this.alcances.cargar(user),
       pagina: query.pagina,
       porPagina: query.porPagina,
       filtros: {
@@ -418,28 +418,22 @@ export class TicketsController {
    * caería en `ObtenerTicketUseCase` con `id="export"`, devolviendo un 404
    * desconcertante.
    *
-   * Gateada por `TICKETS:LECTURA`, la misma acción que el listado. El scope
-   * de FILAS (propios vs. todos) se resuelve DENTRO de `ExportarTicketsUseCase`
-   * al componer `ListarTicketsUseCase` — igual que `findAll`, nunca se
-   * amplía por exportar en vez de listar.
+   * El alcance por tipo y por fila se resuelve DENTRO de `ExportarTicketsUseCase`
+   * al componer `ListarTicketsUseCase` — igual que `findAll`, nunca se amplía por
+   * exportar en vez de listar.
    *
    * @throws 422 la exportación supera el tope de filas (hay que acotar filtros)
    */
   @Get('export')
-  @RequiereAcciones('TICKETS:LECTURA')
   async exportar(
     @CurrentUser() user: JwtPayload,
     @Query() query: ExportarTicketsQueryDto,
     @Res({ passthrough: true }) res: RespuestaConHeaders,
     @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
   ): Promise<string | StreamableFile> {
-    const modulosPermitidos = modulosPermitidosDesdeJwt(user);
-
     const result = await this.exportarTicketsUseCase.execute(
       {
-        actorId: user.sub,
-        tienePermisoVerTodos: puedeEjecutar(user, ACCION_VER_TODOS),
-        modulosPermitidos,
+        alcance: await this.alcances.cargar(user),
         filtros: {
           estadoId: query.estado,
           tiposIds: query.tipo ? [query.tipo] : undefined,
@@ -461,9 +455,22 @@ export class TicketsController {
   }
 
   /**
+   * GET /tickets/permisos-por-tipo
+   * Acciones por tipo de la sesión, para que el frontend oculte botones y arme sus selectores
+   * (odd/permisos-por-tipo-ticket, S6). Es comodidad de UI: cada operación la vuelve a decidir el
+   * caso de uso. Va declarada ANTES de `GET /tickets/:id` por el mismo motivo que `export`.
+   */
+  @Get('permisos-por-tipo')
+  async permisosPorTipo(@CurrentUser() user: JwtPayload): Promise<PermisosPorTipoSesion> {
+    return this.obtenerPermisosPorTipoUseCase.execute(await this.alcances.cargar(user));
+  }
+
+  /**
    * GET /tickets/:id
-   * Consulta un ticket. Sin `TICKETS:VER_TODOS`, solo si el actor es el
-   * solicitante — caso contrario 404 (no revela existencia, T6).
+   * Consulta un ticket. Exige `LECTURA` sobre su tipo y, sin `VER_TODOS` sobre
+   * ese tipo, ser el solicitante, el responsable o el técnico de una tarea
+   * activa — caso contrario 404 (no revela existencia, T6;
+   * odd/permisos-por-tipo-ticket, D5 b).
    *
    * `csatPuntaje`/`csatComentario` viajan SOLO si el actor tiene
    * `CSAT:LECTURA` (WU9.2, ADR-C5) Y, si es TECNICO, el ticket le está
@@ -471,14 +478,13 @@ export class TicketsController {
    * ADR-C8) — gateo dentro del payload, sin tocar el decorador de la ruta.
    */
   @Get(':id')
-  @RequiereAcciones('TICKETS:LECTURA')
   async findOne(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
   ): Promise<TicketResponseDto> {
     const result = await this.obtenerTicketUseCase.execute({
       ticketId: id,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -507,15 +513,14 @@ export class TicketsController {
    * Edita titulo/descripcion/prioridadId/ubicacion/sectorId. El `estado` NUNCA se cambia por
    * esta vía (T9, endpoint dedicado en PR7). Regla de bloqueo por estado: una
    * vez que el ticket entra EN_PROCESO (o posterior), SOLO ROOT
-   * (`is_global_admin`) puede editar; en NUEVO/ASIGNADO edita cualquier
-   * TECNICO+ (`TICKETS:MODIFICACION`).
-   * @throws 403 sin `TICKETS:MODIFICACION` (AccionesGuard), o ticket EN_PROCESO+
+   * (`is_global_admin`) puede editar; en NUEVO/ASIGNADO edita quien tenga
+   * `MODIFICACION` sobre el tipo del ticket.
+   * @throws 403 sin `MODIFICACION` sobre el tipo del ticket, o ticket EN_PROCESO+
    *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
-   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 prioridadId o sectorId inexistente en el catálogo
    */
   @Patch(':id')
-  @RequiereAcciones('TICKETS:MODIFICACION')
   async update(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -530,7 +535,7 @@ export class TicketsController {
       sectorId: dto.sectorId,
       // ROOT edita SIEMPRE, incluso con el ticket EN_PROCESO o posterior.
       actorEsRoot: user.is_global_admin,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -545,22 +550,20 @@ export class TicketsController {
 
   /**
    * PATCH /tickets/:id/estado
-   * Transiciona el estado del ticket (T9, T10, T12, T13). SOLO TECNICO+
-   * (`TICKETS:TRANSICIONAR`) — USUARIO/COLABORADOR reciben 403
-   * (`AccionesGuard`). El evento `TicketEstadoCambiado` se emite
+   * Transiciona el estado del ticket (T9, T10, T12, T13). Exige
+   * `TRANSICIONAR` sobre el tipo del ticket (403 sin ella). El evento `TicketEstadoCambiado` se emite
    * internamente en el use case cuando el destino es notificable.
    *
    * Salto correctivo: ROOT (`is_global_admin`) y ADMINISTRADOR del cliente
    * pueden ADEMÁS mover el ticket a cualquier estado NO terminal salteando el
    * grafo (volver atrás/corregir, incluso reabrir desde CERRADO/CANCELADO).
    * Para LLEGAR a un estado terminal se usan los arcos normales.
-   * @throws 403 sin `ticket:transicionar`
-   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
+   * @throws 403 sin `TRANSICIONAR` sobre el tipo del ticket
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, o transición
    *             inválida (arco no válido y sin salto correctivo aplicable)
    */
   @Patch(':id/estado')
-  @RequiereAcciones('TICKETS:TRANSICIONAR')
   async transicionarEstado(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -573,7 +576,7 @@ export class TicketsController {
       // Salto correctivo: ROOT (flag ortogonal) o ADMINISTRADOR del cliente
       // pueden mover el ticket a cualquier estado NO terminal salteando el grafo.
       actorEsCorrector: user.is_global_admin || user.rol === 'ADMINISTRADOR',
-      alcance: alcanceTicketDesdeJwt(user),
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
@@ -592,17 +595,16 @@ export class TicketsController {
    * el propio actor ("tomar" el ticket) o un tercero — ambos son
    * asignación MANUAL. Un ticket nacido por regla de tipo se reasigna igual que
    * cualquier otro. Un ticket NUEVO pasa a ASIGNADO; uno CERRADO/CANCELADO no se
-   * reasigna. Requiere `ticket:asignar`. El `asignadoId` debe existir/estar activo en el
+   * reasigna. Requiere `ASIGNAR` sobre el tipo del ticket. El `asignadoId` debe existir/estar activo en el
    * tenant (cross-DB) y ser elegible para el `tipoId` del ticket
    * (elegibilidad por el módulo del catálogo del tipo) — la elegibilidad es
    * ortogonal al permiso del actor (T15).
-   * @throws 403 sin `ticket:asignar`
-   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
+   * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),
    *             o ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`)
    */
   @Patch(':id/asignar')
-  @RequiereAcciones('TICKETS:ASIGNAR')
   async asignar(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -613,7 +615,7 @@ export class TicketsController {
       asignadoId: dto.asignadoId,
       clienteId: user.cliente_id as string,
       autorId: user.sub,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -633,12 +635,11 @@ export class TicketsController {
    * del ticket: usuarios activos con membresía TECNICO o COLABORADOR (ambos
    * cumplen funciones de técnico) en el tenant y el módulo asignado. Un tipo
    * custom (sin módulo) devuelve `[]`.
-   * Requiere `ticket:asignar`. `clienteId` = `cliente_id` del JWT.
-   * @throws 403 sin `ticket:asignar`
-   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
+   * Requiere `ASIGNAR` sobre el tipo del ticket. `clienteId` = `cliente_id` del JWT.
+   * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    */
   @Get(':id/asignables')
-  @RequiereAcciones('TICKETS:ASIGNAR')
   async asignables(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -646,7 +647,7 @@ export class TicketsController {
     const result = await this.listarTecnicosAsignablesUseCase.execute({
       ticketId: id,
       clienteId: user.cliente_id as string,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -659,17 +660,16 @@ export class TicketsController {
    * PATCH /tickets/:id/asignar-en-proceso
    * Asigna un técnico Y avanza el ticket hasta EN_PROCESO en una sola acción
    * atómica (rediseño de la asignación). Recorre los arcos válidos desde el
-   * estado actual (NUEVO→ASIGNADO→EN_PROCESO). Requiere AMBOS permisos
-   * `ticket:asignar` y `ticket:transicionar`. `asignadoId` en el body;
+   * estado actual (NUEVO→ASIGNADO→EN_PROCESO). Requiere `ASIGNAR` y
+   * `TRANSICIONAR` sobre el tipo del ticket. `asignadoId` en el body;
    * `clienteId`/`autorId` del JWT.
-   * @throws 403 sin `ticket:asignar` o `ticket:transicionar`
-   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
+   * @throws 403 sin `ASIGNAR` o `TRANSICIONAR` sobre el tipo del ticket
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido/no elegible, ticket CERRADO/CANCELADO
    *             (`TicketCerradoNoReasignableError`), o el estado actual no
    *             puede llegar a EN_PROCESO (RESUELTO)
    */
   @Patch(':id/asignar-en-proceso')
-  @RequiereAcciones('TICKETS:ASIGNAR', 'TICKETS:TRANSICIONAR')
   async asignarEnProceso(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
@@ -680,7 +680,7 @@ export class TicketsController {
       asignadoId: dto.asignadoId,
       autorId: user.sub,
       clienteId: user.cliente_id as string,
-      ...alcanceTicketDesdeJwt(user),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -696,36 +696,26 @@ export class TicketsController {
   /**
    * POST /tickets/:id/comentarios
    * Crea un comentario público o interno en el timeline del ticket (T16,
-   * T17). Requiere `TICKETS:COMENTAR` (base, USUARIO+). `esInterno=true`
-   * (T17) exige ADEMÁS `TICKETS:OBSERVAR` (TECNICO+) — chequeo condicional
-   * al `body`, no expresable con el `@RequiereAcciones` estático de
-   * `AccionesGuard` (metadata fija por ruta) — mismo criterio que el
-   * scope de `TICKETS:VER_TODOS` resuelto inline en `findAll`/`findOne`.
-   * @throws 403 sin `TICKETS:COMENTAR`, o `esInterno=true` sin `TICKETS:OBSERVAR`
-   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (módulo del tipo o fila)
+   * T17). Exige `COMENTAR` sobre el tipo del ticket y, si `esInterno=true`
+   * (T17), además `OBSERVAR` sobre ese tipo (odd/permisos-por-tipo-ticket,
+   * D5 c). Lo decide el caso de uso, que conoce el tipo del ticket.
+   * @throws 403 sin `COMENTAR` (o sin `OBSERVAR`, si es interno) sobre el tipo del ticket
+   * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 ticket en estado terminal (solo comentarios públicos, T16)
    */
   @Post(':id/comentarios')
-  @RequiereAcciones('TICKETS:COMENTAR')
   @HttpCode(HttpStatus.CREATED)
   async comentar(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Body() dto: CreateComentarioDto,
   ): Promise<OperacionResponseDto> {
-    const esInterno = dto.esInterno ?? false;
-    if (esInterno && !puedeEjecutar(user, ACCION_OBSERVAR)) {
-      throw new ForbiddenException(
-        `Acceso denegado: se requiere la acción "${ACCION_OBSERVAR}" para crear un comentario interno.`,
-      );
-    }
-
     const result = await this.crearComentarioUseCase.execute({
       ticketId: id,
       texto: dto.texto,
       autorId: user.sub,
-      esInterno,
-      ...alcanceTicketDesdeJwt(user),
+      esInterno: dto.esInterno ?? false,
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {
@@ -738,20 +728,18 @@ export class TicketsController {
    * GET /tickets/:id/timeline
    * Lista el timeline tipado del ticket (cambios de estado, comentarios,
    * asignaciones, adjuntos) en orden cronológico (T18). Mismo scope de
-   * acceso que `GET /tickets/:id` (T6: `ticket:ver_todos` o solicitante,
-   * caso contrario 404). Sin `ticket:observar` excluye las operaciones
-   * `es_interno=true` del resultado — NUNCA visibles al solicitante/USUARIO.
+   * acceso que `GET /tickets/:id` (caso contrario 404). Sin `OBSERVAR` sobre
+   * el tipo del ticket excluye las operaciones `es_interno=true` del
+   * resultado — NUNCA visibles al solicitante/USUARIO.
    */
   @Get(':id/timeline')
-  @RequiereAcciones('TICKETS:LECTURA')
   async timeline(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
   ): Promise<OperacionResponseDto[]> {
     const result = await this.listarTimelineUseCase.execute({
       ticketId: id,
-      ...alcanceTicketDesdeJwt(user),
-      tienePermisoObservar: puedeEjecutar(user, ACCION_OBSERVAR),
+      ...(await this.alcances.cargar(user)),
     });
 
     if (result.isFail()) {

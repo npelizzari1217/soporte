@@ -11,8 +11,7 @@ import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.reposi
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { evaluarResponsableRegla } from '../services/elegibilidad-responsable-regla';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import {
   ActorTarea,
   autorizarGestion,
@@ -27,7 +26,7 @@ export interface AsignarTecnicoTareaDto {
   ticketId: string;
   tareaId: string;
   actor: ActorTarea;
-  /** `cliente_id` del JWT, para resolver los técnicos elegibles en master. */
+  /** `cliente_id` del JWT, para resolver en master el rol y la membresía del técnico. */
   clienteId: string;
   /** Técnico nuevo, o `null` para dejar la tarea sin técnico. */
   tecnicoId: string | null;
@@ -37,10 +36,10 @@ export interface AsignarTecnicoTareaDto {
  * AsignarTecnicoTareaUseCase — asigna el técnico de una tarea o lo quita (odd/tareas-con-tecnico,
  * CA2, CA3, CA8).
  *
- * El técnico tiene que ser elegible con la regla del punto 9: TECNICO o COLABORADOR con el módulo
- * del tipo del ticket. Se reusa `evaluarResponsableRegla`, que pide a master el mismo universo que
- * el selector (`listarTecnicosAsignables`), así que un ADMINISTRADOR o ROOT no es técnico de una
- * tarea. Quitar el técnico no consulta master.
+ * El técnico tiene que ser elegible con la regla del punto 9: TECNICO o COLABORADOR con `LECTURA`
+ * sobre el tipo del ticket (`ElegibilidadAsignado.esAgenteDeTipo`, el mismo universo que el
+ * selector; odd/permisos-por-tipo-ticket, D5 g), así que un ADMINISTRADOR o ROOT no es técnico de
+ * una tarea. Quitar el técnico no consulta la elegibilidad.
  *
  * Reasignar el mismo técnico no cambia nada y no escribe historial. Cualquier otro cambio escribe
  * `TAREA_ASIGNADA` con el técnico anterior y el nuevo, en la misma transacción que la tarea.
@@ -57,7 +56,7 @@ export class AsignarTecnicoTareaUseCase {
       ITareaTicketRepository,
       'buscarPorId' | 'asignarTecnicoSiActiva'
     >,
-    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'listarTecnicosAsignables'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAgenteDeTipo'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -73,7 +72,7 @@ export class AsignarTecnicoTareaUseCase {
       'asignar',
     );
     if (gestion.isFail()) return Result.fail(gestion.getError());
-    const { ticket, modulo } = gestion.getValue();
+    const { ticket } = gestion.getValue();
 
     const tareaResult = await cargarTareaDelTicket(this.tareaRepo, dto.ticketId, dto.tareaId);
     if (tareaResult.isFail()) return Result.fail(tareaResult.getError());
@@ -83,11 +82,10 @@ export class AsignarTecnicoTareaUseCase {
     if (editable.isFail()) return Result.fail(editable.getError());
 
     if (dto.tecnicoId !== null) {
-      const elegible = await evaluarResponsableRegla(
+      const elegible = await this.elegibilidad.esAgenteDeTipo(
         dto.tecnicoId,
         dto.clienteId,
-        modulo,
-        this.usuarioMasterChecker,
+        ticket.tipoId,
       );
       if (!elegible) return Result.fail(new TecnicoTareaNoElegibleError(dto.tecnicoId));
     }

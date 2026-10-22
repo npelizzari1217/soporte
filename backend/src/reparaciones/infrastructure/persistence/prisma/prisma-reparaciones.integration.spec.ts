@@ -213,6 +213,45 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
         expect(await tenantClient.ticketEdilicia.count({ where: { ticketId: ticket.id } })).toBe(1);
       });
     });
+
+    it('findAll(alcance) filtra en la base por el tipo y la regla de fila del ticket base (permisos-por-tipo D5 e)', async () => {
+      const actor = '01900000-0000-7000-8000-000000000271';
+      const propio = TicketEntity.create(makeTicketProps());
+      propio.assignTo(actor);
+      const ajeno = TicketEntity.create(makeTicketProps());
+      const satPropio = TicketEdiliciaEntity.create({
+        ticketId: propio.id,
+        ubicacion: 'T7 alcance',
+      });
+      const satAjeno = TicketEdiliciaEntity.create({ ticketId: ajeno.id, ubicacion: 'T7 alcance' });
+
+      await withTenant(async () => {
+        for (const [ticket, sat] of [
+          [propio, satPropio],
+          [ajeno, satAjeno],
+        ] as const) {
+          await ticketRepo.save(ticket);
+          await ediliciaRepo.save(sat);
+        }
+        const ids = async (alcance: Parameters<typeof ediliciaRepo.findAll>[0]) =>
+          (await ediliciaRepo.findAll(alcance))
+            .map((e) => e.id)
+            .filter((id) => id === satPropio.id || id === satAjeno.id);
+
+        // Sin VER_TODOS: solo la reparación cuyo ticket tiene al actor de responsable.
+        expect(
+          await ids({ actorId: actor, tiposVerTodos: [], tiposPorFila: [tipoEdiliciaId] }),
+        ).toEqual([satPropio.id]);
+        // Con VER_TODOS sobre el tipo: las dos.
+        expect(
+          new Set(await ids({ actorId: actor, tiposVerTodos: [tipoEdiliciaId], tiposPorFila: [] })),
+        ).toEqual(new Set([satPropio.id, satAjeno.id]));
+        // Sin LECTURA sobre el tipo: ninguna, ni la propia (S3).
+        expect(await ids({ actorId: actor, tiposVerTodos: [], tiposPorFila: [] })).toEqual([]);
+        // Sin restricción (ROOT y ADMINISTRADOR): las dos.
+        expect(new Set(await ids(null))).toEqual(new Set([satPropio.id, satAjeno.id]));
+      });
+    });
   });
 
   describe('PrismaComentarioReparacionRepository', () => {

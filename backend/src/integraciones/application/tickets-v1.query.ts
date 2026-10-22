@@ -34,10 +34,18 @@ export class TicketsV1Query {
       : Result.fail(new TicketReferenciaInvalidaError(ticketReferenciaId));
   }
 
+  /**
+   * Ids de los tipos de v1: los del modulo TICKETS, dados de baja incluidos.
+   *
+   * @returns Ids de los tipos de v1.
+   */
+  async tiposDeV1(): Promise<string[]> {
+    return this.tipos.findIdsByModulos([MODULO_API_V1]);
+  }
+
   private async esDeV1(ticketId: string): Promise<boolean> {
     const ticket = await this.tickets.findById(ticketId);
     if (!ticket || ticket.isDeleted()) return false;
-    const tiposV1 = await this.tipos.findIdsByModulos([MODULO_API_V1]);
-    return tiposV1.includes(ticket.tipoId);
+    return (await this.tiposDeV1()).includes(ticket.tipoId);
   }
 }

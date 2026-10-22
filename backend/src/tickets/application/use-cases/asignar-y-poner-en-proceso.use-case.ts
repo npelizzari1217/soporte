@@ -13,8 +13,8 @@ import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-sta
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
-import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -37,7 +37,7 @@ const ESTADO_EN_PROCESO = 'EN_PROCESO';
 
 /**
  * DTO de entrada de `AsignarYPonerEnProcesoUseCase`. El alcance del actor (`AlcanceActorTicket`)
- * lo arma el controller desde el JWT (odd/permisos-por-tipo-ticket, S0).
+ * lo carga la capa de interface (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface AsignarYPonerEnProcesoDto extends AlcanceActorTicket {
   ticketId: string;
@@ -61,19 +61,21 @@ interface PasoTransicion {
  * asignación manual de un técnico y el avance del ticket hasta EN_PROCESO
  * (rediseño de la asignación: un solo botón "Asignar y poner en proceso").
  *
- * Reusa la MISMA validación de elegibilidad por módulo que
- * `AsignarTicketUseCase` (`esAsignadoElegiblePorModulo`) — mismos errores
+ * Reusa la MISMA validación de elegibilidad por tipo que
+ * `AsignarTicketUseCase` (`ElegibilidadAsignado.esAsignableATipo`) — mismos errores
  * (`AsignadoInvalidoError`/`AsignadoNoElegibleError`) — y el MISMO mecanismo de
  * transición que `TransicionarEstadoUseCase` (entidad + máquina de estados por
  * tipo, operaciones de timeline por cada arco).
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe/está soft-deleted o el actor no lo ve
- *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
+ *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
+ *    si lo ve sin `ASIGNAR` y `TRANSICIONAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
- * 3. Valida elegibilidad por módulo del tipo → `AsignadoNoElegibleError` (422).
+ * 3. Valida elegibilidad por tipo (`LECTURA` sobre el tipo del ticket, o ROOT/ADMINISTRADOR) →
+ *    `AsignadoNoElegibleError` (422).
  * 4. Calcula el camino de arcos desde el estado actual hasta EN_PROCESO
  *    (NUEVO→ASIGNADO→EN_PROCESO; desde ASIGNADO solo →EN_PROCESO; ya en
  *    EN_PROCESO no avanza, solo asigna). Si el estado actual NO puede llegar a
@@ -101,28 +103,23 @@ export class AsignarYPonerEnProcesoUseCase {
     private readonly estadoRepo: IEstadoRepository,
     private readonly tipoTicketRepo: ITipoTicketRepository,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
-    private readonly usuarioMasterChecker: Pick<
-      IUsuarioMasterChecker,
-      'estaActivoEnTenant' | 'getAutorizacionModulos'
-    >,
+    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'estaActivoEnTenant'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAsignableATipo'>,
     private readonly stateMachineFactory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly eventPublisher: IDomainEventPublisher,
   ) {}
 
   async execute(dto: AsignarYPonerEnProcesoDto): Promise<Result<TicketEntity, DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
+    const ticketResult = await cargarTicketParaOperar(
+      this.ticketRepo,
+      dto.ticketId,
+      dto,
+      'ASIGNAR',
+      'TRANSICIONAR',
+    );
+    if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
+    const ticket = ticketResult.getValue();
 
     // Catálogos FIJOS (ADR-1): su ausencia es un bug de infraestructura → throw
     // defensivo (mismo patrón que TransicionarEstadoUseCase).
@@ -145,12 +142,10 @@ export class AsignarYPonerEnProcesoUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    const esElegible = await esAsignadoElegiblePorModulo(
+    const esElegible = await this.elegibilidad.esAsignableATipo(
       dto.asignadoId,
       dto.clienteId,
       ticket.tipoId,
-      this.usuarioMasterChecker,
-      this.tipoTicketRepo,
     );
     if (!esElegible) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));

@@ -187,6 +187,8 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
         clienteId: 'mant-e2e-cliente',
         autorId: DUMMY_USUARIO_ID,
         anio: 2026,
+        // Sin chequeo de permisos por tipo: esta suite prueba el flujo del tipo, no el acceso.
+        alcance: null,
       }),
     );
 
@@ -226,6 +228,8 @@ describe('MANTENIMIENTO — flujo BASE sin código nuevo (F3-M1, ADR-10)', () =>
         clienteId: 'mant-e2e-cliente',
         autorId: DUMMY_USUARIO_ID,
         anio: 2026,
+        // Sin chequeo de permisos por tipo: esta suite prueba el flujo del tipo, no el acceso.
+        alcance: null,
       }),
     );
     const ticket = crearResult.getValue();

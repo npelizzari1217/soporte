@@ -13,6 +13,13 @@ import type { ICicloClienteRepository } from '../../../tickets/domain/ports/i-ci
 import type { IEncuestaSatisfaccionRepository } from '../../../csat/domain/ports/i-encuesta-satisfaccion.repository';
 import type { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import type { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
+
+/** ROOT y ADMINISTRADOR: sin restricción por tipo. Los tests de D2 no versan sobre el alcance. */
+const SIN_RESTRICCION = alcanceSinRestriccion('actor-uuid');
 
 describe('ObtenerMetricasUseCase', () => {
   function makeCollaborators(cicloActivo: CicloClienteEntity | null) {
@@ -87,7 +94,11 @@ describe('ObtenerMetricasUseCase', () => {
   it('D2: actor TECNICO ⇒ fuerza asignadoId=actor.sub en TODAS las métricas', async () => {
     const c = makeCollaborators(CICLO);
 
-    await c.useCase.execute({ actorId: 'tecnico-uuid', actorRol: 'TECNICO' });
+    await c.useCase.execute({
+      actorId: 'tecnico-uuid',
+      actorRol: 'TECNICO',
+      alcance: SIN_RESTRICCION,
+    });
 
     const filtroEsperado = expect.objectContaining({ asignadoId: 'tecnico-uuid' });
     expect(c.dashboardRepo.conteoPorEstadoAgrupado).toHaveBeenCalledWith(filtroEsperado);
@@ -107,7 +118,7 @@ describe('ObtenerMetricasUseCase', () => {
     async (rol) => {
       const c = makeCollaborators(CICLO);
 
-      await c.useCase.execute({ actorId: 'staff-uuid', actorRol: rol });
+      await c.useCase.execute({ actorId: 'staff-uuid', actorRol: rol, alcance: SIN_RESTRICCION });
 
       expect(c.dashboardRepo.conteoPorEstadoAgrupado).toHaveBeenCalledWith(
         expect.objectContaining({ asignadoId: undefined }),
@@ -115,10 +126,99 @@ describe('ObtenerMetricasUseCase', () => {
     },
   );
 
+  describe('alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
+    const ALCANCE = alcancePorTipo('tecnico-uuid', {
+      'tipo-soporte': ['LECTURA', 'VER_TODOS'],
+      'tipo-mantenimiento': ['LECTURA'],
+      'tipo-electricidad': ['VER_TODOS', 'MODIFICACION'],
+    });
+    const FILTRO_ALCANCE = {
+      actorId: 'tecnico-uuid',
+      tiposVerTodos: ['tipo-soporte'],
+      tiposPorFila: ['tipo-mantenimiento'],
+    };
+
+    it('todas las métricas por ticket, el CSAT y las tareas completadas agregan solo lo que el actor ve', async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({
+        actorId: 'tecnico-uuid',
+        actorRol: 'COLABORADOR',
+        alcance: ALCANCE,
+        tieneCsatLectura: true,
+      });
+
+      const filtro = expect.objectContaining({ alcance: FILTRO_ALCANCE });
+      expect(c.dashboardRepo.conteoPorEstadoAgrupado).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.tiempoPromedioResolucionHoras).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.cargaPorAgente).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.cumplimientoSla).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.cumplimientoPrimeraRespuesta).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.tiempoPromedioPrimeraRespuestaHoras).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.distribucionPorTipo).toHaveBeenCalledWith(filtro);
+      expect(c.dashboardRepo.distribucionPorPrioridad).toHaveBeenCalledWith(filtro);
+      expect(c.csatRepo.resumenPorScope).toHaveBeenCalledWith(filtro);
+      expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(filtro);
+    });
+
+    it('TECNICO: el alcance se suma a asignadoId=actor (AND), no lo reemplaza', async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({ actorId: 'tecnico-uuid', actorRol: 'TECNICO', alcance: ALCANCE });
+
+      expect(c.dashboardRepo.conteoPorEstadoAgrupado).toHaveBeenCalledWith(
+        expect.objectContaining({ asignadoId: 'tecnico-uuid', alcance: FILTRO_ALCANCE }),
+      );
+    });
+
+    it('ROOT y ADMINISTRADOR (sin restricción): ninguna métrica lleva alcance', async () => {
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
+        tieneCsatLectura: true,
+      });
+
+      expect(c.dashboardRepo.conteoPorEstadoAgrupado.mock.calls[0]?.[0]).not.toHaveProperty(
+        'alcance',
+      );
+      expect(c.csatRepo.resumenPorScope.mock.calls[0]?.[0]).not.toHaveProperty('alcance');
+    });
+
+    it('sin ningún tipo con LECTURA: métricas vacías sin consultar ningún repositorio', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        actorId: 'tecnico-uuid',
+        actorRol: 'COLABORADOR',
+        alcance: alcancePorTipo('tecnico-uuid', { 'tipo-soporte': ['ALTAS', 'VER_TODOS'] }),
+        tieneCsatLectura: true,
+      });
+
+      expect(result).toMatchObject({
+        abiertos: 0,
+        cerrados: 0,
+        distribucionPorTipo: [],
+        tareasCompletadasPorTecnico: [],
+        csatPromedio: null,
+        csatRespuestas: 0,
+      });
+      expect(c.dashboardRepo.conteoPorEstadoAgrupado).not.toHaveBeenCalled();
+      expect(c.csatRepo.resumenPorScope).not.toHaveBeenCalled();
+      expect(c.tareaRepo.contarCompletadasPorTecnico).not.toHaveBeenCalled();
+    });
+  });
+
   it('sin cicloId explícito y CON ciclo activo → usa el ciclo activo como default', async () => {
     const c = makeCollaborators(CICLO);
 
-    await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+    await c.useCase.execute({
+      actorId: 'admin-uuid',
+      actorRol: 'ADMINISTRADOR',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(c.dashboardRepo.conteoPorEstadoAgrupado).toHaveBeenCalledWith(
       expect.objectContaining({ cicloId: 'ciclo-activo-uuid' }),
@@ -131,6 +231,7 @@ describe('ObtenerMetricasUseCase', () => {
     await c.useCase.execute({
       actorId: 'admin-uuid',
       actorRol: 'ADMINISTRADOR',
+      alcance: SIN_RESTRICCION,
       cicloId: 'ciclo-historico-uuid',
     });
 
@@ -143,7 +244,11 @@ describe('ObtenerMetricasUseCase', () => {
   it('sin cicloId explícito y SIN ciclo activo → métricas vacías, sin consultar el repo', async () => {
     const c = makeCollaborators(null);
 
-    const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+    const result = await c.useCase.execute({
+      actorId: 'admin-uuid',
+      actorRol: 'ADMINISTRADOR',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(result).toEqual({
       abiertos: 0,
@@ -177,7 +282,11 @@ describe('ObtenerMetricasUseCase', () => {
   it('arma el DTO de métricas con el % de cumplimiento SLA calculado', async () => {
     const c = makeCollaborators(CICLO);
 
-    const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+    const result = await c.useCase.execute({
+      actorId: 'admin-uuid',
+      actorRol: 'ADMINISTRADOR',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(result).toEqual({ ...METRICAS_POR_TICKET, tareasCompletadasPorTecnico: [] });
   });
@@ -186,7 +295,11 @@ describe('ObtenerMetricasUseCase', () => {
     const c = makeCollaborators(CICLO);
     c.dashboardRepo.cumplimientoSla.mockResolvedValue({ cerradosConSla: 0, cerradosATiempo: 0 });
 
-    const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+    const result = await c.useCase.execute({
+      actorId: 'admin-uuid',
+      actorRol: 'ADMINISTRADOR',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(result.cumplimientoSla.porcentaje).toBeNull();
   });
@@ -196,7 +309,11 @@ describe('ObtenerMetricasUseCase', () => {
     c.dashboardRepo.cumplimientoPrimeraRespuesta.mockResolvedValue({ conMeta: 0, aTiempo: 0 });
     c.dashboardRepo.tiempoPromedioPrimeraRespuestaHoras.mockResolvedValue(null);
 
-    const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+    const result = await c.useCase.execute({
+      actorId: 'admin-uuid',
+      actorRol: 'ADMINISTRADOR',
+      alcance: SIN_RESTRICCION,
+    });
 
     expect(result.cumplimientoPrimeraRespuesta).toEqual({
       conMeta: 0,
@@ -216,6 +333,7 @@ describe('ObtenerMetricasUseCase', () => {
       const result = await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
         tieneCsatLectura: true,
       });
 
@@ -232,6 +350,7 @@ describe('ObtenerMetricasUseCase', () => {
       const result = await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
         tieneCsatLectura: false,
       });
 
@@ -252,6 +371,7 @@ describe('ObtenerMetricasUseCase', () => {
       await c.useCase.execute({
         actorId: 'tecnico-uuid',
         actorRol: 'TECNICO',
+        alcance: SIN_RESTRICCION,
         tieneCsatLectura: true,
       });
 
@@ -266,6 +386,7 @@ describe('ObtenerMetricasUseCase', () => {
       const result = await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
         tieneCsatLectura: true,
       });
 
@@ -295,7 +416,11 @@ describe('ObtenerMetricasUseCase', () => {
     it('el período son los días argentinos del ciclo, con fecha_fin incluida entera', async () => {
       const c = conTareas();
 
-      await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+      await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
+      });
 
       // Medianoche argentina (UTC-3 fijo) = 03:00 UTC.
       expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith({
@@ -334,6 +459,7 @@ describe('ObtenerMetricasUseCase', () => {
         const result = await c.useCase.execute({
           actorId: 'admin-uuid',
           actorRol: 'ADMINISTRADOR',
+          alcance: SIN_RESTRICCION,
         });
 
         expect(result.tareasCompletadasPorTecnico).toHaveLength(esperadas);
@@ -345,7 +471,11 @@ describe('ObtenerMetricasUseCase', () => {
       async (rol) => {
         const c = conTareas();
 
-        const result = await c.useCase.execute({ actorId: 'staff-uuid', actorRol: rol });
+        const result = await c.useCase.execute({
+          actorId: 'staff-uuid',
+          actorRol: rol,
+          alcance: SIN_RESTRICCION,
+        });
 
         expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(
           expect.objectContaining({ completadaPorId: undefined }),
@@ -362,7 +492,11 @@ describe('ObtenerMetricasUseCase', () => {
     it('TECNICO solo pide su propia fila: completada_por_id = actorId', async () => {
       const c = conTareas([{ completadaPorId: BETO, completadas: 2 }]);
 
-      const result = await c.useCase.execute({ actorId: BETO, actorRol: 'TECNICO' });
+      const result = await c.useCase.execute({
+        actorId: BETO,
+        actorRol: 'TECNICO',
+        alcance: SIN_RESTRICCION,
+      });
 
       expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(
         expect.objectContaining({ completadaPorId: BETO }),
@@ -375,7 +509,11 @@ describe('ObtenerMetricasUseCase', () => {
     it('período sin tareas completadas ⇒ lista vacía, sin consultar master', async () => {
       const c = conTareas([]);
 
-      const result = await c.useCase.execute({ actorId: 'admin-uuid', actorRol: 'ADMINISTRADOR' });
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
+      });
 
       expect(result.tareasCompletadasPorTecnico).toEqual([]);
       expect(c.usuarioMasterChecker.resolverNombres).not.toHaveBeenCalled();
@@ -399,6 +537,7 @@ describe('ObtenerMetricasUseCase', () => {
       await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
         cicloId: 'ciclo-historico-uuid',
       });
 
@@ -418,6 +557,7 @@ describe('ObtenerMetricasUseCase', () => {
       const result = await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
         cicloId: 'ciclo-inexistente',
       });
 
@@ -432,6 +572,7 @@ describe('ObtenerMetricasUseCase', () => {
       const { tareasCompletadasPorTecnico, ...porTicket } = await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
       });
 
       expect(tareasCompletadasPorTecnico).toHaveLength(2);

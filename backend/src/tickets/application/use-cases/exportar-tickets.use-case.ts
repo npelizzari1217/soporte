@@ -18,10 +18,11 @@ import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository'
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { TicketFiltros } from '../../domain/ports/i-ticket.repository';
 import { ListarTicketsUseCase } from './listar-tickets.use-case';
+import { AlcanceActorTicket } from '../services/visibilidad-ticket';
 
 /**
- * Filtros de la exportación: los MISMOS del listado, menos `visiblePara`
- * (lo deriva `ListarTicketsUseCase` del actor, T7) y la paginación. La
+ * Filtros de la exportación: los MISMOS del listado, menos `alcance` (lo
+ * deriva `ListarTicketsUseCase` del actor, D5 e) y la paginación. La
  * ausencia de `pagina`/`porPagina` está en el TIPO, no en un comentario:
  * exportar la página visible en vez del universo filtrado es el error que
  * vuelve inútil a esta función.
@@ -29,13 +30,12 @@ import { ListarTicketsUseCase } from './listar-tickets.use-case';
  * Ref: sdd/exportar-listados-csv/design, decisión D3.
  */
 export interface ExportarTicketsDto {
-  filtros?: Omit<TicketFiltros, 'visiblePara' | 'limit' | 'offset'>;
-  /** JWT.sub del actor — `ListarTicketsUseCase` lo usa para derivar el scope de filas (T6/T7). */
-  actorId: string;
-  /** `TICKETS:VER_TODOS` del actor. `false` → el listado compuesto se restringe a sus propios tickets. */
-  tienePermisoVerTodos: boolean;
-  /** Gate de módulo (5.2 CAPA 2). `null`/`undefined` = sin restricción (ROOT/ADMINISTRADOR). */
-  modulosPermitidos?: string[] | null;
+  filtros?: Omit<TicketFiltros, 'alcance' | 'limit' | 'offset'>;
+  /**
+   * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 e): `ListarTicketsUseCase` los
+   * traduce al alcance del listado. `permisosPorTipo: null` = sin restricción (ROOT y ADMINISTRADOR).
+   */
+  alcance: AlcanceActorTicket;
 }
 
 /** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
@@ -48,9 +48,9 @@ export type ExportarTicketsResult = ArchivoExport;
  * **Por qué compone `ListarTicketsUseCase` en vez de inyectar
  * `ITicketRepository`** (design D4): componer el listado YA RESUELTO es lo
  * que hace estructuralmente imposible entregar el tenant entero a un
- * requester sin `TICKETS:VER_TODOS` — el scope por fila (`visiblePara`),
- * el ciclo efectivo (T7) y el gate de módulo (5.2 CAPA 2) los resuelve
- * `ListarTicketsUseCase`, no este caso de uso. Una implementación con su
+ * requester sin `VER_TODOS` — el alcance por tipo y por fila (D5 e) y el
+ * ciclo efectivo (T7) los resuelve `ListarTicketsUseCase`, no este caso de
+ * uso. Una implementación con su
  * propio `ITicketRepository` tendría que reimplementar (y podría olvidar)
  * exactamente esa restricción — es el hallazgo de mayor valor de esta
  * exportación (threat matrix del design, "Authorization bypass on new
@@ -61,8 +61,8 @@ export type ExportarTicketsResult = ArchivoExport;
  * spec (capability `exportacion-tickets`) fija las columnas del CSV en
  * número/título/estado/prioridad/técnico asignado/fecha de creación/fecha de
  * cierre, SIN columna de tipo. Inyectar un repo cuya salida ninguna columna
- * lee sería dead weight; el gate de módulo (que SÍ usa `tipoTicketRepo`) ya
- * vive DENTRO del `ListarTicketsUseCase` compuesto.
+ * lee sería dead weight; el alcance por tipo ya vive DENTRO del
+ * `ListarTicketsUseCase` compuesto.
  *
  * **Labels resueltos server-side, batcheados** (D3): un solo `Promise.all`
  * con `findAllActive()` de estados/prioridades + `resolverNombres(...)` para
@@ -88,9 +88,7 @@ export class ExportarTicketsUseCase {
     // matchean el filtro — `total` (de `count()`, dentro del use case
     // compuesto) es la verdad sobre si el resultado entra o no.
     const listado = await this.listarTicketsUseCase.execute({
-      actorId: dto.actorId,
-      tienePermisoVerTodos: dto.tienePermisoVerTodos,
-      modulosPermitidos: dto.modulosPermitidos,
+      alcance: dto.alcance,
       filtros: dto.filtros,
       pagina: 1,
       porPagina: TOPE_FILAS_EXPORT,

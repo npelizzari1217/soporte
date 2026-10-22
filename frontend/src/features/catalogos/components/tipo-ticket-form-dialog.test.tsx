@@ -134,4 +134,139 @@ describe("TipoTicketFormDialog", () => {
       expect(opcionesDeModulo()).toEqual(["TICKETS", "EDILICIA", "COMPRAS"]);
     });
   });
+
+  describe("Copiar permisos de (S4, odd/tasks/permisos-por-tipo-ticket.md)", () => {
+    const SOPORTE = buildTipo({ id: "11111111-1111-4111-8111-111111111111", codigo: "SOPORTE", nombre: "Soporte" });
+    const REDES = buildTipo({ id: "22222222-2222-4222-8222-222222222222", codigo: "REDES", nombre: "Redes" });
+    const EDILICIA = buildTipo({
+      id: "33333333-3333-4333-8333-333333333333",
+      codigo: "EDILICIA",
+      nombre: "Edilicia",
+      modulo: "EDILICIA",
+    });
+
+    function catalogo(tipos: TipoTicket[] = [SOPORTE, REDES, EDILICIA]) {
+      server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(tipos)));
+    }
+
+    const selectCopiar = () => screen.getByLabelText(/^copiar permisos de$/i) as HTMLSelectElement;
+    const opcionesDeCopia = () => Array.from(selectCopiar().options).map((o) => o.textContent);
+
+    async function abrirAlta() {
+      const user = userEvent.setup();
+      renderWithProviders(<TipoTicketFormDialog trigger={<button>Nuevo</button>} />);
+      await user.click(screen.getByRole("button", { name: "Nuevo" }));
+      return user;
+    }
+
+    it("de alta, arranca en 'Ninguno (cerrado)' y explica que el tipo nuevo nace cerrado", async () => {
+      catalogo();
+      await abrirAlta();
+
+      expect(selectCopiar()).toHaveValue("");
+      expect(selectCopiar().selectedOptions[0]).toHaveTextContent("Ninguno (cerrado)");
+      expect(
+        screen.getByText(
+          "El tipo nuevo nace cerrado: solo los administradores lo ven hasta que se asignen permisos. Al elegir un tipo, cada usuario recibe en el nuevo los mismos permisos que tiene en ese.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("ofrece solo los tipos del módulo elegido", async () => {
+      catalogo();
+      const user = await abrirAlta();
+
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "TICKETS");
+      await waitFor(() => expect(opcionesDeCopia()).toEqual(["Ninguno (cerrado)", "Soporte", "Redes"]));
+
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "EDILICIA");
+      expect(opcionesDeCopia()).toEqual(["Ninguno (cerrado)", "Edilicia"]);
+    });
+
+    it("cambiar el módulo vuelve a 'Ninguno' el tipo elegido, y el alta no lo envía", async () => {
+      catalogo();
+      let capturado: Record<string, unknown> = {};
+      server.use(
+        http.post("/api/catalogos/tipos-ticket", async ({ request }) => {
+          capturado = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(buildTipo({ ...capturado }), { status: 201 });
+        }),
+      );
+      const user = await abrirAlta();
+      await user.type(screen.getByLabelText(/^código$/i), "ELECT");
+      await user.type(screen.getByLabelText(/^nombre$/i), "Electricidad");
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "TICKETS");
+      await waitFor(() => expect(opcionesDeCopia()).toContain("Soporte"));
+      await user.selectOptions(selectCopiar(), SOPORTE.id);
+
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "EDILICIA");
+      expect(selectCopiar()).toHaveValue("");
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "TICKETS");
+      expect(selectCopiar()).toHaveValue("");
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+      await waitFor(() => expect(capturado.codigo).toBe("ELECT"));
+      expect(capturado).toEqual({ codigo: "ELECT", nombre: "Electricidad", modulo: "TICKETS" });
+    });
+
+    it("con un tipo elegido, el alta envía copiarPermisosDeTipoId", async () => {
+      catalogo();
+      let capturado: Record<string, unknown> = {};
+      server.use(
+        http.post("/api/catalogos/tipos-ticket", async ({ request }) => {
+          capturado = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(buildTipo({ ...capturado }), { status: 201 });
+        }),
+      );
+      const user = await abrirAlta();
+      await user.type(screen.getByLabelText(/^código$/i), "ELECT");
+      await user.type(screen.getByLabelText(/^nombre$/i), "Electricidad");
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "TICKETS");
+      await waitFor(() => expect(opcionesDeCopia()).toContain("Redes"));
+      await user.selectOptions(selectCopiar(), REDES.id);
+      await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+      await waitFor(() => expect(capturado.codigo).toBe("ELECT"));
+      expect(capturado).toEqual({
+        codigo: "ELECT",
+        nombre: "Electricidad",
+        modulo: "TICKETS",
+        copiarPermisosDeTipoId: REDES.id,
+      });
+    });
+
+    it("reabrir el alta tras elegir un tipo y cerrar sin guardar vuelve a 'Ninguno'", async () => {
+      catalogo();
+      const user = await abrirAlta();
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "TICKETS");
+      await waitFor(() => expect(opcionesDeCopia()).toContain("Soporte"));
+      await user.selectOptions(selectCopiar(), SOPORTE.id);
+      await user.click(screen.getByRole("button", { name: /cerrar/i }));
+
+      await user.click(screen.getByRole("button", { name: "Nuevo" }));
+
+      expect(selectCopiar()).toHaveValue("");
+    });
+
+    it("al editar un tipo no se ofrece copiar permisos ni se envía el campo", async () => {
+      catalogo();
+      let capturado: Record<string, unknown> = {};
+      server.use(
+        http.patch("/api/catalogos/tipos-ticket/t1", async ({ request }) => {
+          capturado = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(buildTipo({ ...capturado }));
+        }),
+      );
+      const user = userEvent.setup();
+      renderWithProviders(<TipoTicketFormDialog tipo={buildTipo()} trigger={<button>Editar</button>} />);
+      await user.click(screen.getByRole("button", { name: "Editar" }));
+
+      expect(screen.queryByLabelText(/^copiar permisos de$/i)).not.toBeInTheDocument();
+      await user.selectOptions(screen.getByLabelText(/^módulo$/i), "EDILICIA");
+      await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+      await waitFor(() => expect(capturado.modulo).toBe("EDILICIA"));
+      expect(capturado).toEqual({ codigo: "INC", nombre: "Tipo Original", modulo: "EDILICIA" });
+    });
+  });
 });

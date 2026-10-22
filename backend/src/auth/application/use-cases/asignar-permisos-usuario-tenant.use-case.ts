@@ -1,5 +1,6 @@
 import { Result } from '../../../shared/domain/result';
 import { PARES_VALIDOS } from '../../../shared/domain/acciones';
+import { celdaReemplazadaPorTipo } from '../../../tickets/domain/permisos-tipo-ticket';
 import { IMembresiaRepository } from '../../domain/ports/i-membresia.repository';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import {
@@ -39,10 +40,20 @@ export type AsignarPermisosUsuarioTenantError =
  *    otro tenant" (aislamiento estricto).
  * 3. Reemplaza el set de celdas (`permisosRepo.setPermisos`, atómico e
  *    idempotente, ADR-P3).
+ *
+ * Celdas de tickets (odd/tasks/permisos-por-tipo-ticket.md, T7, D5 d): las que pasaron a los
+ * permisos por tipo (`celdaReemplazadaPorTipo`: `TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`)
+ * ya no deciden nada y dejan de editarse acá. El reemplazo las CONSERVA como estaban, sin importar
+ * lo que traiga el pedido: se retiran de la base en una etapa posterior (T9) y, mientras tanto, son
+ * el origen del backfill y de un rollback. No se rechazan con 422 para no romper a un llamador que
+ * las reenvía tal como las leyó; la respuesta devuelve lo que quedó guardado.
  */
 export class AsignarPermisosUsuarioTenantUseCase {
   constructor(
-    private readonly permisosRepo: Pick<IMatrizPermisosRepository, 'setPermisos'>,
+    private readonly permisosRepo: Pick<
+      IMatrizPermisosRepository,
+      'setPermisos' | 'findByUsuarioYCliente'
+    >,
     private readonly membresiaRepo: Pick<IMembresiaRepository, 'findActivaByUsuarioYCliente'>,
   ) {}
 
@@ -63,8 +74,16 @@ export class AsignarPermisosUsuarioTenantUseCase {
       return Result.fail(new MembresiaNoEncontradaError());
     }
 
-    await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, input.celdas);
+    const actuales = await this.permisosRepo.findByUsuarioYCliente(
+      input.usuarioId,
+      input.clienteId,
+    );
+    const celdas = [
+      ...input.celdas.filter((celda) => !celdaReemplazadaPorTipo(celda)),
+      ...actuales.filter(celdaReemplazadaPorTipo),
+    ];
+    await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, celdas);
 
-    return Result.ok(input.celdas);
+    return Result.ok(celdas);
   }
 }

@@ -11,6 +11,7 @@ import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { TicketReprioritizadoEvent } from '../../domain/events/ticket-reprioritizado.event';
 import {
+  AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
   PrioridadNoEncontradaError,
   TicketBloqueadoParaEdicionError,
@@ -22,24 +23,10 @@ import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository'
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { unstubbed } from '../../../testing/mocks';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
-import { TipoTicketEntity } from '../../domain/entities/tipo-ticket.entity';
-import { AlcanceActorTicket } from '../services/visibilidad-ticket';
-import { Modulo } from '../../../shared/domain/modulos';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 
 /** Actor que ve cualquier ticket: los casos de la regla de edición no dependen del acceso. */
-const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
-  actorId: 'editor-uuid',
-  tienePermisoVerTodos: true,
-  modulosPermitidos: null,
-};
-
-function makeTipo(modulo: Modulo): TipoTicketEntity {
-  return TipoTicketEntity.create(
-    { codigo: 'SOPORTE', nombre: 'Soporte', modulo, activo: true },
-    'tipo-uuid',
-  );
-}
+const ALCANCE_SIN_RESTRICCION = alcanceSinRestriccion('editor-uuid');
 
 /**
  * Estados de catálogo indexados por id — `estadoRepo.findById(ticket.estadoId)`
@@ -60,13 +47,13 @@ const ESTADOS: Record<string, EstadoEntity> = {
   ),
 };
 
-function makeTicket(estadoId = 'estado-nuevo-uuid'): TicketEntity {
+function makeTicket(estadoId = 'estado-nuevo-uuid', tipoId = 'tipo-uuid'): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Titulo original',
       descripcion: 'Descripcion original',
-      tipoId: 'tipo-uuid',
+      tipoId,
       estadoId,
       prioridadId: 'prioridad-media-uuid',
       cicloId: null,
@@ -124,9 +111,6 @@ describe('EditarTicketUseCase', () => {
       run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
     };
     vi.spyOn(txRunner, 'run');
-    const tipoTicketRepo = {
-      findById: vi.fn<ITipoTicketRepository['findById']>().mockResolvedValue(makeTipo('TICKETS')),
-    };
     const useCase = new EditarTicketUseCase(
       ticketRepo,
       prioridadRepo,
@@ -134,7 +118,6 @@ describe('EditarTicketUseCase', () => {
       eventPublisher,
       sectorRepo,
       txRunner,
-      tipoTicketRepo,
     );
     return {
       useCase,
@@ -144,7 +127,6 @@ describe('EditarTicketUseCase', () => {
       eventPublisher,
       sectorRepo,
       txRunner,
-      tipoTicketRepo,
     };
   }
 
@@ -452,64 +434,75 @@ describe('EditarTicketUseCase', () => {
     });
   });
 
-  describe('acceso al ticket (odd/permisos-por-tipo-ticket, S0)', () => {
-    it('un ticket de un tipo de otro módulo es 404 aunque el actor tenga VER_TODOS, y no se guarda nada', async () => {
-      const c = makeCollaborators(makeTicket());
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
-
-      const result = await c.useCase.execute({
-        ticketId: 'ticket-uuid',
-        titulo: 'Intento ajeno',
-        prioridadId: 'prioridad-alta-uuid',
-        actorEsRoot: false,
-        actorId: 'editor-uuid',
-        tienePermisoVerTodos: true,
-        modulosPermitidos: ['TICKETS'],
-      });
-
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
-      expect(c.ticketRepo.save).not.toHaveBeenCalled();
-      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+  describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
+    // Mismo usuario: Soporte con Ver y Modificar, Mantenimiento solo con Ver, Electricidad sin nada.
+    const alcance = alcancePorTipo('solicitante-uuid', {
+      'tipo-soporte': ['LECTURA', 'MODIFICACION'],
+      'tipo-mantenimiento': ['LECTURA'],
     });
 
-    it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404 y no se guarda', async () => {
-      const c = makeCollaborators(makeTicket());
-
-      const result = await c.useCase.execute({
-        ticketId: 'ticket-uuid',
-        titulo: 'Intento ajeno',
-        actorEsRoot: false,
-        actorId: 'editor-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: ['TICKETS'],
-      });
-
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
-      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'editor-uuid');
-      expect(c.ticketRepo.save).not.toHaveBeenCalled();
-    });
-
-    it('un ticket de un tipo de sus módulos que el actor ve se edita', async () => {
-      const c = makeCollaborators(makeTicket());
+    it('edita un ticket de un tipo con MODIFICACION', async () => {
+      const c = makeCollaborators(makeTicket('estado-nuevo-uuid', 'tipo-soporte'));
 
       const result = await c.useCase.execute({
         ticketId: 'ticket-uuid',
         titulo: 'Editado',
         actorEsRoot: false,
-        actorId: 'solicitante-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: ['TICKETS'],
+        ...alcance,
       });
 
-      expect(result.isOk()).toBe(true);
+      expect(result.getValue().titulo).toBe('Editado');
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
     });
 
-    it('sin restricción de módulo (ROOT o ADMINISTRADOR) edita un tipo de cualquier módulo', async () => {
-      const c = makeCollaborators(makeTicket());
-      c.tipoTicketRepo.findById.mockResolvedValue(makeTipo('EDILICIA'));
+    it('un ticket de un tipo con solo LECTURA es 403, sin guardar ni publicar', async () => {
+      const c = makeCollaborators(makeTicket('estado-nuevo-uuid', 'tipo-mantenimiento'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento',
+        prioridadId: 'prioridad-alta-uuid',
+        actorEsRoot: false,
+        ...alcance,
+      });
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toContain('"MODIFICACION"');
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+    });
+
+    it('un ticket de un tipo sin LECTURA es 404 aunque el actor sea su solicitante, y no se guarda', async () => {
+      const c = makeCollaborators(makeTicket('estado-nuevo-uuid', 'tipo-electricidad'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento',
+        actorEsRoot: false,
+        ...alcance,
+      });
+
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('un ticket que el actor no ve por fila (sin VER_TODOS, ni solicitante, ni responsable, ni tarea) es 404 y no se guarda', async () => {
+      const c = makeCollaborators(makeTicket('estado-nuevo-uuid', 'tipo-soporte'));
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento ajeno',
+        actorEsRoot: false,
+        ...alcancePorTipo('editor-uuid', { 'tipo-soporte': ['LECTURA', 'MODIFICACION'] }),
+      });
+
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
+      expect(c.ticketRepo.esVisiblePara).toHaveBeenCalledWith('ticket-uuid', 'editor-uuid');
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sin restricción (ROOT o ADMINISTRADOR) edita un tipo sin filas', async () => {
+      const c = makeCollaborators(makeTicket('estado-nuevo-uuid', 'tipo-electricidad'));
 
       const result = await c.useCase.execute({
         ticketId: 'ticket-uuid',

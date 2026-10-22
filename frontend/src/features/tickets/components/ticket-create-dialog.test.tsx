@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { TicketCreateDialog } from "./ticket-create-dialog";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 
 const pushMock = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
@@ -96,5 +97,52 @@ describe("TicketCreateDialog", () => {
     });
     expect(bodies[1]).not.toHaveProperty("ubicacion");
     expect(bodies[1]).not.toHaveProperty("sectorId");
+  });
+});
+
+describe("TicketCreateDialog — solo los tipos con Crear (odd/permisos-por-tipo-ticket, S6)", () => {
+  const tipo = (id: string, codigo: string, nombre: string) => ({
+    id,
+    codigo,
+    nombre,
+    modulo: "TICKETS",
+    activo: true,
+    createdAt: "",
+    updatedAt: "",
+  });
+  const SOPORTE = "11111111-1111-1111-1111-111111111111";
+  const REDES = "33333333-3333-3333-3333-333333333333";
+  // La celda TICKETS:ALTAS del JWT ya no decide qué tipos se ofrecen.
+  const tecnico = buildUser({ rol: "TECNICO", permisos: ["TICKETS:ALTAS"] });
+
+  beforeEach(() => {
+    mockBackend();
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([tipo(SOPORTE, "SOPORTE", "Soporte"), tipo(REDES, "REDES", "Redes")]),
+      ),
+    );
+  });
+
+  it("ofrece el tipo con ALTAS y no el que solo se lee", async () => {
+    const user = userEvent.setup();
+    renderConPermisos(<TicketCreateDialog />, {
+      user: tecnico,
+      permisos: permisosDeTest({ [SOPORTE]: ["LECTURA"], [REDES]: ["LECTURA", "ALTAS"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: /^nuevo ticket$/i }));
+    const select = await screen.findByLabelText("Tipo");
+    expect(await within(select).findByRole("option", { name: "Redes" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Soporte" })).not.toBeInTheDocument();
+  });
+
+  it("con el catálogo cargado y ningún tipo con ALTAS, no muestra el botón", async () => {
+    renderConPermisos(<TicketCreateDialog />, {
+      user: tecnico,
+      permisos: permisosDeTest({ [SOPORTE]: ["LECTURA"], [REDES]: ["LECTURA"] }),
+    });
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: /^nuevo ticket$/i })).not.toBeInTheDocument());
   });
 });

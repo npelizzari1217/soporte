@@ -10,7 +10,7 @@
  *    único campo `nombre` como una familia o una unidad de medida.
  * 2. **Lo que significa cada desenlace.** El catálogo de familias es lectura
  *    abierta: si no llegó, fue la red. `GET /usuarios` NO lo es —exige
- *    `TICKETS:ASIGNAR`, `TICKETS:VER_TODOS` o ser ADMINISTRADOR/ROOT—, así que
+ *    `ASIGNAR` o `VER_TODOS` sobre algún tipo de ticket, o ser ADMINISTRADOR/ROOT—, así que
  *    para el técnico que entra a la ficha con solo `INSUMOS:LECTURA` el
  *    desenlace normal, y no el excepcional, es que la lista nunca llegue.
  *

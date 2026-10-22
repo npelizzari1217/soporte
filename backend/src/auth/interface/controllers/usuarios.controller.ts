@@ -3,7 +3,7 @@
  * tenant (sdd/beta-frontend/spec §5, desbloquea Fase 5 Beta frontend).
  *
  * Rutas (WU-7.3/7.4/7.6, sdd/matriz-permisos-por-usuario — R4/R4-excepción/R6/R10):
- *   GET    /usuarios                          → ListarUsuariosTenantUseCase   (TICKETS:ASIGNAR | TICKETS:VER_TODOS | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
+ *   GET    /usuarios                          → ListarUsuariosTenantUseCase   (ASIGNAR | VER_TODOS sobre algún tipo de ticket | ADMINISTRADOR-o-ROOT, regla OR — R4-excepción)
  *   POST   /usuarios                          → CrearUsuarioTenantUseCase     [AdminClienteGuard]
  *   PATCH  /usuarios/:id/rol                  → CambiarRolUsuarioTenantUseCase [AdminClienteGuard] (R6: `reaplicarPreset` opcional)
  *   PATCH  /usuarios/:id                      → EditarUsuarioTenantUseCase      [AdminClienteGuard]
@@ -14,19 +14,23 @@
  *   GET    /usuarios/:id/permisos             → ObtenerPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10)
  *   PATCH  /usuarios/:id/permisos             → AsignarPermisosUsuarioTenantUseCase [AdminClienteGuard] (ADR-P10, reemplazo total)
  *   POST   /usuarios/:id/permisos/aplicar-preset → AplicarPresetPermisosUseCase [AdminClienteGuard] (ADR-P9)
+ *   GET    /usuarios/:id/permisos-por-tipo    → PermisosPorTipoUsuarioTenantUseCase [AdminClienteGuard] (odd/permisos-por-tipo-ticket, T7)
+ *   PUT    /usuarios/:id/permisos-por-tipo    → PermisosPorTipoUsuarioTenantUseCase [AdminClienteGuard] (reemplazo total)
+ *   POST   /usuarios/:id/permisos-por-tipo/copiar-de/:origenId → PermisosPorTipoUsuarioTenantUseCase [AdminClienteGuard]
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` a nivel de controller (requieren JWT
  * válido y `cliente_id` resuelto). `AdminClienteGuard` POR MÉTODO (ADR-P5) en
  * los endpoints de gestión — reemplaza `PermissionsGuard`+`@RequirePermissions`.
  *
  * `GET /usuarios` NO usa `AdminClienteGuard` a nivel de clase porque su regla
- * es OR, no un simple admin-o-root (R4-excepción, S25): `TICKETS:ASIGNAR` O
- * `TICKETS:VER_TODOS` O ser ADMINISTRADOR/ROOT habilitan la lista básica
- * (selector de asignación / vista admin) — evaluado con `puedeEjecutarAlguna`,
- * que YA embebe el bypass de ROOT/ADMINISTRADOR (ADR-P11: `puedeEjecutar`
- * bypassea antes de mirar `permisos`). El `email` es el dato sensible (R10)
+ * es OR, no un simple admin-o-root (R4-excepción, S25): `ASIGNAR` O `VER_TODOS`
+ * sobre algún tipo de ticket O ser ADMINISTRADOR/ROOT habilitan la lista básica
+ * (selector de asignación, filtro "Asignado" del listado / vista admin). Desde
+ * odd/permisos-por-tipo-ticket (T6) lo deciden los permisos por tipo del tenant,
+ * cargados por request con `CargadorAlcanceTicket` (que ya deja sin restricción a
+ * ROOT y ADMINISTRADOR); las celdas `TICKETS:*` del JWT no. El `email` es el dato sensible (R10)
  * — se omite salvo que el actor sea ADMINISTRADOR o ROOT, INDEPENDIENTE de la
- * regla OR de acceso (`esAdminDeCliente`, no `puedeEjecutarAlguna`).
+ * regla OR de acceso (`esAdminDeCliente`, no los permisos por tipo).
  *
  * ABM viejo RETIRADO (WU-7.6, cierre de la deviation declarada en la tanda
  * anterior): `GET/PATCH /usuarios/:id/modulos`, `ObtenerModulosUsuarioTenantUseCase`,
@@ -58,10 +62,13 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  InternalServerErrorException,
   NotFoundException,
   Param,
   Patch,
   Post,
+  Put,
   UnprocessableEntityException,
   UseGuards,
 } from '@nestjs/common';
@@ -77,12 +84,17 @@ import { ObtenerPermisosUsuarioTenantUseCase } from '../../application/use-cases
 import { AsignarPermisosUsuarioTenantUseCase } from '../../application/use-cases/asignar-permisos-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplicar-preset-permisos.use-case';
 import {
+  PermisosPorTipoDeUsuario,
+  PermisosPorTipoUsuarioTenantUseCase,
+} from '../../application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
+import {
   AplicarPresetPermisosDto,
   AsignarPermisosDto,
   CambiarRolUsuarioDto,
   CreateUsuarioTenantDto,
   EditarUsuarioDto,
   PermisosUsuarioTenantResponseDto,
+  ReemplazarPermisosPorTipoDto,
   ResetearPasswordUsuarioDto,
   UsuarioTenantMembresiaResponseDto,
   UsuarioTenantResponseDto,
@@ -93,22 +105,23 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  MatrizPermisosNoAplicadaError,
+  PermisosPorTipoNoAplicadosError,
 } from '../../domain/errors/auth.errors';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../infrastructure/guards/tenant.guard';
 import { AdminClienteGuard } from '../../infrastructure/guards/admin-cliente.guard';
 import { CurrentUser } from '../../infrastructure/guards/decorators';
 import { JwtPayload } from '../../domain/ports/i-token.service';
-import { puedeEjecutarAlguna, esAdminDeCliente } from '../../domain/permisos.util';
+import { esAdminDeCliente } from '../../domain/permisos.util';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { puedeVerListaDeUsuarios } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  IPermisoTipoTicketRepository,
+  PERMISO_TIPO_TICKET_REPOSITORY,
+} from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
 import { CATALOGO_MODULOS, CodigoAccion } from '../../../shared/domain/acciones';
 import { DomainError } from '../../../shared/domain/result';
-
-/**
- * Acciones que habilitan la lista BÁSICA de `GET /usuarios` (OR, no AND —
- * R4-excepción, S25). `puedeEjecutarAlguna` ya bypassea ROOT/ADMINISTRADOR
- * por construcción (ADR-P11): no hace falta un chequeo admin separado acá.
- */
-const ACCIONES_LISTA_BASICA = ['TICKETS:ASIGNAR', 'TICKETS:VER_TODOS'];
 
 function toListaResponseDto(
   item: MembresiaConUsuario,
@@ -142,14 +155,27 @@ function toMembresiaResponseDto(
 /** Mapea un `DomainError` de gestión de usuarios a la `HttpException` correspondiente. */
 function toHttpException(
   error: DomainError,
-): NotFoundException | ConflictException | UnprocessableEntityException {
+):
+  | NotFoundException
+  | ConflictException
+  | UnprocessableEntityException
+  | InternalServerErrorException {
+  // Falla de una de las dos bases al aplicar la plantilla del rol: el mensaje dice qué quedó
+  // guardado y cómo completarlo (odd/tasks/permisos-por-tipo-ticket.md, T4c, W1).
+  if (
+    error instanceof PermisosPorTipoNoAplicadosError ||
+    error instanceof MatrizPermisosNoAplicadaError
+  ) {
+    return new InternalServerErrorException(error.message, { cause: error.causa });
+  }
   if (error instanceof MembresiaNoEncontradaError) {
     return new NotFoundException(error.message);
   }
   if (error instanceof MembresiaYaActivaError) {
     return new ConflictException(error.message);
   }
-  // RolNoEncontradoError, CeldaPermisoInvalidaError, PresetRolNoDefinidoError:
+  // RolNoEncontradoError, CeldaPermisoInvalidaError, PresetRolNoDefinidoError,
+  // PermisosPorTipoInvalidosError, PermisosPorTipoSinRestriccionError:
   // input inválido del actor o gap de configuración del código → 422.
   return new UnprocessableEntityException(error.message);
 }
@@ -167,26 +193,31 @@ export class UsuariosController {
     private readonly obtenerPermisosUsuarioTenantUseCase: ObtenerPermisosUsuarioTenantUseCase,
     private readonly asignarPermisosUsuarioTenantUseCase: AsignarPermisosUsuarioTenantUseCase,
     private readonly aplicarPresetPermisosUseCase: AplicarPresetPermisosUseCase,
+    private readonly permisosPorTipoUseCase: PermisosPorTipoUsuarioTenantUseCase,
     private readonly resetearTfaUsuarioUseCase: ResetearTfaUsuarioUseCase,
     private readonly resetearVinculoSsoUseCase: ResetearVinculoSsoUseCase,
+    private readonly alcances: CargadorAlcanceTicket,
+    @Inject(PERMISO_TIPO_TICKET_REPOSITORY)
+    private readonly tiposDePermisos: Pick<IPermisoTipoTicketRepository, 'listarTipos'>,
   ) {}
 
   /**
    * GET /usuarios
    * Lista los usuarios con membresía ACTIVA en el cliente del token.
-   * @throws 403 si el actor no tiene `TICKETS:ASIGNAR`, `TICKETS:VER_TODOS`
-   *             NI es ADMINISTRADOR/ROOT (R4-excepción, S25)
+   * @throws 403 si el actor no es ADMINISTRADOR/ROOT, no tiene `ASIGNAR` sobre ningún tipo ni
+   *             `VER_TODOS` sobre un tipo que tome las celdas de TICKETS (R4-excepción, S25;
+   *             `puedeVerListaDeUsuarios`, S7)
    */
   @Get()
   async listar(@CurrentUser() actor: JwtPayload): Promise<UsuarioTenantResponseDto[]> {
-    const tieneAccesoBasico = puedeEjecutarAlguna(actor, ACCIONES_LISTA_BASICA);
-    if (!tieneAccesoBasico) {
+    const alcance = await this.alcances.cargar(actor);
+    if (!(await puedeVerListaDeUsuarios(alcance, this.tiposDePermisos))) {
       throw new ForbiddenException(
-        `Acceso denegado: se requiere alguno de [${ACCIONES_LISTA_BASICA.join(', ')}]`,
+        'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un tipo de Tickets, Compras o Equipos',
       );
     }
     // R10: el email es INDEPENDIENTE de la regla OR de arriba. Un TECNICO con
-    // TICKETS:ASIGNAR entra a la lista pero NUNCA recibe email — solo
+    // ASIGNAR sobre un tipo entra a la lista pero NUNCA recibe email — solo
     // ADMINISTRADOR/ROOT lo ven.
     const incluirEmail = esAdminDeCliente(actor);
 
@@ -490,5 +521,82 @@ export class UsuariosController {
       throw toHttpException(result.getError());
     }
     return { usuarioId, rolCodigo: dto.rolCodigo };
+  }
+
+  // ─── Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T7, S5) ──────────
+
+  /**
+   * GET /usuarios/:id/permisos-por-tipo
+   * Una fila por tipo de ticket del tenant con las acciones del usuario `:id` y la plantilla de su
+   * rol para esa fila. ROOT y ADMINISTRADOR vuelven con `sinRestriccion: true` y sin filas.
+   * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
+   */
+  @Get(':id/permisos-por-tipo')
+  @UseGuards(AdminClienteGuard)
+  async obtenerPermisosPorTipo(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+  ): Promise<PermisosPorTipoDeUsuario> {
+    const result = await this.permisosPorTipoUseCase.obtener({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
+   * PUT /usuarios/:id/permisos-por-tipo
+   * Reemplaza TODAS las filas por tipo del usuario `:id` (no fusiona). El usuario las ve en su
+   * próximo request, sin refrescar la sesión (D1).
+   * @throws 404 si no existe membresía ACTIVA de ese usuario en este cliente
+   * @throws 422 si el usuario es ROOT o ADMINISTRADOR, si un tipo no existe o se repite, si una
+   *             acción no está en el vocabulario o no se concede (BORRADO, S8), o si una fila
+   *             concede algo sin Ver (S3)
+   */
+  @Put(':id/permisos-por-tipo')
+  @UseGuards(AdminClienteGuard)
+  async reemplazarPermisosPorTipo(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Body() dto: ReemplazarPermisosPorTipoDto,
+  ): Promise<PermisosPorTipoDeUsuario> {
+    const result = await this.permisosPorTipoUseCase.reemplazar({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      tipos: dto.tipos.map(({ tipoId, acciones }) => ({ tipoId, acciones })),
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
+   * POST /usuarios/:id/permisos-por-tipo/copiar-de/:origenId
+   * Reemplaza TODAS las filas por tipo del usuario `:id` por las del usuario `:origenId`, ambos del
+   * cliente del token ("Copiar permisos de otro usuario", S5).
+   * @throws 404 si alguno de los dos no tiene membresía ACTIVA en este cliente
+   * @throws 422 si son el mismo usuario o alguno es ROOT o ADMINISTRADOR
+   */
+  @Post(':id/permisos-por-tipo/copiar-de/:origenId')
+  @UseGuards(AdminClienteGuard)
+  @HttpCode(HttpStatus.OK)
+  async copiarPermisosPorTipo(
+    @CurrentUser() actor: JwtPayload,
+    @Param('id') usuarioId: string,
+    @Param('origenId') origenId: string,
+  ): Promise<PermisosPorTipoDeUsuario> {
+    const result = await this.permisosPorTipoUseCase.copiarDe({
+      clienteId: actor.cliente_id as string,
+      usuarioId,
+      origenId,
+    });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
   }
 }

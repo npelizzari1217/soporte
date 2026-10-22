@@ -52,4 +52,11 @@ describe('TicketsV1Query', () => {
       expect(res.getError().message).toBe(new TicketReferenciaInvalidaError(ID).message);
     },
   );
+
+  it('los tipos de v1 son los del modulo TICKETS, dados de baja incluidos', async () => {
+    const { query, findIdsByModulos } = armar();
+
+    expect(await query.tiposDeV1()).toEqual(['tipo-soporte', 'tipo-soporte-baja']);
+    expect(findIdsByModulos).toHaveBeenCalledWith(['TICKETS']);
+  });
 });

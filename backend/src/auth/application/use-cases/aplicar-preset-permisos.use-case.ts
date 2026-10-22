@@ -1,6 +1,11 @@
 import { Result } from '../../../shared/domain/result';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
-import { PresetRolNoDefinidoError } from '../../domain/errors/auth.errors';
+import { IPermisosPorTipoDeCliente } from '../../domain/ports/i-permisos-por-tipo-de-cliente.port';
+import {
+  MatrizPermisosNoAplicadaError,
+  PermisosPorTipoNoAplicadosError,
+  PresetRolNoDefinidoError,
+} from '../../domain/errors/auth.errors';
 import { obtenerPresetDeRol } from '../../domain/presets-rol';
 
 /**
@@ -34,7 +39,8 @@ export interface AplicarPresetPermisosInput {
   sobrescribir: boolean;
 }
 
-export type AplicarPresetPermisosError = PresetRolNoDefinidoError;
+export type AplicarPresetPermisosError =
+  PresetRolNoDefinidoError | PermisosPorTipoNoAplicadosError | MatrizPermisosNoAplicadaError;
 
 /**
  * AplicarPresetPermisosUseCase — `POST /usuarios/:id/permisos/aplicar-preset`
@@ -53,6 +59,17 @@ export type AplicarPresetPermisosError = PresetRolNoDefinidoError;
  * NUNCA sobrescribe con un set vacío en silencio — eso borraría la matriz de
  * cualquiera al que se le aplicara por error.
  *
+ * Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c, W1): la misma
+ * plantilla se escribe también en la tabla por tipo del tenant, con la traducción de L11. Master y
+ * tenant son bases distintas y no hay transacción común, así que el orden es deliberado: primero
+ * el tenant, porque desde la etapa 1 sus filas deciden el acceso a tickets, y después master. Si
+ * el tenant falla, master no se toca y se devuelve `PermisosPorTipoNoAplicadosError`: un descenso
+ * de rol nunca deja al usuario con la matriz nueva y el acceso por tipo viejo. Si master falla
+ * después, se devuelve `MatrizPermisosNoAplicadaError`. En los dos casos la recuperación es la
+ * misma: volver a aplicar la plantilla, que reescribe las dos. Con `sobrescribir: false` la
+ * decisión se toma con la matriz leída ANTES de escribir: si master tiene celdas no se escribe
+ * ninguna de las dos, para no conceder por tipo lo que la matriz del usuario no tiene.
+ *
  * Ref spec: sdd/matriz-permisos-por-usuario/spec R6, R7. Ref design: ADR-P9.
  */
 export class AplicarPresetPermisosUseCase {
@@ -61,6 +78,7 @@ export class AplicarPresetPermisosUseCase {
       IMatrizPermisosRepository,
       'setPermisos' | 'findByUsuarioYCliente'
     >,
+    private readonly permisosPorTipo: Pick<IPermisosPorTipoDeCliente, 'aplicarPlantilla'>,
   ) {}
 
   async execute(
@@ -84,7 +102,23 @@ export class AplicarPresetPermisosUseCase {
       }
     }
 
-    await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, presetResult.getValue());
+    const celdas = presetResult.getValue();
+    try {
+      await this.permisosPorTipo.aplicarPlantilla({
+        clienteId: input.clienteId,
+        usuarioId: input.usuarioId,
+        celdas,
+        sobrescribir: input.sobrescribir,
+      });
+    } catch (error) {
+      return Result.fail(new PermisosPorTipoNoAplicadosError(error));
+    }
+
+    try {
+      await this.permisosRepo.setPermisos(input.usuarioId, input.clienteId, celdas);
+    } catch (error) {
+      return Result.fail(new MatrizPermisosNoAplicadaError(error));
+    }
 
     return Result.ok(undefined);
   }

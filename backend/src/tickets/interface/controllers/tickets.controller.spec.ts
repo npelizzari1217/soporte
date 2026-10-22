@@ -20,7 +20,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { TicketsController, toHttpException } from './tickets.controller';
-import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { DomainError, Result } from '../../../shared/domain/result';
@@ -49,6 +49,9 @@ import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.check
 import { ISolicitanteExternoRepository } from '../../domain/ports/i-solicitante-externo.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { unstubbed } from '../../../testing/mocks';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import { CargadorAlcanceTicket } from '../alcance-ticket';
+import { ObtenerPermisosPorTipoUseCase } from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
 
 /** Operación de dominio mínima para alimentar `toOperacionResponseDto`. */
 function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
@@ -107,6 +110,17 @@ const USUARIO_SOPORTE: JwtPayload = payloadDeTest({
   cliente_nombre: 'Cliente 1',
   modulos: ['SOPORTE'],
 });
+
+/**
+ * Permisos por tipo en la tabla del tenant (odd/permisos-por-tipo-ticket, D5 a): `usr-2` ve y
+ * modifica el tipo `ti1`; `usr-1` lo ve y comenta, sin comentario interno.
+ */
+const PERMISOS_POR_TIPO = [
+  { usuarioId: 'usr-2', tipoId: 'ti1', accion: 'LECTURA' },
+  { usuarioId: 'usr-2', tipoId: 'ti1', accion: 'MODIFICACION' },
+  { usuarioId: 'usr-1', tipoId: 'ti1', accion: 'LECTURA' },
+  { usuarioId: 'usr-1', tipoId: 'ti1', accion: 'COMENTAR' },
+] as const;
 
 /** Firma de `ISectorRepository.findNombres`, para tipar su doble sin casts. */
 type FindNombresSector = (ids: readonly string[]) => Promise<Map<string, string>>;
@@ -209,8 +223,8 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
   const usuarioMasterCheckerReal: IUsuarioMasterChecker = {
     existeEnTenant: unstubbed('existeEnTenant'),
     estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
-    getAutorizacionModulos: unstubbed('getAutorizacionModulos'),
-    listarTecnicosAsignables: unstubbed('listarTecnicosAsignables'),
+    esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
+    listarAgentes: unstubbed('listarAgentes'),
     resolverNombres: usuarioMasterChecker.resolverNombres,
   };
   const solicitanteExternoRepo: ISolicitanteExternoRepository = {
@@ -242,6 +256,10 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     solicitanteExternoRepo,
     estadoRepo,
     deps.sectorRepo,
+    new CargadorAlcanceTicket(new PermisosTipoTicketEnMemoria([], PERMISOS_POR_TIPO)),
+    new ObtenerPermisosPorTipoUseCase(
+      new PermisosTipoTicketEnMemoria([{ id: 'ti1', modulo: 'TICKETS' }]),
+    ),
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -266,8 +284,14 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
     expect(res.esInterno).toBe(true);
   });
 
-  it('preserva el guard: NO-ROOT sin ticket:observar recibe 403 al comentar interno', async () => {
-    const crearComentario = { execute: vi.fn<CrearComentarioUseCase['execute']>() };
+  it('el comentario interno lo decide el caso de uso con OBSERVAR sobre el tipo: su 403 llega como ForbiddenException', async () => {
+    const crearComentario = {
+      execute: vi
+        .fn<CrearComentarioUseCase['execute']>()
+        .mockResolvedValue(
+          Result.fail(new TicketsErrors.AccionSobreTipoNoPermitidaError('OBSERVAR')),
+        ),
+    };
     const { controller } = buildController({ crearComentario });
 
     await expect(
@@ -276,10 +300,17 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
         esInterno: true,
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    expect(crearComentario.execute).not.toHaveBeenCalled();
+    // La celda del JWT ya no corta antes: el caso de uso recibe el pedido con los permisos por tipo.
+    expect(crearComentario.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        esInterno: true,
+        actorId: 'usr-1',
+        permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'COMENTAR'])]]),
+      }),
+    );
   });
 
-  it('ROOT ve TODO el scope: timeline se invoca con ver_todos y observar en true', async () => {
+  it('ROOT ve TODO el scope: timeline se invoca sin restricción por tipo', async () => {
     const listarTimeline = {
       execute: vi.fn<ListarTimelineUseCase['execute']>().mockResolvedValue(Result.ok([])),
     };
@@ -287,40 +318,41 @@ describe('TicketsController — bypass ROOT en chequeos inline (sdd/root-access-
 
     await controller.timeline(ROOT, 'ticket-1');
 
-    expect(listarTimeline.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ tienePermisoVerTodos: true, tienePermisoObservar: true }),
-    );
+    expect(listarTimeline.execute).toHaveBeenCalledWith({
+      ticketId: 'ticket-1',
+      actorId: 'root-1',
+      permisosPorTipo: null,
+    });
   });
 });
 
-describe('TicketsController.findAll — gate de módulo (5.2 CAPA 2)', () => {
-  it('ADMINISTRADOR → pasa modulosPermitidos=null (sin restricción de módulo)', async () => {
+describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-ticket, D5 e)', () => {
+  it('usuario común → pasa los permisos por tipo de la tabla del tenant, no las celdas del JWT', async () => {
     const { controller, listarTickets } = buildController();
 
-    await controller.findAll(ADMINISTRADOR, {});
+    await controller.findAll(USUARIO_SOPORTE, { tipo: 'ti1' });
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: null }),
+      expect.objectContaining({
+        alcance: {
+          actorId: 'usr-2',
+          permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+        },
+        filtros: expect.objectContaining({ tiposIds: ['ti1'] }),
+      }),
     );
   });
 
-  it("usuario normal con modulos=['SOPORTE'] → pasa modulosPermitidos=['SOPORTE']", async () => {
+  it.each([
+    ['ADMINISTRADOR', ADMINISTRADOR],
+    ['ROOT', ROOT],
+  ])('%s → sin restricción por tipo (permisosPorTipo null)', async (_rol, actor) => {
     const { controller, listarTickets } = buildController();
 
-    await controller.findAll(USUARIO_SOPORTE, {});
+    await controller.findAll(actor, {});
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: ['SOPORTE'] }),
-    );
-  });
-
-  it('ROOT → pasa modulosPermitidos=null (bypass por is_global_admin)', async () => {
-    const { controller, listarTickets } = buildController();
-
-    await controller.findAll(ROOT, {});
-
-    expect(listarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: null }),
+      expect.objectContaining({ alcance: { actorId: actor.sub, permisosPorTipo: null } }),
     );
   });
 });
@@ -341,8 +373,7 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
       ticketId: 'ticket-1',
       clienteId: 'cliente-1',
       actorId: 'usr-2',
-      tienePermisoVerTodos: false,
-      modulosPermitidos: ['SOPORTE'],
+      permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
     });
     expect(res).toEqual(tecnicos);
   });
@@ -391,18 +422,16 @@ describe('TicketsController — asignación unificada (asignables + asignar-en-p
       autorId: 'usr-2',
       clienteId: 'cliente-1',
       actorId: 'usr-2',
-      tienePermisoVerTodos: false,
-      modulosPermitidos: ['SOPORTE'],
+      permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
     });
   });
 });
 
-describe('TicketsController — alcance del actor en las escrituras (odd/permisos-por-tipo-ticket, S0)', () => {
-  /** Alcance que arma `alcanceTicketDesdeJwt(USUARIO_SOPORTE)`: sin VER_TODOS, acotado a SOPORTE. */
+describe('TicketsController — alcance del actor en las escrituras (odd/permisos-por-tipo-ticket, D5 a)', () => {
+  /** Alcance que carga `CargadorAlcanceTicket` para `usr-2`: sus filas de la tabla del tenant. */
   const ALCANCE_USUARIO_SOPORTE = {
     actorId: 'usr-2',
-    tienePermisoVerTodos: false,
-    modulosPermitidos: ['SOPORTE'],
+    permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
   };
 
   function makeTicketEntity(): TicketEntity {
@@ -422,7 +451,7 @@ describe('TicketsController — alcance del actor en las escrituras (odd/permiso
     );
   }
 
-  it('update delega con el alcance del JWT', async () => {
+  it('update delega con el alcance cargado por tipo', async () => {
     const editarTicket = {
       execute: vi
         .fn<EditarTicketUseCase['execute']>()
@@ -437,7 +466,7 @@ describe('TicketsController — alcance del actor en las escrituras (odd/permiso
     );
   });
 
-  it('transicionarEstado delega con el alcance del JWT (nunca null: null es solo para sistema)', async () => {
+  it('transicionarEstado delega con el alcance cargado por tipo (nunca null: null es solo para sistema)', async () => {
     const transicionar = {
       execute: vi
         .fn<TransicionarEstadoUseCase['execute']>()
@@ -454,7 +483,7 @@ describe('TicketsController — alcance del actor en las escrituras (odd/permiso
     );
   });
 
-  it('transicionarEstado de ROOT delega sin restricción de módulo', async () => {
+  it('transicionarEstado de ROOT delega sin restricción por tipo', async () => {
     const transicionar = {
       execute: vi
         .fn<TransicionarEstadoUseCase['execute']>()
@@ -466,12 +495,12 @@ describe('TicketsController — alcance del actor en las escrituras (odd/permiso
 
     expect(transicionar.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        alcance: expect.objectContaining({ actorId: 'root-1', modulosPermitidos: null }),
+        alcance: { actorId: 'root-1', permisosPorTipo: null },
       }),
     );
   });
 
-  it('asignar delega con el alcance del JWT', async () => {
+  it('asignar delega con el alcance cargado por tipo', async () => {
     const asignarTicket = {
       execute: vi
         .fn<AsignarTicketUseCase['execute']>()
@@ -486,7 +515,7 @@ describe('TicketsController — alcance del actor en las escrituras (odd/permiso
     );
   });
 
-  it('comentar delega con el alcance del JWT', async () => {
+  it('comentar delega con el alcance cargado por tipo', async () => {
     const crearComentario = {
       execute: vi
         .fn<CrearComentarioUseCase['execute']>()
@@ -512,6 +541,21 @@ describe('TicketsController — alcance del actor en las escrituras (odd/permiso
     await expect(
       controller.update(USUARIO_SOPORTE, 'ticket-1', { titulo: 'X' }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('un ticket que el actor ve sin la acción sobre su tipo llega como 403', async () => {
+    const editarTicket = {
+      execute: vi
+        .fn<EditarTicketUseCase['execute']>()
+        .mockResolvedValue(
+          Result.fail(new TicketsErrors.AccionSobreTipoNoPermitidaError('MODIFICACION')),
+        ),
+    };
+    const { controller } = buildController({ editarTicket });
+
+    await expect(
+      controller.update(USUARIO_SOPORTE, 'ticket-1', { titulo: 'X' }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
@@ -582,6 +626,32 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     expect(crearTicket.execute).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ ubicacion: null, sectorId: null }),
+    );
+  });
+
+  it('create: delega con el alcance por tipo del actor; sin ALTAS sobre el tipo responde 403', async () => {
+    const crearTicket = {
+      execute: vi
+        .fn<CrearTicketUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketsErrors.AccionSobreTipoNoPermitidaError('ALTAS'))),
+    };
+    const { controller } = buildController({ crearTicket });
+
+    const promesa = controller.create(USUARIO_SOPORTE, {
+      titulo: 'X',
+      tipoId: 'ti1',
+      prioridadId: 'p1',
+    });
+
+    await expect(promesa).rejects.toBeInstanceOf(ForbiddenException);
+    expect(crearTicket.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipoId: 'ti1',
+        alcance: {
+          actorId: 'usr-2',
+          permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+        },
+      }),
     );
   });
 
@@ -757,7 +827,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
   });
 
-  it('deriva el scope de filas del actor (TICKETS:VER_TODOS), NUNCA del query — sin el permiso, exporta acotado al actor', async () => {
+  it('deriva el alcance de los permisos por tipo del actor, NUNCA del query', async () => {
     const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
@@ -767,12 +837,17 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     await controller.exportar(USUARIO_SOPORTE, {}, respuestaFalsa().res);
 
     expect(exportarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ actorId: 'usr-2', tienePermisoVerTodos: false }),
+      expect.objectContaining({
+        alcance: {
+          actorId: 'usr-2',
+          permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+        },
+      }),
       'csv',
     );
   });
 
-  it('ADMINISTRADOR → pasa modulosPermitidos=null (mismo gate de módulo que findAll)', async () => {
+  it('ADMINISTRADOR → sin restricción por tipo (mismo alcance que findAll)', async () => {
     const exportarTickets = { execute: vi.fn<ExportarTicketsUseCase['execute']>() };
     exportarTickets.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'tickets-2026-08-19.csv' }),
@@ -782,7 +857,7 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     await controller.exportar(ADMINISTRADOR, {}, respuestaFalsa().res);
 
     expect(exportarTickets.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ modulosPermitidos: null }),
+      expect.objectContaining({ alcance: { actorId: 'admin-1', permisosPorTipo: null } }),
       'csv',
     );
   });
@@ -823,15 +898,48 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
     );
     expect(headers.size).toBe(0);
   });
+});
 
-  /**
-   * Regresión del gap CRITICAL de sdd-verify: el decorador ya estaba presente
-   * en la ruta, pero ningún test lo ejercía — borrarlo no rompía nada acá.
-   * Mismo patrón que equipos/reparaciones (`ACCIONES_KEY` vía `Reflect.getMetadata`).
-   */
-  it('declara @RequiereAcciones("TICKETS:LECTURA")', () => {
-    const meta = Reflect.getMetadata(ACCIONES_KEY, TicketsController.prototype.exportar);
-    expect(meta).toEqual(['TICKETS:LECTURA']);
+/**
+ * odd/permisos-por-tipo-ticket, D5 d: ninguna ruta del controller exige una celda de módulo
+ * (`TICKETS:*`): deciden los casos de uso con los permisos por tipo. Se recorren TODOS los métodos
+ * con ruta, así que una ruta nueva con `@RequiereAcciones` de módulo también pone esto en rojo.
+ */
+describe('TicketsController — sin @RequiereAcciones de módulo (D5 d)', () => {
+  it('ninguna de sus 12 rutas exige una celda: deciden los casos de uso por tipo', () => {
+    const rutas = accionesPorRuta(TicketsController);
+
+    expect(rutas.size).toBe(12);
+    expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
+  });
+});
+
+describe('TicketsController.permisosPorTipo — GET /tickets/permisos-por-tipo (T6, S6)', () => {
+  it('usuario común → sus acciones por tipo de la tabla del tenant y la unión por módulo', async () => {
+    const { controller } = buildController();
+
+    await expect(controller.permisosPorTipo(USUARIO_SIN_OBSERVAR)).resolves.toEqual({
+      sinRestriccion: false,
+      porTipo: { ti1: ['LECTURA', 'COMENTAR'] },
+      porModulo: { TICKETS: ['LECTURA', 'COMENTAR'] },
+    });
+  });
+
+  it('ROOT sin membresía → sin restricción, aunque no tenga celdas ni filas', async () => {
+    const { controller } = buildController();
+
+    await expect(controller.permisosPorTipo(ROOT)).resolves.toEqual({
+      sinRestriccion: true,
+      porTipo: {},
+      porModulo: {},
+    });
+  });
+
+  it('se declara antes de GET /tickets/:id, para que `permisos-por-tipo` no se lea como un id', () => {
+    const metodos = Object.getOwnPropertyNames(TicketsController.prototype);
+
+    expect(metodos.indexOf('permisosPorTipo')).toBeGreaterThan(-1);
+    expect(metodos.indexOf('permisosPorTipo')).toBeLessThan(metodos.indexOf('findOne'));
   });
 });
 
@@ -1143,12 +1251,17 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 29 clases de error (28 previas + ModuloSinAltaDeTipoError)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(29);
+  it('el catálogo tiene EXACTAMENTE 32 clases de error (30 previas + las dos del tipo de origen de permisos, S4)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(32);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
     ['TicketNoEncontradoError', () => new TicketsErrors.TicketNoEncontradoError('ticket-1'), 404],
+    [
+      'AccionSobreTipoNoPermitidaError',
+      () => new TicketsErrors.AccionSobreTipoNoPermitidaError('MODIFICACION'),
+      403,
+    ],
     [
       'TicketBloqueadoParaEdicionError',
       () => new TicketsErrors.TicketBloqueadoParaEdicionError('EN_PROCESO'),
@@ -1257,6 +1370,16 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       422,
     ],
     ['ModuloSinAltaDeTipoError', () => new TicketsErrors.ModuloSinAltaDeTipoError('COMPRAS'), 422],
+    [
+      'TipoOrigenPermisosNoEncontradoError',
+      () => new TicketsErrors.TipoOrigenPermisosNoEncontradoError('tipo-1'),
+      422,
+    ],
+    [
+      'TipoOrigenPermisosDeOtroModuloError',
+      () => new TicketsErrors.TipoOrigenPermisosDeOtroModuloError('EDILICIA', 'TICKETS'),
+      422,
+    ],
   ];
 
   it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {

@@ -5,14 +5,13 @@ import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.en
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
-import { esAsignadoElegiblePorModulo } from '../services/elegibilidad-asignado';
-import { AlcanceActorTicket, esTicketAccesiblePara } from '../services/visibilidad-ticket';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
+import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -35,8 +34,8 @@ import {
  * - `autorId`: `sub` del JWT del actor que ejecuta la acción (quien tiene
  *   `ticket:asignar`, verificado por `PermissionsGuard` en la capa de
  *   interface) — se registra como autor de la operación de timeline.
- * - El alcance del actor (`AlcanceActorTicket`) lo arma el controller desde el
- *   JWT: lo que el actor no ve, tampoco lo asigna (odd/permisos-por-tipo-ticket, S0).
+ * - El alcance del actor (`AlcanceActorTicket`) lo carga la capa de interface: lo que
+ *   el actor no ve, tampoco lo asigna (odd/permisos-por-tipo-ticket, D5 c).
  */
 export interface AsignarTicketDto extends AlcanceActorTicket {
   ticketId: string;
@@ -51,21 +50,19 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *
  * Flujo:
  * 1. Carga el ticket. Si no existe, está soft-deleted o el actor no lo ve
- *    (`esTicketAccesiblePara`: módulo del tipo y visibilidad de fila) → `TicketNoEncontradoError` (404).
+ *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
+ *    si lo ve sin `ASIGNAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  *    Si está en un estado final (CERRADO/CANCELADO) → `TicketCerradoNoReasignableError`
  *    (422), antes de consultar a master. RESUELTO sí se reasigna.
  * 2. Valida que el asignado existe en `master.usuarios` con `activo=true` y
  *    pertenece (vía membresía activa) al tenant activo (cross-DB,
  *    `IUsuarioMasterChecker.estaActivoEnTenant`). Si no → `AsignadoInvalidoError` (422).
- * 3. Valida elegibilidad POR MÓDULO/CATÁLOGO: el asignado es elegible si es
- *    ROOT/ADMINISTRADOR (ven todo) o si tiene asignado el `modulo` del tipo
- *    ACTUAL del ticket (columna `tipos_ticket.modulo`, B2). Reemplaza
- *    el routing `usuario_tipos_ticket` por el eje de módulos por usuario: "un
- *    técnico con acceso al catálogo puede tomar/ser asignado al ticket". Si no
- *    → `AsignadoNoElegibleError` (422). Ortogonal al permiso `ticket:asignar`
- *    del actor (T15): un actor con el permiso puede intentar asignar a alguien
- *    sin el módulo y de todos modos falla acá. Los tipos custom (sin módulo)
- *    solo los puede tomar ROOT/ADMINISTRADOR.
+ * 3. Valida elegibilidad POR TIPO (`ElegibilidadAsignado.esAsignableATipo`,
+ *    odd/permisos-por-tipo-ticket, D5 g): el asignado es elegible si es
+ *    ROOT/ADMINISTRADOR o si tiene `LECTURA` sobre el tipo ACTUAL del ticket
+ *    en `permisos_tipo_ticket`. Si no → `AsignadoNoElegibleError` (422).
+ *    Ortogonal al permiso de asignar del actor (T15): un actor con el permiso
+ *    puede intentar asignar a alguien sin el tipo y de todos modos falla acá.
  * 4. Resuelve el id del tipo de operación `ASIGNACION` del catálogo tenant
  *    (catálogo FIJO garantizado por el seed — su ausencia es un fallo de
  *    infraestructura, no un error del caller: `throw` defensivo, mismo
@@ -95,11 +92,8 @@ export class AsignarTicketUseCase {
   constructor(
     private readonly ticketRepo: ITicketRepository,
     private readonly operacionRepo: IOperacionTicketRepository,
-    private readonly usuarioMasterChecker: Pick<
-      IUsuarioMasterChecker,
-      'estaActivoEnTenant' | 'getAutorizacionModulos'
-    >,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
+    private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'estaActivoEnTenant'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAsignableATipo'>,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById' | 'findIdByCodigo'>,
@@ -107,18 +101,14 @@ export class AsignarTicketUseCase {
   ) {}
 
   async execute(dto: AsignarTicketDto): Promise<Result<TicketEntity, DomainError>> {
-    const ticket = await this.ticketRepo.findById(dto.ticketId);
-    if (
-      !ticket ||
-      ticket.isDeleted() ||
-      !(await esTicketAccesiblePara(
-        { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-        ticket,
-        dto,
-      ))
-    ) {
-      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-    }
+    const ticketResult = await cargarTicketParaOperar(
+      this.ticketRepo,
+      dto.ticketId,
+      dto,
+      'ASIGNAR',
+    );
+    if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
+    const ticket = ticketResult.getValue();
 
     // M1: terminal antes de las validaciones del asignado (determinista, sin master).
     const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
@@ -139,16 +129,12 @@ export class AsignarTicketUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    // Elegibilidad por módulo/catálogo (regla compartida con
-    // AsignarYPonerEnProcesoUseCase — ver `esAsignadoElegiblePorModulo`):
-    // ROOT/ADMINISTRADOR pueden todo; el resto, solo si tiene el módulo que
-    // mapea al tipo del ticket.
-    const esElegible = await esAsignadoElegiblePorModulo(
+    // Elegibilidad por tipo (regla compartida con AsignarYPonerEnProcesoUseCase):
+    // ROOT/ADMINISTRADOR pueden todo; el resto, solo con LECTURA sobre el tipo del ticket.
+    const esElegible = await this.elegibilidad.esAsignableATipo(
       dto.asignadoId,
       dto.clienteId,
       ticket.tipoId,
-      this.usuarioMasterChecker,
-      this.tipoTicketRepo,
     );
     if (!esElegible) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));

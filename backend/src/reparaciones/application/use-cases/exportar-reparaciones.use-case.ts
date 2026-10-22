@@ -9,6 +9,7 @@ import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
 import { ColumnaCsv, decimalCelda } from '../../../shared/infrastructure/csv/csv';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/reparaciones.errors';
 import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparaciones.use-case';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 
 /** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
 export type ExportarReparacionesResult = ArchivoExport;
@@ -18,10 +19,11 @@ export type ExportarReparacionesResult = ArchivoExport;
  * reparaciones edilicias del tenant (sdd/exportar-listados-csv, capability
  * exportacion-reparaciones).
  *
- * **Sin DTO de entrada, y es intencional, no un olvido** (spec, "No filter
- * parameters are accepted"): `ListarReparacionesUseCase.execute()` no acepta
- * ningún argumento, y este caso de uso tampoco — no hay pantalla de filtros
- * que espejar (mismo criterio que `ExportarEquiposUseCase`).
+ * **Sin filtros, y es intencional, no un olvido** (spec, "No filter
+ * parameters are accepted"): no hay pantalla de filtros que espejar (mismo
+ * criterio que `ExportarEquiposUseCase`). Lo único que recibe es el alcance
+ * por tipo del actor, que no es un filtro sino el scope de lo que puede ver
+ * (odd/permisos-por-tipo-ticket, D5 e), y lo pasa tal cual al listado.
  *
  * **Por qué compone `ListarReparacionesUseCase` en vez de sus 5
  * repositorios propios** (design D4, la decisión clave de esta unidad):
@@ -59,9 +61,10 @@ export class ExportarReparacionesUseCase {
   ) {}
 
   async execute<F extends FormatoExport | undefined = undefined>(
+    alcance: AlcanceActorTicket,
     formato?: F,
   ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
-    const listado = await this.listarReparacionesUseCase.execute();
+    const listado = await this.listarReparacionesUseCase.execute(alcance);
 
     if (listado.isFail()) {
       return Result.fail(listado.getError());

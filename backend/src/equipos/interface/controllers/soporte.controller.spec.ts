@@ -9,9 +9,13 @@
  * Ref spec: sdd/flujos-especializados/spec F3-Q4, F3-Q5. Tarea: T13.4.
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { SoporteController } from './soporte.controller';
-import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
+import { accionesPorRuta } from '../../../shared/test-helpers/acciones-por-ruta';
 import { Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
@@ -20,10 +24,13 @@ import {
   TicketSoporteNoEncontradoError,
 } from '../../domain/errors/equipos.errors';
 import {
+  AccionSobreTipoNoPermitidaError,
   SolicitanteInvalidoError,
   SinCicloActivoError,
   TicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import { ResolverQrAutenticadoUseCase } from '../../application/use-cases/resolver-qr-autenticado.use-case';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
@@ -70,7 +77,21 @@ describe('SoporteController (T13.4)', () => {
       registrarSolucionUseCase.caso,
       obtenerEquipoDeTicketUseCase.caso,
       // Real y con repos vacíos: este spec no ejercita la ruta del QR (la cubre su e2e).
-      new ResolverQrAutenticadoUseCase({ findById: vi.fn() }, { findByQrHash: vi.fn() }),
+      new ResolverQrAutenticadoUseCase(
+        { findById: vi.fn() },
+        { findByQrHash: vi.fn() },
+        { findIdByCodigo: vi.fn() },
+      ),
+      // Permisos por tipo del usuario, en la tabla del tenant (odd/permisos-por-tipo-ticket, D5 a).
+      new CargadorAlcanceTicket(
+        new PermisosTipoTicketEnMemoria(
+          [],
+          [
+            { usuarioId: 'usuario-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' },
+            { usuarioId: 'usuario-uuid', tipoId: 'tipo-soporte-uuid', accion: 'MODIFICACION' },
+          ],
+        ),
+      ),
     );
 
     return {
@@ -100,8 +121,25 @@ describe('SoporteController (T13.4)', () => {
       expect(result.ticketId).toBe('ticket-uuid');
       expect(result.numero).toBe('SOP-2026-00001');
       expect(crearTicketSoporteUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ solicitanteId: 'usuario-uuid', autorId: 'usuario-uuid' }),
+        expect.objectContaining({
+          solicitanteId: 'usuario-uuid',
+          autorId: 'usuario-uuid',
+          // ALTAS sobre SOPORTE la decide el caso de uso con estos permisos por tipo (D5 c).
+          alcance: {
+            actorId: 'usuario-uuid',
+            permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
+          },
+        }),
       );
+    });
+
+    it('sin ALTAS sobre SOPORTE → 403', async () => {
+      const { controller, crearTicketSoporteUseCase } = buildController();
+      crearTicketSoporteUseCase.execute.mockResolvedValue(
+        Result.fail(new AccionSobreTipoNoPermitidaError('ALTAS')),
+      );
+
+      await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(ForbiddenException);
     });
 
     it('equipo inválido → 422', async () => {
@@ -133,11 +171,6 @@ describe('SoporteController (T13.4)', () => {
 
       await expect(controller.crear(DTO_VALIDO, USER)).rejects.toThrow(ConflictException);
     });
-
-    it('declara @RequiereAcciones("TICKETS:ALTAS")', () => {
-      const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.crear);
-      expect(meta).toEqual(['TICKETS:ALTAS']);
-    });
   });
 
   describe('POST /soporte/:id/solucion', () => {
@@ -162,8 +195,7 @@ describe('SoporteController (T13.4)', () => {
         ticketId: 'ticket-uuid',
         solucion: 'Se reinstaló el cliente VPN.',
         actorId: 'usuario-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: [],
+        permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
       });
     });
 
@@ -189,9 +221,15 @@ describe('SoporteController (T13.4)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('declara @RequiereAcciones("TICKETS:MODIFICACION")', () => {
-      const meta = Reflect.getMetadata(ACCIONES_KEY, SoporteController.prototype.registrarSolucion);
-      expect(meta).toEqual(['TICKETS:MODIFICACION']);
+    it('lo ve sin MODIFICACION sobre su tipo → 403', async () => {
+      const { controller, registrarSolucionUseCase } = buildController();
+      registrarSolucionUseCase.execute.mockResolvedValue(
+        Result.fail(new AccionSobreTipoNoPermitidaError('MODIFICACION')),
+      );
+
+      await expect(
+        controller.registrarSolucion('ticket-uuid', { solucion: 'X' }, USER),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -210,8 +248,7 @@ describe('SoporteController (T13.4)', () => {
       expect(obtenerEquipoDeTicketUseCase.execute).toHaveBeenCalledWith({
         ticketId: 'ticket-1',
         actorId: 'usuario-uuid',
-        tienePermisoVerTodos: false,
-        modulosPermitidos: [],
+        permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
       });
     });
 
@@ -234,13 +271,14 @@ describe('SoporteController (T13.4)', () => {
         NotFoundException,
       );
     });
+  });
 
-    it('declara @RequiereAcciones("TICKETS:LECTURA") (R5-a: gatea por TICKETS, no EQUIPOS)', () => {
-      const meta = Reflect.getMetadata(
-        ACCIONES_KEY,
-        SoporteController.prototype.obtenerEquipoDeTicket,
-      );
-      expect(meta).toEqual(['TICKETS:LECTURA']);
+  describe('sin @RequiereAcciones de módulo (odd/permisos-por-tipo-ticket, D5 d)', () => {
+    it('ninguna de sus 4 rutas exige una celda: deciden los casos de uso por tipo', () => {
+      const rutas = accionesPorRuta(SoporteController);
+
+      expect(rutas.size).toBe(4);
+      expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
     });
   });
 });

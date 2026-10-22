@@ -22,7 +22,9 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_NOMBRE_MAX_LENGTH,
@@ -147,6 +149,33 @@ export class AplicarPresetPermisosDto {
     message: 'rolCodigo debe ser mayúsculas/guion bajo, sin espacios',
   })
   rolCodigo!: string;
+}
+
+/**
+ * Acciones pedidas para un tipo en `PUT /usuarios/:id/permisos-por-tipo`. Acá solo se valida la
+ * forma: el vocabulario, la existencia del tipo y la regla de Ver (S3) los decide el caso de uso,
+ * que responde 422 nombrando el tipo.
+ */
+export class FilaPermisosPorTipoDto {
+  @IsString()
+  @IsNotEmpty()
+  tipoId!: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayUnique()
+  acciones!: string[];
+}
+
+/**
+ * Body de `PUT /usuarios/:id/permisos-por-tipo` (odd/tasks/permisos-por-tipo-ticket.md, T7).
+ * `AdminClienteGuard`. Reemplazo total: un tipo ausente queda sin acciones.
+ */
+export class ReemplazarPermisosPorTipoDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FilaPermisosPorTipoDto)
+  tipos!: FilaPermisosPorTipoDto[];
 }
 
 /**

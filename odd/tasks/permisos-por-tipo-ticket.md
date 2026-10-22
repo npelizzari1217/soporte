@@ -35,7 +35,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   los botones y en "Nuevo ticket" ofrece solo los tipos con Crear; es comodidad, no control.
 - **S7** — Migración sin cambio de acceso el día del deploy: en cada tipo, cada usuario recibe las
   acciones que hoy tiene en el módulo de ese tipo, según la tabla de L11. `EDILICIA:LECTURA` da
-  también Ver todos (hoy Edilicia no filtra). Imprimir se da a quien tenga Ver. Borrar arranca
+  solo Ver; Ver todos sale de `TICKETS:VER_TODOS` (L35). Imprimir se da a quien tenga Ver. Borrar arranca
   vacío. ADMINISTRADOR y ROOT no cambian. La migración es aditiva: los permisos `TICKETS:*` y
   `EDILICIA:*` de tickets se retiran recién en una etapa posterior, verificado el modelo nuevo.
 - **S8** — Borrar ticket no existe hoy (no hay endpoint). Es funcionalidad nueva y va en una etapa
@@ -58,6 +58,28 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   visible para el actor (fila o módulo del tipo); 403 si es visible pero la acción no está
   permitida. ROOT y ADMINISTRADOR (`modulosPermitidos = null`) no se filtran por módulo.
 
+- **D4 (L20-L22)** — Vocabulario por tipo: se reusan los códigos del catálogo actual
+  (`LECTURA`, `VER_TODOS`, `ALTAS`, `MODIFICACION`, `TRANSICIONAR`, `ASIGNAR`, `COMENTAR`,
+  `OBSERVAR`, `IMPRESION`, `BORRADO`) para no inventar una segunda lengua de permisos. La traducción
+  de L11 vive una sola vez en el dominio y la usan el backfill, las plantillas de rol y los tests.
+
+- **D5 (diseño de T5)** — (a) Los permisos por tipo del actor se leen por request de la tabla del
+  tenant (`listarPorUsuario`, una consulta indexada) y viajan en `AlcanceActorTicket` como
+  `permisosPorTipo: Map<tipoId, Set<AccionTipoTicket>> | null` (`null` = ROOT y ADMINISTRADOR, sin
+  restricción); reemplaza a `modulosPermitidos` y a `tienePermisoVerTodos`. (b) Ver un ticket:
+  `LECTURA` sobre su tipo, y además `VER_TODOS` sobre su tipo o la regla de fila
+  (`esTicketVisiblePara`). (c) Cada operación exige además su acción sobre el tipo de ESE ticket:
+  editar `MODIFICACION`, estado `TRANSICIONAR`, asignar `ASIGNAR`, comentar `COMENTAR`, comentario
+  interno `OBSERVAR`, PDF `IMPRESION`, adjuntar `ALTAS` o `MODIFICACION` (hoy pide `TICKETS:ALTAS`),
+  crear `ALTAS` sobre el tipo elegido, tareas `MODIFICACION`/`LECTURA` sobre el tipo. 404 si no lo
+  ve; 403 si lo ve y le falta la acción. (d) Los decoradores `@RequiereAcciones('TICKETS:*')` y
+  `EDILICIA:*` de rutas de tickets dejan de decidir: desde T7 esas celdas dejan de editarse. La ruta
+  exige solo autenticación y tenant; decide el caso de uso. (e) Listados y exportaciones filtran
+  por tipos con `LECTURA`, y por fila salvo en los tipos con `VER_TODOS`. (f) La clave de API v1 no
+  tiene filas por tipo: su alcance se arma con las celdas de la clave traducidas por L11 sobre los
+  tipos del módulo TICKETS. (g) Elegibilidad del asignado (`usuario-master.checker.ts`): tener
+  `LECTURA` sobre el tipo del ticket. (h) Los flujos de sistema siguen sin chequeo (D3).
+
 ## Tasks
 
 - [x] T0 — D1, D2, D3 — explore + inline — validar el diseño: lugar de guardado, resolución por
@@ -68,13 +90,21 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   asignar-en-proceso, comentar (incl. API v1), `/soporte` solución por el punto único — `eedfbb6c`
 - [x] T3 — S0 — inline — etapa 0, front: gate de ruta en `/tickets` y `/tickets/[id]`, ítem de
   menú con `TICKETS:LECTURA`, inicio según el menú (L16) — `3bdf4627`
-- [ ] T4 — S1, S7, D1 — writer — etapa 1: tabla tipo × acción, migración aditiva, plantillas de
-  rol por tipo — (pendiente)
-- [ ] T5 — S1, S2, S3, S6 — writer — etapa 1: punto único y listados leen tipo × acción — (pendiente)
-- [ ] T6 — S6 — writer — etapa 1, front: botones, alta y filtros según acciones por tipo — (pendiente)
-- [ ] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
-  usuario — (pendiente)
-- [ ] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (pendiente)
+- [x] T4a — S1, D1, D4 — worker — tabla tenant `permisos_tipo_ticket` con CHECK derivado,
+  vocabulario de acciones y traducción L11 en el dominio, repositorio — (este commit)
+- [x] T4b — S7, L21 — worker — script de backfill idempotente (dry-run / `--apply`) y paso en
+  `deploy.ps1` — (este commit)
+- [x] T4c — S7 — worker — plantillas de rol por tipo: alta de usuario, cambio de rol y aplicar
+  plantilla escriben las filas por tipo — (este commit)
+- [x] T5a — S1-S3, S6, D5 a-c — worker — alcance por tipo cargado por request y punto único
+  (`esTicketAccesiblePara` + acción); lecturas y escrituras por id del ticket — (este commit)
+- [x] T5b — S6, D5 d-e — worker — rutas sin `@RequiereAcciones` de módulo; listado, exportación,
+  creación por tipo, reparaciones y dashboard — (este commit)
+- [x] T5c — S6, D5 f-g — worker — API v1 y elegibilidad del asignado por tipo — (este commit)
+- [x] T6 — S6 — worker — etapa 1, front: botones, alta y filtros según acciones por tipo — (este commit)
+- [x] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
+  usuario — (este commit)
+- [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
 - [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
   producción — (pendiente)
 - [ ] T10 — S8 — bloqueada: borrar ticket, espera las decisiones de S8 — (pendiente)
@@ -172,4 +202,128 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   demo, no del deploy) llamaban a los casos de uso sin el alcance nuevo. Corregidos pasando el
   alcance sin restricción del flujo de sistema (D3); los dos pasan. Lección: un cambio de contrato
   de un caso de uso se busca también en `test/`, `prisma_master/` y `scripts/`, no solo en `src/`.
+- **L20** (dueño, "si") — Entrega A: T4 a T8 salen en un solo deploy, para que la grilla vieja y
+  la nueva cambien juntas y no haya una ventana con un control que no tiene efecto. Sin
+  sincronización entre master y tenant durante la transición.
+- **L21** (decisiones por defecto aceptadas con el "si") — `EDILICIA:BORRADO` (desvincular compra)
+  sigue siendo permiso del módulo, no entra a la tabla por tipo. Los tipos con módulo COMPRAS o
+  EQUIPOS, si existen, se migran con la regla de TICKETS. Las membresías desactivadas también se
+  migran.
+- **L22** (evidencia, exploración T4) — Plantilla de tabla: `ReglaAsignacion`
+  (`prisma_tenant/schema.prisma:1568-1577`, migración `20261009120000_reglas_asignacion` con
+  `rollback.sql`). CHECK derivado de `as const` con test contra `pg_get_constraintdef`:
+  `tickets-sla-regla.integration.spec.ts:145-160`. Backfill con dry-run/`--apply` e idempotente:
+  `scripts/backfill-tiempos-habiles.mjs` (lee `dist/` con `createRequire`); paso en deploy: 8b de
+  `deploy.ps1` (`backfill-correo-clientes.mjs`), ASCII sin BOM. Escritores de la matriz master:
+  `setPermisos` (`prisma-matriz-permisos.repository.ts:36-53`), llamado por asignar permisos,
+  aplicar plantilla, crear usuario y cambiar rol; también `importacion-legacy/master.ts:194-207` y
+  el seed de demo. Lector extra a migrar en T5: `usuario-master.checker.ts:132,167` (elegibilidad
+  del asignado). La tabla vieja `usuario_tipos_ticket` se borró en `20260810120000`.
+- **L23** (corrección de L21, T4a) — Un tipo de COMPRAS o EQUIPOS toma las celdas de TICKETS solo
+  si el usuario tiene alguna celda de ese módulo: desde la etapa 0, sin ella el ticket no se ve, y
+  la migración no puede dar acceso que hoy no existe (S7). Lo detectó el worker de T4a; tests
+  RED→GREEN en `permisos-tipo-ticket.spec.ts`. Migración: `20261021120000_permisos_tipo_ticket`.
+- **L24** (T4b) — `scripts/backfill-permisos-tipo-ticket.mjs` reusa la traducción compilada de
+  `dist/` (D4). Incluye los tipos dados de baja: sus tickets siguen visibles hoy y un tipo
+  reactivado volvería cerrado (S7). Guard por tenant: con filas ya cargadas, `--apply` lo omite
+  salvo `--force`; el `INSERT` repite el chequeo con `NOT EXISTS`. Paso 8c de `deploy.ps1`.
+  Deuda: un tenant que quede con la tabla vacía se volvería a llenar en el deploy siguiente; el
+  paso 8c se retira apenas se verifique el primer deploy (runbook). 7 tests de integración; dos
+  mutaciones del script los ponen en rojo.
+- **L25** (T4c) — Los tres caminos (alta de usuario, aplicar plantilla, cambio de rol con
+  reaplicar) pasan por `AplicarPresetPermisosUseCase`, que ahora escribe también las filas por tipo
+  con la misma plantilla. El tenant se resuelve por `clienteId` en un adaptador de infraestructura
+  con su propio `tenantContext.run` (el seed de demo llama sin contexto). Orden: master primero,
+  tenant después; si el tenant falla, error explícito (`PermisosPorTipoNoAplicadosError`, 500 que
+  pide reaplicar la plantilla). Con `sobrescribir: false` el tenant solo se escribe si master
+  sembró la plantilla y el usuario no tenía filas: nunca da por tipo un acceso que la matriz no
+  tiene. El importador legacy también siembra filas. 2537 tests en verde, e2e incluidos.
+- **L26** (T5a) — `AlcanceActorTicket` pasa a `{ actorId, permisosPorTipo }` (`null` para ROOT y
+  ADMINISTRADOR), cargado por request por `CargadorAlcanceTicket` (`tickets/interface/alcance-ticket.ts`).
+  Ver: `LECTURA` sobre el tipo y (`VER_TODOS` sobre el tipo o regla de fila). 404 si no ve; 403
+  `AccionSobreTipoNoPermitidaError` si ve y le falta la acción. Acciones por operación según
+  D5 (c); el timeline muestra internas con `OBSERVAR` sobre el tipo y el PDF pide solo públicas.
+  La API v1 recibe acciones fijas sobre los tipos de TICKETS, equivalentes a lo que la clave podía
+  hacer (T5c lo revisa). 3959 tests en verde, e2e incluidos (S2 con filas reales). Cambios de
+  conducta: los flags del JWT ya no deciden estas operaciones; un usuario sin filas no ve nada por
+  id hasta que corra el backfill de T4b (por eso T4-T8 salen en un solo deploy, L20).
+- **L27** (T5b; el primer worker cortó por límite de sesión y el segundo retomó su trabajo parcial) —
+  Se quitaron los `@RequiereAcciones('TICKETS:*'|'EDILICIA:*')` de las rutas de tickets, adjuntos,
+  soporte, PDF y reparaciones; quedan `COMPRAS:LECTURA` (vincular compra), `EDILICIA:BORRADO`
+  (desvincular, L21), `DASHBOARD:LECTURA`, `EQUIPOS:*`, `PREVENTIVO:*` y los de la API v1 (T5c).
+  Listados, exportación, reparaciones, tareas, dashboard y CSAT filtran en SQL con el mismo alcance
+  (`alcance-listado.prisma.ts`: tipos con VER_TODOS, o tipos con LECTURA más regla de fila). Alta:
+  `ALTAS` sobre el tipo, 403 antes de abrir la transacción; `alcance: null` para flujos de sistema
+  (barrido preventivo, API v1, seed). El dashboard combina el alcance con el filtro de TECNICO.
+  Dueño aprobó tocar CSAT y `autorizacion.e2e.spec.ts`. 346 archivos y 4114 tests en verde.
+- **L28** (T5c; dueño aprobó extender a reglas de asignación) — API v1: el alcance de la clave sale
+  de sus celdas traducidas con `accionesDeTipoDesdeCeldas` sobre los tipos de TICKETS
+  (`integraciones/domain/alcance-clave-api.ts`); COMENTAR suma LECTURA y VER_TODOS (L18). Los
+  decoradores `TICKETS:*` de la v1 quedan: las celdas de la clave son un modelo propio. Elegibilidad
+  del asignado: servicio único `ElegibilidadAsignado` (ADMIN/ROOT, o TECNICO/COLABORADOR con LECTURA
+  sobre el tipo); el checker de master solo da identidad, rol y membresía. Lo usan asignar,
+  asignables, tareas, asignación automática y reglas de asignación, que suman `candidatosPorTipo`
+  (`candidatosPorModulo` = unión, hasta T6). Suite completa del backend: 760 archivos, 9326 tests en
+  verde, typecheck y lint en cero. Deuda: índice por `tipo_id` en `permisos_tipo_ticket`.
+- **L29** (verificación independiente de T5c) — PASS sin bloqueantes: 328 tests unitarios, tres
+  mutaciones detectadas, la clave de API v1 no concede acciones fuera de `PERMISOS_API` (tests
+  agregados en el commit anterior a este).
+- **L30** (T6; dueño aprobó sumar `tipoId` a `GET /reparaciones` y abrir `GET /usuarios` por tipo) —
+  `GET /tickets/permisos-por-tipo` devuelve `{ sinRestriccion, porTipo, porModulo }`. El servidor
+  de Next lee esos permisos con la cookie (`permisosPorTipoDelServidor`) y `tiposLayoutGate`
+  protege `/tickets` y `/edilicia`: redirige solo si sabe que no hay LECTURA en ningún tipo del
+  módulo; sin datos deja pasar. El inicio usa la misma regla (sin ciclos). Cada botón del detalle,
+  del listado, de reparaciones (por el tipo de la fila) y de equipos usa la acción sobre el tipo.
+  Reglas de asignación usan `candidatosPorTipo`. `GET /usuarios` abre con ASIGNAR o VER_TODOS en
+  algún tipo (RED 5/5 → GREEN). Front: lint 0, tsc 0, 279 archivos y 2415 tests; 31 tests que
+  fijaban celdas JWT reescritos con dos tipos. Back: tsc 0, 1251 + 1424 tests. Deuda: el alta de
+  reparación asume EDILICIA mientras carga el catálogo (403 si no tiene ALTAS ahí).
+  Ayuda (suspendida): menú, botones y filtros dependen ahora de los permisos por tipo.
+- **L31** (T7; el primer worker cortó por límite de sesión y el segundo retomó su trabajo) —
+  `GET/PUT usuarios/:id/permisos-por-tipo` y `POST .../copiar-de/:origenId`, solo administrador.
+  El PUT rechaza con 422 una acción sin Ver (S3), una acción desconocida, BORRADO o un tipo
+  inexistente; ROOT y ADMINISTRADOR devuelven `sinRestriccion` sin filas. La plantilla del rol por
+  fila la calcula el backend con `accionesDeTipoDesdeCeldas` (D4). Borrar no se ofrece: no existe
+  la operación (S8). La grilla de módulos deja de mostrar `TICKETS:*` y Edilicia Ver, Crear y
+  Modificar; `PATCH usuarios/:id/permisos` conserva esas celdas viejas e ignora las que llegan
+  (sin 422, para no romper a quien reenvía lo que leyó; se retiran en T9). El usuario ve el cambio
+  en su próximo request sin refrescar el token (e2e). Back: 2639 tests; front: lint 0, tsc 0,
+  2428 tests. Ayuda (suspendida): pestaña "Tipos de ticket" en Permisos.
+- **L32** (T8) — `POST /catalogos/tipos-ticket` acepta `copiarPermisosDeTipoId`; sin él el tipo
+  nace cerrado. Con él, alta y copia van en la misma transacción (`INSERT ... SELECT`). El tipo
+  origen tiene que existir y ser del mismo módulo (422 si no). Formulario: "Copiar permisos de",
+  con "Ninguno (cerrado)" por defecto, filtrado por módulo, solo en el alta. Back: 1405 tests;
+  front: 2434. Ayuda (suspendida): campo "Copiar permisos de" en el alta de tipo.
 
+- **L33** (verificación independiente de la etapa 1) — PASS en S1-S6, orden del deploy y ps1 ASCII.
+  Bloqueante B1 (S7): `GET /usuarios` abría con VER_TODOS en cualquier tipo y la plantilla USUARIO
+  recibe VER_TODOS en los tipos de Edilicia por L11: todo USUARIO pasaba a ver la lista de
+  usuarios. Corregido con TDD (RED: e2e "plantilla USUARIO → 403" daba 200): abre con ASIGNAR en
+  algún tipo o VER_TODOS en un tipo que toma celdas de TICKETS (TICKETS, COMPRAS, EQUIPOS), igual
+  que `TICKETS:ASIGNAR`/`TICKETS:VER_TODOS` antes. Front espejado. Pendiente decisión del dueño:
+  matrices a mano con celdas de Edilicia sin `EDILICIA:LECTURA` pierden acceso el día del deploy.
+- **L34** (dueño) — "No, la migracion no le da ver. Si se llegara a necesitar luego se le asignara
+  el ver al usuario". Se mantiene L11 tal cual: una matriz a mano con celdas de Edilicia sin
+  `EDILICIA:LECTURA` queda sin acceso tras el deploy y el administrador asigna Ver desde la grilla.
+  Las filas sin Ver que deje el backfill se muestran con aviso y la grilla obliga a corregirlas.
+- **L35** (judgment-day de la etapa 1) — Dos críticos (juez A) sobre la tabla L11. JD-A-001: los
+  tipos de Edilicia no tomaban las celdas de TICKETS, así que un TECNICO perdía asignar y notas
+  internas sobre tickets edilicios y un USUARIO perdía comentar los suyos. JD-A-002: `EDILICIA:LECTURA`
+  daba VER_TODOS y un USUARIO pasaba a ver, bajar el PDF y adjuntar en tickets edilicios ajenos.
+  Dueño: "vamos con la B" — un tipo de Edilicia toma también las celdas de TICKETS si el usuario
+  tiene alguna celda de EDILICIA (como L23), y VER_TODOS en Edilicia sale solo de
+  `TICKETS:VER_TODOS`. Consecuencia aceptada: un USUARIO deja de ver reparaciones ajenas en
+  `/reparaciones`. Cinco advertencias registradas para corregir fuera de la ronda.
+- **L36** (advertencias del judgment-day de la etapa 1; dueño: "si") — Corregidas con TDD.
+  W1: la plantilla del rol escribe primero el tenant y después master; si el tenant falla, master
+  no cambia; si master falla, error explícito (`MatrizPermisosNoAplicadaError`); se recupera
+  reaplicando la plantilla. W2: copiar de otro usuario valida como el PUT (422); copiar de otro
+  tipo copia solo filas con Ver y sin BORRADO. W3: la plantilla escribe solo sobre tipos donde
+  algún usuario ya tiene Ver; si nadie tiene Ver en ningún tipo (tenant nuevo o sin backfill), sobre
+  todos. Regla única `tiposAbiertosParaPlantilla`, también en el importador legacy. Seis e2e de
+  reparaciones ajustados a L35 (`c4f52483`). 3120 tests en verde en auth, tickets, test,
+  prisma_master y scripts.
+- **L37** (cierre de la etapa 1) — JUDGMENT: APPROVED (dos críticos verificados en la re-revisión;
+  tres advertencias corregidas en L36). Suite completa sobre `9b29cf2a`: backend 763 archivos y
+  9454 tests, frontend 280 archivos y 2440 tests, lint y typecheck en cero en los dos.
+  Pendiente para el deploy: `predeploy-dump.ps1` (hay migración tenant y backfill, paso 8c).

@@ -5,7 +5,8 @@
  * A1, A3, A4, A6, A7, N1.
  *
  * No levanta HTTP: prueba los casos de uso sobre la base real (mismo cableado que los módulos).
- * `listarTecnicosAsignables` es un doble: este spec no puebla master. Solo se borra la regla creada.
+ * Master es un doble (`listarAgentes`): este spec no puebla master; la LECTURA del responsable sobre
+ * el tipo sí sale de la tabla real del tenant. Solo se borra la regla creada.
  */
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
@@ -38,6 +39,8 @@ import { AUTOR_FORMULARIO_PUBLICO } from '../../domain/constants/formulario-publ
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
 import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
+import { PrismaPermisoTipoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
 import { CrearTicketUseCase } from './crear-ticket.use-case';
 
 const MASTER_TEST_URL =
@@ -116,12 +119,14 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
       existeEnTenant: async () => true,
       estaActivoEnTenant: async () => true,
       resolverNombres: async () => new Map(),
-      getAutorizacionModulos: async () => ({ esAdminTotal: false, modulos: [] }),
-      listarTecnicosAsignables: async () => tecnicos,
+      esAdminTotalEnTenant: async () => false,
+      listarAgentes: async (_clienteId, usuarioIds) =>
+        tecnicos.filter((tecnico) => usuarioIds.includes(tecnico.id)),
     };
+    // Elegibilidad real: la LECTURA del responsable sobre los tipos sale de la tabla del tenant.
     const resolver = new ResolverAsignacionAutomatica(
       reglaRepo,
-      checker,
+      new ElegibilidadAsignado(checker, new PrismaPermisoTipoTicketRepository(tenantContext)),
       estadoRepo,
       tipoOperacionRepo,
       { log: () => {}, error: () => {} },
@@ -192,6 +197,14 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
         }),
       ),
     };
+    // El responsable de las reglas atiende Soporte y Edilicia (odd/permisos-por-tipo-ticket, D5 g).
+    await client.permisoTipoTicket.createMany({
+      data: [ids.soporte, ids.edilicia].map((tipoId) => ({
+        usuarioId: RESPONSABLE,
+        tipoId,
+        accion: 'LECTURA',
+      })),
+    });
     await client.cicloCliente.create({
       data: {
         cicloVigenteId: '01900000-0000-7000-8000-000000000002',
@@ -269,6 +282,7 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
         ...base(`CAN edilicia ${++contador}`),
         solicitanteId: SOLICITANTE,
         autorId: SOLICITANTE,
+        alcance: null,
       }),
     );
 
@@ -308,6 +322,7 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
         tipoId: ids.soporte,
         solicitanteId: SOLICITANTE,
         autorId: SOLICITANTE,
+        alcance: null,
       }),
     );
 

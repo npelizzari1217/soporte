@@ -12,9 +12,14 @@ import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketReprioritizadoEvent } from '../../../tickets/domain/events/ticket-reprioritizado.event';
 import {
+  AccionSobreTipoNoPermitidaError,
   PrioridadNoEncontradaError,
   SectorTicketInexistenteError,
 } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import {
   ReparacionNoEditableError,
@@ -113,6 +118,8 @@ function armar(params: {
     bloquear: vi.fn(async (_id: string) => {
       llamadas.push('bloquear');
     }),
+    // El actor no solicitó el ticket ni es su responsable: solo lo ve con VER_TODOS.
+    esVisiblePara: vi.fn(async (_ticketId: string, _actorId: string) => false),
     save: vi.fn(async (_t: TicketEntity) => {
       llamadas.push('save-ticket');
     }),
@@ -156,7 +163,11 @@ function armar(params: {
   };
 }
 
-const dtoBase = { reparacionId: EDILICIA_ID, actorEsRoot: false };
+const dtoBase = {
+  reparacionId: EDILICIA_ID,
+  actorEsRoot: false,
+  alcance: alcanceSinRestriccion('usuario-editor'),
+};
 
 describe('EditarReparacionUseCase: escritura (S4)', () => {
   it('edita título, descripción, prioridad, sector y la ubicación de Edilicia, y guarda las dos entidades en la tx', async () => {
@@ -283,5 +294,53 @@ describe('EditarReparacionUseCase: regla "no se empezó a trabajar" (S5)', () =>
     expect(motivoDe(comun)).toBe('BLOQUEADA');
     expect(motivoDe(root)).toBe('BLOQUEADA');
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+});
+
+describe('EditarReparacionUseCase: permisos por tipo del ticket base (odd/permisos-por-tipo-ticket, D5 c)', () => {
+  it('no ve el ticket (sin LECTURA sobre su tipo) → 404 de la reparación, decidido con la fila bloqueada y sin escribir', async () => {
+    const c = armar({});
+
+    const r = await c.useCase.execute({
+      ...dtoBase,
+      titulo: 'x',
+      alcance: alcancePorTipo('usuario-editor', {
+        'tipo-otro': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+      }),
+    });
+
+    expect(r.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+    expect(c.llamadas).toEqual(['run', 'bloquear', 'findById']);
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    expect(c.ticketEdiliciaRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('lo ve sin MODIFICACION sobre su tipo → 403 sin escribir', async () => {
+    const c = armar({});
+
+    const r = await c.useCase.execute({
+      ...dtoBase,
+      titulo: 'x',
+      alcance: alcancePorTipo('usuario-editor', {
+        'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'ALTAS'],
+      }),
+    });
+
+    expect(r.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('con LECTURA, VER_TODOS y MODIFICACION sobre su tipo → edita', async () => {
+    const c = armar({});
+
+    const r = await c.useCase.execute({
+      ...dtoBase,
+      titulo: 'Titulo nuevo',
+      alcance: alcancePorTipo('usuario-editor', {
+        'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+      }),
+    });
+
+    expect(r.getValue().ticket.titulo).toBe('Titulo nuevo');
   });
 });

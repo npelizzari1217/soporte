@@ -22,6 +22,7 @@ import {
 import { EncuestaSatisfaccionEntity } from '../../../domain/entities/encuesta-satisfaccion.entity';
 import { MetricaFiltro } from '../../../../dashboard/domain/ports/i-dashboard.repository';
 import { EncuestaSatisfaccionMapper } from './encuesta-satisfaccion.mapper';
+import { sqlAlcanceListado } from '../../../../tickets/infrastructure/persistence/prisma/alcance-listado.prisma';
 
 @Injectable()
 export class PrismaEncuestaSatisfaccionRepository implements IEncuestaSatisfaccionRepository {
@@ -57,6 +58,10 @@ export class PrismaEncuestaSatisfaccionRepository implements IEncuestaSatisfacci
     }
     if (filtro.asignadoId !== undefined) {
       condiciones.push(Prisma.sql`t.asignado_id = ${filtro.asignadoId}::uuid`);
+    }
+    if (filtro.alcance !== undefined) {
+      // Mismo alcance por tipo que el resto del dashboard (odd/permisos-por-tipo-ticket, D5 e).
+      condiciones.push(sqlAlcanceListado(filtro.alcance, Prisma.raw('t')));
     }
 
     return Prisma.join(condiciones, ' AND ');

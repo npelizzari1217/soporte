@@ -6,12 +6,11 @@ import { TareaYaCompletadaError } from '../../domain/errors/tareas.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import {
   ActorTarea,
   cargarTareaDelTicket,
-  cargarTicketDelModulo,
+  cargarTicketVisible,
   condicionDeTecnico,
   errorDeCompletadoRechazado,
   errorDeEscrituraRechazada,
@@ -51,7 +50,6 @@ export interface CompletarTareaDto {
 export class CompletarTareaUseCase {
   constructor(
     private readonly ticketRepo: TicketRepoDeTareas,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tareaRepo: Pick<
       ITareaTicketRepository,
       'buscarPorId' | 'completarSiPendiente'
@@ -65,11 +63,7 @@ export class CompletarTareaUseCase {
   ) {}
 
   async execute(dto: CompletarTareaDto): Promise<Result<TareaTicketEntity, DomainError>> {
-    const ticketResult = await cargarTicketDelModulo(
-      { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-      dto.ticketId,
-      dto.actor.modulosPermitidos,
-    );
+    const ticketResult = await cargarTicketVisible(this.ticketRepo, dto.ticketId, dto.actor);
     if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
     const ticket = ticketResult.getValue();
 
@@ -78,14 +72,7 @@ export class CompletarTareaUseCase {
     const tarea = tareaResult.getValue();
 
     if (!puedeCompletarTarea(dto.actor, ticket, tarea)) {
-      return Result.fail(
-        await rechazar(
-          { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
-          ticket,
-          dto.actor,
-          'completar',
-        ),
-      );
+      return Result.fail(await rechazar(this.ticketRepo, ticket, dto.actor, 'completar'));
     }
     const editable = await this.verificadorEditable.verificar(ticket);
     if (editable.isFail()) return Result.fail(editable.getError());
@@ -117,7 +104,7 @@ export class CompletarTareaUseCase {
           this.tareaRepo,
           tarea.id,
           errorDeCompletadoRechazado(
-            { ticketRepo: this.ticketRepo, tipoTicketRepo: this.tipoTicketRepo },
+            this.ticketRepo,
             ticket,
             dto.actor,
             'completar',

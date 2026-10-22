@@ -76,19 +76,28 @@ import {
 import { CrearUsuarioTenantUseCase } from '../../src/auth/application/use-cases/crear-usuario-tenant.use-case';
 import { AplicarPresetPermisosUseCase } from '../../src/auth/application/use-cases/aplicar-preset-permisos.use-case';
 import { MembresiaYaActivaError } from '../../src/auth/domain/errors/auth.errors';
-import { USUARIO_REPOSITORY, type IUsuarioRepository } from '../../src/auth/domain/ports/i-usuario.repository';
+import {
+  USUARIO_REPOSITORY,
+  type IUsuarioRepository,
+} from '../../src/auth/domain/ports/i-usuario.repository';
 import {
   MEMBRESIA_REPOSITORY,
   type IMembresiaRepository,
 } from '../../src/auth/domain/ports/i-membresia.repository';
-import { ROLE_REPOSITORY, type IRoleRepository } from '../../src/auth/domain/ports/i-role.repository';
+import {
+  ROLE_REPOSITORY,
+  type IRoleRepository,
+} from '../../src/auth/domain/ports/i-role.repository';
 import { HASH_PROVIDER, type IHashProvider } from '../../src/auth/domain/ports/i-hash.provider';
 import {
   CLIENTE_REPOSITORY,
   type IClienteRepository,
 } from '../../src/clientes/domain/ports/i-cliente.repository';
 
-import { CrearTicketUseCase, type CrearTicketDto } from '../../src/tickets/application/use-cases/crear-ticket.use-case';
+import {
+  CrearTicketUseCase,
+  type CrearTicketDto,
+} from '../../src/tickets/application/use-cases/crear-ticket.use-case';
 import { TransicionarEstadoUseCase } from '../../src/tickets/application/use-cases/transicionar-estado.use-case';
 import { AsignarTicketUseCase } from '../../src/tickets/application/use-cases/asignar-ticket.use-case';
 
@@ -108,7 +117,6 @@ import { CrearEquipoUseCase } from '../../src/equipos/application/use-cases/crea
 import { CrearInsumoUseCase } from '../../src/insumos/application/use-cases/crear-insumo.use-case';
 import { AgregarComponenteSinDescuentoUseCase } from '../../src/equipos/application/use-cases/agregar-componente-sin-descuento.use-case';
 import { CrearTicketSoporteUseCase } from '../../src/equipos/application/use-cases/crear-ticket-soporte.use-case';
-
 
 /** Password demo por defecto — parametrizable por env `DEMO_SEED_PASSWORD`. */
 export const DEFAULT_DEMO_SEED_PASSWORD = 'Demo1234$';
@@ -158,9 +166,11 @@ interface ResolvedDemoSeedConfig {
 function resolveConfig(config: DemoSeedConfig): ResolvedDemoSeedConfig {
   return {
     clienteNombre: config.clienteNombre ?? DEFAULT_DEMO_CLIENTE_NOMBRE,
-    cicloNombre: config.cicloNombre ?? `${DEFAULT_DEMO_CLIENTE_NOMBRE} ${new Date().getUTCFullYear()}`,
+    cicloNombre:
+      config.cicloNombre ?? `${DEFAULT_DEMO_CLIENTE_NOMBRE} ${new Date().getUTCFullYear()}`,
     emails: { ...DEFAULT_DEMO_EMAILS, ...config.emails },
-    password: config.password ?? process.env.DEMO_SEED_PASSWORD?.trim() ?? DEFAULT_DEMO_SEED_PASSWORD,
+    password:
+      config.password ?? process.env.DEMO_SEED_PASSWORD?.trim() ?? DEFAULT_DEMO_SEED_PASSWORD,
     dbNameGenerator: config.dbNameGenerator,
   };
 }
@@ -204,7 +214,9 @@ async function provisionCliente(
     return { clienteId: existente.id, dbName: existente.dbName, yaExistia: true };
   }
 
-  const crearCliente = cfg.dbNameGenerator ? buildCrearClienteUseCase(app, cfg.dbNameGenerator) : app.get(CrearClienteUseCase);
+  const crearCliente = cfg.dbNameGenerator
+    ? buildCrearClienteUseCase(app, cfg.dbNameGenerator)
+    : app.get(CrearClienteUseCase);
   const dto: CrearClienteDto = {
     nombre: cfg.clienteNombre,
     adminEmail: cfg.emails.administrador,
@@ -243,7 +255,14 @@ async function provisionUsuarioTenant(
   password: string,
 ): Promise<string> {
   const crearUsuarioTenant = app.get(CrearUsuarioTenantUseCase);
-  const result = await crearUsuarioTenant.execute({ clienteId, email, nombre, apellido, password, rolCodigo });
+  const result = await crearUsuarioTenant.execute({
+    clienteId,
+    email,
+    nombre,
+    apellido,
+    password,
+    rolCodigo,
+  });
   if (result.isFail() && !(result.getError() instanceof MembresiaYaActivaError)) {
     throw new Error(
       `[demo-seed] No se pudo crear/asociar el usuario demo "${email}" (${rolCodigo}): ${result.getError().message}`,
@@ -271,6 +290,10 @@ async function provisionUsuarioTenant(
  *
  * `AplicarPresetPermisosUseCase.setPermisos` es reemplazo atomico e
  * idempotente (ADR-P3): un re-run no duplica ni acumula.
+ *
+ * El mismo caso de uso reemplaza tambien las filas por tipo de ticket del
+ * tenant demo (odd/tasks/permisos-por-tipo-ticket.md, T4c): resuelve la base
+ * por `clienteId`, asi que no hace falta bindear un `TenantContext` aca.
  */
 async function aplicarPresetsPermisos(
   app: INestApplicationContext,
@@ -319,7 +342,9 @@ async function provisionCiclo(
       fechaFin: new Date(Date.UTC(anio, 11, 31)),
     });
     if (result.isFail()) {
-      throw new Error(`[demo-seed] No se pudo crear el ciclo vigente demo: ${result.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo crear el ciclo vigente demo: ${result.getError().message}`,
+      );
     }
     cicloVigenteId = result.getValue().id;
   }
@@ -332,13 +357,17 @@ async function provisionCiclo(
     const elegirCiclo = app.get(ElegirCicloTenantUseCase);
     const elegido = await elegirCiclo.execute({ cicloVigenteId: cicloVigenteId! });
     if (elegido.isFail()) {
-      throw new Error(`[demo-seed] No se pudo adoptar el ciclo demo en el tenant: ${elegido.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo adoptar el ciclo demo en el tenant: ${elegido.getError().message}`,
+      );
     }
 
     const activar = app.get(ActivarCicloUseCase);
     const activado = await activar.execute(elegido.getValue().id);
     if (activado.isFail()) {
-      throw new Error(`[demo-seed] No se pudo activar el ciclo demo en el tenant: ${activado.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo activar el ciclo demo en el tenant: ${activado.getError().message}`,
+      );
     }
   });
 }
@@ -392,10 +421,14 @@ async function crearTicketDemo(
     clienteId,
     autorId: spec.solicitanteId,
     anio,
+    // El seed actúa como sistema: no exige ALTAS sobre el tipo (odd/permisos-por-tipo-ticket, D3).
+    alcance: null,
   };
   const result = await crearTicket.execute(dto);
   if (result.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el ticket demo "${spec.titulo}": ${result.getError().message}`);
+    throw new Error(
+      `[demo-seed] No se pudo crear el ticket demo "${spec.titulo}": ${result.getError().message}`,
+    );
   }
   const ticketId = result.getValue().id;
 
@@ -406,13 +439,14 @@ async function crearTicketDemo(
       asignadoId: spec.asignarAId,
       clienteId,
       autorId: spec.asignarAId,
-      // El seed actúa como sistema: sin restricción de módulo ni de fila (odd/permisos-por-tipo-ticket, D3).
+      // El seed actúa como sistema: sin restricción por tipo ni de fila (odd/permisos-por-tipo-ticket, D3).
       actorId: spec.asignarAId,
-      tienePermisoVerTodos: true,
-      modulosPermitidos: null,
+      permisosPorTipo: null,
     });
     if (r.isFail()) {
-      throw new Error(`[demo-seed] No se pudo asignar el ticket demo "${spec.titulo}": ${r.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo asignar el ticket demo "${spec.titulo}": ${r.getError().message}`,
+      );
     }
   }
 
@@ -458,24 +492,28 @@ async function crearEdiliciaDemo(
     clienteId,
     autorId: usuarios.usuario,
     anio,
+    // El seed actúa como sistema (D3).
+    alcance: null,
   });
   if (result.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el ticket edilicio demo: ${result.getError().message}`);
+    throw new Error(
+      `[demo-seed] No se pudo crear el ticket edilicio demo: ${result.getError().message}`,
+    );
   }
   const ticketId = result.getValue().ticket.id;
 
   const crearTarea = app.get(CrearTareaTicketUseCase);
-  const actor = {
-    id: usuarios.administrador,
-    esAdministrador: true,
-    tienePermisoVerTodos: true,
-    modulosConModificacion: ['EDILICIA'],
-    modulosPermitidos: null,
-  };
-  for (const descripcion of ['Contactar plomero de confianza', 'Revisar impermeabilización del techo']) {
+  // ADMINISTRADOR: sin restricción por tipo (odd/permisos-por-tipo-ticket, D5 a).
+  const actor = { id: usuarios.administrador, esAdministrador: true, permisosPorTipo: null };
+  for (const descripcion of [
+    'Contactar plomero de confianza',
+    'Revisar impermeabilización del techo',
+  ]) {
     const r = await crearTarea.execute({ ticketId, descripcion, actor });
     if (r.isFail()) {
-      throw new Error(`[demo-seed] No se pudo crear la tarea edilicia demo: ${r.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo crear la tarea edilicia demo: ${r.getError().message}`,
+      );
     }
   }
 }
@@ -500,7 +538,9 @@ async function crearEquiposDemo(
     fechaAdquisicion: new Date(Date.UTC(anio - 1, 0, 15)),
   });
   if (notebook.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el equipo demo (notebook): ${notebook.getError().message}`);
+    throw new Error(
+      `[demo-seed] No se pudo crear el equipo demo (notebook): ${notebook.getError().message}`,
+    );
   }
   const notebookId = notebook.getValue().id;
 
@@ -517,13 +557,23 @@ async function crearEquiposDemo(
     ['RAM', 'Memoria RAM DDR4 16GB', '16GB'],
     ['SSD', 'Disco SSD 512GB', '512GB SSD'],
   ] as const) {
-    const familia = await tenantClient.familiaInsumo.findUnique({ where: { codigo: familiaCodigo } });
+    const familia = await tenantClient.familiaInsumo.findUnique({
+      where: { codigo: familiaCodigo },
+    });
     if (!familia) {
-      throw new Error(`[demo-seed] El tenant no tiene la familia de insumo ${familiaCodigo} sembrada.`);
+      throw new Error(
+        `[demo-seed] El tenant no tiene la familia de insumo ${familiaCodigo} sembrada.`,
+      );
     }
-    const insumo = await crearInsumo.execute({ nombre, familiaId: familia.id, unidadMedidaId: unidad.id });
+    const insumo = await crearInsumo.execute({
+      nombre,
+      familiaId: familia.id,
+      unidadMedidaId: unidad.id,
+    });
     if (insumo.isFail()) {
-      throw new Error(`[demo-seed] No se pudo crear el insumo demo (${familiaCodigo}): ${insumo.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo crear el insumo demo (${familiaCodigo}): ${insumo.getError().message}`,
+      );
     }
     const r = await agregarComponente.execute({
       equipoId: notebookId,
@@ -532,7 +582,9 @@ async function crearEquiposDemo(
       capacidad,
     });
     if (r.isFail()) {
-      throw new Error(`[demo-seed] No se pudo agregar el componente demo (${familiaCodigo}): ${r.getError().message}`);
+      throw new Error(
+        `[demo-seed] No se pudo agregar el componente demo (${familiaCodigo}): ${r.getError().message}`,
+      );
     }
   }
 
@@ -544,7 +596,9 @@ async function crearEquiposDemo(
     fechaAdquisicion: new Date(Date.UTC(anio - 1, 5, 1)),
   });
   if (impresora.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el equipo demo (impresora): ${impresora.getError().message}`);
+    throw new Error(
+      `[demo-seed] No se pudo crear el equipo demo (impresora): ${impresora.getError().message}`,
+    );
   }
 
   const crearTicketSoporte = app.get(CrearTicketSoporteUseCase);
@@ -560,7 +614,9 @@ async function crearEquiposDemo(
     anio,
   });
   if (soporte.isFail()) {
-    throw new Error(`[demo-seed] No se pudo crear el ticket de soporte demo: ${soporte.getError().message}`);
+    throw new Error(
+      `[demo-seed] No se pudo crear el ticket de soporte demo: ${soporte.getError().message}`,
+    );
   }
 }
 
@@ -860,7 +916,13 @@ export async function runDemoSeed(
     { rolCodigo: 'USUARIO', usuarioId: usuarioId },
   ]);
 
-  const sembrado = await seedDemoTenantData(app, { clienteId, dbName, prismaService, tenantContext, usuarios });
+  const sembrado = await seedDemoTenantData(app, {
+    clienteId,
+    dbName,
+    prismaService,
+    tenantContext,
+    usuarios,
+  });
 
   return {
     clienteId,
@@ -887,7 +949,9 @@ if (require.main === module) {
   }
 
   void (async () => {
-    const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
+    const app = await NestFactory.createApplicationContext(AppModule, {
+      logger: ['error', 'warn'],
+    });
     try {
       const resultado = await runDemoSeed(app);
       console.log(

@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({ usePathname: vi.fn(() => "/admin/reglas-asig
 
 /**
  * ReglasAsignacionAdminView — R4/R5/R6: una fila por tipo con su estado, vacía
- * = sin regla (envía `null`), regla rota visible, solo candidatos del módulo,
+ * = sin regla (envía `null`), regla rota visible, solo candidatos del tipo,
  * fila deshabilitada durante el PUT y 422 que conserva la regla anterior.
  */
 const ANA = { id: "u-ana", nombre: "Ana", apellido: "Gómez" };
@@ -35,7 +35,12 @@ function fila(over: Record<string, unknown>) {
 function mockLista(reglas: unknown[]) {
   server.use(
     http.get("/api/reglas-asignacion", () =>
-      HttpResponse.json({ reglas, candidatosPorModulo: { SOPORTE: [ANA, EVA], INSUMOS: [LUIS] } }),
+      HttpResponse.json({
+        reglas,
+        // `t-3` es del mismo módulo que `t-1`, pero solo Eva lo atiende.
+        candidatosPorTipo: { "t-1": [ANA, EVA], "t-2": [LUIS], "t-3": [EVA] },
+        candidatosPorModulo: { SOPORTE: [ANA, EVA], INSUMOS: [LUIS] },
+      }),
     ),
   );
 }
@@ -71,12 +76,16 @@ describe("ReglasAsignacionAdminView", () => {
     expect(screen.getByLabelText("Responsable de Requerimiento")).toHaveValue(LUIS.id);
   });
 
-  it("solo ofrece los candidatos del módulo del tipo", async () => {
-    mockLista([fila({})]);
+  it("solo ofrece los candidatos del tipo, no la unión del módulo (odd/permisos-por-tipo-ticket, D5 g)", async () => {
+    mockLista([fila({}), fila({ tipoId: "t-3", codigo: "RED", nombre: "Redes" })]);
     renderWithProviders(<ReglasAsignacionAdminView />, admin());
     const select = await screen.findByLabelText("Responsable de Incidente");
     expect(within(select).getByRole("option", { name: "Ana Gómez" })).toBeInTheDocument();
     expect(within(select).queryByRole("option", { name: "Luis Paz" })).not.toBeInTheDocument();
+    // Mismo módulo SOPORTE: Ana está en la unión del módulo, pero no atiende Redes.
+    const redes = screen.getByLabelText("Responsable de Redes");
+    expect(within(redes).getByRole("option", { name: "Eva Sosa" })).toBeInTheDocument();
+    expect(within(redes).queryByRole("option", { name: "Ana Gómez" })).not.toBeInTheDocument();
   });
 
   it.each([

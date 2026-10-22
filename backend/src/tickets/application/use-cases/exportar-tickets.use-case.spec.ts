@@ -5,8 +5,9 @@
  * Lo que se fija acá:
  * - `ExportarTicketsUseCase` COMPONE `ListarTicketsUseCase` (no un
  *   `ITicketRepository` propio): el test de scope por fila usa la instancia
- *   REAL de `ListarTicketsUseCase` para probar que la restricción de rol
- *   (`visiblePara`, T7) se hereda estructuralmente, no por convención.
+ *   REAL de `ListarTicketsUseCase` para probar que el alcance por tipo del
+ *   actor (odd/permisos-por-tipo-ticket, D5 e) se hereda estructuralmente, no
+ *   por convención.
  * - `fechaCierre` y `createdAt` son ambas `@db.Timestamptz` (instantes
  *   reales, sdd/corregir-fecha-cierre-tickets) — `diaArgentinoCsv` desplaza
  *   a hora de Argentina y trunca al día, `fechaHoraCsv` desplaza y muestra
@@ -24,10 +25,10 @@ import { PrioridadEntity } from '../../domain/entities/prioridad.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/tickets.errors';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
 import { ITicketRepository, TicketFiltros } from '../../domain/ports/i-ticket.repository';
-import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { unstubbed } from '../../../testing/mocks';
 import { CicloClienteEntity } from '../../domain/entities/ciclo-cliente.entity';
 import { ICicloClienteRepository } from '../../domain/ports/i-ciclo-cliente.repository';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 
 const BOM = '﻿';
 
@@ -110,6 +111,9 @@ function crearListarTicketsFake(items: TicketEntity[], total = items.length) {
   return caso;
 }
 
+/** Alcance de ROOT o ADMINISTRADOR: sin restricción por tipo. */
+const SIN_RESTRICCION = alcanceSinRestriccion('actor-1');
+
 describe('ExportarTicketsUseCase', () => {
   const ESTADOS = [{ id: 'estado-1', codigo: 'NUEVO', nombre: 'Nuevo' }];
   const PRIORIDADES = [{ id: 'prioridad-1', codigo: 'ALTA', nombre: 'Alta' }];
@@ -137,7 +141,7 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(nombres),
     );
 
-    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    const result = await useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(result.isFail()).toBe(false);
     const filas = lineas(result.getValue().contenido);
@@ -156,8 +160,7 @@ describe('ExportarTicketsUseCase', () => {
     // Fetch acotado (D3/D4): pide como mucho TOPE_FILAS_EXPORT filas, página 1 — nunca la paginación de pantalla.
     expect(listarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({
-        actorId: 'actor-1',
-        tienePermisoVerTodos: true,
+        alcance: SIN_RESTRICCION,
         pagina: 1,
         porPagina: TOPE_FILAS_EXPORT,
       }),
@@ -181,7 +184,7 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(),
     );
 
-    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    const result = await useCase.execute({ alcance: SIN_RESTRICCION });
 
     const [, fila] = lineas(result.getValue().contenido);
     const columnas = fila.split(';');
@@ -204,7 +207,7 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(),
     );
 
-    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    const result = await useCase.execute({ alcance: SIN_RESTRICCION });
 
     const [, fila] = lineas(result.getValue().contenido);
     expect(fila.split(';')[6]).toBe('13/08/2026');
@@ -219,30 +222,56 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(),
     );
 
-    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    const result = await useCase.execute({ alcance: SIN_RESTRICCION });
 
     const [, fila] = lineas(result.getValue().contenido);
     expect(fila.split(';')[6]).toBe('');
   });
 
-  it('scope por fila: SIN TICKETS:VER_TODOS, el export contiene ÚNICAMENTE los tickets del actor (composición real de ListarTicketsUseCase)', async () => {
-    const propio1 = crearTicket({ id: 't1', numero: 'SOP-2026-00001', solicitanteId: 'actor-1' });
-    const propio2 = crearTicket({ id: 't2', numero: 'SOP-2026-00002', solicitanteId: 'actor-1' });
-    const ajeno = crearTicket({
+  it('alcance por tipo: solo tipos con LECTURA; VER_TODOS trae todo el tipo, sin él solo los propios (composición real de ListarTicketsUseCase)', async () => {
+    const propio1 = crearTicket({
+      id: 't1',
+      numero: 'MAN-2026-00001',
+      tipoId: 'tipo-fila',
+      solicitanteId: 'actor-1',
+    });
+    const propio2 = crearTicket({
+      id: 't2',
+      numero: 'MAN-2026-00002',
+      tipoId: 'tipo-fila',
+      solicitanteId: 'actor-1',
+    });
+    const ajenoFila = crearTicket({
       id: 't3',
-      numero: 'SOP-2026-00003',
+      numero: 'MAN-2026-00003',
+      tipoId: 'tipo-fila',
       solicitanteId: 'otro-usuario',
     });
-    const todos = [propio1, propio2, ajeno];
+    const ajenoVerTodos = crearTicket({
+      id: 't4',
+      numero: 'SOP-2026-00004',
+      tipoId: 'tipo-ver-todos',
+      solicitanteId: 'otro-usuario',
+    });
+    const propioSinLectura = crearTicket({
+      id: 't5',
+      numero: 'ELE-2026-00005',
+      tipoId: 'tipo-sin-lectura',
+      solicitanteId: 'actor-1',
+    });
+    const todos = [propio1, propio2, ajenoFila, ajenoVerTodos, propioSinLectura];
+    // Emula el alcance que aplica la base (`whereAlcanceListado`), sin repetir la del caso de uso.
+    const entra = (t: TicketEntity, filtros?: TicketFiltros): boolean => {
+      const alcance = filtros?.alcance;
+      if (!alcance) return true;
+      if (alcance.tiposVerTodos.includes(t.tipoId)) return true;
+      return alcance.tiposPorFila.includes(t.tipoId) && t.solicitanteId === alcance.actorId;
+    };
 
     const ticketRepo = {
-      findAll: vi.fn(async (filtros?: TicketFiltros) =>
-        todos.filter((t) => !filtros?.visiblePara || t.solicitanteId === filtros.visiblePara),
-      ),
+      findAll: vi.fn(async (filtros?: TicketFiltros) => todos.filter((t) => entra(t, filtros))),
       count: vi.fn(
-        async (filtros?: TicketFiltros) =>
-          todos.filter((t) => !filtros?.visiblePara || t.solicitanteId === filtros.visiblePara)
-            .length,
+        async (filtros?: TicketFiltros) => todos.filter((t) => entra(t, filtros)).length,
       ),
       findById: vi.fn<ITicketRepository['findById']>(),
       findByIds: vi.fn<ITicketRepository['findByIds']>(),
@@ -273,21 +302,7 @@ describe('ExportarTicketsUseCase', () => {
       findAll: vi.fn<ICicloClienteRepository['findAll']>(),
       save: vi.fn<ICicloClienteRepository['save']>(),
     };
-    const tipoTicketRepo = {
-      findIdsByModulos: vi.fn<ITipoTicketRepository['findIdsByModulos']>(),
-      findById: unstubbed('findById'),
-      findByCodigo: unstubbed('findByCodigo'),
-      findIdByCodigo: unstubbed('findIdByCodigo'),
-      findAllActive: unstubbed('findAllActive'),
-      findAllActiveByModulo: unstubbed('findAllActiveByModulo'),
-      save: unstubbed('save'),
-    };
-
-    const listarTicketsUseCaseReal = new ListarTicketsUseCase(
-      ticketRepo,
-      cicloClienteRepo,
-      tipoTicketRepo,
-    );
+    const listarTicketsUseCaseReal = new ListarTicketsUseCase(ticketRepo, cicloClienteRepo);
 
     const useCase = new ExportarTicketsUseCase(
       listarTicketsUseCaseReal,
@@ -296,13 +311,22 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(),
     );
 
-    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: false });
+    const result = await useCase.execute({
+      alcance: alcancePorTipo('actor-1', {
+        'tipo-fila': ['LECTURA'],
+        'tipo-ver-todos': ['LECTURA', 'VER_TODOS'],
+        'tipo-sin-lectura': ['VER_TODOS', 'MODIFICACION'],
+      }),
+    });
 
     const filas = lineas(result.getValue().contenido);
-    expect(filas).toHaveLength(3); // encabezado + 2 tickets propios — NUNCA el ajeno
-    expect(filas.some((f) => f.includes('SOP-2026-00003'))).toBe(false);
-    expect(filas[1]).toContain('SOP-2026-00001');
-    expect(filas[2]).toContain('SOP-2026-00002');
+    // Encabezado + 2 propios del tipo por fila + el ajeno del tipo con VER_TODOS.
+    expect(filas).toHaveLength(4);
+    expect(filas.slice(1).map((f) => f.split(';')[0])).toEqual([
+      'MAN-2026-00001',
+      'MAN-2026-00002',
+      'SOP-2026-00004',
+    ]);
   });
 
   it('tope de filas: total === TOPE arma el archivo; total === TOPE + 1 falla y NO arma contenido', async () => {
@@ -313,7 +337,7 @@ describe('ExportarTicketsUseCase', () => {
       crearEstadoRepo(ESTADOS),
       crearPrioridadRepo(PRIORIDADES),
       crearUsuarioMasterChecker(),
-    ).execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    ).execute({ alcance: SIN_RESTRICCION });
     expect(okResult.isFail()).toBe(false);
 
     const failResult = await new ExportarTicketsUseCase(
@@ -321,7 +345,7 @@ describe('ExportarTicketsUseCase', () => {
       crearEstadoRepo(ESTADOS),
       crearPrioridadRepo(PRIORIDADES),
       crearUsuarioMasterChecker(),
-    ).execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    ).execute({ alcance: SIN_RESTRICCION });
     expect(failResult.isFail()).toBe(true);
     expect(failResult.getError()).toBeInstanceOf(ExportacionDemasiadoGrandeError);
     expect(failResult.getError().message).toContain('filtros activos');
@@ -336,7 +360,7 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(),
     );
 
-    const result = await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true });
+    const result = await useCase.execute({ alcance: SIN_RESTRICCION });
 
     const [, fila] = lineas(result.getValue().contenido);
     expect(fila).toContain("'=HYPERLINK");
@@ -350,9 +374,7 @@ describe('ExportarTicketsUseCase', () => {
       crearUsuarioMasterChecker(),
     );
 
-    const { nombreArchivo } = (
-      await useCase.execute({ actorId: 'actor-1', tienePermisoVerTodos: true })
-    ).getValue();
+    const { nombreArchivo } = (await useCase.execute({ alcance: SIN_RESTRICCION })).getValue();
 
     expect(nombreArchivo).toMatch(/^tickets-\d{4}-\d{2}-\d{2}\.csv$/);
   });
@@ -376,10 +398,7 @@ describe('ExportarTicketsUseCase', () => {
         fechaCierre: new Date('2026-08-20T01:30:00.000Z'),
       });
 
-      const result = await armar([ticket]).execute(
-        { actorId: 'actor-1', tienePermisoVerTodos: true },
-        'xlsx',
-      );
+      const result = await armar([ticket]).execute({ alcance: SIN_RESTRICCION }, 'xlsx');
 
       const { contenido, nombreArchivo } = result.getValue();
       expect(nombreArchivo).toMatch(/^tickets-\d{4}-\d{2}-\d{2}\.xlsx$/);
@@ -405,11 +424,11 @@ describe('ExportarTicketsUseCase', () => {
       const ticket = crearTicket({ id: 't1' });
 
       const ok = await armar([ticket], TOPE_FILAS_EXPORT).execute(
-        { actorId: 'actor-1', tienePermisoVerTodos: true },
+        { alcance: SIN_RESTRICCION },
         'xlsx',
       );
       const excedido = await armar([ticket], TOPE_FILAS_EXPORT + 1).execute(
-        { actorId: 'actor-1', tienePermisoVerTodos: true },
+        { alcance: SIN_RESTRICCION },
         'xlsx',
       );
 

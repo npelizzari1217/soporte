@@ -8,18 +8,18 @@ import { TicketCommentForm } from "./ticket-comment-form";
 
 /**
  * Gate real del CLIENTE (no solo servidor): `esInterno=true` sin
- * `TICKETS:OBSERVAR` devuelve 403 del backend
+ * `OBSERVAR` sobre el tipo del ticket devuelve 403 del backend
  * (`TicketsController.comentar`). Si el form permitiera marcar "interno" sin
  * el permiso, el usuario vería un error confuso en vez de nunca poder
  * intentarlo — por eso el toggle debe estar condicionado en el cliente,
  * no solo protegido por el backend.
  */
 describe("TicketCommentForm", () => {
-  it("CON TICKETS:OBSERVAR → muestra el toggle 'interno' y permite enviar esInterno=true", async () => {
+  it("CON OBSERVAR sobre el tipo → muestra el toggle 'interno' y permite enviar esInterno=true", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} />, {
-      user: buildUser({ permisos: ["TICKETS:OBSERVAR", "TICKETS:COMENTAR"] }),
+    renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} puedeObservar />, {
+      user: buildUser({ rol: "TECNICO", permisos: [] }),
     });
 
     await user.type(screen.getByRole("textbox", { name: "Comentario" }), "nota interna");
@@ -29,11 +29,12 @@ describe("TicketCommentForm", () => {
     expect(onSubmit).toHaveBeenCalledWith({ texto: "nota interna", esInterno: true });
   });
 
-  it("SIN TICKETS:OBSERVAR → el toggle 'interno' NO existe (nunca puede enviarse esInterno=true por error)", async () => {
+  it("SIN OBSERVAR sobre el tipo → el toggle 'interno' NO existe (nunca puede enviarse esInterno=true por error)", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
-    renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} />, {
-      user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
+    renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} puedeObservar={false} />, {
+      // La celda TICKETS:OBSERVAR del JWT ya no decide: lo hace el tipo del ticket.
+      user: buildUser({ rol: "TECNICO", permisos: ["TICKETS:OBSERVAR"] }),
     });
 
     expect(screen.queryByRole("checkbox", { name: /interno/i })).not.toBeInTheDocument();
@@ -67,8 +68,8 @@ describe("TicketCommentForm", () => {
     }
 
     function renderForm(onSubmit = vi.fn()) {
-      renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} />, {
-        user: buildUser({ permisos: ["TICKETS:COMENTAR"] }),
+      renderWithProviders(<TicketCommentForm onSubmit={onSubmit} isSubmitting={false} puedeObservar={false} />, {
+        user: buildUser({ permisos: [] }),
       });
       return onSubmit;
     }
