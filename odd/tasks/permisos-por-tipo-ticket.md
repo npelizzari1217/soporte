@@ -335,3 +335,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   restaurar el dump. T9 (retirar celdas viejas y el paso 8c) queda para cuando se verifique en uso.
 - **L39** (T10, dueño) — "borrado logico". Borrar un ticket marca `deleted_at`; el ticket queda en
   la base, recuperable y auditable.
+- **L40** (T10, dueño: "va asi") — Se puede borrar un ticket en cualquier estado salvo que tenga
+  tareas activas o compras vinculadas; en ese caso el backend responde con un error que dice qué
+  resolver antes. Adjuntos, comentarios e historial no frenan: quedan con el ticket oculto y
+  vuelven si se recupera.
