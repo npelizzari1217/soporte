@@ -363,3 +363,10 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   activas" se leyó como "activas y no completadas".
 - **L44** (dueño) — "si significa eso": "tareas activas" son las no completadas; una tarea
   completada no frena el borrado.
+- **L45** (judgment-day de T10: APPROVED sin críticos; dueño: "si" a corregir) — (1) Crear tarea,
+  descompletar tarea y vincular compra toman el lock del ticket y releen que no esté borrado, para
+  que no se cuelen contra un borrado concurrente. (2) El rollback de la migración no borra las
+  entradas TICKET_BORRADO/TICKET_RECUPERADO del historial. (3) Los tickets de tipo PREVENTIVO no se
+  pueden borrar (422): son de sistema y el barrido abriría otro del mismo plan. (4) Las entradas de
+  borrado y recuperación son internas (visibles con OBSERVAR). (5) Al borrar, el front descarta la
+  caché del detalle. Más el test unitario del seeder (12 tipos de operación).
