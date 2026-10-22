@@ -225,5 +225,37 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
       expect(await filasDe(TECNICO)).toEqual([`${soporte.id}:LECTURA`]);
       expect(resultado.permisosPorTipoInsertados).toBe(0);
     });
+
+    it('W3: no abre un tipo cerrado (nadie tiene Ver); sí escribe en los que alguien abrió', async () => {
+      const OTRO = '00000000-0000-7000-8000-000000000099';
+      const soporte = await tenant.tipoTicket.findUniqueOrThrow({ where: { codigo: 'SOPORTE' } });
+      const sufijo = randomBytes(3).toString('hex');
+      const cerrado = await tenant.tipoTicket.create({
+        data: { codigo: `CERRADO_${sufijo}`, nombre: 'Cerrado', modulo: 'TICKETS' },
+      });
+      const abierto = await tenant.tipoTicket.create({
+        data: { codigo: `ABIERTO_${sufijo}`, nombre: 'Abierto', modulo: 'TICKETS' },
+      });
+      await tenant.permisoTipoTicket.createMany({
+        data: [
+          { usuarioId: OTRO, tipoId: soporte.id, accion: 'LECTURA' },
+          { usuarioId: OTRO, tipoId: abierto.id, accion: 'LECTURA' },
+          // Una fila sin Ver no abre el tipo (S3).
+          { usuarioId: OTRO, tipoId: cerrado.id, accion: 'COMENTAR' },
+        ],
+      });
+
+      try {
+        await correr(USUARIOS, [{ usuarioId: TECNICO, celdas: PRESETS_ROL['TECNICO'] }]);
+
+        const filas = await filasDe(TECNICO);
+        expect(filas).toContain(`${soporte.id}:ASIGNAR`);
+        expect(filas).toContain(`${abierto.id}:LECTURA`);
+        expect(filas.filter((f) => f.startsWith(`${cerrado.id}:`))).toEqual([]);
+      } finally {
+        await tenant.permisoTipoTicket.deleteMany();
+        await tenant.tipoTicket.deleteMany({ where: { id: { in: [cerrado.id, abierto.id] } } });
+      }
+    });
   });
 });

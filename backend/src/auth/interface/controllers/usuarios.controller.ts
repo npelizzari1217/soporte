@@ -105,6 +105,7 @@ import { UsuarioEntity } from '../../domain/entities/usuario.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  MatrizPermisosNoAplicadaError,
   PermisosPorTipoNoAplicadosError,
 } from '../../domain/errors/auth.errors';
 import { JwtAuthGuard } from '../../infrastructure/guards/jwt-auth.guard';
@@ -159,9 +160,12 @@ function toHttpException(
   | ConflictException
   | UnprocessableEntityException
   | InternalServerErrorException {
-  // Falla de la base del tenant después de guardar la matriz: el mensaje dice qué quedó guardado
-  // y cómo completarlo (odd/tasks/permisos-por-tipo-ticket.md, T4c).
-  if (error instanceof PermisosPorTipoNoAplicadosError) {
+  // Falla de una de las dos bases al aplicar la plantilla del rol: el mensaje dice qué quedó
+  // guardado y cómo completarlo (odd/tasks/permisos-por-tipo-ticket.md, T4c, W1).
+  if (
+    error instanceof PermisosPorTipoNoAplicadosError ||
+    error instanceof MatrizPermisosNoAplicadaError
+  ) {
     return new InternalServerErrorException(error.message, { cause: error.causa });
   }
   if (error instanceof MembresiaNoEncontradaError) {

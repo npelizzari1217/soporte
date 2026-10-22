@@ -69,9 +69,10 @@ export type CrearUsuarioTenantError =
  *    sin preset en el catálogo), la membresía YA quedó creada y persistida —
  *    deliberado, mismo criterio que `CambiarRolUsuarioTenantUseCase`: el
  *    ADMINISTRADOR puede reintentar solo `POST /usuarios/:id/permisos/aplicar-preset`.
- *    El mismo reintento repara `PermisosPorTipoNoAplicadosError`
- *    (odd/tasks/permisos-por-tipo-ticket.md, T4c): la matriz de master quedó
- *    sembrada y faltan las filas por tipo del tenant.
+ *    El mismo reintento repara `PermisosPorTipoNoAplicadosError` (no se
+ *    escribió ninguna de las dos bases) y `MatrizPermisosNoAplicadaError` (las
+ *    filas por tipo del tenant quedaron y falta la matriz de master)
+ *    (odd/tasks/permisos-por-tipo-ticket.md, T4c, W1).
  *
  * Límite conocido (documentado, no resuelto — mismo criterio que
  * `CrearClienteUseCase`): si `usuarioRepo.create` tiene éxito pero

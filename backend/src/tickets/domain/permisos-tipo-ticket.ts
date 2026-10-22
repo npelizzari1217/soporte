@@ -190,6 +190,25 @@ export interface TipoTicketConModulo {
 }
 
 /**
+ * Tipos sobre los que escribe la plantilla de un rol (W3 del judgment-day de la etapa 1, S4). Un
+ * tipo nuevo nace cerrado y la plantilla no lo abre: solo cuentan los tipos sobre los que algún
+ * usuario ya tiene Ver, porque los abrió una copia o un administrador (sin Ver no hay nada, S3).
+ * Si nadie tiene Ver en ningún tipo, el tenant todavía no usa el modelo por tipo (tenant nuevo o
+ * anterior al backfill de S7) y la plantilla vale para todos, como en la migración.
+ *
+ * @param tipos Todos los tipos del tenant que reciben permisos.
+ * @param tiposConVer Ids de los tipos sobre los que algún usuario tiene `LECTURA`.
+ * @returns Los tipos abiertos para la plantilla, en el orden recibido.
+ */
+export function tiposAbiertosParaPlantilla<T extends TipoTicketConModulo>(
+  tipos: readonly T[],
+  tiposConVer: ReadonlySet<string>,
+): T[] {
+  if (tiposConVer.size === 0) return [...tipos];
+  return tipos.filter((tipo) => tiposConVer.has(tipo.id));
+}
+
+/**
  * Traduce un conjunto de celdas master (por ejemplo, la plantilla de un rol) a las filas por tipo
  * de todos los tipos dados, con la tabla de L11 de `accionesDeTipoDesdeCeldas`.
  *

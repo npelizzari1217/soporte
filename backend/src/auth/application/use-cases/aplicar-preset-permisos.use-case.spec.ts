@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AplicarPresetPermisosUseCase } from './aplicar-preset-permisos.use-case';
 import {
+  MatrizPermisosNoAplicadaError,
   PermisosPorTipoNoAplicadosError,
   PresetRolNoDefinidoError,
 } from '../../domain/errors/auth.errors';
@@ -333,11 +334,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
     });
 
     /**
-     * Master y tenant son bases distintas, sin transacción común. Master se escribe primero; si el
-     * tenant falla, el error tiene que llegar al administrador, no perderse.
+     * Master y tenant son bases distintas, sin transacción común. Desde la etapa 1 las filas por
+     * tipo deciden el acceso a tickets, así que se escriben primero (W1 del judgment-day): si el
+     * tenant falla, la matriz no se toca y el usuario no queda con un rol nuevo y el acceso viejo.
      */
-    it('si falla el tenant: la matriz ya quedó guardada y devuelve PermisosPorTipoNoAplicadosError', async () => {
-      const permisosRepo = matrizCon();
+    it('W1: si falla el tenant, la matriz NO se toca y devuelve PermisosPorTipoNoAplicadosError', async () => {
+      const permisosRepo = matrizCon(['TICKETS:LECTURA']);
       const caida = new Error('conexión rechazada');
       const puerto: IPermisosPorTipoDeCliente = {
         aplicarPlantilla: vi
@@ -349,19 +351,71 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
       const result = await useCase.execute({
         clienteId: 'cliente-token',
         usuarioId: 'usuario-1',
-        rolCodigo: 'TECNICO',
+        rolCodigo: 'USUARIO',
         sobrescribir: true,
       });
 
       expect(result.isFail()).toBe(true);
       const error = result.getError();
       expect(error).toBeInstanceOf(PermisosPorTipoNoAplicadosError);
-      expect(error.message).toContain('Vuelva a aplicar la plantilla del rol');
-      expect(error instanceof PermisosPorTipoNoAplicadosError && error.causa).toBe(caida);
-      expect(permisosRepo.setPermisos).toHaveBeenCalledTimes(1);
-      expect(permisosRepo.setPermisos.mock.invocationCallOrder[0]).toBeLessThan(
-        vi.mocked(puerto.aplicarPlantilla).mock.invocationCallOrder[0],
+      expect(error.message).toBe(
+        'No se pudieron guardar los permisos por tipo de ticket y la matriz de permisos no se ' +
+          'modificó. Vuelva a aplicar la plantilla del rol.',
       );
+      expect(error instanceof PermisosPorTipoNoAplicadosError && error.causa).toBe(caida);
+      expect(permisosRepo.setPermisos).not.toHaveBeenCalled();
+    });
+
+    it('W1: un descenso TECNICO→USUARIO escribe las filas por tipo ANTES que la matriz', async () => {
+      const porTipo = permisosPorTipoEnMemoria(undefined, [
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'LECTURA' },
+        { usuarioId: 'usuario-1', tipoId: 'tipo-soporte', accion: 'ASIGNAR' },
+      ]);
+      const permisosRepo = matrizCon(['TICKETS:LECTURA', 'TICKETS:ASIGNAR']);
+      // Al escribir master, las filas por tipo ya tienen que ser las del rol nuevo.
+      const filasAlEscribirMaster: string[][] = [];
+      permisosRepo.setPermisos.mockImplementation(async () => {
+        filasAlEscribirMaster.push(porTipo.repo.filasDe('usuario-1'));
+      });
+      const useCase = new AplicarPresetPermisosUseCase(permisosRepo, porTipo.puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'USUARIO',
+        sobrescribir: true,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(filasAlEscribirMaster).toHaveLength(1);
+      expect(filasAlEscribirMaster[0]).not.toContain('tipo-soporte:ASIGNAR');
+      expect(filasAlEscribirMaster[0]).toContain('tipo-soporte:LECTURA');
+    });
+
+    it('W1: si falla master después del tenant, devuelve MatrizPermisosNoAplicadaError (no se traga)', async () => {
+      const porTipo = permisosPorTipoEnMemoria();
+      const caida = new Error('master caída');
+      const permisosRepo = matrizCon();
+      permisosRepo.setPermisos.mockRejectedValue(caida);
+      const useCase = new AplicarPresetPermisosUseCase(permisosRepo, porTipo.puerto);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        rolCodigo: 'TECNICO',
+        sobrescribir: true,
+      });
+
+      expect(result.isFail()).toBe(true);
+      const error = result.getError();
+      expect(error).toBeInstanceOf(MatrizPermisosNoAplicadaError);
+      expect(error.message).toBe(
+        'Se guardaron los permisos por tipo de ticket, pero no la matriz de permisos. ' +
+          'Vuelva a aplicar la plantilla del rol para completarla.',
+      );
+      expect(error instanceof MatrizPermisosNoAplicadaError && error.causa).toBe(caida);
+      // El tenant quedó con la plantilla nueva: reaplicarla reescribe las dos bases.
+      expect(porTipo.repo.filasDe('usuario-1')).toEqual(FILAS_TECNICO);
     });
   });
 });

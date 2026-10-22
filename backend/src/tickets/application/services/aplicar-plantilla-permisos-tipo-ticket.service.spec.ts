@@ -35,8 +35,11 @@ const FILAS_TECNICO = [
   'mantenimiento:IMPRESION',
 ].sort();
 
-function armar(iniciales: ConstructorParameters<typeof PermisosTipoTicketEnMemoria>[1] = []) {
-  const repo = new PermisosTipoTicketEnMemoria(TIPOS, iniciales);
+function armar(
+  iniciales: ConstructorParameters<typeof PermisosTipoTicketEnMemoria>[1] = [],
+  tipos: ConstructorParameters<typeof PermisosTipoTicketEnMemoria>[0] = TIPOS,
+) {
+  const repo = new PermisosTipoTicketEnMemoria(tipos, iniciales);
   return { repo, servicio: new AplicarPlantillaPermisosTipoTicket(repo) };
 }
 
@@ -81,6 +84,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
     const { repo, servicio } = armar([
       { usuarioId: USUARIO, tipoId: 'soporte', accion: 'BORRADO' },
       { usuarioId: OTRO, tipoId: 'soporte', accion: 'LECTURA' },
+      { usuarioId: OTRO, tipoId: 'mantenimiento', accion: 'LECTURA' },
     ]);
 
     const escribio = await servicio.ejecutar({
@@ -91,7 +95,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
     expect(escribio).toBe(true);
     expect(repo.filasDe(USUARIO)).toEqual(FILAS_TECNICO);
-    expect(repo.filasDe(OTRO)).toEqual(['soporte:LECTURA']);
+    expect(repo.filasDe(OTRO)).toEqual(['mantenimiento:LECTURA', 'soporte:LECTURA']);
   });
 
   it('con sobrescribir=false y filas existentes no escribe nada (no fusiona)', async () => {
@@ -121,5 +125,106 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
     });
 
     expect(repo.filasDe(USUARIO)).toEqual([]);
+  });
+
+  /**
+   * W3 (judgment-day de la etapa 1): un tipo nace cerrado (S4) y la plantilla del rol no lo abre.
+   * Un tipo está abierto para las plantillas si algún usuario tiene Ver sobre él; si nadie tiene
+   * Ver en ningún tipo, el tenant todavía no usa el modelo por tipo y la plantilla vale para todos.
+   */
+  describe('tipos cerrados (W3, S4)', () => {
+    const CON_NUEVO = [...TIPOS, { id: 'nuevo', modulo: 'TICKETS' }];
+    /** OTRO ve los dos tipos de siempre; nadie tiene filas sobre `nuevo`. */
+    const ABIERTOS_POR_OTRO = [
+      { usuarioId: OTRO, tipoId: 'soporte', accion: 'LECTURA' },
+      { usuarioId: OTRO, tipoId: 'mantenimiento', accion: 'LECTURA' },
+    ] as const;
+
+    it('la plantilla de un usuario nuevo no crea filas sobre un tipo cerrado', async () => {
+      const { repo, servicio } = armar([...ABIERTOS_POR_OTRO], CON_NUEVO);
+
+      await servicio.ejecutar({
+        usuarioId: USUARIO,
+        celdas: PRESETS_ROL['TECNICO'],
+        sobrescribir: false,
+      });
+
+      expect(repo.filasDe(USUARIO)).toEqual(FILAS_TECNICO);
+    });
+
+    it('reaplicar la plantilla (sobrescribir=true) tampoco abre un tipo cerrado', async () => {
+      const { repo, servicio } = armar(
+        [...ABIERTOS_POR_OTRO, { usuarioId: USUARIO, tipoId: 'soporte', accion: 'LECTURA' }],
+        CON_NUEVO,
+      );
+
+      await servicio.ejecutar({
+        usuarioId: USUARIO,
+        celdas: PRESETS_ROL['TECNICO'],
+        sobrescribir: true,
+      });
+
+      expect(repo.filasDe(USUARIO)).toEqual(FILAS_TECNICO);
+    });
+
+    it('sí escribe sobre un tipo que alguien abrió con Ver (por copia o a mano)', async () => {
+      const { repo, servicio } = armar(
+        [...ABIERTOS_POR_OTRO, { usuarioId: OTRO, tipoId: 'nuevo', accion: 'LECTURA' }],
+        CON_NUEVO,
+      );
+
+      await servicio.ejecutar({
+        usuarioId: USUARIO,
+        celdas: PRESETS_ROL['USUARIO'],
+        sobrescribir: false,
+      });
+
+      expect(repo.filasDe(USUARIO)).toContain('nuevo:LECTURA');
+      expect(repo.filasDe(USUARIO)).toContain('nuevo:ALTAS');
+    });
+
+    it('un tipo con filas pero sin Ver de nadie sigue cerrado (S3: sin Ver no hay nada)', async () => {
+      const { repo, servicio } = armar(
+        [...ABIERTOS_POR_OTRO, { usuarioId: OTRO, tipoId: 'nuevo', accion: 'COMENTAR' }],
+        CON_NUEVO,
+      );
+
+      await servicio.ejecutar({
+        usuarioId: USUARIO,
+        celdas: PRESETS_ROL['TECNICO'],
+        sobrescribir: false,
+      });
+
+      expect(repo.filasDe(USUARIO)).toEqual(FILAS_TECNICO);
+    });
+
+    it('si nadie tiene Ver en ningún tipo (tenant sin modelo por tipo todavía), escribe en todos', async () => {
+      const { repo, servicio } = armar([], CON_NUEVO);
+
+      await servicio.ejecutar({
+        usuarioId: USUARIO,
+        celdas: PRESETS_ROL['USUARIO'],
+        sobrescribir: false,
+      });
+
+      expect(repo.filasDe(USUARIO).filter((fila) => fila.startsWith('nuevo:'))).toEqual(
+        ['nuevo:LECTURA', 'nuevo:ALTAS', 'nuevo:COMENTAR', 'nuevo:IMPRESION'].sort(),
+      );
+    });
+
+    it('ADMINISTRADOR no cambia: no escribe filas y con sobrescribir=true borra las previas', async () => {
+      const { repo, servicio } = armar(
+        [...ABIERTOS_POR_OTRO, { usuarioId: USUARIO, tipoId: 'soporte', accion: 'LECTURA' }],
+        CON_NUEVO,
+      );
+
+      await servicio.ejecutar({
+        usuarioId: USUARIO,
+        celdas: PRESETS_ROL['ADMINISTRADOR'],
+        sobrescribir: true,
+      });
+
+      expect(repo.filasDe(USUARIO)).toEqual([]);
+    });
   });
 });

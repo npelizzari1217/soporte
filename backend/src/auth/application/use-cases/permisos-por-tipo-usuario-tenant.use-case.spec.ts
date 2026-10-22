@@ -340,6 +340,48 @@ describe('PermisosPorTipoUsuarioTenantUseCase (odd/permisos-por-tipo-ticket, T7,
       expect(repo.filasDe('ana')).toEqual(['tipo-mant:LECTURA']);
     });
 
+    /**
+     * W2 (judgment-day de la etapa 1): la copia valida las filas que resultarían con la misma regla
+     * que el PUT. Un origen puede tener filas que el PUT rechazaría (el backfill deja filas sin Ver,
+     * L34): copiarlas propagaría un estado inválido.
+     */
+    it.each([
+      {
+        caso: 'una fila sin Ver (S3)',
+        filasOrigen: [{ tipoId: 'tipo-mant', accion: 'COMENTAR' }],
+        mensaje:
+          'Sin Ver no se puede conceder ninguna otra acción en el tipo «Mantenimiento» (se pidió COMENTAR).',
+      },
+      {
+        caso: 'BORRADO, que todavía no existe (S8)',
+        filasOrigen: [
+          { tipoId: 'tipo-soporte', accion: 'LECTURA' },
+          { tipoId: 'tipo-soporte', accion: 'BORRADO' },
+        ],
+        mensaje:
+          'No se puede conceder BORRADO en el tipo «Soporte»: borrar tickets todavía no existe.',
+      },
+    ] as const)(
+      'W2: un origen con $caso se rechaza con el 422 del PUT, sin tocar al destino',
+      async ({ filasOrigen, mensaje }) => {
+        const { useCase, repo } = armar({ ana: { rol: 'USUARIO' }, beto: { rol: 'TECNICO' } }, [
+          { usuarioId: 'ana', tipoId: 'tipo-viejo', accion: 'LECTURA' },
+          { usuarioId: 'beto', tipoId: 'tipo-viejo', accion: 'LECTURA' },
+          ...filasOrigen.map((fila) => ({ usuarioId: 'beto', ...fila })),
+        ]);
+
+        const result = await useCase.copiarDe({
+          clienteId: CLIENTE,
+          usuarioId: 'ana',
+          origenId: 'beto',
+        });
+
+        expect(result.getError()).toBeInstanceOf(PermisosPorTipoInvalidosError);
+        expect(result.getError().message).toBe(mensaje);
+        expect(repo.filasDe('ana')).toEqual(['tipo-viejo:LECTURA']);
+      },
+    );
+
     it('un destino ADMINISTRADOR: 422', async () => {
       const { useCase } = armar({ jefa: { rol: 'ADMINISTRADOR' }, beto: { rol: 'TECNICO' } });
 

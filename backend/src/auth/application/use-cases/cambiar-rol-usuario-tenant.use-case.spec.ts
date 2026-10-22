@@ -304,7 +304,7 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
       expect(porTipo.repo.filasDe('usuario-1')).toEqual(['tipo-soporte:BORRADO']);
     });
 
-    it('si falla el tenant: el rol y la matriz quedaron cambiados, y el error llega al llamador', async () => {
+    it('si falla el tenant: el rol queda cambiado, la matriz NO se toca (W1) y el error llega al llamador', async () => {
       const puerto: IPermisosPorTipoDeCliente = {
         aplicarPlantilla: vi
           .fn<IPermisosPorTipoDeCliente['aplicarPlantilla']>()
@@ -322,7 +322,7 @@ describe('CambiarRolUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(PermisosPorTipoNoAplicadosError);
       expect(membresiaRepo.save).toHaveBeenCalledOnce();
-      expect(matriz.setPermisos).toHaveBeenCalledOnce();
+      expect(matriz.setPermisos).not.toHaveBeenCalled();
     });
   });
 });

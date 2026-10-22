@@ -203,12 +203,11 @@ export class PresetRolNoDefinidoError extends DomainError {
 }
 
 /**
- * PermisosPorTipoNoAplicadosError — la plantilla del rol se guardó en la matriz de master, pero
- * no se pudieron escribir los permisos por tipo de ticket en la base del tenant
- * (odd/tasks/permisos-por-tipo-ticket.md, T4c). Son dos bases sin transacción común: master se
- * escribe primero, así que el estado que queda es "matriz al día, filas por tipo viejas o
- * ausentes", y se repara volviendo a aplicar la plantilla (`POST /usuarios/:id/permisos/aplicar-preset`),
- * que reescribe las dos.
+ * PermisosPorTipoNoAplicadosError — no se pudieron escribir los permisos por tipo de ticket de la
+ * plantilla del rol en la base del tenant (odd/tasks/permisos-por-tipo-ticket.md, T4c, W1). Son
+ * dos bases sin transacción común y el tenant se escribe primero (las filas por tipo deciden el
+ * acceso a tickets), así que la matriz de master tampoco se modificó: no cambió nada, y se repara
+ * volviendo a aplicar la plantilla (`POST /usuarios/:id/permisos/aplicar-preset`).
  * → HTTP 500 en la capa de presentación, con este mensaje: el fallo es de infraestructura, pero
  * el administrador tiene que saber qué quedó guardado y cómo completarlo.
  */
@@ -218,8 +217,28 @@ export class PermisosPorTipoNoAplicadosError extends DomainError {
   /** @param causa Error original de la escritura en el tenant, para el log. */
   constructor(readonly causa: unknown) {
     super(
-      'Se guardó la matriz de permisos, pero no se pudieron guardar los permisos por tipo de ' +
-        'ticket. Vuelva a aplicar la plantilla del rol para completarlos.',
+      'No se pudieron guardar los permisos por tipo de ticket y la matriz de permisos no se ' +
+        'modificó. Vuelva a aplicar la plantilla del rol.',
+    );
+  }
+}
+
+/**
+ * MatrizPermisosNoAplicadaError — los permisos por tipo de ticket de la plantilla del rol ya se
+ * guardaron en el tenant, pero falló la escritura de la matriz de master
+ * (odd/tasks/permisos-por-tipo-ticket.md, W1). El estado que queda es "filas por tipo al día,
+ * matriz vieja": el acceso a tickets ya es el del rol nuevo y los módulos que no son tickets
+ * siguen con el anterior. Se repara volviendo a aplicar la plantilla, que reescribe las dos.
+ * → HTTP 500 en la capa de presentación, con este mensaje.
+ */
+export class MatrizPermisosNoAplicadaError extends DomainError {
+  readonly code = 'AUTH_MATRIZ_PERMISOS_NO_APLICADA';
+
+  /** @param causa Error original de la escritura en master, para el log. */
+  constructor(readonly causa: unknown) {
+    super(
+      'Se guardaron los permisos por tipo de ticket, pero no la matriz de permisos. ' +
+        'Vuelva a aplicar la plantilla del rol para completarla.',
     );
   }
 }

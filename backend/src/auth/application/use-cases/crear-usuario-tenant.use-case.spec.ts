@@ -354,7 +354,7 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
       expect(porTipo.repo.filasDe(existente.id)).toEqual(['tipo-soporte:LECTURA']);
     });
 
-    it('si falla el tenant: la membresía y la matriz quedaron, y el error llega al llamador', async () => {
+    it('si falla el tenant: la membresía queda, la matriz NO se toca (W1) y el error llega al llamador', async () => {
       const puerto: IPermisosPorTipoDeCliente = {
         aplicarPlantilla: vi
           .fn<IPermisosPorTipoDeCliente['aplicarPlantilla']>()
@@ -367,7 +367,7 @@ describe('CrearUsuarioTenantUseCase (gestión mínima de usuarios, sdd/beta-fron
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(PermisosPorTipoNoAplicadosError);
       expect(membresiaRepo.create).toHaveBeenCalledOnce();
-      expect(matriz.setPermisos).toHaveBeenCalledOnce();
+      expect(matriz.setPermisos).not.toHaveBeenCalled();
     });
   });
 });

@@ -314,3 +314,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   tiene alguna celda de EDILICIA (como L23), y VER_TODOS en Edilicia sale solo de
   `TICKETS:VER_TODOS`. Consecuencia aceptada: un USUARIO deja de ver reparaciones ajenas en
   `/reparaciones`. Cinco advertencias registradas para corregir fuera de la ronda.
+- **L36** (advertencias del judgment-day de la etapa 1; dueño: "si") — Corregidas con TDD.
+  W1: la plantilla del rol escribe primero el tenant y después master; si el tenant falla, master
+  no cambia; si master falla, error explícito (`MatrizPermisosNoAplicadaError`); se recupera
+  reaplicando la plantilla. W2: copiar de otro usuario valida como el PUT (422); copiar de otro
+  tipo copia solo filas con Ver y sin BORRADO. W3: la plantilla escribe solo sobre tipos donde
+  algún usuario ya tiene Ver; si nadie tiene Ver en ningún tipo (tenant nuevo o sin backfill), sobre
+  todos. Regla única `tiposAbiertosParaPlantilla`, también en el importador legacy. Seis e2e de
+  reparaciones ajustados a L35 (`c4f52483`). 3120 tests en verde en auth, tickets, test,
+  prisma_master y scripts.

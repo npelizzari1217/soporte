@@ -146,9 +146,13 @@ export class PermisosPorTipoUsuarioTenantUseCase {
    * Reemplaza todas las filas del usuario por las de otro usuario del mismo cliente ("Copiar
    * permisos de otro usuario", S5).
    *
+   * Las filas copiadas pasan por la misma validación que el reemplazo total (W2): un origen con una
+   * fila sin Ver (el backfill puede dejarlas, L34) o con BORRADO se rechaza con el mismo 422, que
+   * nombra el tipo, en vez de propagar un estado que el PUT no aceptaría.
+   *
    * @param input Cliente, usuario editado y usuario de origen.
    * @returns Los permisos guardados; 404 si alguno no tiene membresía activa en el cliente; 422 si
-   *   son el mismo usuario o alguno es administrador.
+   *   son el mismo usuario, alguno es administrador o alguna fila del origen no se puede guardar.
    */
   async copiarDe(
     input: UsuarioDelCliente & { origenId: string },
@@ -176,13 +180,20 @@ export class PermisosPorTipoUsuarioTenantUseCase {
     if (origen.sinRestriccion) return Result.fail(new PermisosPorTipoSinRestriccionError('origen'));
 
     const delOrigen = await this.permisosRepo.listarPorUsuario(input.origenId);
+    const tipos = await this.permisosRepo.listarTiposConDetalle();
+    const problema = this.validar(
+      [...delOrigen].map(([tipoId, acciones]) => ({ tipoId, acciones: enOrden(acciones) })),
+      tipos,
+    );
+    if (problema) return Result.fail(problema);
+
     await this.permisosRepo.reemplazarDeUsuario(
       input.usuarioId,
       [...delOrigen].flatMap(([tipoId, acciones]) =>
         enOrden(acciones).map((accion) => ({ tipoId, accion })),
       ),
     );
-    return Result.ok(await this.armar(input.usuarioId, destino));
+    return Result.ok(await this.armar(input.usuarioId, destino, tipos));
   }
 
   /** Rol y bypass del usuario en el cliente, o `null` sin membresía activa. */

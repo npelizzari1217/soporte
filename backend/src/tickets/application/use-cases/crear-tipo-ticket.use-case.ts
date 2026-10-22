@@ -48,8 +48,9 @@ export interface CrearTipoTicketDto {
  * 4. Si se pide copiar permisos, valida que el tipo de origen exista y sea del mismo módulo → 422
  *    (odd/tasks/permisos-por-tipo-ticket.md, S4).
  * 5. Crea la entidad (`activo=true`) y, en la MISMA transacción, copia las filas por tipo del
- *    origen: si la copia falla, el tipo no queda creado. Sin origen, el tipo nace cerrado: nadie
- *    salvo ADMINISTRADOR y ROOT lo ve hasta que se le asignen permisos.
+ *    origen: si la copia falla, el tipo no queda creado. Se copian solo las filas de quien tiene
+ *    Ver sobre el origen y sin BORRADO (W2, `copiarDeTipo`). Sin origen, el tipo nace cerrado:
+ *    nadie salvo ADMINISTRADOR y ROOT lo ve hasta que se le asignen permisos.
  *
  * Ref spec: sdd/tickets-core/spec T2, T5. Ref design: ADR-4. Tarea: T11.1.
  */

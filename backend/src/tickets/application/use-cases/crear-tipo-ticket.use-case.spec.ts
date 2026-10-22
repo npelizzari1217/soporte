@@ -307,6 +307,32 @@ describe('CrearTipoTicketUseCase', () => {
       );
     });
 
+    it('W2: no propaga al tipo nuevo las filas de quien no tiene Ver en el origen (S3) ni BORRADO', async () => {
+      const soporte = tipo('SOPORTE', 'TICKETS');
+      const c = makeCollaborators(
+        [soporte],
+        [
+          { usuarioId: USUARIO_1, tipoId: soporte.id, accion: 'LECTURA' },
+          { usuarioId: USUARIO_1, tipoId: soporte.id, accion: 'BORRADO' },
+          // Fila sin Ver, como las que puede dejar el backfill (L34).
+          { usuarioId: USUARIO_2, tipoId: soporte.id, accion: 'COMENTAR' },
+        ],
+      );
+
+      const result = await c.useCase.execute({
+        codigo: 'ELECT',
+        nombre: 'Elec',
+        modulo: 'TICKETS',
+        copiarPermisosDeTipoId: soporte.id,
+      });
+
+      const nuevoId = result.getValue().id;
+      expect(c.permisos.filasDe(USUARIO_1).filter((f) => f.startsWith(nuevoId))).toEqual([
+        `${nuevoId}:LECTURA`,
+      ]);
+      expect(c.permisos.filasDe(USUARIO_2)).toEqual([`${soporte.id}:COMENTAR`]);
+    });
+
     it('el alta del tipo y la copia corren dentro de la misma transacción', async () => {
       const { c, soporte } = escenario();
 

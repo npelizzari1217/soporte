@@ -1,4 +1,7 @@
-import { filasDeTiposDesdeCeldas } from '../../domain/permisos-tipo-ticket';
+import {
+  filasDeTiposDesdeCeldas,
+  tiposAbiertosParaPlantilla,
+} from '../../domain/permisos-tipo-ticket';
 import { IPermisoTipoTicketRepository } from '../../domain/ports/i-permiso-tipo-ticket.repository';
 
 /** Entrada de `AplicarPlantillaPermisosTipoTicket.ejecutar`. */
@@ -18,15 +21,17 @@ export interface AplicarPlantillaPermisosTipoTicketInput {
  * AplicarPlantillaPermisosTipoTicket — escribe en el tenant bindeado los permisos por tipo que
  * corresponden a la plantilla de un rol (odd/tasks/permisos-por-tipo-ticket.md, T4c, S7, D4).
  *
- * Cada tipo del tenant, dados de baja incluidos (L24), recibe las acciones que la tabla de L11
- * deriva de las celdas del módulo de ese tipo. La plantilla de ADMINISTRADOR es vacía, así que no
- * produce filas. Requiere un `TenantContext` activo: quien lo invoca elige el tenant.
+ * Cada tipo abierto del tenant, dados de baja incluidos (L24), recibe las acciones que la tabla
+ * de L11 deriva de las celdas del módulo de ese tipo. Un tipo cerrado (nadie tiene Ver sobre él,
+ * S4) no recibe filas: la regla está en `tiposAbiertosParaPlantilla` (W3). La plantilla de
+ * ADMINISTRADOR es vacía, así que no produce filas. Requiere un `TenantContext` activo: quien lo
+ * invoca elige el tenant.
  */
 export class AplicarPlantillaPermisosTipoTicket {
   constructor(
     private readonly permisosRepo: Pick<
       IPermisoTipoTicketRepository,
-      'listarPorUsuario' | 'reemplazarDeUsuario' | 'listarTipos'
+      'listarPorUsuario' | 'reemplazarDeUsuario' | 'listarTipos' | 'listarUsuariosConAccion'
     >,
   ) {}
 
@@ -44,9 +49,16 @@ export class AplicarPlantillaPermisosTipoTicket {
     }
 
     const tipos = await this.permisosRepo.listarTipos();
+    const conVer = await this.permisosRepo.listarUsuariosConAccion(
+      tipos.map((tipo) => tipo.id),
+      'LECTURA',
+    );
     await this.permisosRepo.reemplazarDeUsuario(
       input.usuarioId,
-      filasDeTiposDesdeCeldas(input.celdas, tipos),
+      filasDeTiposDesdeCeldas(
+        input.celdas,
+        tiposAbiertosParaPlantilla(tipos, new Set(conVer.keys())),
+      ),
     );
     return true;
   }

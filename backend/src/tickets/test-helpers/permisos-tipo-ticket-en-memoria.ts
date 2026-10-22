@@ -1,4 +1,8 @@
-import { AccionTipoTicket, TipoTicketConModulo } from '../domain/permisos-tipo-ticket';
+import {
+  ACCIONES_TIPO_TICKET_CONCEDIBLES,
+  AccionTipoTicket,
+  TipoTicketConModulo,
+} from '../domain/permisos-tipo-ticket';
 import {
   IPermisoTipoTicketRepository,
   PermisoTipoTicketFila,
@@ -73,13 +77,15 @@ export class PermisosTipoTicketEnMemoria implements IPermisoTipoTicketRepository
   }
 
   async copiarDeTipo(origenId: string, destinoId: string): Promise<number> {
-    const filas = [...this.porUsuario].flatMap(([usuarioId, porTipo]) =>
-      [...(porTipo.get(origenId) ?? [])].map((accion) => ({
-        usuarioId,
-        tipoId: destinoId,
-        accion,
-      })),
-    );
+    // Mismo filtro que el INSERT ... SELECT de Prisma (W2): solo quien tiene Ver sobre el origen, y
+    // solo acciones concedibles.
+    const filas = [...this.porUsuario].flatMap(([usuarioId, porTipo]) => {
+      const delOrigen = porTipo.get(origenId);
+      if (!delOrigen?.has('LECTURA')) return [];
+      return [...delOrigen]
+        .filter((accion) => ACCIONES_TIPO_TICKET_CONCEDIBLES.includes(accion))
+        .map((accion) => ({ usuarioId, tipoId: destinoId, accion }));
+    });
     return filas.filter((fila) => this.agregar(fila)).length;
   }
 

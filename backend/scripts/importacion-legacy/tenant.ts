@@ -10,7 +10,10 @@
 import { uuidv7 } from 'uuidv7';
 import type { Prisma } from '.prisma/tenant';
 import type { TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
-import { filasDeTiposDesdeCeldas } from '../../src/tickets/domain/permisos-tipo-ticket';
+import {
+  filasDeTiposDesdeCeldas,
+  tiposAbiertosParaPlantilla,
+} from '../../src/tickets/domain/permisos-tipo-ticket';
 import type { PlantillaSembrada } from './master';
 import { fechaDia, type PaqueteLegacy, type TicketPaquete } from './paquete';
 import { comentariosDeTicket, separarTickets, type CicloExistente, type PlanCiclo } from './plan';
@@ -175,8 +178,10 @@ export async function aplicarTenant(tenant: Tenant, e: EntradaTenant): Promise<R
 /**
  * Filas por tipo de ticket de cada plantilla sembrada en master, como hace el alta normal
  * (`AplicarPresetPermisosUseCase` con `sobrescribir: false`, odd/tasks/permisos-por-tipo-ticket.md,
- * T4c): todos los tipos, dados de baja incluidos (L24), y solo si el usuario no tiene ninguna fila
- * todavía, para no fusionar con permisos ajustados a mano.
+ * T4c): los tipos abiertos, dados de baja incluidos (L24), y solo si el usuario no tiene ninguna
+ * fila todavía, para no fusionar con permisos ajustados a mano. Un tipo cerrado no se abre (W3, la
+ * regla de `tiposAbiertosParaPlantilla`); los tipos con Ver se releen por usuario porque la
+ * plantilla del anterior puede haberlos abierto, igual que en altas sucesivas.
  */
 async function sembrarPermisosPorTipo(
   tx: Tx,
@@ -187,7 +192,13 @@ async function sembrarPermisosPorTipo(
   let insertadas = 0;
   for (const { usuarioId, celdas } of plantillas) {
     if ((await tx.permisoTipoTicket.count({ where: { usuarioId } })) > 0) continue;
-    const data = filasDeTiposDesdeCeldas(celdas, tipos).map((f) => ({ usuarioId, ...f }));
+    const conVer = await tx.permisoTipoTicket.findMany({
+      where: { accion: 'LECTURA' },
+      distinct: ['tipoId'],
+      select: { tipoId: true },
+    });
+    const abiertos = tiposAbiertosParaPlantilla(tipos, new Set(conVer.map((f) => f.tipoId)));
+    const data = filasDeTiposDesdeCeldas(celdas, abiertos).map((f) => ({ usuarioId, ...f }));
     if (data.length === 0) continue;
     insertadas += (await tx.permisoTipoTicket.createMany({ data })).count;
   }

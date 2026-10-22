@@ -24,6 +24,7 @@ import { MembresiaEntity } from '../../domain/entities/membresia.entity';
 import {
   MembresiaNoEncontradaError,
   MembresiaYaActivaError,
+  MatrizPermisosNoAplicadaError,
   PermisosPorTipoNoAplicadosError,
   PresetRolNoDefinidoError,
   RolNoEncontradoError,
@@ -800,6 +801,20 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
     it('T4c: si fallan los permisos por tipo, 500 con el mensaje que dice cómo completarlos', async () => {
       const { controller, aplicarPresetPermisosUseCase } = buildController();
       const error = new PermisosPorTipoNoAplicadosError(new Error('base caída'));
+      aplicarPresetPermisosUseCase.execute.mockResolvedValue(Result.fail(error));
+      const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
+
+      const rechazo = controller.aplicarPresetPermisos(actor, 'usuario-1', {
+        rolCodigo: 'TECNICO',
+      });
+
+      await expect(rechazo).rejects.toBeInstanceOf(InternalServerErrorException);
+      await expect(rechazo).rejects.toThrow(error.message);
+    });
+
+    it('W1: si falla la matriz después del tenant, 500 con el mensaje que dice cómo completarla', async () => {
+      const { controller, aplicarPresetPermisosUseCase } = buildController();
+      const error = new MatrizPermisosNoAplicadaError(new Error('master caída'));
       aplicarPresetPermisosUseCase.execute.mockResolvedValue(Result.fail(error));
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 

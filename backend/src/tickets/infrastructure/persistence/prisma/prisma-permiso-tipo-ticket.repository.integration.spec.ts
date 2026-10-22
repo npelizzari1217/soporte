@@ -275,6 +275,33 @@ describe('PrismaPermisoTipoTicketRepository (T4a, tenant efímero)', () => {
     );
   });
 
+  it('W2: copiarDeTipo no propaga filas de quien no tiene Ver en el origen (S3) ni BORRADO (S8)', async () => {
+    const origen = await crearTipo('T-ORIG-W2');
+    const destino = await crearTipo('T-DEST-W2');
+    await enTenant(() =>
+      repo.agregarSiFaltan([
+        { usuarioId: USUARIO_1, tipoId: origen, accion: 'LECTURA' },
+        { usuarioId: USUARIO_1, tipoId: origen, accion: 'COMENTAR' },
+        { usuarioId: USUARIO_1, tipoId: origen, accion: 'BORRADO' },
+        // Fila sin Ver, como las que puede dejar el backfill (L34): no se copia.
+        { usuarioId: USUARIO_2, tipoId: origen, accion: 'COMENTAR' },
+      ]),
+    );
+
+    await expect(enTenant(() => repo.copiarDeTipo(origen, destino))).resolves.toBe(2);
+
+    await expect(filasDe(USUARIO_1)).resolves.toEqual(
+      [
+        `${origen}:BORRADO`,
+        `${origen}:COMENTAR`,
+        `${origen}:LECTURA`,
+        `${destino}:COMENTAR`,
+        `${destino}:LECTURA`,
+      ].sort(),
+    );
+    await expect(filasDe(USUARIO_2)).resolves.toEqual([`${origen}:COMENTAR`]);
+  });
+
   it('copiarDeTipo desde un tipo sin filas no inserta nada', async () => {
     const origen = await crearTipo('T-VACIO');
     const destino = await crearTipo('T-DEST2');
