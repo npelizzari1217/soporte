@@ -114,8 +114,8 @@ export const MODULOS_CON_CELDAS_DE_TICKETS: readonly string[] = ["TICKETS", "COM
 /**
  * ¿La sesión puede leer la lista de usuarios (`GET /usuarios`), para asignar o filtrar por
  * responsable? Espejo de `puedeVerListaDeUsuarios` del backend (S7): `ASIGNAR` sobre algún tipo, o
- * `VER_TODOS` sobre un tipo de `MODULOS_CON_CELDAS_DE_TICKETS`. Un `VER_TODOS` de Edilicia no cuenta:
- * viene de `EDILICIA:LECTURA` (L11), que no abría la lista.
+ * `VER_TODOS` sobre un tipo de `MODULOS_CON_CELDAS_DE_TICKETS`. Alcanza con mirar esos tipos: todo
+ * `VER_TODOS` sale de `TICKETS:VER_TODOS` (L35), que también lo da sobre los tipos de TICKETS.
  *
  * @param permisos Permisos de la sesión, o `null` si no se conocen.
  * @returns `true` si el backend le devuelve la lista.

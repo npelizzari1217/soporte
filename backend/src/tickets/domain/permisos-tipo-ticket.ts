@@ -87,37 +87,41 @@ const TRADUCCION_L11: Readonly<
     COMENTAR: ['COMENTAR'],
     OBSERVAR: ['OBSERVAR'],
   },
-  // Edilicia hoy no filtra por fila: su lectura equivale a ver todos. Su modificación cubre
-  // también el cambio de estado y los comentarios, que el módulo no separa.
+  // La lectura de Edilicia da solo Ver: Ver todos sobre un tipo de Edilicia sale de
+  // `TICKETS:VER_TODOS` (L35). Su modificación cubre también el cambio de estado y los
+  // comentarios, que el módulo no separa.
   EDILICIA: {
-    LECTURA: ['LECTURA', 'VER_TODOS'],
+    LECTURA: ['LECTURA'],
     ALTAS: ['ALTAS'],
     MODIFICACION: ['MODIFICACION', 'TRANSICIONAR', 'COMENTAR'],
   },
 };
 
 /**
- * Módulo master del que toma las celdas un tipo, según su `modulo`. Los tipos de COMPRAS o
- * EQUIPOS se migran con la regla de TICKETS (L21). Un módulo fuera de la tabla no tiene origen:
- * el tipo queda cerrado, igual que un tipo nuevo (S4).
+ * Módulos master de los que toma las celdas un tipo, según su `modulo`. Los tipos de COMPRAS o
+ * EQUIPOS se migran con la regla de TICKETS (L21). Los de EDILICIA suman a las suyas las de
+ * TICKETS (L35): comentar, asignar, notas internas y ver todos sobre un ticket edilicio salían de
+ * `TICKETS:*`. Un módulo fuera de la tabla no tiene origen: el tipo queda cerrado, igual que un
+ * tipo nuevo (S4).
  */
-const ORIGEN_POR_MODULO_DEL_TIPO: Readonly<Record<string, ModuloOrigen>> = {
-  TICKETS: 'TICKETS',
-  COMPRAS: 'TICKETS',
-  EQUIPOS: 'TICKETS',
-  EDILICIA: 'EDILICIA',
+const ORIGENES_POR_MODULO_DEL_TIPO: Readonly<Record<string, readonly ModuloOrigen[]>> = {
+  TICKETS: ['TICKETS'],
+  COMPRAS: ['TICKETS'],
+  EQUIPOS: ['TICKETS'],
+  EDILICIA: ['TICKETS', 'EDILICIA'],
 };
 
 /**
- * ¿El tipo toma sus acciones de las celdas `TICKETS:*`? Es así para los tipos de TICKETS, COMPRAS y
- * EQUIPOS (L21). Permite reconstruir qué celda originó una acción: un `VER_TODOS` sobre estos tipos
- * viene de `TICKETS:VER_TODOS`; sobre uno de EDILICIA, de `EDILICIA:LECTURA` (L11).
+ * ¿El tipo toma sus acciones solo de las celdas `TICKETS:*`? Es así para los tipos de TICKETS,
+ * COMPRAS y EQUIPOS (L21). Un tipo de EDILICIA también las toma, pero las suma a las suyas (L35), y
+ * queda afuera.
  *
  * @param moduloDelTipo Valor de `tipos_ticket.modulo` del tipo.
- * @returns `true` si el origen de sus acciones son las celdas de TICKETS.
+ * @returns `true` si el único origen de sus acciones son las celdas de TICKETS.
  */
 export function tomaCeldasDeTickets(moduloDelTipo: string): boolean {
-  return ORIGEN_POR_MODULO_DEL_TIPO[moduloDelTipo] === 'TICKETS';
+  const origenes = ORIGENES_POR_MODULO_DEL_TIPO[moduloDelTipo];
+  return origenes !== undefined && origenes.length === 1 && origenes[0] === 'TICKETS';
 }
 
 /**
@@ -126,7 +130,9 @@ export function tomaCeldasDeTickets(moduloDelTipo: string): boolean {
  * plantillas de rol y los tests (D4).
  *
  * Imprimir se concede a quien resulte con Ver; Borrar no se concede nunca. Las celdas de un
- * módulo distinto del origen del tipo no cuentan.
+ * módulo que no es origen del tipo no cuentan. Con varios orígenes, el resultado es la unión.
+ * Un tipo que no es de TICKETS pero toma sus celdas (COMPRAS y EQUIPOS por L23, EDILICIA por L35)
+ * no da nada a quien no tiene ninguna celda del módulo del tipo.
  *
  * @param celdas Celdas de la matriz master del usuario, como códigos `MODULO:ACCION`.
  * @param moduloDelTipo Valor de `tipos_ticket.modulo` del tipo.
@@ -137,20 +143,25 @@ export function accionesDeTipoDesdeCeldas(
   moduloDelTipo: string,
 ): Set<AccionTipoTicket> {
   const acciones = new Set<AccionTipoTicket>();
-  const origen: ModuloOrigen | undefined = ORIGEN_POR_MODULO_DEL_TIPO[moduloDelTipo];
-  if (origen === undefined) return acciones;
-  // Un tipo de COMPRAS o EQUIPOS toma las celdas de TICKETS, pero hoy (S0) solo lo ve quien tiene
-  // alguna celda de su propio módulo: sin ella, la migración no puede darle acceso (S7).
-  if (origen !== moduloDelTipo && !celdas.some((celda) => celda.startsWith(`${moduloDelTipo}:`))) {
+  const origenes = ORIGENES_POR_MODULO_DEL_TIPO[moduloDelTipo];
+  if (origenes === undefined) return acciones;
+  // Un tipo de COMPRAS, EQUIPOS o EDILICIA toma las celdas de TICKETS, pero hoy (S0) solo lo ve
+  // quien tiene alguna celda de su propio módulo: sin ella, la migración no puede darle acceso (S7).
+  if (
+    origenes.some((origen) => origen !== moduloDelTipo) &&
+    !celdas.some((celda) => celda.startsWith(`${moduloDelTipo}:`))
+  ) {
     return acciones;
   }
 
-  const traduccion = TRADUCCION_L11[origen];
-  const prefijo = `${origen}:`;
-  for (const celda of celdas) {
-    if (!celda.startsWith(prefijo)) continue;
-    const concedidas = traduccion[celda.slice(prefijo.length)] ?? [];
-    for (const accion of concedidas) acciones.add(accion);
+  for (const origen of origenes) {
+    const traduccion = TRADUCCION_L11[origen];
+    const prefijo = `${origen}:`;
+    for (const celda of celdas) {
+      if (!celda.startsWith(prefijo)) continue;
+      const concedidas = traduccion[celda.slice(prefijo.length)] ?? [];
+      for (const accion of concedidas) acciones.add(accion);
+    }
   }
 
   if (acciones.has('LECTURA')) acciones.add('IMPRESION');

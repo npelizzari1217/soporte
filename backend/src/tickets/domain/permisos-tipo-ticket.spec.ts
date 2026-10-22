@@ -9,6 +9,7 @@ import {
   problemaDeFilaDeTipo,
 } from './permisos-tipo-ticket';
 import { PARES_VALIDOS } from '../../shared/domain/acciones';
+import { PRESETS_ROL } from '../../auth/domain/presets-rol';
 
 /** El resultado como lista ordenada, para comparar sin depender del orden de inserción. */
 function ordenadas(acciones: ReadonlySet<AccionTipoTicket>): AccionTipoTicket[] {
@@ -75,10 +76,10 @@ describe('accionesDeTipoDesdeCeldas — tipo de módulo TICKETS (L11)', () => {
   });
 });
 
-describe('accionesDeTipoDesdeCeldas — tipo de módulo EDILICIA (L11)', () => {
-  it('EDILICIA:LECTURA da Ver, Ver todos e Imprimir', () => {
+describe('accionesDeTipoDesdeCeldas — tipo de módulo EDILICIA (L11, L35)', () => {
+  it('EDILICIA:LECTURA da solo Ver e Imprimir: Ver todos no sale de Edilicia (JD-A-002)', () => {
     expect(ordenadas(accionesDeTipoDesdeCeldas(['EDILICIA:LECTURA'], 'EDILICIA'))).toEqual(
-      ['IMPRESION', 'LECTURA', 'VER_TODOS'].sort(),
+      ['IMPRESION', 'LECTURA'].sort(),
     );
   });
 
@@ -96,10 +97,50 @@ describe('accionesDeTipoDesdeCeldas — tipo de módulo EDILICIA (L11)', () => {
     expect(accionesDeTipoDesdeCeldas(['EDILICIA:BORRADO'], 'EDILICIA').size).toBe(0);
   });
 
-  it('las celdas de TICKETS no alcanzan a un tipo de EDILICIA', () => {
+  it('sin ninguna celda de EDILICIA, las de TICKETS no dan acciones: hoy no ve esos tickets (S7)', () => {
     const celdas = ['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:ASIGNAR', 'TICKETS:OBSERVAR'];
 
     expect(accionesDeTipoDesdeCeldas(celdas, 'EDILICIA').size).toBe(0);
+  });
+
+  it('con alguna celda de EDILICIA suma la traducción de TICKETS a la de EDILICIA (JD-A-001)', () => {
+    const celdas = ['TICKETS:ASIGNAR', 'TICKETS:OBSERVAR', 'EDILICIA:ALTAS'];
+
+    expect(ordenadas(accionesDeTipoDesdeCeldas(celdas, 'EDILICIA'))).toEqual(
+      ['ALTAS', 'ASIGNAR', 'OBSERVAR'].sort(),
+    );
+  });
+
+  it('Ver todos sobre un tipo de EDILICIA sale solo de TICKETS:VER_TODOS (JD-A-002)', () => {
+    const sinVerTodos = ['EDILICIA:LECTURA', 'EDILICIA:ALTAS', 'EDILICIA:MODIFICACION'];
+
+    expect(accionesDeTipoDesdeCeldas(sinVerTodos, 'EDILICIA').has('VER_TODOS')).toBe(false);
+    expect(
+      accionesDeTipoDesdeCeldas([...sinVerTodos, 'TICKETS:VER_TODOS'], 'EDILICIA').has('VER_TODOS'),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['USUARIO', ['LECTURA', 'ALTAS', 'COMENTAR', 'IMPRESION']],
+    ['COLABORADOR', ['LECTURA', 'VER_TODOS', 'ALTAS', 'COMENTAR', 'IMPRESION']],
+    [
+      'TECNICO',
+      [
+        'LECTURA',
+        'VER_TODOS',
+        'ALTAS',
+        'MODIFICACION',
+        'TRANSICIONAR',
+        'ASIGNAR',
+        'COMENTAR',
+        'OBSERVAR',
+        'IMPRESION',
+      ],
+    ],
+  ])('la plantilla de %s da sobre un tipo de EDILICIA exactamente %j', (rol, esperadas) => {
+    expect(ordenadas(accionesDeTipoDesdeCeldas(PRESETS_ROL[rol], 'EDILICIA'))).toEqual(
+      [...esperadas].sort(),
+    );
   });
 });
 
@@ -159,7 +200,7 @@ describe('accionesDeTipoDesdeCeldas — bordes', () => {
     );
 
     expect(ordenadas(acciones)).toEqual(
-      ['COMENTAR', 'IMPRESION', 'LECTURA', 'MODIFICACION', 'TRANSICIONAR', 'VER_TODOS'].sort(),
+      ['COMENTAR', 'IMPRESION', 'LECTURA', 'MODIFICACION', 'TRANSICIONAR'].sort(),
     );
   });
 });
@@ -173,10 +214,13 @@ describe('filasDeTiposDesdeCeldas — plantilla de rol sobre todos los tipos (T4
   it('traduce las celdas por el módulo de cada tipo, una fila por par (tipo, acción)', () => {
     const filas = filasDeTiposDesdeCeldas(['TICKETS:LECTURA', 'EDILICIA:MODIFICACION'], tipos);
 
+    // El tipo de EDILICIA suma TICKETS:LECTURA porque el usuario tiene una celda de EDILICIA (L35).
     expect(filas.map((f) => `${f.tipoId}:${f.accion}`).sort()).toEqual(
       [
         'tipo-soporte:LECTURA',
         'tipo-soporte:IMPRESION',
+        'tipo-mantenimiento:LECTURA',
+        'tipo-mantenimiento:IMPRESION',
         'tipo-mantenimiento:MODIFICACION',
         'tipo-mantenimiento:TRANSICIONAR',
         'tipo-mantenimiento:COMENTAR',

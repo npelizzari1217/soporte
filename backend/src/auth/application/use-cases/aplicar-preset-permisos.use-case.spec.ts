@@ -34,7 +34,9 @@ const FILAS_TECNICO = [
   'tipo-mantenimiento:ALTAS',
   'tipo-mantenimiento:MODIFICACION',
   'tipo-mantenimiento:TRANSICIONAR',
+  'tipo-mantenimiento:ASIGNAR',
   'tipo-mantenimiento:COMENTAR',
+  'tipo-mantenimiento:OBSERVAR',
   'tipo-mantenimiento:IMPRESION',
 ].sort();
 
@@ -214,7 +216,7 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
       expect(porTipo.clientes).toEqual(['cliente-token']);
     });
 
-    it('USUARIO: ver, crear y comentar en TICKETS sin ver todos; ver todos en EDILICIA', async () => {
+    it('USUARIO: ver, crear y comentar sin ver todos, en TICKETS y en EDILICIA (L35)', async () => {
       const porTipo = permisosPorTipoEnMemoria();
       const useCase = new AplicarPresetPermisosUseCase(matrizCon(), porTipo.puerto);
 
@@ -232,8 +234,8 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
           'tipo-soporte:COMENTAR',
           'tipo-soporte:IMPRESION',
           'tipo-mantenimiento:LECTURA',
-          'tipo-mantenimiento:VER_TODOS',
           'tipo-mantenimiento:ALTAS',
+          'tipo-mantenimiento:COMENTAR',
           'tipo-mantenimiento:IMPRESION',
         ].sort(),
       );

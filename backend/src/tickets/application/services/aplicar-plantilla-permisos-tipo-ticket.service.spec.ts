@@ -10,7 +10,10 @@ const TIPOS = [
   { id: 'mantenimiento', modulo: 'EDILICIA' },
 ];
 
-/** Filas esperadas de un TECNICO: sus celdas de TICKETS y EDILICIA traducidas por L11. */
+/**
+ * Filas esperadas de un TECNICO: sus celdas de TICKETS y EDILICIA traducidas por L11. El tipo de
+ * EDILICIA suma la traducción de TICKETS (L35).
+ */
 const FILAS_TECNICO = [
   'soporte:LECTURA',
   'soporte:VER_TODOS',
@@ -26,7 +29,9 @@ const FILAS_TECNICO = [
   'mantenimiento:ALTAS',
   'mantenimiento:MODIFICACION',
   'mantenimiento:TRANSICIONAR',
+  'mantenimiento:ASIGNAR',
   'mantenimiento:COMENTAR',
+  'mantenimiento:OBSERVAR',
   'mantenimiento:IMPRESION',
 ].sort();
 
@@ -49,7 +54,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
     expect(repo.filasDe(USUARIO)).toEqual(FILAS_TECNICO);
   });
 
-  it('la plantilla de USUARIO da ver, crear y comentar sin ver todos en TICKETS', async () => {
+  it('la plantilla de USUARIO da ver, crear y comentar sin ver todos en TICKETS y EDILICIA', async () => {
     const { repo, servicio } = armar();
 
     await servicio.ejecutar({
@@ -65,8 +70,8 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
         'soporte:COMENTAR',
         'soporte:IMPRESION',
         'mantenimiento:LECTURA',
-        'mantenimiento:VER_TODOS',
         'mantenimiento:ALTAS',
+        'mantenimiento:COMENTAR',
         'mantenimiento:IMPRESION',
       ].sort(),
     );

@@ -39,11 +39,18 @@ const USUARIOS = {
     activa: true,
     celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS', 'TICKETS:OBSERVAR', 'KB:LECTURA'],
   },
-  // EDILICIA:BORRADO (desvincular compra) sigue siendo permiso del módulo (L21).
+  // EDILICIA:BORRADO (desvincular compra) sigue siendo permiso del módulo (L21). Con una celda de
+  // EDILICIA, el tipo de EDILICIA suma también sus celdas de TICKETS (L35).
   edilicia: {
     rol: 'TECNICO',
     activa: true,
-    celdas: ['EDILICIA:LECTURA', 'EDILICIA:MODIFICACION', 'EDILICIA:BORRADO'],
+    celdas: [
+      'TICKETS:LECTURA',
+      'TICKETS:ASIGNAR',
+      'EDILICIA:LECTURA',
+      'EDILICIA:MODIFICACION',
+      'EDILICIA:BORRADO',
+    ],
   },
   // Con una celda de COMPRAS: el tipo de COMPRAS toma sus celdas de TICKETS (L23).
   compras: {
@@ -59,15 +66,20 @@ const USUARIOS = {
 type NombreUsuario = keyof typeof USUARIOS;
 
 /**
- * Filas esperadas como `usuario|tipo|accion`, escritas a mano desde L11 y L23 (no derivadas de
- * la traducción). Tipos: SOP (TICKETS), BAJA (TICKETS, dado de baja), COM (COMPRAS), EQU
+ * Filas esperadas como `usuario|tipo|accion`, escritas a mano desde L11, L23 y L35 (no derivadas
+ * de la traducción). Tipos: SOP (TICKETS), BAJA (TICKETS, dado de baja), COM (COMPRAS), EQU
  * (EQUIPOS, nadie tiene celdas de EQUIPOS) y PREVENTIVO (EDILICIA, sembrado por la migración).
+ * PREVENTIVO no recibe filas de quien no tiene ninguna celda de EDILICIA, ni VER_TODOS sin
+ * `TICKETS:VER_TODOS`.
  */
 const ESPERADAS = [
   ...['SOP', 'BAJA'].flatMap((t) =>
     ['LECTURA', 'ALTAS', 'OBSERVAR', 'IMPRESION'].map((a) => `tickets|${t}|${a}`),
   ),
-  ...['LECTURA', 'VER_TODOS', 'MODIFICACION', 'TRANSICIONAR', 'COMENTAR', 'IMPRESION'].map(
+  ...['SOP', 'BAJA'].flatMap((t) =>
+    ['LECTURA', 'ASIGNAR', 'IMPRESION'].map((a) => `edilicia|${t}|${a}`),
+  ),
+  ...['LECTURA', 'ASIGNAR', 'MODIFICACION', 'TRANSICIONAR', 'COMENTAR', 'IMPRESION'].map(
     (a) => `edilicia|PREVENTIVO|${a}`,
   ),
   ...['SOP', 'BAJA', 'COM'].flatMap((t) =>

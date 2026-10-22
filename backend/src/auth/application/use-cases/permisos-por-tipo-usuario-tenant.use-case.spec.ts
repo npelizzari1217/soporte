@@ -99,8 +99,9 @@ describe('PermisosPorTipoUsuarioTenantUseCase (odd/permisos-por-tipo-ticket, T7,
             modulo: 'EDILICIA',
             activo: true,
             acciones: [],
-            // EDILICIA:LECTURA da también Ver todos (L11).
-            plantilla: ['LECTURA', 'VER_TODOS', 'ALTAS', 'IMPRESION'],
+            // Un tipo de Edilicia suma las celdas de TICKETS; Ver todos sale solo de
+            // TICKETS:VER_TODOS, que USUARIO no tiene (L35).
+            plantilla: ['LECTURA', 'ALTAS', 'COMENTAR', 'IMPRESION'],
           },
           {
             tipoId: 'tipo-soporte',

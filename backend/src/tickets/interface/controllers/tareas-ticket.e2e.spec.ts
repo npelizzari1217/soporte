@@ -809,10 +809,13 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       const escena = await escenario();
       const edilicia = await ticketConTarea(escena, 'EDILICIA');
       const soporte = await ticketConTarea(escena, 'TICKETS');
-      // `EDILICIA:LECTURA` da Ver y Ver todos sobre los tipos de Edilicia (L11) y nada sobre los de
-      // TICKETS. Desde T5b (D5 d) la ruta del detalle ya no exige la celda `TICKETS:LECTURA`: el
-      // lector ve el detalle del ticket de Edilicia y no el de TICKETS, igual que sus tareas.
-      const lector = await actor(escena.clienteA, 'COLABORADOR', ['EDILICIA:LECTURA']);
+      // Sobre un tipo de Edilicia, `EDILICIA:LECTURA` da Ver y `TICKETS:VER_TODOS` da Ver todos
+      // (L35). Sobre un tipo de TICKETS, Ver todos sin `TICKETS:LECTURA` no alcanza para ver. Desde
+      // T5b (D5 d) la ruta del detalle no exige celdas: decide el permiso por tipo.
+      const lector = await actor(escena.clienteA, 'COLABORADOR', [
+        'EDILICIA:LECTURA',
+        'TICKETS:VER_TODOS',
+      ]);
       const detalleEdilicia = await http<{ id: string }>(
         'GET',
         `${baseUrl}/tickets/${edilicia.ticketId}`,
@@ -851,18 +854,33 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
       expect(await a.client.tareaTicket.count({ where: { ticketId, descripcion: 'X' } })).toBe(0);
     });
 
-    it('con EDILICIA:ALTAS pero sin EDILICIA:LECTURA no ve el ticket de Edilicia: listar sus tareas es 404 (S3)', async () => {
+    it('con EDILICIA:ALTAS y sin ninguna celda de lectura no ve el ticket de Edilicia: listar sus tareas es 404 (S3, L34)', async () => {
       const escena = await escenario();
       const { ticketId } = await ticketConTarea(escena, 'EDILICIA');
-      const sinLectura = await actor(escena.clienteA, 'TECNICO', [
+      const sinLectura = await actor(escena.clienteA, 'TECNICO', ['EDILICIA:ALTAS']);
+
+      const res = await http('GET', rutas(ticketId).base, sinLectura.token);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('con celdas de TICKETS y una celda de Edilicia, un tipo de Edilicia toma la lectura de TICKETS (L35)', async () => {
+      const escena = await escenario();
+      const { ticketId, tareaId } = await ticketConTarea(escena, 'EDILICIA');
+      const conTickets = await actor(escena.clienteA, 'TECNICO', [
         'TICKETS:LECTURA',
         'TICKETS:VER_TODOS',
         'EDILICIA:ALTAS',
       ]);
 
-      const res = await http('GET', rutas(ticketId).base, sinLectura.token);
+      const res = await http<TareasTicketResponseDto>(
+        'GET',
+        rutas(ticketId).base,
+        conTickets.token,
+      );
 
-      expect(res.status).toBe(404);
+      expect(res.status).toBe(200);
+      expect(res.data.items.map((t) => t.id)).toEqual([tareaId]);
     });
 
     it('aislamiento: un lector de Edilicia del cliente B no lista las tareas de un ticket de Edilicia del cliente A', async () => {

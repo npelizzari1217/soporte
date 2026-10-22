@@ -95,8 +95,9 @@ export function tieneAccionEnAlgunTipo(
  * filtra por responsable? Reproduce la regla anterior a la etapa 1 (`TICKETS:ASIGNAR` o
  * `TICKETS:VER_TODOS`) sobre los permisos por tipo, para que la migración no cambie el acceso (S7):
  * `ASIGNAR` sobre cualquier tipo (ninguna celda de EDILICIA se traduce a `ASIGNAR`, L11), o
- * `VER_TODOS` sobre un tipo que toma las celdas de TICKETS (`tomaCeldasDeTickets`). Un `VER_TODOS`
- * de EDILICIA no cuenta: viene de `EDILICIA:LECTURA`, que no abría la lista. Sin restricción
+ * `VER_TODOS` sobre un tipo que toma las celdas de TICKETS (`tomaCeldasDeTickets`). Basta mirar esos
+ * tipos: todo `VER_TODOS` sale de `TICKETS:VER_TODOS` (L35), que también lo da sobre los tipos de
+ * TICKETS. Sin restricción
  * (`null`, ROOT y ADMINISTRADOR), siempre.
  *
  * @param alcance Alcance del actor.

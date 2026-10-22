@@ -35,7 +35,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   los botones y en "Nuevo ticket" ofrece solo los tipos con Crear; es comodidad, no control.
 - **S7** — Migración sin cambio de acceso el día del deploy: en cada tipo, cada usuario recibe las
   acciones que hoy tiene en el módulo de ese tipo, según la tabla de L11. `EDILICIA:LECTURA` da
-  también Ver todos (hoy Edilicia no filtra). Imprimir se da a quien tenga Ver. Borrar arranca
+  solo Ver; Ver todos sale de `TICKETS:VER_TODOS` (L35). Imprimir se da a quien tenga Ver. Borrar arranca
   vacío. ADMINISTRADOR y ROOT no cambian. La migración es aditiva: los permisos `TICKETS:*` y
   `EDILICIA:*` de tickets se retiran recién en una etapa posterior, verificado el modelo nuevo.
 - **S8** — Borrar ticket no existe hoy (no hay endpoint). Es funcionalidad nueva y va en una etapa
@@ -306,3 +306,11 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   el ver al usuario". Se mantiene L11 tal cual: una matriz a mano con celdas de Edilicia sin
   `EDILICIA:LECTURA` queda sin acceso tras el deploy y el administrador asigna Ver desde la grilla.
   Las filas sin Ver que deje el backfill se muestran con aviso y la grilla obliga a corregirlas.
+- **L35** (judgment-day de la etapa 1) — Dos críticos (juez A) sobre la tabla L11. JD-A-001: los
+  tipos de Edilicia no tomaban las celdas de TICKETS, así que un TECNICO perdía asignar y notas
+  internas sobre tickets edilicios y un USUARIO perdía comentar los suyos. JD-A-002: `EDILICIA:LECTURA`
+  daba VER_TODOS y un USUARIO pasaba a ver, bajar el PDF y adjuntar en tickets edilicios ajenos.
+  Dueño: "vamos con la B" — un tipo de Edilicia toma también las celdas de TICKETS si el usuario
+  tiene alguna celda de EDILICIA (como L23), y VER_TODOS en Edilicia sale solo de
+  `TICKETS:VER_TODOS`. Consecuencia aceptada: un USUARIO deja de ver reparaciones ajenas en
+  `/reparaciones`. Cinco advertencias registradas para corregir fuera de la ronda.

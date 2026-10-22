@@ -261,15 +261,20 @@ describe('Plantillas de rol por tipo de ticket por los endpoints de /usuarios (T
   }
 
   // S7: el acceso a `GET /usuarios` no cambia con la migración. Antes exigía `TICKETS:ASIGNAR` o
-  // `TICKETS:VER_TODOS`; la plantilla USUARIO no tiene ninguna, aunque su `EDILICIA:LECTURA` se
-  // traduzca a VER_TODOS sobre los tipos de Edilicia (L11).
+  // `TICKETS:VER_TODOS`; la plantilla USUARIO no tiene ninguna, y su `EDILICIA:LECTURA` ya no se
+  // traduce a VER_TODOS sobre los tipos de Edilicia (L35).
   it('GET /usuarios con las filas de la plantilla USUARIO → 403, con las de TECNICO → 200 (S7)', async () => {
     const usuarioId = await crearUsuarioPorEndpoint('lista-usuario', 'USUARIO');
-    await crearUsuarioPorEndpoint('lista-tecnico', 'TECNICO');
-    // Precondición del caso: el USUARIO tiene VER_TODOS en Edilicia y no en Tickets.
+    const tecnicoId = await crearUsuarioPorEndpoint('lista-tecnico', 'TECNICO');
+    // El USUARIO no recibe VER_TODOS en ningún tipo; el TECNICO conserva sobre Edilicia las acciones
+    // de sus celdas de TICKETS (L35).
     const filas = await filasDe(usuarioId);
-    expect(filas).toContain(`${tipoEdiliciaId}:VER_TODOS`);
+    expect(filas).not.toContain(`${tipoEdiliciaId}:VER_TODOS`);
     expect(filas).not.toContain(`${tipoSoporteId}:VER_TODOS`);
+    expect(filas).toContain(`${tipoEdiliciaId}:COMENTAR`);
+    const filasTecnico = await filasDe(tecnicoId);
+    expect(filasTecnico).toContain(`${tipoEdiliciaId}:ASIGNAR`);
+    expect(filasTecnico).toContain(`${tipoEdiliciaId}:OBSERVAR`);
 
     expect(await listarUsuariosComo('lista-usuario')).toBe(403);
     expect(await listarUsuariosComo('lista-tecnico')).toBe(200);
