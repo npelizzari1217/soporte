@@ -323,3 +323,7 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   todos. Regla única `tiposAbiertosParaPlantilla`, también en el importador legacy. Seis e2e de
   reparaciones ajustados a L35 (`c4f52483`). 3120 tests en verde en auth, tickets, test,
   prisma_master y scripts.
+- **L37** (cierre de la etapa 1) — JUDGMENT: APPROVED (dos críticos verificados en la re-revisión;
+  tres advertencias corregidas en L36). Suite completa sobre `9b29cf2a`: backend 763 archivos y
+  9454 tests, frontend 280 archivos y 2440 tests, lint y typecheck en cero en los dos.
+  Pendiente para el deploy: `predeploy-dump.ps1` (hay migración tenant y backfill, paso 8c).
