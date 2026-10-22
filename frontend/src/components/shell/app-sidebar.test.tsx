@@ -99,13 +99,13 @@ describe("AppSidebar", () => {
     expect(screen.queryByRole("link", { name: /tickets/i })).not.toBeInTheDocument();
   });
 
-  it("LECTURA en un tipo de EDILICIA y en ninguno de TICKETS → ve Edilicia y no Tickets (S5)", () => {
+  it("LECTURA en un tipo de EDILICIA y en ninguno de TICKETS → ve Edilicia y también Tickets (S5)", () => {
     renderWithUser(
       usuario,
       permisosDeTest({ "tipo-mantenimiento": ["LECTURA"] }, { "tipo-mantenimiento": "EDILICIA" }),
     );
     expect(screen.getByRole("link", { name: /edilicia/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /tickets/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /tickets/i })).toBeInTheDocument();
   });
 
   it("sin hidratación del servidor, el ítem aparece cuando llegan los permisos del backend", async () => {

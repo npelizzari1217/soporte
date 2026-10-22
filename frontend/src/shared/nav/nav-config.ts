@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import type { JwtPayload } from "@/shared/api/types";
 import { ETIQUETAS_MODULOS } from "@/shared/auth/etiquetas-modulos";
-import { puedeEnModulo, type PermisosPorTipo } from "@/shared/auth/permisos-por-tipo";
+import {
+  puedeEnAlgunTipo,
+  puedeEnModulo,
+  type PermisosPorTipo,
+} from "@/shared/auth/permisos-por-tipo";
 
 /**
  * nav-config — single source of truth for the sidebar navigation (ADR-4).
@@ -39,7 +43,7 @@ export interface NavItem {
     isGlobalAdmin: boolean,
     canModulo: (modulo: string) => boolean,
     esAdminCliente: boolean,
-    leeTiposDe: (modulo: string) => boolean,
+    leeTiposDe: (modulo?: string) => boolean,
   ) => boolean;
 }
 
@@ -66,9 +70,10 @@ const DEFAULT_SECTION_ITEMS: NavItem[] = [
     href: "/tickets",
     label: ETIQUETAS_MODULOS.TICKETS,
     icon: Ticket,
-    // LECTURA sobre algún tipo de TICKETS (odd/permisos-por-tipo-ticket, S5): mismo predicado que
-    // el gate de `/tickets` y que el inicio. La celda `TICKETS:LECTURA` ya no decide el listado.
-    visible: (_can, _iga, _canModulo, _esAdminCliente, leeTiposDe) => leeTiposDe("TICKETS"),
+    // LECTURA sobre algún tipo de CUALQUIER módulo (odd/permisos-por-tipo-ticket, S5): el
+    // listado ya trae todos los tipos con Ver, así que quien solo ve tipos de EDILICIA sigue el
+    // estado de lo pedido desde acá. Mismo predicado que el gate de `/tickets` y que el inicio.
+    visible: (_can, _iga, _canModulo, _esAdminCliente, leeTiposDe) => leeTiposDe(),
   },
   {
     href: "/dashboard",
@@ -244,8 +249,13 @@ export function visibleNavSections(
   // porque esta función no es un hook (consume el payload directo).
   const esAdminCliente = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
   // El backend no restringe por tipo a ROOT ni a ADMINISTRADOR (`esAdminDeCliente`).
-  const leeTiposDe = (modulo: string): boolean =>
-    user !== null && (esAdminCliente || puedeEnModulo(permisosPorTipo, modulo, "LECTURA"));
+  // Sin `modulo`, alcanza con LECTURA en algún tipo de cualquier módulo.
+  const leeTiposDe = (modulo?: string): boolean =>
+    user !== null &&
+    (esAdminCliente ||
+      (modulo === undefined
+        ? puedeEnAlgunTipo(permisosPorTipo, "LECTURA")
+        : puedeEnModulo(permisosPorTipo, modulo, "LECTURA")));
 
   return NAV_SECTIONS.filter(
     (section) => section.visible?.(isGlobalAdmin) ?? true,

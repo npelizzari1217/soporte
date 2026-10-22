@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { usuarioDeLaCookie } from "@/shared/auth/modulo-layout-gate";
 import { permisosPorTipoDelServidor } from "@/shared/auth/permisos-por-tipo-servidor";
-import { puedeEnModulo } from "@/shared/auth/permisos-por-tipo";
+import { puedeEnAlgunTipo, puedeEnModulo } from "@/shared/auth/permisos-por-tipo";
 
 /**
  * Gate server-side de un área de tickets (`/tickets`, `/edilicia`) por permisos POR TIPO
@@ -14,13 +14,19 @@ import { puedeEnModulo } from "@/shared/auth/permisos-por-tipo";
  * sin respuesta del backend deja pasar (refresh tolerante, R26) y decide la vista en el cliente,
  * que nunca redirige: así el gate y el inicio no pueden entrar en ciclo.
  *
- * @param modulo Módulo de los tipos del área.
+ * @param modulo Módulo de los tipos del área; sin él, alcanza con `LECTURA` sobre algún tipo de
+ *   cualquier módulo (`/tickets`, que lista todos los tipos con Ver).
  */
-export async function tiposLayoutGate(modulo: string): Promise<void> {
+export async function tiposLayoutGate(modulo?: string): Promise<void> {
   const user = await usuarioDeLaCookie();
   if (!user) return;
   const permisos = await permisosPorTipoDelServidor();
-  if (permisos && !puedeEnModulo(permisos, modulo, "LECTURA")) {
+  if (!permisos) return;
+  const lee =
+    modulo === undefined
+      ? puedeEnAlgunTipo(permisos, "LECTURA")
+      : puedeEnModulo(permisos, modulo, "LECTURA");
+  if (!lee) {
     redirect("/");
   }
 }

@@ -58,6 +58,26 @@ describe("tiposLayoutGate (odd/permisos-por-tipo-ticket, S5, T6)", () => {
     expect(redirect).toHaveBeenCalledWith("/");
   });
 
+  it("sin módulo (`/tickets`) deja pasar con LECTURA en un tipo de cualquier módulo", async () => {
+    permisosActuales = {
+      sinRestriccion: false,
+      porTipo: { "tipo-mantenimiento": ["LECTURA"], "tipo-soporte": ["ALTAS"] },
+      porModulo: { EDILICIA: ["LECTURA"], TICKETS: ["ALTAS"] },
+    };
+    await expect(tiposLayoutGate()).resolves.toBeUndefined();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("sin módulo y sin LECTURA en ningún tipo manda al inicio", async () => {
+    permisosActuales = {
+      sinRestriccion: false,
+      porTipo: { "tipo-soporte": ["ALTAS", "COMENTAR"] },
+      porModulo: { TICKETS: ["ALTAS", "COMENTAR"] },
+    };
+    await expect(tiposLayoutGate()).rejects.toThrow("NEXT_REDIRECT");
+    expect(redirect).toHaveBeenCalledWith("/");
+  });
+
   it("sin token legible deja pasar (refresh tolerante) y no consulta los permisos", async () => {
     usuarioActual = null;
     permisosActuales = permisos({});
