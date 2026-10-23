@@ -21,7 +21,6 @@ import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/t
 import { CompraEntity } from '../../../compras/domain/entities/compra.entity';
 import { VincularCompraAReparacionUseCase } from '../../../reparaciones/application/use-cases/vincular-compra-a-reparacion.use-case';
 import { PrismaReparacionCompraRepository } from '../../../reparaciones/infrastructure/persistence/prisma/prisma-reparacion-compra.repository';
-import { PrismaTicketEdiliciaRepository } from '../../../reparaciones/infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
@@ -67,7 +66,6 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
   const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
   const bloqueoRepo = new PrismaBloqueoTicketRepository(tenantContext);
-  const ediliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
   const reparacionCompraRepo = new PrismaReparacionCompraRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
   const siempreEditable = { verificar: async () => Result.ok(undefined) };
@@ -261,9 +259,8 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
     expect(await codigosDelHistorial(ticketId)).toEqual(['TICKET_BORRADO']);
   });
 
-  it('vincular una compra a la reparación de un ticket borrado después de cargarlo: 404 y sin vínculo', async () => {
+  it('vincular una compra a un ticket borrado después de cargarlo: 404 y sin vínculo', async () => {
     const ticketId = await nuevoTicket();
-    const reparacion = await client.ticketEdilicia.create({ data: { ticketId } });
     secuencia += 1;
     const compra = await client.compra.create({
       data: {
@@ -274,7 +271,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
         cicloId,
       },
     });
-    // La compra se valida después de cargar la reparación y su ticket: ahí corre el borrado.
+    // La compra se valida después de cargar el ticket: ahí corre el borrado.
     const compraRepo = {
       findByIdConItems: async (): Promise<CompraEntity | null> => {
         expect((await borrarTicket(ticketId)).isOk()).toBe(true);
@@ -294,13 +291,12 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
 
     const result = await enTenant(() =>
       new VincularCompraAReparacionUseCase(
-        ediliciaRepo,
         compraRepo,
         reparacionCompraRepo,
         ticketRepo,
         txRunner,
       ).execute({
-        ticketEdiliciaId: reparacion.id,
+        ticketId,
         compraId: compra.id,
         alcance: alcanceSinRestriccion(ADMIN),
       }),
@@ -309,9 +305,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(await deletedAt(ticketId)).not.toBeNull();
-    expect(
-      await client.reparacionCompra.count({ where: { ticketEdiliciaId: reparacion.id } }),
-    ).toBe(0);
+    expect(await client.ticketCompra.count({ where: { ticketId } })).toBe(0);
   });
 
   it('borrar mientras se crea una tarea: espera el lock, ve la tarea nueva y responde 422', async () => {

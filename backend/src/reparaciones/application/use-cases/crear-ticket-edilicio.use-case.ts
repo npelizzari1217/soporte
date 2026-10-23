@@ -27,7 +27,7 @@ import {
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import {
   TIPO_CODIGO_EDILICIA,
-  TIPO_CODIGO_PREVENTIVO,
+  admiteAltaManual,
 } from '../../../tickets/domain/tipos-ticket.constants';
 import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
@@ -37,8 +37,9 @@ import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.
  * DTO de entrada de `CrearTicketEdilicioUseCase`.
  *
  * `tipoId` es opcional: sin él, el tipo es 'EDILICIA' (catálogo FIJO sembrado en Fase 1). Con
- * él, tiene que ser un tipo ACTIVO del módulo EDILICIA que no sea PREVENTIVO, que lo genera solo el
- * barrido (odd/tasks/tipos-ticket-por-modulo.md, S2).
+ * él, tiene que ser un tipo ACTIVO que admita un alta manual (`admiteAltaManual`): desde
+ * odd/ticket-unificado (S2) la pantalla de Edilicia crea tickets de cualquier tipo, salvo
+ * PREVENTIVO, que lo genera solo el barrido.
  *
  * `solicitanteId`/`autorId` = JWT.sub. `anio` lo resuelve el controller
  * (server-side, nunca el cliente HTTP).
@@ -51,12 +52,12 @@ export interface CrearTicketEdilicioDto {
   prioridadId: string;
   /** Tipo elegido en el alta; ausente o `null` = EDILICIA. */
   tipoId?: string | null;
-  /** Ubicación física de la reparación, texto libre (opcional). Va al satélite. */
-  ubicacion?: string | null;
   /**
-   * Sector del cliente (odd/ubicacion-sector-ticket). Va al ticket, como en cualquier otro módulo.
-   * La Ubicación general del ticket NO se carga en Edilicia: Edilicia usa su propia `ubicacion`.
+   * Ubicación física, texto libre (opcional). Va al ticket: desde odd/ticket-unificado (S1) es la
+   * única ubicación, la misma que se edita desde Tickets.
    */
+  ubicacion?: string | null;
+  /** Sector del cliente (odd/ubicacion-sector-ticket). Va al ticket, como en cualquier otro módulo. */
   sectorId?: string | null;
   solicitanteId: string;
   clienteId: string;
@@ -84,13 +85,17 @@ export interface TicketEdilicioCreado {
  * (F3-E1, ADR-3).
  *
  * Extiende el patrón de `CrearTicketCompraUseCase` agregando la creación del
- * satélite `ticket_edilicia` en la MISMA transacción (`ubicacion` es texto
- * libre, opcional — sin catálogo que validar, ex-Ubicacion removido):
+ * satélite `ticket_edilicia` en la MISMA transacción. La ubicación (texto libre,
+ * opcional) va al ticket (odd/ticket-unificado, S1). El satélite se sigue creando,
+ * sin ubicación, solo hasta que T4 lo retire: con él, un ticket nuevo sigue
+ * apareciendo en Edilicia si el código vuelve a la versión anterior (el rollback
+ * de la migración 20261024120000 y el listado viejo se arman sobre el satélite):
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
  * 2b. Si viene `sectorId`, valida que exista (no se exige activo) →
  *    `SectorTicketInexistenteError` (odd/ubicacion-sector-ticket).
- * 3. Resuelve el tipo: el elegido en `tipoId` (validado por `resolverTipo`) o, sin él, EDILICIA
+ * 3. Resuelve el tipo: el elegido en `tipoId` (validado por `resolverTipo`: activo y con alta
+ *    manual) o, sin él, EDILICIA
  *    por código (catálogo FIJO — su ausencia es un fallo de infraestructura, `throw` defensivo).
  *    Exige `ALTAS` sobre el tipo resuelto (odd/permisos-por-tipo-ticket, D5 c): 403 sin escribir.
  * 4. Resuelve el estado NUEVO y el tipo de operación CAMBIO_ESTADO
@@ -203,7 +208,7 @@ export class CrearTicketEdilicioUseCase {
         cicloId: cicloActivo.id,
         ticketReferenciaId: null,
         solicitanteId: dto.solicitanteId,
-        // La Ubicación general queda en null a propósito: Edilicia usa la del satélite.
+        ubicacion: dto.ubicacion ?? null,
         sectorId: dto.sectorId ?? null,
       });
 
@@ -220,10 +225,7 @@ export class CrearTicketEdilicioUseCase {
         asignacion,
       });
 
-      const ticketEdilicia = TicketEdiliciaEntity.create({
-        ticketId: ticket.id,
-        ubicacion: dto.ubicacion ?? null,
-      });
+      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id });
 
       await this.ticketRepo.save(ticket);
       for (const operacion of operaciones) {
@@ -275,7 +277,8 @@ export class CrearTicketEdilicioUseCase {
 
   /**
    * Resuelve el tipo del alta. Sin `tipoId`, EDILICIA: su ausencia es un bug de infraestructura y
-   * va como throw defensivo. Con `tipoId`, valida que el alta edilicia lo admita.
+   * va como throw defensivo. Con `tipoId`, valida que admita un alta manual, la misma regla que
+   * `POST /tickets` (odd/ticket-unificado, S2 y S6).
    */
   private async resolverTipo(
     tipoId: string | null,
@@ -295,8 +298,8 @@ export class CrearTicketEdilicioUseCase {
     if (!tipo || tipo.isDeleted() || !tipo.activo) {
       return Result.fail(new TipoTicketNoEncontradoError(tipoId));
     }
-    if (tipo.modulo !== 'EDILICIA' || tipo.codigo === TIPO_CODIGO_PREVENTIVO) {
-      return Result.fail(new TipoTicketNoPermitidoEnAltaError(tipo.codigo, 'EDILICIA'));
+    if (!admiteAltaManual(tipo)) {
+      return Result.fail(new TipoTicketNoPermitidoEnAltaError(tipo.codigo));
     }
     return Result.ok(tipo);
   }

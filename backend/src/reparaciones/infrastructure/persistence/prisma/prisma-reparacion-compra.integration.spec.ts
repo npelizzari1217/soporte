@@ -3,6 +3,10 @@
  * Postgres REAL, en una DB de TENANT EFÍMERA propia de esta suite (creada y
  * migrada en `beforeAll`, dropeada en `afterAll`).
  *
+ * Desde odd/ticket-unificado (S1) el vínculo vive en `ticket_compra` y se
+ * pide por id de TICKET, de cualquier tipo y sin satélite de Edilicia; la tabla
+ * vieja `reparacion_compra` quedó congelada y este repositorio no la escribe.
+ *
  * Precedente exacto seguido:
  * `compras/infrastructure/persistence/prisma/prisma-compra-repository.aislamiento.integration.spec.ts`
  * — DB física efímera (`soporte_prov_<slug>_<hex>_test`) vía
@@ -19,7 +23,7 @@
  * (b) `desvincular` hace hard delete real de la fila.
  * (c) vincular con `compra_id` inexistente → la FK RESTRICT lo rechaza.
  * (d) una compra vinculada con `deleted_at IS NOT NULL` NO vuelve en
- *     `findComprasVinculadasByTicketEdiliciaIds` (D6) — el test crea la
+ *     `findComprasVinculadasByTicketIds` (D6) — el test crea la
  *     compra, la vincula, confirma que SÍ vuelve, recién después la
  *     soft-deletea y confirma que DEJA de volver. Afirma el comportamiento
  *     explícitamente, no lo prueba por omisión.
@@ -58,7 +62,7 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
   let tenantContext: TenantContext;
   let repo: PrismaReparacionCompraRepository;
 
-  let tipoEdiliciaId: string;
+  let tipoSoporteId: string;
   let estadoNuevoId: string;
   let prioridadMediaId: string;
   let cicloId: string;
@@ -76,22 +80,19 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
     );
   }
 
-  /** Crea el árbol mínimo (Ticket + TicketEdilicia) para tener un `ticketEdiliciaId` válido. */
-  async function crearTicketEdiliciaId(): Promise<string> {
+  /** Crea un ticket de un tipo de TICKETS, SIN satélite de Edilicia: el vínculo ya no lo pide. */
+  async function crearTicketId(): Promise<string> {
     const ticket = await tenantClient.ticket.create({
       data: {
         numero: `WU2-${randomBytes(5).toString('hex')}`,
-        titulo: 'Reparación edilicia de test WU2',
-        tipoId: tipoEdiliciaId,
+        titulo: 'Ticket de test WU2',
+        tipoId: tipoSoporteId,
         estadoId: estadoNuevoId,
         prioridadId: prioridadMediaId,
         solicitanteId: DUMMY_USUARIO_ID,
       },
     });
-    const edilicia = await tenantClient.ticketEdilicia.create({
-      data: { ticketId: ticket.id },
-    });
-    return edilicia.id;
+    return ticket.id;
   }
 
   /** Crea una compra mínima (sin ítems, no bloquea la vinculación en sí). */
@@ -120,13 +121,13 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
 
     const tipo = await tenantClient.tipoTicket.create({
       data: {
-        codigo: 'WU2_TEST_EDILICIA',
-        nombre: 'Edilicia Test WU2',
+        codigo: 'WU2_TEST_SOPORTE',
+        nombre: 'Soporte Test WU2',
         activo: true,
-        modulo: 'EDILICIA',
+        modulo: 'TICKETS',
       },
     });
-    tipoEdiliciaId = tipo.id;
+    tipoSoporteId = tipo.id;
 
     const estado = await tenantClient.estado.create({
       data: { codigo: 'WU2_TEST_NUEVO', nombre: 'Nuevo Test WU2', orden: 1, activo: true },
@@ -160,55 +161,57 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
   }, 60_000);
 
   it('(a) vincular dos veces el mismo par crea una sola fila, sin error', async () => {
-    const ticketEdiliciaId = await crearTicketEdiliciaId();
+    const ticketId = await crearTicketId();
     const compraId = await crearCompraId();
 
     await withTenant(async () => {
-      await repo.vincular(ticketEdiliciaId, compraId);
-      await repo.vincular(ticketEdiliciaId, compraId);
+      await repo.vincular(ticketId, compraId);
+      await repo.vincular(ticketId, compraId);
     });
 
-    const filas = await tenantClient.reparacionCompra.findMany({
-      where: { ticketEdiliciaId, compraId },
+    const filas = await tenantClient.ticketCompra.findMany({
+      where: { ticketId, compraId },
     });
     expect(filas).toHaveLength(1);
+    // La tabla congelada no se escribe más (odd/ticket-unificado).
+    expect(await tenantClient.reparacionCompra.count({ where: { compraId } })).toBe(0);
   });
 
   it('(b) desvincular() hace hard delete real de la fila', async () => {
-    const ticketEdiliciaId = await crearTicketEdiliciaId();
+    const ticketId = await crearTicketId();
     const compraId = await crearCompraId();
 
     await withTenant(async () => {
-      await repo.vincular(ticketEdiliciaId, compraId);
-      await repo.desvincular(ticketEdiliciaId, compraId);
+      await repo.vincular(ticketId, compraId);
+      await repo.desvincular(ticketId, compraId);
     });
 
-    const filas = await tenantClient.reparacionCompra.findMany({
-      where: { ticketEdiliciaId, compraId },
+    const filas = await tenantClient.ticketCompra.findMany({
+      where: { ticketId, compraId },
     });
     expect(filas).toHaveLength(0);
   });
 
   it('(c) vincular con compra_id inexistente es rechazado por la FK RESTRICT', async () => {
-    const ticketEdiliciaId = await crearTicketEdiliciaId();
+    const ticketId = await crearTicketId();
     const compraIdInexistente = randomUUID();
 
     await withTenant(async () => {
-      await expect(repo.vincular(ticketEdiliciaId, compraIdInexistente)).rejects.toThrow();
+      await expect(repo.vincular(ticketId, compraIdInexistente)).rejects.toThrow();
     });
   });
 
   it('(d) una compra vinculada con deleted_at IS NOT NULL NO vuelve en el lote (D6)', async () => {
-    const ticketEdiliciaId = await crearTicketEdiliciaId();
+    const ticketId = await crearTicketId();
     const compraId = await crearCompraId();
 
     await withTenant(async () => {
-      await repo.vincular(ticketEdiliciaId, compraId);
+      await repo.vincular(ticketId, compraId);
 
       // Primero, ACTIVA: tiene que volver. Sin esta afirmación, el test de
       // abajo no distinguiría "la filtré" de "nunca la inserté".
-      const antes = await repo.findComprasVinculadasByTicketEdiliciaIds([ticketEdiliciaId]);
-      expect(antes.get(ticketEdiliciaId)?.map((c) => c.compraId)).toEqual([compraId]);
+      const antes = await repo.findComprasVinculadasByTicketIds([ticketId]);
+      expect(antes.get(ticketId)?.map((c) => c.compraId)).toEqual([compraId]);
 
       // Ahora, soft-delete de la compra (no del vínculo).
       await tenantClient.compra.update({
@@ -216,16 +219,16 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
         data: { deletedAt: new Date() },
       });
 
-      const despues = await repo.findComprasVinculadasByTicketEdiliciaIds([ticketEdiliciaId]);
-      expect(despues.has(ticketEdiliciaId)).toBe(false);
+      const despues = await repo.findComprasVinculadasByTicketIds([ticketId]);
+      expect(despues.has(ticketId)).toBe(false);
     });
   });
 
   it('(e) ids=[] no dispara ninguna consulta a la base', async () => {
-    const spy = vi.spyOn(tenantClient.reparacionCompra, 'findMany');
+    const spy = vi.spyOn(tenantClient.ticketCompra, 'findMany');
 
     await withTenant(async () => {
-      const resultado = await repo.findComprasVinculadasByTicketEdiliciaIds([]);
+      const resultado = await repo.findComprasVinculadasByTicketIds([]);
       expect(resultado).toEqual(new Map());
     });
 
@@ -233,8 +236,30 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
     spy.mockRestore();
   });
 
+  it('el lote agrupa por ticket y ordena cada lista por número de compra', async () => {
+    const ticketA = await crearTicketId();
+    const ticketB = await crearTicketId();
+    const [primera, segunda, tercera] = [
+      await crearCompraId(),
+      await crearCompraId(),
+      await crearCompraId(),
+    ];
+
+    await withTenant(async () => {
+      // Se vinculan fuera de orden: el orden del resultado es el del número, no el de alta.
+      await repo.vincular(ticketA, tercera);
+      await repo.vincular(ticketA, primera);
+      await repo.vincular(ticketB, segunda);
+
+      const lote = await repo.findComprasVinculadasByTicketIds([ticketA, ticketB]);
+
+      expect(lote.get(ticketA)?.map((c) => c.compraId)).toEqual([primera, tercera]);
+      expect(lote.get(ticketB)?.map((c) => c.compraId)).toEqual([segunda]);
+    });
+  });
+
   it('el mapper arma la vista estructural completa: numero, ítems no eliminados con comprado/entregado derivados', async () => {
-    const ticketEdiliciaId = await crearTicketEdiliciaId();
+    const ticketId = await crearTicketId();
     const compraId = await crearCompraId();
 
     await tenantClient.itemCompra.create({
@@ -271,9 +296,9 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
     });
 
     await withTenant(async () => {
-      await repo.vincular(ticketEdiliciaId, compraId);
-      const vinculadas = await repo.findComprasVinculadasByTicketEdiliciaIds([ticketEdiliciaId]);
-      const [compra] = vinculadas.get(ticketEdiliciaId) ?? [];
+      await repo.vincular(ticketId, compraId);
+      const vinculadas = await repo.findComprasVinculadasByTicketIds([ticketId]);
+      const [compra] = vinculadas.get(ticketId) ?? [];
 
       expect(compra?.compraId).toBe(compraId);
       expect(compra?.cancelada).toBe(false);

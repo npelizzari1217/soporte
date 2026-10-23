@@ -66,17 +66,15 @@ export class TipoTicketNoEncontradoError extends DomainError {
 }
 
 /**
- * TipoTicketNoPermitidoEnAltaError — el tipo existe y está activo, pero el alta que lo recibe no
- * lo admite: es de otro módulo, o es un tipo reservado a otro flujo (PREVENTIVO lo genera solo
- * el barrido). → HTTP 422 en la capa de presentación.
+ * TipoTicketNoPermitidoEnAltaError — el tipo existe y está activo, pero no admite un alta manual
+ * (`admiteAltaManual`): es de un módulo sin alta de tipo, o es un tipo reservado a otro flujo
+ * (PREVENTIVO lo genera solo el barrido). → HTTP 422 en la capa de presentación.
  */
 export class TipoTicketNoPermitidoEnAltaError extends DomainError {
   readonly code = 'TIPO_TICKET_NO_PERMITIDO_EN_ALTA';
 
-  constructor(tipoCodigo: string, moduloAlta: string) {
-    super(
-      `El tipo de ticket "${tipoCodigo}" no se puede usar en el alta del módulo ${moduloAlta}.`,
-    );
+  constructor(tipoCodigo: string) {
+    super(`El tipo de ticket "${tipoCodigo}" no admite altas manuales.`);
   }
 }
 
@@ -560,7 +558,7 @@ export class TipoOrigenPermisosDeOtroModuloError extends DomainError {
 /**
  * TicketConPendientesNoBorrableError — el ticket todavía tiene trabajo abierto que se perdería de
  * vista al ocultarlo (odd/tasks/permisos-por-tipo-ticket.md, S8, L40): tareas pendientes (activas y
- * sin completar) o compras vinculadas a su reparación. El mensaje nombra qué resolver antes de
+ * sin completar) o compras vinculadas. El mensaje nombra qué resolver antes de
  * borrar. → HTTP 422.
  */
 export class TicketConPendientesNoBorrableError extends DomainError {
@@ -568,7 +566,7 @@ export class TicketConPendientesNoBorrableError extends DomainError {
 
   /**
    * @param tareasPendientes Cantidad de tareas activas sin completar.
-   * @param comprasVinculadas Números de las compras vinculadas a la reparación del ticket.
+   * @param comprasVinculadas Números de las compras vinculadas al ticket.
    */
   constructor(tareasPendientes: number, comprasVinculadas: readonly string[]) {
     const pendientes: string[] = [];
@@ -581,7 +579,7 @@ export class TicketConPendientesNoBorrableError extends DomainError {
     }
     if (comprasVinculadas.length > 0) {
       pendientes.push(
-        `desvincular de la reparación ${
+        `desvincular del ticket ${
           comprasVinculadas.length === 1 ? 'la compra' : 'las compras'
         } ${comprasVinculadas.join(', ')}`,
       );

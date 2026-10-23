@@ -14,24 +14,22 @@ import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { ESTADOS_PRE_PROCESO } from '../../../tickets/domain/state-machine/estados.constants';
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import {
-  ReparacionNoEditableError,
-  TicketEdiliciaNoEncontradoError,
-} from '../../domain/errors/reparaciones.errors';
+import { ReparacionNoEditableError } from '../../domain/errors/reparaciones.errors';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
-import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
-import { puedeOperarReparacion } from '../services/acceso-reparacion';
+import {
+  AlcanceActorTicket,
+  puedeOperarTicket,
+} from '../../../tickets/application/services/visibilidad-ticket';
 
 /** Entrada de `EditarReparacionUseCase`. Un campo ausente no se toca; `null` limpia. */
 export interface EditarReparacionDto {
-  reparacionId: string;
+  /** Id del ticket (las rutas de reparaciones lo resuelven desde el satélite, `ResolutorReparacion`). */
+  ticketId: string;
   titulo?: string;
   descripcion?: string | null;
   prioridadId?: string;
-  /** Ubicación propia de Edilicia (`ticket_edilicia.ubicacion`), no la general del ticket. */
+  /** Ubicación del ticket: desde odd/ticket-unificado (S1) es una sola, la de `tickets.ubicacion`. */
   ubicacion?: string | null;
   sectorId?: string | null;
   /** ROOT (`is_global_admin`): salta la regla "no se empezó a trabajar", nunca el bloqueo por compra. */
@@ -40,15 +38,16 @@ export interface EditarReparacionDto {
   alcance: AlcanceActorTicket;
 }
 
+/** Resultado de la edición: el ticket guardado y el nombre de su sector vigente. */
 export interface ReparacionEditada {
   ticket: TicketEntity;
-  ticketEdilicia: TicketEdiliciaEntity;
   sectorNombre: string | null;
 }
 
 /**
- * EditarReparacionUseCase — edita una reparación desde Edilicia (odd/detalle-ticket-legible, S4-S5):
- * título, descripción, prioridad y sector del ticket base, y la ubicación propia del satélite.
+ * EditarReparacionUseCase — edita un ticket desde Edilicia (odd/detalle-ticket-legible, S4-S5):
+ * título, descripción, prioridad, sector y ubicación, todos del ticket (odd/ticket-unificado, S1:
+ * la ubicación del satélite quedó congelada). Vale para un ticket de cualquier tipo.
  *
  * Regla "no se empezó a trabajar" (decisión del dueño): se edita si el ticket está NUEVO o ASIGNADO y
  * ninguna tarea activa está completada; fuera de eso, solo ROOT. Una reparación **bloqueada** (con
@@ -58,8 +57,8 @@ export interface ReparacionEditada {
  * 1. Validaciones de catálogo fuera de la transacción: prioridad y sector tienen que existir (un
  *    sector desactivado sigue siendo válido, como al editar el ticket).
  * 2. Dentro de la transacción, con la fila del ticket bloqueada ANTES de leer
- *    (odd/escrituras-manuales-con-lock): carga satélite y ticket, evalúa la regla sobre el estado
- *    vigente y las tareas actuales, muta las dos entidades y las guarda juntas. Con la fila ya
+ *    (odd/escrituras-manuales-con-lock): carga el ticket, evalúa la regla sobre el estado vigente,
+ *    las compras vinculadas y las tareas actuales, y lo guarda. Con la fila ya
  *    bloqueada exige además ver el ticket base (404 si no) y `MODIFICACION` sobre su tipo (403;
  *    odd/permisos-por-tipo-ticket, D5 c), así que una reasignación concurrente no cambia la decisión.
  * 3. Post-commit: si cambió la prioridad, publica `TicketReprioritizadoEvent` (el módulo SLA recalcula
@@ -67,7 +66,6 @@ export interface ReparacionEditada {
  */
 export class EditarReparacionUseCase {
   constructor(
-    private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById' | 'save'>,
     private readonly ticketRepo: Pick<
       ITicketRepository,
       'findById' | 'bloquear' | 'save' | 'esVisiblePara'
@@ -75,7 +73,7 @@ export class EditarReparacionUseCase {
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
     private readonly reparacionCompraRepo: Pick<
       IReparacionCompraRepository,
-      'findComprasVinculadasByTicketEdiliciaIds'
+      'findComprasVinculadasByTicketIds'
     >,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly prioridadRepo: Pick<IPrioridadRepository, 'findById'>,
@@ -84,6 +82,10 @@ export class EditarReparacionUseCase {
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run' | 'alCommitear'>,
   ) {}
 
+  /**
+   * @param dto Ticket, campos a cambiar y actor.
+   * @returns El ticket editado; 404, 403 o 422 según corresponda.
+   */
   async execute(dto: EditarReparacionDto): Promise<Result<ReparacionEditada, DomainError>> {
     if (dto.prioridadId !== undefined) {
       const prioridad = await this.prioridadRepo.findById(dto.prioridadId);
@@ -98,7 +100,7 @@ export class EditarReparacionUseCase {
 
     const edicion = await this.txRunner.run(() => this.editarBloqueada(dto));
     if (edicion.isFail()) return Result.fail(edicion.getError());
-    const { ticket, ticketEdilicia, cambioPrioridad } = edicion.getValue();
+    const { ticket, cambioPrioridad } = edicion.getValue();
 
     if (cambioPrioridad) {
       this.txRunner.alCommitear(() =>
@@ -114,43 +116,27 @@ export class EditarReparacionUseCase {
       const vigente = await this.sectorRepo.findById(ticket.sectorId);
       sectorNombre = vigente?.nombre ?? null;
     }
-    return Result.ok({ ticket, ticketEdilicia, sectorNombre });
+    return Result.ok({ ticket, sectorNombre });
   }
 
-  /** Lock, carga, regla y guardado de las dos entidades, dentro de la transacción. */
+  /** Lock, carga, regla y guardado del ticket, dentro de la transacción. */
   private async editarBloqueada(
     dto: EditarReparacionDto,
-  ): Promise<
-    Result<
-      { ticket: TicketEntity; ticketEdilicia: TicketEdiliciaEntity; cambioPrioridad: boolean },
-      DomainError
-    >
-  > {
-    const satelite = await this.ticketEdiliciaRepo.findById(dto.reparacionId);
-    if (!satelite || satelite.isDeleted()) {
-      return Result.fail(new TicketEdiliciaNoEncontradoError(dto.reparacionId));
-    }
-
-    await this.ticketRepo.bloquear(satelite.ticketId);
-    const ticket = await this.ticketRepo.findById(satelite.ticketId);
+  ): Promise<Result<{ ticket: TicketEntity; cambioPrioridad: boolean }, DomainError>> {
+    await this.ticketRepo.bloquear(dto.ticketId);
+    const ticket = await this.ticketRepo.findById(dto.ticketId);
     if (!ticket || ticket.isDeleted()) {
-      return Result.fail(new TicketNoEncontradoError(satelite.ticketId));
+      return Result.fail(new TicketNoEncontradoError(dto.ticketId));
     }
-    const acceso = await puedeOperarReparacion(
-      this.ticketRepo,
-      ticket,
-      dto.reparacionId,
-      dto.alcance,
-      'MODIFICACION',
-    );
+    const acceso = await puedeOperarTicket(this.ticketRepo, ticket, dto.alcance, 'MODIFICACION');
     if (acceso.isFail()) {
       return Result.fail(acceso.getError());
     }
 
     // El bloqueo por compra no lo salta nadie: se evalúa antes que la regla de ROOT.
     const vinculadas =
-      (await this.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds([satelite.id])).get(
-        satelite.id,
+      (await this.reparacionCompraRepo.findComprasVinculadasByTicketIds([ticket.id])).get(
+        ticket.id,
       ) ?? [];
     if (comprasQueBloquean(vinculadas).length > 0) {
       return Result.fail(new ReparacionNoEditableError('BLOQUEADA'));
@@ -177,12 +163,11 @@ export class EditarReparacionUseCase {
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       prioridadId: dto.prioridadId,
+      ubicacion: dto.ubicacion,
       sectorId: dto.sectorId,
     });
-    if (dto.ubicacion !== undefined) satelite.actualizarUbicacion(dto.ubicacion);
 
     await this.ticketRepo.save(ticket);
-    await this.ticketEdiliciaRepo.save(satelite);
-    return Result.ok({ ticket, ticketEdilicia: satelite, cambioPrioridad });
+    return Result.ok({ ticket, cambioPrioridad });
   }
 }

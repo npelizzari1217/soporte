@@ -38,12 +38,12 @@ function validarTitulo(titulo?: string): void {
 
 /**
  * Tope de largo de `ubicacion`, espejando `Ticket.ubicacion VarChar(255)`
- * (`prisma_tenant/schema.prisma`). Mismo criterio que
- * `TICKET_EDILICIA_UBICACION_MAX_LENGTH`: el dominio es la autoridad del
- * límite y los DTOs lo importan de acá.
+ * (`prisma_tenant/schema.prisma`). El dominio es la autoridad del límite y los
+ * DTOs lo importan de acá, también los de Edilicia: desde odd/ticket-unificado
+ * la ubicación de una reparación es la del ticket.
  *
- * `ubicacion` es texto libre y NO se normaliza en ningún borde (igual que la
- * ubicación de Edilicia): el borde mide el mismo string que mide el dominio.
+ * `ubicacion` es texto libre y NO se normaliza en ningún borde: el borde mide
+ * el mismo string que mide el dominio.
  */
 export const TICKET_UBICACION_MAX_LENGTH = 255;
 
@@ -103,8 +103,9 @@ export interface TicketProps {
   /** Fecha de cierre. Seteada por el use case al transicionar a RESUELTO/CERRADO (T12). */
   fechaCierre: Date | null;
   /**
-   * Ubicación general, texto libre (odd/ubicacion-sector-ticket). Es otra cosa que la ubicación del
-   * satélite de Edilicia. Opcional en el tipo, como `solicitanteExternoId`; ausente equivale a `null`.
+   * Ubicación, texto libre (odd/ubicacion-sector-ticket). Desde odd/ticket-unificado (S1) es la única
+   * del ticket, también para Edilicia. Opcional en el tipo, como `solicitanteExternoId`; ausente
+   * equivale a `null`.
    */
   ubicacion?: string | null;
   /**

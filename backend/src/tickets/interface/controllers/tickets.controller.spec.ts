@@ -663,13 +663,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     );
   });
 
-  it('create: exige tipos del módulo TICKETS y responde 422 a un tipo de otro módulo (S3)', async () => {
+  it('create: es un alta manual y responde 422 a un tipo que no la admite (odd/ticket-unificado, S6)', async () => {
     const crearTicket = {
       execute: vi
         .fn<CrearTicketUseCase['execute']>()
-        .mockResolvedValue(
-          Result.fail(new TipoTicketNoPermitidoEnAltaError('MANTENIMIENTO', 'TICKETS')),
-        ),
+        .mockResolvedValue(Result.fail(new TipoTicketNoPermitidoEnAltaError('PREVENTIVO'))),
     };
     const { controller } = buildController({ crearTicket });
 
@@ -681,11 +679,9 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
 
     await expect(promesa).rejects.toBeInstanceOf(UnprocessableEntityException);
     await expect(promesa).rejects.toThrow(
-      'El tipo de ticket "MANTENIMIENTO" no se puede usar en el alta del módulo TICKETS.',
+      'El tipo de ticket "PREVENTIVO" no admite altas manuales.',
     );
-    expect(crearTicket.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ moduloRequerido: 'TICKETS' }),
-    );
+    expect(crearTicket.execute).toHaveBeenCalledWith(expect.objectContaining({ altaManual: true }));
   });
 
   it('update: null en ubicacion/sectorId llega como null (limpia); omitidos llegan undefined', async () => {
@@ -1374,7 +1370,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     [
       'TipoTicketNoPermitidoEnAltaError',
-      () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('MANTENIMIENTO', 'TICKETS'),
+      () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('PREVENTIVO'),
       422,
     ],
     ['ModuloSinAltaDeTipoError', () => new TicketsErrors.ModuloSinAltaDeTipoError('COMPRAS'), 422],

@@ -1,76 +1,71 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { VinculoNoEncontradoError } from '../../domain/errors/reparaciones.errors';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
-import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
-import { cargarReparacionParaOperar } from '../services/acceso-reparacion';
+import {
+  AlcanceActorTicket,
+  cargarTicketParaOperar,
+} from '../../../tickets/application/services/visibilidad-ticket';
 
-/** DTO de entrada para desvincular una compra de una reparación. */
+/** DTO de entrada para desvincular una compra de un ticket. */
 export interface DesvincularCompraDeReparacionDto {
-  /** UUID del `ticket_edilicia` (la reparación) de la que se desvincula la compra. */
-  ticketEdiliciaId: string;
+  /** UUID del ticket, de cualquier tipo, del que se desvincula la compra. */
+  ticketId: string;
   /** UUID de la compra a desvincular. */
   compraId: string;
-  /** Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 b). */
+  /** Permisos por tipo del actor (odd/permisos-por-tipo-ticket, D5 c). */
   alcance: AlcanceActorTicket;
 }
 
 /**
- * DesvincularCompraDeReparacionUseCase — elimina (HARD DELETE real, D5) el
- * vínculo entre una reparación y una compra (sdd/reparacion-bloqueada-por-compra,
- * WU5).
+ * DesvincularCompraDeReparacionUseCase — elimina (HARD DELETE real, D5) el vínculo entre un ticket
+ * y una compra (sdd/reparacion-bloqueada-por-compra, WU5; desde odd/ticket-unificado, S1, el
+ * vínculo es del ticket). El nombre es el heredado; T4 lo renombra.
  *
- * Verifica existencia ANTES de borrar reusando
- * `findComprasVinculadasByTicketEdiliciaIds` (el ÚNICO método de lectura que
- * expone el puerto, WU1 — no se le agrega un `existeVinculo` nuevo: el
- * puerto no se toca en WU5) — `IReparacionCompraRepository.desvincular` hace
- * un `deleteMany` silencioso que no informa si borró algo, así que sin este
- * chequeo previo un vínculo inexistente respondería 204 en vez de 404.
+ * Exige ver el ticket (404 si no) y `MODIFICACION` sobre su tipo (403; odd/ticket-unificado, S4).
+ * La celda de módulo `EDILICIA:BORRADO` que exigía la ruta antes dejó de usarse; la ruta exige
+ * `COMPRAS:LECTURA`, como al vincular.
  *
- * Antes, exige que el actor vea el ticket base de la reparación (404 si no,
- * odd/permisos-por-tipo-ticket D5 b). El permiso de desvincular en sí sigue
- * siendo la celda de módulo `EDILICIA:BORRADO` de la ruta (L21): no hay una
- * acción por tipo para esto.
+ * Verifica existencia ANTES de borrar reusando `findComprasVinculadasByTicketIds`:
+ * `IReparacionCompraRepository.desvincular` hace un `deleteMany` silencioso que no informa si borró
+ * algo, así que sin este chequeo un vínculo inexistente respondería 204 en vez de 404.
  *
  * Sin throw para fallos esperados — se modela con `Result.fail()`.
- *
- * Ref design: sdd/reparacion-bloqueada-por-compra/design, D5. Ref tasks:
- * WU5.3, WU5.4.
  */
 export class DesvincularCompraDeReparacionUseCase {
   constructor(
     private readonly reparacionCompraRepo: Pick<
       IReparacionCompraRepository,
-      'findComprasVinculadasByTicketEdiliciaIds' | 'desvincular'
+      'findComprasVinculadasByTicketIds' | 'desvincular'
     >,
-    private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
   ) {}
 
+  /**
+   * @param dto Ticket, compra y alcance del actor.
+   * @returns Ok; 404 si el ticket no existe, el actor no lo ve o el vínculo no existe; 403 sin
+   *   `MODIFICACION` sobre el tipo.
+   */
   async execute(dto: DesvincularCompraDeReparacionDto): Promise<Result<void, DomainError>> {
-    const acceso = await cargarReparacionParaOperar(
-      this.ticketEdiliciaRepo,
+    const acceso = await cargarTicketParaOperar(
       this.ticketRepo,
-      dto.ticketEdiliciaId,
+      dto.ticketId,
       dto.alcance,
+      'MODIFICACION',
     );
     if (acceso.isFail()) {
       return Result.fail(acceso.getError());
     }
 
-    const vinculadasPorReparacion =
-      await this.reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds([
-        dto.ticketEdiliciaId,
-      ]);
-    const vinculadas = vinculadasPorReparacion.get(dto.ticketEdiliciaId) ?? [];
-    const existeVinculo = vinculadas.some((compra) => compra.compraId === dto.compraId);
-
-    if (!existeVinculo) {
-      return Result.fail(new VinculoNoEncontradoError(dto.ticketEdiliciaId, dto.compraId));
+    const vinculadas =
+      (await this.reparacionCompraRepo.findComprasVinculadasByTicketIds([dto.ticketId])).get(
+        dto.ticketId,
+      ) ?? [];
+    if (!vinculadas.some((compra) => compra.compraId === dto.compraId)) {
+      return Result.fail(new VinculoNoEncontradoError(dto.ticketId, dto.compraId));
     }
 
-    await this.reparacionCompraRepo.desvincular(dto.ticketEdiliciaId, dto.compraId);
+    await this.reparacionCompraRepo.desvincular(dto.ticketId, dto.compraId);
 
     return Result.ok(undefined);
   }

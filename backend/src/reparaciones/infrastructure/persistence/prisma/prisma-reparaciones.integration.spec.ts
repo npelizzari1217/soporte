@@ -1,18 +1,18 @@
 /**
- * T7.1, T7.3 [INTEGRATION][RED→GREEN] — PrismaTicketEdiliciaRepository y
- * PrismaComentarioReparacionRepository contra Postgres
- * REAL (`soporte_tenant_test`). `ubicacion` es texto libre embebido en
- * `ticket_edilicia` (ex-catálogo Ubicacion/PrismaUbicacionRepository
- * removido).
+ * T7.1, T7.3 [INTEGRATION] — PrismaTicketEdiliciaRepository y PrismaComentarioReparacionRepository
+ * contra Postgres REAL (`soporte_tenant_test`).
  *
- * Fixtures propios prefijados `T7_TEST_*` (mismo patrón que
- * `prisma-compras.integration.spec.ts`, Fase 3 PR3): la DB de test NO corre
- * `TenantSeederAdapter` automáticamente, solo está migrada. Cleanup en
- * `afterAll` acotado por los ids de fixture de ESTA suite (nunca TRUNCATE
- * global — la DB es compartida).
+ * Desde odd/ticket-unificado (S1, S3):
+ * - el satélite lee la ubicación del TICKET y no escribe la columna vieja `ticket_edilicia.ubicacion`;
+ * - el conteo de comentarios de la grilla cuenta los COMENTARIO del timeline del ticket, separados
+ *   por visibilidad, y ya no lee `comentarios_reparacion`.
  *
- * Ref spec: sdd/flujos-especializados/spec F3-E1, F3-E2, F3-E3. Tarea: T7.1,
- * T7.2, T7.4.
+ * Fixtures propios prefijados `T7_TEST_*`: la DB de test NO corre `TenantSeederAdapter`, solo está
+ * migrada, así que el tipo de operación COMENTARIO se crea si falta y se borra solo si lo creó esta
+ * suite (mismo criterio que `primera-respuesta.integration.spec.ts`). Cleanup acotado por los ids
+ * de fixture de ESTA suite (nunca TRUNCATE global — la DB es compartida).
+ *
+ * Ref spec: sdd/flujos-especializados/spec F3-E1, F3-E2, F3-E3. Tarea: T7.1, T7.2, T7.4.
  */
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
@@ -25,7 +25,6 @@ import { PrismaComentarioReparacionRepository } from './prisma-comentario-repara
 
 import { TicketEntity, TicketProps } from '../../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../../domain/entities/ticket-edilicia.entity';
-import { ComentarioReparacionEntity } from '../../../domain/entities/comentario-reparacion.entity';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -46,6 +45,9 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
   let tipoEdiliciaId: string;
   let estadoNuevoId: string;
   let prioridadMediaId: string;
+  let tipoComentarioId: string;
+  let tipoCambioEstadoId: string;
+  let creoTipoComentario = false;
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
   let numeroCounter = 0;
@@ -54,22 +56,14 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     return `T7${RUN_PREFIX}${String(numeroCounter).padStart(4, '0')}`;
   }
 
-  // Códigos FIJOS de los fixtures de catálogo. Al ser fijos y `unique`, una
-  // corrida anterior que muriera entre el alta y el cleanup dejaba las filas
-  // vivas y hacía fallar el `create` de TODAS las corridas siguientes con
-  // "Unique constraint failed on the fields: (`codigo`)". De ahí que la
-  // limpieza corra también AL ENTRAR, no sólo al salir.
+  // Códigos FIJOS de los fixtures de catálogo. Al ser fijos y `unique`, una corrida anterior que
+  // muriera entre el alta y el cleanup dejaba las filas vivas; de ahí que la limpieza corra también
+  // AL ENTRAR, no sólo al salir.
   const CODIGO_TIPO = 'T7_TEST_EDILICIA';
   const CODIGO_ESTADO = 'T7_TEST_NUEVO';
   const CODIGO_PRIORIDAD = 'T7_TEST_MEDIA';
 
-  /**
-   * Borra los fixtures de esta suite, acotado por sus códigos fijos. Idempotente
-   * a propósito: sirve tanto para dejar la base limpia al terminar como para
-   * recuperarla al empezar si una corrida anterior quedó a medias.
-   *
-   * Nunca un TRUNCATE global: `soporte_tenant_test` la comparten otras suites.
-   */
+  /** Borra los fixtures de esta suite, acotado por sus códigos fijos. Idempotente. */
   async function limpiarFixtures(): Promise<void> {
     const tipo = await tenantClient.tipoTicket.findUnique({
       where: { codigo: CODIGO_TIPO },
@@ -84,18 +78,12 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
       const ids = tickets.map((t) => t.id);
 
       if (ids.length > 0) {
-        // Los comentarios van PRIMERO: su FK a ticket_edilicia es ON DELETE
-        // RESTRICT, así que borrar el satélite antes falla.
-        await tenantClient.comentarioReparacion.deleteMany({
-          where: { ticketEdilicia: { ticketId: { in: ids } } },
-        });
+        await tenantClient.operacionTicket.deleteMany({ where: { ticketId: { in: ids } } });
         await tenantClient.ticketEdilicia.deleteMany({ where: { ticketId: { in: ids } } });
         await tenantClient.ticket.deleteMany({ where: { id: { in: ids } } });
       }
     }
 
-    // `deleteMany` y no `delete`: con un id `undefined` (beforeAll caído antes
-    // de sembrar) `delete` tira un error de validación que TAPA la causa real.
     await tenantClient.prioridad.deleteMany({ where: { codigo: CODIGO_PRIORIDAD } });
     await tenantClient.estado.deleteMany({ where: { codigo: CODIGO_ESTADO } });
     await tenantClient.tipoTicket.deleteMany({ where: { codigo: CODIGO_TIPO } });
@@ -127,16 +115,38 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     );
   }
 
+  /** Ticket con ubicación propia y su satélite de Edilicia. */
   async function crearTicketConSatelite(
-    ubicacion: string,
+    ubicacion: string | null,
   ): Promise<{ ticket: TicketEntity; edilicia: TicketEdiliciaEntity }> {
-    const ticket = TicketEntity.create(makeTicketProps());
-    const edilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id, ubicacion });
+    const ticket = TicketEntity.create(makeTicketProps({ ubicacion }));
+    const edilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id });
     await withTenant(async () => {
       await ticketRepo.save(ticket);
       await ediliciaRepo.save(edilicia);
     });
     return { ticket, edilicia };
+  }
+
+  /** Inserta `cantidad` operaciones de un tipo en el timeline del ticket. */
+  async function operaciones(
+    ticketId: string,
+    tipoOperacionId: string,
+    cantidad: number,
+    extra: { esInterno?: boolean; deletedAt?: Date } = {},
+  ): Promise<void> {
+    for (let i = 0; i < cantidad; i += 1) {
+      await tenantClient.operacionTicket.create({
+        data: {
+          ticketId,
+          tipoOperacionId,
+          descripcion: `Operación ${i + 1}`,
+          autorId: DUMMY_USUARIO_ID,
+          esInterno: extra.esInterno ?? false,
+          deletedAt: extra.deletedAt ?? null,
+        },
+      });
+    }
   }
 
   beforeAll(async () => {
@@ -148,201 +158,142 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     ediliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
     comentarioRepo = new PrismaComentarioReparacionRepository(tenantContext);
 
-    // Arrancar en limpio: si una corrida anterior quedó a medias, sus filas
-    // siguen vivas y el alta de acá abajo choca contra el UNIQUE de `codigo`.
     await limpiarFixtures();
 
-    const tipoEdilicia = await tenantClient.tipoTicket.create({
-      data: {
-        codigo: CODIGO_TIPO,
-        nombre: 'Edilicia Test PR7',
-        activo: true,
-        modulo: 'EDILICIA',
-      },
-    });
-    tipoEdiliciaId = tipoEdilicia.id;
+    tipoEdiliciaId = (
+      await tenantClient.tipoTicket.create({
+        data: {
+          codigo: CODIGO_TIPO,
+          nombre: 'Edilicia Test PR7',
+          activo: true,
+          modulo: 'EDILICIA',
+        },
+      })
+    ).id;
+    estadoNuevoId = (
+      await tenantClient.estado.create({
+        data: { codigo: CODIGO_ESTADO, nombre: 'Nuevo Test PR7', orden: 1, activo: true },
+      })
+    ).id;
+    prioridadMediaId = (
+      await tenantClient.prioridad.create({
+        data: { codigo: CODIGO_PRIORIDAD, nombre: 'Media Test PR7', orden: 1, activo: true },
+      })
+    ).id;
 
-    const estadoNuevo = await tenantClient.estado.create({
-      data: { codigo: CODIGO_ESTADO, nombre: 'Nuevo Test PR7', orden: 1, activo: true },
+    const comentario = await tenantClient.tipoOperacion.findUnique({
+      where: { codigo: 'COMENTARIO' },
     });
-    estadoNuevoId = estadoNuevo.id;
-
-    const prioridadMedia = await tenantClient.prioridad.create({
-      data: { codigo: CODIGO_PRIORIDAD, nombre: 'Media Test PR7', orden: 1, activo: true },
-    });
-    prioridadMediaId = prioridadMedia.id;
+    if (comentario) {
+      tipoComentarioId = comentario.id;
+    } else {
+      tipoComentarioId = (
+        await tenantClient.tipoOperacion.create({
+          data: { codigo: 'COMENTARIO', nombre: 'Comentario' },
+        })
+      ).id;
+      creoTipoComentario = true;
+    }
+    tipoCambioEstadoId = (
+      await tenantClient.tipoOperacion.findUniqueOrThrow({ where: { codigo: 'CAMBIO_ESTADO' } })
+    ).id;
   }, 30_000);
 
   afterAll(async () => {
-    // Limpiar las filas ANTES de cerrar el cliente: con el pool ya cerrado los
-    // borrados no llegan a ejecutarse y la base compartida queda sucia.
+    // Limpiar las filas ANTES de cerrar el cliente: con el pool ya cerrado los borrados no llegan
+    // a ejecutarse y la base compartida queda sucia.
     await limpiarFixtures();
+    if (creoTipoComentario) {
+      await tenantClient.tipoOperacion.deleteMany({ where: { codigo: 'COMENTARIO' } });
+    }
     await prismaService.onModuleDestroy();
   }, 30_000);
 
   describe('PrismaTicketEdiliciaRepository', () => {
-    it('save() + findById() persiste y recupera el satélite, con ubicacion como texto libre', async () => {
-      const { ticket, edilicia } = await crearTicketConSatelite('T7 Ubicacion Ticket');
+    it('findById() trae la ubicación del ticket y save() no escribe la columna vieja del satélite', async () => {
+      const { ticket, edilicia } = await crearTicketConSatelite('T7 Aula 4');
 
       await withTenant(async () => {
         const found = await ediliciaRepo.findById(edilicia.id);
-        expect(found).not.toBeNull();
-        expect(found!.ticketId).toBe(ticket.id);
-        expect(found!.ubicacion).toBe('T7 Ubicacion Ticket');
+        expect(found?.ticketId).toBe(ticket.id);
+        expect(found?.ubicacion).toBe('T7 Aula 4');
       });
+      const fila = await tenantClient.ticketEdilicia.findUniqueOrThrow({
+        where: { id: edilicia.id },
+      });
+      expect(fila.ubicacion).toBeNull();
     });
 
-    it('findByTicketId() resuelve el satélite desde el ticket base', async () => {
-      const { ticket, edilicia } = await crearTicketConSatelite('T7 Ubicacion Ticket 2');
+    it('findByTicketId() resuelve el satélite desde el ticket, con la ubicación del ticket', async () => {
+      const { ticket, edilicia } = await crearTicketConSatelite('T7 Patio');
 
       await withTenant(async () => {
         const found = await ediliciaRepo.findByTicketId(ticket.id);
-        expect(found).not.toBeNull();
-        expect(found!.id).toBe(edilicia.id);
+        expect(found?.id).toBe(edilicia.id);
+        expect(found?.ubicacion).toBe('T7 Patio');
+      });
+    });
+
+    it('una ubicación vieja que quedó en el satélite no se lee: manda la del ticket (aun vacía)', async () => {
+      const { edilicia } = await crearTicketConSatelite(null);
+      await tenantClient.ticketEdilicia.update({
+        where: { id: edilicia.id },
+        data: { ubicacion: 'T7 ubicación congelada' },
+      });
+
+      await withTenant(async () => {
+        expect((await ediliciaRepo.findById(edilicia.id))?.ubicacion).toBeNull();
       });
     });
 
     it('save() de un satélite existente es upsert: no duplica la fila ni pisa createdAt', async () => {
-      const { ticket, edilicia } = await crearTicketConSatelite('T7 Ubicacion Ticket 3');
+      const { ticket, edilicia } = await crearTicketConSatelite('T7 Aula 5');
 
       await withTenant(async () => {
         const antes = await ediliciaRepo.findById(edilicia.id);
         await ediliciaRepo.save(edilicia);
         const despues = await ediliciaRepo.findById(edilicia.id);
-        expect(despues!.createdAt).toEqual(antes!.createdAt);
+        expect(despues?.createdAt).toEqual(antes?.createdAt);
         expect(await tenantClient.ticketEdilicia.count({ where: { ticketId: ticket.id } })).toBe(1);
-      });
-    });
-
-    it('findAll(alcance) filtra en la base por el tipo y la regla de fila del ticket base (permisos-por-tipo D5 e)', async () => {
-      const actor = '01900000-0000-7000-8000-000000000271';
-      const propio = TicketEntity.create(makeTicketProps());
-      propio.assignTo(actor);
-      const ajeno = TicketEntity.create(makeTicketProps());
-      const satPropio = TicketEdiliciaEntity.create({
-        ticketId: propio.id,
-        ubicacion: 'T7 alcance',
-      });
-      const satAjeno = TicketEdiliciaEntity.create({ ticketId: ajeno.id, ubicacion: 'T7 alcance' });
-
-      await withTenant(async () => {
-        for (const [ticket, sat] of [
-          [propio, satPropio],
-          [ajeno, satAjeno],
-        ] as const) {
-          await ticketRepo.save(ticket);
-          await ediliciaRepo.save(sat);
-        }
-        const ids = async (alcance: Parameters<typeof ediliciaRepo.findAll>[0]) =>
-          (await ediliciaRepo.findAll(alcance))
-            .map((e) => e.id)
-            .filter((id) => id === satPropio.id || id === satAjeno.id);
-
-        // Sin VER_TODOS: solo la reparación cuyo ticket tiene al actor de responsable.
-        expect(
-          await ids({ actorId: actor, tiposVerTodos: [], tiposPorFila: [tipoEdiliciaId] }),
-        ).toEqual([satPropio.id]);
-        // Con VER_TODOS sobre el tipo: las dos.
-        expect(
-          new Set(await ids({ actorId: actor, tiposVerTodos: [tipoEdiliciaId], tiposPorFila: [] })),
-        ).toEqual(new Set([satPropio.id, satAjeno.id]));
-        // Sin LECTURA sobre el tipo: ninguna, ni la propia (S3).
-        expect(await ids({ actorId: actor, tiposVerTodos: [], tiposPorFila: [] })).toEqual([]);
-        // Sin restricción (ROOT y ADMINISTRADOR): las dos.
-        expect(new Set(await ids(null))).toEqual(new Set([satPropio.id, satAjeno.id]));
       });
     });
   });
 
-  describe('PrismaComentarioReparacionRepository', () => {
-    it('crear() + listarPorTicketEdilicia() hace round-trip del mapper y devuelve el MÁS NUEVO PRIMERO', async () => {
-      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Comentarios');
-      // `createdAt` explícito y separado: el orden del listado se verifica
-      // contra fechas reales, no contra la velocidad del insert.
-      const viejo = ComentarioReparacionEntity.create({
-        ticketEdiliciaId: edilicia.id,
-        texto: 'Se pidió el repuesto X al proveedor',
-        autorId: DUMMY_USUARIO_ID,
+  describe('PrismaComentarioReparacionRepository.contarPorTickets (odd/ticket-unificado, S3)', () => {
+    it('cuenta los COMENTARIO activos del timeline por ticket, separados por visibilidad', async () => {
+      const a = TicketEntity.create(makeTicketProps());
+      const b = TicketEntity.create(makeTicketProps());
+      const sinComentarios = TicketEntity.create(makeTicketProps());
+      await withTenant(async () => {
+        for (const t of [a, b, sinComentarios]) await ticketRepo.save(t);
       });
-      Object.assign(viejo, { _createdAt: new Date('2026-08-18T10:00:00.000Z') });
-      const nuevo = ComentarioReparacionEntity.create({
-        ticketEdiliciaId: edilicia.id,
-        texto: 'Sigue sin llegar el repuesto X',
-        autorId: DUMMY_USUARIO_ID,
-      });
-      Object.assign(nuevo, { _createdAt: new Date('2026-08-18T15:00:00.000Z') });
+      await operaciones(a.id, tipoComentarioId, 2);
+      await operaciones(a.id, tipoComentarioId, 3, { esInterno: true });
+      // Lo que NO cuenta: otro tipo de operación, y un comentario dado de baja.
+      await operaciones(a.id, tipoCambioEstadoId, 4);
+      await operaciones(a.id, tipoComentarioId, 1, { deletedAt: new Date() });
+      await operaciones(sinComentarios.id, tipoCambioEstadoId, 1);
+      await operaciones(b.id, tipoComentarioId, 1);
 
       await withTenant(async () => {
-        await comentarioRepo.crear(viejo);
-        await comentarioRepo.crear(nuevo);
+        const conteos = await comentarioRepo.contarPorTickets([a.id, b.id, sinComentarios.id]);
 
-        const comentarios = await comentarioRepo.listarPorTicketEdilicia(edilicia.id);
-
-        expect(comentarios.map((c) => c.id)).toEqual([nuevo.id, viejo.id]);
-        // Round-trip completo del mapper sobre el más nuevo.
-        expect(comentarios[0].ticketEdiliciaId).toBe(edilicia.id);
-        expect(comentarios[0].texto).toBe('Sigue sin llegar el repuesto X');
-        expect(comentarios[0].autorId).toBe(DUMMY_USUARIO_ID);
-        expect(comentarios[0].createdAt).toEqual(new Date('2026-08-18T15:00:00.000Z'));
-        expect(comentarios[0].deletedAt).toBeNull();
+        expect(conteos.get(a.id)).toEqual({ publicos: 2, internos: 3 });
+        expect(conteos.get(b.id)).toEqual({ publicos: 1, internos: 0 });
+        // El GROUP BY no emite fila para el ticket sin comentarios: el `0` lo resuelve el consumidor.
+        expect(conteos.has(sinComentarios.id)).toBe(false);
       });
     });
 
-    it('contarPorTicketEdilicia() cuenta por lote contra la base y omite las reparaciones sin comentarios', async () => {
-      const conDos = await crearTicketConSatelite('T7 Ubicacion Conteo A');
-      const conUno = await crearTicketConSatelite('T7 Ubicacion Conteo B');
-      const sinComentarios = await crearTicketConSatelite('T7 Ubicacion Conteo C');
+    it('con lista vacía devuelve un Map vacío sin consultar', async () => {
+      const spy = vi.spyOn(tenantClient.operacionTicket, 'groupBy');
 
       await withTenant(async () => {
-        for (const [edilicia, cantidad] of [
-          [conDos.edilicia, 2],
-          [conUno.edilicia, 1],
-        ] as const) {
-          for (let i = 0; i < cantidad; i += 1) {
-            await comentarioRepo.crear(
-              ComentarioReparacionEntity.create({
-                ticketEdiliciaId: edilicia.id,
-                texto: `Comentario ${i + 1} de conteo`,
-                autorId: DUMMY_USUARIO_ID,
-              }),
-            );
-          }
-        }
-
-        const conteos = await comentarioRepo.contarPorTicketEdilicia([
-          conDos.edilicia.id,
-          conUno.edilicia.id,
-          sinComentarios.edilicia.id,
-        ]);
-
-        expect(conteos.get(conDos.edilicia.id)).toBe(2);
-        expect(conteos.get(conUno.edilicia.id)).toBe(1);
-        // El GROUP BY no emite fila para la reparación sin comentarios: el
-        // `0` lo resuelve el consumidor, no el repositorio.
-        expect(conteos.has(sinComentarios.edilicia.id)).toBe(false);
+        expect(await comentarioRepo.contarPorTickets([])).toEqual(new Map());
       });
-    });
 
-    it('contarPorTicketEdilicia() con lista vacía devuelve un Map vacío sin consultar', async () => {
-      await withTenant(async () => {
-        expect(await comentarioRepo.contarPorTicketEdilicia([])).toEqual(new Map());
-      });
-    });
-
-    it('el CHECK de DB rechaza un texto de puro whitespace aunque el dominio se saltee', async () => {
-      const { edilicia } = await crearTicketConSatelite('T7 Ubicacion Comentarios CHECK');
-
-      await withTenant(async () => {
-        await expect(
-          tenantClient.comentarioReparacion.create({
-            data: {
-              ticketEdiliciaId: edilicia.id,
-              texto: '   ',
-              autorId: DUMMY_USUARIO_ID,
-            },
-          }),
-        ).rejects.toThrow();
-      });
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
     });
   });
 });

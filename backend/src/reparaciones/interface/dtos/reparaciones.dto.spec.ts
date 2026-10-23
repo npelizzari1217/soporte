@@ -11,7 +11,7 @@ import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { CreateTicketEdilicioHttpDto, ListReparacionesQueryDto } from './reparaciones.dto';
-import { TICKET_EDILICIA_UBICACION_MAX_LENGTH } from '../../domain/entities/ticket-edilicia.entity';
+import { TICKET_UBICACION_MAX_LENGTH } from '../../../tickets/domain/entities/ticket.entity';
 
 describe('CreateTicketEdilicioHttpDto — tope de largo de titulo espejando la columna', () => {
   const prioridadId = '00000000-0000-4000-8000-000000000002';
@@ -45,7 +45,8 @@ describe('CreateTicketEdilicioHttpDto — tope de largo de titulo espejando la c
  * acota `CrearTareaTicketBodyDto` (odd/tareas-con-tecnico).
  *
  * El tope no se declara acá: se importa del dominio, para que el borde y la
- * precondición no puedan divergir.
+ * precondición no puedan divergir. Desde odd/ticket-unificado (S1) es el de
+ * `tickets.ubicacion`: la ubicación de Edilicia es la del ticket.
  */
 describe('CreateTicketEdilicioHttpDto — tope de ubicacion', () => {
   const BASE = {
@@ -56,7 +57,7 @@ describe('CreateTicketEdilicioHttpDto — tope de ubicacion', () => {
   it('acepta una ubicacion en el límite exacto', async () => {
     const dto = plainToInstance(CreateTicketEdilicioHttpDto, {
       ...BASE,
-      ubicacion: 'A'.repeat(TICKET_EDILICIA_UBICACION_MAX_LENGTH),
+      ubicacion: 'A'.repeat(TICKET_UBICACION_MAX_LENGTH),
     });
     expect((await validate(dto)).some((e) => e.property === 'ubicacion')).toBe(false);
   });
@@ -64,7 +65,7 @@ describe('CreateTicketEdilicioHttpDto — tope de ubicacion', () => {
   it('rechaza una ubicacion que pasa el tope', async () => {
     const dto = plainToInstance(CreateTicketEdilicioHttpDto, {
       ...BASE,
-      ubicacion: 'A'.repeat(TICKET_EDILICIA_UBICACION_MAX_LENGTH + 1),
+      ubicacion: 'A'.repeat(TICKET_UBICACION_MAX_LENGTH + 1),
     });
     const error = (await validate(dto)).find((e) => e.property === 'ubicacion');
     expect(error?.constraints).toHaveProperty('maxLength');
@@ -128,11 +129,19 @@ describe('ListReparacionesQueryDto — paginación y filtro de bloqueo (odd/repa
     ['porPagina', { porPagina: '0' }, 'min'],
     ['porPagina', { porPagina: '101' }, 'max'],
     ['bloqueo', { bloqueo: 'ALGUNAS' }, 'isIn'],
+    // El tipo del selector de la pantalla (odd/ticket-unificado, S2) es un id, no un código.
+    ['tipo', { tipo: 'SOPORTE' }, 'isUuid'],
   ])('rechaza %s inválido (%o) por %s', async (campo, query, restriccion) => {
     const { errores: e } = await errores(query);
     expect(e).toHaveLength(1);
     expect(e[0].property).toBe(campo);
     expect(e[0].constraints).toHaveProperty(restriccion);
+  });
+
+  it('acepta un tipo con forma de UUID (odd/ticket-unificado, S2)', async () => {
+    const { dto, errores: e } = await errores({ tipo: '9f1a0b2c-3d4e-4f50-8a61-72b83c94d5e6' });
+    expect(e).toEqual([]);
+    expect(dto.tipo).toBe('9f1a0b2c-3d4e-4f50-8a61-72b83c94d5e6');
   });
 
   it('acepta los bordes: pagina 1 y porPagina 1 y 100', async () => {

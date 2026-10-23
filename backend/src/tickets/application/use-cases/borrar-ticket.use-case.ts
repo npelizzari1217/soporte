@@ -29,7 +29,7 @@ export interface BorrarTicketDto extends AlcanceActorTicket {
  * - Acceso por el punto único (`cargarTicketParaOperar`, D2): 404 si el actor no ve el ticket, 403
  *   si lo ve sin `BORRADO` sobre su tipo. Un ticket ya borrado es 404.
  * - Se borra en cualquier estado, salvo que tenga tareas pendientes (activas y sin completar) o
- *   compras vinculadas a su reparación: 422 que nombra qué resolver (L40). Las tareas completadas,
+ *   compras vinculadas: 422 que nombra qué resolver (L40). Las tareas completadas,
  *   los adjuntos, los comentarios y el historial no frenan: quedan con el ticket.
  * - Un ticket de tipo PREVENTIVO no se borra, ni siquiera un administrador: 422 (L45). Lo genera el
  *   barrido a partir de un plan, y borrarlo haría que el barrido abra otro del mismo plan. Se

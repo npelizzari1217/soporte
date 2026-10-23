@@ -2,45 +2,33 @@
  * T6.3 [UNIT][RED→GREEN] — `TicketEdiliciaEntity`.
  *
  * create y reconstitute. `porcentajeAvance` y `personalAsignadoId` se
- * retiraron en odd/tareas-con-tecnico T8: el avance se calcula al leer.
+ * retiraron en odd/tareas-con-tecnico T8: el avance se calcula al leer. La
+ * ubicación propia se retiró en odd/ticket-unificado (S1): el satélite nace sin
+ * ubicación y, al leerlo, trae la del ticket base.
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1, F3-E3, F3-E4. Ref design:
  * "Firmas TS clave" (TicketEdiliciaEntity). Tarea: T6.3.
  */
-import {
-  TicketEdiliciaEntity,
-  TICKET_EDILICIA_UBICACION_MAX_LENGTH,
-} from './ticket-edilicia.entity';
+import { TicketEdiliciaEntity } from './ticket-edilicia.entity';
 
 describe('TicketEdiliciaEntity', () => {
   describe('create()', () => {
-    it('crea el satélite con su ticket y su ubicación', () => {
-      const entity = TicketEdiliciaEntity.create({
-        ticketId: 'ticket-uuid',
-        ubicacion: 'Oficina Central',
-      });
+    it('crea el satélite con su ticket y sin ubicación propia', () => {
+      const entity = TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid' });
 
       expect(entity.ticketId).toBe('ticket-uuid');
-      expect(entity.ubicacion).toBe('Oficina Central');
+      expect(entity.ubicacion).toBeNull();
       expect(entity.id).toMatch(/^[0-9a-f-]{36}$/);
     });
 
     it('acepta un id explícito (mapper de infraestructura)', () => {
-      const entity = TicketEdiliciaEntity.create(
-        { ticketId: 'ticket-uuid', ubicacion: 'Oficina Central' },
-        'explicit-id',
-      );
+      const entity = TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid' }, 'explicit-id');
       expect(entity.id).toBe('explicit-id');
-    });
-
-    it('ubicacion es opcional — null si no se provee', () => {
-      const entity = TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid' });
-      expect(entity.ubicacion).toBeNull();
     });
   });
 
   describe('reconstitute()', () => {
-    it('reconstruye una entidad desde persistencia', () => {
+    it('reconstruye una entidad desde persistencia, con la ubicación del ticket base', () => {
       const createdAt = new Date('2026-01-01T00:00:00Z');
       const updatedAt = new Date('2026-01-02T00:00:00Z');
 
@@ -60,42 +48,5 @@ describe('TicketEdiliciaEntity', () => {
       expect(entity.createdAt).toEqual(createdAt);
       expect(entity.deletedAt).toBeNull();
     });
-  });
-});
-
-/**
- * Tope de largo de `ubicacion`, espejando
- * `ticketsEdilicia.ubicacion VarChar(255)` (`prisma_tenant/schema.prisma`).
- *
- * Hasta este cambio no lo acotaba NINGUNA capa: ni el schema zod, ni
- * `CreateTicketEdilicioHttpDto`, ni el dominio. Un texto largo pegado en el
- * campo pasaba las dos validaciones y moría en Postgres: 22001, o sea un 500
- * crudo en vez de un 400 limpio.
- */
-describe('TicketEdiliciaEntity — tope de largo de ubicacion', () => {
-  it('acepta una ubicacion en el límite exacto', () => {
-    const t = TicketEdiliciaEntity.create({
-      ticketId: 'tk-1',
-      ubicacion: 'A'.repeat(TICKET_EDILICIA_UBICACION_MAX_LENGTH),
-    });
-    expect(t.ubicacion).toHaveLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH);
-  });
-
-  it('rechaza una ubicacion que pasa el tope', () => {
-    expect(() =>
-      TicketEdiliciaEntity.create({
-        ticketId: 'tk-1',
-        ubicacion: 'A'.repeat(TICKET_EDILICIA_UBICACION_MAX_LENGTH + 1),
-      }),
-    ).toThrow(/ubicacion excede/);
-  });
-
-  it('sigue aceptando ubicacion nula: el tope no la vuelve obligatoria', () => {
-    expect(TicketEdiliciaEntity.create({ ticketId: 'tk-1', ubicacion: null }).ubicacion).toBeNull();
-  });
-
-  /** Centinela de valor: el tope es el ancho real de la columna. */
-  it('el tope coincide con el ancho de la columna', () => {
-    expect(TICKET_EDILICIA_UBICACION_MAX_LENGTH).toBe(255);
   });
 });

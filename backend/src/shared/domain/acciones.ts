@@ -46,9 +46,12 @@ export const CATALOGO_MODULOS = {
     extras: [],
   },
   /**
-   * EDILICIA conserva solo `BORRADO`, que habilita desvincular una compra de
-   * una reparación (L21, L50.2). Ver, crear y modificar reparaciones se
-   * conceden por tipo de ticket.
+   * EDILICIA conserva solo `BORRADO`, que habilitaba desvincular una compra de
+   * una reparación (L21, L50.2). Desde odd/ticket-unificado (S4) ninguna ruta
+   * lo exige: vincular y desvincular piden `MODIFICACION` sobre el tipo del
+   * ticket y `COMPRAS:LECTURA`. La celda sigue en el catálogo porque la espejan
+   * el CHECK de master y el frontend; se retira con ellos. Ver, crear y
+   * modificar tickets se conceden por tipo.
    */
   EDILICIA: {
     piso: ['BORRADO'],

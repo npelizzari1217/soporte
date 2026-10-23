@@ -1,11 +1,11 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { Modulo } from '../../../shared/domain/modulos';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketCreadoEvent } from '../../domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
+import { admiteAltaManual } from '../../domain/tipos-ticket.constants';
 import { ResolverCicloActivoParaCreacion } from '../services/resolver-ciclo-activo.service';
 import { ResolverAsignacionAutomatica } from '../services/resolver-asignacion-automatica.service';
 import { operacionesDeApertura } from '../services/operaciones-apertura';
@@ -56,12 +56,12 @@ export interface CrearTicketDto {
   autorId: string;
   anio: number;
   /**
-   * Módulo al que debe pertenecer el tipo. Lo fija el alta genérica (`POST /tickets`, solo
-   * `TICKETS`). Ausente, acepta cualquier módulo: el barrido preventivo crea tickets
-   * `PREVENTIVO` (módulo EDILICIA) por este mismo caso de uso, y la API de integraciones no
-   * restringe el tipo.
+   * `true` en un alta manual (`POST /tickets`): el tipo tiene que admitirla (`admiteAltaManual`,
+   * odd/ticket-unificado S6: cualquier tipo de TICKETS o EDILICIA salvo PREVENTIVO). Ausente,
+   * acepta cualquier tipo: el barrido preventivo crea tickets `PREVENTIVO` por este mismo caso de
+   * uso, y la API de integraciones no restringe el tipo.
    */
-  moduloRequerido?: Modulo;
+  altaManual?: boolean;
   /**
    * Permisos por tipo del actor (odd/permisos-por-tipo-ticket, S6, D5 c): el alta exige `ALTAS`
    * sobre el tipo elegido. `null` en los flujos sin actor humano (barrido preventivo, API v1), que
@@ -76,7 +76,8 @@ export interface CrearTicketDto {
  * Flujo:
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller, T4).
- * 3. Valida que `tipoId` exista en el catálogo del tenant (T4).
+ * 3. Valida que `tipoId` exista en el catálogo del tenant (T4) y, en un alta manual, que la admita
+ *    (`TipoTicketNoPermitidoEnAltaError`).
  * 3b. Exige `ALTAS` sobre ese tipo al actor (`dto.alcance`; odd/permisos-por-tipo-ticket, D5 c):
  *    sin la acción, 403 antes de escribir nada.
  * 4. Valida que `prioridadId` exista en el catálogo del tenant (T4).
@@ -150,10 +151,8 @@ export class CrearTicketUseCase {
     if (!tipoTicket || tipoTicket.isDeleted() || !tipoTicket.activo) {
       return Result.fail(new TipoTicketNoEncontradoError(dto.tipoId));
     }
-    if (dto.moduloRequerido && tipoTicket.modulo !== dto.moduloRequerido) {
-      return Result.fail(
-        new TipoTicketNoPermitidoEnAltaError(tipoTicket.codigo, dto.moduloRequerido),
-      );
+    if (dto.altaManual === true && !admiteAltaManual(tipoTicket)) {
+      return Result.fail(new TipoTicketNoPermitidoEnAltaError(tipoTicket.codigo));
     }
 
     // 3b. ALTAS sobre el tipo elegido (D5 c). Antes de la transacción: un rechazo no escribe nada.

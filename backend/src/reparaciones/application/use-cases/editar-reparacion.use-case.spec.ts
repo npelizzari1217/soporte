@@ -1,7 +1,8 @@
 /**
  * [UNIT] `EditarReparacionUseCase` (odd/detalle-ticket-legible, S4-S5): la regla "no se empezó a
- * trabajar", el bloqueo por compra, la escritura conjunta de ticket y satélite dentro de la
- * transacción con la fila bloqueada, y el evento de reprioritización post-commit.
+ * trabajar", el bloqueo por compra, la escritura del ticket dentro de la transacción con la fila
+ * bloqueada, y el evento de reprioritización post-commit. Desde odd/ticket-unificado (S1) la
+ * ubicación es la del ticket y el caso de uso recibe el id del ticket, de cualquier tipo.
  */
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
@@ -15,21 +16,17 @@ import {
   AccionSobreTipoNoPermitidaError,
   PrioridadNoEncontradaError,
   SectorTicketInexistenteError,
+  TicketNoEncontradoError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
   alcanceSinRestriccion,
 } from '../../../tickets/test-helpers/alcance-ticket';
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import {
-  ReparacionNoEditableError,
-  TicketEdiliciaNoEncontradoError,
-} from '../../domain/errors/reparaciones.errors';
+import { ReparacionNoEditableError } from '../../domain/errors/reparaciones.errors';
 import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
 import { EditarReparacionUseCase } from './editar-reparacion.use-case';
 
 const TICKET_ID = 'ticket-1';
-const EDILICIA_ID = 'edilicia-1';
 const AHORA = new Date('2026-10-17T12:00:00Z');
 
 const estadoId = (codigo: string) => `estado-${codigo.toLowerCase()}`;
@@ -56,7 +53,6 @@ function armar(params: {
   estado?: string;
   tareas?: Array<{ completada: boolean; borrada?: boolean }>;
   bloqueada?: boolean;
-  sinSatelite?: boolean;
 }) {
   const ticket = TicketEntity.create(
     {
@@ -69,12 +65,9 @@ function armar(params: {
       cicloId: null,
       ticketReferenciaId: null,
       solicitanteId: 'usuario-solicitante',
+      ubicacion: 'Aula 1',
     },
     TICKET_ID,
-  );
-  const satelite = TicketEdiliciaEntity.create(
-    { ticketId: TICKET_ID, ubicacion: 'Aula 1' },
-    EDILICIA_ID,
   );
   const tareas = (params.tareas ?? []).map((t, i) => {
     const tarea = TareaTicketEntity.crear({ ticketId: TICKET_ID, descripcion: `t${i}`, orden: i });
@@ -102,14 +95,6 @@ function armar(params: {
     alCommitear: (fn) => void postCommit.push(fn),
   };
   const eventPublisher: IDomainEventPublisher = { publish: (e) => void publicados.push(e) };
-  const ticketEdiliciaRepo = {
-    findById: vi.fn(async (id: string) =>
-      !params.sinSatelite && id === EDILICIA_ID ? satelite : null,
-    ),
-    save: vi.fn(async (_s: TicketEdiliciaEntity) => {
-      llamadas.push('save-satelite');
-    }),
-  };
   const ticketRepo = {
     findById: vi.fn(async (id: string) => {
       llamadas.push('findById');
@@ -125,12 +110,11 @@ function armar(params: {
     }),
   };
   const useCase = new EditarReparacionUseCase(
-    ticketEdiliciaRepo,
     ticketRepo,
     { listarPorTicket: async () => tareas.filter((t) => !t.isDeleted()) },
     {
-      findComprasVinculadasByTicketEdiliciaIds: async () =>
-        new Map([[EDILICIA_ID, params.bloqueada ? [compraActiva('c1')] : []]]),
+      findComprasVinculadasByTicketIds: async (ids: string[]) =>
+        new Map(ids.map((id) => [id, params.bloqueada ? [compraActiva('c1')] : []])),
     },
     { findById: async (id) => estados.get(id) ?? null },
     {
@@ -154,9 +138,7 @@ function armar(params: {
   return {
     useCase,
     ticket,
-    satelite,
     ticketRepo,
-    ticketEdiliciaRepo,
     llamadas,
     publicados,
     commitear: () => postCommit.forEach((fn) => fn()),
@@ -164,13 +146,13 @@ function armar(params: {
 }
 
 const dtoBase = {
-  reparacionId: EDILICIA_ID,
+  ticketId: TICKET_ID,
   actorEsRoot: false,
   alcance: alcanceSinRestriccion('usuario-editor'),
 };
 
 describe('EditarReparacionUseCase: escritura (S4)', () => {
-  it('edita título, descripción, prioridad, sector y la ubicación de Edilicia, y guarda las dos entidades en la tx', async () => {
+  it('edita título, descripción, prioridad, sector y ubicación del ticket, y lo guarda en la tx', async () => {
     const c = armar({ estado: 'NUEVO', tareas: [{ completada: false }] });
 
     const r = await c.useCase.execute({
@@ -183,16 +165,16 @@ describe('EditarReparacionUseCase: escritura (S4)', () => {
     });
 
     expect(r.isOk()).toBe(true);
-    const { ticket, ticketEdilicia, sectorNombre } = r.getValue();
+    const { ticket, sectorNombre } = r.getValue();
     expect(ticket.titulo).toBe('Titulo nuevo');
     expect(ticket.descripcion).toBe('Desc nueva');
     expect(ticket.prioridadId).toBe('prioridad-alta');
     expect(ticket.sectorId).toBe('sector-1');
-    expect(ticketEdilicia.ubicacion).toBe('Aula 2');
+    // Una sola ubicación, la del ticket (odd/ticket-unificado, S1).
+    expect(ticket.ubicacion).toBe('Aula 2');
     expect(sectorNombre).toBe('Secundario');
-    // La ubicación general del ticket no se toca: Edilicia usa la suya.
-    expect(ticket.ubicacion).toBeNull();
-    expect(c.llamadas).toEqual(['run', 'bloquear', 'findById', 'save-ticket', 'save-satelite']);
+    expect(c.ticketRepo.save).toHaveBeenCalledWith(ticket);
+    expect(c.llamadas).toEqual(['run', 'bloquear', 'findById', 'save-ticket']);
   });
 
   it('un campo ausente no se toca y null limpia', async () => {
@@ -203,7 +185,7 @@ describe('EditarReparacionUseCase: escritura (S4)', () => {
     expect(r.isOk()).toBe(true);
     expect(r.getValue().ticket.titulo).toBe('Titulo original');
     expect(r.getValue().ticket.descripcion).toBeNull();
-    expect(r.getValue().ticketEdilicia.ubicacion).toBeNull();
+    expect(r.getValue().ticket.ubicacion).toBeNull();
   });
 
   it('publica ticket.reprioritizado solo después del commit y solo si la prioridad cambió', async () => {
@@ -232,13 +214,27 @@ describe('EditarReparacionUseCase: escritura (S4)', () => {
     expect(c.llamadas).toEqual([]);
   });
 
-  it('una reparación inexistente da TicketEdiliciaNoEncontradoError sin escribir', async () => {
-    const c = armar({ sinSatelite: true });
+  it('un ticket inexistente da TicketNoEncontradoError sin escribir', async () => {
+    const c = armar({});
 
-    const r = await c.useCase.execute({ ...dtoBase, titulo: 'x' });
+    const r = await c.useCase.execute({ ...dtoBase, ticketId: 'otro-ticket', titulo: 'x' });
 
-    expect(r.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+    expect(r.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('un ticket de cualquier tipo, sin satélite de Edilicia, se edita igual (odd/ticket-unificado)', async () => {
+    const c = armar({});
+
+    const r = await c.useCase.execute({
+      ...dtoBase,
+      ubicacion: 'Depósito',
+      alcance: alcancePorTipo('usuario-editor', {
+        'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+      }),
+    });
+
+    expect(r.getValue().ticket.ubicacion).toBe('Depósito');
   });
 });
 
@@ -263,7 +259,6 @@ describe('EditarReparacionUseCase: regla "no se empezó a trabajar" (S5)', () =>
 
       expect(motivoDe(r)).toBe('EN_PROCESO');
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
-      expect(c.ticketEdiliciaRepo.save).not.toHaveBeenCalled();
     },
   );
 
@@ -298,7 +293,7 @@ describe('EditarReparacionUseCase: regla "no se empezó a trabajar" (S5)', () =>
 });
 
 describe('EditarReparacionUseCase: permisos por tipo del ticket base (odd/permisos-por-tipo-ticket, D5 c)', () => {
-  it('no ve el ticket (sin LECTURA sobre su tipo) → 404 de la reparación, decidido con la fila bloqueada y sin escribir', async () => {
+  it('no ve el ticket (sin LECTURA sobre su tipo) → 404, decidido con la fila bloqueada y sin escribir', async () => {
     const c = armar({});
 
     const r = await c.useCase.execute({
@@ -309,10 +304,9 @@ describe('EditarReparacionUseCase: permisos por tipo del ticket base (odd/permis
       }),
     });
 
-    expect(r.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+    expect(r.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(c.llamadas).toEqual(['run', 'bloquear', 'findById']);
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
-    expect(c.ticketEdiliciaRepo.save).not.toHaveBeenCalled();
   });
 
   it('lo ve sin MODIFICACION sobre su tipo → 403 sin escribir', async () => {

@@ -144,11 +144,12 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 | Publicar un comentario | **Crear** o **Comentar** sobre el tipo del ticket |
 | Completar o descompletar una subtarea | El técnico de la subtarea, el responsable de la reparación, un ADMINISTRADOR o ROOT |
 | Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
-| Vincular una compra a una reparación | **Crear** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
-| Desvincular una compra de una reparación | `EDILICIA:BORRADO` |
+| Vincular una compra a una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
+| Desvincular una compra de una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
 
-Los comentarios no tienen visibilidad propia: quien puede ver la reparación, los
-ve todos.
+Los comentarios de la reparación son los comentarios del ticket: quien puede ver
+la reparación ve los públicos, y los internos solo quien tiene **Comentario
+interno** sobre el tipo.
 
 Las dos filas de compras no son una aclaración de qué botones se ven en
 pantalla: es el permiso que el servidor exige de verdad. A alguien al que le

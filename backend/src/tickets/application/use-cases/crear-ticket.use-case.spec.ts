@@ -394,38 +394,55 @@ describe('CrearTicketUseCase', () => {
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
-  describe('moduloRequerido (S3, odd/tasks/tipos-ticket-por-modulo.md)', () => {
-    const tipoEdilicia = () =>
+  describe('altaManual (odd/tasks/ticket-unificado.md, S6)', () => {
+    const tipo = (codigo: string, modulo: 'TICKETS' | 'EDILICIA' | 'COMPRAS') => () =>
       TipoTicketEntity.create(
-        { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA', activo: true },
+        { codigo, nombre: codigo, modulo, activo: true },
         'tipo-soporte-uuid',
       );
 
-    it('tipo de otro módulo → TipoTicketNoPermitidoEnAltaError (422), sin abrir la tx', async () => {
+    it.each([
+      ['MANTENIMIENTO', 'EDILICIA'],
+      ['EDILICIA', 'EDILICIA'],
+      ['SOPORTE', 'TICKETS'],
+    ] as const)(
+      'alta manual de un tipo %s (módulo %s) → crea el ticket con ese tipo',
+      async (codigo, modulo) => {
+        const c = makeCollaborators();
+        c.tipoTicketRepo.findById.mockResolvedValue(tipo(codigo, modulo)());
+
+        const result = await c.useCase.execute(baseDto({ altaManual: true }));
+
+        expect(result.isOk()).toBe(true);
+        expect(result.getValue().tipoId).toBe('tipo-soporte-uuid');
+        expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it.each([
+      ['PREVENTIVO', 'EDILICIA'],
+      ['CMP', 'COMPRAS'],
+    ] as const)(
+      'alta manual de %s (módulo %s) → TipoTicketNoPermitidoEnAltaError (422), sin abrir la tx',
+      async (codigo, modulo) => {
+        const c = makeCollaborators();
+        c.tipoTicketRepo.findById.mockResolvedValue(tipo(codigo, modulo)());
+
+        const result = await c.useCase.execute(baseDto({ altaManual: true }));
+
+        expect(result.isFail()).toBe(true);
+        expect(result.getError()).toBeInstanceOf(TipoTicketNoPermitidoEnAltaError);
+        expect(result.getError().message).toBe(
+          `El tipo de ticket "${codigo}" no admite altas manuales.`,
+        );
+        expect(c.txRunner.run).not.toHaveBeenCalled();
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('sin altaManual (preventivo, API de integraciones) acepta PREVENTIVO', async () => {
       const c = makeCollaborators();
-      c.tipoTicketRepo.findById.mockResolvedValue(tipoEdilicia());
-
-      const result = await c.useCase.execute(baseDto({ moduloRequerido: 'TICKETS' }));
-
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(TipoTicketNoPermitidoEnAltaError);
-      expect(result.getError().message).toBe(
-        'El tipo de ticket "MANTENIMIENTO" no se puede usar en el alta del módulo TICKETS.',
-      );
-      expect(c.txRunner.run).not.toHaveBeenCalled();
-    });
-
-    it('tipo del módulo requerido → crea el ticket', async () => {
-      const c = makeCollaborators();
-
-      const result = await c.useCase.execute(baseDto({ moduloRequerido: 'TICKETS' }));
-
-      expect(result.isOk()).toBe(true);
-    });
-
-    it('sin moduloRequerido (preventivo, API de integraciones) acepta un tipo de cualquier módulo', async () => {
-      const c = makeCollaborators();
-      c.tipoTicketRepo.findById.mockResolvedValue(tipoEdilicia());
+      c.tipoTicketRepo.findById.mockResolvedValue(tipo('PREVENTIVO', 'EDILICIA')());
 
       const result = await c.useCase.execute(baseDto());
 
@@ -485,18 +502,18 @@ describe('CrearTicketUseCase', () => {
       expect(result.isOk()).toBe(true);
     });
 
-    it('un tipo de otro módulo en el alta genérica sigue siendo 422 aunque tenga ALTAS sobre él', async () => {
+    it('PREVENTIVO en el alta manual sigue siendo 422 aunque tenga ALTAS sobre él', async () => {
       const c = makeCollaborators();
       c.tipoTicketRepo.findById.mockResolvedValue(
         TipoTicketEntity.create(
-          { codigo: 'MANTENIMIENTO', nombre: 'Mantenimiento', modulo: 'EDILICIA', activo: true },
+          { codigo: 'PREVENTIVO', nombre: 'Preventivo', modulo: 'EDILICIA', activo: true },
           'tipo-soporte-uuid',
         ),
       );
 
       const result = await c.useCase.execute(
         baseDto({
-          moduloRequerido: 'TICKETS',
+          altaManual: true,
           alcance: alcancePorTipo('solicitante-uuid', { 'tipo-soporte-uuid': ['ALTAS'] }),
         }),
       );

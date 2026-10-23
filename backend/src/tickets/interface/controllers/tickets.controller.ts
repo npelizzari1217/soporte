@@ -337,7 +337,8 @@ export class TicketsController {
    * `clienteId` del checker cross-DB es el `cliente_id` del JWT. `anio` lo
    * resuelve el servidor (año en curso), nunca el cliente HTTP.
    * @throws 403 sin `ALTAS` sobre el tipo elegido (odd/permisos-por-tipo-ticket, D5 c)
-   * @throws 422 tipoId/prioridadId/ticketReferenciaId/sectorId inválidos, o solicitante inválido
+   * @throws 422 tipoId/prioridadId/ticketReferenciaId/sectorId inválidos, tipo sin alta manual
+   *   (PREVENTIVO o de un módulo sin alta de tipo), o solicitante inválido
    * @throws 409 sin ciclo activo, o secuencia agotada
    */
   @Post()
@@ -358,8 +359,8 @@ export class TicketsController {
       clienteId: user.cliente_id as string,
       autorId: user.sub,
       anio: new Date().getFullYear(),
-      // Esta alta es la del soporte general: los tipos de otros módulos tienen su alta propia.
-      moduloRequerido: 'TICKETS',
+      // Alta manual (odd/ticket-unificado, S6): cualquier tipo con `ALTAS`, salvo PREVENTIVO.
+      altaManual: true,
       alcance: await this.alcances.cargar(user),
     });
 

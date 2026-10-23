@@ -69,22 +69,29 @@ import { ExportarReparacionesUseCase } from './application/use-cases/exportar-re
 import { VincularCompraAReparacionUseCase } from './application/use-cases/vincular-compra-a-reparacion.use-case';
 import { DesvincularCompraDeReparacionUseCase } from './application/use-cases/desvincular-compra-de-reparacion.use-case';
 import { EditarReparacionUseCase } from './application/use-cases/editar-reparacion.use-case';
+import { ListarComprasDeTicketUseCase } from './application/use-cases/listar-compras-de-ticket.use-case';
+import { ResolutorReparacion } from './application/services/acceso-reparacion';
+import { ListarTimelineUseCase } from '../tickets/application/use-cases/listar-timeline.use-case';
 import {
   IPrioridadRepository,
   PRIORIDAD_REPOSITORY,
 } from '../tickets/domain/ports/i-prioridad.repository';
 
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
+import { TicketComprasController } from './interface/controllers/ticket-compras.controller';
 
 /**
  * ReparacionesModule — módulo NestJS del dominio "reparaciones" (Fase 3,
  * F3-E1..E5).
  *
- * Flujo de reparaciones edilicias: ticket_edilicia (satélite 1:0..1 de
- * Ticket, con `ubicacion` como texto libre — ex-catálogo Ubicacion
- * removido). El checklist de avance son las tareas del ticket base
- * (`tareas_ticket`, de `TicketsModule`); `subtareas_edilicia` se retiró en
- * odd/tareas-con-tecnico T8.
+ * Pantalla de Edilicia y vínculo ticket ↔ compra. Desde odd/ticket-unificado
+ * las compras vinculadas (`ticket_compra`), la ubicación y los comentarios son
+ * del TICKET, de cualquier tipo: la grilla lista tickets por tipo y las rutas
+ * `/tickets/:ticketId/compras` (`TicketComprasController`) operan sobre
+ * cualquiera. El satélite `ticket_edilicia` solo identifica las reparaciones
+ * viejas (las rutas `/reparaciones/:id` aceptan su id o el del ticket) hasta que
+ * T4 lo retire. El checklist de avance son las tareas del ticket
+ * (`tareas_ticket`, de `TicketsModule`).
  *
  * Wiring (PR6-PR9, screaming module hexagonal — domain/ → application/ →
  * infrastructure/ → interface/):
@@ -99,7 +106,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`, sin
  *   necesidad de reimportarlo).
  * - `ReparacionesController` expone `POST/GET /reparaciones`, comentarios y
- *   compras vinculadas.
+ *   compras vinculadas; `TicketComprasController`, las compras de cualquier ticket.
  * - `ComprasModule` (WU5, sdd/reparacion-bloqueada-por-compra, D7): se
  *   importa SOLO para reusar `COMPRA_REPOSITORY` (ya exportado por
  *   `ComprasModule`) en `VincularCompraAReparacionUseCase` — cero cambio de
@@ -115,7 +122,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
   // re-exporta AuthModule, así que los guards de ReparacionesController lo
   // necesitan importado acá explícitamente.
   imports: [AuthModule, TicketsModule, ComprasModule, SectoresModule],
-  controllers: [ReparacionesController],
+  controllers: [ReparacionesController, TicketComprasController],
   providers: [
     { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
     { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
@@ -183,24 +190,24 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
     {
       provide: ListarReparacionesUseCase,
       useFactory: (
-        ediliciaRepo: ITicketEdiliciaRepository,
         ticketRepo: ITicketRepository,
+        tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
         comentarioRepo: IComentarioReparacionRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
         sectorRepo: ISectorRepository,
       ) =>
         new ListarReparacionesUseCase(
-          ediliciaRepo,
           ticketRepo,
+          tipoTicketRepo,
           tareaRepo,
           comentarioRepo,
           reparacionCompraRepo,
           sectorRepo,
         ),
       inject: [
-        TICKET_EDILICIA_REPOSITORY,
         TICKET_REPOSITORY,
+        TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         COMENTARIO_REPARACION_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
@@ -208,38 +215,39 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       ],
     },
     {
+      // odd/ticket-unificado (S3): el comentario de Edilicia es un COMENTARIO del timeline.
       provide: CrearComentarioReparacionUseCase,
       useFactory: (
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        comentarioRepo: IComentarioReparacionRepository,
         ticketRepo: ITicketRepository,
+        operacionRepo: IOperacionTicketRepository,
+        tipoOperacionRepo: ITipoOperacionRepository,
         verificadorEditable: VerificadorTicketEditable,
       ) =>
         new CrearComentarioReparacionUseCase(
-          ticketEdiliciaRepo,
-          comentarioRepo,
           ticketRepo,
+          operacionRepo,
+          tipoOperacionRepo,
           verificadorEditable,
         ),
       inject: [
-        TICKET_EDILICIA_REPOSITORY,
-        COMENTARIO_REPARACION_REPOSITORY,
         TICKET_REPOSITORY,
+        OPERACION_TICKET_REPOSITORY,
+        TIPO_OPERACION_REPOSITORY,
         VerificadorTicketEditable,
       ],
     },
     {
+      // Compone el timeline de TicketsModule: mismo acceso y misma visibilidad de internos.
       provide: ListarComentariosReparacionUseCase,
       useFactory: (
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        comentarioRepo: IComentarioReparacionRepository,
-        ticketRepo: ITicketRepository,
-      ) => new ListarComentariosReparacionUseCase(ticketEdiliciaRepo, comentarioRepo, ticketRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY, TICKET_REPOSITORY],
+        listarTimeline: ListarTimelineUseCase,
+        tipoOperacionRepo: ITipoOperacionRepository,
+      ) => new ListarComentariosReparacionUseCase(listarTimeline, tipoOperacionRepo),
+      inject: [ListarTimelineUseCase, TIPO_OPERACION_REPOSITORY],
     },
     {
       // Compone `ListarReparacionesUseCase` (design D4, sdd/exportar-listados-csv)
-      // — NO inyecta ninguno de sus 4 repositorios directamente.
+      // — NO inyecta ninguno de sus repositorios directamente.
       provide: ExportarReparacionesUseCase,
       useFactory: (listarReparacionesUseCase: ListarReparacionesUseCase) =>
         new ExportarReparacionesUseCase(listarReparacionesUseCase),
@@ -250,21 +258,18 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       // la compra vía COMPRA_REPOSITORY (de ComprasModule), sin tocar su firma.
       provide: VincularCompraAReparacionUseCase,
       useFactory: (
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
         compraRepo: ICompraRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
         ticketRepo: ITicketRepository,
         txRunner: ITenantTransactionRunner,
       ) =>
         new VincularCompraAReparacionUseCase(
-          ticketEdiliciaRepo,
           compraRepo,
           reparacionCompraRepo,
           ticketRepo,
           txRunner,
         ),
       inject: [
-        TICKET_EDILICIA_REPOSITORY,
         COMPRA_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
         TICKET_REPOSITORY,
@@ -272,10 +277,26 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       ],
     },
     {
+      provide: DesvincularCompraDeReparacionUseCase,
+      useFactory: (
+        reparacionCompraRepo: IReparacionCompraRepository,
+        ticketRepo: ITicketRepository,
+      ) => new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo, ticketRepo),
+      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_REPOSITORY],
+    },
+    {
+      // odd/ticket-unificado: las compras vinculadas de cualquier ticket.
+      provide: ListarComprasDeTicketUseCase,
+      useFactory: (
+        reparacionCompraRepo: IReparacionCompraRepository,
+        ticketRepo: ITicketRepository,
+      ) => new ListarComprasDeTicketUseCase(reparacionCompraRepo, ticketRepo),
+      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_REPOSITORY],
+    },
+    {
       // odd/detalle-ticket-legible (S4-S5): edición de una reparación no empezada.
       provide: EditarReparacionUseCase,
       useFactory: (
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
         ticketRepo: ITicketRepository,
         tareaRepo: ITareaTicketRepository,
         reparacionCompraRepo: IReparacionCompraRepository,
@@ -286,7 +307,6 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
         txRunner: ITenantTransactionRunner,
       ) =>
         new EditarReparacionUseCase(
-          ticketEdiliciaRepo,
           ticketRepo,
           tareaRepo,
           reparacionCompraRepo,
@@ -297,7 +317,6 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
           txRunner,
         ),
       inject: [
-        TICKET_EDILICIA_REPOSITORY,
         TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
@@ -309,20 +328,13 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
       ],
     },
     {
-      provide: DesvincularCompraDeReparacionUseCase,
-      useFactory: (
-        reparacionCompraRepo: IReparacionCompraRepository,
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
-        ticketRepo: ITicketRepository,
-      ) =>
-        new DesvincularCompraDeReparacionUseCase(
-          reparacionCompraRepo,
-          ticketEdiliciaRepo,
-          ticketRepo,
-        ),
-      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_EDILICIA_REPOSITORY, TICKET_REPOSITORY],
+      // odd/ticket-unificado: traduce el `:reparacionId` de las rutas viejas al ticket.
+      provide: ResolutorReparacion,
+      useFactory: (ediliciaRepo: ITicketEdiliciaRepository) =>
+        new ResolutorReparacion(ediliciaRepo),
+      inject: [TICKET_EDILICIA_REPOSITORY],
     },
   ],
-  exports: [TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY],
+  exports: [TICKET_EDILICIA_REPOSITORY],
 })
 export class ReparacionesModule {}

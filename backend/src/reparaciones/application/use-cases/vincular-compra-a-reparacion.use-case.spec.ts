@@ -1,23 +1,17 @@
 /**
- * WU5.1 [UNIT][RED] — `VincularCompraAReparacionUseCase`.
+ * WU5.1 [UNIT] — `VincularCompraAReparacionUseCase`.
  *
- * Vinculación exitosa, idempotencia (D4: doble vinculación no crea una
- * segunda fila ni altera la derivación), 404 por reparación inexistente,
- * 404 por compra inexistente.
+ * Desde odd/ticket-unificado (S1, S4) vincula una compra a un ticket de CUALQUIER tipo, por id de
+ * ticket, y exige `MODIFICACION` sobre su tipo. Vinculación exitosa, idempotencia (D4), 404 por
+ * ticket o compra inexistente, y el lock contra un borrado concurrente (L45).
  *
- * Ref design: sdd/reparacion-bloqueada-por-compra/design, D4, D7. Ref tasks:
- * WU5.1, WU5.2.
+ * Ref design: sdd/reparacion-bloqueada-por-compra/design, D4, D7.
  */
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { VincularCompraAReparacionUseCase } from './vincular-compra-a-reparacion.use-case';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { ICompraRepository } from '../../../compras/domain/ports/i-compra.repository';
 import { CompraEntity } from '../../../compras/domain/entities/compra.entity';
-import {
-  TicketEdiliciaNoEncontradoError,
-  CompraNoEncontradaError,
-} from '../../domain/errors/reparaciones.errors';
+import { CompraNoEncontradaError } from '../../domain/errors/reparaciones.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import {
@@ -29,14 +23,14 @@ import {
   alcanceSinRestriccion,
 } from '../../../tickets/test-helpers/alcance-ticket';
 
-/** Ticket base de la reparación, de tipo `tipo-edilicia`. */
+/** Ticket de tipo `tipo-soporte`: el vínculo ya no depende de que sea de Edilicia. */
 function ticketBase(): TicketEntity {
   return TicketEntity.create(
     {
-      numero: 'EDI-2026-00001',
-      titulo: 'Pérdida en el baño',
+      numero: 'SOP-2026-00001',
+      titulo: 'Impresora sin tóner',
       descripcion: null,
-      tipoId: 'tipo-edilicia',
+      tipoId: 'tipo-soporte',
       estadoId: 'estado-nuevo',
       prioridadId: 'prioridad-media',
       cicloId: null,
@@ -53,7 +47,7 @@ function compraExistente(): CompraEntity {
     {
       numero: 'COM-2026-00001',
       fechaSolicitud: new Date('2026-08-01'),
-      motivo: 'Repuestos para la reparación',
+      motivo: 'Tóner',
       descripcion: null,
       solicitanteId: 'solicitante-uuid',
       cicloId: 'ciclo-uuid',
@@ -64,8 +58,11 @@ function compraExistente(): CompraEntity {
 
 describe('VincularCompraAReparacionUseCase', () => {
   function buildDeps() {
-    const ticketEdiliciaRepo = { findById: vi.fn<ITicketEdiliciaRepository['findById']>() };
-    const compraRepo = { findByIdConItems: vi.fn<ICompraRepository['findByIdConItems']>() };
+    const compraRepo = {
+      findByIdConItems: vi
+        .fn<ICompraRepository['findByIdConItems']>()
+        .mockResolvedValue(compraExistente()),
+    };
     const reparacionCompraRepo = {
       vincular: vi.fn<IReparacionCompraRepository['vincular']>().mockResolvedValue(undefined),
     };
@@ -93,76 +90,66 @@ describe('VincularCompraAReparacionUseCase', () => {
     };
 
     const useCase = new VincularCompraAReparacionUseCase(
-      ticketEdiliciaRepo,
       compraRepo,
       reparacionCompraRepo,
       ticketRepo,
       txRunner,
     );
 
-    return { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo, ticketRepo };
+    return { useCase, compraRepo, reparacionCompraRepo, ticketRepo };
   }
 
   const baseDto = {
-    ticketEdiliciaId: 'edilicia-uuid',
+    ticketId: 'ticket-uuid',
     compraId: 'compra-uuid',
     alcance: alcanceSinRestriccion('actor-uuid'),
   };
 
-  it('vincula la compra a la reparación cuando ambas existen', async () => {
-    const { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo } = buildDeps();
-    const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
-      'edilicia-uuid',
-    );
-    ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);
-    compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
+  it('vincula la compra al ticket cuando ambos existen, por id de ticket', async () => {
+    const { useCase, reparacionCompraRepo } = buildDeps();
 
     const result = await useCase.execute(baseDto);
 
     expect(result.isOk()).toBe(true);
-    expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('edilicia-uuid', 'compra-uuid');
+    expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
   });
 
   it('es idempotente: vincular el mismo par dos veces no falla y delega en el puerto las dos veces', async () => {
-    const { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo } = buildDeps();
-    const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
-      'edilicia-uuid',
-    );
-    ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);
-    compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
+    const { useCase, reparacionCompraRepo } = buildDeps();
 
     const primero = await useCase.execute(baseDto);
     const segundo = await useCase.execute(baseDto);
 
     expect(primero.isOk()).toBe(true);
     expect(segundo.isOk()).toBe(true);
-    // La idempotencia real (UNIQUE + ON CONFLICT DO NOTHING) vive en el
-    // repositorio (WU2) — acá solo se verifica que el caso de uso delega
-    // sin lógica de "check-then-insert" propia.
+    // La idempotencia real (UNIQUE + ON CONFLICT DO NOTHING) vive en el repositorio: acá solo se
+    // verifica que el caso de uso delega sin "check-then-insert" propio.
     expect(reparacionCompraRepo.vincular).toHaveBeenCalledTimes(2);
   });
 
-  it('rechaza con 404 cuando la reparación no existe', async () => {
-    const { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo } = buildDeps();
-    ticketEdiliciaRepo.findById.mockResolvedValue(null);
+  it.each([
+    ['no existe', null],
+    [
+      'está borrado',
+      (() => {
+        const t = ticketBase();
+        t.softDelete(new Date('2026-10-22T15:00:00Z'));
+        return t;
+      })(),
+    ],
+  ])('rechaza con 404 cuando el ticket %s, sin buscar la compra', async (_caso, ticket) => {
+    const { useCase, compraRepo, reparacionCompraRepo, ticketRepo } = buildDeps();
+    ticketRepo.findById.mockResolvedValue(ticket);
 
     const result = await useCase.execute(baseDto);
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+    expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(compraRepo.findByIdConItems).not.toHaveBeenCalled();
     expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
   });
 
-  it('un ticket base borrado entre la carga y el lock da 404 y no vincula (odd/permisos-por-tipo-ticket, L45)', async () => {
-    const { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo, ticketRepo } =
-      buildDeps();
-    ticketEdiliciaRepo.findById.mockResolvedValue(
-      TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid', ubicacion: null }, 'edilicia-uuid'),
-    );
-    compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
+  it('un ticket borrado entre la carga y el lock da 404 y no vincula (odd/permisos-por-tipo-ticket, L45)', async () => {
+    const { useCase, reparacionCompraRepo, ticketRepo } = buildDeps();
     // Otra transacción borra el ticket y hace commit mientras este caso de uso espera el lock.
     ticketRepo.bloquear.mockImplementationOnce(async () => {
       const borrado = ticketBase();
@@ -178,70 +165,61 @@ describe('VincularCompraAReparacionUseCase', () => {
   });
 
   it('rechaza con 404 cuando la compra no existe', async () => {
-    const { useCase, ticketEdiliciaRepo, compraRepo, reparacionCompraRepo } = buildDeps();
-    const edilicia = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacion: 'Edificio Central' },
-      'edilicia-uuid',
-    );
-    ticketEdiliciaRepo.findById.mockResolvedValue(edilicia);
+    const { useCase, compraRepo, reparacionCompraRepo } = buildDeps();
     compraRepo.findByIdConItems.mockResolvedValue(null);
 
     const result = await useCase.execute(baseDto);
 
-    expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(CompraNoEncontradaError);
+    expect(result.getError().message).toBe('Compra con id "compra-uuid" no encontrada.');
     expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
   });
 
-  describe('permisos por tipo del ticket base (odd/permisos-por-tipo-ticket, D5 c)', () => {
-    function conReparacionYCompra() {
-      const deps = buildDeps();
-      deps.ticketEdiliciaRepo.findById.mockResolvedValue(
-        TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid', ubicacion: null }, 'edilicia-uuid'),
-      );
-      deps.compraRepo.findByIdConItems.mockResolvedValue(compraExistente());
-      return deps;
-    }
-
-    it('no ve el ticket base (sin LECTURA sobre su tipo) → 404 de la reparación, sin vincular', async () => {
-      const { useCase, compraRepo, reparacionCompraRepo } = conReparacionYCompra();
+  describe('permisos por tipo del ticket (odd/ticket-unificado, S4)', () => {
+    it('no ve el ticket (sin LECTURA sobre su tipo) → 404, sin vincular', async () => {
+      const { useCase, compraRepo, reparacionCompraRepo } = buildDeps();
 
       const result = await useCase.execute({
         ...baseDto,
-        alcance: alcancePorTipo('actor-uuid', { 'tipo-otro': ['LECTURA', 'VER_TODOS', 'ALTAS'] }),
+        alcance: alcancePorTipo('actor-uuid', {
+          'tipo-otro': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+        }),
       });
 
-      expect(result.getError()).toBeInstanceOf(TicketEdiliciaNoEncontradoError);
+      expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(compraRepo.findByIdConItems).not.toHaveBeenCalled();
       expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
     });
 
-    it('lo ve sin ALTAS sobre el tipo → 403, sin vincular', async () => {
-      const { useCase, reparacionCompraRepo } = conReparacionYCompra();
+    it('lo ve con ALTAS pero sin MODIFICACION sobre el tipo → 403, sin vincular', async () => {
+      const { useCase, reparacionCompraRepo } = buildDeps();
 
       const result = await useCase.execute({
         ...baseDto,
         alcance: alcancePorTipo('actor-uuid', {
-          'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+          'tipo-soporte': ['LECTURA', 'VER_TODOS', 'ALTAS'],
         }),
       });
 
       expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+      expect(result.getError().message).toBe(
+        'El usuario no tiene el permiso "MODIFICACION" sobre el tipo de este ticket.',
+      );
       expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
     });
 
-    it('lo ve con ALTAS sobre el tipo → vincula', async () => {
-      const { useCase, reparacionCompraRepo } = conReparacionYCompra();
+    it('lo ve con MODIFICACION sobre el tipo → vincula', async () => {
+      const { useCase, reparacionCompraRepo } = buildDeps();
 
       const result = await useCase.execute({
         ...baseDto,
         alcance: alcancePorTipo('actor-uuid', {
-          'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'ALTAS'],
+          'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
         }),
       });
 
       expect(result.isOk()).toBe(true);
-      expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('edilicia-uuid', 'compra-uuid');
+      expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
     });
   });
 });

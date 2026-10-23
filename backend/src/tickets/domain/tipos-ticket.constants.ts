@@ -43,3 +43,16 @@ export const MODULOS_CON_ALTA_DE_TIPO: readonly string[] = ['TICKETS', 'EDILICIA
 export function moduloTieneAltaDeTipo(modulo: string): boolean {
   return MODULOS_CON_ALTA_DE_TIPO.includes(modulo);
 }
+
+/**
+ * ¿El tipo se puede elegir en un alta manual (`POST /tickets` o `POST /reparaciones`)? Desde
+ * odd/ticket-unificado (S6) las dos altas ofrecen los mismos tipos: los de un módulo con alta de
+ * tipo, salvo PREVENTIVO, que lo genera solo el barrido. Los flujos de sistema (barrido, API de
+ * integraciones) no pasan por esta regla.
+ *
+ * @param tipo Código y módulo del tipo.
+ * @returns `true` si un actor puede abrir a mano un ticket de ese tipo.
+ */
+export function admiteAltaManual(tipo: { codigo: string; modulo: string }): boolean {
+  return moduloTieneAltaDeTipo(tipo.modulo) && tipo.codigo !== TIPO_CODIGO_PREVENTIVO;
+}

@@ -187,7 +187,7 @@ describe('BorrarTicketUseCase', () => {
 
     expect(result.getError()).toBeInstanceOf(TicketConPendientesNoBorrableError);
     expect(result.getError().message).toBe(
-      'No se puede borrar el ticket: antes hay que desvincular de la reparación las compras ' +
+      'No se puede borrar el ticket: antes hay que desvincular del ticket las compras ' +
         'COM-2026-00001, COM-2026-00007.',
     );
     expect(tickets.get('t-soporte')?.isDeleted()).toBe(false);
@@ -204,7 +204,7 @@ describe('BorrarTicketUseCase', () => {
 
     expect(result.getError().message).toBe(
       'No se puede borrar el ticket: antes hay que completar o eliminar sus 2 tareas pendientes ' +
-        'y desvincular de la reparación la compra COM-2026-00003.',
+        'y desvincular del ticket la compra COM-2026-00003.',
     );
   });
 

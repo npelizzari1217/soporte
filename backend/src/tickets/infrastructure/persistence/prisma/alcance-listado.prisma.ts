@@ -1,9 +1,9 @@
 /**
  * Traducción a SQL del alcance por tipo de un listado o agregado de tickets
  * (odd/permisos-por-tipo-ticket, D5 e). Es el único lugar que define la regla de fila en la base:
- * la usan el repositorio de tickets (`findAll`, `count`, `esVisiblePara`), el satélite de Edilicia,
- * el dashboard, las tareas completadas y el resumen de CSAT, para que todos filtren igual que el
- * acceso por id (`esTicketAccesiblePara`).
+ * la usan el repositorio de tickets (`findAll`, `count`, `esVisiblePara`), y a través de él la
+ * grilla de Edilicia, el dashboard, las tareas completadas y el resumen de CSAT, para que todos
+ * filtren igual que el acceso por id (`esTicketAccesiblePara`).
  */
 import { Prisma } from '.prisma/tenant';
 import { AlcanceListadoTickets } from '../../../domain/ports/i-ticket.repository';
