@@ -8,7 +8,9 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 - **S1** — "quiero que todos los ticket existentes o los que vengan tengan los mismos campos, subtareas,
   compras y ubicacion tambien. pues un tiket comun tambien puede tenerlo".
 - **S2** — Pantalla Edilicia: "queda como hasta ahora se puede tambien generar el ticket, y puedo re
-  utilizar esa pantalla para los demas tipos de ticket".
+  utilizar esa pantalla para los demas tipos de ticket". Interpretación confirmada (L7, opción a): la
+  pantalla Edilicia suma un selector de tipo y permite ver y crear tickets de cualquier tipo habilitado,
+  con su grilla (compras, bloqueo, subtareas, ubicación, sector); "Tickets" sigue como hoy.
 - **S3** — Comentarios: los comentarios de reparación se unifican en el ticket (un solo lugar).
 - **S4** — Vincular o desvincular compras en cualquier ticket: Modificar sobre el tipo del ticket y
   `COMPRAS:LECTURA`; deja de usarse `EDILICIA:BORRADO`.
@@ -17,7 +19,7 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 
 ## Tasks
 
-- [ ] T0 — S1-S6 — explore — confirmar interpretación de S2 y recuentos de producción — (pendiente)
+- [x] T0 — S1-S6 — explore — confirmar interpretación de S2 y recuentos de producción — (este commit)
 - [ ] T1 — S1, S3 — worker — esquema y backfill: vínculo compra→ticket, ubicación única, comentarios al
   timeline (migración reversible, verificada contra un dump) — (pendiente)
 - [ ] T2 — S1, S4, S5 — worker — backend: compras, bloqueo y ubicación sobre el ticket; altas de todo
@@ -46,3 +48,11 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   `comentarios_reparacion` viven en el satélite. Tickets de MANTENIMIENTO/PREVENTIVO creados fuera de
   `/reparaciones` no tienen satélite (`mantenimiento.integration.spec.ts:~211`). El bloqueo ya consulta
   por ticket (`prisma-bloqueo-ticket.repository.ts:23-39`).
+- **L7** (dueño, 2026-10-24) — "a" a: "La pantalla Edilicia suma un selector de tipo. Con ella podés ver y
+  crear tickets de cualquier tipo que tengas habilitado (Soporte, Compras, etc.), con la misma grilla:
+  compras, bloqueo, subtareas, ubicación y sector. "Tickets" sigue existiendo como hoy."
+- **L8** (evidencia, producción 2026-10-24, solo lectura) — 9 tenants activos: 1025 satélites
+  `ticket_edilicia` (Santa Cruz 888, Guadalupe 118, ISTIC 12, Prueba 6, San Vicente 1), 4 vínculos
+  `reparacion_compra` (todos en Prueba), 11 `comentarios_reparacion` (Guadalupe 7, Prueba 4), 17
+  satélites con ubicación propia y ticket sin ubicación, 0 con ambas ubicaciones (sin conflicto), 0
+  tickets de módulo EDILICIA sin satélite.
