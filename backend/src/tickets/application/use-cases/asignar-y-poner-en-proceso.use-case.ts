@@ -89,7 +89,10 @@ interface PasoTransicion {
  *    el responsable cambió entre las dos lecturas, la elegibilidad; y recién
  *    entonces `assignTo` + operación ASIGNACION, por cada arco `updateEstado` +
  *    operación CAMBIO_ESTADO, y persiste el ticket una vez. Las consultas a
- *    master quedan fuera, para no sostener el lock mientras se consulta otra base.
+ *    master van antes de la transacción, para no sostener el lock mientras se
+ *    consulta otra base, salvo en el caso raro de la elegibilidad revalidada:
+ *    puede consultar master (`esAgente`, si el asignado tiene `LECTURA`
+ *    sobre el tipo) con la fila bloqueada.
  *
  * Un ticket en CERRADO/CANCELADO se rechaza con `TicketCerradoNoReasignableError`
  * (422) antes de consultar a master. Tras el commit publica `ticket.asignado`

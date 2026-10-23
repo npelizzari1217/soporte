@@ -12,7 +12,10 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
   por los arcos normales (NUEVO → ASIGNADO → EN_PROCESO); si está ASIGNADO pasa a EN_PROCESO. En
   cualquier otro estado no cambia. Si el ticket está NUEVO y no tiene responsable, quien completa pasa a
   ser el responsable (L2: "Quien completa pasa a ser responsable"), con operación ASIGNACION y evento
-  `ticket.asignado` (origen `MANUAL`, autor = quien completa). Si ya tiene responsable, no se reasigna.
+  `ticket.asignado` (origen `MANUAL`, autor = quien completa), siempre que sea técnico o colaborador
+  activo con Ver sobre el tipo; si no lo es (ADMINISTRADOR, ROOT, USUARIO), el ticket sigue sin
+  responsable y el estado avanza igual (decisión del dueño del 2026-10-23, opción "a"). Si ya tiene
+  responsable, no se reasigna.
 - S3. Al completar la última tarea activa pendiente (avance 100 %): el ticket pasa a RESUELTO por los
   arcos normales desde NUEVO, ASIGNADO, EN_PROCESO o ESPERANDO_CLIENTE (recorriendo ASIGNADO y
   EN_PROCESO si hace falta, con la misma asignación de S2 si estaba NUEVO sin responsable). En RESUELTO,
@@ -91,3 +94,6 @@ Revierte la decisión ADR-2 / CA5 del punto 12 ("completar la última tarea NO r
 
 - 2026-10-17, en producción: merge --no-ff a `main` (`ad8d3854`), push y deploy en el VPS (DEPLOY OK, 9 tenants
   sin migraciones pendientes, smoke externo 200). Rollback documentado por el script: `b4f09ecb`.
+- 2026-10-23, RED/GREEN de la enmienda de S2 (rama feat/responsables-por-tipo): RED en
+  `avanzar-estado-por-tareas.service.spec.ts`, 5 fallos "expected 'admin-uuid' to be null" (y root, usuario,
+  técnico de otro tipo, último → RESUELTO); GREEN 25/25, más integración y e2e del caso administrador.

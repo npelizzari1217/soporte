@@ -225,6 +225,7 @@ export class TareasTicketController {
         ticketId,
         tareaId,
         actor: await this.alcances.cargarActorTarea(user),
+        clienteId: user.cliente_id as string,
       }),
     );
     return this.aDto(tarea);
@@ -246,6 +247,7 @@ export class TareasTicketController {
         ticketId,
         tareaId,
         actor: await this.alcances.cargarActorTarea(user),
+        clienteId: user.cliente_id as string,
       }),
     );
     return this.aDto(tarea);

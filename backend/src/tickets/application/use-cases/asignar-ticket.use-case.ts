@@ -79,9 +79,11 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *    operación `ASIGNACION` del timeline (sin `estadoAnterior`/`estadoNuevo` —
  *    no es un cambio de estado, T9/T12 siguen siendo el único camino para
  *    transicionar), y persiste ambos. La lectura del paso 1 sirve para el 404,
- *    el rechazo temprano del terminal y las consultas a master, que quedan
- *    fuera de la transacción para no sostener el lock mientras se consulta
- *    otra base.
+ *    el rechazo temprano del terminal y las consultas a master, que van antes
+ *    de la transacción para no sostener el lock mientras se consulta otra
+ *    base. La excepción es la elegibilidad revalidada, un caso raro: esa
+ *    puede consultar master (`esAgente`, si el asignado tiene `LECTURA` sobre
+ *    el tipo) con la fila bloqueada.
  *
  * Un ticket en NUEVO pasa a ASIGNADO en la MISMA transacción (operación
  * `CAMBIO_ESTADO NUEVO → ASIGNADO` del actor, además de la `ASIGNACION`): un
@@ -163,7 +165,8 @@ export class AsignarTicketUseCase {
 
     // Dentro de la tx, con la fila bloqueada ANTES de releer (odd/escrituras-manuales-con-lock, S3):
     // el estado que decide "terminal" y "era NUEVO" es el actual, no el de la lectura de arriba, que
-    // sirvió para el 404, el tipo y las consultas a master. El guardado de la fila entera ya no
+    // sirvió para el 404, el tipo y las consultas a master (salvo la elegibilidad revalidada, que
+    // puede consultar master con la fila bloqueada). El guardado de la fila entera ya no
     // puede pisar un estado que otro actor —o las tareas— acaba de dejar.
     const escritura = await this.txRunner.run(
       async (): Promise<Result<TicketEntity, DomainError>> => {

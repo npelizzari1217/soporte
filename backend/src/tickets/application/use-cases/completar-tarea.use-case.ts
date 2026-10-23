@@ -27,6 +27,8 @@ export interface CompletarTareaDto {
   ticketId: string;
   tareaId: string;
   actor: ActorTarea;
+  /** `cliente_id` del JWT: decide si quien completa es agente del tipo y puede quedar responsable. */
+  clienteId: string;
 }
 
 /**
@@ -44,8 +46,9 @@ export interface CompletarTareaDto {
  *
  * El estado del ticket sigue a sus tareas (odd/estado-por-tareas, S2-S6): en la misma transacción,
  * con la fila del ticket bloqueada ANTES de escribir la tarea, `AvanzarEstadoPorTareasService` lo
- * pone EN_PROCESO (y lo asigna a quien completa si estaba NUEVO sin responsable) o RESUELTO si era la
- * última pendiente. No pide permisos de transición ni de asignación: alcanza con poder completar.
+ * pone EN_PROCESO (y lo asigna a quien completa si estaba NUEVO sin responsable y quien completa es
+ * agente del tipo) o RESUELTO si era la última pendiente. No pide permisos de transición ni de
+ * asignación: alcanza con poder completar.
  */
 export class CompletarTareaUseCase {
   constructor(
@@ -95,7 +98,7 @@ export class CompletarTareaUseCase {
       await this.ticketRepo.bloquear(ticket.id);
       if (!(await this.tareaRepo.completarSiPendiente(tarea, condicion))) return false;
       await this.operacionRepo.save(operacion);
-      await this.avanzarEstado.aplicar('COMPLETAR', ticket.id, dto.actor.id);
+      await this.avanzarEstado.aplicar('COMPLETAR', ticket.id, dto.actor.id, dto.clienteId);
       return true;
     });
     if (!escrita) {

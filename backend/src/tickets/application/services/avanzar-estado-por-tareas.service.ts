@@ -16,6 +16,7 @@ import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.re
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { afectaRelojSla } from '../../domain/state-machine/estados.constants';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
+import { ElegibilidadAsignado } from './elegibilidad-asignado';
 
 /** Estados que fijan `fecha_cierre` al alcanzarse; el mismo conjunto que `TransicionarEstadoUseCase`. */
 const ESTADOS_QUE_CIERRAN: ReadonlySet<string> = new Set(['RESUELTO', 'CERRADO']);
@@ -33,6 +34,14 @@ const ESTADOS_QUE_CIERRAN: ReadonlySet<string> = new Set(['RESUELTO', 'CERRADO']
  * y solo si el estado cierra), operación CAMBIO_ESTADO, el reloj de SLA cuando el arco lo afecta y
  * los eventos post-commit (`ticket.transicionado`, `ticket.estado-cambiado` si el destino es
  * notificable). El autor de todo es quien completó o descompletó.
+ *
+ * La asignación a quien completa (NUEVO sin responsable, S2) exige que sea agente del tipo
+ * (`ElegibilidadAsignado.esAgenteDeTipo`), la misma regla que la asignación manual. Un ADMINISTRADOR
+ * o ROOT completa cualquier tarea, pero no recibe tickets: el ticket sigue sin responsable, sin
+ * operación ASIGNACION ni `ticket.asignado`, y los arcos se aplican igual, porque ninguno exige
+ * responsable (decisión del dueño del 2026-10-23). Esa consulta (a master, si el autor tiene
+ * `LECTURA` sobre el tipo) corre con la fila bloqueada y solo en NUEVO sin responsable: el plan se
+ * conoce recién al releer el ticket.
  *
  * Un arco normal que la máquina del tipo no permita corta el recorrido sin error: la tarea queda
  * escrita y el ticket, donde llegó. No es el caso del grafo base, que tiene todos los arcos del
@@ -52,6 +61,7 @@ export class AvanzarEstadoPorTareasService {
     private readonly relojMarcador: IRelojSlaMarcador,
     private readonly eventPublisher: IDomainEventPublisher,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'alCommitear'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAgenteDeTipo'>,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -62,11 +72,13 @@ export class AvanzarEstadoPorTareasService {
    * @param evento Qué pasó con la tarea, ya escrita en esta transacción.
    * @param ticketId Ticket de la tarea.
    * @param autorId Quien completó o descompletó: autor de las operaciones y responsable si corresponde.
+   * @param clienteId Cliente activo, para decidir si el autor es agente del tipo.
    */
   async aplicar(
     evento: EventoTarea,
     ticketId: string,
     autorId: string,
+    clienteId: string,
   ): Promise<TicketEntity | null> {
     const ticket = await this.ticketRepo.findById(ticketId);
     if (!ticket || ticket.isDeleted()) return null;
@@ -94,7 +106,10 @@ export class AvanzarEstadoPorTareasService {
     }
     const maquina = this.stateMachineFactory.resolve(tipoTicket.codigo);
 
-    if (plan.asignarAlActor) {
+    if (
+      plan.asignarAlActor &&
+      (await this.elegibilidad.esAgenteDeTipo(autorId, clienteId, ticket.tipoId))
+    ) {
       ticket.assignTo(autorId);
       await this.operacionRepo.save(
         OperacionTicketEntity.create({

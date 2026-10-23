@@ -588,6 +588,7 @@ describe('CompletarTareaUseCase', () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
     const result = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES[nombre],
@@ -602,6 +603,7 @@ describe('CompletarTareaUseCase', () => {
     deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     const result = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.responsable,
@@ -627,7 +629,12 @@ describe('CompletarTareaUseCase', () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
-    await deps.completar.execute({ ticketId: TICKET_ID, tareaId: 't1', actor: ACTORES[nombre] });
+    await deps.completar.execute({
+      clienteId: CLIENTE_ID,
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES[nombre],
+    });
 
     expect(deps.tareaRepo.completarSiPendiente).toHaveBeenCalledWith(tarea, condicion);
   });
@@ -639,6 +646,7 @@ describe('CompletarTareaUseCase', () => {
     deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.tecnicoDeLaTarea,
@@ -657,6 +665,7 @@ describe('CompletarTareaUseCase', () => {
     deps.tareaRepo.completarSiPendiente.mockResolvedValueOnce(false);
 
     const result = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.administrador,
@@ -671,6 +680,7 @@ describe('CompletarTareaUseCase', () => {
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
 
     const result = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.administrador,
@@ -688,6 +698,7 @@ describe('CompletarTareaUseCase', () => {
 
     for (const tareaId of ['borrada', 'ajena']) {
       const result = await deps.completar.execute({
+        clienteId: CLIENTE_ID,
         ticketId: TICKET_ID,
         tareaId,
         actor: ACTORES.administrador,
@@ -702,6 +713,7 @@ describe('DescompletarTareaUseCase', () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
     const result = await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES[nombre],
@@ -715,6 +727,7 @@ describe('DescompletarTareaUseCase', () => {
     deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
 
     const result = await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.responsable,
@@ -740,7 +753,12 @@ describe('DescompletarTareaUseCase', () => {
     const deps = armar();
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
 
-    await deps.descompletar.execute({ ticketId: TICKET_ID, tareaId: 't1', actor: ACTORES[nombre] });
+    await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
+      ticketId: TICKET_ID,
+      tareaId: 't1',
+      actor: ACTORES[nombre],
+    });
 
     expect(deps.tareaRepo.descompletarSiCompletada).toHaveBeenCalledWith(tarea, {
       completadoLeido: { completadaPorId: TECNICO, completadaEn: AHORA },
@@ -753,6 +771,7 @@ describe('DescompletarTareaUseCase', () => {
     deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
 
     await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.responsable,
@@ -771,6 +790,7 @@ describe('DescompletarTareaUseCase', () => {
     deps.tareaRepo.descompletarSiCompletada.mockResolvedValueOnce(false);
 
     const result = await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.administrador,
@@ -786,6 +806,7 @@ describe('DescompletarTareaUseCase', () => {
     deps.borrarAlBloquear(TICKET_ID);
 
     const result = await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.responsable,
@@ -803,6 +824,7 @@ describe('DescompletarTareaUseCase', () => {
     deps.sembrarTarea('t1');
 
     const result = await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: ACTORES.administrador,
@@ -1026,6 +1048,7 @@ describe('Visibilidad por tarea (CA10)', () => {
       actor: tecnicoSinVerTodos,
     });
     const completar = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: tecnicoSinVerTodos,
@@ -1059,9 +1082,9 @@ describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectu
           clienteId: CLIENTE_ID,
         });
       case 'completar':
-        return deps.completar.execute({ ...base, tareaId: 'pendiente' });
+        return deps.completar.execute({ clienteId: CLIENTE_ID, ...base, tareaId: 'pendiente' });
       case 'descompletar':
-        return deps.descompletar.execute({ ...base, tareaId: 'hecha' });
+        return deps.descompletar.execute({ clienteId: CLIENTE_ID, ...base, tareaId: 'hecha' });
       case 'eliminar':
         return deps.eliminar.execute({ ...base, tareaId: 'pendiente' });
     }
@@ -1234,11 +1257,13 @@ describe('permisos por tipo del ticket (odd/permisos-por-tipo-ticket, S2, S3)', 
     const completada = deps.sembrarTarea('t2', { tecnicoId: TECNICO, completada: true });
 
     const completar = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: tecnicoSinLectura,
     });
     const descompletar = await deps.descompletar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't2',
       actor: tecnicoSinLectura,
@@ -1280,6 +1305,7 @@ describe('permisos por tipo del ticket (odd/permisos-por-tipo-ticket, S2, S3)', 
     const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO });
 
     const result = await deps.completar.execute({
+      clienteId: CLIENTE_ID,
       ticketId: TICKET_ID,
       tareaId: 't1',
       actor: actor(TECNICO, { [TIPO_ID]: ['LECTURA'] }),

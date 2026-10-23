@@ -599,6 +599,7 @@ import {
         relojMarcador: IRelojSlaMarcador,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
+        elegibilidad: ElegibilidadAsignado,
       ) =>
         new AvanzarEstadoPorTareasService(
           ticketRepo,
@@ -611,6 +612,7 @@ import {
           relojMarcador,
           eventPublisher,
           txRunner,
+          elegibilidad,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -623,6 +625,7 @@ import {
         RELOJ_SLA_MARCADOR,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
+        ElegibilidadAsignado,
       ],
     },
     {
