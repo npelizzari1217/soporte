@@ -32,8 +32,8 @@ import { PrismaService } from '../../src/shared/infrastructure/persistence/prism
 import { MasterPrismaClient, TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import { POSTGRES_ADMIN_PORT, IPostgresAdminPort } from '../../src/clientes/domain/ports/i-postgres-admin.port';
 
-import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
-import { filasDeTiposDesdeCeldas } from '../../src/tickets/domain/permisos-tipo-ticket';
+import { PLANTILLAS_POR_TIPO_ROL, PRESETS_ROL } from '../../src/auth/domain/presets-rol';
+import { filasDeTiposDesdePlantilla } from '../../src/tickets/domain/permisos-tipo-ticket';
 
 import { runDemoSeed, DEFAULT_DEMO_SEED_PASSWORD } from './demo-seed';
 
@@ -300,7 +300,7 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
     try {
       const tipos = await client.tipoTicket.findMany({ select: { id: true, modulo: true } });
       return (rol) =>
-        filasDeTiposDesdeCeldas(PRESETS_ROL[rol], tipos)
+        filasDeTiposDesdePlantilla(PLANTILLAS_POR_TIPO_ROL[rol], tipos)
           .map((f) => `${f.tipoId}:${f.accion}`)
           .sort();
     } finally {

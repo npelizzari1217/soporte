@@ -1,12 +1,11 @@
 import { Get } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { RequiereAcciones } from '../../auth/infrastructure/guards/decorators';
 import { DomainError, Result } from '../../shared/domain/result';
 import { ListarEstadosUseCase } from '../../tickets/application/use-cases/listar-estados.use-case';
 import { ListarPrioridadesUseCase } from '../../tickets/application/use-cases/listar-prioridades.use-case';
 import { toHttpException } from '../../tickets/interface/controllers/tickets.controller';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
-import { ApiV1 } from './api-v1.decorator';
+import { ApiV1, RequierePermisoApi } from './api-v1.decorator';
 import { CatalogosV1 } from './catalogos-v1.dto';
 import { aCatalogosV1 } from './catalogos-v1.presenter';
 
@@ -27,7 +26,7 @@ export class CatalogosV1Controller {
 
   /** Tipos, prioridades y estados del cliente de la clave. Requiere `TICKETS:LECTURA`. */
   @Get()
-  @RequiereAcciones('TICKETS:LECTURA')
+  @RequierePermisoApi('TICKETS:LECTURA')
   @ApiOperation({
     summary: 'Lista los catálogos del cliente',
     description:

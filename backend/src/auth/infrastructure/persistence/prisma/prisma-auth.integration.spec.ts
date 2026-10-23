@@ -240,8 +240,8 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       // matriz nueva (`usuario_cliente_permisos`). El role RBAC de arriba
       // solo importa para `rol` (identifica al TECNICO).
       await permisosRepo.setPermisos(usuario.id, cliente.id, [
-        'TICKETS:LECTURA',
-        'TICKETS:MODIFICACION',
+        'COMPRAS:LECTURA',
+        'COMPRAS:MODIFICACION',
       ]);
 
       const result = await loginUseCase.execute({
@@ -259,8 +259,8 @@ describe('Auth Use Cases — Integration end-to-end (T5.5)', () => {
       expect(payload.sub).toBe(usuario.id);
       expect(payload.cliente_id).toBe(cliente.id);
       expect(payload.rol).toBe('TECNICO');
-      expect(payload.permisos.sort()).toEqual(['TICKETS:LECTURA', 'TICKETS:MODIFICACION']);
-      expect(payload.modulos).toEqual(['TICKETS']);
+      expect(payload.permisos.sort()).toEqual(['COMPRAS:LECTURA', 'COMPRAS:MODIFICACION']);
+      expect(payload.modulos).toEqual(['COMPRAS']);
       expect(payload.is_global_admin).toBe(false);
       expect(payload.cliente_nombre).toBe(cliente.nombre);
       expect(payload.membresias).toHaveLength(1);

@@ -7,7 +7,7 @@ import type {
   IPermisosPorTipoDeCliente,
 } from '../domain/ports/i-permisos-por-tipo-de-cliente.port';
 
-/** Tipos de un tenant de prueba: uno de cada módulo con reglas propias en L11. */
+/** Tipos de un tenant de prueba: uno de TICKETS y uno de EDILICIA. */
 export const TIPOS_DE_PRUEBA: readonly TipoTicketConModulo[] = [
   { id: 'tipo-soporte', modulo: 'TICKETS' },
   { id: 'tipo-mantenimiento', modulo: 'EDILICIA' },
@@ -16,7 +16,7 @@ export const TIPOS_DE_PRUEBA: readonly TipoTicketConModulo[] = [
 /**
  * Puerto `IPermisosPorTipoDeCliente` respaldado por el servicio real de la plantilla y un
  * repositorio en memoria: los tests del lado de auth afirman sobre las filas por tipo que quedan,
- * con la traducción real de L11. Registra los `clienteId` recibidos para verificar el aislamiento.
+ * con la plantilla por tipo real del rol. Registra los `clienteId` recibidos para verificar el aislamiento.
  *
  * @param tipos Tipos del tenant simulado.
  * @param iniciales Filas por tipo existentes antes del test.

@@ -1,9 +1,10 @@
 /**
- * Acciones por tipo de una clave de API v1 (odd/permisos-por-tipo-ticket, D4, D5 f). La clave no
- * tiene filas por tipo: sus celdas se traducen con la misma tabla de L11 que el backfill y las
- * plantillas de rol (`accionesDeTipoDesdeCeldas`), sin una segunda tabla escrita a mano.
+ * Acciones por tipo de una clave de API v1 (odd/permisos-por-tipo-ticket, D5 f, L50.3). La clave no
+ * tiene filas por tipo y conserva su vocabulario de módulo: sus celdas se traducen con una tabla
+ * propia, que da lo mismo que daba la traducción de L11 para toda celda que una clave puede llevar.
+ * Desde T9c esa traducción no existe: lo esperado por cada celda queda escrito acá.
  */
-import { accionesDeTipoDesdeCeldas } from '../../tickets/domain/permisos-tipo-ticket';
+import { AccionTipoTicket } from '../../tickets/domain/permisos-tipo-ticket';
 import { accionesDeClaveApi, accionesDeClaveApiParaComentar } from './alcance-clave-api';
 import { PERMISOS_API } from './api-clave';
 
@@ -20,13 +21,19 @@ function comoLasDejaElGuard(celdas: readonly string[]): string[] {
   return celdas.includes('TICKETS:LECTURA') ? [...celdas, 'TICKETS:VER_TODOS'] : [...celdas];
 }
 
+/** Lo que daba la traducción de L11 por cada celda de clave, con el VER_TODOS que agrega el guard. */
+const ESPERADAS_POR_CELDA: Readonly<Record<string, readonly AccionTipoTicket[]>> = {
+  'TICKETS:LECTURA': ['LECTURA', 'VER_TODOS', 'IMPRESION'],
+  'TICKETS:ALTAS': ['ALTAS'],
+  'TICKETS:COMENTAR': ['COMENTAR'],
+};
+
 describe('accionesDeClaveApi', () => {
-  it.each(subconjuntos(PERMISOS_API).map((celdas) => [comoLasDejaElGuard(celdas)]))(
-    'con las celdas %j da exactamente la traducción de L11 sobre un tipo de TICKETS',
-    (celdas: string[]) => {
-      expect(accionesDeClaveApi(celdas, 'TICKETS')).toEqual(
-        accionesDeTipoDesdeCeldas(celdas, 'TICKETS'),
-      );
+  it.each(subconjuntos(PERMISOS_API).map((celdas) => [celdas.join(' + ') || 'ninguna', celdas]))(
+    'con las celdas %s da sobre un tipo de TICKETS la unión de lo que da cada una',
+    (_nombre: string, celdas: string[]) => {
+      const esperadas = new Set(celdas.flatMap((celda) => ESPERADAS_POR_CELDA[celda] ?? []));
+      expect(accionesDeClaveApi(comoLasDejaElGuard(celdas), 'TICKETS')).toEqual(esperadas);
     },
   );
 
@@ -39,6 +46,24 @@ describe('accionesDeClaveApi', () => {
   it('una clave de alta solo crea: no ve ni comenta', () => {
     expect(accionesDeClaveApi(['TICKETS:ALTAS'], 'TICKETS')).toEqual(new Set(['ALTAS']));
   });
+
+  it('una celda fuera de PERMISOS_API (y del VER_TODOS del guard) no concede nada', () => {
+    expect(
+      accionesDeClaveApi(
+        ['TICKETS:MODIFICACION', 'TICKETS:ASIGNAR', 'EDILICIA:LECTURA'],
+        'TICKETS',
+      ),
+    ).toEqual(new Set());
+  });
+
+  it.each(['COMPRAS', 'EQUIPOS', 'MODULO_DESCONOCIDO'])(
+    'sobre un tipo de %s las celdas de la clave no conceden nada',
+    (modulo) => {
+      expect(
+        accionesDeClaveApi(['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:COMENTAR'], modulo),
+      ).toEqual(new Set());
+    },
+  );
 
   it('una clave sin celdas no tiene acciones', () => {
     expect(accionesDeClaveApi([], 'TICKETS')).toEqual(new Set());
@@ -101,6 +126,15 @@ describe('alcance de la clave de API v1 — sin acciones fuera de PERMISOS_API',
       }
     }
   });
+
+  it.each(['COMPRAS', 'EQUIPOS', 'EDILICIA'])(
+    'una clave completa no concede nada sobre tipos de %s, como antes de T9',
+    (modulo) => {
+      const celdas = ['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:ALTAS', 'TICKETS:COMENTAR'];
+      expect(accionesDeClaveApi(celdas, modulo)).toEqual(new Set());
+      expect(accionesDeClaveApiParaComentar(celdas, modulo)).toEqual(new Set());
+    },
+  );
 
   it('una clave de lectura sin COMENTAR no se amplía al comentar', () => {
     expect(accionesDeClaveApiParaComentar(['TICKETS:LECTURA'], 'TICKETS')).toEqual(

@@ -54,7 +54,6 @@ import { TenantSeederAdapter } from '../../../clientes/infrastructure/tenant-see
 import { PrismaClienteRepository } from '../../../clientes/infrastructure/persistence/prisma/prisma-cliente.repository';
 import { PrismaUsuarioRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-usuario.repository';
 import { PrismaMatrizPermisosRepository } from '../../../auth/infrastructure/persistence/prisma/prisma-matriz-permisos.repository';
-import { CodigoAccion } from '../../../shared/domain/acciones';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
@@ -68,7 +67,10 @@ import {
 } from '../dtos/ticket.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
-import { sembrarPermisosPorTipoE2e } from '../../test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -190,15 +192,18 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
    * id deciden con los permisos por tipo del tenant, así que `createMembresia` y
    * `createTipoTicketAislado` los siembran con la traducción de L11 (`sembrarPermisosPorTipoE2e`).
    */
-  const celdasPorUsuario = new Map<string, CodigoAccion[]>();
+  const celdasPorUsuario = new Map<string, string[]>();
 
-  /** Reemplaza las celdas master del usuario y vuelve a sembrar sus permisos por tipo. */
+  /**
+   * Reemplaza las celdas master del usuario y vuelve a sembrar sus permisos por tipo. Las de tickets
+   * ya no van a la matriz (T9b): solo describen las filas por tipo.
+   */
   async function otorgarCeldas(
     usuarioId: string,
     clienteId: string,
-    celdas: CodigoAccion[],
+    celdas: string[],
   ): Promise<void> {
-    await permisosRepo.setPermisos(usuarioId, clienteId, celdas);
+    await permisosRepo.setPermisos(usuarioId, clienteId, celdasDeLaMatriz(celdas));
     celdasPorUsuario.set(usuarioId, celdas);
     await sembrarPermisosPorTipoE2e(tenantClient, celdasPorUsuario);
   }
@@ -221,8 +226,8 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   }
 
   /** Mapeo permiso viejo → celdas nuevas (R7, mismo mapeo que el backfill SQL). */
-  function mapearPermisosViejos(permisosViejos: string[]): CodigoAccion[] {
-    const mapa: Record<string, CodigoAccion[]> = {
+  function mapearPermisosViejos(permisosViejos: string[]): string[] {
+    const mapa: Record<string, string[]> = {
       'ticket:crear': ['TICKETS:ALTAS'],
       'ticket:comentar': ['TICKETS:COMENTAR'],
       'ticket:ver_todos': ['TICKETS:VER_TODOS'],
@@ -234,7 +239,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     };
     // Regla universal R7: TODA membresía activa recibe TICKETS:LECTURA,
     // exista o no un permiso viejo equivalente (no había gate de lectura hoy).
-    const celdas = new Set<CodigoAccion>(['TICKETS:LECTURA']);
+    const celdas = new Set<string>(['TICKETS:LECTURA']);
     for (const permiso of permisosViejos) {
       for (const celda of mapa[permiso] ?? []) {
         celdas.add(celda);

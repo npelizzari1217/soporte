@@ -351,24 +351,6 @@ if ([int]$yaHayConfig -gt 0) {
   }
 }
 
-# 8c. Backfill de permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4b).
-#
-# Traduce la matriz master por modulo a la tabla permisos_tipo_ticket de cada
-# tenant (S7: nadie gana ni pierde acceso el dia del deploy). Corre ANTES de
-# arrancar los servicios, como 8b: el codigo nuevo lee esa tabla, y arrancar
-# con la tabla vacia dejaria a todos sin acceso a los tickets.
-#
-# Lee dist/ (la traduccion vive una sola vez en el dominio), asi que va despues
-# del build del paso 6. Es un no-op en los deploys siguientes: el script OMITE
-# todo tenant cuya tabla ya tiene filas (salvo --force, que aca NO se pasa), y
-# asi nunca re-agrega permisos que un administrador quito a mano. Nunca borra
-# ni actualiza filas. Si un tenant falla, informa, sigue con los demas y sale
-# con codigo 1: el deploy se detiene con los servicios detenidos, a proposito.
-Set-Location $BackendDir
-Step 'Backfill de permisos por tipo de ticket (solo tenants sin filas)'
-& $NodeExe scripts/backfill-permisos-tipo-ticket.mjs --apply
-AssertOk 'el backfill de permisos por tipo de ticket'
-
 Set-Location $RepoRoot
 Step 'Arrancar servicios'
 foreach ($s in $Services) { Start-Service $s }

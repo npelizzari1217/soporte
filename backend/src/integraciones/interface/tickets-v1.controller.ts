@@ -10,7 +10,7 @@ import {
   ApiTags,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
-import { CurrentUser, RequiereAcciones } from '../../auth/infrastructure/guards/decorators';
+import { CurrentUser } from '../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../auth/domain/ports/i-token.service';
 import { CrearComentarioUseCase } from '../../tickets/application/use-cases/crear-comentario.use-case';
 import { CrearTicketUseCase } from '../../tickets/application/use-cases/crear-ticket.use-case';
@@ -19,7 +19,7 @@ import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtene
 import { toHttpException } from '../../tickets/interface/controllers/tickets.controller';
 import { TicketsV1Query } from '../application/tickets-v1.query';
 import { MODULO_API_V1, TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
-import { ApiV1 } from './api-v1.decorator';
+import { ApiV1, RequierePermisoApi } from './api-v1.decorator';
 import { ErrorV1 } from './error-v1.dto';
 import {
   ComentarioV1,
@@ -40,9 +40,9 @@ import { accionesDeClaveApi, accionesDeClaveApiParaComentar } from '../domain/al
  * las celdas de la clave (`accionesDeClaveApi`). Un tipo de otro modulo queda fuera del mapa, asi
  * que su ticket sigue siendo 404.
  *
- * Los `@RequiereAcciones('TICKETS:*')` de estas rutas se quedan: las celdas de la clave son su
- * modelo de permisos propio (`PERMISOS_API`), no la matriz de usuarios que D5 d dejo de consultar,
- * y la ruta responde 403 a una clave sin la celda antes de llegar al caso de uso.
+ * Las rutas declaran `@RequierePermisoApi('TICKETS:*')`: las celdas de la clave son su modelo de
+ * permisos propio (`PERMISOS_API`), no la matriz de usuarios, que ya no tiene el modulo TICKETS
+ * (T9b), y la ruta responde 403 a una clave sin la celda antes de llegar al caso de uso.
  *
  * @param actor Actor sintetico de la clave.
  * @param tiposV1 Ids de los tipos del modulo de v1.
@@ -84,7 +84,7 @@ export class TicketsV1Controller {
 
   /** Lista los tickets del cliente de la clave, paginados. Requiere `TICKETS:LECTURA`. */
   @Get()
-  @RequiereAcciones('TICKETS:LECTURA')
+  @RequierePermisoApi('TICKETS:LECTURA')
   @ApiOperation({
     summary: 'Lista los tickets del cliente',
     description: 'Paginado y con filtros combinables (AND). Requiere el permiso de lectura.',
@@ -121,7 +121,7 @@ export class TicketsV1Controller {
    * inexistente. Requiere `TICKETS:LECTURA`.
    */
   @Get(':id')
-  @RequiereAcciones('TICKETS:LECTURA')
+  @RequierePermisoApi('TICKETS:LECTURA')
   @ApiOperation({
     summary: 'Obtiene un ticket del cliente',
     description: 'Nunca trae comentarios internos. Requiere el permiso de lectura.',
@@ -161,7 +161,7 @@ export class TicketsV1Controller {
    * referencia inexistente.
    */
   @Post()
-  @RequiereAcciones('TICKETS:ALTAS')
+  @RequierePermisoApi('TICKETS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Crea un ticket',
@@ -220,7 +220,7 @@ export class TicketsV1Controller {
    * respuesta de SLA (`autorEsIntegracion`, T5d).
    */
   @Post(':id/comentarios')
-  @RequiereAcciones('TICKETS:COMENTAR')
+  @RequierePermisoApi('TICKETS:COMENTAR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
     summary: 'Comenta un ticket',
@@ -276,7 +276,8 @@ export class TicketsV1Controller {
    * Alcance de la clave sobre los tipos de v1, con sus celdas traducidas por `traducir`.
    *
    * @param actor Actor sintetico de la clave.
-   * @param traducir Traduccion de las celdas a acciones de un tipo; por defecto, la de L11.
+   * @param traducir Traducción de las celdas a acciones de un tipo; por defecto, la de la clave
+   *   (`accionesDeClaveApi`).
    * @returns El alcance de la clave.
    */
   private async alcanceDeLaClave(

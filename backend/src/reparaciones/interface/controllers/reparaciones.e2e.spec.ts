@@ -59,7 +59,10 @@ import {
   ReparacionListItemResponseDto,
 } from '../dtos/reparaciones.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
-import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -307,9 +310,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     const role = await createRole(`ROL_E2E_${randomBytes(3).toString('hex')}`);
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, clienteId, role.id);
-    await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    await permisosRepo.setPermisos(usuario.id, clienteId, celdasDeLaMatriz(permisos));
     // Las rutas de tareas del ticket deciden con los permisos por tipo del tenant: los mismos que
-    // estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    // estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a). Las de tickets ya no van
+    // a la matriz master (T9b).
     await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId, usuarioId: usuario.id };
@@ -473,16 +477,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(conFila.data.total).toBe(1);
       expect(conFila.data.items.map((r) => r.id)).not.toContain(ajena);
 
-      // La celda EDILICIA:LECTURA sin filas por tipo ya no abre el listado.
-      const soloCelda = await crearActorConPermisos([], actor.clienteId);
-      await permisosRepo.setPermisos(soloCelda.usuarioId, actor.clienteId, ['EDILICIA:LECTURA']);
-      const { accessToken } = await login(
-        (await masterClient.usuario.findUniqueOrThrow({ where: { id: soloCelda.usuarioId } }))
-          .email,
-      );
+      // Sin filas por tipo no hay listado: la celda EDILICIA:LECTURA que lo abría ya no existe (T9b).
+      const sinFilasPorTipo = await crearActorConPermisos([], actor.clienteId);
       const sinFilas = await httpGet<ListReparacionesResponseDto>(
         `${baseUrl}/reparaciones`,
-        bearer(accessToken),
+        bearer(sinFilasPorTipo.accessToken),
       );
       expect(sinFilas.status).toBe(200);
       expect(sinFilas.data).toMatchObject({ items: [], total: 0 });

@@ -13,14 +13,13 @@ import {
 } from './acciones';
 
 describe('PARES_VALIDOS — cardinalidad exacta por módulo (R1)', () => {
-  it('tiene exactamente 36 pares en total', () => {
-    expect(PARES_VALIDOS).toHaveLength(36);
+  it('tiene exactamente 25 pares en total', () => {
+    expect(PARES_VALIDOS).toHaveLength(25);
   });
 
   it.each([
-    ['TICKETS', 8],
     ['COMPRAS', 5],
-    ['EDILICIA', 4],
+    ['EDILICIA', 1],
     ['EQUIPOS', 4],
     ['KB', 6],
     ['DASHBOARD', 1],
@@ -77,11 +76,35 @@ describe('INSUMOS no declara acciones que la tabla append-only no soporta', () =
   });
 });
 
+describe('Celdas de tickets retiradas de la matriz (odd/permisos-por-tipo-ticket, T9b, L50)', () => {
+  // Las acciones sobre tickets se conceden por tipo de ticket: el módulo TICKETS sale entero y
+  // EDILICIA conserva solo BORRADO (desvincular una compra de una reparación, L21).
+  it('ningún par válido es del módulo TICKETS', () => {
+    expect(PARES_VALIDOS.filter((p) => p.startsWith('TICKETS:'))).toEqual([]);
+  });
+
+  it.each(['LECTURA', 'ALTAS', 'MODIFICACION'] as const)(
+    'EDILICIA:%s ya no es un par válido',
+    (accion) => {
+      expect(PARES_VALIDOS).not.toContain(`EDILICIA:${accion}`);
+    },
+  );
+
+  it('EDILICIA conserva solo BORRADO', () => {
+    expect(accionesDeModulo('EDILICIA')).toEqual(['EDILICIA:BORRADO']);
+  });
+});
+
 describe('accionesDeModulo', () => {
-  it('devuelve exactamente los pares de TICKETS', () => {
-    const acciones = accionesDeModulo('TICKETS');
-    expect(acciones).toHaveLength(8);
-    for (const a of acciones) expect(a.startsWith('TICKETS:')).toBe(true);
+  it('devuelve exactamente los pares de KB', () => {
+    expect(accionesDeModulo('KB')).toEqual([
+      'KB:LECTURA',
+      'KB:ALTAS',
+      'KB:MODIFICACION',
+      'KB:BORRADO',
+      'KB:VER_TODOS',
+      'KB:PUBLICAR',
+    ]);
   });
 
   it('devuelve exactamente los pares de DASHBOARD (solo LECTURA)', () => {
@@ -91,7 +114,7 @@ describe('accionesDeModulo', () => {
 
 describe('moduloDe', () => {
   it.each([
-    ['TICKETS:ALTAS', 'TICKETS'],
+    ['EDILICIA:BORRADO', 'EDILICIA'],
     ['COMPRAS:APROBACION', 'COMPRAS'],
     ['DASHBOARD:LECTURA', 'DASHBOARD'],
   ] as const)('moduloDe(%s) === %s', (codigo, esperado) => {
@@ -100,19 +123,9 @@ describe('moduloDe', () => {
 });
 
 describe('CATALOGO_MODULOS — claves esperadas', () => {
-  it('declara exactamente los 9 módulos vigentes (R1 + CSAT sdd/csat WU-3 + PREVENTIVO sdd/preventivo WU-1 + INSUMOS insumos-entrega-2 U1)', () => {
+  it('declara exactamente los 8 módulos vigentes (R1 + CSAT sdd/csat WU-3 + PREVENTIVO sdd/preventivo WU-1 + INSUMOS insumos-entrega-2 U1, sin TICKETS desde T9b)', () => {
     expect(Object.keys(CATALOGO_MODULOS).sort()).toEqual(
-      [
-        'COMPRAS',
-        'CSAT',
-        'DASHBOARD',
-        'EDILICIA',
-        'EQUIPOS',
-        'INSUMOS',
-        'KB',
-        'PREVENTIVO',
-        'TICKETS',
-      ].sort(),
+      ['COMPRAS', 'CSAT', 'DASHBOARD', 'EDILICIA', 'EQUIPOS', 'INSUMOS', 'KB', 'PREVENTIVO'].sort(),
     );
   });
 });

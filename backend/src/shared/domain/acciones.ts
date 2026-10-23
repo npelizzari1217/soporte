@@ -31,21 +31,27 @@ export type AccionPiso = (typeof ACCIONES_PISO)[number];
  * tabla de exclusiones aparte); `extras` son acciones propias del módulo,
  * fuera del piso (ej. `VER_TODOS`, `ASIGNAR`).
  *
- * `IMPRESION` queda deliberadamente fuera de `piso` en los 9 módulos: ningún
- * endpoint del inventario la consume (R1, ya aceptado). `APROBACION` solo
- * aparece en el piso de COMPRAS.
+ * `IMPRESION` queda deliberadamente fuera de `piso` en todos los módulos:
+ * ningún endpoint del inventario la consume (R1, ya aceptado). `APROBACION`
+ * solo aparece en el piso de COMPRAS.
+ *
+ * Sin TICKETS (odd/tasks/permisos-por-tipo-ticket.md, T9b, L50.1): las acciones
+ * sobre tickets se conceden por tipo de ticket (`permisos_tipo_ticket`, en el
+ * tenant), no por módulo. Las claves de la API pública conservan su vocabulario
+ * `TICKETS:*`, que es propio y vive en `integraciones/domain/api-clave.ts`.
  */
 export const CATALOGO_MODULOS = {
-  TICKETS: {
-    piso: ['LECTURA', 'ALTAS', 'MODIFICACION'],
-    extras: ['VER_TODOS', 'ASIGNAR', 'TRANSICIONAR', 'OBSERVAR', 'COMENTAR'],
-  },
   COMPRAS: {
     piso: ['LECTURA', 'ALTAS', 'MODIFICACION', 'BORRADO', 'APROBACION'],
     extras: [],
   },
+  /**
+   * EDILICIA conserva solo `BORRADO`, que habilita desvincular una compra de
+   * una reparación (L21, L50.2). Ver, crear y modificar reparaciones se
+   * conceden por tipo de ticket.
+   */
   EDILICIA: {
-    piso: ['LECTURA', 'ALTAS', 'MODIFICACION', 'BORRADO'],
+    piso: ['BORRADO'],
     extras: [],
   },
   EQUIPOS: {
@@ -112,7 +118,8 @@ type AccionesDe<M extends Modulo> =
 export type CodigoAccion = { [M in Modulo]: `${M}:${AccionesDe<M>}` }[Modulo];
 
 /**
- * Los 36 pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`.
+ * Los pares `(modulo, accion)` válidos, aplanados desde `CATALOGO_MODULOS`. La
+ * cantidad no se escribe acá: la fija `acciones.spec.ts`.
  * Única fuente que consumen el test de deriva (WU-2.1), el bypass de
  * ADMINISTRADOR (`resolverScope`, WU-7.1) y la validación de DTOs (WU-7.4).
  */

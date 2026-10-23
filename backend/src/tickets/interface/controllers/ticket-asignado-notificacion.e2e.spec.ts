@@ -40,11 +40,13 @@ import { PrismaMatrizPermisosRepository } from '../../../auth/infrastructure/per
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
 import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
-import { CodigoAccion } from '../../../shared/domain/acciones';
 import { EMAIL_SENDER, EmailMessage } from '../../../shared/domain/ports/i-email-sender';
 import { TicketResponseDto } from '../dtos/ticket.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
-import { sembrarPermisosPorTipoE2e } from '../../test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -184,7 +186,7 @@ describe('Mail de asignación e2e (WU-6: N1, N2, N6)', () => {
 
   async function crearActor(
     rol: string,
-    celdas: CodigoAccion[],
+    celdas: string[],
     clienteId: string,
   ): Promise<{ usuario: UsuarioEntity; accessToken: string }> {
     const existente = await masterClient.role.findFirst({ where: { codigo: rol } });
@@ -207,9 +209,14 @@ describe('Mail de asignación e2e (WU-6: N1, N2, N6)', () => {
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId, rolId, activo: true },
     });
-    await permisosRepo.setPermisos(usuario.id, clienteId, ['TICKETS:LECTURA', ...celdas]);
-    // Las operaciones por id deciden con los permisos por tipo del tenant: los mismos que la
-    // matriz por módulo, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    await permisosRepo.setPermisos(
+      usuario.id,
+      clienteId,
+      celdasDeLaMatriz(['TICKETS:LECTURA', ...celdas]),
+    );
+    // Las operaciones por id deciden con los permisos por tipo del tenant: las celdas del fixture,
+    // traducidas por L11 (odd/permisos-por-tipo-ticket, T5a). Las de tickets ya no van a la matriz
+    // master (T9b).
     await sembrarPermisosPorTipoE2e(
       tenantClient,
       new Map([[usuario.id, ['TICKETS:LECTURA', ...celdas]]]),
@@ -231,7 +238,7 @@ describe('Mail de asignación e2e (WU-6: N1, N2, N6)', () => {
     });
     await clienteRepo.save(cliente);
     const solicitante = await crearActor('USUARIO', ['TICKETS:ALTAS'], cliente.id);
-    const permisosTecnico: CodigoAccion[] = [
+    const permisosTecnico: string[] = [
       'TICKETS:ALTAS',
       'TICKETS:VER_TODOS',
       'TICKETS:TRANSICIONAR',

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { CodigoAccion } from "./acciones";
 
 /**
  * Permisos por tipo de ticket de la sesión (odd/permisos-por-tipo-ticket, S6, T6).
@@ -106,16 +105,20 @@ export function puedeEnAlgunTipo(
 }
 
 /**
- * Módulos cuyos tipos toman sus acciones de las celdas `TICKETS:*` (L21). Espejo de
- * `tomaCeldasDeTickets` (`backend/src/tickets/domain/permisos-tipo-ticket.ts`).
+ * Módulos cuyos tipos abren la lista de usuarios con `VER_TODOS`; Edilicia queda afuera (S7). Espejo
+ * de `MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS`
+ * (`backend/src/tickets/application/services/visibilidad-ticket.ts`).
  */
-export const MODULOS_CON_CELDAS_DE_TICKETS: readonly string[] = ["TICKETS", "COMPRAS", "EQUIPOS"];
+export const MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS: readonly string[] = [
+  "TICKETS",
+  "COMPRAS",
+  "EQUIPOS",
+];
 
 /**
  * ¿La sesión puede leer la lista de usuarios (`GET /usuarios`), para asignar o filtrar por
  * responsable? Espejo de `puedeVerListaDeUsuarios` del backend (S7): `ASIGNAR` sobre algún tipo, o
- * `VER_TODOS` sobre un tipo de `MODULOS_CON_CELDAS_DE_TICKETS`. Alcanza con mirar esos tipos: todo
- * `VER_TODOS` sale de `TICKETS:VER_TODOS` (L35), que también lo da sobre los tipos de TICKETS.
+ * `VER_TODOS` sobre un tipo de `MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS`.
  *
  * @param permisos Permisos de la sesión, o `null` si no se conocen.
  * @returns `true` si el backend le devuelve la lista.
@@ -123,7 +126,9 @@ export const MODULOS_CON_CELDAS_DE_TICKETS: readonly string[] = ["TICKETS", "COM
 export function puedeVerListaDeUsuarios(permisos: PermisosPorTipo | null): boolean {
   return (
     puedeEnAlgunTipo(permisos, "ASIGNAR") ||
-    MODULOS_CON_CELDAS_DE_TICKETS.some((modulo) => puedeEnModulo(permisos, modulo, "VER_TODOS"))
+    MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS.some((modulo) =>
+      puedeEnModulo(permisos, modulo, "VER_TODOS"),
+    )
   );
 }
 
@@ -142,24 +147,3 @@ export function tiposCon<T extends { id: string }>(
 ): T[] {
   return tipos.filter((tipo) => puedeEnTipo(permisos, tipo.id, accion));
 }
-
-/**
- * Celdas de la matriz por módulo que pasaron a los permisos por tipo y ya no deciden nada (T7,
- * D5 d): todas las de TICKETS y `EDILICIA:LECTURA`, `ALTAS` y `MODIFICACION`. `EDILICIA:BORRADO`
- * (desvincular compra) sigue siendo del módulo. Espejo de `celdaReemplazadaPorTipo`
- * (`backend/src/tickets/domain/permisos-tipo-ticket.ts`): la grilla de módulos no las muestra, y
- * el backend las conserva como estaban al guardar esa grilla.
- */
-export const CELDAS_REEMPLAZADAS_POR_TIPO: readonly CodigoAccion[] = [
-  "TICKETS:LECTURA",
-  "TICKETS:ALTAS",
-  "TICKETS:MODIFICACION",
-  "TICKETS:VER_TODOS",
-  "TICKETS:ASIGNAR",
-  "TICKETS:TRANSICIONAR",
-  "TICKETS:OBSERVAR",
-  "TICKETS:COMENTAR",
-  "EDILICIA:LECTURA",
-  "EDILICIA:ALTAS",
-  "EDILICIA:MODIFICACION",
-];

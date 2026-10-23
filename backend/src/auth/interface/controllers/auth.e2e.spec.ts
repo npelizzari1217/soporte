@@ -87,7 +87,7 @@ class TestProtectedController {
   // WU-7.3: harness migrado de PermissionsGuard/@RequirePermissions a
   // AccionesGuard/@RequiereAcciones — mismo criterio (AND, bypass ROOT,
   // mensaje de faltantes), ahora sobre la matriz nueva.
-  @RequiereAcciones('TICKETS:ALTAS')
+  @RequiereAcciones('COMPRAS:ALTAS')
   permissionGated(): { ok: true } {
     return { ok: true };
   }
@@ -532,10 +532,11 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       const usuarioSin = await createUsuario('guard-permiso-sin');
       await createMembresia(usuarioCon.id, cliente.id, roleConPermiso.id);
       await createMembresia(usuarioSin.id, cliente.id, roleSinPermiso.id);
-      // WU-7.1: el gate del harness usa 'TICKETS:ALTAS' (matriz nueva), no
+      // WU-7.1: el gate del harness usa una celda de la matriz nueva
+      // ('COMPRAS:ALTAS' desde que TICKETS salió del catálogo, T9b), no
       // 'ticket:crear' (RBAC viejo) — hay que sembrar la matriz directamente,
       // el role RBAC de arriba ya no alimenta `payload.permisos`.
-      await permisosRepo.setPermisos(usuarioCon.id, cliente.id, ['TICKETS:ALTAS']);
+      await permisosRepo.setPermisos(usuarioCon.id, cliente.id, ['COMPRAS:ALTAS']);
 
       const loginCon = await login(usuarioCon.email);
       const okRes = await httpGet(
@@ -649,7 +650,7 @@ describe('Auth e2e (R3–R14, PR6)', () => {
       await createMembresia(usuario.id, cliente.id, role.id);
       // `roles_permisos` (RBAC viejo) ya NO alimenta `payload.permisos` desde
       // WU-7.1 — la matriz nueva es la única fuente (R2), sembrada directo.
-      await permisosRepo.setPermisos(usuario.id, cliente.id, ['TICKETS:ALTAS']);
+      await permisosRepo.setPermisos(usuario.id, cliente.id, ['COMPRAS:ALTAS']);
 
       const loginRes = await login(usuario.email, PLAINTEXT_PASSWORD, cliente.id);
 

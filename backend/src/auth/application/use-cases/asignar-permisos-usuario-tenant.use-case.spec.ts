@@ -60,16 +60,32 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
     expect(matriz.celdas()).toEqual(['COMPRAS:ALTAS', 'EDILICIA:BORRADO']);
   });
 
-  describe('celdas reemplazadas por los permisos por tipo (odd/permisos-por-tipo-ticket, T7, D5 d)', () => {
-    it('conserva las celdas TICKETS:* y EDILICIA:LECTURA|ALTAS|MODIFICACION guardadas aunque el pedido no las traiga', async () => {
-      const matriz = matrizEnMemoria([
-        'TICKETS:LECTURA',
-        'TICKETS:VER_TODOS',
-        'EDILICIA:LECTURA',
-        'EDILICIA:MODIFICACION',
-        'EDILICIA:BORRADO',
-        'COMPRAS:LECTURA',
-      ]);
+  describe('celdas de tickets retiradas de la matriz (odd/permisos-por-tipo-ticket, T9b, L50)', () => {
+    it.each([
+      ['TICKETS:LECTURA'],
+      ['TICKETS:ASIGNAR'],
+      ['EDILICIA:LECTURA'],
+      ['EDILICIA:ALTAS'],
+      ['EDILICIA:MODIFICACION'],
+    ])('rechaza %s con CeldaPermisoInvalidaError y deja la matriz como estaba', async (celda) => {
+      const matriz = matrizEnMemoria(['COMPRAS:LECTURA', 'EDILICIA:BORRADO']);
+      const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-token',
+        usuarioId: 'usuario-1',
+        celdas: ['KB:LECTURA', celda],
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(CeldaPermisoInvalidaError);
+      expect(result.getError().message).toBe(`Celda(s) de permiso inválida(s): ${celda}.`);
+      expect(matriz.repo.setPermisos).not.toHaveBeenCalled();
+      expect(matriz.celdas()).toEqual(['COMPRAS:LECTURA', 'EDILICIA:BORRADO']);
+    });
+
+    it('reemplazo total: no conserva celdas viejas de tickets que hubieran quedado guardadas', async () => {
+      const matriz = matrizEnMemoria(['TICKETS:LECTURA', 'EDILICIA:LECTURA', 'COMPRAS:LECTURA']);
       const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
 
       const result = await useCase.execute({
@@ -78,39 +94,23 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
         celdas: ['KB:LECTURA'],
       });
 
-      const esperadas = [
-        'EDILICIA:LECTURA',
-        'EDILICIA:MODIFICACION',
-        'KB:LECTURA',
-        'TICKETS:LECTURA',
-        'TICKETS:VER_TODOS',
-      ];
-      expect(matriz.celdas()).toEqual(esperadas);
-      expect([...result.getValue()].sort()).toEqual(esperadas);
+      expect(result.getValue()).toEqual(['KB:LECTURA']);
+      expect(matriz.celdas()).toEqual(['KB:LECTURA']);
     });
 
-    it('ignora las celdas reemplazadas que el pedido agrega: no concede TICKETS:* ni EDILICIA:ALTAS nuevas', async () => {
-      const matriz = matrizEnMemoria(['COMPRAS:LECTURA']);
+    it('EDILICIA:BORRADO (desvincular compra, L21) sigue editándose: se concede y se quita', async () => {
+      const matriz = matrizEnMemoria([]);
       const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
 
-      const result = await useCase.execute({
+      await useCase.execute({
         clienteId: 'cliente-token',
         usuarioId: 'usuario-1',
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ASIGNAR', 'EDILICIA:ALTAS', 'COMPRAS:LECTURA'],
+        celdas: ['EDILICIA:BORRADO'],
       });
-
-      expect(result.isOk()).toBe(true);
-      expect(matriz.celdas()).toEqual(['COMPRAS:LECTURA']);
-      expect(result.getValue()).toEqual(['COMPRAS:LECTURA']);
-    });
-
-    it('EDILICIA:BORRADO (desvincular compra, L21) sigue editándose: se quita si el pedido no la trae', async () => {
-      const matriz = matrizEnMemoria(['EDILICIA:BORRADO', 'EDILICIA:LECTURA']);
-      const useCase = new AsignarPermisosUsuarioTenantUseCase(matriz.repo, membresiaActiva());
+      expect(matriz.celdas()).toEqual(['EDILICIA:BORRADO']);
 
       await useCase.execute({ clienteId: 'cliente-token', usuarioId: 'usuario-1', celdas: [] });
-
-      expect(matriz.celdas()).toEqual(['EDILICIA:LECTURA']);
+      expect(matriz.celdas()).toEqual([]);
     });
   });
 
@@ -153,7 +153,7 @@ describe('AsignarPermisosUsuarioTenantUseCase (ABM de la matriz, sdd/matriz-perm
     const result = await useCase.execute({
       clienteId: 'cliente-token',
       usuarioId: 'usuario-de-otro-cliente',
-      celdas: ['TICKETS:LECTURA'],
+      celdas: ['COMPRAS:LECTURA'],
     });
 
     expect(result.isFail()).toBe(true);

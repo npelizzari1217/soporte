@@ -90,17 +90,17 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
     const usuario = await createTestUsuario('con-celdas');
     const cliente = await createTestCliente('con-celdas');
 
-    await repo.setPermisos(usuario.id, cliente.id, ['TICKETS:LECTURA', 'TICKETS:ALTAS']);
+    await repo.setPermisos(usuario.id, cliente.id, ['COMPRAS:LECTURA', 'COMPRAS:ALTAS']);
 
     const celdas = await repo.findByUsuarioYCliente(usuario.id, cliente.id);
-    expect(celdas.sort()).toEqual(['TICKETS:ALTAS', 'TICKETS:LECTURA']);
+    expect(celdas.sort()).toEqual(['COMPRAS:ALTAS', 'COMPRAS:LECTURA']);
   });
 
   it('setPermisos es REEMPLAZO total: la segunda llamada pisa la primera, no fusiona', async () => {
     const usuario = await createTestUsuario('reemplazo');
     const cliente = await createTestCliente('reemplazo');
 
-    await repo.setPermisos(usuario.id, cliente.id, ['TICKETS:LECTURA', 'TICKETS:ALTAS']);
+    await repo.setPermisos(usuario.id, cliente.id, ['COMPRAS:LECTURA', 'COMPRAS:ALTAS']);
     await repo.setPermisos(usuario.id, cliente.id, ['KB:LECTURA']);
 
     const celdas = await repo.findByUsuarioYCliente(usuario.id, cliente.id);
@@ -111,7 +111,7 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
     const usuario = await createTestUsuario('vacio');
     const cliente = await createTestCliente('vacio');
 
-    await repo.setPermisos(usuario.id, cliente.id, ['TICKETS:LECTURA']);
+    await repo.setPermisos(usuario.id, cliente.id, ['COMPRAS:LECTURA']);
     await repo.setPermisos(usuario.id, cliente.id, []);
 
     const celdas = await repo.findByUsuarioYCliente(usuario.id, cliente.id);
@@ -122,11 +122,11 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
     const usuario = await createTestUsuario('idempotente');
     const cliente = await createTestCliente('idempotente');
 
-    await repo.setPermisos(usuario.id, cliente.id, ['TICKETS:LECTURA', 'TICKETS:ALTAS']);
-    await repo.setPermisos(usuario.id, cliente.id, ['TICKETS:LECTURA', 'TICKETS:ALTAS']);
+    await repo.setPermisos(usuario.id, cliente.id, ['COMPRAS:LECTURA', 'COMPRAS:ALTAS']);
+    await repo.setPermisos(usuario.id, cliente.id, ['COMPRAS:LECTURA', 'COMPRAS:ALTAS']);
 
     const celdas = await repo.findByUsuarioYCliente(usuario.id, cliente.id);
-    expect(celdas.sort()).toEqual(['TICKETS:ALTAS', 'TICKETS:LECTURA']);
+    expect(celdas.sort()).toEqual(['COMPRAS:ALTAS', 'COMPRAS:LECTURA']);
   });
 
   it('AISLAMIENTO: setPermisos NO toca las celdas de OTRO usuario', async () => {
@@ -134,13 +134,13 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
     const usuarioB = await createTestUsuario('aislamiento-b');
     const cliente = await createTestCliente('aislamiento-usuarios');
 
-    await repo.setPermisos(usuarioA.id, cliente.id, ['TICKETS:LECTURA']);
+    await repo.setPermisos(usuarioA.id, cliente.id, ['COMPRAS:LECTURA']);
     await repo.setPermisos(usuarioB.id, cliente.id, ['COMPRAS:LECTURA']);
-    await repo.setPermisos(usuarioA.id, cliente.id, ['TICKETS:ALTAS']);
+    await repo.setPermisos(usuarioA.id, cliente.id, ['COMPRAS:ALTAS']);
 
     const celdasA = await repo.findByUsuarioYCliente(usuarioA.id, cliente.id);
     const celdasB = await repo.findByUsuarioYCliente(usuarioB.id, cliente.id);
-    expect(celdasA).toEqual(['TICKETS:ALTAS']);
+    expect(celdasA).toEqual(['COMPRAS:ALTAS']);
     expect(celdasB).toEqual(['COMPRAS:LECTURA']);
   });
 
@@ -149,13 +149,13 @@ describe('PrismaMatrizPermisosRepository — Integration (WU-3)', () => {
     const clienteA = await createTestCliente('multi-cliente-a');
     const clienteB = await createTestCliente('multi-cliente-b');
 
-    await repo.setPermisos(usuario.id, clienteA.id, ['TICKETS:LECTURA']);
+    await repo.setPermisos(usuario.id, clienteA.id, ['COMPRAS:LECTURA']);
     await repo.setPermisos(usuario.id, clienteB.id, ['COMPRAS:LECTURA']);
-    await repo.setPermisos(usuario.id, clienteA.id, ['TICKETS:ALTAS']);
+    await repo.setPermisos(usuario.id, clienteA.id, ['COMPRAS:ALTAS']);
 
     const celdasA = await repo.findByUsuarioYCliente(usuario.id, clienteA.id);
     const celdasB = await repo.findByUsuarioYCliente(usuario.id, clienteB.id);
-    expect(celdasA).toEqual(['TICKETS:ALTAS']);
+    expect(celdasA).toEqual(['COMPRAS:ALTAS']);
     expect(celdasB).toEqual(['COMPRAS:LECTURA']);
   });
 });

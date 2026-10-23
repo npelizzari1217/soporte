@@ -12,8 +12,10 @@
  * (`asignar-permisos-control.tsx`): un módulo se llama IGUAL en los dos
  * lugares, sin repetir el string.
  *
- * `satisfies Record<Modulo, string>` lo hace TOTAL contra el catálogo: sumar
- * un módulo en `CATALOGO_MODULOS` y olvidarse de su etiqueta acá no compila.
+ * `satisfies Record<Modulo | "TICKETS", string>` lo hace TOTAL contra el
+ * catálogo: sumar un módulo en `CATALOGO_MODULOS` y olvidarse de su etiqueta
+ * acá no compila. TICKETS ya no es un módulo de la matriz (T9b, L50.1), pero
+ * el menú lateral tiene un ítem "Tickets" que toma de acá su nombre.
  */
 import type { Modulo } from "./acciones";
 
@@ -31,7 +33,7 @@ export const ETIQUETAS_MODULOS = {
   CSAT: "Satisfacción",
   PREVENTIVO: "Preventivo",
   INSUMOS: "Insumos",
-} as const satisfies Record<Modulo, string>;
+} as const satisfies Record<Modulo | "TICKETS", string>;
 
 /** Nombre legible de un módulo, el mismo que muestra el menú lateral. */
 export const etiquetaDeModulo = (modulo: Modulo): string => ETIQUETAS_MODULOS[modulo];

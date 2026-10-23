@@ -289,4 +289,57 @@ describe('Plantillas de rol por tipo de ticket por los endpoints de /usuarios (T
     expect(status).toBe(200);
     expect(await filasDe(usuarioId)).toEqual(antes);
   });
+
+  /** Celdas de la matriz master del usuario en el cliente del harness, ordenadas. */
+  async function celdasDe(usuarioId: string): Promise<string[]> {
+    const filas = await master.usuarioClientePermiso.findMany({ where: { usuarioId, clienteId } });
+    return filas.map((f) => `${f.modulo}:${f.accion}`).sort();
+  }
+
+  // T9b (L50.1-2): TICKETS y EDILICIA:LECTURA|ALTAS|MODIFICACION salen del catálogo. Antes de T9b el
+  // PATCH las ignoraba y respondía 200; ahora son celdas inválidas como cualquier otra.
+  it.each(['TICKETS:LECTURA', 'EDILICIA:LECTURA', 'EDILICIA:ALTAS', 'EDILICIA:MODIFICACION'])(
+    'PATCH /usuarios/:id/permisos con %s → 400 y la matriz no cambia (T9b)',
+    async (celda) => {
+      const usuarioId = await crearUsuarioPorEndpoint(`patch-${celda.replace(':', '-')}`, 'USUARIO');
+      const antes = await celdasDe(usuarioId);
+
+      const { status, body } = await http('PATCH', `/usuarios/${usuarioId}/permisos`, {
+        celdas: ['COMPRAS:LECTURA', celda],
+      });
+
+      expect(status).toBe(400);
+      expect(JSON.stringify(body)).toContain('celdas');
+      expect(await celdasDe(usuarioId)).toEqual(antes);
+    },
+  );
+
+  it('PATCH /usuarios/:id/permisos con EDILICIA:BORRADO reemplaza la matriz completa (T9b)', async () => {
+    const usuarioId = await crearUsuarioPorEndpoint('patch-borrado', 'TECNICO');
+
+    const { status, body } = await http('PATCH', `/usuarios/${usuarioId}/permisos`, {
+      celdas: ['EDILICIA:BORRADO', 'COMPRAS:LECTURA'],
+    });
+
+    expect(status).toBe(200);
+    expect(body).toEqual({ usuarioId, celdas: ['EDILICIA:BORRADO', 'COMPRAS:LECTURA'] });
+    expect(await celdasDe(usuarioId)).toEqual(['COMPRAS:LECTURA', 'EDILICIA:BORRADO']);
+  });
+
+  it('GET /usuarios/:id/permisos publica el catálogo sin TICKETS y con EDILICIA solo BORRADO (T9b)', async () => {
+    const usuarioId = await crearUsuarioPorEndpoint('catalogo', 'TECNICO');
+
+    const { status, body } = await http('GET', `/usuarios/${usuarioId}/permisos`);
+
+    expect(status).toBe(200);
+    const { catalogo, celdas } = body as {
+      catalogo: Record<string, { piso: string[]; extras: string[] }>;
+      celdas: string[];
+    };
+    expect(catalogo).not.toHaveProperty('TICKETS');
+    expect(catalogo.EDILICIA).toEqual({ piso: ['BORRADO'], extras: [] });
+    expect(celdas.filter((c) => c.startsWith('TICKETS:') || /^EDILICIA:(?!BORRADO)/.test(c))).toEqual(
+      [],
+    );
+  });
 });

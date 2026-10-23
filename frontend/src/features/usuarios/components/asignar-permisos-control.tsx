@@ -30,12 +30,10 @@
  * finos hechos a mano en la grilla), pide confirmación explícita.
  *
  * Dos pestañas (odd/permisos-por-tipo-ticket, T7, S5): "Módulos" es esta grilla y "Tipos de
- * ticket" es `PermisosPorTipoGrilla`, con su propio `Guardar` porque persiste otra cosa. La grilla
- * de módulos ya no muestra las celdas que pasaron a los permisos por tipo
- * (`CELDAS_REEMPLAZADAS_POR_TIPO`: todo TICKETS y Edilicia ver, crear y modificar), que no deciden
- * nada; un módulo sin otra celda editable desaparece. Siguen en la selección tal como llegaron, así
- * que `Guardar` las reenvía sin cambios (el backend, además, las conserva). Las dos pestañas
- * quedan montadas mientras el diálogo está abierto: cambiar de pestaña no pierde lo editado.
+ * ticket" es `PermisosPorTipoGrilla`, con su propio `Guardar` porque persiste otra cosa. Desde T9b
+ * (L50.1-2) el catálogo ya no tiene el módulo TICKETS y Edilicia solo tiene `BORRADO`: esas
+ * acciones se configuran por tipo. Las dos pestañas quedan montadas mientras el diálogo está
+ * abierto: cambiar de pestaña no pierde lo editado.
  *
  * Se edita en un DIÁLOGO MODAL centrado, no en un popover anclado a la fila:
  * el catálogo completo es más alto que el popover y el botón `Guardar` —
@@ -61,7 +59,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ACCIONES_PISO, CATALOGO_MODULOS, type CodigoAccion, type Modulo } from "@/shared/auth/acciones";
 import { etiquetaDeModulo } from "@/shared/auth/etiquetas-modulos";
-import { CELDAS_REEMPLAZADAS_POR_TIPO } from "@/shared/auth/permisos-por-tipo";
 import {
   useAplicarPresetPermisos,
   useAsignarPermisos,
@@ -81,26 +78,19 @@ interface CeldaDeModulo {
   soportada: boolean;
 }
 
-/**
- * Celdas que la grilla de módulos muestra por módulo: el piso y los extras, sin las que pasaron a
- * los permisos por tipo. Un módulo que se queda sin celdas soportadas no se muestra (TICKETS).
- */
+/** Celdas que la grilla de módulos muestra por módulo: el piso completo y los extras. */
 const GRILLA_MODULOS: readonly { modulo: Modulo; celdas: CeldaDeModulo[] }[] = (
   Object.keys(CATALOGO_MODULOS) as Modulo[]
-)
-  .map((modulo) => {
-    const def = CATALOGO_MODULOS[modulo];
-    const soportadas: readonly string[] = [...def.piso, ...def.extras];
-    const celdas = [...ACCIONES_PISO, ...def.extras]
-      .map((accion) => ({
-        accion,
-        celda: `${modulo}:${accion}` as CodigoAccion,
-        soportada: soportadas.includes(accion),
-      }))
-      .filter(({ celda }) => !CELDAS_REEMPLAZADAS_POR_TIPO.includes(celda));
-    return { modulo, celdas };
-  })
-  .filter(({ celdas }) => celdas.some(({ soportada }) => soportada));
+).map((modulo) => {
+  const def = CATALOGO_MODULOS[modulo];
+  const soportadas: readonly string[] = [...def.piso, ...def.extras];
+  const celdas = [...ACCIONES_PISO, ...def.extras].map((accion) => ({
+    accion,
+    celda: `${modulo}:${accion}` as CodigoAccion,
+    soportada: soportadas.includes(accion),
+  }));
+  return { modulo, celdas };
+});
 
 type Pestania = "modulos" | "tipos";
 

@@ -47,9 +47,9 @@ import { AplicarPresetPermisosUseCase } from '../../application/use-cases/aplica
 import { PermisosPorTipoUsuarioTenantUseCase } from '../../application/use-cases/permisos-por-tipo-usuario-tenant.use-case';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
-import { filasDeTiposDesdeCeldas } from '../../../tickets/domain/permisos-tipo-ticket';
+import { filasDeTiposDesdePlantilla } from '../../../tickets/domain/permisos-tipo-ticket';
 import type { PermisoTipoTicketFila } from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
-import { PRESETS_ROL } from '../../domain/presets-rol';
+import { PLANTILLAS_POR_TIPO_ROL } from '../../domain/presets-rol';
 
 /**
  * Permisos por tipo de la tabla del tenant (odd/permisos-por-tipo-ticket, T6): deciden el acceso a
@@ -86,15 +86,18 @@ const TIPOS_SONDEO = [
   { id: 'q1', modulo: 'EQUIPOS' },
 ] as const;
 
-/** Filas por tipo que el backfill (S7) le deja a `usuarioId` con la plantilla de `rol`. */
+/**
+ * Filas por tipo que la plantilla de `rol` le escribe a `usuarioId`: las mismas que dejó el backfill
+ * (S7), como fija `presets-rol.spec.ts`.
+ */
 function filasDelPreset(
   usuarioId: string,
   rol: string,
   tipos: readonly { id: string; modulo: string }[],
 ): PermisoTipoTicketFila[] {
-  const celdas = PRESETS_ROL[rol];
-  if (celdas === undefined) throw new Error(`Rol sin plantilla: ${rol}`);
-  return filasDeTiposDesdeCeldas(celdas, tipos).map((fila) => ({ usuarioId, ...fila }));
+  const plantilla = PLANTILLAS_POR_TIPO_ROL[rol];
+  if (plantilla === undefined) throw new Error(`Rol sin plantilla: ${rol}`);
+  return filasDeTiposDesdePlantilla(plantilla, tipos).map((fila) => ({ usuarioId, ...fila }));
 }
 
 function permisosTipoPorDefecto(): PermisosTipoTicketEnMemoria {
@@ -235,13 +238,33 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
     });
 
-    // Regresión (S7): `EDILICIA:LECTURA` se traduce también a VER_TODOS (L11), y antes de la etapa 1
-    // esa celda no abría la lista. Un VER_TODOS de Edilicia no la abre.
+    // Regresión (S7): antes de la etapa 1 ver todos los tickets de Edilicia no abría la lista. Un
+    // VER_TODOS sobre un tipo de Edilicia no la abre.
     it('con VER_TODOS solo sobre un tipo de EDILICIA → 403 (S7, L11)', async () => {
       const { controller, listarUsuariosTenantUseCase } = buildController();
       const actor = buildActor({ sub: 'supervisor', permisos: [] });
 
       await expect(controller.listar(actor)).rejects.toBeInstanceOf(ForbiddenException);
+      expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    // T9a: la regla decide con el módulo del tipo, no con celdas. Un VER_TODOS concedido a mano desde
+    // la grilla por tipo (T7) sobre todos los tipos de Edilicia, sin ASIGNAR, sigue sin abrirla.
+    it('con VER_TODOS concedido a mano solo en tipos de EDILICIA → 403, sin listar (T9a, S7)', async () => {
+      const permisosTipo = new PermisosTipoTicketEnMemoria(
+        [...TIPOS_SONDEO, { id: 'e2', modulo: 'EDILICIA' }],
+        ['e1', 'e2'].flatMap((tipoId) =>
+          (['LECTURA', 'VER_TODOS', 'MODIFICACION', 'COMENTAR', 'IMPRESION'] as const).map(
+            (accion) => ({ usuarioId: 'supervisor-edilicia', tipoId, accion }),
+          ),
+        ),
+      );
+      const { controller, listarUsuariosTenantUseCase } = buildController(permisosTipo);
+      const actor = buildActor({ sub: 'supervisor-edilicia', permisos: [] });
+
+      await expect(controller.listar(actor)).rejects.toThrow(
+        'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un tipo de Tickets, Compras o Equipos',
+      );
       expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
     });
 
@@ -259,10 +282,10 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       expect(result).toEqual([{ id: 'u1', nombre: 'Ada', apellido: 'Tec', rol: 'TECNICO' }]);
     });
 
-    // Un tipo de COMPRAS o EQUIPOS toma las celdas de TICKETS (L21, L23): su VER_TODOS viene de
-    // `TICKETS:VER_TODOS`, que antes de la etapa 1 abría la lista.
+    // Los tipos de COMPRAS o EQUIPOS se migraron con la regla de TICKETS (L21, L23): ver todos sobre
+    // ellos abría la lista antes de la etapa 1.
     it.each(['c1', 'q1'])(
-      'con VER_TODOS sobre un tipo que toma las celdas de TICKETS (%s) retorna la lista (L21)',
+      'con VER_TODOS sobre un tipo de COMPRAS o EQUIPOS (%s) retorna la lista (L21)',
       async (tipoId) => {
         const permisosTipo = new PermisosTipoTicketEnMemoria(TIPOS_SONDEO, [
           { usuarioId: 'supervisor-modulo', tipoId, accion: 'LECTURA' },
@@ -278,9 +301,9 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       },
     );
 
-    // Sondeo de la verificación independiente (S7): con la plantilla USUARIO migrada, el acceso no
-    // cambia el día del deploy. Antes exigía `TICKETS:ASIGNAR` o `TICKETS:VER_TODOS`.
-    it('USUARIO con las filas que le deja el backfill sobre un tipo de TICKETS y uno de EDILICIA → 403 (S7)', async () => {
+    // Sondeo de la verificación independiente (S7): con la plantilla USUARIO, el acceso no cambia el
+    // día del deploy. Antes exigía `TICKETS:ASIGNAR` o `TICKETS:VER_TODOS`.
+    it('USUARIO con las filas de su plantilla sobre un tipo de TICKETS y uno de EDILICIA → 403 (S7)', async () => {
       const permisosTipo = new PermisosTipoTicketEnMemoria(
         TIPOS_SONDEO,
         filasDelPreset('usuario-migrado', 'USUARIO', TIPOS_SONDEO.slice(0, 2)),
@@ -292,7 +315,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       expect(listarUsuariosTenantUseCase.execute).not.toHaveBeenCalled();
     });
 
-    it('TECNICO con las filas que le deja el backfill → lista SIN email (S7)', async () => {
+    it('TECNICO con las filas de su plantilla → lista SIN email (S7)', async () => {
       const permisosTipo = new PermisosTipoTicketEnMemoria(
         TIPOS_SONDEO,
         filasDelPreset('tecnico-migrado', 'TECNICO', TIPOS_SONDEO.slice(0, 2)),
@@ -733,22 +756,22 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
     it('reemplaza las celdas y retorna { usuarioId, celdas }, clienteId SIEMPRE del actor', async () => {
       const { controller, asignarPermisosUsuarioTenantUseCase } = buildController();
       asignarPermisosUsuarioTenantUseCase.execute.mockResolvedValue(
-        Result.ok(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
+        Result.ok(['COMPRAS:LECTURA', 'COMPRAS:ALTAS']),
       );
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
       const result = await controller.asignarPermisos(actor, 'usuario-1', {
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+        celdas: ['COMPRAS:LECTURA', 'COMPRAS:ALTAS'],
       });
 
       expect(asignarPermisosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
         usuarioId: 'usuario-1',
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+        celdas: ['COMPRAS:LECTURA', 'COMPRAS:ALTAS'],
       });
       expect(result).toEqual({
         usuarioId: 'usuario-1',
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+        celdas: ['COMPRAS:LECTURA', 'COMPRAS:ALTAS'],
       });
     });
 
@@ -760,7 +783,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
       await expect(
-        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['TICKETS:LECTURA'] }),
+        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['COMPRAS:LECTURA'] }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });

@@ -304,34 +304,23 @@ describe('deploy.ps1 — precondicion de componentes sin repuesto retirada', () 
 });
 
 /**
- * Paso 8c (odd/tasks/permisos-por-tipo-ticket.md, T4b): el backfill de permisos por tipo corre
- * con los servicios detenidos, despues de migrar los tenants y antes de arrancar, con
- * `--apply` y SIN `--force` (la guarda por tenant es lo que lo vuelve un no-op en los deploys
- * siguientes), y un exit code distinto de cero detiene el deploy.
+ * El paso 8c, backfill de permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4b),
+ * se retiro en T9c: corrio en el deploy de la etapa 1 y desde T9b la matriz master ya no tiene las
+ * celdas de tickets que traducia. deploy.ps1 no debe volver a invocarlo.
  */
-describe('deploy.ps1 — paso 8c, backfill de permisos por tipo de ticket', () => {
+describe('deploy.ps1 — paso 8c retirado', () => {
   const texto = readFileSync(PS1_PATH, 'utf8');
-  const invocacion = '& $NodeExe scripts/backfill-permisos-tipo-ticket.mjs --apply';
 
-  it('corre despues de migrate:tenants y del 8b, y antes de arrancar los servicios', () => {
-    const posMigrar = texto.indexOf('corepack pnpm run migrate:tenants');
-    const pos8b = texto.indexOf('scripts/backfill-correo-clientes.mjs');
-    const posBackfill = texto.indexOf(invocacion);
-    const posArrancar = texto.indexOf("Step 'Arrancar servicios'");
-
-    expect(posMigrar).toBeGreaterThan(-1);
-    expect(posBackfill).toBeGreaterThan(posMigrar);
-    expect(posBackfill).toBeGreaterThan(pos8b);
-    expect(posArrancar).toBeGreaterThan(posBackfill);
+  it('ya no invoca backfill-permisos-tipo-ticket ni tiene el paso 8c', () => {
+    expect(texto).not.toContain('backfill-permisos-tipo-ticket');
+    expect(texto).not.toMatch(/^# 8c\./m);
   });
 
-  it('no pasa --force y aborta ante un exit code distinto de cero', () => {
-    const linea = texto.split(/\r?\n/).find((l) => l.includes('backfill-permisos-tipo-ticket.mjs'));
-    const siguiente = texto.slice(texto.indexOf(invocacion) + invocacion.length).trimStart();
+  it('el paso 8b sigue corriendo antes de arrancar los servicios', () => {
+    const pos8b = texto.indexOf('scripts/backfill-correo-clientes.mjs');
+    const posArrancar = texto.indexOf("Step 'Arrancar servicios'");
 
-    expect(linea?.trim()).toBe(invocacion);
-    expect(siguiente.startsWith("AssertOk 'el backfill de permisos por tipo de ticket'")).toBe(
-      true,
-    );
+    expect(pos8b).toBeGreaterThan(-1);
+    expect(posArrancar).toBeGreaterThan(pos8b);
   });
 });

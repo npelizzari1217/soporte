@@ -108,8 +108,13 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (este commit)
 - [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
-- [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
-  producción — (pendiente)
+- [x] T9 — S7, L49-L50 — worker — retiro de `TICKETS:*` / `EDILICIA:*` de tickets — `66bfddf9` (T9a),
+  (este commit) (T9b y T9c)
+  - [x] T9a — L50.4 — plantillas de rol por tipo explícitas; retirar traducción L11, `accionesDeTipoDesdeCeldas`
+    en plantillas y `GET /usuarios` — (este commit)
+  - [x] T9b — L50.1-2 — sacar `TICKETS` y `EDILICIA:LECTURA|ALTAS|MODIFICACION` del catálogo, CHECK y
+    front; migración master que borra esas celdas (con `predeploy-dump`) — (este commit)
+  - [x] T9c — L50.4 — retirar backfill 8c de `deploy.ps1` y su script — (este commit, junto con T9b, L52)
 - [x] T10 — S8 — worker — borrar y recuperar ticket (backend, front, grilla) — (este commit)
 
 ## Log
@@ -390,3 +395,59 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   gate de `/tickets` e inicio pasan a Ver en algún tipo de cualquier módulo. El backend ya listaba
   todos los tipos con Ver; "Nuevo ticket" sigue ofreciendo solo tipos de TICKETS. Rama
   `feat/menu-tickets-todos-los-tipos`.
+- **L49** (dueño, 2026-10-23) — "Arrancamos con T9 si luego hay algun reclamo vemos que hacemos." Se
+  da por verificado el modelo nuevo en producción.
+- **L50** (decisiones del dueño, 2026-10-23) — (1) el módulo `TICKETS` sale de la matriz de permisos;
+  (2) `EDILICIA` queda solo con `BORRADO` (desvincular compra); (3) las claves de API v1 conservan su
+  vocabulario `TICKETS:LECTURA|ALTAS|COMENTAR` y `modulos: ['TICKETS']`, sin migrar claves emitidas;
+  (4) plantillas de rol por tipo explícitas: se borran la traducción L11 como fuente de plantillas y
+  el backfill 8c.
+- **L51** (T9a; dueño aprobó tocar el importador legacy y el spec del seed de demo) — Las plantillas
+  por tipo son explícitas: `PLANTILLAS_POR_TIPO_ROL` (`auth/domain/presets-rol.ts`) declara por rol
+  las acciones sobre cada módulo de `MODULOS`, y `obtenerPresetDeRol` devuelve `{ celdas, porTipo }`.
+  `PRESETS_ROL` pierde las celdas reemplazadas por tipo; TECNICO conserva `EDILICIA:BORRADO` (L50.2).
+  Alta de usuario, cambio de rol, "Aplicar plantilla del rol", la plantilla por fila de la grilla y
+  el importador legacy escriben con `filasDeTiposDesdePlantilla`. Paridad (S7): `presets-rol.spec.ts`
+  compara cada rol × módulo (más uno desconocido) con la traducción de L11 de las celdas anteriores,
+  congeladas en `auth/test-helpers/presets-rol-anteriores-a-t9a.ts`; RED 32 de 38 antes de
+  implementar, GREEN 38. `GET /usuarios` conserva la regla vigente decidida por el módulo del tipo
+  (`ASIGNAR` en cualquier tipo, o `VER_TODOS` en un tipo de TICKETS, COMPRAS o EQUIPOS), sin
+  `tomaCeldasDeTickets`; un `VER_TODOS` concedido a mano solo en tipos de Edilicia sigue en 403. La
+  clave de API v1 traduce sus celdas con una tabla propia (L50.3; RED: la traducción de L11 daba
+  MODIFICACION y ASIGNAR a celdas que una clave no lleva). Quedan para T9c, porque los usa el
+  backfill 8c: `accionesDeTipoDesdeCeldas`, `TRADUCCION_L11` y el helper de e2e
+  `sembrarPermisosPorTipoE2e`, que traduce celdas de fixtures. `celdaReemplazadaPorTipo` y
+  `CELDAS_REEMPLAZADAS_POR_TIPO` del front quedan para T9b. Back: lint y typecheck en cero, 528
+  archivos en verde; los 240 rojos son integración y e2e sin Postgres (`Can't reach database server`).
+  Front: lint 0, tsc 0, 281 archivos y 2466 tests.
+- **L52** (T9b y T9c en una sola unidad; el orquestador lo decidió para que la suite quede en verde y
+  el deploy sea coherente: desde T9b la matriz no tiene las celdas que el backfill 8c traducía, y su
+  spec ya no podía sembrar el fixture) — El catálogo (`shared/domain/acciones.ts` y su espejo del
+  front) queda sin TICKETS y con EDILICIA solo en `BORRADO`: 25 pares. Migración master
+  `20261023120000_retirar_celdas_tickets_matriz`: borra esas celdas de `usuario_cliente_permisos` y
+  rehace el CHECK; destructiva para esas filas, va con `predeploy-dump.ps1`; su `rollback.sql`
+  restaura el CHECK de 36 pares pero no las filas. `PATCH usuarios/:id/permisos` deja el caso
+  especial de L31: una celda retirada es inválida como cualquier otra (400 en el DTO, 422 en el
+  caso de uso) y el reemplazo es total. La API v1 conserva `TICKETS:LECTURA|ALTAS|COMENTAR`
+  (L50.3) con su propio decorador `RequierePermisoApi`, tipado por `PERMISOS_API` y leído por el
+  mismo `AccionesGuard`; el actor de la clave sigue con `modulos: ['TICKETS']`. El `modulos` del
+  JWT deja de traer TICKETS (sale de las celdas); nada lo consulta para tickets: el menú y los
+  gates de `/tickets` y `/edilicia` van por tipo (L48). La grilla de módulos muestra Edilicia con
+  Ver, Crear y Modificar deshabilitados, como cualquier acción del piso que un módulo no soporta.
+  T9c: fuera `scripts/backfill-permisos-tipo-ticket.mjs`, su spec, el paso 8c de `deploy.ps1`,
+  `accionesDeTipoDesdeCeldas` y `TRADUCCION_L11` del dominio, y el fixture congelado
+  `presets-rol-anteriores-a-t9a.ts` con su test de paridad (queda la tabla explícita por rol). La
+  tabla de L11 sobrevive solo como fixture de e2e (`tickets/test-helpers/permisos-por-tipo-e2e.ts`),
+  con `celdasDeLaMatriz` para no guardar en master las celdas retiradas. TDD: RED 24 tests
+  (catálogo, caso de uso, CHECK y e2e del PATCH, que antes daba 200) y 5 en el front; GREEN.
+  Back: lint y typecheck en cero, suite completa 768 archivos y 9487 tests en verde. Front: lint 0,
+  type-check 0, 281 archivos y 2467 tests. Ayuda (suspendida): la grilla de módulos ya no tiene
+  Tickets y Edilicia solo ofrece Borrar.
+- **L53** (judgment-day sobre 66bfddf9..b245a07f, 2026-10-23) — JD-A-001 (CRITICAL, inferencial):
+  la migración borra las celdas de clientes inactivos, que el backfill 8c nunca tradujo. Verificado
+  en producción por SSH (solo lectura): 9 clientes, todos activos y sin baja, cada tenant con filas
+  en `permisos_tipo_ticket` (72 a 720); el caso no existe hoy. Queda como chequeo previo obligatorio
+  en el runbook, no como guard en la migración (ya aplicada en local; cambiarla rompe su checksum).
+  Corregidos: rollback con `migrate resolve --rolled-back` (JD-A-002), Ayuda de reparaciones
+  edilicias con acciones por tipo (JD-A-003), JSDoc de `PLANTILLAS_POR_TIPO_ROL` (JD-A-004).
+  JD-A-005 / JD-B-002 (negativos con celda vieja que ya no se puede guardar): informativos.

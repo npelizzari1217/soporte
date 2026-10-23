@@ -19,7 +19,7 @@ import {
   resolverCliente,
   type ClienteDestino,
 } from './master';
-import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
+import { PLANTILLAS_POR_TIPO_ROL } from '../../src/auth/domain/presets-rol';
 import { fechaDia } from './paquete';
 import { paqueteSintetico } from './paquete-sintetico.fixture';
 import { planificarCiclos, planificarUsuarios } from './plan';
@@ -133,7 +133,7 @@ describe('importacion legacy — lado master (integración)', () => {
     expect(resultado.plantillasSembradas).toHaveLength(3);
     expect(resultado.plantillasSembradas).toContainEqual({
       usuarioId: existente.id,
-      celdas: PRESETS_ROL['USUARIO'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['USUARIO'],
     });
   });
 

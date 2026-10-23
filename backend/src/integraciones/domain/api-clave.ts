@@ -1,6 +1,8 @@
 /**
- * Permisos que puede llevar una clave de la API publica: un subconjunto de los de TICKETS
- * (`shared/domain/acciones.ts`). Transicionar, asignar, equipos y compras quedan fuera de la API.
+ * Permisos que puede llevar una clave de la API publica. Es un vocabulario propio de la clave: el
+ * modulo TICKETS salio de la matriz de permisos de usuarios (odd/permisos-por-tipo-ticket, T9b) y
+ * las claves conservan estos codigos (L50.3). Transicionar, asignar, equipos y compras quedan fuera
+ * de la API.
  */
 export const PERMISOS_API = ['TICKETS:LECTURA', 'TICKETS:ALTAS', 'TICKETS:COMENTAR'] as const;
 

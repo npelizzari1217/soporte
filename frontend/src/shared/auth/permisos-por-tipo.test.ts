@@ -85,4 +85,22 @@ describe("permisos por tipo de la sesión (odd/permisos-por-tipo-ticket, T6)", (
       puedeVerListaDeUsuarios({ ...soloEdilicia, porModulo: { TICKETS: ["LECTURA", "VER_TODOS"] } }),
     ).toBe(true);
   });
+
+  it("puedeVerListaDeUsuarios: ASIGNAR en un tipo de Edilicia abre; VER_TODOS en Compras o Equipos también (S7)", () => {
+    const asignaEdilicia: PermisosPorTipo = {
+      sinRestriccion: false,
+      porTipo: { edilicia: ["LECTURA", "ASIGNAR"] },
+      porModulo: { EDILICIA: ["LECTURA", "ASIGNAR"] },
+    };
+    expect(puedeVerListaDeUsuarios(asignaEdilicia)).toBe(true);
+    for (const modulo of ["COMPRAS", "EQUIPOS"]) {
+      expect(
+        puedeVerListaDeUsuarios({
+          sinRestriccion: false,
+          porTipo: { tipo: ["LECTURA", "VER_TODOS"] },
+          porModulo: { [modulo]: ["LECTURA", "VER_TODOS"] },
+        }),
+      ).toBe(true);
+    }
+  });
 });

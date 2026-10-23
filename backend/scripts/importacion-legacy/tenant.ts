@@ -11,7 +11,7 @@ import { uuidv7 } from 'uuidv7';
 import type { Prisma } from '.prisma/tenant';
 import type { TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import {
-  filasDeTiposDesdeCeldas,
+  filasDeTiposDesdePlantilla,
   tiposAbiertosParaPlantilla,
 } from '../../src/tickets/domain/permisos-tipo-ticket';
 import type { PlantillaSembrada } from './master';
@@ -190,7 +190,7 @@ async function sembrarPermisosPorTipo(
   if (plantillas.length === 0) return 0;
   const tipos = await tx.tipoTicket.findMany({ select: { id: true, modulo: true } });
   let insertadas = 0;
-  for (const { usuarioId, celdas } of plantillas) {
+  for (const { usuarioId, plantilla } of plantillas) {
     if ((await tx.permisoTipoTicket.count({ where: { usuarioId } })) > 0) continue;
     const conVer = await tx.permisoTipoTicket.findMany({
       where: { accion: 'LECTURA' },
@@ -198,7 +198,7 @@ async function sembrarPermisosPorTipo(
       select: { tipoId: true },
     });
     const abiertos = tiposAbiertosParaPlantilla(tipos, new Set(conVer.map((f) => f.tipoId)));
-    const data = filasDeTiposDesdeCeldas(celdas, abiertos).map((f) => ({ usuarioId, ...f }));
+    const data = filasDeTiposDesdePlantilla(plantilla, abiertos).map((f) => ({ usuarioId, ...f }));
     if (data.length === 0) continue;
     insertadas += (await tx.permisoTipoTicket.createMany({ data })).count;
   }

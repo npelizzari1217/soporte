@@ -1,7 +1,7 @@
 /**
  * Decoradores para guards de autenticación/autorización.
  *
- * @RequiereAcciones('TICKETS:ALTAS') — requiere que el JWT tenga TODAS las
+ * @RequiereAcciones('COMPRAS:ALTAS') — requiere que el JWT tenga TODAS las
  * celdas `MODULO:ACCION` listadas (AND). Ver `AccionesGuard` (R3).
  * @CurrentUser() — inyecta el `JwtPayload` de `request.user` en el parámetro
  * del handler.
@@ -26,8 +26,8 @@ export const ACCIONES_KEY = 'acciones';
  * compila — la ganancia concreta de ADR-P1.
  *
  * @example
- * @RequiereAcciones('TICKETS:ALTAS')
- * @Post('tickets')
+ * @RequiereAcciones('COMPRAS:ALTAS')
+ * @Post('compras')
  */
 export const RequiereAcciones = (...codigos: CodigoAccion[]) => SetMetadata(ACCIONES_KEY, codigos);
 

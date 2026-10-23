@@ -139,7 +139,7 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
     const tecnicoId = await crearUsuario('tecnico');
     await crearMembresia(tecnicoId, clienteAId, 'TECNICO', true);
     await masterClient.usuarioClientePermiso.create({
-      data: { usuarioId: tecnicoId, clienteId: clienteAId, modulo: 'TICKETS', accion: 'LECTURA' },
+      data: { usuarioId: tecnicoId, clienteId: clienteAId, modulo: 'KB', accion: 'LECTURA' },
     });
 
     // TECNICO con membresía INACTIVA que YA tiene las cuatro celdas
@@ -201,7 +201,7 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
 
   it('TECNICO pierde las cuatro celdas PREVENTIVO:* y conserva las de otros módulos', async () => {
     await correrBackfillYSwap();
-    expect(await celdasDe('tecnico', clienteAId)).toEqual(['TICKETS:LECTURA']);
+    expect(await celdasDe('tecnico', clienteAId)).toEqual(['KB:LECTURA']);
   });
 
   it('[hermano invertido, W1] TECNICO con membresía INACTIVA también pierde las cuatro celdas — el DELETE no filtra activo (design ADR-3)', async () => {
@@ -239,7 +239,7 @@ describe('Swap de permisos PREVENTIVO:* a COLABORADOR (WU-1)', () => {
     await correrBackfillYSwap();
     await correr(SWAP_FILE);
 
-    expect(await celdasDe('tecnico', clienteAId)).toEqual(['TICKETS:LECTURA']);
+    expect(await celdasDe('tecnico', clienteAId)).toEqual(['KB:LECTURA']);
     expect(await celdasDe('tecnico-inactivo', clienteAId)).toEqual([]);
     expect(await celdasDe('colaborador-activo', clienteAId)).toEqual(CELDAS_PREVENTIVO);
     expect(await celdasDe('colaborador-inactivo', clienteAId)).toEqual([]);

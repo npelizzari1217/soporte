@@ -10,7 +10,7 @@ import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtene
 import { OperacionTicketEntity } from '../../tickets/domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../tickets/domain/errors/tickets.errors';
-import { accionesDeTipoDesdeCeldas } from '../../tickets/domain/permisos-tipo-ticket';
+import { accionesDeClaveApi } from '../domain/alcance-clave-api';
 import { TipoTicketV1NoDisponibleError } from '../domain/integraciones.errors';
 import { TicketsV1Query } from '../application/tickets-v1.query';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
@@ -162,9 +162,9 @@ describe('TicketsV1Controller (lectura)', () => {
 
     const res = await controller.ver(actor, ID);
 
-    // La clave no tiene filas por tipo: sus celdas traducidas por L11 sobre cada tipo de v1, con la
-    // misma función que el backfill y las plantillas (odd/permisos-por-tipo-ticket, D4, D5 f).
-    const acciones = accionesDeTipoDesdeCeldas(actor.permisos, 'TICKETS');
+    // La clave no tiene filas por tipo: sus celdas traducidas sobre cada tipo de v1
+    // (odd/permisos-por-tipo-ticket, D5 f, L50.3).
+    const acciones = accionesDeClaveApi(actor.permisos, 'TICKETS');
     expect(acciones).toEqual(new Set(['LECTURA', 'VER_TODOS', 'IMPRESION']));
     expect(obtener).toHaveBeenCalledWith({
       ticketId: ID,

@@ -43,7 +43,7 @@ export class PermisosPorTipoDeClienteAdapter implements IPermisosPorTipoDeClient
         () =>
           this.plantilla.ejecutar({
             usuarioId: input.usuarioId,
-            celdas: input.celdas,
+            plantilla: input.plantilla,
             sobrescribir: input.sobrescribir,
           }),
       );
