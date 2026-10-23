@@ -756,22 +756,22 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
     it('reemplaza las celdas y retorna { usuarioId, celdas }, clienteId SIEMPRE del actor', async () => {
       const { controller, asignarPermisosUsuarioTenantUseCase } = buildController();
       asignarPermisosUsuarioTenantUseCase.execute.mockResolvedValue(
-        Result.ok(['TICKETS:LECTURA', 'TICKETS:ALTAS']),
+        Result.ok(['COMPRAS:LECTURA', 'COMPRAS:ALTAS']),
       );
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
       const result = await controller.asignarPermisos(actor, 'usuario-1', {
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+        celdas: ['COMPRAS:LECTURA', 'COMPRAS:ALTAS'],
       });
 
       expect(asignarPermisosUsuarioTenantUseCase.execute).toHaveBeenCalledWith({
         clienteId: 'cliente-token',
         usuarioId: 'usuario-1',
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+        celdas: ['COMPRAS:LECTURA', 'COMPRAS:ALTAS'],
       });
       expect(result).toEqual({
         usuarioId: 'usuario-1',
-        celdas: ['TICKETS:LECTURA', 'TICKETS:ALTAS'],
+        celdas: ['COMPRAS:LECTURA', 'COMPRAS:ALTAS'],
       });
     });
 
@@ -783,7 +783,7 @@ describe('UsuariosController (gestión mínima de usuarios, sdd/beta-frontend §
       const actor = buildActor({ permisos: ['usuario:gestionar', 'rol:asignar'] });
 
       await expect(
-        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['TICKETS:LECTURA'] }),
+        controller.asignarPermisos(actor, 'usuario-ajeno', { celdas: ['COMPRAS:LECTURA'] }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });

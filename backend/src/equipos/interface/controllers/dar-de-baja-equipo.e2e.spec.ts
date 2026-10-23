@@ -37,7 +37,10 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
-import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -319,9 +322,10 @@ describe('Equipos e2e — baja de equipo completo (WU-12)', () => {
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
-    await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    await permisosRepo.setPermisos(usuario.id, cliente.id, celdasDeLaMatriz(permisos));
     // El alta de un ticket decide con los permisos por tipo del tenant: los mismos que estas
-    // celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5b).
+    // celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5b). Las de tickets ya no van a
+    // la matriz master (T9b).
     await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { data } = await http<{ accessToken: string }>(
       'POST',

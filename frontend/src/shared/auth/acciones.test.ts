@@ -13,22 +13,11 @@ import { ACCIONES_PISO, CATALOGO_MODULOS, PARES_VALIDOS, accionesDeModulo, modul
  * momento en que corresponde ir a mirar el catálogo del backend.
  */
 const PARES_DEL_BACKEND = [
-  "TICKETS:LECTURA",
-  "TICKETS:ALTAS",
-  "TICKETS:MODIFICACION",
-  "TICKETS:VER_TODOS",
-  "TICKETS:ASIGNAR",
-  "TICKETS:TRANSICIONAR",
-  "TICKETS:OBSERVAR",
-  "TICKETS:COMENTAR",
   "COMPRAS:LECTURA",
   "COMPRAS:ALTAS",
   "COMPRAS:MODIFICACION",
   "COMPRAS:BORRADO",
   "COMPRAS:APROBACION",
-  "EDILICIA:LECTURA",
-  "EDILICIA:ALTAS",
-  "EDILICIA:MODIFICACION",
   "EDILICIA:BORRADO",
   "EQUIPOS:LECTURA",
   "EQUIPOS:ALTAS",
@@ -98,10 +87,15 @@ describe("acciones (espejo del catálogo de la matriz)", () => {
     ]);
   });
 
-  it("accionesDeModulo('TICKETS') devuelve solo pares que empiezan con 'TICKETS:'", () => {
-    const ticketsAcciones = accionesDeModulo("TICKETS");
-    expect(ticketsAcciones.length).toBeGreaterThan(0);
-    expect(ticketsAcciones.every((par) => par.startsWith("TICKETS:"))).toBe(true);
+  it("accionesDeModulo('KB') devuelve solo pares que empiezan con 'KB:'", () => {
+    const kbAcciones = accionesDeModulo("KB");
+    expect(kbAcciones.length).toBeGreaterThan(0);
+    expect(kbAcciones.every((par) => par.startsWith("KB:"))).toBe(true);
+  });
+
+  it("sin el módulo TICKETS y con EDILICIA solo en BORRADO: esas acciones se dan por tipo (T9b, L50)", () => {
+    expect(PARES_VALIDOS.filter((par) => par.startsWith("TICKETS:"))).toEqual([]);
+    expect(accionesDeModulo("EDILICIA")).toEqual(["EDILICIA:BORRADO"]);
   });
 
   it("moduloDe extrae el módulo del código", () => {

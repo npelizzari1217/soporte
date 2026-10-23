@@ -11,15 +11,17 @@
  * Ref design: ADR-P9.
  */
 import { MODULOS } from '../../shared/domain/modulos';
-import {
-  AccionTipoTicket,
-  accionesDePlantilla,
-  accionesDeTipoDesdeCeldas,
-  celdaReemplazadaPorTipo,
-} from '../../tickets/domain/permisos-tipo-ticket';
-import { PRESETS_ROL_ANTERIORES_A_T9A } from '../test-helpers/presets-rol-anteriores-a-t9a';
+import { PARES_VALIDOS } from '../../shared/domain/acciones';
+import { AccionTipoTicket, accionesDePlantilla } from '../../tickets/domain/permisos-tipo-ticket';
 import { PLANTILLAS_POR_TIPO_ROL, PRESETS_ROL, obtenerPresetDeRol } from './presets-rol';
 import { PresetRolNoDefinidoError } from './errors/auth.errors';
+
+/**
+ * ¿La celda sigue en el catálogo de la matriz? Desde T9b, las que reemplazan los permisos por tipo
+ * (`TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`) ya no son pares válidos.
+ */
+const paresValidos: readonly string[] = PARES_VALIDOS;
+const enCatalogo = (celda: string): boolean => paresValidos.includes(celda);
 
 /**
  * Base copiada LITERAL de `CELDAS_TECNICO_ESPERADAS` en
@@ -89,27 +91,16 @@ const CELDAS_TECNICO_ESPERADAS = [
 
 describe('PRESETS_ROL', () => {
   it('TECNICO coincide con las celdas del backfill histórico + CSAT:LECTURA, sin las celdas reemplazadas por tipo (G7 + WU-3.4 + T9a)', () => {
-    expect([...PRESETS_ROL['TECNICO']].sort()).toEqual(
-      CELDAS_TECNICO_ESPERADAS.filter((celda) => !celdaReemplazadaPorTipo(celda)),
-    );
+    expect([...PRESETS_ROL['TECNICO']].sort()).toEqual(CELDAS_TECNICO_ESPERADAS.filter(enCatalogo));
   });
 
   it('TECNICO conserva EDILICIA:BORRADO: desvincular compra sigue siendo permiso del módulo (L50.2)', () => {
     expect(PRESETS_ROL['TECNICO']).toContain('EDILICIA:BORRADO');
   });
 
-  it.each(Object.keys(PRESETS_ROL_ANTERIORES_A_T9A))(
-    '%s pierde solo las celdas que reemplazan los permisos por tipo (T9a)',
-    (rol) => {
-      expect([...PRESETS_ROL[rol]].sort()).toEqual(
-        PRESETS_ROL_ANTERIORES_A_T9A[rol].filter((celda) => !celdaReemplazadaPorTipo(celda)).sort(),
-      );
-    },
-  );
-
-  it('ningún preset conserva una celda reemplazada por los permisos por tipo (L50.4)', () => {
+  it('ningún preset conserva una celda fuera del catálogo: ni TICKETS:* ni EDILICIA salvo BORRADO (L50.4, T9b)', () => {
     for (const celdas of Object.values(PRESETS_ROL)) {
-      expect(celdas.filter(celdaReemplazadaPorTipo)).toEqual([]);
+      expect(celdas.filter((celda) => !enCatalogo(celda))).toEqual([]);
     }
   });
 
@@ -143,22 +134,16 @@ function ordenadas(acciones: Iterable<AccionTipoTicket>): AccionTipoTicket[] {
 }
 
 describe('PLANTILLAS_POR_TIPO_ROL (T9a, S7, L50.4)', () => {
-  const ROLES = Object.keys(PRESETS_ROL_ANTERIORES_A_T9A);
-  // Un módulo que no está en `MODULOS` no tiene plantilla: el tipo queda cerrado (S4).
-  const MODULOS_DEL_TIPO = [...MODULOS, 'MODULO_DESCONOCIDO'];
-
   it('hay plantilla por tipo para exactamente los mismos roles que tienen preset de celdas', () => {
     expect(Object.keys(PLANTILLAS_POR_TIPO_ROL).sort()).toEqual(Object.keys(PRESETS_ROL).sort());
   });
 
-  // Fija que el cambio no mueve el acceso de nadie (S7): la plantilla explícita da sobre cada
-  // tipo lo mismo que la traducción de L11 de las celdas que tenía el rol antes de T9a.
-  it.each(ROLES.flatMap((rol) => MODULOS_DEL_TIPO.map((modulo) => [rol, modulo])))(
-    '%s sobre un tipo de %s da lo mismo que la traducción de L11 de su plantilla anterior',
-    (rol, modulo) => {
-      expect(ordenadas(accionesDePlantilla(PLANTILLAS_POR_TIPO_ROL[rol], modulo))).toEqual(
-        ordenadas(accionesDeTipoDesdeCeldas(PRESETS_ROL_ANTERIORES_A_T9A[rol], modulo)),
-      );
+  // La paridad con la traducción de L11 de las celdas anteriores a T9a se fijó en T9a y se retiró
+  // con esa traducción en T9c: las acciones esperadas por rol quedan escritas abajo.
+  it.each(Object.keys(PLANTILLAS_POR_TIPO_ROL))(
+    '%s no da acciones sobre un tipo de un módulo desconocido: el tipo queda cerrado (S4)',
+    (rol) => {
+      expect(accionesDePlantilla(PLANTILLAS_POR_TIPO_ROL[rol], 'MODULO_DESCONOCIDO')).toEqual([]);
     },
   );
 

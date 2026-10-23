@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { CodigoAccion } from "./acciones";
 
 /**
  * Permisos por tipo de ticket de la sesión (odd/permisos-por-tipo-ticket, S6, T6).
@@ -148,24 +147,3 @@ export function tiposCon<T extends { id: string }>(
 ): T[] {
   return tipos.filter((tipo) => puedeEnTipo(permisos, tipo.id, accion));
 }
-
-/**
- * Celdas de la matriz por módulo que pasaron a los permisos por tipo y ya no deciden nada (T7,
- * D5 d): todas las de TICKETS y `EDILICIA:LECTURA`, `ALTAS` y `MODIFICACION`. `EDILICIA:BORRADO`
- * (desvincular compra) sigue siendo del módulo. Espejo de `celdaReemplazadaPorTipo`
- * (`backend/src/tickets/domain/permisos-tipo-ticket.ts`): la grilla de módulos no las muestra, y
- * el backend las conserva como estaban al guardar esa grilla.
- */
-export const CELDAS_REEMPLAZADAS_POR_TIPO: readonly CodigoAccion[] = [
-  "TICKETS:LECTURA",
-  "TICKETS:ALTAS",
-  "TICKETS:MODIFICACION",
-  "TICKETS:VER_TODOS",
-  "TICKETS:ASIGNAR",
-  "TICKETS:TRANSICIONAR",
-  "TICKETS:OBSERVAR",
-  "TICKETS:COMENTAR",
-  "EDILICIA:LECTURA",
-  "EDILICIA:ALTAS",
-  "EDILICIA:MODIFICACION",
-];

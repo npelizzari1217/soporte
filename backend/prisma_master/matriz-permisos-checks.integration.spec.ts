@@ -4,7 +4,7 @@
  * Prueba el CHECK compuesto de `usuario_cliente_permisos` (migración
  * `add_usuario_cliente_permisos`) desde dos ángulos: (S1) Postgres rechaza un
  * par `(modulo, accion)` inválido; (S2) el CHECK real, leído vía
- * `pg_get_constraintdef`, enumera EXACTAMENTE los mismos 28 pares que
+ * `pg_get_constraintdef`, enumera EXACTAMENTE los mismos pares que
  * `PARES_VALIDOS` del dominio — ni de más ni de menos.
  *
  * Precedente copiado literal: `backend/prisma_tenant/compras-checks.integration.spec.ts:476-497`
@@ -68,17 +68,35 @@ describe('CHECK usuario_cliente_permisos_modulo_accion_check', () => {
     ).rejects.toThrow(/usuario_cliente_permisos_modulo_accion_check|check constraint/i);
   });
 
-  it('acepta un par válido (TICKETS, LECTURA)', async () => {
+  it('acepta un par válido (EDILICIA, BORRADO)', async () => {
     await client.query(
       `INSERT INTO usuario_cliente_permisos (usuario_id, cliente_id, modulo, accion)
-       VALUES ($1, $2, 'TICKETS', 'LECTURA')`,
+       VALUES ($1, $2, 'EDILICIA', 'BORRADO')`,
       [usuarioId, clienteId],
     );
     const { rows } = await client.query(
       'SELECT modulo, accion FROM usuario_cliente_permisos WHERE usuario_id = $1',
       [usuarioId],
     );
-    expect(rows).toEqual([{ modulo: 'TICKETS', accion: 'LECTURA' }]);
+    expect(rows).toEqual([{ modulo: 'EDILICIA', accion: 'BORRADO' }]);
+  });
+
+  // T9b (odd/permisos-por-tipo-ticket, L50.1-2): las celdas de tickets pasaron a los permisos por
+  // tipo y el CHECK deja de aceptarlas.
+  it.each([
+    ['TICKETS', 'LECTURA'],
+    ['TICKETS', 'VER_TODOS'],
+    ['EDILICIA', 'LECTURA'],
+    ['EDILICIA', 'ALTAS'],
+    ['EDILICIA', 'MODIFICACION'],
+  ])('T9b: rechaza INSERT (usuario, cliente, %s, %s)', async (modulo, accion) => {
+    await expect(
+      client.query(
+        `INSERT INTO usuario_cliente_permisos (usuario_id, cliente_id, modulo, accion)
+         VALUES ($1, $2, $3, $4)`,
+        [usuarioId, clienteId, modulo, accion],
+      ),
+    ).rejects.toThrow(/usuario_cliente_permisos_modulo_accion_check/);
   });
 
   // ─── S2 — test de deriva: el CHECK == PARES_VALIDOS, exactamente ────────

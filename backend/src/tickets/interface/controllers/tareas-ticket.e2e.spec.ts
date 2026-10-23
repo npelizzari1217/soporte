@@ -42,7 +42,10 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
-import { sembrarPermisosPorTipoE2e } from '../../test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../test-helpers/permisos-por-tipo-e2e';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { TareaTicketResponseDto, TareasTicketResponseDto } from '../dtos/tarea-ticket.dto';
 import {
@@ -268,7 +271,8 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId, rolId: role.id, activo: true },
     });
-    await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    // Las celdas de tickets ya no van a la matriz master (T9b): solo describen las filas por tipo.
+    await permisosRepo.setPermisos(usuario.id, clienteId, celdasDeLaMatriz(permisos));
     const inquilino = inquilinoDeCliente.get(clienteId);
     if (!inquilino) throw new Error(`Cliente ${clienteId} sin inquilino en el fixture`);
     const celdas = celdasPorInquilino.get(inquilino.dbName) ?? new Map<string, string[]>();

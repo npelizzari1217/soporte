@@ -30,7 +30,7 @@ import { IClienteRepository } from '../../../clientes/domain/ports/i-cliente.rep
 import { IMembresiaRepository, MembresiaResuelta } from '../../domain/ports/i-membresia.repository';
 import { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import { ClienteNoAutorizadoError } from '../../domain/errors/auth.errors';
-import { PARES_VALIDOS, moduloDe, CodigoAccion } from '../../../shared/domain/acciones';
+import { PARES_VALIDOS, moduloDe } from '../../../shared/domain/acciones';
 
 /** Módulos esperados de un bypass total, en el mismo orden que `CATALOGO_MODULOS`. */
 const MODULOS_DE_BYPASS = [...new Set(PARES_VALIDOS.map((codigo) => moduloDe(codigo)))];
@@ -289,8 +289,8 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         makeMembresiaResuelta({ clienteNombre: 'Acme SA', rolCodigo: 'TECNICO' }),
       );
       permisosRepo.findByUsuarioYCliente.mockResolvedValue([
-        'TICKETS:ALTAS',
-        'TICKETS:LECTURA',
+        'COMPRAS:ALTAS',
+        'COMPRAS:LECTURA',
         'EQUIPOS:LECTURA',
       ]);
 
@@ -307,8 +307,8 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         clienteId: 'cliente-1',
         clienteNombre: 'Acme SA',
         rol: 'TECNICO',
-        permisos: ['TICKETS:ALTAS', 'TICKETS:LECTURA', 'EQUIPOS:LECTURA'],
-        modulos: ['TICKETS', 'EQUIPOS'],
+        permisos: ['COMPRAS:ALTAS', 'COMPRAS:LECTURA', 'EQUIPOS:LECTURA'],
+        modulos: ['COMPRAS', 'EQUIPOS'],
         clienteLogoVersion: null,
       });
       expect(permisosRepo.findByUsuarioYCliente).toHaveBeenCalledWith('user-1', 'cliente-1');
@@ -420,11 +420,11 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         makeMembresiaResuelta({ rolCodigo: 'TECNICO' }),
       );
       permisosRepo.findByUsuarioYCliente.mockResolvedValue([
-        'TICKETS:ALTAS',
-        'TICKETS:MODIFICACION',
-        'TICKETS:LECTURA',
+        'COMPRAS:ALTAS',
+        'COMPRAS:MODIFICACION',
+        'COMPRAS:LECTURA',
         'KB:LECTURA',
-      ] as CodigoAccion[]);
+      ]);
 
       const result = await resolverScope(
         { usuarioId: 'user-1', isGlobalAdmin: false },
@@ -434,11 +434,11 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
         permisosRepo,
       );
 
-      // TICKETS aparece 3 veces en permisos, una sola en modulos.
-      expect(result.getValue().modulos).toEqual(['TICKETS', 'KB']);
+      // COMPRAS aparece 3 veces en permisos, una sola en modulos.
+      expect(result.getValue().modulos).toEqual(['COMPRAS', 'KB']);
     });
 
-    it('token master (clienteId null, root) → los 9 módulos del catálogo, sin duplicados', async () => {
+    it('token master (clienteId null, root) → los 8 módulos del catálogo, sin duplicados ni TICKETS (T9b)', async () => {
       const result = await resolverScope(
         { usuarioId: 'root-1', isGlobalAdmin: true },
         null,
@@ -448,7 +448,8 @@ describe('resolverScope (WU-7.1 — matriz de permisos)', () => {
       );
 
       expect(result.getValue().modulos).toEqual(MODULOS_DE_BYPASS);
-      expect(result.getValue().modulos).toHaveLength(9);
+      expect(result.getValue().modulos).toHaveLength(8);
+      expect(result.getValue().modulos).not.toContain('TICKETS');
     });
   });
 

@@ -8,7 +8,8 @@
  * orden de rutas (`/soporte/qr` no llega a `:ticketId`), el slug de otra organización y el
  * token de un equipo dado de baja. Desde odd/permisos-por-tipo-ticket (T5b) el 403 lo decide
  * `ALTAS` sobre el tipo SOPORTE, no la celda `TICKETS:ALTAS`: los actores reciben las filas por
- * tipo que les dan sus celdas (L11), salvo el que prueba la fila sin la celda.
+ * tipo que les dan sus celdas (L11), salvo el que prueba la fila sola. Desde T9b las celdas de
+ * tickets ya no van a la matriz master: solo describen esas filas.
  */
 import { createHash, randomBytes } from 'node:crypto';
 import {
@@ -39,7 +40,10 @@ import { UsuarioEntity } from '../../../auth/domain/entities/usuario.entity';
 import { RoleEntity } from '../../../auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../../../auth/infrastructure/argon2-hash.provider';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
-import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 
 const MASTER_TEST_URL =
@@ -192,7 +196,7 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
-    await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    await permisosRepo.setPermisos(usuario.id, cliente.id, celdasDeLaMatriz(permisos));
     if (filasSoporte === undefined) {
       await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     } else {
@@ -241,14 +245,15 @@ describe('Soporte e2e — GET /soporte/qr (WU-17)', () => {
     expect(r.status).toBe(403);
   });
 
-  it('la celda TICKETS:ALTAS sin la fila por tipo responde 403; la fila ALTAS sin la celda resuelve el equipo', async () => {
-    const soloCelda = await crearActor(['TICKETS:ALTAS'], 'acme', []);
+  // Hasta T9b el primer actor tenía la celda TICKETS:ALTAS, que ya no se puede guardar.
+  it('sin la fila por tipo responde 403; la fila ALTAS resuelve el equipo', async () => {
+    const sinFila = await crearActor([], 'acme', []);
     const token = nuevoToken();
     const equipoId = await crearEquipo(token, { nombre: 'PC-Por-Tipo' });
 
-    const conCelda = await get(`${baseUrl}/soporte/qr?c=acme&e=${token}`, soloCelda.accessToken);
-    expect(conCelda.status).toBe(403);
-    expect(JSON.stringify(conCelda.data)).not.toContain('PC-Por-Tipo');
+    const rechazo = await get(`${baseUrl}/soporte/qr?c=acme&e=${token}`, sinFila.accessToken);
+    expect(rechazo.status).toBe(403);
+    expect(JSON.stringify(rechazo.data)).not.toContain('PC-Por-Tipo');
 
     // Un actor por cliente (UNIQUE de `clientes.db_name`): se limpia master antes del segundo.
     await masterClient.$executeRawUnsafe(

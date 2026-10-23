@@ -24,8 +24,9 @@
  *
  * El acceso a tickets NO sale de estas celdas (odd/tasks/permisos-por-tipo-ticket.md, T9a, L50.4):
  * lo da la plantilla por tipo de `PLANTILLAS_POR_TIPO_ROL`. Por eso ningún preset trae las celdas
- * que reemplazan los permisos por tipo (`TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`);
- * `EDILICIA:BORRADO` (desvincular compra) sigue siendo permiso del módulo (L50.2).
+ * que reemplazan los permisos por tipo (`TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`), que
+ * desde T9b ni siquiera están en el catálogo; `EDILICIA:BORRADO` (desvincular compra) sigue siendo
+ * permiso del módulo (L50.2).
  */
 import { CodigoAccion } from '../../shared/domain/acciones';
 import { Result } from '../../shared/domain/result';

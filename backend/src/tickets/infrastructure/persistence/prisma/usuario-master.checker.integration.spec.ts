@@ -267,13 +267,13 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       expect(await checker.esAdminTotalEnTenant(root.id, cliente.id)).toBe(true);
     });
 
-    it('TECNICO con celdas en TICKETS y EDILICIA → false: las celdas no lo hacen administrador', async () => {
+    it('TECNICO con celdas en COMPRAS y EDILICIA → false: las celdas no lo hacen administrador', async () => {
       const cliente = await createCliente('admin-total-tecnico');
       const role = await createRole('TECNICO');
       const usuario = await createUsuario('admin-total-tecnico');
       await createMembresia(usuario.id, cliente.id, role.id);
-      await createPermiso(usuario.id, cliente.id, 'TICKETS', 'LECTURA');
-      await createPermiso(usuario.id, cliente.id, 'EDILICIA', 'LECTURA');
+      await createPermiso(usuario.id, cliente.id, 'COMPRAS', 'LECTURA');
+      await createPermiso(usuario.id, cliente.id, 'EDILICIA', 'BORRADO');
 
       expect(await checker.esAdminTotalEnTenant(usuario.id, cliente.id)).toBe(false);
     });
@@ -308,7 +308,7 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       );
       await createMembresia(sinCeldas.id, cliente.id, role.id);
       await createMembresia(conCeldas.id, cliente.id, role.id);
-      await createPermiso(conCeldas.id, cliente.id, 'EDILICIA', 'LECTURA');
+      await createPermiso(conCeldas.id, cliente.id, 'EDILICIA', 'BORRADO');
 
       const result = await checker.listarAgentes(cliente.id, [sinCeldas.id]);
 

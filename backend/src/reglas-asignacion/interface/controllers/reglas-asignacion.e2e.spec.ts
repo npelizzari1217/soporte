@@ -148,7 +148,9 @@ describe('ReglasAsignacionController e2e', () => {
     tecnicoId = await sembrarUsuario('TECNICO', 'Tecnico', ['EQUIPOS:LECTURA']);
     colaboradorId = await sembrarUsuario('COLABORADOR', 'Colaborador', ['EQUIPOS:LECTURA']);
     administradorUsuarioId = await sembrarUsuario('ADMINISTRADOR', 'Admin', ['EQUIPOS:LECTURA']);
-    tecnicoSinModuloId = await sembrarUsuario('TECNICO', 'SinModulo', ['TICKETS:LECTURA']);
+    // Sin celdas en la matriz: su acceso a los tipos de TICKETS sale solo de la fila por tipo de
+    // abajo (las celdas TICKETS:* no existen desde T9b).
+    tecnicoSinModuloId = await sembrarUsuario('TECNICO', 'SinModulo', []);
     tecnicoSoloCeldaId = await sembrarUsuario('TECNICO', 'SoloCelda', ['EQUIPOS:LECTURA']);
 
     tipoEquiposId = (

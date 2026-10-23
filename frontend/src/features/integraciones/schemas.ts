@@ -7,7 +7,10 @@
  */
 import { z } from "zod";
 
-/** Espejo exacto de `PERMISOS_API`: el subconjunto de TICKETS que puede llevar una clave (CA3). */
+/**
+ * Espejo exacto de `PERMISOS_API`: los permisos que puede llevar una clave (CA3). Es un vocabulario
+ * propio de la clave: no depende del catálogo de la matriz, que ya no tiene el módulo TICKETS (T9b).
+ */
 export const PERMISOS_API = ["TICKETS:LECTURA", "TICKETS:ALTAS", "TICKETS:COMENTAR"] as const;
 
 export const permisoApiSchema = z.enum(PERMISOS_API);

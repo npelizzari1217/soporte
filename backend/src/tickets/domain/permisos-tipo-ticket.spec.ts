@@ -1,21 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCIONES_TIPO_TICKET,
-  AccionTipoTicket,
   accionesDePlantilla,
-  accionesDeTipoDesdeCeldas,
-  celdaReemplazadaPorTipo,
   filasDeTiposDesdePlantilla,
   PlantillaPorTipo,
   problemaDeFilaDeTipo,
 } from './permisos-tipo-ticket';
-import { PARES_VALIDOS } from '../../shared/domain/acciones';
-import { PRESETS_ROL_ANTERIORES_A_T9A } from '../../auth/test-helpers/presets-rol-anteriores-a-t9a';
-
-/** El resultado como lista ordenada, para comparar sin depender del orden de inserción. */
-function ordenadas(acciones: ReadonlySet<AccionTipoTicket>): AccionTipoTicket[] {
-  return [...acciones].sort();
-}
 
 describe('ACCIONES_TIPO_TICKET', () => {
   it('enumera las 10 acciones por tipo con los códigos del catálogo actual (D4)', () => {
@@ -31,181 +21,6 @@ describe('ACCIONES_TIPO_TICKET', () => {
       'IMPRESION',
       'BORRADO',
     ]);
-  });
-});
-
-describe('accionesDeTipoDesdeCeldas — tipo de módulo TICKETS (L11)', () => {
-  it.each([
-    ['TICKETS:VER_TODOS', ['VER_TODOS']],
-    ['TICKETS:ALTAS', ['ALTAS']],
-    ['TICKETS:MODIFICACION', ['MODIFICACION']],
-    ['TICKETS:TRANSICIONAR', ['TRANSICIONAR']],
-    ['TICKETS:ASIGNAR', ['ASIGNAR']],
-    ['TICKETS:COMENTAR', ['COMENTAR']],
-    ['TICKETS:OBSERVAR', ['OBSERVAR']],
-  ])('%s se traduce a %j', (celda, esperadas) => {
-    expect(ordenadas(accionesDeTipoDesdeCeldas([celda], 'TICKETS'))).toEqual([...esperadas].sort());
-  });
-
-  it('TICKETS:LECTURA da Ver y también Imprimir', () => {
-    expect(ordenadas(accionesDeTipoDesdeCeldas(['TICKETS:LECTURA'], 'TICKETS'))).toEqual(
-      ['IMPRESION', 'LECTURA'].sort(),
-    );
-  });
-
-  it('con todas las celdas de TICKETS da las 9 acciones y nunca Borrar', () => {
-    const celdas = [
-      'TICKETS:LECTURA',
-      'TICKETS:VER_TODOS',
-      'TICKETS:ALTAS',
-      'TICKETS:MODIFICACION',
-      'TICKETS:TRANSICIONAR',
-      'TICKETS:ASIGNAR',
-      'TICKETS:COMENTAR',
-      'TICKETS:OBSERVAR',
-    ];
-
-    expect(ordenadas(accionesDeTipoDesdeCeldas(celdas, 'TICKETS'))).toEqual(
-      ACCIONES_TIPO_TICKET.filter((a) => a !== 'BORRADO').sort(),
-    );
-  });
-
-  it('las celdas de EDILICIA no alcanzan a un tipo de TICKETS', () => {
-    const celdas = ['EDILICIA:LECTURA', 'EDILICIA:ALTAS', 'EDILICIA:MODIFICACION'];
-
-    expect(accionesDeTipoDesdeCeldas(celdas, 'TICKETS').size).toBe(0);
-  });
-});
-
-describe('accionesDeTipoDesdeCeldas — tipo de módulo EDILICIA (L11, L35)', () => {
-  it('EDILICIA:LECTURA da solo Ver e Imprimir: Ver todos no sale de Edilicia (JD-A-002)', () => {
-    expect(ordenadas(accionesDeTipoDesdeCeldas(['EDILICIA:LECTURA'], 'EDILICIA'))).toEqual(
-      ['IMPRESION', 'LECTURA'].sort(),
-    );
-  });
-
-  it('EDILICIA:ALTAS da Crear', () => {
-    expect(ordenadas(accionesDeTipoDesdeCeldas(['EDILICIA:ALTAS'], 'EDILICIA'))).toEqual(['ALTAS']);
-  });
-
-  it('EDILICIA:MODIFICACION da Modificar, Estado y Comentar', () => {
-    expect(ordenadas(accionesDeTipoDesdeCeldas(['EDILICIA:MODIFICACION'], 'EDILICIA'))).toEqual(
-      ['COMENTAR', 'MODIFICACION', 'TRANSICIONAR'].sort(),
-    );
-  });
-
-  it('EDILICIA:BORRADO se ignora: sigue siendo permiso del módulo (L21)', () => {
-    expect(accionesDeTipoDesdeCeldas(['EDILICIA:BORRADO'], 'EDILICIA').size).toBe(0);
-  });
-
-  it('sin ninguna celda de EDILICIA, las de TICKETS no dan acciones: hoy no ve esos tickets (S7)', () => {
-    const celdas = ['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:ASIGNAR', 'TICKETS:OBSERVAR'];
-
-    expect(accionesDeTipoDesdeCeldas(celdas, 'EDILICIA').size).toBe(0);
-  });
-
-  it('con alguna celda de EDILICIA suma la traducción de TICKETS a la de EDILICIA (JD-A-001)', () => {
-    const celdas = ['TICKETS:ASIGNAR', 'TICKETS:OBSERVAR', 'EDILICIA:ALTAS'];
-
-    expect(ordenadas(accionesDeTipoDesdeCeldas(celdas, 'EDILICIA'))).toEqual(
-      ['ALTAS', 'ASIGNAR', 'OBSERVAR'].sort(),
-    );
-  });
-
-  it('Ver todos sobre un tipo de EDILICIA sale solo de TICKETS:VER_TODOS (JD-A-002)', () => {
-    const sinVerTodos = ['EDILICIA:LECTURA', 'EDILICIA:ALTAS', 'EDILICIA:MODIFICACION'];
-
-    expect(accionesDeTipoDesdeCeldas(sinVerTodos, 'EDILICIA').has('VER_TODOS')).toBe(false);
-    expect(
-      accionesDeTipoDesdeCeldas([...sinVerTodos, 'TICKETS:VER_TODOS'], 'EDILICIA').has('VER_TODOS'),
-    ).toBe(true);
-  });
-
-  it.each([
-    ['USUARIO', ['LECTURA', 'ALTAS', 'COMENTAR', 'IMPRESION']],
-    ['COLABORADOR', ['LECTURA', 'VER_TODOS', 'ALTAS', 'COMENTAR', 'IMPRESION']],
-    [
-      'TECNICO',
-      [
-        'LECTURA',
-        'VER_TODOS',
-        'ALTAS',
-        'MODIFICACION',
-        'TRANSICIONAR',
-        'ASIGNAR',
-        'COMENTAR',
-        'OBSERVAR',
-        'IMPRESION',
-      ],
-    ],
-  ])(
-    'las celdas de %s anteriores a T9a dan sobre un tipo de EDILICIA exactamente %j',
-    (rol, esperadas) => {
-      expect(
-        ordenadas(accionesDeTipoDesdeCeldas(PRESETS_ROL_ANTERIORES_A_T9A[rol], 'EDILICIA')),
-      ).toEqual([...esperadas].sort());
-    },
-  );
-});
-
-describe('accionesDeTipoDesdeCeldas — tipos de módulo COMPRAS o EQUIPOS (L21)', () => {
-  it.each(['COMPRAS', 'EQUIPOS'])('un tipo de %s se migra con la regla de TICKETS', (modulo) => {
-    // Hace falta alguna celda del módulo del tipo: hoy (S0) sin ella el ticket no se ve.
-    const celdas = ['TICKETS:LECTURA', 'TICKETS:ASIGNAR', `${modulo}:LECTURA`];
-
-    expect(ordenadas(accionesDeTipoDesdeCeldas(celdas, modulo))).toEqual(
-      ['ASIGNAR', 'IMPRESION', 'LECTURA'].sort(),
-    );
-  });
-
-  it.each(['COMPRAS', 'EQUIPOS'])(
-    'sin ninguna celda de %s no da acciones aunque tenga TICKETS: hoy no ve esos tickets (S7)',
-    (modulo) => {
-      const celdas = ['TICKETS:LECTURA', 'TICKETS:MODIFICACION', 'TICKETS:VER_TODOS'];
-
-      expect(accionesDeTipoDesdeCeldas(celdas, modulo).size).toBe(0);
-    },
-  );
-
-  it.each(['COMPRAS', 'EQUIPOS'])('las celdas propias de %s no dan acciones', (modulo) => {
-    const celdas = [`${modulo}:LECTURA`, `${modulo}:ALTAS`, `${modulo}:MODIFICACION`];
-
-    expect(accionesDeTipoDesdeCeldas(celdas, modulo).size).toBe(0);
-  });
-});
-
-describe('accionesDeTipoDesdeCeldas — bordes', () => {
-  it('sin celdas devuelve el conjunto vacío', () => {
-    expect(accionesDeTipoDesdeCeldas([], 'TICKETS').size).toBe(0);
-    expect(accionesDeTipoDesdeCeldas([], 'EDILICIA').size).toBe(0);
-  });
-
-  it('Borrar no se concede nunca, aunque exista la celda de borrado del módulo', () => {
-    const celdas = ['TICKETS:BORRADO', 'EDILICIA:BORRADO', 'TICKETS:LECTURA', 'EDILICIA:LECTURA'];
-
-    expect(accionesDeTipoDesdeCeldas(celdas, 'TICKETS').has('BORRADO')).toBe(false);
-    expect(accionesDeTipoDesdeCeldas(celdas, 'EDILICIA').has('BORRADO')).toBe(false);
-  });
-
-  it('Imprimir no se concede sin Ver', () => {
-    const celdas = ['TICKETS:VER_TODOS', 'TICKETS:MODIFICACION', 'TICKETS:IMPRESION'];
-
-    expect(accionesDeTipoDesdeCeldas(celdas, 'TICKETS').has('IMPRESION')).toBe(false);
-  });
-
-  it('un tipo de un módulo desconocido nace cerrado', () => {
-    expect(accionesDeTipoDesdeCeldas(['TICKETS:LECTURA'], 'OTRO').size).toBe(0);
-  });
-
-  it('las celdas repetidas no duplican acciones', () => {
-    const acciones = accionesDeTipoDesdeCeldas(
-      ['EDILICIA:LECTURA', 'EDILICIA:LECTURA', 'EDILICIA:MODIFICACION'],
-      'EDILICIA',
-    );
-
-    expect(ordenadas(acciones)).toEqual(
-      ['COMENTAR', 'IMPRESION', 'LECTURA', 'MODIFICACION', 'TRANSICIONAR'].sort(),
-    );
   });
 });
 
@@ -283,31 +98,5 @@ describe('problemaDeFilaDeTipo (T7, S3)', () => {
       tipo: 'desconocida',
       acciones: ['APROBACION'],
     });
-  });
-});
-
-describe('celdaReemplazadaPorTipo (T7, D5 d)', () => {
-  it('son exactamente las celdas de TICKETS y EDILICIA:LECTURA|ALTAS|MODIFICACION del catálogo', () => {
-    expect(PARES_VALIDOS.filter(celdaReemplazadaPorTipo).sort()).toEqual(
-      [
-        'TICKETS:LECTURA',
-        'TICKETS:ALTAS',
-        'TICKETS:MODIFICACION',
-        'TICKETS:VER_TODOS',
-        'TICKETS:ASIGNAR',
-        'TICKETS:TRANSICIONAR',
-        'TICKETS:OBSERVAR',
-        'TICKETS:COMENTAR',
-        'EDILICIA:LECTURA',
-        'EDILICIA:ALTAS',
-        'EDILICIA:MODIFICACION',
-      ].sort(),
-    );
-  });
-
-  it('EDILICIA:BORRADO (desvincular compra, L21) y los módulos sin tickets siguen siendo del módulo', () => {
-    expect(celdaReemplazadaPorTipo('EDILICIA:BORRADO')).toBe(false);
-    expect(celdaReemplazadaPorTipo('COMPRAS:LECTURA')).toBe(false);
-    expect(celdaReemplazadaPorTipo('TICKETS:toString')).toBe(false);
   });
 });

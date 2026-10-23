@@ -167,7 +167,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     expect(screen.getByRole("checkbox", { name: "COMPRAS:APROBACION" })).not.toBeDisabled();
   });
 
-  it("no ofrece las celdas que pasaron a los permisos por tipo: TICKETS y Edilicia ver, crear y modificar (T7, D5 d)", async () => {
+  it("no ofrece las celdas que pasaron a los permisos por tipo: sin módulo Tickets y Edilicia solo con Borrar (T9b, L50)", async () => {
     const user = userEvent.setup();
     server.use(
       http.get("/api/usuarios/u1/permisos", () =>
@@ -182,31 +182,28 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     await screen.findByRole("checkbox", { name: "COMPRAS:LECTURA" });
 
     const zonaModulos = within(screen.getByTestId("permisos-modulos"));
-    for (const celda of [
-      "TICKETS:LECTURA",
-      "TICKETS:VER_TODOS",
-      "TICKETS:ASIGNAR",
-      "EDILICIA:LECTURA",
-      "EDILICIA:ALTAS",
-      "EDILICIA:MODIFICACION",
-    ]) {
+    // El módulo TICKETS ya no está en la matriz: ni su encabezado ni sus celdas.
+    expect(zonaModulos.queryByText("Tickets")).not.toBeInTheDocument();
+    for (const celda of ["TICKETS:LECTURA", "TICKETS:VER_TODOS", "TICKETS:ASIGNAR"]) {
       expect(zonaModulos.queryByRole("checkbox", { name: celda })).not.toBeInTheDocument();
     }
-    // Sin ninguna celda editable, el módulo TICKETS desaparece de la grilla.
-    expect(zonaModulos.queryByText("Tickets")).not.toBeInTheDocument();
-    // Desvincular compra (L21) y los módulos sin tickets siguen acá.
+    // Edilicia queda con Borrar (desvincular compra, L21); ver, crear y modificar son acciones
+    // del piso que el módulo ya no soporta, deshabilitadas como en cualquier otro módulo.
+    for (const celda of ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:MODIFICACION"]) {
+      expect(zonaModulos.getByRole("checkbox", { name: celda })).toBeDisabled();
+    }
     expect(zonaModulos.getByRole("checkbox", { name: "EDILICIA:BORRADO" })).toBeEnabled();
     expect(zonaModulos.getByRole("checkbox", { name: "INSUMOS:AJUSTAR" })).toBeEnabled();
     expect(zonaModulos.getByText(/se configuran por tipo/i)).toBeInTheDocument();
   });
 
-  it("Guardar reenvía sin cambios las celdas ocultas que el usuario ya tenía", async () => {
+  it("Guardar envía exactamente la selección: quitar EDILICIA:BORRADO lo saca del pedido", async () => {
     const user = userEvent.setup();
     let capturedBody: { celdas?: string[] } = {};
     server.use(
       http.get("/api/usuarios/u1/permisos", () =>
         HttpResponse.json({
-          celdas: ["TICKETS:LECTURA", "EDILICIA:ALTAS", "EDILICIA:BORRADO"],
+          celdas: ["COMPRAS:LECTURA", "EDILICIA:BORRADO"],
           esAdministrador: false,
         }),
       ),
@@ -227,7 +224,7 @@ describe("AsignarPermisosControl (ADR-P10, sdd/matriz-permisos-por-usuario)", ()
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     await waitFor(() => expect(capturedBody.celdas).toBeDefined());
-    expect([...(capturedBody.celdas ?? [])].sort()).toEqual(["EDILICIA:ALTAS", "TICKETS:LECTURA"]);
+    expect(capturedBody.celdas).toEqual(["COMPRAS:LECTURA"]);
   });
 
   it("para un ADMINISTRADOR deshabilita la edición y muestra la nota (grilla tildada completa, R2)", async () => {

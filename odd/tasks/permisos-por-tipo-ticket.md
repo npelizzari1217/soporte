@@ -108,12 +108,13 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (este commit)
 - [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
-- [ ] T9 — S7, L49-L50 — worker — retiro de `TICKETS:*` / `EDILICIA:*` de tickets — (pendiente)
+- [x] T9 — S7, L49-L50 — worker — retiro de `TICKETS:*` / `EDILICIA:*` de tickets — `66bfddf9` (T9a),
+  (este commit) (T9b y T9c)
   - [x] T9a — L50.4 — plantillas de rol por tipo explícitas; retirar traducción L11, `accionesDeTipoDesdeCeldas`
     en plantillas y `GET /usuarios` — (este commit)
-  - [ ] T9b — L50.1-2 — sacar `TICKETS` y `EDILICIA:LECTURA|ALTAS|MODIFICACION` del catálogo, CHECK y
-    front; migración master que borra esas celdas (con `predeploy-dump`)
-  - [ ] T9c — L50.4 — retirar backfill 8c de `deploy.ps1` y su script
+  - [x] T9b — L50.1-2 — sacar `TICKETS` y `EDILICIA:LECTURA|ALTAS|MODIFICACION` del catálogo, CHECK y
+    front; migración master que borra esas celdas (con `predeploy-dump`) — (este commit)
+  - [x] T9c — L50.4 — retirar backfill 8c de `deploy.ps1` y su script — (este commit, junto con T9b, L52)
 - [x] T10 — S8 — worker — borrar y recuperar ticket (backend, front, grilla) — (este commit)
 
 ## Log
@@ -419,3 +420,26 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   `CELDAS_REEMPLAZADAS_POR_TIPO` del front quedan para T9b. Back: lint y typecheck en cero, 528
   archivos en verde; los 240 rojos son integración y e2e sin Postgres (`Can't reach database server`).
   Front: lint 0, tsc 0, 281 archivos y 2466 tests.
+- **L52** (T9b y T9c en una sola unidad; el orquestador lo decidió para que la suite quede en verde y
+  el deploy sea coherente: desde T9b la matriz no tiene las celdas que el backfill 8c traducía, y su
+  spec ya no podía sembrar el fixture) — El catálogo (`shared/domain/acciones.ts` y su espejo del
+  front) queda sin TICKETS y con EDILICIA solo en `BORRADO`: 25 pares. Migración master
+  `20261023120000_retirar_celdas_tickets_matriz`: borra esas celdas de `usuario_cliente_permisos` y
+  rehace el CHECK; destructiva para esas filas, va con `predeploy-dump.ps1`; su `rollback.sql`
+  restaura el CHECK de 36 pares pero no las filas. `PATCH usuarios/:id/permisos` deja el caso
+  especial de L31: una celda retirada es inválida como cualquier otra (400 en el DTO, 422 en el
+  caso de uso) y el reemplazo es total. La API v1 conserva `TICKETS:LECTURA|ALTAS|COMENTAR`
+  (L50.3) con su propio decorador `RequierePermisoApi`, tipado por `PERMISOS_API` y leído por el
+  mismo `AccionesGuard`; el actor de la clave sigue con `modulos: ['TICKETS']`. El `modulos` del
+  JWT deja de traer TICKETS (sale de las celdas); nada lo consulta para tickets: el menú y los
+  gates de `/tickets` y `/edilicia` van por tipo (L48). La grilla de módulos muestra Edilicia con
+  Ver, Crear y Modificar deshabilitados, como cualquier acción del piso que un módulo no soporta.
+  T9c: fuera `scripts/backfill-permisos-tipo-ticket.mjs`, su spec, el paso 8c de `deploy.ps1`,
+  `accionesDeTipoDesdeCeldas` y `TRADUCCION_L11` del dominio, y el fixture congelado
+  `presets-rol-anteriores-a-t9a.ts` con su test de paridad (queda la tabla explícita por rol). La
+  tabla de L11 sobrevive solo como fixture de e2e (`tickets/test-helpers/permisos-por-tipo-e2e.ts`),
+  con `celdasDeLaMatriz` para no guardar en master las celdas retiradas. TDD: RED 24 tests
+  (catálogo, caso de uso, CHECK y e2e del PATCH, que antes daba 200) y 5 en el front; GREEN.
+  Back: lint y typecheck en cero, suite completa 768 archivos y 9487 tests en verde. Front: lint 0,
+  type-check 0, 281 archivos y 2467 tests. Ayuda (suspendida): la grilla de módulos ya no tiene
+  Tickets y Edilicia solo ofrece Borrar.

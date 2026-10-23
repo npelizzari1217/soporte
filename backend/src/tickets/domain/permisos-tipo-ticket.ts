@@ -4,8 +4,8 @@ import { esModuloValido, Modulo } from '../../shared/domain/modulos';
  * Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, S1, D4).
  *
  * El tipo de ticket es la unidad de permiso: cada usuario recibe, por tipo, un conjunto de
- * acciones. Se reusan los códigos del catálogo de la matriz master (`shared/domain/acciones.ts`)
- * para no inventar una segunda lengua de permisos.
+ * acciones. Se reusan los códigos que tenía el módulo TICKETS en la matriz master (que desde T9b
+ * ya no lo tiene) para no inventar una segunda lengua de permisos.
  *
  * Fuente ÚNICA del vocabulario: el CHECK `permisos_tipo_ticket_accion_check` de la tabla del
  * tenant enumera estos mismos valores, y un test de integración compara las dos listas contra
@@ -56,111 +56,6 @@ export function problemaDeFilaDeTipo(
     return { tipo: 'sin-ver', acciones: [...acciones] };
   }
   return null;
-}
-
-/** Módulo master cuyas celdas se leen para traducir a acciones por tipo. */
-type ModuloOrigen = 'TICKETS' | 'EDILICIA';
-
-/**
- * Tabla de traducción de L11: celda master (acción del módulo) → acciones por tipo.
- * Una acción del módulo que no figura acá no concede nada; en particular `EDILICIA:BORRADO`
- * (desvincular compra) sigue siendo permiso del módulo (L21), y Borrar nace vacío (S7).
- */
-const TRADUCCION_L11: Readonly<
-  Record<ModuloOrigen, Readonly<Record<string, readonly AccionTipoTicket[]>>>
-> = {
-  TICKETS: {
-    LECTURA: ['LECTURA'],
-    VER_TODOS: ['VER_TODOS'],
-    ALTAS: ['ALTAS'],
-    MODIFICACION: ['MODIFICACION'],
-    TRANSICIONAR: ['TRANSICIONAR'],
-    ASIGNAR: ['ASIGNAR'],
-    COMENTAR: ['COMENTAR'],
-    OBSERVAR: ['OBSERVAR'],
-  },
-  // La lectura de Edilicia da solo Ver: Ver todos sobre un tipo de Edilicia sale de
-  // `TICKETS:VER_TODOS` (L35). Su modificación cubre también el cambio de estado y los
-  // comentarios, que el módulo no separa.
-  EDILICIA: {
-    LECTURA: ['LECTURA'],
-    ALTAS: ['ALTAS'],
-    MODIFICACION: ['MODIFICACION', 'TRANSICIONAR', 'COMENTAR'],
-  },
-};
-
-/**
- * Módulos master de los que toma las celdas un tipo, según su `modulo`. Los tipos de COMPRAS o
- * EQUIPOS se migran con la regla de TICKETS (L21). Los de EDILICIA suman a las suyas las de
- * TICKETS (L35): comentar, asignar, notas internas y ver todos sobre un ticket edilicio salían de
- * `TICKETS:*`. Un módulo fuera de la tabla no tiene origen: el tipo queda cerrado, igual que un
- * tipo nuevo (S4).
- */
-const ORIGENES_POR_MODULO_DEL_TIPO: Readonly<Record<string, readonly ModuloOrigen[]>> = {
-  TICKETS: ['TICKETS'],
-  COMPRAS: ['TICKETS'],
-  EQUIPOS: ['TICKETS'],
-  EDILICIA: ['TICKETS', 'EDILICIA'],
-};
-
-/**
- * Traduce las celdas master de un usuario a las acciones que tiene sobre un tipo de ticket,
- * según la tabla de L11. Es la única implementación de esa tabla. Desde T9a las plantillas de rol
- * ya no salen de acá (son explícitas, `PlantillaPorTipo`): la usa solo el backfill del paso 8c
- * (`scripts/backfill-permisos-tipo-ticket.mjs`, que la lee de `dist/`), y se retira con él en T9c.
- *
- * Imprimir se concede a quien resulte con Ver; Borrar no se concede nunca. Las celdas de un
- * módulo que no es origen del tipo no cuentan. Con varios orígenes, el resultado es la unión.
- * Un tipo que no es de TICKETS pero toma sus celdas (COMPRAS y EQUIPOS por L23, EDILICIA por L35)
- * no da nada a quien no tiene ninguna celda del módulo del tipo.
- *
- * @param celdas Celdas de la matriz master del usuario, como códigos `MODULO:ACCION`.
- * @param moduloDelTipo Valor de `tipos_ticket.modulo` del tipo.
- * @returns El conjunto de acciones concedidas sobre ese tipo; vacío si no corresponde ninguna.
- */
-export function accionesDeTipoDesdeCeldas(
-  celdas: readonly string[],
-  moduloDelTipo: string,
-): Set<AccionTipoTicket> {
-  const acciones = new Set<AccionTipoTicket>();
-  const origenes = ORIGENES_POR_MODULO_DEL_TIPO[moduloDelTipo];
-  if (origenes === undefined) return acciones;
-  // Un tipo de COMPRAS, EQUIPOS o EDILICIA toma las celdas de TICKETS, pero hoy (S0) solo lo ve
-  // quien tiene alguna celda de su propio módulo: sin ella, la migración no puede darle acceso (S7).
-  if (
-    origenes.some((origen) => origen !== moduloDelTipo) &&
-    !celdas.some((celda) => celda.startsWith(`${moduloDelTipo}:`))
-  ) {
-    return acciones;
-  }
-
-  for (const origen of origenes) {
-    const traduccion = TRADUCCION_L11[origen];
-    const prefijo = `${origen}:`;
-    for (const celda of celdas) {
-      if (!celda.startsWith(prefijo)) continue;
-      const concedidas = traduccion[celda.slice(prefijo.length)] ?? [];
-      for (const accion of concedidas) acciones.add(accion);
-    }
-  }
-
-  if (acciones.has('LECTURA')) acciones.add('IMPRESION');
-  return acciones;
-}
-
-/**
- * ¿La celda master ya no decide nada porque pasó a la tabla por tipo? Son las celdas que traduce
- * L11: todas las de TICKETS y `EDILICIA:LECTURA`, `ALTAS` y `MODIFICACION`. `EDILICIA:BORRADO`
- * (desvincular compra) sigue siendo del módulo (L21). Desde T7 la grilla de módulos deja de
- * editarlas (D5 d) y desde T9a las plantillas de rol no las traen; se retiran de la base en T9b.
- *
- * @param celda Código `MODULO:ACCION`.
- * @returns `true` si la celda la reemplazan los permisos por tipo.
- */
-export function celdaReemplazadaPorTipo(celda: string): boolean {
-  const [modulo, accion] = celda.split(':');
-  if (modulo !== 'TICKETS' && modulo !== 'EDILICIA') return false;
-  return accion !== undefined && Object.keys(TRADUCCION_L11[modulo]).includes(accion);
 }
 
 /** Un tipo de ticket como destino de permisos: su id y su módulo (`tipos_ticket.modulo`). */

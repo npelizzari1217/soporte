@@ -93,7 +93,10 @@ import type {
 } from '../../../tickets/interface/dtos/ticket.dto';
 import type { KbArticuloResponseDto } from '../../../kb/interface/dtos/kb-articulo.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
-import { sembrarPermisosPorTipoE2e } from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
+import {
+  celdasDeLaMatriz,
+  sembrarPermisosPorTipoE2e,
+} from '../../../tickets/test-helpers/permisos-por-tipo-e2e';
 import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 
 const MASTER_TEST_URL =
@@ -242,8 +245,8 @@ interface IdsFixture {
  * Una ruta de tickets (odd/permisos-por-tipo-ticket, T5b, D5 d): ya no la decide una celda en
  * `AccionesGuard`, sino el caso de uso con los permisos por tipo.
  *
- * - `celdaVieja`: la celda de módulo que la ruta exigía hasta T5a. Se siembra en el lado
- *   negativo para probar que ya no concede nada sin la fila por tipo.
+ * - `celdaVieja`: la celda de módulo que la ruta exigía hasta T5a; solo nombra el caso. Desde T9b
+ *   ya no se puede guardar en la matriz (el CHECK la rechaza), así que no se siembra.
  * - `acciones`: las acciones por tipo que la operación exige sobre el tipo del ticket, además
  *   de `LECTURA` y `VER_TODOS` (las que dejan ver un ticket ajeno).
  * - `sinFilas`: lo que responde el caso de uso a un actor sin filas por tipo.
@@ -252,7 +255,7 @@ interface IdsFixture {
 interface RutaTicketPorTipo {
   metodo: Metodo;
   path: (ids: IdsFixture) => string;
-  celdaVieja: CodigoAccion;
+  celdaVieja: string;
   acciones: AccionTipoTicket[];
   cuerpo?: (ctx: ContextoCuerpo) => unknown;
   multipart?: true;
@@ -700,7 +703,7 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
    * (rol RBAC viejo vacío a propósito, `resolverScope` ya no lo lee).
    */
   async function crearActorConPermisos(
-    permisos: CodigoAccion[],
+    permisos: string[],
   ): Promise<{ accessToken: string; clienteId: string; usuarioId: string }> {
     const cliente = await crearClienteTenant();
     const role = await crearRoleVacio();
@@ -708,9 +711,10 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId: cliente.id, rolId: role.id, activo: true },
     });
-    await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    await permisosRepo.setPermisos(usuario.id, cliente.id, celdasDeLaMatriz(permisos));
     // Las operaciones por id de un ticket deciden con los permisos por tipo del tenant: los mismos
-    // que estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a).
+    // que estas celdas, traducidos por L11 (odd/permisos-por-tipo-ticket, T5a). Las de tickets ya
+    // no van a la matriz master (T9b).
     await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
@@ -761,14 +765,14 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
   /** Un segundo (o tercer) actor en el MISMO cliente que uno ya creado (R11: scope de filas dentro de UN tenant). */
   async function agregarActorAlCliente(
     clienteId: string,
-    permisos: CodigoAccion[],
+    permisos: string[],
   ): Promise<{ accessToken: string; usuarioId: string }> {
     const role = await crearRoleVacio();
     const usuario = await crearUsuario();
     await masterClient.membresia.create({
       data: { usuarioId: usuario.id, clienteId, rolId: role.id, activo: true },
     });
-    await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    await permisosRepo.setPermisos(usuario.id, clienteId, celdasDeLaMatriz(permisos));
     await sembrarPermisosPorTipoE2e(tenantClient, new Map([[usuario.id, permisos]]));
     const { accessToken } = await login(usuario.email);
     return { accessToken, usuarioId: usuario.id };
@@ -945,21 +949,14 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     );
   });
 
-  describe('Rutas de tickets: actor SIN filas por tipo no ve ni escribe nada, tenga o no la celda vieja', () => {
-    const casos = TABLA_RUTAS_TICKETS.flatMap((ruta) => [
-      { ...ruta, conCelda: true },
-      { ...ruta, conCelda: false },
-    ]);
-
-    it.each(casos)(
-      '$metodo con $celdaVieja (celda sembrada: $conCelda) y sin filas → $sinFilas, sin cambios en la base',
+  // Hasta T9b este bloque sembraba también la celda vieja para probar que ya no concedía nada. Desde
+  // T9b esa celda no se puede guardar: el CHECK de la matriz la rechaza.
+  describe('Rutas de tickets: actor SIN filas por tipo no ve ni escribe nada', () => {
+    it.each(TABLA_RUTAS_TICKETS)(
+      '$metodo (antes $celdaVieja) sin filas → $sinFilas, sin cambios en la base',
       async (ruta) => {
         const { ids, clienteId, asignableId } = await fixtureTicketAjeno();
-        const actor = await crearActorPorTipo(
-          clienteId,
-          ruta.conCelda ? [ruta.celdaVieja] : [],
-          [],
-        );
+        const actor = await crearActorPorTipo(clienteId, [], []);
         const antes = await fotoDelTicket(ids);
 
         const { status, data } = await llamarRutaTicket(ruta, ids, asignableId, actor.accessToken);
@@ -1097,12 +1094,9 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     it('GET /usuarios lo abre VER_TODOS sobre un tipo, no las celdas: 200 con los miembros activos y sin el dado de baja (T6)', async () => {
       const base = await crearActorConPermisos([]);
       const supervisor = await crearActorPorTipo(base.clienteId, [], ['LECTURA', 'VER_TODOS']);
-      // Celdas de módulo sin filas por tipo: desde T6 no abren la lista.
-      const soloCeldas = await crearActorPorTipo(
-        base.clienteId,
-        ['TICKETS:ASIGNAR', 'TICKETS:VER_TODOS'],
-        [],
-      );
+      // Sin filas por tipo no se abre la lista. Hasta T9b este actor tenía las celdas
+      // TICKETS:ASIGNAR y TICKETS:VER_TODOS, que desde T6 no la abrían y desde T9b no existen.
+      const soloCeldas = await crearActorPorTipo(base.clienteId, [], []);
       const dadoDeBaja = await agregarActorAlCliente(base.clienteId, []);
       await masterClient.membresia.updateMany({
         where: { usuarioId: dadoDeBaja.usuarioId, clienteId: base.clienteId },

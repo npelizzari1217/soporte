@@ -201,10 +201,8 @@ propia verificación.
    último hornea `BACKEND_URL` y `JWT_SECRET`).
 10. **Detiene los servicios**, migra master, migra el fan-out a tenants.
 11. **Backfill de config de correo** — solo la primera vez, con dos guardas.
-12. **Backfill de permisos por tipo de ticket** (paso 8c del script) — solo en los tenants cuya
-    tabla `permisos_tipo_ticket` está vacía; ver "El backfill de permisos por tipo de ticket".
-13. **Arranca los servicios**, espera 10 s y exige `Running`.
-14. **Smoke interno** contra 3101 y 3100.
+12. **Arranca los servicios**, espera 10 s y exige `Running`.
+13. **Smoke interno** contra 3101 y 3100.
 
 ### Por qué los builds van ANTES de migrar
 
@@ -572,34 +570,22 @@ peor. Pasó el 2026-08-20.
 
 ---
 
-## El backfill de permisos por tipo de ticket
+## Retiro de las celdas de tickets de la matriz (paso 8c retirado)
 
-`deploy.ps1` (paso 8c) corre `node scripts/backfill-permisos-tipo-ticket.mjs --apply` con los
-servicios detenidos, después de migrar los tenants y antes de arrancar
-(`odd/tasks/permisos-por-tipo-ticket.md`, T4b). Traduce la matriz master por módulo a la tabla
-`permisos_tipo_ticket` de cada tenant activo, con la tabla de L11, para que el día del deploy
-nadie gane ni pierda acceso (S7). Entran todos los tipos, también los dados de baja, y las
-membresías desactivadas. Inserta con `ON CONFLICT DO NOTHING`: nunca borra ni actualiza.
+El paso 8c de `deploy.ps1` corría `scripts/backfill-permisos-tipo-ticket.mjs`, que tradujo la
+matriz master por módulo a la tabla `permisos_tipo_ticket` de cada tenant en el deploy de la
+etapa 1 (`odd/tasks/permisos-por-tipo-ticket.md`, T4b, L38). Se retiró junto con el script en
+T9c: desde T9b la matriz ya no tiene las celdas que traducía, así que no tiene nada que hacer.
 
-**Es para el primer deploy.** El script **omite** todo tenant cuya tabla ya tiene filas, y lo
-informa con `OMITIDO`: en los deploys siguientes el paso es un no-op, y nunca re-agrega una
-acción que un administrador quitó a mano. `--force` saltea esa guarda y re-agrega todo lo que
-falte respecto de la matriz master: no se usa en el deploy, y a mano solo sabiendo eso.
+La migración master `20261023120000_retirar_celdas_tickets_matriz` (T9b) **borra** de
+`usuario_cliente_permisos` todas las celdas `TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`,
+y deja el CHECK con los 25 pares vigentes. No cambia el acceso de nadie: esas celdas no deciden
+nada desde la etapa 1. Pero es **destructiva para esas filas**, así que entra por
+`migrate:master` dentro de la ventana de `predeploy-dump.ps1`.
 
-Una salvedad de la guarda: un tenant cuya tabla quedó **vacía** (sin usuarios con celdas el día
-del deploy, o porque se quitaron todos los permisos por tipo) se vuelve a completar desde la
-matriz master en el deploy siguiente. Por eso, verificado el primer deploy, el paso 8c se retira
-de `deploy.ps1`, como se retiró el 5a.
-
-Ensayo previo, opcional, desde `C:\soporte\backend` con Node 24 en el PATH y después de un build:
-`node scripts\backfill-permisos-tipo-ticket.mjs`. Imprime por tenant usuarios, tipos, filas
-calculadas e insertadas; nunca imprime URLs ni claves. Si un tenant falla, el script sigue con
-los demás y sale con código 1, y el deploy se detiene **con los servicios detenidos**: se corrige
-la causa y se vuelve a correr `deploy.ps1` (los tenants ya completos quedan omitidos).
-
-Rollback: el código anterior no lee la tabla, así que las filas pueden quedar. El `rollback.sql`
-de la migración `20261021120000_permisos_tipo_ticket` **borra la tabla entera** (destructivo:
-se pierden también los cambios hechos a mano) y va después de revertir el código.
+Rollback: el `rollback.sql` de esa migración vuelve a poner el CHECK de 36 pares, pero **no
+restaura las celdas borradas**; si hicieran falta, salen de `usuario_cliente_permisos` en el dump.
+El código anterior funciona sin ellas.
 
 ---
 

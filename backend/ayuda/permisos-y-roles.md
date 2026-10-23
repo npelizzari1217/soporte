@@ -13,9 +13,14 @@ una cosa distinta.
 ## La regla de fondo
 
 Cada persona tiene, dentro de cada cliente, una **matriz de permisos**: una
-grilla donde cada fila es un módulo (Tickets, Compras, Edilicia, Equipos, Ayuda,
+grilla donde cada fila es un módulo (Compras, Edilicia, Equipos, Ayuda,
 Dashboard, Satisfacción, Preventivo, Insumos) y cada casilla es una acción sobre
 ese módulo. Lo que la persona puede hacer sale de esa grilla y de nada más.
+
+Los tickets no tienen fila en esta grilla: el acceso a cada tipo de ticket (ver,
+crear, modificar, asignar, borrar y demás) se otorga por tipo, en la grilla de
+tipos de ticket de la misma pantalla. En la fila Edilicia solo queda `BORRADO`,
+que permite desvincular una compra de una reparación.
 
 En este artículo los permisos se escriben como `MÓDULO:ACCIÓN` — por ejemplo
 `COMPRAS:APROBACION` — porque es como los identifica el sistema. En la pantalla

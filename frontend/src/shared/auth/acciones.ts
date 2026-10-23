@@ -29,18 +29,24 @@ export type AccionPiso = (typeof ACCIONES_PISO)[number];
  * Declaración por módulo: `piso` son las acciones del vocabulario común que
  * el módulo SÍ soporta (el resto queda deshabilitado en la grilla sin tabla
  * de exclusiones aparte); `extras` son acciones propias del módulo.
+ *
+ * Sin TICKETS (odd/tasks/permisos-por-tipo-ticket.md, T9b, L50.1): las
+ * acciones sobre tickets se conceden por tipo de ticket. Las claves de la API
+ * pública conservan su vocabulario `TICKETS:*`, que vive aparte
+ * (`features/integraciones/schemas.ts`).
  */
 export const CATALOGO_MODULOS = {
-  TICKETS: {
-    piso: ["LECTURA", "ALTAS", "MODIFICACION"],
-    extras: ["VER_TODOS", "ASIGNAR", "TRANSICIONAR", "OBSERVAR", "COMENTAR"],
-  },
   COMPRAS: {
     piso: ["LECTURA", "ALTAS", "MODIFICACION", "BORRADO", "APROBACION"],
     extras: [],
   },
+  /**
+   * EDILICIA conserva solo `BORRADO`, que habilita desvincular una compra de
+   * una reparación (L21, L50.2). Ver, crear y modificar reparaciones se
+   * conceden por tipo de ticket.
+   */
   EDILICIA: {
-    piso: ["LECTURA", "ALTAS", "MODIFICACION", "BORRADO"],
+    piso: ["BORRADO"],
     extras: [],
   },
   EQUIPOS: {

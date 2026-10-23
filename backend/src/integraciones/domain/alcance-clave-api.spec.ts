@@ -1,10 +1,10 @@
 /**
  * Acciones por tipo de una clave de API v1 (odd/permisos-por-tipo-ticket, D5 f, L50.3). La clave no
  * tiene filas por tipo y conserva su vocabulario de módulo: sus celdas se traducen con una tabla
- * propia, que tiene que dar lo mismo que la traducción de L11 (`accionesDeTipoDesdeCeldas`) para
- * toda celda que una clave puede llevar. Esa comparación se retira con la traducción, en T9c.
+ * propia, que da lo mismo que daba la traducción de L11 para toda celda que una clave puede llevar.
+ * Desde T9c esa traducción no existe: lo esperado por cada celda queda escrito acá.
  */
-import { accionesDeTipoDesdeCeldas } from '../../tickets/domain/permisos-tipo-ticket';
+import { AccionTipoTicket } from '../../tickets/domain/permisos-tipo-ticket';
 import { accionesDeClaveApi, accionesDeClaveApiParaComentar } from './alcance-clave-api';
 import { PERMISOS_API } from './api-clave';
 
@@ -21,13 +21,19 @@ function comoLasDejaElGuard(celdas: readonly string[]): string[] {
   return celdas.includes('TICKETS:LECTURA') ? [...celdas, 'TICKETS:VER_TODOS'] : [...celdas];
 }
 
+/** Lo que daba la traducción de L11 por cada celda de clave, con el VER_TODOS que agrega el guard. */
+const ESPERADAS_POR_CELDA: Readonly<Record<string, readonly AccionTipoTicket[]>> = {
+  'TICKETS:LECTURA': ['LECTURA', 'VER_TODOS', 'IMPRESION'],
+  'TICKETS:ALTAS': ['ALTAS'],
+  'TICKETS:COMENTAR': ['COMENTAR'],
+};
+
 describe('accionesDeClaveApi', () => {
-  it.each(subconjuntos(PERMISOS_API).map((celdas) => [comoLasDejaElGuard(celdas)]))(
-    'con las celdas %j da exactamente la traducción de L11 sobre un tipo de TICKETS',
-    (celdas: string[]) => {
-      expect(accionesDeClaveApi(celdas, 'TICKETS')).toEqual(
-        accionesDeTipoDesdeCeldas(celdas, 'TICKETS'),
-      );
+  it.each(subconjuntos(PERMISOS_API).map((celdas) => [celdas.join(' + ') || 'ninguna', celdas]))(
+    'con las celdas %s da sobre un tipo de TICKETS la unión de lo que da cada una',
+    (_nombre: string, celdas: string[]) => {
+      const esperadas = new Set(celdas.flatMap((celda) => ESPERADAS_POR_CELDA[celda] ?? []));
+      expect(accionesDeClaveApi(comoLasDejaElGuard(celdas), 'TICKETS')).toEqual(esperadas);
     },
   );
 
