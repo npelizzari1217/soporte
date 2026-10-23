@@ -585,7 +585,10 @@ nada desde la etapa 1. Pero es **destructiva para esas filas**, así que entra p
 
 Rollback: el `rollback.sql` de esa migración vuelve a poner el CHECK de 36 pares, pero **no
 restaura las celdas borradas**; si hicieran falta, salen de `usuario_cliente_permisos` en el dump.
-El código anterior funciona sin ellas.
+**Orden obligatorio para volver al código anterior:** primero `rollback.sql`, después el código.
+El código anterior a T9 todavía escribe celdas `TICKETS:*` al dar de alta un usuario, cambiar
+su rol o aplicar una plantilla; contra el CHECK nuevo esas escrituras fallan con un 500
+(`MatrizPermisosNoAplicadaError`). Para leer, el código anterior no necesita las celdas borradas.
 
 ---
 

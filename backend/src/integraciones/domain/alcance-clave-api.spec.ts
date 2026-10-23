@@ -127,6 +127,15 @@ describe('alcance de la clave de API v1 — sin acciones fuera de PERMISOS_API',
     }
   });
 
+  it.each(['COMPRAS', 'EQUIPOS', 'EDILICIA'])(
+    'una clave completa no concede nada sobre tipos de %s, como antes de T9',
+    (modulo) => {
+      const celdas = ['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:ALTAS', 'TICKETS:COMENTAR'];
+      expect(accionesDeClaveApi(celdas, modulo)).toEqual(new Set());
+      expect(accionesDeClaveApiParaComentar(celdas, modulo)).toEqual(new Set());
+    },
+  );
+
   it('una clave de lectura sin COMENTAR no se amplía al comentar', () => {
     expect(accionesDeClaveApiParaComentar(['TICKETS:LECTURA'], 'TICKETS')).toEqual(
       new Set(['LECTURA', 'IMPRESION']),
