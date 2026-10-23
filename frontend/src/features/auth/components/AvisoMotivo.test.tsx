@@ -47,4 +47,35 @@ describe("AvisoMotivo", () => {
     expect(alerta).toHaveTextContent(MENSAJE_SSO_ERROR);
     expect(alerta).not.toHaveTextContent(/root|inactivo/i);
   });
+
+  // Pedido del dueño: quien dejó la PC sin trabajar sabe que la sesión se cerró por seguridad,
+  // y por cuál de los dos motivos.
+  it("motivo=inactividad → avisa que la sesión se cerró por inactividad", () => {
+    currentSearch = "motivo=inactividad";
+    render(<AvisoMotivo />);
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Tu sesión se cerró por inactividad. Inicia sesión nuevamente.",
+    );
+  });
+
+  it("motivo=sesion-vencida → avisa que la sesión venció", () => {
+    currentSearch = "motivo=sesion-vencida";
+    render(<AvisoMotivo />);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Tu sesión venció. Inicia sesión nuevamente.");
+  });
+
+  it("los dos avisos de corte son distintos entre sí y no son una alerta de error", () => {
+    currentSearch = "motivo=inactividad";
+    const { unmount } = render(<AvisoMotivo />);
+    const inactividad = screen.getByRole("status").textContent;
+    unmount();
+
+    currentSearch = "motivo=sesion-vencida";
+    render(<AvisoMotivo />);
+
+    expect(screen.getByRole("status").textContent).not.toBe(inactividad);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

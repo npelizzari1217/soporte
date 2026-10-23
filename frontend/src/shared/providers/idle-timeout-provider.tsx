@@ -9,25 +9,26 @@
  * este guard se auto-desactiva correctamente fuera del dashboard (p. ej. /login)
  * sin ramificar por ruta.
  *
- * `handleCutoff`, en este orden estricto:
- *   1. guard `cuttingOffRef` — idempotente, evita doble corte (interval + storage event)
- *   2. `signalLogout()` — avisa a otras pestañas (localStorage `IDLE_LOGOUT_KEY`)
- *   3. `await fetch("/api/auth/logout", ...)` — revoca `rt` server-side + limpia cookies
- *   4. `window.location.assign("/login")` — hard nav (destruye árbol React + caché)
+ * El corte lo hace `cortarSesion("inactividad")` (`shared/auth/cortar-sesion`), el mismo
+ * helper que usa `apiFetch` cuando la sesión vence: avisa a otras pestañas, revoca `rt` y
+ * limpia cookies (`POST /api/auth/logout`), y navega a `/login?motivo=inactividad`. Su guard
+ * de módulo es el que evita el doble corte (countdown local + evento `storage`, o inactividad
+ * + sesión vencida a la vez): una sola redirección.
  *
  * Un listener `storage` sobre `IDLE_LOGOUT_KEY` detecta cuando OTRA pestaña
- * originó el corte y, en esta pestaña, hace SOLO cleanup + redirect — sin
- * volver a llamar a `/api/auth/logout` (las cookies ya se limpiaron globalmente
- * vía la pestaña originante).
+ * originó el corte y, en esta pestaña, SOLO navega al login con el mismo motivo
+ * (`seguirCorteDeOtraPestana`) — sin volver a llamar a `/api/auth/logout` (las
+ * cookies ya se limpiaron globalmente vía la pestaña originante).
  *
  * Spec: PR11 — idle-timeout (corte real de sesión, sincronización cross-tab).
  */
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { useSession } from "@/shared/hooks/use-session";
 import { useIdleTimeout } from "@/shared/hooks/use-idle-timeout";
 import { IdleWarningDialog } from "@/components/shell/idle-warning-dialog";
-import { IDLE_LOGOUT_KEY, signalLogout } from "@/shared/auth/idle-storage";
+import { IDLE_LOGOUT_KEY } from "@/shared/auth/idle-storage";
+import { cortarSesion, motivoDeSenal, seguirCorteDeOtraPestana } from "@/shared/auth/cortar-sesion";
 
 interface IdleTimeoutProviderProps {
   children: React.ReactNode;
@@ -37,23 +38,8 @@ export function IdleTimeoutProvider({ children }: IdleTimeoutProviderProps) {
   const { user, isLoading } = useSession();
   const enabled = user != null && !isLoading;
 
-  // Guard de idempotencia: el corte puede llegar por el countdown local
-  // (interval) o por el evento `storage` de otra pestaña — solo 1 vez.
-  const cuttingOffRef = useRef(false);
-
-  const handleCutoff = useCallback(async () => {
-    if (cuttingOffRef.current) return;
-    cuttingOffRef.current = true;
-
-    signalLogout();
-    await fetch("/api/auth/logout", {
-      method: "POST",
-      credentials: "same-origin",
-    }).catch(() => {
-      // Backend inalcanzable — igual navegamos: el BFF limpia cookies siempre
-      // que responde, y si no responde no hay peor caso que ya navegar a /login.
-    });
-    window.location.assign("/login");
+  const handleCutoff = useCallback(() => {
+    void cortarSesion("inactividad");
   }, []);
 
   const { isWarning, secondsLeft, stayConnected } = useIdleTimeout({
@@ -66,9 +52,7 @@ export function IdleTimeoutProvider({ children }: IdleTimeoutProviderProps) {
 
     function onStorage(event: StorageEvent) {
       if (event.key !== IDLE_LOGOUT_KEY || event.newValue === null) return;
-      if (cuttingOffRef.current) return; // esta pestaña ya cortó por su cuenta
-      cuttingOffRef.current = true;
-      window.location.assign("/login");
+      seguirCorteDeOtraPestana(motivoDeSenal(event.newValue));
     }
 
     window.addEventListener("storage", onStorage);

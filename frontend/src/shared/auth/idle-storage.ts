@@ -51,12 +51,15 @@ export function writeLastActivity(ts: number): void {
  * Señala a otras pestañas que la sesión se cortó, escribiendo un valor
  * siempre-cambiante en `IDLE_LOGOUT_KEY` para forzar el evento `storage`.
  * No-op silencioso si `localStorage` no está disponible.
+ * @param motivo motivo del corte; si viene, el valor queda como `<motivo>:<epoch ms>` para que
+ *               la otra pestaña muestre el mismo aviso en el login.
  */
-export function signalLogout(): void {
+export function signalLogout(motivo?: string): void {
   if (typeof window === "undefined") return;
 
+  const ahora = String(Date.now());
   try {
-    window.localStorage.setItem(IDLE_LOGOUT_KEY, String(Date.now()));
+    window.localStorage.setItem(IDLE_LOGOUT_KEY, motivo ? `${motivo}:${ahora}` : ahora);
   } catch {
     // Degradación elegante: sin sync cross-tab, sin crash.
   }

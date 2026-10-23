@@ -23,32 +23,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { verifyAccessToken } from "@/shared/auth/verify";
 import { destinoPosLogin } from "@/shared/auth/destino-pos-login";
 import { COOKIE_AT, COOKIE_RT, cookieName } from "@/shared/auth/cookies";
-
-/**
- * Rutas públicas, sin sesión. Exactas salvo que terminen en `/`: esas son
- * prefijo (ver `esRutaPublica`).
- *
- * ADR-C7 (sdd/csat/design): el route group `(publico)` de Next es
- * TRANSPARENTE a la URL — no alcanza por sí solo para dejar pasar una ruta.
- * Sin esta allowlist, `/encuesta/:token` cae en el mismo 307 a `/login` que
- * cualquier ruta protegida y la encuesta de satisfacción no se puede
- * responder nunca (el destinatario del mail NUNCA tiene sesión). Angosto a
- * propósito: una allowlist ancha (p. ej. `/`) dejaría pasar rutas protegidas
- * reales como `/tickets`.
- *
- * `/c/` (sdd/formulario-publico-qr, WU-16): formulario público al que llega
- * quien escanea el QR de un equipo o abre el link del mail de confirmación;
- * ninguno tiene sesión. Prefijo, no substring: `/clientes` y `/compras`
- * siguen protegidas.
- */
-const RUTAS_PUBLICAS = ["/encuesta/", "/c/", "/restablecer-password", "/olvide-password"];
-
-/** Una entrada que termina en `/` es un prefijo; si no, la ruta es exacta. */
-function esRutaPublica(pathname: string): boolean {
-  return RUTAS_PUBLICAS.some((ruta) =>
-    ruta.endsWith("/") ? pathname.startsWith(ruta) : pathname === ruta,
-  );
-}
+import { esRutaPublica } from "@/shared/auth/rutas-publicas";
 
 /**
  * Redirect a `/login`. Solo `/pedido-qr` lleva `?siguiente=` (path + query): es el único destino
