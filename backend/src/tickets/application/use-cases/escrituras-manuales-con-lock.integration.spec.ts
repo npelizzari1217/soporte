@@ -96,7 +96,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
   const stateMachineFactory = new TicketStateMachineFactory();
   const usuarioMasterChecker = { estaActivoEnTenant: async () => true };
   // La elegibilidad no es lo que se prueba acá: el asignado es elegible.
-  const elegibilidad = { esAsignableATipo: async () => true };
+  const elegibilidad = { aceptaComoResponsable: async () => true };
   const estadoIds = new Map<string, string>();
   let tipoId: string;
   let prioridadId: string;

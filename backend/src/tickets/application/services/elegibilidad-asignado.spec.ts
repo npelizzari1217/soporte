@@ -1,8 +1,9 @@
 /**
  * Elegibilidad del asignado por tipo (odd/permisos-por-tipo-ticket, S1, S2, D5 g). Decide la fila
- * por tipo del tenant (`LECTURA` sobre el tipo del ticket); master solo aporta identidad, rol y
- * membresía. Las celdas de la matriz por módulo ya no cuentan: el doble de master las tiene a
- * propósito, para que un regreso al criterio por módulo ponga estos casos en rojo.
+ * por tipo del tenant (`LECTURA` sobre el tipo del ticket) y el rol de agente (TECNICO o
+ * COLABORADOR); master solo aporta identidad, rol y membresía. Las celdas de la matriz por módulo
+ * ya no cuentan: el doble de master las tiene a propósito, para que un regreso al criterio por
+ * módulo ponga estos casos en rojo.
  */
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
@@ -36,20 +37,25 @@ function conceder(
   void permisos.agregarSiFaltan(acciones.map((accion) => ({ usuarioId, tipoId, accion })));
 }
 
-describe('ElegibilidadAsignado.esAsignableATipo (asignación manual)', () => {
-  it('con la celda EDILICIA:LECTURA de la matriz pero sin fila del tipo → no elegible', async () => {
-    const { elegibilidad, master } = armar();
-    master.agregar({ id: 'u-1', rol: 'TECNICO', celdas: ['EDILICIA:LECTURA'] });
+describe('ElegibilidadAsignado.aceptaComoResponsable (asignación manual)', () => {
+  const ticket = { asignadoId: null, tipoId: SOPORTE };
 
-    await expect(elegibilidad.esAsignableATipo('u-1', CLIENTE, SOPORTE)).resolves.toBe(false);
+  it('con la celda TICKETS:LECTURA de la matriz pero sin fila del tipo → no elegible', async () => {
+    const { elegibilidad, master } = armar();
+    master.agregar({ id: 'u-1', rol: 'TECNICO', celdas: ['TICKETS:LECTURA'] });
+
+    await expect(elegibilidad.aceptaComoResponsable(ticket, 'u-1', CLIENTE)).resolves.toBe(false);
   });
 
-  it('con LECTURA sobre el tipo y ninguna celda de la matriz → elegible', async () => {
+  it('TECNICO o COLABORADOR con LECTURA sobre el tipo y ninguna celda de la matriz → elegible', async () => {
     const { elegibilidad, master, permisos } = armar();
-    master.agregar({ id: 'u-1', rol: 'TECNICO', celdas: [] });
-    conceder(permisos, 'u-1', SOPORTE, 'LECTURA');
+    master.agregar({ id: 'u-tec', rol: 'TECNICO', celdas: [] });
+    master.agregar({ id: 'u-col', rol: 'COLABORADOR', celdas: [] });
+    conceder(permisos, 'u-tec', SOPORTE, 'LECTURA');
+    conceder(permisos, 'u-col', SOPORTE, 'LECTURA');
 
-    await expect(elegibilidad.esAsignableATipo('u-1', CLIENTE, SOPORTE)).resolves.toBe(true);
+    await expect(elegibilidad.aceptaComoResponsable(ticket, 'u-tec', CLIENTE)).resolves.toBe(true);
+    await expect(elegibilidad.aceptaComoResponsable(ticket, 'u-col', CLIENTE)).resolves.toBe(true);
   });
 
   it('decide por tipo: elegible para Soporte y no para Mantenimiento', async () => {
@@ -58,8 +64,14 @@ describe('ElegibilidadAsignado.esAsignableATipo (asignación manual)', () => {
     conceder(permisos, 'u-1', SOPORTE, 'LECTURA', 'MODIFICACION');
     conceder(permisos, 'u-1', MANTENIMIENTO, 'MODIFICACION', 'COMENTAR');
 
-    await expect(elegibilidad.esAsignableATipo('u-1', CLIENTE, SOPORTE)).resolves.toBe(true);
-    await expect(elegibilidad.esAsignableATipo('u-1', CLIENTE, MANTENIMIENTO)).resolves.toBe(false);
+    await expect(elegibilidad.aceptaComoResponsable(ticket, 'u-1', CLIENTE)).resolves.toBe(true);
+    await expect(
+      elegibilidad.aceptaComoResponsable(
+        { asignadoId: null, tipoId: MANTENIMIENTO },
+        'u-1',
+        CLIENTE,
+      ),
+    ).resolves.toBe(false);
   });
 
   it('la LECTURA de otro usuario sobre el tipo no lo vuelve elegible', async () => {
@@ -67,25 +79,34 @@ describe('ElegibilidadAsignado.esAsignableATipo (asignación manual)', () => {
     master.agregar({ id: 'u-1', rol: 'TECNICO', celdas: [] });
     conceder(permisos, 'u-2', SOPORTE, 'LECTURA');
 
-    await expect(elegibilidad.esAsignableATipo('u-1', CLIENTE, SOPORTE)).resolves.toBe(false);
+    await expect(elegibilidad.aceptaComoResponsable(ticket, 'u-1', CLIENTE)).resolves.toBe(false);
   });
 
-  it('ROOT o ADMINISTRADOR es elegible sin filas del tipo y sin leer la tabla del tenant', async () => {
+  it.each([
+    ['ADMINISTRADOR', 'u-admin'],
+    ['ROOT', 'u-root'],
+    ['USUARIO', 'u-usuario'],
+  ] as const)('un %s con LECTURA sobre el tipo no es elegible', async (rol, id) => {
+    const { elegibilidad, master, permisos } = armar();
+    master.agregar({ id, rol, celdas: [] });
+    conceder(permisos, id, SOPORTE, 'LECTURA');
+
+    await expect(elegibilidad.aceptaComoResponsable(ticket, id, CLIENTE)).resolves.toBe(false);
+  });
+
+  it('quien ya es el responsable del ticket se acepta sin consultar el tenant ni master', async () => {
     const { elegibilidad, master, lecturas } = armar();
     master.agregar({ id: 'u-admin', rol: 'ADMINISTRADOR', celdas: [] });
-    master.agregar({ id: 'u-root', rol: 'ROOT', celdas: [] });
 
-    await expect(elegibilidad.esAsignableATipo('u-admin', CLIENTE, SOPORTE)).resolves.toBe(true);
-    await expect(elegibilidad.esAsignableATipo('u-root', CLIENTE, SOPORTE)).resolves.toBe(true);
+    await expect(
+      elegibilidad.aceptaComoResponsable(
+        { asignadoId: 'u-admin', tipoId: SOPORTE },
+        'u-admin',
+        CLIENTE,
+      ),
+    ).resolves.toBe(true);
     expect(lecturas()).toBe(0);
-  });
-
-  it('un USUARIO con LECTURA sobre el tipo es asignable a mano, como antes con el módulo', async () => {
-    const { elegibilidad, master, permisos } = armar();
-    master.agregar({ id: 'u-1', rol: 'USUARIO', celdas: [] });
-    conceder(permisos, 'u-1', SOPORTE, 'LECTURA');
-
-    await expect(elegibilidad.esAsignableATipo('u-1', CLIENTE, SOPORTE)).resolves.toBe(true);
+    expect(master.consultasDeAgentes).toBe(0);
   });
 });
 

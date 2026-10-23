@@ -119,7 +119,6 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
       existeEnTenant: async () => true,
       estaActivoEnTenant: async () => true,
       resolverNombres: async () => new Map(),
-      esAdminTotalEnTenant: async () => false,
       listarAgentes: async (_clienteId, usuarioIds) =>
         tecnicos.filter((tecnico) => usuarioIds.includes(tecnico.id)),
     };

@@ -364,8 +364,9 @@ export class TicketEntity extends BaseEntity<TicketProps> {
 
   /**
    * Asigna o reasigna el ticket a un responsable. Pasar `null` desasigna.
-   * La validación de elegibilidad (por el módulo del catálogo del tipo) y de
-   * existencia cross-DB ocurre en `AsignarTicketUseCase` (PR8), no en la entidad.
+   * La validación de elegibilidad (`ElegibilidadAsignado`: técnico o colaborador con
+   * `LECTURA` sobre el tipo) y de existencia cross-DB ocurre en los casos de uso, no en
+   * la entidad.
    */
   assignTo(usuarioId: string | null): void {
     this.props.asignadoId = usuarioId;

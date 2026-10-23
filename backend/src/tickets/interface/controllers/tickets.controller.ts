@@ -691,9 +691,9 @@ export class TicketsController {
    * asignación MANUAL. Un ticket nacido por regla de tipo se reasigna igual que
    * cualquier otro. Un ticket NUEVO pasa a ASIGNADO; uno CERRADO/CANCELADO no se
    * reasigna. Requiere `ASIGNAR` sobre el tipo del ticket. El `asignadoId` debe existir/estar activo en el
-   * tenant (cross-DB) y ser elegible para el `tipoId` del ticket
-   * (elegibilidad por el módulo del catálogo del tipo) — la elegibilidad es
-   * ortogonal al permiso del actor (T15).
+   * tenant (cross-DB) y ser TECNICO o COLABORADOR con `LECTURA` sobre el `tipoId` del ticket
+   * (el mismo universo de `GET /tickets/:id/asignables`), salvo que ya sea el responsable —
+   * la elegibilidad es ortogonal al permiso del actor (T15).
    * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),

@@ -232,7 +232,6 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
   const usuarioMasterCheckerReal: IUsuarioMasterChecker = {
     existeEnTenant: unstubbed('existeEnTenant'),
     estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
-    esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
     listarAgentes: unstubbed('listarAgentes'),
     resolverNombres: usuarioMasterChecker.resolverNombres,
   };

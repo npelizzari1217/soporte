@@ -99,7 +99,6 @@ describe('CrearTicketUseCase con regla de asignación — integración (A1, A3, 
       existeEnTenant: async () => true,
       estaActivoEnTenant: async () => true,
       resolverNombres: async () => new Map(),
-      esAdminTotalEnTenant: async () => false,
       listarAgentes: async (_clienteId, usuarioIds) =>
         usuarioIds.includes(RESPONSABLE)
           ? [{ id: RESPONSABLE, nombre: 'Tina', apellido: 'T' }]

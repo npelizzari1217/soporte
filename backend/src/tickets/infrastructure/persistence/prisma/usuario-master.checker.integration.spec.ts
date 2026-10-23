@@ -218,7 +218,7 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
     });
   });
 
-  // ─── esAdminTotalEnTenant / listarAgentes (odd/permisos-por-tipo-ticket, D5 g) ──
+  // ─── listarAgentes (odd/permisos-por-tipo-ticket, D5 g) ──
   // Solo identidad, rol y membresía: las celdas de la matriz por módulo NO deciden. Se siembran a
   // propósito para que un regreso al criterio por módulo ponga estos casos en rojo.
 
@@ -238,59 +238,6 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       data: { email, nombre, apellido, passwordHash: 'hash-fake', activo: true },
     });
   }
-
-  describe('esAdminTotalEnTenant() — ROOT o ADMINISTRADOR, sin leer la matriz', () => {
-    it('ADMINISTRADOR con CERO celdas en la matriz → true', async () => {
-      const cliente = await createCliente('admin-total-admin');
-      const role = await createRole('ADMINISTRADOR');
-      const usuario = await createUsuario('admin-total-admin');
-      await createMembresia(usuario.id, cliente.id, role.id);
-
-      expect(await checker.esAdminTotalEnTenant(usuario.id, cliente.id)).toBe(true);
-    });
-
-    it('ROOT (is_global_admin) → true aunque su membresía no sea ADMINISTRADOR', async () => {
-      const cliente = await createCliente('admin-total-root');
-      const role = await createRole('ADMIN_TOTAL_ROOT_ROLE');
-      const root = await masterClient.usuario.create({
-        data: {
-          email: 'checker_root_admin_total@integration.test',
-          nombre: 'Root',
-          apellido: 'Total',
-          passwordHash: 'hash-fake',
-          activo: true,
-          isGlobalAdmin: true,
-        },
-      });
-      await createMembresia(root.id, cliente.id, role.id);
-
-      expect(await checker.esAdminTotalEnTenant(root.id, cliente.id)).toBe(true);
-    });
-
-    it('TECNICO con celdas en COMPRAS y EDILICIA → false: las celdas no lo hacen administrador', async () => {
-      const cliente = await createCliente('admin-total-tecnico');
-      const role = await createRole('TECNICO');
-      const usuario = await createUsuario('admin-total-tecnico');
-      await createMembresia(usuario.id, cliente.id, role.id);
-      await createPermiso(usuario.id, cliente.id, 'COMPRAS', 'LECTURA');
-      await createPermiso(usuario.id, cliente.id, 'EDILICIA', 'BORRADO');
-
-      expect(await checker.esAdminTotalEnTenant(usuario.id, cliente.id)).toBe(false);
-    });
-
-    it('ADMINISTRADOR de OTRO cliente o con la membresía inactiva → false', async () => {
-      const cliente = await createCliente('admin-total-aislado');
-      const otroCliente = await createCliente('admin-total-aislado-otro');
-      const role = await createRole('ADMINISTRADOR');
-      const deOtro = await createUsuario('admin-total-de-otro');
-      const inactivo = await createUsuario('admin-total-inactivo');
-      await createMembresia(deOtro.id, otroCliente.id, role.id);
-      await createMembresia(inactivo.id, cliente.id, role.id, false);
-
-      expect(await checker.esAdminTotalEnTenant(deOtro.id, cliente.id)).toBe(false);
-      expect(await checker.esAdminTotalEnTenant(inactivo.id, cliente.id)).toBe(false);
-    });
-  });
 
   describe('listarAgentes() — TECNICO o COLABORADOR activos de entre los candidatos', () => {
     it('incluye a un TECNICO sin ninguna celda y excluye a uno con celdas que no es candidato', async () => {
@@ -376,6 +323,24 @@ describe('UsuarioMasterChecker — integration (T14, T15)', () => {
       ]);
 
       expect(result.map((r) => r.id)).toEqual([colaborador.id]);
+    });
+
+    it('ROOT (is_global_admin) sin membresía de técnico → excluido: no recibe tickets', async () => {
+      const cliente = await createCliente('agentes-root');
+      const roleUsuario = await createRole('USUARIO');
+      const root = await masterClient.usuario.create({
+        data: {
+          email: 'checker_root_agente@integration.test',
+          nombre: 'Root',
+          apellido: 'Global',
+          passwordHash: 'hash-fake',
+          activo: true,
+          isGlobalAdmin: true,
+        },
+      });
+      await createMembresia(root.id, cliente.id, roleUsuario.id);
+
+      expect(await checker.listarAgentes(cliente.id, [root.id])).toEqual([]);
     });
   });
 
