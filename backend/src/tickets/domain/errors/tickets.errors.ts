@@ -617,3 +617,20 @@ export class TicketsBorradosSoloAdministradorError extends DomainError {
     super('Solo un administrador puede ver o recuperar tickets borrados.');
   }
 }
+
+/**
+ * ListaDeAgentesNoPermitidaError — el actor no puede leer la lista de agentes con la que se filtra
+ * el listado por responsable: le falta `ASIGNAR` sobre algún tipo y `VER_TODOS` sobre un tipo de
+ * Tickets, Compras o Equipos (la misma regla que abre `GET /usuarios`, `puedeVerListaDeUsuarios`).
+ * → HTTP 403.
+ */
+export class ListaDeAgentesNoPermitidaError extends DomainError {
+  readonly code = 'LISTA_DE_AGENTES_NO_PERMITIDA';
+
+  constructor() {
+    super(
+      'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un ' +
+        'tipo de Tickets, Compras o Equipos.',
+    );
+  }
+}

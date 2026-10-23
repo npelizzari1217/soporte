@@ -224,6 +224,16 @@ export class ExportarTicketsQueryDto {
   busqueda?: string;
 }
 
+/**
+ * Query params de `GET /tickets/agentes`: el tipo filtrado en el listado, si lo hay. Mismo nombre
+ * (`tipo`) que en `ListTicketsQueryDto`, porque el front manda el valor de la URL tal cual.
+ */
+export class ListarAgentesQueryDto {
+  @IsOptional()
+  @IsUUID()
+  tipo?: string;
+}
+
 /** Response shape unificado de un ticket (T4-T8). */
 export interface TicketResponseDto {
   id: string;
