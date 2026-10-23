@@ -13,7 +13,9 @@
  * incluyendo el NEGATIVO explícito, no solo la positiva, porque un gate
  * probado solo por la positiva es indistinguible de un `true` hardcodeado),
  * el 422 del XOR de objetivo desde el dominio, y el 403 en la vista de
- * generaciones sin `PREVENTIVO:LECTURA`.
+ * generaciones sin `PREVENTIVO:LECTURA`. También el responsable del plan: la lista del selector
+ * (`GET /preventivo/planes/responsables`) trae solo a TECNICO y COLABORADOR con `LECTURA` sobre el
+ * tipo PREVENTIVO, y el alta y la edición rechazan con 422 a cualquier otro.
  *
  * Ref spec: sdd/preventivo/spec, Requirements "Objetivo excluyente del
  * plan", "Permiso propio del módulo PREVENTIVO", "Baja de plan frena
@@ -51,6 +53,7 @@ import { RoleEntity } from '../src/auth/domain/entities/role.entity';
 import { Argon2HashProvider } from '../src/auth/infrastructure/argon2-hash.provider';
 import { PlanPreventivoResponseDto } from '../src/preventivo/interface/dtos/preventivo.dto';
 import { usarLockMasterTest } from '../src/testing/lock-master-test';
+import { TIPO_CODIGO_PREVENTIVO } from '../src/tickets/domain/tipos-ticket.constants';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -134,6 +137,10 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
   const admin = new PostgresAdminService(MASTER_TEST_URL);
 
   let prioridadId: string;
+  let tipoPreventivoId: string;
+  let otroTipoId: string;
+  /** Técnico con `LECTURA` sobre PREVENTIVO del último cliente creado: el responsable válido. */
+  let responsableElegibleId: string;
 
   beforeAll(async () => {
     if (!process.env.DATABASE_URL_MASTER) {
@@ -156,6 +163,14 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       where: { codigo: 'MEDIA' },
     });
     prioridadId = prioridadMedia.id;
+    tipoPreventivoId = (
+      await tenantClient.tipoTicket.findUniqueOrThrow({ where: { codigo: TIPO_CODIGO_PREVENTIVO } })
+    ).id;
+    otroTipoId = (
+      await tenantClient.tipoTicket.findFirstOrThrow({
+        where: { codigo: { not: TIPO_CODIGO_PREVENTIVO } },
+      })
+    ).id;
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [TestHarnessModule],
@@ -230,6 +245,31 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
     await masterClient.membresia.create({ data: { usuarioId, clienteId, rolId, activo: true } });
   }
 
+  /** Rol del sistema por código: lo crea la primera vez (la tabla se trunca en cada test). */
+  async function rolDeSistema(codigo: string): Promise<string> {
+    const existente = await masterClient.role.findUnique({ where: { codigo } });
+    return existente?.id ?? (await createRole(codigo)).id;
+  }
+
+  /**
+   * Usuario con membresía en el cliente, con el rol dado y `LECTURA` sobre los tipos dados en
+   * `permisos_tipo_ticket` del tenant.
+   */
+  async function crearUsuarioDelTenant(
+    clienteId: string,
+    rolCodigo: string,
+    tiposConLectura: string[],
+  ): Promise<string> {
+    const usuario = await createUsuario(randomBytes(3).toString('hex'));
+    await createMembresia(usuario.id, clienteId, await rolDeSistema(rolCodigo));
+    if (tiposConLectura.length > 0) {
+      await tenantClient.permisoTipoTicket.createMany({
+        data: tiposConLectura.map((tipoId) => ({ usuarioId: usuario.id, tipoId, accion: 'LECTURA' })),
+      });
+    }
+    return usuario.id;
+  }
+
   async function login(email: string): Promise<{ accessToken: string }> {
     const { data } = await httpPost<{ accessToken: string }>(`${baseUrl}/auth/login`, {
       email,
@@ -248,6 +288,9 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
     clienteIdExistente?: string,
   ): Promise<{ accessToken: string; clienteId: string }> {
     const clienteId = clienteIdExistente ?? (await crearClienteTenant()).id;
+    if (clienteIdExistente === undefined) {
+      responsableElegibleId = await crearUsuarioDelTenant(clienteId, 'TECNICO', [tipoPreventivoId]);
+    }
     const role = await createRole(`ROL_E2E_PREV_${randomBytes(3).toString('hex')}`);
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, clienteId, role.id);
@@ -261,7 +304,7 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       titulo: 'Cambio de filtros de AC',
       ubicacion: 'DEPOSITO CENTRAL',
       prioridadId,
-      responsableId: '01900000-0000-7000-8000-000000000201',
+      responsableId: responsableElegibleId,
       intervaloValor: 3,
       intervaloUnidad: 'MESES',
       fechaInicio: '2026-01-01',
@@ -568,6 +611,111 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       expect(filaCruda).not.toBeNull();
       expect(filaCruda!.deletedAt).not.toBeNull();
       expect(filaCruda!.activo).toBe(false);
+    });
+  });
+
+  // ─── Responsable del plan: técnicos del tipo PREVENTIVO ─────────────────
+
+  describe('Responsable del plan — TECNICO o COLABORADOR con LECTURA sobre PREVENTIVO', () => {
+    /** Los que NO tienen que poder ser responsables, en el cliente del actor. */
+    async function crearNoElegibles(clienteId: string): Promise<Record<string, string>> {
+      return {
+        usuarioConLectura: await crearUsuarioDelTenant(clienteId, 'USUARIO', [tipoPreventivoId]),
+        tecnicoDeOtroTipo: await crearUsuarioDelTenant(clienteId, 'TECNICO', [otroTipoId]),
+        tecnicoSinPermisos: await crearUsuarioDelTenant(clienteId, 'TECNICO', []),
+      };
+    }
+
+    it.each([['PREVENTIVO:ALTAS'], ['PREVENTIVO:MODIFICACION']])(
+      'GET /preventivo/planes/responsables con %s → 200, solo los técnicos de PREVENTIVO',
+      async (permiso) => {
+        const actor = await crearActorConPermisos([permiso]);
+        const colaborador = await crearUsuarioDelTenant(actor.clienteId, 'COLABORADOR', [
+          tipoPreventivoId,
+        ]);
+        await crearNoElegibles(actor.clienteId);
+
+        const { status, data } = await httpGet<{ id: string }[]>(
+          `${baseUrl}/preventivo/planes/responsables`,
+          bearer(actor.accessToken),
+        );
+
+        expect(status).toBe(200);
+        expect(data.map((r) => r.id).sort()).toEqual([responsableElegibleId, colaborador].sort());
+      },
+    );
+
+    it('GET /preventivo/planes/responsables sin PREVENTIVO:ALTAS ni MODIFICACION → 403', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:LECTURA']);
+
+      const { status } = await httpGet(
+        `${baseUrl}/preventivo/planes/responsables`,
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(403);
+    });
+
+    it.each([['usuarioConLectura'], ['tecnicoDeOtroTipo'], ['tecnicoSinPermisos']])(
+      'POST con un responsable no elegible (%s) → 422, sin crear el plan',
+      async (caso) => {
+        const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS']);
+        const noElegibles = await crearNoElegibles(actor.clienteId);
+        const antes = await tenantClient.planPreventivo.count();
+
+        const { status } = await httpPost(
+          `${baseUrl}/preventivo/planes`,
+          planValidoBody({ responsableId: noElegibles[caso] }),
+          bearer(actor.accessToken),
+        );
+
+        expect(status).toBe(422);
+        expect(await tenantClient.planPreventivo.count()).toBe(antes);
+      },
+    );
+
+    it('PATCH que cambia el responsable a uno no elegible → 422, el plan conserva el suyo', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
+      const creado = await httpPost<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody(),
+        bearer(actor.accessToken),
+      );
+      const { tecnicoDeOtroTipo } = await crearNoElegibles(actor.clienteId);
+
+      const { status } = await httpPatch(
+        `${baseUrl}/preventivo/planes/${creado.data.id}`,
+        { titulo: 'Nuevo título', responsableId: tecnicoDeOtroTipo },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(422);
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: creado.data.id },
+      });
+      expect(fila.responsableId).toBe(responsableElegibleId);
+      expect(fila.titulo).toBe('Cambio de filtros de AC');
+    });
+
+    it('PATCH que cambia el responsable a un COLABORADOR de PREVENTIVO → 200', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
+      const creado = await httpPost<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody(),
+        bearer(actor.accessToken),
+      );
+      const colaborador = await crearUsuarioDelTenant(actor.clienteId, 'COLABORADOR', [
+        tipoPreventivoId,
+      ]);
+
+      const { status, data } = await httpPatch<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes/${creado.data.id}`,
+        { responsableId: colaborador },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.responsableId).toBe(colaborador);
     });
   });
 

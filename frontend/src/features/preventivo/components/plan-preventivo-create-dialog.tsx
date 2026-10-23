@@ -10,17 +10,14 @@
  * validación real (`schemas.ts`) es independiente del radio y mira
  * `equipoId`/`ubicacion` directo, igual que el dominio.
  *
- * Responsable: reusa `useUsuariosAsignables` (mismo `GET /usuarios` que
- * "Asignar ticket") — no hay endpoint propio de preventivo para listar
- * usuarios (fuera de alcance de este WU, "consumo, no API nueva"). Gate real:
- * `ASIGNAR`/`VER_TODOS` sobre algún tipo de ticket, o ADMINISTRADOR, en el backend — un
- * actor con SOLO `PREVENTIVO:ALTAS` puede no ver responsables (ver reporte).
+ * Responsable: `useResponsablesPlanPreventivo` (`GET /preventivo/planes/responsables`), que trae
+ * solo a los técnicos con LECTURA sobre el tipo Preventivo: son los que atienden los tickets que
+ * genera el plan. El backend la abre con `PREVENTIVO:ALTAS` y rechaza con 422 a cualquier otro.
  *
  * Las tres queries que alimentan selects (`equiposQuery`, `prioridadesQuery`,
- * `usuariosQuery`) exponen su `isError` con un mensaje inline (mismo criterio
+ * `responsablesQuery`) exponen su `isError` con un mensaje inline (mismo criterio
  * que el resto de la feature con `DataTable`'s `error` prop): sin esto, un
- * fetch fallido o un 403 —el caso real del párrafo anterior— renderizaba un
- * dropdown vacío sin ninguna pista de por qué.
+ * fetch fallido o un 403 renderizaba un dropdown vacío sin ninguna pista de por qué.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -32,8 +29,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useEquipos } from "@/features/equipos/hooks/use-equipos";
 import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
-import { useUsuariosAsignables } from "@/features/tickets/hooks/use-usuarios-asignables";
 import { useCrearPlanPreventivo } from "../hooks/use-planes-preventivo-mutations";
+import { useResponsablesPlanPreventivo } from "../hooks/use-planes-preventivo";
+import { SIN_RESPONSABLES } from "../lib/plan-labels";
 import { crearPlanPreventivoSchema, type CrearPlanPreventivoFormValues } from "../schemas";
 
 type Objetivo = "equipo" | "ubicacion" | null;
@@ -43,7 +41,7 @@ export function PlanPreventivoCreateDialog() {
   const [objetivo, setObjetivo] = useState<Objetivo>(null);
   const equiposQuery = useEquipos();
   const prioridadesQuery = usePrioridades();
-  const usuariosQuery = useUsuariosAsignables();
+  const responsablesQuery = useResponsablesPlanPreventivo();
   const crearMutation = useCrearPlanPreventivo();
 
   const {
@@ -220,7 +218,7 @@ export function PlanPreventivoCreateDialog() {
               <option value="" disabled>
                 Elegí un responsable
               </option>
-              {(usuariosQuery.data ?? []).map((usuario) => (
+              {(responsablesQuery.data ?? []).map((usuario) => (
                 <option key={usuario.id} value={usuario.id}>
                   {usuario.nombre} {usuario.apellido}
                 </option>
@@ -231,11 +229,13 @@ export function PlanPreventivoCreateDialog() {
                 {errors.responsableId.message}
               </p>
             )}
-            {usuariosQuery.isError && (
+            {responsablesQuery.isError && (
               <p role="alert" className="text-sm text-destructive">
-                No se pudo cargar la lista de responsables. Puede deberse a que no tenés
-                permiso para ver usuarios (depende de un permiso independiente de este formulario).
+                No se pudo cargar la lista de responsables.
               </p>
+            )}
+            {responsablesQuery.isSuccess && responsablesQuery.data.length === 0 && (
+              <p className="text-sm text-muted-foreground">{SIN_RESPONSABLES}</p>
             )}
           </div>
 

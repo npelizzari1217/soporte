@@ -221,8 +221,9 @@ export interface UsuarioAsignable {
 
 /**
  * Técnico elegible para atender un ticket (espejo de `TecnicoAsignable` del
- * backend, `GET /tickets/:id/asignables`). Ya viene filtrado por el módulo del
- * tipo del ticket — el combo lo muestra tal cual.
+ * backend, `GET /tickets/:id/asignables`, `GET /tickets/agentes`,
+ * `GET /preventivo/planes/responsables`). Ya viene filtrado por tipo en el
+ * backend — el combo lo muestra tal cual.
  */
 export interface TecnicoAsignable {
   id: string;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { toast } from "sonner";
@@ -57,8 +57,8 @@ function mockCatalogos() {
         },
       ]),
     ),
-    http.get("/api/usuarios", () =>
-      HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez", rol: "TECNICO" }]),
+    http.get("/api/preventivo/planes/responsables", () =>
+      HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" }]),
     ),
   );
 }
@@ -315,7 +315,8 @@ const prioridad = (id: string, nombre: string) => ({
   createdAt: "",
   updatedAt: "",
 });
-const usuario = (id: string, nombre: string) => ({ id, nombre, apellido: "Gómez", rol: "TECNICO" });
+/** Técnico de Preventivo, con la forma de `GET /preventivo/planes/responsables`. */
+const usuario = (id: string, nombre: string) => ({ id, nombre, apellido: "Gómez" });
 
 const PRIORIDAD_DEL_PLAN = prioridad(PRIORIDAD_ID, "Media");
 const USUARIO_DEL_PLAN = usuario(USUARIO_ID, "Ana");
@@ -323,11 +324,14 @@ const USUARIO_DEL_PLAN = usuario(USUARIO_ID, "Ana");
 /** Handler pendiente para siempre: simula el catálogo TODAVÍA cargando. */
 const pendiente = async () => await new Promise<never>(() => {});
 const roto = () => HttpResponse.json({ message: "Error interno" }, { status: 500 });
-/** El caso real del hallazgo 2: PREVENTIVO:MODIFICACION sin TICKETS:ASIGNAR. */
+/** La lista de responsables le responde 403 a quien no tiene ALTAS ni MODIFICACION de Preventivo. */
 const prohibido = () => HttpResponse.json({ message: "Forbidden" }, { status: 403 });
 
-function renderConCatalogos(prioridades: Parameters<typeof http.get>[1], usuarios: Parameters<typeof http.get>[1]) {
-  server.use(http.get("/api/catalogos/prioridades", prioridades), http.get("/api/usuarios", usuarios));
+function renderConCatalogos(prioridades: Parameters<typeof http.get>[1], responsables: Parameters<typeof http.get>[1]) {
+  server.use(
+    http.get("/api/catalogos/prioridades", prioridades),
+    http.get("/api/preventivo/planes/responsables", responsables),
+  );
   renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, {
     user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
   });
@@ -361,7 +365,7 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
         await delay(300);
         return HttpResponse.json([prioridad(OTRA_PRIORIDAD_ID, "Alta"), PRIORIDAD_DEL_PLAN]);
       }),
-      http.get("/api/usuarios", () => HttpResponse.json([USUARIO_DEL_PLAN])),
+      http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([USUARIO_DEL_PLAN])),
     );
     renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, {
       user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
@@ -375,7 +379,7 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
   it("(caso b, hermano) mismo escenario para el responsable", async () => {
     server.use(
       http.get("/api/catalogos/prioridades", () => HttpResponse.json([PRIORIDAD_DEL_PLAN])),
-      http.get("/api/usuarios", async () => {
+      http.get("/api/preventivo/planes/responsables", async () => {
         await delay(300);
         return HttpResponse.json([usuario(OTRO_USUARIO_ID, "Bruno"), USUARIO_DEL_PLAN]);
       }),
@@ -401,18 +405,20 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^prioridad$/i })).toHaveValue(PRIORIDAD_ID));
   });
 
-  it("el responsable del plan no está entre los asignables: opción extra 'Responsable dado de baja', preseleccionada", async () => {
+  // La ausencia en la lista ya no significa solo "dado de baja": también un técnico que perdió
+  // la LECTURA sobre Preventivo, o un usuario que nunca fue técnico (planes previos a la regla).
+  it("el responsable del plan no está entre los técnicos de Preventivo: opción extra 'Responsable no habilitado', preseleccionada", async () => {
     renderConCatalogos(
       () => HttpResponse.json([PRIORIDAD_DEL_PLAN]),
       () => HttpResponse.json([usuario(OTRO_USUARIO_ID, "Bruno")]),
     );
     await abrirDialog();
 
-    expect(await screen.findByRole("option", { name: "Responsable dado de baja" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Responsable no habilitado" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^responsable$/i })).toHaveValue(USUARIO_ID));
   });
 
-  it("hermano invertido: el responsable SÍ está entre los asignables → sin opción extra", async () => {
+  it("hermano invertido: el responsable SÍ está entre los técnicos de Preventivo → sin opción extra", async () => {
     renderConCatalogos(
       () => HttpResponse.json([PRIORIDAD_DEL_PLAN]),
       () => HttpResponse.json([USUARIO_DEL_PLAN]),
@@ -420,7 +426,7 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
     await abrirDialog();
 
     expect(await screen.findByRole("option", { name: "Ana Gómez" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Responsable dado de baja" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Responsable no habilitado" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^responsable$/i })).toHaveValue(USUARIO_ID));
   });
 
@@ -440,14 +446,38 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
   });
 
   it.each([
-    ["usuarios caído", roto, "Responsable dado de baja"],
-    ["usuarios cargando", pendiente, "Responsable dado de baja"],
+    ["responsables caído", roto, "Responsable no habilitado"],
+    ["responsables cargando", pendiente, "Responsable no habilitado"],
   ] as const)("catálogo de %s: NUNCA se infiere una baja", async (_n, responder, etiqueta) => {
     renderConCatalogos(() => HttpResponse.json([PRIORIDAD_DEL_PLAN]), responder);
     await abrirDialog();
 
     await screen.findByRole("option", { name: "Media" });
     expect(screen.queryByRole("option", { name: etiqueta })).not.toBeInTheDocument();
+  });
+});
+
+describe("PlanPreventivoEditDialog — el responsable sale de los técnicos de Preventivo", () => {
+  it("ofrece solo GET /preventivo/planes/responsables, no la lista de usuarios del tenant", async () => {
+    server.use(
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/usuarios", () =>
+        HttpResponse.json([
+          { ...USUARIO_DEL_PLAN, rol: "TECNICO" },
+          { id: "u-final", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
+        ]),
+      ),
+    );
+    renderConCatalogos(
+      () => HttpResponse.json([PRIORIDAD_DEL_PLAN]),
+      () => HttpResponse.json([USUARIO_DEL_PLAN, usuario(OTRO_USUARIO_ID, "Bruno")]),
+    );
+    await abrirDialog();
+
+    const select = screen.getByRole("combobox", { name: /^responsable$/i });
+    expect(await within(select).findByRole("option", { name: "Bruno Gómez" })).toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: "Ana Gómez" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
   });
 });
 
@@ -476,7 +506,7 @@ describe("PlanPreventivoEditDialog — reaplicar no puede pisar el objetivo eleg
     });
     server.use(
       http.get("/api/catalogos/prioridades", () => HttpResponse.json([PRIORIDAD_DEL_PLAN])),
-      http.get("/api/usuarios", () => HttpResponse.json([USUARIO_DEL_PLAN])),
+      http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([USUARIO_DEL_PLAN])),
       http.get("/api/equipos", async () => {
         await equiposEnVuelo;
         return HttpResponse.json([{ id: EQUIPO_ID, nombre: "Notebook Dell", numeroSerie: "SN-1", activo: true }]);
@@ -521,16 +551,12 @@ describe("PlanPreventivoEditDialog — aviso inline cuando un catálogo falla", 
     expect(screen.queryByText(AVISO_RESPONSABLES)).not.toBeInTheDocument();
   });
 
-  // El caso que motivó el hallazgo: un actor con PREVENTIVO:MODIFICACION puede
-  // NO tener TICKETS:ASIGNAR y comerse un 403 en `GET /usuarios`. Sin aviso se
-  // quedaba con el dropdown vacío y sin ninguna pista de por qué.
-  it("GET /usuarios responde 403 por falta de TICKETS:ASIGNAR: aviso inline que nombra el permiso", async () => {
+  // Sin aviso, un fallo de la lista dejaba el dropdown vacío y sin ninguna pista de por qué.
+  it("GET /preventivo/planes/responsables responde 403: aviso inline, no un dropdown vacío y mudo", async () => {
     renderConCatalogos(() => HttpResponse.json([PRIORIDAD_DEL_PLAN]), prohibido);
     await abrirDialog();
 
-    const aviso = await screen.findByText(AVISO_RESPONSABLES);
-    expect(aviso).toBeInTheDocument();
-    expect(aviso).toHaveTextContent(/permiso para ver usuarios/i);
+    expect(await screen.findByText(AVISO_RESPONSABLES)).toBeInTheDocument();
     expect(screen.queryByText(AVISO_PRIORIDADES)).not.toBeInTheDocument();
   });
 
