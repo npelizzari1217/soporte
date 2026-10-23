@@ -8,6 +8,7 @@ import {
 import type { IMatrizPermisosRepository } from '../../domain/ports/i-matriz-permisos.repository';
 import type { IPermisosPorTipoDeCliente } from '../../domain/ports/i-permisos-por-tipo-de-cliente.port';
 import { permisosPorTipoEnMemoria } from '../../test-helpers/permisos-por-tipo-en-memoria';
+import { PRESETS_ROL } from '../../domain/presets-rol';
 
 /** Matriz master simulada: devuelve `celdasActuales` y registra cada `setPermisos`. */
 function matrizCon(celdasActuales: string[] = []) {
@@ -19,7 +20,7 @@ function matrizCon(celdasActuales: string[] = []) {
   };
 }
 
-/** Filas por tipo de un TECNICO sobre `TIPOS_DE_PRUEBA`, por la traducción de L11. */
+/** Filas por tipo de un TECNICO sobre `TIPOS_DE_PRUEBA`, por su plantilla por tipo (T9a). */
 const FILAS_TECNICO = [
   'tipo-soporte:LECTURA',
   'tipo-soporte:VER_TODOS',
@@ -42,17 +43,15 @@ const FILAS_TECNICO = [
 ].sort();
 
 describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario WU-7.4)', () => {
-  it('sobrescribe la matriz del usuario con el preset EXACTO del rol', async () => {
+  it('sobrescribe la matriz del usuario con el preset EXACTO del rol y las filas de su plantilla por tipo', async () => {
     const permisosRepo = {
       setPermisos: vi.fn<IMatrizPermisosRepository['setPermisos']>().mockResolvedValue(undefined),
       findByUsuarioYCliente: vi
         .fn<IMatrizPermisosRepository['findByUsuarioYCliente']>()
         .mockResolvedValue([]),
     };
-    const useCase = new AplicarPresetPermisosUseCase(
-      permisosRepo,
-      permisosPorTipoEnMemoria().puerto,
-    );
+    const porTipo = permisosPorTipoEnMemoria();
+    const useCase = new AplicarPresetPermisosUseCase(permisosRepo, porTipo.puerto);
 
     const result = await useCase.execute({
       clienteId: 'cliente-token',
@@ -66,8 +65,12 @@ describe('AplicarPresetPermisosUseCase (ADR-P9, sdd/matriz-permisos-por-usuario 
     const [usuarioId, clienteId, celdas] = permisosRepo.setPermisos.mock.calls[0];
     expect(usuarioId).toBe('usuario-1');
     expect(clienteId).toBe('cliente-token');
-    expect(celdas).toContain('TICKETS:ASIGNAR');
+    expect(celdas).toEqual(PRESETS_ROL['TECNICO']);
+    expect(celdas).toContain('EDILICIA:BORRADO');
     expect(celdas).not.toContain('COMPRAS:APROBACION');
+    // T9a: el acceso a tickets lo dan las filas por tipo, no celdas `TICKETS:*` de la matriz.
+    expect(celdas.filter((celda) => celda.startsWith('TICKETS:'))).toEqual([]);
+    expect(porTipo.repo.filasDe('usuario-1')).toEqual(FILAS_TECNICO);
   });
 
   it('rolCodigo sin preset definido: falla con PresetRolNoDefinidoError SIN tocar la matriz (fail explícito, nunca preset vacío en silencio)', async () => {

@@ -109,8 +109,8 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   usuario — (este commit)
 - [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
 - [ ] T9 — S7, L49-L50 — worker — retiro de `TICKETS:*` / `EDILICIA:*` de tickets — (pendiente)
-  - [ ] T9a — L50.4 — plantillas de rol por tipo explícitas; retirar traducción L11, `accionesDeTipoDesdeCeldas`
-    en plantillas y `GET /usuarios`
+  - [x] T9a — L50.4 — plantillas de rol por tipo explícitas; retirar traducción L11, `accionesDeTipoDesdeCeldas`
+    en plantillas y `GET /usuarios` — (este commit)
   - [ ] T9b — L50.1-2 — sacar `TICKETS` y `EDILICIA:LECTURA|ALTAS|MODIFICACION` del catálogo, CHECK y
     front; migración master que borra esas celdas (con `predeploy-dump`)
   - [ ] T9c — L50.4 — retirar backfill 8c de `deploy.ps1` y su script
@@ -401,3 +401,21 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   vocabulario `TICKETS:LECTURA|ALTAS|COMENTAR` y `modulos: ['TICKETS']`, sin migrar claves emitidas;
   (4) plantillas de rol por tipo explícitas: se borran la traducción L11 como fuente de plantillas y
   el backfill 8c.
+- **L51** (T9a; dueño aprobó tocar el importador legacy y el spec del seed de demo) — Las plantillas
+  por tipo son explícitas: `PLANTILLAS_POR_TIPO_ROL` (`auth/domain/presets-rol.ts`) declara por rol
+  las acciones sobre cada módulo de `MODULOS`, y `obtenerPresetDeRol` devuelve `{ celdas, porTipo }`.
+  `PRESETS_ROL` pierde las celdas reemplazadas por tipo; TECNICO conserva `EDILICIA:BORRADO` (L50.2).
+  Alta de usuario, cambio de rol, "Aplicar plantilla del rol", la plantilla por fila de la grilla y
+  el importador legacy escriben con `filasDeTiposDesdePlantilla`. Paridad (S7): `presets-rol.spec.ts`
+  compara cada rol × módulo (más uno desconocido) con la traducción de L11 de las celdas anteriores,
+  congeladas en `auth/test-helpers/presets-rol-anteriores-a-t9a.ts`; RED 32 de 38 antes de
+  implementar, GREEN 38. `GET /usuarios` conserva la regla vigente decidida por el módulo del tipo
+  (`ASIGNAR` en cualquier tipo, o `VER_TODOS` en un tipo de TICKETS, COMPRAS o EQUIPOS), sin
+  `tomaCeldasDeTickets`; un `VER_TODOS` concedido a mano solo en tipos de Edilicia sigue en 403. La
+  clave de API v1 traduce sus celdas con una tabla propia (L50.3; RED: la traducción de L11 daba
+  MODIFICACION y ASIGNAR a celdas que una clave no lleva). Quedan para T9c, porque los usa el
+  backfill 8c: `accionesDeTipoDesdeCeldas`, `TRADUCCION_L11` y el helper de e2e
+  `sembrarPermisosPorTipoE2e`, que traduce celdas de fixtures. `celdaReemplazadaPorTipo` y
+  `CELDAS_REEMPLAZADAS_POR_TIPO` del front quedan para T9b. Back: lint y typecheck en cero, 528
+  archivos en verde; los 240 rojos son integración y e2e sin Postgres (`Can't reach database server`).
+  Front: lint 0, tsc 0, 281 archivos y 2466 tests.

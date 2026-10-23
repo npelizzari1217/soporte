@@ -1,11 +1,13 @@
+import type { PlantillaPorTipo } from '../../../tickets/domain/permisos-tipo-ticket';
+
 /** Entrada de `IPermisosPorTipoDeCliente.aplicarPlantilla`. */
 export interface AplicarPlantillaPorTipoInput {
   /** Cliente cuya base de tenant recibe las filas. */
   clienteId: string;
   /** Id del usuario en master. */
   usuarioId: string;
-  /** Celdas master de la plantilla del rol, como códigos `MODULO:ACCION`. */
-  celdas: readonly string[];
+  /** Plantilla por tipo del rol (`PLANTILLAS_POR_TIPO_ROL`). */
+  plantilla: PlantillaPorTipo;
   /** `true` reemplaza las filas por tipo del usuario; `false` escribe solo si no tiene ninguna. */
   sobrescribir: boolean;
 }
@@ -20,7 +22,7 @@ export interface IPermisosPorTipoDeCliente {
   /**
    * Aplica la plantilla en el tenant del cliente.
    *
-   * @param input Cliente, usuario, celdas de la plantilla y si se pisan las filas existentes.
+   * @param input Cliente, usuario, plantilla por tipo y si se pisan las filas existentes.
    * @throws Error si el cliente no existe o la base del tenant falla; quien llama decide cómo
    *   informarlo.
    */

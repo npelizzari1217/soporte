@@ -205,7 +205,7 @@ export class UsuariosController {
    * GET /usuarios
    * Lista los usuarios con membresía ACTIVA en el cliente del token.
    * @throws 403 si el actor no es ADMINISTRADOR/ROOT, no tiene `ASIGNAR` sobre ningún tipo ni
-   *             `VER_TODOS` sobre un tipo que tome las celdas de TICKETS (R4-excepción, S25;
+   *             `VER_TODOS` sobre un tipo de Tickets, Compras o Equipos (R4-excepción, S25;
    *             `puedeVerListaDeUsuarios`, S7)
    */
   @Get()

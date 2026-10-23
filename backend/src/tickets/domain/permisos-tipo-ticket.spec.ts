@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCIONES_TIPO_TICKET,
   AccionTipoTicket,
+  accionesDePlantilla,
   accionesDeTipoDesdeCeldas,
   celdaReemplazadaPorTipo,
-  filasDeTiposDesdeCeldas,
+  filasDeTiposDesdePlantilla,
+  PlantillaPorTipo,
   problemaDeFilaDeTipo,
 } from './permisos-tipo-ticket';
 import { PARES_VALIDOS } from '../../shared/domain/acciones';
-import { PRESETS_ROL } from '../../auth/domain/presets-rol';
+import { PRESETS_ROL_ANTERIORES_A_T9A } from '../../auth/test-helpers/presets-rol-anteriores-a-t9a';
 
 /** El resultado como lista ordenada, para comparar sin depender del orden de inserción. */
 function ordenadas(acciones: ReadonlySet<AccionTipoTicket>): AccionTipoTicket[] {
@@ -136,11 +138,14 @@ describe('accionesDeTipoDesdeCeldas — tipo de módulo EDILICIA (L11, L35)', ()
         'IMPRESION',
       ],
     ],
-  ])('la plantilla de %s da sobre un tipo de EDILICIA exactamente %j', (rol, esperadas) => {
-    expect(ordenadas(accionesDeTipoDesdeCeldas(PRESETS_ROL[rol], 'EDILICIA'))).toEqual(
-      [...esperadas].sort(),
-    );
-  });
+  ])(
+    'las celdas de %s anteriores a T9a dan sobre un tipo de EDILICIA exactamente %j',
+    (rol, esperadas) => {
+      expect(
+        ordenadas(accionesDeTipoDesdeCeldas(PRESETS_ROL_ANTERIORES_A_T9A[rol], 'EDILICIA')),
+      ).toEqual([...esperadas].sort());
+    },
+  );
 });
 
 describe('accionesDeTipoDesdeCeldas — tipos de módulo COMPRAS o EQUIPOS (L21)', () => {
@@ -204,32 +209,49 @@ describe('accionesDeTipoDesdeCeldas — bordes', () => {
   });
 });
 
-describe('filasDeTiposDesdeCeldas — plantilla de rol sobre todos los tipos (T4c)', () => {
+describe('plantillas por tipo (T9a, L50.4)', () => {
+  /** Plantilla de prueba con acciones distintas por módulo, para ver que se elige por el del tipo. */
+  const PLANTILLA: PlantillaPorTipo = {
+    TICKETS: ['LECTURA', 'ASIGNAR'],
+    COMPRAS: [],
+    EDILICIA: ['LECTURA', 'COMENTAR'],
+    EQUIPOS: ['LECTURA'],
+  };
   const tipos = [
     { id: 'tipo-soporte', modulo: 'TICKETS' },
     { id: 'tipo-mantenimiento', modulo: 'EDILICIA' },
+    { id: 'tipo-compras', modulo: 'COMPRAS' },
+    { id: 'tipo-raro', modulo: 'MODULO_DESCONOCIDO' },
   ];
 
-  it('traduce las celdas por el módulo de cada tipo, una fila por par (tipo, acción)', () => {
-    const filas = filasDeTiposDesdeCeldas(['TICKETS:LECTURA', 'EDILICIA:MODIFICACION'], tipos);
+  it('accionesDePlantilla da las acciones del módulo del tipo', () => {
+    expect(accionesDePlantilla(PLANTILLA, 'EDILICIA')).toEqual(['LECTURA', 'COMENTAR']);
+    expect(accionesDePlantilla(PLANTILLA, 'EQUIPOS')).toEqual(['LECTURA']);
+  });
 
-    // El tipo de EDILICIA suma TICKETS:LECTURA porque el usuario tiene una celda de EDILICIA (L35).
-    expect(filas.map((f) => `${f.tipoId}:${f.accion}`).sort()).toEqual(
+  it('un módulo fuera de MODULOS no recibe nada: el tipo queda cerrado (S4)', () => {
+    expect(accionesDePlantilla(PLANTILLA, 'MODULO_DESCONOCIDO')).toEqual([]);
+    expect(accionesDePlantilla(PLANTILLA, 'toString')).toEqual([]);
+  });
+
+  it('filasDeTiposDesdePlantilla da una fila por par (tipo, acción), según el módulo de cada tipo', () => {
+    expect(
+      filasDeTiposDesdePlantilla(PLANTILLA, tipos)
+        .map((f) => `${f.tipoId}:${f.accion}`)
+        .sort(),
+    ).toEqual(
       [
         'tipo-soporte:LECTURA',
-        'tipo-soporte:IMPRESION',
+        'tipo-soporte:ASIGNAR',
         'tipo-mantenimiento:LECTURA',
-        'tipo-mantenimiento:IMPRESION',
-        'tipo-mantenimiento:MODIFICACION',
-        'tipo-mantenimiento:TRANSICIONAR',
         'tipo-mantenimiento:COMENTAR',
       ].sort(),
     );
   });
 
-  it('sin celdas de tickets (la plantilla de ADMINISTRADOR) no produce filas', () => {
-    expect(filasDeTiposDesdeCeldas([], tipos)).toEqual([]);
-    expect(filasDeTiposDesdeCeldas(['KB:LECTURA', 'COMPRAS:LECTURA'], [tipos[1]])).toEqual([]);
+  it('una plantilla vacía (ADMINISTRADOR) no produce filas', () => {
+    const vacia: PlantillaPorTipo = { TICKETS: [], COMPRAS: [], EDILICIA: [], EQUIPOS: [] };
+    expect(filasDeTiposDesdePlantilla(vacia, tipos)).toEqual([]);
   });
 });
 

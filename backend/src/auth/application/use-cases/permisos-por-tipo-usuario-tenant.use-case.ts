@@ -10,7 +10,7 @@ import { obtenerPresetDeRol } from '../../domain/presets-rol';
 import {
   ACCIONES_TIPO_TICKET,
   AccionTipoTicket,
-  accionesDeTipoDesdeCeldas,
+  accionesDePlantilla,
   esAccionTipoTicket,
   problemaDeFilaDeTipo,
 } from '../../../tickets/domain/permisos-tipo-ticket';
@@ -32,8 +32,8 @@ export interface FilaPermisosPorTipo {
   /** Acciones concedidas al usuario sobre el tipo, en el orden del vocabulario. */
   acciones: AccionTipoTicket[];
   /**
-   * Acciones que la plantilla del rol del usuario da sobre este tipo, con la traducción de L11
-   * (D4). `null` si el rol no tiene plantilla definida.
+   * Acciones que la plantilla por tipo del rol del usuario da sobre este tipo
+   * (`PLANTILLAS_POR_TIPO_ROL`, T9a). `null` si el rol no tiene plantilla definida.
    */
   plantilla: AccionTipoTicket[] | null;
 }
@@ -79,8 +79,8 @@ function enOrden(acciones: Iterable<AccionTipoTicket>): AccionTipoTicket[] {
  * usuario tiene que tener membresía ACTIVA en el cliente del token (404 si no, mismo aislamiento
  * que la matriz). ROOT y ADMINISTRADOR no tienen filas editables: operan todos los tipos.
  *
- * La plantilla del rol por fila la calcula el backend con `accionesDeTipoDesdeCeldas` (D4): es la
- * misma traducción que usan el alta de usuario y "Reaplicar plantilla del rol".
+ * La plantilla del rol por fila la calcula el backend con la plantilla por tipo del rol (T9a): es la
+ * misma que escriben el alta de usuario y "Reaplicar plantilla del rol".
  */
 export class PermisosPorTipoUsuarioTenantUseCase {
   constructor(
@@ -224,7 +224,7 @@ export class PermisosPorTipoUsuarioTenantUseCase {
     const tipos = tiposConocidos ?? (await this.permisosRepo.listarTiposConDetalle());
     const actuales = await this.permisosRepo.listarPorUsuario(usuarioId);
     const preset = obtenerPresetDeRol(destino.rolCodigo);
-    const celdasDelRol = preset.isFail() ? null : preset.getValue();
+    const plantillaDelRol = preset.isFail() ? null : preset.getValue().porTipo;
     return {
       sinRestriccion: false,
       rolCodigo: destino.rolCodigo,
@@ -235,9 +235,9 @@ export class PermisosPorTipoUsuarioTenantUseCase {
         activo: tipo.activo,
         acciones: enOrden(actuales.get(tipo.id) ?? []),
         plantilla:
-          celdasDelRol === null
+          plantillaDelRol === null
             ? null
-            : enOrden(accionesDeTipoDesdeCeldas(celdasDelRol, tipo.modulo)),
+            : enOrden(accionesDePlantilla(plantillaDelRol, tipo.modulo)),
       })),
     };
   }

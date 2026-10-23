@@ -1,7 +1,8 @@
 /**
- * Acciones por tipo de una clave de API v1 (odd/permisos-por-tipo-ticket, D4, D5 f). La clave no
- * tiene filas por tipo: sus celdas se traducen con la misma tabla de L11 que el backfill y las
- * plantillas de rol (`accionesDeTipoDesdeCeldas`), sin una segunda tabla escrita a mano.
+ * Acciones por tipo de una clave de API v1 (odd/permisos-por-tipo-ticket, D5 f, L50.3). La clave no
+ * tiene filas por tipo y conserva su vocabulario de módulo: sus celdas se traducen con una tabla
+ * propia, que tiene que dar lo mismo que la traducción de L11 (`accionesDeTipoDesdeCeldas`) para
+ * toda celda que una clave puede llevar. Esa comparación se retira con la traducción, en T9c.
  */
 import { accionesDeTipoDesdeCeldas } from '../../tickets/domain/permisos-tipo-ticket';
 import { accionesDeClaveApi, accionesDeClaveApiParaComentar } from './alcance-clave-api';
@@ -39,6 +40,24 @@ describe('accionesDeClaveApi', () => {
   it('una clave de alta solo crea: no ve ni comenta', () => {
     expect(accionesDeClaveApi(['TICKETS:ALTAS'], 'TICKETS')).toEqual(new Set(['ALTAS']));
   });
+
+  it('una celda fuera de PERMISOS_API (y del VER_TODOS del guard) no concede nada', () => {
+    expect(
+      accionesDeClaveApi(
+        ['TICKETS:MODIFICACION', 'TICKETS:ASIGNAR', 'EDILICIA:LECTURA'],
+        'TICKETS',
+      ),
+    ).toEqual(new Set());
+  });
+
+  it.each(['COMPRAS', 'EQUIPOS', 'MODULO_DESCONOCIDO'])(
+    'sobre un tipo de %s las celdas de la clave no conceden nada',
+    (modulo) => {
+      expect(
+        accionesDeClaveApi(['TICKETS:LECTURA', 'TICKETS:VER_TODOS', 'TICKETS:COMENTAR'], modulo),
+      ).toEqual(new Set());
+    },
+  );
 
   it('una clave sin celdas no tiene acciones', () => {
     expect(accionesDeClaveApi([], 'TICKETS')).toEqual(new Set());

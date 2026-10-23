@@ -10,6 +10,7 @@
  */
 import type { MasterPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import { obtenerPresetDeRol } from '../../src/auth/domain/presets-rol';
+import type { PlantillaPorTipo } from '../../src/tickets/domain/permisos-tipo-ticket';
 import { DomainError, Result } from '../../src/shared/domain/result';
 import { fechaDia } from './paquete';
 import type { CicloExistente, PlanCiclo, PlanUsuario, UsuarioExistente } from './plan';
@@ -103,10 +104,13 @@ export async function leerRoles(master: Master): Promise<Map<string, string>> {
   return new Map(roles.map((r) => [r.codigo, r.id]));
 }
 
-/** Plantilla de rol sembrada en la matriz de un usuario durante esta corrida. */
+/**
+ * Plantilla de rol sembrada en la matriz de un usuario durante esta corrida, con la plantilla por
+ * tipo que el lado tenant escribe en sus filas de `permisos_tipo_ticket`.
+ */
 export interface PlantillaSembrada {
   usuarioId: string;
-  celdas: readonly string[];
+  plantilla: PlantillaPorTipo;
 }
 
 export interface ResultadoMaster {
@@ -163,8 +167,8 @@ export async function aplicarMaster(
     if (usuarioId === null) throw new Error(`usuario legacy ${p.legacyId} sin id resuelto`);
     r.usuarioIdPorLegacy.set(p.legacyId, usuarioId);
     if (p.membresia === 'agregar') {
-      const celdas = await agregarMembresia(master, usuarioId, cliente.id, p.rol, roles);
-      if (celdas !== null) r.plantillasSembradas.push({ usuarioId, celdas });
+      const plantilla = await agregarMembresia(master, usuarioId, cliente.id, p.rol, roles);
+      if (plantilla !== null) r.plantillasSembradas.push({ usuarioId, plantilla });
       r.membresiasAgregadas += 1;
     }
   }
@@ -195,8 +199,8 @@ export async function aplicarMaster(
  * (`CrearUsuarioTenantUseCase` con `sobrescribir: false`). Sin el preset, el
  * día que se le dé acceso quedaría con 403 en todo.
  *
- * @returns Las celdas sembradas, o `null` si el usuario ya tenía celdas y no
- *   se tocó la matriz.
+ * @returns La plantilla por tipo del rol sembrado, o `null` si el usuario ya
+ *   tenía celdas y no se tocó la matriz.
  */
 async function agregarMembresia(
   master: Master,
@@ -204,7 +208,7 @@ async function agregarMembresia(
   clienteId: string,
   rolCodigo: string,
   roles: Map<string, string>,
-): Promise<readonly string[] | null> {
+): Promise<PlantillaPorTipo | null> {
   const rolId = roles.get(rolCodigo);
   if (rolId === undefined) throw new Error(`rol ${rolCodigo} inexistente en master`);
   await master.membresia.upsert({
@@ -216,11 +220,11 @@ async function agregarMembresia(
   if (celdas > 0) return null;
   const preset = obtenerPresetDeRol(rolCodigo).getOrThrow();
   await master.usuarioClientePermiso.createMany({
-    data: preset.map((codigo) => {
+    data: preset.celdas.map((codigo) => {
       const [modulo, accion] = codigo.split(':');
       return { usuarioId, clienteId, modulo, accion };
     }),
     skipDuplicates: true,
   });
-  return preset;
+  return preset.porTipo;
 }

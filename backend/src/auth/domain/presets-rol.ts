@@ -21,29 +21,20 @@
  *
  * Ref spec: sdd/matriz-permisos-por-usuario/spec R6, R7, S15.
  * Ref design: ADR-P9.
+ *
+ * El acceso a tickets NO sale de estas celdas (odd/tasks/permisos-por-tipo-ticket.md, T9a, L50.4):
+ * lo da la plantilla por tipo de `PLANTILLAS_POR_TIPO_ROL`. Por eso ningún preset trae las celdas
+ * que reemplazan los permisos por tipo (`TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`);
+ * `EDILICIA:BORRADO` (desvincular compra) sigue siendo permiso del módulo (L50.2).
  */
 import { CodigoAccion } from '../../shared/domain/acciones';
 import { Result } from '../../shared/domain/result';
+import { AccionTipoTicket, PlantillaPorTipo } from '../../tickets/domain/permisos-tipo-ticket';
 import { PresetRolNoDefinidoError } from './errors/auth.errors';
 
 export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
-  USUARIO: [
-    'TICKETS:ALTAS',
-    'TICKETS:COMENTAR',
-    'TICKETS:LECTURA',
-    'EDILICIA:ALTAS',
-    'EDILICIA:LECTURA',
-    'COMPRAS:LECTURA',
-    'EQUIPOS:LECTURA',
-    'KB:LECTURA',
-  ],
+  USUARIO: ['COMPRAS:LECTURA', 'EQUIPOS:LECTURA', 'KB:LECTURA'],
   COLABORADOR: [
-    'TICKETS:ALTAS',
-    'TICKETS:COMENTAR',
-    'TICKETS:VER_TODOS',
-    'TICKETS:LECTURA',
-    'EDILICIA:ALTAS',
-    'EDILICIA:LECTURA',
     'COMPRAS:ALTAS',
     'COMPRAS:MODIFICACION',
     'COMPRAS:BORRADO',
@@ -64,18 +55,8 @@ export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
     'PREVENTIVO:BORRADO',
   ],
   TECNICO: [
-    'TICKETS:ALTAS',
-    'TICKETS:COMENTAR',
-    'TICKETS:MODIFICACION',
-    'TICKETS:TRANSICIONAR',
-    'TICKETS:ASIGNAR',
-    'TICKETS:OBSERVAR',
-    'TICKETS:VER_TODOS',
-    'TICKETS:LECTURA',
-    'EDILICIA:ALTAS',
-    'EDILICIA:MODIFICACION',
+    // Desvincular una compra de una reparación: permiso del módulo, no por tipo (L21, L50.2).
     'EDILICIA:BORRADO',
-    'EDILICIA:LECTURA',
     'EQUIPOS:ALTAS',
     'EQUIPOS:MODIFICACION',
     'EQUIPOS:BORRADO',
@@ -98,19 +79,89 @@ export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
   ADMINISTRADOR: [],
 };
 
+/** USUARIO sobre un tipo de ticket: ver, crear y comentar los suyos, con impresión. */
+const USUARIO_EN_TIPO: readonly AccionTipoTicket[] = ['LECTURA', 'ALTAS', 'COMENTAR', 'IMPRESION'];
+
+/** Lo del USUARIO más Ver todos: COLABORADOR supervisa sin operar los tickets. */
+const COLABORADOR_EN_TIPO: readonly AccionTipoTicket[] = [
+  'LECTURA',
+  'VER_TODOS',
+  'ALTAS',
+  'COMENTAR',
+  'IMPRESION',
+];
+
+/** TECNICO opera los tickets: todo salvo Borrar, que solo se concede desde la grilla (S8). */
+const TECNICO_EN_TIPO: readonly AccionTipoTicket[] = [
+  'LECTURA',
+  'VER_TODOS',
+  'ALTAS',
+  'MODIFICACION',
+  'TRANSICIONAR',
+  'ASIGNAR',
+  'COMENTAR',
+  'OBSERVAR',
+  'IMPRESION',
+];
+
+/**
+ * Plantillas por tipo de ticket de cada rol (odd/tasks/permisos-por-tipo-ticket.md, T9a, L50.4):
+ * las acciones que el alta de usuario, el cambio de rol con reaplicar y "Aplicar plantilla del rol"
+ * escriben sobre cada tipo abierto del tenant, según el módulo del tipo. Un tipo cerrado no recibe
+ * filas (`tiposAbiertosParaPlantilla`, S4).
+ *
+ * Reemplazan a la traducción de L11 de las celdas del preset y dan exactamente lo mismo que daba
+ * (S7): `presets-rol.spec.ts` lo compara contra las celdas anteriores a T9a. Por eso cada rol da
+ * hoy lo mismo en todos los módulos; se declaran por módulo para poder separarlos.
+ *
+ * ADMINISTRADOR opera todos los tipos sin filas (`permisosPorTipo = null`): su plantilla es vacía.
+ */
+export const PLANTILLAS_POR_TIPO_ROL: Readonly<Record<string, PlantillaPorTipo>> = {
+  USUARIO: {
+    TICKETS: USUARIO_EN_TIPO,
+    COMPRAS: USUARIO_EN_TIPO,
+    EDILICIA: USUARIO_EN_TIPO,
+    EQUIPOS: USUARIO_EN_TIPO,
+  },
+  COLABORADOR: {
+    TICKETS: COLABORADOR_EN_TIPO,
+    COMPRAS: COLABORADOR_EN_TIPO,
+    EDILICIA: COLABORADOR_EN_TIPO,
+    EQUIPOS: COLABORADOR_EN_TIPO,
+  },
+  TECNICO: {
+    TICKETS: TECNICO_EN_TIPO,
+    COMPRAS: TECNICO_EN_TIPO,
+    EDILICIA: TECNICO_EN_TIPO,
+    EQUIPOS: TECNICO_EN_TIPO,
+  },
+  ADMINISTRADOR: { TICKETS: [], COMPRAS: [], EDILICIA: [], EQUIPOS: [] },
+};
+
+/** Plantilla completa de un rol: las celdas de la matriz master y las acciones por tipo. */
+export interface PresetDeRol {
+  celdas: readonly CodigoAccion[];
+  porTipo: PlantillaPorTipo;
+}
+
 /**
  * Resuelve el preset de un rol con fail EXPLÍCITO: si `rolCodigo` no tiene
- * entrada en `PRESETS_ROL` (rol sembrado por migración sin que el código se
- * haya actualizado), NUNCA devuelve un preset vacío en silencio — eso
- * borraría la matriz de cualquiera al que se le aplicara por error. Devuelve
- * `PresetRolNoDefinidoError` (422 en la capa de presentación).
+ * entrada en `PRESETS_ROL` o en `PLANTILLAS_POR_TIPO_ROL` (rol sembrado por
+ * migración sin que el código se haya actualizado), NUNCA devuelve un preset
+ * vacío en silencio — eso borraría la matriz de cualquiera al que se le
+ * aplicara por error. Devuelve `PresetRolNoDefinidoError` (422 en la capa de
+ * presentación).
+ *
+ * @param rolCodigo Código del rol.
+ * @returns Las celdas y la plantilla por tipo del rol, o el error si no están definidas.
  */
 export function obtenerPresetDeRol(
   rolCodigo: string,
-): Result<readonly CodigoAccion[], PresetRolNoDefinidoError> {
-  const preset = PRESETS_ROL[rolCodigo];
-  if (preset === undefined) {
+): Result<PresetDeRol, PresetRolNoDefinidoError> {
+  const celdas = PRESETS_ROL[rolCodigo];
+  const porTipo = PLANTILLAS_POR_TIPO_ROL[rolCodigo];
+  if (celdas === undefined || porTipo === undefined) {
     return Result.fail(new PresetRolNoDefinidoError(rolCodigo));
   }
-  return Result.ok(preset);
+  return Result.ok({ celdas, porTipo });
 }

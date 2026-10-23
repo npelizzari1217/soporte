@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PRESETS_ROL } from '../../../auth/domain/presets-rol';
+import { PLANTILLAS_POR_TIPO_ROL } from '../../../auth/domain/presets-rol';
 import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
 import { AplicarPlantillaPermisosTipoTicket } from './aplicar-plantilla-permisos-tipo-ticket.service';
 
@@ -10,10 +10,7 @@ const TIPOS = [
   { id: 'mantenimiento', modulo: 'EDILICIA' },
 ];
 
-/**
- * Filas esperadas de un TECNICO: sus celdas de TICKETS y EDILICIA traducidas por L11. El tipo de
- * EDILICIA suma la traducción de TICKETS (L35).
- */
+/** Filas esperadas de un TECNICO: su plantilla por tipo, igual en el tipo de TICKETS y el de EDILICIA. */
 const FILAS_TECNICO = [
   'soporte:LECTURA',
   'soporte:VER_TODOS',
@@ -43,13 +40,13 @@ function armar(
   return { repo, servicio: new AplicarPlantillaPermisosTipoTicket(repo) };
 }
 
-describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
+describe('AplicarPlantillaPermisosTipoTicket (T4c, T9a, S7)', () => {
   it('la plantilla de TECNICO escribe sus acciones en cada tipo de TICKETS y EDILICIA', async () => {
     const { repo, servicio } = armar();
 
     const escribio = await servicio.ejecutar({
       usuarioId: USUARIO,
-      celdas: PRESETS_ROL['TECNICO'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'],
       sobrescribir: false,
     });
 
@@ -62,7 +59,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
     await servicio.ejecutar({
       usuarioId: USUARIO,
-      celdas: PRESETS_ROL['USUARIO'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['USUARIO'],
       sobrescribir: true,
     });
 
@@ -89,7 +86,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
     const escribio = await servicio.ejecutar({
       usuarioId: USUARIO,
-      celdas: PRESETS_ROL['TECNICO'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'],
       sobrescribir: true,
     });
 
@@ -105,7 +102,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
     const escribio = await servicio.ejecutar({
       usuarioId: USUARIO,
-      celdas: PRESETS_ROL['TECNICO'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'],
       sobrescribir: false,
     });
 
@@ -120,7 +117,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
     await servicio.ejecutar({
       usuarioId: USUARIO,
-      celdas: PRESETS_ROL['ADMINISTRADOR'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['ADMINISTRADOR'],
       sobrescribir: true,
     });
 
@@ -145,7 +142,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
       await servicio.ejecutar({
         usuarioId: USUARIO,
-        celdas: PRESETS_ROL['TECNICO'],
+        plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'],
         sobrescribir: false,
       });
 
@@ -160,7 +157,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
       await servicio.ejecutar({
         usuarioId: USUARIO,
-        celdas: PRESETS_ROL['TECNICO'],
+        plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'],
         sobrescribir: true,
       });
 
@@ -175,7 +172,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
       await servicio.ejecutar({
         usuarioId: USUARIO,
-        celdas: PRESETS_ROL['USUARIO'],
+        plantilla: PLANTILLAS_POR_TIPO_ROL['USUARIO'],
         sobrescribir: false,
       });
 
@@ -191,7 +188,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
       await servicio.ejecutar({
         usuarioId: USUARIO,
-        celdas: PRESETS_ROL['TECNICO'],
+        plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'],
         sobrescribir: false,
       });
 
@@ -203,7 +200,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
       await servicio.ejecutar({
         usuarioId: USUARIO,
-        celdas: PRESETS_ROL['USUARIO'],
+        plantilla: PLANTILLAS_POR_TIPO_ROL['USUARIO'],
         sobrescribir: false,
       });
 
@@ -220,7 +217,7 @@ describe('AplicarPlantillaPermisosTipoTicket (T4c, S7)', () => {
 
       await servicio.ejecutar({
         usuarioId: USUARIO,
-        celdas: PRESETS_ROL['ADMINISTRADOR'],
+        plantilla: PLANTILLAS_POR_TIPO_ROL['ADMINISTRADOR'],
         sobrescribir: true,
       });
 

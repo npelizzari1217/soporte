@@ -10,7 +10,7 @@ import { TenantSeederAdapter } from '../../src/clientes/infrastructure/tenant-se
 import { PrismaService } from '../../src/shared/infrastructure/persistence/prisma.service';
 import type { TenantPrismaClient } from '../../src/shared/infrastructure/persistence/prisma-clients';
 import { URL_MASTER_TEST_POR_DEFECTO } from '../../src/testing/lock-master-test';
-import { PRESETS_ROL } from '../../src/auth/domain/presets-rol';
+import { PLANTILLAS_POR_TIPO_ROL } from '../../src/auth/domain/presets-rol';
 import type { PlantillaSembrada } from './master';
 import { fechaDia } from './paquete';
 import { paqueteSintetico } from './paquete-sintetico.fixture';
@@ -164,7 +164,9 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
 
   it('[CRITICAL] un fallo a mitad de camino revierte TODO el paquete (ni ciclos ni tickets)', async () => {
     const incompleto = new Map([...USUARIOS].filter(([id]) => id !== '12'));
-    const plantillas = [{ usuarioId: USUARIOS.get('11')!, celdas: PRESETS_ROL['TECNICO'] }];
+    const plantillas = [
+      { usuarioId: USUARIOS.get('11')!, plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'] },
+    ];
 
     await expect(correr(incompleto, plantillas)).rejects.toThrow(/usuario legacy 12/);
 
@@ -198,7 +200,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
 
       try {
         const { resultado } = await correr(USUARIOS, [
-          { usuarioId: TECNICO, celdas: PRESETS_ROL['TECNICO'] },
+          { usuarioId: TECNICO, plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'] },
         ]);
 
         const filas = await filasDe(TECNICO);
@@ -219,7 +221,7 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
       });
 
       const { resultado } = await correr(USUARIOS, [
-        { usuarioId: TECNICO, celdas: PRESETS_ROL['TECNICO'] },
+        { usuarioId: TECNICO, plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'] },
       ]);
 
       expect(await filasDe(TECNICO)).toEqual([`${soporte.id}:LECTURA`]);
@@ -246,7 +248,9 @@ describe('importacion legacy — lado tenant (integración, base efímera)', () 
       });
 
       try {
-        await correr(USUARIOS, [{ usuarioId: TECNICO, celdas: PRESETS_ROL['TECNICO'] }]);
+        await correr(USUARIOS, [
+          { usuarioId: TECNICO, plantilla: PLANTILLAS_POR_TIPO_ROL['TECNICO'] },
+        ]);
 
         const filas = await filasDe(TECNICO);
         expect(filas).toContain(`${soporte.id}:ASIGNAR`);

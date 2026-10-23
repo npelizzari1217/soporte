@@ -276,7 +276,8 @@ export class TicketsV1Controller {
    * Alcance de la clave sobre los tipos de v1, con sus celdas traducidas por `traducir`.
    *
    * @param actor Actor sintetico de la clave.
-   * @param traducir Traduccion de las celdas a acciones de un tipo; por defecto, la de L11.
+   * @param traducir Traducción de las celdas a acciones de un tipo; por defecto, la de la clave
+   *   (`accionesDeClaveApi`).
    * @returns El alcance de la clave.
    */
   private async alcanceDeLaClave(

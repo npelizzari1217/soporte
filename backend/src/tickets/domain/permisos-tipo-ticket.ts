@@ -1,3 +1,5 @@
+import { esModuloValido, Modulo } from '../../shared/domain/modulos';
+
 /**
  * Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, S1, D4).
  *
@@ -102,22 +104,10 @@ const ORIGENES_POR_MODULO_DEL_TIPO: Readonly<Record<string, readonly ModuloOrige
 };
 
 /**
- * ¿El tipo toma sus acciones solo de las celdas `TICKETS:*`? Es así para los tipos de TICKETS,
- * COMPRAS y EQUIPOS (L21). Un tipo de EDILICIA también las toma, pero las suma a las suyas (L35), y
- * queda afuera.
- *
- * @param moduloDelTipo Valor de `tipos_ticket.modulo` del tipo.
- * @returns `true` si el único origen de sus acciones son las celdas de TICKETS.
- */
-export function tomaCeldasDeTickets(moduloDelTipo: string): boolean {
-  const origenes = ORIGENES_POR_MODULO_DEL_TIPO[moduloDelTipo];
-  return origenes !== undefined && origenes.length === 1 && origenes[0] === 'TICKETS';
-}
-
-/**
  * Traduce las celdas master de un usuario a las acciones que tiene sobre un tipo de ticket,
- * según la tabla de L11. Es la única implementación de esa tabla: la usan el backfill, las
- * plantillas de rol y los tests (D4).
+ * según la tabla de L11. Es la única implementación de esa tabla. Desde T9a las plantillas de rol
+ * ya no salen de acá (son explícitas, `PlantillaPorTipo`): la usa solo el backfill del paso 8c
+ * (`scripts/backfill-permisos-tipo-ticket.mjs`, que la lee de `dist/`), y se retira con él en T9c.
  *
  * Imprimir se concede a quien resulte con Ver; Borrar no se concede nunca. Las celdas de un
  * módulo que no es origen del tipo no cuentan. Con varios orígenes, el resultado es la unión.
@@ -162,7 +152,7 @@ export function accionesDeTipoDesdeCeldas(
  * ¿La celda master ya no decide nada porque pasó a la tabla por tipo? Son las celdas que traduce
  * L11: todas las de TICKETS y `EDILICIA:LECTURA`, `ALTAS` y `MODIFICACION`. `EDILICIA:BORRADO`
  * (desvincular compra) sigue siendo del módulo (L21). Desde T7 la grilla de módulos deja de
- * editarlas (D5 d); se retiran de la base en T9.
+ * editarlas (D5 d) y desde T9a las plantillas de rol no las traen; se retiran de la base en T9b.
  *
  * @param celda Código `MODULO:ACCION`.
  * @returns `true` si la celda la reemplazan los permisos por tipo.
@@ -173,7 +163,7 @@ export function celdaReemplazadaPorTipo(celda: string): boolean {
   return accion !== undefined && Object.keys(TRADUCCION_L11[modulo]).includes(accion);
 }
 
-/** Un tipo de ticket como destino de permisos: su id y el módulo del que toma las celdas. */
+/** Un tipo de ticket como destino de permisos: su id y su módulo (`tipos_ticket.modulo`). */
 export interface TipoTicketConModulo {
   id: string;
   modulo: string;
@@ -199,21 +189,39 @@ export function tiposAbiertosParaPlantilla<T extends TipoTicketConModulo>(
 }
 
 /**
- * Traduce un conjunto de celdas master (por ejemplo, la plantilla de un rol) a las filas por tipo
- * de todos los tipos dados, con la tabla de L11 de `accionesDeTipoDesdeCeldas`.
- *
- * @param celdas Celdas de la matriz master, como códigos `MODULO:ACCION`.
- * @param tipos Tipos de ticket del tenant que reciben permisos.
- * @returns Pares (tipo, acción) concedidos; vacío si las celdas no conceden nada sobre tickets.
+ * Plantilla de permisos por tipo de un rol (T9a, L50.4): las acciones que concede sobre un tipo de
+ * ticket según el módulo de ese tipo. Declara todos los módulos de `MODULOS`, así que sumar un
+ * módulo obliga a decidir qué da cada rol sobre sus tipos.
  */
-export function filasDeTiposDesdeCeldas(
-  celdas: readonly string[],
+export type PlantillaPorTipo = Readonly<Record<Modulo, readonly AccionTipoTicket[]>>;
+
+/**
+ * Acciones que una plantilla de rol da sobre un tipo de ticket.
+ *
+ * @param plantilla Plantilla por tipo del rol.
+ * @param moduloDelTipo Valor de `tipos_ticket.modulo` del tipo.
+ * @returns Las acciones de la plantilla para ese módulo; ninguna si el módulo no es uno de
+ *   `MODULOS` (el tipo queda cerrado, como uno nuevo, S4).
+ */
+export function accionesDePlantilla(
+  plantilla: PlantillaPorTipo,
+  moduloDelTipo: string,
+): readonly AccionTipoTicket[] {
+  return esModuloValido(moduloDelTipo) ? plantilla[moduloDelTipo] : [];
+}
+
+/**
+ * Filas por tipo que escribe la plantilla de un rol sobre los tipos dados.
+ *
+ * @param plantilla Plantilla por tipo del rol.
+ * @param tipos Tipos de ticket del tenant que reciben permisos.
+ * @returns Pares (tipo, acción) concedidos; vacío si la plantilla no concede nada (ADMINISTRADOR).
+ */
+export function filasDeTiposDesdePlantilla(
+  plantilla: PlantillaPorTipo,
   tipos: readonly TipoTicketConModulo[],
 ): { tipoId: string; accion: AccionTipoTicket }[] {
   return tipos.flatMap((tipo) =>
-    [...accionesDeTipoDesdeCeldas(celdas, tipo.modulo)].map((accion) => ({
-      tipoId: tipo.id,
-      accion,
-    })),
+    accionesDePlantilla(plantilla, tipo.modulo).map((accion) => ({ tipoId: tipo.id, accion })),
   );
 }

@@ -6,13 +6,14 @@
 import { PermisosPorTipoDeClienteAdapter } from './permisos-por-tipo-de-cliente.adapter';
 import { TenantContext, TenantContextData } from '../../../shared/tenancy/tenant-context';
 import { ClienteEntity } from '../../../clientes/domain/entities/cliente.entity';
+import { PLANTILLAS_POR_TIPO_ROL } from '../../domain/presets-rol';
 
 const CLIENTE_ID = '01977a00-0000-7000-8000-0000000000c2';
 const DB_NAME = 'soporte_cliente_permisos';
 const ENTRADA = {
   clienteId: CLIENTE_ID,
   usuarioId: 'usuario-1',
-  celdas: ['TICKETS:LECTURA'],
+  plantilla: PLANTILLAS_POR_TIPO_ROL['USUARIO'],
   sobrescribir: true,
 };
 
@@ -50,7 +51,7 @@ describe('PermisosPorTipoDeClienteAdapter.aplicarPlantilla', () => {
     expect(c.prismaService.getTenantClient).toHaveBeenCalledWith(DB_NAME);
     expect(c.plantilla.ejecutar).toHaveBeenCalledWith({
       usuarioId: 'usuario-1',
-      celdas: ['TICKETS:LECTURA'],
+      plantilla: PLANTILLAS_POR_TIPO_ROL['USUARIO'],
       sobrescribir: true,
     });
     expect(c.contextos).toEqual([

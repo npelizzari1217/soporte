@@ -106,16 +106,20 @@ export function puedeEnAlgunTipo(
 }
 
 /**
- * Módulos cuyos tipos toman sus acciones de las celdas `TICKETS:*` (L21). Espejo de
- * `tomaCeldasDeTickets` (`backend/src/tickets/domain/permisos-tipo-ticket.ts`).
+ * Módulos cuyos tipos abren la lista de usuarios con `VER_TODOS`; Edilicia queda afuera (S7). Espejo
+ * de `MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS`
+ * (`backend/src/tickets/application/services/visibilidad-ticket.ts`).
  */
-export const MODULOS_CON_CELDAS_DE_TICKETS: readonly string[] = ["TICKETS", "COMPRAS", "EQUIPOS"];
+export const MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS: readonly string[] = [
+  "TICKETS",
+  "COMPRAS",
+  "EQUIPOS",
+];
 
 /**
  * ¿La sesión puede leer la lista de usuarios (`GET /usuarios`), para asignar o filtrar por
  * responsable? Espejo de `puedeVerListaDeUsuarios` del backend (S7): `ASIGNAR` sobre algún tipo, o
- * `VER_TODOS` sobre un tipo de `MODULOS_CON_CELDAS_DE_TICKETS`. Alcanza con mirar esos tipos: todo
- * `VER_TODOS` sale de `TICKETS:VER_TODOS` (L35), que también lo da sobre los tipos de TICKETS.
+ * `VER_TODOS` sobre un tipo de `MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS`.
  *
  * @param permisos Permisos de la sesión, o `null` si no se conocen.
  * @returns `true` si el backend le devuelve la lista.
@@ -123,7 +127,9 @@ export const MODULOS_CON_CELDAS_DE_TICKETS: readonly string[] = ["TICKETS", "COM
 export function puedeVerListaDeUsuarios(permisos: PermisosPorTipo | null): boolean {
   return (
     puedeEnAlgunTipo(permisos, "ASIGNAR") ||
-    MODULOS_CON_CELDAS_DE_TICKETS.some((modulo) => puedeEnModulo(permisos, modulo, "VER_TODOS"))
+    MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS.some((modulo) =>
+      puedeEnModulo(permisos, modulo, "VER_TODOS"),
+    )
   );
 }
 

@@ -4,7 +4,7 @@ import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
-import { AccionTipoTicket, tomaCeldasDeTickets } from '../../domain/permisos-tipo-ticket';
+import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { IPermisoTipoTicketRepository } from '../../domain/ports/i-permiso-tipo-ticket.repository';
 import { AlcanceListadoTickets, ITicketRepository } from '../../domain/ports/i-ticket.repository';
 
@@ -91,14 +91,22 @@ export function tieneAccionEnAlgunTipo(
 }
 
 /**
+ * Módulos cuyos tipos abren la lista de usuarios con `VER_TODOS`. Edilicia queda afuera: ver todos
+ * los tickets edilicios no abría la lista antes de la etapa 1, y el modelo por tipo no cambia ese
+ * acceso (S7, L33).
+ */
+const MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS: readonly string[] = [
+  'TICKETS',
+  'COMPRAS',
+  'EQUIPOS',
+];
+
+/**
  * ¿El actor puede leer la lista básica de usuarios del tenant (`GET /usuarios`), con la que asigna o
- * filtra por responsable? Reproduce la regla anterior a la etapa 1 (`TICKETS:ASIGNAR` o
- * `TICKETS:VER_TODOS`) sobre los permisos por tipo, para que la migración no cambie el acceso (S7):
- * `ASIGNAR` sobre cualquier tipo (ninguna celda de EDILICIA se traduce a `ASIGNAR`, L11), o
- * `VER_TODOS` sobre un tipo que toma las celdas de TICKETS (`tomaCeldasDeTickets`). Basta mirar esos
- * tipos: todo `VER_TODOS` sale de `TICKETS:VER_TODOS` (L35), que también lo da sobre los tipos de
- * TICKETS. Sin restricción
- * (`null`, ROOT y ADMINISTRADOR), siempre.
+ * filtra por responsable? Decide con el módulo de cada tipo, y conserva el acceso que había al
+ * desplegar el modelo por tipo (S7): `ASIGNAR` sobre cualquier tipo, o `VER_TODOS` sobre un tipo de
+ * `MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS`. Sin restricción (`null`, ROOT y ADMINISTRADOR),
+ * siempre.
  *
  * @param alcance Alcance del actor.
  * @param tipos Origen del módulo de cada tipo; solo se consulta si hace falta.
@@ -116,7 +124,7 @@ export async function puedeVerListaDeUsuarios(
   const moduloDe = new Map((await tipos.listarTipos()).map((t) => [t.id, t.modulo]));
   return conVerTodos.some((tipoId) => {
     const modulo = moduloDe.get(tipoId);
-    return modulo !== undefined && tomaCeldasDeTickets(modulo);
+    return modulo !== undefined && MODULOS_CON_VER_TODOS_QUE_ABRE_USUARIOS.includes(modulo);
   });
 }
 

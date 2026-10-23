@@ -60,7 +60,8 @@ export type AplicarPresetPermisosError =
  * cualquiera al que se le aplicara por error.
  *
  * Permisos por tipo de ticket (odd/tasks/permisos-por-tipo-ticket.md, T4c, W1): la misma
- * plantilla se escribe también en la tabla por tipo del tenant, con la traducción de L11. Master y
+ * plantilla se escribe también en la tabla por tipo del tenant, con la plantilla por tipo del rol
+ * (`PLANTILLAS_POR_TIPO_ROL`, T9a). Master y
  * tenant son bases distintas y no hay transacción común, así que el orden es deliberado: primero
  * el tenant, porque desde la etapa 1 sus filas deciden el acceso a tickets, y después master. Si
  * el tenant falla, master no se toca y se devuelve `PermisosPorTipoNoAplicadosError`: un descenso
@@ -102,12 +103,12 @@ export class AplicarPresetPermisosUseCase {
       }
     }
 
-    const celdas = presetResult.getValue();
+    const { celdas, porTipo } = presetResult.getValue();
     try {
       await this.permisosPorTipo.aplicarPlantilla({
         clienteId: input.clienteId,
         usuarioId: input.usuarioId,
-        celdas,
+        plantilla: porTipo,
         sobrescribir: input.sobrescribir,
       });
     } catch (error) {
