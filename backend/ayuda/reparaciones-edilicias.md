@@ -138,13 +138,13 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 
 | Acción | Quién puede |
 |---|---|
-| Ver la reparación, sus subtareas y sus comentarios | `EDILICIA:LECTURA` |
-| Agregar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
-| Asignar o quitar el técnico de una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
-| Publicar un comentario | `EDILICIA:ALTAS` |
+| Ver la reparación, sus subtareas y sus comentarios | **Ver** sobre el tipo del ticket |
+| Agregar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
+| Asignar o quitar el técnico de una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
+| Publicar un comentario | **Crear** o **Comentar** sobre el tipo del ticket |
 | Completar o descompletar una subtarea | El técnico de la subtarea, el responsable de la reparación, un ADMINISTRADOR o ROOT |
-| Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con `EDILICIA:MODIFICACION` |
-| Vincular una compra a una reparación | `EDILICIA:ALTAS` **y** `COMPRAS:LECTURA` (las dos) |
+| Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
+| Vincular una compra a una reparación | **Crear** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
 | Desvincular una compra de una reparación | `EDILICIA:BORRADO` |
 
 Los comentarios no tienen visibilidad propia: quien puede ver la reparación, los

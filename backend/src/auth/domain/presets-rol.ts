@@ -112,7 +112,7 @@ const TECNICO_EN_TIPO: readonly AccionTipoTicket[] = [
  * filas (`tiposAbiertosParaPlantilla`, S4).
  *
  * Reemplazan a la traducción de L11 de las celdas del preset y dan exactamente lo mismo que daba
- * (S7): `presets-rol.spec.ts` lo compara contra las celdas anteriores a T9a. Por eso cada rol da
+ * (S7): `presets-rol.spec.ts` fija por rol y por módulo esas acciones como literales. Por eso cada rol da
  * hoy lo mismo en todos los módulos; se declaran por módulo para poder separarlos.
  *
  * ADMINISTRADOR opera todos los tipos sin filas (`permisosPorTipo = null`): su plantilla es vacía.

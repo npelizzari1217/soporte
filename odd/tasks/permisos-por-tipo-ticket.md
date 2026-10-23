@@ -443,3 +443,11 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   Back: lint y typecheck en cero, suite completa 768 archivos y 9487 tests en verde. Front: lint 0,
   type-check 0, 281 archivos y 2467 tests. Ayuda (suspendida): la grilla de módulos ya no tiene
   Tickets y Edilicia solo ofrece Borrar.
+- **L53** (judgment-day sobre 66bfddf9..b245a07f, 2026-10-23) — JD-A-001 (CRITICAL, inferencial):
+  la migración borra las celdas de clientes inactivos, que el backfill 8c nunca tradujo. Verificado
+  en producción por SSH (solo lectura): 9 clientes, todos activos y sin baja, cada tenant con filas
+  en `permisos_tipo_ticket` (72 a 720); el caso no existe hoy. Queda como chequeo previo obligatorio
+  en el runbook, no como guard en la migración (ya aplicada en local; cambiarla rompe su checksum).
+  Corregidos: rollback con `migrate resolve --rolled-back` (JD-A-002), Ayuda de reparaciones
+  edilicias con acciones por tipo (JD-A-003), JSDoc de `PLANTILLAS_POR_TIPO_ROL` (JD-A-004).
+  JD-A-005 / JD-B-002 (negativos con celda vieja que ya no se puede guardar): informativos.

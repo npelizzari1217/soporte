@@ -589,6 +589,24 @@ restaura las celdas borradas**; si hicieran falta, salen de `usuario_cliente_per
 El código anterior a T9 todavía escribe celdas `TICKETS:*` al dar de alta un usuario, cambiar
 su rol o aplicar una plantilla; contra el CHECK nuevo esas escrituras fallan con un 500
 (`MatrizPermisosNoAplicadaError`). Para leer, el código anterior no necesita las celdas borradas.
+`rollback.sql` no borra la fila de `_prisma_migrations`: para volver a desplegar T9 después, hay
+que correr `pnpm prisma migrate resolve --rolled-back 20261023120000_retirar_celdas_tickets_matriz`
+con el schema master, o Prisma la da por aplicada y el CHECK queda con 36 pares.
+
+**Chequeo previo obligatorio (antes del deploy de T9).** El backfill 8c solo tradujo los clientes
+activos. Un cliente inactivo o dado de baja guarda el acceso a tickets de sus usuarios solo en las
+celdas que esta migración borra: al reactivarlo, sus usuarios quedarían sin acceso. Antes de
+desplegar, esta consulta sobre master tiene que volver vacía:
+
+```sql
+SELECT c.nombre, count(*) FROM usuario_cliente_permisos p JOIN clientes c ON c.id = p.cliente_id
+WHERE (p.modulo = 'TICKETS' OR (p.modulo = 'EDILICIA' AND p.accion <> 'BORRADO'))
+  AND NOT (c.activo AND c.deleted_at IS NULL)
+GROUP BY 1;
+```
+
+y cada tenant activo tiene que tener filas en `permisos_tipo_ticket`. Verificado el 2026-10-23:
+9 clientes, todos activos, todos con filas (72 a 720).
 
 ---
 
