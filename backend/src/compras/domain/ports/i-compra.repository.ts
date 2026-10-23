@@ -60,6 +60,13 @@ export interface CompraListFiltros {
   fechaDesde?: Date;
   /** Filtra por `fechaSolicitud <= fechaHasta` (R7). Fecha de CABECERA, no de etapa. */
   fechaHasta?: Date;
+  /**
+   * Texto libre: deja pasar las compras cuyo `motivo` O `numero` lo
+   * CONTIENEN, sin distinguir mayúsculas. Se busca como texto literal: `%` y
+   * `_` no actúan como comodines. `undefined` = sin restricción. Llega ya
+   * recortado y no vacío desde el borde HTTP.
+   */
+  busqueda?: string;
 }
 
 /**

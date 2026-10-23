@@ -37,6 +37,8 @@ export interface ListarComprasDto {
   fechaDesde?: Date;
   /** Filtra por `fechaSolicitud <= fechaHasta` (R7, fecha de CABECERA). */
   fechaHasta?: Date;
+  /** Texto contenido en `motivo` o `numero`, sin distinguir mayúsculas. */
+  busqueda?: string;
 }
 
 /**
@@ -135,6 +137,7 @@ export class ListarComprasUseCase {
       ...(dto.sectorId !== undefined && { sectorId: dto.sectorId }),
       ...(dto.fechaDesde !== undefined && { fechaDesde: dto.fechaDesde }),
       ...(dto.fechaHasta !== undefined && { fechaHasta: dto.fechaHasta }),
+      ...(dto.busqueda !== undefined && { busqueda: dto.busqueda }),
       limit: porPagina,
       offset: (pagina - 1) * porPagina,
     };

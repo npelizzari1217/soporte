@@ -57,8 +57,9 @@ export class PrismaCompraRepository implements ICompraRepository {
 
   /**
    * Condiciones de filtro sobre la CABECERA (`compras c`), las que no
-   * dependen del grupo derivado: soft-delete, ciclo, sector y rango de
-   * `fecha_solicitud`. Devuelve un fragmento `Prisma.Sql` con TODOS los
+   * dependen del grupo derivado: soft-delete, ciclo, sector, rango de
+   * `fecha_solicitud` y búsqueda de texto sobre `motivo`/`numero`.
+   * Devuelve un fragmento `Prisma.Sql` con TODOS los
    * valores como parámetros ligados — nunca interpolación de strings (es
    * multi-tenant: una concatenación acá es una inyección).
    *
@@ -87,8 +88,22 @@ export class PrismaCompraRepository implements ICompraRepository {
         Prisma.sql`c.fecha_solicitud <= ${PrismaCompraRepository.aFechaCalendaria(filtros.fechaHasta)}::date`,
       );
     }
+    if (filtros?.busqueda !== undefined) {
+      const patron = `%${PrismaCompraRepository.escaparComodinesLike(filtros.busqueda)}%`;
+      condiciones.push(Prisma.sql`(c.motivo ILIKE ${patron} OR c.numero ILIKE ${patron})`);
+    }
 
     return Prisma.join(condiciones, ' AND ');
+  }
+
+  /**
+   * Escapa `\`, `%` y `_` para que el término se busque como texto literal.
+   * Sin esto, quien tipea `_` encuentra cualquier carácter y quien tipea `%`
+   * encuentra todo. La barra invertida es el carácter de escape por defecto
+   * de `LIKE`/`ILIKE` en Postgres, así que la sentencia no necesita `ESCAPE`.
+   */
+  private static escaparComodinesLike(termino: string): string {
+    return termino.replace(/[\\%_]/g, (caracter) => `\\${caracter}`);
   }
 
   /** `Date` de JS a `YYYY-MM-DD` en UTC — el mismo componente de fecha que Prisma persiste en un `@db.Date`. */

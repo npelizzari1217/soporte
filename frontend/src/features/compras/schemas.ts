@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { conDosDecimales, parsearNumeroEsAr } from "@/shared/lib/formato-numero";
+import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 
 /**
  * Validación cliente-side de los forms de Compras (RHF + zod), espejo
@@ -261,3 +262,21 @@ export const cancelarCompraSchema = z.object({
   motivo: motivo("El motivo de cancelación es requerido"),
 });
 export type CancelarCompraFormValues = z.infer<typeof cancelarCompraSchema>;
+
+/**
+ * Tope del término de búsqueda de `GET /compras`. Copia a mano de
+ * `BUSQUEDA_COMPRAS_MAX` en `compras.dto.ts` del backend; el centinela de
+ * `schemas.test.ts` fija el valor para atrapar una edición accidental, no un
+ * cambio del backend.
+ */
+export const BUSQUEDA_COMPRAS_MAX = 100;
+
+/**
+ * Espejo de `ListarComprasQueryDto.busqueda`: recorta y mide el tope sobre el
+ * texto recortado, igual que el backend. Un término vacío tras recortar es
+ * válido y significa "sin búsqueda".
+ */
+export const busquedaComprasSchema = z
+  .string()
+  .trim()
+  .max(BUSQUEDA_COMPRAS_MAX, mensajeDemasiadoLargo("La búsqueda", BUSQUEDA_COMPRAS_MAX));

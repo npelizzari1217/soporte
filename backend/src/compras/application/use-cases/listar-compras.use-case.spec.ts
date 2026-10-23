@@ -219,6 +219,7 @@ describe('ListarComprasUseCase', () => {
       sectorId: 'sector-1',
       fechaDesde: new Date('2026-01-01'),
       fechaHasta: new Date('2026-12-31'),
+      busqueda: 'pintura',
     });
 
     expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledTimes(1);
@@ -229,9 +230,19 @@ describe('ListarComprasUseCase', () => {
       sectorId: 'sector-1',
       fechaDesde: new Date('2026-01-01'),
       fechaHasta: new Date('2026-12-31'),
+      busqueda: 'pintura',
       limit: 2,
       offset: 0,
     });
+  });
+
+  it('sin `busqueda`, el filtro no viaja al repositorio (no restringe por texto)', async () => {
+    const c = makeCollaborators();
+
+    await c.useCase.execute({});
+
+    const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
+    expect(filtros).not.toHaveProperty('busqueda');
   });
 
   // ─── WU-25 (sdd/compras-orden-filtro-estado) — precedencia estado/soloEnCurso ──
