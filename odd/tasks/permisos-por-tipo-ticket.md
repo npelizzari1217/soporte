@@ -108,8 +108,12 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
 - [x] T7 — S5 — writer — etapa 2: grilla por tipo en Permisos, plantilla por fila, copiar de
   usuario — (este commit)
 - [x] T8 — S4 — writer — etapa 2: tipo nuevo cerrado y "Copiar permisos de" en el alta de tipo — (este commit)
-- [ ] T9 — S7 — bloqueada: retiro de `TICKETS:*` / `EDILICIA:*` de tickets, tras verificar en
-  producción — (pendiente)
+- [ ] T9 — S7, L49-L50 — worker — retiro de `TICKETS:*` / `EDILICIA:*` de tickets — (pendiente)
+  - [ ] T9a — L50.4 — plantillas de rol por tipo explícitas; retirar traducción L11, `accionesDeTipoDesdeCeldas`
+    en plantillas y `GET /usuarios`
+  - [ ] T9b — L50.1-2 — sacar `TICKETS` y `EDILICIA:LECTURA|ALTAS|MODIFICACION` del catálogo, CHECK y
+    front; migración master que borra esas celdas (con `predeploy-dump`)
+  - [ ] T9c — L50.4 — retirar backfill 8c de `deploy.ps1` y su script
 - [x] T10 — S8 — worker — borrar y recuperar ticket (backend, front, grilla) — (este commit)
 
 ## Log
@@ -390,3 +394,10 @@ Se entrega en etapas reversibles: la etapa 0 cierra los huecos actuales con el m
   gate de `/tickets` e inicio pasan a Ver en algún tipo de cualquier módulo. El backend ya listaba
   todos los tipos con Ver; "Nuevo ticket" sigue ofreciendo solo tipos de TICKETS. Rama
   `feat/menu-tickets-todos-los-tipos`.
+- **L49** (dueño, 2026-10-23) — "Arrancamos con T9 si luego hay algun reclamo vemos que hacemos." Se
+  da por verificado el modelo nuevo en producción.
+- **L50** (decisiones del dueño, 2026-10-23) — (1) el módulo `TICKETS` sale de la matriz de permisos;
+  (2) `EDILICIA` queda solo con `BORRADO` (desvincular compra); (3) las claves de API v1 conservan su
+  vocabulario `TICKETS:LECTURA|ALTAS|COMENTAR` y `modulos: ['TICKETS']`, sin migrar claves emitidas;
+  (4) plantillas de rol por tipo explícitas: se borran la traducción L11 como fuente de plantillas y
+  el backfill 8c.
