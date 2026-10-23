@@ -20,10 +20,10 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 ## Tasks
 
 - [x] T0 — S1-S6 — explore — confirmar interpretación de S2 y recuentos de producción — (este commit)
-- [ ] T1 — S1, S3 — worker — esquema y backfill: vínculo compra→ticket, ubicación única, comentarios al
-  timeline (migración reversible, verificada contra un dump) — (pendiente)
-- [ ] T2 — S1, S4, S5 — worker — backend: compras, bloqueo y ubicación sobre el ticket; altas de todo
-  tipo sin satélite — (pendiente)
+- [x] T1 — S1, S3 — worker — esquema y backfill: vínculo compra→ticket, ubicación única, comentarios al
+  timeline (migración reversible, verificada contra una base efímera; falta contra un dump) — (este commit)
+- [x] T2 — S1, S4, S5 — worker — backend: compras, bloqueo y ubicación sobre el ticket; altas de todo
+  tipo sin satélite — (este commit)
 - [ ] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
   "Nuevo ticket" con todos los tipos — (pendiente)
 - [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
@@ -56,3 +56,48 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   `reparacion_compra` (todos en Prueba), 11 `comentarios_reparacion` (Guadalupe 7, Prueba 4), 17
   satélites con ubicación propia y ticket sin ubicación, 0 con ambas ubicaciones (sin conflicto), 0
   tickets de módulo EDILICIA sin satélite.
+- **L9** (decisión, T1) — Vínculo en una tabla nueva, `ticket_compra` (UNIQUE ticket+compra, FKs
+  RESTRICT), y no una columna en `reparacion_compra`: la migración `20261024120000_ticket_unificado`
+  copia los vínculos con su id y su `created_at` (inicio del bloqueo). `reparacion_compra`,
+  `ticket_edilicia.ubicacion` y `comentarios_reparacion` quedan congeladas, sin escrituras, para T4.
+  El `rollback.sql` proyecta lo nuevo sobre lo viejo en los tickets con satélite y borra
+  `ticket_compra`; pierde los vínculos de tickets sin satélite (límite documentado).
+- **L10** (decisión, T1/S3) — Cada comentario de reparación pasa al timeline como COMENTARIO
+  **público**, con el mismo id, autor, texto y fecha: el comentario de reparación lo veía todo el que
+  veía la reparación, igual que un comentario público. La copia no toca la primera respuesta ni el
+  reloj de SLA. La ruta `POST /reparaciones/:id/comentarios` escribe un COMENTARIO público y conserva
+  sus reglas hasta T3 (ALTAS o COMENTAR; frena con el ticket cerrado, cancelado o bloqueado), sin
+  notificar ni registrar primera respuesta, como antes. `GET .../comentarios` lee el timeline: los
+  internos, solo con OBSERVAR; el conteo de la grilla sigue la misma regla.
+- **L11** (decisión, T1/S1) — Ubicación: si el ticket ya tiene una (no en blanco), gana el ticket y la
+  migración avisa cuántos conflictos hubo; una en blanco del satélite no se copia. El PDF
+  (`src/ticket-pdf`, fuera del alcance de T2) sigue leyendo la ubicación desde el satélite: su
+  repositorio ahora devuelve la del ticket, así que los tickets con satélite imprimen la correcta.
+  **Pendiente**: imprimir la ubicación de cualquier ticket requiere tocar `src/ticket-pdf`.
+- **L12** (decisión, T2) — El `id` de cada fila de `GET /reparaciones` (y de la respuesta del alta y
+  del PATCH) es el del ticket. Las rutas `/reparaciones/:reparacionId/...` aceptan ese id o el del
+  satélite que devolvían antes (`ResolutorReparacion`), y su 404 nombra el id pedido. Rutas nuevas:
+  `GET|POST /tickets/:ticketId/compras` y `DELETE /tickets/:ticketId/compras/:compraId`; las de
+  `/reparaciones` quedan como alias hasta T3.
+- **L13** (decisión, T2/S2) — `GET /reparaciones` (y su exportación) aceptan `?tipo=`; sin tipo listan
+  todos los tipos del módulo EDILICIA, incluido PREVENTIVO y los tickets sin satélite. El alcance es el
+  del listado de tickets (`alcanceDeListado` con el tipo pedido: pedir un tipo no amplía nada).
+- **L14** (decisión, T2/S2-S6) — `POST /tickets` y `POST /reparaciones` admiten los mismos tipos:
+  `admiteAltaManual` = un tipo de un módulo con alta de tipo (TICKETS, EDILICIA) que no sea
+  PREVENTIVO; el 422 dice "El tipo de ticket "X" no admite altas manuales.". `POST /reparaciones`
+  sigue creando la fila del satélite, sin ubicación, hasta T4: el listado viejo (el código al que
+  vuelve un rollback) se arma sobre el satélite, y `prisma_master/seeds/demo-seed.integration.spec.ts`
+  (fuera del alcance de T2) cuenta un satélite. `POST /tickets` no lo crea.
+- **L15** (decisión, T2/S4) — Vincular y desvincular exigen `MODIFICACION` sobre el tipo del ticket y
+  `COMPRAS:LECTURA` en la ruta. Cambio de conducta: quien vinculaba con ALTAS sin MODIFICACION, o
+  desvinculaba con `EDILICIA:BORRADO` sin MODIFICACION o sin `COMPRAS:LECTURA`, ya no puede.
+  `EDILICIA:BORRADO` ya no lo exige ninguna ruta, pero sigue en el catálogo, los presets, el CHECK de
+  master y el frontend: retirarlo toca `prisma_master` y `frontend`, fuera de T2.
+- **L16** (decisión, T2) — Se conservan los nombres heredados (`VincularCompraAReparacionUseCase`,
+  `IReparacionCompraRepository`, `IComentarioReparacionRepository`) con firmas por id de ticket; T4 los
+  renombra. Quedan sin uso `comentario-reparacion.mapper.ts` y `ComentarioReparacionEntity` (solo se
+  usa su constante de largo): se retiran con `comentarios_reparacion` en T4. `TicketComprasController`
+  vive en `ReparacionesModule`, que ya importa compras y el criterio de bloqueo.
+- **L17** (evidencia, T1) — Migración aplicada a `soporte_tenant_test` (`pnpm migrate:tenant`) y a los 2
+  tenants locales (`pnpm migrate:tenants`), que estaban atrasados en 8 migraciones y recibieron
+  todas. Reproducida con su rollback en `migracion-ticket-unificado.integration.spec.ts`.
