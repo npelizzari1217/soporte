@@ -17,6 +17,9 @@ export interface CrearPlanDto {
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  /** Ausente = 0 días (S5). La AUTORIDAD de su validez es la entidad. */
+  anticipacionValor?: number;
+  anticipacionUnidad?: IntervaloUnidad;
   fechaInicio: Date;
 }
 
@@ -51,6 +54,8 @@ export class CrearPlanUseCase {
       responsableId: dto.responsableId,
       intervaloValor: dto.intervaloValor,
       intervaloUnidad: dto.intervaloUnidad,
+      anticipacionValor: dto.anticipacionValor,
+      anticipacionUnidad: dto.anticipacionUnidad,
       fechaInicio: dto.fechaInicio,
       proximaEjecucionEn: dto.fechaInicio,
       activo: true,

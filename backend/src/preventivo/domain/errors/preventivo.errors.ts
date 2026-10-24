@@ -108,6 +108,58 @@ export class IntervaloExcedeMaximoError extends DomainError {
 }
 
 /**
+ * AnticipacionInvalidaError — `anticipacion_valor` debe ser un entero mayor o
+ * igual a 0 (`planes_preventivo_anticipacion_valor_check`). El 0 es válido: es
+ * el comportamiento previo a la anticipación (el ticket se genera el día del
+ * ciclo).
+ *
+ * Ref: odd/preventivo-anticipacion S6.
+ */
+export class AnticipacionInvalidaError extends DomainError {
+  readonly code = 'PREVENTIVO_ANTICIPACION_INVALIDA';
+
+  constructor(valorRecibido: number) {
+    super(`La anticipación debe ser un entero mayor o igual a 0, se recibió: ${valorRecibido}.`);
+  }
+}
+
+/**
+ * UnidadAnticipacionInvalidaError — `anticipacion_unidad` fuera del catálogo
+ * cerrado `DIAS` | `MESES` (`planes_preventivo_anticipacion_unidad_check`).
+ *
+ * Ref: odd/preventivo-anticipacion S1.
+ */
+export class UnidadAnticipacionInvalidaError extends DomainError {
+  readonly code = 'PREVENTIVO_UNIDAD_ANTICIPACION_INVALIDA';
+
+  constructor(unidadRecibida: string) {
+    super(`La unidad de anticipación "${unidadRecibida}" no es válida: debe ser DIAS o MESES.`);
+  }
+}
+
+/**
+ * AnticipacionNoMenorQueCadenciaError — la anticipación tiene que ser
+ * estrictamente menor que la cadencia, comparadas en días con un mes = 30
+ * días (`planes_preventivo_anticipacion_menor_cadencia_check`). Con una
+ * anticipación igual o mayor, la fecha de generación de un ciclo caería en o
+ * antes de la fecha del ciclo anterior.
+ *
+ * El texto lo arma el dominio con las dos magnitudes ya descriptas, para que
+ * el usuario vea por qué se rechazó sin tener que hacer la cuenta.
+ *
+ * Ref: odd/preventivo-anticipacion S6.
+ */
+export class AnticipacionNoMenorQueCadenciaError extends DomainError {
+  readonly code = 'PREVENTIVO_ANTICIPACION_NO_MENOR_QUE_CADENCIA';
+
+  constructor(anticipacionDescripta: string, cadenciaDescripta: string) {
+    super(
+      `La anticipación (${anticipacionDescripta}) debe ser menor que la cadencia (${cadenciaDescripta}). Para comparar, un mes cuenta como 30 días.`,
+    );
+  }
+}
+
+/**
  * PlanNoEncontradoError — el plan de mantenimiento preventivo con el id
  * indicado no existe (o fue soft-deleted).
  * → HTTP 404 en la capa de presentación.

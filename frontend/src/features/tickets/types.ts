@@ -71,6 +71,13 @@ export interface Ticket {
    * desactivado (`GET /sectores` solo trae los activos). `null` = sin sector.
    */
   sectorNombre: string | null;
+  /**
+   * Fecha objetivo de un ticket preventivo (odd/preventivo-anticipacion): la fecha del ciclo del
+   * plan, aunque el ticket se haya generado antes. Día calendario (`@db.Date`): viaja como la
+   * medianoche UTC y se muestra con `formatearFechaCalendario`. Informativa, sin SLA. `null` en los
+   * tickets que no salen de un plan preventivo.
+   */
+  fechaObjetivo: string | null;
   createdAt: string;
   updatedAt: string;
   /**

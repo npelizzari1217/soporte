@@ -263,6 +263,40 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     expect(ordenMarcar).toBeLessThan(ordenAvance);
   });
 
+  // ─── Anticipación (odd/preventivo-anticipacion T2) ──────────────────────
+  it('pasa la anticipación del plan al cálculo de ciclos', async () => {
+    const plan = makePlan({ anticipacionValor: 3, anticipacionUnidad: 'DIAS' });
+    const { useCase, calcularCiclo } = buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+
+    await useCase.execute('cliente-uuid');
+
+    expect(calcularCiclo.ciclosPendientes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proximaEjecucionEn: plan.proximaEjecucionEn,
+        anticipacion: { valor: 3, unidad: 'DIAS' },
+      }),
+      expect.any(Date),
+    );
+  });
+
+  it('S2: el ticket conserva la fecha del CICLO como fecha objetivo, y la clave de idempotencia sigue siendo esa fecha', async () => {
+    const plan = makePlan({ anticipacionValor: 3, anticipacionUnidad: 'DIAS' });
+    const { useCase, generacionRepo, crearTicketUseCase, calcularCiclo } = buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+
+    await useCase.execute('cliente-uuid');
+
+    expect(generacionRepo.reservar).toHaveBeenCalledWith(plan.id, new Date('2026-01-08'));
+    expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ fechaObjetivo: new Date('2026-01-08') }),
+    );
+  });
+
   it('[R11] ciclo GENERADO → publica preventivo.generado vía txRunner.alCommitear(), DESPUÉS de marcar generado y avanzar el puntero', async () => {
     const plan = makePlan();
     const { useCase, generacionRepo, planRepo, calcularCiclo, txRunner, eventPublisher } =

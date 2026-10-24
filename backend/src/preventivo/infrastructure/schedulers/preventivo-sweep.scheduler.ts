@@ -13,6 +13,13 @@
  * POR PLAN dentro de un mismo tenant es responsabilidad de
  * `GenerarPreventivosUseCase`.
  *
+ * Recordatorio (odd/preventivo-anticipacion T3, S4): en el mismo recorrido,
+ * DESPUÉS de la generación de cada tenant, corre
+ * `EnviarRecordatoriosPreventivoUseCase`. Va con su propio try/catch y su
+ * propio código de log (`PREVENTIVO_RECORDATORIO_ERROR`): una generación rota
+ * no frena los recordatorios del tenant, ni al revés. Usa el mismo cron, así
+ * que no hay variable de entorno nueva.
+ *
  * Ref spec: sdd/preventivo/spec, Requirement "Aislamiento por tenant en el
  * barrido". Ref design: flujo de datos (ADR-PV3), ADR-P3. Tarea: 5.6/5.7.
  */
@@ -23,6 +30,9 @@ import { PrismaService } from '../../../shared/infrastructure/persistence/prisma
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { ITenantEnumerator } from '../../../shared/domain/ports/i-tenant-enumerator';
 import { GenerarPreventivosUseCase } from '../../application/use-cases/generar-preventivos.use-case';
+import { EnviarRecordatoriosPreventivoUseCase } from '../../application/use-cases/enviar-recordatorios-preventivo.use-case';
+
+type TenantActivo = Awaited<ReturnType<ITenantEnumerator['listActiveTenants']>>[number];
 
 @Injectable()
 export class PreventivoSweepScheduler {
@@ -32,14 +42,19 @@ export class PreventivoSweepScheduler {
     private readonly prismaService: Pick<PrismaService, 'getTenantClient'>,
     private readonly generarPreventivosUseCase: Pick<GenerarPreventivosUseCase, 'execute'>,
     private readonly logger: Pick<ILogger, 'error'>,
+    private readonly enviarRecordatoriosUseCase: Pick<
+      EnviarRecordatoriosPreventivoUseCase,
+      'execute'
+    >,
   ) {}
 
   /**
    * Handler del cron (default diario a la 1am, configurable vía
    * `PREVENTIVO_SWEEP_CRON`). Recorre TODOS los clientes activos
-   * (`ITenantEnumerator`) y ejecuta `GenerarPreventivosUseCase` dentro de
-   * `TenantContext.run()` bindeado a cada uno — un fallo por-tenant se aísla
-   * y se continúa con el resto [R10].
+   * (`ITenantEnumerator`) y ejecuta `GenerarPreventivosUseCase` y después
+   * `EnviarRecordatoriosPreventivoUseCase` dentro de `TenantContext.run()`
+   * bindeado a cada uno — un fallo por-tenant se aísla y se continúa con el
+   * resto [R10].
    */
   @Cron(process.env.PREVENTIVO_SWEEP_CRON ?? CronExpression.EVERY_DAY_AT_1AM)
   async ejecutarBarrido(): Promise<void> {
@@ -59,25 +74,42 @@ export class PreventivoSweepScheduler {
     }
 
     for (const tenant of tenants) {
-      try {
-        const prismaClient = this.prismaService.getTenantClient(tenant.dbName);
-        await this.tenantContext.run(
-          { prismaClient, dbName: tenant.dbName, clienteId: tenant.clienteId },
-          () => this.generarPreventivosUseCase.execute(tenant.clienteId),
-        );
-      } catch (error) {
-        // Aislamiento por tenant [R10]: un fallo acá NUNCA aborta el resto
-        // del barrido. Va por `error()` y no por `log()`: un tenant entero
-        // que se cae es degradación silenciosa, y el puerto `ILogger` reserva
-        // `log()` para auditoría del camino de éxito. (`SlaSweepScheduler`
-        // usa `log()` acá; es el precedente que se copió, y está mal por el
-        // mismo motivo — queda fuera del alcance de este WU.)
-        //
-        // Log enmascarado: solo dbName + mensaje, sin volcar el objeto de
-        // error crudo, que podría traer datos de conexión.
-        const mensaje = error instanceof Error ? error.message : 'error desconocido';
-        this.logger.error(`PREVENTIVO_SWEEP_ERROR | tenant=${tenant.dbName} | error=${mensaje}`);
-      }
+      await this.enTenant(tenant, 'PREVENTIVO_SWEEP_ERROR', () =>
+        this.generarPreventivosUseCase.execute(tenant.clienteId),
+      );
+      await this.enTenant(tenant, 'PREVENTIVO_RECORDATORIO_ERROR', () =>
+        this.enviarRecordatoriosUseCase.execute(),
+      );
+    }
+  }
+
+  /**
+   * Corre `paso` dentro de `tenantContext.run()` bindeado a `tenant`, con
+   * aislamiento: un fallo se loguea con `codigo` y no se propaga.
+   */
+  private async enTenant(
+    tenant: TenantActivo,
+    codigo: string,
+    paso: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      const prismaClient = this.prismaService.getTenantClient(tenant.dbName);
+      await this.tenantContext.run(
+        { prismaClient, dbName: tenant.dbName, clienteId: tenant.clienteId },
+        paso,
+      );
+    } catch (error) {
+      // Aislamiento por tenant [R10]: un fallo acá NUNCA aborta el resto
+      // del barrido. Va por `error()` y no por `log()`: un tenant entero
+      // que se cae es degradación silenciosa, y el puerto `ILogger` reserva
+      // `log()` para auditoría del camino de éxito. (`SlaSweepScheduler`
+      // usa `log()` acá; es el precedente que se copió, y está mal por el
+      // mismo motivo — queda fuera del alcance de este WU.)
+      //
+      // Log enmascarado: solo dbName + mensaje, sin volcar el objeto de
+      // error crudo, que podría traer datos de conexión.
+      const mensaje = error instanceof Error ? error.message : 'error desconocido';
+      this.logger.error(`${codigo} | tenant=${tenant.dbName} | error=${mensaje}`);
     }
   }
 }

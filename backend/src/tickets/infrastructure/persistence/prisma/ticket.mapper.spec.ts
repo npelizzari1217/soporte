@@ -43,6 +43,8 @@ function makeFakeRow(overrides: Partial<PrismaTicket> = {}): PrismaTicket {
     fechaCierre: null,
     ubicacion: null,
     sectorId: null,
+    fechaObjetivo: null,
+    recordatorioEnviadoAt: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),
     deletedAt: null,
@@ -72,6 +74,34 @@ describe('TicketMapper', () => {
           (k) => k.startsWith('slaReloj') || /^sla(Acumulado|Meta|Corre|Cumplido)/.test(k),
         ),
       ).toEqual([]);
+    });
+  });
+
+  describe('fecha objetivo (odd/preventivo-anticipacion S2)', () => {
+    it('ida y vuelta: toDomain la lee y toPersistence la conserva tal cual', () => {
+      const fecha = new Date('2026-07-01T00:00:00.000Z');
+
+      const ticket = TicketMapper.toDomain(makeFakeRow({ fechaObjetivo: fecha }));
+
+      expect(ticket.fechaObjetivo).toEqual(fecha);
+      expect(TicketMapper.toPersistence(ticket).fechaObjetivo).toEqual(fecha);
+    });
+
+    it('toPersistence() no incluye la marca del recordatorio: la escribe solo el UPDATE acotado (T3)', () => {
+      const data = TicketMapper.toPersistence(
+        TicketMapper.toDomain(
+          makeFakeRow({ recordatorioEnviadoAt: new Date('2026-06-30T04:00:00Z') }),
+        ),
+      );
+
+      expect(Object.keys(data)).not.toContain('recordatorioEnviadoAt');
+    });
+
+    it('hermano: un ticket sin fecha objetivo la mantiene en null', () => {
+      const ticket = TicketMapper.toDomain(makeFakeRow());
+
+      expect(ticket.fechaObjetivo).toBeNull();
+      expect(TicketMapper.toPersistence(ticket).fechaObjetivo).toBeNull();
     });
   });
 

@@ -21,9 +21,9 @@ la fecha del ciclo, conserva esa fecha como fecha objetivo y el responsable reci
 
 ## Tasks
 
-- [ ] T1 — S1, S5, S6 — worker — campos de anticipación (migración, dominio, DTO, front) — (pendiente)
-- [ ] T2 — S1, S2, S3 — worker — generación anticipada con fecha objetivo y correo con la fecha — (pendiente)
-- [ ] T3 — S4 — worker — recordatorio 1 día antes, idempotente — (pendiente)
+- [x] T1 — S1, S5, S6 — worker — campos de anticipación (migración, dominio, DTO, front) — (este commit)
+- [x] T2 — S1, S2, S3 — worker — generación anticipada con fecha objetivo y correo con la fecha — (este commit)
+- [x] T3 — S4 — worker — recordatorio 1 día antes, idempotente — (este commit)
 
 ## Log
 
@@ -37,3 +37,44 @@ la fecha del ciclo, conserva esa fecha como fecha objetivo y el responsable reci
   Cron diario 1am (`preventivo-sweep.scheduler.ts:44`), idempotencia `preventivo_generacion`
   UNIQUE(plan_id, fecha_programada). Aviso al generar ya existe (`preventivo-generado-notificacion.listener.ts:64`,
   `templatePreventivoGenerado`). Zona horaria fija Argentina; columnas `@db.Date` se leen en UTC.
+- **L5** (decisión técnica, T1) — La regla "anticipación menor que la cadencia" vive en la entidad
+  (`AnticipacionNoMenorQueCadenciaError`, mensaje con las dos magnitudes en días) y tiene CHECK espejo
+  `planes_preventivo_anticipacion_menor_cadencia_check` con el mismo mes de 30 días; un test lee el CHECK
+  y fija el 30. El DTO valida solo la forma (entero >= 0, unidad del catálogo) y no lleva `@Max`: ninguna
+  anticipación válida supera la cadencia, así que el dominio corta antes del `int4`. El front copia
+  `DIAS_POR_MES_ANTICIPACION` con test centinela. El alta sin anticipación toma 0 DIAS (S5).
+- **L6** (decisión técnica, T1) — Editar la anticipación recalcula el puntero como la cadencia, pero por
+  FECHA DE CICLO (primer ciclo > hoy), no por fecha de generación: con la segunda, agrandar la
+  anticipación saltearía el próximo ciclo todavía no generado. Si ese ciclo ya cae en la ventana nueva,
+  el barrido siguiente lo genera; si ya se había generado, `reservar()` lo descarta solo
+  (`editar-plan.use-case.spec.ts`, caso 01/07 con 10 días).
+- **L7** (decisión técnica, T2) — Fecha de generación = fecha del ciclo − anticipación, resta de
+  calendario con clamp a fin de mes (`CalcularCicloService.fechaGeneracion`: 31/03 − 1 mes = 28/02).
+  `ciclosPendientes` mide el vencimiento sobre esa fecha; candidato, `SALTEADO_ATRASO`, puntero y la clave
+  `(plan_id, fecha_programada)` siguen siendo fechas de CICLO. `findVencibles` pasa a `$queryRaw` con
+  `date - make_interval(months => n)`, que en Postgres hace el mismo clamp; dos integraciones fijan la
+  equivalencia (10 vs 9 días; 27/02 vs 28/02). El re-anclaje por TOPE ignora la anticipación: deja el primer
+  ciclo `>= hoy` y, si su generación ya venció, lo toma el barrido siguiente.
+- **L8** (decisión técnica, T2) — `tickets.fecha_objetivo DATE NULL`, sin backfill, la fija solo el
+  barrido con la fecha del ciclo (también con anticipación 0). Viaja en `TicketResponseDto` como el ISO de
+  la medianoche UTC (detalle y listado comparten el mapper) y el front la muestra con
+  `formatearFechaCalendario`. El correo de generación agrega "Fecha objetivo: dd/mm/aaaa" leyendo componentes
+  UTC (`shared/domain/dia-calendario.ts`). No entra en el SLA ni en la exportación del listado (fuera de S2).
+- **L9** (decisión técnica, T3) — El recordatorio lo corre el MISMO barrido diario, después de la generación
+  de cada tenant y con su propio try/catch (`PREVENTIVO_RECORDATORIO_ERROR`): sin cron ni variable de
+  entorno nuevos. "Mañana" es el día argentino (`diaArgentino`). Se reclama con un único
+  `UPDATE tickets SET recordatorio_enviado_at = now() ... RETURNING` (columna nueva, índice parcial) en la
+  misma transacción, y el evento `preventivo.recordatorio` sale por `alCommitear()`: una sola vez, a lo sumo
+  (si el correo falla después del commit, se loguea y no se reintenta). Solo tickets enlazados por
+  `preventivo_generacion`, vivos y fuera de RESUELTO/CERRADO/CANCELADO.
+- **L10** (decisión técnica, T3) — Ventana exacta: `fecha_objetivo = mañana`. Si el barrido no corre la
+  víspera, ese recordatorio se pierde (no se manda tarde). Un ticket generado HOY (desde las 00:00 ART) se
+  saltea: ya recibió el correo de generación con la fecha objetivo; por eso con anticipación de 0 o 1 día no
+  hay recordatorio.
+- **L11** (decisión técnica, T3) — Destinatario: el responsable ACTUAL del plan, leído en el mismo `UPDATE`
+  (JOIN con `planes_preventivo`), no el solicitante guardado en el ticket ni su asignado. Si el plan cambió
+  de responsable después de generar, avisa al nuevo, que es quien responde por el mantenimiento. Nunca a
+  los administradores (L3).
+- **L12** (orquestador, 2026-10-24) — T1, T2 y T3 se commitean juntos: comparten `schema.prisma`,
+  `ticket.mapper(.spec).ts`, plantillas, listener y diálogos, y separar por fragmentos dejaba commits
+  intermedios que no compilan. Ayuda `mantenimiento-preventivo.md` corregida en el mismo commit.

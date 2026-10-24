@@ -26,6 +26,8 @@ const PLAN_FIXTURE: PlanPreventivo = {
   responsableId: "u1",
   intervaloValor: 1,
   intervaloUnidad: "MESES",
+  anticipacionValor: 0,
+  anticipacionUnidad: "DIAS",
   fechaInicio: "2026-01-01",
   proximaEjecucionEn: "2026-04-01",
   activo: true,

@@ -32,6 +32,8 @@ const PLAN_CON_UBICACION: PlanPreventivo = {
   responsableId: USUARIO_ID,
   intervaloValor: 1,
   intervaloUnidad: "MESES",
+  anticipacionValor: 0,
+  anticipacionUnidad: "DIAS",
   fechaInicio: "2026-01-01",
   proximaEjecucionEn: "2026-04-01",
   activo: true,
@@ -588,5 +590,84 @@ describe("PlanPreventivoEditDialog — aviso de cadencia (ADR-7, EP-R5)", () => 
     await user.type(screen.getByLabelText(/^título$/i), " editado");
 
     expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+});
+
+describe("PlanPreventivoEditDialog — anticipación (odd/preventivo-anticipacion)", () => {
+  beforeEach(() => {
+    mockCatalogos();
+    server.use(http.get("/api/equipos", () => HttpResponse.json([])));
+  });
+
+  const AVISO_ANTICIPACION = /al cambiar la anticipación, la próxima ejecución se recalcula desde hoy/i;
+  const PLAN_CON_ANTICIPACION: PlanPreventivo = {
+    ...PLAN_CON_UBICACION,
+    intervaloValor: 3,
+    anticipacionValor: 5,
+    anticipacionUnidad: "DIAS",
+  };
+
+  it("abre con la anticipación vigente del plan", async () => {
+    renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    await abrirDialog();
+
+    expect(screen.getByLabelText(/^anticipación$/i)).toHaveValue(5);
+    expect(screen.getByRole("combobox", { name: /^unidad de anticipación$/i })).toHaveValue("DIAS");
+  });
+
+  it("al reabrir muestra la anticipación VIGENTE del prop, no la del primer render", async () => {
+    const { rerender } = renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    const user = await abrirDialog();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByText("Editar plan de mantenimiento preventivo")).not.toBeInTheDocument());
+
+    rerender(<PlanPreventivoEditDialog plan={{ ...PLAN_CON_ANTICIPACION, anticipacionValor: 1, anticipacionUnidad: "MESES" }} />);
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar plan de mantenimiento preventivo");
+
+    expect(screen.getByLabelText(/^anticipación$/i)).toHaveValue(1);
+    expect(screen.getByRole("combobox", { name: /^unidad de anticipación$/i })).toHaveValue("MESES");
+  });
+
+  it("cambiar la anticipación la manda en el PATCH como número, con su unidad, y avisa del recálculo", async () => {
+    const capturado = capturarPatch();
+    renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    const user = await abrirDialog();
+
+    expect(screen.queryByText(AVISO_ANTICIPACION)).not.toBeInTheDocument();
+    const anticipacion = screen.getByLabelText(/^anticipación$/i);
+    await user.clear(anticipacion);
+    await user.type(anticipacion, "0");
+    expect(await screen.findByText(AVISO_ANTICIPACION)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.anticipacionValor).toBe(0));
+    expect(capturado.body.anticipacionUnidad).toBe("DIAS");
+  });
+
+  it("vaciar la anticipación no la convierte en 0: avisa y no envía", async () => {
+    let envio = false;
+    server.use(
+      http.patch(`/api/preventivo/planes/${PLAN_ID}`, () => {
+        envio = true;
+        return HttpResponse.json(PLAN_CON_ANTICIPACION);
+      }),
+    );
+    renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    const user = await abrirDialog();
+    await user.clear(screen.getByLabelText(/^anticipación$/i));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText("La anticipación es requerida")).toBeInTheDocument();
+    expect(envio).toBe(false);
   });
 });

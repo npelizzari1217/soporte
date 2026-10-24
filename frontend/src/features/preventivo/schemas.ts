@@ -20,6 +20,43 @@ const TITULO_MAX_LENGTH = 255;
 const UBICACION_MAX_LENGTH = 255;
 const INTERVALO_VALOR_MAXIMO = 3650;
 
+/**
+ * Días que vale un mes al comparar la anticipación contra la cadencia. Copia a mano
+ * de `DIAS_POR_MES_ANTICIPACION` (`plan-preventivo.entity.ts`, backend); el test
+ * centinela de `schemas.test.ts` fija el valor. Si el backend lo cambia, hay que
+ * venir a cambiarlo acá.
+ */
+export const DIAS_POR_MES_ANTICIPACION = 30;
+const MENSAJE_ANTICIPACION_NO_MENOR =
+  "La anticipación debe ser menor que la cadencia (un mes cuenta como 30 días)";
+
+function enDias(valor: number, unidad: "DIAS" | "MESES"): number {
+  return unidad === "MESES" ? valor * DIAS_POR_MES_ANTICIPACION : valor;
+}
+
+/**
+ * Espejo de `validarAnticipacion` del dominio: la anticipación tiene que ser
+ * estrictamente menor que la cadencia, comparadas en días. Solo compara cuando
+ * los dos números ya pasaron su propio formato; si no, el error de formato del
+ * campo es el que corresponde mostrar.
+ */
+function validarAnticipacionMenorQueCadencia(
+  data: {
+    intervaloValor: string;
+    intervaloUnidad: "DIAS" | "MESES";
+    anticipacionValor: string;
+    anticipacionUnidad: "DIAS" | "MESES";
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (!/^[1-9]\d*$/.test(data.intervaloValor) || !/^\d+$/.test(data.anticipacionValor)) return;
+  const anticipacion = enDias(Number(data.anticipacionValor), data.anticipacionUnidad);
+  const cadencia = enDias(Number(data.intervaloValor), data.intervaloUnidad);
+  if (anticipacion >= cadencia) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: MENSAJE_ANTICIPACION_NO_MENOR, path: ["anticipacionValor"] });
+  }
+}
+
 function validarObjetivoExcluyente(
   data: { equipoId?: string; ubicacion?: string },
   ctx: z.RefinementCtx,
@@ -74,12 +111,21 @@ const camposComunes = {
   // llegar vacío desde el form, así que un mensaje de error dedicado sería
   // código muerto (hallazgo de revisión #7).
   intervaloUnidad: z.enum(["DIAS", "MESES"]),
+  // Texto y no número, igual que la cadencia: `Number("")` es 0, y un campo
+  // borrado no puede convertirse en silencio en "sin anticipación". El form
+  // arranca en "0"; vaciarlo es un error, no un 0.
+  anticipacionValor: z
+    .string()
+    .min(1, "La anticipación es requerida")
+    .regex(/^\d+$/, "Ingrese un número entero mayor o igual a 0"),
+  anticipacionUnidad: z.enum(["DIAS", "MESES"]),
   fechaInicio: z.string().min(1, "La fecha de inicio es requerida"),
 };
 
-export const crearPlanPreventivoSchema = z
-  .object(camposComunes)
-  .superRefine(validarObjetivoExcluyente);
+export const crearPlanPreventivoSchema = z.object(camposComunes).superRefine((data, ctx) => {
+  validarObjetivoExcluyente(data, ctx);
+  validarAnticipacionMenorQueCadencia(data, ctx);
+});
 export type CrearPlanPreventivoFormValues = z.infer<typeof crearPlanPreventivoSchema>;
 
 /**
@@ -97,9 +143,14 @@ const camposEdicion = {
   responsableId: camposComunes.responsableId,
   intervaloValor: camposComunes.intervaloValor,
   intervaloUnidad: camposComunes.intervaloUnidad,
+  anticipacionValor: camposComunes.anticipacionValor,
+  anticipacionUnidad: camposComunes.anticipacionUnidad,
 };
 
 export const editarPlanPreventivoSchema = z
   .object({ ...camposEdicion, activo: z.boolean() })
-  .superRefine(validarObjetivoExcluyente);
+  .superRefine((data, ctx) => {
+    validarObjetivoExcluyente(data, ctx);
+    validarAnticipacionMenorQueCadencia(data, ctx);
+  });
 export type EditarPlanPreventivoFormValues = z.infer<typeof editarPlanPreventivoSchema>;

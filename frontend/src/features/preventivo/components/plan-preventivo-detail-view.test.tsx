@@ -22,6 +22,8 @@ const PLAN = {
   responsableId: "u1",
   intervaloValor: 1,
   intervaloUnidad: "MESES",
+  anticipacionValor: 0,
+  anticipacionUnidad: "DIAS",
   fechaInicio: "2026-01-01",
   proximaEjecucionEn: "2026-04-01",
   activo: true,
@@ -196,5 +198,30 @@ describe("PlanPreventivoDetailView — entrada a la edición (EP-R2, tarea 3.11)
 
     await screen.findByText("Revisión mensual");
     expect(screen.queryByRole("button", { name: /^editar$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("PlanPreventivoDetailView — anticipación (odd/preventivo-anticipacion)", () => {
+  it("muestra la anticipación del plan en el encabezado", async () => {
+    server.use(
+      http.get("/api/preventivo/planes", () =>
+        HttpResponse.json([{ ...PLAN, anticipacionValor: 1, anticipacionUnidad: "MESES" }]),
+      ),
+      http.get(`/api/preventivo/planes/${PLAN_ID}/generaciones`, () => HttpResponse.json([])),
+    );
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    expect(await screen.findByText(/Anticipación: 1 mes\(es\) antes/)).toBeInTheDocument();
+  });
+
+  it("hermano: con anticipación 0 dice 'Sin anticipación'", async () => {
+    mockBackend();
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    expect(await screen.findByText(/Anticipación: Sin anticipación/)).toBeInTheDocument();
   });
 });

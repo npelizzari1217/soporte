@@ -4,6 +4,7 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { unstubbed } from '../../../testing/mocks';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import {
+  AnticipacionNoMenorQueCadenciaError,
   IntervaloInvalidoError,
   ObjetivoInvalidoError,
   PlanNoEncontradoError,
@@ -208,5 +209,70 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     expect(result.isOk()).toBe(true);
     expect(plan.intervaloValor).toBe(5);
     expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+  });
+
+  // ─── Anticipación (odd/preventivo-anticipacion T1) ───────────────────────
+  //
+  // Editar la anticipación recalcula el puntero como la cadencia, pero por
+  // FECHA DE CICLO (> hoy), no por fecha de generación: el ciclo del 01/07
+  // todavía no se generó, y con 10 días de anticipación su generación (21/06)
+  // ya pasó. Un recálculo por fecha de generación lo saltearía (iría al
+  // 01/08); por fecha de ciclo queda en el 01/07 y el próximo barrido lo
+  // genera de inmediato.
+  it('cambiar la anticipación recalcula el puntero al primer CICLO posterior a hoy, sin saltear el que cae dentro de la nueva ventana', async () => {
+    vi.setSystemTime(new Date('2026-06-25T04:00:00.000Z'));
+    const plan = makePlan({
+      intervaloValor: 1,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-01'),
+      proximaEjecucionEn: new Date('2026-07-01'),
+    });
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      anticipacionValor: 10,
+      anticipacionUnidad: 'DIAS',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(plan.anticipacionValor).toBe(10);
+    expect(plan.anticipacionUnidad).toBe('DIAS');
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+    expect(planRepo.actualizarProximaEjecucion).toHaveBeenCalledWith(
+      plan.id,
+      new Date('2026-07-01T00:00:00.000Z'),
+    );
+  });
+
+  it('mandar la misma anticipación que ya tenía NO recalcula el puntero', async () => {
+    const plan = makePlan({ anticipacionValor: 5, anticipacionUnidad: 'DIAS' });
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      anticipacionValor: 5,
+      anticipacionUnidad: 'DIAS',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+  });
+
+  it('anticipación no menor que la cadencia → AnticipacionNoMenorQueCadenciaError, nada se persiste', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      anticipacionValor: 3,
+      anticipacionUnidad: 'MESES',
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(AnticipacionNoMenorQueCadenciaError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+    expect(plan.anticipacionValor).toBe(0);
   });
 });

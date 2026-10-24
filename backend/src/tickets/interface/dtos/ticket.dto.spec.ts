@@ -107,6 +107,24 @@ describe('toTicketResponseDto', () => {
     expect(dto.asignadoApellido).toBeNull();
   });
 
+  it('fechaObjetivo (odd/preventivo-anticipacion S2): viaja como el ISO de la medianoche UTC del día del ciclo', () => {
+    const dto = toTicketResponseDto(
+      makeTicket({ fechaObjetivo: new Date('2026-07-01T00:00:00.000Z') }),
+      undefined,
+      undefined,
+      undefined,
+      'NUEVO',
+    );
+
+    expect(dto.fechaObjetivo).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('fechaObjetivo null en un ticket que no salió de un plan preventivo', () => {
+    const dto = toTicketResponseDto(makeTicket(), undefined, undefined, undefined, 'NUEVO');
+
+    expect(dto.fechaObjetivo).toBeNull();
+  });
+
   describe('estado SLA derivado (ADR-8)', () => {
     const AHORA = new Date('2026-01-01T12:00:00.000Z');
     const reloj = (extra: Partial<RelojSlaSnapshot> = {}): RelojSlaSnapshot => ({

@@ -59,6 +59,12 @@ import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.con
  * lanza NUNCA aborta la generación: degrada a `EQUIPO_NO_CONSULTABLE` y
  * loguea — un dato descriptivo no frena un mantenimiento.
  *
+ * Anticipación (odd/preventivo-anticipacion T2): el plan pasa su
+ * anticipación a `ciclosPendientes`, que mide el vencimiento sobre la fecha
+ * de GENERACIÓN (ciclo − anticipación). Todo lo demás sigue indexado por la
+ * fecha del CICLO: la clave de idempotencia `(plan_id, fecha_programada)`,
+ * los `SALTEADO_ATRASO`, el puntero, y la fecha objetivo del ticket (S2).
+ *
  * Ref spec: sdd/preventivo/spec, Requirements "Idempotencia por clave de
  * base...", "Recuperación de corrida perdida sin ráfaga", "No-solapamiento
  * con preventivo abierto sin atender", "Solicitante del ticket generado...",
@@ -142,6 +148,7 @@ export class GenerarPreventivosUseCase {
           intervaloValor: plan.intervaloValor,
           intervaloUnidad: plan.intervaloUnidad,
           proximaEjecucionEn: plan.proximaEjecucionEn,
+          anticipacion: { valor: plan.anticipacionValor, unidad: plan.anticipacionUnidad },
         },
         hoy,
       );
@@ -207,6 +214,8 @@ export class GenerarPreventivosUseCase {
         clienteId,
         autorId: plan.responsableId,
         anio,
+        // S2: la fecha del CICLO, aunque el ticket se genere antes por la anticipación.
+        fechaObjetivo: resultado.candidato,
         // Flujo de sistema sin actor humano: no exige ALTAS sobre el tipo PREVENTIVO
         // (odd/permisos-por-tipo-ticket, D3).
         alcance: null,

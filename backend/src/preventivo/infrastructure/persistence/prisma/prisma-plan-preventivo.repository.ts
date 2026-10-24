@@ -7,8 +7,9 @@
  *   NUNCA recibe PrismaService ni llama a PrismaService directamente.
  * - guardar() es un upsert por id; nunca pisa `createdAt` en el UPDATE.
  * - findVencibles() es EXACTAMENTE la query del barrido (ADR-PV2/PV3):
- *   `activo AND deleted_at IS NULL AND proxima_ejecucion_en <= hoy` — cubierta
- *   por el índice parcial `planes_preventivo_proxima_ejecucion_idx` (WU-2).
+ *   `activo AND deleted_at IS NULL AND fecha_generacion(proxima_ejecucion_en) <= hoy`
+ *   (odd/preventivo-anticipacion T2). Con anticipación 0, la fecha de
+ *   generación es el puntero mismo, que era la consulta original.
  *
  * Tarea: 4.1.
  */
@@ -50,9 +51,38 @@ export class PrismaPlanPreventivoRepository implements IPlanPreventivoRepository
     return rows.map(PlanPreventivoMapper.toDomain);
   }
 
+  /**
+   * Planes cuyo próximo ciclo ya tiene la generación vencida: `puntero −
+   * anticipación <= hoy`. `$queryRaw` porque la resta depende de la unidad de
+   * cada fila, y Prisma no expresa aritmética de fechas en un `where`.
+   *
+   * `date - make_interval(months => n)` resta meses con clamp a fin de mes
+   * (`31/03` − 1 mes = `28/02`), el mismo criterio que
+   * `CalcularCicloService.fechaGeneracion`, que es quien decide el candidato
+   * con los planes que esta consulta devuelve. `hoy` viaja como su día UTC
+   * (`YYYY-MM-DD`), que es contra lo que el dominio compara las columnas
+   * `@db.Date` (medianoche UTC), sin depender de la zona de la sesión.
+   *
+   * @param hoy Instante de la corrida del barrido.
+   * @returns Los planes activos, no eliminados, con la generación de su puntero vencida.
+   */
   async findVencibles(hoy: Date): Promise<PlanPreventivoEntity[]> {
+    const diaHoy = hoy.toISOString().slice(0, 10);
+    const vencibles = await this.client.$queryRaw<{ id: string }[]>`
+      SELECT id
+      FROM planes_preventivo
+      WHERE activo
+        AND deleted_at IS NULL
+        AND (
+          CASE WHEN anticipacion_unidad = 'MESES'
+            THEN (proxima_ejecucion_en - make_interval(months => anticipacion_valor))::date
+            ELSE proxima_ejecucion_en - anticipacion_valor
+          END
+        ) <= ${diaHoy}::date
+    `;
+    if (vencibles.length === 0) return [];
     const rows = await this.client.planPreventivo.findMany({
-      where: { activo: true, deletedAt: null, proximaEjecucionEn: { lte: hoy } },
+      where: { id: { in: vencibles.map((fila) => fila.id) } },
     });
     return rows.map(PlanPreventivoMapper.toDomain);
   }

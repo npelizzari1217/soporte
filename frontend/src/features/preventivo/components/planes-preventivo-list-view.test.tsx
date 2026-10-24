@@ -22,6 +22,8 @@ const PLAN = {
   responsableId: "u1",
   intervaloValor: 1,
   intervaloUnidad: "MESES",
+  anticipacionValor: 0,
+  anticipacionUnidad: "DIAS",
   fechaInicio: "2026-01-01",
   proximaEjecucionEn: "2026-02-01",
   activo: true,
@@ -98,5 +100,28 @@ describe("PlanesPreventivoListView — objetivo con catálogo de equipos caído 
 
     await screen.findByText("Revisión mensual");
     expect(await screen.findByText(/no se pudo verificar el equipo/i)).toBeInTheDocument();
+  });
+});
+
+describe("PlanesPreventivoListView — columna 'Anticipación' (odd/preventivo-anticipacion)", () => {
+  it("muestra la anticipación del plan, y 'Sin anticipación' cuando es 0", async () => {
+    server.use(
+      http.get("/api/preventivo/planes", () =>
+        HttpResponse.json([
+          PLAN,
+          { ...PLAN, id: "otro", titulo: "Revisión con aviso", anticipacionValor: 10, anticipacionUnidad: "DIAS" },
+        ]),
+      ),
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/preventivo/planes/:id/generaciones", () => HttpResponse.json([])),
+    );
+    renderWithProviders(<PlanesPreventivoListView />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    await screen.findByText("Revisión con aviso");
+    expect(screen.getByRole("columnheader", { name: "Anticipación" })).toBeInTheDocument();
+    expect(screen.getByText("Sin anticipación")).toBeInTheDocument();
+    expect(screen.getByText("10 día(s) antes")).toBeInTheDocument();
   });
 });

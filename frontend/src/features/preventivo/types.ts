@@ -29,6 +29,9 @@ export interface PlanPreventivo {
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  /** Cuánto antes de la fecha del ciclo se genera el ticket. 0 = el mismo día del ciclo. */
+  anticipacionValor: number;
+  anticipacionUnidad: IntervaloUnidad;
   fechaInicio: string;
   proximaEjecucionEn: string;
   activo: boolean;
@@ -62,6 +65,9 @@ export interface CreatePlanPreventivoDto {
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  /** Ausente = 0 días en el backend. */
+  anticipacionValor?: number;
+  anticipacionUnidad?: IntervaloUnidad;
   fechaInicio: string;
 }
 
@@ -82,5 +88,7 @@ export interface EditarPlanPreventivoDto {
   responsableId?: string;
   intervaloValor?: number;
   intervaloUnidad?: IntervaloUnidad;
+  anticipacionValor?: number;
+  anticipacionUnidad?: IntervaloUnidad;
   activo?: boolean;
 }

@@ -19,6 +19,11 @@
  * carga) NUNCA se propaga hacia el emisor síncrono del evento — y por lo
  * tanto NUNCA aborta el ciclo de generación que lo disparó (6.3).
  *
+ * `preventivo.recordatorio` (odd/preventivo-anticipacion S4) entra por el
+ * mismo adapter porque comparte los colaboradores y el envío aislado: va SOLO
+ * al responsable que trae el evento (el actual del plan), nunca a los
+ * administradores ni al asignado del ticket.
+ *
  * Ref spec: sdd/preventivo/spec, Requirement "Notificación solo al generar".
  * Ref design: ADR-PV2 (flujo de datos), ADR-P8. Tarea: 6.2.
  */
@@ -26,12 +31,16 @@ import { Injectable } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { PreventivoGeneradoEvent } from '../../../preventivo/domain/events/preventivo-generado.event';
+import { PreventivoRecordatorioEvent } from '../../../preventivo/domain/events/preventivo-recordatorio.event';
 import {
   ContactoUsuario,
   IUsuarioContactoResolver,
 } from '../../domain/ports/i-usuario-contacto-resolver';
 import { EmailMessage, IEmailSender } from '../../../shared/domain/ports/i-email-sender';
-import { templatePreventivoGenerado } from '../../domain/templates/email-templates';
+import {
+  templatePreventivoGenerado,
+  templatePreventivoRecordatorio,
+} from '../../domain/templates/email-templates';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { entorno } from '../../../config/entorno';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
@@ -73,6 +82,8 @@ export class PreventivoGeneradoNotificacionListener {
         titulo: ticket.titulo,
         ticketId: ticket.id,
         appBaseUrl: entorno.APP_BASE_URL,
+        // S3 (odd/preventivo-anticipacion): la fecha del ciclo del plan.
+        fechaObjetivo: ticket.fechaObjetivo,
       });
 
       const destinatarios: ContactoUsuario[] = [];
@@ -98,6 +109,43 @@ export class PreventivoGeneradoNotificacionListener {
       // el ciclo de generación (6.3).
       this.logger.error(
         `PreventivoGeneradoNotificacionListener: fallo al notificar generación de preventivo (ticketId=${event.ticketId}): ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Maneja `preventivo.recordatorio` (S4): un correo al responsable del
+   * evento, la víspera de la fecha objetivo. El reclamo ya marcó el ticket
+   * antes de publicar, así que un fallo acá no se reintenta: se loguea.
+   *
+   * @param event Recordatorio reclamado por el barrido (sin PII — solo IDs).
+   * @returns No devuelve nada; todo fallo se loguea y se traga (ADR-6).
+   */
+  @OnEvent('preventivo.recordatorio')
+  async onPreventivoRecordatorio(event: PreventivoRecordatorioEvent): Promise<void> {
+    try {
+      const ticket = await this.ticketRepo.findById(event.ticketId);
+      if (!ticket || !ticket.fechaObjetivo) {
+        return;
+      }
+
+      const contacto = await this.contactoResolver.resolverContacto(event.responsableId);
+      if (!contacto) {
+        return;
+      }
+
+      const plantilla = templatePreventivoRecordatorio({
+        numero: ticket.numero,
+        titulo: ticket.titulo,
+        ticketId: ticket.id,
+        appBaseUrl: entorno.APP_BASE_URL,
+        fechaObjetivo: ticket.fechaObjetivo,
+      });
+      await this.enviarSeguro(contacto, plantilla);
+    } catch (err) {
+      // log-and-swallow (ADR-6): nunca se propaga hacia el barrido que lo publicó.
+      this.logger.error(
+        `PreventivoGeneradoNotificacionListener: fallo al enviar el recordatorio de preventivo (ticketId=${event.ticketId}): ${String(err)}`,
       );
     }
   }

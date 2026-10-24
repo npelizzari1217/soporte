@@ -21,6 +21,10 @@
  * que el resto de la feature con `DataTable`'s `error` prop): sin esto, un
  * fetch fallido o un 403 —el caso real del párrafo anterior— renderizaba un
  * dropdown vacío sin ninguna pista de por qué.
+ *
+ * Anticipación (odd/preventivo-anticipacion): arranca en "0" días por
+ * `defaultValues`, así que `reset()` al cerrar la devuelve a 0 y no a vacío.
+ * Vaciar el campo es un error de validación, no un 0 (ver `schemas.ts`).
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -52,7 +56,10 @@ export function PlanPreventivoCreateDialog() {
     reset,
     setValue,
     formState: { errors },
-  } = useForm<CrearPlanPreventivoFormValues>({ resolver: zodResolver(crearPlanPreventivoSchema) });
+  } = useForm<CrearPlanPreventivoFormValues>({
+    resolver: zodResolver(crearPlanPreventivoSchema),
+    defaultValues: { anticipacionValor: "0", anticipacionUnidad: "DIAS" },
+  });
 
   function elegirObjetivo(tipo: "equipo" | "ubicacion") {
     setObjetivo(tipo);
@@ -82,6 +89,9 @@ export function PlanPreventivoCreateDialog() {
         responsableId: values.responsableId,
         intervaloValor: Number(values.intervaloValor),
         intervaloUnidad: values.intervaloUnidad,
+        // El schema ya garantizó dígitos no vacíos: `Number` no puede recibir "".
+        anticipacionValor: Number(values.anticipacionValor),
+        anticipacionUnidad: values.anticipacionUnidad,
         fechaInicio: values.fechaInicio,
       },
       { onSuccess: () => handleOpenChange(false) },
@@ -268,6 +278,42 @@ export function PlanPreventivoCreateDialog() {
               </Select>
             </div>
           </div>
+
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-anticipacion" className="text-sm font-medium text-foreground">
+                Anticipación
+              </label>
+              <Input
+                id="plan-anticipacion"
+                type="number"
+                min="0"
+                step="1"
+                aria-describedby="plan-anticipacion-ayuda"
+                error={!!errors.anticipacionValor}
+                {...register("anticipacionValor")}
+              />
+              {errors.anticipacionValor && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.anticipacionValor.message}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-anticipacion-unidad" className="text-sm font-medium text-foreground">
+                Unidad de anticipación
+              </label>
+              <Select id="plan-anticipacion-unidad" {...register("anticipacionUnidad")}>
+                <option value="DIAS">Días</option>
+                <option value="MESES">Meses</option>
+              </Select>
+            </div>
+          </div>
+          <p id="plan-anticipacion-ayuda" className="text-sm text-muted-foreground">
+            El ticket se genera esa cantidad antes de la fecha de cada ciclo. Con 0, se genera el mismo
+            día del ciclo. Si la víspera de esa fecha el ticket sigue abierto, el responsable recibe un
+            recordatorio, salvo que el ticket se haya generado ese mismo día.
+          </p>
 
           <div className="flex flex-col gap-1">
             <label htmlFor="plan-fecha-inicio" className="text-sm font-medium text-foreground">

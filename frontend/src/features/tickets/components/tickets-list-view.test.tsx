@@ -38,6 +38,7 @@ const TICKET = {
   ubicacion: null,
   sectorId: null,
   sectorNombre: null,
+  fechaObjetivo: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -142,7 +143,31 @@ describe("TicketsListView", () => {
     expect(conDatos.getByText("Primaria")).toBeInTheDocument();
 
     const sinDatos = within(screen.getByText("Sin datos").closest("tr") as HTMLElement);
-    expect(sinDatos.getAllByText("—")).toHaveLength(2);
+    // Ubicación, Sector y Fecha objetivo (odd/preventivo-anticipacion): las tres vacías.
+    expect(sinDatos.getAllByText("—")).toHaveLength(3);
+  });
+
+  it("muestra la columna Fecha objetivo como día calendario, con guion en los tickets que no la tienen (odd/preventivo-anticipacion)", async () => {
+    server.use(
+      http.get("/api/tickets", () =>
+        HttpResponse.json({
+          items: [
+            { ...TICKET, id: "t1", titulo: "Preventivo", fechaObjetivo: "2026-07-01T00:00:00.000Z" },
+            { ...TICKET, id: "t2", titulo: "Común" },
+          ],
+          total: 2,
+          pagina: 1,
+          porPagina: 10,
+        }),
+      ),
+    );
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+    const preventivo = within((await screen.findByText("Preventivo")).closest("tr") as HTMLElement);
+    expect(screen.getByRole("columnheader", { name: "Fecha objetivo" })).toBeInTheDocument();
+    expect(preventivo.getByText("01/07/2026")).toBeInTheDocument();
+    const comun = within(screen.getByText("Común").closest("tr") as HTMLElement);
+    expect(comun.queryByText("01/07/2026")).not.toBeInTheDocument();
   });
 
   it("click en una fila navega al detalle del ticket", async () => {

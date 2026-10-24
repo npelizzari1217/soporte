@@ -24,17 +24,28 @@
  * Ref tasks: sdd/preventivo/tasks WU-2 (2.5, 2.6, 2.7).
  */
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Client } from 'pg';
 import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
 import { TenantMigrationRunnerAdapter } from '../../../../clientes/infrastructure/tenant-migration-runner.adapter';
 import { RESULTADOS_GENERACION } from '../../../domain/ports/i-preventivo-generacion.repository';
-import { UNIDADES_INTERVALO } from '../../../domain/entities/plan-preventivo.entity';
+import {
+  DIAS_POR_MES_ANTICIPACION,
+  UNIDADES_INTERVALO,
+} from '../../../domain/entities/plan-preventivo.entity';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
   'postgresql://soporte:soporte@localhost:5432/soporte_master_test';
 
 const TENANT_DB_NAME = `soporte_prov_prevschema_${randomBytes(4).toString('hex')}_test`;
+const MIGRACION_ANTICIPACION = join(
+  __dirname,
+  '../../../../../prisma_tenant/migrations/20261025100000_preventivo_anticipacion',
+);
+const sqlAnticipacion = (archivo: string): string =>
+  readFileSync(join(MIGRACION_ANTICIPACION, archivo), 'utf8');
 
 /** Deriva la URL del tenant efímero reemplazando el nombre de DB en `MASTER_TEST_URL`. */
 function buildTenantUrl(dbName: string): string {
@@ -345,6 +356,144 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
       const definicion: string = result.rows[0].def;
       const enLaDb = [...definicion.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
       expect(enLaDb).toEqual([...UNIDADES_INTERVALO].sort());
+    });
+  });
+
+  // ─── Anticipación (odd/preventivo-anticipacion T1) ────────────────────────
+  //
+  // El dominio (`PlanPreventivoEntity`) es la autoridad; estos CHECKs son el
+  // backstop y tienen que coincidir EXACTO con él: ni más estrictos (500
+  // crudo para algo que el dominio aceptó) ni más laxos.
+  describe('anticipación del plan (S5, S6)', () => {
+    /** Inserta un plan con cadencia y anticipación explícitas; el resto, válido. */
+    function insertPlanConAnticipacion(p: {
+      intervaloValor: number;
+      intervaloUnidad: string;
+      anticipacionValor: number;
+      anticipacionUnidad: string;
+    }) {
+      return client.query(
+        `INSERT INTO planes_preventivo
+           (id, titulo, ubicacion, prioridad_id, responsable_id, intervalo_valor, intervalo_unidad,
+            anticipacion_valor, anticipacion_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
+         VALUES (gen_random_uuid(), 'Plan anticipacion', 'SEDE CENTRAL', $1, gen_random_uuid(),
+                 $2, $3, $4, $5, '2026-01-01', '2026-01-01', now())
+         RETURNING id`,
+        [
+          prioridadId,
+          p.intervaloValor,
+          p.intervaloUnidad,
+          p.anticipacionValor,
+          p.anticipacionUnidad,
+        ],
+      );
+    }
+
+    it('S5: un plan que no la menciona (como los que ya existían) queda en 0 DIAS', async () => {
+      const id = await insertPlanValido({ equipoId: null, ubicacion: 'SEDE CENTRAL' });
+      const r = await client.query(
+        'SELECT anticipacion_valor, anticipacion_unidad FROM planes_preventivo WHERE id = $1',
+        [id],
+      );
+      expect(r.rows[0]).toEqual({ anticipacion_valor: 0, anticipacion_unidad: 'DIAS' });
+    });
+
+    it('rechaza anticipacion_valor negativo', async () => {
+      await expect(
+        insertPlanConAnticipacion({
+          intervaloValor: 7,
+          intervaloUnidad: 'DIAS',
+          anticipacionValor: -1,
+          anticipacionUnidad: 'DIAS',
+        }),
+      ).rejects.toThrow(/planes_preventivo_anticipacion_valor_check/);
+    });
+
+    it('rechaza una unidad de anticipación fuera del catálogo', async () => {
+      await expect(
+        insertPlanConAnticipacion({
+          intervaloValor: 7,
+          intervaloUnidad: 'DIAS',
+          anticipacionValor: 1,
+          anticipacionUnidad: 'SEMANAS',
+        }),
+      ).rejects.toThrow(/planes_preventivo_anticipacion_unidad_check/);
+    });
+
+    it.each([
+      // [cadencia, unidad, anticipación, unidad, ¿acepta?] — mismos bordes que el dominio.
+      [30, 'DIAS', 29, 'DIAS', true],
+      [30, 'DIAS', 30, 'DIAS', false],
+      [1, 'MESES', 29, 'DIAS', true],
+      [1, 'MESES', 30, 'DIAS', false],
+      [30, 'DIAS', 1, 'MESES', false],
+      [31, 'DIAS', 1, 'MESES', true],
+      [3, 'MESES', 2, 'MESES', true],
+      [3, 'MESES', 3, 'MESES', false],
+    ] as const)(
+      'cadencia %i %s con anticipación %i %s → acepta=%s (mes = 30 días)',
+      async (intervaloValor, intervaloUnidad, anticipacionValor, anticipacionUnidad, acepta) => {
+        const insert = insertPlanConAnticipacion({
+          intervaloValor,
+          intervaloUnidad,
+          anticipacionValor,
+          anticipacionUnidad,
+        });
+        if (acepta) {
+          await expect(insert).resolves.toBeDefined();
+        } else {
+          await expect(insert).rejects.toThrow(
+            /planes_preventivo_anticipacion_menor_cadencia_check/,
+          );
+        }
+      },
+    );
+
+    it('planes_preventivo_anticipacion_unidad_check enumera exactamente UNIDADES_INTERVALO', async () => {
+      const result = await client.query(
+        'SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1',
+        ['planes_preventivo_anticipacion_unidad_check'],
+      );
+      expect(result.rows).toHaveLength(1);
+      const definicion: string = result.rows[0].def;
+      const enLaDb = [...definicion.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort();
+      expect(enLaDb).toEqual([...UNIDADES_INTERVALO].sort());
+    });
+
+    it('el CHECK de anticipación menor que la cadencia usa el mismo mes de 30 días que el dominio', async () => {
+      const result = await client.query(
+        'SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = $1',
+        ['planes_preventivo_anticipacion_menor_cadencia_check'],
+      );
+      const definicion: string = result.rows[0].def;
+      const multiplicadores = [...definicion.matchAll(/\* (\d+)/g)].map((m) => Number(m[1]));
+      expect(multiplicadores).toEqual([DIAS_POR_MES_ANTICIPACION, DIAS_POR_MES_ANTICIPACION]);
+    });
+
+    // Último del archivo: retira y reaplica las columnas de la migración.
+    it('rollback.sql retira columnas y CHECKs, se puede correr dos veces, y la migración se reaplica', async () => {
+      await client.query(sqlAnticipacion('rollback.sql'));
+      await client.query(sqlAnticipacion('rollback.sql'));
+      const columnas = await client.query(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'planes_preventivo' AND column_name LIKE 'anticipacion_%'`,
+      );
+      expect(columnas.rows).toHaveLength(0);
+      const checks = await client.query(
+        `SELECT conname FROM pg_constraint WHERE conname LIKE 'planes_preventivo_anticipacion_%'`,
+      );
+      expect(checks.rows).toHaveLength(0);
+
+      await client.query(sqlAnticipacion('migration.sql'));
+      const reaplicadas = await client.query(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name = 'planes_preventivo' AND column_name LIKE 'anticipacion_%'
+          ORDER BY column_name`,
+      );
+      expect(reaplicadas.rows.map((r) => r.column_name)).toEqual([
+        'anticipacion_unidad',
+        'anticipacion_valor',
+      ]);
     });
   });
 });

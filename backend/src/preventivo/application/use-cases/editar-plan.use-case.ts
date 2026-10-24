@@ -19,6 +19,8 @@ export interface EditarPlanDto {
   responsableId?: string;
   intervaloValor?: number;
   intervaloUnidad?: IntervaloUnidad;
+  anticipacionValor?: number;
+  anticipacionUnidad?: IntervaloUnidad;
   activo?: boolean;
 }
 
@@ -38,6 +40,15 @@ export interface EditarPlanDto {
  * próxima fecha de ciclo `> hoy`, tanto en el camino normal como en el
  * re-anclaje aritmético del TOPE — exactamente el puntero "hacia adelante"
  * que pide el requisito, sin duplicar esa aritmética acá.
+ *
+ * La anticipación (odd/preventivo-anticipacion T1) dispara el MISMO
+ * recálculo cuando cambia, y el puntero sigue siendo una FECHA DE CICLO: el
+ * recálculo pasa el plan SIN anticipación a `ciclosPendientes`, así que el
+ * resultado es el primer ciclo cuya fecha es `> hoy`. Con la anticipación
+ * puesta daría el primer ciclo cuya fecha de GENERACIÓN es `> hoy`, y
+ * agrandar la anticipación saltearía el ciclo próximo, que todavía no se
+ * generó. Si ese ciclo ya cae dentro de la ventana nueva, el próximo barrido
+ * lo genera; si ya se había generado, `reservar()` lo descarta solo.
  *
  * Sin validación de objetivo excluyente EN ESTE use case: la AUTORIDAD es
  * `PlanPreventivoEntity.editar()` (ADR-PV1).
@@ -66,6 +77,9 @@ export class EditarPlanUseCase {
     const cadenciaCambia =
       (dto.intervaloValor !== undefined && dto.intervaloValor !== plan.intervaloValor) ||
       (dto.intervaloUnidad !== undefined && dto.intervaloUnidad !== plan.intervaloUnidad);
+    const anticipacionCambia =
+      (dto.anticipacionValor !== undefined && dto.anticipacionValor !== plan.anticipacionValor) ||
+      (dto.anticipacionUnidad !== undefined && dto.anticipacionUnidad !== plan.anticipacionUnidad);
 
     const editarResult = plan.editar({
       titulo: dto.titulo,
@@ -76,6 +90,8 @@ export class EditarPlanUseCase {
       responsableId: dto.responsableId,
       intervaloValor: dto.intervaloValor,
       intervaloUnidad: dto.intervaloUnidad,
+      anticipacionValor: dto.anticipacionValor,
+      anticipacionUnidad: dto.anticipacionUnidad,
       activo: dto.activo,
     });
     if (editarResult.isFail()) {
@@ -85,8 +101,10 @@ export class EditarPlanUseCase {
     await this.txRunner.run(async () => {
       await this.planRepo.guardar(plan);
 
-      if (cadenciaCambia) {
+      if (cadenciaCambia || anticipacionCambia) {
         const hoy = new Date();
+        // Sin `anticipacion` a propósito: el puntero es la fecha del ciclo
+        // (ver JSDoc de la clase).
         const { proximaEjecucionEn } = this.calcularCiclo.ciclosPendientes(
           {
             fechaInicio: plan.fechaInicio,

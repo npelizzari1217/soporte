@@ -53,6 +53,9 @@ import {
   UnidadIntervaloInvalidaError,
   TituloDemasiadoLargoError,
   UbicacionDemasiadoLargaError,
+  AnticipacionInvalidaError,
+  UnidadAnticipacionInvalidaError,
+  AnticipacionNoMenorQueCadenciaError,
   PlanNoEncontradoError,
 } from '../../domain/errors/preventivo.errors';
 
@@ -78,7 +81,10 @@ export function toHttpException(
     error instanceof IntervaloExcedeMaximoError ||
     error instanceof UnidadIntervaloInvalidaError ||
     error instanceof TituloDemasiadoLargoError ||
-    error instanceof UbicacionDemasiadoLargaError
+    error instanceof UbicacionDemasiadoLargaError ||
+    error instanceof AnticipacionInvalidaError ||
+    error instanceof UnidadAnticipacionInvalidaError ||
+    error instanceof AnticipacionNoMenorQueCadenciaError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -101,7 +107,7 @@ export class PreventivoController {
   /**
    * POST /preventivo/planes
    * Crea un plan de mantenimiento preventivo.
-   * @throws 422 objetivo excluyente violado, o cadencia inválida
+   * @throws 422 objetivo excluyente violado, cadencia inválida, o anticipación inválida o no menor que la cadencia
    */
   @Post()
   @RequiereAcciones('PREVENTIVO:ALTAS')
@@ -116,6 +122,8 @@ export class PreventivoController {
       responsableId: dto.responsableId,
       intervaloValor: dto.intervaloValor,
       intervaloUnidad: dto.intervaloUnidad,
+      anticipacionValor: dto.anticipacionValor,
+      anticipacionUnidad: dto.anticipacionUnidad,
       fechaInicio: new Date(dto.fechaInicio),
     });
 
@@ -157,9 +165,9 @@ export class PreventivoController {
   /**
    * PATCH /preventivo/planes/:id
    * Edita un plan (PATCH semántico). [R2] Recalcula `proximaEjecucionEn`
-   * hacia adelante desde hoy si la cadencia cambió.
+   * hacia adelante desde hoy si la cadencia o la anticipación cambiaron.
    * @throws 404 plan inexistente
-   * @throws 422 objetivo excluyente violado, o cadencia inválida
+   * @throws 422 objetivo excluyente violado, cadencia inválida, o anticipación inválida o no menor que la cadencia
    */
   @Patch(':id')
   @RequiereAcciones('PREVENTIVO:MODIFICACION')
@@ -178,6 +186,8 @@ export class PreventivoController {
       responsableId: dto.responsableId,
       intervaloValor: dto.intervaloValor,
       intervaloUnidad: dto.intervaloUnidad,
+      anticipacionValor: dto.anticipacionValor,
+      anticipacionUnidad: dto.anticipacionUnidad,
       activo: dto.activo,
     });
 

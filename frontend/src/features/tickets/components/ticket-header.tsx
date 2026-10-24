@@ -21,11 +21,14 @@
  * Ubicación y sector (odd/ubicacion-sector-ticket): el sector se muestra siempre, por el nombre que
  * resuelve el backend (`sectorNombre`, aunque esté desactivado). La ubicación general solo con
  * `mostrarUbicacion`: en los tickets de Edilicia no se muestra (CA2).
+ *
+ * Fecha objetivo (odd/preventivo-anticipacion): solo la traen los tickets que genera un plan
+ * preventivo, así que la fila aparece solo cuando hay fecha. Es informativa: no cambia el SLA.
  */
 import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { Badge } from "@/components/ui/badge";
-import { formatearInstante } from "@/shared/lib/formato-fecha";
+import { formatearFechaCalendario, formatearInstante } from "@/shared/lib/formato-fecha";
 import type { Ticket } from "../types";
 
 export interface TicketHeaderProps {
@@ -124,6 +127,13 @@ export function TicketHeader({
           <dt className="text-muted-foreground">Sector</dt>
           <dd className="text-foreground">{ticket.sectorNombre ?? "—"}</dd>
         </div>
+        {ticket.fechaObjetivo && (
+          <div>
+            <dt className="text-muted-foreground">Fecha objetivo</dt>
+            {/* `fecha_objetivo` es `@db.Date`: fecha de calendario, no instante. */}
+            <dd className="text-foreground">{formatearFechaCalendario(ticket.fechaObjetivo)}</dd>
+          </div>
+        )}
         <div>
           <dt className="text-muted-foreground">
             {venceAt ? "SLA vence" : estadoSla === "EN_PAUSA" ? "SLA" : "Creado"}

@@ -11,7 +11,9 @@
  * filtro con una sola fila pasa con cualquier WHERE, porque no hay nada que
  * excluir"). Mutación probada manualmente: comentar la cláusula `activo:
  * true` (o `deletedAt: null`, o `proximaEjecucionEn: {lte: hoy}`) en
- * `findVencibles` hace fallar este test — ver apply-progress-wu4.
+ * `findVencibles` hace fallar este test — ver apply-progress-wu4. Desde
+ * odd/preventivo-anticipacion esas cláusulas son SQL (`activo`, `deleted_at IS
+ * NULL` y la fecha de generación `<= hoy`): el razonamiento es el mismo.
  *
  * También cubre `actualizarProximaEjecucion` (escritura directa fuera del
  * alcance de la entidad, EditarPlanUseCase [R2]) y el roundtrip
@@ -124,6 +126,29 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     expect(encontrado!.activo).toBe(true);
   });
 
+  it('guardar → buscarPorId preserva la anticipación, y editarla la actualiza (odd/preventivo-anticipacion)', async () => {
+    const plan = makePlan({
+      intervaloValor: 3,
+      intervaloUnidad: 'MESES',
+      anticipacionValor: 2,
+      anticipacionUnidad: 'MESES',
+    });
+    await withTenant(() => repo.guardar(plan));
+
+    const encontrado = await withTenant(() => repo.buscarPorId(plan.id));
+    if (!encontrado) throw new Error('El plan recién guardado no se encontró.');
+    expect(encontrado.anticipacionValor).toBe(2);
+    expect(encontrado.anticipacionUnidad).toBe('MESES');
+
+    expect(encontrado.editar({ anticipacionValor: 10, anticipacionUnidad: 'DIAS' }).isOk()).toBe(
+      true,
+    );
+    await withTenant(() => repo.guardar(encontrado));
+    const editado = await withTenant(() => repo.buscarPorId(plan.id));
+    expect(editado?.anticipacionValor).toBe(10);
+    expect(editado?.anticipacionUnidad).toBe('DIAS');
+  });
+
   it('actualizarProximaEjecucion escribe directo, sin pasar por guardar()', async () => {
     const plan = makePlan();
     await withTenant(() => repo.guardar(plan));
@@ -162,6 +187,57 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     expect(idsVencibles).not.toContain(vencibleInactivo.id);
     expect(idsVencibles).not.toContain(vencibleEliminado.id);
     expect(idsVencibles).not.toContain(noVencidoTodavia.id);
+  });
+
+  // ─── findVencibles con anticipación (odd/preventivo-anticipacion T2) ─────
+  //
+  // Vencible = fecha de GENERACIÓN del puntero (ciclo − anticipación) <= hoy.
+  // Tiene que coincidir con `CalcularCicloService.fechaGeneracion`: si la
+  // consulta fuera más estricta, el barrido nunca vería un plan que el dominio
+  // da por vencido.
+  it('findVencibles mide sobre la fecha de generación: 10 días antes entra, 9 días antes todavía no', async () => {
+    const hoy = new Date('2026-06-21T04:00:00.000Z');
+    const diezDias = makePlan({
+      intervaloValor: 1,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-01'),
+      proximaEjecucionEn: new Date('2026-07-01'),
+      anticipacionValor: 10,
+      anticipacionUnidad: 'DIAS',
+    });
+    const nueveDias = makePlan({
+      intervaloValor: 1,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-01'),
+      proximaEjecucionEn: new Date('2026-07-01'),
+      anticipacionValor: 9,
+      anticipacionUnidad: 'DIAS',
+    });
+    await withTenant(() => repo.guardar(diezDias));
+    await withTenant(() => repo.guardar(nueveDias));
+
+    const ids = (await withTenant(() => repo.findVencibles(hoy))).map((p) => p.id);
+
+    expect(ids).toContain(diezDias.id);
+    expect(ids).not.toContain(nueveDias.id);
+  });
+
+  it('findVencibles con anticipación en MESES resta con clamp a fin de mes: el ciclo 31/03 vence el 28/02, no el 27/02', async () => {
+    const plan = makePlan({
+      intervaloValor: 2,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-31'),
+      proximaEjecucionEn: new Date('2026-03-31'),
+      anticipacionValor: 1,
+      anticipacionUnidad: 'MESES',
+    });
+    await withTenant(() => repo.guardar(plan));
+
+    const el27 = await withTenant(() => repo.findVencibles(new Date('2026-02-27T04:00:00.000Z')));
+    const el28 = await withTenant(() => repo.findVencibles(new Date('2026-02-28T04:00:00.000Z')));
+
+    expect(el27.map((p) => p.id)).not.toContain(plan.id);
+    expect(el28.map((p) => p.id)).toContain(plan.id);
   });
 
   it('listar() excluye los soft-deleted pero incluye los inactivos (activo=false sigue visible en el ABM)', async () => {

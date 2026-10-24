@@ -18,6 +18,18 @@ export function unidadIntervaloLabel(unidad: IntervaloUnidad): string {
 }
 
 /**
+ * Etiqueta de la anticipación del plan (odd/preventivo-anticipacion): cuánto antes
+ * de la fecha del ciclo se genera el ticket.
+ *
+ * @param plan - Plan cuya anticipación se etiqueta.
+ * @returns `"Sin anticipación"` con 0, o `"N día(s) antes"` / `"N mes(es) antes"`.
+ */
+export function anticipacionLabel(plan: Pick<PlanPreventivo, "anticipacionValor" | "anticipacionUnidad">): string {
+  if (plan.anticipacionValor === 0) return "Sin anticipación";
+  return `${plan.anticipacionValor} ${unidadIntervaloLabel(plan.anticipacionUnidad)} antes`;
+}
+
+/**
  * Etiqueta del objetivo del plan (ADR-PV1: exactamente equipo O ubicación,
  * nunca los dos ni ninguno). Con `equipoId` resuelve el nombre contra el
  * catálogo de equipos; "Equipo" es el fallback mientras el catálogo carga o

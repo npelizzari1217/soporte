@@ -19,7 +19,7 @@ import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { usePlanesPreventivo, useGeneracionesDeVariosPlanes, ultimaGeneracion } from "../hooks/use-planes-preventivo";
 import { PlanPreventivoCreateDialog } from "./plan-preventivo-create-dialog";
 import { badgeVariantDeResultado, etiquetaResultado } from "../lib/resultado-generacion";
-import { objetivoLabel, unidadIntervaloLabel } from "../lib/plan-labels";
+import { anticipacionLabel, objetivoLabel, unidadIntervaloLabel } from "../lib/plan-labels";
 import type { PlanPreventivo, PreventivoGeneracion } from "../types";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ClipboardCheck } from "lucide-react";
@@ -85,6 +85,7 @@ export function PlanesPreventivoListView() {
       ),
     },
     { key: "intervaloValor", header: "Cadencia", render: (row) => cadenciaLabel(row) },
+    { key: "anticipacionValor", header: "Anticipación", render: (row) => anticipacionLabel(row) },
     {
       key: "proximaEjecucionEn",
       header: "Próxima ejecución",

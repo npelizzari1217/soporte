@@ -20,6 +20,7 @@ import { ListarPlanesUseCase } from '../../application/use-cases/listar-planes.u
 import { DarDeBajaPlanUseCase } from '../../application/use-cases/dar-de-baja-plan.use-case';
 import { ListarGeneracionesPlanUseCase } from '../../application/use-cases/listar-generaciones-plan.use-case';
 import {
+  AnticipacionNoMenorQueCadenciaError,
   ObjetivoInvalidoError,
   PlanNoEncontradoError,
 } from '../../domain/errors/preventivo.errors';
@@ -109,6 +110,33 @@ describe('PreventivoController (4.4)', () => {
       );
     });
 
+    it('pasa la anticipación al caso de uso y la devuelve en la respuesta', async () => {
+      const { controller, crearPlanUseCase } = buildController();
+      crearPlanUseCase.execute.mockResolvedValue(Result.ok(makePlan()));
+
+      const result = await controller.crear({
+        ...DTO_CREAR_VALIDO,
+        anticipacionValor: 0,
+        anticipacionUnidad: 'DIAS',
+      });
+
+      expect(crearPlanUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ anticipacionValor: 0, anticipacionUnidad: 'DIAS' }),
+      );
+      expect(result.anticipacionValor).toBe(0);
+      expect(result.anticipacionUnidad).toBe('DIAS');
+    });
+
+    it('anticipación no menor que la cadencia → 422 con el mensaje del dominio', async () => {
+      const { controller, crearPlanUseCase } = buildController();
+      const error = new AnticipacionNoMenorQueCadenciaError('30 días', '30 días');
+      crearPlanUseCase.execute.mockResolvedValue(Result.fail(error));
+
+      await expect(controller.crear(DTO_CREAR_VALIDO)).rejects.toThrow(
+        new UnprocessableEntityException(error.message),
+      );
+    });
+
     it('declara @RequiereAcciones("PREVENTIVO:ALTAS")', () => {
       const meta = Reflect.getMetadata(ACCIONES_KEY, PreventivoController.prototype.crear);
       expect(meta).toEqual(['PREVENTIVO:ALTAS']);
@@ -156,6 +184,21 @@ describe('PreventivoController (4.4)', () => {
       editarPlanUseCase.execute.mockResolvedValue(Result.fail(new PlanNoEncontradoError('x')));
 
       await expect(controller.editar('x', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('pasa la anticipación al caso de uso (PATCH semántico)', async () => {
+      const { controller, editarPlanUseCase } = buildController();
+      editarPlanUseCase.execute.mockResolvedValue(Result.ok(makePlan()));
+
+      await controller.editar('plan-uuid', { anticipacionValor: 2, anticipacionUnidad: 'DIAS' });
+
+      expect(editarPlanUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          planId: 'plan-uuid',
+          anticipacionValor: 2,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
     });
 
     it('declara @RequiereAcciones("PREVENTIVO:MODIFICACION")', () => {

@@ -30,6 +30,14 @@ export interface PreventivoGeneracionProps {
   createdAt: Date;
 }
 
+/** Recordatorio reclamado por el barrido diario (odd/preventivo-anticipacion T3). */
+export interface RecordatorioReclamado {
+  ticketId: string;
+  planId: string;
+  /** Responsable ACTUAL del plan, leído en el mismo reclamo. */
+  responsableId: string;
+}
+
 /**
  * IPreventivoGeneracionRepository — puerto de persistencia para
  * `preventivo_generacion` (TENANT). Definido en la capa de dominio: sin
@@ -86,6 +94,21 @@ export interface IPreventivoGeneracionRepository {
    * Ref design: ADR-PV2 (paso 2 de la transacción por ciclo). Tarea: 5.3/5.4.
    */
   existeTicketAbiertoDelPlan(planId: string): Promise<boolean>;
+  /**
+   * Reclama los recordatorios del día (odd/preventivo-anticipacion S4): marca
+   * `tickets.recordatorio_enviado_at` en los tickets GENERADOS por un plan
+   * que tienen `fecha_objetivo = fechaObjetivo`, todavía sin recordatorio,
+   * vivos, sin atender (`RESUELTO`/`CERRADO`/`CANCELADO` quedan afuera) y
+   * creados ANTES de `generadosAntesDe` — un ticket generado hoy ya recibió
+   * el correo de generación. Un solo `UPDATE ... RETURNING`: dos corridas a
+   * la vez no reclaman el mismo ticket, y el segundo barrido no encuentra
+   * nada. Corre dentro de la transacción del caller.
+   * @returns Los tickets reclamados, con el responsable ACTUAL de su plan.
+   */
+  reclamarRecordatorios(
+    fechaObjetivo: Date,
+    generadosAntesDe: Date,
+  ): Promise<RecordatorioReclamado[]>;
 }
 
 /** Token de inyección de dependencias para IPreventivoGeneracionRepository en NestJS. */

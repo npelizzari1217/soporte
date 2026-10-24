@@ -56,4 +56,27 @@ describe('CrearPlanUseCase (4.2)', () => {
     expect(result.getError()).toBeInstanceOf(ObjetivoInvalidoError);
     expect(planRepo.guardar).not.toHaveBeenCalled();
   });
+
+  it('sin anticipación el plan nace con 0 días (S5)', async () => {
+    const { useCase } = buildUseCase();
+
+    const plan = (await useCase.execute(baseDto)).getValue();
+
+    expect(plan.anticipacionValor).toBe(0);
+    expect(plan.anticipacionUnidad).toBe('DIAS');
+  });
+
+  it('con anticipación válida la persiste tal cual', async () => {
+    const { useCase, planRepo } = buildUseCase();
+
+    const result = await useCase.execute({
+      ...baseDto,
+      anticipacionValor: 15,
+      anticipacionUnidad: 'DIAS',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(result.getValue().anticipacionValor).toBe(15);
+    expect(planRepo.guardar).toHaveBeenCalledWith(result.getValue());
+  });
 });

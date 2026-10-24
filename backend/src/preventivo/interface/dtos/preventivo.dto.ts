@@ -19,6 +19,13 @@
  * `compras/domain/errors/compras.errors.ts`: sin este guard, el `INSERT`
  * revienta con un `PrismaClientKnownRequestError` sin mapear (500 crudo).
  *
+ * La anticipación (odd/preventivo-anticipacion T1) sigue el mismo reparto:
+ * el DTO valida la forma de cada campo (entero `>= 0`, unidad del catálogo) y
+ * la regla ENTRE campos —anticipación menor que la cadencia— es del dominio
+ * (`AnticipacionNoMenorQueCadenciaError`), como el XOR del objetivo. No lleva
+ * `@Max` propio: el dominio la rechaza antes de que un valor enorme llegue al
+ * `int4` de la columna, porque ninguna anticipación válida supera la cadencia.
+ *
  * Tarea: 4.4. Fix post-verify (WU-8, hallazgo "límites de la base más
  * estrictos que el dominio").
  */
@@ -33,6 +40,7 @@ import {
   IsUUID,
   Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import {
@@ -81,6 +89,16 @@ export class CreatePlanPreventivoHttpDto {
   @IsIn(UNIDADES_INTERVALO)
   intervaloUnidad!: IntervaloUnidad;
 
+  /** Ausente = 0 días (S5). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  anticipacionValor?: number;
+
+  @IsOptional()
+  @IsIn(UNIDADES_INTERVALO)
+  anticipacionUnidad?: IntervaloUnidad;
+
   @IsDateString()
   fechaInicio!: string;
 }
@@ -125,6 +143,15 @@ export class EditarPlanPreventivoHttpDto {
   intervaloUnidad?: IntervaloUnidad;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  anticipacionValor?: number;
+
+  @IsOptional()
+  @IsIn(UNIDADES_INTERVALO)
+  anticipacionUnidad?: IntervaloUnidad;
+
+  @IsOptional()
   @IsBoolean()
   activo?: boolean;
 }
@@ -142,6 +169,8 @@ export interface PlanPreventivoResponseDto {
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  anticipacionValor: number;
+  anticipacionUnidad: IntervaloUnidad;
   fechaInicio: string;
   proximaEjecucionEn: string;
   activo: boolean;
@@ -161,6 +190,8 @@ export function toPlanPreventivoResponseDto(plan: PlanPreventivoEntity): PlanPre
     responsableId: plan.responsableId,
     intervaloValor: plan.intervaloValor,
     intervaloUnidad: plan.intervaloUnidad,
+    anticipacionValor: plan.anticipacionValor,
+    anticipacionUnidad: plan.anticipacionUnidad,
     fechaInicio: plan.fechaInicio.toISOString(),
     proximaEjecucionEn: plan.proximaEjecucionEn.toISOString(),
     activo: plan.activo,

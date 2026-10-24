@@ -49,7 +49,7 @@ import { TicketCreateDialog } from "./ticket-create-dialog";
 import { ExportarTicketsButton } from "./exportar-tickets-button";
 import { StatusBadge, etiquetaOpcionEstado, type TicketEstado } from "@/components/ui/status-badge";
 import { Ticket as TicketIcon } from "lucide-react";
-import { formatearInstante } from "@/shared/lib/formato-fecha";
+import { formatearFechaCalendario, formatearInstante } from "@/shared/lib/formato-fecha";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
@@ -231,6 +231,13 @@ export function TicketsListView() {
     // nombre que resuelve el backend, que incluye los desactivados.
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     { key: "sectorId", header: "Sector", render: (row) => row.sectorNombre ?? "—" },
+    // odd/preventivo-anticipacion: la fecha del ciclo del plan que generó el ticket. Es
+    // `@db.Date` (día calendario, no instante) e informativa: no cambia el SLA.
+    {
+      key: "fechaObjetivo",
+      header: "Fecha objetivo",
+      render: (row) => (row.fechaObjetivo ? formatearFechaCalendario(row.fechaObjetivo) : "—"),
+    },
     ...(borrados
       ? [
           {

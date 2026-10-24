@@ -334,6 +334,12 @@ model Ticket {
   /// otra columna que `ticket_edilicia.ubicacion`. `sectorId`: FK RESTRICT → sectores.id.
   ubicacion          String?   @db.VarChar(255)
   sectorId           String?   @map("sector_id") @db.Uuid
+  /// Fecha objetivo (odd/preventivo-anticipacion): la fecha del ciclo del plan preventivo que generó
+  /// el ticket. Informativa, sin efecto en el SLA. NULL en los tickets que no salen de un plan.
+  fechaObjetivo      DateTime? @map("fecha_objetivo") @db.Date
+  /// Recordatorio de preventivo enviado (odd/preventivo-anticipacion T3): lo marca solo el UPDATE acotado
+  /// del barrido, en la misma transaccion que reclama el ticket. NULL = sin recordatorio. Nunca el upsert.
+  recordatorioEnviadoAt DateTime? @map("recordatorio_enviado_at") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
@@ -372,6 +378,7 @@ model Ticket {
   @@index([id], map: "tickets_sla_reloj_pendiente_idx") // partial WHERE sla_reloj_pendiente — ver migration SQL
   @@index([id], map: "tickets_sla_meta_pendiente_idx") // partial WHERE sla_meta_pendiente — ver migration SQL
   @@index([primeraRespuestaVenceAt], map: "tickets_primera_respuesta_pendiente_idx") // partial — ver migration SQL
+  @@index([fechaObjetivo], map: "tickets_recordatorio_pendiente_idx") // partial — ver migration SQL
   @@map("tickets")
 }
 
@@ -1387,6 +1394,11 @@ model PlanPreventivo {
   intervaloValor     Int       @map("intervalo_valor")
   /// CHECK (intervalo_unidad IN ('DIAS','MESES')).
   intervaloUnidad    String    @map("intervalo_unidad") @db.VarChar(10)
+  /// Anticipacion de la generacion (odd/preventivo-anticipacion). CHECK >= 0 y menor que la
+  /// cadencia en dias (mes = 30). DEFAULT 0 = genera el dia del ciclo.
+  anticipacionValor  Int       @default(0) @map("anticipacion_valor")
+  /// CHECK (anticipacion_unidad IN ('DIAS','MESES')).
+  anticipacionUnidad String    @default("DIAS") @map("anticipacion_unidad") @db.VarChar(10)
   /// Ancla INMUTABLE del cálculo de ciclos. Nunca se recalcula a partir de now().
   fechaInicio        DateTime  @map("fecha_inicio") @db.Date
   /// Puntero que el barrido consulta (índice parcial) y avanza tras cada ciclo procesado.

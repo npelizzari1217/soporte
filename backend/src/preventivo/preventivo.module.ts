@@ -43,6 +43,7 @@ import { ListarPlanesUseCase } from './application/use-cases/listar-planes.use-c
 import { DarDeBajaPlanUseCase } from './application/use-cases/dar-de-baja-plan.use-case';
 import { ListarGeneracionesPlanUseCase } from './application/use-cases/listar-generaciones-plan.use-case';
 import { GenerarPreventivosUseCase } from './application/use-cases/generar-preventivos.use-case';
+import { EnviarRecordatoriosPreventivoUseCase } from './application/use-cases/enviar-recordatorios-preventivo.use-case';
 
 import { PreventivoController } from './interface/controllers/preventivo.controller';
 import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo-sweep.scheduler';
@@ -75,6 +76,9 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  * `ScheduleModule.forRoot()` (ya vive en `AppModule` desde WU-0). WU-6 [R11]
  * agrega la publicación post-commit de `preventivo.generado` (`DOMAIN_EVENT_PUBLISHER`,
  * consumida por `NotificacionesModule` vía `PreventivoGeneradoNotificacionListener`).
+ * `EnviarRecordatoriosPreventivoUseCase` (odd/preventivo-anticipacion T3)
+ * publica `preventivo.recordatorio` por el mismo publisher y lo corre el mismo
+ * barrido, después de la generación.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -153,6 +157,15 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
       ],
     },
     {
+      provide: EnviarRecordatoriosPreventivoUseCase,
+      useFactory: (
+        generacionRepo: IPreventivoGeneracionRepository,
+        txRunner: ITenantTransactionRunner,
+        eventPublisher: IDomainEventPublisher,
+      ) => new EnviarRecordatoriosPreventivoUseCase(generacionRepo, txRunner, eventPublisher),
+      inject: [PREVENTIVO_GENERACION_REPOSITORY, TENANT_TX_RUNNER, DOMAIN_EVENT_PUBLISHER],
+    },
+    {
       provide: PreventivoSweepScheduler,
       useFactory: (
         tenantEnumerator: ITenantEnumerator,
@@ -160,6 +173,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         prismaService: PrismaService,
         generarPreventivosUseCase: GenerarPreventivosUseCase,
         logger: ILogger,
+        enviarRecordatoriosUseCase: EnviarRecordatoriosPreventivoUseCase,
       ) =>
         new PreventivoSweepScheduler(
           tenantEnumerator,
@@ -167,8 +181,16 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
           prismaService,
           generarPreventivosUseCase,
           logger,
+          enviarRecordatoriosUseCase,
         ),
-      inject: [TENANT_ENUMERATOR, TenantContext, PrismaService, GenerarPreventivosUseCase, LOGGER],
+      inject: [
+        TENANT_ENUMERATOR,
+        TenantContext,
+        PrismaService,
+        GenerarPreventivosUseCase,
+        LOGGER,
+        EnviarRecordatoriosPreventivoUseCase,
+      ],
     },
   ],
   exports: [PLAN_PREVENTIVO_REPOSITORY, PREVENTIVO_GENERACION_REPOSITORY],

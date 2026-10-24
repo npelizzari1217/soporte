@@ -114,6 +114,86 @@ describe("PlanPreventivoCreateDialog — objetivo excluyente (equipo XOR ubicaci
   });
 });
 
+describe("PlanPreventivoCreateDialog — anticipación (odd/preventivo-anticipacion)", () => {
+  beforeEach(() => {
+    mockBackend();
+    vi.mocked(toast.success).mockClear();
+  });
+
+  function capturarPost() {
+    const capturado: { body: Record<string, unknown> | null } = { body: null };
+    server.use(
+      http.post("/api/preventivo/planes", async ({ request }) => {
+        capturado.body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ id: "p1" }, { status: 201 });
+      }),
+    );
+    return capturado;
+  }
+
+  it("arranca en 0 días y, sin tocarla, envía anticipación 0 DIAS", async () => {
+    const capturado = capturarPost();
+    renderWithProviders(<PlanPreventivoCreateDialog />, { user: buildUser({ permisos: ["PREVENTIVO:ALTAS"] }) });
+    const user = await abrirDialog();
+
+    expect(screen.getByLabelText(/^anticipación$/i)).toHaveValue(0);
+    expect(screen.getByRole("combobox", { name: /^unidad de anticipación$/i })).toHaveValue("DIAS");
+
+    await completarComunes(user);
+    await user.selectOptions(screen.getByRole("combobox", { name: /^equipo$/i }), EQUIPO_ID);
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(capturado.body).not.toBeNull());
+    expect(capturado.body?.anticipacionValor).toBe(0);
+    expect(capturado.body?.anticipacionUnidad).toBe("DIAS");
+  });
+
+  it("envía la anticipación tipeada con su unidad", async () => {
+    const capturado = capturarPost();
+    renderWithProviders(<PlanPreventivoCreateDialog />, { user: buildUser({ permisos: ["PREVENTIVO:ALTAS"] }) });
+    const user = await abrirDialog();
+    await completarComunes(user);
+    await user.selectOptions(screen.getByRole("combobox", { name: /^equipo$/i }), EQUIPO_ID);
+    await user.clear(screen.getByLabelText(/^anticipación$/i));
+    await user.type(screen.getByLabelText(/^anticipación$/i), "10");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(capturado.body).not.toBeNull());
+    expect(capturado.body?.anticipacionValor).toBe(10);
+    expect(capturado.body?.anticipacionUnidad).toBe("DIAS");
+  });
+
+  it("vaciar la anticipación no la convierte en 0: avisa y no envía", async () => {
+    const capturado = capturarPost();
+    renderWithProviders(<PlanPreventivoCreateDialog />, { user: buildUser({ permisos: ["PREVENTIVO:ALTAS"] }) });
+    const user = await abrirDialog();
+    await completarComunes(user);
+    await user.selectOptions(screen.getByRole("combobox", { name: /^equipo$/i }), EQUIPO_ID);
+    await user.clear(screen.getByLabelText(/^anticipación$/i));
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    expect(await screen.findByText("La anticipación es requerida")).toBeInTheDocument();
+    expect(capturado.body).toBeNull();
+  });
+
+  it("una anticipación no menor que la cadencia avisa con la regla y no envía", async () => {
+    const capturado = capturarPost();
+    renderWithProviders(<PlanPreventivoCreateDialog />, { user: buildUser({ permisos: ["PREVENTIVO:ALTAS"] }) });
+    const user = await abrirDialog();
+    await completarComunes(user);
+    await user.selectOptions(screen.getByRole("combobox", { name: /^equipo$/i }), EQUIPO_ID);
+    await user.clear(screen.getByLabelText(/^anticipación$/i));
+    await user.type(screen.getByLabelText(/^anticipación$/i), "1");
+    await user.selectOptions(screen.getByRole("combobox", { name: /^unidad de anticipación$/i }), "MESES");
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    expect(
+      await screen.findByText("La anticipación debe ser menor que la cadencia (un mes cuenta como 30 días)"),
+    ).toBeInTheDocument();
+    expect(capturado.body).toBeNull();
+  });
+});
+
 describe("PlanPreventivoCreateDialog — errores de catálogos no se tragan en silencio (hallazgo H3)", () => {
   it("si GET /usuarios falla (p. ej. 403 por permiso cruzado), avisa en el select de responsable", async () => {
     server.use(

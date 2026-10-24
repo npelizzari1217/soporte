@@ -45,6 +45,10 @@
  * de guardar — la respuesta del PATCH trae el puntero viejo (ver comentario
  * de mecanismo en `use-planes-preventivo-mutations.ts` y "Fuera de alcance"
  * en `tasks.md`).
+ *
+ * Anticipación (odd/preventivo-anticipacion): mismo par número + unidad que la
+ * cadencia. Cambiarla también recalcula el puntero en el backend, con su propio
+ * aviso cualitativo. Vaciar el número es un error de validación, no un 0.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -70,6 +74,9 @@ type Objetivo = "equipo" | "ubicacion";
 const AVISO_CADENCIA =
   "Al cambiar la cadencia, la próxima ejecución se recalcula hacia adelante desde hoy. Los ciclos anteriores no se generan.";
 
+const AVISO_ANTICIPACION =
+  "Al cambiar la anticipación, la próxima ejecución se recalcula desde hoy. Si el próximo ciclo ya queda dentro de la nueva anticipación, su ticket se genera en el próximo barrido diario.";
+
 export interface PlanPreventivoEditDialogProps {
   plan: PlanPreventivo;
 }
@@ -84,6 +91,8 @@ function valoresVigentes(plan: PlanPreventivo): EditarPlanPreventivoFormValues {
     responsableId: plan.responsableId,
     intervaloValor: String(plan.intervaloValor),
     intervaloUnidad: plan.intervaloUnidad,
+    anticipacionValor: String(plan.anticipacionValor),
+    anticipacionUnidad: plan.anticipacionUnidad,
     activo: plan.activo,
   };
 }
@@ -186,6 +195,7 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   useReaplicarAlResolver(open, usuariosQuery.isSuccess, "responsableId", plan.responsableId, setValue);
 
   const avisaCadencia = !!(dirtyFields.intervaloValor || dirtyFields.intervaloUnidad);
+  const avisaAnticipacion = !!(dirtyFields.anticipacionValor || dirtyFields.anticipacionUnidad);
 
   function elegirObjetivo(tipo: Objetivo) {
     setObjetivo(tipo);
@@ -219,6 +229,9 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
       responsableId: values.responsableId,
       intervaloValor: Number(values.intervaloValor),
       intervaloUnidad: values.intervaloUnidad,
+      // El schema ya garantizó dígitos no vacíos: `Number` no puede recibir "".
+      anticipacionValor: Number(values.anticipacionValor),
+      anticipacionUnidad: values.anticipacionUnidad,
       activo: values.activo,
     };
     editarMutation.mutate(dto, { onSuccess: () => setOpen(false) });
@@ -406,6 +419,37 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
             </div>
           </div>
           {avisaCadencia && <p className="text-sm text-muted-foreground">{AVISO_CADENCIA}</p>}
+
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-editar-anticipacion" className="text-sm font-medium text-foreground">
+                Anticipación
+              </label>
+              <Input
+                id="plan-editar-anticipacion"
+                type="number"
+                min="0"
+                step="1"
+                error={!!errors.anticipacionValor}
+                {...register("anticipacionValor")}
+              />
+              {errors.anticipacionValor && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.anticipacionValor.message}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-editar-anticipacion-unidad" className="text-sm font-medium text-foreground">
+                Unidad de anticipación
+              </label>
+              <Select id="plan-editar-anticipacion-unidad" {...register("anticipacionUnidad")}>
+                <option value="DIAS">Días</option>
+                <option value="MESES">Meses</option>
+              </Select>
+            </div>
+          </div>
+          {avisaAnticipacion && <p className="text-sm text-muted-foreground">{AVISO_ANTICIPACION}</p>}
 
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input id="plan-editar-activo" type="checkbox" className="h-4 w-4 accent-primary" {...register("activo")} />
