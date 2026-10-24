@@ -98,7 +98,8 @@ describe('ListarComprasDeTicketUseCase', () => {
     expect(reparacionCompraRepo.findComprasVinculadasByTicketIds).not.toHaveBeenCalled();
   });
 
-  it('con LECTURA y VER_TODOS sobre el tipo, sin COMPRAS:LECTURA ni MODIFICACION → las ve', async () => {
+  // `COMPRAS:LECTURA` lo exige la ruta (L19), no este caso de uso: el 403 se prueba en el e2e.
+  it('con LECTURA y VER_TODOS sobre el tipo, sin MODIFICACION → las ve', async () => {
     const { useCase } = armar([activa]);
 
     const result = await useCase.execute(

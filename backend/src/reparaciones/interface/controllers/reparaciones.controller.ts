@@ -7,7 +7,7 @@
  *   GET    /reparaciones                                    → ListarReparacionesUseCase  [tipos con LECTURA; fila sin VER_TODOS]
  *   GET    /reparaciones/export                              → ExportarReparacionesUseCase [mismo alcance que el listado]
  *   PATCH  /reparaciones/:reparacionId                       → EditarReparacionUseCase    [MODIFICACION]
- *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioReparacionUseCase    [ALTAS o COMENTAR]
+ *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioUseCase (Tickets), interno [COMENTAR y OBSERVAR]
  *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [LECTURA]
  *   POST   /reparaciones/:reparacionId/compras                → VincularCompraAReparacionUseCase   [MODIFICACION] + ruta COMPRAS:LECTURA
  *   DELETE /reparaciones/:reparacionId/compras/:compraId       → DesvincularCompraDeReparacionUseCase [MODIFICACION] + ruta COMPRAS:LECTURA
@@ -83,7 +83,7 @@ import {
 
 import { CrearTicketEdilicioUseCase } from '../../application/use-cases/crear-ticket-edilicio.use-case';
 import { ListarReparacionesUseCase } from '../../application/use-cases/listar-reparaciones.use-case';
-import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
+import { CrearComentarioUseCase } from '../../../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
@@ -189,7 +189,8 @@ export class ReparacionesController {
   constructor(
     private readonly crearTicketEdilicioUseCase: CrearTicketEdilicioUseCase,
     private readonly listarReparacionesUseCase: ListarReparacionesUseCase,
-    private readonly crearComentarioUseCase: CrearComentarioReparacionUseCase,
+    // odd/ticket-unificado (T2b, L19): el MISMO caso de uso que `POST /tickets/:id/comentarios`.
+    private readonly crearComentarioUseCase: CrearComentarioUseCase,
     private readonly listarComentariosUseCase: ListarComentariosReparacionUseCase,
     @Inject(USUARIO_MASTER_CHECKER) private readonly usuarioMasterChecker: IUsuarioMasterChecker,
     // Agregado al final (no reordena los anteriores) — mismo criterio que
@@ -349,11 +350,12 @@ export class ReparacionesController {
   /**
    * POST /reparaciones/:reparacionId/comentarios
    * Asienta una nota sobre el ticket (ej. por qué se está demorando): desde odd/ticket-unificado
-   * (S3) es un comentario público del timeline del ticket. `autorId` viene del JWT. Exige `ALTAS` o
-   * `COMENTAR` sobre el tipo del ticket (odd/permisos-por-tipo-ticket, D5 c).
-   * @throws 403 sin `ALTAS` ni `COMENTAR` sobre el tipo
+   * (S3, L19) es un comentario INTERNO del timeline, creado por `CrearComentarioUseCase`, el mismo
+   * caso de uso que `POST /tickets/:id/comentarios` con `esInterno: true`. Hereda sus reglas: exige
+   * `COMENTAR` y `OBSERVAR` sobre el tipo, se acepta con el ticket en cualquier estado, no publica
+   * `TicketComentadoEvent` ni cuenta como primera respuesta. `autorId` viene del JWT.
+   * @throws 403 sin `COMENTAR` u `OBSERVAR` sobre el tipo
    * @throws 404 reparación o ticket inexistente, o que el actor no ve
-   * @throws 422 ticket cerrado, cancelado o bloqueado por una compra
    */
   @Post(':reparacionId/comentarios')
   @HttpCode(HttpStatus.CREATED)
@@ -368,7 +370,8 @@ export class ReparacionesController {
         ticketId,
         texto: dto.texto,
         autorId: user.sub,
-        alcance,
+        esInterno: true,
+        ...alcance,
       }),
     );
 

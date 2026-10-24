@@ -62,9 +62,9 @@ function armar() {
 }
 
 describe('TicketComprasController', () => {
-  it('vincular y desvincular declaran COMPRAS:LECTURA; listar no declara ninguna celda', () => {
+  it('las tres rutas declaran COMPRAS:LECTURA, listar incluida (L19)', () => {
     expect(Object.fromEntries(accionesPorRuta(TicketComprasController))).toEqual({
-      listar: [],
+      listar: ['COMPRAS:LECTURA'],
       vincular: ['COMPRAS:LECTURA'],
       desvincular: ['COMPRAS:LECTURA'],
     });

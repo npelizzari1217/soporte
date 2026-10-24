@@ -667,7 +667,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(libre.status).toBe(201);
     });
 
-    it('sin COMPRAS:LECTURA no vincula ni desvincula (403); sin verlo, GET responde 404', async () => {
+    it('sin COMPRAS:LECTURA no vincula, no desvincula ni lista las compras (403); sin verlo, GET responde 404', async () => {
       const ticketId = await crearTicket(tipoSoporteId);
       const compraId = await crearCompra();
       const sinCompras = await crearActorConPermisos([
@@ -683,8 +683,24 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       );
       expect((await httpGet(compras, bearer(ajeno.accessToken))).status).toBe(404);
       expect(await vinculosDe(ticketId)).toBe(0);
-      // Leer las compras vinculadas no pide COMPRAS:LECTURA: quien ve el ticket las ve.
-      expect((await httpGet(compras, bearer(sinCompras.accessToken))).status).toBe(200);
+
+      // Con un vínculo real, quien ve el ticket sin COMPRAS:LECTURA no lee las compras (L19), pero
+      // sigue sabiendo que el ticket está bloqueado por el listado.
+      await tenantClient.ticketCompra.create({ data: { ticketId, compraId } });
+      const listado = await httpGet<{ message: string }>(compras, bearer(sinCompras.accessToken));
+      expect(listado.status).toBe(403);
+      expect(JSON.stringify(listado.data)).not.toContain(compraId);
+      expect(
+        (await httpDelete(`${compras}/${compraId}`, bearer(sinCompras.accessToken))).status,
+      ).toBe(403);
+      expect(await vinculosDe(ticketId)).toBe(1);
+      const fila = (
+        await httpGet<ListReparacionesResponseDto>(
+          `${baseUrl}/reparaciones?tipo=${tipoSoporteId}&porPagina=100`,
+          bearer(sinCompras.accessToken),
+        )
+      ).data.items.find((r) => r.id === ticketId);
+      expect(fila?.bloqueada).toBe(true);
     });
 
     it('GET /reparaciones?tipo= lista los tickets de ese tipo con su bloqueo; sin tipo, solo los del módulo EDILICIA', async () => {
@@ -777,15 +793,21 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     });
   });
 
-  // ─── Comentarios: los del ticket (odd/ticket-unificado, S3) ─────────────
+  // ─── Comentarios: internos del ticket (odd/ticket-unificado, S3, L19) ────
 
-  describe('comentarios de Edilicia = comentarios del ticket (S3)', () => {
-    it('lo que se comenta en Edilicia aparece en el timeline del ticket, y lo comentado desde Tickets aparece en Edilicia', async () => {
-      const actor = await crearActorConPermisos([
-        'EDILICIA:LECTURA',
-        'EDILICIA:MODIFICACION',
-        'TICKETS:VER_TODOS',
-      ]);
+  describe('comentarios de Edilicia = comentarios INTERNOS del ticket (S3, L19)', () => {
+    /** Personal de Edilicia: ve, modifica y comenta los tickets del tipo, internos incluidos. */
+    const PERSONAL = [
+      'EDILICIA:LECTURA',
+      'EDILICIA:MODIFICACION',
+      'TICKETS:VER_TODOS',
+      'TICKETS:OBSERVAR',
+    ];
+
+    type OperacionTimeline = { id: string; descripcion: string; esInterno: boolean };
+
+    it('lo que se comenta en Edilicia es un comentario interno del timeline, y lo comentado desde Tickets aparece en Edilicia', async () => {
+      const actor = await crearActorConPermisos(PERSONAL);
       const { reparacionId, ticketId } = await crearReparacion();
       const auth = bearer(actor.accessToken);
 
@@ -796,6 +818,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       );
       expect(desdeEdilicia.status).toBe(201);
       expect(desdeEdilicia.data.ticketEdiliciaId).toBe(ticketId);
+      // Un comentario interno no cuenta como primera respuesta, igual que desde Tickets.
+      const tras = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+      expect(tras.primeraRespuestaAt).toBeNull();
       const desdeTickets = await httpPost<{ id: string }>(
         `${baseUrl}/tickets/${ticketId}/comentarios`,
         { texto: 'Lo pedí al proveedor' },
@@ -803,13 +828,13 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       );
       expect(desdeTickets.status).toBe(201);
 
-      const timeline = await httpGet<{ id: string; descripcion: string; esInterno: boolean }[]>(
+      const timeline = await httpGet<OperacionTimeline[]>(
         `${baseUrl}/tickets/${ticketId}/timeline`,
         auth,
       );
       expect(timeline.data.find((op) => op.id === desdeEdilicia.data.id)).toMatchObject({
         descripcion: 'Falta el repuesto X',
-        esInterno: false,
+        esInterno: true,
       });
       // La tabla congelada no se escribe más.
       expect(await tenantClient.comentarioReparacion.count()).toBe(0);
@@ -826,6 +851,83 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         await httpGet<ListReparacionesResponseDto>(`${baseUrl}/reparaciones?porPagina=100`, auth)
       ).data.items.find((r) => r.id === ticketId);
       expect(fila?.cantidadComentarios).toBe(2);
+    });
+
+    it('el solicitante sin OBSERVAR no ve el comentario de Edilicia, ni en Edilicia, ni en el timeline, ni en el conteo; ve el público', async () => {
+      const personal = await crearActorConPermisos(PERSONAL);
+      const solicitante = await crearActorConPermisos(
+        ['EDILICIA:LECTURA', 'EDILICIA:MODIFICACION'],
+        personal.clienteId,
+      );
+      const { reparacionId, ticketId } = await crearReparacion();
+      await tenantClient.ticket.update({
+        where: { id: ticketId },
+        data: { solicitanteId: solicitante.usuarioId },
+      });
+      const interno = await httpPost<{ id: string }>(
+        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        { texto: 'Nota interna de Edilicia' },
+        bearer(personal.accessToken),
+      );
+      expect(interno.status).toBe(201);
+      const publico = await httpPost<{ id: string }>(
+        `${baseUrl}/tickets/${ticketId}/comentarios`,
+        { texto: 'Respuesta al solicitante' },
+        bearer(personal.accessToken),
+      );
+      expect(publico.status).toBe(201);
+      const auth = bearer(solicitante.accessToken);
+
+      const enEdilicia = await httpGet<{ id: string }[]>(
+        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        auth,
+      );
+      expect(enEdilicia.status).toBe(200);
+      expect(enEdilicia.data.map((c) => c.id)).toEqual([publico.data.id]);
+      const timeline = await httpGet<OperacionTimeline[]>(
+        `${baseUrl}/tickets/${ticketId}/timeline`,
+        auth,
+      );
+      expect(timeline.data.map((op) => op.id)).toContain(publico.data.id);
+      expect(timeline.data.map((op) => op.id)).not.toContain(interno.data.id);
+      const fila = (
+        await httpGet<ListReparacionesResponseDto>(`${baseUrl}/reparaciones?porPagina=100`, auth)
+      ).data.items.find((r) => r.id === ticketId);
+      expect(fila?.cantidadComentarios).toBe(1);
+    });
+
+    it('sin OBSERVAR sobre el tipo, comentar desde Edilicia es 403 y no escribe nada', async () => {
+      const sinObservar = await crearActorConPermisos([
+        'EDILICIA:LECTURA',
+        'EDILICIA:MODIFICACION',
+        'TICKETS:VER_TODOS',
+      ]);
+      const { reparacionId, ticketId } = await crearReparacion();
+      const antes = await tenantClient.operacionTicket.count({ where: { ticketId } });
+
+      const r = await httpPost(
+        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        { texto: 'No debería quedar' },
+        bearer(sinObservar.accessToken),
+      );
+
+      expect(r.status).toBe(403);
+      expect(await tenantClient.operacionTicket.count({ where: { ticketId } })).toBe(antes);
+    });
+
+    it('igual que un comentario interno de Tickets, se acepta con el ticket cerrado', async () => {
+      const actor = await crearActorConPermisos(PERSONAL);
+      const { reparacionId, ticketId } = await crearReparacion();
+      const cerrado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'CERRADO' } });
+      await tenantClient.ticket.update({ where: { id: ticketId }, data: { estadoId: cerrado.id } });
+
+      const r = await httpPost(
+        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        { texto: 'Nota posterior al cierre' },
+        bearer(actor.accessToken),
+      );
+
+      expect(r.status).toBe(201);
     });
   });
 

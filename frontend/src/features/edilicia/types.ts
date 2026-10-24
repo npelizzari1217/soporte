@@ -9,7 +9,11 @@
  * tareas activas del ticket.
  */
 
-/** Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). `id` = id del satélite `ticket_edilicia`. */
+/**
+ * Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). Desde
+ * odd/ticket-unificado `id` = id del ticket, igual que `ticketId`; las rutas `/reparaciones/:id`
+ * aceptan también el id del satélite `ticket_edilicia` que viajaba antes.
+ */
 export interface TicketEdilicia {
   id: string;
   ticketId: string;
@@ -21,12 +25,9 @@ export interface TicketEdilicia {
   descripcion: string | null;
   prioridadId: string;
   estadoId: string;
-  /** Ubicación física de la reparación, texto libre (ex-catálogo Ubicacion removido). */
+  /** Ubicación del ticket, texto libre (odd/ticket-unificado: una sola, la del ticket). */
   ubicacion: string | null;
-  /**
-   * Sector del ticket base (odd/ubicacion-sector-ticket). La ubicación general
-   * del ticket no viaja acá: Edilicia usa su propia `ubicacion`.
-   */
+  /** Sector del ticket base (odd/ubicacion-sector-ticket). */
   sectorId: string | null;
   /** Nombre del sector, resuelto por el backend aunque esté desactivado. */
   sectorNombre: string | null;
@@ -79,7 +80,7 @@ export interface EditarReparacionDto {
   titulo?: string;
   descripcion?: string | null;
   prioridadId?: string;
-  /** Ubicación propia de Edilicia. */
+  /** Ubicación del ticket (odd/ticket-unificado). */
   ubicacion?: string | null;
   sectorId?: string | null;
 }
@@ -99,23 +100,25 @@ export interface CrearTicketEdilicioDto {
 /**
  * Body de `POST /reparaciones/:reparacionId/compras` (`VincularCompraHttpDto`,
  * sdd/reparacion-bloqueada-por-compra WU6). El backend exige `COMPRAS:LECTURA`
- * en la ruta **y** `ALTAS` sobre el tipo de la reparación en el caso de uso
- * (odd/permisos-por-tipo-ticket, D5 c) — el diálogo del frontend gatea la
- * EXPERIENCIA, nunca la autorización real.
+ * en la ruta **y** `MODIFICACION` sobre el tipo del ticket en el caso de uso
+ * (odd/ticket-unificado, S4) — el diálogo del frontend gatea la EXPERIENCIA,
+ * nunca la autorización real.
  */
 export interface VincularCompraDto {
   compraId: string;
 }
 
 /**
- * Comentario a nivel de REPARACIÓN (`ComentarioReparacionResponseDto`).
+ * Comentario de Edilicia (`ComentarioReparacionResponseDto`): desde
+ * odd/ticket-unificado es un COMENTARIO del timeline del ticket, y el que se
+ * publica desde Edilicia es interno (L19). `ticketEdiliciaId` lleva el id del
+ * ticket.
  *
  * A diferencia de las subtareas, los comentarios SÍ tienen `GET` propio
  * (`GET /reparaciones/:id/comentarios`, más nuevo primero) — no viajan
  * embebidos en `GET /reparaciones`.
  *
- * Sin `updatedAt`/`deletedAt`: la tabla es append-only, los comentarios no se
- * editan ni se borran. `autorNombre`/`autorApellido` los resuelve el backend
+ * Sin `updatedAt`/`deletedAt`: los comentarios no se editan ni se borran. `autorNombre`/`autorApellido` los resuelve el backend
  * contra la base MASTER y viajan `null` si el usuario fue dado de baja — en
  * ese caso la UI cae al `autorId`.
  */

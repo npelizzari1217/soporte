@@ -919,8 +919,6 @@ import {
     // cargan el alcance por tipo con el mismo cargador.
     CargadorAlcanceTicket,
     ESTADO_REPOSITORY,
-    // odd/ticket-cerrado-solo-lectura: la misma regla frena los comentarios de reparación.
-    VerificadorTicketEditable,
     PRIORIDAD_REPOSITORY,
     TIPO_TICKET_REPOSITORY,
     TIPO_OPERACION_REPOSITORY,

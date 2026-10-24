@@ -309,7 +309,8 @@ export function toReparacionListItemResponseDto(
 
 /**
  * Shape de respuesta de una subtarea edilicia, embebida en `GET /reparaciones`. Desde
- * odd/tareas-con-tecnico es una tarea del ticket base con el id del satélite.
+ * odd/tareas-con-tecnico es una tarea del ticket. `ticketEdiliciaId` conserva el nombre que espera
+ * el frontend y, desde odd/ticket-unificado, lleva el id del ticket, no el del satélite.
  */
 export interface SubtareaEdiliciaResponseDto {
   id: string;

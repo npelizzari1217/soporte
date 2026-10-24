@@ -24,8 +24,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   timeline (migración reversible, verificada contra una base efímera; falta contra un dump) — (este commit)
 - [x] T2 — S1, S4, S5 — worker — backend: compras, bloqueo y ubicación sobre el ticket; altas de todo
   tipo sin satélite — (este commit)
-- [ ] T2b — S3, S4, L19 — worker — comentarios de reparación internos (migrados y nuevos, por el caso de uso
-  del ticket), GET compras con COMPRAS:LECTURA, notas de rollback en el runbook — (pendiente)
+- [x] T2b — S3, S4, L19 — worker — comentarios de reparación internos (migrados y nuevos, por el caso de uso
+  del ticket), GET compras con COMPRAS:LECTURA, notas de rollback en el runbook — (este commit)
 - [ ] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
   "Nuevo ticket" con todos los tipos — (pendiente)
 - [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
@@ -115,3 +115,35 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 - **L19** (decisiones del dueño, 2026-10-24) — Comentarios de reparación: "Internos (recomendado)" (solo
   personal con Comentario interno; aplica también a los 11 existentes). Ver compras vinculadas en el
   detalle: "Solo con permiso de Compras (rec.)" (COMPRAS:LECTURA; los demás ven solo si está bloqueado).
+- **L20** (decisión, T2b/S3, L19) — `POST /reparaciones/:id/comentarios` llama a `CrearComentarioUseCase`
+  de Tickets con `esInterno: true`, el mismo caso de uso y el mismo DTO que `POST /tickets/:id/comentarios`
+  (JD-A-002, JD-B-002). Hereda sus reglas de comentario interno: exige `COMENTAR` y `OBSERVAR` sobre el
+  tipo (antes `ALTAS` o `COMENTAR`), se acepta con el ticket en cualquier estado, también CERRADO,
+  CANCELADO o bloqueado por una compra (antes 422), y no publica `TicketComentadoEvent` ni registra la
+  primera respuesta. `CrearComentarioReparacionUseCase` sale del cableado y de los tests; su archivo y
+  `ComentarioReparacionNoPermitidoError` quedan sin uso, para borrar (el primero en este commit, el
+  segundo con T4). `TicketsModule` deja de exportar `VerificadorTicketEditable`: su único consumidor
+  externo era ese caso de uso. Supera la regla de escritura de L10.
+- **L21** (decisión, T2b/L19) — Los 11 comentarios migrados pasan a internos con una migración nueva,
+  `20261024130000_comentarios_reparacion_internos`, y no editando `20261024120000`: esa ya está aplicada
+  y Prisma rechaza un checksum distinto. Marca las filas de `operaciones_ticket` con el id de una de
+  `comentarios_reparacion`, sin tocar `updated_at`. Su rollback las devuelve a públicas y va antes que el
+  de 20261024120000. Si 20261024120000 se revierte y se vuelve a aplicar, hay que volver a aplicar
+  también esta. Reproducida con su rollback en `migracion-comentarios-reparacion-internos.integration.spec.ts`.
+- **L22** (decisión, T2b/S4, L19) — `GET /tickets/:ticketId/compras` exige `COMPRAS:LECTURA` en la ruta
+  (`@RequiereAcciones`), además de ver el ticket (JD-A-004, JD-B-005). Sin ese permiso, el bloqueo se
+  conoce por `bloqueada` en la fila de `GET /reparaciones`, que no cambia. Esa fila sigue mostrando
+  `comprasQueBloquean` (id y número) a quien ve el ticket, sin `COMPRAS:LECTURA`, como antes: L19 habla
+  del detalle, y no se tocó. El detalle de Tickets no tiene hoy indicador de bloqueo: T3 tiene que
+  tomarlo de un dato que no exija `COMPRAS:LECTURA`.
+- **L23** (pendiente para T3) — El frontend todavía decide con las reglas viejas: `ComentariosDialog`
+  ofrece comentar con `ALTAS` o `COMENTAR` (`reparaciones-list.tsx`) y esconde el formulario con el
+  ticket cerrado o bloqueado; `VincularCompraDialog` ofrece vincular con `ALTAS` y desvincular con
+  `EDILICIA:BORRADO`. Con el backend de T2 y T2b, esos caminos responden 403 a quien no tiene los
+  permisos nuevos: T2, T2b y T3 salen en el mismo deploy (runbook, "Ticket unificado"). La Ayuda no dice
+  que se puede comentar con el ticket cerrado mientras el frontend lo esconda.
+- **L24** (evidencia, T2b) — Migración aplicada a `soporte_tenant_test` (`pnpm migrate:tenant` con
+  `DATABASE_URL_TENANT` apuntando a esa base) y a los 2 tenants locales (`pnpm migrate:tenants`). El
+  runbook suma la sección "Ticket unificado": deploy conjunto, precheck de conflictos de ubicación
+  (JD-A-005), no re-aplicar 20261024120000 sin su rollback (JD-A-003), adjuntos que el rollback
+  desvincula (JD-A-006, JD-B-003) y dump obligatorio.

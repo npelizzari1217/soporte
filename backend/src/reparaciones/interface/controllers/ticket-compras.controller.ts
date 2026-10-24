@@ -2,7 +2,7 @@
  * TicketComprasController — compras vinculadas de cualquier ticket (odd/ticket-unificado, S1, S4).
  *
  * Rutas (entre corchetes, lo que exige el caso de uso sobre el tipo del ticket):
- *   GET    /tickets/:ticketId/compras             → ListarComprasDeTicketUseCase         [LECTURA]
+ *   GET    /tickets/:ticketId/compras             → ListarComprasDeTicketUseCase         [LECTURA] + ruta COMPRAS:LECTURA
  *   POST   /tickets/:ticketId/compras             → VincularCompraAReparacionUseCase     [MODIFICACION] + ruta COMPRAS:LECTURA
  *   DELETE /tickets/:ticketId/compras/:compraId   → DesvincularCompraDeReparacionUseCase [MODIFICACION] + ruta COMPRAS:LECTURA
  *
@@ -10,8 +10,8 @@
  * compras (`ComprasModule`) y el criterio de bloqueo de reparaciones, que ya importa este módulo;
  * el prefijo `tickets/` no choca con `TicketsController`, que no declara `:id/compras`.
  *
- * Una compra activa vinculada bloquea el ticket (S5): sus tareas y sus comentarios de Edilicia
- * quedan congelados (`VerificadorTicketEditable`), y no se puede borrar mientras tenga compras.
+ * Una compra activa vinculada bloquea el ticket (S5): sus tareas quedan congeladas
+ * (`VerificadorTicketEditable`), y no se puede borrar mientras tenga compras.
  *
  * Guards: `JwtAuthGuard` + `TenantGuard` + `AccionesGuard`; los permisos por tipo los carga
  * `CargadorAlcanceTicket` por request.
@@ -55,11 +55,14 @@ export class TicketComprasController {
 
   /**
    * GET /tickets/:ticketId/compras
-   * Las compras vinculadas al ticket, por número, con su grupo de estado y si lo bloquean. No exige
-   * `COMPRAS:LECTURA`: no navega el universo de compras, muestra las que ya están vinculadas.
+   * Las compras vinculadas al ticket, por número, con su grupo de estado y si lo bloquean. Exige
+   * `COMPRAS:LECTURA` además de ver el ticket (decisión del dueño, odd/ticket-unificado L19): quien
+   * no lo tiene solo sabe si el ticket está bloqueado, por la fila de `GET /reparaciones`.
+   * @throws 403 sin `COMPRAS:LECTURA`
    * @throws 404 ticket inexistente o que el actor no ve
    */
   @Get()
+  @RequiereAcciones('COMPRAS:LECTURA')
   async listar(
     @Param('ticketId') ticketId: string,
     @CurrentUser() user: JwtPayload,

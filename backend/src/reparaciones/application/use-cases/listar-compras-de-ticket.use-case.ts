@@ -24,10 +24,9 @@ export interface CompraDeTicket {
  * ListarComprasDeTicketUseCase — las compras vinculadas a un ticket de cualquier tipo
  * (odd/ticket-unificado, S1), ordenadas por número, sin las dadas de baja.
  *
- * Exige ver el ticket (`LECTURA` sobre su tipo y regla de fila): 404 si no. No exige
- * `COMPRAS:LECTURA`, igual que el chip del listado de Edilicia: devuelve la identidad y el estado
- * de compras que ya están vinculadas, no navega el universo de compras. El bloqueo sale de
- * `comprasQueBloquean`, el criterio único del sistema.
+ * Exige ver el ticket (`LECTURA` sobre su tipo y regla de fila): 404 si no. `COMPRAS:LECTURA` lo
+ * exige la ruta (`TicketComprasController`, odd/ticket-unificado L19), que es donde vive el candado
+ * de la matriz. El bloqueo sale de `comprasQueBloquean`, el criterio único del sistema.
  */
 export class ListarComprasDeTicketUseCase {
   constructor(

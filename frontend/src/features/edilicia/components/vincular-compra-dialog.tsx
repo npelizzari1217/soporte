@@ -9,13 +9,12 @@
  *
  * IMPORTANTE — qué NO hace este componente: los dos `<Can>` de abajo son
  * controles de EXPERIENCIA (ocultan botones a quien no va a poder usarlos),
- * nunca de seguridad. La autorización real la sostiene el backend:
- * - Vincular exige `COMPRAS:LECTURA` en la ruta (`@RequiereAcciones`, WU5.9)
- *   **y** `ALTAS` sobre el tipo de la reparación en el caso de uso
- *   (odd/permisos-por-tipo-ticket, D5 c). El formulario espeja las dos: el
- *   contenedor pasa `puedeVincularEnTipo` y acá se suma la celda de Compras.
- * - Desvincular exige `EDILICIA:BORRADO` en la ruta (WU5.6): es permiso del
- *   módulo, no por tipo (L21).
+ * nunca de seguridad. La autorización real la sostiene el backend, que para
+ * vincular y para desvincular exige lo mismo (odd/ticket-unificado, S4):
+ * `COMPRAS:LECTURA` en la ruta (`@RequiereAcciones`) **y** `MODIFICACION`
+ * sobre el tipo del ticket en el caso de uso. Estos controles todavía ofrecen
+ * vincular con `ALTAS` (`puedeVincularEnTipo`) y desvincular con
+ * `EDILICIA:BORRADO`: alinearlos es la tarea T3 de odd/tasks/ticket-unificado.md.
  * Un `curl` directo sin el `<Can>` (que no existe fuera del navegador) sigue
  * recibiendo 403 si le falta el permiso: la interfaz nunca es el único
  * candado.

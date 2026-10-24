@@ -69,8 +69,17 @@ Se accede con el botón **Ver comentarios** de cada fila. Se escriben en el camp
 *Nuevo comentario* y se publican con **Comentar**. Se listan del más nuevo al
 más viejo, con el nombre de quien lo escribió y la fecha.
 
-Dos cosas que conviene saber antes de escribir:
+Los comentarios de la reparación son los comentarios del ticket: los que se
+publican acá aparecen también en el historial del ticket, y los que se escriben
+desde el ticket aparecen acá.
 
+Cosas que conviene saber antes de escribir:
+
+- **El comentario que se publica desde la reparación es interno.** Lo ve solo
+  quien tiene **Comentario interno** sobre el tipo del ticket; el solicitante y
+  el resto no lo ven. Lo mismo vale para los comentarios de reparación
+  anteriores a este cambio. Por eso no avisa al solicitante ni cuenta como
+  primera respuesta del ticket.
 - **Un comentario no se edita ni se borra.** No es una restricción de permisos:
   el sistema directamente no tiene esa operación. Lo que se publica queda.
 - El texto admite **hasta 2000 caracteres** y no puede estar vacío ni ser solo
@@ -79,8 +88,9 @@ Dos cosas que conviene saber antes de escribir:
 ## El contador del listado
 
 En la columna **Comentarios**, el botón *Ver comentarios* muestra al lado un
-número con la cantidad de comentarios que tiene esa reparación. Si no tiene
-ninguno, no aparece número.
+número con la cantidad de comentarios que tiene esa reparación y que usted puede
+ver: los internos solo cuentan si tiene **Comentario interno** sobre el tipo. Si
+no tiene ninguno, no aparece número.
 
 Sirve para barrer el listado de un vistazo: las reparaciones con varios
 comentarios suelen ser las que vienen complicadas. El contador se actualiza solo
@@ -138,20 +148,18 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 
 | Acción | Quién puede |
 |---|---|
-| Ver la reparación, sus subtareas y sus comentarios | **Ver** sobre el tipo del ticket |
+| Ver la reparación, sus subtareas y sus comentarios públicos | **Ver** sobre el tipo del ticket |
+| Ver los comentarios internos, incluidos los publicados desde la reparación | **Ver** y **Comentario interno** sobre el tipo del ticket |
 | Agregar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
 | Asignar o quitar el técnico de una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
-| Publicar un comentario | **Crear** o **Comentar** sobre el tipo del ticket |
+| Publicar un comentario (interno) | **Comentar** y **Comentario interno** sobre el tipo del ticket |
 | Completar o descompletar una subtarea | El técnico de la subtarea, el responsable de la reparación, un ADMINISTRADOR o ROOT |
 | Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
 | Vincular una compra a una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
 | Desvincular una compra de una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
+| Ver qué compras tiene vinculadas un ticket | **Ver** sobre el tipo del ticket **y** `COMPRAS:LECTURA`; sin él, solo lo que muestra el chip **Bloqueada** del listado |
 
-Los comentarios de la reparación son los comentarios del ticket: quien puede ver
-la reparación ve los públicos, y los internos solo quien tiene **Comentario
-interno** sobre el tipo.
-
-Las dos filas de compras no son una aclaración de qué botones se ven en
+Las filas de compras no son una aclaración de qué botones se ven en
 pantalla: es el permiso que el servidor exige de verdad. A alguien al que le
 falte `COMPRAS:LECTURA` el sistema le rechaza el vínculo aunque de alguna forma
 consiga disparar la acción — la interfaz simplemente no le muestra el botón

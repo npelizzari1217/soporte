@@ -41,7 +41,6 @@ import {
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
   ReparacionNoEditableError,
-  ComentarioReparacionNoPermitidoError,
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -52,7 +51,7 @@ import {
   ListarReparacionesUseCase,
   type ReparacionConTicket,
 } from '../../application/use-cases/listar-reparaciones.use-case';
-import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
+import { CrearComentarioUseCase } from '../../../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
@@ -166,7 +165,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   function buildController() {
     const crearTicketEdilicioUseCase = espiado(CrearTicketEdilicioUseCase);
     const listarReparacionesUseCase = espiado(ListarReparacionesUseCase);
-    const crearComentarioUseCase = espiado(CrearComentarioReparacionUseCase);
+    const crearComentarioUseCase = espiado(CrearComentarioUseCase);
     const listarComentariosUseCase = espiado(ListarComentariosReparacionUseCase);
     // Default: master no resuelve ningún nombre (usuario dado de baja) — los
     // tests que verifican el enriquecimiento lo sobrescriben.
@@ -465,7 +464,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   );
 
   describe('POST /reparaciones/:reparacionId/comentarios', () => {
-    it('crea el comentario sobre el ticket de la reparación, con el autorId del JWT, y resuelve el nombre del autor', async () => {
+    it('crea un comentario INTERNO del ticket con el caso de uso de Tickets, con el autorId del JWT, y resuelve el nombre del autor (L19)', async () => {
       const { controller, crearComentarioUseCase, usuarioMasterChecker } = buildController();
       crearComentarioUseCase.execute.mockResolvedValue(
         Result.ok(comentario('comentario-uuid', 'Falta el repuesto X')),
@@ -489,11 +488,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         autorApellido: 'Gómez',
         createdAt: expect.any(String),
       });
+      // El mismo DTO que `POST /tickets/:id/comentarios` con `esInterno: true`: mismo permiso
+      // (COMENTAR y OBSERVAR sobre el tipo), mismas reglas y sin evento ni primera respuesta.
       expect(crearComentarioUseCase.execute).toHaveBeenCalledWith({
         ticketId: 'ticket-uuid',
         texto: 'Falta el repuesto X',
         autorId: 'usuario-uuid',
-        alcance: ALCANCE_USER,
+        esInterno: true,
+        ...ALCANCE_USER,
       });
     });
 
@@ -521,18 +523,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
     });
 
-    it('mapea ComentarioReparacionNoPermitidoError → 422 con el motivo (odd/ticket-cerrado-solo-lectura)', async () => {
+    it('sin OBSERVAR sobre el tipo → 403 con el mensaje del caso de uso de Tickets', async () => {
       const { controller, crearComentarioUseCase } = buildController();
-      crearComentarioUseCase.execute.mockResolvedValue(
-        Result.fail(new ComentarioReparacionNoPermitidoError('cerrado')),
-      );
+      const error = new AccionSobreTipoNoPermitidaError('OBSERVAR');
+      crearComentarioUseCase.execute.mockResolvedValue(Result.fail(error));
 
       await expect(
         controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
-      ).rejects.toMatchObject({
-        status: 422,
-        message: 'El ticket está cerrado y no acepta comentarios nuevos.',
-      });
+      ).rejects.toThrow(new ForbiddenException(error.message));
     });
   });
 
@@ -741,7 +739,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const controller = new ReparacionesController(
       espiado(CrearTicketEdilicioUseCase).caso,
       espiado(ListarReparacionesUseCase).caso,
-      espiado(CrearComentarioReparacionUseCase).caso,
+      espiado(CrearComentarioUseCase).caso,
       espiado(ListarComentariosReparacionUseCase).caso,
       usuarioMasterCheckerFalso(),
       exportarReparaciones.caso,
@@ -937,7 +935,7 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
 describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ticket, D5 c-e)', () => {
   function armar() {
     const crearTicketEdilicio = espiado(CrearTicketEdilicioUseCase);
-    const crearComentario = espiado(CrearComentarioReparacionUseCase);
+    const crearComentario = espiado(CrearComentarioUseCase);
     const editar = espiado(EditarReparacionUseCase);
     const controller = new ReparacionesController(
       crearTicketEdilicio.caso,
@@ -987,7 +985,7 @@ describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ti
   it('una reparación que el actor ve sin la acción sobre su tipo llega como 403 (editar y comentar)', async () => {
     const { controller, crearComentario, editar } = armar();
     crearComentario.execute.mockResolvedValue(
-      Result.fail(new AccionSobreTipoNoPermitidaError('ALTAS o COMENTAR')),
+      Result.fail(new AccionSobreTipoNoPermitidaError('COMENTAR')),
     );
     editar.execute.mockResolvedValue(
       Result.fail(new AccionSobreTipoNoPermitidaError('MODIFICACION')),

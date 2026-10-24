@@ -14,7 +14,7 @@ import { ReparacionesController } from './interface/controllers/reparaciones.con
 import { TicketComprasController } from './interface/controllers/ticket-compras.controller';
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_EDILICIA_REPOSITORY } from './domain/ports/i-ticket-edilicia.repository';
-import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
+import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 import { ListarComprasDeTicketUseCase } from './application/use-cases/listar-compras-de-ticket.use-case';
 import { ResolutorReparacion } from './application/services/acceso-reparacion';
@@ -35,15 +35,22 @@ describe('ReparacionesModule wiring (T9.7)', () => {
     expect(exportsList).toEqual([TICKET_EDILICIA_REPOSITORY]);
   });
 
-  it.each([
-    CrearComentarioReparacionUseCase,
-    ListarComentariosReparacionUseCase,
-    ListarComprasDeTicketUseCase,
-    ResolutorReparacion,
-  ])('%p está provisto (los use cases se cablean a mano, sin @Injectable)', (useCase) => {
+  it('crear un comentario no tiene fábrica propia: usa el CrearComentarioUseCase que exporta TicketsModule (T2b, L19)', () => {
     const providers = (Reflect.getMetadata('providers', ReparacionesModule) ?? []) as {
       provide?: unknown;
     }[];
-    expect(providers.some((p) => p.provide === useCase)).toBe(true);
+    const exportadosDeTickets = (Reflect.getMetadata('exports', TicketsModule) ?? []) as unknown[];
+    expect(providers.some((p) => p.provide === CrearComentarioUseCase)).toBe(false);
+    expect(exportadosDeTickets).toContain(CrearComentarioUseCase);
   });
+
+  it.each([ListarComentariosReparacionUseCase, ListarComprasDeTicketUseCase, ResolutorReparacion])(
+    '%p está provisto (los use cases se cablean a mano, sin @Injectable)',
+    (useCase) => {
+      const providers = (Reflect.getMetadata('providers', ReparacionesModule) ?? []) as {
+        provide?: unknown;
+      }[];
+      expect(providers.some((p) => p.provide === useCase)).toBe(true);
+    },
+  );
 });

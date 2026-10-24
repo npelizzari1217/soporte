@@ -29,7 +29,6 @@ import {
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
 import { NumeradorTicket } from '../tickets/domain/services/numerador-ticket.service';
 import { ResolverCicloActivoParaCreacion } from '../tickets/application/services/resolver-ciclo-activo.service';
-import { VerificadorTicketEditable } from '../tickets/application/services/ticket-editable-para-tareas';
 import {
   ITenantTransactionRunner,
   TENANT_TX_RUNNER,
@@ -63,7 +62,6 @@ import {
   ITareaTicketRepository,
   TAREA_TICKET_REPOSITORY,
 } from '../tickets/domain/ports/i-tarea-ticket.repository';
-import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from './application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from './application/use-cases/vincular-compra-a-reparacion.use-case';
@@ -100,6 +98,9 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
  *   TIPO_TICKET_REPOSITORY, TIPO_OPERACION_REPOSITORY,
  *   USUARIO_MASTER_CHECKER, CICLO_CLIENTE_REPOSITORY) — NO se
  *   reimplementan, se inyectan por token (mismo patrón que `ComprasModule`).
+ *   El comentario de Edilicia lo crea `CrearComentarioUseCase`, exportado por
+ *   `TicketsModule` e inyectado tal cual en el controller: un comentario
+ *   interno del ticket, por el mismo camino que desde Tickets (T2b, L19).
  * - `NumeradorTicket`/`ResolverCicloActivoParaCreacion` son clases planas
  *   (sin `@Injectable`) — se resuelven vía `useFactory` inyectando sus
  *   puertos por token, igual que en `ComprasModule`.
@@ -212,28 +213,6 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         COMENTARIO_REPARACION_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
         SECTOR_REPOSITORY,
-      ],
-    },
-    {
-      // odd/ticket-unificado (S3): el comentario de Edilicia es un COMENTARIO del timeline.
-      provide: CrearComentarioReparacionUseCase,
-      useFactory: (
-        ticketRepo: ITicketRepository,
-        operacionRepo: IOperacionTicketRepository,
-        tipoOperacionRepo: ITipoOperacionRepository,
-        verificadorEditable: VerificadorTicketEditable,
-      ) =>
-        new CrearComentarioReparacionUseCase(
-          ticketRepo,
-          operacionRepo,
-          tipoOperacionRepo,
-          verificadorEditable,
-        ),
-      inject: [
-        TICKET_REPOSITORY,
-        OPERACION_TICKET_REPOSITORY,
-        TIPO_OPERACION_REPOSITORY,
-        VerificadorTicketEditable,
       ],
     },
     {
