@@ -30,7 +30,7 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   "Nuevo ticket" con todos los tipos — (este commit)
 - [x] T3b — S5, L22, L30 — worker — `bloqueada` en GET /tickets/:id para el detalle sin COMPRAS:LECTURA;
   Ayuda reparaciones-edilicias y reparaciones-listado — (este commit)
-- [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
+- [ ] T4 — S1 — worker — bloqueada (L36): retiro del satélite y de `comentarios_reparacion`, tras el deploy — (pendiente)
 
 ## Log
 
@@ -224,3 +224,5 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   31, `tickets.e2e.spec.ts` 38, `scripts/sync-ayuda.spec.ts` 21; frontend `pnpm lint` sin advertencias
   ni errores, `pnpm type-check` sin errores, `pnpm test` 282 archivos / 2491 tests. No se corrió la suite
   completa del backend.
+- **L36** (dueño, 2026-10-24) — "dejamos T4 para el deploy posterior": T4 queda bloqueada hasta después del
+  deploy de T1-T3b; mientras tanto `rollback.sql` sigue disponible sin pérdida.
