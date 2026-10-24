@@ -1173,12 +1173,15 @@ momento. El rollback no borra esa fila.
 
 ## Deploy del 2026-10-25: checklist combinado
 
-Este release junta `ticket-unificado` y `cerrado-solo-comentarios` con `responsables-por-tipo`,
-`preventivo-anticipacion` y `preventivo-por-tipo`. El detalle de cada parte está en su sección
-("Ticket unificado", "Anticipación del plan preventivo" y "Tipo de ticket del plan preventivo",
-más abajo); esta lista es el orden único para la ventana. Master no cambia, no hay variables de
-entorno ni dependencias nuevas y el lockfile no cambia: `cerrado-solo-comentarios` y
-`responsables-por-tipo` no traen migraciones.
+Este release integra cinco ramas: `sesion-vencida-aviso`, `compra-por-descripcion`,
+`cerrado-solo-comentarios` (con `ticket-unificado`), `preventivo-por-tipo` (con
+`preventivo-anticipacion` y `responsables-por-tipo`) e `historial-valor-residual`. El detalle de
+cada parte con migraciones está en su sección ("Ticket unificado", "Anticipación del plan
+preventivo", "Tipo de ticket del plan preventivo" e "Historial del valor de los equipos", más
+abajo); esta lista es el orden único para la ventana. Master no cambia, no hay variables de
+entorno ni dependencias nuevas y el lockfile no cambia: `sesion-vencida-aviso`,
+`compra-por-descripcion`, `cerrado-solo-comentarios` y `responsables-por-tipo` no traen
+migraciones.
 
 Migraciones tenant, todas por `migrate:tenants` y en este orden (el de sus timestamps):
 
@@ -1190,10 +1193,11 @@ Migraciones tenant, todas por `migrate:tenants` y en este orden (el de sus times
 | 4 | `20261025110000_tickets_fecha_objetivo` | No: columna nullable, sin backfill | "Anticipación del plan preventivo" |
 | 5 | `20261025120000_tickets_recordatorio_preventivo` | No: columna nullable e índice parcial | "Anticipación del plan preventivo" |
 | 6 | `20261025130000_preventivo_plan_tipo` | Sí (backfill de `planes_preventivo.tipo_id`); aborta en un tenant con planes y sin tipo `PREVENTIVO` | "Tipo de ticket del plan preventivo" |
+| 7 | `20261025140000_historial_valor_residual` | No: crea la tabla `equipo_valoraciones`, de solo agregado, y su backfill inserta en ella hasta dos filas `MIGRACION` por equipo sin baja (desde `importe`/`fecha_valoracion` y `valor_residual`/`fecha_valor_residual`), sin modificar `equipos_informaticos` | "Historial del valor de los equipos" |
 
 Cada migración es su propia transacción: si la 6 aborta en un tenant, en esa base ya quedaron
-aplicadas de la 1 a la 5, y `migrate-tenants.js` corta el fan-out con los servicios detenidos, así
-que los tenants siguientes quedan sin migrar.
+aplicadas de la 1 a la 5 y la 7 no se aplica, y `migrate-tenants.js` corta el fan-out con los
+servicios detenidos, así que los tenants siguientes quedan sin migrar.
 
 1. **Lista de bases** del registro, con la consulta sobre master de "Precheck de solo lectura: el
    CHECK de la copia". Todos los prechecks van en **cada** base de esa lista.
@@ -1204,7 +1208,8 @@ que los tenants siguientes quedan sin migrar.
    actual en marcha y volver a correr este paso.
 4. **`predeploy-dump.ps1 -DryRun`** y, en verde, **`predeploy-dump.ps1`** ("Precondición
    operativa"). Obligatorio: las migraciones 1, 2 y 6 escriben filas existentes, y el dump es el
-   único rollback fiel de las tres. Los servicios quedan detenidos.
+   único rollback fiel de las tres. La 7 solo inserta en su tabla nueva, así que el dump no le
+   hace falta para volver atrás. Los servicios quedan detenidos.
 5. **Prechecks 2 y 3 otra vez**, con los servicios detenidos: la foto definitiva. Si alguno no da
    verde, no se corre `deploy.ps1`: se arrancan los servicios y se resuelve primero.
 6. **`deploy.ps1`**. Lleva el backend y el frontend de este release juntos: el frontend anterior no
@@ -1225,12 +1230,54 @@ que los tenants siguientes quedan sin migrar.
    la fecha objetivo la fija recién el próximo barrido diario (por defecto a la 1:00,
    `PREVENTIVO_SWEEP_CRON`).
 
+   Y el historial del valor de los equipos, antes de que alguien guarde un equipo:
+
+   ```sql
+   SELECT
+     (SELECT count(*) FROM equipo_valoraciones WHERE origen = 'MIGRACION') AS valoraciones_migradas,
+     (SELECT count(*) FROM equipo_valoraciones WHERE origen = 'MANUAL')    AS valoraciones_manuales,
+     (SELECT count(*) FROM equipos_informaticos
+        WHERE deleted_at IS NULL
+          AND valor_residual IS NOT NULL AND fecha_valor_residual IS NOT NULL) AS con_valor_residual,
+     (SELECT count(*) FROM equipos_informaticos
+        WHERE deleted_at IS NULL
+          AND importe IS NOT NULL AND fecha_valoracion IS NOT NULL)           AS con_importe,
+     (SELECT count(*) FROM equipos_informaticos
+        WHERE deleted_at IS NULL
+          AND valor_residual IS NOT NULL AND fecha_valor_residual IS NOT NULL
+          AND importe IS NOT NULL AND fecha_valoracion = fecha_valor_residual) AS misma_fecha;
+   ```
+
+   `valoraciones_manuales` da 0, y `valoraciones_migradas` es `con_valor_residual + con_importe -
+   misma_fecha`: un equipo con las dos fechas iguales deja una sola fila, la del valor residual.
+
 **Rollback combinado.** Con los servicios detenidos, en **cada** base de inquilino y en orden
-inverso al de la tabla: los `rollback.sql` de la 6, la 5, la 4 y la 3, y después los de la 2 y la
-1 como dice "Ticket unificado"; recién entonces el código anterior (el paso 2 del rollback de
-"Ticket unificado"). Las secciones de preventivo piden "primero el código": con los servicios
-detenidos no hay código nuevo corriendo contra columnas que faltan, así que este orden también lo
-cumple. Ningún `rollback.sql` borra su fila de `_prisma_migrations`. Lo que cada uno pierde está en
+inverso al de la tabla:
+
+1. **Dump de `equipo_valoraciones`**, antes de borrarla. Las filas `MANUAL` guardadas después del
+   deploy son el único registro de los valores anteriores al vigente de cada equipo, y el dump de
+   `predeploy-dump.ps1` es anterior a ellas. `$dumpDir` es la carpeta que reportó
+   `predeploy-dump.ps1`, y la URL es la de la base de ese tenant **sin** el `?schema=public`, con
+   `-d` explícito (ver `DbUrl()` en `predeploy-dump.ps1`: libpq rechaza ese parámetro):
+
+   ```powershell
+   $dumpFile = Join-Path $dumpDir '<db_name>.equipo_valoraciones.dump'
+   & 'C:\Program Files\PostgreSQL\16\bin\pg_dump.exe' -Fc --table=equipo_valoraciones `
+     -d '<url de la base de ese tenant>' -f $dumpFile
+   if ($LASTEXITCODE -ne 0) { throw "pg_dump de equipo_valoraciones fallo" }
+   & 'C:\Program Files\PostgreSQL\16\bin\pg_restore.exe' --list $dumpFile | Out-Null
+   if ($LASTEXITCODE -ne 0) { throw "el dump de equipo_valoraciones no se puede leer" }
+   ```
+
+2. `20261025140000_historial_valor_residual/rollback.sql`: borra la tabla entera.
+3. Los `rollback.sql` de la 6, la 5, la 4 y la 3, y después los de la 2 y la 1 como dice
+   "Ticket unificado".
+4. Recién entonces el código anterior (el paso 2 del rollback de "Ticket unificado").
+
+Los pasos 1 y 2 son opcionales: el código anterior no lee `equipo_valoraciones`, y dejar la tabla
+conserva las filas `MANUAL` sin pasar por el dump. Las secciones de preventivo y la del historial
+piden "primero el código": con los servicios detenidos no hay código nuevo corriendo contra
+columnas o tablas que faltan, así que este orden también lo cumple. Ningún `rollback.sql` borra su fila de `_prisma_migrations`. Lo que cada uno pierde está en
 su sección; la vía fiel sigue siendo el dump del paso 4 ("Restore de datos").
 
 ## Ticket unificado
@@ -1463,6 +1510,36 @@ código, después el `rollback.sql`** en cada base de inquilino: el código nuev
 sin la columna falla. Pierde el tipo elegido en cada plan; el código anterior genera todos los
 planes con `PREVENTIVO`. No borra la fila de `_prisma_migrations`: para volver a desplegar, el
 mismo `migrate resolve --rolled-back` de arriba.
+
+## Historial del valor de los equipos
+
+Documento de la feature: `odd/tasks/historial-valor-residual.md`. Cada valor residual que se guarda
+en un equipo queda en un historial (fecha + importe), y la ficha lo muestra en tabla y gráfico. Qué
+cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migración tenant | `20261025140000_historial_valor_residual`, **aditiva con backfill**: la tabla `equipo_valoraciones`, de solo agregado (ningún flujo borra filas), con una fila por equipo y día. El backfill inserta hasta dos filas `MIGRACION` por equipo sin baja, con `importe`/`fecha_valoracion` y `valor_residual`/`fecha_valor_residual`; no modifica `equipos_informaticos`. Entra por `migrate:tenants`. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Efecto visible | Guardar un equipo con un valor residual o una fecha distintos de los guardados registra una fila `MANUAL`; el último guardado del día reemplaza al anterior. La ficha muestra el importe, el valor residual y el historial a quien puede ver equipos. |
+
+No necesita precheck: la tabla es nueva y no tiene CHECK de rango que una fila histórica pueda
+violar. La verificación posterior es la consulta del paso 7 de "Deploy del 2026-10-25: checklist
+combinado".
+
+### Rollback
+
+Su `rollback.sql` borra la tabla entera y se puede correr dos veces (`DROP TABLE IF EXISTS`).
+**Primero el código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee y
+escribe la tabla al abrir la ficha y al guardar un equipo, y falla sin ella. El código anterior no
+la conoce y convive con ella, así que dejarla puesta también es un rollback válido, y es el único
+que no pierde datos.
+
+Lo que se pierde al correr el `rollback.sql`: las filas `MANUAL` registradas después del deploy,
+que son el único registro de los valores anteriores al vigente de cada equipo. Antes de correrlo en
+un tenant con uso real, el dump de la tabla del paso 1 de "Rollback combinado". Las filas
+`MIGRACION` se reconstruyen al reaplicar la migración, pero con los valores que los equipos tengan
+en ese momento. No borra la fila de `_prisma_migrations`: para volver a desplegar, se borra a mano.
 
 ## Cuando algo falla
 
