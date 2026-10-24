@@ -101,3 +101,12 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 - **L17** (evidencia, T1) — Migración aplicada a `soporte_tenant_test` (`pnpm migrate:tenant`) y a los 2
   tenants locales (`pnpm migrate:tenants`), que estaban atrasados en 8 migraciones y recibieron
   todas. Reproducida con su rollback en `migracion-ticket-unificado.integration.spec.ts`.
+- **L18** (judgment-day sobre 486e4aa7..dfd7726c, 2026-10-24) — Sin filas CRITICAL: APROBADO (suite
+  completa verde, 772 archivos / 9535 tests). Advertencias a resolver: (1) T2 y T3 se despliegan juntos,
+  el front actual habilita vincular con ALTAS y desvincular con EDILICIA:BORRADO (JD-A-001, JD-B-004);
+  (2) comentar por /reparaciones no emite TicketComentadoEvent ni primera respuesta; debe usar el caso de
+  uso de comentarios del ticket (JD-A-002, JD-B-002); (3) re-correr la migración tras el deploy revive
+  vínculos borrados (JD-A-003): no re-aplicar sin rollback; (4) GET /tickets/:id/compras sin
+  COMPRAS:LECTURA (JD-A-004, JD-B-005) y comentarios de reparación migrados como públicos (JD-B-001):
+  decisiones del dueño; (5) rollback desvincula adjuntos de comentarios migrados (JD-A-006, JD-B-003) y
+  avisos de conflicto de ubicación solo por NOTICE (JD-A-005): documentar en el runbook.
