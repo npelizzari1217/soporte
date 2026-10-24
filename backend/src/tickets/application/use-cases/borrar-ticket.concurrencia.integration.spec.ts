@@ -74,7 +74,10 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const reparacionCompraRepo = new PrismaReparacionCompraRepository(tenantContext);
   const estadoRepo = new PrismaEstadoRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
-  const siempreEditable = { verificar: async () => Result.ok(undefined) };
+  const siempreEditable = {
+    verificar: async () => Result.ok(undefined),
+    verificarEstado: async () => Result.ok(undefined),
+  };
   const sinAvanceDeEstado = { aplicar: async () => null };
   let tipoId: string;
   let estadoId: string;
@@ -200,6 +203,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
         expect((await borrarTicket(ticketId)).isOk()).toBe(true);
         return Result.ok(undefined);
       },
+      verificarEstado: async () => Result.ok(undefined),
     };
 
     const result = await enTenant(() =>

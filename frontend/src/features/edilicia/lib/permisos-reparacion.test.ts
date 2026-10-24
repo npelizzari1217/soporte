@@ -22,9 +22,12 @@ describe("puedeEditarReparacionUi (odd/detalle-ticket-legible, S5-S6)", () => {
     },
   );
 
-  it("caso hermano: un ADMINISTRADOR (no ROOT) en CERRADO sigue con la regla de siempre, motivo EN_PROCESO", () => {
-    expect(puedeEditarReparacionUi(sinTareas, "CERRADO", false, true)).toEqual({ puede: false, motivo: "EN_PROCESO" });
-  });
+  it.each(["RESUELTO", "CERRADO", "CANCELADO"])(
+    "caso hermano: un ADMINISTRADOR (no ROOT) en %s sigue con la regla de siempre, motivo EN_PROCESO",
+    (estado) => {
+      expect(puedeEditarReparacionUi(sinTareas, estado, false, true)).toEqual({ puede: false, motivo: "EN_PROCESO" });
+    },
+  );
 
   it("el texto del motivo SOLO_COMENTARIOS nombra el estado", () => {
     expect(textoMotivoNoEditable("SOLO_COMENTARIOS", "CANCELADO")).toBe(

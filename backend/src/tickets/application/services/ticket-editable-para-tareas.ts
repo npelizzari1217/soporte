@@ -15,6 +15,10 @@ import { verificarTicketModificable } from './solo-comentarios';
  *   y esa reapertura queda en sus manos.
  * - Con una compra activa vinculada, nadie, ROOT incluido (`TareaTicketNoEditableError`,
  *   odd/ticket-unificado S5).
+ *
+ * `verificar` corre sobre la lectura previa a la transacción; `verificarEstado` repite la regla del
+ * estado dentro de ella, sobre el ticket releído con el lock: entre las dos lecturas otro actor pudo
+ * resolverlo, cerrarlo o cancelarlo.
  */
 export class VerificadorTicketEditable {
   constructor(
@@ -31,16 +35,31 @@ export class VerificadorTicketEditable {
     ticket: TicketEntity,
     actorEsAdministrador: boolean,
   ): Promise<Result<void, DomainError>> {
-    const modificable = await verificarTicketModificable(
-      this.estadoRepo,
-      ticket,
-      actorEsAdministrador,
-    );
-    if (modificable.isFail()) return Result.fail(modificable.getError());
+    const modificable = await this.verificarEstado(ticket, actorEsAdministrador);
+    if (modificable.isFail()) return modificable;
 
     if (await this.bloqueoRepo.estaBloqueadoPorCompra(ticket.id)) {
       return Result.fail(new TareaTicketNoEditableError());
     }
     return Result.ok(undefined);
+  }
+
+  /**
+   * Solo la regla del estado, para repetirla dentro de la transacción.
+   *
+   * @param ticket Ticket releído con la fila bloqueada (`bloquearTicketActivo`).
+   * @param actorEsAdministrador `true` para ADMINISTRADOR y ROOT.
+   * @returns Ok, o `TicketSoloComentariosError` (422) en RESUELTO, CERRADO o CANCELADO.
+   */
+  async verificarEstado(
+    ticket: TicketEntity,
+    actorEsAdministrador: boolean,
+  ): Promise<Result<void, DomainError>> {
+    const modificable = await verificarTicketModificable(
+      this.estadoRepo,
+      ticket,
+      actorEsAdministrador,
+    );
+    return modificable.isFail() ? Result.fail(modificable.getError()) : Result.ok(undefined);
   }
 }

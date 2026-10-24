@@ -2,9 +2,11 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
 import { TareaNoEncontradaError } from '../../domain/errors/tareas.errors';
+import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { bloquearTicketActivo } from '../services/bloquear-ticket-activo';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import {
@@ -31,6 +33,11 @@ export interface EliminarTareaDto {
  *
  * La escritura solo toca `deleted_at` y exige que la tarea siga activa (T10): una baja que corre a
  * la par de un completado lo conserva, y una segunda baja da 404 sin duplicar el historial.
+ *
+ * Antes de escribir toma el lock del ticket y lo relee (odd/permisos-por-tipo-ticket, L45): uno
+ * borrado en el medio da `TicketNoEncontradoError` (404), y sobre el releído vuelve a decidir el
+ * estado (odd/cerrado-solo-comentarios): uno resuelto, cerrado o cancelado en el medio da
+ * `TicketSoloComentariosError` (422) a quien no es administrador.
  */
 export class EliminarTareaUseCase {
   constructor(
@@ -40,7 +47,10 @@ export class EliminarTareaUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
-    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
+    private readonly verificadorEditable: Pick<
+      VerificadorTicketEditable,
+      'verificar' | 'verificarEstado'
+    >,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -70,13 +80,19 @@ export class EliminarTareaUseCase {
     );
     const operacion = operacionDeTarea({ tarea, tipoOperacionId, autorId: dto.actor.id });
 
-    const escrita = await this.txRunner.run(async () => {
-      if (!(await this.tareaRepo.darDeBajaSiActiva(tarea))) return false;
+    return this.txRunner.run(async (): Promise<Result<void, DomainError>> => {
+      const actual = await bloquearTicketActivo(this.ticketRepo, ticket.id);
+      if (!actual) return Result.fail(new TicketNoEncontradoError(ticket.id));
+      const vigente = await this.verificadorEditable.verificarEstado(
+        actual,
+        dto.actor.esAdministrador,
+      );
+      if (vigente.isFail()) return vigente;
+      if (!(await this.tareaRepo.darDeBajaSiActiva(tarea))) {
+        return Result.fail(new TareaNoEncontradaError(tarea.id));
+      }
       await this.operacionRepo.save(operacion);
-      return true;
+      return Result.ok(undefined);
     });
-    if (!escrita) return Result.fail(new TareaNoEncontradaError(tarea.id));
-
-    return Result.ok(undefined);
   }
 }

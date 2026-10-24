@@ -171,8 +171,10 @@ editan los datos, no se adjuntan archivos y no se vinculan ni desvinculan
 compras. La pantalla lo indica con el motivo, por ejemplo *El ticket está
 resuelto: solo admite comentarios*.
 
-Un **ADMINISTRADOR** o **ROOT** queda exento: puede corregir lo que haga falta y
-reabrir el ticket. Por ejemplo, si una tarea se marcó como completada por error
+Un **ADMINISTRADOR** o **ROOT** queda exento de esta regla: puede trabajar las
+tareas, adjuntar, gestionar compras y reabrir el ticket. Corregir los datos de la
+reparación en esos estados queda solo para **ROOT**, y el bloqueo por compra en
+curso vale para todos. Por ejemplo, si una tarea se marcó como completada por error
 y eso resolvió el ticket, un administrador la descompleta y el ticket vuelve a
 "En proceso".
 

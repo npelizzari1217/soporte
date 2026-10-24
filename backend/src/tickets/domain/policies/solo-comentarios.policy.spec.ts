@@ -17,15 +17,23 @@ describe('ticketSoloComentarios (odd/cerrado-solo-comentarios, S1-S3)', () => {
     ['RESUELTO', true],
     ['CERRADO', true],
     ['CANCELADO', true],
+    // Un código fuera del catálogo no deja al ticket en solo comentarios.
+    ['X', false],
   ])('%s, actor no administrador → %s', (estado, esperado) => {
     expect(ticketSoloComentarios(estado, false)).toBe(esperado);
     expect(esEstadoSoloComentarios(estado)).toBe(esperado);
   });
 
-  it.each(['NUEVO', 'EN_PROCESO', 'RESUELTO', 'CERRADO', 'CANCELADO'])(
-    'ADMINISTRADOR o ROOT nunca queda en solo comentarios (%s, S3)',
-    (estado) => {
-      expect(ticketSoloComentarios(estado, true)).toBe(false);
-    },
-  );
+  it.each([
+    'NUEVO',
+    'ASIGNADO',
+    'EN_PROCESO',
+    'ESPERANDO_CLIENTE',
+    'RESUELTO',
+    'CERRADO',
+    'CANCELADO',
+    'X',
+  ])('ADMINISTRADOR o ROOT nunca queda en solo comentarios (%s, S3)', (estado) => {
+    expect(ticketSoloComentarios(estado, true)).toBe(false);
+  });
 });

@@ -19,20 +19,27 @@ import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/p
 import { PrismaTenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
+import { PrismaBloqueoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-bloqueo-ticket.repository';
+import { PrismaEstadoRepository } from '../../infrastructure/persistence/prisma/prisma-estado.repository';
 import { PrismaOperacionTicketRepository } from '../../infrastructure/persistence/prisma/prisma-operacion-ticket.repository';
 import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
 import { PrismaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTipoOperacionRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { PrismaTipoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-ticket.repository';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
+import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { AsignarTecnicoTareaUseCase } from './asignar-tecnico-tarea.use-case';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
 import { EliminarTareaUseCase } from './eliminar-tarea.use-case';
 import { Result } from '../../../shared/domain/result';
 
-// odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
-const siempreEditable = { verificar: async () => Result.ok(undefined) };
+// odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket es editable salvo en
+// la carrera contra su resolución (odd/cerrado-solo-comentarios), que usa el verificador real.
+const siempreEditable = {
+  verificar: async () => Result.ok(undefined),
+  verificarEstado: async () => Result.ok(undefined),
+};
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -474,5 +481,49 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     expect(result.isFail()).toBe(true);
     expect(result.getError().code).toBe('TAREA_NO_ENCONTRADA');
     expect(await codigosDelHistorial()).toEqual(['TAREA_ELIMINADA']);
+  });
+
+  it('completar contra resolver el ticket: con el lock ve RESUELTO y da TICKET_SOLO_COMENTARIOS sin escribir (odd/cerrado-solo-comentarios)', async () => {
+    const tarea = await sembrarTarea(TECNICO_A);
+    const { estadoId: estadoOriginalId } = await client.ticket.findUniqueOrThrow({
+      where: { id: ticketId },
+    });
+    const resuelto = await client.estado.upsert({
+      where: { codigo: 'RESUELTO' },
+      create: { codigo: 'RESUELTO', nombre: 'Resuelto' },
+      update: {},
+    });
+    // Otra transacción resuelve el ticket y hace commit después de que el caso de uso lo leyó: la
+    // verificación previa ve el estado anterior y deja pasar.
+    const repo = repoConCarrera(() =>
+      client.ticket.update({ where: { id: ticketId }, data: { estadoId: resuelto.id } }),
+    );
+    const verificador = new VerificadorTicketEditable(
+      new PrismaEstadoRepository(tenantContext),
+      new PrismaBloqueoTicketRepository(tenantContext),
+    );
+
+    try {
+      const result = await enTenant(() =>
+        new CompletarTareaUseCase(
+          ticketRepo,
+          repo,
+          operacionRepo,
+          tipoOperacionRepo,
+          txRunner,
+          sinAvanceDeEstado,
+          verificador,
+        ).execute({ ticketId, tareaId: tarea.id, actor: RESPONSABLE_ACTOR }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('TICKET_SOLO_COMENTARIOS');
+      const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: tarea.id } });
+      expect(fila.completada).toBe(false);
+      expect(fila.completadaPorId).toBeNull();
+      expect(await codigosDelHistorial()).toEqual([]);
+    } finally {
+      await client.ticket.update({ where: { id: ticketId }, data: { estadoId: estadoOriginalId } });
+    }
   });
 });

@@ -54,7 +54,9 @@ export interface DescompletarTareaDto {
  *
  * Con el lock tomado relee el ticket (odd/permisos-por-tipo-ticket, L45): si se borró después de
  * cargarlo, da `TicketNoEncontradoError` (404) y no escribe nada. Sin eso, la tarea volvería a
- * pendiente en un ticket borrado, que el borrado no habría dejado pasar.
+ * pendiente en un ticket borrado, que el borrado no habría dejado pasar. Sobre ese ticket releído
+ * vuelve a decidir el estado (odd/cerrado-solo-comentarios): uno resuelto, cerrado o cancelado en el
+ * medio da `TicketSoloComentariosError` (422) a quien no es administrador.
  */
 export class DescompletarTareaUseCase {
   constructor(
@@ -67,7 +69,10 @@ export class DescompletarTareaUseCase {
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly avanzarEstado: Pick<AvanzarEstadoPorTareasService, 'aplicar'>,
-    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
+    private readonly verificadorEditable: Pick<
+      VerificadorTicketEditable,
+      'verificar' | 'verificarEstado'
+    >,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -113,18 +118,24 @@ export class DescompletarTareaUseCase {
     });
 
     const escritura = await this.txRunner.run(
-      async (): Promise<'escrita' | 'rechazada' | 'ticket-borrado'> => {
-        if (!(await bloquearTicketActivo(this.ticketRepo, ticket.id))) return 'ticket-borrado';
-        if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) return 'rechazada';
+      async (): Promise<Result<'escrita' | 'rechazada', DomainError>> => {
+        const actual = await bloquearTicketActivo(this.ticketRepo, ticket.id);
+        if (!actual) return Result.fail(new TicketNoEncontradoError(ticket.id));
+        const vigente = await this.verificadorEditable.verificarEstado(
+          actual,
+          dto.actor.esAdministrador,
+        );
+        if (vigente.isFail()) return Result.fail(vigente.getError());
+        if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) {
+          return Result.ok('rechazada');
+        }
         await this.operacionRepo.save(operacion);
         await this.avanzarEstado.aplicar('DESCOMPLETAR', ticket.id, dto.actor.id);
-        return 'escrita';
+        return Result.ok('escrita');
       },
     );
-    if (escritura === 'ticket-borrado') {
-      return Result.fail(new TicketNoEncontradoError(ticket.id));
-    }
-    if (escritura === 'rechazada') {
+    if (escritura.isFail()) return Result.fail(escritura.getError());
+    if (escritura.getValue() === 'rechazada') {
       return Result.fail(
         await errorDeEscrituraRechazada(
           this.tareaRepo,

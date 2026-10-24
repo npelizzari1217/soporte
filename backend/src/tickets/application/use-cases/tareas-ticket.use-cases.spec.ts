@@ -286,12 +286,28 @@ function armar() {
     });
   }
 
+  /**
+   * Carrera con un cambio de estado (odd/cerrado-solo-comentarios): otra transacción deja el ticket
+   * en `codigo` y hace commit mientras el caso de uso espera el lock. La lectura previa sigue viendo
+   * el estado anterior; solo la relectura con el lock ve el nuevo.
+   */
+  function cambiarEstadoAlBloquear(ticketId: string, codigo: string): void {
+    ticketRepo.bloquear.mockImplementationOnce(async (id: string) => {
+      secuencia.push(`bloquear:${id}`);
+      const releido = crearTicket(ticketId);
+      releido.updateEstado(`estado-${codigo}`);
+      estadoDe.set(`estado-${codigo}`, codigo);
+      tickets.set(ticketId, releido);
+    });
+  }
+
   return {
     tickets,
     tareas,
     operaciones,
     sembrarTarea,
     borrarAlBloquear,
+    cambiarEstadoAlBloquear,
     esAgenteDeTipo,
     tareaRepo,
     operacionRepo,
@@ -1178,6 +1194,43 @@ describe('tareas en un ticket resuelto, cerrado o cancelado (odd/cerrado-solo-co
         }
         expect(deps.operaciones).toHaveLength(0);
         expect(fotoDeTareas(deps)).toEqual(antes);
+      },
+    );
+  });
+
+  describe('el estado cambia entre la lectura y el lock', () => {
+    it.each(ACCIONES)(
+      '%s: si el ticket pasó a RESUELTO mientras esperaba el lock, el responsable recibe TicketSoloComentariosError y no escribe nada',
+      async (accion) => {
+        const deps = armarConTareas();
+        deps.cambiarEstadoAlBloquear(TICKET_ID, 'RESUELTO');
+
+        const error = errorDe(await ejecutar(deps, accion));
+
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe('RESUELTO');
+        expect(deps.ticketRepo.bloquear).toHaveBeenCalledWith(TICKET_ID);
+        expect(deps.tareaRepo.crear).not.toHaveBeenCalled();
+        expect(deps.tareaRepo.asignarTecnicoSiActiva).not.toHaveBeenCalled();
+        expect(deps.tareaRepo.completarSiPendiente).not.toHaveBeenCalled();
+        expect(deps.tareaRepo.descompletarSiCompletada).not.toHaveBeenCalled();
+        expect(deps.tareaRepo.darDeBajaSiActiva).not.toHaveBeenCalled();
+        expect(deps.operaciones).toHaveLength(0);
+        expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(ACCIONES)(
+      'caso hermano: %s con el ticket resuelto en el medio sigue pudiéndolo un ADMINISTRADOR o ROOT (S3)',
+      async (accion) => {
+        const deps = armarConTareas();
+        deps.cambiarEstadoAlBloquear(TICKET_ID, 'RESUELTO');
+
+        const result = await ejecutar(deps, accion, ACTORES.administrador);
+
+        expect(result.isOk()).toBe(true);
+        expect(deps.ticketRepo.bloquear).toHaveBeenCalledWith(TICKET_ID);
+        expect(deps.operaciones).toHaveLength(1);
       },
     );
   });

@@ -50,7 +50,10 @@ const ALCANCE_SIN_RESTRICCION: AlcanceActorTicket = {
 };
 
 // odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
-const siempreEditable = { verificar: async () => Result.ok(undefined) };
+const siempreEditable = {
+  verificar: async () => Result.ok(undefined),
+  verificarEstado: async () => Result.ok(undefined),
+};
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??

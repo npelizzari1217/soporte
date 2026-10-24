@@ -752,6 +752,20 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.isOk()).toBe(true);
       expect(ticket.estadoId).toBe(ESTADOS.EN_PROCESO.id);
     });
+
+    it('un flujo de sistema (alcance null) saca el ticket de ESPERANDO_CLIENTE como siempre', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('ESPERANDO_CLIENTE');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'EN_PROCESO', alcance: null }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.estadoId).toBe(ESTADOS.EN_PROCESO.id);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
