@@ -517,3 +517,116 @@ describe('WU-11/WU-12/WU-25 — filtro por grupo de estado + test de deriva', ()
     expect(totalConLimite).toBe(totalCompleto);
   });
 });
+
+/**
+ * `busqueda` — texto libre sobre `motivo` y `numero` (selector de compras de
+ * Edilicia). Cada fixture vive en un ciclo propio y cada consulta lo filtra
+ * por `cicloId`, así que las filas de otras suites que comparten
+ * `soporte_tenant_test` no entran en los asserts.
+ */
+describe('busqueda — ILIKE literal sobre motivo y numero', () => {
+  let client: Client;
+  let prismaService: PrismaService;
+  let repo: PrismaCompraRepository;
+  let cicloId: string | undefined;
+  const ids: Record<string, string> = {};
+
+  beforeAll(async () => {
+    prismaService = new PrismaService(TENANT_TEST_URL);
+    const tenantClient = prismaService.getTenantClient(TENANT_TEST_DB_NAME);
+    const tenantContext = new TenantContext();
+    tenantContext.bind({
+      prismaClient: tenantClient,
+      dbName: TENANT_TEST_DB_NAME,
+      clienteId: 'test-cliente-busqueda',
+    });
+    repo = new PrismaCompraRepository(tenantContext);
+
+    client = new Client({ connectionString: TENANT_TEST_URL });
+    await client.connect();
+
+    const ciclo = await client.query(
+      `INSERT INTO ciclos_cliente (id, ciclo_vigente_id, nombre, fecha_inicio, fecha_fin, activo, updated_at)
+       VALUES (gen_random_uuid(), gen_random_uuid(), 'Ciclo busqueda compras', '2026-01-01', '2026-12-31', false, now())
+       RETURNING id`,
+    );
+    cicloId = ciclo.rows[0].id as string;
+
+    async function insertCompra(
+      numero: string,
+      motivo: string,
+      cancelada = false,
+    ): Promise<string> {
+      const result = await client.query(
+        `INSERT INTO compras (id, numero, fecha_solicitud, motivo, solicitante_id, ciclo_id, cancelada_en, cancelado_por_id, motivo_cancelacion, updated_at)
+         VALUES (gen_random_uuid(), $1, '2026-01-01', $2, gen_random_uuid(), $3, $4, $5, $6, now())
+         RETURNING id`,
+        [
+          numero,
+          motivo,
+          cicloId,
+          cancelada ? new Date() : null,
+          cancelada ? '00000000-0000-4000-8000-000000000ccc' : null,
+          cancelada ? 'Cancelada para fixture de busqueda' : null,
+        ],
+      );
+      return result.rows[0].id as string;
+    }
+
+    ids.pintura = await insertCompra('COM-2026-71001', 'Pintura aula 3');
+    ids.cableado = await insertCompra('COM-2026-71002', 'Cableado del laboratorio');
+    ids.porcentaje = await insertCompra('COM-2026-71003', 'Descuento 10% en sillas');
+    ids.guionBajo = await insertCompra('COM-2026-71004', 'Codigo AB_12 de repuesto');
+    ids.sinGuion = await insertCompra('COM-2026-71006', 'Codigo AB012 de repuesto');
+    ids.pinturaCancelada = await insertCompra('COM-2026-71005', 'Pintura patio', true);
+  });
+
+  afterAll(async () => {
+    if (cicloId !== undefined) {
+      await client.query('DELETE FROM compras WHERE ciclo_id = $1', [cicloId]);
+      await client.query('DELETE FROM ciclos_cliente WHERE id = $1', [cicloId]);
+    }
+    await client.end();
+    await prismaService.onModuleDestroy();
+  });
+
+  async function idsDe(busqueda: string, grupoEstado: 'ACTIVAS' | 'TODAS' = 'TODAS') {
+    const { compras, total } = await repo.findPaginaConItems({ cicloId, grupoEstado, busqueda });
+    return { ids: new Set(compras.map((c) => c.id)), total };
+  }
+
+  it('encuentra por motivo sin distinguir mayúsculas, y solo las que lo contienen', async () => {
+    const { ids: encontrados } = await idsDe('PINTURA');
+    expect(encontrados).toEqual(new Set([ids.pintura, ids.pinturaCancelada]));
+  });
+
+  it('encuentra por un fragmento del numero', async () => {
+    const { ids: encontrados } = await idsDe('71002');
+    expect(encontrados).toEqual(new Set([ids.cableado]));
+  });
+
+  it('`%` se busca como texto literal, no como comodín que trae todo', async () => {
+    // Sin escape, `10%` matchearía cualquier compra con "10": todos los
+    // números del fixture (`COM-2026-710xx`) lo contienen.
+    const { ids: encontrados } = await idsDe('10%');
+    expect(encontrados).toEqual(new Set([ids.porcentaje]));
+  });
+
+  it('`_` se busca como texto literal, no como comodín de un carácter', async () => {
+    // Sin escape, `AB_12` también matchearía `AB012`: el `_` aceptaría el `0`.
+    const { ids: encontrados } = await idsDe('AB_12');
+    expect(encontrados).toEqual(new Set([ids.guionBajo]));
+  });
+
+  it('se combina con el grupo de estado: una cancelada que coincide no entra en ACTIVAS, y el total lo refleja', async () => {
+    const { ids: encontrados, total } = await idsDe('pintura', 'ACTIVAS');
+    expect(encontrados).toEqual(new Set([ids.pintura]));
+    expect(total).toBe(1);
+  });
+
+  it('un término sin coincidencias devuelve página vacía con total 0', async () => {
+    const { ids: encontrados, total } = await idsDe('inexistente-xyz');
+    expect(encontrados.size).toBe(0);
+    expect(total).toBe(0);
+  });
+});

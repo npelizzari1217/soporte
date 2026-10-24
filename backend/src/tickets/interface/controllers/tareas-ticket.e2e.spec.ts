@@ -574,6 +574,9 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
         { descripcion: 'Tarea propia' },
       );
       await http('PATCH', r.tecnico(tarea.id), responsable.token, { tecnicoId: tecnico.id });
+      // Otra tarea pendiente: completar la única resolvería el ticket, y en RESUELTO el técnico ya
+      // no descompleta (odd/cerrado-solo-comentarios, L3).
+      await http('POST', r.base, responsable.token, { descripcion: 'Otra pendiente' });
 
       expect((await http('POST', r.completar(tarea.id), tecnico.token)).status).toBe(200);
       expect((await http('POST', r.descompletar(tarea.id), tecnico.token)).status).toBe(200);
@@ -638,6 +641,78 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
   });
 
   // ─── Visibilidad por tarea (CA10) ──────────────────────────────────────
+
+  describe('ticket resuelto, cerrado o cancelado (odd/cerrado-solo-comentarios, S1-S3)', () => {
+    async function ponerEstado(ticketId: string, codigo: string): Promise<void> {
+      const estado = await a.client.estado.findUniqueOrThrow({ where: { codigo } });
+      await a.client.ticket.update({ where: { id: ticketId }, data: { estadoId: estado.id } });
+    }
+
+    it('en RESUELTO el responsable no crea ni completa tareas: 422 que nombra el estado, sin cambios', async () => {
+      const { responsable, ticketId } = await escenario();
+      const r = rutas(ticketId);
+      const previa = await http<TareaTicketResponseDto>('POST', r.base, responsable.token, {
+        descripcion: 'Cambiar el disyuntor',
+      });
+      expect(previa.status).toBe(201);
+      await ponerEstado(ticketId, 'RESUELTO');
+
+      const crear = await http('POST', r.base, responsable.token, { descripcion: 'Otra tarea' });
+      const completar = await http('POST', r.completar(previa.data.id), responsable.token);
+
+      for (const res of [crear, completar]) {
+        expect(res.status).toBe(422);
+        expect(JSON.stringify(res.data)).toContain(
+          'El ticket está resuelto: solo admite comentarios.',
+        );
+      }
+      const tareas = await a.client.tareaTicket.findMany({ where: { ticketId, deletedAt: null } });
+      expect(tareas.map((t) => [t.descripcion, t.completada])).toEqual([
+        ['Cambiar el disyuntor', false],
+      ]);
+    });
+
+    it('completar la última tarea resuelve el ticket: su técnico ya no la descompleta (422), el ADMINISTRADOR sí y lo reabre', async () => {
+      const { responsable, administrador, tecnico, ticketId } = await escenario();
+      const r = rutas(ticketId);
+      const { data: tarea } = await http<TareaTicketResponseDto>(
+        'POST',
+        r.base,
+        responsable.token,
+        {
+          descripcion: 'Única tarea',
+        },
+      );
+      await http('PATCH', r.tecnico(tarea.id), responsable.token, { tecnicoId: tecnico.id });
+      expect((await http('POST', r.completar(tarea.id), tecnico.token)).status).toBe(200);
+      const estadoDe = async () =>
+        (
+          await a.client.ticket.findUniqueOrThrow({
+            where: { id: ticketId },
+            include: { estado: true },
+          })
+        ).estado.codigo;
+      expect(await estadoDe()).toBe('RESUELTO');
+
+      expect((await http('POST', r.descompletar(tarea.id), tecnico.token)).status).toBe(422);
+      expect(await estadoDe()).toBe('RESUELTO');
+
+      expect((await http('POST', r.descompletar(tarea.id), administrador.token)).status).toBe(200);
+      expect(await estadoDe()).toBe('EN_PROCESO');
+    });
+
+    it('en CERRADO el ADMINISTRADOR sí crea y borra tareas (S3)', async () => {
+      const { administrador, ticketId } = await escenario();
+      const r = rutas(ticketId);
+      await ponerEstado(ticketId, 'CERRADO');
+
+      const creada = await http<TareaTicketResponseDto>('POST', r.base, administrador.token, {
+        descripcion: 'Corrección posterior',
+      });
+      expect(creada.status).toBe(201);
+      expect((await http('DELETE', r.tarea(creada.data.id), administrador.token)).status).toBe(204);
+    });
+  });
 
   describe('visibilidad por tarea (CA10)', () => {
     async function ve(
@@ -898,6 +973,69 @@ describe('Tareas del ticket e2e — /tickets/:id/tareas (odd/tareas-con-tecnico 
   });
 
   // ─── Aislamiento entre clientes ────────────────────────────────────────
+
+  // odd/estado-por-tareas S2 con la regla de asignables: quien completa en NUEVO sin responsable queda
+  // como responsable solo si es agente del tipo (decisión del dueño del 2026-10-23).
+  describe('completar en NUEVO sin responsable', () => {
+    /** Ticket NUEVO sin responsable con dos tareas del técnico, creadas por el administrador. */
+    async function sinResponsable() {
+      const escena = await escenario();
+      const ticketId = await crearTicket(a, null);
+      const r = rutas(ticketId);
+      const tareaIds: string[] = [];
+      for (const descripcion of ['Revisar el tablero', 'Cambiar la llave']) {
+        const { data: tarea } = await http<TareaTicketResponseDto>(
+          'POST',
+          r.base,
+          escena.administrador.token,
+          { descripcion },
+        );
+        const asignada = await http('PATCH', r.tecnico(tarea.id), escena.administrador.token, {
+          tecnicoId: escena.tecnico.id,
+        });
+        expect(asignada.status).toBe(200);
+        tareaIds.push(tarea.id);
+      }
+      return { ...escena, ticketId, r, tareaIds };
+    }
+
+    async function ticketYAsignaciones(ticketId: string) {
+      const ticket = await a.client.ticket.findUniqueOrThrow({
+        where: { id: ticketId },
+        include: { estado: true },
+      });
+      const asignaciones = await a.client.operacionTicket.count({
+        where: { ticketId, tipoOperacion: { codigo: 'ASIGNACION' } },
+      });
+      return { estado: ticket.estado.codigo, asignadoId: ticket.asignadoId, asignaciones };
+    }
+
+    it('el ADMINISTRADOR completa: el ticket pasa a EN_PROCESO y sigue sin responsable', async () => {
+      const { administrador, ticketId, r, tareaIds } = await sinResponsable();
+
+      const completada = await http('POST', r.completar(tareaIds[0]), administrador.token);
+
+      expect(completada.status).toBe(200);
+      expect(await ticketYAsignaciones(ticketId)).toEqual({
+        estado: 'EN_PROCESO',
+        asignadoId: null,
+        asignaciones: 0,
+      });
+    });
+
+    it('el técnico de la tarea completa: el ticket pasa a EN_PROCESO y queda a su cargo', async () => {
+      const { tecnico, ticketId, r, tareaIds } = await sinResponsable();
+
+      const completada = await http('POST', r.completar(tareaIds[0]), tecnico.token);
+
+      expect(completada.status).toBe(200);
+      expect(await ticketYAsignaciones(ticketId)).toEqual({
+        estado: 'EN_PROCESO',
+        asignadoId: tecnico.id,
+        asignaciones: 1,
+      });
+    });
+  });
 
   it('aislamiento: un usuario del cliente B no ve ni cambia las tareas del cliente A', async () => {
     const { responsable, ticketId } = await escenario();

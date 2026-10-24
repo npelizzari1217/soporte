@@ -3,6 +3,8 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import { NumeroSerieDuplicadoError } from '../../domain/errors/equipos.errors';
+import { valoracionDelGuardado } from '../../domain/entities/valoracion-equipo';
+import { IValoracionEquipoRepository } from '../../domain/ports/i-valoracion-equipo.repository';
 import {
   LectorCatalogoModelos,
   validarModeloEquipoElegible,
@@ -38,6 +40,8 @@ export interface CrearEquipoDto {
   observaciones?: string | null;
   valorResidual?: number | null;
   fechaValorResidual?: Date | null;
+  /** Quién da de alta el equipo (`JWT.sub`): queda en la valoración del historial. */
+  usuarioId: string;
 }
 
 /**
@@ -58,6 +62,9 @@ export interface CrearEquipoDto {
  *    mayúscula por la entidad) y persiste en transacción. Si la DB lanza P2002
  *    (carrera concurrente sobre el índice único parcial), se mapea igual a
  *    `NumeroSerieDuplicadoError` (defensa en profundidad).
+ * 4. Si el alta trae valor residual con fecha, registra esa valoración en el historial del
+ *    equipo en la MISMA transacción (odd/tasks/historial-valor-residual.md, S2): si el registro
+ *    falla, el equipo no queda creado.
  *
  * La ubicación pasó de FK (catálogo) a TEXTO LIBRE — ya no se valida contra el
  * catálogo de ubicaciones.
@@ -73,6 +80,8 @@ export class CrearEquipoUseCase {
     // Va al final para no reordenar los args de los callers existentes (mismo
     // criterio que `EquiposController.exportarEquiposUseCase`).
     private readonly modeloEquipoRepo: LectorCatalogoModelos,
+    // Al final por el mismo criterio.
+    private readonly valoracionRepo: Pick<IValoracionEquipoRepository, 'registrar'>,
   ) {}
 
   async execute(dto: CrearEquipoDto): Promise<Result<EquipoInformaticoEntity, DomainError>> {
@@ -113,6 +122,14 @@ export class CrearEquipoUseCase {
     try {
       await this.txRunner.run(async () => {
         await this.equipoRepo.save(equipo);
+        const valoracion = valoracionDelGuardado(null, equipo);
+        if (valoracion !== null) {
+          await this.valoracionRepo.registrar({
+            equipoId: equipo.id,
+            ...valoracion,
+            usuarioId: dto.usuarioId,
+          });
+        }
       });
     } catch (err: unknown) {
       if (dto.numeroSerie !== null && isPrismaUniqueConstraintError(err)) {

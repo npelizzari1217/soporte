@@ -44,6 +44,13 @@ type ColumnasRelojSla =
   | 'primeraRespuestaHabilS'
   | 'resolucionHabilS';
 
+/**
+ * Marca del recordatorio de preventivo (odd/preventivo-anticipacion T3). La escribe solo el UPDATE
+ * acotado que reclama el recordatorio; si el upsert de la entidad la incluyera, cualquier guardado
+ * posterior del ticket la pisaría y el recordatorio podría salir dos veces.
+ */
+type ColumnaRecordatorio = 'recordatorioEnviadoAt';
+
 export class TicketMapper {
   /** Convierte una fila de DB Prisma → TicketEntity de dominio. */
   static toDomain(row: PrismaTicket): TicketEntity {
@@ -65,6 +72,7 @@ export class TicketMapper {
         fechaCierre: row.fechaCierre ?? null,
         ubicacion: row.ubicacion ?? null,
         sectorId: row.sectorId ?? null,
+        fechaObjetivo: row.fechaObjetivo ?? null,
       },
       row.id,
       row.createdAt,
@@ -100,7 +108,7 @@ export class TicketMapper {
    */
   static toPersistence(
     entity: TicketEntity,
-  ): Omit<PrismaTicket, 'updatedAt' | 'slaRegla' | ColumnasRelojSla> {
+  ): Omit<PrismaTicket, 'updatedAt' | 'slaRegla' | ColumnasRelojSla | ColumnaRecordatorio> {
     return {
       id: entity.id,
       numero: entity.numero,
@@ -119,6 +127,7 @@ export class TicketMapper {
       fechaCierre: entity.fechaCierre,
       ubicacion: entity.ubicacion,
       sectorId: entity.sectorId,
+      fechaObjetivo: entity.fechaObjetivo,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

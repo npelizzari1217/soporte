@@ -1,36 +1,6 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 
 /**
- * Tope de largo de `ubicacion`, espejando `ticketsEdilicia.ubicacion`
- * `VarChar(255)` (`prisma_tenant/schema.prisma`).
- *
- * Vive ACÁ y no en el DTO porque el dominio es la autoridad del límite: el
- * `VARCHAR` de Postgres es backstop, nunca al revés. `reparaciones.dto.ts` lo
- * importa de este módulo para que el 400 amable del borde y la precondición del
- * dominio no puedan divergir. Mismo criterio que `equipo-informatico.entity.ts`.
- *
- * `ubicacion` es texto libre y NO se normaliza en ningún borde, así que estamos
- * en la rama 1 de la "regla de tres ramas": el borde mide exactamente el mismo
- * string que mide el dominio y alcanza un `throw` plano. Si alguna vez se le
- * agrega una normalización que pueda AGRANDAR el largo, este guard pasa a rama
- * 3 y el borde tiene que normalizar antes de medir.
- */
-export const TICKET_EDILICIA_UBICACION_MAX_LENGTH = 255;
-
-/**
- * Precondición de largo de `ubicacion`. NO se aplica en `reconstitute()`: una
- * fila que ya existe se lee, no se revalida — hacer explotar una lectura por un
- * valor histórico convertiría un dato viejo en una caída de sistema.
- */
-function validarLargoUbicacion(ubicacion?: string | null): void {
-  if (ubicacion != null && ubicacion.length > TICKET_EDILICIA_UBICACION_MAX_LENGTH) {
-    throw new Error(
-      `TicketEdiliciaEntity: ubicacion excede ${TICKET_EDILICIA_UBICACION_MAX_LENGTH} caracteres.`,
-    );
-  }
-}
-
-/**
  * TicketEdiliciaProps — shape de las propiedades del satélite de reparaciones
  * edilicias. Satélite 1:0..1 de `Ticket` (Fase 2) para tickets de tipo
  * EDILICIA. Sin imports de Prisma ni NestJS — dominio puro.
@@ -45,7 +15,11 @@ function validarLargoUbicacion(ubicacion?: string | null): void {
 export interface TicketEdiliciaProps {
   /** UUID del ticket base (FK → tickets.id). Relación 1:0..1. */
   ticketId: string;
-  /** Ubicación física donde ocurre la reparación (texto libre, opcional). */
+  /**
+   * Ubicación del ticket base (`tickets.ubicacion`), de solo lectura. Desde odd/ticket-unificado
+   * (S1) la ubicación es una sola y es del ticket: el satélite ya no guarda una propia, y el mapper
+   * la lee del ticket para quien todavía la consume desde acá (el PDF).
+   */
   ubicacion: string | null;
 }
 
@@ -68,23 +42,15 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
   }
 
   /**
-   * Factory method para una nueva instancia de `ticket_edilicia`.
+   * Factory method para una nueva instancia de `ticket_edilicia`. Nace sin ubicación propia: la
+   * ubicación se carga en el ticket (odd/ticket-unificado).
    *
-   * @param props `ticketId` y `ubicacion` opcional.
+   * @param props `ticketId` del ticket base.
    * @param id    UUID opcional. Si no se provee, se genera un UUIDv7 nuevo.
+   * @returns El satélite nuevo.
    */
-  static create(
-    props: { ticketId: string; ubicacion?: string | null },
-    id?: string,
-  ): TicketEdiliciaEntity {
-    validarLargoUbicacion(props.ubicacion);
-    return new TicketEdiliciaEntity(
-      {
-        ticketId: props.ticketId,
-        ubicacion: props.ubicacion ?? null,
-      },
-      id,
-    );
+  static create(props: { ticketId: string }, id?: string): TicketEdiliciaEntity {
+    return new TicketEdiliciaEntity({ ticketId: props.ticketId, ubicacion: null }, id);
   }
 
   /**
@@ -101,18 +67,6 @@ export class TicketEdiliciaEntity extends BaseEntity<TicketEdiliciaProps> {
     Object.assign(entity, { _createdAt: createdAt, _updatedAt: updatedAt });
     entity._deletedAt = deletedAt;
     return entity;
-  }
-
-  /**
-   * Cambia la ubicación (odd/detalle-ticket-legible, S4). Misma precondición de largo que `create`:
-   * un exceso es un error del caller, no del dominio.
-   *
-   * @param ubicacion Texto libre o `null` para limpiarla.
-   */
-  actualizarUbicacion(ubicacion: string | null): void {
-    validarLargoUbicacion(ubicacion);
-    this.props.ubicacion = ubicacion;
-    this.touch();
   }
 
   // ─── Getters ─────────────────────────────────────────────────────────────

@@ -4,9 +4,11 @@ import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity
 import { TicketSoporteNoEncontradoError } from '../../domain/errors/equipos.errors';
 import type { ITicketSoporteRepository } from '../../domain/ports/i-ticket-soporte.repository';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { EstadoEntity } from '../../../tickets/domain/entities/estado.entity';
 import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import type { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import {
@@ -17,14 +19,14 @@ import {
 /** Actor que ve cualquier ticket: los casos de la solución no dependen del acceso. */
 const ALCANCE_SIN_RESTRICCION = alcanceSinRestriccion('tecnico-1');
 
-function makeTicket(tipoId = 'tipo-soporte'): TicketEntity {
+function makeTicket(tipoId = 'tipo-soporte', estadoCodigo = 'EN_PROCESO'): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Sin acceso a la VPN',
       descripcion: null,
       tipoId,
-      estadoId: 'estado-en-proceso',
+      estadoId: `estado-${estadoCodigo}`,
       prioridadId: 'prioridad-media',
       cicloId: 'ciclo-1',
       ticketReferenciaId: null,
@@ -33,6 +35,14 @@ function makeTicket(tipoId = 'tipo-soporte'): TicketEntity {
     'ticket-1',
   );
 }
+
+/** Catálogo de estados: el id `estado-<CODIGO>` resuelve a ese código. */
+const estadoRepo = {
+  findById: async (id: string): Promise<EstadoEntity> => {
+    const codigo = id.replace('estado-', '');
+    return EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 1, activo: true }, id);
+  },
+};
 
 /** Repositorio del ticket base: existe y no es visible por tarea. */
 function makeTicketRepo(ticket: TicketEntity | null = makeTicket()) {
@@ -60,7 +70,7 @@ describe('RegistrarSolucionUseCase', () => {
         .mockResolvedValue(ticketSoporte),
       save: vi.fn<ITicketSoporteRepository['save']>(),
     };
-    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo, makeTicketRepo());
+    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo, makeTicketRepo(), estadoRepo);
 
     const result = await useCase.execute({
       ticketId: 'ticket-1',
@@ -78,7 +88,7 @@ describe('RegistrarSolucionUseCase', () => {
       findByTicketId: vi.fn<ITicketSoporteRepository['findByTicketId']>().mockResolvedValue(null),
       save: vi.fn<ITicketSoporteRepository['save']>(),
     };
-    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo, makeTicketRepo());
+    const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo, makeTicketRepo(), estadoRepo);
 
     const result = await useCase.execute({
       ticketId: 'ticket-1',
@@ -105,7 +115,7 @@ describe('RegistrarSolucionUseCase', () => {
         save: vi.fn<ITicketSoporteRepository['save']>(),
       };
       const ticketRepo = makeTicketRepo(ticket);
-      const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo);
+      const useCase = new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo, estadoRepo);
       return { useCase, ticketSoporte, ticketSoporteRepo, ticketRepo };
     }
     // Mismo usuario: Soporte con Ver y Modificar, Mantenimiento solo con Ver.
@@ -194,6 +204,61 @@ describe('RegistrarSolucionUseCase', () => {
       });
 
       expect(result.isOk()).toBe(true);
+      expect(c.ticketSoporteRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+  describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S1-S3)', () => {
+    function makeEnEstado(estado: string) {
+      const ticketSoporte = TicketSoporteEntity.create({
+        ticketId: 'ticket-1',
+        equipoId: null,
+        descripcionProblema: 'Sin acceso a la VPN',
+      });
+      const ticketSoporteRepo = {
+        findByTicketId: vi
+          .fn<ITicketSoporteRepository['findByTicketId']>()
+          .mockResolvedValue(ticketSoporte),
+        save: vi.fn<ITicketSoporteRepository['save']>(),
+      };
+      const useCase = new RegistrarSolucionUseCase(
+        ticketSoporteRepo,
+        makeTicketRepo(makeTicket('tipo-soporte', estado)),
+        estadoRepo,
+      );
+      return { useCase, ticketSoporte, ticketSoporteRepo };
+    }
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+      'en %s un no administrador recibe TicketSoloComentariosError (422) y no se guarda',
+      async (estado) => {
+        const c = makeEnEstado(estado);
+
+        const result = await c.useCase.execute({
+          ticketId: 'ticket-1',
+          solucion: 'Intento tardío',
+          ...alcancePorTipo('tecnico-1', {
+            'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+          }),
+        });
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(estado);
+        expect(c.ticketSoporteRepo.save).not.toHaveBeenCalled();
+        expect(c.ticketSoporte.solucionAplicada).toBeNull();
+      },
+    );
+
+    it('en RESUELTO un ADMINISTRADOR o ROOT la registra (S3)', async () => {
+      const c = makeEnEstado('RESUELTO');
+
+      const result = await c.useCase.execute({
+        ticketId: 'ticket-1',
+        solucion: 'Corregida por el administrador.',
+        ...ALCANCE_SIN_RESTRICCION,
+      });
+
+      expect(result.getValue().solucionAplicada).toBe('Corregida por el administrador.');
       expect(c.ticketSoporteRepo.save).toHaveBeenCalledTimes(1);
     });
   });

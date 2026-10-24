@@ -54,7 +54,7 @@ describe("ComentariosDialog", () => {
     // regresión de zona horaria (ver `ticket-header` en este cambio).
     // `2026-08-18T10:00:00.000Z` = 07:00 con el TZ de la suite (UTC-3).
     expect(screen.getAllByText("18/08/2026 07:00")).toHaveLength(2);
-    // Solo lectura: sin ALTAS ni COMENTAR sobre el tipo no aparece el form.
+    // Solo lectura: sin COMENTAR y OBSERVAR sobre el tipo no aparece el form.
     expect(screen.queryByLabelText(/nuevo comentario/i)).not.toBeInTheDocument();
   });
 
@@ -146,32 +146,35 @@ describe("ComentariosDialog", () => {
   });
 });
 
-describe("ComentariosDialog — solo lectura (odd/ticket-cerrado-solo-lectura, S5)", () => {
-  it("con motivo muestra la lista y el motivo, y oculta el formulario aunque pueda comentar en el tipo", async () => {
+describe("ComentariosDialog — comentarios internos (odd/ticket-unificado, L19, L20)", () => {
+  it("el formulario se rotula como interno y avisa quién los ve", async () => {
     const user = userEvent.setup();
-    server.use(
-      http.get("/api/reparaciones/rep1/comentarios", () =>
-        HttpResponse.json([comentario({ texto: "Falta el repuesto X" })]),
-      ),
-    );
+    server.use(http.get("/api/reparaciones/rep1/comentarios", () => HttpResponse.json([])));
 
     renderWithProviders(
-      <ComentariosDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        trigger={<button>Ver comentarios</button>}
-        puedeComentar
-        motivoSoloLectura="El ticket está cerrado: sus tareas ya no se modifican."
-      />,
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar />,
+      { user: buildUser({ permisos: [] }) },
+    );
+
+    await user.click(screen.getByRole("button", { name: /ver comentarios/i }));
+    expect(await screen.findByLabelText("Nuevo comentario interno")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "Los comentarios que se agregan aquí son internos: solo los ve el personal con permiso de comentario interno.",
+    );
+  });
+
+  it("sin permiso para comentar no muestra el formulario ni el aviso", async () => {
+    const user = userEvent.setup();
+    server.use(http.get("/api/reparaciones/rep1/comentarios", () => HttpResponse.json([comentario()])));
+
+    renderWithProviders(
+      <ComentariosDialog reparacionId="rep1" numero="EDI-0001" trigger={<button>Ver comentarios</button>} puedeComentar={false} />,
       { user: buildUser({ permisos: [] }) },
     );
 
     await user.click(screen.getByRole("button", { name: /ver comentarios/i }));
     expect(await screen.findByText("Falta el repuesto X")).toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent(
-      "El ticket está cerrado",
-    );
     expect(screen.queryByLabelText(/nuevo comentario/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: /^comentar$/i })).toBeNull();
+    expect(screen.queryByRole("note")).toBeNull();
   });
 });

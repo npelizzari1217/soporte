@@ -134,4 +134,23 @@ describe('PrismaCompraRepository — Aislamiento cross-tenant real (PR-12, [H1])
     );
     expect(resultB.compras.map((c) => c.id)).not.toContain(compraAId);
   });
+
+  it('con `busqueda`, el tenant A encuentra su compra por el motivo (caso hermano del de abajo)', async () => {
+    const resultA = await tenantContext.run(
+      { prismaClient: tenantAClient, dbName: TENANT_A_DB_NAME, clienteId: 'tenant-a-cliente' },
+      () =>
+        compraRepo.findPaginaConItems({ busqueda: 'exclusiva del tenant A', grupoEstado: 'TODAS' }),
+    );
+    expect(resultA.compras.map((c) => c.id)).toContain(compraAId);
+  });
+
+  it('[CRITICAL] con `busqueda` que coincide con el motivo de la compra del tenant A, el tenant B no la ve', async () => {
+    const resultB = await tenantContext.run(
+      { prismaClient: tenantBClient, dbName: TENANT_B_DB_NAME, clienteId: 'tenant-b-cliente' },
+      () =>
+        compraRepo.findPaginaConItems({ busqueda: 'exclusiva del tenant A', grupoEstado: 'TODAS' }),
+    );
+    expect(resultB.compras.map((c) => c.id)).not.toContain(compraAId);
+    expect(resultB.total).toBe(0);
+  });
 });

@@ -27,6 +27,7 @@ import {
 import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 import { ListarTecnicosElegiblesTareaUseCase } from '../../application/use-cases/listar-tecnicos-elegibles-tarea.use-case';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
@@ -87,9 +88,10 @@ describe('toHttpExceptionTareas', () => {
       new TecnicoTareaNoElegibleError('u'),
       UnprocessableEntityException,
     ],
+    ['TAREA_TICKET_NO_EDITABLE', new TareaTicketNoEditableError(), UnprocessableEntityException],
     [
-      'TAREA_TICKET_NO_EDITABLE',
-      new TareaTicketNoEditableError('cerrado'),
+      'TICKET_SOLO_COMENTARIOS',
+      new TicketSoloComentariosError('RESUELTO'),
       UnprocessableEntityException,
     ],
   ])('%s → %s', (_codigo, error, esperado) => {

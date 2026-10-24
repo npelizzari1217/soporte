@@ -69,6 +69,11 @@ import {
   ITicketSoporteRepository,
 } from './domain/ports/i-ticket-soporte.repository';
 import { PrismaTicketSoporteRepository } from './infrastructure/persistence/prisma/prisma-ticket-soporte.repository';
+import {
+  VALORACION_EQUIPO_REPOSITORY,
+  IValoracionEquipoRepository,
+} from './domain/ports/i-valoracion-equipo.repository';
+import { PrismaValoracionEquipoRepository } from './infrastructure/persistence/prisma/prisma-valoracion-equipo.repository';
 
 import { CrearEquipoUseCase } from './application/use-cases/crear-equipo.use-case';
 import { EditarEquipoUseCase } from './application/use-cases/editar-equipo.use-case';
@@ -91,6 +96,7 @@ import { EmitirQrEquipoUseCase } from './application/use-cases/emitir-qr-equipo.
 import { ObtenerQrEquipoUseCase } from './application/use-cases/obtener-qr-equipo.use-case';
 import { ResolverQrAutenticadoUseCase } from './application/use-cases/resolver-qr-autenticado.use-case';
 import { ExportarEquiposUseCase } from './application/use-cases/exportar-equipos.use-case';
+import { ListarValoracionesEquipoUseCase } from './application/use-cases/listar-valoraciones-equipo.use-case';
 
 import { EquiposController } from './interface/controllers/equipos.controller';
 import { SoporteController } from './interface/controllers/soporte.controller';
@@ -157,6 +163,7 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     { provide: EQUIPO_INFORMATICO_REPOSITORY, useClass: PrismaEquipoInformaticoRepository },
     { provide: COMPONENTE_EQUIPO_REPOSITORY, useClass: PrismaComponenteEquipoRepository },
     { provide: TICKET_SOPORTE_REPOSITORY, useClass: PrismaTicketSoporteRepository },
+    { provide: VALORACION_EQUIPO_REPOSITORY, useClass: PrismaValoracionEquipoRepository },
 
     {
       provide: NumeradorTicket,
@@ -175,8 +182,14 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         equipoRepo: IEquipoInformaticoRepository,
         txRunner: ITenantTransactionRunner,
         modeloEquipoRepo: IModeloEquipoRepository,
-      ) => new CrearEquipoUseCase(equipoRepo, txRunner, modeloEquipoRepo),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER, MODELO_EQUIPO_REPOSITORY],
+        valoracionRepo: IValoracionEquipoRepository,
+      ) => new CrearEquipoUseCase(equipoRepo, txRunner, modeloEquipoRepo, valoracionRepo),
+      inject: [
+        EQUIPO_INFORMATICO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        MODELO_EQUIPO_REPOSITORY,
+        VALORACION_EQUIPO_REPOSITORY,
+      ],
     },
     {
       provide: EditarEquipoUseCase,
@@ -184,8 +197,24 @@ import { SoporteController } from './interface/controllers/soporte.controller';
         equipoRepo: IEquipoInformaticoRepository,
         txRunner: ITenantTransactionRunner,
         modeloEquipoRepo: IModeloEquipoRepository,
-      ) => new EditarEquipoUseCase(equipoRepo, txRunner, modeloEquipoRepo),
-      inject: [EQUIPO_INFORMATICO_REPOSITORY, TENANT_TX_RUNNER, MODELO_EQUIPO_REPOSITORY],
+        valoracionRepo: IValoracionEquipoRepository,
+      ) => new EditarEquipoUseCase(equipoRepo, txRunner, modeloEquipoRepo, valoracionRepo),
+      inject: [
+        EQUIPO_INFORMATICO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        MODELO_EQUIPO_REPOSITORY,
+        VALORACION_EQUIPO_REPOSITORY,
+      ],
+    },
+    {
+      // odd/historial-valor-residual (S5): USUARIO_MASTER_CHECKER lo exporta TicketsModule.
+      provide: ListarValoracionesEquipoUseCase,
+      useFactory: (
+        equipoRepo: IEquipoInformaticoRepository,
+        valoracionRepo: IValoracionEquipoRepository,
+        usuarios: IUsuarioMasterChecker,
+      ) => new ListarValoracionesEquipoUseCase(equipoRepo, valoracionRepo, usuarios),
+      inject: [EQUIPO_INFORMATICO_REPOSITORY, VALORACION_EQUIPO_REPOSITORY, USUARIO_MASTER_CHECKER],
     },
     {
       // sdd/repuestos-autoridad-catalogo (ADR-3): suma INSUMO_REPOSITORY (de
@@ -468,9 +497,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: RegistrarSolucionUseCase,
-      useFactory: (ticketSoporteRepo: ITicketSoporteRepository, ticketRepo: ITicketRepository) =>
-        new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo),
-      inject: [TICKET_SOPORTE_REPOSITORY, TICKET_REPOSITORY],
+      useFactory: (
+        ticketSoporteRepo: ITicketSoporteRepository,
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+      ) => new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo, estadoRepo),
+      inject: [TICKET_SOPORTE_REPOSITORY, TICKET_REPOSITORY, ESTADO_REPOSITORY],
     },
     {
       provide: ObtenerEquipoDeTicketUseCase,

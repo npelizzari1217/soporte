@@ -15,6 +15,7 @@ import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, exigirModificableEnEstado } from '../services/solo-comentarios';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -62,7 +63,7 @@ interface PasoTransicion {
  * (rediseño de la asignación: un solo botón "Asignar y poner en proceso").
  *
  * Reusa la MISMA validación de elegibilidad por tipo que
- * `AsignarTicketUseCase` (`ElegibilidadAsignado.esAsignableATipo`) — mismos errores
+ * `AsignarTicketUseCase` (`ElegibilidadAsignado.aceptaComoResponsable`) — mismos errores
  * (`AsignadoInvalidoError`/`AsignadoNoElegibleError`) — y el MISMO mecanismo de
  * transición que `TransicionarEstadoUseCase` (entidad + máquina de estados por
  * tipo, operaciones de timeline por cada arco).
@@ -71,10 +72,13 @@ interface PasoTransicion {
  * 1. Carga el ticket. Si no existe/está soft-deleted o el actor no lo ve
  *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
  *    si lo ve sin `ASIGNAR` y `TRANSICIONAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
- *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
+ *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422). En RESUELTO, quien no
+ *    es ADMINISTRADOR ni ROOT recibe `TicketSoloComentariosError` (422,
+ *    odd/cerrado-solo-comentarios); un administrador sigue al paso 4.
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
- * 3. Valida elegibilidad por tipo (`LECTURA` sobre el tipo del ticket, o ROOT/ADMINISTRADOR) →
+ * 3. Valida elegibilidad por tipo (TECNICO o COLABORADOR con `LECTURA` sobre el tipo del
+ *    ticket; no se revalida si el asignado ya es el responsable) →
  *    `AsignadoNoElegibleError` (422).
  * 4. Calcula el camino de arcos desde el estado actual hasta EN_PROCESO
  *    (NUEVO→ASIGNADO→EN_PROCESO; desde ASIGNADO solo →EN_PROCESO; ya en
@@ -84,10 +88,15 @@ interface PasoTransicion {
  *    la entidad (`canTransitionTo`) Y la máquina de estados (`puedeTransicionar`).
  * 5. En UNA transacción (`ITenantTransactionRunner`), con la fila del ticket
  *    bloqueada ANTES de releerlo (odd/escrituras-manuales-con-lock, S4): vuelve
- *    a decidir "terminal" y el camino de arcos sobre el estado vigente, y recién
+ *    a decidir "terminal", "solo comentarios", el camino de arcos y, si el paso 3
+ *    no la evaluó porque el responsable cambió entre las dos lecturas, la
+ *    elegibilidad; y recién
  *    entonces `assignTo` + operación ASIGNACION, por cada arco `updateEstado` +
  *    operación CAMBIO_ESTADO, y persiste el ticket una vez. Las consultas a
- *    master quedan fuera, para no sostener el lock mientras se consulta otra base.
+ *    master van antes de la transacción, para no sostener el lock mientras se
+ *    consulta otra base, salvo en el caso raro de la elegibilidad revalidada:
+ *    puede consultar master (`esAgente`, si el asignado tiene `LECTURA`
+ *    sobre el tipo) con la fila bloqueada.
  *
  * Un ticket en CERRADO/CANCELADO se rechaza con `TicketCerradoNoReasignableError`
  * (422) antes de consultar a master. Tras el commit publica `ticket.asignado`
@@ -104,7 +113,7 @@ export class AsignarYPonerEnProcesoUseCase {
     private readonly tipoTicketRepo: ITipoTicketRepository,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'estaActivoEnTenant'>,
-    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAsignableATipo'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'aceptaComoResponsable'>,
     private readonly stateMachineFactory: Pick<TicketStateMachineFactory, 'resolve'>,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly eventPublisher: IDomainEventPublisher,
@@ -133,6 +142,10 @@ export class AsignarYPonerEnProcesoUseCase {
     if (ESTADOS_TERMINALES.has(estadoActual.codigo)) {
       return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoActual.codigo));
     }
+    // RESUELTO: quien no es administrador solo comenta (odd/cerrado-solo-comentarios).
+    const esAdministrador = esAlcanceDeAdministrador(dto);
+    const modificable = exigirModificableEnEstado(estadoActual.codigo, esAdministrador);
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const asignadoActivo = await this.usuarioMasterChecker.estaActivoEnTenant(
       dto.asignadoId,
@@ -142,12 +155,8 @@ export class AsignarYPonerEnProcesoUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    const esElegible = await this.elegibilidad.esAsignableATipo(
-      dto.asignadoId,
-      dto.clienteId,
-      ticket.tipoId,
-    );
-    if (!esElegible) {
+    const mantieneResponsable = ticket.asignadoId === dto.asignadoId;
+    if (!(await this.elegibilidad.aceptaComoResponsable(ticket, dto.asignadoId, dto.clienteId))) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
     }
 
@@ -200,6 +209,16 @@ export class AsignarYPonerEnProcesoUseCase {
         }
         if (ESTADOS_TERMINALES.has(estadoVigente.codigo)) {
           return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoVigente.codigo));
+        }
+        const vigente = exigirModificableEnEstado(estadoVigente.codigo, esAdministrador);
+        if (vigente.isFail()) return Result.fail(vigente.getError());
+        // Mismo criterio que AsignarTicketUseCase: lo que arriba no se validó por ser el responsable
+        // se valida ahora si otro actor lo cambió entre las dos lecturas.
+        if (
+          mantieneResponsable &&
+          !(await this.elegibilidad.aceptaComoResponsable(ticket, dto.asignadoId, dto.clienteId))
+        ) {
+          return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
         }
         const pasosVigentes = await this.resolverPasosHastaEnProceso(
           ticket,

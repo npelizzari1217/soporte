@@ -12,6 +12,7 @@ import {
   templateSlaVencido,
   templatePrimeraRespuestaVencida,
   templatePreventivoGenerado,
+  templatePreventivoRecordatorio,
   templateTicketAsignado,
 } from './email-templates';
 
@@ -59,6 +60,15 @@ describe.each([
   [
     'templatePreventivoGenerado',
     () => templatePreventivoGenerado({ ...DATOS_BASE, titulo: TITULO_CON_MARKUP }),
+  ],
+  [
+    'templatePreventivoRecordatorio',
+    () =>
+      templatePreventivoRecordatorio({
+        ...DATOS_BASE,
+        titulo: TITULO_CON_MARKUP,
+        fechaObjetivo: new Date('2026-07-01T00:00:00.000Z'),
+      }),
   ],
 ])('%s — escapado del titulo de origen usuario', (_nombre, render) => {
   it('escapa el markup en el html, sin dejar la etiqueta viva', () => {
@@ -155,6 +165,41 @@ describe('templatePreventivoGenerado', () => {
     expect(msg.text).toContain('La impresora no imprime');
     expect(msg.text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
     expect(msg.subject.toLowerCase()).toContain('preventivo');
+  });
+
+  it('S3: con fecha objetivo, la informa como día calendario en el texto y en el html', () => {
+    const msg = templatePreventivoGenerado({
+      ...DATOS_BASE,
+      fechaObjetivo: new Date('2026-07-01T00:00:00.000Z'),
+    });
+
+    expect(msg.text).toContain('Fecha objetivo: 01/07/2026');
+    expect(msg.html).toContain('Fecha objetivo: <strong>01/07/2026</strong>');
+  });
+
+  it('hermano: sin fecha objetivo (null) no agrega la línea', () => {
+    const msg = templatePreventivoGenerado({ ...DATOS_BASE, fechaObjetivo: null });
+
+    expect(msg.text).not.toContain('Fecha objetivo');
+    expect(msg.html).not.toContain('Fecha objetivo');
+  });
+});
+
+describe('templatePreventivoRecordatorio (odd/preventivo-anticipacion S4)', () => {
+  it('recuerda que la fecha objetivo es mañana, con la fecha, el número y el link', () => {
+    const msg = templatePreventivoRecordatorio({
+      ...DATOS_BASE,
+      fechaObjetivo: new Date('2026-07-01T00:00:00.000Z'),
+    });
+
+    expect(msg.subject).toBe(
+      'Recordatorio: mantenimiento preventivo para mañana — Ticket SOP-2026-00042',
+    );
+    expect(msg.text).toContain(
+      'El ticket de mantenimiento preventivo SOP-2026-00042 - La impresora no imprime sigue abierto y su fecha objetivo es mañana, 01/07/2026.',
+    );
+    expect(msg.text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
+    expect(msg.html).toContain('<strong>01/07/2026</strong>');
   });
 });
 

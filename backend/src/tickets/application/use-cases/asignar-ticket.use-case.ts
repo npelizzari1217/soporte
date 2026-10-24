@@ -12,6 +12,7 @@ import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, exigirModificableEnEstado } from '../services/solo-comentarios';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -29,8 +30,9 @@ import {
  *   asignación MANUAL (T14). La asignación AUTOMÁTICA por regla de tipo
  *   (sin acción humana) vive en el alta del ticket, no en este flujo; un
  *   ticket nacido por regla se reasigna acá igual que cualquier otro.
- * - `clienteId`: `cliente_id` del JWT — usado SOLO para la validación
- *   cross-DB del asignado (`IUsuarioMasterChecker.estaActivoEnTenant`).
+ * - `clienteId`: `cliente_id` del JWT — usado SOLO para las validaciones
+ *   cross-DB del asignado (`IUsuarioMasterChecker.estaActivoEnTenant` y su rol
+ *   de agente en `ElegibilidadAsignado`).
  * - `autorId`: `sub` del JWT del actor que ejecuta la acción (quien tiene
  *   `ticket:asignar`, verificado por `PermissionsGuard` en la capa de
  *   interface) — se registra como autor de la operación de timeline.
@@ -53,14 +55,17 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
  *    si lo ve sin `ASIGNAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  *    Si está en un estado final (CERRADO/CANCELADO) → `TicketCerradoNoReasignableError`
- *    (422), antes de consultar a master. RESUELTO sí se reasigna.
+ *    (422), antes de consultar a master. RESUELTO lo reasigna solo un ADMINISTRADOR o ROOT: el
+ *    resto recibe `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios).
  * 2. Valida que el asignado existe en `master.usuarios` con `activo=true` y
  *    pertenece (vía membresía activa) al tenant activo (cross-DB,
  *    `IUsuarioMasterChecker.estaActivoEnTenant`). Si no → `AsignadoInvalidoError` (422).
- * 3. Valida elegibilidad POR TIPO (`ElegibilidadAsignado.esAsignableATipo`,
- *    odd/permisos-por-tipo-ticket, D5 g): el asignado es elegible si es
- *    ROOT/ADMINISTRADOR o si tiene `LECTURA` sobre el tipo ACTUAL del ticket
- *    en `permisos_tipo_ticket`. Si no → `AsignadoNoElegibleError` (422).
+ * 3. Valida elegibilidad POR TIPO (`ElegibilidadAsignado.aceptaComoResponsable`,
+ *    odd/permisos-por-tipo-ticket, D5 g): el asignado tiene que ser TECNICO o
+ *    COLABORADOR con `LECTURA` sobre el tipo ACTUAL del ticket, el mismo
+ *    universo que ofrece `GET /tickets/:id/asignables`. ADMINISTRADOR, ROOT y
+ *    USUARIO no reciben tickets. Si el asignado ya es el responsable del ticket
+ *    no se revalida. Si no → `AsignadoNoElegibleError` (422).
  *    Ortogonal al permiso de asignar del actor (T15): un actor con el permiso
  *    puede intentar asignar a alguien sin el tipo y de todos modos falla acá.
  * 4. Resuelve el id del tipo de operación `ASIGNACION` del catálogo tenant
@@ -69,14 +74,18 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *    patrón que `CrearTicketUseCase`/`TransicionarEstadoUseCase`).
  * 5. **DENTRO de la transacción** (`ITenantTransactionRunner.run`, T24), y en
  *    este orden (odd/escrituras-manuales-con-lock, S3): bloquea la fila del
- *    ticket, lo RELEE y vuelve a decidir "terminal" y "era NUEVO" sobre ese
- *    estado vigente; recién entonces `ticket.assignTo(asignadoId)`, crea la
+ *    ticket, lo RELEE y vuelve a decidir "terminal", "solo comentarios" y "era NUEVO" sobre ese
+ *    estado vigente (y la elegibilidad, si el paso 3 no la evaluó porque el
+ *    asignado era el responsable y al releer ya no lo es); recién entonces
+ *    `ticket.assignTo(asignadoId)`, crea la
  *    operación `ASIGNACION` del timeline (sin `estadoAnterior`/`estadoNuevo` —
  *    no es un cambio de estado, T9/T12 siguen siendo el único camino para
  *    transicionar), y persiste ambos. La lectura del paso 1 sirve para el 404,
- *    el rechazo temprano del terminal y las consultas a master, que quedan
- *    fuera de la transacción para no sostener el lock mientras se consulta
- *    otra base.
+ *    el rechazo temprano del terminal y las consultas a master, que van antes
+ *    de la transacción para no sostener el lock mientras se consulta otra
+ *    base. La excepción es la elegibilidad revalidada, un caso raro: esa
+ *    puede consultar master (`esAgente`, si el asignado tiene `LECTURA` sobre
+ *    el tipo) con la fila bloqueada.
  *
  * Un ticket en NUEVO pasa a ASIGNADO en la MISMA transacción (operación
  * `CAMBIO_ESTADO NUEVO → ASIGNADO` del actor, además de la `ASIGNACION`): un
@@ -93,7 +102,7 @@ export class AsignarTicketUseCase {
     private readonly ticketRepo: ITicketRepository,
     private readonly operacionRepo: IOperacionTicketRepository,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'estaActivoEnTenant'>,
-    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'esAsignableATipo'>,
+    private readonly elegibilidad: Pick<ElegibilidadAsignado, 'aceptaComoResponsable'>,
     private readonly tipoOperacionRepo: ITipoOperacionRepository,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById' | 'findIdByCodigo'>,
@@ -120,6 +129,10 @@ export class AsignarTicketUseCase {
     if (ESTADOS_TERMINALES.has(estadoActual.codigo)) {
       return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoActual.codigo));
     }
+    // RESUELTO: quien no es administrador solo comenta (odd/cerrado-solo-comentarios).
+    const esAdministrador = esAlcanceDeAdministrador(dto);
+    const modificable = exigirModificableEnEstado(estadoActual.codigo, esAdministrador);
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const asignadoActivo = await this.usuarioMasterChecker.estaActivoEnTenant(
       dto.asignadoId,
@@ -129,14 +142,10 @@ export class AsignarTicketUseCase {
       return Result.fail(new AsignadoInvalidoError(dto.asignadoId));
     }
 
-    // Elegibilidad por tipo (regla compartida con AsignarYPonerEnProcesoUseCase):
-    // ROOT/ADMINISTRADOR pueden todo; el resto, solo con LECTURA sobre el tipo del ticket.
-    const esElegible = await this.elegibilidad.esAsignableATipo(
-      dto.asignadoId,
-      dto.clienteId,
-      ticket.tipoId,
-    );
-    if (!esElegible) {
+    // Elegibilidad por tipo (regla compartida con AsignarYPonerEnProcesoUseCase): técnico o
+    // colaborador con LECTURA sobre el tipo, salvo que ya sea el responsable.
+    const mantieneResponsable = ticket.asignadoId === dto.asignadoId;
+    if (!(await this.elegibilidad.aceptaComoResponsable(ticket, dto.asignadoId, dto.clienteId))) {
       return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
     }
 
@@ -162,7 +171,8 @@ export class AsignarTicketUseCase {
 
     // Dentro de la tx, con la fila bloqueada ANTES de releer (odd/escrituras-manuales-con-lock, S3):
     // el estado que decide "terminal" y "era NUEVO" es el actual, no el de la lectura de arriba, que
-    // sirvió para el 404, el tipo y las consultas a master. El guardado de la fila entera ya no
+    // sirvió para el 404, el tipo y las consultas a master (salvo la elegibilidad revalidada, que
+    // puede consultar master con la fila bloqueada). El guardado de la fila entera ya no
     // puede pisar un estado que otro actor —o las tareas— acaba de dejar.
     const escritura = await this.txRunner.run(
       async (): Promise<Result<TicketEntity, DomainError>> => {
@@ -179,6 +189,16 @@ export class AsignarTicketUseCase {
         }
         if (ESTADOS_TERMINALES.has(estadoVigente.codigo)) {
           return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoVigente.codigo));
+        }
+        const vigente = exigirModificableEnEstado(estadoVigente.codigo, esAdministrador);
+        if (vigente.isFail()) return Result.fail(vigente.getError());
+        // Si arriba no se validó porque el asignado era el responsable y otro actor lo cambió
+        // entre las dos lecturas, esta escritura sí cambia de responsable: se valida ahora.
+        if (
+          mantieneResponsable &&
+          !(await this.elegibilidad.aceptaComoResponsable(ticket, dto.asignadoId, dto.clienteId))
+        ) {
+          return Result.fail(new AsignadoNoElegibleError(dto.asignadoId, ticket.tipoId));
         }
         const eraNuevo = estadoVigente.codigo === 'NUEVO';
         const estadoAnteriorId = ticket.estadoId;

@@ -18,14 +18,17 @@
  * este componente no lee `vencido`, que es solo el deduplicador del mail. En pausa no se muestra
  * una fecha de vencimiento como vigente. El badge de primera respuesta aparece solo si está vencida.
  *
- * Ubicación y sector (odd/ubicacion-sector-ticket): el sector se muestra siempre, por el nombre que
- * resuelve el backend (`sectorNombre`, aunque esté desactivado). La ubicación general solo con
- * `mostrarUbicacion`: en los tickets de Edilicia no se muestra (CA2).
+ * Ubicación y sector (odd/ubicacion-sector-ticket): se muestran siempre, en cualquier tipo de
+ * ticket (odd/ticket-unificado, S1: una sola ubicación, la del ticket). El sector, por el nombre
+ * que resuelve el backend (`sectorNombre`, aunque esté desactivado).
+ *
+ * Fecha objetivo (odd/preventivo-anticipacion): solo la traen los tickets que genera un plan
+ * preventivo, así que la fila aparece solo cuando hay fecha. Es informativa: no cambia el SLA.
  */
 import { StatusBadge, type TicketEstado } from "@/components/ui/status-badge";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { Badge } from "@/components/ui/badge";
-import { formatearInstante } from "@/shared/lib/formato-fecha";
+import { formatearFechaCalendario, formatearInstante } from "@/shared/lib/formato-fecha";
 import type { Ticket } from "../types";
 
 export interface TicketHeaderProps {
@@ -33,11 +36,6 @@ export interface TicketHeaderProps {
   estadoCodigo?: string;
   prioridadCodigo?: string;
   tipoNombre?: string;
-  /**
-   * `false` oculta la ubicación general (tickets de Edilicia, CA2). Lo decide
-   * el CONTAINER, que conoce el módulo del tipo. Default `false`.
-   */
-  mostrarUbicacion?: boolean;
   /**
    * WU9.3 (gateo de UI, ADR-C5 backend): computado en el CONTAINER con
    * `useCan("CSAT:LECTURA")` — este componente es PRESENTATIONAL, no
@@ -62,7 +60,6 @@ export function TicketHeader({
   estadoCodigo,
   prioridadCodigo,
   tipoNombre,
-  mostrarUbicacion = false,
   puedeVerCsat = false,
 }: TicketHeaderProps) {
   const muestraCsat = puedeVerCsat && ticket.csatPuntaje !== undefined;
@@ -114,16 +111,21 @@ export function TicketHeader({
               : "Sin asignar"}
           </dd>
         </div>
-        {mostrarUbicacion && (
-          <div>
-            <dt className="text-muted-foreground">Ubicación</dt>
-            <dd className="text-foreground">{ticket.ubicacion ?? "—"}</dd>
-          </div>
-        )}
+        <div>
+          <dt className="text-muted-foreground">Ubicación</dt>
+          <dd className="text-foreground">{ticket.ubicacion ?? "—"}</dd>
+        </div>
         <div>
           <dt className="text-muted-foreground">Sector</dt>
           <dd className="text-foreground">{ticket.sectorNombre ?? "—"}</dd>
         </div>
+        {ticket.fechaObjetivo && (
+          <div>
+            <dt className="text-muted-foreground">Fecha objetivo</dt>
+            {/* `fecha_objetivo` es `@db.Date`: fecha de calendario, no instante. */}
+            <dd className="text-foreground">{formatearFechaCalendario(ticket.fechaObjetivo)}</dd>
+          </div>
+        )}
         <div>
           <dt className="text-muted-foreground">
             {venceAt ? "SLA vence" : estadoSla === "EN_PAUSA" ? "SLA" : "Creado"}

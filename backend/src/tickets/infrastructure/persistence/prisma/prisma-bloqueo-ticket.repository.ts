@@ -6,7 +6,8 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { IBloqueoTicketRepository } from '../../../domain/ports/i-bloqueo-ticket.repository';
 
 /**
- * Bloqueo por compra leído desde `reparacion_compra` (odd/ticket-cerrado-solo-lectura, S2).
+ * Bloqueo por compra leído desde `ticket_compra` (odd/ticket-cerrado-solo-lectura, S2;
+ * odd/ticket-unificado, S5: vale para cualquier ticket, tenga o no satélite de Edilicia).
  *
  * Reutiliza el mapper y `comprasQueBloquean` de reparaciones para que el criterio sea EL MISMO
  * que el del chip "Bloqueada" del listado: si uno cambia, cambia el otro. Igual que
@@ -21,8 +22,8 @@ export class PrismaBloqueoTicketRepository implements IBloqueoTicketRepository {
   }
 
   async estaBloqueadoPorCompra(ticketId: string): Promise<boolean> {
-    const rows = await this.client.reparacionCompra.findMany({
-      where: { ticketEdilicia: { ticketId }, compra: { deletedAt: null } },
+    const rows = await this.client.ticketCompra.findMany({
+      where: { ticketId, compra: { deletedAt: null } },
       include: { compra: { include: { items: true } } },
     });
     const vinculadas = rows.map((row) => ReparacionCompraMapper.toCompraVinculada(row));
@@ -30,11 +31,20 @@ export class PrismaBloqueoTicketRepository implements IBloqueoTicketRepository {
   }
 
   async comprasVinculadas(ticketId: string): Promise<string[]> {
-    const rows = await this.client.reparacionCompra.findMany({
-      where: { ticketEdilicia: { ticketId }, compra: { deletedAt: null } },
+    const rows = await this.client.ticketCompra.findMany({
+      where: { ticketId, compra: { deletedAt: null } },
       select: { compra: { select: { numero: true } } },
       orderBy: { compra: { numero: 'asc' } },
     });
     return rows.map((row) => row.compra.numero);
+  }
+
+  async generadoPorPlanPreventivo(ticketId: string): Promise<boolean> {
+    // `ticket_id` es UNIQUE en `preventivo_generacion`: a lo sumo una fila, por índice.
+    const fila = await this.client.preventivoGeneracion.findUnique({
+      where: { ticketId },
+      select: { id: true },
+    });
+    return fila !== null;
   }
 }

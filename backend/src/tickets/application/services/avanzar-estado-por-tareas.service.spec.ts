@@ -14,10 +14,20 @@ import { TicketEstadoCambiadoEvent } from '../../domain/events/ticket-estado-cam
 import { TicketTransicionadoEvent } from '../../domain/events/ticket-transicionado.event';
 import { IRelojSlaMarcador } from '../../domain/ports/i-reloj-sla-marcador';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
+import {
+  ELEGIBLES_PARA_ASIGNAR,
+  NO_ELEGIBLES_PARA_ASIGNAR,
+  sumarCandidatosDeAsignacion,
+} from '../../test-helpers/candidatos-asignacion';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
+import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
 import { AvanzarEstadoPorTareasService } from './avanzar-estado-por-tareas.service';
+import { ElegibilidadAsignado } from './elegibilidad-asignado';
 
 const TICKET_ID = 'ticket-1';
 const TIPO_ID = 'tipo-edilicia';
+const OTRO_TIPO_ID = 'tipo-soporte';
+const CLIENTE_ID = 'cliente-1';
 const SOLICITANTE = 'usuario-solicitante';
 const RESPONSABLE = 'usuario-responsable';
 const TECNICO = 'usuario-tecnico';
@@ -91,6 +101,16 @@ function armar(params: {
     alCommitear: (fn) => void postCommit.push(fn),
   };
   const relojMarcador: IRelojSlaMarcador = { marcar: vi.fn(async () => undefined) };
+  // TECNICO es agente del tipo: el caso por defecto de quien completa (odd/permisos-por-tipo-ticket).
+  const master = new MasterAgentesEnMemoria();
+  master.agregar({ id: TECNICO, rol: 'TECNICO', celdas: [] });
+  const permisos = new PermisosTipoTicketEnMemoria(
+    [
+      { id: TIPO_ID, modulo: 'EDILICIA' },
+      { id: OTRO_TIPO_ID, modulo: 'TICKETS' },
+    ],
+    [{ usuarioId: TECNICO, tipoId: TIPO_ID, accion: 'LECTURA' }],
+  );
   const ticketRepo = {
     findById: vi.fn(async (id: string) => (id === TICKET_ID ? ticket : null)),
     save: vi.fn(async (_t: TicketEntity) => undefined),
@@ -115,10 +135,21 @@ function armar(params: {
     relojMarcador,
     eventPublisher,
     txRunner,
+    new ElegibilidadAsignado(master, permisos),
     () => AHORA,
   );
   const commitear = () => postCommit.forEach((fn) => fn());
-  return { ticket, servicio, operaciones, publicados, commitear, relojMarcador, ticketRepo };
+  return {
+    ticket,
+    servicio,
+    operaciones,
+    publicados,
+    commitear,
+    relojMarcador,
+    ticketRepo,
+    master,
+    permisos,
+  };
 }
 
 const cambiosDeEstado = (operaciones: OperacionTicketEntity[]) =>
@@ -134,7 +165,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR con pendientes (S2)', () =>
       tareas: [{ completada: true }, { completada: false }],
     });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO, CLIENTE_ID);
 
     expect(ticket?.asignadoId).toBe(TECNICO);
     expect(ticket?.estadoId).toBe(estadoId('EN_PROCESO'));
@@ -163,7 +194,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR con pendientes (S2)', () =>
   it('NUEVO con responsable: no reasigna y llega a EN_PROCESO', async () => {
     const c = armar({ estado: 'NUEVO', tareas: [{ completada: true }, { completada: false }] });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO, CLIENTE_ID);
 
     expect(ticket?.asignadoId).toBe(RESPONSABLE);
     expect(ticket?.estadoId).toBe(estadoId('EN_PROCESO'));
@@ -173,7 +204,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR con pendientes (S2)', () =>
   it('ASIGNADO pasa a EN_PROCESO con una sola operación', async () => {
     const c = armar({ estado: 'ASIGNADO', tareas: [{ completada: true }, { completada: false }] });
 
-    await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE);
+    await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(cambiosDeEstado(c.operaciones)).toEqual([
       [estadoId('ASIGNADO'), estadoId('EN_PROCESO')],
@@ -186,7 +217,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR con pendientes (S2)', () =>
       tareas: [{ completada: true }, { completada: false }],
     });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId('EN_PROCESO'));
     expect(c.operaciones).toEqual([]);
@@ -199,7 +230,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR con pendientes (S2)', () =>
       tareas: [{ completada: true }, { completada: false, borrada: true }],
     });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId('RESUELTO'));
   });
@@ -209,7 +240,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR la última (S3)', () => {
   it('EN_PROCESO → RESUELTO: fecha_cierre, CAMBIO_ESTADO, reloj y notificación post-commit', async () => {
     const c = armar({ estado: 'EN_PROCESO', tareas: [{ completada: true }, { completada: true }] });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId('RESUELTO'));
     expect(ticket?.fechaCierre).toEqual(AHORA);
@@ -232,7 +263,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR la última (S3)', () => {
   it('NUEVO sin responsable → asigna y recorre ASIGNADO, EN_PROCESO y RESUELTO', async () => {
     const c = armar({ estado: 'NUEVO', asignadoId: null, tareas: [{ completada: true }] });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO, CLIENTE_ID);
 
     expect(ticket?.asignadoId).toBe(TECNICO);
     expect(ticket?.estadoId).toBe(estadoId('RESUELTO'));
@@ -248,7 +279,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR la última (S3)', () => {
   it('ESPERANDO_CLIENTE → RESUELTO directo', async () => {
     const c = armar({ estado: 'ESPERANDO_CLIENTE', tareas: [{ completada: true }] });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId('RESUELTO'));
     expect(cambiosDeEstado(c.operaciones)).toEqual([
@@ -259,7 +290,7 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR la última (S3)', () => {
   it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])('en %s no cambia nada', async (estado) => {
     const c = armar({ estado, tareas: [{ completada: true }] });
 
-    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE);
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId(estado));
     expect(c.operaciones).toEqual([]);
@@ -267,11 +298,80 @@ describe('AvanzarEstadoPorTareasService al COMPLETAR la última (S3)', () => {
   });
 });
 
+describe('AvanzarEstadoPorTareasService: solo un agente del tipo queda como responsable', () => {
+  async function conCandidatos(tareas: Array<{ completada: boolean }>) {
+    const c = armar({ estado: 'NUEVO', asignadoId: null, tareas });
+    await sumarCandidatosDeAsignacion(c.master, c.permisos, TIPO_ID, OTRO_TIPO_ID);
+    return c;
+  }
+
+  it.each(NO_ELEGIBLES_PARA_ASIGNAR)(
+    'NUEVO sin responsable: %s completa, el ticket sigue sin responsable y avanza igual',
+    async (_caso, autorId) => {
+      const c = await conCandidatos([{ completada: true }, { completada: false }]);
+
+      const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, autorId, CLIENTE_ID);
+
+      expect(ticket?.asignadoId).toBeNull();
+      expect(c.operaciones.some((o) => o.tipoOperacionId === 'tipo-op-ASIGNACION')).toBe(false);
+      // El estado sigue a las tareas igual que antes: ningún arco exige responsable.
+      expect(ticket?.estadoId).toBe(estadoId('EN_PROCESO'));
+      expect(cambiosDeEstado(c.operaciones)).toEqual([
+        [estadoId('NUEVO'), estadoId('ASIGNADO')],
+        [estadoId('ASIGNADO'), estadoId('EN_PROCESO')],
+      ]);
+      expect(c.operaciones.every((o) => o.autorId === autorId)).toBe(true);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+      c.commitear();
+      expect(c.publicados.some((e) => e instanceof TicketAsignadoEvent)).toBe(false);
+    },
+  );
+
+  it('NUEVO sin responsable: un ADMINISTRADOR completa la última tarea y lo resuelve sin responsable', async () => {
+    const c = await conCandidatos([{ completada: true }]);
+
+    const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, 'admin-uuid', CLIENTE_ID);
+
+    expect(ticket?.asignadoId).toBeNull();
+    expect(ticket?.estadoId).toBe(estadoId('RESUELTO'));
+    expect(ticket?.fechaCierre).toEqual(AHORA);
+    c.commitear();
+    expect(c.publicados.some((e) => e instanceof TicketAsignadoEvent)).toBe(false);
+    expect(c.publicados.some((e) => e instanceof TicketEstadoCambiadoEvent)).toBe(true);
+  });
+
+  it.each(ELEGIBLES_PARA_ASIGNAR)(
+    'NUEVO sin responsable: %s completa y queda como responsable',
+    async (_caso, autorId) => {
+      const c = await conCandidatos([{ completada: true }, { completada: false }]);
+
+      const ticket = await c.servicio.aplicar('COMPLETAR', TICKET_ID, autorId, CLIENTE_ID);
+
+      expect(ticket?.asignadoId).toBe(autorId);
+      expect(c.operaciones.filter((o) => o.tipoOperacionId === 'tipo-op-ASIGNACION')).toHaveLength(
+        1,
+      );
+      c.commitear();
+      const asignado = c.publicados.find((e) => e instanceof TicketAsignadoEvent) as
+        TicketAsignadoEvent | undefined;
+      expect(asignado?.asignadoId).toBe(autorId);
+    },
+  );
+
+  it('con responsable no consulta la elegibilidad de quien completa', async () => {
+    const c = armar({ estado: 'NUEVO', tareas: [{ completada: true }, { completada: false }] });
+
+    await c.servicio.aplicar('COMPLETAR', TICKET_ID, 'admin-uuid', CLIENTE_ID);
+
+    expect(c.master.consultasDeAgentes).toBe(0);
+  });
+});
+
 describe('AvanzarEstadoPorTareasService al DESCOMPLETAR (S4)', () => {
   it('RESUELTO vuelve a EN_PROCESO: limpia fecha_cierre, marca el reloj y publica la transición', async () => {
     const c = armar({ estado: 'RESUELTO', tareas: [{ completada: false }, { completada: true }] });
 
-    const ticket = await c.servicio.aplicar('DESCOMPLETAR', TICKET_ID, RESPONSABLE);
+    const ticket = await c.servicio.aplicar('DESCOMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId('EN_PROCESO'));
     expect(ticket?.fechaCierre).toBeNull();
@@ -288,7 +388,7 @@ describe('AvanzarEstadoPorTareasService al DESCOMPLETAR (S4)', () => {
   it.each(['NUEVO', 'EN_PROCESO', 'CERRADO'])('en %s no cambia nada', async (estado) => {
     const c = armar({ estado, asignadoId: null, tareas: [{ completada: false }] });
 
-    const ticket = await c.servicio.aplicar('DESCOMPLETAR', TICKET_ID, RESPONSABLE);
+    const ticket = await c.servicio.aplicar('DESCOMPLETAR', TICKET_ID, RESPONSABLE, CLIENTE_ID);
 
     expect(ticket?.estadoId).toBe(estadoId(estado));
     expect(ticket?.asignadoId).toBeNull();
@@ -300,14 +400,14 @@ describe('AvanzarEstadoPorTareasService, bordes', () => {
   it('un ticket inexistente devuelve null y no escribe', async () => {
     const c = armar({ estado: 'NUEVO', tareas: [{ completada: true }] });
 
-    expect(await c.servicio.aplicar('COMPLETAR', 'otro', TECNICO)).toBeNull();
+    expect(await c.servicio.aplicar('COMPLETAR', 'otro', TECNICO, CLIENTE_ID)).toBeNull();
     expect(c.operaciones).toEqual([]);
   });
 
   it('relee el ticket por id, no usa el que cargó el caso de uso', async () => {
     const c = armar({ estado: 'NUEVO', tareas: [{ completada: true }] });
 
-    await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO);
+    await c.servicio.aplicar('COMPLETAR', TICKET_ID, TECNICO, CLIENTE_ID);
 
     expect(c.ticketRepo.findById).toHaveBeenCalledWith(TICKET_ID);
   });

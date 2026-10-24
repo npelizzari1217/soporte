@@ -11,16 +11,18 @@
 import 'reflect-metadata';
 import { ReparacionesModule } from './reparaciones.module';
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
+import { TicketComprasController } from './interface/controllers/ticket-compras.controller';
 import { TicketsModule } from '../tickets/tickets.module';
 import { TICKET_EDILICIA_REPOSITORY } from './domain/ports/i-ticket-edilicia.repository';
-import { COMENTARIO_REPARACION_REPOSITORY } from './domain/ports/i-comentario-reparacion.repository';
-import { CrearComentarioReparacionUseCase } from './application/use-cases/crear-comentario-reparacion.use-case';
+import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
+import { ListarComprasDeTicketUseCase } from './application/use-cases/listar-compras-de-ticket.use-case';
+import { ResolutorReparacion } from './application/services/acceso-reparacion';
 
 describe('ReparacionesModule wiring (T9.7)', () => {
-  it('registra ReparacionesController', () => {
+  it('registra ReparacionesController y TicketComprasController (odd/ticket-unificado)', () => {
     const controllers = (Reflect.getMetadata('controllers', ReparacionesModule) ?? []) as unknown[];
-    expect(controllers).toContain(ReparacionesController);
+    expect(controllers).toEqual([ReparacionesController, TicketComprasController]);
   });
 
   it('importa TicketsModule (reusa providers exportados, ADR-3)', () => {
@@ -28,20 +30,21 @@ describe('ReparacionesModule wiring (T9.7)', () => {
     expect(imports).toContain(TicketsModule);
   });
 
-  it.each([TICKET_EDILICIA_REPOSITORY, COMENTARIO_REPARACION_REPOSITORY])(
-    '%s está exportado',
-    (token) => {
-      const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
-      expect(exportsList).toContain(token);
-    },
-  );
-
-  it('ya no exporta el repositorio de subtareas (odd/tareas-con-tecnico T8)', () => {
+  it('exporta solo el repositorio del satélite, que lee el PDF (odd/ticket-unificado: los comentarios son del timeline)', () => {
     const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
-    expect(exportsList).toHaveLength(2);
+    expect(exportsList).toEqual([TICKET_EDILICIA_REPOSITORY]);
   });
 
-  it.each([CrearComentarioReparacionUseCase, ListarComentariosReparacionUseCase])(
+  it('crear un comentario no tiene fábrica propia: usa el CrearComentarioUseCase que exporta TicketsModule (T2b, L19)', () => {
+    const providers = (Reflect.getMetadata('providers', ReparacionesModule) ?? []) as {
+      provide?: unknown;
+    }[];
+    const exportadosDeTickets = (Reflect.getMetadata('exports', TicketsModule) ?? []) as unknown[];
+    expect(providers.some((p) => p.provide === CrearComentarioUseCase)).toBe(false);
+    expect(exportadosDeTickets).toContain(CrearComentarioUseCase);
+  });
+
+  it.each([ListarComentariosReparacionUseCase, ListarComprasDeTicketUseCase, ResolutorReparacion])(
     '%p está provisto (los use cases se cablean a mano, sin @Injectable)',
     (useCase) => {
       const providers = (Reflect.getMetadata('providers', ReparacionesModule) ?? []) as {

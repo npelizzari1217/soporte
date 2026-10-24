@@ -10,17 +10,16 @@ export interface AgenteAsignable {
 
 /**
  * Elegibilidad de quien recibe un ticket o una tarea (odd/permisos-por-tipo-ticket, S1, S2, D5 g):
- * tener `LECTURA` sobre el tipo del ticket en `permisos_tipo_ticket` del tenant. Es la ÚNICA
- * fuente de la regla para la asignación manual, el combo de asignables, el técnico de una tarea,
- * el responsable de una regla de asignación y la asignación automática del alta. Master solo
- * aporta identidad, rol y membresía; las celdas por módulo ya no cuentan.
+ * ser TECNICO o COLABORADOR activo del cliente y tener `LECTURA` sobre el tipo del ticket en
+ * `permisos_tipo_ticket` del tenant. Es la ÚNICA fuente de la regla para la asignación manual, el
+ * combo de asignables, el técnico de una tarea, el responsable de una regla de asignación y la
+ * asignación automática del alta. Master solo aporta identidad, rol y membresía; las celdas por
+ * módulo ya no cuentan.
  *
- * Dos universos, con la misma condición de tipo:
- * - asignación manual (`esAsignableATipo`): ROOT y ADMINISTRADOR siempre; el resto, con `LECTURA`
- *   sobre el tipo, sea cual sea su rol (ortogonal a que esté activo en el tenant, que el caso de
- *   uso valida aparte);
- * - agentes (`listarAgentesDeTipo`, `esAgenteDeTipo`): TECNICO o COLABORADOR con `LECTURA` sobre
- *   el tipo. ADMINISTRADOR y ROOT no son técnicos de una tarea ni responsables de una regla.
+ * Un solo universo: lo que acepta una escritura (`esAgenteDeTipo`, `aceptaComoResponsable`) es lo
+ * que ofrece la lista (`listarAgentesDeTipo`). ADMINISTRADOR, ROOT y USUARIO no reciben tickets
+ * aunque tengan `LECTURA` sobre el tipo (decisión del dueño del 2026-10-23: antes la asignación
+ * manual aceptaba a cualquiera con `LECTURA` y a los administradores siempre).
  *
  * La lectura del tenant va antes que la de master y queda separada (`tieneLecturaSobreTipo`,
  * `esAgente`) para quien necesite tratar distinto un fallo de cada base: la asignación automática
@@ -28,7 +27,7 @@ export interface AgenteAsignable {
  */
 export class ElegibilidadAsignado {
   constructor(
-    private readonly master: Pick<IUsuarioMasterChecker, 'esAdminTotalEnTenant' | 'listarAgentes'>,
+    private readonly master: Pick<IUsuarioMasterChecker, 'listarAgentes'>,
     private readonly permisos: Pick<
       IPermisoTipoTicketRepository,
       'listarPorUsuario' | 'listarUsuariosConAccion'
@@ -36,16 +35,23 @@ export class ElegibilidadAsignado {
   ) {}
 
   /**
-   * Asignación manual: ROOT o ADMINISTRADOR del cliente, o `LECTURA` sobre el tipo.
+   * Asignación manual: el destinatario tiene que ser agente del tipo (`esAgenteDeTipo`), salvo que
+   * ya sea el responsable del ticket. Esa excepción existe por los tickets asignados antes de la
+   * regla a un ADMINISTRADOR o un ROOT: operar sobre ellos sin cambiar de responsable no falla, y
+   * el dato guardado no se toca.
    *
-   * @param usuarioId Usuario que recibiría la asignación.
+   * @param ticket Responsable vigente y tipo ACTUAL del ticket.
+   * @param usuarioId Usuario que quedaría como responsable.
    * @param clienteId Cliente activo.
-   * @param tipoId Tipo ACTUAL del ticket.
-   * @returns `true` si puede ser responsable de un ticket del tipo.
+   * @returns `true` si la asignación se puede escribir.
    */
-  async esAsignableATipo(usuarioId: string, clienteId: string, tipoId: string): Promise<boolean> {
-    if (await this.master.esAdminTotalEnTenant(usuarioId, clienteId)) return true;
-    return this.tieneLecturaSobreTipo(usuarioId, tipoId);
+  async aceptaComoResponsable(
+    ticket: { readonly asignadoId: string | null; readonly tipoId: string },
+    usuarioId: string,
+    clienteId: string,
+  ): Promise<boolean> {
+    if (ticket.asignadoId === usuarioId) return true;
+    return this.esAgenteDeTipo(usuarioId, clienteId, ticket.tipoId);
   }
 
   /**

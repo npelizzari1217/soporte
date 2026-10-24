@@ -1,3 +1,5 @@
+import { motivoSoloComentarios } from "./solo-comentarios";
+
 /**
  * Quién ve cada botón de las tareas de un ticket (odd/tareas-con-tecnico, T6).
  * Espeja `puedeGestionarTareas` y `puedeCompletarTarea` de
@@ -40,20 +42,31 @@ export function puedeCompletarTareaUi(
 }
 
 /**
- * Por qué las tareas del ticket (y, en Edilicia, los comentarios de la reparación) son de solo lectura
- * (odd/ticket-cerrado-solo-lectura, S4). Espeja `VerificadorTicketEditable` del backend:
- * CERRADO, CANCELADO o reparación bloqueada por una compra activa. RESUELTO no bloquea.
+ * Por qué las tareas del ticket son de solo lectura. Espeja `VerificadorTicketEditable` del backend:
+ * - RESUELTO, CERRADO o CANCELADO, para quien no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios,
+ *   `motivoSoloComentarios`). Los administradores quedan exentos: pueden corregir y reabrir.
+ * - Un ticket de cualquier tipo bloqueado por una compra activa, para cualquiera
+ *   (odd/ticket-unificado, S5).
  *
- * `estadoCodigo: undefined` es "catálogo todavía no resuelto": no se esconde nada y decide el
- * backend. `bloqueada` solo lo conoce el listado de Edilicia; el detalle del ticket pasa `false`.
+ * `estadoCodigo: undefined` es "catálogo todavía no resuelto": no se esconde nada por el estado y
+ * decide el backend. `bloqueada` sale de la fila de Edilicia o, en el detalle del ticket, de sus
+ * compras vinculadas con `COMPRAS:LECTURA` y, sin esa celda, de `bloqueada` en `GET /tickets/:id`.
+ * Los comentarios no dependen de esto: se aceptan en cualquier estado.
  *
+ * @param estadoCodigo Código del estado del ticket, o `undefined`.
+ * @param bloqueada `true` si una compra activa lo bloquea.
+ * @param esAdministrador `true` para ADMINISTRADOR y ROOT (`useSession().esAdminCliente`).
  * @returns El motivo para mostrar, o `null` si se puede editar.
  */
-export function motivoTareasSoloLectura(estadoCodigo: string | undefined, bloqueada: boolean): string | null {
-  if (estadoCodigo === "CERRADO") return "El ticket está cerrado: sus tareas ya no se modifican.";
-  if (estadoCodigo === "CANCELADO") return "El ticket está cancelado: sus tareas ya no se modifican.";
+export function motivoTareasSoloLectura(
+  estadoCodigo: string | undefined,
+  bloqueada: boolean,
+  esAdministrador: boolean,
+): string | null {
+  const soloComentarios = motivoSoloComentarios(estadoCodigo, esAdministrador);
+  if (soloComentarios !== null) return soloComentarios;
   if (bloqueada) {
-    return "La reparación está bloqueada por una compra en curso: sus tareas ya no se modifican.";
+    return "El ticket está bloqueado por una compra en curso: sus tareas ya no se modifican.";
   }
   return null;
 }

@@ -109,7 +109,7 @@ describe('AsignarYPonerEnProceso no marca el reloj de SLA (WU-3a.4)', () => {
       new PrismaTipoOperacionRepository(tenantContext),
       { estaActivoEnTenant: async () => true },
       // La elegibilidad no es lo que se prueba acá: el asignado es elegible.
-      { esAsignableATipo: async () => true },
+      { aceptaComoResponsable: async () => true },
       new TicketStateMachineFactory(),
       txRunner,
       { publish: () => {} },

@@ -671,7 +671,12 @@ describe("ReparacionesList — editar una reparación no empezada (odd/detalle-t
   });
 });
 
-describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y comentarios de solo lectura (odd/ticket-cerrado-solo-lectura)", () => {
+/**
+ * Las tareas de una fila cerrada, cancelada o bloqueada son de solo lectura
+ * (odd/ticket-cerrado-solo-lectura). Los comentarios de Edilicia, no: desde
+ * odd/ticket-unificado (L20) son internos y el backend los acepta en cualquier estado.
+ */
+describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas de solo lectura, comentarios internos abiertos", () => {
   function mockEstadosYTareas() {
     server.use(
       http.get("/api/catalogos/estados", () =>
@@ -712,21 +717,38 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
     rol: "ADMINISTRADOR",
     permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:MODIFICACION"],
   });
+  // Un técnico que modifica y comenta (también interno) en Edilicia, no administrador.
+  const tecnico = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: [] });
+  const PERMISOS_TECNICO = permisosDeTest(
+    { "tipo-edilicia": ["LECTURA", "ALTAS", "MODIFICACION", "COMENTAR", "OBSERVAR"] },
+    { "tipo-edilicia": "EDILICIA" },
+  );
+  function renderComo(quien: "admin" | "tecnico") {
+    return quien === "admin"
+      ? renderWithProviders(<ReparacionesList />, { user: admin })
+      : renderConPermisos(<ReparacionesList />, { user: tecnico, permisos: PERMISOS_TECNICO });
+  }
 
   it.each([
-    ["cerrada", { estadoId: "estado-cerrado", bloqueada: false }, /cerrado/],
     [
-      "bloqueada por una compra",
+      "cerrada, para un no administrador (odd/cerrado-solo-comentarios)",
+      { estadoId: "estado-cerrado", bloqueada: false },
+      /El ticket está cerrado: solo admite comentarios/,
+      "tecnico" as const,
+    ],
+    [
+      "bloqueada por una compra, también para un administrador",
       {
         estadoId: "estado-nuevo",
         bloqueada: true,
         comprasQueBloquean: [{ id: "c1", numero: "COM-1" }],
       },
-      /bloqueada por una compra/,
+      /bloqueado por una compra/,
+      "admin" as const,
     ],
   ])(
-    "en una reparación %s, el diálogo de subtareas no deja agregar y el de comentarios no deja comentar",
-    async (_caso, fila, motivo) => {
+    "en una reparación %s, el diálogo de subtareas no deja agregar y el de comentarios sí deja comentar",
+    async (_caso, fila, motivo, quien) => {
       const user = userEvent.setup();
       mockEstadosYTareas();
       server.use(
@@ -741,7 +763,7 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
           ])),
         ),
       );
-      renderWithProviders(<ReparacionesList />, { user: admin });
+      renderComo(quien);
       await screen.findByText("EDI-0001");
 
       await user.click(
@@ -762,14 +784,31 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
         }),
       );
       const comentarios = await screen.findByRole("dialog");
-      expect(await within(comentarios).findByRole("note")).toHaveTextContent(
+      expect(
+        await within(comentarios).findByLabelText(/nuevo comentario interno/i),
+      ).toBeInTheDocument();
+      expect(within(comentarios).getByRole("note")).not.toHaveTextContent(
         motivo,
       );
-      expect(
-        within(comentarios).queryByLabelText(/nuevo comentario/i),
-      ).toBeNull();
     },
   );
+
+  it("caso hermano: en una reparación cerrada, un ADMINISTRADOR sigue agregando subtareas (S3)", async () => {
+    const user = userEvent.setup();
+    mockEstadosYTareas();
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json(paginaDe([buildReparacion({ estadoId: "estado-cerrado" })])),
+      ),
+    );
+    renderComo("admin");
+    await screen.findByText("EDI-0001");
+
+    await user.click(within(filaDe("EDI-0001")).getByRole("button", { name: /ver subtareas/i }));
+    const subtareas = await screen.findByRole("dialog");
+    expect(await within(subtareas).findByLabelText("Nueva tarea")).toBeInTheDocument();
+    expect(within(subtareas).queryByRole("note")).toBeNull();
+  });
 
   it("en una reparación abierta y no bloqueada, los dos diálogos siguen dejando agregar", async () => {
     const user = userEvent.setup();
@@ -810,17 +849,75 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas y 
     expect(
       await within(comentarios).findByLabelText(/nuevo comentario/i),
     ).toBeInTheDocument();
-    expect(within(comentarios).queryByRole("note")).toBeNull();
+    // La única nota es el aviso de comentario interno, no un motivo de solo lectura.
+    expect(within(comentarios).getByRole("note")).toHaveTextContent(/internos/);
+  });
+});
+
+describe("ReparacionesList — resuelta, cerrada o cancelada: solo comentarios (odd/cerrado-solo-comentarios, S6)", () => {
+  const tecnico = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: ["COMPRAS:LECTURA"] });
+  const administrador = buildUser({ sub: "u-adm", rol: "ADMINISTRADOR", permisos: ["COMPRAS:LECTURA"] });
+  const PERMISOS = permisosDeTest(
+    { "tipo-edilicia": ["LECTURA", "MODIFICACION", "COMENTAR", "OBSERVAR"] },
+    { "tipo-edilicia": "EDILICIA" },
+  );
+
+  function mockFila(estadoId: string) {
+    server.use(
+      http.get("/api/catalogos/estados", () =>
+        HttpResponse.json([
+          { id: "estado-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true },
+          { id: "estado-resuelto", codigo: "RESUELTO", nombre: "Resuelto", color: null, orden: 4, activo: true },
+          { id: "estado-cancelado", codigo: "CANCELADO", nombre: "Cancelado", color: null, orden: 6, activo: true },
+        ]),
+      ),
+      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([buildReparacion({ estadoId })]))),
+    );
+  }
+
+  it.each([
+    ["estado-resuelto", "El ticket está resuelto: solo admite comentarios."],
+    ["estado-cancelado", "El ticket está cancelado: solo admite comentarios."],
+  ])("%s: un no administrador ve Editar deshabilitado con el motivo y las compras sin gestionar", async (estadoId, motivo) => {
+    mockFila(estadoId);
+    renderConPermisos(<ReparacionesList />, { user: tecnico, permisos: PERMISOS });
+    await screen.findByText("EDI-0001");
+
+    const fila = filaDe("EDI-0001");
+    expect(within(fila).getByRole("button", { name: "Editar EDI-0001" })).toBeDisabled();
+    expect(within(fila).getByText(motivo)).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: "Ver compras" })).toBeInTheDocument();
+    expect(within(fila).queryByRole("button", { name: "Gestionar compras" })).toBeNull();
+  });
+
+  it("caso hermano: en NUEVO el mismo técnico edita y gestiona compras", async () => {
+    mockFila("estado-nuevo");
+    renderConPermisos(<ReparacionesList />, { user: tecnico, permisos: PERMISOS });
+    await screen.findByText("EDI-0001");
+
+    const fila = filaDe("EDI-0001");
+    expect(within(fila).getByRole("button", { name: "Editar EDI-0001" })).toBeEnabled();
+    expect(within(fila).getByRole("button", { name: "Gestionar compras" })).toBeInTheDocument();
+  });
+
+  it("un ADMINISTRADOR en RESUELTO gestiona compras (S3)", async () => {
+    mockFila("estado-resuelto");
+    renderWithProviders(<ReparacionesList />, { user: administrador });
+    await screen.findByText("EDI-0001");
+
+    expect(within(filaDe("EDI-0001")).getByRole("button", { name: "Gestionar compras" })).toBeInTheDocument();
   });
 });
 
 describe("ReparacionesList — acciones según el tipo de cada fila (odd/permisos-por-tipo-ticket, S6)", () => {
   const TECNICO = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: ["COMPRAS:LECTURA"] });
-  // Modifica, comenta y crea en Edilicia; en Mantenimiento solo lee.
+  // Modifica, comenta (también interno) y crea en Edilicia. En Mantenimiento lee, crea y comenta,
+  // pero sin MODIFICACION ni OBSERVAR: ni ALTAS alcanza para vincular compras (S4), ni COMENTAR
+  // solo para un comentario interno (L20).
   const PERMISOS = permisosDeTest(
     {
-      "tipo-edilicia": ["LECTURA", "ALTAS", "MODIFICACION", "COMENTAR"],
-      "tipo-mantenimiento": ["LECTURA"],
+      "tipo-edilicia": ["LECTURA", "ALTAS", "MODIFICACION", "COMENTAR", "OBSERVAR"],
+      "tipo-mantenimiento": ["LECTURA", "ALTAS", "COMENTAR"],
     },
     { "tipo-edilicia": "EDILICIA", "tipo-mantenimiento": "EDILICIA" },
   );
@@ -838,6 +935,7 @@ describe("ReparacionesList — acciones según el tipo de cada fila (odd/permiso
       ),
       http.get("/api/reparaciones/:id/comentarios", () => HttpResponse.json([])),
       http.get("/api/compras", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 })),
+      http.get("/api/tickets/:id/compras", () => HttpResponse.json([])),
       http.get("/api/catalogos/tipos-ticket", () =>
         HttpResponse.json([
           { id: "tipo-edilicia", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
@@ -854,12 +952,26 @@ describe("ReparacionesList — acciones según el tipo de cada fila (odd/permiso
     await screen.findByText("EDI-0100");
     expect(within(filaDe("EDI-0100")).getByRole("button", { name: "Editar EDI-0100" })).toBeInTheDocument();
     expect(within(filaDe("EDI-0101")).queryByRole("button", { name: /editar/i })).toBeNull();
-    // Vincular pide ALTAS sobre el tipo (y COMPRAS:LECTURA, que tiene).
+    // Vincular y desvincular piden MODIFICACION sobre el tipo y COMPRAS:LECTURA (S4): con ALTAS
+    // y sin MODIFICACION solo se ven las compras.
     expect(within(filaDe("EDI-0100")).getByRole("button", { name: "Gestionar compras" })).toBeInTheDocument();
     expect(within(filaDe("EDI-0101")).queryByRole("button", { name: "Gestionar compras" })).toBeNull();
+    expect(within(filaDe("EDI-0101")).getByRole("button", { name: "Ver compras" })).toBeInTheDocument();
   });
 
-  it("el formulario de comentario aparece en la fila del tipo con COMENTAR y no en la que solo lee", async () => {
+  it("sin COMPRAS:LECTURA no se ofrecen las compras en ninguna fila, aunque tenga MODIFICACION", async () => {
+    mockListado();
+    renderConPermisos(<ReparacionesList />, {
+      user: buildUser({ sub: "u-tec", rol: "TECNICO", permisos: ["EDILICIA:BORRADO"] }),
+      permisos: PERMISOS,
+    });
+
+    await screen.findByText("EDI-0100");
+    expect(within(filaDe("EDI-0100")).getByRole("button", { name: "Editar EDI-0100" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /gestionar compras|ver compras/i })).toBeNull();
+  });
+
+  it("el formulario de comentario aparece en la fila del tipo con COMENTAR y OBSERVAR, y no con COMENTAR solo", async () => {
     const user = userEvent.setup();
     mockListado();
     renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
@@ -882,6 +994,40 @@ describe("ReparacionesList — acciones según el tipo de cada fila (odd/permiso
     await screen.findByText("EDI-0100");
     expect(screen.getByRole("button", { name: "Nueva reparación" })).toBeInTheDocument();
     conAlta.unmount();
+
+    // Con ALTAS solo en un tipo de TICKETS también: la pantalla crea tickets de cualquier tipo
+    // con alta manual (odd/ticket-unificado, S2).
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([
+          { id: "tipo-edilicia", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+          { id: "tipo-soporte", codigo: "SOPORTE", nombre: "Soporte", modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" },
+          { id: "tipo-compra", codigo: "COMPRA", nombre: "Compra", modulo: "COMPRAS", activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+    );
+    const conAltaEnSoporte = renderConPermisos(<ReparacionesList />, {
+      user: TECNICO,
+      permisos: permisosDeTest(
+        { "tipo-edilicia": ["LECTURA"], "tipo-soporte": ["LECTURA", "ALTAS"] },
+        { "tipo-edilicia": "EDILICIA", "tipo-soporte": "TICKETS" },
+      ),
+    });
+    await screen.findByText("EDI-0100");
+    expect(screen.getByRole("button", { name: "Nueva reparación" })).toBeInTheDocument();
+    conAltaEnSoporte.unmount();
+
+    // Con ALTAS solo en un tipo de COMPRAS, no: ese módulo tiene su alta propia.
+    const conAltaEnCompras = renderConPermisos(<ReparacionesList />, {
+      user: TECNICO,
+      permisos: permisosDeTest(
+        { "tipo-edilicia": ["LECTURA"], "tipo-compra": ["LECTURA", "ALTAS"] },
+        { "tipo-edilicia": "EDILICIA", "tipo-compra": "COMPRAS" },
+      ),
+    });
+    await screen.findByText("EDI-0100");
+    expect(screen.queryByRole("button", { name: "Nueva reparación" })).toBeNull();
+    conAltaEnCompras.unmount();
 
     renderConPermisos(<ReparacionesList />, {
       // La celda EDILICIA:ALTAS del JWT ya no alcanza.
@@ -910,3 +1056,133 @@ describe("ReparacionesList — fecha de alta bajo el número", () => {
   });
 });
 
+
+/**
+ * Selector de tipo (odd/ticket-unificado, S2, opción a de L7): la pantalla lista los tickets de
+ * cualquier tipo que el usuario ve, con `GET /reparaciones?tipo=`. Sin tipo, los del módulo
+ * EDILICIA, como hasta ahora.
+ */
+describe("ReparacionesList — selector de tipo (odd/ticket-unificado, S2)", () => {
+  const TECNICO = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: [] });
+  const tipo = (id: string, codigo: string, nombre: string, modulo: string) => ({
+    id,
+    codigo,
+    nombre,
+    modulo,
+    activo: true,
+    createdAt: "",
+    updatedAt: "",
+  });
+  const SOPORTE_ID = "9f1a0b2c-3d4e-4f50-8a61-72b83c94d5e6";
+  const REDES_ID = "1b2c3d4e-5f60-4a71-8b82-93c04d15e6f7";
+  // Lee Edilicia, Soporte y Compra; Redes existe pero no la ve.
+  const PERMISOS = permisosDeTest(
+    {
+      "tipo-edilicia": ["LECTURA"],
+      [SOPORTE_ID]: ["LECTURA"],
+      "tipo-compra": ["LECTURA"],
+      [REDES_ID]: ["ALTAS"],
+    },
+    { "tipo-edilicia": "EDILICIA", [SOPORTE_ID]: "TICKETS", "tipo-compra": "COMPRAS", [REDES_ID]: "TICKETS" },
+  );
+  let consultas: URLSearchParams[];
+  let exportaciones: URLSearchParams[];
+
+  function mockBackend(catalogo: () => Response | Promise<Response>) {
+    consultas = [];
+    exportaciones = [];
+    server.use(
+      http.get("/api/reparaciones", ({ request }) => {
+        consultas.push(new URL(request.url).searchParams);
+        return HttpResponse.json(paginaDe([buildReparacion({ numero: "SOP-0001", tipoId: SOPORTE_ID })]));
+      }),
+      http.get("/api/reparaciones/export", ({ request }) => {
+        exportaciones.push(new URL(request.url).searchParams);
+        return new HttpResponse("numero\n", { headers: { "Content-Type": "text/csv" } });
+      }),
+      http.get("/api/catalogos/tipos-ticket", catalogo),
+    );
+  }
+  const catalogoCompleto = () =>
+    HttpResponse.json([
+      tipo("tipo-edilicia", "EDILICIA", "Edilicia", "EDILICIA"),
+      tipo(SOPORTE_ID, "SOPORTE", "Soporte", "TICKETS"),
+      tipo(REDES_ID, "REDES", "Redes", "TICKETS"),
+      tipo("tipo-compra", "COMPRA", "Compra", "COMPRAS"),
+    ]);
+
+  it("ofrece los tipos con LECTURA de cualquier módulo y, por defecto, lista Edilicia sin mandar tipo", async () => {
+    mockBackend(catalogoCompleto);
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+
+    const selector = await screen.findByLabelText("Tipo");
+    expect(await within(selector).findByRole("option", { name: "Soporte" })).toBeInTheDocument();
+    expect(selector).toHaveValue("");
+    expect(within(selector).getByRole("option", { name: "Todos los de Edilicia" })).toBeInTheDocument();
+    expect(within(selector).getByRole("option", { name: "Edilicia" })).toBeInTheDocument();
+    expect(within(selector).getByRole("option", { name: "Compra" })).toBeInTheDocument();
+    // Sin LECTURA sobre Redes, la grilla no traería nada: no se ofrece.
+    expect(within(selector).queryByRole("option", { name: "Redes" })).toBeNull();
+    await waitFor(() => expect(consultas.length).toBeGreaterThan(0));
+    expect(consultas.at(-1)?.has("tipo")).toBe(false);
+  });
+
+  it("elegir un tipo lo guarda en la URL y vuelve a la página 1; volver a Edilicia lo saca", async () => {
+    mockBackend(catalogoCompleto);
+    currentSearch = "pagina=3";
+    const user = userEvent.setup();
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+
+    const selector = await screen.findByLabelText("Tipo");
+    await within(selector).findByRole("option", { name: "Soporte" });
+    await user.selectOptions(selector, SOPORTE_ID);
+    expect(replaceMock).toHaveBeenLastCalledWith(`/edilicia?pagina=1&tipo=${SOPORTE_ID}`);
+
+    await user.selectOptions(selector, "");
+    expect(replaceMock).toHaveBeenLastCalledWith("/edilicia?pagina=1");
+  });
+
+  it("con un tipo en la URL, la grilla y la exportación lo piden al servidor", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:mock");
+    URL.revokeObjectURL = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    mockBackend(catalogoCompleto);
+    currentSearch = `tipo=${SOPORTE_ID}`;
+    const user = userEvent.setup();
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+
+    expect(await screen.findByText("SOP-0001")).toBeInTheDocument();
+    expect(consultas.at(-1)?.get("tipo")).toBe(SOPORTE_ID);
+    await waitFor(() => expect(screen.getByLabelText("Tipo")).toHaveValue(SOPORTE_ID));
+
+    await user.click(screen.getByRole("button", { name: /exportar/i }));
+    await user.click(await screen.findByRole("menuitem", { name: "CSV" }));
+    await waitFor(() => expect(exportaciones).toHaveLength(1));
+    expect(exportaciones[0].get("tipo")).toBe(SOPORTE_ID);
+    clickSpy.mockRestore();
+  });
+
+  // Un `<select>` nativo sin la opción de su valor cae a la primera: la pantalla diría «Todos los
+  // de Edilicia» mientras la grilla lista otro tipo.
+  it("un tipo de la URL que no se puede elegir queda seleccionado como no disponible, sin caer en otra opción", async () => {
+    mockBackend(catalogoCompleto);
+    currentSearch = `tipo=${REDES_ID}`;
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+
+    const selector = await screen.findByLabelText("Tipo");
+    expect(await within(selector).findByRole("option", { name: "Tipo no disponible" })).toBeInTheDocument();
+    expect(selector).toHaveValue(REDES_ID);
+    expect(consultas.at(-1)?.get("tipo")).toBe(REDES_ID);
+  });
+
+  it("caso hermano: con el catálogo todavía sin resolver no lo da por no disponible, pero tampoco cae en otra opción", async () => {
+    mockBackend(() => new Promise<Response>(() => {}));
+    currentSearch = `tipo=${SOPORTE_ID}`;
+    renderConPermisos(<ReparacionesList />, { user: TECNICO, permisos: PERMISOS });
+
+    const selector = await screen.findByLabelText("Tipo");
+    expect(selector).toHaveValue(SOPORTE_ID);
+    expect(within(selector).getByRole("option", { name: "Cargando tipos…" })).toBeInTheDocument();
+    expect(within(selector).queryByRole("option", { name: "Tipo no disponible" })).toBeNull();
+  });
+});

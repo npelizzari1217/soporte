@@ -16,6 +16,7 @@ import {
   PrioridadNoEncontradaError,
   TicketBloqueadoParaEdicionError,
   SectorTicketInexistenteError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -44,6 +45,18 @@ const ESTADOS: Record<string, EstadoEntity> = {
   'estado-en-proceso-uuid': EstadoEntity.create(
     { codigo: 'EN_PROCESO', nombre: 'En proceso', color: null, orden: 3, activo: true },
     'estado-en-proceso-uuid',
+  ),
+  'estado-resuelto-uuid': EstadoEntity.create(
+    { codigo: 'RESUELTO', nombre: 'Resuelto', color: null, orden: 5, activo: true },
+    'estado-resuelto-uuid',
+  ),
+  'estado-cerrado-uuid': EstadoEntity.create(
+    { codigo: 'CERRADO', nombre: 'Cerrado', color: null, orden: 6, activo: true },
+    'estado-cerrado-uuid',
+  ),
+  'estado-cancelado-uuid': EstadoEntity.create(
+    { codigo: 'CANCELADO', nombre: 'Cancelado', color: null, orden: 7, activo: true },
+    'estado-cancelado-uuid',
   ),
 };
 
@@ -433,6 +446,90 @@ describe('EditarTicketUseCase', () => {
       });
 
       expect(c.estadoRepo.findById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S1-S3)', () => {
+    // El técnico ve el ticket (VER_TODOS) y tiene MODIFICACION sobre su tipo: lo único que lo frena
+    // es el estado.
+    const tecnico = alcancePorTipo('tecnico-uuid', {
+      'tipo-uuid': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+    });
+    const CASOS: [string, string, string][] = [
+      ['RESUELTO', 'estado-resuelto-uuid', 'El ticket está resuelto: solo admite comentarios.'],
+      ['CERRADO', 'estado-cerrado-uuid', 'El ticket está cerrado: solo admite comentarios.'],
+      ['CANCELADO', 'estado-cancelado-uuid', 'El ticket está cancelado: solo admite comentarios.'],
+    ];
+
+    it.each(CASOS)(
+      '%s + no administrador → TicketSoloComentariosError (422) que nombra el estado, sin guardar',
+      async (codigo, estadoId, inicioMensaje) => {
+        const ticket = makeTicket(estadoId);
+        const c = makeCollaborators(ticket);
+
+        const result = await c.useCase.execute({
+          ...tecnico,
+          ticketId: 'ticket-uuid',
+          titulo: 'Intento',
+          prioridadId: 'prioridad-alta-uuid',
+          actorEsRoot: false,
+        });
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(codigo);
+        expect(error.message).toBe(
+          `${inicioMensaje} Solo un administrador puede modificarlo o reabrirlo.`,
+        );
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
+        expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+        expect(ticket.titulo).toBe('Titulo original');
+        expect(ticket.prioridadId).toBe('prioridad-media-uuid');
+      },
+    );
+
+    it('ADMINISTRADOR (no ROOT) en RESUELTO sigue con la regla de siempre: 403 por estar fuera de NUEVO/ASIGNADO', async () => {
+      const c = makeCollaborators(makeTicket('estado-resuelto-uuid'));
+
+      const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento del administrador',
+        actorEsRoot: false,
+      });
+
+      expect(result.getError()).toBeInstanceOf(TicketBloqueadoParaEdicionError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it.each(['estado-resuelto-uuid', 'estado-cerrado-uuid', 'estado-cancelado-uuid'])(
+      'ROOT edita igual (%s)',
+      async (estadoId) => {
+        const c = makeCollaborators(makeTicket(estadoId));
+
+        const result = await c.useCase.execute({
+          ...ALCANCE_SIN_RESTRICCION,
+          ticketId: 'ticket-uuid',
+          titulo: 'Corregido por ROOT',
+          actorEsRoot: true,
+        });
+
+        expect(result.getValue().titulo).toBe('Corregido por ROOT');
+        expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('un no administrador sin MODIFICACION recibe el 403 de siempre, no el 422 del estado', async () => {
+      const c = makeCollaborators(makeTicket('estado-cerrado-uuid'));
+
+      const result = await c.useCase.execute({
+        ...alcancePorTipo('tecnico-uuid', { 'tipo-uuid': ['LECTURA', 'VER_TODOS'] }),
+        ticketId: 'ticket-uuid',
+        titulo: 'Intento',
+        actorEsRoot: false,
+      });
+
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
     });
   });
 

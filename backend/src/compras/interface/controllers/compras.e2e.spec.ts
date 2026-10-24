@@ -1067,6 +1067,52 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       );
       expect(invalido.status).toBe(400);
     });
+
+    // La semántica del ILIKE (mayúsculas, comodines, combinación con el
+    // grupo) vive en `prisma-compra.repository.filtros.integration.spec.ts`;
+    // acá se prueba que el parámetro viaje, se valide y respete el gate.
+    it('GET /compras?busqueda=... filtra por motivo y rechaza un término de más de 100 caracteres', async () => {
+      const actor = await crearActorConPermisos(['COMPRAS:ALTAS', 'COMPRAS:LECTURA']);
+      const marca = randomBytes(4).toString('hex');
+      const buscada = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto({ motivo: `Pintura aula ${marca}` }),
+        bearer(actor.accessToken),
+      );
+      const otra = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto({ motivo: `Cableado ${marca}` }),
+        bearer(actor.accessToken),
+      );
+
+      const query = new URLSearchParams({ busqueda: `  PINTURA AULA ${marca}  ` });
+      const filtrado = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?${query.toString()}`,
+        bearer(actor.accessToken),
+      );
+      expect(filtrado.status).toBe(200);
+      expect(filtrado.data.items.map((i) => i.id)).toEqual([buscada.data.id]);
+      expect(filtrado.data.items[0]!.motivo).toBe(`Pintura aula ${marca}`);
+      expect(filtrado.data.total).toBe(1);
+      expect(filtrado.data.items.some((i) => i.id === otra.data.id)).toBe(false);
+
+      const demasiadoLarga = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?busqueda=${'a'.repeat(101)}`,
+        bearer(actor.accessToken),
+      );
+      expect(demasiadoLarga.status).toBe(400);
+    });
+
+    it('GET /compras?busqueda=... sigue exigiendo COMPRAS:LECTURA: sin esa celda → 403', async () => {
+      // Un solo actor por `it`: cada actor crea su cliente sobre la misma
+      // base tenant, y `clientes.db_name` es único.
+      const sinLectura = await crearActorConPermisos(['COMPRAS:ALTAS']);
+      const { status } = await httpGet<ListarComprasResponseDto>(
+        `${baseUrl}/compras?busqueda=pintura`,
+        bearer(sinLectura.accessToken),
+      );
+      expect(status).toBe(403);
+    });
   });
 
   // ─── Sanity ───────────────────────────────────────────────────────────────

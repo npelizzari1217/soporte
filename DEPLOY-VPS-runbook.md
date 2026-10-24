@@ -1171,6 +1171,376 @@ vigente al momento de cada resolución o respuesta. Volver a desplegar después 
 la fila de la migración en `_prisma_migrations`, y el script recalcula con el calendario de ese
 momento. El rollback no borra esa fila.
 
+## Deploy del 2026-10-25: checklist combinado
+
+Este release integra cinco ramas: `sesion-vencida-aviso`, `compra-por-descripcion`,
+`cerrado-solo-comentarios` (con `ticket-unificado`), `preventivo-por-tipo` (con
+`preventivo-anticipacion` y `responsables-por-tipo`) e `historial-valor-residual`. El detalle de
+cada parte con migraciones está en su sección ("Ticket unificado", "Anticipación del plan
+preventivo", "Tipo de ticket del plan preventivo" e "Historial del valor de los equipos", más
+abajo); esta lista es el orden único para la ventana. Master no cambia, no hay variables de
+entorno ni dependencias nuevas y el lockfile no cambia: `sesion-vencida-aviso`,
+`compra-por-descripcion`, `cerrado-solo-comentarios` y `responsables-por-tipo` no traen
+migraciones.
+
+Migraciones tenant, todas por `migrate:tenants` y en este orden (el de sus timestamps):
+
+| Orden | Migración | Escribe filas existentes | Sección |
+|---|---|---|---|
+| 1 | `20261024120000_ticket_unificado` | Sí (`tickets.ubicacion`, copias al timeline) | "Ticket unificado" |
+| 2 | `20261024130000_comentarios_reparacion_internos` | Sí (`operaciones_ticket.es_interno`) | "Ticket unificado" |
+| 3 | `20261025100000_preventivo_anticipacion` | No: columnas con DEFAULT y CHECK que toda fila cumple | "Anticipación del plan preventivo" |
+| 4 | `20261025110000_tickets_fecha_objetivo` | No: columna nullable, sin backfill | "Anticipación del plan preventivo" |
+| 5 | `20261025120000_tickets_recordatorio_preventivo` | No: columna nullable e índice parcial | "Anticipación del plan preventivo" |
+| 6 | `20261025130000_preventivo_plan_tipo` | Sí (backfill de `planes_preventivo.tipo_id`); aborta en un tenant con planes y sin tipo `PREVENTIVO` | "Tipo de ticket del plan preventivo" |
+| 7 | `20261025140000_historial_valor_residual` | No: crea la tabla `equipo_valoraciones`, de solo agregado, y su backfill inserta en ella hasta dos filas `MIGRACION` por equipo sin baja (desde `importe`/`fecha_valoracion` y `valor_residual`/`fecha_valor_residual`), sin modificar `equipos_informaticos` | "Historial del valor de los equipos" |
+
+Cada migración es su propia transacción: si la 6 aborta en un tenant, en esa base ya quedaron
+aplicadas de la 1 a la 5 y la 7 no se aplica, y `migrate-tenants.js` corta el fan-out con los
+servicios detenidos, así que los tenants siguientes quedan sin migrar.
+
+1. **Lista de bases** del registro, con la consulta sobre master de "Precheck de solo lectura: el
+   CHECK de la copia". Todos los prechecks van en **cada** base de esa lista.
+2. **Precheck de ubicación** ("Ticket unificado"): sin filas en ninguna base. Anotar la foto de
+   `vinculos` y `comentarios`.
+3. **Precheck del tipo `PREVENTIVO`** ("Tipo de ticket del plan preventivo"): en ninguna base
+   `planes > 0` con `tipo_preventivo = 0`. Si la hay, crear el tipo desde la UI con el código
+   actual en marcha y volver a correr este paso.
+4. **`predeploy-dump.ps1 -DryRun`** y, en verde, **`predeploy-dump.ps1`** ("Precondición
+   operativa"). Obligatorio: las migraciones 1, 2 y 6 escriben filas existentes, y el dump es el
+   único rollback fiel de las tres. La 7 solo inserta en su tabla nueva, así que el dump no le
+   hace falta para volver atrás. Los servicios quedan detenidos.
+5. **Prechecks 2 y 3 otra vez**, con los servicios detenidos: la foto definitiva. Si alguno no da
+   verde, no se corre `deploy.ps1`: se arrancan los servicios y se resuelve primero.
+6. **`deploy.ps1`**. Lleva el backend y el frontend de este release juntos: el frontend anterior no
+   es compatible con el backend de "Ticket unificado" (ver "T2, T2b y T3 salen en el mismo
+   deploy"). Si la migración 6 falla en un tenant, seguir "Si la migración ya falló en un tenant".
+7. **Verificación posterior** de "Ticket unificado" en cada base (conteos contra la foto del paso 5
+   y smoke manual), y además, en cada base:
+
+   ```sql
+   SELECT
+     (SELECT count(*) FROM planes_preventivo WHERE tipo_id IS NULL)   AS planes_sin_tipo,
+     (SELECT count(*) FROM planes_preventivo WHERE anticipacion_valor <> 0
+        OR anticipacion_unidad <> 'DIAS')                             AS planes_con_anticipacion,
+     (SELECT count(*) FROM tickets WHERE fecha_objetivo IS NOT NULL)  AS tickets_con_fecha_objetivo;
+   ```
+
+   Recién migrado, los tres dan 0: los planes quedan en `PREVENTIVO` con anticipación de 0 días, y
+   la fecha objetivo la fija recién el próximo barrido diario (por defecto a la 1:00,
+   `PREVENTIVO_SWEEP_CRON`).
+
+   Y el historial del valor de los equipos, antes de que alguien guarde un equipo:
+
+   ```sql
+   SELECT
+     (SELECT count(*) FROM equipo_valoraciones WHERE origen = 'MIGRACION') AS valoraciones_migradas,
+     (SELECT count(*) FROM equipo_valoraciones WHERE origen = 'MANUAL')    AS valoraciones_manuales,
+     (SELECT count(*) FROM equipos_informaticos
+        WHERE deleted_at IS NULL
+          AND valor_residual IS NOT NULL AND fecha_valor_residual IS NOT NULL) AS con_valor_residual,
+     (SELECT count(*) FROM equipos_informaticos
+        WHERE deleted_at IS NULL
+          AND importe IS NOT NULL AND fecha_valoracion IS NOT NULL)           AS con_importe,
+     (SELECT count(*) FROM equipos_informaticos
+        WHERE deleted_at IS NULL
+          AND valor_residual IS NOT NULL AND fecha_valor_residual IS NOT NULL
+          AND importe IS NOT NULL AND fecha_valoracion = fecha_valor_residual) AS misma_fecha;
+   ```
+
+   `valoraciones_manuales` da 0, y `valoraciones_migradas` es `con_valor_residual + con_importe -
+   misma_fecha`: un equipo con las dos fechas iguales deja una sola fila, la del valor residual.
+
+**Rollback combinado.** Con los servicios detenidos, en **cada** base de inquilino y en orden
+inverso al de la tabla:
+
+1. **Dump de `equipo_valoraciones`**, antes de borrarla. Las filas `MANUAL` guardadas después del
+   deploy son el único registro de los valores anteriores al vigente de cada equipo, y el dump de
+   `predeploy-dump.ps1` es anterior a ellas. `$dumpDir` es la carpeta que reportó
+   `predeploy-dump.ps1`, y la URL es la de la base de ese tenant **sin** el `?schema=public`, con
+   `-d` explícito (ver `DbUrl()` en `predeploy-dump.ps1`: libpq rechaza ese parámetro):
+
+   ```powershell
+   $dumpFile = Join-Path $dumpDir '<db_name>.equipo_valoraciones.dump'
+   & 'C:\Program Files\PostgreSQL\16\bin\pg_dump.exe' -Fc --table=equipo_valoraciones `
+     -d '<url de la base de ese tenant>' -f $dumpFile
+   if ($LASTEXITCODE -ne 0) { throw "pg_dump de equipo_valoraciones fallo" }
+   & 'C:\Program Files\PostgreSQL\16\bin\pg_restore.exe' --list $dumpFile | Out-Null
+   if ($LASTEXITCODE -ne 0) { throw "el dump de equipo_valoraciones no se puede leer" }
+   ```
+
+2. `20261025140000_historial_valor_residual/rollback.sql`: borra la tabla entera.
+3. Los `rollback.sql` de la 6, la 5, la 4 y la 3, y después los de la 2 y la 1 como dice
+   "Ticket unificado".
+4. Recién entonces el código anterior (el paso 2 del rollback de "Ticket unificado").
+
+Los pasos 1 y 2 son opcionales: el código anterior no lee `equipo_valoraciones`, y dejar la tabla
+conserva las filas `MANUAL` sin pasar por el dump. Las secciones de preventivo y la del historial
+piden "primero el código": con los servicios detenidos no hay código nuevo corriendo contra
+columnas o tablas que faltan, así que este orden también lo cumple. Ningún `rollback.sql` borra su fila de `_prisma_migrations`. Lo que cada uno pierde está en
+su sección; la vía fiel sigue siendo el dump del paso 4 ("Restore de datos").
+
+## Ticket unificado
+
+Documento de la feature: `odd/tasks/ticket-unificado.md`. Las compras vinculadas, la ubicación y los
+comentarios de reparación pasan del satélite `ticket_edilicia` al ticket, para todos los tipos. Qué
+cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migraciones tenant | Dos, solo en las bases de inquilino, por `migrate:tenants` (ver la tabla siguiente). Master no cambia. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Permisos | Vincular y desvincular compras exigen **Modificar** sobre el tipo del ticket y `COMPRAS:LECTURA`; `EDILICIA:BORRADO` ya no decide nada. Ver las compras vinculadas de un ticket (`GET /tickets/:id/compras`) exige `COMPRAS:LECTURA`. Comentar desde Edilicia exige **Comentar** y **Comentario interno** sobre el tipo. |
+| Efecto visible | Los comentarios de reparación, los existentes y los nuevos, son comentarios **internos** del ticket: el solicitante y quien no tiene Comentario interno dejan de verlos. |
+
+| Orden | Migración | Qué hace |
+|---|---|---|
+| 1 | `20261024120000_ticket_unificado` | Crea `ticket_compra` y copia `reparacion_compra`; copia la ubicación del satélite al ticket que no tiene una; copia `comentarios_reparacion` al timeline como COMENTARIO, con el mismo id. Las tablas viejas quedan congeladas, sin escrituras. |
+| 2 | `20261024130000_comentarios_reparacion_internos` | Marca como internas las copias de la migración 1 (`es_interno = true` en las filas con el id de un comentario de reparación). |
+
+### T2, T2b y T3 salen en el mismo deploy
+
+El backend de este release y el frontend anterior no son compatibles. El frontend anterior ofrece
+vincular con **Crear** sobre el tipo, desvincular con `EDILICIA:BORRADO` y comentar en Edilicia con
+**Crear** o **Comentar**, y esconde el formulario de comentarios con el ticket cerrado o bloqueado.
+Con el backend nuevo, esos botones responden 403 a quien no tiene los permisos de la tabla de
+arriba. Por eso **no se despliega un `main` intermedio**: el deploy lleva las tareas T2, T2b y T3
+juntas.
+
+### Precheck de solo lectura: conflictos de ubicación
+
+Si un ticket y su satélite tienen ubicaciones distintas, la migración 1 conserva la del ticket y la
+del satélite no se copia a ningún lado. El único aviso es un `RAISE NOTICE` con la cantidad, y la
+salida de `migrate:tenants` no garantiza mostrarlo. En producción dio 0 casos el 2026-10-24 (L8 del
+documento), pero se vuelve a consultar antes del deploy, en **cada** base de inquilino activa (la
+lista sale de `clientes`, igual que en "Tareas con técnico"):
+
+```sql
+SELECT t.numero, t.ubicacion AS ubicacion_ticket, te.ubicacion AS ubicacion_satelite
+FROM tickets t
+JOIN ticket_edilicia te ON te.ticket_id = t.id
+WHERE btrim(COALESCE(t.ubicacion, '')) <> ''
+  AND btrim(COALESCE(te.ubicacion, '')) <> ''
+  AND t.ubicacion IS DISTINCT FROM te.ubicacion;
+```
+
+Es la misma condición que cuenta la migración. Sin filas en todas las bases, se sigue. Con filas,
+se llevan al dueño antes de desplegar: la ubicación del satélite se pierde de la pantalla, y decidir
+cuál queda es una decisión de datos.
+
+En la misma pasada se anota la foto contra la que se compara después:
+
+```sql
+SELECT
+  (SELECT count(*) FROM reparacion_compra)      AS vinculos,
+  (SELECT count(*) FROM comentarios_reparacion) AS comentarios;
+```
+
+### Orden del deploy
+
+1. Precheck en todas las bases, sin conflictos.
+2. `predeploy-dump.ps1`, en DryRun y en la corrida real (ver "Precondición operativa"). Las dos
+   migraciones escriben filas existentes (`tickets.ubicacion`, `operaciones_ticket.es_interno`): el
+   dump es el único rollback fiel.
+3. Precheck otra vez, con los servicios detenidos: la foto definitiva.
+4. `deploy.ps1`.
+
+### Verificación posterior al deploy
+
+En cada base:
+
+```sql
+SELECT
+  (SELECT count(*) FROM ticket_compra)                                  AS vinculos,
+  (SELECT count(*) FROM operaciones_ticket o
+     JOIN comentarios_reparacion cr ON cr.id = o.id)                    AS comentarios_copiados,
+  (SELECT count(*) FROM operaciones_ticket o
+     JOIN comentarios_reparacion cr ON cr.id = o.id WHERE o.es_interno) AS comentarios_internos;
+```
+
+`vinculos` tiene que coincidir con el de la foto (antes de que alguien vincule o desvincule), y
+`comentarios_copiados` y `comentarios_internos` con `comentarios`.
+
+Smoke manual: en Edilicia, un comentario publicado aparece en el historial del ticket marcado como
+interno, y un usuario sin Comentario interno no lo ve; un usuario sin `COMPRAS:LECTURA` ve el chip
+**Bloqueada** pero no la lista de compras del ticket.
+
+### La migración 1 no se vuelve a correr después del deploy
+
+Su copia es re-ejecutable **antes** del deploy, no después. Una vez en producción, desvincular
+borra la fila de `ticket_compra` pero no la de `reparacion_compra`, que quedó congelada: volver a
+correr la migración revive como vinculadas, y bloqueantes, compras que alguien desvinculó. Por eso
+no se borra su fila de `_prisma_migrations` ni se corre su `migration.sql` a mano, salvo después
+de su `rollback.sql`, que primero proyecta el estado vigente sobre las tablas viejas.
+
+Y si se la vuelve a aplicar, se vuelve a aplicar también la 2: la migración 1 copia los
+comentarios como públicos.
+
+### Rollback
+
+Con los servicios detenidos, **primero los `rollback.sql`, después el código**. El código de este
+release lee `ticket_compra`, y el anterior lee `reparacion_compra`, la ubicación del satélite y
+`comentarios_reparacion`: ninguno de los dos funciona entero en el medio.
+
+1. En **cada** base de inquilino, en orden inverso. Los dos son re-ejecutables:
+   1. `20261024130000_comentarios_reparacion_internos/rollback.sql`: devuelve a públicas las copias.
+      Antes del rollback de la 1 no cambia nada visible, porque ese borra las copias.
+   2. `20261024120000_ticket_unificado/rollback.sql`: proyecta `ticket_compra` y la ubicación del
+      ticket sobre las tablas viejas, borra `ticket_compra` y quita del timeline las copias de los
+      comentarios.
+2. `git reset --hard <commit-de-rollback>` y `.\deploy.ps1` (ver "Cuando algo falla").
+
+Correr solo el paso 1.1, con el código de este release arriba, deshace únicamente la decisión L19:
+los comentarios de reparación migrados vuelven a ser públicos.
+
+**Qué no vuelve con el rollback:**
+
+- los vínculos de compra de tickets **sin** satélite: `reparacion_compra` no los puede guardar, y con
+  ellos se pierde el bloqueo de esos tickets;
+- los **adjuntos** que se hayan agregado después del deploy a un comentario migrado: el rollback
+  borra la operación y `archivos_operacion` la sigue con `ON DELETE CASCADE`. El archivo queda en
+  `archivos`, pero deja de aparecer en el ticket. Antes del paso 1.2 se listan para poder
+  re-vincularlos:
+
+  ```sql
+  SELECT o.ticket_id, ao.archivo_id, ao.operacion_id
+  FROM archivos_operacion ao
+  JOIN comentarios_reparacion cr ON cr.id = ao.operacion_id
+  JOIN operaciones_ticket o ON o.id = ao.operacion_id;
+  ```
+
+- los comentarios publicados desde Edilicia después del deploy no vuelven a
+  `comentarios_reparacion`: quedan en el timeline como comentarios internos del ticket;
+- un satélite con ubicación distinta de la del ticket (el conflicto del precheck) queda con la del
+  ticket;
+- los `rollback.sql` no borran las filas de `_prisma_migrations`: para volver a desplegar, se borran
+  a mano las dos, y la 2 tiene que volver a correr después de la 1.
+
+Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el dump de
+`predeploy-dump.ps1` (ver "Restore de datos"), y se pierde lo escrito después del deploy.
+
+## Anticipación del plan preventivo
+
+Documento de la feature: `odd/tasks/preventivo-anticipacion.md`. El plan preventivo gana una
+anticipación (número + Días/Meses), el ticket que genera guarda la fecha del ciclo como **fecha
+objetivo** y el responsable del plan recibe un recordatorio el día anterior. Tres migraciones
+tenant, aditivas, por `migrate:tenants`:
+
+| Orden | Migración | Qué hace |
+|---|---|---|
+| 1 | `20261025100000_preventivo_anticipacion` | `planes_preventivo.anticipacion_valor` (DEFAULT 0) y `anticipacion_unidad` (DEFAULT `DIAS`), con sus CHECK. Los planes existentes quedan con 0 días: generan el día del ciclo, como antes. |
+| 2 | `20261025110000_tickets_fecha_objetivo` | `tickets.fecha_objetivo DATE NULL`, sin backfill. |
+| 3 | `20261025120000_tickets_recordatorio_preventivo` | `tickets.recordatorio_enviado_at` y el índice parcial `tickets_recordatorio_pendiente_idx`. |
+
+No necesitan precheck: el CHECK `planes_preventivo_anticipacion_menor_cadencia_check` compara la
+anticipación con la cadencia, y con 0 días toda fila lo cumple (`intervalo_valor > 0`). El
+recordatorio lo corre el mismo barrido diario: no hay cron ni variable de entorno nuevos.
+
+### Rollback
+
+Los tres `rollback.sql` se pueden correr dos veces. **Primero el código, después los
+`rollback.sql`**, en orden inverso (3, 2, 1): el código nuevo lee las columnas y falla sin ellas; el
+anterior convive con ellas, así que dejarlas puestas también es un rollback válido. Se pierden la
+anticipación de cada plan, la fecha objetivo de los tickets y la marca de recordatorio enviado. No
+borran las filas de `_prisma_migrations`.
+
+## Tipo de ticket del plan preventivo
+
+Cada plan preventivo pasa a tener un tipo de ticket (`odd/tasks/preventivo-por-tipo.md`). La
+migración tenant `20261025130000_preventivo_plan_tipo` agrega `planes_preventivo.tipo_id` NOT NULL
+y pone **todos** los planes existentes, también los dados de baja, en el tipo de código
+`PREVENTIVO`. Entra por `migrate:tenants` dentro de la ventana de `predeploy-dump.ps1`.
+
+Un tenant con planes y **sin** un tipo de código `PREVENTIVO` no se puede migrar: la migración
+aborta con `preventivo_plan_tipo: el tenant tiene planes preventivos y no tiene el tipo de ticket
+PREVENTIVO`. El script corre en una sola transacción implícita, así que no deja nada a medias en
+esa base, pero Prisma la marca como fallida en `_prisma_migrations` y los deploys siguientes fallan
+con `P3009`. Un tenant sin planes migra igual, tenga o no el tipo.
+
+### Precheck de solo lectura
+
+Con la lista de bases del registro (la misma consulta sobre master de "Precheck de solo lectura:
+el CHECK de la copia"), en **cada** base de inquilino, antes del deploy:
+
+```sql
+SELECT
+  (SELECT count(*) FROM planes_preventivo)                         AS planes,
+  (SELECT count(*) FROM tipos_ticket WHERE codigo = 'PREVENTIVO')  AS tipo_preventivo;
+```
+
+La migración busca el tipo solo por `codigo`, sin mirar `activo` ni `deleted_at`: un tipo
+`PREVENTIVO` dado de baja la deja pasar, y sus planes quedan en él (el barrido los rechaza a
+diario con `PREVENTIVO_PLAN_ERROR` hasta que se los pase a un tipo vigente). Desde la UI no se
+puede dar de baja ni cambiarle el código: es un tipo del sistema (`TIPOS_TICKET_DEL_SISTEMA`).
+
+| Resultado | Qué hacer |
+|---|---|
+| `planes = 0`, o `tipo_preventivo = 1` | Seguir. |
+| `planes > 0` y `tipo_preventivo = 0` | **No desplegar todavía.** Con el código actual en marcha, entrar como administrador de ese cliente a Admin → Catálogos → Tipos de ticket y crear el tipo con código `PREVENTIVO`, nombre `Preventivo` y módulo `EDILICIA` (los valores del seed), copiando los permisos del tipo que corresponda para que los técnicos lo vean. Volver a correr el precheck. |
+
+### Si la migración ya falló en un tenant
+
+1. Crear el tipo en **esa** base. Con los servicios detenidos no hay UI, así que va por SQL, con
+   los valores del seed (`tenant-seeder.adapter.ts`):
+
+   ```sql
+   INSERT INTO tipos_ticket (codigo, nombre, modulo, updated_at)
+   VALUES ('PREVENTIVO', 'Preventivo', 'EDILICIA', now());
+   ```
+
+   Nadie tiene permisos sobre un tipo creado así: hasta que se le den `LECTURA` en Permisos →
+   Tipos de ticket, sus planes los ven solo los administradores. El mensaje del `RAISE` también
+   sugiere asignar `tipo_id` a mano a cada plan, pero eso no es posible: la columna se deshace
+   junto con el error.
+2. Marcar la migración como revertida con el `DATABASE_URL_TENANT` de ese tenant y
+   `--config prisma.tenant.config.ts` (ver "Nota histórica: precondición de componentes sin
+   repuesto"; sin `--config`, Prisma 7 la marcaría contra master):
+
+   ```powershell
+   $env:DATABASE_URL_TENANT = '<url de la base de ese tenant>'
+   corepack pnpm prisma migrate resolve --rolled-back 20261025130000_preventivo_plan_tipo --schema prisma_tenant/schema.prisma --config prisma.tenant.config.ts
+   ```
+
+3. Volver a correr el precheck en esa base, y después `deploy.ps1`.
+
+### Rollback
+
+Su `rollback.sql` borra el índice, la FK y la columna, y se puede correr dos veces. **Primero el
+código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee `tipo_id` y
+sin la columna falla. Pierde el tipo elegido en cada plan; el código anterior genera todos los
+planes con `PREVENTIVO`. No borra la fila de `_prisma_migrations`: para volver a desplegar, el
+mismo `migrate resolve --rolled-back` de arriba.
+
+## Historial del valor de los equipos
+
+Documento de la feature: `odd/tasks/historial-valor-residual.md`. Cada valor residual que se guarda
+en un equipo queda en un historial (fecha + importe), y la ficha lo muestra en tabla y gráfico. Qué
+cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migración tenant | `20261025140000_historial_valor_residual`, **aditiva con backfill**: la tabla `equipo_valoraciones`, de solo agregado (ningún flujo borra filas), con una fila por equipo y día. El backfill inserta hasta dos filas `MIGRACION` por equipo sin baja, con `importe`/`fecha_valoracion` y `valor_residual`/`fecha_valor_residual`; no modifica `equipos_informaticos`. Entra por `migrate:tenants`. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Efecto visible | Guardar un equipo con un valor residual o una fecha distintos de los guardados registra una fila `MANUAL`; el último guardado del día reemplaza al anterior. La ficha muestra el importe, el valor residual y el historial a quien puede ver equipos. |
+
+No necesita precheck: la tabla es nueva y no tiene CHECK de rango que una fila histórica pueda
+violar. La verificación posterior es la consulta del paso 7 de "Deploy del 2026-10-25: checklist
+combinado".
+
+### Rollback
+
+Su `rollback.sql` borra la tabla entera y se puede correr dos veces (`DROP TABLE IF EXISTS`).
+**Primero el código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee y
+escribe la tabla al abrir la ficha y al guardar un equipo, y falla sin ella. El código anterior no
+la conoce y convive con ella, así que dejarla puesta también es un rollback válido, y es el único
+que no pierde datos.
+
+Lo que se pierde al correr el `rollback.sql`: las filas `MANUAL` registradas después del deploy,
+que son el único registro de los valores anteriores al vigente de cada equipo. Antes de correrlo en
+un tenant con uso real, el dump de la tabla del paso 1 de "Rollback combinado". Las filas
+`MIGRACION` se reconstruyen al reaplicar la migración, pero con los valores que los equipos tengan
+en ese momento. No borra la fila de `_prisma_migrations`: para volver a desplegar, se borra a mano.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

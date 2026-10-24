@@ -806,7 +806,8 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
 
   /**
    * Ticket SOPORTE de un ADMINISTRADOR (sin restricción por tipo), ajeno al actor que se prueba,
-   * con su operación de apertura. El ADMINISTRADOR es además un asignado elegible.
+   * con su operación de apertura. El asignado elegible es un TECNICO del mismo cliente con
+   * `LECTURA` sobre SOPORTE: un ADMINISTRADOR no recibe tickets.
    */
   async function fixtureTicketAjeno(): Promise<{
     ids: IdsFixture;
@@ -818,10 +819,27 @@ describe('Autorización e2e — TABLA_RUTAS (G2, WU-7.7) + scope de filas/campos
     const apertura = await tenantClient.operacionTicket.findFirstOrThrow({
       where: { ticketId: ticket.id },
     });
+    const rolTecnico = await masterClient.role.upsert({
+      where: { codigo: 'TECNICO' },
+      create: { codigo: 'TECNICO', nombre: 'TECNICO' },
+      update: {},
+    });
+    const tecnico = await crearUsuario();
+    await masterClient.membresia.create({
+      data: {
+        usuarioId: tecnico.id,
+        clienteId: duenio.clienteId,
+        rolId: rolTecnico.id,
+        activo: true,
+      },
+    });
+    await tenantClient.permisoTipoTicket.create({
+      data: { usuarioId: tecnico.id, tipoId: tipoSoporteId, accion: 'LECTURA' },
+    });
     return {
       ids: { ticketId: ticket.id, operacionId: apertura.id },
       clienteId: duenio.clienteId,
-      asignableId: duenio.usuarioId,
+      asignableId: tecnico.id,
     };
   }
 

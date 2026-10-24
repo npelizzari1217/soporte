@@ -42,6 +42,7 @@ function montar(opts: { permisos?: string[]; activo?: boolean; qr?: QrLeidoMock;
       return HttpResponse.json(opts.qr ?? SIN_EMITIR);
     }),
     http.get(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json(equipo(opts.activo ?? true))),
+    http.get(`/api/equipos/${EQUIPO_ID}/valoraciones`, () => HttpResponse.json([])),
     http.get("/api/usuarios", () => HttpResponse.json([])),
   );
   return renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {

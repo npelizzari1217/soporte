@@ -6,14 +6,23 @@
 export interface ChartA11yTableProps {
   data: { label: string; value: number }[];
   valueLabel?: string;
+  /** Encabezado de la columna de etiquetas (por ejemplo "Fecha" en una serie temporal). */
+  categoryLabel?: string;
+  /** Cómo se lee cada valor (por ejemplo un monto con dos decimales); por defecto, el número crudo. */
+  formatValue?: (value: number) => string;
 }
 
-export function ChartA11yTable({ data, valueLabel = "Valor" }: ChartA11yTableProps) {
+export function ChartA11yTable({
+  data,
+  valueLabel = "Valor",
+  categoryLabel = "Categoría",
+  formatValue = String,
+}: ChartA11yTableProps) {
   return (
     <table className="sr-only">
       <thead>
         <tr>
-          <th>Categoría</th>
+          <th>{categoryLabel}</th>
           <th>{valueLabel}</th>
         </tr>
       </thead>
@@ -21,7 +30,7 @@ export function ChartA11yTable({ data, valueLabel = "Valor" }: ChartA11yTablePro
         {data.map((d) => (
           <tr key={d.label}>
             <td>{d.label}</td>
-            <td>{d.value}</td>
+            <td>{formatValue(d.value)}</td>
           </tr>
         ))}
       </tbody>

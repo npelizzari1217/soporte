@@ -1,5 +1,6 @@
 import { ApiError, SessionExpiredError, type ApiFetchInit } from "./types";
 import { normalize } from "./normalize";
+import { cortarSesion } from "@/shared/auth/cortar-sesion";
 
 /**
  * Browser-side authenticated fetch with single-flight 401 refresh.
@@ -58,7 +59,8 @@ async function rawFetch(path: string, init?: ApiFetchInit): Promise<Response> {
  * cómo se lee el cuerpo.
  *
  * - On 401: triggers a single-flight refresh, then retries the original request ONCE.
- * - If the refresh fails, or the retry still returns 401: throws `SessionExpiredError`.
+ * - Si el refresh falla, o el reintento vuelve a dar 401: lanza `SessionExpiredError` y dispara
+ *   el corte hacia `/login?motivo=sesion-vencida` (`sesionVencida`).
  * - If `path === 'auth/refresh'`: skips the refresh loop entirely (prevents infinite recursion).
  * - Network `TypeError`s are normalized to `ApiError(0, "Error de red")`.
  */
@@ -81,6 +83,18 @@ function sinRefresh(path: string): boolean {
   return RUTAS_SIN_REFRESH.has(path) || path.startsWith("auth/2fa/enrolamiento/");
 }
 
+/**
+ * La sesión no se pudo renovar: dispara el corte hacia `/login?motivo=sesion-vencida` y devuelve
+ * el error para que el caller lo lance igual. Sin el corte, cada query falla con su error
+ * local y la pantalla queda quieta, sin avisarle al usuario que su sesión terminó.
+ * `cortarSesion` es idempotente (N fallas concurrentes, una redirección) y no hace nada en
+ * `/login` ni en las rutas públicas.
+ */
+function sesionVencida(): SessionExpiredError {
+  void cortarSesion("sesion-vencida");
+  return new SessionExpiredError();
+}
+
 async function fetchConRefresh(path: string, init?: ApiFetchInit): Promise<Response> {
   let res: Response;
   try {
@@ -94,7 +108,7 @@ async function fetchConRefresh(path: string, init?: ApiFetchInit): Promise<Respo
     try {
       await refreshSession();
     } catch {
-      throw new SessionExpiredError();
+      throw sesionVencida();
     }
 
     try {
@@ -105,7 +119,7 @@ async function fetchConRefresh(path: string, init?: ApiFetchInit): Promise<Respo
     }
 
     if (res.status === 401) {
-      throw new SessionExpiredError();
+      throw sesionVencida();
     }
   }
 

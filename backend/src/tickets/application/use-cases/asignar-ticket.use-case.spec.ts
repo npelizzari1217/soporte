@@ -4,9 +4,9 @@
  * Puertos mockeados (`vi.fn`) o en memoria — sin DB. Cubre asignación manual
  * válida (asignado activo+en tenant, ELEGIBLE POR TIPO, operación ASIGNACION en
  * la misma tx) y la regla de elegibilidad por tipo (odd/permisos-por-tipo-ticket,
- * D5 g), con `ElegibilidadAsignado` real: ROOT/ADMINISTRADOR pueden todo; el
- * resto solo con `LECTURA` sobre el tipo del ticket; sin ella → 422 (ortogonal
- * al permiso del asignador). Las celdas por módulo de master no cuentan.
+ * D5 g), con `ElegibilidadAsignado` real: solo TECNICO o COLABORADOR con
+ * `LECTURA` sobre el tipo del ticket; el resto → 422 (ortogonal al permiso del
+ * asignador). Las celdas por módulo de master no cuentan.
  */
 import { AsignarTicketUseCase, AsignarTicketDto } from './asignar-ticket.use-case';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
@@ -23,6 +23,11 @@ import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
 import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
+import {
+  ELEGIBLES_PARA_ASIGNAR,
+  NO_ELEGIBLES_PARA_ASIGNAR,
+  sumarCandidatosDeAsignacion,
+} from '../../test-helpers/candidatos-asignacion';
 import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import {
   AccionSobreTipoNoPermitidaError,
@@ -30,6 +35,7 @@ import {
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TicketCerradoNoReasignableError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 
 /** Catálogo fijo de estados del tenant: código → id. */
@@ -117,8 +123,7 @@ describe('AsignarTicketUseCase', () => {
       [{ usuarioId: 'agente-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' }],
     );
     const elegibilidad = new ElegibilidadAsignado(masterAgentes, permisosTipo);
-    const esAsignableATipo = vi.spyOn(elegibilidad, 'esAsignableATipo');
-    const listarPermisosPorUsuario = vi.spyOn(permisosTipo, 'listarPorUsuario');
+    const aceptaComoResponsable = vi.spyOn(elegibilidad, 'aceptaComoResponsable');
     const tipoOperacionRepo = {
       findIdByCodigo: vi.fn<ITipoOperacionRepository['findIdByCodigo']>(async (codigo) =>
         codigo === 'CAMBIO_ESTADO' ? 'tipo-op-cambio-uuid' : 'tipo-op-asignacion-uuid',
@@ -165,8 +170,7 @@ describe('AsignarTicketUseCase', () => {
       usuarioMasterChecker,
       masterAgentes,
       permisosTipo,
-      esAsignableATipo,
-      listarPermisosPorUsuario,
+      aceptaComoResponsable,
       tipoOperacionRepo,
       txRunner,
       estadoRepo,
@@ -234,6 +238,7 @@ describe('AsignarTicketUseCase', () => {
   it('T14: reasignación — cambia el asignado_id existente por uno nuevo', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket({ asignadoId: 'agente-anterior-uuid' }));
+    c.masterAgentes.agregar({ id: 'agente-nuevo-uuid', rol: 'TECNICO', celdas: [] });
     await c.permisosTipo.agregarSiFaltan([
       { usuarioId: 'agente-nuevo-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' },
     ]);
@@ -277,7 +282,7 @@ describe('AsignarTicketUseCase', () => {
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(AsignadoInvalidoError);
-    expect(c.esAsignableATipo).not.toHaveBeenCalled();
+    expect(c.aceptaComoResponsable).not.toHaveBeenCalled();
     expect(c.txRunner.run).not.toHaveBeenCalled();
   });
 
@@ -317,23 +322,22 @@ describe('AsignarTicketUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().asignadoId).toBe('agente-uuid');
     // La elegibilidad se resuelve para el asignado, en el cliente y sobre el tipo del ticket.
-    expect(c.esAsignableATipo).toHaveBeenCalledWith(
+    expect(c.aceptaComoResponsable).toHaveBeenCalledWith(
+      expect.objectContaining({ tipoId: 'tipo-soporte-uuid' }),
       'agente-uuid',
       'cliente-uuid',
-      'tipo-soporte-uuid',
     );
   });
 
-  it('ROOT/ADMINISTRADOR es elegible aunque no tenga filas por tipo', async () => {
+  it('ROOT/ADMINISTRADOR sin filas por tipo → AsignadoNoElegibleError: no reciben tickets', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket());
     c.masterAgentes.agregar({ id: 'admin-uuid', rol: 'ADMINISTRADOR', celdas: [] });
 
     const result = await c.useCase.execute(baseDto({ asignadoId: 'admin-uuid' }));
 
-    expect(result.isOk()).toBe(true);
-    // No lee la tabla por tipo cuando ve todo (short-circuit del administrador).
-    expect(c.listarPermisosPorUsuario).not.toHaveBeenCalled();
+    expect(result.getError()).toBeInstanceOf(AsignadoNoElegibleError);
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
   it.each(['CERRADO', 'CANCELADO'])(
@@ -369,6 +373,63 @@ describe('AsignarTicketUseCase', () => {
       expect(c.operacionRepo.save.mock.calls[0][0].tipoOperacionId).toBe('tipo-op-asignacion-uuid');
     },
   );
+
+  describe('RESUELTO: solo comentarios para quien no es administrador (odd/cerrado-solo-comentarios, S1-S3)', () => {
+    // Ve el ticket con VER_TODOS y tiene ASIGNAR sobre su tipo: lo único que lo frena es el estado.
+    const tecnico = alcancePorTipo('asignador-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'VER_TODOS', 'ASIGNAR'],
+    });
+
+    it('un no administrador recibe TicketSoloComentariosError (422), sin consultar master ni escribir', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket({ estado: 'RESUELTO', asignadoId: 'otro-uuid' });
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      const error = result.getError();
+      expect(error).toBeInstanceOf(TicketSoloComentariosError);
+      expect(error.message).toBe(
+        'El ticket está resuelto: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(ticket.asignadoId).toBe('otro-uuid');
+    });
+
+    it('si al releer con la fila bloqueada el ticket ya está RESUELTO, un no administrador no lo reasigna', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById
+        .mockResolvedValueOnce(makeTicket({ estado: 'EN_PROCESO' }))
+        .mockResolvedValueOnce(makeTicket({ estado: 'RESUELTO' }));
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('en CERRADO un no administrador sigue recibiendo TicketCerradoNoReasignableError', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado: 'CERRADO' }));
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      expect(result.getError()).toBeInstanceOf(TicketCerradoNoReasignableError);
+    });
+
+    it('en EN_PROCESO un no administrador reasigna como siempre', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado: 'EN_PROCESO' }));
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      expect(result.getValue().asignadoId).toBe('agente-uuid');
+    });
+  });
 
   it('M3: NUEVO → ASIGNADO en la misma tx, con CAMBIO_ESTADO del actor además de ASIGNACION', async () => {
     const c = makeCollaborators();
@@ -421,6 +482,7 @@ describe('AsignarTicketUseCase', () => {
 
   it('autoasignación (asignado = actor) sigue permitida', async () => {
     const c = makeCollaborators();
+    c.masterAgentes.agregar({ id: 'asignador-uuid', rol: 'COLABORADOR', celdas: [] });
     await c.permisosTipo.agregarSiFaltan([
       { usuarioId: 'asignador-uuid', tipoId: 'tipo-soporte-uuid', accion: 'LECTURA' },
     ]);
@@ -432,6 +494,76 @@ describe('AsignarTicketUseCase', () => {
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().asignadoId).toBe('asignador-uuid');
+  });
+
+  describe('solo técnicos y colaboradores con LECTURA sobre el tipo reciben el ticket', () => {
+    async function conCandidatos() {
+      const c = makeCollaborators();
+      await sumarCandidatosDeAsignacion(
+        c.masterAgentes,
+        c.permisosTipo,
+        'tipo-soporte-uuid',
+        'tipo-mantenimiento-uuid',
+      );
+      return c;
+    }
+
+    it.each(NO_ELEGIBLES_PARA_ASIGNAR)(
+      '%s → AsignadoNoElegibleError (422) que nombra la regla, sin escribir ni publicar',
+      async (_caso, asignadoId) => {
+        const c = await conCandidatos();
+        c.ticketRepo.findById.mockResolvedValue(makeTicket({ asignadoId: 'agente-uuid' }));
+
+        const result = await c.useCase.execute(baseDto({ asignadoId }));
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(AsignadoNoElegibleError);
+        expect(error.message).toBe(
+          `El usuario "${asignadoId}" no puede recibir tickets del tipo "tipo-soporte-uuid": ` +
+            'solo se asignan técnicos o colaboradores activos con permiso de Ver sobre ese tipo.',
+        );
+        expect(c.txRunner.run).not.toHaveBeenCalled();
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
+        expect(c.operacionRepo.save).not.toHaveBeenCalled();
+        expect(c.alCommitear).toHaveLength(0);
+      },
+    );
+
+    it.each(ELEGIBLES_PARA_ASIGNAR)('%s → queda asignado', async (_caso, asignadoId) => {
+      const c = await conCandidatos();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket());
+
+      const result = await c.useCase.execute(baseDto({ asignadoId }));
+
+      expect(result.getValue().asignadoId).toBe(asignadoId);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('ticket ya asignado a un ADMINISTRADOR: volver a asignarle el mismo no lo revalida', async () => {
+      const c = await conCandidatos();
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket({ estado: 'ASIGNADO', asignadoId: 'admin-uuid' }),
+      );
+
+      const result = await c.useCase.execute(baseDto({ asignadoId: 'admin-uuid' }));
+
+      expect(result.getValue().asignadoId).toBe('admin-uuid');
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('si al releer con la fila bloqueada el responsable ya cambió, el ADMINISTRADOR no se escribe', async () => {
+      const c = await conCandidatos();
+      c.ticketRepo.findById
+        .mockResolvedValueOnce(makeTicket({ estado: 'ASIGNADO', asignadoId: 'admin-uuid' }))
+        .mockResolvedValueOnce(makeTicket({ estado: 'ASIGNADO', asignadoId: 'tecnico-uuid' }));
+
+      const result = await c.useCase.execute(baseDto({ asignadoId: 'admin-uuid' }));
+
+      expect(result.getError()).toBeInstanceOf(AsignadoNoElegibleError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.alCommitear).toHaveLength(0);
+    });
   });
 
   describe('permisos por tipo (odd/permisos-por-tipo-ticket, S2, S3, S6)', () => {
@@ -494,11 +626,13 @@ describe('AsignarTicketUseCase', () => {
     it('sin restricción (ROOT o ADMINISTRADOR) pasa el acceso en un tipo sin filas', async () => {
       const c = makeCollaborators();
       c.ticketRepo.findById.mockResolvedValue(makeTicket({ tipoId: 'tipo-electricidad-uuid' }));
-      // El asignado es ROOT: elegible para un tipo sin filas.
-      c.masterAgentes.agregar({ id: 'root-uuid', rol: 'ROOT', celdas: [] });
+      // El asignado es un técnico de ese tipo: el acceso del actor no depende de sus filas.
+      await c.permisosTipo.agregarSiFaltan([
+        { usuarioId: 'agente-uuid', tipoId: 'tipo-electricidad-uuid', accion: 'LECTURA' },
+      ]);
 
       const result = await c.useCase.execute(
-        baseDto({ ...alcanceSinRestriccion('asignador-uuid'), asignadoId: 'root-uuid' }),
+        baseDto({ ...alcanceSinRestriccion('asignador-uuid'), asignadoId: 'agente-uuid' }),
       );
 
       expect(result.isOk()).toBe(true);

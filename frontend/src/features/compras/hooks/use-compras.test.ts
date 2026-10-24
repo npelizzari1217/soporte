@@ -26,4 +26,10 @@ describe("buildComprasQueryString", () => {
     expect(params.get("pagina")).toBe("2");
     expect(params.get("porPagina")).toBe("20");
   });
+
+  it("incluye busqueda junto con estado, con el nombre que espera el backend", () => {
+    const params = new URLSearchParams(buildComprasQueryString({ estado: "ACTIVAS", busqueda: "pintura aula" }));
+    expect(params.get("busqueda")).toBe("pintura aula");
+    expect(params.get("estado")).toBe("ACTIVAS");
+  });
 });

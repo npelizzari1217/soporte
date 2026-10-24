@@ -1,4 +1,5 @@
 import { DomainError } from '../../../shared/domain/result';
+import { EstadoSoloComentarios } from '../policies/solo-comentarios.policy';
 
 /**
  * TicketNoEncontradoError — el ticket con el id indicado no existe en el
@@ -66,17 +67,15 @@ export class TipoTicketNoEncontradoError extends DomainError {
 }
 
 /**
- * TipoTicketNoPermitidoEnAltaError — el tipo existe y está activo, pero el alta que lo recibe no
- * lo admite: es de otro módulo, o es un tipo reservado a otro flujo (PREVENTIVO lo genera solo
- * el barrido). → HTTP 422 en la capa de presentación.
+ * TipoTicketNoPermitidoEnAltaError — el tipo existe y está activo, pero no admite un alta manual
+ * (`admiteAltaManual`): es de un módulo sin alta de tipo, o es un tipo reservado a otro flujo
+ * (PREVENTIVO lo genera solo el barrido). → HTTP 422 en la capa de presentación.
  */
 export class TipoTicketNoPermitidoEnAltaError extends DomainError {
   readonly code = 'TIPO_TICKET_NO_PERMITIDO_EN_ALTA';
 
-  constructor(tipoCodigo: string, moduloAlta: string) {
-    super(
-      `El tipo de ticket "${tipoCodigo}" no se puede usar en el alta del módulo ${moduloAlta}.`,
-    );
+  constructor(tipoCodigo: string) {
+    super(`El tipo de ticket "${tipoCodigo}" no admite altas manuales.`);
   }
 }
 
@@ -154,9 +153,9 @@ export class AsignadoInvalidoError extends DomainError {
 
 /**
  * AsignadoNoElegibleError — el `asignadoId` no es elegible para atender el
- * `tipoId` del ticket: la elegibilidad se resuelve por el módulo del catálogo
- * del `TipoTicket`. La elegibilidad es ortogonal al permiso RBAC
- * `ticket:asignar`.
+ * `tipoId` del ticket: no es TECNICO o COLABORADOR activo del cliente con
+ * `LECTURA` sobre el tipo (`ElegibilidadAsignado.esAgenteDeTipo`). La
+ * elegibilidad es ortogonal al permiso del actor para asignar.
  * → HTTP 422 en la capa de presentación.
  *
  * Ref spec: T14, T15.
@@ -166,8 +165,8 @@ export class AsignadoNoElegibleError extends DomainError {
 
   constructor(asignadoId: string, tipoTicketId: string) {
     super(
-      `El usuario "${asignadoId}" no está habilitado para atender tickets de tipo ` +
-        `"${tipoTicketId}". Verificar el módulo del tipo de ticket.`,
+      `El usuario "${asignadoId}" no puede recibir tickets del tipo "${tipoTicketId}": ` +
+        'solo se asignan técnicos o colaboradores activos con permiso de Ver sobre ese tipo.',
     );
   }
 }
@@ -206,18 +205,29 @@ export class SolicitanteInvalidoError extends DomainError {
   }
 }
 
-/**
- * ComentarioNoPermitidoError — el ticket está en un estado terminal
- * (RESUELTO/CERRADO/CANCELADO) y no acepta nuevos comentarios públicos.
- * → HTTP 422 en la capa de presentación.
- *
- * Ref spec: T16 ("rechazarse (422) si el ticket está en estado terminal").
- */
-export class ComentarioNoPermitidoError extends DomainError {
-  readonly code = 'COMENTARIO_NO_PERMITIDO';
+/** Cómo se nombra cada estado de solo comentarios en un mensaje de error. */
+const NOMBRE_ESTADO_SOLO_COMENTARIOS: Readonly<Record<EstadoSoloComentarios, string>> = {
+  RESUELTO: 'resuelto',
+  CERRADO: 'cerrado',
+  CANCELADO: 'cancelado',
+};
 
-  constructor(estadoCodigo: string) {
-    super(`El ticket está en estado terminal "${estadoCodigo}" y no acepta nuevos comentarios.`);
+/**
+ * TicketSoloComentariosError — el ticket está RESUELTO, CERRADO o CANCELADO y el actor no es
+ * ADMINISTRADOR ni ROOT: solo puede comentarlo (odd/cerrado-solo-comentarios, S1-S3; regla
+ * `ticketSoloComentarios`). Lo devuelven la edición, las tareas, los adjuntos, las compras
+ * vinculadas, la reasignación, la solución de soporte y la transición que lo sacaría de esos
+ * estados. → HTTP 422 en la capa de presentación.
+ */
+export class TicketSoloComentariosError extends DomainError {
+  readonly code = 'TICKET_SOLO_COMENTARIOS';
+
+  /** @param estadoCodigo Estado actual del ticket. */
+  constructor(readonly estadoCodigo: EstadoSoloComentarios) {
+    super(
+      `El ticket está ${NOMBRE_ESTADO_SOLO_COMENTARIOS[estadoCodigo]}: solo admite comentarios. ` +
+        'Solo un administrador puede modificarlo o reabrirlo.',
+    );
   }
 }
 
@@ -560,7 +570,7 @@ export class TipoOrigenPermisosDeOtroModuloError extends DomainError {
 /**
  * TicketConPendientesNoBorrableError — el ticket todavía tiene trabajo abierto que se perdería de
  * vista al ocultarlo (odd/tasks/permisos-por-tipo-ticket.md, S8, L40): tareas pendientes (activas y
- * sin completar) o compras vinculadas a su reparación. El mensaje nombra qué resolver antes de
+ * sin completar) o compras vinculadas. El mensaje nombra qué resolver antes de
  * borrar. → HTTP 422.
  */
 export class TicketConPendientesNoBorrableError extends DomainError {
@@ -568,7 +578,7 @@ export class TicketConPendientesNoBorrableError extends DomainError {
 
   /**
    * @param tareasPendientes Cantidad de tareas activas sin completar.
-   * @param comprasVinculadas Números de las compras vinculadas a la reparación del ticket.
+   * @param comprasVinculadas Números de las compras vinculadas al ticket.
    */
   constructor(tareasPendientes: number, comprasVinculadas: readonly string[]) {
     const pendientes: string[] = [];
@@ -581,7 +591,7 @@ export class TicketConPendientesNoBorrableError extends DomainError {
     }
     if (comprasVinculadas.length > 0) {
       pendientes.push(
-        `desvincular de la reparación ${
+        `desvincular del ticket ${
           comprasVinculadas.length === 1 ? 'la compra' : 'las compras'
         } ${comprasVinculadas.join(', ')}`,
       );
@@ -593,7 +603,8 @@ export class TicketConPendientesNoBorrableError extends DomainError {
 /**
  * TicketPreventivoNoBorrableError — un ticket de mantenimiento preventivo no se borra
  * (odd/tasks/permisos-por-tipo-ticket.md, L45): lo genera el barrido a partir de un plan, y borrarlo
- * solo haría que el barrido abra otro del mismo plan. → HTTP 422.
+ * solo haría que el barrido abra otro del mismo plan. Vale para el tipo PREVENTIVO y para un ticket
+ * de cualquier tipo generado por un plan (odd/preventivo-por-tipo). → HTTP 422.
  */
 export class TicketPreventivoNoBorrableError extends DomainError {
   readonly code = 'TICKET_PREVENTIVO_NO_BORRABLE';
@@ -615,5 +626,22 @@ export class TicketsBorradosSoloAdministradorError extends DomainError {
 
   constructor() {
     super('Solo un administrador puede ver o recuperar tickets borrados.');
+  }
+}
+
+/**
+ * ListaDeAgentesNoPermitidaError — el actor no puede leer la lista de agentes con la que se filtra
+ * el listado por responsable: le falta `ASIGNAR` sobre algún tipo y `VER_TODOS` sobre un tipo de
+ * Tickets, Compras o Equipos (la misma regla que abre `GET /usuarios`, `puedeVerListaDeUsuarios`).
+ * → HTTP 403.
+ */
+export class ListaDeAgentesNoPermitidaError extends DomainError {
+  readonly code = 'LISTA_DE_AGENTES_NO_PERMITIDA';
+
+  constructor() {
+    super(
+      'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un ' +
+        'tipo de Tickets, Compras o Equipos.',
+    );
   }
 }

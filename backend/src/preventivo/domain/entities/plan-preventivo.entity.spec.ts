@@ -15,8 +15,12 @@ import {
   TITULO_MAX_LENGTH,
   UBICACION_MAX_LENGTH,
   INTERVALO_VALOR_MAXIMO,
+  DIAS_POR_MES_ANTICIPACION,
 } from './plan-preventivo.entity';
 import {
+  AnticipacionInvalidaError,
+  AnticipacionNoMenorQueCadenciaError,
+  UnidadAnticipacionInvalidaError,
   IntervaloExcedeMaximoError,
   IntervaloInvalidoError,
   ObjetivoInvalidoError,
@@ -34,6 +38,7 @@ function propsConEquipo(
     equipoId: 'equipo-uuid-1',
     ubicacion: null,
     prioridadId: 'prioridad-uuid-1',
+    tipoId: 'tipo-preventivo-uuid',
     responsableId: 'usuario-uuid-1',
     intervaloValor: 3,
     intervaloUnidad: 'MESES',
@@ -190,7 +195,7 @@ describe('PlanPreventivoEntity', () => {
       const updatedAt = new Date('2026-01-01T00:00:00Z');
 
       const plan = PlanPreventivoEntity.reconstitute(
-        propsConEquipo(),
+        { ...propsConEquipo(), anticipacionValor: 0, anticipacionUnidad: 'DIAS' },
         'db-uuid-plan',
         createdAt,
         updatedAt,
@@ -278,6 +283,217 @@ describe('PlanPreventivoEntity', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(IntervaloExcedeMaximoError);
       expect(plan.intervaloValor).toBe(3);
+    });
+
+    // odd/preventivo-por-tipo S2: el tipo es editable como cualquier otro campo.
+    it('cambia el tipo de ticket del plan y deja el resto intacto; sin tipoId conserva el vigente', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      expect(plan.editar({ titulo: 'Otro título' }).isOk()).toBe(true);
+      expect(plan.tipoId).toBe('tipo-preventivo-uuid');
+
+      const result = plan.editar({ tipoId: 'tipo-soporte-uuid' });
+
+      expect(result.isOk()).toBe(true);
+      expect(plan.tipoId).toBe('tipo-soporte-uuid');
+      expect(plan.titulo).toBe('Otro título');
+      expect(plan.equipoId).toBe('equipo-uuid-1');
+    });
+
+    it('una edición rechazada NO cambia el tipo aunque lo traiga', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({ tipoId: 'tipo-soporte-uuid', intervaloValor: 0 });
+
+      expect(result.isFail()).toBe(true);
+      expect(plan.tipoId).toBe('tipo-preventivo-uuid');
+    });
+  });
+
+  // ─── Anticipación (odd/preventivo-anticipacion, S1/S5/S6) ────────────────
+  describe('anticipación', () => {
+    it('sin anticipación en el alta nace en 0 días (S5: comportamiento previo)', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      expect(plan.anticipacionValor).toBe(0);
+      expect(plan.anticipacionUnidad).toBe('DIAS');
+    });
+
+    it('acepta anticipación 0 explícita (límite inferior inclusive)', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({ anticipacionValor: 0, anticipacionUnidad: 'MESES' }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().anticipacionUnidad).toBe('MESES');
+    });
+
+    it('rechaza con AnticipacionInvalidaError una anticipación negativa', () => {
+      const result = PlanPreventivoEntity.create(propsConEquipo({ anticipacionValor: -1 }));
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AnticipacionInvalidaError);
+      expect(result.getError().message).toBe(
+        'La anticipación debe ser un entero mayor o igual a 0, se recibió: -1.',
+      );
+    });
+
+    it('rechaza con AnticipacionInvalidaError una anticipación no entera', () => {
+      const result = PlanPreventivoEntity.create(propsConEquipo({ anticipacionValor: 1.5 }));
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AnticipacionInvalidaError);
+    });
+
+    it('rechaza con UnidadAnticipacionInvalidaError una unidad fuera del catálogo', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({
+          anticipacionValor: 1,
+          anticipacionUnidad: 'SEMANAS' as unknown as PlanPreventivoCreateProps['intervaloUnidad'],
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(UnidadAnticipacionInvalidaError);
+    });
+
+    it('un mes de anticipación cuenta como 30 días', () => {
+      expect(DIAS_POR_MES_ANTICIPACION).toBe(30);
+    });
+
+    it('acepta la anticipación justo por debajo de la cadencia (misma unidad)', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 30,
+          intervaloUnidad: 'DIAS',
+          anticipacionValor: 29,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+    });
+
+    it('rechaza una anticipación igual a la cadencia, con un mensaje que explica la regla', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 30,
+          intervaloUnidad: 'DIAS',
+          anticipacionValor: 30,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AnticipacionNoMenorQueCadenciaError);
+      expect(result.getError().message).toBe(
+        'La anticipación (30 días) debe ser menor que la cadencia (30 días). Para comparar, un mes cuenta como 30 días.',
+      );
+    });
+
+    it('compara en días con unidades mezcladas: 1 mes de anticipación contra 30 días de cadencia se rechaza', () => {
+      const result = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 30,
+          intervaloUnidad: 'DIAS',
+          anticipacionValor: 1,
+          anticipacionUnidad: 'MESES',
+        }),
+      );
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AnticipacionNoMenorQueCadenciaError);
+    });
+
+    it('compara en días con unidades mezcladas: 29 días contra 1 mes se acepta, 30 días se rechaza', () => {
+      const acepta = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 1,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 29,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+      const rechaza = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 1,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 30,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+
+      expect(acepta.isOk()).toBe(true);
+      expect(rechaza.isFail()).toBe(true);
+      expect(rechaza.getError().message).toBe(
+        'La anticipación (30 días) debe ser menor que la cadencia (1 mes = 30 días). Para comparar, un mes cuenta como 30 días.',
+      );
+    });
+
+    it('compara en días con cadencia de varios meses: 59 días contra 2 meses se acepta, 60 días se rechaza', () => {
+      const acepta = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 2,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 59,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+      const rechaza = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 2,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 60,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+
+      expect(acepta.isOk()).toBe(true);
+      expect(rechaza.isFail()).toBe(true);
+      expect(rechaza.getError()).toBeInstanceOf(AnticipacionNoMenorQueCadenciaError);
+      expect(rechaza.getError().message).toBe(
+        'La anticipación (60 días) debe ser menor que la cadencia (2 meses = 60 días). Para comparar, un mes cuenta como 30 días.',
+      );
+    });
+
+    it('editar() revalida la anticipación contra la cadencia RESULTANTE y NO muta si falla', () => {
+      const plan = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 3,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 2,
+          anticipacionUnidad: 'MESES',
+        }),
+      ).getValue();
+
+      // Bajar la cadencia a 2 meses deja la anticipación (2 meses) igual a la cadencia.
+      const result = plan.editar({ intervaloValor: 2 });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AnticipacionNoMenorQueCadenciaError);
+      expect(plan.intervaloValor).toBe(3);
+      expect(plan.anticipacionValor).toBe(2);
+    });
+
+    it('editar() cambia la anticipación válida y deja el resto intacto', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({ anticipacionValor: 10, anticipacionUnidad: 'DIAS' });
+
+      expect(result.isOk()).toBe(true);
+      expect(plan.anticipacionValor).toBe(10);
+      expect(plan.anticipacionUnidad).toBe('DIAS');
+      expect(plan.intervaloValor).toBe(3);
+    });
+
+    it('editar() rechaza anticipación negativa y NO muta', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({ anticipacionValor: -5 });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AnticipacionInvalidaError);
+      expect(plan.anticipacionValor).toBe(0);
     });
   });
 });

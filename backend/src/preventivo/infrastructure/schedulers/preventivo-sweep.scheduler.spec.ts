@@ -16,6 +16,7 @@ import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
 import { GenerarPreventivosUseCase } from '../../application/use-cases/generar-preventivos.use-case';
+import { EnviarRecordatoriosPreventivoUseCase } from '../../application/use-cases/enviar-recordatorios-preventivo.use-case';
 
 /**
  * Cliente de tenant falso: lleva el prototipo del cliente real y queda marcado
@@ -36,6 +37,11 @@ describe('PreventivoSweepScheduler', () => {
       execute: vi.fn<GenerarPreventivosUseCase['execute']>().mockResolvedValue(undefined),
     };
     const logger = { error: vi.fn<ILogger['error']>() };
+    const enviarRecordatoriosUseCase = {
+      execute: vi
+        .fn<EnviarRecordatoriosPreventivoUseCase['execute']>()
+        .mockResolvedValue(undefined),
+    };
 
     const scheduler = new PreventivoSweepScheduler(
       tenantEnumerator,
@@ -43,6 +49,7 @@ describe('PreventivoSweepScheduler', () => {
       prismaService,
       generarPreventivosUseCase,
       logger,
+      enviarRecordatoriosUseCase,
     );
 
     return {
@@ -52,6 +59,7 @@ describe('PreventivoSweepScheduler', () => {
       prismaService,
       generarPreventivosUseCase,
       logger,
+      enviarRecordatoriosUseCase,
     };
   }
 
@@ -129,5 +137,62 @@ describe('PreventivoSweepScheduler', () => {
     // Nunca se le pasa el objeto Error crudo al logger — solo el string armado.
     const [[argumentoLogueado]] = c.logger.error.mock.calls as [unknown][];
     expect(typeof argumentoLogueado).toBe('string');
+  });
+
+  // ─── Recordatorio (odd/preventivo-anticipacion T3, S4) ─────────────────
+  describe('recordatorio de preventivo', () => {
+    it('corre los recordatorios de cada tenant DESPUÉS de su generación, dentro de su contexto', async () => {
+      const c = makeCollaborators();
+      c.tenantEnumerator.listActiveTenants.mockResolvedValue([
+        { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
+        { clienteId: 'cliente-2', dbName: 'soporte_cliente_2' },
+      ]);
+      const contextos: unknown[] = [];
+      c.enviarRecordatoriosUseCase.execute.mockImplementation(async () => {
+        contextos.push(c.tenantContext.get()?.dbName);
+      });
+
+      await c.scheduler.ejecutarBarrido();
+
+      expect(c.enviarRecordatoriosUseCase.execute).toHaveBeenCalledTimes(2);
+      expect(contextos).toEqual(['soporte_cliente_1', 'soporte_cliente_2']);
+      const ordenGenerar = c.generarPreventivosUseCase.execute.mock.invocationCallOrder[0];
+      const ordenRecordar = c.enviarRecordatoriosUseCase.execute.mock.invocationCallOrder[0];
+      expect(ordenGenerar).toBeLessThan(ordenRecordar);
+    });
+
+    it('si la generación de un tenant falla, sus recordatorios corren igual', async () => {
+      const c = makeCollaborators();
+      c.tenantEnumerator.listActiveTenants.mockResolvedValue([
+        { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
+      ]);
+      c.generarPreventivosUseCase.execute.mockRejectedValue(new Error('catálogo roto'));
+
+      await c.scheduler.ejecutarBarrido();
+
+      expect(c.enviarRecordatoriosUseCase.execute).toHaveBeenCalledTimes(1);
+      expect(c.logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('PREVENTIVO_SWEEP_ERROR | tenant=soporte_cliente_1'),
+      );
+    });
+
+    it('un fallo de recordatorios se loguea con su código y el tenant, y el barrido sigue con el siguiente', async () => {
+      const c = makeCollaborators();
+      c.tenantEnumerator.listActiveTenants.mockResolvedValue([
+        { clienteId: 'cliente-1', dbName: 'soporte_cliente_1' },
+        { clienteId: 'cliente-2', dbName: 'soporte_cliente_2' },
+      ]);
+      c.enviarRecordatoriosUseCase.execute
+        .mockRejectedValueOnce(new Error('base caída'))
+        .mockResolvedValueOnce(undefined);
+
+      await expect(c.scheduler.ejecutarBarrido()).resolves.toBeUndefined();
+
+      expect(c.logger.error).toHaveBeenCalledWith(
+        'PREVENTIVO_RECORDATORIO_ERROR | tenant=soporte_cliente_1 | error=base caída',
+      );
+      expect(c.generarPreventivosUseCase.execute).toHaveBeenCalledWith('cliente-2');
+      expect(c.enviarRecordatoriosUseCase.execute).toHaveBeenCalledTimes(2);
+    });
   });
 });

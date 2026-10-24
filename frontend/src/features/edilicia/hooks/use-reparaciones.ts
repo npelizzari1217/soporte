@@ -12,9 +12,10 @@ import type { ListReparacionesResponse, ReparacionesFiltros } from "../types";
 
 /**
  * Query string de `GET /reparaciones`. `bloqueo` se omite cuando es `TODAS`,
- * que es el default del servidor.
+ * que es el default del servidor, y `tipo` cuando no hay uno elegido (el
+ * servidor lista entonces los tipos del módulo EDILICIA).
  *
- * @param filtros Página, tamaño y filtro de bloqueo.
+ * @param filtros Página, tamaño, filtro de bloqueo y tipo.
  * @returns La query string sin el `?` inicial.
  */
 export function buildReparacionesQueryString(filtros: ReparacionesFiltros): string {
@@ -22,13 +23,14 @@ export function buildReparacionesQueryString(filtros: ReparacionesFiltros): stri
   params.set("pagina", String(filtros.pagina));
   params.set("porPagina", String(filtros.porPagina));
   if (filtros.bloqueo && filtros.bloqueo !== "TODAS") params.set("bloqueo", filtros.bloqueo);
+  if (filtros.tipo) params.set("tipo", filtros.tipo);
   return params.toString();
 }
 
 /**
  * Una página del listado de reparaciones.
  *
- * @param filtros Página, tamaño y filtro de bloqueo.
+ * @param filtros Página, tamaño, filtro de bloqueo y tipo.
  * @returns La query de react-query con la página y su metadata.
  */
 export function useReparaciones(filtros: ReparacionesFiltros) {

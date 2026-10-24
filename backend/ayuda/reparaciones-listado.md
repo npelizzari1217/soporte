@@ -6,9 +6,34 @@ visibleParaSolicitante: false
 
 # El listado de reparaciones edilicias y su exportación a Excel
 
+## Quién entra a esta pantalla
+
+La pantalla **Edilicia** (titulada *Reparaciones*) es para quien ve los tickets
+del módulo Edilicia: aparece en el menú, y se abre, solo si tiene **Ver** sobre
+al menos un tipo de ese módulo, como Edilicia, Mantenimiento o Preventivo. Quien ve
+únicamente tickets de otros módulos, como Soporte o Compras, no la tiene en el
+menú y los trabaja desde **Tickets**.
+
+## El selector Tipo
+
+Arriba del listado hay un selector **Tipo** que decide qué tickets se listan:
+
+- **Todos los de Edilicia**, la opción de siempre, lista los tickets de todos
+  los tipos del módulo Edilicia, incluidos Mantenimiento y Preventivo.
+- Cada uno de los demás ítems es un tipo de ticket sobre el que usted tiene
+  **Ver**, de cualquier módulo. Al elegirlo, el listado muestra solo los
+  tickets de ese tipo, con la misma grilla: compras, bloqueo, subtareas,
+  ubicación y sector.
+
+Elegir un tipo no amplía lo que usted ve: se listan los mismos tickets de ese
+tipo que vería en **Tickets**. El tipo elegido queda en la dirección del
+navegador, como la página y el filtro de bloqueo. Si el enlace trae un tipo que
+ya no se puede elegir (dado de baja, o sin **Ver** sobre él), el selector
+muestra *Tipo no disponible*; mientras se cargan los tipos, *Cargando tipos…*.
+
 ## Qué muestra el listado
 
-Cada fila es una reparación edilicia, con **número, título, ubicación,
+Cada fila es un ticket del tipo elegido, con **número, título, ubicación,
 sector y avance**. El número identifica el ticket; el título resume el trabajo; la
 ubicación es el lugar físico donde ocurre (texto libre, puede estar vacía); el
 sector es uno de los sectores cargados en el cliente (también puede estar vacío).
@@ -32,8 +57,9 @@ reparación.
 
 El chip **no muestra un número** — no dice "Bloqueada (2)" aunque haya más de
 una compra frenándola. Solo responde de un vistazo si la reparación está
-trabada o no; para ver el detalle de qué compra la frena hay que abrir la
-reparación.
+trabada o no. Para ver qué compra la frena hace falta permiso de lectura sobre
+Compras: con él, el botón **Gestionar compras** (o **Ver compras**) de la fila
+muestra las compras vinculadas.
 
 El chip **no afecta el avance**: una reparación bloqueada puede tener
 subtareas completadas igual, y el porcentaje de avance de la columna no
@@ -53,9 +79,9 @@ El listado muestra **10 reparaciones por página**, la más reciente primero.
 Debajo de la tabla se indica en qué página se está ("Página 1 de 4") y los
 botones **Anterior** y **Siguiente** permiten recorrer el resto.
 
-La página y el filtro quedan en la dirección del navegador: al recargar, al
-volver atrás o al compartir el enlace se ve la misma página con el mismo
-filtro. Si una página queda vacía (por ejemplo, un enlace viejo a una página
+La página, el tipo y el filtro de bloqueo quedan en la dirección del
+navegador: al recargar, al volver atrás o al compartir el enlace se ve la misma
+página con los mismos filtros. Si una página queda vacía (por ejemplo, un enlace viejo a una página
 que ya no existe), el listado ofrece **Limpiar filtros** para volver al
 comienzo.
 
@@ -73,10 +99,10 @@ El valor de avance que trae el archivo es **el mismo que ves en la columna
 Avance de la pantalla** — no se recalcula aparte ni puede desincronizarse de
 lo que muestra el listado.
 
-**El archivo trae siempre todas las reparaciones del tenant**, aunque tengas
-el selector **Bloqueo** filtrado a "Bloqueadas" o "No bloqueadas" en pantalla:
-la exportación ignora ese filtro a propósito y nunca trae solo una parte. Si
-necesitás solo las bloqueadas, filtrá el archivo ya descargado.
+**El archivo respeta el selector Tipo**, pero ignora el selector **Bloqueo**:
+aunque en pantalla filtre "Bloqueadas" o "No bloqueadas", trae todas las del
+tipo elegido. Para quedarse solo con las bloqueadas, filtre el archivo ya
+descargado.
 
 Mientras el archivo se prepara, el botón queda deshabilitado. En listados
 grandes puede tardar unos segundos.

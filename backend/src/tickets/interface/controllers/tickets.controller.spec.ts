@@ -48,12 +48,14 @@ import { ObtenerCsatTicketUseCase } from '../../../csat/application/use-cases/ob
 import { IUsuarioMasterChecker } from '../../domain/ports/i-usuario-master.checker';
 import { ISolicitanteExternoRepository } from '../../domain/ports/i-solicitante-externo.repository';
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { unstubbed } from '../../../testing/mocks';
 import { PermisosTipoTicketEnMemoria } from '../../test-helpers/permisos-tipo-ticket-en-memoria';
 import { CargadorAlcanceTicket } from '../alcance-ticket';
 import { ObtenerPermisosPorTipoUseCase } from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
 import { BorrarTicketUseCase } from '../../application/use-cases/borrar-ticket.use-case';
 import { RecuperarTicketUseCase } from '../../application/use-cases/recuperar-ticket.use-case';
+import { ListarAgentesFiltroTicketsUseCase } from '../../application/use-cases/listar-agentes-filtro-tickets.use-case';
 
 /** Operación de dominio mínima para alimentar `toOperacionResponseDto`. */
 function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
@@ -159,11 +161,15 @@ type DependenciasControlador = {
   obtenerCsatTicket: MockUseCase<ObtenerCsatTicketUseCase>;
   borrarTicket: MockUseCase<BorrarTicketUseCase>;
   recuperarTicket: MockUseCase<RecuperarTicketUseCase>;
+  listarAgentes: MockUseCase<ListarAgentesFiltroTicketsUseCase>;
   solicitanteExternoRepo: {
     findNombres: Mock<ISolicitanteExternoRepository['findNombres']>;
     findById: Mock<ISolicitanteExternoRepository['findById']>;
   };
   sectorRepo: { findNombres: ReturnType<typeof vi.fn<FindNombresSector>> };
+  bloqueoRepo: {
+    estaBloqueadoPorCompra: Mock<IBloqueoTicketRepository['estaBloqueadoPorCompra']>;
+  };
 };
 
 type ControladorDeTest = DependenciasControlador & {
@@ -210,6 +216,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     },
     borrarTicket: overrides.borrarTicket ?? stub(),
     recuperarTicket: overrides.recuperarTicket ?? stub(),
+    listarAgentes: overrides.listarAgentes ?? stub(),
     solicitanteExternoRepo: overrides.solicitanteExternoRepo ?? {
       findNombres: vi
         .fn<ISolicitanteExternoRepository['findNombres']>()
@@ -218,6 +225,12 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     },
     sectorRepo: overrides.sectorRepo ?? {
       findNombres: vi.fn<FindNombresSector>().mockResolvedValue(new Map()),
+    },
+    // Default sin bloqueo: solo los tests de `bloqueada` en el detalle lo pisan.
+    bloqueoRepo: overrides.bloqueoRepo ?? {
+      estaBloqueadoPorCompra: vi
+        .fn<IBloqueoTicketRepository['estaBloqueadoPorCompra']>()
+        .mockResolvedValue(false),
     },
   };
   // `findAll`/`exportar` resuelven nombres batch de los items — con lista vacía
@@ -229,7 +242,6 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
   const usuarioMasterCheckerReal: IUsuarioMasterChecker = {
     existeEnTenant: unstubbed('existeEnTenant'),
     estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
-    esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
     listarAgentes: unstubbed('listarAgentes'),
     resolverNombres: usuarioMasterChecker.resolverNombres,
   };
@@ -268,6 +280,8 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     ),
     casoReal(BorrarTicketUseCase, deps.borrarTicket),
     casoReal(RecuperarTicketUseCase, deps.recuperarTicket),
+    casoReal(ListarAgentesFiltroTicketsUseCase, deps.listarAgentes),
+    deps.bloqueoRepo,
   );
   return { controller, ...deps, usuarioMasterChecker };
 }
@@ -361,6 +375,41 @@ describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({ alcance: { actorId: actor.sub, permisosPorTipo: null } }),
+    );
+  });
+});
+
+describe('TicketsController — GET /tickets/agentes (filtro "Asignado" del listado)', () => {
+  it('delega con el clienteId del JWT, el ?tipo= y el alcance por tipo del actor', async () => {
+    const agentes = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];
+    const listarAgentes = {
+      execute: vi
+        .fn<ListarAgentesFiltroTicketsUseCase['execute']>()
+        .mockResolvedValue(Result.ok(agentes)),
+    };
+    const { controller } = buildController({ listarAgentes });
+
+    const res = await controller.agentes(USUARIO_SOPORTE, { tipo: 'ti1' });
+
+    expect(listarAgentes.execute).toHaveBeenCalledWith({
+      clienteId: 'cliente-1',
+      tipoId: 'ti1',
+      actorId: 'usr-2',
+      permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+    });
+    expect(res).toEqual(agentes);
+  });
+
+  it('sin acceso a la lista → 403', async () => {
+    const listarAgentes = {
+      execute: vi
+        .fn<ListarAgentesFiltroTicketsUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketsErrors.ListaDeAgentesNoPermitidaError())),
+    };
+    const { controller } = buildController({ listarAgentes });
+
+    await expect(controller.agentes(USUARIO_SOPORTE, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
     );
   });
 });
@@ -663,13 +712,11 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
     );
   });
 
-  it('create: exige tipos del módulo TICKETS y responde 422 a un tipo de otro módulo (S3)', async () => {
+  it('create: es un alta manual y responde 422 a un tipo que no la admite (odd/ticket-unificado, S6)', async () => {
     const crearTicket = {
       execute: vi
         .fn<CrearTicketUseCase['execute']>()
-        .mockResolvedValue(
-          Result.fail(new TipoTicketNoPermitidoEnAltaError('MANTENIMIENTO', 'TICKETS')),
-        ),
+        .mockResolvedValue(Result.fail(new TipoTicketNoPermitidoEnAltaError('PREVENTIVO'))),
     };
     const { controller } = buildController({ crearTicket });
 
@@ -681,11 +728,9 @@ describe('TicketsController — bloqueo de edición y salto correctivo (actor fl
 
     await expect(promesa).rejects.toBeInstanceOf(UnprocessableEntityException);
     await expect(promesa).rejects.toThrow(
-      'El tipo de ticket "MANTENIMIENTO" no se puede usar en el alta del módulo TICKETS.',
+      'El tipo de ticket "PREVENTIVO" no admite altas manuales.',
     );
-    expect(crearTicket.execute).toHaveBeenCalledWith(
-      expect.objectContaining({ moduloRequerido: 'TICKETS' }),
-    );
+    expect(crearTicket.execute).toHaveBeenCalledWith(expect.objectContaining({ altaManual: true }));
   });
 
   it('update: null en ubicacion/sectorId llega como null (limpia); omitidos llegan undefined', async () => {
@@ -914,10 +959,10 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
  * con ruta, así que una ruta nueva con `@RequiereAcciones` de módulo también pone esto en rojo.
  */
 describe('TicketsController — sin @RequiereAcciones de módulo (D5 d)', () => {
-  it('ninguna de sus 14 rutas exige una celda: deciden los casos de uso por tipo', () => {
+  it('ninguna de sus 15 rutas exige una celda: deciden los casos de uso por tipo', () => {
     const rutas = accionesPorRuta(TicketsController);
 
-    expect(rutas.size).toBe(14);
+    expect(rutas.size).toBe(15);
     expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
   });
 });
@@ -1248,6 +1293,102 @@ describe('TicketsController — lectores con datos del solicitante externo (WU-8
   });
 });
 
+/**
+ * `bloqueada` en el detalle (odd/ticket-unificado, S5, L19, L22): lo ve todo el que ve el ticket,
+ * sin `COMPRAS:LECTURA`, y no lleva ningún dato de las compras que lo bloquean.
+ */
+describe('TicketsController.findOne — bloqueo por compra en el detalle (odd/ticket-unificado, S5)', () => {
+  /** Ve el ticket y no tiene ninguna celda de compras. */
+  const LECTOR_SIN_COMPRAS: JwtPayload = payloadDeTest({
+    sub: 'usr-2',
+    cliente_id: 'cliente-1',
+    rol: 'USUARIO',
+    permisos: ['TICKETS:LECTURA'],
+    cliente_nombre: 'Cliente 1',
+    modulos: ['SOPORTE'],
+  });
+
+  function ticketVisible(): TicketEntity {
+    return TicketEntity.create(
+      {
+        numero: 'SOP-2026-0009',
+        titulo: 'Ticket con compra',
+        descripcion: null,
+        tipoId: 'ti1',
+        estadoId: 'e1',
+        prioridadId: 'p1',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'usr-2',
+      },
+      'ticket-bloq-1',
+    );
+  }
+
+  function conBloqueo(bloqueado: boolean) {
+    return {
+      estaBloqueadoPorCompra: vi
+        .fn<IBloqueoTicketRepository['estaBloqueadoPorCompra']>()
+        .mockResolvedValue(bloqueado),
+    };
+  }
+
+  it.each([
+    ['con una compra activa vinculada', true],
+    ['sin compras activas vinculadas', false],
+  ])(
+    '%s, el detalle informa bloqueada=%s a quien no tiene COMPRAS:LECTURA',
+    async (_caso, bloqueado) => {
+      const obtenerTicket = {
+        execute: vi
+          .fn<ObtenerTicketUseCase['execute']>()
+          .mockResolvedValue(Result.ok(ticketVisible())),
+      };
+      const bloqueoRepo = conBloqueo(bloqueado);
+      const { controller } = buildController({ obtenerTicket, bloqueoRepo });
+
+      const respuesta = await controller.findOne(LECTOR_SIN_COMPRAS, 'ticket-bloq-1');
+
+      expect(respuesta.bloqueada).toBe(bloqueado);
+      expect(bloqueoRepo.estaBloqueadoPorCompra).toHaveBeenCalledWith('ticket-bloq-1');
+      // L19: solo el booleano; ningún campo nuevo nombra compras.
+      expect(Object.keys(respuesta).filter((clave) => /compra/i.test(clave))).toEqual([]);
+    },
+  );
+
+  it('un ticket que el actor no ve responde 404 sin consultar su bloqueo', async () => {
+    const obtenerTicket = {
+      execute: vi
+        .fn<ObtenerTicketUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketNoEncontradoError('ticket-ajeno'))),
+    };
+    const bloqueoRepo = conBloqueo(true);
+    const { controller } = buildController({ obtenerTicket, bloqueoRepo });
+
+    await expect(controller.findOne(LECTOR_SIN_COMPRAS, 'ticket-ajeno')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(bloqueoRepo.estaBloqueadoPorCompra).not.toHaveBeenCalled();
+  });
+
+  it('el listado no trae bloqueada: es un dato del detalle', async () => {
+    const listarTickets = {
+      execute: vi
+        .fn<ListarTicketsUseCase['execute']>()
+        .mockResolvedValue(
+          Result.ok({ items: [ticketVisible()], total: 1, pagina: 1, porPagina: 20 }),
+        ),
+    };
+    const bloqueoRepo = conBloqueo(true);
+    const { controller } = buildController({ listarTickets, bloqueoRepo });
+
+    const { items } = await controller.findAll(LECTOR_SIN_COMPRAS, {});
+
+    expect('bloqueada' in items[0]).toBe(false);
+    expect(bloqueoRepo.estaBloqueadoPorCompra).not.toHaveBeenCalled();
+  });
+});
+
 describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listados-csv, decisión D2)', () => {
   /** Clases de error exportadas por `tickets.errors.ts` — el número de la verdad, no un literal a mano. */
   // Sin type predicate a propósito: cada export de `tickets.errors.ts` ya es
@@ -1259,8 +1400,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 35 clases de error (32 previas + las tres del borrado, S8 y L45)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(35);
+  it('el catálogo tiene EXACTAMENTE 36 clases de error (32 previas + las tres del borrado, S8 y L45, + la de la lista de agentes)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(36);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -1304,8 +1445,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     ['SolicitanteInvalidoError', () => new TicketsErrors.SolicitanteInvalidoError('user-1'), 422],
     [
-      'ComentarioNoPermitidoError',
-      () => new TicketsErrors.ComentarioNoPermitidoError('CERRADO'),
+      'TicketSoloComentariosError',
+      () => new TicketsErrors.TicketSoloComentariosError('CERRADO'),
       422,
     ],
     ['ArchivoTamanoCeroError', () => new TicketsErrors.ArchivoTamanoCeroError(BigInt(0)), 422],
@@ -1374,7 +1515,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     [
       'TipoTicketNoPermitidoEnAltaError',
-      () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('MANTENIMIENTO', 'TICKETS'),
+      () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('PREVENTIVO'),
       422,
     ],
     ['ModuloSinAltaDeTipoError', () => new TicketsErrors.ModuloSinAltaDeTipoError('COMPRAS'), 422],
@@ -1401,6 +1542,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'TicketsBorradosSoloAdministradorError',
       () => new TicketsErrors.TicketsBorradosSoloAdministradorError(),
+      403,
+    ],
+    [
+      'ListaDeAgentesNoPermitidaError',
+      () => new TicketsErrors.ListaDeAgentesNoPermitidaError(),
       403,
     ],
   ];

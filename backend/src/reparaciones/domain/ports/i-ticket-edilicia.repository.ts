@@ -1,9 +1,12 @@
 import { TicketEdiliciaEntity } from '../entities/ticket-edilicia.entity';
-import { AlcanceListadoTickets } from '../../../tickets/domain/ports/i-ticket.repository';
 
 /**
  * ITicketEdiliciaRepository — puerto de persistencia para el satélite
  * `ticket_edilicia` (1:0..1 con `Ticket`).
+ *
+ * Desde odd/ticket-unificado el satélite solo identifica las reparaciones viejas: las compras, la
+ * ubicación y los comentarios son del ticket, y el listado de Edilicia se arma sobre los tickets. El
+ * alta de `/reparaciones` todavía lo crea hasta que T4 lo retire.
  *
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS. La
  * implementación concreta (`PrismaTicketEdiliciaRepository`, PR7) obtiene su
@@ -14,30 +17,20 @@ import { AlcanceListadoTickets } from '../../../tickets/domain/ports/i-ticket.re
  */
 export interface ITicketEdiliciaRepository {
   /**
-   * Busca el `ticket_edilicia` asociado a un ticket base.
-   * Retorna `null` si no existe (el ticket no es de tipo EDILICIA, o el
-   * satélite aún no fue creado).
+   * Busca el `ticket_edilicia` asociado a un ticket base, con la ubicación del ticket.
+   * Retorna `null` si no existe (el ticket no se abrió desde Edilicia).
    */
   findByTicketId(ticketId: string): Promise<TicketEdiliciaEntity | null>;
 
   /**
-   * Busca el `ticket_edilicia` por su identificador técnico (UUIDv7).
+   * Busca el `ticket_edilicia` por su identificador técnico (UUIDv7), con la ubicación del ticket.
    * Retorna `null` si no existe. Incluye registros soft-deleted.
    */
   findById(id: string): Promise<TicketEdiliciaEntity | null>;
 
   /**
-   * Retorna los `ticket_edilicia` del tenant activo cuyo ticket base entra en el alcance del actor
-   * (odd/permisos-por-tipo-ticket, D5 e: tipos con `LECTURA`, y por la regla de fila salvo en los
-   * de `VER_TODOS`), ordenados por `created_at DESC`. Excluye los soft-deleted, y también los de un
-   * ticket base borrado (odd/permisos-por-tipo-ticket, S8). El alcance lo aplica la
-   * base en la misma consulta. `null` = sin restricción (ROOT y ADMINISTRADOR).
-   */
-  findAll(alcance: AlcanceListadoTickets | null): Promise<TicketEdiliciaEntity[]>;
-
-  /**
-   * Persiste el `ticket_edilicia` (upsert: crea si no existe, actualiza si
-   * existe). El repositorio decide INSERT vs UPDATE según el id.
+   * Persiste el `ticket_edilicia` (upsert: crea si no existe, actualiza si existe). El repositorio
+   * decide INSERT vs UPDATE según el id. Nunca escribe la columna vieja `ubicacion`.
    */
   save(ticketEdilicia: TicketEdiliciaEntity): Promise<void>;
 }

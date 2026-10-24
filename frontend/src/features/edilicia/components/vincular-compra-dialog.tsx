@@ -1,142 +1,57 @@
 "use client";
 
 /**
- * VincularCompraDialog — panel de compras que frenan una reparación
- * (sdd/reparacion-bloqueada-por-compra, WU6). Un solo diálogo muestra las
- * compras hoy vinculadas (con acción de desvincular) y un selector para
- * vincular una compra nueva. Hermano de `SubtareasDialog`/`ComentariosDialog`:
- * sin ruta de detalle (ADR-1), disparado por fila en `ReparacionesList`.
+ * VincularCompraDialog — panel de compras vinculadas a un ticket, disparado por fila en
+ * `ReparacionesList` (ADR-1: `/edilicia` sin ruta de detalle). El contenido es `TicketCompras`, el
+ * mismo que muestra el detalle del ticket, sobre `/tickets/:ticketId/compras` (odd/ticket-unificado).
  *
- * IMPORTANTE — qué NO hace este componente: los dos `<Can>` de abajo son
- * controles de EXPERIENCIA (ocultan botones a quien no va a poder usarlos),
- * nunca de seguridad. La autorización real la sostiene el backend:
- * - Vincular exige `COMPRAS:LECTURA` en la ruta (`@RequiereAcciones`, WU5.9)
- *   **y** `ALTAS` sobre el tipo de la reparación en el caso de uso
- *   (odd/permisos-por-tipo-ticket, D5 c). El formulario espeja las dos: el
- *   contenedor pasa `puedeVincularEnTipo` y acá se suma la celda de Compras.
- * - Desvincular exige `EDILICIA:BORRADO` en la ruta (WU5.6): es permiso del
- *   módulo, no por tipo (L21).
- * Un `curl` directo sin el `<Can>` (que no existe fuera del navegador) sigue
- * recibiendo 403 si le falta el permiso: la interfaz nunca es el único
- * candado.
+ * Gate, espejo del backend (odd/ticket-unificado, S4; JD-A-001, JD-B-004):
+ * - La celda `COMPRAS:LECTURA` es la puerta: sin ella `GET /tickets/:id/compras` responde 403
+ *   (L19), así que no hay panel. El chip «Bloqueada» de la fila se sigue viendo.
+ * - Vincular y desvincular piden además `MODIFICACION` sobre el tipo del ticket. Con
+ *   `COMPRAS:LECTURA` y sin `MODIFICACION` el botón dice «Ver compras» y el panel no tiene acciones.
+ *   Ni `ALTAS` sobre el tipo ni `EDILICIA:BORRADO` habilitan nada.
+ *
+ * Son controles de EXPERIENCIA, nunca de seguridad: un `curl` directo sin estos permisos recibe 403.
  */
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
 import { useCan } from "@/shared/hooks/use-can";
-import { useCompras } from "@/features/compras/hooks/use-compras";
-import { useDesvincularCompra, useVincularCompra } from "../hooks/use-reparacion-compra-mutations";
+import { TicketCompras } from "@/features/tickets/components/ticket-compras";
 
 export interface VincularCompraDialogProps {
-  reparacionId: string;
+  /** Id del ticket de la fila. */
+  ticketId: string;
   numero: string;
-  /** Subset mínimo (`id`+`numero`) de las compras que HOY frenan la reparación — sale de `ReparacionListItem.comprasQueBloquean`. */
-  comprasQueBloquean: { id: string; numero: string }[];
-  /** `ALTAS` sobre el tipo del ticket de la reparación (odd/permisos-por-tipo-ticket, D5 c). */
-  puedeVincularEnTipo: boolean;
-  trigger: ReactNode;
+  /** `MODIFICACION` sobre el tipo del ticket de la fila (odd/ticket-unificado, S4). */
+  puedeModificarEnTipo: boolean;
 }
 
-export function VincularCompraDialog({
-  reparacionId,
-  numero,
-  comprasQueBloquean,
-  puedeVincularEnTipo,
-  trigger,
-}: VincularCompraDialogProps) {
+/**
+ * Botón y panel de compras de una fila de Edilicia.
+ *
+ * @param props Ticket de la fila y su permiso de modificación.
+ * @returns El botón con su diálogo, o nada sin `COMPRAS:LECTURA`.
+ */
+export function VincularCompraDialog({ ticketId, numero, puedeModificarEnTipo }: VincularCompraDialogProps) {
   const [open, setOpen] = useState(false);
-  const [compraSeleccionada, setCompraSeleccionada] = useState("");
-
-  // `estado: 'ACTIVAS'` (WU6.3): solo tiene sentido ofrecer compras que TODAVÍA
-  // pueden frenar algo — una compra ya entregada/cancelada no aporta al selector.
-  const comprasQuery = useCompras({ estado: "ACTIVAS" });
-  const vincularMutation = useVincularCompra(reparacionId);
-  const desvincularMutation = useDesvincularCompra(reparacionId);
-
-  const comprasDisponibles = comprasQuery.data?.items ?? [];
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!compraSeleccionada) return;
-    vincularMutation.mutate(
-      { compraId: compraSeleccionada },
-      { onSuccess: () => setCompraSeleccionada("") },
-    );
-  }
-
-  // Hooks, no condicionales: se evalúan siempre y se combinan abajo.
   const puedeLeerCompras = useCan("COMPRAS:LECTURA");
-  const puedeVincular = puedeVincularEnTipo && puedeLeerCompras;
-  const puedeDesvincular = useCan("EDILICIA:BORRADO");
+  if (!puedeLeerCompras) return null;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* El panel se abre pudiendo vincular O con EDILICIA:BORRADO, no solo
-          con lo primero. Cada acción de adentro tiene su propio gate, así que
-          abrir no habilita nada: quien solo puede desvincular entra, ve las
-          compras vinculadas y su botón Desvincular, y no ve el formulario de
-          vincular. Gatear el trigger solo por ALTAS dejaba a ese usuario
-          viendo el chip «Bloqueada» sin ninguna forma de sacarlo, aunque el
-          backend le permite el DELETE. El chip sigue visible para cualquiera
-          que vea la fila. */}
-      {(puedeVincular || puedeDesvincular) && (
-        <DialogTrigger asChild>{trigger}</DialogTrigger>
-      )}
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          {puedeModificarEnTipo ? "Gestionar compras" : "Ver compras"}
+        </Button>
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Compras vinculadas — {numero}</DialogTitle>
         </DialogHeader>
-
-        <ul className="flex flex-col gap-2">
-          {comprasQueBloquean.length === 0 && (
-            <p className="text-sm text-muted-foreground">Sin compras vinculadas.</p>
-          )}
-          {comprasQueBloquean.map((compra) => (
-            <li
-              key={compra.id}
-              className="flex items-center justify-between gap-2 rounded-lg border border-border p-2"
-            >
-              <span className="text-sm text-foreground">{compra.numero}</span>
-              {puedeDesvincular && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  isLoading={desvincularMutation.isPending}
-                  onClick={() => desvincularMutation.mutate(compra.id)}
-                >
-                  Desvincular
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-
-        {puedeVincular && (
-          <form onSubmit={submit} className="flex items-end gap-2" noValidate>
-            <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="compra-a-vincular" className="text-xs font-medium text-foreground">
-                Vincular compra
-              </label>
-              <Select
-                id="compra-a-vincular"
-                value={compraSeleccionada}
-                onChange={(e) => setCompraSeleccionada(e.target.value)}
-              >
-                <option value="">Elegí una compra</option>
-                {comprasDisponibles.map((compra) => (
-                  <option key={compra.id} value={compra.id}>
-                    {compra.numero}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <Button type="submit" size="sm" isLoading={vincularMutation.isPending} disabled={!compraSeleccionada}>
-              Vincular
-            </Button>
-          </form>
-        )}
+        {/* Montado solo con el diálogo abierto: la grilla no pide las compras de cada fila. */}
+        {open && <TicketCompras ticketId={ticketId} puedeGestionar={puedeModificarEnTipo} />}
       </DialogContent>
     </Dialog>
   );

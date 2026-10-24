@@ -28,6 +28,7 @@ import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
@@ -196,6 +197,20 @@ describe('SoporteController (T13.4)', () => {
         solucion: 'Se reinstaló el cliente VPN.',
         actorId: 'usuario-uuid',
         permisosPorTipo: new Map([['tipo-soporte-uuid', new Set(['LECTURA', 'MODIFICACION'])]]),
+      });
+    });
+
+    it('ticket resuelto, cerrado o cancelado con un no administrador → 422 que nombra el estado', async () => {
+      const { controller, registrarSolucionUseCase } = buildController();
+      registrarSolucionUseCase.execute.mockResolvedValue(
+        Result.fail(new TicketSoloComentariosError('RESUELTO')),
+      );
+
+      await expect(
+        controller.registrarSolucion('ticket-uuid', { solucion: 'X' }, USER),
+      ).rejects.toMatchObject({
+        status: 422,
+        message: expect.stringContaining('El ticket está resuelto: solo admite comentarios.'),
       });
     });
 

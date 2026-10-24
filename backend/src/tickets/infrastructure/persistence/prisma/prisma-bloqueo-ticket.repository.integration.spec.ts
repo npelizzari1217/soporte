@@ -1,7 +1,9 @@
 /**
  * [INTEGRATION] `PrismaBloqueoTicketRepository` contra un tenant efímero
  * (odd/ticket-cerrado-solo-lectura, S2): el bloqueo por compra se lee por `ticketId`, con el
- * MISMO criterio que el chip "Bloqueada" del listado de reparaciones.
+ * MISMO criterio que el chip "Bloqueada" del listado de reparaciones. Desde odd/ticket-unificado
+ * (S5) el vínculo es `ticket_compra`: vale para un ticket de cualquier tipo, sin satélite de
+ * Edilicia, y la tabla congelada `reparacion_compra` ya no cuenta.
  *
  * No toca master: sin `usarLockMasterTest()`. Tenant propio: se destruye entero al final.
  */
@@ -29,7 +31,7 @@ describe('PrismaBloqueoTicketRepository (tenant efímero)', () => {
   let tenantContext: TenantContext;
   let repo: PrismaBloqueoTicketRepository;
 
-  let tipoEdiliciaId: string;
+  let tipoSoporteId: string;
   let estadoId: string;
   let prioridadId: string;
   let cicloId: string;
@@ -42,22 +44,23 @@ describe('PrismaBloqueoTicketRepository (tenant efímero)', () => {
     );
   }
 
-  async function crearTicket(
-    conReparacion: boolean,
-  ): Promise<{ ticketId: string; ediliciaId: string }> {
+  /** Ticket de un tipo del módulo TICKETS, sin satélite de Edilicia. */
+  async function crearTicket(): Promise<string> {
     const ticket = await tenantClient.ticket.create({
       data: {
         numero: `BLQ-${randomBytes(5).toString('hex')}`,
         titulo: 'Ticket de test de bloqueo',
-        tipoId: tipoEdiliciaId,
+        tipoId: tipoSoporteId,
         estadoId,
         prioridadId,
         solicitanteId: DUMMY_USUARIO_ID,
       },
     });
-    if (!conReparacion) return { ticketId: ticket.id, ediliciaId: '' };
-    const edilicia = await tenantClient.ticketEdilicia.create({ data: { ticketId: ticket.id } });
-    return { ticketId: ticket.id, ediliciaId: edilicia.id };
+    return ticket.id;
+  }
+
+  async function vincular(ticketId: string, compraId: string): Promise<void> {
+    await tenantClient.ticketCompra.create({ data: { ticketId, compraId } });
   }
 
   /** Compra con un ítem aprobado y nada recibido (grupo ACTIVAS), o cancelada. */
@@ -105,13 +108,13 @@ describe('PrismaBloqueoTicketRepository (tenant efímero)', () => {
     tenantContext = new TenantContext();
     repo = new PrismaBloqueoTicketRepository(tenantContext);
 
-    tipoEdiliciaId = (
+    tipoSoporteId = (
       await tenantClient.tipoTicket.create({
         data: {
-          codigo: 'BLQ_TEST_EDILICIA',
-          nombre: 'Edilicia Test',
+          codigo: 'BLQ_TEST_SOPORTE',
+          nombre: 'Soporte Test',
           activo: true,
-          modulo: 'EDILICIA',
+          modulo: 'TICKETS',
         },
       })
     ).id;
@@ -143,45 +146,99 @@ describe('PrismaBloqueoTicketRepository (tenant efímero)', () => {
     await admin.dropDatabase(TENANT_DB_NAME);
   }, 60_000);
 
-  it('un ticket sin reparación nunca está bloqueado', async () => {
-    const { ticketId } = await crearTicket(false);
-    expect(await withTenant(() => repo.estaBloqueadoPorCompra(ticketId))).toBe(false);
+  it('un ticket sin compras vinculadas nunca está bloqueado', async () => {
+    const ticketId = await crearTicket();
+    await withTenant(async () => {
+      expect(await repo.estaBloqueadoPorCompra(ticketId)).toBe(false);
+      expect(await repo.comprasVinculadas(ticketId)).toEqual([]);
+    });
   });
 
-  it('una reparación con una compra activa vinculada bloquea al ticket', async () => {
-    const { ticketId, ediliciaId } = await crearTicket(true);
-    const compraId = await crearCompra();
-    await tenantClient.reparacionCompra.create({
-      data: { ticketEdiliciaId: ediliciaId, compraId },
-    });
+  it('un ticket de cualquier tipo, sin satélite, con una compra activa vinculada queda bloqueado (S5)', async () => {
+    const ticketId = await crearTicket();
+    await vincular(ticketId, await crearCompra());
 
     expect(await withTenant(() => repo.estaBloqueadoPorCompra(ticketId))).toBe(true);
   });
 
   it('una compra cancelada o eliminada no bloquea, y el bloqueo es por ticket, no global', async () => {
-    const conCancelada = await crearTicket(true);
-    await tenantClient.reparacionCompra.create({
-      data: {
-        ticketEdiliciaId: conCancelada.ediliciaId,
-        compraId: await crearCompra({ cancelada: true }),
-      },
+    const conCancelada = await crearTicket();
+    await vincular(conCancelada, await crearCompra({ cancelada: true }));
+    const conEliminada = await crearTicket();
+    await vincular(conEliminada, await crearCompra({ eliminada: true }));
+    const bloqueado = await crearTicket();
+    await vincular(bloqueado, await crearCompra());
+
+    await withTenant(async () => {
+      expect(await repo.estaBloqueadoPorCompra(conCancelada)).toBe(false);
+      expect(await repo.estaBloqueadoPorCompra(conEliminada)).toBe(false);
+      expect(await repo.estaBloqueadoPorCompra(bloqueado)).toBe(true);
     });
-    const conEliminada = await crearTicket(true);
+  });
+
+  it('un vínculo que quedó solo en la tabla congelada reparacion_compra no bloquea ni frena el borrado', async () => {
+    const ticketId = await crearTicket();
+    const satelite = await tenantClient.ticketEdilicia.create({ data: { ticketId } });
     await tenantClient.reparacionCompra.create({
-      data: {
-        ticketEdiliciaId: conEliminada.ediliciaId,
-        compraId: await crearCompra({ eliminada: true }),
-      },
-    });
-    const bloqueado = await crearTicket(true);
-    await tenantClient.reparacionCompra.create({
-      data: { ticketEdiliciaId: bloqueado.ediliciaId, compraId: await crearCompra() },
+      data: { ticketEdiliciaId: satelite.id, compraId: await crearCompra() },
     });
 
     await withTenant(async () => {
-      expect(await repo.estaBloqueadoPorCompra(conCancelada.ticketId)).toBe(false);
-      expect(await repo.estaBloqueadoPorCompra(conEliminada.ticketId)).toBe(false);
-      expect(await repo.estaBloqueadoPorCompra(bloqueado.ticketId)).toBe(true);
+      expect(await repo.estaBloqueadoPorCompra(ticketId)).toBe(false);
+      expect(await repo.comprasVinculadas(ticketId)).toEqual([]);
+    });
+  });
+
+  it('comprasVinculadas: los números en cualquier estado salvo eliminadas, por número', async () => {
+    const ticketId = await crearTicket();
+    const activa = await crearCompra();
+    const cancelada = await crearCompra({ cancelada: true });
+    await crearCompra(); // de otro ticket: no aparece
+    const eliminada = await crearCompra({ eliminada: true });
+    await vincular(ticketId, cancelada);
+    await vincular(ticketId, activa);
+    await vincular(ticketId, eliminada);
+    const numeros = await tenantClient.compra.findMany({
+      where: { id: { in: [activa, cancelada] } },
+      select: { numero: true },
+      orderBy: { numero: 'asc' },
+    });
+
+    expect(await withTenant(() => repo.comprasVinculadas(ticketId))).toEqual(
+      numeros.map((c) => c.numero),
+    );
+  });
+
+  // odd/preventivo-por-tipo: lo que vuelve no borrable a un ticket es el enlace con un plan, no el
+  // tipo. El ticket enlazado es de Soporte; el hermano, del mismo tipo y sin enlace.
+  it('generadoPorPlanPreventivo: true solo para el ticket enlazado por preventivo_generacion', async () => {
+    const enlazado = await crearTicket();
+    const suelto = await crearTicket();
+    const plan = await tenantClient.planPreventivo.create({
+      data: {
+        titulo: 'Plan de test de bloqueo',
+        ubicacion: 'DEPOSITO',
+        prioridadId,
+        tipoId: tipoSoporteId,
+        responsableId: DUMMY_USUARIO_ID,
+        intervaloValor: 1,
+        intervaloUnidad: 'MESES',
+        fechaInicio: new Date('2026-01-01'),
+        proximaEjecucionEn: new Date('2026-02-01'),
+      },
+    });
+    await tenantClient.preventivoGeneracion.create({
+      data: {
+        planId: plan.id,
+        fechaProgramada: new Date('2026-01-01'),
+        resultado: 'GENERADO',
+        ticketId: enlazado,
+      },
+    });
+
+    await withTenant(async () => {
+      expect(await repo.generadoPorPlanPreventivo(enlazado)).toBe(true);
+      expect(await repo.generadoPorPlanPreventivo(suelto)).toBe(false);
     });
   });
 });

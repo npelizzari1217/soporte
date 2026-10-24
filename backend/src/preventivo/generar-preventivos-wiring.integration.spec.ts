@@ -199,6 +199,8 @@ describe('[W2] GenerarPreventivosUseCase resuelto desde el contenedor de Nest, c
       equipoId: equipo.id,
       ubicacion: null,
       prioridadId,
+      tipoId: (await tenantClient.tipoTicket.findUniqueOrThrow({ where: { codigo: 'PREVENTIVO' } }))
+        .id,
       responsableId,
       intervaloValor: 7,
       intervaloUnidad: 'DIAS',

@@ -123,4 +123,123 @@ describe('CalcularCicloService', () => {
       expect(iso(resultado.proximaEjecucionEn)).toBe('2026-01-31');
     });
   });
+
+  // ─── Anticipación (odd/preventivo-anticipacion T2) ────────────────────────
+  //
+  // La fecha de GENERACIÓN de un ciclo es la fecha del ciclo menos la
+  // anticipación, con resta de calendario y clamp a fin de mes. La clave del
+  // ciclo (y el puntero) sigue siendo la fecha del CICLO.
+  describe('fechaGeneracion()', () => {
+    it('sin anticipación (0) es la fecha del ciclo misma', () => {
+      const ciclo = new Date('2026-03-10T00:00:00.000Z');
+
+      expect(iso(service.fechaGeneracion(ciclo, { valor: 0, unidad: 'DIAS' }))).toBe('2026-03-10');
+    });
+
+    it('DIAS: resta días de calendario, cruzando el fin de febrero', () => {
+      const ciclo = new Date('2026-03-10T00:00:00.000Z');
+
+      expect(iso(service.fechaGeneracion(ciclo, { valor: 10, unidad: 'DIAS' }))).toBe('2026-02-28');
+    });
+
+    it('MESES: clamp a fin de mes — 31/03 menos 1 mes es 28/02 (y 29/02 en bisiesto)', () => {
+      expect(
+        iso(
+          service.fechaGeneracion(new Date('2026-03-31T00:00:00.000Z'), {
+            valor: 1,
+            unidad: 'MESES',
+          }),
+        ),
+      ).toBe('2026-02-28');
+      expect(
+        iso(
+          service.fechaGeneracion(new Date('2028-03-31T00:00:00.000Z'), {
+            valor: 1,
+            unidad: 'MESES',
+          }),
+        ),
+      ).toBe('2028-02-29');
+    });
+
+    it('MESES: cruza el año hacia atrás', () => {
+      expect(
+        iso(
+          service.fechaGeneracion(new Date('2026-01-15T00:00:00.000Z'), {
+            valor: 2,
+            unidad: 'MESES',
+          }),
+        ),
+      ).toBe('2025-11-15');
+    });
+
+    it.each([
+      ['2028-03-31', 1, 'MESES', '2028-02-29'],
+      ['2027-01-31', 2, 'MESES', '2026-11-30'],
+      ['2028-02-29', 12, 'MESES', '2027-02-28'],
+      ['2026-03-01', 1, 'DIAS', '2026-02-28'],
+      ['2026-03-31', 0, 'DIAS', '2026-03-31'],
+    ] as const)('%s menos %i %s → %s', (ciclo, valor, unidad, esperado) => {
+      const fecha = new Date(`${ciclo}T00:00:00.000Z`);
+
+      expect(iso(service.fechaGeneracion(fecha, { valor, unidad }))).toBe(esperado);
+    });
+  });
+
+  describe('ciclosPendientes() con anticipación', () => {
+    const mensualConAnticipacion: PlanCicloConPuntero = {
+      fechaInicio: new Date('2026-01-01T00:00:00.000Z'),
+      intervaloValor: 1,
+      intervaloUnidad: 'MESES',
+      proximaEjecucionEn: new Date('2026-02-01T00:00:00.000Z'),
+      anticipacion: { valor: 10, unidad: 'DIAS' },
+    };
+
+    it('el día de generación (ciclo - 10 días) el ciclo ya es candidato, aunque su fecha sea futura', () => {
+      const hoy = new Date('2026-01-22T04:00:00.000Z');
+
+      const resultado = service.ciclosPendientes(mensualConAnticipacion, hoy);
+
+      expect(iso(resultado.candidato as Date)).toBe('2026-02-01');
+      expect(resultado.salteados).toEqual([]);
+      expect(iso(resultado.proximaEjecucionEn)).toBe('2026-03-01');
+    });
+
+    it('hermano: el día anterior a la generación no hay candidato y el puntero no se mueve', () => {
+      const hoy = new Date('2026-01-21T04:00:00.000Z');
+
+      const resultado = service.ciclosPendientes(mensualConAnticipacion, hoy);
+
+      expect(resultado.candidato).toBeNull();
+      expect(resultado.salteados).toEqual([]);
+      expect(iso(resultado.proximaEjecucionEn)).toBe('2026-02-01');
+    });
+
+    it('recuperación: los ciclos con generación vencida anteriores al candidato van a SALTEADO_ATRASO', () => {
+      // Generaciones: 22/01 (02-01), 19/02 (03-01), 22/03 (04-01), 21/04 (05-01).
+      const hoy = new Date('2026-03-25T04:00:00.000Z');
+
+      const resultado = service.ciclosPendientes(mensualConAnticipacion, hoy);
+
+      expect(iso(resultado.candidato as Date)).toBe('2026-04-01');
+      expect(resultado.salteados.map(iso)).toEqual(['2026-02-01', '2026-03-01']);
+      expect(iso(resultado.proximaEjecucionEn)).toBe('2026-05-01');
+    });
+
+    it('anticipación en MESES con fin de mes: el ciclo 31/03 se genera el 28/02, no antes', () => {
+      const plan: PlanCicloConPuntero = {
+        fechaInicio: new Date('2026-01-31T00:00:00.000Z'),
+        intervaloValor: 1,
+        intervaloUnidad: 'MESES',
+        proximaEjecucionEn: new Date('2026-03-31T00:00:00.000Z'),
+        anticipacion: { valor: 1, unidad: 'MESES' },
+      };
+
+      const antes = service.ciclosPendientes(plan, new Date('2026-02-27T04:00:00.000Z'));
+      const ese = service.ciclosPendientes(plan, new Date('2026-02-28T04:00:00.000Z'));
+
+      expect(antes.candidato).toBeNull();
+      expect(iso(ese.candidato as Date)).toBe('2026-03-31');
+      expect(iso(ese.proximaEjecucionEn)).toBe('2026-04-30');
+    });
+  });
 });

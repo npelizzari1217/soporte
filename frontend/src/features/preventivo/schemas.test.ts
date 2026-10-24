@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { crearPlanPreventivoSchema, editarPlanPreventivoSchema } from "./schemas";
+import { crearPlanPreventivoSchema, editarPlanPreventivoSchema, DIAS_POR_MES_ANTICIPACION } from "./schemas";
 
 /**
  * Validación cliente-side del objetivo excluyente (ADR-PV1). El dominio y el
@@ -11,9 +11,12 @@ function baseValues() {
   return {
     titulo: "Revisión mensual",
     prioridadId: "11111111-1111-1111-1111-111111111111",
+    tipoId: "44444444-4444-4444-4444-444444444444",
     responsableId: "22222222-2222-2222-2222-222222222222",
     intervaloValor: "1",
     intervaloUnidad: "MESES" as const,
+    anticipacionValor: "0",
+    anticipacionUnidad: "DIAS" as const,
     fechaInicio: "2026-01-01",
   };
 }
@@ -110,9 +113,12 @@ function baseValuesEdicion() {
   return {
     titulo: "Revisión mensual",
     prioridadId: "11111111-1111-1111-1111-111111111111",
+    tipoId: "44444444-4444-4444-4444-444444444444",
     responsableId: "22222222-2222-2222-2222-222222222222",
     intervaloValor: "1",
     intervaloUnidad: "MESES" as const,
+    anticipacionValor: "0",
+    anticipacionUnidad: "DIAS" as const,
     activo: true,
     ubicacion: "DEPOSITO",
   };
@@ -197,5 +203,83 @@ describe("editarPlanPreventivoSchema — mismos topes que crearPlanPreventivoSch
   ])("rechaza %s por encima del tope", (_campo, overrides) => {
     const result = editarPlanPreventivoSchema.safeParse({ ...baseValuesEdicion(), ...overrides });
     expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * Anticipación (odd/preventivo-anticipacion S6): espejo de `validarAnticipacion`
+ * del dominio (`plan-preventivo.entity.ts`). Entero >= 0 y estrictamente menor que
+ * la cadencia, comparadas en días con un mes = 30.
+ */
+describe("anticipación — espejo del dominio", () => {
+  function conAnticipacion(overrides: Record<string, string>) {
+    return { ...baseValues(), ubicacion: "DEPOSITO", ...overrides };
+  }
+
+  function mensajeDe(resultado: ReturnType<typeof crearPlanPreventivoSchema.safeParse>): string | undefined {
+    if (resultado.success) return undefined;
+    return resultado.error.issues.find((issue) => issue.path[0] === "anticipacionValor")?.message;
+  }
+
+  it("centinela: un mes cuenta como 30 días, igual que DIAS_POR_MES_ANTICIPACION del backend", () => {
+    expect(DIAS_POR_MES_ANTICIPACION).toBe(30);
+  });
+
+  it("acepta 0 (sin anticipación)", () => {
+    expect(crearPlanPreventivoSchema.safeParse(conAnticipacion({ anticipacionValor: "0" })).success).toBe(true);
+  });
+
+  it("vacío NO es 0: pide el valor en vez de convertirlo", () => {
+    const resultado = crearPlanPreventivoSchema.safeParse(conAnticipacion({ anticipacionValor: "" }));
+    expect(mensajeDe(resultado)).toBe("La anticipación es requerida");
+  });
+
+  it.each(["-1", "1.5", "abc"])("rechaza %s como no entero >= 0", (valor) => {
+    const resultado = crearPlanPreventivoSchema.safeParse(conAnticipacion({ anticipacionValor: valor }));
+    expect(mensajeDe(resultado)).toBe("Ingrese un número entero mayor o igual a 0");
+  });
+
+  it.each([
+    // [cadencia, unidad, anticipación, unidad, ¿acepta?] — mismos bordes que el dominio y el CHECK.
+    ["30", "DIAS", "29", "DIAS", true],
+    ["30", "DIAS", "30", "DIAS", false],
+    ["1", "MESES", "29", "DIAS", true],
+    ["1", "MESES", "30", "DIAS", false],
+    ["30", "DIAS", "1", "MESES", false],
+    ["31", "DIAS", "1", "MESES", true],
+  ])("cadencia %s %s con anticipación %s %s → acepta=%s", (iv, iu, av, au, acepta) => {
+    const resultado = crearPlanPreventivoSchema.safeParse(
+      conAnticipacion({ intervaloValor: iv, intervaloUnidad: iu, anticipacionValor: av, anticipacionUnidad: au }),
+    );
+    expect(resultado.success).toBe(acepta);
+    if (!acepta) {
+      expect(mensajeDe(resultado)).toBe("La anticipación debe ser menor que la cadencia (un mes cuenta como 30 días)");
+    }
+  });
+
+  it("el schema de edición aplica la misma regla", () => {
+    const resultado = editarPlanPreventivoSchema.safeParse({
+      ...baseValuesEdicion(),
+      intervaloValor: "1",
+      intervaloUnidad: "MESES",
+      anticipacionValor: "1",
+      anticipacionUnidad: "MESES",
+    });
+    expect(resultado.success).toBe(false);
+  });
+});
+
+// odd/preventivo-por-tipo S2: el plan necesita un tipo de ticket, en el alta y en la edición.
+describe("tipo de ticket del plan", () => {
+  it.each([
+    ["alta", () => crearPlanPreventivoSchema.safeParse({ ...baseValues(), ubicacion: "DEPOSITO", tipoId: "" })],
+    ["edición", () => editarPlanPreventivoSchema.safeParse({ ...baseValuesEdicion(), tipoId: "" })],
+  ])("%s: sin tipo se rechaza con un mensaje en el campo tipoId", (_caso, parsear) => {
+    const result = parsear();
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({ path: ["tipoId"], message: "Elija un tipo de ticket" }),
+    ]);
   });
 });

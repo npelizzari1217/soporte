@@ -20,7 +20,7 @@ import {
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   SolicitanteInvalidoError,
-  ComentarioNoPermitidoError,
+  TicketSoloComentariosError,
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   SecuenciaAgotadaError,
@@ -151,11 +151,18 @@ describe('SolicitanteInvalidoError', () => {
   });
 });
 
-describe('ComentarioNoPermitidoError', () => {
-  it('expone code COMENTARIO_NO_PERMITIDO', () => {
-    const error = new ComentarioNoPermitidoError('CERRADO');
-    expect(error.code).toBe('COMENTARIO_NO_PERMITIDO');
-    expect(error.message).toContain('CERRADO');
+describe('TicketSoloComentariosError (odd/cerrado-solo-comentarios)', () => {
+  it.each([
+    ['RESUELTO', 'resuelto'],
+    ['CERRADO', 'cerrado'],
+    ['CANCELADO', 'cancelado'],
+  ] as const)('expone code TICKET_SOLO_COMENTARIOS y nombra el estado %s', (codigo, nombre) => {
+    const error = new TicketSoloComentariosError(codigo);
+    expect(error.code).toBe('TICKET_SOLO_COMENTARIOS');
+    expect(error.estadoCodigo).toBe(codigo);
+    expect(error.message).toBe(
+      `El ticket está ${nombre}: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.`,
+    );
   });
 });
 

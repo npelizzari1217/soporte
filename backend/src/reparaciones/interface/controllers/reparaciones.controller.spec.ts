@@ -27,20 +27,21 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
-import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
+import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
+import { ResolutorReparacion } from '../../application/services/acceso-reparacion';
 import {
   AccionSobreTipoNoPermitidaError,
   SolicitanteInvalidoError,
   TipoTicketNoEncontradoError,
   TipoTicketNoPermitidoEnAltaError,
   SinCicloActivoError,
+  TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
-  TicketEdiliciaNoEncontradoError,
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
   ReparacionNoEditableError,
-  ComentarioReparacionNoPermitidoError,
 } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
@@ -51,7 +52,7 @@ import {
   ListarReparacionesUseCase,
   type ReparacionConTicket,
 } from '../../application/use-cases/listar-reparaciones.use-case';
-import { CrearComentarioReparacionUseCase } from '../../application/use-cases/crear-comentario-reparacion.use-case';
+import { CrearComentarioUseCase } from '../../../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
 import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
@@ -102,6 +103,34 @@ const CAMPOS_SUBTAREA = [
   'updatedAt',
 ];
 
+/**
+ * `ResolutorReparacion` real sobre un repositorio en memoria con UN satélite: `edilicia-uuid` es la
+ * reparación vieja del ticket `ticket-uuid`. Cualquier otro id se toma como id de ticket.
+ */
+function resolutor(): ResolutorReparacion {
+  const satelite = TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid' }, 'edilicia-uuid');
+  return new ResolutorReparacion({
+    findById: async (id: string) => (id === 'edilicia-uuid' ? satelite : null),
+  });
+}
+
+/** Un COMENTARIO del timeline del ticket (odd/ticket-unificado, S3). */
+function comentario(id: string, texto: string, autorId = 'usuario-uuid'): OperacionTicketEntity {
+  return OperacionTicketEntity.create(
+    {
+      ticketId: 'ticket-uuid',
+      tipoOperacionId: 'tipo-op-comentario',
+      descripcion: texto,
+      estadoAnteriorId: null,
+      estadoNuevoId: null,
+      autorId,
+      esInterno: false,
+      metadata: null,
+    },
+    id,
+  );
+}
+
 function makeTicket(): TicketEntity {
   return TicketEntity.create(
     {
@@ -128,7 +157,6 @@ function usuarioMasterCheckerFalso() {
     existeEnTenant: unstubbed('usuarioMasterChecker.existeEnTenant'),
     estaActivoEnTenant: unstubbed('usuarioMasterChecker.estaActivoEnTenant'),
     resolverNombres: vi.fn<IUsuarioMasterChecker['resolverNombres']>().mockResolvedValue(new Map()),
-    esAdminTotalEnTenant: unstubbed('usuarioMasterChecker.esAdminTotalEnTenant'),
     listarAgentes: unstubbed('usuarioMasterChecker.listarAgentes'),
   };
 }
@@ -137,7 +165,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   function buildController() {
     const crearTicketEdilicioUseCase = espiado(CrearTicketEdilicioUseCase);
     const listarReparacionesUseCase = espiado(ListarReparacionesUseCase);
-    const crearComentarioUseCase = espiado(CrearComentarioReparacionUseCase);
+    const crearComentarioUseCase = espiado(CrearComentarioUseCase);
     const listarComentariosUseCase = espiado(ListarComentariosReparacionUseCase);
     // Default: master no resuelve ningún nombre (usuario dado de baja) — los
     // tests que verifican el enriquecimiento lo sobrescriben.
@@ -160,6 +188,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       desvincularCompraUseCase.caso,
       editarReparacionUseCase.caso,
       cargadorDeAlcance(),
+      resolutor(),
     );
 
     return {
@@ -180,10 +209,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('crea el ticket edilicio → response unificado', async () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
-      const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacion: 'Edificio Central' },
-        'edilicia-uuid',
-      );
+      ticket.actualizarDatos({ ubicacion: 'Edificio Central' });
+      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id }, 'edilicia-uuid');
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
         Result.ok({ ticket, ticketEdilicia, sectorNombre: null }),
       );
@@ -198,7 +225,10 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         USER,
       );
 
-      expect(result.id).toBe('edilicia-uuid');
+      // `id` es el del ticket desde odd/ticket-unificado; la ubicación, la del ticket.
+      expect(result.id).toBe('ticket-uuid');
+      expect(result.ticketId).toBe('ticket-uuid');
+      expect(result.ubicacion).toBe('Edificio Central');
       expect(result.numero).toBe('EDI-2026-00001');
       // Una reparación recién creada no tiene tareas; `personalAsignadoId` se retiró en T8 (CA9).
       expect(result.porcentajeAvance).toBe(0);
@@ -217,11 +247,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('con sector: lo pasa al caso de uso y responde sectorId y sectorNombre (odd/ubicacion-sector-ticket)', async () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
-      ticket.actualizarDatos({ sectorId: 'sector-uuid' });
-      const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacion: 'Patio' },
-        'edilicia-uuid',
-      );
+      ticket.actualizarDatos({ sectorId: 'sector-uuid', ubicacion: 'Patio' });
+      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id }, 'edilicia-uuid');
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
         Result.ok({ ticket, ticketEdilicia, sectorNombre: 'Mantenimiento' }),
       );
@@ -244,10 +271,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('pasa el tipoId elegido al caso de uso, y null si no viene (S2)', async () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
-      const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacion: null },
-        'edilicia-uuid',
-      );
+      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id }, 'edilicia-uuid');
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
         Result.ok({ ticket, ticketEdilicia, sectorNombre: null }),
       );
@@ -268,16 +292,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('mapea TipoTicketNoPermitidoEnAltaError y TipoTicketNoEncontradoError → 422 (S2)', async () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       crearTicketEdilicioUseCase.execute
-        .mockResolvedValueOnce(
-          Result.fail(new TipoTicketNoPermitidoEnAltaError('PREVENTIVO', 'EDILICIA')),
-        )
+        .mockResolvedValueOnce(Result.fail(new TipoTicketNoPermitidoEnAltaError('PREVENTIVO')))
         .mockResolvedValueOnce(Result.fail(new TipoTicketNoEncontradoError('tipo-uuid')));
 
       await expect(
         controller.crear({ titulo: 'X', prioridadId: 'p', tipoId: 'tipo-uuid' }, USER),
       ).rejects.toThrow(
         new UnprocessableEntityException(
-          'El tipo de ticket "PREVENTIVO" no se puede usar en el alta del módulo EDILICIA.',
+          'El tipo de ticket "PREVENTIVO" no admite altas manuales.',
         ),
       );
       await expect(
@@ -318,7 +340,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       return { items, total: items.length, pagina: 1, porPagina: 20 };
     }
 
-    it('pide la página con los defaults (1, 20, TODAS) y devuelve items mapeados con la metadata', async () => {
+    it('pide la página con los defaults (1, 20, TODAS, sin tipo) y devuelve items mapeados con la metadata', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const spy = vi
         .spyOn(listarReparacionesUseCase.caso, 'executePaginado')
@@ -330,6 +352,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         pagina: 1,
         porPagina: 20,
         bloqueo: 'TODAS',
+        tipoId: null,
         alcance: ALCANCE_USER,
       });
       expect(respuesta).toEqual({ items: [], total: 57, pagina: 1, porPagina: 20 });
@@ -341,31 +364,32 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         .spyOn(listarReparacionesUseCase.caso, 'executePaginado')
         .mockResolvedValue(Result.ok({ items: [], total: 0, pagina: 3, porPagina: 5 }));
 
-      await controller.listar(USER, { pagina: 3, porPagina: 5, bloqueo: 'BLOQUEADAS' });
+      await controller.listar(USER, {
+        pagina: 3,
+        porPagina: 5,
+        bloqueo: 'BLOQUEADAS',
+        tipo: 'tipo-soporte-uuid',
+      });
 
+      // El tipo del selector de la pantalla (odd/ticket-unificado, S2).
       expect(spy).toHaveBeenCalledWith({
         pagina: 3,
         porPagina: 5,
         bloqueo: 'BLOQUEADAS',
+        tipoId: 'tipo-soporte-uuid',
         alcance: ALCANCE_USER,
       });
     });
 
-    it('lista las reparaciones del tenant', async () => {
+    it('lista los tickets con el id y la ubicación del ticket', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
-      // La Ubicacion general del ticket no viaja en Edilicia: se ve la del satelite.
-      ticket.actualizarDatos({ sectorId: 'sector-uuid', ubicacion: 'Ubicacion general' });
-      const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacion: 'Edificio Central' },
-        'edilicia-uuid',
-      );
+      ticket.actualizarDatos({ sectorId: 'sector-uuid', ubicacion: 'Edificio Central' });
       vi.spyOn(listarReparacionesUseCase.caso, 'executePaginado').mockResolvedValue(
         Result.ok(
           pagina([
             {
               ticket,
-              ticketEdilicia,
               subtareas: [],
               porcentajeAvance: 0,
               cantidadComentarios: 2,
@@ -380,7 +404,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { items: result } = await controller.listar(USER, {});
 
       expect(result).toHaveLength(1);
-      expect(result[0].id).toBe('edilicia-uuid');
+      expect(result[0].id).toBe('ticket-uuid');
+      expect(result[0].ticketId).toBe('ticket-uuid');
       expect(result[0].subtareas).toEqual([]);
       // El listado expone SÓLO el conteo — los comentarios tienen su GET propio.
       expect(result[0].cantidadComentarios).toBe(2);
@@ -396,10 +421,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('embebe las subtareas activas, que ahora son las tareas del ticket, con su avance (odd/tareas-con-tecnico T3)', async () => {
       const { controller, listarReparacionesUseCase } = buildController();
       const ticket = makeTicket();
-      const ticketEdilicia = TicketEdiliciaEntity.create(
-        { ticketId: ticket.id, ubicacion: 'Edificio Central' },
-        'edilicia-uuid',
-      );
       const tarea = TareaTicketEntity.crear(
         { ticketId: ticket.id, descripcion: 'Cambiar cañería', orden: 0 },
         'subtarea-uuid',
@@ -409,7 +430,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
           pagina([
             {
               ticket,
-              ticketEdilicia,
               subtareas: [tarea],
               porcentajeAvance: 37.5,
               cantidadComentarios: 0,
@@ -429,7 +449,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(Object.keys(result[0].subtareas[0]).sort()).toEqual(CAMPOS_SUBTAREA);
       expect(result[0].subtareas[0]).toMatchObject({
         id: 'subtarea-uuid',
-        ticketEdiliciaId: 'edilicia-uuid',
+        ticketEdiliciaId: 'ticket-uuid',
         descripcion: 'Cambiar cañería',
         completada: false,
       });
@@ -444,17 +464,11 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   );
 
   describe('POST /reparaciones/:reparacionId/comentarios', () => {
-    it('crea el comentario con el autorId del JWT y resuelve el nombre del autor', async () => {
+    it('crea un comentario INTERNO del ticket con el caso de uso de Tickets, con el autorId del JWT, y resuelve el nombre del autor (L19)', async () => {
       const { controller, crearComentarioUseCase, usuarioMasterChecker } = buildController();
-      const comentario = ComentarioReparacionEntity.create(
-        {
-          ticketEdiliciaId: 'edilicia-uuid',
-          texto: 'Falta el repuesto X',
-          autorId: 'usuario-uuid',
-        },
-        'comentario-uuid',
+      crearComentarioUseCase.execute.mockResolvedValue(
+        Result.ok(comentario('comentario-uuid', 'Falta el repuesto X')),
       );
-      crearComentarioUseCase.execute.mockResolvedValue(Result.ok(comentario));
       usuarioMasterChecker.resolverNombres.mockResolvedValue(
         new Map([['usuario-uuid', { nombre: 'Ana', apellido: 'Gómez' }]]),
       );
@@ -465,52 +479,66 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         USER,
       );
 
-      expect(result.id).toBe('comentario-uuid');
-      expect(result.autorNombre).toBe('Ana');
-      expect(result.autorApellido).toBe('Gómez');
-      expect(crearComentarioUseCase.execute).toHaveBeenCalledWith({
-        ticketEdiliciaId: 'edilicia-uuid',
+      expect(result).toEqual({
+        id: 'comentario-uuid',
+        ticketEdiliciaId: 'ticket-uuid',
         texto: 'Falta el repuesto X',
         autorId: 'usuario-uuid',
-        alcance: ALCANCE_USER,
+        autorNombre: 'Ana',
+        autorApellido: 'Gómez',
+        createdAt: expect.any(String),
+      });
+      // El mismo DTO que `POST /tickets/:id/comentarios` con `esInterno: true`: mismo permiso
+      // (COMENTAR y OBSERVAR sobre el tipo), mismas reglas y sin evento ni primera respuesta.
+      expect(crearComentarioUseCase.execute).toHaveBeenCalledWith({
+        ticketId: 'ticket-uuid',
+        texto: 'Falta el repuesto X',
+        autorId: 'usuario-uuid',
+        esInterno: true,
+        ...ALCANCE_USER,
       });
     });
 
-    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
+    it('con el id de un ticket sin satélite, comenta ese ticket (odd/ticket-unificado)', async () => {
+      const { controller, crearComentarioUseCase } = buildController();
+      crearComentarioUseCase.execute.mockResolvedValue(Result.ok(comentario('c1', 'X')));
+
+      await controller.crearComentario('ticket-sin-satelite', { texto: 'X' }, USER);
+
+      expect(crearComentarioUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ ticketId: 'ticket-sin-satelite' }),
+      );
+    });
+
+    it('un ticket que no existe o no ve llega como 404 que nombra la reparación pedida', async () => {
       const { controller, crearComentarioUseCase } = buildController();
       crearComentarioUseCase.execute.mockResolvedValue(
-        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
+        Result.fail(new TicketNoEncontradoError('ticket-uuid')),
       );
 
       await expect(
         controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      ).rejects.toThrow(
+        new NotFoundException('Ticket edilicio con id "edilicia-uuid" no encontrado.'),
+      );
     });
 
-    it('mapea ComentarioReparacionNoPermitidoError → 422 con el motivo (odd/ticket-cerrado-solo-lectura)', async () => {
+    it('sin OBSERVAR sobre el tipo → 403 con el mensaje del caso de uso de Tickets', async () => {
       const { controller, crearComentarioUseCase } = buildController();
-      crearComentarioUseCase.execute.mockResolvedValue(
-        Result.fail(new ComentarioReparacionNoPermitidoError('cerrado')),
-      );
+      const error = new AccionSobreTipoNoPermitidaError('OBSERVAR');
+      crearComentarioUseCase.execute.mockResolvedValue(Result.fail(error));
 
       await expect(
         controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
-      ).rejects.toMatchObject({
-        status: 422,
-        message: 'El ticket está cerrado y no acepta comentarios nuevos.',
-      });
+      ).rejects.toThrow(new ForbiddenException(error.message));
     });
   });
 
   describe('GET /reparaciones/:reparacionId/comentarios', () => {
     it('resuelve los nombres en UN solo batch sin ids repetidos (sin N+1)', async () => {
       const { controller, listarComentariosUseCase, usuarioMasterChecker } = buildController();
-      const props = { ticketEdiliciaId: 'edilicia-uuid', autorId: 'usuario-uuid' };
       listarComentariosUseCase.execute.mockResolvedValue(
-        Result.ok([
-          ComentarioReparacionEntity.create({ ...props, texto: 'Sigue sin llegar' }, 'c2'),
-          ComentarioReparacionEntity.create({ ...props, texto: 'Se pidió el repuesto' }, 'c1'),
-        ]),
+        Result.ok([comentario('c2', 'Sigue sin llegar'), comentario('c1', 'Se pidió el repuesto')]),
       );
       usuarioMasterChecker.resolverNombres.mockResolvedValue(
         new Map([['usuario-uuid', { nombre: 'Ana', apellido: 'Gómez' }]]),
@@ -519,7 +547,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const result = await controller.listarComentarios('edilicia-uuid', USER);
 
       expect(result.map((c) => c.id)).toEqual(['c2', 'c1']);
+      expect(result.map((c) => c.texto)).toEqual(['Sigue sin llegar', 'Se pidió el repuesto']);
       expect(result.every((c) => c.autorNombre === 'Ana')).toBe(true);
+      expect(listarComentariosUseCase.execute).toHaveBeenCalledWith('ticket-uuid', ALCANCE_USER);
       expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledTimes(1);
       expect(usuarioMasterChecker.resolverNombres).toHaveBeenCalledWith(['usuario-uuid']);
     });
@@ -527,12 +557,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('deja autorNombre/autorApellido en null cuando master no resuelve al autor (usuario dado de baja)', async () => {
       const { controller, listarComentariosUseCase } = buildController();
       listarComentariosUseCase.execute.mockResolvedValue(
-        Result.ok([
-          ComentarioReparacionEntity.create(
-            { ticketEdiliciaId: 'edilicia-uuid', texto: 'Demorado', autorId: 'baja-uuid' },
-            'c1',
-          ),
-        ]),
+        Result.ok([comentario('c1', 'Demorado', 'baja-uuid')]),
       );
 
       const result = await controller.listarComentarios('edilicia-uuid', USER);
@@ -542,10 +567,10 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       expect(result[0].autorApellido).toBeNull();
     });
 
-    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
+    it('un ticket que el actor no ve → 404', async () => {
       const { controller, listarComentariosUseCase } = buildController();
       listarComentariosUseCase.execute.mockResolvedValue(
-        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
+        Result.fail(new TicketNoEncontradoError('ticket-uuid')),
       );
 
       await expect(controller.listarComentarios('edilicia-uuid', USER)).rejects.toBeInstanceOf(
@@ -555,23 +580,23 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   });
 
   describe('POST /reparaciones/:reparacionId/compras', () => {
-    it('vincula la compra a la reparación', async () => {
+    it('vincula la compra al ticket de la reparación (alias de /tickets/:ticketId/compras)', async () => {
       const { controller, vincularCompraUseCase } = buildController();
       vincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
       await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER);
 
       expect(vincularCompraUseCase.execute).toHaveBeenCalledWith({
-        ticketEdiliciaId: 'edilicia-uuid',
+        ticketId: 'ticket-uuid',
         compraId: 'compra-uuid',
         alcance: ALCANCE_USER,
       });
     });
 
-    it('mapea TicketEdiliciaNoEncontradoError → 404', async () => {
+    it('un ticket que el actor no ve → 404', async () => {
       const { controller, vincularCompraUseCase } = buildController();
       vincularCompraUseCase.execute.mockResolvedValue(
-        Result.fail(new TicketEdiliciaNoEncontradoError('edilicia-uuid')),
+        Result.fail(new TicketNoEncontradoError('ticket-uuid')),
       );
 
       await expect(
@@ -603,18 +628,15 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         cicloId: null,
         ticketReferenciaId: null,
         solicitanteId: 'usuario-uuid',
+        ubicacion: 'Aula 3',
       },
       'ticket-uuid',
     );
-    const satelite = TicketEdiliciaEntity.create(
-      { ticketId: 'ticket-uuid', ubicacion: 'Aula 3' },
-      'edilicia-uuid',
-    );
 
-    it('pasa los campos del body y actorEsRoot al caso de uso y responde el shape unificado', async () => {
+    it('pasa los campos del body, el ticket de la reparación y actorEsRoot al caso de uso y responde el shape unificado', async () => {
       const { controller, editarReparacionUseCase } = buildController();
       editarReparacionUseCase.execute.mockResolvedValue(
-        Result.ok({ ticket, ticketEdilicia: satelite, sectorNombre: 'Secundario' }),
+        Result.ok({ ticket, sectorNombre: 'Secundario' }),
       );
 
       const respuesta = await controller.editar(
@@ -624,7 +646,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       expect(editarReparacionUseCase.execute).toHaveBeenCalledWith({
-        reparacionId: 'edilicia-uuid',
+        ticketId: 'ticket-uuid',
         titulo: 'Titulo nuevo',
         descripcion: undefined,
         prioridadId: undefined,
@@ -634,7 +656,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         alcance: ALCANCE_USER,
       });
       expect(respuesta).toMatchObject({
-        id: 'edilicia-uuid',
+        id: 'ticket-uuid',
         ticketId: 'ticket-uuid',
         tipoId: 'tipo-edilicia',
         titulo: 'Titulo nuevo',
@@ -645,9 +667,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
 
     it('ROOT viaja como actorEsRoot: true', async () => {
       const { controller, editarReparacionUseCase } = buildController();
-      editarReparacionUseCase.execute.mockResolvedValue(
-        Result.ok({ ticket, ticketEdilicia: satelite, sectorNombre: null }),
-      );
+      editarReparacionUseCase.execute.mockResolvedValue(Result.ok({ ticket, sectorNombre: null }));
 
       await controller.editar(
         'edilicia-uuid',
@@ -661,7 +681,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     });
 
     it.each<[string, () => DomainError, number]>([
-      ['TicketEdiliciaNoEncontradoError', () => new TicketEdiliciaNoEncontradoError('x'), 404],
+      ['TicketNoEncontradoError', () => new TicketNoEncontradoError('x'), 404],
       [
         'ReparacionNoEditableError EN_PROCESO',
         () => new ReparacionNoEditableError('EN_PROCESO'),
@@ -670,6 +690,11 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       [
         'ReparacionNoEditableError BLOQUEADA',
         () => new ReparacionNoEditableError('BLOQUEADA'),
+        422,
+      ],
+      [
+        'TicketSoloComentariosError (odd/cerrado-solo-comentarios)',
+        () => new TicketSoloComentariosError('CERRADO'),
         422,
       ],
     ])('mapea %s → HTTP %i', async (_nombre, error, http) => {
@@ -683,14 +708,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
   });
 
   describe('DELETE /reparaciones/:reparacionId/compras/:compraId', () => {
-    it('desvincula la compra de la reparación', async () => {
+    it('desvincula la compra del ticket de la reparación', async () => {
       const { controller, desvincularCompraUseCase } = buildController();
       desvincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
 
       await controller.desvincularCompra('edilicia-uuid', 'compra-uuid', USER);
 
       expect(desvincularCompraUseCase.execute).toHaveBeenCalledWith({
-        ticketEdiliciaId: 'edilicia-uuid',
+        ticketId: 'ticket-uuid',
         compraId: 'compra-uuid',
         alcance: ALCANCE_USER,
       });
@@ -699,7 +724,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('mapea VinculoNoEncontradoError → 404', async () => {
       const { controller, desvincularCompraUseCase } = buildController();
       desvincularCompraUseCase.execute.mockResolvedValue(
-        Result.fail(new VinculoNoEncontradoError('edilicia-uuid', 'compra-uuid')),
+        Result.fail(new VinculoNoEncontradoError('ticket-uuid', 'compra-uuid')),
       );
 
       await expect(
@@ -719,7 +744,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const controller = new ReparacionesController(
       espiado(CrearTicketEdilicioUseCase).caso,
       espiado(ListarReparacionesUseCase).caso,
-      espiado(CrearComentarioReparacionUseCase).caso,
+      espiado(CrearComentarioUseCase).caso,
       espiado(ListarComentariosReparacionUseCase).caso,
       usuarioMasterCheckerFalso(),
       exportarReparaciones.caso,
@@ -727,6 +752,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
       espiado(DesvincularCompraDeReparacionUseCase).caso,
       espiado(EditarReparacionUseCase).caso,
       cargadorDeAlcance(),
+      resolutor(),
     );
     return { controller, exportarReparaciones };
   }
@@ -748,7 +774,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(USER, res);
+    const salida = await controller.exportar(USER, res, {});
 
     expect(salida).toBe('Número;Título');
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
@@ -766,10 +792,10 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(USER, res, 'xlsx');
+    const salida = await controller.exportar(USER, res, {}, 'xlsx');
 
     expect(salida).toBeInstanceOf(StreamableFile);
-    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith(ALCANCE_USER, 'xlsx');
+    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith(ALCANCE_USER, 'xlsx', null);
     expect(headers.get('Content-Type')).toBe(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
@@ -787,23 +813,30 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    const salida = await controller.exportar(USER, res);
+    const salida = await controller.exportar(USER, res, {});
 
     expect(salida).toBe('a;b');
-    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith(ALCANCE_USER, 'csv');
+    expect(exportarReparaciones.execute).toHaveBeenLastCalledWith(ALCANCE_USER, 'csv', null);
     expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
   });
 
-  it('no recibe query ni filtros — llama a execute() solo con el alcance del actor y el formato', async () => {
+  it('sin filtros — llama a execute() con el alcance del actor, el formato y el tipo de la grilla', async () => {
     const exportarReparaciones = espiado(ExportarReparacionesUseCase);
     exportarReparaciones.execute.mockResolvedValue(
       Result.ok({ contenido: '', nombreArchivo: 'reparaciones-2026-08-19.csv' }),
     );
     const { controller } = buildController({ exportarReparaciones });
 
-    await controller.exportar(USER, respuestaFalsa().res);
+    await controller.exportar(USER, respuestaFalsa().res, {});
+    await controller.exportar(USER, respuestaFalsa().res, { tipo: 'tipo-soporte-uuid' });
 
-    expect(exportarReparaciones.execute).toHaveBeenCalledWith(ALCANCE_USER, 'csv');
+    expect(exportarReparaciones.execute).toHaveBeenNthCalledWith(1, ALCANCE_USER, 'csv', null);
+    expect(exportarReparaciones.execute).toHaveBeenNthCalledWith(
+      2,
+      ALCANCE_USER,
+      'csv',
+      'tipo-soporte-uuid',
+    );
   });
 
   it('traduce el tope excedido a 422 y no escribe headers de descarga', async () => {
@@ -814,7 +847,7 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
     const { controller } = buildController({ exportarReparaciones });
     const { res, headers } = respuestaFalsa();
 
-    await expect(controller.exportar(USER, res)).rejects.toBeInstanceOf(
+    await expect(controller.exportar(USER, res, {})).rejects.toBeInstanceOf(
       UnprocessableEntityException,
     );
     expect(headers.size).toBe(0);
@@ -907,7 +940,7 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
 describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ticket, D5 c-e)', () => {
   function armar() {
     const crearTicketEdilicio = espiado(CrearTicketEdilicioUseCase);
-    const crearComentario = espiado(CrearComentarioReparacionUseCase);
+    const crearComentario = espiado(CrearComentarioUseCase);
     const editar = espiado(EditarReparacionUseCase);
     const controller = new ReparacionesController(
       crearTicketEdilicio.caso,
@@ -920,22 +953,23 @@ describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ti
       espiado(DesvincularCompraDeReparacionUseCase).caso,
       editar.caso,
       cargadorDeAlcance(),
+      resolutor(),
     );
     return { controller, crearTicketEdilicio, crearComentario, editar };
   }
 
   /**
-   * Las celdas `EDILICIA:*` dejan de decidir (D5 d). Quedan solo las de otro módulo:
-   * `COMPRAS:LECTURA` al vincular (el selector lee `GET /compras`) y `EDILICIA:BORRADO` al
-   * desvincular, que sigue siendo permiso del módulo y no entra a la tabla por tipo (L21).
+   * Las celdas `EDILICIA:*` dejan de decidir (D5 d), y desde odd/ticket-unificado (S4) tampoco
+   * `EDILICIA:BORRADO`: vincular y desvincular exigen `COMPRAS:LECTURA` en la ruta (el selector lee
+   * `GET /compras`) y `MODIFICACION` sobre el tipo en el caso de uso.
    */
-  it('solo vincular y desvincular compra declaran @RequiereAcciones, y ninguna celda EDILICIA de tickets', () => {
+  it('solo vincular y desvincular compra declaran @RequiereAcciones, las dos COMPRAS:LECTURA y ninguna EDILICIA', () => {
     const rutas = accionesPorRuta(ReparacionesController);
 
     expect(rutas.size).toBe(8);
     expect(Object.fromEntries([...rutas].filter(([, acciones]) => acciones.length > 0))).toEqual({
       vincularCompra: ['COMPRAS:LECTURA'],
-      desvincularCompra: ['EDILICIA:BORRADO'],
+      desvincularCompra: ['COMPRAS:LECTURA'],
     });
   });
 
@@ -956,7 +990,7 @@ describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ti
   it('una reparación que el actor ve sin la acción sobre su tipo llega como 403 (editar y comentar)', async () => {
     const { controller, crearComentario, editar } = armar();
     crearComentario.execute.mockResolvedValue(
-      Result.fail(new AccionSobreTipoNoPermitidaError('ALTAS o COMENTAR')),
+      Result.fail(new AccionSobreTipoNoPermitidaError('COMENTAR')),
     );
     editar.execute.mockResolvedValue(
       Result.fail(new AccionSobreTipoNoPermitidaError('MODIFICACION')),

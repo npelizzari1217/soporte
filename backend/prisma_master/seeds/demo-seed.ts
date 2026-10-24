@@ -536,6 +536,7 @@ async function crearEquiposDemo(
     marca: 'Dell',
     modelo: 'Latitude 5420',
     fechaAdquisicion: new Date(Date.UTC(anio - 1, 0, 15)),
+    usuarioId: usuarios.administrador,
   });
   if (notebook.isFail()) {
     throw new Error(
@@ -594,6 +595,7 @@ async function crearEquiposDemo(
     marca: 'HP',
     modelo: 'LaserJet Pro M404',
     fechaAdquisicion: new Date(Date.UTC(anio - 1, 5, 1)),
+    usuarioId: usuarios.administrador,
   });
   if (impresora.isFail()) {
     throw new Error(

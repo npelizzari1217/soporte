@@ -297,4 +297,9 @@ export interface ComprasFiltros {
   sectorId?: string;
   fechaDesde?: string;
   fechaHasta?: string;
+  /**
+   * Texto contenido en el `motivo` o en el `numero`, sin distinguir
+   * mayúsculas. Viaja ya recortado; ver `busquedaComprasSchema`.
+   */
+  busqueda?: string;
 }

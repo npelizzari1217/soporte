@@ -24,8 +24,6 @@ export interface TicketEditDialogProps {
   prioridades: Prioridad[] | undefined;
   /** Pass-through hacia `TicketEditForm`: nombre del sector vigente, aunque esté desactivado. */
   sectorNombre: string | null;
-  /** Pass-through hacia `TicketEditForm`: `false` en los tickets de Edilicia (CA2). */
-  mostrarUbicacion: boolean;
   onSubmit: (dto: EditarTicketDto) => void;
   isSubmitting: boolean;
 }
@@ -34,7 +32,6 @@ export function TicketEditDialog({
   defaultValues,
   prioridades,
   sectorNombre,
-  mostrarUbicacion,
   onSubmit,
   isSubmitting,
 }: TicketEditDialogProps) {
@@ -66,7 +63,6 @@ export function TicketEditDialog({
           // `data` tal cual: `undefined` mientras no resolvió (ver JSDoc de la prop).
           sectores={sectoresQuery.data}
           sectorNombre={sectorNombre}
-          mostrarUbicacion={mostrarUbicacion}
           onSubmit={handleSubmit}
           onCancel={() => setOpen(false)}
           isSubmitting={isSubmitting}

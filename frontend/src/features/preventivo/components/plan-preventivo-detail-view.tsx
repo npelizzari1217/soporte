@@ -3,7 +3,10 @@
 /**
  * PlanPreventivoDetailView — CONTAINER montado por `/preventivo/[id]` (WU-7.3).
  * El backend NO expone `GET /preventivo/planes/:id` (WU-4) — el plan se
- * deriva del listado cacheado (`usePlanPreventivo`); la vista de generaciones
+ * deriva del listado cacheado (`usePlanPreventivo`). El listado trae solo los
+ * planes de tipos de ticket con LECTURA (odd/preventivo-por-tipo, S4), así
+ * que el plan de un tipo que el usuario no ve cae en "no existe", como el 404
+ * del backend en sus generaciones. La vista de generaciones
  * SÍ consume su endpoint propio (`GET /preventivo/planes/:id/generaciones`,
  * ya existente desde WU-4) — este WU es consumo, no API nueva.
  *
@@ -34,11 +37,12 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { useEquipos } from "@/features/equipos/hooks/use-equipos";
+import { useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { notifyError } from "@/shared/lib/toast";
 import { usePlanPreventivo, useGeneracionesPlan } from "../hooks/use-planes-preventivo";
 import { useDarDeBajaPlanPreventivo } from "../hooks/use-planes-preventivo-mutations";
 import { badgeVariantDeResultado, etiquetaResultado } from "../lib/resultado-generacion";
-import { objetivoLabel, unidadIntervaloLabel } from "../lib/plan-labels";
+import { anticipacionLabel, objetivoLabel, tipoPlanLabel, unidadIntervaloLabel } from "../lib/plan-labels";
 import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { PlanPreventivoEditDialog } from "./plan-preventivo-edit-dialog";
 import type { PreventivoGeneracion } from "../types";
@@ -51,6 +55,7 @@ export function PlanPreventivoDetailView({ planId }: PlanPreventivoDetailViewPro
   const router = useRouter();
   const planQuery = usePlanPreventivo(planId);
   const equiposQuery = useEquipos();
+  const tiposQuery = useTiposTicket();
   const generacionesQuery = useGeneracionesPlan(planId);
   const darDeBajaMutation = useDarDeBajaPlanPreventivo();
 
@@ -114,7 +119,7 @@ export function PlanPreventivoDetailView({ planId }: PlanPreventivoDetailViewPro
           title={plan.titulo}
           // `proximaEjecucionEn` (`PlanPreventivo`) espeja `proxima_ejecucion_en @db.Date`
           // (`prisma_tenant/schema.prisma`) — fecha de calendario, no instante: `formatearFechaCalendario`.
-          description={`${objetivo} · Cada ${plan.intervaloValor} ${unidad} · Próxima ejecución: ${formatearFechaCalendario(plan.proximaEjecucionEn)}`}
+          description={`Tipo de ticket: ${tipoPlanLabel(plan.tipoId, tiposQuery.data)} · ${objetivo} · Cada ${plan.intervaloValor} ${unidad} · Anticipación: ${anticipacionLabel(plan)} · Próxima ejecución: ${formatearFechaCalendario(plan.proximaEjecucionEn)}`}
           actions={
             <div className="flex items-center gap-2">
               {/* Entrada ÚNICA al diálogo de edición, desde el detalle — no se agrega

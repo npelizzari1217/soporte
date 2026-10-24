@@ -1,6 +1,6 @@
 /**
- * ReparacionCompraMapper — convierte la fila cruda de Prisma (vínculo +
- * compra + ítems) a `CompraVinculada`, la vista estructural que
+ * ReparacionCompraMapper — convierte la fila cruda de Prisma (vínculo de
+ * `ticket_compra` + compra + ítems) a `CompraVinculada`, la vista estructural que
  * `bloqueo-reparacion.ts` (dominio) necesita para derivar el bloqueo.
  *
  * IMPORTANTE: archivo en infrastructure/ — puede importar de '.prisma/tenant'.
@@ -17,11 +17,7 @@
  * Ref design: sdd/reparacion-bloqueada-por-compra/design, D1, D2, contrato
  * `bloqueo-reparacion.ts`. Tarea: WU2.3.
  */
-import type {
-  Compra as PrismaCompra,
-  ItemCompra as PrismaItemCompra,
-  ReparacionCompra as PrismaReparacionCompra,
-} from '.prisma/tenant';
+import type { Compra as PrismaCompra, ItemCompra as PrismaItemCompra } from '.prisma/tenant';
 import {
   EstadoAprobacionItem,
   itemComprado,
@@ -29,8 +25,11 @@ import {
 } from '../../../../compras/domain/services/estado-compra';
 import { CompraVinculada } from '../../../domain/services/bloqueo-reparacion';
 
-/** Fila de `reparacion_compra` con la compra y sus ítems incluidos (`include`). */
-export type ReparacionCompraConCompraEItems = PrismaReparacionCompra & {
+/**
+ * Fila de un vínculo con la compra y sus ítems incluidos (`include`). Solo se mira la compra: el
+ * mismo mapper sirve para `ticket_compra` desde cualquier consulta (odd/ticket-unificado).
+ */
+export type ReparacionCompraConCompraEItems = {
   compra: PrismaCompra & { items: PrismaItemCompra[] };
 };
 

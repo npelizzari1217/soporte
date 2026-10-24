@@ -8,9 +8,22 @@ export interface PlanCicloBase {
   intervaloUnidad: IntervaloUnidad;
 }
 
+/** Anticipación de la generación respecto de la fecha del ciclo (odd/preventivo-anticipacion). */
+export interface AnticipacionCiclo {
+  valor: number;
+  unidad: IntervaloUnidad;
+}
+
 /** Insumo de `ciclosPendientes`: el plan base + su puntero actual. */
 export interface PlanCicloConPuntero extends PlanCicloBase {
+  /** Fecha del CICLO (no de generación) del próximo ciclo sin procesar. */
   proximaEjecucionEn: Date;
+  /**
+   * Cuánto antes de la fecha del ciclo se genera su ticket. Ausente = 0: el
+   * ciclo vence el mismo día de su fecha. `EditarPlanUseCase` la omite a
+   * propósito para recalcular el puntero por fecha de ciclo.
+   */
+  anticipacion?: AnticipacionCiclo;
 }
 
 /** Resultado de `ciclosPendientes` para UN plan en UNA corrida del barrido. */
@@ -74,19 +87,43 @@ export class CalcularCicloService {
   }
 
   /**
+   * Fecha de GENERACIÓN de un ciclo: la fecha del ciclo menos la
+   * anticipación (odd/preventivo-anticipacion T2). `MESES` resta meses de
+   * calendario con clamp al último día del mes destino, el mismo criterio
+   * que `fechaCiclo` usa al sumar (`31/03` − 1 mes = `28/02`) y el que aplica
+   * Postgres a `date - interval 'N months'`, que es lo que usa
+   * `findVencibles` para elegir los planes.
+   */
+  fechaGeneracion(fechaCiclo: Date, anticipacion: AnticipacionCiclo): Date {
+    if (anticipacion.unidad === 'DIAS') {
+      return new Date(fechaCiclo.getTime() - anticipacion.valor * MS_POR_DIA);
+    }
+    return this.sumarMesesClamped(fechaCiclo, -anticipacion.valor);
+  }
+
+  /**
    * Enumera los ciclos vencidos (`<= hoy`) desde `proximaEjecucionEn` en
    * adelante, acotado por `tope` iteraciones. El más reciente es el
    * `candidato`; el resto son `salteados` (ADR-PV3). Si `tope` se agota sin
    * alcanzar `hoy` (caso patológico: ancla vieja + cadencia corta), no hay
    * `candidato` — solo una fila de salteo sobre el ciclo vencido más
    * antiguo y un re-anclaje aritmético del puntero.
+   *
+   * Con `anticipacion`, "vencido" se mide sobre la fecha de GENERACIÓN de
+   * cada ciclo (`fechaGeneracion(ciclo) <= hoy`), pero lo que se devuelve
+   * —candidato, salteados y puntero— son siempre fechas de CICLO: el
+   * candidato puede caer en el futuro, que es justamente la anticipación.
    */
   ciclosPendientes(
     plan: PlanCicloConPuntero,
     hoy: Date,
     tope: number = CalcularCicloService.TOPE_PREVENTIVO,
   ): ResultadoCiclosPendientes {
-    if (plan.proximaEjecucionEn.getTime() > hoy.getTime()) {
+    const anticipacion = plan.anticipacion ?? { valor: 0, unidad: 'DIAS' };
+    const vence = (fechaCiclo: Date): boolean =>
+      this.fechaGeneracion(fechaCiclo, anticipacion).getTime() <= hoy.getTime();
+
+    if (!vence(plan.proximaEjecucionEn)) {
       return {
         candidato: null,
         salteados: [],
@@ -101,7 +138,7 @@ export class CalcularCicloService {
 
     while (iteraciones < tope) {
       const fecha = this.fechaCiclo(plan, k);
-      if (fecha.getTime() > hoy.getTime()) {
+      if (!vence(fecha)) {
         return {
           candidato: vencidos[vencidos.length - 1] ?? null,
           salteados: vencidos.slice(0, -1),
@@ -116,7 +153,9 @@ export class CalcularCicloService {
 
     // TOPE agotado sin alcanzar `hoy`: re-anclaje aritmético, una única fila
     // de salteo sobre el ciclo vencido más antiguo (ADR-PV3). Sin candidato:
-    // este caso NO genera ticket.
+    // este caso NO genera ticket. El re-anclaje ignora la anticipación: deja
+    // el puntero en el primer ciclo `>= hoy`, y si su generación ya venció lo
+    // toma el barrido siguiente.
     return {
       candidato: null,
       salteados: [plan.proximaEjecucionEn],

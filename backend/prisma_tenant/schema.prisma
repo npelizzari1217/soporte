@@ -133,6 +133,7 @@ model TipoTicket {
   tickets            Ticket[]
   reglaAsignacion    ReglaAsignacion?
   permisosTipoTicket PermisoTipoTicket[]
+  planesPreventivo   PlanPreventivo[]
 
   @@index([modulo, activo])
   @@map("tipos_ticket")
@@ -330,10 +331,17 @@ model Ticket {
   resolucionHabilS         Int?      @map("resolucion_habil_s")
   primeraRespuestaHabilS   Int?      @map("primera_respuesta_habil_s")
   fechaCierre       DateTime? @map("fecha_cierre") @db.Timestamptz
-  /// Ubicacion y sector opcionales (odd/ubicacion-sector-ticket). `ubicacion` es texto libre y es
-  /// otra columna que `ticket_edilicia.ubicacion`. `sectorId`: FK RESTRICT → sectores.id.
+  /// Ubicacion y sector opcionales (odd/ubicacion-sector-ticket). `ubicacion` es texto libre y es la
+  /// única del ticket desde odd/ticket-unificado (la migración 20261024120000 copió acá la de
+  /// `ticket_edilicia`). `sectorId`: FK RESTRICT → sectores.id.
   ubicacion          String?   @db.VarChar(255)
   sectorId           String?   @map("sector_id") @db.Uuid
+  /// Fecha objetivo (odd/preventivo-anticipacion): la fecha del ciclo del plan preventivo que generó
+  /// el ticket. Informativa, sin efecto en el SLA. NULL en los tickets que no salen de un plan.
+  fechaObjetivo      DateTime? @map("fecha_objetivo") @db.Date
+  /// Recordatorio de preventivo enviado (odd/preventivo-anticipacion T3): lo marca solo el UPDATE acotado
+  /// del barrido, en la misma transaccion que reclama el ticket. NULL = sin recordatorio. Nunca el upsert.
+  recordatorioEnviadoAt DateTime? @map("recordatorio_enviado_at") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
@@ -353,6 +361,8 @@ model Ticket {
   ticketSoporte         TicketSoporte?
   encuestasSatisfaccion EncuestaSatisfaccion[]
   tareas                TareaTicket[]
+  /// Compras vinculadas al ticket, de cualquier tipo (odd/ticket-unificado).
+  comprasVinculadas     TicketCompra[]
   /// Back-relation opcional: NO todo ticket nace de un plan preventivo — la
   /// mayoría son altas manuales. Posible gracias al UNIQUE sobre
   /// preventivo_generacion.ticket_id (sdd/preventivo, WU-2).
@@ -372,6 +382,7 @@ model Ticket {
   @@index([id], map: "tickets_sla_reloj_pendiente_idx") // partial WHERE sla_reloj_pendiente — ver migration SQL
   @@index([id], map: "tickets_sla_meta_pendiente_idx") // partial WHERE sla_meta_pendiente — ver migration SQL
   @@index([primeraRespuestaVenceAt], map: "tickets_primera_respuesta_pendiente_idx") // partial — ver migration SQL
+  @@index([fechaObjetivo], map: "tickets_recordatorio_pendiente_idx") // partial — ver migration SQL
   @@map("tickets")
 }
 
@@ -565,6 +576,11 @@ model ArchivoOperacion {
 
 // ─── REPARACIONES EDILICIAS ────────────────────────────────────────────────────
 //
+// CONGELADAS desde odd/ticket-unificado (migración 20261024120000): las compras, la ubicación y los
+// comentarios pasaron al ticket (`ticket_compra`, `tickets.ubicacion`, `operaciones_ticket`). Nadie
+// escribe `ticket_edilicia.ubicacion`, `reparacion_compra` ni `comentarios_reparacion`; el alta de
+// `/reparaciones` todavía crea la fila del satélite, sin ubicación, hasta que T4 retire las tres.
+//
 // ticket_edilicia (satélite 1:1 con tickets). Los pasos de la reparación son las
 // tareas del ticket base (`tareas_ticket`); `subtareas_edilicia`,
 // `personal_asignado_id` y `porcentaje_avance` se retiraron en la migración
@@ -643,6 +659,25 @@ model ReparacionCompra {
 
   @@unique([ticketEdiliciaId, compraId], map: "reparacion_compra_ticket_compra_key")
   @@map("reparacion_compra")
+}
+
+// Vínculo TICKET ↔ COMPRA (`ticket_compra`, odd/ticket-unificado). Reemplaza a `reparacion_compra`:
+// cualquier ticket, de cualquier tipo, puede tener compras vinculadas, y una con grupo de estado
+// `ACTIVAS` lo bloquea. Mismo diseño que la tabla vieja (cabecera de compra, HARD DELETE, sin
+// updated_at, UNIQUE por el par), con el ticket en lugar del satélite. La migración 20261024120000
+// copió los vínculos viejos conservando id y created_at.
+model TicketCompra {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ticketId  String   @map("ticket_id") @db.Uuid
+  compraId  String   @map("compra_id") @db.Uuid
+  /// Marca de INICIO del bloqueo (heredada de `reparacion_compra` en la copia).
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  compra Compra @relation(fields: [compraId], references: [id], onDelete: Restrict)
+
+  @@unique([ticketId, compraId], map: "ticket_compra_ticket_compra_key")
+  @@map("ticket_compra")
 }
 
 // ─── EQUIPOS INFORMÁTICOS ──────────────────────────────────────────────────────
@@ -725,8 +760,30 @@ model EquipoInformatico {
   unidadesInsumo   UnidadInsumo[]
   eventosUnidad    EventoUnidadInsumo[]
   pedidosPublicos  PedidoPublicoPendiente[]
+  valoraciones     ValoracionEquipo[]
 
   @@map("equipos_informaticos")
+}
+
+/// Historial del valor de un equipo (odd/tasks/historial-valor-residual.md): una fila por equipo y
+/// día de calendario; el último guardado del día reemplaza al anterior (upsert sobre el UNIQUE).
+/// Solo se agregan filas: ningún flujo las borra. CHECK `equipo_valoraciones_origen_check` (fuente
+/// única: `ORIGENES_VALORACION_EQUIPO`) enforced via migration SQL. `usuarioId` es referencia blanda
+/// a master (sin FK); NULL en las filas de migración.
+model ValoracionEquipo {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId  String   @map("equipo_id") @db.Uuid
+  fecha     DateTime @db.Date
+  importe   Decimal  @db.Decimal(14, 2)
+  origen    String   @db.VarChar(20)
+  usuarioId String?  @map("usuario_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  equipo EquipoInformatico @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+
+  @@unique([equipoId, fecha])
+  @@map("equipo_valoraciones")
 }
 
 // ─── CATÁLOGO DE INSUMOS (sdd/insumos-catalogo, Entrega 1) ──────────────────
@@ -1241,6 +1298,7 @@ model Compra {
   items                  ItemCompra[]
   operaciones            OperacionCompra[]
   reparacionesVinculadas ReparacionCompra[]
+  ticketsVinculados      TicketCompra[]
 
   @@index([cicloId])
   @@index([solicitanteId])
@@ -1381,12 +1439,20 @@ model PlanPreventivo {
   /// criterio que equipos_informaticos.ubicacion. Excluyente con `equipoId`.
   ubicacion          String?   @db.VarChar(255)
   prioridadId        String    @map("prioridad_id") @db.Uuid
+  /// Tipo de los tickets que genera el plan (odd/preventivo-por-tipo). Decide tambien quien ve,
+  /// crea, edita y da de baja el plan. Los planes previos quedaron en PREVENTIVO (backfill).
+  tipoId             String    @map("tipo_id") @db.Uuid
   /// Soft ref → master.usuarios.id. Solicitante/autor del ticket que genera el barrido.
   responsableId      String    @map("responsable_id") @db.Uuid
   /// CHECK (intervalo_valor > 0).
   intervaloValor     Int       @map("intervalo_valor")
   /// CHECK (intervalo_unidad IN ('DIAS','MESES')).
   intervaloUnidad    String    @map("intervalo_unidad") @db.VarChar(10)
+  /// Anticipacion de la generacion (odd/preventivo-anticipacion). CHECK >= 0 y menor que la
+  /// cadencia en dias (mes = 30). DEFAULT 0 = genera el dia del ciclo.
+  anticipacionValor  Int       @default(0) @map("anticipacion_valor")
+  /// CHECK (anticipacion_unidad IN ('DIAS','MESES')).
+  anticipacionUnidad String    @default("DIAS") @map("anticipacion_unidad") @db.VarChar(10)
   /// Ancla INMUTABLE del cálculo de ciclos. Nunca se recalcula a partir de now().
   fechaInicio        DateTime  @map("fecha_inicio") @db.Date
   /// Puntero que el barrido consulta (índice parcial) y avanza tras cada ciclo procesado.
@@ -1398,12 +1464,15 @@ model PlanPreventivo {
 
   equipo       EquipoInformatico?     @relation(fields: [equipoId], references: [id])
   prioridad    Prioridad              @relation(fields: [prioridadId], references: [id])
+  tipo         TipoTicket             @relation(fields: [tipoId], references: [id])
   generaciones PreventivoGeneracion[]
 
   /// Parcial WHERE activo AND deleted_at IS NULL — exactamente la query del cron (ADR-PV2/PV3).
   @@index([proximaEjecucionEn], map: "planes_preventivo_proxima_ejecucion_idx")
   /// Parcial WHERE equipo_id IS NOT NULL — planes de un equipo (ficha + baja del equipo).
   @@index([equipoId], map: "planes_preventivo_equipo_id_idx")
+  /// Listado por tipos visibles del actor (odd/preventivo-por-tipo, S1).
+  @@index([tipoId], map: "planes_preventivo_tipo_id_idx")
   @@map("planes_preventivo")
 }
 

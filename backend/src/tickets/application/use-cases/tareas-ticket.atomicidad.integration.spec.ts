@@ -27,7 +27,10 @@ import { CrearTareaTicketUseCase } from './crear-tarea-ticket.use-case';
 import { Result } from '../../../shared/domain/result';
 
 // odd/ticket-cerrado-solo-lectura tiene su propio spec unitario; acá el ticket siempre es editable.
-const siempreEditable = { verificar: async () => Result.ok(undefined) };
+const siempreEditable = {
+  verificar: async () => Result.ok(undefined),
+  verificarEstado: async () => Result.ok(undefined),
+};
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -177,6 +180,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
 
     const result = await enTenant(() =>
       completarUseCase(operacionRepo).execute({
+        clienteId: 'cliente-tareas',
         ticketId,
         tareaId: tarea.id,
         actor: RESPONSABLE_ACTOR,
@@ -199,6 +203,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
     await expect(
       enTenant(() =>
         completarUseCase(operacionRepoQueFalla).execute({
+          clienteId: 'cliente-tareas',
           ticketId,
           tareaId: tarea.id,
           actor: RESPONSABLE_ACTOR,

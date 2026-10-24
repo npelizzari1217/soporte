@@ -25,8 +25,9 @@
  * El acceso a tickets NO sale de estas celdas (odd/tasks/permisos-por-tipo-ticket.md, T9a, L50.4):
  * lo da la plantilla por tipo de `PLANTILLAS_POR_TIPO_ROL`. Por eso ningún preset trae las celdas
  * que reemplazan los permisos por tipo (`TICKETS:*` y `EDILICIA:LECTURA|ALTAS|MODIFICACION`), que
- * desde T9b ni siquiera están en el catálogo; `EDILICIA:BORRADO` (desvincular compra) sigue siendo
- * permiso del módulo (L50.2).
+ * desde T9b ni siquiera están en el catálogo. `EDILICIA:BORRADO` sigue en el catálogo, pero desde
+ * odd/ticket-unificado (S4) ninguna ruta lo exige: desvincular una compra pide `MODIFICACION` sobre
+ * el tipo y `COMPRAS:LECTURA`.
  */
 import { CodigoAccion } from '../../shared/domain/acciones';
 import { Result } from '../../shared/domain/result';
@@ -56,7 +57,7 @@ export const PRESETS_ROL: Readonly<Record<string, readonly CodigoAccion[]>> = {
     'PREVENTIVO:BORRADO',
   ],
   TECNICO: [
-    // Desvincular una compra de una reparación: permiso del módulo, no por tipo (L21, L50.2).
+    // Celda heredada (L21, L50.2): desde odd/ticket-unificado (S4) ninguna ruta la exige.
     'EDILICIA:BORRADO',
     'EQUIPOS:ALTAS',
     'EQUIPOS:MODIFICACION',

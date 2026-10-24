@@ -40,6 +40,12 @@ export interface Ticket {
   asignadoApellido: string | null;
   /** Solo en el detalle: teléfono del solicitante externo (`null` si no cargó). Ausente en el listado. */
   solicitanteTelefono?: string | null;
+  /**
+   * Solo en el detalle (`GET /tickets/:id`): `true` si una compra activa vinculada frena las tareas
+   * (odd/ticket-unificado, S5). Llega a todo el que ve el ticket, sin `COMPRAS:LECTURA`, y no dice
+   * qué compra lo bloquea (L19). Ausente en el listado.
+   */
+  bloqueada?: boolean;
   /** Calculado por el módulo SLA (Fase 4). `null` = sin SLA aplicable/calculado aún. */
   slaVenceAt: string | null;
   /** Desnormalizado: deduplicador del mail del barrido. Lo que se muestra es `sla`. */
@@ -59,9 +65,8 @@ export interface Ticket {
    */
   fechaCierre: string | null;
   /**
-   * Ubicación general, texto libre (odd/ubicacion-sector-ticket). En los tickets
-   * de Edilicia no se carga ni se muestra: Edilicia tiene su propia ubicación
-   * (`TicketEdilicia.ubicacion`).
+   * Ubicación, texto libre (odd/ubicacion-sector-ticket). Desde odd/ticket-unificado
+   * (L11) es la única, en cualquier tipo de ticket: la misma que muestra Edilicia.
    */
   ubicacion: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket); `null` = sin sector. */
@@ -71,6 +76,13 @@ export interface Ticket {
    * desactivado (`GET /sectores` solo trae los activos). `null` = sin sector.
    */
   sectorNombre: string | null;
+  /**
+   * Fecha objetivo de un ticket preventivo (odd/preventivo-anticipacion): la fecha del ciclo del
+   * plan, aunque el ticket se haya generado antes. Día calendario (`@db.Date`): viaja como la
+   * medianoche UTC y se muestra con `formatearFechaCalendario`. Informativa, sin SLA. `null` en los
+   * tickets que no salen de un plan preventivo.
+   */
+  fechaObjetivo: string | null;
   createdAt: string;
   updatedAt: string;
   /**
@@ -221,8 +233,9 @@ export interface UsuarioAsignable {
 
 /**
  * Técnico elegible para atender un ticket (espejo de `TecnicoAsignable` del
- * backend, `GET /tickets/:id/asignables`). Ya viene filtrado por el módulo del
- * tipo del ticket — el combo lo muestra tal cual.
+ * backend, `GET /tickets/:id/asignables`, `GET /tickets/agentes`,
+ * `GET /preventivo/planes/responsables`). Ya viene filtrado por tipo en el
+ * backend — el combo lo muestra tal cual.
  */
 export interface TecnicoAsignable {
   id: string;
@@ -279,4 +292,22 @@ export interface AvanceTareas {
 export interface TareasTicketResponse {
   items: TareaTicket[];
   avance: AvanceTareas;
+}
+
+/**
+ * Grupo de estado de una compra (`GrupoEstadoCompra` del backend): solo una `ACTIVAS` bloquea el
+ * ticket al que está vinculada (odd/ticket-unificado, S5).
+ */
+export type GrupoEstadoCompraVinculada = "ACTIVAS" | "COMPLETADAS" | "CANCELADAS";
+
+/**
+ * Compra vinculada a un ticket (`CompraDeTicketResponseDto`, `GET /tickets/:id/compras`,
+ * odd/ticket-unificado): identidad mínima, su grupo de estado y si hoy bloquea el ticket. La ruta
+ * exige `COMPRAS:LECTURA` (L19, L22).
+ */
+export interface CompraDeTicket {
+  id: string;
+  numero: string;
+  grupo: GrupoEstadoCompraVinculada;
+  bloquea: boolean;
 }

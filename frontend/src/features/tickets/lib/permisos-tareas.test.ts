@@ -29,26 +29,31 @@ describe("permisos-tareas — responsable desconocido", () => {
   });
 });
 
-describe("motivoTareasSoloLectura (odd/ticket-cerrado-solo-lectura, S4)", () => {
-  it("CERRADO y CANCELADO bloquean con su motivo, aunque no esté bloqueada por compra", () => {
-    expect(motivoTareasSoloLectura("CERRADO", false)).toBe(
-      "El ticket está cerrado: sus tareas ya no se modifican.",
-    );
-    expect(motivoTareasSoloLectura("CANCELADO", false)).toBe(
-      "El ticket está cancelado: sus tareas ya no se modifican.",
+describe("motivoTareasSoloLectura (odd/cerrado-solo-comentarios, S1-S3; odd/ticket-cerrado-solo-lectura, S4)", () => {
+  it("RESUELTO, CERRADO y CANCELADO dejan las tareas en solo lectura a quien no es administrador, nombrando el estado", () => {
+    expect(motivoTareasSoloLectura("RESUELTO", false, false)).toBe("El ticket está resuelto: solo admite comentarios.");
+    expect(motivoTareasSoloLectura("CERRADO", false, false)).toBe("El ticket está cerrado: solo admite comentarios.");
+    expect(motivoTareasSoloLectura("CANCELADO", false, false)).toBe(
+      "El ticket está cancelado: solo admite comentarios.",
     );
   });
 
-  it("bloqueada por compra bloquea en cualquier estado no terminal, y el estado terminal manda antes", () => {
-    expect(motivoTareasSoloLectura("EN_PROCESO", true)).toBe(
-      "La reparación está bloqueada por una compra en curso: sus tareas ya no se modifican.",
-    );
-    expect(motivoTareasSoloLectura("CERRADO", true)).toMatch(/cerrado/);
+  it("caso hermano: un ADMINISTRADOR o ROOT edita las tareas en esos estados (S3)", () => {
+    for (const estado of ["RESUELTO", "CERRADO", "CANCELADO"]) {
+      expect(motivoTareasSoloLectura(estado, false, true)).toBeNull();
+    }
   });
 
-  it("RESUELTO, los demás estados y el catálogo sin resolver no bloquean", () => {
-    expect(motivoTareasSoloLectura("RESUELTO", false)).toBeNull();
-    expect(motivoTareasSoloLectura("NUEVO", false)).toBeNull();
-    expect(motivoTareasSoloLectura(undefined, false)).toBeNull();
+  it("bloqueada por compra bloquea a cualquiera, administrador incluido, y el estado manda antes", () => {
+    const bloqueo = "El ticket está bloqueado por una compra en curso: sus tareas ya no se modifican.";
+    expect(motivoTareasSoloLectura("EN_PROCESO", true, false)).toBe(bloqueo);
+    expect(motivoTareasSoloLectura("CERRADO", true, true)).toBe(bloqueo);
+    expect(motivoTareasSoloLectura("CERRADO", true, false)).toMatch(/cerrado/);
+  });
+
+  it("los demás estados y el catálogo sin resolver no bloquean", () => {
+    expect(motivoTareasSoloLectura("NUEVO", false, false)).toBeNull();
+    expect(motivoTareasSoloLectura("EN_PROCESO", false, false)).toBeNull();
+    expect(motivoTareasSoloLectura(undefined, false, false)).toBeNull();
   });
 });

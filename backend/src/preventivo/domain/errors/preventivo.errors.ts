@@ -108,6 +108,66 @@ export class IntervaloExcedeMaximoError extends DomainError {
 }
 
 /**
+ * AnticipacionInvalidaError — `anticipacion_valor` debe ser un entero mayor o
+ * igual a 0 (`planes_preventivo_anticipacion_valor_check`). El 0 es válido: es
+ * el comportamiento previo a la anticipación (el ticket se genera el día del
+ * ciclo).
+ *
+ * Ref: odd/preventivo-anticipacion S6.
+ */
+export class AnticipacionInvalidaError extends DomainError {
+  readonly code = 'PREVENTIVO_ANTICIPACION_INVALIDA';
+
+  constructor(valorRecibido: number) {
+    super(`La anticipación debe ser un entero mayor o igual a 0, se recibió: ${valorRecibido}.`);
+  }
+}
+
+/**
+ * UnidadAnticipacionInvalidaError — `anticipacion_unidad` fuera del catálogo
+ * cerrado `DIAS` | `MESES` (`planes_preventivo_anticipacion_unidad_check`).
+ *
+ * Ref: odd/preventivo-anticipacion S1.
+ */
+export class UnidadAnticipacionInvalidaError extends DomainError {
+  readonly code = 'PREVENTIVO_UNIDAD_ANTICIPACION_INVALIDA';
+
+  constructor(unidadRecibida: string) {
+    super(`La unidad de anticipación "${unidadRecibida}" no es válida: debe ser DIAS o MESES.`);
+  }
+}
+
+/**
+ * AnticipacionNoMenorQueCadenciaError — la anticipación tiene que ser
+ * estrictamente menor que la cadencia, comparadas en días con un mes = 30
+ * días (`planes_preventivo_anticipacion_menor_cadencia_check`). Lo que
+ * garantiza depende de las unidades:
+ *
+ * - Con la misma unidad (días contra días, meses contra meses), la fecha de
+ *   generación de un ciclo cae siempre estrictamente después de la fecha del
+ *   ciclo anterior.
+ * - Con unidades mezcladas es una aproximación: un mes real tiene entre 28 y
+ *   31 días, no 30. Por ejemplo, 29 días de anticipación contra una cadencia
+ *   de 1 mes pasan la validación, y un ciclo del 01/03 se genera el 31/01,
+ *   antes del ciclo anterior del 01/02. Lo que sí garantiza es que la
+ *   anticipación no alcanza la cadencia medida con meses de 30 días.
+ *
+ * El texto lo arma el dominio con las dos magnitudes ya descriptas, para que
+ * el usuario vea por qué se rechazó sin tener que hacer la cuenta.
+ *
+ * Ref: odd/preventivo-anticipacion S6.
+ */
+export class AnticipacionNoMenorQueCadenciaError extends DomainError {
+  readonly code = 'PREVENTIVO_ANTICIPACION_NO_MENOR_QUE_CADENCIA';
+
+  constructor(anticipacionDescripta: string, cadenciaDescripta: string) {
+    super(
+      `La anticipación (${anticipacionDescripta}) debe ser menor que la cadencia (${cadenciaDescripta}). Para comparar, un mes cuenta como 30 días.`,
+    );
+  }
+}
+
+/**
  * PlanNoEncontradoError — el plan de mantenimiento preventivo con el id
  * indicado no existe (o fue soft-deleted).
  * → HTTP 404 en la capa de presentación.
@@ -120,5 +180,42 @@ export class PlanNoEncontradoError extends DomainError {
 
   constructor(id: string) {
     super(`Plan de mantenimiento preventivo con id "${id}" no encontrado o fue eliminado.`);
+  }
+}
+
+/**
+ * ResponsableNoElegibleError — el responsable elegido para el plan no es un técnico que atienda
+ * los tickets que el plan genera: TECNICO o COLABORADOR activo del cliente con `LECTURA` sobre el
+ * tipo de ticket del plan (`ElegibilidadAsignado.esAgenteDeTipo`; odd/preventivo-por-tipo, S5). La
+ * UI ofrece solo a esos; este error es la decisión del backend para un payload armado a mano o una
+ * lista vieja.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ResponsableNoElegibleError extends DomainError {
+  readonly code = 'PREVENTIVO_RESPONSABLE_NO_ELEGIBLE';
+
+  constructor() {
+    super(
+      'El responsable debe ser un técnico o colaborador habilitado para el tipo de ticket del ' +
+        'plan.',
+    );
+  }
+}
+
+/**
+ * AccionSobreTipoDelPlanNoPermitidaError — el actor eligió para un plan un tipo de ticket sobre el
+ * que no tiene la acción que la operación exige (odd/preventivo-por-tipo, S4): `LECTURA` sobre el
+ * tipo del alta, el tipo nuevo de una edición o el de la lista de responsables. Sobre el tipo de un
+ * plan existente el error es `PlanNoEncontradoError` (404), no este: no se revela que existe.
+ * → HTTP 403 en la capa de presentación.
+ */
+export class AccionSobreTipoDelPlanNoPermitidaError extends DomainError {
+  readonly code = 'PREVENTIVO_ACCION_SOBRE_TIPO_NO_PERMITIDA';
+
+  /** @param accion Acción faltante sobre el tipo elegido. */
+  constructor(accion: string) {
+    super(
+      `El usuario no tiene el permiso "${accion}" sobre el tipo de ticket elegido para el plan.`,
+    );
   }
 }

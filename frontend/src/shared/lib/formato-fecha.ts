@@ -34,6 +34,7 @@
  * | `ClienteCorreo.verificadoAt` | `@db.Timestamptz` | instante |
  * | `CicloTenant` / `CicloVigenteAdmin`.`fechaInicio` / `fechaFin` | `@db.Date` | fecha de calendario |
  * | `Equipo.fechaAdquisicion` / `fechaValoracion` / `fechaValorResidual` | `@db.Date` | fecha de calendario |
+ * | `ValoracionEquipo.fecha` | `@db.Date` | fecha de calendario |
  * | `Compra.fechaSolicitud` | `@db.Date` | fecha de calendario |
  * | `ItemCompra.fechaCotizacion` / `fechaOrden` / `fechaRecepcion` / `fechaEntrega` | `@db.Date` | fecha de calendario |
  * | `PlanPreventivo.fechaInicio` / `proximaEjecucionEn` | `@db.Date` | fecha de calendario |

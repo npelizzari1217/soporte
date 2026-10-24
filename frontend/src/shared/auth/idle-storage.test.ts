@@ -46,4 +46,9 @@ describe("idle-storage", () => {
     signalLogout();
     expect(window.localStorage.getItem(IDLE_LOGOUT_KEY)).not.toBeNull();
   });
+
+  it("signalLogout(motivo) → writes `<motivo>:<epoch ms>` so the other tab can show the same notice", () => {
+    signalLogout("inactividad");
+    expect(window.localStorage.getItem(IDLE_LOGOUT_KEY)).toMatch(/^inactividad:\d+$/);
+  });
 });

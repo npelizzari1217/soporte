@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../test/msw/server";
 import { apiFetch } from "./client";
@@ -8,6 +8,17 @@ import { ApiError, SessionExpiredError } from "./types";
 // transparente single-flight ante 401 (dedupe con refreshPromise ??=).
 
 describe("apiFetch", () => {
+  // Estos tests cubren el refresh, no el corte de sesión (ver el describe de abajo). Desde
+  // `/login` el corte no hace nada, así que una `SessionExpiredError` no deja un logout ni una
+  // navegación pendientes que crucen al test siguiente.
+  beforeEach(() => {
+    vi.stubGlobal("location", { ...window.location, pathname: "/login", assign: vi.fn() });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("2xx → returns the parsed JSON body as T", async () => {
     server.use(
       http.get("/api/tickets/1", () =>
@@ -195,5 +206,111 @@ describe("apiFetch", () => {
 
     expect(await apiFetch("auth/2fa")).toEqual({ activo: true });
     expect(refrescos).toBe(1);
+  });
+});
+
+// Pedido del dueño: cuando la sesión vence, la pantalla no queda quieta con errores sueltos:
+// se abre el login con el aviso de sesión vencida. El guard del corte es de módulo, así que
+// cada test carga `client` y sus dependencias de cero.
+describe("apiFetch — corte por sesión vencida", () => {
+  let assign: ReturnType<typeof vi.fn>;
+  let logouts: number;
+
+  async function cargar(pathname: string): Promise<{
+    apiFetch: typeof apiFetch;
+    SessionExpiredError: typeof SessionExpiredError;
+  }> {
+    vi.stubGlobal("location", { ...window.location, pathname, assign });
+    vi.resetModules();
+    const cliente = await import("./client");
+    const tipos = await import("./types");
+    return { apiFetch: cliente.apiFetch, SessionExpiredError: tipos.SessionExpiredError };
+  }
+
+  beforeEach(() => {
+    assign = vi.fn();
+    logouts = 0;
+    server.use(
+      http.post("/api/auth/logout", () => {
+        logouts += 1;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("N pedidos concurrentes con la sesión vencida → todos lanzan SessionExpiredError y hay UNA sola redirección con el motivo", async () => {
+    server.use(
+      http.post("/api/auth/refresh", () => new HttpResponse(null, { status: 401 })),
+      http.get("/api/tickets/:id", () => new HttpResponse(null, { status: 401 })),
+    );
+    const { apiFetch: fetchFresco, SessionExpiredError: Vencida } = await cargar("/tickets");
+
+    const resultados = await Promise.allSettled([
+      fetchFresco("tickets/1"),
+      fetchFresco("tickets/2"),
+      fetchFresco("tickets/3"),
+    ]);
+
+    for (const resultado of resultados) {
+      expect(resultado.status).toBe("rejected");
+      if (resultado.status === "rejected") expect(resultado.reason).toBeInstanceOf(Vencida);
+    }
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+    expect(assign).toHaveBeenCalledWith("/login?motivo=sesion-vencida");
+    expect(logouts).toBe(1);
+  });
+
+  it("refresh OK pero el reintento vuelve a dar 401 → también corta con el motivo (y hace logout para limpiar las cookies)", async () => {
+    server.use(
+      http.post("/api/auth/refresh", () => HttpResponse.json({ ok: true })),
+      http.get("/api/tickets/1", () => new HttpResponse(null, { status: 401 })),
+    );
+    const { apiFetch: fetchFresco, SessionExpiredError: Vencida } = await cargar("/tickets");
+
+    await expect(fetchFresco("tickets/1")).rejects.toBeInstanceOf(Vencida);
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/login?motivo=sesion-vencida"));
+    expect(logouts).toBe(1);
+  });
+
+  it.each(["/login", "/c/hospital/pedido", "/encuesta/abc123"])(
+    "en %s (ruta sin sesión) → lanza SessionExpiredError pero no redirige ni hace logout",
+    async (ruta) => {
+      server.use(
+        http.post("/api/auth/refresh", () => new HttpResponse(null, { status: 401 })),
+        http.get("/api/algo", () => new HttpResponse(null, { status: 401 })),
+      );
+      const { apiFetch: fetchFresco, SessionExpiredError: Vencida } = await cargar(ruta);
+
+      await expect(fetchFresco("algo")).rejects.toBeInstanceOf(Vencida);
+      // Deja correr el corte asíncrono, si lo hubiera, antes de afirmar la ausencia.
+      await new Promise((resolver) => setTimeout(resolver, 20));
+      expect(assign).not.toHaveBeenCalled();
+      expect(logouts).toBe(0);
+    },
+  );
+
+  it("401 del flujo de login (credencial inválida) → no es sesión vencida: no redirige", async () => {
+    server.use(
+      http.post("/api/auth/login", () => HttpResponse.json({ statusCode: 401, message: "No" }, { status: 401 })),
+    );
+    const { apiFetch: fetchFresco } = await cargar("/tickets");
+
+    await expect(fetchFresco("auth/login", { method: "POST", json: {} })).rejects.toMatchObject({ statusCode: 401 });
+    await new Promise((resolver) => setTimeout(resolver, 20));
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("4xx que no es 401 → no corta la sesión", async () => {
+    server.use(http.get("/api/tickets/1", () => HttpResponse.json({ statusCode: 403, message: "No" }, { status: 403 })));
+    const { apiFetch: fetchFresco } = await cargar("/tickets");
+
+    await expect(fetchFresco("tickets/1")).rejects.toMatchObject({ statusCode: 403 });
+    await new Promise((resolver) => setTimeout(resolver, 20));
+    expect(assign).not.toHaveBeenCalled();
+    expect(logouts).toBe(0);
   });
 });

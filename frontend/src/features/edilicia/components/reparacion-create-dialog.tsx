@@ -5,12 +5,13 @@
  * dedicada (ADR-1: solo `/edilicia`) — alta inline, mismo patrón que
  * `CompraCreateDialog` (B5).
  *
- * Suma el Sector opcional (odd/ubicacion-sector-ticket). La ubicación general
- * del ticket NO va acá: Edilicia usa su propia «Ubicación» (CA2).
+ * Suma el Sector opcional (odd/ubicacion-sector-ticket). La «Ubicación» es la del
+ * ticket, la única desde odd/ticket-unificado (L11).
  *
- * Tipo (odd/tasks/tipos-ticket-por-modulo.md, S2): los tipos activos del módulo EDILICIA salvo
- * PREVENTIVO, que lo genera solo el barrido, y de esos solo los que tienen `ALTAS` para el usuario
- * (odd/permisos-por-tipo-ticket, S6): el backend responde 403 al alta de cualquier otro. La opción
+ * Tipo (odd/ticket-unificado, S2): los tipos activos con alta manual (`admiteAltaManual`: los de
+ * TICKETS y los de EDILICIA salvo PREVENTIVO, que lo genera solo el barrido), y de esos solo los que
+ * tienen `ALTAS` para el usuario (odd/permisos-por-tipo-ticket, S6): el backend responde 403 al alta
+ * de cualquier otro y 422 a un tipo sin alta manual. La opción
  * vacía es EDILICIA y no manda `tipoId`, así el valor por defecto no depende de que el catálogo ya
  * haya cargado; se ofrece solo con `ALTAS` sobre EDILICIA. Sin ella, elegir un tipo es obligatorio.
  * Con EDILICIA permitido y sin otros tipos elegibles, el selector no se muestra. Con el catálogo
@@ -34,6 +35,7 @@ import {
   usePrioridades,
   useTiposTicket,
 } from "@/features/tickets/hooks/use-catalogos";
+import { admiteAltaManual } from "@/features/tickets/lib/alta-manual";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useCrearReparacion } from "../hooks/use-reparacion-mutations";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
@@ -41,22 +43,19 @@ import {
   crearReparacionSchema,
   type CrearReparacionFormValues,
 } from "../schemas";
-import {
-  TIPO_CODIGO_EDILICIA,
-  TIPO_CODIGO_PREVENTIVO,
-} from "@/features/catalogos/tipos-del-sistema";
+import { TIPO_CODIGO_EDILICIA } from "@/features/catalogos/tipos-del-sistema";
 
 export function ReparacionCreateDialog() {
   const [open, setOpen] = useState(false);
   const prioridadesQuery = usePrioridades();
   // El catálogo de sectores se pide recién al abrir el modal.
   const sectoresQuery = useSectores(open);
-  const tiposQuery = useTiposTicket(TIPO_CODIGO_EDILICIA);
+  // El catálogo entero, el mismo que usa el selector de la pantalla: un ticket de cualquier tipo
+  // con alta manual se crea desde acá (odd/ticket-unificado, S2).
+  const tiposQuery = useTiposTicket();
   const { tiposCon } = usePermisosPorTipo();
   const tiposConAlta = tiposCon(
-    (tiposQuery.data ?? []).filter(
-      (tipo) => tipo.codigo !== TIPO_CODIGO_PREVENTIVO,
-    ),
+    (tiposQuery.data ?? []).filter(admiteAltaManual),
     "ALTAS",
   );
   const tipoPorDefecto = tiposConAlta.find(
