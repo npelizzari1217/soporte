@@ -185,7 +185,6 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
         .fn<(u: string, c: string) => Promise<boolean>>()
         .mockResolvedValue(true),
       resolverNombres: vi.fn().mockResolvedValue(new Map()),
-      esAdminTotalEnTenant: vi.fn().mockResolvedValue(false),
       listarAgentes: vi.fn<IUsuarioMasterChecker['listarAgentes']>().mockResolvedValue([]),
     };
 

@@ -250,7 +250,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
         txRunner,
         sinAvanceDeEstado,
         siempreEditable,
-      ).execute({ ticketId, tareaId: tarea.id, actor: ADMIN_ACTOR }),
+      ).execute({ clienteId: CLIENTE_ID, ticketId, tareaId: tarea.id, actor: ADMIN_ACTOR }),
     );
 
     expect(result.isFail()).toBe(true);

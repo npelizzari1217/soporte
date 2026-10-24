@@ -8,6 +8,8 @@
  *   un solo CAMBIO_ESTADO a RESUELTO.
  * - Descompletar en RESUELTO vuelve a EN_PROCESO y limpia `fecha_cierre`.
  * - Si falla el cambio de estado, la tarea no queda completada (misma transacción).
+ * - Completar en NUEVO sin responsable asigna solo a un agente del tipo: un ADMINISTRADOR deja el
+ *   ticket sin responsable. Los permisos por tipo son los del tenant real; master es un doble.
  *
  * No toca master: sin `usarLockMasterTest()`. Higiene: filas -> cerrar cliente -> dropDatabase.
  */
@@ -26,10 +28,13 @@ import { PrismaEstadoRepository } from '../../infrastructure/persistence/prisma/
 import { PrismaOperacionTicketRepository } from '../../infrastructure/persistence/prisma/prisma-operacion-ticket.repository';
 import { PrismaRelojSlaMarcador } from '../../infrastructure/persistence/prisma/prisma-reloj-sla-marcador';
 import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
+import { PrismaPermisoTipoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-permiso-tipo-ticket.repository';
 import { PrismaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTipoOperacionRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { PrismaTipoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-ticket.repository';
+import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
 import { AvanzarEstadoPorTareasService } from '../services/avanzar-estado-por-tareas.service';
+import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { CompletarTareaUseCase } from './completar-tarea.use-case';
 import { DescompletarTareaUseCase } from './descompletar-tarea.use-case';
@@ -48,6 +53,7 @@ const SOLICITANTE = '01900000-0000-7000-8000-000000000401';
 const RESPONSABLE = '01900000-0000-7000-8000-000000000402';
 const TECNICO_A = '01900000-0000-7000-8000-000000000403';
 const TECNICO_B = '01900000-0000-7000-8000-000000000404';
+const ADMINISTRADOR = '01900000-0000-7000-8000-000000000405';
 
 const ESTADOS = [
   'NUEVO',
@@ -76,6 +82,14 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
   const estadoRepo = new PrismaEstadoRepository(tenantContext);
   const relojMarcador = new PrismaRelojSlaMarcador(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
+  const master = new MasterAgentesEnMemoria();
+  master.agregar({ id: TECNICO_A, rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: TECNICO_B, rol: 'TECNICO', celdas: [] });
+  master.agregar({ id: ADMINISTRADOR, rol: 'ADMINISTRADOR', celdas: [] });
+  const elegibilidad = new ElegibilidadAsignado(
+    master,
+    new PrismaPermisoTipoTicketRepository(tenantContext),
+  );
   const publicados: DomainEvent[] = [];
   const eventPublisher = { publish: (e: DomainEvent) => void publicados.push(e) };
   const estadoIds = new Map<string, string>();
@@ -96,6 +110,7 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
       relojMarcador,
       eventPublisher,
       txRunner,
+      elegibilidad,
     );
   const completar = (avance = servicio()) =>
     new CompletarTareaUseCase(
@@ -202,6 +217,14 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
         data: { codigo: 'T-ESTADO-TAREAS', nombre: 'Soporte', modulo: 'TICKETS' },
       })
     ).id;
+    // Los tres tienen LECTURA sobre el tipo: lo que deja afuera al ADMINISTRADOR es el rol.
+    await client.permisoTipoTicket.createMany({
+      data: [TECNICO_A, TECNICO_B, ADMINISTRADOR].map((usuarioId) => ({
+        usuarioId,
+        tipoId,
+        accion: 'LECTURA',
+      })),
+    });
     prioridadId = (
       await client.prioridad.create({ data: { codigo: 'P-ESTADO-TAREAS', nombre: 'Media' } })
     ).id;
@@ -247,10 +270,20 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
 
     const [resultadoA, resultadoB] = await Promise.all([
       enTenant(() =>
-        completar().execute({ ticketId, tareaId: tareaA.id, actor: actor(TECNICO_A) }),
+        completar().execute({
+          clienteId: CLIENTE_ID,
+          ticketId,
+          tareaId: tareaA.id,
+          actor: actor(TECNICO_A),
+        }),
       ),
       enTenant(() =>
-        completar().execute({ ticketId, tareaId: tareaB.id, actor: actor(TECNICO_B) }),
+        completar().execute({
+          clienteId: CLIENTE_ID,
+          ticketId,
+          tareaId: tareaB.id,
+          actor: actor(TECNICO_B),
+        }),
       ),
     ]);
 
@@ -270,7 +303,12 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
     await sembrarTarea(ticketId, 1, TECNICO_B);
 
     const resultado = await enTenant(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     expect(resultado.isOk()).toBe(true);
@@ -290,12 +328,46 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
     expect(publicados.map((e) => e.name)).toEqual(['ticket.asignado']);
   });
 
+  it('un ADMINISTRADOR que completa una tarea de un ticket NUEVO sin responsable lo pone EN_PROCESO sin asignárselo', async () => {
+    const ticketId = await sembrarTicket('NUEVO', null);
+    const tarea = await sembrarTarea(ticketId, 0, TECNICO_A);
+    await sembrarTarea(ticketId, 1, TECNICO_B);
+
+    const resultado = await enTenant(() =>
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: { id: ADMINISTRADOR, esAdministrador: true, permisosPorTipo: null },
+      }),
+    );
+
+    expect(resultado.isOk()).toBe(true);
+    const ticket = await estadoDelTicket(ticketId);
+    expect(ticket.codigo).toBe('EN_PROCESO');
+    expect(ticket.asignadoId).toBeNull();
+    expect(await cambiosDeEstado(ticketId)).toEqual([
+      ['NUEVO', 'ASIGNADO'],
+      ['ASIGNADO', 'EN_PROCESO'],
+    ]);
+    const asignaciones = await client.operacionTicket.count({
+      where: { ticketId, tipoOperacion: { codigo: 'ASIGNACION' } },
+    });
+    expect(asignaciones).toBe(0);
+    expect(publicados.map((e) => e.name)).not.toContain('ticket.asignado');
+  });
+
   it('descompletar una tarea de un ticket RESUELTO lo devuelve a EN_PROCESO y limpia fecha_cierre (S4)', async () => {
     const ticketId = await sembrarTicket('RESUELTO', RESPONSABLE);
     const tarea = await sembrarTarea(ticketId, 0, TECNICO_A, true);
 
     const resultado = await enTenant(() =>
-      descompletar().execute({ ticketId, tareaId: tarea.id, actor: actor(RESPONSABLE) }),
+      descompletar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(RESPONSABLE),
+      }),
     );
 
     expect(resultado.isOk()).toBe(true);
@@ -319,6 +391,7 @@ describe('El estado del ticket sigue a sus tareas (S5-S6, tenant efímero)', () 
     await expect(
       enTenant(() =>
         completar(servicio(operacionesQueFallanEnElCambioDeEstado)).execute({
+          clienteId: CLIENTE_ID,
           ticketId,
           tareaId: tarea.id,
           actor: actor(TECNICO_A),

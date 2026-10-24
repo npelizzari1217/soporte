@@ -182,3 +182,21 @@ export class PlanNoEncontradoError extends DomainError {
     super(`Plan de mantenimiento preventivo con id "${id}" no encontrado o fue eliminado.`);
   }
 }
+
+/**
+ * ResponsableNoElegibleError — el responsable elegido para el plan no es un técnico que atienda
+ * los tickets que el plan genera: TECNICO o COLABORADOR activo del cliente con `LECTURA` sobre el
+ * tipo `PREVENTIVO` (`ElegibilidadAsignado.esAgenteDeTipo`). La UI ofrece solo a esos; este error
+ * es la decisión del backend para un payload armado a mano o una lista vieja.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ResponsableNoElegibleError extends DomainError {
+  readonly code = 'PREVENTIVO_RESPONSABLE_NO_ELEGIBLE';
+
+  constructor() {
+    super(
+      'El responsable debe ser un técnico o colaborador habilitado para los tickets de tipo ' +
+        'Preventivo.',
+    );
+  }
+}

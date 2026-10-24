@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { toast } from "sonner";
@@ -23,8 +23,8 @@ function mockBackend() {
     http.get("/api/equipos", () =>
       HttpResponse.json([{ id: EQUIPO_ID, nombre: "Notebook Dell", numeroSerie: "SN-001", activo: true }]),
     ),
-    http.get("/api/usuarios", () =>
-      HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez", rol: "TECNICO" }]),
+    http.get("/api/preventivo/planes/responsables", () =>
+      HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" }]),
     ),
   );
 }
@@ -194,8 +194,51 @@ describe("PlanPreventivoCreateDialog — anticipación (odd/preventivo-anticipac
   });
 });
 
+describe("PlanPreventivoCreateDialog — el responsable sale de los técnicos de Preventivo", () => {
+  it("ofrece solo GET /preventivo/planes/responsables, no la lista de usuarios del tenant", async () => {
+    mockBackend();
+    server.use(
+      http.get("/api/preventivo/planes/responsables", () =>
+        HttpResponse.json([
+          { id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" },
+          { id: "u-colab", nombre: "Carla", apellido: "Ruiz" },
+        ]),
+      ),
+      http.get("/api/usuarios", () =>
+        HttpResponse.json([
+          { id: USUARIO_ID, nombre: "Ana", apellido: "Gómez", rol: "TECNICO" },
+          { id: "u-final", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
+        ]),
+      ),
+    );
+    renderWithProviders(<PlanPreventivoCreateDialog />, {
+      user: buildUser({ permisos: ["PREVENTIVO:ALTAS"] }),
+    });
+    await abrirDialog();
+
+    const select = screen.getByRole("combobox", { name: /^responsable$/i });
+    expect(await within(select).findByRole("option", { name: "Ana Gómez" })).toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: "Carla Ruiz" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/no hay técnicos habilitados para preventivo/i)).not.toBeInTheDocument();
+  });
+
+  it("sin ningún técnico de Preventivo, avisa qué permiso falta en vez de mostrar un select mudo", async () => {
+    mockBackend();
+    server.use(http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([])));
+    renderWithProviders(<PlanPreventivoCreateDialog />, {
+      user: buildUser({ permisos: ["PREVENTIVO:ALTAS"] }),
+    });
+    await abrirDialog();
+
+    expect(
+      await screen.findByText(/no hay técnicos habilitados para preventivo.*permiso ver sobre el tipo de ticket preventivo/i),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("PlanPreventivoCreateDialog — errores de catálogos no se tragan en silencio (hallazgo H3)", () => {
-  it("si GET /usuarios falla (p. ej. 403 por permiso cruzado), avisa en el select de responsable", async () => {
+  it("si GET /preventivo/planes/responsables falla (p. ej. 403), avisa en el select de responsable", async () => {
     server.use(
       http.get("/api/catalogos/prioridades", () =>
         HttpResponse.json([
@@ -205,7 +248,9 @@ describe("PlanPreventivoCreateDialog — errores de catálogos no se tragan en s
       http.get("/api/equipos", () =>
         HttpResponse.json([{ id: EQUIPO_ID, nombre: "Notebook Dell", numeroSerie: "SN-001", activo: true }]),
       ),
-      http.get("/api/usuarios", () => HttpResponse.json({ message: "Forbidden" }, { status: 403 })),
+      http.get("/api/preventivo/planes/responsables", () =>
+        HttpResponse.json({ message: "Forbidden" }, { status: 403 }),
+      ),
     );
 
     renderWithProviders(<PlanPreventivoCreateDialog />, {
@@ -214,7 +259,7 @@ describe("PlanPreventivoCreateDialog — errores de catálogos no se tragan en s
     await abrirDialog();
 
     expect(
-      await screen.findByText(/no se pudo cargar la lista de responsables.*permiso para ver usuarios/i),
+      await screen.findByText(/no se pudo cargar la lista de responsables/i),
     ).toBeInTheDocument();
   });
 
@@ -226,8 +271,8 @@ describe("PlanPreventivoCreateDialog — errores de catálogos no se tragan en s
         ]),
       ),
       http.get("/api/equipos", () => HttpResponse.json({ message: "Error interno" }, { status: 500 })),
-      http.get("/api/usuarios", () =>
-        HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez", rol: "TECNICO" }]),
+      http.get("/api/preventivo/planes/responsables", () =>
+        HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" }]),
       ),
     );
 

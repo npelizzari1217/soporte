@@ -14,7 +14,7 @@ import { IUsuarioMasterChecker } from '../../../domain/ports/i-usuario-master.ch
  * resuelve con un JOIN a `membresias` filtrado por `clienteId` (ver JSDoc del
  * puerto para el detalle de la adaptación al schema real).
  *
- * `esAdminTotalEnTenant`/`listarAgentes` (elegibilidad del ASIGNADO) leen solo
+ * `listarAgentes` (elegibilidad del ASIGNADO) lee solo
  * identidad, rol y membresía: ninguna tabla de permisos. Qué tipos de ticket
  * atiende cada usuario lo decide `permisos_tipo_ticket` en el tenant
  * (odd/permisos-por-tipo-ticket, D5 g; antes, las celdas por módulo de
@@ -91,26 +91,6 @@ export class UsuarioMasterChecker implements IUsuarioMasterChecker {
       select: { id: true, nombre: true, apellido: true },
     });
     return new Map(rows.map((row) => [row.id, { nombre: row.nombre, apellido: row.apellido }]));
-  }
-
-  /** ROOT o membresía activa con rol `ADMINISTRADOR`; ver el JSDoc del puerto. */
-  async esAdminTotalEnTenant(usuarioId: string, clienteId: string): Promise<boolean> {
-    const row = await this.masterClient.usuario.findFirst({
-      where: {
-        id: usuarioId,
-        deletedAt: null,
-        OR: [
-          { isGlobalAdmin: true },
-          {
-            membresias: {
-              some: { clienteId, activo: true, deletedAt: null, rol: { codigo: 'ADMINISTRADOR' } },
-            },
-          },
-        ],
-      },
-      select: { id: true },
-    });
-    return row !== null;
   }
 
   /**

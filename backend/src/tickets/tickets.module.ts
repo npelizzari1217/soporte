@@ -94,6 +94,7 @@ import { TransicionarEstadoUseCase } from './application/use-cases/transicionar-
 import { AsignarTicketUseCase } from './application/use-cases/asignar-ticket.use-case';
 import { AsignarYPonerEnProcesoUseCase } from './application/use-cases/asignar-y-poner-en-proceso.use-case';
 import { ListarTecnicosAsignablesUseCase } from './application/use-cases/listar-tecnicos-asignables.use-case';
+import { ListarAgentesFiltroTicketsUseCase } from './application/use-cases/listar-agentes-filtro-tickets.use-case';
 import { CrearComentarioUseCase } from './application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from './application/use-cases/listar-timeline.use-case';
 import { ObtenerPermisosPorTipoUseCase } from './application/use-cases/obtener-permisos-por-tipo.use-case';
@@ -497,6 +498,12 @@ import {
         new ListarTecnicosAsignablesUseCase(ticketRepo, elegibilidad),
       inject: [TICKET_REPOSITORY, ElegibilidadAsignado],
     },
+    {
+      provide: ListarAgentesFiltroTicketsUseCase,
+      useFactory: (permisos: IPermisoTipoTicketRepository, elegibilidad: ElegibilidadAsignado) =>
+        new ListarAgentesFiltroTicketsUseCase(permisos, elegibilidad),
+      inject: [PERMISO_TIPO_TICKET_REPOSITORY, ElegibilidadAsignado],
+    },
     // odd/tareas-con-tecnico T3: casos de uso de tareas (T2), cableados con `TareasTicketController`.
     // Crear se exporta para el seed de demo (`prisma_master/seeds/demo-seed.ts`). Completar y
     // eliminar se exportaban para las rutas de subtareas de reparaciones, que T8 retiró.
@@ -592,6 +599,7 @@ import {
         relojMarcador: IRelojSlaMarcador,
         eventPublisher: IDomainEventPublisher,
         txRunner: ITenantTransactionRunner,
+        elegibilidad: ElegibilidadAsignado,
       ) =>
         new AvanzarEstadoPorTareasService(
           ticketRepo,
@@ -604,6 +612,7 @@ import {
           relojMarcador,
           eventPublisher,
           txRunner,
+          elegibilidad,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -616,6 +625,7 @@ import {
         RELOJ_SLA_MARCADOR,
         DOMAIN_EVENT_PUBLISHER,
         TENANT_TX_RUNNER,
+        ElegibilidadAsignado,
       ],
     },
     {

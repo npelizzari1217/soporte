@@ -5,9 +5,12 @@ import {
   PlanPreventivoEntity,
 } from '../../domain/entities/plan-preventivo.entity';
 import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
+import { ResponsablesPlanPreventivo } from '../services/responsables-plan-preventivo';
 
 /** DTO de entrada para crear un plan de mantenimiento preventivo (WU-4). */
 export interface CrearPlanDto {
+  /** Cliente activo: la elegibilidad del responsable se decide con su membresía en él. */
+  clienteId: string;
   titulo: string;
   instrucciones: string | null;
   /** Excluyente con `ubicacion` — la AUTORIDAD del XOR es la entidad (ADR-PV1). */
@@ -34,6 +37,10 @@ export interface CrearPlanDto {
  * `PlanPreventivoEntity.create()` (ADR-PV1) — duplicarla acá crearía dos
  * fuentes de verdad que pueden desincronizarse.
  *
+ * El responsable tiene que ser un técnico que atienda los tickets que el plan genera
+ * (`ResponsablesPlanPreventivo.exigirElegible`) → `ResponsableNoElegibleError` (422), sin persistir.
+ * Se consulta después de la validación de la entidad, que no hace I/O.
+ *
  * Ref spec: sdd/preventivo/spec, Requirements "Objetivo excluyente del plan"
  * y "Recurrencia por tiempo, anclada a fecha inmutable". Ref design: ADR-PV1,
  * ADR-PV2. Tarea: 4.2.
@@ -42,6 +49,7 @@ export class CrearPlanUseCase {
   constructor(
     private readonly planRepo: Pick<IPlanPreventivoRepository, 'guardar'>,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly responsables: Pick<ResponsablesPlanPreventivo, 'exigirElegible'>,
   ) {}
 
   async execute(dto: CrearPlanDto): Promise<Result<PlanPreventivoEntity, DomainError>> {
@@ -63,6 +71,11 @@ export class CrearPlanUseCase {
 
     if (planResult.isFail()) {
       return Result.fail(planResult.getError());
+    }
+
+    const elegible = await this.responsables.exigirElegible(dto.clienteId, dto.responsableId);
+    if (elegible.isFail()) {
+      return Result.fail(elegible.getError());
     }
 
     const plan = planResult.getValue();

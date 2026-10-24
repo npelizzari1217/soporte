@@ -22,6 +22,11 @@
  * ROOT, que son los únicos a quienes el backend se los lista. Muestra solo los
  * tickets borrados, marcados, con la acción "Recuperar"; sin detalle (el detalle
  * de un borrado es 404) ni exportación (exporta solo activos).
+ *
+ * Filtro "Asignado": sus opciones salen de `GET /tickets/agentes`, que ya trae solo a los técnicos
+ * (TECNICO o COLABORADOR) con LECTURA sobre los tipos que la sesión ve, o sobre el tipo filtrado
+ * si hay `?tipo=`. Un ticket solo se asigna a quien atiende su tipo: ofrecer a otro sería un filtro
+ * que nunca devuelve filas.
  */
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo } from "react";
@@ -32,7 +37,7 @@ import { useRecuperarTicket } from "../hooks/use-ticket-mutations";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { puedeVerListaDeUsuarios } from "@/shared/auth/permisos-por-tipo";
 import { useTiposTicket, usePrioridades, useEstados } from "../hooks/use-catalogos";
-import { useUsuariosAsignables } from "../hooks/use-usuarios-asignables";
+import { useAgentesFiltro } from "../hooks/use-agentes-filtro";
 // Mismo hook que usa el dashboard (`features/dashboard/hooks/use-ciclos.ts`)
 // para el filtro de ciclo — no se duplica, se reusa cruzando de feature,
 // mismo criterio que `dashboard-view.tsx` importando catálogos de `tickets/`.
@@ -53,9 +58,6 @@ import { formatearFechaCalendario, formatearInstante } from "@/shared/lib/format
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
-
-/** Roles que pueden ser responsables de un ticket (espejo del backend). */
-const ROLES_ASIGNABLES: ReadonlySet<string> = new Set(["TECNICO", "COLABORADOR"]);
 
 const PAGE_SIZE = 10;
 
@@ -106,29 +108,25 @@ export function TicketsListView() {
   const tiposVisibles = permisosPorTipo.tiposCon(tiposQuery.data ?? [], "LECTURA");
   // El alta de este listado es la de soporte general: solo tipos de TICKETS (`moduloRequerido`).
   const puedeCrear = permisosPorTipo.puedeEnModulo("TICKETS", "ALTAS");
-  // Las opciones del filtro salen de `GET /usuarios`: se ofrece con la misma regla con la que el
-  // backend abre esa lista (S7).
+  // `GET /tickets/agentes` se abre con la misma regla que `GET /usuarios` (S7): sin ella el
+  // filtro no se muestra y la lista ni se pide.
   const puedeFiltrarPorAsignado = puedeVerListaDeUsuarios(permisosPorTipo.permisos);
   const prioridadesQuery = usePrioridades();
   const estadosQuery = useEstados();
-  const usuariosQuery = useUsuariosAsignables();
-  // `GET /usuarios` trae todo el tenant, pero un ticket solo puede quedar asignado a un
-  // agente: mismo criterio que `ListarTecnicosAsignablesUseCase` del backend.
-  const agentes = useMemo(
-    () => (usuariosQuery.data ?? []).filter((usuario) => ROLES_ASIGNABLES.has(usuario.rol)),
-    [usuariosQuery.data],
-  );
+  const agentesQuery = useAgentesFiltro(filtros.tipo, puedeFiltrarPorAsignado);
+  const agentes = agentesQuery.data ?? [];
   const ciclosQuery = useCiclos();
 
   // Un `?tipo=` o `?asignado=` que el select no ofrece (link viejo, tipo de otro módulo,
-  // usuario final) filtra igual pero el select lo muestra vacío: se saca de la URL. Solo
-  // con el catálogo ya resuelto; cargando o caído, la ausencia no prueba nada.
+  // usuario final, técnico que no atiende el tipo filtrado) filtra igual pero el select lo
+  // muestra vacío: se saca de la URL. Solo con el catálogo ya resuelto; cargando o caído, la
+  // ausencia no prueba nada.
   const tipoFueraDeCatalogo =
     Boolean(filtros.tipo) && tiposQuery.isSuccess && !tiposVisibles.some((tipo) => tipo.id === filtros.tipo);
   const asignadoFueraDeCatalogo =
     Boolean(filtros.asignado) &&
-    usuariosQuery.isSuccess &&
-    !agentes.some((usuario) => usuario.id === filtros.asignado);
+    agentesQuery.isSuccess &&
+    !agentes.some((agente) => agente.id === filtros.asignado);
   // Un `?borrados=` en la URL de quien no es administrador (link compartido) tampoco se ofrece:
   // solo con la sesión ya resuelta, porque mientras carga todavía no se sabe quién es.
   const borradosNoPermitido =

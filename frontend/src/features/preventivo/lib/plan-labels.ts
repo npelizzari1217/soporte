@@ -46,3 +46,11 @@ export function objetivoLabel(plan: PlanPreventivo, equipos: Equipo[] | undefine
   }
   return plan.ubicacion ?? "—";
 }
+
+/**
+ * Aviso del selector de responsable cuando la lista resolvió vacía: nadie cumple la regla del
+ * backend (TECNICO o COLABORADOR con el permiso Ver sobre el tipo Preventivo), y sin el aviso el
+ * select vacío no dice qué falta.
+ */
+export const SIN_RESPONSABLES =
+  "No hay técnicos habilitados para Preventivo: un técnico o colaborador necesita el permiso Ver sobre el tipo de ticket Preventivo.";

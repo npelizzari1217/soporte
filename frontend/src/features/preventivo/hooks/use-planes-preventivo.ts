@@ -5,9 +5,11 @@
  * y `GET /preventivo/planes/:id/generaciones` (WU-7.1). El backend NO expone
  * `GET /preventivo/planes/:id` (WU-4, `PreventivoController`) — el detalle de
  * un plan puntual se deriva del listado ya cacheado, no de un fetch aparte.
+ * También `GET /preventivo/planes/responsables`, el selector de responsable del alta y la edición.
  */
 import { useQuery, useQueries, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
+import type { TecnicoAsignable } from "@/features/tickets/types";
 import type { PlanPreventivo, PreventivoGeneracion } from "../types";
 
 /**
@@ -19,6 +21,22 @@ export function usePlanesPreventivo(): UseQueryResult<PlanPreventivo[], Error> {
   return useQuery({
     queryKey: ["preventivo", "planes"],
     queryFn: () => apiFetch<PlanPreventivo[]>("preventivo/planes"),
+  });
+}
+
+/**
+ * `GET /preventivo/planes/responsables` — los técnicos (TECNICO o COLABORADOR) con LECTURA sobre el
+ * tipo de ticket Preventivo, que es el de los tickets que genera el plan. Ya viene acotada: acá no
+ * se filtra nada. El backend la abre con `PREVENTIVO:ALTAS` o `PREVENTIVO:MODIFICACION`, y rechaza
+ * con 422 un responsable que no esté en ella.
+ *
+ * @returns La query, con `data` como los técnicos ordenados por apellido y nombre.
+ */
+export function useResponsablesPlanPreventivo(): UseQueryResult<TecnicoAsignable[], Error> {
+  return useQuery({
+    queryKey: ["preventivo", "responsables"],
+    queryFn: () => apiFetch<TecnicoAsignable[]>("preventivo/planes/responsables"),
+    staleTime: 60_000,
   });
 }
 

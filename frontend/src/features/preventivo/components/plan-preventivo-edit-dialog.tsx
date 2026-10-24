@@ -25,13 +25,19 @@
  * lista ya resolvió. `useEquipo` se invoca solo mientras hace falta
  * verificar (`enabled` interno evita el request de más una vez resuelto).
  * El MISMO tratamiento aplica a `prioridadId` y `responsableId` (helper
- * compartido `conValorFueraDeCatalogo`): sus catálogos también excluyen lo dado
- * de baja, así que los tres selects pueden quedarse sin la `<option>` del valor
- * vigente.
+ * compartido `conValorFueraDeCatalogo`): sus catálogos también excluyen valores
+ * vigentes —la prioridad dada de baja; el responsable que ya no es técnico de
+ * Preventivo o perdió la membresía—, así que los tres selects pueden quedarse sin
+ * la `<option>` del valor vigente. Guardar con ese responsable sin tocarlo pasa:
+ * el backend revalida solo un responsable NUEVO.
+ *
+ * Responsable: `useResponsablesPlanPreventivo` (`GET /preventivo/planes/responsables`),
+ * solo los técnicos con LECTURA sobre el tipo Preventivo.
  *
  * Ojo que son DOS caminos distintos para el mismo síntoma, y hacen falta los dos
  * arreglos:
- *   (a) el catálogo resolvió y el valor está dado de baja → lo cubre
+ *   (a) el catálogo resolvió y el valor no está (dado de baja, o responsable no
+ *       habilitado) → lo cubre
  *       `conValorFueraDeCatalogo`, agregando la opción sintética.
  *   (b) la opción existe, pero llega DESPUÉS de que el `<select>` montó (se
  *       abrió el diálogo con los catálogos todavía cargando) → lo cubre
@@ -61,11 +67,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useEquipos, useEquipo } from "@/features/equipos/hooks/use-equipos";
 import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
-import { useUsuariosAsignables } from "@/features/tickets/hooks/use-usuarios-asignables";
 import { ApiError } from "@/shared/api/types";
 import { conValorFueraDeCatalogo, type OpcionCatalogo } from "@/shared/lib/opciones-catalogo";
 import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
 import { useEditarPlanPreventivo } from "../hooks/use-planes-preventivo-mutations";
+import { useResponsablesPlanPreventivo } from "../hooks/use-planes-preventivo";
+import { SIN_RESPONSABLES } from "../lib/plan-labels";
 import { editarPlanPreventivoSchema, type EditarPlanPreventivoFormValues } from "../schemas";
 import type { EditarPlanPreventivoDto, PlanPreventivo } from "../types";
 
@@ -106,7 +113,7 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   const [objetivo, setObjetivo] = useState<Objetivo>(objetivoDe(plan));
   const equiposQuery = useEquipos();
   const prioridadesQuery = usePrioridades();
-  const usuariosQuery = useUsuariosAsignables();
+  const responsablesQuery = useResponsablesPlanPreventivo();
   const editarMutation = useEditarPlanPreventivo(plan.id);
 
   const {
@@ -144,13 +151,13 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   );
 
   const opcionesResponsable = conValorFueraDeCatalogo(
-    (usuariosQuery.data ?? []).map((usuario) => ({
+    (responsablesQuery.data ?? []).map((usuario) => ({
       id: usuario.id,
       nombre: `${usuario.nombre} ${usuario.apellido}`,
     })),
-    usuariosQuery.isSuccess,
+    responsablesQuery.isSuccess,
     plan.responsableId,
-    "Responsable dado de baja",
+    "Responsable no habilitado",
   );
 
   let opcionesEquipo: OpcionCatalogo[] = equiposActivos;
@@ -192,7 +199,7 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   // opuesto que pisar, así que les alcanza con `open`.
   useReaplicarAlResolver(open && objetivo === "equipo", opcionesEquipoFirmes, "equipoId", equipoIdDelPlan, setValue);
   useReaplicarAlResolver(open, prioridadesQuery.isSuccess, "prioridadId", plan.prioridadId, setValue);
-  useReaplicarAlResolver(open, usuariosQuery.isSuccess, "responsableId", plan.responsableId, setValue);
+  useReaplicarAlResolver(open, responsablesQuery.isSuccess, "responsableId", plan.responsableId, setValue);
 
   const avisaCadencia = !!(dirtyFields.intervaloValor || dirtyFields.intervaloUnidad);
   const avisaAnticipacion = !!(dirtyFields.anticipacionValor || dirtyFields.anticipacionUnidad);
@@ -381,11 +388,13 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
                 {errors.responsableId.message}
               </p>
             )}
-            {usuariosQuery.isError && (
+            {responsablesQuery.isError && (
               <p role="alert" className="text-sm text-destructive">
-                No se pudo cargar la lista de responsables. Puede deberse a que no tenés permiso para ver usuarios
-                (depende de un permiso independiente de este formulario).
+                No se pudo cargar la lista de responsables.
               </p>
+            )}
+            {responsablesQuery.isSuccess && responsablesQuery.data.length === 0 && (
+              <p className="text-sm text-muted-foreground">{SIN_RESPONSABLES}</p>
             )}
           </div>
 

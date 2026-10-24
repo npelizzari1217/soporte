@@ -7,6 +7,7 @@ import {
   ITipoTicketRepository,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
+import { ElegibilidadAsignado } from '../tickets/application/services/elegibilidad-asignado';
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
   IEquipoInformaticoRepository,
@@ -44,6 +45,8 @@ import { DarDeBajaPlanUseCase } from './application/use-cases/dar-de-baja-plan.u
 import { ListarGeneracionesPlanUseCase } from './application/use-cases/listar-generaciones-plan.use-case';
 import { GenerarPreventivosUseCase } from './application/use-cases/generar-preventivos.use-case';
 import { EnviarRecordatoriosPreventivoUseCase } from './application/use-cases/enviar-recordatorios-preventivo.use-case';
+import { ListarResponsablesPlanUseCase } from './application/use-cases/listar-responsables-plan.use-case';
+import { ResponsablesPlanPreventivo } from './application/services/responsables-plan-preventivo';
 
 import { PreventivoController } from './interface/controllers/preventivo.controller';
 import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo-sweep.scheduler';
@@ -69,6 +72,9 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  *   resolver el objetivo del ticket. `EquiposModule` ya exporta
  *   `EQUIPO_INFORMATICO_REPOSITORY` y no importa `PreventivoModule`: sin
  *   ciclo. No se crea un puerto propio de preventivo para el mismo contrato.
+ * - `ElegibilidadAsignado` (exportado por `TicketsModule`): `ResponsablesPlanPreventivo` decide
+ *   quién puede ser responsable de un plan con la misma regla que la asignación de un ticket del
+ *   tipo `PREVENTIVO`.
  *
  * WU-5 agrega la generación automática: `GenerarPreventivosUseCase`
  * (orquestación transaccional del ciclo, ADR-PV2/PV3/PV5) y
@@ -91,16 +97,34 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
     { provide: PREVENTIVO_GENERACION_REPOSITORY, useClass: PrismaPreventivoGeneracionRepository },
     { provide: CalcularCicloService, useFactory: () => new CalcularCicloService() },
     {
+      provide: ResponsablesPlanPreventivo,
+      useFactory: (tipoTicketRepo: ITipoTicketRepository, elegibilidad: ElegibilidadAsignado) =>
+        new ResponsablesPlanPreventivo(tipoTicketRepo, elegibilidad),
+      inject: [TIPO_TICKET_REPOSITORY, ElegibilidadAsignado],
+    },
+    {
       provide: CrearPlanUseCase,
-      useFactory: (planRepo: IPlanPreventivoRepository, txRunner: ITenantTransactionRunner) =>
-        new CrearPlanUseCase(planRepo, txRunner),
-      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (
+        planRepo: IPlanPreventivoRepository,
+        txRunner: ITenantTransactionRunner,
+        responsables: ResponsablesPlanPreventivo,
+      ) => new CrearPlanUseCase(planRepo, txRunner, responsables),
+      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER, ResponsablesPlanPreventivo],
     },
     {
       provide: EditarPlanUseCase,
-      useFactory: (planRepo: IPlanPreventivoRepository, txRunner: ITenantTransactionRunner) =>
-        new EditarPlanUseCase(planRepo, txRunner),
-      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (
+        planRepo: IPlanPreventivoRepository,
+        txRunner: ITenantTransactionRunner,
+        responsables: ResponsablesPlanPreventivo,
+      ) => new EditarPlanUseCase(planRepo, txRunner, responsables),
+      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER, ResponsablesPlanPreventivo],
+    },
+    {
+      provide: ListarResponsablesPlanUseCase,
+      useFactory: (responsables: ResponsablesPlanPreventivo) =>
+        new ListarResponsablesPlanUseCase(responsables),
+      inject: [ResponsablesPlanPreventivo],
     },
     {
       provide: ListarPlanesUseCase,

@@ -9,7 +9,11 @@
  * fuera de la ecuación).
  */
 import 'reflect-metadata';
-import { NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { PreventivoController, toHttpException } from './preventivo.controller';
 import { ACCIONES_KEY } from '../../../auth/infrastructure/guards/decorators';
 import { Result } from '../../../shared/domain/result';
@@ -19,12 +23,22 @@ import { EditarPlanUseCase } from '../../application/use-cases/editar-plan.use-c
 import { ListarPlanesUseCase } from '../../application/use-cases/listar-planes.use-case';
 import { DarDeBajaPlanUseCase } from '../../application/use-cases/dar-de-baja-plan.use-case';
 import { ListarGeneracionesPlanUseCase } from '../../application/use-cases/listar-generaciones-plan.use-case';
+import { ListarResponsablesPlanUseCase } from '../../application/use-cases/listar-responsables-plan.use-case';
 import {
   AnticipacionNoMenorQueCadenciaError,
   ObjetivoInvalidoError,
   PlanNoEncontradoError,
+  ResponsableNoElegibleError,
 } from '../../domain/errors/preventivo.errors';
 import { espiado } from '../../../shared/test-helpers/espiado';
+import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
+
+/** Actor del tenant `cliente-1` con las celdas pedidas (rol no administrador: sin bypass). */
+function actorCon(permisos: string[]) {
+  return payloadDeTest({ sub: 'actor-1', cliente_id: 'cliente-1', rol: 'TECNICO', permisos });
+}
+
+const ACTOR = actorCon(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
 
 function makePlan(): PlanPreventivoEntity {
   return PlanPreventivoEntity.create(
@@ -62,6 +76,7 @@ describe('PreventivoController (4.4)', () => {
     const listarPlanes = espiado(ListarPlanesUseCase);
     const darDeBajaPlan = espiado(DarDeBajaPlanUseCase);
     const listarGeneracionesPlan = espiado(ListarGeneracionesPlanUseCase);
+    const listarResponsablesPlan = espiado(ListarResponsablesPlanUseCase);
 
     const controller = new PreventivoController(
       crearPlan.caso,
@@ -69,6 +84,7 @@ describe('PreventivoController (4.4)', () => {
       listarPlanes.caso,
       darDeBajaPlan.caso,
       listarGeneracionesPlan.caso,
+      listarResponsablesPlan.caso,
     );
 
     return {
@@ -78,6 +94,7 @@ describe('PreventivoController (4.4)', () => {
       listarPlanesUseCase: listarPlanes,
       darDeBajaPlanUseCase: darDeBajaPlan,
       listarGeneracionesPlanUseCase: listarGeneracionesPlan,
+      listarResponsablesPlanUseCase: listarResponsablesPlan,
     };
   }
 
@@ -86,7 +103,7 @@ describe('PreventivoController (4.4)', () => {
       const { controller, crearPlanUseCase } = buildController();
       crearPlanUseCase.execute.mockResolvedValue(Result.ok(makePlan()));
 
-      const result = await controller.crear({
+      const result = await controller.crear(ACTOR, {
         titulo: 'Plan test',
         prioridadId: 'prioridad-uuid',
         responsableId: 'responsable-uuid',
@@ -97,6 +114,18 @@ describe('PreventivoController (4.4)', () => {
 
       expect(result.id).toBe('plan-uuid');
       expect(result.titulo).toBe('Plan test');
+      expect(crearPlanUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ clienteId: 'cliente-1', responsableId: 'responsable-uuid' }),
+      );
+    });
+
+    it('responsable no elegible → 422', async () => {
+      const { controller, crearPlanUseCase } = buildController();
+      crearPlanUseCase.execute.mockResolvedValue(Result.fail(new ResponsableNoElegibleError()));
+
+      await expect(controller.crear(ACTOR, DTO_CREAR_VALIDO)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
 
     it('objetivo excluyente violado → 422', async () => {
@@ -105,7 +134,7 @@ describe('PreventivoController (4.4)', () => {
         Result.fail(new ObjetivoInvalidoError(true, true)),
       );
 
-      await expect(controller.crear(DTO_CREAR_VALIDO)).rejects.toThrow(
+      await expect(controller.crear(ACTOR, DTO_CREAR_VALIDO)).rejects.toThrow(
         UnprocessableEntityException,
       );
     });
@@ -114,7 +143,7 @@ describe('PreventivoController (4.4)', () => {
       const { controller, crearPlanUseCase } = buildController();
       crearPlanUseCase.execute.mockResolvedValue(Result.ok(makePlan()));
 
-      const result = await controller.crear({
+      const result = await controller.crear(ACTOR, {
         ...DTO_CREAR_VALIDO,
         anticipacionValor: 0,
         anticipacionUnidad: 'DIAS',
@@ -132,7 +161,7 @@ describe('PreventivoController (4.4)', () => {
       const error = new AnticipacionNoMenorQueCadenciaError('30 días', '30 días');
       crearPlanUseCase.execute.mockResolvedValue(Result.fail(error));
 
-      await expect(controller.crear(DTO_CREAR_VALIDO)).rejects.toThrow(
+      await expect(controller.crear(ACTOR, DTO_CREAR_VALIDO)).rejects.toThrow(
         new UnprocessableEntityException(error.message),
       );
     });
@@ -183,14 +212,33 @@ describe('PreventivoController (4.4)', () => {
       const { controller, editarPlanUseCase } = buildController();
       editarPlanUseCase.execute.mockResolvedValue(Result.fail(new PlanNoEncontradoError('x')));
 
-      await expect(controller.editar('x', {})).rejects.toThrow(NotFoundException);
+      await expect(controller.editar(ACTOR, 'x', {})).rejects.toThrow(NotFoundException);
+    });
+
+    it('delega con el clienteId del JWT; responsable nuevo no elegible → 422', async () => {
+      const { controller, editarPlanUseCase } = buildController();
+      editarPlanUseCase.execute.mockResolvedValue(Result.fail(new ResponsableNoElegibleError()));
+
+      await expect(
+        controller.editar(ACTOR, 'plan-uuid', { responsableId: 'otro-uuid' }),
+      ).rejects.toThrow(UnprocessableEntityException);
+      expect(editarPlanUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clienteId: 'cliente-1',
+          planId: 'plan-uuid',
+          responsableId: 'otro-uuid',
+        }),
+      );
     });
 
     it('pasa la anticipación al caso de uso (PATCH semántico)', async () => {
       const { controller, editarPlanUseCase } = buildController();
       editarPlanUseCase.execute.mockResolvedValue(Result.ok(makePlan()));
 
-      await controller.editar('plan-uuid', { anticipacionValor: 2, anticipacionUnidad: 'DIAS' });
+      await controller.editar(ACTOR, 'plan-uuid', {
+        anticipacionValor: 2,
+        anticipacionUnidad: 'DIAS',
+      });
 
       expect(editarPlanUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -204,6 +252,34 @@ describe('PreventivoController (4.4)', () => {
     it('declara @RequiereAcciones("PREVENTIVO:MODIFICACION")', () => {
       const meta = Reflect.getMetadata(ACCIONES_KEY, PreventivoController.prototype.editar);
       expect(meta).toEqual(['PREVENTIVO:MODIFICACION']);
+    });
+  });
+
+  describe('GET /preventivo/planes/responsables', () => {
+    const TECNICOS = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];
+
+    it.each([
+      ['PREVENTIVO:ALTAS', ['PREVENTIVO:ALTAS']],
+      ['PREVENTIVO:MODIFICACION', ['PREVENTIVO:MODIFICACION']],
+    ])('con %s → delega con el clienteId del JWT y devuelve la lista', async (_caso, permisos) => {
+      const { controller, listarResponsablesPlanUseCase } = buildController();
+      listarResponsablesPlanUseCase.execute.mockResolvedValue(Result.ok(TECNICOS));
+
+      const res = await controller.listarResponsables(actorCon(permisos));
+
+      expect(res).toEqual(TECNICOS);
+      expect(listarResponsablesPlanUseCase.execute).toHaveBeenCalledWith({
+        clienteId: 'cliente-1',
+      });
+    });
+
+    it('sin PREVENTIVO:ALTAS ni PREVENTIVO:MODIFICACION → 403, sin consultar', async () => {
+      const { controller, listarResponsablesPlanUseCase } = buildController();
+
+      await expect(
+        controller.listarResponsables(actorCon(['PREVENTIVO:LECTURA', 'PREVENTIVO:BORRADO'])),
+      ).rejects.toThrow(ForbiddenException);
+      expect(listarResponsablesPlanUseCase.execute).not.toHaveBeenCalled();
     });
   });
 

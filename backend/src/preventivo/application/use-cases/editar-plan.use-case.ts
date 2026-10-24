@@ -7,9 +7,12 @@ import {
 import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
 import { PlanNoEncontradoError } from '../../domain/errors/preventivo.errors';
 import { CalcularCicloService } from '../../domain/services/calcular-ciclo.service';
+import { ResponsablesPlanPreventivo } from '../services/responsables-plan-preventivo';
 
 /** DTO de entrada para editar un plan (PATCH semántico, `undefined` = no tocar). */
 export interface EditarPlanDto {
+  /** Cliente activo: la elegibilidad del responsable se decide con su membresía en él. */
+  clienteId: string;
   planId: string;
   titulo?: string;
   instrucciones?: string | null;
@@ -53,6 +56,11 @@ export interface EditarPlanDto {
  * Sin validación de objetivo excluyente EN ESTE use case: la AUTORIDAD es
  * `PlanPreventivoEntity.editar()` (ADR-PV1).
  *
+ * Un responsable NUEVO tiene que ser elegible (`ResponsablesPlanPreventivo.exigirElegible`) →
+ * `ResponsableNoElegibleError` (422), antes de `editar()` para que el rechazo no deje la entidad
+ * a medio mutar. El vigente no se revalida: el formulario lo reenvía en cada guardado, y exigirlo
+ * bloquearía editar cualquier otro campo de un plan cuyo técnico perdió el permiso después.
+ *
  * Ref spec: sdd/preventivo/spec, Requirement "Recuperación de corrida
  * perdida sin ráfaga" (escenario "El pasado es inalcanzable al editar la
  * cadencia"). Ref design: ADR-PV1, ADR-PV2, ADR-PV3. Tarea: 4.2/4.3.
@@ -66,12 +74,20 @@ export class EditarPlanUseCase {
       'buscarPorId' | 'guardar' | 'actualizarProximaEjecucion'
     >,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly responsables: Pick<ResponsablesPlanPreventivo, 'exigirElegible'>,
   ) {}
 
   async execute(dto: EditarPlanDto): Promise<Result<PlanPreventivoEntity, DomainError>> {
     const plan = await this.planRepo.buscarPorId(dto.planId);
     if (!plan || plan.isDeleted()) {
       return Result.fail(new PlanNoEncontradoError(dto.planId));
+    }
+
+    if (dto.responsableId !== undefined && dto.responsableId !== plan.responsableId) {
+      const elegible = await this.responsables.exigirElegible(dto.clienteId, dto.responsableId);
+      if (elegible.isFail()) {
+        return Result.fail(elegible.getError());
+      }
     }
 
     const cadenciaCambia =

@@ -150,7 +150,6 @@ describe('CrearTicketUseCase', () => {
       existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
       estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
       resolverNombres: unstubbed('resolverNombres'),
-      esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
       listarAgentes: unstubbed('listarAgentes'),
     };
     const numerador = {
@@ -785,7 +784,6 @@ describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (run
       existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
       estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
       resolverNombres: unstubbed('resolverNombres'),
-      esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
       listarAgentes: unstubbed('listarAgentes'),
     };
     const numerador = {

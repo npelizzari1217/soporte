@@ -174,7 +174,7 @@ describe("PlanPreventivoDetailView — entrada a la edición (EP-R2, tarea 3.11)
     server.use(
       http.get("/api/equipos", () => HttpResponse.json([])),
       http.get("/api/catalogos/prioridades", () => HttpResponse.json([])),
-      http.get("/api/usuarios", () => HttpResponse.json([])),
+      http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([])),
     );
   }
 

@@ -71,18 +71,6 @@ export interface IUsuarioMasterChecker {
   resolverNombres(usuarioIds: string[]): Promise<Map<string, { nombre: string; apellido: string }>>;
 
   /**
-   * Indica si el usuario ve todo en el cliente: ROOT (`is_global_admin`) o una membresía activa
-   * con rol `ADMINISTRADOR`. Es el mismo criterio de `resolverScope` para el actor, aplicado a OTRO
-   * usuario (el destinatario de una asignación). No lee ninguna tabla de permisos: la elegibilidad
-   * por tipo vive en el tenant (odd/permisos-por-tipo-ticket, D5 g).
-   *
-   * @param usuarioId UUID del usuario (asignado).
-   * @param clienteId UUID del cliente activo.
-   * @returns `true` si es ROOT o ADMINISTRADOR del cliente.
-   */
-  esAdminTotalEnTenant(usuarioId: string, clienteId: string): Promise<boolean>;
-
-  /**
    * De entre `usuarioIds`, los AGENTES del cliente (rol `TECNICO` o `COLABORADOR`: ambos cumplen
    * funciones de técnico, decisión de negocio 2026-08-20). Un agente cumple TODAS estas
    * condiciones:

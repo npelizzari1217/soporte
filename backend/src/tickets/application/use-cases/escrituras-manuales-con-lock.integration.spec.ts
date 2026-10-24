@@ -95,8 +95,11 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
   const eventPublisher = { publish: (_e: DomainEvent) => undefined };
   const stateMachineFactory = new TicketStateMachineFactory();
   const usuarioMasterChecker = { estaActivoEnTenant: async () => true };
-  // La elegibilidad no es lo que se prueba acá: el asignado es elegible.
-  const elegibilidad = { esAsignableATipo: async () => true };
+  // La elegibilidad no es lo que se prueba acá: el asignado y quien completa son elegibles.
+  const elegibilidad = {
+    aceptaComoResponsable: async () => true,
+    esAgenteDeTipo: async () => true,
+  };
   const estadoIds = new Map<string, string>();
   let tipoId: string;
   let prioridadId: string;
@@ -115,6 +118,7 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
     relojMarcador,
     eventPublisher,
     txRunner,
+    elegibilidad,
   );
   const completar = new CompletarTareaUseCase(
     ticketRepo,
@@ -194,7 +198,12 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
   /** Resuelve el ticket por tareas en una transacción propia, fuera de la del caso de uso manual. */
   const resolverPorDebajo = (ticketId: string, tareaId: string) => () =>
     enTenant(async () => {
-      const r = await completar.execute({ ticketId, tareaId, actor: tecnico });
+      const r = await completar.execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId,
+        actor: tecnico,
+      });
       if (r.isFail()) throw new Error(`No se pudo resolver por debajo: ${r.getError().message}`);
     });
 

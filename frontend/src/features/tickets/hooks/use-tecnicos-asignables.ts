@@ -2,8 +2,8 @@
 
 /**
  * use-tecnicos-asignables — CONTAINER hook para `GET /tickets/:id/asignables`.
- * Lista los TÉCNICOS elegibles para atender ESTE ticket (filtrados por el
- * módulo de su tipo, en el backend). Alimenta el combo del control unificado
+ * Lista los TÉCNICOS elegibles para atender ESTE ticket (TECNICO o COLABORADOR
+ * con LECTURA sobre su tipo, filtrados en el backend). Alimenta el combo del control unificado
  * "Asignar y poner en proceso".
  *
  * A diferencia de `useUsuariosAsignables` (universo genérico del tenant vía
