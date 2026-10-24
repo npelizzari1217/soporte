@@ -262,6 +262,13 @@ export interface TicketResponseDto {
    * no lo trae (ausente). En el detalle es `null` si no es externo o no cargó teléfono.
    */
   solicitanteTelefono?: string | null;
+  /**
+   * `true` si el ticket tiene una compra vinculada activa, que frena sus tareas (odd/ticket-unificado,
+   * S5). Viaja SOLO en el detalle (`GET /tickets/:id`), a todo el que ve el ticket: no exige
+   * `COMPRAS:LECTURA` y no dice qué compra lo bloquea (L19). Ausente en el listado y en las
+   * respuestas de las escrituras.
+   */
+  bloqueada?: boolean;
   /** Calculado por el módulo SLA. `null` = sin SLA aplicable/calculado aún (sdd/beta-frontend item 2). */
   slaVenceAt: string | null;
   /** Desnormalizado, recalculado por el módulo SLA (sdd/beta-frontend item 2). */

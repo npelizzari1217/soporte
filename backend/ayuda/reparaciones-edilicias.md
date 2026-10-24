@@ -100,7 +100,17 @@ al publicar un comentario.
 
 Una reparación puede quedar frenada mientras se espera un repuesto que se pidió
 por el módulo de Compras. Cuando eso pasa, el listado le muestra el chip
-**Bloqueada** en la fila correspondiente.
+**Bloqueada** en la fila correspondiente, y el detalle del ticket muestra
+**Bloqueado por una compra en curso**. Vale para un ticket de cualquier tipo
+con compras vinculadas, no solo para las reparaciones edilicias.
+
+Mientras está bloqueada, **sus tareas quedan de solo lectura**: no se agregan,
+no se asignan, no se completan, no se descompletan ni se eliminan, ni desde la reparación ni desde
+el detalle del ticket. Los comentarios internos se siguen pudiendo publicar.
+
+La marca de bloqueo la ve todo el que ve el ticket, tenga o no permiso sobre
+Compras. Sin ese permiso, solo sabe que está bloqueado: no ve qué compra lo
+frena.
 
 Este chip **es automático**: no lo marca nadie a mano. Aparece solo cuando la
 reparación tiene una compra vinculada que todavía está en curso, y desaparece
@@ -160,7 +170,8 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 | Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
 | Vincular una compra a una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
 | Desvincular una compra de una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
-| Ver qué compras tiene vinculadas un ticket | **Ver** sobre el tipo del ticket **y** `COMPRAS:LECTURA`; sin él, solo lo que muestra el chip **Bloqueada** del listado |
+| Ver qué compras tiene vinculadas un ticket | **Ver** sobre el tipo del ticket **y** `COMPRAS:LECTURA` |
+| Saber si un ticket está bloqueado por una compra | **Ver** sobre el tipo del ticket: el chip **Bloqueada** del listado y la marca del detalle, sin qué compra lo bloquea |
 
 Las filas de compras no son una aclaración de qué botones se ven en
 pantalla: es el permiso que el servidor exige de verdad. A alguien al que le

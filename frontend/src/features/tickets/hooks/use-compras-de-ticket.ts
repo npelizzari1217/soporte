@@ -8,9 +8,10 @@
  * `MODIFICACION` sobre el tipo del ticket. Quien monta estos hooks decide si se piden: sin
  * `COMPRAS:LECTURA`, `GET` respondería 403.
  *
- * Las mutaciones invalidan la lista del ticket y `["reparaciones"]`: el chip «Bloqueada» y
- * `comprasQueBloquean` de la grilla de Edilicia viajan embebidos en ese listado, que no tiene otra
- * forma de enterarse del vínculo nuevo.
+ * Las mutaciones invalidan `["ticket", id]`, que incluye esta lista y el detalle (su `bloqueada`
+ * cambia con el vínculo), y `["reparaciones"]`: el chip «Bloqueada» y `comprasQueBloquean` de la
+ * grilla de Edilicia viajan embebidos en ese listado, que no tiene otra forma de enterarse del
+ * vínculo nuevo.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
@@ -47,7 +48,8 @@ export function useComprasDeTicket(ticketId: string, enabled = true) {
 function useInvalidarCompras(ticketId: string): () => void {
   const queryClient = useQueryClient();
   return () => {
-    queryClient.invalidateQueries({ queryKey: comprasDeTicketQueryKey(ticketId) });
+    // Prefijo del detalle: alcanza a esta lista (`comprasDeTicketQueryKey`) y a `bloqueada`.
+    queryClient.invalidateQueries({ queryKey: ["ticket", ticketId] });
     queryClient.invalidateQueries({ queryKey: ["reparaciones"] });
   };
 }

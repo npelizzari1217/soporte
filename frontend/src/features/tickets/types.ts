@@ -40,6 +40,12 @@ export interface Ticket {
   asignadoApellido: string | null;
   /** Solo en el detalle: teléfono del solicitante externo (`null` si no cargó). Ausente en el listado. */
   solicitanteTelefono?: string | null;
+  /**
+   * Solo en el detalle (`GET /tickets/:id`): `true` si una compra activa vinculada frena las tareas
+   * (odd/ticket-unificado, S5). Llega a todo el que ve el ticket, sin `COMPRAS:LECTURA`, y no dice
+   * qué compra lo bloquea (L19). Ausente en el listado.
+   */
+  bloqueada?: boolean;
   /** Calculado por el módulo SLA (Fase 4). `null` = sin SLA aplicable/calculado aún. */
   slaVenceAt: string | null;
   /** Desnormalizado: deduplicador del mail del barrido. Lo que se muestra es `sla`. */

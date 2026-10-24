@@ -8,7 +8,7 @@
  *   GET    /tickets            → ListarTicketsUseCase (tipos con `LECTURA`; fila sin `VER_TODOS`)
  *   GET    /tickets/export     → ExportarTicketsUseCase (mismo alcance que el listado)
  *   GET    /tickets/permisos-por-tipo → ObtenerPermisosPorTipoUseCase (acciones de la sesión)
- *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila)
+ *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila), con `bloqueada`
  *   PATCH  /tickets/:id        → EditarTicketUseCase (`MODIFICACION` sobre su tipo)
  *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`TRANSICIONAR` sobre su tipo)
  *   PATCH  /tickets/:id/asignar → AsignarTicketUseCase (`ASIGNAR` sobre su tipo)
@@ -132,6 +132,10 @@ import {
 } from '../../domain/ports/i-solicitante-externo.repository';
 import { ESTADO_REPOSITORY, IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import {
+  BLOQUEO_TICKET_REPOSITORY,
+  IBloqueoTicketRepository,
+} from '../../domain/ports/i-bloqueo-ticket.repository';
+import {
   ISectorRepository,
   SECTOR_REPOSITORY,
 } from '../../../sectores/domain/ports/i-sector.repository';
@@ -239,6 +243,8 @@ export class TicketsController {
     private readonly obtenerPermisosPorTipoUseCase: ObtenerPermisosPorTipoUseCase,
     private readonly borrarTicketUseCase: BorrarTicketUseCase,
     private readonly recuperarTicketUseCase: RecuperarTicketUseCase,
+    @Inject(BLOQUEO_TICKET_REPOSITORY)
+    private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'estaBloqueadoPorCompra'>,
   ) {}
 
   /**
@@ -495,6 +501,10 @@ export class TicketsController {
    * `CSAT:LECTURA` (WU9.2, ADR-C5) Y, si es TECNICO, el ticket le está
    * asignado ACTUALMENTE (mismo límite conocido que el KPI del dashboard,
    * ADR-C8) — gateo dentro del payload, sin tocar el decorador de la ruta.
+   *
+   * `bloqueada` (odd/ticket-unificado, S5, L19, L22) viaja a todo el que ve el ticket, sin
+   * `COMPRAS:LECTURA`: es el mismo criterio que frena sus tareas, y no nombra ninguna compra. Se
+   * consulta después de la visibilidad, así un 404 no revela nada.
    */
   @Get(':id')
   async findOne(
@@ -510,7 +520,7 @@ export class TicketsController {
       throw toHttpException(result.getError());
     }
     const ticket = result.getValue();
-    const [nombres, csat] = await Promise.all([
+    const [nombres, csat, bloqueada] = await Promise.all([
       this.resolverNombresPorTicket([ticket]).then((porTicket) => porTicket.get(ticket.id)),
       this.obtenerCsatTicketUseCase.execute({
         ticketId: ticket.id,
@@ -519,12 +529,13 @@ export class TicketsController {
         actorRol: user.rol,
         tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
       }),
+      this.bloqueoRepo.estaBloqueadoPorCompra(ticket.id),
     ]);
     // El teléfono del externo viaja solo en el detalle (nunca en el listado).
     const externo = ticket.solicitanteExternoId
       ? await this.solicitanteExternoRepo.findById(ticket.solicitanteExternoId)
       : null;
-    return this.aDto(ticket, nombres, csat, externo?.telefono ?? null);
+    return { ...(await this.aDto(ticket, nombres, csat, externo?.telefono ?? null)), bloqueada };
   }
 
   /**

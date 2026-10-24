@@ -47,7 +47,7 @@ export function puedeCompletarTareaUi(
  *
  * `estadoCodigo: undefined` es "catálogo todavía no resuelto": no se esconde nada y decide el
  * backend. `bloqueada` sale de la fila de Edilicia o, en el detalle del ticket, de sus compras
- * vinculadas, que solo se leen con `COMPRAS:LECTURA`: sin esa celda el detalle pasa `false`.
+ * vinculadas con `COMPRAS:LECTURA` y, sin esa celda, de `bloqueada` en `GET /tickets/:id`.
  *
  * @returns El motivo para mostrar, o `null` si se puede editar.
  */

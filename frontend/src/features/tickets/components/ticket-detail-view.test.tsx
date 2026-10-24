@@ -64,6 +64,7 @@ const TICKET = {
   sectorNombre: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
+  bloqueada: false,
 };
 
 function mockBackend() {
@@ -893,9 +894,14 @@ describe("TicketDetailView — compras vinculadas y bloqueo (odd/ticket-unificad
     }
   });
 
-  it("desvincular desde el detalle manda DELETE /tickets/:id/compras/:compraId", async () => {
+  it("desvincular desde el detalle manda DELETE /tickets/:id/compras/:compraId y vuelve a leer el ticket", async () => {
     let borrada: string | null = null;
+    let lecturasDelTicket = 0;
     server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => {
+        lecturasDelTicket += 1;
+        return HttpResponse.json({ ...TICKET, asignadoId: "u-otro", bloqueada: true });
+      }),
       http.delete(`/api/tickets/${TICKET_ID}/compras/:compraId`, ({ params }) => {
         borrada = String(params.compraId);
         return new HttpResponse(null, { status: 204 });
@@ -905,8 +911,49 @@ describe("TicketDetailView — compras vinculadas y bloqueo (odd/ticket-unificad
     renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: conCompras, permisos: enTi1("MODIFICACION") });
 
     const fila = (await screen.findByText("COM-0001")).closest("li") as HTMLElement;
+    const lecturasAntes = lecturasDelTicket;
     await user.click(within(fila).getByRole("button", { name: /desvincular/i }));
 
     await waitFor(() => expect(borrada).toBe("co1"));
+    // `bloqueada` del ticket cambia con el vínculo: el detalle no se queda con el dato viejo.
+    await waitFor(() => expect(lecturasDelTicket).toBeGreaterThan(lecturasAntes));
+  });
+
+  it("sin COMPRAS:LECTURA, el bloqueo sale de `bloqueada` del ticket: marca el bloqueo y congela las tareas (L19, L22)", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ ...TICKET, asignadoId: "u-otro", bloqueada: true }),
+      ),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("MODIFICACION") });
+
+    const tareas = (await screen.findByRole("heading", { name: "Tareas" })).closest("section") as HTMLElement;
+    expect(await within(tareas).findByText("Bloqueado por una compra en curso")).toBeInTheDocument();
+    expect(await within(tareas).findByRole("note")).toHaveTextContent(/bloqueado por una compra/);
+    expect(within(tareas).queryByLabelText("Nueva tarea")).toBeNull();
+    // Sigue sin ver qué compra lo bloquea, ni se la pide al backend.
+    expect(screen.queryByRole("heading", { name: "Compras vinculadas" })).toBeNull();
+    expect(screen.queryByText("COM-0001")).toBeNull();
+    expect(lecturasDeCompras).toBe(0);
+  });
+
+  it("caso hermano: sin COMPRAS:LECTURA y `bloqueada: false`, no marca bloqueo y las tareas siguen editables", async () => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("MODIFICACION") });
+
+    expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
+    expect(screen.queryByText("Bloqueado por una compra en curso")).toBeNull();
+  });
+
+  it("con COMPRAS:LECTURA el bloqueo se marca una sola vez, en la sección de compras", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ ...TICKET, asignadoId: "u-otro", bloqueada: true }),
+      ),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: conCompras, permisos: enTi1("MODIFICACION") });
+
+    const seccion = (await screen.findByRole("heading", { name: "Compras vinculadas" })).closest("section") as HTMLElement;
+    expect(await within(seccion).findByText("Bloqueado por una compra en curso")).toBeInTheDocument();
+    expect(screen.getAllByText("Bloqueado por una compra en curso")).toHaveLength(1);
   });
 });

@@ -15,9 +15,9 @@
  *
  * Compras vinculadas (odd/ticket-unificado, S4, S5, L19): la sección se muestra solo con la celda
  * `COMPRAS:LECTURA`, la que exige `GET /tickets/:id/compras`; vincular y desvincular piden además
- * `MODIFICACION` sobre el tipo. El bloqueo por compra sale de esa misma lista, así que sin
- * `COMPRAS:LECTURA` el detalle no lo conoce: `GET /tickets/:id` no lo trae (pendiente de backend,
- * L22) y las tareas solo se congelan por estado; el backend igual rechaza la escritura.
+ * `MODIFICACION` sobre el tipo. Con esa celda, el bloqueo por compra sale de la misma lista, que se
+ * refresca con cada vínculo; sin ella sale de `bloqueada` en `GET /tickets/:id` (L19, L22), que no
+ * dice qué compra lo bloquea, y la marca va en la sección de tareas, que es lo que congela.
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -82,7 +82,9 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // Sin la celda, `GET /tickets/:id/compras` responde 403: ni se pide (L19).
   const puedeLeerCompras = useCan("COMPRAS:LECTURA");
   const comprasQuery = useComprasDeTicket(ticketId, puedeLeerCompras);
-  const bloqueadoPorCompra = (comprasQuery.data ?? []).some((compra) => compra.bloquea);
+  const bloqueadoPorCompra = puedeLeerCompras
+    ? (comprasQuery.data ?? []).some((compra) => compra.bloquea)
+    : ticketQuery.data?.bloqueada === true;
   const { isGlobalAdmin } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
@@ -228,14 +230,19 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         aria-labelledby="tareas-titulo"
         className="rounded-lg border border-border bg-seccion-tareas p-6"
       >
-        <h2 id="tareas-titulo" className="mb-4 text-sm font-semibold text-foreground">
-          Tareas
-        </h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 id="tareas-titulo" className="text-sm font-semibold text-foreground">
+            Tareas
+          </h2>
+          {/* Con COMPRAS:LECTURA la marca va junto a las compras que la causan. */}
+          {!puedeLeerCompras && bloqueadoPorCompra && (
+            <Badge variant="warning">Bloqueado por una compra en curso</Badge>
+          )}
+        </div>
         <TicketTareas
           ticketId={ticket.id}
           asignadoId={ticket.asignadoId}
           tipoId={ticket.tipoId}
-          // El bloqueo por compra solo se conoce con COMPRAS:LECTURA (ver el JSDoc del componente).
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueadoPorCompra)}
         />
       </section>

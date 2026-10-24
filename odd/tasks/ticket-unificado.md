@@ -28,8 +28,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   del ticket), GET compras con COMPRAS:LECTURA, notas de rollback en el runbook — (este commit)
 - [x] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
   "Nuevo ticket" con todos los tipos — (este commit)
-- [ ] T3b — S5, L22, L30 — worker — `bloqueada` en GET /tickets/:id para el detalle sin COMPRAS:LECTURA;
-  Ayuda reparaciones-edilicias y reparaciones-listado — (pendiente)
+- [x] T3b — S5, L22, L30 — worker — `bloqueada` en GET /tickets/:id para el detalle sin COMPRAS:LECTURA;
+  Ayuda reparaciones-edilicias y reparaciones-listado — (este commit)
 - [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
 
 ## Log
@@ -200,3 +200,27 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 - **L32** (dueño, 2026-10-24) — "edilicia es para los que ven Edilicia, mantenimiento y los otros ticket
   no": la pantalla Edilicia sigue exigiendo Ver sobre algún tipo del módulo Edilicia (opción a); el
   menú y la ruta no cambian.
+- **L33** (decisión, T3b/S5, L19, L22, L28) — `GET /tickets/:id` suma `bloqueada: boolean`, con el mismo
+  criterio que frena las tareas (`IBloqueoTicketRepository.estaBloqueadoPorCompra`, que usa
+  `comprasQueBloquean`). Lo calcula `TicketsController.findOne` después de `ObtenerTicketUseCase`, así un
+  404 no consulta nada; no cambia la firma de ese caso de uso, que también usan `ticket-pdf` y la API v1.
+  Viaja solo en el detalle (opcional en `TicketResponseDto`, ausente en el listado y en las escrituras),
+  a todo el que ve el ticket, sin `COMPRAS:LECTURA`, y no lleva id ni número de compra. El detalle del
+  frontend toma el bloqueo de la lista de compras con `COMPRAS:LECTURA` (como en T3) y de `bloqueada` sin
+  ella; en ese caso la marca «Bloqueado por una compra en curso» va junto al título de Tareas, porque la
+  sección de compras no se muestra. Vincular y desvincular invalidan `["ticket", id]` (antes solo la
+  lista de compras), para que `bloqueada` no quede viejo.
+- **L34** (decisión, T3b/L30, L32) — Los pasajes falsos de L30 ya se habían corregido en el commit de T3.
+  Este commit suma a `reparaciones-listado.md` quién entra a la pantalla (Ver sobre algún tipo del
+  módulo Edilicia, L32) y el selector Tipo (L25), y actualiza la página en la URL y dónde se ve qué compra
+  frena; a `reparaciones-edilicias.md`, la marca del detalle para cualquier tipo, las tareas de solo
+  lectura mientras dura el bloqueo y la fila «Saber si un ticket está bloqueado» de la tabla de permisos.
+  Sigue pendiente para la tanda final: la sección de compras del detalle y los tipos de «Nuevo ticket».
+- **L35** (evidencia, T3b) — RED observado antes de implementar: backend, 2 tests de
+  `tickets.controller.spec.ts` (`bloqueada` undefined) y 2 de `reparaciones.e2e.spec.ts` (vínculo real
+  activo, desvinculado y compra cancelada); frontend, 2 de `ticket-detail-view.test.tsx` (marca y
+  congelado sin `COMPRAS:LECTURA`, relectura del ticket al desvincular). GREEN y compuertas: backend
+  `pnpm lint` y `pnpm typecheck` sin errores, `tickets.controller.spec.ts` 87, `reparaciones.e2e.spec.ts`
+  31, `tickets.e2e.spec.ts` 38, `scripts/sync-ayuda.spec.ts` 21; frontend `pnpm lint` sin advertencias
+  ni errores, `pnpm type-check` sin errores, `pnpm test` 282 archivos / 2491 tests. No se corrió la suite
+  completa del backend.

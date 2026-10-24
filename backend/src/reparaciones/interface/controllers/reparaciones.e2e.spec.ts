@@ -62,6 +62,7 @@ import {
   ListReparacionesResponseDto,
   ReparacionListItemResponseDto,
 } from '../dtos/reparaciones.dto';
+import { TicketResponseDto } from '../../../tickets/interface/dtos/ticket.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
 import {
   celdasDeLaMatriz,
@@ -701,6 +702,86 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         )
       ).data.items.find((r) => r.id === ticketId);
       expect(fila?.bloqueada).toBe(true);
+    });
+
+    /**
+     * El detalle informa el bloqueo a todo el que ve el ticket (odd/ticket-unificado, S5, L19, L22),
+     * sin COMPRAS:LECTURA: el booleano, nunca qué compra lo bloquea.
+     */
+    it('GET /tickets/:id informa bloqueada sin COMPRAS:LECTURA, y deja de estarlo al desvincular', async () => {
+      const ticketId = await crearTicket(tipoSoporteId);
+      const compraId = await crearCompra();
+      const gestor = await crearActorConPermisos(PUEDE_VINCULAR_SOPORTE);
+      const lector = await crearActorConPermisos(
+        ['TICKETS:LECTURA', 'TICKETS:VER_TODOS'],
+        gestor.clienteId,
+      );
+      const detalle = (): Promise<{ status: number; data: TicketResponseDto }> =>
+        httpGet<TicketResponseDto>(`${baseUrl}/tickets/${ticketId}`, bearer(lector.accessToken));
+
+      const libre = await detalle();
+      expect(libre.status).toBe(200);
+      expect(libre.data.bloqueada).toBe(false);
+
+      expect(
+        (
+          await httpPost(
+            `${baseUrl}/tickets/${ticketId}/compras`,
+            { compraId },
+            bearer(gestor.accessToken),
+          )
+        ).status,
+      ).toBe(201);
+      const { numero } = await tenantClient.compra.findUniqueOrThrow({ where: { id: compraId } });
+
+      const bloqueado = await detalle();
+      expect(bloqueado.status).toBe(200);
+      expect(bloqueado.data).toMatchObject({ id: ticketId, bloqueada: true });
+      // L19: quien no lee compras no se entera de cuál lo bloquea.
+      expect(JSON.stringify(bloqueado.data)).not.toContain(compraId);
+      expect(JSON.stringify(bloqueado.data)).not.toContain(numero);
+      expect(
+        (await httpGet(`${baseUrl}/tickets/${ticketId}/compras`, bearer(lector.accessToken)))
+          .status,
+      ).toBe(403);
+
+      expect(
+        (
+          await httpDelete(
+            `${baseUrl}/tickets/${ticketId}/compras/${compraId}`,
+            bearer(gestor.accessToken),
+          )
+        ).status,
+      ).toBe(204);
+      expect((await detalle()).data.bloqueada).toBe(false);
+    });
+
+    it('GET /tickets/:id con la compra vinculada cancelada: bloqueada=false, y el vínculo sigue', async () => {
+      const ticketId = await crearTicket(tipoSoporteId);
+      const compraId = await crearCompra();
+      await tenantClient.ticketCompra.create({ data: { ticketId, compraId } });
+      const lector = await crearActorConPermisos(['TICKETS:LECTURA', 'TICKETS:VER_TODOS']);
+      const detalle = async (): Promise<boolean | undefined> =>
+        (
+          await httpGet<TicketResponseDto>(
+            `${baseUrl}/tickets/${ticketId}`,
+            bearer(lector.accessToken),
+          )
+        ).data.bloqueada;
+
+      expect(await detalle()).toBe(true);
+
+      await tenantClient.compra.update({
+        where: { id: compraId },
+        data: {
+          canceladaEn: new Date(),
+          canceladoPorId: '00000000-0000-4000-8000-000000000ccc',
+          motivoCancelacion: 'Cancelada en el e2e',
+        },
+      });
+
+      expect(await detalle()).toBe(false);
+      expect(await vinculosDe(ticketId)).toBe(1);
     });
 
     it('GET /reparaciones?tipo= lista los tickets de ese tipo con su bloqueo; sin tipo, solo los del módulo EDILICIA', async () => {
