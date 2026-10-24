@@ -405,6 +405,32 @@ describe('PlanPreventivoEntity', () => {
       );
     });
 
+    it('compara en días con cadencia de varios meses: 59 días contra 2 meses se acepta, 60 días se rechaza', () => {
+      const acepta = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 2,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 59,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+      const rechaza = PlanPreventivoEntity.create(
+        propsConEquipo({
+          intervaloValor: 2,
+          intervaloUnidad: 'MESES',
+          anticipacionValor: 60,
+          anticipacionUnidad: 'DIAS',
+        }),
+      );
+
+      expect(acepta.isOk()).toBe(true);
+      expect(rechaza.isFail()).toBe(true);
+      expect(rechaza.getError()).toBeInstanceOf(AnticipacionNoMenorQueCadenciaError);
+      expect(rechaza.getError().message).toBe(
+        'La anticipación (60 días) debe ser menor que la cadencia (2 meses = 60 días). Para comparar, un mes cuenta como 30 días.',
+      );
+    });
+
     it('editar() revalida la anticipación contra la cadencia RESULTANTE y NO muta si falla', () => {
       const plan = PlanPreventivoEntity.create(
         propsConEquipo({

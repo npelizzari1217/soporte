@@ -78,3 +78,8 @@ la fecha del ciclo, conserva esa fecha como fecha objetivo y el responsable reci
 - **L12** (orquestador, 2026-10-24) — T1, T2 y T3 se commitean juntos: comparten `schema.prisma`,
   `ticket.mapper(.spec).ts`, plantillas, listener y diálogos, y separar por fragmentos dejaba commits
   intermedios que no compilan. Ayuda `mantenimiento-preventivo.md` corregida en el mismo commit.
+- **L13** (verify independiente sobre 602a258e, 2026-10-24) — PASS sin bloqueantes. Ajustes del mismo
+  commit siguiente: Ayuda aclara que no hay recordatorio si el ticket se generó ese mismo día; tests de
+  `fechaGeneracion` en bordes (fin de mes, bisiesto, 0 días), dos barridos de recordatorio concurrentes y
+  2 meses contra 59/60 días; comentario de `AnticipacionNoMenorQueCadenciaError` corregido (con unidades
+  mezcladas el mes de 30 días es una aproximación).

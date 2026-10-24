@@ -712,6 +712,20 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       expect(recordatoriosDe(ticketId)).toHaveLength(1);
     });
 
+    it('dos barridos CONCURRENTES mandan un solo recordatorio y dejan el ticket marcado', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, manana(), 2);
+      const ahora = new Date();
+
+      await Promise.all([
+        withTenant(() => enviarRecordatorios.execute(ahora)),
+        withTenant(() => enviarRecordatorios.execute(ahora)),
+      ]);
+
+      expect(recordatoriosDe(ticketId)).toHaveLength(1);
+      expect(await marcaDe(ticketId)).not.toBeNull();
+    });
+
     it('va al responsable ACTUAL del plan, no al que tenía al generarse', async () => {
       const plan = await crearPlan();
       const ticketId = await ticketPreventivo(plan, manana(), 2);

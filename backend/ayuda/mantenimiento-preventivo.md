@@ -19,7 +19,9 @@ próximo ciclo ya entró en su anticipación, crea un ticket de tipo **Preventiv
 Con anticipación 0 el ticket aparece el mismo día del ciclo; con, por ejemplo,
 10 días, aparece 10 días antes y guarda la fecha del ciclo como **fecha
 objetivo**. El día anterior a la fecha objetivo, si el ticket sigue abierto, el
-responsable del plan recibe un correo de recordatorio. El ticket
+responsable del plan recibe un correo de recordatorio. Si el ticket se generó ese
+mismo día (por ejemplo, con 1 día de anticipación), no hay recordatorio: el
+aviso de generación ya le llegó al responsable. El ticket
 queda a nombre del responsable del plan, con el título que el plan tenga
 cargado y una descripción que arranca con el objetivo (ver "Qué dice la
 descripción del ticket generado", abajo).

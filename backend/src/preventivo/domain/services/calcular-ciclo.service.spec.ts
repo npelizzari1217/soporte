@@ -171,6 +171,18 @@ describe('CalcularCicloService', () => {
         ),
       ).toBe('2025-11-15');
     });
+
+    it.each([
+      ['2028-03-31', 1, 'MESES', '2028-02-29'],
+      ['2027-01-31', 2, 'MESES', '2026-11-30'],
+      ['2028-02-29', 12, 'MESES', '2027-02-28'],
+      ['2026-03-01', 1, 'DIAS', '2026-02-28'],
+      ['2026-03-31', 0, 'DIAS', '2026-03-31'],
+    ] as const)('%s menos %i %s → %s', (ciclo, valor, unidad, esperado) => {
+      const fecha = new Date(`${ciclo}T00:00:00.000Z`);
+
+      expect(iso(service.fechaGeneracion(fecha, { valor, unidad }))).toBe(esperado);
+    });
   });
 
   describe('ciclosPendientes() con anticipación', () => {

@@ -140,9 +140,17 @@ export class UnidadAnticipacionInvalidaError extends DomainError {
 /**
  * AnticipacionNoMenorQueCadenciaError — la anticipación tiene que ser
  * estrictamente menor que la cadencia, comparadas en días con un mes = 30
- * días (`planes_preventivo_anticipacion_menor_cadencia_check`). Con una
- * anticipación igual o mayor, la fecha de generación de un ciclo caería en o
- * antes de la fecha del ciclo anterior.
+ * días (`planes_preventivo_anticipacion_menor_cadencia_check`). Lo que
+ * garantiza depende de las unidades:
+ *
+ * - Con la misma unidad (días contra días, meses contra meses), la fecha de
+ *   generación de un ciclo cae siempre estrictamente después de la fecha del
+ *   ciclo anterior.
+ * - Con unidades mezcladas es una aproximación: un mes real tiene entre 28 y
+ *   31 días, no 30. Por ejemplo, 29 días de anticipación contra una cadencia
+ *   de 1 mes pasan la validación, y un ciclo del 01/03 se genera el 31/01,
+ *   antes del ciclo anterior del 01/02. Lo que sí garantiza es que la
+ *   anticipación no alcanza la cadencia medida con meses de 30 días.
  *
  * El texto lo arma el dominio con las dos magnitudes ya descriptas, para que
  * el usuario vea por qué se rechazó sin tener que hacer la cuenta.
