@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   agregarItemCompraSchema,
+  BUSQUEDA_COMPRAS_MAX,
+  busquedaComprasSchema,
   cancelarCompraSchema,
   cerrarItemConFaltanteSchema,
   crearCompraSchema,
@@ -262,5 +264,27 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
       expect(r.success).toBe(false);
       if (!r.success) expect(r.error.issues[0].path).toEqual(["insumoId"]);
     });
+  });
+});
+
+describe("busquedaComprasSchema — espejo de ListarComprasQueryDto.busqueda", () => {
+  it("centinela: el tope es 100, igual que BUSQUEDA_COMPRAS_MAX del backend", () => {
+    expect(BUSQUEDA_COMPRAS_MAX).toBe(100);
+  });
+
+  it("recorta y mide el tope sobre el texto recortado, como el backend", () => {
+    const resultado = busquedaComprasSchema.safeParse(`  ${"a".repeat(BUSQUEDA_COMPRAS_MAX)}  `);
+    expect(resultado.success).toBe(true);
+    expect(resultado.data).toBe("a".repeat(BUSQUEDA_COMPRAS_MAX));
+  });
+
+  it("rechaza un carácter por encima del tope con el mensaje compartido", () => {
+    const resultado = busquedaComprasSchema.safeParse("a".repeat(BUSQUEDA_COMPRAS_MAX + 1));
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0]?.message).toBe("La búsqueda no puede superar los 100 caracteres");
+  });
+
+  it("solo espacios es válido y queda vacío: significa sin búsqueda", () => {
+    expect(busquedaComprasSchema.parse("   ")).toBe("");
   });
 });

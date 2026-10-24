@@ -678,6 +678,19 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         expect.objectContaining({ estado: 'CANCELADAS', soloEnCurso: true }),
       );
     });
+
+    it('`busqueda` se pasa al use case junto con el resto de los filtros', async () => {
+      const { controller, listarComprasUseCase } = buildController();
+      listarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
+      );
+
+      await controller.listar({ estado: 'ACTIVAS', busqueda: 'pintura' });
+
+      expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ estado: 'ACTIVAS', busqueda: 'pintura' }),
+      );
+    });
   });
 
   describe('GET /compras/export (exportación a CSV)', () => {

@@ -39,6 +39,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -74,6 +75,14 @@ import {
  * "inalcanzable desde HTTP" para el throw de moneda.
  */
 const MONEDAS_ADMITIDAS: readonly string[] = ['ARS', 'USD', 'EUR'];
+
+/**
+ * Tope del término `busqueda` de `GET /compras`, medido DESPUÉS de recortar
+ * espacios. No espeja una columna: es un límite del borde para que un término
+ * desmedido no viaje hasta el `ILIKE`. El front lo copia en
+ * `features/compras/schemas.ts` (`BUSQUEDA_COMPRAS_MAX`).
+ */
+export const BUSQUEDA_COMPRAS_MAX = 100;
 
 // ─── Input DTOs ─────────────────────────────────────────────────────────────
 
@@ -449,6 +458,22 @@ export class ListarComprasQueryDto {
   @IsOptional()
   @IsDateString()
   fechaHasta?: string;
+
+  /**
+   * Texto contenido en el `motivo` o en el `numero` de la compra, sin
+   * distinguir mayúsculas (lo usa el selector de compras de Edilicia). Se
+   * recorta antes de medir el tope; un término que queda vacío tras recortar
+   * se trata como ausente, igual que no mandarlo.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => {
+    if (typeof value !== 'string') return value;
+    const recortado = value.trim();
+    return recortado.length > 0 ? recortado : undefined;
+  })
+  @IsString()
+  @MaxLength(BUSQUEDA_COMPRAS_MAX)
+  busqueda?: string;
 }
 
 /**

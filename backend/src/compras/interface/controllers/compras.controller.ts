@@ -742,6 +742,7 @@ export class ComprasController {
       sectorId: query.sectorId,
       fechaDesde: query.fechaDesde !== undefined ? new Date(query.fechaDesde) : undefined,
       fechaHasta: query.fechaHasta !== undefined ? new Date(query.fechaHasta) : undefined,
+      busqueda: query.busqueda,
     });
     return toListarComprasResponseDto(result.getValue());
   }

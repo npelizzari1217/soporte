@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
@@ -14,19 +14,56 @@ function paginaDe<T>(items: T[]) {
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-function mockComprasActivas() {
-  return http.get("/api/compras", ({ request }) =>
-    request.url.includes("estado=ACTIVAS")
-      ? HttpResponse.json({
-          items: [
-            { id: "compra1", numero: "COM-0001", fechaSolicitud: "2026-01-01", motivo: "Repuesto", estado: "PENDIENTE", comprado: false, cerrado: false, totalesPorMoneda: {} },
-            { id: "compra2", numero: "COM-0002", fechaSolicitud: "2026-01-02", motivo: "Cañería", estado: "APROBADO", comprado: true, cerrado: false, totalesPorMoneda: {} },
-          ],
-          total: 2,
-          pagina: 1,
-          porPagina: 10,
-        })
-      : HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 }, { status: 500 }),
+function compra(id: string, numero: string, motivo: string) {
+  return { id, numero, fechaSolicitud: "2026-01-01", motivo, estado: "PENDIENTE", comprado: false, cerrado: false, totalesPorMoneda: {} };
+}
+
+/** Compra activa que NO está en la primera página del listado por defecto. */
+const COMPRA_FUERA_DE_PRIMERA_PAGINA = compra("compra30", "COM-0030", "Pintura aula 3");
+
+/**
+ * `GET /compras` paginado: sin `busqueda` devuelve solo la primera página (2 de
+ * 25); con `busqueda` filtra por motivo o número, como el backend. Cualquier
+ * pedido sin `estado=ACTIVAS` responde 500 para que el test lo note.
+ */
+function mockComprasActivas(urlsPedidas: string[] = []) {
+  return http.get("/api/compras", ({ request }) => {
+    urlsPedidas.push(request.url);
+    const url = new URL(request.url);
+    if (url.searchParams.get("estado") !== "ACTIVAS") {
+      return HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 20 }, { status: 500 });
+    }
+    const busqueda = url.searchParams.get("busqueda");
+    if (busqueda === null) {
+      return HttpResponse.json({
+        items: [compra("compra1", "COM-0001", "Repuesto"), compra("compra2", "COM-0002", "Cañería")],
+        total: 25,
+        pagina: 1,
+        porPagina: 20,
+      });
+    }
+    const universo = [compra("compra1", "COM-0001", "Repuesto"), compra("compra2", "COM-0002", "Cañería"), COMPRA_FUERA_DE_PRIMERA_PAGINA];
+    const termino = busqueda.toLowerCase();
+    const items = universo.filter((c) => c.motivo.toLowerCase().includes(termino) || c.numero.toLowerCase().includes(termino));
+    return HttpResponse.json({ items, total: items.length, pagina: 1, porPagina: 20 });
+  });
+}
+
+/** Nombre accesible de una opción: el motivo primero y el número después. */
+function opcion(motivo: string, numero: string): string {
+  return `${motivo} — ${numero}`;
+}
+
+function renderDialogo(permisos: string[] = ["COMPRAS:LECTURA"]) {
+  return renderWithProviders(
+    <VincularCompraDialog
+      reparacionId="rep1"
+      numero="EDI-0001"
+      comprasQueBloquean={[]}
+      puedeVincularEnTipo
+      trigger={<button>Gestionar compras</button>}
+    />,
+    { user: buildUser({ permisos }) },
   );
 }
 
@@ -36,27 +73,143 @@ describe("VincularCompraDialog", () => {
     vi.mocked(toast.error).mockClear();
   });
 
-  it("el selector se alimenta de GET /compras?estado=ACTIVAS", async () => {
+  it("sin búsqueda lista GET /compras?estado=ACTIVAS mostrando el motivo como texto principal y el número como secundario", async () => {
     server.use(mockComprasActivas());
     const user = userEvent.setup();
-
-    renderWithProviders(
-      <VincularCompraDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        comprasQueBloquean={[]}
-        puedeVincularEnTipo
-        trigger={<button>Gestionar compras</button>}
-      />,
-      { user: buildUser({ permisos: ["COMPRAS:LECTURA"] }) },
-    );
+    renderDialogo();
 
     await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
     const dialogo = await screen.findByRole("dialog");
 
-    const selector = within(dialogo).getByLabelText(/vincular compra/i);
-    expect(within(selector).getByRole("option", { name: "COM-0001" })).toBeInTheDocument();
-    expect(within(selector).getByRole("option", { name: "COM-0002" })).toBeInTheDocument();
+    expect(await within(dialogo).findByRole("radio", { name: opcion("Repuesto", "COM-0001") })).toBeInTheDocument();
+    expect(within(dialogo).getByRole("radio", { name: opcion("Cañería", "COM-0002") })).toBeInTheDocument();
+    // La primera página no es el universo: el panel lo dice en vez de esconderlo.
+    expect(within(dialogo).getByText(/se muestran 2 de 25 compras activas/i)).toBeInTheDocument();
+  });
+
+  it("buscar por motivo encuentra una compra que NO está en la primera página y la vincula", async () => {
+    const urlsPedidas: string[] = [];
+    let bodyRecibido: unknown = null;
+    server.use(
+      mockComprasActivas(urlsPedidas),
+      http.post("/api/reparaciones/rep1/compras", async ({ request }) => {
+        bodyRecibido = await request.json();
+        return new HttpResponse(null, { status: 201 });
+      }),
+      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([]))),
+    );
+    const user = userEvent.setup();
+    renderDialogo();
+
+    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    const dialogo = await screen.findByRole("dialog");
+    await within(dialogo).findByRole("radio", { name: opcion("Repuesto", "COM-0001") });
+    expect(within(dialogo).queryByRole("radio", { name: /pintura aula 3/i })).not.toBeInTheDocument();
+
+    await user.type(within(dialogo).getByLabelText(/buscar compra/i), "  pintura  ");
+
+    const pintura = await within(dialogo).findByRole("radio", { name: opcion("Pintura aula 3", "COM-0030") });
+    expect(within(dialogo).queryByRole("radio", { name: opcion("Repuesto", "COM-0001") })).not.toBeInTheDocument();
+    // El término viaja recortado, junto con el filtro de activas.
+    const ultima = new URL(urlsPedidas[urlsPedidas.length - 1]!);
+    expect(ultima.searchParams.get("busqueda")).toBe("pintura");
+    expect(ultima.searchParams.get("estado")).toBe("ACTIVAS");
+
+    await user.click(pintura);
+    await user.click(within(dialogo).getByRole("button", { name: /^vincular$/i }));
+
+    await waitFor(() => expect(bodyRecibido).toEqual({ compraId: "compra30" }));
+  });
+
+  it("una búsqueda sin coincidencias muestra el mensaje de vacío y deja Vincular deshabilitado", async () => {
+    server.use(mockComprasActivas());
+    const user = userEvent.setup();
+    renderDialogo();
+
+    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.type(within(dialogo).getByLabelText(/buscar compra/i), "zzz");
+
+    expect(await within(dialogo).findByText("Ninguna compra activa coincide con «zzz».")).toBeInTheDocument();
+    expect(within(dialogo).queryAllByRole("radio")).toHaveLength(0);
+    expect(within(dialogo).getByRole("button", { name: /^vincular$/i })).toBeDisabled();
+  });
+
+  it("mientras la búsqueda está en curso muestra el estado de carga", async () => {
+    server.use(
+      http.get("/api/compras", async () => {
+        await delay("infinite");
+        return HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 20 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderDialogo();
+
+    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    const dialogo = await screen.findByRole("dialog");
+
+    expect(await within(dialogo).findByText("Buscando compras…")).toBeInTheDocument();
+  });
+
+  it("un término de más de 100 caracteres muestra el tope y no consulta al servidor con él", async () => {
+    const urlsPedidas: string[] = [];
+    server.use(mockComprasActivas(urlsPedidas));
+    const user = userEvent.setup();
+    renderDialogo();
+
+    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    const dialogo = await screen.findByRole("dialog");
+    await within(dialogo).findByRole("radio", { name: opcion("Repuesto", "COM-0001") });
+
+    await user.click(within(dialogo).getByLabelText(/buscar compra/i));
+    await user.paste("a".repeat(101));
+
+    expect(await within(dialogo).findByText("La búsqueda no puede superar los 100 caracteres")).toBeInTheDocument();
+    // Pasada la demora, ningún pedido llevó el término inválido.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(urlsPedidas.some((u) => new URL(u).searchParams.has("busqueda"))).toBe(false);
+  });
+
+  it("Enter en el buscador no envía el formulario aunque haya una compra marcada", async () => {
+    let posts = 0;
+    server.use(
+      mockComprasActivas(),
+      http.post("/api/reparaciones/rep1/compras", () => {
+        posts += 1;
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderDialogo();
+
+    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(await within(dialogo).findByRole("radio", { name: opcion("Repuesto", "COM-0001") }));
+
+    await user.click(within(dialogo).getByLabelText(/buscar compra/i));
+    await user.keyboard("{Enter}");
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(posts).toBe(0);
+    // El caso hermano: con el botón, la misma selección sí se vincula.
+    await user.click(within(dialogo).getByRole("button", { name: /^vincular$/i }));
+    await waitFor(() => expect(posts).toBe(1));
+  });
+
+  it("cambiar el término descarta la compra marcada: no se vincula algo que dejó de verse", async () => {
+    server.use(mockComprasActivas());
+    const user = userEvent.setup();
+    renderDialogo();
+
+    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    const dialogo = await screen.findByRole("dialog");
+    await user.click(await within(dialogo).findByRole("radio", { name: opcion("Repuesto", "COM-0001") }));
+    expect(within(dialogo).getByRole("button", { name: /^vincular$/i })).toBeEnabled();
+
+    await user.type(within(dialogo).getByLabelText(/buscar compra/i), "pintura");
+
+    await within(dialogo).findByRole("radio", { name: opcion("Pintura aula 3", "COM-0030") });
+    expect(within(dialogo).getByRole("button", { name: /^vincular$/i })).toBeDisabled();
   });
 
   // El panel se abre pudiendo vincular O desvincular: cada acción de adentro
@@ -146,7 +299,7 @@ describe("VincularCompraDialog", () => {
     await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
     const dialogo = await screen.findByRole("dialog");
 
-    await user.selectOptions(within(dialogo).getByLabelText(/vincular compra/i), "compra1");
+    await user.click(await within(dialogo).findByRole("radio", { name: opcion("Repuesto", "COM-0001") }));
     await user.click(within(dialogo).getByRole("button", { name: /^vincular$/i }));
 
     await waitFor(() => expect(bodyRecibido).toEqual({ compraId: "compra1" }));

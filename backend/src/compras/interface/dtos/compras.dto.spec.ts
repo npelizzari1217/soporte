@@ -13,6 +13,7 @@ import {
   CerrarItemConFaltanteHttpDto,
   CancelarCompraHttpDto,
   ListarComprasQueryDto,
+  BUSQUEDA_COMPRAS_MAX,
   toCompraDetalleResponseDto,
   toItemCompraResponseDto,
 } from './compras.dto';
@@ -402,6 +403,44 @@ describe('ListarComprasQueryDto', () => {
     expect(errores).toHaveLength(0);
     expect(dto.estado).toBe('CANCELADAS');
     expect(dto.soloEnCurso).toBe(true);
+  });
+
+  // ─── `busqueda` (selector de compras de Edilicia) ────────────────────────────────
+
+  it('centinela: el tope de `busqueda` es 100 (el front lo copia a mano)', () => {
+    expect(BUSQUEDA_COMPRAS_MAX).toBe(100);
+  });
+
+  it('`busqueda` se recorta antes de validar', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, { busqueda: '  Pintura aula 3  ' });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+    expect(dto.busqueda).toBe('Pintura aula 3');
+  });
+
+  it('`busqueda` vacía o solo con espacios se trata como ausente, sin 400', async () => {
+    for (const busqueda of ['', '   ']) {
+      const dto = plainToInstance(ListarComprasQueryDto, { busqueda });
+      const errores = await validate(dto);
+      expect(errores).toHaveLength(0);
+      expect(dto.busqueda).toBeUndefined();
+    }
+  });
+
+  it('`busqueda` acepta exactamente el tope, medido después de recortar', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, {
+      busqueda: `  ${'a'.repeat(BUSQUEDA_COMPRAS_MAX)}  `,
+    });
+    const errores = await validate(dto);
+    expect(errores).toHaveLength(0);
+  });
+
+  it('`busqueda` rechaza un carácter por encima del tope', async () => {
+    const dto = plainToInstance(ListarComprasQueryDto, {
+      busqueda: 'a'.repeat(BUSQUEDA_COMPRAS_MAX + 1),
+    });
+    const errores = await validate(dto);
+    expect(errores.some((e) => e.property === 'busqueda')).toBe(true);
   });
 
   it('WU-14: acepta cicloId/sectorId UUID y fechaDesde/fechaHasta ISO', async () => {

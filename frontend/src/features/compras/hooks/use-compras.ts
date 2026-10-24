@@ -32,12 +32,21 @@ export function buildComprasQueryString(filtros: ComprasFiltros): string {
   return buildQueryString({ ...filtros });
 }
 
-/** Listado paginado de compras del tenant activo (§4.9, S32-S34). */
-export function useCompras(filtros: ComprasFiltros = {}) {
+/**
+ * Listado paginado de compras del tenant activo (§4.9, S32-S34).
+ *
+ * @param filtros Filtros y paginación de `GET /compras`.
+ * @param opciones `enabled: false` suspende la consulta; lo usa un buscador
+ *   cuyo término no pasa la validación local, para no pedirle al servidor algo
+ *   que va a rechazar.
+ * @returns La consulta de TanStack Query con la página pedida.
+ */
+export function useCompras(filtros: ComprasFiltros = {}, opciones: { enabled?: boolean } = {}) {
   const qs = buildComprasQueryString(filtros);
   return useQuery({
     queryKey: ["compras", filtros],
     queryFn: () => apiFetch<ListarComprasResponse>(`compras${qs ? `?${qs}` : ""}`),
+    enabled: opciones.enabled ?? true,
   });
 }
 
