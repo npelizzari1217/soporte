@@ -22,21 +22,18 @@ import {
 } from 'class-validator';
 import {
   TICKET_TITULO_MAX_LENGTH,
+  TICKET_UBICACION_MAX_LENGTH,
   TicketEntity,
 } from '../../../tickets/domain/entities/ticket.entity';
-import {
-  TicketEdiliciaEntity,
-  TICKET_EDILICIA_UBICACION_MAX_LENGTH,
-} from '../../domain/entities/ticket-edilicia.entity';
-import {
-  COMENTARIO_TEXTO_MAX_LENGTH,
-  ComentarioReparacionEntity,
-} from '../../domain/entities/comentario-reparacion.entity';
+import { COMENTARIO_TEXTO_MAX_LENGTH } from '../../domain/entities/comentario-reparacion.entity';
 import {
   FILTROS_BLOQUEO,
   FiltroBloqueo,
   ReparacionConTicket,
 } from '../../application/use-cases/listar-reparaciones.use-case';
+import { CompraDeTicket } from '../../application/use-cases/listar-compras-de-ticket.use-case';
+import { GrupoEstadoCompra } from '../../../compras/domain/services/estado-compra';
+import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
@@ -62,23 +59,23 @@ export class CreateTicketEdilicioHttpDto {
   prioridadId!: string;
 
   /**
-   * Tipo de ticket elegido (odd/tasks/tipos-ticket-por-modulo.md, S2). Ausente = EDILICIA. El caso
-   * de uso valida que sea un tipo activo del módulo EDILICIA distinto de PREVENTIVO.
+   * Tipo de ticket elegido (odd/tasks/ticket-unificado.md, S2). Ausente = EDILICIA. El caso de uso
+   * valida que sea un tipo activo con alta manual (cualquiera salvo PREVENTIVO).
    */
   @IsOptional()
   @IsUUID()
   tipoId?: string | null;
 
-  /** Ubicación física de la reparación, texto libre (opcional). */
+  /**
+   * Ubicación física, texto libre (opcional). Es la del ticket (odd/ticket-unificado, S1): mismo
+   * tope que `tickets.ubicacion`.
+   */
   @IsOptional()
   @IsString()
-  @MaxLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH)
+  @MaxLength(TICKET_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
-  /**
-   * Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. La
-   * Ubicación general del ticket no se acepta acá: Edilicia usa su propia `ubicacion`.
-   */
+  /** Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. */
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
@@ -103,8 +100,8 @@ export class CreateComentarioReparacionHttpDto {
 
 /**
  * Body de `PATCH /reparaciones/:reparacionId` (odd/detalle-ticket-legible, S4). Todo opcional: un
- * campo ausente no se toca y `null` limpia. `ubicacion` es la propia de Edilicia. Mismos topes que
- * el alta: `@MaxLength` espeja el CHECK de DB y la precondición de la entidad.
+ * campo ausente no se toca y `null` limpia. `ubicacion` es la del ticket (odd/ticket-unificado, S1).
+ * Mismos topes que el alta: `@MaxLength` espeja la columna y la precondición de la entidad.
  */
 export class EditarReparacionHttpDto {
   @IsOptional()
@@ -123,7 +120,7 @@ export class EditarReparacionHttpDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(TICKET_EDILICIA_UBICACION_MAX_LENGTH)
+  @MaxLength(TICKET_UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
   @IsOptional()
@@ -132,9 +129,9 @@ export class EditarReparacionHttpDto {
 }
 
 /**
- * Body de `POST /reparaciones/:reparacionId/compras` (WU5,
- * sdd/reparacion-bloqueada-por-compra). Vincula una compra existente del
- * mismo tenant a la reparación de la ruta.
+ * Body de `POST /tickets/:ticketId/compras` y de su alias `POST /reparaciones/:reparacionId/compras`
+ * (WU5, sdd/reparacion-bloqueada-por-compra; odd/ticket-unificado). Vincula una compra existente
+ * del mismo tenant al ticket de la ruta.
  */
 export class VincularCompraHttpDto {
   @IsUUID()
@@ -144,30 +141,31 @@ export class VincularCompraHttpDto {
 // ─── Response DTOs ────────────────────────────────────────────────────────────
 
 /**
- * Shape de respuesta unificado para un ticket edilicio (F3-E1).
- * `id` = `ticketEdilicia.id` (satélite); `ticketId` = id del `Ticket` base.
- * `porcentajeAvance` se calcula sobre las tareas activas del ticket (odd/tareas-con-tecnico): ya no
- * es una columna. `personalAsignadoId` se retiró en T8 (CA9).
+ * Shape de respuesta de un ticket en Edilicia (F3-E1).
+ *
+ * Desde odd/ticket-unificado `id` es el id del TICKET (igual a `ticketId`): la grilla se arma sobre
+ * los tickets, y un ticket abierto desde Tickets no tiene satélite. Las rutas `/reparaciones/:id`
+ * aceptan este id y también el del satélite que devolvían antes. `ubicacion`, `createdAt` y
+ * `updatedAt` son los del ticket. `porcentajeAvance` se calcula sobre las tareas activas del ticket
+ * (odd/tareas-con-tecnico): ya no es una columna. `personalAsignadoId` se retiró en T8 (CA9).
  */
 export interface TicketEdiliciaConTicketResponseDto {
   id: string;
   ticketId: string;
   /**
-   * Tipo del ticket base: el frontend decide con él qué acciones ofrece en cada fila, porque los
+   * Tipo del ticket: el frontend decide con él qué acciones ofrece en cada fila, porque los
    * permisos son por tipo (odd/permisos-por-tipo-ticket, S6, T6).
    */
   tipoId: string;
   numero: string;
   titulo: string;
-  /** Descripción y prioridad del ticket base: las precarga el diálogo de edición (odd/detalle-ticket-legible). */
+  /** Descripción y prioridad del ticket: las precarga el diálogo de edición (odd/detalle-ticket-legible). */
   descripcion: string | null;
   prioridadId: string;
   estadoId: string;
+  /** Ubicación del ticket (`tickets.ubicacion`), la única desde odd/ticket-unificado. */
   ubicacion: string | null;
-  /**
-   * Sector del ticket base (odd/ubicacion-sector-ticket). La Ubicación general del ticket no viaja
-   * acá: Edilicia usa su propia `ubicacion`.
-   */
+  /** Sector del ticket (odd/ubicacion-sector-ticket). */
   sectorId: string | null;
   /** Nombre del sector, resuelto por el backend (incluso si está desactivado). */
   sectorNombre: string | null;
@@ -177,18 +175,22 @@ export interface TicketEdiliciaConTicketResponseDto {
 }
 
 /**
- * Convierte `{ticket, ticketEdilicia}` al shape de respuesta unificado. `porcentajeAvance` lo aporta
- * quien llama; el default 0 es el de una reparación recién creada, que todavía no tiene tareas.
- * `sectorNombre` también lo aporta quien llama, ya resuelto.
+ * Convierte un ticket al shape de respuesta de Edilicia. `porcentajeAvance` lo aporta quien llama;
+ * el default 0 es el de un ticket recién creado, que todavía no tiene tareas. `sectorNombre`
+ * también lo aporta quien llama, ya resuelto.
+ *
+ * @param ticket Ticket.
+ * @param sectorNombre Nombre de su sector, o `null`.
+ * @param porcentajeAvance Avance de sus tareas.
+ * @returns El shape de respuesta.
  */
 export function toTicketEdiliciaResponseDto(
   ticket: TicketEntity,
-  ticketEdilicia: TicketEdiliciaEntity,
   sectorNombre: string | null,
   porcentajeAvance = 0,
 ): TicketEdiliciaConTicketResponseDto {
   return {
-    id: ticketEdilicia.id,
+    id: ticket.id,
     ticketId: ticket.id,
     tipoId: ticket.tipoId,
     numero: ticket.numero,
@@ -196,12 +198,12 @@ export function toTicketEdiliciaResponseDto(
     descripcion: ticket.descripcion,
     prioridadId: ticket.prioridadId,
     estadoId: ticket.estadoId,
-    ubicacion: ticketEdilicia.ubicacion,
+    ubicacion: ticket.ubicacion,
     sectorId: ticket.sectorId,
     sectorNombre,
     porcentajeAvance,
-    createdAt: ticketEdilicia.createdAt.toISOString(),
-    updatedAt: ticketEdilicia.updatedAt.toISOString(),
+    createdAt: ticket.createdAt.toISOString(),
+    updatedAt: ticket.updatedAt.toISOString(),
   };
 }
 
@@ -233,7 +235,7 @@ export interface ReparacionListItemResponseDto extends TicketEdiliciaConTicketRe
 
 /**
  * Query params de `GET /reparaciones` (odd/reparaciones-paginadas, S1): mismos
- * topes de paginación que `GET /tickets`, más el filtro de bloqueo.
+ * topes de paginación que `GET /tickets`, más el filtro de bloqueo y el tipo.
  */
 export class ListReparacionesQueryDto {
   @IsOptional()
@@ -252,6 +254,24 @@ export class ListReparacionesQueryDto {
   @IsOptional()
   @IsIn(FILTROS_BLOQUEO)
   bloqueo?: FiltroBloqueo;
+
+  /**
+   * Tipo elegido en el selector de la pantalla (odd/ticket-unificado, S2). Ausente: los tipos del
+   * módulo EDILICIA. Un tipo sin `LECTURA` no amplía nada: la página llega vacía.
+   */
+  @IsOptional()
+  @IsUUID()
+  tipo?: string;
+}
+
+/**
+ * Query params de `GET /reparaciones/export`: solo el tipo, con el mismo significado que en el
+ * listado. `formato` lo lee su propio pipe.
+ */
+export class ExportReparacionesQueryDto {
+  @IsOptional()
+  @IsUUID()
+  tipo?: string;
 }
 
 /** Response de `GET /reparaciones`: una página y su metadata (forma de `ListTicketsResponseDto`). */
@@ -274,14 +294,9 @@ export function toReparacionListItemResponseDto(
 ): ReparacionListItemResponseDto {
   return {
     // Calculado al leer sobre las tareas del ticket (odd/tareas-con-tecnico, T3).
-    ...toTicketEdiliciaResponseDto(
-      item.ticket,
-      item.ticketEdilicia,
-      item.sectorNombre,
-      item.porcentajeAvance,
-    ),
+    ...toTicketEdiliciaResponseDto(item.ticket, item.sectorNombre, item.porcentajeAvance),
     subtareas: item.subtareas.map((tarea) =>
-      toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, item.ticketEdilicia.id),
+      toSubtareaEdiliciaResponseDtoDesdeTarea(tarea, item.ticket.id),
     ),
     cantidadComentarios: item.cantidadComentarios,
     bloqueada: item.bloqueada,
@@ -294,7 +309,8 @@ export function toReparacionListItemResponseDto(
 
 /**
  * Shape de respuesta de una subtarea edilicia, embebida en `GET /reparaciones`. Desde
- * odd/tareas-con-tecnico es una tarea del ticket base con el id del satélite.
+ * odd/tareas-con-tecnico es una tarea del ticket. `ticketEdiliciaId` conserva el nombre que espera
+ * el frontend y, desde odd/ticket-unificado, lleva el id del ticket, no el del satélite.
  */
 export interface SubtareaEdiliciaResponseDto {
   id: string;
@@ -309,12 +325,13 @@ export interface SubtareaEdiliciaResponseDto {
 }
 
 /**
- * Shape de respuesta de un comentario de reparación.
+ * Shape de respuesta de un comentario de Edilicia: desde odd/ticket-unificado (S3), un COMENTARIO
+ * del timeline del ticket.
  *
- * Sin `updatedAt` ni `deletedAt`: la tabla es append-only y no los guarda —
- * exponerlos sería inventar un dato. `autorNombre`/`autorApellido` viajan
- * `null` cuando el usuario no pudo resolverse (dado de baja de master, o
- * batch no solicitado), mismo contrato que `TicketResponseDto`.
+ * `ticketEdiliciaId` conserva el nombre que espera el frontend y lleva el id del ticket. Sin
+ * `updatedAt` ni `deletedAt`: un comentario no se edita. `autorNombre`/`autorApellido` viajan
+ * `null` cuando el usuario no pudo resolverse (dado de baja de master, o batch no solicitado),
+ * mismo contrato que `TicketResponseDto`.
  */
 export interface ComentarioReparacionResponseDto {
   id: string;
@@ -327,22 +344,24 @@ export interface ComentarioReparacionResponseDto {
 }
 
 /**
- * Convierte `ComentarioReparacionEntity` al shape de respuesta HTTP.
+ * Convierte un COMENTARIO del timeline al shape de respuesta HTTP.
  *
  * `autor` es OPCIONAL y se resuelve cross-DB en el controller vía
  * `IUsuarioMasterChecker.resolverNombres` (master y tenant son bases
- * distintas: no hay JOIN posible, `autorId` es una soft ref). Mismo criterio
- * que `toTicketResponseDto(ticket, nombres?)` — el mapper no se acopla a un
- * puerto de infraestructura, solo recibe la proyección ya resuelta.
+ * distintas: no hay JOIN posible, `autorId` es una soft ref).
+ *
+ * @param comentario Operación COMENTARIO del ticket.
+ * @param autor Nombre y apellido del autor, si se resolvió.
+ * @returns El shape de respuesta.
  */
 export function toComentarioReparacionResponseDto(
-  comentario: ComentarioReparacionEntity,
+  comentario: OperacionTicketEntity,
   autor?: { nombre: string; apellido: string },
 ): ComentarioReparacionResponseDto {
   return {
     id: comentario.id,
-    ticketEdiliciaId: comentario.ticketEdiliciaId,
-    texto: comentario.texto,
+    ticketEdiliciaId: comentario.ticketId,
+    texto: comentario.descripcion ?? '',
     autorId: comentario.autorId,
     autorNombre: autor?.nombre ?? null,
     autorApellido: autor?.apellido ?? null,
@@ -351,9 +370,35 @@ export function toComentarioReparacionResponseDto(
 }
 
 /**
+ * Una compra vinculada a un ticket (`GET /tickets/:ticketId/compras`, odd/ticket-unificado): su
+ * identidad, su grupo de estado y si frena hoy al ticket.
+ */
+export interface CompraDeTicketResponseDto {
+  id: string;
+  numero: string;
+  grupo: GrupoEstadoCompra;
+  bloquea: boolean;
+}
+
+/**
+ * Convierte una compra vinculada al shape de respuesta HTTP.
+ *
+ * @param compra Compra vinculada, ya derivada por el caso de uso.
+ * @returns El shape de respuesta.
+ */
+export function toCompraDeTicketResponseDto(compra: CompraDeTicket): CompraDeTicketResponseDto {
+  return {
+    id: compra.compraId,
+    numero: compra.numero,
+    grupo: compra.grupo,
+    bloquea: compra.bloquea,
+  };
+}
+
+/**
  * Convierte una tarea del ticket al shape de subtarea que espera el frontend de Edilicia
  * (odd/tareas-con-tecnico, T3): la migración de T1 conservó los ids, y `ticketEdiliciaId` lo aporta
- * quien llama. Lo usa el listado: el respaldo de solo lectura del diálogo de Edilicia (T6) depende
+ * quien llama (desde odd/ticket-unificado, el id del ticket). Lo usa el listado: el respaldo de solo lectura del diálogo de Edilicia (T6) depende
  * de estas `subtareas` embebidas.
  */
 export function toSubtareaEdiliciaResponseDtoDesdeTarea(

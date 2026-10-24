@@ -10,7 +10,9 @@ import { ObtenerTicketUseCase } from '../../tickets/application/use-cases/obtene
 import { OperacionTicketEntity } from '../../tickets/domain/entities/operacion-ticket.entity';
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../tickets/domain/errors/tickets.errors';
+import { esAlcanceDeAdministrador } from '../../tickets/application/services/solo-comentarios';
 import { accionesDeClaveApi } from '../domain/alcance-clave-api';
+import { PERMISOS_API } from '../domain/api-clave';
 import { TipoTicketV1NoDisponibleError } from '../domain/integraciones.errors';
 import { TicketsV1Query } from '../application/tickets-v1.query';
 import { TiposTicketV1Query } from '../application/tipos-ticket-v1.query';
@@ -122,6 +124,7 @@ async function armar(encontrado = true, tipoPublicado = true, deV1 = true) {
     comentar,
     validarTipo,
     validarExistente,
+    tiposDeV1,
   };
 }
 
@@ -294,6 +297,42 @@ describe('TicketsV1Controller (lectura)', () => {
       ]),
     });
     expect(res).toMatchObject({ ticketId: ID, texto: 'hola', esInterno: false });
+  });
+
+  describe('la clave nunca tiene el alcance de un administrador (odd/cerrado-solo-comentarios, L4)', () => {
+    // Con todas las celdas, el rol ADMINISTRADOR en la membresía (JD-2) y aun sin tipos publicados
+    // en v1, el mapa por tipo existe: `permisosPorTipo: null` eximiría a la clave de la regla de
+    // solo comentarios, que se reserva a ADMINISTRADOR y ROOT.
+    const actorConTodo: JwtPayload = {
+      ...actor,
+      rol: 'ADMINISTRADOR',
+      permisos: [...PERMISOS_API, 'TICKETS:VER_TODOS'],
+    };
+
+    it.each<[string, string[]]>([
+      ['con tipos de v1', ['tipo-1', 'tipo-2']],
+      ['sin tipos de v1', []],
+    ])('%s, listar, ver, crear y comentar reciben un mapa por tipo', async (_caso, tipos) => {
+      const { controller, listar, obtener, crear, comentar, tiposDeV1 } = await armar();
+      tiposDeV1.mockResolvedValue(tipos);
+
+      await controller.listar(actorConTodo, {});
+      await controller.ver(actorConTodo, ID);
+      await controller.crear(actorConTodo, { titulo: 'T', tipoId: ID, prioridadId: ID });
+      await controller.comentar(actorConTodo, ID, { texto: 'hola' });
+
+      const alcances = [
+        listar.mock.calls[0][0].alcance,
+        obtener.mock.calls[0][0],
+        crear.mock.calls[0][0].alcance,
+        comentar.mock.calls[0][0],
+      ];
+      for (const alcance of alcances) {
+        expect(alcance.permisosPorTipo).toBeInstanceOf(Map);
+        expect(alcance.permisosPorTipo.size).toBe(tipos.length);
+        expect(esAlcanceDeAdministrador(alcance)).toBe(false);
+      }
+    });
   });
 
   it('JD-3: un ticket fuera de v1 es 404 al ver y al comentar, sin llegar a los casos de uso', async () => {

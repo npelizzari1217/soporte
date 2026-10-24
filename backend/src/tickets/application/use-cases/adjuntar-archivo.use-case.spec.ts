@@ -18,6 +18,7 @@
  */
 import { AdjuntarArchivoUseCase, AdjuntarArchivoDto } from './adjuntar-archivo.use-case';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
@@ -32,6 +33,7 @@ import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
   ArchivoTamanoCeroError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 
 const TIPO = 'tipo-soporte-uuid';
@@ -41,8 +43,18 @@ function alcanceCon(...acciones: AccionTipoTicket[]) {
   return alcancePorTipo('actor-uuid', { [TIPO]: acciones });
 }
 
+/** Código de estado por id: `estado-<codigo en minúscula>-uuid`. */
+function estadoIdDe(codigo: string): string {
+  return `estado-${codigo.toLowerCase()}-uuid`;
+}
+
 function makeTicket(
-  overrides: Partial<{ solicitanteId: string; deleted: boolean; tipoId: string }> = {},
+  overrides: Partial<{
+    solicitanteId: string;
+    deleted: boolean;
+    tipoId: string;
+    estado: string;
+  }> = {},
 ) {
   const ticket = TicketEntity.create(
     {
@@ -50,7 +62,7 @@ function makeTicket(
       titulo: 'Ticket de prueba',
       descripcion: null,
       tipoId: overrides.tipoId ?? TIPO,
-      estadoId: 'estado-nuevo-uuid',
+      estadoId: estadoIdDe(overrides.estado ?? 'NUEVO'),
       prioridadId: 'prioridad-media-uuid',
       cicloId: 'ciclo-uuid',
       ticketReferenciaId: null,
@@ -105,6 +117,16 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       alCommitear: unstubbed('alCommitear'),
     };
     const txRunner = { run: vi.spyOn(txRunnerReal, 'run') };
+    const estadoRepo = {
+      findById: vi.fn(async (id: string) => {
+        const codigo = ['NUEVO', 'EN_PROCESO', 'RESUELTO', 'CERRADO', 'CANCELADO'].find(
+          (c) => estadoIdDe(c) === id,
+        );
+        return codigo
+          ? EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 1, activo: true }, id)
+          : null;
+      }),
+    };
 
     const useCase = new AdjuntarArchivoUseCase(
       ticketRepo,
@@ -113,6 +135,7 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
       tipoOperacionRepo,
       fileStorage,
       txRunnerReal,
+      estadoRepo,
     );
 
     return {
@@ -448,6 +471,80 @@ describe('AdjuntarArchivoUseCase (T10.2)', () => {
 
       expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
       expect(c.fileStorage.upload).not.toHaveBeenCalled();
+    });
+  });
+  describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S5)', () => {
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+      'en %s un no administrador recibe TicketSoloComentariosError (422): no sube ni persiste nada',
+      async (estado) => {
+        const c = makeCollaborators();
+        c.ticketRepo.findById.mockResolvedValue(
+          makeTicket({ solicitanteId: 'actor-uuid', estado }),
+        );
+
+        const result = await c.useCase.execute(baseDto());
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(estado);
+        expect(c.fileStorage.upload).not.toHaveBeenCalled();
+        expect(c.txRunner.run).not.toHaveBeenCalled();
+        expect(c.archivoRepo.save).not.toHaveBeenCalled();
+        expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('adjuntar a una operación de un ticket CERRADO también se rechaza, sin subir nada', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket({ solicitanteId: 'actor-uuid', estado: 'CERRADO' }),
+      );
+      c.operacionRepo.findById.mockResolvedValue(
+        OperacionTicketEntity.create({
+          ticketId: 'ticket-uuid',
+          tipoOperacionId: 'tipo-op-comentario-uuid',
+          descripcion: 'Comentario',
+          estadoAnteriorId: null,
+          estadoNuevoId: null,
+          autorId: 'actor-uuid',
+          esInterno: false,
+          metadata: null,
+        }),
+      );
+
+      const result = await c.useCase.execute(
+        baseDto({ ticketId: undefined, operacionId: 'operacion-uuid' }),
+      );
+
+      expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+      expect(c.fileStorage.upload).not.toHaveBeenCalled();
+      expect(c.archivoRepo.linkToOperacion).not.toHaveBeenCalled();
+    });
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+      'en %s un ADMINISTRADOR o ROOT adjunta (S3)',
+      async (estado) => {
+        const c = makeCollaborators();
+        c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado }));
+
+        const result = await c.useCase.execute(baseDto(alcanceSinRestriccion('actor-uuid')));
+
+        expect(result.isOk()).toBe(true);
+        expect(c.fileStorage.upload).toHaveBeenCalledTimes(1);
+        expect(c.archivoRepo.linkToTicket).toHaveBeenCalledWith(
+          result.getValue().id,
+          'ticket-uuid',
+        );
+      },
+    );
+
+    it('EN_PROCESO no cambia: un no administrador adjunta', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(
+        makeTicket({ solicitanteId: 'actor-uuid', estado: 'EN_PROCESO' }),
+      );
+
+      expect((await c.useCase.execute(baseDto())).isOk()).toBe(true);
     });
   });
 });

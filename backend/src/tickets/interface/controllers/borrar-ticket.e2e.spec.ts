@@ -1,6 +1,7 @@
 /**
  * borrar-ticket.e2e.spec.ts — borrado lógico y recuperación de tickets por HTTP
- * (odd/tasks/permisos-por-tipo-ticket.md, T10, S8, L39-L41).
+ * (odd/tasks/permisos-por-tipo-ticket.md, T10, S8, L39-L41; en RESUELTO, CERRADO y CANCELADO solo
+ * para administradores, odd/cerrado-solo-comentarios L11).
  *
  * Endpoints reales (`DELETE /tickets/:id`, `POST /tickets/:id/recuperar`, `GET /tickets?borrados=true`,
  * los lectores de tickets y `PUT /usuarios/:id/permisos-por-tipo`) con guards reales, master de test
@@ -338,12 +339,54 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     expect(await operacionesDe(sinBorrar.id, 'TICKET_BORRADO')).toEqual([]);
   });
 
+  it.each([
+    ['RESUELTO', 'resuelto'],
+    ['CERRADO', 'cerrado'],
+    ['CANCELADO', 'cancelado'],
+  ])(
+    'en %s, el técnico con Borrar recibe 422 y el ticket sigue; el administrador lo borra (L11)',
+    async (codigo, nombre) => {
+      const delTecnico = await crearTicket(tipoConBorrar, `En ${codigo} tecnico`);
+      const delAdmin = await crearTicket(tipoConBorrar, `En ${codigo} admin`);
+      const estado = await tenant.estado.findUniqueOrThrow({ where: { codigo } });
+      await tenant.ticket.updateMany({
+        where: { id: { in: [delTecnico.id, delAdmin.id] } },
+        data: { estadoId: estado.id },
+      });
+
+      const rechazado = await http<{ message: string }>(
+        'DELETE',
+        `/tickets/${delTecnico.id}`,
+        tokenTecnico,
+      );
+      const permitido = await http('DELETE', `/tickets/${delAdmin.id}`, tokenAdmin);
+
+      expect(rechazado.status).toBe(422);
+      expect(rechazado.body.message).toBe(
+        `El ticket está ${nombre}: solo admite comentarios. ` +
+          'Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      expect(await deletedAtDe(delTecnico.id)).toBeNull();
+      expect(await operacionesDe(delTecnico.id, 'TICKET_BORRADO')).toEqual([]);
+      expect(await idsDelListado(tokenTecnico, `tipo=${tipoConBorrar}`)).toContain(delTecnico.id);
+
+      expect(permitido.status).toBe(204);
+      expect(await deletedAtDe(delAdmin.id)).not.toBeNull();
+      const [borrado] = await operacionesDe(delAdmin.id, 'TICKET_BORRADO');
+      expect(borrado?.autorId).toBe(adminId);
+    },
+  );
+
   it('un ticket borrado desaparece para quien lo veía: listado, detalle, timeline, PDF, exportación, dashboard y reparaciones', async () => {
     const ticket = await crearTicket(tipoConBorrar, 'Visible antes');
-    const satelite = await tenant.ticketEdilicia.create({ data: { ticketId: ticket.id } });
+    // La grilla de Edilicia lista tickets de cualquier tipo, por `?tipo=` (odd/ticket-unificado, S2).
     const reparacionesAdmin = async () =>
       (
-        await http<{ items: { id: string }[] }>('GET', '/reparaciones?porPagina=100', tokenAdmin)
+        await http<{ items: { id: string }[] }>(
+          'GET',
+          `/reparaciones?tipo=${tipoConBorrar}&porPagina=100`,
+          tokenAdmin,
+        )
       ).body.items.map((r) => r.id);
 
     // Antes: lo ve en todos lados.
@@ -353,7 +396,7 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     // El dashboard de un TECNICO cuenta solo lo que tiene asignado (D2): se mira el del administrador.
     const enDashboardAntes = await totalDelTipoEnDashboard(tokenAdmin, tipoConBorrar);
     expect(enDashboardAntes).toBeGreaterThan(0);
-    expect(await reparacionesAdmin()).toContain(satelite.id);
+    expect(await reparacionesAdmin()).toContain(ticket.id);
 
     expect((await http('DELETE', `/tickets/${ticket.id}`, tokenTecnico)).status).toBe(204);
 
@@ -365,7 +408,7 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     expect((await http('GET', `/tickets/${ticket.id}/pdf`, tokenTecnico)).status).toBe(404);
     expect(await exportarCsv(tokenTecnico, tipoConBorrar)).not.toContain(ticket.numero);
     expect(await totalDelTipoEnDashboard(tokenAdmin, tipoConBorrar)).toBe(enDashboardAntes - 1);
-    expect(await reparacionesAdmin()).not.toContain(satelite.id);
+    expect(await reparacionesAdmin()).not.toContain(ticket.id);
     // Otra operación por id tampoco lo encuentra.
     const comentario = await http('POST', `/tickets/${ticket.id}/comentarios`, tokenAdmin, {
       texto: 'Sobre un ticket borrado',
@@ -394,9 +437,8 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     expect(await idsDelListado(tokenTecnico, `tipo=${tipoConBorrar}`)).toContain(ticket.id);
   });
 
-  it('con una compra vinculada a su reparación: 422 que la nombra, y nada cambia', async () => {
+  it('con una compra vinculada: 422 que la nombra, y nada cambia (vale para cualquier ticket, odd/ticket-unificado)', async () => {
     const ticket = await crearTicket(tipoConBorrar, 'Con compra');
-    const satelite = await tenant.ticketEdilicia.create({ data: { ticketId: ticket.id } });
     const numeroCompra = `C${SUFIJO}`;
     const compra = await tenant.compra.create({
       data: {
@@ -407,9 +449,7 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
         cicloId,
       },
     });
-    await tenant.reparacionCompra.create({
-      data: { ticketEdiliciaId: satelite.id, compraId: compra.id },
-    });
+    await tenant.ticketCompra.create({ data: { ticketId: ticket.id, compraId: compra.id } });
 
     const { status, body } = await http<{ message: string }>(
       'DELETE',
@@ -419,7 +459,7 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
 
     expect(status).toBe(422);
     expect(body.message).toBe(
-      `No se puede borrar el ticket: antes hay que desvincular de la reparación la compra ${numeroCompra}.`,
+      `No se puede borrar el ticket: antes hay que desvincular del ticket la compra ${numeroCompra}.`,
     );
     expect(await deletedAtDe(ticket.id)).toBeNull();
     expect(await operacionesDe(ticket.id, 'TICKET_BORRADO')).toEqual([]);

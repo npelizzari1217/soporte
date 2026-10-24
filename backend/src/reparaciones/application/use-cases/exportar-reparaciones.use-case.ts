@@ -21,27 +21,28 @@ export type ExportarReparacionesResult = ArchivoExport;
  *
  * **Sin filtros, y es intencional, no un olvido** (spec, "No filter
  * parameters are accepted"): no hay pantalla de filtros que espejar (mismo
- * criterio que `ExportarEquiposUseCase`). Lo único que recibe es el alcance
- * por tipo del actor, que no es un filtro sino el scope de lo que puede ver
- * (odd/permisos-por-tipo-ticket, D5 e), y lo pasa tal cual al listado.
+ * criterio que `ExportarEquiposUseCase`). Recibe el alcance por tipo del actor,
+ * que no es un filtro sino el scope de lo que puede ver
+ * (odd/permisos-por-tipo-ticket, D5 e), y el tipo elegido en el selector de la
+ * pantalla (odd/ticket-unificado, S2), que decide QUÉ grilla se exporta; los
+ * pasa tal cual al listado.
  *
- * **Por qué compone `ListarReparacionesUseCase` en vez de sus 5
+ * **Por qué compone `ListarReparacionesUseCase` en vez de sus
  * repositorios propios** (design D4, la decisión clave de esta unidad):
  * `ListarReparacionesUseCase` YA resuelve el N+1 que este listado tenía
- * (`1 + 2N` consultas fila por fila → 5 consultas constantes, batched:
- * `ediliciaRepo.findAll`, `ticketRepo.findByIds`,
- * `tareaRepo.listarPorTickets`,
- * `comentarioRepo.contarPorTicketEdilicia`,
- * `reparacionCompraRepo.findComprasVinculadasByTicketEdiliciaIds`). Escribir
+ * (`1 + 2N` consultas fila por fila → consultas constantes, batched:
+ * `tipoTicketRepo.findIdsByModulos`, `ticketRepo.findAll`,
+ * `tareaRepo.listarPorTickets`, `comentarioRepo.contarPorTickets`,
+ * `reparacionCompraRepo.findComprasVinculadasByTicketIds`). Escribir
  * el export de la forma "obvia" — traer las reparaciones y después, POR
  * FILA, pedir su ticket base/subtareas/comentarios/compras vinculadas —
  * reintroduciría exactamente ese N+1 recién arreglado. Componiendo con un
  * ÚNICO argumento en el constructor no hay NADA que consultar por fila: el
  * tipo lo hace estructuralmente imposible, no es una convención que se
  * pueda romper sin querer. `exportar-reparaciones.use-case.spec.ts` prueba
- * esto con la implementación REAL de `ListarReparacionesUseCase` + 5 fakes
+ * esto con la implementación REAL de `ListarReparacionesUseCase` + fakes
  * que cuentan sus llamadas: el conteo es IDÉNTICO corriendo el export con 1
- * fila y con 50 (task 5.1, WU3) — no sólo `=== 5` en aislado, que no
+ * fila y con 50 (task 5.1, WU3) — no sólo un número fijo en aislado, que no
  * probaría constancia.
  *
  * **Por qué el tope se chequea DESPUÉS de traer todo** (design D4, threat
@@ -60,11 +61,19 @@ export class ExportarReparacionesUseCase {
     private readonly listarReparacionesUseCase: Pick<ListarReparacionesUseCase, 'execute'>,
   ) {}
 
+  /**
+   * @param alcance Permisos por tipo del actor.
+   * @param formato `csv` (default) o `xlsx`.
+   * @param tipoId Tipo elegido en la pantalla (odd/ticket-unificado, S2), o `null` para los del
+   *   módulo EDILICIA, como el listado.
+   * @returns El archivo, o `ExportacionDemasiadoGrandeError` si supera el tope.
+   */
   async execute<F extends FormatoExport | undefined = undefined>(
     alcance: AlcanceActorTicket,
     formato?: F,
+    tipoId: string | null = null,
   ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
-    const listado = await this.listarReparacionesUseCase.execute(alcance);
+    const listado = await this.listarReparacionesUseCase.execute(alcance, tipoId);
 
     if (listado.isFail()) {
       return Result.fail(listado.getError());
@@ -89,7 +98,8 @@ export class ExportarReparacionesUseCase {
     return [
       { encabezado: 'Número', valor: (r) => r.ticket.numero },
       { encabezado: 'Título', valor: (r) => r.ticket.titulo },
-      { encabezado: 'Ubicación', valor: (r) => r.ticketEdilicia.ubicacion },
+      // La del ticket: desde odd/ticket-unificado (S1) es la única.
+      { encabezado: 'Ubicación', valor: (r) => r.ticket.ubicacion },
       {
         encabezado: 'Avance %',
         // `porcentajeAvance` es un porcentaje con 2 decimales — no un

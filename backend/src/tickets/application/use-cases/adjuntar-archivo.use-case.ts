@@ -9,7 +9,9 @@ import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticke
 import { IArchivoRepository } from '../../domain/ports/i-archivo.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, verificarTicketModificable } from '../services/solo-comentarios';
 
 /**
  * DTO de entrada de `AdjuntarArchivoUseCase`.
@@ -49,7 +51,9 @@ export interface AdjuntarArchivoDto extends AlcanceActorTicket {
  *    (`VER_TODOS` sobre el tipo, solicitante, responsable o técnico de una
  *    tarea activa). Sin acceso → `TicketNoEncontradoError` (404 — mismo
  *    criterio de "no revela existencia" que T6/T18). Si lo ve sin `ALTAS` ni
- *    `MODIFICACION` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
+ *    `MODIFICACION` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403). Con el ticket
+ *    RESUELTO, CERRADO o CANCELADO, quien no es ADMINISTRADOR ni ROOT recibe
+ *    `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios S5), sin subir nada.
  * 3. Pre-genera un UUIDv7 para el archivo y construye la storage key
  *    determinística (ADR-7): `tickets/{ticketId}/{archivoId}` si se adjunta
  *    directo al ticket, `operaciones/{operacionId}/{archivoId}` si se
@@ -84,6 +88,7 @@ export class AdjuntarArchivoUseCase {
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly fileStorage: Pick<IFileStorage, 'upload'>,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
   ) {}
 
   async execute(dto: AdjuntarArchivoDto): Promise<Result<ArchivoEntity, DomainError>> {
@@ -104,6 +109,12 @@ export class AdjuntarArchivoUseCase {
       algunaDe: ['ALTAS', 'MODIFICACION'],
     });
     if (acceso.isFail()) return Result.fail(acceso.getError());
+    const modificable = await verificarTicketModificable(
+      this.estadoRepo,
+      acceso.getValue(),
+      esAlcanceDeAdministrador(dto),
+    );
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const archivoId = uuidv7();
     const storageKey = dto.operacionId

@@ -53,6 +53,7 @@ import { formatearInstante } from "@/shared/lib/formato-fecha";
 import { PriorityBadge } from "@/components/ui/priority-badge";
 import { notifyError } from "@/shared/lib/toast";
 import type { Ticket, TicketsFiltros } from "../types";
+import { puedeAltaManualEnAlgunModulo } from "../lib/alta-manual";
 
 /** Roles que pueden ser responsables de un ticket (espejo del backend). */
 const ROLES_ASIGNABLES: ReadonlySet<string> = new Set(["TECNICO", "COLABORADOR"]);
@@ -104,8 +105,8 @@ export function TicketsListView() {
   // El listado trae solo tickets de los tipos con LECTURA (odd/permisos-por-tipo-ticket, D5 e):
   // ofrecer otro tipo sería un filtro que nunca devuelve filas. ROOT y ADMINISTRADOR los ven todos.
   const tiposVisibles = permisosPorTipo.tiposCon(tiposQuery.data ?? [], "LECTURA");
-  // El alta de este listado es la de soporte general: solo tipos de TICKETS (`moduloRequerido`).
-  const puedeCrear = permisosPorTipo.puedeEnModulo("TICKETS", "ALTAS");
+  // El alta de este listado ofrece cualquier tipo con alta manual (odd/ticket-unificado, S6).
+  const puedeCrear = puedeAltaManualEnAlgunModulo(permisosPorTipo.puedeEnModulo);
   // Las opciones del filtro salen de `GET /usuarios`: se ofrece con la misma regla con la que el
   // backend abre esa lista (S7).
   const puedeFiltrarPorAsignado = puedeVerListaDeUsuarios(permisosPorTipo.permisos);

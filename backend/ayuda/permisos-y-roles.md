@@ -19,8 +19,9 @@ ese módulo. Lo que la persona puede hacer sale de esa grilla y de nada más.
 
 Los tickets no tienen fila en esta grilla: el acceso a cada tipo de ticket (ver,
 crear, modificar, asignar, borrar y demás) se otorga por tipo, en la grilla de
-tipos de ticket de la misma pantalla. En la fila Edilicia solo queda `BORRADO`,
-que permite desvincular una compra de una reparación.
+tipos de ticket de la misma pantalla. Vincular o desvincular una compra de un
+ticket pide **Modificar** sobre su tipo y `COMPRAS:LECTURA`; la casilla `BORRADO`
+de la fila Edilicia ya no habilita nada.
 
 En este artículo los permisos se escriben como `MÓDULO:ACCIÓN` — por ejemplo
 `COMPRAS:APROBACION` — porque es como los identifica el sistema. En la pantalla

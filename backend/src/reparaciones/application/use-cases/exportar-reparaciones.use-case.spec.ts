@@ -5,11 +5,11 @@
  *
  * Lo que se fija acá:
  * - `ExportarReparacionesUseCase` COMPONE `ListarReparacionesUseCase` (no
- *   sus 4 repositorios propios) — design D4: con un solo argumento en el
+ *   sus repositorios propios) — design D4: con un solo argumento en el
  *   constructor no hay NADA que consultar por fila, el tipo lo impide.
  * - **Constancia de consultas (task 5.1, la prueba más importante de este
  *   archivo)**: se compone la implementación REAL de
- *   `ListarReparacionesUseCase` (no un fake de ella) contra 4 puertos fake
+ *   `ListarReparacionesUseCase` (no un fake de ella) contra puertos fake
  *   que CUENTAN sus propias llamadas, y se corre el export con 1 fila y con
  *   50 filas. El conteo de consultas tiene que ser IDÉNTICO entre ambas
  *   corridas — afirmar sólo `=== 4` no alcanza: pasaría igual si alguien
@@ -17,10 +17,12 @@
  *   input y otro número con otro. La igualdad ENTRE dos volúmenes distintos
  *   es lo único que prueba "constante", y sobrevive a un refactor legítimo
  *   del número base de consultas.
- * - Sin filtros: `execute()` recibe solo el alcance del actor y lo pasa tal
- *   cual a `ListarReparacionesUseCase` (spec, capability
- *   exportacion-reparaciones: "No filter parameters are accepted";
- *   odd/permisos-por-tipo-ticket D5 e: el alcance no es un filtro, es scope).
+ * - Sin filtros: `execute()` recibe el alcance del actor y el tipo de la
+ *   grilla (odd/ticket-unificado, S2) y los pasa tal cual a
+ *   `ListarReparacionesUseCase` (spec, capability exportacion-reparaciones:
+ *   "No filter parameters are accepted"; odd/permisos-por-tipo-ticket D5 e: el
+ *   alcance no es un filtro, es scope).
+ * - La ubicación es la del ticket (odd/ticket-unificado, S1).
  * - Columnas fijas y en orden: Número, Título, Ubicación, Avance %.
  * - El tope de filas corta con un error de dominio, sin truncar en silencio.
  *   `total` es `items.length` (D4: mismo residual aceptado que equipos — no
@@ -37,14 +39,13 @@ import {
 /** ROOT y ADMINISTRADOR: los tests que no versan sobre el alcance. */
 const SIN_RESTRICCION = alcanceSinRestriccion('actor-uuid');
 import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparaciones.use-case';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
 import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/reparaciones.errors';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
 import { Result } from '../../../shared/domain/result';
@@ -57,7 +58,7 @@ function lineas(contenido: string): string[] {
 }
 
 function crearTicket(
-  overrides: Partial<{ numero: string; titulo: string }> = {},
+  overrides: Partial<{ numero: string; titulo: string; ubicacion: string | null }> = {},
   id = 'ticket-1',
 ): TicketEntity {
   return TicketEntity.create(
@@ -71,6 +72,7 @@ function crearTicket(
       cicloId: null,
       ticketReferenciaId: null,
       solicitanteId: 'usuario-uuid',
+      ubicacion: overrides.ubicacion ?? null,
     },
     id,
   );
@@ -86,22 +88,17 @@ function crearReparacion(
   id = 'edilicia-1',
 ): ReparacionConTicket {
   const ticket = crearTicket(
-    { numero: overrides.numero, titulo: overrides.titulo },
-    `ticket-${id}`,
-  );
-  const ticketEdilicia = TicketEdiliciaEntity.create(
     {
-      ticketId: ticket.id,
-      // `!== undefined`, no `??`: un `null` explícito (reparación sin
-      // ubicación) es un caso de prueba distinto de "no lo especifiqué", y
-      // `??` los confundiría al tratar `null` como ausente también.
+      numero: overrides.numero,
+      titulo: overrides.titulo,
+      // `!== undefined`, no `??`: un `null` explícito (ticket sin ubicación) es un caso de prueba
+      // distinto de "no lo especifiqué", y `??` los confundiría al tratar `null` como ausente.
       ubicacion: overrides.ubicacion !== undefined ? overrides.ubicacion : 'Edificio Central',
     },
-    id,
+    `ticket-${id}`,
   );
   return {
     ticket,
-    ticketEdilicia,
     subtareas: [],
     // Desde odd/tareas-con-tecnico (T3) el avance se calcula al leer y viaja en el ítem, no en
     // la columna del satélite.
@@ -156,14 +153,23 @@ describe('ExportarReparacionesUseCase', () => {
     expect(filas[2]).toBe('EDI-2026-00002;Pintar fachada;;100,00');
   });
 
-  it('sin filtros: pasa a ListarReparacionesUseCase solo el alcance por tipo del actor', async () => {
+  it('sin filtros: pasa a ListarReparacionesUseCase el alcance del actor y, sin tipo, null', async () => {
     const listarReparaciones = crearListarReparacionesFake([]);
     const useCase = new ExportarReparacionesUseCase(listarReparaciones);
     const alcance = alcancePorTipo('actor-uuid', { 'tipo-edilicia': ['LECTURA'] });
 
     await useCase.execute(alcance);
 
-    expect(listarReparaciones.execute).toHaveBeenCalledWith(alcance);
+    expect(listarReparaciones.execute).toHaveBeenCalledWith(alcance, null);
+  });
+
+  it('el tipo de la grilla (odd/ticket-unificado, S2) llega tal cual al listado', async () => {
+    const listarReparaciones = crearListarReparacionesFake([]);
+    const useCase = new ExportarReparacionesUseCase(listarReparaciones);
+
+    await useCase.execute(SIN_RESTRICCION, 'csv', 'tipo-soporte');
+
+    expect(listarReparaciones.execute).toHaveBeenCalledWith(SIN_RESTRICCION, 'tipo-soporte');
   });
 
   it('tope de filas: total === TOPE arma el archivo; total === TOPE + 1 falla y NO arma contenido', async () => {
@@ -206,38 +212,29 @@ describe('ExportarReparacionesUseCase', () => {
 
 describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, design D4)', () => {
   /**
-   * Arma la implementación REAL de `ListarReparacionesUseCase` sobre 5
-   * puertos fake que cuentan sus propias invocaciones en un contador
-   * COMPARTIDO. `cantidadReparaciones` controla el volumen de filas
-   * devueltas por `findAll` — el resto de los puertos (`findByIds`,
-   * `listarPorTickets`, `contarPorTicketEdilicia`,
-   * `findComprasVinculadasByTicketEdiliciaIds`) siempre se llaman UNA vez
-   * cada uno, en lote, sin importar cuántos ids reciban.
+   * Arma la implementación REAL de `ListarReparacionesUseCase` sobre puertos fake que cuentan sus
+   * propias invocaciones en un contador COMPARTIDO. `cantidadReparaciones` controla el volumen de
+   * tickets devueltos por `findAll` — el resto de los puertos (`findIdsByModulos`,
+   * `listarPorTickets`, `contarPorTickets`, `findComprasVinculadasByTicketIds`) siempre se llaman
+   * UNA vez cada uno, en lote, sin importar cuántos ids reciban.
    */
   function crearListarReparacionesRealConContador(cantidadReparaciones: number) {
     let llamadas = 0;
 
-    const satelites = Array.from({ length: cantidadReparaciones }, (_, i) =>
-      TicketEdiliciaEntity.create(
-        { ticketId: `ticket-${i}`, ubicacion: 'Depósito' },
-        `edilicia-${i}`,
-      ),
+    const tickets = Array.from({ length: cantidadReparaciones }, (_, i) =>
+      crearTicket({ numero: `EDI-${i}`, titulo: `Título ${i}`, ubicacion: 'Depósito' }, `t-${i}`),
     );
 
-    const ediliciaRepo = {
-      findAll: vi.fn<ITicketEdiliciaRepository['findAll']>(async () => {
+    const ticketRepo = {
+      findAll: vi.fn<ITicketRepository['findAll']>(async () => {
         llamadas++;
-        return satelites;
+        return tickets;
       }),
     };
-    const ticketRepo = {
-      findByIds: vi.fn<ITicketRepository['findByIds']>(async (ids) => {
+    const tipoTicketRepo = {
+      findIdsByModulos: vi.fn<ITipoTicketRepository['findIdsByModulos']>(async () => {
         llamadas++;
-        const mapa = new Map<string, TicketEntity>();
-        for (const id of ids) {
-          mapa.set(id, crearTicket({ numero: `EDI-${id}`, titulo: `Título ${id}` }, id));
-        }
-        return mapa;
+        return ['tipo-edilicia-uuid'];
       }),
     };
     const subtareaRepo = {
@@ -247,16 +244,14 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
       }),
     };
     const comentarioRepo = {
-      contarPorTicketEdilicia: vi.fn<IComentarioReparacionRepository['contarPorTicketEdilicia']>(
-        async () => {
-          llamadas++;
-          return new Map();
-        },
-      ),
+      contarPorTickets: vi.fn<IComentarioReparacionRepository['contarPorTickets']>(async () => {
+        llamadas++;
+        return new Map();
+      }),
     };
     const reparacionCompraRepo = {
-      findComprasVinculadasByTicketEdiliciaIds: vi.fn<
-        IReparacionCompraRepository['findComprasVinculadasByTicketEdiliciaIds']
+      findComprasVinculadasByTicketIds: vi.fn<
+        IReparacionCompraRepository['findComprasVinculadasByTicketIds']
       >(async () => {
         llamadas++;
         return new Map();
@@ -264,8 +259,8 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     };
 
     const listarReparaciones = new ListarReparacionesUseCase(
-      ediliciaRepo,
       ticketRepo,
+      tipoTicketRepo,
       subtareaRepo,
       comentarioRepo,
       reparacionCompraRepo,
@@ -297,7 +292,7 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
     expect(resultadoCon1Fila.isFail()).toBe(false);
     expect(resultadoCon50Filas.isFail()).toBe(false);
     // La comparación ENTRE dos volúmenes distintos es lo que prueba
-    // "constante" — no sólo que cada uno dé 4 por separado.
+    // "constante" — no sólo que cada uno dé un número fijo por separado.
     expect(consultasCon1Fila).toBe(consultasCon50Filas);
     expect(consultasCon1Fila).toBe(5);
     expect(consultasCon50Filas).toBe(5);

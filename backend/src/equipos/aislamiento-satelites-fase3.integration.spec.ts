@@ -141,12 +141,9 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
       };
     }
 
-    // Fixture: TicketEdilicia en el tenant A (ubicacion como texto libre).
+    // Fixture: TicketEdilicia en el tenant A (la ubicación es del ticket, odd/ticket-unificado).
     const ticketEdiliciaBase = TicketEntity.create(makeTicketProps(`TVE${suffix.slice(0, 5)}`));
-    const ticketEdilicia = TicketEdiliciaEntity.create({
-      ticketId: ticketEdiliciaBase.id,
-      ubicacion: 'Ubicación aislamiento TV.2',
-    });
+    const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticketEdiliciaBase.id });
     await withTenantA(async () => {
       await ticketRepo.save(ticketEdiliciaBase);
       await ticketEdiliciaRepo.save(ticketEdilicia);

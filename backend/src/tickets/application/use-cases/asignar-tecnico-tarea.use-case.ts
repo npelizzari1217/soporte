@@ -6,9 +6,11 @@ import {
   TareaNoEncontradaError,
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
+import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
+import { bloquearTicketActivo } from '../services/bloquear-ticket-activo';
 import { VerificadorTicketEditable } from '../services/ticket-editable-para-tareas';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
@@ -47,6 +49,11 @@ export interface AsignarTecnicoTareaDto {
  * La escritura solo toca el técnico y exige que la tarea siga activa (T10): una asignación que
  * corre a la par de un completado no lo borra, y una tarea borrada en el medio da 404 sin
  * historial. Dos asignaciones a la par quedan con la última, como la asignación del responsable.
+ *
+ * Antes de escribir toma el lock del ticket y lo relee (odd/permisos-por-tipo-ticket, L45): uno
+ * borrado en el medio da `TicketNoEncontradoError` (404), y sobre el releído vuelve a decidir el
+ * estado (odd/cerrado-solo-comentarios): uno resuelto, cerrado o cancelado en el medio da
+ * `TicketSoloComentariosError` (422) a quien no es administrador.
  */
 export class AsignarTecnicoTareaUseCase {
   constructor(
@@ -60,7 +67,10 @@ export class AsignarTecnicoTareaUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
-    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
+    private readonly verificadorEditable: Pick<
+      VerificadorTicketEditable,
+      'verificar' | 'verificarEstado'
+    >,
     private readonly ahora: () => Date = () => new Date(),
   ) {}
 
@@ -78,7 +88,7 @@ export class AsignarTecnicoTareaUseCase {
     if (tareaResult.isFail()) return Result.fail(tareaResult.getError());
     const tarea = tareaResult.getValue();
 
-    const editable = await this.verificadorEditable.verificar(ticket);
+    const editable = await this.verificadorEditable.verificar(ticket, dto.actor.esAdministrador);
     if (editable.isFail()) return Result.fail(editable.getError());
 
     if (dto.tecnicoId !== null) {
@@ -107,12 +117,21 @@ export class AsignarTecnicoTareaUseCase {
       metadata: { tecnico_anterior_id: tecnicoAnteriorId, tecnico_nuevo_id: dto.tecnicoId },
     });
 
-    const escrita = await this.txRunner.run(async () => {
-      if (!(await this.tareaRepo.asignarTecnicoSiActiva(tarea))) return false;
+    const escritura = await this.txRunner.run(async (): Promise<Result<void, DomainError>> => {
+      const actual = await bloquearTicketActivo(this.ticketRepo, ticket.id);
+      if (!actual) return Result.fail(new TicketNoEncontradoError(ticket.id));
+      const vigente = await this.verificadorEditable.verificarEstado(
+        actual,
+        dto.actor.esAdministrador,
+      );
+      if (vigente.isFail()) return vigente;
+      if (!(await this.tareaRepo.asignarTecnicoSiActiva(tarea))) {
+        return Result.fail(new TareaNoEncontradaError(tarea.id));
+      }
       await this.operacionRepo.save(operacion);
-      return true;
+      return Result.ok(undefined);
     });
-    if (!escrita) return Result.fail(new TareaNoEncontradaError(tarea.id));
+    if (escritura.isFail()) return Result.fail(escritura.getError());
 
     return Result.ok(tarea);
   }

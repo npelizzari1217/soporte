@@ -1,3 +1,4 @@
+import { TicketEntity } from '../../domain/entities/ticket.entity';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 
 /**
@@ -10,13 +11,14 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
  *
  * @param ticketRepo Repositorio de tickets, con el cliente de la transacción activa.
  * @param ticketId Id del ticket.
- * @returns `true` si el ticket existe y sigue activo con el lock tomado; `false` si ya no.
+ * @returns El ticket releído si existe y sigue activo con el lock tomado (quien lo necesite decide
+ *   sobre su estado vigente); `null` si ya no.
  */
 export async function bloquearTicketActivo(
   ticketRepo: Pick<ITicketRepository, 'bloquear' | 'findById'>,
   ticketId: string,
-): Promise<boolean> {
+): Promise<TicketEntity | null> {
   await ticketRepo.bloquear(ticketId);
   const actual = await ticketRepo.findById(ticketId);
-  return actual !== null && !actual.isDeleted();
+  return actual !== null && !actual.isDeleted() ? actual : null;
 }

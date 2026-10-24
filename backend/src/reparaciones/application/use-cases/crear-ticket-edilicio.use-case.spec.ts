@@ -1,8 +1,10 @@
 /**
  * T8.1 [UNIT][RED] — `CrearTicketEdilicioUseCase`.
  *
- * base+satélite en 1 tx; `ubicacion` es texto libre opcional (sin catálogo
- * que validar, ex-Ubicacion removido); numero EDI-.
+ * base+satélite en 1 tx; `ubicacion` es texto libre opcional y va al ticket
+ * (odd/ticket-unificado, S1: el satélite nace sin ubicación propia); numero
+ * EDI-. El tipo elegido puede ser de cualquier módulo con alta manual, salvo
+ * PREVENTIVO (S2).
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1. Ref design: ADR-3.
  * Tarea: T8.1, T8.2.
@@ -70,7 +72,11 @@ function operacionDelTipo(
   return op;
 }
 
-const tipo = (codigo: string, modulo: 'EDILICIA' | 'TICKETS', activo = true): TipoTicketEntity =>
+const tipo = (
+  codigo: string,
+  modulo: 'EDILICIA' | 'TICKETS' | 'COMPRAS',
+  activo = true,
+): TipoTicketEntity =>
   TipoTicketEntity.create({ codigo, nombre: codigo, modulo, activo }, `tipo-${codigo}`);
 
 /** Catálogo del tenant para `findById`: un tipo elegible y uno por cada causa de rechazo. */
@@ -78,6 +84,7 @@ const TIPOS_POR_ID: Record<string, TipoTicketEntity> = {
   'tipo-MANTENIMIENTO': tipo('MANTENIMIENTO', 'EDILICIA'),
   'tipo-PREVENTIVO': tipo('PREVENTIVO', 'EDILICIA'),
   'tipo-SOPORTE': tipo('SOPORTE', 'TICKETS'),
+  'tipo-CMP': tipo('CMP', 'COMPRAS'),
   'tipo-PINTURA': tipo('PINTURA', 'EDILICIA', false),
 };
 
@@ -195,7 +202,9 @@ describe('CrearTicketEdilicioUseCase', () => {
     expect(ticket).toBeInstanceOf(TicketEntity);
     expect(ticket.numero).toBe('EDI-2026-00001');
     expect(ticketEdilicia.ticketId).toBe(ticket.id);
-    expect(ticketEdilicia.ubicacion).toBe('Edificio Central');
+    // Una sola ubicación, la del ticket; el satélite ya no guarda una propia.
+    expect(ticket.ubicacion).toBe('Edificio Central');
+    expect(ticketEdilicia.ubicacion).toBeNull();
     expect(ticketRepo.save).toHaveBeenCalledWith(ticket);
     expect(operacionRepo.save).toHaveBeenCalled();
     expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);
@@ -207,19 +216,18 @@ describe('CrearTicketEdilicioUseCase', () => {
     const result = await useCase.execute({ ...baseDto, ubicacion: null });
 
     expect(result.isOk()).toBe(true);
-    expect(result.getValue().ticketEdilicia.ubicacion).toBeNull();
+    expect(result.getValue().ticket.ubicacion).toBeNull();
   });
 
   describe('sector (odd/ubicacion-sector-ticket)', () => {
-    it('guarda el sector en el ticket y deja la Ubicacion general en null', async () => {
+    it('guarda el sector y la ubicación en el ticket', async () => {
       const { useCase } = buildDeps();
 
       const result = await useCase.execute({ ...baseDto, sectorId: 'sector-uuid' });
 
-      const { ticket, ticketEdilicia } = result.getValue();
+      const { ticket } = result.getValue();
       expect(ticket.sectorId).toBe('sector-uuid');
-      expect(ticket.ubicacion).toBeNull();
-      expect(ticketEdilicia.ubicacion).toBe('Edificio Central');
+      expect(ticket.ubicacion).toBe('Edificio Central');
       expect(result.getValue().sectorNombre).toBe('Mantenimiento');
     });
 
@@ -269,9 +277,18 @@ describe('CrearTicketEdilicioUseCase', () => {
       expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);
     });
 
+    it('con un tipo del módulo TICKETS crea el ticket de ese tipo (odd/ticket-unificado, S2)', async () => {
+      const { useCase, numerador } = buildDeps();
+
+      const result = await useCase.execute({ ...baseDto, tipoId: 'tipo-SOPORTE' });
+
+      expect(result.getValue().ticket.tipoId).toBe('tipo-SOPORTE');
+      expect(numerador.generarNumero).toHaveBeenCalledWith('tipo-SOPORTE', 'SOPORTE', 2026);
+    });
+
     it.each([
-      ['de otro módulo', 'tipo-SOPORTE', 'SOPORTE'],
       ['reservado al barrido preventivo', 'tipo-PREVENTIVO', 'PREVENTIVO'],
+      ['de un módulo sin alta de tipo', 'tipo-CMP', 'CMP'],
     ])(
       'tipo %s → TipoTicketNoPermitidoEnAltaError, sin persistir',
       async (_caso, tipoId, codigo) => {
@@ -281,7 +298,7 @@ describe('CrearTicketEdilicioUseCase', () => {
 
         expect(result.getError()).toBeInstanceOf(TipoTicketNoPermitidoEnAltaError);
         expect(result.getError().message).toBe(
-          `El tipo de ticket "${codigo}" no se puede usar en el alta del módulo EDILICIA.`,
+          `El tipo de ticket "${codigo}" no admite altas manuales.`,
         );
         expect(txRunner.run).not.toHaveBeenCalled();
         expect(ticketRepo.save).not.toHaveBeenCalled();

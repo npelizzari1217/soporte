@@ -7,6 +7,11 @@ import {
   AlcanceActorTicket,
   cargarTicketParaOperar,
 } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  esAlcanceDeAdministrador,
+  verificarTicketModificable,
+} from '../../../tickets/application/services/solo-comentarios';
+import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
 
 /**
  * DTO de entrada para registrar la solución aplicada a un ticket de soporte (F3-Q5). El alcance
@@ -25,7 +30,9 @@ export interface RegistrarSolucionDto extends AlcanceActorTicket {
  * 0. Carga el ticket base: si no existe, está soft-deleted o el actor no lo ve
  *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError`
  *    (404); si lo ve sin `MODIFICACION` sobre el tipo → `AccionSobreTipoNoPermitidaError`
- *    (403, odd/permisos-por-tipo-ticket D5 c). En los dos casos, sin escribir.
+ *    (403, odd/permisos-por-tipo-ticket D5 c). En los dos casos, sin escribir. Con el ticket
+ *    RESUELTO, CERRADO o CANCELADO, quien no es ADMINISTRADOR ni ROOT recibe
+ *    `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios).
  * 1. Busca el satélite `ticket_soporte` por `ticketId` →
  *    `TicketSoporteNoEncontradoError` si no existe.
  * 2. Setea `solucionAplicada` vía `registrarSolucion()` y persiste.
@@ -38,11 +45,18 @@ export class RegistrarSolucionUseCase {
   constructor(
     private readonly ticketSoporteRepo: Pick<ITicketSoporteRepository, 'findByTicketId' | 'save'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
+    private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
   ) {}
 
   async execute(dto: RegistrarSolucionDto): Promise<Result<TicketSoporteEntity, DomainError>> {
     const acceso = await cargarTicketParaOperar(this.ticketRepo, dto.ticketId, dto, 'MODIFICACION');
     if (acceso.isFail()) return Result.fail(acceso.getError());
+    const modificable = await verificarTicketModificable(
+      this.estadoRepo,
+      acceso.getValue(),
+      esAlcanceDeAdministrador(dto),
+    );
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const ticketSoporte = await this.ticketSoporteRepo.findByTicketId(dto.ticketId);
     if (!ticketSoporte) {

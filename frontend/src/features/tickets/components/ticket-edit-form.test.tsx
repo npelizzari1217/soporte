@@ -223,7 +223,6 @@ function renderConSector(
     defaultValues?: EditarTicketFormValues;
     sectores?: Sector[];
     sectorNombre?: string | null;
-    mostrarUbicacion?: boolean;
   } = {},
 ) {
   const onSubmit = vi.fn();
@@ -233,7 +232,6 @@ function renderConSector(
       prioridades={PRIORIDADES_ACTIVAS}
       sectores={props.sectores ?? SECTORES_ACTIVOS}
       sectorNombre={props.sectorNombre ?? null}
-      mostrarUbicacion={props.mostrarUbicacion ?? true}
       onSubmit={onSubmit}
       onCancel={vi.fn()}
       isSubmitting={false}
@@ -314,7 +312,6 @@ describe("TicketEditForm — ubicación y sector", () => {
     const props = {
       defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID, sectorId: SECTOR_SECUNDARIA_ID }),
       prioridades: PRIORIDADES_ACTIVAS,
-      mostrarUbicacion: true,
       onSubmit: vi.fn(),
       onCancel: vi.fn(),
       isSubmitting: false,
@@ -326,21 +323,17 @@ describe("TicketEditForm — ubicación y sector", () => {
     await waitFor(() => expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_SECUNDARIA_ID));
   });
 
-  // CA2: en Edilicia la ubicación general no se muestra ni viaja; el sector sí.
-  it("sin mostrarUbicacion no muestra el campo y el PATCH no lleva ubicación", async () => {
+  // Desde odd/ticket-unificado (S1) la ubicación viaja siempre, en cualquier tipo de ticket.
+  it("guardar sin tocar nada manda la ubicación vacía como null junto al sector", async () => {
     const user = userEvent.setup();
     const { onSubmit } = renderConSector({
       defaultValues: buildDefaultValues({ prioridadId: PRIORIDAD_ALTA_ID, sectorId: SECTOR_PRIMARIA_ID }),
-      mostrarUbicacion: false,
     });
 
-    expect(screen.queryByLabelText("Ubicación")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Sector")).toBeInTheDocument();
-
+    expect(screen.getByLabelText("Ubicación")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty("ubicacion");
-    expect(onSubmit.mock.calls[0][0]).toMatchObject({ sectorId: SECTOR_PRIMARIA_ID });
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ ubicacion: null, sectorId: SECTOR_PRIMARIA_ID });
   });
 });

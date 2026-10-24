@@ -54,6 +54,7 @@ import {
   SolicitanteInvalidoError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 
 import { CrearTicketSoporteUseCase } from '../../application/use-cases/crear-ticket-soporte.use-case';
@@ -102,7 +103,8 @@ function toHttpException(
     error instanceof TipoTicketNoEncontradoError ||
     error instanceof PrioridadNoEncontradaError ||
     error instanceof SolicitanteInvalidoError ||
-    error instanceof EquipoInvalidoError
+    error instanceof EquipoInvalidoError ||
+    error instanceof TicketSoloComentariosError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -163,6 +165,8 @@ export class SoporteController {
    * @throws 403 ve el ticket sin `MODIFICACION` sobre su tipo (odd/permisos-por-tipo-ticket D5 c)
    * @throws 404 ticket inexistente o que el actor no ve (`LECTURA` sobre el tipo o fila,
    *   odd/permisos-por-tipo-ticket S3), o ticket_soporte inexistente
+   * @throws 422 ticket RESUELTO, CERRADO o CANCELADO y el actor no es ADMINISTRADOR ni ROOT
+   *   (odd/cerrado-solo-comentarios)
    */
   @Post(':id/solucion')
   @HttpCode(HttpStatus.OK)

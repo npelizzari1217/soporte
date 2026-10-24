@@ -468,9 +468,12 @@ import { SoporteController } from './interface/controllers/soporte.controller';
     },
     {
       provide: RegistrarSolucionUseCase,
-      useFactory: (ticketSoporteRepo: ITicketSoporteRepository, ticketRepo: ITicketRepository) =>
-        new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo),
-      inject: [TICKET_SOPORTE_REPOSITORY, TICKET_REPOSITORY],
+      useFactory: (
+        ticketSoporteRepo: ITicketSoporteRepository,
+        ticketRepo: ITicketRepository,
+        estadoRepo: IEstadoRepository,
+      ) => new RegistrarSolucionUseCase(ticketSoporteRepo, ticketRepo, estadoRepo),
+      inject: [TICKET_SOPORTE_REPOSITORY, TICKET_REPOSITORY, ESTADO_REPOSITORY],
     },
     {
       provide: ObtenerEquipoDeTicketUseCase,

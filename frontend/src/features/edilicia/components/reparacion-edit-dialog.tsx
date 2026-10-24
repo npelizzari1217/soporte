@@ -23,8 +23,8 @@ import { useSectores } from "@/features/sectores/hooks/use-sectores";
 import { useEditarReparacion } from "../hooks/use-reparacion-mutations";
 import { editarReparacionSchema, type EditarReparacionFormValues } from "../schemas";
 import {
-  MENSAJES_NO_EDITABLE,
   puedeEditarReparacionUi,
+  textoMotivoNoEditable,
   type ReparacionParaEditar,
 } from "../lib/permisos-reparacion";
 
@@ -41,14 +41,16 @@ export interface ReparacionEditDialogProps {
   /** Código del estado del ticket; `undefined` mientras el catálogo no resolvió. */
   estadoCodigo: string | undefined;
   esRoot: boolean;
+  /** ADMINISTRADOR o ROOT: no queda en solo comentarios (odd/cerrado-solo-comentarios). */
+  esAdministrador: boolean;
 }
 
-export function ReparacionEditDialog({ reparacion, estadoCodigo, esRoot }: ReparacionEditDialogProps) {
+export function ReparacionEditDialog({ reparacion, estadoCodigo, esRoot, esAdministrador }: ReparacionEditDialogProps) {
   const [open, setOpen] = useState(false);
   const prioridadesQuery = usePrioridades();
   const sectoresQuery = useSectores(open);
   const editarMutation = useEditarReparacion(reparacion.id);
-  const regla = puedeEditarReparacionUi(reparacion, estadoCodigo, esRoot);
+  const regla = puedeEditarReparacionUi(reparacion, estadoCodigo, esRoot, esAdministrador);
 
   const valoresVigentes: EditarReparacionFormValues = {
     titulo: reparacion.titulo,
@@ -181,7 +183,7 @@ export function ReparacionEditDialog({ reparacion, estadoCodigo, esRoot }: Repar
       </Dialog>
       {!regla.puede && (
         <p id={`${idBase}-motivo`} className="text-xs text-muted-foreground">
-          {MENSAJES_NO_EDITABLE[regla.motivo]}
+          {textoMotivoNoEditable(regla.motivo, estadoCodigo)}
         </p>
       )}
     </div>

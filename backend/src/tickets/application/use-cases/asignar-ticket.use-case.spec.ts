@@ -30,6 +30,7 @@ import {
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TicketCerradoNoReasignableError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 
 /** Catálogo fijo de estados del tenant: código → id. */
@@ -369,6 +370,63 @@ describe('AsignarTicketUseCase', () => {
       expect(c.operacionRepo.save.mock.calls[0][0].tipoOperacionId).toBe('tipo-op-asignacion-uuid');
     },
   );
+
+  describe('RESUELTO: solo comentarios para quien no es administrador (odd/cerrado-solo-comentarios, S1-S3)', () => {
+    // Ve el ticket con VER_TODOS y tiene ASIGNAR sobre su tipo: lo único que lo frena es el estado.
+    const tecnico = alcancePorTipo('asignador-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'VER_TODOS', 'ASIGNAR'],
+    });
+
+    it('un no administrador recibe TicketSoloComentariosError (422), sin consultar master ni escribir', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket({ estado: 'RESUELTO', asignadoId: 'otro-uuid' });
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      const error = result.getError();
+      expect(error).toBeInstanceOf(TicketSoloComentariosError);
+      expect(error.message).toBe(
+        'El ticket está resuelto: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(ticket.asignadoId).toBe('otro-uuid');
+    });
+
+    it('si al releer con la fila bloqueada el ticket ya está RESUELTO, un no administrador no lo reasigna', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById
+        .mockResolvedValueOnce(makeTicket({ estado: 'EN_PROCESO' }))
+        .mockResolvedValueOnce(makeTicket({ estado: 'RESUELTO' }));
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.operacionRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('en CERRADO un no administrador sigue recibiendo TicketCerradoNoReasignableError', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado: 'CERRADO' }));
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      expect(result.getError()).toBeInstanceOf(TicketCerradoNoReasignableError);
+    });
+
+    it('en EN_PROCESO un no administrador reasigna como siempre', async () => {
+      const c = makeCollaborators();
+      c.ticketRepo.findById.mockResolvedValue(makeTicket({ estado: 'EN_PROCESO' }));
+
+      const result = await c.useCase.execute(baseDto(tecnico));
+
+      expect(result.getValue().asignadoId).toBe('agente-uuid');
+    });
+  });
 
   it('M3: NUEVO → ASIGNADO en la misma tx, con CAMBIO_ESTADO del actor además de ASIGNACION', async () => {
     const c = makeCollaborators();

@@ -1,49 +1,36 @@
-import { ComentarioReparacionEntity } from '../entities/comentario-reparacion.entity';
+/**
+ * Conteo de los comentarios de un ticket, separados por visibilidad: el listado suma los internos
+ * solo para quien tiene `OBSERVAR` sobre el tipo del ticket, igual que el timeline.
+ */
+export interface ConteoComentariosTicket {
+  readonly publicos: number;
+  readonly internos: number;
+}
 
 /**
- * IComentarioReparacionRepository — puerto de persistencia de los comentarios
- * de una reparación edilicia.
+ * IComentarioReparacionRepository — lectura de los comentarios para la grilla de Edilicia.
  *
- * APPEND-ONLY GARANTIZADO POR LA FIRMA: expone un solo método de escritura
- * (`crear()`); el resto son lecturas. No hay `update`/`delete` — no es una
- * convención a respetar, el método no existe (mismo criterio que
- * `IOperacionCompraRepository`, S37). La tabla lo acompaña estructuralmente:
- * `comentarios_reparacion` no tiene `updated_at` ni `deleted_at`.
+ * Desde odd/ticket-unificado (S3) los comentarios de reparación SON los comentarios del ticket
+ * (operaciones `COMENTARIO` del timeline): se escriben con `IOperacionTicketRepository` y se leen
+ * con el timeline. Este puerto queda con lo único que el timeline no da, el conteo por lote del
+ * listado. `comentarios_reparacion` quedó congelada (la migración 20261024120000 copió sus filas al
+ * timeline) y T4 la retira, junto con el nombre heredado de este puerto.
  *
- * Definido en la capa de dominio: sin imports de Prisma ni NestJS. La
- * implementación concreta (`PrismaComentarioReparacionRepository`) obtiene su
- * cliente vía `TenantContext.getClient()`.
+ * Definido en la capa de dominio: sin imports de Prisma ni NestJS.
  */
 export interface IComentarioReparacionRepository {
-  /** Inserta un comentario nuevo. Solo INSERT — nunca hay UPDATE de una fila ya escrita. */
-  crear(comentario: ComentarioReparacionEntity): Promise<void>;
-
   /**
-   * Retorna los comentarios de una reparación ordenados por `created_at DESC`
-   * (más nuevo primero — el motivo de la demora que se está buscando es
-   * siempre el último asentado). Empate de `created_at` desempatado por `id`
-   * DESC: el id es UUIDv7, monótono en el tiempo, así que el orden se
-   * mantiene determinístico aun con dos inserts en el mismo milisegundo.
-   */
-  listarPorTicketEdilicia(ticketEdiliciaId: string): Promise<ComentarioReparacionEntity[]>;
-
-  /**
-   * Cuenta los comentarios de VARIAS reparaciones de una sola vez y devuelve
-   * `Map<ticketEdiliciaId, cantidad>`.
+   * Cuenta los comentarios activos de VARIOS tickets de una sola vez y devuelve
+   * `Map<ticketId, ConteoComentariosTicket>`.
    *
-   * POR LOTE A PROPÓSITO, no por conveniencia: su único consumidor es
-   * `ListarReparacionesUseCase`, cuyo costo en consultas es CONSTANTE (ticket
-   * base y subtareas también se resuelven por lote). Una firma de un solo id
-   * invitaría a llamarla dentro del loop y devolvería el listado a una
-   * consulta por fila. Con esta firma el indicador de comentarios cuesta UNA
-   * consulta agregada para toda la página, sin importar cuántas reparaciones
-   * haya.
+   * POR LOTE A PROPÓSITO, no por conveniencia: su único consumidor es `ListarReparacionesUseCase`,
+   * cuyo costo en consultas es CONSTANTE. Una firma de un solo id invitaría a llamarla dentro del
+   * loop y devolvería el listado a una consulta por fila.
    *
-   * Las reparaciones sin comentarios NO aparecen en el Map (un `GROUP BY` no
-   * emite filas vacías): quien lo consuma resuelve la ausencia como `0`.
-   * Con `ticketEdiliciaIds` vacío no consulta nada y devuelve un Map vacío.
+   * Los tickets sin comentarios NO aparecen en el Map (un `GROUP BY` no emite filas vacías): quien
+   * lo consuma resuelve la ausencia como `0`. Con `ticketIds` vacío no consulta nada.
    */
-  contarPorTicketEdilicia(ticketEdiliciaIds: string[]): Promise<Map<string, number>>;
+  contarPorTickets(ticketIds: string[]): Promise<Map<string, ConteoComentariosTicket>>;
 }
 
 /** Token de inyección de dependencias para IComentarioReparacionRepository en NestJS. */

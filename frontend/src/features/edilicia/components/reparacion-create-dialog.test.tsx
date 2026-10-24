@@ -78,22 +78,23 @@ describe("ReparacionCreateDialog — sector", () => {
 });
 
 /**
- * Tipo elegible en el alta (odd/tasks/tipos-ticket-por-modulo.md, S2): los tipos activos del
- * módulo EDILICIA salvo PREVENTIVO, que lo genera solo el barrido. Sin elección, EDILICIA.
+ * Tipo elegible en el alta (odd/ticket-unificado, S2): los tipos activos con alta manual
+ * (módulos TICKETS y EDILICIA) salvo PREVENTIVO, que lo genera solo el barrido. Sin elección,
+ * EDILICIA.
  */
 describe("ReparacionCreateDialog — tipo", () => {
   const TIPO_MANTENIMIENTO_ID = "55555555-5555-4555-8555-555555555555";
-  const tipo = (id: string, codigo: string, nombre: string) => ({
+  const tipo = (id: string, codigo: string, nombre: string, modulo = "EDILICIA") => ({
     id,
     codigo,
     nombre,
-    modulo: "EDILICIA",
+    modulo,
     activo: true,
     createdAt: "",
     updatedAt: "",
   });
   let bodies: Record<string, unknown>[];
-  let moduloPedido: string | null;
+  let moduloPedido: string | null | undefined;
 
   function mockBackend(tipos: ReturnType<typeof tipo>[]) {
     server.use(
@@ -114,7 +115,7 @@ describe("ReparacionCreateDialog — tipo", () => {
 
   beforeEach(() => {
     bodies = [];
-    moduloPedido = null;
+    moduloPedido = undefined;
   });
 
   async function abrirYCompletar(user: ReturnType<typeof userEvent.setup>) {
@@ -123,6 +124,31 @@ describe("ReparacionCreateDialog — tipo", () => {
     await screen.findByRole("option", { name: "Alta" });
     await user.selectOptions(screen.getByLabelText("Prioridad"), PRIORIDAD_ID);
   }
+
+  it("ofrece los tipos de EDILICIA y de TICKETS sin Preventivo ni Compras, y manda el elegido", async () => {
+    const TIPO_SOPORTE_ID = "77777777-7777-4777-8777-777777777777";
+    mockBackend([
+      tipo("11111111-1111-4111-8111-111111111111", "EDILICIA", "Edilicia"),
+      tipo(TIPO_SOPORTE_ID, "SOPORTE", "Soporte", "TICKETS"),
+      tipo("66666666-6666-4666-8666-666666666666", "PREVENTIVO", "Preventivo"),
+      tipo("88888888-8888-4888-8888-888888888888", "COMPRA", "Compra", "COMPRAS"),
+    ]);
+    const user = userEvent.setup();
+    renderWithProviders(<ReparacionCreateDialog />, { user: buildUser({ permisos: [] }) });
+
+    await abrirYCompletar(user);
+    await screen.findByRole("option", { name: "Soporte" });
+    expect(screen.getByRole("option", { name: "Edilicia" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Preventivo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Compra" })).not.toBeInTheDocument();
+    expect(moduloPedido).toBeNull();
+
+    await user.selectOptions(screen.getByLabelText("Tipo"), TIPO_SOPORTE_ID);
+    await user.click(screen.getByRole("button", { name: /^crear$/i }));
+
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ tipoId: TIPO_SOPORTE_ID });
+  });
 
   it("ofrece los tipos de EDILICIA sin Preventivo, y manda el elegido", async () => {
     mockBackend([
@@ -139,7 +165,7 @@ describe("ReparacionCreateDialog — tipo", () => {
     expect(select).toHaveValue("");
     expect(screen.getByRole("option", { name: "Edilicia" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Preventivo" })).not.toBeInTheDocument();
-    expect(moduloPedido).toBe("EDILICIA");
+    expect(moduloPedido).toBeNull();
 
     await user.selectOptions(select, TIPO_MANTENIMIENTO_ID);
     await user.click(screen.getByRole("button", { name: /^crear$/i }));
@@ -173,7 +199,7 @@ describe("ReparacionCreateDialog — tipo", () => {
     renderWithProviders(<ReparacionCreateDialog />, { user: buildUser({ permisos: ["EDILICIA:ALTAS"] }) });
 
     await abrirYCompletar(user);
-    await waitFor(() => expect(moduloPedido).toBe("EDILICIA"));
+    await waitFor(() => expect(moduloPedido).toBeNull());
     expect(screen.queryByLabelText("Tipo")).not.toBeInTheDocument();
   });
 
@@ -220,7 +246,7 @@ describe("ReparacionCreateDialog — tipo", () => {
       });
 
       await abrirYCompletar(user);
-      await waitFor(() => expect(moduloPedido).toBe("EDILICIA"));
+      await waitFor(() => expect(moduloPedido).toBeNull());
       expect(screen.queryByLabelText("Tipo")).not.toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: /^crear$/i }));
 
@@ -235,7 +261,7 @@ describe("ReparacionCreateDialog — tipo", () => {
         permisos: permisosDeTest({ [TIPO_PREVENTIVO_ID]: ["LECTURA", "ALTAS"] }),
       });
 
-      await waitFor(() => expect(moduloPedido).toBe("EDILICIA"));
+      await waitFor(() => expect(moduloPedido).toBeNull());
       await waitFor(() => expect(screen.queryByRole("button", { name: /nueva reparación/i })).toBeNull());
     });
   });

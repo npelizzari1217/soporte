@@ -20,6 +20,7 @@ import {
   TicketNoEncontradoError,
   EstadoDestinoInvalidoError,
   TransicionInvalidaError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 import { TicketStateMachineFactory } from '../../domain/state-machine/ticket-state-machine.factory';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
@@ -691,6 +692,79 @@ describe('TransicionarEstadoUseCase', () => {
       expect(result.getError()).toBeInstanceOf(TransicionInvalidaError);
       expect(ticket.estadoId).toBe('estado-en-proceso-uuid');
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resuelto, cerrado o cancelado: solo un administrador lo saca de ahí (odd/cerrado-solo-comentarios, S1-S3)', () => {
+    // Un técnico, no administrador, que ve el ticket y tiene TRANSICIONAR sobre su tipo.
+    const tecnico = alcancePorTipo('tecnico-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'VER_TODOS', 'TRANSICIONAR'],
+    });
+
+    it.each([
+      ['RESUELTO', 'EN_PROCESO'],
+      ['RESUELTO', 'ASIGNADO'],
+      ['CERRADO', 'EN_PROCESO'],
+      ['CANCELADO', 'NUEVO'],
+    ] as const)(
+      'un no administrador no lo mueve de %s a %s: TicketSoloComentariosError (422), sin mutar ni escribir',
+      async (desde, hacia) => {
+        const c = makeCollaborators();
+        const ticket = makeTicket(desde);
+        c.ticketRepo.findById.mockResolvedValue(ticket);
+
+        const result = await c.useCase.execute(
+          baseDto({ nuevoEstadoCodigo: hacia, alcance: tecnico }),
+        );
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(desde);
+        expect(ticket.estadoId).toBe(ESTADOS[desde].id);
+        expect(c.ticketRepo.save).not.toHaveBeenCalled();
+        expect(c.operacionRepo.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('un no administrador sí cierra un ticket RESUELTO (RESUELTO → CERRADO sigue en esos estados)', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('RESUELTO');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'CERRADO', alcance: tecnico }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.estadoId).toBe(ESTADOS.CERRADO.id);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('un ADMINISTRADOR o ROOT reabre RESUELTO → EN_PROCESO por salto correctivo (S3)', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('RESUELTO');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'EN_PROCESO', actorEsCorrector: true }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.estadoId).toBe(ESTADOS.EN_PROCESO.id);
+    });
+
+    it('un flujo de sistema (alcance null) saca el ticket de ESPERANDO_CLIENTE como siempre', async () => {
+      const c = makeCollaborators();
+      const ticket = makeTicket('ESPERANDO_CLIENTE');
+      c.ticketRepo.findById.mockResolvedValue(ticket);
+
+      const result = await c.useCase.execute(
+        baseDto({ nuevoEstadoCodigo: 'EN_PROCESO', alcance: null }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.estadoId).toBe(ESTADOS.EN_PROCESO.id);
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 

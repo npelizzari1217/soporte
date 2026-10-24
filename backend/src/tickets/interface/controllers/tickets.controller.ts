@@ -8,7 +8,7 @@
  *   GET    /tickets            → ListarTicketsUseCase (tipos con `LECTURA`; fila sin `VER_TODOS`)
  *   GET    /tickets/export     → ExportarTicketsUseCase (mismo alcance que el listado)
  *   GET    /tickets/permisos-por-tipo → ObtenerPermisosPorTipoUseCase (acciones de la sesión)
- *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila)
+ *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila), con `bloqueada`
  *   PATCH  /tickets/:id        → EditarTicketUseCase (`MODIFICACION` sobre su tipo)
  *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`TRANSICIONAR` sobre su tipo)
  *   PATCH  /tickets/:id/asignar → AsignarTicketUseCase (`ASIGNAR` sobre su tipo)
@@ -104,7 +104,7 @@ import {
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TicketCerradoNoReasignableError,
-  ComentarioNoPermitidoError,
+  TicketSoloComentariosError,
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   TicketBloqueadoParaEdicionError,
@@ -131,6 +131,10 @@ import {
   SOLICITANTE_EXTERNO_REPOSITORY,
 } from '../../domain/ports/i-solicitante-externo.repository';
 import { ESTADO_REPOSITORY, IEstadoRepository } from '../../domain/ports/i-estado.repository';
+import {
+  BLOQUEO_TICKET_REPOSITORY,
+  IBloqueoTicketRepository,
+} from '../../domain/ports/i-bloqueo-ticket.repository';
 import {
   ISectorRepository,
   SECTOR_REPOSITORY,
@@ -171,7 +175,9 @@ export function toHttpException(
     error instanceof AsignadoInvalidoError ||
     error instanceof AsignadoNoElegibleError ||
     error instanceof TicketCerradoNoReasignableError ||
-    error instanceof ComentarioNoPermitidoError ||
+    // RESUELTO, CERRADO o CANCELADO con un actor que no es administrador
+    // (odd/cerrado-solo-comentarios): lo usan también adjuntos y tareas.
+    error instanceof TicketSoloComentariosError ||
     error instanceof ArchivoTamanoCeroError ||
     error instanceof TipoArchivoNoPermitidoError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
@@ -239,6 +245,8 @@ export class TicketsController {
     private readonly obtenerPermisosPorTipoUseCase: ObtenerPermisosPorTipoUseCase,
     private readonly borrarTicketUseCase: BorrarTicketUseCase,
     private readonly recuperarTicketUseCase: RecuperarTicketUseCase,
+    @Inject(BLOQUEO_TICKET_REPOSITORY)
+    private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'estaBloqueadoPorCompra'>,
   ) {}
 
   /**
@@ -337,7 +345,8 @@ export class TicketsController {
    * `clienteId` del checker cross-DB es el `cliente_id` del JWT. `anio` lo
    * resuelve el servidor (año en curso), nunca el cliente HTTP.
    * @throws 403 sin `ALTAS` sobre el tipo elegido (odd/permisos-por-tipo-ticket, D5 c)
-   * @throws 422 tipoId/prioridadId/ticketReferenciaId/sectorId inválidos, o solicitante inválido
+   * @throws 422 tipoId/prioridadId/ticketReferenciaId/sectorId inválidos, tipo sin alta manual
+   *   (PREVENTIVO o de un módulo sin alta de tipo), o solicitante inválido
    * @throws 409 sin ciclo activo, o secuencia agotada
    */
   @Post()
@@ -358,8 +367,8 @@ export class TicketsController {
       clienteId: user.cliente_id as string,
       autorId: user.sub,
       anio: new Date().getFullYear(),
-      // Esta alta es la del soporte general: los tipos de otros módulos tienen su alta propia.
-      moduloRequerido: 'TICKETS',
+      // Alta manual (odd/ticket-unificado, S6): cualquier tipo con `ALTAS`, salvo PREVENTIVO.
+      altaManual: true,
       alcance: await this.alcances.cargar(user),
     });
 
@@ -494,6 +503,10 @@ export class TicketsController {
    * `CSAT:LECTURA` (WU9.2, ADR-C5) Y, si es TECNICO, el ticket le está
    * asignado ACTUALMENTE (mismo límite conocido que el KPI del dashboard,
    * ADR-C8) — gateo dentro del payload, sin tocar el decorador de la ruta.
+   *
+   * `bloqueada` (odd/ticket-unificado, S5, L19, L22) viaja a todo el que ve el ticket, sin
+   * `COMPRAS:LECTURA`: es el mismo criterio que frena sus tareas, y no nombra ninguna compra. Se
+   * consulta después de la visibilidad, así un 404 no revela nada.
    */
   @Get(':id')
   async findOne(
@@ -509,7 +522,7 @@ export class TicketsController {
       throw toHttpException(result.getError());
     }
     const ticket = result.getValue();
-    const [nombres, csat] = await Promise.all([
+    const [nombres, csat, bloqueada] = await Promise.all([
       this.resolverNombresPorTicket([ticket]).then((porTicket) => porTicket.get(ticket.id)),
       this.obtenerCsatTicketUseCase.execute({
         ticketId: ticket.id,
@@ -518,12 +531,13 @@ export class TicketsController {
         actorRol: user.rol,
         tieneCsatLectura: puedeEjecutar(user, ACCION_CSAT_LECTURA),
       }),
+      this.bloqueoRepo.estaBloqueadoPorCompra(ticket.id),
     ]);
     // El teléfono del externo viaja solo en el detalle (nunca en el listado).
     const externo = ticket.solicitanteExternoId
       ? await this.solicitanteExternoRepo.findById(ticket.solicitanteExternoId)
       : null;
-    return this.aDto(ticket, nombres, csat, externo?.telefono ?? null);
+    return { ...(await this.aDto(ticket, nombres, csat, externo?.telefono ?? null)), bloqueada };
   }
 
   /**
@@ -536,7 +550,8 @@ export class TicketsController {
    * @throws 403 sin `MODIFICACION` sobre el tipo del ticket, o ticket EN_PROCESO+
    *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
-   * @throws 422 prioridadId o sectorId inexistente en el catálogo
+   * @throws 422 prioridadId o sectorId inexistente en el catálogo, o ticket RESUELTO/CERRADO/CANCELADO
+   *             editado por quien no es ADMINISTRADOR ni ROOT (`TicketSoloComentariosError`)
    */
   @Patch(':id')
   async update(
@@ -624,8 +639,10 @@ export class TicketsController {
    * Para LLEGAR a un estado terminal se usan los arcos normales.
    * @throws 403 sin `TRANSICIONAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
-   * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, o transición
-   *             inválida (arco no válido y sin salto correctivo aplicable)
+   * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, transición
+   *             inválida (arco no válido y sin salto correctivo aplicable), o
+   *             quien no es ADMINISTRADOR ni ROOT intenta sacar al ticket de
+   *             RESUELTO/CERRADO/CANCELADO (`TicketSoloComentariosError`)
    */
   @Patch(':id/estado')
   async transicionarEstado(
@@ -666,7 +683,8 @@ export class TicketsController {
    * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),
-   *             o ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`)
+   *             ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`), o RESUELTO
+   *             con un actor que no es ADMINISTRADOR ni ROOT (`TicketSoloComentariosError`)
    */
   @Patch(':id/asignar')
   async asignar(
@@ -730,8 +748,9 @@ export class TicketsController {
    * @throws 403 sin `ASIGNAR` o `TRANSICIONAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido/no elegible, ticket CERRADO/CANCELADO
-   *             (`TicketCerradoNoReasignableError`), o el estado actual no
-   *             puede llegar a EN_PROCESO (RESUELTO)
+   *             (`TicketCerradoNoReasignableError`), RESUELTO con un actor que
+   *             no es administrador (`TicketSoloComentariosError`), o el estado
+   *             actual no puede llegar a EN_PROCESO (RESUELTO)
    */
   @Patch(':id/asignar-en-proceso')
   async asignarEnProceso(
@@ -765,7 +784,8 @@ export class TicketsController {
    * D5 c). Lo decide el caso de uso, que conoce el tipo del ticket.
    * @throws 403 sin `COMENTAR` (o sin `OBSERVAR`, si es interno) sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
-   * @throws 422 ticket en estado terminal (solo comentarios públicos, T16)
+   * Se acepta en cualquier estado, también RESUELTO, CERRADO o CANCELADO
+   * (odd/cerrado-solo-comentarios, S4).
    */
   @Post(':id/comentarios')
   @HttpCode(HttpStatus.CREATED)

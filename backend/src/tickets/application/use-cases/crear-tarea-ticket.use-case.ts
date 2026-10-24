@@ -32,7 +32,9 @@ export interface CrearTareaTicketDto {
  *
  * La transacción toma el lock del ticket y lo relee antes de escribir (odd/permisos-por-tipo-ticket,
  * L45): si se borró después de cargarlo, da `TicketNoEncontradoError` (404) y no escribe nada. Sin
- * eso, una tarea creada a la par del borrado quedaría pendiente en un ticket borrado.
+ * eso, una tarea creada a la par del borrado quedaría pendiente en un ticket borrado. Sobre ese
+ * ticket releído vuelve a decidir el estado (odd/cerrado-solo-comentarios): uno resuelto, cerrado o
+ * cancelado en el medio da `TicketSoloComentariosError` (422) a quien no es administrador.
  */
 export class CrearTareaTicketUseCase {
   constructor(
@@ -42,7 +44,10 @@ export class CrearTareaTicketUseCase {
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
-    private readonly verificadorEditable: Pick<VerificadorTicketEditable, 'verificar'>,
+    private readonly verificadorEditable: Pick<
+      VerificadorTicketEditable,
+      'verificar' | 'verificarEstado'
+    >,
   ) {}
 
   async execute(dto: CrearTareaTicketDto): Promise<Result<TareaTicketEntity, DomainError>> {
@@ -55,7 +60,7 @@ export class CrearTareaTicketUseCase {
     if (gestion.isFail()) return Result.fail(gestion.getError());
     const { ticket } = gestion.getValue();
 
-    const editable = await this.verificadorEditable.verificar(ticket);
+    const editable = await this.verificadorEditable.verificar(ticket, dto.actor.esAdministrador);
     if (editable.isFail()) return Result.fail(editable.getError());
 
     const activas = await this.tareaRepo.listarPorTicket(ticket.id);
@@ -72,13 +77,19 @@ export class CrearTareaTicketUseCase {
     );
     const operacion = operacionDeTarea({ tarea, tipoOperacionId, autorId: dto.actor.id });
 
-    const escrita = await this.txRunner.run(async () => {
-      if (!(await bloquearTicketActivo(this.ticketRepo, ticket.id))) return false;
+    const escritura = await this.txRunner.run(async (): Promise<Result<void, DomainError>> => {
+      const actual = await bloquearTicketActivo(this.ticketRepo, ticket.id);
+      if (!actual) return Result.fail(new TicketNoEncontradoError(ticket.id));
+      const vigente = await this.verificadorEditable.verificarEstado(
+        actual,
+        dto.actor.esAdministrador,
+      );
+      if (vigente.isFail()) return vigente;
       await this.tareaRepo.crear(tarea);
       await this.operacionRepo.save(operacion);
-      return true;
+      return Result.ok(undefined);
     });
-    if (!escrita) return Result.fail(new TicketNoEncontradoError(ticket.id));
+    if (escritura.isFail()) return Result.fail(escritura.getError());
 
     return Result.ok(tarea);
   }

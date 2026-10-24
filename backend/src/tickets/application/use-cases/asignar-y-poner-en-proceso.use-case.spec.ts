@@ -38,6 +38,7 @@ import {
   TicketNoEncontradoError,
   TransicionInvalidaError,
   TicketCerradoNoReasignableError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 
 /** Estado del catálogo como entidad real, con el id fijo de `ESTADOS`. */
@@ -310,7 +311,25 @@ describe('AsignarYPonerEnProcesoUseCase', () => {
     expect(c.ticketRepo.save).not.toHaveBeenCalled();
   });
 
-  it('estado terminal/posterior (RESUELTO) → TransicionInvalidaError, sin mutar ni tx', async () => {
+  it('RESUELTO con un no administrador → TicketSoloComentariosError (odd/cerrado-solo-comentarios), sin consultar master ni tx', async () => {
+    const c = makeCollaborators();
+    c.ticketRepo.findById.mockResolvedValue(makeTicket('RESUELTO'));
+
+    const result = await c.useCase.execute(
+      baseDto(
+        alcancePorTipo('asignador-uuid', {
+          'tipo-soporte-uuid': ['LECTURA', 'VER_TODOS', 'ASIGNAR', 'TRANSICIONAR'],
+        }),
+      ),
+    );
+
+    expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+    expect(c.usuarioMasterChecker.estaActivoEnTenant).not.toHaveBeenCalled();
+    expect(c.txRunner.run).not.toHaveBeenCalled();
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('estado terminal/posterior (RESUELTO) → TransicionInvalidaError para un administrador, sin mutar ni tx', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('RESUELTO'));
 

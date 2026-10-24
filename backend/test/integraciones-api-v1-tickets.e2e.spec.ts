@@ -279,6 +279,37 @@ describe('API v1 e2e — tickets', () => {
     expect(fila.primeraRespuestaAt).toBeNull();
   });
 
+  it('un ticket CERRADO admite el comentario por API: 201 y el ticket sigue cerrado (odd/cerrado-solo-comentarios, S4)', async () => {
+    const a = await crearEntorno(DB_A);
+    const clave = await emitirClave(a, TODOS);
+    const creado = await crearTicket(a, clave);
+    const cerrado = await a.tenant.estado.findUniqueOrThrow({ where: { codigo: 'CERRADO' } });
+    await a.tenant.ticket.update({
+      where: { id: creado.data.id },
+      data: { estadoId: cerrado.id },
+    });
+
+    const comentario = await llamar<{ id: string; esInterno: boolean }>(
+      clave,
+      'POST',
+      `/${creado.data.id}/comentarios`,
+      { texto: 'Gracias, ya funciona' },
+    );
+
+    expect(comentario.status).toBe(201);
+    const op = await a.tenant.operacionTicket.findUniqueOrThrow({
+      where: { id: comentario.data.id },
+    });
+    expect(op).toMatchObject({
+      ticketId: creado.data.id,
+      descripcion: 'Gracias, ya funciona',
+      esInterno: false,
+      autorId: a.usuarioId,
+    });
+    const fila = await a.tenant.ticket.findUniqueOrThrow({ where: { id: creado.data.id } });
+    expect(fila.estadoId).toBe(cerrado.id);
+  });
+
   it('T5e: un tipo de otro modulo, uno dado de baja y uno inexistente dan el mismo 422 y no crean ticket', async () => {
     const a = await crearEntorno(DB_A);
     const clave = await emitirClave(a, TODOS);

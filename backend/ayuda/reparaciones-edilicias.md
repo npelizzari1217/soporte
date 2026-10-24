@@ -51,9 +51,10 @@ Un punto importante: **las tareas mueven el estado del ticket**. Al completar la
 primera, el ticket pasa a "En proceso" (y si todavía no tenía responsable, queda
 asignado a quien la completó). Al completar la última, el ticket pasa a
 "Resuelto", con su fecha de cierre y el aviso al solicitante, igual que si se lo
-resolviera a mano. Si después se descompleta una tarea de un ticket resuelto, el
-ticket vuelve a "En proceso". Resolver a mano con tareas pendientes sigue siendo
-posible.
+resolviera a mano. Si después un ADMINISTRADOR descompleta una tarea de un
+ticket resuelto, el ticket vuelve a "En proceso" (vea "Reparación resuelta,
+cerrada o cancelada" más abajo). Resolver a mano con tareas pendientes sigue
+siendo posible.
 
 El porcentaje se recalcula solo: al completar o descompletar una tarea, y
 también al agregar o eliminar una. Tenga en cuenta que agregar una tarea *baja*
@@ -66,11 +67,20 @@ Su caso de uso típico es dejar asentado el motivo de una demora: *"falta el
 repuesto X, el proveedor lo entrega la semana que viene"*.
 
 Se accede con el botón **Ver comentarios** de cada fila. Se escriben en el campo
-*Nuevo comentario* y se publican con **Comentar**. Se listan del más nuevo al
+*Nuevo comentario interno* y se publican con **Comentar**. Se listan del más nuevo al
 más viejo, con el nombre de quien lo escribió y la fecha.
 
-Dos cosas que conviene saber antes de escribir:
+Los comentarios de la reparación son los comentarios del ticket: los que se
+publican acá aparecen también en el historial del ticket, y los que se escriben
+desde el ticket aparecen acá.
 
+Cosas que conviene saber antes de escribir:
+
+- **El comentario que se publica desde la reparación es interno.** Lo ve solo
+  quien tiene **Comentario interno** sobre el tipo del ticket; el solicitante y
+  el resto no lo ven. Lo mismo vale para los comentarios de reparación
+  anteriores a este cambio. Por eso no avisa al solicitante ni cuenta como
+  primera respuesta del ticket.
 - **Un comentario no se edita ni se borra.** No es una restricción de permisos:
   el sistema directamente no tiene esa operación. Lo que se publica queda.
 - El texto admite **hasta 2000 caracteres** y no puede estar vacío ni ser solo
@@ -79,8 +89,9 @@ Dos cosas que conviene saber antes de escribir:
 ## El contador del listado
 
 En la columna **Comentarios**, el botón *Ver comentarios* muestra al lado un
-número con la cantidad de comentarios que tiene esa reparación. Si no tiene
-ninguno, no aparece número.
+número con la cantidad de comentarios que tiene esa reparación y que usted puede
+ver: los internos solo cuentan si tiene **Comentario interno** sobre el tipo. Si
+no tiene ninguno, no aparece número.
 
 Sirve para barrer el listado de un vistazo: las reparaciones con varios
 comentarios suelen ser las que vienen complicadas. El contador se actualiza solo
@@ -90,7 +101,17 @@ al publicar un comentario.
 
 Una reparación puede quedar frenada mientras se espera un repuesto que se pidió
 por el módulo de Compras. Cuando eso pasa, el listado le muestra el chip
-**Bloqueada** en la fila correspondiente.
+**Bloqueada** en la fila correspondiente, y el detalle del ticket muestra
+**Bloqueado por una compra en curso**. Vale para un ticket de cualquier tipo
+con compras vinculadas, no solo para las reparaciones edilicias.
+
+Mientras está bloqueada, **sus tareas quedan de solo lectura**: no se agregan,
+no se asignan, no se completan, no se descompletan ni se eliminan, ni desde la reparación ni desde
+el detalle del ticket. Los comentarios internos se siguen pudiendo publicar.
+
+La marca de bloqueo la ve todo el que ve el ticket, tenga o no permiso sobre
+Compras. Sin ese permiso, solo sabe que está bloqueado: no ve qué compra lo
+frena.
 
 Este chip **es automático**: no lo marca nadie a mano. Aparece solo cuando la
 reparación tiene una compra vinculada que todavía está en curso, y desaparece
@@ -108,15 +129,18 @@ para poder seguir.
 
 ### Cómo se gestiona
 
-En la misma fila donde aparece el chip hay un botón **Gestionar compras**. Ahí
-se ve:
+En la misma fila hay un botón **Gestionar compras**, visible solo con permiso de
+lectura sobre Compras. Si además tiene permiso de modificación sobre el tipo de
+la reparación, ahí se ve:
 
-- La lista de compras que hoy están frenando la reparación (si hay alguna).
+- La lista de todas las compras vinculadas, incluidas las ya entregadas o
+  canceladas.
 - Un selector para **vincular** una compra nueva — solo muestra compras que
-  todavía están activas (no tiene sentido vincular una ya entregada o
-  cancelada, porque no bloquearía nada).
-- Un botón **Desvincular** al lado de cada compra ya vinculada, para el caso de
-  un vínculo cargado por error.
+  todavía están activas.
+- Un botón **Desvincular** al lado de cada compra vinculada.
+
+Sin permiso de modificación, el botón se llama **Ver compras** y muestra la
+lista sin acciones.
 
 ### Cuándo deja de bloquear
 
@@ -134,23 +158,46 @@ En cualquiera de los tres casos, si esa era la única compra que la frenaba, la
 reparación deja de estar bloqueada sin que nadie tenga que tocar nada en la
 pantalla de reparaciones — el cambio se hace del lado de la compra.
 
+## Reparación resuelta, cerrada o cancelada
+
+Cuando el ticket está **Resuelto**, **Cerrado** o **Cancelado**, solo se puede
+**comentar**: desde la reparación, el comentario interno de siempre; desde el
+detalle del ticket, públicos e internos. El comentario no cambia el estado del
+ticket.
+
+Todo lo demás queda de solo lectura para usuarios, técnicos y colaboradores: no
+se agregan, asignan, completan, descompletan ni eliminan subtareas, no se
+editan los datos, no se adjuntan archivos y no se vinculan ni desvinculan
+compras. La pantalla lo indica con el motivo, por ejemplo *El ticket está
+resuelto: solo admite comentarios*.
+
+Un **ADMINISTRADOR** o **ROOT** queda exento de esta regla: puede trabajar las
+tareas, adjuntar, gestionar compras y reabrir el ticket. Corregir los datos de la
+reparación en esos estados queda solo para **ROOT**, y el bloqueo por compra en
+curso vale para todos. Por ejemplo, si una tarea se marcó como completada por error
+y eso resolvió el ticket, un administrador la descompleta y el ticket vuelve a
+"En proceso".
+
 ## Quién puede hacer cada cosa
 
 | Acción | Quién puede |
 |---|---|
-| Ver la reparación, sus subtareas y sus comentarios | **Ver** sobre el tipo del ticket |
+| Ver la reparación, sus subtareas y sus comentarios públicos | **Ver** sobre el tipo del ticket |
+| Ver los comentarios internos, incluidos los publicados desde la reparación | **Ver** y **Comentario interno** sobre el tipo del ticket |
 | Agregar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
 | Asignar o quitar el técnico de una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
-| Publicar un comentario | **Crear** o **Comentar** sobre el tipo del ticket |
+| Publicar un comentario (interno) | **Comentar** y **Comentario interno** sobre el tipo del ticket |
 | Completar o descompletar una subtarea | El técnico de la subtarea, el responsable de la reparación, un ADMINISTRADOR o ROOT |
 | Eliminar una subtarea | El responsable de la reparación, un ADMINISTRADOR o ROOT, con **Modificar** sobre el tipo del ticket |
-| Vincular una compra a una reparación | **Crear** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
-| Desvincular una compra de una reparación | `EDILICIA:BORRADO` |
+| Vincular una compra a una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
+| Desvincular una compra de una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
+| Ver qué compras tiene vinculadas un ticket | **Ver** sobre el tipo del ticket **y** `COMPRAS:LECTURA` |
+| Saber si un ticket está bloqueado por una compra | **Ver** sobre el tipo del ticket: el chip **Bloqueada** del listado y la marca del detalle, sin qué compra lo bloquea |
 
-Los comentarios no tienen visibilidad propia: quien puede ver la reparación, los
-ve todos.
+Todo lo de la tabla, salvo ver y comentar, vale mientras el ticket no esté
+resuelto, cerrado ni cancelado (vea la sección anterior).
 
-Las dos filas de compras no son una aclaración de qué botones se ven en
+Las filas de compras no son una aclaración de qué botones se ven en
 pantalla: es el permiso que el servidor exige de verdad. A alguien al que le
 falte `COMPRAS:LECTURA` el sistema le rechaza el vínculo aunque de alguna forma
 consiga disparar la acción — la interfaz simplemente no le muestra el botón

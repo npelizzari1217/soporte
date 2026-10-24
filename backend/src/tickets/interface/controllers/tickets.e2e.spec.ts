@@ -456,6 +456,17 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
     return { accessToken, clienteId: cliente.id };
   }
 
+  /**
+   * ADMINISTRADOR de un cliente que el test ya creó: cada test tiene un solo cliente, porque el
+   * `db_name` es único en master (odd/cerrado-solo-comentarios).
+   */
+  async function crearAdministradorDe(clienteId: string): Promise<{ accessToken: string }> {
+    const role = await createRoleConPermisos('ADMINISTRADOR', []);
+    const usuario = await createUsuario(`adm-${randomBytes(2).toString('hex')}`);
+    await createMembresia(usuario.id, clienteId, role.id);
+    return login(usuario.email);
+  }
+
   // ─── T4/T5 — Creación + numeración ──────────────────────────────────────
 
   describe('POST /tickets (T4, T5)', () => {
@@ -1184,15 +1195,38 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       expect(res.data.estadoId).toBe(estadoAsignado.id);
     });
 
-    it('RESUELTO → 200 en /asignar: cambia el asignado sin cambiar el estado', async () => {
+    it('RESUELTO → 422 en /asignar para un no administrador (odd/cerrado-solo-comentarios), sin cambiar nada', async () => {
       const { tecnico, loginTecnico, crear } = await armarEscenario('RSL');
-      const ticket = await crear('Resuelto se reasigna');
+      const ticket = await crear('Resuelto solo admite comentarios');
+      const estadoResuelto = await forzarEstado(ticket.id, 'RESUELTO');
+      const antes = await contarOperaciones(ticket.id);
+
+      const res = await httpPatch(
+        `${baseUrl}/tickets/${ticket.id}/asignar`,
+        { asignadoId: tecnico.id },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(res.data)).toContain(
+        'El ticket está resuelto: solo admite comentarios.',
+      );
+      expect(await contarOperaciones(ticket.id)).toBe(antes);
+      const despues = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
+      expect(despues.asignadoId).toBeNull();
+      expect(despues.estadoId).toBe(estadoResuelto);
+    });
+
+    it('RESUELTO → 200 en /asignar para un ADMINISTRADOR: cambia el asignado sin cambiar el estado', async () => {
+      const { tecnico, clienteId, crear } = await armarEscenario('RSA');
+      const administrador = await crearAdministradorDe(clienteId);
+      const ticket = await crear('Resuelto lo reasigna el administrador');
       const estadoResuelto = await forzarEstado(ticket.id, 'RESUELTO');
 
       const res = await httpPatch<TicketResponseDto>(
         `${baseUrl}/tickets/${ticket.id}/asignar`,
         { asignadoId: tecnico.id },
-        bearer(loginTecnico.accessToken),
+        bearer(administrador.accessToken),
       );
 
       expect(res.status).toBe(200);
@@ -1291,7 +1325,7 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
       expect(permitido.data.esInterno).toBe(true);
     });
 
-    it('T16: rechaza (422) un comentario público si el ticket ya está en estado terminal (CERRADO)', async () => {
+    it('S4 (odd/cerrado-solo-comentarios): con el ticket CERRADO, el solicitante comenta en público y el ticket sigue CERRADO', async () => {
       const cliente = await createClienteTenant();
       const roleUsuario = await createRoleConPermisos('USUARIO', [
         'ticket:crear',
@@ -1327,12 +1361,24 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         expect(transicion.status).toBe(200);
       }
 
-      const { status } = await httpPost(
+      const { status, data } = await httpPost<OperacionResponseDto>(
         `${baseUrl}/tickets/${created.data.id}/comentarios`,
         { texto: 'Comentario tardío', esInterno: false },
         bearer(loginUsuario.accessToken),
       );
-      expect(status).toBe(422);
+      expect(status).toBe(201);
+      expect(data.esInterno).toBe(false);
+      expect(data.descripcion).toBe('Comentario tardío');
+      const cerrado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'CERRADO' } });
+      const ticket = await tenantClient.ticket.findUniqueOrThrow({
+        where: { id: created.data.id },
+      });
+      expect(ticket.estadoId).toBe(cerrado.id);
+      expect(
+        await tenantClient.operacionTicket.count({
+          where: { ticketId: created.data.id, descripcion: 'Comentario tardío', esInterno: false },
+        }),
+      ).toBe(1);
     });
   });
 
@@ -1630,6 +1676,103 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
   });
 
   // ─── T2 — Catálogos CRUD editables (PR11) ──────────────────────────────────
+
+  describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S1-S5)', () => {
+    /** Un técnico que ve todo, edita, comenta y observa, y un ticket suyo de un tipo aislado. */
+    async function armarEscenario(prefijo: string) {
+      const cliente = await createClienteTenant();
+      const roleTecnico = await createRoleConPermisos('TECNICO', [
+        'ticket:crear',
+        'ticket:comentar',
+        'ticket:ver_todos',
+        'ticket:editar',
+        'ticket:observar',
+      ]);
+      const tecnico = await createUsuario(`tec-${randomBytes(2).toString('hex')}`);
+      await createMembresia(tecnico.id, cliente.id, roleTecnico.id);
+      const loginTecnico = await login(tecnico.email);
+      const tipoId = await createTipoTicketAislado(prefijo);
+      const creado = await httpPost<TicketResponseDto>(
+        `${baseUrl}/tickets`,
+        { titulo: 'Titulo original', tipoId, prioridadId: prioridadMediaId },
+        bearer(loginTecnico.accessToken),
+      );
+      expect(creado.status).toBe(201);
+      return { loginTecnico, clienteId: cliente.id, ticketId: creado.data.id };
+    }
+
+    async function forzarEstado(ticketId: string, codigo: string): Promise<string> {
+      const estado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo } });
+      await tenantClient.ticket.update({ where: { id: ticketId }, data: { estadoId: estado.id } });
+      return estado.id;
+    }
+
+    it('PATCH /tickets/:id en RESUELTO: un no administrador recibe 422 que nombra el estado y no se edita nada', async () => {
+      const { loginTecnico, ticketId } = await armarEscenario('SCE');
+      const resuelto = await forzarEstado(ticketId, 'RESUELTO');
+
+      const res = await httpPatch(
+        `${baseUrl}/tickets/${ticketId}`,
+        { titulo: 'Intento de edición' },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(422);
+      expect(JSON.stringify(res.data)).toContain(
+        'El ticket está resuelto: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+      expect(fila.titulo).toBe('Titulo original');
+      expect(fila.estadoId).toBe(resuelto);
+    });
+
+    it('POST /tickets/:id/comentarios en RESUELTO: el comentario interno se guarda y el ticket sigue RESUELTO', async () => {
+      const { loginTecnico, ticketId } = await armarEscenario('SCC');
+      const resuelto = await forzarEstado(ticketId, 'RESUELTO');
+
+      const res = await httpPost<OperacionResponseDto>(
+        `${baseUrl}/tickets/${ticketId}/comentarios`,
+        { texto: 'Nota después de resolver', esInterno: true },
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(res.status).toBe(201);
+      expect(res.data.esInterno).toBe(true);
+      const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+      expect(fila.estadoId).toBe(resuelto);
+    });
+
+    it('POST /tickets/:id/adjuntos en CANCELADO: 422 para un no administrador, sin archivo; un ADMINISTRADOR adjunta', async () => {
+      const { loginTecnico, clienteId, ticketId } = await armarEscenario('SCA');
+      await forzarEstado(ticketId, 'CANCELADO');
+
+      const denegado = await httpPostMultipart(
+        `${baseUrl}/tickets/${ticketId}/adjuntos`,
+        Buffer.from('contenido'),
+        'tardio.pdf',
+        'application/pdf',
+        bearer(loginTecnico.accessToken),
+      );
+
+      expect(denegado.status).toBe(422);
+      expect(JSON.stringify(denegado.data)).toContain(
+        'El ticket está cancelado: solo admite comentarios.',
+      );
+      expect(await tenantClient.archivoTicket.count({ where: { ticketId } })).toBe(0);
+
+      const administrador = await crearAdministradorDe(clienteId);
+      const permitido = await httpPostMultipart<ArchivoResponseDto>(
+        `${baseUrl}/tickets/${ticketId}/adjuntos`,
+        Buffer.from('contenido'),
+        'correccion.pdf',
+        'application/pdf',
+        bearer(administrador.accessToken),
+      );
+
+      expect(permitido.status).toBe(201);
+      expect(await tenantClient.archivoTicket.count({ where: { ticketId } })).toBe(1);
+    });
+  });
 
   describe('POST|PATCH /catalogos/tipos-ticket, /catalogos/prioridades (T2, PR11)', () => {
     async function crearActorAdmin(): Promise<{ accessToken: string; clienteId: string }> {

@@ -1,53 +1,53 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { ComentarioReparacionEntity } from '../../domain/entities/comentario-reparacion.entity';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
-import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
-import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
+import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
+import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
+import { ListarTimelineUseCase } from '../../../tickets/application/use-cases/listar-timeline.use-case';
 import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
-import { cargarReparacionParaOperar } from '../services/acceso-reparacion';
 
 /**
- * ListarComentariosReparacionUseCase — devuelve los comentarios de una
- * reparación, más nuevo primero (el orden lo garantiza el repositorio).
+ * ListarComentariosReparacionUseCase — los comentarios del ticket para el panel de Edilicia, más
+ * nuevo primero (el motivo de la demora que se está buscando es siempre el último asentado).
  *
- * Valida que la reparación exista ANTES de listar, en vez de devolver `[]`:
- * un id inexistente y una reparación sin comentarios son dos situaciones
- * distintas, y colapsarlas en la misma respuesta vacía esconde el error del
- * caller. Un actor que no ve el ticket base (`LECTURA` sobre su tipo y regla de
- * fila, odd/permisos-por-tipo-ticket D5 b) recibe el mismo 404 que una
- * reparación inexistente.
+ * Desde odd/ticket-unificado (S3) son los COMENTARIO del timeline del ticket, los mismos que se ven
+ * desde Tickets: compone `ListarTimelineUseCase`, así que hereda su acceso (404 si el actor no ve
+ * el ticket, sin revelar que existe) y su visibilidad (los internos, solo con `OBSERVAR` sobre el
+ * tipo). Un ticket sin comentarios devuelve `[]`, distinto del 404 de un ticket que no existe.
  */
 export class ListarComentariosReparacionUseCase {
   constructor(
-    private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findById'>,
-    private readonly comentarioRepo: Pick<
-      IComentarioReparacionRepository,
-      'listarPorTicketEdilicia'
-    >,
-    private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
+    private readonly listarTimeline: Pick<ListarTimelineUseCase, 'execute'>,
+    private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
   ) {}
 
   /**
-   * @param ticketEdiliciaId Id de la reparación.
+   * @param ticketId Id del ticket.
    * @param alcance Permisos por tipo del actor.
-   * @returns Los comentarios, o 404 si la reparación no existe o el actor no la ve.
+   * @returns Los comentarios visibles para el actor, del más nuevo al más viejo.
    */
   async execute(
-    ticketEdiliciaId: string,
+    ticketId: string,
     alcance: AlcanceActorTicket,
-  ): Promise<Result<ComentarioReparacionEntity[], DomainError>> {
-    const acceso = await cargarReparacionParaOperar(
-      this.ticketEdiliciaRepo,
-      this.ticketRepo,
-      ticketEdiliciaId,
-      alcance,
-    );
-    if (acceso.isFail()) {
-      return Result.fail(acceso.getError());
+  ): Promise<Result<OperacionTicketEntity[], DomainError>> {
+    const timeline = await this.listarTimeline.execute({ ticketId, ...alcance });
+    if (timeline.isFail()) return Result.fail(timeline.getError());
+
+    // Catálogo FIJO garantizado por el seed: su ausencia es un bug de infraestructura.
+    const tipoComentarioId = await this.tipoOperacionRepo.findIdByCodigo('COMENTARIO');
+    if (!tipoComentarioId) {
+      throw new Error(
+        'Catálogo de tipo_operacion inconsistente: no existe "COMENTARIO" en el tenant activo.',
+      );
     }
 
-    const comentarios = await this.comentarioRepo.listarPorTicketEdilicia(ticketEdiliciaId);
-
+    // Desempate por id: es UUIDv7, monótono en el tiempo, así que dos comentarios del mismo
+    // milisegundo conservan un orden determinístico.
+    const comentarios = timeline
+      .getValue()
+      .filter((op) => op.tipoOperacionId === tipoComentarioId)
+      .sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
     return Result.ok(comentarios);
   }
 }

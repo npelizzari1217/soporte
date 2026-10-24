@@ -58,7 +58,7 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
 
 /**
  * CompraNoEncontradaError — la compra con el id indicado no existe (o fue
- * eliminada, soft delete) al intentar vincularla a una reparación.
+ * eliminada, soft delete) al intentar vincularla a un ticket.
  * → HTTP 404 en la capa de presentación.
  *
  * Ref: sdd/reparacion-bloqueada-por-compra/design, D7 (validación de
@@ -73,8 +73,9 @@ export class CompraNoEncontradaError extends DomainError {
 }
 
 /**
- * VinculoNoEncontradoError — no existe un vínculo entre la reparación y la
- * compra indicadas al intentar desvincularlas.
+ * VinculoNoEncontradoError — no existe un vínculo entre el ticket y la compra
+ * indicados al intentar desvincularlos (desde odd/ticket-unificado el vínculo es
+ * del ticket).
  * → HTTP 404 en la capa de presentación.
  *
  * Ref: sdd/reparacion-bloqueada-por-compra/design, ruta DELETE
@@ -83,10 +84,8 @@ export class CompraNoEncontradaError extends DomainError {
 export class VinculoNoEncontradoError extends DomainError {
   readonly code = 'VINCULO_NO_ENCONTRADO';
 
-  constructor(ticketEdiliciaId: string, compraId: string) {
-    super(
-      `No existe un vínculo entre la reparación "${ticketEdiliciaId}" y la compra "${compraId}".`,
-    );
+  constructor(ticketId: string, compraId: string) {
+    super(`No existe un vínculo entre el ticket "${ticketId}" y la compra "${compraId}".`);
   }
 }
 

@@ -12,6 +12,17 @@
  * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`, Borrar `BORRADO`
  * (S8, en cualquier estado: las tareas pendientes y las compras las frena el backend;
  * un ticket PREVENTIVO no se borra, L45).
+ *
+ * Ticket RESUELTO, CERRADO o CANCELADO (odd/cerrado-solo-comentarios, S6): quien no es ADMINISTRADOR
+ * ni ROOT solo comenta, público o interno. No se le ofrece editar, cambiar el responsable, adjuntar,
+ * gestionar tareas ni vincular o desvincular compras, y el motivo se muestra en «Ticket». El estado
+ * se sigue ofreciendo: desde RESUELTO cierra, y el resto no tiene arcos de salida.
+ *
+ * Compras vinculadas (odd/ticket-unificado, S4, S5, L19): la sección se muestra solo con la celda
+ * `COMPRAS:LECTURA`, la que exige `GET /tickets/:id/compras`; vincular y desvincular piden además
+ * `MODIFICACION` sobre el tipo. Con esa celda, el bloqueo por compra sale de la misma lista, que se
+ * refresca con cada vínculo; sin ella sale de `bloqueada` en `GET /tickets/:id` (L19, L22), que no
+ * dice qué compra lo bloquea, y la marca va en la sección de tareas, que es lo que congela.
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -29,6 +40,7 @@ import {
 import { buildIdToCodigoMap } from "../lib/catalog-map";
 import { puedeAsignarYPonerEnProceso, puedeEditarDatos, puedeReasignar } from "../lib/estado-transitions";
 import { motivoTareasSoloLectura } from "../lib/permisos-tareas";
+import { motivoSoloComentarios } from "../lib/solo-comentarios";
 import { useCan } from "@/shared/hooks/use-can";
 import { useSession } from "@/shared/hooks/use-session";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
@@ -46,6 +58,9 @@ import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-car
 import { TicketPdfButton } from "./ticket-pdf-button";
 import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
+import { TicketCompras } from "./ticket-compras";
+import { useComprasDeTicket } from "../hooks/use-compras-de-ticket";
+import { Badge } from "@/components/ui/badge";
 import { TIPO_CODIGO_PREVENTIVO, TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
 
 export interface TicketDetailViewProps {
@@ -70,7 +85,13 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // WU9.3: el backend ya gatea csatPuntaje/csatComentario por payload
   // (ADR-C5); esta bandera es defensa en profundidad del lado UI.
   const puedeVerCsat = useCan("CSAT:LECTURA");
-  const { isGlobalAdmin } = useSession();
+  // Sin la celda, `GET /tickets/:id/compras` responde 403: ni se pide (L19).
+  const puedeLeerCompras = useCan("COMPRAS:LECTURA");
+  const comprasQuery = useComprasDeTicket(ticketId, puedeLeerCompras);
+  const bloqueadoPorCompra = puedeLeerCompras
+    ? (comprasQuery.data ?? []).some((compra) => compra.bloquea)
+    : ticketQuery.data?.bloqueada === true;
+  const { isGlobalAdmin, esAdminCliente } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
   // Solo consulta el equipo vinculado cuando el tipo del ticket ya se resolvió a SOPORTE
@@ -97,10 +118,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
     () => buildIdToCodigoMap(tiposOperacionQuery.data ?? []),
     [tiposOperacionQuery.data],
   );
-  const tipoModuloMap = useMemo(
-    () => new Map((tiposQuery.data ?? []).map((tipo) => [tipo.id, tipo.modulo as string])),
-    [tiposQuery.data],
-  );
   const tipoNombreMap = useMemo(
     () => new Map((tiposQuery.data ?? []).map((tipo) => [tipo.id, tipo.nombre])),
     [tiposQuery.data],
@@ -123,18 +140,16 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // Bloqueo de edición por estado (mirror backend): una vez EN_PROCESO+, solo
   // ROOT edita. Si el estado aún no se resolvió (catálogo cargando), no bloquea.
   const edicionPermitida = estadoCodigo ? puedeEditarDatos(estadoCodigo, isGlobalAdmin) : true;
-  // La ubicación general no se muestra ni se carga en los tickets de Edilicia,
-  // que tienen la suya propia (odd/ubicacion-sector-ticket, CA2). Mientras el
-  // catálogo de tipos no cargó (o falló) el módulo es desconocido y queda oculta:
-  // el PATCH la omite y el backend no la toca. Con el catálogo cargado, un tipo
-  // ausente es un tipo desactivado (el catálogo trae solo los activos) y se
-  // muestra (CA1): los tipos de Edilicia son del sistema y no se desactivan.
-  const modulo = tipoModuloMap.get(ticket.tipoId);
-  const mostrarUbicacion = tiposQuery.isSuccess && modulo !== "EDILICIA";
+  // RESUELTO, CERRADO o CANCELADO: quien no es administrador solo comenta (odd/cerrado-solo-comentarios).
+  // ROOT edita siempre, así que para él no hay motivo que mostrar.
+  const soloComentarios = motivoSoloComentarios(estadoCodigo, esAdminCliente);
+  const puedeModificarAhora = puedeModificar && soloComentarios === null;
   // Un ticket PREVENTIVO no se borra (L45: el backend responde 422). Con el catálogo sin resolver
   // no se sabe si lo es, y "Borrar" queda oculto; resuelto, un tipo ausente es uno desactivado, que
-  // no puede ser PREVENTIVO (los tipos del sistema no se desactivan).
-  const ofrecerBorrar = puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO;
+  // no puede ser PREVENTIVO (los tipos del sistema no se desactivan). En RESUELTO, CERRADO y
+  // CANCELADO solo lo borra un administrador (odd/cerrado-solo-comentarios, L11).
+  const ofrecerBorrar =
+    puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO && soloComentarios === null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -143,7 +158,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         estadoCodigo={estadoCodigo}
         prioridadCodigo={prioridadCodigoMap.get(ticket.prioridadId)}
         tipoNombre={tipoNombreMap.get(ticket.tipoId)}
-        mostrarUbicacion={mostrarUbicacion}
         puedeVerCsat={puedeVerCsat}
       />
 
@@ -164,7 +178,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           Acciones
         </h2>
         <div className="grid gap-6 md:grid-cols-2">
-          {puedeAsignar && estadoCodigo && puedeReasignar(estadoCodigo) && (
+          {puedeAsignar && estadoCodigo && puedeReasignar(estadoCodigo) && soloComentarios === null && (
             <GrupoAccion titulo="Responsable">
               <TicketResponsableControl
                 // `key` por modo: al pasar de arranque a cambio el control se remonta y la
@@ -206,7 +220,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                   // valor activo como "dado de baja" (ver JSDoc de la prop).
                   prioridades={prioridadesQuery.data}
                   sectorNombre={ticket.sectorNombre}
-                  mostrarUbicacion={mostrarUbicacion}
                   onSubmit={(dto) => editarMutation.mutate(dto)}
                   isSubmitting={editarMutation.isPending}
                 />
@@ -214,8 +227,11 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
               {puede("IMPRESION") && <TicketPdfButton ticketId={ticket.id} numero={ticket.numero} />}
               {ofrecerBorrar && <TicketBorrarButton ticketId={ticket.id} numero={ticket.numero} />}
             </div>
-            {puedeModificar && !edicionPermitida && (
-              <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>
+            {soloComentarios !== null ? (
+              <p className="text-xs text-muted-foreground">{soloComentarios}</p>
+            ) : (
+              puedeModificar &&
+              !edicionPermitida && <p className="text-xs text-muted-foreground">En proceso: solo ROOT puede editar.</p>
             )}
           </GrupoAccion>
         </div>
@@ -229,17 +245,37 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         aria-labelledby="tareas-titulo"
         className="rounded-lg border border-border bg-seccion-tareas p-6"
       >
-        <h2 id="tareas-titulo" className="mb-4 text-sm font-semibold text-foreground">
-          Tareas
-        </h2>
+        <div className="mb-4 flex items-center gap-2">
+          <h2 id="tareas-titulo" className="text-sm font-semibold text-foreground">
+            Tareas
+          </h2>
+          {/* Con COMPRAS:LECTURA la marca va junto a las compras que la causan. */}
+          {!puedeLeerCompras && bloqueadoPorCompra && (
+            <Badge variant="warning">Bloqueado por una compra en curso</Badge>
+          )}
+        </div>
         <TicketTareas
           ticketId={ticket.id}
           asignadoId={ticket.asignadoId}
           tipoId={ticket.tipoId}
-          // El detalle no conoce el bloqueo por compra (es de Edilicia): solo el estado.
-          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, false)}
+          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueadoPorCompra, esAdminCliente)}
         />
       </section>
+
+      {puedeLeerCompras && (
+        <section
+          aria-labelledby="compras-titulo"
+          className="flex flex-col gap-4 rounded-lg border border-border bg-seccion-tareas p-6"
+        >
+          <div className="flex items-center gap-2">
+            <h2 id="compras-titulo" className="text-sm font-semibold text-foreground">
+              Compras vinculadas
+            </h2>
+            {bloqueadoPorCompra && <Badge variant="warning">Bloqueado por una compra en curso</Badge>}
+          </div>
+          <TicketCompras ticketId={ticket.id} puedeGestionar={puedeModificarAhora} />
+        </section>
+      )}
 
       {/*
        * Actividad: el formulario de comentario y el adjunto van ARRIBA de la línea de tiempo, que se
@@ -259,7 +295,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
             puedeObservar={puede("OBSERVAR")}
           />
         )}
-        {(puede("ALTAS") || puedeModificar) && (
+        {(puede("ALTAS") || puedeModificar) && soloComentarios === null && (
           <TicketAttachmentUpload
             onUpload={(file) => adjuntarMutation.mutate(file)}
             isUploading={adjuntarMutation.isPending}

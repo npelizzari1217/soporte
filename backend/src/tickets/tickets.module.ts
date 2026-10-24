@@ -340,6 +340,7 @@ import {
       useFactory: (
         ticketRepo: ITicketRepository,
         tipoTicketRepo: ITipoTicketRepository,
+        estadoRepo: IEstadoRepository,
         tareaRepo: ITareaTicketRepository,
         bloqueoRepo: IBloqueoTicketRepository,
         operacionRepo: IOperacionTicketRepository,
@@ -349,6 +350,7 @@ import {
         new BorrarTicketUseCase(
           ticketRepo,
           tipoTicketRepo,
+          estadoRepo,
           tareaRepo,
           bloqueoRepo,
           operacionRepo,
@@ -358,6 +360,7 @@ import {
       inject: [
         TICKET_REPOSITORY,
         TIPO_TICKET_REPOSITORY,
+        ESTADO_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         BLOQUEO_TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
@@ -809,6 +812,7 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         fileStorage: IFileStorage,
         txRunner: ITenantTransactionRunner,
+        estadoRepo: IEstadoRepository,
       ) =>
         new AdjuntarArchivoUseCase(
           ticketRepo,
@@ -817,6 +821,7 @@ import {
           tipoOperacionRepo,
           fileStorage,
           txRunner,
+          estadoRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -825,6 +830,7 @@ import {
         TIPO_OPERACION_REPOSITORY,
         FILE_STORAGE,
         TENANT_TX_RUNNER,
+        ESTADO_REPOSITORY,
       ],
     },
     {
@@ -919,8 +925,6 @@ import {
     // cargan el alcance por tipo con el mismo cargador.
     CargadorAlcanceTicket,
     ESTADO_REPOSITORY,
-    // odd/ticket-cerrado-solo-lectura: la misma regla frena los comentarios de reparación.
-    VerificadorTicketEditable,
     PRIORIDAD_REPOSITORY,
     TIPO_TICKET_REPOSITORY,
     TIPO_OPERACION_REPOSITORY,

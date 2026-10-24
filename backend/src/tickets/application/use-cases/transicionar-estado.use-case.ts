@@ -20,6 +20,8 @@ import {
   TransicionInvalidaError,
 } from '../../domain/errors/tickets.errors';
 import { AlcanceActorTicket, puedeOperarTicket } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, exigirModificableEnEstado } from '../services/solo-comentarios';
+import { esEstadoSoloComentarios } from '../../domain/policies/solo-comentarios.policy';
 import {
   afectaRelojSla,
   ESTADOS_NO_DESTINO_CORRECTIVO,
@@ -90,6 +92,10 @@ export interface TransicionarEstadoDto {
  *    actualización perdida: la validación mira el estado que otro actor (una
  *    persona o las tareas, odd/estado-por-tareas) acaba de dejar, no uno leído
  *    antes.
+ * 2b. Si el actor es una persona que no es ADMINISTRADOR ni ROOT y el ticket está RESUELTO,
+ *    CERRADO o CANCELADO, solo puede llevarlo a otro de esos estados (RESUELTO → CERRADO): sacarlo
+ *    de ahí es `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios). Hoy el grafo ya
+ *    no tiene esos arcos; la regla da el motivo y no depende de que el grafo no cambie.
  * 3. Valida la transición en DOS capas: invariantes de la ENTIDAD
  *    (`ticket.canTransitionTo` — soft-delete, estado terminal, T11) Y el
  *    grafo de arcos (`ITicketStateMachine.puedeTransicionar`, T9). Si
@@ -187,6 +193,17 @@ export class TransicionarEstadoUseCase {
       throw new Error(
         `Catálogo de tipos de ticket inconsistente: no existe el tipo con id "${ticket.tipoId}" en el tenant activo.`,
       );
+    }
+
+    // Solo comentarios (odd/cerrado-solo-comentarios, S1-S3): una persona que no es administrador
+    // no saca al ticket de RESUELTO, CERRADO o CANCELADO. Cerrar uno RESUELTO lo deja en esos
+    // estados, y sigue pudiéndose. Los flujos de sistema (`alcance` null) no pasan por acá.
+    if (dto.alcance !== null && !esEstadoSoloComentarios(estadoDestino.codigo)) {
+      const modificable = exigirModificableEnEstado(
+        estadoActual.codigo,
+        esAlcanceDeAdministrador(dto.alcance),
+      );
+      if (modificable.isFail()) return Result.fail(modificable.getError());
     }
 
     // Doble validación (T9/T11) del ARCO NORMAL: invariantes de la ENTIDAD

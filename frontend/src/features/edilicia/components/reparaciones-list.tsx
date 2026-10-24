@@ -1,10 +1,15 @@
 "use client";
 
 /**
- * ReparacionesList — tabla de reparaciones edilicias (T5.8). El avance de la
+ * ReparacionesList — grilla de la pantalla Edilicia (T5.8). El avance de la
  * fila es `porcentajeAvance`, que el backend calcula al leer sobre las tareas
  * activas del ticket (odd/tareas-con-tecnico, T3); las tareas en sí se
  * gestionan en `SubtareasDialog`.
+ *
+ * Selector de tipo (odd/ticket-unificado, S2, opción a de L7): la misma grilla
+ * lista los tickets de cualquier tipo que el usuario ve, por `GET /reparaciones?tipo=`.
+ * Sin tipo elegido lista los del módulo EDILICIA, como hasta ahora. Cada fila es
+ * un ticket (`id` = id del ticket) y sus acciones van sobre el tipo de ESE ticket.
  */
 import { forwardRef, useMemo, type ComponentPropsWithoutRef } from "react";
 import { useSearchParams } from "next/navigation";
@@ -21,11 +26,12 @@ import { ReparacionCreateDialog } from "./reparacion-create-dialog";
 import { ReparacionEditDialog } from "./reparacion-edit-dialog";
 import { useSession } from "@/shared/hooks/use-session";
 import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
-import { useEstados } from "@/features/tickets/hooks/use-catalogos";
+import { useEstados, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
+import { puedeAltaManualEnAlgunModulo } from "@/features/tickets/lib/alta-manual";
 import { buildIdToCodigoMap } from "@/features/tickets/lib/catalog-map";
+import { ticketSoloComentariosUi } from "@/features/tickets/lib/solo-comentarios";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
-import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
 import type { FiltroBloqueo, ReparacionListItem, ReparacionesFiltros } from "../types";
 import { Pagination } from "@/components/shared/pagination";
@@ -43,6 +49,30 @@ const OPCIONES_FILTRO_BLOQUEO: ReadonlyArray<{ valor: FiltroBloqueo; etiqueta: s
   { valor: "BLOQUEADAS", etiqueta: "Bloqueadas" },
   { valor: "NO_BLOQUEADAS", etiqueta: "No bloqueadas" },
 ];
+
+/** Valor del selector de tipo sin tipo elegido: los del módulo EDILICIA. */
+const TIPO_POR_DEFECTO = "";
+
+/** Opción del selector de tipo. */
+interface OpcionTipo {
+  id: string;
+  nombre: string;
+}
+
+/**
+ * Opciones del selector de tipo: los tipos con `LECTURA`, más el de la URL si
+ * no está entre ellos. Sin esa opción el `<select>` nativo caería a «Todos los
+ * de Edilicia» mientras la grilla lista otro tipo: la pantalla diría una cosa
+ * y mostraría otra.
+ *
+ * La ausencia solo prueba que el tipo no se puede elegir (dado de baja o sin
+ * `LECTURA`) cuando el catálogo YA resolvió; mientras carga o si falló, la
+ * opción dice que se están cargando los tipos, no que no está disponible.
+ */
+function opcionesDeTipo(visibles: OpcionTipo[], resuelto: boolean, tipoElegido: string): OpcionTipo[] {
+  if (!tipoElegido || visibles.some((tipo) => tipo.id === tipoElegido)) return visibles;
+  return [...visibles, { id: tipoElegido, nombre: resuelto ? "Tipo no disponible" : "Cargando tipos…" }];
+}
 
 /** Tamaño de página del listado, el mismo que Tickets. */
 const PAGE_SIZE = 10;
@@ -108,11 +138,25 @@ export function ReparacionesList() {
   const searchParams = useSearchParams();
   const { updateFiltros, irAPagina, limpiarFiltros } = useUrlFilters<ReparacionesFiltros>("pagina");
   const filtroBloqueo = leerFiltroBloqueo(searchParams.get("bloqueo"));
+  const tipoElegido = searchParams.get("tipo") ?? TIPO_POR_DEFECTO;
   const pagina = Number(searchParams.get("pagina") ?? "1");
-  const reparacionesQuery = useReparaciones({ pagina, porPagina: PAGE_SIZE, bloqueo: filtroBloqueo });
-  const { isGlobalAdmin } = useSession();
+  const reparacionesQuery = useReparaciones({
+    pagina,
+    porPagina: PAGE_SIZE,
+    bloqueo: filtroBloqueo,
+    tipo: tipoElegido || undefined,
+  });
+  const { isGlobalAdmin, esAdminCliente } = useSession();
   // Las acciones de cada fila van sobre el tipo de SU ticket (odd/permisos-por-tipo-ticket, S6).
-  const { puedeEnTipo, puedeEnModulo } = usePermisosPorTipo();
+  const { puedeEnTipo, puedeEnModulo, tiposCon } = usePermisosPorTipo();
+  // El selector ofrece los tipos con LECTURA, de cualquier módulo: otro tipo sería una grilla
+  // que el backend siempre devuelve vacía (L13).
+  const tiposQuery = useTiposTicket();
+  const opcionesTipo = opcionesDeTipo(
+    tiposCon(tiposQuery.data ?? [], "LECTURA"),
+    tiposQuery.isSuccess,
+    tipoElegido,
+  );
   // El código del estado decide si la reparación "se empezó a trabajar" (odd/detalle-ticket-legible).
   const estadosQuery = useEstados();
   const estadoCodigoMap = useMemo(() => buildIdToCodigoMap(estadosQuery.data ?? []), [estadosQuery.data]);
@@ -122,7 +166,7 @@ export function ReparacionesList() {
    * `pagina` vieja en la URL puede dejar el listado vacío, y ese vacío tiene que
    * ofrecer «Limpiar filtros» en vez de parecer que no hay datos.
    */
-  const hayFiltrosActivos = filtroBloqueo !== "TODAS" || pagina > 1;
+  const hayFiltrosActivos = filtroBloqueo !== "TODAS" || tipoElegido !== TIPO_POR_DEFECTO || pagina > 1;
 
   const columns: Column<ReparacionListItem>[] = [
     {
@@ -138,32 +182,31 @@ export function ReparacionesList() {
       ),
     },
     { key: "titulo", header: "Título" },
+    // La ubicación del ticket, la única desde odd/ticket-unificado (L11).
     { key: "ubicacion", header: "Ubicación", render: (row) => row.ubicacion ?? "—" },
     // Sector del ticket base (odd/ubicacion-sector-ticket, CA4), por el nombre
-    // que resuelve el backend aunque esté desactivado. La «Ubicación» de arriba
-    // es la propia de Edilicia, no la general del ticket.
+    // que resuelve el backend aunque esté desactivado.
     { key: "sectorId", header: "Sector", render: (row) => row.sectorNombre ?? "—" },
     { key: "porcentajeAvance", header: "Avance", render: (row) => <AvanceCell porcentaje={row.porcentajeAvance} /> },
     {
       // Chip SIN número (decisión de producto #2440): responde "¿está
-      // trabado?" de un vistazo. El botón «Gestionar compras» abre el panel
-      // de vínculo/desvínculo (WU6) — gateado DENTRO de `VincularCompraDialog`
-      // (`ALTAS` sobre el tipo de la fila para vincular), no acá: verlo o no
-      // depende de ese permiso, no del `bloqueada` de la fila.
+      // trabado?" de un vistazo, y lo ve todo el que ve la fila (L22). El botón
+      // de compras abre el panel de vínculo/desvínculo, gateado DENTRO de
+      // `VincularCompraDialog`: `COMPRAS:LECTURA` para verlo y `MODIFICACION`
+      // sobre el tipo de la fila para vincular o desvincular (S4).
       key: "bloqueada",
       header: "Bloqueo",
       render: (row) => (
         <div className="flex items-center gap-2">
           {row.bloqueada && <Badge variant="warning">Bloqueada</Badge>}
           <VincularCompraDialog
-            reparacionId={row.id}
+            ticketId={row.ticketId}
             numero={row.numero}
-            comprasQueBloquean={row.comprasQueBloquean}
-            puedeVincularEnTipo={puedeEnTipo(row.tipoId, "ALTAS")}
-            trigger={
-              <Button variant="outline" size="sm">
-                Gestionar compras
-              </Button>
+            // En RESUELTO, CERRADO o CANCELADO solo un administrador vincula o desvincula
+            // (odd/cerrado-solo-comentarios, S5).
+            puedeModificarEnTipo={
+              puedeEnTipo(row.tipoId, "MODIFICACION") &&
+              !ticketSoloComentariosUi(estadoCodigoMap.get(row.estadoId), esAdminCliente)
             }
           />
         </div>
@@ -182,6 +225,7 @@ export function ReparacionesList() {
             reparacion={row}
             estadoCodigo={estadoCodigoMap.get(row.estadoId)}
             esRoot={isGlobalAdmin}
+            esAdministrador={esAdminCliente}
           />
         ) : null,
     },
@@ -213,17 +257,17 @@ export function ReparacionesList() {
     },
     {
       // Segundo modal hermano del de subtareas (ADR-1: `/edilicia` sin ruta
-      // de detalle). Los comentarios son de la REPARACIÓN, no de cada
-      // subtarea — por eso van en su propia columna y su propio diálogo.
+      // de detalle). Los comentarios son del TICKET, no de cada subtarea — por
+      // eso van en su propia columna y su propio diálogo.
       key: "id",
       header: "Comentarios",
       render: (row) => (
         <ComentariosDialog
           reparacionId={row.id}
           numero={row.numero}
-          // Comentar una reparación pide `ALTAS` o `COMENTAR` sobre su tipo, como el backend.
-          puedeComentar={puedeEnTipo(row.tipoId, "ALTAS") || puedeEnTipo(row.tipoId, "COMENTAR")}
-          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigoMap.get(row.estadoId), row.bloqueada)}
+          // El comentario de esta pantalla es interno (L19, L20): pide `COMENTAR` y `OBSERVAR` sobre
+          // el tipo, como el backend, y se acepta en cualquier estado del ticket.
+          puedeComentar={puedeEnTipo(row.tipoId, "COMENTAR") && puedeEnTipo(row.tipoId, "OBSERVAR")}
           trigger={
             <ConteoTrigger
               texto="Ver comentarios"
@@ -243,6 +287,22 @@ export function ReparacionesList() {
         title="Reparaciones"
         actions={
           <>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="filtro-tipo-reparaciones">Tipo</Label>
+              <Select
+                id="filtro-tipo-reparaciones"
+                className="w-48"
+                value={tipoElegido}
+                onChange={(e) => updateFiltros({ tipo: e.target.value || undefined })}
+              >
+                <option value={TIPO_POR_DEFECTO}>Todos los de Edilicia</option>
+                {opcionesTipo.map((tipo) => (
+                  <option key={tipo.id} value={tipo.id}>
+                    {tipo.nombre}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <div className="flex items-center gap-2">
               <Label htmlFor="filtro-bloqueo-reparaciones">Bloqueo</Label>
               <Select
@@ -269,15 +329,18 @@ export function ReparacionesList() {
               que un `<Can>` acá adentro sería redundante y quedaría
               desincronizado si el gate exterior cambia. Ni el filtro de bloqueo
               ni la página se le pasan a este botón (D8/spec): la exportación
-              siempre trae TODAS las reparaciones que el usuario puede ver (el
-              backend aplica sus permisos por tipo), sin importar el filtro ni
-              la página que se vean en pantalla.
+              trae TODAS las filas que el usuario puede ver (el backend aplica
+              sus permisos por tipo), sin importar el filtro ni la página. El
+              tipo sí viaja: decide QUÉ listado se ve, y exportar otro sería
+              entregar algo distinto de la grilla (odd/ticket-unificado, S2).
             */}
             <ExportarCsvButton
               recurso="reparaciones"
               nombrePorDefecto="reparaciones.csv"
+              queryString={tipoElegido ? new URLSearchParams({ tipo: tipoElegido }).toString() : undefined}
             />
-            {puedeEnModulo("EDILICIA", "ALTAS") && <ReparacionCreateDialog />}
+            {/* Crea un ticket de cualquier tipo con alta manual (odd/ticket-unificado, S2). */}
+            {puedeAltaManualEnAlgunModulo(puedeEnModulo) && <ReparacionCreateDialog />}
           </>
         }
       />

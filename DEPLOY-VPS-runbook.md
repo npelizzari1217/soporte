@@ -1171,6 +1171,145 @@ vigente al momento de cada resolución o respuesta. Volver a desplegar después 
 la fila de la migración en `_prisma_migrations`, y el script recalcula con el calendario de ese
 momento. El rollback no borra esa fila.
 
+## Ticket unificado
+
+Documento de la feature: `odd/tasks/ticket-unificado.md`. Las compras vinculadas, la ubicación y los
+comentarios de reparación pasan del satélite `ticket_edilicia` al ticket, para todos los tipos. Qué
+cambia en el deploy:
+
+| Qué | Detalle |
+|---|---|
+| Migraciones tenant | Dos, solo en las bases de inquilino, por `migrate:tenants` (ver la tabla siguiente). Master no cambia. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Permisos | Vincular y desvincular compras exigen **Modificar** sobre el tipo del ticket y `COMPRAS:LECTURA`; `EDILICIA:BORRADO` ya no decide nada. Ver las compras vinculadas de un ticket (`GET /tickets/:id/compras`) exige `COMPRAS:LECTURA`. Comentar desde Edilicia exige **Comentar** y **Comentario interno** sobre el tipo. |
+| Efecto visible | Los comentarios de reparación, los existentes y los nuevos, son comentarios **internos** del ticket: el solicitante y quien no tiene Comentario interno dejan de verlos. |
+
+| Orden | Migración | Qué hace |
+|---|---|---|
+| 1 | `20261024120000_ticket_unificado` | Crea `ticket_compra` y copia `reparacion_compra`; copia la ubicación del satélite al ticket que no tiene una; copia `comentarios_reparacion` al timeline como COMENTARIO, con el mismo id. Las tablas viejas quedan congeladas, sin escrituras. |
+| 2 | `20261024130000_comentarios_reparacion_internos` | Marca como internas las copias de la migración 1 (`es_interno = true` en las filas con el id de un comentario de reparación). |
+
+### T2, T2b y T3 salen en el mismo deploy
+
+El backend de este release y el frontend anterior no son compatibles. El frontend anterior ofrece
+vincular con **Crear** sobre el tipo, desvincular con `EDILICIA:BORRADO` y comentar en Edilicia con
+**Crear** o **Comentar**, y esconde el formulario de comentarios con el ticket cerrado o bloqueado.
+Con el backend nuevo, esos botones responden 403 a quien no tiene los permisos de la tabla de
+arriba. Por eso **no se despliega un `main` intermedio**: el deploy lleva las tareas T2, T2b y T3
+juntas.
+
+### Precheck de solo lectura: conflictos de ubicación
+
+Si un ticket y su satélite tienen ubicaciones distintas, la migración 1 conserva la del ticket y la
+del satélite no se copia a ningún lado. El único aviso es un `RAISE NOTICE` con la cantidad, y la
+salida de `migrate:tenants` no garantiza mostrarlo. En producción dio 0 casos el 2026-10-24 (L8 del
+documento), pero se vuelve a consultar antes del deploy, en **cada** base de inquilino activa (la
+lista sale de `clientes`, igual que en "Tareas con técnico"):
+
+```sql
+SELECT t.numero, t.ubicacion AS ubicacion_ticket, te.ubicacion AS ubicacion_satelite
+FROM tickets t
+JOIN ticket_edilicia te ON te.ticket_id = t.id
+WHERE btrim(COALESCE(t.ubicacion, '')) <> ''
+  AND btrim(COALESCE(te.ubicacion, '')) <> ''
+  AND t.ubicacion IS DISTINCT FROM te.ubicacion;
+```
+
+Es la misma condición que cuenta la migración. Sin filas en todas las bases, se sigue. Con filas,
+se llevan al dueño antes de desplegar: la ubicación del satélite se pierde de la pantalla, y decidir
+cuál queda es una decisión de datos.
+
+En la misma pasada se anota la foto contra la que se compara después:
+
+```sql
+SELECT
+  (SELECT count(*) FROM reparacion_compra)      AS vinculos,
+  (SELECT count(*) FROM comentarios_reparacion) AS comentarios;
+```
+
+### Orden del deploy
+
+1. Precheck en todas las bases, sin conflictos.
+2. `predeploy-dump.ps1`, en DryRun y en la corrida real (ver "Precondición operativa"). Las dos
+   migraciones escriben filas existentes (`tickets.ubicacion`, `operaciones_ticket.es_interno`): el
+   dump es el único rollback fiel.
+3. Precheck otra vez, con los servicios detenidos: la foto definitiva.
+4. `deploy.ps1`.
+
+### Verificación posterior al deploy
+
+En cada base:
+
+```sql
+SELECT
+  (SELECT count(*) FROM ticket_compra)                                  AS vinculos,
+  (SELECT count(*) FROM operaciones_ticket o
+     JOIN comentarios_reparacion cr ON cr.id = o.id)                    AS comentarios_copiados,
+  (SELECT count(*) FROM operaciones_ticket o
+     JOIN comentarios_reparacion cr ON cr.id = o.id WHERE o.es_interno) AS comentarios_internos;
+```
+
+`vinculos` tiene que coincidir con el de la foto (antes de que alguien vincule o desvincule), y
+`comentarios_copiados` y `comentarios_internos` con `comentarios`.
+
+Smoke manual: en Edilicia, un comentario publicado aparece en el historial del ticket marcado como
+interno, y un usuario sin Comentario interno no lo ve; un usuario sin `COMPRAS:LECTURA` ve el chip
+**Bloqueada** pero no la lista de compras del ticket.
+
+### La migración 1 no se vuelve a correr después del deploy
+
+Su copia es re-ejecutable **antes** del deploy, no después. Una vez en producción, desvincular
+borra la fila de `ticket_compra` pero no la de `reparacion_compra`, que quedó congelada: volver a
+correr la migración revive como vinculadas, y bloqueantes, compras que alguien desvinculó. Por eso
+no se borra su fila de `_prisma_migrations` ni se corre su `migration.sql` a mano, salvo después
+de su `rollback.sql`, que primero proyecta el estado vigente sobre las tablas viejas.
+
+Y si se la vuelve a aplicar, se vuelve a aplicar también la 2: la migración 1 copia los
+comentarios como públicos.
+
+### Rollback
+
+Con los servicios detenidos, **primero los `rollback.sql`, después el código**. El código de este
+release lee `ticket_compra`, y el anterior lee `reparacion_compra`, la ubicación del satélite y
+`comentarios_reparacion`: ninguno de los dos funciona entero en el medio.
+
+1. En **cada** base de inquilino, en orden inverso. Los dos son re-ejecutables:
+   1. `20261024130000_comentarios_reparacion_internos/rollback.sql`: devuelve a públicas las copias.
+      Antes del rollback de la 1 no cambia nada visible, porque ese borra las copias.
+   2. `20261024120000_ticket_unificado/rollback.sql`: proyecta `ticket_compra` y la ubicación del
+      ticket sobre las tablas viejas, borra `ticket_compra` y quita del timeline las copias de los
+      comentarios.
+2. `git reset --hard <commit-de-rollback>` y `.\deploy.ps1` (ver "Cuando algo falla").
+
+Correr solo el paso 1.1, con el código de este release arriba, deshace únicamente la decisión L19:
+los comentarios de reparación migrados vuelven a ser públicos.
+
+**Qué no vuelve con el rollback:**
+
+- los vínculos de compra de tickets **sin** satélite: `reparacion_compra` no los puede guardar, y con
+  ellos se pierde el bloqueo de esos tickets;
+- los **adjuntos** que se hayan agregado después del deploy a un comentario migrado: el rollback
+  borra la operación y `archivos_operacion` la sigue con `ON DELETE CASCADE`. El archivo queda en
+  `archivos`, pero deja de aparecer en el ticket. Antes del paso 1.2 se listan para poder
+  re-vincularlos:
+
+  ```sql
+  SELECT o.ticket_id, ao.archivo_id, ao.operacion_id
+  FROM archivos_operacion ao
+  JOIN comentarios_reparacion cr ON cr.id = ao.operacion_id
+  JOIN operaciones_ticket o ON o.id = ao.operacion_id;
+  ```
+
+- los comentarios publicados desde Edilicia después del deploy no vuelven a
+  `comentarios_reparacion`: quedan en el timeline como comentarios internos del ticket;
+- un satélite con ubicación distinta de la del ticket (el conflicto del precheck) queda con la del
+  ticket;
+- los `rollback.sql` no borran las filas de `_prisma_migrations`: para volver a desplegar, se borran
+  a mano las dos, y la 2 tiene que volver a correr después de la 1.
+
+Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el dump de
+`predeploy-dump.ps1` (ver "Restore de datos"), y se pierde lo escrito después del deploy.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

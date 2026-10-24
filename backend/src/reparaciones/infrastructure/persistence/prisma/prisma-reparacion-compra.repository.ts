@@ -1,20 +1,19 @@
 /**
  * PrismaReparacionCompraRepository — implementación del puerto
- * IReparacionCompraRepository (WU1.5).
+ * IReparacionCompraRepository sobre `ticket_compra` (odd/ticket-unificado, S1).
  *
- * Reglas (mismo patrón que `PrismaComentarioReparacionRepository`):
+ * Reglas:
  * - Obtiene el cliente Prisma del tenant activo vía TenantContext.getClient().
  *   NUNCA recibe PrismaService ni llama a PrismaService directamente.
  * - `vincular()` es `createMany({ skipDuplicates: true })` (D4): la UNIQUE
- *   de `reparacion_compra` resuelve la idempotencia en la base vía
+ *   de `ticket_compra` resuelve la idempotencia en la base vía
  *   `ON CONFLICT DO NOTHING`, sin check-then-insert.
  * - `desvincular()` es hard delete real (D5), `deleteMany` por el par.
- * - `findComprasVinculadasByTicketEdiliciaIds()` filtra `compra.deletedAt IS
- *   NULL` (D6) EN LA CONSULTA (relation filter de Prisma), no en memoria
- *   después.
+ * - `findComprasVinculadasByTicketIds()` filtra `compra.deletedAt IS NULL`
+ *   (D6) EN LA CONSULTA (relation filter de Prisma), no en memoria después.
+ * - `reparacion_compra` quedó congelada: este repositorio no la lee ni la escribe.
  *
  * Ref design: sdd/reparacion-bloqueada-por-compra/design, D2/D3/D4/D5/D6.
- * Tarea: WU2.2.
  */
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
@@ -34,49 +33,47 @@ export class PrismaReparacionCompraRepository implements IReparacionCompraReposi
   /**
    * `createMany({ skipDuplicates: true })` sobre un único registro: Postgres
    * lo resuelve como `INSERT ... ON CONFLICT DO NOTHING` contra la UNIQUE
-   * `(ticket_edilicia_id, compra_id)`. Si `compraId` no existe, la FK
-   * RESTRICT sí rechaza el INSERT (skipDuplicates solo absorbe conflictos de
-   * UNIQUE, no violaciones de FK).
+   * `(ticket_id, compra_id)`. Si `compraId` no existe, la FK RESTRICT sí
+   * rechaza el INSERT (skipDuplicates solo absorbe conflictos de UNIQUE).
    */
-  async vincular(ticketEdiliciaId: string, compraId: string): Promise<void> {
-    await this.client.reparacionCompra.createMany({
-      data: [{ ticketEdiliciaId, compraId }],
+  async vincular(ticketId: string, compraId: string): Promise<void> {
+    await this.client.ticketCompra.createMany({
+      data: [{ ticketId, compraId }],
       skipDuplicates: true,
     });
   }
 
   /** Hard delete real del vínculo (D5) — sin `deleted_at`, la fila deja de existir. */
-  async desvincular(ticketEdiliciaId: string, compraId: string): Promise<void> {
-    await this.client.reparacionCompra.deleteMany({
-      where: { ticketEdiliciaId, compraId },
-    });
+  async desvincular(ticketId: string, compraId: string): Promise<void> {
+    await this.client.ticketCompra.deleteMany({ where: { ticketId, compraId } });
   }
 
-  async findComprasVinculadasByTicketEdiliciaIds(
-    ticketEdiliciaIds: string[],
+  async findComprasVinculadasByTicketIds(
+    ticketIds: string[],
   ): Promise<Map<string, CompraVinculada[]>> {
     // Cortar acá y no delegar en Prisma: un `IN ()` vacío es una ida a la
     // base cuyo resultado ya conocemos.
-    if (ticketEdiliciaIds.length === 0) {
+    if (ticketIds.length === 0) {
       return new Map();
     }
 
-    const rows = await this.client.reparacionCompra.findMany({
+    const rows = await this.client.ticketCompra.findMany({
       where: {
-        ticketEdiliciaId: { in: ticketEdiliciaIds },
+        ticketId: { in: ticketIds },
         // D6: compra.deletedAt IS NULL filtrado EN LA CONSULTA (relation
         // filter), no leído y descartado después.
         compra: { deletedAt: null },
       },
       include: { compra: { include: { items: true } } },
+      orderBy: { compra: { numero: 'asc' } },
     });
 
     const resultado = new Map<string, CompraVinculada[]>();
     for (const row of rows) {
       const compraVinculada = ReparacionCompraMapper.toCompraVinculada(row);
-      const existentes = resultado.get(row.ticketEdiliciaId);
+      const existentes = resultado.get(row.ticketId);
       if (existentes === undefined) {
-        resultado.set(row.ticketEdiliciaId, [compraVinculada]);
+        resultado.set(row.ticketId, [compraVinculada]);
       } else {
         existentes.push(compraVinculada);
       }

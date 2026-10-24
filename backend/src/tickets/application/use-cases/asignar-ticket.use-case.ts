@@ -12,6 +12,7 @@ import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, exigirModificableEnEstado } from '../services/solo-comentarios';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -53,7 +54,8 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
  *    si lo ve sin `ASIGNAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
  *    Si está en un estado final (CERRADO/CANCELADO) → `TicketCerradoNoReasignableError`
- *    (422), antes de consultar a master. RESUELTO sí se reasigna.
+ *    (422), antes de consultar a master. RESUELTO lo reasigna solo un ADMINISTRADOR o ROOT: el
+ *    resto recibe `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios).
  * 2. Valida que el asignado existe en `master.usuarios` con `activo=true` y
  *    pertenece (vía membresía activa) al tenant activo (cross-DB,
  *    `IUsuarioMasterChecker.estaActivoEnTenant`). Si no → `AsignadoInvalidoError` (422).
@@ -69,7 +71,7 @@ export interface AsignarTicketDto extends AlcanceActorTicket {
  *    patrón que `CrearTicketUseCase`/`TransicionarEstadoUseCase`).
  * 5. **DENTRO de la transacción** (`ITenantTransactionRunner.run`, T24), y en
  *    este orden (odd/escrituras-manuales-con-lock, S3): bloquea la fila del
- *    ticket, lo RELEE y vuelve a decidir "terminal" y "era NUEVO" sobre ese
+ *    ticket, lo RELEE y vuelve a decidir "terminal", "solo comentarios" y "era NUEVO" sobre ese
  *    estado vigente; recién entonces `ticket.assignTo(asignadoId)`, crea la
  *    operación `ASIGNACION` del timeline (sin `estadoAnterior`/`estadoNuevo` —
  *    no es un cambio de estado, T9/T12 siguen siendo el único camino para
@@ -120,6 +122,10 @@ export class AsignarTicketUseCase {
     if (ESTADOS_TERMINALES.has(estadoActual.codigo)) {
       return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoActual.codigo));
     }
+    // RESUELTO: quien no es administrador solo comenta (odd/cerrado-solo-comentarios).
+    const esAdministrador = esAlcanceDeAdministrador(dto);
+    const modificable = exigirModificableEnEstado(estadoActual.codigo, esAdministrador);
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const asignadoActivo = await this.usuarioMasterChecker.estaActivoEnTenant(
       dto.asignadoId,
@@ -180,6 +186,8 @@ export class AsignarTicketUseCase {
         if (ESTADOS_TERMINALES.has(estadoVigente.codigo)) {
           return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoVigente.codigo));
         }
+        const vigente = exigirModificableEnEstado(estadoVigente.codigo, esAdministrador);
+        if (vigente.isFail()) return Result.fail(vigente.getError());
         const eraNuevo = estadoVigente.codigo === 'NUEVO';
         const estadoAnteriorId = ticket.estadoId;
 
