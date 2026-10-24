@@ -10,6 +10,9 @@ import {
 import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import type { LectorCatalogoModelos } from '../services/validar-modelo-equipo.service';
 import type { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
+import type { IValoracionEquipoRepository } from '../../domain/ports/i-valoracion-equipo.repository';
+
+const ACTOR = '01900000-0000-7000-8000-0000000000e2';
 
 /**
  * T12.1 [U][RED] — CrearEquipoUseCase: numeroSerie duplicado →
@@ -44,14 +47,23 @@ describe('CrearEquipoUseCase', () => {
     const modeloRepo = {
       findById: vi.fn<LectorCatalogoModelos['findById']>().mockResolvedValue(null),
     };
-    return { equipoRepo, txRunner, modeloRepo };
+    const valoracionRepo = {
+      registrar: vi.fn<IValoracionEquipoRepository['registrar']>().mockResolvedValue(undefined),
+    };
+    return { equipoRepo, txRunner, modeloRepo, valoracionRepo };
   }
 
   it('crea el equipo cuando numeroSerie es válido (o ausente)', async () => {
     const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
+    const useCase = new CrearEquipoUseCase(
+      equipoRepo,
+      txRunner,
+      modeloRepo,
+      makeDeps().valoracionRepo,
+    );
 
     const result = await useCase.execute({
+      usuarioId: ACTOR,
       nombre: 'Notebook A',
       numeroSerie: null,
       marca: null,
@@ -86,9 +98,15 @@ describe('CrearEquipoUseCase', () => {
         save: vi.fn<IEquipoInformaticoRepository['save']>(),
       },
     });
-    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
+    const useCase = new CrearEquipoUseCase(
+      equipoRepo,
+      txRunner,
+      modeloRepo,
+      makeDeps().valoracionRepo,
+    );
 
     const result = await useCase.execute({
+      usuarioId: ACTOR,
       nombre: 'Notebook B',
       numeroSerie: 'SN-DUP',
       marca: null,
@@ -104,9 +122,15 @@ describe('CrearEquipoUseCase', () => {
 
   it('crea el equipo (ubicacion es texto libre, no se valida)', async () => {
     const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
+    const useCase = new CrearEquipoUseCase(
+      equipoRepo,
+      txRunner,
+      modeloRepo,
+      makeDeps().valoracionRepo,
+    );
 
     const result = await useCase.execute({
+      usuarioId: ACTOR,
       nombre: 'Notebook D',
       numeroSerie: null,
       marca: null,
@@ -124,9 +148,15 @@ describe('CrearEquipoUseCase', () => {
   /** El alta sin modelo de catálogo —el clon armado en casa— sigue siendo válida. */
   it('deja modeloEquipoId en null cuando el alta no lo trae', async () => {
     const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-    const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
+    const useCase = new CrearEquipoUseCase(
+      equipoRepo,
+      txRunner,
+      modeloRepo,
+      makeDeps().valoracionRepo,
+    );
 
     const result = await useCase.execute({
+      usuarioId: ACTOR,
       nombre: 'Clon armado en casa',
       numeroSerie: null,
       marca: null,
@@ -155,8 +185,14 @@ describe('CrearEquipoUseCase', () => {
     }
 
     function ejecutar(modeloRepo: LectorCatalogoModelos, equipoRepo: EquipoRepoDoble) {
-      const useCase = new CrearEquipoUseCase(equipoRepo, makeTxRunner(), modeloRepo);
+      const useCase = new CrearEquipoUseCase(
+        equipoRepo,
+        makeTxRunner(),
+        modeloRepo,
+        makeDeps().valoracionRepo,
+      );
       return useCase.execute({
+        usuarioId: ACTOR,
         nombre: 'Impresora del catálogo',
         numeroSerie: null,
         marca: null,
@@ -251,9 +287,15 @@ describe('CrearEquipoUseCase', () => {
     /** El alta sin modelo no debe pagar un viaje al catálogo. */
     it('no consulta el catálogo cuando el alta no trae modeloEquipoId', async () => {
       const { equipoRepo, txRunner, modeloRepo } = makeDeps();
-      const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo);
+      const useCase = new CrearEquipoUseCase(
+        equipoRepo,
+        txRunner,
+        modeloRepo,
+        makeDeps().valoracionRepo,
+      );
 
       await useCase.execute({
+        usuarioId: ACTOR,
         nombre: 'Clon armado en casa',
         numeroSerie: null,
         marca: null,
@@ -264,6 +306,122 @@ describe('CrearEquipoUseCase', () => {
       });
 
       expect(modeloRepo.findById).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * odd/tasks/historial-valor-residual.md (S2): el alta con valor residual y fecha arranca el
+   * historial del equipo, dentro de la misma transacción del save y con el actor del POST.
+   */
+  describe('historial del valor residual', () => {
+    const dia = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
+    const ALTA = {
+      usuarioId: ACTOR,
+      nombre: 'Notebook con valor',
+      numeroSerie: null,
+      marca: null,
+      modelo: null,
+      fechaAdquisicion: null,
+      ubicacion: null,
+      importe: 1000,
+      fechaValoracion: dia('2026-10-01'),
+    };
+
+    it('registra la valoración del alta dentro de la transacción, después del save', async () => {
+      const llamadas: string[] = [];
+      const equipoRepo: EquipoRepoDoble = {
+        findByNumeroSerie: vi
+          .fn<IEquipoInformaticoRepository['findByNumeroSerie']>()
+          .mockResolvedValue(null),
+        save: vi.fn<IEquipoInformaticoRepository['save']>().mockImplementation(async () => {
+          llamadas.push('save');
+        }),
+      };
+      const valoracionRepo = {
+        registrar: vi
+          .fn<IValoracionEquipoRepository['registrar']>()
+          .mockImplementation(async () => {
+            llamadas.push('registrar');
+          }),
+      };
+      const txRunner: ITenantTransactionRunner = {
+        run: async <T>(fn: () => Promise<T>): Promise<T> => {
+          llamadas.push('tx:inicio');
+          const valor = await fn();
+          llamadas.push('tx:fin');
+          return valor;
+        },
+        alCommitear: (fn: () => void) => fn(),
+      };
+      const useCase = new CrearEquipoUseCase(
+        equipoRepo,
+        txRunner,
+        makeDeps().modeloRepo,
+        valoracionRepo,
+      );
+
+      const result = await useCase.execute({
+        ...ALTA,
+        valorResidual: 700,
+        fechaValorResidual: dia('2026-10-24'),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(valoracionRepo.registrar).toHaveBeenCalledWith({
+        equipoId: result.getValue().id,
+        fecha: dia('2026-10-24'),
+        importe: 700,
+        usuarioId: ACTOR,
+      });
+      expect(llamadas).toEqual(['tx:inicio', 'save', 'registrar', 'tx:fin']);
+    });
+
+    it('no registra nada si el alta no trae valor residual, aunque traiga importe', async () => {
+      const { equipoRepo, txRunner, modeloRepo, valoracionRepo } = makeDeps();
+      const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo, valoracionRepo);
+
+      const result = await useCase.execute(ALTA);
+
+      expect(result.isOk()).toBe(true);
+      expect(valoracionRepo.registrar).not.toHaveBeenCalled();
+    });
+
+    it('no registra nada si el valor residual llega sin fecha', async () => {
+      const { equipoRepo, txRunner, modeloRepo, valoracionRepo } = makeDeps();
+      const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo, valoracionRepo);
+
+      await useCase.execute({ ...ALTA, valorResidual: 700, fechaValorResidual: null });
+
+      expect(valoracionRepo.registrar).not.toHaveBeenCalled();
+    });
+
+    it('un numeroSerie duplicado no registra nada', async () => {
+      const { txRunner, modeloRepo, valoracionRepo } = makeDeps();
+      const equipoRepo: EquipoRepoDoble = {
+        findByNumeroSerie: vi
+          .fn<IEquipoInformaticoRepository['findByNumeroSerie']>()
+          .mockResolvedValue(
+            EquipoInformaticoEntity.create({
+              ...ALTA,
+              numeroSerie: 'SN-DUP',
+              observaciones: null,
+              valorResidual: null,
+              fechaValorResidual: null,
+            }),
+          ),
+        save: vi.fn<IEquipoInformaticoRepository['save']>(),
+      };
+      const useCase = new CrearEquipoUseCase(equipoRepo, txRunner, modeloRepo, valoracionRepo);
+
+      const result = await useCase.execute({
+        ...ALTA,
+        numeroSerie: 'SN-DUP',
+        valorResidual: 700,
+        fechaValorResidual: dia('2026-10-24'),
+      });
+
+      expect(result.getError()).toBeInstanceOf(NumeroSerieDuplicadoError);
+      expect(valoracionRepo.registrar).not.toHaveBeenCalled();
     });
   });
 });

@@ -15,6 +15,9 @@
  * depósito", descuenta stock en la MISMA transacción. El form inline de alta que existía antes en
  * `EquipoComponentesSection` (solo tipo + capacidad, incompleto) fue
  * retirado — el alta vive únicamente acá.
+ *
+ * `EquipoValorSection` muestra el importe y el valor residual vigentes y su historial
+ * (odd/tasks/historial-valor-residual.md, S5), también en un equipo dado de baja.
  */
 import { useRouter } from "next/navigation";
 import { DetailSkeleton } from "@/components/shared/skeletons";
@@ -31,6 +34,7 @@ import { EquipoBajaDialog } from "./equipo-baja-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 import { EquipoQrPanel } from "./equipo-qr-panel";
+import { EquipoValorSection } from "./equipo-valor-section";
 
 export interface EquipoDetailViewProps {
   equipoId: string;
@@ -103,6 +107,8 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
           <EquipoQrPanel equipoId={equipo.id} equipoNombre={equipo.nombre} />
         </Can>
       )}
+
+      <EquipoValorSection equipo={equipo} />
 
       <EquipoComponentesSection
         equipoId={equipo.id}

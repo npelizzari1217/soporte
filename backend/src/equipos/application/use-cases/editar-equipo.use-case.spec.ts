@@ -11,6 +11,7 @@ import {
 } from '../../domain/errors/equipos.errors';
 import type { IEquipoInformaticoRepository } from '../../domain/ports/i-equipo-informatico.repository';
 import type { IModeloEquipoRepository } from '../../../insumos/domain/ports/i-modelo-equipo.repository';
+import type { IValoracionEquipoRepository } from '../../domain/ports/i-valoracion-equipo.repository';
 import {
   equipoDadoDeBaja,
   equipoVigente,
@@ -28,8 +29,20 @@ import {
  *
  * Ref spec: sdd/flujos-especializados/spec F3-Q1.
  */
+const ACTOR = '01900000-0000-7000-8000-0000000000e1';
+
 describe('EditarEquipoUseCase', () => {
   const makeEquipo = equipoVigente;
+
+  type ValoracionRepoFake = Pick<IValoracionEquipoRepository, 'registrar'>;
+
+  function makeValoracionRepo(llamadas: string[] = []) {
+    return {
+      registrar: vi.fn(async () => {
+        llamadas.push('registrar');
+      }),
+    } satisfies ValoracionRepoFake;
+  }
 
   type EquipoRepoFake = Pick<
     IEquipoInformaticoRepository,
@@ -57,8 +70,14 @@ describe('EditarEquipoUseCase', () => {
     equipoRepo: EquipoRepoFake,
     modeloRepo: Pick<IModeloEquipoRepository, 'findById'> = makeModeloRepo(),
     llamadas: string[] = [],
+    valoracionRepo: ValoracionRepoFake = makeValoracionRepo(),
   ) {
-    return new EditarEquipoUseCase(equipoRepo, txRunnerDeSpec(llamadas), modeloRepo);
+    return new EditarEquipoUseCase(
+      equipoRepo,
+      txRunnerDeSpec(llamadas),
+      modeloRepo,
+      valoracionRepo,
+    );
   }
 
   /** Catálogo que nunca resuelve un modelo — los casos que no tocan `modeloEquipoId` no lo consultan. */
@@ -72,7 +91,11 @@ describe('EditarEquipoUseCase', () => {
   describe('guards del equipo (LE)', () => {
     it('falla con EquipoNoEncontradoError si el equipo no existe', async () => {
       const equipoRepo = makeEquipoRepo(null);
-      const result = await makeUseCase(equipoRepo).execute({ equipoId: 'no-existe', nombre: 'X' });
+      const result = await makeUseCase(equipoRepo).execute({
+        usuarioId: ACTOR,
+        equipoId: 'no-existe',
+        nombre: 'X',
+      });
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
       expect(equipoRepo.save).not.toHaveBeenCalled();
@@ -82,7 +105,11 @@ describe('EditarEquipoUseCase', () => {
       const borrado = makeEquipo();
       borrado.softDelete();
       const equipoRepo = makeEquipoRepo(borrado);
-      const result = await makeUseCase(equipoRepo).execute({ equipoId: borrado.id, nombre: 'X' });
+      const result = await makeUseCase(equipoRepo).execute({
+        usuarioId: ACTOR,
+        equipoId: borrado.id,
+        nombre: 'X',
+      });
       expect(result.getError()).toBeInstanceOf(EquipoNoEncontradoError);
       expect(equipoRepo.save).not.toHaveBeenCalled();
     });
@@ -90,7 +117,11 @@ describe('EditarEquipoUseCase', () => {
     it('un equipo dado de baja falla con EquipoDadoDeBajaError y no guarda nada', async () => {
       const baja = equipoDadoDeBaja();
       const equipoRepo = makeEquipoRepo(baja);
-      const result = await makeUseCase(equipoRepo).execute({ equipoId: baja.id, nombre: 'X' });
+      const result = await makeUseCase(equipoRepo).execute({
+        usuarioId: ACTOR,
+        equipoId: baja.id,
+        nombre: 'X',
+      });
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
       expect(equipoRepo.save).not.toHaveBeenCalled();
@@ -111,6 +142,7 @@ describe('EditarEquipoUseCase', () => {
       );
 
       await makeUseCase(equipoRepo, makeModeloRepo(), llamadas).execute({
+        usuarioId: ACTOR,
         equipoId: equipo.id,
         nombre: 'Editado',
       });
@@ -124,6 +156,7 @@ describe('EditarEquipoUseCase', () => {
     const equipoRepo = makeEquipoRepo(equipo);
 
     const result = await makeUseCase(equipoRepo).execute({
+      usuarioId: ACTOR,
       equipoId: equipo.id,
       nombre: 'Editado',
     });
@@ -140,6 +173,7 @@ describe('EditarEquipoUseCase', () => {
     });
 
     const result = await makeUseCase(equipoRepo).execute({
+      usuarioId: ACTOR,
       equipoId: equipo.id,
       numeroSerie: 'SN-OTRO',
     });
@@ -153,6 +187,7 @@ describe('EditarEquipoUseCase', () => {
     const equipoRepo = makeEquipoRepo(equipo, { findByNumeroSerie: vi.fn(async () => equipo) });
 
     const result = await makeUseCase(equipoRepo).execute({
+      usuarioId: ACTOR,
       equipoId: equipo.id,
       numeroSerie: 'SN-MISMO',
     });
@@ -172,7 +207,11 @@ describe('EditarEquipoUseCase', () => {
       save: vi.fn().mockRejectedValue(Object.assign(new Error('unique'), { code: 'P2002' })),
     });
 
-    const result = await makeUseCase(equipoRepo).execute({ equipoId: equipo.id, numeroSerie: '' });
+    const result = await makeUseCase(equipoRepo).execute({
+      usuarioId: ACTOR,
+      equipoId: equipo.id,
+      numeroSerie: '',
+    });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(NumeroSerieDuplicadoError);
@@ -193,7 +232,11 @@ describe('EditarEquipoUseCase', () => {
       const modeloRepo = makeModeloRepo();
       const useCase = makeUseCase(makeEquipoRepo(equipo), modeloRepo);
 
-      const result = await useCase.execute({ equipoId: equipo.id, nombre: 'Editado' });
+      const result = await useCase.execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        nombre: 'Editado',
+      });
 
       expect(result.getValue().modeloEquipoId).toBe(MODELO_ID);
       // `undefined` = "no lo toques": no hay nada que validar contra el catálogo.
@@ -209,6 +252,7 @@ describe('EditarEquipoUseCase', () => {
       const useCase = makeUseCase(makeEquipoRepo(equipo), makeModeloRepo(modeloActivo));
 
       const result = await useCase.execute({
+        usuarioId: ACTOR,
         equipoId: equipo.id,
         modeloEquipoId: OTRO_MODELO_ID,
       });
@@ -222,7 +266,11 @@ describe('EditarEquipoUseCase', () => {
       const modeloRepo = makeModeloRepo();
       const useCase = makeUseCase(makeEquipoRepo(equipo), modeloRepo);
 
-      const result = await useCase.execute({ equipoId: equipo.id, modeloEquipoId: null });
+      const result = await useCase.execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        modeloEquipoId: null,
+      });
 
       expect(result.getValue().modeloEquipoId).toBeNull();
       // `null` = "desvinculalo": tampoco hay catálogo que consultar.
@@ -245,7 +293,11 @@ describe('EditarEquipoUseCase', () => {
 
       return {
         equipoRepo,
-        promesa: useCase.execute({ equipoId: equipo.id, modeloEquipoId: MODELO_ID }),
+        promesa: useCase.execute({
+          usuarioId: ACTOR,
+          equipoId: equipo.id,
+          modeloEquipoId: MODELO_ID,
+        }),
       };
     }
 
@@ -315,6 +367,168 @@ describe('EditarEquipoUseCase', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(ModeloEquipoInexistenteError);
       expect(equipoRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * odd/tasks/historial-valor-residual.md (S2, S3): el guardado registra una valoración cuando el
+   * valor residual o su fecha cambian, dentro de la misma transacción y con el actor del PATCH.
+   */
+  describe('historial del valor residual', () => {
+    const dia = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
+
+    function equipoConValor() {
+      return makeEquipo({ valorResidual: 700, fechaValorResidual: dia('2026-10-20') });
+    }
+
+    it('registra la valoración nueva con el actor, dentro de la transacción y después del save', async () => {
+      const llamadas: string[] = [];
+      const equipo = equipoConValor();
+      const equipoRepo = makeEquipoRepo(
+        equipo,
+        {
+          save: vi.fn(async () => {
+            llamadas.push('save');
+          }),
+        },
+        llamadas,
+      );
+      const valoracionRepo = makeValoracionRepo(llamadas);
+
+      const result = await makeUseCase(
+        equipoRepo,
+        makeModeloRepo(),
+        llamadas,
+        valoracionRepo,
+      ).execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        valorResidual: 490,
+        fechaValorResidual: dia('2026-10-24'),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(valoracionRepo.registrar).toHaveBeenCalledWith({
+        equipoId: equipo.id,
+        fecha: dia('2026-10-24'),
+        importe: 490,
+        usuarioId: ACTOR,
+      });
+      expect(llamadas).toEqual([
+        'tx:inicio',
+        'bloquearParaModificar',
+        'save',
+        'registrar',
+        'tx:fin',
+      ]);
+    });
+
+    it('registra el mismo día con el monto nuevo: el repositorio reemplaza la fila (S3)', async () => {
+      const equipo = equipoConValor();
+      const valoracionRepo = makeValoracionRepo();
+
+      await makeUseCase(makeEquipoRepo(equipo), makeModeloRepo(), [], valoracionRepo).execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        valorResidual: 650,
+      });
+
+      expect(valoracionRepo.registrar).toHaveBeenCalledWith({
+        equipoId: equipo.id,
+        fecha: dia('2026-10-20'),
+        importe: 650,
+        usuarioId: ACTOR,
+      });
+    });
+
+    it('registra cuando cambia solo la fecha', async () => {
+      const equipo = equipoConValor();
+      const valoracionRepo = makeValoracionRepo();
+
+      await makeUseCase(makeEquipoRepo(equipo), makeModeloRepo(), [], valoracionRepo).execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        fechaValorResidual: dia('2026-11-01'),
+      });
+
+      expect(valoracionRepo.registrar).toHaveBeenCalledWith({
+        equipoId: equipo.id,
+        fecha: dia('2026-11-01'),
+        importe: 700,
+        usuarioId: ACTOR,
+      });
+    });
+
+    it('no registra nada si el guardado no cambia el valor residual ni su fecha', async () => {
+      const equipo = equipoConValor();
+      const valoracionRepo = makeValoracionRepo();
+
+      const result = await makeUseCase(
+        makeEquipoRepo(equipo),
+        makeModeloRepo(),
+        [],
+        valoracionRepo,
+      ).execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        nombre: 'Otro nombre',
+        importe: 1500,
+        valorResidual: 700,
+        fechaValorResidual: dia('2026-10-20'),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(valoracionRepo.registrar).not.toHaveBeenCalled();
+    });
+
+    it('no registra nada si el usuario vacía el valor residual', async () => {
+      const equipo = equipoConValor();
+      const valoracionRepo = makeValoracionRepo();
+
+      const result = await makeUseCase(
+        makeEquipoRepo(equipo),
+        makeModeloRepo(),
+        [],
+        valoracionRepo,
+      ).execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        valorResidual: null,
+        fechaValorResidual: null,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().valorResidual).toBeNull();
+      expect(valoracionRepo.registrar).not.toHaveBeenCalled();
+    });
+
+    it('un equipo dado de baja no registra nada', async () => {
+      const baja = equipoDadoDeBaja();
+      const valoracionRepo = makeValoracionRepo();
+
+      await makeUseCase(makeEquipoRepo(baja), makeModeloRepo(), [], valoracionRepo).execute({
+        usuarioId: ACTOR,
+        equipoId: baja.id,
+        valorResidual: 100,
+        fechaValorResidual: dia('2026-10-24'),
+      });
+
+      expect(valoracionRepo.registrar).not.toHaveBeenCalled();
+    });
+
+    it('si el registro falla, el error sale por la transacción (que hace rollback del save)', async () => {
+      const equipo = equipoConValor();
+      const valoracionRepo = {
+        registrar: vi.fn().mockRejectedValue(new Error('fallo de base')),
+      } satisfies ValoracionRepoFake;
+
+      await expect(
+        makeUseCase(makeEquipoRepo(equipo), makeModeloRepo(), [], valoracionRepo).execute({
+          usuarioId: ACTOR,
+          equipoId: equipo.id,
+          valorResidual: 490,
+        }),
+      ).rejects.toThrow('fallo de base');
     });
   });
 });

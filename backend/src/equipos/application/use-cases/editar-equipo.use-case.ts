@@ -7,6 +7,8 @@ import {
   EquipoNoEncontradoError,
   NumeroSerieDuplicadoError,
 } from '../../domain/errors/equipos.errors';
+import { valoracionDelGuardado } from '../../domain/entities/valoracion-equipo';
+import { IValoracionEquipoRepository } from '../../domain/ports/i-valoracion-equipo.repository';
 import {
   LectorCatalogoModelos,
   validarModeloEquipoElegible,
@@ -43,6 +45,8 @@ export interface EditarEquipoDto {
   observaciones?: string | null;
   valorResidual?: number | null;
   fechaValorResidual?: Date | null;
+  /** Quién edita el equipo (`JWT.sub`): queda en la valoración del historial. */
+  usuarioId: string;
 }
 
 /**
@@ -63,6 +67,9 @@ export interface EditarEquipoDto {
  *    válidos que NO se validan. El modelo deshabilitado no lo puede atrapar la
  *    FK: la fila existe.
  * 4. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste (con la misma defensa P2002 que `CrearEquipoUseCase`).
+ * 5. Si el valor residual guardado (monto o fecha) difiere del que el equipo tenía, registra la
+ *    valoración en el historial dentro de la misma transacción
+ *    (odd/tasks/historial-valor-residual.md, S2 y S3). Vaciar el valor residual no registra nada.
  *
  * La ubicación pasó de FK (catálogo) a TEXTO LIBRE — ya no se valida.
  *
@@ -80,6 +87,8 @@ export class EditarEquipoUseCase {
     // Va al final para no reordenar los args de los callers existentes (mismo
     // criterio que `EquiposController.exportarEquiposUseCase`).
     private readonly modeloEquipoRepo: LectorCatalogoModelos,
+    // Al final por el mismo criterio.
+    private readonly valoracionRepo: Pick<IValoracionEquipoRepository, 'registrar'>,
   ) {}
 
   async execute(dto: EditarEquipoDto): Promise<Result<EquipoInformaticoEntity, DomainError>> {
@@ -139,6 +148,12 @@ export class EditarEquipoUseCase {
       }
     }
 
+    // Se copia antes de `actualizar()`, que muta la entidad.
+    const valorAnterior = {
+      valorResidual: equipo.valorResidual,
+      fechaValorResidual: equipo.fechaValorResidual,
+    };
+
     equipo.actualizar({
       nombre: dto.nombre,
       numeroSerie: dto.numeroSerie,
@@ -155,6 +170,14 @@ export class EditarEquipoUseCase {
     });
 
     await this.equipoRepo.save(equipo);
+    const valoracion = valoracionDelGuardado(valorAnterior, equipo);
+    if (valoracion !== null) {
+      await this.valoracionRepo.registrar({
+        equipoId: equipo.id,
+        ...valoracion,
+        usuarioId: dto.usuarioId,
+      });
+    }
     return Result.ok(equipo);
   }
 }

@@ -20,14 +20,17 @@ Son cuatro campos y una calculadora.
 
 Los cuatro son opcionales: un equipo puede quedar sin ningún monto cargado.
 
-Un detalle práctico: **los montos no se muestran en el listado ni en la ficha del
-equipo**. Para consultarlos hay que abrir **Editar**.
+Los montos **no se muestran en el listado**, pero sí en la **ficha del equipo**: la
+sección **Valor del equipo** muestra el importe y el valor residual vigentes, cada
+uno con su fecha, y el historial del valor (ver más abajo).
 
 ## La depreciación es una calculadora, no un dato
 
 El porcentaje de depreciación **no se guarda en ningún lado**. Es una ayuda para
 no sacar la cuenta a mano: se escribe un porcentaje, se presiona **Aplicar**, y
-lo único que queda registrado es el **valor residual** resultante.
+lo que se guarda es el **valor residual** resultante, con su fecha. **Aplicar**
+solo completa el formulario: nada queda guardado hasta presionar **Guardar** (o
+**Crear**, en el alta).
 
 La cuenta es simple:
 
@@ -53,6 +56,24 @@ Otras cosas que conviene saber:
   del tiempo.
 - Después de aplicar, tanto el importe como el valor residual siguen siendo
   editables a mano. La calculadora es una comodidad, no una regla.
+
+## Historial del valor
+
+Cada vez que se guarda un equipo con un **valor residual** o una **fecha del
+valor residual** distintos de los que tenía, ese valor queda en el **historial del
+valor**, con su fecha y el usuario que lo guardó. Da igual si el monto salió del
+botón **Aplicar** o se escribió a mano. El historial se ve en la ficha del equipo,
+en una tabla y en un gráfico, para seguir la devaluación del equipo en el tiempo.
+
+- Hay **una fila por día**: si el mismo día se guarda dos veces un valor distinto,
+  queda el último.
+- Cerrar el formulario sin guardar no registra nada. Guardar sin cambiar el valor
+  residual ni su fecha tampoco.
+- Vaciar el valor residual no borra el historial: los valores anteriores siguen ahí.
+- Los equipos que ya existían arrancaron el historial con su importe y su valor
+  residual, cada uno con su fecha. Esas filas figuran como **Valor previo al
+  historial** y no tienen usuario.
+- Un equipo dado de baja conserva su historial.
 
 ## Cómo se escriben los montos
 

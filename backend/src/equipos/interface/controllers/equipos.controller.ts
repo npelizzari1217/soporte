@@ -15,6 +15,7 @@
  *   POST   /equipos/:id/baja                                  → DarDeBajaEquipoUseCase       `EQUIPOS:BORRADO` (baja-equipo-completo)
  *   POST   /equipos/:id/qr                                    → EmitirQrEquipoUseCase        `EQUIPOS:MODIFICACION` (formulario-publico-qr)
  *   GET    /equipos/:id/qr                                    → ObtenerQrEquipoUseCase       `EQUIPOS:MODIFICACION` (issue #356)
+ *   GET    /equipos/:id/valoraciones                          → ListarValoracionesEquipoUseCase `EQUIPOS:LECTURA` (historial-valor-residual)
  *   POST   /equipos/:id/componentes                           → InstalarComponenteDesdeDepositoUseCase (descontarStock, por defecto) o AgregarComponenteSinDescuentoUseCase (descontarStock=false) `EQUIPOS:ALTAS`
  *   POST   /equipos/:id/componentes/:componenteId/baja        → RetirarComponenteUseCase     `EQUIPOS:BORRADO`
  *   PATCH  /equipos/:id/componentes/:componenteId             → EditarComponenteUseCase      `EQUIPOS:MODIFICACION`
@@ -79,6 +80,7 @@ import { ExportarEquiposUseCase } from '../../application/use-cases/exportar-equ
 import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-equipo.use-case';
 import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
 import { ObtenerQrEquipoUseCase } from '../../application/use-cases/obtener-qr-equipo.use-case';
+import { ListarValoracionesEquipoUseCase } from '../../application/use-cases/listar-valoraciones-equipo.use-case';
 import {
   ResumenBajaEquipo,
   ResumenBajaEquipoUseCase,
@@ -135,6 +137,8 @@ import {
   toComponenteResponseDto,
   toEquipoDetalleResponseDto,
   toEquipoResponseDto,
+  toValoracionEquipoResponseDto,
+  ValoracionEquipoResponseDto,
 } from '../dtos/equipos.dto';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -305,17 +309,23 @@ export class EquiposController {
     private readonly emitirQrEquipoUseCase: EmitirQrEquipoUseCase,
     // issue #356 — agregado al final por el mismo criterio.
     private readonly obtenerQrEquipoUseCase: ObtenerQrEquipoUseCase,
+    // odd/historial-valor-residual — agregado al final por el mismo criterio.
+    private readonly listarValoracionesEquipoUseCase: ListarValoracionesEquipoUseCase,
   ) {}
 
   /**
    * POST /equipos
-   * Crea un equipo en el inventario.
+   * Crea un equipo en el inventario. `usuarioId` (quien queda en el historial del valor) sale
+   * de `JWT.sub`, nunca del body.
    * @throws 422 numeroSerie duplicado
    */
   @Post()
   @RequiereAcciones('EQUIPOS:ALTAS')
   @HttpCode(HttpStatus.CREATED)
-  async crear(@Body() dto: CreateEquipoHttpDto): Promise<EquipoResponseDto> {
+  async crear(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateEquipoHttpDto,
+  ): Promise<EquipoResponseDto> {
     const result = await this.crearEquipoUseCase.execute({
       nombre: dto.nombre,
       numeroSerie: dto.numeroSerie ?? null,
@@ -329,6 +339,7 @@ export class EquiposController {
       observaciones: dto.observaciones ?? null,
       valorResidual: dto.valorResidual ?? null,
       fechaValorResidual: dto.fechaValorResidual ? new Date(dto.fechaValorResidual) : null,
+      usuarioId: user.sub,
     });
 
     if (result.isFail()) {
@@ -409,7 +420,8 @@ export class EquiposController {
 
   /**
    * PATCH /equipos/:id
-   * Edita datos del equipo (PATCH semántico).
+   * Edita datos del equipo (PATCH semántico). `usuarioId` (quien queda en el historial del
+   * valor) sale de `JWT.sub`, nunca del body.
    * @throws 404 equipo inexistente
    * @throws 422 numeroSerie duplicado
    */
@@ -417,6 +429,7 @@ export class EquiposController {
   @RequiereAcciones('EQUIPOS:MODIFICACION')
   @HttpCode(HttpStatus.OK)
   async editar(
+    @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
     @Body() dto: EditarEquipoHttpDto,
   ): Promise<EquipoResponseDto> {
@@ -434,12 +447,33 @@ export class EquiposController {
       observaciones: dto.observaciones,
       valorResidual: dto.valorResidual,
       fechaValorResidual: fechaPatch(dto.fechaValorResidual),
+      usuarioId: user.sub,
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
     return toEquipoResponseDto(result.getValue());
+  }
+
+  /**
+   * GET /equipos/:id/valoraciones
+   * Historial del valor del equipo, ordenado por fecha ascendente
+   * (odd/tasks/historial-valor-residual.md, S5). Mismo permiso que el detalle. Un equipo dado de
+   * baja también lo devuelve.
+   * @throws 404 equipo inexistente o con borrado lógico
+   */
+  @Get(':id/valoraciones')
+  @RequiereAcciones('EQUIPOS:LECTURA')
+  async listarValoraciones(@Param('id') id: string): Promise<ValoracionEquipoResponseDto[]> {
+    if (!UUID_REGEX.test(id)) {
+      throw toHttpException(new EquipoNoEncontradoError(id));
+    }
+    const result = await this.listarValoracionesEquipoUseCase.execute({ equipoId: id });
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue().map(toValoracionEquipoResponseDto);
   }
 
   /**
