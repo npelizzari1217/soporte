@@ -72,6 +72,8 @@ import {
 import { TicketSoporteEntity } from '../../domain/entities/ticket-soporte.entity';
 import { ComponenteEquipoConTipo } from '../../application/use-cases/obtener-equipo.use-case';
 import { EquipoDeTicketResultado } from '../../application/use-cases/obtener-equipo-de-ticket.use-case';
+import { ValoracionEquipoConUsuario } from '../../application/use-cases/listar-valoraciones-equipo.use-case';
+import { OrigenValoracionEquipo } from '../../domain/entities/valoracion-equipo';
 
 // ─── Input DTOs ───────────────────────────────────────────────────────────────
 
@@ -739,4 +741,39 @@ export interface QrEquipoLeidoResponseDto {
   estado: 'VIGENTE' | 'SIN_EMITIR' | 'REQUIERE_REGENERAR';
   url: string | null;
   emitidoAt: string | null;
+}
+
+/**
+ * Una fila de `GET /equipos/:id/valoraciones` (odd/tasks/historial-valor-residual.md, S5).
+ * `fecha` es un día de calendario (`@db.Date`) serializado como medianoche UTC, igual que
+ * `EquipoResponseDto.fechaValorResidual`. El nombre del usuario sigue el patrón de
+ * `TareaTicketResponseDto` (nombre y apellido por separado), `null` en las filas de migración o si
+ * el usuario ya no existe.
+ */
+export interface ValoracionEquipoResponseDto {
+  fecha: string;
+  importe: number;
+  origen: OrigenValoracionEquipo;
+  usuarioId: string | null;
+  usuarioNombre: string | null;
+  usuarioApellido: string | null;
+}
+
+/**
+ * Convierte una valoración del historial al shape de respuesta HTTP.
+ *
+ * @param item Valoración con el usuario resuelto.
+ * @returns La fila de la respuesta.
+ */
+export function toValoracionEquipoResponseDto(
+  item: ValoracionEquipoConUsuario,
+): ValoracionEquipoResponseDto {
+  return {
+    fecha: item.valoracion.fecha.toISOString(),
+    importe: item.valoracion.importe,
+    origen: item.valoracion.origen,
+    usuarioId: item.valoracion.usuarioId,
+    usuarioNombre: item.usuario?.nombre ?? null,
+    usuarioApellido: item.usuario?.apellido ?? null,
+  };
 }

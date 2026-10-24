@@ -22,6 +22,7 @@ import type {
   Equipo,
   RetirarComponenteDto,
 } from "../types";
+import { valoracionesEquipoKey } from "./use-valoraciones-equipo";
 
 const MENSAJE_UNIDAD_NO_DISPONIBLE =
   "No se puede reactivar: la pieza de este componente ya no está disponible (se recuperó al depósito o tuvo otro movimiento). Agregá un componente nuevo eligiendo otra pieza.";
@@ -45,6 +46,8 @@ export function useEditarEquipo(id: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["equipos"] });
       queryClient.invalidateQueries({ queryKey: ["equipo", id] });
+      // Guardar un valor residual nuevo agrega o reemplaza una fila del historial.
+      queryClient.invalidateQueries({ queryKey: valoracionesEquipoKey(id) });
       notifySuccess("Equipo actualizado.");
     },
     onError: notifyError,

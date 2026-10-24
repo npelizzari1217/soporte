@@ -166,6 +166,25 @@ export interface EquipoDetalle extends Equipo {
   componentes: ComponenteConTipo[];
 }
 
+/** Orígenes de una valoración — espejo de `ORIGENES_VALORACION_EQUIPO` del dominio del backend. */
+export const ORIGENES_VALORACION_EQUIPO = ["MANUAL", "MIGRACION"] as const;
+export type OrigenValoracionEquipo = (typeof ORIGENES_VALORACION_EQUIPO)[number];
+
+/**
+ * Una fila de `GET /equipos/:id/valoraciones` (`ValoracionEquipoResponseDto`,
+ * odd/tasks/historial-valor-residual.md). `fecha` es una fecha de calendario (`@db.Date`): se
+ * muestra con `formatearFechaCalendario`, nunca con `new Date`. El usuario es `null` en las filas
+ * de migración o si ya no existe.
+ */
+export interface ValoracionEquipo {
+  fecha: string;
+  importe: number;
+  origen: OrigenValoracionEquipo;
+  usuarioId: string | null;
+  usuarioNombre: string | null;
+  usuarioApellido: string | null;
+}
+
 export interface CreateEquipoDto {
   nombre: string;
   numeroSerie?: string | null;

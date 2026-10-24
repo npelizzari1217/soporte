@@ -41,6 +41,7 @@ import { DarDeBajaEquipoUseCase } from '../../application/use-cases/dar-de-baja-
 import { ResumenBajaEquipoUseCase } from '../../application/use-cases/resumen-baja-equipo.use-case';
 import { EmitirQrEquipoUseCase } from '../../application/use-cases/emitir-qr-equipo.use-case';
 import { ObtenerQrEquipoUseCase } from '../../application/use-cases/obtener-qr-equipo.use-case';
+import { ListarValoracionesEquipoUseCase } from '../../application/use-cases/listar-valoraciones-equipo.use-case';
 import { ClienteNoEncontradoError } from '../../../clientes/domain/errors/clientes.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import * as EquiposErrors from '../../domain/errors/equipos.errors';
@@ -124,6 +125,7 @@ describe('EquiposController (T12.6)', () => {
     const resumenBaja = resumenBajaEspiado();
     const emitirQr = emitirQrEspiado();
     const obtenerQr = obtenerQrEspiado();
+    const listarValoracionesEquipoUseCase = espiado(ListarValoracionesEquipoUseCase);
 
     const controller = new EquiposController(
       crearEquipoUseCase.caso,
@@ -141,9 +143,11 @@ describe('EquiposController (T12.6)', () => {
       resumenBaja.caso,
       emitirQr.caso,
       obtenerQr.caso,
+      listarValoracionesEquipoUseCase.caso,
     );
 
     return {
+      listarValoracionesEquipoUseCase,
       emitirQrUseCase: emitirQr.execute,
       obtenerQrUseCase: obtenerQr.execute,
       darDeBajaUseCase: darDeBaja.execute,
@@ -296,13 +300,32 @@ describe('EquiposController (T12.6)', () => {
       const { controller, crearEquipoUseCase } = buildController();
       crearEquipoUseCase.execute.mockResolvedValue(Result.ok(makeEquipo()));
 
-      const result = await controller.crear({
+      const result = await controller.crear(payloadDeTest({ sub: 'actor-alta' }), {
         nombre: 'Notebook Test',
         numeroSerie: 'SN-001',
       });
 
       expect(result.id).toBe('equipo-uuid');
       expect(result.nombre).toBe('Notebook Test');
+    });
+
+    it('pasa el actor del JWT como usuarioId (historial del valor), nunca del body', async () => {
+      const { controller, crearEquipoUseCase } = buildController();
+      crearEquipoUseCase.execute.mockResolvedValue(Result.ok(makeEquipo()));
+
+      await controller.crear(payloadDeTest({ sub: 'actor-alta' }), {
+        nombre: 'Notebook Test',
+        valorResidual: 700,
+        fechaValorResidual: '2026-10-24',
+      });
+
+      expect(crearEquipoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usuarioId: 'actor-alta',
+          valorResidual: 700,
+          fechaValorResidual: new Date('2026-10-24T00:00:00.000Z'),
+        }),
+      );
     });
 
     it('numeroSerie duplicado → 422', async () => {
@@ -312,7 +335,7 @@ describe('EquiposController (T12.6)', () => {
       );
 
       await expect(
-        controller.crear({ nombre: 'Notebook Test', numeroSerie: 'SN-001' }),
+        controller.crear(payloadDeTest(), { nombre: 'Notebook Test', numeroSerie: 'SN-001' }),
       ).rejects.toThrow(UnprocessableEntityException);
     });
 
@@ -401,13 +424,103 @@ describe('EquiposController (T12.6)', () => {
       const { controller, editarEquipoUseCase } = buildController();
       editarEquipoUseCase.execute.mockResolvedValue(Result.ok(makeEquipo()));
 
-      const result = await controller.editar('equipo-uuid', { nombre: 'Editado' });
+      const result = await controller.editar(payloadDeTest(), 'equipo-uuid', { nombre: 'Editado' });
       expect(result.id).toBe('equipo-uuid');
+    });
+
+    it('pasa el actor del JWT como usuarioId (historial del valor)', async () => {
+      const { controller, editarEquipoUseCase } = buildController();
+      editarEquipoUseCase.execute.mockResolvedValue(Result.ok(makeEquipo()));
+
+      await controller.editar(payloadDeTest({ sub: 'actor-edicion' }), 'equipo-uuid', {
+        valorResidual: 490,
+      });
+
+      expect(editarEquipoUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          equipoId: 'equipo-uuid',
+          usuarioId: 'actor-edicion',
+          valorResidual: 490,
+        }),
+      );
     });
 
     it('declara @RequiereAcciones("EQUIPOS:MODIFICACION")', () => {
       const meta = Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.editar);
       expect(meta).toEqual(['EQUIPOS:MODIFICACION']);
+    });
+  });
+
+  describe('GET /equipos/:id/valoraciones (historial-valor-residual, S5)', () => {
+    const ID = '11111111-1111-4111-8111-111111111111';
+
+    it('declara @RequiereAcciones("EQUIPOS:LECTURA")', () => {
+      expect(
+        Reflect.getMetadata(ACCIONES_KEY, EquiposController.prototype.listarValoraciones),
+      ).toEqual(['EQUIPOS:LECTURA']);
+    });
+
+    it('devuelve el historial con fecha, importe, origen y usuario', async () => {
+      const { controller, listarValoracionesEquipoUseCase } = buildController();
+      const comun = { equipoId: ID, createdAt: new Date(), updatedAt: new Date() };
+      listarValoracionesEquipoUseCase.execute.mockResolvedValue(
+        Result.ok([
+          {
+            valoracion: {
+              ...comun,
+              id: 'v1',
+              fecha: new Date('2026-01-10T00:00:00.000Z'),
+              importe: 1000,
+              origen: 'MIGRACION' as const,
+              usuarioId: null,
+            },
+            usuario: null,
+          },
+          {
+            valoracion: {
+              ...comun,
+              id: 'v2',
+              fecha: new Date('2026-10-24T00:00:00.000Z'),
+              importe: 700.5,
+              origen: 'MANUAL' as const,
+              usuarioId: 'u-1',
+            },
+            usuario: { nombre: 'Ana', apellido: 'Pérez' },
+          },
+        ]),
+      );
+
+      await expect(controller.listarValoraciones(ID)).resolves.toEqual([
+        {
+          fecha: '2026-01-10T00:00:00.000Z',
+          importe: 1000,
+          origen: 'MIGRACION',
+          usuarioId: null,
+          usuarioNombre: null,
+          usuarioApellido: null,
+        },
+        {
+          fecha: '2026-10-24T00:00:00.000Z',
+          importe: 700.5,
+          origen: 'MANUAL',
+          usuarioId: 'u-1',
+          usuarioNombre: 'Ana',
+          usuarioApellido: 'Pérez',
+        },
+      ]);
+      expect(listarValoracionesEquipoUseCase.execute).toHaveBeenCalledWith({ equipoId: ID });
+    });
+
+    it('equipo inexistente → 404; un id que no es UUID → 404 sin llamar al caso de uso', async () => {
+      const { controller, listarValoracionesEquipoUseCase } = buildController();
+      listarValoracionesEquipoUseCase.execute.mockResolvedValue(
+        Result.fail(new EquipoNoEncontradoError(ID)),
+      );
+
+      await expect(controller.listarValoraciones(ID)).rejects.toThrow(NotFoundException);
+      listarValoracionesEquipoUseCase.execute.mockClear();
+      await expect(controller.listarValoraciones('no-es-uuid')).rejects.toThrow(NotFoundException);
+      expect(listarValoracionesEquipoUseCase.execute).not.toHaveBeenCalled();
     });
   });
 
@@ -971,6 +1084,7 @@ describe('EquiposController.exportar — GET /equipos/export (sdd/exportar-lista
       resumenBajaEspiado().caso,
       emitirQrEspiado().caso,
       obtenerQrEspiado().caso,
+      espiado(ListarValoracionesEquipoUseCase).caso,
     );
     return { controller, exportarEquipos };
   }

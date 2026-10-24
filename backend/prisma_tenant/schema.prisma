@@ -725,8 +725,30 @@ model EquipoInformatico {
   unidadesInsumo   UnidadInsumo[]
   eventosUnidad    EventoUnidadInsumo[]
   pedidosPublicos  PedidoPublicoPendiente[]
+  valoraciones     ValoracionEquipo[]
 
   @@map("equipos_informaticos")
+}
+
+/// Historial del valor de un equipo (odd/tasks/historial-valor-residual.md): una fila por equipo y
+/// día de calendario; el último guardado del día reemplaza al anterior (upsert sobre el UNIQUE).
+/// Solo se agregan filas: ningún flujo las borra. CHECK `equipo_valoraciones_origen_check` (fuente
+/// única: `ORIGENES_VALORACION_EQUIPO`) enforced via migration SQL. `usuarioId` es referencia blanda
+/// a master (sin FK); NULL en las filas de migración.
+model ValoracionEquipo {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  equipoId  String   @map("equipo_id") @db.Uuid
+  fecha     DateTime @db.Date
+  importe   Decimal  @db.Decimal(14, 2)
+  origen    String   @db.VarChar(20)
+  usuarioId String?  @map("usuario_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  equipo EquipoInformatico @relation(fields: [equipoId], references: [id], onDelete: Restrict)
+
+  @@unique([equipoId, fecha])
+  @@map("equipo_valoraciones")
 }
 
 // ─── CATÁLOGO DE INSUMOS (sdd/insumos-catalogo, Entrega 1) ──────────────────

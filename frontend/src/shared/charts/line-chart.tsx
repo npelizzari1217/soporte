@@ -3,7 +3,7 @@
  * beneath it (ADR-3: SVG propio, cero dependencias).
  */
 import { linearScale, niceTicks } from "./scale";
-import { ChartA11yTable } from "./chart-a11y-table";
+import { ChartA11yTable, type ChartA11yTableProps } from "./chart-a11y-table";
 import type { ChartDatum } from "./bar-chart";
 
 export interface LineChartProps {
@@ -12,11 +12,13 @@ export interface LineChartProps {
   width?: number;
   height?: number;
   area?: boolean;
+  /** Encabezados y formato de la tabla accesible; por defecto, los de `ChartA11yTable`. */
+  a11y?: Pick<ChartA11yTableProps, "categoryLabel" | "valueLabel" | "formatValue">;
 }
 
 const MARGIN = { top: 8, right: 8, bottom: 24, left: 32 };
 
-export function LineChart({ data, title, width = 320, height = 200, area = false }: LineChartProps) {
+export function LineChart({ data, title, width = 320, height = 200, area = false, a11y }: LineChartProps) {
   const innerWidth = width - MARGIN.left - MARGIN.right;
   const innerHeight = height - MARGIN.top - MARGIN.bottom;
 
@@ -60,7 +62,7 @@ export function LineChart({ data, title, width = 320, height = 200, area = false
           ))}
         </g>
       </svg>
-      <ChartA11yTable data={data} />
+      <ChartA11yTable data={data} {...a11y} />
     </figure>
   );
 }

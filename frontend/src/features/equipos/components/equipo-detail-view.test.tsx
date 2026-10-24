@@ -23,6 +23,10 @@ const EQUIPO_DETALLE = {
   modelo: "Latitude",
   fechaAdquisicion: null,
   ubicacionId: null,
+  importe: 1000,
+  fechaValoracion: "2026-01-10T00:00:00.000Z",
+  valorResidual: 700,
+  fechaValorResidual: "2026-06-01T00:00:00.000Z",
   activo: true,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -52,9 +56,21 @@ const RESUMEN_VACIO = {
   piezas: [],
 };
 
+const VALORACIONES = [
+  {
+    fecha: "2026-06-01T00:00:00.000Z",
+    importe: 700,
+    origen: "MIGRACION",
+    usuarioId: null,
+    usuarioNombre: null,
+    usuarioApellido: null,
+  },
+];
+
 function mockBackend() {
   server.use(
     http.get(`/api/equipos/${EQUIPO_ID}`, () => HttpResponse.json(EQUIPO_DETALLE)),
+    http.get(`/api/equipos/${EQUIPO_ID}/valoraciones`, () => HttpResponse.json(VALORACIONES)),
     http.get("/api/usuarios", () => HttpResponse.json([])),
   );
 }
@@ -209,8 +225,20 @@ describe("EquipoDetailView — ficha de solo lectura de un equipo dado de baja (
       http.get(`/api/equipos/${EQUIPO_ID}`, () =>
         HttpResponse.json(EQUIPO_DADO_DE_BAJA),
       ),
+      http.get(`/api/equipos/${EQUIPO_ID}/valoraciones`, () => HttpResponse.json(VALORACIONES)),
       http.get("/api/usuarios", () => HttpResponse.json([])),
     );
+  });
+
+  it("sigue mostrando el valor vigente y el historial del valor (historial-valor-residual, S5)", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: PERMISOS }),
+    });
+
+    const seccion = await screen.findByRole("region", { name: "Valor del equipo" });
+    expect(seccion).toHaveTextContent("Valor residual700,00 al 01/06/2026");
+    const tabla = await screen.findByRole("table", { name: "Historial del valor" });
+    expect(tabla).toHaveTextContent("01/06/2026700,00Valor previo al historial—");
   });
 
   it("muestra el banner con destino, categoría, motivo y fecha", async () => {
@@ -279,5 +307,20 @@ describe("EquipoDetailView — ficha de solo lectura de un equipo dado de baja (
         name: "Eliminar equipo (cargado por error)",
       }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("EquipoDetailView — valor del equipo (historial-valor-residual, S5)", () => {
+  beforeEach(() => mockBackend());
+
+  it("la ficha muestra el importe y el valor residual vigentes con su fecha, y el historial", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:LECTURA"] }),
+    });
+
+    const seccion = await screen.findByRole("region", { name: "Valor del equipo" });
+    expect(seccion).toHaveTextContent("Importe1.000,00 al 10/01/2026");
+    expect(seccion).toHaveTextContent("Valor residual700,00 al 01/06/2026");
+    expect(await screen.findByRole("table", { name: "Historial del valor" })).toBeInTheDocument();
   });
 });

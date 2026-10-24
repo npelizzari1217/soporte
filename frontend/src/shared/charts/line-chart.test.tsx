@@ -37,4 +37,24 @@ describe("LineChart", () => {
     const table = screen.getByRole("table", { hidden: true });
     expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
   });
+
+  it("a11y → the fallback table uses the given headers and value format", () => {
+    render(
+      <LineChart
+        data={[{ label: "24/10/2026", value: 700.5 }]}
+        title="Historial"
+        a11y={{ categoryLabel: "Fecha", valueLabel: "Importe", formatValue: (v) => `$ ${v.toFixed(2)}` }}
+      />,
+    );
+    const table = screen.getByRole("table", { hidden: true });
+    expect([...table.querySelectorAll("th")].map((th) => th.textContent)).toEqual(["Fecha", "Importe"]);
+    expect([...table.querySelectorAll("tbody td")].map((td) => td.textContent)).toEqual(["24/10/2026", "$ 700.50"]);
+  });
+
+  it("without a11y → keeps the default headers and the raw value", () => {
+    render(<LineChart data={[{ label: "Ene", value: 3.5 }]} title="Trend" />);
+    const table = screen.getByRole("table", { hidden: true });
+    expect([...table.querySelectorAll("th")].map((th) => th.textContent)).toEqual(["Categoría", "Valor"]);
+    expect(table.querySelector("tbody td:last-child")?.textContent).toBe("3.5");
+  });
 });

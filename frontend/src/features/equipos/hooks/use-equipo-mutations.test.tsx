@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { server } from "../../../../test/msw/server";
-import { useAgregarComponente, useDarDeBajaEquipo } from "./use-equipo-mutations";
+import { useAgregarComponente, useDarDeBajaEquipo, useEditarEquipo } from "./use-equipo-mutations";
 
 const EQUIPO_ID = "22222222-2222-2222-2222-222222222222";
 const INSUMO_ID = "11111111-1111-1111-1111-111111111111";
@@ -106,5 +106,26 @@ describe("useDarDeBajaEquipo", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(invalidate.mock.calls.map(([filtro]) => filtro?.queryKey)).toEqual([["equipo", EQUIPO_ID]]);
+  });
+});
+
+describe("useEditarEquipo", () => {
+  it("al guardar invalida el historial del valor del equipo además del detalle y el listado", async () => {
+    server.use(
+      http.patch(`*/equipos/${EQUIPO_ID}`, () => HttpResponse.json({ id: EQUIPO_ID, activo: true })),
+    );
+    const queryClient = buildClient();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useEditarEquipo(EQUIPO_ID), {
+      wrapper: wrapper(queryClient),
+    });
+
+    result.current.mutate({ valorResidual: 490, fechaValorResidual: "2026-10-24" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const claves = invalidate.mock.calls.map(([arg]) => JSON.stringify(arg?.queryKey));
+    expect(claves).toContain(JSON.stringify(["equipo-valoraciones", EQUIPO_ID]));
+    expect(claves).toContain(JSON.stringify(["equipo", EQUIPO_ID]));
+    expect(claves).toContain(JSON.stringify(["equipos"]));
   });
 });

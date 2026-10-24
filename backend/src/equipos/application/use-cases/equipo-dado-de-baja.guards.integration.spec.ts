@@ -156,11 +156,16 @@ describe('Equipo dado de baja — guards con LE (WU-4, R8 y R11)', () => {
     const equipoId = await crearEquipoDadoDeBaja();
     const antes = await equipoEnBase(equipoId);
     // Edición vieja: la entidad se leyó antes de la baja (la lee el caller, fuera de la tx).
-    const useCase = new EditarEquipoUseCase(equipoRepo, txRunner, {
-      findById: unstubbed('modelo'),
-    });
+    const useCase = new EditarEquipoUseCase(
+      equipoRepo,
+      txRunner,
+      { findById: unstubbed('modelo') },
+      { registrar: unstubbed('valoracion') },
+    );
 
-    const result = await conTenant(() => useCase.execute({ equipoId, nombre: 'Editado tarde' }));
+    const result = await conTenant(() =>
+      useCase.execute({ usuarioId: USUARIO, equipoId, nombre: 'Editado tarde' }),
+    );
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(EquipoDadoDeBajaError);
