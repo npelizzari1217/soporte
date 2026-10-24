@@ -10,6 +10,11 @@ import {
   AlcanceActorTicket,
   cargarTicketParaOperar,
 } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  esAlcanceDeAdministrador,
+  verificarTicketModificable,
+} from '../../../tickets/application/services/solo-comentarios';
+import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
 
 /** DTO de entrada para vincular una compra a un ticket. */
 export interface VincularCompraAReparacionDto {
@@ -30,7 +35,10 @@ export interface VincularCompraAReparacionDto {
  * Flujo:
  * 1. Carga el ticket → 404 (`TicketNoEncontradoError`) si no existe, está borrado o el actor no lo
  *    ve; 403 sin `MODIFICACION` sobre su tipo (odd/ticket-unificado, S4: vincular una compra es
- *    modificar el ticket). `COMPRAS:LECTURA` lo exige la ruta: es un permiso de otro módulo.
+ *    modificar el ticket). `COMPRAS:LECTURA` lo exige la ruta: es un permiso de otro módulo. Con
+ *    el ticket RESUELTO, CERRADO o CANCELADO, quien no es ADMINISTRADOR ni ROOT recibe
+ *    `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios S5); se vuelve a decidir con la
+ *    fila bloqueada, antes del INSERT.
  * 2. Verifica que la compra exista (D7: vía `ICompraRepository.findByIdConItems`, puerto de OTRO
  *    módulo, importado por token) → 404 (`CompraNoEncontradaError`).
  * 3. Delega el INSERT al puerto de vínculo, que es IDEMPOTENTE por construcción (D4: `ON CONFLICT
@@ -48,6 +56,7 @@ export class VincularCompraAReparacionUseCase {
     private readonly reparacionCompraRepo: Pick<IReparacionCompraRepository, 'vincular'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara' | 'bloquear'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
   ) {}
 
   /**
@@ -65,19 +74,27 @@ export class VincularCompraAReparacionUseCase {
     if (acceso.isFail()) {
       return Result.fail(acceso.getError());
     }
+    const esAdministrador = esAlcanceDeAdministrador(dto.alcance);
+    const modificable = await verificarTicketModificable(
+      this.estadoRepo,
+      acceso.getValue(),
+      esAdministrador,
+    );
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const compra = await this.compraRepo.findByIdConItems(dto.compraId);
     if (!compra) {
       return Result.fail(new CompraNoEncontradaError(dto.compraId));
     }
 
-    const vinculada = await this.txRunner.run(async () => {
-      if (!(await bloquearTicketActivo(this.ticketRepo, dto.ticketId))) return false;
+    return this.txRunner.run(async (): Promise<Result<void, DomainError>> => {
+      const actual = await bloquearTicketActivo(this.ticketRepo, dto.ticketId);
+      if (!actual) return Result.fail(new TicketNoEncontradoError(dto.ticketId));
+      // El estado se vuelve a decidir con la fila bloqueada: el de arriba pudo cambiar en el medio.
+      const vigente = await verificarTicketModificable(this.estadoRepo, actual, esAdministrador);
+      if (vigente.isFail()) return Result.fail(vigente.getError());
       await this.reparacionCompraRepo.vincular(dto.ticketId, dto.compraId);
-      return true;
+      return Result.ok(undefined);
     });
-    if (!vinculada) return Result.fail(new TicketNoEncontradoError(dto.ticketId));
-
-    return Result.ok(undefined);
   }
 }

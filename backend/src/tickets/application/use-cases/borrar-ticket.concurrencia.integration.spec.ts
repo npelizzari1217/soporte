@@ -32,6 +32,7 @@ import {
   TicketNoEncontradoError,
 } from '../../domain/errors/tickets.errors';
 import { PrismaBloqueoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-bloqueo-ticket.repository';
+import { PrismaEstadoRepository } from '../../infrastructure/persistence/prisma/prisma-estado.repository';
 import { PrismaOperacionTicketRepository } from '../../infrastructure/persistence/prisma/prisma-operacion-ticket.repository';
 import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
 import { PrismaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-ticket.repository';
@@ -67,6 +68,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
   const bloqueoRepo = new PrismaBloqueoTicketRepository(tenantContext);
   const reparacionCompraRepo = new PrismaReparacionCompraRepository(tenantContext);
+  const estadoRepo = new PrismaEstadoRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
   const siempreEditable = { verificar: async () => Result.ok(undefined) };
   const sinAvanceDeEstado = { aplicar: async () => null };
@@ -295,6 +297,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
         reparacionCompraRepo,
         ticketRepo,
         txRunner,
+        estadoRepo,
       ).execute({
         ticketId,
         compraId: compra.id,

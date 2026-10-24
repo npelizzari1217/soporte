@@ -241,18 +241,21 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         reparacionCompraRepo: IReparacionCompraRepository,
         ticketRepo: ITicketRepository,
         txRunner: ITenantTransactionRunner,
+        estadoRepo: IEstadoRepository,
       ) =>
         new VincularCompraAReparacionUseCase(
           compraRepo,
           reparacionCompraRepo,
           ticketRepo,
           txRunner,
+          estadoRepo,
         ),
       inject: [
         COMPRA_REPOSITORY,
         REPARACION_COMPRA_REPOSITORY,
         TICKET_REPOSITORY,
         TENANT_TX_RUNNER,
+        ESTADO_REPOSITORY,
       ],
     },
     {
@@ -260,8 +263,9 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
       useFactory: (
         reparacionCompraRepo: IReparacionCompraRepository,
         ticketRepo: ITicketRepository,
-      ) => new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo, ticketRepo),
-      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_REPOSITORY],
+        estadoRepo: IEstadoRepository,
+      ) => new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo, ticketRepo, estadoRepo),
+      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_REPOSITORY, ESTADO_REPOSITORY],
     },
     {
       // odd/ticket-unificado: las compras vinculadas de cualquier ticket.

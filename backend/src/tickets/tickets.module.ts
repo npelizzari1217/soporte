@@ -809,6 +809,7 @@ import {
         tipoOperacionRepo: ITipoOperacionRepository,
         fileStorage: IFileStorage,
         txRunner: ITenantTransactionRunner,
+        estadoRepo: IEstadoRepository,
       ) =>
         new AdjuntarArchivoUseCase(
           ticketRepo,
@@ -817,6 +818,7 @@ import {
           tipoOperacionRepo,
           fileStorage,
           txRunner,
+          estadoRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -825,6 +827,7 @@ import {
         TIPO_OPERACION_REPOSITORY,
         FILE_STORAGE,
         TENANT_TX_RUNNER,
+        ESTADO_REPOSITORY,
       ],
     },
     {

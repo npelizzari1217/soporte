@@ -6,6 +6,11 @@ import {
   AlcanceActorTicket,
   cargarTicketParaOperar,
 } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  esAlcanceDeAdministrador,
+  verificarTicketModificable,
+} from '../../../tickets/application/services/solo-comentarios';
+import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
 
 /** DTO de entrada para desvincular una compra de un ticket. */
 export interface DesvincularCompraDeReparacionDto {
@@ -23,6 +28,8 @@ export interface DesvincularCompraDeReparacionDto {
  * vínculo es del ticket). El nombre es el heredado; T4 lo renombra.
  *
  * Exige ver el ticket (404 si no) y `MODIFICACION` sobre su tipo (403; odd/ticket-unificado, S4).
+ * Con el ticket RESUELTO, CERRADO o CANCELADO, quien no es ADMINISTRADOR ni ROOT recibe
+ * `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios S5).
  * La celda de módulo `EDILICIA:BORRADO` que exigía la ruta antes dejó de usarse; la ruta exige
  * `COMPRAS:LECTURA`, como al vincular.
  *
@@ -39,6 +46,7 @@ export class DesvincularCompraDeReparacionUseCase {
       'findComprasVinculadasByTicketIds' | 'desvincular'
     >,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,
+    private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
   ) {}
 
   /**
@@ -56,6 +64,12 @@ export class DesvincularCompraDeReparacionUseCase {
     if (acceso.isFail()) {
       return Result.fail(acceso.getError());
     }
+    const modificable = await verificarTicketModificable(
+      this.estadoRepo,
+      acceso.getValue(),
+      esAlcanceDeAdministrador(dto.alcance),
+    );
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const vinculadas =
       (await this.reparacionCompraRepo.findComprasVinculadasByTicketIds([dto.ticketId])).get(

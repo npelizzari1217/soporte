@@ -15,6 +15,7 @@ import { ESTADOS_TERMINALES } from '../../domain/state-machine/estados.constants
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { ElegibilidadAsignado } from '../services/elegibilidad-asignado';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, exigirModificableEnEstado } from '../services/solo-comentarios';
 import {
   TicketNoEncontradoError,
   AsignadoInvalidoError,
@@ -71,7 +72,9 @@ interface PasoTransicion {
  * 1. Carga el ticket. Si no existe/está soft-deleted o el actor no lo ve
  *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
  *    si lo ve sin `ASIGNAR` y `TRANSICIONAR` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
- *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422).
+ *    Si está CERRADO/CANCELADO → `TicketCerradoNoReasignableError` (422). En RESUELTO, quien no
+ *    es ADMINISTRADOR ni ROOT recibe `TicketSoloComentariosError` (422,
+ *    odd/cerrado-solo-comentarios); un administrador sigue al paso 4.
  * 2. Valida que el asignado esté activo en el tenant (`estaActivoEnTenant`) →
  *    `AsignadoInvalidoError` (422).
  * 3. Valida elegibilidad por tipo (`LECTURA` sobre el tipo del ticket, o ROOT/ADMINISTRADOR) →
@@ -133,6 +136,10 @@ export class AsignarYPonerEnProcesoUseCase {
     if (ESTADOS_TERMINALES.has(estadoActual.codigo)) {
       return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoActual.codigo));
     }
+    // RESUELTO: quien no es administrador solo comenta (odd/cerrado-solo-comentarios).
+    const esAdministrador = esAlcanceDeAdministrador(dto);
+    const modificable = exigirModificableEnEstado(estadoActual.codigo, esAdministrador);
+    if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const asignadoActivo = await this.usuarioMasterChecker.estaActivoEnTenant(
       dto.asignadoId,
@@ -201,6 +208,8 @@ export class AsignarYPonerEnProcesoUseCase {
         if (ESTADOS_TERMINALES.has(estadoVigente.codigo)) {
           return Result.fail(new TicketCerradoNoReasignableError(ticket.id, estadoVigente.codigo));
         }
+        const vigente = exigirModificableEnEstado(estadoVigente.codigo, esAdministrador);
+        if (vigente.isFail()) return Result.fail(vigente.getError());
         const pasosVigentes = await this.resolverPasosHastaEnProceso(
           ticket,
           estadoVigente,

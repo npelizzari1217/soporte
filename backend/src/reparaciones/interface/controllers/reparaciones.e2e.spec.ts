@@ -708,6 +708,39 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
      * El detalle informa el bloqueo a todo el que ve el ticket (odd/ticket-unificado, S5, L19, L22),
      * sin COMPRAS:LECTURA: el booleano, nunca qué compra lo bloquea.
      */
+    it('en CERRADO un no administrador no vincula ni desvincula (422, odd/cerrado-solo-comentarios S5); un ADMINISTRADOR sí', async () => {
+      const actor = await crearActorConPermisos(PUEDE_VINCULAR_SOPORTE);
+      const ticketId = await crearTicket(tipoSoporteId);
+      const yaVinculada = await crearCompra();
+      await tenantClient.ticketCompra.create({ data: { ticketId, compraId: yaVinculada } });
+      const cerrado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'CERRADO' } });
+      await tenantClient.ticket.update({ where: { id: ticketId }, data: { estadoId: cerrado.id } });
+      const nueva = await crearCompra();
+      const compras = `${baseUrl}/tickets/${ticketId}/compras`;
+      const auth = bearer(actor.accessToken);
+
+      const vincular = await httpPost<{ message: string }>(compras, { compraId: nueva }, auth);
+      const desvincular = await httpDelete(`${compras}/${yaVinculada}`, auth);
+
+      expect(vincular.status).toBe(422);
+      expect(vincular.data.message).toBe(
+        'El ticket está cerrado: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      expect(desvincular.status).toBe(422);
+      expect(await vinculosDe(ticketId)).toBe(1);
+
+      const rolAdmin = await createRole('ADMINISTRADOR');
+      const usuarioAdmin = await createUsuario(randomBytes(3).toString('hex'));
+      await createMembresia(usuarioAdmin.id, actor.clienteId, rolAdmin.id);
+      const admin = bearer((await login(usuarioAdmin.email)).accessToken);
+
+      expect((await httpPost(compras, { compraId: nueva }, admin)).status).toBe(201);
+      expect((await httpDelete(`${compras}/${yaVinculada}`, admin)).status).toBe(204);
+      expect(
+        (await tenantClient.ticketCompra.findMany({ where: { ticketId } })).map((v) => v.compraId),
+      ).toEqual([nueva]);
+    });
+
     it('GET /tickets/:id informa bloqueada sin COMPRAS:LECTURA, y deja de estarlo al desvincular', async () => {
       const ticketId = await crearTicket(tipoSoporteId);
       const compraId = await crearCompra();
@@ -1180,7 +1213,16 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       await httpPost(`${tareas}/${segunda.data.id}/completar`, {}, auth);
       expect((await filaDelListado(responsable.accessToken, ticketId))?.porcentajeAvance).toBe(100);
 
-      await httpPost(`${tareas}/${primera.data.id}/descompletar`, {}, auth);
+      // Completar la última lo resolvió: el responsable ya no toca las tareas, un ADMINISTRADOR sí
+      // (odd/cerrado-solo-comentarios, L3).
+      const sinPermiso = await httpPost(`${tareas}/${primera.data.id}/descompletar`, {}, auth);
+      expect(sinPermiso.status).toBe(422);
+      const rolAdmin = await createRole('ADMINISTRADOR');
+      const usuarioAdmin = await createUsuario(randomBytes(3).toString('hex'));
+      await createMembresia(usuarioAdmin.id, responsable.clienteId, rolAdmin.id);
+      const admin = bearer((await login(usuarioAdmin.email)).accessToken);
+
+      await httpPost(`${tareas}/${primera.data.id}/descompletar`, {}, admin);
       expect((await filaDelListado(responsable.accessToken, ticketId))?.porcentajeAvance).toBe(50);
 
       const baja = await httpDelete(`${tareas}/${primera.data.id}`, auth);
@@ -1231,7 +1273,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         auth,
       );
       expect(yaEmpezada.status).toBe(422);
-      expect(yaEmpezada.data.message).toMatch(/solo ROOT/);
+      // Completar la única tarea lo resolvió: en RESUELTO solo se comenta (odd/cerrado-solo-comentarios).
+      expect(yaEmpezada.data.message).toBe(
+        'El ticket está resuelto: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.',
+      );
       expect((await filaDelListado(responsable.accessToken, ticketId))?.titulo).toBe(
         'Titulo corregido',
       );

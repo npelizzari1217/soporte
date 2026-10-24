@@ -51,9 +51,10 @@ Un punto importante: **las tareas mueven el estado del ticket**. Al completar la
 primera, el ticket pasa a "En proceso" (y si todavía no tenía responsable, queda
 asignado a quien la completó). Al completar la última, el ticket pasa a
 "Resuelto", con su fecha de cierre y el aviso al solicitante, igual que si se lo
-resolviera a mano. Si después se descompleta una tarea de un ticket resuelto, el
-ticket vuelve a "En proceso". Resolver a mano con tareas pendientes sigue siendo
-posible.
+resolviera a mano. Si después un ADMINISTRADOR descompleta una tarea de un
+ticket resuelto, el ticket vuelve a "En proceso" (vea "Reparación resuelta,
+cerrada o cancelada" más abajo). Resolver a mano con tareas pendientes sigue
+siendo posible.
 
 El porcentaje se recalcula solo: al completar o descompletar una tarea, y
 también al agregar o eliminar una. Tenga en cuenta que agregar una tarea *baja*
@@ -157,6 +158,24 @@ En cualquiera de los tres casos, si esa era la única compra que la frenaba, la
 reparación deja de estar bloqueada sin que nadie tenga que tocar nada en la
 pantalla de reparaciones — el cambio se hace del lado de la compra.
 
+## Reparación resuelta, cerrada o cancelada
+
+Cuando el ticket está **Resuelto**, **Cerrado** o **Cancelado**, solo se puede
+**comentar**: desde la reparación, el comentario interno de siempre; desde el
+detalle del ticket, públicos e internos. El comentario no cambia el estado del
+ticket.
+
+Todo lo demás queda de solo lectura para usuarios, técnicos y colaboradores: no
+se agregan, asignan, completan, descompletan ni eliminan subtareas, no se
+editan los datos, no se adjuntan archivos y no se vinculan ni desvinculan
+compras. La pantalla lo indica con el motivo, por ejemplo *El ticket está
+resuelto: solo admite comentarios*.
+
+Un **ADMINISTRADOR** o **ROOT** queda exento: puede corregir lo que haga falta y
+reabrir el ticket. Por ejemplo, si una tarea se marcó como completada por error
+y eso resolvió el ticket, un administrador la descompleta y el ticket vuelve a
+"En proceso".
+
 ## Quién puede hacer cada cosa
 
 | Acción | Quién puede |
@@ -172,6 +191,9 @@ pantalla de reparaciones — el cambio se hace del lado de la compra.
 | Desvincular una compra de una reparación | **Modificar** sobre el tipo del ticket **y** `COMPRAS:LECTURA` (las dos) |
 | Ver qué compras tiene vinculadas un ticket | **Ver** sobre el tipo del ticket **y** `COMPRAS:LECTURA` |
 | Saber si un ticket está bloqueado por una compra | **Ver** sobre el tipo del ticket: el chip **Bloqueada** del listado y la marca del detalle, sin qué compra lo bloquea |
+
+Todo lo de la tabla, salvo ver y comentar, vale mientras el ticket no esté
+resuelto, cerrado ni cancelado (vea la sección anterior).
 
 Las filas de compras no son una aclaración de qué botones se ven en
 pantalla: es el permiso que el servidor exige de verdad. A alguien al que le

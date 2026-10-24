@@ -17,6 +17,7 @@ import {
   PrioridadNoEncontradaError,
   SectorTicketInexistenteError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
@@ -76,7 +77,7 @@ function armar(params: {
     return tarea;
   });
   const estados = new Map(
-    ['NUEVO', 'ASIGNADO', 'EN_PROCESO', 'RESUELTO'].map((codigo, orden) => [
+    ['NUEVO', 'ASIGNADO', 'EN_PROCESO', 'RESUELTO', 'CERRADO', 'CANCELADO'].map((codigo, orden) => [
       estadoId(codigo),
       EstadoEntity.create(
         { codigo, nombre: codigo, color: null, orden, activo: true },
@@ -336,5 +337,58 @@ describe('EditarReparacionUseCase: permisos por tipo del ticket base (odd/permis
     });
 
     expect(r.getValue().ticket.titulo).toBe('Titulo nuevo');
+  });
+});
+
+describe('EditarReparacionUseCase: resuelto, cerrado o cancelado, solo comentarios (odd/cerrado-solo-comentarios, S1-S3)', () => {
+  // Ve el ticket con VER_TODOS y tiene MODIFICACION sobre su tipo: lo único que lo frena es el estado.
+  const tecnico = alcancePorTipo('usuario-editor', {
+    'tipo-edilicia': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+  });
+
+  it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+    'en %s un no administrador recibe TicketSoloComentariosError (422) y no escribe',
+    async (estado) => {
+      const c = armar({ estado });
+
+      const r = await c.useCase.execute({
+        ...dtoBase,
+        alcance: tecnico,
+        titulo: 'x',
+        ubicacion: 'Otra',
+      });
+
+      const error = r.getError();
+      expect(error).toBeInstanceOf(TicketSoloComentariosError);
+      expect((error as TicketSoloComentariosError).estadoCodigo).toBe(estado);
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+      expect(c.ticket.titulo).toBe('Titulo original');
+      expect(c.ticket.ubicacion).toBe('Aula 1');
+    },
+  );
+
+  it('un ADMINISTRADOR (no ROOT) en CERRADO sigue con la regla de siempre: motivo EN_PROCESO', async () => {
+    const c = armar({ estado: 'CERRADO' });
+
+    const r = await c.useCase.execute({ ...dtoBase, titulo: 'x' });
+
+    expect(motivoDe(r)).toBe('EN_PROCESO');
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('ROOT edita en CANCELADO', async () => {
+    const c = armar({ estado: 'CANCELADO' });
+
+    const r = await c.useCase.execute({ ...dtoBase, actorEsRoot: true, titulo: 'Corregido' });
+
+    expect(r.getValue().ticket.titulo).toBe('Corregido');
+  });
+
+  it('el bloqueo por compra sigue mandando antes que el estado', async () => {
+    const c = armar({ estado: 'RESUELTO', bloqueada: true });
+
+    const r = await c.useCase.execute({ ...dtoBase, alcance: tecnico, titulo: 'x' });
+
+    expect(motivoDe(r)).toBe('BLOQUEADA');
   });
 });

@@ -726,31 +726,80 @@ describe("TicketDetailView — tarjeta «Acciones» agrupada (odd/tasks/acciones
   });
 });
 
-describe("TicketDetailView — tareas de solo lectura con el ticket cerrado (odd/ticket-cerrado-solo-lectura, S4)", () => {
-  beforeEach(() => mockBackend());
-  const responsable = buildUser({ rol: "ADMINISTRADOR", permisos: ["SOPORTE:MODIFICACION"] });
+describe("TicketDetailView — resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S6)", () => {
+  const ESTADOS = [
+    { id: "e-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true },
+    { id: "e-en-proceso", codigo: "EN_PROCESO", nombre: "En proceso", color: null, orden: 3, activo: true },
+    { id: "e-resuelto", codigo: "RESUELTO", nombre: "Resuelto", color: null, orden: 4, activo: true },
+    { id: "e-cerrado", codigo: "CERRADO", nombre: "Cerrado", color: null, orden: 5, activo: true },
+    { id: "e-cancelado", codigo: "CANCELADO", nombre: "Cancelado", color: null, orden: 6, activo: true },
+  ];
+  /** Todo sobre el tipo del ticket: lo único que lo frena es el estado. */
+  const TODO: AccionTipoTicket[] = ["MODIFICACION", "TRANSICIONAR", "ASIGNAR", "COMENTAR", "OBSERVAR", "ALTAS"];
+  const COMPRAS = [{ id: "co1", numero: "COM-0001", grupo: "COMPLETADAS", bloquea: false }];
+  const tecnicoConCompras = buildUser({ ...TECNICO, permisos: [...TECNICO.permisos, "COMPRAS:LECTURA"] });
+  const administrador = buildUser({ sub: "u-admin", rol: "ADMINISTRADOR", permisos: ["COMPRAS:LECTURA"] });
 
-  it("CERRADO: muestra el motivo y oculta el alta de tareas", async () => {
+  /** El técnico es el responsable: fuera de estos estados gestiona tareas, compras y adjuntos. */
+  function enEstado(estadoId: string) {
     server.use(
-      http.get("/api/catalogos/estados", () =>
-        HttpResponse.json([{ id: "e-cerrado", codigo: "CERRADO", nombre: "Cerrado", color: null, orden: 50, activo: true }]),
-      ),
-      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-cerrado" })),
+      http.get("/api/catalogos/estados", () => HttpResponse.json(ESTADOS)),
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId, asignadoId: "u-otro" })),
+      http.get(`/api/tickets/${TICKET_ID}/compras`, () => HttpResponse.json(COMPRAS)),
+      http.get("/api/compras", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 })),
     );
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: responsable });
+  }
 
-    expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
-    expect(await screen.findByRole("note")).toHaveTextContent(/cerrado/);
-    expect(screen.queryByLabelText("Nueva tarea")).toBeNull();
+  beforeEach(() => mockBackend());
+
+  it.each([
+    ["e-resuelto", "El ticket está resuelto: solo admite comentarios."],
+    ["e-cerrado", "El ticket está cerrado: solo admite comentarios."],
+    ["e-cancelado", "El ticket está cancelado: solo admite comentarios."],
+  ])("%s, un no administrador: comenta (público e interno) pero no edita, ni reasigna, ni toca tareas, adjuntos o compras", async (estadoId, motivo) => {
+    enEstado(estadoId);
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: tecnicoConCompras, permisos: enTi1(...TODO) });
+    await screen.findByText("Impresora rota");
+    const compras = (await screen.findByRole("heading", { name: "Compras vinculadas" })).closest("section") as HTMLElement;
+    await within(compras).findByText("COM-0001");
+    const tareas = screen.getByRole("heading", { name: "Tareas" }).closest("section") as HTMLElement;
+    expect(await within(tareas).findByRole("note")).toHaveTextContent(motivo);
+
+    expect(screen.getByRole("textbox", { name: "Comentario" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /interno/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^editar$/i })).toBeNull();
+    const acciones = screen.getByRole("heading", { name: "Acciones" }).closest("section") as HTMLElement;
+    expect(within(acciones).getByText(motivo)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /nuevo responsable/i })).toBeNull();
+    expect(screen.queryByText(/adjuntar archivo/i)).toBeNull();
+    expect(within(tareas).queryByLabelText("Nueva tarea")).toBeNull();
+    expect(within(tareas).queryByRole("button", { name: "Completar" })).toBeNull();
+    expect(within(compras).queryByRole("button", { name: /desvincular/i })).toBeNull();
+    expect(within(compras).queryByLabelText(/vincular compra/i)).toBeNull();
   });
 
-  it("RESUELTO: sin motivo y con el alta de tareas disponible", async () => {
-    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, estadoId: "e-resuelto" })));
-    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: responsable });
+  it("caso hermano: el mismo técnico en EN_PROCESO gestiona tareas, adjuntos y compras", async () => {
+    enEstado("e-en-proceso");
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: tecnicoConCompras, permisos: enTi1(...TODO) });
+    const compras = (await screen.findByRole("heading", { name: "Compras vinculadas" })).closest("section") as HTMLElement;
+    await within(compras).findByText("COM-0001");
 
-    expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
     expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
-    expect(screen.queryByRole("note")).toBeNull();
+    expect(screen.getByText(/adjuntar archivo/i)).toBeInTheDocument();
+    expect(within(compras).getByRole("button", { name: /desvincular/i })).toBeInTheDocument();
+    expect(screen.queryByText(/solo admite comentarios/)).toBeNull();
+  });
+
+  it("un ADMINISTRADOR en CERRADO sigue gestionando tareas, adjuntos y compras (S3)", async () => {
+    enEstado("e-cerrado");
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: administrador });
+    const compras = (await screen.findByRole("heading", { name: "Compras vinculadas" })).closest("section") as HTMLElement;
+    await within(compras).findByText("COM-0001");
+
+    expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
+    expect(screen.getByText(/adjuntar archivo/i)).toBeInTheDocument();
+    expect(within(compras).getByRole("button", { name: /desvincular/i })).toBeInTheDocument();
+    expect(screen.queryByText(/solo admite comentarios/)).toBeNull();
   });
 });
 

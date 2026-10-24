@@ -12,20 +12,9 @@ import { CalcularSlaHabilVenceService } from '../../../calendario-laboral/domain
 import { ICalendarioLaboralSemanalRepository } from '../../../calendario-laboral/domain/ports/i-calendario-laboral-semanal.repository';
 import { IFeriadosLaboralesRepository } from '../../../calendario-laboral/domain/ports/i-feriados-laborales.repository';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
-import { ComentarioNoPermitidoError } from '../../domain/errors/tickets.errors';
+import { esEstadoSoloComentarios } from '../../domain/policies/solo-comentarios.policy';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
-
-/**
- * Estados en los que un ticket YA NO acepta nuevos comentarios PÚBLICOS
- * (T16). Distinto de `TERMINAL_STATES` de `TicketEntity` (que solo cubre
- * CERRADO/CANCELADO para transiciones, T9/T11): acá RESUELTO también
- * bloquea, aunque tenga arco de salida válido hacia CERRADO (ADR-3).
- *
- * Los comentarios INTERNOS (T17) NO están sujetos a esta restricción — el
- * staff puede seguir dejando notas técnicas aun con el ticket cerrado.
- */
-const ESTADOS_SIN_COMENTARIOS_PUBLICOS = new Set<string>(['RESUELTO', 'CERRADO', 'CANCELADO']);
 
 /**
  * DTO de entrada de `CrearComentarioUseCase`.
@@ -61,21 +50,20 @@ export interface CrearComentarioDto extends AlcanceActorTicket {
  *    (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → `TicketNoEncontradoError` (404);
  *    si lo ve sin `COMENTAR` (o sin `OBSERVAR`, si es interno) sobre el tipo →
  *    `AccionSobreTipoNoPermitidaError` (403).
- * 2. Si el comentario es PÚBLICO (`esInterno=false`, T16): resuelve el
- *    código semántico del estado ACTUAL (`estadoRepo.findById`, catálogo
- *    fijo — su ausencia es un fallo de infraestructura, `throw`
- *    defensivo, mismo patrón que `TransicionarEstadoUseCase`) y rechaza
- *    (422 `ComentarioNoPermitidoError`) si el ticket está en
- *    RESUELTO/CERRADO/CANCELADO. Los comentarios INTERNOS (T17) NO tienen
- *    esta restricción.
+ * 2. Comentar no depende del estado: en RESUELTO, CERRADO o CANCELADO, públicos e internos
+ *    se aceptan para quien pueda comentar (odd/cerrado-solo-comentarios, S4: es lo único que
+ *    queda abierto en esos estados). El comentario no cambia el estado del ticket.
  * 3. Resuelve el id del tipo de operación `COMENTARIO` del catálogo tenant
  *    (catálogo FIJO garantizado por el seed — ausencia = `throw` defensivo).
  * 4. Persiste la operación (`OperacionTicketEntity`, timeline) dentro de
  *    `txRunner.run`. Si el comentario es PÚBLICO, su autor no es el
  *    solicitante (un externo tiene `solicitanteId = null`: cualquier autor
- *    interno cuenta) y tampoco es el usuario de integración del cliente
+ *    interno cuenta), tampoco es el usuario de integración del cliente
  *    (`autorEsIntegracion`: la API pública habla por el cliente, no por
- *    soporte; decisión del dueño del 2026-10-10, api-publica T5d),
+ *    soporte; decisión del dueño del 2026-10-10, api-publica T5d) y el
+ *    ticket no está RESUELTO, CERRADO ni CANCELADO (ya no espera una
+ *    primera respuesta, el mismo criterio que el barrido de vencidas de SLA;
+ *    el estado se lee del catálogo fijo, con `throw` defensivo si falta),
  *    registra en la misma tx la primera respuesta con
  *    `registrarSiFalta` (`updateMany where primeraRespuestaAt: null`:
  *    idempotente y resistente a la concurrencia; ADR-6, sla-primera-respuesta
@@ -128,20 +116,6 @@ export class CrearComentarioUseCase {
     if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
     const ticket = ticketResult.getValue();
 
-    if (!dto.esInterno) {
-      // Catálogo FIJO garantizado por el seed (ADR-1) — su ausencia es un
-      // bug de infraestructura, no un error del caller: throw defensivo.
-      const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
-      if (!estadoActual) {
-        throw new Error(
-          `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
-        );
-      }
-      if (ESTADOS_SIN_COMENTARIOS_PUBLICOS.has(estadoActual.codigo)) {
-        return Result.fail(new ComentarioNoPermitidoError(estadoActual.codigo));
-      }
-    }
-
     const tipoOperacionId = await this.tipoOperacionRepo.findIdByCodigo('COMENTARIO');
     if (!tipoOperacionId) {
       throw new Error(
@@ -161,7 +135,10 @@ export class CrearComentarioUseCase {
     });
 
     const cuentaComoPrimeraRespuesta =
-      !dto.esInterno && dto.autorId !== ticket.solicitanteId && dto.autorEsIntegracion !== true;
+      !dto.esInterno &&
+      dto.autorId !== ticket.solicitanteId &&
+      dto.autorEsIntegracion !== true &&
+      (await this.esperaPrimeraRespuesta(ticket.estadoId));
     const habilS =
       cuentaComoPrimeraRespuesta && !ticket.relojSla?.primeraRespuestaAt
         ? await this.segundosHabiles(ticket.id, ticket.createdAt, operacion.createdAt)
@@ -192,6 +169,22 @@ export class CrearComentarioUseCase {
 
     return Result.ok(operacion);
   }
+  /**
+   * ¿El ticket todavía espera una primera respuesta? No en RESUELTO, CERRADO ni CANCELADO: un
+   * comentario después del cierre no es la primera respuesta del pedido.
+   */
+  private async esperaPrimeraRespuesta(estadoId: string): Promise<boolean> {
+    // Catálogo FIJO garantizado por el seed (ADR-1) — su ausencia es un
+    // bug de infraestructura, no un error del caller: throw defensivo.
+    const estado = await this.estadoRepo.findById(estadoId);
+    if (!estado) {
+      throw new Error(
+        `Catálogo de estados inconsistente: no existe el estado con id "${estadoId}" en el tenant activo.`,
+      );
+    }
+    return !esEstadoSoloComentarios(estado.codigo);
+  }
+
   /**
    * Segundos hábiles entre dos instantes con el calendario y los feriados vigentes del tenant, o
    * `null` si no se pudieron calcular (lectura del master o guarda de rango): se loguea y sigue.

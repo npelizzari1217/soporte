@@ -36,6 +36,7 @@ import {
   TipoTicketNoPermitidoEnAltaError,
   SinCicloActivoError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   CompraNoEncontradaError,
@@ -690,6 +691,11 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       [
         'ReparacionNoEditableError BLOQUEADA',
         () => new ReparacionNoEditableError('BLOQUEADA'),
+        422,
+      ],
+      [
+        'TicketSoloComentariosError (odd/cerrado-solo-comentarios)',
+        () => new TicketSoloComentariosError('CERRADO'),
         422,
       ],
     ])('mapea %s → HTTP %i', async (_nombre, error, http) => {

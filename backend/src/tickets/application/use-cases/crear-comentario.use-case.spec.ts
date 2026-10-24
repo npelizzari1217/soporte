@@ -19,7 +19,6 @@ import { TicketComentadoEvent } from '../../domain/events/ticket-comentado.event
 import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
-  ComentarioNoPermitidoError,
 } from '../../domain/errors/tickets.errors';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
@@ -32,6 +31,16 @@ const ESTADOS: Record<string, EstadoEntity> = {
   NUEVO: EstadoEntity.create(
     { codigo: 'NUEVO', nombre: 'Nuevo', color: null, orden: 1, activo: true },
     'estado-nuevo-uuid',
+  ),
+  ESPERANDO_CLIENTE: EstadoEntity.create(
+    {
+      codigo: 'ESPERANDO_CLIENTE',
+      nombre: 'Esperando cliente',
+      color: null,
+      orden: 3,
+      activo: true,
+    },
+    'estado-esperando-cliente-uuid',
   ),
   RESUELTO: EstadoEntity.create(
     { codigo: 'RESUELTO', nombre: 'Resuelto', color: null, orden: 4, activo: true },
@@ -185,20 +194,63 @@ describe('CrearComentarioUseCase', () => {
     expect(evento.autorId).toBe('autor-uuid');
   });
 
-  it.each(['RESUELTO', 'CERRADO', 'CANCELADO'] as const)(
-    'T16: comentario público rechazado (422) si el ticket está en estado terminal %s',
-    async (estadoCodigo) => {
+  describe('en RESUELTO, CERRADO o CANCELADO comenta cualquiera que pueda comentar (odd/cerrado-solo-comentarios, S4)', () => {
+    // Un técnico, no administrador: ve el ticket y tiene COMENTAR y OBSERVAR sobre su tipo.
+    const tecnico = alcancePorTipo('autor-uuid', {
+      'tipo-soporte-uuid': ['LECTURA', 'VER_TODOS', 'COMENTAR', 'OBSERVAR'],
+    });
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'] as const)(
+      'un comentario público en %s se guarda y avisa (TicketComentadoEvent), sin cambiar el ticket',
+      async (estadoCodigo) => {
+        const c = makeCollaborators();
+        const ticket = makeTicket(estadoCodigo);
+        c.ticketRepo.findById.mockResolvedValue(ticket);
+
+        const result = await c.useCase.execute(
+          baseDto({ ...tecnico, esInterno: false, texto: 'Gracias, quedó funcionando.' }),
+        );
+
+        const operacion = result.getValue();
+        expect(operacion.esInterno).toBe(false);
+        expect(operacion.descripcion).toBe('Gracias, quedó funcionando.');
+        expect(operacion.estadoAnteriorId).toBeNull();
+        expect(operacion.estadoNuevoId).toBeNull();
+        expect(c.operacionRepo.save).toHaveBeenCalledWith(operacion);
+        expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
+        expect(ticket.estadoId).toBe(ESTADOS[estadoCodigo].id);
+      },
+    );
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'] as const)(
+      'un comentario interno en %s se guarda sin avisar',
+      async (estadoCodigo) => {
+        const c = makeCollaborators();
+        c.ticketRepo.findById.mockResolvedValue(makeTicket(estadoCodigo));
+
+        const result = await c.useCase.execute(baseDto({ ...tecnico, esInterno: true }));
+
+        expect(result.getValue().esInterno).toBe(true);
+        expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+        expect(c.eventPublisher.publish).not.toHaveBeenCalled();
+      },
+    );
+
+    it('sin COMENTAR sobre el tipo sigue siendo 403, también en CERRADO', async () => {
       const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket(estadoCodigo));
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('CERRADO'));
 
-      const result = await c.useCase.execute(baseDto({ esInterno: false }));
+      const result = await c.useCase.execute(
+        baseDto({
+          ...alcancePorTipo('autor-uuid', { 'tipo-soporte-uuid': ['LECTURA', 'VER_TODOS'] }),
+          esInterno: false,
+        }),
+      );
 
-      expect(result.isFail()).toBe(true);
-      expect(result.getError()).toBeInstanceOf(ComentarioNoPermitidoError);
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
       expect(c.operacionRepo.save).not.toHaveBeenCalled();
-      expect(c.eventPublisher.publish).not.toHaveBeenCalled();
-    },
-  );
+    });
+  });
 
   it('T17: comentario interno — crea operación es_interno=true, NUNCA emite evento', async () => {
     const c = makeCollaborators();
@@ -213,7 +265,7 @@ describe('CrearComentarioUseCase', () => {
     expect(c.eventPublisher.publish).not.toHaveBeenCalled();
   });
 
-  it('T17: comentario interno se permite incluso en estado terminal (CERRADO) — solo T16 restringe por estado', async () => {
+  it('T17: comentario interno se permite incluso en estado terminal (CERRADO)', async () => {
     const c = makeCollaborators();
     c.ticketRepo.findById.mockResolvedValue(makeTicket('CERRADO'));
 
@@ -348,14 +400,28 @@ describe('CrearComentarioUseCase', () => {
       expect(c.eventPublisher.publish).toHaveBeenCalledTimes(1);
     });
 
-    it('un rechazo por estado terminal no registra nada', async () => {
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'] as const)(
+      'en %s un comentario público de un técnico no la registra ni carga el calendario: el ticket ya no la espera',
+      async (estadoCodigo) => {
+        const c = makeCollaborators();
+        c.ticketRepo.findById.mockResolvedValue(makeTicket(estadoCodigo));
+
+        const result = await c.useCase.execute(baseDto({ esInterno: false }));
+
+        expect(result.isOk()).toBe(true);
+        expect(c.operacionRepo.save).toHaveBeenCalledTimes(1);
+        expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+        expect(c.calendarioRepo.obtener).not.toHaveBeenCalled();
+      },
+    );
+
+    it('en ESPERANDO_CLIENTE sí la registra (el reloj de primera respuesta no se pausa)', async () => {
       const c = makeCollaborators();
-      c.ticketRepo.findById.mockResolvedValue(makeTicket('CERRADO'));
+      c.ticketRepo.findById.mockResolvedValue(makeTicket('ESPERANDO_CLIENTE'));
 
       await c.useCase.execute(baseDto({ esInterno: false }));
 
-      expect(c.txRunner.llamadas).toBe(0);
-      expect(c.primeraRespuestaRepo.registrarSiFalta).not.toHaveBeenCalled();
+      expect(c.primeraRespuestaRepo.registrarSiFalta).toHaveBeenCalledTimes(1);
     });
 
     describe('segundos hábiles (odd/promedios-dashboard-habiles)', () => {

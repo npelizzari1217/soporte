@@ -60,6 +60,7 @@ export class AdjuntosController {
    * @throws 403 ve el ticket sin `ALTAS` ni `MODIFICACION` sobre su tipo
    * @throws 404 ticket inexistente/otro tenant, o actor que no ve el ticket (S0)
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
+   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Post('tickets/:id/adjuntos')
   @UseInterceptors(FileInterceptor('archivo'))
@@ -95,6 +96,7 @@ export class AdjuntosController {
    * @throws 403 ve el ticket sin `ALTAS` ni `MODIFICACION` sobre su tipo
    * @throws 404 operación inexistente, ticket inexistente/otro tenant, o actor que no ve el ticket (S0)
    * @throws 422 archivo ausente, tamaño/mime inválido (T21, pipe), o `tamanoBytes<=0` (revalidación defensiva)
+   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Post('operaciones/:id/adjuntos')
   @UseInterceptors(FileInterceptor('archivo'))

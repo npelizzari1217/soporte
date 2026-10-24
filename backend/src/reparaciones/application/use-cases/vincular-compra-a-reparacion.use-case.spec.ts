@@ -13,10 +13,12 @@ import { ICompraRepository } from '../../../compras/domain/ports/i-compra.reposi
 import { CompraEntity } from '../../../compras/domain/entities/compra.entity';
 import { CompraNoEncontradaError } from '../../domain/errors/reparaciones.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { EstadoEntity } from '../../../tickets/domain/entities/estado.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
@@ -24,14 +26,14 @@ import {
 } from '../../../tickets/test-helpers/alcance-ticket';
 
 /** Ticket de tipo `tipo-soporte`: el vínculo ya no depende de que sea de Edilicia. */
-function ticketBase(): TicketEntity {
+function ticketBase(estadoCodigo = 'NUEVO'): TicketEntity {
   return TicketEntity.create(
     {
       numero: 'SOP-2026-00001',
       titulo: 'Impresora sin tóner',
       descripcion: null,
       tipoId: 'tipo-soporte',
-      estadoId: 'estado-nuevo',
+      estadoId: `estado-${estadoCodigo}`,
       prioridadId: 'prioridad-media',
       cicloId: null,
       ticketReferenciaId: null,
@@ -39,6 +41,12 @@ function ticketBase(): TicketEntity {
     },
     'ticket-uuid',
   );
+}
+
+/** Estado del catálogo para un id `estado-<CODIGO>`. */
+function estadoDeId(id: string): EstadoEntity {
+  const codigo = id.replace('estado-', '');
+  return EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 1, activo: true }, id);
 }
 
 /** Compra existente: el caso de uso solo verifica que exista, el contenido no importa. */
@@ -89,11 +97,14 @@ describe('VincularCompraAReparacionUseCase', () => {
       },
     };
 
+    const estadoRepo = { findById: async (id: string) => estadoDeId(id) };
+
     const useCase = new VincularCompraAReparacionUseCase(
       compraRepo,
       reparacionCompraRepo,
       ticketRepo,
       txRunner,
+      estadoRepo,
     );
 
     return { useCase, compraRepo, reparacionCompraRepo, ticketRepo };
@@ -220,6 +231,49 @@ describe('VincularCompraAReparacionUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
+    });
+  });
+  describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S5)', () => {
+    const tecnico = alcancePorTipo('actor-uuid', {
+      'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+    });
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+      'en %s un no administrador recibe TicketSoloComentariosError (422) y no vincula',
+      async (estado) => {
+        const { useCase, ticketRepo, reparacionCompraRepo, compraRepo } = buildDeps();
+        ticketRepo.findById.mockResolvedValue(ticketBase(estado));
+
+        const result = await useCase.execute({ ...baseDto, alcance: tecnico });
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(estado);
+        expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
+        expect(compraRepo.findByIdConItems).not.toHaveBeenCalled();
+      },
+    );
+
+    it('en CERRADO un ADMINISTRADOR o ROOT vincula (S3)', async () => {
+      const { useCase, ticketRepo, reparacionCompraRepo } = buildDeps();
+      ticketRepo.findById.mockResolvedValue(ticketBase('CERRADO'));
+
+      const result = await useCase.execute(baseDto);
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
+    });
+
+    it('si el ticket pasó a CERRADO mientras se esperaba el lock, no vincula', async () => {
+      const { useCase, ticketRepo, reparacionCompraRepo } = buildDeps();
+      ticketRepo.findById
+        .mockResolvedValueOnce(ticketBase('EN_PROCESO'))
+        .mockResolvedValueOnce(ticketBase('CERRADO'));
+
+      const result = await useCase.execute({ ...baseDto, alcance: tecnico });
+
+      expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+      expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
     });
   });
 });

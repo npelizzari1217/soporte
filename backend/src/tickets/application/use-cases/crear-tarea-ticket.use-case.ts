@@ -55,7 +55,7 @@ export class CrearTareaTicketUseCase {
     if (gestion.isFail()) return Result.fail(gestion.getError());
     const { ticket } = gestion.getValue();
 
-    const editable = await this.verificadorEditable.verificar(ticket);
+    const editable = await this.verificadorEditable.verificar(ticket, dto.actor.esAdministrador);
     if (editable.isFail()) return Result.fail(editable.getError());
 
     const activas = await this.tareaRepo.listarPorTicket(ticket.id);

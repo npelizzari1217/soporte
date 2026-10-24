@@ -29,6 +29,7 @@ import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { useEstados, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { puedeAltaManualEnAlgunModulo } from "@/features/tickets/lib/alta-manual";
 import { buildIdToCodigoMap } from "@/features/tickets/lib/catalog-map";
+import { ticketSoloComentariosUi } from "@/features/tickets/lib/solo-comentarios";
 import { SubtareasDialog } from "./subtareas-dialog";
 import { ComentariosDialog } from "./comentarios-dialog";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
@@ -145,7 +146,7 @@ export function ReparacionesList() {
     bloqueo: filtroBloqueo,
     tipo: tipoElegido || undefined,
   });
-  const { isGlobalAdmin } = useSession();
+  const { isGlobalAdmin, esAdminCliente } = useSession();
   // Las acciones de cada fila van sobre el tipo de SU ticket (odd/permisos-por-tipo-ticket, S6).
   const { puedeEnTipo, puedeEnModulo, tiposCon } = usePermisosPorTipo();
   // El selector ofrece los tipos con LECTURA, de cualquier módulo: otro tipo sería una grilla
@@ -201,7 +202,12 @@ export function ReparacionesList() {
           <VincularCompraDialog
             ticketId={row.ticketId}
             numero={row.numero}
-            puedeModificarEnTipo={puedeEnTipo(row.tipoId, "MODIFICACION")}
+            // En RESUELTO, CERRADO o CANCELADO solo un administrador vincula o desvincula
+            // (odd/cerrado-solo-comentarios, S5).
+            puedeModificarEnTipo={
+              puedeEnTipo(row.tipoId, "MODIFICACION") &&
+              !ticketSoloComentariosUi(estadoCodigoMap.get(row.estadoId), esAdminCliente)
+            }
           />
         </div>
       ),
@@ -219,6 +225,7 @@ export function ReparacionesList() {
             reparacion={row}
             estadoCodigo={estadoCodigoMap.get(row.estadoId)}
             esRoot={isGlobalAdmin}
+            esAdministrador={esAdminCliente}
           />
         ) : null,
     },

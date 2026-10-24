@@ -15,13 +15,15 @@
  * odd/permisos-por-tipo-ticket): quien ve la fila ve el ticket. Si la lectura
  * falla, queda desconocido y `permisos-tareas.ts` aplica su regla para ese caso.
  * Cada mutación invalida `["reparaciones"]`, porque el avance del listado se
- * calcula sobre estas tareas.
+ * calcula sobre estas tareas. Con el ticket RESUELTO, CERRADO o CANCELADO, quien no es
+ * administrador las ve sin botones (odd/cerrado-solo-comentarios).
  */
 import { useState, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { useTicket } from "@/features/tickets/hooks/use-ticket";
 import { TicketTareas } from "@/features/tickets/components/ticket-tareas";
+import { useSession } from "@/shared/hooks/use-session";
 
 const INVALIDAR_LISTADO = [["reparaciones"]] as const;
 
@@ -39,6 +41,7 @@ export interface SubtareasDialogProps {
 
 export function SubtareasDialog({ ticketId, tipoId, trigger, numero, estadoCodigo, bloqueada }: SubtareasDialogProps) {
   const [open, setOpen] = useState(false);
+  const { esAdminCliente } = useSession();
   const ticketQuery = useTicket(ticketId, open);
   const asignadoId = ticketQuery.data ? ticketQuery.data.asignadoId : undefined;
 
@@ -54,7 +57,7 @@ export function SubtareasDialog({ ticketId, tipoId, trigger, numero, estadoCodig
           asignadoId={asignadoId}
           tipoId={tipoId}
           invalidarTambien={INVALIDAR_LISTADO}
-          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueada)}
+          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueada, esAdminCliente)}
         />
       </DialogContent>
     </Dialog>

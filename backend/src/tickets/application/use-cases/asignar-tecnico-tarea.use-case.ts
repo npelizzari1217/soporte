@@ -78,7 +78,7 @@ export class AsignarTecnicoTareaUseCase {
     if (tareaResult.isFail()) return Result.fail(tareaResult.getError());
     const tarea = tareaResult.getValue();
 
-    const editable = await this.verificadorEditable.verificar(ticket);
+    const editable = await this.verificadorEditable.verificar(ticket, dto.actor.esAdministrador);
     if (editable.isFail()) return Result.fail(editable.getError());
 
     if (dto.tecnicoId !== null) {

@@ -1,4 +1,5 @@
 import { DomainError } from '../../../shared/domain/result';
+import { EstadoSoloComentarios } from '../policies/solo-comentarios.policy';
 
 /**
  * TicketNoEncontradoError — el ticket con el id indicado no existe en el
@@ -204,18 +205,29 @@ export class SolicitanteInvalidoError extends DomainError {
   }
 }
 
-/**
- * ComentarioNoPermitidoError — el ticket está en un estado terminal
- * (RESUELTO/CERRADO/CANCELADO) y no acepta nuevos comentarios públicos.
- * → HTTP 422 en la capa de presentación.
- *
- * Ref spec: T16 ("rechazarse (422) si el ticket está en estado terminal").
- */
-export class ComentarioNoPermitidoError extends DomainError {
-  readonly code = 'COMENTARIO_NO_PERMITIDO';
+/** Cómo se nombra cada estado de solo comentarios en un mensaje de error. */
+const NOMBRE_ESTADO_SOLO_COMENTARIOS: Readonly<Record<EstadoSoloComentarios, string>> = {
+  RESUELTO: 'resuelto',
+  CERRADO: 'cerrado',
+  CANCELADO: 'cancelado',
+};
 
-  constructor(estadoCodigo: string) {
-    super(`El ticket está en estado terminal "${estadoCodigo}" y no acepta nuevos comentarios.`);
+/**
+ * TicketSoloComentariosError — el ticket está RESUELTO, CERRADO o CANCELADO y el actor no es
+ * ADMINISTRADOR ni ROOT: solo puede comentarlo (odd/cerrado-solo-comentarios, S1-S3; regla
+ * `ticketSoloComentarios`). Lo devuelven la edición, las tareas, los adjuntos, las compras
+ * vinculadas, la reasignación, la solución de soporte y la transición que lo sacaría de esos
+ * estados. → HTTP 422 en la capa de presentación.
+ */
+export class TicketSoloComentariosError extends DomainError {
+  readonly code = 'TICKET_SOLO_COMENTARIOS';
+
+  /** @param estadoCodigo Estado actual del ticket. */
+  constructor(readonly estadoCodigo: EstadoSoloComentarios) {
+    super(
+      `El ticket está ${NOMBRE_ESTADO_SOLO_COMENTARIOS[estadoCodigo]}: solo admite comentarios. ` +
+        'Solo un administrador puede modificarlo o reabrirlo.',
+    );
   }
 }
 

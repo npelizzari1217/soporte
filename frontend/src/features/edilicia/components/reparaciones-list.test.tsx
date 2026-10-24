@@ -717,21 +717,38 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas de
     rol: "ADMINISTRADOR",
     permisos: ["EDILICIA:LECTURA", "EDILICIA:ALTAS", "EDILICIA:MODIFICACION"],
   });
+  // Un técnico que modifica y comenta (también interno) en Edilicia, no administrador.
+  const tecnico = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: [] });
+  const PERMISOS_TECNICO = permisosDeTest(
+    { "tipo-edilicia": ["LECTURA", "ALTAS", "MODIFICACION", "COMENTAR", "OBSERVAR"] },
+    { "tipo-edilicia": "EDILICIA" },
+  );
+  function renderComo(quien: "admin" | "tecnico") {
+    return quien === "admin"
+      ? renderWithProviders(<ReparacionesList />, { user: admin })
+      : renderConPermisos(<ReparacionesList />, { user: tecnico, permisos: PERMISOS_TECNICO });
+  }
 
   it.each([
-    ["cerrada", { estadoId: "estado-cerrado", bloqueada: false }, /cerrado/],
     [
-      "bloqueada por una compra",
+      "cerrada, para un no administrador (odd/cerrado-solo-comentarios)",
+      { estadoId: "estado-cerrado", bloqueada: false },
+      /El ticket está cerrado: solo admite comentarios/,
+      "tecnico" as const,
+    ],
+    [
+      "bloqueada por una compra, también para un administrador",
       {
         estadoId: "estado-nuevo",
         bloqueada: true,
         comprasQueBloquean: [{ id: "c1", numero: "COM-1" }],
       },
       /bloqueado por una compra/,
+      "admin" as const,
     ],
   ])(
     "en una reparación %s, el diálogo de subtareas no deja agregar y el de comentarios sí deja comentar",
-    async (_caso, fila, motivo) => {
+    async (_caso, fila, motivo, quien) => {
       const user = userEvent.setup();
       mockEstadosYTareas();
       server.use(
@@ -746,7 +763,7 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas de
           ])),
         ),
       );
-      renderWithProviders(<ReparacionesList />, { user: admin });
+      renderComo(quien);
       await screen.findByText("EDI-0001");
 
       await user.click(
@@ -775,6 +792,23 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas de
       );
     },
   );
+
+  it("caso hermano: en una reparación cerrada, un ADMINISTRADOR sigue agregando subtareas (S3)", async () => {
+    const user = userEvent.setup();
+    mockEstadosYTareas();
+    server.use(
+      http.get("/api/reparaciones", () =>
+        HttpResponse.json(paginaDe([buildReparacion({ estadoId: "estado-cerrado" })])),
+      ),
+    );
+    renderComo("admin");
+    await screen.findByText("EDI-0001");
+
+    await user.click(within(filaDe("EDI-0001")).getByRole("button", { name: /ver subtareas/i }));
+    const subtareas = await screen.findByRole("dialog");
+    expect(await within(subtareas).findByLabelText("Nueva tarea")).toBeInTheDocument();
+    expect(within(subtareas).queryByRole("note")).toBeNull();
+  });
 
   it("en una reparación abierta y no bloqueada, los dos diálogos siguen dejando agregar", async () => {
     const user = userEvent.setup();
@@ -817,6 +851,61 @@ describe("ReparacionesList — fila cerrada, cancelada o bloqueada: subtareas de
     ).toBeInTheDocument();
     // La única nota es el aviso de comentario interno, no un motivo de solo lectura.
     expect(within(comentarios).getByRole("note")).toHaveTextContent(/internos/);
+  });
+});
+
+describe("ReparacionesList — resuelta, cerrada o cancelada: solo comentarios (odd/cerrado-solo-comentarios, S6)", () => {
+  const tecnico = buildUser({ sub: "u-tec", rol: "TECNICO", permisos: ["COMPRAS:LECTURA"] });
+  const administrador = buildUser({ sub: "u-adm", rol: "ADMINISTRADOR", permisos: ["COMPRAS:LECTURA"] });
+  const PERMISOS = permisosDeTest(
+    { "tipo-edilicia": ["LECTURA", "MODIFICACION", "COMENTAR", "OBSERVAR"] },
+    { "tipo-edilicia": "EDILICIA" },
+  );
+
+  function mockFila(estadoId: string) {
+    server.use(
+      http.get("/api/catalogos/estados", () =>
+        HttpResponse.json([
+          { id: "estado-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true },
+          { id: "estado-resuelto", codigo: "RESUELTO", nombre: "Resuelto", color: null, orden: 4, activo: true },
+          { id: "estado-cancelado", codigo: "CANCELADO", nombre: "Cancelado", color: null, orden: 6, activo: true },
+        ]),
+      ),
+      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([buildReparacion({ estadoId })]))),
+    );
+  }
+
+  it.each([
+    ["estado-resuelto", "El ticket está resuelto: solo admite comentarios."],
+    ["estado-cancelado", "El ticket está cancelado: solo admite comentarios."],
+  ])("%s: un no administrador ve Editar deshabilitado con el motivo y las compras sin gestionar", async (estadoId, motivo) => {
+    mockFila(estadoId);
+    renderConPermisos(<ReparacionesList />, { user: tecnico, permisos: PERMISOS });
+    await screen.findByText("EDI-0001");
+
+    const fila = filaDe("EDI-0001");
+    expect(within(fila).getByRole("button", { name: "Editar EDI-0001" })).toBeDisabled();
+    expect(within(fila).getByText(motivo)).toBeInTheDocument();
+    expect(within(fila).getByRole("button", { name: "Ver compras" })).toBeInTheDocument();
+    expect(within(fila).queryByRole("button", { name: "Gestionar compras" })).toBeNull();
+  });
+
+  it("caso hermano: en NUEVO el mismo técnico edita y gestiona compras", async () => {
+    mockFila("estado-nuevo");
+    renderConPermisos(<ReparacionesList />, { user: tecnico, permisos: PERMISOS });
+    await screen.findByText("EDI-0001");
+
+    const fila = filaDe("EDI-0001");
+    expect(within(fila).getByRole("button", { name: "Editar EDI-0001" })).toBeEnabled();
+    expect(within(fila).getByRole("button", { name: "Gestionar compras" })).toBeInTheDocument();
+  });
+
+  it("un ADMINISTRADOR en RESUELTO gestiona compras (S3)", async () => {
+    mockFila("estado-resuelto");
+    renderWithProviders(<ReparacionesList />, { user: administrador });
+    await screen.findByText("EDI-0001");
+
+    expect(within(filaDe("EDI-0001")).getByRole("button", { name: "Gestionar compras" })).toBeInTheDocument();
   });
 });
 

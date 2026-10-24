@@ -1407,8 +1407,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     ],
     ['SolicitanteInvalidoError', () => new TicketsErrors.SolicitanteInvalidoError('user-1'), 422],
     [
-      'ComentarioNoPermitidoError',
-      () => new TicketsErrors.ComentarioNoPermitidoError('CERRADO'),
+      'TicketSoloComentariosError',
+      () => new TicketsErrors.TicketSoloComentariosError('CERRADO'),
       422,
     ],
     ['ArchivoTamanoCeroError', () => new TicketsErrors.ArchivoTamanoCeroError(BigInt(0)), 422],

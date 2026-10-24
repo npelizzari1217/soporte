@@ -21,6 +21,10 @@ import {
   AlcanceActorTicket,
   puedeOperarTicket,
 } from '../../../tickets/application/services/visibilidad-ticket';
+import {
+  esAlcanceDeAdministrador,
+  verificarTicketModificable,
+} from '../../../tickets/application/services/solo-comentarios';
 
 /** Entrada de `EditarReparacionUseCase`. Un campo ausente no se toca; `null` limpia. */
 export interface EditarReparacionDto {
@@ -51,7 +55,8 @@ export interface ReparacionEditada {
  *
  * Regla "no se empezó a trabajar" (decisión del dueño): se edita si el ticket está NUEVO o ASIGNADO y
  * ninguna tarea activa está completada; fuera de eso, solo ROOT. Una reparación **bloqueada** (con
- * una compra activa vinculada) no la edita nadie, ROOT incluido.
+ * una compra activa vinculada) no la edita nadie, ROOT incluido. En RESUELTO, CERRADO o CANCELADO,
+ * quien no es administrador recibe `TicketSoloComentariosError` (odd/cerrado-solo-comentarios).
  *
  * Flujo:
  * 1. Validaciones de catálogo fuera de la transacción: prioridad y sector tienen que existir (un
@@ -142,13 +147,17 @@ export class EditarReparacionUseCase {
       return Result.fail(new ReparacionNoEditableError('BLOQUEADA'));
     }
 
+    // Después, la misma regla de estado que `EditarTicketUseCase`: en RESUELTO/CERRADO/CANCELADO
+    // quien no es administrador solo comenta (422, odd/cerrado-solo-comentarios); fuera de
+    // NUEVO/ASIGNADO, solo ROOT.
     if (!dto.actorEsRoot) {
-      const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
-      if (!estadoActual) {
-        throw new Error(
-          `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
-        );
-      }
+      const modificable = await verificarTicketModificable(
+        this.estadoRepo,
+        ticket,
+        esAlcanceDeAdministrador(dto.alcance),
+      );
+      if (modificable.isFail()) return Result.fail(modificable.getError());
+      const estadoActual = modificable.getValue();
       if (!ESTADOS_PRE_PROCESO.has(estadoActual.codigo)) {
         return Result.fail(new ReparacionNoEditableError('EN_PROCESO'));
       }

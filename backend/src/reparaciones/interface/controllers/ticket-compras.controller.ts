@@ -84,6 +84,7 @@ export class TicketComprasController {
    * `GET /compras`, decisión de producto #2435) y `MODIFICACION` sobre el tipo en el caso de uso.
    * @throws 403 sin `COMPRAS:LECTURA`, o sin `MODIFICACION` sobre el tipo
    * @throws 404 ticket o compra inexistente, o ticket que el actor no ve
+   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Post()
   @RequiereAcciones('COMPRAS:LECTURA')
@@ -108,6 +109,7 @@ export class TicketComprasController {
    * Desvincula (HARD DELETE real, D5) una compra del ticket. Mismos permisos que vincular (S4).
    * @throws 403 sin `COMPRAS:LECTURA`, o sin `MODIFICACION` sobre el tipo
    * @throws 404 vínculo inexistente, o ticket que el actor no ve
+   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Delete(':compraId')
   @RequiereAcciones('COMPRAS:LECTURA')

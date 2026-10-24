@@ -73,6 +73,7 @@ import {
   SecuenciaAgotadaError,
   TicketNoEncontradoError,
   AccionSobreTipoNoPermitidaError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
 
@@ -161,7 +162,8 @@ export function toHttpException(
     error instanceof ExportacionDemasiadoGrandeError ||
     // odd/detalle-ticket-legible (S5): la reparación ya se empezó a trabajar o está bloqueada.
     error instanceof ReparacionNoEditableError ||
-    error instanceof ComentarioReparacionNoPermitidoError
+    error instanceof ComentarioReparacionNoPermitidoError ||
+    error instanceof TicketSoloComentariosError
   ) {
     return new UnprocessableEntityException(error.message);
   }
@@ -319,7 +321,8 @@ export class ReparacionesController {
    *
    * @throws 403 sin `MODIFICACION` sobre el tipo del ticket
    * @throws 404 reparación o ticket inexistente, o que el actor no ve
-   * @throws 422 ya en proceso, con tareas completadas, bloqueada, prioridad o sector inexistente
+   * @throws 422 ya en proceso, con tareas completadas, bloqueada, prioridad o sector inexistente, o
+   *   ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Patch(':reparacionId')
   async editar(
@@ -428,6 +431,7 @@ export class ReparacionesController {
    * sobre el tipo del ticket lo exige el caso de uso (S4).
    * @throws 403 sin `COMPRAS:LECTURA`, o sin `MODIFICACION` sobre el tipo
    * @throws 404 reparación, ticket o compra inexistente, o ticket que el actor no ve
+   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Post(':reparacionId/compras')
   @RequiereAcciones('COMPRAS:LECTURA')
@@ -454,6 +458,7 @@ export class ReparacionesController {
    * la ruta y `MODIFICACION` sobre el tipo; `EDILICIA:BORRADO` ya no se usa.
    * @throws 403 sin `COMPRAS:LECTURA`, o sin `MODIFICACION` sobre el tipo
    * @throws 404 vínculo inexistente, o reparación o ticket que el actor no ve
+   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
   @Delete(':reparacionId/compras/:compraId')
   @RequiereAcciones('COMPRAS:LECTURA')

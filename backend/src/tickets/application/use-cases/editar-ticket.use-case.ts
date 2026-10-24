@@ -14,6 +14,7 @@ import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository'
 import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { ESTADOS_PRE_PROCESO } from '../../domain/state-machine/estados.constants';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
+import { esAlcanceDeAdministrador, verificarTicketModificable } from '../services/solo-comentarios';
 
 /**
  * DTO de entrada de `EditarTicketUseCase` (T8 — PATCH semántico).
@@ -50,7 +51,10 @@ export interface EditarTicketDto extends AlcanceActorTicket {
  * 1. Carga el ticket. Si no existe o está soft-deleted → `TicketNoEncontradoError` (404).
  *    Si el actor no lo ve (`esTicketAccesiblePara`: `LECTURA` sobre el tipo y fila) → también
  *    404; si lo ve sin `MODIFICACION` sobre el tipo → `AccionSobreTipoNoPermitidaError` (403).
- *    Las dos, antes de la regla de bloqueo y sin escribir nada.
+ *    Las dos, antes de la regla de bloqueo y sin escribir nada. Fuera de ROOT, en
+ *    RESUELTO/CERRADO/CANCELADO quien no es administrador recibe `TicketSoloComentariosError`
+ *    (422, odd/cerrado-solo-comentarios) y el resto, fuera de NUEVO/ASIGNADO,
+ *    `TicketBloqueadoParaEdicionError` (403).
  * 2. Si `prioridadId` viene definido, valida que exista en el catálogo del
  *    tenant → `PrioridadNoEncontradaError` (422) si no.
  * 2b. Si `sectorId` viene con valor, valida que exista en el catálogo
@@ -133,18 +137,19 @@ export class EditarTicketUseCase {
     if (ticketResult.isFail()) return Result.fail(ticketResult.getError());
     const ticket = ticketResult.getValue();
 
-    // Regla de bloqueo por estado: una vez que el ticket sale de
+    // Reglas de bloqueo por estado. ROOT bypassa SIEMPRE las dos. Primero, en
+    // RESUELTO/CERRADO/CANCELADO quien no es administrador solo comenta (422,
+    // odd/cerrado-solo-comentarios). Después, una vez que el ticket sale de
     // NUEVO/ASIGNADO (entra EN_PROCESO o posterior), SOLO ROOT puede editar
-    // los datos. ROOT bypassa SIEMPRE. El catálogo de estados es FIJO (ADR-1)
-    // — su ausencia es un bug de infraestructura, no un error del caller:
-    // throw defensivo (mismo criterio que `TransicionarEstadoUseCase`).
+    // los datos (403): el ADMINISTRADOR tampoco, como antes.
     if (!dto.actorEsRoot) {
-      const estadoActual = await this.estadoRepo.findById(ticket.estadoId);
-      if (!estadoActual) {
-        throw new Error(
-          `Catálogo de estados inconsistente: no existe el estado con id "${ticket.estadoId}" en el tenant activo.`,
-        );
-      }
+      const modificable = await verificarTicketModificable(
+        this.estadoRepo,
+        ticket,
+        esAlcanceDeAdministrador(dto),
+      );
+      if (modificable.isFail()) return Result.fail(modificable.getError());
+      const estadoActual = modificable.getValue();
       if (!ESTADOS_PRE_PROCESO.has(estadoActual.codigo)) {
         return Result.fail(new TicketBloqueadoParaEdicionError(estadoActual.codigo));
       }

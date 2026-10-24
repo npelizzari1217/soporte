@@ -104,7 +104,7 @@ import {
   AsignadoInvalidoError,
   AsignadoNoElegibleError,
   TicketCerradoNoReasignableError,
-  ComentarioNoPermitidoError,
+  TicketSoloComentariosError,
   ArchivoTamanoCeroError,
   TipoArchivoNoPermitidoError,
   TicketBloqueadoParaEdicionError,
@@ -175,7 +175,9 @@ export function toHttpException(
     error instanceof AsignadoInvalidoError ||
     error instanceof AsignadoNoElegibleError ||
     error instanceof TicketCerradoNoReasignableError ||
-    error instanceof ComentarioNoPermitidoError ||
+    // RESUELTO, CERRADO o CANCELADO con un actor que no es administrador
+    // (odd/cerrado-solo-comentarios): lo usan también adjuntos y tareas.
+    error instanceof TicketSoloComentariosError ||
     error instanceof ArchivoTamanoCeroError ||
     error instanceof TipoArchivoNoPermitidoError ||
     // Exportación a CSV (sdd/exportar-listados-csv, decisión D2): cae igual
@@ -548,7 +550,8 @@ export class TicketsController {
    * @throws 403 sin `MODIFICACION` sobre el tipo del ticket, o ticket EN_PROCESO+
    *             editado por un no-ROOT (`TicketBloqueadoParaEdicionError`)
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
-   * @throws 422 prioridadId o sectorId inexistente en el catálogo
+   * @throws 422 prioridadId o sectorId inexistente en el catálogo, o ticket RESUELTO/CERRADO/CANCELADO
+   *             editado por quien no es ADMINISTRADOR ni ROOT (`TicketSoloComentariosError`)
    */
   @Patch(':id')
   async update(
@@ -636,8 +639,10 @@ export class TicketsController {
    * Para LLEGAR a un estado terminal se usan los arcos normales.
    * @throws 403 sin `TRANSICIONAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
-   * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, o transición
-   *             inválida (arco no válido y sin salto correctivo aplicable)
+   * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, transición
+   *             inválida (arco no válido y sin salto correctivo aplicable), o
+   *             quien no es ADMINISTRADOR ni ROOT intenta sacar al ticket de
+   *             RESUELTO/CERRADO/CANCELADO (`TicketSoloComentariosError`)
    */
   @Patch(':id/estado')
   async transicionarEstado(
@@ -678,7 +683,8 @@ export class TicketsController {
    * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),
-   *             o ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`)
+   *             ticket CERRADO/CANCELADO (`TicketCerradoNoReasignableError`), o RESUELTO
+   *             con un actor que no es ADMINISTRADOR ni ROOT (`TicketSoloComentariosError`)
    */
   @Patch(':id/asignar')
   async asignar(
@@ -742,8 +748,9 @@ export class TicketsController {
    * @throws 403 sin `ASIGNAR` o `TRANSICIONAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido/no elegible, ticket CERRADO/CANCELADO
-   *             (`TicketCerradoNoReasignableError`), o el estado actual no
-   *             puede llegar a EN_PROCESO (RESUELTO)
+   *             (`TicketCerradoNoReasignableError`), RESUELTO con un actor que
+   *             no es administrador (`TicketSoloComentariosError`), o el estado
+   *             actual no puede llegar a EN_PROCESO (RESUELTO)
    */
   @Patch(':id/asignar-en-proceso')
   async asignarEnProceso(
@@ -777,7 +784,8 @@ export class TicketsController {
    * D5 c). Lo decide el caso de uso, que conoce el tipo del ticket.
    * @throws 403 sin `COMENTAR` (o sin `OBSERVAR`, si es interno) sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
-   * @throws 422 ticket en estado terminal (solo comentarios públicos, T16)
+   * Se acepta en cualquier estado, también RESUELTO, CERRADO o CANCELADO
+   * (odd/cerrado-solo-comentarios, S4).
    */
   @Post(':id/comentarios')
   @HttpCode(HttpStatus.CREATED)

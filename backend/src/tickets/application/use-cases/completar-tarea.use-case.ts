@@ -74,7 +74,7 @@ export class CompletarTareaUseCase {
     if (!puedeCompletarTarea(dto.actor, ticket, tarea)) {
       return Result.fail(await rechazar(this.ticketRepo, ticket, dto.actor, 'completar'));
     }
-    const editable = await this.verificadorEditable.verificar(ticket);
+    const editable = await this.verificadorEditable.verificar(ticket, dto.actor.esAdministrador);
     if (editable.isFail()) return Result.fail(editable.getError());
 
     const condicion = condicionDeTecnico(dto.actor, ticket, tarea);

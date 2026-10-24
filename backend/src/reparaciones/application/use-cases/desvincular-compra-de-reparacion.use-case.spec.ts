@@ -10,10 +10,12 @@
 import { DesvincularCompraDeReparacionUseCase } from './desvincular-compra-de-reparacion.use-case';
 import { VinculoNoEncontradoError } from '../../domain/errors/reparaciones.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
+import { EstadoEntity } from '../../../tickets/domain/entities/estado.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import {
   AccionSobreTipoNoPermitidaError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
@@ -27,8 +29,14 @@ function vinculada(compraId: string, numero: string): CompraVinculada {
   return { compraId, numero, cancelada: false, items: [] };
 }
 
+/** Estado del catálogo para un id `estado-<CODIGO>`. */
+function estadoDeId(id: string): EstadoEntity {
+  const codigo = id.replace('estado-', '');
+  return EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 1, activo: true }, id);
+}
+
 describe('DesvincularCompraDeReparacionUseCase', () => {
-  function buildDeps() {
+  function buildDeps(estadoCodigo = 'NUEVO') {
     const reparacionCompraRepo = {
       findComprasVinculadasByTicketIds:
         vi.fn<IReparacionCompraRepository['findComprasVinculadasByTicketIds']>(),
@@ -42,7 +50,7 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
             titulo: 'Impresora sin tóner',
             descripcion: null,
             tipoId: 'tipo-soporte',
-            estadoId: 'estado-nuevo',
+            estadoId: `estado-${estadoCodigo}`,
             prioridadId: 'prioridad-media',
             cicloId: null,
             ticketReferenciaId: null,
@@ -54,7 +62,13 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
       esVisiblePara: vi.fn<ITicketRepository['esVisiblePara']>().mockResolvedValue(false),
     };
 
-    const useCase = new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo, ticketRepo);
+    const estadoRepo = { findById: async (id: string) => estadoDeId(id) };
+
+    const useCase = new DesvincularCompraDeReparacionUseCase(
+      reparacionCompraRepo,
+      ticketRepo,
+      estadoRepo,
+    );
 
     return { useCase, reparacionCompraRepo, ticketRepo };
   }
@@ -161,6 +175,41 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
           'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
         }),
       });
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.desvincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
+    });
+  });
+  describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S5)', () => {
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+      'en %s un no administrador recibe TicketSoloComentariosError (422) y el vínculo queda',
+      async (estado) => {
+        const { useCase, reparacionCompraRepo } = buildDeps(estado);
+        reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+          new Map([['ticket-uuid', [vinculada('compra-uuid', 'COM-2026-00001')]]]),
+        );
+
+        const result = await useCase.execute({
+          ...baseDto,
+          alcance: alcancePorTipo('actor-uuid', {
+            'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+          }),
+        });
+
+        const error = result.getError();
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(estado);
+        expect(reparacionCompraRepo.desvincular).not.toHaveBeenCalled();
+      },
+    );
+
+    it('en CANCELADO un ADMINISTRADOR o ROOT desvincula (S3)', async () => {
+      const { useCase, reparacionCompraRepo } = buildDeps('CANCELADO');
+      reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+        new Map([['ticket-uuid', [vinculada('compra-uuid', 'COM-2026-00001')]]]),
+      );
+
+      const result = await useCase.execute(baseDto);
 
       expect(result.isOk()).toBe(true);
       expect(reparacionCompraRepo.desvincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');

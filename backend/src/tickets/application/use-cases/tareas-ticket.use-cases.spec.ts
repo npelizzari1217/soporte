@@ -17,7 +17,10 @@ import {
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
 } from '../../domain/errors/tareas.errors';
-import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
+import {
+  TicketNoEncontradoError,
+  TicketSoloComentariosError,
+} from '../../domain/errors/tickets.errors';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { alcancePorTipo } from '../../test-helpers/alcance-ticket';
 import { MasterAgentesEnMemoria } from '../../test-helpers/master-agentes-en-memoria';
@@ -1037,15 +1040,18 @@ describe('Visibilidad por tarea (CA10)', () => {
   });
 });
 
-describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectura (odd/ticket-cerrado-solo-lectura, S1-S2)', () => {
+describe('tareas en un ticket resuelto, cerrado o cancelado (odd/cerrado-solo-comentarios, S1-S3) o bloqueado por compra (odd/ticket-cerrado-solo-lectura, S2)', () => {
   type Accion = 'crear' | 'asignar' | 'completar' | 'descompletar' | 'eliminar';
   const ACCIONES: Accion[] = ['crear', 'asignar', 'completar', 'descompletar', 'eliminar'];
 
-  /** Ejecuta la acción como administrador (pasa cualquier autorización) sobre una tarea sembrada. */
+  /**
+   * Ejecuta la acción sobre una tarea sembrada. Por defecto, como el responsable del ticket, que
+   * pasa la autorización de las cinco acciones sin ser administrador.
+   */
   async function ejecutar(
     deps: ReturnType<typeof armar>,
     accion: Accion,
-    actor: ActorTarea = ACTORES.administrador,
+    actor: ActorTarea = ACTORES.responsable,
   ): Promise<Result<unknown, DomainError>> {
     const base = { ticketId: TICKET_ID, actor };
     switch (accion) {
@@ -1055,7 +1061,8 @@ describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectu
         return deps.asignar.execute({
           ...base,
           tareaId: 'pendiente',
-          tecnicoId: TECNICO,
+          // Otro técnico: reasignar al mismo no escribe nada y no probaría la escritura.
+          tecnicoId: OTRO_TECNICO,
           clienteId: CLIENTE_ID,
         });
       case 'completar':
@@ -1074,79 +1081,117 @@ describe('ticket cerrado, cancelado o bloqueado por compra: tareas de solo lectu
     return deps;
   }
 
-  const CASOS: [string, (deps: ReturnType<typeof armar>) => void, string, string][] = [
-    [
-      'CERRADO',
-      (d) => d.ponerEstado(TICKET_ID, 'CERRADO'),
-      'cerrado',
-      'El ticket está cerrado y no acepta cambios en sus tareas.',
-    ],
-    [
-      'CANCELADO',
-      (d) => d.ponerEstado(TICKET_ID, 'CANCELADO'),
-      'cancelado',
-      'El ticket está cancelado y no acepta cambios en sus tareas.',
-    ],
-    [
-      'bloqueado por una compra activa',
-      (d) => d.bloqueados.add(TICKET_ID),
-      'bloqueado',
-      'La reparación está bloqueada por una compra en curso y no acepta cambios en sus tareas.',
-    ],
+  /** Las tareas como se ven desde afuera: lo que ninguna acción rechazada tiene que cambiar. */
+  function fotoDeTareas(deps: ReturnType<typeof armar>) {
+    return [...deps.tareas.values()].map((t) => ({
+      id: t.id,
+      completada: t.completada,
+      tecnicoId: t.tecnicoId,
+      eliminada: t.isDeleted(),
+    }));
+  }
+
+  const ESTADOS: [string, string][] = [
+    ['RESUELTO', 'El ticket está resuelto: solo admite comentarios.'],
+    ['CERRADO', 'El ticket está cerrado: solo admite comentarios.'],
+    ['CANCELADO', 'El ticket está cancelado: solo admite comentarios.'],
   ];
 
-  describe.each(CASOS)('ticket %s', (_nombre, preparar, motivo, mensaje) => {
-    it.each(ACCIONES)('%s da TareaTicketNoEditableError y no escribe nada', async (accion) => {
+  describe.each(ESTADOS)('ticket %s', (codigo, inicioMensaje) => {
+    it.each(ACCIONES)(
+      'el responsable (no administrador) no puede %s: TicketSoloComentariosError y no escribe nada',
+      async (accion) => {
+        const deps = armarConTareas();
+        deps.ponerEstado(TICKET_ID, codigo);
+        const antes = fotoDeTareas(deps);
+
+        const error = errorDe(await ejecutar(deps, accion));
+
+        expect(error).toBeInstanceOf(TicketSoloComentariosError);
+        expect((error as TicketSoloComentariosError).estadoCodigo).toBe(codigo);
+        expect(error.message).toBe(
+          `${inicioMensaje} Solo un administrador puede modificarlo o reabrirlo.`,
+        );
+        expect(deps.operaciones).toHaveLength(0);
+        expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+        expect(fotoDeTareas(deps)).toEqual(antes);
+      },
+    );
+
+    it('el técnico de la tarea tampoco puede completarla', async () => {
       const deps = armarConTareas();
-      preparar(deps);
-      const antes = [...deps.tareas.values()].map((t) => ({
-        id: t.id,
-        completada: t.completada,
-        tecnicoId: t.tecnicoId,
-        eliminada: t.isDeleted(),
-      }));
+      deps.ponerEstado(TICKET_ID, codigo);
 
-      const result = await ejecutar(deps, accion);
+      const error = errorDe(await ejecutar(deps, 'completar', ACTORES.tecnicoDeLaTarea));
 
-      const error = errorDe(result);
-      expect(error).toBeInstanceOf(TareaTicketNoEditableError);
-      expect(error.message).toBe(mensaje);
-      expect((error as TareaTicketNoEditableError).motivo).toBe(motivo);
+      expect(error).toBeInstanceOf(TicketSoloComentariosError);
       expect(deps.operaciones).toHaveLength(0);
-      expect(
-        [...deps.tareas.values()].map((t) => ({
-          id: t.id,
-          completada: t.completada,
-          tecnicoId: t.tecnicoId,
-          eliminada: t.isDeleted(),
-        })),
-      ).toEqual(antes);
+    });
+
+    it.each(ACCIONES)('un ADMINISTRADOR o ROOT sí puede %s (S3)', async (accion) => {
+      const deps = armarConTareas();
+      deps.ponerEstado(TICKET_ID, codigo);
+
+      const result = await ejecutar(deps, accion, ACTORES.administrador);
+
+      expect(result.isOk()).toBe(true);
+      expect(deps.operaciones).toHaveLength(1);
     });
   });
 
-  it('en RESUELTO todo sigue permitido: descompletar lo devuelve a EN_PROCESO (odd/estado-por-tareas)', async () => {
+  it('un administrador descompleta en RESUELTO y el ticket vuelve a EN_PROCESO (lo reabre)', async () => {
     const deps = armarConTareas();
     deps.ponerEstado(TICKET_ID, 'RESUELTO');
 
-    for (const accion of ACCIONES) {
-      expect((await ejecutar(deps, accion)).isOk(), accion).toBe(true);
-    }
+    const result = await ejecutar(deps, 'descompletar', ACTORES.administrador);
+
+    expect(result.isOk()).toBe(true);
+    expect(deps.avanzarEstado.aplicar).toHaveBeenCalledWith('DESCOMPLETAR', TICKET_ID, ADMIN);
   });
 
-  it('el estado terminal manda antes que el bloqueo por compra, y sin estado terminal consulta el bloqueo', async () => {
+  it.each(['NUEVO', 'ASIGNADO', 'EN_PROCESO', 'ESPERANDO_CLIENTE'])(
+    'en %s el responsable sigue pudiendo todo',
+    async (codigo) => {
+      const deps = armarConTareas();
+      deps.ponerEstado(TICKET_ID, codigo);
+
+      for (const accion of ACCIONES) {
+        expect((await ejecutar(deps, accion)).isOk(), accion).toBe(true);
+      }
+    },
+  );
+
+  describe('bloqueado por una compra activa', () => {
+    it.each(ACCIONES)(
+      '%s da TareaTicketNoEditableError a cualquiera, administrador incluido, y no escribe nada',
+      async (accion) => {
+        const deps = armarConTareas();
+        deps.bloqueados.add(TICKET_ID);
+        const antes = fotoDeTareas(deps);
+
+        for (const actor of [ACTORES.responsable, ACTORES.administrador]) {
+          const error = errorDe(await ejecutar(deps, accion, actor));
+          expect(error).toBeInstanceOf(TareaTicketNoEditableError);
+          expect(error.message).toBe(
+            'La reparación está bloqueada por una compra en curso y no acepta cambios en sus tareas.',
+          );
+        }
+        expect(deps.operaciones).toHaveLength(0);
+        expect(fotoDeTareas(deps)).toEqual(antes);
+      },
+    );
+  });
+
+  it('el estado manda antes que el bloqueo por compra, y sin ese estado se consulta el bloqueo', async () => {
     const deps = armarConTareas();
     deps.ponerEstado(TICKET_ID, 'CERRADO');
     deps.bloqueados.add(TICKET_ID);
 
-    expect((errorDe(await ejecutar(deps, 'crear')) as TareaTicketNoEditableError).motivo).toBe(
-      'cerrado',
-    );
+    expect(errorDe(await ejecutar(deps, 'crear'))).toBeInstanceOf(TicketSoloComentariosError);
     expect(deps.bloqueoRepo.estaBloqueadoPorCompra).not.toHaveBeenCalled();
 
     deps.ponerEstado(TICKET_ID, 'EN_PROCESO');
-    expect((errorDe(await ejecutar(deps, 'crear')) as TareaTicketNoEditableError).motivo).toBe(
-      'bloqueado',
-    );
+    expect(errorDe(await ejecutar(deps, 'crear'))).toBeInstanceOf(TareaTicketNoEditableError);
     expect(deps.bloqueoRepo.estaBloqueadoPorCompra).toHaveBeenCalledWith(TICKET_ID);
   });
 

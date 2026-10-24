@@ -168,6 +168,7 @@ export class TareasTicketController {
   /**
    * POST /tickets/:id/tareas — alta de una tarea pendiente y sin técnico (CA3).
    * @throws 403 sin permiso · 404 ticket inexistente o no visible
+   *   · 422 ticket bloqueado por una compra, o RESUELTO/CERRADO/CANCELADO para quien no es administrador
    */
   @Post(':id/tareas')
   @HttpCode(HttpStatus.CREATED)
@@ -189,6 +190,7 @@ export class TareasTicketController {
   /**
    * PATCH /tickets/:id/tareas/:tareaId/tecnico — asigna (`tecnicoId`) o quita (`null`) el técnico.
    * @throws 403 sin permiso · 404 ticket o tarea · 422 técnico no elegible
+   *   · 422 ticket bloqueado por una compra, o RESUELTO/CERRADO/CANCELADO para quien no es administrador
    */
   @Patch(':id/tareas/:tareaId/tecnico')
   async asignar(
@@ -212,6 +214,7 @@ export class TareasTicketController {
   /**
    * POST /tickets/:id/tareas/:tareaId/completar — el crédito es del actor (CA4).
    * @throws 403 sin permiso · 404 ticket o tarea · 409 ya completada
+   *   · 422 ticket bloqueado por una compra, o RESUELTO/CERRADO/CANCELADO para quien no es administrador
    */
   @Post(':id/tareas/:tareaId/completar')
   @HttpCode(HttpStatus.OK)
@@ -233,6 +236,7 @@ export class TareasTicketController {
   /**
    * POST /tickets/:id/tareas/:tareaId/descompletar — vuelve a pendiente y limpia el crédito (CA4).
    * @throws 403 sin permiso · 404 ticket o tarea · 409 no estaba completada
+   *   · 422 ticket bloqueado por una compra, o RESUELTO/CERRADO/CANCELADO para quien no es administrador
    */
   @Post(':id/tareas/:tareaId/descompletar')
   @HttpCode(HttpStatus.OK)
@@ -254,6 +258,7 @@ export class TareasTicketController {
   /**
    * DELETE /tickets/:id/tareas/:tareaId — baja lógica (CA3).
    * @throws 403 sin permiso · 404 ticket o tarea
+   *   · 422 ticket bloqueado por una compra, o RESUELTO/CERRADO/CANCELADO para quien no es administrador
    */
   @Delete(':id/tareas/:tareaId')
   @HttpCode(HttpStatus.NO_CONTENT)

@@ -217,7 +217,8 @@ export class TicketsV1Controller {
    * (`accionesDeClaveApiParaComentar`); 404
    * si el ticket no es del cliente o es de otro modulo, antes de escribir nada. El autor
    * es el usuario de integracion, que habla por el cliente: el comentario no cuenta como primera
-   * respuesta de SLA (`autorEsIntegracion`, T5d).
+   * respuesta de SLA (`autorEsIntegracion`, T5d). Se acepta en cualquier estado del ticket, tambien
+   * RESUELTO, CERRADO o CANCELADO (odd/cerrado-solo-comentarios, S4).
    */
   @Post(':id/comentarios')
   @RequierePermisoApi('TICKETS:COMENTAR')
@@ -237,10 +238,6 @@ export class TicketsV1Controller {
   @ApiNotFoundResponse({
     type: ErrorV1,
     description: 'El ticket no existe, es de otro cliente o no es del módulo TICKETS.',
-  })
-  @ApiUnprocessableEntityResponse({
-    type: ErrorV1,
-    description: 'El estado del ticket no admite comentarios.',
   })
   async comentar(
     @CurrentUser() actor: JwtPayload,

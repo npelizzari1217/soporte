@@ -48,7 +48,9 @@ export interface DescompletarTareaDto {
  *
  * El estado del ticket sigue a sus tareas (odd/estado-por-tareas, S4-S6): en la misma transacción,
  * con la fila del ticket bloqueada ANTES de escribir la tarea, `AvanzarEstadoPorTareasService`
- * devuelve un ticket RESUELTO a EN_PROCESO.
+ * devuelve un ticket RESUELTO a EN_PROCESO. Solo un ADMINISTRADOR o ROOT llega a ese caso: en
+ * RESUELTO, al resto `VerificadorTicketEditable` le responde que el ticket solo admite comentarios
+ * (odd/cerrado-solo-comentarios).
  *
  * Con el lock tomado relee el ticket (odd/permisos-por-tipo-ticket, L45): si se borró después de
  * cargarlo, da `TicketNoEncontradoError` (404) y no escribe nada. Sin eso, la tarea volvería a
@@ -81,7 +83,7 @@ export class DescompletarTareaUseCase {
     if (!puedeCompletarTarea(dto.actor, ticket, tarea)) {
       return Result.fail(await rechazar(this.ticketRepo, ticket, dto.actor, 'descompletar'));
     }
-    const editable = await this.verificadorEditable.verificar(ticket);
+    const editable = await this.verificadorEditable.verificar(ticket, dto.actor.esAdministrador);
     if (editable.isFail()) return Result.fail(editable.getError());
 
     const completadaPorAnteriorId = tarea.completadaPorId;
