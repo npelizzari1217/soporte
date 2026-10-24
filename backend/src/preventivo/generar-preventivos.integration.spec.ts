@@ -147,6 +147,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       equipoId: null,
       ubicacion: 'DEPOSITO PREVENTIVO TEST',
       prioridadId,
+      tipoId: tipoPreventivoId,
       responsableId: DUMMY_RESPONSABLE_ID,
       intervaloValor: 7,
       intervaloUnidad: 'DIAS',
@@ -232,7 +233,6 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     generarPreventivosUseCase = new GenerarPreventivosUseCase(
       planRepo,
       generacionRepo,
-      tipoTicketRepo,
       crearTicketUseCase,
       txRunner,
       new CalcularCicloService(),
@@ -567,6 +567,59 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBe(plan.proximaEjecucionEn.getTime());
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(plan.id));
+  });
+
+  // ─── Tipo del plan (odd/preventivo-por-tipo, S2, S3) ─────────────────────
+
+  describe('tipo de ticket del plan (S2)', () => {
+    it('un plan de tipo Mantenimiento genera un ticket de Mantenimiento, con su numeración', async () => {
+      const mantenimiento = await tenantClient.tipoTicket.findUniqueOrThrow({
+        where: { codigo: 'MANTENIMIENTO' },
+      });
+      const plan = await crearPlan({ tipoId: mantenimiento.id });
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      const tickets = await ticketsDelPlan(plan);
+      expect(tickets).toHaveLength(1);
+      expect(tickets[0].tipoId).toBe(mantenimiento.id);
+      expect(tickets[0].numero.startsWith('PRE-')).toBe(false);
+      const generaciones = await generacionesDelPlan(plan);
+      expect(generaciones.map((g) => [g.resultado, g.ticketId])).toEqual([
+        ['GENERADO', tickets[0].id],
+      ]);
+    });
+
+    // El tipo se dio de baja después de crear el plan: el alta lo rechaza y el ciclo queda para el
+    // barrido siguiente, sin cortar el resto (otro plan del mismo barrido genera igual).
+    it('un plan cuyo tipo se dio de baja no genera ni mueve el puntero, lo loguea, y el barrido sigue', async () => {
+      const tipoBaja = await tenantClient.tipoTicket.create({
+        data: { codigo: `BAJA_${RUN_PREFIX}`, nombre: 'Tipo dado de baja', modulo: 'TICKETS' },
+      });
+      const planConTipoDeBaja = await crearPlan({ tipoId: tipoBaja.id });
+      const planSano = await crearPlan();
+      await tenantClient.tipoTicket.update({
+        where: { id: tipoBaja.id },
+        data: { activo: false, deletedAt: new Date() },
+      });
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      expect(await ticketsDelPlan(planConTipoDeBaja)).toHaveLength(0);
+      expect(await generacionesDelPlan(planConTipoDeBaja)).toHaveLength(0);
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: planConTipoDeBaja.id },
+      });
+      expect(fila.proximaEjecucionEn.getTime()).toBe(
+        planConTipoDeBaja.proximaEjecucionEn.getTime(),
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        `PREVENTIVO_PLAN_ERROR | planId=${planConTipoDeBaja.id} | error=No se pudo generar el ` +
+          `ticket del plan ${planConTipoDeBaja.id}: Tipo de ticket con id "${tipoBaja.id}" no ` +
+          'encontrado en el catálogo del tenant.',
+      );
+      expect(await ticketsDelPlan(planSano)).toHaveLength(1);
+    });
   });
 
   describe('regla de asignación automática en el preventivo (A6, A7, A9, N1)', () => {

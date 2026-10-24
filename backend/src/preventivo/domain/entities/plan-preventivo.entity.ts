@@ -91,6 +91,12 @@ export interface PlanPreventivoProps {
   /** Texto libre normalizado a mayúscula. Excluyente con `equipoId` (ADR-PV1). */
   ubicacion: string | null;
   prioridadId: string;
+  /**
+   * Tipo de ticket de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Cualquier tipo
+   * del catálogo; que esté vigente para nuevas altas y que el actor tenga permiso sobre él lo decide
+   * la capa de aplicación, que es la que puede consultar el catálogo y el alcance.
+   */
+  tipoId: string;
   /** Soft ref → master.usuarios.id. Solicitante/autor del ticket generado. */
   responsableId: string;
   /** Entero estrictamente positivo. */
@@ -131,6 +137,7 @@ export type PlanPreventivoEditarProps = Partial<
     | 'equipoId'
     | 'ubicacion'
     | 'prioridadId'
+    | 'tipoId'
     | 'responsableId'
     | 'intervaloValor'
     | 'intervaloUnidad'
@@ -340,6 +347,10 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
     return this.props.prioridadId;
   }
 
+  get tipoId(): string {
+    return this.props.tipoId;
+  }
+
   get responsableId(): string {
     return this.props.responsableId;
   }
@@ -430,6 +441,7 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
     this.props.equipoId = equipoId;
     this.props.ubicacion = ubicacionNormalizada;
     if (datos.prioridadId !== undefined) this.props.prioridadId = datos.prioridadId;
+    if (datos.tipoId !== undefined) this.props.tipoId = datos.tipoId;
     if (datos.responsableId !== undefined) this.props.responsableId = datos.responsableId;
     this.props.intervaloValor = intervaloValor;
     this.props.intervaloUnidad = intervaloUnidad;

@@ -4,16 +4,32 @@ import { ITenantTransactionRunner } from '../../../shared/infrastructure/persist
 import { unstubbed } from '../../../testing/mocks';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import {
+  AccionSobreTipoDelPlanNoPermitidaError,
   AnticipacionNoMenorQueCadenciaError,
   IntervaloInvalidoError,
   ObjetivoInvalidoError,
   PlanNoEncontradoError,
   ResponsableNoElegibleError,
 } from '../../domain/errors/preventivo.errors';
+import { TipoTicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
 import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
+import {
+  TIPO_DADO_DE_BAJA_ID,
+  TIPO_PREVENTIVO_ID,
+  TIPO_SOPORTE_ID,
   USUARIOS_PREVENTIVO,
   responsablesDePrueba,
+  tiposDePrueba,
 } from '../../test-helpers/responsables-plan-en-memoria';
+
+/** Actor que ve Preventivo y Soporte, y nada más (odd/preventivo-por-tipo, S4). */
+const ACTOR = alcancePorTipo('actor-1', {
+  [TIPO_PREVENTIVO_ID]: ['LECTURA'],
+  [TIPO_SOPORTE_ID]: ['LECTURA'],
+});
 
 function makePlan(overrides: Partial<Parameters<typeof PlanPreventivoEntity.create>[0]> = {}) {
   const result = PlanPreventivoEntity.create(
@@ -23,6 +39,7 @@ function makePlan(overrides: Partial<Parameters<typeof PlanPreventivoEntity.crea
       equipoId: 'equipo-uuid',
       ubicacion: null,
       prioridadId: 'prioridad-uuid',
+      tipoId: TIPO_PREVENTIVO_ID,
       responsableId: 'responsable-uuid',
       intervaloValor: 3,
       intervaloUnidad: 'MESES',
@@ -53,7 +70,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     vi.spyOn(txRunner, 'run');
     const { responsables, master } = responsablesDePrueba();
     return {
-      useCase: new EditarPlanUseCase(planRepo, txRunner, responsables),
+      useCase: new EditarPlanUseCase(planRepo, txRunner, responsables, tiposDePrueba()),
       planRepo,
       txRunner,
       master,
@@ -73,6 +90,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: 'no-existe',
       titulo: 'Nuevo título',
     });
@@ -90,6 +108,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       titulo: 'Nuevo título',
     });
@@ -108,6 +127,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       titulo: 'Nuevo título',
     });
@@ -136,6 +156,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     // desde fechaInicio, y el resultado debe ser una fecha > hoy (2026-06-15).
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       intervaloValor: 1,
       intervaloUnidad: 'MESES',
@@ -161,6 +182,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       ubicacion: 'DEPOSITO',
     });
@@ -181,6 +203,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       equipoId: null,
     });
@@ -201,6 +224,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       equipoId: null,
       ubicacion: 'DEPOSITO',
@@ -219,6 +243,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       intervaloValor: 0,
     });
@@ -239,6 +264,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       intervaloValor: 5,
     });
@@ -268,6 +294,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       anticipacionValor: 10,
       anticipacionUnidad: 'DIAS',
@@ -289,6 +316,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       anticipacionValor: 5,
       anticipacionUnidad: 'DIAS',
@@ -304,6 +332,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       anticipacionValor: 3,
       anticipacionUnidad: 'MESES',
@@ -322,6 +351,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       responsableId: USUARIOS_PREVENTIVO.TECNICO_PREVENTIVO.id,
     });
@@ -346,6 +376,7 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
       const result = await useCase.execute({
         clienteId: 'cliente-1',
+        alcance: ACTOR,
         planId: plan.id,
         titulo: 'Nuevo título',
         responsableId,
@@ -368,9 +399,164 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
 
     const result = await useCase.execute({
       clienteId: 'cliente-1',
+      alcance: ACTOR,
       planId: plan.id,
       titulo: 'Nuevo título',
       responsableId: 'responsable-uuid',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(plan.titulo).toBe('Nuevo título');
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+    expect(master.consultasDeAgentes).toBe(0);
+  });
+
+  // ─── Tipo del plan (odd/preventivo-por-tipo, S2, S4, S5) ────────────────
+
+  it('S4: un plan de un tipo sin LECTURA para el actor no existe para él → 404, nada cambia', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: alcancePorTipo('actor-1', { [TIPO_SOPORTE_ID]: ['LECTURA', 'MODIFICACION'] }),
+      planId: plan.id,
+      titulo: 'Nuevo título',
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.titulo).toBe('Cambio de filtros');
+  });
+
+  it('S4: ADMINISTRADOR (sin restricción por tipo) edita el plan de cualquier tipo', async () => {
+    const plan = makePlan({ tipoId: TIPO_SOPORTE_ID });
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: alcanceSinRestriccion('admin-1'),
+      planId: plan.id,
+      titulo: 'Nuevo título',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+  });
+
+  it('S2: cambia el tipo a otro vigente y visible, con un responsable de ese tipo → persiste', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: ACTOR,
+      planId: plan.id,
+      tipoId: TIPO_SOPORTE_ID,
+      responsableId: USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id,
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(plan.tipoId).toBe(TIPO_SOPORTE_ID);
+    expect(plan.responsableId).toBe(USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id);
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+  });
+
+  // El responsable vigente es elegible para Preventivo pero no para Soporte: al cambiar el tipo se
+  // revalida aunque el formulario lo reenvíe igual.
+  it('S5: cambia el tipo y conserva un responsable que no es técnico del tipo nuevo → 422, nada cambia', async () => {
+    const plan = makePlan({ responsableId: USUARIOS_PREVENTIVO.TECNICO_PREVENTIVO.id });
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: ACTOR,
+      planId: plan.id,
+      tipoId: TIPO_SOPORTE_ID,
+      responsableId: USUARIOS_PREVENTIVO.TECNICO_PREVENTIVO.id,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ResponsableNoElegibleError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.tipoId).toBe(TIPO_PREVENTIVO_ID);
+  });
+
+  it('S5: cambia el tipo sin mandar responsable → revalida el vigente contra el tipo nuevo', async () => {
+    const plan = makePlan({ responsableId: USUARIOS_PREVENTIVO.TECNICO_PREVENTIVO.id });
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: ACTOR,
+      planId: plan.id,
+      tipoId: TIPO_SOPORTE_ID,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(ResponsableNoElegibleError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['dado de baja', TIPO_DADO_DE_BAJA_ID],
+    ['inexistente', 'tipo-inexistente'],
+  ])(
+    'cambia el tipo a uno %s → TipoTicketNoEncontradoError, nada cambia',
+    async (_caso, tipoId) => {
+      const plan = makePlan();
+      const { useCase, planRepo } = buildUseCase(plan);
+
+      const result = await useCase.execute({
+        clienteId: 'cliente-1',
+        alcance: alcanceSinRestriccion('admin-1'),
+        planId: plan.id,
+        tipoId,
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(TipoTicketNoEncontradoError);
+      expect(planRepo.guardar).not.toHaveBeenCalled();
+      expect(plan.tipoId).toBe(TIPO_PREVENTIVO_ID);
+    },
+  );
+
+  it('S4: cambia el tipo a uno sin LECTURA para el actor → 403, nada cambia', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: alcancePorTipo('actor-1', {
+        [TIPO_PREVENTIVO_ID]: ['LECTURA'],
+        [TIPO_SOPORTE_ID]: ['MODIFICACION'],
+      }),
+      planId: plan.id,
+      tipoId: TIPO_SOPORTE_ID,
+      responsableId: USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(AccionSobreTipoDelPlanNoPermitidaError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.tipoId).toBe(TIPO_PREVENTIVO_ID);
+  });
+
+  // Mismo criterio que el responsable vigente: el tipo que el plan ya tiene no se revalida contra el
+  // catálogo, así que un plan cuyo tipo se dio de baja se sigue pudiendo editar (por ejemplo, para
+  // pasarlo a otro tipo o desactivarlo).
+  it('el tipo vigente dado de baja no se revalida → editar otro campo persiste', async () => {
+    const plan = makePlan({ tipoId: TIPO_DADO_DE_BAJA_ID });
+    const { useCase, planRepo, master } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: alcanceSinRestriccion('admin-1'),
+      planId: plan.id,
+      tipoId: TIPO_DADO_DE_BAJA_ID,
+      responsableId: 'responsable-uuid',
+      titulo: 'Nuevo título',
     });
 
     expect(result.isOk()).toBe(true);

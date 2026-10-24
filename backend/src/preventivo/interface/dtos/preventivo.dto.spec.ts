@@ -13,6 +13,7 @@ import { plainToInstance } from 'class-transformer';
 import {
   CreatePlanPreventivoHttpDto,
   EditarPlanPreventivoHttpDto,
+  ListarResponsablesPlanQueryDto,
   toPlanPreventivoResponseDto,
 } from './preventivo.dto';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
@@ -21,6 +22,7 @@ const BASE_CREAR = {
   titulo: 'Plan test',
   ubicacion: 'DEPOSITO',
   prioridadId: '00000000-0000-4000-8000-000000000002',
+  tipoId: '00000000-0000-4000-8000-000000000004',
   responsableId: '00000000-0000-4000-8000-000000000003',
   intervaloValor: 1,
   intervaloUnidad: 'MESES',
@@ -120,6 +122,7 @@ describe('toPlanPreventivoResponseDto — anticipación', () => {
       equipoId: null,
       ubicacion: 'DEPOSITO',
       prioridadId: 'prioridad-uuid',
+      tipoId: 'tipo-uuid',
       responsableId: 'responsable-uuid',
       intervaloValor: 1,
       intervaloUnidad: 'MESES',
@@ -134,5 +137,36 @@ describe('toPlanPreventivoResponseDto — anticipación', () => {
 
     expect(dto.anticipacionValor).toBe(7);
     expect(dto.anticipacionUnidad).toBe('DIAS');
+    expect(dto.tipoId).toBe('tipo-uuid');
+  });
+});
+
+// odd/preventivo-por-tipo S2, S5: el tipo es obligatorio en el alta, opcional en la edición, y la
+// lista de responsables lo exige.
+describe('tipo de ticket del plan', () => {
+  it('el alta sin tipoId se rechaza por isUuid', async () => {
+    const { tipoId: _tipoId, ...sinTipo } = BASE_CREAR;
+
+    const errores = await erroresDe(CreatePlanPreventivoHttpDto, sinTipo, 'tipoId');
+
+    expect(errores).toHaveProperty('isUuid');
+  });
+
+  it('la edición sin tipoId es válida (PATCH semántico) y con uno que no es UUID se rechaza', async () => {
+    expect(await erroresDe(EditarPlanPreventivoHttpDto, {}, 'tipoId')).toBeUndefined();
+    expect(
+      await erroresDe(EditarPlanPreventivoHttpDto, { tipoId: 'preventivo' }, 'tipoId'),
+    ).toHaveProperty('isUuid');
+  });
+
+  it('la query de responsables exige un tipoId UUID', async () => {
+    expect(await erroresDe(ListarResponsablesPlanQueryDto, {}, 'tipoId')).toHaveProperty('isUuid');
+    expect(
+      await erroresDe(
+        ListarResponsablesPlanQueryDto,
+        { tipoId: '00000000-0000-4000-8000-000000000004' },
+        'tipoId',
+      ),
+    ).toBeUndefined();
   });
 });

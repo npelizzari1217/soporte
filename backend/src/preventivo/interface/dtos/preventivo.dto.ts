@@ -78,6 +78,13 @@ export class CreatePlanPreventivoHttpDto {
   @IsUUID()
   prioridadId!: string;
 
+  /**
+   * Tipo de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Que admita tickets nuevos
+   * y que el actor tenga `ALTAS` sobre él lo decide el caso de uso.
+   */
+  @IsUUID()
+  tipoId!: string;
+
   @IsUUID()
   responsableId!: string;
 
@@ -130,6 +137,10 @@ export class EditarPlanPreventivoHttpDto {
 
   @IsOptional()
   @IsUUID()
+  tipoId?: string;
+
+  @IsOptional()
+  @IsUUID()
   responsableId?: string;
 
   @IsOptional()
@@ -156,6 +167,13 @@ export class EditarPlanPreventivoHttpDto {
   activo?: boolean;
 }
 
+/** Query de `GET /preventivo/planes/responsables` (odd/preventivo-por-tipo, S5). */
+export class ListarResponsablesPlanQueryDto {
+  /** Tipo de ticket elegido en el formulario del plan. */
+  @IsUUID()
+  tipoId!: string;
+}
+
 // ─── Response DTOs ──────────────────────────────────────────────────────────
 
 /** Shape de respuesta de un plan de mantenimiento preventivo. */
@@ -166,6 +184,7 @@ export interface PlanPreventivoResponseDto {
   equipoId: string | null;
   ubicacion: string | null;
   prioridadId: string;
+  tipoId: string;
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
@@ -187,6 +206,7 @@ export function toPlanPreventivoResponseDto(plan: PlanPreventivoEntity): PlanPre
     equipoId: plan.equipoId,
     ubicacion: plan.ubicacion,
     prioridadId: plan.prioridadId,
+    tipoId: plan.tipoId,
     responsableId: plan.responsableId,
     intervaloValor: plan.intervaloValor,
     intervaloUnidad: plan.intervaloUnidad,

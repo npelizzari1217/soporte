@@ -1,6 +1,13 @@
 import { DarDeBajaPlanUseCase } from './dar-de-baja-plan.use-case';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import { PlanNoEncontradoError } from '../../domain/errors/preventivo.errors';
+import {
+  alcancePorTipo,
+  alcanceSinRestriccion,
+} from '../../../tickets/test-helpers/alcance-ticket';
+
+/** Actor que ve el tipo del plan (odd/preventivo-por-tipo, S4). */
+const ACTOR = alcancePorTipo('actor-1', { 'tipo-preventivo': ['LECTURA'] });
 
 function makePlan(): PlanPreventivoEntity {
   return PlanPreventivoEntity.create(
@@ -10,6 +17,7 @@ function makePlan(): PlanPreventivoEntity {
       equipoId: 'equipo-uuid',
       ubicacion: null,
       prioridadId: 'prioridad-uuid',
+      tipoId: 'tipo-preventivo',
       responsableId: 'responsable-uuid',
       intervaloValor: 1,
       intervaloUnidad: 'MESES',
@@ -33,7 +41,7 @@ describe('DarDeBajaPlanUseCase (4.2, R4)', () => {
   it('plan inexistente → Result.fail(PlanNoEncontradoError)', async () => {
     const { useCase } = buildUseCase(null);
 
-    const result = await useCase.execute({ planId: 'no-existe' });
+    const result = await useCase.execute({ planId: 'no-existe', alcance: ACTOR });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
@@ -43,7 +51,7 @@ describe('DarDeBajaPlanUseCase (4.2, R4)', () => {
     const plan = makePlan();
     const { useCase, planRepo } = buildUseCase(plan);
 
-    const result = await useCase.execute({ planId: plan.id });
+    const result = await useCase.execute({ planId: plan.id, alcance: ACTOR });
 
     expect(result.isOk()).toBe(true);
     expect(plan.activo).toBe(false);
@@ -56,9 +64,38 @@ describe('DarDeBajaPlanUseCase (4.2, R4)', () => {
     plan.softDelete();
     const { useCase } = buildUseCase(plan);
 
-    const result = await useCase.execute({ planId: plan.id });
+    const result = await useCase.execute({ planId: plan.id, alcance: ACTOR });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
+  });
+
+  it('S4: plan de un tipo sin LECTURA para el actor → 404, el plan sigue activo', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      alcance: alcancePorTipo('actor-1', { 'tipo-soporte': ['LECTURA', 'BORRADO'] }),
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
+    expect(plan.activo).toBe(true);
+    expect(plan.isDeleted()).toBe(false);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+  });
+
+  it('S4: ADMINISTRADOR (sin restricción por tipo) da de baja el plan de cualquier tipo', async () => {
+    const plan = makePlan();
+    const { useCase } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      alcance: alcanceSinRestriccion('admin-1'),
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(plan.isDeleted()).toBe(true);
   });
 });

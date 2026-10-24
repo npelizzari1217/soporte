@@ -43,9 +43,9 @@ export class PrismaPlanPreventivoRepository implements IPlanPreventivoRepository
     return row ? PlanPreventivoMapper.toDomain(row) : null;
   }
 
-  async listar(): Promise<PlanPreventivoEntity[]> {
+  async listar(tipoIds: readonly string[] | null): Promise<PlanPreventivoEntity[]> {
     const rows = await this.client.planPreventivo.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...(tipoIds === null ? {} : { tipoId: { in: [...tipoIds] } }) },
       orderBy: { createdAt: 'desc' },
     });
     return rows.map(PlanPreventivoMapper.toDomain);

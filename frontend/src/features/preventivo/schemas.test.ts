@@ -11,6 +11,7 @@ function baseValues() {
   return {
     titulo: "Revisión mensual",
     prioridadId: "11111111-1111-1111-1111-111111111111",
+    tipoId: "44444444-4444-4444-4444-444444444444",
     responsableId: "22222222-2222-2222-2222-222222222222",
     intervaloValor: "1",
     intervaloUnidad: "MESES" as const,
@@ -112,6 +113,7 @@ function baseValuesEdicion() {
   return {
     titulo: "Revisión mensual",
     prioridadId: "11111111-1111-1111-1111-111111111111",
+    tipoId: "44444444-4444-4444-4444-444444444444",
     responsableId: "22222222-2222-2222-2222-222222222222",
     intervaloValor: "1",
     intervaloUnidad: "MESES" as const,
@@ -264,5 +266,20 @@ describe("anticipación — espejo del dominio", () => {
       anticipacionUnidad: "MESES",
     });
     expect(resultado.success).toBe(false);
+  });
+});
+
+// odd/preventivo-por-tipo S2: el plan necesita un tipo de ticket, en el alta y en la edición.
+describe("tipo de ticket del plan", () => {
+  it.each([
+    ["alta", () => crearPlanPreventivoSchema.safeParse({ ...baseValues(), ubicacion: "DEPOSITO", tipoId: "" })],
+    ["edición", () => editarPlanPreventivoSchema.safeParse({ ...baseValuesEdicion(), tipoId: "" })],
+  ])("%s: sin tipo se rechaza con un mensaje en el campo tipoId", (_caso, parsear) => {
+    const result = parsear();
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual([
+      expect.objectContaining({ path: ["tipoId"], message: "Elija un tipo de ticket" }),
+    ]);
   });
 });

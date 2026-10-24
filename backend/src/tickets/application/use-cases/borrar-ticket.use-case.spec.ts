@@ -49,8 +49,12 @@ function escenario(
       ticket('t-soporte', SOPORTE),
       ticket('t-mant', MANTENIMIENTO),
       ticket('t-prev', PREVENTIVO),
+      // Generado por un plan de tipo Mantenimiento (odd/preventivo-por-tipo).
+      ticket('t-mant-plan', MANTENIMIENTO),
     ].map((t) => [t.id, t]),
   );
+  /** Tickets enlazados a un plan por `preventivo_generacion`. */
+  const generadosPorPlan = new Set(['t-mant-plan']);
   const tareas = opciones.tareas ?? [];
   const compras = opciones.compras ?? {};
   const operaciones: OperacionTicketEntity[] = [];
@@ -84,7 +88,10 @@ function escenario(
       listarPorTicket: async (ticketId: string) =>
         tareas.filter((t) => t.ticketId === ticketId && !t.isDeleted()),
     },
-    { comprasVinculadas: async (ticketId: string) => compras[ticketId] ?? [] },
+    {
+      comprasVinculadas: async (ticketId: string) => compras[ticketId] ?? [],
+      generadoPorPlanPreventivo: async (ticketId: string) => generadosPorPlan.has(ticketId),
+    },
     {
       save: async (operacion: OperacionTicketEntity) => {
         expect(enTransaccion).toBe(true);
@@ -261,6 +268,33 @@ describe('BorrarTicketUseCase', () => {
     expect(admin.getError()).toBeInstanceOf(TicketPreventivoNoBorrableError);
     expect(sinBorrar.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
     expect(tickets.get('t-prev')?.isDeleted()).toBe(false);
+  });
+
+  // odd/preventivo-por-tipo: el plan elige el tipo de sus tickets, así que "preventivo" deja de ser
+  // un tipo. El ticket del fixture es de Mantenimiento, un tipo que sí se borra (caso hermano abajo).
+  it('un ticket generado por un plan no se borra aunque su tipo no sea PREVENTIVO: 422, y nada cambia', async () => {
+    const { useCase, tickets, operaciones } = escenario();
+
+    const admin = await useCase.execute({
+      ticketId: 't-mant-plan',
+      ...alcanceSinRestriccion('usr-admin'),
+    });
+
+    expect(admin.getError()).toBeInstanceOf(TicketPreventivoNoBorrableError);
+    expect(tickets.get('t-mant-plan')?.isDeleted()).toBe(false);
+    expect(operaciones).toEqual([]);
+  });
+
+  it('hermano: un ticket del mismo tipo que NO generó un plan se borra', async () => {
+    const { useCase, tickets } = escenario();
+
+    const result = await useCase.execute({
+      ticketId: 't-mant',
+      ...alcanceSinRestriccion('usr-admin'),
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(tickets.get('t-mant')?.isDeleted()).toBe(true);
   });
 
   it('un ticket ya borrado es 404 y no duplica el historial', async () => {

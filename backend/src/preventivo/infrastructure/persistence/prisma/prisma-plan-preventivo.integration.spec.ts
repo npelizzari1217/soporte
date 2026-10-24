@@ -44,6 +44,9 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
   let repo: PrismaPlanPreventivoRepository;
 
   let prioridadId: string;
+  /** Dos tipos propios: el plan por defecto va en el A; el B es el que un filtro tiene que excluir. */
+  let tipoAId: string;
+  let tipoBId: string;
   const planIdsCreados: string[] = [];
 
   const RUN_PREFIX = randomBytes(3).toString('hex');
@@ -76,6 +79,19 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
       data: { codigo: `TEST_PREV_${RUN_PREFIX}`, nombre: 'Prioridad test preventivo WU-4' },
     });
     prioridadId = prioridad.id;
+    const [tipoA, tipoB] = await Promise.all(
+      ['A', 'B'].map((letra) =>
+        tenantClient.tipoTicket.create({
+          data: {
+            codigo: `TEST_PREV_${letra}_${RUN_PREFIX}`,
+            nombre: `Tipo ${letra} test preventivo`,
+            modulo: 'TICKETS',
+          },
+        }),
+      ),
+    );
+    tipoAId = tipoA.id;
+    tipoBId = tipoB.id;
   }, 60_000);
 
   afterAll(async () => {
@@ -88,6 +104,7 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     if (prioridadId) {
       await tenantClient.prioridad.delete({ where: { id: prioridadId } }).catch(() => undefined);
     }
+    await tenantClient.tipoTicket.deleteMany({ where: { id: { in: [tipoAId, tipoBId] } } });
     await prismaService.onModuleDestroy();
   }, 60_000);
 
@@ -100,6 +117,7 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
       equipoId: null,
       ubicacion: 'DEPOSITO CENTRAL',
       prioridadId,
+      tipoId: tipoAId,
       responsableId: DUMMY_RESPONSABLE_ID,
       intervaloValor: 7,
       intervaloUnidad: 'DIAS',
@@ -124,6 +142,7 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     expect(encontrado!.intervaloValor).toBe(7);
     expect(encontrado!.intervaloUnidad).toBe('DIAS');
     expect(encontrado!.activo).toBe(true);
+    expect(encontrado?.tipoId).toBe(tipoAId);
   });
 
   it('guardar → buscarPorId preserva la anticipación, y editarla la actualiza (odd/preventivo-anticipacion)', async () => {
@@ -248,10 +267,37 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     eliminado.softDelete();
     await withTenant(() => repo.guardar(eliminado));
 
-    const listado = await withTenant(() => repo.listar());
+    const listado = await withTenant(() => repo.listar(null));
     const ids = listado.map((p) => p.id);
 
     expect(ids).toContain(inactivo.id);
     expect(ids).not.toContain(eliminado.id);
+  });
+
+  // odd/preventivo-por-tipo S1: el filtro por tipos visibles va en la consulta.
+  it('listar(tipoIds) trae solo los planes de esos tipos; con null, los de todos', async () => {
+    const delA = makePlan();
+    const delB = makePlan({ tipoId: tipoBId });
+    await withTenant(() => repo.guardar(delA));
+    await withTenant(() => repo.guardar(delB));
+
+    const soloA = (await withTenant(() => repo.listar([tipoAId]))).map((p) => p.id);
+    const todos = (await withTenant(() => repo.listar(null))).map((p) => p.id);
+    const ninguno = await withTenant(() => repo.listar([]));
+
+    expect(soloA).toContain(delA.id);
+    expect(soloA).not.toContain(delB.id);
+    expect(todos).toEqual(expect.arrayContaining([delA.id, delB.id]));
+    expect(ninguno).toEqual([]);
+  });
+
+  it('editar el tipo de un plan guardado lo persiste', async () => {
+    const plan = makePlan();
+    await withTenant(() => repo.guardar(plan));
+
+    expect(plan.editar({ tipoId: tipoBId }).isOk()).toBe(true);
+    await withTenant(() => repo.guardar(plan));
+
+    expect((await withTenant(() => repo.buscarPorId(plan.id)))?.tipoId).toBe(tipoBId);
   });
 });

@@ -64,9 +64,10 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  *   `LOGGER`/`DOMAIN_EVENT_PUBLISHER` se inyectan desde `SharedModule`
  *   (`@Global`).
  * - `TicketsModule`: `GenerarPreventivosUseCase` (WU-5) reusa
- *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) y
- *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `PREVENTIVO`
- *   (issue #135: antes reusaba `MANTENIMIENTO` del módulo EDILICIA).
+ *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) con el tipo
+ *   de ticket del plan (odd/preventivo-por-tipo, S2). El alta y la edición
+ *   validan ese tipo con `TIPO_TICKET_REPOSITORY`, y el controller carga el
+ *   alcance por tipo del actor con `CargadorAlcanceTicket` (S4).
  * - `EquiposModule` (WU-2, ADR-2): `GenerarPreventivosUseCase` suma un
  *   noveno parámetro `Pick<IEquipoInformaticoRepository, 'findById'>` para
  *   resolver el objetivo del ticket. `EquiposModule` ya exporta
@@ -74,7 +75,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  *   ciclo. No se crea un puerto propio de preventivo para el mismo contrato.
  * - `ElegibilidadAsignado` (exportado por `TicketsModule`): `ResponsablesPlanPreventivo` decide
  *   quién puede ser responsable de un plan con la misma regla que la asignación de un ticket del
- *   tipo `PREVENTIVO`.
+ *   tipo del plan.
  *
  * WU-5 agrega la generación automática: `GenerarPreventivosUseCase`
  * (orquestación transaccional del ciclo, ADR-PV2/PV3/PV5) y
@@ -98,9 +99,9 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
     { provide: CalcularCicloService, useFactory: () => new CalcularCicloService() },
     {
       provide: ResponsablesPlanPreventivo,
-      useFactory: (tipoTicketRepo: ITipoTicketRepository, elegibilidad: ElegibilidadAsignado) =>
-        new ResponsablesPlanPreventivo(tipoTicketRepo, elegibilidad),
-      inject: [TIPO_TICKET_REPOSITORY, ElegibilidadAsignado],
+      useFactory: (elegibilidad: ElegibilidadAsignado) =>
+        new ResponsablesPlanPreventivo(elegibilidad),
+      inject: [ElegibilidadAsignado],
     },
     {
       provide: CrearPlanUseCase,
@@ -108,8 +109,14 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         planRepo: IPlanPreventivoRepository,
         txRunner: ITenantTransactionRunner,
         responsables: ResponsablesPlanPreventivo,
-      ) => new CrearPlanUseCase(planRepo, txRunner, responsables),
-      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER, ResponsablesPlanPreventivo],
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new CrearPlanUseCase(planRepo, txRunner, responsables, tipoTicketRepo),
+      inject: [
+        PLAN_PREVENTIVO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        ResponsablesPlanPreventivo,
+        TIPO_TICKET_REPOSITORY,
+      ],
     },
     {
       provide: EditarPlanUseCase,
@@ -117,8 +124,14 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         planRepo: IPlanPreventivoRepository,
         txRunner: ITenantTransactionRunner,
         responsables: ResponsablesPlanPreventivo,
-      ) => new EditarPlanUseCase(planRepo, txRunner, responsables),
-      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER, ResponsablesPlanPreventivo],
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new EditarPlanUseCase(planRepo, txRunner, responsables, tipoTicketRepo),
+      inject: [
+        PLAN_PREVENTIVO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        ResponsablesPlanPreventivo,
+        TIPO_TICKET_REPOSITORY,
+      ],
     },
     {
       provide: ListarResponsablesPlanUseCase,
@@ -149,7 +162,6 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
       useFactory: (
         planRepo: IPlanPreventivoRepository,
         generacionRepo: IPreventivoGeneracionRepository,
-        tipoTicketRepo: ITipoTicketRepository,
         crearTicketUseCase: CrearTicketUseCase,
         txRunner: ITenantTransactionRunner,
         calcularCiclo: CalcularCicloService,
@@ -160,7 +172,6 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         new GenerarPreventivosUseCase(
           planRepo,
           generacionRepo,
-          tipoTicketRepo,
           crearTicketUseCase,
           txRunner,
           calcularCiclo,
@@ -171,7 +182,6 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
       inject: [
         PLAN_PREVENTIVO_REPOSITORY,
         PREVENTIVO_GENERACION_REPOSITORY,
-        TIPO_TICKET_REPOSITORY,
         CrearTicketUseCase,
         TENANT_TX_RUNNER,
         CalcularCicloService,

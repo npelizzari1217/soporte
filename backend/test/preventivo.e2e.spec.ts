@@ -9,13 +9,19 @@
  * `dropDatabase`, turno exclusivo `usarLockMasterTest()` sobre la master de
  * test compartida).
  *
- * Cubre: los 4 gates de permiso REALES (403 sin el par, 2xx con él —
+ * Cubre: los 4 gates de permiso REALES del módulo (403 sin el par, 2xx con él —
  * incluyendo el NEGATIVO explícito, no solo la positiva, porque un gate
  * probado solo por la positiva es indistinguible de un `true` hardcodeado),
  * el 422 del XOR de objetivo desde el dominio, y el 403 en la vista de
  * generaciones sin `PREVENTIVO:LECTURA`. También el responsable del plan: la lista del selector
  * (`GET /preventivo/planes/responsables`) trae solo a TECNICO y COLABORADOR con `LECTURA` sobre el
  * tipo PREVENTIVO, y el alta y la edición rechazan con 422 a cualquier otro.
+ *
+ * odd/preventivo-por-tipo (S1-S5): el plan tiene un tipo de ticket. La celda del módulo sigue
+ * decidiendo la acción y el tipo agrega visibilidad: el actor ve, edita y da de baja solo los planes
+ * de tipos con `LECTURA` (404 si no), y solo elige tipos con `LECTURA` (403 si no). Los actores se
+ * crean con `LECTURA` sobre PREVENTIVO salvo que el caso diga otra cosa; el responsable sale de los
+ * técnicos del tipo del plan.
  *
  * Ref spec: sdd/preventivo/spec, Requirements "Objetivo excluyente del
  * plan", "Permiso propio del módulo PREVENTIVO", "Baja de plan frena
@@ -84,7 +90,10 @@ async function httpGet<T = unknown>(
   url: string,
   headers: Headers = {},
 ): Promise<{ status: number; data: T }> {
-  const res = await fetch(url, { method: 'GET', headers: { Accept: 'application/json', ...headers } });
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Accept: 'application/json', ...headers },
+  });
   const data = (await res.json().catch(() => null)) as T;
   return { status: res.status, data };
 }
@@ -104,7 +113,10 @@ async function httpPatch<T = unknown>(
 }
 
 async function httpDelete(url: string, headers: Headers = {}): Promise<{ status: number }> {
-  const res = await fetch(url, { method: 'DELETE', headers: { Accept: 'application/json', ...headers } });
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json', ...headers },
+  });
   return { status: res.status };
 }
 
@@ -241,7 +253,11 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
     return usuario;
   }
 
-  async function createMembresia(usuarioId: string, clienteId: string, rolId: string): Promise<void> {
+  async function createMembresia(
+    usuarioId: string,
+    clienteId: string,
+    rolId: string,
+  ): Promise<void> {
     await masterClient.membresia.create({ data: { usuarioId, clienteId, rolId, activo: true } });
   }
 
@@ -264,7 +280,11 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
     await createMembresia(usuario.id, clienteId, await rolDeSistema(rolCodigo));
     if (tiposConLectura.length > 0) {
       await tenantClient.permisoTipoTicket.createMany({
-        data: tiposConLectura.map((tipoId) => ({ usuarioId: usuario.id, tipoId, accion: 'LECTURA' })),
+        data: tiposConLectura.map((tipoId) => ({
+          usuarioId: usuario.id,
+          tipoId,
+          accion: 'LECTURA',
+        })),
       });
     }
     return usuario.id;
@@ -286,6 +306,7 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
   async function crearActorConPermisos(
     permisos: string[],
     clienteIdExistente?: string,
+    tiposConLectura: string[] = [tipoPreventivoId],
   ): Promise<{ accessToken: string; clienteId: string }> {
     const clienteId = clienteIdExistente ?? (await crearClienteTenant()).id;
     if (clienteIdExistente === undefined) {
@@ -295,6 +316,16 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, clienteId, role.id);
     await permisosRepo.setPermisos(usuario.id, clienteId, permisos);
+    // Visibilidad por tipo (odd/preventivo-por-tipo, S4): filas del tenant, no celdas del JWT.
+    if (tiposConLectura.length > 0) {
+      await tenantClient.permisoTipoTicket.createMany({
+        data: tiposConLectura.map((tipoId) => ({
+          usuarioId: usuario.id,
+          tipoId,
+          accion: 'LECTURA',
+        })),
+      });
+    }
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId };
   }
@@ -304,6 +335,7 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       titulo: 'Cambio de filtros de AC',
       ubicacion: 'DEPOSITO CENTRAL',
       prioridadId,
+      tipoId: tipoPreventivoId,
       responsableId: responsableElegibleId,
       intervaloValor: 3,
       intervaloUnidad: 'MESES',
@@ -636,7 +668,7 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
         await crearNoElegibles(actor.clienteId);
 
         const { status, data } = await httpGet<{ id: string }[]>(
-          `${baseUrl}/preventivo/planes/responsables`,
+          `${baseUrl}/preventivo/planes/responsables?tipoId=${tipoPreventivoId}`,
           bearer(actor.accessToken),
         );
 
@@ -649,7 +681,7 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       const actor = await crearActorConPermisos(['PREVENTIVO:LECTURA']);
 
       const { status } = await httpGet(
-        `${baseUrl}/preventivo/planes/responsables`,
+        `${baseUrl}/preventivo/planes/responsables?tipoId=${tipoPreventivoId}`,
         bearer(actor.accessToken),
       );
 
@@ -716,6 +748,209 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
 
       expect(status).toBe(200);
       expect(data.responsableId).toBe(colaborador);
+    });
+  });
+
+  // ─── Tipo de ticket del plan (odd/preventivo-por-tipo, S1-S5) ───────────
+
+  describe('Tipo de ticket del plan — la celda del módulo decide la acción, el tipo la visibilidad', () => {
+    const CELDAS_COMPLETAS = [
+      'PREVENTIVO:LECTURA',
+      'PREVENTIVO:ALTAS',
+      'PREVENTIVO:MODIFICACION',
+      'PREVENTIVO:BORRADO',
+    ];
+
+    /** Crea un plan de PREVENTIVO y otro de `otroTipoId`, con un creador que ve los dos tipos. */
+    async function planesDeDosTipos(): Promise<{
+      clienteId: string;
+      planPreventivo: string;
+      planOtroTipo: string;
+      tecnicoOtroTipo: string;
+    }> {
+      const creador = await crearActorConPermisos(CELDAS_COMPLETAS, undefined, [
+        tipoPreventivoId,
+        otroTipoId,
+      ]);
+      const tecnicoOtroTipo = await crearUsuarioDelTenant(creador.clienteId, 'TECNICO', [
+        otroTipoId,
+      ]);
+      const preventivo = await httpPost<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody(),
+        bearer(creador.accessToken),
+      );
+      const otro = await httpPost<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ tipoId: otroTipoId, responsableId: tecnicoOtroTipo }),
+        bearer(creador.accessToken),
+      );
+      expect([preventivo.status, otro.status]).toEqual([201, 201]);
+      expect(otro.data.tipoId).toBe(otroTipoId);
+      return {
+        clienteId: creador.clienteId,
+        planPreventivo: preventivo.data.id,
+        planOtroTipo: otro.data.id,
+        tecnicoOtroTipo,
+      };
+    }
+
+    it('S1: el listado trae solo los planes de los tipos con LECTURA', async () => {
+      const { clienteId, planPreventivo, planOtroTipo } = await planesDeDosTipos();
+      const soloOtroTipo = await crearActorConPermisos(['PREVENTIVO:LECTURA'], clienteId, [
+        otroTipoId,
+      ]);
+
+      const { status, data } = await httpGet<PlanPreventivoResponseDto[]>(
+        `${baseUrl}/preventivo/planes`,
+        bearer(soloOtroTipo.accessToken),
+      );
+
+      expect(status).toBe(200);
+      const ids = data.map((p) => p.id);
+      expect(ids).toContain(planOtroTipo);
+      expect(ids).not.toContain(planPreventivo);
+    });
+
+    it('S4: generaciones, edición y baja de un plan de un tipo sin LECTURA → 404, y el plan no cambia', async () => {
+      const { clienteId, planPreventivo } = await planesDeDosTipos();
+      const soloOtroTipo = await crearActorConPermisos(CELDAS_COMPLETAS, clienteId, [otroTipoId]);
+      const auth = bearer(soloOtroTipo.accessToken);
+
+      const generaciones = await httpGet(
+        `${baseUrl}/preventivo/planes/${planPreventivo}/generaciones`,
+        auth,
+      );
+      const edicion = await httpPatch(
+        `${baseUrl}/preventivo/planes/${planPreventivo}`,
+        { titulo: 'Título ajeno' },
+        auth,
+      );
+      const baja = await httpDelete(`${baseUrl}/preventivo/planes/${planPreventivo}`, auth);
+
+      expect([generaciones.status, edicion.status, baja.status]).toEqual([404, 404, 404]);
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: planPreventivo },
+      });
+      expect(fila.titulo).toBe('Cambio de filtros de AC');
+      expect(fila.deletedAt).toBeNull();
+    });
+
+    it('S4: el alta con un tipo sin LECTURA → 403, sin crear el plan', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS'], undefined, [
+        tipoPreventivoId,
+      ]);
+      const antes = await tenantClient.planPreventivo.count();
+
+      const { status } = await httpPost(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ tipoId: otroTipoId }),
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(403);
+      expect(await tenantClient.planPreventivo.count()).toBe(antes);
+    });
+
+    it('S2: el alta sin tipoId → 400, y con un tipo dado de baja → 422, como el alta de un ticket', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS']);
+      const tipoBaja = await tenantClient.tipoTicket.create({
+        data: {
+          codigo: `E2E_BAJA_${randomBytes(3).toString('hex')}`,
+          nombre: 'Tipo dado de baja',
+          modulo: 'TICKETS',
+          activo: false,
+          deletedAt: new Date(),
+        },
+      });
+
+      const sinTipo = await httpPost(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ tipoId: undefined }),
+        bearer(actor.accessToken),
+      );
+      const conTipoDeBaja = await httpPost(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ tipoId: tipoBaja.id }),
+        bearer(actor.accessToken),
+      );
+
+      expect(sinTipo.status).toBe(400);
+      expect(conTipoDeBaja.status).toBe(422);
+    });
+
+    it('S2/S5: la edición cambia el tipo con un responsable de ese tipo; conservando uno que no lo es → 422', async () => {
+      const { clienteId, planPreventivo, tecnicoOtroTipo } = await planesDeDosTipos();
+      const editor = await crearActorConPermisos(['PREVENTIVO:MODIFICACION'], clienteId, [
+        tipoPreventivoId,
+        otroTipoId,
+      ]);
+      const auth = bearer(editor.accessToken);
+
+      // El responsable vigente es técnico de PREVENTIVO, no del tipo nuevo: se revalida.
+      const conservando = await httpPatch(
+        `${baseUrl}/preventivo/planes/${planPreventivo}`,
+        { tipoId: otroTipoId },
+        auth,
+      );
+      expect(conservando.status).toBe(422);
+      expect(
+        (await tenantClient.planPreventivo.findUniqueOrThrow({ where: { id: planPreventivo } }))
+          .tipoId,
+      ).toBe(tipoPreventivoId);
+
+      const cambiando = await httpPatch<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes/${planPreventivo}`,
+        { tipoId: otroTipoId, responsableId: tecnicoOtroTipo },
+        auth,
+      );
+      expect(cambiando.status).toBe(200);
+      expect(cambiando.data.tipoId).toBe(otroTipoId);
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: planPreventivo },
+      });
+      expect([fila.tipoId, fila.responsableId]).toEqual([otroTipoId, tecnicoOtroTipo]);
+    });
+
+    it('S4: la edición a un tipo sin LECTURA → 403, el plan conserva el suyo', async () => {
+      const { clienteId, planPreventivo, tecnicoOtroTipo } = await planesDeDosTipos();
+      const editor = await crearActorConPermisos(['PREVENTIVO:MODIFICACION'], clienteId, [
+        tipoPreventivoId,
+      ]);
+
+      const { status } = await httpPatch(
+        `${baseUrl}/preventivo/planes/${planPreventivo}`,
+        { tipoId: otroTipoId, responsableId: tecnicoOtroTipo },
+        bearer(editor.accessToken),
+      );
+
+      expect(status).toBe(403);
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: planPreventivo },
+      });
+      expect(fila.tipoId).toBe(tipoPreventivoId);
+    });
+
+    it('S5: responsables?tipoId= trae los técnicos de ese tipo; sin tipoId → 400; tipo sin LECTURA → 403', async () => {
+      const { clienteId, tecnicoOtroTipo } = await planesDeDosTipos();
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS'], clienteId, [otroTipoId]);
+      const auth = bearer(actor.accessToken);
+
+      const delOtroTipo = await httpGet<{ id: string }[]>(
+        `${baseUrl}/preventivo/planes/responsables?tipoId=${otroTipoId}`,
+        auth,
+      );
+      const sinTipo = await httpGet(`${baseUrl}/preventivo/planes/responsables`, auth);
+      const tipoSinLectura = await httpGet(
+        `${baseUrl}/preventivo/planes/responsables?tipoId=${tipoPreventivoId}`,
+        auth,
+      );
+
+      expect(delOtroTipo.status).toBe(200);
+      // Fuera el técnico de PREVENTIVO del mismo cliente (`responsableElegibleId`).
+      expect(delOtroTipo.data.map((r) => r.id)).toEqual([tecnicoOtroTipo]);
+      expect(sinTipo.status).toBe(400);
+      expect(tipoSinLectura.status).toBe(403);
     });
   });
 

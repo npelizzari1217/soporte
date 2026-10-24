@@ -593,7 +593,8 @@ export class TicketConPendientesNoBorrableError extends DomainError {
 /**
  * TicketPreventivoNoBorrableError — un ticket de mantenimiento preventivo no se borra
  * (odd/tasks/permisos-por-tipo-ticket.md, L45): lo genera el barrido a partir de un plan, y borrarlo
- * solo haría que el barrido abra otro del mismo plan. → HTTP 422.
+ * solo haría que el barrido abra otro del mismo plan. Vale para el tipo PREVENTIVO y para un ticket
+ * de cualquier tipo generado por un plan (odd/preventivo-por-tipo). → HTTP 422.
  */
 export class TicketPreventivoNoBorrableError extends DomainError {
   readonly code = 'TICKET_PREVENTIVO_NO_BORRABLE';

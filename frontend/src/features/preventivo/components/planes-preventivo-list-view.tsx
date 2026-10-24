@@ -6,9 +6,14 @@
  * un plan sin ninguna fila de auditoría todavía ("Nunca generó") es
  * exactamente el caso que conviene poder detectar de un vistazo, sin entrar
  * al detalle de cada plan uno por uno.
+ *
+ * El backend trae solo los planes de los tipos de ticket que el usuario ve
+ * (odd/preventivo-por-tipo, S1): acá no se filtra nada. La columna "Tipo de
+ * ticket" muestra el tipo de los tickets que genera cada plan.
  */
 import { useRouter } from "next/navigation";
 import { useEquipos } from "@/features/equipos/hooks/use-equipos";
+import { useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Can } from "@/components/shared/can";
@@ -19,7 +24,7 @@ import { formatearFechaCalendario } from "@/shared/lib/formato-fecha";
 import { usePlanesPreventivo, useGeneracionesDeVariosPlanes, ultimaGeneracion } from "../hooks/use-planes-preventivo";
 import { PlanPreventivoCreateDialog } from "./plan-preventivo-create-dialog";
 import { badgeVariantDeResultado, etiquetaResultado } from "../lib/resultado-generacion";
-import { anticipacionLabel, objetivoLabel, unidadIntervaloLabel } from "../lib/plan-labels";
+import { anticipacionLabel, objetivoLabel, tipoPlanLabel, unidadIntervaloLabel } from "../lib/plan-labels";
 import type { PlanPreventivo, PreventivoGeneracion } from "../types";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { ClipboardCheck } from "lucide-react";
@@ -59,6 +64,7 @@ export function PlanesPreventivoListView() {
   const router = useRouter();
   const planesQuery = usePlanesPreventivo();
   const equiposQuery = useEquipos();
+  const tiposQuery = useTiposTicket();
 
   const planes = planesQuery.data ?? [];
   const generacionesQueries = useGeneracionesDeVariosPlanes(planes.map((plan) => plan.id));
@@ -66,6 +72,7 @@ export function PlanesPreventivoListView() {
 
   const columns: Column<PlanPreventivo>[] = [
     { key: "titulo", header: "Título" },
+    { key: "tipoId", header: "Tipo de ticket", render: (row) => tipoPlanLabel(row.tipoId, tiposQuery.data) },
     {
       key: "equipoId",
       header: "Objetivo",

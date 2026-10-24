@@ -184,4 +184,37 @@ describe('PrismaBloqueoTicketRepository (tenant efímero)', () => {
       expect(await repo.estaBloqueadoPorCompra(bloqueado.ticketId)).toBe(true);
     });
   });
+
+  // odd/preventivo-por-tipo: lo que vuelve no borrable a un ticket es el enlace con un plan, no el
+  // tipo. El ticket enlazado es de Edilicia; el hermano, del mismo tipo y sin enlace.
+  it('generadoPorPlanPreventivo: true solo para el ticket enlazado por preventivo_generacion', async () => {
+    const enlazado = await crearTicket(false);
+    const suelto = await crearTicket(false);
+    const plan = await tenantClient.planPreventivo.create({
+      data: {
+        titulo: 'Plan de test de bloqueo',
+        ubicacion: 'DEPOSITO',
+        prioridadId,
+        tipoId: tipoEdiliciaId,
+        responsableId: DUMMY_USUARIO_ID,
+        intervaloValor: 1,
+        intervaloUnidad: 'MESES',
+        fechaInicio: new Date('2026-01-01'),
+        proximaEjecucionEn: new Date('2026-02-01'),
+      },
+    });
+    await tenantClient.preventivoGeneracion.create({
+      data: {
+        planId: plan.id,
+        fechaProgramada: new Date('2026-01-01'),
+        resultado: 'GENERADO',
+        ticketId: enlazado.ticketId,
+      },
+    });
+
+    await withTenant(async () => {
+      expect(await repo.generadoPorPlanPreventivo(enlazado.ticketId)).toBe(true);
+      expect(await repo.generadoPorPlanPreventivo(suelto.ticketId)).toBe(false);
+    });
+  });
 });

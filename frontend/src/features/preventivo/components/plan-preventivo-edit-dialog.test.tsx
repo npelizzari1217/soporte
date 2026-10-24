@@ -5,6 +5,7 @@ import { http, HttpResponse, delay } from "msw";
 import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 import { PlanPreventivoEditDialog } from "./plan-preventivo-edit-dialog";
 import type { PlanPreventivo } from "../types";
 
@@ -13,14 +14,36 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // `vi.mock` de módulo crea los `vi.fn()` una sola vez para todo el archivo:
 // sin limpiarlos entre tests, un `toHaveBeenCalled()` puede pasar por una
 // llamada de un test ANTERIOR (hallazgo C1 del verify).
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
 const PLAN_ID = "88888888-8888-8888-8888-888888888888";
 const PRIORIDAD_ID = "11111111-1111-1111-1111-111111111111";
 const USUARIO_ID = "33333333-3333-3333-3333-333333333333";
 const EQUIPO_ID = "22222222-2222-2222-2222-222222222222";
+const TIPO_PREVENTIVO_ID = "44444444-4444-4444-4444-444444444444";
+const TIPO_SOPORTE_ID = "55555555-5555-5555-5555-555555555555";
+const TIPO_EDILICIA_ID = "66666666-6666-6666-6666-666666666666";
+const TIPO_DADO_DE_BAJA_ID = "99999999-9999-9999-9999-999999999999";
+/** Técnico de Soporte y no de Preventivo. */
+const TECNICO_SOPORTE_ID = "77777777-7777-7777-7777-777777777777";
+
+function tipo(id: string, codigo: string, nombre: string) {
+  return { id, codigo, nombre, modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" };
+}
+
+/** Catálogo de tipos vigentes (odd/preventivo-por-tipo); el dado de baja no viene. */
+function handlerTipos() {
+  return http.get("/api/catalogos/tipos-ticket", () =>
+    HttpResponse.json([
+      tipo(TIPO_EDILICIA_ID, "EDILICIA", "Edilicia"),
+      tipo(TIPO_PREVENTIVO_ID, "PREVENTIVO", "Preventivo"),
+      tipo(TIPO_SOPORTE_ID, "SOPORTE", "Soporte"),
+    ]),
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  server.use(handlerTipos());
+});
 
 const PLAN_CON_UBICACION: PlanPreventivo = {
   id: PLAN_ID,
@@ -29,6 +52,7 @@ const PLAN_CON_UBICACION: PlanPreventivo = {
   equipoId: null,
   ubicacion: "DEPOSITO",
   prioridadId: PRIORIDAD_ID,
+  tipoId: TIPO_PREVENTIVO_ID,
   responsableId: USUARIO_ID,
   intervaloValor: 1,
   intervaloUnidad: "MESES",
@@ -695,5 +719,133 @@ describe("PlanPreventivoEditDialog — anticipación (odd/preventivo-anticipacio
 
     expect(await screen.findByText("La anticipación es requerida")).toBeInTheDocument();
     expect(envio).toBe(false);
+  });
+});
+
+describe("PlanPreventivoEditDialog — tipo de ticket del plan (odd/preventivo-por-tipo)", () => {
+  /** Técnico con LECTURA sobre Preventivo y Soporte; Edilicia sin LECTURA (S4). */
+  const TECNICO = buildUser({ rol: "TECNICO", permisos: ["PREVENTIVO:MODIFICACION"] });
+  const PERMISOS = permisosDeTest({
+    [TIPO_PREVENTIVO_ID]: ["LECTURA"],
+    [TIPO_SOPORTE_ID]: ["LECTURA"],
+    [TIPO_EDILICIA_ID]: ["MODIFICACION"],
+  });
+
+  /** Responsables por tipo, como el backend (S5): Ana en Preventivo y Soporte; Bruno, solo Soporte. */
+  function mockResponsablesPorTipo() {
+    server.use(
+      http.get("/api/catalogos/prioridades", () =>
+        HttpResponse.json([
+          { id: PRIORIDAD_ID, codigo: "MEDIA", nombre: "Media", color: null, orden: 1, activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/preventivo/planes/responsables", ({ request }) => {
+        const tipoId = new URL(request.url).searchParams.get("tipoId");
+        if (tipoId === TIPO_PREVENTIVO_ID) return HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" }]);
+        if (tipoId === TIPO_SOPORTE_ID) {
+          return HttpResponse.json([
+            { id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" },
+            { id: TECNICO_SOPORTE_ID, nombre: "Bruno", apellido: "Díaz" },
+          ]);
+        }
+        return HttpResponse.json([]);
+      }),
+    );
+  }
+
+  beforeEach(() => mockResponsablesPorTipo());
+
+  it("abre con el tipo del plan y ofrece solo los tipos que el usuario ve (LECTURA)", async () => {
+    renderConPermisos(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, { user: TECNICO, permisos: PERMISOS });
+    await abrirDialog();
+
+    const tipoSelect = screen.getByRole("combobox", { name: /^tipo de ticket$/i });
+    await within(tipoSelect).findByRole("option", { name: "Soporte" });
+    await waitFor(() => expect(tipoSelect).toHaveValue(TIPO_PREVENTIVO_ID));
+    expect(within(tipoSelect).getAllByRole("option").map((opcion) => opcion.textContent)).toEqual([
+      "Preventivo",
+      "Soporte",
+    ]);
+  });
+
+  it("el tipo del plan dado de baja sale como opción sintética, preseleccionada, y se reenvía sin cambios", async () => {
+    const capturado = capturarPatch();
+    renderConPermisos(<PlanPreventivoEditDialog plan={{ ...PLAN_CON_UBICACION, tipoId: TIPO_DADO_DE_BAJA_ID }} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+      permisos: PERMISOS,
+    });
+    const user = await abrirDialog();
+
+    const tipoSelect = screen.getByRole("combobox", { name: /^tipo de ticket$/i });
+    expect(await within(tipoSelect).findByRole("option", { name: "Tipo de ticket dado de baja" })).toBeInTheDocument();
+    await waitFor(() => expect(tipoSelect).toHaveValue(TIPO_DADO_DE_BAJA_ID));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.tipoId).toBe(TIPO_DADO_DE_BAJA_ID));
+  });
+
+  it("S2/S5: cambia el tipo a Soporte, recarga los responsables y conserva a Ana, que también es de Soporte", async () => {
+    const capturado = capturarPatch();
+    renderConPermisos(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, { user: TECNICO, permisos: PERMISOS });
+    const user = await abrirDialog();
+    const tipoSelect = screen.getByRole("combobox", { name: /^tipo de ticket$/i });
+    await within(tipoSelect).findByRole("option", { name: "Soporte" });
+
+    await user.selectOptions(tipoSelect, TIPO_SOPORTE_ID);
+    const responsable = screen.getByRole("combobox", { name: /^responsable$/i });
+    await within(responsable).findByRole("option", { name: "Bruno Díaz" });
+    await waitFor(() => expect(responsable).toHaveValue(USUARIO_ID));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.tipoId).toBe(TIPO_SOPORTE_ID));
+    expect(capturado.body.responsableId).toBe(USUARIO_ID);
+  });
+
+  it("S5: el responsable que no es técnico del tipo nuevo se borra con un aviso, y no se guarda", async () => {
+    let patcheo = false;
+    server.use(
+      http.patch(`/api/preventivo/planes/${PLAN_ID}`, () => {
+        patcheo = true;
+        return HttpResponse.json(PLAN_CON_UBICACION);
+      }),
+    );
+    const planDeSoporte: PlanPreventivo = {
+      ...PLAN_CON_UBICACION,
+      tipoId: TIPO_SOPORTE_ID,
+      responsableId: TECNICO_SOPORTE_ID,
+    };
+    renderConPermisos(<PlanPreventivoEditDialog plan={planDeSoporte} />, { user: TECNICO, permisos: PERMISOS });
+    const user = await abrirDialog();
+    const responsable = screen.getByRole("combobox", { name: /^responsable$/i });
+    await waitFor(() => expect(responsable).toHaveValue(TECNICO_SOPORTE_ID));
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /^tipo de ticket$/i }), TIPO_PREVENTIVO_ID);
+
+    expect(
+      await screen.findByText("El responsable elegido no está habilitado para el tipo de ticket seleccionado. Elija otro."),
+    ).toBeInTheDocument();
+    expect(responsable).toHaveValue("");
+    // Bruno no queda como opción sintética: con otro tipo el vigente ya no se conserva.
+    expect(within(responsable).queryByRole("option", { name: "Responsable no habilitado" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+    expect(await screen.findByText("Elegí un responsable", { selector: "p" })).toBeInTheDocument();
+    expect(patcheo).toBe(false);
+  });
+
+  it("hermano: con el tipo original, el responsable vigente fuera de la lista se conserva sin aviso", async () => {
+    const capturado = capturarPatch();
+    const planConResponsableViejo: PlanPreventivo = { ...PLAN_CON_UBICACION, responsableId: TECNICO_SOPORTE_ID };
+    renderConPermisos(<PlanPreventivoEditDialog plan={planConResponsableViejo} />, { user: TECNICO, permisos: PERMISOS });
+    const user = await abrirDialog();
+    const responsable = screen.getByRole("combobox", { name: /^responsable$/i });
+
+    expect(await within(responsable).findByRole("option", { name: "Responsable no habilitado" })).toBeInTheDocument();
+    await waitFor(() => expect(responsable).toHaveValue(TECNICO_SOPORTE_ID));
+    expect(screen.queryByText(/no está habilitado para el tipo de ticket/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.responsableId).toBe(TECNICO_SOPORTE_ID));
+    expect(capturado.body.tipoId).toBe(TIPO_PREVENTIVO_ID);
   });
 });

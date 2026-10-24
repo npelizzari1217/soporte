@@ -26,6 +26,8 @@ export interface PlanPreventivo {
   /** Texto libre, normalizado a mayúscula por el backend. */
   ubicacion: string | null;
   prioridadId: string;
+  /** Tipo de ticket de los tickets que genera el plan (odd/preventivo-por-tipo, S2). */
+  tipoId: string;
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
@@ -62,6 +64,7 @@ export interface CreatePlanPreventivoDto {
   equipoId?: string | null;
   ubicacion?: string | null;
   prioridadId: string;
+  tipoId: string;
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
@@ -85,6 +88,7 @@ export interface EditarPlanPreventivoDto {
   equipoId?: string | null;
   ubicacion?: string | null;
   prioridadId?: string;
+  tipoId?: string;
   responsableId?: string;
   intervaloValor?: number;
   intervaloUnidad?: IntervaloUnidad;

@@ -19,6 +19,7 @@ const PLAN = {
   equipoId: null,
   ubicacion: "DEPOSITO",
   prioridadId: "p1",
+  tipoId: "tipo-mant",
   responsableId: "u1",
   intervaloValor: 1,
   intervaloUnidad: "MESES",
@@ -123,5 +124,42 @@ describe("PlanesPreventivoListView — columna 'Anticipación' (odd/preventivo-a
     expect(screen.getByRole("columnheader", { name: "Anticipación" })).toBeInTheDocument();
     expect(screen.getByText("Sin anticipación")).toBeInTheDocument();
     expect(screen.getByText("10 día(s) antes")).toBeInTheDocument();
+  });
+});
+
+// odd/preventivo-por-tipo S2: el listado muestra el tipo de los tickets que genera cada plan.
+describe("PlanesPreventivoListView — columna 'Tipo de ticket'", () => {
+  function tipo(id: string, nombre: string) {
+    return { id, codigo: id.toUpperCase(), nombre, modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" };
+  }
+
+  it("muestra el nombre del tipo del plan", async () => {
+    mockBackend([]);
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([tipo("tipo-prev", "Preventivo"), tipo("tipo-mant", "Mantenimiento")]),
+      ),
+    );
+    renderWithProviders(<PlanesPreventivoListView />, { user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }) });
+
+    expect(await screen.findByText("Mantenimiento")).toBeInTheDocument();
+    expect(screen.queryByText("Preventivo")).not.toBeInTheDocument();
+  });
+
+  it("con el catálogo resuelto y el tipo ausente, lo muestra como dado de baja", async () => {
+    mockBackend([]);
+    server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json([tipo("tipo-prev", "Preventivo")])));
+    renderWithProviders(<PlanesPreventivoListView />, { user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }) });
+
+    expect(await screen.findByText("Tipo de ticket dado de baja")).toBeInTheDocument();
+  });
+
+  it("hermano: con el catálogo caído no infiere una baja", async () => {
+    mockBackend([]);
+    server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json({ message: "falla" }, { status: 500 })));
+    renderWithProviders(<PlanesPreventivoListView />, { user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }) });
+
+    await screen.findByText("Revisión mensual");
+    await waitFor(() => expect(screen.queryByText("Tipo de ticket dado de baja")).not.toBeInTheDocument());
   });
 });

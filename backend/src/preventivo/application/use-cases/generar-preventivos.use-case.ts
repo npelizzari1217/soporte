@@ -1,7 +1,6 @@
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
-import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../../../tickets/application/use-cases/crear-ticket.use-case';
 import { IEquipoInformaticoRepository } from '../../../equipos/domain/ports/i-equipo-informatico.repository';
 import { EquipoInformaticoEntity } from '../../../equipos/domain/entities/equipo-informatico.entity';
@@ -14,7 +13,6 @@ import {
   ObjetivoResuelto,
   componerDescripcionTicket,
 } from '../../domain/services/describir-objetivo.service';
-import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.constants';
 
 /**
  * GenerarPreventivosUseCase — orquestación transaccional del barrido de
@@ -65,6 +63,14 @@ import { TIPO_CODIGO_PREVENTIVO } from '../../../tickets/domain/tipos-ticket.con
  * fecha del CICLO: la clave de idempotencia `(plan_id, fecha_programada)`,
  * los `SALTEADO_ATRASO`, el puntero, y la fecha objetivo del ticket (S2).
  *
+ * Tipo del ticket (odd/preventivo-por-tipo, S2): el del plan (`plan.tipoId`),
+ * ya no el tipo fijo `PREVENTIVO`. Si ese tipo se dio de baja después de crear
+ * el plan, `CrearTicketUseCase` lo rechaza como en cualquier alta
+ * (`TipoTicketNoEncontradoError`) y el ciclo cae en el camino [R9]: rollback,
+ * `PREVENTIVO_PLAN_ERROR` con el mensaje, y el resto del barrido sigue. El
+ * plan se reintenta cada día hasta que el tipo se reactive o se edite el plan;
+ * la recuperación de ciclos atrasados (ADR-PV3) cubre el hueco.
+ *
  * Ref spec: sdd/preventivo/spec, Requirements "Idempotencia por clave de
  * base...", "Recuperación de corrida perdida sin ráfaga", "No-solapamiento
  * con preventivo abierto sin atender", "Solicitante del ticket generado...",
@@ -89,7 +95,6 @@ export class GenerarPreventivosUseCase {
       | 'registrarSalteadoAtraso'
       | 'existeTicketAbiertoDelPlan'
     >,
-    private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
     private readonly crearTicketUseCase: Pick<CrearTicketUseCase, 'execute'>,
     private readonly txRunner: ITenantTransactionRunner,
     private readonly calcularCiclo: Pick<CalcularCicloService, 'ciclosPendientes'>,
@@ -110,21 +115,10 @@ export class GenerarPreventivosUseCase {
     const anio = hoy.getFullYear();
 
     const planes = await this.planRepo.findVencibles(hoy);
-    if (planes.length === 0) return;
-
-    // Catálogo FIJO (seed de provisioning) — su ausencia es un bug de
-    // infraestructura del tenant, no un error esperado de un plan puntual:
-    // throw defensivo, igual criterio que CrearTicketSoporteUseCase.
-    const tipoPreventivoId = await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO);
-    if (!tipoPreventivoId) {
-      throw new Error(
-        `Catálogo de tipos de ticket inconsistente: no existe el tipo "${TIPO_CODIGO_PREVENTIVO}" en el tenant activo.`,
-      );
-    }
 
     for (const plan of planes) {
       try {
-        await this.procesarPlan(plan, hoy, anio, clienteId, tipoPreventivoId);
+        await this.procesarPlan(plan, hoy, anio, clienteId);
       } catch (error) {
         // Aislamiento por plan: un plan roto no aborta el resto del barrido
         // del tenant. Log con `planId` + mensaje — nunca el error crudo.
@@ -139,7 +133,6 @@ export class GenerarPreventivosUseCase {
     hoy: Date,
     anio: number,
     clienteId: string,
-    tipoPreventivoId: string,
   ): Promise<void> {
     await this.txRunner.run(async () => {
       const resultado = this.calcularCiclo.ciclosPendientes(
@@ -208,7 +201,8 @@ export class GenerarPreventivosUseCase {
       const ticketResult = await this.crearTicketUseCase.execute({
         titulo: plan.titulo,
         descripcion,
-        tipoId: tipoPreventivoId,
+        // S2: el tipo del plan. Uno dado de baja lo rechaza el alta (ver JSDoc de la clase).
+        tipoId: plan.tipoId,
         prioridadId: plan.prioridadId,
         solicitanteId: plan.responsableId,
         clienteId,
@@ -216,16 +210,17 @@ export class GenerarPreventivosUseCase {
         anio,
         // S2: la fecha del CICLO, aunque el ticket se genere antes por la anticipación.
         fechaObjetivo: resultado.candidato,
-        // Flujo de sistema sin actor humano: no exige ALTAS sobre el tipo PREVENTIVO
+        // Flujo de sistema sin actor humano: no exige ALTAS sobre el tipo del plan
         // (odd/permisos-por-tipo-ticket, D3).
         alcance: null,
       });
 
       if (ticketResult.isFail()) {
-        // [R9] Responsable inválido / sin ciclo activo del tenant: el
-        // resultado del ciclo quedó INDETERMINADO, no decidido. `throw`
-        // fuerza el ROLLBACK TOTAL de Prisma — sin ticket, sin fila, sin
-        // avance de puntero. El siguiente tick reintenta el mismo ciclo.
+        // [R9] Responsable inválido / sin ciclo activo del tenant / tipo del
+        // plan dado de baja: el resultado del ciclo quedó INDETERMINADO, no
+        // decidido. `throw` fuerza el ROLLBACK TOTAL de Prisma — sin ticket,
+        // sin fila, sin avance de puntero. El siguiente tick reintenta el
+        // mismo ciclo.
         throw new Error(
           `No se pudo generar el ticket del plan ${plan.id}: ${ticketResult.getError().message}`,
         );

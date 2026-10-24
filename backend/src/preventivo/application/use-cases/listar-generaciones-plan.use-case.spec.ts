@@ -1,6 +1,10 @@
 import { ListarGeneracionesPlanUseCase } from './listar-generaciones-plan.use-case';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import { PlanNoEncontradoError } from '../../domain/errors/preventivo.errors';
+import { alcancePorTipo } from '../../../tickets/test-helpers/alcance-ticket';
+
+/** Actor que ve el tipo del plan (odd/preventivo-por-tipo, S4). */
+const ACTOR = alcancePorTipo('actor-1', { 'tipo-preventivo': ['LECTURA'] });
 
 function makePlan(): PlanPreventivoEntity {
   return PlanPreventivoEntity.create(
@@ -10,6 +14,7 @@ function makePlan(): PlanPreventivoEntity {
       equipoId: 'equipo-uuid',
       ubicacion: null,
       prioridadId: 'prioridad-uuid',
+      tipoId: 'tipo-preventivo',
       responsableId: 'responsable-uuid',
       intervaloValor: 1,
       intervaloUnidad: 'MESES',
@@ -27,7 +32,7 @@ describe('ListarGeneracionesPlanUseCase (4.4)', () => {
     const generacionRepo = { listarPorPlan: vi.fn() };
     const useCase = new ListarGeneracionesPlanUseCase(planRepo, generacionRepo);
 
-    const result = await useCase.execute({ planId: 'no-existe' });
+    const result = await useCase.execute({ planId: 'no-existe', alcance: ACTOR });
 
     expect(result.isFail()).toBe(true);
     expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
@@ -50,10 +55,26 @@ describe('ListarGeneracionesPlanUseCase (4.4)', () => {
     const generacionRepo = { listarPorPlan: vi.fn().mockResolvedValue(generaciones) };
     const useCase = new ListarGeneracionesPlanUseCase(planRepo, generacionRepo);
 
-    const result = await useCase.execute({ planId: plan.id });
+    const result = await useCase.execute({ planId: plan.id, alcance: ACTOR });
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue()).toEqual(generaciones);
     expect(generacionRepo.listarPorPlan).toHaveBeenCalledWith(plan.id);
+  });
+
+  it('S4: plan de un tipo sin LECTURA para el actor → 404, sin consultar las generaciones', async () => {
+    const plan = makePlan();
+    const planRepo = { buscarPorId: vi.fn().mockResolvedValue(plan) };
+    const generacionRepo = { listarPorPlan: vi.fn() };
+    const useCase = new ListarGeneracionesPlanUseCase(planRepo, generacionRepo);
+
+    const result = await useCase.execute({
+      planId: plan.id,
+      alcance: alcancePorTipo('actor-1', { 'tipo-soporte': ['LECTURA'] }),
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
+    expect(generacionRepo.listarPorPlan).not.toHaveBeenCalled();
   });
 });

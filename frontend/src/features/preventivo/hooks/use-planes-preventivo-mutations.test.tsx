@@ -23,6 +23,7 @@ const PLAN_FIXTURE: PlanPreventivo = {
   equipoId: null,
   ubicacion: "DEPOSITO",
   prioridadId: "p1",
+  tipoId: "t1",
   responsableId: "u1",
   intervaloValor: 1,
   intervaloUnidad: "MESES",

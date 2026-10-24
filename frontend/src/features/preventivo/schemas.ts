@@ -97,6 +97,9 @@ const camposComunes = {
     .pipe(z.string().max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH)))
     .optional(),
   prioridadId: z.string().min(1, "Elegí una prioridad"),
+  // Tipo de ticket de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Que esté
+  // vigente y que el usuario lo vea lo decide el backend; acá solo que haya uno elegido.
+  tipoId: z.string().min(1, "Elija un tipo de ticket"),
   responsableId: z.string().min(1, "Elegí un responsable"),
   intervaloValor: z
     .string()
@@ -140,6 +143,7 @@ const camposEdicion = {
   equipoId: camposComunes.equipoId,
   ubicacion: camposComunes.ubicacion,
   prioridadId: camposComunes.prioridadId,
+  tipoId: camposComunes.tipoId,
   responsableId: camposComunes.responsableId,
   intervaloValor: camposComunes.intervaloValor,
   intervaloUnidad: camposComunes.intervaloUnidad,

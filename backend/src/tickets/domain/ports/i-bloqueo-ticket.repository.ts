@@ -19,6 +19,13 @@ export interface IBloqueoTicketRepository {
    * ticket no tiene reparación o no tiene compras vinculadas.
    */
   comprasVinculadas(ticketId: string): Promise<string[]>;
+
+  /**
+   * `true` si el ticket lo generó el barrido a partir de un plan preventivo: tiene una fila en
+   * `preventivo_generacion` (odd/preventivo-por-tipo). Es lo que lo vuelve no borrable, sea del
+   * tipo que sea: el plan elige el tipo de sus tickets.
+   */
+  generadoPorPlanPreventivo(ticketId: string): Promise<boolean>;
 }
 
 export const BLOQUEO_TICKET_REPOSITORY = Symbol('BLOQUEO_TICKET_REPOSITORY');

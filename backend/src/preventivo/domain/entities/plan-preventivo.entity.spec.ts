@@ -38,6 +38,7 @@ function propsConEquipo(
     equipoId: 'equipo-uuid-1',
     ubicacion: null,
     prioridadId: 'prioridad-uuid-1',
+    tipoId: 'tipo-preventivo-uuid',
     responsableId: 'usuario-uuid-1',
     intervaloValor: 3,
     intervaloUnidad: 'MESES',
@@ -282,6 +283,30 @@ describe('PlanPreventivoEntity', () => {
       expect(result.isFail()).toBe(true);
       expect(result.getError()).toBeInstanceOf(IntervaloExcedeMaximoError);
       expect(plan.intervaloValor).toBe(3);
+    });
+
+    // odd/preventivo-por-tipo S2: el tipo es editable como cualquier otro campo.
+    it('cambia el tipo de ticket del plan y deja el resto intacto; sin tipoId conserva el vigente', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      expect(plan.editar({ titulo: 'Otro título' }).isOk()).toBe(true);
+      expect(plan.tipoId).toBe('tipo-preventivo-uuid');
+
+      const result = plan.editar({ tipoId: 'tipo-soporte-uuid' });
+
+      expect(result.isOk()).toBe(true);
+      expect(plan.tipoId).toBe('tipo-soporte-uuid');
+      expect(plan.titulo).toBe('Otro título');
+      expect(plan.equipoId).toBe('equipo-uuid-1');
+    });
+
+    it('una edición rechazada NO cambia el tipo aunque lo traiga', () => {
+      const plan = PlanPreventivoEntity.create(propsConEquipo()).getValue();
+
+      const result = plan.editar({ tipoId: 'tipo-soporte-uuid', intervaloValor: 0 });
+
+      expect(result.isFail()).toBe(true);
+      expect(plan.tipoId).toBe('tipo-preventivo-uuid');
     });
   });
 

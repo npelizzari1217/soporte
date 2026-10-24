@@ -25,17 +25,21 @@ export function usePlanesPreventivo(): UseQueryResult<PlanPreventivo[], Error> {
 }
 
 /**
- * `GET /preventivo/planes/responsables` — los técnicos (TECNICO o COLABORADOR) con LECTURA sobre el
- * tipo de ticket Preventivo, que es el de los tickets que genera el plan. Ya viene acotada: acá no
- * se filtra nada. El backend la abre con `PREVENTIVO:ALTAS` o `PREVENTIVO:MODIFICACION`, y rechaza
- * con 422 un responsable que no esté en ella.
+ * `GET /preventivo/planes/responsables?tipoId=` — los técnicos (TECNICO o COLABORADOR) con LECTURA
+ * sobre el tipo de ticket elegido para el plan, que es el de los tickets que genera
+ * (odd/preventivo-por-tipo, S5). Ya viene acotada: acá no se filtra nada. El backend la abre con
+ * `PREVENTIVO:ALTAS` o `PREVENTIVO:MODIFICACION` y LECTURA sobre el tipo, y rechaza con 422 un
+ * responsable que no esté en ella. Sin tipo elegido no consulta.
  *
+ * @param tipoId Tipo de ticket elegido en el formulario; vacío, la consulta queda deshabilitada.
  * @returns La query, con `data` como los técnicos ordenados por apellido y nombre.
  */
-export function useResponsablesPlanPreventivo(): UseQueryResult<TecnicoAsignable[], Error> {
+export function useResponsablesPlanPreventivo(tipoId: string): UseQueryResult<TecnicoAsignable[], Error> {
   return useQuery({
-    queryKey: ["preventivo", "responsables"],
-    queryFn: () => apiFetch<TecnicoAsignable[]>("preventivo/planes/responsables"),
+    queryKey: ["preventivo", "responsables", tipoId],
+    queryFn: () =>
+      apiFetch<TecnicoAsignable[]>(`preventivo/planes/responsables?tipoId=${encodeURIComponent(tipoId)}`),
+    enabled: !!tipoId,
     staleTime: 60_000,
   });
 }

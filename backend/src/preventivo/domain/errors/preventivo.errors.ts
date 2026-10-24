@@ -186,8 +186,9 @@ export class PlanNoEncontradoError extends DomainError {
 /**
  * ResponsableNoElegibleError — el responsable elegido para el plan no es un técnico que atienda
  * los tickets que el plan genera: TECNICO o COLABORADOR activo del cliente con `LECTURA` sobre el
- * tipo `PREVENTIVO` (`ElegibilidadAsignado.esAgenteDeTipo`). La UI ofrece solo a esos; este error
- * es la decisión del backend para un payload armado a mano o una lista vieja.
+ * tipo de ticket del plan (`ElegibilidadAsignado.esAgenteDeTipo`; odd/preventivo-por-tipo, S5). La
+ * UI ofrece solo a esos; este error es la decisión del backend para un payload armado a mano o una
+ * lista vieja.
  * → HTTP 422 en la capa de presentación.
  */
 export class ResponsableNoElegibleError extends DomainError {
@@ -195,8 +196,26 @@ export class ResponsableNoElegibleError extends DomainError {
 
   constructor() {
     super(
-      'El responsable debe ser un técnico o colaborador habilitado para los tickets de tipo ' +
-        'Preventivo.',
+      'El responsable debe ser un técnico o colaborador habilitado para el tipo de ticket del ' +
+        'plan.',
+    );
+  }
+}
+
+/**
+ * AccionSobreTipoDelPlanNoPermitidaError — el actor eligió para un plan un tipo de ticket sobre el
+ * que no tiene la acción que la operación exige (odd/preventivo-por-tipo, S4): `LECTURA` sobre el
+ * tipo del alta, el tipo nuevo de una edición o el de la lista de responsables. Sobre el tipo de un
+ * plan existente el error es `PlanNoEncontradoError` (404), no este: no se revela que existe.
+ * → HTTP 403 en la capa de presentación.
+ */
+export class AccionSobreTipoDelPlanNoPermitidaError extends DomainError {
+  readonly code = 'PREVENTIVO_ACCION_SOBRE_TIPO_NO_PERMITIDA';
+
+  /** @param accion Acción faltante sobre el tipo elegido. */
+  constructor(accion: string) {
+    super(
+      `El usuario no tiene el permiso "${accion}" sobre el tipo de ticket elegido para el plan.`,
     );
   }
 }

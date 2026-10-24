@@ -47,6 +47,12 @@ const MIGRACION_ANTICIPACION = join(
 const sqlAnticipacion = (archivo: string): string =>
   readFileSync(join(MIGRACION_ANTICIPACION, archivo), 'utf8');
 
+/**
+ * Tipo de ticket de los planes del spec (odd/preventivo-por-tipo: `tipo_id` es NOT NULL). Subconsulta
+ * por código para no renumerar los parámetros de cada INSERT.
+ */
+const SQL_TIPO_PLAN = "(SELECT id FROM tipos_ticket WHERE codigo = 'TEST_PREV_MANTENIMIENTO')";
+
 /** Deriva la URL del tenant efímero reemplazando el nombre de DB en `MASTER_TEST_URL`. */
 function buildTenantUrl(dbName: string): string {
   const url = new URL(MASTER_TEST_URL);
@@ -119,9 +125,9 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
     const ubicacion = overrides.ubicacion === undefined ? null : overrides.ubicacion;
     const result = await client.query(
       `INSERT INTO planes_preventivo
-         (id, titulo, equipo_id, ubicacion, prioridad_id, responsable_id,
+         (id, titulo, equipo_id, ubicacion, prioridad_id, tipo_id, responsable_id,
           intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, gen_random_uuid(), 7, 'DIAS', '2026-01-01', '2026-01-08', now())
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, ${SQL_TIPO_PLAN}, gen_random_uuid(), 7, 'DIAS', '2026-01-01', '2026-01-08', now())
        RETURNING id`,
       [`Plan test preventivo ${planCounter}`, equipo, ubicacion, prioridadId],
     );
@@ -173,8 +179,8 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
       await expect(
         client.query(
           `INSERT INTO planes_preventivo
-             (id, titulo, ubicacion, prioridad_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
-           VALUES (gen_random_uuid(), 'Plan intervalo cero', 'SEDE CENTRAL', $1, gen_random_uuid(), 0, 'DIAS', '2026-01-01', '2026-01-08', now())`,
+             (id, titulo, ubicacion, prioridad_id, tipo_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
+           VALUES (gen_random_uuid(), 'Plan intervalo cero', 'SEDE CENTRAL', $1, ${SQL_TIPO_PLAN}, gen_random_uuid(), 0, 'DIAS', '2026-01-01', '2026-01-08', now())`,
           [prioridadId],
         ),
       ).rejects.toThrow(/planes_preventivo_intervalo_valor_check|check constraint/i);
@@ -184,8 +190,8 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
       await expect(
         client.query(
           `INSERT INTO planes_preventivo
-             (id, titulo, ubicacion, prioridad_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
-           VALUES (gen_random_uuid(), 'Plan intervalo negativo', 'SEDE CENTRAL', $1, gen_random_uuid(), -1, 'DIAS', '2026-01-01', '2026-01-08', now())`,
+             (id, titulo, ubicacion, prioridad_id, tipo_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
+           VALUES (gen_random_uuid(), 'Plan intervalo negativo', 'SEDE CENTRAL', $1, ${SQL_TIPO_PLAN}, gen_random_uuid(), -1, 'DIAS', '2026-01-01', '2026-01-08', now())`,
           [prioridadId],
         ),
       ).rejects.toThrow(/planes_preventivo_intervalo_valor_check|check constraint/i);
@@ -199,8 +205,8 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
       await expect(
         client.query(
           `INSERT INTO planes_preventivo
-             (id, titulo, ubicacion, prioridad_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
-           VALUES (gen_random_uuid(), 'Plan unidad invalida', 'SEDE CENTRAL', $1, gen_random_uuid(), 7, 'SEMANAS', '2026-01-01', '2026-01-08', now())`,
+             (id, titulo, ubicacion, prioridad_id, tipo_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
+           VALUES (gen_random_uuid(), 'Plan unidad invalida', 'SEDE CENTRAL', $1, ${SQL_TIPO_PLAN}, gen_random_uuid(), 7, 'SEMANAS', '2026-01-01', '2026-01-08', now())`,
           [prioridadId],
         ),
       ).rejects.toThrow(/planes_preventivo_intervalo_unidad_check|check constraint/i);
@@ -209,8 +215,8 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
     it.each(['DIAS', 'MESES'])('acepta la unidad %s', async (unidad) => {
       const result = await client.query(
         `INSERT INTO planes_preventivo
-           (id, titulo, ubicacion, prioridad_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
-         VALUES (gen_random_uuid(), $1, 'SEDE CENTRAL', $2, gen_random_uuid(), 7, $3, '2026-01-01', '2026-01-08', now())
+           (id, titulo, ubicacion, prioridad_id, tipo_id, responsable_id, intervalo_valor, intervalo_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
+         VALUES (gen_random_uuid(), $1, 'SEDE CENTRAL', $2, ${SQL_TIPO_PLAN}, gen_random_uuid(), 7, $3, '2026-01-01', '2026-01-08', now())
          RETURNING id`,
         [`Plan unidad ${unidad}`, prioridadId, unidad],
       );
@@ -374,9 +380,9 @@ describe('Schema preventivo — CHECKs e idempotencia (WU-2, tenant efímero)', 
     }) {
       return client.query(
         `INSERT INTO planes_preventivo
-           (id, titulo, ubicacion, prioridad_id, responsable_id, intervalo_valor, intervalo_unidad,
+           (id, titulo, ubicacion, prioridad_id, tipo_id, responsable_id, intervalo_valor, intervalo_unidad,
             anticipacion_valor, anticipacion_unidad, fecha_inicio, proxima_ejecucion_en, updated_at)
-         VALUES (gen_random_uuid(), 'Plan anticipacion', 'SEDE CENTRAL', $1, gen_random_uuid(),
+         VALUES (gen_random_uuid(), 'Plan anticipacion', 'SEDE CENTRAL', $1, ${SQL_TIPO_PLAN}, gen_random_uuid(),
                  $2, $3, $4, $5, '2026-01-01', '2026-01-01', now())
          RETURNING id`,
         [

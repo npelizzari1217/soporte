@@ -18,8 +18,13 @@ export interface IPlanPreventivoRepository {
   /** Busca por id. `null` si no existe o está soft-deleted. */
   buscarPorId(id: string): Promise<PlanPreventivoEntity | null>;
 
-  /** Listado de planes del tenant (ABM, WU-4). */
-  listar(): Promise<PlanPreventivoEntity[]>;
+  /**
+   * Listado de planes vigentes del tenant (ABM, WU-4), acotado a los tipos de ticket dados
+   * (odd/preventivo-por-tipo, S1).
+   *
+   * @param tipoIds Tipos cuyos planes se listan; `null`, todos.
+   */
+  listar(tipoIds: readonly string[] | null): Promise<PlanPreventivoEntity[]>;
 
   /**
    * Planes vencibles para el barrido: `activo AND deleted_at IS NULL AND

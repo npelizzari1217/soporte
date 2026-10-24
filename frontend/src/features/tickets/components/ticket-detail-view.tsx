@@ -11,7 +11,8 @@
  * comentar `COMENTAR`, comentario interno `OBSERVAR`, PDF `IMPRESION`, adjuntar
  * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`, Borrar `BORRADO`
  * (S8, en cualquier estado: las tareas pendientes y las compras las frena el backend;
- * un ticket PREVENTIVO no se borra, L45).
+ * un ticket de mantenimiento preventivo no se borra, L45: el de tipo PREVENTIVO y el
+ * que generó un plan de cualquier tipo, odd/preventivo-por-tipo).
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -134,7 +135,12 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // Un ticket PREVENTIVO no se borra (L45: el backend responde 422). Con el catálogo sin resolver
   // no se sabe si lo es, y "Borrar" queda oculto; resuelto, un tipo ausente es uno desactivado, que
   // no puede ser PREVENTIVO (los tipos del sistema no se desactivan).
-  const ofrecerBorrar = puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO;
+  // Tampoco el que generó un plan de otro tipo (odd/preventivo-por-tipo). El backend lo decide por
+  // el enlace con el plan; acá alcanza la fecha objetivo, que solo la fija el barrido preventivo, y
+  // que todo ticket de plan de un tipo distinto de PREVENTIVO trae (esos tipos llegaron después).
+  const generadoPorPlan = !!ticket.fechaObjetivo;
+  const ofrecerBorrar =
+    puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO && !generadoPorPlan;
 
   return (
     <div className="flex flex-col gap-6">
