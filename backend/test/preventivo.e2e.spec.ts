@@ -590,6 +590,33 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       });
       expect(filaCruda!.activo).toBe(false);
     });
+
+    // Ninguna de estas columnas admite NULL: con `@IsOptional` el `null` pasaba el DTO y el
+    // `UPDATE` reventaba con un 500 crudo. Ausente sigue siendo "sin cambio" (PATCH semántico).
+    it.each(['tipoId', 'prioridadId', 'responsableId'] as const)(
+      '%s: null → 400 desde el DTO, y el plan conserva el suyo',
+      async (campo) => {
+        const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
+        const creado = await httpPost<PlanPreventivoResponseDto>(
+          `${baseUrl}/preventivo/planes`,
+          planValidoBody(),
+          bearer(actor.accessToken),
+        );
+        expect(creado.status).toBe(201);
+
+        const { status } = await httpPatch(
+          `${baseUrl}/preventivo/planes/${creado.data.id}`,
+          { [campo]: null },
+          bearer(actor.accessToken),
+        );
+
+        expect(status).toBe(400);
+        const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+          where: { id: creado.data.id },
+        });
+        expect(fila[campo]).toBe(creado.data[campo]);
+      },
+    );
   });
 
   // ─── DELETE /preventivo/planes/:id — PREVENTIVO:BORRADO, [R4] ───────────

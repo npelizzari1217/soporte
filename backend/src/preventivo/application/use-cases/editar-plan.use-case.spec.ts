@@ -69,11 +69,13 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     };
     vi.spyOn(txRunner, 'run');
     const { responsables, master } = responsablesDePrueba();
+    vi.spyOn(responsables, 'exigirElegible');
     return {
       useCase: new EditarPlanUseCase(planRepo, txRunner, responsables, tiposDePrueba()),
       planRepo,
       txRunner,
       master,
+      responsables,
     };
   }
 
@@ -430,6 +432,25 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     expect(plan.titulo).toBe('Cambio de filtros');
   });
 
+  // Mandar un tipo visible no rescata a un plan invisible: la visibilidad se decide con el tipo
+  // VIGENTE del plan, antes de mirar el tipo pedido.
+  it('S4: un plan de un tipo sin LECTURA, pidiendo pasarlo a un tipo visible → 404, nada cambia', async () => {
+    const plan = makePlan({ tipoId: TIPO_SOPORTE_ID });
+    const { useCase, planRepo } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: alcancePorTipo('actor-1', { [TIPO_PREVENTIVO_ID]: ['LECTURA', 'MODIFICACION'] }),
+      planId: plan.id,
+      tipoId: TIPO_PREVENTIVO_ID,
+    });
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(PlanNoEncontradoError);
+    expect(planRepo.guardar).not.toHaveBeenCalled();
+    expect(plan.tipoId).toBe(TIPO_SOPORTE_ID);
+  });
+
   it('S4: ADMINISTRADOR (sin restricción por tipo) edita el plan de cualquier tipo', async () => {
     const plan = makePlan({ tipoId: TIPO_SOPORTE_ID });
     const { useCase, planRepo } = buildUseCase(plan);
@@ -483,6 +504,51 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     expect(plan.tipoId).toBe(TIPO_PREVENTIVO_ID);
   });
 
+  // Hermano del caso de arriba con un responsable que SÍ es del tipo nuevo: fija que la
+  // revalidación se hace contra el tipo NUEVO, no contra el vigente.
+  it('S5: cambia el tipo conservando el responsable → lo revalida contra el tipo nuevo', async () => {
+    const plan = makePlan({ responsableId: USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id });
+    const { useCase, planRepo, responsables } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: ACTOR,
+      planId: plan.id,
+      tipoId: TIPO_SOPORTE_ID,
+      responsableId: USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id,
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(responsables.exigirElegible).toHaveBeenCalledWith(
+      'cliente-1',
+      USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id,
+      TIPO_SOPORTE_ID,
+    );
+    expect(plan.tipoId).toBe(TIPO_SOPORTE_ID);
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+  });
+
+  // El formulario reenvía el tipo vigente en cada guardado: mandarlo igual no es un cambio de tipo,
+  // así que el responsable vigente (aunque ya no sea elegible) no se revalida.
+  it('S5: el mismo tipo vigente y el mismo responsable → no revalida el responsable', async () => {
+    const plan = makePlan();
+    const { useCase, planRepo, responsables } = buildUseCase(plan);
+
+    const result = await useCase.execute({
+      clienteId: 'cliente-1',
+      alcance: ACTOR,
+      planId: plan.id,
+      tipoId: TIPO_PREVENTIVO_ID,
+      responsableId: 'responsable-uuid',
+      titulo: 'Nuevo título',
+    });
+
+    expect(result.isOk()).toBe(true);
+    expect(responsables.exigirElegible).not.toHaveBeenCalled();
+    expect(plan.titulo).toBe('Nuevo título');
+    expect(planRepo.guardar).toHaveBeenCalledWith(plan);
+  });
+
   it('S5: cambia el tipo sin mandar responsable → revalida el vigente contra el tipo nuevo', async () => {
     const plan = makePlan({ responsableId: USUARIOS_PREVENTIVO.TECNICO_PREVENTIVO.id });
     const { useCase, planRepo } = buildUseCase(plan);
@@ -522,26 +588,30 @@ describe('EditarPlanUseCase (4.2/4.3)', () => {
     },
   );
 
-  it('S4: cambia el tipo a uno sin LECTURA para el actor → 403, nada cambia', async () => {
-    const plan = makePlan();
-    const { useCase, planRepo } = buildUseCase(plan);
+  // La regla es `LECTURA` sobre el tipo nuevo (L4): ni `MODIFICACION` ni `ALTAS` la reemplazan.
+  it.each([['MODIFICACION'], ['ALTAS']] as const)(
+    'S4: cambia el tipo a uno con %s pero sin LECTURA → 403, nada cambia',
+    async (accion) => {
+      const plan = makePlan();
+      const { useCase, planRepo } = buildUseCase(plan);
 
-    const result = await useCase.execute({
-      clienteId: 'cliente-1',
-      alcance: alcancePorTipo('actor-1', {
-        [TIPO_PREVENTIVO_ID]: ['LECTURA'],
-        [TIPO_SOPORTE_ID]: ['MODIFICACION'],
-      }),
-      planId: plan.id,
-      tipoId: TIPO_SOPORTE_ID,
-      responsableId: USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id,
-    });
+      const result = await useCase.execute({
+        clienteId: 'cliente-1',
+        alcance: alcancePorTipo('actor-1', {
+          [TIPO_PREVENTIVO_ID]: ['LECTURA'],
+          [TIPO_SOPORTE_ID]: [accion],
+        }),
+        planId: plan.id,
+        tipoId: TIPO_SOPORTE_ID,
+        responsableId: USUARIOS_PREVENTIVO.TECNICO_SOPORTE.id,
+      });
 
-    expect(result.isFail()).toBe(true);
-    expect(result.getError()).toBeInstanceOf(AccionSobreTipoDelPlanNoPermitidaError);
-    expect(planRepo.guardar).not.toHaveBeenCalled();
-    expect(plan.tipoId).toBe(TIPO_PREVENTIVO_ID);
-  });
+      expect(result.isFail()).toBe(true);
+      expect(result.getError()).toBeInstanceOf(AccionSobreTipoDelPlanNoPermitidaError);
+      expect(planRepo.guardar).not.toHaveBeenCalled();
+      expect(plan.tipoId).toBe(TIPO_PREVENTIVO_ID);
+    },
+  );
 
   // Mismo criterio que el responsable vigente: el tipo que el plan ya tiene no se revalida contra el
   // catálogo, así que un plan cuyo tipo se dio de baja se sigue pudiendo editar (por ejemplo, para

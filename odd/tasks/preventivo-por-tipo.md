@@ -84,3 +84,20 @@ más feat/responsables-por-tipo (merge 1db294af).
   tipo, sin cambios: dan exactamente L4 B. El filtro por tipo en el listado de planes no se agregó (era
   opcional); el listado y el detalle muestran el tipo, con "Tipo de ticket dado de baja" si ya no está en el
   catálogo resuelto.
+- **L11** (verificación independiente de T1, af75a266, y sus seguimientos) — (1) Bugfix con TDD:
+  `PATCH /preventivo/planes/:id` con `{tipoId: null}` pasaba el DTO (`@IsOptional` también saltea el
+  `null`), revalidaba el tipo como si cambiara y el `guardar` reventaba con un 500; igual con
+  `prioridadId` y `responsableId`, desde antes de T1. RED observado: `preventivo.dto.spec.ts` (3 casos, sin
+  error de validación para `null`) y `preventivo.e2e.spec.ts` (3 casos, "expected 500 to be 400", Prisma
+  "Argument `prioridad` is missing" en `guardar`). Fix: `@ValidateIf(valor !== undefined)` + `@IsUUID()`
+  en los tres campos del DTO de edición (precedente: `insumos.dto.ts`); ausente sigue siendo "sin
+  cambio". GREEN: los 6 casos. (2) El JSDoc de `tipoId` del alta decía `ALTAS` sobre el tipo; la regla es
+  `LECTURA` (L4). (3) Regresiones en `editar-plan.use-case.spec.ts`: plan invisible pidiendo un tipo
+  visible → 404; tipo nuevo con `ALTAS` (y con `MODIFICACION`) sin `LECTURA` → 403; mismo responsable
+  con tipo nuevo → `exigirElegible(cliente, R, tipo nuevo)`; mismo tipo y responsable → no se llama. La
+  de `listar-planes` (solo `ALTAS`, lista vacía sin consultar) ya existía. (4) Runbook: sección "Tipo de
+  ticket del plan preventivo" con precheck por tenant, arreglo tras un `P3009` y rollback. Hallazgo: el
+  `RAISE` de la migración sugiere "asignar tipo_id a mano a cada plan", lo que no es posible (la columna
+  se deshace con el error); el runbook lo aclara y la migración, ya aplicada, no se editó. Compuertas:
+  `pnpm lint` y `pnpm typecheck` en cero; specs del DTO (14), editar-plan (30), listar-planes (3),
+  controller (25) y e2e de preventivo (36) en verde.

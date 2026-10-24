@@ -1171,6 +1171,73 @@ vigente al momento de cada resolución o respuesta. Volver a desplegar después 
 la fila de la migración en `_prisma_migrations`, y el script recalcula con el calendario de ese
 momento. El rollback no borra esa fila.
 
+## Tipo de ticket del plan preventivo
+
+Cada plan preventivo pasa a tener un tipo de ticket (`odd/tasks/preventivo-por-tipo.md`). La
+migración tenant `20261025130000_preventivo_plan_tipo` agrega `planes_preventivo.tipo_id` NOT NULL
+y pone **todos** los planes existentes, también los dados de baja, en el tipo de código
+`PREVENTIVO`. Entra por `migrate:tenants` dentro de la ventana de `predeploy-dump.ps1`.
+
+Un tenant con planes y **sin** un tipo de código `PREVENTIVO` no se puede migrar: la migración
+aborta con `preventivo_plan_tipo: el tenant tiene planes preventivos y no tiene el tipo de ticket
+PREVENTIVO`. El script corre en una sola transacción implícita, así que no deja nada a medias en
+esa base, pero Prisma la marca como fallida en `_prisma_migrations` y los deploys siguientes fallan
+con `P3009`. Un tenant sin planes migra igual, tenga o no el tipo.
+
+### Precheck de solo lectura
+
+Con la lista de bases del registro (la misma consulta sobre master de "Precheck de solo lectura:
+el CHECK de la copia"), en **cada** base de inquilino, antes del deploy:
+
+```sql
+SELECT
+  (SELECT count(*) FROM planes_preventivo)                         AS planes,
+  (SELECT count(*) FROM tipos_ticket WHERE codigo = 'PREVENTIVO')  AS tipo_preventivo;
+```
+
+La migración busca el tipo solo por `codigo`, sin mirar `activo` ni `deleted_at`: un tipo
+`PREVENTIVO` dado de baja la deja pasar, y sus planes quedan en él (el barrido los rechaza a
+diario con `PREVENTIVO_PLAN_ERROR` hasta que se los pase a un tipo vigente). Desde la UI no se
+puede dar de baja ni cambiarle el código: es un tipo del sistema (`TIPOS_TICKET_DEL_SISTEMA`).
+
+| Resultado | Qué hacer |
+|---|---|
+| `planes = 0`, o `tipo_preventivo = 1` | Seguir. |
+| `planes > 0` y `tipo_preventivo = 0` | **No desplegar todavía.** Con el código actual en marcha, entrar como administrador de ese cliente a Admin → Catálogos → Tipos de ticket y crear el tipo con código `PREVENTIVO`, nombre `Preventivo` y módulo `EDILICIA` (los valores del seed), copiando los permisos del tipo que corresponda para que los técnicos lo vean. Volver a correr el precheck. |
+
+### Si la migración ya falló en un tenant
+
+1. Crear el tipo en **esa** base. Con los servicios detenidos no hay UI, así que va por SQL, con
+   los valores del seed (`tenant-seeder.adapter.ts`):
+
+   ```sql
+   INSERT INTO tipos_ticket (codigo, nombre, modulo, updated_at)
+   VALUES ('PREVENTIVO', 'Preventivo', 'EDILICIA', now());
+   ```
+
+   Nadie tiene permisos sobre un tipo creado así: hasta que se le den `LECTURA` en Permisos →
+   Tipos de ticket, sus planes los ven solo los administradores. El mensaje del `RAISE` también
+   sugiere asignar `tipo_id` a mano a cada plan, pero eso no es posible: la columna se deshace
+   junto con el error.
+2. Marcar la migración como revertida con el `DATABASE_URL_TENANT` de ese tenant y
+   `--config prisma.tenant.config.ts` (ver "Nota histórica: precondición de componentes sin
+   repuesto"; sin `--config`, Prisma 7 la marcaría contra master):
+
+   ```powershell
+   $env:DATABASE_URL_TENANT = '<url de la base de ese tenant>'
+   corepack pnpm prisma migrate resolve --rolled-back 20261025130000_preventivo_plan_tipo --schema prisma_tenant/schema.prisma --config prisma.tenant.config.ts
+   ```
+
+3. Volver a correr el precheck en esa base, y después `deploy.ps1`.
+
+### Rollback
+
+Su `rollback.sql` borra el índice, la FK y la columna, y se puede correr dos veces. **Primero el
+código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee `tipo_id` y
+sin la columna falla. Pierde el tipo elegido en cada plan; el código anterior genera todos los
+planes con `PREVENTIVO`. No borra la fila de `_prisma_migrations`: para volver a desplegar, el
+mismo `migrate resolve --rolled-back` de arriba.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

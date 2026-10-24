@@ -42,6 +42,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
   INTERVALO_VALOR_MAXIMO,
@@ -80,7 +81,7 @@ export class CreatePlanPreventivoHttpDto {
 
   /**
    * Tipo de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Que admita tickets nuevos
-   * y que el actor tenga `ALTAS` sobre él lo decide el caso de uso.
+   * y que el actor tenga `LECTURA` sobre él lo decide el caso de uso.
    */
   @IsUUID()
   tipoId!: string;
@@ -131,15 +132,20 @@ export class EditarPlanPreventivoHttpDto {
   @MaxLength(UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
-  @IsOptional()
+  /*
+   * `prioridadId`, `tipoId` y `responsableId` van con `@ValidateIf` y no con `@IsOptional`:
+   * `@IsOptional` también saltea el `null`, que ninguna de las tres columnas admite. Llegaba a la
+   * entidad como un valor y el `UPDATE` reventaba con un 500. Ausente sigue siendo "sin cambio".
+   */
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsUUID()
   prioridadId?: string;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsUUID()
   tipoId?: string;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsUUID()
   responsableId?: string;
 

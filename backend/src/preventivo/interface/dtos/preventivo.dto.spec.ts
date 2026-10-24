@@ -159,6 +159,18 @@ describe('tipo de ticket del plan', () => {
     ).toHaveProperty('isUuid');
   });
 
+  // `null` no es "sin cambio": ninguna de estas columnas admite NULL, y con `@IsOptional` el valor
+  // pasaba el borde y moría en la base con un 500 (y, para el tipo, con una revalidación espuria).
+  it.each(['tipoId', 'prioridadId', 'responsableId'])(
+    'la edición con %s: null se rechaza por isUuid; ausente sigue siendo válido',
+    async (campo) => {
+      expect(await erroresDe(EditarPlanPreventivoHttpDto, { [campo]: null }, campo)).toHaveProperty(
+        'isUuid',
+      );
+      expect(await erroresDe(EditarPlanPreventivoHttpDto, {}, campo)).toBeUndefined();
+    },
+  );
+
   it('la query de responsables exige un tipoId UUID', async () => {
     expect(await erroresDe(ListarResponsablesPlanQueryDto, {}, 'tipoId')).toHaveProperty('isUuid');
     expect(
