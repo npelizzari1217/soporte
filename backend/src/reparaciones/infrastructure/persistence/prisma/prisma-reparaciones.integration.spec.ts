@@ -48,6 +48,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
   let tipoComentarioId: string;
   let tipoCambioEstadoId: string;
   let creoTipoComentario = false;
+  let creoTipoCambioEstado = false;
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
   let numeroCounter = 0;
@@ -194,9 +195,21 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
       ).id;
       creoTipoComentario = true;
     }
-    tipoCambioEstadoId = (
-      await tenantClient.tipoOperacion.findUniqueOrThrow({ where: { codigo: 'CAMBIO_ESTADO' } })
-    ).id;
+    // Mismo criterio que COMENTARIO: en una base de test recien creada el catalogo esta vacio,
+    // y depender de que otro spec lo haya sembrado antes hace que el resultado dependa del orden.
+    const cambioEstado = await tenantClient.tipoOperacion.findUnique({
+      where: { codigo: 'CAMBIO_ESTADO' },
+    });
+    if (cambioEstado) {
+      tipoCambioEstadoId = cambioEstado.id;
+    } else {
+      tipoCambioEstadoId = (
+        await tenantClient.tipoOperacion.create({
+          data: { codigo: 'CAMBIO_ESTADO', nombre: 'Cambio de estado' },
+        })
+      ).id;
+      creoTipoCambioEstado = true;
+    }
   }, 30_000);
 
   afterAll(async () => {
@@ -205,6 +218,9 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     await limpiarFixtures();
     if (creoTipoComentario) {
       await tenantClient.tipoOperacion.deleteMany({ where: { codigo: 'COMENTARIO' } });
+    }
+    if (creoTipoCambioEstado) {
+      await tenantClient.tipoOperacion.deleteMany({ where: { codigo: 'CAMBIO_ESTADO' } });
     }
     await prismaService.onModuleDestroy();
   }, 30_000);
