@@ -593,8 +593,8 @@ describe("TicketDetailView — ubicación y sector (odd/ubicacion-sector-ticket)
     await waitFor(() => expect(capturedBody).toMatchObject({ ubicacion: "Aula 14", sectorId: SECTOR_ID }));
   });
 
-  // CA2: Edilicia tiene su propia ubicación; la general no se muestra ni se carga.
-  it("ticket de EDILICIA: oculta la ubicación general en la cabecera y en el modal, y el PATCH no la lleva", async () => {
+  // Desde odd/ticket-unificado (S1) la ubicación es una sola, la del ticket, en cualquier tipo.
+  it("ticket de EDILICIA: muestra la ubicación en la cabecera y el modal la edita como en cualquier tipo", async () => {
     mockTicketConDatos("EDILICIA");
     let capturedBody: unknown = null;
     server.use(
@@ -609,26 +609,30 @@ describe("TicketDetailView — ubicación y sector (odd/ubicacion-sector-ticket)
       user: buildUser({ permisos: ["TICKETS:MODIFICACION"] }),
     });
 
-    await screen.findByText("Impresora rota");
-    await waitFor(() => expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("Primaria"));
-    expect(screen.queryByText("Ubicación")).not.toBeInTheDocument();
-    expect(screen.queryByText("Aula 12")).not.toBeInTheDocument();
+    expect(await screen.findByText("Aula 12")).toBeInTheDocument();
+    expect(screen.getByText("Ubicación").nextElementSibling).toHaveTextContent("Aula 12");
 
     await user.click(screen.getByRole("button", { name: /^editar$/i }));
-    await screen.findByLabelText("Título");
-    expect(screen.queryByLabelText("Ubicación")).not.toBeInTheDocument();
+    const ubicacionInput = await screen.findByLabelText("Ubicación");
+    expect(ubicacionInput).toHaveValue("Aula 12");
     await waitFor(() => expect(screen.getByLabelText("Sector")).toHaveValue(SECTOR_ID));
-
+    await user.clear(ubicacionInput);
+    await user.type(ubicacionInput, "Patio");
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
-    await waitFor(() => expect(capturedBody).not.toBeNull());
-    expect(capturedBody).not.toHaveProperty("ubicacion");
-    expect(capturedBody).toMatchObject({ sectorId: SECTOR_ID });
+    await waitFor(() => expect(capturedBody).toMatchObject({ ubicacion: "Patio", sectorId: SECTOR_ID }));
   });
 
-  // CA1: un tipo desactivado no viene en el catálogo de tipos activos, pero el
-  // ticket sigue aceptando ubicación (solo Edilicia la oculta, y sus tipos son
-  // del sistema y no se desactivan).
+  it("con el catálogo de tipos caído, la ubicación se muestra igual: ya no depende del módulo", async () => {
+    mockTicketConDatos("TICKETS");
+    server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json({ message: "falla" }, { status: 500 })));
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+
+    expect(await screen.findByText("Aula 12")).toBeInTheDocument();
+  });
+
+  // CA1: un tipo desactivado no viene en el catálogo de tipos activos, y el
+  // ticket sigue aceptando ubicación.
   it("ticket con tipo desactivado (fuera del catálogo): muestra la ubicación en la cabecera y en el modal", async () => {
     mockTicketConDatos("TICKETS");
     server.use(
@@ -805,5 +809,104 @@ describe("TicketDetailView — «Borrar» según el tipo del ticket (odd/permiso
     await screen.findByText("Impresora rota");
 
     expect(screen.queryByRole("button", { name: "Borrar" })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Compras vinculadas y bloqueo en el detalle (odd/ticket-unificado, S4, S5, L19): la sección se ve
+ * solo con la celda COMPRAS:LECTURA, que es lo que exige `GET /tickets/:id/compras`; vincular y
+ * desvincular piden además MODIFICACION sobre el tipo.
+ */
+describe("TicketDetailView — compras vinculadas y bloqueo (odd/ticket-unificado, S4, S5)", () => {
+  const COMPRAS_DEL_TICKET = [
+    { id: "co1", numero: "COM-0001", grupo: "ACTIVAS", bloquea: true },
+    { id: "co2", numero: "COM-0002", grupo: "COMPLETADAS", bloquea: false },
+  ];
+  let lecturasDeCompras: number;
+
+  beforeEach(() => {
+    mockBackend();
+    lecturasDeCompras = 0;
+    server.use(
+      // El técnico de prueba es el responsable: si el ticket no está bloqueado, gestiona tareas.
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, asignadoId: "u-otro" })),
+      http.get(`/api/tickets/${TICKET_ID}/compras`, () => {
+        lecturasDeCompras += 1;
+        return HttpResponse.json(COMPRAS_DEL_TICKET);
+      }),
+      http.get("/api/compras", () => HttpResponse.json({ items: [], total: 0, pagina: 1, porPagina: 10 })),
+    );
+  });
+
+  const conCompras = buildUser({ ...TECNICO, permisos: [...TECNICO.permisos, "COMPRAS:LECTURA"] });
+
+  it("con COMPRAS:LECTURA lista las compras vinculadas, marca el bloqueo y congela las tareas", async () => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: conCompras, permisos: enTi1("MODIFICACION") });
+
+    const seccion = (await screen.findByRole("heading", { name: "Compras vinculadas" })).closest("section") as HTMLElement;
+    expect(await within(seccion).findByText("COM-0001")).toBeInTheDocument();
+    expect(within(seccion).getByText("COM-0002")).toBeInTheDocument();
+    expect(within(seccion).getByText("Bloqueado por una compra en curso")).toBeInTheDocument();
+    // S5: con una compra activa vinculada, las tareas quedan de solo lectura.
+    const tareas = screen.getByRole("heading", { name: "Tareas" }).closest("section") as HTMLElement;
+    expect(await within(tareas).findByRole("note")).toHaveTextContent(/bloqueado por una compra/);
+    expect(within(tareas).queryByLabelText("Nueva tarea")).toBeNull();
+  });
+
+  it("caso hermano: sin compras que bloqueen, no marca bloqueo y las tareas siguen editables", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/compras`, () =>
+        HttpResponse.json([{ id: "co2", numero: "COM-0002", grupo: "COMPLETADAS", bloquea: false }]),
+      ),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: conCompras, permisos: enTi1("MODIFICACION") });
+
+    expect(await screen.findByText("COM-0002")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
+    expect(screen.queryByText("Bloqueado por una compra en curso")).toBeNull();
+  });
+
+  it("sin COMPRAS:LECTURA no muestra la sección ni pide las compras (L19)", async () => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("MODIFICACION") });
+
+    await screen.findByText("Impresora rota");
+    await screen.findByLabelText("Nueva tarea");
+    expect(screen.queryByRole("heading", { name: "Compras vinculadas" })).toBeNull();
+    expect(screen.queryByText("COM-0001")).toBeNull();
+    expect(lecturasDeCompras).toBe(0);
+  });
+
+  it.each<[string, AccionTipoTicket[], boolean]>([
+    ["con MODIFICACION sobre el tipo, vincula y desvincula", ["MODIFICACION"], true],
+    ["con ALTAS y sin MODIFICACION, solo ve las compras", ["ALTAS"], false],
+  ])("%s", async (_caso, acciones, gestiona) => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: conCompras, permisos: enTi1(...acciones) });
+
+    const seccion = (await screen.findByRole("heading", { name: "Compras vinculadas" })).closest("section") as HTMLElement;
+    await within(seccion).findByText("COM-0001");
+    if (gestiona) {
+      expect(within(seccion).getAllByRole("button", { name: /desvincular/i })).toHaveLength(2);
+      expect(within(seccion).getByLabelText(/vincular compra/i)).toBeInTheDocument();
+    } else {
+      expect(within(seccion).queryByRole("button", { name: /desvincular/i })).toBeNull();
+      expect(within(seccion).queryByLabelText(/vincular compra/i)).toBeNull();
+    }
+  });
+
+  it("desvincular desde el detalle manda DELETE /tickets/:id/compras/:compraId", async () => {
+    let borrada: string | null = null;
+    server.use(
+      http.delete(`/api/tickets/${TICKET_ID}/compras/:compraId`, ({ params }) => {
+        borrada = String(params.compraId);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: conCompras, permisos: enTi1("MODIFICACION") });
+
+    const fila = (await screen.findByText("COM-0001")).closest("li") as HTMLElement;
+    await user.click(within(fila).getByRole("button", { name: /desvincular/i }));
+
+    await waitFor(() => expect(borrada).toBe("co1"));
   });
 });

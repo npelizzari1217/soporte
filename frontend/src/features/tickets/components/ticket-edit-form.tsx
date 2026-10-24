@@ -22,18 +22,20 @@ import type { Sector } from "@/features/sectores/types";
 /**
  * Arma el PATCH a partir del formulario. Un campo opcional vacío viaja como
  * `null`, que en el backend LIMPIA el valor (omitido no lo tocaría y el
- * usuario no podría borrarlo). La ubicación general no viaja cuando el campo
- * está oculto (tickets de Edilicia, CA2): omitida, el backend no la toca.
+ * usuario no podría borrarlo). La ubicación viaja en cualquier tipo de ticket
+ * (odd/ticket-unificado, S1).
+ *
+ * @param values Valores del formulario.
+ * @returns El body de `PATCH /tickets/:id`.
  */
-export function aEditarTicketDto(values: EditarTicketFormValues, mostrarUbicacion: boolean): EditarTicketDto {
-  const dto: EditarTicketDto = {
+export function aEditarTicketDto(values: EditarTicketFormValues): EditarTicketDto {
+  return {
     titulo: values.titulo,
     descripcion: values.descripcion,
     prioridadId: values.prioridadId,
+    ubicacion: values.ubicacion || null,
     sectorId: values.sectorId || null,
   };
-  if (mostrarUbicacion) dto.ubicacion = values.ubicacion || null;
-  return dto;
 }
 
 export interface TicketEditFormProps {
@@ -59,12 +61,6 @@ export interface TicketEditFormProps {
    * cuando el catálogo de activos no lo trae.
    */
   sectorNombre?: string | null;
-  /**
-   * `false` oculta la ubicación general (tickets de Edilicia, CA2) y la saca
-   * del PATCH. Por defecto `false`: el caller decide mostrarla cuando ya sabe
-   * que el ticket no es de Edilicia.
-   */
-  mostrarUbicacion?: boolean;
   onSubmit: (dto: EditarTicketDto) => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -75,7 +71,6 @@ export function TicketEditForm({
   prioridades,
   sectores,
   sectorNombre = null,
-  mostrarUbicacion = false,
   onSubmit,
   onCancel,
   isSubmitting,
@@ -135,7 +130,7 @@ export function TicketEditForm({
 
   return (
     <form
-      onSubmit={handleSubmit((values) => onSubmit(aEditarTicketDto(values, mostrarUbicacion)))}
+      onSubmit={handleSubmit((values) => onSubmit(aEditarTicketDto(values)))}
       className="flex flex-col gap-3"
       noValidate
     >
@@ -166,19 +161,17 @@ export function TicketEditForm({
         </Select>
       </div>
 
-      {mostrarUbicacion && (
-        <div className="flex flex-col gap-1">
-          <label htmlFor="edit-ubicacion" className="text-sm font-medium text-foreground">
-            Ubicación
-          </label>
-          <Input id="edit-ubicacion" error={!!errors.ubicacion} {...register("ubicacion")} />
-          {errors.ubicacion && (
-            <p role="alert" className="text-sm text-destructive">
-              {errors.ubicacion.message}
-            </p>
-          )}
-        </div>
-      )}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="edit-ubicacion" className="text-sm font-medium text-foreground">
+          Ubicación
+        </label>
+        <Input id="edit-ubicacion" error={!!errors.ubicacion} {...register("ubicacion")} />
+        {errors.ubicacion && (
+          <p role="alert" className="text-sm text-destructive">
+            {errors.ubicacion.message}
+          </p>
+        )}
+      </div>
 
       <div className="flex flex-col gap-1">
         <label htmlFor="edit-sector" className="text-sm font-medium text-foreground">

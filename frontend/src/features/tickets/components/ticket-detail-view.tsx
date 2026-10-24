@@ -12,6 +12,12 @@
  * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`, Borrar `BORRADO`
  * (S8, en cualquier estado: las tareas pendientes y las compras las frena el backend;
  * un ticket PREVENTIVO no se borra, L45).
+ *
+ * Compras vinculadas (odd/ticket-unificado, S4, S5, L19): la sección se muestra solo con la celda
+ * `COMPRAS:LECTURA`, la que exige `GET /tickets/:id/compras`; vincular y desvincular piden además
+ * `MODIFICACION` sobre el tipo. El bloqueo por compra sale de esa misma lista, así que sin
+ * `COMPRAS:LECTURA` el detalle no lo conoce: `GET /tickets/:id` no lo trae (pendiente de backend,
+ * L22) y las tareas solo se congelan por estado; el backend igual rechaza la escritura.
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -46,6 +52,9 @@ import { TicketEquipoMantenimientoCard } from "./ticket-equipo-mantenimiento-car
 import { TicketPdfButton } from "./ticket-pdf-button";
 import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
+import { TicketCompras } from "./ticket-compras";
+import { useComprasDeTicket } from "../hooks/use-compras-de-ticket";
+import { Badge } from "@/components/ui/badge";
 import { TIPO_CODIGO_PREVENTIVO, TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
 
 export interface TicketDetailViewProps {
@@ -70,6 +79,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // WU9.3: el backend ya gatea csatPuntaje/csatComentario por payload
   // (ADR-C5); esta bandera es defensa en profundidad del lado UI.
   const puedeVerCsat = useCan("CSAT:LECTURA");
+  // Sin la celda, `GET /tickets/:id/compras` responde 403: ni se pide (L19).
+  const puedeLeerCompras = useCan("COMPRAS:LECTURA");
+  const comprasQuery = useComprasDeTicket(ticketId, puedeLeerCompras);
+  const bloqueadoPorCompra = (comprasQuery.data ?? []).some((compra) => compra.bloquea);
   const { isGlobalAdmin } = useSession();
   const tecnicosQuery = useTecnicosAsignables(ticketId, puedeAsignar);
 
@@ -97,10 +110,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
     () => buildIdToCodigoMap(tiposOperacionQuery.data ?? []),
     [tiposOperacionQuery.data],
   );
-  const tipoModuloMap = useMemo(
-    () => new Map((tiposQuery.data ?? []).map((tipo) => [tipo.id, tipo.modulo as string])),
-    [tiposQuery.data],
-  );
   const tipoNombreMap = useMemo(
     () => new Map((tiposQuery.data ?? []).map((tipo) => [tipo.id, tipo.nombre])),
     [tiposQuery.data],
@@ -123,14 +132,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // Bloqueo de edición por estado (mirror backend): una vez EN_PROCESO+, solo
   // ROOT edita. Si el estado aún no se resolvió (catálogo cargando), no bloquea.
   const edicionPermitida = estadoCodigo ? puedeEditarDatos(estadoCodigo, isGlobalAdmin) : true;
-  // La ubicación general no se muestra ni se carga en los tickets de Edilicia,
-  // que tienen la suya propia (odd/ubicacion-sector-ticket, CA2). Mientras el
-  // catálogo de tipos no cargó (o falló) el módulo es desconocido y queda oculta:
-  // el PATCH la omite y el backend no la toca. Con el catálogo cargado, un tipo
-  // ausente es un tipo desactivado (el catálogo trae solo los activos) y se
-  // muestra (CA1): los tipos de Edilicia son del sistema y no se desactivan.
-  const modulo = tipoModuloMap.get(ticket.tipoId);
-  const mostrarUbicacion = tiposQuery.isSuccess && modulo !== "EDILICIA";
   // Un ticket PREVENTIVO no se borra (L45: el backend responde 422). Con el catálogo sin resolver
   // no se sabe si lo es, y "Borrar" queda oculto; resuelto, un tipo ausente es uno desactivado, que
   // no puede ser PREVENTIVO (los tipos del sistema no se desactivan).
@@ -143,7 +144,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
         estadoCodigo={estadoCodigo}
         prioridadCodigo={prioridadCodigoMap.get(ticket.prioridadId)}
         tipoNombre={tipoNombreMap.get(ticket.tipoId)}
-        mostrarUbicacion={mostrarUbicacion}
         puedeVerCsat={puedeVerCsat}
       />
 
@@ -206,7 +206,6 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
                   // valor activo como "dado de baja" (ver JSDoc de la prop).
                   prioridades={prioridadesQuery.data}
                   sectorNombre={ticket.sectorNombre}
-                  mostrarUbicacion={mostrarUbicacion}
                   onSubmit={(dto) => editarMutation.mutate(dto)}
                   isSubmitting={editarMutation.isPending}
                 />
@@ -236,10 +235,25 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           ticketId={ticket.id}
           asignadoId={ticket.asignadoId}
           tipoId={ticket.tipoId}
-          // El detalle no conoce el bloqueo por compra (es de Edilicia): solo el estado.
-          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, false)}
+          // El bloqueo por compra solo se conoce con COMPRAS:LECTURA (ver el JSDoc del componente).
+          motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueadoPorCompra)}
         />
       </section>
+
+      {puedeLeerCompras && (
+        <section
+          aria-labelledby="compras-titulo"
+          className="flex flex-col gap-4 rounded-lg border border-border bg-seccion-tareas p-6"
+        >
+          <div className="flex items-center gap-2">
+            <h2 id="compras-titulo" className="text-sm font-semibold text-foreground">
+              Compras vinculadas
+            </h2>
+            {bloqueadoPorCompra && <Badge variant="warning">Bloqueado por una compra en curso</Badge>}
+          </div>
+          <TicketCompras ticketId={ticket.id} puedeGestionar={puedeModificar} />
+        </section>
+      )}
 
       {/*
        * Actividad: el formulario de comentario y el adjunto van ARRIBA de la línea de tiempo, que se

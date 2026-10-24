@@ -7,11 +7,6 @@ import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { VincularCompraDialog } from "./vincular-compra-dialog";
 
-/** Envuelve filas en la página que devuelve `GET /reparaciones` (odd/reparaciones-paginadas). */
-function paginaDe<T>(items: T[]) {
-  return { items, total: items.length, pagina: 1, porPagina: 10 };
-}
-
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 function mockComprasActivas() {
@@ -30,155 +25,132 @@ function mockComprasActivas() {
   );
 }
 
-describe("VincularCompraDialog", () => {
+/**
+ * Compras vinculadas al ticket (`GET /tickets/:id/compras`, odd/ticket-unificado): una activa que
+ * bloquea y una completada que ya no, que igual se puede desvincular.
+ */
+function mockComprasDelTicket() {
+  return http.get("/api/tickets/tk1/compras", () =>
+    HttpResponse.json([
+      { id: "compra1", numero: "COM-0001", grupo: "ACTIVAS", bloquea: true },
+      { id: "compra9", numero: "COM-0009", grupo: "COMPLETADAS", bloquea: false },
+    ]),
+  );
+}
+
+function renderDialog(puedeModificarEnTipo: boolean, permisos: string[]) {
+  return renderWithProviders(
+    <VincularCompraDialog ticketId="tk1" numero="EDI-0001" puedeModificarEnTipo={puedeModificarEnTipo} />,
+    { user: buildUser({ rol: "TECNICO", permisos }) },
+  );
+}
+
+describe("VincularCompraDialog (odd/ticket-unificado, S4)", () => {
   beforeEach(() => {
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
+    server.use(mockComprasActivas(), mockComprasDelTicket());
   });
 
-  it("el selector se alimenta de GET /compras?estado=ACTIVAS", async () => {
-    server.use(mockComprasActivas());
+  it("lista las compras vinculadas del ticket, con las que bloquean marcadas", async () => {
     const user = userEvent.setup();
+    renderDialog(true, ["COMPRAS:LECTURA"]);
 
-    renderWithProviders(
-      <VincularCompraDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        comprasQueBloquean={[]}
-        puedeVincularEnTipo
-        trigger={<button>Gestionar compras</button>}
-      />,
-      { user: buildUser({ permisos: ["COMPRAS:LECTURA"] }) },
-    );
-
-    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    await user.click(screen.getByRole("button", { name: "Gestionar compras" }));
     const dialogo = await screen.findByRole("dialog");
+
+    const activa = (await within(dialogo).findByText("COM-0001")).closest("li") as HTMLElement;
+    expect(within(activa).getByText("Bloquea")).toBeInTheDocument();
+    const completada = within(dialogo).getByText("COM-0009").closest("li") as HTMLElement;
+    expect(within(completada).queryByText("Bloquea")).toBeNull();
+    expect(within(completada).getByText("Completada")).toBeInTheDocument();
+  });
+
+  it("el selector se alimenta de GET /compras?estado=ACTIVAS y no repite las ya vinculadas", async () => {
+    const user = userEvent.setup();
+    renderDialog(true, ["COMPRAS:LECTURA"]);
+
+    await user.click(screen.getByRole("button", { name: "Gestionar compras" }));
+    const dialogo = await screen.findByRole("dialog");
+    await within(dialogo).findByText("COM-0009");
 
     const selector = within(dialogo).getByLabelText(/vincular compra/i);
-    expect(within(selector).getByRole("option", { name: "COM-0001" })).toBeInTheDocument();
-    expect(within(selector).getByRole("option", { name: "COM-0002" })).toBeInTheDocument();
+    expect(await within(selector).findByRole("option", { name: "COM-0002" })).toBeInTheDocument();
+    expect(within(selector).queryByRole("option", { name: "COM-0001" })).toBeNull();
   });
 
-  // El panel se abre pudiendo vincular O desvincular: cada acción de adentro
-  // tiene su propio gate, así que abrir no habilita nada. Gatearlo solo por
-  // vincular dejaba a quien únicamente puede desvincular viendo el chip
-  // «Bloqueada» sin forma de sacarlo, aunque el backend le permite el DELETE.
-  // Vincular espeja las DOS precondiciones del backend: ALTAS sobre el tipo de
-  // la reparación (odd/permisos-por-tipo-ticket) y la celda COMPRAS:LECTURA.
-  it.each<[string, boolean, string[], boolean]>([
-    ["con ALTAS sobre el tipo y COMPRAS:LECTURA", true, ["COMPRAS:LECTURA"], true],
-    ["con solo EDILICIA:BORRADO", false, ["EDILICIA:BORRADO"], true],
-    ["con ALTAS sobre el tipo pero sin COMPRAS:LECTURA", true, [], false],
-    ["sin ALTAS sobre el tipo, aunque tenga las celdas EDILICIA:ALTAS y COMPRAS:LECTURA", false, ["EDILICIA:ALTAS", "COMPRAS:LECTURA"], false],
-  ])("el botón de abrir el panel se muestra pudiendo vincular O con EDILICIA:BORRADO — %s", async (_label, puedeVincularEnTipo, permisos, shouldShow) => {
-    server.use(mockComprasActivas());
-
-    renderWithProviders(
-      <VincularCompraDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        comprasQueBloquean={[]}
-        puedeVincularEnTipo={puedeVincularEnTipo}
-        trigger={<button>Gestionar compras</button>}
-      />,
-      { user: buildUser({ permisos }) },
-    );
-
-    if (shouldShow) {
-      expect(screen.getByRole("button", { name: /gestionar compras/i })).toBeInTheDocument();
-    } else {
-      expect(screen.queryByRole("button", { name: /gestionar compras/i })).not.toBeInTheDocument();
-    }
-  });
-
-  it.each([
-    ["con EDILICIA:BORRADO", ["COMPRAS:LECTURA", "EDILICIA:BORRADO"], true],
-    ["sin EDILICIA:BORRADO", ["COMPRAS:LECTURA"], false],
-  ])("la acción de desvincular respeta la celda EDILICIA:BORRADO del módulo (L21) — %s", async (_label, permisos, shouldShow) => {
-    server.use(mockComprasActivas());
+  // Vincular y desvincular exigen lo mismo que el backend: MODIFICACION sobre el tipo del ticket y
+  // la celda COMPRAS:LECTURA. Ni ALTAS ni EDILICIA:BORRADO alcanzan (JD-A-001, JD-B-004).
+  it.each<[string, boolean, string[], string | null, boolean]>([
+    ["con MODIFICACION y COMPRAS:LECTURA", true, ["COMPRAS:LECTURA"], "Gestionar compras", true],
+    ["con COMPRAS:LECTURA y EDILICIA:BORRADO, sin MODIFICACION", false, ["COMPRAS:LECTURA", "EDILICIA:BORRADO"], "Ver compras", false],
+    ["con MODIFICACION y EDILICIA:BORRADO, sin COMPRAS:LECTURA", true, ["EDILICIA:BORRADO", "EDILICIA:ALTAS"], null, false],
+  ])("%s", async (_caso, puedeModificarEnTipo, permisos, boton, gestiona) => {
     const user = userEvent.setup();
+    renderDialog(puedeModificarEnTipo, permisos);
 
-    renderWithProviders(
-      <VincularCompraDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        comprasQueBloquean={[{ id: "compra1", numero: "COM-0001" }]}
-        puedeVincularEnTipo
-        trigger={<button>Gestionar compras</button>}
-      />,
-      { user: buildUser({ permisos }) },
-    );
-
-    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    if (boton === null) {
+      // Sin COMPRAS:LECTURA el backend no le muestra las compras: no hay panel que abrir.
+      expect(screen.queryByRole("button", { name: /compras/i })).toBeNull();
+      return;
+    }
+    expect(screen.queryByRole("button", { name: boton === "Ver compras" ? "Gestionar compras" : "Ver compras" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: boton }));
     const dialogo = await screen.findByRole("dialog");
-    await within(dialogo).findAllByText("COM-0001");
+    await within(dialogo).findByText("COM-0001");
 
-    if (shouldShow) {
-      expect(within(dialogo).getByRole("button", { name: /desvincular/i })).toBeInTheDocument();
+    if (gestiona) {
+      expect(within(dialogo).getAllByRole("button", { name: /desvincular/i })).toHaveLength(2);
+      expect(within(dialogo).getByLabelText(/vincular compra/i)).toBeInTheDocument();
     } else {
-      expect(within(dialogo).queryByRole("button", { name: /desvincular/i })).not.toBeInTheDocument();
+      expect(within(dialogo).queryByRole("button", { name: /desvincular/i })).toBeNull();
+      expect(within(dialogo).queryByLabelText(/vincular compra/i)).toBeNull();
     }
   });
 
-  it("vincular envía POST /reparaciones/:id/compras con { compraId } y refresca el listado", async () => {
+  it("vincular envía POST /tickets/:id/compras con { compraId } y refresca las compras del ticket", async () => {
     let bodyRecibido: unknown = null;
+    let lecturas = 0;
     server.use(
-      mockComprasActivas(),
-      http.post("/api/reparaciones/rep1/compras", async ({ request }) => {
+      http.get("/api/tickets/tk1/compras", () => {
+        lecturas += 1;
+        return HttpResponse.json([]);
+      }),
+      http.post("/api/tickets/tk1/compras", async ({ request }) => {
         bodyRecibido = await request.json();
         return new HttpResponse(null, { status: 201 });
       }),
-      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([]))),
     );
     const user = userEvent.setup();
+    renderDialog(true, ["COMPRAS:LECTURA"]);
 
-    renderWithProviders(
-      <VincularCompraDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        comprasQueBloquean={[]}
-        puedeVincularEnTipo
-        trigger={<button>Gestionar compras</button>}
-      />,
-      { user: buildUser({ permisos: ["COMPRAS:LECTURA"] }) },
-    );
-
-    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    await user.click(screen.getByRole("button", { name: "Gestionar compras" }));
     const dialogo = await screen.findByRole("dialog");
+    await within(dialogo).findByText(/sin compras vinculadas/i);
 
     await user.selectOptions(within(dialogo).getByLabelText(/vincular compra/i), "compra1");
     await user.click(within(dialogo).getByRole("button", { name: /^vincular$/i }));
 
     await waitFor(() => expect(bodyRecibido).toEqual({ compraId: "compra1" }));
+    await waitFor(() => expect(lecturas).toBeGreaterThan(1));
   });
 
-  it("desvincular envía DELETE /reparaciones/:id/compras/:compraId y refresca el listado", async () => {
+  it("desvincular envía DELETE /tickets/:id/compras/:compraId", async () => {
     let compraIdBorrada: string | null = null;
     server.use(
-      mockComprasActivas(),
-      http.delete("/api/reparaciones/rep1/compras/compra1", () => {
-        compraIdBorrada = "compra1";
+      http.delete("/api/tickets/tk1/compras/:compraId", ({ params }) => {
+        compraIdBorrada = String(params.compraId);
         return new HttpResponse(null, { status: 204 });
       }),
-      http.get("/api/reparaciones", () => HttpResponse.json(paginaDe([]))),
     );
     const user = userEvent.setup();
+    renderDialog(true, ["COMPRAS:LECTURA"]);
 
-    renderWithProviders(
-      <VincularCompraDialog
-        reparacionId="rep1"
-        numero="EDI-0001"
-        comprasQueBloquean={[{ id: "compra1", numero: "COM-0001" }]}
-        puedeVincularEnTipo
-        trigger={<button>Gestionar compras</button>}
-      />,
-      { user: buildUser({ permisos: ["COMPRAS:LECTURA", "EDILICIA:BORRADO"] }) },
-    );
-
-    await user.click(screen.getByRole("button", { name: /gestionar compras/i }));
+    await user.click(screen.getByRole("button", { name: "Gestionar compras" }));
     const dialogo = await screen.findByRole("dialog");
-    await user.click(within(dialogo).getByRole("button", { name: /desvincular/i }));
+    const completada = (await within(dialogo).findByText("COM-0009")).closest("li") as HTMLElement;
+    await user.click(within(completada).getByRole("button", { name: /desvincular/i }));
 
-    await waitFor(() => expect(compraIdBorrada).toBe("compra1"));
+    await waitFor(() => expect(compraIdBorrada).toBe("compra9"));
   });
 });

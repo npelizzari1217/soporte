@@ -170,12 +170,31 @@ describe("TicketsListView", () => {
   it.each<[string, PermisosPorTipo, boolean]>([
     ["con ALTAS en un tipo de TICKETS", permisosDeTest({ ti1: ["LECTURA", "ALTAS"] }, { ti1: "TICKETS" }), true],
     [
-      "con ALTAS solo en un tipo de EDILICIA (tiene su alta propia)",
+      "con ALTAS solo en un tipo de EDILICIA (odd/ticket-unificado, S6)",
       permisosDeTest({ ti1: ["LECTURA"], ti2: ["LECTURA", "ALTAS"] }, { ti1: "TICKETS", ti2: "EDILICIA" }),
+      true,
+    ],
+    [
+      "con ALTAS solo en un tipo de COMPRAS, que tiene su alta propia",
+      permisosDeTest({ ti1: ["LECTURA"], ti3: ["LECTURA", "ALTAS"] }, { ti1: "TICKETS", ti3: "COMPRAS" }),
       false,
     ],
     ["con la celda TICKETS:ALTAS pero sin ALTAS en ningún tipo", permisosDeTest({ ti1: ["LECTURA"] }, { ti1: "TICKETS" }), false],
   ])("botón «Nuevo ticket» — %s", async (_label, permisos, shouldShow) => {
+    const tipo = (id: string, codigo: string, modulo: string) => ({
+      id,
+      codigo,
+      nombre: codigo,
+      modulo,
+      activo: true,
+      createdAt: "",
+      updatedAt: "",
+    });
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([tipo("ti1", "SOPORTE", "TICKETS"), tipo("ti2", "EDILICIA", "EDILICIA"), tipo("ti3", "COMPRA", "COMPRAS")]),
+      ),
+    );
     renderConPermisos(<TicketsListView />, { user: TECNICO, permisos });
     await screen.findByText("Impresora rota");
     const button = screen.queryByRole("button", { name: /nuevo ticket/i });

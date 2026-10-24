@@ -41,7 +41,7 @@ describe("motivoTareasSoloLectura (odd/ticket-cerrado-solo-lectura, S4)", () => 
 
   it("bloqueada por compra bloquea en cualquier estado no terminal, y el estado terminal manda antes", () => {
     expect(motivoTareasSoloLectura("EN_PROCESO", true)).toBe(
-      "La reparación está bloqueada por una compra en curso: sus tareas ya no se modifican.",
+      "El ticket está bloqueado por una compra en curso: sus tareas ya no se modifican.",
     );
     expect(motivoTareasSoloLectura("CERRADO", true)).toMatch(/cerrado/);
   });

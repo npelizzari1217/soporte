@@ -10,10 +10,14 @@
  * error y vacío usando las primitivas compartidas (ADR-8), en vez de sembrar
  * un cache local desde un array embebido.
  *
- * Gate por acción: agregar comentario = `ALTAS` o `COMENTAR` sobre el tipo de
- * la reparación (`puedeComentar`, lo decide el contenedor; odd/permisos-por-tipo-ticket,
- * D5 c). Leer no lleva gate en el cliente: si el usuario pudo cargar la
- * reparación, el backend ya lo autorizó con `LECTURA` sobre su tipo.
+ * Desde odd/ticket-unificado (L19, L20) el comentario que se agrega acá es un
+ * COMENTARIO interno del timeline del ticket, por el mismo caso de uso que el
+ * comentario interno de Tickets. Gate: `COMENTAR` y `OBSERVAR` sobre el tipo
+ * (`puedeComentar`, lo decide el contenedor), sin mirar el estado: el backend lo
+ * acepta también con el ticket cerrado, cancelado o bloqueado por una compra.
+ * Leer no lleva gate en el cliente: si el usuario pudo cargar la fila, el
+ * backend ya lo autorizó con `LECTURA` sobre su tipo, y los internos le llegan
+ * solo con `OBSERVAR`.
  *
  * Append-only: no hay editar ni eliminar, ni acá ni en el backend.
  */
@@ -37,13 +41,8 @@ export interface ComentariosDialogProps {
   reparacionId: string;
   trigger: ReactNode;
   numero: string;
-  /** `ALTAS` o `COMENTAR` sobre el tipo del ticket de la reparación. */
+  /** `COMENTAR` y `OBSERVAR` sobre el tipo del ticket de la fila (L20). */
   puedeComentar: boolean;
-  /**
-   * Con motivo, no se pueden agregar comentarios (odd/ticket-cerrado-solo-lectura, S5): se oculta
-   * el formulario y se muestra el motivo. La lista sigue. El backend es la autoridad.
-   */
-  motivoSoloLectura?: string | null;
 }
 
 /**
@@ -62,7 +61,6 @@ export function ComentariosDialog({
   trigger,
   numero,
   puedeComentar,
-  motivoSoloLectura = null,
 }: ComentariosDialogProps) {
   const [open, setOpen] = useState(false);
   const comentariosQuery = useComentariosReparacion(reparacionId, open);
@@ -121,16 +119,15 @@ export function ComentariosDialog({
           </ul>
         )}
 
-        {motivoSoloLectura !== null && (
-          <p role="note" className="text-sm text-muted-foreground">
-            {motivoSoloLectura}
-          </p>
-        )}
-        {puedeComentar && motivoSoloLectura === null && (
+        {puedeComentar && (
           <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-2" noValidate>
             <label htmlFor="comentario-texto" className="text-xs font-medium text-foreground">
-              Nuevo comentario
+              Nuevo comentario interno
             </label>
+            <p role="note" className="text-xs text-muted-foreground">
+              Los comentarios que se agregan aquí son internos: solo los ve el personal con permiso de
+              comentario interno.
+            </p>
             <Textarea id="comentario-texto" error={!!errors.texto} {...register("texto")} />
             <Button type="submit" size="sm" className="self-end" isLoading={crearMutation.isPending}>
               Comentar

@@ -66,7 +66,7 @@ Su caso de uso típico es dejar asentado el motivo de una demora: *"falta el
 repuesto X, el proveedor lo entrega la semana que viene"*.
 
 Se accede con el botón **Ver comentarios** de cada fila. Se escriben en el campo
-*Nuevo comentario* y se publican con **Comentar**. Se listan del más nuevo al
+*Nuevo comentario interno* y se publican con **Comentar**. Se listan del más nuevo al
 más viejo, con el nombre de quien lo escribió y la fecha.
 
 Los comentarios de la reparación son los comentarios del ticket: los que se
@@ -118,15 +118,18 @@ para poder seguir.
 
 ### Cómo se gestiona
 
-En la misma fila donde aparece el chip hay un botón **Gestionar compras**. Ahí
-se ve:
+En la misma fila hay un botón **Gestionar compras**, visible solo con permiso de
+lectura sobre Compras. Si además tiene permiso de modificación sobre el tipo de
+la reparación, ahí se ve:
 
-- La lista de compras que hoy están frenando la reparación (si hay alguna).
+- La lista de todas las compras vinculadas, incluidas las ya entregadas o
+  canceladas.
 - Un selector para **vincular** una compra nueva — solo muestra compras que
-  todavía están activas (no tiene sentido vincular una ya entregada o
-  cancelada, porque no bloquearía nada).
-- Un botón **Desvincular** al lado de cada compra ya vinculada, para el caso de
-  un vínculo cargado por error.
+  todavía están activas.
+- Un botón **Desvincular** al lado de cada compra vinculada.
+
+Sin permiso de modificación, el botón se llama **Ver compras** y muestra la
+lista sin acciones.
 
 ### Cuándo deja de bloquear
 

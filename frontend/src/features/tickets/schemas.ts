@@ -7,16 +7,9 @@ import { z } from "zod";
 import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
 import {
   TICKET_TITULO_MAX_LENGTH,
+  TICKET_UBICACION_MAX_LENGTH,
   MENSAJE_TITULO_DEMASIADO_LARGO,
 } from "@/shared/lib/limites-ticket";
-
-/**
- * Tope de la ubicación general del ticket: espejo de `TICKET_UBICACION_MAX_LENGTH`
- * (`ticket.entity.ts`, columna `VarChar(255)`). Vive en esta feature porque solo
- * la escriben sus formularios; la ubicación de Edilicia es otra columna
- * (`features/edilicia/limites.ts`).
- */
-export const TICKET_UBICACION_MAX_LENGTH = 255;
 
 const ubicacionSchema = z
   .string()

@@ -59,9 +59,8 @@ export interface Ticket {
    */
   fechaCierre: string | null;
   /**
-   * Ubicación general, texto libre (odd/ubicacion-sector-ticket). En los tickets
-   * de Edilicia no se carga ni se muestra: Edilicia tiene su propia ubicación
-   * (`TicketEdilicia.ubicacion`).
+   * Ubicación, texto libre (odd/ubicacion-sector-ticket). Desde odd/ticket-unificado
+   * (L11) es la única, en cualquier tipo de ticket: la misma que muestra Edilicia.
    */
   ubicacion: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket); `null` = sin sector. */
@@ -279,4 +278,22 @@ export interface AvanceTareas {
 export interface TareasTicketResponse {
   items: TareaTicket[];
   avance: AvanceTareas;
+}
+
+/**
+ * Grupo de estado de una compra (`GrupoEstadoCompra` del backend): solo una `ACTIVAS` bloquea el
+ * ticket al que está vinculada (odd/ticket-unificado, S5).
+ */
+export type GrupoEstadoCompraVinculada = "ACTIVAS" | "COMPLETADAS" | "CANCELADAS";
+
+/**
+ * Compra vinculada a un ticket (`CompraDeTicketResponseDto`, `GET /tickets/:id/compras`,
+ * odd/ticket-unificado): identidad mínima, su grupo de estado y si hoy bloquea el ticket. La ruta
+ * exige `COMPRAS:LECTURA` (L19, L22).
+ */
+export interface CompraDeTicket {
+  id: string;
+  numero: string;
+  grupo: GrupoEstadoCompraVinculada;
+  bloquea: boolean;
 }

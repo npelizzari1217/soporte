@@ -73,10 +73,10 @@ El valor de avance que trae el archivo es **el mismo que ves en la columna
 Avance de la pantalla** — no se recalcula aparte ni puede desincronizarse de
 lo que muestra el listado.
 
-**El archivo trae siempre todas las reparaciones del tenant**, aunque tengas
-el selector **Bloqueo** filtrado a "Bloqueadas" o "No bloqueadas" en pantalla:
-la exportación ignora ese filtro a propósito y nunca trae solo una parte. Si
-necesitás solo las bloqueadas, filtrá el archivo ya descargado.
+**El archivo respeta el selector Tipo**, pero ignora el selector **Bloqueo**:
+aunque en pantalla filtre "Bloqueadas" o "No bloqueadas", trae todas las del
+tipo elegido. Para quedarse solo con las bloqueadas, filtre el archivo ya
+descargado.
 
 Mientras el archivo se prepara, el botón queda deshabilitado. En listados
 grandes puede tardar unos segundos.

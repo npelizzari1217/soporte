@@ -98,17 +98,6 @@ export interface CrearTicketEdilicioDto {
 }
 
 /**
- * Body de `POST /reparaciones/:reparacionId/compras` (`VincularCompraHttpDto`,
- * sdd/reparacion-bloqueada-por-compra WU6). El backend exige `COMPRAS:LECTURA`
- * en la ruta **y** `MODIFICACION` sobre el tipo del ticket en el caso de uso
- * (odd/ticket-unificado, S4) — el diálogo del frontend gatea la EXPERIENCIA,
- * nunca la autorización real.
- */
-export interface VincularCompraDto {
-  compraId: string;
-}
-
-/**
  * Comentario de Edilicia (`ComentarioReparacionResponseDto`): desde
  * odd/ticket-unificado es un COMENTARIO del timeline del ticket, y el que se
  * publica desde Edilicia es interno (L19). `ticketEdiliciaId` lleva el id del
@@ -144,6 +133,11 @@ export interface ReparacionesFiltros {
   pagina: number;
   porPagina: number;
   bloqueo?: FiltroBloqueo;
+  /**
+   * Id del tipo elegido en el selector de la pantalla (odd/ticket-unificado, S2). Ausente: los
+   * tipos del módulo EDILICIA, como hasta ahora.
+   */
+  tipo?: string;
 }
 
 /** Response de `GET /reparaciones`: una página y su metadata (misma forma que tickets). */

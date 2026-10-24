@@ -26,8 +26,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   tipo sin satélite — (este commit)
 - [x] T2b — S3, S4, L19 — worker — comentarios de reparación internos (migrados y nuevos, por el caso de uso
   del ticket), GET compras con COMPRAS:LECTURA, notas de rollback en el runbook — (este commit)
-- [ ] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
-  "Nuevo ticket" con todos los tipos — (pendiente)
+- [x] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
+  "Nuevo ticket" con todos los tipos — (este commit)
 - [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
 
 ## Log
@@ -147,3 +147,51 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   runbook suma la sección "Ticket unificado": deploy conjunto, precheck de conflictos de ubicación
   (JD-A-005), no re-aplicar 20261024120000 sin su rollback (JD-A-003), adjuntos que el rollback
   desvincula (JD-A-006, JD-B-003) y dump obligatorio.
+- **L25** (decisión, T3/S2, L7) — La pantalla Edilicia suma el selector **Tipo**: ofrece los tipos con
+  `LECTURA` de cualquier módulo (otro tipo sería una grilla siempre vacía, L13) y, por defecto, «Todos
+  los de Edilicia», que no manda `tipo` y lista lo de siempre. El tipo vive en la URL (`?tipo=`), cuenta
+  como filtro activo y viaja también a la exportación: decide qué listado se ve. Un tipo de la URL que
+  no está entre las opciones se muestra como «Tipo no disponible» con el catálogo resuelto y «Cargando
+  tipos…» mientras no resolvió, para que el `<select>` no caiga en otra opción. El acceso a la pantalla
+  no cambia: sigue pidiendo `LECTURA` sobre algún tipo de EDILICIA (menú y ruta), y los rótulos
+  «Reparaciones» y «Nueva reparación» quedan como están.
+- **L26** (decisión, T3/S2, S6) — «Nuevo ticket» y «Nueva reparación» ofrecen el mismo conjunto: los
+  tipos con alta manual (`admiteAltaManual`, espejado en `features/tickets/lib/alta-manual.ts`: TICKETS
+  y EDILICIA, salvo PREVENTIVO) con `ALTAS`. Los dos piden el catálogo entero y su botón se muestra con
+  `ALTAS` en algún módulo con alta de tipo; con el catálogo cargado y ningún tipo elegible, se esconde.
+  Cambio de conducta: quien tiene `ALTAS` solo en tipos de EDILICIA ahora ve «Nuevo ticket». Ubicación y
+  sector ya estaban en los dos formularios para cualquier tipo.
+- **L27** (decisión, T3/S4) — Las compras de un ticket se gestionan con un solo panel, `TicketCompras`
+  (`features/tickets`), sobre `GET|POST|DELETE /tickets/:id/compras`; lo montan el detalle y el diálogo
+  de la grilla. Lista todas las vinculadas (también las completadas o canceladas, que ya no bloquean y
+  antes no se podían desvincular desde la grilla) y no ofrece en el selector las ya vinculadas. Sin
+  `COMPRAS:LECTURA` no hay panel; con ella y sin `MODIFICACION` sobre el tipo, el botón de la fila dice
+  «Ver compras» y no hay acciones. `ALTAS` y `EDILICIA:BORRADO` dejan de habilitar nada en el frontend
+  (JD-A-001, JD-B-004). Se borró `edilicia/hooks/use-reparacion-compra-mutations.ts`: el frontend ya no
+  usa los alias `/reparaciones/:id/compras` (L12), que T4 puede retirar.
+- **L28** (decisión, T3/S1, S5, L19, L22) — El detalle del ticket muestra y edita la ubicación en
+  cualquier tipo: se retiró `mostrarUbicacion` de la cabecera, el formulario y el diálogo de edición, y
+  el PATCH la manda siempre. La sección «Compras vinculadas» se muestra solo con `COMPRAS:LECTURA` (sin
+  ella no se pide nada), y el bloqueo sale de esa lista: con una compra que bloquea, marca «Bloqueado por
+  una compra en curso» y congela las tareas. **Pendiente de backend**: sin `COMPRAS:LECTURA` el detalle
+  no tiene de dónde saber el bloqueo (`GET /tickets/:id` no lo trae; L22 pedía un dato que no exija esa
+  celda), así que sus tareas solo se congelan por estado y el backend rechaza la escritura con el toast
+  de error. Hace falta un `bloqueada` en la respuesta de `GET /tickets/:id`, o equivalente.
+- **L29** (decisión, T3/S3, L20, L23) — El comentario de la grilla de Edilicia se ofrece con `COMENTAR` y
+  `OBSERVAR` sobre el tipo (antes `ALTAS` o `COMENTAR`) y en cualquier estado del ticket, también cerrado,
+  cancelado o bloqueado, como acepta el backend. El campo se rotula «Nuevo comentario interno» y una nota
+  avisa que solo lo ve el personal con permiso de comentario interno. El motivo de solo lectura de
+  tareas pasa a hablar del ticket («El ticket está bloqueado por una compra en curso…»). El tope de la
+  ubicación sube a `shared/lib/limites-ticket` (`TICKET_UBICACION_MAX_LENGTH`): Tickets y Edilicia
+  escriben la misma columna desde L11.
+- **L30** (pendiente, Ayuda) — T3 vuelve falsos dos pasajes que no se corrigieron en este commit, fuera de
+  su alcance: `reparaciones-edilicias.md` («Cómo se gestiona» dice que el panel lista solo las compras
+  que frenan y que el botón es siempre «Gestionar compras»; el campo es *Nuevo comentario*) y
+  `reparaciones-listado.md` («el archivo trae siempre todas las reparaciones del tenant»: ahora sigue al
+  selector de tipo). Faltan además, como deuda de la pausa de Ayuda, el selector de tipo de la pantalla,
+  la sección de compras del detalle y los tipos que ofrece «Nuevo ticket».
+- **L31** (evidencia, T3) — RED observado antes de implementar: 42 tests nuevos o ajustados fallando por
+  la conducta ausente (selector inexistente, catálogo pedido con `modulo=EDILICIA`, gate de ALTAS, rutas
+  `/reparaciones/:id/compras`, ubicación oculta en Edilicia). GREEN: `pnpm vitest run src/features/tickets
+  src/features/edilicia` 30 archivos / 357 tests. Compuertas del frontend: `pnpm lint` sin advertencias
+  ni errores, `pnpm type-check` sin errores, `pnpm test` 282 archivos / 2488 tests.
