@@ -19,6 +19,13 @@
  * `compras/domain/errors/compras.errors.ts`: sin este guard, el `INSERT`
  * revienta con un `PrismaClientKnownRequestError` sin mapear (500 crudo).
  *
+ * La anticipación (odd/preventivo-anticipacion T1) sigue el mismo reparto:
+ * el DTO valida la forma de cada campo (entero `>= 0`, unidad del catálogo) y
+ * la regla ENTRE campos —anticipación menor que la cadencia— es del dominio
+ * (`AnticipacionNoMenorQueCadenciaError`), como el XOR del objetivo. No lleva
+ * `@Max` propio: el dominio la rechaza antes de que un valor enorme llegue al
+ * `int4` de la columna, porque ninguna anticipación válida supera la cadencia.
+ *
  * Tarea: 4.4. Fix post-verify (WU-8, hallazgo "límites de la base más
  * estrictos que el dominio").
  */
@@ -33,7 +40,9 @@ import {
   IsUUID,
   Max,
   MaxLength,
+  Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
   INTERVALO_VALOR_MAXIMO,
@@ -70,6 +79,13 @@ export class CreatePlanPreventivoHttpDto {
   @IsUUID()
   prioridadId!: string;
 
+  /**
+   * Tipo de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Que admita tickets nuevos
+   * y que el actor tenga `LECTURA` sobre él lo decide el caso de uso.
+   */
+  @IsUUID()
+  tipoId!: string;
+
   @IsUUID()
   responsableId!: string;
 
@@ -80,6 +96,16 @@ export class CreatePlanPreventivoHttpDto {
 
   @IsIn(UNIDADES_INTERVALO)
   intervaloUnidad!: IntervaloUnidad;
+
+  /** Ausente = 0 días (S5). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  anticipacionValor?: number;
+
+  @IsOptional()
+  @IsIn(UNIDADES_INTERVALO)
+  anticipacionUnidad?: IntervaloUnidad;
 
   @IsDateString()
   fechaInicio!: string;
@@ -106,11 +132,20 @@ export class EditarPlanPreventivoHttpDto {
   @MaxLength(UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
-  @IsOptional()
+  /*
+   * `prioridadId`, `tipoId` y `responsableId` van con `@ValidateIf` y no con `@IsOptional`:
+   * `@IsOptional` también saltea el `null`, que ninguna de las tres columnas admite. Llegaba a la
+   * entidad como un valor y el `UPDATE` reventaba con un 500. Ausente sigue siendo "sin cambio".
+   */
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsUUID()
   prioridadId?: string;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
+  @IsUUID()
+  tipoId?: string;
+
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsUUID()
   responsableId?: string;
 
@@ -125,8 +160,24 @@ export class EditarPlanPreventivoHttpDto {
   intervaloUnidad?: IntervaloUnidad;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  anticipacionValor?: number;
+
+  @IsOptional()
+  @IsIn(UNIDADES_INTERVALO)
+  anticipacionUnidad?: IntervaloUnidad;
+
+  @IsOptional()
   @IsBoolean()
   activo?: boolean;
+}
+
+/** Query de `GET /preventivo/planes/responsables` (odd/preventivo-por-tipo, S5). */
+export class ListarResponsablesPlanQueryDto {
+  /** Tipo de ticket elegido en el formulario del plan. */
+  @IsUUID()
+  tipoId!: string;
 }
 
 // ─── Response DTOs ──────────────────────────────────────────────────────────
@@ -139,9 +190,12 @@ export interface PlanPreventivoResponseDto {
   equipoId: string | null;
   ubicacion: string | null;
   prioridadId: string;
+  tipoId: string;
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  anticipacionValor: number;
+  anticipacionUnidad: IntervaloUnidad;
   fechaInicio: string;
   proximaEjecucionEn: string;
   activo: boolean;
@@ -158,9 +212,12 @@ export function toPlanPreventivoResponseDto(plan: PlanPreventivoEntity): PlanPre
     equipoId: plan.equipoId,
     ubicacion: plan.ubicacion,
     prioridadId: plan.prioridadId,
+    tipoId: plan.tipoId,
     responsableId: plan.responsableId,
     intervaloValor: plan.intervaloValor,
     intervaloUnidad: plan.intervaloUnidad,
+    anticipacionValor: plan.anticipacionValor,
+    anticipacionUnidad: plan.anticipacionUnidad,
     fechaInicio: plan.fechaInicio.toISOString(),
     proximaEjecucionEn: plan.proximaEjecucionEn.toISOString(),
     activo: plan.activo,

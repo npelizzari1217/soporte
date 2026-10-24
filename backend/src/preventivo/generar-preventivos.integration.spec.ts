@@ -58,6 +58,9 @@ import { PrismaPreventivoGeneracionRepository } from './infrastructure/persisten
 import { PlanPreventivoEntity } from './domain/entities/plan-preventivo.entity';
 import { CalcularCicloService } from './domain/services/calcular-ciclo.service';
 import { GenerarPreventivosUseCase } from './application/use-cases/generar-preventivos.use-case';
+import { EnviarRecordatoriosPreventivoUseCase } from './application/use-cases/enviar-recordatorios-preventivo.use-case';
+import { PreventivoRecordatorioEvent } from './domain/events/preventivo-recordatorio.event';
+import { diaArgentino } from '../shared/domain/zona-horaria-argentina';
 import { IEquipoInformaticoRepository } from '../equipos/domain/ports/i-equipo-informatico.repository';
 
 const MASTER_TEST_URL =
@@ -94,6 +97,8 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
   let crearTicketUseCase: CrearTicketUseCase;
   let generarPreventivosUseCase: GenerarPreventivosUseCase;
   let eventPublisher: RecordingDomainEventPublisher;
+  let enviarRecordatorios: EnviarRecordatoriosPreventivoUseCase;
+  let recordatorioPublisher: RecordingDomainEventPublisher;
   let ticketEventPublisher: RecordingDomainEventPublisher;
   let reglaRepo: PrismaReglaAsignacionRepository;
   let usuarioMasterChecker: IUsuarioMasterChecker & {
@@ -142,6 +147,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       equipoId: null,
       ubicacion: 'DEPOSITO PREVENTIVO TEST',
       prioridadId,
+      tipoId: tipoPreventivoId,
       responsableId: DUMMY_RESPONSABLE_ID,
       intervaloValor: 7,
       intervaloUnidad: 'DIAS',
@@ -180,7 +186,6 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
         .fn<(u: string, c: string) => Promise<boolean>>()
         .mockResolvedValue(true),
       resolverNombres: vi.fn().mockResolvedValue(new Map()),
-      esAdminTotalEnTenant: vi.fn().mockResolvedValue(false),
       listarAgentes: vi.fn<IUsuarioMasterChecker['listarAgentes']>().mockResolvedValue([]),
     };
 
@@ -228,13 +233,19 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     generarPreventivosUseCase = new GenerarPreventivosUseCase(
       planRepo,
       generacionRepo,
-      tipoTicketRepo,
       crearTicketUseCase,
       txRunner,
       new CalcularCicloService(),
       logger,
       eventPublisher,
       equipoRepo,
+    );
+
+    recordatorioPublisher = new RecordingDomainEventPublisher();
+    enviarRecordatorios = new EnviarRecordatoriosPreventivoUseCase(
+      generacionRepo,
+      txRunner,
+      recordatorioPublisher,
     );
 
     const prioridad = await tenantClient.prioridad.findUniqueOrThrow({
@@ -265,6 +276,7 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     logger.log.mockReset();
     eventPublisher.publicados.length = 0;
     ticketEventPublisher.publicados.length = 0;
+    recordatorioPublisher.publicados.length = 0;
     await withTenant(() => reglaRepo.quitar(tipoPreventivoId));
   });
 
@@ -446,6 +458,101 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBeGreaterThan(mediaNoche.getTime());
   });
 
+  // ─── Anticipación (odd/preventivo-anticipacion T2) ──────────────────────
+  describe('anticipación: generación antes de la fecha del ciclo (S1, S2)', () => {
+    function sumarDias(fecha: Date, dias: number): Date {
+      return restarDias(fecha, -dias);
+    }
+
+    it('con 5 días de anticipación genera HOY el ciclo de dentro de 5 días, con esa fecha como objetivo, y no duplica', async () => {
+      const ciclo = sumarDias(medianocheHoy(), 5);
+      const plan = await crearPlan({
+        intervaloValor: 30,
+        intervaloUnidad: 'DIAS',
+        anticipacionValor: 5,
+        anticipacionUnidad: 'DIAS',
+        fechaInicio: ciclo,
+        proximaEjecucionEn: ciclo,
+      });
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      const tickets = await ticketsDelPlan(plan);
+      const generaciones = await generacionesDelPlan(plan);
+      expect(tickets).toHaveLength(1);
+      expect(tickets[0].fechaObjetivo).toEqual(ciclo);
+      // La clave de idempotencia sigue siendo la fecha del CICLO, no la de generación.
+      expect(generaciones).toHaveLength(1);
+      expect(generaciones[0].fechaProgramada).toEqual(ciclo);
+      expect(generaciones[0].resultado).toBe('GENERADO');
+      expect(eventPublisher.publicados).toHaveLength(1);
+
+      const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
+      expect(planActualizado?.proximaEjecucionEn).toEqual(sumarDias(ciclo, 30));
+    });
+
+    it('hermano: con 4 días de anticipación, el ciclo de dentro de 5 días todavía no se genera', async () => {
+      const ciclo = sumarDias(medianocheHoy(), 5);
+      const plan = await crearPlan({
+        intervaloValor: 30,
+        intervaloUnidad: 'DIAS',
+        anticipacionValor: 4,
+        anticipacionUnidad: 'DIAS',
+        fechaInicio: ciclo,
+        proximaEjecucionEn: ciclo,
+      });
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      expect(await ticketsDelPlan(plan)).toHaveLength(0);
+      expect(await generacionesDelPlan(plan)).toHaveLength(0);
+      const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
+      expect(planActualizado?.proximaEjecucionEn).toEqual(ciclo);
+    });
+
+    it('[R8] con anticipación, un preventivo anterior abierto saltea el ciclo, registrado con la fecha del ciclo', async () => {
+      const ciclo = sumarDias(medianocheHoy(), 3);
+      const plan = await crearPlan({
+        intervaloValor: 7,
+        intervaloUnidad: 'DIAS',
+        anticipacionValor: 3,
+        anticipacionUnidad: 'DIAS',
+        fechaInicio: restarDias(ciclo, 7),
+        proximaEjecucionEn: ciclo,
+      });
+      const abierto = (
+        await withTenant(() =>
+          crearTicketUseCase.execute({
+            titulo: plan.titulo,
+            descripcion: null,
+            tipoId: tipoPreventivoId,
+            prioridadId,
+            solicitanteId: DUMMY_RESPONSABLE_ID,
+            clienteId: CLIENTE_ID,
+            autorId: DUMMY_RESPONSABLE_ID,
+            anio: ciclo.getUTCFullYear(),
+            alcance: null,
+          }),
+        )
+      ).getValue();
+      const previaId = await withTenant(() =>
+        generacionRepo.reservar(plan.id, restarDias(ciclo, 7)),
+      );
+      if (previaId === null) throw new Error('No se pudo reservar el ciclo previo del fixture.');
+      await withTenant(() => generacionRepo.marcarGenerado(previaId, abierto.id));
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      expect(await ticketsDelPlan(plan)).toHaveLength(1);
+      const fila = (await generacionesDelPlan(plan)).find(
+        (g) => g.fechaProgramada.getTime() === ciclo.getTime(),
+      );
+      expect(fila?.resultado).toBe('SALTEADO_PENDIENTE');
+      expect(eventPublisher.publicados).toHaveLength(0);
+    });
+  });
+
   it('[CRITICAL][R9] fallo al crear el ticket (responsable inválido) → CERO filas RESERVADO, puntero SIN mover — RESERVADO nunca queda committeado, y NO publica preventivo.generado', async () => {
     const plan = await crearPlan();
     usuarioMasterChecker.existeEnTenant.mockResolvedValueOnce(false);
@@ -460,6 +567,59 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
     const planActualizado = await withTenant(() => planRepo.buscarPorId(plan.id));
     expect(planActualizado!.proximaEjecucionEn.getTime()).toBe(plan.proximaEjecucionEn.getTime());
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(plan.id));
+  });
+
+  // ─── Tipo del plan (odd/preventivo-por-tipo, S2, S3) ─────────────────────
+
+  describe('tipo de ticket del plan (S2)', () => {
+    it('un plan de tipo Mantenimiento genera un ticket de Mantenimiento, con su numeración', async () => {
+      const mantenimiento = await tenantClient.tipoTicket.findUniqueOrThrow({
+        where: { codigo: 'MANTENIMIENTO' },
+      });
+      const plan = await crearPlan({ tipoId: mantenimiento.id });
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      const tickets = await ticketsDelPlan(plan);
+      expect(tickets).toHaveLength(1);
+      expect(tickets[0].tipoId).toBe(mantenimiento.id);
+      expect(tickets[0].numero.startsWith('PRE-')).toBe(false);
+      const generaciones = await generacionesDelPlan(plan);
+      expect(generaciones.map((g) => [g.resultado, g.ticketId])).toEqual([
+        ['GENERADO', tickets[0].id],
+      ]);
+    });
+
+    // El tipo se dio de baja después de crear el plan: el alta lo rechaza y el ciclo queda para el
+    // barrido siguiente, sin cortar el resto (otro plan del mismo barrido genera igual).
+    it('un plan cuyo tipo se dio de baja no genera ni mueve el puntero, lo loguea, y el barrido sigue', async () => {
+      const tipoBaja = await tenantClient.tipoTicket.create({
+        data: { codigo: `BAJA_${RUN_PREFIX}`, nombre: 'Tipo dado de baja', modulo: 'TICKETS' },
+      });
+      const planConTipoDeBaja = await crearPlan({ tipoId: tipoBaja.id });
+      const planSano = await crearPlan();
+      await tenantClient.tipoTicket.update({
+        where: { id: tipoBaja.id },
+        data: { activo: false, deletedAt: new Date() },
+      });
+
+      await withTenant(() => generarPreventivosUseCase.execute(CLIENTE_ID));
+
+      expect(await ticketsDelPlan(planConTipoDeBaja)).toHaveLength(0);
+      expect(await generacionesDelPlan(planConTipoDeBaja)).toHaveLength(0);
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: planConTipoDeBaja.id },
+      });
+      expect(fila.proximaEjecucionEn.getTime()).toBe(
+        planConTipoDeBaja.proximaEjecucionEn.getTime(),
+      );
+      expect(logger.error).toHaveBeenCalledWith(
+        `PREVENTIVO_PLAN_ERROR | planId=${planConTipoDeBaja.id} | error=No se pudo generar el ` +
+          `ticket del plan ${planConTipoDeBaja.id}: Tipo de ticket con id "${tipoBaja.id}" no ` +
+          'encontrado en el catálogo del tenant.',
+      );
+      expect(await ticketsDelPlan(planSano)).toHaveLength(1);
+    });
   });
 
   describe('regla de asignación automática en el preventivo (A6, A7, A9, N1)', () => {
@@ -531,6 +691,183 @@ describe('GenerarPreventivosUseCase — Integration (5.8-5.13, 6.1)', () => {
       expect(await ticketsDelPlan(plan)).toHaveLength(0);
       expect(await generacionesDelPlan(plan)).toHaveLength(0);
       expect(ticketEventPublisher.publicados).toHaveLength(0);
+    });
+  });
+
+  // ─── Recordatorio 1 día antes (odd/preventivo-anticipacion T3, S4) ───────
+  describe('recordatorio 1 día antes de la fecha objetivo (S4)', () => {
+    const MS_DIA = 24 * 60 * 60 * 1000;
+
+    /**
+     * Ticket preventivo GENERADO por `plan`, con `fechaObjetivo`, y con
+     * `created_at` corrido `diasAtras` días (0 = generado hoy).
+     */
+    async function ticketPreventivo(
+      plan: PlanPreventivoEntity,
+      fechaObjetivo: Date,
+      diasAtras: number,
+    ): Promise<string> {
+      const ticket = (
+        await withTenant(() =>
+          crearTicketUseCase.execute({
+            titulo: plan.titulo,
+            descripcion: null,
+            tipoId: tipoPreventivoId,
+            prioridadId,
+            solicitanteId: DUMMY_RESPONSABLE_ID,
+            clienteId: CLIENTE_ID,
+            autorId: DUMMY_RESPONSABLE_ID,
+            anio: fechaObjetivo.getUTCFullYear(),
+            fechaObjetivo,
+            alcance: null,
+          }),
+        )
+      ).getValue();
+      const generacionId = await withTenant(() => generacionRepo.reservar(plan.id, fechaObjetivo));
+      if (generacionId === null) throw new Error('No se pudo reservar el ciclo del fixture.');
+      await withTenant(() => generacionRepo.marcarGenerado(generacionId, ticket.id));
+      await tenantClient.ticket.update({
+        where: { id: ticket.id },
+        data: { createdAt: new Date(Date.now() - diasAtras * MS_DIA) },
+      });
+      return ticket.id;
+    }
+
+    function recordatoriosDe(ticketId: string): PreventivoRecordatorioEvent[] {
+      return recordatorioPublisher.publicados.filter(
+        (e): e is PreventivoRecordatorioEvent =>
+          e instanceof PreventivoRecordatorioEvent && e.ticketId === ticketId,
+      );
+    }
+
+    async function marcaDe(ticketId: string): Promise<Date | null> {
+      const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+      return fila.recordatorioEnviadoAt;
+    }
+
+    const manana = (): Date => new Date(diaArgentino(new Date()).getTime() + MS_DIA);
+
+    it('reclama el ticket abierto con fecha objetivo mañana, lo marca, y la segunda corrida no manda nada', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, manana(), 2);
+
+      await withTenant(() => enviarRecordatorios.execute());
+
+      expect(recordatoriosDe(ticketId)).toHaveLength(1);
+      expect(recordatoriosDe(ticketId)[0]).toMatchObject({
+        planId: plan.id,
+        responsableId: DUMMY_RESPONSABLE_ID,
+      });
+      expect(await marcaDe(ticketId)).not.toBeNull();
+
+      await withTenant(() => enviarRecordatorios.execute());
+      expect(recordatoriosDe(ticketId)).toHaveLength(1);
+    });
+
+    it('dos barridos CONCURRENTES mandan un solo recordatorio y dejan el ticket marcado', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, manana(), 2);
+      const ahora = new Date();
+
+      await Promise.all([
+        withTenant(() => enviarRecordatorios.execute(ahora)),
+        withTenant(() => enviarRecordatorios.execute(ahora)),
+      ]);
+
+      expect(recordatoriosDe(ticketId)).toHaveLength(1);
+      expect(await marcaDe(ticketId)).not.toBeNull();
+    });
+
+    it('va al responsable ACTUAL del plan, no al que tenía al generarse', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, manana(), 2);
+      await tenantClient.planPreventivo.update({
+        where: { id: plan.id },
+        data: { responsableId: RESPONSABLE_REGLA_ID },
+      });
+
+      await withTenant(() => enviarRecordatorios.execute());
+
+      expect(recordatoriosDe(ticketId)[0]?.responsableId).toBe(RESPONSABLE_REGLA_ID);
+    });
+
+    it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+      'un ticket en %s no recibe recordatorio ni queda marcado',
+      async (codigo) => {
+        const plan = await crearPlan();
+        const ticketId = await ticketPreventivo(plan, manana(), 2);
+        const estado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo } });
+        await tenantClient.ticket.update({
+          where: { id: ticketId },
+          data: { estadoId: estado.id },
+        });
+
+        await withTenant(() => enviarRecordatorios.execute());
+
+        expect(recordatoriosDe(ticketId)).toHaveLength(0);
+        expect(await marcaDe(ticketId)).toBeNull();
+      },
+    );
+
+    it('un ticket borrado no recibe recordatorio', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, manana(), 2);
+      await tenantClient.ticket.update({
+        where: { id: ticketId },
+        data: { deletedAt: new Date() },
+      });
+
+      await withTenant(() => enviarRecordatorios.execute());
+
+      expect(recordatoriosDe(ticketId)).toHaveLength(0);
+      expect(await marcaDe(ticketId)).toBeNull();
+    });
+
+    it('un ticket generado HOY no recibe recordatorio: ya le llegó el correo de generación', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, manana(), 0);
+
+      await withTenant(() => enviarRecordatorios.execute());
+
+      expect(recordatoriosDe(ticketId)).toHaveLength(0);
+      expect(await marcaDe(ticketId)).toBeNull();
+    });
+
+    it('hermano: con fecha objetivo pasado mañana todavía no es el día del recordatorio', async () => {
+      const plan = await crearPlan();
+      const ticketId = await ticketPreventivo(plan, new Date(manana().getTime() + MS_DIA), 2);
+
+      await withTenant(() => enviarRecordatorios.execute());
+
+      expect(recordatoriosDe(ticketId)).toHaveLength(0);
+      expect(await marcaDe(ticketId)).toBeNull();
+    });
+
+    it('un ticket con fecha objetivo que NO salió de un plan no recibe recordatorio', async () => {
+      const ticket = (
+        await withTenant(() =>
+          crearTicketUseCase.execute({
+            titulo: `SUELTO_${RUN_PREFIX}`,
+            descripcion: null,
+            tipoId: tipoPreventivoId,
+            prioridadId,
+            solicitanteId: DUMMY_RESPONSABLE_ID,
+            clienteId: CLIENTE_ID,
+            autorId: DUMMY_RESPONSABLE_ID,
+            anio: manana().getUTCFullYear(),
+            fechaObjetivo: manana(),
+            alcance: null,
+          }),
+        )
+      ).getValue();
+      await tenantClient.ticket.update({
+        where: { id: ticket.id },
+        data: { createdAt: new Date(Date.now() - 2 * MS_DIA) },
+      });
+
+      await withTenant(() => enviarRecordatorios.execute());
+
+      expect(recordatoriosDe(ticket.id)).toHaveLength(0);
     });
   });
 });

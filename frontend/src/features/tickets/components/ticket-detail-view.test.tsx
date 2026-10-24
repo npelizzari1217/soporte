@@ -880,6 +880,21 @@ describe("TicketDetailView — «Borrar» según el tipo del ticket (odd/permiso
     expect(screen.queryByRole("button", { name: "Borrar" })).not.toBeInTheDocument();
   });
 
+  // odd/preventivo-por-tipo: un plan puede generar tickets de cualquier tipo, y esos tampoco se
+  // borran. El de este caso es del tipo común "ti1"; lo distingue la fecha objetivo del barrido.
+  it("un ticket generado por un plan (con fecha objetivo) no ofrece «Borrar» aunque su tipo no sea PREVENTIVO", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () =>
+        HttpResponse.json({ ...TICKET, fechaObjetivo: "2026-11-01T00:00:00.000Z" }),
+      ),
+    );
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("BORRADO") });
+    await screen.findByText("Impresora rota");
+    await waitFor(() => expect(screen.getByRole("heading", { name: /actividad/i })).toBeInTheDocument());
+
+    expect(screen.queryByRole("button", { name: "Borrar" })).not.toBeInTheDocument();
+  });
+
   it("con BORRADO solo sobre otro tipo, no se ofrece (S2)", async () => {
     renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, {
       user: TECNICO,

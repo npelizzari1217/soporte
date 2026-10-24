@@ -5,9 +5,11 @@
  * y `GET /preventivo/planes/:id/generaciones` (WU-7.1). El backend NO expone
  * `GET /preventivo/planes/:id` (WU-4, `PreventivoController`) — el detalle de
  * un plan puntual se deriva del listado ya cacheado, no de un fetch aparte.
+ * También `GET /preventivo/planes/responsables`, el selector de responsable del alta y la edición.
  */
 import { useQuery, useQueries, type UseQueryResult } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
+import type { TecnicoAsignable } from "@/features/tickets/types";
 import type { PlanPreventivo, PreventivoGeneracion } from "../types";
 
 /**
@@ -19,6 +21,26 @@ export function usePlanesPreventivo(): UseQueryResult<PlanPreventivo[], Error> {
   return useQuery({
     queryKey: ["preventivo", "planes"],
     queryFn: () => apiFetch<PlanPreventivo[]>("preventivo/planes"),
+  });
+}
+
+/**
+ * `GET /preventivo/planes/responsables?tipoId=` — los técnicos (TECNICO o COLABORADOR) con LECTURA
+ * sobre el tipo de ticket elegido para el plan, que es el de los tickets que genera
+ * (odd/preventivo-por-tipo, S5). Ya viene acotada: acá no se filtra nada. El backend la abre con
+ * `PREVENTIVO:ALTAS` o `PREVENTIVO:MODIFICACION` y LECTURA sobre el tipo, y rechaza con 422 un
+ * responsable que no esté en ella. Sin tipo elegido no consulta.
+ *
+ * @param tipoId Tipo de ticket elegido en el formulario; vacío, la consulta queda deshabilitada.
+ * @returns La query, con `data` como los técnicos ordenados por apellido y nombre.
+ */
+export function useResponsablesPlanPreventivo(tipoId: string): UseQueryResult<TecnicoAsignable[], Error> {
+  return useQuery({
+    queryKey: ["preventivo", "responsables", tipoId],
+    queryFn: () =>
+      apiFetch<TecnicoAsignable[]>(`preventivo/planes/responsables?tipoId=${encodeURIComponent(tipoId)}`),
+    enabled: !!tipoId,
+    staleTime: 60_000,
   });
 }
 

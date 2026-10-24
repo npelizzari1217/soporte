@@ -51,6 +51,11 @@ export interface CrearTicketDto {
   ubicacion?: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. */
   sectorId?: string | null;
+  /**
+   * Fecha objetivo (odd/preventivo-anticipacion S2), día calendario. Solo la manda el barrido
+   * preventivo, con la fecha del ciclo; el alta HTTP no la expone.
+   */
+  fechaObjetivo?: Date | null;
   solicitanteId: string;
   clienteId: string;
   autorId: string;
@@ -235,6 +240,7 @@ export class CrearTicketUseCase {
         solicitanteId: dto.solicitanteId,
         ubicacion: dto.ubicacion ?? null,
         sectorId: dto.sectorId ?? null,
+        fechaObjetivo: dto.fechaObjetivo ?? null,
       });
 
       // La regla asigna ANTES del primer `save()` (ADR-3): el ticket nace ASIGNADO.

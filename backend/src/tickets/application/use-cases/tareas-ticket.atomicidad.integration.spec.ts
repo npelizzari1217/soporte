@@ -180,6 +180,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
 
     const result = await enTenant(() =>
       completarUseCase(operacionRepo).execute({
+        clienteId: 'cliente-tareas',
         ticketId,
         tareaId: tarea.id,
         actor: RESPONSABLE_ACTOR,
@@ -202,6 +203,7 @@ describe('Tareas de un ticket: tarea + historial en una transacción (T2, tenant
     await expect(
       enTenant(() =>
         completarUseCase(operacionRepoQueFalla).execute({
+          clienteId: 'cliente-tareas',
           ticketId,
           tareaId: tarea.id,
           actor: RESPONSABLE_ACTOR,

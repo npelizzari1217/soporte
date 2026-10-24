@@ -37,6 +37,7 @@ function buildTicket(overrides: Partial<Ticket> = {}): Ticket {
     ubicacion: null,
     sectorId: null,
     sectorNombre: null,
+    fechaObjetivo: null,
     createdAt: "2026-08-15T12:00:00.000Z",
     updatedAt: "2026-08-15T12:00:00.000Z",
     borradoEn: null,
@@ -227,6 +228,18 @@ describe("TicketHeader", () => {
       render(<TicketHeader ticket={buildTicket()} />);
       expect(screen.getByText("Ubicación").nextElementSibling).toHaveTextContent("—");
       expect(screen.getByText("Sector").nextElementSibling).toHaveTextContent("—");
+    });
+  });
+
+  describe("fecha objetivo (odd/preventivo-anticipacion)", () => {
+    it("un ticket preventivo muestra la fecha objetivo como día calendario, sin correrla de día", () => {
+      render(<TicketHeader ticket={buildTicket({ fechaObjetivo: "2026-07-01T00:00:00.000Z" })} />);
+      expect(screen.getByText("Fecha objetivo").nextElementSibling).toHaveTextContent("01/07/2026");
+    });
+
+    it("hermano: un ticket sin fecha objetivo no muestra la fila", () => {
+      render(<TicketHeader ticket={buildTicket()} />);
+      expect(screen.queryByText("Fecha objetivo")).not.toBeInTheDocument();
     });
   });
 });

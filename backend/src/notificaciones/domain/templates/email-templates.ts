@@ -1,5 +1,6 @@
 import { EmailMessage } from '../../../shared/domain/ports/i-email-sender';
 import { escaparHtml } from '../../../shared/domain/escapar-html';
+import { formatearDiaCalendario } from '../../../shared/domain/dia-calendario';
 
 /** Datos comunes a toda plantilla: identifican el ticket + el link de la app. */
 interface DatosTicketBase {
@@ -135,19 +136,52 @@ export function templatePrimeraRespuestaVencida(datos: DatosTicketBase): Plantil
  * WU-6). Se dispara solo cuando el barrido efectivamente creó un ticket
  * `PREVENTIVO` desde un plan vencido — nunca en un salteo.
  *
+ * `fechaObjetivo` (odd/preventivo-anticipacion S3) es la fecha del ciclo del
+ * plan: con anticipación, el ticket llega antes de esa fecha y el correo la
+ * informa. `null`/ausente omite la línea.
+ *
  * Ref spec: sdd/preventivo/spec, Requirement "Notificación solo al generar".
  * Ref design: ADR-PV2 (flujo de datos). Tarea: 6.2.
  */
-export function templatePreventivoGenerado(datos: DatosTicketBase): PlantillaEmail {
+export function templatePreventivoGenerado(
+  datos: DatosTicketBase & { fechaObjetivo?: Date | null },
+): PlantillaEmail {
   const subject = `Mantenimiento preventivo generado — Ticket ${datos.numero}`;
   const link = linkTicket(datos);
+  const fecha = datos.fechaObjetivo ? formatearDiaCalendario(datos.fechaObjetivo) : null;
   const text =
     `Se generó el ticket de mantenimiento preventivo ${datos.numero} - ${datos.titulo}.\n\n` +
+    (fecha ? `Fecha objetivo: ${fecha}\n\n` : '') +
     `Ver ticket: ${link}`;
   const html =
     `<p>Se generó el ticket de mantenimiento preventivo <strong>${escaparHtml(datos.numero)}</strong> ` +
     `- ${escaparHtml(datos.titulo)}.</p>` +
+    (fecha ? `<p>Fecha objetivo: <strong>${fecha}</strong></p>` : '') +
     `<p><a href="${escaparHtml(link)}">Ver ticket</a></p>`;
+
+  return { subject, text, html };
+}
+
+/**
+ * templatePreventivoRecordatorio — recordatorio al responsable del plan, la
+ * víspera de la fecha objetivo de un ticket preventivo que sigue abierto
+ * (odd/preventivo-anticipacion S4). La fecha es un día calendario
+ * (`@db.Date`): se formatea con sus componentes UTC.
+ */
+export function templatePreventivoRecordatorio(
+  datos: DatosTicketBase & { fechaObjetivo: Date },
+): PlantillaEmail {
+  const subject = `Recordatorio: mantenimiento preventivo para mañana — Ticket ${datos.numero}`;
+  const fecha = formatearDiaCalendario(datos.fechaObjetivo);
+  const text =
+    `El ticket de mantenimiento preventivo ${datos.numero} - ${datos.titulo} sigue abierto ` +
+    `y su fecha objetivo es mañana, ${fecha}.` +
+    textoLink(datos);
+  const html =
+    `<p>El ticket de mantenimiento preventivo <strong>${escaparHtml(datos.numero)}</strong> ` +
+    `- ${escaparHtml(datos.titulo)} sigue abierto y su fecha objetivo es mañana, ` +
+    `<strong>${fecha}</strong>.</p>` +
+    htmlLink(datos);
 
   return { subject, text, html };
 }

@@ -26,9 +26,14 @@ export interface PlanPreventivo {
   /** Texto libre, normalizado a mayúscula por el backend. */
   ubicacion: string | null;
   prioridadId: string;
+  /** Tipo de ticket de los tickets que genera el plan (odd/preventivo-por-tipo, S2). */
+  tipoId: string;
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  /** Cuánto antes de la fecha del ciclo se genera el ticket. 0 = el mismo día del ciclo. */
+  anticipacionValor: number;
+  anticipacionUnidad: IntervaloUnidad;
   fechaInicio: string;
   proximaEjecucionEn: string;
   activo: boolean;
@@ -59,9 +64,13 @@ export interface CreatePlanPreventivoDto {
   equipoId?: string | null;
   ubicacion?: string | null;
   prioridadId: string;
+  tipoId: string;
   responsableId: string;
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  /** Ausente = 0 días en el backend. */
+  anticipacionValor?: number;
+  anticipacionUnidad?: IntervaloUnidad;
   fechaInicio: string;
 }
 
@@ -79,8 +88,11 @@ export interface EditarPlanPreventivoDto {
   equipoId?: string | null;
   ubicacion?: string | null;
   prioridadId?: string;
+  tipoId?: string;
   responsableId?: string;
   intervaloValor?: number;
   intervaloUnidad?: IntervaloUnidad;
+  anticipacionValor?: number;
+  anticipacionUnidad?: IntervaloUnidad;
   activo?: boolean;
 }

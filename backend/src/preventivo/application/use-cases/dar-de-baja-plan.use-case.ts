@@ -1,10 +1,13 @@
 import { DomainError, Result } from '../../../shared/domain/result';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
-import { PlanNoEncontradoError } from '../../domain/errors/preventivo.errors';
+import { cargarPlanVisible } from '../services/acceso-plan-preventivo';
 
 /** DTO de entrada para dar de baja un plan de mantenimiento preventivo. */
 export interface DarDeBajaPlanDto {
   planId: string;
+  /** Permisos por tipo del actor: solo se da de baja un plan visible, de un tipo con `LECTURA`. */
+  alcance: AlcanceActorTicket;
 }
 
 /**
@@ -20,6 +23,9 @@ export interface DarDeBajaPlanDto {
  * tipo a propósito — tras el issue #135 un plan viejo puede tener tickets
  * `MANTENIMIENTO` y `PREVENTIVO` conviviendo, y a ninguno se lo toca.
  *
+ * Visibilidad por el tipo del plan (odd/preventivo-por-tipo, S4): sin `LECTURA` sobre él, 404.
+ * `PREVENTIVO:BORRADO` lo exige el controller.
+ *
  * Ref spec: sdd/preventivo/spec, Requirement "Baja de plan frena generación
  * sin borrar historial". Tarea: 4.2.
  */
@@ -28,11 +34,16 @@ export class DarDeBajaPlanUseCase {
     private readonly planRepo: Pick<IPlanPreventivoRepository, 'buscarPorId' | 'guardar'>,
   ) {}
 
+  /**
+   * @param dto Plan y alcance del actor.
+   * @returns Ok, o el 404.
+   */
   async execute(dto: DarDeBajaPlanDto): Promise<Result<void, DomainError>> {
-    const plan = await this.planRepo.buscarPorId(dto.planId);
-    if (!plan || plan.isDeleted()) {
-      return Result.fail(new PlanNoEncontradoError(dto.planId));
+    const cargado = await cargarPlanVisible(this.planRepo, dto.planId, dto.alcance);
+    if (cargado.isFail()) {
+      return Result.fail(cargado.getError());
     }
+    const plan = cargado.getValue();
 
     const editarResult = plan.editar({ activo: false });
     if (editarResult.isFail()) {

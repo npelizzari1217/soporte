@@ -7,6 +7,7 @@ import {
   ITipoTicketRepository,
 } from '../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../tickets/application/use-cases/crear-ticket.use-case';
+import { ElegibilidadAsignado } from '../tickets/application/services/elegibilidad-asignado';
 import {
   EQUIPO_INFORMATICO_REPOSITORY,
   IEquipoInformaticoRepository,
@@ -43,6 +44,9 @@ import { ListarPlanesUseCase } from './application/use-cases/listar-planes.use-c
 import { DarDeBajaPlanUseCase } from './application/use-cases/dar-de-baja-plan.use-case';
 import { ListarGeneracionesPlanUseCase } from './application/use-cases/listar-generaciones-plan.use-case';
 import { GenerarPreventivosUseCase } from './application/use-cases/generar-preventivos.use-case';
+import { EnviarRecordatoriosPreventivoUseCase } from './application/use-cases/enviar-recordatorios-preventivo.use-case';
+import { ListarResponsablesPlanUseCase } from './application/use-cases/listar-responsables-plan.use-case';
+import { ResponsablesPlanPreventivo } from './application/services/responsables-plan-preventivo';
 
 import { PreventivoController } from './interface/controllers/preventivo.controller';
 import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo-sweep.scheduler';
@@ -60,14 +64,18 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  *   `LOGGER`/`DOMAIN_EVENT_PUBLISHER` se inyectan desde `SharedModule`
  *   (`@Global`).
  * - `TicketsModule`: `GenerarPreventivosUseCase` (WU-5) reusa
- *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) y
- *   `TIPO_TICKET_REPOSITORY` para resolver el tipo FIJO `PREVENTIVO`
- *   (issue #135: antes reusaba `MANTENIMIENTO` del módulo EDILICIA).
+ *   `CrearTicketUseCase` (exportado por `TicketsModule` desde 5.1) con el tipo
+ *   de ticket del plan (odd/preventivo-por-tipo, S2). El alta y la edición
+ *   validan ese tipo con `TIPO_TICKET_REPOSITORY`, y el controller carga el
+ *   alcance por tipo del actor con `CargadorAlcanceTicket` (S4).
  * - `EquiposModule` (WU-2, ADR-2): `GenerarPreventivosUseCase` suma un
  *   noveno parámetro `Pick<IEquipoInformaticoRepository, 'findById'>` para
  *   resolver el objetivo del ticket. `EquiposModule` ya exporta
  *   `EQUIPO_INFORMATICO_REPOSITORY` y no importa `PreventivoModule`: sin
  *   ciclo. No se crea un puerto propio de preventivo para el mismo contrato.
+ * - `ElegibilidadAsignado` (exportado por `TicketsModule`): `ResponsablesPlanPreventivo` decide
+ *   quién puede ser responsable de un plan con la misma regla que la asignación de un ticket del
+ *   tipo del plan.
  *
  * WU-5 agrega la generación automática: `GenerarPreventivosUseCase`
  * (orquestación transaccional del ciclo, ADR-PV2/PV3/PV5) y
@@ -75,6 +83,9 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
  * `ScheduleModule.forRoot()` (ya vive en `AppModule` desde WU-0). WU-6 [R11]
  * agrega la publicación post-commit de `preventivo.generado` (`DOMAIN_EVENT_PUBLISHER`,
  * consumida por `NotificacionesModule` vía `PreventivoGeneradoNotificacionListener`).
+ * `EnviarRecordatoriosPreventivoUseCase` (odd/preventivo-anticipacion T3)
+ * publica `preventivo.recordatorio` por el mismo publisher y lo corre el mismo
+ * barrido, después de la generación.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -87,16 +98,46 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
     { provide: PREVENTIVO_GENERACION_REPOSITORY, useClass: PrismaPreventivoGeneracionRepository },
     { provide: CalcularCicloService, useFactory: () => new CalcularCicloService() },
     {
+      provide: ResponsablesPlanPreventivo,
+      useFactory: (elegibilidad: ElegibilidadAsignado) =>
+        new ResponsablesPlanPreventivo(elegibilidad),
+      inject: [ElegibilidadAsignado],
+    },
+    {
       provide: CrearPlanUseCase,
-      useFactory: (planRepo: IPlanPreventivoRepository, txRunner: ITenantTransactionRunner) =>
-        new CrearPlanUseCase(planRepo, txRunner),
-      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (
+        planRepo: IPlanPreventivoRepository,
+        txRunner: ITenantTransactionRunner,
+        responsables: ResponsablesPlanPreventivo,
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new CrearPlanUseCase(planRepo, txRunner, responsables, tipoTicketRepo),
+      inject: [
+        PLAN_PREVENTIVO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        ResponsablesPlanPreventivo,
+        TIPO_TICKET_REPOSITORY,
+      ],
     },
     {
       provide: EditarPlanUseCase,
-      useFactory: (planRepo: IPlanPreventivoRepository, txRunner: ITenantTransactionRunner) =>
-        new EditarPlanUseCase(planRepo, txRunner),
-      inject: [PLAN_PREVENTIVO_REPOSITORY, TENANT_TX_RUNNER],
+      useFactory: (
+        planRepo: IPlanPreventivoRepository,
+        txRunner: ITenantTransactionRunner,
+        responsables: ResponsablesPlanPreventivo,
+        tipoTicketRepo: ITipoTicketRepository,
+      ) => new EditarPlanUseCase(planRepo, txRunner, responsables, tipoTicketRepo),
+      inject: [
+        PLAN_PREVENTIVO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        ResponsablesPlanPreventivo,
+        TIPO_TICKET_REPOSITORY,
+      ],
+    },
+    {
+      provide: ListarResponsablesPlanUseCase,
+      useFactory: (responsables: ResponsablesPlanPreventivo) =>
+        new ListarResponsablesPlanUseCase(responsables),
+      inject: [ResponsablesPlanPreventivo],
     },
     {
       provide: ListarPlanesUseCase,
@@ -121,7 +162,6 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
       useFactory: (
         planRepo: IPlanPreventivoRepository,
         generacionRepo: IPreventivoGeneracionRepository,
-        tipoTicketRepo: ITipoTicketRepository,
         crearTicketUseCase: CrearTicketUseCase,
         txRunner: ITenantTransactionRunner,
         calcularCiclo: CalcularCicloService,
@@ -132,7 +172,6 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         new GenerarPreventivosUseCase(
           planRepo,
           generacionRepo,
-          tipoTicketRepo,
           crearTicketUseCase,
           txRunner,
           calcularCiclo,
@@ -143,7 +182,6 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
       inject: [
         PLAN_PREVENTIVO_REPOSITORY,
         PREVENTIVO_GENERACION_REPOSITORY,
-        TIPO_TICKET_REPOSITORY,
         CrearTicketUseCase,
         TENANT_TX_RUNNER,
         CalcularCicloService,
@@ -153,6 +191,15 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
       ],
     },
     {
+      provide: EnviarRecordatoriosPreventivoUseCase,
+      useFactory: (
+        generacionRepo: IPreventivoGeneracionRepository,
+        txRunner: ITenantTransactionRunner,
+        eventPublisher: IDomainEventPublisher,
+      ) => new EnviarRecordatoriosPreventivoUseCase(generacionRepo, txRunner, eventPublisher),
+      inject: [PREVENTIVO_GENERACION_REPOSITORY, TENANT_TX_RUNNER, DOMAIN_EVENT_PUBLISHER],
+    },
+    {
       provide: PreventivoSweepScheduler,
       useFactory: (
         tenantEnumerator: ITenantEnumerator,
@@ -160,6 +207,7 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
         prismaService: PrismaService,
         generarPreventivosUseCase: GenerarPreventivosUseCase,
         logger: ILogger,
+        enviarRecordatoriosUseCase: EnviarRecordatoriosPreventivoUseCase,
       ) =>
         new PreventivoSweepScheduler(
           tenantEnumerator,
@@ -167,8 +215,16 @@ import { PreventivoSweepScheduler } from './infrastructure/schedulers/preventivo
           prismaService,
           generarPreventivosUseCase,
           logger,
+          enviarRecordatoriosUseCase,
         ),
-      inject: [TENANT_ENUMERATOR, TenantContext, PrismaService, GenerarPreventivosUseCase, LOGGER],
+      inject: [
+        TENANT_ENUMERATOR,
+        TenantContext,
+        PrismaService,
+        GenerarPreventivosUseCase,
+        LOGGER,
+        EnviarRecordatoriosPreventivoUseCase,
+      ],
     },
   ],
   exports: [PLAN_PREVENTIVO_REPOSITORY, PREVENTIVO_GENERACION_REPOSITORY],

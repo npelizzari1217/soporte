@@ -55,6 +55,7 @@ import { CargadorAlcanceTicket } from '../alcance-ticket';
 import { ObtenerPermisosPorTipoUseCase } from '../../application/use-cases/obtener-permisos-por-tipo.use-case';
 import { BorrarTicketUseCase } from '../../application/use-cases/borrar-ticket.use-case';
 import { RecuperarTicketUseCase } from '../../application/use-cases/recuperar-ticket.use-case';
+import { ListarAgentesFiltroTicketsUseCase } from '../../application/use-cases/listar-agentes-filtro-tickets.use-case';
 
 /** Operación de dominio mínima para alimentar `toOperacionResponseDto`. */
 function fakeOperacion(esInterno: boolean): OperacionTicketEntity {
@@ -160,6 +161,7 @@ type DependenciasControlador = {
   obtenerCsatTicket: MockUseCase<ObtenerCsatTicketUseCase>;
   borrarTicket: MockUseCase<BorrarTicketUseCase>;
   recuperarTicket: MockUseCase<RecuperarTicketUseCase>;
+  listarAgentes: MockUseCase<ListarAgentesFiltroTicketsUseCase>;
   solicitanteExternoRepo: {
     findNombres: Mock<ISolicitanteExternoRepository['findNombres']>;
     findById: Mock<ISolicitanteExternoRepository['findById']>;
@@ -214,6 +216,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     },
     borrarTicket: overrides.borrarTicket ?? stub(),
     recuperarTicket: overrides.recuperarTicket ?? stub(),
+    listarAgentes: overrides.listarAgentes ?? stub(),
     solicitanteExternoRepo: overrides.solicitanteExternoRepo ?? {
       findNombres: vi
         .fn<ISolicitanteExternoRepository['findNombres']>()
@@ -239,7 +242,6 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
   const usuarioMasterCheckerReal: IUsuarioMasterChecker = {
     existeEnTenant: unstubbed('existeEnTenant'),
     estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
-    esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
     listarAgentes: unstubbed('listarAgentes'),
     resolverNombres: usuarioMasterChecker.resolverNombres,
   };
@@ -278,6 +280,7 @@ function buildController(overrides: Partial<DependenciasControlador> = {}): Cont
     ),
     casoReal(BorrarTicketUseCase, deps.borrarTicket),
     casoReal(RecuperarTicketUseCase, deps.recuperarTicket),
+    casoReal(ListarAgentesFiltroTicketsUseCase, deps.listarAgentes),
     deps.bloqueoRepo,
   );
   return { controller, ...deps, usuarioMasterChecker };
@@ -372,6 +375,41 @@ describe('TicketsController.findAll — alcance por tipo (odd/permisos-por-tipo-
 
     expect(listarTickets.execute).toHaveBeenCalledWith(
       expect.objectContaining({ alcance: { actorId: actor.sub, permisosPorTipo: null } }),
+    );
+  });
+});
+
+describe('TicketsController — GET /tickets/agentes (filtro "Asignado" del listado)', () => {
+  it('delega con el clienteId del JWT, el ?tipo= y el alcance por tipo del actor', async () => {
+    const agentes = [{ id: 'tec-1', nombre: 'Ana', apellido: 'García' }];
+    const listarAgentes = {
+      execute: vi
+        .fn<ListarAgentesFiltroTicketsUseCase['execute']>()
+        .mockResolvedValue(Result.ok(agentes)),
+    };
+    const { controller } = buildController({ listarAgentes });
+
+    const res = await controller.agentes(USUARIO_SOPORTE, { tipo: 'ti1' });
+
+    expect(listarAgentes.execute).toHaveBeenCalledWith({
+      clienteId: 'cliente-1',
+      tipoId: 'ti1',
+      actorId: 'usr-2',
+      permisosPorTipo: new Map([['ti1', new Set(['LECTURA', 'MODIFICACION'])]]),
+    });
+    expect(res).toEqual(agentes);
+  });
+
+  it('sin acceso a la lista → 403', async () => {
+    const listarAgentes = {
+      execute: vi
+        .fn<ListarAgentesFiltroTicketsUseCase['execute']>()
+        .mockResolvedValue(Result.fail(new TicketsErrors.ListaDeAgentesNoPermitidaError())),
+    };
+    const { controller } = buildController({ listarAgentes });
+
+    await expect(controller.agentes(USUARIO_SOPORTE, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
     );
   });
 });
@@ -921,10 +959,10 @@ describe('TicketsController.exportar — GET /tickets/export (sdd/exportar-lista
  * con ruta, así que una ruta nueva con `@RequiereAcciones` de módulo también pone esto en rojo.
  */
 describe('TicketsController — sin @RequiereAcciones de módulo (D5 d)', () => {
-  it('ninguna de sus 14 rutas exige una celda: deciden los casos de uso por tipo', () => {
+  it('ninguna de sus 15 rutas exige una celda: deciden los casos de uso por tipo', () => {
     const rutas = accionesPorRuta(TicketsController);
 
-    expect(rutas.size).toBe(14);
+    expect(rutas.size).toBe(15);
     expect([...rutas].filter(([, acciones]) => acciones.length > 0)).toEqual([]);
   });
 });
@@ -1362,8 +1400,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 35 clases de error (32 previas + las tres del borrado, S8 y L45)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(35);
+  it('el catálogo tiene EXACTAMENTE 36 clases de error (32 previas + las tres del borrado, S8 y L45, + la de la lista de agentes)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(36);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -1504,6 +1542,11 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     [
       'TicketsBorradosSoloAdministradorError',
       () => new TicketsErrors.TicketsBorradosSoloAdministradorError(),
+      403,
+    ],
+    [
+      'ListaDeAgentesNoPermitidaError',
+      () => new TicketsErrors.ListaDeAgentesNoPermitidaError(),
       403,
     ],
   ];

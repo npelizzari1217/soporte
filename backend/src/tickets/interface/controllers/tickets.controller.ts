@@ -8,6 +8,7 @@
  *   GET    /tickets            → ListarTicketsUseCase (tipos con `LECTURA`; fila sin `VER_TODOS`)
  *   GET    /tickets/export     → ExportarTicketsUseCase (mismo alcance que el listado)
  *   GET    /tickets/permisos-por-tipo → ObtenerPermisosPorTipoUseCase (acciones de la sesión)
+ *   GET    /tickets/agentes    → ListarAgentesFiltroTicketsUseCase (opciones del filtro "Asignado")
  *   GET    /tickets/:id        → ObtenerTicketUseCase (`LECTURA` sobre su tipo y fila), con `bloqueada`
  *   PATCH  /tickets/:id        → EditarTicketUseCase (`MODIFICACION` sobre su tipo)
  *   PATCH  /tickets/:id/estado → TransicionarEstadoUseCase (`TRANSICIONAR` sobre su tipo)
@@ -72,6 +73,7 @@ import {
 import { CrearComentarioUseCase } from '../../application/use-cases/crear-comentario.use-case';
 import { ListarTimelineUseCase } from '../../application/use-cases/listar-timeline.use-case';
 import { ExportarTicketsUseCase } from '../../application/use-cases/exportar-tickets.use-case';
+import { ListarAgentesFiltroTicketsUseCase } from '../../application/use-cases/listar-agentes-filtro-tickets.use-case';
 import { ObtenerCsatTicketUseCase } from '../../../csat/application/use-cases/obtener-csat-ticket.use-case';
 import {
   AsignarTicketDto,
@@ -79,6 +81,7 @@ import {
   CreateTicketDto,
   EditTicketDto,
   ExportarTicketsQueryDto,
+  ListarAgentesQueryDto,
   ListTicketsQueryDto,
   ListTicketsResponseDto,
   NombresResueltos,
@@ -114,6 +117,7 @@ import {
   TicketConPendientesNoBorrableError,
   TicketPreventivoNoBorrableError,
   TicketsBorradosSoloAdministradorError,
+  ListaDeAgentesNoPermitidaError,
 } from '../../domain/errors/tickets.errors';
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
@@ -158,7 +162,8 @@ export function toHttpException(
   if (
     error instanceof TicketBloqueadoParaEdicionError ||
     error instanceof AccionSobreTipoNoPermitidaError ||
-    error instanceof TicketsBorradosSoloAdministradorError
+    error instanceof TicketsBorradosSoloAdministradorError ||
+    error instanceof ListaDeAgentesNoPermitidaError
   ) {
     return new ForbiddenException(error.message);
   }
@@ -245,6 +250,7 @@ export class TicketsController {
     private readonly obtenerPermisosPorTipoUseCase: ObtenerPermisosPorTipoUseCase,
     private readonly borrarTicketUseCase: BorrarTicketUseCase,
     private readonly recuperarTicketUseCase: RecuperarTicketUseCase,
+    private readonly listarAgentesFiltroUseCase: ListarAgentesFiltroTicketsUseCase,
     @Inject(BLOQUEO_TICKET_REPOSITORY)
     private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'estaBloqueadoPorCompra'>,
   ) {}
@@ -493,6 +499,31 @@ export class TicketsController {
   }
 
   /**
+   * GET /tickets/agentes
+   * Opciones del filtro "Asignado" del listado: los agentes (TECNICO o COLABORADOR) con `LECTURA`
+   * sobre alguno de los tipos que el actor ve, o solo sobre `?tipo=` si viene. Va declarada ANTES
+   * de `GET /tickets/:id` por el mismo motivo que `export`.
+   * @throws 403 sin `ASIGNAR` sobre algún tipo ni `VER_TODOS` sobre un tipo de Tickets, Compras o
+   *             Equipos (la regla de `GET /usuarios`)
+   */
+  @Get('agentes')
+  async agentes(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListarAgentesQueryDto,
+  ): Promise<TecnicoAsignable[]> {
+    const result = await this.listarAgentesFiltroUseCase.execute({
+      clienteId: user.cliente_id as string,
+      tipoId: query.tipo,
+      ...(await this.alcances.cargar(user)),
+    });
+
+    if (result.isFail()) {
+      throw toHttpException(result.getError());
+    }
+    return result.getValue();
+  }
+
+  /**
    * GET /tickets/:id
    * Consulta un ticket. Exige `LECTURA` sobre su tipo y, sin `VER_TODOS` sobre
    * ese tipo, ser el solicitante, el responsable o el técnico de una tarea
@@ -677,9 +708,9 @@ export class TicketsController {
    * asignación MANUAL. Un ticket nacido por regla de tipo se reasigna igual que
    * cualquier otro. Un ticket NUEVO pasa a ASIGNADO; uno CERRADO/CANCELADO no se
    * reasigna. Requiere `ASIGNAR` sobre el tipo del ticket. El `asignadoId` debe existir/estar activo en el
-   * tenant (cross-DB) y ser elegible para el `tipoId` del ticket
-   * (elegibilidad por el módulo del catálogo del tipo) — la elegibilidad es
-   * ortogonal al permiso del actor (T15).
+   * tenant (cross-DB) y ser TECNICO o COLABORADOR con `LECTURA` sobre el `tipoId` del ticket
+   * (el mismo universo de `GET /tickets/:id/asignables`), salvo que ya sea el responsable —
+   * la elegibilidad es ortogonal al permiso del actor (T15).
    * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 asignado inválido (`AsignadoInvalidoError`) o no elegible (`AsignadoNoElegibleError`),
@@ -713,10 +744,9 @@ export class TicketsController {
   /**
    * GET /tickets/:id/asignables
    * Lista los AGENTES elegibles para atender el ticket (combo del control
-   * unificado "Asignar y poner en proceso"). Elegibilidad por módulo del tipo
-   * del ticket: usuarios activos con membresía TECNICO o COLABORADOR (ambos
-   * cumplen funciones de técnico) en el tenant y el módulo asignado. Un tipo
-   * custom (sin módulo) devuelve `[]`.
+   * unificado "Asignar y poner en proceso"): usuarios activos con membresía
+   * TECNICO o COLABORADOR (ambos cumplen funciones de técnico) con `LECTURA`
+   * sobre el tipo del ticket (`ElegibilidadAsignado.listarAgentesDeTipo`).
    * Requiere `ASIGNAR` sobre el tipo del ticket. `clienteId` = `cliente_id` del JWT.
    * @throws 403 sin `ASIGNAR` sobre el tipo del ticket
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)

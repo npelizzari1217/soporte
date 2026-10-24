@@ -952,7 +952,12 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         'ticket:ver_todos',
         'ticket:asignar',
       ]);
-      const roleAgente = await createRoleConPermisos('AGENTE', ['ticket:crear', 'ticket:comentar']);
+      // El destino es COLABORADOR: solo un TECNICO o COLABORADOR con LECTURA sobre el tipo recibe
+      // tickets. Lo que se prueba es el permiso del actor y la fila por tipo del destino.
+      const roleAgente = await createRoleConPermisos('COLABORADOR', [
+        'ticket:crear',
+        'ticket:comentar',
+      ]);
       const usuario = await createUsuario(`usr-${randomBytes(2).toString('hex')}`);
       const tecnico = await createUsuario(`tec-${randomBytes(2).toString('hex')}`);
       const agente = await createUsuario(`age-${randomBytes(2).toString('hex')}`);

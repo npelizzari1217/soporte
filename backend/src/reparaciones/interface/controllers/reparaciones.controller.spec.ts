@@ -157,7 +157,6 @@ function usuarioMasterCheckerFalso() {
     existeEnTenant: unstubbed('usuarioMasterChecker.existeEnTenant'),
     estaActivoEnTenant: unstubbed('usuarioMasterChecker.estaActivoEnTenant'),
     resolverNombres: vi.fn<IUsuarioMasterChecker['resolverNombres']>().mockResolvedValue(new Map()),
-    esAdminTotalEnTenant: unstubbed('usuarioMasterChecker.esAdminTotalEnTenant'),
     listarAgentes: unstubbed('usuarioMasterChecker.listarAgentes'),
   };
 }

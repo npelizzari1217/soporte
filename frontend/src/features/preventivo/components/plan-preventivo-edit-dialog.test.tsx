@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 import { PlanPreventivoEditDialog } from "./plan-preventivo-edit-dialog";
 import type { PlanPreventivo } from "../types";
 
@@ -13,14 +14,36 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // `vi.mock` de módulo crea los `vi.fn()` una sola vez para todo el archivo:
 // sin limpiarlos entre tests, un `toHaveBeenCalled()` puede pasar por una
 // llamada de un test ANTERIOR (hallazgo C1 del verify).
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
 const PLAN_ID = "88888888-8888-8888-8888-888888888888";
 const PRIORIDAD_ID = "11111111-1111-1111-1111-111111111111";
 const USUARIO_ID = "33333333-3333-3333-3333-333333333333";
 const EQUIPO_ID = "22222222-2222-2222-2222-222222222222";
+const TIPO_PREVENTIVO_ID = "44444444-4444-4444-4444-444444444444";
+const TIPO_SOPORTE_ID = "55555555-5555-5555-5555-555555555555";
+const TIPO_EDILICIA_ID = "66666666-6666-6666-6666-666666666666";
+const TIPO_DADO_DE_BAJA_ID = "99999999-9999-9999-9999-999999999999";
+/** Técnico de Soporte y no de Preventivo. */
+const TECNICO_SOPORTE_ID = "77777777-7777-7777-7777-777777777777";
+
+function tipo(id: string, codigo: string, nombre: string) {
+  return { id, codigo, nombre, modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" };
+}
+
+/** Catálogo de tipos vigentes (odd/preventivo-por-tipo); el dado de baja no viene. */
+function handlerTipos() {
+  return http.get("/api/catalogos/tipos-ticket", () =>
+    HttpResponse.json([
+      tipo(TIPO_EDILICIA_ID, "EDILICIA", "Edilicia"),
+      tipo(TIPO_PREVENTIVO_ID, "PREVENTIVO", "Preventivo"),
+      tipo(TIPO_SOPORTE_ID, "SOPORTE", "Soporte"),
+    ]),
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  server.use(handlerTipos());
+});
 
 const PLAN_CON_UBICACION: PlanPreventivo = {
   id: PLAN_ID,
@@ -29,9 +52,12 @@ const PLAN_CON_UBICACION: PlanPreventivo = {
   equipoId: null,
   ubicacion: "DEPOSITO",
   prioridadId: PRIORIDAD_ID,
+  tipoId: TIPO_PREVENTIVO_ID,
   responsableId: USUARIO_ID,
   intervaloValor: 1,
   intervaloUnidad: "MESES",
+  anticipacionValor: 0,
+  anticipacionUnidad: "DIAS",
   fechaInicio: "2026-01-01",
   proximaEjecucionEn: "2026-04-01",
   activo: true,
@@ -57,8 +83,8 @@ function mockCatalogos() {
         },
       ]),
     ),
-    http.get("/api/usuarios", () =>
-      HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez", rol: "TECNICO" }]),
+    http.get("/api/preventivo/planes/responsables", () =>
+      HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" }]),
     ),
   );
 }
@@ -315,7 +341,8 @@ const prioridad = (id: string, nombre: string) => ({
   createdAt: "",
   updatedAt: "",
 });
-const usuario = (id: string, nombre: string) => ({ id, nombre, apellido: "Gómez", rol: "TECNICO" });
+/** Técnico de Preventivo, con la forma de `GET /preventivo/planes/responsables`. */
+const usuario = (id: string, nombre: string) => ({ id, nombre, apellido: "Gómez" });
 
 const PRIORIDAD_DEL_PLAN = prioridad(PRIORIDAD_ID, "Media");
 const USUARIO_DEL_PLAN = usuario(USUARIO_ID, "Ana");
@@ -323,11 +350,14 @@ const USUARIO_DEL_PLAN = usuario(USUARIO_ID, "Ana");
 /** Handler pendiente para siempre: simula el catálogo TODAVÍA cargando. */
 const pendiente = async () => await new Promise<never>(() => {});
 const roto = () => HttpResponse.json({ message: "Error interno" }, { status: 500 });
-/** El caso real del hallazgo 2: PREVENTIVO:MODIFICACION sin TICKETS:ASIGNAR. */
+/** La lista de responsables le responde 403 a quien no tiene ALTAS ni MODIFICACION de Preventivo. */
 const prohibido = () => HttpResponse.json({ message: "Forbidden" }, { status: 403 });
 
-function renderConCatalogos(prioridades: Parameters<typeof http.get>[1], usuarios: Parameters<typeof http.get>[1]) {
-  server.use(http.get("/api/catalogos/prioridades", prioridades), http.get("/api/usuarios", usuarios));
+function renderConCatalogos(prioridades: Parameters<typeof http.get>[1], responsables: Parameters<typeof http.get>[1]) {
+  server.use(
+    http.get("/api/catalogos/prioridades", prioridades),
+    http.get("/api/preventivo/planes/responsables", responsables),
+  );
   renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, {
     user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
   });
@@ -361,7 +391,7 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
         await delay(300);
         return HttpResponse.json([prioridad(OTRA_PRIORIDAD_ID, "Alta"), PRIORIDAD_DEL_PLAN]);
       }),
-      http.get("/api/usuarios", () => HttpResponse.json([USUARIO_DEL_PLAN])),
+      http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([USUARIO_DEL_PLAN])),
     );
     renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, {
       user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
@@ -375,7 +405,7 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
   it("(caso b, hermano) mismo escenario para el responsable", async () => {
     server.use(
       http.get("/api/catalogos/prioridades", () => HttpResponse.json([PRIORIDAD_DEL_PLAN])),
-      http.get("/api/usuarios", async () => {
+      http.get("/api/preventivo/planes/responsables", async () => {
         await delay(300);
         return HttpResponse.json([usuario(OTRO_USUARIO_ID, "Bruno"), USUARIO_DEL_PLAN]);
       }),
@@ -401,18 +431,20 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^prioridad$/i })).toHaveValue(PRIORIDAD_ID));
   });
 
-  it("el responsable del plan no está entre los asignables: opción extra 'Responsable dado de baja', preseleccionada", async () => {
+  // La ausencia en la lista ya no significa solo "dado de baja": también un técnico que perdió
+  // la LECTURA sobre Preventivo, o un usuario que nunca fue técnico (planes previos a la regla).
+  it("el responsable del plan no está entre los técnicos de Preventivo: opción extra 'Responsable no habilitado', preseleccionada", async () => {
     renderConCatalogos(
       () => HttpResponse.json([PRIORIDAD_DEL_PLAN]),
       () => HttpResponse.json([usuario(OTRO_USUARIO_ID, "Bruno")]),
     );
     await abrirDialog();
 
-    expect(await screen.findByRole("option", { name: "Responsable dado de baja" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Responsable no habilitado" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^responsable$/i })).toHaveValue(USUARIO_ID));
   });
 
-  it("hermano invertido: el responsable SÍ está entre los asignables → sin opción extra", async () => {
+  it("hermano invertido: el responsable SÍ está entre los técnicos de Preventivo → sin opción extra", async () => {
     renderConCatalogos(
       () => HttpResponse.json([PRIORIDAD_DEL_PLAN]),
       () => HttpResponse.json([USUARIO_DEL_PLAN]),
@@ -420,7 +452,7 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
     await abrirDialog();
 
     expect(await screen.findByRole("option", { name: "Ana Gómez" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Responsable dado de baja" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Responsable no habilitado" })).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("combobox", { name: /^responsable$/i })).toHaveValue(USUARIO_ID));
   });
 
@@ -440,14 +472,38 @@ describe("PlanPreventivoEditDialog — prioridad y responsable fuera del catálo
   });
 
   it.each([
-    ["usuarios caído", roto, "Responsable dado de baja"],
-    ["usuarios cargando", pendiente, "Responsable dado de baja"],
+    ["responsables caído", roto, "Responsable no habilitado"],
+    ["responsables cargando", pendiente, "Responsable no habilitado"],
   ] as const)("catálogo de %s: NUNCA se infiere una baja", async (_n, responder, etiqueta) => {
     renderConCatalogos(() => HttpResponse.json([PRIORIDAD_DEL_PLAN]), responder);
     await abrirDialog();
 
     await screen.findByRole("option", { name: "Media" });
     expect(screen.queryByRole("option", { name: etiqueta })).not.toBeInTheDocument();
+  });
+});
+
+describe("PlanPreventivoEditDialog — el responsable sale de los técnicos de Preventivo", () => {
+  it("ofrece solo GET /preventivo/planes/responsables, no la lista de usuarios del tenant", async () => {
+    server.use(
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/usuarios", () =>
+        HttpResponse.json([
+          { ...USUARIO_DEL_PLAN, rol: "TECNICO" },
+          { id: "u-final", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
+        ]),
+      ),
+    );
+    renderConCatalogos(
+      () => HttpResponse.json([PRIORIDAD_DEL_PLAN]),
+      () => HttpResponse.json([USUARIO_DEL_PLAN, usuario(OTRO_USUARIO_ID, "Bruno")]),
+    );
+    await abrirDialog();
+
+    const select = screen.getByRole("combobox", { name: /^responsable$/i });
+    expect(await within(select).findByRole("option", { name: "Bruno Gómez" })).toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: "Ana Gómez" })).toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
   });
 });
 
@@ -476,7 +532,7 @@ describe("PlanPreventivoEditDialog — reaplicar no puede pisar el objetivo eleg
     });
     server.use(
       http.get("/api/catalogos/prioridades", () => HttpResponse.json([PRIORIDAD_DEL_PLAN])),
-      http.get("/api/usuarios", () => HttpResponse.json([USUARIO_DEL_PLAN])),
+      http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([USUARIO_DEL_PLAN])),
       http.get("/api/equipos", async () => {
         await equiposEnVuelo;
         return HttpResponse.json([{ id: EQUIPO_ID, nombre: "Notebook Dell", numeroSerie: "SN-1", activo: true }]);
@@ -521,16 +577,12 @@ describe("PlanPreventivoEditDialog — aviso inline cuando un catálogo falla", 
     expect(screen.queryByText(AVISO_RESPONSABLES)).not.toBeInTheDocument();
   });
 
-  // El caso que motivó el hallazgo: un actor con PREVENTIVO:MODIFICACION puede
-  // NO tener TICKETS:ASIGNAR y comerse un 403 en `GET /usuarios`. Sin aviso se
-  // quedaba con el dropdown vacío y sin ninguna pista de por qué.
-  it("GET /usuarios responde 403 por falta de TICKETS:ASIGNAR: aviso inline que nombra el permiso", async () => {
+  // Sin aviso, un fallo de la lista dejaba el dropdown vacío y sin ninguna pista de por qué.
+  it("GET /preventivo/planes/responsables responde 403: aviso inline, no un dropdown vacío y mudo", async () => {
     renderConCatalogos(() => HttpResponse.json([PRIORIDAD_DEL_PLAN]), prohibido);
     await abrirDialog();
 
-    const aviso = await screen.findByText(AVISO_RESPONSABLES);
-    expect(aviso).toBeInTheDocument();
-    expect(aviso).toHaveTextContent(/permiso para ver usuarios/i);
+    expect(await screen.findByText(AVISO_RESPONSABLES)).toBeInTheDocument();
     expect(screen.queryByText(AVISO_PRIORIDADES)).not.toBeInTheDocument();
   });
 
@@ -588,5 +640,212 @@ describe("PlanPreventivoEditDialog — aviso de cadencia (ADR-7, EP-R5)", () => 
     await user.type(screen.getByLabelText(/^título$/i), " editado");
 
     expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+});
+
+describe("PlanPreventivoEditDialog — anticipación (odd/preventivo-anticipacion)", () => {
+  beforeEach(() => {
+    mockCatalogos();
+    server.use(http.get("/api/equipos", () => HttpResponse.json([])));
+  });
+
+  const AVISO_ANTICIPACION = /al cambiar la anticipación, la próxima ejecución se recalcula desde hoy/i;
+  const PLAN_CON_ANTICIPACION: PlanPreventivo = {
+    ...PLAN_CON_UBICACION,
+    intervaloValor: 3,
+    anticipacionValor: 5,
+    anticipacionUnidad: "DIAS",
+  };
+
+  it("abre con la anticipación vigente del plan", async () => {
+    renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    await abrirDialog();
+
+    expect(screen.getByLabelText(/^anticipación$/i)).toHaveValue(5);
+    expect(screen.getByRole("combobox", { name: /^unidad de anticipación$/i })).toHaveValue("DIAS");
+  });
+
+  it("al reabrir muestra la anticipación VIGENTE del prop, no la del primer render", async () => {
+    const { rerender } = renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    const user = await abrirDialog();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByText("Editar plan de mantenimiento preventivo")).not.toBeInTheDocument());
+
+    rerender(<PlanPreventivoEditDialog plan={{ ...PLAN_CON_ANTICIPACION, anticipacionValor: 1, anticipacionUnidad: "MESES" }} />);
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    await screen.findByText("Editar plan de mantenimiento preventivo");
+
+    expect(screen.getByLabelText(/^anticipación$/i)).toHaveValue(1);
+    expect(screen.getByRole("combobox", { name: /^unidad de anticipación$/i })).toHaveValue("MESES");
+  });
+
+  it("cambiar la anticipación la manda en el PATCH como número, con su unidad, y avisa del recálculo", async () => {
+    const capturado = capturarPatch();
+    renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    const user = await abrirDialog();
+
+    expect(screen.queryByText(AVISO_ANTICIPACION)).not.toBeInTheDocument();
+    const anticipacion = screen.getByLabelText(/^anticipación$/i);
+    await user.clear(anticipacion);
+    await user.type(anticipacion, "0");
+    expect(await screen.findByText(AVISO_ANTICIPACION)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.anticipacionValor).toBe(0));
+    expect(capturado.body.anticipacionUnidad).toBe("DIAS");
+  });
+
+  it("vaciar la anticipación no la convierte en 0: avisa y no envía", async () => {
+    let envio = false;
+    server.use(
+      http.patch(`/api/preventivo/planes/${PLAN_ID}`, () => {
+        envio = true;
+        return HttpResponse.json(PLAN_CON_ANTICIPACION);
+      }),
+    );
+    renderWithProviders(<PlanPreventivoEditDialog plan={PLAN_CON_ANTICIPACION} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+    });
+    const user = await abrirDialog();
+    await user.clear(screen.getByLabelText(/^anticipación$/i));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(await screen.findByText("La anticipación es requerida")).toBeInTheDocument();
+    expect(envio).toBe(false);
+  });
+});
+
+describe("PlanPreventivoEditDialog — tipo de ticket del plan (odd/preventivo-por-tipo)", () => {
+  /** Técnico con LECTURA sobre Preventivo y Soporte; Edilicia sin LECTURA (S4). */
+  const TECNICO = buildUser({ rol: "TECNICO", permisos: ["PREVENTIVO:MODIFICACION"] });
+  const PERMISOS = permisosDeTest({
+    [TIPO_PREVENTIVO_ID]: ["LECTURA"],
+    [TIPO_SOPORTE_ID]: ["LECTURA"],
+    [TIPO_EDILICIA_ID]: ["MODIFICACION"],
+  });
+
+  /** Responsables por tipo, como el backend (S5): Ana en Preventivo y Soporte; Bruno, solo Soporte. */
+  function mockResponsablesPorTipo() {
+    server.use(
+      http.get("/api/catalogos/prioridades", () =>
+        HttpResponse.json([
+          { id: PRIORIDAD_ID, codigo: "MEDIA", nombre: "Media", color: null, orden: 1, activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+      http.get("/api/equipos", () => HttpResponse.json([])),
+      http.get("/api/preventivo/planes/responsables", ({ request }) => {
+        const tipoId = new URL(request.url).searchParams.get("tipoId");
+        if (tipoId === TIPO_PREVENTIVO_ID) return HttpResponse.json([{ id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" }]);
+        if (tipoId === TIPO_SOPORTE_ID) {
+          return HttpResponse.json([
+            { id: USUARIO_ID, nombre: "Ana", apellido: "Gómez" },
+            { id: TECNICO_SOPORTE_ID, nombre: "Bruno", apellido: "Díaz" },
+          ]);
+        }
+        return HttpResponse.json([]);
+      }),
+    );
+  }
+
+  beforeEach(() => mockResponsablesPorTipo());
+
+  it("abre con el tipo del plan y ofrece solo los tipos que el usuario ve (LECTURA)", async () => {
+    renderConPermisos(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, { user: TECNICO, permisos: PERMISOS });
+    await abrirDialog();
+
+    const tipoSelect = screen.getByRole("combobox", { name: /^tipo de ticket$/i });
+    await within(tipoSelect).findByRole("option", { name: "Soporte" });
+    await waitFor(() => expect(tipoSelect).toHaveValue(TIPO_PREVENTIVO_ID));
+    expect(within(tipoSelect).getAllByRole("option").map((opcion) => opcion.textContent)).toEqual([
+      "Preventivo",
+      "Soporte",
+    ]);
+  });
+
+  it("el tipo del plan dado de baja sale como opción sintética, preseleccionada, y se reenvía sin cambios", async () => {
+    const capturado = capturarPatch();
+    renderConPermisos(<PlanPreventivoEditDialog plan={{ ...PLAN_CON_UBICACION, tipoId: TIPO_DADO_DE_BAJA_ID }} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:MODIFICACION"] }),
+      permisos: PERMISOS,
+    });
+    const user = await abrirDialog();
+
+    const tipoSelect = screen.getByRole("combobox", { name: /^tipo de ticket$/i });
+    expect(await within(tipoSelect).findByRole("option", { name: "Tipo de ticket dado de baja" })).toBeInTheDocument();
+    await waitFor(() => expect(tipoSelect).toHaveValue(TIPO_DADO_DE_BAJA_ID));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.tipoId).toBe(TIPO_DADO_DE_BAJA_ID));
+  });
+
+  it("S2/S5: cambia el tipo a Soporte, recarga los responsables y conserva a Ana, que también es de Soporte", async () => {
+    const capturado = capturarPatch();
+    renderConPermisos(<PlanPreventivoEditDialog plan={PLAN_CON_UBICACION} />, { user: TECNICO, permisos: PERMISOS });
+    const user = await abrirDialog();
+    const tipoSelect = screen.getByRole("combobox", { name: /^tipo de ticket$/i });
+    await within(tipoSelect).findByRole("option", { name: "Soporte" });
+
+    await user.selectOptions(tipoSelect, TIPO_SOPORTE_ID);
+    const responsable = screen.getByRole("combobox", { name: /^responsable$/i });
+    await within(responsable).findByRole("option", { name: "Bruno Díaz" });
+    await waitFor(() => expect(responsable).toHaveValue(USUARIO_ID));
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.tipoId).toBe(TIPO_SOPORTE_ID));
+    expect(capturado.body.responsableId).toBe(USUARIO_ID);
+  });
+
+  it("S5: el responsable que no es técnico del tipo nuevo se borra con un aviso, y no se guarda", async () => {
+    let patcheo = false;
+    server.use(
+      http.patch(`/api/preventivo/planes/${PLAN_ID}`, () => {
+        patcheo = true;
+        return HttpResponse.json(PLAN_CON_UBICACION);
+      }),
+    );
+    const planDeSoporte: PlanPreventivo = {
+      ...PLAN_CON_UBICACION,
+      tipoId: TIPO_SOPORTE_ID,
+      responsableId: TECNICO_SOPORTE_ID,
+    };
+    renderConPermisos(<PlanPreventivoEditDialog plan={planDeSoporte} />, { user: TECNICO, permisos: PERMISOS });
+    const user = await abrirDialog();
+    const responsable = screen.getByRole("combobox", { name: /^responsable$/i });
+    await waitFor(() => expect(responsable).toHaveValue(TECNICO_SOPORTE_ID));
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /^tipo de ticket$/i }), TIPO_PREVENTIVO_ID);
+
+    expect(
+      await screen.findByText("El responsable elegido no está habilitado para el tipo de ticket seleccionado. Elija otro."),
+    ).toBeInTheDocument();
+    expect(responsable).toHaveValue("");
+    // Bruno no queda como opción sintética: con otro tipo el vigente ya no se conserva.
+    expect(within(responsable).queryByRole("option", { name: "Responsable no habilitado" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+    expect(await screen.findByText("Elegí un responsable", { selector: "p" })).toBeInTheDocument();
+    expect(patcheo).toBe(false);
+  });
+
+  it("hermano: con el tipo original, el responsable vigente fuera de la lista se conserva sin aviso", async () => {
+    const capturado = capturarPatch();
+    const planConResponsableViejo: PlanPreventivo = { ...PLAN_CON_UBICACION, responsableId: TECNICO_SOPORTE_ID };
+    renderConPermisos(<PlanPreventivoEditDialog plan={planConResponsableViejo} />, { user: TECNICO, permisos: PERMISOS });
+    const user = await abrirDialog();
+    const responsable = screen.getByRole("combobox", { name: /^responsable$/i });
+
+    expect(await within(responsable).findByRole("option", { name: "Responsable no habilitado" })).toBeInTheDocument();
+    await waitFor(() => expect(responsable).toHaveValue(TECNICO_SOPORTE_ID));
+    expect(screen.queryByText(/no está habilitado para el tipo de ticket/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    await waitFor(() => expect(capturado.body.responsableId).toBe(TECNICO_SOPORTE_ID));
+    expect(capturado.body.tipoId).toBe(TIPO_PREVENTIVO_ID);
   });
 });

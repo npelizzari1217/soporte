@@ -19,9 +19,12 @@ const PLAN = {
   equipoId: null,
   ubicacion: "DEPOSITO",
   prioridadId: "p1",
+  tipoId: "tipo-mant",
   responsableId: "u1",
   intervaloValor: 1,
   intervaloUnidad: "MESES",
+  anticipacionValor: 0,
+  anticipacionUnidad: "DIAS",
   fechaInicio: "2026-01-01",
   proximaEjecucionEn: "2026-04-01",
   activo: true,
@@ -172,7 +175,7 @@ describe("PlanPreventivoDetailView — entrada a la edición (EP-R2, tarea 3.11)
     server.use(
       http.get("/api/equipos", () => HttpResponse.json([])),
       http.get("/api/catalogos/prioridades", () => HttpResponse.json([])),
-      http.get("/api/usuarios", () => HttpResponse.json([])),
+      http.get("/api/preventivo/planes/responsables", () => HttpResponse.json([])),
     );
   }
 
@@ -196,5 +199,64 @@ describe("PlanPreventivoDetailView — entrada a la edición (EP-R2, tarea 3.11)
 
     await screen.findByText("Revisión mensual");
     expect(screen.queryByRole("button", { name: /^editar$/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("PlanPreventivoDetailView — anticipación (odd/preventivo-anticipacion)", () => {
+  it("muestra la anticipación del plan en el encabezado", async () => {
+    server.use(
+      http.get("/api/preventivo/planes", () =>
+        HttpResponse.json([{ ...PLAN, anticipacionValor: 1, anticipacionUnidad: "MESES" }]),
+      ),
+      http.get(`/api/preventivo/planes/${PLAN_ID}/generaciones`, () => HttpResponse.json([])),
+    );
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    expect(await screen.findByText(/Anticipación: 1 mes\(es\) antes/)).toBeInTheDocument();
+  });
+
+  it("hermano: con anticipación 0 dice 'Sin anticipación'", async () => {
+    mockBackend();
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    expect(await screen.findByText(/Anticipación: Sin anticipación/)).toBeInTheDocument();
+  });
+});
+
+// odd/preventivo-por-tipo S2: el encabezado muestra el tipo de los tickets que genera el plan.
+describe("PlanPreventivoDetailView — tipo de ticket del plan", () => {
+  it("muestra el nombre del tipo en el encabezado", async () => {
+    mockBackend();
+    server.use(
+      http.get("/api/catalogos/tipos-ticket", () =>
+        HttpResponse.json([
+          { id: "tipo-mant", codigo: "MANTENIMIENTO", nombre: "Mantenimiento", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
+        ]),
+      ),
+    );
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    expect(await screen.findByText(/Tipo de ticket: Mantenimiento ·/)).toBeInTheDocument();
+  });
+
+  // El listado solo trae planes de tipos con LECTURA (S4): uno de un tipo que el usuario no ve
+  // no viene, y el detalle lo trata como inexistente, igual que el 404 del backend.
+  it("un plan que no viene en el listado (tipo sin LECTURA) se muestra como inexistente", async () => {
+    server.use(
+      http.get("/api/preventivo/planes", () => HttpResponse.json([{ ...PLAN, id: "otro-plan" }])),
+      http.get(`/api/preventivo/planes/${PLAN_ID}/generaciones`, () => HttpResponse.json({}, { status: 404 })),
+    );
+    renderWithProviders(<PlanPreventivoDetailView planId={PLAN_ID} />, {
+      user: buildUser({ permisos: ["PREVENTIVO:LECTURA"] }),
+    });
+
+    expect(await screen.findByText("El plan no existe o fue dado de baja.")).toBeInTheDocument();
+    expect(screen.queryByText("Revisión mensual")).not.toBeInTheDocument();
   });
 });

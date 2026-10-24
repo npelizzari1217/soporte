@@ -11,7 +11,9 @@
  * filtro con una sola fila pasa con cualquier WHERE, porque no hay nada que
  * excluir"). Mutación probada manualmente: comentar la cláusula `activo:
  * true` (o `deletedAt: null`, o `proximaEjecucionEn: {lte: hoy}`) en
- * `findVencibles` hace fallar este test — ver apply-progress-wu4.
+ * `findVencibles` hace fallar este test — ver apply-progress-wu4. Desde
+ * odd/preventivo-anticipacion esas cláusulas son SQL (`activo`, `deleted_at IS
+ * NULL` y la fecha de generación `<= hoy`): el razonamiento es el mismo.
  *
  * También cubre `actualizarProximaEjecucion` (escritura directa fuera del
  * alcance de la entidad, EditarPlanUseCase [R2]) y el roundtrip
@@ -42,6 +44,9 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
   let repo: PrismaPlanPreventivoRepository;
 
   let prioridadId: string;
+  /** Dos tipos propios: el plan por defecto va en el A; el B es el que un filtro tiene que excluir. */
+  let tipoAId: string;
+  let tipoBId: string;
   const planIdsCreados: string[] = [];
 
   const RUN_PREFIX = randomBytes(3).toString('hex');
@@ -74,6 +79,19 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
       data: { codigo: `TEST_PREV_${RUN_PREFIX}`, nombre: 'Prioridad test preventivo WU-4' },
     });
     prioridadId = prioridad.id;
+    const [tipoA, tipoB] = await Promise.all(
+      ['A', 'B'].map((letra) =>
+        tenantClient.tipoTicket.create({
+          data: {
+            codigo: `TEST_PREV_${letra}_${RUN_PREFIX}`,
+            nombre: `Tipo ${letra} test preventivo`,
+            modulo: 'TICKETS',
+          },
+        }),
+      ),
+    );
+    tipoAId = tipoA.id;
+    tipoBId = tipoB.id;
   }, 60_000);
 
   afterAll(async () => {
@@ -86,6 +104,7 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     if (prioridadId) {
       await tenantClient.prioridad.delete({ where: { id: prioridadId } }).catch(() => undefined);
     }
+    await tenantClient.tipoTicket.deleteMany({ where: { id: { in: [tipoAId, tipoBId] } } });
     await prismaService.onModuleDestroy();
   }, 60_000);
 
@@ -98,6 +117,7 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
       equipoId: null,
       ubicacion: 'DEPOSITO CENTRAL',
       prioridadId,
+      tipoId: tipoAId,
       responsableId: DUMMY_RESPONSABLE_ID,
       intervaloValor: 7,
       intervaloUnidad: 'DIAS',
@@ -122,6 +142,30 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     expect(encontrado!.intervaloValor).toBe(7);
     expect(encontrado!.intervaloUnidad).toBe('DIAS');
     expect(encontrado!.activo).toBe(true);
+    expect(encontrado?.tipoId).toBe(tipoAId);
+  });
+
+  it('guardar → buscarPorId preserva la anticipación, y editarla la actualiza (odd/preventivo-anticipacion)', async () => {
+    const plan = makePlan({
+      intervaloValor: 3,
+      intervaloUnidad: 'MESES',
+      anticipacionValor: 2,
+      anticipacionUnidad: 'MESES',
+    });
+    await withTenant(() => repo.guardar(plan));
+
+    const encontrado = await withTenant(() => repo.buscarPorId(plan.id));
+    if (!encontrado) throw new Error('El plan recién guardado no se encontró.');
+    expect(encontrado.anticipacionValor).toBe(2);
+    expect(encontrado.anticipacionUnidad).toBe('MESES');
+
+    expect(encontrado.editar({ anticipacionValor: 10, anticipacionUnidad: 'DIAS' }).isOk()).toBe(
+      true,
+    );
+    await withTenant(() => repo.guardar(encontrado));
+    const editado = await withTenant(() => repo.buscarPorId(plan.id));
+    expect(editado?.anticipacionValor).toBe(10);
+    expect(editado?.anticipacionUnidad).toBe('DIAS');
   });
 
   it('actualizarProximaEjecucion escribe directo, sin pasar por guardar()', async () => {
@@ -164,6 +208,57 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     expect(idsVencibles).not.toContain(noVencidoTodavia.id);
   });
 
+  // ─── findVencibles con anticipación (odd/preventivo-anticipacion T2) ─────
+  //
+  // Vencible = fecha de GENERACIÓN del puntero (ciclo − anticipación) <= hoy.
+  // Tiene que coincidir con `CalcularCicloService.fechaGeneracion`: si la
+  // consulta fuera más estricta, el barrido nunca vería un plan que el dominio
+  // da por vencido.
+  it('findVencibles mide sobre la fecha de generación: 10 días antes entra, 9 días antes todavía no', async () => {
+    const hoy = new Date('2026-06-21T04:00:00.000Z');
+    const diezDias = makePlan({
+      intervaloValor: 1,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-01'),
+      proximaEjecucionEn: new Date('2026-07-01'),
+      anticipacionValor: 10,
+      anticipacionUnidad: 'DIAS',
+    });
+    const nueveDias = makePlan({
+      intervaloValor: 1,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-01'),
+      proximaEjecucionEn: new Date('2026-07-01'),
+      anticipacionValor: 9,
+      anticipacionUnidad: 'DIAS',
+    });
+    await withTenant(() => repo.guardar(diezDias));
+    await withTenant(() => repo.guardar(nueveDias));
+
+    const ids = (await withTenant(() => repo.findVencibles(hoy))).map((p) => p.id);
+
+    expect(ids).toContain(diezDias.id);
+    expect(ids).not.toContain(nueveDias.id);
+  });
+
+  it('findVencibles con anticipación en MESES resta con clamp a fin de mes: el ciclo 31/03 vence el 28/02, no el 27/02', async () => {
+    const plan = makePlan({
+      intervaloValor: 2,
+      intervaloUnidad: 'MESES',
+      fechaInicio: new Date('2026-01-31'),
+      proximaEjecucionEn: new Date('2026-03-31'),
+      anticipacionValor: 1,
+      anticipacionUnidad: 'MESES',
+    });
+    await withTenant(() => repo.guardar(plan));
+
+    const el27 = await withTenant(() => repo.findVencibles(new Date('2026-02-27T04:00:00.000Z')));
+    const el28 = await withTenant(() => repo.findVencibles(new Date('2026-02-28T04:00:00.000Z')));
+
+    expect(el27.map((p) => p.id)).not.toContain(plan.id);
+    expect(el28.map((p) => p.id)).toContain(plan.id);
+  });
+
   it('listar() excluye los soft-deleted pero incluye los inactivos (activo=false sigue visible en el ABM)', async () => {
     const inactivo = makePlan({ activo: false });
     const eliminado = makePlan();
@@ -172,10 +267,37 @@ describe('PrismaPlanPreventivoRepository — Integration (4.1)', () => {
     eliminado.softDelete();
     await withTenant(() => repo.guardar(eliminado));
 
-    const listado = await withTenant(() => repo.listar());
+    const listado = await withTenant(() => repo.listar(null));
     const ids = listado.map((p) => p.id);
 
     expect(ids).toContain(inactivo.id);
     expect(ids).not.toContain(eliminado.id);
+  });
+
+  // odd/preventivo-por-tipo S1: el filtro por tipos visibles va en la consulta.
+  it('listar(tipoIds) trae solo los planes de esos tipos; con null, los de todos', async () => {
+    const delA = makePlan();
+    const delB = makePlan({ tipoId: tipoBId });
+    await withTenant(() => repo.guardar(delA));
+    await withTenant(() => repo.guardar(delB));
+
+    const soloA = (await withTenant(() => repo.listar([tipoAId]))).map((p) => p.id);
+    const todos = (await withTenant(() => repo.listar(null))).map((p) => p.id);
+    const ninguno = await withTenant(() => repo.listar([]));
+
+    expect(soloA).toContain(delA.id);
+    expect(soloA).not.toContain(delB.id);
+    expect(todos).toEqual(expect.arrayContaining([delA.id, delB.id]));
+    expect(ninguno).toEqual([]);
+  });
+
+  it('editar el tipo de un plan guardado lo persiste', async () => {
+    const plan = makePlan();
+    await withTenant(() => repo.guardar(plan));
+
+    expect(plan.editar({ tipoId: tipoBId }).isOk()).toBe(true);
+    await withTenant(() => repo.guardar(plan));
+
+    expect((await withTenant(() => repo.buscarPorId(plan.id)))?.tipoId).toBe(tipoBId);
   });
 });

@@ -49,7 +49,8 @@ checklist completo, con el técnico de cada tarea, sin botones.
 
 Un punto importante: **las tareas mueven el estado del ticket**. Al completar la
 primera, el ticket pasa a "En proceso" (y si todavía no tenía responsable, queda
-asignado a quien la completó). Al completar la última, el ticket pasa a
+asignado a quien la completó, siempre que sea un técnico o colaborador habilitado en
+ese tipo; si la completa un administrador, el ticket sigue sin responsable). Al completar la última, el ticket pasa a
 "Resuelto", con su fecha de cierre y el aviso al solicitante, igual que si se lo
 resolviera a mano. Si después un ADMINISTRADOR descompleta una tarea de un
 ticket resuelto, el ticket vuelve a "En proceso" (vea "Reparación resuelta,

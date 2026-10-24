@@ -224,6 +224,16 @@ export class ExportarTicketsQueryDto {
   busqueda?: string;
 }
 
+/**
+ * Query params de `GET /tickets/agentes`: el tipo filtrado en el listado, si lo hay. Mismo nombre
+ * (`tipo`) que en `ListTicketsQueryDto`, porque el front manda el valor de la URL tal cual.
+ */
+export class ListarAgentesQueryDto {
+  @IsOptional()
+  @IsUUID()
+  tipo?: string;
+}
+
 /** Response shape unificado de un ticket (T4-T8). */
 export interface TicketResponseDto {
   id: string;
@@ -257,6 +267,13 @@ export interface TicketResponseDto {
    * sector desactivado se vería vacío. `null` si el ticket no tiene sector o no se resolvió.
    */
   sectorNombre: string | null;
+  /**
+   * Fecha objetivo del ticket preventivo (odd/preventivo-anticipacion S2): la fecha del ciclo del
+   * plan. Día calendario, no instante: viaja como el ISO de la medianoche UTC de ese día (columna
+   * `@db.Date`), y se muestra leyendo sus primeros 10 caracteres, nunca con la zona del navegador.
+   * Informativa, sin SLA. `null` si el ticket no salió de un plan preventivo.
+   */
+  fechaObjetivo: string | null;
   /**
    * Teléfono del solicitante externo. Viaja SOLO en el detalle (`GET /tickets/:id`): el listado
    * no lo trae (ausente). En el detalle es `null` si no es externo o no cargó teléfono.
@@ -381,6 +398,7 @@ export function toTicketResponseDto(
     ubicacion: ticket.ubicacion,
     sectorId: ticket.sectorId,
     sectorNombre: nombres?.sector?.nombre ?? null,
+    fechaObjetivo: ticket.fechaObjetivo ? ticket.fechaObjetivo.toISOString() : null,
     slaVenceAt: ticket.slaVenceAt ? ticket.slaVenceAt.toISOString() : null,
     vencido: ticket.vencido,
     sla: {

@@ -11,12 +11,13 @@
  * comentar `COMENTAR`, comentario interno `OBSERVAR`, PDF `IMPRESION`, adjuntar
  * `ALTAS` o `MODIFICACION`, gestionar tareas `MODIFICACION`, Borrar `BORRADO`
  * (S8, en cualquier estado: las tareas pendientes y las compras las frena el backend;
- * un ticket PREVENTIVO no se borra, L45).
+ * un ticket de mantenimiento preventivo no se borra, L45: el de tipo PREVENTIVO y el
+ * que generó un plan de cualquier tipo, odd/preventivo-por-tipo).
  *
  * Ticket RESUELTO, CERRADO o CANCELADO (odd/cerrado-solo-comentarios, S6): quien no es ADMINISTRADOR
  * ni ROOT solo comenta, público o interno. No se le ofrece editar, cambiar el responsable, adjuntar,
- * gestionar tareas ni vincular o desvincular compras, y el motivo se muestra en «Ticket». El estado
- * se sigue ofreciendo: desde RESUELTO cierra, y el resto no tiene arcos de salida.
+ * gestionar tareas, borrar ni vincular o desvincular compras, y el motivo se muestra en «Ticket». El
+ * estado se sigue ofreciendo: desde RESUELTO cierra, y el resto no tiene arcos de salida.
  *
  * Compras vinculadas (odd/ticket-unificado, S4, S5, L19): la sección se muestra solo con la celda
  * `COMPRAS:LECTURA`, la que exige `GET /tickets/:id/compras`; vincular y desvincular piden además
@@ -148,8 +149,16 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   // no se sabe si lo es, y "Borrar" queda oculto; resuelto, un tipo ausente es uno desactivado, que
   // no puede ser PREVENTIVO (los tipos del sistema no se desactivan). En RESUELTO, CERRADO y
   // CANCELADO solo lo borra un administrador (odd/cerrado-solo-comentarios, L11).
+  // Tampoco el que generó un plan de otro tipo (odd/preventivo-por-tipo). El backend lo decide por
+  // el enlace con el plan; acá alcanza la fecha objetivo, que solo la fija el barrido preventivo, y
+  // que todo ticket de plan de un tipo distinto de PREVENTIVO trae (esos tipos llegaron después).
+  const generadoPorPlan = !!ticket.fechaObjetivo;
   const ofrecerBorrar =
-    puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO && soloComentarios === null;
+    puede("BORRADO") &&
+    tiposQuery.isSuccess &&
+    tipoCodigo !== TIPO_CODIGO_PREVENTIVO &&
+    !generadoPorPlan &&
+    soloComentarios === null;
 
   return (
     <div className="flex flex-col gap-6">

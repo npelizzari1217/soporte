@@ -21,12 +21,13 @@ import { TenantPrismaClient } from '../../../../shared/infrastructure/persistenc
 import {
   IPreventivoGeneracionRepository,
   PreventivoGeneracionProps,
+  RecordatorioReclamado,
   ResultadoGeneracion,
 } from '../../../domain/ports/i-preventivo-generacion.repository';
 
 /**
  * Estados en los que un ticket cuenta como YA ATENDIDO (regla de pendiente
- * [R8]) — mismo criterio que `ESTADOS_EXCLUIDOS_VENCIMIENTO`
+ * [R8], y el recordatorio de odd/preventivo-anticipacion S4) — mismo criterio que `ESTADOS_EXCLUIDOS_VENCIMIENTO`
  * (`prisma-sla-ticket-query.repository.ts`) y `ESTADOS_SIN_COMENTARIOS_PUBLICOS`
  * (`crear-comentario.use-case.ts`): nombrada acá y no enterrada en el SQL
  * crudo para que un estado terminal nuevo se agregue en UN solo lugar
@@ -159,5 +160,41 @@ export class PrismaPreventivoGeneracionRepository implements IPreventivoGeneraci
       LIMIT 1
     `;
     return rows.length > 0;
+  }
+
+  /**
+   * Reclama los recordatorios del día (contrato:
+   * `IPreventivoGeneracionRepository.reclamarRecordatorios`).
+   *
+   * Un único `UPDATE ... RETURNING`, sin SELECT previo, por la misma razón
+   * que `reservar()`: con dos corridas a la vez, la segunda espera el lock de
+   * la fila, re-evalúa `recordatorio_enviado_at IS NULL` sobre la versión ya
+   * committeada y la descarta. El responsable sale del JOIN con el plan en el
+   * mismo instante del reclamo: es el ACTUAL, no el que tenía al generarse.
+   * La fecha viaja como `YYYY-MM-DD` (componentes UTC del día calendario) para
+   * no depender de la zona de la sesión.
+   * @param fechaObjetivo Día calendario (medianoche UTC) cuya víspera es hoy.
+   * @param generadosAntesDe Instante desde el cual un ticket cuenta como generado hoy.
+   * @returns Los tickets reclamados, con su plan y el responsable actual.
+   */
+  async reclamarRecordatorios(
+    fechaObjetivo: Date,
+    generadosAntesDe: Date,
+  ): Promise<RecordatorioReclamado[]> {
+    const dia = fechaObjetivo.toISOString().slice(0, 10);
+    return this.client.$queryRaw<RecordatorioReclamado[]>`
+      UPDATE tickets AS t
+         SET recordatorio_enviado_at = now()
+        FROM preventivo_generacion AS g, planes_preventivo AS p, estados AS e
+       WHERE g.ticket_id = t.id
+         AND p.id = g.plan_id
+         AND e.id = t.estado_id
+         AND t.fecha_objetivo = ${dia}::date
+         AND t.recordatorio_enviado_at IS NULL
+         AND t.deleted_at IS NULL
+         AND t.created_at < ${generadosAntesDe}
+         AND e.codigo NOT IN (${Prisma.join(ESTADOS_TICKET_ATENDIDO)})
+      RETURNING t.id AS "ticketId", g.plan_id AS "planId", p.responsable_id AS "responsableId"
+    `;
   }
 }

@@ -150,7 +150,6 @@ describe('CrearTicketUseCase', () => {
       existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
       estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
       resolverNombres: unstubbed('resolverNombres'),
-      esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
       listarAgentes: unstubbed('listarAgentes'),
     };
     const numerador = {
@@ -298,6 +297,26 @@ describe('CrearTicketUseCase', () => {
       expect(result.getError()).toBeInstanceOf(SectorTicketInexistenteError);
       expect(c.txRunner.run).not.toHaveBeenCalled();
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('fecha objetivo (odd/preventivo-anticipacion S2)', () => {
+    it('la guarda en el ticket cuando el caller la manda (barrido preventivo)', async () => {
+      const c = makeCollaborators();
+      const fecha = new Date('2026-07-01T00:00:00.000Z');
+
+      const ticket = (await c.useCase.execute(baseDto({ fechaObjetivo: fecha }))).getValue();
+
+      expect(ticket.fechaObjetivo).toEqual(fecha);
+      expect(c.ticketRepo.save).toHaveBeenCalledWith(ticket);
+    });
+
+    it('hermano: sin el campo, el ticket nace sin fecha objetivo', async () => {
+      const c = makeCollaborators();
+
+      const ticket = (await c.useCase.execute(baseDto())).getValue();
+
+      expect(ticket.fechaObjetivo).toBeNull();
     });
   });
 
@@ -782,7 +801,6 @@ describe('CrearTicketUseCase — publicación post-commit bajo re-entrancia (run
       existeEnTenant: vi.fn<IUsuarioMasterChecker['existeEnTenant']>().mockResolvedValue(true),
       estaActivoEnTenant: unstubbed('estaActivoEnTenant'),
       resolverNombres: unstubbed('resolverNombres'),
-      esAdminTotalEnTenant: unstubbed('esAdminTotalEnTenant'),
       listarAgentes: unstubbed('listarAgentes'),
     };
     const numerador = {

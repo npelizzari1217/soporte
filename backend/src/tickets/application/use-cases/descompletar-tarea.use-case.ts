@@ -30,6 +30,8 @@ export interface DescompletarTareaDto {
   ticketId: string;
   tareaId: string;
   actor: ActorTarea;
+  /** `cliente_id` del JWT, que pide `AvanzarEstadoPorTareasService`; descompletar no asigna. */
+  clienteId: string;
 }
 
 /**
@@ -130,7 +132,7 @@ export class DescompletarTareaUseCase {
           return Result.ok('rechazada');
         }
         await this.operacionRepo.save(operacion);
-        await this.avanzarEstado.aplicar('DESCOMPLETAR', ticket.id, dto.actor.id);
+        await this.avanzarEstado.aplicar('DESCOMPLETAR', ticket.id, dto.actor.id, dto.clienteId);
         return Result.ok('escrita');
       },
     );

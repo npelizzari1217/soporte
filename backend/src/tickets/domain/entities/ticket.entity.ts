@@ -113,6 +113,12 @@ export interface TicketProps {
    * exige que el sector esté activo. Ausente equivale a `null`.
    */
   sectorId?: string | null;
+  /**
+   * Fecha objetivo (odd/preventivo-anticipacion S2): la fecha del ciclo del plan preventivo que
+   * generó el ticket, como día calendario (medianoche UTC, columna `@db.Date`). Informativa: no
+   * participa del SLA. Solo la fija el alta; ninguna edición la toca. Ausente equivale a `null`.
+   */
+  fechaObjetivo?: Date | null;
 }
 
 /**
@@ -330,6 +336,10 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     return this.props.sectorId ?? null;
   }
 
+  get fechaObjetivo(): Date | null {
+    return this.props.fechaObjetivo ?? null;
+  }
+
   get slaVenceAt(): Date | null {
     return this.props.slaVenceAt;
   }
@@ -365,8 +375,9 @@ export class TicketEntity extends BaseEntity<TicketProps> {
 
   /**
    * Asigna o reasigna el ticket a un responsable. Pasar `null` desasigna.
-   * La validación de elegibilidad (por el módulo del catálogo del tipo) y de
-   * existencia cross-DB ocurre en `AsignarTicketUseCase` (PR8), no en la entidad.
+   * La validación de elegibilidad (`ElegibilidadAsignado`: técnico o colaborador con
+   * `LECTURA` sobre el tipo) y de existencia cross-DB ocurre en los casos de uso, no en
+   * la entidad.
    */
   assignTo(usuarioId: string | null): void {
     this.props.asignadoId = usuarioId;

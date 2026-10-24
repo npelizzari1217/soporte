@@ -16,13 +16,15 @@
 import { GenerarPreventivosUseCase } from './generar-preventivos.use-case';
 import { PlanPreventivoEntity } from '../../domain/entities/plan-preventivo.entity';
 import { Result } from '../../../shared/domain/result';
-import { SolicitanteInvalidoError } from '../../../tickets/domain/errors/tickets.errors';
+import {
+  SolicitanteInvalidoError,
+  TipoTicketNoEncontradoError,
+} from '../../../tickets/domain/errors/tickets.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import type { Mock } from 'vitest';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
-import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { CrearTicketUseCase } from '../../../tickets/application/use-cases/crear-ticket.use-case';
 import { IEquipoInformaticoRepository } from '../../../equipos/domain/ports/i-equipo-informatico.repository';
 import { IPlanPreventivoRepository } from '../../domain/ports/i-plan-preventivo.repository';
@@ -103,6 +105,7 @@ function makePlan(overrides: Partial<Parameters<typeof PlanPreventivoEntity.crea
       equipoId: 'equipo-uuid',
       ubicacion: null,
       prioridadId: 'prioridad-uuid',
+      tipoId: 'tipo-preventivo-uuid',
       responsableId: 'responsable-uuid',
       intervaloValor: 7,
       intervaloUnidad: 'DIAS',
@@ -150,11 +153,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
         .fn<IPreventivoGeneracionRepository['existeTicketAbiertoDelPlan']>()
         .mockResolvedValue(false),
     };
-    const tipoTicketRepo = {
-      findIdByCodigo: vi
-        .fn<ITipoTicketRepository['findIdByCodigo']>()
-        .mockResolvedValue('tipo-preventivo-uuid'),
-    };
     const crearTicketUseCase = {
       execute: vi
         .fn<CrearTicketUseCase['execute']>()
@@ -188,7 +186,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     const useCase = new GenerarPreventivosUseCase(
       planRepo,
       generacionRepo,
-      tipoTicketRepo,
       crearTicketUseCase,
       txRunner,
       calcularCiclo,
@@ -201,7 +198,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       useCase,
       planRepo,
       generacionRepo,
-      tipoTicketRepo,
       crearTicketUseCase,
       txRunner,
       calcularCiclo,
@@ -211,21 +207,51 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     };
   }
 
-  it('sin planes vencibles → no consulta el catálogo ni abre transacciones', async () => {
-    const { useCase, tipoTicketRepo, txRunner } = buildUseCase(null);
+  it('sin planes vencibles → no abre transacciones', async () => {
+    const { useCase, txRunner } = buildUseCase(null);
 
     await useCase.execute('cliente-uuid');
 
-    expect(tipoTicketRepo.findIdByCodigo).not.toHaveBeenCalled();
     expect(txRunner.run).not.toHaveBeenCalled();
   });
 
-  it('catálogo PREVENTIVO ausente → throw (bug de infraestructura, no error esperado)', async () => {
-    const plan = makePlan();
-    const { useCase, tipoTicketRepo } = buildUseCase(plan);
-    tipoTicketRepo.findIdByCodigo.mockResolvedValue(null);
+  // odd/preventivo-por-tipo S2: el tipo sale del plan, no del código fijo PREVENTIVO.
+  it('S2: el ticket generado es del tipo del plan, aunque no sea Preventivo', async () => {
+    const plan = makePlan({ tipoId: 'tipo-mantenimiento-uuid' });
+    const { useCase, crearTicketUseCase, generacionRepo, calcularCiclo } = buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
 
-    await expect(useCase.execute('cliente-uuid')).rejects.toThrow(/PREVENTIVO/);
+    await useCase.execute('cliente-uuid');
+
+    expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ tipoId: 'tipo-mantenimiento-uuid', alcance: null }),
+    );
+    expect(generacionRepo.marcarGenerado).toHaveBeenCalledWith('generacion-uuid', 'ticket-uuid');
+  });
+
+  // Un tipo dado de baja después de crear el plan: el alta lo rechaza como a cualquier otro, y el
+  // ciclo cae en el camino [R9] (rollback, log, reintento al día siguiente) sin cortar el barrido.
+  it('tipo del plan dado de baja → no marca ni avanza el puntero, loguea el motivo y no lanza', async () => {
+    const plan = makePlan({ tipoId: 'tipo-dado-de-baja-uuid' });
+    const { useCase, crearTicketUseCase, generacionRepo, planRepo, calcularCiclo, logger } =
+      buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+    crearTicketUseCase.execute.mockResolvedValue(
+      Result.fail(new TipoTicketNoEncontradoError('tipo-dado-de-baja-uuid')),
+    );
+
+    await expect(useCase.execute('cliente-uuid')).resolves.toBeUndefined();
+
+    expect(generacionRepo.marcarGenerado).not.toHaveBeenCalled();
+    expect(planRepo.actualizarProximaEjecucion).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      `PREVENTIVO_PLAN_ERROR | planId=${plan.id} | error=No se pudo generar el ticket del plan ${plan.id}: ` +
+        'Tipo de ticket con id "tipo-dado-de-baja-uuid" no encontrado en el catálogo del tenant.',
+    );
   });
 
   it('[R6/R9] ciclo sin pendiente ni error → reserva, crea ticket, marca GENERADO y avanza el puntero, EN ESE ORDEN', async () => {
@@ -261,6 +287,40 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     expect(ordenReserva).toBeLessThan(ordenCrear);
     expect(ordenCrear).toBeLessThan(ordenMarcar);
     expect(ordenMarcar).toBeLessThan(ordenAvance);
+  });
+
+  // ─── Anticipación (odd/preventivo-anticipacion T2) ──────────────────────
+  it('pasa la anticipación del plan al cálculo de ciclos', async () => {
+    const plan = makePlan({ anticipacionValor: 3, anticipacionUnidad: 'DIAS' });
+    const { useCase, calcularCiclo } = buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+
+    await useCase.execute('cliente-uuid');
+
+    expect(calcularCiclo.ciclosPendientes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proximaEjecucionEn: plan.proximaEjecucionEn,
+        anticipacion: { valor: 3, unidad: 'DIAS' },
+      }),
+      expect.any(Date),
+    );
+  });
+
+  it('S2: el ticket conserva la fecha del CICLO como fecha objetivo, y la clave de idempotencia sigue siendo esa fecha', async () => {
+    const plan = makePlan({ anticipacionValor: 3, anticipacionUnidad: 'DIAS' });
+    const { useCase, generacionRepo, crearTicketUseCase, calcularCiclo } = buildUseCase(plan);
+    calcularCiclo.ciclosPendientes.mockReturnValue(
+      resultadoConCandidato(new Date('2026-01-08'), new Date('2026-01-15')),
+    );
+
+    await useCase.execute('cliente-uuid');
+
+    expect(generacionRepo.reservar).toHaveBeenCalledWith(plan.id, new Date('2026-01-08'));
+    expect(crearTicketUseCase.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ fechaObjetivo: new Date('2026-01-08') }),
+    );
   });
 
   it('[R11] ciclo GENERADO → publica preventivo.generado vía txRunner.alCommitear(), DESPUÉS de marcar generado y avanzar el puntero', async () => {
@@ -447,6 +507,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
         equipoId: 'equipo-2-uuid',
         ubicacion: null,
         prioridadId: 'prioridad-uuid',
+        tipoId: 'tipo-preventivo-uuid',
         responsableId: 'responsable-uuid',
         intervaloValor: 7,
         intervaloUnidad: 'DIAS',
@@ -483,11 +544,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
         .fn<IPreventivoGeneracionRepository['existeTicketAbiertoDelPlan']>()
         .mockResolvedValue(false),
     };
-    const tipoTicketRepo = {
-      findIdByCodigo: vi
-        .fn<ITipoTicketRepository['findIdByCodigo']>()
-        .mockResolvedValue('tipo-preventivo-uuid'),
-    };
     const crearTicketUseCase = {
       execute: vi
         .fn<CrearTicketUseCase['execute']>()
@@ -515,7 +571,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
     const useCase = new GenerarPreventivosUseCase(
       planRepo,
       generacionRepo,
-      tipoTicketRepo,
       crearTicketUseCase,
       txRunner,
       calcularCiclo,
@@ -670,6 +725,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
           equipoId: 'equipo-irresoluble-uuid',
           ubicacion: null,
           prioridadId: 'prioridad-uuid',
+          tipoId: 'tipo-preventivo-uuid',
           responsableId: 'responsable-uuid',
           intervaloValor: 7,
           intervaloUnidad: 'DIAS',
@@ -686,6 +742,7 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
           equipoId: null,
           ubicacion: 'SALA DE SERVIDORES',
           prioridadId: 'prioridad-uuid',
+          tipoId: 'tipo-preventivo-uuid',
           responsableId: 'responsable-uuid',
           intervaloValor: 7,
           intervaloUnidad: 'DIAS',
@@ -722,11 +779,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
           .fn<IPreventivoGeneracionRepository['existeTicketAbiertoDelPlan']>()
           .mockResolvedValue(false),
       };
-      const tipoTicketRepo = {
-        findIdByCodigo: vi
-          .fn<ITipoTicketRepository['findIdByCodigo']>()
-          .mockResolvedValue('tipo-preventivo-uuid'),
-      };
       const crearTicketUseCase = {
         execute: vi
           .fn<CrearTicketUseCase['execute']>()
@@ -753,7 +805,6 @@ describe('GenerarPreventivosUseCase (5.3/5.4/5.5)', () => {
       const useCase = new GenerarPreventivosUseCase(
         planRepo,
         generacionRepo,
-        tipoTicketRepo,
         crearTicketUseCase,
         txRunner,
         calcularCiclo,

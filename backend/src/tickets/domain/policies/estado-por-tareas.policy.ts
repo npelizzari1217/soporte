@@ -7,7 +7,8 @@
  *   ESPERANDO_CLIENTE;
  * - descompletar en RESUELTO: vuelve a EN_PROCESO como salto correctivo (no es un arco del grafo).
  *
- * En NUEVO sin responsable, quien completa pasa a ser el responsable (decisión del dueño, L2). Los
+ * En NUEVO sin responsable, quien completa pasa a ser el responsable (decisión del dueño, L2) si es
+ * agente del tipo: eso lo decide quien aplica el plan, porque consulta permisos y master. Los
  * estados terminales y los que no figuran en estas tablas no cambian: la política es fail-safe.
  *
  * Aplica a todo tipo de ticket (S1): las tareas son genéricas desde el punto 12. Revierte el ADR-2 de
@@ -34,7 +35,10 @@ export interface ArcoPorTareas {
 }
 
 export interface PlanEstadoPorTareas {
-  /** `true` si quien completa pasa a ser el responsable antes del primer arco. */
+  /**
+   * `true` si quien completa pasa a ser el responsable antes del primer arco. Quien aplica el plan
+   * lo asigna solo si es agente del tipo.
+   */
   asignarAlActor: boolean;
   /** Arcos a recorrer en orden; vacío si el estado no cambia. */
   arcos: readonly ArcoPorTareas[];

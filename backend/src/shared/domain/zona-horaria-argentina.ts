@@ -6,7 +6,8 @@
  * compras (`compras/domain/services/fecha-argentina.ts`), el formateo de
  * timestamps de las exportaciones (`shared/infrastructure/csv/csv.ts`) y los
  * bordes del período de la métrica de tareas del dashboard
- * (`medianocheArgentina`, más abajo). Dos
+ * (`medianocheArgentina`, más abajo) y el "hoy" del recordatorio de
+ * preventivo (`diaArgentino`). Dos
  * copias del número `-3` en dos capas distintas es exactamente el tipo de
  * duplicación que sobrevive a un cambio de criterio y deja la mitad del
  * sistema en una zona horaria y la otra mitad en otra.
@@ -58,4 +59,20 @@ export function desplazarAArgentina(instante: Date): Date {
 export function medianocheArgentina(dia: Date): Date {
   const medianocheUtc = Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate());
   return new Date(medianocheUtc - OFFSET_ARGENTINA_MS);
+}
+
+/**
+ * Día calendario argentino de un instante real, expresado como la medianoche UTC de ese día: el
+ * mismo formato en que Prisma devuelve una columna `@db.Date`, así que el resultado se compara
+ * directo contra ella.
+ *
+ * Entre las 21:00 y las 23:59 ART el día UTC ya es el siguiente; truncar los componentes UTC sin
+ * desplazar antes adelantaría el día. Es la operación inversa de `medianocheArgentina`.
+ *
+ * @param instante Momento real (típicamente `new Date()` o una columna `timestamptz`).
+ * @returns La medianoche UTC del día que un observador en Argentina ve en ese instante.
+ */
+export function diaArgentino(instante: Date): Date {
+  const local = desplazarAArgentina(instante);
+  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
 }

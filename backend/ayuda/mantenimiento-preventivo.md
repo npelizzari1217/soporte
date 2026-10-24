@@ -14,15 +14,29 @@ corresponde.
 
 ## Cuándo aparecen los tickets
 
-Una vez por día el sistema revisa todos los planes activos y, por cada uno que
-haya llegado a su fecha, crea un ticket de tipo **Preventivo**. El ticket
+Una vez por día el sistema revisa todos los planes activos y, por cada uno cuyo
+próximo ciclo ya entró en su anticipación, crea un ticket del **tipo de ticket
+del plan** (Preventivo, salvo que el plan tenga otro: ver "Cómo se da de alta
+un plan", abajo).
+Con anticipación 0 el ticket aparece el mismo día del ciclo; con, por ejemplo,
+10 días, aparece 10 días antes y guarda la fecha del ciclo como **fecha
+objetivo**. El día anterior a la fecha objetivo, si el ticket sigue abierto, el
+responsable del plan recibe un correo de recordatorio. Si el ticket se generó ese
+mismo día (por ejemplo, con 1 día de anticipación), no hay recordatorio: el
+aviso de generación ya le llegó al responsable. El ticket
 queda a nombre del responsable del plan, con el título que el plan tenga
 cargado y una descripción que arranca con el objetivo (ver "Qué dice la
 descripción del ticket generado", abajo).
 
-Los tickets del preventivo **no entran en las métricas de cumplimiento de SLA**
-del dashboard, y es a propósito: un preventivo se cierra cuando toca la fecha,
-no contra un reloj de respuesta, así que contarlo ahí ensuciaba el número.
+Los tickets de tipo **Preventivo** **no entran en las métricas de cumplimiento
+de SLA** del dashboard, y es a propósito: un preventivo se cierra cuando toca la
+fecha, no contra un reloj de respuesta, así que contarlo ahí ensuciaba el número.
+Un plan de **otro tipo** genera tickets que se comportan como cualquier ticket
+de ese tipo: tienen el SLA de su tipo y cuentan en sus métricas.
+
+Un ticket generado por un plan **no se puede borrar**, sea del tipo que sea:
+borrarlo solo haría que el sistema genere otro del mismo plan. Para dejar de
+generar, se da de baja el plan.
 
 Los tickets que el preventivo generó **antes** de esta separación siguen
 figurando con el tipo **Mantenimiento**: no se los reclasificó para no alterar
@@ -107,7 +121,13 @@ no se tocan: siguen su curso como cualquier otro ticket.
 
 El acceso se controla con el módulo **Preventivo**, que define cuatro
 permisos al asignar roles (ver, crear, modificar y dar de baja). Sin el
-permiso de lectura, el módulo no aparece. **Colaborador** es el rol que
+permiso de lectura, el módulo no aparece.
+
+Además, cada plan tiene un **tipo de ticket**, y solo se ven los planes de los
+tipos sobre los que el usuario tiene el permiso **Ver** (el mismo que decide qué
+tickets ve). Un plan de un tipo que el usuario no ve no aparece en el listado
+ni se puede abrir, editar ni dar de baja. Al crear o editar un plan, solo se
+ofrecen esos mismos tipos. **Colaborador** es el rol que
 administra el módulo completo por plantilla; **Técnico no tiene acceso**.
 **Administrador** ve y puede todo igual, porque bypasea la grilla como en
 el resto del sistema. Si tenías Técnicos usando el módulo, lo pierden
@@ -130,9 +150,16 @@ estos datos:
     sistema guarda siempre en mayúscula.
   Si el formulario detecta que faltan los dos, o que están los dos a la vez,
   no deja enviar la carga hasta que se corrija.
+- **Tipo de ticket**: el tipo de los tickets que va a generar el plan. Viene
+  elegido **Preventivo**, y se puede elegir cualquier otro tipo vigente que el
+  usuario vea.
 - **Prioridad** y **responsable**: la prioridad que va a tener cada ticket
   generado, y quién queda como responsable (ver "Quién se entera cuando se
-  genera un ticket", arriba).
+  genera un ticket", arriba). El responsable tiene que ser un técnico o
+  colaborador con el permiso **Ver** sobre el tipo de ticket elegido: la lista
+  ofrece solo a esos, y cambia al cambiar el tipo. Si el responsable que estaba
+  elegido no atiende el tipo nuevo, el formulario lo borra y avisa para que se
+  elija otro.
 - **Cadencia**: un número y una unidad, **días** o **meses** (por ejemplo,
   "cada 90 días" o "cada 3 meses"). El número no puede superar los 3650,
   cualquiera sea la unidad elegida.
@@ -149,7 +176,7 @@ formulario avisa antes de guardar.
 Desde el detalle de un plan, el botón **"Editar"** abre el mismo tipo de
 formulario que la carga inicial, ya completado con los datos actuales.
 Se puede cambiar todo lo del alta —título, instrucciones, objetivo (equipo
-u ubicación), prioridad, responsable y cadencia— **y además activar o
+u ubicación), tipo de ticket, prioridad, responsable y cadencia— **y además activar o
 desactivar el plan desde ahí mismo**, sin ir a una acción aparte: es el
 mismo botón "Guardar" el que aplica todos los cambios juntos.
 
@@ -168,9 +195,11 @@ mostrando (con la aclaración correspondiente) para no perder de vista cuál
 era el objetivo original, aunque ya no aparezca en la lista de equipos
 activos.
 
-Lo mismo pasa con la **prioridad** y el **responsable**: si alguno de los dos
-fue dado de baja después de crear el plan, el selector lo sigue mostrando como
-**"Prioridad dada de baja"** o **"Responsable dado de baja"**. La razón es que,
+Lo mismo pasa con la **prioridad**, el **tipo de ticket** y el **responsable**:
+si la prioridad o el tipo fueron dados de baja después de crear el plan, o el
+responsable dejó de estar habilitado para el tipo del plan, el selector lo sigue
+mostrando como **"Prioridad dada de baja"**, **"Tipo de ticket dado de baja"** o
+**"Responsable no habilitado"**. La razón es que,
 sin esa opción, el selector no tendría cómo mostrar el valor guardado y pasaría
 a mostrar el primero de la lista: la pantalla diría una cosa y el plan seguiría
 teniendo otra. Lo guardado no se corrompe —el plan conserva su prioridad y su
@@ -178,10 +207,16 @@ responsable originales—, pero uno estaría aprobando algo distinto de lo que v
 Si aparece una de esas etiquetas, conviene elegir un reemplazo vigente antes de
 guardar.
 
+Un plan cuyo tipo de ticket fue dado de baja **no genera tickets** hasta que se
+le elija otro tipo (o se reactive ese tipo): el sistema no crea tickets de un
+tipo dado de baja. Si se **cambia el tipo** del plan, el responsable tiene que
+estar habilitado para el tipo nuevo, aunque sea el mismo que ya tenía.
+
 ## El listado de planes
 
-La pantalla principal muestra todos los planes con su objetivo, su cadencia,
-la próxima ejecución y una columna **"Última generación"**. Esa columna es la
+La pantalla principal muestra los planes de los tipos de ticket que el usuario
+ve, con su tipo de ticket, su objetivo, su cadencia, la próxima ejecución y una
+columna **"Última generación"**. Esa columna es la
 forma más rápida de detectar un plan que quedó huérfano: si dice **"Nunca
 generó"**, es que todavía no se creó ningún ticket ni fila de auditoría para
 ese plan, algo que conviene revisar (por ejemplo, si la fecha de inicio quedó

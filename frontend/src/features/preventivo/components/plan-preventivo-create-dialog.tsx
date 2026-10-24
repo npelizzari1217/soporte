@@ -10,17 +10,25 @@
  * validación real (`schemas.ts`) es independiente del radio y mira
  * `equipoId`/`ubicacion` directo, igual que el dominio.
  *
- * Responsable: reusa `useUsuariosAsignables` (mismo `GET /usuarios` que
- * "Asignar ticket") — no hay endpoint propio de preventivo para listar
- * usuarios (fuera de alcance de este WU, "consumo, no API nueva"). Gate real:
- * `ASIGNAR`/`VER_TODOS` sobre algún tipo de ticket, o ADMINISTRADOR, en el backend — un
- * actor con SOLO `PREVENTIVO:ALTAS` puede no ver responsables (ver reporte).
+ * Tipo de ticket (odd/preventivo-por-tipo, S2, S4): el de los tickets que genera el plan. Ofrece
+ * los tipos vigentes que el usuario ve (LECTURA), que es lo que el backend acepta (403 si no), con
+ * Preventivo elegido de entrada si está entre ellos. Se elige al abrir, con el catálogo resuelto
+ * (`useReaplicarAlResolver`), porque el formulario monta antes de que el catálogo llegue.
+ *
+ * Responsable: `useResponsablesPlanPreventivo(tipoId)` (`GET /preventivo/planes/responsables`), que
+ * trae solo a los técnicos con LECTURA sobre el tipo elegido: son los que atienden los tickets que
+ * genera el plan (S5). Cambiar el tipo recarga la lista, y si el responsable elegido no está en la
+ * nueva, se borra con un aviso (`useResponsableSegunTipo`). El backend rechaza con 422 a cualquier
+ * otro.
  *
  * Las tres queries que alimentan selects (`equiposQuery`, `prioridadesQuery`,
- * `usuariosQuery`) exponen su `isError` con un mensaje inline (mismo criterio
+ * `responsablesQuery`) exponen su `isError` con un mensaje inline (mismo criterio
  * que el resto de la feature con `DataTable`'s `error` prop): sin esto, un
- * fetch fallido o un 403 —el caso real del párrafo anterior— renderizaba un
- * dropdown vacío sin ninguna pista de por qué.
+ * fetch fallido o un 403 renderizaba un dropdown vacío sin ninguna pista de por qué.
+ *
+ * Anticipación (odd/preventivo-anticipacion): arranca en "0" días por
+ * `defaultValues`, así que `reset()` al cerrar la devuelve a 0 y no a vacío.
+ * Vaciar el campo es un error de validación, no un 0 (ver `schemas.ts`).
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -31,9 +39,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useEquipos } from "@/features/equipos/hooks/use-equipos";
-import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
-import { useUsuariosAsignables } from "@/features/tickets/hooks/use-usuarios-asignables";
+import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
+import { TIPO_CODIGO_PREVENTIVO } from "@/features/catalogos/tipos-del-sistema";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
+import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
 import { useCrearPlanPreventivo } from "../hooks/use-planes-preventivo-mutations";
+import { useResponsablesPlanPreventivo } from "../hooks/use-planes-preventivo";
+import { useResponsableSegunTipo } from "../hooks/use-responsable-segun-tipo";
+import { SIN_RESPONSABLES } from "../lib/plan-labels";
 import { crearPlanPreventivoSchema, type CrearPlanPreventivoFormValues } from "../schemas";
 
 type Objetivo = "equipo" | "ubicacion" | null;
@@ -43,7 +56,8 @@ export function PlanPreventivoCreateDialog() {
   const [objetivo, setObjetivo] = useState<Objetivo>(null);
   const equiposQuery = useEquipos();
   const prioridadesQuery = usePrioridades();
-  const usuariosQuery = useUsuariosAsignables();
+  const tiposQuery = useTiposTicket();
+  const permisosPorTipo = usePermisosPorTipo();
   const crearMutation = useCrearPlanPreventivo();
 
   const {
@@ -51,8 +65,34 @@ export function PlanPreventivoCreateDialog() {
     handleSubmit,
     reset,
     setValue,
+    getValues,
+    watch,
     formState: { errors },
-  } = useForm<CrearPlanPreventivoFormValues>({ resolver: zodResolver(crearPlanPreventivoSchema) });
+  } = useForm<CrearPlanPreventivoFormValues>({
+    resolver: zodResolver(crearPlanPreventivoSchema),
+    defaultValues: { tipoId: "", responsableId: "", anticipacionValor: "0", anticipacionUnidad: "DIAS" },
+  });
+
+  // Tipos vigentes (el catálogo trae solo esos) que el usuario ve: el backend rechaza cualquier otro.
+  const tiposVisibles = permisosPorTipo.tiposCon(tiposQuery.data ?? [], "LECTURA");
+  const tiposResueltos = tiposQuery.isSuccess && permisosPorTipo.permisos !== null;
+  const tipoPorDefecto = tiposVisibles.find((tipo) => tipo.codigo === TIPO_CODIGO_PREVENTIVO)?.id ?? "";
+  useReaplicarAlResolver(open, tiposResueltos, "tipoId", tipoPorDefecto, setValue);
+
+  const tipoId = watch("tipoId");
+  const responsableElegido = watch("responsableId");
+  const responsablesQuery = useResponsablesPlanPreventivo(tipoId);
+  const avisoResponsable = useResponsableSegunTipo({
+    activo: open,
+    tipoId,
+    resuelto: responsablesQuery.isSuccess,
+    responsablesIds: (responsablesQuery.data ?? []).map((usuario) => usuario.id),
+    leerResponsable: () => getValues("responsableId"),
+    fijarResponsable: (id) => setValue("responsableId", id, { shouldDirty: true }),
+  });
+
+  // Sin ningún tipo visible el formulario no se podría enviar: mismo criterio que "Nuevo ticket".
+  if (tiposResueltos && tiposVisibles.length === 0) return null;
 
   function elegirObjetivo(tipo: "equipo" | "ubicacion") {
     setObjetivo(tipo);
@@ -79,9 +119,13 @@ export function PlanPreventivoCreateDialog() {
         // acaba de cerrar: lo validado y lo enviado tienen que ser el mismo string.
         ubicacion: values.ubicacion || undefined,
         prioridadId: values.prioridadId,
+        tipoId: values.tipoId,
         responsableId: values.responsableId,
         intervaloValor: Number(values.intervaloValor),
         intervaloUnidad: values.intervaloUnidad,
+        // El schema ya garantizó dígitos no vacíos: `Number` no puede recibir "".
+        anticipacionValor: Number(values.anticipacionValor),
+        anticipacionUnidad: values.anticipacionUnidad,
         fechaInicio: values.fechaInicio,
       },
       { onSuccess: () => handleOpenChange(false) },
@@ -213,6 +257,32 @@ export function PlanPreventivoCreateDialog() {
           </div>
 
           <div className="flex flex-col gap-1">
+            <label htmlFor="plan-tipo" className="text-sm font-medium text-foreground">
+              Tipo de ticket
+            </label>
+            <Select id="plan-tipo" error={!!errors.tipoId} defaultValue="" {...register("tipoId")}>
+              <option value="" disabled>
+                Elija un tipo de ticket
+              </option>
+              {tiposVisibles.map((tipo) => (
+                <option key={tipo.id} value={tipo.id}>
+                  {tipo.nombre}
+                </option>
+              ))}
+            </Select>
+            {errors.tipoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.tipoId.message}
+              </p>
+            )}
+            {tiposQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                No se pudieron cargar los tipos de ticket.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1">
             <label htmlFor="plan-responsable" className="text-sm font-medium text-foreground">
               Responsable
             </label>
@@ -220,7 +290,7 @@ export function PlanPreventivoCreateDialog() {
               <option value="" disabled>
                 Elegí un responsable
               </option>
-              {(usuariosQuery.data ?? []).map((usuario) => (
+              {(responsablesQuery.data ?? []).map((usuario) => (
                 <option key={usuario.id} value={usuario.id}>
                   {usuario.nombre} {usuario.apellido}
                 </option>
@@ -231,11 +301,18 @@ export function PlanPreventivoCreateDialog() {
                 {errors.responsableId.message}
               </p>
             )}
-            {usuariosQuery.isError && (
+            {avisoResponsable && !responsableElegido && (
               <p role="alert" className="text-sm text-destructive">
-                No se pudo cargar la lista de responsables. Puede deberse a que no tenés
-                permiso para ver usuarios (depende de un permiso independiente de este formulario).
+                {avisoResponsable}
               </p>
+            )}
+            {responsablesQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                No se pudo cargar la lista de responsables.
+              </p>
+            )}
+            {responsablesQuery.isSuccess && responsablesQuery.data.length === 0 && (
+              <p className="text-sm text-muted-foreground">{SIN_RESPONSABLES}</p>
             )}
           </div>
 
@@ -268,6 +345,42 @@ export function PlanPreventivoCreateDialog() {
               </Select>
             </div>
           </div>
+
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-anticipacion" className="text-sm font-medium text-foreground">
+                Anticipación
+              </label>
+              <Input
+                id="plan-anticipacion"
+                type="number"
+                min="0"
+                step="1"
+                aria-describedby="plan-anticipacion-ayuda"
+                error={!!errors.anticipacionValor}
+                {...register("anticipacionValor")}
+              />
+              {errors.anticipacionValor && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.anticipacionValor.message}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-anticipacion-unidad" className="text-sm font-medium text-foreground">
+                Unidad de anticipación
+              </label>
+              <Select id="plan-anticipacion-unidad" {...register("anticipacionUnidad")}>
+                <option value="DIAS">Días</option>
+                <option value="MESES">Meses</option>
+              </Select>
+            </div>
+          </div>
+          <p id="plan-anticipacion-ayuda" className="text-sm text-muted-foreground">
+            El ticket se genera esa cantidad antes de la fecha de cada ciclo. Con 0, se genera el mismo
+            día del ciclo. Si la víspera de esa fecha el ticket sigue abierto, el responsable recibe un
+            recordatorio, salvo que el ticket se haya generado ese mismo día.
+          </p>
 
           <div className="flex flex-col gap-1">
             <label htmlFor="plan-fecha-inicio" className="text-sm font-medium text-foreground">

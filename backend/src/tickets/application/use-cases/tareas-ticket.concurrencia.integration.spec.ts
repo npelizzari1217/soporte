@@ -231,7 +231,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     );
 
     const result = await enTenant(() =>
-      completar(repo).execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     expect(result.isFail()).toBe(true);
@@ -248,7 +253,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('asignar contra completar: conserva el completado y cambia el técnico', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     const repo = repoConCarrera(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     const result = await enTenant(() =>
@@ -283,7 +293,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     );
 
     const result = await enTenant(() =>
-      completar(repo).execute({ ticketId, tareaId: tarea.id, actor: RESPONSABLE_ACTOR }),
+      completar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+      }),
     );
 
     expect(result.isOk()).toBe(true);
@@ -297,11 +312,21 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('dos completar: el segundo da TAREA_YA_COMPLETADA, sin pisar el crédito ni duplicar historial', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     const repo = repoConCarrera(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     const result = await enTenant(() =>
-      completar(repo).execute({ ticketId, tareaId: tarea.id, actor: ADMIN_ACTOR }),
+      completar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: ADMIN_ACTOR,
+      }),
     );
 
     expect(result.isFail()).toBe(true);
@@ -314,7 +339,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('eliminar contra completar: la baja conserva quién completó', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     const repo = repoConCarrera(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     const result = await enTenant(() =>
@@ -332,14 +362,29 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('dos descompletar: el segundo da TAREA_NO_COMPLETADA y escribe un solo historial', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     await enTenant(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
     const repo = repoConCarrera(() =>
-      descompletar().execute({ ticketId, tareaId: tarea.id, actor: RESPONSABLE_ACTOR }),
+      descompletar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+      }),
     );
 
     const result = await enTenant(() =>
-      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: ADMIN_ACTOR }),
+      descompletar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: ADMIN_ACTOR,
+      }),
     );
 
     expect(result.isFail()).toBe(true);
@@ -352,15 +397,22 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('descompletar contra descompletar y volver a completar (ABA, JD-S1): da TAREA_YA_COMPLETADA y conserva el completado nuevo', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     await enTenant(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
     const repo = repoConCarrera(async () => {
       const descompletado = await descompletar().execute({
+        clienteId: CLIENTE_ID,
         ticketId,
         tareaId: tarea.id,
         actor: actor(TECNICO_A),
       });
       const completado = await completar().execute({
+        clienteId: CLIENTE_ID,
         ticketId,
         tareaId: tarea.id,
         actor: RESPONSABLE_ACTOR,
@@ -369,7 +421,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     });
 
     const result = await enTenant(() =>
-      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: ADMIN_ACTOR }),
+      descompletar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: ADMIN_ACTOR,
+      }),
     );
 
     expect(result.isFail()).toBe(true);
@@ -398,7 +455,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     );
 
     const result = await enTenant(() =>
-      completar(repo).execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     expect(result.isFail()).toBe(true);
@@ -413,7 +475,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('descompletar del técnico contra reasignar (JD-S2): da TAREA_ACCION_NO_PERMITIDA y conserva el completado', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     await enTenant(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
     const repo = repoConCarrera(() =>
       asignar().execute({
@@ -426,7 +493,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     );
 
     const result = await enTenant(() =>
-      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      descompletar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
 
     expect(result.isFail()).toBe(true);
@@ -441,7 +513,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
   it('descompletar del responsable contra reasignar: su permiso no depende del técnico y aplica', async () => {
     const tarea = await sembrarTarea(TECNICO_A);
     await enTenant(() =>
-      completar().execute({ ticketId, tareaId: tarea.id, actor: actor(TECNICO_A) }),
+      completar().execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: actor(TECNICO_A),
+      }),
     );
     const repo = repoConCarrera(() =>
       asignar().execute({
@@ -454,7 +531,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
     );
 
     const result = await enTenant(() =>
-      descompletar(repo).execute({ ticketId, tareaId: tarea.id, actor: RESPONSABLE_ACTOR }),
+      descompletar(repo).execute({
+        clienteId: CLIENTE_ID,
+        ticketId,
+        tareaId: tarea.id,
+        actor: RESPONSABLE_ACTOR,
+      }),
     );
 
     expect(result.isOk()).toBe(true);
@@ -513,7 +595,12 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
           txRunner,
           sinAvanceDeEstado,
           verificador,
-        ).execute({ ticketId, tareaId: tarea.id, actor: RESPONSABLE_ACTOR }),
+        ).execute({
+          clienteId: CLIENTE_ID,
+          ticketId,
+          tareaId: tarea.id,
+          actor: RESPONSABLE_ACTOR,
+        }),
       );
 
       expect(result.isFail()).toBe(true);

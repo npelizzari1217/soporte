@@ -1171,6 +1171,68 @@ vigente al momento de cada resolución o respuesta. Volver a desplegar después 
 la fila de la migración en `_prisma_migrations`, y el script recalcula con el calendario de ese
 momento. El rollback no borra esa fila.
 
+## Deploy del 2026-10-25: checklist combinado
+
+Este release junta `ticket-unificado` y `cerrado-solo-comentarios` con `responsables-por-tipo`,
+`preventivo-anticipacion` y `preventivo-por-tipo`. El detalle de cada parte está en su sección
+("Ticket unificado", "Anticipación del plan preventivo" y "Tipo de ticket del plan preventivo",
+más abajo); esta lista es el orden único para la ventana. Master no cambia, no hay variables de
+entorno ni dependencias nuevas y el lockfile no cambia: `cerrado-solo-comentarios` y
+`responsables-por-tipo` no traen migraciones.
+
+Migraciones tenant, todas por `migrate:tenants` y en este orden (el de sus timestamps):
+
+| Orden | Migración | Escribe filas existentes | Sección |
+|---|---|---|---|
+| 1 | `20261024120000_ticket_unificado` | Sí (`tickets.ubicacion`, copias al timeline) | "Ticket unificado" |
+| 2 | `20261024130000_comentarios_reparacion_internos` | Sí (`operaciones_ticket.es_interno`) | "Ticket unificado" |
+| 3 | `20261025100000_preventivo_anticipacion` | No: columnas con DEFAULT y CHECK que toda fila cumple | "Anticipación del plan preventivo" |
+| 4 | `20261025110000_tickets_fecha_objetivo` | No: columna nullable, sin backfill | "Anticipación del plan preventivo" |
+| 5 | `20261025120000_tickets_recordatorio_preventivo` | No: columna nullable e índice parcial | "Anticipación del plan preventivo" |
+| 6 | `20261025130000_preventivo_plan_tipo` | Sí (backfill de `planes_preventivo.tipo_id`); aborta en un tenant con planes y sin tipo `PREVENTIVO` | "Tipo de ticket del plan preventivo" |
+
+Cada migración es su propia transacción: si la 6 aborta en un tenant, en esa base ya quedaron
+aplicadas de la 1 a la 5, y `migrate-tenants.js` corta el fan-out con los servicios detenidos, así
+que los tenants siguientes quedan sin migrar.
+
+1. **Lista de bases** del registro, con la consulta sobre master de "Precheck de solo lectura: el
+   CHECK de la copia". Todos los prechecks van en **cada** base de esa lista.
+2. **Precheck de ubicación** ("Ticket unificado"): sin filas en ninguna base. Anotar la foto de
+   `vinculos` y `comentarios`.
+3. **Precheck del tipo `PREVENTIVO`** ("Tipo de ticket del plan preventivo"): en ninguna base
+   `planes > 0` con `tipo_preventivo = 0`. Si la hay, crear el tipo desde la UI con el código
+   actual en marcha y volver a correr este paso.
+4. **`predeploy-dump.ps1 -DryRun`** y, en verde, **`predeploy-dump.ps1`** ("Precondición
+   operativa"). Obligatorio: las migraciones 1, 2 y 6 escriben filas existentes, y el dump es el
+   único rollback fiel de las tres. Los servicios quedan detenidos.
+5. **Prechecks 2 y 3 otra vez**, con los servicios detenidos: la foto definitiva. Si alguno no da
+   verde, no se corre `deploy.ps1`: se arrancan los servicios y se resuelve primero.
+6. **`deploy.ps1`**. Lleva el backend y el frontend de este release juntos: el frontend anterior no
+   es compatible con el backend de "Ticket unificado" (ver "T2, T2b y T3 salen en el mismo
+   deploy"). Si la migración 6 falla en un tenant, seguir "Si la migración ya falló en un tenant".
+7. **Verificación posterior** de "Ticket unificado" en cada base (conteos contra la foto del paso 5
+   y smoke manual), y además, en cada base:
+
+   ```sql
+   SELECT
+     (SELECT count(*) FROM planes_preventivo WHERE tipo_id IS NULL)   AS planes_sin_tipo,
+     (SELECT count(*) FROM planes_preventivo WHERE anticipacion_valor <> 0
+        OR anticipacion_unidad <> 'DIAS')                             AS planes_con_anticipacion,
+     (SELECT count(*) FROM tickets WHERE fecha_objetivo IS NOT NULL)  AS tickets_con_fecha_objetivo;
+   ```
+
+   Recién migrado, los tres dan 0: los planes quedan en `PREVENTIVO` con anticipación de 0 días, y
+   la fecha objetivo la fija recién el próximo barrido diario (por defecto a la 1:00,
+   `PREVENTIVO_SWEEP_CRON`).
+
+**Rollback combinado.** Con los servicios detenidos, en **cada** base de inquilino y en orden
+inverso al de la tabla: los `rollback.sql` de la 6, la 5, la 4 y la 3, y después los de la 2 y la
+1 como dice "Ticket unificado"; recién entonces el código anterior (el paso 2 del rollback de
+"Ticket unificado"). Las secciones de preventivo piden "primero el código": con los servicios
+detenidos no hay código nuevo corriendo contra columnas que faltan, así que este orden también lo
+cumple. Ningún `rollback.sql` borra su fila de `_prisma_migrations`. Lo que cada uno pierde está en
+su sección; la vía fiel sigue siendo el dump del paso 4 ("Restore de datos").
+
 ## Ticket unificado
 
 Documento de la feature: `odd/tasks/ticket-unificado.md`. Las compras vinculadas, la ubicación y los
@@ -1309,6 +1371,98 @@ los comentarios de reparación migrados vuelven a ser públicos.
 
 Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el dump de
 `predeploy-dump.ps1` (ver "Restore de datos"), y se pierde lo escrito después del deploy.
+
+## Anticipación del plan preventivo
+
+Documento de la feature: `odd/tasks/preventivo-anticipacion.md`. El plan preventivo gana una
+anticipación (número + Días/Meses), el ticket que genera guarda la fecha del ciclo como **fecha
+objetivo** y el responsable del plan recibe un recordatorio el día anterior. Tres migraciones
+tenant, aditivas, por `migrate:tenants`:
+
+| Orden | Migración | Qué hace |
+|---|---|---|
+| 1 | `20261025100000_preventivo_anticipacion` | `planes_preventivo.anticipacion_valor` (DEFAULT 0) y `anticipacion_unidad` (DEFAULT `DIAS`), con sus CHECK. Los planes existentes quedan con 0 días: generan el día del ciclo, como antes. |
+| 2 | `20261025110000_tickets_fecha_objetivo` | `tickets.fecha_objetivo DATE NULL`, sin backfill. |
+| 3 | `20261025120000_tickets_recordatorio_preventivo` | `tickets.recordatorio_enviado_at` y el índice parcial `tickets_recordatorio_pendiente_idx`. |
+
+No necesitan precheck: el CHECK `planes_preventivo_anticipacion_menor_cadencia_check` compara la
+anticipación con la cadencia, y con 0 días toda fila lo cumple (`intervalo_valor > 0`). El
+recordatorio lo corre el mismo barrido diario: no hay cron ni variable de entorno nuevos.
+
+### Rollback
+
+Los tres `rollback.sql` se pueden correr dos veces. **Primero el código, después los
+`rollback.sql`**, en orden inverso (3, 2, 1): el código nuevo lee las columnas y falla sin ellas; el
+anterior convive con ellas, así que dejarlas puestas también es un rollback válido. Se pierden la
+anticipación de cada plan, la fecha objetivo de los tickets y la marca de recordatorio enviado. No
+borran las filas de `_prisma_migrations`.
+
+## Tipo de ticket del plan preventivo
+
+Cada plan preventivo pasa a tener un tipo de ticket (`odd/tasks/preventivo-por-tipo.md`). La
+migración tenant `20261025130000_preventivo_plan_tipo` agrega `planes_preventivo.tipo_id` NOT NULL
+y pone **todos** los planes existentes, también los dados de baja, en el tipo de código
+`PREVENTIVO`. Entra por `migrate:tenants` dentro de la ventana de `predeploy-dump.ps1`.
+
+Un tenant con planes y **sin** un tipo de código `PREVENTIVO` no se puede migrar: la migración
+aborta con `preventivo_plan_tipo: el tenant tiene planes preventivos y no tiene el tipo de ticket
+PREVENTIVO`. El script corre en una sola transacción implícita, así que no deja nada a medias en
+esa base, pero Prisma la marca como fallida en `_prisma_migrations` y los deploys siguientes fallan
+con `P3009`. Un tenant sin planes migra igual, tenga o no el tipo.
+
+### Precheck de solo lectura
+
+Con la lista de bases del registro (la misma consulta sobre master de "Precheck de solo lectura:
+el CHECK de la copia"), en **cada** base de inquilino, antes del deploy:
+
+```sql
+SELECT
+  (SELECT count(*) FROM planes_preventivo)                         AS planes,
+  (SELECT count(*) FROM tipos_ticket WHERE codigo = 'PREVENTIVO')  AS tipo_preventivo;
+```
+
+La migración busca el tipo solo por `codigo`, sin mirar `activo` ni `deleted_at`: un tipo
+`PREVENTIVO` dado de baja la deja pasar, y sus planes quedan en él (el barrido los rechaza a
+diario con `PREVENTIVO_PLAN_ERROR` hasta que se los pase a un tipo vigente). Desde la UI no se
+puede dar de baja ni cambiarle el código: es un tipo del sistema (`TIPOS_TICKET_DEL_SISTEMA`).
+
+| Resultado | Qué hacer |
+|---|---|
+| `planes = 0`, o `tipo_preventivo = 1` | Seguir. |
+| `planes > 0` y `tipo_preventivo = 0` | **No desplegar todavía.** Con el código actual en marcha, entrar como administrador de ese cliente a Admin → Catálogos → Tipos de ticket y crear el tipo con código `PREVENTIVO`, nombre `Preventivo` y módulo `EDILICIA` (los valores del seed), copiando los permisos del tipo que corresponda para que los técnicos lo vean. Volver a correr el precheck. |
+
+### Si la migración ya falló en un tenant
+
+1. Crear el tipo en **esa** base. Con los servicios detenidos no hay UI, así que va por SQL, con
+   los valores del seed (`tenant-seeder.adapter.ts`):
+
+   ```sql
+   INSERT INTO tipos_ticket (codigo, nombre, modulo, updated_at)
+   VALUES ('PREVENTIVO', 'Preventivo', 'EDILICIA', now());
+   ```
+
+   Nadie tiene permisos sobre un tipo creado así: hasta que se le den `LECTURA` en Permisos →
+   Tipos de ticket, sus planes los ven solo los administradores. El mensaje del `RAISE` también
+   sugiere asignar `tipo_id` a mano a cada plan, pero eso no es posible: la columna se deshace
+   junto con el error.
+2. Marcar la migración como revertida con el `DATABASE_URL_TENANT` de ese tenant y
+   `--config prisma.tenant.config.ts` (ver "Nota histórica: precondición de componentes sin
+   repuesto"; sin `--config`, Prisma 7 la marcaría contra master):
+
+   ```powershell
+   $env:DATABASE_URL_TENANT = '<url de la base de ese tenant>'
+   corepack pnpm prisma migrate resolve --rolled-back 20261025130000_preventivo_plan_tipo --schema prisma_tenant/schema.prisma --config prisma.tenant.config.ts
+   ```
+
+3. Volver a correr el precheck en esa base, y después `deploy.ps1`.
+
+### Rollback
+
+Su `rollback.sql` borra el índice, la FK y la columna, y se puede correr dos veces. **Primero el
+código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee `tipo_id` y
+sin la columna falla. Pierde el tipo elegido en cada plan; el código anterior genera todos los
+planes con `PREVENTIVO`. No borra la fila de `_prisma_migrations`: para volver a desplegar, el
+mismo `migrate resolve --rolled-back` de arriba.
 
 ## Cuando algo falla
 

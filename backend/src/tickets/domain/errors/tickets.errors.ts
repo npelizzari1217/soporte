@@ -153,9 +153,9 @@ export class AsignadoInvalidoError extends DomainError {
 
 /**
  * AsignadoNoElegibleError — el `asignadoId` no es elegible para atender el
- * `tipoId` del ticket: la elegibilidad se resuelve por el módulo del catálogo
- * del `TipoTicket`. La elegibilidad es ortogonal al permiso RBAC
- * `ticket:asignar`.
+ * `tipoId` del ticket: no es TECNICO o COLABORADOR activo del cliente con
+ * `LECTURA` sobre el tipo (`ElegibilidadAsignado.esAgenteDeTipo`). La
+ * elegibilidad es ortogonal al permiso del actor para asignar.
  * → HTTP 422 en la capa de presentación.
  *
  * Ref spec: T14, T15.
@@ -165,8 +165,8 @@ export class AsignadoNoElegibleError extends DomainError {
 
   constructor(asignadoId: string, tipoTicketId: string) {
     super(
-      `El usuario "${asignadoId}" no está habilitado para atender tickets de tipo ` +
-        `"${tipoTicketId}". Verificar el módulo del tipo de ticket.`,
+      `El usuario "${asignadoId}" no puede recibir tickets del tipo "${tipoTicketId}": ` +
+        'solo se asignan técnicos o colaboradores activos con permiso de Ver sobre ese tipo.',
     );
   }
 }
@@ -603,7 +603,8 @@ export class TicketConPendientesNoBorrableError extends DomainError {
 /**
  * TicketPreventivoNoBorrableError — un ticket de mantenimiento preventivo no se borra
  * (odd/tasks/permisos-por-tipo-ticket.md, L45): lo genera el barrido a partir de un plan, y borrarlo
- * solo haría que el barrido abra otro del mismo plan. → HTTP 422.
+ * solo haría que el barrido abra otro del mismo plan. Vale para el tipo PREVENTIVO y para un ticket
+ * de cualquier tipo generado por un plan (odd/preventivo-por-tipo). → HTTP 422.
  */
 export class TicketPreventivoNoBorrableError extends DomainError {
   readonly code = 'TICKET_PREVENTIVO_NO_BORRABLE';
@@ -625,5 +626,22 @@ export class TicketsBorradosSoloAdministradorError extends DomainError {
 
   constructor() {
     super('Solo un administrador puede ver o recuperar tickets borrados.');
+  }
+}
+
+/**
+ * ListaDeAgentesNoPermitidaError — el actor no puede leer la lista de agentes con la que se filtra
+ * el listado por responsable: le falta `ASIGNAR` sobre algún tipo y `VER_TODOS` sobre un tipo de
+ * Tickets, Compras o Equipos (la misma regla que abre `GET /usuarios`, `puedeVerListaDeUsuarios`).
+ * → HTTP 403.
+ */
+export class ListaDeAgentesNoPermitidaError extends DomainError {
+  readonly code = 'LISTA_DE_AGENTES_NO_PERMITIDA';
+
+  constructor() {
+    super(
+      'Acceso denegado: se requiere ASIGNAR sobre algún tipo de ticket, o VER_TODOS sobre un ' +
+        'tipo de Tickets, Compras o Equipos.',
+    );
   }
 }

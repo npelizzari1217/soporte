@@ -38,6 +38,7 @@ const TICKET = {
   ubicacion: null,
   sectorId: null,
   sectorNombre: null,
+  fechaObjetivo: null,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -72,7 +73,7 @@ function mockBackend(overrides: { ciclos?: unknown } = {}) {
         { id: "e-nuevo", codigo: "NUEVO", nombre: "Nuevo", color: null, orden: 1, activo: true },
       ]),
     ),
-    http.get("/api/usuarios", () => HttpResponse.json([])),
+    http.get("/api/tickets/agentes", () => HttpResponse.json([])),
     http.get("/api/ciclos", () => HttpResponse.json(overrides.ciclos ?? CICLOS_CON_ACTIVO)),
   );
 }
@@ -142,7 +143,31 @@ describe("TicketsListView", () => {
     expect(conDatos.getByText("Primaria")).toBeInTheDocument();
 
     const sinDatos = within(screen.getByText("Sin datos").closest("tr") as HTMLElement);
-    expect(sinDatos.getAllByText("—")).toHaveLength(2);
+    // Ubicación, Sector y Fecha objetivo (odd/preventivo-anticipacion): las tres vacías.
+    expect(sinDatos.getAllByText("—")).toHaveLength(3);
+  });
+
+  it("muestra la columna Fecha objetivo como día calendario, con guion en los tickets que no la tienen (odd/preventivo-anticipacion)", async () => {
+    server.use(
+      http.get("/api/tickets", () =>
+        HttpResponse.json({
+          items: [
+            { ...TICKET, id: "t1", titulo: "Preventivo", fechaObjetivo: "2026-07-01T00:00:00.000Z" },
+            { ...TICKET, id: "t2", titulo: "Común" },
+          ],
+          total: 2,
+          pagina: 1,
+          porPagina: 10,
+        }),
+      ),
+    );
+    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+    const preventivo = within((await screen.findByText("Preventivo")).closest("tr") as HTMLElement);
+    expect(screen.getByRole("columnheader", { name: "Fecha objetivo" })).toBeInTheDocument();
+    expect(preventivo.getByText("01/07/2026")).toBeInTheDocument();
+    const comun = within(screen.getByText("Común").closest("tr") as HTMLElement);
+    expect(comun.queryByText("01/07/2026")).not.toBeInTheDocument();
   });
 
   it("click en una fila navega al detalle del ticket", async () => {
@@ -309,24 +334,62 @@ describe("TicketsListView", () => {
     });
   });
 
-  it("el filtro de asignado ofrece solo agentes (TECNICO/COLABORADOR), nunca usuarios finales", async () => {
-    server.use(
-      http.get("/api/usuarios", () =>
-        HttpResponse.json([
-          { id: "u1", nombre: "Ana", apellido: "Pérez", rol: "TECNICO" },
-          { id: "u2", nombre: "Carla", apellido: "Gómez", rol: "COLABORADOR" },
-          { id: "u3", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
-          { id: "u4", nombre: "Admin", apellido: "Jefe", rol: "ADMINISTRADOR" },
-        ]),
-      ),
-    );
-    renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+  describe("opciones del filtro «Asignado»: técnicos de los tipos visibles (GET /tickets/agentes)", () => {
+    const ANA = { id: "u-ana", nombre: "Ana", apellido: "Pérez" };
+    const BETO = { id: "u-beto", nombre: "Beto", apellido: "Gómez" };
+    /** `tipo` de cada pedido a `GET /tickets/agentes`; `null` si no se mandó. */
+    let tiposPedidos: (string | null)[];
 
-    const select = await screen.findByLabelText("Asignado");
-    expect(await within(select).findByRole("option", { name: "Ana Pérez" })).toBeInTheDocument();
-    expect(within(select).getByRole("option", { name: "Carla Gómez" })).toBeInTheDocument();
-    expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
-    expect(within(select).queryByRole("option", { name: "Admin Jefe" })).not.toBeInTheDocument();
+    beforeEach(() => {
+      tiposPedidos = [];
+      server.use(
+        // El backend acota: sin `tipo`, los técnicos de todos los tipos visibles; con `tipo=ti1`,
+        // solo los de ese tipo. La lista de usuarios del tenant trae además a un usuario final,
+        // que el filtro no tiene que ofrecer nunca.
+        http.get("/api/tickets/agentes", ({ request }) => {
+          const tipo = new URL(request.url).searchParams.get("tipo");
+          tiposPedidos.push(tipo);
+          return HttpResponse.json(tipo === "ti1" ? [ANA] : [BETO, ANA]);
+        }),
+        http.get("/api/usuarios", () =>
+          HttpResponse.json([
+            { ...ANA, rol: "TECNICO" },
+            { ...BETO, rol: "COLABORADOR" },
+            { id: "u-final", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
+          ]),
+        ),
+      );
+    });
+
+    it("sin tipo filtrado ofrece los técnicos de todos los tipos visibles, y no a los usuarios del tenant", async () => {
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+      const select = await screen.findByLabelText("Asignado");
+      expect(await within(select).findByRole("option", { name: "Ana Pérez" })).toBeInTheDocument();
+      expect(within(select).getByRole("option", { name: "Beto Gómez" })).toBeInTheDocument();
+      expect(within(select).queryByRole("option", { name: "Juan Final" })).not.toBeInTheDocument();
+      expect(tiposPedidos).toEqual([null]);
+    });
+
+    it("con `?tipo=` ofrece solo los técnicos de ese tipo", async () => {
+      currentSearch = "tipo=ti1";
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+      const select = await screen.findByLabelText("Asignado");
+      expect(await within(select).findByRole("option", { name: "Ana Pérez" })).toBeInTheDocument();
+      expect(within(select).queryByRole("option", { name: "Beto Gómez" })).not.toBeInTheDocument();
+      expect(tiposPedidos).toEqual(["ti1"]);
+    });
+
+    it("con `?tipo=` quita de la URL un `asignado` que no atiende ese tipo", async () => {
+      currentSearch = "tipo=ti1&asignado=u-beto";
+      renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const params = new URLSearchParams((replaceMock.mock.calls.at(-1)?.[0] as string).split("?")[1] ?? "");
+      expect(params.get("asignado")).toBeNull();
+      expect(params.get("tipo")).toBe("ti1");
+    });
   });
 
   describe("filtro «Asignado» con la regla de GET /usuarios (odd/permisos-por-tipo-ticket, T6, S7)", () => {
@@ -444,15 +507,13 @@ describe("TicketsListView", () => {
       { id: "ti1", codigo: "SOPORTE", nombre: "Soporte", modulo: "TICKETS", activo: true, createdAt: "", updatedAt: "" },
       { id: "ti2", codigo: "EDILICIA", nombre: "Edilicia", modulo: "EDILICIA", activo: true, createdAt: "", updatedAt: "" },
     ];
-    const USUARIOS = [
-      { id: "u1", nombre: "Ana", apellido: "Pérez", rol: "TECNICO" },
-      { id: "u3", nombre: "Juan", apellido: "Final", rol: "USUARIO" },
-    ];
+    /** El backend ofrece solo agentes: `u3` (usuario final) no figura. */
+    const AGENTES = [{ id: "u1", nombre: "Ana", apellido: "Pérez" }];
 
     beforeEach(() => {
       server.use(
         http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)),
-        http.get("/api/usuarios", () => HttpResponse.json(USUARIOS)),
+        http.get("/api/tickets/agentes", () => HttpResponse.json(AGENTES)),
       );
     });
 
@@ -483,8 +544,8 @@ describe("TicketsListView", () => {
       expect(ultimaUrlReemplazada()?.get("estado")).toBe("e-nuevo");
     });
 
-    it("no toca la URL si el catálogo de usuarios falla, aunque el asignado sea válido", async () => {
-      server.use(http.get("/api/usuarios", () => HttpResponse.json({}, { status: 500 })));
+    it("no toca la URL si la lista de agentes falla, aunque el asignado sea válido", async () => {
+      server.use(http.get("/api/tickets/agentes", () => HttpResponse.json({}, { status: 500 })));
       currentSearch = "asignado=u1";
       renderWithProviders(<TicketsListView />, { user: buildUser({ permisos: ["TICKETS:VER_TODOS"] }) });
       await screen.findByText("Impresora rota");

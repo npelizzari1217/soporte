@@ -37,9 +37,14 @@ export interface BorrarTicketDto extends AlcanceActorTicket {
  * - Si no, se borra salvo que tenga tareas pendientes (activas y sin completar) o
  *   compras vinculadas: 422 que nombra qué resolver (L40). Las tareas completadas,
  *   los adjuntos, los comentarios y el historial no frenan: quedan con el ticket.
- * - Un ticket de tipo PREVENTIVO no se borra, ni siquiera un administrador: 422 (L45). Lo genera el
- *   barrido a partir de un plan, y borrarlo haría que el barrido abra otro del mismo plan. Se
- *   evalúa después del acceso: sin `BORRADO` sobre el tipo, manda el 403.
+ * - Un ticket de mantenimiento preventivo no se borra, ni siquiera un administrador: 422 (L45). Lo
+ *   genera el barrido a partir de un plan, y borrarlo haría que el barrido abra otro del mismo
+ *   plan. Desde que el plan elige el tipo de sus tickets (odd/preventivo-por-tipo) "preventivo" no
+ *   es un tipo: es un ticket enlazado a un plan por `preventivo_generacion`, de cualquier tipo. Un
+ *   ticket de tipo PREVENTIVO sin enlace (la API v1 no restringe el tipo) sigue sin borrarse, como
+ *   antes. Se evalúa después del acceso: sin `BORRADO` sobre el tipo, manda el 403. Y antes que
+ *   el estado: con el ticket resuelto, cerrado o cancelado, quien no es administrador recibe este
+ *   422 y no el de solo comentarios, porque reabrirlo tampoco lo volvería borrable.
  * - Solo se escribe `deleted_at`: el estado y el resto de los datos no cambian, y por eso la
  *   recuperación lo devuelve tal cual estaba.
  * - El borrado queda en el historial (`TICKET_BORRADO`, con autor y fecha), en la misma
@@ -56,7 +61,10 @@ export class BorrarTicketUseCase {
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
-    private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'comprasVinculadas'>,
+    private readonly bloqueoRepo: Pick<
+      IBloqueoTicketRepository,
+      'comprasVinculadas' | 'generadoPorPlanPreventivo'
+    >,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
@@ -72,7 +80,10 @@ export class BorrarTicketUseCase {
     const cargado = await cargarTicketParaOperar(this.ticketRepo, dto.ticketId, dto, 'BORRADO');
     if (cargado.isFail()) return Result.fail(cargado.getError());
     const ticket = cargado.getValue();
-    if (ticket.tipoId === (await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO))) {
+    if (
+      ticket.tipoId === (await this.tipoTicketRepo.findIdByCodigo(TIPO_CODIGO_PREVENTIVO)) ||
+      (await this.bloqueoRepo.generadoPorPlanPreventivo(ticket.id))
+    ) {
       return Result.fail(new TicketPreventivoNoBorrableError());
     }
 

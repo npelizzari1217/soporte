@@ -19,6 +19,7 @@
 import { PreventivoGeneradoNotificacionListener } from './preventivo-generado-notificacion.listener';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { PreventivoGeneradoEvent } from '../../../preventivo/domain/events/preventivo-generado.event';
+import { PreventivoRecordatorioEvent } from '../../../preventivo/domain/events/preventivo-recordatorio.event';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { IUsuarioContactoResolver } from '../../domain/ports/i-usuario-contacto-resolver';
 import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
@@ -106,6 +107,40 @@ describe('PreventivoGeneradoNotificacionListener', () => {
     );
   });
 
+  it('S3: el correo informa la fecha objetivo del ticket (la fecha del ciclo del plan)', async () => {
+    const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+    const ticket = TicketEntity.create(
+      {
+        numero: 'PRE-2026-00001',
+        titulo: 'Revisión de aire acondicionado',
+        descripcion: null,
+        tipoId: 'tipo-uuid',
+        estadoId: 'estado-uuid',
+        prioridadId: 'prioridad-uuid',
+        cicloId: null,
+        ticketReferenciaId: null,
+        solicitanteId: 'responsable-uuid',
+        fechaObjetivo: new Date('2026-07-01T00:00:00.000Z'),
+      },
+      'ticket-uuid',
+    );
+    ticketRepo.findById.mockResolvedValue(ticket);
+    contactoResolver.resolverContacto.mockResolvedValue({
+      email: 'responsable@dominio.com',
+      nombre: 'Responsable',
+    });
+    contactoResolver.resolverAdministradores.mockResolvedValue([]);
+
+    await listener.onPreventivoGenerado(makeEvent());
+
+    expect(emailSender.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'responsable@dominio.com',
+        text: expect.stringContaining('Fecha objetivo: 01/07/2026'),
+      }),
+    );
+  });
+
   it('[N4] si el responsable no resuelve contacto → se omite ese envío, NO afecta el envío a administradores', async () => {
     const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
     ticketRepo.findById.mockResolvedValue(makeTicket());
@@ -190,5 +225,101 @@ describe('PreventivoGeneradoNotificacionListener', () => {
     await listener.onPreventivoGenerado(makeEvent());
 
     expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
+  });
+
+  // ─── Recordatorio (odd/preventivo-anticipacion T3, S4) ─────────────────
+  describe('preventivo.recordatorio', () => {
+    function ticketConFecha(fechaObjetivo: Date | null) {
+      return TicketEntity.create(
+        {
+          numero: 'PRE-2026-00007',
+          titulo: 'Revisión de aire acondicionado',
+          descripcion: null,
+          tipoId: 'tipo-uuid',
+          estadoId: 'estado-uuid',
+          prioridadId: 'prioridad-uuid',
+          cicloId: null,
+          ticketReferenciaId: null,
+          solicitanteId: 'responsable-original-uuid',
+          fechaObjetivo,
+        },
+        'ticket-uuid',
+      );
+    }
+
+    const evento = new PreventivoRecordatorioEvent({
+      planId: 'plan-uuid',
+      ticketId: 'ticket-uuid',
+      responsableId: 'responsable-actual-uuid',
+    });
+
+    it('manda UN correo, solo al responsable del evento, nunca a los administradores', async () => {
+      const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+      ticketRepo.findById.mockResolvedValue(ticketConFecha(new Date('2026-07-01T00:00:00.000Z')));
+      contactoResolver.resolverContacto.mockResolvedValue({
+        email: 'responsable@dominio.com',
+        nombre: 'Responsable',
+      });
+      contactoResolver.resolverAdministradores.mockResolvedValue([
+        { email: 'admin1@dominio.com', nombre: 'Admin1' },
+      ]);
+
+      await listener.onPreventivoRecordatorio(evento);
+
+      expect(contactoResolver.resolverContacto).toHaveBeenCalledWith('responsable-actual-uuid');
+      expect(contactoResolver.resolverAdministradores).not.toHaveBeenCalled();
+      expect(emailSender.send).toHaveBeenCalledTimes(1);
+      expect(emailSender.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'responsable@dominio.com',
+          subject: expect.stringContaining('Recordatorio'),
+          text: expect.stringContaining('mañana, 01/07/2026'),
+        }),
+      );
+    });
+
+    it('sin contacto del responsable no manda nada', async () => {
+      const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+      ticketRepo.findById.mockResolvedValue(ticketConFecha(new Date('2026-07-01T00:00:00.000Z')));
+      contactoResolver.resolverContacto.mockResolvedValue(null);
+
+      await listener.onPreventivoRecordatorio(evento);
+
+      expect(emailSender.send).not.toHaveBeenCalled();
+    });
+
+    it('un ticket sin fecha objetivo (no debería reclamarse) no manda nada', async () => {
+      const { listener, ticketRepo, contactoResolver, emailSender } = makeListener();
+      ticketRepo.findById.mockResolvedValue(ticketConFecha(null));
+      contactoResolver.resolverContacto.mockResolvedValue({
+        email: 'responsable@dominio.com',
+        nombre: 'Responsable',
+      });
+
+      await listener.onPreventivoRecordatorio(evento);
+
+      expect(emailSender.send).not.toHaveBeenCalled();
+    });
+
+    it('un envío que falla se loguea y no se propaga (log-and-swallow)', async () => {
+      const { listener, ticketRepo, contactoResolver, emailSender, logger } = makeListener();
+      ticketRepo.findById.mockResolvedValue(ticketConFecha(new Date('2026-07-01T00:00:00.000Z')));
+      contactoResolver.resolverContacto.mockResolvedValue({
+        email: 'responsable@dominio.com',
+        nombre: 'Responsable',
+      });
+      emailSender.send.mockRejectedValue(new Error('SMTP caído'));
+
+      await expect(listener.onPreventivoRecordatorio(evento)).resolves.toBeUndefined();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('SMTP caído'));
+    });
+
+    it('un fallo inesperado (ticketRepo lanza) se loguea con el ticket y no se propaga', async () => {
+      const { listener, ticketRepo, logger } = makeListener();
+      ticketRepo.findById.mockRejectedValue(new Error('DB caída'));
+
+      await expect(listener.onPreventivoRecordatorio(evento)).resolves.toBeUndefined();
+      expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
+    });
   });
 });

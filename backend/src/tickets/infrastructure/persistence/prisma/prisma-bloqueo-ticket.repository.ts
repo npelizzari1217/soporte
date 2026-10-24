@@ -38,4 +38,13 @@ export class PrismaBloqueoTicketRepository implements IBloqueoTicketRepository {
     });
     return rows.map((row) => row.compra.numero);
   }
+
+  async generadoPorPlanPreventivo(ticketId: string): Promise<boolean> {
+    // `ticket_id` es UNIQUE en `preventivo_generacion`: a lo sumo una fila, por índice.
+    const fila = await this.client.preventivoGeneracion.findUnique({
+      where: { ticketId },
+      select: { id: true },
+    });
+    return fila !== null;
+  }
 }

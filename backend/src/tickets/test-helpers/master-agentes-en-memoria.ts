@@ -19,10 +19,7 @@ export interface UsuarioMasterFake {
  * identidad, rol y membresía de un solo cliente. Cuenta las consultas de agentes para afirmar que
  * no se va a master cuando no hace falta.
  */
-export class MasterAgentesEnMemoria implements Pick<
-  IUsuarioMasterChecker,
-  'esAdminTotalEnTenant' | 'listarAgentes'
-> {
+export class MasterAgentesEnMemoria implements Pick<IUsuarioMasterChecker, 'listarAgentes'> {
   private readonly usuarios: UsuarioMasterFake[] = [];
   consultasDeAgentes = 0;
 
@@ -31,11 +28,6 @@ export class MasterAgentesEnMemoria implements Pick<
    */
   agregar(usuario: UsuarioMasterFake): void {
     this.usuarios.push(usuario);
-  }
-
-  async esAdminTotalEnTenant(usuarioId: string): Promise<boolean> {
-    const usuario = this.usuarios.find((u) => u.id === usuarioId);
-    return usuario?.rol === 'ROOT' || usuario?.rol === 'ADMINISTRADOR';
   }
 
   async listarAgentes(

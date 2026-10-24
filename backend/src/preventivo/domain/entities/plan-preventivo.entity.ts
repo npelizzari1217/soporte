@@ -1,11 +1,14 @@
 import { BaseEntity } from '../../../shared/domain/base-entity';
 import { Result } from '../../../shared/domain/result';
 import {
+  AnticipacionInvalidaError,
+  AnticipacionNoMenorQueCadenciaError,
   IntervaloExcedeMaximoError,
   IntervaloInvalidoError,
   ObjetivoInvalidoError,
   TituloDemasiadoLargoError,
   UbicacionDemasiadoLargaError,
+  UnidadAnticipacionInvalidaError,
   UnidadIntervaloInvalidaError,
 } from '../errors/preventivo.errors';
 
@@ -53,6 +56,16 @@ export const UBICACION_MAX_LENGTH = 255;
  */
 export const INTERVALO_VALOR_MAXIMO = 3650;
 
+/**
+ * Días que vale un mes al comparar la anticipación contra la cadencia
+ * (odd/preventivo-anticipacion S6). Es una equivalencia de VALIDACIÓN, no de
+ * calendario: la fecha de generación se calcula con meses reales
+ * (`CalcularCicloService.fechaGeneracion`). El CHECK
+ * `planes_preventivo_anticipacion_menor_cadencia_check` usa el mismo 30 y el
+ * front lo copia en `features/preventivo/schemas.ts`, con un test centinela.
+ */
+export const DIAS_POR_MES_ANTICIPACION = 30;
+
 /** Unión de errores que puede devolver `create()`/`editar()`. */
 export type PlanPreventivoDomainError =
   | ObjetivoInvalidoError
@@ -60,7 +73,10 @@ export type PlanPreventivoDomainError =
   | UnidadIntervaloInvalidaError
   | TituloDemasiadoLargoError
   | UbicacionDemasiadoLargaError
-  | IntervaloExcedeMaximoError;
+  | IntervaloExcedeMaximoError
+  | AnticipacionInvalidaError
+  | UnidadAnticipacionInvalidaError
+  | AnticipacionNoMenorQueCadenciaError;
 
 /**
  * PlanPreventivoProps — shape de las propiedades de dominio de
@@ -75,11 +91,25 @@ export interface PlanPreventivoProps {
   /** Texto libre normalizado a mayúscula. Excluyente con `equipoId` (ADR-PV1). */
   ubicacion: string | null;
   prioridadId: string;
+  /**
+   * Tipo de ticket de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Cualquier tipo
+   * del catálogo; que esté vigente para nuevas altas y que el actor tenga permiso sobre él lo decide
+   * la capa de aplicación, que es la que puede consultar el catálogo y el alcance.
+   */
+  tipoId: string;
   /** Soft ref → master.usuarios.id. Solicitante/autor del ticket generado. */
   responsableId: string;
   /** Entero estrictamente positivo. */
   intervaloValor: number;
   intervaloUnidad: IntervaloUnidad;
+  /**
+   * Cuánto antes de la fecha del ciclo se genera el ticket
+   * (odd/preventivo-anticipacion S1). Entero `>= 0`, estrictamente menor que
+   * la cadencia comparadas en días. `0` es el comportamiento previo: el
+   * ticket se genera el día del ciclo.
+   */
+  anticipacionValor: number;
+  anticipacionUnidad: IntervaloUnidad;
   /** Ancla INMUTABLE de la recurrencia — nunca se recalcula desde el ciclo anterior. */
   fechaInicio: Date;
   /** Puntero que el barrido consulta y avanza. */
@@ -87,8 +117,16 @@ export interface PlanPreventivoProps {
   activo: boolean;
 }
 
-/** Props de entrada de `create()` — mismo shape que `PlanPreventivoProps`. */
-export type PlanPreventivoCreateProps = PlanPreventivoProps;
+/**
+ * Props de entrada de `create()` — mismo shape que `PlanPreventivoProps`,
+ * con la anticipación opcional: ausente equivale a 0 días (S5), el
+ * comportamiento que tenía todo plan antes de que existiera el campo.
+ */
+export type PlanPreventivoCreateProps = Omit<
+  PlanPreventivoProps,
+  'anticipacionValor' | 'anticipacionUnidad'
+> &
+  Partial<Pick<PlanPreventivoProps, 'anticipacionValor' | 'anticipacionUnidad'>>;
 
 /** Campos editables de `editar()`. `undefined` = no se toca (PATCH semántico). */
 export type PlanPreventivoEditarProps = Partial<
@@ -99,9 +137,12 @@ export type PlanPreventivoEditarProps = Partial<
     | 'equipoId'
     | 'ubicacion'
     | 'prioridadId'
+    | 'tipoId'
     | 'responsableId'
     | 'intervaloValor'
     | 'intervaloUnidad'
+    | 'anticipacionValor'
+    | 'anticipacionUnidad'
     | 'activo'
   >
 >;
@@ -165,6 +206,49 @@ function validarIntervalo(
   return null;
 }
 
+/** Describe una magnitud para un mensaje: `"1 día"`, `"30 días"`, `"2 meses = 60 días"`. */
+function describirMagnitud(valor: number, unidad: IntervaloUnidad): string {
+  if (unidad === 'DIAS') {
+    return `${valor} ${valor === 1 ? 'día' : 'días'}`;
+  }
+  return `${valor} ${valor === 1 ? 'mes' : 'meses'} = ${valor * DIAS_POR_MES_ANTICIPACION} días`;
+}
+
+/** Pasa una magnitud a días para comparar, con un mes = `DIAS_POR_MES_ANTICIPACION`. */
+function enDias(valor: number, unidad: IntervaloUnidad): number {
+  return unidad === 'MESES' ? valor * DIAS_POR_MES_ANTICIPACION : valor;
+}
+
+/**
+ * Valida la anticipación (S6): entero `>= 0`, unidad del catálogo cerrado, y
+ * estrictamente menor que la cadencia comparadas en días. Corre DESPUÉS de
+ * `validarIntervalo`, así que la cadencia que recibe ya es válida.
+ */
+function validarAnticipacion(
+  valor: number,
+  unidad: IntervaloUnidad,
+  intervaloValor: number,
+  intervaloUnidad: IntervaloUnidad,
+):
+  | AnticipacionInvalidaError
+  | UnidadAnticipacionInvalidaError
+  | AnticipacionNoMenorQueCadenciaError
+  | null {
+  if (!Number.isInteger(valor) || valor < 0) {
+    return new AnticipacionInvalidaError(valor);
+  }
+  if (!UNIDADES_INTERVALO.includes(unidad)) {
+    return new UnidadAnticipacionInvalidaError(unidad);
+  }
+  if (enDias(valor, unidad) >= enDias(intervaloValor, intervaloUnidad)) {
+    return new AnticipacionNoMenorQueCadenciaError(
+      describirMagnitud(valor, unidad),
+      describirMagnitud(intervaloValor, intervaloUnidad),
+    );
+  }
+  return null;
+}
+
 /**
  * PlanPreventivoEntity — entidad de dominio de un plan de mantenimiento
  * preventivo. `create()`/`editar()` son la AUTORIDAD del objetivo
@@ -205,7 +289,22 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
     const errorIntervalo = validarIntervalo(props.intervaloValor, props.intervaloUnidad);
     if (errorIntervalo) return Result.fail(errorIntervalo);
 
-    return Result.ok(new PlanPreventivoEntity({ ...props, ubicacion: ubicacionNormalizada }, id));
+    const anticipacionValor = props.anticipacionValor ?? 0;
+    const anticipacionUnidad = props.anticipacionUnidad ?? 'DIAS';
+    const errorAnticipacion = validarAnticipacion(
+      anticipacionValor,
+      anticipacionUnidad,
+      props.intervaloValor,
+      props.intervaloUnidad,
+    );
+    if (errorAnticipacion) return Result.fail(errorAnticipacion);
+
+    return Result.ok(
+      new PlanPreventivoEntity(
+        { ...props, ubicacion: ubicacionNormalizada, anticipacionValor, anticipacionUnidad },
+        id,
+      ),
+    );
   }
 
   /**
@@ -248,6 +347,10 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
     return this.props.prioridadId;
   }
 
+  get tipoId(): string {
+    return this.props.tipoId;
+  }
+
   get responsableId(): string {
     return this.props.responsableId;
   }
@@ -258,6 +361,14 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
 
   get intervaloUnidad(): IntervaloUnidad {
     return this.props.intervaloUnidad;
+  }
+
+  get anticipacionValor(): number {
+    return this.props.anticipacionValor;
+  }
+
+  get anticipacionUnidad(): IntervaloUnidad {
+    return this.props.anticipacionUnidad;
   }
 
   get fechaInicio(): Date {
@@ -293,6 +404,14 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
       datos.intervaloValor !== undefined ? datos.intervaloValor : this.props.intervaloValor;
     const intervaloUnidad =
       datos.intervaloUnidad !== undefined ? datos.intervaloUnidad : this.props.intervaloUnidad;
+    const anticipacionValor =
+      datos.anticipacionValor !== undefined
+        ? datos.anticipacionValor
+        : this.props.anticipacionValor;
+    const anticipacionUnidad =
+      datos.anticipacionUnidad !== undefined
+        ? datos.anticipacionUnidad
+        : this.props.anticipacionUnidad;
     const titulo = datos.titulo !== undefined ? datos.titulo : this.props.titulo;
 
     const errorTitulo = validarTitulo(titulo);
@@ -307,14 +426,27 @@ export class PlanPreventivoEntity extends BaseEntity<PlanPreventivoProps> {
     const errorIntervalo = validarIntervalo(intervaloValor, intervaloUnidad);
     if (errorIntervalo) return Result.fail(errorIntervalo);
 
+    // Contra la cadencia RESULTANTE: bajar la cadencia puede dejar inválida
+    // una anticipación que nadie tocó.
+    const errorAnticipacion = validarAnticipacion(
+      anticipacionValor,
+      anticipacionUnidad,
+      intervaloValor,
+      intervaloUnidad,
+    );
+    if (errorAnticipacion) return Result.fail(errorAnticipacion);
+
     if (datos.titulo !== undefined) this.props.titulo = datos.titulo;
     if (datos.instrucciones !== undefined) this.props.instrucciones = datos.instrucciones;
     this.props.equipoId = equipoId;
     this.props.ubicacion = ubicacionNormalizada;
     if (datos.prioridadId !== undefined) this.props.prioridadId = datos.prioridadId;
+    if (datos.tipoId !== undefined) this.props.tipoId = datos.tipoId;
     if (datos.responsableId !== undefined) this.props.responsableId = datos.responsableId;
     this.props.intervaloValor = intervaloValor;
     this.props.intervaloUnidad = intervaloUnidad;
+    this.props.anticipacionValor = anticipacionValor;
+    this.props.anticipacionUnidad = anticipacionUnidad;
     if (datos.activo !== undefined) this.props.activo = datos.activo;
 
     this.touch();

@@ -25,13 +25,28 @@
  * lista ya resolvió. `useEquipo` se invoca solo mientras hace falta
  * verificar (`enabled` interno evita el request de más una vez resuelto).
  * El MISMO tratamiento aplica a `prioridadId` y `responsableId` (helper
- * compartido `conValorFueraDeCatalogo`): sus catálogos también excluyen lo dado
- * de baja, así que los tres selects pueden quedarse sin la `<option>` del valor
- * vigente.
+ * compartido `conValorFueraDeCatalogo`): sus catálogos también excluyen valores
+ * vigentes —la prioridad dada de baja; el responsable que ya no es técnico de
+ * Preventivo o perdió la membresía—, así que los tres selects pueden quedarse sin
+ * la `<option>` del valor vigente. Guardar con ese responsable sin tocarlo pasa:
+ * el backend revalida solo un responsable NUEVO.
+ *
+ * Tipo de ticket (odd/preventivo-por-tipo, S2, S4): ofrece los tipos vigentes que el usuario ve
+ * (LECTURA), lo que el backend acepta para un tipo NUEVO. El tipo vigente del plan puede faltar en
+ * el catálogo (dado de baja): sale con la opción sintética de `conValorFueraDeCatalogo`, y guardarlo
+ * sin tocar pasa porque el backend no revalida el tipo que no cambia. La ausencia por permiso no
+ * aplica: quien ve el plan tiene LECTURA sobre su tipo.
+ *
+ * Responsable: `useResponsablesPlanPreventivo(tipoId)` (`GET /preventivo/planes/responsables`),
+ * solo los técnicos con LECTURA sobre el tipo elegido (S5). Cambiar el tipo recarga la lista; si el
+ * responsable elegido no está en ella, se borra con un aviso (`useResponsableSegunTipo`). El
+ * responsable vigente fuera de la lista solo se conserva mientras el tipo sea el original: al
+ * cambiar el tipo, el backend lo revalida.
  *
  * Ojo que son DOS caminos distintos para el mismo síntoma, y hacen falta los dos
  * arreglos:
- *   (a) el catálogo resolvió y el valor está dado de baja → lo cubre
+ *   (a) el catálogo resolvió y el valor no está (dado de baja, o responsable no
+ *       habilitado) → lo cubre
  *       `conValorFueraDeCatalogo`, agregando la opción sintética.
  *   (b) la opción existe, pero llega DESPUÉS de que el `<select>` montó (se
  *       abrió el diálogo con los catálogos todavía cargando) → lo cubre
@@ -45,6 +60,10 @@
  * de guardar — la respuesta del PATCH trae el puntero viejo (ver comentario
  * de mecanismo en `use-planes-preventivo-mutations.ts` y "Fuera de alcance"
  * en `tasks.md`).
+ *
+ * Anticipación (odd/preventivo-anticipacion): mismo par número + unidad que la
+ * cadencia. Cambiarla también recalcula el puntero en el backend, con su propio
+ * aviso cualitativo. Vaciar el número es un error de validación, no un 0.
  */
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -56,12 +75,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useEquipos, useEquipo } from "@/features/equipos/hooks/use-equipos";
-import { usePrioridades } from "@/features/tickets/hooks/use-catalogos";
-import { useUsuariosAsignables } from "@/features/tickets/hooks/use-usuarios-asignables";
+import { usePrioridades, useTiposTicket } from "@/features/tickets/hooks/use-catalogos";
 import { ApiError } from "@/shared/api/types";
 import { conValorFueraDeCatalogo, type OpcionCatalogo } from "@/shared/lib/opciones-catalogo";
 import { useReaplicarAlResolver } from "@/shared/hooks/use-reaplicar-al-resolver";
+import { usePermisosPorTipo } from "@/shared/hooks/use-permisos-por-tipo";
 import { useEditarPlanPreventivo } from "../hooks/use-planes-preventivo-mutations";
+import { useResponsablesPlanPreventivo } from "../hooks/use-planes-preventivo";
+import { useResponsableSegunTipo } from "../hooks/use-responsable-segun-tipo";
+import { SIN_RESPONSABLES, TIPO_DADO_DE_BAJA } from "../lib/plan-labels";
 import { editarPlanPreventivoSchema, type EditarPlanPreventivoFormValues } from "../schemas";
 import type { EditarPlanPreventivoDto, PlanPreventivo } from "../types";
 
@@ -69,6 +91,9 @@ type Objetivo = "equipo" | "ubicacion";
 
 const AVISO_CADENCIA =
   "Al cambiar la cadencia, la próxima ejecución se recalcula hacia adelante desde hoy. Los ciclos anteriores no se generan.";
+
+const AVISO_ANTICIPACION =
+  "Al cambiar la anticipación, la próxima ejecución se recalcula desde hoy. Si el próximo ciclo ya queda dentro de la nueva anticipación, su ticket se genera en el próximo barrido diario.";
 
 export interface PlanPreventivoEditDialogProps {
   plan: PlanPreventivo;
@@ -81,9 +106,12 @@ function valoresVigentes(plan: PlanPreventivo): EditarPlanPreventivoFormValues {
     equipoId: plan.equipoId ?? "",
     ubicacion: plan.ubicacion ?? "",
     prioridadId: plan.prioridadId,
+    tipoId: plan.tipoId,
     responsableId: plan.responsableId,
     intervaloValor: String(plan.intervaloValor),
     intervaloUnidad: plan.intervaloUnidad,
+    anticipacionValor: String(plan.anticipacionValor),
+    anticipacionUnidad: plan.anticipacionUnidad,
     activo: plan.activo,
   };
 }
@@ -97,7 +125,8 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   const [objetivo, setObjetivo] = useState<Objetivo>(objetivoDe(plan));
   const equiposQuery = useEquipos();
   const prioridadesQuery = usePrioridades();
-  const usuariosQuery = useUsuariosAsignables();
+  const tiposQuery = useTiposTicket();
+  const permisosPorTipo = usePermisosPorTipo();
   const editarMutation = useEditarPlanPreventivo(plan.id);
 
   const {
@@ -105,10 +134,38 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
     handleSubmit,
     reset,
     setValue,
+    getValues,
+    watch,
     formState: { errors, dirtyFields },
   } = useForm<EditarPlanPreventivoFormValues>({
     resolver: zodResolver(editarPlanPreventivoSchema),
     defaultValues: valoresVigentes(plan),
+  });
+
+  // Hasta conocer los permisos, la lista filtrada está vacía y la ausencia no prueba una baja.
+  const tiposResueltos = tiposQuery.isSuccess && permisosPorTipo.permisos !== null;
+  const opcionesTipo = conValorFueraDeCatalogo(
+    permisosPorTipo
+      .tiposCon(tiposQuery.data ?? [], "LECTURA")
+      .map((tipo) => ({ id: tipo.id, nombre: tipo.nombre })),
+    tiposResueltos,
+    plan.tipoId,
+    TIPO_DADO_DE_BAJA,
+  );
+
+  const tipoId = watch("tipoId");
+  const responsableElegido = watch("responsableId");
+  const esTipoOriginal = tipoId === plan.tipoId;
+  const responsablesQuery = useResponsablesPlanPreventivo(tipoId);
+  const avisoResponsable = useResponsableSegunTipo({
+    activo: open,
+    tipoId,
+    resuelto: responsablesQuery.isSuccess,
+    responsablesIds: (responsablesQuery.data ?? []).map((usuario) => usuario.id),
+    leerResponsable: () => getValues("responsableId"),
+    fijarResponsable: (id) => setValue("responsableId", id, { shouldDirty: id !== plan.responsableId }),
+    // El vigente fuera de la lista se conserva solo con el tipo original: el backend no lo revalida.
+    conservar: (responsableId, tipo) => responsableId === plan.responsableId && tipo === plan.tipoId,
   });
 
   const equiposActivos = equiposQuery.data ?? [];
@@ -135,13 +192,14 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   );
 
   const opcionesResponsable = conValorFueraDeCatalogo(
-    (usuariosQuery.data ?? []).map((usuario) => ({
+    (responsablesQuery.data ?? []).map((usuario) => ({
       id: usuario.id,
       nombre: `${usuario.nombre} ${usuario.apellido}`,
     })),
-    usuariosQuery.isSuccess,
-    plan.responsableId,
-    "Responsable dado de baja",
+    responsablesQuery.isSuccess,
+    // Con otro tipo, el vigente ya no se conserva: no hay opción sintética que ofrecer.
+    esTipoOriginal ? plan.responsableId : "",
+    "Responsable no habilitado",
   );
 
   let opcionesEquipo: OpcionCatalogo[] = equiposActivos;
@@ -183,9 +241,12 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
   // opuesto que pisar, así que les alcanza con `open`.
   useReaplicarAlResolver(open && objetivo === "equipo", opcionesEquipoFirmes, "equipoId", equipoIdDelPlan, setValue);
   useReaplicarAlResolver(open, prioridadesQuery.isSuccess, "prioridadId", plan.prioridadId, setValue);
-  useReaplicarAlResolver(open, usuariosQuery.isSuccess, "responsableId", plan.responsableId, setValue);
+  useReaplicarAlResolver(open, tiposResueltos, "tipoId", plan.tipoId, setValue);
+  // El responsable no usa `useReaplicarAlResolver`: su lista cambia con el tipo, y lo reaplica (o lo
+  // borra) `useResponsableSegunTipo` cada vez que la lista de un tipo resuelve.
 
   const avisaCadencia = !!(dirtyFields.intervaloValor || dirtyFields.intervaloUnidad);
+  const avisaAnticipacion = !!(dirtyFields.anticipacionValor || dirtyFields.anticipacionUnidad);
 
   function elegirObjetivo(tipo: Objetivo) {
     setObjetivo(tipo);
@@ -216,9 +277,13 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
       // y lo enviado tienen que ser el mismo string.
       ubicacion: objetivo === "ubicacion" ? values.ubicacion || null : null,
       prioridadId: values.prioridadId,
+      tipoId: values.tipoId,
       responsableId: values.responsableId,
       intervaloValor: Number(values.intervaloValor),
       intervaloUnidad: values.intervaloUnidad,
+      // El schema ya garantizó dígitos no vacíos: `Number` no puede recibir "".
+      anticipacionValor: Number(values.anticipacionValor),
+      anticipacionUnidad: values.anticipacionUnidad,
       activo: values.activo,
     };
     editarMutation.mutate(dto, { onSuccess: () => setOpen(false) });
@@ -353,10 +418,37 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
           </div>
 
           <div className="flex flex-col gap-1">
+            <label htmlFor="plan-editar-tipo" className="text-sm font-medium text-foreground">
+              Tipo de ticket
+            </label>
+            <Select id="plan-editar-tipo" error={!!errors.tipoId} {...register("tipoId")}>
+              {opcionesTipo.map((tipo) => (
+                <option key={tipo.id} value={tipo.id}>
+                  {tipo.nombre}
+                </option>
+              ))}
+            </Select>
+            {errors.tipoId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.tipoId.message}
+              </p>
+            )}
+            {tiposQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                No se pudieron cargar los tipos de ticket.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1">
             <label htmlFor="plan-editar-responsable" className="text-sm font-medium text-foreground">
               Responsable
             </label>
             <Select id="plan-editar-responsable" error={!!errors.responsableId} {...register("responsableId")}>
+              {/* Vacío cuando el cambio de tipo dejó afuera al responsable: hay que elegir otro. */}
+              <option value="" disabled>
+                Elija un responsable
+              </option>
               {opcionesResponsable.map((responsable) => (
                 <option key={responsable.id} value={responsable.id}>
                   {responsable.nombre}
@@ -368,11 +460,18 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
                 {errors.responsableId.message}
               </p>
             )}
-            {usuariosQuery.isError && (
+            {avisoResponsable && !responsableElegido && (
               <p role="alert" className="text-sm text-destructive">
-                No se pudo cargar la lista de responsables. Puede deberse a que no tenés permiso para ver usuarios
-                (depende de un permiso independiente de este formulario).
+                {avisoResponsable}
               </p>
+            )}
+            {responsablesQuery.isError && (
+              <p role="alert" className="text-sm text-destructive">
+                No se pudo cargar la lista de responsables.
+              </p>
+            )}
+            {responsablesQuery.isSuccess && responsablesQuery.data.length === 0 && (
+              <p className="text-sm text-muted-foreground">{SIN_RESPONSABLES}</p>
             )}
           </div>
 
@@ -406,6 +505,37 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
             </div>
           </div>
           {avisaCadencia && <p className="text-sm text-muted-foreground">{AVISO_CADENCIA}</p>}
+
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-editar-anticipacion" className="text-sm font-medium text-foreground">
+                Anticipación
+              </label>
+              <Input
+                id="plan-editar-anticipacion"
+                type="number"
+                min="0"
+                step="1"
+                error={!!errors.anticipacionValor}
+                {...register("anticipacionValor")}
+              />
+              {errors.anticipacionValor && (
+                <p role="alert" className="text-sm text-destructive">
+                  {errors.anticipacionValor.message}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-1 flex-col gap-1">
+              <label htmlFor="plan-editar-anticipacion-unidad" className="text-sm font-medium text-foreground">
+                Unidad de anticipación
+              </label>
+              <Select id="plan-editar-anticipacion-unidad" {...register("anticipacionUnidad")}>
+                <option value="DIAS">Días</option>
+                <option value="MESES">Meses</option>
+              </Select>
+            </div>
+          </div>
+          {avisaAnticipacion && <p className="text-sm text-muted-foreground">{AVISO_ANTICIPACION}</p>}
 
           <label className="flex items-center gap-2 text-sm text-foreground">
             <input id="plan-editar-activo" type="checkbox" className="h-4 w-4 accent-primary" {...register("activo")} />
