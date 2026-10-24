@@ -28,6 +28,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   del ticket), GET compras con COMPRAS:LECTURA, notas de rollback en el runbook — (este commit)
 - [x] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
   "Nuevo ticket" con todos los tipos — (este commit)
+- [ ] T3b — S5, L22, L30 — worker — `bloqueada` en GET /tickets/:id para el detalle sin COMPRAS:LECTURA;
+  Ayuda reparaciones-edilicias y reparaciones-listado — (pendiente)
 - [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
 
 ## Log
@@ -195,3 +197,6 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   `/reparaciones/:id/compras`, ubicación oculta en Edilicia). GREEN: `pnpm vitest run src/features/tickets
   src/features/edilicia` 30 archivos / 357 tests. Compuertas del frontend: `pnpm lint` sin advertencias
   ni errores, `pnpm type-check` sin errores, `pnpm test` 282 archivos / 2488 tests.
+- **L32** (dueño, 2026-10-24) — "edilicia es para los que ven Edilicia, mantenimiento y los otros ticket
+  no": la pantalla Edilicia sigue exigiendo Ver sobre algún tipo del módulo Edilicia (opción a); el
+  menú y la ruta no cambian.
