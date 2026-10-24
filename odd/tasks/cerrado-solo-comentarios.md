@@ -19,6 +19,9 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
 
 - [x] T1 — S1-S6 — worker — guards de backend y gating de frontend — (este commit)
 
+- [ ] T2 — S1, S3, L11 — worker — borrado lógico bloqueado en esos estados para quien no es administrador
+  — (pendiente)
+
 ## Log
 
 - **L1** (dueño, 2026-10-23) — pedido S1, textual.
@@ -76,3 +79,6 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
   lock, borrado y primera respuesta. Frontend: `pnpm lint`, `pnpm type-check` y `pnpm test` (2502) verdes.
   Ayuda: `reparaciones-edilicias.md` corregida (descompletar en RESUELTO es de administradores; sección
   nueva "Reparación resuelta, cerrada o cancelada").
+- **L11** (dueño, 2026-10-24) — "Si bloquea el borrado de ticket como dices": el borrado lógico
+  (`DELETE /tickets/:id`) también queda bloqueado en RESUELTO, CERRADO y CANCELADO para quien no es
+  ADMINISTRADOR ni ROOT (resuelve L9).
