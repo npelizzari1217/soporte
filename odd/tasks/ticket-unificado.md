@@ -24,6 +24,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   timeline (migración reversible, verificada contra una base efímera; falta contra un dump) — (este commit)
 - [x] T2 — S1, S4, S5 — worker — backend: compras, bloqueo y ubicación sobre el ticket; altas de todo
   tipo sin satélite — (este commit)
+- [ ] T2b — S3, S4, L19 — worker — comentarios de reparación internos (migrados y nuevos, por el caso de uso
+  del ticket), GET compras con COMPRAS:LECTURA, notas de rollback en el runbook — (pendiente)
 - [ ] T3 — S2, S6 — worker — frontend: detalle con compras, pantalla Edilicia reutilizable por tipo,
   "Nuevo ticket" con todos los tipos — (pendiente)
 - [ ] T4 — S1 — worker — retiro del satélite y de `comentarios_reparacion` — (pendiente)
@@ -110,3 +112,6 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   COMPRAS:LECTURA (JD-A-004, JD-B-005) y comentarios de reparación migrados como públicos (JD-B-001):
   decisiones del dueño; (5) rollback desvincula adjuntos de comentarios migrados (JD-A-006, JD-B-003) y
   avisos de conflicto de ubicación solo por NOTICE (JD-A-005): documentar en el runbook.
+- **L19** (decisiones del dueño, 2026-10-24) — Comentarios de reparación: "Internos (recomendado)" (solo
+  personal con Comentario interno; aplica también a los 11 existentes). Ver compras vinculadas en el
+  detalle: "Solo con permiso de Compras (rec.)" (COMPRAS:LECTURA; los demás ven solo si está bloqueado).
