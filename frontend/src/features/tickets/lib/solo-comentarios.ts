@@ -3,7 +3,7 @@
  * Espejo de `ticketSoloComentarios` de
  * `backend/src/tickets/domain/policies/solo-comentarios.policy.ts`: en esos estados, quien no es
  * ADMINISTRADOR ni ROOT solo comenta (ni campos, ni tareas, ni adjuntos, ni compras, ni
- * responsable). Es experiencia: el backend decide y su 422 llega como toast.
+ * responsable, ni borrado). Es experiencia: el backend decide y su 422 llega como toast.
  */
 
 /** Estados de solo comentarios, los mismos que `ESTADOS_SOLO_COMENTARIOS` del backend. */

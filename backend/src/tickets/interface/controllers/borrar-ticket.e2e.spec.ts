@@ -1,6 +1,7 @@
 /**
  * borrar-ticket.e2e.spec.ts — borrado lógico y recuperación de tickets por HTTP
- * (odd/tasks/permisos-por-tipo-ticket.md, T10, S8, L39-L41).
+ * (odd/tasks/permisos-por-tipo-ticket.md, T10, S8, L39-L41; en RESUELTO, CERRADO y CANCELADO solo
+ * para administradores, odd/cerrado-solo-comentarios L11).
  *
  * Endpoints reales (`DELETE /tickets/:id`, `POST /tickets/:id/recuperar`, `GET /tickets?borrados=true`,
  * los lectores de tickets y `PUT /usuarios/:id/permisos-por-tipo`) con guards reales, master de test
@@ -337,6 +338,44 @@ describe('Borrar y recuperar tickets (odd/permisos-por-tipo-ticket, T10, S8)', (
     expect(await deletedAtDe(sinBorrar.id)).toBeNull();
     expect(await operacionesDe(sinBorrar.id, 'TICKET_BORRADO')).toEqual([]);
   });
+
+  it.each([
+    ['RESUELTO', 'resuelto'],
+    ['CERRADO', 'cerrado'],
+    ['CANCELADO', 'cancelado'],
+  ])(
+    'en %s, el técnico con Borrar recibe 422 y el ticket sigue; el administrador lo borra (L11)',
+    async (codigo, nombre) => {
+      const delTecnico = await crearTicket(tipoConBorrar, `En ${codigo} tecnico`);
+      const delAdmin = await crearTicket(tipoConBorrar, `En ${codigo} admin`);
+      const estado = await tenant.estado.findUniqueOrThrow({ where: { codigo } });
+      await tenant.ticket.updateMany({
+        where: { id: { in: [delTecnico.id, delAdmin.id] } },
+        data: { estadoId: estado.id },
+      });
+
+      const rechazado = await http<{ message: string }>(
+        'DELETE',
+        `/tickets/${delTecnico.id}`,
+        tokenTecnico,
+      );
+      const permitido = await http('DELETE', `/tickets/${delAdmin.id}`, tokenAdmin);
+
+      expect(rechazado.status).toBe(422);
+      expect(rechazado.body.message).toBe(
+        `El ticket está ${nombre}: solo admite comentarios. ` +
+          'Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      expect(await deletedAtDe(delTecnico.id)).toBeNull();
+      expect(await operacionesDe(delTecnico.id, 'TICKET_BORRADO')).toEqual([]);
+      expect(await idsDelListado(tokenTecnico, `tipo=${tipoConBorrar}`)).toContain(delTecnico.id);
+
+      expect(permitido.status).toBe(204);
+      expect(await deletedAtDe(delAdmin.id)).not.toBeNull();
+      const [borrado] = await operacionesDe(delAdmin.id, 'TICKET_BORRADO');
+      expect(borrado?.autorId).toBe(adminId);
+    },
+  );
 
   it('un ticket borrado desaparece para quien lo veía: listado, detalle, timeline, PDF, exportación, dashboard y reparaciones', async () => {
     const ticket = await crearTicket(tipoConBorrar, 'Visible antes');

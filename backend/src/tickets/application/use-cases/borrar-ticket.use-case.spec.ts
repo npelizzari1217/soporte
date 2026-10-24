@@ -1,8 +1,10 @@
 /**
- * [UNIT] Borrado lógico de un ticket (odd/tasks/permisos-por-tipo-ticket.md, S8, L39-L41), con
+ * [UNIT] Borrado lógico de un ticket (odd/tasks/permisos-por-tipo-ticket.md, S8, L39-L41; en
+ * RESUELTO, CERRADO y CANCELADO solo para administradores, odd/cerrado-solo-comentarios L11), con
  * fakes en memoria: se afirma sobre el estado final (`deleted_at` del ticket y entradas del
  * historial), no sobre las llamadas.
  */
+import { EstadoEntity } from '../../domain/entities/estado.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TicketEntity } from '../../domain/entities/ticket.entity';
@@ -11,6 +13,7 @@ import {
   TicketConPendientesNoBorrableError,
   TicketNoEncontradoError,
   TicketPreventivoNoBorrableError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 import { AccionTipoTicket } from '../../domain/permisos-tipo-ticket';
 import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
@@ -23,14 +26,32 @@ const MANTENIMIENTO = 'tipo-mantenimiento';
 const PREVENTIVO = 'tipo-preventivo';
 const ACTOR = 'usr-actor';
 
-function ticket(id: string, tipoId: string, solicitanteId = 'usr-otro'): TicketEntity {
+/** Catálogo de estados del tenant, indexado por id (`estado-<codigo>`). */
+const ESTADOS = new Map(
+  ['NUEVO', 'ASIGNADO', 'EN_PROCESO', 'ESPERANDO_CLIENTE', 'RESUELTO', 'CERRADO', 'CANCELADO'].map(
+    (codigo, orden) => {
+      const id = `estado-${codigo}`;
+      return [
+        id,
+        EstadoEntity.create({ codigo, nombre: codigo, color: null, orden, activo: true }, id),
+      ];
+    },
+  ),
+);
+
+function ticket(
+  id: string,
+  tipoId: string,
+  estadoId = 'estado-EN_PROCESO',
+  solicitanteId = 'usr-otro',
+): TicketEntity {
   return TicketEntity.create(
     {
       numero: `SOP-2026-${id}`,
       titulo: `Ticket ${id}`,
       descripcion: null,
       tipoId,
-      estadoId: 'estado-en-proceso',
+      estadoId,
       prioridadId: 'prioridad-media',
       cicloId: 'ciclo-1',
       ticketReferenciaId: null,
@@ -42,13 +63,20 @@ function ticket(id: string, tipoId: string, solicitanteId = 'usr-otro'): TicketE
 
 /** Escenario con un ticket de cada tipo, sus tareas y las compras de su reparación. */
 function escenario(
-  opciones: { tareas?: TareaTicketEntity[]; compras?: Record<string, string[]> } = {},
+  opciones: {
+    tareas?: TareaTicketEntity[];
+    compras?: Record<string, string[]>;
+    /** Estado de los tickets al cargarlos; por defecto EN_PROCESO. */
+    estadoId?: string;
+    /** Lo que otra transacción escribió mientras el borrado esperaba el lock del ticket. */
+    alTomarLock?: (tickets: Map<string, TicketEntity>) => void;
+  } = {},
 ) {
   const tickets = new Map(
     [
-      ticket('t-soporte', SOPORTE),
-      ticket('t-mant', MANTENIMIENTO),
-      ticket('t-prev', PREVENTIVO),
+      ticket('t-soporte', SOPORTE, opciones.estadoId),
+      ticket('t-mant', MANTENIMIENTO, opciones.estadoId),
+      ticket('t-prev', PREVENTIVO, opciones.estadoId),
     ].map((t) => [t.id, t]),
   );
   const tareas = opciones.tareas ?? [];
@@ -61,6 +89,7 @@ function escenario(
     esVisiblePara: async () => false,
     bloquear: vi.fn(async () => {
       expect(enTransaccion).toBe(true);
+      opciones.alTomarLock?.(tickets);
     }),
     borrarSiActivo: async (id: string, ahora: Date) => {
       const actual = tickets.get(id);
@@ -80,6 +109,7 @@ function escenario(
       findIdByCodigo: async (codigo: string) =>
         Object.keys(codigosDeTipo).find((id) => codigosDeTipo[id] === codigo) ?? null,
     },
+    { findById: async (id: string) => ESTADOS.get(id) ?? null },
     {
       listarPorTicket: async (ticketId: string) =>
         tareas.filter((t) => t.ticketId === ticketId && !t.isDeleted()),
@@ -123,7 +153,7 @@ describe('BorrarTicketUseCase', () => {
     const borrado = tickets.get('t-soporte');
     expect(borrado?.deletedAt).toEqual(AHORA);
     // El borrado no toca el estado: es lo que permite recuperarlo tal cual (L41).
-    expect(borrado?.estadoId).toBe('estado-en-proceso');
+    expect(borrado?.estadoId).toBe('estado-EN_PROCESO');
     expect(operaciones).toHaveLength(1);
     expect(operaciones[0]).toMatchObject({
       ticketId: 't-soporte',
@@ -132,6 +162,116 @@ describe('BorrarTicketUseCase', () => {
       // Interna (L45): visible solo con OBSERVAR sobre el tipo.
       esInterno: true,
     });
+  });
+
+  it.each([
+    ['RESUELTO', 'resuelto'],
+    ['CERRADO', 'cerrado'],
+    ['CANCELADO', 'cancelado'],
+  ])(
+    'en %s, quien no es administrador no lo borra aunque tenga Borrar: 422 y nada cambia (L11)',
+    async (codigo, nombre) => {
+      const { useCase, tickets, operaciones } = escenario({ estadoId: `estado-${codigo}` });
+
+      const result = await useCase.execute({
+        ticketId: 't-soporte',
+        ...actorQueBorraSoloSoporte(),
+      });
+
+      expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+      expect(result.getError().message).toBe(
+        `El ticket está ${nombre}: solo admite comentarios. ` +
+          'Solo un administrador puede modificarlo o reabrirlo.',
+      );
+      expect(tickets.get('t-soporte')?.isDeleted()).toBe(false);
+      expect(operaciones).toEqual([]);
+    },
+  );
+
+  it.each(['RESUELTO', 'CERRADO', 'CANCELADO'])(
+    'en %s, un administrador sí lo borra (S3)',
+    async (codigo) => {
+      const { useCase, tickets, operaciones } = escenario({ estadoId: `estado-${codigo}` });
+
+      const result = await useCase.execute({
+        ticketId: 't-soporte',
+        ...alcanceSinRestriccion('usr-admin'),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(tickets.get('t-soporte')?.deletedAt).toEqual(AHORA);
+      expect(operaciones.map((o) => o.autorId)).toEqual(['usr-admin']);
+    },
+  );
+
+  it.each(['NUEVO', 'ASIGNADO', 'EN_PROCESO', 'ESPERANDO_CLIENTE'])(
+    'caso hermano: en %s, quien tiene Borrar sin ser administrador lo borra',
+    async (codigo) => {
+      const { useCase, tickets } = escenario({ estadoId: `estado-${codigo}` });
+
+      const result = await useCase.execute({
+        ticketId: 't-soporte',
+        ...actorQueBorraSoloSoporte(),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(tickets.get('t-soporte')?.isDeleted()).toBe(true);
+    },
+  );
+
+  it('en CERRADO, sin Borrar sobre el tipo manda el 403 y sin Ver el 404, antes que el 422', async () => {
+    const { useCase, tickets } = escenario({ estadoId: 'estado-CERRADO' });
+
+    const sinBorrar = await useCase.execute({ ticketId: 't-mant', ...actorQueBorraSoloSoporte() });
+    const sinVer = await useCase.execute({
+      ticketId: 't-mant',
+      ...alcancePorTipo(ACTOR, { [SOPORTE]: ['LECTURA', 'VER_TODOS', 'BORRADO'] }),
+    });
+
+    expect(sinBorrar.getError()).toBeInstanceOf(AccionSobreTipoNoPermitidaError);
+    expect(sinVer.getError()).toBeInstanceOf(TicketNoEncontradoError);
+    expect(tickets.get('t-mant')?.isDeleted()).toBe(false);
+  });
+
+  it('en CERRADO con una tarea pendiente, el 422 es el del estado: resolver la tarea tampoco puede', async () => {
+    const pendiente = TareaTicketEntity.crear({
+      ticketId: 't-soporte',
+      descripcion: 'Cambiar fuente',
+      orden: 1,
+    });
+    const { useCase, tickets } = escenario({ estadoId: 'estado-CERRADO', tareas: [pendiente] });
+
+    const result = await useCase.execute({ ticketId: 't-soporte', ...actorQueBorraSoloSoporte() });
+
+    expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+    expect(tickets.get('t-soporte')?.isDeleted()).toBe(false);
+  });
+
+  it('decide sobre el estado releído con el lock: si lo cerraron mientras esperaba, 422 y nada cambia', async () => {
+    const { useCase, tickets, operaciones } = escenario({
+      // La transición que tenía el lock hizo commit: la relectura ve el ticket cerrado.
+      alTomarLock: (actuales) =>
+        actuales.set('t-soporte', ticket('t-soporte', SOPORTE, 'estado-CERRADO')),
+    });
+
+    const result = await useCase.execute({ ticketId: 't-soporte', ...actorQueBorraSoloSoporte() });
+
+    expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+    expect(tickets.get('t-soporte')?.isDeleted()).toBe(false);
+    expect(operaciones).toEqual([]);
+  });
+
+  it('caso hermano: si un administrador lo reabrió mientras esperaba el lock, lo borra', async () => {
+    const { useCase, tickets } = escenario({
+      estadoId: 'estado-CERRADO',
+      alTomarLock: (actuales) =>
+        actuales.set('t-soporte', ticket('t-soporte', SOPORTE, 'estado-EN_PROCESO')),
+    });
+
+    const result = await useCase.execute({ ticketId: 't-soporte', ...actorQueBorraSoloSoporte() });
+
+    expect(result.isOk()).toBe(true);
+    expect(tickets.get('t-soporte')?.isDeleted()).toBe(true);
   });
 
   it('sin Borrar sobre el tipo de ESE ticket: 403 aunque pueda borrar los de otro tipo (S2)', async () => {

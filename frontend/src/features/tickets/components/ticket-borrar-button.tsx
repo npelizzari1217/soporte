@@ -2,9 +2,10 @@
 
 /**
  * TicketBorrarButton — "Borrar" del detalle del ticket (odd/permisos-por-tipo-ticket, S8), con
- * confirmación. El detalle lo monta solo con `BORRADO` sobre el tipo del ticket; decide el backend
- * (403 sin la acción, 422 si hay tareas pendientes o compras vinculadas, con un mensaje que dice
- * qué resolver y que llega como toast).
+ * confirmación. El detalle lo monta solo con `BORRADO` sobre el tipo del ticket y, para quien no
+ * es administrador, fuera de RESUELTO, CERRADO y CANCELADO (odd/cerrado-solo-comentarios, L11);
+ * decide el backend (403 sin la acción, 422 en esos estados o si hay tareas pendientes o compras
+ * vinculadas, con un mensaje que dice qué resolver y que llega como toast).
  *
  * Al borrar navega al listado: el ticket deja de existir para todos salvo ADMINISTRADOR y ROOT, que
  * lo encuentran en el filtro "Borrados".

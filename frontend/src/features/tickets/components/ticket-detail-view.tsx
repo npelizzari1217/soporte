@@ -146,8 +146,10 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
   const puedeModificarAhora = puedeModificar && soloComentarios === null;
   // Un ticket PREVENTIVO no se borra (L45: el backend responde 422). Con el catálogo sin resolver
   // no se sabe si lo es, y "Borrar" queda oculto; resuelto, un tipo ausente es uno desactivado, que
-  // no puede ser PREVENTIVO (los tipos del sistema no se desactivan).
-  const ofrecerBorrar = puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO;
+  // no puede ser PREVENTIVO (los tipos del sistema no se desactivan). En RESUELTO, CERRADO y
+  // CANCELADO solo lo borra un administrador (odd/cerrado-solo-comentarios, L11).
+  const ofrecerBorrar =
+    puede("BORRADO") && tiposQuery.isSuccess && tipoCodigo !== TIPO_CODIGO_PREVENTIVO && soloComentarios === null;
 
   return (
     <div className="flex flex-col gap-6">

@@ -3,8 +3,8 @@
  * S1-S3).
  *
  * En esos estados, quien no es ADMINISTRADOR ni ROOT solo puede comentar el ticket: no edita sus
- * campos, no toca sus tareas, no adjunta archivos, no vincula ni desvincula compras, no lo reasigna
- * y no lo saca de esos estados. ADMINISTRADOR y ROOT quedan exentos: pueden corregir y reabrir.
+ * campos, no toca sus tareas, no adjunta archivos, no vincula ni desvincula compras, no lo reasigna,
+ * no lo saca de esos estados y no lo borra (L11). ADMINISTRADOR y ROOT quedan exentos: pueden corregir y reabrir.
  *
  * Es la regla única de todas las escrituras sobre un ticket existente; cada caso de uso la aplica
  * después de la autorización del actor (un 404/403 sigue mandando antes que este 422). Los flujos

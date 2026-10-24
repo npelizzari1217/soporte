@@ -10,8 +10,11 @@
  * - Los tres primeros casos reproducen la carrera de forma determinista (mismo patrón que
  *   `tareas-ticket.concurrencia.integration.spec.ts`): un puerto del caso de uso corre el borrado
  *   completo entre la carga y la transacción.
- * - El último corre las dos transacciones a la vez: la creación de la tarea tiene el lock del
+ * - El cuarto corre las dos transacciones a la vez: la creación de la tarea tiene el lock del
  *   ticket y el borrado tiene que esperarla, así que ve la tarea nueva y responde 422.
+ * - El último cierra el ticket entre la carga y la transacción del borrado: quien no es
+ *   administrador recibe el 422 de solo comentarios porque el borrado decide sobre el ticket
+ *   releído con el lock, no sobre el que cargó (odd/cerrado-solo-comentarios, L11).
  *
  * No toca master: sin `usarLockMasterTest()`. Higiene: filas -> cerrar cliente -> dropDatabase.
  */
@@ -30,6 +33,7 @@ import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import {
   TicketConPendientesNoBorrableError,
   TicketNoEncontradoError,
+  TicketSoloComentariosError,
 } from '../../domain/errors/tickets.errors';
 import { PrismaBloqueoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-bloqueo-ticket.repository';
 import { PrismaEstadoRepository } from '../../infrastructure/persistence/prisma/prisma-estado.repository';
@@ -38,7 +42,7 @@ import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/pr
 import { PrismaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTipoOperacionRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
 import { PrismaTipoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-ticket.repository';
-import { alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
+import { alcancePorTipo, alcanceSinRestriccion } from '../../test-helpers/alcance-ticket';
 import { ActorTarea } from '../services/tareas-ticket.reglas';
 import { BorrarTicketUseCase } from './borrar-ticket.use-case';
 import { CrearTareaTicketUseCase } from './crear-tarea-ticket.use-case';
@@ -84,6 +88,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const borrar = new BorrarTicketUseCase(
     ticketRepo,
     tipoTicketRepo,
+    estadoRepo,
     tareaRepo,
     bloqueoRepo,
     operacionRepo,
@@ -341,5 +346,43 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
     expect(await deletedAt(ticketId)).toBeNull();
     expect(await client.tareaTicket.count({ where: { ticketId, completada: false } })).toBe(1);
     expect(await codigosDelHistorial(ticketId)).toEqual(['TAREA_CREADA']);
+  });
+
+  it('cerrado entre la carga y el lock: quien no es administrador recibe 422 y el ticket sigue activo (L11)', async () => {
+    const ticketId = await nuevoTicket();
+    const cerrado = await client.estado.upsert({
+      where: { codigo: 'CERRADO' },
+      create: { codigo: 'CERRADO', nombre: 'Cerrado' },
+      update: {},
+    });
+    // El chequeo de PREVENTIVO corre después de cargar el ticket: ahí otro lo cierra.
+    const tipoRepoQueCierra = {
+      findIdByCodigo: async (codigo: string): Promise<string | null> => {
+        await client.ticket.update({ where: { id: ticketId }, data: { estadoId: cerrado.id } });
+        return tipoTicketRepo.findIdByCodigo(codigo);
+      },
+    };
+    const borrarConCierre = new BorrarTicketUseCase(
+      ticketRepo,
+      tipoRepoQueCierra,
+      estadoRepo,
+      tareaRepo,
+      bloqueoRepo,
+      operacionRepo,
+      tipoOperacionRepo,
+      txRunner,
+    );
+
+    const result = await enTenant(() =>
+      borrarConCierre.execute({
+        ticketId,
+        ...alcancePorTipo(TECNICO, { [tipoId]: ['LECTURA', 'VER_TODOS', 'BORRADO'] }),
+      }),
+    );
+
+    expect(result.isFail()).toBe(true);
+    expect(result.getError()).toBeInstanceOf(TicketSoloComentariosError);
+    expect(await deletedAt(ticketId)).toBeNull();
+    expect(await codigosDelHistorial(ticketId)).toEqual([]);
   });
 });

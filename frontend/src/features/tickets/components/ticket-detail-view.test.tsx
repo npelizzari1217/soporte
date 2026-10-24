@@ -790,6 +790,35 @@ describe("TicketDetailView — resuelto, cerrado o cancelado: solo comentarios (
     expect(screen.queryByText(/solo admite comentarios/)).toBeNull();
   });
 
+  it.each([
+    ["e-resuelto", "El ticket está resuelto: solo admite comentarios."],
+    ["e-cerrado", "El ticket está cerrado: solo admite comentarios."],
+    ["e-cancelado", "El ticket está cancelado: solo admite comentarios."],
+  ])("%s, un no administrador con BORRADO sobre el tipo no ve «Borrar» (L11)", async (estadoId, motivo) => {
+    enEstado(estadoId);
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1(...TODO, "BORRADO") });
+    const acciones = (await screen.findByRole("heading", { name: "Acciones" })).closest("section") as HTMLElement;
+    // El motivo prueba que el catálogo de estados ya resolvió: la ausencia no es por carga.
+    expect(await within(acciones).findByText(motivo)).toBeInTheDocument();
+    // El tipo también resolvió (la cabecera muestra su nombre): sin la regla, «Borrar» estaría.
+    expect(await screen.findByText("Soporte")).toBeInTheDocument();
+    expect(within(acciones).queryByRole("button", { name: "Borrar" })).toBeNull();
+  });
+
+  it("caso hermano: el mismo técnico en EN_PROCESO ve «Borrar»", async () => {
+    enEstado("e-en-proceso");
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1(...TODO, "BORRADO") });
+
+    expect(await screen.findByRole("button", { name: "Borrar" })).toBeInTheDocument();
+  });
+
+  it.each(["e-resuelto", "e-cerrado", "e-cancelado"])("%s, un ADMINISTRADOR ve «Borrar» (S3)", async (estadoId) => {
+    enEstado(estadoId);
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: administrador });
+
+    expect(await screen.findByRole("button", { name: "Borrar" })).toBeInTheDocument();
+  });
+
   it("un ADMINISTRADOR en CERRADO sigue gestionando tareas, adjuntos y compras (S3)", async () => {
     enEstado("e-cerrado");
     renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: administrador });
@@ -806,7 +835,7 @@ describe("TicketDetailView — resuelto, cerrado o cancelado: solo comentarios (
 describe("TicketDetailView — «Borrar» según el tipo del ticket (odd/permisos-por-tipo-ticket, S8)", () => {
   beforeEach(() => mockBackend());
 
-  it("con BORRADO sobre el tipo del ticket se ofrece «Borrar», en cualquier estado", async () => {
+  it("con BORRADO sobre el tipo del ticket se ofrece «Borrar» en un estado abierto", async () => {
     renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1("BORRADO") });
     await screen.findByText("Impresora rota");
 

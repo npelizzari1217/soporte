@@ -19,8 +19,8 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
 
 - [x] T1 — S1-S6 — worker — guards de backend y gating de frontend — (este commit)
 
-- [ ] T2 — S1, S3, L11 — worker — borrado lógico bloqueado en esos estados para quien no es administrador
-  — (pendiente)
+- [x] T2 — S1, S3, L11 — worker — borrado lógico bloqueado en esos estados para quien no es administrador
+  — (este commit)
 
 ## Log
 
@@ -82,3 +82,22 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
 - **L11** (dueño, 2026-10-24) — "Si bloquea el borrado de ticket como dices": el borrado lógico
   (`DELETE /tickets/:id`) también queda bloqueado en RESUELTO, CERRADO y CANCELADO para quien no es
   ADMINISTRADOR ni ROOT (resuelve L9).
+- **L12** (decisión y evidencia, T2/S1, S3, L11) — `BorrarTicketUseCase` aplica `verificarTicketModificable`
+  con `esAlcanceDeAdministrador`: en RESUELTO, CERRADO y CANCELADO quien no es ADMINISTRADOR ni ROOT
+  recibe `TicketSoloComentariosError` (422, mismo mensaje que T1); los administradores borran como antes.
+  Orden: 404 y 403 (`cargarTicketParaOperar`) → PREVENTIVO (422) → dentro de la transacción, el estado →
+  pendientes (422). El estado va antes que pendientes porque en esos estados ese actor tampoco puede
+  resolverlas. Carrera: el caso de uso solo tomaba el lock; ahora usa `bloquearTicketActivo` y decide
+  sobre el ticket **releído** con el lock (un ticket cerrado mientras esperaba da 422; uno reabierto
+  por un administrador, se borra). Nueva dependencia `ESTADO_REPOSITORY` en el provider. `POST
+  /tickets/:id/recuperar` ya era solo de administradores (`RecuperarTicketUseCase`, 403 si
+  `permisosPorTipo !== null`); no se tocó. Frontend: el detalle no ofrece «Borrar» cuando
+  `motivoSoloComentarios` da motivo; Edilicia no tiene botón de borrar ticket. Ayuda: ningún artículo
+  dice que se borra en cualquier estado ni documenta el borrado de tickets; sin cambios (queda para la
+  tanda final de Ayuda). RED observado antes del fix: unit 5 fallos (`Result.ok` donde se esperaba el
+  422; con una tarea pendiente, `TicketConPendientesNoBorrableError`), integración 1 (`expected false to
+  be true`: el borrado del ticket cerrado en carrera pasaba), e2e 3 (`expected 204 to be 422`), frontend
+  3 (`expected <button> to be null`). GREEN: `borrar-ticket.use-case.spec` 25, `borrar-ticket.concurrencia
+  .integration.spec` 5, `borrar-ticket.e2e.spec` 11, `tickets.controller.spec` 87, `recuperar-ticket
+  .use-case.spec` 4. Backend `pnpm lint` y `pnpm typecheck` en cero. Frontend `pnpm lint`, `pnpm
+  type-check` y `pnpm test` (2509) verdes.

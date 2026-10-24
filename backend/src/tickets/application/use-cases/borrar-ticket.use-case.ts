@@ -7,6 +7,7 @@ import {
   TicketNoEncontradoError,
   TicketPreventivoNoBorrableError,
 } from '../../domain/errors/tickets.errors';
+import { IEstadoRepository } from '../../domain/ports/i-estado.repository';
 import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
 import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
@@ -14,6 +15,8 @@ import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { ITipoOperacionRepository } from '../../domain/ports/i-tipo-operacion.repository';
 import { ITipoTicketRepository } from '../../domain/ports/i-tipo-ticket.repository';
 import { TIPO_CODIGO_PREVENTIVO } from '../../domain/tipos-ticket.constants';
+import { bloquearTicketActivo } from '../services/bloquear-ticket-activo';
+import { esAlcanceDeAdministrador, verificarTicketModificable } from '../services/solo-comentarios';
 import { resolverTipoOperacion } from '../services/tareas-ticket.reglas';
 import { AlcanceActorTicket, cargarTicketParaOperar } from '../services/visibilidad-ticket';
 
@@ -28,7 +31,10 @@ export interface BorrarTicketDto extends AlcanceActorTicket {
  *
  * - Acceso por el punto único (`cargarTicketParaOperar`, D2): 404 si el actor no ve el ticket, 403
  *   si lo ve sin `BORRADO` sobre su tipo. Un ticket ya borrado es 404.
- * - Se borra en cualquier estado, salvo que tenga tareas pendientes (activas y sin completar) o
+ * - En RESUELTO, CERRADO y CANCELADO solo lo borran ADMINISTRADOR y ROOT: para cualquier otro
+ *   actor es el 422 de `TicketSoloComentariosError` (odd/cerrado-solo-comentarios, L11). Va antes
+ *   que el de pendientes: en esos estados ese actor tampoco puede resolverlas.
+ * - Si no, se borra salvo que tenga tareas pendientes (activas y sin completar) o
  *   compras vinculadas: 422 que nombra qué resolver (L40). Las tareas completadas,
  *   los adjuntos, los comentarios y el historial no frenan: quedan con el ticket.
  * - Un ticket de tipo PREVENTIVO no se borra, ni siquiera un administrador: 422 (L45). Lo genera el
@@ -38,7 +44,8 @@ export interface BorrarTicketDto extends AlcanceActorTicket {
  *   recuperación lo devuelve tal cual estaba.
  * - El borrado queda en el historial (`TICKET_BORRADO`, con autor y fecha), en la misma
  *   transacción, como entrada interna: la ve quien tiene `OBSERVAR` sobre el tipo (L45). Los chequeos corren dentro de ella, después de tomar el lock del ticket, para
- *   evaluar lo que ya escribió quien lo tenía.
+ *   evaluar lo que ya escribió quien lo tenía: el estado se mira sobre el ticket releído, no
+ *   sobre el cargado antes de la transacción.
  */
 export class BorrarTicketUseCase {
   constructor(
@@ -47,6 +54,7 @@ export class BorrarTicketUseCase {
       'findById' | 'esVisiblePara' | 'bloquear' | 'borrarSiActivo'
     >,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdByCodigo'>,
+    private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
     private readonly bloqueoRepo: Pick<IBloqueoTicketRepository, 'comprasVinculadas'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
@@ -57,8 +65,8 @@ export class BorrarTicketUseCase {
 
   /**
    * @param dto Ticket y alcance del actor.
-   * @returns Ok; 404 si no lo ve o ya está borrado; 403 sin `BORRADO`; 422 si es PREVENTIVO o
-   *   tiene pendientes.
+   * @returns Ok; 404 si no lo ve o ya está borrado; 403 sin `BORRADO`; 422 si es PREVENTIVO,
+   *   si está resuelto, cerrado o cancelado y el actor no es administrador, o si tiene pendientes.
    */
   async execute(dto: BorrarTicketDto): Promise<Result<void, DomainError>> {
     const cargado = await cargarTicketParaOperar(this.ticketRepo, dto.ticketId, dto, 'BORRADO');
@@ -74,7 +82,14 @@ export class BorrarTicketUseCase {
     );
 
     return this.txRunner.run(async (): Promise<Result<void, DomainError>> => {
-      await this.ticketRepo.bloquear(ticket.id);
+      const actual = await bloquearTicketActivo(this.ticketRepo, ticket.id);
+      if (!actual) return Result.fail(new TicketNoEncontradoError(ticket.id));
+      const modificable = await verificarTicketModificable(
+        this.estadoRepo,
+        actual,
+        esAlcanceDeAdministrador(dto),
+      );
+      if (modificable.isFail()) return Result.fail(modificable.getError());
 
       const [tareas, compras] = await Promise.all([
         this.tareaRepo.listarPorTicket(ticket.id),
