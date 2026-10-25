@@ -83,3 +83,4 @@ la fecha del ciclo, conserva esa fecha como fecha objetivo y el responsable reci
   `fechaGeneracion` en bordes (fin de mes, bisiesto, 0 días), dos barridos de recordatorio concurrentes y
   2 meses contra 59/60 días; comentario de `AnticipacionNoMenorQueCadenciaError` corregido (con unidades
   mezcladas el mes de 30 días es una aproximación).
+- **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.

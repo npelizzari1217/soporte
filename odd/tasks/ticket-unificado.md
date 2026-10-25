@@ -226,3 +226,4 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   completa del backend.
 - **L36** (dueño, 2026-10-24) — "dejamos T4 para el deploy posterior": T4 queda bloqueada hasta después del
   deploy de T1-T3b; mientras tanto `rollback.sql` sigue disponible sin pérdida.
+- **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.

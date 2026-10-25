@@ -73,3 +73,4 @@ ficha con tabla y gráfico, para seguir la devaluación del equipo en el tiempo.
 - **L9** (T1, pendiente fuera del alcance) — `frontend/src/shared/lib/formato-fecha.ts` lista en su tabla
   las columnas `@db.Date`; falta sumar `ValoracionEquipo.fecha` (el código ya usa
   `formatearFechaCalendario`). No estaba entre las superficies autorizadas.
+- **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.

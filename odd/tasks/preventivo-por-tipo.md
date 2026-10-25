@@ -101,3 +101,4 @@ más feat/responsables-por-tipo (merge 1db294af).
   se deshace con el error); el runbook lo aclara y la migración, ya aplicada, no se editó. Compuertas:
   `pnpm lint` y `pnpm typecheck` en cero; specs del DTO (14), editar-plan (30), listar-planes (3),
   controller (25) y e2e de preventivo (36) en verde.
+- **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.

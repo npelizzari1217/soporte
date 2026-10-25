@@ -127,3 +127,4 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
   `escrituras-manuales-con-lock` 4, `estado-por-tareas` 4, `tareas-ticket.atomicidad` 4,
   `tareas-ticket.e2e` 27, `tareas-ticket.controller.spec` 15, `reparaciones.e2e` 32. Backend `pnpm lint`
   y `pnpm typecheck` en cero. Frontend `pnpm lint`, `pnpm type-check` y `pnpm test` (2511) verdes.
+- **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.
