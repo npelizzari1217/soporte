@@ -4,7 +4,7 @@
  * `TenantMigrationRunnerAdapter` (mismo patrón que `calendario-laboral.repositorios.integration.spec.ts`).
  *
  * El reemplazo corre dentro de un `PrismaTenantTransactionRunner` REAL; la falla a mitad de camino
- * se fuerza parcheando el `upsert` del cliente transaccional, igual que en ese spec.
+ * la provoca Postgres con un trigger temporal que rechaza el día 3, sin mockear el cliente.
  *
  * No toca master: sin `usarLockMasterTest()`. Higiene: desconectar Prisma → dropDatabase.
  */
@@ -158,6 +158,7 @@ describe('PrismaHorarioLaboralUsuarioRepository — Integration (odd/tasks/tiemp
   it('un fallo a mitad del reemplazo deja el horario anterior entero (rollback real)', () =>
     conContexto(async () => {
       const antes = await repo.obtener(TECNICO_A);
+      expect(antes).not.toBeNull();
       // La falla la pone la base, no un mock: un trigger temporal rechaza el día 3, así que los
       // upserts de los días 0 a 2 ya corrieron dentro de la transacción cuando revienta.
       await tenantClient.$executeRawUnsafe(`
