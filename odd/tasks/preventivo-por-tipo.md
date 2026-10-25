@@ -102,3 +102,19 @@ más feat/responsables-por-tipo (merge 1db294af).
   `pnpm lint` y `pnpm typecheck` en cero; specs del DTO (14), editar-plan (30), listar-planes (3),
   controller (25) y e2e de preventivo (36) en verde.
 - **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.
+- **L12** (bugfix con TDD, pedido del dueño "resuelve luego las dos cosas que quedaron abiertas El null, y
+  T4"; esto cubre el `null`) — El resto de `EditarPlanPreventivoHttpDto` tenía el mismo defecto que L11:
+  `titulo`, `intervaloValor`, `intervaloUnidad`, `anticipacionValor`, `anticipacionUnidad` y `activo`
+  iban con `@IsOptional`, que deja pasar el `null`. RED observado: `preventivo.dto.spec.ts` (6 casos,
+  "Cannot convert undefined or null to object": el campo no tenía ningún error de validación) y
+  `preventivo.e2e.spec.ts` (6 casos): `titulo` y `activo` "expected 500 to be 400" (`TypeError` al leer
+  `null.length` en `validarTitulo`; `PrismaClientValidationError` con `activo: null` en `guardar`), y los
+  otros cuatro "expected 422 to be 400" (los frenaba el dominio, no el borde). Fix:
+  `@ValidateIf(valor !== undefined)` en los seis, como en L11; ausente sigue siendo "sin cambio". Siguen
+  con `@IsOptional` y aceptan `null` a propósito `instrucciones`, `equipoId` y `ubicacion`: sus columnas
+  son nullable (`String?` en `prisma_tenant/schema.prisma`), `null` borra las instrucciones o cambia de
+  objetivo, y el XOR del objetivo lo decide la entidad. Casos que lo fijan: DTO (`null` válido en los
+  tres) y e2e (`instrucciones: null` → 200 con la columna en NULL). El alta no tiene el defecto: sus
+  únicos opcionales NOT NULL son la anticipación, y `create()` toma `null` como ausente (`?? 0`,
+  `?? 'DIAS'`). GREEN: DTO (23) y e2e de preventivo (43). Compuertas: `pnpm lint` y `pnpm typecheck` en
+  cero; spec del controller (25) en verde.

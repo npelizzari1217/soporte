@@ -113,7 +113,14 @@ export class CreatePlanPreventivoHttpDto {
 
 /** Body de `PATCH /preventivo/planes/:id`. PATCH semántico (`undefined` = no tocar). */
 export class EditarPlanPreventivoHttpDto {
-  @IsOptional()
+  /*
+   * Los campos de columnas NOT NULL van con `@ValidateIf` y no con `@IsOptional`: `@IsOptional`
+   * también saltea el `null`, que llegaba a la entidad como un valor y moría en el dominio (422) o
+   * en el `UPDATE` (500). Ausente sigue siendo "sin cambio". `instrucciones`, `equipoId` y
+   * `ubicacion` siguen con `@IsOptional` porque sus columnas son nullable: ahí `null` borra el
+   * texto o cambia de objetivo, y el XOR del objetivo lo decide la entidad.
+   */
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsString()
   @MinLength(1)
   @MaxLength(TITULO_MAX_LENGTH)
@@ -132,11 +139,6 @@ export class EditarPlanPreventivoHttpDto {
   @MaxLength(UBICACION_MAX_LENGTH)
   ubicacion?: string | null;
 
-  /*
-   * `prioridadId`, `tipoId` y `responsableId` van con `@ValidateIf` y no con `@IsOptional`:
-   * `@IsOptional` también saltea el `null`, que ninguna de las tres columnas admite. Llegaba a la
-   * entidad como un valor y el `UPDATE` reventaba con un 500. Ausente sigue siendo "sin cambio".
-   */
   @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsUUID()
   prioridadId?: string;
@@ -149,26 +151,26 @@ export class EditarPlanPreventivoHttpDto {
   @IsUUID()
   responsableId?: string;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsInt()
   @IsPositive()
   @Max(INTERVALO_VALOR_MAXIMO)
   intervaloValor?: number;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsIn(UNIDADES_INTERVALO)
   intervaloUnidad?: IntervaloUnidad;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsInt()
   @Min(0)
   anticipacionValor?: number;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsIn(UNIDADES_INTERVALO)
   anticipacionUnidad?: IntervaloUnidad;
 
-  @IsOptional()
+  @ValidateIf((_objeto: EditarPlanPreventivoHttpDto, valor: unknown) => valor !== undefined)
   @IsBoolean()
   activo?: boolean;
 }

@@ -114,6 +114,36 @@ describe('EditarPlanPreventivoHttpDto — anticipación', () => {
   });
 });
 
+// Mismo defecto que L11 en el resto de los campos de la edición: `@IsOptional` dejaba pasar el
+// `null` a la entidad, que lo rechazaba con un 422 de dominio o lo escribía en una columna NOT NULL
+// (500). Cada caso mira la restricción propia del campo, no solo que haya algún error.
+describe('EditarPlanPreventivoHttpDto — null en campos NOT NULL', () => {
+  it.each([
+    ['titulo', 'isString'],
+    ['intervaloValor', 'isInt'],
+    ['intervaloUnidad', 'isIn'],
+    ['anticipacionValor', 'isInt'],
+    ['anticipacionUnidad', 'isIn'],
+    ['activo', 'isBoolean'],
+  ])('%s: null se rechaza por %s; ausente sigue siendo válido', async (campo, restriccion) => {
+    expect(await erroresDe(EditarPlanPreventivoHttpDto, { [campo]: null }, campo)).toHaveProperty(
+      restriccion,
+    );
+    expect(await erroresDe(EditarPlanPreventivoHttpDto, {}, campo)).toBeUndefined();
+  });
+
+  // Columnas nullable: `null` significa "borrar" (instrucciones) o "cambiar de objetivo" (equipo
+  // por ubicación o al revés, cuyo XOR decide el dominio).
+  it.each(['instrucciones', 'equipoId', 'ubicacion'])(
+    '%s: null sigue siendo válido',
+    async (campo) => {
+      expect(
+        await erroresDe(EditarPlanPreventivoHttpDto, { [campo]: null }, campo),
+      ).toBeUndefined();
+    },
+  );
+});
+
 describe('toPlanPreventivoResponseDto — anticipación', () => {
   it('expone la anticipación del plan', () => {
     const plan = PlanPreventivoEntity.create({

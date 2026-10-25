@@ -591,9 +591,20 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
       expect(filaCruda!.activo).toBe(false);
     });
 
-    // Ninguna de estas columnas admite NULL: con `@IsOptional` el `null` pasaba el DTO y el
-    // `UPDATE` reventaba con un 500 crudo. Ausente sigue siendo "sin cambio" (PATCH semántico).
-    it.each(['tipoId', 'prioridadId', 'responsableId'] as const)(
+    // Ninguna de estas columnas admite NULL: con `@IsOptional` el `null` pasaba el DTO y moría en
+    // el `UPDATE` (500 crudo) o en la entidad (422 de dominio). Ausente sigue siendo "sin cambio"
+    // (PATCH semántico).
+    it.each([
+      'tipoId',
+      'prioridadId',
+      'responsableId',
+      'titulo',
+      'intervaloValor',
+      'intervaloUnidad',
+      'anticipacionValor',
+      'anticipacionUnidad',
+      'activo',
+    ] as const)(
       '%s: null → 400 desde el DTO, y el plan conserva el suyo',
       async (campo) => {
         const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
@@ -617,6 +628,30 @@ describe('Preventivo e2e — ABM de planes, autorización REAL por HTTP (WU-4, c
         expect(fila[campo]).toBe(creado.data[campo]);
       },
     );
+
+    // `instrucciones` es nullable: `null` borra el texto, no es un error.
+    it('instrucciones: null → 200 y la columna queda en NULL', async () => {
+      const actor = await crearActorConPermisos(['PREVENTIVO:ALTAS', 'PREVENTIVO:MODIFICACION']);
+      const creado = await httpPost<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes`,
+        planValidoBody({ instrucciones: 'Revisar filtros' }),
+        bearer(actor.accessToken),
+      );
+      expect(creado.data.instrucciones).toBe('Revisar filtros');
+
+      const { status, data } = await httpPatch<PlanPreventivoResponseDto>(
+        `${baseUrl}/preventivo/planes/${creado.data.id}`,
+        { instrucciones: null },
+        bearer(actor.accessToken),
+      );
+
+      expect(status).toBe(200);
+      expect(data.instrucciones).toBeNull();
+      const fila = await tenantClient.planPreventivo.findUniqueOrThrow({
+        where: { id: creado.data.id },
+      });
+      expect(fila.instrucciones).toBeNull();
+    });
   });
 
   // ─── DELETE /preventivo/planes/:id — PREVENTIVO:BORRADO, [R4] ───────────
