@@ -13,8 +13,8 @@ export interface ConteoComentariosTicket {
  * Desde odd/ticket-unificado (S3) los comentarios de reparación SON los comentarios del ticket
  * (operaciones `COMENTARIO` del timeline): se escriben con `IOperacionTicketRepository` y se leen
  * con el timeline. Este puerto queda con lo único que el timeline no da, el conteo por lote del
- * listado. `comentarios_reparacion` quedó congelada (la migración 20261024120000 copió sus filas al
- * timeline) y T4 la retira, junto con el nombre heredado de este puerto.
+ * listado. La migración 20261024120000 copió `comentarios_reparacion` al timeline y la 20261025150000
+ * (T4b) la borró; el nombre heredado de este puerto queda hasta que se lo renombre aparte.
  *
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS.
  */

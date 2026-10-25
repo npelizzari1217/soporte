@@ -11,7 +11,8 @@
  * - `desvincular()` es hard delete real (D5), `deleteMany` por el par.
  * - `findComprasVinculadasByTicketIds()` filtra `compra.deletedAt IS NULL`
  *   (D6) EN LA CONSULTA (relation filter de Prisma), no en memoria después.
- * - `reparacion_compra` quedó congelada: este repositorio no la lee ni la escribe.
+ * - La tabla vieja `reparacion_compra` ya no existe (migración 20261025150000): la fuente es
+ *   `ticket_compra`.
  *
  * Ref design: sdd/reparacion-bloqueada-por-compra/design, D2/D3/D4/D5/D6.
  */

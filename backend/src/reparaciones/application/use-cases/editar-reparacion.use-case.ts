@@ -51,7 +51,7 @@ export interface ReparacionEditada {
 /**
  * EditarReparacionUseCase — edita un ticket desde Edilicia (odd/detalle-ticket-legible, S4-S5):
  * título, descripción, prioridad, sector y ubicación, todos del ticket (odd/ticket-unificado, S1:
- * la ubicación del satélite quedó congelada). Vale para un ticket de cualquier tipo.
+ * el satélite y su ubicación se retiraron en T4b). Vale para un ticket de cualquier tipo.
  *
  * Regla "no se empezó a trabajar" (decisión del dueño): se edita si el ticket está NUEVO o ASIGNADO y
  * ninguna tarea activa está completada; fuera de eso, solo ROOT. Una reparación **bloqueada** (con

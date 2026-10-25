@@ -33,8 +33,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 - [x] T4a — S1, L37 — worker — el código deja de tocar `ticket_edilicia`, `comentarios_reparacion` y
   `reparacion_compra` (alta de Edilicia sin satélite, rutas alias y código muerto retirados, PDF con la
   ubicación del ticket); las tablas quedan — (este commit)
-- [ ] T4b — S1, L37 — worker — migración que borra las tres tablas con prechecks y runbook, en un deploy
-  posterior a T4a — (pendiente)
+- [x] T4b — S1, L37, L41 — inline — migración que borra las tres tablas con prechecks y runbook, en un deploy
+  posterior a T4a — (este commit; deploy pendiente de decisión del dueño)
 
 ## Log
 
@@ -305,3 +305,27 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   contra `soporte_tenant_test`). El guard acepta también `?.` y el delegado pasado como argumento.
   Evidencia: guard 5/5, `runbook-migraciones.spec.ts` 9/9, lint y typecheck limpios, verify
   independiente (sus sondas quedaron en el spec).
+- **L41 — Dueño autoriza T4b (2026-10-25), tras el deploy de T4a (main 78388820):** "la 1 podemos hacerlo
+  perfectamente". Diseño: migración `20261025150000_retiro_satelite_edilicia` que borra
+  `comentarios_reparacion`, `reparacion_compra` y `ticket_edilicia` con `DROP TABLE IF EXISTS` y sin
+  `CASCADE` (un dependiente desconocido aborta en vez de caer en silencio). Precheck que ABORTA: un
+  comentario de reparación sin su copia en `operaciones_ticket` (mismo id), porque sería el único dato que
+  se pierde. Prechecks que solo AVISAN (NOTICE): vínculos de `reparacion_compra` sin par en `ticket_compra`
+  (pueden ser desvinculaciones legítimas posteriores a la copia) y ubicaciones de satélite que el ticket no
+  tiene (el usuario pudo vaciarla). `rollback.sql` recrea las tres tablas con su DDL vigente, un satélite
+  por ticket del módulo EDILICIA y `reparacion_compra` desde `ticket_compra`; los comentarios no vuelven
+  (quedan en el timeline). El guard del runbook del release del 2026-10-25 gana un tope superior
+  (`20261025140000`) para no reclamar migraciones de releases posteriores.
+- **L42 — T4b implementada (2026-10-25).** Migración `20261025150000_retiro_satelite_edilicia` + `rollback.sql`,
+  modelos retirados de `schema.prisma`, runbook "Borrado de las tablas del satélite de Edilicia (T4b)", guard
+  del runbook con tope `20261025140000`. Evidencia: `migracion-retiro-satelite-edilicia.integration.spec.ts`
+  6/6 (aborta sin copia, aborta con dependiente, borra y avisa, re-ejecutable, rollback como proyección,
+  re-aplicable), `runbook-migraciones.spec.ts` 10/10, typecheck y lint limpios, suite backend completa
+  790 archivos / 10029 tests en verde. `prisma format` se descartó: realineaba modelos ajenos.
+- **L43 — Verify independiente de T4b (2026-10-25): PASS en los 5 puntos.** Probó `prisma migrate deploy` real
+  (aborta atómico con P0001 y con 2BP01 ante una vista; corre en tenants sin una o sin las tres tablas), DDL del
+  rollback idéntico al catálogo previo y 7 mutaciones atrapadas por el spec. Advertencias aplicadas: runbook con
+  la recuperación de `P3009` y el texto de error independiente del idioma, comentario de la migración sin la
+  afirmación no probada de "dos tenants sin las tablas", comentarios vencidos en cinco archivos de
+  `reparaciones/`, y dos tests nuevos (DDL del rollback contra el catálogo; tenant al que le falta una tabla).
+  Guard + migración + runbook 21/21, lint y typecheck limpios.

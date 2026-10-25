@@ -357,7 +357,6 @@ model Ticket {
 
   operaciones           OperacionTicket[]
   archivosTicket        ArchivoTicket[]
-  ticketEdilicia        TicketEdilicia?
   ticketSoporte         TicketSoporte?
   encuestasSatisfaccion EncuestaSatisfaccion[]
   tareas                TareaTicket[]
@@ -576,92 +575,11 @@ model ArchivoOperacion {
 
 // ─── REPARACIONES EDILICIAS ────────────────────────────────────────────────────
 //
-// CONGELADAS desde odd/ticket-unificado (migración 20261024120000): las compras, la ubicación y los
-// comentarios pasaron al ticket (`ticket_compra`, `tickets.ubicacion`, `operaciones_ticket`). Nadie
-// lee ni escribe `ticket_edilicia`, `reparacion_compra` ni `comentarios_reparacion` desde T4a (el
-// alta de Edilicia ya no crea la fila del satélite); los modelos quedan hasta que T4b borre las tres
-// tablas. `sin-tablas-del-satelite.spec.ts` impide que el código vuelva a usarlas.
-//
-// ticket_edilicia (satélite 1:1 con tickets). Los pasos de la reparación son las
-// tareas del ticket base (`tareas_ticket`); `subtareas_edilicia`,
-// `personal_asignado_id` y `porcentaje_avance` se retiraron en la migración
-// 20261014120000 (odd/tareas-con-tecnico T8). El avance se calcula al leer.
-//
-// ticket_edilicia: satélite 1:1 de los tickets con un tipo del módulo EDILICIA, creado por el alta
-//   hasta T4a; los tickets creados después no tienen fila.
-//   ubicacion: TEXTO LIBRE (VarChar 255). Antes era una FK a un catálogo
-//     `ubicaciones` (árbol), removido — módulo que no se usa (migración
-//     20260812160000_remover_ubicaciones, backfill del nombre a texto).
-// comentarios_reparacion: notas del operador sobre la reparación (ej. "falta
-//   el repuesto X"), a nivel de la REPARACIÓN y no de cada tarea.
-//   APPEND-ONLY: sin updated_at ni deleted_at (mismo criterio estructural que
-//   operaciones_compra, ADR-C4) — un comentario no se edita ni se borra.
-//   autor_id: soft ref → master.usuarios.id.
-//   CHECK (char_length(btrim(texto)) BETWEEN 1 AND 2000) — migration SQL.
-
-model TicketEdilicia {
-  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketId  String    @unique @map("ticket_id") @db.Uuid
-  /// Texto libre (ex-FK a catálogo `ubicaciones`, removido — ver migración 20260812160000).
-  ubicacion String?   @db.VarChar(255)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
-
-  ticket Ticket @relation(fields: [ticketId], references: [id])
-
-  comentarios       ComentarioReparacion[]
-  comprasVinculadas ReparacionCompra[]
-
-  @@map("ticket_edilicia")
-}
-
-model ComentarioReparacion {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketEdiliciaId String   @map("ticket_edilicia_id") @db.Uuid
-  /// CHECK (char_length(btrim(texto)) BETWEEN 1 AND 2000) — migration SQL.
-  texto            String   @db.Text
-  /// Soft ref → master.usuarios.id. Sin FK cross-DB.
-  autorId          String   @map("autor_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
-
-  @@index([ticketEdiliciaId, createdAt], map: "comentarios_reparacion_ticket_created_at_idx")
-  @@map("comentarios_reparacion")
-}
-
-// Vínculo REPARACIÓN ↔ COMPRA (`reparacion_compra`), a nivel de CABECERA de
-// compra (no de ítem): el vínculo dice "esta reparación espera esta compra",
-// y el grupo de estado del que se deriva el bloqueo (`derivarGrupoEstadoCompra`,
-// compras/domain/services/estado-compra.ts) también es de cabecera.
-//
-// HARD DELETE, SIN deleted_at — se aparta a propósito de
-// `comentarios_reparacion`: un vínculo equivocado es un ERROR DE DATO, no el
-// dicho de una persona. Un soft delete obligaría a arrastrar `deleted_at IS
-// NULL` en toda lectura y a una UNIQUE parcial, por un historial que nadie
-// pidió. Si mañana hace falta, la migración es ADITIVA.
-//
-// SIN updated_at: el vínculo no se edita — se crea o se borra.
-//
-// UNIQUE(ticketEdiliciaId, compraId): vincular dos veces la misma compra a la
-// misma reparación no cambia el estado derivado, pero sí duplicaría la fila
-// en "qué compras la frenan". Además da idempotencia al endpoint de vincular
-// (ON CONFLICT DO NOTHING) sin check-then-insert (ventana de carrera).
-model ReparacionCompra {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  ticketEdiliciaId String   @map("ticket_edilicia_id") @db.Uuid
-  compraId         String   @map("compra_id") @db.Uuid
-  /// Marca de INICIO del bloqueo. La métrica de tiempo bloqueado está fuera
-  /// de alcance, pero el dato queda disponible sin costo adicional.
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  ticketEdilicia TicketEdilicia @relation(fields: [ticketEdiliciaId], references: [id])
-  compra         Compra         @relation(fields: [compraId], references: [id])
-
-  @@unique([ticketEdiliciaId, compraId], map: "reparacion_compra_ticket_compra_key")
-  @@map("reparacion_compra")
-}
+// Sin tablas propias desde odd/ticket-unificado: las compras, la ubicación y los comentarios viven
+// en el ticket (`ticket_compra`, `tickets.ubicacion`, `operaciones_ticket`) y los pasos son sus
+// tareas (`tareas_ticket`). El satélite `ticket_edilicia`, `reparacion_compra` y
+// `comentarios_reparacion` se borraron en la migración 20261025150000 (T4b);
+// `sin-tablas-del-satelite.spec.ts` impide que el código vuelva a nombrarlas.
 
 // Vínculo TICKET ↔ COMPRA (`ticket_compra`, odd/ticket-unificado). Reemplaza a `reparacion_compra`:
 // cualquier ticket, de cualquier tipo, puede tener compras vinculadas, y una con grupo de estado
@@ -1299,7 +1217,6 @@ model Compra {
 
   items                  ItemCompra[]
   operaciones            OperacionCompra[]
-  reparacionesVinculadas ReparacionCompra[]
   ticketsVinculados      TicketCompra[]
 
   @@index([cicloId])

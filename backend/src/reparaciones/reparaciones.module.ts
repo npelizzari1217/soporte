@@ -81,8 +81,8 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
  * del TICKET, de cualquier tipo: la grilla lista tickets por tipo y las rutas
  * `/tickets/:ticketId/compras` (`TicketComprasController`) operan sobre
  * cualquiera. Las tablas viejas del satélite (`ticket_edilicia`,
- * `comentarios_reparacion`, `reparacion_compra`) no se usan: lo verifica
- * `sin-tablas-del-satelite.spec.ts`. El checklist de avance son las tareas del
+ * `comentarios_reparacion`, `reparacion_compra`) se borraron en la migración
+ * 20261025150000, y `sin-tablas-del-satelite.spec.ts` impide volver a nombrarlas. El checklist de avance son las tareas del
  * ticket (`tareas_ticket`, de `TicketsModule`).
  *
  * Wiring (PR6-PR9, screaming module hexagonal — domain/ → application/ →

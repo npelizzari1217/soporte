@@ -3,7 +3,7 @@
  * IComentarioReparacionRepository sobre el timeline del ticket (odd/ticket-unificado, S3).
  *
  * Cuenta las operaciones `COMENTARIO` activas de cada ticket, separadas por `es_interno`, en UNA
- * consulta agregada. `comentarios_reparacion` quedó congelada: no se lee ni se escribe.
+ * consulta agregada. La tabla vieja `comentarios_reparacion` ya no existe (migración 20261025150000).
  */
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';

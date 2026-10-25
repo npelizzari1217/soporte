@@ -6,7 +6,8 @@ import { CompraVinculada } from '../services/bloqueo-reparacion';
  *
  * Desde odd/ticket-unificado (S1) el vínculo es del ticket, de cualquier tipo, y no del satélite
  * de Edilicia: las firmas reciben ids de ticket. El nombre del puerto es el heredado de
- * `reparacion_compra`, que quedó congelada; T4 lo renombra junto con el retiro del satélite.
+ * `reparacion_compra`, que se borró en la migración 20261025150000 (T4b); el nombre queda hasta
+ * que se lo renombre aparte.
  *
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS. La implementación concreta
  * (`PrismaReparacionCompraRepository`) obtiene su cliente vía `TenantContext.getClient()`.

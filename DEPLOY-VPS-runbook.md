@@ -1568,7 +1568,9 @@ ticket desaparece de la pantalla.
 
 **Solo si el rollback va más atrás de `6595d838`** (por ejemplo a `3b13b320`, que además exige los
 `rollback.sql` del deploy del 2026-10-25): ese código lista las reparaciones por `ticket_edilicia`,
-y los tickets del módulo creados después de T4a no tienen fila ahí. Para que vuelvan a la
+y los tickets del módulo creados después de T4a no tienen fila ahí. Si T4b ya se aplicó, su
+`rollback.sql` recrea las tablas y los satélites de todos los tickets del módulo, y esta consulta
+sobra (ver "Borrado de las tablas del satélite de Edilicia (T4b)"). Si no, para que vuelvan a la
 pantalla, en cada base de inquilino:
 
 ```sql
@@ -1583,6 +1585,68 @@ WHERE tt.modulo = 'EDILICIA' AND te.id IS NULL;
 El filtro es por módulo y no por código: el satélite existía para todos los tipos del módulo
 EDILICIA (MANTENIMIENTO incluido). `id` sale del default de la columna, `ubicacion` queda en NULL y
 `updated_at` se carga a mano porque no tiene default en la base.
+
+## Borrado de las tablas del satélite de Edilicia (T4b)
+
+La migración `20261025150000_retiro_satelite_edilicia` (`odd/tasks/ticket-unificado.md`, T4b) borra
+`comentarios_reparacion`, `reparacion_compra` y `ticket_edilicia` en cada base de inquilino.
+
+**Precondición: T4a ya en producción.** El código anterior a T4a (`6595d838` o antes) lee esas
+tablas: con ese código corriendo, la pantalla Edilicia se rompe. T4a entró con `78388820`, el
+2026-10-25.
+
+### Antes del deploy
+
+1. `predeploy-dump.ps1`, como en cualquier deploy con migraciones: el dump es lo único que conserva
+   el contenido de las tablas borradas.
+2. Opcional, para saber de antemano si la migración va a abortar. En cada base de inquilino, el
+   resultado esperado es `0`:
+
+   ```sql
+   SELECT count(*) FROM comentarios_reparacion cr
+   WHERE NOT EXISTS (SELECT 1 FROM operaciones_ticket o WHERE o.id = cr.id);
+   ```
+
+   En un tenant que ya no tiene la tabla, la consulta falla porque la relación no existe (el texto
+   depende del idioma del servidor), y la migración pasa de largo sin problema.
+
+### Qué hace la migración
+
+- **Aborta** si un comentario de reparación no tiene su copia en el timeline del ticket. No borra
+  nada en ese tenant, y `deploy.ps1` se corta con los servicios detenidos (ver "Cuando algo falla").
+  Es el único dato de esas tablas que no queda en otro lado. Los tenants que ya migraron quedan sin
+  las tablas, lo que con T4a en producción no importa. Prisma marca la migración como fallida en el
+  tenant que abortó: se copia el comentario que falta, o se decide descartarlo, y se marca la
+  migración como revertida en **ese** tenant (`migrate resolve --rolled-back
+  20261025150000_retiro_satelite_edilicia`, ver la lección sobre `P3009` en "Preflight que conviene
+  correr antes") antes de volver a desplegar.
+- **Avisa** con un `NOTICE`, sin frenar, los vínculos de `reparacion_compra` sin par en
+  `ticket_compra` y las ubicaciones del satélite que el ticket no tiene: son desvinculaciones o
+  ubicaciones vaciadas desde el ticket después de la copia del 2026-10-25.
+- **Aborta** si algo desconocido depende de las tablas (una FK o una vista): los `DROP` van sin
+  `CASCADE`.
+- Es re-ejecutable, y corre en los tenants que ya no tienen las tablas.
+
+### Rollback
+
+- **Volver a `78388820` (T4a)** no necesita nada más: ese código no usa las tablas.
+- **Volver más atrás** (`6595d838` o antes) exige correr antes el `rollback.sql` de la carpeta en
+  cada base de inquilino. Recrea las tres tablas, un satélite por cada ticket del módulo EDILICIA
+  (MANTENIMIENTO incluido) y los vínculos de compra desde `ticket_compra`.
+
+**Qué no vuelve con el `rollback.sql`:**
+
+- los comentarios de reparación: `comentarios_reparacion` vuelve vacía, porque los comentarios
+  están en el timeline del ticket como comentarios internos y no se distinguen de uno hecho desde
+  el ticket. Con un rollback a `3b13b320` o antes, el diálogo de comentarios de la reparación sale
+  vacío, y los rollbacks de `20261024130000` y `20261024120000` no los recuperan: quedan como
+  comentarios internos en el timeline;
+- la ubicación de los satélites: vuelven sin ubicación, porque la ubicación vive en el ticket;
+- los vínculos desvinculados después de la copia, que avisó el `NOTICE`;
+- la fila de la migración en `_prisma_migrations`: para volver a desplegar, se borra a mano.
+
+Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el dump de
+`predeploy-dump.ps1` (ver "Restore de datos"), y se pierde lo escrito después del deploy.
 
 ## Cuando algo falla
 

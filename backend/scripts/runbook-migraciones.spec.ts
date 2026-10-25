@@ -8,8 +8,9 @@
  * la lista. Este spec falla si una migración tenant del release no aparece por nombre en la
  * sección.
  *
- * El corte es el timestamp de la primera migración del release (`20261024120000`): las
- * anteriores ya están desplegadas y documentadas en sus propias secciones.
+ * El rango va de la primera migración del release (`20261024120000`) a la última
+ * (`20261025140000`): las anteriores ya estaban desplegadas, y las posteriores son de releases
+ * siguientes, documentados en sus propias secciones.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -17,6 +18,8 @@ import { resolve } from 'node:path';
 const repoRoot = resolve(__dirname, '..', '..');
 const directorioMigraciones = resolve(repoRoot, 'backend', 'prisma_tenant', 'migrations');
 const PRIMERA_MIGRACION_DEL_RELEASE = '20261024120000';
+/** Timestamp de la última migración del release; el nombre completo la incluye por el sufijo. */
+const ULTIMA_MIGRACION_DEL_RELEASE = '20261025140000';
 const ENCABEZADO = '## Deploy del 2026-10-25: checklist combinado';
 
 /**
@@ -38,13 +41,23 @@ function extraerSeccion(runbook: string): string {
 const seccion = extraerSeccion(readFileSync(resolve(repoRoot, 'DEPLOY-VPS-runbook.md'), 'utf8'));
 
 const migracionesDelRelease = readdirSync(directorioMigraciones, { withFileTypes: true })
-  .filter((entrada) => entrada.isDirectory() && entrada.name >= PRIMERA_MIGRACION_DEL_RELEASE)
+  .filter(
+    (entrada) =>
+      entrada.isDirectory() &&
+      entrada.name >= PRIMERA_MIGRACION_DEL_RELEASE &&
+      entrada.name.slice(0, ULTIMA_MIGRACION_DEL_RELEASE.length) <= ULTIMA_MIGRACION_DEL_RELEASE,
+  )
   .map((entrada) => entrada.name)
   .sort();
 
 describe('DEPLOY-VPS-runbook.md — checklist combinado del deploy del 2026-10-25', () => {
   it('encuentra migraciones tenant del release para verificar', () => {
     expect(migracionesDelRelease).toContain('20261024120000_ticket_unificado');
+    expect(migracionesDelRelease).toContain('20261025140000_historial_valor_residual');
+  });
+
+  it('deja afuera las migraciones de releases posteriores', () => {
+    expect(migracionesDelRelease).not.toContain('20261025150000_retiro_satelite_edilicia');
   });
 
   it('la sección termina antes del siguiente encabezado de nivel 2', () => {
