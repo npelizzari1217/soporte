@@ -61,7 +61,9 @@ function bloquesData(codigo: string): string[] {
 /** Cláusulas SET de los `UPDATE tickets` crudos de un archivo. */
 function clausulasSet(codigo: string): string[] {
   return [
-    ...codigo.matchAll(/UPDATE\s+"?tickets"?[\s\S]*?\bSET\b([\s\S]*?)\b(WHERE|FROM|RETURNING)\b/g),
+    ...codigo.matchAll(
+      /UPDATE\s+(?:"?\w+"?\.)?"?tickets"?[\s\S]*?\bSET\b([\s\S]*?)\b(WHERE|FROM|RETURNING)\b/gi,
+    ),
   ].map((m) => m[1]);
 }
 
@@ -88,7 +90,7 @@ describe('tramos del técnico — toda escritura del responsable o del estado pa
 
   it('ninguna escritura directa a tickets fuera del repositorio toca asignado_id ni estado_id', () => {
     const escritores = conPatron(
-      /\.ticket\.(create|createMany|update|updateMany|upsert)\(|INSERT INTO\s+"?tickets"?[\s(]|UPDATE\s+"?tickets"?\s/,
+      /\.ticket\.(create|createMany|update|updateMany|upsert)\(|INSERT INTO\s+(?:"?\w+"?\.)?"?tickets"?[\s(]|UPDATE\s+(?:"?\w+"?\.)?"?tickets"?\s/i,
     );
 
     expect(escritores).toEqual([
@@ -130,5 +132,14 @@ describe('tramos del técnico — toda escritura del responsable o del estado pa
     expect(
       clausulasSet('UPDATE tickets SET estado_id = $1, updated_at = now() WHERE id = $2'),
     ).toEqual([' estado_id = $1, updated_at = now() ']);
+  });
+
+  it('el SET crudo se detecta también con esquema y en minúsculas', () => {
+    expect(clausulasSet('UPDATE public.tickets SET estado_id = $1 WHERE id = $2')).toEqual([
+      ' estado_id = $1 ',
+    ]);
+    expect(clausulasSet('update tickets set asignado_id = $1 where id = $2')).toEqual([
+      ' asignado_id = $1 ',
+    ]);
   });
 });

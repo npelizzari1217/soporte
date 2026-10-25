@@ -152,3 +152,10 @@ Fuera de alcance, declarado antes de empezar:
   implementación (feature, §6.1); mutaciones verificadas: contar Esperando cliente como activo hace caer
   7 tests (dominio, servicio e integración); quitar la sincronización del decorador hace caer 12 de los 17
   de integración. Ayuda: sin cambios visibles (T4 los muestra).
+- **L11 — Verify independiente de T3 (2026-10-25): PASS, S2 y S4-S7 cumplidas, sin bloqueantes.** Confirmó el
+  re-uso de la transacción del caso de uso, el mismo modo de lock que `bloquear`, el rollback en los dos sentidos y
+  el orden operación-antes-de-`ahora()` en la medición. Aplicado: la guarda de escritores detecta `UPDATE`/`INSERT`
+  con esquema y en minúsculas; sondas de bordes en `domain/tramo-tecnico.probes.spec.ts`. Para T4: (A2) un ticket
+  borrado conserva su tramo abierto — T4 filtra los tickets borrados; (A3) si se resuelve justo después de
+  repriorizar, la meta queda la anterior (la aplica el listener post-commit), poco probable y aceptado.
+  `src/tiempo-tecnico` 7 archivos / 100 tests, lint y typecheck limpios.
