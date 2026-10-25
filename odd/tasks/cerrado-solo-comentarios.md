@@ -22,6 +22,9 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
 - [x] T2 — S1, S3, L11 — worker — borrado lógico bloqueado en esos estados para quien no es administrador
   — (este commit)
 
+- [ ] T3 — S1, S3, L14 — worker (bugfix, TDD) — sin cambio de estado para no administradores en RESUELTO,
+  incluido RESUELTO→CERRADO — (pendiente)
+
 ## Log
 
 - **L1** (dueño, 2026-10-23) — pedido S1, textual.
@@ -128,3 +131,9 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
   `tareas-ticket.e2e` 27, `tareas-ticket.controller.spec` 15, `reparaciones.e2e` 32. Backend `pnpm lint`
   y `pnpm typecheck` en cero. Frontend `pnpm lint`, `pnpm type-check` y `pnpm test` (2511) verdes.
 - **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.
+- **L14** (dueño, 2026-10-25, bug en producción) — "El estado cuando esta cerrado o resuelto ya no se
+  puede cambiar solo el root o el administrador lopodran hacer. pero hoy un tecnico lo puede hacer y esta
+  mal. Veo un ticket que dice resuelto y lo puedo colocar cerrado y esta mal. No lo puede hacer ni usuario
+  ni tecnico ni colaborador". Anula la excepción RESUELTO→CERRADO para no administradores que se tomó en
+  L5: en RESUELTO, CERRADO y CANCELADO solo ADMINISTRADOR y ROOT cambian el estado. Los flujos de sistema
+  (sin actor) no cambian.
