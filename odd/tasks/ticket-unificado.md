@@ -30,7 +30,11 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   "Nuevo ticket" con todos los tipos — (este commit)
 - [x] T3b — S5, L22, L30 — worker — `bloqueada` en GET /tickets/:id para el detalle sin COMPRAS:LECTURA;
   Ayuda reparaciones-edilicias y reparaciones-listado — (este commit)
-- [ ] T4 — S1 — worker — bloqueada (L36): retiro del satélite y de `comentarios_reparacion`, tras el deploy — (pendiente)
+- [ ] T4a — S1, L37 — worker — el código deja de tocar `ticket_edilicia`, `comentarios_reparacion` y
+  `reparacion_compra` (alta de Edilicia sin satélite, rutas alias y código muerto retirados, PDF con la
+  ubicación del ticket); las tablas quedan — (pendiente)
+- [ ] T4b — S1, L37 — worker — migración que borra las tres tablas con prechecks y runbook, en un deploy
+  posterior a T4a — (pendiente)
 
 ## Log
 
@@ -227,3 +231,8 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
 - **L36** (dueño, 2026-10-24) — "dejamos T4 para el deploy posterior": T4 queda bloqueada hasta después del
   deploy de T1-T3b; mientras tanto `rollback.sql` sigue disponible sin pérdida.
 - **Deploy** (2026-10-25) — En produccion con `main` 6595d838 (merge de integracion/deploy-2026-10-25): DEPLOY OK, 7 migraciones tenant en los 9 tenants, verificacion posterior igual a la foto previa (4 vinculos, 11 comentarios internos, 0 planes sin tipo, 5 valoraciones MIGRACION). Dump previo C:\soporte\backups\utc-backfill-20261024-205055; rollback de codigo 3b13b320.
+
+- **L37** (dueño, 2026-10-25) — "resuelve luego las dos cosas que quedaron abiertas El null, y T4": levanta
+  L36. T4 se parte en dos deploys (decisión técnica): T4a saca el código que toca las tablas viejas, así el
+  release anterior sigue pudiendo volver; T4b las borra recién con T4a en uso. El PDF pasa a mostrar la
+  ubicación en cualquier ticket que la tenga (coherente con S1).
