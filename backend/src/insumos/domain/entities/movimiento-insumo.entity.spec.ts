@@ -453,7 +453,7 @@ describe('MovimientoInsumoEntity', () => {
      * La tabla es APPEND-ONLY: no tiene `updated_at` ni `deleted_at`. La
      * entidad no puede inventar esos dos datos, así que `updatedAt` se espeja
      * de `createdAt` y `deletedAt` queda en `null` — mismo criterio que
-     * `ComentarioReparacionEntity.reconstitute`. Si `updatedAt` arrancara en
+     * seguía `ComentarioReparacionEntity.reconstitute`, ya retirada. Si `updatedAt` arrancara en
      * `new Date()`, una lectura mostraría un movimiento "modificado hoy" que
      * nadie tocó nunca.
      */

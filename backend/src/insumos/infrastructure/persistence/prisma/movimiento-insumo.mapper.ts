@@ -10,7 +10,7 @@
  *
  * Sin `toPersistence` de UPDATE: la tabla es append-only, así que el único
  * shape de escritura es el del INSERT. Precedente exacto:
- * `ComentarioReparacionMapper`.
+ * `ComentarioReparacionMapper`, ya retirado.
  *
  * Ref design: openspec/changes/insumos-entrega-2/design.md, decisión 4.
  */

@@ -4,8 +4,8 @@
  * migrada en `beforeAll`, dropeada en `afterAll`).
  *
  * Desde odd/ticket-unificado (S1) el vínculo vive en `ticket_compra` y se
- * pide por id de TICKET, de cualquier tipo y sin satélite de Edilicia; la tabla
- * vieja `reparacion_compra` quedó congelada y este repositorio no la escribe.
+ * pide por id de TICKET, de cualquier tipo; la tabla vieja `reparacion_compra`
+ * no se usa (lo verifica `reparaciones/sin-tablas-del-satelite.spec.ts`).
  *
  * Precedente exacto seguido:
  * `compras/infrastructure/persistence/prisma/prisma-compra-repository.aislamiento.integration.spec.ts`
@@ -173,8 +173,6 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
       where: { ticketId, compraId },
     });
     expect(filas).toHaveLength(1);
-    // La tabla congelada no se escribe más (odd/ticket-unificado).
-    expect(await tenantClient.reparacionCompra.count({ where: { compraId } })).toBe(0);
   });
 
   it('(b) desvincular() hace hard delete real de la fila', async () => {

@@ -12,9 +12,9 @@ import { DomainError } from '../../../shared/domain/result';
  */
 
 /**
- * TicketEdiliciaNoEncontradoError — el satélite `ticket_edilicia` con el
- * id/ticketId indicado no existe (o no fue creado — el ticket puede no ser
- * de tipo EDILICIA).
+ * TicketEdiliciaNoEncontradoError — el ticket pedido por una ruta
+ * `/reparaciones/:reparacionId` no existe o el actor no lo ve
+ * (`comoReparacion`): el 404 nombra la reparación, no el ticket base.
  * → HTTP 404 en la capa de presentación.
  *
  * Ref spec: F3-E3, F3-E4, F3-E5.
@@ -107,23 +107,6 @@ export class ReparacionNoEditableError extends DomainError {
         : motivo === 'TAREAS_COMPLETADAS'
           ? 'La reparación ya tiene tareas completadas: solo ROOT puede editarla.'
           : 'La reparación ya está en proceso: solo ROOT puede editarla.',
-    );
-  }
-}
-
-/**
- * La reparación no acepta comentarios nuevos (odd/ticket-cerrado-solo-lectura, S3): su ticket
- * está CERRADO o CANCELADO, o está bloqueada por una compra en curso. Leer sigue permitido.
- * → HTTP 422.
- */
-export class ComentarioReparacionNoPermitidoError extends DomainError {
-  readonly code = 'COMENTARIO_REPARACION_NO_PERMITIDO';
-
-  constructor(readonly motivo: 'cerrado' | 'cancelado' | 'bloqueado') {
-    super(
-      motivo === 'bloqueado'
-        ? 'La reparación está bloqueada por una compra en curso y no acepta comentarios nuevos.'
-        : `El ticket está ${motivo} y no acepta comentarios nuevos.`,
     );
   }
 }

@@ -10,7 +10,12 @@
 import 'reflect-metadata';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { CreateTicketEdilicioHttpDto, ListReparacionesQueryDto } from './reparaciones.dto';
+import {
+  COMENTARIO_TEXTO_MAX_LENGTH,
+  CreateComentarioReparacionHttpDto,
+  CreateTicketEdilicioHttpDto,
+  ListReparacionesQueryDto,
+} from './reparaciones.dto';
 import { TICKET_UBICACION_MAX_LENGTH } from '../../../tickets/domain/entities/ticket.entity';
 
 describe('CreateTicketEdilicioHttpDto — tope de largo de titulo espejando la columna', () => {
@@ -147,5 +152,31 @@ describe('ListReparacionesQueryDto — paginación y filtro de bloqueo (odd/repa
   it('acepta los bordes: pagina 1 y porPagina 1 y 100', async () => {
     expect((await errores({ pagina: '1', porPagina: '1' })).errores).toEqual([]);
     expect((await errores({ porPagina: '100' })).errores).toEqual([]);
+  });
+});
+
+/**
+ * Texto del comentario de Edilicia: el tope se mudó de la entidad retirada al DTO
+ * (odd/ticket-unificado, T4a) sin cambiar de valor, y el recorte sigue antes del piso.
+ */
+describe('CreateComentarioReparacionHttpDto — piso y tope del texto', () => {
+  const erroresDeTexto = async (texto: string) =>
+    (await validate(plainToInstance(CreateComentarioReparacionHttpDto, { texto }))).find(
+      (e) => e.property === 'texto',
+    )?.constraints;
+
+  it('el tope sigue en 2000 caracteres', () => {
+    expect(COMENTARIO_TEXTO_MAX_LENGTH).toBe(2000);
+  });
+
+  it('acepta un texto en el límite exacto y rechaza uno que lo pasa, por maxLength', async () => {
+    expect(await erroresDeTexto('x'.repeat(COMENTARIO_TEXTO_MAX_LENGTH))).toBeUndefined();
+    expect(await erroresDeTexto('x'.repeat(COMENTARIO_TEXTO_MAX_LENGTH + 1))).toHaveProperty(
+      'maxLength',
+    );
+  });
+
+  it('un texto de puro espacio queda vacío y lo rechaza minLength', async () => {
+    expect(await erroresDeTexto('   ')).toHaveProperty('minLength');
   });
 });

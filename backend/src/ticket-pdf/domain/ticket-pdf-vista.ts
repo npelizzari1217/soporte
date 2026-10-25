@@ -54,11 +54,6 @@ export interface TareasPdf {
   items: TareaPdf[];
 }
 
-/** El avance y las tareas ya no viven acá: van en `TicketPdfVista.tareas`, para cualquier tipo. */
-export interface EdiliciaPdf {
-  ubicacion: string | null;
-}
-
 export interface TicketPdfVista {
   cliente: {
     nombre: string;
@@ -80,8 +75,11 @@ export interface TicketPdfVista {
   descripcion: string | null;
   /** Presente solo en tickets de soporte. */
   soporte: SoportePdf | null;
-  /** Presente solo en tickets edilicios (reparaciones). */
-  edilicia: EdiliciaPdf | null;
+  /**
+   * Ubicación del ticket, de cualquier tipo (odd/ticket-unificado, S1); `null` si no tiene una.
+   * Antes vivía en una sección propia de los tickets edilicios.
+   */
+  ubicacion: string | null;
   /** Presente si el ticket tiene al menos una tarea activa, sea del tipo que sea. */
   tareas: TareasPdf | null;
   historial: EventoHistorialPdf[];

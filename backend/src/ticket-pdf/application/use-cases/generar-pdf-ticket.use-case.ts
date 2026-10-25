@@ -3,7 +3,6 @@ import { diaArgentinoCsv, fechaHoraCsv } from '../../../shared/infrastructure/cs
 import { VerLogoClienteUseCase } from '../../../clientes/application/use-cases/ver-logo-cliente.use-case';
 import { IEquipoInformaticoRepository } from '../../../equipos/domain/ports/i-equipo-informatico.repository';
 import { ITicketSoporteRepository } from '../../../equipos/domain/ports/i-ticket-soporte.repository';
-import { ITicketEdiliciaRepository } from '../../../reparaciones/domain/ports/i-ticket-edilicia.repository';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
 import { IPrioridadRepository } from '../../../tickets/domain/ports/i-prioridad.repository';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
@@ -67,8 +66,9 @@ const CODIGO_CAMBIO_ESTADO = 'CAMBIO_ESTADO';
  * `AccionSobreTipoNoPermitidaError` (403, odd/permisos-por-tipo-ticket D5 c).
  *
  * Cubre tickets de soporte y edilicios con la misma ruta: la reparación ES un
- * ticket con satélite `TicketEdilicia`, así que `/tickets/:id` ya la sirve;
- * lo específico de cada flujo se agrega según qué satélite exista.
+ * ticket, así que `/tickets/:id` ya la sirve. Lo de soporte se agrega si existe
+ * su satélite; la ubicación es del ticket, de cualquier tipo (odd/ticket-unificado,
+ * S1, L37), y se imprime si tiene una.
  *
  * Tareas (`tareas_ticket`): se imprimen en cualquier tipo de ticket que tenga
  * alguna activa, con su técnico y su estado, y el avance se calcula sobre ellas
@@ -92,7 +92,6 @@ export class GenerarPdfTicketUseCase {
     private readonly solicitanteExternoRepo: Pick<ISolicitanteExternoRepository, 'findById'>,
     private readonly ticketSoporteRepo: Pick<ITicketSoporteRepository, 'findByTicketId'>,
     private readonly equipoRepo: Pick<IEquipoInformaticoRepository, 'findById'>,
-    private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'findByTicketId'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
     private readonly verLogoCliente: Pick<VerLogoClienteUseCase, 'execute'>,
     private readonly generador: IGeneradorPdfTicket,
@@ -124,17 +123,15 @@ export class GenerarPdfTicketUseCase {
     }
     const operaciones = timelineResult.getValue().filter((op) => !op.esInterno);
 
-    const [tiposOperacion, estado, prioridad, tipo, soporte, edilicia, tareas, logo] =
-      await Promise.all([
-        this.tipoOperacionRepo.findAllActive(),
-        this.estadoRepo.findById(ticket.estadoId),
-        this.prioridadRepo.findById(ticket.prioridadId),
-        this.tipoTicketRepo.findById(ticket.tipoId),
-        this.ticketSoporteRepo.findByTicketId(ticket.id),
-        this.ticketEdiliciaRepo.findByTicketId(ticket.id),
-        this.tareaRepo.listarPorTicket(ticket.id),
-        this.resolverLogo(dto.clienteId),
-      ]);
+    const [tiposOperacion, estado, prioridad, tipo, soporte, tareas, logo] = await Promise.all([
+      this.tipoOperacionRepo.findAllActive(),
+      this.estadoRepo.findById(ticket.estadoId),
+      this.prioridadRepo.findById(ticket.prioridadId),
+      this.tipoTicketRepo.findById(ticket.tipoId),
+      this.ticketSoporteRepo.findByTicketId(ticket.id),
+      this.tareaRepo.listarPorTicket(ticket.id),
+      this.resolverLogo(dto.clienteId),
+    ]);
     // El repositorio ya devuelve solo las activas por `orden`; se reasegura acá por si cambia.
     const tareasActivas = tareas
       .filter((t) => t.deletedAt === null)
@@ -205,7 +202,7 @@ export class GenerarPdfTicketUseCase {
       vencimientoSla: ticket.slaVenceAt ? fechaHoraCsv(ticket.slaVenceAt) : null,
       descripcion: ticket.descripcion,
       soporte: await this.armarSoporte(soporte),
-      edilicia: edilicia ? { ubicacion: edilicia.ubicacion } : null,
+      ubicacion: ticket.ubicacion?.trim() ? ticket.ubicacion : null,
       tareas: armarTareas(tareasActivas, nombreDe),
       historial,
       generadoEl: fechaHoraCsv(this.ahora()),

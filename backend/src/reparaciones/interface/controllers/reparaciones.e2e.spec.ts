@@ -1,7 +1,7 @@
 /**
  * reparaciones.e2e.spec.ts — WU5.8 (sdd/reparacion-bloqueada-por-compra),
  * CRÍTICO. Levanta la app REAL (Nest, `AccionesGuard` activo, sin mocks de
- * infraestructura) y pega por HTTP a `POST/DELETE .../compras`.
+ * infraestructura) y pega por HTTP a `POST/DELETE /tickets/:ticketId/compras`.
  *
  * Vincular y desvincular una compra exigen DOS cosas: `MODIFICACION` sobre el
  * tipo del ticket (odd/ticket-unificado, S4; antes `EDILICIA:ALTAS` y
@@ -11,8 +11,9 @@
  *
  * odd/ticket-unificado: las compras, la ubicación y los comentarios son del
  * ticket, de cualquier tipo; el listado se arma sobre los tickets (con `?tipo=`)
- * y devuelve ids de ticket, y las rutas viejas aceptan el id del satélite o el
- * del ticket.
+ * y devuelve ids de ticket, que son los que reciben las rutas `/reparaciones/:id`.
+ * Desde T4a ninguna ruta crea ni lee el satélite `ticket_edilicia`, y los alias
+ * `/reparaciones/:id/compras` ya no existen.
  *
  * Mismo patrón que `compras.e2e.spec.ts`/`sectores.e2e.spec.ts`
  * (provisioning de tenant efímero, fetch nativo, `crearActorConPermisos`,
@@ -324,17 +325,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     return { accessToken, clienteId, usuarioId: usuario.id };
   }
 
-  /**
-   * Crea directo por Prisma una reparación vieja: ticket de tipo EDILICIA con su satélite. Desde
-   * odd/ticket-unificado la ubicación es la del ticket; el satélite queda sin ubicación propia.
-   */
-  async function crearReparacion(): Promise<{ reparacionId: string; ticketId: string }> {
-    const ticketId = await crearTicket(tipoEdiliciaId);
-    const ticketEdilicia = await tenantClient.ticketEdilicia.create({ data: { ticketId } });
-    return { reparacionId: ticketEdilicia.id, ticketId };
-  }
-
-  /** Crea directo por Prisma un ticket del tipo dado, SIN satélite de Edilicia. */
+  /** Crea directo por Prisma un ticket del tipo dado. */
   async function crearTicket(tipoId: string): Promise<string> {
     const ticket = await tenantClient.ticket.create({
       data: {
@@ -378,18 +369,18 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
   // ─── Vincular: MODIFICACION sobre el tipo Y COMPRAS:LECTURA (odd/ticket-unificado, S4) ────────
 
-  describe('POST /reparaciones/:reparacionId/compras — Modificar sobre el tipo y COMPRAS:LECTURA (S4)', () => {
+  describe('POST /tickets/:ticketId/compras de un ticket de Edilicia — Modificar sobre el tipo y COMPRAS:LECTURA (S4)', () => {
     it('ve y modifica el ticket pero sin COMPRAS:LECTURA → 403 de la ruta y no vincula', async () => {
       const actor = await crearActorConPermisos([
         'EDILICIA:LECTURA',
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const compraId = await crearCompra();
 
       const { status } = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        `${baseUrl}/tickets/${ticketId}/compras`,
         { compraId },
         bearer(actor.accessToken),
       );
@@ -398,21 +389,19 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(await vinculosDe(ticketId)).toBe(0);
     });
 
-    it('SOLO COMPRAS:LECTURA (sin filas por tipo) → 404 de la reparación y no vincula', async () => {
+    it('SOLO COMPRAS:LECTURA (sin filas por tipo) → 404 y no vincula', async () => {
       const actor = await crearActorConPermisos(['COMPRAS:LECTURA']);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const compraId = await crearCompra();
 
       const { status, data } = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        `${baseUrl}/tickets/${ticketId}/compras`,
         { compraId },
         bearer(actor.accessToken),
       );
 
       expect(status).toBe(404);
-      // El 404 nombra la reparación pedida, nunca el ticket.
-      expect(JSON.stringify(data)).toContain(reparacionId);
-      expect(JSON.stringify(data)).not.toContain(ticketId);
+      expect(JSON.stringify(data)).toContain(ticketId);
       expect(await vinculosDe(ticketId)).toBe(0);
     });
 
@@ -423,11 +412,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:ALTAS',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const compraId = await crearCompra();
 
       const { status, data } = await httpPost<{ message: string }>(
-        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        `${baseUrl}/tickets/${ticketId}/compras`,
         { compraId },
         bearer(actor.accessToken),
       );
@@ -439,13 +428,13 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(await vinculosDe(ticketId)).toBe(0);
     });
 
-    it('con MODIFICACION y COMPRAS:LECTURA → 201: el vínculo es del ticket, lo bloquea, y la tabla vieja no se escribe', async () => {
+    it('con MODIFICACION y COMPRAS:LECTURA → 201: el vínculo es del ticket y lo bloquea en el listado', async () => {
       const actor = await crearActorConPermisos(PUEDE_VINCULAR);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const compraId = await crearCompra();
 
       const vincular = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        `${baseUrl}/tickets/${ticketId}/compras`,
         { compraId },
         bearer(actor.accessToken),
       );
@@ -453,7 +442,6 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(await tenantClient.ticketCompra.findMany({ where: { ticketId } })).toEqual([
         expect.objectContaining({ ticketId, compraId }),
       ]);
-      expect(await tenantClient.reparacionCompra.count({ where: { compraId } })).toBe(0);
 
       const listado = await httpGet<ListReparacionesResponseDto>(
         `${baseUrl}/reparaciones?porPagina=100`,
@@ -480,27 +468,12 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(bloqueadas.data.total + libres.data.total).toBe(listado.data.total);
     });
 
-    it('la ruta vieja acepta también el id del ticket, que es el que devuelve el listado ahora', async () => {
-      const actor = await crearActorConPermisos(PUEDE_VINCULAR);
-      const { ticketId } = await crearReparacion();
-      const compraId = await crearCompra();
-
-      const { status } = await httpPost(
-        `${baseUrl}/reparaciones/${ticketId}/compras`,
-        { compraId },
-        bearer(actor.accessToken),
-      );
-
-      expect(status).toBe(201);
-      expect(await vinculosDe(ticketId)).toBe(1);
-    });
-
     it('404 CompraNoEncontradaError: compraId inexistente, con los dos permisos y viendo el ticket', async () => {
       const actor = await crearActorConPermisos(PUEDE_VINCULAR);
-      const { reparacionId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
 
       const { status, data } = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/compras`,
+        `${baseUrl}/tickets/${ticketId}/compras`,
         { compraId: '00000000-0000-4000-8000-000000000fff' },
         bearer(actor.accessToken),
       );
@@ -512,25 +485,21 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
     });
   });
 
-  describe('DELETE /reparaciones/:reparacionId/compras/:compraId — los mismos permisos que vincular (S4)', () => {
+  describe('DELETE /tickets/:ticketId/compras/:compraId de un ticket de Edilicia — los mismos permisos que vincular (S4)', () => {
     /** Un ticket de Edilicia con una compra ya vinculada (directo por Prisma). */
-    async function conVinculo(): Promise<{
-      reparacionId: string;
-      ticketId: string;
-      compraId: string;
-    }> {
-      const { reparacionId, ticketId } = await crearReparacion();
+    async function conVinculo(): Promise<{ ticketId: string; compraId: string }> {
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const compraId = await crearCompra();
       await tenantClient.ticketCompra.create({ data: { ticketId, compraId } });
-      return { reparacionId, ticketId, compraId };
+      return { ticketId, compraId };
     }
 
     it('con MODIFICACION y COMPRAS:LECTURA desvincula (204, hard delete)', async () => {
       const actor = await crearActorConPermisos(PUEDE_VINCULAR);
-      const { reparacionId, ticketId, compraId } = await conVinculo();
+      const { ticketId, compraId } = await conVinculo();
 
       const { status } = await httpDelete(
-        `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
+        `${baseUrl}/tickets/${ticketId}/compras/${compraId}`,
         bearer(actor.accessToken),
       );
 
@@ -545,10 +514,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId, compraId } = await conVinculo();
+      const { ticketId, compraId } = await conVinculo();
 
       const { status } = await httpDelete(
-        `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
+        `${baseUrl}/tickets/${ticketId}/compras/${compraId}`,
         bearer(actor.accessToken),
       );
 
@@ -563,10 +532,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:LECTURA',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId, compraId } = await conVinculo();
+      const { ticketId, compraId } = await conVinculo();
 
       const { status } = await httpDelete(
-        `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
+        `${baseUrl}/tickets/${ticketId}/compras/${compraId}`,
         bearer(actor.accessToken),
       );
 
@@ -576,10 +545,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
     it('con COMPRAS:LECTURA que no ve el ticket → 404 y el vínculo sigue', async () => {
       const actor = await crearActorConPermisos(['COMPRAS:LECTURA']);
-      const { reparacionId, ticketId, compraId } = await conVinculo();
+      const { ticketId, compraId } = await conVinculo();
 
       const { status } = await httpDelete(
-        `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
+        `${baseUrl}/tickets/${ticketId}/compras/${compraId}`,
         bearer(actor.accessToken),
       );
 
@@ -589,11 +558,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
     it('404 VinculoNoEncontradoError: vínculo inexistente, con los dos permisos y viendo el ticket', async () => {
       const actor = await crearActorConPermisos(PUEDE_VINCULAR);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const compraId = await crearCompra();
 
       const { status, data } = await httpDelete(
-        `${baseUrl}/reparaciones/${reparacionId}/compras/${compraId}`,
+        `${baseUrl}/tickets/${ticketId}/compras/${compraId}`,
         bearer(actor.accessToken),
       );
 
@@ -601,6 +570,28 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(JSON.stringify(data)).toContain(
         `No existe un vínculo entre el ticket \\"${ticketId}\\"`,
       );
+    });
+
+    it('los alias viejos /reparaciones/:id/compras ya no existen (T4a): 404 de Nest, sin tocar los vínculos', async () => {
+      const actor = await crearActorConPermisos(PUEDE_VINCULAR);
+      const { ticketId, compraId } = await conVinculo();
+      const otraCompra = await crearCompra();
+      const auth = bearer(actor.accessToken);
+
+      const vincular = await httpPost(
+        `${baseUrl}/reparaciones/${ticketId}/compras`,
+        { compraId: otraCompra },
+        auth,
+      );
+      const desvincular = await httpDelete(
+        `${baseUrl}/reparaciones/${ticketId}/compras/${compraId}`,
+        auth,
+      );
+
+      expect([vincular.status, desvincular.status]).toEqual([404, 404]);
+      expect(
+        (await tenantClient.ticketCompra.findMany({ where: { ticketId } })).map((v) => v.compraId),
+      ).toEqual([compraId]);
     });
   });
 
@@ -869,10 +860,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       await tenantClient.permisoTipoTicket.create({
         data: { usuarioId: actor.usuarioId, tipoId: tipoEdiliciaId, accion: 'LECTURA' },
       });
-      const propia = await crearReparacion();
-      const ajena = await crearReparacion();
+      const propia = await crearTicket(tipoEdiliciaId);
+      const ajena = await crearTicket(tipoEdiliciaId);
       await tenantClient.ticket.update({
-        where: { id: propia.ticketId },
+        where: { id: propia },
         data: { asignadoId: actor.usuarioId },
       });
 
@@ -881,9 +872,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         bearer(actor.accessToken),
       );
       expect(conFila.status).toBe(200);
-      expect(conFila.data.items.map((r) => r.id)).toEqual([propia.ticketId]);
+      expect(conFila.data.items.map((r) => r.id)).toEqual([propia]);
       expect(conFila.data.total).toBe(1);
-      expect(conFila.data.items.map((r) => r.id)).not.toContain(ajena.ticketId);
+      expect(conFila.data.items.map((r) => r.id)).not.toContain(ajena);
 
       // Sin filas por tipo no hay listado: la celda EDILICIA:LECTURA que lo abría ya no existe (T9b).
       const sinFilasPorTipo = await crearActorConPermisos([], actor.clienteId);
@@ -922,11 +913,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
     it('lo que se comenta en Edilicia es un comentario interno del timeline, y lo comentado desde Tickets aparece en Edilicia', async () => {
       const actor = await crearActorConPermisos(PERSONAL);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const auth = bearer(actor.accessToken);
 
       const desdeEdilicia = await httpPost<{ id: string; ticketEdiliciaId: string }>(
-        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        `${baseUrl}/reparaciones/${ticketId}/comentarios`,
         { texto: '  Falta el repuesto X  ' },
         auth,
       );
@@ -950,11 +941,9 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         descripcion: 'Falta el repuesto X',
         esInterno: true,
       });
-      // La tabla congelada no se escribe más.
-      expect(await tenantClient.comentarioReparacion.count()).toBe(0);
 
       const enEdilicia = await httpGet<{ id: string; texto: string }[]>(
-        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        `${baseUrl}/reparaciones/${ticketId}/comentarios`,
         auth,
       );
       expect(enEdilicia.data.map((c) => c.texto)).toEqual([
@@ -973,13 +962,13 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         ['EDILICIA:LECTURA', 'EDILICIA:MODIFICACION'],
         personal.clienteId,
       );
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       await tenantClient.ticket.update({
         where: { id: ticketId },
         data: { solicitanteId: solicitante.usuarioId },
       });
       const interno = await httpPost<{ id: string }>(
-        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        `${baseUrl}/reparaciones/${ticketId}/comentarios`,
         { texto: 'Nota interna de Edilicia' },
         bearer(personal.accessToken),
       );
@@ -993,7 +982,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       const auth = bearer(solicitante.accessToken);
 
       const enEdilicia = await httpGet<{ id: string }[]>(
-        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        `${baseUrl}/reparaciones/${ticketId}/comentarios`,
         auth,
       );
       expect(enEdilicia.status).toBe(200);
@@ -1016,11 +1005,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const antes = await tenantClient.operacionTicket.count({ where: { ticketId } });
 
       const r = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        `${baseUrl}/reparaciones/${ticketId}/comentarios`,
         { texto: 'No debería quedar' },
         bearer(sinObservar.accessToken),
       );
@@ -1031,12 +1020,12 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
     it('igual que un comentario interno de Tickets, se acepta con el ticket cerrado', async () => {
       const actor = await crearActorConPermisos(PERSONAL);
-      const { reparacionId, ticketId } = await crearReparacion();
+      const ticketId = await crearTicket(tipoEdiliciaId);
       const cerrado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'CERRADO' } });
       await tenantClient.ticket.update({ where: { id: ticketId }, data: { estadoId: cerrado.id } });
 
       const r = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/comentarios`,
+        `${baseUrl}/reparaciones/${ticketId}/comentarios`,
         { texto: 'Nota posterior al cierre' },
         bearer(actor.accessToken),
       );
@@ -1047,8 +1036,8 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
   // ─── Altas: cualquier tipo con alta manual (odd/ticket-unificado, S2, S6) ────
 
-  describe('altas de cualquier tipo, sin satélite obligatorio (S1, S2, S6)', () => {
-    it('POST /tickets de un tipo de EDILICIA crea el ticket sin satélite y aparece en Edilicia', async () => {
+  describe('altas de cualquier tipo (S1, S2, S6)', () => {
+    it('POST /tickets de un tipo de EDILICIA crea el ticket y aparece en Edilicia', async () => {
       const actor = await crearActorConPermisos([
         'EDILICIA:LECTURA',
         'EDILICIA:ALTAS',
@@ -1068,9 +1057,6 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
       expect(alta.status).toBe(201);
       expect(alta.data.numero).toMatch(/^EDI-/);
-      expect(await tenantClient.ticketEdilicia.count({ where: { ticketId: alta.data.id } })).toBe(
-        0,
-      );
       const fila = (
         await httpGet<ListReparacionesResponseDto>(
           `${baseUrl}/reparaciones?porPagina=100`,
@@ -1100,7 +1086,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(alta.data.message).toBe('El tipo de ticket "PREVENTIVO" no admite altas manuales.');
     });
 
-    it('POST /reparaciones guarda la ubicación en el ticket y responde el id del ticket; el satélite nace sin ubicación', async () => {
+    it('POST /reparaciones guarda la ubicación en el ticket, responde su id y lo lista', async () => {
       const actor = await crearActorConPermisos(['EDILICIA:LECTURA', 'EDILICIA:ALTAS']);
 
       const alta = await httpPost<{ id: string; ticketId: string; ubicacion: string }>(
@@ -1114,11 +1100,13 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect(
         await tenantClient.ticket.findUniqueOrThrow({ where: { id: alta.data.ticketId } }),
       ).toMatchObject({ ubicacion: 'Hall' });
-      expect(
-        await tenantClient.ticketEdilicia.findUniqueOrThrow({
-          where: { ticketId: alta.data.ticketId },
-        }),
-      ).toMatchObject({ ubicacion: null });
+      const fila = (
+        await httpGet<ListReparacionesResponseDto>(
+          `${baseUrl}/reparaciones?porPagina=100`,
+          bearer(actor.accessToken),
+        )
+      ).data.items.find((r) => r.id === alta.data.id);
+      expect(fila).toMatchObject({ titulo: 'Puerta trabada', ubicacion: 'Hall' });
     });
   });
 
@@ -1138,10 +1126,8 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       'updatedAt',
     ];
 
-    /** Reparación con su ticket base asignado a `asignadoId` (el responsable). */
-    async function crearReparacionAsignada(
-      asignadoId: string,
-    ): Promise<{ reparacionId: string; ticketId: string }> {
+    /** Ticket de Edilicia asignado a `asignadoId` (el responsable). */
+    async function crearReparacionAsignada(asignadoId: string): Promise<string> {
       const ticket = await tenantClient.ticket.create({
         data: {
           numero: `EDI-T3-${randomBytes(4).toString('hex')}`,
@@ -1155,8 +1141,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
           ubicacion: 'Aula 3',
         },
       });
-      const satelite = await tenantClient.ticketEdilicia.create({ data: { ticketId: ticket.id } });
-      return { reparacionId: satelite.id, ticketId: ticket.id };
+      return ticket.id;
     }
 
     /** La fila del ticket en el listado: desde odd/ticket-unificado se identifica por el ticket. */
@@ -1178,7 +1163,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const { ticketId } = await crearReparacionAsignada(responsable.usuarioId);
+      const ticketId = await crearReparacionAsignada(responsable.usuarioId);
       const auth = bearer(responsable.accessToken);
       const tareas = `${baseUrl}/tickets/${ticketId}/tareas`;
 
@@ -1239,11 +1224,11 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
+      const ticketId = await crearReparacionAsignada(responsable.usuarioId);
       const auth = bearer(responsable.accessToken);
 
       const editada = await httpPatch<ReparacionListItemResponseDto>(
-        `${baseUrl}/reparaciones/${reparacionId}`,
+        `${baseUrl}/reparaciones/${ticketId}`,
         { titulo: 'Titulo corregido', ubicacion: 'Aula 7' },
         auth,
       );
@@ -1253,13 +1238,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         titulo: 'Titulo corregido',
         ubicacion: 'Aula 7',
       });
-      // Una sola ubicación, la del ticket (odd/ticket-unificado, S1); el satélite no se escribe.
+      // Una sola ubicación, la del ticket (odd/ticket-unificado, S1).
       expect(
         await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } }),
       ).toMatchObject({ ubicacion: 'Aula 7' });
-      expect(
-        await tenantClient.ticketEdilicia.findUniqueOrThrow({ where: { id: reparacionId } }),
-      ).toMatchObject({ ubicacion: null });
       const fila = await filaDelListado(responsable.accessToken, ticketId);
       expect(fila).toMatchObject({ titulo: 'Titulo corregido', ubicacion: 'Aula 7' });
 
@@ -1268,7 +1250,7 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
       expect((await httpPost(`${tareas}/${tarea.data.id}/completar`, {}, auth)).status).toBe(200);
 
       const yaEmpezada = await httpPatch<{ message: string }>(
-        `${baseUrl}/reparaciones/${reparacionId}`,
+        `${baseUrl}/reparaciones/${ticketId}`,
         { titulo: 'Otro' },
         auth,
       );
@@ -1284,10 +1266,10 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
 
     it('PATCH /reparaciones/:id sin EDILICIA:MODIFICACION → 403, y la reparación no cambia', async () => {
       const lector = await crearActorConPermisos(['EDILICIA:LECTURA']);
-      const { reparacionId, ticketId } = await crearReparacionAsignada(lector.usuarioId);
+      const ticketId = await crearReparacionAsignada(lector.usuarioId);
 
       const r = await httpPatch(
-        `${baseUrl}/reparaciones/${reparacionId}`,
+        `${baseUrl}/reparaciones/${ticketId}`,
         { titulo: 'No deberia' },
         bearer(lector.accessToken),
       );
@@ -1304,14 +1286,14 @@ describe('Reparaciones e2e — vínculo con compra, autorización REAL por HTTP 
         'EDILICIA:MODIFICACION',
         'TICKETS:VER_TODOS',
       ]);
-      const { reparacionId, ticketId } = await crearReparacionAsignada(responsable.usuarioId);
+      const ticketId = await crearReparacionAsignada(responsable.usuarioId);
       const auth = bearer(responsable.accessToken);
       const tarea = await tenantClient.tareaTicket.create({
         data: { ticketId, descripcion: 'Cambiar la junta' },
       });
 
       const crear = await httpPost(
-        `${baseUrl}/reparaciones/${reparacionId}/subtareas`,
+        `${baseUrl}/reparaciones/${ticketId}/subtareas`,
         { descripcion: 'X' },
         auth,
       );

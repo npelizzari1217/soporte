@@ -13,11 +13,9 @@ import { ReparacionesModule } from './reparaciones.module';
 import { ReparacionesController } from './interface/controllers/reparaciones.controller';
 import { TicketComprasController } from './interface/controllers/ticket-compras.controller';
 import { TicketsModule } from '../tickets/tickets.module';
-import { TICKET_EDILICIA_REPOSITORY } from './domain/ports/i-ticket-edilicia.repository';
 import { CrearComentarioUseCase } from '../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from './application/use-cases/listar-comentarios-reparacion.use-case';
 import { ListarComprasDeTicketUseCase } from './application/use-cases/listar-compras-de-ticket.use-case';
-import { ResolutorReparacion } from './application/services/acceso-reparacion';
 
 describe('ReparacionesModule wiring (T9.7)', () => {
   it('registra ReparacionesController y TicketComprasController (odd/ticket-unificado)', () => {
@@ -30,9 +28,9 @@ describe('ReparacionesModule wiring (T9.7)', () => {
     expect(imports).toContain(TicketsModule);
   });
 
-  it('exporta solo el repositorio del satélite, que lee el PDF (odd/ticket-unificado: los comentarios son del timeline)', () => {
+  it('no exporta nada: el PDF toma la ubicación del ticket y los comentarios son del timeline (odd/ticket-unificado, T4a)', () => {
     const exportsList = (Reflect.getMetadata('exports', ReparacionesModule) ?? []) as unknown[];
-    expect(exportsList).toEqual([TICKET_EDILICIA_REPOSITORY]);
+    expect(exportsList).toEqual([]);
   });
 
   it('crear un comentario no tiene fábrica propia: usa el CrearComentarioUseCase que exporta TicketsModule (T2b, L19)', () => {
@@ -44,7 +42,7 @@ describe('ReparacionesModule wiring (T9.7)', () => {
     expect(exportadosDeTickets).toContain(CrearComentarioUseCase);
   });
 
-  it.each([ListarComentariosReparacionUseCase, ListarComprasDeTicketUseCase, ResolutorReparacion])(
+  it.each([ListarComentariosReparacionUseCase, ListarComprasDeTicketUseCase])(
     '%p está provisto (los use cases se cablean a mano, sin @Injectable)',
     (useCase) => {
       const providers = (Reflect.getMetadata('providers', ReparacionesModule) ?? []) as {

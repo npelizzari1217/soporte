@@ -70,15 +70,21 @@ describe('PdfkitGeneradorPdfTicket', () => {
     expect(textoDePdf(pdf)).toContain('Colegio San Martín');
   });
 
-  it('un ticket edilicio imprime la ubicación', async () => {
+  it('con ubicación, la imprime en la cabecera, en cualquier tipo de ticket (odd/ticket-unificado)', async () => {
     const texto = textoDePdf(
-      await generador.generar(
-        vistaDePrueba({ soporte: null, edilicia: { ubicacion: 'Edificio Central, planta baja' } }),
-      ),
+      await generador.generar(vistaDePrueba({ ubicacion: 'Edificio Central, planta baja' })),
     );
 
-    expect(texto).toContain('Reparación');
+    expect(texto).toContain('Ubicación');
     expect(texto).toContain('Edificio Central, planta baja');
+    // Ya no hay sección propia de Edilicia: la ubicación no es de la reparación.
+    expect(texto).not.toContain('Reparación');
+  });
+
+  it('sin ubicación no imprime la fila', async () => {
+    const texto = textoDePdf(await generador.generar(vistaDePrueba({ ubicacion: null })));
+
+    expect(texto).not.toContain('Ubicación');
   });
 
   it('las tareas se imprimen con avance, técnico y estado, en un ticket que no es edilicio', async () => {

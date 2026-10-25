@@ -159,7 +159,6 @@ export async function aplicarTenant(tenant: Tenant, e: EntradaTenant): Promise<R
 
       await tx.ticket.createMany({ data: filas.tickets });
       await tx.ticketSoporte.createMany({ data: filas.soporte });
-      await tx.ticketEdilicia.createMany({ data: filas.edilicia });
       await tx.operacionTicket.createMany({ data: filas.comentarios });
       const permisosPorTipoInsertados = await sembrarPermisosPorTipo(tx, e.plantillasSembradas);
 
@@ -208,8 +207,9 @@ async function sembrarPermisosPorTipo(
 /**
  * Filas a insertar. Ids UUIDv7 generados en orden: dentro de un mismo
  * instante, el timeline desempata por id y conserva el orden del paquete.
- * Satélite como en el alta normal: `ticket_soporte` para SOPORTE,
- * `ticket_edilicia` para EDILICIA; MANTENIMIENTO no lleva satélite.
+ * Satélite como en el alta normal: `ticket_soporte` para SOPORTE; EDILICIA y
+ * MANTENIMIENTO no llevan satélite (odd/ticket-unificado: la ubicación, las
+ * compras y los comentarios son del ticket).
  */
 function armarFilas(
   tickets: TicketPaquete[],
@@ -222,7 +222,6 @@ function armarFilas(
   const filas = {
     tickets: [] as Prisma.TicketCreateManyInput[],
     soporte: [] as Prisma.TicketSoporteCreateManyInput[],
-    edilicia: [] as Prisma.TicketEdiliciaCreateManyInput[],
     comentarios: [] as Prisma.OperacionTicketCreateManyInput[],
   };
 
@@ -256,8 +255,6 @@ function armarFilas(
     });
     if (t.tipoCodigo === 'SOPORTE')
       filas.soporte.push({ ticketId: id, createdAt: alta, updatedAt: alta });
-    if (t.tipoCodigo === 'EDILICIA')
-      filas.edilicia.push({ ticketId: id, createdAt: alta, updatedAt: alta });
     for (const c of comentariosDeTicket(t)) {
       filas.comentarios.push({
         id: uuidv7(),

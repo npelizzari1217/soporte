@@ -2,9 +2,9 @@
  * TicketPdfController — `GET /tickets/:id/pdf`: la ficha PDF de un ticket.
  *
  * Vive en su propio módulo (`TicketPdfModule`) y no en `TicketsController`
- * porque la ficha combina datos de tickets, equipos, reparaciones y clientes,
- * y `equipos`/`reparaciones` ya dependen de `tickets`: ponerla en
- * `TicketsModule` crearía un ciclo de módulos.
+ * porque la ficha combina datos de tickets, equipos y clientes, y `equipos`
+ * ya depende de `tickets`: ponerla en `TicketsModule` crearía un ciclo de
+ * módulos.
  *
  * Sin `@RequiereAcciones` (odd/permisos-por-tipo-ticket, D5 d): decide el caso
  * de uso con el alcance por tipo — el mismo acceso que el detalle (`LECTURA`

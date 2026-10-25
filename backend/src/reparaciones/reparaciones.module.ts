@@ -40,11 +40,6 @@ import {
 import { COMPRA_REPOSITORY, ICompraRepository } from '../compras/domain/ports/i-compra.repository';
 
 import {
-  TICKET_EDILICIA_REPOSITORY,
-  ITicketEdiliciaRepository,
-} from './domain/ports/i-ticket-edilicia.repository';
-import { PrismaTicketEdiliciaRepository } from './infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
-import {
   COMENTARIO_REPARACION_REPOSITORY,
   IComentarioReparacionRepository,
 } from './domain/ports/i-comentario-reparacion.repository';
@@ -68,7 +63,6 @@ import { VincularCompraAReparacionUseCase } from './application/use-cases/vincul
 import { DesvincularCompraDeReparacionUseCase } from './application/use-cases/desvincular-compra-de-reparacion.use-case';
 import { EditarReparacionUseCase } from './application/use-cases/editar-reparacion.use-case';
 import { ListarComprasDeTicketUseCase } from './application/use-cases/listar-compras-de-ticket.use-case';
-import { ResolutorReparacion } from './application/services/acceso-reparacion';
 import { ListarTimelineUseCase } from '../tickets/application/use-cases/listar-timeline.use-case';
 import {
   IPrioridadRepository,
@@ -86,10 +80,10 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
  * las compras vinculadas (`ticket_compra`), la ubicación y los comentarios son
  * del TICKET, de cualquier tipo: la grilla lista tickets por tipo y las rutas
  * `/tickets/:ticketId/compras` (`TicketComprasController`) operan sobre
- * cualquiera. El satélite `ticket_edilicia` solo identifica las reparaciones
- * viejas (las rutas `/reparaciones/:id` aceptan su id o el del ticket) hasta que
- * T4 lo retire. El checklist de avance son las tareas del ticket
- * (`tareas_ticket`, de `TicketsModule`).
+ * cualquiera. Las tablas viejas del satélite (`ticket_edilicia`,
+ * `comentarios_reparacion`, `reparacion_compra`) no se usan: lo verifica
+ * `sin-tablas-del-satelite.spec.ts`. El checklist de avance son las tareas del
+ * ticket (`tareas_ticket`, de `TicketsModule`).
  *
  * Wiring (PR6-PR9, screaming module hexagonal — domain/ → application/ →
  * infrastructure/ → interface/):
@@ -106,8 +100,8 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
  *   puertos por token, igual que en `ComprasModule`.
  * - `TENANT_TX_RUNNER` se inyecta desde `SharedModule` (`@Global`, sin
  *   necesidad de reimportarlo).
- * - `ReparacionesController` expone `POST/GET /reparaciones`, comentarios y
- *   compras vinculadas; `TicketComprasController`, las compras de cualquier ticket.
+ * - `ReparacionesController` expone `POST/GET /reparaciones`, la edición y los
+ *   comentarios; `TicketComprasController`, las compras de cualquier ticket.
  * - `ComprasModule` (WU5, sdd/reparacion-bloqueada-por-compra, D7): se
  *   importa SOLO para reusar `COMPRA_REPOSITORY` (ya exportado por
  *   `ComprasModule`) en `VincularCompraAReparacionUseCase` — cero cambio de
@@ -125,7 +119,6 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
   imports: [AuthModule, TicketsModule, ComprasModule, SectoresModule],
   controllers: [ReparacionesController, TicketComprasController],
   providers: [
-    { provide: TICKET_EDILICIA_REPOSITORY, useClass: PrismaTicketEdiliciaRepository },
     { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
     { provide: REPARACION_COMPRA_REPOSITORY, useClass: PrismaReparacionCompraRepository },
 
@@ -145,7 +138,6 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
       useFactory: (
         ticketRepo: ITicketRepository,
         operacionRepo: IOperacionTicketRepository,
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
         estadoRepo: IEstadoRepository,
         tipoTicketRepo: ITipoTicketRepository,
         tipoOperacionRepo: ITipoOperacionRepository,
@@ -160,7 +152,6 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         new CrearTicketEdilicioUseCase(
           ticketRepo,
           operacionRepo,
-          ticketEdiliciaRepo,
           estadoRepo,
           tipoTicketRepo,
           tipoOperacionRepo,
@@ -175,7 +166,6 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
       inject: [
         TICKET_REPOSITORY,
         OPERACION_TICKET_REPOSITORY,
-        TICKET_EDILICIA_REPOSITORY,
         ESTADO_REPOSITORY,
         TIPO_TICKET_REPOSITORY,
         TIPO_OPERACION_REPOSITORY,
@@ -310,14 +300,6 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         TENANT_TX_RUNNER,
       ],
     },
-    {
-      // odd/ticket-unificado: traduce el `:reparacionId` de las rutas viejas al ticket.
-      provide: ResolutorReparacion,
-      useFactory: (ediliciaRepo: ITicketEdiliciaRepository) =>
-        new ResolutorReparacion(ediliciaRepo),
-      inject: [TICKET_EDILICIA_REPOSITORY],
-    },
   ],
-  exports: [TICKET_EDILICIA_REPOSITORY],
 })
 export class ReparacionesModule {}

@@ -1,11 +1,10 @@
 /**
- * T7.1, T7.3 [INTEGRATION] — PrismaTicketEdiliciaRepository y PrismaComentarioReparacionRepository
- * contra Postgres REAL (`soporte_tenant_test`).
+ * T7.3 [INTEGRATION] — PrismaComentarioReparacionRepository contra Postgres REAL
+ * (`soporte_tenant_test`).
  *
- * Desde odd/ticket-unificado (S1, S3):
- * - el satélite lee la ubicación del TICKET y no escribe la columna vieja `ticket_edilicia.ubicacion`;
- * - el conteo de comentarios de la grilla cuenta los COMENTARIO del timeline del ticket, separados
- *   por visibilidad, y ya no lee `comentarios_reparacion`.
+ * Desde odd/ticket-unificado (S3) el conteo de comentarios de la grilla cuenta los COMENTARIO del
+ * timeline del ticket, separados por visibilidad. El repositorio del satélite `ticket_edilicia` y
+ * sus casos se retiraron con T4a.
  *
  * Fixtures propios prefijados `T7_TEST_*`: la DB de test NO corre `TenantSeederAdapter`, solo está
  * migrada, así que el tipo de operación COMENTARIO se crea si falta y se borra solo si lo creó esta
@@ -20,11 +19,9 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 
 import { PrismaTicketRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
-import { PrismaTicketEdiliciaRepository } from './prisma-ticket-edilicia.repository';
 import { PrismaComentarioReparacionRepository } from './prisma-comentario-reparacion.repository';
 
 import { TicketEntity, TicketProps } from '../../../../tickets/domain/entities/ticket.entity';
-import { TicketEdiliciaEntity } from '../../../domain/entities/ticket-edilicia.entity';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -39,7 +36,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
   let tenantContext: TenantContext;
 
   let ticketRepo: PrismaTicketRepository;
-  let ediliciaRepo: PrismaTicketEdiliciaRepository;
   let comentarioRepo: PrismaComentarioReparacionRepository;
 
   let tipoEdiliciaId: string;
@@ -80,7 +76,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
 
       if (ids.length > 0) {
         await tenantClient.operacionTicket.deleteMany({ where: { ticketId: { in: ids } } });
-        await tenantClient.ticketEdilicia.deleteMany({ where: { ticketId: { in: ids } } });
         await tenantClient.ticket.deleteMany({ where: { id: { in: ids } } });
       }
     }
@@ -116,19 +111,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     );
   }
 
-  /** Ticket con ubicación propia y su satélite de Edilicia. */
-  async function crearTicketConSatelite(
-    ubicacion: string | null,
-  ): Promise<{ ticket: TicketEntity; edilicia: TicketEdiliciaEntity }> {
-    const ticket = TicketEntity.create(makeTicketProps({ ubicacion }));
-    const edilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id });
-    await withTenant(async () => {
-      await ticketRepo.save(ticket);
-      await ediliciaRepo.save(edilicia);
-    });
-    return { ticket, edilicia };
-  }
-
   /** Inserta `cantidad` operaciones de un tipo en el timeline del ticket. */
   async function operaciones(
     ticketId: string,
@@ -156,7 +138,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     tenantContext = new TenantContext();
 
     ticketRepo = new PrismaTicketRepository(tenantContext);
-    ediliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
     comentarioRepo = new PrismaComentarioReparacionRepository(tenantContext);
 
     await limpiarFixtures();
@@ -224,56 +205,6 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     }
     await prismaService.onModuleDestroy();
   }, 30_000);
-
-  describe('PrismaTicketEdiliciaRepository', () => {
-    it('findById() trae la ubicación del ticket y save() no escribe la columna vieja del satélite', async () => {
-      const { ticket, edilicia } = await crearTicketConSatelite('T7 Aula 4');
-
-      await withTenant(async () => {
-        const found = await ediliciaRepo.findById(edilicia.id);
-        expect(found?.ticketId).toBe(ticket.id);
-        expect(found?.ubicacion).toBe('T7 Aula 4');
-      });
-      const fila = await tenantClient.ticketEdilicia.findUniqueOrThrow({
-        where: { id: edilicia.id },
-      });
-      expect(fila.ubicacion).toBeNull();
-    });
-
-    it('findByTicketId() resuelve el satélite desde el ticket, con la ubicación del ticket', async () => {
-      const { ticket, edilicia } = await crearTicketConSatelite('T7 Patio');
-
-      await withTenant(async () => {
-        const found = await ediliciaRepo.findByTicketId(ticket.id);
-        expect(found?.id).toBe(edilicia.id);
-        expect(found?.ubicacion).toBe('T7 Patio');
-      });
-    });
-
-    it('una ubicación vieja que quedó en el satélite no se lee: manda la del ticket (aun vacía)', async () => {
-      const { edilicia } = await crearTicketConSatelite(null);
-      await tenantClient.ticketEdilicia.update({
-        where: { id: edilicia.id },
-        data: { ubicacion: 'T7 ubicación congelada' },
-      });
-
-      await withTenant(async () => {
-        expect((await ediliciaRepo.findById(edilicia.id))?.ubicacion).toBeNull();
-      });
-    });
-
-    it('save() de un satélite existente es upsert: no duplica la fila ni pisa createdAt', async () => {
-      const { ticket, edilicia } = await crearTicketConSatelite('T7 Aula 5');
-
-      await withTenant(async () => {
-        const antes = await ediliciaRepo.findById(edilicia.id);
-        await ediliciaRepo.save(edilicia);
-        const despues = await ediliciaRepo.findById(edilicia.id);
-        expect(despues?.createdAt).toEqual(antes?.createdAt);
-        expect(await tenantClient.ticketEdilicia.count({ where: { ticketId: ticket.id } })).toBe(1);
-      });
-    });
-  });
 
   describe('PrismaComentarioReparacionRepository.contarPorTickets (odd/ticket-unificado, S3)', () => {
     it('cuenta los COMENTARIO activos del timeline por ticket, separados por visibilidad', async () => {

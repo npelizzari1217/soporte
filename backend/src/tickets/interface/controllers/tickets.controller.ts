@@ -672,8 +672,10 @@ export class TicketsController {
    * @throws 404 ticket inexistente/otro tenant, o que el actor no ve (`LECTURA` sobre el tipo o fila)
    * @throws 422 `nuevoEstadoCodigo` inexistente en el catálogo, transición
    *             inválida (arco no válido y sin salto correctivo aplicable), o
-   *             quien no es ADMINISTRADOR ni ROOT intenta sacar al ticket de
-   *             RESUELTO/CERRADO/CANCELADO (`TicketSoloComentariosError`)
+   *             quien no es ADMINISTRADOR ni ROOT intenta cualquier cambio de
+   *             estado con el ticket en RESUELTO/CERRADO/CANCELADO, también
+   *             RESUELTO→CERRADO (`TicketSoloComentariosError`,
+   *             odd/cerrado-solo-comentarios L14)
    */
   @Patch(':id/estado')
   async transicionarEstado(

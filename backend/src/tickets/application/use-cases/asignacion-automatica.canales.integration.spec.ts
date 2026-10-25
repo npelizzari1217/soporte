@@ -30,7 +30,6 @@ import { PrismaCicloClienteRepository } from '../../infrastructure/persistence/p
 import { PrismaReglaAsignacionRepository } from '../../infrastructure/persistence/prisma/prisma-regla-asignacion.repository';
 import { PrismaTicketSoporteRepository } from '../../../equipos/infrastructure/persistence/prisma/prisma-ticket-soporte.repository';
 import { PrismaEquipoInformaticoRepository } from '../../../equipos/infrastructure/persistence/prisma/prisma-equipo-informatico.repository';
-import { PrismaTicketEdiliciaRepository } from '../../../reparaciones/infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
 import { CrearTicketSoporteUseCase } from '../../../equipos/application/use-cases/crear-ticket-soporte.use-case';
 import { CrearTicketEdilicioUseCase } from '../../../reparaciones/application/use-cases/crear-ticket-edilicio.use-case';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
@@ -162,7 +161,6 @@ describe('Regla de asignación en Soporte, formulario público, Edilicia y POST 
     edilicio = new CrearTicketEdilicioUseCase(
       ticketRepo,
       operacionRepo,
-      new PrismaTicketEdiliciaRepository(tenantContext),
       estadoRepo,
       tipoTicketRepo,
       tipoOperacionRepo,

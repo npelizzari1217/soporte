@@ -2,8 +2,8 @@
  * [INTEGRATION] `PrismaBloqueoTicketRepository` contra un tenant efímero
  * (odd/ticket-cerrado-solo-lectura, S2): el bloqueo por compra se lee por `ticketId`, con el
  * MISMO criterio que el chip "Bloqueada" del listado de reparaciones. Desde odd/ticket-unificado
- * (S5) el vínculo es `ticket_compra`: vale para un ticket de cualquier tipo, sin satélite de
- * Edilicia, y la tabla congelada `reparacion_compra` ya no cuenta.
+ * (S5) el vínculo es `ticket_compra`: vale para un ticket de cualquier tipo. Que la tabla vieja
+ * `reparacion_compra` no se lea lo verifica `reparaciones/sin-tablas-del-satelite.spec.ts`.
  *
  * No toca master: sin `usarLockMasterTest()`. Tenant propio: se destruye entero al final.
  */
@@ -173,19 +173,6 @@ describe('PrismaBloqueoTicketRepository (tenant efímero)', () => {
       expect(await repo.estaBloqueadoPorCompra(conCancelada)).toBe(false);
       expect(await repo.estaBloqueadoPorCompra(conEliminada)).toBe(false);
       expect(await repo.estaBloqueadoPorCompra(bloqueado)).toBe(true);
-    });
-  });
-
-  it('un vínculo que quedó solo en la tabla congelada reparacion_compra no bloquea ni frena el borrado', async () => {
-    const ticketId = await crearTicket();
-    const satelite = await tenantClient.ticketEdilicia.create({ data: { ticketId } });
-    await tenantClient.reparacionCompra.create({
-      data: { ticketEdiliciaId: satelite.id, compraId: await crearCompra() },
-    });
-
-    await withTenant(async () => {
-      expect(await repo.estaBloqueadoPorCompra(ticketId)).toBe(false);
-      expect(await repo.comprasVinculadas(ticketId)).toEqual([]);
     });
   });
 

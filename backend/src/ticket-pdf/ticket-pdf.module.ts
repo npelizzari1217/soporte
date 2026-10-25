@@ -11,11 +11,6 @@ import {
   TICKET_SOPORTE_REPOSITORY,
 } from '../equipos/domain/ports/i-ticket-soporte.repository';
 import { EquiposModule } from '../equipos/equipos.module';
-import {
-  ITicketEdiliciaRepository,
-  TICKET_EDILICIA_REPOSITORY,
-} from '../reparaciones/domain/ports/i-ticket-edilicia.repository';
-import { ReparacionesModule } from '../reparaciones/reparaciones.module';
 import { ListarTimelineUseCase } from '../tickets/application/use-cases/listar-timeline.use-case';
 import { ObtenerTicketUseCase } from '../tickets/application/use-cases/obtener-ticket.use-case';
 import { ESTADO_REPOSITORY, IEstadoRepository } from '../tickets/domain/ports/i-estado.repository';
@@ -52,16 +47,16 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
 /**
  * TicketPdfModule — ficha PDF de un ticket (`GET /tickets/:id/pdf`).
  *
- * Módulo propio porque compone cuatro módulos que ya dependen entre sí en un
- * solo sentido (`equipos` y `reparaciones` importan `tickets`): ponerlo en
- * `TicketsModule` cerraría un ciclo. AuthModule va explícito por la misma
- * razón que en los demás módulos funcionales (guards del controller).
+ * Módulo propio porque compone módulos que ya dependen entre sí en un solo
+ * sentido (`equipos` importa `tickets`): ponerlo en `TicketsModule` cerraría un
+ * ciclo. AuthModule va explícito por la misma razón que en los demás módulos
+ * funcionales (guards del controller).
  *
  * `pdfkit` solo se importa desde `infrastructure/`: el caso de uso trabaja
  * contra el puerto `IGeneradorPdfTicket`.
  */
 @Module({
-  imports: [AuthModule, TicketsModule, EquiposModule, ReparacionesModule, ClientesModule],
+  imports: [AuthModule, TicketsModule, EquiposModule, ClientesModule],
   controllers: [TicketPdfController],
   providers: [
     { provide: GENERADOR_PDF_TICKET, useFactory: () => new PdfkitGeneradorPdfTicket() },
@@ -78,7 +73,6 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
         solicitanteExternoRepo: ISolicitanteExternoRepository,
         ticketSoporteRepo: ITicketSoporteRepository,
         equipoRepo: IEquipoInformaticoRepository,
-        ticketEdiliciaRepo: ITicketEdiliciaRepository,
         tareaRepo: ITareaTicketRepository,
         verLogoCliente: VerLogoClienteUseCase,
         generador: IGeneradorPdfTicket,
@@ -94,7 +88,6 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
           solicitanteExternoRepo,
           ticketSoporteRepo,
           equipoRepo,
-          ticketEdiliciaRepo,
           tareaRepo,
           verLogoCliente,
           generador,
@@ -110,7 +103,6 @@ import { TicketPdfController } from './interface/controllers/ticket-pdf.controll
         SOLICITANTE_EXTERNO_REPOSITORY,
         TICKET_SOPORTE_REPOSITORY,
         EQUIPO_INFORMATICO_REPOSITORY,
-        TICKET_EDILICIA_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         VerLogoClienteUseCase,
         GENERADOR_PDF_TICKET,

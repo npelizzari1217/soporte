@@ -33,7 +33,6 @@ import { ListarTimelineUseCase } from '../../../tickets/application/use-cases/li
 import { ObtenerTicketUseCase } from '../../../tickets/application/use-cases/obtener-ticket.use-case';
 import { TicketSoporteEntity } from '../../../equipos/domain/entities/ticket-soporte.entity';
 import { EquipoInformaticoEntity } from '../../../equipos/domain/entities/equipo-informatico.entity';
-import { TicketEdiliciaEntity } from '../../../reparaciones/domain/entities/ticket-edilicia.entity';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { Result } from '../../../shared/domain/result';
 import { LogoClienteNoEncontradoError } from '../../../clientes/domain/errors/clientes.errors';
@@ -78,7 +77,13 @@ const TIPOS_OPERACION = [
   ),
 ];
 
-function crearTicket(overrides: { solicitanteId?: string | null; externoId?: string | null } = {}) {
+function crearTicket(
+  overrides: {
+    solicitanteId?: string | null;
+    externoId?: string | null;
+    ubicacion?: string | null;
+  } = {},
+) {
   return TicketEntity.reconstitute(
     {
       numero: 'SOP-2026-00042',
@@ -95,6 +100,7 @@ function crearTicket(overrides: { solicitanteId?: string | null; externoId?: str
       slaVenceAt: new Date('2026-08-21T13:00:00.000Z'),
       vencido: false,
       fechaCierre: null,
+      ubicacion: overrides.ubicacion ?? null,
     },
     'ticket-1',
     new Date('2026-08-20T01:30:00.000Z'),
@@ -150,7 +156,6 @@ interface Opciones {
   operaciones?: OperacionTicketEntity[];
   logo?: { buffer: Buffer; mimeType: string } | null;
   soporte?: TicketSoporteEntity | null;
-  edilicia?: TicketEdiliciaEntity | null;
   tareas?: TareaTicketEntity[];
 }
 
@@ -226,7 +231,6 @@ function armar(opciones: Opciones = {}) {
         ),
       ),
     },
-    { findByTicketId: vi.fn().mockResolvedValue(opciones.edilicia ?? null) },
     { listarPorTicket: tareaRepo.listarPorTicket },
     verLogo,
     generador,
@@ -314,7 +318,6 @@ describe('GenerarPdfTicketUseCase', () => {
       { findById: vi.fn().mockResolvedValue(null) },
       { findByTicketId: vi.fn().mockResolvedValue(null) },
       { findById: vi.fn().mockResolvedValue(null) },
-      { findByTicketId: vi.fn().mockResolvedValue(null) },
       { listarPorTicket: vi.fn().mockResolvedValue([]) },
       { execute: vi.fn().mockResolvedValue(Result.fail(new LogoClienteNoEncontradoError('c1'))) },
       generador,
@@ -449,29 +452,42 @@ describe('GenerarPdfTicketUseCase', () => {
         descripcionProblema: 'Error E3',
         solucionAplicada: 'Cambio de rodillo',
       });
-      expect(vista.edilicia).toBeNull();
+      expect(vista.ubicacion).toBeNull();
     });
 
-    it('edilicia: la ubicación, y el avance sale de las tareas', async () => {
-      const edilicia = TicketEdiliciaEntity.reconstitute(
-        {
-          ticketId: 'ticket-1',
-          ubicacion: 'Edificio Central',
-        },
-        'te-1',
+    // odd/ticket-unificado (S1, L37): la ubicación es del ticket, de cualquier tipo.
+    it('la ubicación del ticket se imprime en cualquier tipo, también en uno de soporte', async () => {
+      const soporte = TicketSoporteEntity.reconstitute(
+        { ticketId: 'ticket-1', equipoId: null, descripcionProblema: null, solucionAplicada: null },
+        'ts-1',
         AHORA,
         AHORA,
         null,
       );
-      const { useCase, generador } = armar({ edilicia, tareas: [tarea('t1', 1)] });
+      const { useCase, generador } = armar({
+        ticket: crearTicket({ ubicacion: 'Edificio Central' }),
+        soporte,
+        tareas: [tarea('t1', 1)],
+      });
 
       await useCase.execute(DTO_STAFF);
 
       const vista = generador.generar.mock.calls[0][0];
-      expect(vista.edilicia).toEqual({ ubicacion: 'Edificio Central' });
+      expect(vista.ubicacion).toBe('Edificio Central');
+      expect(vista.soporte).not.toBeNull();
       expect(vista.tareas?.porcentajeAvance).toBe(0);
-      expect(vista.soporte).toBeNull();
     });
+
+    it.each([null, '   '])(
+      'sin ubicación en el ticket (%j), la vista no la trae',
+      async (ubicacion) => {
+        const { useCase, generador } = armar({ ticket: crearTicket({ ubicacion }) });
+
+        await useCase.execute(DTO_STAFF);
+
+        expect(generador.generar.mock.calls[0][0].ubicacion).toBeNull();
+      },
+    );
   });
 
   describe('tareas (tareas_ticket, cualquier tipo de ticket)', () => {
@@ -486,7 +502,6 @@ describe('GenerarPdfTicketUseCase', () => {
 
       expect(tareaRepo.listarPorTicket).toHaveBeenCalledWith('ticket-1');
       const vista = generador.generar.mock.calls[0][0];
-      expect(vista.edilicia).toBeNull();
       expect(vista.tareas).toEqual({
         porcentajeAvance: 50,
         completadas: 1,

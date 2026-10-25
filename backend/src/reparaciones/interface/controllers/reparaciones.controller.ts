@@ -9,21 +9,16 @@
  *   PATCH  /reparaciones/:reparacionId                       → EditarReparacionUseCase    [MODIFICACION]
  *   POST   /reparaciones/:reparacionId/comentarios           → CrearComentarioUseCase (Tickets), interno [COMENTAR y OBSERVAR]
  *   GET    /reparaciones/:reparacionId/comentarios           → ListarComentariosReparacionUseCase  [LECTURA]
- *   POST   /reparaciones/:reparacionId/compras                → VincularCompraAReparacionUseCase   [MODIFICACION] + ruta COMPRAS:LECTURA
- *   DELETE /reparaciones/:reparacionId/compras/:compraId       → DesvincularCompraDeReparacionUseCase [MODIFICACION] + ruta COMPRAS:LECTURA
  *
  * Desde odd/ticket-unificado las compras, la ubicación y los comentarios son del ticket, de
  * cualquier tipo, y la grilla lista tickets (`?tipo=` elige el tipo; sin él, los del módulo
- * EDILICIA). `:reparacionId` acepta el id del ticket, que es el `id` que devuelve ahora el listado,
- * y también el del satélite `ticket_edilicia` que devolvía antes (`ResolutorReparacion`); las rutas
- * de compras son alias de `/tickets/:ticketId/compras` (`TicketComprasController`) hasta que T3
- * pase el frontend.
+ * EDILICIA). `:reparacionId` es el id del ticket, el `id` que devuelve el listado; el 404 nombra la
+ * reparación (`comoReparacion`). Las compras se vinculan por `/tickets/:ticketId/compras`
+ * (`TicketComprasController`).
  *
  * Las celdas `EDILICIA:*` de la matriz dejaron de decidir las operaciones sobre tickets
  * (odd/permisos-por-tipo-ticket, D5 d): cada caso de uso exige su acción sobre el tipo del ticket
- * (403 si falta) y responde 404 si el actor no lo ve. Vincular y desvincular exigen `MODIFICACION`
- * sobre el tipo (odd/ticket-unificado, S4) y `COMPRAS:LECTURA` en la ruta, el permiso del selector
- * de compras (decisión de producto #2435); `EDILICIA:BORRADO` ya no se usa.
+ * (403 si falta) y responde 404 si el actor no lo ve.
  *
  * Subtareas (odd/tareas-con-tecnico): son las tareas del ticket y se gestionan en
  * `/tickets/:id/tareas`; `GET /reparaciones` las sigue embebiendo.
@@ -38,7 +33,6 @@ import {
   Body,
   ConflictException,
   Controller,
-  Delete,
   ForbiddenException,
   Get,
   HttpCode,
@@ -61,7 +55,7 @@ import { ParseFormatoExportPipe } from '../../../shared/interface/export/formato
 import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard';
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guard';
-import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
+import { CurrentUser } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
 import {
@@ -87,10 +81,8 @@ import { ListarReparacionesUseCase } from '../../application/use-cases/listar-re
 import { CrearComentarioUseCase } from '../../../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
-import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
-import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
 import { EditarReparacionUseCase } from '../../application/use-cases/editar-reparacion.use-case';
-import { ResolutorReparacion } from '../../application/services/acceso-reparacion';
+import { comoReparacion } from '../../application/services/acceso-reparacion';
 
 import {
   TicketEdiliciaNoEncontradoError,
@@ -98,7 +90,6 @@ import {
   CompraNoEncontradaError,
   VinculoNoEncontradoError,
   ReparacionNoEditableError,
-  ComentarioReparacionNoPermitidoError,
 } from '../../domain/errors/reparaciones.errors';
 
 import {
@@ -109,7 +100,6 @@ import {
   ListReparacionesQueryDto,
   ListReparacionesResponseDto,
   TicketEdiliciaConTicketResponseDto,
-  VincularCompraHttpDto,
   EditarReparacionHttpDto,
   toComentarioReparacionResponseDto,
   toReparacionListItemResponseDto,
@@ -139,7 +129,8 @@ export function toHttpException(
   if (
     error instanceof TicketNoEncontradoError ||
     error instanceof TicketEdiliciaNoEncontradoError ||
-    // Vínculo ticket-compra (sdd/reparacion-bloqueada-por-compra, WU5; odd/ticket-unificado).
+    // Vínculo ticket-compra (sdd/reparacion-bloqueada-por-compra, WU5): los produce
+    // `TicketComprasController`, que reusa este mapeo.
     error instanceof CompraNoEncontradaError ||
     error instanceof VinculoNoEncontradoError
   ) {
@@ -162,7 +153,6 @@ export function toHttpException(
     error instanceof ExportacionDemasiadoGrandeError ||
     // odd/detalle-ticket-legible (S5): la reparación ya se empezó a trabajar o está bloqueada.
     error instanceof ReparacionNoEditableError ||
-    error instanceof ComentarioReparacionNoPermitidoError ||
     error instanceof TicketSoloComentariosError
   ) {
     return new UnprocessableEntityException(error.message);
@@ -199,21 +189,16 @@ export class ReparacionesController {
     // `EquiposController.exportarEquiposUseCase`: evita reindexar los tests
     // existentes que instancian el controller con args posicionales.
     private readonly exportarReparacionesUseCase: ExportarReparacionesUseCase,
-    // WU5 (sdd/reparacion-bloqueada-por-compra) — mismo criterio, al final.
-    private readonly vincularCompraUseCase: VincularCompraAReparacionUseCase,
-    private readonly desvincularCompraUseCase: DesvincularCompraDeReparacionUseCase,
     // odd/detalle-ticket-legible — mismo criterio, al final.
     private readonly editarReparacionUseCase: EditarReparacionUseCase,
     // odd/permisos-por-tipo-ticket (D5 a) — mismo criterio, al final.
     private readonly alcances: CargadorAlcanceTicket,
-    // odd/ticket-unificado — mismo criterio, al final.
-    private readonly resolutor: ResolutorReparacion,
   ) {}
 
   /**
    * POST /reparaciones
    * Crea un ticket desde Edilicia, de cualquier tipo con alta manual (odd/ticket-unificado, S2),
-   * con la ubicación en el ticket; el satélite `ticket_edilicia` se sigue creando hasta T4.
+   * con la ubicación en el ticket, igual que `POST /tickets`.
    * `solicitanteId`/`autorId` = JWT.sub; `anio` lo resuelve el servidor.
    * @throws 403 sin `ALTAS` sobre el tipo resultante (el elegido o EDILICIA)
    * @throws 409 sin ciclo activo
@@ -251,7 +236,7 @@ export class ReparacionesController {
    * Una página de los tickets que el actor ve, del tipo pedido o, sin `tipo`, del módulo EDILICIA
    * (odd/ticket-unificado, S2), el más reciente primero (odd/reparaciones-paginadas). Solo tipos
    * con `LECTURA`; sin `VER_TODOS` sobre el tipo, la regla de fila (odd/permisos-por-tipo-ticket,
-   * D5 e). Un ticket sin satélite aparece igual que uno abierto desde Edilicia.
+   * D5 e). Un ticket abierto desde Tickets aparece igual que uno abierto desde Edilicia.
    *
    * @param query `pagina` (default 1), `porPagina` (default 20, máx. 100), `bloqueo` (default
    *   `TODAS`) y `tipo` (opcional).
@@ -320,7 +305,7 @@ export class ReparacionesController {
    * `GET /reparaciones/export` por el orden de matching de Nest.
    *
    * @throws 403 sin `MODIFICACION` sobre el tipo del ticket
-   * @throws 404 reparación o ticket inexistente, o que el actor no ve
+   * @throws 404 ticket inexistente, o que el actor no ve (el mensaje nombra la reparación)
    * @throws 422 ya en proceso, con tareas completadas, bloqueada, prioridad o sector inexistente, o
    *   ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
    */
@@ -331,9 +316,10 @@ export class ReparacionesController {
     @CurrentUser() user: JwtPayload,
   ): Promise<TicketEdiliciaConTicketResponseDto> {
     const alcance = await this.alcances.cargar(user);
-    const result = await this.resolutor.sobreTicket(reparacionId, (ticketId) =>
-      this.editarReparacionUseCase.execute({
-        ticketId,
+    const result = comoReparacion(
+      reparacionId,
+      await this.editarReparacionUseCase.execute({
+        ticketId: reparacionId,
         titulo: dto.titulo,
         descripcion: dto.descripcion,
         prioridadId: dto.prioridadId,
@@ -358,7 +344,7 @@ export class ReparacionesController {
    * `COMENTAR` y `OBSERVAR` sobre el tipo, se acepta con el ticket en cualquier estado, no publica
    * `TicketComentadoEvent` ni cuenta como primera respuesta. `autorId` viene del JWT.
    * @throws 403 sin `COMENTAR` u `OBSERVAR` sobre el tipo
-   * @throws 404 reparación o ticket inexistente, o que el actor no ve
+   * @throws 404 ticket inexistente, o que el actor no ve (el mensaje nombra la reparación)
    */
   @Post(':reparacionId/comentarios')
   @HttpCode(HttpStatus.CREATED)
@@ -368,9 +354,10 @@ export class ReparacionesController {
     @CurrentUser() user: JwtPayload,
   ): Promise<ComentarioReparacionResponseDto> {
     const alcance = await this.alcances.cargar(user);
-    const result = await this.resolutor.sobreTicket(reparacionId, (ticketId) =>
-      this.crearComentarioUseCase.execute({
-        ticketId,
+    const result = comoReparacion(
+      reparacionId,
+      await this.crearComentarioUseCase.execute({
+        ticketId: reparacionId,
         texto: dto.texto,
         autorId: user.sub,
         esInterno: true,
@@ -398,7 +385,7 @@ export class ReparacionesController {
    * Los nombres de los autores se resuelven en UN batch cross-DB
    * (`resolverNombres`, sin N+1) — `autor_id` es soft ref a `master.usuarios`
    * y no hay JOIN posible entre las dos bases.
-   * @throws 404 reparación o ticket inexistente, o que el actor no ve
+   * @throws 404 ticket inexistente, o que el actor no ve (el mensaje nombra la reparación)
    */
   @Get(':reparacionId/comentarios')
   async listarComentarios(
@@ -406,8 +393,9 @@ export class ReparacionesController {
     @CurrentUser() user: JwtPayload,
   ): Promise<ComentarioReparacionResponseDto[]> {
     const alcance = await this.alcances.cargar(user);
-    const result = await this.resolutor.sobreTicket(reparacionId, (ticketId) =>
-      this.listarComentariosUseCase.execute(ticketId, alcance),
+    const result = comoReparacion(
+      reparacionId,
+      await this.listarComentariosUseCase.execute(reparacionId, alcance),
     );
 
     if (result.isFail()) {
@@ -419,62 +407,5 @@ export class ReparacionesController {
       ...new Set(comentarios.map((c) => c.autorId)),
     ]);
     return comentarios.map((c) => toComentarioReparacionResponseDto(c, nombres.get(c.autorId)));
-  }
-
-  /**
-   * POST /reparaciones/:reparacionId/compras
-   * Alias de `POST /tickets/:ticketId/compras` (odd/ticket-unificado): vincula una compra existente
-   * del tenant al ticket. IDEMPOTENTE (D4).
-   *
-   * `@RequiereAcciones('COMPRAS:LECTURA')` (decisión de producto #2435): el selector de compras
-   * consume `GET /compras`, y el candado vive en el `AccionesGuard` del backend. `MODIFICACION`
-   * sobre el tipo del ticket lo exige el caso de uso (S4).
-   * @throws 403 sin `COMPRAS:LECTURA`, o sin `MODIFICACION` sobre el tipo
-   * @throws 404 reparación, ticket o compra inexistente, o ticket que el actor no ve
-   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
-   */
-  @Post(':reparacionId/compras')
-  @RequiereAcciones('COMPRAS:LECTURA')
-  @HttpCode(HttpStatus.CREATED)
-  async vincularCompra(
-    @Param('reparacionId') reparacionId: string,
-    @Body() dto: VincularCompraHttpDto,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<void> {
-    const alcance = await this.alcances.cargar(user);
-    const result = await this.resolutor.sobreTicket(reparacionId, (ticketId) =>
-      this.vincularCompraUseCase.execute({ ticketId, compraId: dto.compraId, alcance }),
-    );
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
-  }
-
-  /**
-   * DELETE /reparaciones/:reparacionId/compras/:compraId
-   * Alias de `DELETE /tickets/:ticketId/compras/:compraId` (odd/ticket-unificado): desvincula (HARD
-   * DELETE real, D5) una compra del ticket. Mismos permisos que vincular (S4): `COMPRAS:LECTURA` en
-   * la ruta y `MODIFICACION` sobre el tipo; `EDILICIA:BORRADO` ya no se usa.
-   * @throws 403 sin `COMPRAS:LECTURA`, o sin `MODIFICACION` sobre el tipo
-   * @throws 404 vínculo inexistente, o reparación o ticket que el actor no ve
-   * @throws 422 ticket RESUELTO/CERRADO/CANCELADO y el actor no es ADMINISTRADOR ni ROOT (odd/cerrado-solo-comentarios)
-   */
-  @Delete(':reparacionId/compras/:compraId')
-  @RequiereAcciones('COMPRAS:LECTURA')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async desvincularCompra(
-    @Param('reparacionId') reparacionId: string,
-    @Param('compraId') compraId: string,
-    @CurrentUser() user: JwtPayload,
-  ): Promise<void> {
-    const alcance = await this.alcances.cargar(user);
-    const result = await this.resolutor.sobreTicket(reparacionId, (ticketId) =>
-      this.desvincularCompraUseCase.execute({ ticketId, compraId, alcance }),
-    );
-
-    if (result.isFail()) {
-      throw toHttpException(result.getError());
-    }
   }
 }

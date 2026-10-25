@@ -25,7 +25,6 @@ import {
   TICKET_UBICACION_MAX_LENGTH,
   TicketEntity,
 } from '../../../tickets/domain/entities/ticket.entity';
-import { COMENTARIO_TEXTO_MAX_LENGTH } from '../../domain/entities/comentario-reparacion.entity';
 import {
   FILTROS_BLOQUEO,
   FiltroBloqueo,
@@ -82,13 +81,21 @@ export class CreateTicketEdilicioHttpDto {
 }
 
 /**
+ * Largo máximo del texto de un comentario de Edilicia. Nació espejando el CHECK de la tabla vieja
+ * `comentarios_reparacion`; el comentario va al timeline (`operaciones_ticket.descripcion`, TEXT)
+ * desde odd/ticket-unificado, y el tope se conserva para no cambiar el contrato de la ruta. El
+ * frontend lo espeja en `features/edilicia/schemas.ts`.
+ */
+export const COMENTARIO_TEXTO_MAX_LENGTH = 2000;
+
+/**
  * Body de `POST /reparaciones/:reparacionId/comentarios`. `autorId` viene del
  * JWT, nunca del cliente HTTP.
  *
  * El `@Transform` que recorta corre ANTES de los validadores, así que un
  * texto de puro whitespace queda en `''` y lo rechaza `@MinLength(1)` con un
- * 400 — sin él, `'   '` pasaría el `MinLength` y moriría como 500 en el
- * `throw` de precondición de la entidad. `@MaxLength` espeja el CHECK de DB.
+ * 400 — sin él, `'   '` pasaría el `MinLength` y quedaría como un comentario
+ * en blanco en el timeline. `@MaxLength` es `COMENTARIO_TEXTO_MAX_LENGTH`.
  */
 export class CreateComentarioReparacionHttpDto {
   @IsString()

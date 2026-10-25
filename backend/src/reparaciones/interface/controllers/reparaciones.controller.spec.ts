@@ -25,10 +25,8 @@ import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket
 import { PermisosTipoTicketEnMemoria } from '../../../tickets/test-helpers/permisos-tipo-ticket-en-memoria';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';
-import { ResolutorReparacion } from '../../application/services/acceso-reparacion';
 import {
   AccionSobreTipoNoPermitidaError,
   SolicitanteInvalidoError,
@@ -38,11 +36,7 @@ import {
   TicketNoEncontradoError,
   TicketSoloComentariosError,
 } from '../../../tickets/domain/errors/tickets.errors';
-import {
-  CompraNoEncontradaError,
-  VinculoNoEncontradoError,
-  ReparacionNoEditableError,
-} from '../../domain/errors/reparaciones.errors';
+import { ReparacionNoEditableError } from '../../domain/errors/reparaciones.errors';
 import * as ReparacionesErrors from '../../domain/errors/reparaciones.errors';
 import { payloadDeTest } from '../../../auth/test-helpers/payload-de-test';
 import { unstubbed } from '../../../testing/mocks';
@@ -55,8 +49,6 @@ import {
 import { CrearComentarioUseCase } from '../../../tickets/application/use-cases/crear-comentario.use-case';
 import { ListarComentariosReparacionUseCase } from '../../application/use-cases/listar-comentarios-reparacion.use-case';
 import { ExportarReparacionesUseCase } from '../../application/use-cases/exportar-reparaciones.use-case';
-import { VincularCompraAReparacionUseCase } from '../../application/use-cases/vincular-compra-a-reparacion.use-case';
-import { DesvincularCompraDeReparacionUseCase } from '../../application/use-cases/desvincular-compra-de-reparacion.use-case';
 import { EditarReparacionUseCase } from '../../application/use-cases/editar-reparacion.use-case';
 import { espiado, type Espiado } from '../../../shared/test-helpers/espiado';
 
@@ -102,17 +94,6 @@ const CAMPOS_SUBTAREA = [
   'ticketEdiliciaId',
   'updatedAt',
 ];
-
-/**
- * `ResolutorReparacion` real sobre un repositorio en memoria con UN satélite: `edilicia-uuid` es la
- * reparación vieja del ticket `ticket-uuid`. Cualquier otro id se toma como id de ticket.
- */
-function resolutor(): ResolutorReparacion {
-  const satelite = TicketEdiliciaEntity.create({ ticketId: 'ticket-uuid' }, 'edilicia-uuid');
-  return new ResolutorReparacion({
-    findById: async (id: string) => (id === 'edilicia-uuid' ? satelite : null),
-  });
-}
 
 /** Un COMENTARIO del timeline del ticket (odd/ticket-unificado, S3). */
 function comentario(id: string, texto: string, autorId = 'usuario-uuid'): OperacionTicketEntity {
@@ -171,10 +152,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     // tests que verifican el enriquecimiento lo sobrescriben.
     const usuarioMasterChecker = usuarioMasterCheckerFalso();
     const exportarReparacionesUseCase = espiado(ExportarReparacionesUseCase);
-    // Agregados al final (WU5, mismo criterio que exportarReparacionesUseCase):
-    // no reindexan los args posicionales anteriores.
-    const vincularCompraUseCase = espiado(VincularCompraAReparacionUseCase);
-    const desvincularCompraUseCase = espiado(DesvincularCompraDeReparacionUseCase);
     const editarReparacionUseCase = espiado(EditarReparacionUseCase);
 
     const controller = new ReparacionesController(
@@ -184,11 +161,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       listarComentariosUseCase.caso,
       usuarioMasterChecker,
       exportarReparacionesUseCase.caso,
-      vincularCompraUseCase.caso,
-      desvincularCompraUseCase.caso,
       editarReparacionUseCase.caso,
       cargadorDeAlcance(),
-      resolutor(),
     );
 
     return {
@@ -199,8 +173,6 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       listarComentariosUseCase,
       usuarioMasterChecker,
       exportarReparacionesUseCase,
-      vincularCompraUseCase,
-      desvincularCompraUseCase,
       editarReparacionUseCase,
     };
   }
@@ -210,9 +182,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
       ticket.actualizarDatos({ ubicacion: 'Edificio Central' });
-      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id }, 'edilicia-uuid');
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
-        Result.ok({ ticket, ticketEdilicia, sectorNombre: null }),
+        Result.ok({ ticket, sectorNombre: null }),
       );
 
       const result = await controller.crear(
@@ -248,9 +219,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
       ticket.actualizarDatos({ sectorId: 'sector-uuid', ubicacion: 'Patio' });
-      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id }, 'edilicia-uuid');
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
-        Result.ok({ ticket, ticketEdilicia, sectorNombre: 'Mantenimiento' }),
+        Result.ok({ ticket, sectorNombre: 'Mantenimiento' }),
       );
 
       const result = await controller.crear(
@@ -271,9 +241,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     it('pasa el tipoId elegido al caso de uso, y null si no viene (S2)', async () => {
       const { controller, crearTicketEdilicioUseCase } = buildController();
       const ticket = makeTicket();
-      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id }, 'edilicia-uuid');
       crearTicketEdilicioUseCase.execute.mockResolvedValue(
-        Result.ok({ ticket, ticketEdilicia, sectorNombre: null }),
+        Result.ok({ ticket, sectorNombre: null }),
       );
 
       await controller.crear({ titulo: 'X', prioridadId: 'p', tipoId: 'tipo-uuid' }, USER);
@@ -463,6 +432,13 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
     },
   );
 
+  it.each(['vincularCompra', 'desvincularCompra'])(
+    'ya no expone el alias %s (odd/ticket-unificado T4a): las compras viven en /tickets/:ticketId/compras',
+    (metodo) => {
+      expect(metodo in ReparacionesController.prototype).toBe(false);
+    },
+  );
+
   describe('POST /reparaciones/:reparacionId/comentarios', () => {
     it('crea un comentario INTERNO del ticket con el caso de uso de Tickets, con el autorId del JWT, y resuelve el nombre del autor (L19)', async () => {
       const { controller, crearComentarioUseCase, usuarioMasterChecker } = buildController();
@@ -474,7 +450,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       const result = await controller.crearComentario(
-        'edilicia-uuid',
+        'ticket-uuid',
         { texto: 'Falta el repuesto X' },
         USER,
       );
@@ -499,14 +475,14 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       });
     });
 
-    it('con el id de un ticket sin satélite, comenta ese ticket (odd/ticket-unificado)', async () => {
+    it('el id de la ruta es el del ticket: no se traduce desde el satélite viejo (T4a)', async () => {
       const { controller, crearComentarioUseCase } = buildController();
       crearComentarioUseCase.execute.mockResolvedValue(Result.ok(comentario('c1', 'X')));
 
-      await controller.crearComentario('ticket-sin-satelite', { texto: 'X' }, USER);
+      await controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER);
 
       expect(crearComentarioUseCase.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ ticketId: 'ticket-sin-satelite' }),
+        expect.objectContaining({ ticketId: 'edilicia-uuid' }),
       );
     });
 
@@ -516,10 +492,8 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         Result.fail(new TicketNoEncontradoError('ticket-uuid')),
       );
 
-      await expect(
-        controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
-      ).rejects.toThrow(
-        new NotFoundException('Ticket edilicio con id "edilicia-uuid" no encontrado.'),
+      await expect(controller.crearComentario('ticket-uuid', { texto: 'X' }, USER)).rejects.toThrow(
+        new NotFoundException('Ticket edilicio con id "ticket-uuid" no encontrado.'),
       );
     });
 
@@ -528,9 +502,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const error = new AccionSobreTipoNoPermitidaError('OBSERVAR');
       crearComentarioUseCase.execute.mockResolvedValue(Result.fail(error));
 
-      await expect(
-        controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
-      ).rejects.toThrow(new ForbiddenException(error.message));
+      await expect(controller.crearComentario('ticket-uuid', { texto: 'X' }, USER)).rejects.toThrow(
+        new ForbiddenException(error.message),
+      );
     });
   });
 
@@ -544,7 +518,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         new Map([['usuario-uuid', { nombre: 'Ana', apellido: 'Gómez' }]]),
       );
 
-      const result = await controller.listarComentarios('edilicia-uuid', USER);
+      const result = await controller.listarComentarios('ticket-uuid', USER);
 
       expect(result.map((c) => c.id)).toEqual(['c2', 'c1']);
       expect(result.map((c) => c.texto)).toEqual(['Sigue sin llegar', 'Se pidió el repuesto']);
@@ -560,7 +534,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         Result.ok([comentario('c1', 'Demorado', 'baja-uuid')]),
       );
 
-      const result = await controller.listarComentarios('edilicia-uuid', USER);
+      const result = await controller.listarComentarios('ticket-uuid', USER);
 
       expect(result[0].autorId).toBe('baja-uuid');
       expect(result[0].autorNombre).toBeNull();
@@ -573,46 +547,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
         Result.fail(new TicketNoEncontradoError('ticket-uuid')),
       );
 
-      await expect(controller.listarComentarios('edilicia-uuid', USER)).rejects.toBeInstanceOf(
-        NotFoundException,
+      await expect(controller.listarComentarios('ticket-uuid', USER)).rejects.toThrow(
+        new NotFoundException('Ticket edilicio con id "ticket-uuid" no encontrado.'),
       );
-    });
-  });
-
-  describe('POST /reparaciones/:reparacionId/compras', () => {
-    it('vincula la compra al ticket de la reparación (alias de /tickets/:ticketId/compras)', async () => {
-      const { controller, vincularCompraUseCase } = buildController();
-      vincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
-
-      await controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER);
-
-      expect(vincularCompraUseCase.execute).toHaveBeenCalledWith({
-        ticketId: 'ticket-uuid',
-        compraId: 'compra-uuid',
-        alcance: ALCANCE_USER,
-      });
-    });
-
-    it('un ticket que el actor no ve → 404', async () => {
-      const { controller, vincularCompraUseCase } = buildController();
-      vincularCompraUseCase.execute.mockResolvedValue(
-        Result.fail(new TicketNoEncontradoError('ticket-uuid')),
-      );
-
-      await expect(
-        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER),
-      ).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    it('mapea CompraNoEncontradaError → 404', async () => {
-      const { controller, vincularCompraUseCase } = buildController();
-      vincularCompraUseCase.execute.mockResolvedValue(
-        Result.fail(new CompraNoEncontradaError('compra-uuid')),
-      );
-
-      await expect(
-        controller.vincularCompra('edilicia-uuid', { compraId: 'compra-uuid' }, USER),
-      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
@@ -640,7 +577,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       );
 
       const respuesta = await controller.editar(
-        'edilicia-uuid',
+        'ticket-uuid',
         { titulo: 'Titulo nuevo', ubicacion: 'Aula 3', sectorId: 'sector-uuid' },
         USER,
       );
@@ -669,11 +606,7 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, editarReparacionUseCase } = buildController();
       editarReparacionUseCase.execute.mockResolvedValue(Result.ok({ ticket, sectorNombre: null }));
 
-      await controller.editar(
-        'edilicia-uuid',
-        {},
-        payloadDeTest({ ...USER, is_global_admin: true }),
-      );
+      await controller.editar('ticket-uuid', {}, payloadDeTest({ ...USER, is_global_admin: true }));
 
       expect(editarReparacionUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ actorEsRoot: true }),
@@ -701,35 +634,9 @@ describe('ReparacionesController (T8.6, T9.6)', () => {
       const { controller, editarReparacionUseCase } = buildController();
       editarReparacionUseCase.execute.mockResolvedValue(Result.fail(error()));
 
-      await expect(controller.editar('edilicia-uuid', {}, USER)).rejects.toMatchObject({
+      await expect(controller.editar('ticket-uuid', {}, USER)).rejects.toMatchObject({
         status: http,
       });
-    });
-  });
-
-  describe('DELETE /reparaciones/:reparacionId/compras/:compraId', () => {
-    it('desvincula la compra del ticket de la reparación', async () => {
-      const { controller, desvincularCompraUseCase } = buildController();
-      desvincularCompraUseCase.execute.mockResolvedValue(Result.ok(undefined));
-
-      await controller.desvincularCompra('edilicia-uuid', 'compra-uuid', USER);
-
-      expect(desvincularCompraUseCase.execute).toHaveBeenCalledWith({
-        ticketId: 'ticket-uuid',
-        compraId: 'compra-uuid',
-        alcance: ALCANCE_USER,
-      });
-    });
-
-    it('mapea VinculoNoEncontradoError → 404', async () => {
-      const { controller, desvincularCompraUseCase } = buildController();
-      desvincularCompraUseCase.execute.mockResolvedValue(
-        Result.fail(new VinculoNoEncontradoError('ticket-uuid', 'compra-uuid')),
-      );
-
-      await expect(
-        controller.desvincularCompra('edilicia-uuid', 'compra-uuid', USER),
-      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });
@@ -748,11 +655,8 @@ describe('ReparacionesController.exportar — GET /reparaciones/export (sdd/expo
       espiado(ListarComentariosReparacionUseCase).caso,
       usuarioMasterCheckerFalso(),
       exportarReparaciones.caso,
-      espiado(VincularCompraAReparacionUseCase).caso,
-      espiado(DesvincularCompraDeReparacionUseCase).caso,
       espiado(EditarReparacionUseCase).caso,
       cargadorDeAlcance(),
-      resolutor(),
     );
     return { controller, exportarReparaciones };
   }
@@ -875,8 +779,8 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 6 clases de error (ComentarioReparacionNoPermitidoError se sumó en odd/ticket-cerrado-solo-lectura)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(6);
+  it('el catálogo tiene EXACTAMENTE 5 clases de error (ComentarioReparacionNoPermitidoError se retiró en odd/ticket-unificado T4a)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(5);
   });
 
   const TABLA: Array<[string, () => DomainError, 404 | 422]> = [
@@ -907,12 +811,6 @@ describe('toHttpException (reparaciones) — catálogo de errores propios → HT
     [
       'ReparacionNoEditableError',
       () => new ReparacionesErrors.ReparacionNoEditableError('BLOQUEADA'),
-      422,
-    ],
-    // odd/ticket-cerrado-solo-lectura (S3): el ticket está cerrado/cancelado o la reparación bloqueada.
-    [
-      'ComentarioReparacionNoPermitidoError',
-      () => new ReparacionesErrors.ComentarioReparacionNoPermitidoError('bloqueado'),
       422,
     ],
   ];
@@ -949,28 +847,24 @@ describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ti
       espiado(ListarComentariosReparacionUseCase).caso,
       usuarioMasterCheckerFalso(),
       espiado(ExportarReparacionesUseCase).caso,
-      espiado(VincularCompraAReparacionUseCase).caso,
-      espiado(DesvincularCompraDeReparacionUseCase).caso,
       editar.caso,
       cargadorDeAlcance(),
-      resolutor(),
     );
     return { controller, crearTicketEdilicio, crearComentario, editar };
   }
 
   /**
-   * Las celdas `EDILICIA:*` dejan de decidir (D5 d), y desde odd/ticket-unificado (S4) tampoco
-   * `EDILICIA:BORRADO`: vincular y desvincular exigen `COMPRAS:LECTURA` en la ruta (el selector lee
-   * `GET /compras`) y `MODIFICACION` sobre el tipo en el caso de uso.
+   * Las celdas `EDILICIA:*` dejan de decidir (D5 d): cada caso de uso exige su acción sobre el tipo.
+   * Las rutas de compras, las únicas con `@RequiereAcciones('COMPRAS:LECTURA')`, viven en
+   * `TicketComprasController` desde que se retiraron los alias (odd/ticket-unificado, T4a).
    */
-  it('solo vincular y desvincular compra declaran @RequiereAcciones, las dos COMPRAS:LECTURA y ninguna EDILICIA', () => {
+  it('ninguna ruta declara @RequiereAcciones', () => {
     const rutas = accionesPorRuta(ReparacionesController);
 
-    expect(rutas.size).toBe(8);
-    expect(Object.fromEntries([...rutas].filter(([, acciones]) => acciones.length > 0))).toEqual({
-      vincularCompra: ['COMPRAS:LECTURA'],
-      desvincularCompra: ['COMPRAS:LECTURA'],
-    });
+    expect(rutas.size).toBe(6);
+    expect(Object.fromEntries([...rutas].filter(([, acciones]) => acciones.length > 0))).toEqual(
+      {},
+    );
   });
 
   it('POST /reparaciones pasa el alcance; sin ALTAS sobre el tipo resultante responde 403', async () => {
@@ -997,9 +891,9 @@ describe('ReparacionesController — permisos por tipo (odd/permisos-por-tipo-ti
     );
 
     await expect(
-      controller.crearComentario('edilicia-uuid', { texto: 'X' }, USER),
+      controller.crearComentario('ticket-uuid', { texto: 'X' }, USER),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(controller.editar('edilicia-uuid', {}, USER)).rejects.toBeInstanceOf(
+    await expect(controller.editar('ticket-uuid', {}, USER)).rejects.toBeInstanceOf(
       ForbiddenException,
     );
   });

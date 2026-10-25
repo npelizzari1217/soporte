@@ -66,6 +66,7 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
     this.fila(doc, 'Tipo', vista.tipo);
     this.fila(doc, 'Solicitante', vista.solicitante);
     this.fila(doc, 'Asignado a', vista.asignado);
+    if (vista.ubicacion) this.fila(doc, 'Ubicación', vista.ubicacion);
     this.fila(doc, 'Creado', vista.creado);
     this.fila(doc, 'Cerrado', vista.cerrado);
     this.fila(doc, 'Vencimiento SLA', vista.vencimientoSla);
@@ -78,11 +79,6 @@ export class PdfkitGeneradorPdfTicket implements IGeneradorPdfTicket {
       this.fila(doc, 'Equipo', vista.soporte.equipo);
       this.fila(doc, 'Problema', vista.soporte.descripcionProblema);
       this.fila(doc, 'Solución aplicada', vista.soporte.solucionAplicada);
-    }
-
-    if (vista.edilicia) {
-      this.seccion(doc, 'Reparación');
-      this.fila(doc, 'Ubicación', vista.edilicia.ubicacion);
     }
 
     if (vista.tareas) {

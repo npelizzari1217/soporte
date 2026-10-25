@@ -26,7 +26,7 @@ export function vistaDePrueba(overrides: Partial<TicketPdfVista> = {}): TicketPd
       descripcionProblema: 'Error E3 en el panel.',
       solucionAplicada: null,
     },
-    edilicia: null,
+    ubicacion: null,
     tareas: null,
     historial: [
       {

@@ -12,7 +12,7 @@
  * estados terminales y los que no figuran en estas tablas no cambian: la política es fail-safe.
  *
  * Aplica a todo tipo de ticket (S1): las tareas son genéricas desde el punto 12. Revierte el ADR-2 de
- * `TicketEdiliciaEntity` ("completar la última tarea NO resuelve el ticket"). Sin imports de Prisma
+ * `TicketEdiliciaEntity`, ya retirada ("completar la última tarea NO resuelve el ticket"). Sin imports de Prisma
  * ni NestJS — dominio puro. Quien la aplica valida cada arco normal contra la máquina de estados.
  */
 

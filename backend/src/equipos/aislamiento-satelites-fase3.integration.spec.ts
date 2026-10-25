@@ -4,8 +4,9 @@
  * TenantContext del tenant A (una DB física) NO ve filas del tenant B (OTRA
  * DB física) — mismo patrón que
  * `tickets/infrastructure/persistence/prisma/prisma-ticket-repository.aislamiento.integration.spec.ts`
- * (Fase 2, T5.7/T23), extendido a un repo representativo de cada módulo
- * satélite nuevo: `PrismaTicketEdiliciaRepository`, `PrismaTicketSoporteRepository`.
+ * (Fase 2, T5.7/T23), extendido al repo satélite de equipos:
+ * `PrismaTicketSoporteRepository`. El de reparaciones (`PrismaTicketEdiliciaRepository`)
+ * se retiró con el satélite (odd/ticket-unificado, T4a).
  *
  * NOTA (sdd/redisenio-modulo-compras, PR-1): el caso de `compras` fue
  * removido de acá tras la demolición del módulo legacy. El aislamiento
@@ -32,9 +33,6 @@ import { TenantMigrationRunnerAdapter } from '../clientes/infrastructure/tenant-
 import { PrismaTicketRepository } from '../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
 import { TicketEntity, TicketProps } from '../tickets/domain/entities/ticket.entity';
 
-import { PrismaTicketEdiliciaRepository } from '../reparaciones/infrastructure/persistence/prisma/prisma-ticket-edilicia.repository';
-import { TicketEdiliciaEntity } from '../reparaciones/domain/entities/ticket-edilicia.entity';
-
 import { PrismaTicketSoporteRepository } from './infrastructure/persistence/prisma/prisma-ticket-soporte.repository';
 import { TicketSoporteEntity } from './domain/entities/ticket-soporte.entity';
 
@@ -55,14 +53,12 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
   let tenantContext: TenantContext;
 
   let ticketRepo: PrismaTicketRepository;
-  let ticketEdiliciaRepo: PrismaTicketEdiliciaRepository;
   let ticketSoporteRepo: PrismaTicketSoporteRepository;
 
   let tipoId: string;
   let estadoId: string;
   let prioridadId: string;
 
-  let ticketEdiliciaAId: string;
   let ticketSoporteAId: string;
 
   const ticketIdsCreados: string[] = [];
@@ -91,7 +87,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
     tenantContext = new TenantContext();
 
     ticketRepo = new PrismaTicketRepository(tenantContext);
-    ticketEdiliciaRepo = new PrismaTicketEdiliciaRepository(tenantContext);
     ticketSoporteRepo = new PrismaTicketSoporteRepository(tenantContext);
 
     const suffix = randomBytes(3).toString('hex');
@@ -141,16 +136,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
       };
     }
 
-    // Fixture: TicketEdilicia en el tenant A (la ubicación es del ticket, odd/ticket-unificado).
-    const ticketEdiliciaBase = TicketEntity.create(makeTicketProps(`TVE${suffix.slice(0, 5)}`));
-    const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticketEdiliciaBase.id });
-    await withTenantA(async () => {
-      await ticketRepo.save(ticketEdiliciaBase);
-      await ticketEdiliciaRepo.save(ticketEdilicia);
-    });
-    ticketIdsCreados.push(ticketEdiliciaBase.id);
-    ticketEdiliciaAId = ticketEdilicia.id;
-
     // Fixture: TicketSoporte (sin equipo) en el tenant A.
     const ticketSoporteBase = TicketEntity.create(makeTicketProps(`TVS${suffix.slice(0, 5)}`));
     const ticketSoporte = TicketSoporteEntity.create({
@@ -168,9 +153,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
 
   afterAll(async () => {
     if (ticketIdsCreados.length > 0) {
-      await tenantAClient.ticketEdilicia.deleteMany({
-        where: { ticketId: { in: ticketIdsCreados } },
-      });
       await tenantAClient.ticketSoporte.deleteMany({
         where: { ticketId: { in: ticketIdsCreados } },
       });
@@ -182,14 +164,6 @@ describe('Aislamiento cross-tenant real — repos satélite de Fase 3 (TV.2)', (
     await prismaService.onModuleDestroy();
     await admin.dropDatabase(TENANT_B_DB_NAME);
   }, 60_000);
-
-  it('[CRITICAL] PrismaTicketEdiliciaRepository bindeado al tenant B NO ve el ticket_edilicia del tenant A', async () => {
-    const foundA = await withTenantA(() => ticketEdiliciaRepo.findById(ticketEdiliciaAId));
-    expect(foundA).not.toBeNull();
-
-    const foundB = await withTenantB(() => ticketEdiliciaRepo.findById(ticketEdiliciaAId));
-    expect(foundB).toBeNull();
-  });
 
   it('[CRITICAL] PrismaTicketSoporteRepository bindeado al tenant B NO ve el ticket_soporte del tenant A', async () => {
     const foundA = await withTenantA(() => ticketSoporteRepo.findById(ticketSoporteAId));

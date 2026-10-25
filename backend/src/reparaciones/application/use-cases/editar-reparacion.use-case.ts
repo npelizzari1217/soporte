@@ -28,7 +28,7 @@ import {
 
 /** Entrada de `EditarReparacionUseCase`. Un campo ausente no se toca; `null` limpia. */
 export interface EditarReparacionDto {
-  /** Id del ticket (las rutas de reparaciones lo resuelven desde el satélite, `ResolutorReparacion`). */
+  /** Id del ticket: el `:reparacionId` de la ruta. */
   ticketId: string;
   titulo?: string;
   descripcion?: string | null;

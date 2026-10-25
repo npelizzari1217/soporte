@@ -4,7 +4,7 @@
  * Desde odd/ticket-unificado (S3) el comentario de Edilicia es un COMENTARIO del timeline del
  * ticket: se lee del timeline, con su misma visibilidad. Desde T2b (L19) se escribe como comentario
  * interno con `CrearComentarioUseCase` de Tickets, que tiene sus propios tests. El caso de uso
- * recibe el id del ticket; traducir el id de la reparación es de `ResolutorReparacion`.
+ * recibe el id del ticket, el mismo que llega en la ruta; el 404 lo traduce `comoReparacion`.
  */
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../../tickets/domain/entities/operacion-ticket.entity';

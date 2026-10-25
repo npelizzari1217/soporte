@@ -172,10 +172,13 @@ describe('runDemoSeed — integración real (T6.1, sdd/beta-frontend)', () => {
         try {
           ticketCountTrasPrimera = await tenantClient.ticket.count();
           expect(ticketCountTrasPrimera).toBeGreaterThanOrEqual(8);
-          expect(await tenantClient.ticketEdilicia.count()).toBe(1);
-          // Las subtareas del ticket edilicio son tareas del ticket (odd/tareas-con-tecnico).
-          const edilicia = await tenantClient.ticketEdilicia.findFirstOrThrow();
-          expect(await tenantClient.tareaTicket.count({ where: { ticketId: edilicia.ticketId } })).toBe(
+          // Un ticket edilicio, sin satélite (odd/ticket-unificado, T4a): se lo encuentra por su tipo.
+          // Sus subtareas son tareas del ticket (odd/tareas-con-tecnico).
+          const edilicios = await tenantClient.ticket.findMany({
+            where: { tipo: { codigo: 'EDILICIA' } },
+          });
+          expect(edilicios).toHaveLength(1);
+          expect(await tenantClient.tareaTicket.count({ where: { ticketId: edilicios[0].id } })).toBe(
             2,
           );
           expect(await tenantClient.equipoInformatico.count()).toBe(2);

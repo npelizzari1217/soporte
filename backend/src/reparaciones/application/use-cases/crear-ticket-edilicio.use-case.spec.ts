@@ -1,9 +1,8 @@
 /**
  * T8.1 [UNIT][RED] — `CrearTicketEdilicioUseCase`.
  *
- * base+satélite en 1 tx; `ubicacion` es texto libre opcional y va al ticket
- * (odd/ticket-unificado, S1: el satélite nace sin ubicación propia); numero
- * EDI-. El tipo elegido puede ser de cualquier módulo con alta manual, salvo
+ * ticket + apertura en 1 tx, sin satélite (odd/ticket-unificado, T4a); `ubicacion`
+ * es texto libre opcional y va al ticket (S1); numero EDI-. El tipo elegido puede ser de cualquier módulo con alta manual, salvo
  * PREVENTIVO (S2).
  *
  * Ref spec: sdd/flujos-especializados/spec F3-E1. Ref design: ADR-3.
@@ -27,7 +26,6 @@ import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-tick
 import { ITipoOperacionRepository } from '../../../tickets/domain/ports/i-tipo-operacion.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 import {
   SectorTicketInexistenteError,
   SolicitanteInvalidoError,
@@ -92,7 +90,6 @@ describe('CrearTicketEdilicioUseCase', () => {
   function buildDeps() {
     const ticketRepo = { save: vi.fn<ITicketRepository['save']>() };
     const operacionRepo = { save: vi.fn<IOperacionTicketRepository['save']>() };
-    const ticketEdiliciaRepo = { save: vi.fn<ITicketEdiliciaRepository['save']>() };
     const estadoRepo = {
       findIdByCodigo: vi
         .fn<IEstadoRepository['findIdByCodigo']>()
@@ -151,7 +148,6 @@ describe('CrearTicketEdilicioUseCase', () => {
     const useCase = new CrearTicketEdilicioUseCase(
       ticketRepo,
       operacionRepo,
-      ticketEdiliciaRepo,
       estadoRepo,
       tipoTicketRepo,
       tipoOperacionRepo,
@@ -170,7 +166,6 @@ describe('CrearTicketEdilicioUseCase', () => {
       sectorRepo,
       ticketRepo,
       operacionRepo,
-      ticketEdiliciaRepo,
       usuarioMasterChecker,
       eventPublisher,
       resolverAsignacion,
@@ -192,22 +187,20 @@ describe('CrearTicketEdilicioUseCase', () => {
     alcance: alcanceSinRestriccion('usuario-uuid'),
   };
 
-  it('crea ticket base + satélite ticket_edilicia en una transacción, numero EDI-', async () => {
-    const { useCase, ticketRepo, operacionRepo, ticketEdiliciaRepo } = buildDeps();
+  it('crea el ticket y su apertura en una transacción, numero EDI-, sin satélite (T4a)', async () => {
+    const { useCase, ticketRepo, operacionRepo, txRunner } = buildDeps();
 
     const result = await useCase.execute(baseDto);
 
     expect(result.isOk()).toBe(true);
-    const { ticket, ticketEdilicia } = result.getValue();
+    const { ticket } = result.getValue();
     expect(ticket).toBeInstanceOf(TicketEntity);
     expect(ticket.numero).toBe('EDI-2026-00001');
-    expect(ticketEdilicia.ticketId).toBe(ticket.id);
-    // Una sola ubicación, la del ticket; el satélite ya no guarda una propia.
+    // Una sola ubicación, la del ticket.
     expect(ticket.ubicacion).toBe('Edificio Central');
-    expect(ticketEdilicia.ubicacion).toBeNull();
+    expect(txRunner.run).toHaveBeenCalledTimes(1);
     expect(ticketRepo.save).toHaveBeenCalledWith(ticket);
-    expect(operacionRepo.save).toHaveBeenCalled();
-    expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);
+    expect(operacionRepo.save).toHaveBeenCalledTimes(1);
   });
 
   it('ubicacion es opcional — null si no se provee', async () => {
@@ -262,19 +255,18 @@ describe('CrearTicketEdilicioUseCase', () => {
     });
 
     it('con un tipo activo de EDILICIA crea el ticket de ese tipo, numerado por su código', async () => {
-      const { useCase, numerador, ticketEdiliciaRepo } = buildDeps();
+      const { useCase, numerador } = buildDeps();
 
       const result = await useCase.execute({ ...baseDto, tipoId: 'tipo-MANTENIMIENTO' });
 
       expect(result.isOk()).toBe(true);
-      const { ticket, ticketEdilicia } = result.getValue();
+      const { ticket } = result.getValue();
       expect(ticket.tipoId).toBe('tipo-MANTENIMIENTO');
       expect(numerador.generarNumero).toHaveBeenCalledWith(
         'tipo-MANTENIMIENTO',
         'MANTENIMIENTO',
         2026,
       );
-      expect(ticketEdiliciaRepo.save).toHaveBeenCalledWith(ticketEdilicia);
     });
 
     it('con un tipo del módulo TICKETS crea el ticket de ese tipo (odd/ticket-unificado, S2)', async () => {
@@ -333,7 +325,7 @@ describe('CrearTicketEdilicioUseCase', () => {
     });
 
     it('con tipoId elegido: ALTAS sobre ESE tipo; tenerla sobre EDILICIA no alcanza → 403 sin persistir', async () => {
-      const { useCase, ticketRepo, ticketEdiliciaRepo, txRunner } = buildDeps();
+      const { useCase, ticketRepo, txRunner } = buildDeps();
 
       const result = await useCase.execute({
         ...baseDto,
@@ -350,7 +342,6 @@ describe('CrearTicketEdilicioUseCase', () => {
       );
       expect(txRunner.run).not.toHaveBeenCalled();
       expect(ticketRepo.save).not.toHaveBeenCalled();
-      expect(ticketEdiliciaRepo.save).not.toHaveBeenCalled();
     });
 
     it('sin tipoId y sin ALTAS sobre EDILICIA → 403 sin persistir', async () => {

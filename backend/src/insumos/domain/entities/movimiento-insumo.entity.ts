@@ -215,8 +215,8 @@ function validarMotivo(motivo: string | null): void {
  * `deleted_at`.
  *
  * **Extiende `BaseEntity` aunque la tabla no tenga esas dos columnas**, con el
- * precedente exacto de `ComentarioReparacionEntity` (`reparaciones/`), que es
- * append-only sobre una tabla igual de recortada. Lo que se gana es el id
+ * precedente exacto de `ComentarioReparacionEntity` (`reparaciones/`, retirada
+ * en odd/ticket-unificado), que era append-only sobre una tabla igual de recortada. Lo que se gana es el id
  * UUIDv7 generado antes del INSERT —monótono en el tiempo, así que la bitácora
  * tiene un desempate determinístico cuando dos asientos comparten
  * `created_at`— y la simetría con el resto de las entidades del módulo. Lo que
@@ -312,7 +312,7 @@ export class MovimientoInsumoEntity extends BaseEntity<MovimientoInsumoProps> {
    * `updatedAt` se espeja de `createdAt` para no inventar un dato que la base
    * no guarda —si arrancara en `new Date()`, cada lectura mostraría un
    * movimiento "modificado hoy" que nadie tocó nunca—. Mismo criterio que
-   * `ComentarioReparacionEntity.reconstitute`.
+   * seguía `ComentarioReparacionEntity.reconstitute`, ya retirada.
    *
    * @param props Campos del movimiento leídos de la base, con el motivo ya normalizado en su momento. `unidadId` ausente se lee como `null`; `MovimientoInsumoMapper` lo manda siempre.
    * @param id Id persistido.

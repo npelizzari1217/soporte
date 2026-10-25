@@ -30,9 +30,9 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   "Nuevo ticket" con todos los tipos — (este commit)
 - [x] T3b — S5, L22, L30 — worker — `bloqueada` en GET /tickets/:id para el detalle sin COMPRAS:LECTURA;
   Ayuda reparaciones-edilicias y reparaciones-listado — (este commit)
-- [ ] T4a — S1, L37 — worker — el código deja de tocar `ticket_edilicia`, `comentarios_reparacion` y
+- [x] T4a — S1, L37 — worker — el código deja de tocar `ticket_edilicia`, `comentarios_reparacion` y
   `reparacion_compra` (alta de Edilicia sin satélite, rutas alias y código muerto retirados, PDF con la
-  ubicación del ticket); las tablas quedan — (pendiente)
+  ubicación del ticket); las tablas quedan — (este commit)
 - [ ] T4b — S1, L37 — worker — migración que borra las tres tablas con prechecks y runbook, en un deploy
   posterior a T4a — (pendiente)
 
@@ -236,3 +236,60 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   L36. T4 se parte en dos deploys (decisión técnica): T4a saca el código que toca las tablas viejas, así el
   release anterior sigue pudiendo volver; T4b las borra recién con T4a en uso. El PDF pasa a mostrar la
   ubicación en cualquier ticket que la tenga (coherente con S1).
+- **L38** (decisión, T4a/S1, L37) — Ningún código del backend usa ya `ticket_edilicia`,
+  `comentarios_reparacion` ni `reparacion_compra`; las tablas, sus modelos de Prisma y sus migraciones
+  quedan para T4b. Lo fija `src/reparaciones/sin-tablas-del-satelite.spec.ts`: escanea `src/`,
+  `scripts/` y `prisma_master/seeds/` (specs incluidos, salvo los `migracion-*.spec.ts`) buscando los
+  delegados de Prisma y SQL crudo sobre esas tablas. Qué cambió:
+  - `POST /reparaciones` (`CrearTicketEdilicioUseCase`) crea solo el ticket y sus operaciones de
+    apertura, como `POST /tickets`; `TicketEdilicioCreado` ya no trae el satélite. El importador legacy
+    (`scripts/importacion-legacy/tenant.ts`) tampoco lo crea para EDILICIA, y el demo-seed se verifica
+    por el tipo del ticket.
+  - `ResolutorReparacion` se reemplazó por la función `comoReparacion`: el `:reparacionId` de las
+    rutas `/reparaciones/...` es el id del ticket, sin traducción; solo el 404 se sigue nombrando como
+    reparación (`Ticket edilicio con id "X" no encontrado.`). Un id de satélite en la URL es 404 (el
+    listado devuelve ids de ticket desde el deploy del 2026-10-25).
+  - Se retiraron los alias `POST /reparaciones/:id/compras` y `DELETE /reparaciones/:id/compras/:compraId`
+    (404 de Nest; el frontend no los usa desde T3, verificado con grep sobre `frontend/src`). Sus casos
+    e2e de permisos y de bloqueo en el listado pasaron a `/tickets/:ticketId/compras` sobre un ticket de
+    Edilicia, para no perder esa cobertura; los dos que solo probaban el alias (el id de satélite y el
+    404 que nombraba la reparación) se quitaron. `ReparacionesController` queda sin `@RequiereAcciones`.
+  - PDF: `TicketPdfVista.edilicia` pasa a `ubicacion: string | null`, la del ticket de cualquier tipo
+    (en blanco = `null`), y se imprime como fila «Ubicación» de la cabecera, solo si existe. La sección
+    «Reparación» desaparece: era solo la ubicación. `TicketPdfModule` ya no importa
+    `ReparacionesModule`, y este ya no exporta nada.
+  - Código muerto borrado: `TicketEdiliciaEntity`, `ITicketEdiliciaRepository`,
+    `PrismaTicketEdiliciaRepository`, `TicketEdiliciaMapper`, `ComentarioReparacionEntity` y
+    `ComentarioReparacionMapper` (con sus specs), y `ComentarioReparacionNoPermitidoError` (el catálogo
+    de errores de reparaciones queda en 5). `COMENTARIO_TEXTO_MAX_LENGTH` (2000) pasó a
+    `reparaciones.dto.ts`, con test de borde en el DTO; el espejo del frontend no cambia.
+  - Tests que solo existían para el satélite se quitaron (aislamiento de `PrismaTicketEdiliciaRepository`,
+    sus 4 casos de integración, "un vínculo solo en `reparacion_compra` no bloquea" y los asserts de "la
+    tabla vieja no se escribe"): los cubre el escaneo. Los que creaban un satélite como fixture ahora
+    crean solo el ticket.
+  - **No se renombró** `VincularCompraAReparacionUseCase`, `DesvincularCompraDeReparacionUseCase`,
+    `IReparacionCompraRepository` ni `IComentarioReparacionRepository` (L16): implica mover archivos y
+    sus specs, fuera de un cambio acotado; queda para T4b o una tarea propia. Los campos
+    `ticketEdiliciaId` de los DTO HTTP no cambian (contrato).
+  - Runbook sin cambios: ninguna sección afirma que el código escribe el satélite. Volver el código a
+    6595d838 funciona (lista por ticket y acepta ids de ticket). El límite ya documentado del
+    `rollback.sql` de 20261024120000 (pierde los vínculos de tickets sin satélite) cubre ahora también
+    a todo ticket creado desde Edilicia después de T4a.
+  - De paso, el JSDoc de `PATCH /tickets/:id/estado` (`tickets.controller.ts`) decía que el 422 era por
+    "sacar al ticket" de RESUELTO/CERRADO/CANCELADO; desde odd/cerrado-solo-comentarios L14 es cualquier
+    cambio de estado, también RESUELTO→CERRADO. Solo documentación.
+- **L39** (evidencia, T4a) — RED observado antes de implementar: el escaneo, 22 líneas en 9 archivos;
+  `reparaciones.controller.spec.ts`, los alias todavía en el prototipo y el id de satélite traducido al
+  ticket; `pdfkit-generador-pdf-ticket.spec.ts`, la fila «Ubicación» ausente. Sin RED propio: el alta sin
+  satélite (quitar una dependencia no tiene un test que falle antes; la cubre el escaneo) y el 404 de los
+  alias por HTTP (se escribió con las rutas ya retiradas). GREEN y compuertas del backend: `pnpm lint` y
+  `pnpm typecheck` sin errores; de a un archivo, `sin-tablas-del-satelite.spec.ts` 3,
+  `reparaciones.controller.spec.ts` 43, `reparaciones.e2e.spec.ts` 32, `reparaciones.module.spec.ts` 6,
+  `acceso-reparacion.spec.ts` 3, `crear-ticket-edilicio.use-case.spec.ts` 23, `reparaciones.dto.spec.ts`
+  21, `generar-pdf-ticket.use-case.spec.ts` 21, `pdfkit-generador-pdf-ticket.spec.ts` 10,
+  `prisma-reparaciones.integration.spec.ts` 2, `prisma-reparacion-compra.integration.spec.ts` 7,
+  `prisma-bloqueo-ticket.repository.integration.spec.ts` 5, `asignacion-automatica.canales.integration.spec.ts`
+  5, `aislamiento-satelites-fase3.integration.spec.ts` 1, `mantenimiento.integration.spec.ts` 2,
+  `tickets.controller.spec.ts` 90, `demo-seed.integration.spec.ts` 1, `importacion-legacy/tenant.integration.spec.ts`
+  8 y `importar-legacy.integration.spec.ts` 6, entre otros del módulo. No se corrió la suite completa del
+  backend. El frontend no se tocó.

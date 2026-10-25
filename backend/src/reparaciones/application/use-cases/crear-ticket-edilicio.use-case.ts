@@ -30,8 +30,6 @@ import {
   admiteAltaManual,
 } from '../../../tickets/domain/tipos-ticket.constants';
 import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
-import { TicketEdiliciaEntity } from '../../domain/entities/ticket-edilicia.entity';
-import { ITicketEdiliciaRepository } from '../../domain/ports/i-ticket-edilicia.repository';
 
 /**
  * DTO de entrada de `CrearTicketEdilicioUseCase`.
@@ -71,25 +69,22 @@ export interface CrearTicketEdilicioDto {
 }
 
 /**
- * Resultado del alta: el ticket base, su satélite y el nombre del sector elegido (o `null` si no
- * se eligió), ya conocido por la validación — así la respuesta del alta no necesita otra consulta.
+ * Resultado del alta: el ticket y el nombre del sector elegido (o `null` si no se eligió), ya
+ * conocido por la validación — así la respuesta del alta no necesita otra consulta.
  */
 export interface TicketEdilicioCreado {
   ticket: TicketEntity;
-  ticketEdilicia: TicketEdiliciaEntity;
   sectorNombre: string | null;
 }
 
 /**
- * CrearTicketEdilicioUseCase — creación atómica de un ticket edilicio
+ * CrearTicketEdilicioUseCase — creación atómica de un ticket desde Edilicia
  * (F3-E1, ADR-3).
  *
- * Extiende el patrón de `CrearTicketCompraUseCase` agregando la creación del
- * satélite `ticket_edilicia` en la MISMA transacción. La ubicación (texto libre,
- * opcional) va al ticket (odd/ticket-unificado, S1). El satélite se sigue creando,
- * sin ubicación, solo hasta que T4 lo retire: con él, un ticket nuevo sigue
- * apareciendo en Edilicia si el código vuelve a la versión anterior (el rollback
- * de la migración 20261024120000 y el listado viejo se arman sobre el satélite):
+ * Mismo patrón que `CrearTicketCompraUseCase`. La ubicación (texto libre, opcional)
+ * va al ticket (odd/ticket-unificado, S1). Desde T4a no hay satélite: el ticket es
+ * lo único que se crea, igual que en `POST /tickets`, y el listado de Edilicia lo
+ * encuentra por su tipo (L13):
  * 1. Valida que el solicitante exista en el tenant (`IUsuarioMasterChecker`).
  * 2. Resuelve el ciclo ACTIVO del tenant (nunca lo decide el caller).
  * 2b. Si viene `sectorId`, valida que exista (no se exige activo) →
@@ -102,8 +97,7 @@ export interface TicketEdilicioCreado {
  *    (catálogos FIJOS, mismo criterio).
  * 5. **DENTRO de la transacción**: genera el `numero` con el prefijo del tipo resuelto (EDI
  *    para EDILICIA, ADR-4), crea `TicketEntity` + `OperacionTicketEntity` de
- *    apertura + `TicketEdiliciaEntity` satélite, y persiste las 3
- *    entidades.
+ *    apertura (más la de asignación si la regla asignó), y los persiste.
  * 6. **POST-COMMIT** (`txRunner.alCommitear`, mismo criterio que
  *    `CrearTicketUseCase` — GATE G3/defecto #244): publica `TicketCreadoEvent`
  *    para que `AplicarSlaListener` calcule `sla_vence_at`. Un ticket edilicio
@@ -119,7 +113,6 @@ export class CrearTicketEdilicioUseCase {
   constructor(
     private readonly ticketRepo: Pick<ITicketRepository, 'save'>,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
-    private readonly ticketEdiliciaRepo: Pick<ITicketEdiliciaRepository, 'save'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findIdByCodigo'>,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findByCodigo' | 'findById'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
@@ -186,7 +179,7 @@ export class CrearTicketEdilicioUseCase {
     }
 
     // 5. Sección crítica: numeración (advisory lock, ADR-5 Fase 2) +
-    //    persistencia atómica de ticket + operación + satélite.
+    //    persistencia atómica de ticket + operaciones.
     // Regla de asignación del tipo: sin regla o regla rota → null y el alta sigue como siempre;
     // un fallo de consulta del tenant se propaga (ver el resolver). Resuelve fuera de la tx.
     const asignacion = await this.resolverAsignacion.resolver(tipo, dto.clienteId);
@@ -225,19 +218,12 @@ export class CrearTicketEdilicioUseCase {
         asignacion,
       });
 
-      const ticketEdilicia = TicketEdiliciaEntity.create({ ticketId: ticket.id });
-
       await this.ticketRepo.save(ticket);
       for (const operacion of operaciones) {
         await this.operacionRepo.save(operacion);
       }
-      await this.ticketEdiliciaRepo.save(ticketEdilicia);
 
-      return Result.ok<TicketEdilicioCreado, DomainError>({
-        ticket,
-        ticketEdilicia,
-        sectorNombre,
-      });
+      return Result.ok<TicketEdilicioCreado, DomainError>({ ticket, sectorNombre });
     });
 
     // 6. DIFERIDO A POST-COMMIT vía `txRunner.alCommitear()` — mismo criterio
