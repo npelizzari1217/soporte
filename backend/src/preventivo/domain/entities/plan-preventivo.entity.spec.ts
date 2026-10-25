@@ -349,7 +349,7 @@ describe('PlanPreventivoEntity', () => {
       const result = PlanPreventivoEntity.create(
         propsConEquipo({
           anticipacionValor: 1,
-          anticipacionUnidad: 'SEMANAS' as unknown as PlanPreventivoCreateProps['intervaloUnidad'],
+          anticipacionUnidad: 'SEMANAS' as PlanPreventivoCreateProps['intervaloUnidad'],
         }),
       );
 
