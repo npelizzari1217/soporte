@@ -329,3 +329,6 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   afirmación no probada de "dos tenants sin las tablas", comentarios vencidos en cinco archivos de
   `reparaciones/`, y dos tests nuevos (DDL del rollback contra el catálogo; tenant al que le falta una tabla).
   Guard + migración + runbook 21/21, lint y typecheck limpios.
+- **L44 — Deploy de T4b (2026-10-25): main `cf8a2633`.** `20261025150000_retiro_satelite_edilicia` aplicada en los 9
+  tenants, sin abortos ni avisos de vínculos o ubicaciones sin par. Dump previo
+  `C:\soporte\backups\utc-backfill-20261025-182341`.

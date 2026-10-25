@@ -199,3 +199,7 @@ Fuera de alcance, declarado antes de empezar:
   de visibilidad que `GET /tickets/:id`, SQL parametrizado con el mismo alcance que el resto del dashboard, fixtures
   con filas que no deben aparecer. Aplicado: tipo de retorno explícito en `tramosTecnicoKey`. Suites completas
   sobre T4: backend 803 archivos / 10184 tests, frontend 290 / 2677, en verde.
+- **L15 — Deploy (2026-10-25): main `cf8a2633` en producción.** Migraciones `20261026100000_horario_laboral_usuario`
+  y `20261026110000_tramos_tecnico_ticket` aplicadas en los 9 tenants. Dump previo
+  `C:\soporte\backups\utc-backfill-20261025-182341`. `/login` 200, API sin token 401. Rollback de código: `78388820`
+  (con el `rollback.sql` de las dos migraciones si hiciera falta). La medición arranca con este deploy.
