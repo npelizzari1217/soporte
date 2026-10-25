@@ -37,9 +37,11 @@ Fuera de alcance, declarado antes de empezar:
   migración + rollback), API GET/PUT por usuario (admin) y resolución "propio o del cliente" — (este commit, L7)
 - [x] T2 — S1 — worker — frontend: editar el horario de un técnico desde su ficha o la pantalla de
   horario laboral — (este commit, L8)
-- [ ] T3 — S5, S6, S7 — worker — tramos del técnico: abrir al asignar, cerrar al reasignar o resolver,
-  medir en horas hábiles de su horario con pausas en Esperando cliente; registrar el asignado en la
-  operación `ASIGNACION` en las cuatro vías — (pendiente)
+- [x] T3 — S2, S4, S5, S6, S7 — worker — tramos del técnico (tabla `tramos_tecnico_ticket`, L9): abrir
+  cuando el ticket queda con un asignado o se reabre con asignado, cerrar al reasignar, desasignar o pasar
+  a RESUELTO, CERRADO o CANCELADO, en la misma transacción que el ticket; medir en horas hábiles de su
+  horario con pausas en Esperando cliente y fijar la meta del ticket al cerrar. La operación `ASIGNACION`
+  no se modifica — (este commit, L10)
 - [ ] T4 — S4, S8 — worker — exponer tramos y cumplimiento en el detalle del ticket y en el dashboard — (pendiente)
 
 ## Log
@@ -113,3 +115,40 @@ Fuera de alcance, declarado antes de empezar:
   tiempo sin veredicto. Sin meta (S4) → `cumplido` NULL. Tiempos fijos con el horario vigente al cerrar (mismo
   criterio que `odd/tasks/promedios-dashboard-habiles.md`). Sin backfill (fuera de alcance). La operación
   `ASIGNACION` no se modifica: el tramo ya registra quién y desde cuándo.
+- **L10 — T3 hecha (2026-10-25).** Migración tenant `20261026110000_tramos_tecnico_ticket` (+ `rollback.sql`):
+  tabla `tramos_tecnico_ticket` (`tecnico_id` soft ref; `ticket_id` FK ON DELETE CASCADE, dato derivado);
+  CHECK `fin_at >= inicio_at`, `motivo_fin` ∈ `MOTIVOS_FIN_TRAMO` (`as const` en
+  `src/tiempo-tecnico/domain/tramo-tecnico.ts`, el spec de la migración lo compara contra
+  `pg_get_constraintdef`), abierto sin motivo ni medición / cerrado con motivo, `habil_s` y `meta_s >= 0`,
+  y `cumplido` exactamente `habil_s <= meta_s` en un RESUELTO con meta y medición (NULL si no); índice
+  único parcial `WHERE fin_at IS NULL`. Modelo Prisma `TramoTecnicoTicket` editado a mano (sin
+  `prisma format`); el cliente no se regeneró, así que el repositorio usa SQL crudo para la tabla nueva.
+  **Punto único:** `TicketRepositoryConTramos` (decora `PrismaTicketRepository`; `TicketsModule` lo registra
+  como `TICKET_REPOSITORY`, el único registro de ese token). Su `save` corre en `txRunner.run`
+  (re-entrante): lee la situación previa con `FOR NO KEY UPDATE`, guarda y llama a
+  `SincronizarTramoTecnicoService` en la misma transacción. Escritores de `asignado_id`/`estado_id`
+  encontrados, todos por ese repositorio: `crear-ticket` (incluye el barrido preventivo y la API v1),
+  `equipos/crear-ticket-soporte` (incluye el formulario público), `reparaciones/crear-ticket-edilicio`,
+  `asignar-ticket`, `asignar-y-poner-en-proceso`, `avanzar-estado-por-tareas`, `transicionar-estado`
+  (incluye el listener de reanudar por comentario); `demo-seed` usa esos casos de uso. Sin escribir columnas de responsable o estado: reloj y vencidos de SLA,
+  primera respuesta, recordatorio preventivo, `backfill-tiempos-habiles.mjs`,
+  `post-deploy-smoke-fecha-cierre.mjs`. Excepción declarada: `scripts/importacion-legacy/tenant.ts`
+  inserta históricos con responsable y no abre tramos (sin backfill). La guarda
+  `escritores-asignado.spec.ts` fija las tres listas y el registro único del token. Reglas
+  (`planificarTramo`): solo abre si el guardado lo produjo (alta, cambio de asignado o reapertura desde
+  RESUELTO/CERRADO/CANCELADO), así que un ticket asignado antes del deploy no abre tramo con cualquier
+  guardado; asignar y resolver en el mismo guardado (última tarea de un NUEVO) deja un tramo de 0 s;
+  asignar a otro un RESUELTO no abre nada. Medición: `ResolverHorarioLaboralUsuarioService` +
+  `FERIADOS_LABORALES_REPOSITORY` + `msHabilesEntre`, contando solo `ESTADOS_RELOJ_CORRE` según los
+  `CAMBIO_ESTADO` hasta el fin (el estado al inicio es el del último cambio anterior). Decisiones: (a) si
+  la medición falla fuera de la base del tenant (feriados de master, horario inconsistente) el tramo cierra
+  con `habil_s` NULL y se loguea `TRAMO_TECNICO_MEDICION_FALLO`, mismo criterio que JD-W2 de
+  `promedios-dashboard-habiles`; (b) un tramo a cerrar que ya no está abierto lanza (con la fila
+  bloqueada es un bug). Evidencia: `pnpm lint` 0 errores (tras `prettier --write` sobre los archivos
+  nuevos); `pnpm typecheck` 0 errores; vitest focal `src/tiempo-tecnico` 6 archivos, 92 tests verdes
+  (dominio 36, servicio 14, decorador 3, guarda 4, migración 18, integración por vía 17); con los specs
+  existentes de lo tocado (contenedor DI y módulos, e2e que montan `TicketsModule`, paridad de `tickets`,
+  guardas del runbook) 27 archivos, 446 tests verdes. Los tests se escribieron después de la
+  implementación (feature, §6.1); mutaciones verificadas: contar Esperando cliente como activo hace caer
+  7 tests (dominio, servicio e integración); quitar la sincronización del decorador hace caer 12 de los 17
+  de integración. Ayuda: sin cambios visibles (T4 los muestra).
