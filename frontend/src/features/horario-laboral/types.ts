@@ -24,3 +24,17 @@ export interface HorarioLaboral {
 
 /** Body de `PUT /horario-laboral`. Full-replace: siempre las 7 filas completas (D6). */
 export type HorarioLaboralDto = HorarioLaboral;
+
+/** De dónde sale el horario de un técnico: el propio o, sin propio, el del cliente (S2). */
+export type OrigenHorarioLaboral = "USUARIO" | "CLIENTE";
+
+/**
+ * Respuesta de `GET`/`PUT`/`DELETE /horario-laboral/usuarios/:usuarioId`
+ * (odd/tasks/tiempo-tecnico.md, T1). Mismos 7 días que el horario del
+ * tenant, más el usuario y el origen: con `origen: "CLIENTE"` los días son
+ * los del horario laboral del cliente, porque el técnico no tiene propio.
+ */
+export interface HorarioLaboralUsuario extends HorarioLaboral {
+  usuarioId: string;
+  origen: OrigenHorarioLaboral;
+}

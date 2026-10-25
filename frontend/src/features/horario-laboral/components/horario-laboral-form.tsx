@@ -19,6 +19,12 @@
  *
  * `soloLectura` deshabilita las 7 filas y oculta el botón Guardar (spec:
  * "Contrato observable del frontend").
+ *
+ * `etiquetaGuardar` y `prefijoId` existen para la sección "Horario por
+ * técnico" (odd/tasks/tiempo-tecnico.md T2), que monta una segunda grilla en
+ * la misma página: el botón dice "Usar horario propio" cuando el técnico
+ * todavía usa el horario del cliente, y los `id` no chocan con los de la
+ * grilla del tenant.
  */
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -66,6 +72,8 @@ export interface HorarioLaboralFormProps {
   guardando: boolean;
   errorServidor?: string | null;
   onGuardar: (dto: HorarioLaboralDto) => void;
+  etiquetaGuardar?: string;
+  prefijoId?: string;
 }
 
 export function HorarioLaboralForm({
@@ -74,6 +82,8 @@ export function HorarioLaboralForm({
   guardando,
   errorServidor,
   onGuardar,
+  etiquetaGuardar = "Guardar",
+  prefijoId,
 }: HorarioLaboralFormProps) {
   const {
     handleSubmit,
@@ -108,6 +118,7 @@ export function HorarioLaboralForm({
           apertura={dia.apertura}
           cierre={dia.cierre}
           soloLectura={soloLectura}
+          prefijoId={prefijoId}
           errorApertura={errors.dias?.[index]?.apertura?.message}
           errorCierre={errors.dias?.[index]?.cierre?.message}
           onCambiarAbierto={(abierto) => setValue(`dias.${index}.abierto`, abierto, { shouldValidate: true })}
@@ -131,7 +142,7 @@ export function HorarioLaboralForm({
       {!soloLectura && (
         <div className="flex justify-end pt-2">
           <Button type="submit" isLoading={guardando}>
-            Guardar
+            {etiquetaGuardar}
           </Button>
         </div>
       )}

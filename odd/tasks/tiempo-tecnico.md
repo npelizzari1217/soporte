@@ -35,8 +35,8 @@ Fuera de alcance, declarado antes de empezar:
 
 - [x] T1 — S1, S2, S3 — worker — horario por usuario en el tenant (tabla con `usuario_id` soft ref,
   migración + rollback), API GET/PUT por usuario (admin) y resolución "propio o del cliente" — (este commit, L7)
-- [ ] T2 — S1 — worker — frontend: editar el horario de un técnico desde su ficha o la pantalla de
-  horario laboral — (pendiente)
+- [x] T2 — S1 — worker — frontend: editar el horario de un técnico desde su ficha o la pantalla de
+  horario laboral — (este commit, L8)
 - [ ] T3 — S5, S6, S7 — worker — tramos del técnico: abrir al asignar, cerrar al reasignar o resolver,
   medir en horas hábiles de su horario con pausas en Esperando cliente; registrar el asignado en la
   operación `ASIGNACION` en las cuatro vías — (pendiente)
@@ -83,3 +83,22 @@ Fuera de alcance, declarado antes de empezar:
   Ajuste del orquestador: el test de rollback del repositorio dejó de mockear `$transaction` con `any`
   (AGENTS.md lo prohíbe) y usa un trigger temporal que hace fallar a Postgres en el día 3. Módulo
   `calendario-laboral` + guarda del runbook: 33 archivos, 258 tests verdes; lint y typecheck limpios.
+- **L8 — T2 hecha (2026-10-25).** Sección "Horario por técnico" dentro de `/horario-laboral`
+  (`HorarioLaboralTecnicoSeccion`, montada por `HorarioLaboralView`), solo para ADMINISTRADOR/ROOT
+  (`esAdminCliente`): para el resto se oculta, no queda de solo lectura, porque elegir técnico necesita
+  `GET /usuarios` y para un TECNICO común es un 403 seguro. Técnicos: `useUsuariosAsignables`
+  (`GET /usuarios`, el mismo que usa el dashboard) filtrado a TECNICO y COLABORADOR; sin tocar archivos
+  fuera de la feature. S1: reusa `HorarioLaboralForm` y su schema, con dos props opcionales nuevas
+  (`etiquetaGuardar`, `prefijoId`: dos grillas en la página no repiten `id`). S2: con `origen: "CLIENTE"`
+  muestra el aviso "<técnico> usa el horario laboral del cliente…" y la grilla editable con el horario del
+  cliente; el botón dice "Usar horario propio" y hace el `PUT` con lo que haya en la grilla. Con
+  `origen: "USUARIO"`: "Guardar" (`PUT`) y "Volver al horario del cliente" (`ConfirmDialog` → `DELETE`).
+  Formularios (AGENTS.md): el form lleva `key` por técnico y cambiar de técnico limpia el error de la
+  mutación; el técnico elegido se busca en la lista vigente, así que si un refetch lo saca la selección
+  cae a vacía. El query key del técnico cuelga de `["horario-laboral"]`: guardar el horario del cliente
+  también refresca a los técnicos que lo usan. `mensajeErrorGuardado` salió de la vista a
+  `mensaje-error-guardado.ts` para compartirlo (fallback en español neutro). Evidencia: vitest focal
+  `src/features/horario-laboral` 9 archivos, 50 tests verdes (nuevos: sección 10, vista 2); mutación
+  manual: sin `guardarMutation.reset()` al cambiar de técnico cae el test de fuga del error, y sin `key`
+  ni el `reset` del form caen el de cambio de técnico y el de `DELETE`. `pnpm lint` sin advertencias ni
+  errores; `pnpm type-check` 0 errores. Ayuda: se anota para la tanda final.

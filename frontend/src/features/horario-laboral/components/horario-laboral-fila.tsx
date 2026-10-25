@@ -26,6 +26,8 @@ export interface HorarioLaboralFilaProps {
   onCambiarAbierto: (abierto: boolean) => void;
   onCambiarApertura: (valor: string) => void;
   onCambiarCierre: (valor: string) => void;
+  /** Prefijo de los `id` de los inputs: dos grillas en la misma página no pueden repetirlos. */
+  prefijoId?: string;
 }
 
 export function HorarioLaboralFila({
@@ -39,8 +41,9 @@ export function HorarioLaboralFila({
   onCambiarAbierto,
   onCambiarApertura,
   onCambiarCierre,
+  prefijoId = "horario-laboral",
 }: HorarioLaboralFilaProps) {
-  const idBase = `horario-laboral-${nombreDia.toLowerCase()}`;
+  const idBase = `${prefijoId}-${nombreDia.toLowerCase()}`;
 
   return (
     <div className="flex flex-col gap-1 border-b border-border py-2 last:border-b-0 sm:flex-row sm:items-start sm:gap-4">
