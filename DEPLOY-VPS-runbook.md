@@ -1541,6 +1541,49 @@ un tenant con uso real, el dump de la tabla del paso 1 de "Rollback combinado". 
 `MIGRACION` se reconstruyen al reaplicar la migración, pero con los valores que los equipos tengan
 en ese momento. No borra la fila de `_prisma_migrations`: para volver a desplegar, se borra a mano.
 
+## Retiro del código del satélite de Edilicia (T4a)
+
+La rama `fix/estado-terminal-solo-admin` trae T4a de `odd/tasks/ticket-unificado.md`: el código deja
+de leer y escribir `ticket_edilicia`, `comentarios_reparacion` y `reparacion_compra`. **No trae
+migraciones**: las tres tablas quedan en cada base de inquilino, y las borra T4b en un deploy
+posterior, cuando T4a ya esté en uso.
+
+Qué cambia en el uso: el alta de un ticket Edilicia ya no crea la fila de `ticket_edilicia`, y las
+rutas `/reparaciones/:id` aceptan solo el id del ticket (el del satélite da 404).
+
+### Rollback
+
+Es solo de código: se vuelve al commit que estaba en producción antes de este deploy (`6595d838`,
+el deploy del 2026-10-25, o el que figure en el registro del deploy). No hay `rollback.sql`.
+
+**Qué no vuelve con el rollback:**
+
+- **la ubicación en el PDF**: `6595d838` la toma del satélite, no del ticket. Como el satélite no
+  se escribe desde el deploy del 2026-10-25, los tickets creados después de T4a salen sin
+  ubicación en el PDF, y los editados desde el 2026-10-25 salen con la vieja. En la pantalla y en
+  el detalle se sigue viendo la del ticket.
+
+Con `6595d838` el listado de Edilicia ya se arma desde los tickets del módulo, así que ningún
+ticket desaparece de la pantalla.
+
+**Solo si el rollback va más atrás de `6595d838`** (por ejemplo a `3b13b320`, que además exige los
+`rollback.sql` del deploy del 2026-10-25): ese código lista las reparaciones por `ticket_edilicia`,
+y los tickets del módulo creados después de T4a no tienen fila ahí. Para que vuelvan a la
+pantalla, en cada base de inquilino:
+
+```sql
+INSERT INTO ticket_edilicia (ticket_id, created_at, updated_at)
+SELECT t.id, now(), now()
+FROM tickets t
+JOIN tipos_ticket tt ON tt.id = t.tipo_id
+LEFT JOIN ticket_edilicia te ON te.ticket_id = t.id
+WHERE tt.modulo = 'EDILICIA' AND te.id IS NULL;
+```
+
+El filtro es por módulo y no por código: el satélite existía para todos los tipos del módulo
+EDILICIA (MANTENIMIENTO incluido). `id` sale del default de la columna, `ubicacion` queda en NULL y
+`updated_at` se carga a mano porque no tiene default en la base.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

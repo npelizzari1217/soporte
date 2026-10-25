@@ -11,8 +11,8 @@
 
 /**
  * Shape unificado de un ticket edilicio (`TicketEdiliciaConTicketResponseDto`). Desde
- * odd/ticket-unificado `id` = id del ticket, igual que `ticketId`; las rutas `/reparaciones/:id`
- * aceptan también el id del satélite `ticket_edilicia` que viajaba antes.
+ * odd/ticket-unificado `id` = id del ticket, igual que `ticketId`; desde T4a las rutas
+ * `/reparaciones/:id` aceptan solo el id del ticket.
  */
 export interface TicketEdilicia {
   id: string;

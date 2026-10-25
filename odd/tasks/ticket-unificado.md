@@ -293,3 +293,15 @@ sector. Las compras y la ubicación pasan del satélite `ticket_edilicia` al tic
   `tickets.controller.spec.ts` 90, `demo-seed.integration.spec.ts` 1, `importacion-legacy/tenant.integration.spec.ts`
   8 y `importar-legacy.integration.spec.ts` 6, entre otros del módulo. No se corrió la suite completa del
   backend. El frontend no se tocó.
+- **L40 — Ajustes del verify de T4a (2026-10-25).** El guard `sin-tablas-del-satelite.spec.ts` escanea el
+  archivo entero sin comentarios (detecta usos partidos en líneas, el acceso por corchetes, las relaciones
+  `ticketEdilicia`/`reparacionesVinculadas` en `include`/escrituras anidadas, `TRUNCATE` sin `TABLE` y la
+  tabla en medio de una lista). `comprasVinculadas` no se busca sola: es también un método del puerto de
+  bloqueo (tres falsos positivos medidos). Comentarios viejos corregidos en `schema.prisma` y
+  `frontend/src/features/edilicia/types.ts`. Runbook: sección "Retiro del código del satélite de
+  Edilicia (T4a)": el rollback va a `6595d838` (no a `3b13b320`, como decía el primer borrador: el
+  verify lo frenó) y solo pierde la ubicación del PDF; la consulta que devuelve los tickets a la
+  pantalla queda para un rollback más atrás, filtrada por `modulo` (probada en transacción revertida
+  contra `soporte_tenant_test`). El guard acepta también `?.` y el delegado pasado como argumento.
+  Evidencia: guard 5/5, `runbook-migraciones.spec.ts` 9/9, lint y typecheck limpios, verify
+  independiente (sus sondas quedaron en el spec).

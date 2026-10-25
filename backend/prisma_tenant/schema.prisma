@@ -578,15 +578,17 @@ model ArchivoOperacion {
 //
 // CONGELADAS desde odd/ticket-unificado (migración 20261024120000): las compras, la ubicación y los
 // comentarios pasaron al ticket (`ticket_compra`, `tickets.ubicacion`, `operaciones_ticket`). Nadie
-// escribe `ticket_edilicia.ubicacion`, `reparacion_compra` ni `comentarios_reparacion`; el alta de
-// `/reparaciones` todavía crea la fila del satélite, sin ubicación, hasta que T4 retire las tres.
+// lee ni escribe `ticket_edilicia`, `reparacion_compra` ni `comentarios_reparacion` desde T4a (el
+// alta de Edilicia ya no crea la fila del satélite); los modelos quedan hasta que T4b borre las tres
+// tablas. `sin-tablas-del-satelite.spec.ts` impide que el código vuelva a usarlas.
 //
 // ticket_edilicia (satélite 1:1 con tickets). Los pasos de la reparación son las
 // tareas del ticket base (`tareas_ticket`); `subtareas_edilicia`,
 // `personal_asignado_id` y `porcentaje_avance` se retiraron en la migración
 // 20261014120000 (odd/tareas-con-tecnico T8). El avance se calcula al leer.
 //
-// ticket_edilicia: satélite 1:1 de tickets con tipo.codigo='EDILICIA'.
+// ticket_edilicia: satélite 1:1 de los tickets con un tipo del módulo EDILICIA, creado por el alta
+//   hasta T4a; los tickets creados después no tienen fila.
 //   ubicacion: TEXTO LIBRE (VarChar 255). Antes era una FK a un catálogo
 //     `ubicaciones` (árbol), removido — módulo que no se usa (migración
 //     20260812160000_remover_ubicaciones, backfill del nombre a texto).
