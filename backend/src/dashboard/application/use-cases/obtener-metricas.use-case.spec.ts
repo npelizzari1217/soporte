@@ -13,6 +13,7 @@ import type { ICicloClienteRepository } from '../../../tickets/domain/ports/i-ci
 import type { IEncuestaSatisfaccionRepository } from '../../../csat/domain/ports/i-encuesta-satisfaccion.repository';
 import type { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import type { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
+import type { ICumplimientoTecnicoRepository } from '../../../tiempo-tecnico/domain/ports/i-cumplimiento-tecnico.repository';
 import {
   alcancePorTipo,
   alcanceSinRestriccion,
@@ -70,14 +71,29 @@ describe('ObtenerMetricasUseCase', () => {
         .fn<IUsuarioMasterChecker['resolverNombres']>()
         .mockResolvedValue(new Map()),
     };
+    // odd/tasks/tiempo-tecnico.md T4: cumplimiento por técnico sobre los tramos.
+    const cumplimientoRepo = {
+      resumirPorTecnico: vi
+        .fn<ICumplimientoTecnicoRepository['resumirPorTecnico']>()
+        .mockResolvedValue([]),
+    };
     const useCase = new ObtenerMetricasUseCase(
       dashboardRepo,
       cicloClienteRepo,
       csatRepo,
       tareaRepo,
       usuarioMasterChecker,
+      cumplimientoRepo,
     );
-    return { useCase, dashboardRepo, cicloClienteRepo, csatRepo, tareaRepo, usuarioMasterChecker };
+    return {
+      useCase,
+      dashboardRepo,
+      cicloClienteRepo,
+      csatRepo,
+      tareaRepo,
+      usuarioMasterChecker,
+      cumplimientoRepo,
+    };
   }
 
   const CICLO = CicloClienteEntity.create(
@@ -138,7 +154,7 @@ describe('ObtenerMetricasUseCase', () => {
       tiposPorFila: ['tipo-mantenimiento'],
     };
 
-    it('todas las métricas por ticket, el CSAT y las tareas completadas agregan solo lo que el actor ve', async () => {
+    it('todas las métricas por ticket, el CSAT, las tareas completadas y el cumplimiento por técnico agregan solo lo que el actor ve', async () => {
       const c = makeCollaborators(CICLO);
 
       await c.useCase.execute({
@@ -159,6 +175,7 @@ describe('ObtenerMetricasUseCase', () => {
       expect(c.dashboardRepo.distribucionPorPrioridad).toHaveBeenCalledWith(filtro);
       expect(c.csatRepo.resumenPorScope).toHaveBeenCalledWith(filtro);
       expect(c.tareaRepo.contarCompletadasPorTecnico).toHaveBeenCalledWith(filtro);
+      expect(c.cumplimientoRepo.resumirPorTecnico).toHaveBeenCalledWith(filtro);
     });
 
     it('TECNICO: el alcance se suma a asignadoId=actor (AND), no lo reemplaza', async () => {
@@ -202,12 +219,14 @@ describe('ObtenerMetricasUseCase', () => {
         cerrados: 0,
         distribucionPorTipo: [],
         tareasCompletadasPorTecnico: [],
+        cumplimientoTecnico: [],
         csatPromedio: null,
         csatRespuestas: 0,
       });
       expect(c.dashboardRepo.conteoPorEstadoAgrupado).not.toHaveBeenCalled();
       expect(c.csatRepo.resumenPorScope).not.toHaveBeenCalled();
       expect(c.tareaRepo.contarCompletadasPorTecnico).not.toHaveBeenCalled();
+      expect(c.cumplimientoRepo.resumirPorTecnico).not.toHaveBeenCalled();
     });
   });
 
@@ -261,9 +280,11 @@ describe('ObtenerMetricasUseCase', () => {
       distribucionPorTipo: [],
       distribucionPorPrioridad: [],
       tareasCompletadasPorTecnico: [],
+      cumplimientoTecnico: [],
     });
     expect(c.dashboardRepo.conteoPorEstadoAgrupado).not.toHaveBeenCalled();
     expect(c.tareaRepo.contarCompletadasPorTecnico).not.toHaveBeenCalled();
+    expect(c.cumplimientoRepo.resumirPorTecnico).not.toHaveBeenCalled();
   });
 
   /** Métricas por ticket del fixture, tal como salían antes de la T4. CA6: no cambian. */
@@ -288,7 +309,11 @@ describe('ObtenerMetricasUseCase', () => {
       alcance: SIN_RESTRICCION,
     });
 
-    expect(result).toEqual({ ...METRICAS_POR_TICKET, tareasCompletadasPorTecnico: [] });
+    expect(result).toEqual({
+      ...METRICAS_POR_TICKET,
+      tareasCompletadasPorTecnico: [],
+      cumplimientoTecnico: [],
+    });
   });
 
   it('cumplimientoSla con cerradosConSla=0 ⇒ porcentaje null (evita división por cero)', async () => {
@@ -569,14 +594,118 @@ describe('ObtenerMetricasUseCase', () => {
     it('CA6: con tareas, las métricas por ticket del fixture quedan idénticas', async () => {
       const c = conTareas();
 
-      const { tareasCompletadasPorTecnico, ...porTicket } = await c.useCase.execute({
+      const { tareasCompletadasPorTecnico, cumplimientoTecnico, ...porTicket } =
+        await c.useCase.execute({
+          actorId: 'admin-uuid',
+          actorRol: 'ADMINISTRADOR',
+          alcance: SIN_RESTRICCION,
+        });
+
+      expect(tareasCompletadasPorTecnico).toHaveLength(2);
+      expect(cumplimientoTecnico).toEqual([]);
+      expect(porTicket).toStrictEqual(METRICAS_POR_TICKET);
+    });
+  });
+
+  describe('cumplimiento por técnico (odd/tasks/tiempo-tecnico.md T4, S8)', () => {
+    const ANA = 'tecnico-ana';
+    const BETO = 'tecnico-beto';
+
+    function conCumplimiento() {
+      const c = makeCollaborators(CICLO);
+      c.cumplimientoRepo.resumirPorTecnico.mockResolvedValue([
+        { tecnicoId: ANA, total: 4, cumplidos: 3, promedioHabilS: 7200 },
+        { tecnicoId: BETO, total: 2, cumplidos: 0, promedioHabilS: 30_000 },
+      ]);
+      c.usuarioMasterChecker.resolverNombres.mockResolvedValue(
+        new Map([[ANA, { nombre: 'Ana', apellido: 'Paz' }]]),
+      );
+      return c;
+    }
+
+    it('el período son los días argentinos del ciclo sobre fin_at, con fecha_fin incluida entera', async () => {
+      const c = conCumplimiento();
+
+      await c.useCase.execute({
         actorId: 'admin-uuid',
         actorRol: 'ADMINISTRADOR',
         alcance: SIN_RESTRICCION,
       });
 
-      expect(tareasCompletadasPorTecnico).toHaveLength(2);
-      expect(porTicket).toStrictEqual(METRICAS_POR_TICKET);
+      expect(c.cumplimientoRepo.resumirPorTecnico).toHaveBeenCalledWith({
+        desde: new Date('2026-01-01T03:00:00.000Z'),
+        hasta: new Date('2027-01-01T03:00:00.000Z'),
+        tecnicoId: undefined,
+      });
+    });
+
+    it('calcula el % por técnico, conserva el orden del repositorio y pone el nombre de master', async () => {
+      const c = conCumplimiento();
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
+      });
+
+      // BETO no está en master: la fila queda, con el nombre en null. 0 cumplidos es 0 %, no null.
+      expect(result.cumplimientoTecnico).toEqual([
+        {
+          usuarioId: ANA,
+          nombre: 'Ana',
+          apellido: 'Paz',
+          total: 4,
+          cumplidos: 3,
+          porcentaje: 0.75,
+          promedioHabilS: 7200,
+        },
+        {
+          usuarioId: BETO,
+          nombre: null,
+          apellido: null,
+          total: 2,
+          cumplidos: 0,
+          porcentaje: 0,
+          promedioHabilS: 30_000,
+        },
+      ]);
+    });
+
+    it('TECNICO solo pide su propia fila: tecnico_id = actorId', async () => {
+      const c = conCumplimiento();
+
+      await c.useCase.execute({ actorId: BETO, actorRol: 'TECNICO', alcance: SIN_RESTRICCION });
+
+      expect(c.cumplimientoRepo.resumirPorTecnico).toHaveBeenCalledWith(
+        expect.objectContaining({ tecnicoId: BETO }),
+      );
+    });
+
+    it('sin tramos evaluados ⇒ lista vacía, sin consultar master', async () => {
+      const c = makeCollaborators(CICLO);
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
+      });
+
+      expect(result.cumplimientoTecnico).toEqual([]);
+      expect(c.usuarioMasterChecker.resolverNombres).not.toHaveBeenCalled();
+    });
+
+    it('ciclo explícito inexistente ⇒ lista vacía, sin consultar los tramos', async () => {
+      const c = conCumplimiento();
+
+      const result = await c.useCase.execute({
+        actorId: 'admin-uuid',
+        actorRol: 'ADMINISTRADOR',
+        alcance: SIN_RESTRICCION,
+        cicloId: 'ciclo-inexistente',
+      });
+
+      expect(result.cumplimientoTecnico).toEqual([]);
+      expect(c.cumplimientoRepo.resumirPorTecnico).not.toHaveBeenCalled();
     });
   });
 });

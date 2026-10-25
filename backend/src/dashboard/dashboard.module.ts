@@ -14,6 +14,11 @@ import {
   USUARIO_MASTER_CHECKER,
 } from '../tickets/domain/ports/i-usuario-master.checker';
 import { TenantContext } from '../shared/tenancy/tenant-context';
+import { TiempoTecnicoModule } from '../tiempo-tecnico/tiempo-tecnico.module';
+import {
+  CUMPLIMIENTO_TECNICO_REPOSITORY,
+  ICumplimientoTecnicoRepository,
+} from '../tiempo-tecnico/domain/ports/i-cumplimiento-tecnico.repository';
 import { CsatLecturaModule } from '../csat/csat-lectura.module';
 import {
   ENCUESTA_SATISFACCION_REPOSITORY,
@@ -45,15 +50,17 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
  *   por ticket, así que el repo ya no carga el calendario ni los feriados.
  * - odd/tareas-con-tecnico T4: la métrica de tareas completadas por técnico usa
  *   TAREA_TICKET_REPOSITORY y USUARIO_MASTER_CHECKER, los dos exportados por `TicketsModule`.
+ * - odd/tasks/tiempo-tecnico.md T4: el cumplimiento por técnico usa
+ *   CUMPLIMIENTO_TECNICO_REPOSITORY, exportado por `TiempoTecnicoModule`.
  * - Importa `TicketsModule` (para CICLO_CLIENTE_REPOSITORY), `CsatLecturaModule`
- *   (para ENCUESTA_SATISFACCION_REPOSITORY) y `AuthModule` (guards del
- *   controller).
+ *   (para ENCUESTA_SATISFACCION_REPOSITORY), `TiempoTecnicoModule` (para
+ *   CUMPLIMIENTO_TECNICO_REPOSITORY) y `AuthModule` (guards del controller).
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, TicketsModule, CsatLecturaModule],
+  imports: [AuthModule, TicketsModule, CsatLecturaModule, TiempoTecnicoModule],
   controllers: [DashboardController],
   providers: [
     {
@@ -69,6 +76,7 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
         csatRepo: IEncuestaSatisfaccionRepository,
         tareaRepo: ITareaTicketRepository,
         usuarioMasterChecker: IUsuarioMasterChecker,
+        cumplimientoRepo: ICumplimientoTecnicoRepository,
       ) =>
         new ObtenerMetricasUseCase(
           dashboardRepo,
@@ -76,6 +84,7 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
           csatRepo,
           tareaRepo,
           usuarioMasterChecker,
+          cumplimientoRepo,
         ),
       inject: [
         DASHBOARD_REPOSITORY,
@@ -83,6 +92,7 @@ import { DashboardController } from './interface/controllers/dashboard.controlle
         ENCUESTA_SATISFACCION_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
         USUARIO_MASTER_CHECKER,
+        CUMPLIMIENTO_TECNICO_REPOSITORY,
       ],
     },
   ],

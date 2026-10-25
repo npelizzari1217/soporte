@@ -20,6 +20,11 @@ const METRICAS = {
     { usuarioId: "u2", nombre: "Beto", apellido: "Ruiz", completadas: 4 },
     { usuarioId: "u1", nombre: "Ana", apellido: "Gómez", completadas: 1 },
   ],
+  // Porcentajes que no terminan en 0: el test de "sin datos" busca /0\s?%/ en toda la vista.
+  cumplimientoTecnico: [
+    { usuarioId: "u2", nombre: "Beto", apellido: "Ruiz", total: 3, cumplidos: 2, porcentaje: 2 / 3, promedioHabilS: 7500 },
+    { usuarioId: "u-baja", nombre: null, apellido: null, total: 4, cumplidos: 3, porcentaje: 0.75, promedioHabilS: 18_000 },
+  ],
 };
 
 const METRICAS_VACIAS = {
@@ -33,6 +38,7 @@ const METRICAS_VACIAS = {
   distribucionPorTipo: [],
   distribucionPorPrioridad: [],
   tareasCompletadasPorTecnico: [],
+  cumplimientoTecnico: [],
 };
 
 function mockBackend(overrides: { metricas?: unknown } = {}) {
@@ -227,6 +233,67 @@ describe("DashboardView", () => {
 
       expect(await screen.findByRole("img", { name: "Tareas completadas por técnico" })).toBeInTheDocument();
       expect(filasTareas()).toEqual(["Ana Gómez2"]);
+    });
+  });
+
+  describe("Cumplimiento del técnico (odd/tasks/tiempo-tecnico.md T4)", () => {
+    const TITULO = "Cumplimiento del técnico (horas hábiles en su horario)";
+
+    function filasCumplimiento(): string[] {
+      const tabla = screen.getByRole("table", { name: "Cumplimiento del técnico" });
+      return within(tabla)
+        .getAllByRole("row")
+        .slice(1)
+        .map((fila) => fila.textContent ?? "");
+    }
+
+    it("muestra por técnico evaluados, cumplidos, % y el promedio en h:mm, en el orden del backend", async () => {
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      expect(await screen.findByText(TITULO)).toBeInTheDocument();
+      const tabla = screen.getByRole("table", { name: "Cumplimiento del técnico" });
+      expect(within(tabla).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
+        "Técnico",
+        "Evaluados",
+        "Cumplidos",
+        "% cumplimiento",
+        "Promedio (h:mm hábiles)",
+      ]);
+      expect(filasCumplimiento()).toEqual(["Beto Ruiz3267%2:05", "Usuario4375%5:00"]);
+    });
+
+    it("lista vacía → mensaje de vacío, sin tabla", async () => {
+      mockBackend({ metricas: { ...METRICAS, cumplimientoTecnico: [] } });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      expect(await screen.findByText(TITULO)).toBeInTheDocument();
+      expect(screen.getByText("Sin tickets resueltos con meta de SLA en este ciclo.")).toBeInTheDocument();
+      expect(screen.queryByRole("table", { name: "Cumplimiento del técnico" })).not.toBeInTheDocument();
+    });
+
+    it("un backend que omite el campo no rompe la vista: se lee como lista vacía", async () => {
+      const sinCampo: Record<string, unknown> = { ...METRICAS };
+      delete sinCampo.cumplimientoTecnico;
+      mockBackend({ metricas: sinCampo });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      expect(await screen.findByText("Sin tickets resueltos con meta de SLA en este ciclo.")).toBeInTheDocument();
+    });
+
+    it("un ciclo sin tickets pero con tramos resueltos muestra la tabla, no el vacío general", async () => {
+      mockBackend({
+        metricas: {
+          ...METRICAS_VACIAS,
+          cumplimientoTecnico: [
+            { usuarioId: "u1", nombre: "Ana", apellido: "Gómez", total: 1, cumplidos: 1, porcentaje: 1, promedioHabilS: 3600 },
+          ],
+        },
+      });
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      expect(await screen.findByRole("table", { name: "Cumplimiento del técnico" })).toBeInTheDocument();
+      expect(filasCumplimiento()).toEqual(["Ana Gómez11100%1:00"]);
+      expect(screen.queryByText("No hay tickets registrados en este ciclo todavía.")).not.toBeInTheDocument();
     });
   });
 

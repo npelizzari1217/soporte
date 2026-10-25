@@ -24,6 +24,7 @@ import {
   toPorcentaje,
   toTiempoPromedioChartData,
   toTareasCompletadasChartData,
+  toCumplimientoTecnicoFilas,
 } from "../lib/metricas-map";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -31,6 +32,7 @@ import { ErrorState } from "@/components/shared/error-state";
 import { CardKpiSkeleton } from "@/components/shared/skeletons";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart } from "@/shared/charts/bar-chart";
 import { LineChart } from "@/shared/charts/line-chart";
 import { HBarChart } from "@/shared/charts/hbar-chart";
@@ -124,14 +126,18 @@ export function DashboardView() {
   const cumplimientoPrimeraRespuesta = toPorcentaje(metricas.cumplimientoPrimeraRespuesta.porcentaje);
   const tiempoPrimeraRespuesta = formatHoras(metricas.tiempoPromedioPrimeraRespuestaHoras);
   const tareasCompletadas = toTareasCompletadasChartData(metricas.tareasCompletadasPorTecnico);
+  const cumplimientoTecnico = toCumplimientoTecnicoFilas(metricas.cumplimientoTecnico);
   // Una tarea de un ticket de otro ciclo cuenta en el período en que se
-  // completó (T4): puede haber tareas aunque el ciclo no tenga tickets.
+  // completó (T4), y un tramo en el período en que se resolvió
+  // (odd/tasks/tiempo-tecnico.md T4): puede haber datos aunque el ciclo no
+  // tenga tickets.
   const sinDatos =
     metricas.abiertos === 0 &&
     metricas.cerrados === 0 &&
     metricas.distribucionPorTipo.length === 0 &&
     metricas.distribucionPorPrioridad.length === 0 &&
-    tareasCompletadas.length === 0;
+    tareasCompletadas.length === 0 &&
+    cumplimientoTecnico.length === 0;
 
   return (
     <div>
@@ -195,6 +201,40 @@ export function DashboardView() {
                 <p className="text-sm text-muted-foreground">Sin tareas completadas en este ciclo.</p>
               ) : (
                 <HBarChart title="Tareas completadas por técnico" data={tareasCompletadas} />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="sm:col-span-2">
+            <CardHeader>
+              <CardTitle>Cumplimiento del técnico (horas hábiles en su horario)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {cumplimientoTecnico.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin tickets resueltos con meta de SLA en este ciclo.</p>
+              ) : (
+                <Table aria-label="Cumplimiento del técnico">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Técnico</TableHead>
+                      <TableHead>Evaluados</TableHead>
+                      <TableHead>Cumplidos</TableHead>
+                      <TableHead>% cumplimiento</TableHead>
+                      <TableHead>Promedio (h:mm hábiles)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cumplimientoTecnico.map((fila) => (
+                      <TableRow key={fila.usuarioId}>
+                        <TableCell>{fila.nombre}</TableCell>
+                        <TableCell>{fila.evaluados}</TableCell>
+                        <TableCell>{fila.cumplidos}</TableCell>
+                        <TableCell>{fila.porcentaje}%</TableCell>
+                        <TableCell>{fila.promedio}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>

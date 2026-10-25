@@ -40,6 +40,20 @@ export interface MetricasResponseDto {
     apellido: string | null;
     completadas: number;
   }[];
+  /**
+   * Cumplimiento por técnico en el período del ciclo (odd/tasks/tiempo-tecnico.md, T4, S8): tramos
+   * cerrados en RESUELTO con veredicto, `porcentaje` como fracción `0..1` y el promedio en segundos
+   * hábiles del horario de cada técnico. TECNICO recibe a lo sumo su propia fila.
+   */
+  cumplimientoTecnico: {
+    usuarioId: string;
+    nombre: string | null;
+    apellido: string | null;
+    total: number;
+    cumplidos: number;
+    porcentaje: number;
+    promedioHabilS: number;
+  }[];
   /** KPI de satisfacción (WU9.1, ADR-C5). AUSENTE sin `CSAT:LECTURA`. */
   csatPromedio?: number | null;
   csatRespuestas?: number;

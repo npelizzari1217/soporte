@@ -63,6 +63,17 @@ describe('DashboardController (D5)', () => {
     tareasCompletadasPorTecnico: [
       { usuarioId: 'agente-1', nombre: 'Ana', apellido: 'Paz', completadas: 4 },
     ],
+    cumplimientoTecnico: [
+      {
+        usuarioId: 'agente-1',
+        nombre: 'Ana',
+        apellido: 'Paz',
+        total: 4,
+        cumplidos: 3,
+        porcentaje: 0.75,
+        promedioHabilS: 5400,
+      },
+    ],
   };
 
   it('[CRITICAL] declara @RequiereAcciones("DASHBOARD:LECTURA") a nivel de controller (D3, excluye USUARIO)', () => {

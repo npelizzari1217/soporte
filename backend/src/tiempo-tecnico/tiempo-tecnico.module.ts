@@ -9,6 +9,9 @@
  * Importa `CalendarioLaboralModule` por el horario de cada técnico
  * (`ResolverHorarioLaboralUsuarioService`) y los feriados (`FERIADOS_LABORALES_REPOSITORY`).
  * `TenantContext` y `LOGGER` llegan por `SharedModule` (`@Global()`).
+ *
+ * T4: exporta `TRAMO_TECNICO_REPOSITORY` para el detalle del ticket (`TicketsModule`) y
+ * `CUMPLIMIENTO_TECNICO_REPOSITORY` para el cumplimiento por técnico del dashboard.
  */
 import { Module } from '@nestjs/common';
 import { CalendarioLaboralModule } from '../calendario-laboral/calendario-laboral.module';
@@ -25,11 +28,14 @@ import {
   TRAMO_TECNICO_REPOSITORY,
 } from './domain/ports/i-tramo-tecnico.repository';
 import { PrismaTramoTecnicoRepository } from './infrastructure/prisma-tramo-tecnico.repository';
+import { CUMPLIMIENTO_TECNICO_REPOSITORY } from './domain/ports/i-cumplimiento-tecnico.repository';
+import { PrismaCumplimientoTecnicoRepository } from './infrastructure/prisma-cumplimiento-tecnico.repository';
 
 @Module({
   imports: [CalendarioLaboralModule],
   providers: [
     { provide: TRAMO_TECNICO_REPOSITORY, useClass: PrismaTramoTecnicoRepository },
+    { provide: CUMPLIMIENTO_TECNICO_REPOSITORY, useClass: PrismaCumplimientoTecnicoRepository },
     {
       provide: SincronizarTramoTecnicoService,
       useFactory: (
@@ -53,6 +59,10 @@ import { PrismaTramoTecnicoRepository } from './infrastructure/prisma-tramo-tecn
       ],
     },
   ],
-  exports: [SincronizarTramoTecnicoService, TRAMO_TECNICO_REPOSITORY],
+  exports: [
+    SincronizarTramoTecnicoService,
+    TRAMO_TECNICO_REPOSITORY,
+    CUMPLIMIENTO_TECNICO_REPOSITORY,
+  ],
 })
 export class TiempoTecnicoModule {}

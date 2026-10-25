@@ -137,6 +137,12 @@ import { TenantContext } from '../shared/tenancy/tenant-context';
 import { TiempoTecnicoModule } from '../tiempo-tecnico/tiempo-tecnico.module';
 import { SincronizarTramoTecnicoService } from '../tiempo-tecnico/application/sincronizar-tramo-tecnico.service';
 import { TicketRepositoryConTramos } from '../tiempo-tecnico/infrastructure/ticket-repository-con-tramos';
+import { ListarTramosTicketUseCase } from '../tiempo-tecnico/application/listar-tramos-ticket.use-case';
+import {
+  ITramoTecnicoRepository,
+  TRAMO_TECNICO_REPOSITORY,
+} from '../tiempo-tecnico/domain/ports/i-tramo-tecnico.repository';
+import { TramosTecnicoTicketController } from './interface/controllers/tramos-tecnico-ticket.controller';
 
 /**
  * TicketsModule — módulo NestJS del dominio "tickets".
@@ -200,6 +206,9 @@ import { TicketRepositoryConTramos } from '../tiempo-tecnico/infrastructure/tick
  *   `TicketRepositoryConTramos` sobre `PrismaTicketRepository`, para que cada
  *   guardado abra o cierre el tramo del técnico en su misma transacción. Importa
  *   `TiempoTecnicoModule`, que no importa este módulo: sin ciclo.
+ * - odd/tasks/tiempo-tecnico.md (T4): `GET /tickets/:id/tramos-tecnico`
+ *   (`TramosTecnicoTicketController`) vive acá por el repositorio y el cargador de alcance del
+ *   ticket; lee los tramos con `TRAMO_TECNICO_REPOSITORY` de `TiempoTecnicoModule`.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
@@ -212,7 +221,13 @@ import { TicketRepositoryConTramos } from '../tiempo-tecnico/infrastructure/tick
     SectoresModule,
     TiempoTecnicoModule,
   ],
-  controllers: [TicketsController, AdjuntosController, CatalogosController, TareasTicketController],
+  controllers: [
+    TicketsController,
+    AdjuntosController,
+    CatalogosController,
+    TareasTicketController,
+    TramosTecnicoTicketController,
+  ],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
     { provide: ESTADO_REPOSITORY, useClass: PrismaEstadoRepository },
@@ -538,6 +553,12 @@ import { TicketRepositoryConTramos } from '../tiempo-tecnico/infrastructure/tick
       useFactory: (ticketRepo: ITicketRepository, tareaRepo: ITareaTicketRepository) =>
         new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
       inject: [TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
+    },
+    {
+      provide: ListarTramosTicketUseCase,
+      useFactory: (ticketRepo: ITicketRepository, tramoRepo: ITramoTecnicoRepository) =>
+        new ListarTramosTicketUseCase(ticketRepo, tramoRepo),
+      inject: [TICKET_REPOSITORY, TRAMO_TECNICO_REPOSITORY],
     },
     {
       provide: ListarTecnicosElegiblesTareaUseCase,

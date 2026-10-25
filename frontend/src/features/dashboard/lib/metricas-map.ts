@@ -7,7 +7,8 @@
  * Ref spec: sdd/beta-frontend/spec R-M2. Tarea: T2.3, T2.4, T2.5.
  */
 import type { ChartDatum } from "@/shared/charts/bar-chart";
-import type { MetricasDashboard, TareasCompletadasTecnico } from "../types";
+import type { CumplimientoTecnico, MetricasDashboard, TareasCompletadasTecnico } from "../types";
+import { formatearDuracionHabil } from "@/shared/lib/duracion-habil";
 
 /** T2.3 — abiertos/cerrados como dos categorías del BarChart. */
 export function toAbiertosCerradosChartData(
@@ -57,10 +58,42 @@ export const NOMBRE_USUARIO_AUSENTE = "Usuario";
 export function toTareasCompletadasChartData(
   filas: TareasCompletadasTecnico[] | undefined,
 ): ChartDatum[] {
-  return (filas ?? []).map((fila) => {
-    const nombre = [fila.nombre, fila.apellido].filter((parte) => parte !== null && parte.trim() !== "").join(" ");
-    return { label: nombre || NOMBRE_USUARIO_AUSENTE, value: fila.completadas };
-  });
+  return (filas ?? []).map((fila) => ({ label: nombreDeFila(fila), value: fila.completadas }));
+}
+
+/** Nombre y apellido de una fila con usuario de master, o la etiqueta neutra si no hay ninguno. */
+function nombreDeFila(fila: { nombre: string | null; apellido: string | null }): string {
+  const nombre = [fila.nombre, fila.apellido].filter((parte) => parte !== null && parte.trim() !== "").join(" ");
+  return nombre || NOMBRE_USUARIO_AUSENTE;
+}
+
+/** Una fila de la tabla "Cumplimiento del técnico", lista para mostrar. */
+export interface FilaCumplimientoTecnico {
+  usuarioId: string;
+  nombre: string;
+  evaluados: number;
+  cumplidos: number;
+  /** Entero `0..100`, ya redondeado. */
+  porcentaje: number;
+  /** Promedio en horas hábiles, `h:mm`. */
+  promedio: string;
+}
+
+/**
+ * odd/tasks/tiempo-tecnico.md T4 — cumplimiento por técnico (tabla). Respeta
+ * el orden del backend. Un backend sin el campo → `undefined` se trata como `[]`.
+ */
+export function toCumplimientoTecnicoFilas(
+  filas: CumplimientoTecnico[] | undefined,
+): FilaCumplimientoTecnico[] {
+  return (filas ?? []).map((fila) => ({
+    usuarioId: fila.usuarioId,
+    nombre: nombreDeFila(fila),
+    evaluados: fila.total,
+    cumplidos: fila.cumplidos,
+    porcentaje: Math.round(fila.porcentaje * 100),
+    promedio: formatearDuracionHabil(fila.promedioHabilS),
+  }));
 }
 
 /**

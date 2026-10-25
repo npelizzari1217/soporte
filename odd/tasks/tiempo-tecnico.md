@@ -42,7 +42,7 @@ Fuera de alcance, declarado antes de empezar:
   a RESUELTO, CERRADO o CANCELADO, en la misma transacción que el ticket; medir en horas hábiles de su
   horario con pausas en Esperando cliente y fijar la meta del ticket al cerrar. La operación `ASIGNACION`
   no se modifica — (este commit, L10)
-- [ ] T4 — S4, S8 — worker — exponer tramos y cumplimiento en el detalle del ticket y en el dashboard — (pendiente)
+- [x] T4 — S4, S8 — worker — exponer tramos y cumplimiento en el detalle del ticket y en el dashboard — (este commit, L12)
 
 ## Log
 
@@ -159,3 +159,39 @@ Fuera de alcance, declarado antes de empezar:
   borrado conserva su tramo abierto — T4 filtra los tickets borrados; (A3) si se resuelve justo después de
   repriorizar, la meta queda la anterior (la aplica el listener post-commit), poco probable y aceptado.
   `src/tiempo-tecnico` 7 archivos / 100 tests, lint y typecheck limpios.
+- **L12 — T4 hecha (2026-10-25), S4 y S8.** **Detalle:** ruta nueva `GET /tickets/:id/tramos-tecnico`
+  (`TramosTecnicoTicketController`, registrado en `TicketsModule` por su repositorio y su cargador de alcance;
+  `TiempoTecnicoModule` no puede importar `TicketsModule`). Se eligió una ruta aparte y no extender
+  `GET /tickets/:id`, para no sumar una consulta a cada detalle ni tocar el DTO que comparten listado y detalle.
+  `ListarTramosTicketUseCase` usa la misma carga que `ObtenerTicketUseCase` (`cargarTicketParaOperar` con
+  `LECTURA`): ticket inexistente, borrado o no visible es 404 y no se leen sus tramos. La ruta no declara
+  `@RequiereAcciones` ni tiene campos condicionados por permiso. Respuesta por tramo: `tecnicoId`,
+  `tecnicoNombre`/`tecnicoApellido` (lote a master, patrón de `asignadoNombre`), `inicioAt`, `finAt`,
+  `motivoFin`, `habilS`, `metaS`, `cumplido`; el abierto sale sin medición. **Dashboard:**
+  `cumplimientoTecnico` en `GET /dashboard/metricas`: por técnico, `total` (tramos con `motivo_fin =
+  'RESUELTO'` y `cumplido` no nulo, S4), `cumplidos`, `porcentaje` (fracción, la calcula el caso de uso) y
+  `promedioHabilS`. Período: los días argentinos del ciclo sobre `fin_at` (`periodoDelCiclo`, el mismo corte de
+  03:00 UTC de T11 de `tareas-con-tecnico`, ahora compartido con tareas completadas). Excluye tickets borrados
+  (L11, A2). Alcance: TECNICO fija `tecnico_id = actorId` (mismo criterio que `asignadoId` y
+  `completada_por_id`) y el alcance por tipo usa `sqlAlcanceListado`. Puerto de lectura propio
+  (`ICumplimientoTecnicoRepository`, SQL crudo), separado del modelo de escritura de los tramos. **Frontend:**
+  tarjeta "Tiempo del técnico" en el detalle (`TicketTiempoTecnico`, query key bajo `["ticket", id]`, así que
+  asignar o transicionar la refresca): técnico, desde, hasta, horas hábiles y meta en `h:mm`
+  (`shared/lib/duracion-habil.ts`), badge Cumplido / No cumplido / Sin veredicto (con el motivo: Reasignado,
+  Desasignado, Cerrado sin resolver, Cancelado, Sin meta de SLA o Sin medición) / En curso. Sin tramos no se
+  monta (los tickets anteriores al deploy no tienen); si la consulta falla, la tarjeta avisa. Dashboard: tarjeta
+  "Cumplimiento del técnico (horas hábiles en su horario)" con tabla (evaluados, cumplidos, %, promedio `h:mm`);
+  cuenta para el vacío general como las tareas completadas. Evidencia backend: `pnpm lint` 0 errores, `pnpm
+  typecheck` 0 errores; vitest focal (nuevos y existentes de lo tocado: `src/dashboard`, `src/tiempo-tecnico`,
+  `src/tickets/interface/controllers`, e2e y specs de módulos que montan `TicketsModule`) 28 archivos, 516 tests
+  verdes; `src/dashboard` + los dos specs nuevos fuera de `src/tiempo-tecnico`: 6 archivos, 73 tests verdes tras
+  el ajuste de formato. Nuevos: integración `tiempo-tecnico-lectura` 7 (bordes del período, solo RESUELTO con
+  veredicto y ticket borrado excluido, TECNICO solo su fila con el caso hermano, alcance por tipo, detalle visible /
+  no visible / borrado), controller 5, caso de uso 5 más los asserts de alcance y vacío existentes. Evidencia
+  frontend: `pnpm lint` sin advertencias ni errores, `pnpm type-check` 0 errores; vitest focal 8 archivos, 121
+  tests verdes (nuevos: tarjeta 4, veredicto 9, duración 6, mapa 3, dashboard 4, detalle 2). Tests escritos
+  después de la implementación (feature, §6.1); mutaciones verificadas: sin el filtro de `deleted_at` o sin el de
+  `cumplido IS NOT NULL` cae el test de contenido de integración; montar la tarjeta sin tramos hace caer su test de
+  vacío. Ayuda: se anota para la tanda final (detalle del ticket y dashboard).
+- **L13 — Dueño (2026-10-25), visibilidad del detalle:** "Lo ve cualquiera que vea el ticket". El bloque "Tiempo del
+  técnico" sigue la visibilidad del ticket (solicitante incluido); el dashboard sigue acotado por técnico (S8).
