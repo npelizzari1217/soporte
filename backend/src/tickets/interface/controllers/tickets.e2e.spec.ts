@@ -1356,12 +1356,19 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
         bearer(loginUsuario.accessToken),
       );
 
-      // NUEVO → ASIGNADO → EN_PROCESO → RESUELTO → CERRADO (arcos válidos, ADR-3).
-      for (const nuevoEstadoCodigo of ['ASIGNADO', 'EN_PROCESO', 'RESUELTO', 'CERRADO']) {
+      // NUEVO → ASIGNADO → EN_PROCESO → RESUELTO → CERRADO (arcos válidos, ADR-3). El último
+      // lo da un ADMINISTRADOR: en RESUELTO el técnico ya no cambia el estado (L14).
+      const administrador = await crearAdministradorDe(cliente.id);
+      for (const [nuevoEstadoCodigo, actor] of [
+        ['ASIGNADO', loginTecnico],
+        ['EN_PROCESO', loginTecnico],
+        ['RESUELTO', loginTecnico],
+        ['CERRADO', administrador],
+      ] as const) {
         const transicion = await httpPatch(
           `${baseUrl}/tickets/${created.data.id}/estado`,
           { nuevoEstadoCodigo },
-          bearer(loginTecnico.accessToken),
+          bearer(actor.accessToken),
         );
         expect(transicion.status).toBe(200);
       }
@@ -1776,6 +1783,73 @@ describe('Tickets e2e (T4-T8, PR6)', () => {
 
       expect(permitido.status).toBe(201);
       expect(await tenantClient.archivoTicket.count({ where: { ticketId } })).toBe(1);
+    });
+
+    // Bug en producción (L14): un no administrador cerraba un ticket RESUELTO.
+    // Un prefijo de tipo por caso: la numeración del ticket sale de él.
+    it.each([
+      ['TECNICO', 'STT'],
+      ['COLABORADOR', 'STC'],
+      ['USUARIO', 'STU'],
+    ])(
+      'PATCH /tickets/:id/estado RESUELTO → CERRADO: un %s recibe 422 que nombra el estado y el ticket sigue RESUELTO',
+      async (rol, prefijo) => {
+        const cliente = await createClienteTenant();
+        const role = await createRoleConPermisos(rol, [
+          'ticket:crear',
+          'ticket:comentar',
+          'ticket:ver_todos',
+          'ticket:transicionar',
+        ]);
+        const actor = await createUsuario(`${rol.toLowerCase()}-${randomBytes(2).toString('hex')}`);
+        await createMembresia(actor.id, cliente.id, role.id);
+        const loginActor = await login(actor.email);
+        const tipoId = await createTipoTicketAislado(prefijo);
+        const creado = await httpPost<TicketResponseDto>(
+          `${baseUrl}/tickets`,
+          { titulo: 'Ticket resuelto', tipoId, prioridadId: prioridadMediaId },
+          bearer(loginActor.accessToken),
+        );
+        expect(creado.status).toBe(201);
+        const ticketId = creado.data.id;
+        const resuelto = await forzarEstado(ticketId, 'RESUELTO');
+        const operacionesAntes = await tenantClient.operacionTicket.count({ where: { ticketId } });
+
+        const res = await httpPatch(
+          `${baseUrl}/tickets/${ticketId}/estado`,
+          { nuevoEstadoCodigo: 'CERRADO' },
+          bearer(loginActor.accessToken),
+        );
+
+        expect(res.status).toBe(422);
+        expect(JSON.stringify(res.data)).toContain(
+          'El ticket está resuelto: solo admite comentarios. Solo un administrador puede modificarlo o reabrirlo.',
+        );
+        const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+        expect(fila.estadoId).toBe(resuelto);
+        expect(fila.fechaCierre).toBeNull();
+        expect(await tenantClient.operacionTicket.count({ where: { ticketId } })).toBe(
+          operacionesAntes,
+        );
+      },
+    );
+
+    it('PATCH /tickets/:id/estado RESUELTO → CERRADO: un ADMINISTRADOR lo cierra como antes', async () => {
+      const { clienteId, ticketId } = await armarEscenario('SCX');
+      await forzarEstado(ticketId, 'RESUELTO');
+      const administrador = await crearAdministradorDe(clienteId);
+
+      const res = await httpPatch<TicketResponseDto>(
+        `${baseUrl}/tickets/${ticketId}/estado`,
+        { nuevoEstadoCodigo: 'CERRADO' },
+        bearer(administrador.accessToken),
+      );
+
+      expect(res.status).toBe(200);
+      const cerrado = await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'CERRADO' } });
+      const fila = await tenantClient.ticket.findUniqueOrThrow({ where: { id: ticketId } });
+      expect(fila.estadoId).toBe(cerrado.id);
+      expect(fila.fechaCierre).not.toBeNull();
     });
   });
 

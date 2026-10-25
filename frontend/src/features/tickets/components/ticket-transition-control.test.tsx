@@ -54,13 +54,15 @@ describe("TicketTransitionControl", () => {
     expect(options).toEqual(["🟠 En proceso", "🟢 Resuelto", "🔴 Cancelado"]);
   });
 
-  it("TECNICO, estado terminal (CERRADO, sin reapertura) → NO ofrece ningún select, muestra mensaje de estado final", () => {
+  it("TECNICO, estado terminal (CERRADO, sin reapertura) → NO ofrece ningún select y dice que solo admite comentarios", () => {
     renderWithProviders(
       <TicketTransitionControl estadoActualCodigo="CERRADO" onTransicionar={vi.fn()} isSubmitting={false} puedeTransicionar />,
       { user: buildUser({ rol: "TECNICO", permisos: [] }) },
     );
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.getByText(/sin transiciones disponibles/i)).toBeInTheDocument();
+    expect(
+      screen.getByText("Sin transiciones disponibles. El ticket está cerrado: solo admite comentarios."),
+    ).toBeInTheDocument();
   });
 
   it("TECNICO: elegir un destino válido y confirmar → llama onTransicionar con ese código", async () => {
@@ -75,6 +77,67 @@ describe("TicketTransitionControl", () => {
     await user.click(screen.getByRole("button", { name: /confirmar/i }));
 
     expect(onTransicionar).toHaveBeenCalledWith("RESUELTO");
+  });
+});
+
+// Bug en producción (odd/cerrado-solo-comentarios, L14): desde RESUELTO se ofrecía CERRADO a
+// cualquiera con TRANSICIONAR. En RESUELTO, CERRADO y CANCELADO solo un administrador cambia el estado.
+describe("TicketTransitionControl — resuelto, cerrado o cancelado: solo un administrador cambia el estado", () => {
+  it.each(["TECNICO", "COLABORADOR", "USUARIO"])(
+    "%s, estado RESUELTO → no ofrece ningún destino ni botón, y dice por qué",
+    (rol) => {
+      renderWithProviders(
+        <TicketTransitionControl estadoActualCodigo="RESUELTO" onTransicionar={vi.fn()} isSubmitting={false} puedeTransicionar />,
+        { user: buildUser({ rol, permisos: [] }) },
+      );
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Sin transiciones disponibles. El ticket está resuelto: solo admite comentarios."),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("TECNICO, estado CANCELADO → no ofrece ningún destino y dice por qué", () => {
+    renderWithProviders(
+      <TicketTransitionControl estadoActualCodigo="CANCELADO" onTransicionar={vi.fn()} isSubmitting={false} puedeTransicionar />,
+      { user: buildUser({ rol: "TECNICO", permisos: [] }) },
+    );
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Sin transiciones disponibles. El ticket está cancelado: solo admite comentarios."),
+    ).toBeInTheDocument();
+  });
+
+  it("ADMINISTRADOR, estado RESUELTO → sigue ofreciendo CERRADO y la corrección de estado", async () => {
+    const user = userEvent.setup();
+    const onTransicionar = vi.fn();
+    renderWithProviders(
+      <TicketTransitionControl estadoActualCodigo="RESUELTO" onTransicionar={onTransicionar} isSubmitting={false} puedeTransicionar />,
+      { user: buildUser({ rol: "ADMINISTRADOR", permisos: [] }) },
+    );
+
+    const nuevo = screen.getByRole("combobox", { name: /nuevo estado/i });
+    expect(within(nuevo).getAllByRole("option").map((o) => o.textContent)).toEqual(["⚫ Cerrado"]);
+    const correctivo = screen.getByRole("combobox", { name: /corregir estado/i });
+    expect(within(correctivo).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "🔵 Nuevo",
+      "🟣 Asignado",
+      "🟠 En proceso",
+    ]);
+    expect(screen.queryByText(/solo admite comentarios/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /confirmar/i }));
+    expect(onTransicionar).toHaveBeenCalledWith("CERRADO");
+  });
+
+  it("ROOT, estado RESUELTO → sigue ofreciendo CERRADO", () => {
+    renderWithProviders(
+      <TicketTransitionControl estadoActualCodigo="RESUELTO" onTransicionar={vi.fn()} isSubmitting={false} puedeTransicionar />,
+      { user: buildUser({ rol: null, is_global_admin: true, permisos: [] }) },
+    );
+    const nuevo = screen.getByRole("combobox", { name: /nuevo estado/i });
+    expect(within(nuevo).getAllByRole("option").map((o) => o.textContent)).toEqual(["⚫ Cerrado"]);
   });
 });
 

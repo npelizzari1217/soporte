@@ -168,12 +168,12 @@ ticket.
 
 Todo lo demás queda de solo lectura para usuarios, técnicos y colaboradores: no
 se agregan, asignan, completan, descompletan ni eliminan subtareas, no se
-editan los datos, no se adjuntan archivos y no se vinculan ni desvinculan
-compras. La pantalla lo indica con el motivo, por ejemplo *El ticket está
+editan los datos, no se adjuntan archivos, no se vinculan ni desvinculan
+compras y no se cambia el estado del ticket, tampoco de "Resuelto" a "Cerrado". La pantalla lo indica con el motivo, por ejemplo *El ticket está
 resuelto: solo admite comentarios*.
 
 Un **ADMINISTRADOR** o **ROOT** queda exento de esta regla: puede trabajar las
-tareas, adjuntar, gestionar compras y reabrir el ticket. Corregir los datos de la
+tareas, adjuntar, gestionar compras, cerrar un ticket resuelto y reabrir el ticket. Corregir los datos de la
 reparación en esos estados queda solo para **ROOT**, y el bloqueo por compra en
 curso vale para todos. Por ejemplo, si una tarea se marcó como completada por error
 y eso resolvió el ticket, un administrador la descompleta y el ticket vuelve a

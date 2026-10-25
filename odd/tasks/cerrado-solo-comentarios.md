@@ -22,8 +22,8 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
 - [x] T2 — S1, S3, L11 — worker — borrado lógico bloqueado en esos estados para quien no es administrador
   — (este commit)
 
-- [ ] T3 — S1, S3, L14 — worker (bugfix, TDD) — sin cambio de estado para no administradores en RESUELTO,
-  incluido RESUELTO→CERRADO — (pendiente)
+- [x] T3 — S1, S3, L14 — worker (bugfix, TDD) — sin cambio de estado para no administradores en RESUELTO,
+  incluido RESUELTO→CERRADO — (este commit)
 
 ## Log
 
@@ -137,3 +137,32 @@ campos, ni adjuntos, ni compras. ADMINISTRADOR y ROOT quedan exentos. Rama sobre
   ni tecnico ni colaborador". Anula la excepción RESUELTO→CERRADO para no administradores que se tomó en
   L5: en RESUELTO, CERRADO y CANCELADO solo ADMINISTRADOR y ROOT cambian el estado. Los flujos de sistema
   (sin actor) no cambian.
+- **L15** (bugfix y evidencia, T3/S1, S3, L14) — Causa: `TransicionarEstadoUseCase` aplicaba la regla
+  solo si el destino NO era de solo comentarios (`!esEstadoSoloComentarios(destino)`), la excepción
+  RESUELTO→CERRADO de L5. Se quitó: con `alcance` de una persona, en RESUELTO, CERRADO y CANCELADO quien
+  no es ADMINISTRADOR ni ROOT recibe `TicketSoloComentariosError` (422) hacia cualquier destino; JSDoc
+  paso 2b corregido. La regla ya corría sobre el ticket cargado con el lock (no hay relectura aparte).
+  ADMINISTRADOR y ROOT siguen igual (cierre por arco, reapertura por salto correctivo) y los flujos sin
+  actor (`alcance` null) no cambian. Frontend: `TicketTransitionControl` no ofrece destinos a quien no
+  es administrador en esos estados y muestra "Sin transiciones disponibles." más el motivo de
+  `motivoSoloComentarios`; Edilicia no tiene control de estado propio (pasa por el detalle del ticket).
+  Otros caminos revisados, ninguno saca de RESUELTO a quien no es administrador: descompletar tarea en
+  RESUELTO (el único que reabre, `avanzar-estado-por-tareas.service.ts:170`) ya da 422 (L13); asignar y
+  asignar-en-proceso dan 422 en RESUELTO (`asignar-ticket.use-case.ts:134`,
+  `asignar-y-poner-en-proceso.use-case.ts:147`) y no cambian el estado desde ahí; comentar no cambia el
+  estado (`ReanudarPorComentarioListener` solo en ESPERANDO_CLIENTE, L6); `POST /soporte/:id/solucion`
+  no cambia el estado y ya da 422; la API v1 no tiene ruta de transición (404,
+  `integraciones-api-v1-tickets.e2e` CA1); no hay cierre automático programado en el backend. Ayuda:
+  `reparaciones-edilicias.md` decía qué queda de solo lectura sin nombrar el estado; ahora lo nombra
+  ("tampoco de Resuelto a Cerrado") y que el administrador cierra un ticket resuelto. Un e2e consagraba
+  el bug en su preparación (S4 de comentarios: un técnico cerraba el ticket RESUELTO); ahora lo cierra un
+  administrador. RED observado antes del fix: unit 3 fallos (TECNICO, COLABORADOR, USUARIO en RESUELTO →
+  CERRADO: `Result.getError() llamado sobre un resultado exitoso`, la transición pasaba); e2e 3 (`expected
+  200 to be 422`); frontend 3 en RESUELTO (`expected document not to contain element, found <select`) y 2
+  de texto en CERRADO y CANCELADO (motivo nuevo). Hermanos de administrador y ROOT y del flujo de sistema
+  en verde antes y después. GREEN: `transicionar-estado.use-case.spec` 45, `tickets.e2e` 46,
+  `tickets.controller.spec` 90, `escrituras-manuales-con-lock` 4, `esperando-cliente.e2e` 3,
+  `estado-por-tareas` 5, `mantenimiento.integration` 2, `tareas-ticket.e2e` 29, `reparaciones.e2e` 32,
+  `integraciones-api-v1-tickets.e2e` 11, `autorizacion.e2e` 127, `solo-comentarios.policy.spec` 17,
+  `sync-ayuda.spec` 21, `sync-ayuda.integration` 6, `ticket-transition-control.test` 17. Backend `pnpm
+  lint` y `pnpm typecheck` en cero. Frontend `pnpm lint`, `pnpm type-check` y `pnpm test` (2637) verdes.

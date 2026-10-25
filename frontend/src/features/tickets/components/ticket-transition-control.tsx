@@ -13,6 +13,10 @@
  * (volver atrás/corregir/reabrir), salteando el grafo. El backend revalida el
  * grafo + el salto correctivo (ADR-3) — esto es UX, no la barrera.
  *
+ * En RESUELTO, CERRADO y CANCELADO quien no es ROOT ni ADMINISTRADOR no cambia el estado, tampoco
+ * de RESUELTO a CERRADO (odd/cerrado-solo-comentarios, L14): el control no ofrece destinos y muestra
+ * el motivo de `motivoSoloComentarios`, espejo del 422 del backend.
+ *
  * Cada desplegable lleva su etiqueta visible y una línea de ayuda
  * (odd/tasks/acciones-ticket-agrupadas, S2): antes solo tenían `aria-label`, y en
  * pantalla no se distinguía qué botón actuaba sobre qué lista.
@@ -24,6 +28,7 @@ import { Select } from "@/components/ui/select";
 import { etiquetaOpcionEstado } from "@/components/ui/status-badge";
 import { useSession } from "@/shared/hooks/use-session";
 import { getEstadosCorrectivos, getManualNextStates } from "../lib/estado-transitions";
+import { motivoSoloComentarios } from "../lib/solo-comentarios";
 
 export interface TicketTransitionControlProps {
   estadoActualCodigo: string;
@@ -42,7 +47,8 @@ export function TicketTransitionControl({
   const { user, isGlobalAdmin } = useSession();
   const esCorrector = isGlobalAdmin || user?.rol === "ADMINISTRADOR";
 
-  const opciones = getManualNextStates(estadoActualCodigo);
+  const soloComentarios = motivoSoloComentarios(estadoActualCodigo, esCorrector);
+  const opciones = soloComentarios === null ? getManualNextStates(estadoActualCodigo) : [];
   const correctivos = esCorrector ? getEstadosCorrectivos(estadoActualCodigo) : [];
 
   const [destino, setDestino] = useState<string>(opciones[0] ?? "");
@@ -51,6 +57,10 @@ export function TicketTransitionControl({
   const correctivoId = useId();
 
   if (!puedeTransicionar) return null;
+
+  if (soloComentarios !== null) {
+    return <p className="text-sm text-muted-foreground">Sin transiciones disponibles. {soloComentarios}</p>;
+  }
 
   // Sin arcos manuales NI salto correctivo disponible → estado final real.
   if (opciones.length === 0 && correctivos.length === 0) {
