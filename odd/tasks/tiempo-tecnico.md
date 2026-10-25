@@ -102,3 +102,14 @@ Fuera de alcance, declarado antes de empezar:
   manual: sin `guardarMutation.reset()` al cambiar de técnico cae el test de fuga del error, y sin `key`
   ni el `reset` del form caen el de cambio de técnico y el de `DELETE`. `pnpm lint` sin advertencias ni
   errores; `pnpm type-check` 0 errores. Ayuda: se anota para la tanda final.
+- **L9 — Diseño de T3 (orquestador, 2026-10-25), aplicando S5-S7.** Fuente: tabla tenant `tramos_tecnico_ticket`
+  (ticket, técnico, `inicio_at`, `fin_at`, `motivo_fin`, `habil_s`, `meta_s`, `cumplido`). Un tramo se ABRE cuando
+  el ticket queda con un asignado (cualquiera de las vías de asignación, o al reabrirse un RESUELTO con asignado) y
+  se CIERRA cuando cambia el asignado, se desasigna, o el ticket pasa a RESUELTO, CERRADO o CANCELADO. Al cerrar se
+  mide `habil_s` en el horario del técnico (`ResolverHorarioLaboralUsuarioService`, S2) más los feriados, restando
+  los intervalos en ESPERANDO_CLIENTE leídos de los CAMBIO_ESTADO del timeline (S7), y se fija `meta_s` =
+  `tickets.sla_meta_s` del momento. `cumplido` (= `habil_s <= meta_s`) solo se evalúa en el tramo que cierra en
+  RESUELTO (S6: "el que lo resuelve se evalúa con su tramo"); los tramos cerrados por reasignación guardan su
+  tiempo sin veredicto. Sin meta (S4) → `cumplido` NULL. Tiempos fijos con el horario vigente al cerrar (mismo
+  criterio que `odd/tasks/promedios-dashboard-habiles.md`). Sin backfill (fuera de alcance). La operación
+  `ASIGNACION` no se modifica: el tramo ya registra quién y desde cuándo.
