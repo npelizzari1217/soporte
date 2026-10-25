@@ -19,6 +19,14 @@
  * y `FeriadosClienteController` (D5). `TenantContext` la provee `SharedModule`
  * (`@Global()`) — no se importa acá.
  *
+ * Horario propio por usuario (odd/tasks/tiempo-tecnico.md, T1):
+ * `HorarioLaboralUsuarioController` y `ResolverHorarioLaboralUsuarioService`,
+ * exportado para medir a cada técnico con su horario o, si no tiene, con el
+ * del tenant. La pertenencia del usuario al tenant la valida
+ * `UsuarioMasterChecker` (de `tickets`), registrado acá como provider local:
+ * `TicketsModule` importa este módulo, así que importarlo de vuelta haría un
+ * ciclo.
+ *
  * Tarea: 2.5, 4.4, sdd/feriados-configurables.
  */
 import { Module } from '@nestjs/common';
@@ -62,10 +70,30 @@ import { ICalendarioLaboralSemanalRepository } from './domain/ports/i-calendario
 import { IHorarioLaboralEscrituraRepository } from './domain/ports/i-horario-laboral-escritura.repository';
 import { ObtenerHorarioLaboralUseCase } from './application/use-cases/obtener-horario-laboral.use-case';
 import { GuardarHorarioLaboralUseCase } from './application/use-cases/guardar-horario-laboral.use-case';
+import {
+  HORARIO_LABORAL_USUARIO_REPOSITORY,
+  IHorarioLaboralUsuarioRepository,
+} from './domain/ports/i-horario-laboral-usuario.repository';
+import { PrismaHorarioLaboralUsuarioRepository } from './infrastructure/persistence/prisma/prisma-horario-laboral-usuario.repository';
+import { ResolverHorarioLaboralUsuarioService } from './domain/services/resolver-horario-laboral-usuario.service';
+import { ObtenerHorarioLaboralUsuarioUseCase } from './application/use-cases/obtener-horario-laboral-usuario.use-case';
+import { GuardarHorarioLaboralUsuarioUseCase } from './application/use-cases/guardar-horario-laboral-usuario.use-case';
+import { BorrarHorarioLaboralUsuarioUseCase } from './application/use-cases/borrar-horario-laboral-usuario.use-case';
+import { HorarioLaboralUsuarioController } from './interface/controllers/horario-laboral-usuario.controller';
+import {
+  IUsuarioMasterChecker,
+  USUARIO_MASTER_CHECKER,
+} from '../tickets/domain/ports/i-usuario-master.checker';
+import { UsuarioMasterChecker } from '../tickets/infrastructure/persistence/prisma/usuario-master.checker';
 
 @Module({
   imports: [AuthModule],
-  controllers: [FeriadosController, FeriadosClienteController, HorarioLaboralController],
+  controllers: [
+    FeriadosController,
+    FeriadosClienteController,
+    HorarioLaboralController,
+    HorarioLaboralUsuarioController,
+  ],
   providers: [
     {
       // TenantContext llega vía SharedModule (@Global) — desde WU-3
@@ -146,7 +174,61 @@ import { GuardarHorarioLaboralUseCase } from './application/use-cases/guardar-ho
         TENANT_TX_RUNNER,
       ],
     },
+    {
+      provide: HORARIO_LABORAL_USUARIO_REPOSITORY,
+      useClass: PrismaHorarioLaboralUsuarioRepository,
+    },
+    // Provider local, no exportado: ver el JSDoc del módulo (ciclo con TicketsModule).
+    { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
+    {
+      provide: ResolverHorarioLaboralUsuarioService,
+      useFactory: (
+        usuarioRepo: IHorarioLaboralUsuarioRepository,
+        clienteRepo: ICalendarioLaboralSemanalRepository,
+      ) => new ResolverHorarioLaboralUsuarioService(usuarioRepo, clienteRepo),
+      inject: [HORARIO_LABORAL_USUARIO_REPOSITORY, CALENDARIO_LABORAL_SEMANAL_REPOSITORY],
+    },
+    {
+      provide: ObtenerHorarioLaboralUsuarioUseCase,
+      useFactory: (
+        checker: IUsuarioMasterChecker,
+        resolver: ResolverHorarioLaboralUsuarioService,
+      ) => new ObtenerHorarioLaboralUsuarioUseCase(checker, resolver),
+      inject: [USUARIO_MASTER_CHECKER, ResolverHorarioLaboralUsuarioService],
+    },
+    {
+      provide: GuardarHorarioLaboralUsuarioUseCase,
+      useFactory: (
+        checker: IUsuarioMasterChecker,
+        repo: IHorarioLaboralUsuarioRepository,
+        txRunner: ITenantTransactionRunner,
+        resolver: ResolverHorarioLaboralUsuarioService,
+      ) => new GuardarHorarioLaboralUsuarioUseCase(checker, repo, txRunner, resolver),
+      inject: [
+        USUARIO_MASTER_CHECKER,
+        HORARIO_LABORAL_USUARIO_REPOSITORY,
+        TENANT_TX_RUNNER,
+        ResolverHorarioLaboralUsuarioService,
+      ],
+    },
+    {
+      provide: BorrarHorarioLaboralUsuarioUseCase,
+      useFactory: (
+        checker: IUsuarioMasterChecker,
+        repo: IHorarioLaboralUsuarioRepository,
+        resolver: ResolverHorarioLaboralUsuarioService,
+      ) => new BorrarHorarioLaboralUsuarioUseCase(checker, repo, resolver),
+      inject: [
+        USUARIO_MASTER_CHECKER,
+        HORARIO_LABORAL_USUARIO_REPOSITORY,
+        ResolverHorarioLaboralUsuarioService,
+      ],
+    },
   ],
-  exports: [CALENDARIO_LABORAL_SEMANAL_REPOSITORY, FERIADOS_LABORALES_REPOSITORY],
+  exports: [
+    CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
+    FERIADOS_LABORALES_REPOSITORY,
+    ResolverHorarioLaboralUsuarioService,
+  ],
 })
 export class CalendarioLaboralModule {}

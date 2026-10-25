@@ -1584,6 +1584,29 @@ El filtro es por módulo y no por código: el satélite existía para todos los 
 EDILICIA (MANTENIMIENTO incluido). `id` sale del default de la columna, `ubicacion` queda en NULL y
 `updated_at` se carga a mano porque no tiene default en la base.
 
+## Horario laboral por usuario
+
+Documento de la feature: `odd/tasks/tiempo-tecnico.md` (T1). Cada usuario puede tener un horario
+laboral semanal propio; quien no lo tiene sigue usando el del cliente. Por ahora solo se carga y se
+lee por la API (`/horario-laboral/usuarios/:usuarioId`): no cambia el SLA ni la asignación de
+tickets.
+
+| Qué | Detalle |
+|---|---|
+| Migración tenant | `20261026100000_horario_laboral_usuario`, **aditiva y sin backfill**: crea `horario_laboral_usuario` vacía, con los mismos CHECK que `calendario_laboral_dias_cliente`. Entra por `migrate:tenants`. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+
+No necesita precheck: la tabla es nueva y nace vacía.
+
+### Rollback
+
+Su `rollback.sql` borra la tabla y se puede correr dos veces (`DROP TABLE IF EXISTS`). **Primero el
+código, después el `rollback.sql`** en cada base de inquilino: el código nuevo lee la tabla y falla
+sin ella. El código anterior no la conoce y convive con ella, así que dejarla puesta también es un
+rollback válido, y es el único que no pierde datos. Al correr el `rollback.sql` se pierden los
+horarios propios cargados después del deploy: antes, un dump de la tabla. No borra la fila de
+`_prisma_migrations`: para volver a desplegar, se borra a mano.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida

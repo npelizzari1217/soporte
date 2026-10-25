@@ -52,6 +52,19 @@ export class HorarioLaboralSinDiasAbiertosError extends DomainError {
   }
 }
 
+/**
+ * El usuario del horario propio no existe en `master.usuarios` o no tiene una
+ * membresía viva en el tenant activo (odd/tasks/tiempo-tecnico.md, T1). Mapea
+ * a HTTP 404: no distingue "no existe" de "es de otro cliente".
+ */
+export class UsuarioHorarioNoEncontradoError extends DomainError {
+  readonly code = 'USUARIO_HORARIO_NO_ENCONTRADO';
+
+  constructor(usuarioId: string) {
+    super(`El usuario ${usuarioId} no existe o no pertenece a este cliente.`);
+  }
+}
+
 /** Unión de errores que puede devolver `HorarioLaboralSemanal.crear()`. */
 export type HorarioLaboralInvalidoError =
   | HorarioLaboralDiasInvalidosError

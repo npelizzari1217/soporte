@@ -33,8 +33,8 @@ Fuera de alcance, declarado antes de empezar:
 
 ## Tasks
 
-- [ ] T1 — S1, S2, S3 — worker — horario por usuario en el tenant (tabla con `usuario_id` soft ref,
-  migración + rollback), API GET/PUT por usuario (admin) y resolución "propio o del cliente" — (pendiente)
+- [x] T1 — S1, S2, S3 — worker — horario por usuario en el tenant (tabla con `usuario_id` soft ref,
+  migración + rollback), API GET/PUT por usuario (admin) y resolución "propio o del cliente" — (este commit, L7)
 - [ ] T2 — S1 — worker — frontend: editar el horario de un técnico desde su ficha o la pantalla de
   horario laboral — (pendiente)
 - [ ] T3 — S5, S6, S7 — worker — tramos del técnico: abrir al asignar, cerrar al reasignar o resolver,
@@ -60,3 +60,26 @@ Fuera de alcance, declarado antes de empezar:
   feriados son unión master + tenant. La meta sale de `Prioridad.slaHoras` → `tickets.sla_meta_s`.
   `tickets.asignado_id` guarda solo el actual y la operación `ASIGNACION` no registra el asignado: no hay
   "desde cuándo lo tiene" confiable hoy. Estados que pausan: ESPERANDO_CLIENTE y RESUELTO.
+- **L6 — Dueño (2026-10-25):** "si" — autoriza implementar tiempo-tecnico, empezando por T1.
+- **L7 — T1 hecha (2026-10-25).** Migración tenant `20261026100000_horario_laboral_usuario` (+
+  `rollback.sql`): tabla `horario_laboral_usuario`, PK (`usuario_id`, `dia_semana`), mismos CHECK que
+  `calendario_laboral_dias_cliente` (el spec los compara contra el catálogo). Puerto
+  `IHorarioLaboralUsuarioRepository` (`obtener` → horario o `null`, `reemplazar` con 7 `upsert`
+  secuenciales dentro de la transacción del caso de uso, `borrar`). S2:
+  `ResolverHorarioLaboralUsuarioService.obtenerParaUsuario` devuelve `{ calendario, origen: 'USUARIO' |
+  'CLIENTE' }`, exportado por `CalendarioLaboralModule` para T3. API `GET`/`PUT`/`DELETE
+  /horario-laboral/usuarios/:usuarioId`: UUID con `ParseUUIDPipe` (400), usuario fuera del tenant 404
+  (`existeEnTenant`), horario inválido 422 (mismo `HorarioLaboralSemanal`), escritura solo
+  ADMINISTRADOR/ROOT (`AdminClienteGuard`); el `DELETE` responde el horario del cliente. Decisiones: (a) la
+  lectura queda abierta a cualquier autenticado del tenant, igual que `GET /horario-laboral`: es agenda, no
+  desempeño (el alcance de la medición es de S8/T4); (b) `UsuarioMasterChecker` se registra como provider
+  local del módulo porque `TicketsModule` ya importa `CalendarioLaboralModule` (importarlo de vuelta es un
+  ciclo). S3: la asignación no se tocó. Evidencia: `pnpm lint` 0 errores, `pnpm typecheck` 0 errores;
+  vitest focal 8 archivos, 64 tests verdes (nuevos: resolver 3, casos de uso 8, controller 12, repositorio
+  integración 8, migración 13; existentes tocados: mapper, guards y e2e de `horario-laboral`). La guarda
+  `scripts/runbook-migraciones.spec.ts` no tiene tope superior en esta rama y pide la migración nueva en el
+  checklist del 2026-10-25: el mismo commit le agrega el tope (`20261025140000`, igual que `1825c6b9`).
+  Sin e2e HTTP propio: `ParseUUIDPipe` y el 403 real de `AdminClienteGuard` se cubren por metadata.
+  Ajuste del orquestador: el test de rollback del repositorio dejó de mockear `$transaction` con `any`
+  (AGENTS.md lo prohíbe) y usa un trigger temporal que hace fallar a Postgres en el día 3. Módulo
+  `calendario-laboral` + guarda del runbook: 33 archivos, 258 tests verdes; lint y typecheck limpios.

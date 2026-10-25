@@ -1566,6 +1566,26 @@ model CalendarioLaboralDiaCliente {
   @@map("calendario_laboral_dias_cliente")
 }
 
+// ─── HORARIO_LABORAL_USUARIO (horario propio de cada usuario, odd/tasks/tiempo-tecnico.md T1) ─
+//
+// Mismo shape y mismos CHECK que `calendario_laboral_dias_cliente`, con PK
+// (`usuario_id`, `dia_semana`). `usuarioId` es referencia blanda a
+// `master.usuarios` (sin FK). Un usuario sin filas usa el horario del tenant;
+// uno con horario propio tiene las 7, que el código reemplaza juntas (ver la
+// migración `20261026100000_horario_laboral_usuario`).
+
+model HorarioLaboralUsuarioDia {
+  usuarioId      String   @map("usuario_id") @db.Uuid
+  diaSemana      Int      @map("dia_semana") @db.SmallInt
+  aperturaMinuto Int?     @map("apertura_minuto") @db.SmallInt
+  cierreMinuto   Int?     @map("cierre_minuto") @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@id([usuarioId, diaSemana])
+  @@map("horario_laboral_usuario")
+}
+
 /// Pieza individual de un insumo `SERIE` (sdd/repuestos-numero-de-serie, ADR-1).
 /// Serie pendiente = `numeroSerie` NULL. Los CHECK con nombre y el UNIQUE parcial
 /// `(insumo_id, numero_serie_normalizado) WHERE numero_serie_normalizado IS NOT NULL` viven en la
