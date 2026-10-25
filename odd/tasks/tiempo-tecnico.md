@@ -195,3 +195,7 @@ Fuera de alcance, declarado antes de empezar:
   vacío. Ayuda: se anota para la tanda final (detalle del ticket y dashboard).
 - **L13 — Dueño (2026-10-25), visibilidad del detalle:** "Lo ve cualquiera que vea el ticket". El bloque "Tiempo del
   técnico" sigue la visibilidad del ticket (solicitante incluido); el dashboard sigue acotado por técnico (S8).
+- **L14 — Verify independiente de T4 (2026-10-25): PASS, S4, S8, L12 y L13 cumplidas, sin bloqueantes.** Mismo camino
+  de visibilidad que `GET /tickets/:id`, SQL parametrizado con el mismo alcance que el resto del dashboard, fixtures
+  con filas que no deben aparecer. Aplicado: tipo de retorno explícito en `tramosTecnicoKey`. Suites completas
+  sobre T4: backend 803 archivos / 10184 tests, frontend 290 / 2677, en verde.

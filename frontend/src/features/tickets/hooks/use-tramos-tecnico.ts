@@ -14,7 +14,9 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
 import type { TramoTecnico } from "../types";
 
-export const tramosTecnicoKey = (ticketId: string) => ["ticket", ticketId, "tramos-tecnico"] as const;
+export const tramosTecnicoKey = (
+  ticketId: string,
+): readonly ["ticket", string, "tramos-tecnico"] => ["ticket", ticketId, "tramos-tecnico"] as const;
 
 export function useTramosTecnico(ticketId: string) {
   return useQuery({
