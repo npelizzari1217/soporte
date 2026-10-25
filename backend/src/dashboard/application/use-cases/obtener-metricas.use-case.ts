@@ -3,6 +3,7 @@ import { ICicloClienteRepository } from '../../../tickets/domain/ports/i-ciclo-c
 import { IEncuestaSatisfaccionRepository } from '../../../csat/domain/ports/i-encuesta-satisfaccion.repository';
 import { CicloClienteEntity } from '../../../tickets/domain/entities/ciclo-cliente.entity';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
+import { ICumplimientoTecnicoRepository } from '../../../tiempo-tecnico/domain/ports/i-cumplimiento-tecnico.repository';
 import { IUsuarioMasterChecker } from '../../../tickets/domain/ports/i-usuario-master.checker';
 import { medianocheArgentina } from '../../../shared/domain/zona-horaria-argentina';
 import { AlcanceListadoTickets } from '../../../tickets/domain/ports/i-ticket.repository';
@@ -52,6 +53,24 @@ export interface TareasCompletadasTecnico {
   completadas: number;
 }
 
+/**
+ * Cumplimiento de un técnico en el período del dashboard (odd/tasks/tiempo-tecnico.md, T4, S8):
+ * sus tramos que cerraron en RESUELTO con veredicto, medidos en horas hábiles de su horario.
+ * `nombre` y `apellido` salen de master; `null` si el usuario ya no existe allí.
+ */
+export interface CumplimientoTecnico {
+  usuarioId: string;
+  nombre: string | null;
+  apellido: string | null;
+  /** Tramos evaluados (siempre al menos uno: un técnico sin tramos no tiene fila). */
+  total: number;
+  cumplidos: number;
+  /** `cumplidos / total`, fracción `0..1`. */
+  porcentaje: number;
+  /** Promedio de los segundos hábiles de esos tramos. */
+  promedioHabilS: number;
+}
+
 /** DTO de salida — snapshot de métricas del dashboard (D1). */
 export interface MetricasResult {
   abiertos: number;
@@ -76,6 +95,11 @@ export interface MetricasResult {
    */
   tareasCompletadasPorTecnico: TareasCompletadasTecnico[];
   /**
+   * Cumplimiento por técnico en el período del ciclo, evaluado sobre el `fin_at` del tramo, de más
+   * a menos tramos evaluados. Con alcance de TECNICO, a lo sumo la fila propia.
+   */
+  cumplimientoTecnico: CumplimientoTecnico[];
+  /**
    * KPI de satisfacción (WU9.1, ADR-C5). Presente SOLO si el actor tiene
    * `CSAT:LECTURA` — con `tieneCsatLectura=false` estas dos claves quedan
    * AUSENTES del objeto (no `undefined`: ausentes), para que un cliente que
@@ -96,6 +120,7 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
   distribucionPorTipo: [],
   distribucionPorPrioridad: [],
   tareasCompletadasPorTecnico: [],
+  cumplimientoTecnico: [],
 };
 
 /**
@@ -128,6 +153,10 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
  *   ciclo del ticket: una tarea completada este ciclo sobre un ticket de un ciclo anterior cuenta
  *   en este. El alcance de TECNICO fija `completada_por_id = actorId`, el mismo criterio que
  *   `asignadoId` en las métricas por ticket. Las métricas por ticket no cambian.
+ * - Cumplimiento por técnico (odd/tasks/tiempo-tecnico.md, T4, S8): el mismo período, aplicado al
+ *   `fin_at` de los tramos que cerraron en RESUELTO con veredicto (los sin meta no se evalúan, S4),
+ *   sin contar los de tickets borrados. El alcance de TECNICO fija `tecnico_id = actorId`, y el
+ *   alcance por tipo es el mismo que el resto del dashboard.
  *
  * Ref spec: sdd/premium/spec D1, D2. Ref design: ADR-P5. Tarea: D2.
  */
@@ -138,6 +167,7 @@ export class ObtenerMetricasUseCase {
     private readonly csatRepo: Pick<IEncuestaSatisfaccionRepository, 'resumenPorScope'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'contarCompletadasPorTecnico'>,
     private readonly usuarioMasterChecker: Pick<IUsuarioMasterChecker, 'resolverNombres'>,
+    private readonly cumplimientoRepo: Pick<ICumplimientoTecnicoRepository, 'resumirPorTecnico'>,
   ) {}
 
   async execute(dto: ObtenerMetricasDto): Promise<MetricasResult> {
@@ -180,6 +210,7 @@ export class ObtenerMetricasUseCase {
       distribucionPorPrioridad,
       csat,
       tareasCompletadasPorTecnico,
+      cumplimientoTecnico,
     ] = await Promise.all([
       this.dashboardRepo.conteoPorEstadoAgrupado(filtro),
       this.dashboardRepo.tiempoPromedioResolucionHoras(filtro),
@@ -193,6 +224,7 @@ export class ObtenerMetricasUseCase {
       // evita el costo de la query cuando el dato ni siquiera se va a mostrar.
       tieneCsatLectura ? this.csatRepo.resumenPorScope(filtro) : Promise.resolve(null),
       this.tareasCompletadasPorTecnico(ciclo, asignadoId, alcance),
+      this.cumplimientoTecnico(ciclo, asignadoId, alcance),
     ]);
 
     return {
@@ -215,6 +247,7 @@ export class ObtenerMetricasUseCase {
       distribucionPorTipo,
       distribucionPorPrioridad,
       tareasCompletadasPorTecnico,
+      cumplimientoTecnico,
       ...(csat ? { csatPromedio: csat.promedio, csatRespuestas: csat.respuestas } : {}),
     };
   }
@@ -232,11 +265,7 @@ export class ObtenerMetricasUseCase {
     if (!ciclo) return [];
 
     const grupos = await this.tareaRepo.contarCompletadasPorTecnico({
-      // Las fechas del ciclo son días calendario argentinos (`@db.Date`), y `completada_en` es un
-      // instante: los bordes son la medianoche argentina, no la UTC (T11). `fecha_fin` incluye el
-      // día entero.
-      desde: medianocheArgentina(ciclo.fechaInicio),
-      hasta: medianocheArgentina(new Date(ciclo.fechaFin.getTime() + MS_POR_DIA)),
+      ...periodoDelCiclo(ciclo),
       completadaPorId,
       ...(alcance && { alcance }),
     });
@@ -256,4 +285,50 @@ export class ObtenerMetricasUseCase {
       };
     });
   }
+
+  /**
+   * Cumplimiento por técnico en el período del ciclo, con el nombre de cada uno resuelto en un solo
+   * lote contra master. Un ciclo explícito inexistente da una lista vacía.
+   */
+  private async cumplimientoTecnico(
+    cicloPendiente: Promise<CicloClienteEntity | null>,
+    tecnicoId: string | undefined,
+    alcance: AlcanceListadoTickets | null,
+  ): Promise<CumplimientoTecnico[]> {
+    const ciclo = await cicloPendiente;
+    if (!ciclo) return [];
+
+    const filas = await this.cumplimientoRepo.resumirPorTecnico({
+      ...periodoDelCiclo(ciclo),
+      tecnicoId,
+      ...(alcance && { alcance }),
+    });
+    if (filas.length === 0) return [];
+
+    const nombres = await this.usuarioMasterChecker.resolverNombres(filas.map((f) => f.tecnicoId));
+    return filas.map((f) => {
+      const usuario = nombres.get(f.tecnicoId);
+      return {
+        usuarioId: f.tecnicoId,
+        nombre: usuario?.nombre ?? null,
+        apellido: usuario?.apellido ?? null,
+        total: f.total,
+        cumplidos: f.cumplidos,
+        porcentaje: f.cumplidos / f.total,
+        promedioHabilS: f.promedioHabilS,
+      };
+    });
+  }
+}
+
+/**
+ * Período del ciclo como intervalo de instantes `[desde, hasta)`. Las fechas del ciclo son días
+ * calendario argentinos (`@db.Date`) y lo que se filtra son instantes: los bordes son la
+ * medianoche argentina, no la UTC (T11). `fecha_fin` incluye el día entero.
+ */
+function periodoDelCiclo(ciclo: CicloClienteEntity): { desde: Date; hasta: Date } {
+  return {
+    desde: medianocheArgentina(ciclo.fechaInicio),
+    hasta: medianocheArgentina(new Date(ciclo.fechaFin.getTime() + MS_POR_DIA)),
+  };
 }

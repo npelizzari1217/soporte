@@ -294,6 +294,32 @@ export interface TareasTicketResponse {
   avance: AvanceTareas;
 }
 
+// ─── Tiempo del técnico (odd/tasks/tiempo-tecnico.md, T4) ───
+
+/** Causa de cierre de un tramo (espejo de `MOTIVOS_FIN_TRAMO` del backend). */
+export type MotivoFinTramo = "REASIGNADO" | "DESASIGNADO" | "RESUELTO" | "CERRADO" | "CANCELADO";
+
+/**
+ * Un tramo del técnico en el ticket (espejo de `TramoTecnicoResponseDto`,
+ * `backend/src/tickets/interface/dtos/tramo-tecnico.dto.ts`), en la respuesta de
+ * `GET /tickets/:id/tramos-tecnico`. Un tramo abierto (`finAt: null`) está en curso: sin motivo,
+ * medición, meta ni veredicto. `cumplido` solo existe en el que cerró en RESUELTO con meta.
+ */
+export interface TramoTecnico {
+  id: string;
+  tecnicoId: string;
+  tecnicoNombre: string | null;
+  tecnicoApellido: string | null;
+  inicioAt: string;
+  finAt: string | null;
+  motivoFin: MotivoFinTramo | null;
+  /** Segundos hábiles en el horario del técnico, sin la espera al cliente. */
+  habilS: number | null;
+  /** Meta del SLA del ticket al cerrar el tramo, en segundos. */
+  metaS: number | null;
+  cumplido: boolean | null;
+}
+
 /**
  * Grupo de estado de una compra (`GrupoEstadoCompra` del backend): solo una `ACTIVAS` bloquea el
  * ticket al que está vinculada (odd/ticket-unificado, S5).

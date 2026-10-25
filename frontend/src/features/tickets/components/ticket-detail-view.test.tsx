@@ -117,6 +117,8 @@ function mockBackend() {
       }),
     ),
     http.get(`/api/tickets/${TICKET_ID}/tareas/tecnicos-elegibles`, () => HttpResponse.json([])),
+    // Sin tramos por defecto (ticket anterior a la medición): la tarjeta no se monta.
+    http.get(`/api/tickets/${TICKET_ID}/tramos-tecnico`, () => HttpResponse.json([])),
   );
 }
 
@@ -129,6 +131,44 @@ describe("TicketDetailView — sección Tareas (odd/tareas-con-tecnico, T6)", ()
     expect(await screen.findByRole("heading", { name: "Tareas" })).toBeInTheDocument();
     expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
     expect(screen.getByText("0% · 0 de 1 completadas")).toBeInTheDocument();
+  });
+});
+
+describe("TicketDetailView — tiempo del técnico (odd/tasks/tiempo-tecnico.md, T4)", () => {
+  beforeEach(() => mockBackend());
+
+  it("muestra la tarjeta con los tramos del ticket, sin exigir ninguna acción sobre el tipo", async () => {
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/tramos-tecnico`, () =>
+        HttpResponse.json([
+          {
+            id: "tr1",
+            tecnicoId: "u-tecnico",
+            tecnicoNombre: "Carlos",
+            tecnicoApellido: "Díaz",
+            inicioAt: "2026-01-01T12:00:00.000Z",
+            finAt: null,
+            motivoFin: null,
+            habilS: null,
+            metaS: null,
+            cumplido: null,
+          },
+        ]),
+      ),
+    );
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+
+    const seccion = (await screen.findByRole("heading", { name: "Tiempo del técnico" })).closest("section");
+    if (!seccion) throw new Error("la tarjeta no está dentro de una <section>");
+    expect(within(seccion).getByText("Carlos Díaz")).toBeInTheDocument();
+    expect(within(seccion).getByText("En curso")).toBeInTheDocument();
+  });
+
+  it("sin tramos no muestra la tarjeta", async () => {
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+
+    expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Tiempo del técnico" })).not.toBeInTheDocument();
   });
 });
 

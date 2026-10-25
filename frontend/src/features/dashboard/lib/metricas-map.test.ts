@@ -7,6 +7,8 @@ import {
   formatHoras,
   toPorcentaje,
   toTareasCompletadasChartData,
+  toCumplimientoTecnicoFilas,
+  NOMBRE_USUARIO_AUSENTE,
 } from "./metricas-map";
 
 describe("toAbiertosCerradosChartData", () => {
@@ -112,5 +114,30 @@ describe("formatHoras", () => {
 
   it("null → null", () => {
     expect(formatHoras(null)).toBeNull();
+  });
+});
+
+describe("toCumplimientoTecnicoFilas", () => {
+  it("redondea el % a entero, formatea el promedio en h:mm y conserva el orden del backend", () => {
+    expect(
+      toCumplimientoTecnicoFilas([
+        { usuarioId: "u2", nombre: "Beto", apellido: "Ruiz", total: 3, cumplidos: 2, porcentaje: 2 / 3, promedioHabilS: 7500 },
+        { usuarioId: "u1", nombre: "Ana", apellido: null, total: 5, cumplidos: 0, porcentaje: 0, promedioHabilS: 59 },
+      ]),
+    ).toEqual([
+      { usuarioId: "u2", nombre: "Beto Ruiz", evaluados: 3, cumplidos: 2, porcentaje: 67, promedio: "2:05" },
+      { usuarioId: "u1", nombre: "Ana", evaluados: 5, cumplidos: 0, porcentaje: 0, promedio: "0:01" },
+    ]);
+  });
+
+  it("usuario que ya no está en master → etiqueta neutra, no el id", () => {
+    const [fila] = toCumplimientoTecnicoFilas([
+      { usuarioId: "u-baja", nombre: null, apellido: "  ", total: 1, cumplidos: 1, porcentaje: 1, promedioHabilS: 0 },
+    ]);
+    expect(fila.nombre).toBe(NOMBRE_USUARIO_AUSENTE);
+  });
+
+  it("campo ausente (backend anterior) → lista vacía", () => {
+    expect(toCumplimientoTecnicoFilas(undefined)).toEqual([]);
   });
 });

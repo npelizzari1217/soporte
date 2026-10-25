@@ -133,6 +133,16 @@ import {
   FERIADOS_LABORALES_REPOSITORY,
   IFeriadosLaboralesRepository,
 } from '../calendario-laboral/domain/ports/i-feriados-laborales.repository';
+import { TenantContext } from '../shared/tenancy/tenant-context';
+import { TiempoTecnicoModule } from '../tiempo-tecnico/tiempo-tecnico.module';
+import { SincronizarTramoTecnicoService } from '../tiempo-tecnico/application/sincronizar-tramo-tecnico.service';
+import { TicketRepositoryConTramos } from '../tiempo-tecnico/infrastructure/ticket-repository-con-tramos';
+import { ListarTramosTicketUseCase } from '../tiempo-tecnico/application/listar-tramos-ticket.use-case';
+import {
+  ITramoTecnicoRepository,
+  TRAMO_TECNICO_REPOSITORY,
+} from '../tiempo-tecnico/domain/ports/i-tramo-tecnico.repository';
+import { TramosTecnicoTicketController } from './interface/controllers/tramos-tecnico-ticket.controller';
 
 /**
  * TicketsModule — módulo NestJS del dominio "tickets".
@@ -192,20 +202,48 @@ import {
  *   (controller nuevo), TODOS protegidos por `catalogo:gestionar`
  *   (EXCLUSIVO ADMINISTRADOR, migración de PR2 — desvía ADR-2 que
  *   proponía reusar `cliente:gestionar`, por decisión explícita).
+ * - odd/tasks/tiempo-tecnico.md (T3): `TICKET_REPOSITORY` es
+ *   `TicketRepositoryConTramos` sobre `PrismaTicketRepository`, para que cada
+ *   guardado abra o cierre el tramo del técnico en su misma transacción. Importa
+ *   `TiempoTecnicoModule`, que no importa este módulo: sin ciclo.
+ * - odd/tasks/tiempo-tecnico.md (T4): `GET /tickets/:id/tramos-tecnico`
+ *   (`TramosTecnicoTicketController`) vive acá por el repositorio y el cargador de alcance del
+ *   ticket; lee los tramos con `TRAMO_TECNICO_REPOSITORY` de `TiempoTecnicoModule`.
  *
  * FITNESS RULE: PrismaService y @prisma/client solo pueden importarse desde
  * infrastructure/ (ver backend/eslint.config.js).
  */
 @Module({
-  imports: [AuthModule, CsatLecturaModule, CalendarioLaboralModule, SectoresModule],
-  controllers: [TicketsController, AdjuntosController, CatalogosController, TareasTicketController],
+  imports: [
+    AuthModule,
+    CsatLecturaModule,
+    CalendarioLaboralModule,
+    SectoresModule,
+    TiempoTecnicoModule,
+  ],
+  controllers: [
+    TicketsController,
+    AdjuntosController,
+    CatalogosController,
+    TareasTicketController,
+    TramosTecnicoTicketController,
+  ],
   providers: [
     { provide: USUARIO_MASTER_CHECKER, useClass: UsuarioMasterChecker },
     { provide: ESTADO_REPOSITORY, useClass: PrismaEstadoRepository },
     { provide: PRIORIDAD_REPOSITORY, useClass: PrismaPrioridadRepository },
     { provide: TIPO_TICKET_REPOSITORY, useClass: PrismaTipoTicketRepository },
     { provide: TIPO_OPERACION_REPOSITORY, useClass: PrismaTipoOperacionRepository },
-    { provide: TICKET_REPOSITORY, useClass: PrismaTicketRepository },
+    {
+      provide: TICKET_REPOSITORY,
+      useFactory: (
+        tenantContext: TenantContext,
+        tramos: SincronizarTramoTecnicoService,
+        txRunner: ITenantTransactionRunner,
+      ): ITicketRepository =>
+        new TicketRepositoryConTramos(new PrismaTicketRepository(tenantContext), tramos, txRunner),
+      inject: [TenantContext, SincronizarTramoTecnicoService, TENANT_TX_RUNNER],
+    },
     { provide: OPERACION_TICKET_REPOSITORY, useClass: PrismaOperacionTicketRepository },
     { provide: RELOJ_SLA_MARCADOR, useClass: PrismaRelojSlaMarcador },
     {
@@ -515,6 +553,12 @@ import {
       useFactory: (ticketRepo: ITicketRepository, tareaRepo: ITareaTicketRepository) =>
         new ListarTareasTicketUseCase(ticketRepo, tareaRepo),
       inject: [TICKET_REPOSITORY, TAREA_TICKET_REPOSITORY],
+    },
+    {
+      provide: ListarTramosTicketUseCase,
+      useFactory: (ticketRepo: ITicketRepository, tramoRepo: ITramoTecnicoRepository) =>
+        new ListarTramosTicketUseCase(ticketRepo, tramoRepo),
+      inject: [TICKET_REPOSITORY, TRAMO_TECNICO_REPOSITORY],
     },
     {
       provide: ListarTecnicosElegiblesTareaUseCase,

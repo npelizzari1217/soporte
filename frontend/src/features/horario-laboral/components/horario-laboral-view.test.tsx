@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
@@ -35,6 +35,12 @@ function mockGetOk(dias = DEFAULT_DIAS) {
 }
 
 describe("HorarioLaboralView (task 8b.3, WU-8b)", () => {
+  // La sección "Horario por técnico" (tiempo-tecnico T2) pide `GET /usuarios`
+  // al montarse para un admin; sin handler, msw lo deja sin responder.
+  beforeEach(() => {
+    server.use(http.get("/api/usuarios", () => HttpResponse.json([])));
+  });
+
   it("muestra el skeleton mientras isLoading, no bloquea la grilla en un refetch de fondo (isFetching)", async () => {
     let cargas = 0;
     server.use(
@@ -211,5 +217,28 @@ describe("HorarioLaboralView (task 8b.3, WU-8b)", () => {
 
     expect(await screen.findByRole("checkbox", { name: "Lunes" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /guardar/i })).not.toBeInTheDocument();
+  });
+
+  it("un admin ve la sección Horario por técnico debajo del horario del cliente", async () => {
+    mockGetOk();
+    renderWithProviders(<HorarioLaboralView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+
+    expect(await screen.findByRole("region", { name: "Horario por técnico" })).toBeInTheDocument();
+  });
+
+  it("un rol no-admin no ve la sección Horario por técnico ni pide la lista de usuarios", async () => {
+    mockGetOk();
+    const pedidosUsuarios = vi.fn();
+    server.use(
+      http.get("/api/usuarios", () => {
+        pedidosUsuarios();
+        return HttpResponse.json([]);
+      }),
+    );
+    renderWithProviders(<HorarioLaboralView />, { user: buildUser({ rol: "TECNICO", permisos: [] }) });
+
+    await screen.findByRole("checkbox", { name: "Lunes" });
+    expect(screen.queryByRole("region", { name: "Horario por técnico" })).not.toBeInTheDocument();
+    expect(pedidosUsuarios).not.toHaveBeenCalled();
   });
 });

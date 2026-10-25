@@ -48,7 +48,14 @@ import { JwtAuthGuard } from '../../../auth/infrastructure/guards/jwt-auth.guard
 import { TenantGuard } from '../../../auth/infrastructure/guards/tenant.guard';
 import { AdminClienteGuard } from '../../../auth/infrastructure/guards/admin-cliente.guard';
 
-function toResponseDto(calendario: CalendarioLaboralSemanal): HorarioLaboralResponseDto {
+/**
+ * Serializa las 7 ventanas como la lista `dias` ordenada 0..6. La reusa
+ * `HorarioLaboralUsuarioController`, que responde con la misma forma.
+ *
+ * @param calendario Tupla semanal indexada por `diaSemana`.
+ * @returns La respuesta HTTP del horario.
+ */
+export function toResponseDto(calendario: CalendarioLaboralSemanal): HorarioLaboralResponseDto {
   return {
     dias: calendario.map((ventana, diaSemana) => ({
       diaSemana: diaSemana as 0 | 1 | 2 | 3 | 4 | 5 | 6,

@@ -28,6 +28,7 @@ import {
   MINUTO_MINIMO_DIA,
   MINUTOS_POR_DIA,
 } from '../../domain/constants/horario-laboral.constants';
+import type { OrigenHorarioLaboral } from '../../domain/services/resolver-horario-laboral-usuario.service';
 
 /** Un día del body de `PUT /horario-laboral`. */
 export class DiaHorarioLaboralDto {
@@ -69,4 +70,15 @@ export interface DiaHorarioLaboralResponseDto {
 /** Respuesta de `GET`/`PUT /horario-laboral` (Interfaces/Contratos, `design.md`). */
 export interface HorarioLaboralResponseDto {
   dias: DiaHorarioLaboralResponseDto[];
+}
+
+/**
+ * Respuesta de `GET`/`PUT`/`DELETE /horario-laboral/usuarios/:usuarioId`
+ * (odd/tasks/tiempo-tecnico.md, T1): el horario con el que se mide al usuario
+ * y de dónde sale — `USUARIO` si tiene uno propio, `CLIENTE` si usa el del
+ * tenant. El body del `PUT` es el mismo `HorarioLaboralDto`.
+ */
+export interface HorarioLaboralUsuarioResponseDto extends HorarioLaboralResponseDto {
+  usuarioId: string;
+  origen: OrigenHorarioLaboral;
 }

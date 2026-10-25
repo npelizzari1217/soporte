@@ -32,12 +32,19 @@ type FilaFeriado = Pick<Feriado, 'fecha'>;
 
 export class PrismaCalendarioLaboralMapper {
   /**
-   * Mapea las filas de `calendario_laboral_dias_cliente` a la tupla semanal.
+   * Mapea las filas de `calendario_laboral_dias_cliente` (o de
+   * `horario_laboral_usuario`, mismo shape) a la tupla semanal.
    *
+   * @param filas Filas de un solo horario, en cualquier orden.
+   * @param origen Tabla y, si aplica, usuario de las filas: solo para el
+   *               mensaje de error.
    * @throws Error si falta alguna fila 0..6 — un calendario incompleto nunca
    *               se completa en silencio con un valor por defecto.
    */
-  static toCalendarioSemanal(filas: readonly FilaCalendarioLaboralDia[]): CalendarioLaboralSemanal {
+  static toCalendarioSemanal(
+    filas: readonly FilaCalendarioLaboralDia[],
+    origen = 'calendario_laboral_dias_cliente',
+  ): CalendarioLaboralSemanal {
     const porDia = new Map<number, VentanaLaboral>();
     for (const fila of filas) {
       porDia.set(fila.diaSemana, {
@@ -50,7 +57,7 @@ export class PrismaCalendarioLaboralMapper {
       const ventana = porDia.get(diaSemana);
       if (ventana === undefined) {
         throw new Error(
-          `PrismaCalendarioLaboralMapper: falta en calendario_laboral_dias_cliente la fila del ` +
+          `PrismaCalendarioLaboralMapper: falta en ${origen} la fila del ` +
             `día de semana ${diaSemana} — un calendario incompleto no se completa en silencio.`,
         );
       }

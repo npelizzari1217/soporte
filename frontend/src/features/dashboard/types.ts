@@ -44,6 +44,14 @@ export interface MetricasDashboard {
    */
   tareasCompletadasPorTecnico?: TareasCompletadasTecnico[];
   /**
+   * Cumplimiento por técnico en el período del ciclo (odd/tasks/tiempo-tecnico.md
+   * T4): tramos cerrados en RESUELTO con veredicto, medidos en horas hábiles
+   * del horario de cada técnico, de más a menos tramos evaluados. TECNICO
+   * recibe a lo sumo su propia fila. Opcional por el mismo motivo que
+   * `tareasCompletadasPorTecnico`: un backend anterior no lo manda.
+   */
+  cumplimientoTecnico?: CumplimientoTecnico[];
+  /**
    * KPI de satisfacción (WU9.2, backend ADR-C5). AUSENTE (no `undefined`
    * explícito: la clave no viene) sin `CSAT:LECTURA` — el gateo real ya lo
    * hizo el backend; la UI ADEMÁS lo esconde tras `useCan("CSAT:LECTURA")`
@@ -59,6 +67,20 @@ export interface TareasCompletadasTecnico {
   nombre: string | null;
   apellido: string | null;
   completadas: number;
+}
+
+/** Una fila de `cumplimientoTecnico`. */
+export interface CumplimientoTecnico {
+  usuarioId: string;
+  nombre: string | null;
+  apellido: string | null;
+  /** Tramos evaluados (al menos uno). */
+  total: number;
+  cumplidos: number;
+  /** Fracción `0..1`. */
+  porcentaje: number;
+  /** Promedio en segundos hábiles. */
+  promedioHabilS: number;
 }
 
 /** Un ciclo de gestión del tenant (espejo de `CicloResponseDto`). */

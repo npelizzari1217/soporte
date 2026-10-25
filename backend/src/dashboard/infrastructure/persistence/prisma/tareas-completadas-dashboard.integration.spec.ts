@@ -25,6 +25,7 @@ import {
 } from '../../../application/use-cases/obtener-metricas.use-case';
 import { AlcanceActorTicket } from '../../../../tickets/application/services/visibilidad-ticket';
 import { alcancePorTipo } from '../../../../tickets/test-helpers/alcance-ticket';
+import { PrismaCumplimientoTecnicoRepository } from '../../../../tiempo-tecnico/infrastructure/prisma-cumplimiento-tecnico.repository';
 import { PrismaDashboardRepository } from './prisma-dashboard.repository';
 
 const MASTER_TEST_URL =
@@ -55,6 +56,7 @@ describe('Dashboard: tareas completadas por técnico (T4, tenant efímero)', () 
     {
       resolverNombres: async (ids) => new Map([...nombres].filter(([id]) => ids.includes(id))),
     },
+    new PrismaCumplimientoTecnicoRepository(tenantContext),
   );
 
   let tipoId: string;

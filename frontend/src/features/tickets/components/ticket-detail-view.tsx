@@ -24,6 +24,9 @@
  * `MODIFICACION` sobre el tipo. Con esa celda, el bloqueo por compra sale de la misma lista, que se
  * refresca con cada vínculo; sin ella sale de `bloqueada` en `GET /tickets/:id` (L19, L22), que no
  * dice qué compra lo bloquea, y la marca va en la sección de tareas, que es lo que congela.
+ *
+ * "Tiempo del técnico" (odd/tasks/tiempo-tecnico.md, T4) no tiene gate propio: el backend da los
+ * tramos a quien ve el ticket.
  */
 import { useMemo, type ReactNode } from "react";
 import { useTicket, useTicketTimeline } from "../hooks/use-ticket";
@@ -60,6 +63,7 @@ import { TicketPdfButton } from "./ticket-pdf-button";
 import { TicketBorrarButton } from "./ticket-borrar-button";
 import { TicketTareas } from "./ticket-tareas";
 import { TicketCompras } from "./ticket-compras";
+import { TicketTiempoTecnico } from "./ticket-tiempo-tecnico";
 import { useComprasDeTicket } from "../hooks/use-compras-de-ticket";
 import { Badge } from "@/components/ui/badge";
 import { TIPO_CODIGO_PREVENTIVO, TIPO_CODIGO_SOPORTE } from "@/features/catalogos/tipos-del-sistema";
@@ -270,6 +274,9 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueadoPorCompra, esAdminCliente)}
         />
       </section>
+
+      {/* Tiempo de cada técnico contra la meta (odd/tasks/tiempo-tecnico.md, T4): sin tramos no se monta. */}
+      <TicketTiempoTecnico ticketId={ticket.id} />
 
       {puedeLeerCompras && (
         <section
