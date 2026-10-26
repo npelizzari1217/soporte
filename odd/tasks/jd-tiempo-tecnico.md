@@ -1,0 +1,44 @@
+# jd-tiempo-tecnico — correcciones del judgment-day de tiempo-tecnico
+
+Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78388820..8ba22465`
+(ver `odd/tasks/tiempo-tecnico.md`, L16). Rama `fix/jd-tiempo-tecnico`.
+
+## Specs
+
+- **S1 — JD-B-003: una medición que falla no bloquea el ticket.** "si esa lectura falla, el catch
+  devuelve null con la transacción ya abortada y el cambio de estado sale en 500 (rollback, sin
+  pérdida de datos) en vez de cerrar el tramo con `habil_s` NULL". Las lecturas de la base del tenant
+  que necesita la medición se hacen fuera del `try`; dentro queda solo lo que no aborta la
+  transacción (feriados de master, cálculo).
+- **S2 — JD-A-002: estado al inicio de un ticket sin historial.** "un ticket importado sin historial
+  de `CAMBIO_ESTADO` cuenta como tiempo corrido una espera al cliente previa al tramo". Sin cambio
+  anterior al inicio, el estado al inicio es el `estado_anterior` del primer cambio dentro del tramo;
+  sin ningún cambio, el estado del ticket antes del guardado que cierra el tramo.
+- **S3 — JD-B-002: la transacción del save no consulta master.** "la transacción del save suma
+  lecturas (incluye feriados de master) bajo el timeout de 5 s".
+- **S4 — JD-A-001: dashboard por técnico coherente.** "en el dashboard por técnico, el alcance por
+  fila mira el asignado actual, no el del tramo".
+- **S5 — JD-B-005: guardado del horario por técnico aislado.** "la mutación de guardado del horario
+  por técnico es compartida entre técnicos".
+- **S6 — Runbook.** "runbook con comentarios de estado vencidos (líneas ~1590 y ~1614)".
+- **S7 — JD-A-005.** "reset del form del técnico al guardar el del tenant".
+- **S8 — JD-A-003 / JD-B-006.** "el cumplimiento cuenta tramos y no tickets".
+
+## Tasks
+
+- [x] T1 — S1 (bugfix, TDD)
+- [ ] T2 — S2 (bugfix, TDD)
+- [ ] T3 — S6 (docs)
+- [ ] T4 — S3
+- [ ] T5 — S4 (decisión del dueño pendiente)
+- [ ] T6 — S5, S7 (frontend)
+- [ ] T7 — S8 (decisión del dueño pendiente)
+
+## Log
+
+- **L1 — Pedido del dueño (2026-10-26):** "Vamos a corregir todo, comencemos con las mas importantes
+  luego col las frases y continuamos con lo que queda. Me vas a avisar los avances que tienes"
+- **L2 — T1 (JD-B-003).** RED: "un error de la base del tenant al leer el horario se propaga y no cierra
+  el tramo" falló con `promise resolved "undefined" instead of rejecting`. GREEN: `obtenerParaUsuario`
+  sale del `try` en `medir()`; la falla de feriados (master) sigue cerrando con `habil_s` NULL.
+  `src/tiempo-tecnico` 108/108, lint y typecheck limpios.

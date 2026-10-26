@@ -136,13 +136,20 @@ function armar(
   opciones: {
     horariosPropios?: Record<string, CalendarioLaboralSemanal>;
     feriados?: () => Promise<FeriadosLaborales>;
+    /** Error de la base del tenant al leer el horario propio del técnico. */
+    horarioFalla?: Error;
   } = {},
 ): Armado {
   const repo = new TramosEnMemoria();
   const logs: string[] = [];
   let ahora = art('2026-10-26T00:00');
   const resolver = new ResolverHorarioLaboralUsuarioService(
-    { obtener: async (usuarioId) => opciones.horariosPropios?.[usuarioId] ?? null },
+    {
+      obtener: async (usuarioId) => {
+        if (opciones.horarioFalla !== undefined) throw opciones.horarioFalla;
+        return opciones.horariosPropios?.[usuarioId] ?? null;
+      },
+    },
     { obtener: async () => HORARIO_TENANT },
   );
   const servicio = new SincronizarTramoTecnicoService(
@@ -341,6 +348,19 @@ describe('SincronizarTramoTecnicoService', () => {
     expect(logs).toEqual([
       `TRAMO_TECNICO_MEDICION_FALLO | ticket=${TICKET} | tramo=tramo-1 | master caído`,
     ]);
+  });
+
+  it('un error de la base del tenant al leer el horario se propaga y no cierra el tramo (JD-B-003)', async () => {
+    // En Postgres ese error ya abortó la transacción: tragarlo y seguir con el cierre solo cambia
+    // la causa real por un "current transaction is aborted" en el UPDATE del tramo.
+    const falla = new Error('relation "horario_laboral_usuario" does not exist');
+    const { repo, logs, guardar } = armar({ horarioFalla: falla });
+    await guardar(art('2026-10-26T09:00'), ANA, 'ASIGNADO');
+    const antes = resumen(repo.tramos);
+
+    await expect(guardar(art('2026-10-26T10:00'), ANA, 'RESUELTO')).rejects.toBe(falla);
+    expect(resumen(repo.tramos)).toEqual(antes);
+    expect(logs).toEqual([]);
   });
 
   it('falla si el tramo a cerrar ya no estaba abierto: con la fila bloqueada es un bug', async () => {

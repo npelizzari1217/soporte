@@ -26,9 +26,9 @@ import {
  * tenant: S2) con los feriados, sin contar las esperas al cliente (S7), y fija la meta del ticket
  * en ese momento (S4). Los tiempos quedan fijos con el horario vigente al cerrar.
  *
- * Una medición que falla (feriados de master caídos, horario inconsistente) no bloquea el cambio
+ * Una medición que falla (feriados de master caídos, un error del cálculo) no bloquea el cambio
  * del ticket: el tramo se cierra con `habil_s` NULL y se loguea. No aplica a un error de la base
- * del tenant, que ya abortó la transacción: ese se propaga.
+ * del tenant (cambios de estado, horario del técnico), que ya abortó la transacción: ese se propaga.
  */
 export class SincronizarTramoTecnicoService {
   constructor(
@@ -125,11 +125,11 @@ export class SincronizarTramoTecnicoService {
 
   private async medir(ticketId: string, tramo: TramoAbierto, finAt: Date): Promise<number | null> {
     if (finAt.getTime() <= tramo.inicioAt.getTime()) return 0;
-    // Fuera del try: un error de la base del tenant aborta la transacción y no tiene sentido
-    // seguir con el cierre.
+    // Fuera del try: las dos lecturas van a la base del tenant, y un error ahí ya abortó la
+    // transacción. Tragarlo solo cambiaría la causa real por el fallo del UPDATE del tramo.
     const cambios = await this.tramoRepo.listarCambiosEstado(ticketId, finAt);
+    const { calendario } = await this.horarioResolver.obtenerParaUsuario(tramo.tecnicoId);
     try {
-      const { calendario } = await this.horarioResolver.obtenerParaUsuario(tramo.tecnicoId);
       const feriados = await this.feriadosRepo.obtener();
       return medirSegundosHabiles(tramo.inicioAt, finAt, cambios, (desde, hasta) =>
         this.calculo.msHabilesEntre(desde, hasta, calendario, feriados),
