@@ -1,7 +1,8 @@
 /**
  * TicketNotificacionListener — adapter @OnEvent que conecta
  * `ticket.estado_cambiado`/`ticket.comentado` (Fase 2, ADR-6) con el envío de
- * email al SOLICITANTE del ticket (N3).
+ * email. El cambio de estado va al SOLICITANTE del ticket (N3); el comentario
+ * público, a la contraparte de quien comentó (ver `onTicketComentado`).
  *
  * Flujo por evento: carga el ticket (`TICKET_REPOSITORY`, para
  * numero/titulo/solicitante — el evento NO lleva PII) → resuelve el
@@ -26,6 +27,11 @@ import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.reposi
 import { TicketEstadoCambiadoEvent } from '../../../tickets/domain/events/ticket-estado-cambiado.event';
 import { TicketComentadoEvent } from '../../../tickets/domain/events/ticket-comentado.event';
 import { IContactoSolicitanteResolver } from '../../domain/ports/i-contacto-solicitante-resolver';
+import {
+  ContactoUsuario,
+  IUsuarioContactoResolver,
+} from '../../domain/ports/i-usuario-contacto-resolver';
+import { TenantContext } from '../../../shared/tenancy/tenant-context';
 import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
 import {
   templateCambioEstado,
@@ -42,6 +48,11 @@ export class TicketNotificacionListener {
     private readonly contactoResolver: Pick<IContactoSolicitanteResolver, 'resolver'>,
     private readonly emailSender: Pick<IEmailSender, 'send'>,
     private readonly logger: Pick<ILogger, 'error'>,
+    private readonly usuarioResolver: Pick<
+      IUsuarioContactoResolver,
+      'resolverContacto' | 'resolverAdministradores'
+    >,
+    private readonly tenantContext: Pick<TenantContext, 'get'>,
   ) {}
 
   /**
@@ -101,14 +112,16 @@ export class TicketNotificacionListener {
   }
 
   /**
-   * Maneja `ticket.comentado`: notifica por email al solicitante del ticket
-   * sobre un comentario público nuevo (ver JSDoc de la clase para el flujo
-   * completo: carga de ticket, resolución de contacto y plantilla).
+   * Maneja `ticket.comentado` (comentario público): avisa a la CONTRAPARTE de quien comentó
+   * (odd/tasks/pedidos-2026-10-26.md, S1-S2).
+   *
+   * - Comenta el solicitante → el técnico asignado; sin asignado, los administradores del tenant.
+   * - Comenta otro (técnico, administrador, integración) → el solicitante.
+   * - Nadie recibe aviso de su propio comentario.
    *
    * @param event Evento de comentario (sin PII — solo IDs).
-   * @returns No devuelve nada; si no hay ticket o no se resuelve el
-   *   contacto, se omite el envío sin fallar (N4). Cualquier otro fallo se
-   *   loguea y se traga (ADR-6), nunca se propaga hacia el emisor síncrono.
+   * @returns No devuelve nada. Un destinatario sin contacto se omite, un envío que falla se loguea
+   *   sin frenar a los demás, y ningún fallo se propaga hacia el emisor síncrono (ADR-6).
    */
   @OnEvent('ticket.comentado')
   async onTicketComentado(event: TicketComentadoEvent): Promise<void> {
@@ -117,27 +130,81 @@ export class TicketNotificacionListener {
       if (!ticket) {
         return;
       }
+      const datos = {
+        numero: ticket.numero,
+        titulo: ticket.titulo,
+        ticketId: ticket.id,
+        appBaseUrl: entorno.APP_BASE_URL,
+      };
+
+      if (ticket.solicitanteId !== null && ticket.solicitanteId === event.autorId) {
+        const destinatarios = await this.equipoDelTicket(ticket.asignadoId, event.autorId);
+        for (const destinatario of destinatarios) {
+          await this.enviarAislado(event.ticketId, {
+            to: destinatario.email,
+            ...templateComentarioPublico({ ...datos, sinLink: false }),
+          });
+        }
+        return;
+      }
 
       const contacto = await this.contactoResolver.resolver(ticket);
       if (!contacto) {
         return;
       }
-
-      const plantilla = templateComentarioPublico({
-        numero: ticket.numero,
-        titulo: ticket.titulo,
-        ticketId: ticket.id,
-        appBaseUrl: entorno.APP_BASE_URL,
-        sinLink: contacto.esExterno,
+      await this.emailSender.send({
+        to: contacto.email,
+        ...templateComentarioPublico({ ...datos, sinLink: contacto.esExterno }),
       });
-
-      await this.emailSender.send({ to: contacto.email, ...plantilla });
     } catch (err) {
       // log-and-swallow (ADR-6): un fallo acá nunca revierte ni afecta el
       // comentario ya persistido. Se loguea (no catch vacío) para que el
       // fallo quede visible sin voltear el comentario.
       this.logger.error(
         `TicketNotificacionListener: fallo al notificar comentario (ticketId=${event.ticketId}): ${String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Quién atiende el ticket del lado del soporte: el asignado o, sin asignado, los administradores
+   * del tenant activo. Sin el autor y sin direcciones repetidas.
+   */
+  private async equipoDelTicket(
+    asignadoId: string | null,
+    autorId: string,
+  ): Promise<ContactoUsuario[]> {
+    if (asignadoId !== null) {
+      if (asignadoId === autorId) return [];
+      const asignado = await this.usuarioResolver.resolverContacto(asignadoId);
+      return asignado ? [asignado] : [];
+    }
+    const clienteId = this.tenantContext.get()?.clienteId;
+    if (clienteId === undefined) return [];
+    const [administradores, autor] = await Promise.all([
+      this.usuarioResolver.resolverAdministradores(clienteId),
+      this.usuarioResolver.resolverContacto(autorId),
+    ]);
+    const vistos = new Set<string>(autor ? [autor.email.toLowerCase()] : []);
+    return administradores.filter((admin) => {
+      const clave = admin.email.toLowerCase();
+      if (vistos.has(clave)) return false;
+      vistos.add(clave);
+      return true;
+    });
+  }
+
+  /** Un envío que falla se loguea sin frenar al siguiente destinatario. */
+  private async enviarAislado(
+    ticketId: string,
+    mensaje: Parameters<IEmailSender['send']>[0],
+  ): Promise<void> {
+    try {
+      await this.emailSender.send(mensaje);
+    } catch {
+      // Sin el error crudo: puede traer la dirección del destinatario.
+      this.logger.error(
+        `TicketNotificacionListener: fallo al avisar el comentario a un destinatario (ticketId=${ticketId})`,
       );
     }
   }

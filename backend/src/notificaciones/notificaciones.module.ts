@@ -63,8 +63,9 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
  * - `USUARIO_CONTACTO_RESOLVER` → `PrismaUsuarioContactoResolver` (master).
  * - `CONTACTO_SOLICITANTE_RESOLVER` → ramifica entre ese resolver y los solicitantes externos
  *   (tenant); lo usan los listeners de estado, comentario público y CSAT.
- * - Listeners: `TicketNotificacionListener` (estado_cambiado/comentado,
- *   solicitante) + `SlaVencidoNotificacionListener` (sla.vencido, asignado
+ * - Listeners: `TicketNotificacionListener` (estado_cambiado al solicitante;
+ *   comentado a la contraparte: asignado o administradores si comenta el
+ *   solicitante, el solicitante si comenta otro) + `SlaVencidoNotificacionListener` (sla.vencido, asignado
  *   + administradores, y `SlaPrimeraRespuestaVencidaNotificacionListener`, ambos con la entrega común
  *   `NotificadorVencimientoSla` — hereda el `TenantContext` del `tenantContext.run()`
  *   del job SLA, ADR-P8) + `PreventivoGeneradoNotificacionListener`
@@ -116,8 +117,25 @@ import { PrismaClienteEmailConfigRepository } from '../clientes/infrastructure/p
         contactoResolver: IContactoSolicitanteResolver,
         emailSender: IEmailSender,
         logger: ILogger,
-      ) => new TicketNotificacionListener(ticketRepo, contactoResolver, emailSender, logger),
-      inject: [TICKET_REPOSITORY, CONTACTO_SOLICITANTE_RESOLVER, EMAIL_SENDER, LOGGER],
+        usuarioResolver: IUsuarioContactoResolver,
+        tenantContext: TenantContext,
+      ) =>
+        new TicketNotificacionListener(
+          ticketRepo,
+          contactoResolver,
+          emailSender,
+          logger,
+          usuarioResolver,
+          tenantContext,
+        ),
+      inject: [
+        TICKET_REPOSITORY,
+        CONTACTO_SOLICITANTE_RESOLVER,
+        EMAIL_SENDER,
+        LOGGER,
+        USUARIO_CONTACTO_RESOLVER,
+        TenantContext,
+      ],
     },
     {
       provide: NotificadorVencimientoSla,

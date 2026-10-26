@@ -15,6 +15,7 @@ import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.reposi
 import { IContactoSolicitanteResolver } from '../../domain/ports/i-contacto-solicitante-resolver';
 import { IEmailSender } from '../../../shared/domain/ports/i-email-sender';
 import { ILogger } from '../../../shared/domain/ports/i-logger.port';
+import { IUsuarioContactoResolver } from '../../domain/ports/i-usuario-contacto-resolver';
 
 function makeTicket() {
   return TicketEntity.create(
@@ -57,13 +58,28 @@ describe('TicketNotificacionListener', () => {
     const contactoResolver = { resolver: vi.fn<IContactoSolicitanteResolver['resolver']>() };
     const emailSender = { send: vi.fn<IEmailSender['send']>().mockResolvedValue(undefined) };
     const logger = { error: vi.fn<ILogger['error']>() };
+    const usuarioResolver = {
+      resolverContacto: vi.fn<IUsuarioContactoResolver['resolverContacto']>(),
+      resolverAdministradores: vi.fn<IUsuarioContactoResolver['resolverAdministradores']>(),
+    };
+    const tenantContext = { get: vi.fn().mockReturnValue({ clienteId: 'cliente-uuid' }) };
     const listener = new TicketNotificacionListener(
       ticketRepo,
       contactoResolver,
       emailSender,
       logger,
+      usuarioResolver,
+      tenantContext,
     );
-    return { listener, ticketRepo, contactoResolver, emailSender, logger };
+    return {
+      listener,
+      ticketRepo,
+      contactoResolver,
+      emailSender,
+      logger,
+      usuarioResolver,
+      tenantContext,
+    };
   }
 
   describe('onTicketEstadoCambiado', () => {
@@ -323,6 +339,138 @@ describe('TicketNotificacionListener', () => {
       expect(msg.to).toBe('externo@dominio.com');
       expect(msg.text).not.toContain('/tickets/');
       expect(msg.html).not.toContain('/tickets/');
+    });
+
+    describe('aviso a la contraparte (odd/tasks/pedidos-2026-10-26.md, S1-S2)', () => {
+      const comentaSolicitante = new TicketComentadoEvent({
+        ticketId: 'ticket-uuid',
+        operacionId: 'operacion-uuid',
+        autorId: 'solicitante-uuid',
+      });
+      const destinos = (send: { mock: { calls: Array<[{ to: string }]> } }): string[] =>
+        send.mock.calls.map(([msg]) => msg.to);
+
+      it('comenta el solicitante: avisa al técnico asignado, con link, y no al solicitante', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender, usuarioResolver } =
+          makeListener();
+        const ticket = makeTicket();
+        ticket.assignTo('tecnico-uuid');
+        ticketRepo.findById.mockResolvedValue(ticket);
+        usuarioResolver.resolverContacto.mockResolvedValue({
+          email: 'tecnico@dominio.com',
+          nombre: 'Técnico',
+        });
+
+        await listener.onTicketComentado(comentaSolicitante);
+
+        expect(destinos(emailSender.send)).toEqual(['tecnico@dominio.com']);
+        expect(usuarioResolver.resolverContacto).toHaveBeenCalledWith('tecnico-uuid');
+        expect(contactoResolver.resolver).not.toHaveBeenCalled();
+        const msg = emailSender.send.mock.calls[0][0];
+        expect(msg.subject).toBe('Nuevo comentario en el ticket SOP-2026-00042');
+        expect(msg.text).toContain('/tickets/ticket-uuid');
+      });
+
+      it('comenta el solicitante sin técnico asignado: avisa a los administradores, sin repetir direcciones', async () => {
+        const { listener, ticketRepo, emailSender, usuarioResolver } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        usuarioResolver.resolverContacto.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+        });
+        usuarioResolver.resolverAdministradores.mockResolvedValue([
+          { email: 'admin1@dominio.com', nombre: 'Admin 1' },
+          { email: 'ADMIN1@dominio.com', nombre: 'Admin 1 bis' },
+          { email: 'admin2@dominio.com', nombre: 'Admin 2' },
+        ]);
+
+        await listener.onTicketComentado(comentaSolicitante);
+
+        expect(usuarioResolver.resolverAdministradores).toHaveBeenCalledWith('cliente-uuid');
+        expect(destinos(emailSender.send)).toEqual(['admin1@dominio.com', 'admin2@dominio.com']);
+      });
+
+      it('un solicitante que además es administrador no recibe aviso de su propio comentario', async () => {
+        const { listener, ticketRepo, emailSender, usuarioResolver } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        usuarioResolver.resolverContacto.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+        });
+        usuarioResolver.resolverAdministradores.mockResolvedValue([
+          { email: 'Solicitante@dominio.com', nombre: 'Solicitante' },
+          { email: 'admin2@dominio.com', nombre: 'Admin 2' },
+        ]);
+
+        await listener.onTicketComentado(comentaSolicitante);
+
+        expect(destinos(emailSender.send)).toEqual(['admin2@dominio.com']);
+      });
+
+      it('el solicitante que es también el asignado no recibe aviso de su propio comentario', async () => {
+        const { listener, ticketRepo, emailSender } = makeListener();
+        const ticket = makeTicket();
+        ticket.assignTo('solicitante-uuid');
+        ticketRepo.findById.mockResolvedValue(ticket);
+
+        await listener.onTicketComentado(comentaSolicitante);
+
+        expect(emailSender.send).not.toHaveBeenCalled();
+      });
+
+      it('sin TenantContext no puede resolver administradores: no envía y no falla', async () => {
+        const { listener, ticketRepo, emailSender, usuarioResolver, tenantContext } =
+          makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        tenantContext.get.mockReturnValue(undefined);
+
+        await expect(listener.onTicketComentado(comentaSolicitante)).resolves.toBeUndefined();
+        expect(usuarioResolver.resolverAdministradores).not.toHaveBeenCalled();
+        expect(emailSender.send).not.toHaveBeenCalled();
+      });
+
+      it('un envío que falla no frena al siguiente administrador y queda registrado', async () => {
+        const { listener, ticketRepo, emailSender, usuarioResolver, logger } = makeListener();
+        ticketRepo.findById.mockResolvedValue(makeTicket());
+        usuarioResolver.resolverContacto.mockResolvedValue(null);
+        usuarioResolver.resolverAdministradores.mockResolvedValue([
+          { email: 'admin1@dominio.com', nombre: 'Admin 1' },
+          { email: 'admin2@dominio.com', nombre: 'Admin 2' },
+        ]);
+        emailSender.send.mockRejectedValueOnce(new Error('smtp caído'));
+
+        await listener.onTicketComentado(comentaSolicitante);
+
+        expect(destinos(emailSender.send)).toEqual(['admin1@dominio.com', 'admin2@dominio.com']);
+        expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('ticket-uuid'));
+        expect(logger.error).not.toHaveBeenCalledWith(
+          expect.stringContaining('admin1@dominio.com'),
+        );
+      });
+
+      it('comenta el técnico: avisa al solicitante y no al técnico', async () => {
+        const { listener, ticketRepo, contactoResolver, emailSender, usuarioResolver } =
+          makeListener();
+        const ticket = makeTicket();
+        ticket.assignTo('tecnico-uuid');
+        ticketRepo.findById.mockResolvedValue(ticket);
+        contactoResolver.resolver.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+          esExterno: false,
+        });
+
+        await listener.onTicketComentado(
+          new TicketComentadoEvent({
+            ticketId: 'ticket-uuid',
+            operacionId: 'operacion-uuid',
+            autorId: 'tecnico-uuid',
+          }),
+        );
+
+        expect(destinos(emailSender.send)).toEqual(['solicitante@dominio.com']);
+        expect(usuarioResolver.resolverContacto).not.toHaveBeenCalled();
+      });
     });
 
     it('comentario INTERNO: no hay evento (no se publica), asi que no se envia ningun mail', () => {
