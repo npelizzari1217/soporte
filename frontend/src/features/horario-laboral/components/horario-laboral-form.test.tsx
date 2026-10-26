@@ -110,6 +110,26 @@ describe("HorarioLaboralForm", () => {
     expect(screen.getAllByLabelText("Apertura")[2]).toHaveValue("10:00");
   });
 
+  it("después de guardar, datos nuevos del servidor reemplazan también los días editados", async () => {
+    // Caso: guardar el horario propio y después "Volver al horario del cliente". El form no se
+    // vuelve a montar, así que lo editado y ya guardado no puede quedar pegado en la grilla.
+    const user = userEvent.setup();
+    const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
+    const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+    await user.click(screen.getByRole("checkbox", { name: "Lunes" }));
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await waitFor(() => expect(props.onGuardar).toHaveBeenCalledTimes(1));
+    const guardado: HorarioLaboral = {
+      dias: DEFAULT.dias.map((dia) =>
+        dia.diaSemana === 1 ? { ...dia, aperturaMinuto: null, cierreMinuto: null } : dia,
+      ),
+    };
+    rerender(<HorarioLaboralForm valoresIniciales={guardado} {...props} />);
+    rerender(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+
+    expect(screen.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
+  });
+
   it("sin edición en curso, datos nuevos del servidor reemplazan la grilla", () => {
     const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
     const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);

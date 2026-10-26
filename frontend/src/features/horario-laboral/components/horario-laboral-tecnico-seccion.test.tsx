@@ -290,4 +290,27 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
     expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
     expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
   });
+
+  it("volver al horario del cliente muestra el del cliente aunque hubiera ediciones sin guardar", async () => {
+    const horarios = horariosIniciales();
+    mockServidor(horarios);
+    server.use(
+      http.delete("/api/horario-laboral/usuarios/:usuarioId", () => {
+        horarios[ANA] = { usuarioId: ANA, origen: "CLIENTE", dias: DIAS_CLIENTE };
+        return HttpResponse.json(horarios[ANA]);
+      }),
+    );
+    const seccion = renderSeccion();
+
+    const user = await elegirTecnico("Ana López");
+    await seccion.findByText("Ana López tiene horario propio.");
+    await user.click(seccion.getByRole("checkbox", { name: "Lunes" }));
+    await user.click(seccion.getByRole("button", { name: "Volver al horario del cliente" }));
+    const dialogo = await screen.findByRole("alertdialog", { name: "¿Volver al horario del cliente?" });
+    await user.click(within(dialogo).getByRole("button", { name: "Volver al horario del cliente" }));
+
+    await seccion.findByText(/Ana López usa el horario laboral del cliente\./);
+    expect(seccion.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
+    expect(seccion.getAllByLabelText("Apertura")[1]).toHaveValue("09:00");
+  });
 });

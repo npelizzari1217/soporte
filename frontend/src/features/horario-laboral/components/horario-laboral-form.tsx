@@ -26,7 +26,7 @@
  * todavía usa el horario del cliente, y los `id` no chocan con los de la
  * grilla del tenant.
  */
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -96,10 +96,22 @@ export function HorarioLaboralForm({
     defaultValues: { dias: desdeHorario(valoresIniciales) },
   });
 
+  // Si los datos nuevos son la respuesta a un guardado de este form, reemplazan la grilla entera:
+  // lo editado ya está guardado. Si no, son un refetch ajeno (por ejemplo, el del horario del
+  // cliente guardado en la misma pantalla) y `keepDirtyValues` respeta lo que se está editando
+  // (JD-A-005). Un error del servidor cancela la espera: la edición sigue sin guardar.
+  const esperandoGuardado = useRef(false);
   useEffect(() => {
-    // `keepDirtyValues`: un refetch (por ejemplo, el del horario del cliente guardado en la misma
-    // pantalla) actualiza lo que el usuario no tocó y respeta lo que está editando (JD-A-005).
-    reset({ dias: desdeHorario(valoresIniciales) }, { keepDirtyValues: true });
+    if (errorServidor) esperandoGuardado.current = false;
+  }, [errorServidor]);
+
+  useEffect(() => {
+    const trasGuardado = esperandoGuardado.current;
+    esperandoGuardado.current = false;
+    reset(
+      { dias: desdeHorario(valoresIniciales) },
+      trasGuardado ? undefined : { keepDirtyValues: true },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valoresIniciales]);
 
@@ -107,6 +119,7 @@ export function HorarioLaboralForm({
   const errorRaiz = typeof errors.dias?.message === "string" ? errors.dias.message : undefined;
 
   function submit(values: FormValues) {
+    esperandoGuardado.current = true;
     onGuardar(aDto(values.dias));
   }
 

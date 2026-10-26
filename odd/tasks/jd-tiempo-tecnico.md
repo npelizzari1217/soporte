@@ -77,3 +77,11 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   evaluadas" y debajo de la tabla se aclara: "Cada resolución se evalúa por separado: un ticket
   reabierto y vuelto a resolver suma dos." Con la lista vacía no aparece. `src/features/dashboard` 39/39.
   Ayuda (suspendida): anotar el cambio de nombre de la columna para la tanda final.
+- **L11 — Verify independiente: blocker en S7 (regresión de T6).** `reset(..., { keepDirtyValues: true })`
+  deja los campos guardados marcados como editados: tras guardar y "Volver al horario del cliente", la
+  grilla decía "usa el horario del cliente" con el lunes viejo. RED: dos tests ("después de guardar,
+  datos nuevos del servidor reemplazan también los días editados"; "volver al horario del cliente
+  muestra el del cliente aunque hubiera ediciones sin guardar"). GREEN: el form recuerda el submit y,
+  sin error del servidor, la respuesta reemplaza la grilla entera; la `key` de la sección incluye el
+  origen. RDD: assess medio, `reviewDue: false` → sin revisión nativa; verify cubre.
+  Frontend completo: lint y type-check limpios, 290 archivos / 2683 tests verdes.

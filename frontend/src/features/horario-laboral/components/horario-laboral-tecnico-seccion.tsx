@@ -17,9 +17,11 @@
  * - `USUARIO`: tiene horario propio. "Guardar" lo reemplaza y "Volver al
  *   horario del cliente" lo borra (`DELETE`), previa confirmación.
  *
- * Sincronización al cambiar de técnico: el form lleva `key={usuarioId}`, así
- * que se vuelve a montar con el horario del técnico nuevo y no arrastra la
- * edición del anterior. Por la misma razón, cambiar de técnico limpia el
+ * Sincronización al cambiar de técnico: el form lleva el técnico y el origen
+ * en la `key`, así que se vuelve a montar con el horario del técnico nuevo y
+ * no arrastra la edición del anterior. Por el origen, pasar a horario propio o
+ * volver al del cliente también lo vuelve a montar: muestra exactamente lo que
+ * dice el aviso, sin ediciones pendientes. Por la misma razón, cambiar de técnico limpia el
  * estado de la última mutación: el alert inline y el "guardando" son del
  * técnico que se guardó. El toast del resultado sí llega, porque sale de las
  * opciones del hook y no del `mutate` que el `reset()` descarta.
@@ -170,7 +172,7 @@ export function HorarioLaboralTecnicoSeccion(): ReactElement {
           </div>
         )}
         <HorarioLaboralForm
-          key={elegido.id}
+          key={`${elegido.id}-${horarioQuery.data.origen}`}
           prefijoId="horario-tecnico"
           valoresIniciales={horarioQuery.data}
           soloLectura={false}
