@@ -87,6 +87,18 @@ describe("EquipoDetailView — consume componentes embebidos de GET /equipos/:id
     expect(screen.getByText("16GB")).toBeInTheDocument();
   });
 
+  it("el gráfico del valor va al final de la ficha, después de los componentes (S3)", async () => {
+    renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
+      user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),
+    });
+
+    const grafico = await screen.findByRole("region", { name: "Gráfico del valor del equipo" });
+    const componente = screen.getByText("Memoria RAM");
+    expect(componente.compareDocumentPosition(grafico) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nada de la ficha queda después del gráfico.
+    expect(grafico.parentElement?.lastElementChild).toBe(grafico);
+  });
+
   it("muestra el botón «Agregar componente» del toolbar (único, WU3 retiró el form inline), con permiso equipo:gestionar", async () => {
     renderWithProviders(<EquipoDetailView equipoId={EQUIPO_ID} />, {
       user: buildUser({ permisos: ["EQUIPOS:ALTAS", "EQUIPOS:MODIFICACION", "EQUIPOS:BORRADO"] }),

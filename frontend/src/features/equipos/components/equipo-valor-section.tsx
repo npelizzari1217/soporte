@@ -3,7 +3,8 @@
 /**
  * EquipoValorSection — valor del equipo en la ficha (odd/tasks/historial-valor-residual.md, S5):
  * el importe y el valor residual vigentes, cada uno con su fecha, y el historial del valor en
- * tabla y gráfico de línea.
+ * tabla. El gráfico de línea del mismo historial es `EquipoValorGrafico`, que la ficha muestra al
+ * final de todo y a la mitad del ancho (odd/tasks/pedidos-2026-10-26.md, S3).
  *
  * El vigente sale del detalle (`GET /equipos/:id`); el historial, de `GET /equipos/:id/valoraciones`,
  * que se pide aparte y tiene sus propios estados de carga y error: si falla, la ficha se ve igual.
@@ -81,12 +82,6 @@ function HistorialValor({ equipoId }: { equipoId: string }) {
   const valoraciones = query.data;
   return (
     <div className="flex flex-col gap-4">
-      <LineChart
-        title="Evolución del valor del equipo"
-        area
-        data={valoraciones.map((v) => ({ label: formatearFechaCalendario(v.fecha), value: v.importe }))}
-        a11y={{ categoryLabel: "Fecha", valueLabel: "Importe", formatValue: formatearNumeroEsAr }}
-      />
       <Table aria-label="Historial del valor">
         <TableHeader>
           <TableRow>
@@ -133,6 +128,31 @@ export function EquipoValorSection({ equipo }: EquipoValorSectionProps) {
       </dl>
       <h3 className="text-sm font-semibold text-foreground">Historial del valor</h3>
       <HistorialValor equipoId={equipo.id} />
+    </section>
+  );
+}
+
+/**
+ * Gráfico de la evolución del valor del equipo, a la mitad del ancho de la ficha en pantallas
+ * medianas o más (S3). Usa la misma consulta que el historial, así que no pide nada de más. Sin
+ * historial, o mientras carga o si falló, no muestra nada: esos estados ya los muestra la sección
+ * del valor.
+ *
+ * @param equipoId Equipo cuyo historial se grafica.
+ * @returns El gráfico, o nada si no hay puntos que mostrar.
+ */
+export function EquipoValorGrafico({ equipoId }: { equipoId: string }) {
+  const query = useValoracionesEquipo(equipoId);
+  if (!query.data || query.data.length === 0) return null;
+
+  return (
+    <section aria-label="Gráfico del valor del equipo" className="w-full rounded-lg border p-4 sm:w-1/2">
+      <LineChart
+        title="Evolución del valor del equipo"
+        area
+        data={query.data.map((v) => ({ label: formatearFechaCalendario(v.fecha), value: v.importe }))}
+        a11y={{ categoryLabel: "Fecha", valueLabel: "Importe", formatValue: formatearNumeroEsAr }}
+      />
     </section>
   );
 }

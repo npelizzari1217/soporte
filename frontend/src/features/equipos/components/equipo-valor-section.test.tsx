@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders } from "../../../../test/render-with-providers";
-import { EquipoValorSection } from "./equipo-valor-section";
+import { EquipoValorGrafico, EquipoValorSection } from "./equipo-valor-section";
 
 const EQUIPO_ID = "55555555-5555-4555-8555-555555555555";
 const URL_HISTORIAL = `/api/equipos/${EQUIPO_ID}/valoraciones`;
@@ -95,7 +95,7 @@ describe("EquipoValorSection (historial-valor-residual, S5)", () => {
 
   it("el gráfico de línea tiene un punto por fila y su tabla accesible lee fecha e importe", async () => {
     server.use(http.get(URL_HISTORIAL, () => HttpResponse.json(HISTORIAL)));
-    const { container } = renderWithProviders(<EquipoValorSection equipo={EQUIPO} />);
+    const { container } = renderWithProviders(<EquipoValorGrafico equipoId={EQUIPO.id} />);
 
     const grafico = await screen.findByRole("img", { name: "Evolución del valor del equipo" });
     const puntos = container.querySelector("polyline[data-testid='line-path']")?.getAttribute("points");
@@ -107,6 +107,38 @@ describe("EquipoValorSection (historial-valor-residual, S5)", () => {
       ["01/06/2026", "700,00"],
       ["24/10/2026", "490,50"],
     ]);
+  });
+
+  it("la sección del valor ya no incluye el gráfico: va aparte, al final de la ficha (S3)", async () => {
+    server.use(http.get(URL_HISTORIAL, () => HttpResponse.json(HISTORIAL)));
+    renderWithProviders(<EquipoValorSection equipo={EQUIPO} />);
+
+    expect(await screen.findByRole("table", { name: "Historial del valor" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Evolución del valor del equipo" })).not.toBeInTheDocument();
+  });
+
+  it("el gráfico ocupa la mitad del ancho en pantallas medianas o más (S3)", async () => {
+    server.use(http.get(URL_HISTORIAL, () => HttpResponse.json(HISTORIAL)));
+    renderWithProviders(<EquipoValorGrafico equipoId={EQUIPO.id} />);
+
+    const seccion = await screen.findByRole("region", { name: "Gráfico del valor del equipo" });
+    expect(seccion).toHaveClass("sm:w-1/2");
+  });
+
+  it("el gráfico sin historial no muestra nada (el vacío ya lo dice la sección del valor)", async () => {
+    let respondido = false;
+    server.use(
+      http.get(URL_HISTORIAL, () => {
+        respondido = true;
+        return HttpResponse.json([]);
+      }),
+    );
+    const { container } = renderWithProviders(<EquipoValorGrafico equipoId={EQUIPO.id} />);
+
+    // Vacío DESPUÉS de la respuesta: mientras carga también está vacío, y eso no probaría nada.
+    await waitFor(() => expect(respondido).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("sin historial muestra el estado vacío, sin tabla ni gráfico", async () => {
