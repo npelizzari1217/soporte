@@ -26,6 +26,7 @@ import { EditarUsuarioDialog } from "./editar-usuario-dialog";
 import { CambiarRolControl } from "./cambiar-rol-control";
 import { DesactivarMembresiaControl } from "./desactivar-membresia-control";
 import { AsignarPermisosControl } from "./asignar-permisos-control";
+import { HorarioUsuarioControl } from "./horario-usuario-control";
 import { PoliticaTfaCard } from "./politica-tfa-card";
 import type { UsuarioTenant } from "../types";
 
@@ -55,6 +56,7 @@ function UsuariosAdminContent() {
           <EditarUsuarioDialog usuario={row} />
           <CambiarRolControl usuario={row} />
           <AsignarPermisosControl usuario={row} />
+          <HorarioUsuarioControl usuario={row} />
           <DesactivarMembresiaControl usuario={row} />
         </div>
       ),

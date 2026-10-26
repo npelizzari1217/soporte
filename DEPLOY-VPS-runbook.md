@@ -1651,8 +1651,8 @@ Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el d
 ## Horario laboral por usuario
 
 Documento de la feature: `odd/tasks/tiempo-tecnico.md` (T1). Cada usuario puede tener un horario
-laboral semanal propio; quien no lo tiene sigue usando el del cliente. Se carga en la sección
-"Horario por técnico" de la pantalla de horario laboral (API `/horario-laboral/usuarios/:usuarioId`)
+laboral semanal propio; quien no lo tiene sigue usando el del cliente. Se carga desde el botón
+"Horarios" de la fila del técnico en Admin > Usuarios (API `/horario-laboral/usuarios/:usuarioId`)
 y solo se usa para medir el tiempo del técnico (ver "Tramos del técnico"): no cambia el SLA del
 ticket ni la asignación.
 

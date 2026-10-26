@@ -36,11 +36,9 @@
  * SOLO a la query (y esa query ya actualizada por `setQueryData` en el
  * guardado previo), un guardado en curso no toca la fuente del form.
  *
- * Debajo, solo para ADMINISTRADOR o ROOT, la sección "Horario por técnico"
- * (odd/tasks/tiempo-tecnico.md T2). Se oculta, en vez de mostrarse de solo
- * lectura, porque elegir un técnico necesita `GET /usuarios`, que el backend
- * niega a quien no asigna ni ve todos los tickets: para un TECNICO común,
- * mostrarla sería pedir un 403 seguro.
+ * El horario propio de cada técnico no vive acá: se carga desde el botón
+ * "Horarios" de su fila en `/admin/usuarios` (odd/tasks/pedidos-2026-10-26.md,
+ * S6).
  */
 import { useSession } from "@/shared/hooks/use-session";
 import { DetailSkeleton } from "@/components/shared/skeletons";
@@ -51,7 +49,6 @@ import { useHorarioLaboral } from "../hooks/use-horario-laboral";
 import { useGuardarHorarioLaboral } from "../hooks/use-guardar-horario-laboral";
 import { mensajeErrorGuardado } from "../mensaje-error-guardado";
 import { HorarioLaboralForm } from "./horario-laboral-form";
-import { HorarioLaboralTecnicoSeccion } from "./horario-laboral-tecnico-seccion";
 import type { HorarioLaboralDto } from "../types";
 import { Clock } from "lucide-react";
 
@@ -97,7 +94,6 @@ export function HorarioLaboralView() {
         errorServidor={guardarMutation.isError ? mensajeErrorGuardado(guardarMutation.error) : null}
         onGuardar={guardar}
       />
-      {esAdminCliente && <HorarioLaboralTecnicoSeccion />}
     </div>
   );
 }

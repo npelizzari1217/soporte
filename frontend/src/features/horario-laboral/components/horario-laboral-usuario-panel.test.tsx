@@ -5,25 +5,18 @@ import { http, HttpResponse } from "msw";
 import { toast } from "sonner";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
-import { HorarioLaboralTecnicoSeccion } from "./horario-laboral-tecnico-seccion";
+import { HorarioLaboralUsuarioPanel } from "./horario-laboral-usuario-panel";
 
 /**
- * HorarioLaboralTecnicoSeccion — sección "Horario por técnico" de
- * `/horario-laboral` (odd/tasks/tiempo-tecnico.md T2, S1/S2). Red simulada
- * con msw sobre `GET /usuarios` y `GET`/`PUT`/`DELETE
- * /horario-laboral/usuarios/:usuarioId`.
+ * HorarioLaboralUsuarioPanel — horario propio de un usuario, abierto desde el botón "Horarios" de
+ * `/admin/usuarios` (odd/tasks/tiempo-tecnico.md T2, S1/S2; odd/tasks/pedidos-2026-10-26.md S6). Red
+ * simulada con msw sobre `GET`/`PUT`/`DELETE /horario-laboral/usuarios/:usuarioId`.
  */
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const ANA = "01900000-0000-7000-8000-0000000000a1";
 const BETO = "01900000-0000-7000-8000-0000000000b2";
 
-const USUARIOS = [
-  { id: BETO, nombre: "Beto", apellido: "Zárate", rol: "COLABORADOR" },
-  { id: "admin-1", nombre: "Carla", apellido: "Admin", rol: "ADMINISTRADOR" },
-  { id: ANA, nombre: "Ana", apellido: "López", rol: "TECNICO" },
-  { id: "sol-1", nombre: "Dora", apellido: "Pedido", rol: "SOLICITANTE" },
-];
 
 function semana(apertura: number | null, cierre: number | null) {
   return [0, 1, 2, 3, 4, 5, 6].map((diaSemana) =>
@@ -41,7 +34,6 @@ type Horario = { usuarioId: string; origen: "USUARIO" | "CLIENTE"; dias: ReturnT
 
 function mockServidor(horarios: Record<string, Horario>) {
   server.use(
-    http.get("/api/usuarios", () => HttpResponse.json(USUARIOS)),
     http.get("/api/horario-laboral/usuarios/:usuarioId", ({ params }) =>
       HttpResponse.json(horarios[String(params.usuarioId)]),
     ),
@@ -55,41 +47,29 @@ function horariosIniciales(): Record<string, Horario> {
   };
 }
 
-function renderSeccion() {
-  renderWithProviders(<HorarioLaboralTecnicoSeccion />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
-  return within(screen.getByRole("region", { name: "Horario por técnico" }));
-}
+const NOMBRES: Record<string, string> = { [ANA]: "Ana López", [BETO]: "Beto Zárate" };
 
-async function elegirTecnico(nombre: string) {
+/** Monta el panel del usuario dado; devuelve su contenedor y un `user` para interactuar. */
+function renderPanel(usuarioId: string) {
   const user = userEvent.setup();
-  const selector = await screen.findByRole("combobox", { name: "Técnico" });
-  await user.selectOptions(selector, nombre);
-  return user;
+  renderWithProviders(
+    <section aria-label="Panel de horario">
+      <HorarioLaboralUsuarioPanel usuarioId={usuarioId} nombreCompleto={NOMBRES[usuarioId]} />
+    </section>,
+    { user: buildUser({ rol: "ADMINISTRADOR" }) },
+  );
+  return { seccion: within(screen.getByRole("region", { name: "Panel de horario" })), user };
 }
 
-describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
+describe("HorarioLaboralUsuarioPanel (tiempo-tecnico T2, pedidos-2026-10-26 S6)", () => {
   beforeEach(() => {
     vi.mocked(toast.success).mockClear();
     vi.mocked(toast.error).mockClear();
   });
 
-  it("ofrece solo a los TECNICO y COLABORADOR, ordenados por apellido", async () => {
+  it("carga en la grilla el horario propio del usuario", async () => {
     mockServidor(horariosIniciales());
-    renderSeccion();
-
-    const selector = await screen.findByRole("combobox", { name: "Técnico" });
-    const opciones = within(selector)
-      .getAllByRole("option")
-      .map((opcion) => opcion.textContent);
-    expect(opciones).toEqual(["Seleccionar técnico", "Ana López", "Beto Zárate"]);
-  });
-
-  it("elegir un técnico carga su horario en la grilla", async () => {
-    mockServidor(horariosIniciales());
-    const seccion = renderSeccion();
-
-    expect(seccion.queryByRole("checkbox", { name: "Lunes" })).not.toBeInTheDocument();
-    await elegirTecnico("Ana López");
+    const { seccion } = renderPanel(ANA);
 
     expect(await seccion.findByText("Ana López tiene horario propio.")).toBeInTheDocument();
     expect(seccion.getAllByLabelText("Apertura")[1]).toHaveValue("08:00");
@@ -97,11 +77,35 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
     expect(seccion.getByRole("checkbox", { name: "Domingo" })).not.toBeChecked();
   });
 
+  it("si el panel se cierra con el PUT en vuelo, el fallo del guardado igual se avisa (JD-B-005)", async () => {
+    mockServidor(horariosIniciales());
+    let responder: (() => void) | undefined;
+    server.use(
+      http.put("/api/horario-laboral/usuarios/:usuarioId", async () => {
+        await new Promise<void>((resolve) => {
+          responder = resolve;
+        });
+        return HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 });
+      }),
+    );
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(
+      <HorarioLaboralUsuarioPanel usuarioId={ANA} nombreCompleto="Ana López" />,
+      { user: buildUser({ rol: "ADMINISTRADOR" }) },
+    );
+    await user.click(await screen.findByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(responder).toBeDefined());
+
+    unmount();
+    responder?.();
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+  });
+
   it("con origen CLIENTE avisa que usa el horario del cliente y ofrece Usar horario propio, sin opción de volver", async () => {
     mockServidor(horariosIniciales());
-    const seccion = renderSeccion();
 
-    await elegirTecnico("Beto Zárate");
+    const { seccion } = renderPanel(BETO);
 
     expect(await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./)).toBeInTheDocument();
     expect(seccion.getAllByLabelText("Apertura")[1]).toHaveValue("09:00");
@@ -112,9 +116,8 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
 
   it("con origen USUARIO no muestra el aviso del cliente y ofrece Guardar y Volver al horario del cliente", async () => {
     mockServidor(horariosIniciales());
-    const seccion = renderSeccion();
 
-    await elegirTecnico("Ana López");
+    const { seccion } = renderPanel(ANA);
 
     await seccion.findByText("Ana López tiene horario propio.");
     expect(seccion.queryByText(/Ana López usa el horario laboral del cliente/)).not.toBeInTheDocument();
@@ -138,9 +141,8 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
         return HttpResponse.json(horarios[BETO]);
       }),
     );
-    const seccion = renderSeccion();
 
-    const user = await elegirTecnico("Beto Zárate");
+    const { seccion, user } = renderPanel(BETO);
     await seccion.findByRole("button", { name: "Usar horario propio" });
     await user.click(seccion.getByRole("checkbox", { name: "Viernes" }));
     await user.click(seccion.getByRole("button", { name: "Usar horario propio" }));
@@ -159,9 +161,8 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
         HttpResponse.json({ statusCode: 422, message: "Debe quedar al menos un día abierto." }, { status: 422 }),
       ),
     );
-    const seccion = renderSeccion();
 
-    const user = await elegirTecnico("Ana López");
+    const { seccion, user } = renderPanel(ANA);
     await seccion.findByRole("button", { name: "Guardar" });
     await user.click(seccion.getByRole("checkbox", { name: "Martes" }));
     await user.click(seccion.getByRole("button", { name: "Guardar" }));
@@ -182,9 +183,8 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
         return HttpResponse.json(horarios[ANA]);
       }),
     );
-    const seccion = renderSeccion();
 
-    const user = await elegirTecnico("Ana López");
+    const { seccion, user } = renderPanel(ANA);
     await user.click(await seccion.findByRole("button", { name: "Volver al horario del cliente" }));
 
     const dialogo = await screen.findByRole("alertdialog", { name: "¿Volver al horario del cliente?" });
@@ -209,9 +209,8 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
         return HttpResponse.json({});
       }),
     );
-    const seccion = renderSeccion();
 
-    const user = await elegirTecnico("Ana López");
+    const { seccion, user } = renderPanel(ANA);
     await user.click(await seccion.findByRole("button", { name: "Volver al horario del cliente" }));
     const dialogo = await screen.findByRole("alertdialog");
     await user.click(within(dialogo).getByRole("button", { name: "Cancelar" }));
@@ -219,76 +218,6 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(borrar).not.toHaveBeenCalled();
     expect(seccion.getByText("Ana López tiene horario propio.")).toBeInTheDocument();
-  });
-
-  it("cambiar de técnico resetea la grilla con el horario del nuevo y descarta la edición del anterior", async () => {
-    mockServidor(horariosIniciales());
-    const seccion = renderSeccion();
-
-    const user = await elegirTecnico("Ana López");
-    await seccion.findByText("Ana López tiene horario propio.");
-    // Edita a Ana sin guardar: si el form no se sincronizara al cambiar de
-    // técnico, esta edición (o el 08:00 de Ana) aparecería en la grilla de Beto.
-    await user.click(seccion.getByRole("checkbox", { name: "Lunes" }));
-    expect(seccion.getByRole("checkbox", { name: "Lunes" })).not.toBeChecked();
-
-    await user.selectOptions(screen.getByRole("combobox", { name: "Técnico" }), "Beto Zárate");
-    await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
-    expect(seccion.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
-    expect(seccion.getAllByLabelText("Apertura")[1]).toHaveValue("09:00");
-
-    // Volver a Ana muestra su horario del servidor, no la edición descartada.
-    await user.selectOptions(screen.getByRole("combobox", { name: "Técnico" }), "Ana López");
-    await seccion.findByText("Ana López tiene horario propio.");
-    expect(seccion.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
-    expect(seccion.getAllByLabelText("Apertura")[1]).toHaveValue("08:00");
-  });
-
-  it("el error de guardado de un técnico no aparece al cambiar a otro", async () => {
-    mockServidor(horariosIniciales());
-    server.use(
-      http.put("/api/horario-laboral/usuarios/:usuarioId", () =>
-        HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 }),
-      ),
-    );
-    const seccion = renderSeccion();
-
-    const user = await elegirTecnico("Ana López");
-    await user.click(await seccion.findByRole("button", { name: "Guardar" }));
-    expect(await seccion.findByRole("alert")).toHaveTextContent("Error interno");
-
-    await user.selectOptions(screen.getByRole("combobox", { name: "Técnico" }), "Beto Zárate");
-    await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
-    expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
-  });
-
-  it("cambiar de técnico con el PUT en vuelo no le pasa el guardado al nuevo, y el fallo del anterior igual se avisa (JD-B-005)", async () => {
-    mockServidor(horariosIniciales());
-    let responder: (() => void) | undefined;
-    server.use(
-      http.put("/api/horario-laboral/usuarios/:usuarioId", async () => {
-        await new Promise<void>((resolve) => {
-          responder = resolve;
-        });
-        return HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 });
-      }),
-    );
-    const seccion = renderSeccion();
-
-    const user = await elegirTecnico("Ana López");
-    await user.click(await seccion.findByRole("button", { name: "Guardar" }));
-    await waitFor(() => expect(responder).toBeDefined());
-
-    await user.selectOptions(screen.getByRole("combobox", { name: "Técnico" }), "Beto Zárate");
-    await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
-    expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
-
-    // El guardado de Ana falla con Beto en pantalla: el aviso no puede perderse con el cambio de
-    // técnico, y tampoco puede aparecer como error inline de Beto.
-    responder?.();
-    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
-    expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
-    expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
   });
 
   it("volver al horario del cliente muestra el del cliente aunque hubiera ediciones sin guardar", async () => {
@@ -300,9 +229,8 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
         return HttpResponse.json(horarios[ANA]);
       }),
     );
-    const seccion = renderSeccion();
 
-    const user = await elegirTecnico("Ana López");
+    const { seccion, user } = renderPanel(ANA);
     await seccion.findByText("Ana López tiene horario propio.");
     await user.click(seccion.getByRole("checkbox", { name: "Lunes" }));
     await user.click(seccion.getByRole("button", { name: "Volver al horario del cliente" }));
