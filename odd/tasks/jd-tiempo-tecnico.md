@@ -32,7 +32,7 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
 - [x] T4 — S3
 - [x] T5 — S4
 - [x] T6 — S5, S7 (frontend)
-- [ ] T7 — S8 (decisión del dueño pendiente)
+- [x] T7 — S8
 
 ## Log
 
@@ -73,3 +73,7 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   borrar. Los feriados propios del cliente se siguen leyendo siempre. Tests de la caché (vigencia,
   vencimiento, invalidación, lecturas simultáneas, fallo no guardado), de la lectura compartida y de la
   invalidación por escritura (y no al fallar). Pendiente: suite completa del backend.
+- **L10 — T7 (JD-A-003 / JD-B-006).** Por L5 se siguen contando tramos. La columna pasa a "Resoluciones
+  evaluadas" y debajo de la tabla se aclara: "Cada resolución se evalúa por separado: un ticket
+  reabierto y vuelto a resolver suma dos." Con la lista vacía no aparece. `src/features/dashboard` 39/39.
+  Ayuda (suspendida): anotar el cambio de nombre de la columna para la tanda final.
