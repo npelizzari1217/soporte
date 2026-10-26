@@ -34,7 +34,7 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
 - [x] T1 — S4, S7: tabla `asistente_ia_config` 1:1 con `clientes` (master, aditiva, `rollback.sql`),
   clave cifrada, casos de uso ROOT ver/configurar/quitar/probar y endpoints `/clientes/:id/ia`.
 - [x] T2 — S7: `rotate-email-crypto-key.ps1` re-cifra las claves de IA; runbook.
-- [ ] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
+- [x] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
   endpoint `POST` del asistente con tope.
 - [ ] T4 — S4, S5, S6: frontend — botón flotante con el chat y acción "IA" en Clientes.
 - [ ] T5 — Ayuda del asistente y de su configuración, runbook del deploy.
@@ -87,3 +87,21 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   `IsOptional` para `clave`; el `catch` solo traduce el error de `EMAIL_CRYPTO_KEY` y propaga el resto;
   `ParseUUIDPipe` en las 4 rutas; el mensaje de URL nombra el tope. `src/asistente` 82/82, lint y
   typecheck limpios.
+- **L9 — T3 hecha.** `POST /asistente/consultas` (`KB:LECTURA`, como leer la Ayuda; cupo de 10
+  consultas por minuto por persona, tracker = `sub` del JWT, storage en Postgres). La fuente lee
+  `kb_articulos` en cada consulta con la regla de visibilidad del listado (sin `KB:VER_TODOS`, solo
+  publicados y activos). Búsqueda pura en `busqueda-ayuda.ts`: fragmentos por encabezado de markdown
+  (parte por párrafos los de más de 1200 caracteres), texto normalizado, lematizador liviano para
+  español (terminaciones, diptongos ue/ie, raíz de hasta 6 letras) y puntaje ponderado por rareza
+  (IDF). La primera versión, sin rareza ni lematizador, fallaba contra la Ayuda real: "¿Cómo creo un
+  ticket?" no traía "Crear un ticket" porque "ticket" aparece en todos lados y "creo" no coincidía con
+  "crear"; con los dos ajustes la trae primera, y "cómo apruebo una compra" trae `compras-estados`.
+  Modos: `ia` (el modelo redacta con 3 fragmentos, temperatura 0.2, instrucciones en neutro con
+  "usted", cita los artículos), `respaldo` (sin IA, clave indescifrable, ROOT sin cliente o falla del
+  proveedor: el fragmento más parecido, recortado a 700 caracteres) y `sin_resultados` (lo dice y
+  sugiere crear un ticket; no llama al proveedor). La persona nunca ve un error del proveedor.
+  Tests: 11 archivos, 125/125 (e2e con guards, throttler y Prisma reales: 401, 403 sin `KB:LECTURA`,
+  un artículo no publicado no llega a quien no tiene `KB:VER_TODOS`, 429 al pasar el cupo y otra
+  persona conserva el suyo). Lint y typecheck limpios.
+  Hueco de contenido para la próxima tanda de Ayuda: no hay una sección dedicada a dar de alta un
+  equipo ("Nuevo equipo" solo aparece mencionado); "cargar un equipo nuevo" trae secciones vecinas.

@@ -77,3 +77,12 @@ export class ClienteIaNoEncontradoError extends DomainError {
     super(`No se encontró el cliente ${clienteId}.`);
   }
 }
+
+/** La consulta al asistente está vacía o supera los 600 caracteres. */
+export class ConsultaAsistenteInvalidaError extends DomainError {
+  readonly code = 'ASISTENTE_CONSULTA_INVALIDA';
+
+  constructor() {
+    super('Escriba su consulta (hasta 600 caracteres).');
+  }
+}
