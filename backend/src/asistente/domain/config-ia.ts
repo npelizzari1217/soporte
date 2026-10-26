@@ -1,5 +1,9 @@
 import { Result } from '../../shared/domain/result';
-import { UrlIaInvalidaError } from './asistente.errors';
+import {
+  ClaveIaInvalidaError,
+  ModeloIaInvalidoError,
+  UrlIaInvalidaError,
+} from './asistente.errors';
 
 /** Largo máximo de la URL del proveedor: el de la columna `asistente_ia_config.url` (VARCHAR 2048). */
 export const LARGO_MAXIMO_URL_IA = 2048;
@@ -97,4 +101,25 @@ export function validarUrlIa(valor: string): Result<string, UrlIaInvalidaError> 
   }
   if (url.href.length > LARGO_MAXIMO_URL_IA) return Result.fail(new UrlIaInvalidaError());
   return Result.ok(url.href);
+}
+
+/**
+ * Valida el modelo: se recorta y el piso y el techo se miden sobre el valor recortado, que es el que
+ * se guarda. Así un modelo de solo espacios no llega a la base como texto vacío.
+ */
+export function validarModeloIa(valor: string): Result<string, ModeloIaInvalidoError> {
+  const modelo = valor.trim();
+  if (modelo.length === 0 || modelo.length > LARGO_MAXIMO_MODELO_IA) {
+    return Result.fail(new ModeloIaInvalidoError());
+  }
+  return Result.ok(modelo);
+}
+
+/** Valida la clave en claro con el mismo criterio que el modelo: recortada, no vacía y con tope. */
+export function validarClaveIa(valor: string): Result<string, ClaveIaInvalidaError> {
+  const clave = valor.trim();
+  if (clave.length === 0 || clave.length > LARGO_MAXIMO_CLAVE_IA) {
+    return Result.fail(new ClaveIaInvalidaError());
+  }
+  return Result.ok(clave);
 }

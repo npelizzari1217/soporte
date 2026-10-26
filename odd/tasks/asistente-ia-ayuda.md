@@ -74,3 +74,16 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   `ia:{cliente_id}` en `DESTINOS`; `--verificar` la recorre. `proceso.spec` reproduce el schema hasta
   la migración nueva. Cabecera de `rotate-email-crypto-key.ps1` (ASCII, CRLF) y runbook §5
   actualizados; la cabecera ya omitía los webhooks. Rotación 42/42, lint limpio.
+- **L7 — Verificación independiente de T1+T2 (`gentle-ai-verify`).** S7 PASS (la clave nunca sale,
+  solo ROOT, migración y rollback coherentes, AAD consistente con la rotación; T2 sin observaciones).
+  S4 FAIL por B1: `modelo: "   "` pasaba `@IsNotEmpty`, el caso de uso lo recortaba y se guardaba vacío
+  con 200. Avisos: A1 clave de solo espacios se guardaba; A2 `clave: null` daba un 503 que culpaba a
+  `EMAIL_CRYPTO_KEY` (el `catch` se tragaba cualquier error); A3 un id que no es UUID daba 500; A4 el
+  mensaje de URL no nombraba el largo.
+- **L8 — Corrección de B1 y A1-A4, con TDD.** RED: 16 tests (e2e de modelo y clave de solo espacios,
+  `clave: null`, id no UUID en las 4 rutas; `validarModeloIa` y `validarClaveIa`; un error de cifrado
+  ajeno no se disfraza de 503) fallaron por la razón correcta. GREEN: `validarModeloIa` y
+  `validarClaveIa` en el dominio miden piso y techo sobre el valor recortado; `ValidateIf` en vez de
+  `IsOptional` para `clave`; el `catch` solo traduce el error de `EMAIL_CRYPTO_KEY` y propaga el resto;
+  `ParseUUIDPipe` en las 4 rutas; el mensaje de URL nombra el tope. `src/asistente` 82/82, lint y
+  typecheck limpios.

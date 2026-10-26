@@ -6,7 +6,17 @@ import {
   URL_IA_POR_DEFECTO,
   validarUrlIa,
 } from './config-ia';
-import { UrlIaInvalidaError } from './asistente.errors';
+import {
+  ClaveIaInvalidaError,
+  ModeloIaInvalidoError,
+  UrlIaInvalidaError,
+} from './asistente.errors';
+import {
+  LARGO_MAXIMO_CLAVE_IA,
+  LARGO_MAXIMO_MODELO_IA,
+  validarClaveIa,
+  validarModeloIa,
+} from './config-ia';
 
 describe('validarUrlIa', () => {
   it('acepta la URL de Gemini por defecto y la devuelve normalizada', () => {
@@ -53,5 +63,35 @@ describe('estadoConfigIa', () => {
       verificacionError: null,
     });
     expect(JSON.stringify(estado)).not.toContain('SECRETO');
+  });
+});
+
+describe('validarModeloIa', () => {
+  it('recorta y acepta hasta el largo de la columna', () => {
+    expect(validarModeloIa('  gemini-2.5-flash  ').getValue()).toBe('gemini-2.5-flash');
+    expect(validarModeloIa('m'.repeat(LARGO_MAXIMO_MODELO_IA)).isOk()).toBe(true);
+  });
+
+  it.each([
+    ['vacío', ''],
+    ['solo espacios', '   '],
+    ['más largo que la columna', 'm'.repeat(LARGO_MAXIMO_MODELO_IA + 1)],
+  ])('rechaza un modelo %s', (_caso, modelo) => {
+    expect(validarModeloIa(modelo).getError()).toBeInstanceOf(ModeloIaInvalidoError);
+  });
+});
+
+describe('validarClaveIa', () => {
+  it('recorta y acepta hasta el tope', () => {
+    expect(validarClaveIa(' AIzaClave ').getValue()).toBe('AIzaClave');
+    expect(validarClaveIa('k'.repeat(LARGO_MAXIMO_CLAVE_IA)).isOk()).toBe(true);
+  });
+
+  it.each([
+    ['vacía', ''],
+    ['solo espacios', '   '],
+    ['más larga que el tope', 'k'.repeat(LARGO_MAXIMO_CLAVE_IA + 1)],
+  ])('rechaza una clave %s', (_caso, clave) => {
+    expect(validarClaveIa(clave).getError()).toBeInstanceOf(ClaveIaInvalidaError);
   });
 });

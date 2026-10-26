@@ -6,8 +6,27 @@ export class UrlIaInvalidaError extends DomainError {
 
   constructor() {
     super(
-      'La URL del proveedor de IA debe ser una dirección https válida, sin usuario ni contraseña.',
+      'La URL del proveedor de IA debe ser una dirección https válida, sin usuario ni ' +
+        'contraseña y de hasta 2048 caracteres.',
     );
+  }
+}
+
+/** El modelo está vacío (o solo tiene espacios) o supera el largo de la columna. */
+export class ModeloIaInvalidoError extends DomainError {
+  readonly code = 'IA_MODELO_INVALIDO';
+
+  constructor() {
+    super('Indique el modelo de IA (hasta 100 caracteres).');
+  }
+}
+
+/** La clave está vacía (o solo tiene espacios) o supera el tope. */
+export class ClaveIaInvalidaError extends DomainError {
+  readonly code = 'IA_CLAVE_INVALIDA';
+
+  constructor() {
+    super('La clave de IA no puede estar vacía ni superar los 500 caracteres.');
   }
 }
 

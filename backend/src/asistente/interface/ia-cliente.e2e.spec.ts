@@ -209,6 +209,72 @@ describe('Configuración de IA por cliente — e2e', () => {
     expect(await fila(c)).toBeNull();
   });
 
+  // Correcciones de la verificación de T1: el piso se mide sobre el valor normalizado.
+  it.each([
+    ['modelo solo espacios', { ...BODY, modelo: '   ' }],
+    ['clave solo espacios', { ...BODY, clave: '   ' }],
+    ['clave null', { ...BODY, clave: null }],
+  ])('PATCH con %s → 400 y no escribe nada', async (_caso, body) => {
+    const c = await crearCliente();
+    const { status } = await pedir('PATCH', `/clientes/${c}/ia`, { body, token: token(true) });
+    expect(status).toBe(400);
+    expect(await fila(c)).toBeNull();
+  });
+
+  it('PATCH sin clave conserva el ciphertext exacto', async () => {
+    const c = await crearCliente();
+    await pedir('PATCH', `/clientes/${c}/ia`, { body: BODY, token: token(true) });
+    const antes = (await fila(c))?.claveCifrada;
+    const { status } = await pedir('PATCH', `/clientes/${c}/ia`, {
+      body: { url: BODY.url, modelo: 'gemini-2.0-flash' },
+      token: token(true),
+    });
+    expect(status).toBe(200);
+    expect((await fila(c))?.claveCifrada).toBe(antes);
+  });
+
+  it('PATCH con clave nueva sin EMAIL_CRYPTO_KEY → 503 y la fila queda idéntica', async () => {
+    const c = await crearCliente();
+    await pedir('PATCH', `/clientes/${c}/ia`, { body: BODY, token: token(true) });
+    const antes = await fila(c);
+    delete process.env.EMAIL_CRYPTO_KEY;
+    try {
+      const { status } = await pedir('PATCH', `/clientes/${c}/ia`, {
+        body: { ...BODY, modelo: 'otro', clave: 'nueva' },
+        token: token(true),
+      });
+      expect(status).toBe(503);
+    } finally {
+      process.env.EMAIL_CRYPTO_KEY = CLAVE_CIFRADO_DE_TEST;
+    }
+    expect(await fila(c)).toEqual(antes);
+  });
+
+  it('probar con clave indescifrable guarda el motivo saneado sin llamar al proveedor', async () => {
+    const c = await crearCliente();
+    await pedir('PATCH', `/clientes/${c}/ia`, { body: BODY, token: token(true) });
+    await master.asistenteIaConfig.update({
+      where: { clienteId: c },
+      data: { claveCifrada: 'v1:x:y:z' },
+    });
+    const { data } = await pedir<IaRespuesta>('POST', `/clientes/${c}/ia/probar`, {
+      token: token(true),
+    });
+    expect(data.verificacionError).toBe(
+      'No se pudo descifrar la clave de IA guardada. Vuelva a cargarla.',
+    );
+    expect(modelo.llamadas).toEqual([]);
+  });
+
+  it.each(RUTAS)('$nombre con un id que no es UUID → 400', async (ruta) => {
+    const { status } = await pedir(ruta.method, ruta.path('no-es-uuid'), {
+      body: ruta.body,
+      token: token(true),
+    });
+    expect(status).toBe(400);
+    expect(modelo.llamadas).toEqual([]);
+  });
+
   it('PATCH sin clave y sin configuración previa → 400', async () => {
     const c = await crearCliente();
     const { url, modelo: m } = BODY;

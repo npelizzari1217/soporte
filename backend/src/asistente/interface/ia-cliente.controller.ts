@@ -9,12 +9,13 @@ import {
   InternalServerErrorException,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNotEmpty, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { JwtAuthGuard } from '../../auth/infrastructure/guards/jwt-auth.guard';
 import { GlobalAdminGuard } from '../../auth/infrastructure/guards/global-admin.guard';
 import { DomainError } from '../../shared/domain/result';
@@ -25,8 +26,10 @@ import { VerIaClienteUseCase } from '../application/ver-ia-cliente.use-case';
 import {
   ClaveCifradoIaAusenteError,
   ClaveIaFaltanteError,
+  ClaveIaInvalidaError,
   ClienteIaNoEncontradoError,
   IaNoConfiguradaError,
+  ModeloIaInvalidoError,
   UrlIaInvalidaError,
 } from '../domain/asistente.errors';
 import {
@@ -39,6 +42,8 @@ import {
 /**
  * Body de `PATCH /clientes/:id/ia`. `clave` es el único campo opcional: omitirla conserva la
  * guardada; un texto vacío se rechaza (borrar es `DELETE /clientes/:id/ia`, una acción aparte).
+ * `ValidateIf` y no `IsOptional`: `IsOptional` también deja pasar `null`, que no significa nada acá.
+ * El piso sobre el valor recortado lo mide el dominio (`validarModeloIa`, `validarClaveIa`).
  */
 export class ConfigurarIaClienteDto {
   @IsString()
@@ -51,7 +56,7 @@ export class ConfigurarIaClienteDto {
   @MaxLength(LARGO_MAXIMO_MODELO_IA)
   modelo!: string;
 
-  @IsOptional()
+  @ValidateIf((dto: ConfigurarIaClienteDto) => dto.clave !== undefined)
   @IsString()
   @IsNotEmpty()
   @MaxLength(LARGO_MAXIMO_CLAVE_IA)
@@ -82,6 +87,8 @@ function aHttp(error: DomainError): Error {
   if (error instanceof ClienteIaNoEncontradoError) return new NotFoundException(error.message);
   if (
     error instanceof UrlIaInvalidaError ||
+    error instanceof ModeloIaInvalidoError ||
+    error instanceof ClaveIaInvalidaError ||
     error instanceof ClaveIaFaltanteError ||
     error instanceof IaNoConfiguradaError
   ) {
@@ -109,7 +116,7 @@ export class IaClienteController {
 
   /** GET /clientes/:id/ia — estado de la configuración. 404 si el cliente no existe. */
   @Get(':id/ia')
-  async ver(@Param('id') id: string): Promise<IaClienteResponseDto> {
+  async ver(@Param('id', ParseUUIDPipe) id: string): Promise<IaClienteResponseDto> {
     const result = await this.verIa.execute(id);
     if (result.isFail()) throw aHttp(result.getError());
     return aRespuesta(result.getValue());
@@ -122,7 +129,7 @@ export class IaClienteController {
   @Patch(':id/ia')
   @HttpCode(HttpStatus.OK)
   async configurar(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ConfigurarIaClienteDto,
   ): Promise<IaClienteResponseDto> {
     const result = await this.configurarIa.execute({
@@ -138,7 +145,7 @@ export class IaClienteController {
   /** DELETE /clientes/:id/ia — quita la configuración; el cliente pasa al modo de respaldo. */
   @Delete(':id/ia')
   @HttpCode(HttpStatus.OK)
-  async quitar(@Param('id') id: string): Promise<IaClienteResponseDto> {
+  async quitar(@Param('id', ParseUUIDPipe) id: string): Promise<IaClienteResponseDto> {
     const result = await this.quitarIa.execute(id);
     if (result.isFail()) throw aHttp(result.getError());
     return aRespuesta(result.getValue());
@@ -147,7 +154,7 @@ export class IaClienteController {
   /** POST /clientes/:id/ia/probar — consulta mínima al proveedor; registra el resultado. */
   @Post(':id/ia/probar')
   @HttpCode(HttpStatus.OK)
-  async probar(@Param('id') id: string): Promise<IaClienteResponseDto> {
+  async probar(@Param('id', ParseUUIDPipe) id: string): Promise<IaClienteResponseDto> {
     const result = await this.probarIa.execute(id);
     if (result.isFail()) throw aHttp(result.getError());
     return aRespuesta(result.getValue());

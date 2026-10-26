@@ -120,6 +120,24 @@ describe('ConfigurarIaClienteUseCase', () => {
     expect(repo.guardados).toEqual([]);
   });
 
+  it('un error de cifrado que no es la falta de EMAIL_CRYPTO_KEY no se disfraza de 503', async () => {
+    const repo = repoEnMemoria();
+    const roto = {
+      cifrar: () => {
+        throw new TypeError('plaintext must be a string');
+      },
+    };
+    await expect(
+      new ConfigurarIaClienteUseCase(conCliente, repo, roto).execute({
+        clienteId: 'c1',
+        url: URL_IA_POR_DEFECTO,
+        modelo: 'gemini-2.5-flash',
+        clave: 'AIzaClave',
+      }),
+    ).rejects.toThrow('plaintext must be a string');
+    expect(repo.guardados).toEqual([]);
+  });
+
   it('un cliente inexistente falla y no guarda nada', async () => {
     const repo = repoEnMemoria();
     const r = await new ConfigurarIaClienteUseCase(conCliente, repo, cifrador).execute({
