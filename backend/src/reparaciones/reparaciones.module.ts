@@ -40,15 +40,15 @@ import {
 import { COMPRA_REPOSITORY, ICompraRepository } from '../compras/domain/ports/i-compra.repository';
 
 import {
-  COMENTARIO_REPARACION_REPOSITORY,
-  IComentarioReparacionRepository,
-} from './domain/ports/i-comentario-reparacion.repository';
-import { PrismaComentarioReparacionRepository } from './infrastructure/persistence/prisma/prisma-comentario-reparacion.repository';
+  CONTEO_COMENTARIOS_TICKET_REPOSITORY,
+  IConteoComentariosTicketRepository,
+} from './domain/ports/i-conteo-comentarios-ticket.repository';
+import { PrismaConteoComentariosTicketRepository } from './infrastructure/persistence/prisma/prisma-conteo-comentarios-ticket.repository';
 import {
-  REPARACION_COMPRA_REPOSITORY,
-  IReparacionCompraRepository,
-} from './domain/ports/i-reparacion-compra.repository';
-import { PrismaReparacionCompraRepository } from './infrastructure/persistence/prisma/prisma-reparacion-compra.repository';
+  TICKET_COMPRA_REPOSITORY,
+  ITicketCompraRepository,
+} from './domain/ports/i-ticket-compra.repository';
+import { PrismaTicketCompraRepository } from './infrastructure/persistence/prisma/prisma-ticket-compra.repository';
 
 import { ResolverAsignacionAutomatica } from '../tickets/application/services/resolver-asignacion-automatica.service';
 import { CrearTicketEdilicioUseCase } from './application/use-cases/crear-ticket-edilicio.use-case';
@@ -119,8 +119,11 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
   imports: [AuthModule, TicketsModule, ComprasModule, SectoresModule],
   controllers: [ReparacionesController, TicketComprasController],
   providers: [
-    { provide: COMENTARIO_REPARACION_REPOSITORY, useClass: PrismaComentarioReparacionRepository },
-    { provide: REPARACION_COMPRA_REPOSITORY, useClass: PrismaReparacionCompraRepository },
+    {
+      provide: CONTEO_COMENTARIOS_TICKET_REPOSITORY,
+      useClass: PrismaConteoComentariosTicketRepository,
+    },
+    { provide: TICKET_COMPRA_REPOSITORY, useClass: PrismaTicketCompraRepository },
 
     {
       provide: NumeradorTicket,
@@ -184,8 +187,8 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         ticketRepo: ITicketRepository,
         tipoTicketRepo: ITipoTicketRepository,
         tareaRepo: ITareaTicketRepository,
-        comentarioRepo: IComentarioReparacionRepository,
-        reparacionCompraRepo: IReparacionCompraRepository,
+        comentarioRepo: IConteoComentariosTicketRepository,
+        reparacionCompraRepo: ITicketCompraRepository,
         sectorRepo: ISectorRepository,
       ) =>
         new ListarReparacionesUseCase(
@@ -200,8 +203,8 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         TICKET_REPOSITORY,
         TIPO_TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
-        COMENTARIO_REPARACION_REPOSITORY,
-        REPARACION_COMPRA_REPOSITORY,
+        CONTEO_COMENTARIOS_TICKET_REPOSITORY,
+        TICKET_COMPRA_REPOSITORY,
         SECTOR_REPOSITORY,
       ],
     },
@@ -228,7 +231,7 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
       provide: VincularCompraAReparacionUseCase,
       useFactory: (
         compraRepo: ICompraRepository,
-        reparacionCompraRepo: IReparacionCompraRepository,
+        reparacionCompraRepo: ITicketCompraRepository,
         ticketRepo: ITicketRepository,
         txRunner: ITenantTransactionRunner,
         estadoRepo: IEstadoRepository,
@@ -242,7 +245,7 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
         ),
       inject: [
         COMPRA_REPOSITORY,
-        REPARACION_COMPRA_REPOSITORY,
+        TICKET_COMPRA_REPOSITORY,
         TICKET_REPOSITORY,
         TENANT_TX_RUNNER,
         ESTADO_REPOSITORY,
@@ -251,20 +254,18 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
     {
       provide: DesvincularCompraDeReparacionUseCase,
       useFactory: (
-        reparacionCompraRepo: IReparacionCompraRepository,
+        reparacionCompraRepo: ITicketCompraRepository,
         ticketRepo: ITicketRepository,
         estadoRepo: IEstadoRepository,
       ) => new DesvincularCompraDeReparacionUseCase(reparacionCompraRepo, ticketRepo, estadoRepo),
-      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_REPOSITORY, ESTADO_REPOSITORY],
+      inject: [TICKET_COMPRA_REPOSITORY, TICKET_REPOSITORY, ESTADO_REPOSITORY],
     },
     {
       // odd/ticket-unificado: las compras vinculadas de cualquier ticket.
       provide: ListarComprasDeTicketUseCase,
-      useFactory: (
-        reparacionCompraRepo: IReparacionCompraRepository,
-        ticketRepo: ITicketRepository,
-      ) => new ListarComprasDeTicketUseCase(reparacionCompraRepo, ticketRepo),
-      inject: [REPARACION_COMPRA_REPOSITORY, TICKET_REPOSITORY],
+      useFactory: (reparacionCompraRepo: ITicketCompraRepository, ticketRepo: ITicketRepository) =>
+        new ListarComprasDeTicketUseCase(reparacionCompraRepo, ticketRepo),
+      inject: [TICKET_COMPRA_REPOSITORY, TICKET_REPOSITORY],
     },
     {
       // odd/detalle-ticket-legible (S4-S5): edición de una reparación no empezada.
@@ -272,7 +273,7 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
       useFactory: (
         ticketRepo: ITicketRepository,
         tareaRepo: ITareaTicketRepository,
-        reparacionCompraRepo: IReparacionCompraRepository,
+        reparacionCompraRepo: ITicketCompraRepository,
         estadoRepo: IEstadoRepository,
         prioridadRepo: IPrioridadRepository,
         sectorRepo: ISectorRepository,
@@ -292,7 +293,7 @@ import { TicketComprasController } from './interface/controllers/ticket-compras.
       inject: [
         TICKET_REPOSITORY,
         TAREA_TICKET_REPOSITORY,
-        REPARACION_COMPRA_REPOSITORY,
+        TICKET_COMPRA_REPOSITORY,
         ESTADO_REPOSITORY,
         PRIORIDAD_REPOSITORY,
         SECTOR_REPOSITORY,

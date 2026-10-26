@@ -8,7 +8,7 @@ import {
   AlcanceActorTicket,
   cargarTicketParaOperar,
 } from '../../../tickets/application/services/visibilidad-ticket';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
 
 /** Una compra vinculada a un ticket, con su grupo de estado y si frena hoy al ticket. */
@@ -31,7 +31,7 @@ export interface CompraDeTicket {
 export class ListarComprasDeTicketUseCase {
   constructor(
     private readonly reparacionCompraRepo: Pick<
-      IReparacionCompraRepository,
+      ITicketCompraRepository,
       'findComprasVinculadasByTicketIds'
     >,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,

@@ -5,8 +5,8 @@ import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-tick
 import { TareaTicketEntity } from '../../../tickets/domain/entities/tarea-ticket.entity';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import { calcularAvanceTareas } from '../../../tickets/domain/services/avance-tareas';
-import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { IConteoComentariosTicketRepository } from '../../domain/ports/i-conteo-comentarios-ticket.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { CompraVinculada, comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import {
@@ -93,9 +93,9 @@ export class ListarReparacionesUseCase {
     private readonly ticketRepo: Pick<ITicketRepository, 'findAll'>,
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findIdsByModulos'>,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTickets'>,
-    private readonly comentarioRepo: Pick<IComentarioReparacionRepository, 'contarPorTickets'>,
+    private readonly comentarioRepo: Pick<IConteoComentariosTicketRepository, 'contarPorTickets'>,
     private readonly reparacionCompraRepo: Pick<
-      IReparacionCompraRepository,
+      ITicketCompraRepository,
       'findComprasVinculadasByTicketIds'
     >,
     private readonly sectorRepo: Pick<ISectorRepository, 'findNombres'>,

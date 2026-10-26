@@ -42,8 +42,8 @@ import { ListarReparacionesUseCase, ReparacionConTicket } from './listar-reparac
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
-import { IComentarioReparacionRepository } from '../../domain/ports/i-comentario-reparacion.repository';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { IConteoComentariosTicketRepository } from '../../domain/ports/i-conteo-comentarios-ticket.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/reparaciones.errors';
@@ -244,14 +244,14 @@ describe('ExportarReparacionesUseCase — constancia de consultas (task 5.1, des
       }),
     };
     const comentarioRepo = {
-      contarPorTickets: vi.fn<IComentarioReparacionRepository['contarPorTickets']>(async () => {
+      contarPorTickets: vi.fn<IConteoComentariosTicketRepository['contarPorTickets']>(async () => {
         llamadas++;
         return new Map();
       }),
     };
     const reparacionCompraRepo = {
       findComprasVinculadasByTicketIds: vi.fn<
-        IReparacionCompraRepository['findComprasVinculadasByTicketIds']
+        ITicketCompraRepository['findComprasVinculadasByTicketIds']
       >(async () => {
         llamadas++;
         return new Map();

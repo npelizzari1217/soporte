@@ -1,6 +1,6 @@
 /**
- * PrismaComentarioReparacionRepository — implementación del puerto
- * IComentarioReparacionRepository sobre el timeline del ticket (odd/ticket-unificado, S3).
+ * PrismaConteoComentariosTicketRepository — implementación del puerto
+ * IConteoComentariosTicketRepository sobre el timeline del ticket (odd/ticket-unificado, S3).
  *
  * Cuenta las operaciones `COMENTARIO` activas de cada ticket, separadas por `es_interno`, en UNA
  * consulta agregada. La tabla vieja `comentarios_reparacion` ya no existe (migración 20261025150000).
@@ -10,14 +10,14 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import {
   ConteoComentariosTicket,
-  IComentarioReparacionRepository,
-} from '../../../domain/ports/i-comentario-reparacion.repository';
+  IConteoComentariosTicketRepository,
+} from '../../../domain/ports/i-conteo-comentarios-ticket.repository';
 
 /** Código del tipo de operación con el que se asienta un comentario (catálogo fijo del tenant). */
 const CODIGO_COMENTARIO = 'COMENTARIO';
 
 @Injectable()
-export class PrismaComentarioReparacionRepository implements IComentarioReparacionRepository {
+export class PrismaConteoComentariosTicketRepository implements IConteoComentariosTicketRepository {
   constructor(private readonly tenantContext: TenantContext) {}
 
   private get client(): InstanceType<typeof TenantPrismaClient> {

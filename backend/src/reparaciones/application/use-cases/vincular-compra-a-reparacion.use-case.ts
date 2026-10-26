@@ -1,7 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { ICompraRepository } from '../../../compras/domain/ports/i-compra.repository';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { CompraNoEncontradaError } from '../../domain/errors/reparaciones.errors';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
@@ -53,7 +53,7 @@ export interface VincularCompraAReparacionDto {
 export class VincularCompraAReparacionUseCase {
   constructor(
     private readonly compraRepo: Pick<ICompraRepository, 'findByIdConItems'>,
-    private readonly reparacionCompraRepo: Pick<IReparacionCompraRepository, 'vincular'>,
+    private readonly reparacionCompraRepo: Pick<ITicketCompraRepository, 'vincular'>,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara' | 'bloquear'>,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,

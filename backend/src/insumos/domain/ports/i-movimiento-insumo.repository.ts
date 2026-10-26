@@ -38,7 +38,7 @@ export interface PaginaDeMovimientosInsumo {
  * `insert()`. No hay `update`, `delete`, `save` ni `guardar` — no es una
  * convención de nombres a respetar, es que el método físicamente no existe en
  * esta interfaz. Mismo criterio que `IOperacionCompraRepository` (S37) y
- * `IComentarioReparacionRepository`. La tabla lo acompaña estructuralmente:
+ * `IConteoComentariosTicketRepository`. La tabla lo acompaña estructuralmente:
  * `movimientos_insumo` no tiene `updated_at` ni `deleted_at`, así que el
  * `softDelete()` que `MovimientoInsumoEntity` hereda de `BaseEntity` no tiene
  * por dónde llegar a la base.

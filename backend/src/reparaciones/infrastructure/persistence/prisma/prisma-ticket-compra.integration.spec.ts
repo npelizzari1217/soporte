@@ -1,5 +1,5 @@
 /**
- * WU2.1 [INTEGRATION][RED→GREEN] — PrismaReparacionCompraRepository contra
+ * WU2.1 [INTEGRATION][RED→GREEN] — PrismaTicketCompraRepository contra
  * Postgres REAL, en una DB de TENANT EFÍMERA propia de esta suite (creada y
  * migrada en `beforeAll`, dropeada en `afterAll`).
  *
@@ -44,7 +44,7 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { PostgresAdminService } from '../../../../clientes/infrastructure/postgres-admin.service';
 import { TenantMigrationRunnerAdapter } from '../../../../clientes/infrastructure/tenant-migration-runner.adapter';
-import { PrismaReparacionCompraRepository } from './prisma-reparacion-compra.repository';
+import { PrismaTicketCompraRepository } from './prisma-ticket-compra.repository';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -53,14 +53,14 @@ const MASTER_TEST_URL =
 const TENANT_DB_NAME = `soporte_prov_repcompra_${randomBytes(4).toString('hex')}_test`;
 const DUMMY_USUARIO_ID = '01900000-0000-7000-8000-000000000301';
 
-describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
+describe('PrismaTicketCompraRepository — Integration (WU2)', () => {
   const admin = new PostgresAdminService(MASTER_TEST_URL);
   const migrationRunner = new TenantMigrationRunnerAdapter(MASTER_TEST_URL);
 
   let prismaService: PrismaService;
   let tenantClient: InstanceType<typeof TenantPrismaClient>;
   let tenantContext: TenantContext;
-  let repo: PrismaReparacionCompraRepository;
+  let repo: PrismaTicketCompraRepository;
 
   let tipoSoporteId: string;
   let estadoNuevoId: string;
@@ -117,7 +117,7 @@ describe('PrismaReparacionCompraRepository — Integration (WU2)', () => {
     prismaService = new PrismaService(MASTER_TEST_URL);
     tenantClient = prismaService.getTenantClient(TENANT_DB_NAME);
     tenantContext = new TenantContext();
-    repo = new PrismaReparacionCompraRepository(tenantContext);
+    repo = new PrismaTicketCompraRepository(tenantContext);
 
     const tipo = await tenantClient.tipoTicket.create({
       data: {

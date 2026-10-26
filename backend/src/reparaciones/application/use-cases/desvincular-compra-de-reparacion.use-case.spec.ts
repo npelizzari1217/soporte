@@ -21,7 +21,7 @@ import {
   alcancePorTipo,
   alcanceSinRestriccion,
 } from '../../../tickets/test-helpers/alcance-ticket';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
 
 /** Compra vinculada completa; el caso de uso solo mira `compraId`. */
@@ -39,8 +39,8 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
   function buildDeps(estadoCodigo = 'NUEVO') {
     const reparacionCompraRepo = {
       findComprasVinculadasByTicketIds:
-        vi.fn<IReparacionCompraRepository['findComprasVinculadasByTicketIds']>(),
-      desvincular: vi.fn<IReparacionCompraRepository['desvincular']>().mockResolvedValue(undefined),
+        vi.fn<ITicketCompraRepository['findComprasVinculadasByTicketIds']>(),
+      desvincular: vi.fn<ITicketCompraRepository['desvincular']>().mockResolvedValue(undefined),
     };
     const ticketRepo = {
       findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(
