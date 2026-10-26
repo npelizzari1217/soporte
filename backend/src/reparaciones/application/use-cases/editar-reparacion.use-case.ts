@@ -15,7 +15,7 @@ import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ti
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import { ESTADOS_PRE_PROCESO } from '../../../tickets/domain/state-machine/estados.constants';
 import { ReparacionNoEditableError } from '../../domain/errors/reparaciones.errors';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
 import {
   AlcanceActorTicket,
@@ -77,7 +77,7 @@ export class EditarReparacionUseCase {
     >,
     private readonly tareaRepo: Pick<ITareaTicketRepository, 'listarPorTicket'>,
     private readonly reparacionCompraRepo: Pick<
-      IReparacionCompraRepository,
+      ITicketCompraRepository,
       'findComprasVinculadasByTicketIds'
     >,
     private readonly estadoRepo: Pick<IEstadoRepository, 'findById'>,

@@ -1,20 +1,19 @@
 import { CompraVinculada } from '../services/bloqueo-reparacion';
 
 /**
- * IReparacionCompraRepository — puerto de persistencia del vínculo TICKET ↔ COMPRA
+ * ITicketCompraRepository — puerto de persistencia del vínculo TICKET ↔ COMPRA
  * (`ticket_compra`).
  *
  * Desde odd/ticket-unificado (S1) el vínculo es del ticket, de cualquier tipo, y no del satélite
- * de Edilicia: las firmas reciben ids de ticket. El nombre del puerto es el heredado de
- * `reparacion_compra`, que se borró en la migración 20261025150000 (T4b); el nombre queda hasta
- * que se lo renombre aparte.
+ * de Edilicia: las firmas reciben ids de ticket. La tabla anterior, `reparacion_compra`, se borró
+ * en la migración 20261025150000 (T4b).
  *
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS. La implementación concreta
- * (`PrismaReparacionCompraRepository`) obtiene su cliente vía `TenantContext.getClient()`.
+ * (`PrismaTicketCompraRepository`) obtiene su cliente vía `TenantContext.getClient()`.
  *
  * Ref design: sdd/reparacion-bloqueada-por-compra, D2/D3/D4/D5.
  */
-export interface IReparacionCompraRepository {
+export interface ITicketCompraRepository {
   /**
    * Crea el vínculo entre un ticket y una compra. IDEMPOTENTE: vincular el mismo par dos veces
    * (doble clic, reintento de red) no crea una segunda fila ni falla — la UNIQUE de la tabla lo
@@ -44,5 +43,5 @@ export interface IReparacionCompraRepository {
   findComprasVinculadasByTicketIds(ticketIds: string[]): Promise<Map<string, CompraVinculada[]>>;
 }
 
-/** Token de inyección de dependencias para IReparacionCompraRepository en NestJS. */
-export const REPARACION_COMPRA_REPOSITORY = Symbol('REPARACION_COMPRA_REPOSITORY');
+/** Token de inyección de dependencias para ITicketCompraRepository en NestJS. */
+export const TICKET_COMPRA_REPOSITORY = Symbol('TICKET_COMPRA_REPOSITORY');

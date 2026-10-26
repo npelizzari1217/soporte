@@ -8,17 +8,17 @@ export interface ConteoComentariosTicket {
 }
 
 /**
- * IComentarioReparacionRepository — lectura de los comentarios para la grilla de Edilicia.
+ * IConteoComentariosTicketRepository — conteo de los comentarios del ticket para la grilla de Edilicia.
  *
  * Desde odd/ticket-unificado (S3) los comentarios de reparación SON los comentarios del ticket
  * (operaciones `COMENTARIO` del timeline): se escriben con `IOperacionTicketRepository` y se leen
  * con el timeline. Este puerto queda con lo único que el timeline no da, el conteo por lote del
  * listado. La migración 20261024120000 copió `comentarios_reparacion` al timeline y la 20261025150000
- * (T4b) la borró; el nombre heredado de este puerto queda hasta que se lo renombre aparte.
+ * (T4b) la borró.
  *
  * Definido en la capa de dominio: sin imports de Prisma ni NestJS.
  */
-export interface IComentarioReparacionRepository {
+export interface IConteoComentariosTicketRepository {
   /**
    * Cuenta los comentarios activos de VARIOS tickets de una sola vez y devuelve
    * `Map<ticketId, ConteoComentariosTicket>`.
@@ -33,5 +33,5 @@ export interface IComentarioReparacionRepository {
   contarPorTickets(ticketIds: string[]): Promise<Map<string, ConteoComentariosTicket>>;
 }
 
-/** Token de inyección de dependencias para IComentarioReparacionRepository en NestJS. */
-export const COMENTARIO_REPARACION_REPOSITORY = Symbol('COMENTARIO_REPARACION_REPOSITORY');
+/** Token de inyección de dependencias para IConteoComentariosTicketRepository en NestJS. */
+export const CONTEO_COMENTARIOS_TICKET_REPOSITORY = Symbol('CONTEO_COMENTARIOS_TICKET_REPOSITORY');

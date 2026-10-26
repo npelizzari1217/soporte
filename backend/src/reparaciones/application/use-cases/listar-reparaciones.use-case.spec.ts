@@ -16,9 +16,9 @@ import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-tick
 import { ITareaTicketRepository } from '../../../tickets/domain/ports/i-tarea-ticket.repository';
 import {
   ConteoComentariosTicket,
-  IComentarioReparacionRepository,
-} from '../../domain/ports/i-comentario-reparacion.repository';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+  IConteoComentariosTicketRepository,
+} from '../../domain/ports/i-conteo-comentarios-ticket.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import {
   alcancePorTipo,
@@ -81,12 +81,12 @@ function armar(cantidad: number, bloqueados: number[] = []) {
   };
   const comentarioRepo = {
     contarPorTickets: vi
-      .fn<IComentarioReparacionRepository['contarPorTickets']>()
+      .fn<IConteoComentariosTicketRepository['contarPorTickets']>()
       .mockResolvedValue(new Map<string, ConteoComentariosTicket>()),
   };
   const reparacionCompraRepo = {
     findComprasVinculadasByTicketIds: vi
-      .fn<IReparacionCompraRepository['findComprasVinculadasByTicketIds']>()
+      .fn<ITicketCompraRepository['findComprasVinculadasByTicketIds']>()
       .mockImplementation(
         async (ids) =>
           new Map(

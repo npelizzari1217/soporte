@@ -23,7 +23,7 @@ import { PostgresAdminService } from '../../../clientes/infrastructure/postgres-
 import { TenantMigrationRunnerAdapter } from '../../../clientes/infrastructure/tenant-migration-runner.adapter';
 import { CompraEntity } from '../../../compras/domain/entities/compra.entity';
 import { VincularCompraAReparacionUseCase } from '../../../reparaciones/application/use-cases/vincular-compra-a-reparacion.use-case';
-import { PrismaReparacionCompraRepository } from '../../../reparaciones/infrastructure/persistence/prisma/prisma-reparacion-compra.repository';
+import { PrismaTicketCompraRepository } from '../../../reparaciones/infrastructure/persistence/prisma/prisma-ticket-compra.repository';
 import { DomainError, Result } from '../../../shared/domain/result';
 import { PrismaService } from '../../../shared/infrastructure/persistence/prisma.service';
 import { TenantPrismaClient } from '../../../shared/infrastructure/persistence/prisma-clients';
@@ -71,7 +71,7 @@ describe('Escrituras sobre un ticket contra su borrado concurrente (L45, tenant 
   const operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
   const tipoOperacionRepo = new PrismaTipoOperacionRepository(tenantContext);
   const bloqueoRepo = new PrismaBloqueoTicketRepository(tenantContext);
-  const reparacionCompraRepo = new PrismaReparacionCompraRepository(tenantContext);
+  const reparacionCompraRepo = new PrismaTicketCompraRepository(tenantContext);
   const estadoRepo = new PrismaEstadoRepository(tenantContext);
   const txRunner = new PrismaTenantTransactionRunner(tenantContext, { error: () => undefined });
   const siempreEditable = {

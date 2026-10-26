@@ -1,5 +1,5 @@
 import { DomainError, Result } from '../../../shared/domain/result';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { VinculoNoEncontradoError } from '../../domain/errors/reparaciones.errors';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import {
@@ -34,7 +34,7 @@ export interface DesvincularCompraDeReparacionDto {
  * `COMPRAS:LECTURA`, como al vincular.
  *
  * Verifica existencia ANTES de borrar reusando `findComprasVinculadasByTicketIds`:
- * `IReparacionCompraRepository.desvincular` hace un `deleteMany` silencioso que no informa si borró
+ * `ITicketCompraRepository.desvincular` hace un `deleteMany` silencioso que no informa si borró
  * algo, así que sin este chequeo un vínculo inexistente respondería 204 en vez de 404.
  *
  * Sin throw para fallos esperados — se modela con `Result.fail()`.
@@ -42,7 +42,7 @@ export interface DesvincularCompraDeReparacionDto {
 export class DesvincularCompraDeReparacionUseCase {
   constructor(
     private readonly reparacionCompraRepo: Pick<
-      IReparacionCompraRepository,
+      ITicketCompraRepository,
       'findComprasVinculadasByTicketIds' | 'desvincular'
     >,
     private readonly ticketRepo: Pick<ITicketRepository, 'findById' | 'esVisiblePara'>,

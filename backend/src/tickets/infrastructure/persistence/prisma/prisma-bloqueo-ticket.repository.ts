@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { comprasQueBloquean } from '../../../../reparaciones/domain/services/bloqueo-reparacion';
-import { ReparacionCompraMapper } from '../../../../reparaciones/infrastructure/persistence/prisma/reparacion-compra.mapper';
+import { TicketCompraMapper } from '../../../../reparaciones/infrastructure/persistence/prisma/ticket-compra.mapper';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { IBloqueoTicketRepository } from '../../../domain/ports/i-bloqueo-ticket.repository';
@@ -11,7 +11,7 @@ import { IBloqueoTicketRepository } from '../../../domain/ports/i-bloqueo-ticket
  *
  * Reutiliza el mapper y `comprasQueBloquean` de reparaciones para que el criterio sea EL MISMO
  * que el del chip "Bloqueada" del listado: si uno cambia, cambia el otro. Igual que
- * `PrismaReparacionCompraRepository`, filtra `compra.deletedAt IS NULL` en la consulta.
+ * `PrismaTicketCompraRepository`, filtra `compra.deletedAt IS NULL` en la consulta.
  */
 @Injectable()
 export class PrismaBloqueoTicketRepository implements IBloqueoTicketRepository {
@@ -26,7 +26,7 @@ export class PrismaBloqueoTicketRepository implements IBloqueoTicketRepository {
       where: { ticketId, compra: { deletedAt: null } },
       include: { compra: { include: { items: true } } },
     });
-    const vinculadas = rows.map((row) => ReparacionCompraMapper.toCompraVinculada(row));
+    const vinculadas = rows.map((row) => TicketCompraMapper.toCompraVinculada(row));
     return comprasQueBloquean(vinculadas).length > 0;
   }
 

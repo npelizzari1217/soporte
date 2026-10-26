@@ -1,6 +1,6 @@
 /**
- * PrismaReparacionCompraRepository — implementación del puerto
- * IReparacionCompraRepository sobre `ticket_compra` (odd/ticket-unificado, S1).
+ * PrismaTicketCompraRepository — implementación del puerto
+ * ITicketCompraRepository sobre `ticket_compra` (odd/ticket-unificado, S1).
  *
  * Reglas:
  * - Obtiene el cliente Prisma del tenant activo vía TenantContext.getClient().
@@ -19,12 +19,12 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
-import { IReparacionCompraRepository } from '../../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../../domain/ports/i-ticket-compra.repository';
 import { CompraVinculada } from '../../../domain/services/bloqueo-reparacion';
-import { ReparacionCompraMapper } from './reparacion-compra.mapper';
+import { TicketCompraMapper } from './ticket-compra.mapper';
 
 @Injectable()
-export class PrismaReparacionCompraRepository implements IReparacionCompraRepository {
+export class PrismaTicketCompraRepository implements ITicketCompraRepository {
   constructor(private readonly tenantContext: TenantContext) {}
 
   private get client(): InstanceType<typeof TenantPrismaClient> {
@@ -71,7 +71,7 @@ export class PrismaReparacionCompraRepository implements IReparacionCompraReposi
 
     const resultado = new Map<string, CompraVinculada[]>();
     for (const row of rows) {
-      const compraVinculada = ReparacionCompraMapper.toCompraVinculada(row);
+      const compraVinculada = TicketCompraMapper.toCompraVinculada(row);
       const existentes = resultado.get(row.ticketId);
       if (existentes === undefined) {
         resultado.set(row.ticketId, [compraVinculada]);

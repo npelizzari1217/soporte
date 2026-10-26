@@ -1,5 +1,5 @@
 /**
- * ReparacionCompraMapper — convierte la fila cruda de Prisma (vínculo de
+ * TicketCompraMapper — convierte la fila cruda de Prisma (vínculo de
  * `ticket_compra` + compra + ítems) a `CompraVinculada`, la vista estructural que
  * `bloqueo-reparacion.ts` (dominio) necesita para derivar el bloqueo.
  *
@@ -29,13 +29,13 @@ import { CompraVinculada } from '../../../domain/services/bloqueo-reparacion';
  * Fila de un vínculo con la compra y sus ítems incluidos (`include`). Solo se mira la compra: el
  * mismo mapper sirve para `ticket_compra` desde cualquier consulta (odd/ticket-unificado).
  */
-export type ReparacionCompraConCompraEItems = {
+export type TicketCompraConCompraEItems = {
   compra: PrismaCompra & { items: PrismaItemCompra[] };
 };
 
-export class ReparacionCompraMapper {
+export class TicketCompraMapper {
   /** Convierte una fila con `compra`/`items` incluidos → `CompraVinculada` de dominio. */
-  static toCompraVinculada(row: ReparacionCompraConCompraEItems): CompraVinculada {
+  static toCompraVinculada(row: TicketCompraConCompraEItems): CompraVinculada {
     const itemsActivos = row.compra.items.filter((item) => item.deletedAt === null);
 
     return {

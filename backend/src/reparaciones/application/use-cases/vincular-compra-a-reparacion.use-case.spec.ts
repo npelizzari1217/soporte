@@ -8,7 +8,7 @@
  * Ref design: sdd/reparacion-bloqueada-por-compra/design, D4, D7.
  */
 import { VincularCompraAReparacionUseCase } from './vincular-compra-a-reparacion.use-case';
-import { IReparacionCompraRepository } from '../../domain/ports/i-reparacion-compra.repository';
+import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { ICompraRepository } from '../../../compras/domain/ports/i-compra.repository';
 import { CompraEntity } from '../../../compras/domain/entities/compra.entity';
 import { CompraNoEncontradaError } from '../../domain/errors/reparaciones.errors';
@@ -72,7 +72,7 @@ describe('VincularCompraAReparacionUseCase', () => {
         .mockResolvedValue(compraExistente()),
     };
     const reparacionCompraRepo = {
-      vincular: vi.fn<IReparacionCompraRepository['vincular']>().mockResolvedValue(undefined),
+      vincular: vi.fn<ITicketCompraRepository['vincular']>().mockResolvedValue(undefined),
     };
 
     let enTransaccion = false;

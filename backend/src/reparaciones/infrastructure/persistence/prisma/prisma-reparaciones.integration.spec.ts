@@ -1,5 +1,5 @@
 /**
- * T7.3 [INTEGRATION] — PrismaComentarioReparacionRepository contra Postgres REAL
+ * T7.3 [INTEGRATION] — PrismaConteoComentariosTicketRepository contra Postgres REAL
  * (`soporte_tenant_test`).
  *
  * Desde odd/ticket-unificado (S3) el conteo de comentarios de la grilla cuenta los COMENTARIO del
@@ -19,7 +19,7 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { TenantPrismaClient } from '../../../../shared/infrastructure/persistence/prisma-clients';
 
 import { PrismaTicketRepository } from '../../../../tickets/infrastructure/persistence/prisma/prisma-ticket.repository';
-import { PrismaComentarioReparacionRepository } from './prisma-comentario-reparacion.repository';
+import { PrismaConteoComentariosTicketRepository } from './prisma-conteo-comentarios-ticket.repository';
 
 import { TicketEntity, TicketProps } from '../../../../tickets/domain/entities/ticket.entity';
 
@@ -36,7 +36,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
   let tenantContext: TenantContext;
 
   let ticketRepo: PrismaTicketRepository;
-  let comentarioRepo: PrismaComentarioReparacionRepository;
+  let comentarioRepo: PrismaConteoComentariosTicketRepository;
 
   let tipoEdiliciaId: string;
   let estadoNuevoId: string;
@@ -138,7 +138,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     tenantContext = new TenantContext();
 
     ticketRepo = new PrismaTicketRepository(tenantContext);
-    comentarioRepo = new PrismaComentarioReparacionRepository(tenantContext);
+    comentarioRepo = new PrismaConteoComentariosTicketRepository(tenantContext);
 
     await limpiarFixtures();
 
@@ -206,7 +206,7 @@ describe('Reparaciones Persistence Repos — Integration (PR7)', () => {
     await prismaService.onModuleDestroy();
   }, 30_000);
 
-  describe('PrismaComentarioReparacionRepository.contarPorTickets (odd/ticket-unificado, S3)', () => {
+  describe('PrismaConteoComentariosTicketRepository.contarPorTickets (odd/ticket-unificado, S3)', () => {
     it('cuenta los COMENTARIO activos del timeline por ticket, separados por visibilidad', async () => {
       const a = TicketEntity.create(makeTicketProps());
       const b = TicketEntity.create(makeTicketProps());

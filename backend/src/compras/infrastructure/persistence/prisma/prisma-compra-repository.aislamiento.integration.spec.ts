@@ -1,8 +1,8 @@
 /**
  * PR-12 [INTEGRATION] — [H1] Reposición del aislamiento cross-tenant de
  * compras, borrado en PR-1 junto con `compras/**` (importaba
- * `PrismaTicketCompraRepository`, clase que dejó de existir con el
- * rediseño). Este `it('[CRITICAL] ...')` es el reemplazo directo de aquel,
+ * la `PrismaTicketCompraRepository` de entonces, clase que dejó de existir
+ * con el rediseño; el nombre actual es de otro puerto). Este `it('[CRITICAL] ...')` es el reemplazo directo de aquel,
  * ahora contra `PrismaCompraRepository` (PR-11, ya completo y utilizable).
  *
  * Precedente EXACTO seguido: `prisma-ticket-repository.aislamiento.integration.spec.ts`
