@@ -203,3 +203,19 @@ Fuera de alcance, declarado antes de empezar:
   y `20261026110000_tramos_tecnico_ticket` aplicadas en los 9 tenants. Dump previo
   `C:\soporte\backups\utc-backfill-20261025-182341`. `/login` 200, API sin token 401. Rollback de código: `78388820`
   (con el `rollback.sql` de las dos migraciones si hiciera falta). La medición arranca con este deploy.
+- **L16 — Judgment-day (2026-10-26), pedido por el dueño ("si").** Dos jueces ciegos sobre
+  `78388820..8ba22465`. Sin hallazgos CRITICAL → JUDGMENT: APPROVED, 0 rondas de corrección.
+  Advertencias abiertas, a decidir por el dueño:
+  - JD-B-003: `medir()` lee el horario del técnico (base del tenant) dentro del `try`; si esa lectura
+    falla, el catch devuelve null con la transacción ya abortada y el cambio de estado sale en 500
+    (rollback, sin pérdida de datos) en vez de cerrar el tramo con `habil_s` NULL.
+  - JD-B-002: la transacción del save suma lecturas (incluye feriados de master) bajo el timeout de 5 s.
+  - JD-A-002: un ticket importado sin historial de `CAMBIO_ESTADO` cuenta como tiempo corrido una
+    espera al cliente previa al tramo.
+  - JD-A-001: en el dashboard por técnico, el alcance por fila mira el asignado actual, no el del tramo.
+  - JD-B-005: la mutación de guardado del horario por técnico es compartida entre técnicos.
+  - JD-B-001: el solicitante ve el veredicto del técnico (coincide con la decisión del dueño "Lo ve
+    cualquiera que vea el ticket").
+  Sugerencias: runbook con comentarios de estado vencidos (líneas ~1590 y ~1614, los dos jueces),
+  el cumplimiento cuenta tramos y no tickets (A-003, B-006), reset del form del técnico al guardar el
+  del tenant (A-005).
