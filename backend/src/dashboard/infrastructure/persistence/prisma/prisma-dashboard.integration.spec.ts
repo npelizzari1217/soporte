@@ -57,6 +57,7 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
   let tipoPreventivoId: string;
   let tipoPreventivoCreado = false;
   let estadoEsperaId: string;
+  let estadoCanceladoId: string;
   const ciclosWu8: string[] = [];
 
   const RUN_PREFIX = randomBytes(2).toString('hex');
@@ -180,6 +181,15 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
     }
     estadoEsperaId = (
       await tenantClient.estado.findUniqueOrThrow({ where: { codigo: 'ESPERANDO_CLIENTE' } })
+    ).id;
+    // El código importa (la regla mira 'CANCELADO'), así que se usa el real; upsert porque la base
+    // de test compartida puede o no tenerlo ya.
+    estadoCanceladoId = (
+      await tenantClient.estado.upsert({
+        where: { codigo: 'CANCELADO' },
+        update: {},
+        create: { codigo: 'CANCELADO', nombre: 'Cancelado', orden: 7, activo: true },
+      })
     ).id;
 
     const estadoNuevo = await tenantClient.estado.create({
@@ -569,6 +579,30 @@ describe('PrismaDashboardRepository — Integration (PR-D)', () => {
         });
 
         expect(await medir()).toEqual(antes);
+      });
+    });
+  });
+
+  describe('tickets cancelados (odd/tasks/defectos-ayuda.md, S4)', () => {
+    it('un CANCELADO no cuenta en abiertos ni en la carga del técnico; un abierto sí', async () => {
+      const ciclo = await cicloNuevo();
+      await withTenant(async () => {
+        // Un cancelado nunca recibe fecha de cierre: era lo que lo hacía pasar por abierto.
+        await crearTicket({
+          cicloId: ciclo,
+          estadoId: estadoCanceladoId,
+          asignadoId: AGENTE_1_ID,
+          fechaCierre: null,
+        });
+        await crearTicket({ cicloId: ciclo, asignadoId: AGENTE_1_ID, fechaCierre: null });
+
+        expect(await repo.conteoPorEstadoAgrupado({ cicloId: ciclo })).toEqual({
+          abiertos: 1,
+          cerrados: 0,
+        });
+        expect(await repo.cargaPorAgente({ cicloId: ciclo })).toEqual([
+          { asignadoId: AGENTE_1_ID, abiertos: 1 },
+        ]);
       });
     });
   });

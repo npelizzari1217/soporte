@@ -31,7 +31,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - [x] T1 — S1
 - [x] T2 — S2
 - [x] T3 — S3
-- [ ] T4 — S4
+- [x] T4 — S4
 - [ ] T5 — S5
 - [ ] T6 — S6
 - [ ] T7 — S7
@@ -58,3 +58,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
   que ya no está cae a la marca tipeada. `src/equipos` 948/948, lint y typecheck limpios. Ayuda: la
   tanda de hoy documentaba #1 y #2 tal como eran; `equipos-listado.md` y
   `equipos-componentes-y-modelos.md` corregidos (una Ayuda que miente se corrige aunque esté suspendida).
+- **L6 — T4 (#4), confirmado.** RED en `prisma-dashboard.integration.spec.ts`: `expected { abiertos: 2 }
+  to deeply equal { abiertos: 1 }`. GREEN: "abierto" = sin fecha de cierre y estado distinto de
+  CANCELADO, en el conteo y en la carga por agente (que también sumaba cancelados). `src/dashboard`
+  63/63, lint y typecheck limpios. Ayuda `dashboard.md` corregida.
