@@ -2,6 +2,8 @@ import { ITenantTransactionRunner } from '../../shared/infrastructure/persistenc
 import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository, TicketFiltros } from '../../tickets/domain/ports/i-ticket.repository';
 import { SincronizarTramoTecnicoService } from '../application/sincronizar-tramo-tecnico.service';
+import { IDomainEventPublisher } from '../../shared/domain/ports/i-domain-event-publisher';
+import { TicketEstadoModificadoEvent } from '../../tickets/domain/events/ticket-estado-modificado.event';
 
 /**
  * TicketRepositoryConTramos — `ITicketRepository` que mantiene los tramos del técnico en cada
@@ -19,13 +21,17 @@ import { SincronizarTramoTecnicoService } from '../application/sincronizar-tramo
  * participa de ella; fuera, abre una propia. Lee la situación previa con la fila bloqueada, guarda
  * y sincroniza el tramo, todo en la misma transacción: un rollback no deja un tramo huérfano.
  *
+ * Por ser ese punto único, también publica `ticket.estado_modificado` cuando un ticket existente
+ * cambia de estado, después del commit (odd/tasks/defectos-ayuda.md, S6).
+ *
  * El resto de los métodos delega sin cambios.
  */
 export class TicketRepositoryConTramos implements ITicketRepository {
   constructor(
     private readonly inner: ITicketRepository,
     private readonly tramos: Pick<SincronizarTramoTecnicoService, 'leerPrevio' | 'sincronizar'>,
-    private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
+    private readonly txRunner: Pick<ITenantTransactionRunner, 'run' | 'alCommitear'>,
+    private readonly eventPublisher: Pick<IDomainEventPublisher, 'publish'>,
   ) {}
 
   findById(id: string): Promise<TicketEntity | null> {
@@ -62,7 +68,8 @@ export class TicketRepositoryConTramos implements ITicketRepository {
 
   /**
    * Guarda el ticket y, en la misma transacción, abre o cierra su tramo si cambiaron el
-   * responsable o el estado.
+   * responsable o el estado. Si cambió el estado de un ticket existente, publica
+   * `ticket.estado_modificado` al confirmar la transacción.
    *
    * @param ticket Ticket a persistir.
    */
@@ -71,6 +78,11 @@ export class TicketRepositoryConTramos implements ITicketRepository {
       const previo = await this.tramos.leerPrevio(ticket.id);
       await this.inner.save(ticket);
       await this.tramos.sincronizar(ticket.id, previo);
+      if (previo !== null && previo.estadoId !== ticket.estadoId) {
+        this.txRunner.alCommitear(() =>
+          this.eventPublisher.publish(new TicketEstadoModificadoEvent({ ticketId: ticket.id })),
+        );
+      }
     });
   }
 

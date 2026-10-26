@@ -149,7 +149,7 @@ sistema cada vez que ocurre algo con un ticket. Se configura en la sección
   | Evento | Cuándo se avisa |
   |---|---|
   | **Ticket creado** | Al crearse un ticket |
-  | **Cambio de estado** | Cuando el ticket pasa a Resuelto, Cerrado o Esperando al cliente |
+  | **Cambio de estado** | Cada vez que el ticket cambia de estado, por cualquier camino (cambio manual, asignación o tareas) |
   | **Ticket asignado** | Al asignarse el ticket, a mano o por la regla del tipo |
   | **Comentario público** | Al agregarse un comentario público. Los internos no se avisan |
 

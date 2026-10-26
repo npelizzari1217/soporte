@@ -240,9 +240,20 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         tenantContext: TenantContext,
         tramos: SincronizarTramoTecnicoService,
         txRunner: ITenantTransactionRunner,
+        eventPublisher: IDomainEventPublisher,
       ): ITicketRepository =>
-        new TicketRepositoryConTramos(new PrismaTicketRepository(tenantContext), tramos, txRunner),
-      inject: [TenantContext, SincronizarTramoTecnicoService, TENANT_TX_RUNNER],
+        new TicketRepositoryConTramos(
+          new PrismaTicketRepository(tenantContext),
+          tramos,
+          txRunner,
+          eventPublisher,
+        ),
+      inject: [
+        TenantContext,
+        SincronizarTramoTecnicoService,
+        TENANT_TX_RUNNER,
+        DOMAIN_EVENT_PUBLISHER,
+      ],
     },
     { provide: OPERACION_TICKET_REPOSITORY, useClass: PrismaOperacionTicketRepository },
     { provide: RELOJ_SLA_MARCADOR, useClass: PrismaRelojSlaMarcador },

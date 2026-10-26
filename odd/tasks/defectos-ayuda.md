@@ -33,7 +33,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - [x] T3 — S3
 - [x] T4 — S4
 - [x] T5 — S5
-- [ ] T6 — S6
+- [x] T6 — S6
 - [ ] T7 — S7
 
 ## Log
@@ -65,3 +65,13 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - **L7 — T5 (#7), confirmado.** RED: el texto de "Pedido registrado" no coincidía (prometía aviso "en
   cada cambio de estado"). GREEN: dice que avisa cuando se necesita su respuesta, cuando se resuelve o
   se cierra y cuando hay un comentario nuevo, en neutro. `pedido-publico` 36/36, lint y type-check limpios.
+- **L8 — T6 (#5).** Ningún evento cubría todo cambio de estado: `ticket.estado_cambiado` sale solo hacia
+  los estados que avisan por correo y la asignación y las tareas cambian el estado sin emitir nada.
+  Evento nuevo `ticket.estado_modificado`, publicado post-commit por `TicketRepositoryConTramos.save`
+  (punto único de escritura del estado) cuando un ticket existente cambia de estado; el webhook lo
+  escucha en lugar de `estado_cambiado` (correos y CSAT no cambian; sin duplicados). RED: 3 tests
+  (decorador y listener) fallaron por la razón correcta. GREEN más un test de integración (asignar un
+  NUEVO avisa, reasignar no). El guard estructural de `escritores-asignado.spec.ts` acepta el salto de
+  línea de Prettier. `tiempo-tecnico`+`integraciones` 420/420, lint y typecheck limpios. Ayuda
+  `integraciones-y-clientes.md` corregida. Riesgo: los consumidores del webhook reciben más avisos
+  (Asignado, En proceso, Cancelado, reaperturas), que es lo que promete el nombre del evento.

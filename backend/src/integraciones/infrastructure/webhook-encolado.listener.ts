@@ -5,7 +5,7 @@ import { TenantContext } from '../../shared/tenancy/tenant-context';
 import { TicketAsignadoEvent } from '../../tickets/domain/events/ticket-asignado.event';
 import { TicketComentadoEvent } from '../../tickets/domain/events/ticket-comentado.event';
 import { TicketCreadoEvent } from '../../tickets/domain/events/ticket-creado.event';
-import { TicketEstadoCambiadoEvent } from '../../tickets/domain/events/ticket-estado-cambiado.event';
+import { TicketEstadoModificadoEvent } from '../../tickets/domain/events/ticket-estado-modificado.event';
 import { EncolarWebhookUseCase } from '../application/encolar-webhook.use-case';
 import { EventoWebhook } from '../domain/webhook-destino';
 
@@ -15,7 +15,10 @@ type EventoTicket = { ticketId: string; occurredAt: Date };
  * WebhookEncoladoListener — adapter `@OnEvent` que encola el aviso de webhook de los cuatro eventos
  * de ticket que el cliente puede recibir (odd/webhooks, T4, CA1). `ticket.comentado` solo se
  * publica para comentarios públicos, así que un comentario interno no genera aviso.
- * `ticket.transicionado` y `ticket.reprioritizado` no se escuchan.
+ * El cambio de estado sale de `ticket.estado_modificado`, que cubre todo cambio, y no de
+ * `ticket.estado_cambiado`, que solo sale hacia los estados que avisan por correo
+ * (odd/tasks/defectos-ayuda.md, S6). `ticket.transicionado` y `ticket.reprioritizado` no se
+ * escuchan.
  *
  * Los eventos se publican después del commit (`alCommitear`) y el handler corre en el call-stack de
  * `emit()`: hereda el `TenantContext` del emisor, de donde sale el cliente. Así el aviso del
@@ -37,8 +40,8 @@ export class WebhookEncoladoListener {
     await this.encolar('TICKET_CREADO', event);
   }
 
-  @OnEvent('ticket.estado_cambiado')
-  async onTicketEstadoCambiado(event: TicketEstadoCambiadoEvent): Promise<void> {
+  @OnEvent('ticket.estado_modificado')
+  async onTicketEstadoModificado(event: TicketEstadoModificadoEvent): Promise<void> {
     await this.encolar('TICKET_ESTADO_CAMBIADO', event);
   }
 
