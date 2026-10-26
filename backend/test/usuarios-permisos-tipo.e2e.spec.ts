@@ -310,12 +310,15 @@ describe('Plantillas de rol por tipo de ticket por los endpoints de /usuarios (T
     });
 
     it('con otro rol también: 201 y una sola membresía activa con el rol nuevo', async () => {
+      // El rol tiene que existir en master: la base de test es compartida y otros specs lo crean y
+      // lo borran, así que no se puede dar por sentado.
+      await rolId('COLABORADOR');
       const usuarioId = await crearUsuarioPorEndpoint('realta-otro', 'TECNICO');
       expect((await http("DELETE", `/usuarios/${usuarioId}/membresia`)).status).toBe(204);
 
-      const { status } = await realta('realta-otro', 'COLABORADOR');
+      const { status, body } = await realta('realta-otro', 'COLABORADOR');
 
-      expect(status).toBe(201);
+      expect(status, JSON.stringify(body)).toBe(201);
       expect(await membresiasDe(usuarioId)).toEqual([
         { activo: true, rol: { codigo: 'COLABORADOR' } },
       ]);
