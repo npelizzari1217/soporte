@@ -153,6 +153,7 @@ model Cliente {
 
   /// Webhooks (odd/webhooks, T1): a lo sumo un destino por cliente.
   webhookDestino WebhookDestino?
+  asistenteIaConfig AsistenteIaConfig?
 
   @@index([activo])
   @@map("clientes")
@@ -730,4 +731,28 @@ model WebhookDestino {
   cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@map("webhook_destinos")
+}
+
+// ─── ASISTENTE_IA_CONFIG (proveedor de IA del asistente por cliente, odd/asistente-ia-ayuda T1) ──
+//
+// 1:1 con `clientes`, como `webhook_destinos`: la fila existe si y solo si el cliente tiene IA. Sin
+// fila, el asistente responde con la Ayuda directamente (modo de respaldo).
+//
+// `claveCifrada`: payload `v1:{iv}:{tag}:{ct}` de `AesGcmSecretCipher`, AAD `ia:{clienteId}`
+// (`ClaveIaCifrada`). Nunca se persiste en claro ni sale por la API.
+// `url`: base de un endpoint de chat completions compatible con OpenAI (por defecto, el de Gemini).
+
+model AsistenteIaConfig {
+  clienteId         String    @id @map("cliente_id") @db.Uuid
+  url               String    @db.VarChar(2048)
+  modelo            String    @db.VarChar(100)
+  claveCifrada      String    @map("clave_cifrada") @db.Text
+  verificadoAt      DateTime? @map("verificado_at") @db.Timestamptz
+  verificacionError String?   @map("verificacion_error") @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+
+  @@map("asistente_ia_config")
 }

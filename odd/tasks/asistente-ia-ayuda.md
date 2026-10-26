@@ -31,7 +31,7 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
 
 ## Tasks
 
-- [ ] T1 — S4, S7: tabla `asistente_ia_config` 1:1 con `clientes` (master, aditiva, `rollback.sql`),
+- [x] T1 — S4, S7: tabla `asistente_ia_config` 1:1 con `clientes` (master, aditiva, `rollback.sql`),
   clave cifrada, casos de uso ROOT ver/configurar/quitar/probar y endpoints `/clientes/:id/ia`.
 - [ ] T2 — S7: `rotate-email-crypto-key.ps1` re-cifra las claves de IA; runbook.
 - [ ] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
@@ -59,3 +59,12 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   todo-o-nada lo da la estructura. Clave cifrada con `EMAIL_CRYPTO_KEY` y AAD `ia:{clienteId}` (T2 la
   suma a `DESTINOS` de `rotar-email-crypto-key.mjs`). Módulo nuevo `asistente`. Proveedor implícito en
   la URL (chat completions compatible con OpenAI); por defecto la de Gemini.
+- **L5 — T1 hecha.** Migración `20261026120000_asistente_ia_config` (con `rollback.sql`), aplicada en
+  la base de desarrollo y en `soporte_master_test`. Módulo `asistente`: `ClaveIaCifrada` (AAD
+  `ia:{clienteId}`), casos de uso ver/configurar/quitar/probar (la clave omitida conserva el ciphertext
+  sin descifrarlo; guardar no llama al proveedor), `OpenAiCompatibleModeloIa` (fetch con plazo de 20 s,
+  sin seguir redirecciones, motivos de falla saneados que nunca incluyen el cuerpo ni la clave) y
+  `IaClienteController` (`GET/PATCH/DELETE /clientes/:id/ia`, `POST /clientes/:id/ia/probar`, solo
+  ROOT). Tests: 8 archivos, 64/64 (unitarios, integración del repositorio, e2e con guards reales: 401
+  y 403 en las 4 rutas sin escribir nada; smoke de `app.module`). Lint y typecheck limpios. Feature
+  nueva: sin TDD obligatorio (CLAUDE.md §6.1).
