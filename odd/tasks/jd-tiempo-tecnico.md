@@ -90,3 +90,9 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   vitest hijos de `test/entorno-corte-arranque.spec.ts` (fixture excluido que debe fallar sin entorno).
   Deuda anotada: `feriadosRepo.obtener()` lee `feriados_cliente` (base del tenant) dentro del `try` de
   `medir()`; un fallo ahí repite el patrón de B-003. Ayuda (suspendida): columna "Resoluciones evaluadas".
+- **L13 — Deuda de L12 (2026-10-26), pedida por el dueño:** "Vamos con Deuda anotada: los feriados
+  propios del cliente se leen de la base del tenant dentro del mismo bloque que traga errores". RED: "un
+  error de la base del tenant al leer los feriados del cliente se propaga y no cierra el tramo" falló con
+  `promise resolved "undefined" instead of rejecting`. GREEN: el puerto suma `obtenerGlobales()` y
+  `obtenerPropios()` (`obtener()` sigue siendo la unión, fail-closed sin tenant); `medir()` lee los propios
+  fuera del `try` y deja adentro solo master. Rama `fix/feriados-cliente-fuera-del-try`.
