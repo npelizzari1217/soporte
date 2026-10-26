@@ -517,9 +517,11 @@ import { SoporteController } from './interface/controllers/soporte.controller';
       // Compone `ListarEquiposUseCase` (design D4, sdd/exportar-listados-csv)
       // — NO inyecta EQUIPO_INFORMATICO_REPOSITORY directamente.
       provide: ExportarEquiposUseCase,
-      useFactory: (listarEquiposUseCase: ListarEquiposUseCase) =>
-        new ExportarEquiposUseCase(listarEquiposUseCase),
-      inject: [ListarEquiposUseCase],
+      useFactory: (
+        listarEquiposUseCase: ListarEquiposUseCase,
+        modeloRepo: IModeloEquipoRepository,
+      ) => new ExportarEquiposUseCase(listarEquiposUseCase, modeloRepo),
+      inject: [ListarEquiposUseCase, MODELO_EQUIPO_REPOSITORY],
     },
   ],
   exports: [

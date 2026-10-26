@@ -30,7 +30,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 
 - [x] T1 — S1
 - [x] T2 — S2
-- [ ] T3 — S3
+- [x] T3 — S3
 - [ ] T4 — S4
 - [ ] T5 — S5
 - [ ] T6 — S6
@@ -52,3 +52,9 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - **L4 — T2 (#2), confirmado.** RED: "guardar sin cambiar un modelo que se deshabilitó después no se
   rechaza" → `expected false to be true`. GREEN: `EditarEquipoUseCase` valida el modelo solo si cambia;
   elegir uno deshabilitado nuevo sigue rechazado. `src/equipos` 946/946, lint y typecheck limpios.
+- **L5 — T3 (#1), confirmado.** RED: `Expected "Impresora;HP LaserJet Pro M404;SN-001;Activo"`,
+  `Received "Impresora;;SN-001;Activo"`. GREEN: `ExportarEquiposUseCase` recibe el repositorio de
+  modelos, busca cada modelo presente una sola vez y arma "Marca Modelo" como la pantalla; un modelo
+  que ya no está cae a la marca tipeada. `src/equipos` 948/948, lint y typecheck limpios. Ayuda: la
+  tanda de hoy documentaba #1 y #2 tal como eran; `equipos-listado.md` y
+  `equipos-componentes-y-modelos.md` corregidos (una Ayuda que miente se corrige aunque esté suspendida).

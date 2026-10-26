@@ -10,6 +10,7 @@ import { ColumnaCsv } from '../../../shared/infrastructure/csv/csv';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/equipos.errors';
 import { ListarEquiposDto, ListarEquiposUseCase } from './listar-equipos.use-case';
+import { IModeloEquipoRepository } from '../../../insumos/domain/ports/i-modelo-equipo.repository';
 
 /** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
 export type ExportarEquiposResult = ArchivoExport;
@@ -46,7 +47,10 @@ export type ExportarEquiposResult = ArchivoExport;
  * `ExportarTicketsUseCase`/`ExportarComprasUseCase`.
  */
 export class ExportarEquiposUseCase {
-  constructor(private readonly listarEquiposUseCase: Pick<ListarEquiposUseCase, 'execute'>) {}
+  constructor(
+    private readonly listarEquiposUseCase: Pick<ListarEquiposUseCase, 'execute'>,
+    private readonly modeloRepo: Pick<IModeloEquipoRepository, 'findById'>,
+  ) {}
 
   async execute<F extends FormatoExport | undefined = undefined>(
     dto: ListarEquiposDto = {},
@@ -61,24 +65,52 @@ export class ExportarEquiposUseCase {
     }
 
     const equipos = listado.getValue();
+    const marcas = await this.marcasDeCatalogo(equipos);
 
     return armarExport({
       filas: equipos,
       // Post-fetch: ver docblock de la clase ("Unbounded memory", residual aceptado).
       total: equipos.length,
       tope: TOPE_FILAS_EXPORT,
-      columnas: ExportarEquiposUseCase.columnas(),
+      columnas: ExportarEquiposUseCase.columnas(marcas),
       prefijo: 'equipos',
       formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
     });
   }
 
-  /** Columnas fijas del archivo — espejan exactamente la tabla en pantalla, sin importe ni fechas. */
-  private static columnas(): readonly ColumnaCsv<EquipoInformaticoEntity>[] {
+  /**
+   * "Marca Modelo" de cada modelo de catálogo presente, buscado una sola vez por modelo. Es el mismo
+   * texto que muestra la pantalla: el formulario vacía la marca tipeada al elegir un modelo de
+   * catálogo, así que exportar solo esa marca dejaba la columna vacía (odd/tasks/defectos-ayuda.md, S3).
+   */
+  private async marcasDeCatalogo(
+    equipos: readonly EquipoInformaticoEntity[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const ids = [
+      ...new Set(equipos.map((e) => e.modeloEquipoId).filter((id): id is string => id !== null)),
+    ];
+    const modelos = await Promise.all(ids.map((id) => this.modeloRepo.findById(id)));
+    const marcas = new Map<string, string>();
+    for (const modelo of modelos) {
+      if (modelo) marcas.set(modelo.id, `${modelo.marca} ${modelo.modelo}`);
+    }
+    return marcas;
+  }
+
+  /**
+   * Columnas fijas del archivo — espejan exactamente la tabla en pantalla, sin importe ni fechas.
+   * Un modelo que ya no está en el catálogo cae a la marca tipeada.
+   */
+  private static columnas(
+    marcas: ReadonlyMap<string, string>,
+  ): readonly ColumnaCsv<EquipoInformaticoEntity>[] {
     return [
       { encabezado: 'Nombre', valor: (e) => e.nombre },
-      { encabezado: 'Marca', valor: (e) => e.marca },
+      {
+        encabezado: 'Marca',
+        valor: (e) => (e.modeloEquipoId && marcas.get(e.modeloEquipoId)) || e.marca,
+      },
       { encabezado: 'N.º de serie', valor: (e) => e.numeroSerie },
       { encabezado: 'Estado', valor: (e) => (e.activo ? 'Activo' : 'Baja') },
     ];

@@ -21,6 +21,7 @@ import { leerXlsx } from '../../../testing/leer-xlsx';
 import { ExportarEquiposUseCase } from './exportar-equipos.use-case';
 import { ListarEquiposUseCase } from './listar-equipos.use-case';
 import { EquipoInformaticoEntity } from '../../domain/entities/equipo-informatico.entity';
+import { ModeloEquipoEntity } from '../../../insumos/domain/entities/modelo-equipo.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/equipos.errors';
 import { TOPE_FILAS_EXPORT } from '../../../shared/domain/tope-filas-export';
 import { Result } from '../../../shared/domain/result';
@@ -38,6 +39,7 @@ function crearEquipo(
     marca: string | null;
     numeroSerie: string | null;
     activo: boolean;
+    modeloEquipoId: string | null;
   }> = {},
   id = 'equipo-1',
 ): EquipoInformaticoEntity {
@@ -45,7 +47,7 @@ function crearEquipo(
     {
       nombre: overrides.nombre ?? 'Notebook Dell',
       numeroSerie: overrides.numeroSerie !== undefined ? overrides.numeroSerie : 'SN-001',
-      marca: overrides.marca ?? 'Dell',
+      marca: overrides.marca !== undefined ? overrides.marca : 'Dell',
       modelo: null,
       fechaAdquisicion: null,
       ubicacion: null,
@@ -54,6 +56,7 @@ function crearEquipo(
       observaciones: null,
       valorResidual: null,
       fechaValorResidual: null,
+      modeloEquipoId: overrides.modeloEquipoId ?? null,
     },
     id,
   );
@@ -67,6 +70,13 @@ function crearEquipo(
     });
   }
   return equipo;
+}
+
+/** Catálogo de modelos en memoria; cuenta las búsquedas para afirmar que no repite. */
+function catalogoDeModelos(modelos: ModeloEquipoEntity[] = []) {
+  return {
+    findById: vi.fn(async (id: string) => modelos.find((m) => m.id === id) ?? null),
+  };
 }
 
 /** `ListarEquiposUseCase` FAKE — controla la lista sin pasar por el repositorio real. */
@@ -85,7 +95,10 @@ describe('ExportarEquiposUseCase', () => {
       { nombre: 'Monitor LG', marca: 'LG', numeroSerie: null, activo: false },
       'e2',
     );
-    const useCase = new ExportarEquiposUseCase(crearListarEquiposFake([activo, deBaja]));
+    const useCase = new ExportarEquiposUseCase(
+      crearListarEquiposFake([activo, deBaja]),
+      catalogoDeModelos(),
+    );
 
     const result = await useCase.execute();
 
@@ -97,9 +110,62 @@ describe('ExportarEquiposUseCase', () => {
     expect(filas[2]).toBe('Monitor LG;LG;;Baja');
   });
 
+  it('con modelo de catálogo la columna Marca dice marca y modelo, como la pantalla (defectos-ayuda S3)', async () => {
+    const MODELO_ID = '01900000-0000-7000-8000-0000000000aa';
+    const modelo = ModeloEquipoEntity.create(
+      { marca: 'HP', modelo: 'LaserJet Pro M404', activo: false },
+      MODELO_ID,
+    );
+    // El form vacía la marca tipeada al elegir un modelo de catálogo.
+    const conModelo = crearEquipo(
+      { nombre: 'Impresora', marca: null, modeloEquipoId: MODELO_ID },
+      'e1',
+    );
+    const otroConModelo = crearEquipo(
+      { nombre: 'Impresora 2', marca: null, modeloEquipoId: MODELO_ID, numeroSerie: 'SN-002' },
+      'e2',
+    );
+    const sinModelo = crearEquipo(
+      { nombre: 'Notebook', marca: 'Dell', numeroSerie: 'SN-003' },
+      'e3',
+    );
+    const catalogo = catalogoDeModelos([modelo]);
+    const useCase = new ExportarEquiposUseCase(
+      crearListarEquiposFake([conModelo, otroConModelo, sinModelo]),
+      catalogo,
+    );
+
+    const result = await useCase.execute();
+
+    const filas = lineas(result.getValue().contenido);
+    expect(filas[1]).toBe('Impresora;HP LaserJet Pro M404;SN-001;Activo');
+    expect(filas[2]).toBe('Impresora 2;HP LaserJet Pro M404;SN-002;Activo');
+    expect(filas[3]).toBe('Notebook;Dell;SN-003;Activo');
+    expect(catalogo.findById).toHaveBeenCalledTimes(1);
+  });
+
+  it('un modelo que ya no está en el catálogo cae a la marca tipeada', async () => {
+    const equipo = crearEquipo(
+      {
+        nombre: 'Impresora',
+        marca: 'Genérica',
+        modeloEquipoId: '01900000-0000-7000-8000-0000000000bb',
+      },
+      'e1',
+    );
+    const useCase = new ExportarEquiposUseCase(
+      crearListarEquiposFake([equipo]),
+      catalogoDeModelos(),
+    );
+
+    const result = await useCase.execute();
+
+    expect(lineas(result.getValue().contenido)[1]).toBe('Impresora;Genérica;SN-001;Activo');
+  });
+
   it('por defecto pide solo los vigentes a ListarEquiposUseCase (incluirDadosDeBaja=false)', async () => {
     const listarEquipos = crearListarEquiposFake([]);
-    const useCase = new ExportarEquiposUseCase(listarEquipos);
+    const useCase = new ExportarEquiposUseCase(listarEquipos, catalogoDeModelos());
 
     await useCase.execute();
 
@@ -110,7 +176,7 @@ describe('ExportarEquiposUseCase', () => {
     const activo = crearEquipo({ nombre: 'Vigente', numeroSerie: 'SN-1' }, 'e1');
     const deBaja = crearEquipo({ nombre: 'Retirado', numeroSerie: 'SN-2', activo: false }, 'e2');
     const listarEquipos = crearListarEquiposFake([activo, deBaja]);
-    const useCase = new ExportarEquiposUseCase(listarEquipos);
+    const useCase = new ExportarEquiposUseCase(listarEquipos, catalogoDeModelos());
 
     const result = await useCase.execute({ incluirDadosDeBaja: true });
 
@@ -127,11 +193,13 @@ describe('ExportarEquiposUseCase', () => {
 
     const okResult = await new ExportarEquiposUseCase(
       crearListarEquiposFake(listaEnElTope),
+      catalogoDeModelos(),
     ).execute();
     expect(okResult.isFail()).toBe(false);
 
     const failResult = await new ExportarEquiposUseCase(
       crearListarEquiposFake(listaSobreElTope),
+      catalogoDeModelos(),
     ).execute();
     expect(failResult.isFail()).toBe(true);
     expect(failResult.getError()).toBeInstanceOf(ExportacionDemasiadoGrandeError);
@@ -141,7 +209,10 @@ describe('ExportarEquiposUseCase', () => {
 
   it('neutraliza inyección de fórmula CSV en el nombre (celda de texto libre)', async () => {
     const equipo = crearEquipo({ nombre: '=HYPERLINK("http://evil","clic")' });
-    const useCase = new ExportarEquiposUseCase(crearListarEquiposFake([equipo]));
+    const useCase = new ExportarEquiposUseCase(
+      crearListarEquiposFake([equipo]),
+      catalogoDeModelos(),
+    );
 
     const result = await useCase.execute();
 
@@ -150,7 +221,7 @@ describe('ExportarEquiposUseCase', () => {
   });
 
   it('nombra el archivo con la fecha de exportación', async () => {
-    const useCase = new ExportarEquiposUseCase(crearListarEquiposFake([]));
+    const useCase = new ExportarEquiposUseCase(crearListarEquiposFake([]), catalogoDeModelos());
 
     const { nombreArchivo } = (await useCase.execute()).getValue();
 
@@ -162,7 +233,10 @@ describe('ExportarEquiposUseCase', () => {
       { nombre: 'Notebook Dell', marca: 'Dell', numeroSerie: 'SN-001' },
       'e1',
     );
-    const useCase = new ExportarEquiposUseCase(crearListarEquiposFake([activo]));
+    const useCase = new ExportarEquiposUseCase(
+      crearListarEquiposFake([activo]),
+      catalogoDeModelos(),
+    );
 
     const result = await useCase.execute({}, 'xlsx');
 
