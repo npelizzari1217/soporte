@@ -60,6 +60,23 @@ describe("ConfirmarPedidoView", () => {
     expect(llamadas).toEqual([{ token: "abc+123" }]);
   });
 
+  it("la confirmación promete solo los avisos que de verdad se envían (defectos-ayuda S5)", async () => {
+    window.location.hash = "#token=abc";
+    confirmarResponde(200, { numero: "T-2026-0008" });
+    const user = userEvent.setup();
+
+    renderView();
+    await user.click(await screen.findByRole("button", { name: /confirmar pedido/i }));
+
+    const estado = await screen.findByRole("status");
+    expect(estado).toHaveTextContent(
+      "Registramos su pedido con el número T-2026-0008. Le avisaremos por correo cuando " +
+        "necesitemos su respuesta, cuando el pedido se resuelva o se cierre, y cuando haya un " +
+        "comentario nuevo.",
+    );
+    expect(estado).not.toHaveTextContent(/cada cambio de estado/);
+  });
+
   it("404: mensaje uniforme sin botón para reintentar", async () => {
     window.location.hash = "#token=viejo";
     confirmarResponde(404, { statusCode: 404, message: "no" });

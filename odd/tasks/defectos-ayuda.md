@@ -32,7 +32,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - [x] T2 — S2
 - [x] T3 — S3
 - [x] T4 — S4
-- [ ] T5 — S5
+- [x] T5 — S5
 - [ ] T6 — S6
 - [ ] T7 — S7
 
@@ -62,3 +62,6 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
   to deeply equal { abiertos: 1 }`. GREEN: "abierto" = sin fecha de cierre y estado distinto de
   CANCELADO, en el conteo y en la carga por agente (que también sumaba cancelados). `src/dashboard`
   63/63, lint y typecheck limpios. Ayuda `dashboard.md` corregida.
+- **L7 — T5 (#7), confirmado.** RED: el texto de "Pedido registrado" no coincidía (prometía aviso "en
+  cada cambio de estado"). GREEN: dice que avisa cuando se necesita su respuesta, cuando se resuelve o
+  se cierra y cuando hay un comentario nuevo, en neutro. `pedido-publico` 36/36, lint y type-check limpios.

@@ -57,8 +57,9 @@ export function ConfirmarPedidoView({ slug }: ConfirmarPedidoViewProps) {
         </CardHeader>
         <CardContent>
           <p role="status" className="text-sm text-foreground">
-            Registramos tu pedido con el número {confirmar.data.numero}. Te vamos a avisar por correo
-            cada cambio de estado.
+            Registramos su pedido con el número {confirmar.data.numero}. Le avisaremos por correo
+            cuando necesitemos su respuesta, cuando el pedido se resuelva o se cierre, y cuando haya
+            un comentario nuevo.
           </p>
         </CardContent>
       </Card>
