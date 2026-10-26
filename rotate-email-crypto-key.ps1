@@ -1,6 +1,8 @@
 # rotate-email-crypto-key.ps1 - Rota EMAIL_CRYPTO_KEY re-cifrando de OLD_KEY a NEW_KEY
 # todo lo que esa clave protege (VPS Windows): clientes.smtp_password_cifrada,
-# usuarios_tfa.secreto_cifrado y usuarios_tfa.secreto_pendiente_cifrado (2FA).
+# usuarios_tfa.secreto_cifrado y usuarios_tfa.secreto_pendiente_cifrado (2FA),
+# webhook_destinos.secreto_cifrado y asistente_ia_config.clave_cifrada. La lista
+# vive en DESTINOS de backend/scripts/rotar-email-crypto-key.mjs.
 # 100% ASCII (PS 5.1 lee .ps1 sin BOM como ANSI: un solo caracter no-ASCII
 # corrompe el parseo, igual que rotate-admin-pw.ps1).
 #

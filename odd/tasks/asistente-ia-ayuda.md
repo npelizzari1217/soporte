@@ -33,7 +33,7 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
 
 - [x] T1 — S4, S7: tabla `asistente_ia_config` 1:1 con `clientes` (master, aditiva, `rollback.sql`),
   clave cifrada, casos de uso ROOT ver/configurar/quitar/probar y endpoints `/clientes/:id/ia`.
-- [ ] T2 — S7: `rotate-email-crypto-key.ps1` re-cifra las claves de IA; runbook.
+- [x] T2 — S7: `rotate-email-crypto-key.ps1` re-cifra las claves de IA; runbook.
 - [ ] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
   endpoint `POST` del asistente con tope.
 - [ ] T4 — S4, S5, S6: frontend — botón flotante con el chat y acción "IA" en Clientes.
@@ -68,3 +68,9 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   ROOT). Tests: 8 archivos, 64/64 (unitarios, integración del repositorio, e2e con guards reales: 401
   y 403 en las 4 rutas sin escribir nada; smoke de `app.module`). Lint y typecheck limpios. Feature
   nueva: sin TDD obligatorio (CLAUDE.md §6.1).
+- **L6 — T2 hecha.** RED: los 2 casos nuevos de `rotar-email-crypto-key.integration.spec.ts` fallaron
+  por la razón correcta (`migradas: 1` en vez de 2: la clave de IA no se rotaba, y una clave movida de
+  cliente no revertía la transacción). GREEN: entrada `asistente_ia_config.clave_cifrada` con AAD
+  `ia:{cliente_id}` en `DESTINOS`; `--verificar` la recorre. `proceso.spec` reproduce el schema hasta
+  la migración nueva. Cabecera de `rotate-email-crypto-key.ps1` (ASCII, CRLF) y runbook §5
+  actualizados; la cabecera ya omitía los webhooks. Rotación 42/42, lint limpio.

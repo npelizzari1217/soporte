@@ -30,8 +30,8 @@ const MASTER_TEST_URL =
 
 const MASTER_MIGRATIONS_DIR = path.resolve(__dirname, '../prisma_master/migrations');
 // Reproducimos el schema hasta la última migración que agrega un destino de la
-// rotación (`webhook_destinos`), porque acá probamos la rotación, no las migraciones.
-const ULTIMA_CARPETA_PREVIA = '20261013120000_webhooks';
+// rotación (`asistente_ia_config`), porque acá probamos la rotación, no las migraciones.
+const ULTIMA_CARPETA_PREVIA = '20261026120000_asistente_ia_config';
 const EPHEMERAL_DB_NAME = `soporte_rotacion_email_${randomBytes(4).toString('hex')}_test`;
 
 const OLD_KEY_HEX = 'a'.repeat(64);
@@ -118,6 +118,27 @@ async function leerSecretoWebhook(
     [clienteId],
   );
   return rows[0].secreto_cifrado;
+}
+
+/** Inserta la configuración de IA del cliente `clienteId`, que ya debe existir. */
+async function insertarIa(
+  pool: InstanceType<typeof Pool>,
+  clienteId: string,
+  payload: string,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO asistente_ia_config (cliente_id, url, modelo, clave_cifrada, updated_at)
+     VALUES ($1, 'https://generativelanguage.googleapis.com/v1beta/openai/', 'gemini-2.5-flash', $2, now())`,
+    [clienteId, payload],
+  );
+}
+
+async function leerClaveIa(pool: InstanceType<typeof Pool>, clienteId: string): Promise<string> {
+  const { rows } = await pool.query(
+    `SELECT clave_cifrada FROM asistente_ia_config WHERE cliente_id = $1`,
+    [clienteId],
+  );
+  return rows[0].clave_cifrada;
 }
 
 async function leerTfa(
@@ -492,6 +513,45 @@ describe('rotar-email-crypto-key — ejecutarRotacion() (WU2a, master)', () => {
       const resultado = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
       expect(resultado).toMatchObject({ exitCode: 3 });
       expect(await leerSecretoWebhook(pool, idA)).toBe(movido);
+      const { rows } = await pool.query(
+        `SELECT smtp_password_cifrada FROM clientes WHERE id = $1`,
+        [idA],
+      );
+      expect(rows[0].smtp_password_cifrada).toBe(smtpOriginal);
+    });
+  });
+
+  describe('clave del asistente de IA (asistente_ia_config)', () => {
+    it('re-cifra la clave con la clave nueva y AAD ia:{cliente_id}; segunda corrida no-op', async () => {
+      const idCliente = randomUUID();
+      await insertarCliente(pool, idCliente, 'ia-rotar', cifrarV1(oldKeyBuf, 'smtp', idCliente));
+      await insertarIa(pool, idCliente, cifrarV1(oldKeyBuf, 'AIzaClave', `ia:${idCliente}`));
+
+      const primera = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(primera).toMatchObject({ exitCode: 0, migradas: 2, yaMigradas: 0 });
+      const rotada = await leerClaveIa(pool, idCliente);
+      expect(descifrarV1(newKeyBuf, rotada, `ia:${idCliente}`)).toBe('AIzaClave');
+      expect(() => descifrarV1(newKeyBuf, rotada, idCliente)).toThrow();
+
+      const segunda = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(segunda).toMatchObject({ exitCode: 0, migradas: 0, yaMigradas: 2 });
+      expect(await leerClaveIa(pool, idCliente)).toBe(rotada);
+
+      const verificacion = await ejecutarVerificacion(pool, { verificarKeyBuf: newKeyBuf });
+      expect(verificacion.exitCode).toBe(0);
+    });
+
+    it('una clave de IA cifrada con el AAD de otro cliente revierte TODO', async () => {
+      const idA = randomUUID();
+      const idB = randomUUID();
+      const smtpOriginal = cifrarV1(oldKeyBuf, 'smtp', idA);
+      const movida = cifrarV1(oldKeyBuf, 'AIzaClave', `ia:${idB}`);
+      await insertarCliente(pool, idA, 'ia-movida', smtpOriginal);
+      await insertarIa(pool, idA, movida);
+
+      const resultado = await ejecutarRotacion(pool, { oldKeyBuf, newKeyBuf, modo: 'rotar' });
+      expect(resultado).toMatchObject({ exitCode: 3 });
+      expect(await leerClaveIa(pool, idA)).toBe(movida);
       const { rows } = await pool.query(
         `SELECT smtp_password_cifrada FROM clientes WHERE id = $1`,
         [idA],

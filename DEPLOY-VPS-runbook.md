@@ -433,7 +433,8 @@ de rollback es el commit que tenía producción **antes** del primer `deploy.ps1
 Cifra en reposo la contraseña SMTP de cada cliente, **los secretos TOTP del 2FA**
 (`usuarios_tfa.secreto_cifrado` y `secreto_pendiente_cifrado`, AAD `tfa:{usuario_id}`) **y el
 secreto de firma de los webhooks** (`webhook_destinos.secreto_cifrado`, AAD
-`webhook:{cliente_id}`). La rotación re-cifra los cuatro destinos en una sola transacción: si cualquiera no descifra, no se
+`webhook:{cliente_id}`) **y la clave del proveedor de IA del asistente**
+(`asistente_ia_config.clave_cifrada`, AAD `ia:{cliente_id}`). La rotación re-cifra los cinco destinos en una sola transacción: si cualquiera no descifra, no se
 modifica ninguno, y `--verificar` también los recorre. Se genera **una sola vez** en el deploy
 (`deploy.ps1` paso 5b) y, si existe, no se toca — regenerarla a mano convierte toda credencial
 guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
