@@ -338,7 +338,7 @@ vencen.
 
 ---
 
-## Ayuda de usuario — SUSPENDIDA desde el 2026-09-07
+## Ayuda de usuario — SUSPENDIDA (desde el 2026-09-07; retomada tras la tanda del 2026-10-26)
 
 > **No reportes la ausencia de un artículo de Ayuda como hallazgo.** La regla de abajo
 > está en pausa por decisión del dueño del repo, no por descuido de quien escribe el
@@ -356,6 +356,12 @@ vencen.
 > **Qué NO cambia.** Un artículo que ya existe y que un cambio vuelve FALSO sí se corrige.
 > Una Ayuda que miente es peor que una que falta, y eso no depende de si se están
 > escribiendo artículos nuevos.
+>
+> **Tanda del 2026-10-26.** El dueño levantó la suspensión solo para esa tanda: se
+> escribió lo que faltaba y se pasaron todos los artículos a español neutro con "usted"
+> (`odd/tasks/ayuda-tanda-final.md`). Al cerrarla, la suspensión vuelve a regir: lo que
+> cambie DESPUÉS de esa tanda se anota en el commit para la próxima. Los artículos nuevos
+> o corregidos siguen el mismo registro neutro con "usted".
 >
 > **Cómo se levanta.** Solo con un aviso explícito del dueño del repo. Al levantarla, se
 > borra este bloque y la regla de abajo vuelve a regir tal cual — por eso queda entera y
