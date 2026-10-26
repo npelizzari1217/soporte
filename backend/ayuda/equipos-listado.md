@@ -1,57 +1,109 @@
 ---
 slug: equipos-listado
-titulo: El listado de equipos y su exportación a Excel
+titulo: El listado de equipos y su exportación a Excel o CSV
 visibleParaSolicitante: false
 ---
 
-# El listado de equipos y su exportación a Excel
+# El listado de equipos y su exportación a Excel o CSV
+
+## Quién entra a esta pantalla
+
+El ítem **Equipos** del menú aparece para quien tiene la casilla **LECTURA** de la
+fila **Equipos** en la matriz de permisos. La pantalla se titula **Equipos IT** y
+lista el inventario de equipos del cliente.
+
+En la misma pantalla hay dos botones de alta:
+
+- **Nuevo equipo**, para quien tiene la casilla **ALTAS** de **Equipos**.
+- **Nuevo ticket de soporte**, para quien tiene **Crear** sobre el tipo de ticket
+  Soporte. Abre un ticket de soporte, con un equipo del inventario o con la opción
+  **Sin equipo**.
 
 ## Qué muestra el listado
 
-Cada fila es un equipo, con **nombre, marca, número de serie y estado**
-(Activo o Baja). Un clic en la fila abre la ficha completa del equipo, con
-sus componentes y el resto de sus datos.
+Cada fila es un equipo, con cuatro columnas:
 
-Este listado **no muestra montos**. El importe, la fecha de valoración, el
-valor residual y su fecha viven en la ficha de **Editar** de cada equipo —
-ver el artículo sobre importe y depreciación si necesitás esos datos.
+| Columna | Qué muestra |
+|---|---|
+| **Nombre** | El nombre del equipo. |
+| **Marca** | Si el equipo tiene un modelo de catálogo, la marca y el modelo de ese catálogo. Si no, la marca escrita a mano en el equipo. |
+| **N.º de serie** | El número de serie, o una raya si no tiene. |
+| **Estado** | **Activo** o **Baja**. |
+
+El listado **no muestra montos**. Haga clic en una fila para abrir la página del
+equipo.
+
+## La página del equipo
+
+La página muestra el nombre y el número de serie del equipo y, debajo:
+
+- La sección **QR del equipo**, para emitir, descargar e imprimir su código QR.
+- La sección **Valor del equipo**, con el importe y el valor residual vigentes y el
+  historial del valor.
+- La sección **Componentes**, con las piezas instaladas y las que se retiraron.
+- Al final, el gráfico **Evolución del valor del equipo**.
+
+Arriba están los botones **Agregar componente**, **Editar**, **Dar de baja** y
+**Eliminar equipo (cargado por error)**. Cada uno aparece solo si usted tiene el
+permiso que le corresponde. Los demás datos del equipo (marca, modelo, modelo de
+catálogo, fecha de adquisición, ubicación y observaciones) no se muestran en la
+página: se ven y se cambian desde **Editar**.
+
+Un equipo dado de baja muestra el aviso **Equipo dado de baja** y ya no tiene
+botones de acción: su página es de solo lectura.
+
+Cada parte se explica en su artículo:
+
+- "Importe, valor residual y depreciación de un equipo".
+- "Dar de baja o eliminar un equipo, y su código QR".
+- "Componentes de un equipo y catálogo de modelos de equipo".
 
 ## El filtro «Mostrar equipos dados de baja»
 
-Arriba de la tabla hay una casilla **Mostrar equipos dados de baja**, que
-viene **apagada**: por defecto el listado muestra solo los equipos vigentes
-(estado Activo). Al tildarla aparecen también los equipos dados de baja, con
-la etiqueta **Baja** en la columna de estado. La casilla queda reflejada en la
-dirección de la página, así que podés guardarla o compartirla con el filtro ya
-aplicado.
+Arriba de la tabla está la casilla **Mostrar equipos dados de baja**, que viene
+**desmarcada**: por defecto el listado muestra solo los equipos vigentes. Al
+marcarla aparecen también los equipos dados de baja, con **Baja** en la columna
+**Estado**. La casilla queda en la dirección del navegador, así que puede guardar o
+compartir el enlace con el filtro ya aplicado.
 
-Es el único filtro del listado. Si necesitás encontrar un equipo puntual, usá
-la búsqueda del navegador (Ctrl+F) sobre la tabla cargada.
+Es el único filtro del listado. El listado no se divide en páginas: todos los
+equipos se cargan en la misma tabla, así que para encontrar uno puntual puede usar
+la búsqueda del navegador (Ctrl+F).
 
-## Exportar a Excel
+Un equipo eliminado por haberse cargado por error no aparece en el listado, con la
+casilla marcada o sin ella.
 
-Arriba a la derecha del listado hay un botón **Exportar a Excel**. Baja un
-archivo con **las mismas cuatro columnas de la tabla** (nombre, marca, número
-de serie, estado), que se abre con Excel (o con cualquier planilla de
-cálculo) haciéndole doble clic.
+## Exportar
 
-El archivo **sigue el mismo filtro que el listado**: con la casilla apagada
-trae **todos los equipos vigentes**, sin excepción; con la casilla tildada
-trae además los equipos dados de baja, y la columna de estado indica
-**Baja** en cada uno. Nunca trae solo una parte de lo que ves.
+Arriba del listado está el botón **Exportar**, que abre un menú con dos opciones:
 
-Mientras el archivo se prepara, el botón queda deshabilitado. En inventarios
-grandes puede tardar unos segundos.
+- **Excel** descarga un archivo que se abre directamente con Excel o con cualquier
+  planilla de cálculo.
+- **CSV** descarga el mismo contenido como texto separado, útil para importarlo en
+  otros programas.
 
-### "El listado supera el volumen que la exportación soporta"
+El archivo se llama *equipos-* seguido de la fecha del día y trae las columnas
+**Nombre**, **Marca**, **N.º de serie** y **Estado**, sin montos ni fechas.
 
-Si el inventario es muy grande, la exportación no se hace y aparece un aviso
-con este mensaje. No es un error ni se perdió nada: el archivo sería tan
-pesado que no habría con qué abrirlo cómodamente.
+El archivo **sigue el mismo filtro que el listado**: con la casilla desmarcada trae
+todos los equipos vigentes; con la casilla marcada trae además los dados de baja,
+con **Baja** en la columna **Estado**.
 
-A diferencia de compras o tickets, acá **no hay filtros que acoten el
-volumen**: dejar apagada la casilla de equipos dados de baja ya es lo mínimo
-que se puede exportar, así que el aviso no te va a pedir que cambies nada. La
-salida en este caso es exportar el inventario **en partes**, una capacidad que todavía hay
-que habilitar. Si te encontrás con este aviso, avisá para que se habilite esa
-exportación por partes.
+Una diferencia con la pantalla: la columna **Marca** del archivo trae siempre la
+marca escrita a mano en el equipo, no la del catálogo. Al elegir un modelo de
+catálogo, el formulario vacía la marca escrita a mano, así que en esos equipos la
+columna **Marca** del archivo sale vacía, aunque en pantalla se vean la marca y el
+modelo del catálogo.
+
+Mientras el archivo se prepara, el botón queda en espera. En inventarios grandes
+puede tardar unos segundos.
+
+### Cuando el inventario es demasiado grande
+
+La exportación admite hasta **5000 filas**. Si el inventario tiene más, no se
+descarga nada y aparece un aviso que indica cuántas filas tiene y que hace falta
+habilitar la exportación en partes. No es un error ni se perdió ningún dato.
+
+Desmarcar la casilla de equipos dados de baja es lo único que reduce el archivo. Si
+aun así lo supera, avise al administrador del sistema para que se habilite la
+exportación en partes.

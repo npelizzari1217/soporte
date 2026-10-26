@@ -6,87 +6,89 @@ visibleParaSolicitante: true
 
 # El módulo de Ayuda y quién ve cada artículo
 
-El módulo de Ayuda guarda artículos que explican cómo se usa el sistema. Es el
-lugar donde vive esta misma página.
+El módulo de **Ayuda** guarda artículos que explican cómo se usa el sistema. Es el
+lugar donde vive esta misma página. El listado tiene un buscador por título, y al
+hacer clic en un artículo se abre su contenido completo.
 
 ## La Ayuda es una sola para todo el sistema
 
 Los artículos **no son de cada cliente**: son únicos y globales. Todos los
-clientes leen exactamente los mismos textos, y una corrección se ve en todos
-lados a la vez.
+clientes leen exactamente los mismos textos, y una corrección se ve en todos lados
+a la vez.
 
 De ahí sale la regla de quién puede escribirla: **crear, editar, eliminar y
-publicar artículos es exclusivo del administrador global** de la plataforma. Un
+publicar artículos es exclusivo del administrador de la plataforma** (ROOT). Un
 administrador de cliente, por más permisos que tenga dentro de su cliente, no ve
-los botones de gestión — editar la Ayuda sería cambiar lo que leen los demás
-clientes.
-
-Antes cada cliente tenía su propia copia de los artículos y había que publicarlos
-uno por uno. Eso se terminó.
+los botones de gestión: editar la Ayuda cambiaría lo que leen los demás clientes.
 
 ## Los permisos que sí gobiernan algo
 
-Quedan dos, y los dos son de LECTURA:
+En la matriz de permisos, la fila **Ayuda** tiene dos casillas con efecto, y las
+dos son de lectura:
 
-| Permiso | Qué habilita |
+| Casilla | Qué habilita |
 |---|---|
-| `KB:LECTURA` | Entrar al módulo y abrir un artículo |
-| `KB:VER_TODOS` | Ver además los artículos internos (sin publicar) |
+| **LECTURA** | Leer el listado y abrir un artículo |
+| **VER_TODOS** | Ver además los artículos internos (sin publicar) |
 
-Sin `KB:LECTURA` la Ayuda no aparece en el menú y no se entra al módulo.
+El ítem **Ayuda** del menú aparece para todos los usuarios, pero sin la casilla
+**LECTURA** el listado no se puede cargar: la pantalla avisa que no se pudieron
+cargar los artículos.
 
-## Las casillas de escritura ya no hacen nada
+## Las casillas de escritura no tienen efecto
 
-En la grilla de permisos siguen apareciendo cuatro casillas en la fila **Ayuda**:
-`ALTAS`, `MODIFICACION`, `BORRADO` y `PUBLICAR`. **Marcarlas no tiene ningún
-efecto.** Quedaron dibujadas por una cuestión técnica, pero la escritura la
-decide el administrador global y nada más.
+En la fila **Ayuda** de la matriz aparecen también las casillas **ALTAS**,
+**MODIFICACION**, **BORRADO** y **PUBLICAR**. **Marcarlas no tiene ningún
+efecto**: la escritura la decide el administrador de la plataforma y nada más.
 
-Es la trampa de este módulo, y conviene tenerla presente: si alguien pide poder
-escribir en la Ayuda, marcarle `ALTAS` no va a cambiar nada. Hay que pedírselo al
-administrador global.
+Conviene tenerlo presente: si alguien pide poder escribir en la Ayuda, marcarle
+**ALTAS** no cambia nada. Hay que pedírselo al administrador de la plataforma.
 
 ## Publicar cambia la visibilidad
 
-Un artículo tiene dos estados de visibilidad, que se ven como una etiqueta en el
-listado y en el detalle:
+Un artículo tiene dos estados de visibilidad, que se ven como una etiqueta en la
+columna **Visibilidad** del listado y en el detalle:
 
-- **Interno**: solo lo ve quien tiene `KB:VER_TODOS`.
-- **Publicado**: lo ve cualquiera que tenga `KB:LECTURA`.
+- **Interno**: solo lo ve quien tiene la casilla **VER_TODOS**.
+- **Publicado**: lo ve cualquiera que tenga la casilla **LECTURA**.
 
-**Todo artículo nuevo nace Interno.** Publicarlo es siempre un paso aparte y
-deliberado, y el botón lo tiene únicamente el administrador global.
+Un artículo creado con **Nuevo artículo** nace **Interno**. Publicarlo es siempre
+un paso aparte y deliberado: el botón **Publicar** (y su contrario,
+**Despublicar**) está en el detalle del artículo, pide confirmación y lo tiene
+únicamente el administrador de la plataforma.
 
-Publicar es una decisión que **queda**: los artículos que se mantienen desde el
-código actualizan su texto cuando cambia el sistema, pero nunca vuelven a ocultar
-lo que alguien decidió publicar.
+Publicar es una decisión que **se conserva**. Algunos artículos, como este, se
+mantienen junto con el sistema y su texto se actualiza con cada versión; esa
+actualización nunca cambia si el artículo está publicado o es interno.
 
-## `KB:VER_TODOS` no abre una pantalla: filtra filas
+## VER_TODOS no abre una pantalla: amplía los artículos que se ven
 
-Este es el permiso que más se malinterpreta. `KB:VER_TODOS` no habilita ninguna
+Este es el permiso que más se malinterpreta. **VER_TODOS** no habilita ninguna
 pantalla ni ningún botón. Lo que hace es **ampliar qué artículos se ven**.
 
-- **Sin `KB:VER_TODOS`**, el listado y el detalle muestran únicamente los
-  artículos **publicados** y **no eliminados**. Un artículo interno, para esa
-  persona, simplemente no existe: no aparece en el listado y, si intenta abrirlo
-  con el enlace directo, el sistema responde que no lo encuentra.
-- **Con `KB:VER_TODOS`** se ven además los internos.
+- **Sin VER_TODOS**, el listado y el detalle muestran únicamente los artículos
+  **publicados** y **no eliminados**. Un artículo interno, para esa persona,
+  simplemente no existe: no aparece en el listado y, si intenta abrirlo con el
+  enlace directo, el sistema responde que no lo encuentra.
+- **Con VER_TODOS** se ven además los internos.
 
-Como referencia, esto es lo que cada plantilla de rol trae en la fila Ayuda y que
-realmente tiene efecto:
+Como referencia, esto es lo que cada plantilla de rol trae en la fila **Ayuda** y
+que realmente tiene efecto:
 
-| Rol | Permisos de Ayuda con efecto |
+| Rol | Casillas de Ayuda con efecto |
 |---|---|
-| Usuario | `LECTURA` |
-| Colaborador | `LECTURA`, `VER_TODOS` |
-| Técnico | `LECTURA`, `VER_TODOS` |
+| Usuario | **LECTURA** |
+| Colaborador | **LECTURA**, **VER_TODOS** |
+| Técnico | **LECTURA**, **VER_TODOS** |
 | Administrador | Plantilla vacía, pero lee todo |
 
 La plantilla de Técnico marca además las cuatro casillas de escritura; como se
-explicó arriba, no cambian nada.
+explicó arriba, no cambian nada. El funcionamiento de las plantillas está en el
+artículo sobre permisos y roles.
 
 ## Un detalle sobre los artículos eliminados
 
-Quien tiene `KB:VER_TODOS` también ve en el listado los artículos ya eliminados.
-Al intentar abrirlos, el sistema responde que no los encuentra. Es esperable: el
+**Eliminar** un artículo pide confirmación y no se puede deshacer. Quien tiene la
+casilla **VER_TODOS** sigue viendo en el listado los artículos eliminados, pero al
+intentar abrirlos el sistema responde que no los encuentra. Es esperable: el
 artículo está dado de baja, y el listado lo muestra solo como rastro.
