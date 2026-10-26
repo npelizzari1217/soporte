@@ -18,6 +18,16 @@ export interface IFeriadosLaboralesRepository {
    * `'YYYY-MM-DD'` (no `Date`) — ver el docstring de `FeriadosLaborales`.
    */
   obtener(): Promise<FeriadosLaborales>;
+
+  /**
+   * Solo los feriados globales (master), con el mismo formato que `obtener`. Separado para quien
+   * necesita tratar distinto la falla de cada fuente: master es otra base, y su caída no aborta la
+   * transacción del tenant.
+   */
+  obtenerGlobales(): Promise<FeriadosLaborales>;
+
+  /** Solo los feriados propios del cliente (base del tenant), con el mismo formato que `obtener`. */
+  obtenerPropios(): Promise<FeriadosLaborales>;
 }
 
 /** Token de inyección de dependencias para IFeriadosLaboralesRepository en NestJS. */

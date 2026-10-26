@@ -138,4 +138,32 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
       expect(findManyCliente).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe('obtenerGlobales() y obtenerPropios() — cada fuente por separado', () => {
+    it('cada uno devuelve solo su fuente, en el mismo formato que obtener()', async () => {
+      const findManyGlobal = vi.fn().mockResolvedValue([filaFeriado('2026-01-01')]);
+      const findManyCliente = vi.fn().mockResolvedValue([filaFeriado('2026-05-01')]);
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(
+        makePrismaService(findManyGlobal),
+        tenantContext,
+      );
+      const ctx = makeCtx({ feriadoCliente: { findMany: findManyCliente } });
+
+      const globales = await tenantContext.run(ctx, () => repo.obtenerGlobales());
+      const propios = await tenantContext.run(ctx, () => repo.obtenerPropios());
+
+      expect([...globales]).toEqual(['2026-01-01']);
+      expect([...propios]).toEqual(['2026-05-01']);
+    });
+
+    it('obtenerPropios() sin TenantContext lanza FeriadosSinTenantContextError', async () => {
+      const repo = new PrismaFeriadosLaboralesRepository(
+        makePrismaService(vi.fn()),
+        new TenantContext(),
+      );
+
+      await expect(repo.obtenerPropios()).rejects.toThrow(FeriadosSinTenantContextError);
+    });
+  });
 });

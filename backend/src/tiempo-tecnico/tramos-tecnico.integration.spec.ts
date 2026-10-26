@@ -110,7 +110,10 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
         new PrismaHorarioLaboralUsuarioRepository(tenantContext),
         new PrismaCalendarioLaboralSemanalRepository(tenantContext),
       ),
-      { obtener: async () => new Set<string>() },
+      {
+        obtenerGlobales: async () => new Set<string>(),
+        obtenerPropios: async () => new Set<string>(),
+      },
       new CalcularSlaHabilVenceService(),
       { error: () => undefined },
       ahora,

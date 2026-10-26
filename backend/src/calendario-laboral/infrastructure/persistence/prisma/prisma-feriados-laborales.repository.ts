@@ -29,8 +29,8 @@ import { PrismaCalendarioLaboralMapper } from './prisma-calendario-laboral.mappe
 import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 
 /**
- * FeriadosSinTenantContextError — lanzada por `obtener()` cuando corre sin
- * un `TenantContext` bindeado (D3). No es un `DomainError`: es un error de
+ * FeriadosSinTenantContextError — lanzada por `obtener()` y `obtenerPropios()`
+ * cuando corren sin un `TenantContext` bindeado (D3). No es un `DomainError`: es un error de
  * infraestructura/wiring, y se modela como excepción, no como `Result.fail`
  * (mismo criterio que `ErrorEntornoInvalido`, `config/validar-entorno.ts`).
  * `AplicarSlaListener` la captura, la loguea vía `ILogger` y NO la relanza
@@ -40,9 +40,9 @@ import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 export class FeriadosSinTenantContextError extends Error {
   constructor() {
     super(
-      'PrismaFeriadosLaboralesRepository.obtener() requiere un TenantContext bindeado: ' +
-        'no hay forma segura de calcular el SLA HABIL sin conocer los feriados propios ' +
-        'del cliente del ticket.',
+      'PrismaFeriadosLaboralesRepository requiere un TenantContext bindeado para leer los ' +
+        'feriados propios del cliente: no hay forma segura de calcular el tiempo hábil sin ' +
+        'conocerlos.',
     );
     this.name = 'FeriadosSinTenantContextError';
   }
@@ -61,28 +61,31 @@ export class PrismaFeriadosLaboralesRepository implements IFeriadosLaboralesRepo
   }
 
   async obtener(): Promise<FeriadosLaborales> {
+    // Sin tenant no se consulta nada, tampoco master: fail-closed antes de cualquier lectura.
+    this.tenantClient();
+    const [globales, propios] = await Promise.all([this.obtenerGlobales(), this.obtenerPropios()]);
+    return new Set([...globales, ...propios]);
+  }
+
+  async obtenerGlobales(): Promise<FeriadosLaborales> {
+    // Salen de la copia en memoria: así la lectura de master no cae, salvo al vencer la copia,
+    // dentro de la transacción del ticket (JD-B-002).
+    const fechas = await this.globales.obtener(async () =>
+      (await this.masterClient.feriado.findMany()).map((fila) => fila.fecha),
+    );
+    return new Set(fechas.map((fecha) => PrismaCalendarioLaboralMapper.claveDiaUtcDe(fecha)));
+  }
+
+  async obtenerPropios(): Promise<FeriadosLaborales> {
+    const filas = await this.tenantClient().feriadoCliente.findMany();
+    return new Set(filas.map((fila) => PrismaCalendarioLaboralMapper.claveDiaUtcDe(fila.fecha)));
+  }
+
+  private tenantClient(): InstanceType<typeof TenantPrismaClient> {
     const ctx = this.tenantContext.get();
     if (!ctx) {
       throw new FeriadosSinTenantContextError();
     }
-    const tenantClient = ctx.prismaClient as InstanceType<typeof TenantPrismaClient>;
-
-    // Los globales salen de la copia en memoria: así la lectura de master no cae, salvo al
-    // vencer la copia, dentro de la transacción del ticket (JD-B-002).
-    const [globales, propios] = await Promise.all([
-      this.globales.obtener(async () =>
-        (await this.masterClient.feriado.findMany()).map((fila) => fila.fecha),
-      ),
-      tenantClient.feriadoCliente.findMany(),
-    ]);
-
-    const claves = new Set<string>();
-    for (const fecha of globales) {
-      claves.add(PrismaCalendarioLaboralMapper.claveDiaUtcDe(fecha));
-    }
-    for (const fila of propios) {
-      claves.add(PrismaCalendarioLaboralMapper.claveDiaUtcDe(fila.fecha));
-    }
-    return claves;
+    return ctx.prismaClient as InstanceType<typeof TenantPrismaClient>;
   }
 }

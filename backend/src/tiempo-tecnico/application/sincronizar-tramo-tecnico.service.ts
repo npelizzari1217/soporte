@@ -28,7 +28,8 @@ import {
  *
  * Una medición que falla (feriados de master caídos, un error del cálculo) no bloquea el cambio
  * del ticket: el tramo se cierra con `habil_s` NULL y se loguea. No aplica a un error de la base
- * del tenant (cambios de estado, horario del técnico), que ya abortó la transacción: ese se propaga.
+ * del tenant (cambios de estado, horario del técnico, feriados del cliente), que ya abortó la
+ * transacción: ese se propaga.
  */
 export class SincronizarTramoTecnicoService {
   constructor(
@@ -37,7 +38,10 @@ export class SincronizarTramoTecnicoService {
       ResolverHorarioLaboralUsuarioService,
       'obtenerParaUsuario'
     >,
-    private readonly feriadosRepo: Pick<IFeriadosLaboralesRepository, 'obtener'>,
+    private readonly feriadosRepo: Pick<
+      IFeriadosLaboralesRepository,
+      'obtenerGlobales' | 'obtenerPropios'
+    >,
     private readonly calculo: Pick<CalcularSlaHabilVenceService, 'msHabilesEntre'>,
     private readonly logger: Pick<ILogger, 'error'>,
     private readonly ahora: () => Date = () => new Date(),
@@ -147,12 +151,17 @@ export class SincronizarTramoTecnicoService {
     estadoPrevio: string | null,
   ): Promise<number | null> {
     if (finAt.getTime() <= tramo.inicioAt.getTime()) return 0;
-    // Fuera del try: las dos lecturas van a la base del tenant, y un error ahí ya abortó la
+    // Fuera del try: estas lecturas van a la base del tenant, y un error ahí ya abortó la
     // transacción. Tragarlo solo cambiaría la causa real por el fallo del UPDATE del tramo.
     const cambios = await this.tramoRepo.listarCambiosEstado(ticketId, finAt);
     const { calendario } = await this.horarioResolver.obtenerParaUsuario(tramo.tecnicoId);
+    const feriadosPropios = await this.feriadosRepo.obtenerPropios();
     try {
-      const feriados = await this.feriadosRepo.obtener();
+      // Master es otra base: su falla no toca la transacción del tenant y el tramo se cierra igual.
+      const feriados = new Set([
+        ...(await this.feriadosRepo.obtenerGlobales()),
+        ...feriadosPropios,
+      ]);
       return medirSegundosHabiles(
         tramo.inicioAt,
         finAt,

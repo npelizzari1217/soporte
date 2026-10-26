@@ -132,10 +132,31 @@ interface Armado {
   ): Promise<void>;
 }
 
+/**
+ * Feriados en memoria con las dos fuentes separadas, como el repositorio real: `obtener` es la
+ * unión que usa el SLA.
+ */
+function feriadosEnMemoria(
+  globales: () => Promise<FeriadosLaborales> = async () => new Set<string>(),
+  propios: () => Promise<FeriadosLaborales> = async () => new Set<string>(),
+) {
+  return {
+    obtenerGlobales: globales,
+    obtenerPropios: propios,
+    async obtener(): Promise<FeriadosLaborales> {
+      const [g, p] = await Promise.all([globales(), propios()]);
+      return new Set([...g, ...p]);
+    },
+  };
+}
+
 function armar(
   opciones: {
     horariosPropios?: Record<string, CalendarioLaboralSemanal>;
-    feriados?: () => Promise<FeriadosLaborales>;
+    /** Feriados globales, de master: su falla no bloquea el cambio del ticket. */
+    feriadosGlobales?: () => Promise<FeriadosLaborales>;
+    /** Feriados propios del cliente, de la base del tenant. */
+    feriadosPropios?: () => Promise<FeriadosLaborales>;
     /** Error de la base del tenant al leer el horario propio del técnico. */
     horarioFalla?: Error;
   } = {},
@@ -155,7 +176,7 @@ function armar(
   const servicio = new SincronizarTramoTecnicoService(
     repo,
     resolver,
-    { obtener: opciones.feriados ?? (async () => new Set<string>()) },
+    feriadosEnMemoria(opciones.feriadosGlobales, opciones.feriadosPropios),
     new CalcularSlaHabilVenceService(),
     { error: (mensaje) => logs.push(mensaje) },
     () => ahora,
@@ -231,7 +252,7 @@ describe('SincronizarTramoTecnicoService', () => {
   });
 
   it('descuenta los feriados', async () => {
-    const { repo, guardar } = armar({ feriados: async () => new Set(['2026-10-27']) });
+    const { repo, guardar } = armar({ feriadosGlobales: async () => new Set(['2026-10-27']) });
     await guardar(art('2026-10-26T17:00'), ANA, 'ASIGNADO');
     await guardar(art('2026-10-28T10:00'), ANA, 'RESUELTO');
 
@@ -368,7 +389,7 @@ describe('SincronizarTramoTecnicoService', () => {
 
   it('si la medición falla, cierra el tramo sin tiempo ni veredicto y lo loguea', async () => {
     const { repo, logs, guardar } = armar({
-      feriados: async () => {
+      feriadosGlobales: async () => {
         throw new Error('master caído');
       },
     });
@@ -385,6 +406,30 @@ describe('SincronizarTramoTecnicoService', () => {
     expect(logs).toEqual([
       `TRAMO_TECNICO_MEDICION_FALLO | ticket=${TICKET} | tramo=tramo-1 | master caído`,
     ]);
+  });
+
+  it('un error de la base del tenant al leer los feriados del cliente se propaga y no cierra el tramo', async () => {
+    // Mismo caso que JD-B-003, con la otra lectura del tenant que hace la medición.
+    const falla = new Error('relation "feriados_cliente" does not exist');
+    const { repo, logs, guardar } = armar({
+      feriadosPropios: async () => {
+        throw falla;
+      },
+    });
+    await guardar(art('2026-10-26T09:00'), ANA, 'ASIGNADO');
+    const antes = resumen(repo.tramos);
+
+    await expect(guardar(art('2026-10-26T10:00'), ANA, 'RESUELTO')).rejects.toBe(falla);
+    expect(resumen(repo.tramos)).toEqual(antes);
+    expect(logs).toEqual([]);
+  });
+
+  it('descuenta también los feriados propios del cliente', async () => {
+    const { repo, guardar } = armar({ feriadosPropios: async () => new Set(['2026-10-27']) });
+    await guardar(art('2026-10-26T17:00'), ANA, 'ASIGNADO');
+    await guardar(art('2026-10-28T10:00'), ANA, 'RESUELTO');
+
+    expect(repo.tramos[0].habilS).toBe(2 * 3600);
   });
 
   it('un error de la base del tenant al leer el horario se propaga y no cierra el tramo (JD-B-003)', async () => {
@@ -415,7 +460,7 @@ describe('SincronizarTramoTecnicoService', () => {
     const servicio = new SincronizarTramoTecnicoService(
       repo,
       { obtenerParaUsuario: async () => ({ calendario: HORARIO_TENANT, origen: 'CLIENTE' }) },
-      { obtener: async () => new Set<string>() },
+      feriadosEnMemoria(),
       new CalcularSlaHabilVenceService(),
       { error: () => undefined },
     );
