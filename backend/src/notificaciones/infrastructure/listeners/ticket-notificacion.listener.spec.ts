@@ -408,10 +408,15 @@ describe('TicketNotificacionListener', () => {
       });
 
       it('el solicitante que es también el asignado no recibe aviso de su propio comentario', async () => {
-        const { listener, ticketRepo, emailSender } = makeListener();
+        const { listener, ticketRepo, emailSender, usuarioResolver } = makeListener();
         const ticket = makeTicket();
         ticket.assignTo('solicitante-uuid');
         ticketRepo.findById.mockResolvedValue(ticket);
+        // Con contacto resoluble: si no se excluyera al autor, el aviso saldría.
+        usuarioResolver.resolverContacto.mockResolvedValue({
+          email: 'solicitante@dominio.com',
+          nombre: 'Solicitante',
+        });
 
         await listener.onTicketComentado(comentaSolicitante);
 

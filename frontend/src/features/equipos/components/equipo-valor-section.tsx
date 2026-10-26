@@ -133,8 +133,8 @@ export function EquipoValorSection({ equipo }: EquipoValorSectionProps) {
 }
 
 /**
- * Gráfico de la evolución del valor del equipo, a la mitad del ancho de la ficha en pantallas
- * medianas o más (S3). Usa la misma consulta que el historial, así que no pide nada de más. Sin
+ * Gráfico de la evolución del valor del equipo, a la mitad del ancho de la ficha desde el corte `sm`
+ * de Tailwind; en pantallas angostas ocupa todo el ancho (S3). Usa la misma consulta que el historial, así que no pide nada de más. Sin
  * historial, o mientras carga o si falló, no muestra nada: esos estados ya los muestra la sección
  * del valor.
  *

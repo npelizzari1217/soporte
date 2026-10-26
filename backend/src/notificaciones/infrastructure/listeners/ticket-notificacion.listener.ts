@@ -6,10 +6,10 @@
  *
  * Flujo por evento: carga el ticket (`TICKET_REPOSITORY`, para
  * numero/titulo/solicitante — el evento NO lleva PII) → resuelve el
- * contacto del solicitante, registrado o externo (`IContactoSolicitanteResolver`) → si no resuelve
- * (usuario sin email/soft-deleted) se OMITE el envío (N4, no falla el
- * resto) → arma el `EmailMessage` con la plantilla correspondiente →
- * `IEmailSender.send()`.
+ * destinatario: el solicitante, registrado o externo (`IContactoSolicitanteResolver`), o, en un
+ * comentario del propio solicitante, el asignado o los administradores (`IUsuarioContactoResolver`)
+ * → si no resuelve (usuario sin email/soft-deleted) se OMITE el envío (N4, no falla el resto) →
+ * arma el `EmailMessage` con la plantilla correspondiente → `IEmailSender.send()`.
  *
  * ALS/TenantContext (ADR-P8): el handler corre SINCRÓNICAMENTE en el
  * call-stack de `emit()` — hereda el TenantContext del scope emisor

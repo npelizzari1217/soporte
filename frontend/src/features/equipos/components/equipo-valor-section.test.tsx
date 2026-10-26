@@ -126,19 +126,18 @@ describe("EquipoValorSection (historial-valor-residual, S5)", () => {
   });
 
   it("el gráfico sin historial no muestra nada (el vacío ya lo dice la sección del valor)", async () => {
-    let respondido = false;
-    server.use(
-      http.get(URL_HISTORIAL, () => {
-        respondido = true;
-        return HttpResponse.json([]);
-      }),
+    server.use(http.get(URL_HISTORIAL, () => HttpResponse.json([])));
+    // Montados juntos comparten la consulta: el estado vacío de la sección prueba que los datos ya
+    // llegaron, así que la ausencia del gráfico no es la de "todavía cargando".
+    renderWithProviders(
+      <>
+        <EquipoValorSection equipo={EQUIPO} />
+        <EquipoValorGrafico equipoId={EQUIPO.id} />
+      </>,
     );
-    const { container } = renderWithProviders(<EquipoValorGrafico equipoId={EQUIPO.id} />);
 
-    // Vacío DESPUÉS de la respuesta: mientras carga también está vacío, y eso no probaría nada.
-    await waitFor(() => expect(respondido).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(container).toBeEmptyDOMElement();
+    expect(await screen.findByText("Todavía no hay valores registrados")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Gráfico del valor del equipo" })).not.toBeInTheDocument();
   });
 
   it("sin historial muestra el estado vacío, sin tabla ni gráfico", async () => {
