@@ -34,7 +34,7 @@ import { EquipoBajaDialog } from "./equipo-baja-dialog";
 import { EquipoComponentesSection } from "./equipo-componentes-section";
 import { EquipoEditDialog } from "./equipo-edit-dialog";
 import { EquipoQrPanel } from "./equipo-qr-panel";
-import { EquipoValorSection } from "./equipo-valor-section";
+import { EquipoValorGrafico, EquipoValorSection } from "./equipo-valor-section";
 
 export interface EquipoDetailViewProps {
   equipoId: string;
@@ -115,6 +115,9 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
         componentes={equipo.componentes}
         equipoActivo={equipoActivo}
       />
+
+      {/* Al final de todo y a la mitad del ancho (odd/tasks/pedidos-2026-10-26.md, S3). */}
+      <EquipoValorGrafico equipoId={equipo.id} />
     </div>
   );
 }

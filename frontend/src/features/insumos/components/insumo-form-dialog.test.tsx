@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { focusManager } from "@tanstack/react-query";
@@ -346,7 +346,7 @@ describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
 
-    expect(await screen.findByText(/no hay familias de insumo cargadas/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no hay familias de insumos cargadas/i)).toBeInTheDocument();
     expect(screen.getByText(/no hay unidades de medida cargadas/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Familia")).toBeDisabled();
     expect(screen.getByLabelText("Unidad de medida")).toBeDisabled();
@@ -371,7 +371,7 @@ describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
     renderWithProviders(<InsumoFormDialog trigger={<button>Nuevo insumo</button>} />);
     await user.click(screen.getByRole("button", { name: "Nuevo insumo" }));
 
-    const notaFamilias = await screen.findByText(/no hay familias de insumo cargadas/i);
+    const notaFamilias = await screen.findByText(/no hay familias de insumos cargadas/i);
     const notaUnidades = screen.getByText(/no hay unidades de medida cargadas/i);
 
     expect(notaFamilias).toHaveTextContent("Admin > Insumos");
@@ -721,3 +721,65 @@ describe("InsumoFormDialog — seguimiento", () => {
     expect(rutas(llamadas)).toEqual(["seguimiento"]);
   });
 });
+
+describe("InsumoFormDialog — clase del ítem: título y familias (odd/tasks/pedidos-2026-10-26.md, S4-S5)", () => {
+  const CONSUMIBLES = buildFamilia();
+  const MOUSES = buildFamilia({ id: "fam-2", codigo: "MOUSES", nombre: "Mouses", esRepuesto: true });
+
+  function mockFamilias(familias: FamiliaInsumo[]): void {
+    server.use(
+      http.get("/api/familias-insumo", () => HttpResponse.json(familias)),
+      http.get("/api/unidades-medida", () => HttpResponse.json([buildUnidad()])),
+    );
+  }
+
+  async function abrir(nombreItem: "insumo" | "repuesto", insumo?: Insumo): Promise<void> {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <InsumoFormDialog nombreItem={nombreItem} insumo={insumo} trigger={<button>Abrir</button>} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Abrir" }));
+    await waitFor(() => expect(screen.getByLabelText("Familia")).toBeEnabled());
+  }
+
+  function opcionesDeFamilia(): string[] {
+    return within(screen.getByLabelText("Familia"))
+      .getAllByRole("option")
+      .map((opcion) => opcion.textContent ?? "");
+  }
+
+  it("el alta de un repuesto se titula Nuevo repuesto y solo ofrece familias de repuestos", async () => {
+    mockFamilias([CONSUMIBLES, MOUSES]);
+    await abrir("repuesto");
+
+    expect(screen.getByRole("heading", { name: "Nuevo repuesto" })).toBeInTheDocument();
+    expect(opcionesDeFamilia()).toEqual(["Elegí una familia", "Mouses"]);
+  });
+
+  it("el alta de un insumo se titula Nuevo insumo y solo ofrece familias de insumos", async () => {
+    mockFamilias([CONSUMIBLES, MOUSES]);
+    await abrir("insumo");
+
+    expect(screen.getByRole("heading", { name: "Nuevo insumo" })).toBeInTheDocument();
+    expect(opcionesDeFamilia()).toEqual(["Elegí una familia", "Consumibles de impresión"]);
+  });
+
+  it("al editar conserva la familia actual aunque sea de la otra clase, y la muestra elegida", async () => {
+    mockFamilias([CONSUMIBLES, MOUSES]);
+    await abrir("repuesto", buildInsumo({ familiaId: CONSUMIBLES.id }));
+
+    expect(opcionesDeFamilia()).toEqual(["Elegí una familia", "Consumibles de impresión", "Mouses"]);
+    await waitFor(() => expect(screen.getByLabelText("Familia")).toHaveValue(CONSUMIBLES.id));
+  });
+
+  it("si solo hay familias de la otra clase, avisa que no hay familias de repuestos", async () => {
+    mockFamilias([CONSUMIBLES]);
+    const user = userEvent.setup();
+    renderWithProviders(<InsumoFormDialog nombreItem="repuesto" trigger={<button>Abrir</button>} />);
+    await user.click(screen.getByRole("button", { name: "Abrir" }));
+
+    expect(await screen.findByText(/no hay familias de repuestos cargadas/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Familia")).toBeDisabled();
+  });
+});
+

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
@@ -99,3 +99,75 @@ describe("UsuariosAdminView", () => {
     expect(screen.getByRole("option", { name: "Administrador" })).toBeInTheDocument();
   });
 });
+
+describe("UsuariosAdminView — botón Horarios (odd/tasks/pedidos-2026-10-26.md, S6)", () => {
+  const COLABORADORA = { id: "u3", nombre: "Carla", apellido: "Ruiz", rol: "COLABORADOR", email: "carla@tenant.com" };
+  const SOLICITANTE = { id: "u4", nombre: "Dora", apellido: "Pedido", rol: "USUARIO", email: "dora@tenant.com" };
+  const ADMIN = { id: "u5", nombre: "Ema", apellido: "Admin", rol: "ADMINISTRADOR", email: "ema@tenant.com" };
+
+  function semana(apertura: number | null, cierre: number | null) {
+    return [0, 1, 2, 3, 4, 5, 6].map((diaSemana) =>
+      diaSemana >= 1 && diaSemana <= 5
+        ? { diaSemana, aperturaMinuto: apertura, cierreMinuto: cierre }
+        : { diaSemana, aperturaMinuto: null, cierreMinuto: null },
+    );
+  }
+
+  it("aparece en técnicos y colaboradores, y no en el resto de los roles", async () => {
+    mockBackend([USUARIO_JUANA, COLABORADORA, SOLICITANTE, ADMIN]);
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+
+    await screen.findByText("Juana Pérez");
+    expect(screen.getByRole("button", { name: "Horarios de Juana Pérez" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Horarios de Carla Ruiz" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Horarios de Dora Pedido" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Horarios de Ema Admin" })).not.toBeInTheDocument();
+  });
+
+  it("abre el horario de ese usuario: si no tiene propio, avisa que usa el del cliente", async () => {
+    mockBackend([USUARIO_JUANA]);
+    const pedidos: string[] = [];
+    server.use(
+      http.get("/api/horario-laboral/usuarios/:usuarioId", ({ params }) => {
+        pedidos.push(String(params.usuarioId));
+        return HttpResponse.json({ usuarioId: "u1", origen: "CLIENTE", dias: semana(540, 1080) });
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+
+    await user.click(await screen.findByRole("button", { name: "Horarios de Juana Pérez" }));
+
+    const dialogo = await screen.findByRole("dialog", { name: "Horario de Juana Pérez" });
+    expect(await within(dialogo).findByText(/Juana Pérez usa el horario laboral del cliente\./)).toBeInTheDocument();
+    expect(within(dialogo).getAllByLabelText("Apertura")[1]).toHaveValue("09:00");
+    expect(within(dialogo).getByRole("button", { name: "Usar horario propio" })).toBeInTheDocument();
+    expect(pedidos).toEqual(["u1"]);
+  });
+
+  it("cerrar y volver a abrir descarta la edición sin guardar", async () => {
+    mockBackend([USUARIO_JUANA]);
+    server.use(
+      http.get("/api/horario-laboral/usuarios/:usuarioId", () =>
+        HttpResponse.json({ usuarioId: "u1", origen: "USUARIO", dias: semana(480, 720) }),
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "ADMINISTRADOR" }) });
+
+    await user.click(await screen.findByRole("button", { name: "Horarios de Juana Pérez" }));
+    let dialogo = await screen.findByRole("dialog", { name: "Horario de Juana Pérez" });
+    await within(dialogo).findByText("Juana Pérez tiene horario propio.");
+    await user.click(within(dialogo).getByRole("checkbox", { name: "Lunes" }));
+    expect(within(dialogo).getByRole("checkbox", { name: "Lunes" })).not.toBeChecked();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Horarios de Juana Pérez" }));
+
+    dialogo = await screen.findByRole("dialog", { name: "Horario de Juana Pérez" });
+    await within(dialogo).findByText("Juana Pérez tiene horario propio.");
+    expect(within(dialogo).getByRole("checkbox", { name: "Lunes" })).toBeChecked();
+  });
+});
+
