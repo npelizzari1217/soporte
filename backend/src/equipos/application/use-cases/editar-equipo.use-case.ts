@@ -60,12 +60,14 @@ export interface EditarEquipoDto {
  * 2. Si `numeroSerie` fue provisto y difiere del actual: verifica unicidad
  *    excluyendo el propio equipo → `NumeroSerieDuplicadoError` si
  *    pertenece a OTRO equipo.
- * 3. Si `modeloEquipoId` viene con un id: verifica contra el catálogo
+ * 3. Si `modeloEquipoId` viene con un id DISTINTO del que el equipo ya tiene: verifica contra el catálogo
  *    `modelos_equipo` que el modelo EXISTA y esté HABILITADO →
  *    `ModeloEquipoInexistenteError` / `ModeloEquipoDeshabilitadoError`.
  *    `undefined` ("no lo toques") y `null` ("desvinculalo") son los dos casos
  *    válidos que NO se validan. El modelo deshabilitado no lo puede atrapar la
- *    FK: la fila existe.
+ *    FK: la fila existe. El mismo modelo que ya tiene tampoco se valida: el formulario lo reenvía en
+ *    cada guardado, y un modelo deshabilitado después bloqueaba toda edición del equipo
+ *    (odd/tasks/defectos-ayuda.md, S2).
  * 4. Aplica `actualizar()` (que normaliza `ubicacion` a mayúscula) y persiste (con la misma defensa P2002 que `CrearEquipoUseCase`).
  * 5. Si el valor residual guardado (monto o fecha) difiere del que el equipo tenía, registra la
  *    valoración en el historial dentro de la misma transacción
@@ -136,9 +138,13 @@ export class EditarEquipoUseCase {
       }
     }
 
-    // `undefined` no toca el modelo asignado y `null` lo desvincula: los dos
-    // son válidos y no tienen nada que buscar en el catálogo.
-    if (dto.modeloEquipoId !== undefined && dto.modeloEquipoId !== null) {
+    // `undefined` no toca el modelo asignado, `null` lo desvincula y el mismo id no lo cambia: los
+    // tres son válidos y no tienen nada que buscar en el catálogo.
+    if (
+      dto.modeloEquipoId !== undefined &&
+      dto.modeloEquipoId !== null &&
+      dto.modeloEquipoId !== equipo.modeloEquipoId
+    ) {
       const modeloValido = await validarModeloEquipoElegible(
         this.modeloEquipoRepo,
         dto.modeloEquipoId,

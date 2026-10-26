@@ -29,7 +29,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 ## Tasks
 
 - [x] T1 — S1
-- [ ] T2 — S2
+- [x] T2 — S2
 - [ ] T3 — S3
 - [ ] T4 — S4
 - [ ] T5 — S5
@@ -49,3 +49,6 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
   crear otra. Caso hermano: con membresía activa sigue el 409. Mocks de `IMembresiaRepository`
   completados en 10 specs. auth+clientes 1677/1677, e2e 14/14 y 5/5, typecheck y lint limpios.
   Ayuda (suspendida): el artículo de usuarios puede decir que volver a darla de alta la reactiva.
+- **L4 — T2 (#2), confirmado.** RED: "guardar sin cambiar un modelo que se deshabilitó después no se
+  rechaza" → `expected false to be true`. GREEN: `EditarEquipoUseCase` valida el modelo solo si cambia;
+  elegir uno deshabilitado nuevo sigue rechazado. `src/equipos` 946/946, lint y typecheck limpios.
