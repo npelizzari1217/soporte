@@ -85,3 +85,8 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   sin error del servidor, la respuesta reemplaza la grilla entera; la `key` de la sección incluye el
   origen. RDD: assess medio, `reviewDue: false` → sin revisión nativa; verify cubre.
   Frontend completo: lint y type-check limpios, 290 archivos / 2683 tests verdes.
+- **L12 — Cierre.** Suite backend completa sobre la rama: lint 0, typecheck 0, 805/805 archivos y
+  10205/10205 tests. Las tres líneas `FAIL orden-de-arranque.spec.ts` son la salida esperada de los
+  vitest hijos de `test/entorno-corte-arranque.spec.ts` (fixture excluido que debe fallar sin entorno).
+  Deuda anotada: `feriadosRepo.obtener()` lee `feriados_cliente` (base del tenant) dentro del `try` de
+  `medir()`; un fallo ahí repite el patrón de B-003. Ayuda (suspendida): columna "Resoluciones evaluadas".
