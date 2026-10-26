@@ -8,6 +8,7 @@ import { PrismaFeriadoGlobalRepository } from './prisma-feriado-global.repositor
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { FeriadoEntity } from '../../../domain/entities/feriado.entity';
 import { FechaCalendario } from '../../../domain/value-objects/fecha-calendario';
+import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 
 function fecha(iso: string): FechaCalendario {
   return FechaCalendario.crear(iso).getValue();
@@ -149,6 +150,54 @@ describe('PrismaFeriadoGlobalRepository', () => {
       await repo.eliminar('feriado-1');
 
       expect(del).toHaveBeenCalledWith({ where: { id: 'feriado-1' } });
+    });
+  });
+
+  describe('copia en memoria de los feriados globales (JD-B-002)', () => {
+    const navidad = (): FeriadoEntity =>
+      FeriadoEntity.crear(
+        { fecha: fecha('2026-12-25'), descripcion: 'Navidad' },
+        'feriado-navidad',
+      );
+    const escrituras: Array<[string, (repo: PrismaFeriadoGlobalRepository) => Promise<void>]> = [
+      ['crear', (repo) => repo.crear(navidad())],
+      ['editar', (repo) => repo.editar(navidad())],
+      ['eliminar', (repo) => repo.eliminar('feriado-navidad')],
+    ];
+
+    it.each(escrituras)(
+      '%s la descarta: la próxima lectura vuelve a master',
+      async (_nombre, escribir) => {
+        const { prismaService } = makePrismaService({
+          create: vi.fn().mockResolvedValue(undefined),
+          update: vi.fn().mockResolvedValue(undefined),
+          delete: vi.fn().mockResolvedValue(undefined),
+        });
+        const cache = new FeriadosGlobalesCache();
+        const repo = new PrismaFeriadoGlobalRepository(prismaService, cache);
+        const cargar = vi.fn().mockResolvedValue([]);
+        await cache.obtener(cargar);
+
+        await escribir(repo);
+        await cache.obtener(cargar);
+
+        expect(cargar).toHaveBeenCalledTimes(2);
+      },
+    );
+
+    it('una escritura que falla no la descarta', async () => {
+      const { prismaService } = makePrismaService({
+        create: vi.fn().mockRejectedValue(new Error('unique violation')),
+      });
+      const cache = new FeriadosGlobalesCache();
+      const repo = new PrismaFeriadoGlobalRepository(prismaService, cache);
+      const cargar = vi.fn().mockResolvedValue([]);
+      await cache.obtener(cargar);
+
+      await expect(repo.crear(navidad())).rejects.toThrow('unique violation');
+      await cache.obtener(cargar);
+
+      expect(cargar).toHaveBeenCalledTimes(1);
     });
   });
 });

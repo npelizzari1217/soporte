@@ -26,6 +26,7 @@ import { TenantContext } from '../../../../shared/tenancy/tenant-context';
 import { IFeriadosLaboralesRepository } from '../../../domain/ports/i-feriados-laborales.repository';
 import { FeriadosLaborales } from '../../../domain/services/calcular-sla-habil-vence.service';
 import { PrismaCalendarioLaboralMapper } from './prisma-calendario-laboral.mapper';
+import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 
 /**
  * FeriadosSinTenantContextError — lanzada por `obtener()` cuando corre sin
@@ -52,6 +53,7 @@ export class PrismaFeriadosLaboralesRepository implements IFeriadosLaboralesRepo
   constructor(
     private readonly prismaService: PrismaService,
     private readonly tenantContext: TenantContext,
+    private readonly globales: FeriadosGlobalesCache = new FeriadosGlobalesCache(),
   ) {}
 
   private get masterClient(): InstanceType<typeof MasterPrismaClient> {
@@ -65,14 +67,18 @@ export class PrismaFeriadosLaboralesRepository implements IFeriadosLaboralesRepo
     }
     const tenantClient = ctx.prismaClient as InstanceType<typeof TenantPrismaClient>;
 
+    // Los globales salen de la copia en memoria: así la lectura de master no cae, salvo al
+    // vencer la copia, dentro de la transacción del ticket (JD-B-002).
     const [globales, propios] = await Promise.all([
-      this.masterClient.feriado.findMany(),
+      this.globales.obtener(async () =>
+        (await this.masterClient.feriado.findMany()).map((fila) => fila.fecha),
+      ),
       tenantClient.feriadoCliente.findMany(),
     ]);
 
     const claves = new Set<string>();
-    for (const fila of globales) {
-      claves.add(PrismaCalendarioLaboralMapper.claveDiaUtcDe(fila.fecha));
+    for (const fecha of globales) {
+      claves.add(PrismaCalendarioLaboralMapper.claveDiaUtcDe(fecha));
     }
     for (const fila of propios) {
       claves.add(PrismaCalendarioLaboralMapper.claveDiaUtcDe(fila.fecha));

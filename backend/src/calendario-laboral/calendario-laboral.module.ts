@@ -49,6 +49,7 @@ import {
 import { PrismaCalendarioLaboralSemanalRepository } from './infrastructure/persistence/prisma/prisma-calendario-laboral-semanal.repository';
 import { PrismaFeriadosLaboralesRepository } from './infrastructure/persistence/prisma/prisma-feriados-laborales.repository';
 import { PrismaFeriadoGlobalRepository } from './infrastructure/persistence/prisma/prisma-feriado-global.repository';
+import { FeriadosGlobalesCache } from './infrastructure/persistence/feriados-globales.cache';
 import { PrismaFeriadoClienteRepository } from './infrastructure/persistence/prisma/prisma-feriado-cliente.repository';
 import { FeriadosGlobalesMasterChecker } from './infrastructure/persistence/prisma/feriados-globales-master.checker';
 import { ListarFeriadosGlobalesUseCase } from './application/use-cases/listar-feriados-globales.use-case';
@@ -109,6 +110,7 @@ import { UsuarioMasterChecker } from '../tickets/infrastructure/persistence/pris
       provide: HORARIO_LABORAL_ESCRITURA_REPOSITORY,
       useExisting: CALENDARIO_LABORAL_SEMANAL_REPOSITORY,
     },
+    FeriadosGlobalesCache,
     { provide: FERIADOS_LABORALES_REPOSITORY, useClass: PrismaFeriadosLaboralesRepository },
     { provide: FERIADO_GLOBAL_REPOSITORY, useClass: PrismaFeriadoGlobalRepository },
     { provide: FERIADO_CLIENTE_REPOSITORY, useClass: PrismaFeriadoClienteRepository },
