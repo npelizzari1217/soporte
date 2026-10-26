@@ -22,7 +22,9 @@ Además, cada persona ve los números de los tickets que puede ver:
 - Los indicadores cuentan solo los tickets de los tipos sobre los que la persona
   tiene el permiso **Ver**.
 - Un **Técnico** ve únicamente lo suyo: los tickets que tiene asignados, sus
-  tareas completadas y su propia fila en la tabla de cumplimiento.
+  tareas completadas y su propia fila en la tabla de cumplimiento. Esa fila
+  cuenta todas las resoluciones que hizo, aunque el ticket sea de un tipo que hoy
+  ya no puede ver o se haya reasignado a otra persona.
 
 El detalle de las casillas está en el artículo sobre permisos y roles.
 
