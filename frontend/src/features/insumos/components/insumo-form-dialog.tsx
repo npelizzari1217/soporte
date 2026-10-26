@@ -71,12 +71,18 @@ import type { CreateInsumoDto, EditInsumoDto, Insumo, SeguimientoInsumo } from "
 export interface InsumoFormDialogProps {
   trigger: ReactNode;
   insumo?: Insumo;
-  /** Cómo se nombra el ítem en el título: "insumo" (default) o "repuesto". */
+  /**
+   * Qué se da de alta o se edita: "insumo" (default) o "repuesto". Nombra el ítem en el título y
+   * filtra las familias del select a las de su clase (odd/tasks/pedidos-2026-10-26.md, S4-S5).
+   */
   nombreItem?: "insumo" | "repuesto";
 }
 
 /** Nota bajo el select cuando el catálogo correspondiente resolvió VACÍO. */
-const NOTA_FAMILIAS_VACIAS = "No hay familias de insumo cargadas. Creá una desde Admin > Insumos.";
+const NOTA_FAMILIAS_VACIAS: Record<"insumo" | "repuesto", string> = {
+  insumo: "No hay familias de insumos cargadas. Creá una desde Admin > Insumos.",
+  repuesto: "No hay familias de repuestos cargadas. Creá una desde Admin > Insumos.",
+};
 const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Creá una desde Admin > Unidades.";
 
 /**
@@ -128,13 +134,20 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
   const mutation = isEdit ? editarMutation : crearMutation;
   const guardando = mutation.isPending || seguimientoMutation.isPending;
 
-  const familias = familiasQuery.data ?? [];
+  // Solo las familias de la clase del ítem (S5). En la edición se conserva además la familia que el
+  // ítem ya tiene, aunque sea de la otra clase: sin su `<option>`, el select mostraría el placeholder
+  // y guardaría el valor viejo sin que se vea (la clase "select con valor fuera de catálogo").
+  const esRepuesto = nombreItem === "repuesto";
+  const familiasDelTipo = familiasQuery.data?.filter(
+    (familia) => familia.esRepuesto === esRepuesto || familia.id === insumo?.familiaId,
+  );
+  const familias = familiasDelTipo ?? [];
   const unidades = unidadesQuery.data ?? [];
   // Los cuatro estados salen del helper compartido: un `!isLoading && length === 0`
   // escrito acá colapsaría "se cayó" con "está vacío" —`data` es `undefined` en
   // los dos casos y el `?? []` los aplana— y la pantalla mandaría a cargar un
   // catálogo que ya existe. Es la misma regla que aplican el listado y la ficha.
-  const estadoFamilias = resolverLista({ entradas: familiasQuery.data, cargando: familiasQuery.isLoading });
+  const estadoFamilias = resolverLista({ entradas: familiasDelTipo, cargando: familiasQuery.isLoading });
   const estadoUnidades = resolverLista({ entradas: unidadesQuery.data, cargando: unidadesQuery.isLoading });
   // Un `<select>` NATIVO no puede mostrar un valor cuya `<option>` todavía no
   // existe. Los dos catálogos son queries independientes del diálogo: si
@@ -360,7 +373,9 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
                 </option>
               ))}
             </Select>
-            {estadoFamilias === "VACIA" && <p className="text-xs text-muted-foreground">{NOTA_FAMILIAS_VACIAS}</p>}
+            {estadoFamilias === "VACIA" && (
+              <p className="text-xs text-muted-foreground">{NOTA_FAMILIAS_VACIAS[nombreItem]}</p>
+            )}
             {estadoFamilias === "NO_DISPONIBLE" && (
               <p className="text-xs text-muted-foreground">{NOTA_FAMILIAS_NO_DISPONIBLES}</p>
             )}

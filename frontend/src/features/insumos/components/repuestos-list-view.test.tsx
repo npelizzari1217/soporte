@@ -47,6 +47,21 @@ function mockCatalogos(insumos: Insumo[]): void {
   );
 }
 
+describe("RepuestosListView — alta de un repuesto (odd/tasks/pedidos-2026-10-26.md, S4)", () => {
+  it("el botón Nuevo repuesto abre el formulario titulado Nuevo repuesto, no Nuevo insumo", async () => {
+    mockCatalogos([MOUSE]);
+    const user = userEvent.setup();
+    renderWithProviders(<RepuestosListView />, {
+      user: buildUser({ rol: "ADMINISTRADOR", permisos: ["INSUMOS:LECTURA"], modulos: ["INSUMOS"] }),
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Nuevo repuesto" }));
+
+    expect(await screen.findByRole("heading", { name: "Nuevo repuesto" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Nuevo insumo" })).not.toBeInTheDocument();
+  });
+});
+
 describe("RepuestosListView — la página de Repuestos renderiza", () => {
   it("muestra el título Repuestos y el catálogo que devuelve el endpoint", async () => {
     mockCatalogos([MOUSE]);
