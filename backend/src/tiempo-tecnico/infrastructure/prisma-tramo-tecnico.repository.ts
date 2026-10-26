@@ -132,13 +132,21 @@ export class PrismaTramoTecnicoRepository implements ITramoTecnicoRepository {
         tipoOperacion: { codigo: 'CAMBIO_ESTADO' },
         estadoNuevoId: { not: null },
       },
-      select: { createdAt: true, estadoNuevo: { select: { codigo: true } } },
+      select: {
+        createdAt: true,
+        estadoNuevo: { select: { codigo: true } },
+        estadoAnterior: { select: { codigo: true } },
+      },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     const cambios: CambioEstadoTramo[] = [];
     for (const operacion of operaciones) {
       if (operacion.estadoNuevo !== null) {
-        cambios.push({ at: operacion.createdAt, estadoCodigo: operacion.estadoNuevo.codigo });
+        cambios.push({
+          at: operacion.createdAt,
+          estadoCodigo: operacion.estadoNuevo.codigo,
+          estadoAnteriorCodigo: operacion.estadoAnterior?.codigo ?? null,
+        });
       }
     }
     return cambios;

@@ -138,6 +138,8 @@ export function planificarTramo(
 export interface CambioEstadoTramo {
   readonly at: Date;
   readonly estadoCodigo: string;
+  /** Estado del que sale el ticket, si la operación lo registró. */
+  readonly estadoAnteriorCodigo?: string | null;
 }
 
 /** Tiempo hábil entre dos instantes, en milisegundos, en el horario de quien se mide. */
@@ -148,13 +150,17 @@ export type MsHabilesEntre = (desde: Date, hasta: Date) => number;
  * el reloj del SLA corre (`ESTADOS_RELOJ_CORRE`: NUEVO, ASIGNADO, EN_PROCESO). Esperando cliente
  * pausa (S7).
  *
- * El estado al inicio es el del último cambio con `at <= inicio`; sin ninguno, el ticket está en
- * su estado de alta (NUEVO o ASIGNADO), que corre. Los cambios posteriores a `fin` se ignoran.
+ * El estado al inicio es el del último cambio con `at <= inicio`. Sin ninguno (un ticket importado
+ * no trae historial, JD-A-002), es el estado del que salió el primer cambio posterior; sin cambios
+ * posteriores, `estadoSinCambios`. Si nada de eso lo dice, el ticket está en su estado de alta
+ * (NUEVO o ASIGNADO), que corre. Los cambios posteriores a `fin` se ignoran.
  *
  * @param inicio Apertura del tramo.
  * @param fin Cierre del tramo; si no es posterior a `inicio`, el tramo mide 0.
  * @param cambios Cambios de estado del ticket, en cualquier orden.
  * @param msHabiles Medición hábil en el horario del técnico, con los feriados.
+ * @param estadoSinCambios Estado del ticket durante el tramo cuando no hubo ningún cambio desde el
+ *   inicio: el que tenía antes del guardado que lo cierra.
  * @returns Segundos hábiles, redondeados.
  */
 export function medirSegundosHabiles(
@@ -162,11 +168,12 @@ export function medirSegundosHabiles(
   fin: Date,
   cambios: readonly CambioEstadoTramo[],
   msHabiles: MsHabilesEntre,
+  estadoSinCambios: string | null = null,
 ): number {
   if (fin.getTime() <= inicio.getTime()) return 0;
 
   const ordenados = [...cambios].sort((a, b) => a.at.getTime() - b.at.getTime());
-  let estado: string | null = null;
+  let estado = estadoAlInicio(inicio, ordenados, estadoSinCambios);
   let cursor = inicio;
   let totalMs = 0;
   for (const cambio of ordenados) {
@@ -181,6 +188,16 @@ export function medirSegundosHabiles(
   }
   if (corre(estado)) totalMs += msHabiles(cursor, fin);
   return Math.round(totalMs / 1000);
+}
+
+function estadoAlInicio(
+  inicio: Date,
+  ordenados: readonly CambioEstadoTramo[],
+  estadoSinCambios: string | null,
+): string | null {
+  const posterior = ordenados.find((c) => c.at.getTime() > inicio.getTime());
+  if (posterior === undefined) return estadoSinCambios;
+  return posterior.estadoAnteriorCodigo ?? null;
 }
 
 function corre(estado: string | null): boolean {

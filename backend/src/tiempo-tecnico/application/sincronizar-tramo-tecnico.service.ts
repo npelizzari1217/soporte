@@ -83,8 +83,17 @@ export class SincronizarTramoTecnicoService {
     // Un solo instante para todo el guardado: el tramo que se cierra por reasignación termina
     // justo donde empieza el del nuevo técnico.
     const instante = this.ahora();
+    // El estado anterior al guardado mide el tramo si no hubo ningún cambio desde que abrió.
+    const estadoPrevio = previo?.estadoCodigo ?? null;
     if (plan.cerrar !== null) {
-      await this.cerrar(ticketId, plan.cerrar.tramo, plan.cerrar.motivo, instante, actual.slaMetaS);
+      await this.cerrar(
+        ticketId,
+        plan.cerrar.tramo,
+        plan.cerrar.motivo,
+        instante,
+        actual.slaMetaS,
+        estadoPrevio,
+      );
     }
     if (plan.abrir !== null) {
       const tramo = await this.tramoRepo.abrir({
@@ -93,7 +102,14 @@ export class SincronizarTramoTecnicoService {
         inicioAt: instante,
       });
       if (plan.abrir.cerrarAlAbrir !== null) {
-        await this.cerrar(ticketId, tramo, plan.abrir.cerrarAlAbrir, instante, actual.slaMetaS);
+        await this.cerrar(
+          ticketId,
+          tramo,
+          plan.abrir.cerrarAlAbrir,
+          instante,
+          actual.slaMetaS,
+          estadoPrevio,
+        );
       }
     }
   }
@@ -104,10 +120,11 @@ export class SincronizarTramoTecnicoService {
     motivo: MotivoFinTramo,
     instante: Date,
     metaS: number | null,
+    estadoPrevio: string | null,
   ): Promise<void> {
     // Un reloj que retrocede no puede dejar un fin anterior al inicio (CHECK de la base).
     const finAt = instante.getTime() < tramo.inicioAt.getTime() ? tramo.inicioAt : instante;
-    const habilS = await this.medir(ticketId, tramo, finAt);
+    const habilS = await this.medir(ticketId, tramo, finAt, estadoPrevio);
     const cerrado = await this.tramoRepo.cerrar({
       id: tramo.id,
       finAt,
@@ -123,7 +140,12 @@ export class SincronizarTramoTecnicoService {
     }
   }
 
-  private async medir(ticketId: string, tramo: TramoAbierto, finAt: Date): Promise<number | null> {
+  private async medir(
+    ticketId: string,
+    tramo: TramoAbierto,
+    finAt: Date,
+    estadoPrevio: string | null,
+  ): Promise<number | null> {
     if (finAt.getTime() <= tramo.inicioAt.getTime()) return 0;
     // Fuera del try: las dos lecturas van a la base del tenant, y un error ahí ya abortó la
     // transacción. Tragarlo solo cambiaría la causa real por el fallo del UPDATE del tramo.
@@ -131,8 +153,12 @@ export class SincronizarTramoTecnicoService {
     const { calendario } = await this.horarioResolver.obtenerParaUsuario(tramo.tecnicoId);
     try {
       const feriados = await this.feriadosRepo.obtener();
-      return medirSegundosHabiles(tramo.inicioAt, finAt, cambios, (desde, hasta) =>
-        this.calculo.msHabilesEntre(desde, hasta, calendario, feriados),
+      return medirSegundosHabiles(
+        tramo.inicioAt,
+        finAt,
+        cambios,
+        (desde, hasta) => this.calculo.msHabilesEntre(desde, hasta, calendario, feriados),
+        estadoPrevio,
       );
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : 'error desconocido';

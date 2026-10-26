@@ -27,7 +27,7 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
 ## Tasks
 
 - [x] T1 — S1 (bugfix, TDD)
-- [ ] T2 — S2 (bugfix, TDD)
+- [x] T2 — S2 (bugfix, TDD)
 - [ ] T3 — S6 (docs)
 - [ ] T4 — S3
 - [ ] T5 — S4 (decisión del dueño pendiente)
@@ -42,3 +42,10 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   el tramo" falló con `promise resolved "undefined" instead of rejecting`. GREEN: `obtenerParaUsuario`
   sale del `try` en `medir()`; la falla de feriados (master) sigue cerrando con `habil_s` NULL.
   `src/tiempo-tecnico` 108/108, lint y typecheck limpios.
+- **L3 — T2 (JD-A-002).** RED: dos tests del servicio ("la espera al cliente previa al primer cambio no
+  suma", "sin ningún cambio durante el tramo, mide con el estado que tenía el ticket") fallaron con
+  `habilS` 10800 y 7200 en vez de 3600 y 0. GREEN: `medirSegundosHabiles` toma el estado al inicio del
+  `estado_anterior` del primer cambio posterior o, sin cambios, del estado previo al guardado que cierra;
+  `listarCambiosEstado` lee `estadoAnterior`. Test de integración nuevo; sin la lectura en Prisma da
+  10800 (verificado revirtiendo el repo). Los escritores de `CAMBIO_ESTADO` ya registran el estado
+  anterior; los `null` del código son de `ASIGNACION`. `src/tiempo-tecnico` verde, lint y typecheck limpios.

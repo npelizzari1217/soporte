@@ -578,25 +578,33 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
      * 12 registrada como CAMBIO_ESTADO en `operaciones_ticket`. Devuelve el tramo cerrado en
      * RESUELTO.
      */
-    async function tramoDeLunes(tecnicoId: string): Promise<TramoTecnico> {
+    async function tramoDeLunes(
+      tecnicoId: string,
+      escenario: {
+        estadoInicial: string;
+        cambios: ReadonlyArray<{ hora: string; estado: string; anterior?: string }>;
+      } = {
+        estadoInicial: 'EN_PROCESO',
+        cambios: [
+          { hora: '10:00', estado: 'ESPERANDO_CLIENTE' },
+          { hora: '12:00', estado: 'EN_PROCESO' },
+          { hora: '14:00', estado: 'RESUELTO' },
+        ],
+      },
+    ): Promise<TramoTecnico> {
       const sincronizador = servicio(() => reloj);
-      const ticketId = await ticketPrevio('EN_PROCESO', tecnicoId, META_LUNES_S);
+      const ticketId = await ticketPrevio(escenario.estadoInicial, tecnicoId, META_LUNES_S);
       reloj = art('2026-10-26T09:00');
       await withTenant(() => txRunner.run(() => sincronizador.sincronizar(ticketId, null)));
 
-      const cambios = [
-        { hora: '10:00', estado: 'ESPERANDO_CLIENTE' },
-        { hora: '12:00', estado: 'EN_PROCESO' },
-        { hora: '14:00', estado: 'RESUELTO' },
-      ];
-      for (const { hora, estado } of cambios) {
+      for (const { hora, estado, anterior } of escenario.cambios) {
         const instante = art(`2026-10-26T${hora}`);
         const operacion = OperacionTicketEntity.reconstitute(
           {
             ticketId,
             tipoOperacionId: ids.cambioEstado,
             descripcion: null,
-            estadoAnteriorId: null,
+            estadoAnteriorId: anterior === undefined ? null : ids.estados[anterior],
             estadoNuevoId: ids.estados[estado],
             autorId: tecnicoId,
             esInterno: false,
@@ -612,7 +620,7 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
 
       // El cambio de estado se escribe aparte y el servicio se invoca como lo hace el repositorio,
       // con la situación previa leída antes.
-      reloj = art('2026-10-26T14:00');
+      reloj = art(`2026-10-26T${escenario.cambios[escenario.cambios.length - 1].hora}`);
       const previo = await withTenant(() => sincronizador.leerPrevio(ticketId));
       await client.ticket.update({
         where: { id: ticketId },
@@ -632,6 +640,17 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
         metaS: META_LUNES_S,
         cumplido: false,
       });
+    });
+
+    it('un ticket sin historial que esperaba al cliente arranca pausado: lo dice el estado anterior del primer cambio (JD-A-002)', async () => {
+      const tramo = await tramoDeLunes(ANA, {
+        estadoInicial: 'ESPERANDO_CLIENTE',
+        cambios: [
+          { hora: '11:00', estado: 'EN_PROCESO', anterior: 'ESPERANDO_CLIENTE' },
+          { hora: '12:00', estado: 'RESUELTO', anterior: 'EN_PROCESO' },
+        ],
+      });
+      expect(tramo).toMatchObject({ habilS: 3600, metaS: META_LUNES_S, cumplido: true });
     });
 
     it('con horario propio (9 a 10) mide solo esa ventana y cumple', async () => {
