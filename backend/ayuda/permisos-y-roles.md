@@ -1,7 +1,7 @@
 ---
 slug: permisos-y-roles
 titulo: Cómo funcionan los permisos y los roles
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Cómo funcionan los permisos y los roles

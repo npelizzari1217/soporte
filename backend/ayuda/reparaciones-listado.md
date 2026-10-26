@@ -1,7 +1,7 @@
 ---
 slug: reparaciones-listado
 titulo: El listado de reparaciones y su exportación a Excel o CSV
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El listado de reparaciones y su exportación a Excel o CSV

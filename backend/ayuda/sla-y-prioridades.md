@@ -1,7 +1,7 @@
 ---
 slug: sla-y-prioridades
 titulo: El SLA y las prioridades: plazos, pausas y avisos de vencimiento
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El SLA y las prioridades: plazos, pausas y avisos de vencimiento

@@ -1,7 +1,7 @@
 ---
 slug: insumos-administracion-y-reporte
 titulo: Administración de familias, unidades de medida y reporte de stock
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Administración de familias, unidades de medida y reporte de stock

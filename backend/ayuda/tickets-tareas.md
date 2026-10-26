@@ -1,7 +1,7 @@
 ---
 slug: tickets-tareas
 titulo: Las tareas de un ticket
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Las tareas de un ticket

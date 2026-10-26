@@ -1,7 +1,7 @@
 ---
 slug: reparaciones-edilicias
 titulo: Trabajar una reparación: alta, edición, subtareas, comentarios y compras
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Trabajar una reparación: alta, edición, subtareas, comentarios y compras

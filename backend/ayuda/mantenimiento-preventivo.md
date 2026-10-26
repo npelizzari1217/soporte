@@ -1,7 +1,7 @@
 ---
 slug: mantenimiento-preventivo
 titulo: El mantenimiento preventivo se genera solo
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El mantenimiento preventivo se genera solo

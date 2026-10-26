@@ -1,7 +1,7 @@
 ---
 slug: insumos-y-repuestos
 titulo: Insumos y repuestos: el catálogo, la ficha y el alta de un ítem
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Insumos y repuestos: el catálogo, la ficha y el alta de un ítem
