@@ -1,14 +1,20 @@
 ---
 slug: compras-estados
-titulo: El listado de compras: estados, orden y exportación a Excel
+titulo: El listado de compras: estados, orden, filtros y exportación
 visibleParaSolicitante: false
 ---
 
-# El listado de compras: estados, orden y exportación a Excel
+# El listado de compras: estados, orden, filtros y exportación
 
 Una compra **no tiene un estado propio que alguien fije a mano**. El estado se
 deduce de los ítems que la compra contiene. Entender eso explica casi todo lo
 demás.
+
+## Qué muestra el listado
+
+Cada fila es una compra, con las columnas **Número**, **Fecha** (la fecha de
+solicitud), **Motivo**, **Estado**, **Totales por moneda** y **Progreso**. Haga
+clic en una fila para abrir la compra completa, con sus ítems.
 
 ## Los cinco estados
 
@@ -16,94 +22,116 @@ demás.
 |---|---|
 | **Pendiente** | Queda al menos un ítem sin resolver. También es el estado de una compra que todavía no tiene ítems cargados. |
 | **Aprobada** | Todos los ítems fueron aprobados. |
-| **Aprobada parcialmente** | Ningún ítem quedó pendiente, y hay aprobados y rechazados conviviendo. |
+| **Aprobada parcialmente** | Ningún ítem quedó pendiente, y hay ítems aprobados y rechazados. |
 | **Rechazada** | Todos los ítems fueron rechazados. |
 | **Cancelada** | La compra se canceló. Este estado tiene prioridad absoluta: se muestra sin importar cómo estén los ítems. |
 
 Los ítems eliminados no cuentan para nada de esto.
 
-Como el estado es una consecuencia, no se lo edita: **se cambia aprobando o
-rechazando ítems**. Aprobar el último ítem pendiente de una compra que ya tenía
-rechazos la deja en *Aprobada parcialmente*, no en *Aprobada*.
+Como el estado es una consecuencia, no se edita: **cambia al aprobar o rechazar
+ítems**. Aprobar el último ítem pendiente de una compra que ya tenía rechazos la
+deja en **Aprobada parcialmente**, no en **Aprobada**.
 
 ## La columna Progreso
 
-Aparte del estado, el listado muestra dos etiquetas de avance que solo tienen
-sentido cuando hay ítems aprobados:
+Además del estado, cada fila muestra dos etiquetas de avance, **Comprado** y
+**Cerrado**. Las dos aparecen siempre; se resaltan en verde cuando se cumplen y
+quedan apagadas cuando no:
 
-- **Comprado**: todos los ítems aprobados ya se recibieron (o se cerraron con
-  faltante).
-- **Cerrado**: todos los ítems aprobados ya se entregaron (o se cerraron con
-  faltante).
+- **Comprado**: todos los ítems aprobados ya se recibieron completos, o se
+  cerraron con faltante.
+- **Cerrado**: todos los ítems aprobados ya se entregaron completos, o se
+  cerraron con faltante.
 
-Si no hay ningún ítem aprobado, ninguna de las dos se muestra.
+Solo pueden resaltarse en una compra **Aprobada** o **Aprobada parcialmente**.
+En una compra pendiente, rechazada o cancelada, las dos quedan apagadas.
 
 ## Cómo se ordena el listado
 
-El listado no ordena por fecha a secas. Primero agrupa, y **dentro de cada grupo**
-ordena por **fecha de solicitud**, de la más nueva a la más vieja.
+El listado no ordena solo por fecha. Primero agrupa y, **dentro de cada grupo**,
+ordena por **fecha de solicitud**, de la más reciente a la más antigua.
 
 Los tres grupos, siempre en este orden:
 
-1. **Activas** — todo lo que sigue en juego: pendientes, y aprobadas o aprobadas
-   parcialmente que todavía tienen algo sin entregar. Una compra sin ítems
-   también cae acá.
-2. **Completadas o cerradas** — aprobadas o aprobadas parcialmente con todo lo
-   aprobado ya entregado.
-3. **Canceladas o rechazadas** — las canceladas y las rechazadas por completo.
+1. **Activas**: todo lo que sigue en curso. Incluye las pendientes y las
+   aprobadas o aprobadas parcialmente que todavía tienen algo aprobado sin
+   entregar. Una compra sin ítems también cae aquí.
+2. **Completadas o cerradas**: aprobadas o aprobadas parcialmente con todo lo
+   aprobado ya entregado (o cerrado con faltante).
+3. **Canceladas o rechazadas**: las canceladas y las rechazadas por completo.
 
-Por eso una compra vieja pero activa aparece **antes** que una reciente ya
+Por eso una compra antigua pero activa aparece **antes** que una reciente ya
 cerrada: el grupo pesa más que la fecha.
 
-Conviene tener presente que la fecha que ordena es la **fecha de solicitud**, la
-que se carga en la compra, no el momento en que se registró en el sistema. Si
-dos compras comparten fecha de solicitud, desempata la más recientemente
-registrada.
+La fecha que ordena es la **fecha de solicitud**, la que se carga en la compra,
+no el momento en que se registró en el sistema. Si dos compras comparten fecha de
+solicitud, aparece primero la registrada más recientemente.
 
-## El filtro
+## Los filtros
 
-Arriba del listado hay un filtro por estado con cuatro opciones:
+Arriba del listado hay tres filtros, que se pueden combinar.
 
-- **Activas** (es la opción con la que arranca la pantalla)
+**Estado**, con cuatro opciones:
+
+- **Activas** (es la opción con la que se abre la pantalla)
 - **Completadas o cerradas**
 - **Canceladas o rechazadas**
 - **Todas**
 
-Como el filtro arranca en *Activas*, **una compra cancelada, rechazada o cerrada
-no se ve al entrar**. No desapareció: hay que cambiar el filtro. Es la causa más
-frecuente del reporte "no encuentro una compra que sé que existe".
+**Sector**: por defecto dice **Todos los sectores**; elija uno para ver solo sus
+compras.
 
-## Exportar a Excel
+**Rango de fechas**: dos fechas, desde y hasta, aplicadas sobre la fecha de
+solicitud. Las dos fechas se incluyen en el resultado, y puede completar solo
+una de ellas.
 
-Arriba a la derecha del listado hay un botón **Exportar a Excel**. Baja un
-archivo con las compras del listado, que se abre con Excel (o con cualquier
-planilla de cálculo) haciéndole doble clic.
+Como el filtro de estado arranca en **Activas**, **una compra cancelada,
+rechazada o cerrada no se ve al entrar**. No desapareció: hay que cambiar el
+filtro. Es la causa más frecuente del reporte «no encuentro una compra que sé
+que existe».
 
-Lo importante es **qué** baja: el archivo trae **exactamente lo que los filtros
-de la pantalla están mostrando, pero completo**, no solo las filas que se ven.
-Si el listado tiene 400 compras repartidas en páginas de a 10, el archivo trae
-las 400. Y al revés: si el filtro está en *Activas*, en el archivo **no** hay ni
-una compra cancelada.
+## Exportar
 
-Eso hace que valga la pena mirar los filtros antes de exportar. El caso típico
-es querer todo el año y bajar solo lo activo, porque el filtro seguía en el
-valor con el que arranca la pantalla. Si querés absolutamente todas las compras,
-poné el filtro de estado en **Todas** y limpiá las fechas y el sector.
+Arriba a la derecha del listado está el botón **Exportar**. Al hacer clic se
+despliega un menú con dos formatos:
 
-Mientras el archivo se prepara, el botón queda deshabilitado. En listados
-grandes puede tardar unos segundos.
+- **Excel**: un archivo que se abre directamente con Excel o con cualquier
+  planilla de cálculo.
+- **CSV**: un archivo de texto con los valores separados por punto y coma, útil
+  para importarlo en otro sistema.
 
-### "Hay demasiadas filas"
+El archivo trae una fila por compra con el número, la fecha de solicitud, el
+motivo, el estado, si está comprada y si está cerrada, y una columna de total por
+cada moneda que aparezca en las compras exportadas. La celda de una moneda queda
+vacía cuando la compra no tiene importes en ella.
 
-Si el listado filtrado es muy grande, la exportación no se hace y aparece un
-aviso pidiendo que acotes los filtros. No es un error ni se perdió nada: el
-archivo sería tan pesado que no habría con qué abrirlo cómodamente.
+Lo importante es **qué** compras incluye: el archivo trae **exactamente lo que los
+filtros de la pantalla están mostrando, pero completo**, no solo la página que se
+ve. Si el listado tiene 400 compras repartidas en páginas de a 10, el archivo trae
+las 400. Y al revés: si el filtro está en **Activas**, en el archivo **no** hay
+ninguna compra cancelada.
 
-La salida es achicar el pedido y, si hace falta, bajar varios archivos:
+Por eso conviene revisar los filtros antes de exportar. El caso típico es querer
+todo el año y descargar solo lo activo, porque el filtro seguía en el valor con
+el que se abre la pantalla. Si necesita absolutamente todas las compras, ponga el
+estado en **Todas**, elija **Todos los sectores** y deje las fechas vacías.
 
-- **Acotá las fechas** — es lo que más recorta. Un mes o un trimestre por vez.
-- **Elegí un sector** — y repetí la exportación sector por sector.
-- **Elegí un estado** — por ejemplo, exportá primero las activas y después las
+Mientras el archivo se prepara, el botón queda ocupado y no admite otro clic. En
+listados grandes puede tardar unos segundos.
+
+### Cuando la exportación supera el máximo
+
+La exportación admite hasta 5000 compras. Si el listado filtrado tiene más, el
+archivo no se genera y aparece un aviso con la cantidad que se alcanzaría y el
+máximo permitido. No es una falla ni se perdió nada: el archivo sería demasiado
+pesado para abrirlo con comodidad.
+
+La solución es acotar el pedido y, si hace falta, descargar varios archivos:
+
+- **Acote las fechas**: es lo que más recorta. Un mes o un trimestre por vez.
+- **Elija un sector**, y repita la exportación sector por sector.
+- **Elija un estado**: por ejemplo, exporte primero las activas y después las
   completadas.
 
-Combinando dos de esos tres el problema desaparece prácticamente siempre.
+Combinando dos de estos tres criterios, el problema desaparece prácticamente
+siempre.
