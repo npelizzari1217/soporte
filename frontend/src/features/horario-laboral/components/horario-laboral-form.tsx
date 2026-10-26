@@ -97,7 +97,9 @@ export function HorarioLaboralForm({
   });
 
   useEffect(() => {
-    reset({ dias: desdeHorario(valoresIniciales) });
+    // `keepDirtyValues`: un refetch (por ejemplo, el del horario del cliente guardado en la misma
+    // pantalla) actualiza lo que el usuario no tocó y respeta lo que está editando (JD-A-005).
+    reset({ dias: desdeHorario(valoresIniciales) }, { keepDirtyValues: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [valoresIniciales]);
 
@@ -121,9 +123,9 @@ export function HorarioLaboralForm({
           prefijoId={prefijoId}
           errorApertura={errors.dias?.[index]?.apertura?.message}
           errorCierre={errors.dias?.[index]?.cierre?.message}
-          onCambiarAbierto={(abierto) => setValue(`dias.${index}.abierto`, abierto, { shouldValidate: true })}
-          onCambiarApertura={(valor) => setValue(`dias.${index}.apertura`, valor, { shouldValidate: true })}
-          onCambiarCierre={(valor) => setValue(`dias.${index}.cierre`, valor, { shouldValidate: true })}
+          onCambiarAbierto={(abierto) => setValue(`dias.${index}.abierto`, abierto, { shouldValidate: true, shouldDirty: true })}
+          onCambiarApertura={(valor) => setValue(`dias.${index}.apertura`, valor, { shouldValidate: true, shouldDirty: true })}
+          onCambiarCierre={(valor) => setValue(`dias.${index}.cierre`, valor, { shouldValidate: true, shouldDirty: true })}
         />
       ))}
 

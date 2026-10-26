@@ -261,4 +261,33 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
     await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
     expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("cambiar de técnico con el PUT en vuelo no le pasa el guardado al nuevo, y el fallo del anterior igual se avisa (JD-B-005)", async () => {
+    mockServidor(horariosIniciales());
+    let responder: (() => void) | undefined;
+    server.use(
+      http.put("/api/horario-laboral/usuarios/:usuarioId", async () => {
+        await new Promise<void>((resolve) => {
+          responder = resolve;
+        });
+        return HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 });
+      }),
+    );
+    const seccion = renderSeccion();
+
+    const user = await elegirTecnico("Ana López");
+    await user.click(await seccion.findByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(responder).toBeDefined());
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Técnico" }), "Beto Zárate");
+    await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
+    expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
+
+    // El guardado de Ana falla con Beto en pantalla: el aviso no puede perderse con el cambio de
+    // técnico, y tampoco puede aparecer como error inline de Beto.
+    responder?.();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
+    expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
+  });
 });

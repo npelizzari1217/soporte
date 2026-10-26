@@ -31,7 +31,7 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
 - [x] T3 — S6 (docs)
 - [ ] T4 — S3
 - [ ] T5 — S4 (decisión del dueño pendiente)
-- [ ] T6 — S5, S7 (frontend)
+- [x] T6 — S5, S7 (frontend)
 - [ ] T7 — S8 (decisión del dueño pendiente)
 
 ## Log
@@ -52,3 +52,15 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
 - **L4 — T3 (runbook).** Reescritas las dos frases de estado vencidas de "Horario laboral por usuario"
   y "Tramos del técnico" con lo que sí entró: la sección "Horario por técnico" y el bloque "Tiempo del
   técnico" con el dashboard. `runbook-migraciones.spec.ts` verde.
+- **L5 — Decisiones del dueño (2026-10-26).** B-002: "Caché de feriados (Recomendado)" — los feriados
+  se guardan en memoria unos minutos; un feriado nuevo tarda hasta ~5 min en contar. A-001: "Siempre
+  sus tramos (Recomendado)" — el técnico ve en su fila todos los tramos que resolvió, aunque hoy el
+  ticket esté asignado a otro. Cumplimiento: "Contar tramos (actual)" — cada resolución es una
+  evaluación; solo se aclara en la UI que son resoluciones, no tickets.
+- **L6 — T6: B-005 tal como lo planteó el juez no se reproduce.** `elegir()` hace `guardarMutation.reset()`
+  y el técnico nuevo no hereda el "guardando". El defecto real: ese `reset()` descarta los callbacks del
+  `mutate`, y el fallo del guardado del técnico anterior queda sin aviso. RED: `toast.error` 0 llamadas.
+  A-005 RED: el lunes editado volvía a quedar marcado tras el refetch. Fix: los avisos pasan a las
+  opciones del hook; el form sincroniza con `keepDirtyValues` y sus `setValue` llevan `shouldDirty: true`
+  (sin eso RHF no sabía qué estaba editado).
+- **L7 — T6 cerrada.** Frontend completo: lint y type-check limpios, 290 archivos / 2680 tests verdes.

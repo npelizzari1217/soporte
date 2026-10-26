@@ -94,6 +94,34 @@ describe("HorarioLaboralForm", () => {
     expect(screen.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
   });
 
+  it("datos nuevos del servidor no pisan lo que el usuario está editando (JD-A-005)", async () => {
+    const user = userEvent.setup();
+    const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
+    const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+
+    // El usuario cierra el lunes y, sin guardar, llega un refetch con el martes de 10 a 18.
+    await user.click(screen.getByRole("checkbox", { name: "Lunes" }));
+    const refetch: HorarioLaboral = {
+      dias: DEFAULT.dias.map((dia) => (dia.diaSemana === 2 ? { ...dia, aperturaMinuto: 600 } : dia)),
+    };
+    rerender(<HorarioLaboralForm valoresIniciales={refetch} {...props} />);
+
+    expect(screen.getByRole("checkbox", { name: "Lunes" })).not.toBeChecked();
+    expect(screen.getAllByLabelText("Apertura")[2]).toHaveValue("10:00");
+  });
+
+  it("sin edición en curso, datos nuevos del servidor reemplazan la grilla", () => {
+    const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
+    const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+
+    const refetch: HorarioLaboral = {
+      dias: DEFAULT.dias.map((dia) => (dia.diaSemana === 1 ? { ...dia, aperturaMinuto: 600 } : dia)),
+    };
+    rerender(<HorarioLaboralForm valoresIniciales={refetch} {...props} />);
+
+    expect(screen.getAllByLabelText("Apertura")[1]).toHaveValue("10:00");
+  });
+
   it("guardando=true deshabilita el botón Guardar", () => {
     render(
       <HorarioLaboralForm
