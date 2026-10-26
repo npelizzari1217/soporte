@@ -29,8 +29,8 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
 - [x] T1 — S1 (bugfix, TDD)
 - [x] T2 — S2 (bugfix, TDD)
 - [x] T3 — S6 (docs)
-- [ ] T4 — S3
-- [ ] T5 — S4 (decisión del dueño pendiente)
+- [x] T4 — S3
+- [x] T5 — S4
 - [x] T6 — S5, S7 (frontend)
 - [ ] T7 — S8 (decisión del dueño pendiente)
 
@@ -64,3 +64,12 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   opciones del hook; el form sincroniza con `keepDirtyValues` y sus `setValue` llevan `shouldDirty: true`
   (sin eso RHF no sabía qué estaba editado).
 - **L7 — T6 cerrada.** Frontend completo: lint y type-check limpios, 290 archivos / 2680 tests verdes.
+- **L8 — T5 (JD-A-001).** RED: "TECNICO: su fila de cumplimiento cuenta todos sus tramos" falló con
+  `expected { …(4) } to not have property "alcance"`. GREEN: la fila propia de un TECNICO no lleva el
+  alcance por fila; `tecnico_id = actorId` ya la limita. El caso COLABORADOR con alcance sigue igual.
+  `src/dashboard` 62/62.
+- **L9 — T4 (JD-B-002).** `FeriadosGlobalesCache` en `calendario-laboral`: copia en memoria de los
+  feriados de master, TTL 5 min, invalidada por `PrismaFeriadoGlobalRepository` al crear, editar o
+  borrar. Los feriados propios del cliente se siguen leyendo siempre. Tests de la caché (vigencia,
+  vencimiento, invalidación, lecturas simultáneas, fallo no guardado), de la lectura compartida y de la
+  invalidación por escritura (y no al fallar). Pendiente: suite completa del backend.

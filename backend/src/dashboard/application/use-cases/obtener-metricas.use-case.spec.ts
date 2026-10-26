@@ -188,6 +188,18 @@ describe('ObtenerMetricasUseCase', () => {
       );
     });
 
+    it('TECNICO: su fila de cumplimiento cuenta todos sus tramos, aunque el ticket hoy sea de otro (JD-A-001)', async () => {
+      // Un admin puede reasignar un ticket ya RESUELTO: con el alcance por fila, el tramo que el
+      // técnico cumplió dejaba de contarse en su fila y el admin sí se lo contaba.
+      const c = makeCollaborators(CICLO);
+
+      await c.useCase.execute({ actorId: 'tecnico-uuid', actorRol: 'TECNICO', alcance: ALCANCE });
+
+      const filtroCumplimiento = c.cumplimientoRepo.resumirPorTecnico.mock.calls[0]?.[0];
+      expect(filtroCumplimiento).toMatchObject({ tecnicoId: 'tecnico-uuid' });
+      expect(filtroCumplimiento).not.toHaveProperty('alcance');
+    });
+
     it('ROOT y ADMINISTRADOR (sin restricción): ninguna métrica lleva alcance', async () => {
       const c = makeCollaborators(CICLO);
 

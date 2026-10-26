@@ -155,8 +155,9 @@ const METRICAS_VACIAS_BASE: Omit<MetricasResult, 'csatPromedio' | 'csatRespuesta
  *   `asignadoId` en las métricas por ticket. Las métricas por ticket no cambian.
  * - Cumplimiento por técnico (odd/tasks/tiempo-tecnico.md, T4, S8): el mismo período, aplicado al
  *   `fin_at` de los tramos que cerraron en RESUELTO con veredicto (los sin meta no se evalúan, S4),
- *   sin contar los de tickets borrados. El alcance de TECNICO fija `tecnico_id = actorId`, y el
- *   alcance por tipo es el mismo que el resto del dashboard.
+ *   sin contar los de tickets borrados. El alcance de TECNICO fija `tecnico_id = actorId` y no
+ *   aplica el alcance por tipo: cuenta todos sus tramos, aunque el ticket hoy sea de otro
+ *   (JD-A-001). Para el resto de los roles, el alcance por tipo es el mismo del dashboard.
  *
  * Ref spec: sdd/premium/spec D1, D2. Ref design: ADR-P5. Tarea: D2.
  */
@@ -298,10 +299,13 @@ export class ObtenerMetricasUseCase {
     const ciclo = await cicloPendiente;
     if (!ciclo) return [];
 
+    // La fila propia de un TECNICO no lleva el alcance por fila: esa regla mira el responsable
+    // ACTUAL del ticket, y un admin puede reasignar uno ya resuelto. El tramo sigue siendo trabajo
+    // del técnico, y `tecnico_id = actorId` ya lo limita a lo suyo (JD-A-001).
     const filas = await this.cumplimientoRepo.resumirPorTecnico({
       ...periodoDelCiclo(ciclo),
       tecnicoId,
-      ...(alcance && { alcance }),
+      ...(alcance && tecnicoId === undefined && { alcance }),
     });
     if (filas.length === 0) return [];
 
