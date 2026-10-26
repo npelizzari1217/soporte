@@ -1,7 +1,7 @@
 ---
 slug: equipos-baja-y-qr
 titulo: Dar de baja o eliminar un equipo, y su código QR
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Dar de baja o eliminar un equipo, y su código QR

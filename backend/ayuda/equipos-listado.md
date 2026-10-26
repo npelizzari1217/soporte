@@ -1,7 +1,7 @@
 ---
 slug: equipos-listado
 titulo: El listado de equipos y su exportación a Excel o CSV
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El listado de equipos y su exportación a Excel o CSV

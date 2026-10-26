@@ -1,7 +1,7 @@
 ---
 slug: integraciones-y-clientes
 titulo: Clientes, correo, API pública y webhooks
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Clientes, correo, API pública y webhooks

@@ -1,7 +1,7 @@
 ---
 slug: insumos-movimientos-y-series
 titulo: Movimientos de stock y piezas con número de serie
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Movimientos de stock y piezas con número de serie

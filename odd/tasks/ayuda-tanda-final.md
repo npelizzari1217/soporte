@@ -59,3 +59,7 @@ Levanta por esta tanda la suspensión de la Ayuda (AGENTS.md, "Ayuda de usuario 
   para lo que se escriba después. Producción: `deploy.ps1` no corre `sync:ayuda`; los artículos llegan
   a la base master recién con `node scripts/sync-ayuda.js` en el VPS (idempotente, no toca la
   visibilidad de los existentes).
+- **L7 — Dueño (2026-10-26): "ok, quiero que todos sean publicos".** Producción: `UPDATE` en una
+  transacción de los 13 artículos con `visible_para_solicitante = false` (los 29 del repo; no hay
+  artículos escritos desde la pantalla) → 29/29 públicos. Repositorio: el frontmatter de los 13 pasa a
+  `visibleParaSolicitante: true` para que un entorno nuevo nazca igual que producción.

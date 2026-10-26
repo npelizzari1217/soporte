@@ -1,7 +1,7 @@
 ---
 slug: usuarios-administracion
 titulo: Administración de usuarios del cliente
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Administración de usuarios del cliente

@@ -1,7 +1,7 @@
 ---
 slug: equipos-componentes-y-modelos
 titulo: Componentes de un equipo y catálogo de modelos de equipo
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Componentes de un equipo y catálogo de modelos de equipo

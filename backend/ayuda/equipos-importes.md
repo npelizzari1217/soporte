@@ -1,7 +1,7 @@
 ---
 slug: equipos-importes
 titulo: Importe, valor residual y depreciación de un equipo
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Importe, valor residual y depreciación de un equipo

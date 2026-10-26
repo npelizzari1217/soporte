@@ -1,7 +1,7 @@
 ---
 slug: compras-estados
 titulo: El listado de compras: estados, orden, filtros y exportación
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El listado de compras: estados, orden, filtros y exportación

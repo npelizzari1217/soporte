@@ -1,7 +1,7 @@
 ---
 slug: dashboard
 titulo: El Dashboard: indicadores, ciclo y cómo se miden los tiempos
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El Dashboard: indicadores, ciclo y cómo se miden los tiempos

@@ -1,7 +1,7 @@
 ---
 slug: catalogos-y-tipos-de-ticket
 titulo: Los catálogos: tipos de ticket, sectores, respuestas predefinidas y asignación automática
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # Los catálogos: tipos de ticket, sectores, respuestas predefinidas y asignación automática

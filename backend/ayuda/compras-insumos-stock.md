@@ -1,7 +1,7 @@
 ---
 slug: compras-insumos-stock
 titulo: El insumo de un ítem de compra y el stock que se carga solo
-visibleParaSolicitante: false
+visibleParaSolicitante: true
 ---
 
 # El insumo de un ítem de compra y el stock que se carga solo
