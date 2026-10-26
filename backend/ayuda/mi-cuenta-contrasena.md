@@ -1,52 +1,77 @@
 ---
 slug: mi-cuenta-contrasena
-titulo: Cómo cambiar tu contraseña
+titulo: Cómo cambiar o recuperar su contraseña
 visibleParaSolicitante: true
 ---
 
-# Cómo cambiar tu contraseña
+# Cómo cambiar o recuperar su contraseña
 
-## Dónde está el botón
+## Cambiar la contraseña desde su cuenta
 
-Arriba a la derecha, al lado de "Cerrar sesión", vas a encontrar el botón
-**"Cambiar contraseña"**. Al hacer clic se abre un formulario donde te pide
-tu contraseña actual y la nueva (dos veces, para confirmarla).
+En la barra superior, junto a **Cerrar sesión**, está el botón **Cambiar
+contraseña**. Al hacer clic se abre un formulario que pide:
+
+- **Contraseña actual**
+- **Nueva contraseña**
+- **Repetir nueva contraseña**
+
+Complete los tres campos y presione **Cambiar contraseña**.
 
 ## Requisitos de la nueva contraseña
 
-La nueva contraseña tiene que tener **mínimo 8 caracteres**. No hace falta
-combinar mayúsculas, números o símbolos, pero cuanto más larga y menos
-obvia, mejor protegida queda tu cuenta.
+- Debe tener **al menos 8 caracteres**. No es obligatorio combinar mayúsculas,
+  números o símbolos, pero cuanto más larga y menos obvia sea, mejor protegida
+  queda su cuenta.
+- Debe ser **distinta de la contraseña actual**.
+- Los dos campos de la nueva contraseña deben coincidir.
 
-## Importante: se cierran TODAS tus sesiones
+## Importante: se cierran todas sus sesiones
 
-Al confirmar el cambio, el sistema cierra **todas las sesiones activas de tu
-cuenta, incluida la que estás usando en este momento**. Es esperado, no un
-error: es una medida de seguridad para que, si alguien más tenía acceso con
-tu contraseña vieja, quede afuera también.
+Al confirmar el cambio, el sistema cierra **todas las sesiones abiertas de su
+cuenta, incluida la que está usando en ese momento**. No es un error: es una
+medida de seguridad para que, si otra persona conocía su contraseña anterior,
+también quede fuera.
 
-Después de cambiarla vas a volver automáticamente a la pantalla de login,
-donde tenés que ingresar de nuevo con la contraseña nueva.
+Además, si usa la verificación en dos pasos, los dispositivos que el sistema
+recordaba como de confianza **dejan de serlo**: la próxima vez que ingrese desde
+cualquiera de ellos se le pedirá el código otra vez. La verificación en dos
+pasos sigue activa; no hace falta volver a configurarla.
 
-## Si no te acordás tu contraseña actual
+Después del cambio, el sistema lo lleva a la pantalla de inicio de sesión con
+un aviso de que la contraseña se cambió. Ingrese con la contraseña nueva.
 
-En la pantalla de inicio de sesión vas a encontrar el link
-**"¿Olvidaste tu contraseña?"**. Al hacer clic te pedimos tu email y, por
-seguridad, siempre te mostramos el mismo mensaje después de enviarlo, exista
-o no ese email en el sistema.
+## Si olvidó su contraseña
 
-El link solo te llega cuando se cumplen TODAS estas condiciones: tu cuenta
-está activa, pertenece a al menos un cliente, y alguno de tus clientes tiene
-el correo configurado. Si trabajás en más de un cliente, el mail sale una sola
-vez, por el correo de uno de ellos. Si tu cuenta no está activa en ninguno o
-si ningún cliente configuró todavía el correo, el mail nunca sale — no es un error del sistema: pedile a tu administrador que te la restablezca.
+En la pantalla de inicio de sesión, haga clic en **¿Olvidaste tu contraseña?**,
+escriba su email y presione **Enviar link de recuperación**. Por seguridad, el
+sistema muestra siempre el mismo mensaje, exista o no ese email.
 
-El link que recibís por mail vence a los **60 minutos**. Si se vence, pedí
-uno nuevo desde la misma pantalla. Al confirmar la contraseña nueva, el
-sistema cierra todas tus sesiones activas — igual que al cambiarla desde
-adentro. Si tu cliente sigue teniendo el correo configurado en ese momento,
-también te llega un mail avisando que se restableció; si no, la contraseña
-se cambia igual, pero ese aviso no te llega.
+El email con el link solo se envía si se cumplen **todas** estas condiciones:
 
-Si el mail no te llega, pedísela a tu administrador: el reset asistido sigue
-disponible como vía alternativa.
+- su cuenta está activa;
+- tiene acceso a al menos un cliente;
+- alguno de sus clientes tiene configurado el envío de correos.
+
+Si trabaja en más de un cliente, el email se envía una sola vez, desde el
+correo de uno de ellos. Si no se cumple alguna condición, el email no se envía:
+en ese caso, pida a su administrador que le asigne una contraseña nueva.
+
+Al abrir el link, escriba la **Nueva contraseña**, repítala y presione
+**Restablecer contraseña**.
+
+Tenga en cuenta lo siguiente:
+
+- El link **vence a los 60 minutos** y sirve una sola vez. Si venció, pida uno
+  nuevo desde la misma pantalla. Al pedir un link nuevo, los anteriores dejan
+  de funcionar.
+- Al restablecer la contraseña, el sistema cierra todas sus sesiones y deja de
+  recordar los dispositivos de confianza, igual que al cambiarla desde su
+  cuenta.
+- Si el cliente sigue teniendo el correo configurado, también recibe un email
+  que le avisa que la contraseña se restableció.
+
+Si el email no le llega, su administrador puede asignarle una contraseña nueva
+desde la administración de usuarios.
+
+Para todo lo relacionado con el ingreso al sistema y la verificación en dos
+pasos, consulte el artículo "Cómo ingresar al sistema y proteger su cuenta".
