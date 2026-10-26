@@ -26,9 +26,9 @@ import {
  * tenant: S2) con los feriados, sin contar las esperas al cliente (S7), y fija la meta del ticket
  * en ese momento (S4). Los tiempos quedan fijos con el horario vigente al cerrar.
  *
- * Una medición que falla (feriados de master caídos, horario inconsistente) no bloquea el cambio
+ * Una medición que falla (feriados de master caídos, un error del cálculo) no bloquea el cambio
  * del ticket: el tramo se cierra con `habil_s` NULL y se loguea. No aplica a un error de la base
- * del tenant, que ya abortó la transacción: ese se propaga.
+ * del tenant (cambios de estado, horario del técnico), que ya abortó la transacción: ese se propaga.
  */
 export class SincronizarTramoTecnicoService {
   constructor(
@@ -83,8 +83,17 @@ export class SincronizarTramoTecnicoService {
     // Un solo instante para todo el guardado: el tramo que se cierra por reasignación termina
     // justo donde empieza el del nuevo técnico.
     const instante = this.ahora();
+    // El estado anterior al guardado mide el tramo si no hubo ningún cambio desde que abrió.
+    const estadoPrevio = previo?.estadoCodigo ?? null;
     if (plan.cerrar !== null) {
-      await this.cerrar(ticketId, plan.cerrar.tramo, plan.cerrar.motivo, instante, actual.slaMetaS);
+      await this.cerrar(
+        ticketId,
+        plan.cerrar.tramo,
+        plan.cerrar.motivo,
+        instante,
+        actual.slaMetaS,
+        estadoPrevio,
+      );
     }
     if (plan.abrir !== null) {
       const tramo = await this.tramoRepo.abrir({
@@ -93,7 +102,14 @@ export class SincronizarTramoTecnicoService {
         inicioAt: instante,
       });
       if (plan.abrir.cerrarAlAbrir !== null) {
-        await this.cerrar(ticketId, tramo, plan.abrir.cerrarAlAbrir, instante, actual.slaMetaS);
+        await this.cerrar(
+          ticketId,
+          tramo,
+          plan.abrir.cerrarAlAbrir,
+          instante,
+          actual.slaMetaS,
+          estadoPrevio,
+        );
       }
     }
   }
@@ -104,10 +120,11 @@ export class SincronizarTramoTecnicoService {
     motivo: MotivoFinTramo,
     instante: Date,
     metaS: number | null,
+    estadoPrevio: string | null,
   ): Promise<void> {
     // Un reloj que retrocede no puede dejar un fin anterior al inicio (CHECK de la base).
     const finAt = instante.getTime() < tramo.inicioAt.getTime() ? tramo.inicioAt : instante;
-    const habilS = await this.medir(ticketId, tramo, finAt);
+    const habilS = await this.medir(ticketId, tramo, finAt, estadoPrevio);
     const cerrado = await this.tramoRepo.cerrar({
       id: tramo.id,
       finAt,
@@ -123,16 +140,25 @@ export class SincronizarTramoTecnicoService {
     }
   }
 
-  private async medir(ticketId: string, tramo: TramoAbierto, finAt: Date): Promise<number | null> {
+  private async medir(
+    ticketId: string,
+    tramo: TramoAbierto,
+    finAt: Date,
+    estadoPrevio: string | null,
+  ): Promise<number | null> {
     if (finAt.getTime() <= tramo.inicioAt.getTime()) return 0;
-    // Fuera del try: un error de la base del tenant aborta la transacción y no tiene sentido
-    // seguir con el cierre.
+    // Fuera del try: las dos lecturas van a la base del tenant, y un error ahí ya abortó la
+    // transacción. Tragarlo solo cambiaría la causa real por el fallo del UPDATE del tramo.
     const cambios = await this.tramoRepo.listarCambiosEstado(ticketId, finAt);
+    const { calendario } = await this.horarioResolver.obtenerParaUsuario(tramo.tecnicoId);
     try {
-      const { calendario } = await this.horarioResolver.obtenerParaUsuario(tramo.tecnicoId);
       const feriados = await this.feriadosRepo.obtener();
-      return medirSegundosHabiles(tramo.inicioAt, finAt, cambios, (desde, hasta) =>
-        this.calculo.msHabilesEntre(desde, hasta, calendario, feriados),
+      return medirSegundosHabiles(
+        tramo.inicioAt,
+        finAt,
+        cambios,
+        (desde, hasta) => this.calculo.msHabilesEntre(desde, hasta, calendario, feriados),
+        estadoPrevio,
       );
     } catch (error) {
       const mensaje = error instanceof Error ? error.message : 'error desconocido';

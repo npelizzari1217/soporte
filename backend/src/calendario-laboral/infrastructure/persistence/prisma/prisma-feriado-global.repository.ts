@@ -9,10 +9,14 @@ import { MasterPrismaClient } from '../../../../shared/infrastructure/persistenc
 import { IFeriadoGlobalRepository } from '../../../domain/ports/i-feriado-global.repository';
 import { FeriadoEntity } from '../../../domain/entities/feriado.entity';
 import { PrismaFeriadoGlobalMapper } from './prisma-feriado-global.mapper';
+import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 
 @Injectable()
 export class PrismaFeriadoGlobalRepository implements IFeriadoGlobalRepository {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly cache: FeriadosGlobalesCache = new FeriadosGlobalesCache(),
+  ) {}
 
   private get client(): InstanceType<typeof MasterPrismaClient> {
     return this.prismaService.getMasterClient();
@@ -31,15 +35,18 @@ export class PrismaFeriadoGlobalRepository implements IFeriadoGlobalRepository {
   async crear(feriado: FeriadoEntity): Promise<void> {
     const data = PrismaFeriadoGlobalMapper.toPersistence(feriado);
     await this.client.feriado.create({ data });
+    this.cache.invalidar();
   }
 
   async editar(feriado: FeriadoEntity): Promise<void> {
     const { id, ...data } = PrismaFeriadoGlobalMapper.toPersistence(feriado);
     await this.client.feriado.update({ where: { id }, data });
+    this.cache.invalidar();
   }
 
   /** Baja física — el feriado global no tiene soft delete (D1). */
   async eliminar(id: string): Promise<void> {
     await this.client.feriado.delete({ where: { id } });
+    this.cache.invalidar();
   }
 }

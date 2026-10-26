@@ -94,6 +94,54 @@ describe("HorarioLaboralForm", () => {
     expect(screen.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
   });
 
+  it("datos nuevos del servidor no pisan lo que el usuario está editando (JD-A-005)", async () => {
+    const user = userEvent.setup();
+    const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
+    const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+
+    // El usuario cierra el lunes y, sin guardar, llega un refetch con el martes de 10 a 18.
+    await user.click(screen.getByRole("checkbox", { name: "Lunes" }));
+    const refetch: HorarioLaboral = {
+      dias: DEFAULT.dias.map((dia) => (dia.diaSemana === 2 ? { ...dia, aperturaMinuto: 600 } : dia)),
+    };
+    rerender(<HorarioLaboralForm valoresIniciales={refetch} {...props} />);
+
+    expect(screen.getByRole("checkbox", { name: "Lunes" })).not.toBeChecked();
+    expect(screen.getAllByLabelText("Apertura")[2]).toHaveValue("10:00");
+  });
+
+  it("después de guardar, datos nuevos del servidor reemplazan también los días editados", async () => {
+    // Caso: guardar el horario propio y después "Volver al horario del cliente". El form no se
+    // vuelve a montar, así que lo editado y ya guardado no puede quedar pegado en la grilla.
+    const user = userEvent.setup();
+    const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
+    const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+    await user.click(screen.getByRole("checkbox", { name: "Lunes" }));
+    await user.click(screen.getByRole("button", { name: /guardar/i }));
+    await waitFor(() => expect(props.onGuardar).toHaveBeenCalledTimes(1));
+    const guardado: HorarioLaboral = {
+      dias: DEFAULT.dias.map((dia) =>
+        dia.diaSemana === 1 ? { ...dia, aperturaMinuto: null, cierreMinuto: null } : dia,
+      ),
+    };
+    rerender(<HorarioLaboralForm valoresIniciales={guardado} {...props} />);
+    rerender(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+
+    expect(screen.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
+  });
+
+  it("sin edición en curso, datos nuevos del servidor reemplazan la grilla", () => {
+    const props = { soloLectura: false, guardando: false, onGuardar: vi.fn() };
+    const { rerender } = render(<HorarioLaboralForm valoresIniciales={DEFAULT} {...props} />);
+
+    const refetch: HorarioLaboral = {
+      dias: DEFAULT.dias.map((dia) => (dia.diaSemana === 1 ? { ...dia, aperturaMinuto: 600 } : dia)),
+    };
+    rerender(<HorarioLaboralForm valoresIniciales={refetch} {...props} />);
+
+    expect(screen.getAllByLabelText("Apertura")[1]).toHaveValue("10:00");
+  });
+
   it("guardando=true deshabilita el botón Guardar", () => {
     render(
       <HorarioLaboralForm

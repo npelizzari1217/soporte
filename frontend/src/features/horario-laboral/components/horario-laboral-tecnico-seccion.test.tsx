@@ -261,4 +261,56 @@ describe("HorarioLaboralTecnicoSeccion (tiempo-tecnico T2)", () => {
     await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
     expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
   });
+
+  it("cambiar de técnico con el PUT en vuelo no le pasa el guardado al nuevo, y el fallo del anterior igual se avisa (JD-B-005)", async () => {
+    mockServidor(horariosIniciales());
+    let responder: (() => void) | undefined;
+    server.use(
+      http.put("/api/horario-laboral/usuarios/:usuarioId", async () => {
+        await new Promise<void>((resolve) => {
+          responder = resolve;
+        });
+        return HttpResponse.json({ statusCode: 500, message: "Error interno" }, { status: 500 });
+      }),
+    );
+    const seccion = renderSeccion();
+
+    const user = await elegirTecnico("Ana López");
+    await user.click(await seccion.findByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(responder).toBeDefined());
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Técnico" }), "Beto Zárate");
+    await seccion.findByText(/Beto Zárate usa el horario laboral del cliente\./);
+    expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
+
+    // El guardado de Ana falla con Beto en pantalla: el aviso no puede perderse con el cambio de
+    // técnico, y tampoco puede aparecer como error inline de Beto.
+    responder?.();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1));
+    expect(seccion.queryByRole("alert")).not.toBeInTheDocument();
+    expect(seccion.getByRole("button", { name: "Usar horario propio" })).toBeEnabled();
+  });
+
+  it("volver al horario del cliente muestra el del cliente aunque hubiera ediciones sin guardar", async () => {
+    const horarios = horariosIniciales();
+    mockServidor(horarios);
+    server.use(
+      http.delete("/api/horario-laboral/usuarios/:usuarioId", () => {
+        horarios[ANA] = { usuarioId: ANA, origen: "CLIENTE", dias: DIAS_CLIENTE };
+        return HttpResponse.json(horarios[ANA]);
+      }),
+    );
+    const seccion = renderSeccion();
+
+    const user = await elegirTecnico("Ana López");
+    await seccion.findByText("Ana López tiene horario propio.");
+    await user.click(seccion.getByRole("checkbox", { name: "Lunes" }));
+    await user.click(seccion.getByRole("button", { name: "Volver al horario del cliente" }));
+    const dialogo = await screen.findByRole("alertdialog", { name: "¿Volver al horario del cliente?" });
+    await user.click(within(dialogo).getByRole("button", { name: "Volver al horario del cliente" }));
+
+    await seccion.findByText(/Ana López usa el horario laboral del cliente\./);
+    expect(seccion.getByRole("checkbox", { name: "Lunes" })).toBeChecked();
+    expect(seccion.getAllByLabelText("Apertura")[1]).toHaveValue("09:00");
+  });
 });

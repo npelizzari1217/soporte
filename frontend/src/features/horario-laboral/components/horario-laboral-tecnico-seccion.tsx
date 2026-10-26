@@ -17,10 +17,14 @@
  * - `USUARIO`: tiene horario propio. "Guardar" lo reemplaza y "Volver al
  *   horario del cliente" lo borra (`DELETE`), previa confirmación.
  *
- * Sincronización al cambiar de técnico: el form lleva `key={usuarioId}`, así
- * que se vuelve a montar con el horario del técnico nuevo y no arrastra la
- * edición del anterior. Por la misma razón, cambiar de técnico limpia el
- * error de la última mutación: el alert inline es del técnico que se guardó.
+ * Sincronización al cambiar de técnico: el form lleva el técnico y el origen
+ * en la `key`, así que se vuelve a montar con el horario del técnico nuevo y
+ * no arrastra la edición del anterior. Por el origen, pasar a horario propio o
+ * volver al del cliente también lo vuelve a montar: muestra exactamente lo que
+ * dice el aviso, sin ediciones pendientes. Por la misma razón, cambiar de técnico limpia el
+ * estado de la última mutación: el alert inline y el "guardando" son del
+ * técnico que se guardó. El toast del resultado sí llega, porque sale de las
+ * opciones del hook y no del `mutate` que el `reset()` descarta.
  *
  * El técnico elegido se busca en la lista traída en cada render: si un
  * refetch lo saca (membresía desactivada), la selección cae a vacía en vez de
@@ -54,7 +58,10 @@ function nombreCompleto(usuario: UsuarioAsignable): string {
 export function HorarioLaboralTecnicoSeccion(): ReactElement {
   const usuariosQuery = useUsuariosAsignables();
   const [usuarioIdElegido, setUsuarioIdElegido] = useState("");
-  const guardarMutation = useGuardarHorarioLaboralUsuario();
+  const guardarMutation = useGuardarHorarioLaboralUsuario({
+    onSuccess: () => notifySuccess("Horario del técnico guardado."),
+    onError: (error) => notifyError(error),
+  });
   const borrarMutation = useBorrarHorarioLaboralUsuario();
 
   const tecnicos = useMemo(
@@ -73,13 +80,7 @@ export function HorarioLaboralTecnicoSeccion(): ReactElement {
   }
 
   function guardar(usuarioId: string, dto: HorarioLaboralDto): void {
-    guardarMutation.mutate(
-      { usuarioId, dto },
-      {
-        onSuccess: () => notifySuccess("Horario del técnico guardado."),
-        onError: (error) => notifyError(error),
-      },
-    );
+    guardarMutation.mutate({ usuarioId, dto });
   }
 
   function volverAlCliente(usuarioId: string): void {
@@ -171,7 +172,7 @@ export function HorarioLaboralTecnicoSeccion(): ReactElement {
           </div>
         )}
         <HorarioLaboralForm
-          key={elegido.id}
+          key={`${elegido.id}-${horarioQuery.data.origen}`}
           prefijoId="horario-tecnico"
           valoresIniciales={horarioQuery.data}
           soloLectura={false}

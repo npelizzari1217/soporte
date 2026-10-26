@@ -254,12 +254,22 @@ describe("DashboardView", () => {
       const tabla = screen.getByRole("table", { name: "Cumplimiento del técnico" });
       expect(within(tabla).getAllByRole("columnheader").map((c) => c.textContent)).toEqual([
         "Técnico",
-        "Evaluados",
+        "Resoluciones evaluadas",
         "Cumplidos",
         "% cumplimiento",
         "Promedio (h:mm hábiles)",
       ]);
       expect(filasCumplimiento()).toEqual(["Beto Ruiz3267%2:05", "Usuario4375%5:00"]);
+    });
+
+    it("aclara que se cuentan resoluciones y no tickets (JD-A-003, JD-B-006)", async () => {
+      renderWithProviders(<DashboardView />, { user: buildUser({ permisos: ["ticket:ver_todos"] }) });
+
+      expect(
+        await screen.findByText(
+          "Cada resolución se evalúa por separado: un ticket reabierto y vuelto a resolver suma dos.",
+        ),
+      ).toBeInTheDocument();
     });
 
     it("lista vacía → mensaje de vacío, sin tabla", async () => {
@@ -269,6 +279,7 @@ describe("DashboardView", () => {
       expect(await screen.findByText(TITULO)).toBeInTheDocument();
       expect(screen.getByText("Sin tickets resueltos con meta de SLA en este ciclo.")).toBeInTheDocument();
       expect(screen.queryByRole("table", { name: "Cumplimiento del técnico" })).not.toBeInTheDocument();
+      expect(screen.queryByText(/Cada resolución se evalúa por separado/)).not.toBeInTheDocument();
     });
 
     it("un backend que omite el campo no rompe la vista: se lee como lista vacía", async () => {

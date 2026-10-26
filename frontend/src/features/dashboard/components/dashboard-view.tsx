@@ -217,7 +217,7 @@ export function DashboardView() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Técnico</TableHead>
-                      <TableHead>Evaluados</TableHead>
+                      <TableHead>Resoluciones evaluadas</TableHead>
                       <TableHead>Cumplidos</TableHead>
                       <TableHead>% cumplimiento</TableHead>
                       <TableHead>Promedio (h:mm hábiles)</TableHead>
@@ -235,6 +235,11 @@ export function DashboardView() {
                     ))}
                   </TableBody>
                 </Table>
+              )}
+              {cumplimientoTecnico.length > 0 && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Cada resolución se evalúa por separado: un ticket reabierto y vuelto a resolver suma dos.
+                </p>
               )}
             </CardContent>
           </Card>

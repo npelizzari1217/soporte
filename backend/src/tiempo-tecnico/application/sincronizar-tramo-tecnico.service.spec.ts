@@ -136,13 +136,20 @@ function armar(
   opciones: {
     horariosPropios?: Record<string, CalendarioLaboralSemanal>;
     feriados?: () => Promise<FeriadosLaborales>;
+    /** Error de la base del tenant al leer el horario propio del técnico. */
+    horarioFalla?: Error;
   } = {},
 ): Armado {
   const repo = new TramosEnMemoria();
   const logs: string[] = [];
   let ahora = art('2026-10-26T00:00');
   const resolver = new ResolverHorarioLaboralUsuarioService(
-    { obtener: async (usuarioId) => opciones.horariosPropios?.[usuarioId] ?? null },
+    {
+      obtener: async (usuarioId) => {
+        if (opciones.horarioFalla !== undefined) throw opciones.horarioFalla;
+        return opciones.horariosPropios?.[usuarioId] ?? null;
+      },
+    },
     { obtener: async () => HORARIO_TENANT },
   );
   const servicio = new SincronizarTramoTecnicoService(
@@ -159,7 +166,13 @@ function armar(
     async guardar(instante, asignadoId, estadoCodigo, slaMetaS = 3 * 3600) {
       ahora = instante;
       const previo = await servicio.leerPrevio(TICKET);
-      if (previo?.estadoCodigo !== estadoCodigo) repo.cambios.push({ at: instante, estadoCodigo });
+      if (previo?.estadoCodigo !== estadoCodigo) {
+        repo.cambios.push({
+          at: instante,
+          estadoCodigo,
+          estadoAnteriorCodigo: previo?.estadoCodigo ?? null,
+        });
+      }
       repo.situacion = {
         asignadoId,
         estadoCodigo,
@@ -234,6 +247,37 @@ describe('SincronizarTramoTecnicoService', () => {
 
     expect(repo.tramos).toHaveLength(1);
     expect(repo.tramos[0]).toMatchObject({ habilS: 2 * 3600, cumplido: true });
+  });
+
+  describe('ticket sin historial de cambios de estado, como los importados (JD-A-002)', () => {
+    /** Ticket importado: asignado a Ana y esperando al cliente, sin ningún `CAMBIO_ESTADO`. */
+    const importadoEsperando = (repo: TramosEnMemoria): void => {
+      repo.situacion = {
+        asignadoId: ANA,
+        estadoCodigo: 'ESPERANDO_CLIENTE',
+        estadoId: IDS_ESTADO.ESPERANDO_CLIENTE,
+        slaMetaS: 3 * 3600,
+      };
+    };
+
+    it('la espera al cliente previa al primer cambio no suma: arranca pausado', async () => {
+      const { repo, guardar } = armar();
+      importadoEsperando(repo);
+      await guardar(art('2026-10-26T09:00'), BETO, 'ESPERANDO_CLIENTE');
+      await guardar(art('2026-10-26T11:00'), BETO, 'EN_PROCESO');
+      await guardar(art('2026-10-26T12:00'), BETO, 'RESUELTO');
+
+      expect(repo.tramos[0]).toMatchObject({ tecnicoId: BETO, habilS: 3600, cumplido: true });
+    });
+
+    it('sin ningún cambio durante el tramo, mide con el estado que tenía el ticket', async () => {
+      const { repo, guardar } = armar();
+      importadoEsperando(repo);
+      await guardar(art('2026-10-26T09:00'), BETO, 'ESPERANDO_CLIENTE');
+      await guardar(art('2026-10-26T11:00'), ANA, 'ESPERANDO_CLIENTE');
+
+      expect(repo.tramos[0]).toMatchObject({ tecnicoId: BETO, habilS: 0, motivoFin: 'REASIGNADO' });
+    });
   });
 
   it('cada técnico mide su tramo; solo el que resuelve recibe veredicto (S6)', async () => {
@@ -341,6 +385,19 @@ describe('SincronizarTramoTecnicoService', () => {
     expect(logs).toEqual([
       `TRAMO_TECNICO_MEDICION_FALLO | ticket=${TICKET} | tramo=tramo-1 | master caído`,
     ]);
+  });
+
+  it('un error de la base del tenant al leer el horario se propaga y no cierra el tramo (JD-B-003)', async () => {
+    // En Postgres ese error ya abortó la transacción: tragarlo y seguir con el cierre solo cambia
+    // la causa real por un "current transaction is aborted" en el UPDATE del tramo.
+    const falla = new Error('relation "horario_laboral_usuario" does not exist');
+    const { repo, logs, guardar } = armar({ horarioFalla: falla });
+    await guardar(art('2026-10-26T09:00'), ANA, 'ASIGNADO');
+    const antes = resumen(repo.tramos);
+
+    await expect(guardar(art('2026-10-26T10:00'), ANA, 'RESUELTO')).rejects.toBe(falla);
+    expect(resumen(repo.tramos)).toEqual(antes);
+    expect(logs).toEqual([]);
   });
 
   it('falla si el tramo a cerrar ya no estaba abierto: con la fila bloqueada es un bug', async () => {

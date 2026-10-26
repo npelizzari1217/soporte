@@ -14,6 +14,7 @@ import {
 } from './prisma-feriados-laborales.repository';
 import { PrismaService } from '../../../../shared/infrastructure/persistence/prisma.service';
 import { TenantContext, TenantContextData } from '../../../../shared/tenancy/tenant-context';
+import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 
 function filaFeriado(fecha: string) {
   return { fecha: new Date(`${fecha}T00:00:00.000Z`) };
@@ -114,6 +115,27 @@ describe('PrismaFeriadosLaboralesRepository (WU5b, sdd/feriados-configurables)',
       expect(feriados.has('2026-03-09')).toBe(false);
       expect(feriados.has('2026-08-17')).toBe(true);
       expect(feriados.has('2026-08-16')).toBe(false);
+    });
+  });
+
+  describe('obtener() — copia de los globales (JD-B-002)', () => {
+    it('dos lecturas seguidas consultan master una sola vez y el cliente cada vez', async () => {
+      const findManyGlobal = vi.fn().mockResolvedValue([filaFeriado('2026-01-01')]);
+      const findManyCliente = vi.fn().mockResolvedValue([filaFeriado('2026-05-01')]);
+      const tenantContext = new TenantContext();
+      const repo = new PrismaFeriadosLaboralesRepository(
+        makePrismaService(findManyGlobal),
+        tenantContext,
+        new FeriadosGlobalesCache(),
+      );
+      const ctx = makeCtx({ feriadoCliente: { findMany: findManyCliente } });
+
+      await tenantContext.run(ctx, () => repo.obtener());
+      const segunda = await tenantContext.run(ctx, () => repo.obtener());
+
+      expect([...segunda].sort()).toEqual(['2026-01-01', '2026-05-01']);
+      expect(findManyGlobal).toHaveBeenCalledTimes(1);
+      expect(findManyCliente).toHaveBeenCalledTimes(2);
     });
   });
 });

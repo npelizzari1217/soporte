@@ -1651,9 +1651,10 @@ Para volver al estado exacto de antes del deploy, la vía fiel es restaurar el d
 ## Horario laboral por usuario
 
 Documento de la feature: `odd/tasks/tiempo-tecnico.md` (T1). Cada usuario puede tener un horario
-laboral semanal propio; quien no lo tiene sigue usando el del cliente. Por ahora solo se carga y se
-lee por la API (`/horario-laboral/usuarios/:usuarioId`): no cambia el SLA ni la asignación de
-tickets.
+laboral semanal propio; quien no lo tiene sigue usando el del cliente. Se carga en la sección
+"Horario por técnico" de la pantalla de horario laboral (API `/horario-laboral/usuarios/:usuarioId`)
+y solo se usa para medir el tiempo del técnico (ver "Tramos del técnico"): no cambia el SLA del
+ticket ni la asignación.
 
 | Qué | Detalle |
 |---|---|
@@ -1675,8 +1676,8 @@ horarios propios cargados después del deploy: antes, un dump de la tabla. No bo
 
 Documento de la feature: `odd/tasks/tiempo-tecnico.md` (T3). Cada vez que un ticket queda con un
 responsable se abre un tramo de ese técnico, y se cierra al reasignar, desasignar o pasar a
-RESUELTO, CERRADO o CANCELADO, con el tiempo hábil medido en su horario. Por ahora solo se
-registra: la pantalla y el dashboard llegan con T4.
+RESUELTO, CERRADO o CANCELADO, con el tiempo hábil medido en su horario. Se ve en el bloque
+"Tiempo del técnico" del detalle del ticket y en el cumplimiento por técnico del dashboard (T4).
 
 | Qué | Detalle |
 |---|---|
