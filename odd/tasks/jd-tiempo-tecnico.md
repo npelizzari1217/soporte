@@ -28,7 +28,7 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
 
 - [x] T1 — S1 (bugfix, TDD)
 - [x] T2 — S2 (bugfix, TDD)
-- [ ] T3 — S6 (docs)
+- [x] T3 — S6 (docs)
 - [ ] T4 — S3
 - [ ] T5 — S4 (decisión del dueño pendiente)
 - [ ] T6 — S5, S7 (frontend)
@@ -49,3 +49,6 @@ Corrige las advertencias y sugerencias del judgment-day del 2026-10-26 sobre `78
   `listarCambiosEstado` lee `estadoAnterior`. Test de integración nuevo; sin la lectura en Prisma da
   10800 (verificado revirtiendo el repo). Los escritores de `CAMBIO_ESTADO` ya registran el estado
   anterior; los `null` del código son de `ASIGNACION`. `src/tiempo-tecnico` verde, lint y typecheck limpios.
+- **L4 — T3 (runbook).** Reescritas las dos frases de estado vencidas de "Horario laboral por usuario"
+  y "Tramos del técnico" con lo que sí entró: la sección "Horario por técnico" y el bloque "Tiempo del
+  técnico" con el dashboard. `runbook-migraciones.spec.ts` verde.
