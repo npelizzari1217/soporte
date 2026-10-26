@@ -108,6 +108,6 @@ describe("mensajeDeErrorPedido", () => {
   it("red y 5xx son transitorios; 400 pide revisar los datos", () => {
     expect(mensajeDeErrorPedido(new ApiError(0, "x"))).toMatch(/conectar/i);
     expect(mensajeDeErrorPedido(new ApiError(503, "x"))).toMatch(/servidor/i);
-    expect(mensajeDeErrorPedido(new ApiError(400, "x"))).toMatch(/revisá/i);
+    expect(mensajeDeErrorPedido(new ApiError(400, "x"))).toMatch(/revise los datos/i);
   });
 });

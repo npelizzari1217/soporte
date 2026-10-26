@@ -352,7 +352,7 @@ export function ReparacionesList() {
         error={reparacionesQuery.isError ? "No se pudieron cargar las reparaciones." : undefined}
         onRetry={() => reparacionesQuery.refetch().catch(notifyError)}
         emptyTitle="Sin reparaciones"
-        emptyDescription="Creá la primera con «Nueva reparación»."
+        emptyDescription="Cree la primera con «Nueva reparación»."
         hayFiltrosActivos={hayFiltrosActivos}
         onLimpiarFiltros={limpiarFiltros}
       />

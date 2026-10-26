@@ -27,7 +27,7 @@ function EstadoActivoAction({ respuesta }: { respuesta: RespuestaPredefinida }) 
         </Button>
       }
       title={`${accion} respuesta`}
-      description={`¿Confirmás ${accion.toLowerCase()} "${respuesta.titulo}"?${
+      description={`¿Confirma ${accion.toLowerCase()} "${respuesta.titulo}"?${
         respuesta.activo ? " Deja de ofrecerse al comentar un ticket." : ""
       }`}
       confirmLabel={accion}
@@ -93,7 +93,7 @@ export function RespuestaPredefinidaList() {
         error={respuestasQuery.isError ? "No se pudieron cargar las respuestas." : undefined}
         onRetry={() => respuestasQuery.refetch().catch(notifyError)}
         emptyTitle="Sin respuestas predefinidas"
-        emptyDescription="Creá la primera con el botón «Nueva respuesta»."
+        emptyDescription="Cree la primera con el botón «Nueva respuesta»."
       />
     </div>
   );

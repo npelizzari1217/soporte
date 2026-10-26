@@ -250,7 +250,7 @@ describe("ItemEditDialog", () => {
     await user.paste("abc");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText(/ingresá un monto válido/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ingrese un monto válido/i)).toBeInTheDocument();
     await new Promise((r) => setTimeout(r, 50));
     expect(pegoALaApi).toBe(false);
   });

@@ -82,7 +82,7 @@ function ClientesAdminContent() {
         error={clientesQuery.isError ? "No se pudieron cargar los clientes." : undefined}
         onRetry={() => clientesQuery.refetch().catch(notifyError)}
         emptyTitle="Sin clientes"
-        emptyDescription="Creá el primero con el botón «Nuevo cliente»."
+        emptyDescription="Cree el primero con el botón «Nuevo cliente»."
       />
     </div>
   );

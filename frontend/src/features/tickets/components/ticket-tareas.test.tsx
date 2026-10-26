@@ -269,7 +269,7 @@ describe("TicketTareas — mutaciones sobre las rutas genéricas", () => {
   });
 
   it.each([
-    [403, "completar", "No tenés permiso para hacer eso con las tareas de este ticket."],
+    [403, "completar", "No tiene permiso para hacer eso con las tareas de este ticket."],
     [422, "asignar", "Ese técnico no puede tomar tareas de este ticket."],
   ])("un %i del backend al %s se muestra como toast legible", async (status, accion, mensaje) => {
     const user = userEvent.setup();

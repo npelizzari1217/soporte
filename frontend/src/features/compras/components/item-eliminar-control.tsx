@@ -39,7 +39,7 @@ export function ItemEliminarControl({ compraId, item }: ItemEliminarControlProps
         </Button>
       }
       title="Eliminar ítem"
-      description={`¿Confirmás eliminar "${item.descripcion}"? Esta acción no se puede deshacer.`}
+      description={`¿Confirma eliminar "${item.descripcion}"? Esta acción no se puede deshacer.`}
       confirmLabel="Confirmar eliminación"
       confirmVariant="destructive"
       isConfirming={eliminarMutation.isPending}

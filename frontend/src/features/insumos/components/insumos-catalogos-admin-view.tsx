@@ -25,7 +25,7 @@ export function InsumosCatalogosAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar los catálogos de insumos." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para gestionar los catálogos de insumos." />}>
         <PageHeader icon={FolderTree} title="Familia de Catálogos" description="Familias del catálogo, de consumibles y de repuestos." />
         <FamiliaInsumoList />
       </SoloAdminCliente>

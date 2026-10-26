@@ -47,7 +47,7 @@ export interface EditarUsuarioDialogProps {
 /** Mensaje de error legible, sin loguear ni exponer nada que no sea `messages`. */
 function mensajeDeError(err: unknown): string {
   if (err instanceof ApiError) return err.messages.join(" ");
-  return "Ocurrió un error inesperado. Intentá de nuevo.";
+  return "Ocurrió un error inesperado. Intente de nuevo.";
 }
 
 export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
@@ -219,7 +219,7 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Dejá ambos campos vacíos para no cambiar la contraseña. Al establecer una nueva se
+              Deje ambos campos vacíos para no cambiar la contraseña. Al establecer una nueva se
               cierran las sesiones activas del usuario.
             </p>
           </div>
@@ -242,7 +242,7 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
               </Button>
             }
             title="Resetear 2FA"
-            description={`¿Confirmás resetear la verificación en dos pasos de "${usuario.nombre} ${usuario.apellido}"? Si su cliente o su rol lo obligan, tendrá que configurarla de nuevo en su próximo ingreso.`}
+            description={`¿Confirma resetear la verificación en dos pasos de "${usuario.nombre} ${usuario.apellido}"? Si su cliente o su rol lo obligan, tendrá que configurarla de nuevo en su próximo ingreso.`}
             confirmLabel="Resetear"
             confirmVariant="destructive"
             isConfirming={tfaMutation.isPending}
@@ -258,7 +258,7 @@ export function EditarUsuarioDialog({ usuario }: EditarUsuarioDialogProps) {
               </Button>
             }
             title="Resetear vínculo SSO"
-            description={`¿Confirmás resetear el vínculo con Google y Microsoft de "${usuario.nombre} ${usuario.apellido}"? Se cierran sus sesiones abiertas y el próximo ingreso con SSO lo vincula de nuevo. No cambia su contraseña ni su 2FA.`}
+            description={`¿Confirma resetear el vínculo con Google y Microsoft de "${usuario.nombre} ${usuario.apellido}"? Se cierran sus sesiones abiertas y el próximo ingreso con SSO lo vincula de nuevo. No cambia su contraseña ni su 2FA.`}
             confirmLabel="Resetear"
             confirmVariant="destructive"
             isConfirming={ssoMutation.isPending}

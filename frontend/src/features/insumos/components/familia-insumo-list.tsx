@@ -28,7 +28,7 @@ function EstadoActivoAction({ familia }: { familia: FamiliaInsumo }) {
         </Button>
       }
       title={familia.activo ? "Dar de baja familia de insumo" : "Activar familia de insumo"}
-      description={`¿Confirmás ${familia.activo ? "dar de baja" : "activar"} "${familia.nombre}"?`}
+      description={`¿Confirma ${familia.activo ? "dar de baja" : "activar"} "${familia.nombre}"?`}
       confirmLabel={familia.activo ? "Dar de baja" : "Activar"}
       confirmVariant={familia.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}
@@ -103,7 +103,7 @@ export function FamiliaInsumoList() {
         error={familiasQuery.isError ? "No se pudieron cargar las familias de insumo." : undefined}
         onRetry={() => familiasQuery.refetch().catch(notifyError)}
         emptyTitle="Sin familias de insumo"
-        emptyDescription="Creá la primera con el botón «Nueva familia»."
+        emptyDescription="Cree la primera con el botón «Nueva familia»."
       />
     </div>
   );

@@ -58,7 +58,7 @@ const cantidadMovimientoSchema = z.preprocess(
   z
     .number({
       required_error: "La cantidad es requerida",
-      invalid_type_error: "Ingresá una cantidad válida",
+      invalid_type_error: "Ingrese una cantidad válida",
     })
     .positive("La cantidad debe ser mayor a 0")
     .max(
@@ -394,7 +394,7 @@ export const recuperacionSchema = z.object({
 /** Lista de seriales de una entrada, un ajuste o una recepción: hasta 100, cada uno válido. */
 export const serialesSchema = z
   .array(numeroSerieSchema)
-  .max(SERIALES_MAX, `Podés cargar hasta ${SERIALES_MAX} números de serie por vez`);
+  .max(SERIALES_MAX, `Puede cargar hasta ${SERIALES_MAX} números de serie por vez`);
 
 /**
  * Punto de reposición del insumo: OPCIONAL y, a diferencia de
@@ -417,7 +417,7 @@ const stockMinimoInsumoSchema = z.preprocess(
     return valor.trim() === "" ? undefined : (parsearNumeroEsAr(valor) ?? Number.NaN);
   },
   z
-    .number({ invalid_type_error: "Ingresá un stock mínimo válido" })
+    .number({ invalid_type_error: "Ingrese un stock mínimo válido" })
     .min(INSUMO_STOCK_MINIMO_MINIMO, `El stock mínimo no puede ser menor a ${INSUMO_STOCK_MINIMO_MINIMO}`)
     .max(INSUMO_STOCK_MINIMO_MAXIMO, `El stock mínimo no puede superar ${INSUMO_STOCK_MINIMO_MAXIMO}`)
     .refine(conDosDecimales, `Máximo ${INSUMO_STOCK_MINIMO_DECIMALES} decimales`)

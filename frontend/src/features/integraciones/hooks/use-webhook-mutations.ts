@@ -23,10 +23,10 @@ import { WEBHOOK_QUERY_KEY } from "./use-webhook";
 /** Avisos fijos por `ApiError.code`. `null` = el mensaje del backend ya es el aviso. */
 const AVISO_WEBHOOK_POR_CODIGO: Record<string, string | null> = {
   API_NO_HABILITADA: "La API de este cliente no está habilitada. ROOT tiene que habilitarla para configurar el webhook.",
-  WEBHOOK_EVENTOS_INVALIDOS: "Alguno de los eventos elegidos no es válido. Revisá la selección.",
+  WEBHOOK_EVENTOS_INVALIDOS: "Alguno de los eventos elegidos no es válido. Revise la selección.",
   WEBHOOK_URL_INVALIDA: null,
   WEBHOOK_DESTINO_NO_ADMITIDO: null,
-  WEBHOOK_DESTINO_NO_ENCONTRADO: "Todavía no hay un webhook configurado. Guardá la configuración primero.",
+  WEBHOOK_DESTINO_NO_ENCONTRADO: "Todavía no hay un webhook configurado. Guarde la configuración primero.",
 };
 
 /** Aviso para un error del webhook con código conocido; `undefined` si no lo es. */

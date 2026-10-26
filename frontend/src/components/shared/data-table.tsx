@@ -26,7 +26,7 @@ import { ErrorState } from "./error-state";
  */
 const TITULO_VACIO_FILTRADO = "Sin resultados para los filtros aplicados";
 const DESCRIPCION_VACIO_FILTRADO =
-  "Ningún elemento coincide con los filtros aplicados. Ajustá los filtros o limpialos para ver el listado completo.";
+  "Ningún elemento coincide con los filtros aplicados. Ajuste los filtros o límpielos para ver el listado completo.";
 
 export interface Column<T> {
   key: keyof T & string;

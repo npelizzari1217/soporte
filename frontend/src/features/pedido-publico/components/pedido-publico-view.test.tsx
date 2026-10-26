@@ -30,8 +30,8 @@ function contexto(modo: "EXTERNO" | "SESION", equipo: { nombre: string } | null 
 }
 
 async function completar(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(await screen.findByLabelText(/tu nombre/i), "Ana Pérez");
-  await user.type(screen.getByLabelText(/tu email/i), "ana@example.com");
+  await user.type(await screen.findByLabelText(/su nombre/i), "Ana Pérez");
+  await user.type(screen.getByLabelText(/su email/i), "ana@example.com");
   await user.type(screen.getByLabelText(/asunto/i), "No enciende");
   await user.type(screen.getByLabelText(/qué pasa/i), "Desde ayer no prende.");
   await user.click(screen.getByRole("button", { name: /enviar pedido/i }));
@@ -70,8 +70,8 @@ describe("PedidoPublicoView", () => {
 
     await completar(user);
 
-    expect(await screen.findByText(/Revisá tu correo/i)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/link que te mandamos/i);
+    expect(await screen.findByText(/Revise su correo/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(/link que le mandamos/i);
     expect(cuerpo).toMatchObject({ nombre: "Ana Pérez", email: "ana@example.com", equipoToken: "tok1" });
   });
 
@@ -87,7 +87,7 @@ describe("PedidoPublicoView", () => {
     const user = userEvent.setup();
     renderView();
 
-    await user.type(await screen.findByLabelText(/tu email/i), "no-es-email");
+    await user.type(await screen.findByLabelText(/su email/i), "no-es-email");
     await user.click(screen.getByRole("button", { name: /enviar pedido/i }));
 
     expect(await screen.findByText(/email válido/i)).toBeInTheDocument();

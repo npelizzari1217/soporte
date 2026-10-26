@@ -67,7 +67,7 @@ export function TicketResponsableControl({
           onChange={(e) => setSeleccionado(e.target.value)}
           disabled={isSubmitting}
         >
-          <option value="">{arranque ? "Elegí un responsable" : "Elegí otro responsable"}</option>
+          <option value="">{arranque ? "Elija un responsable" : "Elija otro responsable"}</option>
           {tecnicos.map((tecnico) => (
             <option key={tecnico.id} value={tecnico.id}>
               {tecnico.nombre} {tecnico.apellido}

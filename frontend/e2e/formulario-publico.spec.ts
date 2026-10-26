@@ -63,8 +63,8 @@ test.describe("Formulario público — smoke browser -> BFF -> backend (sin sesi
     if (nombreCliente) await expect(page.getByText(nombreCliente)).toBeVisible();
 
     const unico = Date.now();
-    await page.getByLabel("Tu nombre").fill("E2E Smoke");
-    await page.getByLabel("Tu email").fill(`e2e-smoke-${unico}@example.com`);
+    await page.getByLabel("Su nombre").fill("E2E Smoke");
+    await page.getByLabel("Su email").fill(`e2e-smoke-${unico}@example.com`);
     await page.getByLabel("Asunto").fill(`E2E smoke ${unico}`);
     await page.getByLabel("¿Qué pasa?").fill("Pedido generado por el smoke e2e del formulario público.");
 
@@ -74,7 +74,7 @@ test.describe("Formulario público — smoke browser -> BFF -> backend (sin sesi
     await page.getByRole("button", { name: "Enviar pedido" }).click();
     expect((await solicitud).status()).toBe(202);
 
-    await expect(page.getByRole("heading", { name: "Revisá tu correo" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Revise su correo" })).toBeVisible();
     await expect(page.getByRole("status")).toContainText("Te enviamos un correo");
     await expect(page).not.toHaveURL(/\/login/);
     await context.close();

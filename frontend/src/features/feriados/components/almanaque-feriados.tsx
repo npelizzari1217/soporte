@@ -183,7 +183,7 @@ export function AlmanaqueFeriados({ feriados, hoy, renderAcciones, onDiaLibre }:
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Pasá el mouse o seleccioná un día con feriado para ver el detalle.</p>
+          <p className="text-sm text-muted-foreground">Pase el mouse o seleccione un día con feriado para ver el detalle.</p>
         )}
       </div>
     </div>

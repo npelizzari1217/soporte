@@ -272,7 +272,7 @@ export function RegistrarRecepcionDialog({ compraId, item }: RegistrarAvanceDial
               />
               {seriales.pendientes > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Las piezas sin número de serie quedan pendientes: lo cargás después desde la ficha del insumo (
+                  Las piezas sin número de serie quedan pendientes: lo carga después desde la ficha del insumo (
                   {seriales.pendientes} pendiente{seriales.pendientes === 1 ? "" : "s"}).
                 </p>
               )}

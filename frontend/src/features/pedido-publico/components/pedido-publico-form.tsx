@@ -43,10 +43,10 @@ export function PedidoPublicoForm({ onSubmit, isLoading }: PedidoPublicoFormProp
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
-      <Campo id="nombre" etiqueta="Tu nombre" error={errors.nombre?.message}>
+      <Campo id="nombre" etiqueta="Su nombre" error={errors.nombre?.message}>
         <Input id="nombre" autoComplete="name" disabled={isLoading} error={!!errors.nombre} {...register("nombre")} />
       </Campo>
-      <Campo id="email" etiqueta="Tu email" error={errors.email?.message}>
+      <Campo id="email" etiqueta="Su email" error={errors.email?.message}>
         <Input id="email" type="email" autoComplete="email" disabled={isLoading} error={!!errors.email} {...register("email")} />
       </Campo>
       <Campo id="telefono" etiqueta="Teléfono (opcional)" error={errors.telefono?.message}>

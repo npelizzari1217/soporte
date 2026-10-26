@@ -46,7 +46,7 @@ describe("InsumosCatalogosAdminView", () => {
     if (shouldShowContent) {
       await screen.findByText("TONER");
     } else {
-      expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
       expect(screen.queryByText("TONER")).not.toBeInTheDocument();
     }
   });
@@ -92,7 +92,7 @@ describe("InsumosCatalogosAdminView", () => {
 
     await user.click(screen.getByRole("button", { name: /^dar de baja$/i }));
     const dialogo = await screen.findByRole("alertdialog");
-    expect(within(dialogo).getByText(/¿confirmás dar de baja "tóner"\?/i)).toBeInTheDocument();
+    expect(within(dialogo).getByText(/¿confirma dar de baja "tóner"\?/i)).toBeInTheDocument();
     await user.click(within(dialogo).getByRole("button", { name: /^dar de baja$/i }));
 
     await waitFor(() => expect(enviado).toEqual({ activo: false }));

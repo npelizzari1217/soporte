@@ -69,7 +69,7 @@ export function CrearApiClaveDialog({ onClaveCreada }: CrearApiClaveDialogProps)
         <DialogHeader>
           <DialogTitle>Nueva clave de API</DialogTitle>
           <DialogDescription>
-            Usá un nombre que identifique al sistema que la va a usar, y dale solo los permisos que necesita.
+            Use un nombre que identifique al sistema que la va a usar, y otórguele solo los permisos que necesita.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex flex-col gap-4" noValidate>

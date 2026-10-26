@@ -110,7 +110,7 @@ export class ApiError extends Error {
  */
 export class SessionExpiredError extends ApiError {
   constructor(raw?: unknown) {
-    super(401, "Sesión expirada. Por favor, iniciá sesión nuevamente.", undefined, raw);
+    super(401, "Sesión expirada. Por favor, inicie sesión nuevamente.", undefined, raw);
     this.name = "SessionExpiredError";
     Object.setPrototypeOf(this, new.target.prototype);
   }

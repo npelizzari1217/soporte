@@ -20,7 +20,7 @@ export function EdiliciaView() {
   const { isPending, puedeEnModulo } = usePermisosPorTipo();
   if (isPending) return <TableSkeleton />;
   if (!puedeEnModulo("EDILICIA", "LECTURA")) {
-    return <ErrorState message="No tenés permiso para ver Edilicia." />;
+    return <ErrorState message="No tiene permiso para ver Edilicia." />;
   }
   return <ReparacionesList />;
 }

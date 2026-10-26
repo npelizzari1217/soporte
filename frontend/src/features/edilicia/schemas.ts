@@ -14,7 +14,7 @@ const reparacionBaseSchema = z.object({
     .min(1, "El título es requerido")
     .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
-  prioridadId: z.string().uuid("Elegí una prioridad"),
+  prioridadId: z.string().uuid("Elija una prioridad"),
   ubicacion: z
     .string()
     .max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH))

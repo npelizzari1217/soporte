@@ -10,10 +10,10 @@ import { LoginForm } from "./LoginForm";
 // de reset".
 
 describe("LoginForm", () => {
-  it("muestra un link '¿Olvidaste tu contraseña?' hacia /olvide-password", () => {
+  it("muestra un link '¿Olvidó su contraseña?' hacia /olvide-password", () => {
     render(<LoginForm onSubmit={vi.fn()} isLoading={false} />);
 
-    expect(screen.getByRole("link", { name: /olvidaste tu contraseña/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /olvidó su contraseña/i })).toHaveAttribute(
       "href",
       "/olvide-password",
     );

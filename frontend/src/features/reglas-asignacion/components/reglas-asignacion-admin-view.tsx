@@ -31,7 +31,7 @@ const AYUDA_ESTADO: Record<ReglaAsignacionFila["estado"], { etiqueta: string; va
   ROTA: {
     etiqueta: "Rota",
     variant: "destructive",
-    ayuda: "El responsable ya no es válido: los tickets nacen sin asignar. Elegí otra persona o dejá la fila vacía.",
+    ayuda: "El responsable ya no es válido: los tickets nacen sin asignar. Elija otra persona o deje la fila vacía.",
   },
 };
 
@@ -121,7 +121,7 @@ function ReglasAsignacionTable() {
       error={query.isError ? "No se pudieron cargar las reglas de asignación." : undefined}
       onRetry={() => query.refetch().catch(notifyError)}
       emptyTitle="Sin tipos de ticket"
-      emptyDescription="Creá un tipo de ticket activo para configurar su asignación automática."
+      emptyDescription="Cree un tipo de ticket activo para configurar su asignación automática."
     />
   );
 }
@@ -130,10 +130,10 @@ export function ReglasAsignacionAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para configurar la asignación automática." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para configurar la asignación automática." />}>
         <PageHeader icon={Shuffle}
           title="Asignación automática"
-          description="Elegí quién recibe los tickets nuevos de cada tipo. Sin responsable, el ticket nace sin asignar."
+          description="Elija quién recibe los tickets nuevos de cada tipo. Sin responsable, el ticket nace sin asignar."
         />
         <ReglasAsignacionTable />
       </SoloAdminCliente>

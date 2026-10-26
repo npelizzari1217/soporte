@@ -45,7 +45,7 @@ export function AdoptarCicloForm({ onSuccess }: AdoptarCicloFormProps = {}) {
         </label>
         <Select id="ciclo-vigente-id" defaultValue="" error={!!errors.cicloVigenteId} {...register("cicloVigenteId")}>
           <option value="" disabled>
-            {ciclosVigentesQuery.isLoading ? "Cargando ciclos…" : "Elegí un ciclo"}
+            {ciclosVigentesQuery.isLoading ? "Cargando ciclos…" : "Elija un ciclo"}
           </option>
           {(ciclosVigentesQuery.data ?? []).map((ciclo) => (
             <option key={ciclo.id} value={ciclo.id}>

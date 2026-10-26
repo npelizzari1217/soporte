@@ -83,7 +83,7 @@ describe("guardarWebhookBodySchema", () => {
   });
 
   it.each([
-    ["", "Ingresá la URL del webhook."],
+    ["", "Ingrese la URL del webhook."],
     ["http://erp.example.com/hooks", "La URL tiene que empezar con https://."],
     ["no es una url", "La URL tiene que empezar con https://."],
     [`https://erp.example.com/${"a".repeat(2048)}`, "La URL admite hasta 2048 caracteres."],
@@ -95,7 +95,7 @@ describe("guardarWebhookBodySchema", () => {
 
   it("exige al menos un evento", () => {
     const resultado = guardarWebhookBodySchema.safeParse({ ...valido, eventos: [] });
-    expect(resultado.error?.issues.map((i) => i.message)).toEqual(["Elegí al menos un evento."]);
+    expect(resultado.error?.issues.map((i) => i.message)).toEqual(["Elija al menos un evento."]);
   });
 
   it("exige activo booleano", () => {

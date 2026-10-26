@@ -175,7 +175,7 @@ describe("EquipoDetailView — borrado de un equipo cargado por error (baja-equi
     await user.click(await screen.findByRole("button", { name: "Eliminar equipo (cargado por error)" }));
 
     expect(
-      await screen.findByText(/Solo para equipos cargados por error\. Si tiene piezas instaladas, dalo de baja\./),
+      await screen.findByText(/Solo para equipos cargados por error\. Si tiene piezas instaladas, delo de baja\./),
     ).toBeInTheDocument();
   });
 
@@ -183,7 +183,7 @@ describe("EquipoDetailView — borrado de un equipo cargado por error (baja-equi
     server.use(
       http.delete(`/api/equipos/${EQUIPO_ID}`, () =>
         HttpResponse.json(
-          { message: "El equipo tiene 2 piezas activas: dalo de baja en lugar de borrarlo." },
+          { message: "El equipo tiene 2 piezas activas: delo de baja en lugar de borrarlo." },
           { status: 422 },
         ),
       ),

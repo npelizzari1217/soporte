@@ -55,15 +55,15 @@ function IdleWarningDialog({ open, secondsLeft, onStayConnected }: IdleWarningDi
           )}
         >
           <AlertDialog.Title className="text-base font-semibold">
-            Tu sesión está por expirar
+            Su sesión está por expirar
           </AlertDialog.Title>
 
           <AlertDialog.Description className="text-sm text-muted-foreground">
-            Por tu seguridad, vamos a cerrar la sesión en{" "}
+            Por su seguridad, vamos a cerrar la sesión en{" "}
             <span role="timer" aria-live="polite" className="font-semibold text-foreground">
               {secondsLeft}
             </span>{" "}
-            segundos por inactividad. Hacé clic en &quot;Seguir conectado&quot; para continuar.
+            segundos por inactividad. Haga clic en &quot;Seguir conectado&quot; para continuar.
           </AlertDialog.Description>
 
           <div className="flex items-center justify-end gap-2 pt-2">

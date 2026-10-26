@@ -55,7 +55,7 @@ export function EncuestaForm({ onSubmit, isLoading }: EncuestaFormProps) {
         <Textarea
           id="comentario"
           disabled={isLoading}
-          placeholder="Contanos más sobre tu experiencia"
+          placeholder="Cuéntenos más sobre su experiencia"
           error={!!errors.comentario}
           {...register("comentario")}
         />

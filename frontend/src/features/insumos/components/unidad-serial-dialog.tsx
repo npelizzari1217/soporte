@@ -142,7 +142,7 @@ export function UnidadSerialDialog({ insumoId, unidad, modo, onClose }: UnidadSe
           <DialogDescription>
             {modo === "corregir"
               ? "El serial anterior queda en el historial de la unidad, junto con el motivo."
-              : "Esta pieza ingresó sin número de serie. Cargalo para completar su identificación."}
+              : "Esta pieza ingresó sin número de serie. Cárguelo para completar su identificación."}
           </DialogDescription>
         </DialogHeader>
         {unidad && (

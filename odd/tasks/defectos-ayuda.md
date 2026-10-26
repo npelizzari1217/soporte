@@ -34,7 +34,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - [x] T4 — S4
 - [x] T5 — S5
 - [x] T6 — S6
-- [ ] T7 — S7
+- [x] T7 — S7
 
 ## Log
 
@@ -75,3 +75,14 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
   línea de Prettier. `tiempo-tecnico`+`integraciones` 420/420, lint y typecheck limpios. Ayuda
   `integraciones-y-clientes.md` corregida. Riesgo: los consumidores del webhook reciben más avisos
   (Asignado, En proceso, Cancelado, reaperturas), que es lo que promete el nombre del evento.
+- **L9 — T7 (#6).** Cuatro redactores con superficies disjuntas pasaron a neutro con "usted" los textos
+  visibles en voseo o tuteo: pantallas, mensajes de error del backend y correos (~180 archivos), con los
+  tests que afirmaban esos textos y el e2e de Playwright del formulario público. La nota de familias
+  vacías apunta a "Admin > Familia de Catálogos". Tres citas de la UI en la Ayuda actualizadas
+  ("¿Olvidó su contraseña?", "Su nombre", "Su email"). Comentarios fuera de alcance. Suites completas:
+  frontend lint y type-check limpios, 290/290 y 2692/2692; backend lint y typecheck limpios, 804/805 con
+  1 falla intermitente del test nuevo de T1.
+- **L10 — Falla intermitente de T1.** "con otro rol también" daba 422 `El rol "COLABORADOR" no existe en
+  el catálogo` solo al correr junto con otros specs: la base de test compartida no garantiza ese rol. El
+  test lo asegura antes de usarlo; 3 corridas seguidas con `src/auth` en verde (1286/1286). No es un
+  defecto del código.

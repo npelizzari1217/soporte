@@ -49,7 +49,7 @@ function EliminarCicloVigenteAction({ ciclo }: { ciclo: CicloVigenteAdmin }) {
         </Button>
       }
       title="Eliminar ciclo"
-      description={`¿Confirmás eliminar "${ciclo.nombre}"? Los clientes que ya lo adoptaron no se ven afectados — solo deja de ofrecerse para nuevas adopciones.`}
+      description={`¿Confirma eliminar "${ciclo.nombre}"? Los clientes que ya lo adoptaron no se ven afectados — solo deja de ofrecerse para nuevas adopciones.`}
       confirmLabel="Eliminar"
       confirmVariant="destructive"
       isConfirming={mutation.isPending}
@@ -117,7 +117,7 @@ function CiclosVigentesAdminContent() {
         error={ciclosQuery.isError ? "No se pudieron cargar los ciclos." : undefined}
         onRetry={() => ciclosQuery.refetch().catch(notifyError)}
         emptyTitle="Sin ciclos"
-        emptyDescription="Creá el primero con «Nuevo ciclo»."
+        emptyDescription="Cree el primero con «Nuevo ciclo»."
       />
     </div>
   );

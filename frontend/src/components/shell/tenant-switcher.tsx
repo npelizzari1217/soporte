@@ -64,7 +64,7 @@ export function TenantSwitcher() {
       router.refresh();
     },
     onError: () => {
-      toast.error("No se pudo cambiar de cliente. Intentá de nuevo.");
+      toast.error("No se pudo cambiar de cliente. Intente de nuevo.");
     },
   });
 
@@ -80,7 +80,7 @@ export function TenantSwitcher() {
         <button
           type="button"
           disabled={mutation.isPending}
-          aria-label={`Cliente actual: ${user.cliente_nombre ?? "Elegí un cliente"}. Abrir selector de cliente.`}
+          aria-label={`Cliente actual: ${user.cliente_nombre ?? "Elija un cliente"}. Abrir selector de cliente.`}
           className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-foreground shadow-sm transition-all hover:shadow-md hover:bg-muted disabled:opacity-50 disabled:pointer-events-none"
         >
           <Building2 className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -89,7 +89,7 @@ export function TenantSwitcher() {
               Cliente
             </span>
             <span className="max-w-[240px] truncate text-base font-semibold">
-              {user.cliente_nombre ?? "Elegí un cliente"}
+              {user.cliente_nombre ?? "Elija un cliente"}
             </span>
           </span>
           <ChevronDown className="h-4 w-4 opacity-60 shrink-0" aria-hidden="true" />

@@ -82,7 +82,7 @@ describe("ExportarComprasButton", () => {
         HttpResponse.json(
           {
             statusCode: 422,
-            message: "La exportación supera las 5000 filas. Acotá los filtros.",
+            message: "La exportación supera las 5000 filas. Acote los filtros.",
           },
           { status: 422 },
         ),
@@ -94,7 +94,7 @@ describe("ExportarComprasButton", () => {
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
-        "La exportación supera las 5000 filas. Acotá los filtros.",
+        "La exportación supera las 5000 filas. Acote los filtros.",
       ),
     );
     expect(descargas).toHaveLength(0);

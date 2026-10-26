@@ -84,7 +84,7 @@ export function EquipoDetailView({ equipoId }: EquipoDetailViewProps) {
                     </Button>
                   }
                   title="Eliminar equipo"
-                  description={`¿Confirmás eliminar "${equipo.nombre}"? Solo para equipos cargados por error. Si tiene piezas instaladas, dalo de baja.`}
+                  description={`¿Confirma eliminar "${equipo.nombre}"? Solo para equipos cargados por error. Si tiene piezas instaladas, delo de baja.`}
                   confirmLabel="Eliminar equipo"
                   confirmVariant="destructive"
                   isConfirming={eliminarMutation.isPending}

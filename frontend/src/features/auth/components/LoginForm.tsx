@@ -103,7 +103,7 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
           href="/olvide-password"
           className="self-end text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
-          ¿Olvidaste tu contraseña?
+          ¿Olvidó su contraseña?
         </Link>
       </div>
 

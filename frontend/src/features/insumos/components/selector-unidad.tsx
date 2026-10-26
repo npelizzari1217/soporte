@@ -35,7 +35,7 @@ export function SelectorUnidad({ id, seleccion, nota }: SelectorUnidadProps) {
         disabled={cargando || fallo || sinPiezas}
         onChange={(event) => elegir(event.target.value)}
       >
-        <option value="">{cargando ? "Cargando piezas..." : "Elegí una pieza"}</option>
+        <option value="">{cargando ? "Cargando piezas..." : "Elija una pieza"}</option>
         {(unidades ?? []).map((unidad) => (
           <option key={unidad.id} value={unidad.id}>
             {`${unidad.numeroSerie ?? SERIE_PENDIENTE} (${unidad.condicion === "USADO" ? "Usado" : "Nuevo"})`}

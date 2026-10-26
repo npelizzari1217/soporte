@@ -42,7 +42,7 @@ un aviso de que la contraseña se cambió. Ingrese con la contraseña nueva.
 
 ## Si olvidó su contraseña
 
-En la pantalla de inicio de sesión, haga clic en **¿Olvidaste tu contraseña?**,
+En la pantalla de inicio de sesión, haga clic en **¿Olvidó su contraseña?**,
 escriba su email y presione **Enviar link de recuperación**. Por seguridad, el
 sistema muestra siempre el mismo mensaje, exista o no ese email.
 

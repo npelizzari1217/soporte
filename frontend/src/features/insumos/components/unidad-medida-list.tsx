@@ -29,7 +29,7 @@ function EstadoActivoAction({ unidad }: { unidad: UnidadMedida }) {
         </Button>
       }
       title={unidad.activo ? "Dar de baja unidad de medida" : "Activar unidad de medida"}
-      description={`¿Confirmás ${unidad.activo ? "dar de baja" : "activar"} "${unidad.nombre}"?`}
+      description={`¿Confirma ${unidad.activo ? "dar de baja" : "activar"} "${unidad.nombre}"?`}
       confirmLabel={unidad.activo ? "Dar de baja" : "Activar"}
       confirmVariant={unidad.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}
@@ -94,7 +94,7 @@ export function UnidadMedidaList() {
         error={unidadesQuery.isError ? "No se pudieron cargar las unidades de medida." : undefined}
         onRetry={() => unidadesQuery.refetch().catch(notifyError)}
         emptyTitle="Sin unidades de medida"
-        emptyDescription="Creá la primera con el botón «Nueva unidad»."
+        emptyDescription="Cree la primera con el botón «Nueva unidad»."
       />
     </div>
   );

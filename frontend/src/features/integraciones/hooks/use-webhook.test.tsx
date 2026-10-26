@@ -136,7 +136,7 @@ describe("hooks del webhook", () => {
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useRegenerarSecretoWebhook(onSecreto), { wrapper: Wrapper });
     await act(() => result.current.mutateAsync().catch(() => undefined));
-    expect(toast.error).toHaveBeenCalledWith("Todavía no hay un webhook configurado. Guardá la configuración primero.");
+    expect(toast.error).toHaveBeenCalledWith("Todavía no hay un webhook configurado. Guarde la configuración primero.");
     expect(onSecreto).not.toHaveBeenCalled();
   });
 });

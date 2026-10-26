@@ -158,7 +158,7 @@ function EstadoActivoInsumoAction({ insumo, nombreItem }: { insumo: Insumo; nomb
         </Button>
       }
       title={insumo.activo ? `Deshabilitar ${nombreItem}` : `Habilitar ${nombreItem}`}
-      description={`¿Confirmás ${insumo.activo ? "deshabilitar" : "habilitar"} "${insumo.nombre}"?`}
+      description={`¿Confirma ${insumo.activo ? "deshabilitar" : "habilitar"} "${insumo.nombre}"?`}
       confirmLabel={insumo.activo ? "Deshabilitar" : "Habilitar"}
       confirmVariant={insumo.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}

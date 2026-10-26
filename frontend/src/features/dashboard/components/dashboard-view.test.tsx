@@ -157,7 +157,7 @@ describe("DashboardView", () => {
 
     renderWithProviders(<DashboardView />, { user: buildUser({ permisos: [] }) });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/no tenés permiso/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no tiene permiso/i);
     expect(screen.queryByRole("img", { name: "Tickets abiertos / cerrados" })).not.toBeInTheDocument();
   });
 

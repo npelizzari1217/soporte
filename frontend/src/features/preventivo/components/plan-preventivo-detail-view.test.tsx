@@ -82,7 +82,7 @@ describe("PlanPreventivoDetailView — gate por permiso (hallazgo B2, corregido 
       user: buildUser({ permisos: [] }),
     });
 
-    expect(await screen.findByText(/no ten[ée]s permiso para ver este plan/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tiene permiso para ver este plan/i)).toBeInTheDocument();
     expect(screen.queryByText("Revisión mensual")).not.toBeInTheDocument();
     expect(screen.queryByText(/no se pudo cargar el plan/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /reintentar/i })).not.toBeInTheDocument();

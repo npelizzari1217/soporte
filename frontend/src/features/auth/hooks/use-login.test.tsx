@@ -521,7 +521,7 @@ describe("useLogin", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(result.current.paso).toBe(pasoEsperado);
     if (vencido) expect(toast.error).toHaveBeenCalledWith(MENSAJE_VENCIDO);
-    else expect(toast.error).toHaveBeenCalledWith("Código incorrecto. Intentá de nuevo.");
+    else expect(toast.error).toHaveBeenCalledWith("Código incorrecto. Intente de nuevo.");
     spy.mockRestore();
   });
 

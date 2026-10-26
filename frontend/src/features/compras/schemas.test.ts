@@ -210,7 +210,7 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
     it("agregarItemCompra sigue rechazando texto no numérico en monto", () => {
       const r = agregarItemCompraSchema.safeParse({ ...ITEM_VALIDO, monto: "abc" });
       expect(r.success).toBe(false);
-      if (!r.success) expect(r.error.issues[0].message).toBe("Ingresá un monto válido");
+      if (!r.success) expect(r.error.issues[0].message).toBe("Ingrese un monto válido");
     });
   });
 

@@ -42,7 +42,7 @@ import { baseDepreciacion, calcularValorResidual, parseImporte } from "../deprec
 import type { EquipoDetalle } from "../types";
 
 /** Nota bajo el select cuando el catálogo de modelos resolvió VACÍO. */
-const NOTA_MODELOS_VACIOS = "No hay modelos de equipo cargados. Creá uno desde Admin > Modelos de equipo.";
+const NOTA_MODELOS_VACIOS = "No hay modelos de equipo cargados. Cree uno desde Admin > Modelos de equipo.";
 
 /**
  * Nota cuando el catálogo NO resolvió. Mensaje distinto del de vacío a

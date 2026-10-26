@@ -11,7 +11,7 @@ describe("EnrolamientoTfa", () => {
   it("muestra el QR con nombre accesible y la clave manual", () => {
     render(<EnrolamientoTfa datos={DATOS} onConfirmar={vi.fn()} isLoading={false} />);
     expect(screen.getByRole("img", { name: /qr/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/cargá esta clave/i)).toHaveValue(DATOS.claveManual);
+    expect(screen.getByLabelText(/cargue esta clave/i)).toHaveValue(DATOS.claveManual);
   });
 
   it("sin datos todavía avisa que está preparando y no muestra el formulario", () => {

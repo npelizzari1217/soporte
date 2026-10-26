@@ -210,7 +210,7 @@ describe("ReporteStockPage — acceso por URL", () => {
   it("sin INSUMOS:LECTURA muestra el fallback y no pide el reporte (R7)", async () => {
     renderWithProviders(<ReporteStockPage />, { user: buildUser({ permisos: [], modulos: ["INSUMOS"] }) });
 
-    expect(await screen.findByText(/no tenés permiso para ver el reporte de stock/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tiene permiso para ver el reporte de stock/i)).toBeInTheDocument();
     expect(queriesReporte).toHaveLength(0);
   });
 

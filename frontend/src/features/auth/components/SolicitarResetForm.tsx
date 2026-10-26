@@ -46,7 +46,7 @@ export function SolicitarResetForm({ onSubmit, isLoading }: SolicitarResetFormPr
           type="email"
           autoComplete="email"
           disabled={isLoading}
-          placeholder="tu@email.com"
+          placeholder="nombre@empresa.com"
           error={!!errors.email}
           {...register("email")}
         />

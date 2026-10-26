@@ -5,9 +5,9 @@ import { PageHeader } from "./page-header";
 
 describe("PageHeader", () => {
   it("renders the title as a heading and the description text", () => {
-    render(<PageHeader title="Tickets" description="Gestioná los tickets de tu organización." />);
+    render(<PageHeader title="Tickets" description="Gestione los tickets de su organización." />);
     expect(screen.getByRole("heading", { name: "Tickets" })).toBeInTheDocument();
-    expect(screen.getByText("Gestioná los tickets de tu organización.")).toBeInTheDocument();
+    expect(screen.getByText("Gestione los tickets de su organización.")).toBeInTheDocument();
   });
 
   it("with actions → renders the actions node next to the title", () => {

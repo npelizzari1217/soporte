@@ -32,7 +32,7 @@ export function CatalogosAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar catálogos." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para gestionar catálogos." />}>
         <PageHeader icon={Settings} title="Catálogos" description="Tipos de ticket, prioridades, sectores y respuestas predefinidas del tenant." />
         <Tabs defaultValue="tipos">
           <TabsList>

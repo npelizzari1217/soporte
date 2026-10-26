@@ -161,7 +161,7 @@ export function TipoTicketFormDialog({ trigger, tipo }: TipoTicketFormDialogProp
               })}
             >
               <option value="" disabled>
-                Elegí un módulo
+                Elija un módulo
               </option>
               {modulosOfrecidos.map((modulo) => (
                 <option key={modulo} value={modulo}>

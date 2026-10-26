@@ -38,7 +38,7 @@ describe("UsuariosAdminView", () => {
     if (shouldShowContent) {
       await screen.findByText("Juana Pérez");
     } else {
-      expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
       expect(screen.queryByText("Juana Pérez")).not.toBeInTheDocument();
     }
   });

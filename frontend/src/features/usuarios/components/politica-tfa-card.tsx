@@ -46,8 +46,8 @@ export function PoliticaTfaCard() {
               title={exigida ? "Dejar de exigir el segundo paso" : "Exigir el segundo paso"}
               description={
                 exigida
-                  ? "¿Confirmás dejar de exigir la verificación en dos pasos? Quienes ya la tienen activa pueden conservarla."
-                  : "¿Confirmás exigir la verificación en dos pasos a todos los usuarios? No se cierran las sesiones abiertas: se les pedirá configurarla en su próximo ingreso."
+                  ? "¿Confirma dejar de exigir la verificación en dos pasos? Quienes ya la tienen activa pueden conservarla."
+                  : "¿Confirma exigir la verificación en dos pasos a todos los usuarios? No se cierran las sesiones abiertas: se les pedirá configurarla en su próximo ingreso."
               }
               confirmLabel="Confirmar"
               isConfirming={mutation.isPending}

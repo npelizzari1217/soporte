@@ -157,16 +157,16 @@ describe("TenantSwitcher — ROOT (is_global_admin, sin membresias)", () => {
     );
   });
 
-  it("trigger muestra fallback 'Elegí un cliente' (cliente_nombre null en master)", () => {
+  it("trigger muestra fallback 'Elija un cliente' (cliente_nombre null en master)", () => {
     renderSwitcher(ROOT_PAYLOAD);
-    expect(screen.getByRole("button", { name: /elegí un cliente/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /elija un cliente/i })).toBeInTheDocument();
   });
 
   it("lista TODOS los clientes de la plataforma vía GET /clientes, no membresias[] (vacío)", async () => {
     const user = userEvent.setup();
     renderSwitcher(ROOT_PAYLOAD);
 
-    await user.click(screen.getByRole("button", { name: /elegí un cliente/i }));
+    await user.click(screen.getByRole("button", { name: /elija un cliente/i }));
 
     expect(await screen.findByRole("menuitem", { name: /cliente uno/i })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /cliente dos/i })).toBeInTheDocument();
@@ -186,7 +186,7 @@ describe("TenantSwitcher — ROOT (is_global_admin, sin membresias)", () => {
     const user = userEvent.setup();
     renderSwitcher(ROOT_PAYLOAD);
 
-    await user.click(screen.getByRole("button", { name: /elegí un cliente/i }));
+    await user.click(screen.getByRole("button", { name: /elija un cliente/i }));
     await user.click(await screen.findByRole("menuitem", { name: /cliente uno/i }));
 
     await waitFor(() => expect(capturedBody).toEqual({ clienteId: "c1" }));

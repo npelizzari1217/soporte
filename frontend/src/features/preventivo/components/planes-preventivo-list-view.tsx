@@ -143,7 +143,7 @@ export function PlanesPreventivoListView() {
       <PageHeader icon={ClipboardCheck} title="Mantenimiento preventivo" />
       <Can
         permiso="PREVENTIVO:LECTURA"
-        fallback={<ErrorState message="No tenés permiso para ver los planes de mantenimiento preventivo." />}
+        fallback={<ErrorState message="No tiene permiso para ver los planes de mantenimiento preventivo." />}
       >
         <div>
           <div className="mb-3 flex justify-end">
@@ -160,7 +160,7 @@ export function PlanesPreventivoListView() {
             onRetry={() => planesQuery.refetch().catch(notifyError)}
             onRowClick={(row) => router.push(`/preventivo/${row.id}`)}
             emptyTitle="Sin planes"
-            emptyDescription="Creá el primero con «Nuevo plan»."
+            emptyDescription="Cree el primero con «Nuevo plan»."
           />
         </div>
       </Can>

@@ -53,9 +53,9 @@ export const crearApiClaveBodySchema = z.object({
   nombre: z
     .string()
     .trim()
-    .min(1, "Ingresá un nombre para la clave.")
+    .min(1, "Ingrese un nombre para la clave.")
     .max(LARGO_MAXIMO_NOMBRE_CLAVE, `El nombre admite hasta ${LARGO_MAXIMO_NOMBRE_CLAVE} caracteres.`),
-  permisos: z.array(permisoApiSchema).min(1, "Elegí al menos un permiso."),
+  permisos: z.array(permisoApiSchema).min(1, "Elija al menos un permiso."),
 });
 
 /*
@@ -134,10 +134,10 @@ export const guardarWebhookBodySchema = z.object({
   url: z
     .string()
     .trim()
-    .min(1, "Ingresá la URL del webhook.")
+    .min(1, "Ingrese la URL del webhook.")
     .max(LARGO_MAXIMO_URL_WEBHOOK, `La URL admite hasta ${LARGO_MAXIMO_URL_WEBHOOK} caracteres.`)
     .refine(esUrlHttps, "La URL tiene que empezar con https://."),
-  eventos: z.array(eventoWebhookSchema).min(1, "Elegí al menos un evento."),
+  eventos: z.array(eventoWebhookSchema).min(1, "Elija al menos un evento."),
   activo: z.boolean(),
 });
 

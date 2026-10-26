@@ -100,7 +100,7 @@ export function ComentariosDialog({
           <EmptyState
             icon={MessageSquare}
             title="Sin comentarios"
-            description="Dejá el primero para asentar por qué se está demorando."
+            description="Deje el primero para asentar por qué se está demorando."
           />
         )}
 

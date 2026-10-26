@@ -21,13 +21,13 @@ export const pedidoPublicoSchema = z.object({
   nombre: z
     .string()
     .trim()
-    .min(1, "Ingresá tu nombre")
+    .min(1, "Ingrese su nombre")
     .max(PEDIDO_LIMITES.nombreMax, `Máximo ${PEDIDO_LIMITES.nombreMax} caracteres`),
   email: z
     .string()
     .trim()
-    .min(1, "Ingresá tu email")
-    .email("Ingresá un email válido")
+    .min(1, "Ingrese su email")
+    .email("Ingrese un email válido")
     .max(PEDIDO_LIMITES.emailMax, `Máximo ${PEDIDO_LIMITES.emailMax} caracteres`),
   telefono: z
     .string()
@@ -37,12 +37,12 @@ export const pedidoPublicoSchema = z.object({
   titulo: z
     .string()
     .trim()
-    .min(PEDIDO_LIMITES.tituloMin, `Escribí al menos ${PEDIDO_LIMITES.tituloMin} caracteres`)
+    .min(PEDIDO_LIMITES.tituloMin, `Escriba al menos ${PEDIDO_LIMITES.tituloMin} caracteres`)
     .max(PEDIDO_LIMITES.tituloMax, `Máximo ${PEDIDO_LIMITES.tituloMax} caracteres`),
   descripcion: z
     .string()
     .trim()
-    .min(1, "Contanos qué pasa")
+    .min(1, "Cuéntenos qué pasa")
     .max(PEDIDO_LIMITES.descripcionMax, `Máximo ${PEDIDO_LIMITES.descripcionMax} caracteres`),
 });
 

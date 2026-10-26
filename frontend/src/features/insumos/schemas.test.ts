@@ -80,7 +80,7 @@ describe("registrarMovimientoInsumoSchema — cantidad", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
     const issue = result.error.issues.find((i) => i.path[0] === "cantidad");
-    expect(issue?.message).toBe("Ingresá una cantidad válida");
+    expect(issue?.message).toBe("Ingrese una cantidad válida");
   });
 
   /**

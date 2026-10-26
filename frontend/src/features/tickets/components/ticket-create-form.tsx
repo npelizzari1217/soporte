@@ -74,7 +74,7 @@ export function TicketCreateForm({ tipos, prioridades, sectores, onSubmit, isSub
         </label>
         <Select id="crear-tipo" error={!!errors.tipoId} defaultValue="" {...register("tipoId")}>
           <option value="" disabled>
-            Elegí un tipo
+            Elija un tipo
           </option>
           {tipos.map((tipo) => (
             <option key={tipo.id} value={tipo.id}>
@@ -95,7 +95,7 @@ export function TicketCreateForm({ tipos, prioridades, sectores, onSubmit, isSub
         </label>
         <Select id="crear-prioridad" error={!!errors.prioridadId} defaultValue="" {...register("prioridadId")}>
           <option value="" disabled>
-            Elegí una prioridad
+            Elija una prioridad
           </option>
           {prioridades.map((prioridad) => (
             <option key={prioridad.id} value={prioridad.id}>

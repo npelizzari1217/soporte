@@ -12,7 +12,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(""),
 }));
 
-const SIN_PERMISO = "No tenés permiso para ver Edilicia.";
+const SIN_PERMISO = "No tiene permiso para ver Edilicia.";
 
 /** Acceso a la vista: LECTURA sobre algún tipo de EDILICIA (odd/permisos-por-tipo-ticket, S5). */
 describe("EdiliciaView — acceso por permisos por tipo", () => {

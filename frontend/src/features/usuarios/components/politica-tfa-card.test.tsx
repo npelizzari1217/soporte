@@ -64,7 +64,7 @@ describe("PoliticaTfaCard (C1, C2)", () => {
       http.get("/api/politica-2fa", () => HttpResponse.json({ requiere2fa: false })),
     );
     renderWithProviders(<UsuariosAdminView />, { user: buildUser({ rol: "TECNICO" }) });
-    expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
     expect(screen.queryByText(/verificación en dos pasos/i)).not.toBeInTheDocument();
   });
 });

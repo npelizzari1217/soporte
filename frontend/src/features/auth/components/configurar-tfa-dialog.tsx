@@ -73,7 +73,7 @@ export function ConfigurarTfaDialog() {
   function enviarCodigo(e: FormEvent, accion: Accion) {
     e.preventDefault();
     const c = codigo.trim();
-    if (!c) return setError("Ingresá el código.");
+    if (!c) return setError("Ingrese el código.");
     setError(null);
     if (accion === "cambiar") {
       iniciar.mutate(c, { onSuccess: (datos) => setVista({ tipo: "qr", datos }), onError: fallo });
@@ -83,7 +83,7 @@ export function ConfigurarTfaDialog() {
         onError: fallo,
       });
     } else {
-      desactivar.mutate(c, { onSuccess: () => volver("Desactivaste la verificación en dos pasos."), onError: fallo });
+      desactivar.mutate(c, { onSuccess: () => volver("Desactivó la verificación en dos pasos."), onError: fallo });
     }
   }
 
@@ -93,7 +93,7 @@ export function ConfigurarTfaDialog() {
       onSuccess: (r) =>
         r.codigosRecuperacion
           ? setVista({ tipo: "codigos", codigos: r.codigosRecuperacion })
-          : volver("Listo, ya usás tu celular nuevo."),
+          : volver("Listo, ya usa su celular nuevo."),
       onError: fallo,
     });
   }
@@ -134,7 +134,7 @@ export function ConfigurarTfaDialog() {
     }
     if (estado.isPending) return <p role="status">Cargando…</p>;
     if (estado.isError || !estado.data) {
-      return <p className="text-sm text-destructive">No pudimos cargar tu configuración.</p>;
+      return <p className="text-sm text-destructive">No pudimos cargar su configuración.</p>;
     }
     const { activo, obligado, codigosRestantes } = estado.data;
     if (!activo) {
@@ -142,8 +142,8 @@ export function ConfigurarTfaDialog() {
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
             {obligado
-              ? "Tu cliente o tu rol exige la verificación en dos pasos. Activala para seguir usando tu cuenta."
-              : "Sumá una segunda barrera a tu cuenta con una app autenticadora."}
+              ? "Su cliente o su rol exige la verificación en dos pasos. Actívela para seguir usando su cuenta."
+              : "Sume una segunda barrera a su cuenta con una app autenticadora."}
           </p>
           <Button onClick={activar} isLoading={cargando}>
             Activar verificación en dos pasos
@@ -154,7 +154,7 @@ export function ConfigurarTfaDialog() {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
-          La verificación en dos pasos está activa. Te quedan {codigosRestantes} códigos de recuperación.
+          La verificación en dos pasos está activa. Le quedan {codigosRestantes} códigos de recuperación.
         </p>
         <Button variant="outline" onClick={() => pedirCodigo("cambiar")}>
           Cambiar celular
@@ -164,7 +164,7 @@ export function ConfigurarTfaDialog() {
         </Button>
         {obligado ? (
           <p className="text-sm text-muted-foreground">
-            No podés desactivarla: tu cliente o tu rol exige la verificación en dos pasos.
+            No puede desactivarla: su cliente o su rol exige la verificación en dos pasos.
           </p>
         ) : (
           <Button variant="outline" onClick={() => pedirCodigo("desactivar")}>

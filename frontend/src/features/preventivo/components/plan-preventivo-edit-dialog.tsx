@@ -355,7 +355,7 @@ export function PlanPreventivoEditDialog({ plan }: PlanPreventivoEditDialogProps
                   disabled={selectEquipoDeshabilitado}
                   {...register("equipoId")}
                 >
-                  <option value="">Elegí un equipo</option>
+                  <option value="">Elija un equipo</option>
                   {opcionesEquipo.map((equipo) => (
                     <option key={equipo.id} value={equipo.id}>
                       {equipo.nombre}

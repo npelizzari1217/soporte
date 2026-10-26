@@ -67,7 +67,7 @@ describe("IntegracionesAdminView", () => {
   it("un no administrador no ve la pantalla", async () => {
     mockLista([clave({})]);
     renderWithProviders(<IntegracionesAdminView />, { user: buildUser({ rol: "TECNICO" }) });
-    expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
     expect(screen.queryByText("ERP")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /nueva clave/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Webhooks" })).not.toBeInTheDocument();
@@ -145,7 +145,7 @@ describe("IntegracionesAdminView", () => {
 
     expect(await screen.findByText(CLAVE_EN_CLARO)).toBeInTheDocument();
     expect(body).toEqual({ nombre: "Mesa", permisos: ["TICKETS:COMENTAR"] });
-    expect(screen.getByText(/única vez que la vas a ver/i)).toBeInTheDocument();
+    expect(screen.getByText(/única vez que podrá verla/i)).toBeInTheDocument();
     await waitFor(() => expect(lecturas).toBe(2));
 
     await user.click(screen.getByRole("button", { name: "Copiar clave" }));
@@ -173,8 +173,8 @@ describe("IntegracionesAdminView", () => {
     renderAdmin();
     await user.click(await screen.findByRole("button", { name: /nueva clave/i }));
     await user.click(screen.getByRole("button", { name: "Crear" }));
-    expect(await screen.findByText("Ingresá un nombre para la clave.")).toBeInTheDocument();
-    expect(screen.getByText("Elegí al menos un permiso.")).toBeInTheDocument();
+    expect(await screen.findByText("Ingrese un nombre para la clave.")).toBeInTheDocument();
+    expect(screen.getByText("Elija al menos un permiso.")).toBeInTheDocument();
     expect(alta).not.toHaveBeenCalled();
   });
 

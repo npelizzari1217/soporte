@@ -37,7 +37,7 @@ export class ClienteNoAutorizadoError extends DomainError {
   readonly code = 'AUTH_CLIENTE_NO_AUTORIZADO';
 
   constructor() {
-    super('No tenés autorización para operar sobre este cliente.');
+    super('No tiene autorización para operar sobre este cliente.');
   }
 }
 
@@ -197,7 +197,7 @@ export class PresetRolNoDefinidoError extends DomainError {
   constructor(rolCodigo: string) {
     super(
       `No hay preset de permisos definido para el rol "${rolCodigo}". ` +
-        `Agregalo a PRESETS_ROL antes de aplicarlo.`,
+        `Agréguelo a PRESETS_ROL antes de aplicarlo.`,
     );
   }
 }

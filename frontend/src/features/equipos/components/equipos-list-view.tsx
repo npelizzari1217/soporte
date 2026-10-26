@@ -154,7 +154,7 @@ export function EquiposListView() {
       <Can
         permiso="EQUIPOS:LECTURA"
         fallback={
-          <ErrorState message="No tenés permiso para ver el inventario de equipos." />
+          <ErrorState message="No tiene permiso para ver el inventario de equipos." />
         }
       >
         <div>
@@ -189,7 +189,7 @@ export function EquiposListView() {
             onRetry={() => equiposQuery.refetch().catch(notifyError)}
             onRowClick={(row) => router.push(`/equipos/${row.id}`)}
             emptyTitle="Sin equipos"
-            emptyDescription="Creá el primero con «Nuevo equipo»."
+            emptyDescription="Cree el primero con «Nuevo equipo»."
           />
         </div>
       </Can>

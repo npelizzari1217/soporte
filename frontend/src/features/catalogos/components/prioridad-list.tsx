@@ -25,7 +25,7 @@ function EstadoActivoAction({ prioridad }: { prioridad: Prioridad }) {
         </Button>
       }
       title={prioridad.activo ? "Dar de baja prioridad" : "Activar prioridad"}
-      description={`¿Confirmás ${prioridad.activo ? "dar de baja" : "activar"} "${prioridad.nombre}"?`}
+      description={`¿Confirma ${prioridad.activo ? "dar de baja" : "activar"} "${prioridad.nombre}"?`}
       confirmLabel={prioridad.activo ? "Dar de baja" : "Activar"}
       confirmVariant={prioridad.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}
@@ -99,7 +99,7 @@ export function PrioridadList() {
         error={prioridadesQuery.isError ? "No se pudieron cargar las prioridades." : undefined}
         onRetry={() => prioridadesQuery.refetch().catch(notifyError)}
         emptyTitle="Sin prioridades"
-        emptyDescription="Creá la primera con el botón «Nueva prioridad»."
+        emptyDescription="Cree la primera con el botón «Nueva prioridad»."
       />
     </div>
   );

@@ -74,7 +74,7 @@ async function esperarTurno(client: Client, clave: number): Promise<void> {
       throw new Error(
         `[lock-master-test] No se pudo tomar el turno sobre la base master de test ` +
           `en ${ESPERA_MAXIMA_MS / 1000}s. Hay otra corrida de tests usándola. ` +
-          `Esperá a que termine, o matá el proceso que quedó colgado.`,
+          `Espere a que termine o finalice el proceso que quedó colgado.`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, REINTENTO_MS));

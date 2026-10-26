@@ -34,8 +34,8 @@ export function CodigosRecuperacion({ codigos, onContinuar, isLoading }: Codigos
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Guardá estos códigos en un lugar seguro. Cada uno sirve una sola vez si perdés tu app autenticadora, y no
-        los vas a poder ver de nuevo.
+        Guarde estos códigos en un lugar seguro. Cada uno sirve una sola vez si pierde su app autenticadora, y no
+        podrá verlos de nuevo.
       </p>
       <ul aria-label="Códigos de recuperación" className="grid grid-cols-2 gap-2 font-mono text-sm">
         {codigos.map((c) => (

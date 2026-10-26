@@ -193,7 +193,7 @@ export class CompraConOrdenEmitidaError extends DomainError {
   constructor(compraId: string) {
     super(
       `La compra "${compraId}" tiene al menos un ítem con orden emitida. ` +
-        `Cerrá el/los ítems con faltante en vez de cancelar la compra.`,
+        `Cierre el/los ítems con faltante en vez de cancelar la compra.`,
     );
   }
 }
@@ -581,7 +581,7 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
   constructor(total: number, tope: number) {
     super(
       `La exportación alcanzaría ${total} compras y el máximo es ${tope}. ` +
-        `Acotá el rango de fechas, el sector o el estado y volvé a exportar.`,
+        `Acote el rango de fechas, el sector o el estado y vuelva a exportar.`,
     );
   }
 }

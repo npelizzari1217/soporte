@@ -145,7 +145,7 @@ export function UnidadReingresoDialog({ insumoId, unidad, modo, onClose }: Unida
           <DialogTitle>{modo === "recuperar" ? "Recuperar pieza" : "Devolver al depósito"}</DialogTitle>
           <DialogDescription>
             {modo === "recuperar"
-              ? "La pieza descartada vuelve al depósito. Dejá escrito por qué se recupera."
+              ? "La pieza descartada vuelve al depósito. Deje escrito por qué se recupera."
               : "La pieza entregada vuelve al depósito en la condición que elijas."}
           </DialogDescription>
         </DialogHeader>

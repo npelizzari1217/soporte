@@ -83,7 +83,7 @@ export function CompraCancelarDialog({ compra }: CompraCancelarDialogProps) {
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-3" noValidate>
           <p className="text-xs text-muted-foreground">
-            Esta acción no se puede deshacer. Si la compra tiene compras registradas, cerrala con
+            Esta acción no se puede deshacer. Si la compra tiene compras registradas, ciérrela con
             faltante por ítem en vez de cancelarla (S29).
           </p>
           <div className="flex flex-col gap-1">

@@ -50,7 +50,7 @@ export function useTecnicosElegiblesTarea(ticketId: string, enabled: boolean) {
 }
 
 const MENSAJES_ERROR_TAREA: Readonly<Record<number, string>> = {
-  403: "No tenés permiso para hacer eso con las tareas de este ticket.",
+  403: "No tiene permiso para hacer eso con las tareas de este ticket.",
   404: "La tarea ya no existe. Actualizamos la lista.",
   409: "La tarea ya estaba en ese estado. Actualizamos la lista.",
   422: "Ese técnico no puede tomar tareas de este ticket.",

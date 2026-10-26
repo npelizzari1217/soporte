@@ -81,8 +81,8 @@ export function ConfirmarPedidoView({ slug }: ConfirmarPedidoViewProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Confirmá tu pedido</CardTitle>
-        <CardDescription>Tocá el botón para registrar tu pedido de soporte.</CardDescription>
+        <CardTitle>Confirme su pedido</CardTitle>
+        <CardDescription>Toque el botón para registrar su pedido de soporte.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {confirmar.isError && (

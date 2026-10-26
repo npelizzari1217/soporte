@@ -95,7 +95,7 @@ const monto = () =>
   numeroRequerido({
     requerido: "El monto es requerido",
     negativo: "El monto no puede ser negativo",
-    invalido: "Ingresá un monto válido",
+    invalido: "Ingrese un monto válido",
   });
 
 /** Espejo de `CrearCompraHttpDto` (§4.1, S1). `sectorId` opcional (R11, S66). */
@@ -161,7 +161,7 @@ export const agregarItemCompraSchema = z.object({
   proveedor: z.string().min(1, "El proveedor es requerido"),
   /** Espejo de `@IsNumber({maxDecimalPlaces:2}) @Min(0)` — el monto no puede ser negativo. */
   monto: monto(),
-  moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elegí una moneda" }) }),
+  moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elija una moneda" }) }),
   fechaCotizacion: fecha("La fecha de cotización es requerida"),
   observaciones: z.string().optional(),
 });
@@ -202,7 +202,7 @@ export const editarItemCompraSchema = z.object({
     .optional(),
   proveedor: z.string().min(1, "El proveedor es requerido").optional(),
   monto: monto(),
-  moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elegí una moneda" }) }).optional(),
+  moneda: z.enum(MONEDAS_ADMITIDAS, { errorMap: () => ({ message: "Elija una moneda" }) }).optional(),
   fechaCotizacion: fecha("La fecha de cotización es requerida").optional(),
   observaciones: z.string().optional(),
 });
@@ -213,7 +213,7 @@ export const registrarOrdenDeItemSchema = z.object({
   cantidadOrdenada: numeroRequerido({
     requerido: "La cantidad ordenada es requerida",
     negativo: "La cantidad ordenada no puede ser negativa",
-    invalido: "Ingresá una cantidad válida",
+    invalido: "Ingrese una cantidad válida",
   }),
   fecha: z.string().optional(),
 });
@@ -227,7 +227,7 @@ export const registrarRecepcionDeItemSchema = z.object({
   cantidadRecibida: numeroRequerido({
     requerido: "La cantidad recibida es requerida",
     negativo: "La cantidad recibida no puede ser negativa",
-    invalido: "Ingresá una cantidad válida",
+    invalido: "Ingrese una cantidad válida",
   }),
   fecha: z.string().optional(),
 });
@@ -238,7 +238,7 @@ export const registrarEntregaDeItemSchema = z.object({
   cantidadEntregada: numeroRequerido({
     requerido: "La cantidad entregada es requerida",
     negativo: "La cantidad entregada no puede ser negativa",
-    invalido: "Ingresá una cantidad válida",
+    invalido: "Ingrese una cantidad válida",
   }),
   fecha: z.string().optional(),
 });

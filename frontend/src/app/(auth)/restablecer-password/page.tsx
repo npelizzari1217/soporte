@@ -86,14 +86,14 @@ export default function RestablecerPasswordPage() {
             Restablecer contraseña
           </h1>
           {mostrarForm && (
-            <p className="mt-1 text-sm text-muted-foreground">Ingresá tu nueva contraseña</p>
+            <p className="mt-1 text-sm text-muted-foreground">Ingrese su nueva contraseña</p>
           )}
         </div>
 
         {isSuccess ? (
           <div className="flex flex-col gap-4 text-center">
             <p role="status" className="text-sm text-foreground">
-              Listo, restableciste tu contraseña. Entrá con la nueva.
+              Listo, restableció su contraseña. Ingrese con la nueva.
             </p>
             <Link
               href="/login"
@@ -111,7 +111,7 @@ export default function RestablecerPasswordPage() {
               href="/olvide-password"
               className="text-sm font-medium text-primary underline-offset-4 hover:underline"
             >
-              Pedí un link nuevo
+              Pida un link nuevo
             </Link>
           </div>
         ) : (

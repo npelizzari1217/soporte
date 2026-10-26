@@ -230,7 +230,7 @@ describe("EquipoQrPanel", () => {
   it("un QR anterior al cambio avisa que hay que regenerarlo una vez y no muestra imagen", async () => {
     montar({ qr: { estado: "REQUIERE_REGENERAR", url: null, emitidoAt: null } });
 
-    expect(await screen.findByText(/Regeneralo una vez para verlo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Regenérelo una vez para verlo/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Regenerar QR" })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: /QR del equipo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Descargar SVG" })).not.toBeInTheDocument();

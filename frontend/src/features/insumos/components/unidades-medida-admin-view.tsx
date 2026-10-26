@@ -31,7 +31,7 @@ export function UnidadesMedidaAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar las unidades de medida." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para gestionar las unidades de medida." />}>
         <PageHeader icon={Ruler} title="Unidades" description="Catálogo de unidades de medida, transversal a los insumos." />
         <UnidadMedidaList />
       </SoloAdminCliente>

@@ -22,7 +22,7 @@ export function ModelosEquipoAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar los modelos de equipo." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para gestionar los modelos de equipo." />}>
         <PageHeader icon={Monitor} title="Modelos de equipo" description="Catálogo de modelos de equipo, transversal a los equipos." />
         <ModeloEquipoList />
       </SoloAdminCliente>

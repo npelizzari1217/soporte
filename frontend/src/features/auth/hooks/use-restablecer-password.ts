@@ -35,15 +35,15 @@ export function errorDeRestablecerPassword(error: ApiError): ErrorRestablecerPas
     return { mensaje: "El link no es válido o venció.", mostrarLinkSolicitud: true };
   }
   if (error.statusCode === 429) {
-    return { mensaje: "Hiciste demasiados intentos. Esperá unos minutos y volvé a intentar.", mostrarLinkSolicitud: false };
+    return { mensaje: "Hizo demasiados intentos. Espere unos minutos y vuelva a intentar.", mostrarLinkSolicitud: false };
   }
   if (error.statusCode === 0) {
-    return { mensaje: "No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.", mostrarLinkSolicitud: false };
+    return { mensaje: "No pudimos conectar con el servidor. Revise su conexión e intente de nuevo.", mostrarLinkSolicitud: false };
   }
   if (error.statusCode >= 500) {
-    return { mensaje: "Hubo un problema en el servidor. Probá de nuevo en unos minutos.", mostrarLinkSolicitud: false };
+    return { mensaje: "Hubo un problema en el servidor. Intente de nuevo en unos minutos.", mostrarLinkSolicitud: false };
   }
-  return { mensaje: "No pudimos completar la operación. Intentá de nuevo.", mostrarLinkSolicitud: false };
+  return { mensaje: "No pudimos completar la operación. Intente de nuevo.", mostrarLinkSolicitud: false };
 }
 
 export function useRestablecerPassword() {

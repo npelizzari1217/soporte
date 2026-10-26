@@ -14,7 +14,7 @@ describe("AvisoMotivo", () => {
     currentSearch = "motivo=password-cambiada";
     render(<AvisoMotivo />);
 
-    expect(screen.getByText(/cambiaste tu contraseña/i)).toBeInTheDocument();
+    expect(screen.getByText(/cambió su contraseña/i)).toBeInTheDocument();
   });
 
   it("sin motivo en la URL → no renderiza nada", () => {
@@ -55,7 +55,7 @@ describe("AvisoMotivo", () => {
     render(<AvisoMotivo />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Tu sesión se cerró por inactividad. Inicia sesión nuevamente.",
+      "Su sesión se cerró por inactividad. Inicie sesión nuevamente.",
     );
   });
 
@@ -63,7 +63,7 @@ describe("AvisoMotivo", () => {
     currentSearch = "motivo=sesion-vencida";
     render(<AvisoMotivo />);
 
-    expect(screen.getByRole("status")).toHaveTextContent("Tu sesión venció. Inicia sesión nuevamente.");
+    expect(screen.getByRole("status")).toHaveTextContent("Su sesión venció. Inicie sesión nuevamente.");
   });
 
   it("los dos avisos de corte son distintos entre sí y no son una alerta de error", () => {

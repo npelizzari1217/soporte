@@ -58,11 +58,11 @@ export function EncuestaView({ token }: EncuestaViewProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>¡Gracias por tu respuesta!</CardTitle>
+          <CardTitle>¡Gracias por su respuesta!</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Ya registramos tu calificación para el ticket {encuestaQuery.data.numero}.
+            Ya registramos su calificación para el ticket {encuestaQuery.data.numero}.
           </p>
         </CardContent>
       </Card>
@@ -79,7 +79,7 @@ export function EncuestaView({ token }: EncuestaViewProps) {
         <EncuestaForm onSubmit={handleSubmit} isLoading={responderMutation.isPending} />
         {responderMutation.isError && (
           <p role="alert" className="text-sm text-destructive">
-            No pudimos registrar tu respuesta. Probá de nuevo.
+            No pudimos registrar su respuesta. Intente de nuevo.
           </p>
         )}
       </CardContent>

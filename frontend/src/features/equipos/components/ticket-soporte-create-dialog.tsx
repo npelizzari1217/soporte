@@ -131,7 +131,7 @@ export function TicketSoporteCreateDialog({ equipoInicial, abiertoInicial = fals
             </label>
             <Select id="soporte-prioridad" error={!!errors.prioridadId} defaultValue="" {...register("prioridadId")}>
               <option value="" disabled>
-                Elegí una prioridad
+                Elija una prioridad
               </option>
               {(prioridadesQuery.data ?? []).map((prioridad) => (
                 <option key={prioridad.id} value={prioridad.id}>

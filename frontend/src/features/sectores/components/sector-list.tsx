@@ -29,7 +29,7 @@ function EstadoActivoAction({ sector }: { sector: Sector }) {
         </Button>
       }
       title={sector.activo ? "Dar de baja sector" : "Activar sector"}
-      description={`¿Confirmás ${sector.activo ? "dar de baja" : "activar"} "${sector.nombre}"?`}
+      description={`¿Confirma ${sector.activo ? "dar de baja" : "activar"} "${sector.nombre}"?`}
       confirmLabel={sector.activo ? "Dar de baja" : "Activar"}
       confirmVariant={sector.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}
@@ -89,7 +89,7 @@ export function SectorList() {
         error={sectoresQuery.isError ? "No se pudieron cargar los sectores." : undefined}
         onRetry={() => sectoresQuery.refetch().catch(notifyError)}
         emptyTitle="Sin sectores"
-        emptyDescription="Creá el primero con el botón «Nuevo sector»."
+        emptyDescription="Cree el primero con el botón «Nuevo sector»."
       />
     </div>
   );

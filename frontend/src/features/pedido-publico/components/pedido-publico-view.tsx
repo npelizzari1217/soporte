@@ -74,7 +74,7 @@ export function PedidoPublicoView({ slug, tokenQr }: PedidoPublicoViewProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Revisá tu correo</CardTitle>
+          <CardTitle>Revise su correo</CardTitle>
         </CardHeader>
         <CardContent>
           <p role="status" className="text-sm text-foreground">

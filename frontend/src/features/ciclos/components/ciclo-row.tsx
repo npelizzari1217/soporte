@@ -49,7 +49,7 @@ export function CicloRow({ ciclo }: CicloRowProps) {
             </Button>
           }
           title="Activar ciclo"
-          description={`¿Confirmás activar "${ciclo.nombre}"? Se desactivará el ciclo actualmente activo del tenant.`}
+          description={`¿Confirma activar "${ciclo.nombre}"? Se desactivará el ciclo actualmente activo del tenant.`}
           confirmLabel="Confirmar"
           isConfirming={activar.isPending}
           onConfirm={() => activar.mutate(ciclo.id)}

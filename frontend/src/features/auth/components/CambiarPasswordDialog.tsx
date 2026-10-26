@@ -109,7 +109,7 @@ export function CambiarPasswordDialog() {
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-3" noValidate>
           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
-            Al confirmar se van a cerrar todas tus sesiones activas, incluida esta. Vas a tener
+            Al confirmar se van a cerrar todas sus sesiones activas, incluida esta. Tendrá
             que volver a iniciar sesión con la nueva contraseña.
           </p>
 

@@ -230,7 +230,7 @@ describe("ComponenteCreateDialog", () => {
     const options = within(screen.getByLabelText(/repuesto del catálogo/i))
       .getAllByRole("option")
       .map((option) => option.textContent);
-    expect(options).toEqual(["Elegí un repuesto", "MOUSE-001 — Mouse óptico USB"]);
+    expect(options).toEqual(["Elija un repuesto", "MOUSE-001 — Mouse óptico USB"]);
   });
 
   it("enviar sin elegir repuesto muestra el error y no hace POST", async () => {
@@ -245,7 +245,7 @@ describe("ComponenteCreateDialog", () => {
     const user = await abrirDialog();
     await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-    expect(await screen.findByText(/elegí un repuesto del catálogo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/elija un repuesto del catálogo/i)).toBeInTheDocument();
     expect(posteado).toBe(false);
   });
 
@@ -550,7 +550,7 @@ describe("ComponenteCreateDialog", () => {
       await screen.findByRole("option", { name: /SN-AAA/ });
       await user.click(screen.getByRole("button", { name: /agregar$/i }));
 
-      expect(await screen.findByText("Elegí la pieza")).toBeInTheDocument();
+      expect(await screen.findByText("Elija la pieza")).toBeInTheDocument();
       expect(posteado).toBe(false);
     });
 

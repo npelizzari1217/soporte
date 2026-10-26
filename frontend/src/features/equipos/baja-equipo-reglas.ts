@@ -100,7 +100,7 @@ export function mensajeDeErrorBaja(error: Error): ErrorBaja {
   if (error.statusCode === 409) {
     return {
       texto:
-        "El equipo cambió mientras confirmabas la baja. Actualizamos el resumen: revisalo y volvé a confirmar.",
+        "El equipo cambió mientras confirmaba la baja. Actualizamos el resumen: revíselo y vuelva a confirmar.",
       piezas: [],
     };
   }

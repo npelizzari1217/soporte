@@ -43,7 +43,7 @@ describe("UnidadesMedidaAdminView", () => {
     if (shouldShowContent) {
       await screen.findByText("UN");
     } else {
-      expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
       expect(screen.queryByText("UN")).not.toBeInTheDocument();
     }
   });
