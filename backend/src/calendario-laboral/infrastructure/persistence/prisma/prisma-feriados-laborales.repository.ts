@@ -29,8 +29,8 @@ import { PrismaCalendarioLaboralMapper } from './prisma-calendario-laboral.mappe
 import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 
 /**
- * FeriadosSinTenantContextError — lanzada por `obtener()` cuando corre sin
- * un `TenantContext` bindeado (D3). No es un `DomainError`: es un error de
+ * FeriadosSinTenantContextError — lanzada por `obtener()` y `obtenerPropios()`
+ * cuando corren sin un `TenantContext` bindeado (D3). No es un `DomainError`: es un error de
  * infraestructura/wiring, y se modela como excepción, no como `Result.fail`
  * (mismo criterio que `ErrorEntornoInvalido`, `config/validar-entorno.ts`).
  * `AplicarSlaListener` la captura, la loguea vía `ILogger` y NO la relanza
@@ -40,9 +40,9 @@ import { FeriadosGlobalesCache } from '../feriados-globales.cache';
 export class FeriadosSinTenantContextError extends Error {
   constructor() {
     super(
-      'PrismaFeriadosLaboralesRepository.obtener() requiere un TenantContext bindeado: ' +
-        'no hay forma segura de calcular el SLA HABIL sin conocer los feriados propios ' +
-        'del cliente del ticket.',
+      'PrismaFeriadosLaboralesRepository requiere un TenantContext bindeado para leer los ' +
+        'feriados propios del cliente: no hay forma segura de calcular el tiempo hábil sin ' +
+        'conocerlos.',
     );
     this.name = 'FeriadosSinTenantContextError';
   }
