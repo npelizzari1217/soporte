@@ -45,6 +45,7 @@ describe('continuar y seleccionar el cliente del login', () => {
     findActivasByCliente: unstubbed('findActivasByCliente'),
     findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
     findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+    findTodasByUsuarioYCliente: vi.fn().mockResolvedValue([]),
     create: unstubbed('create'),
     save: unstubbed('save'),
   } satisfies IMembresiaRepository;

@@ -101,6 +101,14 @@ export interface IMembresiaRepository {
   findByUsuarioYCliente(usuarioId: string, clienteId: string): Promise<MembresiaEntity | null>;
 
   /**
+   * TODAS las membresías no borradas de un usuario en un cliente, activas o desactivadas. Usado por
+   * el alta de usuario para reactivar una membresía desactivada en vez de crear otra: la UNIQUE
+   * (usuario, cliente, rol) rechazaría el re-alta con el mismo rol, y con otro rol quedarían dos
+   * filas (odd/tasks/defectos-ayuda.md, S1).
+   */
+  findTodasByUsuarioYCliente(usuarioId: string, clienteId: string): Promise<MembresiaEntity[]>;
+
+  /**
    * Crea una nueva membresía. Usado por `CrearClienteUseCase` (R16, PR8)
    * para asignar el rol ADMINISTRADOR al admin inicial del cliente recién
    * provisionado, y por `CrearUsuarioTenantUseCase` (gestión mínima de

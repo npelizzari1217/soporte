@@ -28,7 +28,7 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 
 ## Tasks
 
-- [ ] T1 — S1
+- [x] T1 — S1
 - [ ] T2 — S2
 - [ ] T3 — S3
 - [ ] T4 — S4
@@ -42,3 +42,10 @@ bugfixes van con TDD (RED, GREEN) y su evidencia en el Log.
 - **L2 — Orden y decisión:** 3, 2, 1, 4, 7, 5, 6. Para #5, el webhook dispara en todo cambio de
   estado (es lo que promete su nombre), sin sumar correos; si aparece riesgo para consumidores, se
   consulta.
+- **L3 — T1 (#3), confirmado.** RED en `test/usuarios-permisos-tipo.e2e.spec.ts`: re-alta con el mismo
+  rol → `expected 409 to be 201` (rechazada como "ya activa"); con otro rol → dos membresías (la vieja
+  inactiva). GREEN: `findTodasByUsuarioYCliente` en el puerto y en Prisma; `CrearUsuarioTenantUseCase`
+  reactiva una membresía desactivada (la del mismo rol, si no la primera con el rol nuevo) en vez de
+  crear otra. Caso hermano: con membresía activa sigue el 409. Mocks de `IMembresiaRepository`
+  completados en 10 specs. auth+clientes 1677/1677, e2e 14/14 y 5/5, typecheck y lint limpios.
+  Ayuda (suspendida): el artículo de usuarios puede decir que volver a darla de alta la reactiva.

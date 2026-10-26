@@ -143,6 +143,30 @@ export class PrismaMembresiaRepository implements IMembresiaRepository {
     );
   }
 
+  async findTodasByUsuarioYCliente(
+    usuarioId: string,
+    clienteId: string,
+  ): Promise<MembresiaEntity[]> {
+    const rows = await this.client.membresia.findMany({
+      where: { usuarioId, clienteId, deletedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((row) =>
+      MembresiaEntity.reconstitute(
+        {
+          usuarioId: row.usuarioId,
+          clienteId: row.clienteId,
+          rolId: row.rolId,
+          activo: row.activo,
+        },
+        row.id,
+        row.createdAt,
+        row.updatedAt,
+        row.deletedAt ?? null,
+      ),
+    );
+  }
+
   async save(membresia: MembresiaEntity): Promise<void> {
     await this.client.membresia.update({
       where: { id: membresia.id },

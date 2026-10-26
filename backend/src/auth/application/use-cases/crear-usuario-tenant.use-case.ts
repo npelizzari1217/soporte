@@ -54,7 +54,10 @@ export type CrearUsuarioTenantError =
  *    permite múltiples roles por cliente, pero este flujo simplificado de
  *    alta no expone esa granularidad; usar `PATCH /usuarios/:id/rol` para
  *    cambiar el rol de una membresía existente).
- * 4. Crea la membresía ACTIVA en `clienteId` con el rol resuelto.
+ * 4. Si la persona tiene membresías DESACTIVADAS en `clienteId`, reactiva una en vez de crear
+ *    otra (odd/tasks/defectos-ayuda.md, S1): la del mismo rol si existe, si no la primera, con el
+ *    rol nuevo. Crear otra chocaba con la UNIQUE (usuario, cliente, rol) en el mismo rol y dejaba
+ *    dos filas con otro. Sin membresías previas, crea una ACTIVA con el rol resuelto.
  * 5. Siembra el preset de la matriz para esa membresía (fix post-verify W4,
  *    sdd/matriz-permisos-por-usuario) — INVOCA `AplicarPresetPermisosUseCase`
  *    (inyectado, aislamiento de R6/ADR-P9, mismo criterio que
@@ -87,7 +90,7 @@ export class CrearUsuarioTenantUseCase {
     private readonly usuarioRepo: Pick<IUsuarioRepository, 'findByEmail' | 'create'>,
     private readonly membresiaRepo: Pick<
       IMembresiaRepository,
-      'findActivaByUsuarioYCliente' | 'create'
+      'findActivaByUsuarioYCliente' | 'findTodasByUsuarioYCliente' | 'create' | 'save'
     >,
     private readonly roleRepo: Pick<IRoleRepository, 'findByCodigo'>,
     private readonly hashProvider: Pick<IHashProvider, 'hash'>,
@@ -123,13 +126,7 @@ export class CrearUsuarioTenantUseCase {
       await this.usuarioRepo.create(usuario);
     }
 
-    const membresia = MembresiaEntity.create({
-      usuarioId: usuario.id,
-      clienteId: input.clienteId,
-      rolId: rol.id,
-      activo: true,
-    });
-    await this.membresiaRepo.create(membresia);
+    const membresia = await this.membresiaParaElAlta(usuario.id, input.clienteId, rol.id);
 
     // `sobrescribir: false` (fix W11): este mismo camino cubre el alta de
     // alguien que nunca existió y el RE-alta de alguien dado de baja, cuya
@@ -146,5 +143,28 @@ export class CrearUsuarioTenantUseCase {
     }
 
     return Result.ok({ usuario, membresia, rolCodigo: rol.codigo });
+  }
+
+  /**
+   * Reactiva una membresía desactivada del usuario en el cliente, o crea una nueva si no tiene.
+   * Prefiere la del mismo rol: así la UNIQUE (usuario, cliente, rol) nunca se pisa al cambiarle el
+   * rol a otra fila.
+   */
+  private async membresiaParaElAlta(
+    usuarioId: string,
+    clienteId: string,
+    rolId: string,
+  ): Promise<MembresiaEntity> {
+    const previas = await this.membresiaRepo.findTodasByUsuarioYCliente(usuarioId, clienteId);
+    const aReactivar = previas.find((m) => m.rolId === rolId) ?? previas[0];
+    if (aReactivar) {
+      if (aReactivar.rolId !== rolId) aReactivar.cambiarRol(rolId);
+      aReactivar.activar();
+      await this.membresiaRepo.save(aReactivar);
+      return aReactivar;
+    }
+    const membresia = MembresiaEntity.create({ usuarioId, clienteId, rolId, activo: true });
+    await this.membresiaRepo.create(membresia);
+    return membresia;
   }
 }

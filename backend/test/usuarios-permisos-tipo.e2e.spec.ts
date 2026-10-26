@@ -280,6 +280,56 @@ describe('Plantillas de rol por tipo de ticket por los endpoints de /usuarios (T
     expect(await listarUsuariosComo('lista-tecnico')).toBe(200);
   });
 
+  describe('volver a dar de alta a una persona desactivada (odd/tasks/defectos-ayuda.md, S1)', () => {
+    async function membresiasDe(usuarioId: string) {
+      return master.membresia.findMany({
+        where: { usuarioId, clienteId },
+        select: { activo: true, rol: { select: { codigo: true } } },
+      });
+    }
+
+    async function realta(etiqueta: string, rolCodigo: string) {
+      return http('POST', '/usuarios', {
+        email: `permtipo-${etiqueta}-${SUFIJO}@test.local`,
+        nombre: 'Perm',
+        apellido: etiqueta,
+        password: PASSWORD,
+        rolCodigo,
+      });
+    }
+
+    it('con el mismo rol la reactiva: 201 y una sola membresía, activa', async () => {
+      const usuarioId = await crearUsuarioPorEndpoint('realta-mismo', 'TECNICO');
+      expect((await http("DELETE", `/usuarios/${usuarioId}/membresia`)).status).toBe(204);
+
+      const { status, body } = await realta('realta-mismo', 'TECNICO');
+
+      expect(status).toBe(201);
+      expect((body as { usuarioId: string }).usuarioId).toBe(usuarioId);
+      expect(await membresiasDe(usuarioId)).toEqual([{ activo: true, rol: { codigo: 'TECNICO' } }]);
+    });
+
+    it('con otro rol también: 201 y una sola membresía activa con el rol nuevo', async () => {
+      const usuarioId = await crearUsuarioPorEndpoint('realta-otro', 'TECNICO');
+      expect((await http("DELETE", `/usuarios/${usuarioId}/membresia`)).status).toBe(204);
+
+      const { status } = await realta('realta-otro', 'COLABORADOR');
+
+      expect(status).toBe(201);
+      expect(await membresiasDe(usuarioId)).toEqual([
+        { activo: true, rol: { codigo: 'COLABORADOR' } },
+      ]);
+    });
+
+    it('con la membresía activa sigue rechazando el alta duplicada', async () => {
+      await crearUsuarioPorEndpoint('realta-activa', 'TECNICO');
+
+      const { status } = await realta('realta-activa', 'TECNICO');
+
+      expect(status).toBe(409);
+    });
+  });
+
   it('PATCH /usuarios/:id/rol sin reaplicarPreset no toca las filas por tipo', async () => {
     const usuarioId = await crearUsuarioPorEndpoint('sinpreset', 'TECNICO');
     const antes = await filasDe(usuarioId);
