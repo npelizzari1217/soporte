@@ -181,3 +181,11 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   también Guardar. A1 (`max_tokens: 5` en la prueba con modelos que razonan) medido contra Gemini real
   desde el VPS: `gemini-2.5-flash`, `gemini-3.5-flash` y `gemini-3.5-flash-lite` responden "OK" con 5;
   queda como está.
+- **L22 — Seguimiento de L16 (los 3 rojos de `tareas-ticket.e2e`).** Suite completa del backend corrida
+  sola, con el log entero y sin ningún otro `vitest` en paralelo: 816/816 archivos, 10366/10366.
+  Los 3 rojos son justo los únicos tests que usan el segundo inquilino (`TENANT_B`), y la corrida
+  donde fallaron coincidió con otro `vitest` del backend lanzado en paralelo (`scripts/sync-ayuda`).
+  Mecanismo NO confirmado: el barrido de huérfanas toma el mismo advisory lock que el spec, y el
+  spec de `sync-ayuda` no trunca. Conclusión operativa: no es un defecto del producto; no correr dos
+  `vitest` del backend a la vez contra la master de test compartida. Si vuelve a aparecer en una
+  corrida aislada, reabrir con ese log.
