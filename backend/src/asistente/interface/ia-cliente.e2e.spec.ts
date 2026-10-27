@@ -171,13 +171,13 @@ describe('Configuración de IA por cliente — e2e', () => {
     });
 
     expect(status).toBe(200);
-    expect(data).toEqual({
+    expect(data).toMatchObject({
       configurado: true,
       url: URL_IA_POR_DEFECTO,
       modelo: 'gemini-2.5-flash',
-      verificadoAt: null,
       verificacionError: null,
     });
+    expect(data.verificadoAt).not.toBeNull();
     expect(JSON.stringify(data)).not.toContain('AIzaClaveDeTest');
     const guardada = await fila(c);
     expect(guardada?.claveCifrada).not.toContain('AIzaClaveDeTest');
@@ -187,6 +187,31 @@ describe('Configuración de IA por cliente — e2e', () => {
 
     const ver = await pedir<IaRespuesta>('GET', `/clientes/${c}/ia`, { token: token(true) });
     expect(ver.data).toEqual(data);
+  });
+
+  it('guardar prueba el proveedor: un modelo retirado deja el motivo a la vista', async () => {
+    modelo.respuesta = Result.fail(
+      new FallaModeloIaError('El proveedor no encontró la URL o el modelo configurados.'),
+    );
+    const c = await crearCliente();
+    const { status, data } = await pedir<IaRespuesta>('PATCH', `/clientes/${c}/ia`, {
+      body: { ...BODY, modelo: 'gemini-2.5-flash-lite' },
+      token: token(true),
+    });
+
+    expect(status).toBe(200);
+    expect(modelo.llamadas).toEqual([
+      { url: URL_IA_POR_DEFECTO, modelo: 'gemini-2.5-flash-lite', clave: 'AIzaClaveDeTest' },
+    ]);
+    expect(data).toMatchObject({
+      configurado: true,
+      modelo: 'gemini-2.5-flash-lite',
+      verificadoAt: null,
+      verificacionError: 'El proveedor no encontró la URL o el modelo configurados.',
+    });
+    expect((await fila(c))?.verificacionError).toBe(
+      'El proveedor no encontró la URL o el modelo configurados.',
+    );
   });
 
   it('un cliente sin IA se ve como "sin configurar"', async () => {
@@ -257,6 +282,7 @@ describe('Configuración de IA por cliente — e2e', () => {
       where: { clienteId: c },
       data: { claveCifrada: 'v1:x:y:z' },
     });
+    modelo.llamadas = []; // el PATCH ya probó con la clave buena; cuenta solo lo que hace Probar
     const { data } = await pedir<IaRespuesta>('POST', `/clientes/${c}/ia/probar`, {
       token: token(true),
     });
@@ -295,7 +321,9 @@ describe('Configuración de IA por cliente — e2e', () => {
     });
 
     expect(status).toBe(200);
+    // Una llamada al guardar y otra al probar, las dos con la clave descifrada.
     expect(modelo.llamadas).toEqual([
+      { url: URL_IA_POR_DEFECTO, modelo: 'gemini-2.5-flash', clave: 'AIzaClaveDeTest' },
       { url: URL_IA_POR_DEFECTO, modelo: 'gemini-2.5-flash', clave: 'AIzaClaveDeTest' },
     ]);
     expect(data.verificadoAt).not.toBeNull();

@@ -8,15 +8,9 @@ import {
 import { EstadoConfigIa, ESTADO_IA_SIN_CONFIGURAR, estadoConfigIa } from '../domain/config-ia';
 import { IModeloIa } from '../domain/modelo-ia.port';
 import { ClaveIaCifrada } from './clave-ia-cifrada';
+import { verificarProveedorIa } from './verificar-proveedor-ia';
 
 export type ProbarIaClienteError = ClienteIaNoEncontradoError | IaNoConfiguradaError;
-
-/** Pedido mínimo para probar el proveedor: pocas fichas, temperatura cero. */
-const PEDIDO_DE_PRUEBA = {
-  mensajes: [{ rol: 'user' as const, contenido: 'Responda solamente: OK' }],
-  temperatura: 0,
-  maxTokens: 5,
-};
 
 /**
  * ProbarIaClienteUseCase — "Probar": hace una consulta mínima al proveedor con la configuración
@@ -52,13 +46,11 @@ export class ProbarIaClienteUseCase {
     if (clave.isFail()) {
       resultado = { ok: false, motivo: clave.getError().message };
     } else {
-      const respuesta = await this.modelo.completar(
-        { url: config.url, modelo: config.modelo, clave: clave.getValue() },
-        PEDIDO_DE_PRUEBA,
-      );
-      resultado = respuesta.isOk()
-        ? { ok: true, motivo: null }
-        : { ok: false, motivo: respuesta.getError().message };
+      resultado = await verificarProveedorIa(this.modelo, {
+        url: config.url,
+        modelo: config.modelo,
+        clave: clave.getValue(),
+      });
     }
 
     const actualizada = await this.configs.guardarVerificacion(clienteId, resultado);

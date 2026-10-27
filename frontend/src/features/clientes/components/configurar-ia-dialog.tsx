@@ -10,6 +10,9 @@
  * configuración es una acción explícita y separada, detrás de `ConfirmDialog`.
  *
  * Un cliente sin IA no queda sin asistente: responde con la Ayuda directamente.
+ *
+ * Guardar también prueba el proveedor (lo hace el backend): la respuesta trae el resultado y el
+ * diálogo lo muestra en el acto, igual que tras "Probar".
  */
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";

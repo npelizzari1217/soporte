@@ -156,3 +156,21 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   (`utc-backfill-20261027-074016`), `DEPLOY OK`, migración master aplicada, `sync-ayuda` 1 insertado y
   7 actualizados, smoke externo correcto. Rollback: volver el VPS a `3d87c0f3` y re-correr `deploy.ps1`.
 - **L18 — Validación del dueño:** "ya probe todo y esta ok". Feature cerrada.
+- **L19 — Reporte del dueño (2026-10-27):** "al cambiar el modelo IA en un cliente dejo de
+  funcionar; En el cliente prueba en desarrollo cambie a gemini-2.5-flash por gemini-2.5-flash-lite y no
+  funciona". Reproducido en producción (el cliente Prueba vive ahí) con el código compilado del VPS y
+  la clave descifrada en memoria, sin imprimirla: Google responde 404 "This model
+  models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use
+  models/gemini-3.5-flash-lite". `gemini-2.5-flash`, `gemini-3.5-flash` y `gemini-3.5-flash-lite`
+  responden bien con la misma clave. No es un defecto del asistente (cayó al respaldo, como debe),
+  pero sí del diseño: Guardar no probaba y limpiaba la prueba anterior, así que la falla fue
+  silenciosa. Decisión del dueño ("si hacelo"): Guardar prueba en el acto, y el modelo por defecto
+  pasa a `gemini-3.5-flash`.
+- **L20 — Guardar prueba el proveedor, con TDD.** RED: 9 tests del backend (caso de uso y e2e:
+  prueba con la clave recién cargada o con la guardada, un rechazo guarda igual y devuelve el motivo,
+  una clave guardada indescifrable registra el motivo sin llamar al proveedor, una validación fallida
+  no llama; centinela del modelo por defecto) y 1 del front (default `gemini-3.5-flash`). GREEN:
+  `verificarProveedorIa` compartida por Guardar y Probar; `ConfigurarIaClienteUseCase` prueba después
+  de guardar y registra el resultado. Ayuda de Clientes corregida (decía que Guardar no consulta al
+  proveedor). Backend `src/asistente` + `sync-ayuda` 161/161, front `clientes` + `asistente` 111/111,
+  lint y tipos limpios.
