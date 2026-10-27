@@ -152,3 +152,7 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   Solo pasa 29/29, y junto con los e2e del asistente (que crean clientes en la master compartida)
   156/156. El log de la corrida completa estaba filtrado y no guarda el motivo: se registra como
   falla intermitente de la suite completa, no reproducida, sin causa confirmada.
+- **L17 — Deploy (2026-10-27).** `1a57be44` en producción por SSH: dump verificado
+  (`utc-backfill-20261027-074016`), `DEPLOY OK`, migración master aplicada, `sync-ayuda` 1 insertado y
+  7 actualizados, smoke externo correcto. Rollback: volver el VPS a `3d87c0f3` y re-correr `deploy.ps1`.
+- **L18 — Validación del dueño:** "ya probe todo y esta ok". Feature cerrada.
