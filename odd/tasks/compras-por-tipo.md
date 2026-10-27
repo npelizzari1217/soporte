@@ -30,7 +30,7 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
 - [x] T2 — S2, S3: alta y edición validan el tipo contra ALTAS por tipo.
 - [x] T3 — S2, S4, S5: listar, exportar y obtener filtran por tipos con LECTURA (más las sin tipo);
   las rutas con `:id` responden 404 sobre una compra no visible; filtro y columna Tipo.
-- [ ] T4 — S3, S5: frontend — selector de tipo en alta y edición, columna y filtro en el listado, tipo
+- [x] T4 — S3, S5: frontend — selector de tipo en alta y edición, columna y filtro en el listado, tipo
   en el detalle.
 - [ ] T5 — runbook (migración tenant), registro de Ayuda pendiente (suspendida), verificación
   independiente y suites.
@@ -71,3 +71,19 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
   compra que el actor no ve, y `GET /tickets/:ticketId/compras` solo lista las visibles (el bloqueo del
   ticket sigue contando todas). Quedan sin filtrar, para decidir: los números de compra que bloquean en
   `GET /reparaciones` (`comprasQueBloquean`; la exportación no los trae), y los números en el mensaje del borrado de un ticket con compras.
+- **L5 — Frontend T4 implementado, sin commitear (2026-10-27).** S3 y S5 cubiertos en
+  `frontend/src/features/compras`. Hook nuevo `hooks/use-tipos-de-compra.ts`: catálogo activo
+  (`useTiposTicket()`) filtrado por acción con `usePermisosPorTipo()`, con estado
+  `cargando | listo | error` para no confundir "todavía cargando" con "sin permiso". Alta: selector
+  "Tipo" obligatorio con los tipos con ALTAS; sin ninguno, nota y "Crear" deshabilitado; si el
+  catálogo falla, otra nota. Edición: el tipo actual siempre tiene su opción (nombre de la compra,
+  primero, misma `key`), marcada "(actual)" solo con el catálogo ya resuelto y fuera de ALTAS;
+  "Sin tipo" existe solo para la compra sin tipo y significa sin cambio; `tipoTicketId` viaja solo si
+  cambió, nunca `null`. Listado: columna "Tipo" ("Sin tipo" si es `null`), filtro con los tipos con
+  LECTURA que viaja en la URL, cuenta como filtro activo y llega a la exportación; un `tipoTicketId`
+  de la URL fuera del catálogo se muestra como "Tipo no disponible". Detalle: campo "Tipo". Un 403
+  muestra el mensaje del backend por `notifyError`. Compuertas: `pnpm lint` sin errores ni
+  advertencias, `pnpm type-check` limpio, `pnpm vitest run src/features/compras` 237/237 (antes 210).
+  Los tests se escribieron después del código (feature, sin TDD exigido); se verificaron con
+  mutaciones manuales de las cuatro reglas centrales, y las cuatro se pusieron en rojo. Límite: el
+  filtro no ofrece tipos inactivos, porque `GET /catalogos/tipos-ticket` solo trae activos.

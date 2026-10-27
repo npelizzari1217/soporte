@@ -107,6 +107,16 @@ export interface ItemCompra {
 }
 
 /**
+ * Tipo de ticket de una compra, como lo publican las respuestas (espejo de `TipoTicketDeCompra`,
+ * odd/compras-por-tipo, L3). El nombre lo resuelve el backend, así que se muestra aunque el tipo
+ * esté dado de baja o la sesión no tenga ALTAS sobre él.
+ */
+export interface TipoTicketDeCompra {
+  id: string;
+  nombre: string;
+}
+
+/**
  * Espejo de `CompraListItemResponseDto` — fila de `GET /compras` (S33):
  * SOLO derivados de cabecera, **NUNCA `items`**.
  */
@@ -115,6 +125,8 @@ export interface CompraListItem {
   numero: string;
   fechaSolicitud: string;
   motivo: string;
+  /** Tipo de ticket de la compra; `null` = compra sin tipo, que ve cualquiera con LECTURA (S4). */
+  tipoTicket: TipoTicketDeCompra | null;
   estado: EstadoCompra;
   comprado: boolean;
   cerrado: boolean;
@@ -144,6 +156,8 @@ export interface CompraDetalle {
   cicloId: string;
   /** Sector de destino de la cabecera (R11). `null` si no se asignó. */
   sectorId: string | null;
+  /** Tipo de ticket de la compra; `null` = compra sin tipo (S4). */
+  tipoTicket: TipoTicketDeCompra | null;
   estado: EstadoCompra;
   comprado: boolean;
   cerrado: boolean;
@@ -180,6 +194,8 @@ export interface CrearCompraDto {
   fechaSolicitud: string;
   /** Sector de destino (R11) — opcional, sin backfill (S66). */
   sectorId?: string;
+  /** Tipo de ticket (S3): obligatorio; el backend exige ALTAS sobre él (403 si no). */
+  tipoTicketId: string;
 }
 
 /**
@@ -197,6 +213,11 @@ export interface EditarCompraDto {
   descripcion?: string | null;
   fechaSolicitud?: string;
   sectorId?: string | null;
+  /**
+   * Tipo de ticket nuevo (S3, S4). Ausente no lo toca. No admite `null`: una compra con tipo no
+   * vuelve a quedar sin tipo (el backend responde 400). Cambiarlo exige ALTAS sobre el tipo nuevo.
+   */
+  tipoTicketId?: string;
 }
 
 /** Body de `POST /compras/:id/items` (`AgregarItemCompraHttpDto`). */
@@ -302,4 +323,9 @@ export interface ComprasFiltros {
    * mayúsculas. Viaja ya recortado; ver `busquedaComprasSchema`.
    */
   busqueda?: string;
+  /**
+   * Tipo de ticket (S5). Restringe dentro de lo que la sesión ve: filtrar por un tipo sin LECTURA
+   * devuelve vacío, nunca amplía el resultado.
+   */
+  tipoTicketId?: string;
 }

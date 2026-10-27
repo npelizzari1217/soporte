@@ -112,6 +112,11 @@ export function CompraDetailView({ compraId }: CompraDetailViewProps) {
             {formatearTotalesPorMoneda(compra.totalesPorMoneda)}
           </span>
         </div>
+        {/* odd/compras-por-tipo (S4): una compra sin tipo la ve cualquiera con LECTURA de Compras. */}
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">Tipo</span>
+          <span className="text-sm text-foreground">{compra.tipoTicket?.nombre ?? "Sin tipo"}</span>
+        </div>
         {/* WU-27 (R11): sector de destino, si se asignó al crear la compra (S66/S67). */}
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Sector</span>

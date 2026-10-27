@@ -20,6 +20,12 @@
  * `descripcion`/`sectorId` vacíos viajan como `null` explícito (limpiar), no
  * como `""` — mismo criterio que `observaciones` en `ItemEditDialog`.
  *
+ * Tipo (odd/compras-por-tipo, S3, S4): se puede cambiar solo a otro tipo activo con `ALTAS`, y
+ * `tipoTicketId` viaja únicamente si cambió. Una compra sin tipo ofrece la opción vacía como "sin
+ * cambio": nunca se manda `null`, porque una compra con tipo no vuelve a quedar sin tipo (400).
+ * El tipo actual siempre tiene su opción, con el nombre que trae el backend, aunque la sesión no
+ * tenga `ALTAS` sobre él o esté dado de baja: así el `<select>` no cae a otro valor.
+ *
  * `numero`/`solicitanteId`/`cicloId` NO son campos de este form (ver JSDoc de
  * `EditarCompraDto`).
  *
@@ -39,8 +45,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useEditarCompra } from "../hooks/use-compra-mutations";
 import { aFechaInput } from "@/shared/lib/formato-fecha";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
+import { useTiposDeCompra } from "../hooks/use-tipos-de-compra";
 import { editarCompraSchema, type EditarCompraFormValues } from "../schemas";
-import type { CompraDetalle, EditarCompraDto } from "../types";
+import type { CompraDetalle, EditarCompraDto, TipoTicketDeCompra } from "../types";
 
 export interface CompraEditDialogProps {
   compra: CompraDetalle;
@@ -75,6 +82,22 @@ export function CompraEditDialog({ compra }: CompraEditDialogProps) {
       ? [...sectores, { id: compra.sectorId, nombre: "Sector dado de baja" }]
       : sectores;
 
+  const tiposDeCompra = useTiposDeCompra("ALTAS");
+  const tipoActual = compra.tipoTicket;
+  // El tipo actual va PRIMERO y con la misma `key` en todo momento: si apareciera recién al cargar
+  // el catálogo, el `<select>` ya habría caído a otra opción. Su nombre sale de la compra, no del
+  // catálogo, así que no depende de que el catálogo haya resuelto.
+  const opcionesTipo: TipoTicketDeCompra[] = tipoActual
+    ? [tipoActual, ...tiposDeCompra.tipos.filter((tipo) => tipo.id !== tipoActual.id)]
+    : tiposDeCompra.tipos;
+  // La ausencia en la lista solo prueba "sin ALTAS o inactivo" cuando la lista YA resolvió: con el
+  // catálogo o los permisos pendientes, la lista vacía no dice nada (AGENTS.md, select fuera de
+  // catálogo).
+  const tipoActualNoElegible =
+    tipoActual !== null &&
+    tiposDeCompra.estado === "listo" &&
+    !tiposDeCompra.tipos.some((tipo) => tipo.id === tipoActual.id);
+
   const defaults: EditarCompraFormValues = {
     motivo: compra.motivo,
     descripcion: compra.descripcion ?? "",
@@ -82,6 +105,7 @@ export function CompraEditDialog({ compra }: CompraEditDialogProps) {
     // normalizar, `<input type="date">` descarta el valor y aparece vacío.
     fechaSolicitud: aFechaInput(compra.fechaSolicitud),
     sectorId: compra.sectorId ?? "",
+    tipoTicketId: tipoActual?.id ?? "",
   };
 
   const {
@@ -101,6 +125,10 @@ export function CompraEditDialog({ compra }: CompraEditDialogProps) {
       fechaSolicitud: values.fechaSolicitud,
       sectorId: values.sectorId || null,
     };
+    // Solo si cambió: la cadena vacía (compra sin tipo, sin cambio) y el mismo tipo no viajan.
+    if (values.tipoTicketId && values.tipoTicketId !== tipoActual?.id) {
+      dto.tipoTicketId = values.tipoTicketId;
+    }
     editarMutation.mutate(dto, { onSuccess: () => setOpen(false) });
   }
 
@@ -139,6 +167,26 @@ export function CompraEditDialog({ compra }: CompraEditDialogProps) {
             {errors.motivo && (
               <p role="alert" className="text-sm text-destructive">
                 {errors.motivo.message}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="compra-editar-tipo" className="text-sm font-medium text-foreground">
+              Tipo
+            </label>
+            <Select id="compra-editar-tipo" {...register("tipoTicketId")}>
+              {tipoActual === null && <option value="">Sin tipo</option>}
+              {opcionesTipo.map((opcion) => (
+                <option key={opcion.id} value={opcion.id}>
+                  {opcion.id === tipoActual?.id && tipoActualNoElegible
+                    ? `${opcion.nombre} (actual)`
+                    : opcion.nombre}
+                </option>
+              ))}
+            </Select>
+            {tipoActual === null && (
+              <p className="text-sm text-muted-foreground">
+                Una vez asignado, el tipo no se puede quitar.
               </p>
             )}
           </div>

@@ -8,8 +8,9 @@
  *
  * RBAC (decisión del maintainer, `sdd/redisenio-modulo-compras/rbac-consultas`,
  * 2026-08-14): la lectura del listado se gatea SOLO por módulo (`COMPRAS`,
- * resuelto aguas arriba por el guard de navegación/layout) — CUALQUIER rol
- * con el módulo habilitado ve todas las compras del tenant. A diferencia de
+ * resuelto aguas arriba por el guard de navegación/layout). Qué compras ve cada
+ * sesión lo decide el backend por tipo de ticket (odd/compras-por-tipo, S2, S4);
+ * esta vista muestra lo que recibe, sin volver a filtrar. A diferencia de
  * `EquiposListView` (`<Can permiso="EQUIPOS:LECTURA">`, WU-7.6), acá NO hay
  * gate de permiso envolviendo la tabla: `ComprasController.listar()` no
  * declara `@RequiereAcciones`, así que un `<Can>` acá sería una restricción de UI
@@ -41,6 +42,11 @@
  * `fechaSolicitud DESC`) y la paginación es server-side: este archivo NUNCA
  * reordena la página recibida — hacerlo rompería el orden global.
  *
+ * Tipo (odd/compras-por-tipo, S5): el backend ya devuelve solo las compras visibles para la
+ * sesión; la columna muestra el tipo de cada una ("Sin tipo" si no tiene, S4) y el filtro
+ * `tipoTicketId` ofrece los tipos activos con `LECTURA`. Viaja en la URL como el resto de los
+ * filtros, y por eso también a la exportación.
+ *
  * S33 — el listado NUNCA trae `items`: las columnas SOLO muestran
  * derivados de cabecera ya resueltos por el backend (`estado`/`comprado`/
  * `cerrado`/`totalesPorMoneda`, ADR-C1). CERO `if`/`.every()`/`.filter()`
@@ -52,6 +58,7 @@ import { useMemo } from "react";
 import { useCompras } from "../hooks/use-compras";
 import { useUrlFilters } from "@/shared/hooks/use-url-filters";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
+import { useTiposDeCompra } from "../hooks/use-tipos-de-compra";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { FilterBar } from "@/components/shared/filter-bar";
 import { Pagination } from "@/components/shared/pagination";
@@ -108,6 +115,7 @@ export function ComprasListView() {
       // mostrando un grupo distinto del que se pidió.
       estado: normalizarEstado(searchParams.get("estado")),
       sectorId: searchParams.get("sectorId") ?? undefined,
+      tipoTicketId: searchParams.get("tipoTicketId") ?? undefined,
       fechaDesde: searchParams.get("fechaDesde") ?? undefined,
       fechaHasta: searchParams.get("fechaHasta") ?? undefined,
     }),
@@ -126,12 +134,29 @@ export function ComprasListView() {
   const hayFiltrosActivos =
     filtros.estado !== ESTADO_POR_DEFECTO ||
     Boolean(filtros.sectorId) ||
+    Boolean(filtros.tipoTicketId) ||
     Boolean(filtros.fechaDesde) ||
     Boolean(filtros.fechaHasta) ||
     (filtros.pagina ?? 1) > 1;
 
   const comprasQuery = useCompras(filtros);
   const sectoresQuery = useSectores();
+  const tiposDeCompra = useTiposDeCompra("LECTURA");
+  const tipoFiltrado = filtros.tipoTicketId;
+  // Un `tipoTicketId` de la URL sin opción en el catálogo (deep-link a un tipo dado de baja o sin
+  // LECTURA) haría que el select mostrara "Todos los tipos" mientras la consulta filtra. Se le da
+  // una opción propia; "no disponible" solo cuando el catálogo YA resolvió, porque mientras carga
+  // la ausencia no prueba nada.
+  const opcionesTipo: { id: string; nombre: string }[] =
+    tipoFiltrado && !tiposDeCompra.tipos.some((tipo) => tipo.id === tipoFiltrado)
+      ? [
+          ...tiposDeCompra.tipos,
+          {
+            id: tipoFiltrado,
+            nombre: tiposDeCompra.estado === "listo" ? "Tipo no disponible" : "Cargando tipos…",
+          },
+        ]
+      : tiposDeCompra.tipos;
 
   const columns: Column<CompraListItem>[] = [
     { key: "numero", header: "Número" },
@@ -141,6 +166,7 @@ export function ComprasListView() {
     // de "17/08/2026" (render-fechas-frontend).
     { key: "fechaSolicitud", header: "Fecha", render: (row) => formatearFechaCalendario(row.fechaSolicitud) },
     { key: "motivo", header: "Motivo" },
+    { key: "tipoTicket", header: "Tipo", render: (row) => row.tipoTicket?.nombre ?? "Sin tipo" },
     {
       key: "estado",
       header: "Estado",
@@ -213,6 +239,24 @@ export function ComprasListView() {
             {(sectoresQuery.data ?? []).map((sector) => (
               <option key={sector.id} value={sector.id}>
                 {sector.nombre}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label htmlFor="filtro-tipo" className="sr-only">
+            Tipo
+          </label>
+          <Select
+            id="filtro-tipo"
+            value={tipoFiltrado ?? ""}
+            onChange={(e) => updateFiltros({ tipoTicketId: e.target.value || undefined })}
+          >
+            <option value="">Todos los tipos</option>
+            {opcionesTipo.map((tipo) => (
+              <option key={tipo.id} value={tipo.id}>
+                {tipo.nombre}
               </option>
             ))}
           </Select>

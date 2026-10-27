@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ import { renderWithProviders, buildUser } from "../../../../test/render-with-pro
 import { CompraEditDialog } from "./compra-edit-dialog";
 import type { CompraDetalle } from "../types";
 import type { Sector } from "../../sectores/types";
+import type { TipoTicket } from "@/features/tickets/types";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -26,6 +28,7 @@ function buildCompra(overrides: Partial<CompraDetalle> = {}): CompraDetalle {
     solicitanteId: "usuario-1",
     cicloId: "ciclo-1",
     sectorId: null,
+    tipoTicket: null,
     estado: "PENDIENTE",
     comprado: false,
     cerrado: false,
@@ -69,7 +72,11 @@ function mockSectores(sectores: Sector[] = SECTORES_ACTIVOS) {
 }
 
 describe("CompraEditDialog", () => {
-  beforeEach(() => vi.mocked(toast.error).mockClear());
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear();
+    // El selector de tipo consulta el catálogo; vacío salvo en los tests que hablan del tipo.
+    server.use(http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json([])));
+  });
 
   it("precarga los valores actuales de la cabecera", async () => {
     renderWithProviders(
@@ -242,11 +249,11 @@ describe("CompraEditDialog", () => {
     });
 
     await abrirDialog();
-    await screen.findByLabelText(/sector de destino/i);
+    const sectorSelect = await screen.findByLabelText(/sector de destino/i);
 
     expect(screen.queryByRole("option", { name: /dado de baja/i })).not.toBeInTheDocument();
-    // Catálogo activo + "Sin sector".
-    expect(screen.getAllByRole("option")).toHaveLength(SECTORES_ACTIVOS.length + 1);
+    // Catálogo activo + "Sin sector", contados en el select de sector: el diálogo tiene otros.
+    expect(within(sectorSelect).getAllByRole("option")).toHaveLength(SECTORES_ACTIVOS.length + 1);
   });
 
   it("guardar sin tocar el select conserva el sector de baja (post-fix: _formValues ya lo conservaba antes del fix, ver design §4)", async () => {
@@ -290,5 +297,148 @@ describe("CompraEditDialog", () => {
     await user.click(screen.getByRole("button", { name: /guardar/i }));
 
     await waitFor(() => expect(capturedBody.sectorId).toBeNull());
+  });
+
+  describe("tipo de ticket (odd/compras-por-tipo, S3, S4)", () => {
+    const TIPO_SOPORTE_ID = "11111111-1111-4111-8111-111111111111";
+    const TIPO_EDILICIA_ID = "22222222-2222-4222-8222-222222222222";
+    const TIPO_MANTENIMIENTO_ID = "33333333-3333-4333-8333-333333333333";
+
+    function tipo(id: string, codigo: string, nombre: string, modulo: TipoTicket["modulo"]): TipoTicket {
+      return { id, codigo, nombre, modulo, activo: true, createdAt: "", updatedAt: "" };
+    }
+
+    const TIPOS: TipoTicket[] = [
+      tipo(TIPO_SOPORTE_ID, "SOPORTE", "Soporte", "TICKETS"),
+      tipo(TIPO_EDILICIA_ID, "EDILICIA", "Edilicia", "EDILICIA"),
+      tipo(TIPO_MANTENIMIENTO_ID, "MANTENIMIENTO", "Mantenimiento", "EDILICIA"),
+    ];
+
+    /** ALTAS en Soporte y Mantenimiento; Edilicia solo se lee. */
+    const PERMISOS = permisosDeTest({
+      [TIPO_SOPORTE_ID]: ["LECTURA", "ALTAS"],
+      [TIPO_EDILICIA_ID]: ["LECTURA"],
+      [TIPO_MANTENIMIENTO_ID]: ["LECTURA", "ALTAS"],
+    });
+
+    const tecnico = buildUser({ rol: "TECNICO", permisos: ["COMPRAS:MODIFICACION"] });
+
+    let bodies: Record<string, unknown>[];
+
+    beforeEach(() => {
+      bodies = [];
+      server.use(
+        http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)),
+        http.patch(`/api/compras/${COMPRA_ID}`, async ({ request }) => {
+          bodies.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json(buildCompra());
+        }),
+      );
+    });
+
+    function renderEdit(compra: CompraDetalle) {
+      renderConPermisos(<CompraEditDialog compra={compra} />, { user: tecnico, permisos: PERMISOS });
+    }
+
+    it("guardar sin tocar el tipo NO manda tipoTicketId", async () => {
+      renderEdit(buildCompra({ tipoTicket: { id: TIPO_SOPORTE_ID, nombre: "Soporte" } }));
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: "Mantenimiento" });
+      expect(screen.getByLabelText("Tipo")).toHaveValue(TIPO_SOPORTE_ID);
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).not.toHaveProperty("tipoTicketId");
+    });
+
+    it("cambiar a otro tipo con ALTAS lo manda; un tipo sin ALTAS no se ofrece", async () => {
+      renderEdit(buildCompra({ tipoTicket: { id: TIPO_SOPORTE_ID, nombre: "Soporte" } }));
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: "Mantenimiento" });
+      expect(screen.queryByRole("option", { name: /edilicia/i })).not.toBeInTheDocument();
+      // Una compra con tipo no vuelve a quedar sin tipo: no hay opción vacía.
+      expect(screen.queryByRole("option", { name: "Sin tipo" })).not.toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText("Tipo"), TIPO_MANTENIMIENTO_ID);
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0].tipoTicketId).toBe(TIPO_MANTENIMIENTO_ID);
+    });
+
+    it("compra sin tipo: muestra «Sin tipo» y guardar sin elegir no manda tipoTicketId (nunca null)", async () => {
+      renderEdit(buildCompra({ tipoTicket: null }));
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: "Soporte" });
+      expect(screen.getByLabelText("Tipo")).toHaveValue("");
+      expect(screen.getByRole("option", { name: "Sin tipo" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /edilicia/i })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).not.toHaveProperty("tipoTicketId");
+    });
+
+    it("compra sin tipo: elegir uno con ALTAS lo asigna", async () => {
+      renderEdit(buildCompra({ tipoTicket: null }));
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: "Soporte" });
+      await user.selectOptions(screen.getByLabelText("Tipo"), TIPO_SOPORTE_ID);
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0].tipoTicketId).toBe(TIPO_SOPORTE_ID);
+    });
+
+    it("tipo actual sin ALTAS: se muestra como actual y guardar sin tocarlo no lo manda", async () => {
+      renderEdit(buildCompra({ tipoTicket: { id: TIPO_EDILICIA_ID, nombre: "Edilicia" } }));
+
+      const user = await abrirDialog();
+      expect(await screen.findByRole("option", { name: "Edilicia (actual)" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Tipo")).toHaveValue(TIPO_EDILICIA_ID);
+      expect(screen.getByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(bodies).toHaveLength(1));
+      expect(bodies[0]).not.toHaveProperty("tipoTicketId");
+    });
+
+    it("mientras el catálogo carga, muestra el tipo actual sin marcarlo como no elegible", async () => {
+      server.use(
+        http.get("/api/catalogos/tipos-ticket", async () => {
+          await delay("infinite");
+          return HttpResponse.json(TIPOS);
+        }),
+      );
+      renderEdit(buildCompra({ tipoTicket: { id: TIPO_SOPORTE_ID, nombre: "Soporte" } }));
+
+      await abrirDialog();
+      await screen.findByLabelText("Tipo");
+
+      expect(screen.getByLabelText("Tipo")).toHaveValue(TIPO_SOPORTE_ID);
+      expect(screen.getByRole("option", { name: "Soporte" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /\(actual\)/ })).not.toBeInTheDocument();
+    });
+
+    it("un 403 del backend al cambiar el tipo muestra su mensaje", async () => {
+      const MENSAJE_BACKEND = "No tiene permiso para crear compras del tipo Mantenimiento.";
+      server.use(
+        http.patch(`/api/compras/${COMPRA_ID}`, () =>
+          HttpResponse.json({ statusCode: 403, message: MENSAJE_BACKEND }, { status: 403 }),
+        ),
+      );
+      renderEdit(buildCompra({ tipoTicket: { id: TIPO_SOPORTE_ID, nombre: "Soporte" } }));
+
+      const user = await abrirDialog();
+      await screen.findByRole("option", { name: "Mantenimiento" });
+      await user.selectOptions(screen.getByLabelText("Tipo"), TIPO_MANTENIMIENTO_ID);
+      await user.click(screen.getByRole("button", { name: /guardar/i }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith(MENSAJE_BACKEND));
+    });
   });
 });

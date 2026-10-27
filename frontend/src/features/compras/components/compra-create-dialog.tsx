@@ -17,6 +17,12 @@
  *
  * Al crear con éxito, navega al detalle de la compra nueva (mismo criterio
  * que `TicketCreateDialog`).
+ *
+ * Tipo (odd/compras-por-tipo, S3): obligatorio, y el selector ofrece solo los tipos activos con
+ * `ALTAS` para la sesión (`useTiposDeCompra`); el backend responde 403 a cualquier otro. Con el
+ * catálogo y los permisos ya resueltos y ningún tipo elegible, una nota lo explica y el botón de
+ * crear queda deshabilitado: la lista vacía por sí sola no basta, porque mientras carga también
+ * está vacía.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -29,15 +35,25 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCrearCompra } from "../hooks/use-compra-mutations";
 import { useSectores } from "@/features/sectores/hooks/use-sectores";
+import { useTiposDeCompra } from "../hooks/use-tipos-de-compra";
 import { crearCompraSchema, type CrearCompraFormValues } from "../schemas";
 
-const EMPTY: CrearCompraFormValues = { motivo: "", descripcion: "", fechaSolicitud: "", sectorId: "" };
+const EMPTY: CrearCompraFormValues = {
+  motivo: "",
+  descripcion: "",
+  fechaSolicitud: "",
+  sectorId: "",
+  tipoTicketId: "",
+};
 
 export function CompraCreateDialog() {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const crearMutation = useCrearCompra();
   const sectoresQuery = useSectores();
+  const tiposDeCompra = useTiposDeCompra("ALTAS");
+  const sinTiposElegibles = tiposDeCompra.estado === "listo" && tiposDeCompra.tipos.length === 0;
+  const puedeCrear = tiposDeCompra.estado !== "error" && !sinTiposElegibles;
 
   const {
     register,
@@ -56,6 +72,7 @@ export function CompraCreateDialog() {
         descripcion: values.descripcion || undefined,
         fechaSolicitud: values.fechaSolicitud,
         sectorId: values.sectorId || undefined,
+        tipoTicketId: values.tipoTicketId,
       },
       {
         onSuccess: (compra) => {
@@ -98,6 +115,37 @@ export function CompraCreateDialog() {
             )}
           </div>
           <div className="flex flex-col gap-1">
+            <label htmlFor="compra-crear-tipo" className="text-sm font-medium text-foreground">
+              Tipo
+            </label>
+            <Select id="compra-crear-tipo" error={!!errors.tipoTicketId} {...register("tipoTicketId")}>
+              <option value="" disabled>
+                Elija un tipo
+              </option>
+              {tiposDeCompra.tipos.map((tipo) => (
+                <option key={tipo.id} value={tipo.id}>
+                  {tipo.nombre}
+                </option>
+              ))}
+            </Select>
+            {errors.tipoTicketId && (
+              <p role="alert" className="text-sm text-destructive">
+                {errors.tipoTicketId.message}
+              </p>
+            )}
+            {sinTiposElegibles && (
+              <p className="text-sm text-muted-foreground">
+                No tiene permiso de alta sobre ningún tipo de ticket, por lo que no puede crear
+                compras. Solicite el permiso a un administrador.
+              </p>
+            )}
+            {tiposDeCompra.estado === "error" && (
+              <p className="text-sm text-muted-foreground">
+                No se pudieron cargar los tipos de ticket. Recargue la página e intente nuevamente.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1">
             <label htmlFor="compra-crear-fecha-solicitud" className="text-sm font-medium text-foreground">
               Fecha de solicitud
             </label>
@@ -133,7 +181,7 @@ export function CompraCreateDialog() {
             </Select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="submit" isLoading={crearMutation.isPending}>
+            <Button type="submit" isLoading={crearMutation.isPending} disabled={!puedeCrear}>
               Crear
             </Button>
           </div>
