@@ -9,7 +9,8 @@ visibleParaSolicitante: true
 Este artículo cubre dos pantallas de configuración:
 
 - **Clientes**, donde el administrador de la plataforma (ROOT) da de alta cada
-  organización y configura su correo, su logo y qué funciones tiene habilitadas.
+  organización y configura su correo, su logo, la IA del asistente y qué funciones
+  tiene habilitadas.
 - **Integraciones**, donde el administrador de cada cliente crea las claves para
   que otros sistemas operen con los tickets y configura los avisos automáticos a
   esos sistemas.
@@ -97,6 +98,26 @@ El botón **Logo** permite subir la imagen del cliente con **Elegir archivo** y
 **Subir**. Acepta PNG, JPEG o WebP de hasta 512 KB. **Quitar logo** vuelve al
 ícono genérico. En los dos casos, los usuarios ven el cambio en su próximo inicio
 de sesión.
+
+### IA
+
+El botón **IA** configura el proveedor de inteligencia artificial del asistente de
+la Ayuda de ese cliente (ver "El asistente de la Ayuda"). Sin esta configuración el
+asistente funciona igual: responde con el texto de la Ayuda directamente.
+
+- **URL del proveedor**: un servicio compatible con OpenAI. Viene cargada la de
+  Gemini. Tiene que empezar con https y no llevar usuario ni contraseña.
+- **Modelo**: viene cargado `gemini-2.5-flash`. Hasta 100 caracteres.
+- **Clave**: la clave del proveedor, de hasta 500 caracteres. Es obligatoria la
+  primera vez. Nunca se vuelve a mostrar: déjela vacía para conservar la guardada.
+
+**Guardar** no consulta al proveedor. Para comprobar que la configuración funciona,
+use **Probar**: muestra **Probada el** con la fecha y hora, o **Prueba fallida** con
+el motivo (por ejemplo, "El proveedor rechazó la clave."). Cada consulta al
+asistente con IA consume la cuota de esa clave.
+
+**Quitar configuración** borra la clave, previa confirmación; el asistente de ese
+cliente pasa a responder con la Ayuda.
 
 ## La pantalla Integraciones
 

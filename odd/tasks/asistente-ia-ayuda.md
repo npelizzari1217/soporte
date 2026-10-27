@@ -37,8 +37,7 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
 - [x] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
   endpoint `POST` del asistente con tope.
 - [x] T4 — S4, S5, S6: frontend — botón flotante con el chat y acción "IA" en Clientes.
-- [ ] T5 — Ayuda del asistente y de su configuración, runbook del deploy. Runbook hecho; los
-  artículos de Ayuda esperan la decisión del dueño (escritura suspendida, AGENTS.md).
+- [x] T5 — Ayuda del asistente y de su configuración, runbook del deploy.
 
 ## Log
 
@@ -139,3 +138,11 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   la spec. A5: `orderBy` título e id. A6: e2e con un artículo publicado pero inactivo y dado de baja
   que no llega ni con `KB:VER_TODOS`. A3: test de cerrar sin guardar y reabrir. `src/asistente`
   127/127, diálogo 7/7, lint y tipos limpios en back y front.
+- **L14 — Pedido del dueño (2026-10-27):** "si" (a levantar la suspensión para escribir los tres
+  pendientes de L11 ahora). Se levanta solo para esos tres; al cerrarlos vuelve a regir.
+- **L15 — T5, Ayuda.** Artículo nuevo `asistente-de-la-ayuda.md` (dónde está, cómo se usa, de dónde
+  salen las respuestas, límite, configuración); sección **IA** en `integraciones-y-clientes.md`;
+  sección **Dar de alta un equipo** en `equipos-listado.md` (campos del diálogo real). Neutro con
+  "usted". Búsqueda contra la Ayuda real: "cuántas consultas puedo hacer al asistente" trae el
+  artículo nuevo, "¿Cómo doy de alta un equipo?" y "¿cómo configuro la IA de un cliente?" traen la
+  sección nueva entre los 3 fragmentos. `sync-ayuda` 27/27.

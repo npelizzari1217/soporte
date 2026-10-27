@@ -19,6 +19,26 @@ En la misma pantalla hay dos botones de alta:
   Soporte. Abre un ticket de soporte, con un equipo del inventario o con la opción
   **Sin equipo**.
 
+## Dar de alta un equipo
+
+Para cargar un equipo nuevo en el inventario, presione **Nuevo equipo**: abre un
+formulario. Solo el **Nombre** es obligatorio; el resto se puede completar después,
+desde la página del equipo.
+
+- **Nombre** y **Número de serie**.
+- **Modelo de catálogo**: elija uno de la lista para tomar la marca y el modelo del
+  catálogo. Mientras haya uno elegido, **Marca** y **Modelo** quedan deshabilitados.
+  Con **Sin modelo de catálogo**, escriba la **Marca** y el **Modelo** a mano. Ver
+  "Componentes de un equipo y catálogo de modelos de equipo".
+- **Fecha de adquisición**.
+- **Ubicación**: texto libre; se guarda en mayúscula.
+- **Importe (valor del equipo)**, **Fecha de valoración** y la sección
+  **Depreciación** (**% de depreciación** con **Aplicar**, **Valor residual** y
+  **Fecha del valor residual**). Ver "Importe, valor residual y depreciación de un equipo".
+- **Observaciones**.
+
+Presione **Crear** para guardarlo. El equipo aparece en el listado como **Activo**.
+
 ## Qué muestra el listado
 
 Cada fila es un equipo, con cuatro columnas:
