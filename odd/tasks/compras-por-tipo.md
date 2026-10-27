@@ -45,3 +45,17 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
 - **L2 — Decisiones:** "Por ahora vamos con A, el dia de mañana por ahi nos conviene B". "1 y 2 como
   dices, 3 que quede sin tipo y que todos la lean hasta que se le asigne un tipo, 4 como dices tu, y el
   5 como dices tu".
+- **L3 — Contrato entre backend (T1-T3) y frontend (T4).**
+  - Respuestas de compra (detalle, ítem de listado): `tipoTicket: { id: string; nombre: string } | null`
+    (`null` = compra sin tipo, S4). El nombre sale del tipo en la misma base del tenant.
+  - `POST /compras`: `tipoTicketId` obligatorio (UUID). Tipo inexistente o inactivo → 400; sin ALTAS
+    sobre ese tipo → 403, sin escribir nada.
+  - `PATCH /compras/:id`: `tipoTicketId` opcional; `undefined` no lo toca; `null` → 400 (S4: no vuelve a
+    quedar sin tipo); cambiarlo exige ALTAS sobre el tipo NUEVO (403 si no).
+  - `GET /compras` y `GET /compras/export`: query `tipoTicketId` opcional (UUID); el resultado nunca
+    incluye compras de tipos sin LECTURA, aunque se filtre por ellos. La exportación suma la columna
+    "Tipo" (vacía si no tiene).
+  - Toda ruta `/compras/:id...` sobre una compra con tipo sin LECTURA → 404, sin cambios.
+  - Alcance: `CargadorAlcanceTicket.cargar(user)` (`permisosPorTipo` null = sin restricción, ROOT y
+    ADMINISTRADOR). El front usa `usePermisosPorTipo()` (`shared/hooks/use-permisos-por-tipo.ts`) y
+    `useTiposTicket()` (`features/tickets/hooks/use-catalogos.ts`) para el selector.
