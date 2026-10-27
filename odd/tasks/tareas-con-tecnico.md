@@ -90,7 +90,7 @@ Salen de la decisión de producto, viñeta por viñeta.
 - [x] **T6 — Frontend: tareas en el ticket** (~400): sección "Tareas" en el detalle del ticket, con avance, alta, asignación con selector de técnicos elegibles, completar, descompletar y borrar. El diálogo de Edilicia pasa a usar lo mismo. Se corrigen `backend/ayuda/reparaciones-edilicias.md` y `reparaciones-listado.md` en la misma unidad. Ruta: delegada. Salió en 1511 líneas, commit `ac227605`.
 - [x] **T7 — Frontend: indicador del dashboard** (~200): muestra la métrica de T4. Ruta: delegada. Salió en 161 líneas, commit `74ebc929`.
 - [x] **T8 — Retiro** (~200): migración que borra `subtareas_edilicia` y `ticket_edilicia.personal_asignado_id` (y, por decisión del dueño del 2026-10-14, `ticket_edilicia.porcentaje_avance`), con `rollback.sql`. También se borra el código viejo que ya no se usa. Ruta: delegada. Salió en 2914 líneas (486 más y 2428 menos), commit `8f169eb1`.
-- [ ] **T9 — Docs y cierre** (~150):
+- [x] **T9 — Docs y cierre** (~150):
   - [x] runbook, con la migración con datos y el orden de despliegue de T1 y T8;
   - [x] deuda de Ayuda (ver "Deuda de Ayuda" más abajo);
   - [x] declaración Cumplida o Desviación en el roadmap;
