@@ -22,6 +22,8 @@
  *
  * API pública (api-publica, T8): mismo criterio, diálogo SEPARADO detrás de
  * `/api`.
+ *
+ * IA del asistente (odd/asistente-ia-ayuda): mismo criterio, diálogo SEPARADO detrás de `/ia`.
  */
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -31,6 +33,7 @@ import { ConfigurarApiDialog } from "./configurar-api-dialog";
 import { ConfigurarCorreoDialog } from "./configurar-correo-dialog";
 import { ConfigurarCsatDialog } from "./configurar-csat-dialog";
 import { ConfigurarFormularioPublicoDialog } from "./configurar-formulario-publico-dialog";
+import { ConfigurarIaDialog } from "./configurar-ia-dialog";
 import { ConfigurarLogoDialog } from "./configurar-logo-dialog";
 import { useActivarCliente, useDesactivarCliente } from "../hooks/use-clientes-mutations";
 import type { Cliente } from "../types";
@@ -50,6 +53,7 @@ export function ClienteAcciones({ cliente }: ClienteAccionesProps) {
       <ConfigurarCorreoDialog cliente={cliente} />
       <ConfigurarCsatDialog cliente={cliente} />
       <ConfigurarApiDialog cliente={cliente} />
+      <ConfigurarIaDialog cliente={cliente} />
       <ConfigurarFormularioPublicoDialog cliente={cliente} />
       <ConfigurarLogoDialog cliente={cliente} />
       {cliente.activo ? (

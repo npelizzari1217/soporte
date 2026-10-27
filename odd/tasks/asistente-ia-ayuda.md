@@ -36,7 +36,7 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
 - [x] T2 — S7: `rotate-email-crypto-key.ps1` re-cifra las claves de IA; runbook.
 - [x] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
   endpoint `POST` del asistente con tope.
-- [ ] T4 — S4, S5, S6: frontend — botón flotante con el chat y acción "IA" en Clientes.
+- [x] T4 — S4, S5, S6: frontend — botón flotante con el chat y acción "IA" en Clientes.
 - [ ] T5 — Ayuda del asistente y de su configuración, runbook del deploy.
 
 ## Log
@@ -105,3 +105,15 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   persona conserva el suyo). Lint y typecheck limpios.
   Hueco de contenido para la próxima tanda de Ayuda: no hay una sección dedicada a dar de alta un
   equipo ("Nuevo equipo" solo aparece mencionado); "cargar un equipo nuevo" trae secciones vecinas.
+- **L10 — T4 hecha.** Clientes: acción "IA" (`ConfigurarIaDialog`, molde del de correo) que propone
+  Gemini al configurar por primera vez, no prellena nunca la clave, la omite del body si queda vacía,
+  muestra el resultado de "Probar" y quita la configuración detrás de una confirmación. El schema
+  espeja al dominio: recorta antes de medir (un modelo de solo espacios es vacío), URL https sin
+  credenciales, topes copiados en `limites.ts` con su centinela. Asistente: `AsistenteFlotante` en
+  `AppShell`, en todas las pantallas para quien tiene `KB:LECTURA` (el mismo permiso que exige el
+  backend); conversación local, enlace `/kb/:id` por artículo citado, aviso "Texto tomado de la Ayuda"
+  en modo respaldo, "Ir a Tickets para crear uno" sin resultados (no existe una ruta de alta directa:
+  el alta es un diálogo de `/tickets`), el 429 del throttler (que llega en inglés) se muestra en
+  español dentro de la conversación. Enter envía, Mayús+Enter salta de línea. Copy nuevo en neutro
+  con "usted" (el diálogo de correo de `main` sigue en voseo: lo corrige T7 de `fix/defectos-ayuda`).
+  Front: lint y type-check limpios; `asistente` + `clientes` + `shell` 159/159.

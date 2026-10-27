@@ -6,6 +6,9 @@ import {
   CLIENTE_NOMBRE_MAX_LENGTH,
   CLIENTE_RAZON_SOCIAL_MAX_LENGTH,
   CLIENTE_SMTP_TEXTO_MAX_LENGTH,
+  CLIENTE_IA_CLAVE_MAX_LENGTH,
+  CLIENTE_IA_MODELO_MAX_LENGTH,
+  CLIENTE_IA_URL_MAX_LENGTH,
 } from "./limites";
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
@@ -144,3 +147,45 @@ export const configurarFormularioPublicoSchema = z.object({
   habilitado: z.boolean(),
 });
 export type ConfigurarFormularioPublicoFormValues = z.infer<typeof configurarFormularioPublicoSchema>;
+
+/**
+ * Espejo de `ConfigurarIaClienteDto` y de las validaciones del dominio (`validarUrlIa`,
+ * `validarModeloIa`, `validarClaveIa`). Los topes se miden sobre el valor recortado, como el
+ * backend: un modelo de solo espacios es un modelo vacío. La clave es requerida solo la primera
+ * vez (`yaConfigurado=false`); vacía, se conserva la guardada y no se manda.
+ */
+export function configurarIaSchema(yaConfigurado: boolean) {
+  return z
+    .object({
+      url: z
+        .string()
+        .trim()
+        .min(1, "La URL es requerida")
+        .max(CLIENTE_IA_URL_MAX_LENGTH, mensajeDemasiadoLargo("La URL", CLIENTE_IA_URL_MAX_LENGTH))
+        .refine(esUrlHttps, "La URL debe empezar con https:// y no llevar usuario ni contraseña"),
+      modelo: z
+        .string()
+        .trim()
+        .min(1, "El modelo es requerido")
+        .max(CLIENTE_IA_MODELO_MAX_LENGTH, mensajeDemasiadoLargo("El modelo", CLIENTE_IA_MODELO_MAX_LENGTH)),
+      clave: z
+        .string()
+        .trim()
+        .max(CLIENTE_IA_CLAVE_MAX_LENGTH, mensajeDemasiadoLargo("La clave", CLIENTE_IA_CLAVE_MAX_LENGTH)),
+    })
+    .refine((data) => yaConfigurado || data.clave.length > 0, {
+      message: "La clave es requerida para la primera configuración",
+      path: ["clave"],
+    });
+}
+export type ConfigurarIaFormValues = z.infer<ReturnType<typeof configurarIaSchema>>;
+
+/** URL absoluta HTTPS sin credenciales embebidas, como `validarUrlIa` del backend. */
+function esUrlHttps(valor: string): boolean {
+  try {
+    const url = new URL(valor);
+    return url.protocol === "https:" && url.username === "" && url.password === "";
+  } catch {
+    return false;
+  }
+}

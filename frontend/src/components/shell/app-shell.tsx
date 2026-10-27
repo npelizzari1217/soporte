@@ -16,6 +16,7 @@ import { Menu, X } from "lucide-react";
 import { AppSidebar } from "./app-sidebar";
 import { Breadcrumbs } from "./breadcrumbs";
 import { DashboardHeader } from "./dashboard-header";
+import { AsistenteFlotante } from "@/features/asistente/components/asistente-flotante";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -63,6 +64,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <main className="flex-1 overflow-y-auto px-6 py-6">{children}</main>
       </div>
+
+      {/* Asistente de la Ayuda en todas las pantallas (odd/asistente-ia-ayuda, S5). */}
+      <AsistenteFlotante />
     </div>
   );
 }

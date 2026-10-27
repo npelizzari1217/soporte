@@ -136,3 +136,23 @@ export interface ConfigurarFormularioPublicoDto {
 export interface ClienteLogoDto {
   logoUpdatedAt: string | null;
 }
+
+/**
+ * Configuración de IA de `GET/PATCH/DELETE /clientes/:id/ia` y `POST /clientes/:id/ia/probar`:
+ * espejo de `IaClienteResponseDto` (backend, odd/asistente-ia-ayuda). La clave NO existe acá bajo
+ * ninguna forma: un campo que no existe no se puede filtrar por accidente.
+ */
+export interface ClienteIa {
+  configurado: boolean;
+  url: string | null;
+  modelo: string | null;
+  verificadoAt: string | null;
+  verificacionError: string | null;
+}
+
+/** Body de `PATCH /clientes/:id/ia`. Sin `clave`, el backend conserva la guardada. */
+export interface ConfigurarIaDto {
+  url: string;
+  modelo: string;
+  clave?: string;
+}
