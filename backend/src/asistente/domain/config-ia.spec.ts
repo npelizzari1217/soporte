@@ -3,6 +3,7 @@ import {
   ESTADO_IA_SIN_CONFIGURAR,
   estadoConfigIa,
   LARGO_MAXIMO_URL_IA,
+  MODELO_IA_POR_DEFECTO,
   URL_IA_POR_DEFECTO,
   validarUrlIa,
 } from './config-ia';
@@ -93,5 +94,13 @@ describe('validarClaveIa', () => {
     ['más larga que el tope', 'k'.repeat(LARGO_MAXIMO_CLAVE_IA + 1)],
   ])('rechaza una clave %s', (_caso, clave) => {
     expect(validarClaveIa(clave).getError()).toBeInstanceOf(ClaveIaInvalidaError);
+  });
+});
+
+describe('MODELO_IA_POR_DEFECTO', () => {
+  // Google retiró `gemini-2.5-flash-lite` para cuentas nuevas (404, 2026-10-27); se propone la
+  // generación vigente para no ofrecer un modelo en vías de retiro.
+  it('propone la generación vigente de Gemini', () => {
+    expect(MODELO_IA_POR_DEFECTO).toBe('gemini-3.5-flash');
   });
 });

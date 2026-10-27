@@ -80,8 +80,9 @@ import { IaClienteController } from './interface/ia-cliente.controller';
         clientes: IClienteRepository,
         configs: IAsistenteIaConfigRepository,
         claves: ClaveIaCifrada,
-      ) => new ConfigurarIaClienteUseCase(clientes, configs, claves),
-      inject: [CLIENTE_REPOSITORY, ASISTENTE_IA_CONFIG_REPOSITORY, ClaveIaCifrada],
+        modelo: IModeloIa,
+      ) => new ConfigurarIaClienteUseCase(clientes, configs, claves, modelo),
+      inject: [CLIENTE_REPOSITORY, ASISTENTE_IA_CONFIG_REPOSITORY, ClaveIaCifrada, MODELO_IA],
     },
     {
       provide: QuitarIaClienteUseCase,

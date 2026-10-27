@@ -107,14 +107,17 @@ asistente funciona igual: responde con el texto de la Ayuda directamente.
 
 - **URL del proveedor**: un servicio compatible con OpenAI. Viene cargada la de
   Gemini. Tiene que empezar con https y no llevar usuario ni contraseña.
-- **Modelo**: viene cargado `gemini-2.5-flash`. Hasta 100 caracteres.
+- **Modelo**: viene cargado `gemini-3.5-flash`. Hasta 100 caracteres. Si el proveedor
+  retira un modelo, deja de responder con él: elija uno vigente.
 - **Clave**: la clave del proveedor, de hasta 500 caracteres. Es obligatoria la
   primera vez. Nunca se vuelve a mostrar: déjela vacía para conservar la guardada.
 
-**Guardar** no consulta al proveedor. Para comprobar que la configuración funciona,
-use **Probar**: muestra **Probada el** con la fecha y hora, o **Prueba fallida** con
-el motivo (por ejemplo, "El proveedor rechazó la clave."). Cada consulta al
-asistente con IA consume la cuota de esa clave.
+**Guardar** guarda la configuración y la prueba en el acto con una consulta mínima:
+muestra **Probada el** con la fecha y hora, o **Prueba fallida** con el motivo (por
+ejemplo, "El proveedor rechazó la clave." o "El proveedor no encontró la URL o el
+modelo configurados."). Aunque la prueba falle, la configuración queda guardada.
+**Probar** repite la prueba sin cambiar nada. Cada prueba y cada consulta al
+asistente con IA consumen la cuota de esa clave.
 
 **Quitar configuración** borra la clave, previa confirmación; el asistente de ese
 cliente pasa a responder con la Ayuda.

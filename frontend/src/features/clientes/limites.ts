@@ -81,4 +81,4 @@ export const CLIENTE_IA_CLAVE_MAX_LENGTH = 500;
 /** URL de Gemini que se propone al configurar por primera vez (`URL_IA_POR_DEFECTO` del backend). */
 export const CLIENTE_IA_URL_POR_DEFECTO = "https://generativelanguage.googleapis.com/v1beta/openai/";
 /** Modelo que se propone al configurar por primera vez (`MODELO_IA_POR_DEFECTO` del backend). */
-export const CLIENTE_IA_MODELO_POR_DEFECTO = "gemini-2.5-flash";
+export const CLIENTE_IA_MODELO_POR_DEFECTO = "gemini-3.5-flash";

@@ -8,7 +8,10 @@ import {
   ModeloIaInvalidoError,
   UrlIaInvalidaError,
 } from '../domain/asistente.errors';
-import { IAsistenteIaConfigRepository } from '../domain/asistente-ia-config-repository.port';
+import {
+  IAsistenteIaConfigRepository,
+  ResultadoVerificacionIa,
+} from '../domain/asistente-ia-config-repository.port';
 import {
   EstadoConfigIa,
   estadoConfigIa,
@@ -17,9 +20,12 @@ import {
   validarUrlIa,
 } from '../domain/config-ia';
 
+import { IModeloIa } from '../domain/modelo-ia.port';
+import { ClaveIaCifrada } from './clave-ia-cifrada';
+import { verificarProveedorIa } from './verificar-proveedor-ia';
+
 /** Marca del mensaje que `AesGcmSecretCipher` lanza cuando falta o es inválida la clave. */
 const MARCA_CLAVE_CIFRADO_AUSENTE = 'EMAIL_CRYPTO_KEY';
-import { ClaveIaCifrada } from './clave-ia-cifrada';
 
 export interface ConfigurarIaClienteCommand {
   clienteId: string;
@@ -45,22 +51,29 @@ export type ConfigurarIaClienteError =
  *    `validarModeloIa`, `validarClaveIa`): los topes se miden sobre el valor recortado.
  * 3. Clave:
  *    - provista → se cifra con AAD `ia:{clienteId}`;
- *    - omitida con IA ya configurada → se conserva el ciphertext guardado TAL CUAL, sin descifrarlo:
- *      así no hace falta la clave en claro para cambiar el modelo, y una clave que dejó de
- *      descifrar se puede reemplazar sin pasar por un error;
+ *    - omitida con IA ya configurada → se conserva el ciphertext guardado TAL CUAL; guardar no
+ *      depende de descifrarlo, así que una clave que dejó de descifrar no impide guardar (la
+ *      prueba del paso 5 sí la descifra, y si no puede, lo registra como falla);
  *    - omitida sin IA configurada → `ClaveIaFaltanteError` (no hay nada que conservar).
  * 4. Cifrar lanza si falta `EMAIL_CRYPTO_KEY`: ocurre ANTES de escribir, así que no se guarda nada y
  *    se informa `ClaveCifradoIaAusenteError`. Cualquier otra excepción se propaga tal cual: un 503
  *    que culpa a la clave del servidor por un error distinto mandaría a buscar en el lugar
  *    equivocado.
  *
- * Guardar no prueba el proveedor: probar es una llamada paga y lenta, y va por "Probar".
+ * 5. Después de guardar, prueba el proveedor con una consulta mínima y registra el resultado, como
+ *    "Probar". Un rechazo NO deshace el guardado: queda la configuración y el motivo a la vista. Sin
+ *    esto, un modelo retirado por el proveedor (caso real: `gemini-2.5-flash-lite`, 2026-10-27) se
+ *    guardaba sin aviso y el asistente caía al respaldo sin que nadie lo notara.
  */
 export class ConfigurarIaClienteUseCase {
   constructor(
     private readonly clientes: Pick<IClienteRepository, 'findById'>,
-    private readonly configs: Pick<IAsistenteIaConfigRepository, 'buscarPorCliente' | 'guardar'>,
-    private readonly claves: Pick<ClaveIaCifrada, 'cifrar'>,
+    private readonly configs: Pick<
+      IAsistenteIaConfigRepository,
+      'buscarPorCliente' | 'guardar' | 'guardarVerificacion'
+    >,
+    private readonly claves: Pick<ClaveIaCifrada, 'cifrar' | 'descifrar'>,
+    private readonly modelo: IModeloIa,
   ) {}
 
   /**
@@ -83,6 +96,8 @@ export class ConfigurarIaClienteUseCase {
     if (modelo.isFail()) return falla(modelo.getError());
 
     let claveCifrada: string;
+    // Clave en claro para la prueba posterior: la recién cargada, o `null` si se conserva la guardada.
+    let claveEnClaro: string | null = null;
     if (command.clave === undefined) {
       const actual = await this.configs.buscarPorCliente(command.clienteId);
       if (!actual) return falla(new ClaveIaFaltanteError());
@@ -92,6 +107,7 @@ export class ConfigurarIaClienteUseCase {
       if (clave.isFail()) return falla(clave.getError());
       try {
         claveCifrada = this.claves.cifrar(command.clienteId, clave.getValue());
+        claveEnClaro = clave.getValue();
       } catch (error) {
         if (error instanceof Error && error.message.includes(MARCA_CLAVE_CIFRADO_AUSENTE)) {
           return falla(new ClaveCifradoIaAusenteError());
@@ -106,6 +122,25 @@ export class ConfigurarIaClienteUseCase {
       modelo: modelo.getValue(),
       claveCifrada,
     });
-    return Result.ok(estadoConfigIa(guardada));
+
+    const resultado = await this.probar(command.clienteId, guardada, claveEnClaro);
+    const verificada = await this.configs.guardarVerificacion(command.clienteId, resultado);
+    // `null`: la IA se quitó entre el guardado y la prueba; se informa lo que se guardó.
+    return Result.ok(estadoConfigIa(verificada ?? guardada));
+  }
+
+  /** Prueba lo guardado; una clave conservada que no descifra es una falla con su motivo. */
+  private async probar(
+    clienteId: string,
+    guardada: { url: string; modelo: string; claveCifrada: string },
+    claveEnClaro: string | null,
+  ): Promise<ResultadoVerificacionIa> {
+    let clave = claveEnClaro;
+    if (clave === null) {
+      const descifrada = this.claves.descifrar(clienteId, guardada.claveCifrada);
+      if (descifrada.isFail()) return { ok: false, motivo: descifrada.getError().message };
+      clave = descifrada.getValue();
+    }
+    return verificarProveedorIa(this.modelo, { url: guardada.url, modelo: guardada.modelo, clave });
   }
 }

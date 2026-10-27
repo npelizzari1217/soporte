@@ -18,7 +18,7 @@ export const LARGO_MAXIMO_CLAVE_IA = 500;
 /** URL de chat completions compatible con OpenAI de Gemini: el proveedor por defecto (S4). */
 export const URL_IA_POR_DEFECTO = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 /** Modelo que la pantalla propone al configurar un cliente por primera vez. */
-export const MODELO_IA_POR_DEFECTO = 'gemini-2.5-flash';
+export const MODELO_IA_POR_DEFECTO = 'gemini-3.5-flash';
 
 /**
  * Configuración de IA persistida de un cliente. La clave viaja CIFRADA: cifrar y descifrar es tarea

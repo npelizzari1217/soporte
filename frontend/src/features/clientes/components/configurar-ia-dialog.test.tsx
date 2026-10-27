@@ -67,7 +67,7 @@ describe("ConfigurarIaDialog", () => {
     expect(screen.getByLabelText(/url del proveedor/i)).toHaveValue(
       "https://generativelanguage.googleapis.com/v1beta/openai/",
     );
-    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("gemini-2.5-flash");
+    expect(screen.getByLabelText(/^modelo$/i)).toHaveValue("gemini-3.5-flash");
 
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
     expect(await screen.findByText("La clave es requerida para la primera configuración")).toBeInTheDocument();
@@ -78,7 +78,7 @@ describe("ConfigurarIaDialog", () => {
     await waitFor(() =>
       expect(body).toEqual({
         url: "https://generativelanguage.googleapis.com/v1beta/openai/",
-        modelo: "gemini-2.5-flash",
+        modelo: "gemini-3.5-flash",
         clave: "AIzaClave",
       }),
     );
@@ -148,6 +148,31 @@ describe("ConfigurarIaDialog", () => {
 
     expect(await screen.findByText("El modelo es requerido")).toBeInTheDocument();
     expect(llamadas).toBe(0);
+  });
+
+  it("guardar muestra en el acto si el proveedor rechazó el modelo", async () => {
+    server.use(
+      http.get("/api/clientes/c1/ia", () => HttpResponse.json(conIa())),
+      http.patch("/api/clientes/c1/ia", () =>
+        HttpResponse.json(
+          conIa({
+            modelo: "gemini-2.5-flash-lite",
+            verificacionError: "El proveedor no encontró la URL o el modelo configurados.",
+          }),
+        ),
+      ),
+    );
+    const user = await abrir();
+    await screen.findByText("IA configurada");
+
+    const modelo = screen.getByLabelText(/^modelo$/i);
+    await user.clear(modelo);
+    await user.type(modelo, "gemini-2.5-flash-lite");
+    await user.click(screen.getByRole("button", { name: /^guardar$/i }));
+
+    expect(
+      await screen.findByText("Prueba fallida: El proveedor no encontró la URL o el modelo configurados."),
+    ).toBeInTheDocument();
   });
 
   it("Probar muestra el motivo de una prueba fallida", async () => {

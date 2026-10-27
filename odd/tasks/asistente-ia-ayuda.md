@@ -156,3 +156,36 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   (`utc-backfill-20261027-074016`), `DEPLOY OK`, migración master aplicada, `sync-ayuda` 1 insertado y
   7 actualizados, smoke externo correcto. Rollback: volver el VPS a `3d87c0f3` y re-correr `deploy.ps1`.
 - **L18 — Validación del dueño:** "ya probe todo y esta ok". Feature cerrada.
+- **L19 — Reporte del dueño (2026-10-27):** "al cambiar el modelo IA en un cliente dejo de
+  funcionar; En el cliente prueba en desarrollo cambie a gemini-2.5-flash por gemini-2.5-flash-lite y no
+  funciona". Reproducido en producción (el cliente Prueba vive ahí) con el código compilado del VPS y
+  la clave descifrada en memoria, sin imprimirla: Google responde 404 "This model
+  models/gemini-2.5-flash-lite is no longer available to new users. Please update your code to use
+  models/gemini-3.5-flash-lite". `gemini-2.5-flash`, `gemini-3.5-flash` y `gemini-3.5-flash-lite`
+  responden bien con la misma clave. No es un defecto del asistente (cayó al respaldo, como debe),
+  pero sí del diseño: Guardar no probaba y limpiaba la prueba anterior, así que la falla fue
+  silenciosa. Decisión del dueño ("si hacelo"): Guardar prueba en el acto, y el modelo por defecto
+  pasa a `gemini-3.5-flash`.
+- **L20 — Guardar prueba el proveedor, con TDD.** RED: 9 tests del backend (caso de uso y e2e:
+  prueba con la clave recién cargada o con la guardada, un rechazo guarda igual y devuelve el motivo,
+  una clave guardada indescifrable registra el motivo sin llamar al proveedor, una validación fallida
+  no llama; centinela del modelo por defecto) y 1 del front (default `gemini-3.5-flash`). GREEN:
+  `verificarProveedorIa` compartida por Guardar y Probar; `ConfigurarIaClienteUseCase` prueba después
+  de guardar y registra el resultado. Ayuda de Clientes corregida (decía que Guardar no consulta al
+  proveedor). Backend `src/asistente` + `sync-ayuda` 161/161, front `clientes` + `asistente` 111/111,
+  lint y tipos limpios.
+- **L21 — Verificación independiente de `97340c3b`.** PASS sin blockers (sonda RED sobre `main`: los 9
+  fallan por la razón correcta). W1: el e2e "probar registra el éxito" pasaba por el `verificadoAt` que
+  dejaba el guardado; se agrega un e2e que parte de una prueba de guardado fallida. W2: JSDoc que
+  seguía diciendo "sin descifrarlo". W3: import después de una constante. A2: el runbook nombra
+  también Guardar. A1 (`max_tokens: 5` en la prueba con modelos que razonan) medido contra Gemini real
+  desde el VPS: `gemini-2.5-flash`, `gemini-3.5-flash` y `gemini-3.5-flash-lite` responden "OK" con 5;
+  queda como está.
+- **L22 — Seguimiento de L16 (los 3 rojos de `tareas-ticket.e2e`).** Suite completa del backend corrida
+  sola, con el log entero y sin ningún otro `vitest` en paralelo: 816/816 archivos, 10366/10366.
+  Los 3 rojos son justo los únicos tests que usan el segundo inquilino (`TENANT_B`), y la corrida
+  donde fallaron coincidió con otro `vitest` del backend lanzado en paralelo (`scripts/sync-ayuda`).
+  Mecanismo NO confirmado: el barrido de huérfanas toma el mismo advisory lock que el spec, y el
+  spec de `sync-ayuda` no trunca. Conclusión operativa: no es un defecto del producto; no correr dos
+  `vitest` del backend a la vez contra la master de test compartida. Si vuelve a aparecer en una
+  corrida aislada, reabrir con ese log.
