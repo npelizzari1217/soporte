@@ -1736,6 +1736,28 @@ conoce y convive con ella, así que dejarla puesta también es un rollback váli
 conserva las claves cargadas. Para cortar el uso de la IA sin revert, alcanza con quitar la
 configuración del cliente en Clientes > IA: su asistente vuelve a responder con la Ayuda.
 
+## Compras por tipo de ticket
+
+Documento de la feature: `odd/tasks/compras-por-tipo.md`. Cada compra lleva un tipo de ticket,
+además del sector. Ver una compra exige LECTURA sobre su tipo y crearla, ALTAS; ROOT y
+ADMINISTRADOR no tienen restricción. Las compras que ya existen quedan **sin tipo** y las sigue
+viendo cualquiera con LECTURA de Compras, hasta que alguien les asigne uno.
+
+| Qué | Detalle |
+|---|---|
+| Migración tenant | `20261027100000_compras_tipo_ticket`, **aditiva y sin backfill**: columna `compras.tipo_ticket_id` nullable, FK a `tipos_ticket` e índice. Entra por `migrate:tenants`. |
+| Variables y dependencias | Ninguna. El lockfile no cambia. |
+| Efecto visible | El alta de compras pide el tipo y el listado suma columna y filtro "Tipo". Quien no tenga ALTAS sobre ningún tipo ya no puede crear compras. |
+
+**La migración va antes que el código** en cada base de inquilino: el código nuevo lee y escribe la
+columna en cada alta y listado de compras.
+
+### Rollback
+
+Su `rollback.sql` borra la columna y se puede correr dos veces. **Primero el código, después el
+`rollback.sql`**. El código anterior ignora la columna, así que dejarla puesta también es un rollback
+válido y es el único que conserva los tipos asignados desde el deploy.
+
 ## Cuando algo falla
 
 **El script aborta en el primer error y te deja el rollback impreso al final de la corrida
