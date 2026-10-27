@@ -37,6 +37,7 @@ function compraActiva(id: string): CompraVinculada {
   return {
     compraId: id,
     numero: `C-${id}`,
+    tipoTicketId: null,
     cancelada: false,
     items: [],
   };

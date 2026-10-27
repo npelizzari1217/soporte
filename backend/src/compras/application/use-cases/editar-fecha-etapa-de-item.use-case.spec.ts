@@ -149,6 +149,7 @@ describe('EditarFechaEtapaDeItemUseCase', () => {
         canceladaEn: new Date('2026-08-20'),
         canceladoPorId: 'usuario-cancelador',
         motivoCancelacion: 'Ya no se necesita',
+        tipoTicketId: null,
       },
       [item],
       compra.id,

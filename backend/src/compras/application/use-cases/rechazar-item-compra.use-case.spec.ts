@@ -71,6 +71,7 @@ function crearCompraConItem(
     canceladaEn: null,
     canceladoPorId: null,
     motivoCancelacion: null,
+    tipoTicketId: null,
     ...overrides,
   };
   return CompraEntity.reconstitute(

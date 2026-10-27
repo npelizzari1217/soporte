@@ -2,7 +2,8 @@
  * [UNIT] — `ListarComprasDeTicketUseCase` (odd/ticket-unificado, S1, S5).
  *
  * Las compras vinculadas a un ticket de cualquier tipo, con su grupo de estado y si lo bloquean
- * (el criterio único de `comprasQueBloquean`). Exige ver el ticket.
+ * (el criterio único de `comprasQueBloquean`). Exige ver el ticket. Desde odd/compras-por-tipo,
+ * solo lista las compras que el actor ve por su tipo (S2, S4); el bloqueo del ticket no cambia.
  */
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { TicketNoEncontradoError } from '../../../tickets/domain/errors/tickets.errors';
@@ -16,18 +17,21 @@ import { ListarComprasDeTicketUseCase } from './listar-compras-de-ticket.use-cas
 const activa: CompraVinculada = {
   compraId: 'c-activa',
   numero: 'COM-2026-00001',
+  tipoTicketId: null,
   cancelada: false,
   items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false }],
 };
 const completada: CompraVinculada = {
   compraId: 'c-completada',
   numero: 'COM-2026-00002',
+  tipoTicketId: null,
   cancelada: false,
   items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
 };
 const cancelada: CompraVinculada = {
   compraId: 'c-cancelada',
   numero: 'COM-2026-00003',
+  tipoTicketId: null,
   cancelada: true,
   items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false }],
 };
@@ -108,5 +112,55 @@ describe('ListarComprasDeTicketUseCase', () => {
     );
 
     expect(result.getValue().map((c) => c.numero)).toEqual(['COM-2026-00001']);
+  });
+
+  describe('odd/compras-por-tipo — solo las compras que el actor ve por su tipo (S2, S4)', () => {
+    const deEdilicia: CompraVinculada = {
+      ...activa,
+      compraId: 'c-edilicia',
+      tipoTicketId: 'tipo-edilicia',
+    };
+    const deSoporte: CompraVinculada = {
+      ...completada,
+      compraId: 'c-soporte',
+      tipoTicketId: 'tipo-soporte',
+    };
+    const sinTipo: CompraVinculada = { ...cancelada, compraId: 'c-sin-tipo', tipoTicketId: null };
+    const lectorDeSoporte = alcancePorTipo('actor', { 'tipo-soporte': ['LECTURA', 'VER_TODOS'] });
+
+    it('no lista la compra de un tipo sin LECTURA; sí la de su tipo y la sin tipo', async () => {
+      const { useCase } = armar([deEdilicia, deSoporte, sinTipo]);
+
+      const result = await useCase.execute('ticket-uuid', lectorDeSoporte);
+
+      expect(result.getValue().map((c) => c.compraId)).toEqual(['c-soporte', 'c-sin-tipo']);
+    });
+
+    it('caso hermano: con LECTURA sobre el otro tipo también la lista, con su bloqueo', async () => {
+      const { useCase } = armar([deEdilicia, deSoporte, sinTipo]);
+
+      const result = await useCase.execute(
+        'ticket-uuid',
+        alcancePorTipo('actor', {
+          'tipo-soporte': ['LECTURA', 'VER_TODOS'],
+          'tipo-edilicia': ['LECTURA'],
+        }),
+      );
+
+      expect(result.getValue().find((c) => c.compraId === 'c-edilicia')).toEqual({
+        compraId: 'c-edilicia',
+        numero: 'COM-2026-00001',
+        grupo: 'ACTIVAS',
+        bloquea: true,
+      });
+    });
+
+    it('ADMINISTRADOR lista las de todos los tipos', async () => {
+      const { useCase } = armar([deEdilicia, deSoporte, sinTipo]);
+
+      const result = await useCase.execute('ticket-uuid', alcanceSinRestriccion('actor'));
+
+      expect(result.getValue()).toHaveLength(3);
+    });
   });
 });

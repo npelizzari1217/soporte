@@ -17,6 +17,7 @@ describe("buildExportComprasQueryString", () => {
     sectorId: "sector-1",
     fechaDesde: "2026-01-01",
     fechaHasta: "2026-06-30",
+    tipoTicketId: "tipo-1",
   };
 
   it("descarta pagina y porPagina — el CSV es el universo filtrado completo", () => {
@@ -33,6 +34,7 @@ describe("buildExportComprasQueryString", () => {
     expect(params.get("sectorId")).toBe("sector-1");
     expect(params.get("fechaDesde")).toBe("2026-01-01");
     expect(params.get("fechaHasta")).toBe("2026-06-30");
+    expect(params.get("tipoTicketId")).toBe("tipo-1");
   });
 
   it("omite claves undefined — nunca viaja `sectorId=undefined` (el backend lo rechazaría con 400)", () => {

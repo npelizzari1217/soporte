@@ -105,6 +105,12 @@ export const crearCompraSchema = z.object({
   /** `<input type="date">` → "YYYY-MM-DD". El backend valida `@IsDateString`. */
   fechaSolicitud: fecha("La fecha de solicitud es requerida"),
   sectorId: z.string().optional(),
+  /**
+   * Espejo de `@IsUUID()` sin `@IsOptional()` (odd/compras-por-tipo, S3): el tipo es obligatorio.
+   * Va sin `.uuid()`, mismo criterio que `sectorId`: el único origen del valor es el `<select>` del
+   * catálogo, así que lo único alcanzable desde el formulario es la opción vacía.
+   */
+  tipoTicketId: z.string().min(1, "Elija un tipo"),
 });
 export type CrearCompraFormValues = z.infer<typeof crearCompraSchema>;
 
@@ -126,6 +132,12 @@ export const editarCompraSchema = z.object({
   descripcion: z.string().optional(),
   fechaSolicitud: fecha("La fecha de solicitud es requerida"),
   sectorId: z.string().optional(),
+  /**
+   * Espejo de `tipoTicketId` en `EditarCompraHttpDto` (S3, S4). La cadena vacía solo existe para
+   * una compra sin tipo y significa "sin cambio": el diálogo la omite del body y nunca manda
+   * `null`, que el backend rechaza porque una compra con tipo no vuelve a quedar sin tipo.
+   */
+  tipoTicketId: z.string().optional(),
 });
 export type EditarCompraFormValues = z.infer<typeof editarCompraSchema>;
 

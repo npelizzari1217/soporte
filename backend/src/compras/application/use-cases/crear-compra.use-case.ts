@@ -7,6 +7,9 @@ import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra
 import { ResolverCicloActivoCompra } from '../services/resolver-ciclo-activo-compra.service';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import { SectorInexistenteError } from '../../domain/errors/compras.errors';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { exigirAltaSobreTipoDeCompra } from '../services/visibilidad-compra';
 
 /**
  * DTO de entrada de `CrearCompraUseCase`.
@@ -29,12 +32,19 @@ export interface CrearCompraDto {
   anio: number;
   /** Sector de destino (WU-09, R11) — opcional, sin backfill (S66). */
   sectorId?: string | null;
+  /** Tipo de ticket de la compra (odd/compras-por-tipo, S3) — obligatorio en el alta. */
+  tipoTicketId: string;
+  /** Permisos por tipo del actor: crear exige ALTAS sobre `tipoTicketId` (S2). */
+  alcance: AlcanceActorTicket;
 }
 
 /**
  * CrearCompraUseCase — creación de una compra nueva (§4.1, S1, S2).
  *
  * Flujo:
+ * 0. Exige que el tipo de ticket sea elegible y que el actor tenga ALTAS sobre él
+ *    (`exigirAltaSobreTipoDeCompra`, odd/compras-por-tipo S2, S3): 400 si el tipo no existe o
+ *    está inactivo, 403 sin ALTAS. Corre antes que todo lo demás y no escribe nada.
  * 1. Resuelve el ciclo ACTIVO del tenant (`ResolverCicloActivoCompra`,
  *    propio de `compras/` — reusa el puerto `ICicloClienteRepository` de
  *    `tickets/` porque es la misma tabla `CicloCliente` compartida, pero
@@ -65,9 +75,20 @@ export class CrearCompraUseCase {
     private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
     private readonly registrarOperacion: Pick<RegistrarOperacionCompra, 'registrar'>,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly tipoRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: CrearCompraDto): Promise<Result<CompraEntity, DomainError>> {
+    // 0. Tipo de ticket elegible y ALTAS sobre él (odd/compras-por-tipo, S2, S3).
+    const tipoResult = await exigirAltaSobreTipoDeCompra(
+      this.tipoRepo,
+      dto.tipoTicketId,
+      dto.alcance,
+    );
+    if (tipoResult.isFail()) {
+      return Result.fail(tipoResult.getError());
+    }
+
     // 1. Ciclo ACTIVO del tenant — el servidor lo determina, nunca el
     //    cliente (S1). Corre ANTES de la tx: S2 exige que el numerador NO
     //    se consuma si la creación va a fallar.
@@ -104,6 +125,7 @@ export class CrearCompraUseCase {
         solicitanteId: dto.solicitanteId,
         cicloId: cicloActivo.id,
         sectorId: dto.sectorId ?? null,
+        tipoTicketId: dto.tipoTicketId,
       });
 
       await this.compraRepo.guardar(compra);

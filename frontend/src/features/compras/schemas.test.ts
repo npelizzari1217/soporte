@@ -6,6 +6,7 @@ import {
   cancelarCompraSchema,
   cerrarItemConFaltanteSchema,
   crearCompraSchema,
+  editarCompraSchema,
   editarItemCompraSchema,
   registrarOrdenDeItemSchema,
   registrarRecepcionDeItemSchema,
@@ -73,7 +74,11 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
 
   describe("@IsDateString (el backend responde 400 si no es una fecha)", () => {
     it("crearCompra rechaza una fechaSolicitud que no es fecha", () => {
-      const r = crearCompraSchema.safeParse({ motivo: "Reposición", fechaSolicitud: "abc" });
+      const r = crearCompraSchema.safeParse({
+        motivo: "Reposición",
+        fechaSolicitud: "abc",
+        tipoTicketId: "tipo-1",
+      });
       expect(r.success).toBe(false);
     });
 
@@ -84,7 +89,11 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
     });
 
     it("sigue aceptando el formato que emite <input type=\"date\">", () => {
-      const r = crearCompraSchema.safeParse({ motivo: "Reposición", fechaSolicitud: "2026-01-01" });
+      const r = crearCompraSchema.safeParse({
+        motivo: "Reposición",
+        fechaSolicitud: "2026-01-01",
+        tipoTicketId: "tipo-1",
+      });
       expect(r.success).toBe(true);
     });
   });
@@ -98,9 +107,10 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
     });
 
     it("crearCompra rechaza un motivo de solo espacios", () => {
-      expect(crearCompraSchema.safeParse({ motivo: "  ", fechaSolicitud: "2026-01-01" }).success).toBe(
-        false,
-      );
+      expect(
+        crearCompraSchema.safeParse({ motivo: "  ", fechaSolicitud: "2026-01-01", tipoTicketId: "tipo-1" })
+          .success,
+      ).toBe(false);
     });
   });
 
@@ -264,6 +274,41 @@ describe("schemas de compras — espejo de las reglas del backend", () => {
       expect(r.success).toBe(false);
       if (!r.success) expect(r.error.issues[0].path).toEqual(["insumoId"]);
     });
+  });
+});
+
+/**
+ * Tipo de ticket de la compra (odd/compras-por-tipo, S3, S4): obligatorio en el alta, como
+ * `@IsUUID()` sin `@IsOptional()` en `CrearCompraHttpDto`; en la edición, opcional.
+ */
+describe("tipoTicketId de la compra", () => {
+  const ALTA_VALIDA = { motivo: "Reposición", fechaSolicitud: "2026-01-01", tipoTicketId: "tipo-1" };
+
+  it("crearCompra rechaza el alta sin tipo, con el mensaje en el campo", () => {
+    const r = crearCompraSchema.safeParse({ ...ALTA_VALIDA, tipoTicketId: "" });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0].path).toEqual(["tipoTicketId"]);
+      expect(r.error.issues[0].message).toBe("Elija un tipo");
+    }
+  });
+
+  it("crearCompra rechaza el alta si el tipo falta del todo", () => {
+    expect(crearCompraSchema.safeParse({ motivo: "Reposición", fechaSolicitud: "2026-01-01" }).success).toBe(
+      false,
+    );
+  });
+
+  it("crearCompra conserva el tipo elegido en el dato parseado", () => {
+    const r = crearCompraSchema.safeParse(ALTA_VALIDA);
+    expect(r.success && r.data.tipoTicketId).toBe("tipo-1");
+  });
+
+  it("editarCompra conserva el tipo elegido y acepta la cadena vacía (sin cambio)", () => {
+    const base = { motivo: "Reposición", fechaSolicitud: "2026-01-01" };
+    const conTipo = editarCompraSchema.safeParse({ ...base, tipoTicketId: "tipo-2" });
+    expect(conTipo.success && conTipo.data.tipoTicketId).toBe("tipo-2");
+    expect(editarCompraSchema.safeParse({ ...base, tipoTicketId: "" }).success).toBe(true);
   });
 });
 

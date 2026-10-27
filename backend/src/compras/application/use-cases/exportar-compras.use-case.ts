@@ -11,6 +11,13 @@ import { CompraEntity } from '../../domain/entities/compra.entity';
 import { ExportacionDemasiadoGrandeError } from '../../domain/errors/compras.errors';
 import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
 import { EstadoCompra, FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { tiposVisiblesDeCompras } from '../services/visibilidad-compra';
+import {
+  ResolverTiposDeCompra,
+  TipoTicketDeCompra,
+  tipoDeCompra,
+} from '../services/tipos-de-compra';
 
 /**
  * Máximo de compras que una exportación puede contener.
@@ -65,6 +72,10 @@ export interface ExportarComprasDto {
   fechaDesde?: Date;
   /** Filtra por `fechaSolicitud <= fechaHasta`. */
   fechaHasta?: Date;
+  /** Filtro por tipo de ticket (odd/compras-por-tipo, S5). Nunca amplía lo visible. */
+  tipoTicketId?: string;
+  /** Permisos por tipo del actor: el archivo solo trae las compras que ve, igual que el listado. */
+  alcance: AlcanceActorTicket;
 }
 
 /** Archivo listo para que el controller lo entregue como descarga (CSV como texto, xlsx como Buffer). */
@@ -90,28 +101,35 @@ export type ExportarComprasResult = ArchivoExport;
  * `ListarComprasUseCase`.
  */
 export class ExportarComprasUseCase {
-  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>) {}
+  constructor(
+    private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>,
+    private readonly tipos: Pick<ResolverTiposDeCompra, 'resolver'>,
+  ) {}
 
   async execute<F extends FormatoExport | undefined = undefined>(
     dto: ExportarComprasDto,
     formato?: F,
   ): Promise<Result<ArchivoExportDe<F>, DomainError>> {
+    const tiposVisibles = tiposVisiblesDeCompras(dto.alcance);
     const filtros: CompraListFiltros = {
       ...(dto.cicloId !== undefined && { cicloId: dto.cicloId }),
       grupoEstado: dto.estado ?? GRUPO_ESTADO_DEFAULT,
       ...(dto.sectorId !== undefined && { sectorId: dto.sectorId }),
       ...(dto.fechaDesde !== undefined && { fechaDesde: dto.fechaDesde }),
       ...(dto.fechaHasta !== undefined && { fechaHasta: dto.fechaHasta }),
+      ...(dto.tipoTicketId !== undefined && { tipoTicketId: dto.tipoTicketId }),
+      ...(tiposVisibles !== undefined && { tiposVisibles }),
       limit: TOPE_FILAS_EXPORT,
     };
 
     const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
+    const tipos = await this.tipos.resolver(compras.map((compra) => compra.tipoTicketId));
 
     return armarExport({
       filas: compras,
       total,
       tope: TOPE_FILAS_EXPORT,
-      columnas: ExportarComprasUseCase.columnas(compras),
+      columnas: ExportarComprasUseCase.columnas(compras, tipos),
       prefijo: 'compras',
       formato,
       alExceder: (total, tope) => new ExportacionDemasiadoGrandeError(total, tope),
@@ -120,7 +138,8 @@ export class ExportarComprasUseCase {
 
   /**
    * Arma las columnas del archivo: las fijas de cabecera más una de total
-   * por cada moneda presente en el conjunto exportado.
+   * por cada moneda presente en el conjunto exportado. "Tipo" queda vacía en
+   * una compra sin tipo (odd/compras-por-tipo, S4, S5).
    *
    * Las columnas de moneda son dinámicas porque `totalesPorMoneda` es un
    * mapa abierto (§7.1) y una compra puede tener ítems en varias. Volcarlo
@@ -128,11 +147,18 @@ export class ExportarComprasUseCase {
    * dejaría el importe sin sumar en la planilla, que es justamente para lo
    * que se exporta.
    */
-  private static columnas(compras: readonly CompraEntity[]): readonly ColumnaCsv<CompraEntity>[] {
+  private static columnas(
+    compras: readonly CompraEntity[],
+    tipos: ReadonlyMap<string, TipoTicketDeCompra>,
+  ): readonly ColumnaCsv<CompraEntity>[] {
     return [
       { encabezado: 'Número', valor: (compra) => compra.numero },
       { encabezado: 'Fecha de solicitud', valor: (compra) => fechaCelda(compra.fechaSolicitud) },
       { encabezado: 'Motivo', valor: (compra) => compra.motivo },
+      {
+        encabezado: 'Tipo',
+        valor: (compra) => tipoDeCompra(compra.tipoTicketId, tipos)?.nombre ?? null,
+      },
       { encabezado: 'Estado', valor: (compra) => ETIQUETA_ESTADO[compra.estado] },
       { encabezado: 'Comprado', valor: (compra) => (compra.comprado ? 'Sí' : 'No') },
       { encabezado: 'Cerrado', valor: (compra) => (compra.cerrado ? 'Sí' : 'No') },

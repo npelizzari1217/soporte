@@ -41,6 +41,7 @@ const compraDetalleFixture = {
   solicitanteId: "u1",
   cicloId: "ciclo-1",
   sectorId: null,
+  tipoTicket: null,
   estado: "PENDIENTE",
   comprado: false,
   cerrado: false,
@@ -93,11 +94,11 @@ const COMANDOS = [
     nombre: "crear compra",
     method: "post" as const,
     ruta: "/api/compras",
-    payload: { motivo: "Insumos", fechaSolicitud: "2026-01-01" },
+    payload: { motivo: "Insumos", fechaSolicitud: "2026-01-01", tipoTicketId: "tipo-1" },
     respuesta: compraDetalleFixture,
     ejecutar: () => {
       const { result } = renderHook(() => useCrearCompra(), { wrapper: wrapper(buildClient()) });
-      result.current.mutate({ motivo: "Insumos", fechaSolicitud: "2026-01-01" });
+      result.current.mutate({ motivo: "Insumos", fechaSolicitud: "2026-01-01", tipoTicketId: "tipo-1" });
       return result;
     },
   },
@@ -306,7 +307,7 @@ describe("use-compra-mutations — los 10 comandos de ComprasController", () => 
     const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
     const { result } = renderHook(() => useCrearCompra(), { wrapper: wrapper(queryClient) });
-    result.current.mutate({ motivo: "Insumos", fechaSolicitud: "2026-01-01" });
+    result.current.mutate({ motivo: "Insumos", fechaSolicitud: "2026-01-01", tipoTicketId: "tipo-1" });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     const keys = invalidateSpy.mock.calls.map((call) => (call[0] as { queryKey: unknown[] }).queryKey);
@@ -353,7 +354,7 @@ describe("use-compra-mutations — los 10 comandos de ComprasController", () => 
       );
 
       const { result } = renderHook(() => useCrearCompra(), { wrapper: wrapper(buildClient()) });
-      result.current.mutate({ motivo: "x", fechaSolicitud: "2026-01-01" });
+      result.current.mutate({ motivo: "x", fechaSolicitud: "2026-01-01", tipoTicketId: "tipo-1" });
 
       await waitFor(() => expect(result.current.isError).toBe(true));
       expect(result.current.error).toMatchObject({ statusCode: 409, message: "No hay ciclo activo." });

@@ -12,6 +12,8 @@ import {
   EditarFechaEtapaHttpDto,
   CerrarItemConFaltanteHttpDto,
   CancelarCompraHttpDto,
+  EditarCompraHttpDto,
+  ExportarComprasQueryDto,
   ListarComprasQueryDto,
   BUSQUEDA_COMPRAS_MAX,
   toCompraDetalleResponseDto,
@@ -44,12 +46,14 @@ const VALIDOS_ITEM = {
 };
 
 const INSUMO_ID = '00000000-0000-4000-8000-00000000000a';
+const TIPO_TICKET_ID = '00000000-0000-4000-8000-00000000000b';
 
 describe('CrearCompraHttpDto', () => {
   it('acepta datos válidos sin errores', async () => {
     const dto = plainToInstance(CrearCompraHttpDto, {
       motivo: 'Reposición de notebooks',
       fechaSolicitud: '2026-08-13',
+      tipoTicketId: TIPO_TICKET_ID,
     });
     const errores = await validate(dto);
     expect(errores).toHaveLength(0);
@@ -58,16 +62,31 @@ describe('CrearCompraHttpDto', () => {
   it.each([
     [
       'motivo vacío (cubre throw plano CompraEntity: motivo obligatorio)',
-      { motivo: '', fechaSolicitud: '2026-08-13' },
+      { motivo: '', fechaSolicitud: '2026-08-13', tipoTicketId: TIPO_TICKET_ID },
       'motivo',
     ],
-    ['motivo ausente', { fechaSolicitud: '2026-08-13' }, 'motivo'],
+    ['motivo ausente', { fechaSolicitud: '2026-08-13', tipoTicketId: TIPO_TICKET_ID }, 'motivo'],
     [
       'fechaSolicitud inválida (cubre throw plano CompraEntity: fechaSolicitud inválida)',
-      { motivo: 'x', fechaSolicitud: 'no-es-una-fecha' },
+      { motivo: 'x', fechaSolicitud: 'no-es-una-fecha', tipoTicketId: TIPO_TICKET_ID },
       'fechaSolicitud',
     ],
-    ['fechaSolicitud ausente', { motivo: 'x' }, 'fechaSolicitud'],
+    ['fechaSolicitud ausente', { motivo: 'x', tipoTicketId: TIPO_TICKET_ID }, 'fechaSolicitud'],
+    [
+      'tipoTicketId ausente (odd/compras-por-tipo S3: obligatorio)',
+      { motivo: 'x', fechaSolicitud: '2026-08-13' },
+      'tipoTicketId',
+    ],
+    [
+      'tipoTicketId null',
+      { motivo: 'x', fechaSolicitud: '2026-08-13', tipoTicketId: null },
+      'tipoTicketId',
+    ],
+    [
+      'tipoTicketId que no es UUID',
+      { motivo: 'x', fechaSolicitud: '2026-08-13', tipoTicketId: 'soporte' },
+      'tipoTicketId',
+    ],
   ])('rechaza: %s', async (_desc, payload, propiedadEsperada) => {
     const dto = plainToInstance(CrearCompraHttpDto, payload);
     const errores = await validate(dto);
@@ -79,10 +98,63 @@ describe('CrearCompraHttpDto', () => {
       motivo: 'Reposición de notebooks',
       fechaSolicitud: '2026-08-13',
       sectorId: '00000000-0000-4000-8000-000000000001',
+      tipoTicketId: TIPO_TICKET_ID,
     });
     const errores = await validate(dto);
     expect(errores).toHaveLength(0);
   });
+
+  it('el mensaje de tipoTicketId ausente está en español y nombra el campo', async () => {
+    const errores = await validate(
+      plainToInstance(CrearCompraHttpDto, { motivo: 'x', fechaSolicitud: '2026-08-13' }),
+    );
+    const error = errores.find((e) => e.property === 'tipoTicketId');
+    expect(Object.values(error?.constraints ?? {})).toEqual([
+      'tipoTicketId es obligatorio y debe ser un UUID.',
+    ]);
+  });
+});
+
+describe('EditarCompraHttpDto — tipoTicketId (odd/compras-por-tipo, S4)', () => {
+  it('ausente es válido: no toca el tipo', async () => {
+    const errores = await validate(plainToInstance(EditarCompraHttpDto, { motivo: 'x' }));
+    expect(errores).toHaveLength(0);
+  });
+
+  it('un UUID es válido', async () => {
+    const errores = await validate(
+      plainToInstance(EditarCompraHttpDto, { tipoTicketId: TIPO_TICKET_ID }),
+    );
+    expect(errores).toHaveLength(0);
+  });
+
+  it('null se rechaza (una compra con tipo no vuelve a quedar sin tipo), a diferencia de sectorId', async () => {
+    const errores = await validate(
+      plainToInstance(EditarCompraHttpDto, { tipoTicketId: null, sectorId: null }),
+    );
+    expect(errores.map((e) => e.property)).toEqual(['tipoTicketId']);
+    expect(Object.values(errores[0].constraints ?? {})).toEqual([
+      'tipoTicketId debe ser un UUID: una compra no puede quedar sin tipo.',
+    ]);
+  });
+
+  it('un valor que no es UUID se rechaza', async () => {
+    const errores = await validate(plainToInstance(EditarCompraHttpDto, { tipoTicketId: 'x' }));
+    expect(errores.some((e) => e.property === 'tipoTicketId')).toBe(true);
+  });
+});
+
+describe('ListarComprasQueryDto / ExportarComprasQueryDto — filtro tipoTicketId (S5)', () => {
+  it.each([ListarComprasQueryDto, ExportarComprasQueryDto])(
+    '%o acepta un UUID y rechaza otro valor',
+    async (clase) => {
+      expect(await validate(plainToInstance(clase, { tipoTicketId: TIPO_TICKET_ID }))).toHaveLength(
+        0,
+      );
+      const errores = await validate(plainToInstance(clase, { tipoTicketId: 'no-uuid' }));
+      expect(errores.some((e) => e.property === 'tipoTicketId')).toBe(true);
+    },
+  );
 });
 
 describe('AgregarItemCompraHttpDto', () => {
@@ -581,6 +653,7 @@ describe('toCompraDetalleResponseDto', () => {
         canceladaEn: null,
         canceladoPorId: null,
         motivoCancelacion: null,
+        tipoTicketId: null,
       },
       [itemActivo, itemEliminado],
       'compra-1',
@@ -591,15 +664,21 @@ describe('toCompraDetalleResponseDto', () => {
   }
 
   it('excluye los ítems soft-deleted del detalle expuesto por HTTP', () => {
-    const dto = toCompraDetalleResponseDto(makeCompraConItems());
+    const dto = toCompraDetalleResponseDto(makeCompraConItems(), null);
 
     expect(dto.items).toHaveLength(1);
     expect(dto.items[0].id).toBe('item-activo');
   });
 
   it('S67 (WU-09): expone sectorId=null cuando la compra no tiene sector asignado', () => {
-    const dto = toCompraDetalleResponseDto(makeCompraConItems());
+    const dto = toCompraDetalleResponseDto(makeCompraConItems(), null);
     expect(dto.sectorId).toBeNull();
+  });
+
+  it('odd/compras-por-tipo (L3): publica el tipo resuelto, y null para una compra sin tipo', () => {
+    const tipo = { id: 'tipo-1', nombre: 'Soporte' };
+    expect(toCompraDetalleResponseDto(makeCompraConItems(), tipo).tipoTicket).toEqual(tipo);
+    expect(toCompraDetalleResponseDto(makeCompraConItems(), null).tipoTicket).toBeNull();
   });
 
   it('publica insumoSeguimiento por ítem desde el mapa resuelto, y null si no hay dato', () => {
@@ -628,6 +707,7 @@ describe('toCompraDetalleResponseDto', () => {
         canceladaEn: null,
         canceladoPorId: null,
         motivoCancelacion: null,
+        tipoTicketId: null,
       },
       [compra],
       'compra-2',
@@ -636,8 +716,12 @@ describe('toCompraDetalleResponseDto', () => {
       null,
     );
 
-    const conMapa = toCompraDetalleResponseDto(entidad, new Map([['ins-serie', 'SERIE' as const]]));
-    const sinMapa = toCompraDetalleResponseDto(entidad);
+    const conMapa = toCompraDetalleResponseDto(
+      entidad,
+      null,
+      new Map([['ins-serie', 'SERIE' as const]]),
+    );
+    const sinMapa = toCompraDetalleResponseDto(entidad, null);
 
     expect(conMapa.items[0].insumoSeguimiento).toBe('SERIE');
     expect(sinMapa.items[0].insumoSeguimiento).toBeNull();
@@ -646,6 +730,7 @@ describe('toCompraDetalleResponseDto', () => {
   it('un ítem sin insumo declarado publica insumoSeguimiento null', () => {
     const dto = toCompraDetalleResponseDto(
       makeCompraConItems(),
+      null,
       new Map([['ins-1', 'SERIE' as const]]),
     );
     expect(dto.items[0].insumoSeguimiento).toBeNull();

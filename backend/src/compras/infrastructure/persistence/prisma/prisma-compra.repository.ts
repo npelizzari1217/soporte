@@ -24,6 +24,7 @@ import {
   ICompraRepository,
   CompraListFiltros,
   CompraPaginaConItems,
+  CompraParaVisibilidad,
 } from '../../../domain/ports/i-compra.repository';
 import { ORDEN_GRUPO_ESTADO_COMPRA } from '../../../domain/services/estado-compra';
 import { CompraEntity } from '../../../domain/entities/compra.entity';
@@ -55,10 +56,20 @@ export class PrismaCompraRepository implements ICompraRepository {
     return row ? CompraMapper.toDomain(row) : null;
   }
 
+  /** Solo el tipo de una compra activa, sin ítems — ver el JSDoc del puerto. */
+  async findParaVisibilidad(id: string): Promise<CompraParaVisibilidad | null> {
+    const row = await this.client.compra.findFirst({
+      where: { id, deletedAt: null },
+      select: { tipoTicketId: true },
+    });
+    return row ? { tipoTicketId: row.tipoTicketId ?? null } : null;
+  }
+
   /**
    * Condiciones de filtro sobre la CABECERA (`compras c`), las que no
    * dependen del grupo derivado: soft-delete, ciclo, sector, rango de
-   * `fecha_solicitud` y búsqueda de texto sobre `motivo`/`numero`.
+   * `fecha_solicitud`, búsqueda de texto sobre `motivo`/`numero`, tipo de
+   * ticket y alcance por tipo del actor (odd/compras-por-tipo).
    * Devuelve un fragmento `Prisma.Sql` con TODOS los
    * valores como parámetros ligados — nunca interpolación de strings (es
    * multi-tenant: una concatenación acá es una inyección).
@@ -92,8 +103,26 @@ export class PrismaCompraRepository implements ICompraRepository {
       const patron = `%${PrismaCompraRepository.escaparComodinesLike(filtros.busqueda)}%`;
       condiciones.push(Prisma.sql`(c.motivo ILIKE ${patron} OR c.numero ILIKE ${patron})`);
     }
+    if (filtros?.tipoTicketId !== undefined) {
+      condiciones.push(Prisma.sql`c.tipo_ticket_id = ${filtros.tipoTicketId}::uuid`);
+    }
+    if (filtros?.tiposVisibles !== undefined) {
+      condiciones.push(PrismaCompraRepository.condicionDeAlcance(filtros.tiposVisibles));
+    }
 
     return Prisma.join(condiciones, ' AND ');
+  }
+
+  /**
+   * Alcance por tipo (odd/compras-por-tipo, S4, S5): las compras sin tipo, más las de los tipos
+   * visibles. Con la lista vacía quedan solo las sin tipo; un `IN ()` vacío no es SQL válido.
+   */
+  private static condicionDeAlcance(tiposVisibles: readonly string[]): Prisma.Sql {
+    if (tiposVisibles.length === 0) {
+      return Prisma.sql`c.tipo_ticket_id IS NULL`;
+    }
+    const tipos = Prisma.join(tiposVisibles.map((tipoId) => Prisma.sql`${tipoId}::uuid`));
+    return Prisma.sql`(c.tipo_ticket_id IS NULL OR c.tipo_ticket_id IN (${tipos}))`;
   }
 
   /**

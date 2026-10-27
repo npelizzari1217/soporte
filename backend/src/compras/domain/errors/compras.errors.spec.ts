@@ -9,8 +9,10 @@
  * `sdd/redisenio-modulo-compras`. `compras-tres-etapas-y-sectores` lo llevó a
  * 23 (renombres de cantidades + fechas de etapa) y el fix post-verify a 25
  * (`EtapaNoRegistradaError`, `SectorInexistenteError`). Editar cabecera de
- * compra lo lleva a 26 (`CompraNoPendienteError`) y el enlace con insumos a 27
- * (`InsumoDeItemNoReasignableError`, insumos-entrega-3 unidad 2).
+ * compra lo lleva a 26 (`CompraNoPendienteError`), el enlace con insumos a 27
+ * (`InsumoDeItemNoReasignableError`, insumos-entrega-3 unidad 2) y las compras
+ * por tipo de ticket a 29 (`TipoTicketDeCompraInvalidoError` → 400,
+ * `TipoTicketDeCompraNoPermitidoError` → 403, odd/compras-por-tipo).
  *
  * Este archivo ya se comió una vez el defecto que testea: el JSDoc pasó a
  * decir 25 mientras `CASES` seguía en 23. Un comentario que declara MÁS
@@ -55,12 +57,14 @@ import {
   EtapaNoRegistradaError,
   SectorInexistenteError,
   InsumoDeItemNoReasignableError,
+  TipoTicketDeCompraInvalidoError,
+  TipoTicketDeCompraNoPermitidoError,
 } from './compras.errors';
 
 interface ErrorCase {
   readonly name: string;
   readonly code: string;
-  readonly httpStatus: 404 | 409 | 422;
+  readonly httpStatus: 400 | 403 | 404 | 409 | 422;
   readonly build: () => DomainError;
   readonly messageContains?: readonly string[];
 }
@@ -259,9 +263,25 @@ const CASES: readonly ErrorCase[] = [
     build: () => new InsumoDeItemNoReasignableError('item-1'),
     messageContains: ['item-1'],
   },
+
+  // 400 / 403 — tipo de ticket de la compra (odd/compras-por-tipo, L3)
+  {
+    name: 'TipoTicketDeCompraInvalidoError',
+    code: 'TIPO_TICKET_DE_COMPRA_INVALIDO',
+    httpStatus: 400,
+    build: () => new TipoTicketDeCompraInvalidoError('tipo-1'),
+    messageContains: ['tipo-1'],
+  },
+  {
+    name: 'TipoTicketDeCompraNoPermitidoError',
+    code: 'TIPO_TICKET_DE_COMPRA_NO_PERMITIDO',
+    httpStatus: 403,
+    build: () => new TipoTicketDeCompraNoPermitidoError('Soporte'),
+    messageContains: ['Soporte'],
+  },
 ];
 
-describe('compras.errors — catálogo de errores de dominio (27, WU-15 ADR-T2 + fix post-verify + editar cabecera + enlace con insumos)', () => {
+describe('compras.errors — catálogo de errores de dominio (29, WU-15 ADR-T2 + fix post-verify + editar cabecera + enlace con insumos + compras por tipo)', () => {
   it.each(CASES.map((testCase) => [testCase.name, testCase] as const))(
     '%s expone code estable, extiende DomainError, y el mensaje conserva el identificador',
     (_name, testCase) => {
@@ -275,19 +295,24 @@ describe('compras.errors — catálogo de errores de dominio (27, WU-15 ADR-T2 +
     },
   );
 
-  it('los 27 codes del catálogo son únicos entre sí (sin colisiones)', () => {
+  it('los 29 codes del catálogo son únicos entre sí (sin colisiones)', () => {
     const codes = CASES.map((testCase) => testCase.code);
     expect(new Set(codes).size).toBe(codes.length);
-    expect(codes.length).toBe(27);
+    expect(codes.length).toBe(29);
   });
 
-  it('el catálogo mapea cada code a exactamente el HTTP status esperado (2×409, 2×404, 23×422)', () => {
-    const porStatus = { 404: 0, 409: 0, 422: 0 } as Record<404 | 409 | 422, number>;
+  it('el catálogo mapea cada code a exactamente el HTTP status esperado (1×400, 1×403, 2×409, 2×404, 23×422)', () => {
+    const porStatus = { 400: 0, 403: 0, 404: 0, 409: 0, 422: 0 } as Record<
+      400 | 403 | 404 | 409 | 422,
+      number
+    >;
     for (const testCase of CASES) {
       porStatus[testCase.httpStatus] += 1;
     }
     expect(porStatus[409]).toBe(2);
     expect(porStatus[404]).toBe(2);
     expect(porStatus[422]).toBe(23);
+    expect(porStatus[400]).toBe(1);
+    expect(porStatus[403]).toBe(1);
   });
 });

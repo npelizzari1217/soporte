@@ -13,6 +13,10 @@ import {
   ICicloClienteRepository,
 } from '../tickets/domain/ports/i-ciclo-cliente.repository';
 import { SECTOR_REPOSITORY, ISectorRepository } from '../sectores/domain/ports/i-sector.repository';
+import {
+  ITipoTicketRepository,
+  TIPO_TICKET_REPOSITORY,
+} from '../tickets/domain/ports/i-tipo-ticket.repository';
 
 import { COMPRA_REPOSITORY, ICompraRepository } from './domain/ports/i-compra.repository';
 import { PrismaCompraRepository } from './infrastructure/persistence/prisma/prisma-compra.repository';
@@ -25,6 +29,7 @@ import { PrismaOperacionCompraRepository } from './infrastructure/persistence/pr
 import { NumeradorCompra } from './domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
 import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
+import { ResolverTiposDeCompra } from './application/services/tipos-de-compra';
 
 import { CrearCompraUseCase } from './application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from './application/use-cases/agregar-item-compra.use-case';
@@ -95,6 +100,12 @@ import { ComprasController } from './interface/controllers/compras.controller';
  *   uso, que lleva sus guards puestos. La flecha va en este sentido y nunca al
  *   revés — `insumos` no importa nada de `compras`, porque esa arista cerraría
  *   un ciclo entre los dos módulos.
+ * - `TIPO_TICKET_REPOSITORY` y `CargadorAlcanceTicket` (de `TicketsModule`,
+ *   odd/compras-por-tipo): el alta y la edición validan el tipo de ticket
+ *   elegido y el ALTAS del actor sobre él, el listado y la exportación filtran
+ *   por los tipos con LECTURA, y `VisibilidadCompraGuard` responde 404 sobre
+ *   una compra que el actor no ve. `ResolverTiposDeCompra` publica el nombre
+ *   del tipo en las respuestas.
  *
  * FITNESS RULE: PrismaService y `@prisma/client` solo pueden importarse
  * desde `infrastructure/` (ver `backend/eslint.config.js`) — este módulo
@@ -121,6 +132,11 @@ import { ComprasController } from './interface/controllers/compras.controller';
       inject: [CICLO_CLIENTE_REPOSITORY],
     },
     {
+      provide: ResolverTiposDeCompra,
+      useFactory: (tipoRepo: ITipoTicketRepository) => new ResolverTiposDeCompra(tipoRepo),
+      inject: [TIPO_TICKET_REPOSITORY],
+    },
+    {
       provide: RegistrarOperacionCompra,
       useFactory: (operacionRepo: IOperacionCompraRepository) =>
         new RegistrarOperacionCompra(operacionRepo),
@@ -137,6 +153,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
         sectorRepo: ISectorRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
+        tipoRepo: ITipoTicketRepository,
       ) =>
         new CrearCompraUseCase(
           compraRepo,
@@ -145,9 +162,11 @@ import { ComprasController } from './interface/controllers/compras.controller';
           sectorRepo,
           registrarOperacion,
           txRunner,
+          tipoRepo,
         ),
       // Fix post-verify W6: agrega SECTOR_REPOSITORY (importado de
       // SectoresModule, WU-09) para validar `sectorId` ANTES del INSERT.
+      // TIPO_TICKET_REPOSITORY (odd/compras-por-tipo): el tipo elegido.
       inject: [
         COMPRA_REPOSITORY,
         NumeradorCompra,
@@ -155,6 +174,7 @@ import { ComprasController } from './interface/controllers/compras.controller';
         SECTOR_REPOSITORY,
         RegistrarOperacionCompra,
         TENANT_TX_RUNNER,
+        TIPO_TICKET_REPOSITORY,
       ],
     },
     {
@@ -182,8 +202,15 @@ import { ComprasController } from './interface/controllers/compras.controller';
         sectorRepo: ISectorRepository,
         registrarOperacion: RegistrarOperacionCompra,
         txRunner: ITenantTransactionRunner,
-      ) => new EditarCompraUseCase(compraRepo, sectorRepo, registrarOperacion, txRunner),
-      inject: [COMPRA_REPOSITORY, SECTOR_REPOSITORY, RegistrarOperacionCompra, TENANT_TX_RUNNER],
+        tipoRepo: ITipoTicketRepository,
+      ) => new EditarCompraUseCase(compraRepo, sectorRepo, registrarOperacion, txRunner, tipoRepo),
+      inject: [
+        COMPRA_REPOSITORY,
+        SECTOR_REPOSITORY,
+        RegistrarOperacionCompra,
+        TENANT_TX_RUNNER,
+        TIPO_TICKET_REPOSITORY,
+      ],
     },
     {
       // Mismo criterio que `AgregarItemCompraUseCase`: sin esto, el PATCH del
@@ -300,8 +327,9 @@ import { ComprasController } from './interface/controllers/compras.controller';
     // ─── Consultas — SIN TENANT_TX_RUNNER, SIN bitácora (§4.9/§4.10, deliberado) ───
     {
       provide: ListarComprasUseCase,
-      useFactory: (compraRepo: ICompraRepository) => new ListarComprasUseCase(compraRepo),
-      inject: [COMPRA_REPOSITORY],
+      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
+        new ListarComprasUseCase(compraRepo, tipos),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
     },
     {
       provide: ObtenerCompraUseCase,
@@ -317,8 +345,9 @@ import { ComprasController } from './interface/controllers/compras.controller';
     },
     {
       provide: ExportarComprasUseCase,
-      useFactory: (compraRepo: ICompraRepository) => new ExportarComprasUseCase(compraRepo),
-      inject: [COMPRA_REPOSITORY],
+      useFactory: (compraRepo: ICompraRepository, tipos: ResolverTiposDeCompra) =>
+        new ExportarComprasUseCase(compraRepo, tipos),
+      inject: [COMPRA_REPOSITORY, ResolverTiposDeCompra],
     },
   ],
   exports: [COMPRA_REPOSITORY, OPERACION_COMPRA_REPOSITORY],

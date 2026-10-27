@@ -8,6 +8,9 @@ import {
   SectorInexistenteError,
 } from '../../domain/errors/compras.errors';
 import { RegistrarOperacionCompra } from '../services/registrar-operacion-compra';
+import { exigirAltaSobreTipoDeCompra } from '../services/visibilidad-compra';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
 
 /**
  * DTO de entrada de `EditarCompraUseCase` (PATCH semántico — `undefined` no
@@ -25,11 +28,18 @@ export interface EditarCompraDto {
   descripcion?: string | null;
   fechaSolicitud?: Date;
   sectorId?: string | null;
+  /**
+   * Tipo de ticket nuevo (odd/compras-por-tipo, S3, S4). `undefined` no lo toca; no admite `null`:
+   * una compra con tipo no vuelve a quedar sin tipo.
+   */
+  tipoTicketId?: string;
+  /** Permisos por tipo del actor: cambiar el tipo exige ALTAS sobre el tipo NUEVO. */
+  alcance: AlcanceActorTicket;
 }
 
 /**
  * EditarCompraUseCase — edita los campos de solicitud de la CABECERA de una
- * compra (`motivo`/`descripcion`/`fechaSolicitud`/`sectorId`).
+ * compra (`motivo`/`descripcion`/`fechaSolicitud`/`sectorId`/`tipoTicketId`).
  *
  * La regla de cuándo se puede editar (estado derivado `PENDIENTE`: ningún
  * ítem decidido todavía) YA está resuelta en `CompraEntity.actualizar()`
@@ -47,8 +57,12 @@ export interface EditarCompraDto {
  *    `sectorId` inventado lo escribiría intacto en la DB y reabriría el
  *    agujero por la puerta de al lado. Con `sectorId: null` (limpiar) no se
  *    consulta el repositorio — no hay nada que validar.
+ * 2b. Si viene un `tipoTicketId` DISTINTO del actual (odd/compras-por-tipo, S3, S4), exige que
+ *    sea elegible y que el actor tenga ALTAS sobre él (`exigirAltaSobreTipoDeCompra`): 400 si el
+ *    tipo no existe o está inactivo, 403 sin ALTAS. Reenviar el tipo que la compra ya tiene no es
+ *    un cambio y no se valida: un tipo desactivado después no traba la edición del resto.
  * 3. Invoca `compra.actualizar(datos)` — puede fallar con
- *    `CompraNoPendienteError`. Los tres guards corren ANTES de abrir la
+ *    `CompraNoPendienteError`. Todos los guards corren ANTES de abrir la
  *    transacción: si alguno falla, `txRunner.run` NUNCA se invoca, así que
  *    `RegistrarOperacionCompra.registrar()` queda en 0 llamadas de forma
  *    estructural (corolario de S35/S36: una mutación rechazada no es un
@@ -67,6 +81,7 @@ export class EditarCompraUseCase {
     private readonly sectorRepo: Pick<ISectorRepository, 'findById'>,
     private readonly registrarOperacion: RegistrarOperacionCompra,
     private readonly txRunner: ITenantTransactionRunner,
+    private readonly tipoRepo: Pick<ITipoTicketRepository, 'findById'>,
   ) {}
 
   async execute(dto: EditarCompraDto): Promise<Result<CompraEntity, DomainError>> {
@@ -82,11 +97,23 @@ export class EditarCompraUseCase {
       }
     }
 
+    if (dto.tipoTicketId !== undefined && dto.tipoTicketId !== compra.tipoTicketId) {
+      const tipoResult = await exigirAltaSobreTipoDeCompra(
+        this.tipoRepo,
+        dto.tipoTicketId,
+        dto.alcance,
+      );
+      if (tipoResult.isFail()) {
+        return Result.fail(tipoResult.getError());
+      }
+    }
+
     const resultadoEdicion = compra.actualizar({
       motivo: dto.motivo,
       descripcion: dto.descripcion,
       fechaSolicitud: dto.fechaSolicitud,
       sectorId: dto.sectorId,
+      tipoTicketId: dto.tipoTicketId,
     });
     if (resultadoEdicion.isFail()) {
       return Result.fail(resultadoEdicion.getError());

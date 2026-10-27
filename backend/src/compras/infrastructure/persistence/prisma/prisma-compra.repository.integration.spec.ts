@@ -187,6 +187,7 @@ describe('PrismaCompraRepository — Integration (PR-11, secuencial)', () => {
             canceladaEn: null,
             canceladoPorId: null,
             motivoCancelacion: null,
+            tipoTicketId: null,
           },
           [],
           compra.id,

@@ -95,8 +95,8 @@ describe('PrismaTicketCompraRepository — Integration (WU2)', () => {
     return ticket.id;
   }
 
-  /** Crea una compra mínima (sin ítems, no bloquea la vinculación en sí). */
-  async function crearCompraId(): Promise<string> {
+  /** Crea una compra mínima (sin ítems, no bloquea la vinculación en sí), sin tipo o del dado. */
+  async function crearCompraId(tipoTicketId: string | null = null): Promise<string> {
     const compra = await tenantClient.compra.create({
       data: {
         numero: nextNumeroCompra(),
@@ -104,6 +104,7 @@ describe('PrismaTicketCompraRepository — Integration (WU2)', () => {
         motivo: 'Compra de test WU2',
         solicitanteId: DUMMY_USUARIO_ID,
         cicloId,
+        tipoTicketId,
       },
     });
     return compra.id;
@@ -306,6 +307,22 @@ describe('PrismaTicketCompraRepository — Integration (WU2)', () => {
         comprado: true, // cantidadRecibida(10) >= cantidad(10)
         entregado: false, // cantidadEntregada(4) < cantidad(10)
       });
+    });
+  });
+
+  it('odd/compras-por-tipo: la vista lleva el tipo de la compra, y null en una sin tipo', async () => {
+    const ticketId = await crearTicketId();
+    const conTipo = await crearCompraId(tipoSoporteId);
+    const sinTipo = await crearCompraId();
+
+    await withTenant(async () => {
+      await repo.vincular(ticketId, conTipo);
+      await repo.vincular(ticketId, sinTipo);
+      const vinculadas = (await repo.findComprasVinculadasByTicketIds([ticketId])).get(ticketId);
+      const tipoDe = new Map(vinculadas?.map((c) => [c.compraId, c.tipoTicketId]));
+
+      expect(tipoDe.get(conTipo)).toBe(tipoSoporteId);
+      expect(tipoDe.get(sinTipo)).toBeNull();
     });
   });
 });

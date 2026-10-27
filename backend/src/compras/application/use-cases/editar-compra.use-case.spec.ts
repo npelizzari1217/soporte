@@ -17,6 +17,10 @@
  * - `sectorId: null` (limpiar el sector) NO consulta el repositorio de
  *   sectores — no hay nada que validar, y una consulta de más sería una
  *   llamada inútil por cada request que limpia el campo.
+ * - `tipoTicketId` (odd/compras-por-tipo, S3, S4): cambiarlo exige un tipo
+ *   elegible (400) y ALTAS sobre el tipo NUEVO (403), sin escribir nada si
+ *   falla; asignarlo a una compra sin tipo sigue la misma regla; reenviar el
+ *   tipo actual no es un cambio y no se valida.
  *
  * Ref: `CompraEntity.actualizar()` resuelve el guard de estado (ADR-C3) —
  * este caso de uso NO re-implementa esa regla, sólo la invoca.
@@ -34,7 +38,25 @@ import {
   CompraNoEncontradaError,
   CompraNoPendienteError,
   SectorInexistenteError,
+  TipoTicketDeCompraInvalidoError,
+  TipoTicketDeCompraNoPermitidoError,
 } from '../../domain/errors/compras.errors';
+import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
+
+const TIPO_SOPORTE = 'tipo-soporte';
+const TIPO_EDILICIA = 'tipo-edilicia';
+
+function alcanceCon(porTipo: Record<string, AccionTipoTicket[]>): AlcanceActorTicket {
+  return {
+    actorId: 'usuario-editor-1',
+    permisosPorTipo: new Map(
+      Object.entries(porTipo).map(([tipoId, acciones]) => [tipoId, new Set(acciones)]),
+    ),
+  };
+}
 
 function crearPropsCompraValidas(overrides: Partial<CompraCreateProps> = {}): CompraCreateProps {
   return {
@@ -65,6 +87,7 @@ function baseDto(overrides: Partial<EditarCompraDto> = {}): EditarCompraDto {
   return {
     compraId: 'compra-1',
     usuarioId: 'usuario-editor-1',
+    alcance: alcanceCon({ [TIPO_SOPORTE]: ['LECTURA', 'ALTAS'] }),
     ...overrides,
   };
 }
@@ -92,9 +115,37 @@ describe('EditarCompraUseCase', () => {
     };
     vi.spyOn(txRunner, 'run');
 
-    const useCase = new EditarCompraUseCase(compraRepo, sectorRepo, registrarOperacion, txRunner);
+    const catalogoTipos = new Map([
+      [
+        TIPO_SOPORTE,
+        TipoTicketEntity.create(
+          { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+          TIPO_SOPORTE,
+        ),
+      ],
+      [
+        TIPO_EDILICIA,
+        TipoTicketEntity.create(
+          { codigo: 'EDILICIA', nombre: 'Edilicia', modulo: 'EDILICIA', activo: true },
+          TIPO_EDILICIA,
+        ),
+      ],
+    ]);
+    const tipoRepo = {
+      findById: vi
+        .fn<ITipoTicketRepository['findById']>()
+        .mockImplementation(async (id) => catalogoTipos.get(id) ?? null),
+    };
 
-    return { useCase, compraRepo, sectorRepo, registrarOperacion, txRunner };
+    const useCase = new EditarCompraUseCase(
+      compraRepo,
+      sectorRepo,
+      registrarOperacion,
+      txRunner,
+      tipoRepo,
+    );
+
+    return { useCase, compraRepo, sectorRepo, registrarOperacion, txRunner, tipoRepo };
   }
 
   it('edita la cabecera de una compra PENDIENTE — OK, persiste y registra 1 bitácora COMPRA_EDITADA', async () => {
@@ -181,5 +232,104 @@ describe('EditarCompraUseCase', () => {
     expect(result.isOk()).toBe(true);
     expect(result.getValue().sectorId).toBeNull();
     expect(c.sectorRepo.findById).not.toHaveBeenCalled();
+  });
+
+  describe('odd/compras-por-tipo — cambiar el tipo exige ALTAS sobre el tipo NUEVO (S3, S4)', () => {
+    function compraDeTipo(tipoTicketId: string | null): CompraEntity {
+      return CompraEntity.create(crearPropsCompraValidas({ tipoTicketId }), 'compra-1');
+    }
+
+    function expectNadaEscrito(c: ReturnType<typeof makeCollaborators>): void {
+      expect(c.txRunner.run).not.toHaveBeenCalled();
+      expect(c.compraRepo.guardar).not.toHaveBeenCalled();
+      expect(c.registrarOperacion.registrar).not.toHaveBeenCalled();
+    }
+
+    it('con ALTAS sobre el tipo nuevo, cambia el tipo y lo persiste', async () => {
+      const c = makeCollaborators();
+      const compra = compraDeTipo(TIPO_SOPORTE);
+      c.compraRepo.findByIdConItems.mockResolvedValue(compra);
+
+      const result = await c.useCase.execute(
+        baseDto({
+          tipoTicketId: TIPO_EDILICIA,
+          alcance: alcanceCon({ [TIPO_EDILICIA]: ['LECTURA', 'ALTAS'] }),
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().tipoTicketId).toBe(TIPO_EDILICIA);
+      expect(c.compraRepo.guardar).toHaveBeenCalledWith(compra);
+    });
+
+    it('S4: a una compra SIN tipo se le asigna un tipo con ALTAS sobre él', async () => {
+      const c = makeCollaborators();
+      c.compraRepo.findByIdConItems.mockResolvedValue(compraDeTipo(null));
+
+      const result = await c.useCase.execute(baseDto({ tipoTicketId: TIPO_SOPORTE }));
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().tipoTicketId).toBe(TIPO_SOPORTE);
+    });
+
+    it('sin ALTAS sobre el tipo nuevo (aunque la tenga sobre el actual) -> TipoTicketDeCompraNoPermitidoError, sin escribir y sin tocar el tipo', async () => {
+      const c = makeCollaborators();
+      const compra = compraDeTipo(TIPO_SOPORTE);
+      c.compraRepo.findByIdConItems.mockResolvedValue(compra);
+
+      const result = await c.useCase.execute(
+        baseDto({
+          tipoTicketId: TIPO_EDILICIA,
+          alcance: alcanceCon({
+            [TIPO_SOPORTE]: ['LECTURA', 'ALTAS'],
+            [TIPO_EDILICIA]: ['LECTURA'],
+          }),
+        }),
+      );
+
+      expect(result.getError()).toBeInstanceOf(TipoTicketDeCompraNoPermitidoError);
+      expect(result.getError().message).toContain('"Edilicia"');
+      expect(compra.tipoTicketId).toBe(TIPO_SOPORTE);
+      expectNadaEscrito(c);
+    });
+
+    it('tipo nuevo inexistente -> TipoTicketDeCompraInvalidoError, sin escribir', async () => {
+      const c = makeCollaborators();
+      const compra = compraDeTipo(TIPO_SOPORTE);
+      c.compraRepo.findByIdConItems.mockResolvedValue(compra);
+
+      const result = await c.useCase.execute(baseDto({ tipoTicketId: 'tipo-fantasma' }));
+
+      expect(result.getError()).toBeInstanceOf(TipoTicketDeCompraInvalidoError);
+      expect(compra.tipoTicketId).toBe(TIPO_SOPORTE);
+      expectNadaEscrito(c);
+    });
+
+    it('reenviar el tipo actual no es un cambio: no consulta el catálogo ni exige ALTAS', async () => {
+      const c = makeCollaborators();
+      c.compraRepo.findByIdConItems.mockResolvedValue(compraDeTipo(TIPO_SOPORTE));
+
+      const result = await c.useCase.execute(
+        baseDto({
+          tipoTicketId: TIPO_SOPORTE,
+          motivo: 'Solo cambia el motivo',
+          alcance: alcanceCon({ [TIPO_SOPORTE]: ['LECTURA'] }),
+        }),
+      );
+
+      expect(result.isOk()).toBe(true);
+      expect(result.getValue().motivo).toBe('Solo cambia el motivo');
+      expect(c.tipoRepo.findById).not.toHaveBeenCalled();
+    });
+
+    it('sin tipoTicketId en el dto, el tipo queda como estaba', async () => {
+      const c = makeCollaborators();
+      c.compraRepo.findByIdConItems.mockResolvedValue(compraDeTipo(TIPO_SOPORTE));
+
+      const result = await c.useCase.execute(baseDto({ motivo: 'Otro motivo' }));
+
+      expect(result.getValue().tipoTicketId).toBe(TIPO_SOPORTE);
+      expect(c.tipoRepo.findById).not.toHaveBeenCalled();
+    });
   });
 });

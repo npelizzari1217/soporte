@@ -10,6 +10,7 @@ import {
 } from '../../../tickets/application/services/visibilidad-ticket';
 import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
+import { esCompraVisiblePara } from '../../../compras/application/services/visibilidad-compra';
 
 /** Una compra vinculada a un ticket, con su grupo de estado y si frena hoy al ticket. */
 export interface CompraDeTicket {
@@ -27,6 +28,10 @@ export interface CompraDeTicket {
  * Exige ver el ticket (`LECTURA` sobre su tipo y regla de fila): 404 si no. `COMPRAS:LECTURA` lo
  * exige la ruta (`TicketComprasController`, odd/ticket-unificado L19), que es donde vive el candado
  * de la matriz. El bloqueo sale de `comprasQueBloquean`, el criterio único del sistema.
+ *
+ * Solo lista las compras que el actor ve por su tipo (odd/compras-por-tipo, S2, S4): LECTURA sobre
+ * el tipo de la compra, o compra sin tipo. El bloqueo del ticket sigue contando todas: quien no ve
+ * una compra que lo frena sabe que está bloqueado, como quien no tiene `COMPRAS:LECTURA` (L19).
  */
 export class ListarComprasDeTicketUseCase {
   constructor(
@@ -55,12 +60,14 @@ export class ListarComprasDeTicketUseCase {
       ) ?? [];
     const bloqueantes = new Set(comprasQueBloquean(vinculadas).map((compra) => compra.compraId));
     return Result.ok(
-      vinculadas.map((compra) => ({
-        compraId: compra.compraId,
-        numero: compra.numero,
-        grupo: derivarGrupoEstadoCompra(compra),
-        bloquea: bloqueantes.has(compra.compraId),
-      })),
+      vinculadas
+        .filter((compra) => esCompraVisiblePara(compra, alcance))
+        .map((compra) => ({
+          compraId: compra.compraId,
+          numero: compra.numero,
+          grupo: derivarGrupoEstadoCompra(compra),
+          bloquea: bloqueantes.has(compra.compraId),
+        })),
     );
   }
 }

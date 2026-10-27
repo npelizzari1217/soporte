@@ -585,3 +585,34 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
     );
   }
 }
+
+/**
+ * TipoTicketDeCompraInvalidoError — el tipo de ticket elegido para una compra no existe en el
+ * catálogo del tenant, está desactivado o dado de baja (odd/compras-por-tipo, S3). Un tipo
+ * inactivo no admite compras nuevas ni reasignaciones, con el mismo criterio que el alta de un
+ * ticket.
+ * → HTTP 400 en la capa de presentación: el valor del body no es un tipo elegible.
+ */
+export class TipoTicketDeCompraInvalidoError extends DomainError {
+  readonly code = 'TIPO_TICKET_DE_COMPRA_INVALIDO';
+
+  constructor(tipoTicketId: string) {
+    super(`El tipo de ticket "${tipoTicketId}" no existe o está inactivo.`);
+  }
+}
+
+/**
+ * TipoTicketDeCompraNoPermitidoError — el actor no tiene ALTAS sobre el tipo de ticket con el que
+ * quiere crear una compra o al que quiere pasarla (odd/compras-por-tipo, S2, S3). Es un `DomainError`
+ * y no un guard porque depende del tipo que viaja en el body, no de la ruta.
+ * → HTTP 403 en la capa de presentación.
+ */
+export class TipoTicketDeCompraNoPermitidoError extends DomainError {
+  readonly code = 'TIPO_TICKET_DE_COMPRA_NO_PERMITIDO';
+
+  constructor(nombreTipo: string) {
+    super(
+      `No tiene permiso de alta sobre el tipo "${nombreTipo}": no puede crear compras de ese tipo ni asignárselo.`,
+    );
+  }
+}

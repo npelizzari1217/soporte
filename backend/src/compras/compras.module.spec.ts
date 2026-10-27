@@ -50,6 +50,8 @@ import { NumeradorCompra } from './domain/services/numerador-compra';
 import { RegistrarOperacionCompra } from './application/services/registrar-operacion-compra';
 import { ResolverCicloActivoCompra } from './application/services/resolver-ciclo-activo-compra.service';
 import { CicloClienteEntity } from '../tickets/domain/entities/ciclo-cliente.entity';
+import { TipoTicketEntity } from '../tickets/domain/entities/tipo-ticket.entity';
+import { ITipoTicketRepository } from '../tickets/domain/ports/i-tipo-ticket.repository';
 import { ICicloClienteRepository } from '../tickets/domain/ports/i-ciclo-cliente.repository';
 import { Result } from '../shared/domain/result';
 import { SinCicloActivoError as ComprasSinCicloActivoError } from './domain/errors/compras.errors';
@@ -124,6 +126,7 @@ function compraProps(overrides: Partial<CompraProps> = {}): CompraProps {
     canceladaEn: null,
     canceladoPorId: null,
     motivoCancelacion: null,
+    tipoTicketId: null,
     ...overrides,
   };
 }
@@ -323,6 +326,17 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
       const sectorRepo: Pick<ISectorRepository, 'findById'> = {
         findById: vi.fn().mockResolvedValue(null),
       };
+      // odd/compras-por-tipo: el alta valida el tipo elegido contra el catálogo.
+      const tipoRepo: Pick<ITipoTicketRepository, 'findById'> = {
+        findById: vi
+          .fn()
+          .mockResolvedValue(
+            TipoTicketEntity.create(
+              { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+              'tipo-1',
+            ),
+          ),
+      };
 
       const provider = getFactoryProvider(CrearCompraUseCase);
       const instance = provider.useFactory(
@@ -332,6 +346,7 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         sectorRepo,
         registrarOperacion,
         fakeTxRunner(),
+        tipoRepo,
       ) as CrearCompraUseCase;
 
       const result = await instance.execute({
@@ -340,6 +355,8 @@ describe('ComprasModule wiring (PR-22, sdd/redisenio-modulo-compras)', () => {
         fechaSolicitud: FECHA_BASE,
         solicitanteId: 'user-1',
         anio: 2026,
+        tipoTicketId: 'tipo-1',
+        alcance: { actorId: 'user-1', permisosPorTipo: null },
       });
 
       expect(result.isFail()).toBe(false);

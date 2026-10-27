@@ -134,6 +134,7 @@ model TipoTicket {
   reglaAsignacion    ReglaAsignacion?
   permisosTipoTicket PermisoTipoTicket[]
   planesPreventivo   PlanPreventivo[]
+  compras            Compra[]
 
   @@index([modulo, activo])
   @@map("tipos_ticket")
@@ -1209,13 +1210,18 @@ model Compra {
   motivoCancelacion String?   @map("motivo_cancelacion") @db.Text
   /// Sector de destino (WU-03). Nullable, sin backfill (S67) — uno por compra, en cabecera.
   sectorId          String?   @map("sector_id") @db.Uuid
+  /// Tipo de ticket de la compra (odd/compras-por-tipo, S1). Decide quién la ve (LECTURA sobre el
+  /// tipo) y quién la crea (ALTAS). Nullable, sin backfill (S4): `null` = compra anterior, visible
+  /// para cualquiera con LECTURA de Compras.
+  tipoTicketId      String?   @map("tipo_ticket_id") @db.Uuid
 
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
 
-  ciclo  CicloCliente @relation(fields: [cicloId], references: [id])
-  sector Sector?      @relation(fields: [sectorId], references: [id])
+  ciclo      CicloCliente @relation(fields: [cicloId], references: [id])
+  sector     Sector?      @relation(fields: [sectorId], references: [id])
+  tipoTicket TipoTicket?  @relation(fields: [tipoTicketId], references: [id])
 
   items                  ItemCompra[]
   operaciones            OperacionCompra[]
@@ -1226,6 +1232,7 @@ model Compra {
   @@index([createdAt])
   @@index([canceladaEn]) // partial WHERE cancelada_en IS NOT NULL — ver migration SQL
   @@index([sectorId]) // partial WHERE sector_id IS NOT NULL — ver migration SQL
+  @@index([tipoTicketId]) // partial WHERE tipo_ticket_id IS NOT NULL — ver migration SQL
   @@map("compras")
 }
 

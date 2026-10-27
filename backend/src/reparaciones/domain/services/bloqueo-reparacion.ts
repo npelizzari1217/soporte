@@ -30,6 +30,11 @@ import {
 export interface CompraVinculada extends CompraParaDerivacion {
   readonly compraId: string;
   readonly numero: string;
+  /**
+   * Tipo de ticket de la compra (odd/compras-por-tipo), o `null` si no tiene. No interviene en el
+   * bloqueo: decide solo quién ve la compra en la lista del ticket.
+   */
+  readonly tipoTicketId: string | null;
 }
 
 /**

@@ -30,6 +30,7 @@ function makeFakeCompraRow(overrides: Partial<PrismaCompra> = {}): PrismaCompra 
     canceladoPorId: null,
     motivoCancelacion: null,
     sectorId: null,
+    tipoTicketId: null,
     createdAt: new Date('2026-01-10T10:00:00.000Z'),
     updatedAt: new Date('2026-01-10T10:00:00.000Z'),
     deletedAt: null,
@@ -137,6 +138,16 @@ describe('CompraMapper', () => {
       const entity = CompraMapper.toDomain(row);
       expect(entity.sectorId).toBe('sector-1');
     });
+
+    it('odd/compras-por-tipo: mapea tipoTicketId cuando la fila lo trae', () => {
+      const row = { ...makeFakeCompraRow({ tipoTicketId: 'tipo-1' }), items: [] };
+      expect(CompraMapper.toDomain(row).tipoTicketId).toBe('tipo-1');
+    });
+
+    it('odd/compras-por-tipo (S4): una compra anterior al tipo mapea a tipoTicketId=null', () => {
+      const row = { ...makeFakeCompraRow({ tipoTicketId: null }), items: [] };
+      expect(CompraMapper.toDomain(row).tipoTicketId).toBeNull();
+    });
   });
 
   describe('toPersistence()', () => {
@@ -152,6 +163,7 @@ describe('CompraMapper', () => {
           canceladaEn: null,
           canceladoPorId: null,
           motivoCancelacion: null,
+          tipoTicketId: null,
         },
         [],
         'compra-2',
@@ -184,6 +196,23 @@ describe('CompraMapper', () => {
       const data = CompraMapper.toPersistence(entity);
 
       expect(data.sectorId).toBe('sector-1');
+    });
+
+    it('odd/compras-por-tipo: incluye tipoTicketId, y null para una compra sin tipo', () => {
+      const props = {
+        numero: 'COM-2026-00004',
+        fechaSolicitud: new Date('2026-01-15'),
+        motivo: 'Compra con tipo',
+        descripcion: null,
+        solicitanteId: 'usuario-1',
+        cicloId: 'ciclo-1',
+      };
+
+      expect(
+        CompraMapper.toPersistence(CompraEntity.create({ ...props, tipoTicketId: 'tipo-1' }))
+          .tipoTicketId,
+      ).toBe('tipo-1');
+      expect(CompraMapper.toPersistence(CompraEntity.create(props)).tipoTicketId).toBeNull();
     });
   });
 });

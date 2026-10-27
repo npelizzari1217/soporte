@@ -2,6 +2,13 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { CompraEntity } from '../../domain/entities/compra.entity';
 import { EstadoCompra, FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
 import { CompraListFiltros, ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { tiposVisiblesDeCompras } from '../services/visibilidad-compra';
+import {
+  ResolverTiposDeCompra,
+  TipoTicketDeCompra,
+  tipoDeCompra,
+} from '../services/tipos-de-compra';
 
 const PAGINA_DEFAULT = 1;
 const POR_PAGINA_DEFAULT = 20;
@@ -39,6 +46,10 @@ export interface ListarComprasDto {
   fechaHasta?: Date;
   /** Texto contenido en `motivo` o `numero`, sin distinguir mayúsculas. */
   busqueda?: string;
+  /** Filtro por tipo de ticket (odd/compras-por-tipo, S5). Nunca amplía lo visible. */
+  tipoTicketId?: string;
+  /** Permisos por tipo del actor: el listado solo trae las compras que ve (S2, S4). */
+  alcance: AlcanceActorTicket;
 }
 
 /**
@@ -57,6 +68,8 @@ export interface CompraListItemDto {
   comprado: boolean;
   cerrado: boolean;
   totalesPorMoneda: Record<string, number>;
+  /** Tipo de ticket de la compra, o `null` si es anterior al tipo (odd/compras-por-tipo, S4). */
+  tipoTicket: TipoTicketDeCompra | null;
 }
 
 /**
@@ -95,12 +108,20 @@ export interface ListarComprasResult {
  * `TenantContext` en la implementación concreta (PR-11/PR-12) — este caso
  * de uso NO recibe ni aplica un parámetro `clienteId`.
  *
+ * Alcance por tipo (odd/compras-por-tipo, S5): el filtro `tiposVisibles`
+ * viaja a la MISMA consulta que pagina y cuenta, así que `total` nunca cuenta
+ * una compra que el actor no ve. El nombre del tipo de cada fila lo resuelve
+ * `ResolverTiposDeCompra`, fuera del presupuesto de sentencias de la página.
+ *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32, S33, S34). Ref
  * design: ADR-C1, ADR-C2, ADR-C4. Ref tasks: PR-19, H3, R17; WU-25
  * (sdd/compras-orden-filtro-estado).
  */
 export class ListarComprasUseCase {
-  constructor(private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>) {}
+  constructor(
+    private readonly compraRepo: Pick<ICompraRepository, 'findPaginaConItems'>,
+    private readonly tipos: Pick<ResolverTiposDeCompra, 'resolver'>,
+  ) {}
 
   /**
    * Resuelve el grupo de estado a filtrar a partir de los dos parámetros
@@ -127,9 +148,10 @@ export class ListarComprasUseCase {
     return GRUPO_ESTADO_DEFAULT;
   }
 
-  async execute(dto: ListarComprasDto = {}): Promise<Result<ListarComprasResult, DomainError>> {
+  async execute(dto: ListarComprasDto): Promise<Result<ListarComprasResult, DomainError>> {
     const pagina = dto.pagina ?? PAGINA_DEFAULT;
     const porPagina = dto.porPagina ?? POR_PAGINA_DEFAULT;
+    const tiposVisibles = tiposVisiblesDeCompras(dto.alcance);
 
     const filtros: CompraListFiltros = {
       ...(dto.cicloId !== undefined && { cicloId: dto.cicloId }),
@@ -138,13 +160,16 @@ export class ListarComprasUseCase {
       ...(dto.fechaDesde !== undefined && { fechaDesde: dto.fechaDesde }),
       ...(dto.fechaHasta !== undefined && { fechaHasta: dto.fechaHasta }),
       ...(dto.busqueda !== undefined && { busqueda: dto.busqueda }),
+      ...(dto.tipoTicketId !== undefined && { tipoTicketId: dto.tipoTicketId }),
+      ...(tiposVisibles !== undefined && { tiposVisibles }),
       limit: porPagina,
       offset: (pagina - 1) * porPagina,
     };
     const { compras, total } = await this.compraRepo.findPaginaConItems(filtros);
+    const tipos = await this.tipos.resolver(compras.map((compra) => compra.tipoTicketId));
 
     return Result.ok({
-      items: compras.map(ListarComprasUseCase.aFilaListado),
+      items: compras.map((compra) => ListarComprasUseCase.aFilaListado(compra, tipos)),
       total,
       pagina,
       porPagina,
@@ -152,7 +177,10 @@ export class ListarComprasUseCase {
   }
 
   /** Proyecta una `CompraEntity` a la fila del listado (S33) — nunca incluye `items`. */
-  private static aFilaListado(compra: CompraEntity): CompraListItemDto {
+  private static aFilaListado(
+    compra: CompraEntity,
+    tipos: ReadonlyMap<string, TipoTicketDeCompra>,
+  ): CompraListItemDto {
     return {
       id: compra.id,
       numero: compra.numero,
@@ -162,6 +190,7 @@ export class ListarComprasUseCase {
       comprado: compra.comprado,
       cerrado: compra.cerrado,
       totalesPorMoneda: compra.totalesPorMoneda,
+      tipoTicket: tipoDeCompra(compra.tipoTicketId, tipos),
     };
   }
 }

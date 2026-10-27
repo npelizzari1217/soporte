@@ -16,6 +16,7 @@ describe('comprasQueBloquean', () => {
   const compraActiva = (compraId: string, numero: string): CompraVinculada => ({
     compraId,
     numero,
+    tipoTicketId: null,
     cancelada: false,
     items: [{ estadoAprobacion: 'PENDIENTE', comprado: false, entregado: false }],
   });
@@ -32,6 +33,7 @@ describe('comprasQueBloquean', () => {
     const cancelada: CompraVinculada = {
       compraId: 'c1',
       numero: 'C-0001',
+      tipoTicketId: null,
       cancelada: true,
       items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
     };
@@ -43,6 +45,7 @@ describe('comprasQueBloquean', () => {
     const rechazada: CompraVinculada = {
       compraId: 'c1',
       numero: 'C-0001',
+      tipoTicketId: null,
       cancelada: false,
       items: [{ estadoAprobacion: 'RECHAZADO', comprado: false, entregado: false }],
     };
@@ -54,6 +57,7 @@ describe('comprasQueBloquean', () => {
     const cerradaConFaltante: CompraVinculada = {
       compraId: 'c1',
       numero: 'C-0001',
+      tipoTicketId: null,
       cancelada: false,
       items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
     };
@@ -69,6 +73,7 @@ describe('comprasQueBloquean', () => {
     const sinItems: CompraVinculada = {
       compraId: 'c1',
       numero: 'C-0001',
+      tipoTicketId: null,
       cancelada: false,
       items: [],
     };
@@ -81,6 +86,7 @@ describe('comprasQueBloquean', () => {
     const completada: CompraVinculada = {
       compraId: 'c2',
       numero: 'C-0002',
+      tipoTicketId: null,
       cancelada: false,
       items: [{ estadoAprobacion: 'APROBADO', comprado: true, entregado: true }],
     };

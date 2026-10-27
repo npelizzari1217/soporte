@@ -3,7 +3,8 @@
  *
  * Desde odd/ticket-unificado (S1, S4) vincula una compra a un ticket de CUALQUIER tipo, por id de
  * ticket, y exige `MODIFICACION` sobre su tipo. Vinculación exitosa, idempotencia (D4), 404 por
- * ticket o compra inexistente, y el lock contra un borrado concurrente (L45).
+ * ticket o compra inexistente, y el lock contra un borrado concurrente (L45). Desde
+ * odd/compras-por-tipo, una compra que el actor no ve por su tipo es el mismo 404.
  *
  * Ref design: sdd/reparacion-bloqueada-por-compra/design, D4, D7.
  */
@@ -49,8 +50,11 @@ function estadoDeId(id: string): EstadoEntity {
   return EstadoEntity.create({ codigo, nombre: codigo, color: null, orden: 1, activo: true }, id);
 }
 
-/** Compra existente: el caso de uso solo verifica que exista, el contenido no importa. */
-function compraExistente(): CompraEntity {
+/**
+ * Compra existente. Del contenido solo importa el tipo: el actor tiene que verla
+ * (odd/compras-por-tipo, S2). Sin tipo, la ve cualquiera (S4).
+ */
+function compraExistente(tipoTicketId: string | null = null): CompraEntity {
   return CompraEntity.create(
     {
       numero: 'COM-2026-00001',
@@ -59,6 +63,7 @@ function compraExistente(): CompraEntity {
       descripcion: null,
       solicitanteId: 'solicitante-uuid',
       cicloId: 'ciclo-uuid',
+      tipoTicketId,
     },
     'compra-uuid',
   );
@@ -233,6 +238,67 @@ describe('VincularCompraAReparacionUseCase', () => {
       expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
     });
   });
+  describe('visibilidad de la compra por su tipo (odd/compras-por-tipo, S2, S4, S6)', () => {
+    /** Ve y modifica el ticket de soporte; ve compras de soporte, no de edilicia. */
+    const tecnicoDeSoporte = alcancePorTipo('actor-uuid', {
+      'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+    });
+
+    it('compra de un tipo sin LECTURA → 404 con el mismo mensaje que una inexistente, sin vincular', async () => {
+      const { useCase, compraRepo, reparacionCompraRepo } = buildDeps();
+      compraRepo.findByIdConItems.mockResolvedValue(compraExistente('tipo-edilicia'));
+
+      const result = await useCase.execute({ ...baseDto, alcance: tecnicoDeSoporte });
+
+      expect(result.getError()).toBeInstanceOf(CompraNoEncontradaError);
+      expect(result.getError().message).toBe('Compra con id "compra-uuid" no encontrada.');
+      expect(reparacionCompraRepo.vincular).not.toHaveBeenCalled();
+    });
+
+    it('compra de un tipo con LECTURA → vincula', async () => {
+      const { useCase, compraRepo, reparacionCompraRepo } = buildDeps();
+      compraRepo.findByIdConItems.mockResolvedValue(compraExistente('tipo-soporte'));
+
+      const result = await useCase.execute({ ...baseDto, alcance: tecnicoDeSoporte });
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.vincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
+    });
+
+    it('S6: la compra no tiene que ser del tipo del ticket — una de otro tipo visible se vincula', async () => {
+      const { useCase, compraRepo, reparacionCompraRepo } = buildDeps();
+      compraRepo.findByIdConItems.mockResolvedValue(compraExistente('tipo-edilicia'));
+
+      const result = await useCase.execute({
+        ...baseDto,
+        alcance: alcancePorTipo('actor-uuid', {
+          'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+          'tipo-edilicia': ['LECTURA'],
+        }),
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.vincular).toHaveBeenCalledTimes(1);
+    });
+
+    it('S4: compra sin tipo → vincula aunque el actor no vea ningún tipo de compra', async () => {
+      const { useCase, compraRepo, reparacionCompraRepo } = buildDeps();
+      compraRepo.findByIdConItems.mockResolvedValue(compraExistente(null));
+
+      const result = await useCase.execute({ ...baseDto, alcance: tecnicoDeSoporte });
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.vincular).toHaveBeenCalledTimes(1);
+    });
+
+    it('ADMINISTRADOR vincula una compra de cualquier tipo', async () => {
+      const { useCase, compraRepo } = buildDeps();
+      compraRepo.findByIdConItems.mockResolvedValue(compraExistente('tipo-edilicia'));
+
+      expect((await useCase.execute(baseDto)).isOk()).toBe(true);
+    });
+  });
+
   describe('resuelto, cerrado o cancelado: solo comentarios (odd/cerrado-solo-comentarios, S5)', () => {
     const tecnico = alcancePorTipo('actor-uuid', {
       'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],

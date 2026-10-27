@@ -71,6 +71,13 @@ export interface CompraProps {
    * normaliza `undefined` a `null`.
    */
   sectorId?: string | null;
+  /**
+   * Tipo de ticket de la compra (odd/compras-por-tipo, S1, S2). Decide quién la ve y quién la crea.
+   * `null` = compra anterior al tipo (S4), visible para cualquiera con LECTURA de Compras. A
+   * diferencia de `sectorId` es OBLIGATORIO en el objeto: un mapper que lo olvidara dejaría la
+   * compra visible para todos, sin error, así que el compilador exige declararlo.
+   */
+  tipoTicketId: string | null;
 }
 
 /** Datos de entrada de `create()` — los campos de cancelación NO se aceptan: una compra siempre nace sin cancelar. */
@@ -83,6 +90,12 @@ export interface CompraCreateProps {
   cicloId: string;
   /** Opcional (WU-09, R11) — compra nueva puede o no llevar sector (S66). */
   sectorId?: string | null;
+  /**
+   * Tipo de ticket (odd/compras-por-tipo). Si viaja, no puede ser vacío. El alta HTTP lo exige
+   * siempre (S3) y lo valida contra el catálogo y los permisos en `CrearCompraUseCase`; el dominio
+   * admite su ausencia porque una compra sin tipo es un estado legítimo (S4).
+   */
+  tipoTicketId?: string | null;
 }
 
 /** Datos de entrada de `agregarItem()` — igual a `ItemCompraCreateProps` sin `compraId` (lo resuelve la raíz con su propio `id`). */
@@ -101,6 +114,12 @@ export interface CompraActualizarProps {
   descripcion?: string | null;
   fechaSolicitud?: Date;
   sectorId?: string | null;
+  /**
+   * Tipo de ticket nuevo (odd/compras-por-tipo, S3, S4). Sin `null` en el tipo: una compra con
+   * tipo no vuelve a quedar sin tipo. Que el actor tenga ALTAS sobre el tipo lo decide
+   * `EditarCompraUseCase`.
+   */
+  tipoTicketId?: string;
 }
 
 export class CompraEntity extends BaseEntity<CompraProps> {
@@ -134,9 +153,14 @@ export class CompraEntity extends BaseEntity<CompraProps> {
       props.cicloId,
     );
 
+    if (props.tipoTicketId !== undefined && props.tipoTicketId !== null) {
+      CompraEntity.validarTipoTicketId(props.tipoTicketId);
+    }
+
     const fullProps: CompraProps = {
       ...props,
       sectorId: props.sectorId ?? null,
+      tipoTicketId: props.tipoTicketId ?? null,
       canceladaEn: null,
       canceladoPorId: null,
       motivoCancelacion: null,
@@ -194,6 +218,13 @@ export class CompraEntity extends BaseEntity<CompraProps> {
     }
   }
 
+  /** Precondición del tipo de ticket: si viaja, no es vacío (odd/compras-por-tipo). */
+  private static validarTipoTicketId(tipoTicketId: string): void {
+    if (tipoTicketId.trim().length === 0) {
+      throw new Error('CompraEntity: tipoTicketId no puede ser vacío.');
+    }
+  }
+
   // ─── Getters ─────────────────────────────────────────────────────────────
 
   get numero(): string {
@@ -223,6 +254,11 @@ export class CompraEntity extends BaseEntity<CompraProps> {
   /** Sector de destino de la cabecera (WU-09, R11). `null` si no se asignó (S66/S67). */
   get sectorId(): string | null {
     return this.props.sectorId ?? null;
+  }
+
+  /** Tipo de ticket de la compra (odd/compras-por-tipo). `null` si es anterior al tipo (S4). */
+  get tipoTicketId(): string | null {
+    return this.props.tipoTicketId;
   }
 
   get canceladaEn(): Date | null {
@@ -403,7 +439,7 @@ export class CompraEntity extends BaseEntity<CompraProps> {
 
   /**
    * Edita los campos de solicitud de la CABECERA (`motivo`/`descripcion`/
-   * `fechaSolicitud`/`sectorId`) — editable ÚNICAMENTE mientras el estado
+   * `fechaSolicitud`/`sectorId`/`tipoTicketId`) — editable ÚNICAMENTE mientras el estado
    * DERIVADO de la compra sea `PENDIENTE` (ningún ítem fue aprobado ni
    * rechazado todavía). Una vez que alguien empezó a decidir, el pedido que
    * evaluó no cambia abajo de sus pies.
@@ -421,7 +457,8 @@ export class CompraEntity extends BaseEntity<CompraProps> {
    *
    * PATCH semántico (mismo criterio que `ItemCompraEntity.actualizar`):
    * `undefined` no toca el campo; `descripcion: null`/`sectorId: null` lo
-   * limpian explícitamente.
+   * limpian explícitamente. `tipoTicketId` no admite `null`: una compra con
+   * tipo no vuelve a quedar sin tipo (odd/compras-por-tipo, S4).
    */
   actualizar(datos: CompraActualizarProps): Result<void, DomainError> {
     if (this.estado !== 'PENDIENTE') {
@@ -437,6 +474,9 @@ export class CompraEntity extends BaseEntity<CompraProps> {
         this.props.cicloId,
       );
     }
+    if (datos.tipoTicketId !== undefined) {
+      CompraEntity.validarTipoTicketId(datos.tipoTicketId);
+    }
 
     if (datos.motivo !== undefined) {
       this.props.motivo = datos.motivo;
@@ -449,6 +489,9 @@ export class CompraEntity extends BaseEntity<CompraProps> {
     }
     if (datos.sectorId !== undefined) {
       this.props.sectorId = datos.sectorId;
+    }
+    if (datos.tipoTicketId !== undefined) {
+      this.props.tipoTicketId = datos.tipoTicketId;
     }
 
     this.touch();

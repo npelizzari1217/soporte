@@ -8,7 +8,10 @@
  * Ref design: sdd/reparacion-bloqueada-por-compra/design, D5.
  */
 import { DesvincularCompraDeReparacionUseCase } from './desvincular-compra-de-reparacion.use-case';
-import { VinculoNoEncontradoError } from '../../domain/errors/reparaciones.errors';
+import {
+  CompraNoEncontradaError,
+  VinculoNoEncontradoError,
+} from '../../domain/errors/reparaciones.errors';
 import { TicketEntity } from '../../../tickets/domain/entities/ticket.entity';
 import { EstadoEntity } from '../../../tickets/domain/entities/estado.entity';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
@@ -25,8 +28,12 @@ import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repo
 import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
 
 /** Compra vinculada completa; el caso de uso solo mira `compraId`. */
-function vinculada(compraId: string, numero: string): CompraVinculada {
-  return { compraId, numero, cancelada: false, items: [] };
+function vinculada(
+  compraId: string,
+  numero: string,
+  tipoTicketId: string | null = null,
+): CompraVinculada {
+  return { compraId, numero, tipoTicketId, cancelada: false, items: [] };
 }
 
 /** Estado del catálogo para un id `estado-<CODIGO>`. */
@@ -128,6 +135,48 @@ describe('DesvincularCompraDeReparacionUseCase', () => {
     expect(result.getError()).toBeInstanceOf(TicketNoEncontradoError);
     expect(reparacionCompraRepo.findComprasVinculadasByTicketIds).not.toHaveBeenCalled();
     expect(reparacionCompraRepo.desvincular).not.toHaveBeenCalled();
+  });
+
+  describe('visibilidad de la compra por su tipo (odd/compras-por-tipo, S2)', () => {
+    const alcanceSoporte = alcancePorTipo('actor-uuid', {
+      'tipo-soporte': ['LECTURA', 'VER_TODOS', 'MODIFICACION'],
+    });
+
+    it('compra de un tipo sin LECTURA → 404 como compra inexistente, y el vínculo queda', async () => {
+      const { useCase, reparacionCompraRepo } = buildDeps();
+      reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+        new Map([['ticket-uuid', [vinculada('compra-uuid', 'COM-2026-00001', 'tipo-edilicia')]]]),
+      );
+
+      const result = await useCase.execute({ ...baseDto, alcance: alcanceSoporte });
+
+      expect(result.getError()).toBeInstanceOf(CompraNoEncontradaError);
+      expect(reparacionCompraRepo.desvincular).not.toHaveBeenCalled();
+    });
+
+    it('compra de un tipo con LECTURA → desvincula', async () => {
+      const { useCase, reparacionCompraRepo } = buildDeps();
+      reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+        new Map([['ticket-uuid', [vinculada('compra-uuid', 'COM-2026-00001', 'tipo-soporte')]]]),
+      );
+
+      const result = await useCase.execute({ ...baseDto, alcance: alcanceSoporte });
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.desvincular).toHaveBeenCalledWith('ticket-uuid', 'compra-uuid');
+    });
+
+    it('compra sin tipo → desvincula (S4)', async () => {
+      const { useCase, reparacionCompraRepo } = buildDeps();
+      reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+        new Map([['ticket-uuid', [vinculada('compra-uuid', 'COM-2026-00001', null)]]]),
+      );
+
+      const result = await useCase.execute({ ...baseDto, alcance: alcanceSoporte });
+
+      expect(result.isOk()).toBe(true);
+      expect(reparacionCompraRepo.desvincular).toHaveBeenCalledOnce();
+    });
   });
 
   describe('permisos por tipo del ticket (odd/ticket-unificado, S4)', () => {

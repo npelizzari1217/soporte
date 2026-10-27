@@ -18,6 +18,7 @@ const COMPRA_DETALLE = {
   solicitanteId: "u1",
   cicloId: "ciclo1",
   sectorId: null,
+  tipoTicket: { id: "11111111-1111-4111-8111-111111111111", nombre: "Soporte" },
   estado: "APROBADO_PARCIALMENTE",
   comprado: false,
   cerrado: false,
@@ -191,6 +192,33 @@ describe("CompraDetailView", () => {
     // La cabecera y los ítems se renderizan igual — el fallo de bitácora es aislado.
     await screen.findByText("Resmas de papel A4");
     expect(await screen.findByText("No se pudo cargar la bitácora.")).toBeInTheDocument();
+  });
+
+  it("muestra el tipo de ticket de la compra (odd/compras-por-tipo)", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json(COMPRA_DETALLE)),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+
+    await screen.findByText("Resmas de papel A4");
+    expect(screen.getByText("Tipo").nextElementSibling).toHaveTextContent("Soporte");
+    expect(screen.queryByText("Sin tipo")).not.toBeInTheDocument();
+  });
+
+  it("una compra sin tipo (S4) muestra «Sin tipo»", async () => {
+    server.use(
+      http.get("/api/compras/c1", () => HttpResponse.json({ ...COMPRA_DETALLE, tipoTicket: null })),
+      http.get("/api/compras/c1/operaciones", () => HttpResponse.json(OPERACIONES)),
+    );
+    renderWithProviders(<CompraDetailView compraId="c1" />, {
+      user: buildUser({ modulos: ["COMPRAS"] }),
+    });
+
+    await screen.findByText("Resmas de papel A4");
+    expect(screen.getByText("Tipo").nextElementSibling).toHaveTextContent("Sin tipo");
   });
 
   describe("gate de permisos en las acciones", () => {

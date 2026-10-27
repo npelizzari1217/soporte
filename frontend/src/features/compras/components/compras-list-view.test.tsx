@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../test/msw/server";
 import { renderWithProviders, buildUser } from "../../../../test/render-with-providers";
 import { ComprasListView } from "./compras-list-view";
+import type { CompraListItem } from "../types";
+import type { TipoTicket } from "@/features/tickets/types";
+import { permisosDeTest, renderConPermisos } from "@/shared/hooks/use-permisos-por-tipo.test-helpers";
 
 const pushMock = vi.fn();
 const replaceMock = vi.fn();
@@ -15,20 +18,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(currentSearch),
 }));
 
-const COMPRA: {
-  id: string;
-  numero: string;
-  fechaSolicitud: string;
-  motivo: string;
-  estado: "PENDIENTE" | "APROBADO" | "APROBADO_PARCIALMENTE" | "RECHAZADO" | "CANCELADO";
-  comprado: boolean;
-  cerrado: boolean;
-  totalesPorMoneda: Record<string, number>;
-} = {
+const COMPRA: CompraListItem = {
   id: "c1",
   numero: "COM-2026-00001",
   fechaSolicitud: "2026-01-15",
   motivo: "Reposición de insumos",
+  tipoTicket: { id: "11111111-1111-4111-8111-111111111111", nombre: "Soporte" },
   estado: "PENDIENTE",
   comprado: false,
   cerrado: false,
@@ -130,6 +125,7 @@ describe("ComprasListView", () => {
       ["`pagina=3` fuera de rango", "pagina=3"],
       ["un grupo de estado distinto del default", "estado=CANCELADAS"],
       ["un sector elegido", "sectorId=s1"],
+      ["un tipo elegido", "tipoTicketId=11111111-1111-4111-8111-111111111111"],
       ["un rango de fechas", "fechaDesde=2026-01-01"],
     ])("vacío con %s → se reporta como vacío POR FILTRO", async (_label, search) => {
       mockVacio();
@@ -225,4 +221,133 @@ describe("ComprasListView", () => {
       }
     },
   );
+
+  describe("tipo de ticket (odd/compras-por-tipo, S5)", () => {
+    const TIPO_SOPORTE_ID = "11111111-1111-4111-8111-111111111111";
+    const TIPO_EDILICIA_ID = "22222222-2222-4222-8222-222222222222";
+    const TIPO_COMPRAS_ID = "33333333-3333-4333-8333-333333333333";
+
+    function tipo(id: string, codigo: string, nombre: string, modulo: TipoTicket["modulo"]): TipoTicket {
+      return { id, codigo, nombre, modulo, activo: true, createdAt: "", updatedAt: "" };
+    }
+
+    const TIPOS: TipoTicket[] = [
+      tipo(TIPO_SOPORTE_ID, "SOPORTE", "Soporte", "TICKETS"),
+      tipo(TIPO_EDILICIA_ID, "EDILICIA", "Edilicia", "EDILICIA"),
+      tipo(TIPO_COMPRAS_ID, "COMPRA", "Compra general", "COMPRAS"),
+    ];
+
+    /** LECTURA en Soporte y Compra general; Edilicia sin ninguna acción. */
+    const PERMISOS = permisosDeTest({
+      [TIPO_SOPORTE_ID]: ["LECTURA", "ALTAS"],
+      [TIPO_COMPRAS_ID]: ["LECTURA"],
+    });
+
+    const tecnico = buildUser({ rol: "TECNICO", modulos: ["COMPRAS"] });
+
+    let urlsPedidas: string[];
+
+    beforeEach(() => {
+      urlsPedidas = [];
+      server.use(
+        http.get("/api/catalogos/tipos-ticket", () => HttpResponse.json(TIPOS)),
+        http.get("/api/sectores", () => HttpResponse.json([])),
+        http.get("/api/compras", ({ request }) => {
+          urlsPedidas.push(request.url);
+          return HttpResponse.json({
+            items: [
+              COMPRA,
+              { ...COMPRA, id: "c2", numero: "COM-2026-00002", motivo: "Sin clasificar", tipoTicket: null },
+            ],
+            total: 2,
+            pagina: 1,
+            porPagina: 10,
+          });
+        }),
+      );
+    });
+
+    it("la columna Tipo muestra el nombre del tipo, o «Sin tipo» si la compra no tiene", async () => {
+      renderConPermisos(<ComprasListView />, { user: tecnico, permisos: PERMISOS });
+
+      const filaSinTipo = (await screen.findByText("COM-2026-00002")).closest("tr");
+      const filaConTipo = screen.getByText(COMPRA.numero).closest("tr");
+      expect(filaSinTipo).toHaveTextContent("Sin tipo");
+      expect(filaConTipo).toHaveTextContent("Soporte");
+      expect(filaConTipo).not.toHaveTextContent("Sin tipo");
+    });
+
+    it("el filtro ofrece solo los tipos con LECTURA para la sesión", async () => {
+      renderConPermisos(<ComprasListView />, { user: tecnico, permisos: PERMISOS });
+
+      const filtro = await screen.findByLabelText("Tipo");
+      await within(filtro).findByRole("option", { name: "Soporte" });
+      expect(within(filtro).getByRole("option", { name: "Compra general" })).toBeInTheDocument();
+      expect(within(filtro).queryByRole("option", { name: "Edilicia" })).not.toBeInTheDocument();
+    });
+
+    it("elegir un tipo viaja en la URL y resetea la paginación a 1", async () => {
+      currentSearch = "pagina=3";
+      const user = userEvent.setup();
+      renderConPermisos(<ComprasListView />, { user: tecnico, permisos: PERMISOS });
+
+      const filtro = await screen.findByLabelText("Tipo");
+      await within(filtro).findByRole("option", { name: "Soporte" });
+      await user.selectOptions(filtro, TIPO_SOPORTE_ID);
+
+      await waitFor(() => expect(replaceMock).toHaveBeenCalled());
+      const calledWith = replaceMock.mock.calls.at(-1)?.[0] as string;
+      const params = new URLSearchParams(calledWith.split("?")[1]);
+      expect(params.get("tipoTicketId")).toBe(TIPO_SOPORTE_ID);
+      expect(params.get("pagina")).toBe("1");
+    });
+
+    it("con un tipo en la URL, GET /compras lo manda como tipoTicketId y el filtro lo muestra", async () => {
+      currentSearch = `tipoTicketId=${TIPO_SOPORTE_ID}`;
+      renderConPermisos(<ComprasListView />, { user: tecnico, permisos: PERMISOS });
+
+      await screen.findByText(COMPRA.numero);
+      expect(new URL(urlsPedidas.at(-1) ?? "").searchParams.get("tipoTicketId")).toBe(TIPO_SOPORTE_ID);
+      await within(screen.getByLabelText("Tipo")).findByRole("option", { name: "Soporte" });
+      expect(screen.getByLabelText("Tipo")).toHaveValue(TIPO_SOPORTE_ID);
+    });
+
+    it("un tipo de la URL fuera del catálogo se muestra como no disponible, no como «Todos los tipos»", async () => {
+      currentSearch = `tipoTicketId=${TIPO_EDILICIA_ID}`;
+      renderConPermisos(<ComprasListView />, { user: tecnico, permisos: PERMISOS });
+
+      const filtro = await screen.findByLabelText("Tipo");
+      await within(filtro).findByRole("option", { name: "Tipo no disponible" });
+      expect(filtro).toHaveValue(TIPO_EDILICIA_ID);
+    });
+
+    it("la exportación lleva el mismo filtro de tipo que el listado", async () => {
+      let urlExportada = "";
+      server.use(
+        http.get("/api/compras/export", ({ request }) => {
+          urlExportada = request.url;
+          return new HttpResponse("numero,motivo\n", {
+            headers: {
+              "content-type": "text/csv; charset=utf-8",
+              "content-disposition": 'attachment; filename="compras.csv"',
+            },
+          });
+        }),
+      );
+      URL.createObjectURL = vi.fn(() => "blob:mock");
+      URL.revokeObjectURL = vi.fn();
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+      currentSearch = `tipoTicketId=${TIPO_SOPORTE_ID}`;
+      const user = userEvent.setup();
+      renderConPermisos(<ComprasListView />, { user: tecnico, permisos: PERMISOS });
+
+      await screen.findByText(COMPRA.numero);
+      await user.click(screen.getByRole("button", { name: /^exportar$/i }));
+      await user.click(await screen.findByRole("menuitem", { name: "CSV" }));
+
+      await waitFor(() => expect(urlExportada).not.toBe(""));
+      expect(new URL(urlExportada).searchParams.get("tipoTicketId")).toBe(TIPO_SOPORTE_ID);
+      clickSpy.mockRestore();
+    });
+  });
 });

@@ -18,6 +18,9 @@
  *   `COUNT(*) OVER()` (`sdd/redisenio-modulo-compras/count-en-consulta`).
  * - WU-25: tabla de precedencia entre el filtro nuevo `estado` y el
  *   `soloEnCurso` deprecado.
+ * - odd/compras-por-tipo (S5): el alcance por tipo del actor viaja como
+ *   `tiposVisibles` a la MISMA lectura que pagina y cuenta; cada fila publica
+ *   su tipo con nombre, o `null` si no tiene.
  *
  * Ref spec: sdd/redisenio-modulo-compras/spec §4.9 (S32, S33, S34). Ref
  * design: ADR-C1, ADR-C2. Ref tasks: PR-19, H3; WU-25
@@ -28,6 +31,12 @@ import { CompraEntity, CompraProps } from '../../domain/entities/compra.entity';
 import { ItemCompraEntity, ItemCompraCreateProps } from '../../domain/entities/item-compra.entity';
 import { FiltroGrupoEstadoCompra } from '../../domain/services/estado-compra';
 import { ICompraRepository } from '../../domain/ports/i-compra.repository';
+import { AlcanceActorTicket } from '../../../tickets/application/services/visibilidad-ticket';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
+import { ResolverTiposDeCompra } from '../services/tipos-de-compra';
+
+/** ADMINISTRADOR: sin restricción por tipo. Los tests anteriores al tipo corren con este alcance. */
+const SIN_RESTRICCION: AlcanceActorTicket = { actorId: 'admin-1', permisosPorTipo: null };
 
 const COMPRA_ID = 'compra-1';
 
@@ -62,6 +71,7 @@ function crearCompra(
     canceladaEn: null,
     canceladoPorId: null,
     motivoCancelacion: null,
+    tipoTicketId: null,
     ...overrides,
   };
   return CompraEntity.reconstitute(
@@ -81,8 +91,13 @@ describe('ListarComprasUseCase', () => {
         .fn<ICompraRepository['findPaginaConItems']>()
         .mockResolvedValue({ compras: [], total: 0 }),
     };
-    const useCase = new ListarComprasUseCase(compraRepo);
-    return { useCase, compraRepo };
+    const tipos = {
+      resolver: vi
+        .fn<ResolverTiposDeCompra['resolver']>()
+        .mockResolvedValue(new Map([['tipo-soporte', { id: 'tipo-soporte', nombre: 'Soporte' }]])),
+    };
+    const useCase = new ListarComprasUseCase(compraRepo, tipos);
+    return { useCase, compraRepo, tipos };
   }
 
   it('S33: el DTO de cada fila expone estado/comprado/cerrado/totalesPorMoneda y NO expone items', async () => {
@@ -95,7 +110,7 @@ describe('ListarComprasUseCase', () => {
     const compra = crearCompra(COMPRA_ID, [item]);
     c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [compra], total: 1 });
 
-    const result = await c.useCase.execute();
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(result.isOk()).toBe(true);
     const [fila] = result.getValue().items;
@@ -108,6 +123,7 @@ describe('ListarComprasUseCase', () => {
       comprado: true,
       cerrado: true,
       totalesPorMoneda: { ARS: 300000 },
+      tipoTicket: null,
     });
     expect(fila).not.toHaveProperty('items');
   });
@@ -118,7 +134,7 @@ describe('ListarComprasUseCase', () => {
     const compra = crearCompra(COMPRA_ID, []);
     c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [compra], total: 1 });
 
-    const result = await c.useCase.execute();
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     const [fila] = result.getValue().items;
     expect(fila.estado).toBe(compra.estado);
@@ -132,7 +148,7 @@ describe('ListarComprasUseCase', () => {
   it('traduce pagina/porPagina a limit/offset de findPaginaConItems (S32)', async () => {
     const c = makeCollaborators();
 
-    await c.useCase.execute({ pagina: 3, porPagina: 10 });
+    await c.useCase.execute({ alcance: SIN_RESTRICCION, pagina: 3, porPagina: 10 });
 
     expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledTimes(1);
     expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledWith(
@@ -143,7 +159,7 @@ describe('ListarComprasUseCase', () => {
   it('sin pagina/porPagina explícitos, aplica los defaults (página 1, 20 por página)', async () => {
     const c = makeCollaborators();
 
-    const result = await c.useCase.execute();
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 20, offset: 0 }),
@@ -156,7 +172,7 @@ describe('ListarComprasUseCase', () => {
     const c = makeCollaborators();
     c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [], total: 0 });
 
-    const result = await c.useCase.execute();
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(result.isOk()).toBe(true);
     expect(result.getValue().items).toEqual([]);
@@ -169,7 +185,7 @@ describe('ListarComprasUseCase', () => {
     // Página de 2 pero el filtro completo tiene 5 compras -> total debe ser 5, no 2.
     c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [compraA, compraB], total: 5 });
 
-    const result = await c.useCase.execute({ pagina: 1, porPagina: 2 });
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION, pagina: 1, porPagina: 2 });
 
     expect(result.getValue().items).toHaveLength(2);
     expect(result.getValue().total).toBe(5);
@@ -179,7 +195,7 @@ describe('ListarComprasUseCase', () => {
     const c = makeCollaborators();
     c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [], total: 5 });
 
-    const result = await c.useCase.execute({ pagina: 100, porPagina: 2 });
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION, pagina: 100, porPagina: 2 });
 
     expect(result.getValue().items).toEqual([]);
     expect(result.getValue().total).toBe(5);
@@ -191,7 +207,7 @@ describe('ListarComprasUseCase', () => {
     const segunda = crearCompra('compra-cancelada');
     c.compraRepo.findPaginaConItems.mockResolvedValue({ compras: [primera, segunda], total: 2 });
 
-    const result = await c.useCase.execute();
+    const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     expect(result.getValue().items.map((fila) => fila.id)).toEqual([
       'compra-activa',
@@ -212,6 +228,7 @@ describe('ListarComprasUseCase', () => {
     const c = makeCollaborators();
 
     await c.useCase.execute({
+      alcance: SIN_RESTRICCION,
       pagina: 1,
       porPagina: 2,
       cicloId: 'ciclo-1',
@@ -239,7 +256,7 @@ describe('ListarComprasUseCase', () => {
   it('sin `busqueda`, el filtro no viaja al repositorio (no restringe por texto)', async () => {
     const c = makeCollaborators();
 
-    await c.useCase.execute({});
+    await c.useCase.execute({ alcance: SIN_RESTRICCION });
 
     const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
     expect(filtros).not.toHaveProperty('busqueda');
@@ -282,11 +299,84 @@ describe('ListarComprasUseCase', () => {
     it.each(casos)('$nombre', async ({ dto, esperado }) => {
       const c = makeCollaborators();
 
-      await c.useCase.execute(dto);
+      await c.useCase.execute({ ...dto, alcance: SIN_RESTRICCION });
 
       expect(c.compraRepo.findPaginaConItems).toHaveBeenCalledWith(
         expect.objectContaining({ grupoEstado: esperado }),
       );
+    });
+  });
+
+  describe('odd/compras-por-tipo — alcance por tipo, filtro y nombre del tipo (S2, S4, S5)', () => {
+    it('actor restringido: viajan como tiposVisibles SOLO los tipos con LECTURA', async () => {
+      const c = makeCollaborators();
+      const alcance: AlcanceActorTicket = {
+        actorId: 'usuario-1',
+        permisosPorTipo: new Map([
+          ['tipo-soporte', new Set<AccionTipoTicket>(['LECTURA', 'ALTAS'])],
+          ['tipo-edilicia', new Set<AccionTipoTicket>(['COMENTAR'])],
+          ['tipo-mantenimiento', new Set<AccionTipoTicket>(['LECTURA'])],
+        ]),
+      };
+
+      await c.useCase.execute({ alcance });
+
+      const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
+      expect(filtros?.tiposVisibles).toEqual(['tipo-soporte', 'tipo-mantenimiento']);
+    });
+
+    it('actor sin ningún tipo con LECTURA: tiposVisibles vacío (solo las compras sin tipo, S4)', async () => {
+      const c = makeCollaborators();
+
+      await c.useCase.execute({ alcance: { actorId: 'usuario-1', permisosPorTipo: new Map() } });
+
+      const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
+      expect(filtros?.tiposVisibles).toEqual([]);
+    });
+
+    it('ADMINISTRADOR (sin restricción): el filtro de alcance no viaja', async () => {
+      const c = makeCollaborators();
+
+      await c.useCase.execute({ alcance: SIN_RESTRICCION });
+
+      const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
+      expect(filtros).not.toHaveProperty('tiposVisibles');
+    });
+
+    it('el filtro tipoTicketId viaja junto con el alcance (la consulta los combina por conjunción)', async () => {
+      const c = makeCollaborators();
+
+      await c.useCase.execute({
+        tipoTicketId: 'tipo-edilicia',
+        alcance: {
+          actorId: 'usuario-1',
+          permisosPorTipo: new Map([['tipo-soporte', new Set<AccionTipoTicket>(['LECTURA'])]]),
+        },
+      });
+
+      const [filtros] = c.compraRepo.findPaginaConItems.mock.calls[0]!;
+      expect(filtros?.tipoTicketId).toBe('tipo-edilicia');
+      expect(filtros?.tiposVisibles).toEqual(['tipo-soporte']);
+    });
+
+    it('cada fila publica su tipo con nombre, y null la compra sin tipo', async () => {
+      const c = makeCollaborators();
+      c.compraRepo.findPaginaConItems.mockResolvedValue({
+        compras: [
+          crearCompra('con-tipo', [], { tipoTicketId: 'tipo-soporte' }),
+          crearCompra('sin-tipo', [], { tipoTicketId: null }),
+        ],
+        total: 2,
+      });
+
+      const result = await c.useCase.execute({ alcance: SIN_RESTRICCION });
+
+      expect(result.getValue().items.map((fila) => [fila.id, fila.tipoTicket])).toEqual([
+        ['con-tipo', { id: 'tipo-soporte', nombre: 'Soporte' }],
+        ['sin-tipo', null],
+      ]);
+      expect(c.tipos.resolver).toHaveBeenCalledTimes(1);
+      expect(c.tipos.resolver).toHaveBeenCalledWith(['tipo-soporte', null]);
     });
   });
 });

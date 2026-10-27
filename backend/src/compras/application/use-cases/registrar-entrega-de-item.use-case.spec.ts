@@ -187,6 +187,7 @@ describe('RegistrarEntregaDeItemUseCase', () => {
         canceladaEn: new Date('2026-08-05'),
         canceladoPorId: 'usuario-cancelador',
         motivoCancelacion: 'Ya no se necesita',
+        tipoTicketId: null,
       },
       [item],
       compra.id,
