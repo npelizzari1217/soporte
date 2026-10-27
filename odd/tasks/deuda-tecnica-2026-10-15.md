@@ -112,6 +112,11 @@ reactivarlo antes.
     `column "es_integracion" does not exist`, pero eso es razonamiento, no evidencia.
   - GREEN: **pendiente**, mismo motivo. Queda abierta hasta correr el spec con la base arriba,
     primero con el `rollback.sql` de `HEAD~1` (RED) y después con el actual (GREEN).
+  - **Cerrado el 2026-10-27, con la base arriba.** RED observado: con el `rollback.sql` de
+    `4874ba00~1`, "correrlo dos veces seguidas no falla..." falla con `promise rejected "error:
+    column "es_integracion" does not exist"` (lo que se había razonado por lectura); 1 rojo y 2
+    verdes. GREEN: con el `rollback.sql` actual, 3/3. El archivo viejo se restauró solo para la
+    corrida y se devolvió (`git checkout --`).
   - Runbook (`DEPLOY-VPS-runbook.md`, "Migración y rollback" de la API pública) no dice que
     NO sea re-ejecutable: no hay nada que corregir.
   - Commit: `4874ba00`.
