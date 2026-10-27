@@ -1476,8 +1476,8 @@ esta sección y, sobre ella, el código.
 
 - El estado de producción: qué cliente tiene la API o los webhooks habilitados, y si Microsoft ya
   está configurado. No se lee desde el repositorio.
-- La rama `docs/sla-reapertura` cambia la decisión pendiente de la reapertura del SLA (punto 6),
-  pero no está en `main`: esa decisión sigue figurando como pendiente.
+- La reapertura del SLA (punto 6) ya no está pendiente: quedó decidida el 2026-10-27 (rama
+  `docs/sla-reapertura`, integrada con este contraste).
 
 ## Nota
 
