@@ -898,9 +898,8 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     anterior al SLA hábil (`CORRIDO`, todos previos a este cambio) miden su tiempo
     activo y sus pausas en tiempo de pared, no en horas hábiles, igual que ya medían
     su vencimiento; tampoco reciben meta de primera respuesta, coherente con "sin meta
-    retroactiva". Todo ticket nuevo es hábil. La **decisión pendiente** de la
-    reapertura (tiempo extra o reloj nuevo) quedó fuera de alcance, como dice su
-    viñeta.
+    retroactiva". Todo ticket nuevo es hábil. La reapertura quedó decidida el
+    2026-10-27: el tiempo vuelve a correr desde donde quedó, como tras una pausa.
   - Se agrega el estado **"Esperando al cliente"**. Se entra desde *En proceso* y se
     sale a *En proceso*, *Resuelto* o *Cancelado*.
   - Mientras el ticket espera al cliente, **el reloj de resolución se detiene**. Al
@@ -941,10 +940,10 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     cliente* con el SLA ya vencido (precisado el 2026-10-06).
   - Si un ticket resuelto se **reabre con un salto correctivo**, el reloj sigue
     sumando desde donde quedó, sin tiempo extra, y el cumplimiento se evalúa con la
-    última resolución (precisado el 2026-10-06). **Decisión pendiente**: si una
-    reapertura debe sumar tiempo extra a la meta o arrancar un reloj nuevo. Se decide
-    cuando haya casos reales; el modelo de reloj activo admite cualquiera de las dos
-    sin rehacerse.
+    última resolución (precisado el 2026-10-06). **Decidido el 2026-10-27**: una
+    reapertura no suma tiempo extra ni arranca un reloj nuevo. Es como si el ticket
+    hubiera estado en pausa: el tiempo vuelve a correr desde donde quedó. Es lo que el
+    código ya hace; no requiere cambios.
   - El **tiempo medio de primera respuesta** se mide en **horas hábiles** (precisado
     el 2026-10-06).
   - Al pasar a *Esperando al cliente* se **avisa por mail al solicitante**: el estado
