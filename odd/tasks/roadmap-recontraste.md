@@ -15,9 +15,9 @@ Rama `docs/cierre-pendientes`. `check-roadmap-fresco` falla: el ancla `23fbf939`
 
 ## Tasks
 
-- [ ] T1 — S1: corregir las afirmaciones vencidas (relevamiento en el Log, L2).
-- [ ] T2 — S2: sumar las entregas nuevas.
-- [ ] T3 — S3: mover el ancla, correr el check, commit.
+- [x] T1 — S1: corregir las afirmaciones vencidas (relevamiento en el Log, L2).
+- [x] T2 — S2: sumar las entregas nuevas.
+- [x] T3 — S3: mover el ancla, correr el check, commit.
 
 ## Log
 
@@ -27,3 +27,9 @@ Rama `docs/cierre-pendientes`. `check-roadmap-fresco` falla: el ancla `23fbf939`
   estados que solo admiten comentarios (`765baaeb`, `3ac82584`), el preventivo por tipo (`af75a266`),
   el asistente de IA (`1a57be44`), la tanda de Ayuda (`05c0b5ce`) y los 9 tenants activos. Los shas
   citados son ancestros de `main`; `6044c97b` y `56ec1b47` no lo son y no se citan.
+- **L3 — Cierre (2026-10-27).** Criterio: lo histórico no se reescribe. Las afirmaciones de estado se
+  corrigieron en el lugar (encabezado y ancla, clientes activos, punto 2, fila 11 de IA, Deuda de Ayuda,
+  Nota). Las precisiones superadas y las entregas nuevas van en la sección nueva "Recontraste del
+  2026-10-27". `node scripts/check-roadmap-fresco.mjs`: "El roadmap esta fresco." (ancla `a2f312fa`, 0
+  commits). Queda para el dueño: si el asistente de IA cierra el punto 11, y la rama sin mergear
+  `docs/sla-reapertura`.
