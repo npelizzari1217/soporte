@@ -174,3 +174,10 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   de guardar y registra el resultado. Ayuda de Clientes corregida (decía que Guardar no consulta al
   proveedor). Backend `src/asistente` + `sync-ayuda` 161/161, front `clientes` + `asistente` 111/111,
   lint y tipos limpios.
+- **L21 — Verificación independiente de `97340c3b`.** PASS sin blockers (sonda RED sobre `main`: los 9
+  fallan por la razón correcta). W1: el e2e "probar registra el éxito" pasaba por el `verificadoAt` que
+  dejaba el guardado; se agrega un e2e que parte de una prueba de guardado fallida. W2: JSDoc que
+  seguía diciendo "sin descifrarlo". W3: import después de una constante. A2: el runbook nombra
+  también Guardar. A1 (`max_tokens: 5` en la prueba con modelos que razonan) medido contra Gemini real
+  desde el VPS: `gemini-2.5-flash`, `gemini-3.5-flash` y `gemini-3.5-flash-lite` responden "OK" con 5;
+  queda como está.

@@ -20,11 +20,12 @@ import {
   validarUrlIa,
 } from '../domain/config-ia';
 
-/** Marca del mensaje que `AesGcmSecretCipher` lanza cuando falta o es inválida la clave. */
-const MARCA_CLAVE_CIFRADO_AUSENTE = 'EMAIL_CRYPTO_KEY';
 import { IModeloIa } from '../domain/modelo-ia.port';
 import { ClaveIaCifrada } from './clave-ia-cifrada';
 import { verificarProveedorIa } from './verificar-proveedor-ia';
+
+/** Marca del mensaje que `AesGcmSecretCipher` lanza cuando falta o es inválida la clave. */
+const MARCA_CLAVE_CIFRADO_AUSENTE = 'EMAIL_CRYPTO_KEY';
 
 export interface ConfigurarIaClienteCommand {
   clienteId: string;
@@ -50,9 +51,9 @@ export type ConfigurarIaClienteError =
  *    `validarModeloIa`, `validarClaveIa`): los topes se miden sobre el valor recortado.
  * 3. Clave:
  *    - provista → se cifra con AAD `ia:{clienteId}`;
- *    - omitida con IA ya configurada → se conserva el ciphertext guardado TAL CUAL, sin descifrarlo:
- *      así no hace falta la clave en claro para cambiar el modelo, y una clave que dejó de
- *      descifrar se puede reemplazar sin pasar por un error;
+ *    - omitida con IA ya configurada → se conserva el ciphertext guardado TAL CUAL; guardar no
+ *      depende de descifrarlo, así que una clave que dejó de descifrar no impide guardar (la
+ *      prueba del paso 5 sí la descifra, y si no puede, lo registra como falla);
  *    - omitida sin IA configurada → `ClaveIaFaltanteError` (no hay nada que conservar).
  * 4. Cifrar lanza si falta `EMAIL_CRYPTO_KEY`: ocurre ANTES de escribir, así que no se guarda nada y
  *    se informa `ClaveCifradoIaAusenteError`. Cualquier otra excepción se propaga tal cual: un 503

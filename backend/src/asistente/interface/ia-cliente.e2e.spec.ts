@@ -330,6 +330,21 @@ describe('Configuración de IA por cliente — e2e', () => {
     expect(data.verificacionError).toBeNull();
   });
 
+  it('probar registra el éxito aunque la prueba del guardado haya fallado', async () => {
+    modelo.respuesta = Result.fail(new FallaModeloIaError('El proveedor rechazó la clave.'));
+    const c = await crearCliente();
+    await pedir('PATCH', `/clientes/${c}/ia`, { body: BODY, token: token(true) });
+    expect((await fila(c))?.verificadoAt).toBeNull();
+
+    modelo.respuesta = Result.ok('OK');
+    const { data } = await pedir<IaRespuesta>('POST', `/clientes/${c}/ia/probar`, {
+      token: token(true),
+    });
+    expect(data.verificadoAt).not.toBeNull();
+    expect(data.verificacionError).toBeNull();
+    expect((await fila(c))?.verificadoAt).not.toBeNull();
+  });
+
   it('probar sin configuración → 400 sin llamar al proveedor', async () => {
     const c = await crearCliente();
     const { status } = await pedir('POST', `/clientes/${c}/ia/probar`, { token: token(true) });

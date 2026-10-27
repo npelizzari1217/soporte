@@ -1713,7 +1713,7 @@ parecido de la Ayuda) hasta que ROOT cargue un proveedor en Clientes > IA.
 | Migración master | `20261026120000_asistente_ia_config`, **aditiva**: la tabla `asistente_ia_config` (un proveedor por cliente: URL, modelo y clave cifrada). Sin backfill ni seed. Entra por `migrate:master` dentro de la ventana de `predeploy-dump.ps1`. |
 | Variables y dependencias | Ninguna nueva. La clave se cifra con `EMAIL_CRYPTO_KEY`, que ya existe: sin ella, guardar una configuración de IA responde 503 y no escribe nada. Las llamadas al proveedor usan el `fetch` de Node. El lockfile no cambia. |
 | Rotación de `EMAIL_CRYPTO_KEY` | `rotar-email-crypto-key.mjs` re-cifra también `asistente_ia_config.clave_cifrada` (AAD `ia:{cliente_id}`), en la misma transacción que el resto. Ver "5. Rotación de `EMAIL_CRYPTO_KEY`". |
-| Red | Con IA configurada, el VPS necesita **HTTPS saliente** (443) hacia el proveedor (por defecto `generativelanguage.googleapis.com`). Si lo corta un firewall, el asistente no falla: responde en modo de respaldo, y "Probar" en Clientes > IA muestra "No se pudo conectar con el proveedor". |
+| Red | Con IA configurada, el VPS necesita **HTTPS saliente** (443) hacia el proveedor (por defecto `generativelanguage.googleapis.com`). Si lo corta un firewall, el asistente no falla: responde en modo de respaldo, y "Guardar" o "Probar" en Clientes > IA muestran "No se pudo conectar con el proveedor". Las dos llaman al proveedor y pueden tardar hasta 20 s. |
 | Cupo | 10 consultas por minuto por persona, contadas en `throttler_contadores` (compartido entre procesos). |
 
 **La migración va antes que el código**: el código nuevo lee la tabla en cada consulta al
