@@ -83,7 +83,8 @@ reactivarlo antes.
     `scripts/` que necesitan Postgres (`ECONNREFUSED 127.0.0.1:5432`), ajenos al cambio.
   - No se agregó el caso e2e en `tickets.e2e.spec.ts`: con la base caída no se podía
     observar, y un e2e no corrido no es evidencia. Queda como seguimiento opcional.
-  - Specs de preventivo: pendientes de la base (integración/e2e); los unitarios están verdes.
+  - Specs de preventivo: verdes con la base arriba (2026-10-27): integración 22/22 archivos,
+    306 tests; `test/preventivo.e2e.spec.ts` 43/43.
   - Commit: `0a744303`.
 - [x] **T3 — `TicketsModule` exporta los casos de uso de la API v1** (refactor). CA4.
   - Las cinco fábricas eran idénticas (mismo constructor, mismos tokens, mismo orden). Se

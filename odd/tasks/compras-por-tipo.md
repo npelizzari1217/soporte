@@ -102,3 +102,9 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
   desvincular responde `CompraNoEncontradaError` sobre una compra no visible, sin borrar; el listado
   publica solo las compras visibles y `bloqueada` sigue contando todas. `src/reparaciones` +
   `src/compras` 1392/1392, lint y tipos limpios.
+- **L8 — Tenants de desarrollo al día (2026-10-27).** Las cuatro migraciones pendientes
+  (`retiro_satelite_edilicia`, `horario_laboral_usuario`, `tramos_tecnico_ticket`,
+  `compras_tipo_ticket`) figuran aplicadas en Demo Soporte y Rotair a las 14:54 UTC, por un
+  proceso ajeno a esta sesión y sin dump previo de esta sesión. `migrate status`: "Database schema
+  is up to date!" en ambos. `ticket_edilicia`, `reparacion_compra` y `comentarios_reparacion` ya no
+  existen; sus datos solo se recuperan desde un backup anterior a esa hora.

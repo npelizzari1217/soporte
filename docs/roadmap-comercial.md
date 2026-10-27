@@ -4,8 +4,9 @@ Análisis del 2026-08-19. Compara el sistema contra Zendesk, Freshservice, GLPI 
 Jira Service Management, y prioriza qué falta para competir.
 
 **Estado: los seis puntos están resueltos — cinco entregados y uno diferido por
-decisión.** Actualizado el 2026-10-16 contra el código de `main` (`23fbf939`),
-archivo por archivo. Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
+decisión.** Actualizado el 2026-10-27 contra el código de `main` (`a2f312fa`),
+archivo por archivo (el contraste anterior fue el 2026-10-16, contra `23fbf939`; lo que
+cambió desde entonces está en "Recontraste del 2026-10-27"). Los puntos 1, 2, 3, 4 y 5 están entregados; el 6 sigue
 diferido. La Fase 0 está integrada y sus dos gates viven en `main`. Desde el
 2026-09-29 la decisión de producto del punto 5 se cumple entera: el horario
 semanal pasó a ser por cliente. Desde esa fecha entraron a `main` cinco ciclos del
@@ -33,7 +34,7 @@ fundación**, hoy terminada — ver "Fase 0" más abajo.
 Esto **no es un sistema de tickets**: es una suite de operaciones (tickets + SLA
 + inventario de equipos + mantenimiento edilicio + compras con aprobación +
 ayuda), multi-tenant y ya en producción: ocho clientes activos en el registro al
-2026-09-29.
+2026-09-29 (nueve al 2026-10-24, `odd/tasks/ticket-unificado.md` L8).
 
 Eso cambia contra quién se compite:
 
@@ -360,6 +361,11 @@ CSV.
 > a demanda en vez de persistirlo. Los casos de uso de vincular y desvincular
 > están en `backend/src/reparaciones/application/use-cases/`.
 >
+> *Nota del 2026-10-27: desde el ticket unificado el vínculo es `model TicketCompra`
+> (`backend/prisma_tenant/schema.prisma:592`, tabla `ticket_compra`) y vale para un ticket de
+> cualquier tipo; `reparacion_compra` se borró con la migración
+> `20261025150000_retiro_satelite_edilicia` (`1825c6b9`). El bloqueo sigue derivado.*
+>
 > Lo de abajo se conserva como registro de por qué se construyó así.
 
 Conectar una reparación con la compra que la está frenando. Responde la pregunta
@@ -654,7 +660,7 @@ el código; en este repo las estimaciones suelen quedarse cortas a la mitad.
 | 8 | **API pública + webhooks** | Integración con otros sistemas del cliente: claves por cliente, permisos y documentación | Media-Alta · 6-10 días | **Entregado** — decisiones cerradas el 2026-10-10: primero la API (solo tickets), después los webhooks. **Etapa 1 (API)**: en `main` por el merge local `068f53f1` de la cadena `feat/api-publica` (más el arreglo del rollback, `11bffe7a`), desplegada el 2026-10-11 por bundle, sin pasar por GitHub. **Etapa 2 (webhooks)**: en `main` por el merge local `c207e8a3` de la cadena `feat/webhooks` (documento `odd/tasks/webhooks.md`), desplegada el 2026-10-13 por bundle. Ningún cliente tiene todavía la API habilitada ni un destino de webhooks configurado |
 | 9 | **Asignación automática por tipo o ubicación** | Primer paso de automatización. Un motor de reglas completo es Alta (2-3 semanas) y queda afuera | Media · 4-6 días | **Entregado** — en `main` por el #490 (`776c6d69`), desplegado el 2026-10-09. Un responsable fijo por tipo |
 | 10 | **WhatsApp** | El canal dominante en Argentina. Pide un proveedor de la API de Meta, costo por conversación y la misma ambigüedad de cliente que el email. Estaba atado al punto 6, descartado por ahora el 2026-10-08: si se retoma, necesita su propia forma de resolver el cliente (por ejemplo, el teléfono registrado del usuario o un número o enlace por cliente, como el QR) | Alta · 2-4 semanas | **DESCARTADO** el 2026-10-15 por decisión del dueño: complica la operatoria y no suma utilidad suficiente al sistema. No se construye ni se ofrece como siguiente paso (antes: sin base desde el 2026-10-08) |
-| 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final |
+| 11 | **IA (resumir, clasificar)** | Es lo que vende la competencia en 2026, pero tiene costo variable y exige garantizar que los datos de un cliente no lleguen a otro | Media | Al final. *Nota del 2026-10-27:* existe un asistente de IA que responde sobre la Ayuda, con la configuración de IA por cliente a cargo de ROOT (merge `1a57be44`, `odd/tasks/asistente-ia-ayuda.md`). Resumir y clasificar tickets siguen sin construirse; si el asistente cierra o no este punto es decisión pendiente del dueño |
 | 12 | **Tareas con técnico y crédito por tarea** | Sumado el 2026-10-08, al decidir el punto 9. Un ticket puede necesitar varios técnicos: uno empieza y otro termina, o hay varios oficios o pasos. Cada tarea del ticket lleva su técnico y el crédito va a quien la completó, no a quien cerró el ticket. Generaliza a todos los tipos las subtareas que hoy solo tiene Edilicia (`SubtareaEdilicia`, que guarda quién la completó pero no tiene responsable). *Nota del 2026-10-14: es la descripción de cuando se sumó el punto; con la entrega, `SubtareaEdilicia` ya no existe y sus filas viven en `tareas_ticket`.* | Media-Alta · 5-8 días (a refinar) | **Entregado** — decisiones cerradas el 2026-10-13 (ver "Decisiones de producto de la segunda etapa"). En `main` por el merge local `32037bdf` de la cadena `feat/tareas-con-tecnico` (documento `odd/tasks/tareas-con-tecnico.md`), con `judgment-day` aprobado, desplegada el 2026-10-14 por bundle, sin pasar por GitHub. La copia de las subtareas de Edilicia coincidió con la foto previa en los 8 inquilinos (108 en Colegio Guadalupe y 3 en IIConcepcion) |
 
 **Lo que no se hace:** ITIL (cambios, problemas), CMDB con descubrimiento de red y
@@ -898,9 +904,8 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     anterior al SLA hábil (`CORRIDO`, todos previos a este cambio) miden su tiempo
     activo y sus pausas en tiempo de pared, no en horas hábiles, igual que ya medían
     su vencimiento; tampoco reciben meta de primera respuesta, coherente con "sin meta
-    retroactiva". Todo ticket nuevo es hábil. La **decisión pendiente** de la
-    reapertura (tiempo extra o reloj nuevo) quedó fuera de alcance, como dice su
-    viñeta.
+    retroactiva". Todo ticket nuevo es hábil. La reapertura quedó decidida el
+    2026-10-27: el tiempo vuelve a correr desde donde quedó, como tras una pausa.
   - Se agrega el estado **"Esperando al cliente"**. Se entra desde *En proceso* y se
     sale a *En proceso*, *Resuelto* o *Cancelado*.
   - Mientras el ticket espera al cliente, **el reloj de resolución se detiene**. Al
@@ -941,10 +946,10 @@ licencias. Es el terreno de las herramientas de TI pura, no el del segmento.
     cliente* con el SLA ya vencido (precisado el 2026-10-06).
   - Si un ticket resuelto se **reabre con un salto correctivo**, el reloj sigue
     sumando desde donde quedó, sin tiempo extra, y el cumplimiento se evalúa con la
-    última resolución (precisado el 2026-10-06). **Decisión pendiente**: si una
-    reapertura debe sumar tiempo extra a la meta o arrancar un reloj nuevo. Se decide
-    cuando haya casos reales; el modelo de reloj activo admite cualquiera de las dos
-    sin rehacerse.
+    última resolución (precisado el 2026-10-06). **Decidido el 2026-10-27**: una
+    reapertura no suma tiempo extra ni arranca un reloj nuevo. Es como si el ticket
+    hubiera estado en pausa: el tiempo vuelve a correr desde donde quedó. Es lo que el
+    código ya hace; no requiere cambios.
   - El **tiempo medio de primera respuesta** se mide en **horas hábiles** (precisado
     el 2026-10-06).
   - Al pasar a *Esperando al cliente* se **avisa por mail al solicitante**: el estado
@@ -1345,6 +1350,11 @@ cabeza de alguien deja de existir cuando esa persona no está.
 
 ### Deuda de Ayuda
 
+> *Nota del 2026-10-27: la lista de abajo quedó saldada por la tanda del 2026-10-26 (merge
+> `05c0b5ce`, `odd/tasks/ayuda-tanda-final.md`), que escribió los artículos que faltaban y pasó
+> todos a español neutro con "usted". Se conserva como registro. Después de esa tanda la
+> suspensión vuelve a regir, y lo nuevo se anota en los commits (ver `AGENTS.md`).*
+
 La escritura de artículos de `backend/ayuda/*.md` está en pausa desde el 2026-09-07
 (ver `CLAUDE.md`). Esta lista arranca con el punto 7 de la segunda etapa; la deuda
 de las entregas anteriores está anotada solo en los mensajes de sus commits
@@ -1396,8 +1406,82 @@ de las entregas anteriores está anotada solo en los mensajes de sus commits
     Nuevo sin responsable), que completar la última lo pone Resuelto, y que descompletar en
     Resuelto lo devuelve a En proceso; el aviso al pie de la sección "Tareas" lo adelanta.
 
+## Recontraste del 2026-10-27
+
+Contraste contra `main` (`a2f312fa`) de los 268 commits que entraron después de `23fbf939`.
+Las decisiones y precisiones de arriba se conservan con su fecha, como registro de lo que se
+acordó; esta sección dice cuáles quedaron **superadas** y por qué. Ante una contradicción, manda
+esta sección y, sobre ella, el código.
+
+### Precisiones superadas
+
+- **El satélite de Edilicia ya no existe.** La migración `20261025150000_retiro_satelite_edilicia`
+  (`1825c6b9`) borró `ticket_edilicia`, `reparacion_compra` y `comentarios_reparacion`. Edilicia es
+  un tipo de ticket más: la ubicación vive en el ticket, las compras en `ticket_compra` y el bloqueo
+  por compra vale para cualquier tipo (`dfd7726c`, `e769f021`, `e3129f3b`). Quedan superadas las
+  menciones a `ticket_edilicia.ubicacion` (ubicación y sector), a `TicketEdilicia.personalAsignadoId`
+  (punto 12) y a `ReparacionCompra` (punto 2, ya anotado en su lugar).
+- **Los permisos de tickets se deciden por tipo.** `permisos_tipo_ticket` (acción por tipo de
+  ticket, `e2917192`, `7fa97d07`) reemplazó a las celdas `TICKETS:*` y `EDILICIA:*` de la matriz,
+  que se retiraron (`445a2493`, merge `00d7cb31`); un tipo nuevo nace cerrado y puede copiar los
+  permisos de otro (`cba12758`). Donde arriba dice `TICKETS:COMENTAR`, `TICKETS:OBSERVAR`,
+  `TICKETS:VER_TODOS`, `TICKETS:ASIGNAR`, `EDILICIA:LECTURA`, `EDILICIA:MODIFICACION`,
+  `<MÓDULO>:MODIFICACION` o "con el módulo del tipo", hoy rige la misma acción **sobre el tipo del
+  ticket**. Un responsable o técnico elegible es un TECNICO o COLABORADOR con LECTURA sobre el tipo
+  (`backend/src/tickets/application/services/elegibilidad-asignado.ts`), y la visibilidad sin
+  VER_TODOS sigue la regla de `visibilidad-ticket.ts`. Los anclajes `presets-rol.ts:71` y `:98` de la
+  corrección del 2026-08-21 ya no apuntan a esas líneas.
+- **Resuelto, Cerrado y Cancelado solo admiten comentarios** para quien no es administrador
+  (`765baaeb`, `3ac82584`, `odd/tasks/cerrado-solo-comentarios.md`). Quedan superadas: "un ticket
+  *Resuelto* todavía se puede reasignar" (punto 9), las tareas de solo lectura "para nadie (ROOT
+  incluido)" en Cerrado o Cancelado (ADMINISTRADOR y ROOT quedan exentos; el bloqueo por compra sigue
+  para todos) y "descompletar en Resuelto lo devuelve a En proceso", que ahora solo vale para un
+  administrador.
+- **El estado por tareas no asigna a cualquiera.** Quien completa la primera tarea de un ticket
+  Nuevo sin responsable pasa a serlo solo si es agente del tipo; un ADMINISTRADOR no se asigna
+  (`avanzar-estado-por-tareas.service.ts`).
+- **El preventivo tiene tipo.** Cada plan elige su tipo de ticket (`af75a266`, `d0f3e400`) y suma
+  anticipación, fecha objetivo y recordatorio (`602a258e`). Solo el tipo `PREVENTIVO` queda fuera del
+  SLA (`aplicar-sla.use-case.ts`); un plan de otro tipo genera un ticket común, con SLA. Matiza "los
+  preventivos siguen fuera del SLA" (punto 6) y el `tipoTicket` propio del punto 4, cuya declaración
+  de Cumplida sigue valiendo para los planes del tipo Preventivo.
+- **El correo al solicitante no sale en todo cambio de estado**: sale al pasar a Esperando al
+  cliente, Resuelto o Cerrado, y con cada comentario público (`142d15e2`,
+  `odd/tasks/ayuda-tanda-final.md` L5). Matiza el punto 1 de la segunda etapa.
+
+### Entregado desde el 2026-10-16
+
+| Entrega | Evidencia en `main` |
+|---|---|
+| Permisos por tipo de ticket, con borrado lógico de tickets | `e2917192`, `7fa97d07`, `fb7f1b08`, `445a2493`, merge `00d7cb31` |
+| Tipos de ticket limitados por módulo y tipo elegible en el alta de Edilicia | `b4376fbc`, `184f7447` |
+| Ticket unificado: Edilicia por tipo, compras y ubicación en cualquier ticket | `dfd7726c`, `e769f021`, `e3129f3b`, `1825c6b9` |
+| Resuelto, Cerrado y Cancelado solo admiten comentarios | `765baaeb`, `3ac82584` |
+| Preventivo con anticipación, fecha objetivo, recordatorio y tipo | `602a258e`, `af75a266`, `d0f3e400` |
+| Compras por tipo de ticket | merge `a2f312fa` (`odd/tasks/compras-por-tipo.md`) |
+| Tiempo del técnico: horario por usuario y tramos contra el SLA | `51fb1bf4`, `2b8843dd`, `a70b802e`, merges `cf8a2633` y `39b285f5`, `31fc3a44` |
+| Asistente de IA sobre la Ayuda | merge `1a57be44` |
+| El estado del ticket sigue a sus tareas | merge `9ae3f9db` |
+| Detalle del ticket legible y edición de reparaciones | merge `42459def` |
+| Reparaciones paginadas en el servidor | merge `94d9aa3d` |
+| Historial del valor residual de los equipos | `91be3061` |
+| Aviso del comentario público a la contraparte | `142d15e2` |
+| Login rediseñado, listados en tarjeta y aviso de sesión vencida | `ef635137`, `3d7a4af9`, `55e62d8b` |
+| Acceso por id cerrado en el detalle, el PDF, los adjuntos y la API v1 | `c381c6ee`, `eedfbb6c` |
+| Webhook de cambio de estado en todo cambio | `365f860c` |
+| Textos de la interfaz y los correos en español neutro con "usted" | `03b40ec9` |
+| Tanda final de Ayuda | merge `05c0b5ce` |
+
+### Lo que este contraste no pudo afirmar
+
+- El estado de producción: qué cliente tiene la API o los webhooks habilitados, y si Microsoft ya
+  está configurado. No se lee desde el repositorio.
+- La reapertura del SLA (punto 6) ya no está pendiente: quedó decidida el 2026-10-27 (rama
+  `docs/sla-reapertura`, integrada con este contraste).
+
 ## Nota
 
-El multi-tenant ya está resuelto y funcionando con ocho clientes activos. Eso es lo caro
+El multi-tenant ya está resuelto y funcionando con nueve clientes activos (medido el
+2026-10-24). Eso es lo caro
 de un SaaS y ya está hecho: sumar el cliente número diez no cuesta trabajo de
 infraestructura.
