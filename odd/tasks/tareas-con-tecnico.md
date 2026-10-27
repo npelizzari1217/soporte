@@ -430,7 +430,7 @@ Artículos que el punto volvió falsos, corregidos:
   - **Deploy:** `git fetch` del bundle más `merge --ff-only`, y el VPS quedó en `eb2dab34`. `deploy.ps1 -RollbackCommit c16d4e84` terminó en **DEPLOY OK**, con las cuatro migraciones tenant aplicadas en los 8 inquilinos ("OK, 8 tenant(s) migradas").
   - **Verificación posterior:** las tareas de Edilicia coinciden con la foto en las 8 bases (108/108/0 en Guadalupe y 3/0/0 en ISTIC), `con_tecnico = 0`, `tareas_total` igual a las de Edilicia, la tabla y las dos columnas retiradas, y los cinco tipos `TAREA_*` presentes en cada base.
   - **Smoke:** `/login` 200, `/api/v1/openapi.json` 200, `/api/v1/tickets` sin clave 401, los dos servicios en Running, y 0 líneas del día en los logs del backend sobre `subtareas_edilicia`, `personal_asignado_id`, `porcentaje_avance` o `PrismaClient`.
-  - **Pendiente del dueño:** el smoke manual con un usuario (detalle con Tareas, Ver subtareas en Edilicia, PDF y tarjeta del dashboard).
+  - **Smoke manual del dueño:** dado por cerrado el 2026-10-27 (detalle con Tareas, Ver subtareas en Edilicia, PDF y tarjeta del dashboard).
   - **Rollback:** `git reset --hard c16d4e84` y `deploy.ps1`, precedidos por los `rollback.sql` en orden inverso, o el dump.
   - **Roadmap:** el punto 12 pasa a **Entregado**.
   - **`check-roadmap-fresco`:** falla por el ancla, no por esta entrega. El documento se contrastó por última vez contra `1dcdcaa2` y el merge lo dejó a 83 commits, con un umbral de 75. Mover el ancla exige volver a contrastar el roadmap contra el código, y queda como pendiente.
