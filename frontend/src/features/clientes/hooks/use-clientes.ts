@@ -8,7 +8,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/shared/api/client";
-import type { ClienteCorreo, ClienteListItem } from "../types";
+import type { ClienteCorreo, ClienteIa, ClienteListItem } from "../types";
 
 export function useClientes(enabled = true) {
   return useQuery({
@@ -31,6 +31,18 @@ export function useClienteCorreo(clienteId: string, enabled: boolean) {
   return useQuery({
     queryKey: ["cliente-correo", clienteId],
     queryFn: () => apiFetch<ClienteCorreo>(`clientes/${clienteId}/correo`),
+    enabled,
+  });
+}
+
+/**
+ * `GET /clientes/:id/ia` — configuración de IA de UN cliente (odd/asistente-ia-ayuda). Solo se pide
+ * con el diálogo abierto, como el correo.
+ */
+export function useClienteIa(clienteId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["cliente-ia", clienteId],
+    queryFn: () => apiFetch<ClienteIa>(`clientes/${clienteId}/ia`),
     enabled,
   });
 }

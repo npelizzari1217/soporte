@@ -66,3 +66,19 @@ export const CLIENTE_SLUG_MAX_LENGTH = 63;
 
 /** Espejo de `SLUG_REGEX` del backend (mismo archivo). Si cambia allá, cambia acá. */
 export const CLIENTE_SLUG_REGEX = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Topes de la configuración de IA del cliente. Autoridad: `LARGO_MAXIMO_URL_IA`,
+ * `LARGO_MAXIMO_MODELO_IA` y `LARGO_MAXIMO_CLAVE_IA` de
+ * `backend/src/asistente/domain/config-ia.ts` (columnas `url` VARCHAR(2048) y `modelo`
+ * VARCHAR(100) de `asistente_ia_config`; la clave es TEXT y su tope lo fija el dominio). Copia a
+ * mano: si cambian allá, hay que venir acá.
+ */
+export const CLIENTE_IA_URL_MAX_LENGTH = 2048;
+export const CLIENTE_IA_MODELO_MAX_LENGTH = 100;
+export const CLIENTE_IA_CLAVE_MAX_LENGTH = 500;
+
+/** URL de Gemini que se propone al configurar por primera vez (`URL_IA_POR_DEFECTO` del backend). */
+export const CLIENTE_IA_URL_POR_DEFECTO = "https://generativelanguage.googleapis.com/v1beta/openai/";
+/** Modelo que se propone al configurar por primera vez (`MODELO_IA_POR_DEFECTO` del backend). */
+export const CLIENTE_IA_MODELO_POR_DEFECTO = "gemini-2.5-flash";

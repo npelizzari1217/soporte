@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   configurarCorreoSchema,
   configurarFormularioPublicoSchema,
+  configurarIaSchema,
   crearClienteSchema,
   editarClienteSchema,
 } from "./schemas";
+import {
+  CLIENTE_IA_CLAVE_MAX_LENGTH,
+  CLIENTE_IA_MODELO_MAX_LENGTH,
+  CLIENTE_IA_URL_MAX_LENGTH,
+} from "./limites";
 import {
   USUARIO_APELLIDO_MAX_LENGTH,
   USUARIO_EMAIL_MAX_LENGTH,
@@ -256,4 +262,59 @@ describe("configurarFormularioPublicoSchema", () => {
       expect(ok(slug)).toBe(false);
     },
   );
+});
+
+describe("configurarIaSchema — espejo de ConfigurarIaClienteDto y del dominio", () => {
+  const VALIDO = {
+    url: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    modelo: "gemini-2.5-flash",
+    clave: "AIzaClave",
+  };
+
+  it("centinela: los topes copiados a mano coinciden con los del backend", () => {
+    expect(CLIENTE_IA_URL_MAX_LENGTH).toBe(2048);
+    expect(CLIENTE_IA_MODELO_MAX_LENGTH).toBe(100);
+    expect(CLIENTE_IA_CLAVE_MAX_LENGTH).toBe(500);
+  });
+
+  it("acepta los valores en el límite exacto", () => {
+    const resultado = configurarIaSchema(false).safeParse({
+      url: `https://e.com/${"a".repeat(CLIENTE_IA_URL_MAX_LENGTH - 14)}`,
+      modelo: largo(CLIENTE_IA_MODELO_MAX_LENGTH),
+      clave: largo(CLIENTE_IA_CLAVE_MAX_LENGTH),
+    });
+    expect(resultado.success).toBe(true);
+  });
+
+  it.each([
+    ["URL http", { url: "http://ejemplo.com/" }, "La URL debe empezar con https:// y no llevar usuario ni contraseña"],
+    ["URL con credenciales", { url: "https://u:p@ejemplo.com/" }, "La URL debe empezar con https:// y no llevar usuario ni contraseña"],
+    ["modelo de solo espacios", { modelo: "   " }, "El modelo es requerido"],
+    ["modelo de 101", { modelo: largo(101) }, "El modelo no puede superar los 100 caracteres"],
+    ["clave de 501", { clave: largo(501) }, "La clave no puede superar los 500 caracteres"],
+  ])("rechaza %s con su mensaje", (_caso, cambio, mensaje) => {
+    const resultado = configurarIaSchema(true).safeParse({ ...VALIDO, ...cambio });
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues.map((i) => i.message)).toContain(mensaje);
+  });
+
+  it("la primera vez exige la clave; una clave de solo espacios cuenta como vacía", () => {
+    const resultado = configurarIaSchema(false).safeParse({ ...VALIDO, clave: "   " });
+    expect(resultado.error?.issues.map((i) => i.message)).toEqual([
+      "La clave es requerida para la primera configuración",
+    ]);
+  });
+
+  it("con IA ya configurada, la clave vacía es válida", () => {
+    expect(configurarIaSchema(true).safeParse({ ...VALIDO, clave: "" }).success).toBe(true);
+  });
+
+  it("recorta los valores antes de entregarlos", () => {
+    const resultado = configurarIaSchema(false).safeParse({
+      url: `  ${VALIDO.url}  `,
+      modelo: "  gemini-2.5-flash  ",
+      clave: "  AIzaClave  ",
+    });
+    expect(resultado.data).toEqual(VALIDO);
+  });
 });

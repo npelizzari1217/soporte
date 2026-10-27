@@ -10,11 +10,13 @@ import type {
   Cliente,
   ClienteApiEstado,
   ClienteCorreo,
+  ClienteIa,
   ClienteLogoDto,
   ConfigurarApiDto,
   ConfigurarCorreoDto,
   ConfigurarCsatDto,
   ConfigurarFormularioPublicoDto,
+  ConfigurarIaDto,
   CreateClienteDto,
   UpdateClienteDto,
 } from "../types";
@@ -243,6 +245,52 @@ export function useQuitarLogoCliente(clienteId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       notifySuccess("Logo eliminado.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Configura (alta o edición) la IA de un cliente (`PATCH /clientes/:id/ia`). Solo ROOT. Sin `clave`
+ * en el body, el backend conserva la guardada.
+ */
+export function useConfigurarIaCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: ConfigurarIaDto) =>
+      apiFetch<ClienteIa>(`clientes/${clienteId}/ia`, { method: "PATCH", json: dto }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["cliente-ia", clienteId], data);
+      notifySuccess("Configuración de IA guardada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/** Quita la IA de un cliente (`DELETE /clientes/:id/ia`): su asistente responde con la Ayuda. */
+export function useQuitarIaCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<ClienteIa>(`clientes/${clienteId}/ia`, { method: "DELETE" }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["cliente-ia", clienteId], data);
+      notifySuccess("Configuración de IA eliminada.");
+    },
+    onError: notifyError,
+  });
+}
+
+/**
+ * Prueba el proveedor con la configuración guardada (`POST /clientes/:id/ia/probar`). No la
+ * modifica: registra y devuelve el resultado, que el diálogo muestra.
+ */
+export function useProbarIaCliente(clienteId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<ClienteIa>(`clientes/${clienteId}/ia/probar`, { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(["cliente-ia", clienteId], data);
+      notifySuccess("Prueba de IA ejecutada.");
     },
     onError: notifyError,
   });

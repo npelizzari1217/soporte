@@ -433,7 +433,8 @@ de rollback es el commit que tenía producción **antes** del primer `deploy.ps1
 Cifra en reposo la contraseña SMTP de cada cliente, **los secretos TOTP del 2FA**
 (`usuarios_tfa.secreto_cifrado` y `secreto_pendiente_cifrado`, AAD `tfa:{usuario_id}`) **y el
 secreto de firma de los webhooks** (`webhook_destinos.secreto_cifrado`, AAD
-`webhook:{cliente_id}`). La rotación re-cifra los cuatro destinos en una sola transacción: si cualquiera no descifra, no se
+`webhook:{cliente_id}`) **y la clave del proveedor de IA del asistente**
+(`asistente_ia_config.clave_cifrada`, AAD `ia:{cliente_id}`). La rotación re-cifra los cinco destinos en una sola transacción: si cualquiera no descifra, no se
 modifica ninguno, y `--verificar` también los recorre. Se genera **una sola vez** en el deploy
 (`deploy.ps1` paso 5b) y, si existe, no se toca — regenerarla a mano convierte toda credencial
 guardada en basura indescifrable. Rotarla de verdad exige re-cifrar cada fila, no solo reemplazar
@@ -1699,6 +1700,41 @@ El código anterior no la conoce y convive con ella, así que dejarla puesta tam
 válido, y es el único que no pierde datos. Al correr el `rollback.sql` se pierden los tramos medidos
 desde el deploy, que no se pueden reconstruir: antes, un dump de la tabla. No borra la fila de
 `_prisma_migrations`: para volver a desplegar, se borra a mano.
+
+## Asistente de IA de la Ayuda
+
+Documento de la feature: `odd/tasks/asistente-ia-ayuda.md`. Botón flotante en todas las pantallas
+que responde consultas con los artículos de la Ayuda. Entra **sin costo ni llamadas externas**:
+ningún cliente tiene IA configurada, así que todos responden en modo de respaldo (el fragmento más
+parecido de la Ayuda) hasta que ROOT cargue un proveedor en Clientes > IA.
+
+| Qué | Detalle |
+|---|---|
+| Migración master | `20261026120000_asistente_ia_config`, **aditiva**: la tabla `asistente_ia_config` (un proveedor por cliente: URL, modelo y clave cifrada). Sin backfill ni seed. Entra por `migrate:master` dentro de la ventana de `predeploy-dump.ps1`. |
+| Variables y dependencias | Ninguna nueva. La clave se cifra con `EMAIL_CRYPTO_KEY`, que ya existe: sin ella, guardar una configuración de IA responde 503 y no escribe nada. Las llamadas al proveedor usan el `fetch` de Node. El lockfile no cambia. |
+| Rotación de `EMAIL_CRYPTO_KEY` | `rotar-email-crypto-key.mjs` re-cifra también `asistente_ia_config.clave_cifrada` (AAD `ia:{cliente_id}`), en la misma transacción que el resto. Ver "5. Rotación de `EMAIL_CRYPTO_KEY`". |
+| Red | Con IA configurada, el VPS necesita **HTTPS saliente** (443) hacia el proveedor (por defecto `generativelanguage.googleapis.com`). Si lo corta un firewall, el asistente no falla: responde en modo de respaldo, y "Probar" en Clientes > IA muestra "No se pudo conectar con el proveedor". |
+| Cupo | 10 consultas por minuto por persona, contadas en `throttler_contadores` (compartido entre procesos). |
+
+**La migración va antes que el código**: el código nuevo lee la tabla en cada consulta al
+asistente y en Clientes > IA.
+
+### Smoke posterior al deploy
+
+1. Con una sesión que pueda leer la Ayuda, abrir el botón flotante y preguntar "¿Cómo creo un
+   ticket?". Tiene que responder con el texto de la sección "Crear un ticket", el aviso "Texto
+   tomado de la Ayuda" y el enlace al artículo.
+2. Solo si se quiere probar un proveedor real: ROOT carga la clave en Clientes > IA y presiona
+   "Probar". Una clave de Gemini válida deja "Probada el ...". Cada consulta con IA consume la
+   cuota de esa clave.
+
+### Rollback
+
+Su `rollback.sql` borra la tabla y se puede correr dos veces (`DROP TABLE IF EXISTS`). **Primero el
+código, después el `rollback.sql`**: el código nuevo falla sin la tabla. El código anterior no la
+conoce y convive con ella, así que dejarla puesta también es un rollback válido, y es el único que
+conserva las claves cargadas. Para cortar el uso de la IA sin revert, alcanza con quitar la
+configuración del cliente en Clientes > IA: su asistente vuelve a responder con la Ayuda.
 
 ## Cuando algo falla
 

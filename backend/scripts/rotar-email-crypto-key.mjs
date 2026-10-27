@@ -1,6 +1,7 @@
 // Rotación de `EMAIL_CRYPTO_KEY`: re-cifra todos los secretos que protege esa
 // clave (lista `DESTINOS`: la contraseña SMTP de `clientes`, los secretos TOTP
-// activo y pendiente de `usuarios_tfa` y el secreto de `webhook_destinos`) de
+// activo y pendiente de `usuarios_tfa`, el secreto de `webhook_destinos` y la
+// clave del proveedor de IA de `asistente_ia_config`) de
 // una clave anterior (`OLD_KEY`) a una nueva (`NEW_KEY`), preservando el
 // formato `v1` de `AesGcmSecretCipher` sin introducir keyring ni `kid`.
 // Todos los destinos van en UNA sola transacción.
@@ -43,6 +44,12 @@ export const DESTINOS = [
     pk: 'cliente_id',
     columna: 'secreto_cifrado',
     aad: (pk) => `webhook:${pk}`,
+  },
+  {
+    tabla: 'asistente_ia_config',
+    pk: 'cliente_id',
+    columna: 'clave_cifrada',
+    aad: (pk) => `ia:${pk}`,
   },
 ];
 
