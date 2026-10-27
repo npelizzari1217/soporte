@@ -11,7 +11,7 @@ describe("loginSchema", () => {
     const result = loginSchema.safeParse({ email: "not-an-email", password: "secret123" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe("Ingresá un email válido");
+      expect(result.error.issues[0].message).toBe("Ingrese un email válido");
     }
   });
 
@@ -36,7 +36,7 @@ describe("solicitarResetSchema", () => {
     const result = solicitarResetSchema.safeParse({ email: "not-an-email" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe("Ingresá un email válido");
+      expect(result.error.issues[0].message).toBe("Ingrese un email válido");
     }
   });
 });

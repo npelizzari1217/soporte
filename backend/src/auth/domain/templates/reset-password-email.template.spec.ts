@@ -53,8 +53,8 @@ describe('templateResetConfirmado', () => {
   it('deriva al usuario a su administrador, no a "soporte"', () => {
     const msg = templateResetConfirmado({ nombre: 'Ana' });
 
-    expect(msg.text).toContain('contactá a tu administrador');
-    expect(msg.html).toContain('contactá a tu administrador');
-    expect(msg.text).not.toContain('contactá a soporte');
+    expect(msg.text).toContain('contacte a su administrador');
+    expect(msg.html).toContain('contacte a su administrador');
+    expect(msg.text).not.toContain('contacte a soporte');
   });
 });

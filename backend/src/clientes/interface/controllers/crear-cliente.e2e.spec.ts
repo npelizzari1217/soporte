@@ -151,6 +151,10 @@ class ToggleableMembresiaRepo implements IMembresiaRepository {
     return this.real.findByUsuarioYCliente(usuarioId, clienteId);
   }
 
+  findTodasByUsuarioYCliente(usuarioId: string, clienteId: string): Promise<MembresiaEntity[]> {
+    return this.real.findTodasByUsuarioYCliente(usuarioId, clienteId);
+  }
+
   save(membresia: MembresiaEntity): Promise<void> {
     return this.real.save(membresia);
   }

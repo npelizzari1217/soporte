@@ -64,14 +64,14 @@ export function templateCambioEstado(
  * respuesta (`ticket-esperando-cliente` R4). Sin link para el solicitante externo.
  */
 export function templateEsperandoCliente(datos: DatosTicketBase): PlantillaEmail {
-  const subject = `Ticket ${datos.numero}: necesitamos tu respuesta`;
+  const subject = `Ticket ${datos.numero}: necesitamos su respuesta`;
   const text =
-    `El ticket ${datos.numero} - ${datos.titulo} quedó a la espera de tu respuesta. ` +
-    `Cuando comentes, retomamos la atención.` +
+    `El ticket ${datos.numero} - ${datos.titulo} quedó a la espera de su respuesta. ` +
+    `Cuando comente, retomamos la atención.` +
     textoLink(datos);
   const html =
     `<p>El ticket <strong>${escaparHtml(datos.numero)}</strong> - ${escaparHtml(datos.titulo)} ` +
-    `quedó a la espera de tu respuesta. Cuando comentes, retomamos la atención.</p>` +
+    `quedó a la espera de su respuesta. Cuando comente, retomamos la atención.</p>` +
     htmlLink(datos);
 
   return { subject, text, html };

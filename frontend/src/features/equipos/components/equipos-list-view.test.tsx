@@ -87,7 +87,7 @@ describe("EquiposListView — gate del inventario (EQUIPOS:LECTURA/ALTAS)", () =
   it("sin EQUIPOS:LECTURA → no ve el inventario", async () => {
     mockEquipos();
     renderWithProviders(<EquiposListView />, { user: buildUser({ permisos: [] }) });
-    expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
   });
 
   it("con EQUIPOS:LECTURA pero SIN EQUIPOS:ALTAS → ve la tabla, NO ve «Nuevo equipo»", async () => {
@@ -95,7 +95,7 @@ describe("EquiposListView — gate del inventario (EQUIPOS:LECTURA/ALTAS)", () =
     renderWithProviders(<EquiposListView />, {
       user: buildUser({ permisos: ["EQUIPOS:LECTURA"] }),
     });
-    await waitFor(() => expect(screen.queryByText(/no tenés permiso/i)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/no tiene permiso/i)).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /nuevo equipo/i })).not.toBeInTheDocument();
   });
 

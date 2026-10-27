@@ -73,7 +73,7 @@ describe("AlmanaqueFeriados", () => {
   it("hovering a holiday shows its description and renderAcciones; click opens the same panel", () => {
     const acciones = vi.fn((f: FeriadoAlmanaqueRow) => <button>{`Editar ${f.descripcion}`}</button>);
     render(<AlmanaqueFeriados feriados={[GLOBAL]} hoy={HOY} renderAcciones={acciones} />);
-    expect(screen.getByText(/Pasá el mouse o seleccioná/)).toBeInTheDocument();
+    expect(screen.getByText(/Pase el mouse o seleccione/)).toBeInTheDocument();
     const celda = screen.getByRole("gridcell", { name: `12/10/2026, feriado: ${GLOBAL.descripcion}` });
     fireEvent.mouseEnter(celda);
     expect(panel().getByText(GLOBAL.descripcion)).toBeInTheDocument();

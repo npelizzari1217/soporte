@@ -87,6 +87,7 @@ function makeMembresiaRepo(): IMembresiaRepository {
     findActivasByCliente: unstubbed('findActivasByCliente'),
     findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
     findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+    findTodasByUsuarioYCliente: vi.fn().mockResolvedValue([]),
     save: unstubbed('save'),
   };
 }

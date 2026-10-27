@@ -65,10 +65,19 @@ export class PrismaDashboardRepository implements IDashboardRepository {
     };
   }
 
+  /**
+   * Un ticket sin fecha de cierre está abierto, salvo el CANCELADO: nunca recibe esa fecha y no es
+   * trabajo pendiente (odd/tasks/defectos-ayuda.md, S4).
+   */
+  private readonly abierto = {
+    fechaCierre: null,
+    estado: { codigo: { not: 'CANCELADO' } },
+  } satisfies Prisma.TicketWhereInput;
+
   async conteoPorEstadoAgrupado(filtro: MetricaFiltro): Promise<ConteoAbiertosCerrados> {
     const where = this.buildWhere(filtro);
     const [abiertos, cerrados] = await Promise.all([
-      this.client.ticket.count({ where: { ...where, fechaCierre: null } }),
+      this.client.ticket.count({ where: { ...where, ...this.abierto } }),
       this.client.ticket.count({ where: { ...where, fechaCierre: { not: null } } }),
     ]);
     return { abiertos, cerrados };
@@ -93,7 +102,7 @@ export class PrismaDashboardRepository implements IDashboardRepository {
   async cargaPorAgente(filtro: MetricaFiltro): Promise<CargaAgente[]> {
     const grupos = await this.client.ticket.groupBy({
       by: ['asignadoId'],
-      where: { ...this.buildWhere(filtro), fechaCierre: null, asignadoId: { not: null } },
+      where: { ...this.buildWhere(filtro), ...this.abierto, asignadoId: { not: null } },
       _count: { _all: true },
     });
     // `asignadoId: { not: null }` en el where garantiza que nunca es null acá.

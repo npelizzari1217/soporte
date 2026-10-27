@@ -31,7 +31,7 @@ describe("CambiarPasswordDialog", () => {
     renderWithProviders(<CambiarPasswordDialog />);
     await user.click(screen.getByRole("button", { name: /cambiar contraseña/i }));
 
-    expect(screen.getByText(/todas tus sesiones activas, incluida esta/i)).toBeInTheDocument();
+    expect(screen.getByText(/todas sus sesiones activas, incluida esta/i)).toBeInTheDocument();
   });
 
   it("204 → navega a /login?motivo=password-cambiada", async () => {

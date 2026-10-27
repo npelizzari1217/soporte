@@ -352,6 +352,29 @@ describe('EditarEquipoUseCase', () => {
       expect(equipoRepo.save).toHaveBeenCalledTimes(1);
     });
 
+    it('guardar sin cambiar un modelo que se deshabilitó después no se rechaza (defectos-ayuda S2)', async () => {
+      // El form reenvía siempre el modelo asignado: rechazarlo bloqueaba cualquier edición del equipo.
+      const deshabilitado = ModeloEquipoEntity.create(
+        { marca: 'HP', modelo: 'LaserJet Pro M404', activo: false },
+        MODELO_ID,
+      );
+      const equipo = makeEquipo({ modeloEquipoId: MODELO_ID });
+      const equipoRepo = makeEquipoRepo(equipo);
+      const useCase = makeUseCase(equipoRepo, makeModeloRepo(deshabilitado));
+
+      const result = await useCase.execute({
+        usuarioId: ACTOR,
+        equipoId: equipo.id,
+        modeloEquipoId: MODELO_ID,
+        nombre: 'Renombrado',
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(equipoRepo.save).toHaveBeenCalledTimes(1);
+      expect(result.getValue().nombre).toBe('Renombrado');
+      expect(result.getValue().modeloEquipoId).toBe(MODELO_ID);
+    });
+
     it('falla con ModeloEquipoInexistenteError cuando el modelo tiene baja lógica', async () => {
       const borrado = ModeloEquipoEntity.reconstitute(
         { marca: 'HP', modelo: 'LaserJet Pro M404', activo: true },

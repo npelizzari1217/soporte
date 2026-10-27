@@ -75,7 +75,7 @@ export class UnidadMedidaCambiadaError extends DomainError {
 
   constructor(insumoId: string) {
     super(
-      `La unidad de medida del insumo "${insumoId}" cambió mientras se procesaba el pedido. Reintentá la operación.`,
+      `La unidad de medida del insumo "${insumoId}" cambió mientras se procesaba el pedido. Reintente la operación.`,
     );
   }
 }

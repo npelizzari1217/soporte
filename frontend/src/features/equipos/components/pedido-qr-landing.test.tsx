@@ -72,7 +72,7 @@ describe("PedidoQrLanding", () => {
 
     renderWithProviders(<PedidoQrLanding slug="mi-colegio" tokenQr="tok-1" />, sesion);
 
-    await waitFor(() => expect(screen.getByText(/no tenés permiso/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/no tiene permiso/i)).toBeInTheDocument());
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

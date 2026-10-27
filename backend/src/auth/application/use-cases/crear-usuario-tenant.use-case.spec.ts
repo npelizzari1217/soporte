@@ -46,7 +46,11 @@ function buildDefaults() {
       findActivaByUsuarioYCliente: vi
         .fn<IMembresiaRepository['findActivaByUsuarioYCliente']>()
         .mockResolvedValue(null),
+      findTodasByUsuarioYCliente: vi
+        .fn<IMembresiaRepository['findTodasByUsuarioYCliente']>()
+        .mockResolvedValue([]),
       create: vi.fn<IMembresiaRepository['create']>().mockResolvedValue(undefined),
+      save: vi.fn<IMembresiaRepository['save']>().mockResolvedValue(undefined),
     },
     roleRepo: {
       findByCodigo: vi.fn<IRoleRepository['findByCodigo']>().mockResolvedValue(buildRole()),

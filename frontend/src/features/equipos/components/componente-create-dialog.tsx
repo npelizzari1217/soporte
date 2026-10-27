@@ -157,7 +157,7 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
             </label>
             <Select id="crear-componente-repuesto" error={!!errors.insumoId} {...register("insumoId")}>
               <option value="" disabled>
-                Elegí un repuesto
+                Elija un repuesto
               </option>
               {repuestos.map((repuesto) => (
                 <option key={repuesto.id} value={repuesto.id}>
@@ -208,7 +208,7 @@ export function ComponenteCreateDialog({ equipoId }: ComponenteCreateDialogProps
               Descontar del depósito
             </label>
             <p className="text-xs text-muted-foreground">
-              Si lo desmarcás, el componente se registra sin descontar una unidad del stock del repuesto.
+              Si lo desmarca, el componente se registra sin descontar una unidad del stock del repuesto.
             </p>
           </div>
           {descontarStock && <CondicionStockSelector id="crear-componente-condicion" selector={selector} />}

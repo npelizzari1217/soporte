@@ -287,7 +287,7 @@ describe('Ticket esperando al cliente e2e (WU-4: R3, R4)', () => {
       bearer(token),
     );
   const mailsDeEspera = () =>
-    enviados.filter((m) => m.text.includes('a la espera de tu respuesta'));
+    enviados.filter((m) => m.text.includes('a la espera de su respuesta'));
 
   it('R4: EN_PROCESO→ESPERANDO_CLIENTE envía un mail al solicitante', async () => {
     const { solicitante } = await escenario();

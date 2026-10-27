@@ -258,7 +258,7 @@ export function ConfigurarCorreoDialog({ cliente }: ConfigurarCorreoDialogProps)
                   </Button>
                 }
                 title="Quitar configuración de correo"
-                description={`¿Confirmás quitar la configuración de correo de "${cliente.nombre}"? El cliente dejará de recibir notificaciones por correo hasta que se configure de nuevo.`}
+                description={`¿Confirma quitar la configuración de correo de "${cliente.nombre}"? El cliente dejará de recibir notificaciones por correo hasta que se configure de nuevo.`}
                 confirmLabel="Quitar"
                 confirmVariant="destructive"
                 isConfirming={quitarMutation.isPending}

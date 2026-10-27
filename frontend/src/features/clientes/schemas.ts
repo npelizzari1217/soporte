@@ -140,7 +140,7 @@ export const configurarFormularioPublicoSchema = z.object({
     .string()
     .min(1, "El slug es requerido")
     .max(CLIENTE_SLUG_MAX_LENGTH, mensajeDemasiadoLargo("El slug", CLIENTE_SLUG_MAX_LENGTH))
-    .regex(CLIENTE_SLUG_REGEX, "Usá solo minúsculas, números y guiones, sin empezar ni terminar con guion"),
+    .regex(CLIENTE_SLUG_REGEX, "Use solo minúsculas, números y guiones, sin empezar ni terminar con guion"),
   habilitado: z.boolean(),
 });
 export type ConfigurarFormularioPublicoFormValues = z.infer<typeof configurarFormularioPublicoSchema>;

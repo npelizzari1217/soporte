@@ -129,7 +129,7 @@ export function EquipoBajaForm({ resumen, valores, onCambiar, errores, disabled 
       {valores.destino === "DESCARTE" && (
         <div className="flex flex-col gap-1">
           <label htmlFor="baja-equipo-confirmacion" className="text-sm font-medium text-foreground">
-            Escribí el nombre del equipo para confirmar
+            Escriba el nombre del equipo para confirmar
           </label>
           <Input
             id="baja-equipo-confirmacion"

@@ -22,15 +22,15 @@ export interface DatosPedidoCreado {
  * Ref spec: sdd/formulario-publico-qr pedido-publico (D1). Tarea: 15.2.
  */
 export function templatePedidoCreado(datos: DatosPedidoCreado): PlantillaEmail {
-  const subject = `Recibimos tu pedido ${datos.numero} - ${datos.clienteNombre}`;
+  const subject = `Recibimos su pedido ${datos.numero} - ${datos.clienteNombre}`;
   const text =
     `Hola ${datos.nombre},\n\n` +
-    `Tu pedido para ${datos.clienteNombre} quedó registrado con el número ${datos.numero}. ` +
-    `Guardá este número por si necesitás consultarlo.`;
+    `Su pedido para ${datos.clienteNombre} quedó registrado con el número ${datos.numero}. ` +
+    `Guarde este número por si necesita consultarlo.`;
   const html =
     `<p>Hola ${escaparHtml(datos.nombre)},</p>` +
-    `<p>Tu pedido para ${escaparHtml(datos.clienteNombre)} quedó registrado con el número ` +
-    `<strong>${escaparHtml(datos.numero)}</strong>. Guardá este número por si necesitás consultarlo.</p>`;
+    `<p>Su pedido para ${escaparHtml(datos.clienteNombre)} quedó registrado con el número ` +
+    `<strong>${escaparHtml(datos.numero)}</strong>. Guarde este número por si necesita consultarlo.</p>`;
 
   return { subject, text, html };
 }

@@ -361,7 +361,7 @@ describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
    * Sin este test, el texto se vuelve falso el día que un catálogo se mude y
    * nada lo delata.
    */
-  it("cada nota manda a SU pantalla: familias a Insumos, unidades a Unidades", async () => {
+  it("cada nota manda a SU pantalla: familias a Familia de Catálogos, unidades a Unidades", async () => {
     server.use(
       http.get("/api/familias-insumo", () => HttpResponse.json([])),
       http.get("/api/unidades-medida", () => HttpResponse.json([])),
@@ -374,11 +374,12 @@ describe("InsumoFormDialog — catálogos auxiliares vacíos", () => {
     const notaFamilias = await screen.findByText(/no hay familias de insumos cargadas/i);
     const notaUnidades = screen.getByText(/no hay unidades de medida cargadas/i);
 
-    expect(notaFamilias).toHaveTextContent("Admin > Insumos");
+    expect(notaFamilias).toHaveTextContent("Admin > Familia de Catálogos");
+    expect(notaFamilias).not.toHaveTextContent("Admin > Insumos");
     expect(notaUnidades).toHaveTextContent("Admin > Unidades");
     // Y el inverso, que es el que se rompe solo: la nota de unidades NO debe
     // seguir mandando a Insumos.
-    expect(notaUnidades).not.toHaveTextContent("Admin > Insumos");
+    expect(notaUnidades).not.toHaveTextContent("Admin > Familia de Catálogos");
   });
 });
 
@@ -679,7 +680,7 @@ describe("InsumoFormDialog — seguimiento", () => {
     await user.selectOptions(screen.getByLabelText("Seguimiento"), "SERIE");
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
-    expect(await screen.findByText(/reintentá el cambio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/reintente el cambio/i)).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
     falla = false;
@@ -753,7 +754,7 @@ describe("InsumoFormDialog — clase del ítem: título y familias (odd/tasks/pe
     await abrir("repuesto");
 
     expect(screen.getByRole("heading", { name: "Nuevo repuesto" })).toBeInTheDocument();
-    expect(opcionesDeFamilia()).toEqual(["Elegí una familia", "Mouses"]);
+    expect(opcionesDeFamilia()).toEqual(["Elija una familia", "Mouses"]);
   });
 
   it("el alta de un insumo se titula Nuevo insumo y solo ofrece familias de insumos", async () => {
@@ -761,14 +762,14 @@ describe("InsumoFormDialog — clase del ítem: título y familias (odd/tasks/pe
     await abrir("insumo");
 
     expect(screen.getByRole("heading", { name: "Nuevo insumo" })).toBeInTheDocument();
-    expect(opcionesDeFamilia()).toEqual(["Elegí una familia", "Consumibles de impresión"]);
+    expect(opcionesDeFamilia()).toEqual(["Elija una familia", "Consumibles de impresión"]);
   });
 
   it("al editar conserva la familia actual aunque sea de la otra clase, y la muestra elegida", async () => {
     mockFamilias([CONSUMIBLES, MOUSES]);
     await abrir("repuesto", buildInsumo({ familiaId: CONSUMIBLES.id }));
 
-    expect(opcionesDeFamilia()).toEqual(["Elegí una familia", "Consumibles de impresión", "Mouses"]);
+    expect(opcionesDeFamilia()).toEqual(["Elija una familia", "Consumibles de impresión", "Mouses"]);
     await waitFor(() => expect(screen.getByLabelText("Familia")).toHaveValue(CONSUMIBLES.id));
   });
 

@@ -406,7 +406,7 @@ export class PrefijoTipoTicketColisionError extends DomainError {
   constructor(codigoNuevo: string, codigoExistente: string, prefijo: string) {
     super(
       `El prefijo de numeración "${prefijo}" derivado del codigo "${codigoNuevo}" ya está en uso ` +
-        `por el tipo de ticket activo "${codigoExistente}". Elegí un codigo que derive un prefijo distinto.`,
+        `por el tipo de ticket activo "${codigoExistente}". Elija un codigo que derive un prefijo distinto.`,
     );
   }
 }
@@ -503,7 +503,7 @@ export class ExportacionDemasiadoGrandeError extends DomainError {
   constructor(total: number, tope: number) {
     super(
       `La exportación alcanzaría ${total} tickets y el máximo es ${tope}. ` +
-        `Acotá los filtros activos (estado, tipo, prioridad, asignado, ciclo, fecha o búsqueda) y volvé a exportar.`,
+        `Acote los filtros activos (estado, tipo, prioridad, asignado, ciclo, fecha o búsqueda) y vuelva a exportar.`,
     );
   }
 }

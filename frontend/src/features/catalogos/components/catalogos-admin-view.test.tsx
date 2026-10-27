@@ -60,7 +60,7 @@ describe("CatalogosAdminView", () => {
     if (shouldShowContent) {
       await screen.findByText("INCIDENTE");
     } else {
-      expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
       expect(screen.queryByText("INCIDENTE")).not.toBeInTheDocument();
     }
   });
@@ -68,7 +68,7 @@ describe("CatalogosAdminView", () => {
   it("colisión de prefijo al crear un tipo de ticket muestra el mensaje EXACTO del backend", async () => {
     const user = userEvent.setup();
     const MENSAJE_BACKEND =
-      'El prefijo de numeración "INC" derivado del codigo "INCIDENCIA" ya está en uso por el tipo de ticket activo "INCIDENTE". Elegí un codigo que derive un prefijo distinto.';
+      'El prefijo de numeración "INC" derivado del codigo "INCIDENCIA" ya está en uso por el tipo de ticket activo "INCIDENTE". Elija un codigo que derive un prefijo distinto.';
 
     server.use(
       http.post("/api/catalogos/tipos-ticket", () =>

@@ -164,9 +164,8 @@ catálogo**, con la opción **Sin modelo de catálogo** al principio.
 - Al **volver a Sin modelo de catálogo**, los dos campos se habilitan otra vez, pero
   vacíos: lo que tenían antes no se recupera y hay que volver a escribirlo.
 - Los modelos dados de baja aparecen en el selector con la aclaración
-  *(deshabilitado)*, pero el sistema no permite guardar un equipo con un modelo
-  deshabilitado. Si un equipo ya lo tenía, para guardar cambios en él elija otro
-  modelo, elija **Sin modelo de catálogo** o pida que se active el modelo.
+  *(deshabilitado)*. No se puede elegir uno de ellos para un equipo que no lo
+  tenía; un equipo que ya lo tenía puede guardar otros cambios sin tocar el modelo.
 - Si el catálogo está vacío, el formulario avisa que no hay modelos cargados y que
   se crean desde **Admin**, en **Modelos de equipo**.
 

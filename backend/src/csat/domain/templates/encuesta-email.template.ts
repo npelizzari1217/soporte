@@ -28,13 +28,13 @@ type PlantillaEmail = Omit<EmailMessage, 'to'>;
  */
 export function templateEncuestaSatisfaccion(datos: DatosEncuestaEmail): PlantillaEmail {
   const link = `${datos.appBaseUrl}/encuesta/${datos.token}`;
-  const subject = `¿Cómo fue tu experiencia con el ticket ${datos.numero}?`;
+  const subject = `¿Cómo fue su experiencia con el ticket ${datos.numero}?`;
   const text =
-    `Tu ticket ${datos.numero} - ${datos.titulo} fue cerrado. ` +
-    `Contanos cómo fue tu experiencia:\n\n${link}`;
+    `Su ticket ${datos.numero} - ${datos.titulo} fue cerrado. ` +
+    `Cuéntenos cómo fue su experiencia:\n\n${link}`;
   const html =
-    `<p>Tu ticket <strong>${datos.numero}</strong> - ${datos.titulo} fue cerrado. ` +
-    `Contanos cómo fue tu experiencia:</p>` +
+    `<p>Su ticket <strong>${datos.numero}</strong> - ${datos.titulo} fue cerrado. ` +
+    `Cuéntenos cómo fue su experiencia:</p>` +
     `<p><a href="${link}">Responder encuesta</a></p>`;
 
   return { subject, text, html };

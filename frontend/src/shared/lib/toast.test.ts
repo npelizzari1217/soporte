@@ -33,6 +33,6 @@ describe("notifyError", () => {
 
   it("plain unexpected Error (not ApiError) → falls back to a generic message, never crashes", () => {
     notifyError(new Error("boom"));
-    expect(toast.error).toHaveBeenCalledWith("Ocurrió un error inesperado. Intentá de nuevo.");
+    expect(toast.error).toHaveBeenCalledWith("Ocurrió un error inesperado. Intente de nuevo.");
   });
 });

@@ -106,7 +106,7 @@ describe("WebhookSection", () => {
     }
     await user.click(screen.getByRole("button", { name: "Guardar" }));
     expect(await screen.findByText("La URL tiene que empezar con https://.")).toBeInTheDocument();
-    expect(screen.getByText("Elegí al menos un evento.")).toBeInTheDocument();
+    expect(screen.getByText("Elija al menos un evento.")).toBeInTheDocument();
     expect(guardado).not.toHaveBeenCalled();
   });
 
@@ -131,7 +131,7 @@ describe("WebhookSection", () => {
 
     expect(await screen.findByText(SECRETO)).toBeInTheDocument();
     expect(body).toEqual({ url: "https://erp.example.com/hooks", eventos: ["TICKET_CREADO"], activo: true });
-    expect(screen.getByText(/única vez que lo vas a ver/i)).toBeInTheDocument();
+    expect(screen.getByText(/única vez que podrá verlo/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Copiar secreto" }));
     expect(writeText).toHaveBeenCalledWith(SECRETO);
 

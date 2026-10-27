@@ -101,10 +101,10 @@ describe("EquipoBajaDialog", () => {
 
     await user.click(screen.getByLabelText(/Descartar todas las piezas/));
     expect(confirmar()).toBeDisabled();
-    await user.type(screen.getByLabelText("Escribí el nombre del equipo para confirmar"), "PC-2");
+    await user.type(screen.getByLabelText("Escriba el nombre del equipo para confirmar"), "PC-2");
     expect(confirmar()).toBeDisabled();
-    await user.clear(screen.getByLabelText("Escribí el nombre del equipo para confirmar"));
-    await user.type(screen.getByLabelText("Escribí el nombre del equipo para confirmar"), "  PC-1 ");
+    await user.clear(screen.getByLabelText("Escriba el nombre del equipo para confirmar"));
+    await user.type(screen.getByLabelText("Escriba el nombre del equipo para confirmar"), "  PC-1 ");
     expect(confirmar()).toBeEnabled();
 
     await user.click(confirmar());
@@ -207,7 +207,7 @@ describe("EquipoBajaDialog", () => {
 
     await user.click(confirmar());
 
-    expect(await screen.findByText(/El equipo cambió mientras confirmabas la baja/)).toBeInTheDocument();
+    expect(await screen.findByText(/El equipo cambió mientras confirmaba la baja/)).toBeInTheDocument();
     await waitFor(() => expect(resumenPedidos.pedidos()).toBe(2));
     expect(cuerpos).toHaveLength(1);
   });

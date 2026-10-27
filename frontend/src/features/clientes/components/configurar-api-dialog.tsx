@@ -66,7 +66,7 @@ export function ConfigurarApiDialog({ cliente }: ConfigurarApiDialogProps) {
                 </Button>
               }
               title="Deshabilitar API pública"
-              description={`¿Confirmás deshabilitar la API de "${cliente.nombre}"? Todas las claves de este cliente dejan de funcionar en el acto. Las claves y el usuario de integración se conservan: si la volvés a habilitar, las claves no revocadas vuelven a funcionar.`}
+              description={`¿Confirma deshabilitar la API de "${cliente.nombre}"? Todas las claves de este cliente dejan de funcionar en el acto. Las claves y el usuario de integración se conservan: si la volvés a habilitar, las claves no revocadas vuelven a funcionar.`}
               confirmLabel="Deshabilitar"
               confirmVariant="destructive"
               isConfirming={configurarMutation.isPending}
@@ -76,7 +76,7 @@ export function ConfigurarApiDialog({ cliente }: ConfigurarApiDialogProps) {
             <ConfirmDialog
               trigger={<Button type="button">Habilitar API</Button>}
               title="Habilitar API pública"
-              description={`¿Confirmás habilitar la API de "${cliente.nombre}"? Después, el ADMINISTRADOR del cliente crea las claves desde la pantalla "Integraciones".`}
+              description={`¿Confirma habilitar la API de "${cliente.nombre}"? Después, el ADMINISTRADOR del cliente crea las claves desde la pantalla "Integraciones".`}
               confirmLabel="Habilitar"
               isConfirming={configurarMutation.isPending}
               onConfirm={confirmar}

@@ -121,7 +121,7 @@ describe("Salida de un insumo SERIE", () => {
 
     await user.click(screen.getByRole("button", { name: /^registrar$/i }));
 
-    expect(await screen.findByText(/elegí la pieza/i)).toBeInTheDocument();
+    expect(await screen.findByText(/elija la pieza/i)).toBeInTheDocument();
     expect(capturado.body).toBeNull();
   });
 

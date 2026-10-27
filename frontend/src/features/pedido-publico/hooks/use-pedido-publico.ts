@@ -19,19 +19,19 @@ import type { PedidoPublicoFormValues } from "../schemas";
 
 /** Mensaje del 202 constante: el mail con el link de confirmación sale aparte. */
 export const MENSAJE_PEDIDO_ENVIADO =
-  "Te enviamos un correo para confirmar tu pedido. Abrí el link que te mandamos y listo. Si no lo ves, revisá la carpeta de spam.";
+  "Le enviamos un correo para confirmar su pedido. Abra el link que le mandamos y listo. Si no lo ve, revise la carpeta de spam.";
 
 export const MENSAJE_FORMULARIO_NO_DISPONIBLE =
   "Este formulario no está disponible o el link no es válido.";
 
 /** 404 y 429 se distinguen; red y 5xx son transitorios; el resto cae a un mensaje genérico. */
 export function mensajeDeErrorPedido(error: ApiError | null): string {
-  if (!error) return "No pudimos enviar tu pedido. Probá de nuevo.";
+  if (!error) return "No pudimos enviar su pedido. Intente de nuevo.";
   if (error.statusCode === 404) return MENSAJE_FORMULARIO_NO_DISPONIBLE;
-  if (error.statusCode === 429) return "Hiciste demasiados pedidos. Esperá unos minutos y volvé a intentar.";
-  if (error.statusCode === 0) return "No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.";
-  if (error.statusCode >= 500) return "Hubo un problema en el servidor. Probá de nuevo en unos minutos.";
-  return "Revisá los datos del formulario e intentá de nuevo.";
+  if (error.statusCode === 429) return "Hizo demasiados pedidos. Espere unos minutos y vuelva a intentar.";
+  if (error.statusCode === 0) return "No pudimos conectar con el servidor. Revise su conexión e intente de nuevo.";
+  if (error.statusCode >= 500) return "Hubo un problema en el servidor. Intente de nuevo en unos minutos.";
+  return "Revise los datos del formulario e intente de nuevo.";
 }
 
 function rutaPedido(slug: string): string {
@@ -79,14 +79,14 @@ export interface PedidoConfirmado {
 
 /** 409: el cliente todavía no tiene un ciclo de soporte activo; el link sigue vigente. */
 export const MENSAJE_SIN_CICLO_ACTIVO =
-  "Por ahora no podemos registrar tu pedido. Tu link sigue siendo válido: volvé a abrirlo más tarde.";
+  "Por ahora no podemos registrar su pedido. Su link sigue siendo válido: vuelva a abrirlo más tarde.";
 
 export const MENSAJE_LINK_NO_VALIDO = "El link no es válido o venció.";
 
 /** Mensaje de la confirmación: el 409 es transitorio y el resto reusa `mensajeDeErrorPedido`. */
 export function mensajeDeErrorConfirmacion(error: ApiError | null): string {
   if (error?.statusCode === 409) return MENSAJE_SIN_CICLO_ACTIVO;
-  if (error?.statusCode === 429) return "Hiciste demasiados intentos. Esperá unos minutos y volvé a intentar.";
+  if (error?.statusCode === 429) return "Hizo demasiados intentos. Espere unos minutos y vuelva a intentar.";
   if (error?.statusCode === 404) return MENSAJE_LINK_NO_VALIDO;
   return mensajeDeErrorPedido(error);
 }

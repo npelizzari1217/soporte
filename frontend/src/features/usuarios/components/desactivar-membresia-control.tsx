@@ -25,7 +25,7 @@ export function DesactivarMembresiaControl({ usuario }: DesactivarMembresiaContr
         </Button>
       }
       title="Desactivar membresía"
-      description={`¿Confirmás desactivar la membresía de "${usuario.nombre} ${usuario.apellido}" en este tenant? Pierde acceso, no se borra el usuario global.`}
+      description={`¿Confirma desactivar la membresía de "${usuario.nombre} ${usuario.apellido}" en este tenant? Pierde acceso, no se borra el usuario global.`}
       confirmLabel="Desactivar"
       confirmVariant="destructive"
       isConfirming={mutation.isPending}

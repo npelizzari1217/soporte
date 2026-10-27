@@ -222,7 +222,7 @@ export type EditarComponenteFormValues = z.infer<typeof editarComponenteSchema>;
  * el tipo se deriva de la familia del repuesto.
  */
 export const agregarComponenteSchema = z.object({
-  insumoId: z.string().uuid("Elegí un repuesto del catálogo"),
+  insumoId: z.string().uuid("Elija un repuesto del catálogo"),
   descontarStock: z.boolean(),
   /** Solo tiene sentido con `descontarStock`; el diálogo lo agrega al payload desde el selector. */
   condicion: z.enum(CONDICIONES_STOCK).optional(),
@@ -257,7 +257,7 @@ export const crearTicketSoporteSchema = z.object({
     .min(1, "El título es requerido")
     .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
-  prioridadId: z.string().uuid("Elegí una prioridad"),
+  prioridadId: z.string().uuid("Elija una prioridad"),
   /**
    * Acá SÍ hace falta `.or(z.literal(""))`: a diferencia de los campos de
    * fecha de arriba, `.uuid()` rechaza `""` (no es un UUID válido), así que
@@ -288,7 +288,7 @@ export const retirarComponenteSchema = z
   .superRefine((valores, ctx) => {
     const motivo = (valores.motivo ?? "").trim();
     if (valores.destino === "DESCARTE" && motivo === "") {
-      ctx.addIssue({ code: "custom", path: ["motivo"], message: "Indicá el motivo del descarte" });
+      ctx.addIssue({ code: "custom", path: ["motivo"], message: "Indique el motivo del descarte" });
     }
     if (motivo.length > RETIRO_MOTIVO_MAX_LENGTH) {
       ctx.addIssue({

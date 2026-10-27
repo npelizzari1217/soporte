@@ -51,14 +51,14 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
     if (!qr) return;
     pngQr(qr.url)
       .then((blob) => dispararDescarga(blob, nombreArchivo(equipoNombre, "png")))
-      .catch(() => toast.error("No se pudo generar el PNG. Probá con el SVG."));
+      .catch(() => toast.error("No se pudo generar el PNG. Pruebe con el SVG."));
   };
 
   const imprimir = () => {
     if (!qr) return;
     const ventana = window.open("", "_blank", "width=600,height=700");
     if (!ventana) {
-      toast.error("El navegador bloqueó la ventana de impresión. Permitila e intentá de nuevo.");
+      toast.error("El navegador bloqueó la ventana de impresión. Permítala e intente de nuevo.");
       return;
     }
     // Solo se escribe el SVG generado acá (números fijos); el nombre va como texto, no como HTML.
@@ -103,12 +103,12 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
       {lectura.isPending && <p className="mt-3 text-sm text-muted-foreground">Cargando el QR…</p>}
       {lectura.isError && (
         <p role="alert" className="mt-3 text-sm text-destructive">
-          No se pudo cargar el QR del equipo. Recargá la pantalla para volver a intentarlo.
+          No se pudo cargar el QR del equipo. Recargue la pantalla para volver a intentarlo.
         </p>
       )}
       {requiereRegenerar && (
         <p className="mt-3 text-sm text-muted-foreground">
-          Este equipo tiene un QR emitido antes de que el sistema pudiera volver a mostrarlo. Regeneralo una vez para
+          Este equipo tiene un QR emitido antes de que el sistema pudiera volver a mostrarlo. Regenérelo una vez para
           verlo y descargarlo; el que está impreso deja de funcionar al regenerar.
         </p>
       )}
@@ -117,7 +117,7 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
         open={confirmando}
         onOpenChange={setConfirmando}
         title="Generar QR"
-        description="Si este equipo ya tiene un QR emitido, el anterior deja de funcionar al instante y los que ya estén impresos hay que reemplazarlos. ¿Querés continuar?"
+        description="Si este equipo ya tiene un QR emitido, el anterior deja de funcionar al instante y los que ya estén impresos hay que reemplazarlos. ¿Desea continuar?"
         confirmLabel="Generar QR"
         isConfirming={emitir.isPending}
         onConfirm={() => {
@@ -139,7 +139,7 @@ export function EquipoQrPanel({ equipoId, equipoNombre }: EquipoQrPanelProps) {
             <path d={pathQr(matriz)} fill="#000000" />
           </svg>
           <p className="text-xs text-muted-foreground">
-            Este es el QR vigente: podés descargarlo o imprimirlo cuando quieras. Si lo regenerás, el anterior deja de
+            Este es el QR vigente: puede descargarlo o imprimirlo cuando quiera. Si lo regenera, el anterior deja de
             funcionar.
           </p>
         </div>

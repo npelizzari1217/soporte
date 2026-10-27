@@ -140,7 +140,7 @@ describe('templateEsperandoCliente', () => {
 
     expect(subject).toContain('SOP-2026-00042');
     expect(text).toContain('La impresora no imprime');
-    expect(text).toContain('a la espera de tu respuesta');
+    expect(text).toContain('a la espera de su respuesta');
     expect(text).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
     expect(html).toContain('https://soporte.miempresa.com/tickets/ticket-abc');
   });

@@ -43,7 +43,7 @@ describe("CiclosAdminView", () => {
     if (shouldShowContent) {
       await screen.findByText("2026-S1");
     } else {
-      expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
       expect(screen.queryByText("2026-S1")).not.toBeInTheDocument();
     }
   });

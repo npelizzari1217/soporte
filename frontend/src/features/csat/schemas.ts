@@ -11,10 +11,10 @@ import { z } from "zod";
  */
 export const encuestaSchema = z.object({
   puntaje: z
-    .number({ required_error: "Elegí un puntaje de 1 a 5 estrellas." })
+    .number({ required_error: "Elija un puntaje de 1 a 5 estrellas." })
     .int()
-    .min(1, "Elegí un puntaje de 1 a 5 estrellas.")
-    .max(5, "Elegí un puntaje de 1 a 5 estrellas."),
+    .min(1, "Elija un puntaje de 1 a 5 estrellas.")
+    .max(5, "Elija un puntaje de 1 a 5 estrellas."),
   comentario: z.string().max(1000, "Máximo 1000 caracteres").optional(),
 });
 

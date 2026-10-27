@@ -12,7 +12,7 @@ Escriba su **Email** y su **Contraseña** y presione **Iniciar sesión**. El
 botón con forma de ojo, dentro del campo de contraseña, le permite ver lo que
 escribió antes de enviarlo.
 
-Si olvidó su contraseña, use el enlace **¿Olvidaste tu contraseña?**. El
+Si olvidó su contraseña, use el enlace **¿Olvidó su contraseña?**. El
 procedimiento completo está en el artículo "Cómo cambiar o recuperar su
 contraseña".
 

@@ -84,7 +84,7 @@ export function ReparacionCreateDialog() {
   function submit(values: CrearReparacionFormValues) {
     // Sin `tipoId` el backend crea EDILICIA: sin ALTAS sobre ese tipo, sería un 403 seguro.
     if (!values.tipoId && !ofreceEdiliciaPorDefecto) {
-      setError("tipoId", { message: "Elegí un tipo" });
+      setError("tipoId", { message: "Elija un tipo" });
       return;
     }
     crearMutation.mutate(
@@ -164,7 +164,7 @@ export function ReparacionCreateDialog() {
                   </option>
                 ) : (
                   <option value="" disabled>
-                    Elegí un tipo
+                    Elija un tipo
                   </option>
                 )}
                 {tiposAlternativos.map((tipo) => (
@@ -227,7 +227,7 @@ export function ReparacionCreateDialog() {
               {...register("prioridadId")}
             >
               <option value="" disabled>
-                Elegí una prioridad
+                Elija una prioridad
               </option>
               {(prioridadesQuery.data ?? []).map((prioridad) => (
                 <option key={prioridad.id} value={prioridad.id}>

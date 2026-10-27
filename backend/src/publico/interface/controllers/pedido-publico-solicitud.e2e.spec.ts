@@ -218,7 +218,7 @@ describe('Formulario público e2e — POST solicitud (WU-13)', () => {
 
       expect(r.status).toBe(202);
       expect(JSON.parse(r.texto)).toEqual({
-        mensaje: 'Si los datos son correctos, te enviamos un mail para confirmar.',
+        mensaje: 'Si los datos son correctos, le enviamos un mail para confirmar.',
       });
 
       const pendientes = await tenantA.pedidoPublicoPendiente.findMany();

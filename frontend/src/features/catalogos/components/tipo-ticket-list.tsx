@@ -29,7 +29,7 @@ function EstadoActivoAction({ tipo }: { tipo: TipoTicket }) {
         </Button>
       }
       title={tipo.activo ? "Dar de baja tipo de ticket" : "Activar tipo de ticket"}
-      description={`¿Confirmás ${tipo.activo ? "dar de baja" : "activar"} "${tipo.nombre}"?`}
+      description={`¿Confirma ${tipo.activo ? "dar de baja" : "activar"} "${tipo.nombre}"?`}
       confirmLabel={tipo.activo ? "Dar de baja" : "Activar"}
       confirmVariant={tipo.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}
@@ -88,7 +88,7 @@ export function TipoTicketList() {
         error={tiposQuery.isError ? "No se pudieron cargar los tipos de ticket." : undefined}
         onRetry={() => tiposQuery.refetch().catch(notifyError)}
         emptyTitle="Sin tipos de ticket"
-        emptyDescription="Creá el primero con el botón «Nuevo tipo»."
+        emptyDescription="Cree el primero con el botón «Nuevo tipo»."
       />
     </div>
   );

@@ -29,12 +29,12 @@ import { MOTIVOS_CORTE, type MotivoCorte } from "@/shared/auth/cortar-sesion";
  * real queda solo en los logs del servidor y nunca llega a la URL ni a la pantalla.
  */
 export const MENSAJE_SSO_ERROR =
-  "No pudimos iniciar sesión con ese proveedor. Probá de nuevo o ingresá con tu email y contraseña.";
+  "No pudimos iniciar sesión con ese proveedor. Intente de nuevo o ingrese con su email y contraseña.";
 
 /** Aviso de cada corte de sesión. Informativo: el corte es una medida de seguridad, no una falla. */
 export const MENSAJES_CORTE: Readonly<Record<MotivoCorte, string>> = {
-  inactividad: "Tu sesión se cerró por inactividad. Inicia sesión nuevamente.",
-  "sesion-vencida": "Tu sesión venció. Inicia sesión nuevamente.",
+  inactividad: "Su sesión se cerró por inactividad. Inicie sesión nuevamente.",
+  "sesion-vencida": "Su sesión venció. Inicie sesión nuevamente.",
 };
 
 function esMotivoCorte(motivo: string | null): motivo is MotivoCorte {
@@ -78,7 +78,7 @@ export function AvisoMotivo(): React.ReactElement | null {
       role="status"
       className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-foreground"
     >
-      Listo, cambiaste tu contraseña. Entrá de nuevo con la nueva.
+      Listo, cambió su contraseña. Ingrese de nuevo con la nueva.
     </div>
   );
 }

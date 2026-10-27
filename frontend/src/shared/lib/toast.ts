@@ -19,5 +19,5 @@ export function notifyError(err: unknown): void {
     toast.error(err.messages.join(" "));
     return;
   }
-  toast.error("Ocurrió un error inesperado. Intentá de nuevo.");
+  toast.error("Ocurrió un error inesperado. Intente de nuevo.");
 }

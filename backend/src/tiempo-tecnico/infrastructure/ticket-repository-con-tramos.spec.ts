@@ -2,6 +2,7 @@ import { TicketEntity } from '../../tickets/domain/entities/ticket.entity';
 import { ITicketRepository } from '../../tickets/domain/ports/i-ticket.repository';
 import { SituacionTicketGuardado } from '../domain/ports/i-tramo-tecnico.repository';
 import { TicketRepositoryConTramos } from './ticket-repository-con-tramos';
+import { DomainEvent } from '../../shared/domain/ports/i-domain-event-publisher';
 
 const ticket = TicketEntity.create({
   numero: 'SOP-2026-00001',
@@ -21,9 +22,12 @@ const PREVIO: SituacionTicketGuardado = {
   slaMetaS: null,
 };
 
-function armar(opciones: { guardarFalla?: boolean } = {}) {
+function armar(opciones: { guardarFalla?: boolean; previo?: SituacionTicketGuardado | null } = {}) {
   const pasos: string[] = [];
+  const publicados: DomainEvent[] = [];
+  const alCommit: Array<() => void> = [];
   let enTransaccion = false;
+  const previo = opciones.previo === undefined ? PREVIO : opciones.previo;
   const inner: ITicketRepository = {
     findById: async (id) => (id === ticket.id ? ticket : null),
     findByIds: async (ids) => new Map(ids.map((id) => [id, ticket])),
@@ -50,24 +54,37 @@ function armar(opciones: { guardarFalla?: boolean } = {}) {
     {
       leerPrevio: async (id) => {
         pasos.push(`leerPrevio ${id} tx=${enTransaccion}`);
-        return PREVIO;
+        return previo;
       },
       sincronizar: async (id, previo) => {
         pasos.push(`sincronizar ${id} previo=${previo?.estadoCodigo} tx=${enTransaccion}`);
       },
     },
     {
+      // Como el runner real: lo encolado con `alCommitear` corre solo si la transacción confirma.
       run: async <T>(fn: () => Promise<T>): Promise<T> => {
         enTransaccion = true;
         try {
-          return await fn();
+          const resultado = await fn();
+          enTransaccion = false;
+          alCommit.splice(0).forEach((cb) => cb());
+          return resultado;
         } finally {
           enTransaccion = false;
+          alCommit.length = 0;
         }
+      },
+      alCommitear: (cb: () => void) => {
+        alCommit.push(cb);
+      },
+    },
+    {
+      publish: (evento) => {
+        publicados.push(evento);
       },
     },
   );
-  return { repo, pasos };
+  return { repo, pasos, publicados };
 }
 
 describe('TicketRepositoryConTramos', () => {
@@ -88,6 +105,43 @@ describe('TicketRepositoryConTramos', () => {
 
     await expect(repo.save(ticket)).rejects.toThrow('fallo del upsert');
     expect(pasos).toEqual([`leerPrevio ${ticket.id} tx=true`, `save ${ticket.id} tx=true`]);
+  });
+
+  describe('aviso de cambio de estado (odd/tasks/defectos-ayuda.md, S6)', () => {
+    it('si el estado cambió, publica ticket.estado_modificado después del commit', async () => {
+      const { repo, publicados } = armar({ previo: { ...PREVIO, estadoId: 'otro-estado' } });
+
+      await repo.save(ticket);
+
+      expect(publicados.map((e) => e.name)).toEqual(['ticket.estado_modificado']);
+      expect(publicados[0]).toMatchObject({ ticketId: ticket.id });
+    });
+
+    it('si el estado no cambió, no publica nada', async () => {
+      const { repo, publicados } = armar();
+
+      await repo.save(ticket);
+
+      expect(publicados).toEqual([]);
+    });
+
+    it('el alta no publica: ya la avisa ticket.creado', async () => {
+      const { repo, publicados } = armar({ previo: null });
+
+      await repo.save(ticket);
+
+      expect(publicados).toEqual([]);
+    });
+
+    it('si el guardado falla, no publica', async () => {
+      const { repo, publicados } = armar({
+        guardarFalla: true,
+        previo: { ...PREVIO, estadoId: 'otro-estado' },
+      });
+
+      await expect(repo.save(ticket)).rejects.toThrow('fallo del upsert');
+      expect(publicados).toEqual([]);
+    });
   });
 
   it('el resto de los métodos delega en el repositorio de tickets sin tocar los tramos', async () => {

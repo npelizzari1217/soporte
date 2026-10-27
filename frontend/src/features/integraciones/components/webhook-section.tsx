@@ -28,7 +28,7 @@ import { WebhookEntregasTable } from "./webhook-entregas-table";
 const TEXTOS_SECRETO_WEBHOOK: TextosSecretoUnico = {
   titulo: "Secreto de firma",
   descripcion:
-    "Copialo y guardalo en un lugar seguro ahora: es la única vez que lo vas a ver. Con él tu sistema verifica que cada aviso viene de soporte. Si lo perdés, regeneralo.",
+    "Cópielo y guárdelo en un lugar seguro ahora: es la única vez que podrá verlo. Con él su sistema verifica que cada aviso viene de soporte. Si lo pierde, regenérelo.",
   etiqueta: "Secreto de firma del webhook",
   copiar: "Copiar secreto",
   copiado: "Copiado",
@@ -48,7 +48,7 @@ export function WebhookSection() {
         Webhooks
       </h2>
       <p className="mb-4 text-xs text-muted-foreground">
-        Soporte avisa a una URL de tu sistema cada vez que ocurre un evento de un ticket, con una firma que tu sistema
+        Soporte avisa a una URL de su sistema cada vez que ocurre un evento de un ticket, con una firma que su sistema
         verifica con el secreto. Para configurarlo, ROOT tiene que haber habilitado la API de este cliente.
       </p>
 
@@ -74,7 +74,7 @@ export function WebhookSection() {
                   </Button>
                 }
                 title="Regenerar secreto"
-                description="¿Confirmás regenerar el secreto de firma? El actual deja de funcionar en el acto: tu sistema va a rechazar los avisos hasta que cargues el nuevo."
+                description="¿Confirma regenerar el secreto de firma? El actual deja de funcionar en el acto: su sistema va a rechazar los avisos hasta que cargue el nuevo."
                 confirmLabel="Regenerar"
                 confirmVariant="destructive"
                 isConfirming={regenerarMutation.isPending}

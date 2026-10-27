@@ -5,8 +5,8 @@ import { Input } from "./input";
 
 describe("Input", () => {
   it("forwards placeholder prop to the native input", () => {
-    render(<Input placeholder="tu@email.com" />);
-    expect(screen.getByPlaceholderText("tu@email.com")).toBeInTheDocument();
+    render(<Input placeholder="nombre@empresa.com" />);
+    expect(screen.getByPlaceholderText("nombre@empresa.com")).toBeInTheDocument();
   });
 
   it("disabled prop → the native input is disabled and rejects typing", () => {

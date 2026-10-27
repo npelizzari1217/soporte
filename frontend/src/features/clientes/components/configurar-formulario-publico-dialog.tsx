@@ -56,7 +56,7 @@ export function ConfigurarFormularioPublicoDialog({ cliente }: ConfigurarFormula
       dto.slug = parsed.data;
     }
     if (habilitado && slugLimpio === "") {
-      setError("Cargá un slug antes de habilitar el formulario público.");
+      setError("Cargue un slug antes de habilitar el formulario público.");
       return;
     }
     if (habilitado !== cliente.formularioPublicoHabilitado) dto.habilitado = habilitado;

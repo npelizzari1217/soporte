@@ -225,10 +225,10 @@ describe("ReparacionCreateDialog — tipo", () => {
       await abrirYCompletar(user);
       await screen.findByRole("option", { name: "Mantenimiento" });
       expect(screen.queryByRole("option", { name: "Edilicia" })).not.toBeInTheDocument();
-      expect(screen.getByRole("option", { name: "Elegí un tipo" })).toBeDisabled();
+      expect(screen.getByRole("option", { name: "Elija un tipo" })).toBeDisabled();
 
       await user.click(screen.getByRole("button", { name: /^crear$/i }));
-      expect(await screen.findByText("Elegí un tipo", { selector: "p" })).toBeInTheDocument();
+      expect(await screen.findByText("Elija un tipo", { selector: "p" })).toBeInTheDocument();
       expect(bodies).toHaveLength(0);
 
       await user.selectOptions(screen.getByLabelText("Tipo"), TIPO_MANTENIMIENTO_ID);

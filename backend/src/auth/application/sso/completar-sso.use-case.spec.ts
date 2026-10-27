@@ -112,6 +112,7 @@ describe('CompletarSsoUseCase', () => {
       findActivasByCliente: unstubbed('findActivasByCliente'),
       findClientesDeTodasByUsuario: unstubbed('findClientesDeTodasByUsuario'),
       findByUsuarioYCliente: unstubbed('findByUsuarioYCliente'),
+      findTodasByUsuarioYCliente: vi.fn().mockResolvedValue([]),
       create: unstubbed('create'),
       save: unstubbed('save'),
     };

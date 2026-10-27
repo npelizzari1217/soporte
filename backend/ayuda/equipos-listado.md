@@ -89,11 +89,9 @@ El archivo **sigue el mismo filtro que el listado**: con la casilla desmarcada t
 todos los equipos vigentes; con la casilla marcada trae además los dados de baja,
 con **Baja** en la columna **Estado**.
 
-Una diferencia con la pantalla: la columna **Marca** del archivo trae siempre la
-marca escrita a mano en el equipo, no la del catálogo. Al elegir un modelo de
-catálogo, el formulario vacía la marca escrita a mano, así que en esos equipos la
-columna **Marca** del archivo sale vacía, aunque en pantalla se vean la marca y el
-modelo del catálogo.
+La columna **Marca** del archivo dice lo mismo que la pantalla: la marca y el
+modelo del catálogo si el equipo tiene un modelo de catálogo, y si no, la marca
+escrita a mano.
 
 Mientras el archivo se prepara, el botón queda en espera. En inventarios grandes
 puede tardar unos segundos.

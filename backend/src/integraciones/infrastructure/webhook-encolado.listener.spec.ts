@@ -5,7 +5,8 @@
 import { TicketAsignadoEvent } from '../../tickets/domain/events/ticket-asignado.event';
 import { TicketComentadoEvent } from '../../tickets/domain/events/ticket-comentado.event';
 import { TicketCreadoEvent } from '../../tickets/domain/events/ticket-creado.event';
-import { TicketEstadoCambiadoEvent } from '../../tickets/domain/events/ticket-estado-cambiado.event';
+import { TicketEstadoModificadoEvent } from '../../tickets/domain/events/ticket-estado-modificado.event';
+import { EVENT_LISTENER_METADATA } from '@nestjs/event-emitter/dist/constants';
 import { TenantContextData } from '../../shared/tenancy/tenant-context';
 import { EncolarWebhookEntrada } from '../application/encolar-webhook.use-case';
 import { WebhookEncoladoListener } from './webhook-encolado.listener';
@@ -36,14 +37,7 @@ describe('WebhookEncoladoListener (odd/webhooks T4)', () => {
     const base = { ticketId: 't-1', occurredAt: OCURRIDO };
 
     await listener.onTicketCreado(new TicketCreadoEvent({ ...base, prioridadId: 'p' }));
-    await listener.onTicketEstadoCambiado(
-      new TicketEstadoCambiadoEvent({
-        ...base,
-        estadoAnteriorCodigo: 'NUEVO',
-        estadoNuevoCodigo: 'ASIGNADO',
-        autorId: 'u',
-      }),
-    );
+    await listener.onTicketEstadoModificado(new TicketEstadoModificadoEvent(base));
     await listener.onTicketAsignado(
       new TicketAsignadoEvent({ ...base, asignadoId: 'tec', origen: 'MANUAL', autorId: 'u' }),
     );
@@ -56,6 +50,20 @@ describe('WebhookEncoladoListener (odd/webhooks T4)', () => {
         (evento) => ({ clienteId: 'cliente-a', evento, ticketId: 't-1', ocurridoEn: OCURRIDO }),
       ),
     );
+  });
+
+  it('el cambio de estado escucha ticket.estado_modificado (todo cambio), no ticket.estado_cambiado (solo los que avisan por correo) — defectos-ayuda S6', () => {
+    const eventos = Object.getOwnPropertyNames(WebhookEncoladoListener.prototype).flatMap(
+      (nombre) => {
+        const metodo: unknown = Reflect.get(WebhookEncoladoListener.prototype, nombre);
+        if (typeof metodo !== 'function') return [];
+        const meta: unknown = Reflect.getMetadata(EVENT_LISTENER_METADATA, metodo);
+        return Array.isArray(meta) ? meta.map((m: { event: string }) => m.event) : [];
+      },
+    );
+
+    expect(eventos).toContain('ticket.estado_modificado');
+    expect(eventos).not.toContain('ticket.estado_cambiado');
   });
 
   it('sin TenantContext no encola y lo registra', async () => {

@@ -6,9 +6,9 @@ import { EmptyState } from "./empty-state";
 
 describe("EmptyState", () => {
   it("renders the title and description passed in", () => {
-    render(<EmptyState icon={Inbox} title="Sin tickets" description="Todavía no creaste ningún ticket." />);
+    render(<EmptyState icon={Inbox} title="Sin tickets" description="Todavía no hay ningún ticket." />);
     expect(screen.getByText("Sin tickets")).toBeInTheDocument();
-    expect(screen.getByText("Todavía no creaste ningún ticket.")).toBeInTheDocument();
+    expect(screen.getByText("Todavía no hay ningún ticket.")).toBeInTheDocument();
   });
 
   it("with actionLabel + onAction → renders a button that invokes the callback on click", async () => {

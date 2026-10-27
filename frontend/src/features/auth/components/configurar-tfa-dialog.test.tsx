@@ -81,13 +81,13 @@ describe("ConfigurarTfaDialog", () => {
     await user.click(await screen.findByRole("button", { name: /^desactivar$/i }));
     await user.type(screen.getByLabelText(/código de verificación/i), "123456");
     await user.click(screen.getByRole("button", { name: /^desactivar$/i }));
-    expect(await screen.findByText(/desactivaste/i)).toBeInTheDocument();
+    expect(await screen.findByText(/desactivó la verificación/i)).toBeInTheDocument();
   });
 
   it("obligado: no ofrece desactivar y explica por qué", async () => {
     estado({ activo: true, obligado: true });
     await abrir();
-    expect(await screen.findByText(/no podés desactivarla/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no puede desactivarla/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^desactivar$/i })).not.toBeInTheDocument();
   });
 

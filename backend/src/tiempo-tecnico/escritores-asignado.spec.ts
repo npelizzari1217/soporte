@@ -121,7 +121,7 @@ describe('tramos del técnico — toda escritura del responsable o del estado pa
     expect(conPatron(/provide:\s*TICKET_REPOSITORY\b/)).toEqual(['src/tickets/tickets.module.ts']);
     expect(conPatron(/new PrismaTicketRepository\(/)).toEqual(['src/tickets/tickets.module.ts']);
     expect(leer('src/tickets/tickets.module.ts')).toMatch(
-      /new TicketRepositoryConTramos\(new PrismaTicketRepository\(tenantContext\)/,
+      /new TicketRepositoryConTramos\(\s*new PrismaTicketRepository\(tenantContext\)/,
     );
   });
 

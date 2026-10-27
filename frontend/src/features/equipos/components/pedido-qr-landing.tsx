@@ -24,15 +24,15 @@ export interface PedidoQrLandingProps {
 }
 
 export const MENSAJE_QR_OTRA_ORGANIZACION =
-  "Este QR es de otra organización. Ingresá con la cuenta de esa organización para pedir soporte.";
+  "Este QR es de otra organización. Ingrese con la cuenta de esa organización para pedir soporte.";
 
 export const MENSAJE_QR_INCOMPLETO =
-  "El link del QR está incompleto o no es válido. Escaneá el QR del equipo de nuevo.";
+  "El link del QR está incompleto o no es válido. Escanee el QR del equipo de nuevo.";
 
 function mensajeDeError(statusCode: number | undefined): string {
   if (statusCode === 404) return MENSAJE_QR_OTRA_ORGANIZACION;
-  if (statusCode === 403) return "No tenés permiso para crear tickets de soporte.";
-  return "No pudimos leer el QR. Probá de nuevo en unos minutos.";
+  if (statusCode === 403) return "No tiene permiso para crear tickets de soporte.";
+  return "No pudimos leer el QR. Pruebe de nuevo en unos minutos.";
 }
 
 export function PedidoQrLanding({ slug, tokenQr }: PedidoQrLandingProps) {
@@ -58,12 +58,12 @@ export function PedidoQrLanding({ slug, tokenQr }: PedidoQrLandingProps) {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-foreground">
         {equipo
-          ? `Pedí soporte para ${equipo.nombre}.`
-          : "No encontramos el equipo de este QR. Podés pedir soporte igual y elegir el equipo a mano."}
+          ? `Pida soporte para ${equipo.nombre}.`
+          : "No encontramos el equipo de este QR. Puede pedir soporte igual y elegir el equipo a mano."}
       </p>
       {dialogoCerrado ? (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-muted-foreground">El formulario de soporte está cerrado. Tus tickets están en el listado.</p>
+          <p className="text-sm text-muted-foreground">El formulario de soporte está cerrado. Sus tickets están en el listado.</p>
           <Button asChild variant="outline" size="sm">
             <Link href="/tickets">Ir al listado de tickets</Link>
           </Button>

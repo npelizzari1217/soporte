@@ -84,7 +84,7 @@ const DESAFIO_VERIFICAR_MS = 5 * 60_000;
 /** Duración del desafío ENROLAR (design D2): 15 minutos para escanear el QR y confirmar. */
 const DESAFIO_ENROLAR_MS = 15 * 60_000;
 
-export const MENSAJE_VENCIDO = "La verificación venció. Volvé a iniciar sesión.";
+export const MENSAJE_VENCIDO = "La verificación venció. Vuelva a iniciar sesión.";
 
 type Respuesta =
   | Vencido
@@ -123,12 +123,12 @@ export type PasoLogin =
  * (`ApiError(0, "Error de red")`), no un status HTTP real.
  */
 export function mensajeDeErrorDeLogin(statusCode: number): string {
-  if (statusCode === 403) return "El acceso de tu organización está suspendido";
-  if (statusCode === 0) return "No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.";
+  if (statusCode === 403) return "El acceso de su organización está suspendido";
+  if (statusCode === 0) return "No pudimos conectar con el servidor. Revise su conexión e intente de nuevo.";
   if (statusCode >= 500) {
-    return "Hubo un problema en el servidor. No son tus credenciales — probá de nuevo en unos minutos.";
+    return "Hubo un problema en el servidor. No son sus credenciales — intente de nuevo en unos minutos.";
   }
-  return "Credenciales incorrectas. Intentá de nuevo.";
+  return "Credenciales incorrectas. Intente de nuevo.";
 }
 
 export function useLogin() {
@@ -211,7 +211,7 @@ export function useLogin() {
       toast.error(
         err.statusCode === 0 || err.statusCode >= 500
           ? mensajeDeErrorDeLogin(err.statusCode)
-          : "Código incorrecto. Intentá de nuevo.",
+          : "Código incorrecto. Intente de nuevo.",
       );
     },
   });
@@ -247,7 +247,7 @@ export function useLogin() {
       toast.error(
         err.statusCode === 0 || err.statusCode >= 500
           ? mensajeDeErrorDeLogin(err.statusCode)
-          : "Código incorrecto. Intentá de nuevo.",
+          : "Código incorrecto. Intente de nuevo.",
       );
     },
   });

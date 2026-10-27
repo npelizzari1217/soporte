@@ -37,7 +37,7 @@
  * hoy—: en ese caso el `<select>` correspondiente queda deshabilitado con una
  * nota que manda a cargar el catálogo primero, en vez de dejar dos selects
  * vacíos sin explicación. CADA nota apunta a SU pantalla: las familias se
- * administran en Admin > Insumos y las unidades en Admin > Unidades (issue
+ * administran en Admin > Familia de Catálogos y las unidades en Admin > Unidades (issue
  * #156). Mandar a la pantalla equivocada es peor que no poner nota: es el
  * callejón sin salida que ese issue existe para cerrar.
  *
@@ -80,10 +80,10 @@ export interface InsumoFormDialogProps {
 
 /** Nota bajo el select cuando el catálogo correspondiente resolvió VACÍO. */
 const NOTA_FAMILIAS_VACIAS: Record<"insumo" | "repuesto", string> = {
-  insumo: "No hay familias de insumos cargadas. Creá una desde Admin > Insumos.",
-  repuesto: "No hay familias de repuestos cargadas. Creá una desde Admin > Insumos.",
+  insumo: "No hay familias de insumos cargadas. Cree una desde Admin > Familia de Catálogos.",
+  repuesto: "No hay familias de repuestos cargadas. Cree una desde Admin > Familia de Catálogos.",
 };
-const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Creá una desde Admin > Unidades.";
+const NOTA_UNIDADES_VACIAS = "No hay unidades de medida cargadas. Cree una desde Admin > Unidades.";
 
 /**
  * Nota cuando el catálogo NO resolvió. Es un mensaje distinto del de vacío a
@@ -101,7 +101,7 @@ const ETIQUETAS_SEGUIMIENTO: Record<SeguimientoInsumo, string> = {
 
 /** Mensaje del 409 `UNIDAD_MEDIDA_CAMBIADA`: nada falló de verdad, hay que repetir. */
 const MENSAJE_UNIDAD_MEDIDA_CAMBIADA =
-  "La unidad de medida del insumo cambió mientras guardabas. Reintentá el cambio.";
+  "La unidad de medida del insumo cambió mientras se guardaba. Reintente el cambio.";
 
 /**
  * Paso que quedó sin hacer cuando la SEGUNDA de las dos llamadas falló. El
@@ -118,7 +118,7 @@ function motivoDelError(error: unknown, paso: "seguimiento" | "datos"): string {
     if (paso === "seguimiento" && error.statusCode === 409) return MENSAJE_UNIDAD_MEDIDA_CAMBIADA;
     return error.messages.join(" ");
   }
-  return "Ocurrió un error inesperado. Intentá de nuevo.";
+  return "Ocurrió un error inesperado. Intente de nuevo.";
 }
 
 export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: InsumoFormDialogProps) {
@@ -220,7 +220,7 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
         if (completo) {
           setPendiente({
             paso,
-            mensaje: `Los demás cambios ya se guardaron, pero no se pudo cambiar el seguimiento: ${motivo} Podés reintentar solo el seguimiento.`,
+            mensaje: `Los demás cambios ya se guardaron, pero no se pudo cambiar el seguimiento: ${motivo} Puede reintentar solo el seguimiento.`,
           });
         } else {
           setErrorSeguimiento(`No se pudo cambiar el seguimiento: ${motivo}`);
@@ -229,7 +229,7 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
         // El PATCH de datos ya avisó por toast; acá solo se deja claro qué quedó hecho.
         setPendiente({
           paso,
-          mensaje: "El seguimiento ya se cambió, pero no se pudieron guardar los demás cambios. Podés reintentar solo el guardado.",
+          mensaje: "El seguimiento ya se cambió, pero no se pudieron guardar los demás cambios. Puede reintentar solo el guardado.",
         });
       }
       return false;
@@ -365,7 +365,7 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
               defaultValue=""
               {...register("familiaId")}
             >
-              <option value="">Elegí una familia</option>
+              <option value="">Elija una familia</option>
               {familias.map((familia) => (
                 <option key={familia.id} value={familia.id}>
                   {familia.nombre}
@@ -397,7 +397,7 @@ export function InsumoFormDialog({ trigger, insumo, nombreItem = "insumo" }: Ins
               defaultValue=""
               {...register("unidadMedidaId")}
             >
-              <option value="">Elegí una unidad de medida</option>
+              <option value="">Elija una unidad de medida</option>
               {unidades.map((unidad) => (
                 <option key={unidad.id} value={unidad.id}>
                   {unidad.nombre}

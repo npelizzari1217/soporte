@@ -154,7 +154,7 @@ describe("LoginPage", () => {
     await user.click(screen.getByRole("button", { name: /iniciar sesión/i }));
 
     expect(await screen.findByRole("img", { name: /qr/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/cargá esta clave/i)).toHaveValue("JBSW Y3DP");
+    expect(screen.getByLabelText(/cargue esta clave/i)).toHaveValue("JBSW Y3DP");
     await user.type(screen.getByLabelText(/código de verificación/i), "123456");
     await user.click(screen.getByRole("button", { name: /activar/i }));
 

@@ -65,7 +65,7 @@ function EliminarFeriadoClienteAction({ feriado }: { feriado: FeriadoBasico }) {
         </Button>
       }
       title="Eliminar feriado"
-      description={`¿Confirmás eliminar "${feriado.descripcion}" (${formatearFechaCalendario(feriado.fecha)})? Esta acción no se puede deshacer.`}
+      description={`¿Confirma eliminar "${feriado.descripcion}" (${formatearFechaCalendario(feriado.fecha)})? Esta acción no se puede deshacer.`}
       confirmLabel="Eliminar"
       confirmVariant="destructive"
       isConfirming={mutation.isPending}

@@ -413,7 +413,7 @@ describe("PlanPreventivoCreateDialog — tipo de ticket del plan (odd/preventivo
     ).toBeInTheDocument();
     expect(responsable).toHaveValue("");
     await user.click(screen.getByRole("button", { name: /^crear$/i }));
-    expect(await screen.findByText("Elegí un responsable", { selector: "p" })).toBeInTheDocument();
+    expect(await screen.findByText("Elija un responsable", { selector: "p" })).toBeInTheDocument();
     expect(capturado.body).toBeNull();
   });
 

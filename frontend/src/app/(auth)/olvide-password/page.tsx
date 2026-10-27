@@ -40,11 +40,11 @@ export default function OlvidePasswordPage() {
       <div className="w-full max-w-sm rounded-lg border border-border bg-card/80 p-8 shadow-xl backdrop-blur">
         <div className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            ¿Olvidaste tu contraseña?
+            ¿Olvidó su contraseña?
           </h1>
           {mostrarForm && (
             <p className="mt-1 text-sm text-muted-foreground">
-              Ingresá tu email y te enviamos un link para restablecerla
+              Ingrese su email y le enviaremos un link para restablecerla
             </p>
           )}
         </div>

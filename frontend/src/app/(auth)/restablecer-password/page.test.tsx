@@ -37,7 +37,7 @@ describe("RestablecerPasswordPage", () => {
     renderPage();
 
     expect(await screen.findByText(/no es válido o venció/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /pedí un link nuevo/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /pida un link nuevo/i })).toHaveAttribute(
       "href",
       "/olvide-password",
     );
@@ -77,7 +77,7 @@ describe("RestablecerPasswordPage", () => {
     await completarForm(user);
 
     expect(await screen.findByText(/no es válido o venció/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /pedí un link nuevo/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /pida un link nuevo/i })).toHaveAttribute(
       "href",
       "/olvide-password",
     );
@@ -104,10 +104,10 @@ describe("RestablecerPasswordPage", () => {
 
       expect(await screen.findByRole("alert")).toBeInTheDocument();
       expect(screen.getByLabelText(/^nueva contraseña$/i)).toBeInTheDocument();
-      expect(screen.queryByRole("link", { name: /pedí un link nuevo/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /pida un link nuevo/i })).not.toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: /restablecer contraseña/i }));
-      expect(await screen.findByText(/restableciste tu contraseña/i)).toBeInTheDocument();
+      expect(await screen.findByText(/restableció su contraseña/i)).toBeInTheDocument();
       expect(intentos).toBe(2);
     },
   );
@@ -120,7 +120,7 @@ describe("RestablecerPasswordPage", () => {
     renderPage();
     await completarForm(user);
 
-    expect(await screen.findByText(/restableciste tu contraseña/i)).toBeInTheDocument();
+    expect(await screen.findByText(/restableció su contraseña/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /ir a iniciar sesión/i })).toHaveAttribute("href", "/login");
   });
 });

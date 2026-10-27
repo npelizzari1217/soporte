@@ -59,7 +59,7 @@ describe("ComponenteRetiroDialog", () => {
     await user.click(screen.getByLabelText(/descartar por rotura/i));
     await user.click(screen.getByRole("button", { name: /confirmar baja/i }));
 
-    expect(await screen.findByText("Indicá el motivo del descarte")).toBeVisible();
+    expect(await screen.findByText("Indique el motivo del descarte")).toBeVisible();
     expect(cuerpos).toHaveLength(0);
   });
 
@@ -106,7 +106,7 @@ describe("ComponenteRetiroDialog", () => {
     const user = userEvent.setup();
     capturar(() =>
       HttpResponse.json(
-        { statusCode: 422, message: "Indicá el motivo: no hay una salida registrada del depósito." },
+        { statusCode: 422, message: "Indique el motivo: no hay una salida registrada del depósito." },
         { status: 422 },
       ),
     );

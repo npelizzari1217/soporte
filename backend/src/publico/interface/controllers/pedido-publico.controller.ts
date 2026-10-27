@@ -31,7 +31,7 @@ const MENSAJE_NO_DISPONIBLE = 'El formulario no está disponible.';
 
 /** Cuerpo CONSTANTE del 202: no depende del email, del equipo ni del slug (ADR-9). */
 const RESPUESTA_SOLICITUD = {
-  mensaje: 'Si los datos son correctos, te enviamos un mail para confirmar.',
+  mensaje: 'Si los datos son correctos, le enviamos un mail para confirmar.',
 };
 
 /**

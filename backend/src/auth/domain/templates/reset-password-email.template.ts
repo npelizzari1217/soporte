@@ -29,17 +29,17 @@ interface DatosResetConfirmado {
  */
 export function templateResetPassword(datos: DatosResetPassword): PlantillaEmail {
   const link = `${datos.appBaseUrl}/restablecer-password#token=${datos.token}`;
-  const subject = 'Restablecé tu contraseña';
+  const subject = 'Restablezca su contraseña';
   const text =
     `Hola ${datos.nombre},\n\n` +
-    `Pediste restablecer tu contraseña. Este link vence en ${datos.vigenciaMinutos} minutos:\n\n` +
+    `Solicitó restablecer su contraseña. Este link vence en ${datos.vigenciaMinutos} minutos:\n\n` +
     `${link}\n\n` +
-    `Si no fuiste vos, ignorá este mail: tu contraseña sigue siendo la misma.`;
+    `Si no fue usted, ignore este mail: su contraseña sigue siendo la misma.`;
   const html =
     `<p>Hola ${escaparHtml(datos.nombre)},</p>` +
-    `<p>Pediste restablecer tu contraseña. Este link vence en ${datos.vigenciaMinutos} minutos.</p>` +
+    `<p>Solicitó restablecer su contraseña. Este link vence en ${datos.vigenciaMinutos} minutos.</p>` +
     `<p><a href="${escaparHtml(link)}">Restablecer contraseña</a></p>` +
-    `<p>Si no fuiste vos, ignorá este mail: tu contraseña sigue siendo la misma.</p>`;
+    `<p>Si no fue usted, ignore este mail: su contraseña sigue siendo la misma.</p>`;
 
   return { subject, text, html };
 }
@@ -51,13 +51,13 @@ export function templateResetPassword(datos: DatosResetPassword): PlantillaEmail
  * dispara un mail de confirmación". Ref design: ADR-5 (paso 7). Tarea: 3.3.
  */
 export function templateResetConfirmado(datos: DatosResetConfirmado): PlantillaEmail {
-  const subject = 'Tu contraseña fue restablecida';
+  const subject = 'Su contraseña fue restablecida';
   const text =
     `Hola ${datos.nombre},\n\n` +
-    `Tu contraseña se restableció con éxito. Si no fuiste vos, contactá a tu administrador.`;
+    `Su contraseña se restableció con éxito. Si no fue usted, contacte a su administrador.`;
   const html =
     `<p>Hola ${escaparHtml(datos.nombre)},</p>` +
-    `<p>Tu contraseña se restableció con éxito. Si no fuiste vos, contactá a tu administrador.</p>`;
+    `<p>Su contraseña se restableció con éxito. Si no fue usted, contacte a su administrador.</p>`;
 
   return { subject, text, html };
 }

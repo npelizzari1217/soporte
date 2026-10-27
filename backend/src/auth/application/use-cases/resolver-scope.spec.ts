@@ -84,6 +84,7 @@ const makeMembresiaRepo = (): Mocked<IMembresiaRepository> => ({
   findActivasByCliente: vi.fn(),
   findClientesDeTodasByUsuario: vi.fn(),
   findByUsuarioYCliente: vi.fn(),
+  findTodasByUsuarioYCliente: vi.fn().mockResolvedValue([]),
   create: vi.fn().mockResolvedValue(undefined),
   save: vi.fn().mockResolvedValue(undefined),
 });

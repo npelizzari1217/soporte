@@ -22,7 +22,7 @@ interface SolicitarResetDto {
 
 /** Mensaje genérico tras la solicitud — el mismo exista o no el email. */
 export const MENSAJE_SOLICITUD_RESET =
-  "Si el email existe en nuestro sistema, vas a recibir un link para restablecer tu contraseña.";
+  "Si el email existe en nuestro sistema, recibirá un link para restablecer su contraseña.";
 
 /**
  * Solo 429 (límite propio) y la infraestructura (red, 5xx) se distinguen del
@@ -32,9 +32,9 @@ export const MENSAJE_SOLICITUD_RESET =
  */
 export function mensajeDeSolicitudReset(error: ApiError | null): string {
   if (!error) return MENSAJE_SOLICITUD_RESET;
-  if (error.statusCode === 429) return "Hiciste demasiados pedidos. Esperá unos minutos y volvé a intentar.";
-  if (error.statusCode === 0) return "No pudimos conectar con el servidor. Revisá tu conexión e intentá de nuevo.";
-  if (error.statusCode >= 500) return "Hubo un problema en el servidor. Probá de nuevo en unos minutos.";
+  if (error.statusCode === 429) return "Hizo demasiados pedidos. Espere unos minutos y vuelva a intentar.";
+  if (error.statusCode === 0) return "No pudimos conectar con el servidor. Revise su conexión e intente de nuevo.";
+  if (error.statusCode >= 500) return "Hubo un problema en el servidor. Intente de nuevo en unos minutos.";
   return MENSAJE_SOLICITUD_RESET;
 }
 

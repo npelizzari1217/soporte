@@ -67,8 +67,9 @@ laboral y feriados, y el SLA en el artículo sobre SLA y prioridades.
 
 ### Tickets abiertos / cerrados
 
-Cuenta como **cerrado** todo ticket que llegó a **Resuelto** o a **Cerrado**. El
-resto cuenta como **abierto**, incluidos los cancelados.
+Cuenta como **cerrado** todo ticket que llegó a **Resuelto** o a **Cerrado**, y
+como **abierto** el que todavía no llegó. Los tickets **cancelados** no cuentan en
+ninguno de los dos, ni en la carga por agente.
 
 ### Tiempo promedio de resolución (horas hábiles, sin pausas)
 

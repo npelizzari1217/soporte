@@ -54,11 +54,11 @@ export default function LoginPage() {
           <div className="mb-8">
             <h1 className="text-3xl font-bold tracking-tight text-foreground">¡Bienvenido!</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {paso === "seleccion" && "Elegí con qué cliente querés ingresar"}
-              {paso === "codigo" && "Confirmá que sos vos con un segundo paso"}
-              {paso === "codigos" && "Guardá tus códigos de recuperación"}
-              {paso === "enrolamiento" && "Tu cuenta necesita activar la verificación en dos pasos"}
-              {paso === "credenciales" && "Ingresá tus credenciales para continuar"}
+              {paso === "seleccion" && "Elija con qué cliente quiere ingresar"}
+              {paso === "codigo" && "Confirme su identidad con un segundo paso"}
+              {paso === "codigos" && "Guarde sus códigos de recuperación"}
+              {paso === "enrolamiento" && "Su cuenta necesita activar la verificación en dos pasos"}
+              {paso === "credenciales" && "Ingrese sus credenciales para continuar"}
             </p>
           </div>
 

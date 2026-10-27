@@ -159,7 +159,7 @@ describe('TicketNotificacionListener', () => {
         expect(emailSender.send).toHaveBeenCalledTimes(1);
         const msg = emailSender.send.mock.calls[0][0];
         expect(msg.to).toBe('solicitante@dominio.com');
-        expect(msg.text).toContain('a la espera de tu respuesta');
+        expect(msg.text).toContain('a la espera de su respuesta');
         expect(msg.text).not.toContain('cambió de estado');
         expect(msg.text).toContain('/tickets/ticket-uuid');
       });
@@ -221,7 +221,7 @@ describe('TicketNotificacionListener', () => {
         await listener.onTicketEstadoCambiado(evento('ESPERANDO_CLIENTE', 'EN_PROCESO'));
 
         const msg = emailSender.send.mock.calls[0]?.[0];
-        expect(msg?.text ?? '').not.toContain('a la espera de tu respuesta');
+        expect(msg?.text ?? '').not.toContain('a la espera de su respuesta');
       });
     });
 

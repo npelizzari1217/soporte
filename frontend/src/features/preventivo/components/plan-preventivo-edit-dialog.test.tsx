@@ -829,7 +829,7 @@ describe("PlanPreventivoEditDialog — tipo de ticket del plan (odd/preventivo-p
     // Bruno no queda como opción sintética: con otro tipo el vigente ya no se conserva.
     expect(within(responsable).queryByRole("option", { name: "Responsable no habilitado" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
-    expect(await screen.findByText("Elegí un responsable", { selector: "p" })).toBeInTheDocument();
+    expect(await screen.findByText("Elija un responsable", { selector: "p" })).toBeInTheDocument();
     expect(patcheo).toBe(false);
   });
 

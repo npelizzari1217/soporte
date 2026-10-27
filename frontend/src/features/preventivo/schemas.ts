@@ -14,8 +14,8 @@ import { mensajeDemasiadoLargo } from "@/shared/lib/mensaje-tope";
  * volvían como un 400 recién después del viaje de red, en vez de avisar en el
  * momento en el form.
  */
-const MENSAJE_OBJETIVO_AMBOS = "Elegí equipo o ubicación, no los dos";
-const MENSAJE_OBJETIVO_NINGUNO = "Elegí un equipo o una ubicación";
+const MENSAJE_OBJETIVO_AMBOS = "Elija equipo o ubicación, no los dos";
+const MENSAJE_OBJETIVO_NINGUNO = "Elija un equipo o una ubicación";
 const TITULO_MAX_LENGTH = 255;
 const UBICACION_MAX_LENGTH = 255;
 const INTERVALO_VALOR_MAXIMO = 3650;
@@ -96,15 +96,15 @@ const camposComunes = {
     .transform((valor) => valor.trim().toUpperCase())
     .pipe(z.string().max(UBICACION_MAX_LENGTH, mensajeDemasiadoLargo("La ubicación", UBICACION_MAX_LENGTH)))
     .optional(),
-  prioridadId: z.string().min(1, "Elegí una prioridad"),
+  prioridadId: z.string().min(1, "Elija una prioridad"),
   // Tipo de ticket de los tickets que genera el plan (odd/preventivo-por-tipo, S2). Que esté
   // vigente y que el usuario lo vea lo decide el backend; acá solo que haya uno elegido.
   tipoId: z.string().min(1, "Elija un tipo de ticket"),
-  responsableId: z.string().min(1, "Elegí un responsable"),
+  responsableId: z.string().min(1, "Elija un responsable"),
   intervaloValor: z
     .string()
     .min(1, "La cadencia es requerida")
-    .regex(/^[1-9]\d*$/, "Ingresá un número entero positivo")
+    .regex(/^[1-9]\d*$/, "Ingrese un número entero positivo")
     .refine(
       (valor) => Number(valor) <= INTERVALO_VALOR_MAXIMO,
       `La cadencia no puede superar ${INTERVALO_VALOR_MAXIMO}`,

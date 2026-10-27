@@ -34,7 +34,7 @@ export function UsuariosAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar usuarios." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para gestionar usuarios." />}>
         <UsuariosAdminContent />
       </SoloAdminCliente>
     </div>

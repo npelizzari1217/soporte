@@ -30,7 +30,7 @@ export function LinkSoporteDialog() {
       notifySuccess("Link copiado.");
     } catch {
       // Sin permiso de portapapeles (o contexto no seguro): el campo sigue seleccionable.
-      toast.error("No se pudo copiar. Seleccioná el link y copialo a mano.");
+      toast.error("No se pudo copiar. Seleccione el link y cópielo a mano.");
     }
   }
 
@@ -48,7 +48,7 @@ export function LinkSoporteDialog() {
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted-foreground">
-            Compartí este link con quien quieras: cualquiera que lo tenga puede pedir soporte, y los
+            Comparta este link con quien quiera: cualquiera que lo tenga puede pedir soporte, y los
             tickets llegan a este cliente. Abre el formulario sin un equipo preseleccionado.
           </p>
           <div className="flex items-center gap-2">

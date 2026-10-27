@@ -84,7 +84,7 @@ export class ModeloEquipoInexistenteError extends DomainError {
   constructor(modeloEquipoId: string) {
     super(
       `El campo "modeloEquipoId" apunta al modelo con id "${modeloEquipoId}", que no existe en el ` +
-        `catálogo de modelos de equipo de este tenant. Elegí un modelo del catálogo o dejá el equipo sin modelo.`,
+        `catálogo de modelos de equipo de este tenant. Elija un modelo del catálogo o deje el equipo sin modelo.`,
     );
   }
 }
@@ -111,8 +111,8 @@ export class ModeloEquipoDeshabilitadoError extends DomainError {
   constructor(modeloEquipoId: string, marca: string, modelo: string) {
     super(
       `El campo "modeloEquipoId" apunta al modelo "${marca} ${modelo}" (id "${modeloEquipoId}"), que está ` +
-        `deshabilitado. Un modelo deshabilitado no se puede elegir: habilitalo en el catálogo de modelos ` +
-        `de equipo o elegí otro.`,
+        `deshabilitado. Un modelo deshabilitado no se puede elegir: habilítelo en el catálogo de modelos ` +
+        `de equipo o elija otro.`,
     );
   }
 }
@@ -131,7 +131,7 @@ export class InsumoRepuestoInexistenteError extends DomainError {
   constructor(insumoId: string) {
     super(
       `El campo "insumoId" apunta al insumo con id "${insumoId}", que no existe en el catálogo de ` +
-        `este tenant o fue dado de baja. Elegí un insumo vigente del catálogo.`,
+        `este tenant o fue dado de baja. Elija un insumo vigente del catálogo.`,
     );
   }
 }
@@ -159,7 +159,7 @@ export class InsumoNoEsRepuestoError extends DomainError {
   constructor(insumoId: string) {
     super(
       `El insumo con id "${insumoId}" no se puede vincular a un componente: su familia no es de repuesto ` +
-        `(es un consumible). Elegí un insumo de una familia marcada como repuesto.`,
+        `(es un consumible). Elija un insumo de una familia marcada como repuesto.`,
     );
   }
 }
@@ -190,8 +190,8 @@ export class FamiliaRepuestoDeshabilitadaError extends DomainError {
   constructor(insumoId: string, familiaCodigo: string, familiaNombre: string) {
     super(
       `El insumo con id "${insumoId}" no se puede vincular a un componente: su familia "${familiaNombre}" ` +
-        `(código "${familiaCodigo}") es de repuesto pero está deshabilitada. Habilitala en el catálogo de ` +
-        `familias de insumo o elegí un repuesto de otra familia.`,
+        `(código "${familiaCodigo}") es de repuesto pero está deshabilitada. Habilítela en el catálogo de ` +
+        `familias de insumo o elija un repuesto de otra familia.`,
     );
   }
 }
@@ -222,7 +222,7 @@ export class ComponenteDadoDeBajaError extends DomainError {
   readonly code = 'COMPONENTE_DADO_DE_BAJA';
 
   constructor(id: string) {
-    super(`El componente con id "${id}" está dado de baja. Reactivalo antes de editarlo.`);
+    super(`El componente con id "${id}" está dado de baja. Reactívelo antes de editarlo.`);
   }
 }
 
@@ -273,7 +273,7 @@ export class ComponenteDevueltoAlStockError extends DomainError {
 
   constructor(id: string) {
     super(
-      `El componente con id "${id}" volvió al stock como usado y no puede reactivarse. Instalalo de nuevo desde el depósito.`,
+      `El componente con id "${id}" volvió al stock como usado y no puede reactivarse. Instálelo de nuevo desde el depósito.`,
     );
   }
 }
@@ -367,7 +367,7 @@ export class UnidadConAltaSinDescuentoError extends DomainError {
 
   constructor(unidadId: string) {
     super(
-      `El alta sin descuento no admite elegir la unidad "${unidadId}": informá el número de serie para crear una, o instalá con descuento para elegir una del depósito.`,
+      `El alta sin descuento no admite elegir la unidad "${unidadId}": informe el número de serie para crear una, o instale con descuento para elegir una del depósito.`,
     );
   }
 }
@@ -390,7 +390,7 @@ export class EquipoConComponentesActivosError extends DomainError {
 
   constructor(readonly cantidad: number) {
     super(
-      `El equipo tiene ${cantidad} ${cantidad === 1 ? 'pieza activa' : 'piezas activas'}: dalo de baja en lugar de borrarlo.`,
+      `El equipo tiene ${cantidad} ${cantidad === 1 ? 'pieza activa' : 'piezas activas'}: delo de baja en lugar de borrarlo.`,
     );
   }
 }
@@ -430,7 +430,7 @@ export class BajaEquipoConPiezasProblematicasError extends DomainError {
 
   constructor(readonly piezas: PiezaProblematicaDeBaja[]) {
     super(
-      `${piezas.length} ${piezas.length === 1 ? 'pieza no puede' : 'piezas no pueden'} volver al depósito: revisalas antes de dar de baja el equipo.`,
+      `${piezas.length} ${piezas.length === 1 ? 'pieza no puede' : 'piezas no pueden'} volver al depósito: revíselas antes de dar de baja el equipo.`,
     );
   }
 }
@@ -444,7 +444,7 @@ export class EquipoModificadoDuranteLaBajaError extends DomainError {
   readonly code = 'EQUIPO_MODIFICADO_DURANTE_LA_BAJA';
 
   constructor(equipoId: string) {
-    super(`Las piezas del equipo "${equipoId}" cambiaron durante la baja. Volvé a intentarlo.`);
+    super(`Las piezas del equipo "${equipoId}" cambiaron durante la baja. Vuelva a intentarlo.`);
   }
 }
 
@@ -457,7 +457,7 @@ export class QrRequiereSlugError extends DomainError {
 
   constructor() {
     super(
-      'El cliente no tiene un identificador público (slug): configuralo antes de emitir un QR.',
+      'El cliente no tiene un identificador público (slug): configúrelo antes de emitir un QR.',
     );
   }
 }
@@ -472,7 +472,7 @@ export class QrSlugCambiadoError extends DomainError {
 
   constructor() {
     super(
-      'El identificador público del cliente cambió mientras se emitía el QR. Volvé a intentarlo.',
+      'El identificador público del cliente cambió mientras se emitía el QR. Vuelva a intentarlo.',
     );
   }
 }
@@ -486,6 +486,6 @@ export class QrDeOtraOrganizacionError extends DomainError {
   readonly code = 'QR_DE_OTRA_ORGANIZACION';
 
   constructor() {
-    super('El QR no corresponde a tu organización.');
+    super('El QR no corresponde a su organización.');
   }
 }

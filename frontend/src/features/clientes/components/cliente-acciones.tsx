@@ -60,7 +60,7 @@ export function ClienteAcciones({ cliente }: ClienteAccionesProps) {
             </Button>
           }
           title="Desactivar cliente"
-          description={`¿Confirmás desactivar "${cliente.nombre}"? El cliente quedará inactivo; se puede reactivar. La base de datos NO se elimina.`}
+          description={`¿Confirma desactivar "${cliente.nombre}"? El cliente quedará inactivo; se puede reactivar. La base de datos NO se elimina.`}
           confirmLabel="Desactivar"
           confirmVariant="destructive"
           isConfirming={desactivar.isPending}

@@ -140,7 +140,7 @@ export function EquipoBajaDialog({ equipoId }: EquipoBajaDialogProps) {
             />
             {bloqueantes.length > 0 && (
               <div role="alert" className="text-sm text-destructive">
-                <p>Estas piezas no pueden volver al stock. Corregilas o descartá todas las piezas:</p>
+                <p>Estas piezas no pueden volver al stock. Corríjalas o descarte todas las piezas:</p>
                 <ul className="list-disc pl-5 text-xs">
                   {bloqueantes.map((pieza) => (
                     <li key={pieza.componenteId}>

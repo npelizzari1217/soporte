@@ -121,7 +121,7 @@ describe("ConfigurarFormularioPublicoDialog", () => {
     await user.click(screen.getByRole("checkbox"));
     await user.click(screen.getByRole("button", { name: /^guardar$/i }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(/cargá un slug/i);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/cargue un slug/i);
     expect(capturas.body).toBeNull();
   });
 

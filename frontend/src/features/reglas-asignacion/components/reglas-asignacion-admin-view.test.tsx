@@ -56,7 +56,7 @@ describe("ReglasAsignacionAdminView", () => {
   it("un no administrador no ve la pantalla (R5)", async () => {
     mockLista([fila({})]);
     renderWithProviders(<ReglasAsignacionAdminView />, { user: buildUser({ rol: "TECNICO" }) });
-    expect(await screen.findByText(/no tenés permiso/i)).toBeInTheDocument();
+    expect(await screen.findByText(/no tiene permiso/i)).toBeInTheDocument();
     expect(screen.queryByText("Incidente")).not.toBeInTheDocument();
   });
 

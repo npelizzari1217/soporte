@@ -26,19 +26,19 @@ export interface DatosVerificarPedido {
  * Ref spec: sdd/formulario-publico-qr pedido-publico (D1). Tarea: 13.2.
  */
 export function templateVerificarPedido(datos: DatosVerificarPedido): PlantillaEmail {
-  const subject = `Confirmá tu pedido a ${datos.clienteNombre}`;
+  const subject = `Confirme su pedido a ${datos.clienteNombre}`;
   const text =
     `Hola ${datos.nombre},\n\n` +
-    `Recibimos un pedido a nombre tuyo para ${datos.clienteNombre}. ` +
-    `Para que llegue al equipo, confirmalo con este link (vence en ${datos.vigenciaHoras} horas):\n\n` +
+    `Recibimos un pedido a su nombre para ${datos.clienteNombre}. ` +
+    `Para que llegue al equipo, confírmelo con este link (vence en ${datos.vigenciaHoras} horas):\n\n` +
     `${datos.link}\n\n` +
-    `Si no hiciste este pedido, ignorá este mail: no se crea nada hasta que lo confirmes.`;
+    `Si no hizo este pedido, ignore este mail: no se crea nada hasta que lo confirme.`;
   const html =
     `<p>Hola ${escaparHtml(datos.nombre)},</p>` +
-    `<p>Recibimos un pedido a nombre tuyo para ${escaparHtml(datos.clienteNombre)}. ` +
-    `Para que llegue al equipo, confirmalo con este link (vence en ${datos.vigenciaHoras} horas).</p>` +
+    `<p>Recibimos un pedido a su nombre para ${escaparHtml(datos.clienteNombre)}. ` +
+    `Para que llegue al equipo, confírmelo con este link (vence en ${datos.vigenciaHoras} horas).</p>` +
     `<p><a href="${escaparHtml(datos.link)}">Confirmar mi pedido</a></p>` +
-    `<p>Si no hiciste este pedido, ignorá este mail: no se crea nada hasta que lo confirmes.</p>`;
+    `<p>Si no hizo este pedido, ignore este mail: no se crea nada hasta que lo confirme.</p>`;
 
   return { subject, text, html };
 }

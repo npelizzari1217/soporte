@@ -74,6 +74,8 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
   let txRunner: PrismaTenantTransactionRunner;
   let tramoRepo: PrismaTramoTecnicoRepository;
   let ticketRepo: TicketRepositoryConTramos;
+  /** Avisos `ticket.estado_modificado` publicados, por ticket (defectos-ayuda S6). */
+  const estadosModificados: string[] = [];
   let operacionRepo: PrismaOperacionTicketRepository;
   let estadoRepo: PrismaEstadoRepository;
   let tipoTicketRepo: PrismaTipoTicketRepository;
@@ -232,6 +234,13 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
       new PrismaTicketRepository(tenantContext),
       servicio(),
       txRunner,
+      {
+        publish: (evento) => {
+          if (evento.name === 'ticket.estado_modificado' && 'ticketId' in evento) {
+            estadosModificados.push(String(evento.ticketId));
+          }
+        },
+      },
     );
     operacionRepo = new PrismaOperacionTicketRepository(tenantContext);
     estadoRepo = new PrismaEstadoRepository(tenantContext);
@@ -340,6 +349,16 @@ describe('Tramos del técnico — integración por vía de escritura del ticket'
       ]);
       const [deAna, deBeto] = await tramos(ticketId);
       expect(deAna.finAt).toEqual(deBeto.inicioAt);
+    });
+
+    it('asignar un NUEVO lo pasa a ASIGNADO y avisa el cambio de estado; reasignar no (defectos-ayuda S6)', async () => {
+      const ticketId = await ticketPrevio('NUEVO');
+
+      await asignarA(ticketId, ANA);
+      expect(estadosModificados.filter((id) => id === ticketId)).toHaveLength(1);
+
+      await asignarA(ticketId, BETO);
+      expect(estadosModificados.filter((id) => id === ticketId)).toHaveLength(1);
     });
 
     it('reasignar al mismo responsable no cambia de tramo', async () => {

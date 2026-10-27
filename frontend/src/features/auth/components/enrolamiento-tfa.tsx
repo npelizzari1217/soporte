@@ -39,7 +39,7 @@ export function EnrolamientoTfa({ datos, onConfirmar, isLoading }: EnrolamientoT
   function enviar(e: FormEvent) {
     e.preventDefault();
     if (!/^\d{6}$/.test(codigo)) {
-      setError("Ingresá el código de 6 dígitos de tu app.");
+      setError("Ingrese el código de 6 dígitos de su app.");
       return;
     }
     setError(null);
@@ -49,7 +49,7 @@ export function EnrolamientoTfa({ datos, onConfirmar, isLoading }: EnrolamientoT
   return (
     <form onSubmit={enviar} className="flex flex-col gap-4" noValidate>
       <p className="text-sm text-muted-foreground">
-        Escaneá el QR con tu app autenticadora (Google Authenticator, Authy, etc.) y escribí el código que muestra.
+        Escanee el QR con su app autenticadora (Google Authenticator, Authy, etc.) y escriba el código que muestra.
       </p>
       <svg
         role="img"
@@ -63,7 +63,7 @@ export function EnrolamientoTfa({ datos, onConfirmar, isLoading }: EnrolamientoT
       </svg>
       <div className="flex flex-col gap-1.5">
         <label htmlFor="clave-manual" className="text-sm font-medium text-foreground">
-          ¿No podés escanear? Cargá esta clave a mano
+          ¿No puede escanear? Cargue esta clave a mano
         </label>
         <input
           id="clave-manual"

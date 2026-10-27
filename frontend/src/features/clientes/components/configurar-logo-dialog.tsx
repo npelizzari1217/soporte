@@ -159,7 +159,7 @@ export function ConfigurarLogoDialog({ cliente }: ConfigurarLogoDialogProps) {
               </Button>
             }
             title="Quitar logo"
-            description={`¿Confirmás quitar el logo de "${cliente.nombre}"? Sus usuarios verán el ícono genérico en su próximo inicio de sesión.`}
+            description={`¿Confirma quitar el logo de "${cliente.nombre}"? Sus usuarios verán el ícono genérico en su próximo inicio de sesión.`}
             confirmLabel="Quitar"
             confirmVariant="destructive"
             isConfirming={quitarMutation.isPending}

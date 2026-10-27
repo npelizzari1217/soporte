@@ -8,7 +8,7 @@ import { z } from "zod";
  * Spec: PR11 — LoginForm (react-hook-form + zod).
  */
 export const loginSchema = z.object({
-  email: z.string().min(1, "El email es requerido").email("Ingresá un email válido"),
+  email: z.string().min(1, "El email es requerido").email("Ingrese un email válido"),
   password: z.string().min(1, "La contraseña es requerida"),
 });
 
@@ -26,7 +26,7 @@ export const cambiarPasswordSchema = z
   .object({
     passwordActual: z.string().min(1, "La contraseña actual es requerida"),
     passwordNueva: z.string().min(8, "Mínimo 8 caracteres"),
-    repetirPassword: z.string().min(1, "Repetí la nueva contraseña"),
+    repetirPassword: z.string().min(1, "Repita la nueva contraseña"),
   })
   .refine((data) => data.passwordNueva === data.repetirPassword, {
     message: "Las contraseñas no coinciden",
@@ -42,7 +42,7 @@ export type CambiarPasswordFormValues = z.infer<typeof cambiarPasswordSchema>;
  * Spec: sdd/reseteo-contrasena-olvidada — WU-9. Design ADR-8, "Schemas".
  */
 export const solicitarResetSchema = z.object({
-  email: z.string().min(1, "El email es requerido").email("Ingresá un email válido"),
+  email: z.string().min(1, "El email es requerido").email("Ingrese un email válido"),
 });
 export type SolicitarResetFormValues = z.infer<typeof solicitarResetSchema>;
 
@@ -59,7 +59,7 @@ export type SolicitarResetFormValues = z.infer<typeof solicitarResetSchema>;
 export const restablecerPasswordSchema = z
   .object({
     passwordNueva: z.string().min(8, "Mínimo 8 caracteres"),
-    repetirPassword: z.string().min(1, "Repetí la nueva contraseña"),
+    repetirPassword: z.string().min(1, "Repita la nueva contraseña"),
   })
   .refine((data) => data.passwordNueva === data.repetirPassword, {
     message: "Las contraseñas no coinciden",
@@ -78,10 +78,10 @@ export const codigoDesafioSchema = z.object({
   codigo: z
     .string()
     .trim()
-    .min(1, "Ingresá el código")
+    .min(1, "Ingrese el código")
     .regex(
       /^(\d{6}|[0-9A-Za-z]{4}-?[0-9A-Za-z]{4}-?[0-9A-Za-z]{4})$/,
-      "Ingresá los 6 dígitos de la app o un código de recuperación",
+      "Ingrese los 6 dígitos de la app o un código de recuperación",
     ),
 });
 export type CodigoDesafioFormValues = z.infer<typeof codigoDesafioSchema>;

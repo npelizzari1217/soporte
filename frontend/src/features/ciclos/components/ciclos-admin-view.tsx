@@ -24,7 +24,7 @@ export function CiclosAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para gestionar ciclos." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para gestionar ciclos." />}>
         <CiclosAdminContent />
       </SoloAdminCliente>
     </div>
@@ -55,7 +55,7 @@ function CiclosAdminContent() {
       )}
 
       {!ciclosQuery.isLoading && !ciclosQuery.isError && (ciclosQuery.data?.ciclos.length ?? 0) === 0 && (
-        <EmptyState icon={CalendarRange} title="Sin ciclos adoptados" description="Adoptá un ciclo del catálogo master para empezar." />
+        <EmptyState icon={CalendarRange} title="Sin ciclos adoptados" description="Adopte un ciclo del catálogo master para empezar." />
       )}
 
       {!ciclosQuery.isLoading && !ciclosQuery.isError && (ciclosQuery.data?.ciclos.length ?? 0) > 0 && (

@@ -151,10 +151,10 @@ export function useConfigurarApiCliente(clienteId: string) {
  * backend (`notifyError`).
  */
 const AVISO_FORMULARIO_PUBLICO_POR_CODIGO: Record<string, string> = {
-  SLUG_INVALIDO: "El slug no es válido. Usá minúsculas, números y guiones.",
-  SLUG_DUPLICADO: "Ya hay otro cliente con ese slug. Elegí otro.",
+  SLUG_INVALIDO: "El slug no es válido. Use minúsculas, números y guiones.",
+  SLUG_DUPLICADO: "Ya hay otro cliente con ese slug. Elija otro.",
   SLUG_CONGELADO: "El slug ya no se puede cambiar porque se emitió un QR con él.",
-  SLUG_REQUERIDO: "Cargá un slug antes de habilitar el formulario público.",
+  SLUG_REQUERIDO: "Cargue un slug antes de habilitar el formulario público.",
 };
 
 /**

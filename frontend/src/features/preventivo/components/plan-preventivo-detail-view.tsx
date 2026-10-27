@@ -138,7 +138,7 @@ export function PlanPreventivoDetailView({ planId }: PlanPreventivoDetailViewPro
                       </Button>
                     }
                     title="Dar de baja plan"
-                    description={`¿Confirmás dar de baja "${plan.titulo}"? Deja de generar ciclos futuros; lo ya generado no se toca.`}
+                    description={`¿Confirma dar de baja "${plan.titulo}"? Deja de generar ciclos futuros; lo ya generado no se toca.`}
                     confirmLabel="Dar de baja"
                     confirmVariant="destructive"
                     isConfirming={darDeBajaMutation.isPending}
@@ -182,7 +182,7 @@ export function PlanPreventivoDetailView({ planId }: PlanPreventivoDetailViewPro
   }
 
   return (
-    <Can permiso="PREVENTIVO:LECTURA" fallback={<ErrorState message="No tenés permiso para ver este plan." />}>
+    <Can permiso="PREVENTIVO:LECTURA" fallback={<ErrorState message="No tiene permiso para ver este plan." />}>
       {content}
     </Can>
   );

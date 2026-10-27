@@ -76,7 +76,7 @@ export function useSeleccionUnidad(
     cargando: query.isLoading,
     fallo: query.isError,
     unidadId,
-    error: intentado && requiere && !unidadId ? "Elegí la pieza" : undefined,
+    error: intentado && requiere && !unidadId ? "Elija la pieza" : undefined,
     elegir: setElegida,
     validar: () => {
       if (!requiere) return undefined;

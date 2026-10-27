@@ -26,7 +26,7 @@ export interface TextosSecretoUnico {
 const TEXTOS_CLAVE_API: TextosSecretoUnico = {
   titulo: "Clave creada",
   descripcion:
-    "Copiala y guardala en un lugar seguro ahora: es la única vez que la vas a ver. Si la perdés, revocala y creá otra.",
+    "Cópiela y guárdela en un lugar seguro ahora: es la única vez que podrá verla. Si la pierde, revóquela y cree otra.",
   etiqueta: "Clave de API",
   copiar: "Copiar clave",
   copiado: "Copiada",

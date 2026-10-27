@@ -90,7 +90,7 @@ describe("CompraCancelarDialog", () => {
   });
 
   it("muestra el error de dominio del backend (422, S29 con compras registradas) al usuario", async () => {
-    const MENSAJE_BACKEND = "La compra tiene compras registradas — cerrala con faltante en vez de cancelarla.";
+    const MENSAJE_BACKEND = "La compra tiene compras registradas — ciérrela con faltante en vez de cancelarla.";
     server.use(
       http.post(`/api/compras/${COMPRA_ID}/cancelar`, () =>
         HttpResponse.json({ statusCode: 422, message: MENSAJE_BACKEND }, { status: 422 }),

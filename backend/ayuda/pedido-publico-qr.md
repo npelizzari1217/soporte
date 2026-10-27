@@ -30,7 +30,7 @@ Si el botón no aparece, el formulario de su cliente no está habilitado.
 
 1. Abra el link o escanee el QR. Se abre la página **Pedido de soporte**, con el
    nombre del cliente y, si llegó por un QR, el del equipo.
-2. Complete **Tu nombre**, **Tu email**, **Teléfono (opcional)**, **Asunto** y
+2. Complete **Su nombre**, **Su email**, **Teléfono (opcional)**, **Asunto** y
    **¿Qué pasa?**, y presione **Enviar pedido**.
 3. La página le indica que revise su correo. Si el mensaje no llega, busque en
    la carpeta de correo no deseado.

@@ -42,7 +42,7 @@ export function ItemDecisionActions({ compraId, item }: ItemDecisionActionsProps
           </Button>
         }
         title="Aprobar ítem"
-        description={`¿Confirmás aprobar "${item.descripcion}"?`}
+        description={`¿Confirma aprobar "${item.descripcion}"?`}
         confirmLabel="Confirmar aprobación"
         isConfirming={aprobarMutation.isPending}
         onConfirm={() => aprobarMutation.mutate(item.id)}
@@ -60,7 +60,7 @@ export function ItemDecisionActions({ compraId, item }: ItemDecisionActionsProps
           </Button>
         }
         title="Rechazar ítem"
-        description={`¿Confirmás rechazar "${item.descripcion}"?`}
+        description={`¿Confirma rechazar "${item.descripcion}"?`}
         confirmLabel="Confirmar rechazo"
         confirmVariant="destructive"
         isConfirming={rechazarMutation.isPending}

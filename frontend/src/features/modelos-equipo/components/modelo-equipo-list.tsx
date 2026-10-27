@@ -30,7 +30,7 @@ function EstadoActivoAction({ modelo }: { modelo: ModeloEquipo }) {
         </Button>
       }
       title={modelo.activo ? "Dar de baja modelo de equipo" : "Activar modelo de equipo"}
-      description={`¿Confirmás ${modelo.activo ? "dar de baja" : "activar"} "${modelo.marca} ${modelo.modelo}"?`}
+      description={`¿Confirma ${modelo.activo ? "dar de baja" : "activar"} "${modelo.marca} ${modelo.modelo}"?`}
       confirmLabel={modelo.activo ? "Dar de baja" : "Activar"}
       confirmVariant={modelo.activo ? "destructive" : "default"}
       isConfirming={mutation.isPending}
@@ -90,7 +90,7 @@ export function ModeloEquipoList() {
         error={modelosQuery.isError ? "No se pudieron cargar los modelos de equipo." : undefined}
         onRetry={() => modelosQuery.refetch().catch(notifyError)}
         emptyTitle="Sin modelos de equipo"
-        emptyDescription="Creá el primero con el botón «Nuevo modelo de equipo»."
+        emptyDescription="Cree el primero con el botón «Nuevo modelo de equipo»."
       />
     </div>
   );

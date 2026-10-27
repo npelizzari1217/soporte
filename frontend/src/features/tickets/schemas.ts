@@ -25,8 +25,8 @@ export const crearTicketSchema = z.object({
     .min(1, "El título es requerido")
     .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
-  tipoId: z.string().uuid("Elegí un tipo de ticket"),
-  prioridadId: z.string().uuid("Elegí una prioridad"),
+  tipoId: z.string().uuid("Elija un tipo de ticket"),
+  prioridadId: z.string().uuid("Elija una prioridad"),
   ticketReferenciaId: z.string().uuid().optional().or(z.literal("")),
   ubicacion: ubicacionSchema,
   sectorId: sectorIdSchema,
@@ -39,7 +39,7 @@ export const editarTicketSchema = z.object({
     .min(1, "El título es requerido")
     .max(TICKET_TITULO_MAX_LENGTH, MENSAJE_TITULO_DEMASIADO_LARGO),
   descripcion: z.string().optional(),
-  prioridadId: z.string().uuid("Elegí una prioridad"),
+  prioridadId: z.string().uuid("Elija una prioridad"),
   ubicacion: ubicacionSchema,
   sectorId: sectorIdSchema,
 });

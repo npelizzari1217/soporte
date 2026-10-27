@@ -11,7 +11,7 @@ export default function ReporteStockPage() {
   return (
     <Can
       permiso="INSUMOS:LECTURA"
-      fallback={<ErrorState message="No tenés permiso para ver el reporte de stock." />}
+      fallback={<ErrorState message="No tiene permiso para ver el reporte de stock." />}
     >
       <ReporteStockView />
     </Can>

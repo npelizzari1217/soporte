@@ -195,7 +195,7 @@ export function PlanPreventivoCreateDialog() {
                   defaultValue=""
                   {...register("equipoId")}
                 >
-                  <option value="">Elegí un equipo</option>
+                  <option value="">Elija un equipo</option>
                   {(equiposQuery.data ?? []).map((equipo) => (
                     <option key={equipo.id} value={equipo.id}>
                       {equipo.nombre}
@@ -236,7 +236,7 @@ export function PlanPreventivoCreateDialog() {
             </label>
             <Select id="plan-prioridad" error={!!errors.prioridadId} defaultValue="" {...register("prioridadId")}>
               <option value="" disabled>
-                Elegí una prioridad
+                Elija una prioridad
               </option>
               {(prioridadesQuery.data ?? []).map((prioridad) => (
                 <option key={prioridad.id} value={prioridad.id}>
@@ -288,7 +288,7 @@ export function PlanPreventivoCreateDialog() {
             </label>
             <Select id="plan-responsable" error={!!errors.responsableId} defaultValue="" {...register("responsableId")}>
               <option value="" disabled>
-                Elegí un responsable
+                Elija un responsable
               </option>
               {(responsablesQuery.data ?? []).map((usuario) => (
                 <option key={usuario.id} value={usuario.id}>

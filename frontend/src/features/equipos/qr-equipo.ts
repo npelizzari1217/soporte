@@ -29,7 +29,7 @@ export type QrEquipoLeido = z.infer<typeof qrEquipoLeidoSchema>;
 /** Avisos por `ApiError.code` de `POST /equipos/:id/qr`. */
 export const AVISO_QR_POR_CODIGO: Record<string, string> = {
   QR_REQUIERE_SLUG: "Este cliente todavía no tiene un slug cargado. Pedile a un administrador global que lo configure.",
-  QR_SLUG_CAMBIADO: "El slug del cliente cambió mientras se emitía el QR. Intentá de nuevo.",
+  QR_SLUG_CAMBIADO: "El slug del cliente cambió mientras se emitía el QR. Intente de nuevo.",
 };
 
 /** Módulos por lado de la zona de silencio que exige el estándar QR. */

@@ -106,7 +106,7 @@ export function DashboardView() {
         <ErrorState
           message={
             isForbidden
-              ? "No tenés permiso para ver el dashboard."
+              ? "No tiene permiso para ver el dashboard."
               : "No se pudieron cargar las métricas del dashboard."
           }
           onRetry={

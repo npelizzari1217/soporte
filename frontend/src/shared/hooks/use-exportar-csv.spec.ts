@@ -72,7 +72,7 @@ describe("useExportarCsv", () => {
     server.use(
       http.get("/api/equipos/export", () =>
         HttpResponse.json(
-          { statusCode: 422, message: "La exportación supera las 5000 filas. Acotá los filtros." },
+          { statusCode: 422, message: "La exportación supera las 5000 filas. Acote los filtros." },
           { status: 422 },
         ),
       ),

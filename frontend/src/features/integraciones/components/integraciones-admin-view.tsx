@@ -48,7 +48,7 @@ function RevocarClaveButton({ clave }: { clave: ApiClave }) {
         </Button>
       }
       title="Revocar clave"
-      description={`¿Confirmás revocar la clave "${clave.nombre}"? Las integraciones que la usan dejan de funcionar en el acto, y no se puede deshacer.`}
+      description={`¿Confirma revocar la clave "${clave.nombre}"? Las integraciones que la usan dejan de funcionar en el acto, y no se puede deshacer.`}
       confirmLabel="Revocar"
       confirmVariant="destructive"
       isConfirming={revocarMutation.isPending}
@@ -111,7 +111,7 @@ function ApiClavesTable() {
       error={query.isError ? "No se pudieron cargar las claves." : undefined}
       onRetry={() => query.refetch().catch(notifyError)}
       emptyTitle="Sin claves"
-      emptyDescription="Creá una clave para que un sistema externo opere con la API."
+      emptyDescription="Cree una clave para que un sistema externo opere con la API."
     />
   );
 }
@@ -122,7 +122,7 @@ export function IntegracionesAdminView() {
   return (
     <div>
       <AdminNav />
-      <SoloAdminCliente fallback={<ErrorState message="No tenés permiso para administrar las integraciones." />}>
+      <SoloAdminCliente fallback={<ErrorState message="No tiene permiso para administrar las integraciones." />}>
         <PageHeader icon={Plug}
           title="Integraciones"
           description="Claves de la API pública para que otros sistemas consulten, creen y comenten tickets, y webhooks para avisarles cuando algo cambia."

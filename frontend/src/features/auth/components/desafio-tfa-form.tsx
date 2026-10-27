@@ -49,7 +49,7 @@ export function DesafioTfaForm({ onSubmit, isLoading }: DesafioTfaFormProps) {
           {...register("codigo")}
         />
         <p className="text-xs text-muted-foreground">
-          Ingresá el código de tu app autenticadora, o un código de recuperación (XXXX-XXXX-XXXX).
+          Ingrese el código de su app autenticadora, o un código de recuperación (XXXX-XXXX-XXXX).
         </p>
         {errors.codigo && (
           <p role="alert" className="text-sm text-destructive">
