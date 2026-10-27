@@ -1,6 +1,10 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
-import { VinculoNoEncontradoError } from '../../domain/errors/reparaciones.errors';
+import {
+  CompraNoEncontradaError,
+  VinculoNoEncontradoError,
+} from '../../domain/errors/reparaciones.errors';
+import { esCompraVisiblePara } from '../../../compras/application/services/visibilidad-compra';
 import { ITicketRepository } from '../../../tickets/domain/ports/i-ticket.repository';
 import {
   AlcanceActorTicket,
@@ -51,7 +55,8 @@ export class DesvincularCompraDeReparacionUseCase {
 
   /**
    * @param dto Ticket, compra y alcance del actor.
-   * @returns Ok; 404 si el ticket no existe, el actor no lo ve o el vínculo no existe; 403 sin
+   * @returns Ok; 404 si el ticket no existe, el actor no lo ve, el vínculo no existe o la compra es
+   *   de un tipo que el actor no ve; 403 sin
    *   `MODIFICACION` sobre el tipo.
    */
   async execute(dto: DesvincularCompraDeReparacionDto): Promise<Result<void, DomainError>> {
@@ -75,8 +80,14 @@ export class DesvincularCompraDeReparacionUseCase {
       (await this.reparacionCompraRepo.findComprasVinculadasByTicketIds([dto.ticketId])).get(
         dto.ticketId,
       ) ?? [];
-    if (!vinculadas.some((compra) => compra.compraId === dto.compraId)) {
+    const vinculada = vinculadas.find((compra) => compra.compraId === dto.compraId);
+    if (!vinculada) {
       return Result.fail(new VinculoNoEncontradoError(dto.ticketId, dto.compraId));
+    }
+    // Una compra de un tipo que el actor no ve responde como inexistente, igual que al vincular
+    // (odd/compras-por-tipo, S2): ni se desvincula ni se confirma que exista.
+    if (!esCompraVisiblePara(vinculada, dto.alcance)) {
+      return Result.fail(new CompraNoEncontradaError(dto.compraId));
     }
 
     await this.reparacionCompraRepo.desvincular(dto.ticketId, dto.compraId);

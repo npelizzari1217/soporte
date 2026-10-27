@@ -8,6 +8,7 @@ import { calcularAvanceTareas } from '../../../tickets/domain/services/avance-ta
 import { IConteoComentariosTicketRepository } from '../../domain/ports/i-conteo-comentarios-ticket.repository';
 import { ITicketCompraRepository } from '../../domain/ports/i-ticket-compra.repository';
 import { CompraVinculada, comprasQueBloquean } from '../../domain/services/bloqueo-reparacion';
+import { esCompraVisiblePara } from '../../../compras/application/services/visibilidad-compra';
 import { ISectorRepository } from '../../../sectores/domain/ports/i-sector.repository';
 import {
   AlcanceActorTicket,
@@ -211,8 +212,10 @@ export class ListarReparacionesUseCase {
         subtareas: tareas,
         porcentajeAvance: calcularAvanceTareas(tareas).porcentaje,
         cantidadComentarios: comentarios.publicos + (veInternos ? comentarios.internos : 0),
+        // El bloqueo cuenta todas las compras; la lista publica solo las que el actor ve, para
+        // no exponer el número ni el id de una compra de otro tipo (odd/compras-por-tipo, S2).
         bloqueada: bloqueantes.length > 0,
-        comprasQueBloquean: [...bloqueantes],
+        comprasQueBloquean: bloqueantes.filter((compra) => esCompraVisiblePara(compra, alcance)),
         sectorNombre: ticket.sectorId ? (nombresSectores.get(ticket.sectorId) ?? null) : null,
       };
     });

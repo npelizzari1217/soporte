@@ -32,7 +32,7 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
   las rutas con `:id` responden 404 sobre una compra no visible; filtro y columna Tipo.
 - [x] T4 — S3, S5: frontend — selector de tipo en alta y edición, columna y filtro en el listado, tipo
   en el detalle.
-- [ ] T5 — runbook (migración tenant), registro de Ayuda pendiente (suspendida), verificación
+- [x] T5 — runbook (migración tenant), registro de Ayuda pendiente (suspendida), verificación
   independiente y suites.
 
 ## Log
@@ -87,3 +87,18 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
   Los tests se escribieron después del código (feature, sin TDD exigido); se verificaron con
   mutaciones manuales de las cuatro reglas centrales, y las cuatro se pusieron en rojo. Límite: el
   filtro no ofrece tipos inactivos, porque `GET /catalogos/tipos-ticket` solo trae activos.
+- **L6 — Verificación independiente (`gentle-ai-verify`).** S1, S3, S4, S5, S6 cumplen; S2 no: B1,
+  desvincular (`DELETE /tickets/:id/compras/:compraId`) operaba sobre una compra de un tipo sin
+  LECTURA (reproducido), y `GET /reparaciones` publicaba el id de esa compra en `comprasQueBloquean`
+  (fuga a), lo que hacía alcanzable B1. Avisos: (b) el 422 al borrar un ticket nombra el número de
+  todas las compras vinculadas (solo número, preexistente; queda así); alta con ALTAS sin LECTURA
+  navega a un detalle que da 404 (depende de la matriz); `schema.prisma` no declara `onDelete` en la
+  relación (manda la FK RESTRICT de la migración, igual que `sector`); runbook sin la nota de
+  `_prisma_migrations` (agregada).
+- **L7 — Corrección de B1 y fuga a, con TDD.** Suites completas antes del cambio: backend 820/820
+  archivos y 10473/10473, frontend 292/292 y 2744/2744. RED: el caso "compra de un tipo sin LECTURA →
+  404 y el vínculo queda" de desvincular (los hermanos con LECTURA y sin tipo pasaban) y 2 de listar
+  reparaciones (`expected [ { compraId: 'compra-oculta' … } ] to deeply equal []`). GREEN:
+  desvincular responde `CompraNoEncontradaError` sobre una compra no visible, sin borrar; el listado
+  publica solo las compras visibles y `bloqueada` sigue contando todas. `src/reparaciones` +
+  `src/compras` 1392/1392, lint y tipos limpios.

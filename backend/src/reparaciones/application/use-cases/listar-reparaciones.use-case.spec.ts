@@ -303,6 +303,67 @@ describe('ListarReparacionesUseCase — hidratación por lote (el listado NO pue
   });
 });
 
+describe('ListarReparacionesUseCase — compras que bloquean y su tipo (odd/compras-por-tipo, S2)', () => {
+  const oculta: CompraVinculada = {
+    ...compraActiva,
+    compraId: 'compra-oculta',
+    tipoTicketId: 'tipo-soporte',
+  };
+  const visible: CompraVinculada = {
+    ...compraActiva,
+    compraId: 'compra-visible',
+    tipoTicketId: 'tipo-edilicia',
+  };
+  const sinTipo: CompraVinculada = {
+    ...compraActiva,
+    compraId: 'compra-sin-tipo',
+    tipoTicketId: null,
+  };
+  const lectorEdilicia = alcancePorTipo('actor-uuid', {
+    'tipo-edilicia': ['LECTURA', 'VER_TODOS'],
+  });
+
+  it('no publica una compra cuyo tipo el actor no ve, pero el ticket sigue figurando bloqueado', async () => {
+    const deps = armar(1);
+    deps.reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+      new Map([['t-0', [oculta]]]),
+    );
+
+    const [item] = (await deps.useCase.execute(lectorEdilicia)).getValue();
+
+    expect(item.bloqueada).toBe(true);
+    expect(item.comprasQueBloquean).toEqual([]);
+  });
+
+  it('publica las compras visibles y las sin tipo, y omite solo la oculta', async () => {
+    const deps = armar(1);
+    deps.reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+      new Map([['t-0', [oculta, visible, sinTipo]]]),
+    );
+
+    const [item] = (await deps.useCase.execute(lectorEdilicia)).getValue();
+
+    expect(item.comprasQueBloquean.map((c) => c.compraId)).toEqual([
+      'compra-visible',
+      'compra-sin-tipo',
+    ]);
+  });
+
+  it('sin restricción publica todas', async () => {
+    const deps = armar(1);
+    deps.reparacionCompraRepo.findComprasVinculadasByTicketIds.mockResolvedValue(
+      new Map([['t-0', [oculta, visible]]]),
+    );
+
+    const [item] = (await deps.useCase.execute(SIN_RESTRICCION)).getValue();
+
+    expect(item.comprasQueBloquean.map((c) => c.compraId)).toEqual([
+      'compra-oculta',
+      'compra-visible',
+    ]);
+  });
+});
+
 describe('ListarReparacionesUseCase — conteo de comentarios (odd/ticket-unificado, S3)', () => {
   /** t-0 con 2 públicos y 3 internos; t-1, de otro tipo, con 1 público y 4 internos. */
   function conComentarios() {

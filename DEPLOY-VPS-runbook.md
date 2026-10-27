@@ -1756,7 +1756,8 @@ columna en cada alta y listado de compras.
 
 Su `rollback.sql` borra la columna y se puede correr dos veces. **Primero el código, después el
 `rollback.sql`**. El código anterior ignora la columna, así que dejarla puesta también es un rollback
-válido y es el único que conserva los tipos asignados desde el deploy.
+válido y es el único que conserva los tipos asignados desde el deploy. No borra la fila de
+`_prisma_migrations`: para volver a desplegar, se borra a mano.
 
 ## Cuando algo falla
 
