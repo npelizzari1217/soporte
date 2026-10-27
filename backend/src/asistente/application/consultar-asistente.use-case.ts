@@ -22,8 +22,13 @@ export interface ConsultarAsistenteCommand {
 
 /** Temperatura de la respuesta (como en sesitec): baja, para que no invente. */
 export const TEMPERATURA_ASISTENTE = 0.2;
-/** Tope de fichas de la respuesta: holgado para ~120 palabras en español. */
-export const MAX_TOKENS_ASISTENTE = 400;
+/**
+ * Tope de fichas de la respuesta. El largo real lo acota el prompt (120 palabras); el tope es amplio
+ * a propósito: en Gemini 2.5 las fichas de razonamiento cuentan contra `max_tokens`, y con un tope
+ * ajustado la respuesta llega vacía y el asistente cae siempre al respaldo sin que nadie lo note.
+ * El proveedor cobra las fichas usadas, no el tope.
+ */
+export const MAX_TOKENS_ASISTENTE = 2048;
 /** Largo máximo del texto de respaldo, cortado en el último espacio. */
 export const LARGO_MAXIMO_RESPALDO = 700;
 

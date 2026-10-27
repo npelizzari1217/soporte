@@ -58,6 +58,7 @@ describe('POST /asistente/consultas — e2e', () => {
   const clientes: string[] = [];
   let publicado: string;
   let interno: string;
+  let dadoDeBaja: string;
   let clienteConIa: string;
 
   const token = (permisos: string[], clienteId: string | null = null): string =>
@@ -123,6 +124,19 @@ describe('POST /asistente/consultas — e2e', () => {
       '## Reiniciar el vortiplex\nEl técnico reinicia el vortiplex desde la consola.',
       false,
     );
+    // Publicado pero inactivo y dado de baja: no tiene que llegar ni a quien ve todo.
+    const baja = await master.kbArticulo.create({
+      data: {
+        titulo: 'Plimbor dado de baja',
+        contenido: '## Usar el plimbor\nEl plimbor se usa desde el menú.',
+        visibleParaSolicitante: true,
+        activo: false,
+        deletedAt: new Date(),
+      },
+    });
+    articulos.push(baja.id);
+    dadoDeBaja = baja.id;
+
     const s = randomBytes(5).toString('hex');
     const c = await master.cliente.create({
       data: { nombre: `E2E Asistente ${s}`, dbName: `soporte_e2e_asist_${s}_test` },
@@ -200,6 +214,16 @@ describe('POST /asistente/consultas — e2e', () => {
       token(['KB:LECTURA', 'KB:VER_TODOS'], clienteConIa),
     );
     expect(data.fuentes).toEqual([{ articuloId: interno, titulo: 'Vortiplex interno' }]);
+  });
+
+  it('un artículo inactivo y dado de baja no llega ni a quien tiene KB:VER_TODOS', async () => {
+    const { data } = await consultar(
+      'usar el plimbor',
+      token(['KB:LECTURA', 'KB:VER_TODOS'], clienteConIa),
+    );
+    expect(data.modo).toBe('sin_resultados');
+    expect(JSON.stringify(data)).not.toContain(dadoDeBaja);
+    expect(modelo.pedidos).toEqual([]);
   });
 
   it('sin nada parecido: lo dice y sugiere crear un ticket', async () => {

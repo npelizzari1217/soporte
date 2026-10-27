@@ -113,6 +113,22 @@ describe("ConfigurarIaDialog", () => {
     );
   });
 
+  it("cerrar sin guardar y reabrir descarta lo tipeado y muestra el dato vigente", async () => {
+    server.use(http.get("/api/clientes/c1/ia", () => HttpResponse.json(conIa())));
+    const user = await abrir();
+    await screen.findByText("IA configurada");
+
+    const modelo = screen.getByLabelText(/^modelo$/i);
+    await user.clear(modelo);
+    await user.type(modelo, "basura");
+    await user.type(screen.getByLabelText(/^clave/i), "clave-a-medio-tipear");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /ia de cliente uno/i }));
+
+    expect(await screen.findByLabelText(/^modelo$/i)).toHaveValue("gemini-2.5-flash");
+    expect(screen.getByLabelText(/^clave/i)).toHaveValue("");
+  });
+
   it("un modelo de solo espacios se rechaza sin llamar al servidor", async () => {
     let llamadas = 0;
     server.use(

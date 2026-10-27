@@ -125,3 +125,17 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   (a) un artículo del asistente (qué responde, de dónde sale, modo de respaldo, el cupo de 10 por
   minuto); (b) en el artículo de clientes, la acción "IA" (URL, modelo, clave que no se muestra,
   Probar, Quitar); (c) una sección sobre dar de alta un equipo (L9).
+- **L12 — Verificación independiente de T3+T4 (`gentle-ai-verify`).** Sin blockers: S1, S2, S3, S4
+  (front), S5, S6 y S7 PASS; runbook PASS (su sonda contra la Ayuda real confirma el smoke). Avisos:
+  A1 `max_tokens` 400 con Gemini 2.5, cuyas fichas de razonamiento cuentan contra el tope: la
+  respuesta puede llegar vacía y caer siempre al respaldo sin que se note; A3 sin test de reabrir el
+  diálogo; A4 el test comparaba la temperatura contra la propia constante; A5 orden sin desempate por
+  id; A6 sin test de artículo inactivo o dado de baja. A2 (el diálogo muestra "Sin IA" mientras carga)
+  y A7 (el respaldo devuelve el markdown crudo) quedan como están: A2 es el patrón heredado del
+  diálogo de correo y A7 es cosmético (S2 pide texto plano al modelo, no al respaldo).
+- **L13 — Corrección de A1, A3-A6.** A1 con TDD: RED con el tope en 400 (`expected 400 to be greater
+  than or equal to 2048`), GREEN con 2048; el largo de la respuesta lo acota el prompt y el proveedor
+  cobra las fichas usadas. A4: el test fija 0.2 y "como mucho 3 fragmentos" con valores literales de
+  la spec. A5: `orderBy` título e id. A6: e2e con un artículo publicado pero inactivo y dado de baja
+  que no llega ni con `KB:VER_TODOS`. A3: test de cerrar sin guardar y reabrir. `src/asistente`
+  127/127, diálogo 7/7, lint y tipos limpios en back y front.

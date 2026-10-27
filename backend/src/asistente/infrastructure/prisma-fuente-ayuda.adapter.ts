@@ -19,7 +19,8 @@ export class PrismaFuenteAyuda implements IFuenteAyuda {
         ...(soloPublicados ? { visibleParaSolicitante: true } : {}),
       },
       select: { id: true, titulo: true, contenido: true },
-      orderBy: { titulo: 'asc' },
+      // Orden total: a igual puntaje la búsqueda conserva este orden, así que tiene que ser estable.
+      orderBy: [{ titulo: 'asc' }, { id: 'asc' }],
     });
   }
 }

@@ -11,9 +11,7 @@ import {
   ConsultarAsistenteUseCase,
   INSTRUCCIONES_ASISTENTE,
   LARGO_MAXIMO_RESPALDO,
-  MAX_TOKENS_ASISTENTE,
   recortarRespaldo,
-  TEMPERATURA_ASISTENTE,
 } from './consultar-asistente.use-case';
 
 const publicado: ArticuloAyuda = {
@@ -86,14 +84,33 @@ describe('ConsultarAsistenteUseCase', () => {
       clave: 'AIzaClave',
     });
     const { mensajes, temperatura, maxTokens } = llamadas[0].pedido;
-    expect(temperatura).toBe(TEMPERATURA_ASISTENTE);
-    expect(maxTokens).toBe(MAX_TOKENS_ASISTENTE);
+    // Valores de la spec (S2), no las constantes: un cambio de la constante tiene que romper esto.
+    expect(temperatura).toBe(0.2);
+    // Amplio por las fichas de razonamiento de Gemini 2.5 (ver MAX_TOKENS_ASISTENTE).
+    expect(maxTokens).toBeGreaterThanOrEqual(2048);
     expect(mensajes[0]).toEqual({ rol: 'system', contenido: INSTRUCCIONES_ASISTENTE });
     expect(mensajes[1].contenido).toBe(
       'Contexto:\n[1] Tickets — Crear un ticket\n' +
         'Desde Tickets > Nuevo, complete el asunto y presione Guardar.\n\n' +
         'Consulta: ¿Cómo creo un ticket?',
     );
+  });
+
+  it('pasa como contexto como mucho 3 fragmentos (S2)', async () => {
+    const muchas: ArticuloAyuda = {
+      id: 'a-muchas',
+      titulo: 'Tickets en detalle',
+      contenido: [1, 2, 3, 4, 5]
+        .map((n) => `## Ticket parte ${n}\nTexto del ticket ${n}.`)
+        .join('\n'),
+    };
+    const { m, llamadas } = modelo(Result.ok('Respuesta.'));
+    const conMuchas = { listarArticulos: async () => [muchas] };
+    await new ConsultarAsistenteUseCase(conMuchas, conIa, descifra, m).execute(comando('ticket'));
+
+    const contexto = llamadas[0].pedido.mensajes[1].contenido;
+    expect(contexto).toContain('[3] ');
+    expect(contexto).not.toContain('[4] ');
   });
 
   it('sin IA configurada: devuelve el fragmento más parecido sin llamar a ningún proveedor', async () => {
