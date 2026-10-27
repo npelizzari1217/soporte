@@ -42,6 +42,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { EsNumeroConDecimales } from '../../../shared/interface/validators/es-numero-con-decimales';
 import { EsSerialDeUnidad } from '../../../insumos/interface/validators/es-serial-de-unidad';
@@ -62,6 +63,7 @@ import {
   CompraListItemDto,
   ListarComprasResult,
 } from '../../application/use-cases/listar-compras.use-case';
+import { TipoTicketDeCompra } from '../../application/services/tipos-de-compra';
 import {
   OperacionCompra,
   TipoOperacionCompra,
@@ -126,6 +128,14 @@ export class CrearCompraHttpDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string;
+
+  /**
+   * Tipo de ticket de la compra (odd/compras-por-tipo, S3): obligatorio. Que exista, esté activo y
+   * que el actor tenga ALTAS sobre él lo decide `CrearCompraUseCase`; acá solo la forma, para que
+   * un id crudo no llegue a la columna `@db.Uuid` y salga como 500.
+   */
+  @IsUUID('all', { message: 'tipoTicketId es obligatorio y debe ser un UUID.' })
+  tipoTicketId!: string;
 }
 
 /** Body de `POST /compras/:id/items` (§4.2, S4). */
@@ -286,6 +296,15 @@ export class EditarCompraHttpDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
+
+  /**
+   * Tipo de ticket nuevo (odd/compras-por-tipo, S3, S4). Ausente no lo toca. A diferencia de
+   * `sectorId`, el `null` explícito es un 400 y no "desasignar": una compra con tipo no vuelve a
+   * quedar sin tipo. Por eso `@ValidateIf` y no `@IsOptional`, que dejaría pasar el `null`.
+   */
+  @ValidateIf((_dto: EditarCompraHttpDto, valor: unknown) => valor !== undefined)
+  @IsUUID('all', { message: 'tipoTicketId debe ser un UUID: una compra no puede quedar sin tipo.' })
+  tipoTicketId?: string;
 }
 
 /**
@@ -474,6 +493,14 @@ export class ListarComprasQueryDto {
   @IsString()
   @MaxLength(BUSQUEDA_COMPRAS_MAX)
   busqueda?: string;
+
+  /**
+   * Tipo de ticket (odd/compras-por-tipo, S5). Restringe dentro de lo que el actor ve; pedir un tipo
+   * sin LECTURA devuelve vacío, nunca amplía el resultado.
+   */
+  @IsOptional()
+  @IsUUID()
+  tipoTicketId?: string;
 }
 
 /**
@@ -507,6 +534,11 @@ export class ExportarComprasQueryDto {
   @IsOptional()
   @IsDateString()
   fechaHasta?: string;
+
+  /** Tipo de ticket, con el mismo criterio que en `ListarComprasQueryDto`. */
+  @IsOptional()
+  @IsUUID()
+  tipoTicketId?: string;
 }
 
 // ─── Response DTOs ────────────────────────────────────────────────────────
@@ -608,6 +640,8 @@ export interface CompraListItemResponseDto {
   comprado: boolean;
   cerrado: boolean;
   totalesPorMoneda: Record<string, number>;
+  /** Tipo de ticket (odd/compras-por-tipo, L3). `null` = compra sin tipo (S4). */
+  tipoTicket: TipoTicketDeCompra | null;
 }
 
 /** Convierte una fila de `ListarComprasUseCase` al shape de respuesta HTTP. */
@@ -621,6 +655,7 @@ export function toCompraListItemResponseDto(item: CompraListItemDto): CompraList
     comprado: item.comprado,
     cerrado: item.cerrado,
     totalesPorMoneda: item.totalesPorMoneda,
+    tipoTicket: item.tipoTicket,
   };
 }
 
@@ -655,6 +690,8 @@ export interface CompraDetalleResponseDto {
   cicloId: string;
   /** Sector de destino (WU-09, R11). `null` si no se asignó (S66/S67). */
   sectorId: string | null;
+  /** Tipo de ticket (odd/compras-por-tipo, L3). `null` = compra sin tipo (S4). */
+  tipoTicket: TipoTicketDeCompra | null;
   estado: EstadoCompra;
   comprado: boolean;
   cerrado: boolean;
@@ -675,9 +712,14 @@ export interface CompraDetalleResponseDto {
  * EXCLUYE explícitamente — un ítem eliminado no es información que la API
  * deba exponer a un consumidor HTTP, mismo criterio que `itemsActivos()`
  * (privado en la entidad) usa internamente para la derivación de estado.
+ *
+ * `tipoTicket` llega ya resuelto (`ResolverTiposDeCompra`): el nombre no vive
+ * en la entidad. Es obligatorio en la firma para que ninguna respuesta lo
+ * publique en `null` por olvido, que se leería como "compra sin tipo".
  */
 export function toCompraDetalleResponseDto(
   compra: CompraEntity,
+  tipoTicket: TipoTicketDeCompra | null,
   seguimientoPorInsumo: ReadonlyMap<string, SeguimientoInsumo> = new Map(),
 ): CompraDetalleResponseDto {
   return {
@@ -689,6 +731,7 @@ export function toCompraDetalleResponseDto(
     solicitanteId: compra.solicitanteId,
     cicloId: compra.cicloId,
     sectorId: compra.sectorId,
+    tipoTicket,
     estado: compra.estado,
     comprado: compra.comprado,
     cerrado: compra.cerrado,

@@ -29,6 +29,7 @@
  */
 import 'reflect-metadata';
 import {
+  BadRequestException,
   ConflictException,
   ExecutionContext,
   ForbiddenException,
@@ -83,6 +84,8 @@ import {
   MotivoCierreFaltanteRequeridoError,
   NumeradorCompraAgotadoError,
   SinCicloActivoError,
+  TipoTicketDeCompraInvalidoError,
+  TipoTicketDeCompraNoPermitidoError,
 } from '../../domain/errors/compras.errors';
 
 import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
@@ -103,6 +106,17 @@ import { ObtenerCompraUseCase } from '../../application/use-cases/obtener-compra
 import { ListarOperacionesCompraUseCase } from '../../application/use-cases/listar-operaciones-compra.use-case';
 import { ExportarComprasUseCase } from '../../application/use-cases/exportar-compras.use-case';
 import { espiado } from '../../../shared/test-helpers/espiado';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { ResolverTiposDeCompra } from '../../application/services/tipos-de-compra';
+import { TipoTicketEntity } from '../../../tickets/domain/entities/tipo-ticket.entity';
+import { ITipoTicketRepository } from '../../../tickets/domain/ports/i-tipo-ticket.repository';
+import { IPermisoTipoTicketRepository } from '../../../tickets/domain/ports/i-permiso-tipo-ticket.repository';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
+
+const TIPO_SOPORTE = '00000000-0000-4000-8000-0000000000c1';
+
+/** Alcance sin restricción por tipo: el de USUARIO, que es ADMINISTRADOR. */
+const SIN_RESTRICCION = { actorId: 'usuario-1', permisosPorTipo: null };
 
 const USUARIO: JwtPayload = payloadDeTest({
   sub: 'usuario-1',
@@ -133,6 +147,24 @@ function buildController() {
   const obtenerCompraUseCase = espiado(ObtenerCompraUseCase);
   const listarOperacionesCompraUseCase = espiado(ListarOperacionesCompraUseCase);
   const exportarComprasUseCase = espiado(ExportarComprasUseCase);
+  // odd/compras-por-tipo: cargador REAL sobre un repositorio de permisos falso.
+  // USUARIO es ADMINISTRADOR, así que su alcance sale sin restricción y sin
+  // consultar; `permisosDe` alimenta a un actor restringido cuando hace falta.
+  const permisosDe = new Map<string, Map<string, Set<AccionTipoTicket>>>();
+  const permisosRepo: Pick<IPermisoTipoTicketRepository, 'listarPorUsuario'> = {
+    listarPorUsuario: async (usuarioId) => permisosDe.get(usuarioId) ?? new Map(),
+  };
+  const alcances = new CargadorAlcanceTicket(permisosRepo);
+  const tipoRepo: Pick<ITipoTicketRepository, 'findById'> = {
+    findById: async (id) =>
+      id === TIPO_SOPORTE
+        ? TipoTicketEntity.create(
+            { codigo: 'SOPORTE', nombre: 'Soporte', modulo: 'TICKETS', activo: true },
+            TIPO_SOPORTE,
+          )
+        : null,
+  };
+  const tiposDeCompra = new ResolverTiposDeCompra(tipoRepo);
 
   const controller = new ComprasController(
     crearCompraUseCase.caso,
@@ -152,10 +184,13 @@ function buildController() {
     obtenerCompraUseCase.caso,
     listarOperacionesCompraUseCase.caso,
     exportarComprasUseCase.caso,
+    alcances,
+    tiposDeCompra,
   );
 
   return {
     controller,
+    permisosDe,
     crearCompraUseCase,
     agregarItemCompraUseCase,
     editarCompraUseCase,
@@ -193,7 +228,7 @@ function buildItem(id = 'item-1'): ItemCompraEntity {
   );
 }
 
-/** Compra PENDIENTE (n=0), válida según `CompraEntity.create()`. */
+/** Compra PENDIENTE (n=0) del tipo Soporte, válida según `CompraEntity.create()`. */
 function buildCompra(id = 'compra-1'): CompraEntity {
   return CompraEntity.create(
     {
@@ -203,6 +238,7 @@ function buildCompra(id = 'compra-1'): CompraEntity {
       descripcion: null,
       solicitanteId: USUARIO.sub,
       cicloId: 'ciclo-1',
+      tipoTicketId: TIPO_SOPORTE,
     },
     id,
   );
@@ -217,6 +253,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       const res = await controller.crear(USUARIO, {
         motivo: 'Reposición de notebooks',
         fechaSolicitud: '2026-08-13',
+        tipoTicketId: TIPO_SOPORTE,
       });
 
       expect(crearCompraUseCase.execute).toHaveBeenCalledWith({
@@ -226,9 +263,41 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         solicitanteId: 'usuario-1',
         anio: new Date().getFullYear(),
         sectorId: null,
+        tipoTicketId: TIPO_SOPORTE,
+        alcance: SIN_RESTRICCION,
       });
       expect(res.id).toBe('compra-1');
       expect(res.items).toEqual([]);
+      expect(res.tipoTicket).toEqual({ id: TIPO_SOPORTE, nombre: 'Soporte' });
+    });
+
+    it('odd/compras-por-tipo: un actor restringido llega al use case con su alcance por tipo', async () => {
+      const { controller, crearCompraUseCase, permisosDe } = buildController();
+      crearCompraUseCase.execute.mockResolvedValue(Result.ok(buildCompra()));
+      const restringido = payloadDeTest({
+        sub: 'usuario-2',
+        cliente_id: 'cliente-1',
+        rol: 'COMPRADOR',
+      });
+      permisosDe.set(
+        'usuario-2',
+        new Map([[TIPO_SOPORTE, new Set<AccionTipoTicket>(['LECTURA', 'ALTAS'])]]),
+      );
+
+      await controller.crear(restringido, {
+        motivo: 'x',
+        fechaSolicitud: '2026-08-13',
+        tipoTicketId: TIPO_SOPORTE,
+      });
+
+      expect(crearCompraUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          alcance: {
+            actorId: 'usuario-2',
+            permisosPorTipo: new Map([[TIPO_SOPORTE, new Set(['LECTURA', 'ALTAS'])]]),
+          },
+        }),
+      );
     });
 
     it('S66 (WU-09): sectorId del body se pasa al use case', async () => {
@@ -239,6 +308,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         motivo: 'Reposición de notebooks',
         fechaSolicitud: '2026-08-13',
         sectorId: 'sector-1',
+        tipoTicketId: TIPO_SOPORTE,
       });
 
       expect(crearCompraUseCase.execute).toHaveBeenCalledWith(
@@ -322,6 +392,8 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         descripcion: undefined,
         fechaSolicitud: undefined,
         sectorId: undefined,
+        tipoTicketId: undefined,
+        alcance: SIN_RESTRICCION,
       });
       expect(res.id).toBe('compra-1');
     });
@@ -343,7 +415,21 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         descripcion: null,
         fechaSolicitud: new Date('2026-09-01'),
         sectorId: null,
+        tipoTicketId: undefined,
+        alcance: SIN_RESTRICCION,
       });
+    });
+
+    it('odd/compras-por-tipo: tipoTicketId del body viaja al use case con el alcance del actor', async () => {
+      const { controller, editarCompraUseCase } = buildController();
+      editarCompraUseCase.execute.mockResolvedValue(Result.ok(buildCompra()));
+
+      const res = await controller.editar(USUARIO, 'compra-1', { tipoTicketId: TIPO_SOPORTE });
+
+      expect(editarCompraUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ tipoTicketId: TIPO_SOPORTE, alcance: SIN_RESTRICCION }),
+      );
+      expect(res.tipoTicket).toEqual({ id: TIPO_SOPORTE, nombre: 'Soporte' });
     });
   });
 
@@ -625,6 +711,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
               comprado: false,
               cerrado: false,
               totalesPorMoneda: { ARS: 2000 },
+              tipoTicket: { id: TIPO_SOPORTE, nombre: 'Soporte' },
             },
           ],
           total: 1,
@@ -633,9 +720,12 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         }),
       );
 
-      const res = await controller.listar({ pagina: 1, porPagina: 20 });
+      const res = await controller.listar(USUARIO, { pagina: 1, porPagina: 20 });
 
-      expect(listarComprasUseCase.execute).toHaveBeenCalledWith({ pagina: 1, porPagina: 20 });
+      expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ pagina: 1, porPagina: 20, alcance: SIN_RESTRICCION }),
+      );
+      expect(res.items[0].tipoTicket).toEqual({ id: TIPO_SOPORTE, nombre: 'Soporte' });
       expect(res.total).toBe(1);
       expect(res.items).toHaveLength(1);
       expect(res.items[0]).not.toHaveProperty('items');
@@ -647,7 +737,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
       );
 
-      await controller.listar({
+      await controller.listar(USUARIO, {
         cicloId: 'ciclo-1',
         soloEnCurso: false,
         sectorId: 'sector-1',
@@ -672,7 +762,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
       );
 
-      await controller.listar({ estado: 'CANCELADAS', soloEnCurso: true });
+      await controller.listar(USUARIO, { estado: 'CANCELADAS', soloEnCurso: true });
 
       expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ estado: 'CANCELADAS', soloEnCurso: true }),
@@ -685,10 +775,23 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
       );
 
-      await controller.listar({ estado: 'ACTIVAS', busqueda: 'pintura' });
+      await controller.listar(USUARIO, { estado: 'ACTIVAS', busqueda: 'pintura' });
 
       expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ estado: 'ACTIVAS', busqueda: 'pintura' }),
+      );
+    });
+
+    it('odd/compras-por-tipo (S5): el filtro tipoTicketId de la query se pasa al use case', async () => {
+      const { controller, listarComprasUseCase } = buildController();
+      listarComprasUseCase.execute.mockResolvedValue(
+        Result.ok({ items: [], total: 0, pagina: 1, porPagina: 20 }),
+      );
+
+      await controller.listar(USUARIO, { tipoTicketId: TIPO_SOPORTE });
+
+      expect(listarComprasUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ tipoTicketId: TIPO_SOPORTE, alcance: SIN_RESTRICCION }),
       );
     });
   });
@@ -710,7 +813,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       );
       const { res, headers } = respuestaFalsa();
 
-      const salida = await controller.exportar({}, res);
+      const salida = await controller.exportar(USUARIO, {}, res);
 
       expect(salida).toBe('Número;Motivo');
       expect(headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
@@ -729,7 +832,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       );
       const { res, headers } = respuestaFalsa();
 
-      const salida = await controller.exportar({}, res, 'xlsx');
+      const salida = await controller.exportar(USUARIO, {}, res, 'xlsx');
 
       expect(salida).toBeInstanceOf(StreamableFile);
       expect(exportarComprasUseCase.execute).toHaveBeenLastCalledWith(expect.anything(), 'xlsx');
@@ -749,7 +852,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       );
       const { res, headers } = respuestaFalsa();
 
-      const salida = await controller.exportar({}, res);
+      const salida = await controller.exportar(USUARIO, {}, res);
 
       expect(salida).toBe('a;b');
       expect(exportarComprasUseCase.execute).toHaveBeenLastCalledWith(expect.anything(), 'csv');
@@ -762,10 +865,19 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
         Result.ok({ contenido: '', nombreArchivo: 'compras-2026-08-19.csv' }),
       );
 
-      await controller.exportar({ estado: 'TODAS', sectorId: 'sector-1' }, respuestaFalsa().res);
+      await controller.exportar(
+        USUARIO,
+        { estado: 'TODAS', sectorId: 'sector-1', tipoTicketId: TIPO_SOPORTE },
+        respuestaFalsa().res,
+      );
 
-      const dto = exportarComprasUseCase.execute.mock.calls[0][0] as Record<string, unknown>;
-      expect(dto).toMatchObject({ estado: 'TODAS', sectorId: 'sector-1' });
+      const dto = exportarComprasUseCase.execute.mock.calls[0][0];
+      expect(dto).toMatchObject({
+        estado: 'TODAS',
+        sectorId: 'sector-1',
+        tipoTicketId: TIPO_SOPORTE,
+        alcance: SIN_RESTRICCION,
+      });
       expect(dto).not.toHaveProperty('pagina');
       expect(dto).not.toHaveProperty('porPagina');
     });
@@ -777,7 +889,7 @@ describe('ComprasController — traducción HTTP ↔ use case (PR-21)', () => {
       );
       const { res, headers } = respuestaFalsa();
 
-      await expect(controller.exportar({}, res)).rejects.toBeInstanceOf(
+      await expect(controller.exportar(USUARIO, {}, res)).rejects.toBeInstanceOf(
         UnprocessableEntityException,
       );
       expect(headers.size).toBe(0);
@@ -867,7 +979,8 @@ describe('ComprasController — propagación de errores (nunca 500 silencioso)',
     {
       nombre: 'crear',
       useCase: 'crearCompraUseCase',
-      invocar: (c) => c.crear(USUARIO, { motivo: 'x', fechaSolicitud: '2026-08-13' }),
+      invocar: (c) =>
+        c.crear(USUARIO, { motivo: 'x', fechaSolicitud: '2026-08-13', tipoTicketId: TIPO_SOPORTE }),
     },
     {
       nombre: 'agregarItem',
@@ -971,11 +1084,11 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 28 clases de error (2×409 + 2×404 + 24×422, + exportación a CSV)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(28);
+  it('el catálogo tiene EXACTAMENTE 30 clases de error (2×409 + 2×404 + 24×422 + 1×400 + 1×403)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(30);
   });
 
-  const TABLA: Array<[string, () => DomainError, 404 | 409 | 422]> = [
+  const TABLA: Array<[string, () => DomainError, 400 | 403 | 404 | 409 | 422]> = [
     ['SinCicloActivoError', () => new SinCicloActivoError(), 409],
     ['NumeradorCompraAgotadoError', () => new NumeradorCompraAgotadoError(2026), 409],
     ['CompraNoEncontradaError', () => new CompraNoEncontradaError('compra-1'), 404],
@@ -1024,6 +1137,13 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     ['SectorInexistenteError', () => new SectorInexistenteError('sector-1'), 422],
     ['ExportacionDemasiadoGrandeError', () => new ExportacionDemasiadoGrandeError(6000, 5000), 422],
     ['InsumoDeItemNoReasignableError', () => new InsumoDeItemNoReasignableError('item-1'), 422],
+    // odd/compras-por-tipo (L3): el tipo del body no es elegible, o falta ALTAS sobre él.
+    ['TipoTicketDeCompraInvalidoError', () => new TipoTicketDeCompraInvalidoError('tipo-1'), 400],
+    [
+      'TipoTicketDeCompraNoPermitidoError',
+      () => new TipoTicketDeCompraNoPermitidoError('Soporte'),
+      403,
+    ],
   ];
 
   it('TABLA cubre EXACTAMENTE las clases exportadas (ninguna falta, ninguna sobra)', () => {
@@ -1038,7 +1158,12 @@ describe('toHttpException — catálogo de errores → HTTP (spec §5)', () => {
     const excepcion = toHttpException(factory());
 
     expect(excepcion.getStatus()).toBe(httpEsperado);
-    if (httpEsperado === 404) {
+    expect(excepcion.message).toBe(factory().message);
+    if (httpEsperado === 400) {
+      expect(excepcion).toBeInstanceOf(BadRequestException);
+    } else if (httpEsperado === 403) {
+      expect(excepcion).toBeInstanceOf(ForbiddenException);
+    } else if (httpEsperado === 404) {
       expect(excepcion).toBeInstanceOf(NotFoundException);
     } else if (httpEsperado === 409) {
       expect(excepcion).toBeInstanceOf(ConflictException);

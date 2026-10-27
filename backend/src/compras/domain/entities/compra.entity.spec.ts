@@ -69,6 +69,7 @@ function crearCompraCancelada(items: ItemCompraEntity[] = []): CompraEntity {
     canceladaEn: now,
     canceladoPorId: 'usuario-2',
     motivoCancelacion: 'Ya no se necesita',
+    tipoTicketId: null,
   };
   return CompraEntity.reconstitute(props, items, 'compra-cancelada-1', now, now, null);
 }
@@ -142,6 +143,22 @@ describe('CompraEntity', () => {
       const compra = CompraEntity.create(crearPropsValidas({ sectorId: 'sector-1' }));
       expect(compra.sectorId).toBe('sector-1');
     });
+
+    it('odd/compras-por-tipo: crear con tipoTicketId lo deja en la cabecera', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ tipoTicketId: 'tipo-1' }));
+      expect(compra.tipoTicketId).toBe('tipo-1');
+    });
+
+    it('odd/compras-por-tipo (S4): sin tipoTicketId la compra queda sin tipo (null)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+      expect(compra.tipoTicketId).toBeNull();
+    });
+
+    it('odd/compras-por-tipo: tipoTicketId vacío es precondición de dominio (throw)', () => {
+      expect(() => CompraEntity.create(crearPropsValidas({ tipoTicketId: '  ' }))).toThrow(
+        /tipoTicketId/,
+      );
+    });
   });
 
   describe('reconstitute()', () => {
@@ -159,6 +176,7 @@ describe('CompraEntity', () => {
           canceladaEn: null,
           canceladoPorId: null,
           motivoCancelacion: null,
+          tipoTicketId: null,
         },
         [item],
         'compra-1',
@@ -622,6 +640,35 @@ describe('CompraEntity', () => {
       expect(() => compra.actualizar({ fechaSolicitud: new Date('no-es-una-fecha') })).toThrow(
         /fechaSolicitud/i,
       );
+    });
+
+    it('odd/compras-por-tipo (S3): cambia el tipo de una compra PENDIENTE', () => {
+      const compra = CompraEntity.create(crearPropsValidas({ tipoTicketId: 'tipo-1' }));
+
+      const result = compra.actualizar({ tipoTicketId: 'tipo-2' });
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.tipoTicketId).toBe('tipo-2');
+    });
+
+    it('odd/compras-por-tipo (S4): asigna tipo a una compra sin tipo', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      compra.actualizar({ tipoTicketId: 'tipo-1' });
+
+      expect(compra.tipoTicketId).toBe('tipo-1');
+    });
+
+    it('odd/compras-por-tipo: tipoTicketId vacío lanza ANTES de mutar cualquier otro campo', () => {
+      const compra = CompraEntity.create(
+        crearPropsValidas({ motivo: 'Motivo original', tipoTicketId: 'tipo-1' }),
+      );
+
+      expect(() => compra.actualizar({ motivo: 'Otro motivo', tipoTicketId: '' })).toThrow(
+        /tipoTicketId/,
+      );
+      expect(compra.motivo).toBe('Motivo original');
+      expect(compra.tipoTicketId).toBe('tipo-1');
     });
   });
 });

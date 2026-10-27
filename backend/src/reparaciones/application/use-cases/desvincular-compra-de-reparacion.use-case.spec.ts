@@ -26,7 +26,7 @@ import { CompraVinculada } from '../../domain/services/bloqueo-reparacion';
 
 /** Compra vinculada completa; el caso de uso solo mira `compraId`. */
 function vinculada(compraId: string, numero: string): CompraVinculada {
-  return { compraId, numero, cancelada: false, items: [] };
+  return { compraId, numero, tipoTicketId: null, cancelada: false, items: [] };
 }
 
 /** Estado del catálogo para un id `estado-<CODIGO>`. */

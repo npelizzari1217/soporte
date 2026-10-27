@@ -41,6 +41,7 @@ export class TicketCompraMapper {
     return {
       compraId: row.compra.id,
       numero: row.compra.numero,
+      tipoTicketId: row.compra.tipoTicketId ?? null,
       cancelada: row.compra.canceladaEn !== null,
       items: itemsActivos.map((item) => {
         const vista = {

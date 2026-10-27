@@ -56,6 +56,7 @@ function makeTarea(ticketId: string, descripcion: string): TareaTicketEntity {
 const compraActiva: CompraVinculada = {
   compraId: 'compra-1',
   numero: 'COMP-2026-00001',
+  tipoTicketId: null,
   cancelada: false,
   items: [],
 };

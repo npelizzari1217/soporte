@@ -25,10 +25,10 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
 
 ## Tasks
 
-- [ ] T1 — S1, S4: migración tenant `compras.tipo_ticket_id` (nullable, FK a `tipos_ticket`, índice,
+- [x] T1 — S1, S4: migración tenant `compras.tipo_ticket_id` (nullable, FK a `tipos_ticket`, índice,
   `rollback.sql`), entidad y mapper.
-- [ ] T2 — S2, S3: alta y edición validan el tipo contra ALTAS por tipo.
-- [ ] T3 — S2, S4, S5: listar, exportar y obtener filtran por tipos con LECTURA (más las sin tipo);
+- [x] T2 — S2, S3: alta y edición validan el tipo contra ALTAS por tipo.
+- [x] T3 — S2, S4, S5: listar, exportar y obtener filtran por tipos con LECTURA (más las sin tipo);
   las rutas con `:id` responden 404 sobre una compra no visible; filtro y columna Tipo.
 - [ ] T4 — S3, S5: frontend — selector de tipo en alta y edición, columna y filtro en el listado, tipo
   en el detalle.
@@ -59,3 +59,15 @@ ya existe (más adelante podría convenir una matriz propia de compras, opción 
   - Alcance: `CargadorAlcanceTicket.cargar(user)` (`permisosPorTipo` null = sin restricción, ROOT y
     ADMINISTRADOR). El front usa `usePermisosPorTipo()` (`shared/hooks/use-permisos-por-tipo.ts`) y
     `useTiposTicket()` (`features/tickets/hooks/use-catalogos.ts`) para el selector.
+- **L4 — Backend T1-T3 implementado, sin commitear (2026-10-27).** Migración tenant
+  `20261027100000_compras_tipo_ticket` (`compras.tipo_ticket_id` nullable, FK RESTRICT a `tipos_ticket`,
+  índice parcial, `rollback.sql` re-ejecutable); aplicada solo en `soporte_tenant_test`, los tenants de
+  desarrollo quedan pendientes (también les faltan tres migraciones previas, entre ellas
+  `20261025150000_retiro_satelite_edilicia`, destructiva). La regla vive en
+  `compras/application/services/visibilidad-compra.ts`; las rutas `/compras/:id...` la aplican en un
+  solo punto, `VisibilidadCompraGuard` (404 con el mismo mensaje que una compra inexistente, antes del
+  caso de uso). Errores nuevos: `TipoTicketDeCompraInvalidoError` (400) y
+  `TipoTicketDeCompraNoPermitidoError` (403). Fuera del módulo: el vínculo con un ticket da 404 sobre una
+  compra que el actor no ve, y `GET /tickets/:ticketId/compras` solo lista las visibles (el bloqueo del
+  ticket sigue contando todas). Quedan sin filtrar, para decidir: los números de compra que bloquean en
+  `GET /reparaciones` (`comprasQueBloquean`; la exportación no los trae), y los números en el mensaje del borrado de un ticket con compras.

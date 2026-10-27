@@ -15,6 +15,7 @@ import {
   verificarTicketModificable,
 } from '../../../tickets/application/services/solo-comentarios';
 import { IEstadoRepository } from '../../../tickets/domain/ports/i-estado.repository';
+import { esCompraVisiblePara } from '../../../compras/application/services/visibilidad-compra';
 
 /** DTO de entrada para vincular una compra a un ticket. */
 export interface VincularCompraAReparacionDto {
@@ -40,7 +41,9 @@ export interface VincularCompraAReparacionDto {
  *    `TicketSoloComentariosError` (422, odd/cerrado-solo-comentarios S5); se vuelve a decidir con la
  *    fila bloqueada, antes del INSERT.
  * 2. Verifica que la compra exista (D7: vía `ICompraRepository.findByIdConItems`, puerto de OTRO
- *    módulo, importado por token) → 404 (`CompraNoEncontradaError`).
+ *    módulo, importado por token) y que el actor la vea (odd/compras-por-tipo, S2: LECTURA sobre
+ *    su tipo, o compra sin tipo) → 404 (`CompraNoEncontradaError`) en los dos casos, para no
+ *    revelar que existe. El tipo de la compra NO tiene que coincidir con el del ticket (S6).
  * 3. Delega el INSERT al puerto de vínculo, que es IDEMPOTENTE por construcción (D4: `ON CONFLICT
  *    DO NOTHING` sobre la UNIQUE de `ticket_compra`): este caso de uso NO hace check-then-insert.
  * 4. El INSERT corre en una transacción que toma el lock del ticket y lo relee
@@ -61,8 +64,8 @@ export class VincularCompraAReparacionUseCase {
 
   /**
    * @param dto Ticket, compra y alcance del actor.
-   * @returns Ok; 404 si el ticket o la compra no existen o el actor no ve el ticket; 403 sin
-   *   `MODIFICACION` sobre el tipo.
+   * @returns Ok; 404 si el ticket o la compra no existen o el actor no ve alguno de los dos; 403
+   *   sin `MODIFICACION` sobre el tipo.
    */
   async execute(dto: VincularCompraAReparacionDto): Promise<Result<void, DomainError>> {
     const acceso = await cargarTicketParaOperar(
@@ -83,7 +86,7 @@ export class VincularCompraAReparacionUseCase {
     if (modificable.isFail()) return Result.fail(modificable.getError());
 
     const compra = await this.compraRepo.findByIdConItems(dto.compraId);
-    if (!compra) {
+    if (!compra || !esCompraVisiblePara(compra, dto.alcance)) {
       return Result.fail(new CompraNoEncontradaError(dto.compraId));
     }
 

@@ -83,6 +83,7 @@ import {
   ListarComprasResponseDto,
 } from '../dtos/compras.dto';
 import { usarLockMasterTest } from '../../../testing/lock-master-test';
+import { AccionTipoTicket } from '../../../tickets/domain/permisos-tipo-ticket';
 
 const MASTER_TEST_URL =
   process.env.DATABASE_URL_MASTER ??
@@ -271,6 +272,14 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
   const admin = new PostgresAdminService(MASTER_TEST_URL);
 
   let cicloActivoId: string;
+  /**
+   * Tipos de ticket del tenant (odd/compras-por-tipo). Toda compra nueva lleva tipo, y los actores
+   * de esta suite reciben por defecto LECTURA y ALTAS sobre `tipoSoporteId` (ver
+   * `crearActorConPermisos`); `tipoEdiliciaId` es el tipo que el actor no ve en los casos de
+   * visibilidad.
+   */
+  let tipoSoporteId: string;
+  let tipoEdiliciaId: string;
   /** Familia y unidad del catálogo de insumos: las FK que todo insumo necesita. */
   let familiaInsumoId: string;
   let unidadMedidaId: string;
@@ -302,6 +311,20 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
       },
     });
     cicloActivoId = cicloActivo.id;
+
+    // Sin `TenantSeederAdapter.seed()` (ver cabecera): los dos tipos se crean a mano, igual que
+    // el ciclo activo.
+    const sufijoTipos = randomBytes(3).toString('hex').toUpperCase();
+    tipoSoporteId = (
+      await tenantClient.tipoTicket.create({
+        data: { codigo: `SOP_E2E_${sufijoTipos}`, nombre: 'Soporte E2E', modulo: 'TICKETS' },
+      })
+    ).id;
+    tipoEdiliciaId = (
+      await tenantClient.tipoTicket.create({
+        data: { codigo: `EDI_E2E_${sufijoTipos}`, nombre: 'Edilicia E2E', modulo: 'EDILICIA' },
+      })
+    ).id;
 
     // Catálogo mínimo de insumos (insumos-entrega-3): se siembra directo en el
     // tenant y no por HTTP porque su ABM está detrás de `AdminClienteGuard`,
@@ -442,12 +465,31 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
    */
   async function crearActorConPermisos(
     permisos: string[],
+    opciones: {
+      /**
+       * Permisos por tipo de ticket, en la tabla del tenant (odd/compras-por-tipo). Por defecto
+       * LECTURA y ALTAS sobre `tipoSoporteId`, con lo que los casos anteriores al tipo siguen
+       * creando y viendo sus compras.
+       */
+      porTipo?: Record<string, AccionTipoTicket[]>;
+      /** Código de rol. `ADMINISTRADOR` no tiene restricción por tipo (ni por celda). */
+      rol?: string;
+    } = {},
   ): Promise<{ accessToken: string; clienteId: string; usuarioId: string }> {
     const cliente = await crearClienteTenant();
-    const role = await createRoleConPermisos(`ROL_E2E_${randomBytes(3).toString('hex')}`, []);
+    const role = await createRoleConPermisos(
+      opciones.rol ?? `ROL_E2E_${randomBytes(3).toString('hex')}`,
+      [],
+    );
     const usuario = await createUsuario(randomBytes(3).toString('hex'));
     await createMembresia(usuario.id, cliente.id, role.id);
     await permisosRepo.setPermisos(usuario.id, cliente.id, permisos);
+    const porTipo = opciones.porTipo ?? { [tipoSoporteId]: ['LECTURA', 'ALTAS'] };
+    await tenantClient.permisoTipoTicket.createMany({
+      data: Object.entries(porTipo).flatMap(([tipoId, acciones]) =>
+        acciones.map((accion) => ({ usuarioId: usuario.id, tipoId, accion })),
+      ),
+    });
     const { accessToken } = await login(usuario.email);
     return { accessToken, clienteId: cliente.id, usuarioId: usuario.id };
   }
@@ -466,7 +508,12 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
   }
 
   function buildCrearCompraDto(overrides: Record<string, unknown> = {}) {
-    return { motivo: 'Compra E2E', fechaSolicitud: '2026-06-01', ...overrides };
+    return {
+      motivo: 'Compra E2E',
+      fechaSolicitud: '2026-06-01',
+      tipoTicketId: tipoSoporteId,
+      ...overrides,
+    };
   }
 
   function buildAgregarItemDto(cantidad = 10, overrides: Record<string, unknown> = {}) {
@@ -1581,6 +1628,297 @@ describe('Compras e2e — contrato HTTP real de las 16 rutas (cierra W-B/W-A del
 
       expect(res.status).toBe(422);
       expect(await recibidaEnBase(actor.accessToken, compraId)).toBe(0);
+    });
+  });
+
+  // ─── odd/compras-por-tipo — permisos por tipo de ticket, guards reales ──────
+
+  describe('odd/compras-por-tipo — el tipo decide sobre qué compras (S2-S5)', () => {
+    let secuenciaEnBase = 0;
+
+    /**
+     * Compra escrita directo en el tenant, con un ítem PENDIENTE: el estado sobre el que se prueban
+     * las rutas de mutación. Directo y no por HTTP porque el actor de cada caso, a propósito, no la
+     * puede crear (y un actor por `it`, ver la nota del bloque de `busqueda`).
+     */
+    async function compraEnBase(
+      tipoTicketId: string | null,
+      motivo: string,
+    ): Promise<{ id: string; numero: string; itemId: string }> {
+      // Otro año que el del numerador (que numera el año en curso): el número a mano nunca choca
+      // con uno emitido por `POST /compras`. La base es efímera, así que el contador alcanza.
+      secuenciaEnBase += 1;
+      const numero = `COM-2019-${String(secuenciaEnBase).padStart(5, '0')}`;
+      const compra = await tenantClient.compra.create({
+        data: {
+          numero,
+          fechaSolicitud: new Date('2026-06-01'),
+          motivo,
+          solicitanteId: '01900000-0000-7000-8000-0000000000e1',
+          cicloId: cicloActivoId,
+          tipoTicketId,
+        },
+      });
+      const item = await tenantClient.itemCompra.create({
+        data: {
+          compraId: compra.id,
+          descripcion: 'Ítem por tipo',
+          cantidad: 1,
+          proveedor: 'Proveedor E2E',
+          monto: 10,
+          moneda: 'ARS',
+          fechaCotizacion: new Date('2026-06-01'),
+        },
+      });
+      return { id: compra.id, numero, itemId: item.id };
+    }
+
+    /** Las tres clases de compra que distingue la regla, con un motivo marcado para aislarlas. */
+    async function tresCompras(marca: string) {
+      return {
+        deSoporte: await compraEnBase(tipoSoporteId, `Por tipo ${marca} soporte`),
+        deEdilicia: await compraEnBase(tipoEdiliciaId, `Por tipo ${marca} edilicia`),
+        sinTipo: await compraEnBase(null, `Por tipo ${marca} sin tipo`),
+      };
+    }
+
+    async function listarPorMarca(
+      token: string,
+      marca: string,
+      extra: Record<string, string> = {},
+    ) {
+      const query = new URLSearchParams({ estado: 'TODAS', busqueda: marca, ...extra });
+      return httpGet<ListarComprasResponseDto>(`${baseUrl}/compras?${query}`, bearer(token));
+    }
+
+    it('POST /compras sin ALTAS sobre el tipo elegido → 403 y no escribe nada (ni compra ni bitácora)', async () => {
+      const actor = await crearActorConPermisos(['COMPRAS:ALTAS', 'COMPRAS:LECTURA'], {
+        porTipo: { [tipoSoporteId]: ['LECTURA', 'ALTAS'], [tipoEdiliciaId]: ['LECTURA'] },
+      });
+      const comprasAntes = await tenantClient.compra.count();
+      const operacionesAntes = await tenantClient.operacionCompra.count();
+
+      const res = await httpPost<{ message: string }>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto({ tipoTicketId: tipoEdiliciaId }),
+        bearer(actor.accessToken),
+      );
+
+      expect(res.status).toBe(403);
+      expect(res.data.message).toBe(
+        'No tiene permiso de alta sobre el tipo "Edilicia E2E": no puede crear compras de ese tipo ni asignárselo.',
+      );
+      expect(await tenantClient.compra.count()).toBe(comprasAntes);
+      expect(await tenantClient.operacionCompra.count()).toBe(operacionesAntes);
+    });
+
+    it('POST /compras: con ALTAS crea con el tipo y lo publica; sin tipo o con uno inexistente → 400', async () => {
+      const actor = await crearActorConPermisos(['COMPRAS:ALTAS', 'COMPRAS:LECTURA']);
+
+      const ok = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+      expect(ok.status).toBe(201);
+      expect(ok.data.tipoTicket).toEqual({ id: tipoSoporteId, nombre: 'Soporte E2E' });
+      expect(
+        (await tenantClient.compra.findUnique({ where: { id: ok.data.id } }))?.tipoTicketId,
+      ).toBe(tipoSoporteId);
+
+      const comprasAntes = await tenantClient.compra.count();
+      const sinTipo = await httpPost(
+        `${baseUrl}/compras`,
+        { motivo: 'Sin tipo', fechaSolicitud: '2026-06-01' },
+        bearer(actor.accessToken),
+      );
+      const inexistente = await httpPost<{ message: string }>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto({ tipoTicketId: '00000000-0000-4000-8000-00000000dead' }),
+        bearer(actor.accessToken),
+      );
+      expect(sinTipo.status).toBe(400);
+      expect(inexistente.status).toBe(400);
+      expect(inexistente.data.message).toBe(
+        'El tipo de ticket "00000000-0000-4000-8000-00000000dead" no existe o está inactivo.',
+      );
+      expect(await tenantClient.compra.count()).toBe(comprasAntes);
+    });
+
+    it('GET /compras y /export ocultan la compra del tipo sin LECTURA y muestran la de su tipo y la sin tipo', async () => {
+      const marca = randomBytes(4).toString('hex');
+      const { deSoporte, deEdilicia, sinTipo } = await tresCompras(marca);
+      const lector = await crearActorConPermisos(['COMPRAS:LECTURA'], {
+        porTipo: { [tipoSoporteId]: ['LECTURA'] },
+      });
+
+      const listado = await listarPorMarca(lector.accessToken, marca);
+      expect(listado.status).toBe(200);
+      expect(listado.data.total).toBe(2);
+      const filas = new Map(listado.data.items.map((i) => [i.id, i.tipoTicket]));
+      expect([...filas.keys()].sort()).toEqual([deSoporte.id, sinTipo.id].sort());
+      expect(filas.has(deEdilicia.id)).toBe(false);
+      expect(filas.get(deSoporte.id)).toEqual({ id: tipoSoporteId, nombre: 'Soporte E2E' });
+      expect(filas.get(sinTipo.id)).toBeNull();
+
+      // Filtrar por el tipo que no ve nunca amplía el alcance.
+      const porEdilicia = await listarPorMarca(lector.accessToken, marca, {
+        tipoTicketId: tipoEdiliciaId,
+      });
+      expect(porEdilicia.status).toBe(200);
+      expect(porEdilicia.data.items).toEqual([]);
+      expect(porEdilicia.data.total).toBe(0);
+
+      const exportacion = await fetch(`${baseUrl}/compras/export?estado=TODAS`, {
+        headers: bearer(lector.accessToken),
+      });
+      const csv = await exportacion.text();
+      expect(exportacion.status).toBe(200);
+      expect(csv.split('\r\n')[0]).toContain('Tipo');
+      expect(csv).toContain(deSoporte.numero);
+      expect(csv).toContain(sinTipo.numero);
+      expect(csv).not.toContain(deEdilicia.numero);
+    });
+
+    it('GET /compras/:id y /operaciones de una compra del tipo sin LECTURA → 404; la de su tipo → 200', async () => {
+      const marca = randomBytes(4).toString('hex');
+      const { deSoporte, deEdilicia } = await tresCompras(marca);
+      const lector = await crearActorConPermisos(['COMPRAS:LECTURA'], {
+        porTipo: { [tipoSoporteId]: ['LECTURA'] },
+      });
+
+      const oculta = await httpGet<{ message: string }>(
+        `${baseUrl}/compras/${deEdilicia.id}`,
+        bearer(lector.accessToken),
+      );
+      const ocultaOps = await httpGet(
+        `${baseUrl}/compras/${deEdilicia.id}/operaciones`,
+        bearer(lector.accessToken),
+      );
+      const visible = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${deSoporte.id}`,
+        bearer(lector.accessToken),
+      );
+
+      expect(oculta.status).toBe(404);
+      expect(oculta.data.message).toBe(`Compra con id "${deEdilicia.id}" no encontrada.`);
+      expect(ocultaOps.status).toBe(404);
+      expect(visible.status).toBe(200);
+      expect(visible.data.tipoTicket).toEqual({ id: tipoSoporteId, nombre: 'Soporte E2E' });
+    });
+
+    it('aprobar un ítem y cancelar una compra del tipo sin LECTURA → 404, sin cambios; sobre la de su tipo → 200', async () => {
+      const marca = randomBytes(4).toString('hex');
+      const { deSoporte, deEdilicia } = await tresCompras(marca);
+      const aprobador = await crearActorConPermisos(
+        ['COMPRAS:LECTURA', 'COMPRAS:APROBACION', 'COMPRAS:BORRADO'],
+        { porTipo: { [tipoSoporteId]: ['LECTURA'] } },
+      );
+      const operacionesAntes = await tenantClient.operacionCompra.count({
+        where: { compraId: deEdilicia.id },
+      });
+
+      const aprobar = await httpPost(
+        `${baseUrl}/compras/${deEdilicia.id}/items/${deEdilicia.itemId}/aprobar`,
+        {},
+        bearer(aprobador.accessToken),
+      );
+      const cancelar = await httpPost(
+        `${baseUrl}/compras/${deEdilicia.id}/cancelar`,
+        { motivo: 'No corresponde' },
+        bearer(aprobador.accessToken),
+      );
+
+      expect(aprobar.status).toBe(404);
+      expect(cancelar.status).toBe(404);
+      const item = await tenantClient.itemCompra.findUnique({ where: { id: deEdilicia.itemId } });
+      const compra = await tenantClient.compra.findUnique({ where: { id: deEdilicia.id } });
+      expect(item?.estadoAprobacion).toBe('PENDIENTE');
+      expect(item?.decididoPorId).toBeNull();
+      expect(compra?.canceladaEn).toBeNull();
+      expect(await tenantClient.operacionCompra.count({ where: { compraId: deEdilicia.id } })).toBe(
+        operacionesAntes,
+      );
+
+      // Hermano: la misma operación sobre una compra que ve.
+      const aprobarVisible = await httpPost(
+        `${baseUrl}/compras/${deSoporte.id}/items/${deSoporte.itemId}/aprobar`,
+        {},
+        bearer(aprobador.accessToken),
+      );
+      expect(aprobarVisible.status).toBe(200);
+    });
+
+    it('S4: un lector sin LECTURA sobre ningún tipo ve la compra sin tipo, y solo esa', async () => {
+      const marca = randomBytes(4).toString('hex');
+      const { sinTipo, deSoporte } = await tresCompras(marca);
+      const lector = await crearActorConPermisos(['COMPRAS:LECTURA'], { porTipo: {} });
+
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${sinTipo.id}`,
+        bearer(lector.accessToken),
+      );
+      const listado = await listarPorMarca(lector.accessToken, marca);
+      const deTipo = await httpGet(
+        `${baseUrl}/compras/${deSoporte.id}`,
+        bearer(lector.accessToken),
+      );
+
+      expect(detalle.status).toBe(200);
+      expect(detalle.data.tipoTicket).toBeNull();
+      expect(listado.data.items.map((i) => i.id)).toEqual([sinTipo.id]);
+      expect(listado.data.total).toBe(1);
+      expect(deTipo.status).toBe(404);
+    });
+
+    it('ADMINISTRADOR ve las compras de todos los tipos, en el listado y por id', async () => {
+      const marca = randomBytes(4).toString('hex');
+      const { deSoporte, deEdilicia, sinTipo } = await tresCompras(marca);
+      const admin = await crearActorConPermisos([], { rol: 'ADMINISTRADOR', porTipo: {} });
+
+      const listado = await listarPorMarca(admin.accessToken, marca);
+      const detalle = await httpGet<CompraDetalleResponseDto>(
+        `${baseUrl}/compras/${deEdilicia.id}`,
+        bearer(admin.accessToken),
+      );
+
+      expect(listado.status).toBe(200);
+      expect(listado.data.items.map((i) => i.id).sort()).toEqual(
+        [deSoporte.id, deEdilicia.id, sinTipo.id].sort(),
+      );
+      expect(detalle.status).toBe(200);
+      expect(detalle.data.tipoTicket).toEqual({ id: tipoEdiliciaId, nombre: 'Edilicia E2E' });
+    });
+
+    it('PATCH /compras/:id: tipoTicketId null → 400; a un tipo sin ALTAS → 403; ambos sin tocar el tipo', async () => {
+      const actor = await crearActorConPermisos(
+        ['COMPRAS:ALTAS', 'COMPRAS:MODIFICACION', 'COMPRAS:LECTURA'],
+        {
+          porTipo: { [tipoSoporteId]: ['LECTURA', 'ALTAS'], [tipoEdiliciaId]: ['LECTURA'] },
+        },
+      );
+      const crear = await httpPost<CompraDetalleResponseDto>(
+        `${baseUrl}/compras`,
+        buildCrearCompraDto(),
+        bearer(actor.accessToken),
+      );
+
+      const anular = await httpPatch(
+        `${baseUrl}/compras/${crear.data.id}`,
+        { tipoTicketId: null },
+        bearer(actor.accessToken),
+      );
+      const aEdilicia = await httpPatch(
+        `${baseUrl}/compras/${crear.data.id}`,
+        { tipoTicketId: tipoEdiliciaId },
+        bearer(actor.accessToken),
+      );
+
+      expect(anular.status).toBe(400);
+      expect(aEdilicia.status).toBe(403);
+      expect(
+        (await tenantClient.compra.findUnique({ where: { id: crear.data.id } }))?.tipoTicketId,
+      ).toBe(tipoSoporteId);
     });
   });
 

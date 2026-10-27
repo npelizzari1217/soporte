@@ -38,7 +38,8 @@
  * `EditarItemCompraUseCase` sobre un ítem).
  *
  * Guards a nivel de controller: `JwtAuthGuard` + `TenantGuard` +
- * `AccionesGuard` (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
+ * `AccionesGuard` + `VisibilidadCompraGuard` (odd/compras-por-tipo: toda ruta
+ * `:id` sobre una compra cuyo tipo el actor no ve responde 404) (WU-7.3, sdd/matriz-permisos-por-usuario — reemplaza a
  * `PermissionsGuard`+`ModulosGuard`+`@RequireModulo('COMPRAS')` de clase).
  * `COMPRAS:ALTAS`/`MODIFICACION`/`BORRADO` gatean las 8 rutas de gestión
  * (mapeo exacto por ruta, ver cada JSDoc); `COMPRAS:APROBACION` gatea SOLO
@@ -73,10 +74,12 @@
  * (consultas + wiring del módulo).
  */
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -100,6 +103,11 @@ import { AccionesGuard } from '../../../auth/infrastructure/guards/acciones.guar
 import { CurrentUser, RequiereAcciones } from '../../../auth/infrastructure/guards/decorators';
 import { JwtPayload } from '../../../auth/domain/ports/i-token.service';
 import { DomainError } from '../../../shared/domain/result';
+import { CargadorAlcanceTicket } from '../../../tickets/interface/alcance-ticket';
+import { CompraEntity } from '../../domain/entities/compra.entity';
+import { SeguimientoInsumo } from '../../../insumos/domain/entities/unidad-insumo.entity';
+import { ResolverTiposDeCompra, tipoDeCompra } from '../../application/services/tipos-de-compra';
+import { VisibilidadCompraGuard } from '../guards/visibilidad-compra.guard';
 
 import { CrearCompraUseCase } from '../../application/use-cases/crear-compra.use-case';
 import { AgregarItemCompraUseCase } from '../../application/use-cases/agregar-item-compra.use-case';
@@ -147,6 +155,8 @@ import {
   NumeradorCompraAgotadoError,
   SectorInexistenteError,
   SinCicloActivoError,
+  TipoTicketDeCompraInvalidoError,
+  TipoTicketDeCompraNoPermitidoError,
 } from '../../domain/errors/compras.errors';
 // El error viene de `insumos` sin traducir, a propósito: el mismo hecho —el id
 // no está en el catálogo— tiene que dar el mismo código venga por el endpoint
@@ -190,14 +200,28 @@ import {
  * fija `compras.controller.spec.ts`, que lo deriva por reflexión del módulo
  * de errores y se rompe solo si alguien agrega un error sin mapearlo — un
  * número en este comentario ya quedó desactualizado antes y nunca dio esa
- * garantía. 403 NO aparece acá: es RBAC resuelto por guard
- * (`AccionesGuard`), nunca un `DomainError`.
+ * garantía. El 403 de la casilla de Compras lo resuelve `AccionesGuard`; el
+ * único 403 que llega como `DomainError` es el de ALTAS sobre el tipo de ticket
+ * elegido (odd/compras-por-tipo), que depende del body y no de la ruta.
  */
 export function toHttpException(
   error: DomainError,
-): NotFoundException | UnprocessableEntityException | ConflictException {
+):
+  | NotFoundException
+  | UnprocessableEntityException
+  | ConflictException
+  | BadRequestException
+  | ForbiddenException {
   if (error instanceof CompraNoEncontradaError || error instanceof ItemCompraNoEncontradoError) {
     return new NotFoundException(error.message);
+  }
+  // odd/compras-por-tipo (L3): el tipo del body no es elegible (400) o el actor
+  // no tiene ALTAS sobre él (403).
+  if (error instanceof TipoTicketDeCompraInvalidoError) {
+    return new BadRequestException(error.message);
+  }
+  if (error instanceof TipoTicketDeCompraNoPermitidoError) {
+    return new ForbiddenException(error.message);
   }
   // Un serial ya cargado en el insumo: conflicto con el estado vigente, igual
   // que en `toHttpExceptionMovimiento`. La recepción revierte entera.
@@ -279,7 +303,7 @@ interface RespuestaConHeaders {
   setHeader(nombre: string, valor: string): void;
 }
 
-@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, AccionesGuard, VisibilidadCompraGuard)
 @Controller('compras')
 export class ComprasController {
   constructor(
@@ -300,14 +324,32 @@ export class ComprasController {
     private readonly obtenerCompraUseCase: ObtenerCompraUseCase,
     private readonly listarOperacionesCompraUseCase: ListarOperacionesCompraUseCase,
     private readonly exportarComprasUseCase: ExportarComprasUseCase,
+    private readonly alcances: CargadorAlcanceTicket,
+    private readonly tiposDeCompra: ResolverTiposDeCompra,
   ) {}
+
+  /** Detalle de una compra con el nombre de su tipo resuelto (odd/compras-por-tipo, L3). */
+  private async detalle(
+    compra: CompraEntity,
+    seguimientoPorInsumo?: ReadonlyMap<string, SeguimientoInsumo>,
+  ): Promise<CompraDetalleResponseDto> {
+    const tipos = await this.tiposDeCompra.resolver([compra.tipoTicketId]);
+    return toCompraDetalleResponseDto(
+      compra,
+      tipoDeCompra(compra.tipoTicketId, tipos),
+      seguimientoPorInsumo,
+    );
+  }
 
   /**
    * POST /compras
    * Crea una compra nueva (§4.1, S1, S2). `solicitanteId` = `JWT.sub`; `anio`
    * lo resuelve el servidor (año en curso) para el numerador — nunca el
    * cliente HTTP. `cicloId` lo resuelve `ResolverCicloActivoCompra`
-   * DENTRO del use case, este controller no lo toca.
+   * DENTRO del use case, este controller no lo toca. `tipoTicketId` es
+   * obligatorio y exige ALTAS sobre ese tipo (odd/compras-por-tipo, S3).
+   * @throws 400 `tipoTicketId` ausente, inexistente o inactivo
+   * @throws 403 sin ALTAS sobre el tipo elegido
    * @throws 409 sin ciclo activo (S2), o numerador agotado
    */
   @Post()
@@ -324,12 +366,14 @@ export class ComprasController {
       solicitanteId: user.sub,
       anio: new Date().getFullYear(),
       sectorId: dto.sectorId ?? null,
+      tipoTicketId: dto.tipoTicketId,
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toCompraDetalleResponseDto(result.getValue());
+    return this.detalle(result.getValue());
   }
 
   /**
@@ -366,7 +410,7 @@ export class ComprasController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toCompraDetalleResponseDto(result.getValue());
+    return this.detalle(result.getValue());
   }
 
   /**
@@ -375,8 +419,11 @@ export class ComprasController {
    * `fechaSolicitud`/`sectorId`), PATCH semántico — `undefined` no toca el
    * campo, `null` limpia `descripcion`/`sectorId`. La ventana de edición
    * (sólo mientras la compra deriva `PENDIENTE`) la resuelve
-   * `CompraEntity.actualizar()`, no este controller.
-   * @throws 404 compra inexistente/otro tenant
+   * `CompraEntity.actualizar()`, no este controller. `tipoTicketId` cambia el
+   * tipo y exige ALTAS sobre el tipo NUEVO; `null` es un 400 (odd/compras-por-tipo, S4).
+   * @throws 400 `tipoTicketId` nulo, inexistente o inactivo
+   * @throws 403 sin ALTAS sobre el tipo nuevo
+   * @throws 404 compra inexistente/otro tenant, o de un tipo que el actor no ve
    * @throws 422 la compra ya no está PENDIENTE — algún ítem fue decidido, o
    *         está cancelada (mismo guard), o el `sectorId` no existe
    */
@@ -395,12 +442,14 @@ export class ComprasController {
       descripcion: dto.descripcion,
       fechaSolicitud: dto.fechaSolicitud ? new Date(dto.fechaSolicitud) : undefined,
       sectorId: dto.sectorId,
+      tipoTicketId: dto.tipoTicketId,
+      alcance: await this.alcances.cargar(user),
     });
 
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toCompraDetalleResponseDto(result.getValue());
+    return this.detalle(result.getValue());
   }
 
   /**
@@ -714,7 +763,7 @@ export class ComprasController {
     if (result.isFail()) {
       throw toHttpException(result.getError());
     }
-    return toCompraDetalleResponseDto(result.getValue());
+    return this.detalle(result.getValue());
   }
 
   /**
@@ -729,10 +778,16 @@ export class ComprasController {
    * deprecado se pasan CRUDOS al caso de uso — la precedencia entre ambos se
    * resuelve ahí (ver la tabla en `ListarComprasQueryDto`), no acá: el
    * controller no decide reglas, sólo traduce el borde HTTP.
+   *
+   * Solo trae las compras sin tipo y las de tipos con LECTURA del actor
+   * (odd/compras-por-tipo, S5); `tipoTicketId` restringe dentro de eso.
    */
   @Get()
   @RequiereAcciones('COMPRAS:LECTURA')
-  async listar(@Query() query: ListarComprasQueryDto): Promise<ListarComprasResponseDto> {
+  async listar(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListarComprasQueryDto,
+  ): Promise<ListarComprasResponseDto> {
     const result = await this.listarComprasUseCase.execute({
       pagina: query.pagina,
       porPagina: query.porPagina,
@@ -743,6 +798,8 @@ export class ComprasController {
       fechaDesde: query.fechaDesde !== undefined ? new Date(query.fechaDesde) : undefined,
       fechaHasta: query.fechaHasta !== undefined ? new Date(query.fechaHasta) : undefined,
       busqueda: query.busqueda,
+      tipoTicketId: query.tipoTicketId,
+      alcance: await this.alcances.cargar(user),
     });
     return toListarComprasResponseDto(result.getValue());
   }
@@ -761,13 +818,15 @@ export class ComprasController {
    *
    * Gateada por `COMPRAS:LECTURA`, la misma acción que el listado: quien ya
    * ve estas compras en pantalla no accede a ningún dato nuevo por
-   * descargarlas.
+   * descargarlas. Filtra por tipo con el mismo criterio que el listado
+   * (odd/compras-por-tipo, S5).
    *
    * @throws 422 la exportación supera el tope de filas (hay que filtrar más)
    */
   @Get('export')
   @RequiereAcciones('COMPRAS:LECTURA')
   async exportar(
+    @CurrentUser() user: JwtPayload,
     @Query() query: ExportarComprasQueryDto,
     @Res({ passthrough: true }) res: RespuestaConHeaders,
     @Query('formato', ParseFormatoExportPipe) formato: FormatoExport = 'csv',
@@ -779,6 +838,8 @@ export class ComprasController {
         sectorId: query.sectorId,
         fechaDesde: query.fechaDesde !== undefined ? new Date(query.fechaDesde) : undefined,
         fechaHasta: query.fechaHasta !== undefined ? new Date(query.fechaHasta) : undefined,
+        tipoTicketId: query.tipoTicketId,
+        alcance: await this.alcances.cargar(user),
       },
       formato,
     );
@@ -792,7 +853,8 @@ export class ComprasController {
   /**
    * GET /compras/:id
    * Detalle de una compra CON sus ítems (§4.9, H3 del design).
-   * @throws 404 compra inexistente, soft-deleted, u otro tenant
+   * @throws 404 compra inexistente, soft-deleted, otro tenant, o de un tipo
+   *         que el actor no ve (`VisibilidadCompraGuard`)
    */
   @Get(':id')
   @RequiereAcciones('COMPRAS:LECTURA')
@@ -802,7 +864,7 @@ export class ComprasController {
       throw toHttpException(result.getError());
     }
     const { compra, seguimientoPorInsumo } = result.getValue();
-    return toCompraDetalleResponseDto(compra, seguimientoPorInsumo);
+    return this.detalle(compra, seguimientoPorInsumo);
   }
 
   /**

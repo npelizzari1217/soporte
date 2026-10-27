@@ -44,6 +44,7 @@ export class CompraMapper {
         canceladoPorId: row.canceladoPorId ?? null,
         motivoCancelacion: row.motivoCancelacion ?? null,
         sectorId: row.sectorId ?? null,
+        tipoTicketId: row.tipoTicketId ?? null,
       },
       items,
       row.id,
@@ -72,6 +73,7 @@ export class CompraMapper {
       canceladoPorId: entity.canceladoPorId,
       motivoCancelacion: entity.motivoCancelacion,
       sectorId: entity.sectorId,
+      tipoTicketId: entity.tipoTicketId,
       deletedAt: entity.deletedAt,
       createdAt: entity.createdAt,
     };

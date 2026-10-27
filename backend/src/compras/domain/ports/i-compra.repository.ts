@@ -67,6 +67,20 @@ export interface CompraListFiltros {
    * recortado y no vacío desde el borde HTTP.
    */
   busqueda?: string;
+  /** Filtro por tipo de ticket (odd/compras-por-tipo, S5). `undefined` = sin restricción. */
+  tipoTicketId?: string;
+  /**
+   * Alcance por tipo del actor (odd/compras-por-tipo, S2, S4, S5): con valor, solo entran las
+   * compras SIN tipo y las de estos tipos (los que el actor tiene con LECTURA). `undefined` = sin
+   * restricción (ROOT y ADMINISTRADOR). Se combina con `tipoTicketId` por conjunción: filtrar por
+   * un tipo fuera del alcance devuelve vacío, nunca amplía lo visible.
+   */
+  tiposVisibles?: readonly string[];
+}
+
+/** Lo que hace falta de una compra para decidir si el actor la ve (odd/compras-por-tipo, S2). */
+export interface CompraParaVisibilidad {
+  tipoTicketId: string | null;
 }
 
 /**
@@ -89,6 +103,13 @@ export interface ICompraRepository {
    * soft-deleted.
    */
   findByIdConItems(id: string): Promise<CompraEntity | null>;
+
+  /**
+   * Lectura liviana para decidir la visibilidad de una compra por id (odd/compras-por-tipo, S2):
+   * solo su tipo, sin ítems. Retorna `null` si no existe o está soft-deleted, con el mismo criterio
+   * que los casos de uso de detalle: una compra borrada no se distingue de una inexistente.
+   */
+  findParaVisibilidad(id: string): Promise<CompraParaVisibilidad | null>;
 
   /**
    * Retorna UNA página del listado de compras del tenant activo (excluye

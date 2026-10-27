@@ -636,6 +636,7 @@ interface CompraDemoSpec {
   motivo: string;
   descripcion: string;
   solicitanteId: string;
+  tipoTicketId: string;
   items: ItemCompraDemoSpec[];
 }
 
@@ -652,6 +653,9 @@ async function crearCompraDemo(
     fechaSolicitud: new Date(),
     solicitanteId: spec.solicitanteId,
     anio,
+    // odd/compras-por-tipo: toda compra nueva lleva tipo; el seed es un flujo sin restricción.
+    tipoTicketId: spec.tipoTicketId,
+    alcance: { actorId: spec.solicitanteId, permisosPorTipo: null },
   };
   const result = await crearCompra.execute(dto);
   if (result.isFail()) {
@@ -688,11 +692,13 @@ async function crearComprasDemo(
   app: INestApplicationContext,
   anio: number,
   usuarios: UsuariosDemo,
+  tipoTicketId: string,
 ): Promise<void> {
   await crearCompraDemo(app, anio, {
     motivo: 'Reposición de insumos de oficina',
     descripcion: 'Papel, tóner y artículos varios para el trimestre',
     solicitanteId: usuarios.colaborador,
+    tipoTicketId,
     items: [
       {
         descripcion: 'Resma de papel A4 (x10)',
@@ -715,6 +721,7 @@ async function crearComprasDemo(
     motivo: 'Licencias de software anuales',
     descripcion: 'Renovación de licencias Microsoft 365 y antivirus corporativo',
     solicitanteId: usuarios.administrador,
+    tipoTicketId,
     items: [
       {
         descripcion: 'Licencia Microsoft 365 Business',
@@ -846,7 +853,11 @@ async function seedDemoTenantData(
 
     await crearEdiliciaDemo(app, clienteId, anio, catalogos, usuarios);
     await crearEquiposDemo(app, tenantClient, clienteId, anio, catalogos, usuarios);
-    await crearComprasDemo(app, anio, usuarios);
+    const tipoDeCompras = catalogos.tipoIdPorCodigo.get('SOPORTE');
+    if (tipoDeCompras === undefined) {
+      throw new Error('[demo-seed] Falta el tipo de ticket SOPORTE para las compras demo.');
+    }
+    await crearComprasDemo(app, anio, usuarios, tipoDeCompras);
 
     return true;
   });

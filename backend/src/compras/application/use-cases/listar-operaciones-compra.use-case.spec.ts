@@ -35,6 +35,7 @@ function crearCompra(overrides: Partial<CompraProps> = {}): CompraEntity {
     canceladaEn: null,
     canceladoPorId: null,
     motivoCancelacion: null,
+    tipoTicketId: null,
     ...overrides,
   };
   return CompraEntity.reconstitute(
