@@ -146,3 +146,9 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   "usted". Búsqueda contra la Ayuda real: "cuántas consultas puedo hacer al asistente" trae el
   artículo nuevo, "¿Cómo doy de alta un equipo?" y "¿cómo configuro la IA de un cliente?" traen la
   sección nueva entre los 3 fragmentos. `sync-ayuda` 27/27.
+- **L16 — Suites completas (sobre `0bca43dd`).** Frontend 292/292 archivos, 2715/2715. Backend
+  815/816 archivos, 10342/10345: fallaron 3 tests de aislamiento entre clientes de
+  `src/tickets/interface/controllers/tareas-ticket.e2e.spec.ts`, un módulo que esta rama no toca.
+  Solo pasa 29/29, y junto con los e2e del asistente (que crean clientes en la master compartida)
+  156/156. El log de la corrida completa estaba filtrado y no guarda el motivo: se registra como
+  falla intermitente de la suite completa, no reproducida, sin causa confirmada.
