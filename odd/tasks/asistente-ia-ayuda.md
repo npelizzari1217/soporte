@@ -37,7 +37,8 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
 - [x] T3 — S2, S3, S6, S7: servicio RAG (fragmentación por sección, búsqueda, generación, respaldo) y
   endpoint `POST` del asistente con tope.
 - [x] T4 — S4, S5, S6: frontend — botón flotante con el chat y acción "IA" en Clientes.
-- [ ] T5 — Ayuda del asistente y de su configuración, runbook del deploy.
+- [ ] T5 — Ayuda del asistente y de su configuración, runbook del deploy. Runbook hecho; los
+  artículos de Ayuda esperan la decisión del dueño (escritura suspendida, AGENTS.md).
 
 ## Log
 
@@ -117,3 +118,10 @@ leído con autorización del dueño) y lo alimenta con los artículos de la Ayud
   español dentro de la conversación. Enter envía, Mayús+Enter salta de línea. Copy nuevo en neutro
   con "usted" (el diálogo de correo de `main` sigue en voseo: lo corrige T7 de `fix/defectos-ayuda`).
   Front: lint y type-check limpios; `asistente` + `clientes` + `shell` 159/159.
+- **L11 — T5, runbook.** Sección "Asistente de IA de la Ayuda" en `DEPLOY-VPS-runbook.md`: migración,
+  sin variables nuevas, rotación, HTTPS saliente al proveedor, cupo, smoke y rollback. Los artículos
+  de Ayuda NO se escribieron: la escritura de Ayuda está suspendida (AGENTS.md, retomada al cerrar la
+  tanda del 2026-10-26) y solo se levanta con un aviso explícito del dueño. Para la próxima tanda:
+  (a) un artículo del asistente (qué responde, de dónde sale, modo de respaldo, el cupo de 10 por
+  minuto); (b) en el artículo de clientes, la acción "IA" (URL, modelo, clave que no se muestra,
+  Probar, Quitar); (c) una sección sobre dar de alta un equipo (L9).
