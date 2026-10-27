@@ -31,5 +31,5 @@ Rama `docs/cierre-pendientes`. `check-roadmap-fresco` falla: el ancla `23fbf939`
   corrigieron en el lugar (encabezado y ancla, clientes activos, punto 2, fila 11 de IA, Deuda de Ayuda,
   Nota). Las precisiones superadas y las entregas nuevas van en la sección nueva "Recontraste del
   2026-10-27". `node scripts/check-roadmap-fresco.mjs`: "El roadmap esta fresco." (ancla `a2f312fa`, 0
-  commits). Queda para el dueño: si el asistente de IA cierra el punto 11, y la rama sin mergear
-  `docs/sla-reapertura`.
+  commits). El dueño decidió: el punto 11 sigue pendiente (el asistente no lo cierra) y la rama
+  `docs/sla-reapertura` se integró.
