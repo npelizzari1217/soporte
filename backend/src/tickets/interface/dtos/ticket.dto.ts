@@ -18,6 +18,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsIn,
   IsUUID,
   Max,
   MaxLength,
@@ -28,6 +29,8 @@ import {
   TICKET_TITULO_MAX_LENGTH,
   TICKET_UBICACION_MAX_LENGTH,
   TicketEntity,
+  MODALIDADES_TICKET,
+  ModalidadTicket,
 } from '../../domain/entities/ticket.entity';
 import { OperacionTicketEntity } from '../../domain/entities/operacion-ticket.entity';
 import { ArchivoEntity } from '../../domain/entities/archivo.entity';
@@ -70,6 +73,11 @@ export class CreateTicketDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
+
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente equivale a `'INTERNA'`. */
+  @IsOptional()
+  @IsIn(MODALIDADES_TICKET)
+  modalidad?: ModalidadTicket;
 }
 
 /** Body de `PATCH /tickets/:id` (T8) — PATCH parcial, `estado` NUNCA se edita acá. */
@@ -98,6 +106,11 @@ export class EditTicketDto {
   @IsOptional()
   @IsUUID()
   sectorId?: string | null;
+
+  /** Modalidad (odd/edilicia-obra-externa S1). Solo cambia sin tareas ni compras; ausente no toca. */
+  @IsOptional()
+  @IsIn(MODALIDADES_TICKET)
+  modalidad?: ModalidadTicket;
 }
 
 /** Body de `PATCH /tickets/:id/estado` (T9, T10, T12) — transición de estado. */
@@ -262,6 +275,8 @@ export interface TicketResponseDto {
   ubicacion: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket). */
   sectorId: string | null;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). */
+  modalidad: ModalidadTicket;
   /**
    * Nombre del sector, resuelto en lote por el backend: `GET /sectores` trae solo los activos y un
    * sector desactivado se vería vacío. `null` si el ticket no tiene sector o no se resolvió.
@@ -397,6 +412,7 @@ export function toTicketResponseDto(
     asignadoApellido: nombres?.asignado?.apellido ?? null,
     ubicacion: ticket.ubicacion,
     sectorId: ticket.sectorId,
+    modalidad: ticket.modalidad,
     sectorNombre: nombres?.sector?.nombre ?? null,
     fechaObjetivo: ticket.fechaObjetivo ? ticket.fechaObjetivo.toISOString() : null,
     slaVenceAt: ticket.slaVenceAt ? ticket.slaVenceAt.toISOString() : null,

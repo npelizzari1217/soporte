@@ -98,6 +98,7 @@ import {
   PrioridadNoEncontradaError,
   TicketReferenciaInvalidaError,
   SectorTicketInexistenteError,
+  ModalidadNoEditableError,
   SolicitanteInvalidoError,
   SinCicloActivoError,
   SecuenciaAgotadaError,
@@ -173,6 +174,7 @@ export function toHttpException(
     error instanceof PrioridadNoEncontradaError ||
     error instanceof TicketReferenciaInvalidaError ||
     error instanceof SectorTicketInexistenteError ||
+    error instanceof ModalidadNoEditableError ||
     error instanceof SolicitanteInvalidoError ||
     error instanceof TipoTicketDesconocidoError ||
     error instanceof EstadoDestinoInvalidoError ||
@@ -369,6 +371,7 @@ export class TicketsController {
       ticketReferenciaId: dto.ticketReferenciaId ?? null,
       ubicacion: dto.ubicacion ?? null,
       sectorId: dto.sectorId ?? null,
+      modalidad: dto.modalidad,
       solicitanteId: user.sub,
       clienteId: user.cliente_id as string,
       autorId: user.sub,
@@ -597,6 +600,7 @@ export class TicketsController {
       prioridadId: dto.prioridadId,
       ubicacion: dto.ubicacion,
       sectorId: dto.sectorId,
+      modalidad: dto.modalidad,
       // ROOT edita SIEMPRE, incluso con el ticket EN_PROCESO o posterior.
       actorEsRoot: user.is_global_admin,
       ...(await this.alcances.cargar(user)),

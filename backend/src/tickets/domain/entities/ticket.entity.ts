@@ -119,6 +119,35 @@ export interface TicketProps {
    * participa del SLA. Solo la fija el alta; ninguna edición la toca. Ausente equivale a `null`.
    */
   fechaObjetivo?: Date | null;
+  /**
+   * Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente equivale a `'INTERNA'`, que es
+   * el comportamiento de siempre.
+   */
+  modalidad?: ModalidadTicket;
+}
+
+/**
+ * Catálogo CERRADO de modalidades de ejecución de un ticket: `'INTERNA'` (técnicos propios) o
+ * `'EXTERNA'` (contratista). Es la única fuente de verdad: el tipo se deriva de acá, y
+ * `tickets-modalidad.integration.spec.ts` compara este array contra el CHECK
+ * `tickets_modalidad_check` leído con `pg_get_constraintdef`.
+ */
+export const MODALIDADES_TICKET = ['INTERNA', 'EXTERNA'] as const;
+
+/** Modalidad de ejecución de un ticket, derivada de {@link MODALIDADES_TICKET}. */
+export type ModalidadTicket = (typeof MODALIDADES_TICKET)[number];
+
+/**
+ * Indica si un ticket puede cambiar de modalidad (odd/edilicia-obra-externa S1): solo mientras no
+ * tenga tareas activas ni compras vinculadas. Con tareas o compras, cambiarla dejaría pesos,
+ * presupuestos o créditos armados bajo la otra modalidad.
+ *
+ * @param tareasActivas Cantidad de tareas no dadas de baja del ticket.
+ * @param comprasVinculadas Cantidad de compras vinculadas no borradas.
+ * @returns `true` si el cambio está permitido.
+ */
+export function modalidadEsEditable(tareasActivas: number, comprasVinculadas: number): boolean {
+  return tareasActivas === 0 && comprasVinculadas === 0;
 }
 
 /**
@@ -340,6 +369,10 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     return this.props.fechaObjetivo ?? null;
   }
 
+  get modalidad(): ModalidadTicket {
+    return this.props.modalidad ?? 'INTERNA';
+  }
+
   get slaVenceAt(): Date | null {
     return this.props.slaVenceAt;
   }
@@ -406,7 +439,8 @@ export class TicketEntity extends BaseEntity<TicketProps> {
   /**
    * Actualiza los campos editables de datos del ticket (T8): `titulo`,
    * `descripcion`, `prioridadId`, `ubicacion` y `sectorId`
-   * (odd/ubicacion-sector-ticket). El `estado` NUNCA se muta por esta vía —
+   * (odd/ubicacion-sector-ticket), y `modalidad` (odd/edilicia-obra-externa; cuándo se puede
+   * cambiar lo decide el caso de uso con {@link modalidadEsEditable}). El `estado` NUNCA se muta por esta vía —
    * es una transición (T9, `updateEstado`), no una edición de datos.
    *
    * Campos `undefined` NO se tocan (PATCH semántico); `null` en
@@ -422,6 +456,7 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     prioridadId?: string;
     ubicacion?: string | null;
     sectorId?: string | null;
+    modalidad?: ModalidadTicket;
   }): void {
     validarTitulo(datos.titulo);
     validarUbicacion(datos.ubicacion);
@@ -439,6 +474,9 @@ export class TicketEntity extends BaseEntity<TicketProps> {
     }
     if (datos.sectorId !== undefined) {
       this.props.sectorId = datos.sectorId;
+    }
+    if (datos.modalidad !== undefined) {
+      this.props.modalidad = datos.modalidad;
     }
     this.touch();
   }

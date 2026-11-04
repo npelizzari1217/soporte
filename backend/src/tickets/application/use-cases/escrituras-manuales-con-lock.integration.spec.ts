@@ -29,6 +29,7 @@ import { PrismaEstadoRepository } from '../../infrastructure/persistence/prisma/
 import { PrismaOperacionTicketRepository } from '../../infrastructure/persistence/prisma/prisma-operacion-ticket.repository';
 import { PrismaPrioridadRepository } from '../../infrastructure/persistence/prisma/prisma-prioridad.repository';
 import { PrismaRelojSlaMarcador } from '../../infrastructure/persistence/prisma/prisma-reloj-sla-marcador';
+import { PrismaBloqueoTicketRepository } from '../../infrastructure/persistence/prisma/prisma-bloqueo-ticket.repository';
 import { PrismaTareaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-tarea-ticket.repository';
 import { PrismaTicketRepository } from '../../infrastructure/persistence/prisma/prisma-ticket.repository';
 import { PrismaTipoOperacionRepository } from '../../infrastructure/persistence/prisma/prisma-tipo-operacion.repository';
@@ -326,6 +327,8 @@ describe('Las escrituras manuales no pisan un estado recién escrito (S5, tenant
       eventPublisher,
       sectorRepo,
       txRunner,
+      tareaRepo,
+      new PrismaBloqueoTicketRepository(tenantContext),
     );
 
     const resultado = await enTenant(() =>

@@ -17,7 +17,11 @@ import {
   TicketBloqueadoParaEdicionError,
   SectorTicketInexistenteError,
   TicketSoloComentariosError,
+  ModalidadNoEditableError,
 } from '../../domain/errors/tickets.errors';
+import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
+import { ITareaTicketRepository } from '../../domain/ports/i-tarea-ticket.repository';
+import { IBloqueoTicketRepository } from '../../domain/ports/i-bloqueo-ticket.repository';
 import { SectorEntity } from '../../../sectores/domain/entities/sector.entity';
 import { ITicketRepository } from '../../domain/ports/i-ticket.repository';
 import { IPrioridadRepository } from '../../domain/ports/i-prioridad.repository';
@@ -78,7 +82,10 @@ function makeTicket(estadoId = 'estado-nuevo-uuid', tipoId = 'tipo-uuid'): Ticke
 }
 
 describe('EditarTicketUseCase', () => {
-  function makeCollaborators(ticket: TicketEntity | null) {
+  function makeCollaborators(
+    ticket: TicketEntity | null,
+    vinculos: { tareas?: TareaTicketEntity[]; compras?: string[] } = {},
+  ) {
     const ticketRepo = {
       findById: vi.fn<ITicketRepository['findById']>().mockResolvedValue(ticket),
       save: vi.fn<ITicketRepository['save']>().mockResolvedValue(undefined),
@@ -126,6 +133,16 @@ describe('EditarTicketUseCase', () => {
       run: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
     };
     vi.spyOn(txRunner, 'run');
+    const tareaRepo = {
+      listarPorTicket: vi
+        .fn<ITareaTicketRepository['listarPorTicket']>()
+        .mockResolvedValue(vinculos.tareas ?? []),
+    };
+    const bloqueoRepo = {
+      comprasVinculadas: vi
+        .fn<IBloqueoTicketRepository['comprasVinculadas']>()
+        .mockResolvedValue(vinculos.compras ?? []),
+    };
     const useCase = new EditarTicketUseCase(
       ticketRepo,
       prioridadRepo,
@@ -133,6 +150,8 @@ describe('EditarTicketUseCase', () => {
       eventPublisher,
       sectorRepo,
       txRunner,
+      tareaRepo,
+      bloqueoRepo,
     );
     return {
       useCase,
@@ -142,6 +161,7 @@ describe('EditarTicketUseCase', () => {
       eventPublisher,
       sectorRepo,
       txRunner,
+      tareaRepo,
     };
   }
 
@@ -612,6 +632,94 @@ describe('EditarTicketUseCase', () => {
 
       expect(result.isOk()).toBe(true);
       expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('modalidad (odd/edilicia-obra-externa, S1)', () => {
+    function tarea(): TareaTicketEntity {
+      return TareaTicketEntity.crear({ ticketId: 'ticket-uuid', descripcion: 'Paso', orden: 0 });
+    }
+
+    it('un ticket sin tareas ni compras pasa a EXTERNA y se guarda', async () => {
+      const ticket = makeTicket();
+      const c = makeCollaborators(ticket);
+
+      const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        modalidad: 'EXTERNA',
+        actorEsRoot: false,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.modalidad).toBe('EXTERNA');
+      expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('con una tarea activa el cambio es 422 y el ticket queda INTERNA sin guardar', async () => {
+      const ticket = makeTicket();
+      const c = makeCollaborators(ticket, { tareas: [tarea()] });
+
+      const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        modalidad: 'EXTERNA',
+        actorEsRoot: false,
+      });
+
+      expect(result.getError()).toBeInstanceOf(ModalidadNoEditableError);
+      expect(ticket.modalidad).toBe('INTERNA');
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('con una compra vinculada el cambio es 422 aun para ROOT, sin guardar', async () => {
+      const ticket = makeTicket();
+      const c = makeCollaborators(ticket, { compras: ['compra-uuid'] });
+
+      const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        modalidad: 'EXTERNA',
+        actorEsRoot: true,
+      });
+
+      expect(result.getError()).toBeInstanceOf(ModalidadNoEditableError);
+      expect(ticket.modalidad).toBe('INTERNA');
+      expect(c.ticketRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('una tarea dada de baja no cuenta: el cambio se acepta', async () => {
+      const borrada = tarea();
+      borrada.softDelete(new Date());
+      const ticket = makeTicket();
+      const c = makeCollaborators(ticket, { tareas: [borrada] });
+
+      const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        modalidad: 'EXTERNA',
+        actorEsRoot: false,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.modalidad).toBe('EXTERNA');
+    });
+
+    it('reenviar la misma modalidad con tareas no es un cambio y la edicion del resto sigue', async () => {
+      const ticket = makeTicket();
+      const c = makeCollaborators(ticket, { tareas: [tarea()], compras: ['compra-uuid'] });
+
+      const result = await c.useCase.execute({
+        ...ALCANCE_SIN_RESTRICCION,
+        ticketId: 'ticket-uuid',
+        titulo: 'Otro titulo',
+        modalidad: 'INTERNA',
+        actorEsRoot: false,
+      });
+
+      expect(result.isOk()).toBe(true);
+      expect(ticket.titulo).toBe('Otro titulo');
+      expect(c.tareaRepo.listarPorTicket).not.toHaveBeenCalled();
     });
   });
 });

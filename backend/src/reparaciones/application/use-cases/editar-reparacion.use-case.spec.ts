@@ -18,6 +18,7 @@ import {
   SectorTicketInexistenteError,
   TicketNoEncontradoError,
   TicketSoloComentariosError,
+  ModalidadNoEditableError,
 } from '../../../tickets/domain/errors/tickets.errors';
 import {
   alcancePorTipo,
@@ -263,6 +264,26 @@ describe('EditarReparacionUseCase: regla "no se empezó a trabajar" (S5)', () =>
       expect(c.ticketRepo.save).not.toHaveBeenCalled();
     },
   );
+
+  it('sin tareas ni compras cambia la modalidad a EXTERNA (odd/edilicia-obra-externa, S1)', async () => {
+    const c = armar({});
+
+    const r = await c.useCase.execute({ ...dtoBase, modalidad: 'EXTERNA' });
+
+    expect(r.isOk()).toBe(true);
+    expect(r.getValue().ticket.modalidad).toBe('EXTERNA');
+    expect(c.ticketRepo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('con una tarea pendiente la modalidad no cambia, aun para ROOT, y no se guarda', async () => {
+    const c = armar({ estado: 'NUEVO', tareas: [{ completada: false }] });
+
+    const r = await c.useCase.execute({ ...dtoBase, actorEsRoot: true, modalidad: 'EXTERNA' });
+
+    expect(r.getError()).toBeInstanceOf(ModalidadNoEditableError);
+    expect(c.ticket.modalidad).toBe('INTERNA');
+    expect(c.ticketRepo.save).not.toHaveBeenCalled();
+  });
 
   it('en NUEVO con una tarea completada un no ROOT recibe el motivo TAREAS_COMPLETADAS', async () => {
     const c = armar({ estado: 'NUEVO', tareas: [{ completada: true }] });

@@ -442,6 +442,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         eventPublisher: IDomainEventPublisher,
         sectorRepo: ISectorRepository,
         txRunner: ITenantTransactionRunner,
+        tareaRepo: ITareaTicketRepository,
+        bloqueoRepo: IBloqueoTicketRepository,
       ) =>
         new EditarTicketUseCase(
           ticketRepo,
@@ -450,6 +452,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
           eventPublisher,
           sectorRepo,
           txRunner,
+          tareaRepo,
+          bloqueoRepo,
         ),
       inject: [
         TICKET_REPOSITORY,
@@ -458,6 +462,8 @@ import { TramosTecnicoTicketController } from './interface/controllers/tramos-te
         DOMAIN_EVENT_PUBLISHER,
         SECTOR_REPOSITORY,
         TENANT_TX_RUNNER,
+        TAREA_TICKET_REPOSITORY,
+        BLOQUEO_TICKET_REPOSITORY,
       ],
     },
     {

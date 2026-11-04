@@ -1,7 +1,7 @@
 import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { IDomainEventPublisher } from '../../../shared/domain/ports/i-domain-event-publisher';
-import { TicketEntity } from '../../domain/entities/ticket.entity';
+import { ModalidadTicket, TicketEntity } from '../../domain/entities/ticket.entity';
 import { TicketCreadoEvent } from '../../domain/events/ticket-creado.event';
 import { TicketAsignadoEvent } from '../../domain/events/ticket-asignado.event';
 import { NumeradorTicket } from '../../domain/services/numerador-ticket.service';
@@ -51,6 +51,8 @@ export interface CrearTicketDto {
   ubicacion?: string | null;
   /** Sector del cliente (odd/ubicacion-sector-ticket). Tiene que existir; no se exige activo. */
   sectorId?: string | null;
+  /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente equivale a `'INTERNA'`. */
+  modalidad?: ModalidadTicket;
   /**
    * Fecha objetivo (odd/preventivo-anticipacion S2), día calendario. Solo la manda el barrido
    * preventivo, con la fecha del ciclo; el alta HTTP no la expone.
@@ -241,6 +243,7 @@ export class CrearTicketUseCase {
         ubicacion: dto.ubicacion ?? null,
         sectorId: dto.sectorId ?? null,
         fechaObjetivo: dto.fechaObjetivo ?? null,
+        modalidad: dto.modalidad ?? 'INTERNA',
       });
 
       // La regla asigna ANTES del primer `save()` (ADR-3): el ticket nace ASIGNADO.

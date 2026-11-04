@@ -1400,8 +1400,8 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
     (valor) => typeof valor === 'function' && valor.prototype instanceof DomainError,
   );
 
-  it('el catálogo tiene EXACTAMENTE 36 clases de error (32 previas + las tres del borrado, S8 y L45, + la de la lista de agentes)', () => {
-    expect(CLASES_DE_ERROR).toHaveLength(36);
+  it('el catálogo tiene EXACTAMENTE 37 clases de error (32 previas + las tres del borrado, S8 y L45, + la de la lista de agentes + la de modalidad)', () => {
+    expect(CLASES_DE_ERROR).toHaveLength(37);
   });
 
   const TABLA: Array<[string, () => DomainError, 403 | 404 | 409 | 422]> = [
@@ -1513,6 +1513,7 @@ describe('toHttpException — catálogo de errores → HTTP (sdd/exportar-listad
       () => new TicketsErrors.SectorTicketInexistenteError('sector-x'),
       422,
     ],
+    ['ModalidadNoEditableError', () => new TicketsErrors.ModalidadNoEditableError(), 422],
     [
       'TipoTicketNoPermitidoEnAltaError',
       () => new TicketsErrors.TipoTicketNoPermitidoEnAltaError('PREVENTIVO'),
