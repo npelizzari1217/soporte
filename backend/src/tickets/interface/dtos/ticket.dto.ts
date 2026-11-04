@@ -19,6 +19,7 @@ import {
   IsOptional,
   IsString,
   IsIn,
+  ValidateIf,
   IsUUID,
   Max,
   MaxLength,
@@ -75,7 +76,8 @@ export class CreateTicketDto {
   sectorId?: string | null;
 
   /** Modalidad de ejecución (odd/edilicia-obra-externa S1). Ausente equivale a `'INTERNA'`. */
-  @IsOptional()
+  // ValidateIf y no IsOptional: IsOptional deja pasar null, y un null volveria INTERNA al ticket.
+  @ValidateIf((_, v: unknown) => v !== undefined)
   @IsIn(MODALIDADES_TICKET)
   modalidad?: ModalidadTicket;
 }
@@ -108,7 +110,8 @@ export class EditTicketDto {
   sectorId?: string | null;
 
   /** Modalidad (odd/edilicia-obra-externa S1). Solo cambia sin tareas ni compras; ausente no toca. */
-  @IsOptional()
+  // ValidateIf y no IsOptional: IsOptional deja pasar null, y un null volveria INTERNA al ticket.
+  @ValidateIf((_, v: unknown) => v !== undefined)
   @IsIn(MODALIDADES_TICKET)
   modalidad?: ModalidadTicket;
 }

@@ -19,7 +19,7 @@ responsable certifica grupos de tareas para que administración pague fuera del 
 
 ## Tasks
 
-- [x] T1a — S1: `tickets.modalidad` en backend (migración, entidad, DTOs, regla de edición) · inline · commit: (este)
+- [x] T1a — S1: `tickets.modalidad` en backend (migración, entidad, DTOs, regla de edición) · inline · commit: `c4c4fee2`
 - [ ] T1b — S2: ítems de servicio en compras y excepción al bloqueo · inline · commit: —
 - [ ] T1c — S1, S2: frontend de modalidad y del ítem de servicio · inline · commit: —
 - [ ] T2 — S3, S4, S9: `tareas_ticket.peso`, validación de suma 100 % y redistribución ante adicionales · inline · commit: —
@@ -35,3 +35,5 @@ responsable certifica grupos de tareas para que administración pague fuera del 
 - **L4 (usuario):** "pienso que las tareas deben tener un peso en si mismo y puede ser que un certificado del 20% tiene 5 tareas que se deben cumplir para llegar a ese 20 %"
 - **L5 (decisión propuesta y aceptada al crear el documento):** S8 y S9 son recomendaciones del análisis (copia del peso en el certificado; redistribución solo entre tareas no certificadas). Se revisan antes de T2 y T3 si el dueño quiere otra cosa.
 - **L6 (usuario, decisiones de T1):** modalidad editable "Solo sin tareas ni compras"; EXTERNA vale para "Cualquier tipo"; deja de bloquear "Cualquier compra solo de servicio"; presupuestos "Varios, sin límite".
+- **L7 (evidencia T1a):** typecheck 0; lint 0; suite completa 820/821 archivos en verde, el restante era el centinela del catálogo de errores (faltaba `ModalidadNoEditableError`), corregido y en verde (91/91). Integración `tickets-modalidad` roja sin la migración y verde con ella.
+- **L8 (verificación independiente de T1a, bugfix con TDD):** el verificador encontró que `modalidad: null` pasaba la validación (`@IsOptional` acepta null) y volvía INTERNA en silencio a un ticket EXTERNA. RED: `modalidad-dto.spec.ts`, 6/6 en rojo por aceptar null. GREEN: `@ValidateIf(v !== undefined)` en los cuatro DTO, 6/6 en verde. Se sumaron los casos faltantes de `EditarReparacion` (compra cancelada con ROOT; reenviar la misma modalidad). Focalizados 315/315, typecheck 0, lint 0.
