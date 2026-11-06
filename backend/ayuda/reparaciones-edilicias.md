@@ -175,7 +175,8 @@ compra se vincula solo con el botón **Vincular**.
 ### Cuándo está bloqueada
 
 La reparación está **bloqueada** mientras tenga al menos una compra vinculada en
-curso. El listado lo muestra con el aviso **Bloqueada**, y el detalle del ticket
+curso que incluya bienes. Una compra cuyos ítems son todos de servicio (mano de
+obra o trabajos contratados) no bloquea la reparación. El listado lo muestra con el aviso **Bloqueada**, y el detalle del ticket
 también lo indica. Vale para un ticket de cualquier tipo con compras vinculadas.
 
 Nadie marca ni desmarca el bloqueo a mano. Una compra vinculada deja de frenar la

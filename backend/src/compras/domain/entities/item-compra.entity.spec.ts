@@ -70,12 +70,21 @@ describe('ItemCompraEntity', () => {
     it('marcar como servicio un ítem con insumo falla con ItemServicioConInsumoError, sin mutar', () => {
       const item = ItemCompraEntity.create(crearPropsValidas({ insumoId: 'insumo-a' }));
 
-      const result = item.actualizar({ esServicio: true, descripcion: 'Otra cosa' });
+      const result = item.actualizar({
+        esServicio: true,
+        descripcion: 'Otra cosa',
+        cantidad: 5,
+        monto: 99,
+        observaciones: 'Nota',
+      });
 
       expect(result.isFail()).toBe(true);
       expect(result.getError().code).toBe('ITEM_SERVICIO_CON_INSUMO');
       expect(item.esServicio).toBe(false);
       expect(item.descripcion).toBe('Notebook Dell Latitude');
+      expect(item.cantidad).toBe(2);
+      expect(item.monto).toBe(150000);
+      expect(item.observaciones).toBeNull();
     });
 
     it('declarar un insumo en un ítem de servicio falla con ItemServicioConInsumoError, sin mutar', () => {
