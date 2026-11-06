@@ -1253,6 +1253,11 @@ model ItemCompra {
   /// pregunta de fabricar movimientos retroactivos con fecha falsa. El NULL
   /// significa "sin insumo" y la recepción de ese ítem funciona como antes.
   insumoId             String?   @map("insumo_id") @db.Uuid
+  /// El ítem contrata un servicio y no un insumo (odd/edilicia-obra-externa, S2). CHECK
+  /// `items_compra_servicio_sin_insumo_check`: un ítem de servicio no declara insumo, así que su
+  /// recepción no suma stock. Una compra cuyos ítems activos son todos de servicio no bloquea el
+  /// ticket vinculado (`comprasQueBloquean`).
+  esServicio           Boolean   @default(false) @map("es_servicio")
   /// CHECK (cantidad > 0) — migration SQL.
   cantidad             Decimal   @db.Decimal(10, 2)
   proveedor            String    @db.VarChar(255)

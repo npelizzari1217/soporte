@@ -362,6 +362,14 @@ export class CompraEntity extends BaseEntity<CompraProps> {
       return guardCancelada;
     }
 
+    const guardServicio = ItemCompraEntity.validarServicioSinInsumo(
+      datos.esServicio ?? false,
+      datos.insumoId ?? null,
+    );
+    if (guardServicio.isFail()) {
+      return guardServicio;
+    }
+
     const item = ItemCompraEntity.create({ ...datos, compraId: this.id });
     this._items.push(item);
     this.touch();

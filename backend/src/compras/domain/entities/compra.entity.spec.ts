@@ -81,6 +81,7 @@ function crearItemFixture(overrides: Partial<ItemCompraProps> = {}): ItemCompraE
     compraId: 'compra-cancelada-1',
     descripcion: 'Monitor',
     insumoId: null,
+    esServicio: false,
     cantidad: 1,
     proveedor: 'Proveedor SA',
     monto: 50000,
@@ -201,6 +202,29 @@ describe('CompraEntity', () => {
       expect(compra.items).toHaveLength(1);
       expect(compra.items[0].estadoAprobacion).toBe('PENDIENTE');
       expect(compra.items[0].compraId).toBe(compra.id);
+    });
+
+    it('rechaza un ítem de servicio que declara insumo, sin agregarlo (odd/edilicia-obra-externa, S2)', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      const result = compra.agregarItem({
+        ...datosItemValido(),
+        esServicio: true,
+        insumoId: 'insumo-a',
+      });
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('ITEM_SERVICIO_CON_INSUMO');
+      expect(compra.items).toHaveLength(0);
+    });
+
+    it('agrega un ítem de servicio sin insumo', () => {
+      const compra = CompraEntity.create(crearPropsValidas());
+
+      const result = compra.agregarItem({ ...datosItemValido(), esServicio: true });
+
+      expect(result.isOk()).toBe(true);
+      expect(compra.items[0].esServicio).toBe(true);
     });
 
     describe('S4: agregar un ítem a una compra ya decidida devuelve el estado a PENDIENTE', () => {

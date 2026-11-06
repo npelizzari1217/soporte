@@ -405,6 +405,7 @@ export class ComprasController {
       fechaCotizacion: new Date(dto.fechaCotizacion),
       observaciones: dto.observaciones ?? null,
       insumoId: dto.insumoId ?? null,
+      esServicio: dto.esServicio ?? false,
     });
 
     if (result.isFail()) {
@@ -486,6 +487,7 @@ export class ComprasController {
       // Sin `??`: las tres posibilidades del PATCH tienen que llegar
       // distinguidas — ausente no toca el vínculo, `null` lo borra.
       insumoId: dto.insumoId,
+      esServicio: dto.esServicio,
     });
 
     if (result.isFail()) {

@@ -54,6 +54,7 @@ export class TicketCompraMapper {
           estadoAprobacion: item.estadoAprobacion as EstadoAprobacionItem,
           comprado: itemComprado(vista),
           entregado: itemEntregado(vista),
+          esServicio: item.esServicio,
         };
       }),
     };

@@ -20,7 +20,7 @@ responsable certifica grupos de tareas para que administración pague fuera del 
 ## Tasks
 
 - [x] T1a — S1: `tickets.modalidad` en backend (migración, entidad, DTOs, regla de edición) · inline · commit: `c4c4fee2`
-- [ ] T1b — S2: ítems de servicio en compras y excepción al bloqueo · inline · commit: —
+- [x] T1b — S2: ítems de servicio en compras y excepción al bloqueo · inline · commit: (ver L9)
 - [ ] T1c — S1, S2: frontend de modalidad y del ítem de servicio · inline · commit: —
 - [ ] T2 — S3, S4, S9: `tareas_ticket.peso`, validación de suma 100 % y redistribución ante adicionales · inline · commit: —
 - [ ] T3 — S5, S6, S8: tablas `certificaciones_avance` y `certificacion_tarea`, permiso `CERTIFICAR`, emisión y anulación · inline + verify (riesgo alto: permisos y datos) · commit: —
@@ -37,3 +37,4 @@ responsable certifica grupos de tareas para que administración pague fuera del 
 - **L6 (usuario, decisiones de T1):** modalidad editable "Solo sin tareas ni compras"; EXTERNA vale para "Cualquier tipo"; deja de bloquear "Cualquier compra solo de servicio"; presupuestos "Varios, sin límite".
 - **L7 (evidencia T1a):** typecheck 0; lint 0; suite completa 820/821 archivos en verde, el restante era el centinela del catálogo de errores (faltaba `ModalidadNoEditableError`), corregido y en verde (91/91). Integración `tickets-modalidad` roja sin la migración y verde con ella.
 - **L8 (verificación independiente de T1a, bugfix con TDD):** el verificador encontró que `modalidad: null` pasaba la validación (`@IsOptional` acepta null) y volvía INTERNA en silencio a un ticket EXTERNA. RED: `modalidad-dto.spec.ts`, 6/6 en rojo por aceptar null. GREEN: `@ValidateIf(v !== undefined)` en los cuatro DTO, 6/6 en verde. Se sumaron los casos faltantes de `EditarReparacion` (compra cancelada con ROOT; reenviar la misma modalidad). Focalizados 315/315, typecheck 0, lint 0.
+- **L9 (evidencia T1b):** `items_compra.es_servicio` (DEFAULT false) con CHECK `items_compra_servicio_sin_insumo_check`; `ItemServicioConInsumoError` (422) sobre los valores resultantes de alta y edición; `comprasQueBloquean` excluye la compra con ítems activos todos de servicio (sin ítems sigue bloqueando; mixta bloquea). El stock no se toca: sin insumo, la recepción no emite movimiento. Integración del CHECK roja sin la migración (columna inexistente) y verde con ella (58/58). Suite completa 822/822 archivos, 10520 tests; typecheck 0; lint 0. Ayuda: el ítem de servicio pide artículo cuando T1c lo exponga (suspensión vigente, se anota en el commit).

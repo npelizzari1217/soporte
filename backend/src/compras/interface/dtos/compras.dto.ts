@@ -165,6 +165,14 @@ export class AgregarItemCompraHttpDto {
   insumoId?: string | null;
 
   /**
+   * El ítem contrata un servicio y no un insumo (odd/edilicia-obra-externa, S2). `ValidateIf` y no
+   * `IsOptional`: `IsOptional` deja pasar `null`, y un `null` no es ni "sin cambio" ni un booleano.
+   */
+  @ValidateIf((_dto: unknown, valor: unknown) => valor !== undefined)
+  @IsBoolean()
+  esServicio?: boolean;
+
+  /**
    * Cubre el throw plano `ItemCompraEntity.validarCamposBase`: "cantidad
    * debe ser mayor a 0". `@Min(0.01)` es el equivalente exacto de `> 0`
    * dado el tope de 2 decimales (`Decimal(10,2)`, ADR-C3): el menor valor
@@ -227,6 +235,14 @@ export class EditarItemCompraHttpDto {
   @IsOptional()
   @IsUUID()
   insumoId?: string | null;
+
+  /**
+   * El ítem contrata un servicio y no un insumo (odd/edilicia-obra-externa, S2). `ValidateIf` y no
+   * `IsOptional`: `IsOptional` deja pasar `null`, y un `null` no es ni "sin cambio" ni un booleano.
+   */
+  @ValidateIf((_dto: unknown, valor: unknown) => valor !== undefined)
+  @IsBoolean()
+  esServicio?: boolean;
 
   /** Si se provee, cubre el mismo throw plano que `AgregarItemCompraHttpDto.cantidad`. */
   @IsOptional()
@@ -556,6 +572,8 @@ export interface ItemCompraResponseDto {
    * stock del que no.
    */
   insumoId: string | null;
+  /** `true` si el ítem contrata un servicio (odd/edilicia-obra-externa, S2). */
+  esServicio: boolean;
   /**
    * Cómo se lleva el insumo declarado (`SERIE` pide seriales al recibir), o `null` si el ítem no
    * declara insumo o el dato no se resolvió. Solo `GET /compras/:id` lo resuelve; el resto de las
@@ -598,6 +616,7 @@ export function toItemCompraResponseDto(
     compraId: item.compraId,
     descripcion: item.descripcion,
     insumoId: item.insumoId,
+    esServicio: item.esServicio,
     insumoSeguimiento,
     cantidad: item.cantidad,
     proveedor: item.proveedor,

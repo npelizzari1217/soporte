@@ -509,6 +509,21 @@ export class InsumoDeItemNoReasignableError extends DomainError {
 }
 
 /**
+ * ItemServicioConInsumoError — un ítem marcado como servicio declara además un insumo del catálogo
+ * (odd/edilicia-obra-externa, S2). Un servicio no se recibe como mercadería: si declarara insumo,
+ * su recepción sumaría stock de algo que nunca entró al depósito. Se evalúa sobre los valores
+ * resultantes del alta o de la edición.
+ * → HTTP 422 en la capa de presentación.
+ */
+export class ItemServicioConInsumoError extends DomainError {
+  readonly code = 'ITEM_SERVICIO_CON_INSUMO';
+
+  constructor() {
+    super('Un ítem de servicio no puede declarar un insumo del catálogo.');
+  }
+}
+
+/**
  * ItemCompraYaCerradoError — se intentó registrar compra, entrega, o un
  * nuevo cierre con faltante sobre un ítem que ya fue cerrado con faltante.
  * `cerradoConFaltante` es TERMINAL (spec §6.3): bloquea cualquier mutación

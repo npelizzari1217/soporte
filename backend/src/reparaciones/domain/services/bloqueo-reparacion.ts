@@ -1,6 +1,7 @@
 import {
   CompraParaDerivacion,
   derivarGrupoEstadoCompra,
+  ItemParaDerivacion,
 } from '../../../compras/domain/services/estado-compra';
 
 /**
@@ -21,6 +22,11 @@ import {
  * Tarea: WU1.7.
  */
 
+/** Ítem de una compra vinculada: lo que pide la derivación, más si es de servicio (S2). */
+export interface ItemVinculado extends ItemParaDerivacion {
+  readonly esServicio: boolean;
+}
+
 /**
  * Compra vinculada, en la forma mínima que `derivarGrupoEstadoCompra`
  * necesita para derivar el bloqueo (`CompraParaDerivacion`), más su
@@ -35,11 +41,17 @@ export interface CompraVinculada extends CompraParaDerivacion {
    * bloqueo: decide solo quién ve la compra en la lista del ticket.
    */
   readonly tipoTicketId: string | null;
+  readonly items: readonly ItemVinculado[];
 }
 
 /**
  * Compras que HOY frenan la reparación: las vinculadas cuyo grupo de estado
- * derivado es `ACTIVAS`.
+ * derivado es `ACTIVAS`, salvo las que son solo de servicio.
+ *
+ * Una compra cuyos ítems activos son TODOS de servicio es un presupuesto de
+ * obra (odd/edilicia-obra-externa, S2): el trabajo avanza mientras se ejecuta,
+ * así que no frena el ticket, cualquiera sea su modalidad. Una compra mixta
+ * sigue bloqueando, porque espera insumos.
  *
  * Caso aceptado a propósito (no un bug): una compra vinculada SIN ítems
  * cargados (`items: []`) bloquea igual — `derivarGrupoEstadoCompra` cae en
@@ -53,5 +65,16 @@ export interface CompraVinculada extends CompraParaDerivacion {
 export function comprasQueBloquean(
   vinculadas: readonly CompraVinculada[],
 ): readonly CompraVinculada[] {
-  return vinculadas.filter((compra) => derivarGrupoEstadoCompra(compra) === 'ACTIVAS');
+  return vinculadas.filter(
+    (compra) => derivarGrupoEstadoCompra(compra) === 'ACTIVAS' && !esSoloDeServicio(compra),
+  );
+}
+
+/**
+ * `true` si la compra tiene ítems y todos son de servicio. Una compra sin ítems NO es solo de
+ * servicio: "todos" sobre un conjunto vacío es verdadero por vacuidad, y la convertiría en una
+ * compra que no bloquea sin que nadie haya dicho qué contrata.
+ */
+function esSoloDeServicio(compra: CompraVinculada): boolean {
+  return compra.items.length > 0 && compra.items.every((item) => item.esServicio);
 }
