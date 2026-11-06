@@ -188,6 +188,8 @@ function FilaCertificado({ ticketId, certificado, puedeAnular, puedeImprimir }: 
               type="button"
               variant="outline"
               size="sm"
+              // Distinto del «Descargar PDF» de la ficha del ticket, en la misma pantalla.
+              aria-label={`Descargar PDF del certificado N.º ${certificado.numero}`}
               isLoading={descargar.isPending}
               onClick={() => descargar.mutate(certificado)}
             >

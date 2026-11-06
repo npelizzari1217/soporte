@@ -33,6 +33,7 @@
  *
  * Tarea: T6.6 (PR6 — CRUD lectura/creación), T7.5 (PR7), T8.5 (PR8)
  */
+import { TicketExternoConTareasSinCertificarError } from '../../domain/errors/certificados.errors';
 import {
   Body,
   ConflictException,
@@ -198,7 +199,9 @@ export function toHttpException(
     // Borrado (odd/permisos-por-tipo-ticket, S8): tareas pendientes o compras vinculadas, o un
     // ticket PREVENTIVO (L45).
     error instanceof TicketConPendientesNoBorrableError ||
-    error instanceof TicketPreventivoNoBorrableError
+    error instanceof TicketPreventivoNoBorrableError ||
+    // Cierre de una obra externa con tareas sin certificar (odd/edilicia-obra-externa, S10).
+    error instanceof TicketExternoConTareasSinCertificarError
   ) {
     return new UnprocessableEntityException(error.message);
   }

@@ -326,7 +326,7 @@ describe("TicketCertificados — PDF (S7)", () => {
     URL.revokeObjectURL = vi.fn();
     render(false, "EN_PROCESO", true);
 
-    await user.click(await screen.findByRole("button", { name: "Descargar PDF" }));
+    await user.click(await screen.findByRole("button", { name: "Descargar PDF del certificado N.º 1" }));
 
     await waitFor(() => expect(pedido).toBe(`/api/tickets/${TICKET_ID}/certificados/c1/pdf`));
   });
@@ -336,7 +336,7 @@ describe("TicketCertificados — PDF (S7)", () => {
     render(true, "EN_PROCESO", false);
 
     await screen.findByText("Certificado N.º 1 · 20 %");
-    expect(screen.queryByRole("button", { name: "Descargar PDF" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Descargar PDF del certificado/ })).not.toBeInTheDocument();
   });
 });
 

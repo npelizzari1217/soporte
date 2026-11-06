@@ -1165,3 +1165,45 @@ describe("TicketDetailView — certificados de avance (odd/edilicia-obra-externa
   });
 });
 
+describe("TicketDetailView — PDF del certificado (odd/edilicia-obra-externa, S7)", () => {
+  beforeEach(() => {
+    mockBackend();
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad: "EXTERNA" })),
+      http.get(`/api/tickets/${TICKET_ID}/certificados`, () =>
+        HttpResponse.json([
+          {
+            id: "c1",
+            ticketId: TICKET_ID,
+            numero: 1,
+            porcentaje: 25,
+            vigente: true,
+            emitidoPorId: "u-cert",
+            emitidoPorNombre: "Carla",
+            emitidoPorApellido: "Gómez",
+            emitidoEn: "2026-11-02T13:00:00.000Z",
+            anuladoEn: null,
+            anuladoPorId: null,
+            anuladoPorNombre: null,
+            anuladoPorApellido: null,
+            motivoAnulacion: null,
+            tareas: [{ tareaId: "ta1", descripcion: "Cambiar el tóner", peso: 25 }],
+          },
+        ]),
+      ),
+    );
+  });
+
+  it.each([
+    ["IMPRESION", ["IMPRESION"] as AccionTipoTicket[], true],
+    ["CERTIFICAR sin IMPRESION", ["CERTIFICAR"] as AccionTipoTicket[], false],
+  ])("con %s el certificado ofrece su PDF: %s", async (_caso, acciones, ofrece) => {
+    renderConPermisos(<TicketDetailView ticketId={TICKET_ID} />, { user: TECNICO, permisos: enTi1(...acciones) });
+
+    await screen.findByText("Certificado N.º 1 · 25 %");
+    const boton = screen.queryByRole("button", { name: "Descargar PDF del certificado N.º 1" });
+    if (ofrece) expect(boton).toBeInTheDocument();
+    else expect(boton).not.toBeInTheDocument();
+  });
+});
+

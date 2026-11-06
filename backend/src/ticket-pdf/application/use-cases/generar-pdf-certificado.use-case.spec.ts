@@ -66,6 +66,7 @@ function armar(acciones: AccionTipoTicket[] = ['LECTURA', 'IMPRESION']) {
     certificado('c2', 2, [['ta-losa', 20]]),
     certificado('c3', 3, [['ta-membrana', 15]]),
   ];
+  const certificadoRepo = { listarPorTicket: vi.fn(async (_ticketId: string) => certificados) };
   const losa = TareaTicketEntity.crear(
     { ticketId: 'ticket-1', descripcion: 'Losa', orden: 0 },
     'ta-losa',
@@ -75,7 +76,7 @@ function armar(acciones: AccionTipoTicket[] = ['LECTURA', 'IMPRESION']) {
   };
   const useCase = new GenerarPdfCertificadoUseCase(
     { execute: vi.fn(async () => Result.ok(ticket())) },
-    { listarPorTicket: vi.fn(async () => certificados) },
+    certificadoRepo,
     { listarPorTicket: vi.fn(async () => [losa]) },
     {
       findById: vi.fn(async () =>
@@ -106,7 +107,7 @@ function armar(acciones: AccionTipoTicket[] = ['LECTURA', 'IMPRESION']) {
     clienteId: 'cli-1',
     clienteNombre: 'Colegio Norte',
   });
-  return { useCase, generador, dto };
+  return { useCase, generador, dto, certificadoRepo };
 }
 
 describe('GenerarPdfCertificadoUseCase', () => {
@@ -151,11 +152,13 @@ describe('GenerarPdfCertificadoUseCase', () => {
   });
 
   it('un certificado que no es de este ticket responde 404 y no genera', async () => {
-    const { useCase, generador, dto } = armar();
+    const { useCase, generador, dto, certificadoRepo } = armar();
 
     const result = await useCase.execute(dto('c-de-otro-ticket'));
 
     expect(result.getError().code).toBe('CERTIFICADO_NO_ENCONTRADO');
+    // Busca solo entre los certificados del ticket pedido.
+    expect(certificadoRepo.listarPorTicket).toHaveBeenCalledWith('ticket-1');
     expect(generador.generarCertificado).not.toHaveBeenCalled();
   });
 });

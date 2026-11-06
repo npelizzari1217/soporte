@@ -208,8 +208,6 @@ export class GenerarPdfTicketUseCase {
     return Result.ok({ buffer, nombreArchivo: `ticket-${nombreSeguro(ticket.numero)}.pdf` });
   }
 
-  /** Solo png/jpeg se embeben; webp, sin logo o fallo de lectura → `null` (se imprime el nombre). */
-
   private async armarSoporte(
     soporte: Awaited<ReturnType<ITicketSoporteRepository['findByTicketId']>>,
   ): Promise<SoportePdf | null> {
