@@ -65,9 +65,10 @@ export function TicketCertificados({ ticketId, puedeCertificar, estadoCodigo }: 
   const candidatas = tareas.filter((t) => t.completada && !certificadas.has(t.id));
   const sumaPesos = tareas.reduce((suma, t) => suma + t.peso, 0);
   const cerrado = estadoCodigo !== undefined && ESTADOS_SIN_CERTIFICACION.has(estadoCodigo);
-  const porcentajeElegido = candidatas
-    .filter((t) => elegidas.includes(t.id))
-    .reduce((suma, t) => suma + t.peso, 0);
+  // Lo que se ve, se suma y se envía sale de las candidatas VIGENTES: una tarea elegida que dejó de
+  // serlo (alguien la descompletó y la lista se refrescó) ya no está en pantalla y no puede viajar.
+  const seleccion = candidatas.filter((t) => elegidas.includes(t.id));
+  const porcentajeElegido = seleccion.reduce((suma, t) => suma + t.peso, 0);
 
   // El primer motivo que aplica, en el orden en que el backend los evalúa.
   const motivoSinEmision = cerrado
@@ -128,9 +129,14 @@ export function TicketCertificados({ ticketId, puedeCertificar, estadoCodigo }: 
                 <Button
                   type="button"
                   size="sm"
-                  disabled={elegidas.length === 0}
+                  disabled={seleccion.length === 0}
                   isLoading={emitir.isPending}
-                  onClick={() => emitir.mutate(elegidas, { onSuccess: () => setElegidas([]) })}
+                  onClick={() =>
+                    emitir.mutate(
+                      seleccion.map((t) => t.id),
+                      { onSuccess: () => setElegidas([]) },
+                    )
+                  }
                 >
                   Emitir certificado
                 </Button>

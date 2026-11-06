@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { toast } from "sonner";
@@ -204,3 +205,102 @@ describe("TicketCertificados — anular (S8)", () => {
     await waitFor(() => expect(posts).toEqual([{ certificadoId: "c1", motivo: "Se certificó de más" }]));
   });
 });
+
+/**
+ * Regresión (odd/edilicia-obra-externa, L33): una tarea elegida que deja de ser candidata (alguien la
+ * descompleta y la lista se refresca) desaparecía de la pantalla y del porcentaje, pero seguía en el
+ * envío: el backend respondía 422 por una tarea que el usuario ya no veía.
+ */
+describe("TicketCertificados — elegidas que dejan de ser candidatas (S5)", () => {
+  const PINTURA_OK = tarea("ta-pintura", "Pintura", 65, true);
+
+  /** Backend con tareas mutables; `posts` registra los envíos. */
+  function backendConTareas(inicial: TareaTicket[]) {
+    const estado = { tareas: inicial };
+    const posts: unknown[] = [];
+    server.use(
+      http.get(`/api/tickets/${TICKET_ID}/tareas`, () =>
+        HttpResponse.json({ items: estado.tareas, avance: { total: 3, completadas: 3, porcentaje: 100 } }),
+      ),
+      http.get(`/api/tickets/${TICKET_ID}/certificados`, () => HttpResponse.json([])),
+      http.post(`/api/tickets/${TICKET_ID}/certificados`, async ({ request }) => {
+        posts.push(await request.json());
+        return HttpResponse.json(certificado({ id: "c2", numero: 2 }), { status: 201 });
+      }),
+    );
+    return { estado, posts };
+  }
+
+  /** La ventana recupera el foco: react-query vuelve a pedir lo que está viejo. */
+  async function refrescar() {
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+  }
+
+  it("una elegida que deja de estar completada no viaja en el envío", async () => {
+    const user = userEvent.setup();
+    const { estado, posts } = backendConTareas([LOSA, REVOQUE, PINTURA_OK]);
+    render();
+
+    await user.click(await screen.findByRole("checkbox", { name: /Revoque/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Losa/ }));
+    estado.tareas = [LOSA, { ...REVOQUE, completada: false }, PINTURA_OK];
+    await refrescar();
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: /Revoque/ })).not.toBeInTheDocument());
+
+    expect(screen.getByText("Certifica 20 %")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Emitir certificado" }));
+    await waitFor(() => expect(posts).toEqual([{ tareaIds: ["ta-losa"] }]));
+  });
+
+  it("si la única elegida deja de ser candidata, Emitir queda deshabilitado", async () => {
+    const user = userEvent.setup();
+    const { estado } = backendConTareas([LOSA, REVOQUE, PINTURA_OK]);
+    render();
+
+    await user.click(await screen.findByRole("checkbox", { name: /Revoque/ }));
+    estado.tareas = [LOSA, { ...REVOQUE, completada: false }, PINTURA_OK];
+    await refrescar();
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: /Revoque/ })).not.toBeInTheDocument());
+
+    expect(screen.getByRole("button", { name: "Emitir certificado" })).toBeDisabled();
+  });
+});
+
+describe("TicketCertificados — cobertura de reglas (S5, S8, L26)", () => {
+  it("las tareas de un certificado anulado vuelven a ser candidatas, y una de peso 0 también", async () => {
+    mockBackend(
+      [LOSA, REVOQUE, tarea("ta-pintura", "Pintura", 65, true), tarea("ta-cero", "Limpieza", 0, true)],
+      [certificado({ vigente: false, anuladoEn: "2026-11-03T10:00:00.000Z", motivoAnulacion: "x" })],
+    );
+    render();
+
+    expect(await screen.findByRole("checkbox", { name: /Losa/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Limpieza/ })).toBeInTheDocument();
+  });
+
+  it("con el ticket cancelado no emite ni anula", async () => {
+    mockBackend([LOSA, REVOQUE, PINTURA], [certificado()]);
+    render(true, "CANCELADO");
+
+    expect(await screen.findByText("Un ticket cerrado o cancelado no admite emitir certificados.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Anular" })).not.toBeInTheDocument();
+  });
+
+  it("reabrir el diálogo de anular arranca sin el motivo anterior", async () => {
+    const user = userEvent.setup();
+    mockBackend([LOSA, REVOQUE, PINTURA], [certificado()]);
+    render();
+
+    await user.click(await screen.findByRole("button", { name: "Anular" }));
+    await user.type(within(await screen.findByRole("dialog")).getByLabelText("Motivo"), "borrador");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Anular" }));
+
+    expect(within(await screen.findByRole("dialog")).getByLabelText("Motivo")).toHaveValue("");
+  });
+});
+
