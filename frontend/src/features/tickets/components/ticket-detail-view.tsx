@@ -276,6 +276,7 @@ export function TicketDetailView({ ticketId }: TicketDetailViewProps) {
           tipoId={ticket.tipoId}
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueadoPorCompra, esAdminCliente)}
           modalidad={ticket.modalidad}
+          estadoCodigo={estadoCodigo}
         />
       </section>
 

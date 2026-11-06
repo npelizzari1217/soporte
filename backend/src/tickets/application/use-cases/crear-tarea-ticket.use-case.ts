@@ -46,7 +46,7 @@ export class CrearTareaTicketUseCase {
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly verificadorEditable: Pick<
       VerificadorTicketEditable,
-      'verificar' | 'verificarEstado'
+      'verificar' | 'verificarEstado' | 'verificarAltaDeTarea'
     >,
   ) {}
 
@@ -85,6 +85,8 @@ export class CrearTareaTicketUseCase {
         dto.actor.esAdministrador,
       );
       if (vigente.isFail()) return vigente;
+      const admitida = await this.verificadorEditable.verificarAltaDeTarea(actual);
+      if (admitida.isFail()) return admitida;
       await this.tareaRepo.crear(tarea);
       await this.operacionRepo.save(operacion);
       return Result.ok(undefined);

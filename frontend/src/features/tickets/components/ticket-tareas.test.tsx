@@ -590,3 +590,40 @@ describe("TicketTareas — tarea certificada (odd/edilicia-obra-externa, S8)", (
   });
 });
 
+describe("TicketTareas — alta en una obra externa cerrada (odd/edilicia-obra-externa, L36)", () => {
+  const admin = buildUser({ sub: "u-admin", rol: "ADMINISTRADOR", permisos: [] });
+
+  function renderCon(modalidad: "INTERNA" | "EXTERNA", estadoCodigo: string) {
+    mockTareas();
+    return renderConPermisos(
+      <TicketTareas
+        ticketId={TICKET_ID}
+        asignadoId={RESPONSABLE}
+        tipoId={TIPO}
+        modalidad={modalidad}
+        estadoCodigo={estadoCodigo}
+      />,
+      { user: admin, permisos: permisosDeTest({}) },
+    );
+  }
+
+  it("en EXTERNA cerrado no ofrece el alta, ni al administrador, y dice por qué", async () => {
+    renderCon("EXTERNA", "CERRADO");
+
+    await screen.findByText("Cambiar el disco");
+    expect(screen.queryByLabelText("Nueva tarea")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas."),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["INTERNA", "CERRADO"],
+    ["EXTERNA", "EN_PROCESO"],
+  ] as const)("caso hermano: en %s %s el administrador sigue viendo el alta", async (modalidad, estado) => {
+    renderCon(modalidad, estado);
+
+    expect(await screen.findByLabelText("Nueva tarea")).toBeInTheDocument();
+  });
+});
+

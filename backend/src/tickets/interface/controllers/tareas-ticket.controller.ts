@@ -58,6 +58,7 @@ import {
   PesoTareasExcedeTotalError,
   TareaAccionNoPermitidaError,
   TareaCertificadaError,
+  TareaEnObraExternaCerradaError,
   TareaNoCompletadaError,
   TareaNoEncontradaError,
   TareaTicketNoEditableError,
@@ -102,7 +103,8 @@ export function toHttpExceptionTareas(
     error instanceof TareaTicketNoEditableError ||
     error instanceof PesoTareasExcedeTotalError ||
     error instanceof PesoTareaSoloExternoError ||
-    error instanceof TareaCertificadaError
+    error instanceof TareaCertificadaError ||
+    error instanceof TareaEnObraExternaCerradaError
   ) {
     return new UnprocessableEntityException(error.message);
   }

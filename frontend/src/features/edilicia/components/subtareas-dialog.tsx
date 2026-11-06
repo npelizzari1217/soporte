@@ -73,6 +73,7 @@ export function SubtareasDialog({
           invalidarTambien={INVALIDAR_LISTADO}
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueada, esAdminCliente)}
           modalidad={modalidad}
+          estadoCodigo={estadoCodigo}
         />
       </DialogContent>
     </Dialog>

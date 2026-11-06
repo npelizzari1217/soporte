@@ -30,6 +30,8 @@ import { Result } from '../../../shared/domain/result';
 const siempreEditable = {
   verificar: async () => Result.ok(undefined),
   verificarEstado: async () => Result.ok(undefined),
+  // Los tickets de este spec son INTERNA: la regla de L36 (odd/edilicia-obra-externa) no aplica.
+  verificarAltaDeTarea: async () => Result.ok(undefined),
 };
 
 const MASTER_TEST_URL =

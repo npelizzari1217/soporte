@@ -110,6 +110,8 @@ export function useCrearTarea(ticketId: string, opciones: OpcionesMutacionTareas
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas`, { method: "POST", json: dto }),
     "Tarea agregada.",
     conDetalleDelTicket(ticketId, opciones),
+    // Su 422 (obra externa cerrada, ticket bloqueado) trae un mensaje legible (odd/edilicia-obra-externa).
+    true,
   );
 }
 

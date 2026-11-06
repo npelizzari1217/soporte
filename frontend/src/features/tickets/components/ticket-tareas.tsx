@@ -56,6 +56,11 @@ export interface TicketTareasProps {
    * puede fijar (odd/edilicia-obra-externa, S4, S9). Ausente = `INTERNA`.
    */
   modalidad?: ModalidadTicket;
+  /**
+   * Código del estado del ticket. En un ticket EXTERNA cerrado no se agregan tareas, ni el
+   * administrador (odd/edilicia-obra-externa, L36): se oculta el alta y se dice por qué.
+   */
+  estadoCodigo?: string;
 }
 
 function nombreDe(id: string | null, nombre: string | null, apellido: string | null): string | null {
@@ -70,6 +75,7 @@ export function TicketTareas({
   invalidarTambien,
   motivoSoloLectura = null,
   modalidad = "INTERNA",
+  estadoCodigo,
 }: TicketTareasProps) {
   const { user, esAdminCliente } = useSession();
   const { puedeEnTipo } = usePermisosPorTipo();
@@ -91,6 +97,7 @@ export function TicketTareas({
   const eliminar = useEliminarTarea(ticketId, opciones);
   const ponderar = usePonderarTarea(ticketId, opciones);
   const conPeso = modalidad === "EXTERNA";
+  const altaCerradaPorObraExterna = conPeso && estadoCodigo === "CERRADO";
 
   const {
     register,
@@ -256,7 +263,12 @@ export function TicketTareas({
         })}
       </ul>
 
-      {puedeGestionar && (
+      {puedeGestionar && altaCerradaPorObraExterna && (
+        <p role="note" className="text-xs text-muted-foreground">
+          Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas.
+        </p>
+      )}
+      {puedeGestionar && !altaCerradaPorObraExterna && (
         <form
           onSubmit={handleSubmit((values) => crear.mutate(values, { onSuccess: () => reset() }))}
           className="flex items-end gap-2"

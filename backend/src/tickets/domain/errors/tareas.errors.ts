@@ -95,6 +95,20 @@ export class PesoTareaSoloExternoError extends DomainError {
   }
 }
 
+/**
+ * En un ticket EXTERNA cerrado no entra una tarea nueva, ni para el ADMINISTRADOR
+ * (odd/edilicia-obra-externa, S10, L36): no se podría certificar. → HTTP 422.
+ */
+export class TareaEnObraExternaCerradaError extends DomainError {
+  readonly code = 'TAREA_EN_OBRA_EXTERNA_CERRADA';
+
+  constructor() {
+    super(
+      'Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas.',
+    );
+  }
+}
+
 /** Lo que se intentó hacer con una tarea certificada (S8). */
 export type CambioSobreTareaCertificada = 'repesar' | 'eliminar' | 'descompletar';
 

@@ -831,6 +831,45 @@ describe('CompletarTareaUseCase', () => {
   });
 });
 
+describe('alta de tareas en un ticket EXTERNA cerrado (odd/edilicia-obra-externa, S10, L36)', () => {
+  const crearComoAdmin = (deps: ReturnType<typeof armar>) =>
+    deps.crear.execute({
+      ticketId: TICKET_ID,
+      actor: ACTORES.administrador,
+      descripcion: 'Tarea agregada después del cierre',
+    });
+
+  it('ni el ADMINISTRADOR agrega una tarea: quedaría sin certificar para siempre', async () => {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    deps.ponerEstado(TICKET_ID, 'CERRADO');
+
+    const error = errorDe(await crearComoAdmin(deps));
+
+    expect(error.code).toBe('TAREA_EN_OBRA_EXTERNA_CERRADA');
+    expect(error.message).toBe(
+      'Un ticket con obra externa cerrado no admite tareas nuevas: reábralo antes de agregarlas.',
+    );
+    expect(deps.tareaRepo.crear).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('caso hermano: en un ticket INTERNA cerrado el ADMINISTRADOR sigue agregando', async () => {
+    const deps = armar();
+    deps.ponerEstado(TICKET_ID, 'CERRADO');
+
+    expect((await crearComoAdmin(deps)).isOk()).toBe(true);
+    expect(deps.tareaRepo.crear).toHaveBeenCalledTimes(1);
+  });
+
+  it('caso hermano: en un ticket EXTERNA abierto se agrega como siempre', async () => {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+
+    expect((await crearComoAdmin(deps)).isOk()).toBe(true);
+  });
+});
+
 describe('tarea certificada (odd/edilicia-obra-externa, S8)', () => {
   /** Ticket EXTERNA con `t1` completada, de peso 100 y en un certificado vigente. */
   function conTareaCertificada() {
