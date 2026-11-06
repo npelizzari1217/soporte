@@ -12,14 +12,15 @@
  *   POST   /tickets/:id/tareas/:tareaId/completar | descompletar
  *   DELETE /tickets/:id/tareas/:tareaId               → baja lógica (204)
  *
- * Cada mutación invalida las tareas y el historial del ticket (las cinco
- * escriben una operación), más las `invalidarTambien` del caller: Edilicia
+ * Cada mutación invalida las tareas y el historial del ticket (todas escriben
+ * una operación salvo el peso, que no tiene historial), más las `invalidarTambien` del caller: Edilicia
  * pasa `["reparaciones"]`, porque el avance de su listado se calcula sobre
  * estas mismas tareas.
  *
  * Errores: el `message` de Nest para tareas lleva ids crudos ("La tarea
  * "<uuid>" ya está completada."), así que 403/404/409/422 se traducen a un
- * toast propio por código; el resto sigue `notifyError`. Un 404 o un 409 dicen
+ * toast propio por código (salvo el 422 del peso, que trae un mensaje legible y se muestra tal
+ * cual); el resto sigue `notifyError`. Un 404 o un 409 dicen
  * que la lista quedó vieja, y un 403 puede venir de una tarea que cambió de
  * técnico en el medio (JD-S2), así que los tres también la refrescan.
  */

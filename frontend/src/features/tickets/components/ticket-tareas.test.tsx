@@ -503,6 +503,16 @@ describe("TicketTareas — peso en un ticket EXTERNA (odd/edilicia-obra-externa,
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
   });
 
+  it("retipear el mismo peso no manda nada", async () => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    await fijar("Losa", "60");
+
+    await waitFor(() => expect(within(filaDe("Losa")).getByRole("button", { name: "Fijar" })).toBeDisabled());
+    expect(bodies).toEqual([]);
+  });
+
   it("quien no gestiona las tareas ve el peso como texto, sin control", async () => {
     renderExterna(buildUser({ sub: TECNICO, rol: "TECNICO", permisos: [] }));
 

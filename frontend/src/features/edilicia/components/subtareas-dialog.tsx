@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { motivoTareasSoloLectura } from "@/features/tickets/lib/permisos-tareas";
 import { useTicket } from "@/features/tickets/hooks/use-ticket";
 import { TicketTareas } from "@/features/tickets/components/ticket-tareas";
+import type { ModalidadTicket } from "@/features/tickets/modalidad";
 import { useSession } from "@/shared/hooks/use-session";
 
 const INVALIDAR_LISTADO = [["reparaciones"]] as const;
@@ -37,9 +38,22 @@ export interface SubtareasDialogProps {
   estadoCodigo: string | undefined;
   /** `bloqueada` de la fila del listado (compra activa vinculada). */
   bloqueada: boolean;
+  /**
+   * Modalidad del ticket, de la fila del listado: decide si las tareas muestran su peso
+   * (odd/edilicia-obra-externa, S4). Sale de la fila y no del detalle, que puede no haber cargado.
+   */
+  modalidad: ModalidadTicket;
 }
 
-export function SubtareasDialog({ ticketId, tipoId, trigger, numero, estadoCodigo, bloqueada }: SubtareasDialogProps) {
+export function SubtareasDialog({
+  ticketId,
+  tipoId,
+  trigger,
+  numero,
+  estadoCodigo,
+  bloqueada,
+  modalidad,
+}: SubtareasDialogProps) {
   const [open, setOpen] = useState(false);
   const { esAdminCliente } = useSession();
   const ticketQuery = useTicket(ticketId, open);
@@ -58,7 +72,7 @@ export function SubtareasDialog({ ticketId, tipoId, trigger, numero, estadoCodig
           tipoId={tipoId}
           invalidarTambien={INVALIDAR_LISTADO}
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueada, esAdminCliente)}
-          modalidad={ticketQuery.data?.modalidad}
+          modalidad={modalidad}
         />
       </DialogContent>
     </Dialog>

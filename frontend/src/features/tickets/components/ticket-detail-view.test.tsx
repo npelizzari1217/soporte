@@ -110,6 +110,7 @@ function mockBackend() {
             completadaPorId: null,
             completadaPorNombre: null,
             completadaPorApellido: null,
+            peso: 25,
             createdAt: "2026-01-01T00:00:00.000Z",
           },
         ],
@@ -131,6 +132,18 @@ describe("TicketDetailView — sección Tareas (odd/tareas-con-tecnico, T6)", ()
     expect(await screen.findByRole("heading", { name: "Tareas" })).toBeInTheDocument();
     expect(await screen.findByText("Cambiar el tóner")).toBeInTheDocument();
     expect(screen.getByText("0% · 0 de 1 completadas")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["EXTERNA", true],
+    ["INTERNA", false],
+  ] as const)("pasa la modalidad %s del ticket a las tareas: muestra el peso = %s", async (modalidad, conPeso) => {
+    server.use(http.get(`/api/tickets/${TICKET_ID}`, () => HttpResponse.json({ ...TICKET, modalidad })));
+    renderWithProviders(<TicketDetailView ticketId={TICKET_ID} />, { user: buildUser({ permisos: [] }) });
+
+    await screen.findByText("Cambiar el tóner");
+    if (conPeso) expect(screen.getByText(/Pesos asignados: 25 % de 100 %/)).toBeInTheDocument();
+    else expect(screen.queryByText(/Pesos asignados/)).not.toBeInTheDocument();
   });
 });
 

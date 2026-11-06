@@ -55,7 +55,8 @@ export function PesoTareaControl({
   const id = `peso-tarea-${tareaId}`;
   return (
     <form
-      onSubmit={handleSubmit((values) => onGuardar(values.peso))}
+      // Retipear el mismo valor deja el campo "sucio" (el input entrega texto): no hay nada que guardar.
+      onSubmit={handleSubmit((values) => (values.peso === peso ? reset({ peso }) : onGuardar(values.peso)))}
       className="flex flex-col gap-0.5"
       noValidate
     >
