@@ -36,6 +36,7 @@ function tarea(overrides: Partial<TareaTicket> = {}): TareaTicket {
     completadaPorId: null,
     completadaPorNombre: null,
     completadaPorApellido: null,
+    peso: 0,
     createdAt: "2026-10-01T10:00:00.000Z",
     ...overrides,
   };
@@ -413,5 +414,113 @@ describe("TicketTareas — solo lectura (odd/ticket-cerrado-solo-lectura, S4)", 
 
     expect(screen.queryByRole("note")).toBeNull();
     expect(screen.getByLabelText("Nueva tarea")).toBeInTheDocument();
+  });
+});
+
+describe("TicketTareas — peso en un ticket EXTERNA (odd/edilicia-obra-externa, S4, S9)", () => {
+  const LOSA = tarea({ id: "p1", descripcion: "Losa", peso: 60 });
+  const REVOQUE = tarea({ id: "p2", descripcion: "Revoque", orden: 2, peso: 0 });
+
+  function renderExterna(user = responsable, permisos: PermisosPorTipo = CON_MODIFICACION) {
+    mockTareas([LOSA, REVOQUE]);
+    return renderConPermisos(
+      <TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} modalidad="EXTERNA" />,
+      { user, permisos },
+    );
+  }
+
+  function capturarPatches(): Record<string, unknown>[] {
+    const bodies: Record<string, unknown>[] = [];
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/tareas/:tareaId/peso`, async ({ request, params }) => {
+        bodies.push({ tareaId: params.tareaId, ...((await request.json()) as Record<string, unknown>) });
+        return HttpResponse.json(REVOQUE);
+      }),
+    );
+    return bodies;
+  }
+
+  async function fijar(descripcion: string, valor: string) {
+    const user = userEvent.setup();
+    const campo = await screen.findByLabelText(`Peso de la tarea ${descripcion}`);
+    await user.clear(campo);
+    if (valor) await user.type(campo, valor);
+    await user.click(within(filaDe(descripcion)).getByRole("button", { name: "Fijar" }));
+  }
+
+  beforeEach(() => vi.mocked(toast.error).mockClear());
+
+  it("muestra la suma de pesos y fija el peso con PATCH .../peso", async () => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    expect(await screen.findByText(/Pesos asignados: 60 % de 100 %/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Peso de la tarea Revoque")).toHaveValue(0);
+    await fijar("Revoque", "40");
+
+    await waitFor(() => expect(bodies).toEqual([{ tareaId: "p2", peso: 40 }]));
+  });
+
+  it("no deja pasar el tope: con 60 asignados, la otra tarea admite hasta 40", async () => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    await fijar("Revoque", "41");
+
+    expect(
+      await within(filaDe("Revoque")).findByText(
+        "Las tareas sumarían más del 100 %. Para esta tarea quedan 40 %; baje primero el peso de otras.",
+      ),
+    ).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it.each([
+    ["vacío", "", "El peso es requerido"],
+    ["con decimales", "12.5", "El peso es un número entero"],
+  ])("un peso %s no se manda", async (_caso, valor, mensaje) => {
+    const bodies = capturarPatches();
+    renderExterna();
+
+    await fijar("Losa", valor);
+
+    expect(await within(filaDe("Losa")).findByText(mensaje)).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it("el 422 del servidor se muestra con su propio mensaje, no con el del técnico", async () => {
+    const mensaje =
+      "Con ese peso, las tareas del ticket sumarían 101 %, por encima del 100 %. Baje primero el peso de otras tareas.";
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/tareas/p2/peso`, () =>
+        HttpResponse.json({ statusCode: 422, message: mensaje, error: "Unprocessable Entity" }, { status: 422 }),
+      ),
+    );
+    renderExterna();
+
+    await fijar("Revoque", "40");
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
+  });
+
+  it("quien no gestiona las tareas ve el peso como texto, sin control", async () => {
+    renderExterna(buildUser({ sub: TECNICO, rol: "TECNICO", permisos: [] }));
+
+    await screen.findByText("Losa");
+    expect(within(filaDe("Losa")).getByText("Peso: 60 %")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Peso de la tarea Losa")).not.toBeInTheDocument();
+  });
+
+  it("en un ticket INTERNA no hay peso ni suma, aunque las tareas traigan uno", async () => {
+    mockTareas([LOSA, REVOQUE]);
+    renderConPermisos(<TicketTareas ticketId={TICKET_ID} asignadoId={RESPONSABLE} tipoId={TIPO} />, {
+      user: responsable,
+      permisos: CON_MODIFICACION,
+    });
+
+    await screen.findByText("Losa");
+    expect(screen.queryByText(/Pesos asignados/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Peso de la tarea Losa")).not.toBeInTheDocument();
+    expect(screen.queryByText("Peso: 60 %")).not.toBeInTheDocument();
   });
 });

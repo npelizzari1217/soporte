@@ -75,3 +75,33 @@ export const crearTareaSchema = z.object({
     ),
 });
 export type CrearTareaFormValues = z.infer<typeof crearTareaSchema>;
+
+/** Tope del peso de una tarea y de la suma del ticket (espejo de `PESO_TAREAS_MAX`). */
+export const PESO_TAREAS_MAX = 100;
+
+/**
+ * Peso de una tarea de un ticket EXTERNA (odd/edilicia-obra-externa, S4, S9, L17): entero de 0 a
+ * 100, y sin que la suma del ticket pase de 100. `disponible` es lo que queda para esta tarea
+ * (100 menos el peso de las demás activas); el backend repite la cuenta con el lock del ticket.
+ *
+ * El campo vacío es "requerido", nunca 0: un peso borrado no puede guardarse como cero en silencio.
+ *
+ * @param disponible Peso máximo que admite esta tarea sin pasar el tope del ticket.
+ * @returns El schema del formulario de peso.
+ */
+export function pesoTareaSchema(disponible: number) {
+  return z.object({
+    peso: z.preprocess(
+      (valor) => (typeof valor === "string" ? (valor.trim() === "" ? undefined : Number(valor)) : valor),
+      z
+        .number({ required_error: "El peso es requerido", invalid_type_error: "Ingrese un número entero" })
+        .int("El peso es un número entero")
+        .min(0, "El peso no puede ser negativo")
+        .max(
+          disponible,
+          `Las tareas sumarían más del ${PESO_TAREAS_MAX} %. Para esta tarea quedan ${disponible} %; baje primero el peso de otras.`,
+        ),
+    ),
+  });
+}
+export type PesoTareaFormValues = { peso: number };

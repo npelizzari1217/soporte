@@ -26,12 +26,16 @@ import {
   useCrearTarea,
   useDescompletarTarea,
   useEliminarTarea,
+  usePonderarTarea,
   useTareasTicket,
   useTecnicosElegiblesTarea,
 } from "../hooks/use-tareas-ticket";
 import { puedeCompletarTareaUi, puedeGestionarTareasUi, type ActorTareasUi } from "../lib/permisos-tareas";
 import { crearTareaSchema, type CrearTareaFormValues } from "../schemas";
 import type { TareaTicket } from "../types";
+import { PESO_TAREAS_MAX } from "../schemas";
+import type { ModalidadTicket } from "../modalidad";
+import { PesoTareaControl } from "./peso-tarea-control";
 
 export interface TicketTareasProps {
   ticketId: string;
@@ -47,6 +51,11 @@ export interface TicketTareasProps {
    * Lo calcula `motivoTareasSoloLectura`; el backend es la autoridad.
    */
   motivoSoloLectura?: string | null;
+  /**
+   * Modalidad del ticket. En `EXTERNA` cada tarea muestra su peso y quien gestiona las tareas lo
+   * puede fijar (odd/edilicia-obra-externa, S4, S9). Ausente = `INTERNA`.
+   */
+  modalidad?: ModalidadTicket;
 }
 
 function nombreDe(id: string | null, nombre: string | null, apellido: string | null): string | null {
@@ -60,6 +69,7 @@ export function TicketTareas({
   tipoId,
   invalidarTambien,
   motivoSoloLectura = null,
+  modalidad = "INTERNA",
 }: TicketTareasProps) {
   const { user, esAdminCliente } = useSession();
   const { puedeEnTipo } = usePermisosPorTipo();
@@ -79,6 +89,8 @@ export function TicketTareas({
   const completar = useCompletarTarea(ticketId, opciones);
   const descompletar = useDescompletarTarea(ticketId, opciones);
   const eliminar = useEliminarTarea(ticketId, opciones);
+  const ponderar = usePonderarTarea(ticketId, opciones);
+  const conPeso = modalidad === "EXTERNA";
 
   const {
     register,
@@ -94,6 +106,8 @@ export function TicketTareas({
 
   const { items, avance } = tareasQuery.data;
   const elegibles = elegiblesQuery.data ?? [];
+  // `items` son las tareas activas: la misma base sobre la que el backend acota la suma.
+  const sumaPesos = items.reduce((suma, tarea) => suma + tarea.peso, 0);
 
   function opcionesTecnico(tarea: TareaTicket) {
     // El técnico actual puede ya no ser elegible: se lo muestra igual para no mentir.
@@ -126,6 +140,12 @@ export function TicketTareas({
       ) : (
         <p className="text-sm text-muted-foreground">Sin tareas todavía.</p>
       )}
+      {conPeso && avance.total > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Pesos asignados: {sumaPesos} % de {PESO_TAREAS_MAX} %. El avance es la suma de los pesos de las tareas
+          completadas.
+        </p>
+      )}
       {avance.total > 0 && (
         <p className="text-xs text-muted-foreground">
           Completar tareas mueve el ticket: a «En proceso» con la primera y a «Resuelto» con la última.
@@ -153,6 +173,9 @@ export function TicketTareas({
                   <span className="text-xs text-muted-foreground">
                     {tecnico ? `Técnico: ${tecnico}` : "Sin técnico"}
                   </span>
+                  {conPeso && !puedeGestionar && (
+                    <span className="text-xs text-muted-foreground">Peso: {tarea.peso} %</span>
+                  )}
                   {tarea.completada && tarea.completadaEn && (
                     <span className="text-xs text-muted-foreground">
                       Completada el {formatearInstante(tarea.completadaEn)}
@@ -165,6 +188,16 @@ export function TicketTareas({
                 </Badge>
               </div>
               <div className="flex items-center gap-1">
+                {conPeso && puedeGestionar && (
+                  <PesoTareaControl
+                    tareaId={tarea.id}
+                    descripcion={tarea.descripcion}
+                    peso={tarea.peso}
+                    disponible={PESO_TAREAS_MAX - (sumaPesos - tarea.peso)}
+                    onGuardar={(peso) => ponderar.mutate({ tareaId: tarea.id, peso })}
+                    isPending={ponderar.isPending && ponderar.variables?.tareaId === tarea.id}
+                  />
+                )}
                 {puedeGestionar && (
                   <Select
                     aria-label={`Técnico de la tarea ${tarea.descripcion}`}

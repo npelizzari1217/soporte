@@ -58,6 +58,7 @@ export function SubtareasDialog({ ticketId, tipoId, trigger, numero, estadoCodig
           tipoId={tipoId}
           invalidarTambien={INVALIDAR_LISTADO}
           motivoSoloLectura={motivoTareasSoloLectura(estadoCodigo, bloqueada, esAdminCliente)}
+          modalidad={ticketQuery.data?.modalidad}
         />
       </DialogContent>
     </Dialog>

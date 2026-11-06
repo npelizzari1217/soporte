@@ -312,6 +312,7 @@ describe("ReparacionesList — el avance de la fila sigue a las tareas", () => {
       completadaPorId: "u1",
       completadaPorNombre: "Juan",
       completadaPorApellido: "Pérez",
+      peso: 0,
       createdAt: "2026-08-19T09:00:00.000Z",
       ...overrides,
     };

@@ -39,6 +39,7 @@ const TAREA: TareaTicket = {
   completadaPorId: null,
   completadaPorNombre: null,
   completadaPorApellido: null,
+  peso: 0,
   createdAt: "2026-10-01T10:00:00.000Z",
 };
 

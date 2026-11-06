@@ -290,6 +290,8 @@ export interface TareaTicket {
   completadaPorId: string | null;
   completadaPorNombre: string | null;
   completadaPorApellido: string | null;
+  /** Porcentaje entero de la obra (odd/edilicia-obra-externa, S4); solo significa algo en EXTERNA. */
+  peso: number;
   createdAt: string;
 }
 
