@@ -287,6 +287,22 @@ describe('ListarReparacionesUseCase — hidratación por lote (el listado NO pue
     expect(items[1].comprasQueBloquean).toEqual([]);
   });
 
+  it('en un ticket EXTERNA el avance pondera por peso (odd/edilicia-obra-externa, S3)', async () => {
+    const { useCase, tareaRepo, tickets } = armar(1);
+    tickets[0].actualizarDatos({ modalidad: 'EXTERNA' });
+    const hecha = makeTarea('t-0', 'Losa');
+    hecha.asignarPeso(30, new Date('2026-10-13T10:00:00Z'));
+    hecha.completar('tecnico-uuid', new Date('2026-10-13T10:00:00Z'));
+    const pendiente = makeTarea('t-0', 'Revoque');
+    pendiente.asignarPeso(50, new Date('2026-10-13T10:00:00Z'));
+    tareaRepo.listarPorTickets.mockResolvedValue(new Map([['t-0', [hecha, pendiente]]]));
+
+    const items = (await useCase.execute(SIN_RESTRICCION)).getValue();
+
+    // Con la fórmula INTERNA daría 50.
+    expect(items[0].porcentajeAvance).toBe(30);
+  });
+
   it('arma cada item con sus tareas y avance, en el orden de findAll; sin tareas, []', async () => {
     const { useCase, tareaRepo } = armar(2);
     const hecha = makeTarea('t-0', 'Cambiar la junta');

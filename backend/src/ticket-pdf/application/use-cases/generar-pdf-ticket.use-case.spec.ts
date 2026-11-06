@@ -553,6 +553,22 @@ describe('GenerarPdfTicketUseCase', () => {
       expect(tareas?.porcentajeAvance).toBe(100);
     });
 
+    it('en un ticket EXTERNA el avance impreso pondera por peso (odd/edilicia-obra-externa, S3)', async () => {
+      const ticket = crearTicket();
+      ticket.actualizarDatos({ modalidad: 'EXTERNA' });
+      const hecha = tarea('t1', 1);
+      hecha.asignarPeso(30, AHORA);
+      hecha.completar(TECNICO, AHORA);
+      const pendiente = tarea('t2', 2);
+      pendiente.asignarPeso(50, AHORA);
+      const { useCase, generador } = armar({ ticket, tareas: [hecha, pendiente] });
+
+      await useCase.execute(DTO_STAFF);
+
+      // Con la fórmula INTERNA daría 50.
+      expect(generador.generar.mock.calls[0][0].tareas?.porcentajeAvance).toBe(30);
+    });
+
     it('un técnico que ya no está en master queda como "Usuario", no como "sin técnico"', async () => {
       const { useCase, generador } = armar({
         tareas: [tarea('t1', 1, { tecnicoId: 'usr-borrado' })],

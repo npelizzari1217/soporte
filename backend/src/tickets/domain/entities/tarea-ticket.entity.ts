@@ -137,6 +137,10 @@ export class TareaTicketEntity extends BaseEntity<TareaTicketProps> {
    * Fija el peso de la tarea. Un entero fuera de [0, 100] es una violación de precondición: el DTO
    * lo valida en el borde. Que la suma del ticket no supere 100 lo decide el caso de uso, que ve
    * las demás tareas con el lock del ticket tomado.
+   *
+   * @param peso Porcentaje entero entre 0 y `PESO_TAREAS_MAX`.
+   * @param ahora Instante del cambio, para `updatedAt`.
+   * @returns Ok, o `TareaEliminadaError` si la tarea está dada de baja.
    */
   asignarPeso(peso: number, ahora: Date): Result<void, DomainError> {
     if (!Number.isInteger(peso) || peso < 0 || peso > PESO_TAREAS_MAX) {

@@ -999,6 +999,21 @@ describe('EliminarTareaUseCase', () => {
 });
 
 describe('ListarTareasTicketUseCase', () => {
+  it('en un ticket EXTERNA el avance es la suma de los pesos de las completadas activas (S3)', async () => {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    deps.sembrarTarea('t1', { completada: true }).asignarPeso(30, AHORA);
+    deps.sembrarTarea('t2').asignarPeso(50, AHORA);
+    const baja = deps.sembrarTarea('t3', { completada: true });
+    baja.asignarPeso(20, AHORA);
+    baja.eliminar(AHORA);
+
+    const result = await deps.listar.execute(listado(TICKET_ID, TECNICO, { [TIPO_ID]: VER }));
+
+    // Con la fórmula INTERNA daría 50: el assert distingue que se pasó la modalidad.
+    expect(result.getValue().avance).toEqual({ total: 2, completadas: 1, porcentaje: 30 });
+  });
+
   it('devuelve las tareas activas con el avance sobre las activas', async () => {
     const deps = armar();
     deps.sembrarTarea('t1', { completada: true });

@@ -645,4 +645,44 @@ describe('Tareas de un ticket: escrituras condicionadas ante carreras (T10 y T13
       await client.ticket.update({ where: { id: ticketId }, data: { modalidad: 'INTERNA' } });
     }
   });
+
+  // Distingue lo que el test anterior no: la escritura espera el lock del ticket y recién entonces
+  // lee los pesos, así que valida con lo que otra transacción comiteó mientras esperaba.
+  it('el peso espera el lock del ticket y valida con lo que otra transacción comiteó', async () => {
+    await client.ticket.update({ where: { id: ticketId }, data: { modalidad: 'EXTERNA' } });
+    try {
+      const t1 = await sembrarTarea(null);
+      const t2 = await sembrarTarea(null);
+      let soltar: () => void = () => undefined;
+      const liberar = new Promise<void>((resolve) => {
+        soltar = resolve;
+      });
+      let avisarLock: () => void = () => undefined;
+      const lockTomado = new Promise<void>((resolve) => {
+        avisarLock = resolve;
+      });
+      const sostenedor = client.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticketId}::uuid FOR NO KEY UPDATE`;
+        await tx.tareaTicket.update({ where: { id: t2.id }, data: { peso: 60 } });
+        avisarLock();
+        await liberar;
+      });
+      await lockTomado;
+
+      const pendiente = enTenant(() =>
+        ponderar().execute({ ticketId, tareaId: t1.id, actor: RESPONSABLE_ACTOR, peso: 60 }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      soltar();
+      await sostenedor;
+      const result = await pendiente;
+
+      expect(result.isFail()).toBe(true);
+      expect(result.getError().code).toBe('PESO_TAREAS_EXCEDE_TOTAL');
+      const fila = await client.tareaTicket.findUniqueOrThrow({ where: { id: t1.id } });
+      expect(fila.peso).toBe(0);
+    } finally {
+      await client.ticket.update({ where: { id: ticketId }, data: { modalidad: 'INTERNA' } });
+    }
+  });
 });
