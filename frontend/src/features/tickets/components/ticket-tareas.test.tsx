@@ -534,3 +534,41 @@ describe("TicketTareas — peso en un ticket EXTERNA (odd/edilicia-obra-externa,
     expect(screen.queryByText("Peso: 60 %")).not.toBeInTheDocument();
   });
 });
+
+describe("TicketTareas — tarea certificada (odd/edilicia-obra-externa, S8)", () => {
+  beforeEach(() => vi.mocked(toast.error).mockClear());
+
+  it("el 422 de descompletar una tarea certificada se muestra con el mensaje del servidor", async () => {
+    const user = userEvent.setup();
+    const mensaje = "La tarea «Reinstalar el sistema» está en un certificado vigente: anule el certificado antes de descompletarla.";
+    mockTareas();
+    server.use(
+      http.post(`/api/tickets/${TICKET_ID}/tareas/ta2/descompletar`, () =>
+        HttpResponse.json({ statusCode: 422, message: mensaje, error: "Unprocessable Entity" }, { status: 422 }),
+      ),
+    );
+    renderTareas();
+
+    await screen.findByText("Reinstalar el sistema");
+    await user.click(within(filaDe("Reinstalar el sistema")).getByRole("button", { name: "Descompletar" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(mensaje));
+  });
+
+  it("caso hermano: el 422 de asignar técnico conserva su texto propio", async () => {
+    const user = userEvent.setup();
+    mockTareas();
+    server.use(
+      http.patch(`/api/tickets/${TICKET_ID}/tareas/ta1/tecnico`, () =>
+        HttpResponse.json({ statusCode: 422, message: "El usuario \"x\" no puede...", error: "x" }, { status: 422 }),
+      ),
+    );
+    renderTareas();
+
+    await screen.findByText("Cambiar el disco");
+    await user.selectOptions(screen.getByLabelText("Técnico de la tarea Cambiar el disco"), TECNICO);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Ese técnico no puede tomar tareas de este ticket."));
+  });
+});
+

@@ -95,6 +95,29 @@ export class PesoTareaSoloExternoError extends DomainError {
   }
 }
 
+/** Lo que se intentó hacer con una tarea certificada (S8). */
+export type CambioSobreTareaCertificada = 'repesar' | 'eliminar' | 'descompletar';
+
+const TEXTO_CAMBIO: Record<CambioSobreTareaCertificada, string> = {
+  repesar: 'cambiarle el peso',
+  eliminar: 'eliminarla',
+  descompletar: 'descompletarla',
+};
+
+/**
+ * La tarea está en un certificado vigente (odd/edilicia-obra-externa, S8): no se repesa, borra ni
+ * descompleta sin anular antes el certificado. → HTTP 422.
+ */
+export class TareaCertificadaError extends DomainError {
+  readonly code = 'TAREA_CERTIFICADA';
+
+  constructor(descripcion: string, cambio: CambioSobreTareaCertificada) {
+    super(
+      `La tarea «${descripcion}» está en un certificado vigente: anule el certificado antes de ${TEXTO_CAMBIO[cambio]}.`,
+    );
+  }
+}
+
 /**
  * El ticket está bloqueado por una compra en curso: sus tareas son de solo lectura (ni crear,
  * completar, descompletar, eliminar ni asignar técnico), para cualquier actor

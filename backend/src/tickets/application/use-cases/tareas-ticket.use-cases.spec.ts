@@ -15,6 +15,7 @@ import {
   TareaNoEncontradaError,
   PesoTareaSoloExternoError,
   PesoTareasExcedeTotalError,
+  TareaCertificadaError,
   TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
@@ -122,6 +123,7 @@ function armar() {
   const operaciones: OperacionTicketEntity[] = [];
 
   const tareas = new Map<string, TareaTicketEntity>();
+  const certificadas = new Set<string>();
   /** Orden de las llamadas dentro de la transacción (odd/estado-por-tareas, S5-S6). */
   const secuencia: string[] = [];
   const ticketRepo = {
@@ -201,6 +203,8 @@ function armar() {
     }),
     asignarTecnicoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
     asignarPesoSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
+    // S8 (odd/edilicia-obra-externa): las tareas de `certificadas` están en un certificado vigente.
+    estaCertificada: vi.fn(async (tareaId: string) => certificadas.has(tareaId)),
     darDeBajaSiActiva: vi.fn(async (_tarea: TareaTicketEntity) => true),
   };
   const operacionRepo = {
@@ -319,6 +323,7 @@ function armar() {
     avanzarEstado,
     secuencia,
     bloqueados,
+    certificadas,
     bloqueoRepo,
     ponerEstado,
     crear: new CrearTareaTicketUseCase(
@@ -823,6 +828,106 @@ describe('CompletarTareaUseCase', () => {
       });
       expect(errorDe(result)).toBeInstanceOf(TareaNoEncontradaError);
     }
+  });
+});
+
+describe('tarea certificada (odd/edilicia-obra-externa, S8)', () => {
+  /** Ticket EXTERNA con `t1` completada, de peso 100 y en un certificado vigente. */
+  function conTareaCertificada() {
+    const deps = armar();
+    deps.tickets.get(TICKET_ID)?.actualizarDatos({ modalidad: 'EXTERNA' });
+    const tarea = deps.sembrarTarea('t1', { tecnicoId: TECNICO, completada: true });
+    tarea.asignarPeso(100, AHORA);
+    deps.certificadas.add('t1');
+    return deps;
+  }
+
+  it('no se repesa: TareaCertificadaError y no escribe', async () => {
+    const deps = conTareaCertificada();
+
+    const error = errorDe(
+      await deps.ponderar.execute({
+        ticketId: TICKET_ID,
+        tareaId: 't1',
+        actor: ACTORES.administrador,
+        peso: 50,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(TareaCertificadaError);
+    expect(error.message).toContain('anule el certificado antes de cambiarle el peso');
+    expect(deps.tareaRepo.asignarPesoSiActiva).not.toHaveBeenCalled();
+  });
+
+  it('no se elimina: TareaCertificadaError, sin baja ni historial', async () => {
+    const deps = conTareaCertificada();
+
+    const error = errorDe(
+      await deps.eliminar.execute({
+        ticketId: TICKET_ID,
+        tareaId: 't1',
+        actor: ACTORES.administrador,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(TareaCertificadaError);
+    expect(error.message).toContain('antes de eliminarla');
+    expect(deps.tareaRepo.darDeBajaSiActiva).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('no se descompleta: TareaCertificadaError, sin escritura ni avance de estado', async () => {
+    const deps = conTareaCertificada();
+
+    const error = errorDe(
+      await deps.descompletar.execute({
+        clienteId: CLIENTE_ID,
+        ticketId: TICKET_ID,
+        tareaId: 't1',
+        actor: ACTORES.administrador,
+      }),
+    );
+
+    expect(error).toBeInstanceOf(TareaCertificadaError);
+    expect(error.message).toContain('antes de descompletarla');
+    expect(deps.tareaRepo.descompletarSiCompletada).not.toHaveBeenCalled();
+    expect(deps.avanzarEstado.aplicar).not.toHaveBeenCalled();
+    expect(deps.operaciones).toHaveLength(0);
+  });
+
+  it('caso hermano: sin certificado vigente, las tres siguen funcionando', async () => {
+    const deps = conTareaCertificada();
+    deps.certificadas.delete('t1');
+
+    expect(
+      (
+        await deps.ponderar.execute({
+          ticketId: TICKET_ID,
+          tareaId: 't1',
+          actor: ACTORES.administrador,
+          peso: 50,
+        })
+      ).isOk(),
+    ).toBe(true);
+    expect(
+      (
+        await deps.descompletar.execute({
+          clienteId: CLIENTE_ID,
+          ticketId: TICKET_ID,
+          tareaId: 't1',
+          actor: ACTORES.administrador,
+        })
+      ).isOk(),
+    ).toBe(true);
+    expect(
+      (
+        await deps.eliminar.execute({
+          ticketId: TICKET_ID,
+          tareaId: 't1',
+          actor: ACTORES.administrador,
+        })
+      ).isOk(),
+    ).toBe(true);
   });
 });
 

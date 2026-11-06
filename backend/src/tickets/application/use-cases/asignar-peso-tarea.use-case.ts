@@ -4,6 +4,7 @@ import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import {
   PesoTareaSoloExternoError,
   PesoTareasExcedeTotalError,
+  TareaCertificadaError,
   TareaNoEncontradaError,
 } from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
@@ -49,7 +50,7 @@ export class AsignarPesoTareaUseCase {
     private readonly tipoTicketRepo: Pick<ITipoTicketRepository, 'findById'>,
     private readonly tareaRepo: Pick<
       ITareaTicketRepository,
-      'buscarPorId' | 'listarPorTicket' | 'asignarPesoSiActiva'
+      'buscarPorId' | 'listarPorTicket' | 'asignarPesoSiActiva' | 'estaCertificada'
     >,
     private readonly txRunner: Pick<ITenantTransactionRunner, 'run'>,
     private readonly verificadorEditable: Pick<
@@ -95,6 +96,10 @@ export class AsignarPesoTareaUseCase {
       );
       if (vigente.isFail()) return vigente;
 
+      // S8: el peso de una tarea certificada quedó copiado en el certificado; no se toca.
+      if (await this.tareaRepo.estaCertificada(tarea.id)) {
+        return Result.fail(new TareaCertificadaError(tarea.descripcion, 'repesar'));
+      }
       const tareas = await this.tareaRepo.listarPorTicket(ticket.id);
       const suma = sumaDePesosConCambio(tareas, tarea.id, dto.peso);
       if (!sumaDePesosAdmitida(suma)) return Result.fail(new PesoTareasExcedeTotalError(suma));

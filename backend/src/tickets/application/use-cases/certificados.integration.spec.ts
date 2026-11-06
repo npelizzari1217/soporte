@@ -505,6 +505,28 @@ describe('Certificados de avance (T3b, tenant efímero)', () => {
     expect(await client.certificacionAvance.count({ where: { ticketId } })).toBe(0);
   });
 
+  it('S8: estaCertificada sigue al certificado vigente y deja de valer al anularlo', async () => {
+    const { ticketId, tareas } = await ticketCon([60, 40], [0, 1]);
+    const certificado = (
+      await enTenant(() =>
+        emitir.execute({ ticketId, alcance: CON_CERTIFICAR(), tareaIds: [tareas[0]] }),
+      )
+    ).getValue();
+
+    expect(await enTenant(() => tareaRepo.estaCertificada(tareas[0]))).toBe(true);
+    expect(await enTenant(() => tareaRepo.estaCertificada(tareas[1]))).toBe(false);
+
+    await enTenant(() =>
+      anular.execute({
+        ticketId,
+        certificadoId: certificado.id,
+        alcance: ADMINISTRADOR,
+        motivo: 'x',
+      }),
+    );
+    expect(await enTenant(() => tareaRepo.estaCertificada(tareas[0]))).toBe(false);
+  });
+
   it('listar exige ver el ticket: sin LECTURA es 404', async () => {
     const { ticketId } = await ticketCon([100], [0]);
 

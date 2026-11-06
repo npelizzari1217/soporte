@@ -2,7 +2,11 @@ import { DomainError, Result } from '../../../shared/domain/result';
 import { ITenantTransactionRunner } from '../../../shared/infrastructure/persistence/tenant-transaction-runner';
 import { TareaTicketEntity } from '../../domain/entities/tarea-ticket.entity';
 import { TIPO_OPERACION_TAREA } from '../../domain/constants/tipos-operacion-tarea.constants';
-import { TareaNoCompletadaError, TareaYaCompletadaError } from '../../domain/errors/tareas.errors';
+import {
+  TareaCertificadaError,
+  TareaNoCompletadaError,
+  TareaYaCompletadaError,
+} from '../../domain/errors/tareas.errors';
 import { TicketNoEncontradoError } from '../../domain/errors/tickets.errors';
 import { CondicionDeDescompletado } from '../../domain/ports/i-tarea-ticket.repository';
 import { IOperacionTicketRepository } from '../../domain/ports/i-operacion-ticket.repository';
@@ -65,7 +69,7 @@ export class DescompletarTareaUseCase {
     private readonly ticketRepo: TicketRepoDeTareas,
     private readonly tareaRepo: Pick<
       ITareaTicketRepository,
-      'buscarPorId' | 'descompletarSiCompletada'
+      'buscarPorId' | 'descompletarSiCompletada' | 'estaCertificada'
     >,
     private readonly operacionRepo: Pick<IOperacionTicketRepository, 'save'>,
     private readonly tipoOperacionRepo: Pick<ITipoOperacionRepository, 'findIdByCodigo'>,
@@ -128,6 +132,10 @@ export class DescompletarTareaUseCase {
           dto.actor.esAdministrador,
         );
         if (vigente.isFail()) return Result.fail(vigente.getError());
+        // S8 (odd/edilicia-obra-externa): lo certificado se apoya en que la tarea está completada.
+        if (await this.tareaRepo.estaCertificada(tarea.id)) {
+          return Result.fail(new TareaCertificadaError(tarea.descripcion, 'descompletar'));
+        }
         if (!(await this.tareaRepo.descompletarSiCompletada(tarea, condicion))) {
           return Result.ok('rechazada');
         }

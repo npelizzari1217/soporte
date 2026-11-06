@@ -155,6 +155,8 @@ export function useDescompletarTarea(ticketId: string, opciones: OpcionesMutacio
       apiFetch<TareaTicket>(`tickets/${ticketId}/tareas/${tareaId}/descompletar`, { method: "POST" }),
     "La tarea volvió a pendiente.",
     conEstadoDelTicket(ticketId, opciones),
+    // Su 422 (tarea certificada, ticket bloqueado) trae un mensaje legible (odd/edilicia-obra-externa, S8).
+    true,
   );
 }
 
@@ -179,5 +181,7 @@ export function useEliminarTarea(ticketId: string, opciones: OpcionesMutacionTar
     (tareaId: string) => apiFetch<void>(`tickets/${ticketId}/tareas/${tareaId}`, { method: "DELETE" }),
     "Tarea eliminada.",
     conDetalleDelTicket(ticketId, opciones),
+    // Su 422 (tarea certificada, ticket bloqueado) trae un mensaje legible (odd/edilicia-obra-externa, S8).
+    true,
   );
 }

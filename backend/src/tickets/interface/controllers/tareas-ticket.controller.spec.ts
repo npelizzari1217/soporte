@@ -22,6 +22,7 @@ import {
   TareaNoEncontradaError,
   PesoTareaSoloExternoError,
   PesoTareasExcedeTotalError,
+  TareaCertificadaError,
   TareaTicketNoEditableError,
   TareaYaCompletadaError,
   TecnicoTareaNoElegibleError,
@@ -93,6 +94,7 @@ describe('toHttpExceptionTareas', () => {
     ['TAREA_TICKET_NO_EDITABLE', new TareaTicketNoEditableError(), UnprocessableEntityException],
     ['PESO_TAREAS_EXCEDE_TOTAL', new PesoTareasExcedeTotalError(101), UnprocessableEntityException],
     ['PESO_TAREA_SOLO_EXTERNO', new PesoTareaSoloExternoError(), UnprocessableEntityException],
+    ['TAREA_CERTIFICADA', new TareaCertificadaError('t', 'eliminar'), UnprocessableEntityException],
     [
       'TICKET_SOLO_COMENTARIOS',
       new TicketSoloComentariosError('RESUELTO'),
